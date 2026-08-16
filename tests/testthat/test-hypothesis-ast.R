@@ -28,6 +28,71 @@ test_that("hypothesis AST preserves structure and quoted symbols", {
                     hypothesis_ast_schema()$object))
 })
 
+test_that("hypothesis parsing recognizes exact non-syntactic catalog aliases", {
+
+  registry <- .bt_build_parameter_registry(columns = "theta")
+  catalog  <- .bt_build_parameter_catalog(registry)
+  quantity <- .bt_parameter_catalog_quantity(
+    canonical_name = "random_fraction",
+    namespace      = "mu",
+    role           = "random_variance_fraction",
+    component      = "random",
+    extraction_key = list(type = "test", dependencies = character())
+  )
+  quantity$provider    <- "RoBMA"
+  quantity$quantity_id <- "RoBMA::random_fraction"
+  aliases <- data.frame(
+    alias       = "var_frac(random_total: study)",
+    quantity_id = quantity$quantity_id,
+    namespace   = quantity$namespace,
+    component   = quantity$component,
+    stringsAsFactors = FALSE
+  )
+  catalog <- parameter_catalog_extend(
+    catalog,
+    quantities = quantity,
+    aliases    = aliases,
+    provider   = "RoBMA"
+  )
+  hypothesis <- c(
+    "var_frac(random_total: study) != 0 vs var_frac(random_total: study) = 0",
+    "var_frac(random_total: study) != 1 vs var_frac(random_total: study) = 1"
+  )
+
+  ast <- hypothesis_parse(
+    hypothesis,
+    catalog   = catalog,
+    component = "random"
+  )
+
+  expect_identical(
+    hypothesis_symbols(ast),
+    "var_frac(random_total: study)"
+  )
+  expect_identical(
+    hypothesis_render(ast),
+    gsub(
+      "var_frac(random_total: study)",
+      "`var_frac(random_total: study)`",
+      hypothesis,
+      fixed = TRUE
+    )
+  )
+  expect_identical(
+    hypothesis_render(hypothesis_parse(
+      hypothesis_render(ast),
+      catalog   = catalog,
+      component = "random"
+    )),
+    hypothesis_render(ast)
+  )
+  expect_error(
+    hypothesis_parse(hypothesis, component = "random"),
+    "require 'catalog'",
+    fixed = TRUE
+  )
+})
+
 test_that("hypothesis rewriting edits exact symbol roots only", {
 
   ast <- hypothesis_parse(

@@ -1,5 +1,8 @@
 # version 0.3.1
 ### Features
+- adds `random_effects_marginal_factor_states()` so downstream likelihoods can
+  reuse the bridge-sampling random-covariance compiler without constructing
+  dense draw-by-row-by-row arrays
 - adds `JAGS_marglik_priors_rows()` for exact row-preserving prior-density
   evaluation. Supported scalar and Dirichlet prior lists use a vectorized
   evaluator, while other prior families retain the compiled scalar route.
@@ -9,7 +12,7 @@
   left relations such as `0 > theta` and `0 = theta` are canonicalized to the
   equivalent parameter-left forms
 - adds `JAGS_formula_coefficient_transform()` and `JAGS_formula_prior_density()` for versioned fitted-to-original coefficient maps and exact induced prior measures, including structural point values, interactions, log-intercept Jacobians, and model-mixture atoms
-- adds a versioned `hypothesis_parse()` syntax tree with stable rendering, exact symbol discovery and rewriting, parameter-catalog resolution, and direct `hypothesis_BF()` consumption without reparsing expression text
+- adds a versioned `hypothesis_parse()` syntax tree with stable rendering, exact symbol discovery and rewriting, parameter-catalog resolution including unquoted non-syntactic public aliases, and direct `hypothesis_BF()` consumption without reparsing expression text
 - adds a cached metadata-only `parameter_catalog()` with versioned quantity and alias tables, classed exact resolution, validated provider extensions, and deferred `parameter_draws()` extraction for registry coordinates and declared random-effect summaries
 - adds versioned `JAGS_draw_geometry()` metadata and registry-based `JAGS_materialize_draws()` reconstruction, including exact structural point-prior values, preserved chain timing, valid zero-column public draws, and a private deterministic backend anchor for models with no ordinary monitor
 - adds an injective UTF-8 `JAGS_parameter_encode()` / `JAGS_parameter_decode()` semantic identifier, a persisted formula name map, and a single `JAGS_fit_contract()` compatibility profile so downstream packages can consume formula and fitted metadata without parsing established JAGS column names

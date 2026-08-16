@@ -117,6 +117,185 @@ random_effects_marginal_vcov <- function(
   )
 }
 
+
+#' Random-effect marginal covariance factor states
+#'
+#' @description
+#' Compiles the same structural covariance representation used by bridge
+#' sampling and evaluates its draw-varying factor states for fitted rows. This
+#' avoids constructing dense `draw x row x row` arrays when a downstream
+#' likelihood can consume covariance factors directly.
+#'
+#' @param fit,parameter,posterior_samples,prior_list,blocks See
+#'   [random_effects_marginal_vcov()].
+#' @param row_blocks a list of integer row-index vectors that partitions the
+#'   fitted rows without separating any structurally nonzero covariance
+#'   contribution.
+#' @param ... reserved for future extensions. Unused arguments are rejected.
+#'
+#' @return A list of class
+#'   `BayesTools_random_effects_marginal_factor_states` with invariant
+#'   `factor_plans`, one `factor_states` list per posterior draw, `row_blocks`,
+#'   and structural `metadata`.
+#'
+#' @seealso [random_effects_marginal_vcov()] [JAGS_bridgesampling()]
+#' @export
+random_effects_marginal_factor_states <- function(
+    fit, parameter = NULL, posterior_samples = NULL, prior_list = NULL,
+    blocks = NULL, row_blocks, ...){
+
+  dots <- list(...)
+  if(length(dots) > 0L){
+    dot_names <- names(dots)
+    if(is.null(dot_names)){
+      dot_names <- rep("", length(dots))
+    }
+    unnamed <- !nzchar(dot_names)
+    dot_names[unnamed] <- paste0("argument ", which(unnamed))
+    stop(
+      "Unused argument(s): ",
+      paste(dot_names, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+  check_char(parameter, "parameter", allow_NULL = TRUE, allow_NA = FALSE)
+  check_char(blocks, "blocks", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
+
+  design <- .bt_random_effect_marginal_covariance_design(
+    fit = fit,
+    parameter = parameter
+  )
+  posterior <- .bt_random_effect_marginal_covariance_posterior(
+    fit = fit,
+    posterior_samples = posterior_samples
+  )
+  prior_list <- .bt_random_effect_marginal_covariance_prior_list(
+    prior_list = prior_list,
+    fit = fit,
+    design = design
+  )
+  selected <- .bt_random_effect_marginal_covariance_terms(
+    design = design,
+    blocks = blocks
+  )
+  random_effects <- selected$terms
+  block_names <- vapply(random_effects, `[[`, character(1), "block_name")
+  parameter_name <- design$parameter
+  if(!is.character(parameter_name) || length(parameter_name) != 1L ||
+     is.na(parameter_name) || !nzchar(parameter_name)){
+    stop("Formula design parameter name is unavailable.", call. = FALSE)
+  }
+
+  row_blocks <- .bt_JAGS_bridge_marginal_random_row_blocks(
+    row_blocks = row_blocks,
+    n_rows = nrow(random_effects[[1L]]$model_matrix),
+    parameter = parameter_name
+  )
+  if(is.null(row_blocks)){
+    stop("'row_blocks' must be supplied.", call. = FALSE)
+  }
+  .bt_JAGS_bridge_validate_marginal_random_row_blocks(
+    random_effects = random_effects,
+    row_blocks = row_blocks,
+    parameter = parameter_name
+  )
+
+  formula_design_list <- stats::setNames(list(design), parameter_name)
+  formula_data_list <- stats::setNames(list(NULL), parameter_name)
+  formula_prior_list <- stats::setNames(list(prior_list), parameter_name)
+  marginal_random_spec <- stats::setNames(list(list(
+    blocks = block_names,
+    row_blocks = row_blocks,
+    factor_state = TRUE
+  )), parameter_name)
+  evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
+    formula_design_list = formula_design_list,
+    marginal_random_spec = marginal_random_spec,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    model_data = NULL
+  )
+  values <- lapply(seq_len(nrow(posterior)), function(row){
+    samples <- posterior[row, ]
+    formula_prior_parameters <- list()
+    for(prior_name in names(prior_list)){
+      prior <- prior_list[[prior_name]]
+      if(is.prior.simplex(prior) &&
+         identical(prior$distribution, "dirichlet")){
+        K <- prior$parameters[["K"]]
+        weights <- paste0(prior_name, "[", seq_len(K), "]")
+        eta <- paste0(
+          .JAGS_prior_dirichlet_eta_name(prior_name),
+          "[", seq_len(K), "]"
+        )
+        if(all(weights %in% names(samples))){
+          formula_prior_parameters[[prior_name]] <- unname(samples[weights])
+        }else if(all(eta %in% names(samples))){
+          eta_values <- unname(samples[eta])
+          eta_sum    <- sum(eta_values)
+          if(any(!is.finite(eta_values)) || any(eta_values < 0) ||
+             !is.finite(eta_sum) || eta_sum <= 0){
+            stop(
+              "Dirichlet auxiliary coordinates for '", prior_name,
+              "' must be finite, non-negative, and have a positive sum.",
+              call. = FALSE
+            )
+          }
+          formula_prior_parameters[[prior_name]] <-
+            eta_values / eta_sum
+        }
+        if(all(weights %in% names(samples)) && all(eta %in% names(samples))){
+          samples <- samples[setdiff(names(samples), eta)]
+        }
+        next
+      }
+      if(is.prior.point(prior)){
+        formula_prior_parameters <- c(
+          formula_prior_parameters,
+          JAGS_marglik_parameters(samples, prior_list[prior_name])
+        )
+      }
+    }
+    evaluator$covariance(
+      samples = samples,
+      prior_parameters = list(),
+      formula_prior_parameters = formula_prior_parameters,
+      formula_parameters = list(),
+      factor_covariance = FALSE,
+      factor_state = TRUE
+    )[[parameter_name]]
+  })
+  factor_plans <- values[[1L]]$factor_plans
+  factor_states <- lapply(values, `[[`, "factor_states")
+  structures <- stats::setNames(vapply(
+    random_effects,
+    .bt_random_effect_structure,
+    character(1),
+    context = "Random-effect marginal factor states"
+  ), block_names)
+
+  out <- list(
+    factor_plans = factor_plans,
+    factor_states = factor_states,
+    row_blocks = row_blocks,
+    metadata = list(
+      parameter = parameter_name,
+      n_draws = nrow(posterior),
+      n_rows = nrow(random_effects[[1L]]$model_matrix),
+      included_blocks = block_names,
+      skipped_blocks = selected$skipped,
+      structures = structures,
+      representation = "factor_state"
+    )
+  )
+  class(out) <- c(
+    "BayesTools_random_effects_marginal_factor_states",
+    "list"
+  )
+  out
+}
+
 #' Random-effect marginal variance factors
 #'
 #' @description

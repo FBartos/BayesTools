@@ -10,7 +10,12 @@
 \alias{hypothesis_resolve}
 \title{Versioned hypothesis syntax trees}
 \usage{
-hypothesis_parse(hypothesis)
+hypothesis_parse(
+  hypothesis,
+  catalog = NULL,
+  namespace = NULL,
+  component = NULL
+)
 
 hypothesis_ast_schema()
 
@@ -25,19 +30,21 @@ hypothesis_resolve(ast, catalog, namespace = NULL, component = NULL)
 \arguments{
 \item{hypothesis}{character vector of hypothesis statements.}
 
-\item{ast}{a \code{BayesTools_hypothesis_ast} object.}
-
-\item{occurrences}{whether to return one row per symbol occurrence.}
-
-\item{mapping}{named character vector from exact old roots to new roots.}
-
-\item{catalog}{a \code{BayesTools_parameter_catalog}.}
+\item{catalog}{optional \code{BayesTools_parameter_catalog}. When supplied to
+\code{hypothesis_parse()}, exact non-syntactic public aliases are recognized
+without requiring the caller to add backticks.}
 
 \item{namespace}{optional exact catalog namespace filter.}
 
 \item{component}{optional exact catalog component filter for unqualified
 symbols. A level-qualified symbol such as \code{term[level]} supplies its own
 per-occurrence component and must agree with this value when both are used.}
+
+\item{ast}{a \code{BayesTools_hypothesis_ast} object.}
+
+\item{occurrences}{whether to return one row per symbol occurrence.}
+
+\item{mapping}{named character vector from exact old roots to new roots.}
 }
 \value{
 \code{hypothesis_parse()} and \code{hypothesis_rewrite()} return a

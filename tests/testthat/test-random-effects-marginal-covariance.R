@@ -1390,6 +1390,41 @@ test_that("nested random-effect blocks are expanded and summed", {
 
   out <- .re_cov_output(result, .re_cov_posterior(posterior_values))
   expect_equal(.re_cov_first(out), expected)
+
+  posterior <- .re_cov_posterior_draws(
+    posterior_values,
+    posterior_values / 2
+  )
+  dense <- .re_cov_output(result, posterior)
+  factors <- random_effects_marginal_factor_states(
+    result$formula_design,
+    posterior_samples = posterior,
+    prior_list        = result$prior_list,
+    blocks            = vapply(random_effects, `[[`, character(1), "block_name"),
+    row_blocks        = list(seq_len(nrow(df)))
+  )
+
+  expect_s3_class(
+    factors,
+    "BayesTools_random_effects_marginal_factor_states"
+  )
+  expect_identical(factors$row_blocks, list(seq_len(nrow(df))))
+  for(draw in seq_len(nrow(posterior))){
+    reconstructed <- matrix(0, nrow(df), nrow(df))
+    for(block in seq_along(factors$factor_plans)){
+      plan  <- factors$factor_plans[[block]]
+      state <- factors$factor_states[[draw]][[block]]
+      G     <- tcrossprod(state$coefficient_factor)
+      reconstructed <- reconstructed +
+        outer(plan$group_map, plan$group_map, "==") *
+        tcrossprod(plan$model_matrix %*% G, plan$model_matrix)
+    }
+    expect_equal(
+      unname(reconstructed),
+      unname(dense$samples[draw, , ]),
+      tolerance = 1e-12
+    )
+  }
 })
 
 test_that("row-varying direct SD sources weight rows inside groups", {
@@ -1553,6 +1588,52 @@ test_that("row-varying SD-component allocation weights columns and rows", {
   ))
   eta_out <- .re_cov_output(result, eta_posterior)
   expect_equal(.re_cov_first(eta_out), expected, tolerance = 1e-12)
+
+  eta_draws <- .re_cov_posterior_draws(
+    c(
+      stats::setNames(tau, paste0("tau[", seq_along(tau), "]")),
+      stats::setNames(c(1, 3), paste0(eta_name, "[", seq_along(weights), "]"))
+    ),
+    c(
+      stats::setNames(tau, paste0("tau[", seq_along(tau), "]")),
+      stats::setNames(c(3, 1), paste0(eta_name, "[", seq_along(weights), "]"))
+    )
+  )
+  dense <- .re_cov_output(result, eta_draws)
+  factors <- random_effects_marginal_factor_states(
+    result$formula_design,
+    posterior_samples = eta_draws,
+    prior_list        = result$prior_list,
+    blocks            = "id",
+    row_blocks        = split(seq_len(nrow(df)), random_term$group_map)
+  )
+  plan <- factors$factor_plans[[1L]]
+  for(draw in seq_len(nrow(eta_draws))){
+    state <- factors$factor_states[[draw]][[1L]]
+    Z     <- plan$model_matrix * state$row_scale
+    G     <- tcrossprod(state$coefficient_factor)
+    reconstructed <- outer(plan$group_map, plan$group_map, "==") *
+      tcrossprod(Z %*% G, Z)
+    expect_equal(
+      unname(reconstructed),
+      unname(dense$samples[draw, , ]),
+      tolerance = 1e-12
+    )
+  }
+
+  invalid_eta <- eta_draws[1L, , drop = FALSE]
+  invalid_eta[, paste0(eta_name, "[", seq_along(weights), "]")] <- 0
+  expect_error(
+    random_effects_marginal_factor_states(
+      result$formula_design,
+      posterior_samples = invalid_eta,
+      prior_list        = result$prior_list,
+      blocks            = "id",
+      row_blocks        = split(seq_len(nrow(df)), random_term$group_map)
+    ),
+    "finite, non-negative, and have a positive sum",
+    fixed = TRUE
+  )
 })
 
 test_that("marginalized blocks keep usable covariance metadata", {

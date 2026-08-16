@@ -20,7 +20,9 @@
 #' @param ast a `BayesTools_hypothesis_ast` object.
 #' @param occurrences whether to return one row per symbol occurrence.
 #' @param mapping named character vector from exact old roots to new roots.
-#' @param catalog a `BayesTools_parameter_catalog`.
+#' @param catalog optional `BayesTools_parameter_catalog`. When supplied to
+#'   `hypothesis_parse()`, exact non-syntactic public aliases are recognized
+#'   without requiring the caller to add backticks.
 #' @param namespace optional exact catalog namespace filter.
 #' @param component optional exact catalog component filter for unqualified
 #'   symbols. A level-qualified symbol such as `term[level]` supplies its own
@@ -42,11 +44,28 @@
 NULL
 
 #' @rdname hypothesis_ast
-hypothesis_parse <- function(hypothesis){
+hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
+                             component = NULL){
 
   check_char(hypothesis, "hypothesis", check_length = 0, allow_NA = FALSE)
   if(length(hypothesis) == 0L){
     stop("'hypothesis' must contain at least one statement.", call. = FALSE)
+  }
+  if(!is.null(catalog)){
+    hypothesis <- .bt_hypothesis_quote_catalog_aliases(
+      hypothesis = hypothesis,
+      catalog    = catalog,
+      namespace  = namespace,
+      component  = component
+    )
+  }else{
+    check_char(namespace, "namespace", check_length = 1L, allow_NULL = TRUE,
+               allow_NA = FALSE)
+    check_char(component, "component", check_length = 1L, allow_NULL = TRUE,
+               allow_NA = FALSE)
+    if(!is.null(namespace) || !is.null(component)){
+      stop("'namespace' and 'component' require 'catalog'.", call. = FALSE)
+    }
   }
   statements <- lapply(hypothesis, function(statement){
     .bt_hypothesis_ast_statement(.parse_hypothesis_BF(statement))
@@ -58,6 +77,124 @@ hypothesis_parse <- function(hypothesis){
   class(out) <- c("BayesTools_hypothesis_ast", "list")
   .bt_validate_hypothesis_ast(out)
   out
+}
+
+.bt_hypothesis_quote_catalog_aliases <- function(
+    hypothesis, catalog, namespace, component){
+
+  .bt_validate_parameter_catalog(catalog)
+  check_char(namespace, "namespace", check_length = 1L, allow_NULL = TRUE,
+             allow_NA = FALSE)
+  check_char(component, "component", check_length = 1L, allow_NULL = TRUE,
+             allow_NA = FALSE)
+
+  quantities <- catalog$quantities
+  public <- !quantities$internal
+  canonical <- public
+  if(!is.null(namespace)){
+    canonical <- canonical & quantities$namespace == namespace
+  }
+  if(!is.null(component)){
+    canonical <- canonical & quantities$component == component
+  }
+
+  aliases <- catalog$aliases
+  alias_rows <- aliases$quantity_id %in% quantities$quantity_id[public]
+  if(!is.null(namespace)){
+    alias_rows <- alias_rows & aliases$namespace == namespace
+  }
+  if(!is.null(component)){
+    alias_rows <- alias_rows & aliases$component == component
+  }
+  names <- unique(c(
+    quantities$canonical_name[canonical],
+    aliases$alias[alias_rows]
+  ))
+  names <- names[
+    nzchar(names) &
+      make.names(names) != names
+  ]
+  if(length(names) == 0L){
+    return(hypothesis)
+  }
+  names <- names[order(nchar(names), decreasing = TRUE)]
+
+  vapply(
+    hypothesis,
+    .bt_hypothesis_quote_statement_aliases,
+    character(1),
+    aliases = names,
+    USE.NAMES = FALSE
+  )
+}
+
+.bt_hypothesis_quote_statement_aliases <- function(statement, aliases){
+
+  n <- nchar(statement, type = "chars")
+  if(n == 0L){
+    return(statement)
+  }
+  out <- character()
+  i <- 1L
+  quote <- ""
+  escaped <- FALSE
+  while(i <= n){
+    current <- substr(statement, i, i)
+    if(nzchar(quote)){
+      out <- c(out, current)
+      if(escaped){
+        escaped <- FALSE
+      }else if(identical(current, "\\")){
+        escaped <- TRUE
+      }else if(identical(current, quote)){
+        quote <- ""
+      }
+      i <- i + 1L
+      next
+    }
+    if(current %in% c("`", "'", "\"")){
+      quote <- current
+      out <- c(out, current)
+      i <- i + 1L
+      next
+    }
+
+    matched <- NULL
+    for(alias in aliases){
+      end <- i + nchar(alias, type = "chars") - 1L
+      if(end <= n && identical(substr(statement, i, end), alias) &&
+         .bt_hypothesis_alias_boundary(statement, i, end)){
+        matched <- alias
+        break
+      }
+    }
+    if(!is.null(matched)){
+      out <- c(out, encodeString(matched, quote = "`"))
+      i <- i + nchar(matched, type = "chars")
+      next
+    }
+    out <- c(out, current)
+    i <- i + 1L
+  }
+
+  paste0(out, collapse = "")
+}
+
+.bt_hypothesis_alias_boundary <- function(statement, start, end){
+
+  identifier <- "[[:alnum:]_.]"
+  first <- substr(statement, start, start)
+  last  <- substr(statement, end, end)
+  before <- if(start > 1L) substr(statement, start - 1L, start - 1L) else ""
+  after  <- if(end < nchar(statement, type = "chars")) {
+    substr(statement, end + 1L, end + 1L)
+  }else{
+    ""
+  }
+  left_ok <- !grepl(identifier, first) || !grepl(identifier, before)
+  right_ok <- !grepl(identifier, last) || !grepl(identifier, after)
+
+  left_ok && right_ok
 }
 
 #' @rdname hypothesis_ast
