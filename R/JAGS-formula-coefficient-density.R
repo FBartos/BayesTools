@@ -15,6 +15,11 @@
 #' linear-density algebra. The result can be passed directly to
 #' [prior_density_ordinate()].
 #'
+#' `JAGS_formula_internal_coordinate_priors()` returns exact scalar priors for
+#' stochastic formula coordinates that are intentionally absent from the
+#' ordinary fitted `prior_list`. Currently these are the independent beta
+#' primitives used by compiled LKJ random-effect blocks.
+#'
 #' @param fit fitted object created by [JAGS_fit()].
 #' @param parameter scalar formula parameter name.
 #' @param target_scale requested coefficient scale. The current schema supports
@@ -29,12 +34,86 @@
 #' `JAGS_formula_coefficient_transform_schema()` returns field descriptions.
 #' `JAGS_formula_prior_density()` returns a `prior_linear_density` accepted by
 #' [prior_density_ordinate()].
+#' `JAGS_formula_internal_coordinate_priors()` returns a uniquely named list of
+#' scalar [prior()] objects keyed by concrete fitted coordinate.
 #'
 #' @export JAGS_formula_coefficient_transform
 #' @export JAGS_formula_coefficient_transform_schema
 #' @export JAGS_formula_prior_density
+#' @export JAGS_formula_internal_coordinate_priors
 #' @name JAGS_formula_coefficient_transform
 NULL
+
+#' @rdname JAGS_formula_coefficient_transform
+JAGS_formula_internal_coordinate_priors <- function(fit){
+
+  if(!inherits(fit, "BayesTools_fit")){
+    stop("'fit' must be a 'BayesTools_fit' object.", call. = FALSE)
+  }
+  JAGS_validate_fit_contract(
+    fit,
+    requires = c("formula_design", "parameter_map")
+  )
+
+  designs <- JAGS_formula_design(fit)
+  coordinates <- parameter_coordinates(fit)
+  out <- list()
+  for(parameter in names(designs)){
+    design <- designs[[parameter]]
+    for(random_term in .bt_formula_design_random_effects(design)){
+      correlation <- random_term$correlation
+      if(!is.list(correlation) || !identical(correlation$type, "lkj")){
+        next
+      }
+
+      K <- random_term$n_columns
+      primitive_names <- .bt_random_effect_lkj_primitive_names(
+        random_term,
+        K,
+        context = "Internal formula-coordinate prior metadata"
+      )
+      alpha <- .bt_lkj_cholesky_alpha(K = K, eta = correlation$eta)
+      if(length(primitive_names) != length(alpha)){
+        stop(
+          "Stored LKJ primitive metadata do not match the compiled random-effect dimension.",
+          call. = FALSE
+        )
+      }
+      for(i in seq_along(primitive_names)){
+        coordinate_name <- primitive_names[[i]]
+        coordinate <- coordinates[
+          coordinates$coordinate_name == coordinate_name,
+          ,
+          drop = FALSE
+        ]
+        valid <- nrow(coordinate) == 1L &&
+          identical(coordinate$role, "random_correlation_coordinate") &&
+          isTRUE(coordinate$internal) &&
+          identical(coordinate$monitor_status, "sampled")
+        if(!valid){
+          stop(
+            "LKJ primitive coordinate '", coordinate_name,
+            "' is missing from the fitted parameter map. Refit the model with the current BayesTools version.",
+            call. = FALSE
+          )
+        }
+        if(coordinate_name %in% names(out)){
+          stop(
+            "Formula metadata contain duplicate internal coordinate '",
+            coordinate_name, "'.",
+            call. = FALSE
+          )
+        }
+        out[[coordinate_name]] <- prior(
+          "beta",
+          parameters = list(alpha = alpha[[i]], beta = alpha[[i]])
+        )
+      }
+    }
+  }
+
+  out
+}
 
 #' @rdname JAGS_formula_coefficient_transform
 JAGS_formula_coefficient_transform <- function(

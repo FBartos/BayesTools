@@ -2,10 +2,13 @@
 % Please edit documentation in R/JAGS-formula-coefficient-density.R
 \name{JAGS_formula_coefficient_transform}
 \alias{JAGS_formula_coefficient_transform}
+\alias{JAGS_formula_internal_coordinate_priors}
 \alias{JAGS_formula_coefficient_transform_schema}
 \alias{JAGS_formula_prior_density}
 \title{Formula coefficient transformations and induced prior densities}
 \usage{
+JAGS_formula_internal_coordinate_priors(fit)
+
 JAGS_formula_coefficient_transform(fit, parameter, target_scale = "original")
 
 JAGS_formula_coefficient_transform_schema()
@@ -38,6 +41,8 @@ product-space or conditional prior mixtures; when \code{NULL}, the fitted
 \code{JAGS_formula_coefficient_transform_schema()} returns field descriptions.
 \code{JAGS_formula_prior_density()} returns a \code{prior_linear_density} accepted by
 \code{\link[=prior_density_ordinate]{prior_density_ordinate()}}.
+\code{JAGS_formula_internal_coordinate_priors()} returns a uniquely named list of
+scalar \code{\link[=prior]{prior()}} objects keyed by concrete fitted coordinate.
 }
 \description{
 \code{JAGS_formula_coefficient_transform()} exposes the exact fixed-coefficient
@@ -49,4 +54,9 @@ nonzero dependencies, and parameter-map structural metadata.
 for one target through BayesTools' deterministic prior-density context and
 linear-density algebra. The result can be passed directly to
 \code{\link[=prior_density_ordinate]{prior_density_ordinate()}}.
+
+\code{JAGS_formula_internal_coordinate_priors()} returns exact scalar priors for
+stochastic formula coordinates that are intentionally absent from the
+ordinary fitted \code{prior_list}. Currently these are the independent beta
+primitives used by compiled LKJ random-effect blocks.
 }

@@ -148,6 +148,68 @@ test_that("coordinate map keeps LKJ primitives internal to their random block", 
   expect_true(all(coordinates$internal))
 })
 
+test_that("formula metadata exposes exact LKJ primitive coordinate priors", {
+
+  data <- data.frame(
+    group = factor(rep(c("a", "b", "c"), 2L)),
+    study = factor(rep(c("s1", "s2"), each = 3L))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + us(0 + group | study),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      study = random_block(
+        sd = prior("gamma", list(2, 2)),
+        covariance = random_covariance(cor = prior_lkj(eta = 2)),
+        contrasts = c(group = "independent")
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  columns <- c(
+    "mu_intercept",
+    random_term$sd_parameter_names,
+    random_term$correlation$primitive_names
+  )
+  posterior <- matrix(
+    0.5,
+    nrow = 2L,
+    ncol = length(columns),
+    dimnames = list(NULL, columns)
+  )
+  fit <- list(
+    mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+    summary.pars = list(mutate = NULL),
+    monitor = columns,
+    sample = nrow(posterior)
+  )
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit, monitor_names = columns)
+
+  coordinate_priors <- JAGS_formula_internal_coordinate_priors(fit)
+  alpha <- vapply(
+    coordinate_priors,
+    function(x) x$parameters$alpha,
+    numeric(1)
+  )
+
+  expect_identical(
+    names(coordinate_priors),
+    random_term$correlation$primitive_names
+  )
+  expect_equal(unname(alpha), c(2.5, 2.5, 2))
+  expect_true(all(vapply(coordinate_priors, is.prior, logical(1))))
+  expect_true(all(vapply(coordinate_priors, function(x) {
+    identical(x$distribution, "beta") &&
+      identical(x$parameters$alpha, x$parameters$beta)
+  }, logical(1))))
+})
+
 test_that("coordinate map owns random SD spike-and-slab auxiliaries", {
 
   data <- data.frame(
