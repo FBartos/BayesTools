@@ -207,23 +207,47 @@
         posterior[, sd_col] <- transformed_sd_by_column[, column_index]
         next
       }
-      shared_values <- transformed_sd_by_column[, column_index, drop = FALSE]
-      max_difference <- max(
-        abs(shared_values - shared_values[, 1L]),
-        na.rm = TRUE
-      )
-      if(is.finite(max_difference) && max_difference > sqrt(.Machine$double.eps)){
+      if(!.random_sd_shared_leaf_is_invariant(
+        M = M,
+        leaf_names_by_column = group$leaf_names_by_column,
+        target_columns = column_index,
+        correlated = !is.null(source_cor)
+      )){
         stop(
           "Random-effect SD column '", sd_col,
           "' cannot be unscaled because its shared design columns transform to different SDs.",
           call. = FALSE
         )
       }
-      posterior[, sd_col] <- shared_values[, 1L]
+      posterior[, sd_col] <- transformed_sd_by_column[, column_index[1L]]
     }
   }
 
   posterior
+}
+
+.random_sd_shared_leaf_is_invariant <- function(
+    M, leaf_names_by_column, target_columns, correlated){
+
+  if(isTRUE(correlated)){
+    return(FALSE)
+  }
+  leaf_names <- unique(leaf_names_by_column)
+  variance_weights <- vapply(leaf_names, function(leaf_name){
+    rowSums(M[, leaf_names_by_column == leaf_name, drop = FALSE]^2)
+  }, numeric(nrow(M)))
+  variance_weights <- matrix(
+    variance_weights,
+    nrow = nrow(M),
+    dimnames = list(NULL, leaf_names)
+  )
+  target_weights <- variance_weights[target_columns, , drop = FALSE]
+  all(vapply(seq_len(nrow(target_weights)), function(i){
+    identical(
+      unname(target_weights[i, , drop = TRUE]),
+      unname(target_weights[1L, , drop = TRUE])
+    )
+  }, logical(1)))
 }
 
 .random_sd_assign_transformed_correlation <- function(posterior, prefix,
@@ -322,7 +346,7 @@
 .random_sd_term_map <- function(random_sd_cols, formula_scale, prefix){
 
   scaled_vars <- .formula_scale_strip_prefix(names(formula_scale), prefix)
-  sd_leaves <- attr(formula_scale, "random_effect_sd_leaves")
+  sd_leaves <- attr(formula_scale, "random_effect_sd_leaves", exact = TRUE)
   if(!is.null(sd_leaves) && length(sd_leaves) > 0){
     descriptor_terms <- do.call(
       c,
@@ -336,36 +360,7 @@
     }
   }
 
-  metadata <- attr(formula_scale, "random_effect_terms")
-  if(!is.null(metadata) && length(metadata) > 0){
-    base_cols <- sub("\\[[^]]+\\]$", "", random_sd_cols)
-    term_map <- metadata[base_cols]
-    names(term_map) <- random_sd_cols
-    term_map <- term_map[!is.na(term_map)]
-    if(length(term_map) > 0){
-      return(term_map)
-    }
-  }
-
-  possible_terms <- c("intercept", scaled_vars)
-  names(possible_terms) <- possible_terms
-
-  term_map <- vapply(random_sd_cols, function(col){
-    rest <- .formula_scale_strip_prefix(
-      sub("\\[[^]]+\\]$", "", col),
-      prefix,
-      "__xREx__"
-    )
-    candidates <- possible_terms[vapply(possible_terms, function(term){
-      endsWith(rest, paste0("_", term))
-    }, logical(1))]
-    if(length(candidates) == 0){
-      return(NA_character_)
-    }
-    candidates[which.max(nchar(candidates))]
-  }, character(1))
-
-  term_map[!is.na(term_map)]
+  stats::setNames(character(), character())
 }
 
 .random_sd_column_unscale_groups <- function(random_sd_cols, formula_scale,

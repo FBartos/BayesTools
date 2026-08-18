@@ -310,13 +310,6 @@
 
   random_terms <- character()
 
-  metadata <- attr(formula_scale, "random_effect_terms")
-  if(!is.null(metadata)){
-    metadata <- unname(as.character(metadata))
-    metadata <- metadata[is.na(metadata) | metadata != "sd"]
-    random_terms <- c(random_terms, metadata)
-  }
-
   sd_leaves <- attr(formula_scale, "random_effect_sd_leaves")
   if(!is.null(sd_leaves) && length(sd_leaves) > 0L){
     for(leaves in sd_leaves){

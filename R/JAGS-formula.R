@@ -691,8 +691,6 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       attr(scale_info, "point_terms") <- point_terms
     }
     if(length(random_scale_terms) > 0){
-      names(random_scale_terms) <- paste0(parameter, "_", names(random_scale_terms))
-      attr(scale_info, "random_effect_terms") <- random_scale_terms
       attr(scale_info, "random_effect_sd_leaves") <- random_sd_leaves
       if(length(random_correlation_required) > 0L){
         attr(scale_info, "random_effect_correlation_required") <- unique(random_correlation_required)

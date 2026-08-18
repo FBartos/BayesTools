@@ -618,7 +618,7 @@ test_that(".generate_prior_sample_matrix errors on unsupported prior RNGs", {
   )
 })
 
-test_that(".apply_random_sd_unscale errors on ambiguous SD term mappings", {
+test_that("random SD unscaling ignores obsolete term-name metadata", {
 
   posterior <- matrix(
     1,
@@ -629,15 +629,14 @@ test_that(".apply_random_sd_unscale errors on ambiguous SD term mappings", {
   formula_scale <- list(mu_x = list(mean = 0, sd = 2))
   attr(formula_scale, "random_effect_terms") <- c("mu__xREx__study_x" = "x")
 
-  expect_error(
+  expect_identical(
     BayesTools:::.apply_random_sd_unscale(
       posterior = posterior,
       random_sd_cols = colnames(posterior),
       formula_scale = formula_scale,
       prefix = "mu"
     ),
-    "multiple columns map to the same term",
-    fixed = TRUE
+    posterior
   )
 })
 

@@ -10153,6 +10153,25 @@ test_that("character random-factor predictors keep fitted levels for prediction"
   )
 })
 
+.canonical_us_sd_leaves <- function(){
+
+  leaf_names <- c(
+    "mu__xREx__id_intercept",
+    "mu__xREx__id_x"
+  )
+  out <- list(
+    random_structure = "us",
+    leaf_names_by_column = leaf_names,
+    leaf_terms_by_column = c("intercept", "x"),
+    leaf_names = leaf_names,
+    leaf_terms = stats::setNames(c("intercept", "x"), leaf_names),
+    column_names = c("(Intercept)", "x")
+  )
+  class(out) <- c("BayesTools_random_effect_sd_leaves", "list")
+  list(`__xREx__id` = out)
+}
+
+
 test_that("transform_scale_samples unscales correlated random-effect SDs with covariance", {
 
   posterior <- matrix(
@@ -10174,10 +10193,8 @@ test_that("transform_scale_samples unscales correlated random-effect SDs with co
   formula_scale <- list(
     mu = list(mu_x = list(mean = 5, sd = 1))
   )
-  attr(formula_scale$mu, "random_effect_terms") <- c(
-    "mu__xREx__id_intercept" = "intercept",
-    "mu__xREx__id_x" = "x"
-  )
+  attr(formula_scale$mu, "random_effect_sd_leaves") <-
+    .canonical_us_sd_leaves()
 
   transformed <- transform_scale_samples(posterior, formula_scale)
 
@@ -10441,10 +10458,8 @@ test_that("transform_scale_samples updates valid random-effect correlations draw
   formula_scale <- list(
     mu = list(mu_x = list(mean = 5, sd = 1))
   )
-  attr(formula_scale$mu, "random_effect_terms") <- c(
-    "mu__xREx__id_intercept" = "intercept",
-    "mu__xREx__id_x" = "x"
-  )
+  attr(formula_scale$mu, "random_effect_sd_leaves") <-
+    .canonical_us_sd_leaves()
 
   transformed <- transform_scale_samples(posterior, formula_scale)
 
@@ -10493,10 +10508,8 @@ test_that("transform_scale_samples clears invalid transformed random-effect corr
   formula_scale <- list(
     mu = list(mu_x = list(mean = 5, sd = 1))
   )
-  attr(formula_scale$mu, "random_effect_terms") <- c(
-    "mu__xREx__id_intercept" = "intercept",
-    "mu__xREx__id_x" = "x"
-  )
+  attr(formula_scale$mu, "random_effect_sd_leaves") <-
+    .canonical_us_sd_leaves()
 
   transformed <- transform_scale_samples(posterior, formula_scale)
 
