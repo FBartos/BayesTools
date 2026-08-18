@@ -87,9 +87,12 @@ distributions. The distribution must be centered exactly at zero.}
 \item{\code{"treatment"}}{for contrasts using the first level as a comparison
 group and setting equal prior distribution on differences between the individual
 factor levels and the comparison level.}
-\item{\code{"independent"}}{for contrasts specifying dependent prior distribution
-for each factor level (note that this leads to an overparameterized model if the
-intercept is included).}
+\item{\code{"independent"}}{for one independently regularized coefficient
+per factor level. With a free intercept, this coefficient design is
+likelihood-rank-deficient and its separation is prior-dependent. In a
+BayesTools formula with \code{0 + factor} or \code{factor - 1}, the intercept is
+instead fixed structurally at zero, so the level coefficients are
+identified directly.}
 }}
 }
 \value{
@@ -100,6 +103,13 @@ return an object of class 'prior'.
 models with factor predictors. (Note that results across different operating
 systems might vary due to differences in JAGS numerical precision.)
 }
+\details{
+The factor prior owns the contrast family. BayesTools does not change that
+family merely because the formula includes or removes an intercept. In
+particular, \code{~ 0 + factor} represents a point-zero intercept and the
+contrast selected here; it requests one coefficient per level only when
+\code{contrast = "independent"}.
+}
 \examples{
 # create an orthonormal prior distribution
 p1 <- prior_factor(distribution = "mnormal", contrast = "orthonormal",
@@ -107,5 +117,5 @@ p1 <- prior_factor(distribution = "mnormal", contrast = "orthonormal",
 
 }
 \seealso{
-\code{\link[=prior]{prior()}}
+\code{\link[=prior]{prior()}}, \code{\link[=JAGS_formula]{JAGS_formula()}}
 }

@@ -33,6 +33,30 @@ random-effect terms inside a list entry are auto-named from the component
 label. Explicit \verb{name =} arguments define the final random-effect block name
 and are the names targeted by \code{prior_random()} block overrides.
 
+Random-effect terms have two distinct left-side grammars:
+\itemize{
+\item \code{id()}, \code{diag()}, and \code{us()} / \code{un()} use a coefficient formula. The
+\code{1}, \code{0}, and \code{-1} terms control the random intercept; continuous slopes,
+factor slopes, and interactions are supported. Plain \code{(expr | group)}
+defaults to \code{us()}, and \code{expr || group} to \code{diag()}.
+\item \code{cs()} / \code{hcs()}, \code{ar1()} / \code{ar()} / \code{har()}, and \code{car()} use a
+structure-owned index specification. They reject explicit intercept
+controls and do not accept \code{random_block(contrasts = ...)}.
+}
+
+Random-coefficient factor coding comes from the block's resolved contrast
+metadata. It reuses an already established fixed-factor contrast by default;
+\code{random_block(contrasts = ...)} is the explicit per-block override. Removing
+the random intercept does not by itself request one coefficient per factor
+level.
+
+The discrete index structures \code{cs()}, \code{hcs()}, \code{ar1()}, and \code{har()} accept
+factor, character, numeric/integer, or logical columns. Existing factor
+levels are preserved; otherwise sorted unique values define levels and
+AR(1) order. CS/HCS can combine several columns with \code{+}; AR1/HAR require
+exactly one. CAR requires one finite numeric/integer column, or an ordered
+factor with numeric labels, and uses actual coordinate distances.
+
 Random-effect predictors must be literal data-column names combined with
 standard formula operators. Inline transformations and arbitrary calls are
 rejected; create transformed predictors as explicit columns first. Grouping

@@ -67,6 +67,20 @@ block names, grouping levels, design columns, correlation structure, scale,
 monitor names, and reconstruction metadata consistent across
 `R/JAGS-formula-random*.R` and `R/random-effects-*.R`.
 
+Keep the parser's two random-effect families separate:
+
+- `id()`, `diag()`, and `us()` / `un()` are random-coefficient formulas. Plain
+  bars default to `us()` and double bars to `diag()`. Intercept controls have
+  their formula meaning, while factor bases come from stored contrast metadata;
+  `random_block(contrasts = ...)` is the explicit block-level override.
+- `cs()` / `hcs()`, `ar1()` / `ar()` / `har()`, and `car()` own an index basis.
+  They reject intercept controls and block contrast overrides. Discrete indices
+  use persisted factor levels or sorted unique values; `car()` uses actual
+  finite numeric distances.
+
+Do not treat `hcs()` as an alias for `us()`: HCS has one common pairwise
+correlation, whereas US estimates an unrestricted correlation matrix.
+
 `random_effects_marginal_vcov()` owns posterior `Z G Z'` construction.
 `random_effects_marginal_variance_factors()` exposes validated row-aligned
 factors for downstream likelihoods that can marginalize only supported blocks.

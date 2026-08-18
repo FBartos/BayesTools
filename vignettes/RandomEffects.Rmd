@@ -66,9 +66,61 @@ if(length(missing_packages) > 0L){
 }
 ```
 
-BayesTools can generate JAGS [@JAGS] mixed models directly from formulas with random-effect terms. The formula syntax follows the conventions used by lme4 [@lme4], while `prior_random()` keeps the random-effect standard deviation priors, correlation priors, variance-allocation priors, and monitoring policy explicit. The first and crossed-effect examples also include Bayesian comparison models fitted with rstanarm [@rstanarm].
+BayesTools can generate JAGS [@JAGS] mixed models directly from formulas with random-effect terms. Its random-coefficient syntax follows the conventions used by lme4 [@lme4], while `prior_random()` centralizes random-effect standard deviation priors, correlation priors, variance-allocation priors, and monitoring policy. The first and crossed-effect examples also include Bayesian comparison models fitted with rstanarm [@rstanarm].
 
 This vignette uses data sets included in lme4. The first example fits the `sleepstudy` random-intercept and random-slope model, then switches to independent random effects with the lme4 `||` idiom. The second example uses the ordered temperatures in `cake` to fit heterogeneous compound-symmetry, AR(1), and heterogeneous AR(1) random-effect covariance structures, and also shows factor random-slope columns. The later examples cover nested random intercepts in `Pastes` and crossed random effects in `Penicillin`, including a total-variance allocation prior.
+
+## Formula Semantics
+
+BayesTools keeps intercept control and factor contrasts separate.
+In a fixed formula, `0 + factor` or `factor - 1` fixes the intercept at zero but preserves the factor basis selected by `prior_factor()`.
+For example, an independent factor prior creates one coefficient per factor level, while treatment and mean-difference priors retain their own bases despite the same no-intercept formula.
+
+Random effects use two related but distinct grammars:
+
+| Structure syntax | Left-side role | Marginal SDs | Correlation |
+|---|---|---|---|
+| Plain bar, `us()` / `un()` | coefficient formula | one per generated coefficient | unrestricted LKJ correlation matrix |
+| Double bar, `diag()` | coefficient formula | one per generated coefficient | independent |
+| `id()` | coefficient formula | one shared SD | independent |
+| `cs()` | one or more discrete indices | one shared SD | one common pairwise correlation |
+| `hcs()` | one or more discrete indices | one per index level | one common pairwise correlation |
+| `ar1()` / `ar()` | one discrete ordered index | one shared SD | AR(1), `cor^abs(i - j)` |
+| `har()` | one discrete ordered index | one per index level | AR(1), `cor^abs(i - j)` |
+| `car()` | one numeric-distance coordinate | one shared SD | continuous AR(1), `cor^abs(t_i - t_j)` |
+
+The first three structures operate on coefficient columns.
+Their `1`, `0`, and `-1` terms include or remove the random intercept, and their left side can contain continuous slopes, factor slopes, and interactions.
+A random factor reuses its already established fixed contrast by default.
+Set `random_block(contrasts = c(factor_name = "contrast"))` when the random basis should be explicit or differ from the fixed basis.
+Therefore `us(0 + group | study)` plus an independent block contrast means one correlated random coefficient per `group` level and no random intercept; `0 + group` by itself does not force indicators.
+
+The structured CS/HCS and AR1/HAR families operate on discrete index levels instead.
+They reject `1`, `0`, `-1`, and block contrast overrides.
+They accept factor, character, numeric/integer, or logical columns.
+Existing factor level order is retained; otherwise sorted unique values define the levels and AR(1) order.
+CS/HCS can combine several indices with `+`; AR1/HAR require exactly one.
+CAR requires one finite numeric/integer coordinate, or an ordered factor with numeric labels, and uses actual distances.
+
+HCS and US are not interchangeable.
+HCS estimates one common pairwise correlation and an SD per index level.
+US estimates an unrestricted correlation matrix among the selected coefficient columns.
+For two columns each has only one correlation, but their basis ownership and correlation prior remain different; with three or more columns HCS additionally imposes equality across every pair.
+
+### Default correlation priors
+
+Correlation priors are completed only after the formula determines the structure and its dimension.
+An omitted US/UN correlation prior becomes `LKJ(1)`.
+An omitted scalar correlation prior is uniform over the complete admissible raw-correlation interval: `(-1 / (K - 1), 1)` for CS/HCS, `(-1, 1)` for AR1/HAR, and `(0, 1)` for CAR, where `K` is the number of resolved index levels.
+Consequently, the default never removes negative correlations from a structure that permits them.
+Use `random_covariance(cor = ..., cor_scale = ...)` for explicit scalar
+correlation priors. The default `cor_scale = "fisher_z"` places the prior on
+Fisher's z; `"cor"` places it on the raw correlation and `"logit"` maps the
+structure's complete admissible interval to the real line.
+
+BayesTools cannot choose a generic default SD magnitude because that scale belongs to the outcome model.
+Direct `JAGS_formula()` use must therefore supply an SD prior or allocation.
+Higher-level packages can treat a `prior_random()` object containing only contrasts, correlations, or policies as a partial specification and add their own outcome-scale defaults.
 
 
 ```{r packages, message = FALSE, warning = FALSE, results = "hide", purl = FALSE}
@@ -107,9 +159,9 @@ compare_estimates <- function(lme4_model, stan_model, bayes_model,
     "intercept"             = lme4_fixed[["(Intercept)"]],
     "Days"                  = lme4_fixed[[slope_name]],
     "sigma"                 = stats::sigma(lme4_model),
-    "sd(intercept|Subject)" = lme4_sd[["(Intercept)"]],
-    "sd(Days|Subject)"      = lme4_sd[[slope_name]],
-    "cor(intercept,Days)"   = lme4_cor
+    "Subject: sd(intercept)"       = lme4_sd[["(Intercept)"]],
+    "Subject: sd(Days)"            = lme4_sd[[slope_name]],
+    "Subject: cor(intercept,Days)" = lme4_cor
   )
 
   stan_samples <- as.matrix(stan_model)
@@ -120,9 +172,9 @@ compare_estimates <- function(lme4_model, stan_model, bayes_model,
     "intercept"             = mean(stan_samples[, "(Intercept)"]),
     "Days"                  = mean(stan_samples[, slope_name]),
     "sigma"                 = mean(stan_samples[, "sigma"]),
-    "sd(intercept|Subject)" = mean(sqrt(stan_var_intercept)),
-    "sd(Days|Subject)"      = mean(sqrt(stan_var_days)),
-    "cor(intercept,Days)"   = mean(stan_cov / sqrt(stan_var_intercept * stan_var_days))
+    "Subject: sd(intercept)"       = mean(sqrt(stan_var_intercept)),
+    "Subject: sd(Days)"            = mean(sqrt(stan_var_days)),
+    "Subject: cor(intercept,Days)" = mean(stan_cov / sqrt(stan_var_intercept * stan_var_days))
   )
 
   bayes_samples <- JAGS_estimates_table(
@@ -133,9 +185,11 @@ compare_estimates <- function(lme4_model, stan_model, bayes_model,
     "intercept"             = mean(bayes_samples[, "(mu) intercept"]),
     "Days"                  = mean(bayes_samples[, "(mu) Days"]),
     "sigma"                 = mean(bayes_samples[, "sigma"]),
-    "sd(intercept|Subject)" = mean(bayes_samples[, "(mu) sd(intercept | Subject)"]),
-    "sd(Days|Subject)"      = mean(bayes_samples[, "(mu) sd(Days | Subject)"]),
-    "cor(intercept,Days)"   = mean(bayes_samples[, "(mu) cor(intercept,Days | Subject)"])
+    "Subject: sd(intercept)" = mean(bayes_samples[, "(mu) Subject: sd(intercept)"]),
+    "Subject: sd(Days)" = mean(bayes_samples[, "(mu) Subject: sd(Days)"]),
+    "Subject: cor(intercept,Days)" = mean(
+      bayes_samples[, "(mu) Subject: cor(intercept,Days)"]
+    )
   )
 
   comparison <- data.frame(
@@ -164,8 +218,8 @@ compare_independent_estimates <- function(lme4_model, bayes_model,
     "intercept"             = lme4_fixed[["(Intercept)"]],
     "Days"                  = lme4_fixed[[slope_name]],
     "sigma"                 = stats::sigma(lme4_model),
-    "sd(intercept|Subject)" = lme4_sd_for("(Intercept)"),
-    "sd(Days|Subject)"      = lme4_sd_for(slope_name)
+    "Subject: sd(intercept)" = lme4_sd_for("(Intercept)"),
+    "Subject: sd(Days)"      = lme4_sd_for(slope_name)
   )
 
   bayes_samples <- JAGS_estimates_table(
@@ -176,8 +230,8 @@ compare_independent_estimates <- function(lme4_model, bayes_model,
     "intercept"             = mean(bayes_samples[, "(mu) intercept"]),
     "Days"                  = mean(bayes_samples[, "(mu) Days"]),
     "sigma"                 = mean(bayes_samples[, "sigma"]),
-    "sd(intercept|Subject)" = mean(bayes_samples[, "(mu) sd(intercept | Subject)"]),
-    "sd(Days|Subject)"      = mean(bayes_samples[, "(mu) sd(Days | Subject)"])
+    "Subject: sd(intercept)" = mean(bayes_samples[, "(mu) Subject: sd(intercept)"]),
+    "Subject: sd(Days)"      = mean(bayes_samples[, "(mu) Subject: sd(Days)"])
   )
 
   comparison <- data.frame(
@@ -196,16 +250,16 @@ compare_crossed_estimates <- function(lme4_model, stan_model,
   lme4_estimates <- c(
     "intercept"            = lme4_fixed[["(Intercept)"]],
     "sigma"                = stats::sigma(lme4_model),
-    "sd(intercept|plate)"  = attr(lme4_vc[["plate"]], "stddev")[["(Intercept)"]],
-    "sd(intercept|sample)" = attr(lme4_vc[["sample"]], "stddev")[["(Intercept)"]]
+    "plate: sd(intercept)"  = attr(lme4_vc[["plate"]], "stddev")[["(Intercept)"]],
+    "sample: sd(intercept)" = attr(lme4_vc[["sample"]], "stddev")[["(Intercept)"]]
   )
 
   stan_samples <- as.matrix(stan_model)
   stan_estimates <- c(
     "intercept"            = mean(stan_samples[, "(Intercept)"]),
     "sigma"                = mean(stan_samples[, "sigma"]),
-    "sd(intercept|plate)"  = mean(sqrt(stan_samples[, "Sigma[plate:(Intercept),(Intercept)]"])),
-    "sd(intercept|sample)" = mean(sqrt(stan_samples[, "Sigma[sample:(Intercept),(Intercept)]"]))
+    "plate: sd(intercept)"  = mean(sqrt(stan_samples[, "Sigma[plate:(Intercept),(Intercept)]"])),
+    "sample: sd(intercept)" = mean(sqrt(stan_samples[, "Sigma[sample:(Intercept),(Intercept)]"]))
   )
 
   bayes_estimates <- function(model) {
@@ -215,8 +269,8 @@ compare_crossed_estimates <- function(lme4_model, stan_model,
     c(
       "intercept"            = mean(samples[, "(mu) intercept"]),
       "sigma"                = mean(samples[, "sigma"]),
-      "sd(intercept|plate)"  = mean(samples[, "(mu) sd(intercept | plate)"]),
-      "sd(intercept|sample)" = mean(samples[, "(mu) sd(intercept | sample)"])
+      "plate: sd(intercept)"  = mean(samples[, "(mu) plate: sd(intercept)"]),
+      "sample: sd(intercept)" = mean(samples[, "(mu) sample: sd(intercept)"])
     )
   }
 
@@ -241,11 +295,11 @@ compare_nested_estimates <- function(lme4_model, bayes_model) {
   lme4_estimates <- c(
     "intercept"                  = lme4_fixed[["(Intercept)"]],
     "sigma"                      = stats::sigma(lme4_model),
-    "sd(intercept|batch)"        = lme4_sd_batch,
-    "sd(intercept|cask:batch)"   = lme4_sd_nested,
-    "sd_total(nested_re)"        = sqrt(lme4_total_variance),
-    "var_frac(nested_re: batch)" = lme4_sd_batch^2 / lme4_total_variance,
-    "var_frac(nested_re: cask)"  = lme4_sd_nested^2 / lme4_total_variance
+    "batch: sd(intercept)"        = lme4_sd_batch,
+    "cask_batch: sd(intercept)"   = lme4_sd_nested,
+    "nested_re: sd"               = sqrt(lme4_total_variance),
+    "nested_re: var_prop(batch)"  = lme4_sd_batch^2 / lme4_total_variance,
+    "nested_re: var_prop(cask)"   = lme4_sd_nested^2 / lme4_total_variance
   )
 
   bayes_samples <- JAGS_estimates_table(
@@ -255,11 +309,17 @@ compare_nested_estimates <- function(lme4_model, bayes_model) {
   bayes_estimates <- c(
     "intercept"                  = mean(bayes_samples[, "(mu) intercept"]),
     "sigma"                      = mean(bayes_samples[, "sigma"]),
-    "sd(intercept|batch)"        = mean(bayes_samples[, "(mu) sd(intercept | batch)"]),
-    "sd(intercept|cask:batch)"   = mean(bayes_samples[, "(mu) sd(intercept | cask:batch)"]),
-    "sd_total(nested_re)"        = mean(bayes_samples[, "(mu) sd_total(nested_re)"]),
-    "var_frac(nested_re: batch)" = mean(bayes_samples[, "(mu) var_frac(nested_re: batch)"]),
-    "var_frac(nested_re: cask)"  = mean(bayes_samples[, "(mu) var_frac(nested_re: cask)"])
+    "batch: sd(intercept)" = mean(bayes_samples[, "(mu) batch: sd(intercept)"]),
+    "cask_batch: sd(intercept)" = mean(
+      bayes_samples[, "(mu) cask_batch: sd(intercept)"]
+    ),
+    "nested_re: sd" = mean(bayes_samples[, "(mu) nested_re: sd"]),
+    "nested_re: var_prop(batch)" = mean(
+      bayes_samples[, "(mu) nested_re: var_prop(batch)"]
+    ),
+    "nested_re: var_prop(cask)" = mean(
+      bayes_samples[, "(mu) nested_re: var_prop(cask)"]
+    )
   )
 
   comparison <- data.frame(
@@ -289,8 +349,8 @@ compare_recipe_estimates <- function(lme4_model, bayes_model) {
     "recipe[B]"                  = lme4_fixed[["recipeB"]],
     "recipe[C]"                  = lme4_fixed[["recipeC"]],
     "sigma"                      = stats::sigma(lme4_model),
-    "sd(recipe[B]|replicate)"    = lme4_sd_for("recipeB"),
-    "sd(recipe[C]|replicate)"    = lme4_sd_for("recipeC")
+    "recipe_by_replicate: sd(recipe[B])" = lme4_sd_for("recipeB"),
+    "recipe_by_replicate: sd(recipe[C])" = lme4_sd_for("recipeC")
   )
 
   bayes_samples <- JAGS_estimates_table(
@@ -303,8 +363,12 @@ compare_recipe_estimates <- function(lme4_model, bayes_model) {
     "recipe[B]"                  = mean(bayes_samples[, "(mu) recipe[B]"]),
     "recipe[C]"                  = mean(bayes_samples[, "(mu) recipe[C]"]),
     "sigma"                      = mean(bayes_samples[, "sigma"]),
-    "sd(recipe[B]|replicate)"    = mean(bayes_samples[, "(mu) sd(recipe[B] | replicate)"]),
-    "sd(recipe[C]|replicate)"    = mean(bayes_samples[, "(mu) sd(recipe[C] | replicate)"])
+    "recipe_by_replicate: sd(recipe[B])" = mean(
+      bayes_samples[, "(mu) recipe_by_replicate: sd(recipe[B])"]
+    ),
+    "recipe_by_replicate: sd(recipe[C])" = mean(
+      bayes_samples[, "(mu) recipe_by_replicate: sd(recipe[C])"]
+    )
   )
 
   comparison <- data.frame(
@@ -322,23 +386,23 @@ compare_hcs_estimates <- function(lme4_model, bayes_model, levels) {
   lme4_estimates <- c(
     "temp" = lme4::fixef(lme4_model)[["temp_s"]],
     "sigma" = stats::sigma(lme4_model),
-    stats::setNames(sqrt(diag(lme4_vc)), paste0("sd(", levels, "|replicate)")),
-    "rho_common" = mean(lme4_cor[lower.tri(lme4_cor)])
+    stats::setNames(sqrt(diag(lme4_vc)), paste0("replicate: sd(temperature[", levels, "])")),
+    "replicate: cor" = mean(lme4_cor[lower.tri(lme4_cor)])
   )
 
   bayes_samples <- JAGS_estimates_table(
     bayes_model, transform_scaled = FALSE, random_effects_summary = "standard",
     remove_diagnostics = TRUE, return_samples = TRUE
   )
-  bayes_sd_names <- paste0("(mu) sd(temperature[", levels, "] | replicate)")
+  bayes_sd_names <- paste0("(mu) replicate: sd(temperature[", levels, "])")
   bayes_estimates <- c(
     "temp" = mean(bayes_samples[, "(mu) temp"]),
     "sigma" = mean(bayes_samples[, "sigma"]),
     stats::setNames(
       vapply(bayes_sd_names, function(x) mean(bayes_samples[, x]), numeric(1)),
-      paste0("sd(", levels, "|replicate)")
+      paste0("replicate: sd(temperature[", levels, "])")
     ),
-    "rho_common" = mean(bayes_samples[, "(mu) rho(replicate)"])
+    "replicate: cor" = mean(bayes_samples[, "(mu) replicate: cor"])
   )
 
   comparison <- data.frame(
@@ -358,8 +422,8 @@ compare_ar1_estimates <- function(lme4_model, bayes_model) {
   lme4_estimates <- c(
     "temp" = lme4::fixef(lme4_model)[["temp_s"]],
     "sigma" = stats::sigma(lme4_model),
-    "sd(shared|replicate)" = mean(sqrt(diag(lme4_vc))),
-    "rho_lag1" = mean(lme4_cor[lag == 1])
+    "replicate: sd" = mean(sqrt(diag(lme4_vc))),
+    "replicate: cor" = mean(lme4_cor[lag == 1])
   )
 
   bayes_samples <- JAGS_estimates_table(
@@ -369,8 +433,8 @@ compare_ar1_estimates <- function(lme4_model, bayes_model) {
   bayes_estimates <- c(
     "temp" = mean(bayes_samples[, "(mu) temp"]),
     "sigma" = mean(bayes_samples[, "sigma"]),
-    "sd(shared|replicate)" = mean(bayes_samples[, "(mu) sd(shared | replicate)"]),
-    "rho_lag1" = mean(bayes_samples[, "(mu) rho(replicate)"])
+    "replicate: sd" = mean(bayes_samples[, "(mu) replicate: sd"]),
+    "replicate: cor" = mean(bayes_samples[, "(mu) replicate: cor"])
   )
 
   comparison <- data.frame(
@@ -390,23 +454,23 @@ compare_har_estimates <- function(lme4_model, bayes_model, levels) {
   lme4_estimates <- c(
     "temp" = lme4::fixef(lme4_model)[["temp_s"]],
     "sigma" = stats::sigma(lme4_model),
-    stats::setNames(sqrt(diag(lme4_vc)), paste0("sd(", levels, "|replicate)")),
-    "rho_lag1" = mean(lme4_cor[lag == 1])
+    stats::setNames(sqrt(diag(lme4_vc)), paste0("replicate: sd(temperature[", levels, "])")),
+    "replicate: cor" = mean(lme4_cor[lag == 1])
   )
 
   bayes_samples <- JAGS_estimates_table(
     bayes_model, transform_scaled = FALSE, random_effects_summary = "standard",
     remove_diagnostics = TRUE, return_samples = TRUE
   )
-  bayes_sd_names <- paste0("(mu) sd(temperature[", levels, "] | replicate)")
+  bayes_sd_names <- paste0("(mu) replicate: sd(temperature[", levels, "])")
   bayes_estimates <- c(
     "temp" = mean(bayes_samples[, "(mu) temp"]),
     "sigma" = mean(bayes_samples[, "sigma"]),
     stats::setNames(
       vapply(bayes_sd_names, function(x) mean(bayes_samples[, x]), numeric(1)),
-      paste0("sd(", levels, "|replicate)")
+      paste0("replicate: sd(temperature[", levels, "])")
     ),
-    "rho_lag1" = mean(bayes_samples[, "(mu) rho(replicate)"])
+    "replicate: cor" = mean(bayes_samples[, "(mu) replicate: cor"])
   )
 
   comparison <- data.frame(
@@ -423,8 +487,8 @@ compare_structured_correlation_estimates <- function(lme4_model, hcs_model,
                                                      levels) {
 
   parameters <- c(
-    "temp", "sigma", paste0("sd(", levels, "|replicate)"),
-    "sd(shared|replicate)", "rho_common", "rho_lag1"
+    "temp", "sigma", paste0("replicate: sd(temperature[", levels, "])"),
+    "replicate: sd", "cor_common", "cor_lag1"
   )
   complete_estimates <- function(x) {
     out <- stats::setNames(rep(NA_real_, length(parameters)), parameters)
@@ -438,25 +502,25 @@ compare_structured_correlation_estimates <- function(lme4_model, hcs_model,
   lme4_estimates <- c(
     "temp" = lme4::fixef(lme4_model)[["temp_s"]],
     "sigma" = stats::sigma(lme4_model),
-    stats::setNames(sqrt(diag(lme4_vc)), paste0("sd(", levels, "|replicate)")),
-    "sd(shared|replicate)" = mean(sqrt(diag(lme4_vc))),
-    "rho_common" = mean(lme4_cor[lower.tri(lme4_cor)]),
-    "rho_lag1" = mean(lme4_cor[lme4_lag == 1])
+    stats::setNames(sqrt(diag(lme4_vc)), paste0("replicate: sd(temperature[", levels, "])")),
+    "replicate: sd" = mean(sqrt(diag(lme4_vc))),
+    "cor_common" = mean(lme4_cor[lower.tri(lme4_cor)]),
+    "cor_lag1" = mean(lme4_cor[lme4_lag == 1])
   )
 
   hcs_samples <- JAGS_estimates_table(
     hcs_model, transform_scaled = FALSE, random_effects_summary = "standard",
     remove_diagnostics = TRUE, return_samples = TRUE
   )
-  hcs_sd_names <- paste0("(mu) sd(temperature[", levels, "] | replicate)")
+  hcs_sd_names <- paste0("(mu) replicate: sd(temperature[", levels, "])")
   hcs_estimates <- c(
     "temp" = mean(hcs_samples[, "(mu) temp"]),
     "sigma" = mean(hcs_samples[, "sigma"]),
     stats::setNames(
       vapply(hcs_sd_names, function(x) mean(hcs_samples[, x]), numeric(1)),
-      paste0("sd(", levels, "|replicate)")
+      paste0("replicate: sd(temperature[", levels, "])")
     ),
-    "rho_common" = mean(hcs_samples[, "(mu) rho(replicate)"])
+    "cor_common" = mean(hcs_samples[, "(mu) replicate: cor"])
   )
 
   ar1_samples <- JAGS_estimates_table(
@@ -466,23 +530,23 @@ compare_structured_correlation_estimates <- function(lme4_model, hcs_model,
   ar1_estimates <- c(
     "temp" = mean(ar1_samples[, "(mu) temp"]),
     "sigma" = mean(ar1_samples[, "sigma"]),
-    "sd(shared|replicate)" = mean(ar1_samples[, "(mu) sd(shared | replicate)"]),
-    "rho_lag1" = mean(ar1_samples[, "(mu) rho(replicate)"])
+    "replicate: sd" = mean(ar1_samples[, "(mu) replicate: sd"]),
+    "cor_lag1" = mean(ar1_samples[, "(mu) replicate: cor"])
   )
 
   har_samples <- JAGS_estimates_table(
     har_model, transform_scaled = FALSE, random_effects_summary = "standard",
     remove_diagnostics = TRUE, return_samples = TRUE
   )
-  har_sd_names <- paste0("(mu) sd(temperature[", levels, "] | replicate)")
+  har_sd_names <- paste0("(mu) replicate: sd(temperature[", levels, "])")
   har_estimates <- c(
     "temp" = mean(har_samples[, "(mu) temp"]),
     "sigma" = mean(har_samples[, "sigma"]),
     stats::setNames(
       vapply(har_sd_names, function(x) mean(har_samples[, x]), numeric(1)),
-      paste0("sd(", levels, "|replicate)")
+      paste0("replicate: sd(temperature[", levels, "])")
     ),
-    "rho_lag1" = mean(har_samples[, "(mu) rho(replicate)"])
+    "cor_lag1" = mean(har_samples[, "(mu) replicate: cor"])
   )
 
   comparison <- data.frame(
@@ -579,7 +643,7 @@ and correlation priors and the semantic posterior summaries are unchanged.
 Explicit centering requires strictly positive backend-owned SD coordinates;
 zero-mass scales, inclusion-gated allocations, and external or row-indexed SD
 sources require the noncentered representation. Scalar CS/HCS/AR1/HAR/CAR
-correlations are stored compactly as rho draws; use
+correlations are sampled through a compact internal `rho` coordinate; use
 `random_effects_correlation_draws()` only when a dense draw-by-matrix array is
 actually needed.
 
@@ -588,7 +652,7 @@ actually needed.
 ```{r, purl = FALSE}
 unit_prior <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1))
 unit_sd_prior <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1), truncation = list(0, Inf))
-rho_prior <- prior(distribution = "normal", parameters = list(mean = 0, sd = 0.5))
+cor_prior <- prior(distribution = "normal", parameters = list(mean = 0, sd = 0.5))
 sleep_fixed_priors <- list(intercept = unit_prior, Days = unit_prior)
 
 sleep_random_priors <- list(
@@ -722,7 +786,7 @@ cake_fixed_priors <- list(intercept = unit_prior, temp = unit_prior)
 cake_random_priors <- list(
   mu = prior_random(
     replicate = random_block(
-      sd = unit_sd_prior, rho = rho_prior,
+      sd = unit_sd_prior, cor = cor_prior,
       monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE))
   )
 )
@@ -730,7 +794,11 @@ cake_random_priors <- list(
 
 ### Factor Random-Slope Columns
 
-Factor random slopes use the same contrast machinery as fixed factor effects. lme4's `0 + recipe` random-effect shorthand expands to one column per factor level, so the lme4 comparison below defines the treatment-coded `recipeB` and `recipeC` columns explicitly. The BayesTools code uses `diag()` so the generated treatment-coded recipe columns have independent random-effect SDs.
+Factor random slopes use BayesTools contrast metadata, but the fixed and random blocks may own different concrete bases.
+lme4's `0 + recipe` shorthand expands to one column per factor level; BayesTools instead preserves its resolved treatment basis after `0 +`.
+The lme4 comparison therefore defines the treatment-coded `recipeB` and `recipeC` columns explicitly.
+Here the random block reuses the treatment contrast established by the fixed `recipe` prior and uses `diag()` so those generated recipe columns have independent random-effect SDs.
+In a more complex model, `random_block(contrasts = c(recipe = "..."))` would make a different random basis explicit.
 
 ```{r, purl = FALSE}
 cake$recipeB <- as.numeric(cake$recipe == "B")
@@ -825,7 +893,9 @@ compare_hcs_estimates(
 
 ### Autoregressive Correlation
 
-The AR(1) structure estimates one shared random-effect SD and one adjacent-temperature correlation; correlations at longer lags are powers of this `rho`.
+The AR(1) structure estimates one shared random-effect SD and one
+adjacent-temperature correlation; correlations at longer lags are powers of
+this correlation.
 
 ```{r fit-cake-ar1-regenerate, eval = FALSE, purl = FALSE}
 fit_cake_ar1 <- JAGS_fit(
@@ -904,7 +974,7 @@ sleep_car_design <- JAGS_formula(
   formula_scale = list(Days = TRUE),
   prior_random = prior_random(
     subject_days = random_block(
-      sd = unit_sd_prior, rho = rho_prior,
+      sd = unit_sd_prior, cor = cor_prior,
       monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)))
 )
 
@@ -916,7 +986,7 @@ names(sleep_car_design$prior_list)
 sleep_car_priors <- list(
   mu = prior_random(
     subject_days = random_block(
-      sd = unit_sd_prior, rho = rho_prior,
+      sd = unit_sd_prior, cor = cor_prior,
       monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)))
 )
 ```

@@ -123,7 +123,7 @@
     )
   }
   .bt_validate_parameter_registry(parameter_registry)
-  row <- match(parameter_name, parameter_registry$canonical_name)
+  row <- match(parameter_name, parameter_registry$coordinate_name)
   if(is.na(row)){
     return(out)
   }
@@ -170,7 +170,7 @@
     )
   }
   .bt_validate_parameter_registry(parameter_registry)
-  registry_rows <- match(column_names, parameter_registry$canonical_name)
+  registry_rows <- match(column_names, parameter_registry$coordinate_name)
   registered <- !is.na(registry_rows)
   row_role <- rep("", length(column_names))
   row_block <- rep("", length(column_names))
@@ -263,7 +263,7 @@
   .bt_validate_parameter_registry(parameter_registry)
   registry_rows <- match(
     colnames(model_samples),
-    parameter_registry$canonical_name
+    parameter_registry$coordinate_name
   )
   registered <- !is.na(registry_rows)
   roles <- rep("", ncol(model_samples))
@@ -358,7 +358,7 @@
   }
 
   .bt_validate_parameter_registry(parameter_registry)
-  registry_rows <- match(raw_names, parameter_registry$canonical_name)
+  registry_rows <- match(raw_names, parameter_registry$coordinate_name)
   registered <- !is.na(registry_rows)
   registered[registered] <- nzchar(
     parameter_registry$random_block[registry_rows[registered]]
@@ -455,12 +455,12 @@
     prior_list = prior_list
   )
   components <- .bt_random_effect_summary_sd_components(random_term, sd_names)
-  group <- .bt_random_effect_summary_group_label(random_term)
+  owner <- .bt_random_effect_public_name(random_term)
   labels <- paste0(prefix, vapply(
     components,
     .bt_random_effect_sd_summary_label,
     character(1),
-    group = group,
+    group = owner,
     random_term = random_term
   ))
 
@@ -481,19 +481,22 @@
     return(names)
   }
 
-  group <- .bt_random_effect_summary_group_label(random_term)
+  owner <- .bt_random_effect_public_name(random_term)
   rho_names <- c(
     rho = paste0(stem, "_rho"),
     rho_z = paste0(stem, "_rho_z"),
     rho_logit = paste0(stem, "_rho_logit")
   )
   for(rho_label in names(rho_names)){
+    names[raw_names == rho_names[[rho_label]]] <- .bt_random_effect_semantic_name(
+      parameter = "",
+      owner = owner,
+      quantity = "cor",
+      formula_prefix = FALSE
+    )
     names[raw_names == rho_names[[rho_label]]] <- paste0(
       prefix,
-      rho_label,
-      "(",
-      group,
-      ")"
+      names[raw_names == rho_names[[rho_label]]]
     )
   }
 

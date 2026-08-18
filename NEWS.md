@@ -1,5 +1,19 @@
 # version 0.3.1
 ### Features
+- consolidates unreleased formula-random public parameter names as
+  `(formula) owner: quantity(parameter[level], ...)`. The versioned parameter
+  catalog now records semantic ownership and arguments separately from
+  concrete posterior coordinates. The concrete registry field is now
+  `coordinate_name`, while `canonical_name` is reserved for semantic catalog
+  quantities. The catalog declares identity, one-to-one, or
+  composite source provenance while keeping backend LKJ and allocation
+  coordinates internal. Public correlations use `cor`; aggregate allocations
+  distinguish `sd_total` / `var_total` from `sd_common` / `var_common`, with
+  components exposed as `var_prop`, `var_ratio`, and `sd_ratio`. Variance
+  allocations now require an explicit semantic owner name.
+- adds `JAGS_with_draws()` for replacing fitted backend draws while preserving
+  and refreshing the fit's draw geometry, allowing catalog-defined semantic
+  quantities to be evaluated on posterior or simulated-prior coordinates
 - adds `random_effects_marginal_factor_states()` so downstream likelihoods can
   reuse the bridge-sampling random-covariance compiler without constructing
   dense draw-by-row-by-row arrays
@@ -31,7 +45,9 @@
 - adds bridge-sampling support for formula random effects by using standardized latent random effects, scalar correlation coordinates, and LKJ primitive coordinates as bridge parameters
 - adds semantic random-effect summaries to `runjags_estimates_table()` / `JAGS_estimates_table()` through `random_effects_summary`, `random_effects_metadata`, `remove_random_effects`, `keep_random_effects`, `remove_random_structures`, and `keep_random_structures`
 - adds `random_effects_label = "component"` to random-effect estimates tables for labels such as `study: sd(intercept)`, using stored random-effect metadata while retaining grouped labels by default
-- adds random-effect parameter filter aliases such as `"random"`, `"random_sd"`, `"random_rho"`, `"random_correlation"`, `"random_variance_fraction"`, `"random_allocation"`, and `"random_sd_multiplier"` for estimates tables
+- adds random-effect parameter filters such as `"random"`, `"random_sd"`,
+  `"random_correlation"`, `"random_variance_proportion"`,
+  `"random_allocation"`, and `"random_sd_ratio"` for estimates tables
 - adds compact print methods for the public random-effect specification helpers, LKJ priors, parameter sources, random-SD sources, and variance-allocation references
 - adds `prior_ordered()` for ordered-factor priors that separate a scalar total effect from fixed or Dirichlet allocations across cumulative level increments
 - adds Dirichlet simplex priors via `prior("dirichlet", ...)` / `prior("simplex", ...)`, including random generation, log-density, marginal distribution helpers, JAGS syntax, initialization, posterior extraction, and bridge-sampling support
@@ -40,6 +56,11 @@
 - adds a `RandomEffects` vignette comparing BayesTools formula random effects with lme4 and rstanarm examples
 
 ### Changes
+- Formula random-effect covariance priors are now completed after the parsed
+  structure and dimension are known. Omitted US/UN correlations use `LKJ(1)`;
+  omitted CS/HCS, AR1/HAR, and CAR correlations use uniform priors over their
+  complete admissible raw-correlation intervals. Explicit scalar correlation
+  priors retain the existing Fisher-z default scale.
 - `JAGS_bridgesampling()` bypasses formula reconstruction and bridge-context
   replay for ordinary non-formula models while retaining their complete prior
   and likelihood target.
@@ -97,6 +118,10 @@
 - `as_marginal_inference()` conditional marginal summaries use active-subset conditioning: each marginal level conditions only on requested parameters with nonzero weight in that level's linear combination, and levels with no active requested conditionals use the fully averaged context
 
 ### Fixes
+- adds semantic aliases for stored random-effect correlations, including
+  unqualified and grouping-qualified pairwise correlations and grouped scalar
+  `rho`, and generates stored LKJ primitive coordinates when drawing formula
+  priors so semantic correlation summaries can be reconstructed exactly.
 - preserves matrix dimensions while validating one-coefficient random-effect
   correlation Cholesky draws.
 - evaluates transformed prior density grids on the displayed plotting range,

@@ -7,7 +7,6 @@ dir.create(cache_dir, recursive = TRUE)
 Sys.setenv(
   AGENT                       = "1",
   BAYESTOOLS_TEST_PROFILE     = "all",
-  BAYESTOOLS_TEST_FILES_DIR   = normalizePath(cache_dir, winslash = "/"),
   BAYESTOOLS_TEST_SKIP_REFIT  = "false",
   NOT_CRAN                    = "true",
   VDIFFR_RUN_TESTS            = "true"

@@ -17,7 +17,6 @@ prior_random(
   sd = NULL,
   covariance = NULL,
   cor = NULL,
-  rho = NULL,
   monitor = random_monitor(),
   new_levels = random_new_levels(),
   allocation = NULL,
@@ -28,7 +27,6 @@ random_block(
   sd = NULL,
   covariance = NULL,
   cor = NULL,
-  rho = NULL,
   monitor = NULL,
   new_levels = NULL,
   terms = NULL,
@@ -41,7 +39,6 @@ random_term(
   sd = NULL,
   covariance = NULL,
   cor = NULL,
-  rho = NULL,
   monitor = NULL,
   new_levels = NULL,
   terms = NULL,
@@ -51,10 +48,10 @@ random_term(
 )
 
 random_variance_allocation(
+  name,
   terms = NULL,
   sd = NULL,
   weights = NULL,
-  name = NULL,
   parent = NULL,
   target = c("block", "sd_component"),
   scale = c("total_variance", "mean_variance"),
@@ -68,9 +65,8 @@ random_covariance(
   structure = NULL,
   sd = NULL,
   cor = NULL,
-  rho = NULL,
   eta = NULL,
-  rho_scale = c("fisher_z", "rho", "logit")
+  cor_scale = c("fisher_z", "cor", "logit")
 )
 
 prior_lkj(eta = 1, include_correlation = TRUE, include_primitives = FALSE)
@@ -93,10 +89,8 @@ top-level \code{random_variance_allocation()} specifications.}
 \item{covariance}{optional \code{random_covariance()} specification.}
 
 \item{cor}{optional correlation prior. Use \code{prior_lkj()} for unstructured
-correlation matrices.}
-
-\item{rho}{optional scalar correlation prior for structured correlation
-models. The default scale is Fisher's z.}
+correlation matrices and an ordinary scalar prior for structured
+correlation models.}
 
 \item{monitor}{\code{random_monitor()} object.}
 
@@ -104,7 +98,7 @@ models. The default scale is Fisher's z.}
 previously unseen grouping levels.}
 
 \item{allocation}{optional \code{random_variance_allocation()} specification, or
-a list of such specifications, defining total-SD plus Dirichlet variance
+a list of such specifications, defining aggregate-SD plus Dirichlet variance
 allocation across named random-effect blocks.}
 
 \item{parameterization}{requested sampled random-effect parameterization:
@@ -135,10 +129,11 @@ term-specific SD overrides. For \code{random_variance_allocation()}, root
 allocations must specify exactly one of \code{sd} or \code{sd_source}; child
 allocations inherit their SD budget from \code{parent}.}
 
-\item{weights}{optional Dirichlet simplex prior over allocation weights.}
+\item{name}{required allocation label and public semantic owner used in
+parameter names such as \code{heterogeneity: sd_total} and
+\code{heterogeneity: var_prop(study)}.}
 
-\item{name}{optional allocation label. Required when another allocation uses
-this allocation as \code{parent}.}
+\item{weights}{optional Dirichlet simplex prior over allocation weights.}
 
 \item{parent}{optional \code{allocation_ref()} object selecting a component of an
 earlier named allocation. Child allocations inherit that component's SD
@@ -153,7 +148,7 @@ SD components.}
 \code{sd_child = sd_parent * sqrt(w)}. \code{"mean_variance"} uses
 \code{sd_child = sd_parent * sqrt(K * w)} and is intended for
 \code{target = "sd_component"} heterogeneity tests.
-Summaries report \code{w} as a variance fraction for \code{"total_variance"} and
+Summaries report \code{w} as a variance proportion for \code{"total_variance"} and
 \code{K * w} as a variance ratio to the average SD-component variance for
 \code{"mean_variance"}.}
 
@@ -175,9 +170,12 @@ by that gate. Gate names must match resolved allocation component labels.}
 unstructured covariance. Values above one regularize correlations toward
 zero; \code{eta = 1} is uniform over correlation matrices.}
 
-\item{rho_scale}{scale for scalar correlation priors. \code{"fisher_z"} is the
-default, \code{"logit"} uses a logit transform of the valid raw-rho interval,
-and \code{"rho"} uses the raw correlation parameter.}
+\item{cor_scale}{scale for an explicitly supplied scalar correlation prior.
+\code{"fisher_z"} is the default, \code{"logit"} uses a logit transform of the valid
+raw-correlation interval, and \code{"cor"} uses the raw correlation parameter.
+When \code{cor} is omitted, the resolved default is uniform on the raw
+correlation scale; explicitly requesting another scale without supplying
+\code{cor} is an error.}
 
 \item{include_correlation}{whether to monitor the correlation matrix for
 \code{prior_lkj()}.}
@@ -249,21 +247,30 @@ fixed or model-averaged.
 \section{Covariance structures}{
 
 \code{random_covariance()} stores structure-specific covariance settings.
-Supported structure labels are:
+The formula owns the structure and its design. ID, DIAG, and US/UN operate
+on generated random-coefficient columns; CS/HCS, AR1/HAR, and CAR operate on
+structure-owned indices. Supported structure labels are:
 \itemize{
 \item \code{"ID"}: independent columns with one shared SD.
 \item \code{"DIAG"}: independent columns with one SD per generated column.
 \item \code{"CS"} / \code{"HCS"}: compound symmetry over one or more index variables,
-with one scalar correlation \code{rho}; \code{"HCS"} has one SD per index level.
+with one scalar correlation; \code{"HCS"} has one SD per index level.
 Multiple index variables in \code{cs(index1 + index2 | group)} are combined
 with \code{interaction(..., drop = TRUE)}.
 \item \code{"AR"} / \code{"AR1"} / \code{"HAR"}: discrete autoregressive structure over a
-single ordered index variable, with one scalar correlation \code{rho}; \code{"HAR"}
+single ordered index variable, with one scalar correlation; \code{"HAR"}
 has one SD per index level.
 \item \code{"CAR"}: continuous-time AR(1), currently for \code{car(time | group)},
-using \code{rho ^ abs(t_i - t_j)} with \verb{0 <= rho < 1}.
+using \code{cor ^ abs(t_i - t_j)} with \verb{0 <= cor < 1}.
 \item \code{"UN"} / \code{"US"}: unstructured covariance with SD priors and \code{prior_lkj()}.
 }
+
+ID/DIAG/US formulas use random-intercept controls on their left side. Factor
+coding is resolved separately and can be set explicitly with
+\code{random_block(contrasts = ...)}. The structured index families reject that
+contrast override and reject explicit \code{1}, \code{0}, or \code{-1} terms. HCS is not an
+alias for US: HCS has one common pairwise correlation, whereas US estimates
+an unrestricted correlation matrix among coefficient columns.
 
 The formula parser owns the actual structure used by a block. Supplying a
 conflicting \code{structure} in \code{random_covariance()} is rejected when the formula
@@ -272,27 +279,34 @@ is resolved.
 
 \section{Correlation priors}{
 
-Use \code{prior_lkj(eta = ...)} for full unstructured correlation matrices. LKJ
-priors use the BayesTools compiled JAGS module.
+Use \code{prior_lkj(eta = ...)} for full unstructured correlation matrices. When
+\code{cor} is omitted, an unstructured block receives \code{prior_lkj(eta = 1)} after
+its dimension is known. LKJ priors use the BayesTools compiled JAGS module.
 
-Use \code{rho} for scalar-correlation structures (\code{"CS"}, \code{"HCS"}, \code{"AR"},
-\code{"HAR"}, and \code{"CAR"}). \code{rho_scale} controls the scale on which the prior is
-placed:
+Use an ordinary scalar prior in \code{cor} for scalar-correlation structures
+(\code{"CS"}, \code{"HCS"}, \code{"AR"}, \code{"HAR"}, and \code{"CAR"}). When \code{cor} is omitted,
+BayesTools places a uniform
+prior directly on the complete valid raw-correlation interval:
+\verb{(-1 / (K - 1), 1)} for CS/HCS, \verb{(-1, 1)} for AR/HAR, and \verb{(0, 1)} for CAR.
+Here \code{K} is the resolved number of index levels. Thus the default does not
+silently exclude negative correlations wherever the structure permits them.
+\code{cor_scale} controls the scale of an explicitly supplied scalar \code{cor} prior:
 \itemize{
-\item \code{"fisher_z"} places the prior on \code{atanh(rho)} and is the default. A point
-prior at zero corresponds to independence. For one-sided structures such
-as \code{"CAR"}, the Fisher-z prior is truncated to the valid raw-rho interval.
-\item \code{"logit"} places the prior on a logit transform of the valid raw-rho
+\item \code{"fisher_z"} places the prior on \code{atanh(cor)} and is the default for an
+explicit scalar \code{cor} prior. A point prior at zero corresponds to independence.
+For one-sided structures such as \code{"CAR"}, the Fisher-z prior is truncated
+to the valid raw-correlation interval.
+\item \code{"logit"} places the prior on a logit transform of the valid raw-correlation
 interval.
-\item \code{"rho"} places the prior directly on raw \code{rho}; the prior is truncated to
+\item \code{"cor"} places the prior directly on the raw correlation; the prior is truncated to
 the structure-specific valid interval.
 }
 }
 
 \section{Variance allocation}{
 
-\code{random_variance_allocation()} expresses one total SD source plus a Dirichlet
-prior over variance fractions. Root allocations must specify exactly one of
+\code{random_variance_allocation()} expresses one aggregate SD source plus a Dirichlet
+prior over variance proportions. Root allocations must specify exactly one of
 a prior-owned \code{sd} prior or \code{sd_source = random_sd_source(...)}.
 \code{sd_source} can reference an already-defined JAGS node such as scalar \code{tau}
 or row-shaped \code{tau} without creating a prior for that node. Multiple named
@@ -300,8 +314,21 @@ allocations can be supplied in
 \code{prior_random()}; child allocations can inherit one component of an earlier
 allocation through \code{parent = allocation_ref(...)}.
 
+With \code{scale = "total_variance"}, the aggregate SD preserves summed
+component variance:
 \deqn{\sigma_j = \sigma_{\mathrm{total}}\sqrt{w_j}, \quad
       w \sim \mathrm{Dirichlet}(\alpha).}
+Its public aggregate names are \code{sd_total} and \code{var_total}, and its component
+weights are exposed as \code{var_prop(...)}.
+
+With \code{scale = "mean_variance"}, the aggregate SD preserves mean component
+variance:
+\deqn{\sigma_j = \sigma_{\mathrm{common}}\sqrt{K w_j}, \quad
+      w \sim \mathrm{Dirichlet}(\alpha).}
+Its public aggregate names are \code{sd_common} and \code{var_common}, and its
+components are exposed as \code{var_ratio(...)} and \code{sd_ratio(...)}. Thus
+\code{sd_common} is the shared variance-scale anchor before the component ratios
+are applied; it is not a sum of SDs.
 
 This is useful for nested or crossed random intercepts when the prior should
 control total heterogeneity separately from how that heterogeneity is
@@ -364,7 +391,7 @@ sd_prior <- prior(
   "normal", list(mean = 0, sd = 0.5),
   truncation = list(lower = 0, upper = Inf)
 )
-rho_prior <- prior("normal", list(mean = 0, sd = 0.5))
+cor_prior <- prior("normal", list(mean = 0, sd = 0.5))
 
 # One SD prior used for every random-effect block.
 prior_random(sd = sd_prior)
@@ -375,33 +402,44 @@ prior_random(
   study = random_block(sd = prior("gamma", list(shape = 2, rate = 2)))
 )
 
-# Unstructured covariance: SD prior plus LKJ correlation prior.
+# Unstructured covariance: omitted correlation resolves to LKJ(1).
 prior_random(
-  study = random_term(
-    covariance = random_covariance(
-      structure = "UN",
-      sd = sd_prior,
-      cor = prior_lkj(eta = 2)
-    )
-  )
+  study = random_block(sd = sd_prior)
 )
 
-# Scalar-rho structure with a Fisher-z prior.
+# Scalar-correlation structure with a Fisher-z prior.
 prior_random(
   study_time = random_term(
     covariance = random_covariance(
       structure = "AR",
       sd = sd_prior,
-      rho = rho_prior,
-      rho_scale = "fisher_z"
+      cor = cor_prior,
+      cor_scale = "fisher_z"
     )
   )
 )
 
-# Total SD plus Dirichlet variance allocation.
+# Total heterogeneity plus Dirichlet variance allocation. The allocation
+# name is the public semantic owner: heterogeneity: sd_total,
+# heterogeneity: var_prop(study), and heterogeneity: var_prop(outcome).
 prior_random(
   random_variance_allocation(
-    terms = c("study", "drug"),
+    name = "heterogeneity",
+    terms = c(study = "study", outcome = "outcome"),
+    sd = sd_prior,
+    weights = prior("dirichlet", list(alpha = c(1, 1)))
+  )
+)
+
+# Allocate a block SD across its coefficient components. This exposes
+# study_components: sd_common, study_components: var_ratio(intercept), and
+# study_components: sd_ratio(intercept), with analogous names for slopes.
+prior_random(
+  random_variance_allocation(
+    name = "study_components",
+    terms = "study",
+    target = "sd_component",
+    scale = "mean_variance",
     sd = sd_prior,
     weights = prior("dirichlet", list(alpha = c(1, 1)))
   )

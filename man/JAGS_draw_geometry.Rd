@@ -4,6 +4,7 @@
 \alias{JAGS_draw_geometry}
 \alias{JAGS_draw_geometry_schema}
 \alias{JAGS_materialize_draws}
+\alias{JAGS_with_draws}
 \title{JAGS draw geometry and deterministic materialization}
 \usage{
 JAGS_draw_geometry(fit)
@@ -11,20 +12,26 @@ JAGS_draw_geometry(fit)
 JAGS_draw_geometry_schema()
 
 JAGS_materialize_draws(fit, parameters = NULL, include_internal = FALSE)
+
+JAGS_with_draws(fit, draws)
 }
 \arguments{
 \item{fit}{fitted object created by \code{\link[=JAGS_fit]{JAGS_fit()}}.}
 
-\item{parameters}{optional exact vector of registry \code{canonical_name} values.
+\item{parameters}{optional exact vector of registry \code{coordinate_name} values.
 \code{NULL} selects every available public coordinate in registry order.}
 
 \item{include_internal}{whether internal registry coordinates may be returned.}
+
+\item{draws}{replacement draws coercible to a \code{coda::mcmc.list}.}
 }
 \value{
 \code{JAGS_draw_geometry()} returns a \code{BayesTools_draw_geometry} list.
 \code{JAGS_draw_geometry_schema()} returns field descriptions.
 \code{JAGS_materialize_draws()} returns a \code{coda::mcmc.list}, including a valid
 zero-column list when the fit has no public coordinate.
+\code{JAGS_with_draws()} returns the fitted object with its \code{mcmc} component and
+draw geometry replaced.
 }
 \description{
 \code{JAGS_draw_geometry()} returns the retained iteration and chain geometry
@@ -36,4 +43,7 @@ the parameter registry. Sampled coordinates are selected from the fitted
 chains and structural coordinates are filled with their exact \code{fixed_value}.
 Internal coordinates, including a private backend anchor, are excluded by
 default.
+
+\code{JAGS_with_draws()} returns a copy of a fitted object with replacement draws
+and matching draw-geometry metadata.
 }

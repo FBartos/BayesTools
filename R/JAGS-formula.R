@@ -6,8 +6,9 @@
 #'
 #' @param formula formula specifying the right hand side of the assignment (the
 #' left hand side is ignored), or a `BayesTools_random_effects` object returned
-#' by [random_effects_formula()]. If the formula contains \code{-1}, it will be
-#' automatically converted to include an intercept with a spike(0) prior.
+#' by [random_effects_formula()]. If the formula suppresses the intercept with
+#' \code{0 +} or \code{-1}, it is converted to include an intercept with a
+#' spike(0) prior.
 #' The formula can also have a \code{"log(intercept)"} attribute set to \code{TRUE}
 #' to generate syntax of the form \code{log(intercept) + sum(beta_i * x_i)}, which
 #' is useful for parameters that must be positive (e.g., standard deviation).
@@ -16,8 +17,9 @@
 #' created with the formula
 #' @param data data.frame containing predictors included in the formula
 #' @param prior_list named list of prior distribution of parameters specified within
-#' the \code{formula}. When using \code{-1} in the formula, an "intercept" prior
-#' can be explicitly specified; otherwise, \code{prior("spike", list(0))} is
+#' the \code{formula}. When suppressing the intercept in the formula, an
+#' "intercept" prior can be explicitly specified; otherwise,
+#' \code{prior("spike", list(0))} is
 #' automatically added, or \code{prior("spike", list(1))} when the formula uses
 #' the \code{"log(intercept)"} attribute. The list can also include two special entries:
 #' \describe{
@@ -46,10 +48,16 @@
 #' random effects and which should be compiled as structural marginalized
 #' blocks.
 #'
-#' @details When a formula with \code{-1} (no intercept) is specified, the
-#' function automatically removes the \code{-1}, adds an intercept back to the
-#' formula, and includes a point prior that contributes zero on the formula
-#' scale: spike(0) ordinarily and spike(1) for a log-transformed intercept.
+#' @details When a formula suppresses the intercept with \code{0 +} or
+#' \code{-1}, the function adds an intercept back to the compiled formula and
+#' includes a point prior that contributes zero on the formula scale: spike(0)
+#' ordinarily and spike(1) for a log-transformed intercept.
+#'
+#' Factor contrasts are owned by [prior_factor()] and stored formula metadata,
+#' not inferred from whether an intercept is present. Thus `~ 0 + group` with
+#' an independent factor prior means a structural zero intercept plus one
+#' coefficient per group level. With treatment or mean-difference contrasts,
+#' the same no-intercept expression preserves that selected basis.
 #'
 #' When using default priors (\code{"__default_continuous"} or \code{"__default_factor"}),
 #' explicitly specified priors for individual terms take precedence over the defaults.
@@ -77,6 +85,18 @@
 #' formula operators, but not inline transformations or arbitrary calls.
 #' Create transformed random slopes as explicit data columns. Grouping terms
 #' support variables, \code{:} interactions, and \code{/} nesting.
+#'
+#' Random-effect structures have two left-side grammars. `id()`, `diag()`, and
+#' `us()` / `un()` use a coefficient formula, so `1`, `0`, and `-1` control the
+#' random intercept and slopes or interactions generate coefficient columns.
+#' Plain bars default to `us()` and double bars to `diag()`. A factor's concrete
+#' random basis is inherited from resolved contrast metadata by default and can
+#' be set for one block with `random_block(contrasts = ...)`.
+#'
+#' `cs()` / `hcs()`, `ar1()` / `ar()` / `har()`, and `car()` instead use a
+#' structure-owned index specification. They reject intercept controls and
+#' block contrast overrides. See [random_effects_formula()] and
+#' [prior_random()] for their index and covariance contracts.
 #' Categorical predictor and grouping levels must not contain BayesTools'
 #' reserved internal tokens, such as \code{__xXx__}.
 #' The predictor name \code{intercept} is reserved for the formula intercept.

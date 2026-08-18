@@ -6,7 +6,8 @@
 \usage{
 random_effects_summary_posterior(
   fit,
-  summary = c("variance_ratio", "variance_fraction", "sd_multiplier"),
+  summary = c("var_ratio", "var_prop", "sd_ratio", "sd_total", "var_total", "sd_common",
+    "var_common"),
   allocation = NULL,
   component = NULL,
   formula_parameter = NULL,
@@ -16,10 +17,9 @@ random_effects_summary_posterior(
 \arguments{
 \item{fit}{model fit created by \link{JAGS_fit}.}
 
-\item{summary}{summary quantity to extract. \code{"variance_ratio"} returns
-\code{K * w} for mean-variance SD-component allocations, \code{"variance_fraction"}
-returns true total-variance fractions \code{w}, and \code{"sd_multiplier"} returns
-SD multipliers.}
+\item{summary}{semantic quantity to extract: \code{"var_ratio"}, \code{"var_prop"},
+\code{"sd_ratio"}, \code{"sd_total"}, \code{"var_total"}, \code{"sd_common"}, or
+\code{"var_common"}.}
 
 \item{allocation}{optional allocation label filter.}
 

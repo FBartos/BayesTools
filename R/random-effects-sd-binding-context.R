@@ -43,12 +43,7 @@
       used_blocks = character(),
       n_allocations = length(allocations)
     )
-    label <- .bt_random_variance_allocation_resolve_label(
-      allocation = allocation,
-      allocation_i = allocation_i,
-      allocations = allocations,
-      terms = terms
-    )
+    label <- .bt_random_variance_allocation_resolve_label(allocation)
     if(label %in% allocation_labels){
       stop("Variance allocation labels must be unique.", call. = FALSE)
     }
@@ -104,7 +99,7 @@
       source_base_name <- source$name
       source_factors <- list()
       if(isTRUE(source$owned)){
-        prior_list[[allocation_names$total_suffix]] <- source$prior
+        prior_list[[allocation_names$scale_suffix]] <- source$prior
       }
     }else{
       parent_label <- allocation$parent$allocation
@@ -250,11 +245,12 @@
             parent = allocation$parent,
             source_node = source_name,
             source = source,
+            parent_factors = source_factors,
             factors = c(source_factors, list(factor)),
             n_targets = length(terms),
-            total_name = source$total_name,
+            scale_name = source$scale_name,
             weight_name = allocation_names$weight_name,
-            total_suffix = source$total_suffix,
+            scale_suffix = source$scale_suffix,
             weight_suffix = allocation_names$weight_suffix,
             inclusion = inclusion_info
           )
@@ -279,9 +275,10 @@
         parent = allocation$parent,
         source_node = source_name,
         source = source,
-        total_name = source$total_name,
+        parent_factors = source_factors,
+        scale_name = source$scale_name,
         weight_name = allocation_names$weight_name,
-        total_suffix = source$total_suffix,
+        scale_suffix = source$scale_suffix,
         weight_suffix = allocation_names$weight_suffix,
         inclusion = inclusion_info
       )
@@ -339,9 +336,9 @@
         parent_factors = source_factors,
         weights = allocation$weights,
         allocation_record = allocation_record,
-        total_name = source$total_name,
+        scale_name = source$scale_name,
         weight_name = allocation_names$weight_name,
-        total_suffix = source$total_suffix,
+        scale_suffix = source$scale_suffix,
         weight_suffix = allocation_names$weight_suffix,
         inclusion = list()
       )

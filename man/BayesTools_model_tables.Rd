@@ -216,9 +216,9 @@ Can be \code{NULL} (default, no removal), a character vector of parameter
 names to remove, or \code{TRUE} to remove all parameters that are not
 part of any formula. For formula random effects, character filters also
 accept semantic aliases \code{"random"}, \code{"random_sd"},
-\code{"random_rho"}, \code{"random_correlation"},
-\code{"random_variance_fraction"}, \code{"random_variance_ratio"},
-\code{"random_allocation"}, and \code{"random_sd_multiplier"}.}
+\code{"random_correlation"},
+\code{"random_variance_proportion"}, \code{"random_variance_ratio"},
+\code{"random_allocation"}, and \code{"random_sd_ratio"}.}
 
 \item{fit}{runjags model fit}
 
@@ -248,7 +248,7 @@ should be removed from the summary. Defaults to \code{NULL}.}
 All other parameters will be removed unless they belong to formulas
 specified in \code{keep_formulas}. The random-effect aliases listed for
 \code{remove_parameters} can also be used here, for example
-\code{keep_parameters = c("random_sd", "random_rho")}.}
+\code{keep_parameters = c("random_sd", "random_correlation")}.}
 
 \item{keep_formulas}{character vector of formula names whose parameters
 should be kept. All other parameters will be removed unless they are
@@ -266,7 +266,7 @@ computed from the transformed covariance draws. Defaults to \code{FALSE}.}
 
 \item{random_effects_summary}{random-effect reporting mode for JAGS estimates
 tables. \code{"standard"} replaces raw random-effect implementation
-parameters with semantic SD, rho/correlation, true variance-fraction, and
+parameters with semantic SD, correlation, true variance-fraction, and
 mean-variance SD-component variance-ratio summaries. \code{"full"} also
 includes heterogeneous SD multipliers.
 \code{"raw"} keeps the historical raw monitored parameters on their fitted
@@ -280,11 +280,10 @@ coordinates are omitted when \code{transform_scaled = TRUE}, including in
 standardized scale.}
 
 \item{random_effects_label}{label style for semantic random-effect summaries.
-\code{"grouped"} reports conventional grouping labels such as
-\code{sd(intercept | study)}. \code{"component"} prefixes the
-random-effect name and omits the redundant grouping suffix, for example
-\code{study: sd(intercept)}. Defaults to \code{"grouped"}. Raw
-random-effect coordinates are unaffected.}
+Both \code{"grouped"} and \code{"component"} use the canonical
+owner-and-quantity grammar, for example \code{study: sd(intercept)}.
+Defaults to \code{"grouped"}. Raw random-effect coordinates use the same
+semantic labels when a public equivalent exists.}
 
 \item{random_effects_metadata}{whether to add random-effect metadata columns
 to JAGS estimates tables. When \code{TRUE}, the table includes the

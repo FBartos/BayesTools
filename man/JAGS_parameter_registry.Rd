@@ -3,7 +3,7 @@
 \name{JAGS_parameter_registry}
 \alias{JAGS_parameter_registry}
 \alias{JAGS_parameter_registry_schema}
-\title{Canonical JAGS parameter registry}
+\title{JAGS parameter-coordinate registry}
 \usage{
 JAGS_parameter_registry(fit)
 
@@ -26,7 +26,7 @@ fitted coordinate scale, and display label. Downstream packages should use
 this accessor instead of parsing JAGS parameter names.
 
 \code{JAGS_parameter_registry_schema()} documents the stable fields in the
-current registry schema. Registry rows are unique by \code{canonical_name}.
+current registry schema. Registry rows are unique by \code{coordinate_name}.
 Matrix/vector indices are stored as comma-separated text in \code{index}, and
 their fitted dimensions are stored in \code{dimensions} (for example, \code{"3x2"}).
 Empty strings mean that a field does not apply.

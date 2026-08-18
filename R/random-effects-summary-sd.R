@@ -282,7 +282,7 @@
 
   names <- labels <- component_labels <- types <- components <- character()
   values <- list()
-  display_group <- .bt_random_effect_summary_group_label(random_term)
+  owner <- .bt_random_effect_public_name(random_term)
 
   for(prior_name in prior_names){
     prior <- prior_list[[prior_name]]
@@ -306,8 +306,22 @@
         random_term,
         prior_name
       )
-      labels <- c(labels, paste0(display_effect, " | ", display_group, " (inclusion)"))
-      component_labels <- c(component_labels, paste0(display_effect, " (inclusion)"))
+      effect <- if(identical(display_effect, owner)){
+        "sd"
+      }else{
+        paste0("sd(", display_effect, ")")
+      }
+      labels <- c(labels, .bt_random_effect_semantic_name(
+        parameter = "",
+        owner = owner,
+        quantity = "inclusion",
+        arguments = effect,
+        formula_prefix = FALSE
+      ))
+      component_labels <- c(
+        component_labels,
+        paste0("inclusion(", effect, ")")
+      )
       types <- c(types, "inclusion")
       components <- c(components, "alternative")
       values[[length(values) + 1L]] <- as.numeric(indicator %in% alternative_index)
@@ -328,12 +342,23 @@
           random_term,
           prior_name
         )
-        labels <- c(labels, paste0(
-          display_effect, " | ", display_group, " (inclusion: ", component, ")"
+        effect <- if(identical(display_effect, owner)){
+          "sd"
+        }else{
+          paste0("sd(", display_effect, ")")
+        }
+        argument <- paste0(effect, "[", component, "]")
+        labels <- c(labels, .bt_random_effect_semantic_name(
+          parameter = "",
+          owner = owner,
+          quantity = "inclusion",
+          arguments = argument,
+          formula_prefix = FALSE
         ))
-        component_labels <- c(component_labels, paste0(
-          display_effect, " (inclusion: ", component, ")"
-        ))
+        component_labels <- c(
+          component_labels,
+          paste0("inclusion(", argument, ")")
+        )
         types <- c(types, "inclusion")
         components <- c(components, component)
         values[[length(values) + 1L]] <- as.numeric(indicator %in% component_index)
@@ -435,7 +460,7 @@
   )
 }
 
-.bt_random_effect_summary_missing_sd_total_stop <- function(allocation){
+.bt_random_effect_summary_missing_allocation_sd_stop <- function(allocation){
 
   label <- allocation
   if(!is.character(label) || length(label) != 1L || is.na(label) || !nzchar(label)){
@@ -443,9 +468,9 @@
   }
 
   stop(
-    "Random-effect total-SD summary samples are missing canonical total SD coordinates for allocation '",
+    "Random-effect allocation-scale summary samples are missing canonical SD coordinates for allocation '",
     label,
-    "'. Expected monitored total SD or point-prior coordinates.",
+    "'. Expected monitored allocation SD or point-prior coordinates.",
     call. = FALSE
   )
 }

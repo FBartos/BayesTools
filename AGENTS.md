@@ -181,6 +181,56 @@ unresolved.
 - Summaries and validation: `R/summary-tables*.R`, `R/interpret.R`, and
   `R/tools.R`.
 
+### Formula and Random-Effect Semantics
+
+- BayesTools formulas intentionally do not inherit ordinary
+  `stats::model.matrix()` intercept/contrast coupling. `prior_factor()` owns a
+  fixed factor's contrast family. Removing the intercept represents a
+  structural zero intercept while preserving that prior-owned factor basis; it
+  must not silently force raw indicator or treatment coding.
+- `id()`, `diag()`, and `us()` / `un()` are general random-coefficient
+  structures. Their left side is a coefficient formula: `1`, `0`, and `-1`
+  control the random intercept, and continuous slopes, factor slopes, and
+  interactions are supported. Plain `(expr | group)` defaults to `us()` and
+  `||` to `diag()`. `id()` uses one shared SD for independent columns,
+  `diag()` uses one SD per independent column, and `us()` estimates one SD per
+  column plus an unstructured correlation matrix.
+- Random-coefficient factor coding is owned by the block's concrete contrast
+  metadata, not by intercept syntax. Existing fixed-factor contrast metadata is
+  reused by default when available; `random_block(contrasts = ...)` explicitly
+  overrides it for that random block. Thus `us(0 + group | study)` with an
+  independent block contrast gives one correlated coefficient per `group`
+  level and no random intercept, whereas `0 + group` alone does not force a
+  level-indicator basis.
+- `cs()` / `hcs()`, `ar1()` / `ar()` / `har()`, and `car()` are
+  structure-owned index specifications, not coefficient formulas. `cs()` and
+  `hcs()` accept one or more discrete index columns and combine multiple
+  columns by their observed interaction. `ar1()` and `har()` accept exactly one
+  discrete index column; existing factor levels or sorted unique values define
+  its order. These discrete structures accept factor, character,
+  numeric/integer, or logical values and persist the resolved levels.
+- `car()` accepts exactly one finite numeric/integer coordinate, or an ordered
+  factor with numeric level labels, and uses actual coordinate distances.
+  Structure-owned index specifications reject explicit `1`, `0`, and `-1` and
+  reject `random_block(contrasts = ...)`. `hcs()` has level-specific SDs and one
+  common pairwise correlation; it is not equivalent to the unrestricted
+  correlation matrix from `us()`.
+- Persist basis ownership, concrete index levels, design columns, and public
+  labels in formula metadata. Prediction, covariance reconstruction,
+  summaries, and downstream packages must consume that metadata rather than
+  reconstructing a basis from formula text.
+- LKJ primitive coordinates and other covariance-construction nodes are
+  internal implementation parameters. Register them as internal through
+  `JAGS_parameter_registry()` and expose only semantic SDs, correlations, and
+  other declared public summaries.
+- Complete omitted correlation priors only after the random-effect structure
+  and dimension are resolved: US/UN uses `LKJ(1)`; CS/HCS uses a raw uniform
+  prior on `(-1 / (K - 1), 1)`; AR1/HAR uses raw `Uniform(-1, 1)`; and CAR uses
+  raw `Uniform(0, 1)`. Explicit scalar priors retain the Fisher-z default scale.
+  BayesTools must not invent a generic SD magnitude because that scale belongs
+  to the outcome model; direct `JAGS_formula()` use still requires an SD prior,
+  SD source, or variance allocation.
+
 `JAGS_parameter_registry()` is the authoritative mapping from posterior columns
 to semantic roles, formula terms, fitted scales, and display labels. Downstream
 code must use the registry or its accessors instead of parsing JAGS names or

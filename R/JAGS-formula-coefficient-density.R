@@ -232,7 +232,7 @@ JAGS_formula_prior_density <- function(
   rows <- registry$formula_parameter == parameter &
     registry$role == "fixed_coefficient" & !registry$internal
   source_registry <- registry[rows, , drop = FALSE]
-  actual <- source_registry$canonical_name
+  actual <- source_registry$coordinate_name
   expected <- prior_coordinates[prior_coordinates %in% actual]
   if(length(expected) == 0L || !setequal(expected, actual)){
     .bt_formula_transform_stop(
@@ -247,7 +247,7 @@ JAGS_formula_prior_density <- function(
   }
   source_registry <- source_registry[match(expected, actual), , drop = FALSE]
   data.frame(
-    source = source_registry$canonical_name,
+    source = source_registry$coordinate_name,
     monitor_status = source_registry$monitor_status,
     fixed_value = source_registry$fixed_value,
     stringsAsFactors = FALSE

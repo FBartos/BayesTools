@@ -202,7 +202,6 @@
 .bt_JAGS_structured_corr_cholesky <- function(node_prefix, prior_prefix, K,
                                               structure, block_prior,
                                               include_correlation = TRUE,
-                                              require_rho = FALSE,
                                               distance_matrix = NULL){
 
   check_char(node_prefix, "node_prefix", allow_NA = FALSE)
@@ -210,7 +209,6 @@
   check_int(K, "K", lower = 1, allow_NA = FALSE)
   check_char(structure, "structure", allow_values = c("cs", "hcs", "ar1", "car", "har"), allow_NA = FALSE)
   check_bool(include_correlation, "include_correlation", allow_NA = FALSE)
-  check_bool(require_rho, "require_rho", allow_NA = FALSE)
   if(identical(structure, "car")){
     stop(
       "Dense CAR Cholesky compilation is unsupported. Use the CAR Markov ",
@@ -229,10 +227,10 @@
   monitor <- L_name
 
   if(K == 1L){
-    if(!is.null(block_prior$covariance) && !is.null(block_prior$covariance$rho)){
+    if(!is.null(block_prior$covariance) && !is.null(block_prior$covariance$cor)){
       stop(
         "Single-column random-effect structure '", structure,
-        "' has no correlation parameter; remove the 'rho' prior.",
+        "' has no correlation parameter; remove the 'cor' prior.",
         call. = FALSE
       )
     }
@@ -260,8 +258,7 @@
     node_prefix = node_prefix,
     K = K,
     structure = structure,
-    block_prior = block_prior,
-    require_rho = require_rho
+    block_prior = block_prior
   )
   syntax <- c(syntax, rho_info$syntax)
   prior_list <- rho_info$prior_list
@@ -331,7 +328,6 @@
 .bt_JAGS_structured_corr_direct <- function(node_prefix, prior_prefix, K,
                                             structure, block_prior,
                                             include_correlation = FALSE,
-                                            require_rho = FALSE,
                                             distance_matrix = NULL){
 
   check_char(node_prefix, "node_prefix", allow_NA = FALSE)
@@ -344,7 +340,6 @@
     allow_NA = FALSE
   )
   check_bool(include_correlation, "include_correlation", allow_NA = FALSE)
-  check_bool(require_rho, "require_rho", allow_NA = FALSE)
   if(identical(structure, "car") && isTRUE(include_correlation)){
     distance_matrix <- .bt_random_effect_validate_car_distance_matrix(
       distance_matrix,
@@ -357,10 +352,10 @@
   syntax   <- paste0("# Direct structured random-effect correlation: ", structure)
 
   if(K == 1L){
-    if(!is.null(block_prior$covariance) && !is.null(block_prior$covariance$rho)){
+    if(!is.null(block_prior$covariance) && !is.null(block_prior$covariance$cor)){
       stop(
         "Single-column random-effect structure '", structure,
-        "' has no correlation parameter; remove the 'rho' prior.",
+        "' has no correlation parameter; remove the 'cor' prior.",
         call. = FALSE
       )
     }
@@ -383,8 +378,7 @@
     node_prefix = node_prefix,
     K = K,
     structure = structure,
-    block_prior = block_prior,
-    require_rho = require_rho
+    block_prior = block_prior
   )
   syntax <- c(syntax, rho_info$syntax)
 
@@ -725,27 +719,33 @@
 }
 
 .bt_random_effect_structured_rho_prior <- function(prior_prefix, node_prefix, K,
-                                                   structure, block_prior,
-                                                   require_rho = FALSE){
+                                                   structure, block_prior){
 
-  rho_prior <- block_prior$covariance$rho
+  bounds <- .bt_random_effect_structured_rho_bounds(K = K, structure = structure)
+  rho_prior <- block_prior$covariance$cor
+  default_rho_prior <- is.null(rho_prior)
   if(is.null(rho_prior)){
-    if(isTRUE(require_rho)){
+    covariance_fields <- .bt_random_covariance_explicit_fields(block_prior$covariance)
+    if("cor_scale" %in% covariance_fields &&
+       !identical(block_prior$covariance$cor_scale, "cor")){
       stop(
-        "Random-effect structure '", structure,
-        "' requires a scalar correlation prior. Supply 'rho = prior(...)'.",
+        "'cor_scale' other than 'cor' requires an explicit 'cor' prior.",
         call. = FALSE
       )
     }
-    rho_prior <- prior("normal", list(0, 0.5))
+    rho_prior <- prior("uniform", list(
+      a = bounds[["lower"]],
+      b = bounds[["upper"]]
+    ))
   }
 
-  rho_scale <- block_prior$covariance$rho_scale
-  if(is.null(rho_scale)){
-    rho_scale <- "fisher_z"
+  rho_scale <- if(default_rho_prior ||
+                    identical(block_prior$covariance$cor_scale, "cor")){
+    "rho"
+  }else{
+    block_prior$covariance$cor_scale
   }
 
-  bounds <- .bt_random_effect_structured_rho_bounds(K = K, structure = structure)
   interior_bounds <- .bt_random_effect_representable_rho_bounds(
     bounds,
     structure
@@ -793,7 +793,7 @@
       lower = bounds[["lower"]],
       upper = bounds[["upper"]],
       label = paste0(structure, " raw correlation prior"),
-      warn = TRUE,
+      warn = !default_rho_prior,
       lower_inclusive = .bt_random_effect_rho_lower_inclusive(structure)
     )
     prior_name <- paste0(prior_prefix, "_rho")

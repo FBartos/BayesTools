@@ -1,9 +1,9 @@
-# Canonical fitted-parameter registry.
+# Concrete fitted-coordinate registry.
 
-.bt_parameter_registry_version <- 3L
+.bt_parameter_registry_version <- 4L
 
 .bt_parameter_registry_columns <- c(
-  "canonical_name",
+  "coordinate_name",
   "monitor_name",
   "formula_parameter",
   "role",
@@ -25,7 +25,7 @@
 .bt_parameter_registry_empty <- function(){
 
   out <- data.frame(
-    canonical_name = character(),
+    coordinate_name = character(),
     monitor_name = character(),
     formula_parameter = character(),
     role = character(),
@@ -49,7 +49,7 @@
   out
 }
 
-#' Canonical JAGS parameter registry
+#' JAGS parameter-coordinate registry
 #'
 #' @description
 #' `JAGS_parameter_registry()` returns the versioned parameter registry stored
@@ -59,7 +59,7 @@
 #' this accessor instead of parsing JAGS parameter names.
 #'
 #' `JAGS_parameter_registry_schema()` documents the stable fields in the
-#' current registry schema. Registry rows are unique by `canonical_name`.
+#' current registry schema. Registry rows are unique by `coordinate_name`.
 #' Matrix/vector indices are stored as comma-separated text in `index`, and
 #' their fitted dimensions are stored in `dimensions` (for example, `"3x2"`).
 #' Empty strings mean that a field does not apply.
@@ -96,7 +96,7 @@ JAGS_parameter_registry <- function(fit){
   registry <- attr(fit, "parameter_registry", exact = TRUE)
   if(is.null(registry)){
     stop(
-      "The fitted object does not contain the canonical parameter registry. ",
+      "The fitted object does not contain the parameter-coordinate registry. ",
       "Refit the model with the current BayesTools version.",
       call. = FALSE
     )
@@ -169,11 +169,11 @@ JAGS_parameter_registry_schema <- function(){
       call. = FALSE
     )
   }
-  if(anyNA(registry$canonical_name) ||
-     any(!nzchar(registry$canonical_name)) ||
-     anyDuplicated(registry$canonical_name)){
+  if(anyNA(registry$coordinate_name) ||
+     any(!nzchar(registry$coordinate_name)) ||
+     anyDuplicated(registry$coordinate_name)){
     stop(
-      "The fitted parameter registry must contain unique, non-missing canonical names. ",
+      "The fitted parameter registry must contain unique, non-missing coordinate names. ",
       "Refit the model with the current BayesTools version.",
       call. = FALSE
     )
@@ -279,7 +279,7 @@ JAGS_parameter_registry_schema <- function(){
   if(is.null(stem) || length(stem) != 1L || is.na(stem) || !nzchar(stem)){
     return(data.frame(base = character(), role = character()))
   }
-  data.frame(
+  family <- data.frame(
     base = paste0(
       stem,
       c(
@@ -307,6 +307,32 @@ JAGS_parameter_registry_schema <- function(){
     ),
     stringsAsFactors = FALSE
   )
+
+  correlation <- random_term$correlation
+  if(is.list(correlation) && identical(correlation$type, "lkj")){
+    coordinate_names <- unique(c(
+      correlation$primitive_names,
+      correlation$cpc_names
+    ))
+    coordinate_bases <- unique(.bt_parameter_registry_base(
+      coordinate_names
+    ))
+    coordinate_bases <- coordinate_bases[
+      !is.na(coordinate_bases) & nzchar(coordinate_bases)
+    ]
+    if(length(coordinate_bases) > 0L){
+      family <- rbind(
+        family,
+        data.frame(
+          base = coordinate_bases,
+          role = rep("random_correlation_coordinate", length(coordinate_bases)),
+          stringsAsFactors = FALSE
+        )
+      )
+    }
+  }
+
+  family
 }
 
 .bt_parameter_registry_prior_owner <- function(base_name, prior_list){
@@ -412,7 +438,7 @@ JAGS_parameter_registry_schema <- function(){
   if(isTRUE(metadata$allocation)){
     return("allocation")
   }
-  if(isTRUE(metadata$raw_sd) || isTRUE(metadata$raw_sd_total)){
+  if(isTRUE(metadata$raw_sd) || isTRUE(metadata$raw_allocation_sd)){
     return("random_sd")
   }
   if(isTRUE(metadata$raw_correlation)){
@@ -451,7 +477,7 @@ JAGS_parameter_registry_schema <- function(){
   as.character(parameter)
 }
 
-.bt_parameter_registry_coordinate <- function(canonical_name, random_term,
+.bt_parameter_registry_coordinate <- function(coordinate_name, random_term,
                                               role, name_map_row = NULL){
 
   out <- list(term = "", column = "")
@@ -460,13 +486,13 @@ JAGS_parameter_registry_schema <- function(){
       out$term <- if(!is.null(name_map_row) && nrow(name_map_row) == 1L){
         name_map_row$term
       }else{
-        .bt_parameter_registry_base(canonical_name)
+        .bt_parameter_registry_base(coordinate_name)
       }
-      out$column <- canonical_name
+      out$column <- coordinate_name
     }
     return(out)
   }
-  index <- .bt_parameter_registry_index(canonical_name)
+  index <- .bt_parameter_registry_index(coordinate_name)
   index <- if(nzchar(index)) suppressWarnings(as.integer(
     strsplit(index, ",", fixed = TRUE)[[1L]]
   )) else integer()
@@ -483,7 +509,7 @@ JAGS_parameter_registry_schema <- function(){
   }
   if(role %in% c("random_sd", "random_sd_variable")){
     sd_names <- random_term$sd_parameter_names
-    sd_name <- canonical_name
+    sd_name <- coordinate_name
     if(identical(role, "random_sd_variable")){
       sd_name <- sub("_variable(?=\\[|$)", "", sd_name, perl = TRUE)
     }
@@ -524,6 +550,9 @@ JAGS_parameter_registry_schema <- function(){
                  "random_inclusion_probability")){
     return("unitless")
   }
+  if(identical(role, "random_correlation_coordinate")){
+    return("unitless")
+  }
   if(nzchar(formula_parameter) &&
      !is.null(formula_scale) &&
      !is.null(formula_scale[[formula_parameter]])){
@@ -532,7 +561,7 @@ JAGS_parameter_registry_schema <- function(){
   "fitted_original"
 }
 
-.bt_parameter_registry_display <- function(canonical_name, prior, random_term,
+.bt_parameter_registry_display <- function(coordinate_name, prior, random_term,
                                            role, formula_parameter){
 
   if(!is.null(prior)){
@@ -547,7 +576,7 @@ JAGS_parameter_registry_schema <- function(){
   }
   if(is.null(random_term)){
     return(format_parameter_names(
-      canonical_name,
+      coordinate_name,
       formula_parameters = if(nzchar(formula_parameter)){
         formula_parameter
       }else{
@@ -557,8 +586,8 @@ JAGS_parameter_registry_schema <- function(){
     ))
   }
 
-  names <- canonical_name
-  raw_names <- canonical_name
+  names <- coordinate_name
+  raw_names <- coordinate_name
   prefix <- .bt_random_effect_summary_formula_prefix(formula_parameter, TRUE)
   if(identical(role, "random_sd")){
     names <- .bt_random_effect_summary_raw_sd_display_names(
@@ -566,7 +595,7 @@ JAGS_parameter_registry_schema <- function(){
       raw_names = raw_names,
       prior_list = if(is.null(prior)) list() else stats::setNames(
         list(prior),
-        .bt_parameter_registry_base(canonical_name)
+        .bt_parameter_registry_base(coordinate_name)
       ),
       random_term = random_term,
       prefix = prefix
@@ -624,8 +653,8 @@ JAGS_parameter_registry_schema <- function(){
       }
     }
   }
-  canonical_names <- unique(c(columns, setdiff(structural, columns)))
-  if(length(canonical_names) == 0L){
+  coordinate_names <- unique(c(columns, setdiff(structural, columns)))
+  if(length(coordinate_names) == 0L){
     return(.bt_parameter_registry_empty())
   }
 
@@ -633,12 +662,12 @@ JAGS_parameter_registry_schema <- function(){
   name_map <- .bt_parameter_registry_name_map(formula_design)
   allocation_indicators <-
     .bt_random_variance_allocation_inclusion_indicator_names(formula_design)
-  bases <- .bt_parameter_registry_base(canonical_names)
+  bases <- .bt_parameter_registry_base(coordinate_names)
   registry <- .bt_parameter_registry_empty()
-  registry <- registry[rep(NA_integer_, length(canonical_names)), , drop = FALSE]
+  registry <- registry[rep(NA_integer_, length(coordinate_names)), , drop = FALSE]
 
-  for(i in seq_along(canonical_names)){
-    canonical_name <- canonical_names[i]
+  for(i in seq_along(coordinate_names)){
+    coordinate_name <- coordinate_names[i]
     base_name <- bases[i]
     name_map_row <- name_map[name_map$jags_name == base_name, , drop = FALSE]
     prior <- .bt_parameter_registry_prior_owner(base_name, prior_list)
@@ -649,7 +678,7 @@ JAGS_parameter_registry_schema <- function(){
     }else{
       owner$role
     }
-    if(canonical_name %in% allocation_indicators){
+    if(coordinate_name %in% allocation_indicators){
       role <- "allocation"
     }
     if(is.null(random_term) && !is.null(prior)){
@@ -674,7 +703,7 @@ JAGS_parameter_registry_schema <- function(){
       name_map_row
     )
     coordinate <- .bt_parameter_registry_coordinate(
-      canonical_name,
+      coordinate_name,
       random_term,
       role,
       name_map_row
@@ -690,13 +719,13 @@ JAGS_parameter_registry_schema <- function(){
       }
     }
     requested <- monitor_names[
-      monitor_names == canonical_name |
+      monitor_names == coordinate_name |
         monitor_names == base_name
     ]
     monitor_name <- if(length(requested) > 0L) requested[1L] else base_name
     monitor_status <- if(!is.null(prior) && is.prior.point(prior)){
       "structural"
-    }else if(canonical_name %in% columns){
+    }else if(coordinate_name %in% columns){
       "sampled"
     }else{
       "structural"
@@ -704,12 +733,12 @@ JAGS_parameter_registry_schema <- function(){
     fixed_value <- NA_real_
     if(identical(monitor_status, "structural") && !is.null(prior)){
       prior_values <- .bt_parameter_registry_point_values(base_name, prior)
-      value_match <- match(canonical_name, names(prior_values))
+      value_match <- match(coordinate_name, names(prior_values))
       if(!is.na(value_match)){
         fixed_value <- unname(prior_values[value_match])
       }
     }
-    if(!is.null(backend_anchor) && identical(canonical_name, backend_anchor)){
+    if(!is.null(backend_anchor) && identical(coordinate_name, backend_anchor)){
       role <- "backend_anchor"
     }
     random_block <- if(is.null(random_term)){
@@ -734,7 +763,7 @@ JAGS_parameter_registry_schema <- function(){
     }
 
     registry[i, ] <- list(
-      canonical_name,
+      coordinate_name,
       monitor_name,
       formula_parameter,
       role,
@@ -742,13 +771,13 @@ JAGS_parameter_registry_schema <- function(){
       random_name,
       coordinate$term,
       coordinate$column,
-      .bt_parameter_registry_index(canonical_name),
+      .bt_parameter_registry_index(coordinate_name),
       .bt_parameter_registry_dimensions(base_name, columns),
       .bt_parameter_registry_scale(role, formula_parameter, formula_scale),
       monitor_status,
       fixed_value,
       .bt_parameter_registry_display(
-        canonical_name,
+        coordinate_name,
         prior,
         random_term,
         role,
@@ -761,6 +790,7 @@ JAGS_parameter_registry_schema <- function(){
         "random_latent",
         "random_group_coefficient",
         "random_correlation",
+        "random_correlation_coordinate",
         "random_inclusion_indicator",
         "random_inclusion_probability",
         "random_sd_variable"
@@ -800,10 +830,10 @@ JAGS_parameter_registry_schema <- function(){
   fit
 }
 
-.bt_parameter_registry_rows <- function(registry, canonical_names){
+.bt_parameter_registry_rows <- function(registry, coordinate_names){
 
   .bt_validate_parameter_registry(registry)
-  match <- match(canonical_names, registry$canonical_name)
+  match <- match(coordinate_names, registry$coordinate_name)
   out <- registry[match, , drop = FALSE]
   rownames(out) <- NULL
   out

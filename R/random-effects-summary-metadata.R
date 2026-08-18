@@ -41,13 +41,19 @@
         sd_names[missing]
       )
     }
+    if(.bt_random_effect_summary_term_structure(random_term) %in%
+       c("id", "cs", "ar1", "car") && length(out) == 1L){
+      out <- "shared"
+    }
     return(.bt_random_effect_summary_display_components(random_term, out))
   }
 
-  .bt_random_effect_summary_display_components(
-    random_term,
-    .bt_random_effect_summary_component_from_sd_name(random_term, sd_names)
-  )
+  out <- .bt_random_effect_summary_component_from_sd_name(random_term, sd_names)
+  if(.bt_random_effect_summary_term_structure(random_term) %in%
+     c("id", "cs", "ar1", "car") && length(out) == 1L){
+    out <- "shared"
+  }
+  .bt_random_effect_summary_display_components(random_term, out)
 }
 
 .bt_random_effect_summary_component_from_sd_name <- function(random_term,
@@ -62,9 +68,45 @@
 .bt_random_effect_summary_normalize_components <- function(components){
 
   components <- gsub("__xXx__", ":", components, fixed = TRUE)
-  components[components == "sd"] <- "shared"
   components[components == "(Intercept)"] <- "intercept"
   components
+}
+
+.bt_random_effect_semantic_name <- function(parameter, owner, quantity,
+                                            arguments = character(),
+                                            formula_prefix = TRUE){
+
+  quantity_label <- .bt_random_effect_semantic_quantity_name(
+    quantity,
+    arguments
+  )
+  prefix <- .bt_random_effect_summary_formula_prefix(
+    parameter,
+    formula_prefix
+  )
+  paste0(prefix, owner, ": ", quantity_label)
+}
+
+.bt_random_effect_semantic_quantity_name <- function(quantity,
+                                                     arguments = character()){
+
+  arguments <- as.character(arguments)
+  arguments <- arguments[!is.na(arguments) & nzchar(arguments)]
+  if(length(arguments) == 0L){
+    return(quantity)
+  }
+
+  paste0(quantity, "(", paste(arguments, collapse = ","), ")")
+}
+
+.bt_random_effect_semantic_sd_quantity <- function(random_term){
+
+  if(.bt_random_effect_sd_is_multiplier(random_term)) "sd_ratio" else "sd"
+}
+
+.bt_random_effect_semantic_sd_arguments <- function(component){
+
+  if(identical(component, "shared")) character() else component
 }
 
 .bt_random_effect_summary_display_components <- function(random_term, components){
@@ -158,6 +200,19 @@
 
 .bt_random_effect_summary_column_components <- function(random_term){
 
+  index <- random_term$structured_index
+  if(!is.null(index) && !is.null(index$name) && !is.null(index$label) &&
+     length(index$name) == 1L && length(index$label) == 1L &&
+     !is.null(random_term$xlevels[[index$name]]) &&
+     length(random_term$xlevels[[index$name]]) == random_term$n_columns){
+    return(paste0(
+      index$label,
+      "[",
+      as.character(random_term$xlevels[[index$name]]),
+      "]"
+    ))
+  }
+
   components <- random_term$column_names
   leaves <- random_term$sd_leaves
   if(!is.null(leaves) && !is.null(leaves$leaf_terms_by_column) &&
@@ -201,7 +256,13 @@
       type = allocation_type$name,
       parts = c(allocation$label, components[i])
     ))
-    labels <- c(labels, paste0(allocation_type$label, "(", allocation$label, ": ", components[i], ")"))
+    labels <- c(labels, .bt_random_effect_semantic_name(
+      parameter = "",
+      owner = allocation$label,
+      quantity = allocation_type$label,
+      arguments = components[i],
+      formula_prefix = FALSE
+    ))
     types <- c(types, allocation_type$summary)
     component_values <- c(component_values, components[i])
     component_indices <- c(component_indices, i)
@@ -222,11 +283,17 @@
     for(i in seq_len(ncol(weights))){
       names <- c(names, .bt_random_effect_summary_name(
         parameter = sub("__xRE_ALLOCx_.*$", "", allocation$weight_name),
-        type = "sd_mult",
+        type = "sd_ratio",
         parts = c(allocation$label, components[i])
       ))
-      labels <- c(labels, paste0("sd_mult(", allocation$label, ": ", components[i], ")"))
-      types <- c(types, "sd_multiplier")
+      labels <- c(labels, .bt_random_effect_semantic_name(
+        parameter = "",
+        owner = allocation$label,
+        quantity = "sd_ratio",
+        arguments = components[i],
+        formula_prefix = FALSE
+      ))
+      types <- c(types, "sd_ratio")
       component_values <- c(component_values, components[i])
       component_indices <- c(component_indices, i)
       values[[length(values) + 1L]] <- .bt_random_effect_allocation_multiplier(
@@ -248,6 +315,53 @@
     components = component_values,
     indices = component_indices,
     values = values
+  )
+}
+
+.bt_random_effect_allocation_scale_role <- function(allocation){
+
+  scale <- .bt_random_effect_allocation_scale_metadata(
+    allocation,
+    context = "Random-effect allocation semantic metadata"
+  )
+  if(identical(scale, "total_variance")) "total" else "common"
+}
+
+.bt_random_effect_allocation_sd_quantity <- function(allocation){
+
+  paste0("sd_", .bt_random_effect_allocation_scale_role(allocation))
+}
+
+.bt_random_effect_allocation_var_quantity <- function(allocation){
+
+  paste0("var_", .bt_random_effect_allocation_scale_role(allocation))
+}
+
+.bt_random_effect_summary_allocation_scale_samples <- function(
+    allocation, model_samples, prior_list){
+
+  source <- allocation$source
+  if(!is.list(source) || !identical(source$shape, "scalar")){
+    return(NULL)
+  }
+  source_name <- .bt_random_sd_binding_source_name(source)
+  values <- .bt_random_effect_parameter_draws(
+    parameter_name = source_name,
+    posterior = model_samples,
+    prior_list = prior_list
+  )
+  if(is.null(values)){
+    return(NULL)
+  }
+  factors <- allocation$parent_factors
+  if(is.null(factors)){
+    factors <- list()
+  }
+  .bt_random_effect_apply_allocation_factors(
+    base = values,
+    factors = factors,
+    posterior = model_samples,
+    prior_list = prior_list
   )
 }
 
@@ -299,7 +413,13 @@
       type = "inclusion",
       parts = c(allocation$label, component_label)
     ))
-    labels <- c(labels, paste0("inclusion(", allocation$label, ": ", component_label, ")"))
+    labels <- c(labels, .bt_random_effect_semantic_name(
+      parameter = "",
+      owner = allocation$label,
+      quantity = "inclusion",
+      arguments = component_label,
+      formula_prefix = FALSE
+    ))
     types <- c(types, "inclusion")
     component_values <- c(component_values, component_label)
     component_indices <- c(component_indices, record$index)
@@ -336,9 +456,9 @@
   }
 
   list(
-    name = "var_frac",
-    label = "var_frac",
-    summary = "var_frac",
+    name = "var_prop",
+    label = "var_prop",
+    summary = "var_prop",
     scale = allocation_scale
   )
 }

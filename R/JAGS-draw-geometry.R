@@ -16,19 +16,26 @@
 #' Internal coordinates, including a private backend anchor, are excluded by
 #' default.
 #'
+#' `JAGS_with_draws()` returns a copy of a fitted object with replacement draws
+#' and matching draw-geometry metadata.
+#'
 #' @param fit fitted object created by [JAGS_fit()].
-#' @param parameters optional exact vector of registry `canonical_name` values.
+#' @param parameters optional exact vector of registry `coordinate_name` values.
 #'   `NULL` selects every available public coordinate in registry order.
 #' @param include_internal whether internal registry coordinates may be returned.
+#' @param draws replacement draws coercible to a `coda::mcmc.list`.
 #'
 #' @return `JAGS_draw_geometry()` returns a `BayesTools_draw_geometry` list.
 #' `JAGS_draw_geometry_schema()` returns field descriptions.
 #' `JAGS_materialize_draws()` returns a `coda::mcmc.list`, including a valid
 #' zero-column list when the fit has no public coordinate.
+#' `JAGS_with_draws()` returns the fitted object with its `mcmc` component and
+#' draw geometry replaced.
 #'
 #' @export JAGS_draw_geometry
 #' @export JAGS_draw_geometry_schema
 #' @export JAGS_materialize_draws
+#' @export JAGS_with_draws
 #' @name JAGS_draw_geometry
 NULL
 
@@ -92,7 +99,7 @@ JAGS_materialize_draws <- function(fit, parameters = NULL,
     if(anyDuplicated(parameters)){
       stop("'parameters' must not contain duplicates.", call. = FALSE)
     }
-    matches <- match(parameters, registry$canonical_name)
+    matches <- match(parameters, registry$coordinate_name)
     if(anyNA(matches)){
       stop(
         "Unknown registry parameter",
@@ -133,12 +140,12 @@ JAGS_materialize_draws <- function(fit, parameters = NULL,
       numeric(nrow(chain) * nrow(selected_registry)),
       nrow = nrow(chain),
       ncol = nrow(selected_registry),
-      dimnames = list(NULL, selected_registry$canonical_name)
+      dimnames = list(NULL, selected_registry$coordinate_name)
     )
     for(parameter_i in seq_len(nrow(selected_registry))){
       registry_row <- selected_registry[parameter_i, , drop = FALSE]
       if(identical(registry_row$monitor_status, "sampled")){
-        column <- match(registry_row$canonical_name, colnames(chain))
+        column <- match(registry_row$coordinate_name, colnames(chain))
         if(is.na(column)){
           stop(
             "A sampled registry coordinate is missing from the fitted chains. Refit the model with this version of BayesTools.",
@@ -158,6 +165,20 @@ JAGS_materialize_draws <- function(fit, parameters = NULL,
     )
   }
   coda::mcmc.list(out)
+}
+
+#' @rdname JAGS_draw_geometry
+JAGS_with_draws <- function(fit, draws){
+
+  if(!inherits(fit, "BayesTools_fit")){
+    stop("'fit' must be a 'BayesTools_fit' object.", call. = FALSE)
+  }
+  draws <- coda::as.mcmc.list(draws)
+  if(is.null(fit[["mcmc"]])){
+    stop("'fit' has no replaceable 'mcmc' component.", call. = FALSE)
+  }
+  fit[["mcmc"]] <- draws
+  .bt_attach_draw_geometry(fit)
 }
 
 .bt_draw_geometry_from_chains <- function(chains){

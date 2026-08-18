@@ -49,7 +49,7 @@ generated <- JAGS_formula(
   prior_list = list(intercept = prior("normal", list(0, 1))),
   prior_random = prior_random(
     sd = prior("point", list(location = 1)),
-    rho = prior("normal", list(0, 0.5))
+    cor = prior("normal", list(0, 0.5))
   )
 )
 random_term <- generated$formula_design$random_effects[[1]]

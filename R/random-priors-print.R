@@ -110,21 +110,22 @@
       .bt_format_random_print_prior(x$sd, digits_estimates)
     ))
   }
-  if(!is.null(x$cor)){
+  if(!is.null(x$cor) && inherits(x$cor, "prior_lkj")){
     lines <- c(lines, .bt_format_random_prior_equation(
       "R",
       .bt_format_prior_lkj_distribution(x$cor, digits_estimates)
     ))
   }
-  if(!is.null(x$rho)){
+  if(!is.null(x$cor) && !inherits(x$cor, "prior_lkj")){
     lines <- c(lines, .bt_format_random_prior_equation(
-      "rho",
-      .bt_format_random_print_prior(x$rho, digits_estimates)
+      "cor",
+      .bt_format_random_print_prior(x$cor, digits_estimates)
     ))
   }
   explicit_fields <- attr(x, "explicit_fields", exact = TRUE)
-  if(!is.null(x$rho) || "rho_scale" %in% explicit_fields){
-    lines <- c(lines, paste0("rho_scale: ", x$rho_scale))
+  if((!is.null(x$cor) && !inherits(x$cor, "prior_lkj")) ||
+     "cor_scale" %in% explicit_fields){
+    lines <- c(lines, paste0("cor_scale: ", x$cor_scale))
   }
 
   if(length(header) > 0L){
@@ -294,7 +295,11 @@
 .bt_format_random_allocation_source_name <- function(x){
 
   if(is.null(x$parent)){
-    return("sigma_total")
+    role <- if(identical(
+      .bt_random_variance_allocation_scale(x),
+      "mean_variance"
+    )) "common" else "total"
+    return(paste0("sigma_", role))
   }
 
   .bt_format_random_sigma_name(x$parent$component)
@@ -388,12 +393,12 @@
   if(is.null(x$parent)){
     if(!is.null(x$sd)){
       lines <- c(lines, .bt_format_random_prior_equation(
-        "sigma_total",
+        .bt_format_random_allocation_source_name(x),
         .bt_format_random_print_prior(x$sd, digits_estimates)
       ))
     }else if(!is.null(x$sd_source)){
       lines <- c(lines, .bt_format_random_prior_equation(
-        "sigma_total",
+        .bt_format_random_allocation_source_name(x),
         .bt_random_sd_source_label(x$sd_source),
         operator = "="
       ))

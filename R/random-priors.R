@@ -37,44 +37,60 @@
 #'
 #' @section Covariance structures:
 #' `random_covariance()` stores structure-specific covariance settings.
-#' Supported structure labels are:
+#' The formula owns the structure and its design. ID, DIAG, and US/UN operate
+#' on generated random-coefficient columns; CS/HCS, AR1/HAR, and CAR operate on
+#' structure-owned indices. Supported structure labels are:
 #'
 #' * `"ID"`: independent columns with one shared SD.
 #' * `"DIAG"`: independent columns with one SD per generated column.
 #' * `"CS"` / `"HCS"`: compound symmetry over one or more index variables,
-#'   with one scalar correlation `rho`; `"HCS"` has one SD per index level.
+#'   with one scalar correlation; `"HCS"` has one SD per index level.
 #'   Multiple index variables in `cs(index1 + index2 | group)` are combined
 #'   with `interaction(..., drop = TRUE)`.
 #' * `"AR"` / `"AR1"` / `"HAR"`: discrete autoregressive structure over a
-#'   single ordered index variable, with one scalar correlation `rho`; `"HAR"`
+#'   single ordered index variable, with one scalar correlation; `"HAR"`
 #'   has one SD per index level.
 #' * `"CAR"`: continuous-time AR(1), currently for `car(time | group)`,
-#'   using `rho ^ abs(t_i - t_j)` with `0 <= rho < 1`.
+#'   using `cor ^ abs(t_i - t_j)` with `0 <= cor < 1`.
 #' * `"UN"` / `"US"`: unstructured covariance with SD priors and `prior_lkj()`.
+#'
+#' ID/DIAG/US formulas use random-intercept controls on their left side. Factor
+#' coding is resolved separately and can be set explicitly with
+#' `random_block(contrasts = ...)`. The structured index families reject that
+#' contrast override and reject explicit `1`, `0`, or `-1` terms. HCS is not an
+#' alias for US: HCS has one common pairwise correlation, whereas US estimates
+#' an unrestricted correlation matrix among coefficient columns.
 #'
 #' The formula parser owns the actual structure used by a block. Supplying a
 #' conflicting `structure` in `random_covariance()` is rejected when the formula
 #' is resolved.
 #'
 #' @section Correlation priors:
-#' Use `prior_lkj(eta = ...)` for full unstructured correlation matrices. LKJ
-#' priors use the BayesTools compiled JAGS module.
+#' Use `prior_lkj(eta = ...)` for full unstructured correlation matrices. When
+#' `cor` is omitted, an unstructured block receives `prior_lkj(eta = 1)` after
+#' its dimension is known. LKJ priors use the BayesTools compiled JAGS module.
 #'
-#' Use `rho` for scalar-correlation structures (`"CS"`, `"HCS"`, `"AR"`,
-#' `"HAR"`, and `"CAR"`). `rho_scale` controls the scale on which the prior is
-#' placed:
+#' Use an ordinary scalar prior in `cor` for scalar-correlation structures
+#' (`"CS"`, `"HCS"`, `"AR"`, `"HAR"`, and `"CAR"`). When `cor` is omitted,
+#' BayesTools places a uniform
+#' prior directly on the complete valid raw-correlation interval:
+#' `(-1 / (K - 1), 1)` for CS/HCS, `(-1, 1)` for AR/HAR, and `(0, 1)` for CAR.
+#' Here `K` is the resolved number of index levels. Thus the default does not
+#' silently exclude negative correlations wherever the structure permits them.
+#' `cor_scale` controls the scale of an explicitly supplied scalar `cor` prior:
 #'
-#' * `"fisher_z"` places the prior on `atanh(rho)` and is the default. A point
-#'   prior at zero corresponds to independence. For one-sided structures such
-#'   as `"CAR"`, the Fisher-z prior is truncated to the valid raw-rho interval.
-#' * `"logit"` places the prior on a logit transform of the valid raw-rho
+#' * `"fisher_z"` places the prior on `atanh(cor)` and is the default for an
+#'   explicit scalar `cor` prior. A point prior at zero corresponds to independence.
+#'   For one-sided structures such as `"CAR"`, the Fisher-z prior is truncated
+#'   to the valid raw-correlation interval.
+#' * `"logit"` places the prior on a logit transform of the valid raw-correlation
 #'   interval.
-#' * `"rho"` places the prior directly on raw `rho`; the prior is truncated to
+#' * `"cor"` places the prior directly on the raw correlation; the prior is truncated to
 #'   the structure-specific valid interval.
 #'
 #' @section Variance allocation:
-#' `random_variance_allocation()` expresses one total SD source plus a Dirichlet
-#' prior over variance fractions. Root allocations must specify exactly one of
+#' `random_variance_allocation()` expresses one aggregate SD source plus a Dirichlet
+#' prior over variance proportions. Root allocations must specify exactly one of
 #' a prior-owned `sd` prior or `sd_source = random_sd_source(...)`.
 #' `sd_source` can reference an already-defined JAGS node such as scalar `tau`
 #' or row-shaped `tau` without creating a prior for that node. Multiple named
@@ -82,8 +98,21 @@
 #' `prior_random()`; child allocations can inherit one component of an earlier
 #' allocation through `parent = allocation_ref(...)`.
 #'
+#' With `scale = "total_variance"`, the aggregate SD preserves summed
+#' component variance:
 #' \deqn{\sigma_j = \sigma_{\mathrm{total}}\sqrt{w_j}, \quad
 #'       w \sim \mathrm{Dirichlet}(\alpha).}
+#' Its public aggregate names are `sd_total` and `var_total`, and its component
+#' weights are exposed as `var_prop(...)`.
+#'
+#' With `scale = "mean_variance"`, the aggregate SD preserves mean component
+#' variance:
+#' \deqn{\sigma_j = \sigma_{\mathrm{common}}\sqrt{K w_j}, \quad
+#'       w \sim \mathrm{Dirichlet}(\alpha).}
+#' Its public aggregate names are `sd_common` and `var_common`, and its
+#' components are exposed as `var_ratio(...)` and `sd_ratio(...)`. Thus
+#' `sd_common` is the shared variance-scale anchor before the component ratios
+#' are applied; it is not a sum of SDs.
 #'
 #' This is useful for nested or crossed random intercepts when the prior should
 #' control total heterogeneity separately from how that heterogeneity is
@@ -141,9 +170,8 @@
 #' @param sd prior distribution for random-effect standard deviations.
 #' @param covariance optional `random_covariance()` specification.
 #' @param cor optional correlation prior. Use `prior_lkj()` for unstructured
-#'   correlation matrices.
-#' @param rho optional scalar correlation prior for structured correlation
-#'   models. The default scale is Fisher's z.
+#'   correlation matrices and an ordinary scalar prior for structured
+#'   correlation models.
 #' @param monitor `random_monitor()` object.
 #' @param new_levels `random_new_levels()` object controlling prediction for
 #'   previously unseen grouping levels.
@@ -151,7 +179,7 @@
 #'   `"noncentered"`, `"centered"`, or `"auto"`. The top-level value is
 #'   inherited by blocks without an explicit `random_block()` override.
 #' @param allocation optional `random_variance_allocation()` specification, or
-#'   a list of such specifications, defining total-SD plus Dirichlet variance
+#'   a list of such specifications, defining aggregate-SD plus Dirichlet variance
 #'   allocation across named random-effect blocks.
 #' @param sd_source for `random_block()`, optional external random-effect SD
 #'   source created with `random_sd_source()`. A block-local `sd_source`
@@ -169,7 +197,7 @@
 #'   "normal", list(mean = 0, sd = 0.5),
 #'   truncation = list(lower = 0, upper = Inf)
 #' )
-#' rho_prior <- prior("normal", list(mean = 0, sd = 0.5))
+#' cor_prior <- prior("normal", list(mean = 0, sd = 0.5))
 #'
 #' # One SD prior used for every random-effect block.
 #' prior_random(sd = sd_prior)
@@ -180,33 +208,44 @@
 #'   study = random_block(sd = prior("gamma", list(shape = 2, rate = 2)))
 #' )
 #'
-#' # Unstructured covariance: SD prior plus LKJ correlation prior.
+#' # Unstructured covariance: omitted correlation resolves to LKJ(1).
 #' prior_random(
-#'   study = random_term(
-#'     covariance = random_covariance(
-#'       structure = "UN",
-#'       sd = sd_prior,
-#'       cor = prior_lkj(eta = 2)
-#'     )
-#'   )
+#'   study = random_block(sd = sd_prior)
 #' )
 #'
-#' # Scalar-rho structure with a Fisher-z prior.
+#' # Scalar-correlation structure with a Fisher-z prior.
 #' prior_random(
 #'   study_time = random_term(
 #'     covariance = random_covariance(
 #'       structure = "AR",
 #'       sd = sd_prior,
-#'       rho = rho_prior,
-#'       rho_scale = "fisher_z"
+#'       cor = cor_prior,
+#'       cor_scale = "fisher_z"
 #'     )
 #'   )
 #' )
 #'
-#' # Total SD plus Dirichlet variance allocation.
+#' # Total heterogeneity plus Dirichlet variance allocation. The allocation
+#' # name is the public semantic owner: heterogeneity: sd_total,
+#' # heterogeneity: var_prop(study), and heterogeneity: var_prop(outcome).
 #' prior_random(
 #'   random_variance_allocation(
-#'     terms = c("study", "drug"),
+#'     name = "heterogeneity",
+#'     terms = c(study = "study", outcome = "outcome"),
+#'     sd = sd_prior,
+#'     weights = prior("dirichlet", list(alpha = c(1, 1)))
+#'   )
+#' )
+#'
+#' # Allocate a block SD across its coefficient components. This exposes
+#' # study_components: sd_common, study_components: var_ratio(intercept), and
+#' # study_components: sd_ratio(intercept), with analogous names for slopes.
+#' prior_random(
+#'   random_variance_allocation(
+#'     name = "study_components",
+#'     terms = "study",
+#'     target = "sd_component",
+#'     scale = "mean_variance",
 #'     sd = sd_prior,
 #'     weights = prior("dirichlet", list(alpha = c(1, 1)))
 #'   )
@@ -229,7 +268,7 @@
 #' )
 #' @export
 prior_random <- function(..., sd = NULL, covariance = NULL, cor = NULL,
-                         rho = NULL, monitor = random_monitor(),
+                         monitor = random_monitor(),
                          new_levels = random_new_levels(),
                          allocation = NULL,
                          parameterization = "noncentered"){
@@ -251,11 +290,11 @@ prior_random <- function(..., sd = NULL, covariance = NULL, cor = NULL,
   .bt_check_random_sd_prior(sd, allow_NULL = TRUE)
 
   if(is.null(covariance)){
-    covariance <- random_covariance(cor = cor, rho = rho)
+    covariance <- random_covariance(cor = cor)
   }else{
     .bt_check_random_covariance(covariance)
-    if(!is.null(cor) || !is.null(rho)){
-      stop("'cor' and 'rho' cannot be supplied together with 'covariance'.", call. = FALSE)
+    if(!is.null(cor)){
+      stop("'cor' cannot be supplied together with 'covariance'.", call. = FALSE)
     }
   }
 
@@ -294,7 +333,7 @@ prior_random <- function(..., sd = NULL, covariance = NULL, cor = NULL,
 #'   the fixed-effect design. Correlation structures with a structure-defined
 #'   level basis do not accept this argument.
 #' @export
-random_block <- function(sd = NULL, covariance = NULL, cor = NULL, rho = NULL,
+random_block <- function(sd = NULL, covariance = NULL, cor = NULL,
                          monitor = NULL, new_levels = NULL, terms = NULL,
                          contrasts = NULL,
                          sd_source = NULL,
@@ -306,15 +345,15 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL, rho = NULL,
   contrasts <- .bt_random_contrasts_normalize(contrasts)
 
   if(is.null(covariance)){
-    covariance <- if(is.null(cor) && is.null(rho)){
+    covariance <- if(is.null(cor)){
       NULL
     }else{
-      random_covariance(cor = cor, rho = rho)
+      random_covariance(cor = cor)
     }
   }else{
     .bt_check_random_covariance(covariance)
-    if(!is.null(cor) || !is.null(rho)){
-      stop("'cor' and 'rho' cannot be supplied together with 'covariance'.", call. = FALSE)
+    if(!is.null(cor)){
+      stop("'cor' cannot be supplied together with 'covariance'.", call. = FALSE)
     }
   }
   covariance_sd <- if(!is.null(covariance)) covariance$sd else NULL
@@ -357,8 +396,9 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL, rho = NULL,
 random_term <- random_block
 
 #' @rdname prior_random
-#' @param name optional allocation label. Required when another allocation uses
-#'   this allocation as `parent`.
+#' @param name required allocation label and public semantic owner used in
+#'   parameter names such as `heterogeneity: sd_total` and
+#'   `heterogeneity: var_prop(study)`.
 #' @param parent optional `allocation_ref()` object selecting a component of an
 #'   earlier named allocation. Child allocations inherit that component's SD
 #'   budget and must not specify `sd` or `sd_source`.
@@ -370,7 +410,7 @@ random_term <- random_block
 #'   `sd_child = sd_parent * sqrt(w)`. `"mean_variance"` uses
 #'   `sd_child = sd_parent * sqrt(K * w)` and is intended for
 #'   `target = "sd_component"` heterogeneity tests.
-#'   Summaries report `w` as a variance fraction for `"total_variance"` and
+#'   Summaries report `w` as a variance proportion for `"total_variance"` and
 #'   `K * w` as a variance ratio to the average SD-component variance for
 #'   `"mean_variance"`.
 #' @param weights optional Dirichlet simplex prior over allocation weights.
@@ -379,9 +419,8 @@ random_term <- random_block
 #'   receives an independent Bernoulli gate and its SD contribution is multiplied
 #'   by that gate. Gate names must match resolved allocation component labels.
 #' @export
-random_variance_allocation <- function(terms = NULL, sd = NULL,
+random_variance_allocation <- function(name, terms = NULL, sd = NULL,
                                        weights = NULL,
-                                       name = NULL,
                                        parent = NULL,
                                        target = c("block", "sd_component"),
                                        scale = c("total_variance", "mean_variance"),
@@ -434,14 +473,12 @@ random_variance_allocation <- function(terms = NULL, sd = NULL,
     .bt_check_random_allocation_prior(weights)
   }
   .bt_check_random_allocation_inclusion(inclusion)
-  check_char(name, "name", allow_NULL = TRUE, allow_NA = FALSE)
-  if(!is.null(name)){
-    .bt_validate_random_effect_reserved_name(
-      name,
-      context = "variance allocation labels"
-    )
-  }
-  if(!is.null(name) && !grepl("^[A-Za-z][A-Za-z0-9_]*$", name)){
+  check_char(name, "name", allow_NA = FALSE)
+  .bt_validate_random_effect_reserved_name(
+    name,
+    context = "variance allocation labels"
+  )
+  if(!grepl("^[A-Za-z][A-Za-z0-9_]*$", name)){
     stop("'name' must start with a letter and contain only letters, numbers, and underscores.", call. = FALSE)
   }
 
@@ -505,31 +542,30 @@ allocation_ref <- function(allocation_name, component){
 #' @param eta LKJ concentration parameter used when `cor` is omitted for
 #'   unstructured covariance. Values above one regularize correlations toward
 #'   zero; `eta = 1` is uniform over correlation matrices.
-#' @param rho_scale scale for scalar correlation priors. `"fisher_z"` is the
-#'   default, `"logit"` uses a logit transform of the valid raw-rho interval,
-#'   and `"rho"` uses the raw correlation parameter.
+#' @param cor_scale scale for an explicitly supplied scalar correlation prior.
+#'   `"fisher_z"` is the default, `"logit"` uses a logit transform of the valid
+#'   raw-correlation interval, and `"cor"` uses the raw correlation parameter.
+#'   When `cor` is omitted, the resolved default is uniform on the raw
+#'   correlation scale; explicitly requesting another scale without supplying
+#'   `cor` is an error.
 #' @export
 random_covariance <- function(structure = NULL, sd = NULL, cor = NULL,
-                              rho = NULL, eta = NULL,
-                              rho_scale = c("fisher_z", "rho", "logit")){
+                              eta = NULL,
+                              cor_scale = c("fisher_z", "cor", "logit")){
 
   explicit_fields <- character()
   if(!missing(structure)) explicit_fields <- c(explicit_fields, "structure")
   if(!missing(sd)) explicit_fields <- c(explicit_fields, "sd")
   if(!missing(cor)) explicit_fields <- c(explicit_fields, "cor")
-  if(!missing(rho)) explicit_fields <- c(explicit_fields, "rho")
-  if(!missing(rho_scale)) explicit_fields <- c(explicit_fields, "rho_scale")
+  if(!missing(cor_scale)) explicit_fields <- c(explicit_fields, "cor_scale")
   if(!missing(eta) && !is.null(eta)) explicit_fields <- c(explicit_fields, "cor")
 
-  rho_scale <- match.arg(rho_scale)
+  cor_scale <- match.arg(cor_scale)
   .bt_check_random_sd_prior(sd, allow_NULL = TRUE)
 
-  if(!is.null(cor) && !is.null(rho)){
-    stop("'cor' and 'rho' cannot both be supplied.", call. = FALSE)
-  }
   if(!is.null(eta)){
-    if(!is.null(cor) || !is.null(rho)){
-      stop("'eta' cannot be supplied together with explicit 'cor' or 'rho'.", call. = FALSE)
+    if(!is.null(cor)){
+      stop("'eta' cannot be supplied together with explicit 'cor'.", call. = FALSE)
     }
     check_real(eta, "eta", lower = 0, allow_bound = FALSE, allow_NA = FALSE)
     if(!is.finite(eta)){
@@ -540,10 +576,10 @@ random_covariance <- function(structure = NULL, sd = NULL, cor = NULL,
     }
   }
   if(!is.null(cor)){
-    .bt_check_random_cor_prior(cor)
-  }
-  if(!is.null(rho)){
-    .bt_check_random_rho_prior(rho)
+    .bt_check_random_correlation_prior(cor)
+    if(inherits(cor, "prior_lkj") && "cor_scale" %in% explicit_fields){
+      stop("'cor_scale' applies only to scalar correlation priors.", call. = FALSE)
+    }
   }
   if(!is.null(structure)){
     check_char(structure, "structure", allow_NA = FALSE)
@@ -554,8 +590,7 @@ random_covariance <- function(structure = NULL, sd = NULL, cor = NULL,
     structure = structure,
     sd        = sd,
     cor       = cor,
-    rho       = rho,
-    rho_scale = rho_scale
+    cor_scale = cor_scale
   )
   class(out) <- c("random_covariance", "list")
   attr(out, "explicit_fields") <- unique(explicit_fields)
@@ -822,19 +857,14 @@ is.prior_random <- function(x){
   invisible(TRUE)
 }
 
-.bt_check_random_cor_prior <- function(x){
+.bt_check_random_correlation_prior <- function(x){
 
-  if(!inherits(x, "prior_lkj")){
-    stop("Correlation priors currently must be created with prior_lkj().", call. = FALSE)
+  if(inherits(x, "prior_lkj")){
+    return(invisible(TRUE))
   }
 
-  invisible(TRUE)
-}
-
-.bt_check_random_rho_prior <- function(x){
-
   if(!is.prior(x)){
-    stop("Scalar correlation priors must be prior objects.", call. = FALSE)
+    stop("'cor' must be a scalar prior or prior_lkj().", call. = FALSE)
   }
   if(is.prior.none(x)){
     stop("Scalar correlation priors cannot use prior_none().", call. = FALSE)
@@ -989,6 +1019,14 @@ is.prior_random <- function(x){
 
   if(!inherits(allocation, "random_variance_allocation")){
     stop("'allocation' entries must be created with random_variance_allocation().", call. = FALSE)
+  }
+  check_char(allocation$name, "name", allow_NA = FALSE)
+  .bt_validate_random_effect_reserved_name(
+    allocation$name,
+    context = "variance allocation labels"
+  )
+  if(!grepl("^[A-Za-z][A-Za-z0-9_]*$", allocation$name)){
+    stop("'name' must start with a letter and contain only letters, numbers, and underscores.", call. = FALSE)
   }
   target <- allocation$target
   scale <- allocation$scale
@@ -1315,6 +1353,9 @@ is.prior_random <- function(x){
   if(is.null(cor_prior)){
     cor_prior <- prior_lkj(eta = 1)
   }
+  if(!inherits(cor_prior, "prior_lkj")){
+    stop("Unstructured random effects require 'cor = prior_lkj(...)'.", call. = FALSE)
+  }
 
   cor_prior
 }
@@ -1326,19 +1367,13 @@ is.prior_random <- function(x){
 
   out <- base
   override_fields <- .bt_random_covariance_explicit_fields(override)
-  for(field in c("structure", "sd", "cor", "rho")){
+  for(field in c("structure", "sd", "cor")){
     if(!is.null(override[[field]])){
       out[[field]] <- override[[field]]
     }
   }
-  if("rho_scale" %in% override_fields){
-    out$rho_scale <- override$rho_scale
-  }
-  if(!is.null(override$rho)){
-    out["cor"] <- list(NULL)
-  }
-  if(!is.null(override$cor)){
-    out["rho"] <- list(NULL)
+  if("cor_scale" %in% override_fields){
+    out$cor_scale <- override$cor_scale
   }
   if(!is.null(out$structure)){
     structure <- tolower(.bt_random_covariance_normalize(out$structure))
@@ -1348,11 +1383,6 @@ is.prior_random <- function(x){
       structure = structure
     )
     if(.bt_random_structure_uses_no_correlation(structure)){
-      out["cor"] <- list(NULL)
-      out["rho"] <- list(NULL)
-    }else if(.bt_random_structure_uses_lkj(structure)){
-      out["rho"] <- list(NULL)
-    }else if(.bt_random_structure_uses_scalar_rho(structure)){
       out["cor"] <- list(NULL)
     }
   }
@@ -1372,20 +1402,14 @@ is.prior_random <- function(x){
   if(.bt_random_structure_uses_no_correlation(structure)){
     if("cor" %in% override_fields && !is.null(override$cor)){
       stop(
-        "Block covariance override supplies an LKJ correlation prior, but structure '",
-        structure, "' has no correlation parameter.",
-        call. = FALSE
-      )
-    }
-    if("rho" %in% override_fields && !is.null(override$rho)){
-      stop(
-        "Block covariance override supplies a scalar correlation prior, but structure '",
+        "Block covariance override supplies a correlation prior, but structure '",
         structure, "' has no correlation parameter.",
         call. = FALSE
       )
     }
   }else if(.bt_random_structure_uses_lkj(structure)){
-    if("rho" %in% override_fields && !is.null(override$rho)){
+    if("cor" %in% override_fields && !is.null(override$cor) &&
+       !inherits(override$cor, "prior_lkj")){
       stop(
         "Block covariance override supplies a scalar correlation prior, but structure '",
         structure, "' uses an LKJ correlation prior.",
@@ -1393,7 +1417,8 @@ is.prior_random <- function(x){
       )
     }
   }else if(.bt_random_structure_uses_scalar_rho(structure)){
-    if("cor" %in% override_fields && !is.null(override$cor)){
+    if("cor" %in% override_fields && !is.null(override$cor) &&
+       inherits(override$cor, "prior_lkj")){
       stop(
         "Block covariance override supplies an LKJ correlation prior, but structure '",
         structure, "' uses a scalar correlation prior.",
@@ -1409,9 +1434,9 @@ is.prior_random <- function(x){
 
   fields <- attr(x, "explicit_fields")
   if(is.null(fields)){
-    fields <- setdiff(names(x)[!vapply(x, is.null, logical(1))], "rho_scale")
-    if(!is.null(x$rho)){
-      fields <- c(fields, "rho_scale")
+    fields <- setdiff(names(x)[!vapply(x, is.null, logical(1))], "cor_scale")
+    if(!is.null(x$cor) && !inherits(x$cor, "prior_lkj")){
+      fields <- c(fields, "cor_scale")
     }
   }
 
@@ -1443,20 +1468,13 @@ is.prior_random <- function(x){
   if(.bt_random_structure_uses_no_correlation(structure)){
     if(!is.null(covariance$cor)){
       stop(
-        label, " supplies an LKJ correlation prior, but structure '",
-        structure, "' has no correlation parameter.",
-        call. = FALSE
-      )
-    }
-    if(!is.null(covariance$rho)){
-      stop(
-        label, " supplies a scalar correlation prior, but structure '",
+        label, " supplies a correlation prior, but structure '",
         structure, "' has no correlation parameter.",
         call. = FALSE
       )
     }
   }else if(.bt_random_structure_uses_lkj(structure)){
-    if(!is.null(covariance$rho)){
+    if(!is.null(covariance$cor) && !inherits(covariance$cor, "prior_lkj")){
       stop(
         label, " supplies a scalar correlation prior, but structure '",
         structure, "' uses an LKJ correlation prior.",
@@ -1464,7 +1482,7 @@ is.prior_random <- function(x){
       )
     }
   }else if(.bt_random_structure_uses_scalar_rho(structure)){
-    if(!is.null(covariance$cor)){
+    if(!is.null(covariance$cor) && inherits(covariance$cor, "prior_lkj")){
       stop(
         label, " supplies an LKJ correlation prior, but structure '",
         structure, "' uses a scalar correlation prior.",

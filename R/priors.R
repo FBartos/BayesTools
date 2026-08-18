@@ -240,11 +240,20 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
 #'   \item{\code{"treatment"}}{for contrasts using the first level as a comparison
 #'   group and setting equal prior distribution on differences between the individual
 #'   factor levels and the comparison level.}
-#'   \item{\code{"independent"}}{for contrasts specifying dependent prior distribution
-#'   for each factor level (note that this leads to an overparameterized model if the
-#'   intercept is included).}
+#'   \item{\code{"independent"}}{for one independently regularized coefficient
+#'   per factor level. With a free intercept, this coefficient design is
+#'   likelihood-rank-deficient and its separation is prior-dependent. In a
+#'   BayesTools formula with `0 + factor` or `factor - 1`, the intercept is
+#'   instead fixed structurally at zero, so the level coefficients are
+#'   identified directly.}
 #' }
 #'
+#' @details
+#' The factor prior owns the contrast family. BayesTools does not change that
+#' family merely because the formula includes or removes an intercept. In
+#' particular, `~ 0 + factor` represents a point-zero intercept and the
+#' contrast selected here; it requests one coefficient per level only when
+#' `contrast = "independent"`.
 #'
 #' @examples
 #' # create an orthonormal prior distribution
@@ -255,7 +264,7 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
 #'
 #' @inheritParams prior
 #' @export  prior_factor
-#' @seealso [prior()]
+#' @seealso [prior()], [JAGS_formula()]
 prior_factor <- function(distribution, parameters, truncation = list(lower = -Inf, upper = Inf), prior_weights = 1, contrast = "meandif"){
 
   # general input check (detailed checks are performed withing the constructors)

@@ -102,41 +102,63 @@
     invisible(NULL)
   }
 
-  for(prior_name in names(prior_list)){
-    prior <- prior_list[[prior_name]]
-    if(isTRUE(attr(prior, "random_sd_total"))){
-      allocation <- attr(prior, "random_allocation")
-      values <- .bt_random_effect_parameter_draws(prior_name, model_samples, prior_list)
-      if(is.null(values)){
-        .bt_random_effect_summary_missing_sd_total_stop(allocation)
-      }
-      add_summary(
-        name = .bt_random_effect_summary_name(
-          parameter = attr(prior, "parameter"),
-          type = "sd_total",
-          parts = allocation
-        ),
-        values = values,
-        parameter = attr(prior, "parameter"),
-        type = "sd_total",
-        label = paste0("sd_total(", allocation, ")"),
-        allocation = allocation
-      )
-    }
-  }
-
   seen_allocations <- character()
   add_allocation_summary <- function(allocation, parameter, block = NULL,
                                      grouping = NULL, random_term = NULL){
     if(is.null(allocation) || allocation$weight_name %in% seen_allocations){
       return(invisible(NULL))
     }
+    scale_values <- .bt_random_effect_summary_allocation_scale_samples(
+      allocation = allocation,
+      model_samples = model_samples,
+      prior_list = prior_list
+    )
+    if(!is.null(scale_values)){
+      sd_quantity <- .bt_random_effect_allocation_sd_quantity(allocation)
+      add_summary(
+        name = .bt_random_effect_summary_name(
+          parameter = parameter,
+          type = sd_quantity,
+          parts = allocation$label
+        ),
+        values = scale_values,
+        parameter = parameter,
+        type = sd_quantity,
+        label = .bt_random_effect_semantic_name(
+          parameter = "",
+          owner = allocation$label,
+          quantity = sd_quantity,
+          formula_prefix = FALSE
+        ),
+        allocation = allocation$label,
+        allocation_metadata = allocation
+      )
+      var_quantity <- .bt_random_effect_allocation_var_quantity(allocation)
+      add_summary(
+        name = .bt_random_effect_summary_name(
+          parameter = parameter,
+          type = var_quantity,
+          parts = allocation$label
+        ),
+        values = scale_values^2,
+        parameter = parameter,
+        type = var_quantity,
+        label = .bt_random_effect_semantic_name(
+          parameter = "",
+          owner = allocation$label,
+          quantity = var_quantity,
+          formula_prefix = FALSE
+        ),
+        allocation = allocation$label,
+        allocation_metadata = allocation
+      )
+    }
     allocation_summary <- .bt_random_effect_summary_allocation_samples(
       allocation = allocation,
       random_term = random_term,
       model_samples = model_samples,
       prior_list = prior_list,
-      include_multipliers = identical(mode, "full")
+      include_multipliers = mode %in% c("standard", "full")
     )
     allocation_target <- .bt_random_effect_summary_allocation_target(allocation)
     for(i in seq_along(allocation_summary$names)){
@@ -146,7 +168,7 @@
         parameter = parameter,
         type = allocation_summary$types[i],
         label = allocation_summary$labels[i],
-        component_label = allocation_summary$labels[i],
+        component_label = NULL,
         block = if(identical(allocation_target, "sd_component")) block else NULL,
         grouping = if(identical(allocation_target, "sd_component")) grouping else NULL,
         structure = if(identical(allocation_target, "sd_component") && !is.null(random_term)) {
@@ -203,6 +225,7 @@
         formula_scale = formula_scale
       )
       for(i in seq_along(sd_summary$names)){
+        sd_quantity <- .bt_random_effect_semantic_sd_quantity(random_term)
         add_summary(
           name = .bt_random_effect_summary_name(
             parameter = parameter,
@@ -211,7 +234,7 @@
           ),
           values = sd_summary$values[, i],
           parameter = parameter,
-          type = "sd",
+          type = sd_quantity,
           label = .bt_random_effect_sd_summary_label(
             component = sd_summary$components[i],
             group = display_group,
@@ -227,6 +250,37 @@
           effect_label = .bt_random_effect_public_name(random_term),
           component = sd_summary$components[i]
         )
+        if(identical(sd_quantity, "sd_ratio")){
+          arguments <- .bt_random_effect_semantic_sd_arguments(
+            sd_summary$components[i]
+          )
+          add_summary(
+            name = .bt_random_effect_summary_name(
+              parameter = parameter,
+              type = "var_ratio",
+              parts = c(random_term$block_name, sd_summary$components[i])
+            ),
+            values = sd_summary$values[, i]^2,
+            parameter = parameter,
+            type = "var_ratio",
+            label = .bt_random_effect_semantic_name(
+              parameter = "",
+              owner = .bt_random_effect_public_name(random_term),
+              quantity = "var_ratio",
+              arguments = arguments,
+              formula_prefix = FALSE
+            ),
+            component_label = .bt_random_effect_semantic_quantity_name(
+              "var_ratio",
+              arguments
+            ),
+            block = random_term$block_name,
+            grouping = random_term$group_label,
+            structure = display_structure,
+            effect_label = .bt_random_effect_public_name(random_term),
+            component = sd_summary$components[i]
+          )
+        }
       }
 
       inclusion_summary <- .bt_random_effect_summary_inclusion_samples(
@@ -256,14 +310,19 @@
         add_summary(
           name = .bt_random_effect_summary_name(
             parameter = parameter,
-            type = "rho",
+            type = "cor",
             parts = random_term$block_name
           ),
           values = rho,
           parameter = parameter,
-          type = "rho",
-          label = paste0("rho(", display_group, ")"),
-          component_label = "rho",
+          type = "cor",
+          label = .bt_random_effect_semantic_name(
+            parameter = "",
+            owner = .bt_random_effect_public_name(random_term),
+            quantity = "cor",
+            formula_prefix = FALSE
+          ),
+          component_label = "cor",
           block = random_term$block_name,
           grouping = random_term$group_label,
           structure = display_structure,
@@ -285,7 +344,13 @@
           values = correlation_summary$values[, i],
           parameter = parameter,
           type = "cor",
-          label = paste0("cor(", correlation_summary$labels[i], " | ", display_group, ")"),
+          label = .bt_random_effect_semantic_name(
+            parameter = "",
+            owner = .bt_random_effect_public_name(random_term),
+            quantity = "cor",
+            arguments = correlation_summary$parts[[i]],
+            formula_prefix = FALSE
+          ),
           component_label = paste0("cor(", correlation_summary$labels[i], ")"),
           block = random_term$block_name,
           grouping = random_term$group_label,
@@ -351,9 +416,9 @@
     "random_allocation"
   )
   is_allocation_summary <- summary_type %in% c(
-    "var_frac",
+    "var_prop",
     "var_ratio",
-    "sd_multiplier"
+    "sd_ratio"
   ) | (summary_type == "inclusion" & nzchar(summary_allocation))
   used <- stats::setNames(rep(FALSE, length(parameter_names)), parameter_names)
   ordered <- character()
@@ -375,17 +440,18 @@
     for(allocation in design$random_allocations){
       add_matches(
         parameter_match &
-          summary_type == "sd_total" &
+          summary_type %in% c("sd_total", "var_total", "sd_common", "var_common") &
           summary_allocation == allocation$label
       )
     }
-    add_matches(parameter_match & summary_type == "sd_total")
+    add_matches(parameter_match & summary_type %in%
+      c("sd_total", "var_total", "sd_common", "var_common"))
 
     for(random_term in design$random_effects){
       add_matches(
         parameter_match &
           !is_allocation_summary &
-          summary_type != "sd_total" &
+          !summary_type %in% c("sd_total", "var_total", "sd_common", "var_common") &
           .bt_random_effect_summary_column_matches_term(
             summary_priors,
             random_term
@@ -396,7 +462,7 @@
     add_matches(
       parameter_match &
         !is_allocation_summary &
-        summary_type != "sd_total"
+        !summary_type %in% c("sd_total", "var_total", "sd_common", "var_common")
     )
     for(allocation in design$random_allocations){
       add_matches(

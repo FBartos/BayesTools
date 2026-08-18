@@ -8,17 +8,17 @@
   }
 
   raw_sd <- isTRUE(attr(prior, "random_sd"))
-  raw_sd_total <- isTRUE(attr(prior, "random_sd_total"))
+  raw_allocation_sd <- isTRUE(attr(prior, "random_allocation_sd"))
   raw_correlation <- isTRUE(attr(prior, "random_correlation"))
   allocation <- !is.null(attr(prior, "random_allocation"))
   raw <- identical(summary_type, "") &&
-    (raw_sd || raw_sd_total || raw_correlation || allocation)
+    (raw_sd || raw_allocation_sd || raw_correlation || allocation)
 
   list(
     summary = summary_type,
     allocation = allocation,
     raw_sd = raw_sd,
-    raw_sd_total = raw_sd_total,
+    raw_allocation_sd = raw_allocation_sd,
     raw_correlation = raw_correlation,
     raw = raw,
     any = !identical(summary_type, "") || raw
@@ -59,11 +59,13 @@
   prior
 }
 
-.bt_random_effect_set_total_sd_metadata <- function(prior, allocation, terms){
+.bt_random_effect_set_allocation_sd_metadata <- function(prior, allocation,
+                                                         terms, scale){
 
-  attr(prior, "random_sd_total") <- TRUE
+  attr(prior, "random_allocation_sd") <- TRUE
   attr(prior, "random_allocation") <- allocation
   attr(prior, "random_allocation_terms") <- terms
+  attr(prior, "random_allocation_scale") <- scale
 
   prior
 }
@@ -92,7 +94,7 @@
       structure = character(),
       allocation = logical(),
       raw_sd = logical(),
-      raw_sd_total = logical(),
+      raw_allocation_sd = logical(),
       raw_correlation = logical(),
       raw = logical(),
       any = logical()
@@ -113,7 +115,7 @@
     structure = vapply(prior_list, .bt_random_effect_prior_structure, character(1)),
     allocation = vapply(metadata, `[[`, logical(1), "allocation"),
     raw_sd = vapply(metadata, `[[`, logical(1), "raw_sd"),
-    raw_sd_total = vapply(metadata, `[[`, logical(1), "raw_sd_total"),
+    raw_allocation_sd = vapply(metadata, `[[`, logical(1), "raw_allocation_sd"),
     raw_correlation = vapply(metadata, `[[`, logical(1), "raw_correlation"),
     raw = vapply(metadata, `[[`, logical(1), "raw"),
     any = vapply(metadata, `[[`, logical(1), "any"),
@@ -133,8 +135,7 @@
 
 .bt_random_effect_public_name <- function(random_term){
 
-  if(isTRUE(random_term$has_explicit_name) &&
-     !is.null(random_term$block_name) &&
+  if(!is.null(random_term$block_name) &&
      length(random_term$block_name) == 1L &&
      nzchar(random_term$block_name)){
     return(random_term$block_name)
@@ -199,7 +200,7 @@
     return(character())
   }
 
-  random_sd <- flags$raw_sd | flags$raw_sd_total
+  random_sd <- flags$raw_sd | flags$raw_allocation_sd
   random_rho <- flags$raw_correlation
   is_dirichlet_allocation <- flags$summary == "" &
     flags$allocation &
@@ -209,15 +210,17 @@
     alias,
     "random" = flags$any,
     "random_effects" = flags$any,
-    "random_sd" = flags$summary %in% c("sd", "sd_total") | random_sd,
-    "random_rho" = flags$summary == "rho" | random_rho,
-    "random_cor" = flags$summary %in% c("rho", "cor") | random_rho,
-    "random_correlation" = flags$summary %in% c("rho", "cor") | random_rho,
-    "random_variance_fraction" = flags$summary == "var_frac" | is_dirichlet_allocation,
+    "random_sd" = flags$summary %in% c("sd", "sd_total", "sd_common") | random_sd,
+    "random_cor" = flags$summary == "cor" | random_rho,
+    "random_correlation" = flags$summary == "cor" | random_rho,
+    "random_variance_proportion" = flags$summary == "var_prop" | is_dirichlet_allocation,
     "random_variance_ratio" = flags$summary == "var_ratio",
-    "random_allocation" = flags$summary %in% c("sd_total", "var_frac", "var_ratio", "sd_multiplier") |
+    "random_allocation" = flags$summary %in% c(
+      "sd_total", "var_total", "sd_common", "var_common",
+      "var_prop", "var_ratio", "sd_ratio"
+    ) |
       flags$allocation,
-    "random_sd_multiplier" = flags$summary == "sd_multiplier",
+    "random_sd_ratio" = flags$summary == "sd_ratio",
     rep(FALSE, nrow(flags))
   )
 

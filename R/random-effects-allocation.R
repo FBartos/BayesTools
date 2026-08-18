@@ -130,37 +130,21 @@
   invisible(TRUE)
 }
 
-.bt_random_variance_allocation_resolve_label <- function(allocation,
-                                                         allocation_i,
-                                                         allocations,
-                                                         terms){
+.bt_random_variance_allocation_resolve_label <- function(allocation){
 
   label <- allocation$name
-  allocation_names <- names(allocations)
-  if(is.null(label) && !is.null(allocation_names) &&
-     nzchar(allocation_names[allocation_i])){
-    label <- allocation_names[allocation_i]
-  }
-  if(is.null(label)){
-    label <- if(length(allocations) == 1L){
-      "allocation"
-    }else{
-      paste(terms, collapse = "_")
-    }
-  }
-
   .bt_random_variance_allocation_label(label)
 }
 
 .bt_random_variance_allocation_names <- function(parameter, label){
 
-  total_suffix <- paste0("_xRE_ALLOCx_", label, "__total_sd")
+  scale_suffix <- paste0("_xRE_ALLOCx_", label, "__allocation_sd")
   weight_suffix <- paste0("_xRE_ALLOCx_", label, "__weight")
 
   list(
-    total_suffix = total_suffix,
+    scale_suffix = scale_suffix,
     weight_suffix = weight_suffix,
-    total_name = paste0(parameter, "_", total_suffix),
+    scale_name = paste0(parameter, "_", scale_suffix),
     weight_name = paste0(parameter, "_", weight_suffix)
   )
 }
@@ -355,32 +339,33 @@
   if(!is.null(allocation$sd_source)){
     .bt_check_random_sd_source(allocation$sd_source)
     source <- allocation$sd_source
-    source$total_name <- source$name
-    source$total_suffix <- NULL
+    source$scale_name <- source$name
+    source$scale_suffix <- NULL
     return(source)
   }
 
   total_prior <- .bt_random_effect_force_nonnegative_prior(
     prior = allocation$sd,
-    name = paste0("variance allocation '", label, "' total SD")
+    name = paste0("variance allocation '", label, "' aggregate SD")
   )
   .bt_random_effect_check_scalar_sd_prior(
     total_prior,
-    paste0("variance allocation '", label, "' total SD")
+    paste0("variance allocation '", label, "' aggregate SD")
   )
-  total_prior <- .bt_random_effect_set_total_sd_metadata(
+  total_prior <- .bt_random_effect_set_allocation_sd_metadata(
     total_prior,
     allocation = label,
-    terms = terms
+    terms = terms,
+    scale = allocation$scale
   )
 
   list(
     kind = "prior",
-    name = allocation_names$total_name,
+    name = allocation_names$scale_name,
     shape = "scalar",
     owned = TRUE,
-    total_name = allocation_names$total_name,
-    total_suffix = allocation_names$total_suffix,
+    scale_name = allocation_names$scale_name,
+    scale_suffix = allocation_names$scale_suffix,
     prior = total_prior
   )
 }

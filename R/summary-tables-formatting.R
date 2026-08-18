@@ -182,7 +182,9 @@
 
   # remove all but Mean for inclusions
   quantile_col_names <- as.character(probs)
-  inclusion_rows <- grepl(" (inclusion", rownames(runjags_summary), fixed = TRUE)
+  inclusion_rows <-
+    grepl(" (inclusion", rownames(runjags_summary), fixed = TRUE) |
+    grepl(": inclusion(", rownames(runjags_summary), fixed = TRUE)
   runjags_summary[inclusion_rows, c("SD", quantile_col_names)] <- NA
 
   # don't produce fit diagnostics for conditional samples (different chain lengths etc...) or if remove_diagnostics is TRUE

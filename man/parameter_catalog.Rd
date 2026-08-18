@@ -66,11 +66,23 @@ syntax-sensitive characters are percent-escaped and ambiguous interaction
 tokens are quoted so that every component remains hypothesis-safe and
 injective. These are coefficient-level quantities, distinct from estimated
 marginal means based on full predictions.
+\code{\link[=JAGS_parameter_registry]{JAGS_parameter_registry()}} remains the concrete posterior-coordinate map;
+the catalog is the separate semantic layer. Random-effect canonical names
+follow \verb{(formula) owner: quantity(arguments)}: parentheses contain parameter
+or coefficient names, while square brackets inside an argument contain its
+factor or index level. Examples include \verb{(mu) study: sd(intercept)},
+\verb{(mu) study: cor(group[sensitivity],group[specificity])}, and
+\verb{(mu) heterogeneity: var_prop(study)}. Formula-prefix omission is accepted as
+an alias. Additional aliases are limited to genuine semantic equivalences,
+such as a CS/HCS pairwise correlation referring to its shared \code{cor}.
+
 Identity random-effect summaries reuse their sampled or structural registry
 coordinate. Summaries requiring a scale or covariance transformation expose
 only the transformed quantity; their fitted-scale inputs and all other
 private implementation coordinates remain dependencies rather than public
-catalog rows.
+catalog rows. Each random extraction key records whether its source mapping
+is an identity, one-to-one transform, or composite, together with the source
+coordinate, prior, and transform when those are defined.
 Constructing or resolving the catalog never accesses posterior draws.
 
 \code{parameter_catalog_extend()} adds plain-data quantities and aliases owned by

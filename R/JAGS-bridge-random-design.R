@@ -489,10 +489,10 @@
     names(allocation),
     c(
       "label", "terms", "index", "target", "scale",
-      "parent", "source", "factors", "parent_factors", "n_targets", "total_name",
+      "parent", "source", "factors", "parent_factors", "n_targets", "scale_name",
       "weight_name", "leaf_names", "leaf_terms",
       "leaf_index_by_column", "source_node", "weight_suffix",
-      "total_suffix", "sd_component_names", "sd_component_terms",
+      "scale_suffix", "sd_component_names", "sd_component_terms",
       "sd_component_index_by_column", "inclusion"
     )
   )]
@@ -548,7 +548,7 @@
     names(source),
     c(
       "name", "shape", "kind", "owned",
-      "total_name", "total_suffix", "source", "values"
+      "scale_name", "scale_suffix", "source", "values"
     )
   )]
   if(!is.null(source$source)){

@@ -94,7 +94,7 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
     .bt_validate_parameter_registry(parameter_registry)
     registry_rows <- match(
       column_names,
-      parameter_registry$canonical_name
+      parameter_registry$coordinate_name
     )
     registered <- !is.na(registry_rows)
     remove[registered] <- parameter_registry$internal[registry_rows[registered]] &
@@ -183,7 +183,8 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
     column_names = colnames(posterior),
     n_samples    = n_samples,
     seed         = seed,
-    formula_scale = formula_scale
+    formula_scale = formula_scale,
+    formula_design = attr(fit, "formula_design", exact = TRUE)
   )
 
   return(prior_samples)
@@ -199,7 +200,9 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
 # @param seed Optional random seed
 # @param formula_scale Optional nested scaling information
 # @return Matrix with transformed prior samples
-.generate_transformed_prior_samples <- function(prior_list, column_names, n_samples, seed = NULL, formula_scale = NULL){
+.generate_transformed_prior_samples <- function(
+    prior_list, column_names, n_samples, seed = NULL, formula_scale = NULL,
+    formula_design = NULL){
 
   if(!is.null(formula_scale) && length(formula_scale) > 0){
     .check_formula_scale_info(formula_scale)
@@ -211,12 +214,55 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
     column_names   = column_names,
     seed           = seed
   )
+  prior_samples <- .bt_add_lkj_prior_samples(
+    samples        = prior_samples,
+    formula_design = formula_design,
+    column_names   = column_names,
+    n_samples      = n_samples
+  )
 
   if(!is.null(formula_scale) && length(formula_scale) > 0){
     prior_samples <- .apply_unscale_transform(prior_samples, formula_scale)
   }
 
   return(prior_samples)
+}
+
+.bt_add_lkj_prior_samples <- function(samples, formula_design, column_names,
+                                      n_samples){
+
+  if(!is.list(formula_design)){
+    return(samples)
+  }
+  terms <- unlist(lapply(formula_design, `[[`, "random_effects"), recursive = FALSE)
+  for(random_term in terms){
+    correlation <- random_term$correlation
+    if(!is.list(correlation) || !identical(correlation$type, "lkj")){
+      next
+    }
+    K <- random_term$n_columns
+    eta <- correlation$eta
+    primitive_names <- correlation$primitive_names
+    alpha <- .bt_lkj_cholesky_alpha(K = K, eta = eta)
+    if(length(primitive_names) != length(alpha)){
+      stop(
+        "Stored LKJ primitive metadata do not match the random-effect dimension.",
+        call. = FALSE
+      )
+    }
+    keep <- primitive_names %in% column_names &
+      !primitive_names %in% colnames(samples)
+    for(i in which(keep)){
+      samples <- cbind(
+        samples,
+        stats::rbeta(n_samples, shape1 = alpha[[i]], shape2 = alpha[[i]])
+      )
+      colnames(samples)[ncol(samples)] <- primitive_names[[i]]
+    }
+  }
+
+  ordered <- intersect(column_names, colnames(samples))
+  samples[, ordered, drop = FALSE]
 }
 
 .generate_factor_prior_sample_matrix <- function(prior, parameter, n_samples){

@@ -723,14 +723,6 @@
     }
   }else if(random_structure == "us"){
     block_prior <- .bt_random_prior_for_block(prior_random, random_term$block_name)
-    if(n_par > 1L && is.null(block_prior$covariance$cor)){
-      stop(
-        "Random-effect block '", random_term$block_name,
-        "' with structure 'us' requires an LKJ correlation prior. ",
-        "Supply 'cor = prior_lkj(eta = ...)'.",
-        call. = FALSE
-      )
-    }
     lkj_prior <- .bt_random_block_lkj_prior(block_prior)
     lkj_module <- JAGS_lkj_corr_cholesky(
       name = paste0(parameter, "_xRE_CORx"),
@@ -747,6 +739,7 @@
       type = "lkj",
       eta = lkj_prior$eta,
       primitive_names = lkj_module$primitive_names,
+      cpc_names = lkj_module$cpc_names,
       primitive_bounds = lkj_module$primitive_bounds,
       cholesky_name = lkj_module$cholesky_name,
       correlation_name = lkj_module$correlation_name
@@ -798,7 +791,6 @@
         structure = random_structure,
         block_prior = block_prior,
         include_correlation = TRUE,
-        require_rho = n_par > 1L,
         distance_matrix = if(identical(random_structure, "car")){
           abs(outer(car_metadata$time_values, car_metadata$time_values, "-"))
         }else{
@@ -813,7 +805,6 @@
         structure = random_structure,
         block_prior = block_prior,
         include_correlation = FALSE,
-        require_rho = n_par > 1L,
         distance_matrix = NULL
       )
     }

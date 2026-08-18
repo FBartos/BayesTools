@@ -23,22 +23,22 @@
 #' names to remove, or \code{TRUE} to remove all parameters that are not
 #' part of any formula. For formula random effects, character filters also
 #' accept semantic aliases \code{"random"}, \code{"random_sd"},
-#' \code{"random_rho"}, \code{"random_correlation"},
-#' \code{"random_variance_fraction"}, \code{"random_variance_ratio"},
-#' \code{"random_allocation"}, and \code{"random_sd_multiplier"}.
+#' \code{"random_correlation"},
+#' \code{"random_variance_proportion"}, \code{"random_variance_ratio"},
+#' \code{"random_allocation"}, and \code{"random_sd_ratio"}.
 #' @param remove_formulas character vector of formula names whose parameters
 #' should be removed from the summary. Defaults to \code{NULL}.
 #' @param keep_parameters character vector of parameter names to keep.
 #' All other parameters will be removed unless they belong to formulas
 #' specified in \code{keep_formulas}. The random-effect aliases listed for
 #' \code{remove_parameters} can also be used here, for example
-#' \code{keep_parameters = c("random_sd", "random_rho")}.
+#' \code{keep_parameters = c("random_sd", "random_correlation")}.
 #' @param keep_formulas character vector of formula names whose parameters
 #' should be kept. All other parameters will be removed unless they are
 #' specified in \code{keep_parameters}. Defaults to \code{NULL}.
 #' @param random_effects_summary random-effect reporting mode for JAGS estimates
 #' tables. \code{"standard"} replaces raw random-effect implementation
-#' parameters with semantic SD, rho/correlation, true variance-fraction, and
+#' parameters with semantic SD, correlation, true variance-fraction, and
 #' mean-variance SD-component variance-ratio summaries. \code{"full"} also
 #' includes heterogeneous SD multipliers.
 #' \code{"raw"} keeps the historical raw monitored parameters on their fitted
@@ -51,11 +51,10 @@
 #' \code{"raw"} mode, because those coordinates remain on the fitted
 #' standardized scale.
 #' @param random_effects_label label style for semantic random-effect summaries.
-#' \code{"grouped"} reports conventional grouping labels such as
-#' \code{sd(intercept | study)}. \code{"component"} prefixes the
-#' random-effect name and omits the redundant grouping suffix, for example
-#' \code{study: sd(intercept)}. Defaults to \code{"grouped"}. Raw
-#' random-effect coordinates are unaffected.
+#' Both \code{"grouped"} and \code{"component"} use the canonical
+#' owner-and-quantity grammar, for example \code{study: sd(intercept)}.
+#' Defaults to \code{"grouped"}. Raw random-effect coordinates use the same
+#' semantic labels when a public equivalent exists.
 #' @param random_effects_metadata whether to add random-effect metadata columns
 #' to JAGS estimates tables. When \code{TRUE}, the table includes the
 #' user-facing random-effect name, grouping label, and covariance structure
@@ -734,7 +733,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     return(model_samples)
   }
   .bt_validate_parameter_registry(parameter_registry)
-  registry_rows <- match(column_names, parameter_registry$canonical_name)
+  registry_rows <- match(column_names, parameter_registry$coordinate_name)
   registered <- !is.na(registry_rows)
   row_roles <- rep("", length(column_names))
   row_roles[registered] <- parameter_registry$role[registry_rows[registered]]
@@ -843,9 +842,9 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   intersect(
     parameters,
     c(
-      "random", "random_effects", "random_sd", "random_rho",
-      "random_cor", "random_correlation", "random_variance_fraction",
-      "random_variance_ratio", "random_allocation", "random_sd_multiplier"
+      "random", "random_effects", "random_sd",
+      "random_cor", "random_correlation", "random_variance_proportion",
+      "random_variance_ratio", "random_allocation", "random_sd_ratio"
     )
   )
 }
@@ -857,7 +856,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
 .bt_JAGS_estimates_random_alias_has_correlation <- function(aliases){
 
-  any(aliases %in% c("random_rho", "random_cor", "random_correlation"))
+  any(aliases %in% c("random_cor", "random_correlation"))
 }
 
 .bt_JAGS_estimates_raw_random_correlation_columns <- function(column_names){

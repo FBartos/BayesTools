@@ -14,6 +14,29 @@
 #' label. Explicit `name =` arguments define the final random-effect block name
 #' and are the names targeted by `prior_random()` block overrides.
 #'
+#' Random-effect terms have two distinct left-side grammars:
+#'
+#' * `id()`, `diag()`, and `us()` / `un()` use a coefficient formula. The
+#'   `1`, `0`, and `-1` terms control the random intercept; continuous slopes,
+#'   factor slopes, and interactions are supported. Plain `(expr | group)`
+#'   defaults to `us()`, and `expr || group` to `diag()`.
+#' * `cs()` / `hcs()`, `ar1()` / `ar()` / `har()`, and `car()` use a
+#'   structure-owned index specification. They reject explicit intercept
+#'   controls and do not accept `random_block(contrasts = ...)`.
+#'
+#' Random-coefficient factor coding comes from the block's resolved contrast
+#' metadata. It reuses an already established fixed-factor contrast by default;
+#' `random_block(contrasts = ...)` is the explicit per-block override. Removing
+#' the random intercept does not by itself request one coefficient per factor
+#' level.
+#'
+#' The discrete index structures `cs()`, `hcs()`, `ar1()`, and `har()` accept
+#' factor, character, numeric/integer, or logical columns. Existing factor
+#' levels are preserved; otherwise sorted unique values define levels and
+#' AR(1) order. CS/HCS can combine several columns with `+`; AR1/HAR require
+#' exactly one. CAR requires one finite numeric/integer column, or an ordered
+#' factor with numeric labels, and uses actual coordinate distances.
+#'
 #' Random-effect predictors must be literal data-column names combined with
 #' standard formula operators. Inline transformations and arbitrary calls are
 #' rejected; create transformed predictors as explicit columns first. Grouping

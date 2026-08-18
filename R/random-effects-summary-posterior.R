@@ -7,10 +7,9 @@
 #' SD-component variance ratios.
 #'
 #' @param fit model fit created by [JAGS_fit].
-#' @param summary summary quantity to extract. `"variance_ratio"` returns
-#'   `K * w` for mean-variance SD-component allocations, `"variance_fraction"`
-#'   returns true total-variance fractions `w`, and `"sd_multiplier"` returns
-#'   SD multipliers.
+#' @param summary semantic quantity to extract: `"var_ratio"`, `"var_prop"`,
+#'   `"sd_ratio"`, `"sd_total"`, `"var_total"`, `"sd_common"`, or
+#'   `"var_common"`.
 #' @param allocation optional allocation label filter.
 #' @param component optional allocation component label filter.
 #' @param formula_parameter optional formula parameter filter.
@@ -24,7 +23,10 @@
 #' @export
 random_effects_summary_posterior <- function(
     fit,
-    summary = c("variance_ratio", "variance_fraction", "sd_multiplier"),
+    summary = c(
+      "var_ratio", "var_prop", "sd_ratio",
+      "sd_total", "var_total", "sd_common", "var_common"
+    ),
     allocation = NULL,
     component = NULL,
     formula_parameter = NULL,
@@ -47,7 +49,7 @@ random_effects_summary_posterior <- function(
   }
 
   model_samples <- .extract_posterior_samples(fit, as_list = FALSE)
-  summary_mode <- if(identical(summary$summary, "sd_multiplier")) "full" else "standard"
+  summary_mode <- if(identical(summary$summary, "sd_ratio")) "full" else "standard"
   random_summary <- .bt_random_effect_summary_samples(
     model_samples = model_samples,
     prior_list = prior_list,
@@ -182,15 +184,12 @@ random_effects_summary_posterior <- function(
 
   summary <- match.arg(
     summary,
-    c("variance_ratio", "variance_fraction", "sd_multiplier")
+    c(
+      "var_ratio", "var_prop", "sd_ratio",
+      "sd_total", "var_total", "sd_common", "var_common"
+    )
   )
-
-  switch(
-    summary,
-    "variance_ratio" = list(input = summary, summary = "var_ratio"),
-    "variance_fraction" = list(input = summary, summary = "var_frac"),
-    "sd_multiplier" = list(input = summary, summary = "sd_multiplier")
-  )
+  list(input = summary, summary = summary)
 }
 
 .bt_random_effect_summary_posterior_no_match_stop <- function(summary,
@@ -208,15 +207,15 @@ random_effects_summary_posterior <- function(
       "Variance-ratio summaries are created only for ",
       "random_variance_allocation(..., target = \"sd_component\", ",
       "scale = \"mean_variance\"). Total-variance allocations are returned ",
-      "by summary = \"variance_fraction\"."
+      "by summary = \"var_prop\"."
     ),
-    "var_frac" = paste0(
-      "Variance-fraction summaries are created for true total-variance ",
+    "var_prop" = paste0(
+      "Variance-proportion summaries are created for true total-variance ",
       "allocations. Mean-variance SD-component allocations are returned by ",
-      "summary = \"variance_ratio\"."
+      "summary = \"var_ratio\"."
     ),
-    "sd_multiplier" = paste0(
-      "SD-multiplier summaries are available only for SD-component ",
+    "sd_ratio" = paste0(
+      "SD-ratio summaries are available only for SD-component ",
       "variance allocations."
     ),
     "Requested random-effect summaries are not available."
@@ -273,7 +272,7 @@ random_effects_summary_posterior <- function(
     alpha = alpha_i,
     beta = beta_i,
     scale = scale,
-    transform = if(identical(summary_type, "sd_multiplier")) "sqrt" else "linear",
+    transform = if(identical(summary_type, "sd_ratio")) "sqrt" else "linear",
     n_grid = n_grid
   )
 }
@@ -286,7 +285,7 @@ random_effects_summary_posterior <- function(
     return(.bt_random_effect_summary_allocation_n_targets(allocation, K))
   }
 
-  if(identical(summary_type, "sd_multiplier")){
+  if(identical(summary_type, "sd_ratio")){
     allocation_scale <- .bt_random_effect_allocation_scale_metadata(
       allocation,
       context = "Random-effect allocation posterior metadata"
