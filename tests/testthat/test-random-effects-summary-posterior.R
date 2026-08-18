@@ -12,7 +12,7 @@ skip_if_not_test_profile("unit")
     data = data,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         terms = "study",
         target = "sd_component",
         scale = "mean_variance",
@@ -62,7 +62,7 @@ skip_if_not_test_profile("unit")
     data = data,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         terms = c("study", "drug"),
         sd = prior("gamma", list(2, 2)),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
@@ -101,8 +101,8 @@ test_that("random-effect summary posterior extracts mean-variance ratios", {
   skip_if_not_installed("runjags")
 
   fit <- .random_effects_mean_variance_allocation_fit()
-  ratios <- random_effects_summary_posterior(fit, summary = "variance_ratio")
-  ratio_name <- "(mu) var_ratio(allocation: x)"
+  ratios <- random_effects_summary_posterior(fit, summary = "var_ratio")
+  ratio_name <- "(mu) allocation: var_ratio(x)"
 
   expect_s3_class(ratios, "mixed_posteriors")
   expect_true(ratio_name %in% names(ratios))
@@ -120,14 +120,14 @@ test_that("random-effect summary posterior extracts mean-variance ratios", {
 
   intercept_ratio <- random_effects_summary_posterior(
     fit,
-    summary = "variance_ratio",
+    summary = "var_ratio",
     component = "intercept"
   )
-  expect_equal(names(intercept_ratio), "(mu) var_ratio(allocation: intercept)")
+  expect_equal(names(intercept_ratio), "(mu) allocation: var_ratio(intercept)")
 
   expect_error(
-    random_effects_summary_posterior(fit, summary = "variance_fraction"),
-    "Mean-variance SD-component allocations are returned by summary = \"variance_ratio\"",
+    random_effects_summary_posterior(fit, summary = "var_prop"),
+    "Mean-variance SD-component allocations are returned by summary = \"var_ratio\"",
     fixed = TRUE
   )
   expect_s3_class(
@@ -136,13 +136,13 @@ test_that("random-effect summary posterior extracts mean-variance ratios", {
   )
 })
 
-test_that("random-effect summary posterior extracts SD multipliers", {
+test_that("random-effect summary posterior extracts SD ratios", {
 
   skip_if_not_installed("runjags")
 
   fit <- .random_effects_mean_variance_allocation_fit()
-  multipliers <- random_effects_summary_posterior(fit, summary = "sd_multiplier")
-  multiplier_name <- "(mu) sd_mult(allocation: x)"
+  multipliers <- random_effects_summary_posterior(fit, summary = "sd_ratio")
+  multiplier_name <- "(mu) allocation: sd_ratio(x)"
 
   expect_true(multiplier_name %in% names(multipliers))
   expect_equal(
@@ -161,22 +161,22 @@ test_that("random-effect summary posterior extracts SD multipliers", {
   )
 })
 
-test_that("random-effect summary posterior extracts total-variance fractions", {
+test_that("random-effect summary posterior extracts total-variance proportions", {
 
   skip_if_not_installed("runjags")
 
   fit <- .random_effects_total_variance_allocation_fit()
-  fractions <- random_effects_summary_posterior(fit, summary = "variance_fraction")
-  fraction_name <- "(mu) var_frac(allocation: drug)"
+  proportions <- random_effects_summary_posterior(fit, summary = "var_prop")
+  proportion_name <- "(mu) allocation: var_prop(drug)"
 
-  expect_true(fraction_name %in% names(fractions))
+  expect_true(proportion_name %in% names(proportions))
   expect_equal(
-    unname(as.numeric(fractions[[fraction_name]])),
+    unname(as.numeric(proportions[[proportion_name]])),
     c(0.75, 0.25),
     tolerance = 1e-12
   )
 
-  prior_density <- attr(fractions[[fraction_name]], "prior_density", exact = TRUE)
+  prior_density <- attr(proportions[[proportion_name]], "prior_density", exact = TRUE)
   expect_s3_class(prior_density, "prior_linear_density")
   expect_equal(attr(prior_density, "support", exact = TRUE), c(0, 1))
   expect_equal(
@@ -186,7 +186,7 @@ test_that("random-effect summary posterior extracts total-variance fractions", {
   )
 
   expect_error(
-    random_effects_summary_posterior(fit, summary = "variance_ratio"),
+    random_effects_summary_posterior(fit, summary = "var_ratio"),
     "Variance-ratio summaries are created only",
     fixed = TRUE
   )
@@ -199,7 +199,7 @@ test_that("random-effect summary posterior handles singular Dirichlet boundaries
   fit <- .random_effects_mean_variance_allocation_fit(alpha = c(0.5, 2))
   ratios <- random_effects_summary_posterior(
     fit,
-    summary = "variance_ratio",
+    summary = "var_ratio",
     component = "intercept",
     n_prior_points = 64
   )

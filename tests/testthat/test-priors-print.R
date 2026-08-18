@@ -42,7 +42,7 @@ test_that("Random-effect specification print methods use prior notation", {
   new_levels <- random_new_levels(method = "sample")
   block <- random_block(
     sd = sd_prior,
-    covariance = random_covariance(rho = rho_prior, rho_scale = "rho"),
+    covariance = random_covariance(cor = rho_prior, cor_scale = "cor"),
     monitor = monitor,
     terms = list(
       intercept = sd_prior,
@@ -89,9 +89,9 @@ test_that("Random-effect specification print methods use prior notation", {
     "  sigma ~ Gamma(2, 2)",
     "  R ~ LKJ(eta = 2)"
   ))
-  expect_equal(utils::capture.output(print(random_covariance(rho_scale = "rho"))), c(
+  expect_equal(utils::capture.output(print(random_covariance(cor_scale = "cor"))), c(
     "covariance: formula-owned",
-    "  rho_scale: rho"
+    "  cor_scale: cor"
   ))
   expect_equal(utils::capture.output(print(monitor)), c(
     "random_monitor()",
@@ -107,8 +107,8 @@ test_that("Random-effect specification print methods use prior notation", {
   expect_equal(utils::capture.output(print(block)), c(
     "block",
     "  sigma ~ Gamma(2, 2)",
-    "  rho ~ Normal(0, 0.5)",
-    "  rho_scale: rho",
+    "  cor ~ Normal(0, 0.5)",
+    "  cor_scale: cor",
     "  sigma_intercept ~ Gamma(2, 2)",
     "  sigma_slope ~ Gamma(2, 2)",
     "  monitor: latent = TRUE, coefficients = TRUE, correlation = TRUE, lkj_primitives = TRUE"
@@ -157,18 +157,18 @@ test_that("Random-effect specification print methods use prior notation", {
     "  sigma_country = sigma_study * sqrt(w[2])",
     "block: study",
     "  sigma ~ Gamma(2, 2)",
-    "  rho ~ Normal(0, 0.5)",
-    "  rho_scale: rho",
+    "  cor ~ Normal(0, 0.5)",
+    "  cor_scale: cor",
     "  sigma_intercept ~ Gamma(2, 2)",
     "  sigma_slope ~ Gamma(2, 2)",
     "  monitor: latent = TRUE, coefficients = TRUE, correlation = TRUE, lkj_primitives = TRUE"
   ))
   expect_equal(utils::capture.output(print(random_prior, silent = TRUE)), character())
   expect_equal(utils::capture.output(print(prior_random(
-    covariance = random_covariance(rho_scale = "rho")
+    covariance = random_covariance(cor_scale = "cor")
   ))), c(
     "defaults",
-    "  rho_scale: rho"
+    "  cor_scale: cor"
   ))
 })
 
@@ -201,7 +201,7 @@ test_that("Random prior printing expands allocation and term priors", {
     "  sigma_outcome = sigma_total * sqrt(w[2])"
   ))
 
-  hetero_alloc <- random_variance_allocation(
+  hetero_alloc <- random_variance_allocation(name = "allocation",
     terms   = "study",
     sd      = sd_total,
     weights = prior(
@@ -213,11 +213,11 @@ test_that("Random prior printing expands allocation and term priors", {
   )
   pr_hetero <- prior_random(allocation = hetero_alloc)
   expect_equal(utils::capture.output(print(pr_hetero)), c(
-    "allocation: #1",
-    "  sigma_total ~ Normal(0, 0.3)[0, Inf]",
+    "allocation: allocation",
+    "  sigma_common ~ Normal(0, 0.3)[0, Inf]",
     "  w ~ Dirichlet(1, 1)",
-    "  sigma_study[1] = sigma_total * sqrt(2 * w[1])",
-    "  sigma_study[2] = sigma_total * sqrt(2 * w[2])",
+    "  sigma_study[1] = sigma_common * sqrt(2 * w[1])",
+    "  sigma_study[2] = sigma_common * sqrt(2 * w[2])",
     "  scale: mean_variance"
   ))
 

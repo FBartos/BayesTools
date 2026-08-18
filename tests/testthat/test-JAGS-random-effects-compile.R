@@ -453,7 +453,7 @@ test_that("marginalized blocks retain allocation and correlation metadata", {
     prior_random = prior_random(
       id = random_block(
         sd = .re_compile_sd_prior(),
-        rho = prior("normal", list(mean = 0, sd = 0.5))
+        cor = prior("normal", list(mean = 0, sd = 0.5))
       )
     ),
     random_effects_compile = random_effects_compile(marginalized = "id")
@@ -649,7 +649,7 @@ test_that("bridge prior helpers use all structural metadata and sampled latent e
     prior_random = prior_random(
       id = random_block(
         sd = .re_compile_sd_prior(),
-        rho = prior("normal", list(mean = 0, sd = 0.5))
+        cor = prior("normal", list(mean = 0, sd = 0.5))
       )
     ),
     random_effects_compile = random_effects_compile(marginalized = "id")

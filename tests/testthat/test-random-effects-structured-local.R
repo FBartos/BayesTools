@@ -512,7 +512,7 @@ test_that("stable CAR recurrence is shared by reconstruction and prediction", {
     prior_random = prior_random(
       id = random_block(
         sd = sd_prior,
-        rho = prior("normal", list(mean = 0, sd = 0.5))
+        cor = prior("normal", list(mean = 0, sd = 0.5))
       )
     )
   )
@@ -890,7 +890,7 @@ test_that("group-local bridge context retains only compact descriptors", {
     prior_random = prior_random(
       id = random_block(
         sd = prior("point", list(location = 1)),
-        rho = prior("point", list(location = 0.2))
+        cor = prior("point", list(location = 0.2))
       )
     )
   )
@@ -937,7 +937,7 @@ test_that("unobserved grouping levels preserve the dense fitted-level contract",
     prior_random = prior_random(
       id = random_block(
         sd = prior("gamma", list(2, 2)),
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     )
   )
@@ -970,7 +970,7 @@ test_that("row-indexed structured SD uses compact group-local projection", {
     prior_random = prior_random(
       id = random_block(
         sd_source = random_sd_source("tau", shape = "row"),
-        rho = prior("point", list(location = 0.2))
+        cor = prior("point", list(location = 0.2))
       )
     )
   )
@@ -1017,13 +1017,13 @@ test_that("row-indexed structured column allocation uses compact scale lookup", 
     data = data,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         terms = "id",
         target = "sd_component",
         sd_source = random_sd_source("tau", shape = "row"),
         weights = prior("dirichlet", list(alpha = rep(1, K)))
       ),
-      id = random_block(rho = prior("point", list(location = 0.2)))
+      id = random_block(cor = prior("point", list(location = 0.2)))
     )
   )
   term <- result$formula_design$random_effects[[1L]]
@@ -1145,7 +1145,7 @@ test_that("group-local complexity guard fails before oversized syntax emission",
       prior_random = prior_random(
         id = random_block(
           sd_source = random_sd_source("tau", shape = "row"),
-          rho = prior("point", list(location = 0.2))
+          cor = prior("point", list(location = 0.2))
         )
       )
     ),
@@ -1172,7 +1172,7 @@ test_that("high-K sparse row-indexed structure compiles without dense JAGS data"
     prior_random = prior_random(
       id = random_block(
         sd_source = random_sd_source("tau", shape = "row"),
-        rho = prior("point", list(location = 0.5))
+        cor = prior("point", list(location = 0.5))
       )
     )
   )
@@ -1210,7 +1210,7 @@ test_that("row-indexed HAR and CAR use the compact structured projection", {
       prior_random = prior_random(
         id = random_block(
           sd_source = random_sd_source("tau", shape = "row"),
-          rho = prior("point", list(location = 0.5))
+          cor = prior("point", list(location = 0.5))
         )
       )
     )

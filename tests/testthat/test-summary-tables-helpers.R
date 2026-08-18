@@ -21,6 +21,27 @@ REFERENCE_DIR <<- testthat::test_path("..", "results", "summary-tables-helpers")
 source(testthat::test_path("common-functions.R"))
 
 
+test_that("semantic inclusion rows retain probability-only summaries", {
+
+  samples <- cbind(
+    "(mu) id: inclusion(sd(x))" = c(0, 1, 0, 1),
+    "beta (inclusion)" = c(1, 1, 0, 0),
+    theta = 1:4
+  )
+  actual <- .runjags_summary_fast(
+    model_samples = samples,
+    n_samples     = 4L,
+    n_chains      = 1L,
+    conditional   = TRUE
+  )
+
+  inclusion <- c("(mu) id: inclusion(sd(x))", "beta (inclusion)")
+  expect_equal(as.numeric(actual[inclusion, "Mean"]), c(0.5, 0.5))
+  expect_true(all(is.na(actual[inclusion, c("SD", "0.025", "0.975")])))
+  expect_true(all(is.finite(as.numeric(actual["theta", ]))))
+})
+
+
 test_that("format_BF works correctly", {
 
   # Basic usage
@@ -754,7 +775,7 @@ test_that("raw random-effect columns use their longest matching parameter stem",
 })
 
 
-test_that("raw logit-scale correlations use correlation display labels", {
+test_that("backend logit-scale correlations use semantic correlation labels", {
 
   raw_name <- "mu__xREx__id_rho_logit"
   formula_design <- structure(
@@ -787,7 +808,7 @@ test_that("raw logit-scale correlations use correlation display labels", {
     parameter_registry = parameter_registry
   )
 
-  expect_identical(display_name, "(mu) rho_logit(id)")
+  expect_identical(display_name, "(mu) id: cor")
 })
 
 

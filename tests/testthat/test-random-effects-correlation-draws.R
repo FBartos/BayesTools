@@ -5,8 +5,8 @@ skip_if_not_test_profile("unit")
   prior("point", list(location = 1))
 }
 
-.correlation_draws_term <- function(structure, rho = NULL,
-                                    rho_scale = "fisher_z"){
+.correlation_draws_term <- function(structure, cor = NULL,
+                                    cor_scale = "fisher_z"){
 
   data <- data.frame(
     id = factor(rep(c("g1", "g2"), each = 3L)),
@@ -21,20 +21,20 @@ skip_if_not_test_profile("unit")
     har = ~ 1 + har(index | id),
     car = ~ 1 + car(time | id)
   )
-  if(is.null(rho)){
-    rho <- prior("normal", list(0, 0.5))
+  if(is.null(cor)){
+    cor <- prior("normal", list(0, 0.5))
   }
-  block <- if(identical(rho_scale, "fisher_z")){
+  block <- if(identical(cor_scale, "fisher_z")){
     random_block(
       sd = .correlation_draws_sd_prior(),
-      rho = rho
+      cor = cor
     )
   }else{
     random_block(
       sd = .correlation_draws_sd_prior(),
       covariance = random_covariance(
-        rho = rho,
-        rho_scale = rho_scale
+        cor = cor,
+        cor_scale = cor_scale
       )
     )
   }
@@ -103,7 +103,7 @@ test_that("fixed transformed rho and one-column blocks are reconstructed", {
 
   term <- .correlation_draws_term(
     "cs",
-    rho = prior("point", list(location = 0.5))
+    cor = prior("point", list(location = 0.5))
   )
   posterior <- cbind(mu = 1:2)
   actual <- random_effects_correlation_draws(term, posterior)
@@ -418,7 +418,7 @@ test_that("transformed rho coordinates stay in the representable interior", {
       coordinates = c(0, 1e300)
     ),
     car_logit = list(
-      term = .correlation_draws_term("car", rho_scale = "logit"),
+      term = .correlation_draws_term("car", cor_scale = "logit"),
       coordinates = c(-1e300, 1e300)
     )
   )

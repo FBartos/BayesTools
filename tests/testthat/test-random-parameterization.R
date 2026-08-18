@@ -318,7 +318,7 @@ test_that("centered scalar structures materialize covariance only internally", {
           }else{
             .parameterization_sd_prior()
           },
-          rho = prior("normal", list(0, 0.5)),
+          cor = prior("normal", list(0, 0.5)),
           monitor = random_monitor(correlation = FALSE),
           parameterization = "centered"
         )

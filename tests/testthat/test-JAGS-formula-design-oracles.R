@@ -3443,7 +3443,7 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     fixed = TRUE
   )
 
-  allocation_prior <- random_variance_allocation(
+  allocation_prior <- random_variance_allocation(name = "allocation",
     terms = c("study", "drug"),
     sd = sd_prior,
     weights = prior("dirichlet", list(alpha = c(2, 3)))
@@ -3476,7 +3476,7 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     fixed = TRUE
   )
   expect_error(
-    random_variance_allocation(
+    random_variance_allocation(name = "allocation",
       terms = c("study", "study"),
       sd = sd_prior,
       weights = prior("dirichlet", list(alpha = c(1, 1)))
@@ -3485,7 +3485,7 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     fixed = TRUE
   )
   expect_error(
-    random_variance_allocation(
+    random_variance_allocation(name = "allocation",
       terms = "study",
       sd = sd_prior
     ),
@@ -3493,7 +3493,7 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     fixed = TRUE
   )
   expect_error(
-    random_variance_allocation(
+    random_variance_allocation(name = "allocation",
       terms = c("study", "drug"),
       sd = sd_prior,
       weights = prior("beta", list(1, 1))
@@ -3502,7 +3502,7 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     fixed = TRUE
   )
   expect_error(
-    random_variance_allocation(
+    random_variance_allocation(name = "allocation",
       terms = c(study = "study", drug = "drug"),
       sd = sd_prior,
       inclusion = prior("spike", list(location = 0.5))
@@ -3511,7 +3511,7 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     fixed = TRUE
   )
   expect_error(
-    random_variance_allocation(
+    random_variance_allocation(name = "allocation",
       terms = c(study = "study", drug = "drug"),
       sd = sd_prior,
       inclusion = list(study = 0.5)
@@ -3520,7 +3520,7 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     fixed = TRUE
   )
   expect_error(
-    random_variance_allocation(
+    random_variance_allocation(name = "allocation",
       terms = c(study = "study", drug = "drug"),
       sd = sd_prior,
       inclusion = list(`bad-name` = prior("spike", list(location = 0.5)))
@@ -3529,7 +3529,7 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     fixed = TRUE
   )
   expect_error(
-    random_variance_allocation(
+    random_variance_allocation(name = "allocation",
       terms = c(study = "study", drug = "drug"),
       sd = sd_prior,
       inclusion = list(study = prior("spike", list(location = 1.5)))
@@ -3538,7 +3538,7 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     fixed = TRUE
   )
   expect_error(
-    random_variance_allocation(
+    random_variance_allocation(name = "allocation",
       terms = c("study", "drug"),
       sd = sd_prior,
       weights = prior("dirichlet", list(alpha = c(1, 1, 1)))
@@ -3547,23 +3547,24 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     fixed = TRUE
   )
   positional_allocation <- random_variance_allocation(
+    "allocation",
     c("study", "drug"),
     sd_prior,
     prior("dirichlet", list(alpha = c(1, 1)))
   )
   expect_s3_class(positional_allocation$weights, "prior.simplex")
   positional_named_allocation <- random_variance_allocation(
+    "total_re",
     c("study", "drug"),
     sd_prior,
-    prior("dirichlet", list(alpha = c(1, 1))),
-    "total_re"
+    prior("dirichlet", list(alpha = c(1, 1)))
   )
   expect_equal(positional_named_allocation$name, "total_re")
   positional_child_allocation <- random_variance_allocation(
+    "nested_split",
     c("paper", "estimate"),
     NULL,
     prior("dirichlet", list(alpha = c(1, 1))),
-    "nested_split",
     allocation_ref("total_re", "study")
   )
   expect_equal(positional_child_allocation$name, "nested_split")
@@ -3596,7 +3597,7 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     fixed = TRUE
   )
   expect_error(
-    random_variance_allocation(
+    random_variance_allocation(name = "allocation",
       terms = c(xRE_ALLOCx = "study", drug = "drug"),
       sd = sd_prior
     ),
@@ -3651,23 +3652,23 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     "prior_random"
   )
   expect_error(
-    random_covariance(rho = prior_factor("normal", list(0, 1), contrast = "treatment")),
+    random_covariance(cor = prior_factor("normal", list(0, 1), contrast = "treatment")),
     "ordinary scalar prior",
     fixed = TRUE
   )
   expect_error(
-    random_covariance(rho = prior("mnormal", list(mean = 0, sd = 1, K = 2))),
+    random_covariance(cor = prior("mnormal", list(mean = 0, sd = 1, K = 2))),
     "ordinary scalar prior",
     fixed = TRUE
   )
   expect_error(
-    random_covariance(rho = prior_none(), rho_scale = "logit"),
+    random_covariance(cor = prior_none(), cor_scale = "logit"),
     "cannot use prior_none",
     fixed = TRUE
   )
   expect_error(
     random_covariance(
-      rho = prior_mixture(list(
+      cor = prior_mixture(list(
         prior_factor("normal", list(0, 1), contrast = "treatment"),
         prior("point", list(0))
       ))
@@ -3682,12 +3683,12 @@ test_that("prior_random rejects unsupported and ignored production settings", {
   )
   expect_error(
     random_covariance(eta = 2, cor = lkj_prior),
-    "explicit 'cor' or 'rho'",
+    "explicit 'cor'",
     fixed = TRUE
   )
   expect_error(
-    random_covariance(eta = 2, rho = rho_prior),
-    "explicit 'cor' or 'rho'",
+    random_covariance(eta = 2, cor = rho_prior),
+    "explicit 'cor'",
     fixed = TRUE
   )
   expect_s3_class(random_covariance(structure = "car"), "random_covariance")
@@ -3722,17 +3723,15 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     "The formula owns the covariance structure",
     fixed = TRUE
   )
-  expect_error(
-    JAGS_formula(
-      formula = ~ 1 + x + (1 + x | id),
-      parameter = "mu",
-      data = df,
-      prior_list = fixed_priors,
-      prior_random = prior_random(id = random_block(sd = sd_prior))
-    ),
-    "requires an LKJ correlation prior",
-    fixed = TRUE
+  default_us <- JAGS_formula(
+    formula = ~ 1 + x + (1 + x | id),
+    parameter = "mu",
+    data = df,
+    prior_list = fixed_priors,
+    prior_random = prior_random(id = random_block(sd = sd_prior))
   )
+  expect_equal(default_us$formula_design$random_effects[[1]]$correlation$eta, 1)
+  expect_true("mu__xREx__id_xRE_CORx_lkj_u[1]" %in% default_us$add_parameters)
   expect_error(
     JAGS_formula(
       formula = ~ 1 + x + diag(1 + x | id),
@@ -3801,7 +3800,7 @@ test_that("prior_random rejects unsupported and ignored production settings", {
       parameter = "mu",
       data = df,
       prior_list = fixed_priors,
-      prior_random = prior_random(id = random_block(sd = sd_prior, rho = rho_prior))
+      prior_random = prior_random(id = random_block(sd = sd_prior, cor = rho_prior))
     ),
     "structure 'us' uses an LKJ correlation prior",
     fixed = TRUE
@@ -3825,10 +3824,10 @@ test_that("prior_random rejects unsupported and ignored production settings", {
       prior_list = fixed_priors,
       prior_random = prior_random(
         covariance = random_covariance(structure = "id"),
-        id = random_block(sd = sd_prior, rho = rho_prior)
+        id = random_block(sd = sd_prior, cor = rho_prior)
       )
     ),
-    "Block covariance override supplies a scalar correlation prior, but structure 'id' has no correlation parameter",
+    "Block covariance override supplies a correlation prior, but structure 'id' has no correlation parameter",
     fixed = TRUE
   )
 })
@@ -4154,7 +4153,7 @@ test_that("parameter and random SD sources validate simple external references",
     fixed = TRUE
   )
   expect_error(
-    random_sd_source("mu__xRE_ALLOCx_allocation__total_sd"),
+    random_sd_source("mu__xRE_ALLOCx_allocation__allocation_sd"),
     "internally used",
     fixed = TRUE
   )
@@ -4218,7 +4217,7 @@ test_that("parameter and random SD sources validate simple external references",
     fixed = TRUE
   )
   expect_error(
-    random_variance_allocation(
+    random_variance_allocation(name = "allocation",
       terms = c("study", "drug"),
       sd = sd_prior,
       sd_source = random_sd_source("tau")
@@ -4227,14 +4226,14 @@ test_that("parameter and random SD sources validate simple external references",
     fixed = TRUE
   )
   expect_error(
-    random_variance_allocation(
+    random_variance_allocation(name = "allocation",
       terms = c("study", "drug")
     ),
     "exactly one of 'sd' or 'sd_source'",
     fixed = TRUE
   )
   expect_error(
-    random_variance_allocation(
+    random_variance_allocation(name = "allocation",
       parent = allocation_ref("total", "study"),
       terms = c("paper", "estimate"),
       sd_source = random_sd_source("tau")
@@ -4254,7 +4253,7 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
   )
   fixed_priors <- list(intercept = prior("normal", list(0, 1)))
   random_prior <- prior_random(
-    allocation = random_variance_allocation(
+    allocation = random_variance_allocation(name = "allocation",
       sd = prior("gamma", list(2, 2)),
       weights = prior("dirichlet", list(alpha = c(2, 3)))
     )
@@ -4274,19 +4273,19 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
     names(result$prior_list),
     c(
       "mu_intercept",
-      "mu__xRE_ALLOCx_allocation__total_sd",
+      "mu__xRE_ALLOCx_allocation__allocation_sd",
       "mu__xRE_ALLOCx_allocation__weight"
     )
   )
   expect_s3_class(result$prior_list$mu__xRE_ALLOCx_allocation__weight, "prior.simplex")
   expect_match(
     result$formula_syntax,
-    "mu__xREx__study_intercept = mu__xRE_ALLOCx_allocation__total_sd * sqrt(mu__xRE_ALLOCx_allocation__weight[1])",
+    "mu__xREx__study_intercept = mu__xRE_ALLOCx_allocation__allocation_sd * sqrt(mu__xRE_ALLOCx_allocation__weight[1])",
     fixed = TRUE
   )
   expect_match(
     result$formula_syntax,
-    "mu__xREx__drug_intercept = mu__xRE_ALLOCx_allocation__total_sd * sqrt(mu__xRE_ALLOCx_allocation__weight[2])",
+    "mu__xREx__drug_intercept = mu__xRE_ALLOCx_allocation__allocation_sd * sqrt(mu__xRE_ALLOCx_allocation__weight[2])",
     fixed = TRUE
   )
   expect_equal(
@@ -4335,12 +4334,12 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
   )
   expect_match(
     allocation_inclusion_result$formula_syntax,
-    "mu__xREx__study_intercept = mu__xRE_ALLOCx_total_re__total_sd * mu__xRE_ALLOCx_total_re__include_study_indicator * sqrt(mu__xRE_ALLOCx_total_re__weight[1])",
+    "mu__xREx__study_intercept = mu__xRE_ALLOCx_total_re__allocation_sd * mu__xRE_ALLOCx_total_re__include_study_indicator * sqrt(mu__xRE_ALLOCx_total_re__weight[1])",
     fixed = TRUE
   )
   expect_match(
     allocation_inclusion_result$formula_syntax,
-    "mu__xREx__drug_intercept = mu__xRE_ALLOCx_total_re__total_sd * sqrt(mu__xRE_ALLOCx_total_re__weight[2])",
+    "mu__xREx__drug_intercept = mu__xRE_ALLOCx_total_re__allocation_sd * sqrt(mu__xRE_ALLOCx_total_re__weight[2])",
     fixed = TRUE
   )
   expect_false(grepl(
@@ -4370,7 +4369,7 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
     dimnames = list(
       NULL,
       c(
-        "mu__xRE_ALLOCx_total_re__total_sd",
+        "mu__xRE_ALLOCx_total_re__allocation_sd",
         "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[1]",
         "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[2]",
         "mu__xRE_ALLOCx_total_re__include_study_indicator"
@@ -4467,11 +4466,11 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
   )
   expect_match(
     total_component_result$formula_syntax,
-    "mu__xRE_ALLOCx_a__component_total_sd = mu__xRE_ALLOCx_a__total_sd * sqrt(mu__xRE_ALLOCx_a__weight[1])",
+    "mu__xRE_ALLOCx_a__component_total_sd = mu__xRE_ALLOCx_a__allocation_sd * sqrt(mu__xRE_ALLOCx_a__weight[1])",
     fixed = TRUE
   )
   expect_false(grepl(
-    "mu__xRE_ALLOCx_a__total_sd = mu__xRE_ALLOCx_a__total_sd",
+    "mu__xRE_ALLOCx_a__allocation_sd = mu__xRE_ALLOCx_a__allocation_sd",
     total_component_result$formula_syntax,
     fixed = TRUE
   ))
@@ -4492,7 +4491,7 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
     data = df,
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         terms = c("drug", "study"),
         sd = prior("gamma", list(2, 2)),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
@@ -4503,12 +4502,12 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
   expect_equal(reversed_result$formula_design$random_effects[[2]]$sd_binding$allocations[[1L]]$index, 1L)
   expect_match(
     reversed_result$formula_syntax,
-    "mu__xREx__study_intercept = mu__xRE_ALLOCx_allocation__total_sd * sqrt(mu__xRE_ALLOCx_allocation__weight[2])",
+    "mu__xREx__study_intercept = mu__xRE_ALLOCx_allocation__allocation_sd * sqrt(mu__xRE_ALLOCx_allocation__weight[2])",
     fixed = TRUE
   )
   expect_match(
     reversed_result$formula_syntax,
-    "mu__xREx__drug_intercept = mu__xRE_ALLOCx_allocation__total_sd * sqrt(mu__xRE_ALLOCx_allocation__weight[1])",
+    "mu__xREx__drug_intercept = mu__xRE_ALLOCx_allocation__allocation_sd * sqrt(mu__xRE_ALLOCx_allocation__weight[1])",
     fixed = TRUE
   )
 
@@ -4534,7 +4533,7 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
     dimnames = list(
       NULL,
       c(
-        "mu__xRE_ALLOCx_allocation__total_sd",
+        "mu__xRE_ALLOCx_allocation__allocation_sd",
         "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[1]",
         "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[2]"
       )
@@ -4599,7 +4598,7 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
   expect_equal(study_random$sd_leaves$leaf_names_by_column, study_random$sd_parameter_names)
   expect_match(
     single_factor_result$formula_syntax,
-    "mu__xREx__study_f[1] = mu__xRE_ALLOCx_allocation__total_sd * sqrt(mu__xRE_ALLOCx_allocation__weight[1])",
+    "mu__xREx__study_f[1] = mu__xRE_ALLOCx_allocation__allocation_sd * sqrt(mu__xRE_ALLOCx_allocation__weight[1])",
     fixed = TRUE
   )
 
@@ -4611,7 +4610,7 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
 
   bridge_samples <- c(
     "mu_intercept" = 10,
-    "mu__xRE_ALLOCx_allocation__total_sd" = 2,
+    "mu__xRE_ALLOCx_allocation__allocation_sd" = 2,
     "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[1]" = 1,
     "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[2]" = 3,
     "mu__xREx__study_xRE_Zx[1,1]" = 0.1,
@@ -4689,7 +4688,7 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
   )
   expect_error(
     BayesTools:::.bt_JAGS_marglik_random_effect_sd_values(
-      samples = bridge_samples[names(bridge_samples) != "mu__xRE_ALLOCx_allocation__total_sd"],
+      samples = bridge_samples[names(bridge_samples) != "mu__xRE_ALLOCx_allocation__allocation_sd"],
       random_term = result$formula_design$random_effects[[1]],
       prior_list = result$prior_list
     ),
@@ -4706,7 +4705,7 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
       data = df,
       prior_list = fixed_priors,
       prior_random = prior_random(
-        allocation = random_variance_allocation(
+        allocation = random_variance_allocation(name = "allocation",
           terms = c("study", "missing"),
           sd = prior("gamma", list(2, 2))
         )
@@ -4725,7 +4724,7 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
       prior_list = fixed_priors,
       prior_random = prior_random(
         study = random_block(sd = prior("gamma", list(4, 1))),
-        allocation = random_variance_allocation(
+        allocation = random_variance_allocation(name = "allocation",
           terms = c("study", "drug"),
           sd = prior("gamma", list(2, 2))
         )
@@ -4881,7 +4880,7 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     data = df,
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source("tau"),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )
@@ -4968,7 +4967,7 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     unname(scalar_leaf_summary$model_samples[, "mu__xRE_SUMMARY__sd__study__intercept"]),
     c(0.5, 0.75)
   )
-  expect_true("mu__xRE_SUMMARY__var_frac__allocation__study" %in%
+  expect_true("mu__xRE_SUMMARY__var_prop__allocation__study" %in%
                 colnames(scalar_leaf_summary$model_samples))
   scalar_bridge_samples <- c(
     "tau" = 2,
@@ -4998,7 +4997,7 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     data = transform(df, x = c(-1, 0, 1, 2)),
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         terms = "study",
         target = "sd_component",
         sd_source = random_sd_source("tau"),
@@ -5051,7 +5050,7 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     data = df,
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source("tau", shape = "row"),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )
@@ -5098,7 +5097,7 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     data = transform(df, x = c(-1, 0, 1, 2)),
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source("tau", shape = "row"),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )
@@ -5123,11 +5122,11 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     data = transform(df, f = factor(c("a", "b", "a", "b"))),
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source("tau", shape = "row"),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       ),
-      study = random_block(rho = prior("normal", list(0, 0.5)))
+      study = random_block(cor = prior("normal", list(0, 0.5)))
     )
   )
   expect_false(grepl("mu__xREx__study_xRE_STDx", row_cs_result$formula_syntax, fixed = TRUE))
@@ -5155,8 +5154,8 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     mode = "standard"
   )
   expect_false(any(grepl("__xRE_SUMMARY__sd__", colnames(row_summary$model_samples), fixed = TRUE)))
-  expect_true("mu__xRE_SUMMARY__var_frac__allocation__study" %in% colnames(row_summary$model_samples))
-  expect_true("mu__xRE_SUMMARY__var_frac__allocation__drug" %in% colnames(row_summary$model_samples))
+  expect_true("mu__xRE_SUMMARY__var_prop__allocation__study" %in% colnames(row_summary$model_samples))
+  expect_true("mu__xRE_SUMMARY__var_prop__allocation__drug" %in% colnames(row_summary$model_samples))
 
   expect_error(
     BayesTools:::.bt_JAGS_marglik_random_effect_sd_values(
@@ -5247,7 +5246,7 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     }
   )
   value_prior_random <- prior_random(
-    allocation = random_variance_allocation(
+    allocation = random_variance_allocation(name = "allocation",
       sd_source = random_sd_source(value_source),
       weights = prior("dirichlet", list(alpha = c(2, 3)))
     )
@@ -5404,7 +5403,7 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     data = df,
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source(bad_value_source),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )
@@ -5451,7 +5450,7 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     data = df,
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source(nan_value_source),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )
@@ -5481,7 +5480,7 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     data = df,
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source(short_value_source),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )
@@ -5519,7 +5518,7 @@ test_that("external variance allocation sources generate scalar and row-indexed 
       data = df,
       prior_list = fixed_priors,
       prior_random = prior_random(
-        allocation = random_variance_allocation(
+        allocation = random_variance_allocation(name = "allocation",
           sd_source = random_sd_source("tau", shape = "row"),
           weights = prior("dirichlet", list(alpha = c(2, 3)))
         ),
@@ -5636,7 +5635,7 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     data = transform(df, x = c(-1, 0, 1, 2)),
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         terms = "study",
         target = "sd_component",
         sd_source = random_sd_source("tau", shape = "row"),
@@ -5660,7 +5659,7 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     data = transform(df, x = c(-1, 0, 1, 2)),
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         terms = "study",
         target = "sd_component",
         sd_source = random_sd_source("tau", shape = "row"),
@@ -5893,16 +5892,16 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     mode = "standard"
   )
   expect_false(any(grepl("__xRE_SUMMARY__sd__", colnames(row_sd_leaf_summary$model_samples), fixed = TRUE)))
-  expect_true("mu__xRE_SUMMARY__var_frac__allocation__intercept" %in%
+  expect_true("mu__xRE_SUMMARY__var_prop__allocation__intercept" %in%
                 colnames(row_sd_leaf_summary$model_samples))
-  expect_true("mu__xRE_SUMMARY__var_frac__allocation__x" %in%
+  expect_true("mu__xRE_SUMMARY__var_prop__allocation__x" %in%
                 colnames(row_sd_leaf_summary$model_samples))
   expect_equal(
     unname(row_sd_leaf_summary$model_samples[
       1,
       c(
-        "mu__xRE_SUMMARY__var_frac__allocation__intercept",
-        "mu__xRE_SUMMARY__var_frac__allocation__x"
+        "mu__xRE_SUMMARY__var_prop__allocation__intercept",
+        "mu__xRE_SUMMARY__var_prop__allocation__x"
       )
     ]),
     c(0.25, 0.75),
@@ -5916,7 +5915,7 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     data = transform(df, x = c(-1, 0, 1, 2)),
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         terms = "study",
         target = "sd_component",
         scale = "mean_variance",
@@ -6071,24 +6070,24 @@ test_that("variance allocation graph supports child block and SD-leaf allocation
     names(nested_result$prior_list),
     c(
       "mu_intercept",
-      "mu__xRE_ALLOCx_total_re__total_sd",
+      "mu__xRE_ALLOCx_total_re__allocation_sd",
       "mu__xRE_ALLOCx_total_re__weight",
       "mu__xRE_ALLOCx_nested_split__weight"
     )
   )
   expect_match(
     nested_result$formula_syntax,
-    "mu__xRE_ALLOCx_total_re__component_nested_sd = mu__xRE_ALLOCx_total_re__total_sd * sqrt(mu__xRE_ALLOCx_total_re__weight[1])",
+    "mu__xRE_ALLOCx_total_re__component_nested_sd = mu__xRE_ALLOCx_total_re__allocation_sd * sqrt(mu__xRE_ALLOCx_total_re__weight[1])",
     fixed = TRUE
   )
   expect_match(
     nested_result$formula_syntax,
-    "mu__xREx__study_intercept = mu__xRE_ALLOCx_total_re__total_sd * sqrt(mu__xRE_ALLOCx_total_re__weight[1]) * sqrt(mu__xRE_ALLOCx_nested_split__weight[1])",
+    "mu__xREx__study_intercept = mu__xRE_ALLOCx_total_re__allocation_sd * sqrt(mu__xRE_ALLOCx_total_re__weight[1]) * sqrt(mu__xRE_ALLOCx_nested_split__weight[1])",
     fixed = TRUE
   )
   expect_match(
     nested_result$formula_syntax,
-    "mu__xREx__drug_intercept = mu__xRE_ALLOCx_total_re__total_sd * sqrt(mu__xRE_ALLOCx_total_re__weight[2])",
+    "mu__xREx__drug_intercept = mu__xRE_ALLOCx_total_re__allocation_sd * sqrt(mu__xRE_ALLOCx_total_re__weight[2])",
     fixed = TRUE
   )
   expect_equal(length(nested_result$formula_design$random_effects[[1]]$sd_binding$allocations[[1L]]$factors), 2L)
@@ -6121,12 +6120,12 @@ test_that("variance allocation graph supports child block and SD-leaf allocation
   )
   expect_match(
     nested_gate_result$formula_syntax,
-    "mu__xRE_ALLOCx_total_re__component_nested_sd = mu__xRE_ALLOCx_total_re__total_sd * mu__xRE_ALLOCx_total_re__include_nested_indicator * sqrt(mu__xRE_ALLOCx_total_re__weight[1])",
+    "mu__xRE_ALLOCx_total_re__component_nested_sd = mu__xRE_ALLOCx_total_re__allocation_sd * mu__xRE_ALLOCx_total_re__include_nested_indicator * sqrt(mu__xRE_ALLOCx_total_re__weight[1])",
     fixed = TRUE
   )
   expect_match(
     nested_gate_result$formula_syntax,
-    "mu__xREx__study_intercept = mu__xRE_ALLOCx_total_re__total_sd * mu__xRE_ALLOCx_total_re__include_nested_indicator * sqrt(mu__xRE_ALLOCx_total_re__weight[1]) * sqrt(mu__xRE_ALLOCx_nested_split__weight[1])",
+    "mu__xREx__study_intercept = mu__xRE_ALLOCx_total_re__allocation_sd * mu__xRE_ALLOCx_total_re__include_nested_indicator * sqrt(mu__xRE_ALLOCx_total_re__weight[1]) * sqrt(mu__xRE_ALLOCx_nested_split__weight[1])",
     fixed = TRUE
   )
   expect_true("mu__xRE_ALLOCx_total_re__include_nested_indicator" %in%
@@ -6141,7 +6140,7 @@ test_that("variance allocation graph supports child block and SD-leaf allocation
     dimnames = list(
       NULL,
       c(
-        "mu__xRE_ALLOCx_total_re__total_sd",
+        "mu__xRE_ALLOCx_total_re__allocation_sd",
         "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[1]",
         "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[2]",
         "prior_par_eta_mu__xRE_ALLOCx_nested_split__weight[1]",
@@ -6225,7 +6224,7 @@ test_that("variance allocation graph supports child block and SD-leaf allocation
     dimnames = list(
       NULL,
       c(
-        "mu__xRE_ALLOCx_total_re__total_sd",
+        "mu__xRE_ALLOCx_total_re__allocation_sd",
         "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[1]",
         "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[2]",
         "prior_par_eta_mu__xRE_ALLOCx_nested_split__weight[1]",
@@ -6313,7 +6312,7 @@ test_that("variance allocation graph supports child block and SD-leaf allocation
   )
 
   sd_leaf_samples <- c(
-    "mu__xRE_ALLOCx_total_re__total_sd" = 2,
+    "mu__xRE_ALLOCx_total_re__allocation_sd" = 2,
     "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[1]" = 1,
     "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[2]" = 3,
     "prior_par_eta_mu__xRE_ALLOCx_het_sd__weight[1]" = 1,
@@ -6416,7 +6415,7 @@ test_that("variance allocation graph rejects ambiguous or conflicting specificat
     fixed = TRUE
   )
   expect_error(
-    random_variance_allocation(
+    random_variance_allocation(name = "allocation",
       terms = c(study = "study", "drug"),
       sd = sd_prior,
       weights = prior("dirichlet", list(alpha = c(1, 1)))
@@ -6433,7 +6432,7 @@ test_that("variance allocation graph rejects ambiguous or conflicting specificat
       data = df,
       prior_list = fixed_priors,
       prior_random = prior_random(
-        random_variance_allocation(
+        random_variance_allocation(name = "allocation",
           sd = sd_prior,
           weights = prior("dirichlet", list(alpha = c(1, 1)))
         ),
@@ -6655,7 +6654,7 @@ test_that("variance allocation graph rejects ambiguous or conflicting specificat
   )
 })
 
-test_that("random-effect summary samples expose semantic SD, rho, and allocation filters", {
+test_that("random-effect summary samples expose semantic SD, correlation, and allocation filters", {
 
   sd_prior <- prior("gamma", list(2, 2))
   fixed_priors <- list(intercept = prior("normal", list(0, 1)))
@@ -6698,7 +6697,7 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     dimnames = list(
       NULL,
       c(
-        "mu__xRE_ALLOCx_total_re__total_sd",
+        "mu__xRE_ALLOCx_total_re__allocation_sd",
         "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[1]",
         "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[2]",
         "prior_par_eta_mu__xRE_ALLOCx_nested_split__weight[1]",
@@ -6716,23 +6715,26 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
   expect_false(any(grepl("__xRE_ALLOCx", colnames(nested_summary$model_samples), fixed = TRUE)))
   expect_true(all(c(
     "mu__xRE_SUMMARY__sd_total__total_re",
-    "mu__xRE_SUMMARY__var_frac__total_re__nested",
-    "mu__xRE_SUMMARY__var_frac__nested_split__study",
+    "mu__xRE_SUMMARY__var_prop__total_re__nested",
+    "mu__xRE_SUMMARY__var_prop__nested_split__study",
     "mu__xRE_SUMMARY__sd__study__intercept",
     "mu__xRE_SUMMARY__sd__drug__intercept"
   ) %in% colnames(nested_summary$model_samples)))
   expect_equal(colnames(nested_summary$model_samples), c(
     "mu__xRE_SUMMARY__sd_total__total_re",
+    "mu__xRE_SUMMARY__var_total__total_re",
+    "mu__xRE_SUMMARY__sd_total__nested_split",
+    "mu__xRE_SUMMARY__var_total__nested_split",
     "mu__xRE_SUMMARY__sd__study__intercept",
     "mu__xRE_SUMMARY__sd__paper__intercept",
     "mu__xRE_SUMMARY__sd__drug__intercept",
-    "mu__xRE_SUMMARY__var_frac__total_re__nested",
-    "mu__xRE_SUMMARY__var_frac__total_re__drug",
-    "mu__xRE_SUMMARY__var_frac__nested_split__study",
-    "mu__xRE_SUMMARY__var_frac__nested_split__paper"
+    "mu__xRE_SUMMARY__var_prop__total_re__nested",
+    "mu__xRE_SUMMARY__var_prop__total_re__drug",
+    "mu__xRE_SUMMARY__var_prop__nested_split__study",
+    "mu__xRE_SUMMARY__var_prop__nested_split__paper"
   ))
   expect_equal(
-    nested_summary$model_samples[, "mu__xRE_SUMMARY__var_frac__total_re__nested"],
+    nested_summary$model_samples[, "mu__xRE_SUMMARY__var_prop__total_re__nested"],
     c(1 / 4, 2 / 4),
     tolerance = 1e-12
   )
@@ -6748,9 +6750,11 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     prior_list = nested_summary$prior_list,
     formula_prefix = TRUE
   )
-  expect_true("(mu) sd_total(total_re)" %in% display_names)
-  expect_true("(mu) var_frac(total_re: nested)" %in% display_names)
-  expect_true("(mu) sd(intercept | study)" %in% display_names)
+  expect_true("(mu) total_re: sd_total" %in% display_names)
+  expect_true("(mu) total_re: var_total" %in% display_names)
+  expect_true("(mu) nested_split: sd_total" %in% display_names)
+  expect_true("(mu) total_re: var_prop(nested)" %in% display_names)
+  expect_true("(mu) study: sd(intercept)" %in% display_names)
 
   allocation_inclusion_result <- JAGS_formula(
     formula = ~ 1 +
@@ -6779,7 +6783,7 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     dimnames = list(
       NULL,
       c(
-        "mu__xRE_ALLOCx_total_re__total_sd",
+        "mu__xRE_ALLOCx_total_re__allocation_sd",
         "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[1]",
         "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[2]",
         "mu__xRE_ALLOCx_total_re__include_study_indicator"
@@ -6809,7 +6813,7 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     prior_list = allocation_inclusion_summary$prior_list,
     formula_prefix = TRUE
   )
-  expect_true("(mu) inclusion(total_re: study)" %in% allocation_inclusion_display_names)
+  expect_true("(mu) total_re: inclusion(study)" %in% allocation_inclusion_display_names)
 
   missing_nested_posterior <- nested_posterior[
     ,
@@ -6846,7 +6850,7 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     nrow = 1,
     dimnames = list(
       NULL,
-      c("mu__xRE_ALLOCx_total_re__total_sd", direct_sd_names)
+      c("mu__xRE_ALLOCx_total_re__allocation_sd", direct_sd_names)
     )
   )
   expect_error(
@@ -6861,7 +6865,7 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
   )
   allocation_missing_total_posterior <- nested_posterior[
     ,
-    colnames(nested_posterior) != "mu__xRE_ALLOCx_total_re__total_sd",
+    colnames(nested_posterior) != "mu__xRE_ALLOCx_total_re__allocation_sd",
     drop = FALSE
   ]
   expect_error(
@@ -6871,11 +6875,11 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
       formula_design = list(mu = nested_result$formula_design),
       mode = "standard"
     ),
-    "missing canonical total SD coordinates",
+    "missing canonical SD coordinates for block 'study'",
     fixed = TRUE
   )
   allocation_na_total_posterior <- nested_posterior
-  allocation_na_total_posterior[, "mu__xRE_ALLOCx_total_re__total_sd"] <- NA_real_
+  allocation_na_total_posterior[, "mu__xRE_ALLOCx_total_re__allocation_sd"] <- NA_real_
   expect_error(
     BayesTools:::.bt_random_effect_summary_samples(
       model_samples = allocation_na_total_posterior,
@@ -6883,7 +6887,7 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
       formula_design = list(mu = nested_result$formula_design),
       mode = "standard"
     ),
-    "sd_total\\(total_re\\).*only missing values"
+    "only missing values for block 'study'"
   )
 
   df_slash <- data.frame(
@@ -6918,8 +6922,8 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     prior_list = slash_summary$prior_list,
     formula_prefix = TRUE
   )
-  expect_true("(mu) sd(intercept | cask:batch)" %in% slash_display_names)
-  expect_false("(mu) sd(intercept | cask_batch)" %in% slash_display_names)
+  expect_true("(mu) cask_batch: sd(intercept)" %in% slash_display_names)
+  expect_false("(mu) cask:batch: sd(intercept)" %in% slash_display_names)
 
   slash_raw_summary <- BayesTools:::.bt_random_effect_summary_samples(
     model_samples = matrix(
@@ -6952,8 +6956,8 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     formula_prefix = TRUE,
     formula_design = list(mu = slash_result$formula_design)
   )
-  expect_true("(mu) sd(intercept | cask:batch)" %in% slash_raw_display_names)
-  expect_false(any(grepl("cask_batch", slash_raw_display_names, fixed = TRUE)))
+  expect_true("(mu) cask_batch: sd(intercept)" %in% slash_raw_display_names)
+  expect_true(any(grepl("cask_batch", slash_raw_display_names, fixed = TRUE)))
   expect_false(any(grepl("sd((mu)", slash_raw_display_names, fixed = TRUE)))
 
   slash_metadata <- BayesTools:::.bt_random_effect_summary_metadata_table(
@@ -6965,7 +6969,7 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     "mu__xRE_SUMMARY__sd__cask_batch__intercept",
     colnames(slash_summary$model_samples)
   )
-  expect_equal(slash_metadata[slash_cask_row, "Random name"], "cask:batch")
+  expect_equal(slash_metadata[slash_cask_row, "Random name"], "cask_batch")
   expect_equal(slash_metadata[slash_cask_row, "Random grouping"], "cask:batch")
   expect_equal(
     slash_metadata[slash_cask_row, "Random structure"],
@@ -7006,10 +7010,11 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
   )
   expect_equal(colnames(slash_allocation_summary$model_samples), c(
     "mu__xRE_SUMMARY__sd_total__random_total",
+    "mu__xRE_SUMMARY__var_total__random_total",
     "mu__xRE_SUMMARY__sd__cask_batch__intercept",
     "mu__xRE_SUMMARY__sd__batch__intercept",
-    "mu__xRE_SUMMARY__var_frac__random_total__cask_batch",
-    "mu__xRE_SUMMARY__var_frac__random_total__batch"
+    "mu__xRE_SUMMARY__var_prop__random_total__cask_batch",
+    "mu__xRE_SUMMARY__var_prop__random_total__batch"
   ))
 
   named_result <- JAGS_formula(
@@ -7121,15 +7126,15 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
   kept_sd <- setdiff(names(nested_summary$prior_list), remove_for_sd)
   expect_true("mu__xRE_SUMMARY__sd__study__intercept" %in% kept_sd)
   expect_true("mu__xRE_SUMMARY__sd_total__total_re" %in% kept_sd)
-  expect_false(any(grepl("__var_frac__", kept_sd, fixed = TRUE)))
+  expect_false(any(grepl("__var_prop__", kept_sd, fixed = TRUE)))
 
-  remove_for_fraction <- BayesTools:::.filter_parameters(
+  remove_for_proportion <- BayesTools:::.filter_parameters(
     nested_summary$prior_list,
-    keep_parameters = "random_variance_fraction",
+    keep_parameters = "random_variance_proportion",
     remove_spike_0 = FALSE
   )
-  kept_fraction <- setdiff(names(nested_summary$prior_list), remove_for_fraction)
-  expect_true(all(grepl("__var_frac__", kept_fraction, fixed = TRUE)))
+  kept_proportion <- setdiff(names(nested_summary$prior_list), remove_for_proportion)
+  expect_true(all(grepl("__var_prop__", kept_proportion, fixed = TRUE)))
 
   df_consumed <- data.frame(
     study = factor(c("s1", "s1", "s2", "s2")),
@@ -7174,7 +7179,7 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
       dimnames = list(
         NULL,
         c(
-          "mu__xRE_ALLOCx_total_re__total_sd",
+          "mu__xRE_ALLOCx_total_re__allocation_sd",
           "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[1]",
           "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[2]",
           "prior_par_eta_mu__xRE_ALLOCx_site_split__weight[1]",
@@ -7189,13 +7194,13 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     mode = "standard"
   )
   expect_true(all(c(
-    "mu__xRE_SUMMARY__var_frac__total_re__site",
-    "mu__xRE_SUMMARY__var_frac__total_re__lab",
-    "mu__xRE_SUMMARY__var_frac__site_split__study",
-    "mu__xRE_SUMMARY__var_frac__lab_split__source"
+    "mu__xRE_SUMMARY__var_prop__total_re__site",
+    "mu__xRE_SUMMARY__var_prop__total_re__lab",
+    "mu__xRE_SUMMARY__var_prop__site_split__study",
+    "mu__xRE_SUMMARY__var_prop__lab_split__source"
   ) %in% colnames(consumed_summary$model_samples)))
   expect_equal(
-    unname(consumed_summary$model_samples[1, "mu__xRE_SUMMARY__var_frac__total_re__site"]),
+    unname(consumed_summary$model_samples[1, "mu__xRE_SUMMARY__var_prop__total_re__site"]),
     1 / 4,
     tolerance = 1e-12
   )
@@ -7236,7 +7241,7 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
       dimnames = list(
         NULL,
         c(
-          "mu__xRE_ALLOCx_total_re__total_sd",
+          "mu__xRE_ALLOCx_total_re__allocation_sd",
           "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[1]",
           "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[2]",
           "prior_par_eta_mu__xRE_ALLOCx_het_sd__weight[1]",
@@ -7246,9 +7251,9 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     ),
     prior_list = sd_leaf_result$prior_list,
     formula_design = list(mu = sd_leaf_result$formula_design),
-    mode = "full"
+    mode = "standard"
   )
-  expect_false("mu__xRE_SUMMARY__var_frac__het_sd__x" %in%
+  expect_false("mu__xRE_SUMMARY__var_prop__het_sd__x" %in%
                  colnames(sd_leaf_summary$model_samples))
   expect_equal(
     unname(sd_leaf_summary$model_samples[1, "mu__xRE_SUMMARY__var_ratio__het_sd__x"]),
@@ -7256,18 +7261,18 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     tolerance = 1e-12
   )
   expect_equal(
-    unname(sd_leaf_summary$model_samples[1, "mu__xRE_SUMMARY__sd_mult__het_sd__x"]),
+    unname(sd_leaf_summary$model_samples[1, "mu__xRE_SUMMARY__sd_ratio__het_sd__x"]),
     sqrt(2 * 3 / 4),
     tolerance = 1e-12
   )
 
-  remove_for_fraction_sd_leaf <- BayesTools:::.filter_parameters(
+  remove_for_proportion_sd_leaf <- BayesTools:::.filter_parameters(
     sd_leaf_summary$prior_list,
-    keep_parameters = "random_variance_fraction",
+    keep_parameters = "random_variance_proportion",
     remove_spike_0 = FALSE
   )
-  kept_fraction_sd_leaf <- setdiff(names(sd_leaf_summary$prior_list), remove_for_fraction_sd_leaf)
-  expect_false(any(grepl("__var_ratio__", kept_fraction_sd_leaf, fixed = TRUE)))
+  kept_proportion_sd_leaf <- setdiff(names(sd_leaf_summary$prior_list), remove_for_proportion_sd_leaf)
+  expect_false(any(grepl("__var_ratio__", kept_proportion_sd_leaf, fixed = TRUE)))
 
   remove_for_ratio <- BayesTools:::.filter_parameters(
     sd_leaf_summary$prior_list,
@@ -7340,7 +7345,7 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
       dimnames = list(
         NULL,
         c(
-          "mu__xRE_ALLOCx_total_re__total_sd",
+          "mu__xRE_ALLOCx_total_re__allocation_sd",
           "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[1]",
           "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[2]"
         )
@@ -7362,7 +7367,7 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     dimnames = list(
       NULL,
       c(
-        "mu__xRE_ALLOCx_total_re__total_sd",
+        "mu__xRE_ALLOCx_total_re__allocation_sd",
         "mu__xRE_ALLOCx_total_re__weight[1]",
         "mu__xRE_ALLOCx_total_re__weight[2]",
         "mu__xRE_SUMMARY__sd__slope__x"
@@ -7399,7 +7404,7 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     prior_random = prior_random(
       id = random_block(
         sd = sd_prior,
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     )
   )
@@ -7420,7 +7425,7 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
   )
   expect_false(any(grepl("_xRE_Zx", colnames(rho_summary$model_samples), fixed = TRUE)))
   expect_equal(
-    rho_summary$model_samples[, "mu__xRE_SUMMARY__rho__id"],
+    rho_summary$model_samples[, "mu__xRE_SUMMARY__cor__id"],
     tanh(c(0.25, -0.5)),
     tolerance = 1e-12
   )
@@ -7456,13 +7461,13 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     "out-of-support draw at row 2",
     fixed = TRUE
   )
-  remove_for_rho <- BayesTools:::.filter_parameters(
+  remove_for_correlation <- BayesTools:::.filter_parameters(
     rho_summary$prior_list,
-    keep_parameters = "random_rho",
+    keep_parameters = "random_correlation",
     remove_spike_0 = FALSE
   )
-  kept_rho <- setdiff(names(rho_summary$prior_list), remove_for_rho)
-  expect_equal(kept_rho, "mu__xRE_SUMMARY__rho__id")
+  kept_correlation <- setdiff(names(rho_summary$prior_list), remove_for_correlation)
+  expect_equal(kept_correlation, "mu__xRE_SUMMARY__cor__id")
 
   us_result <- JAGS_formula(
     formula = ~ 1 + us(1 + x | id),
@@ -8214,7 +8219,7 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
     prior_random = prior_random(
       id = random_block(
         sd = prior("gamma", list(2, 2)),
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     )
   )
@@ -8311,7 +8316,7 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
     prior_random = prior_random(
       id = random_block(
         sd = prior("gamma", list(2, 2)),
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     )
   )
@@ -8386,7 +8391,7 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
     prior_random = prior_random(
       id = random_block(
         sd = prior("gamma", list(2, 2)),
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     )
   )
@@ -8435,7 +8440,7 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
     prior_random = prior_random(
       id = random_block(
         sd = prior("gamma", list(2, 2)),
-        rho = prior("point", list(location = 0.2))
+        cor = prior("point", list(location = 0.2))
       )
     )
   )
@@ -8797,7 +8802,7 @@ test_that("JAGS_evaluate_formula reconstructs allocated random effects from simp
     data = df,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd = prior("gamma", list(2, 2)),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )
@@ -8813,7 +8818,7 @@ test_that("JAGS_evaluate_formula reconstructs allocated random effects from simp
     byrow = TRUE,
     dimnames = list(NULL, c(
       "mu_intercept",
-      "mu__xRE_ALLOCx_allocation__total_sd",
+      "mu__xRE_ALLOCx_allocation__allocation_sd",
       "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[1]",
       "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[2]",
       "mu__xREx__study_xRE_Zx[1,1]",
@@ -8852,7 +8857,7 @@ test_that("JAGS_evaluate_formula reconstructs allocated random effects from simp
     nrow = 1,
     dimnames = list(NULL, c(
       "mu_intercept",
-      "mu__xRE_ALLOCx_allocation__total_sd",
+      "mu__xRE_ALLOCx_allocation__allocation_sd",
       "mu__xRE_ALLOCx_allocation__weight[1]",
       "mu__xRE_ALLOCx_allocation__weight[2]",
       "mu__xREx__study_xRE_Zx[1,1]",
@@ -8897,7 +8902,7 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
     data = df,
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source("tau", shape = "row"),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )
@@ -9049,7 +9054,7 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
     data = sd_component_df,
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         terms = "study",
         target = "sd_component",
         sd_source = random_sd_source("tau", shape = "row"),
@@ -9216,7 +9221,7 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
     data = nested_df,
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source("tau", shape = "row"),
         weights = prior("dirichlet", list(alpha = c(1, 1)))
       )
@@ -9287,7 +9292,7 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
     ),
     formula_scale = list(x = TRUE),
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source("tau", shape = "row"),
         weights = prior("dirichlet", list(alpha = c(1, 1)))
       )
@@ -9365,7 +9370,7 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
     ),
     formula_scale = list(x = TRUE),
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source(slope_value_source),
         weights = prior("dirichlet", list(alpha = c(1, 1)))
       )
@@ -9430,11 +9435,11 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
     data = cs_df,
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source("tau", shape = "row"),
         weights = prior("dirichlet", list(alpha = c(1, 1)))
       ),
-      study = random_block(rho = prior("normal", list(0, 0.5)))
+      study = random_block(cor = prior("normal", list(0, 0.5)))
     )
   )
   cs_posterior <- matrix(
@@ -9676,7 +9681,7 @@ test_that("structured random-effect prediction indexes raw data when fixed predi
       prior_random = prior_random(
         id = random_block(
           sd = sd_prior,
-          rho = rho_prior,
+          cor = rho_prior,
           monitor = random_monitor(latent = FALSE, coefficients = TRUE, correlation = FALSE)
         )
       )
@@ -9736,7 +9741,7 @@ test_that("transform_scale_samples leaves structured random-effect SDs on the fi
       prior_random = prior_random(
         id = random_block(
           sd = sd_prior,
-          rho = rho_prior
+          cor = rho_prior
         )
       )
     )
@@ -10333,27 +10338,27 @@ test_that("JAGS_estimates_table backtransforms random-effect correlations", {
   expected_cor <- expected_cov[1, 2] / prod(expected_sd)
 
   expect_equal(
-    unname(scaled_samples[, "(mu) cor(intercept,x | id)"]),
+    unname(scaled_samples[, "(mu) id: cor(intercept,x)"]),
     rep(0.8, 2),
     tolerance = 1e-12
   )
   expect_equal(
-    unname(original_samples[, "(mu) sd(intercept | id)"]),
+    unname(original_samples[, "(mu) id: sd(intercept)"]),
     rep(expected_sd[1], 2),
     tolerance = 1e-12
   )
   expect_equal(
-    unname(original_samples[, "(mu) sd(x | id)"]),
+    unname(original_samples[, "(mu) id: sd(x)"]),
     rep(expected_sd[2], 2),
     tolerance = 1e-12
   )
   expect_equal(
-    unname(original_samples[, "(mu) cor(intercept,x | id)"]),
+    unname(original_samples[, "(mu) id: cor(intercept,x)"]),
     rep(expected_cor, 2),
     tolerance = 1e-12
   )
   expect_equal(
-    unname(original_table["(mu) cor(intercept,x | id)", "Mean"]),
+    unname(original_table["(mu) id: cor(intercept,x)", "Mean"]),
     expected_cor,
     tolerance = 1e-12
   )
@@ -10479,7 +10484,7 @@ test_that("transform_scale_samples clears invalid transformed random-effect corr
       formula_design = list(mu = formula_result$formula_design),
       mode = "standard"
     ),
-    "cor\\(intercept,x \\| id\\).*only missing values"
+    "id: cor\\(intercept,x\\).*only missing values"
   )
   transformed_summary <- BayesTools:::.bt_random_effect_summary_samples(
     model_samples = transformed,
@@ -10947,7 +10952,7 @@ test_that("prior_random maps to explicitly named random-effect blocks", {
         x = prior("normal", list(0, 1))
       ),
       prior_random = prior_random(
-        covariance = random_covariance(rho = prior("normal", list(0, 0.5))),
+        covariance = random_covariance(cor = prior("normal", list(0, 0.5))),
         study = random_block(sd = sd_prior, covariance = random_covariance(eta = 2))
       )
     ),
@@ -11047,7 +11052,7 @@ test_that("prior_random maps to explicitly named random-effect blocks", {
         x = prior("normal", list(0, 1))
       ),
       prior_random = prior_random(
-        allocation = random_variance_allocation(
+        allocation = random_variance_allocation(name = "allocation",
           terms = c("study", "drug"),
           sd = sd_prior
         )
@@ -11503,7 +11508,7 @@ test_that("random-block contrast specifications validate their design scope", {
       prior_random = prior_random(
         id = random_block(
           sd = prior("gamma", list(2, 2)),
-          rho = prior("normal", list(0, 0.5)),
+          cor = prior("normal", list(0, 0.5)),
           contrasts = c(f = "orthonormal")
         )
       )
@@ -11540,7 +11545,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       data = large_factor_df,
       prior_list = list(intercept = prior("normal", list(0, 1))),
       prior_random = prior_random(
-        id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+        id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
       )
     )
   large_term <- large_result$formula_design$random_effects[[1]]
@@ -11564,7 +11569,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     prior_random = prior_random(
       id = random_block(
         sd = sd_prior,
-        rho = prior("normal", list(0, 0.5)),
+        cor = prior("normal", list(0, 0.5)),
         monitor = random_monitor(latent = FALSE, coefficients = TRUE)
       )
     )
@@ -11608,37 +11613,45 @@ test_that("structured random-effect terms use level-indexed factor columns and s
   )
   options(BayesTools.random_effects_complexity_multiplier = old_multiplier)
 
-  expect_error(
-    JAGS_formula(
-      formula = ~ 1 + cs(f | id),
-      parameter = "mu",
-      data = factor_df,
-      prior_list = list(intercept = prior("normal", list(0, 1))),
-      prior_random = prior_random(id = random_block(sd = sd_prior))
-    ),
-    "requires a scalar correlation prior",
-    fixed = TRUE
-  )
-
   default_cs <- JAGS_formula(
     formula = ~ 1 + cs(f | id),
     parameter = "mu",
     data = factor_df,
     prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(id = random_block(sd = sd_prior))
+  )
+  expect_equal(names(default_cs$prior_list), c(
+    "mu_intercept", "mu__xREx__id_sd", "mu__xREx__id_rho"
+  ))
+  expect_equal(default_cs$prior_list$mu__xREx__id_rho$distribution, "uniform")
+  expect_equal(
+    default_cs$prior_list$mu__xREx__id_rho$parameters,
+    list(a = -0.5, b = 1)
+  )
+  expect_equal(
+    default_cs$formula_design$random_effects[[1]]$correlation$rho_scale,
+    "rho"
+  )
+
+  fisher_cs <- JAGS_formula(
+    formula = ~ 1 + cs(f | id),
+    parameter = "mu",
+    data = factor_df,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+      id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
     )
   )
 
-  expect_equal(names(default_cs$prior_list), c("mu_intercept", "mu__xREx__id_sd", "mu__xREx__id_rho_z"))
-  expect_equal(default_cs$prior_list$mu__xREx__id_rho_z$distribution, "normal")
-  expect_equal(default_cs$prior_list$mu__xREx__id_rho_z$parameters, list(mean = 0, sd = 0.5))
-  expect_true(default_cs$formula_design$random_effects[[1]]$homogeneous_sd)
-  expect_equal(default_cs$formula_design$random_effects[[1]]$column_names,
+  expect_equal(names(fisher_cs$prior_list), c("mu_intercept", "mu__xREx__id_sd", "mu__xREx__id_rho_z"))
+  expect_equal(fisher_cs$prior_list$mu__xREx__id_rho_z$distribution, "normal")
+  expect_equal(fisher_cs$prior_list$mu__xREx__id_rho_z$parameters, list(mean = 0, sd = 0.5))
+  expect_true(fisher_cs$formula_design$random_effects[[1]]$homogeneous_sd)
+  expect_equal(fisher_cs$formula_design$random_effects[[1]]$column_names,
                c("fa", "fb", "fc"))
-  expect_null(default_cs$data$mu__xREx__id_xRE_DATAx)
+  expect_null(fisher_cs$data$mu__xREx__id_xRE_DATAx)
   expect_equal(
-    default_cs$formula_design$random_effects[[1]]$sd_parameter_names,
+    fisher_cs$formula_design$random_effects[[1]]$sd_parameter_names,
     rep("mu__xREx__id_sd", 3)
   )
 
@@ -11649,7 +11662,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       data = continuous_df,
       prior_list = list(intercept = prior("normal", list(0, 1))),
       prior_random = prior_random(
-        id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+        id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
       )
     ),
     "does not support explicit '1', '0', or '-1' terms",
@@ -11711,7 +11724,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     data = factor_df,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+      id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
     )
   )
   expect_equal(
@@ -11730,7 +11743,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     data = factor_df,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+      id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
     )
   )
   expect_equal(wrapper_hcs_result$formula_design$random_effects[[1]]$structure, "hcs")
@@ -11742,7 +11755,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     data = factor_df,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+      id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
     )
   )
   expect_equal(hcs_composite$formula_design$random_effects[[1]]$structured_index$variables, c("f", "g"))
@@ -11790,8 +11803,8 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     formula_prefix = TRUE,
     formula_design = list(mu = hcs_composite$formula_design)
   )
-  expect_true("(mu) sd(f:g[a.u] | id)" %in% hcs_composite_raw_display)
-  expect_true("(mu) rho(id)" %in% hcs_composite_raw_display)
+  expect_true("(mu) id: sd(f:g[a.u])" %in% hcs_composite_raw_display)
+  expect_true("(mu) id: cor" %in% hcs_composite_raw_display)
   expect_false(any(grepl("f_g", hcs_composite_raw_display, fixed = TRUE)))
   expect_false(any(grepl("sd((mu)", hcs_composite_raw_display, fixed = TRUE)))
 
@@ -11808,7 +11821,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
         sd = sd_prior,
         weights = prior("dirichlet", list(alpha = rep(1, 6)))
       ),
-      id = random_block(rho = prior("normal", list(0, 0.5)))
+      id = random_block(cor = prior("normal", list(0, 0.5)))
     )
   )
   hcs_composite_allocation_summary <- BayesTools:::.bt_random_effect_summary_samples(
@@ -11818,7 +11831,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       dimnames = list(
         NULL,
         c(
-          "mu__xRE_ALLOCx_leaf_alloc__total_sd",
+          "mu__xRE_ALLOCx_leaf_alloc__allocation_sd",
           paste0("prior_par_eta_mu__xRE_ALLOCx_leaf_alloc__weight[", 1:6, "]"),
           "mu__xREx__id_rho"
         )
@@ -11833,8 +11846,8 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     raw_names = colnames(hcs_composite_allocation_summary$model_samples),
     prior_list = hcs_composite_allocation_summary$prior_list
   )
-  expect_true("(mu) var_frac(leaf_alloc: f:g[a.u])" %in% hcs_composite_allocation_display)
-  expect_true("(mu) sd_mult(leaf_alloc: f:g[a.u])" %in% hcs_composite_allocation_display)
+  expect_true("(mu) leaf_alloc: var_prop(f:g[a.u])" %in% hcs_composite_allocation_display)
+  expect_true("(mu) leaf_alloc: sd_ratio(f:g[a.u])" %in% hcs_composite_allocation_display)
   expect_false(any(grepl("leaf_alloc: f_g", hcs_composite_allocation_display, fixed = TRUE)))
 
   malformed_allocation_design <- hcs_composite_allocation$formula_design
@@ -11847,7 +11860,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
         dimnames = list(
           NULL,
           c(
-            "mu__xRE_ALLOCx_leaf_alloc__total_sd",
+            "mu__xRE_ALLOCx_leaf_alloc__allocation_sd",
             paste0("prior_par_eta_mu__xRE_ALLOCx_leaf_alloc__weight[", 1:6, "]")
           )
         )
@@ -11869,7 +11882,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
         dimnames = list(
           NULL,
           c(
-            "mu__xRE_ALLOCx_leaf_alloc__total_sd",
+            "mu__xRE_ALLOCx_leaf_alloc__allocation_sd",
             paste0("prior_par_eta_mu__xRE_ALLOCx_leaf_alloc__weight[", 1:6, "]")
           )
         )
@@ -11891,7 +11904,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
         dimnames = list(
           NULL,
           c(
-            "mu__xRE_ALLOCx_leaf_alloc__total_sd",
+            "mu__xRE_ALLOCx_leaf_alloc__allocation_sd",
             paste0("prior_par_eta_mu__xRE_ALLOCx_leaf_alloc__weight[", 1:6, "]")
           )
         )
@@ -11915,7 +11928,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
         dimnames = list(
           NULL,
           c(
-            "mu__xRE_ALLOCx_leaf_alloc__total_sd",
+            "mu__xRE_ALLOCx_leaf_alloc__allocation_sd",
             paste0("prior_par_eta_mu__xRE_ALLOCx_leaf_alloc__weight[", 1:6, "]")
           )
         )
@@ -11937,7 +11950,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
         dimnames = list(
           NULL,
           c(
-            "mu__xRE_ALLOCx_leaf_alloc__total_sd",
+            "mu__xRE_ALLOCx_leaf_alloc__allocation_sd",
             paste0("prior_par_eta_mu__xRE_ALLOCx_leaf_alloc__weight[", 1:6, "]")
           )
         )
@@ -11960,7 +11973,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
         dimnames = list(
           NULL,
           c(
-            "mu__xRE_ALLOCx_leaf_alloc__total_sd",
+            "mu__xRE_ALLOCx_leaf_alloc__allocation_sd",
             paste0("prior_par_eta_mu__xRE_ALLOCx_leaf_alloc__weight[", 1:6, "]")
           )
         )
@@ -11985,7 +11998,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
         dimnames = list(
           NULL,
           c(
-            "mu__xRE_ALLOCx_leaf_alloc__total_sd",
+            "mu__xRE_ALLOCx_leaf_alloc__allocation_sd",
             paste0("prior_par_eta_mu__xRE_ALLOCx_leaf_alloc__weight[", 1:6, "]")
           )
         )
@@ -12007,7 +12020,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
         dimnames = list(
           NULL,
           c(
-            "mu__xRE_ALLOCx_leaf_alloc__total_sd",
+            "mu__xRE_ALLOCx_leaf_alloc__allocation_sd",
             paste0("prior_par_eta_mu__xRE_ALLOCx_leaf_alloc__weight[", 1:6, "]")
           )
         )
@@ -12030,7 +12043,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
         dimnames = list(
           NULL,
           c(
-            "mu__xRE_ALLOCx_leaf_alloc__total_sd",
+            "mu__xRE_ALLOCx_leaf_alloc__allocation_sd",
             paste0("prior_par_eta_mu__xRE_ALLOCx_leaf_alloc__weight[", 1:6, "]")
           )
         )
@@ -12051,7 +12064,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
         dimnames = list(
           NULL,
           c(
-            "mu__xRE_ALLOCx_leaf_alloc__total_sd",
+            "mu__xRE_ALLOCx_leaf_alloc__allocation_sd",
             paste0("prior_par_eta_mu__xRE_ALLOCx_leaf_alloc__weight[", 1:6, "]")
           )
         )
@@ -12067,7 +12080,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     data = factor_df,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+      id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
     )
   )
 
@@ -12093,7 +12106,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     data = factor_df,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+      id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
     )
   )
   expect_equal(
@@ -12112,7 +12125,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     data = factor_df,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+      id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
     )
   )
   expect_equal(wrapper_har_result$formula_design$random_effects[[1]]$structure, "har")
@@ -12124,7 +12137,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     data = factor_df,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+      id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
     )
   )
 
@@ -12169,17 +12182,17 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     prior_list = hcs_summary$prior_list,
     random_effects_label = "component"
   )
-  expect_true("(mu) sd(f[a] | id)" %in% hcs_display_names)
-  expect_false("(mu) sd(f[1] | id)" %in% hcs_display_names)
+  expect_true("(mu) id: sd(f[a])" %in% hcs_display_names)
+  expect_false("(mu) id: sd(f[1])" %in% hcs_display_names)
   expect_true("(mu) id: sd(f[a])" %in% hcs_component_display_names)
-  expect_true("(mu) id: rho" %in% hcs_component_display_names)
+  expect_true("(mu) id: cor" %in% hcs_component_display_names)
   hcs_implicit_levels <- JAGS_formula(
     formula = ~ 1 + hcs(f | id),
     parameter = "mu",
     data = factor_df,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+      id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
     )
   )
   expect_equal(
@@ -12193,7 +12206,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     data = factor_df,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+      id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
     )
   )
   expect_equal(har_implicit_levels$formula_design$random_effects[[1]]$column_names,
@@ -12210,7 +12223,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       prior_random = prior_random(
         id = random_block(
           sd = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
-          rho = prior("normal", list(0, 0.5))
+          cor = prior("normal", list(0, 0.5))
         )
       )
     ),
@@ -12225,7 +12238,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     prior_random = prior_random(
       id = random_block(
         sd = prior_mixture(list(prior("gamma", list(2, 2)), prior("point", list(0)))),
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     )
   )
@@ -12242,8 +12255,8 @@ test_that("structured random-effect terms use level-indexed factor columns and s
         id = random_block(
           sd = sd_prior,
           covariance = random_covariance(
-            rho = prior("normal", list(0, 0.5)),
-            rho_scale = "rho"
+            cor = prior("normal", list(0, 0.5)),
+            cor_scale = "cor"
           )
         )
       )
@@ -12274,8 +12287,8 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       prior_list = list(intercept = prior("normal", list(0, 1))),
       prior_random = prior_random(
         covariance = random_covariance(
-          rho = prior("normal", list(0, 0.5)),
-          rho_scale = "rho"
+          cor = prior("normal", list(0, 0.5)),
+          cor_scale = "cor"
         ),
         id = random_block(
           sd = sd_prior,
@@ -12297,10 +12310,10 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       data = factor_df,
       prior_list = list(intercept = prior("normal", list(0, 1))),
       prior_random = prior_random(
-        covariance = random_covariance(rho = prior("normal", list(0, 0.5))),
+        covariance = random_covariance(cor = prior("normal", list(0, 0.5))),
         id = random_block(
           sd = sd_prior,
-          covariance = random_covariance(structure = "har", rho_scale = "rho")
+          covariance = random_covariance(structure = "har", cor_scale = "cor")
         )
       )
     ),
@@ -12318,10 +12331,10 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       data = factor_df,
       prior_list = list(intercept = prior("normal", list(0, 1))),
       prior_random = prior_random(
-        covariance = random_covariance(rho_scale = "rho"),
+        covariance = random_covariance(cor_scale = "cor"),
         id = random_block(
           sd = sd_prior,
-          rho = prior("normal", list(0, 0.5))
+          cor = prior("normal", list(0, 0.5))
         )
       )
     ),
@@ -12337,7 +12350,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     data = car_df,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+      id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
     )
   )
   car_term <- car_result$formula_design$random_effects[[1]]
@@ -12415,7 +12428,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     data = car_df,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      id = random_block(sd = sd_prior, rho = prior("point", list(location = 0)))
+      id = random_block(sd = sd_prior, cor = prior("point", list(location = 0)))
     )
   )
   car_independent_term <- car_independent$formula_design$random_effects[[1]]
@@ -12447,8 +12460,8 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       id = random_block(
         sd = sd_prior,
         covariance = random_covariance(
-          rho = prior("point", list(location = 0)),
-          rho_scale = "rho"
+          cor = prior("point", list(location = 0)),
+          cor_scale = "cor"
         )
       )
     )
@@ -12464,7 +12477,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     data = car_df,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+      id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
     )
   )
   expect_equal(
@@ -12487,7 +12500,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     prior_list = list(intercept = prior("normal", list(0, 1))),
     formula_scale = TRUE,
     prior_random = prior_random(
-      id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+      id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
     )
   )
   expect_false("formula_scale" %in% names(car_scale_request))
@@ -12503,7 +12516,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     ),
     formula_scale = TRUE,
     prior_random = prior_random(
-      id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+      id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
     )
   )
   expect_equal(fixed_car_scale$formula_design$random_effects[[1]]$car$time_values, c(0, 0.5, 2))
@@ -12554,7 +12567,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       data = transform(car_df, time = c(0, NA, 2, 0, 0.5, 2)),
       prior_list = list(intercept = prior("normal", list(0, 1))),
       prior_random = prior_random(
-        id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+        id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
       )
     ),
     "must contain only finite values",
@@ -12572,7 +12585,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       data = bad_ordered_car_df,
       prior_list = list(intercept = prior("normal", list(0, 1))),
       prior_random = prior_random(
-        id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+        id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
       )
     ),
     "numeric level labels",
@@ -12590,7 +12603,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     data = ordered_car_df,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+      id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
     )
   )
   ordered_car_term <- ordered_car_result$formula_design$random_effects[[1]]
@@ -12609,8 +12622,8 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       id = random_block(
         sd = sd_prior,
         covariance = random_covariance(
-          rho = prior("normal", list(0, 0.5)),
-          rho_scale = "logit"
+          cor = prior("normal", list(0, 0.5)),
+          cor_scale = "logit"
         )
       )
     )
@@ -12628,8 +12641,8 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       id = random_block(
         sd = sd_prior,
         covariance = random_covariance(
-          rho = prior("normal", list(0, 0.5)),
-          rho_scale = "logit"
+          cor = prior("normal", list(0, 0.5)),
+          cor_scale = "logit"
         )
       )
     )
@@ -12645,7 +12658,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       data = transform(car_df, x = seq_len(nrow(car_df))),
       prior_list = list(intercept = prior("normal", list(0, 1))),
       prior_random = prior_random(
-        id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+        id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
       )
     ),
     "exactly one untransformed time variable",
@@ -12658,7 +12671,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       data = transform(car_df, time = factor(time)),
       prior_list = list(intercept = prior("normal", list(0, 1))),
       prior_random = prior_random(
-        id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+        id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
       )
     ),
     "must be numeric or an ordered factor",
@@ -12670,7 +12683,7 @@ test_that("structured correlation Cholesky syntax exposes intended covariance pa
 
   sd_prior <- prior("normal", list(0, 1), truncation = list(lower = 0, upper = Inf))
   rho_prior <- prior("normal", list(0, 0.5))
-  block_prior <- random_block(sd = sd_prior, rho = rho_prior)
+  block_prior <- random_block(sd = sd_prior, cor = rho_prior)
 
   cs_module <- BayesTools:::.bt_JAGS_structured_corr_cholesky(
     node_prefix = "mu__xREx__id",
@@ -12755,8 +12768,8 @@ test_that("structured correlation Cholesky syntax exposes intended covariance pa
     block_prior = random_block(
       sd = sd_prior,
       covariance = random_covariance(
-        rho = rho_prior,
-        rho_scale = "logit"
+        cor = rho_prior,
+        cor_scale = "logit"
       )
     ),
     include_correlation = TRUE
@@ -12917,7 +12930,7 @@ test_that("JAGS_formula independent random-effect design matches lme4 lFormula o
     prior_random = prior_random(
       id = random_block(
         sd = prior("normal", list(0, 1), truncation = list(lower = 0, upper = Inf)),
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     )
   )

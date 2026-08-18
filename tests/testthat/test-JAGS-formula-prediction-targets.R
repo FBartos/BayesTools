@@ -453,7 +453,7 @@ test_that("row-indexed new-level sampling rejects invalid scale draws", {
     data = df,
     prior_list = fixed_priors,
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         terms = "id",
         target = "sd_component",
         sd_source = random_sd_source("tau", shape = "row"),
@@ -715,7 +715,7 @@ test_that("structured new-level sampling uses only requested column subsets", {
     prior_random = prior_random(
       id = random_block(
         sd = sd_prior,
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     )
   )
@@ -871,7 +871,7 @@ test_that("structured new-level subset sampling covers HCS, AR1, HAR, and CAR", 
       prior_random = prior_random(
         id = random_block(
           sd = sd_prior,
-          rho = prior("normal", list(0, 0.5))
+          cor = prior("normal", list(0, 0.5))
         )
       )
     )

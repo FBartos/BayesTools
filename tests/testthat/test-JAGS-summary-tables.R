@@ -153,6 +153,75 @@ make_raw_random_summary_fit <- function(){
   )
 }
 
+make_lkj_coordinate_summary_fit <- function(){
+
+  data <- data.frame(
+    group = factor(
+      c("sensitivity", "specificity", "sensitivity", "specificity"),
+      levels = c("sensitivity", "specificity")
+    ),
+    study = factor(c("a", "a", "b", "b"))
+  )
+  formula <- ~ 1 + us(0 + group | study)
+  prior_random_list <- prior_random(
+    study = random_block(
+      sd = prior("gamma", list(2, 2)),
+      covariance = random_covariance(cor = prior_lkj(eta = 1)),
+      monitor = random_monitor(
+        correlation = TRUE,
+        lkj_primitives = TRUE
+      ),
+      contrasts = c(group = "independent")
+    )
+  )
+  design <- JAGS_formula(
+    formula = formula,
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random_list
+  )$formula_design
+  random_term <- design$random_effects[[1L]]
+  stem <- random_term$parameter_stem
+  R_names <- paste0(
+    stem,
+    "_xRE_CORx_R[",
+    c("1,1", "1,2", "2,1", "2,2"),
+    "]"
+  )
+  L_names <- paste0(
+    stem,
+    "_xRE_CORx_L[",
+    c("1,1", "1,2", "2,1", "2,2"),
+    "]"
+  )
+  coordinate_names <- c(
+    random_term$correlation$primitive_names,
+    random_term$correlation$cpc_names
+  )
+  fit <- make_random_summary_fit(
+    formula = formula,
+    data = data,
+    prior_random_list = prior_random_list,
+    extra_raw_columns = c(
+      random_term$sd_parameter_names,
+      R_names,
+      L_names,
+      coordinate_names
+    )
+  )
+
+  samples <- as.matrix(fit$mcmc[[1L]])
+  rho <- seq(-0.8, -0.4, length.out = nrow(samples))
+  samples[, R_names] <- cbind(1, rho, rho, 1)
+  samples[, L_names] <- cbind(1, 0, rho, sqrt(1 - rho^2))
+  samples[, random_term$correlation$primitive_names] <- (rho + 1) / 2
+  samples[, random_term$correlation$cpc_names] <- rho
+  fit$mcmc <- coda::mcmc.list(coda::mcmc(samples))
+
+  attach_test_parameter_registry(fit)
+}
+
 make_two_block_random_summary_fit <- function(){
 
   data <- data.frame(
@@ -185,7 +254,7 @@ make_row_indexed_external_random_summary_fit <- function(){
     data = data,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source("tau", shape = "row"),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )
@@ -383,6 +452,47 @@ test_that("raw random-effect table filtering honors semantic aliases", {
   expect_true("sigma" %in% colnames(removed_random))
 })
 
+test_that("standard random summaries replace LKJ coordinates with semantic rows", {
+
+  skip_if_not_installed("runjags")
+
+  fit <- make_lkj_coordinate_summary_fit()
+  raw <- JAGS_estimates_table(
+    fit,
+    keep_parameters = "random_effects",
+    random_effects_summary = "raw",
+    return_samples = TRUE
+  )
+  expect_true(any(grepl("_xRE_CORx_lkj_u", colnames(raw), fixed = TRUE)))
+  expect_true(any(grepl("_xRE_CORx_lkj_cpc", colnames(raw), fixed = TRUE)))
+
+  location <- JAGS_estimates_table(
+    fit,
+    keep_formulas = "mu",
+    random_effects_summary = "none",
+    formula_prefix = FALSE,
+    return_samples = TRUE
+  )
+  expect_identical(colnames(location), "intercept")
+
+  expected_random <- c(
+    "study: sd(group[sensitivity])",
+    "study: sd(group[specificity])",
+    "study: cor(group[sensitivity],group[specificity])"
+  )
+  for(summary_mode in c("standard", "full")){
+    random <- JAGS_estimates_table(
+      fit,
+      keep_parameters = "random_effects",
+      random_effects_summary = summary_mode,
+      random_effects_label = "component",
+      formula_prefix = FALSE,
+      return_samples = TRUE
+    )
+    expect_identical(colnames(random), expected_random)
+  }
+})
+
 test_that("keep_random_effects preserves selected random rows with keep_parameters", {
 
   skip_if_not_installed("runjags")
@@ -396,8 +506,8 @@ test_that("keep_random_effects preserves selected random rows with keep_paramete
   )
 
   expect_true("sigma" %in% colnames(kept))
-  expect_true(any(grepl("sd\\(intercept \\| id\\)", colnames(kept))))
-  expect_false(any(grepl("sd\\(intercept \\| site\\)", colnames(kept))))
+  expect_true("(mu) id: sd(intercept)" %in% colnames(kept))
+  expect_false("(mu) site: sd(intercept)" %in% colnames(kept))
 })
 
 test_that("random_effects_label selects grouped or component labels", {
@@ -419,7 +529,7 @@ test_that("random_effects_label selects grouped or component labels", {
 
   expect_identical(
     colnames(grouped),
-    c("(mu) sd(intercept | id)", "(mu) sd(intercept | site)")
+    c("(mu) id: sd(intercept)", "(mu) site: sd(intercept)")
   )
   expect_identical(
     colnames(component),
@@ -434,15 +544,16 @@ test_that("row-indexed external random SD summaries survive the public estimates
 
   fit <- make_row_indexed_external_random_summary_fit()
   allocation_rows <- c(
-    "(mu) var_frac(allocation: study)",
-    "(mu) var_frac(allocation: drug)"
+    "(mu) allocation: var_prop(study)",
+    "(mu) allocation: var_prop(drug)"
   )
-  scalar_sd_pattern <- "^\\(mu\\) sd\\("
+  scalar_sd_pattern <- "^\\(mu\\) [^:]+: sd\\("
 
   for(summary_mode in c("standard", "full")){
     summary_table <- JAGS_estimates_table(
       fit,
-      random_effects_summary = summary_mode
+      random_effects_summary = summary_mode,
+      random_effects_label = "component"
     )
 
     expect_true(all(allocation_rows %in% rownames(summary_table)))
@@ -455,7 +566,7 @@ test_that("row-indexed external random SD summaries survive the public estimates
     return_samples = TRUE
   )
   expect_true(any(grepl("^\\(mu\\) z\\(", colnames(raw_samples))))
-  expect_false(any(grepl("var_frac\\(allocation:", colnames(raw_samples))))
+  expect_false(any(grepl("allocation: var_prop\\(", colnames(raw_samples))))
   expect_false(any(grepl(scalar_sd_pattern, colnames(raw_samples))))
 
   none_samples <- JAGS_estimates_table(
@@ -464,7 +575,7 @@ test_that("row-indexed external random SD summaries survive the public estimates
     return_samples = TRUE
   )
   expect_false(any(grepl("^\\(mu\\) z\\(", colnames(none_samples))))
-  expect_false(any(grepl("var_frac\\(allocation:", colnames(none_samples))))
+  expect_false(any(grepl("allocation: var_prop\\(", colnames(none_samples))))
   expect_false(any(grepl(scalar_sd_pattern, colnames(none_samples))))
 
   kept_random <- JAGS_estimates_table(
@@ -961,14 +1072,14 @@ test_that("runjags_estimates_table preserves point-factor and random-SD inclusio
     fit_random_factor,
     random_effects_summary = "raw"
   )
-  random_inclusion <- "(mu) x_fac3 | id (inclusion)"
+  random_inclusion <- "(mu) id: inclusion(sd(x_fac3))"
   raw_inclusion <- "(mu) _xREx__id_x_fac3 (inclusion)"
   expect_true(random_inclusion %in% rownames(random_table))
   expect_true(raw_inclusion %in% rownames(raw_random_table))
   expect_true(all(
     c(
-      "(mu) sd(x_fac3[B] | id)",
-      "(mu) sd(x_fac3[C] | id)"
+      "(mu) id: sd(x_fac3[B])",
+      "(mu) id: sd(x_fac3[C])"
     ) %in% rownames(random_table)
   ))
   expect_false(any(grepl(

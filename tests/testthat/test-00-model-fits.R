@@ -2563,7 +2563,7 @@ test_that("JAGS_fit runs dummy structured random-effect formula models", {
     formula_random_prior_list = list(mu = prior_random(
       id = random_block(
         sd = sd_prior,
-        rho = rho_prior,
+        cor = rho_prior,
         monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
       )
     )),
@@ -2597,7 +2597,7 @@ test_that("JAGS_fit runs dummy structured random-effect formula models", {
     formula_random_prior_list = list(mu = prior_random(
       id = random_block(
         sd = sd_prior,
-        rho = rho_prior,
+        cor = rho_prior,
         monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
       )
     )),
@@ -2784,7 +2784,7 @@ test_that("centered and noncentered fits preserve substantive output schemas", {
       formula_random_prior_list = list(mu = prior_random(
         id = random_block(
           sd = prior("gamma", list(2, 2)),
-          rho = prior("normal", list(0, 0.5)),
+          cor = prior("normal", list(0, 0.5)),
           parameterization = parameterization
         )
       )),
@@ -2854,7 +2854,7 @@ test_that("group-local structured fits monitor only active latent cells", {
     formula_random_prior_list = list(mu = prior_random(
       id = random_block(
         sd = prior("point", list(location = 1)),
-        rho = prior("point", list(location = 0.2))
+        cor = prior("point", list(location = 0.2))
       )
     )),
     chains = 1,
@@ -2914,7 +2914,7 @@ test_that("JAGS transformed scalar rho remains representably inside support", {
     formula_random_prior_list = list(mu = prior_random(
       id = random_block(
         sd = prior("point", list(location = 1)),
-        rho = prior("point", list(location = 1e300))
+        cor = prior("point", list(location = 1e300))
       )
     )),
     chains = 1,
@@ -2966,7 +2966,7 @@ test_that("JAGS_fit predicts row-indexed external SD random effects from latent 
       intercept = prior("normal", list(0, 1))
     )),
     formula_random_prior_list = list(mu = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source("tau", shape = "row"),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )
@@ -4986,7 +4986,7 @@ test_that("JAGS bridgesampling validates rebuilt formula random design metadata"
     prior_random_list = prior_random(
       id = random_block(
         sd = prior("gamma", list(2, 2)),
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     )
   )
@@ -5015,7 +5015,7 @@ test_that("JAGS bridgesampling validates rebuilt formula random design metadata"
     data = allocation_data,
     prior_list = allocation_prior_list,
     prior_random_list = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd = prior("gamma", list(2, 2)),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )
@@ -5157,7 +5157,7 @@ test_that("JAGS bridgesampling supports continuous-time CAR formula random effec
   prior_random_list <- prior_random(
     id = random_block(
       sd = prior("gamma", list(2, 2)),
-      rho = prior("normal", list(0, 0.5))
+      cor = prior("normal", list(0, 0.5))
     )
   )
 
@@ -5230,7 +5230,7 @@ test_that("centered continuous-time CAR syntax samples sequential conditionals",
     prior_random = prior_random(
       id = random_block(
         sd = prior("point", list(location = 1)),
-        rho = prior("normal", list(0, 0.5)),
+        cor = prior("normal", list(0, 0.5)),
         monitor = random_monitor(coefficients = TRUE),
         parameterization = "centered"
       )
@@ -5324,7 +5324,7 @@ test_that("JAGS bridgesampling supports Dirichlet variance-allocation random eff
     intercept = prior("normal", list(0, 1))
   )
   prior_random_list <- prior_random(
-    allocation = random_variance_allocation(
+    allocation = random_variance_allocation(name = "allocation",
       sd = prior("gamma", list(2, 2)),
       weights = prior("dirichlet", list(alpha = c(2, 3)))
     )
@@ -5407,13 +5407,13 @@ test_that("JAGS bridgesampling reconstructs row-indexed external SD sources from
     }
   )
   prior_random_list <- prior_random(
-    allocation = random_variance_allocation(
+    allocation = random_variance_allocation(name = "allocation",
       sd_source = random_sd_source(tau_source),
       weights = prior("dirichlet", list(alpha = c(2, 3)))
     )
   )
   no_values_prior_random_list <- prior_random(
-    allocation = random_variance_allocation(
+    allocation = random_variance_allocation(name = "allocation",
       sd_source = random_sd_source("tau", shape = "row"),
       weights = prior("dirichlet", list(alpha = c(2, 3)))
     )
@@ -5580,7 +5580,7 @@ test_that("JAGS bridgesampling gives unit marglik for prior-only random-effect s
     prior_random_list = prior_random(
       id = random_block(
         sd = sd_prior,
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     ),
     seed = 13
@@ -5602,8 +5602,8 @@ test_that("JAGS bridgesampling gives unit marglik for prior-only random-effect s
       id = random_block(
         sd = sd_prior,
         covariance = random_covariance(
-          rho = prior("normal", list(0, 0.5)),
-          rho_scale = "logit"
+          cor = prior("normal", list(0, 0.5)),
+          cor_scale = "logit"
         )
       )
     ),
@@ -5625,7 +5625,7 @@ test_that("JAGS bridgesampling gives unit marglik for prior-only random-effect s
     prior_random_list = prior_random(
       id = random_block(
         sd = sd_prior,
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     ),
     seed = 15
@@ -5643,8 +5643,8 @@ test_that("JAGS bridgesampling gives unit marglik for prior-only random-effect s
       id = random_block(
         sd = sd_prior,
         covariance = random_covariance(
-          rho = prior("normal", list(0, 0.5), truncation = list(lower = -1, upper = 1)),
-          rho_scale = "rho"
+          cor = prior("normal", list(0, 0.5), truncation = list(lower = -1, upper = 1)),
+          cor_scale = "cor"
         )
       )
     ),
@@ -5707,7 +5707,7 @@ test_that("JAGS bridgesampling gives unit marglik for prior-only random-effect s
         sd = sd_prior,
         weights = prior("dirichlet", list(alpha = c(2, 3, 4)))
       ),
-      id = random_block(rho = prior("normal", list(0, 0.5)))
+      id = random_block(cor = prior("normal", list(0, 0.5)))
     ),
     n_iter = 10000,
     seed = 18
@@ -6230,13 +6230,13 @@ test_that("fully structural fits retain deterministic draw geometry", {
   )
 
   registry <- JAGS_parameter_registry(fit)
-  expect_false(.bt_backend_anchor_name %in% registry$canonical_name)
+  expect_false(.bt_backend_anchor_name %in% registry$coordinate_name)
   expect_identical(
-    registry$monitor_status[registry$canonical_name == "theta"],
+    registry$monitor_status[registry$coordinate_name == "theta"],
     "structural"
   )
   expect_identical(
-    registry$fixed_value[registry$canonical_name == "theta"],
+    registry$fixed_value[registry$coordinate_name == "theta"],
     0
   )
 
@@ -6245,7 +6245,7 @@ test_that("fully structural fits retain deterministic draw geometry", {
   theta <- catalog$quantities[catalog$quantities$canonical_name == "theta", ]
   expect_identical(theta$status, "structural")
   expect_identical(theta$fixed_value, 0)
-  expect_identical(JAGS_fit_contract(fit)$parameter_catalog_version, 3L)
+  expect_identical(JAGS_fit_contract(fit)$parameter_catalog_version, 5L)
 
   geometry <- JAGS_draw_geometry(fit)
   expect_identical(geometry$chains$iterations, c(100L, 100L))

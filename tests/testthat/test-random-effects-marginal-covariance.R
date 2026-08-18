@@ -155,7 +155,7 @@ test_that("single-coefficient correlation Cholesky draws retain dimensions", {
     prior_random = prior_random(
       id = random_block(
         sd = .re_cov_sd_prior(),
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     )
   )
@@ -343,7 +343,29 @@ test_that("known group covariance uses tau squared times ZKZ prime", {
   expect_equal(random_term$group_covariance$scale, "none")
   expect_equal(
     BayesTools:::.bt_random_effect_sd_summary_label("intercept", "id", random_term),
-    "sd_multiplier(intercept | id)"
+    "id: sd_ratio(intercept)"
+  )
+  derived <- BayesTools:::.bt_random_effect_summary_derived_samples(
+    model_samples = posterior,
+    prior_list     = result$prior_list,
+    random_design  = list(result$formula_design),
+    mode           = "standard",
+    formula_scale  = list()
+  )
+  var_ratio_name <- grep(
+    "__var_ratio__",
+    names(derived$prior_list),
+    value = TRUE,
+    fixed = TRUE
+  )
+  expect_identical(length(var_ratio_name), 1L)
+  expect_identical(
+    attr(
+      derived$prior_list[[var_ratio_name]],
+      "random_summary_component_label",
+      exact = TRUE
+    ),
+    "var_ratio(intercept)"
   )
   expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
   expect_equal(unname(diagonal$samples), .re_cov_dense_diagonal(out),
@@ -948,7 +970,7 @@ test_that("car one-hot covariance routes through the stable factor", {
     prior_random = prior_random(
       id = random_block(
         sd = .re_cov_sd_prior(),
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     )
   )
@@ -1002,7 +1024,7 @@ test_that("car covariance preserves upper-rho half-gap contrast variance", {
     prior_random = prior_random(
       id = random_block(
         sd = .re_cov_sd_prior(),
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     )
   )
@@ -1067,7 +1089,7 @@ test_that("car covariance validates every compact coordinate copy", {
     prior_random = prior_random(
       id = random_block(
         sd = .re_cov_sd_prior(),
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     )
   )
@@ -1122,7 +1144,7 @@ test_that("structured covariance uses fitted column order for supplied data", {
     prior_random = prior_random(
       id = random_block(
         sd = .re_cov_sd_prior(),
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     )
   )
@@ -1174,7 +1196,7 @@ test_that("point SD and scalar-rho priors are materialized on the right scale", 
     prior_random = prior_random(
       id = random_block(
         sd = prior("point", list(location = 2)),
-        rho = prior("point", list(location = 0.2))
+        cor = prior("point", list(location = 0.2))
       )
     )
   )
@@ -1194,8 +1216,8 @@ test_that("point SD and scalar-rho priors are materialized on the right scale", 
       id = random_block(
         sd = prior("point", list(location = 2)),
         covariance = random_covariance(
-          rho = prior("point", list(location = 0.25)),
-          rho_scale = "rho"
+          cor = prior("point", list(location = 0.25)),
+          cor_scale = "cor"
         )
       )
     )
@@ -1227,7 +1249,7 @@ test_that("sparse structured covariance expands row pairs without global matrice
     prior_random = prior_random(
       id = random_block(
         sd = prior("point", list(location = 2)),
-        rho = prior("point", list(location = 0.2))
+        cor = prior("point", list(location = 0.2))
       )
     )
   )
@@ -1255,7 +1277,7 @@ test_that("scalar rho posterior columns use canonical sample precedence", {
     prior_random = prior_random(
       id = random_block(
         sd = .re_cov_sd_prior(),
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     )
   )
@@ -1545,7 +1567,7 @@ test_that("row-varying SD-component allocation weights columns and rows", {
     formula = ~ 1 + random(1 + x | id, name = "id", covariance = "diag"),
     data = df,
     prior_random = prior_random(
-      random_variance_allocation(
+      random_variance_allocation(name = "allocation",
         terms = "id",
         target = "sd_component",
         scale = "total_variance",

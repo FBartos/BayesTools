@@ -460,7 +460,7 @@ test_that("bridge marginal evaluator supports every implemented covariance struc
       prior_random = prior_random(
         id = random_block(
           sd = prior("point", list(location = 0.4)),
-          rho = prior("point", list(location = 0.2))
+          cor = prior("point", list(location = 0.2))
         )
       ),
       values = numeric()
@@ -470,7 +470,7 @@ test_that("bridge marginal evaluator supports every implemented covariance struc
       prior_random = prior_random(
         id = random_block(
           sd = prior("point", list(location = 0.3)),
-          rho = prior("point", list(location = 0.2))
+          cor = prior("point", list(location = 0.2))
         )
       ),
       values = numeric()
@@ -480,7 +480,7 @@ test_that("bridge marginal evaluator supports every implemented covariance struc
       prior_random = prior_random(
         id = random_block(
           sd = prior("point", list(location = 0.4)),
-          rho = prior("point", list(location = 0.5))
+          cor = prior("point", list(location = 0.5))
         )
       ),
       values = numeric()
@@ -490,7 +490,7 @@ test_that("bridge marginal evaluator supports every implemented covariance struc
       prior_random = prior_random(
         id = random_block(
           sd = prior("point", list(location = 0.3)),
-          rho = prior("point", list(location = 0.5))
+          cor = prior("point", list(location = 0.5))
         )
       ),
       values = numeric()
@@ -500,7 +500,7 @@ test_that("bridge marginal evaluator supports every implemented covariance struc
       prior_random = prior_random(
         id = random_block(
           sd = prior("point", list(location = 0.4)),
-          rho = prior("point", list(location = 0.5))
+          cor = prior("point", list(location = 0.5))
         )
       ),
       values = numeric()
@@ -648,7 +648,7 @@ test_that("compiled bridge correlation geometry preserves sampled rho", {
     prior_random = prior_random(
       id = random_block(
         sd = prior("point", list(location = 0.4)),
-        rho = prior("normal", list(mean = 0, sd = 0.5))
+        cor = prior("normal", list(mean = 0, sd = 0.5))
       )
     )
   )
@@ -761,7 +761,7 @@ test_that("bridge coefficient geometry reconstructs a structured factor once", {
     prior_random = prior_random(
       id = random_block(
         sd = prior("point", list(location = 0.4)),
-        rho = prior("point", list(location = 0.2))
+        cor = prior("point", list(location = 0.2))
       )
     )
   )
@@ -1063,7 +1063,7 @@ test_that("marginal bridge covariance reuses natural allocation parameters", {
     data = data,
     prior_list = list(intercept = prior("point", list(location = 0))),
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd = prior("gamma", list(2, 2)),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )
@@ -1085,7 +1085,7 @@ test_that("marginal bridge covariance reuses natural allocation parameters", {
   weight_name <- "mu__xRE_ALLOCx_allocation__weight"
   eta_names <- paste0("prior_par_eta_", weight_name, "[", 1:2, "]")
   valid_samples <- c(
-    "mu__xRE_ALLOCx_allocation__total_sd" = 2,
+    "mu__xRE_ALLOCx_allocation__allocation_sd" = 2,
     stats::setNames(c(1, 3), eta_names)
   )
   formula_prior_evaluator <- .bt_JAGS_bridge_compile_formula_prior_evaluator(

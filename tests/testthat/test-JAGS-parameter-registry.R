@@ -6,7 +6,7 @@ test_that("parameter registry schema is explicit and versioned", {
   expect_identical(
     schema$field,
     c(
-      "canonical_name", "monitor_name", "formula_parameter", "role",
+      "coordinate_name", "monitor_name", "formula_parameter", "role",
       "random_block", "random_name", "term", "column", "index", "dimensions",
       "fitted_scale", "monitor_status", "fixed_value", "display_label",
       "random_grouping", "random_structure", "internal"
@@ -59,9 +59,9 @@ test_that("fitted registry classifies concrete random coordinates exactly", {
   )
 
   expect_s3_class(registry, "BayesTools_parameter_registry")
-  expect_identical(attr(registry, "schema_version"), 3L)
-  expect_identical(registry$canonical_name, columns)
-  expect_identical(anyDuplicated(registry$canonical_name), 0L)
+  expect_identical(attr(registry, "schema_version"), 4L)
+  expect_identical(registry$coordinate_name, columns)
+  expect_identical(anyDuplicated(registry$coordinate_name), 0L)
   expect_identical(
     registry$role,
     c(
@@ -87,11 +87,64 @@ test_that("fitted registry classifies concrete random coordinates exactly", {
     registry$display_label,
     c(
       "(mu) intercept",
-      "(mu) sd(x | id)",
+      "(mu) id: sd(x)",
       "(mu) z(id[a], x)",
       "(mu) coef(id[a], x)"
     )
   )
+})
+
+test_that("registry keeps LKJ primitive coordinates internal to their random block", {
+
+  data <- data.frame(
+    group = factor(
+      c("sensitivity", "specificity", "sensitivity", "specificity"),
+      levels = c("sensitivity", "specificity")
+    ),
+    study = factor(c("a", "a", "b", "b"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + us(0 + group | study),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      study = random_block(
+        sd = prior("gamma", list(2, 2)),
+        covariance = random_covariance(cor = prior_lkj(eta = 1)),
+        monitor = random_monitor(lkj_primitives = TRUE),
+        contrasts = c(group = "independent")
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  coordinates <- c(
+    random_term$correlation$primitive_names,
+    random_term$correlation$cpc_names
+  )
+  registry <- build_test_parameter_registry(
+    columns = coordinates,
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+
+  expect_identical(
+    random_term$sd_leaves$leaf_terms_by_column,
+    c("group[sensitivity]", "group[specificity]")
+  )
+  expect_identical(random_term$contrast_owner, "random_block")
+  expect_identical(registry$coordinate_name, coordinates)
+  expect_identical(
+    registry$role,
+    rep("random_correlation_coordinate", length(coordinates))
+  )
+  expect_identical(registry$formula_parameter, rep("mu", length(coordinates)))
+  expect_identical(registry$random_block, rep("study", length(coordinates)))
+  expect_identical(registry$random_name, rep("study", length(coordinates)))
+  expect_identical(registry$random_grouping, rep("study", length(coordinates)))
+  expect_identical(registry$random_structure, rep("us", length(coordinates)))
+  expect_identical(registry$fitted_scale, rep("unitless", length(coordinates)))
+  expect_true(all(registry$internal))
 })
 
 test_that("registry owns random SD spike-and-slab auxiliaries", {
@@ -145,7 +198,7 @@ test_that("registry owns random SD spike-and-slab auxiliaries", {
     formula_design = list(mu = formula_result$formula_design)
   )
   registry <- registry[
-    match(columns, registry$canonical_name),
+    match(columns, registry$coordinate_name),
     ,
     drop = FALSE
   ]
@@ -194,9 +247,9 @@ test_that("registry display labels do not overwrite fixed scale formatting", {
     mu_x__xXx__z = interaction_prior,
     log_sigma_intercept = log_intercept_prior
   )
-  canonical_names <- names(prior_list)
+  coordinate_names <- names(prior_list)
   registry <- build_test_parameter_registry(
-    columns = canonical_names,
+    columns = coordinate_names,
     prior_list = prior_list
   )
 
@@ -209,7 +262,7 @@ test_that("registry display labels do not overwrite fixed scale formatting", {
   expect_identical(
     BayesTools:::.bt_random_effect_summary_display_names(
       names = formatted_names,
-      raw_names = canonical_names,
+      raw_names = coordinate_names,
       prior_list = prior_list,
       parameter_registry = registry
     ),
@@ -235,15 +288,15 @@ test_that("registry accessor rejects unversioned and malformed fitted objects", 
 
   fit <- attach_test_parameter_registry(fit)
   registry <- JAGS_parameter_registry(fit)
-  expect_identical(registry$canonical_name, "theta")
+  expect_identical(registry$coordinate_name, "theta")
   expect_identical(registry$role, "parameter")
 
   malformed <- registry
-  malformed$canonical_name <- ""
+  malformed$coordinate_name <- ""
   attr(fit, "parameter_registry") <- malformed
   expect_error(
     JAGS_parameter_registry(fit),
-    "unique, non-missing canonical names"
+    "unique, non-missing coordinate names"
   )
 })
 
@@ -257,7 +310,7 @@ test_that("structural point parameters are registered when JAGS omits them", {
     )
   )
 
-  fixed <- registry[registry$canonical_name == "fixed", , drop = FALSE]
+  fixed <- registry[registry$coordinate_name == "fixed", , drop = FALSE]
   expect_equal(nrow(fixed), 1L)
   expect_identical(fixed$monitor_status, "structural")
   expect_identical(fixed$fixed_value, 0)
@@ -273,7 +326,7 @@ test_that("structural point parameters are registered when JAGS omits them", {
     )
   )
   fixed_monitored <- monitored[
-    monitored$canonical_name == "fixed",
+    monitored$coordinate_name == "fixed",
     ,
     drop = FALSE
   ]
@@ -301,7 +354,7 @@ test_that("structural registry coordinates retain exact scalar and vector values
 
   structural <- registry[registry$monitor_status == "structural", ]
   expect_identical(
-    structural$canonical_name,
+    structural$coordinate_name,
     c("scalar", "vector[1]", "vector[2]", "vector[3]", "factor[1]", "factor[2]")
   )
   expect_identical(structural$fixed_value, c(3.5, 2, 2, 2, -2, -2))

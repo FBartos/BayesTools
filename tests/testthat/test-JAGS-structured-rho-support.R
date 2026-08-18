@@ -88,6 +88,61 @@ test_that("scalar structured rho support is exact without dense matrices", {
   )
 })
 
+test_that("omitted structured rho priors cover each complete admissible range", {
+
+  sd_prior <- prior("gamma", list(shape = 2, rate = 2))
+  block_prior <- BayesTools:::.bt_random_prior_for_block(
+    prior_random(sd = sd_prior),
+    "id"
+  )
+  expected <- list(
+    cs  = c(lower = -0.5, upper = 1),
+    hcs = c(lower = -0.5, upper = 1),
+    ar1 = c(lower = -1, upper = 1),
+    har = c(lower = -1, upper = 1),
+    car = c(lower = 0, upper = 1)
+  )
+
+  for(structure in names(expected)){
+    rho_info <- BayesTools:::.bt_random_effect_structured_rho_prior(
+      prior_prefix = "mu__xREx__id",
+      node_prefix = "mu__xREx__id",
+      K = 3L,
+      structure = structure,
+      block_prior = block_prior
+    )
+    rho_prior <- rho_info$prior_list[[1L]]
+
+    expect_equal(rho_info$rho_scale, "rho", info = structure)
+    expect_equal(rho_info$bounds, expected[[structure]], info = structure)
+    expect_equal(rho_prior$distribution, "uniform", info = structure)
+    expect_equal(
+      rho_prior$parameters,
+      list(a = expected[[structure]][["lower"]], b = 1),
+      info = structure
+    )
+  }
+
+  transformed_without_prior <- BayesTools:::.bt_random_prior_for_block(
+    prior_random(
+      sd = sd_prior,
+      covariance = random_covariance(cor_scale = "fisher_z")
+    ),
+    "id"
+  )
+  expect_error(
+    BayesTools:::.bt_random_effect_structured_rho_prior(
+      prior_prefix = "mu__xREx__id",
+      node_prefix = "mu__xREx__id",
+      K = 3L,
+      structure = "hcs",
+      block_prior = transformed_without_prior
+    ),
+    "requires an explicit 'cor' prior",
+    fixed = TRUE
+  )
+})
+
 test_that("scalar rho support validates canonical bounds and CAR metadata", {
 
   malformed_bounds <- .structured_rho_support_term("har")
@@ -164,7 +219,7 @@ test_that("structured random-effect JAGS literals are locale independent", {
     prior_random = prior_random(
       id = random_block(
         sd = prior("gamma", list(2, 2)),
-        rho = prior("normal", list(0, 0.5))
+        cor = prior("normal", list(0, 0.5))
       )
     )
   )
@@ -225,8 +280,8 @@ test_that("CAR innovation validation follows rho support and parameterization", 
         id = random_block(
           sd = sd,
           covariance = random_covariance(
-            rho = rho,
-            rho_scale = "rho"
+            cor = rho,
+            cor_scale = "cor"
           ),
           parameterization = parameterization
         )
@@ -443,7 +498,7 @@ test_that("CAR Fisher-z syntax matches reconstruction at small positive values",
     prior_random = prior_random(
       id = random_block(
         sd = prior("point", list(location = 1)),
-        rho = prior("point", list(location = z))
+        cor = prior("point", list(location = z))
       )
     )
   )

@@ -1158,7 +1158,7 @@ test_that("compiled bridge allocation plans reuse cached Dirichlet draws", {
     data = formula_data,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd = prior("gamma", list(2, 2)),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )
@@ -1170,7 +1170,7 @@ test_that("compiled bridge allocation plans reuse cached Dirichlet draws", {
   formula_design_list <- list(mu = formula_output$formula_design)
   samples <- c(
     "mu_intercept" = 10,
-    "mu__xRE_ALLOCx_allocation__total_sd" = 2,
+    "mu__xRE_ALLOCx_allocation__allocation_sd" = 2,
     "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[1]" = 1,
     "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[2]" = 3,
     "mu__xREx__study_xRE_Zx[1,1]" = 0.1,
@@ -1272,7 +1272,7 @@ test_that("compiled bridge allocation cache preserves row-indexed source reconst
     data = formula_data,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source(tau_source),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )
@@ -1349,7 +1349,7 @@ test_that("compiled row sources receive natural formula-prior parameters", {
     data = formula_data,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source(tau_source),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )
@@ -1535,7 +1535,7 @@ test_that("bridge context exposes resolved formula allocation nodes", {
     data = formula_data,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd = prior("gamma", list(2, 2)),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )
@@ -1547,7 +1547,7 @@ test_that("bridge context exposes resolved formula allocation nodes", {
   formula_design_list <- list(mu = formula_output$formula_design)
   samples <- c(
     "mu_intercept" = 10,
-    "mu__xRE_ALLOCx_allocation__total_sd" = 2,
+    "mu__xRE_ALLOCx_allocation__allocation_sd" = 2,
     "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[1]" = 1,
     "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[2]" = 3,
     "mu__xREx__study_xRE_Zx[1,1]" = 0.1,
@@ -1773,7 +1773,7 @@ test_that("bridge context exposes marginalized random blocks without latent draw
   weight_name <- "mu__xRE_ALLOCx_total_re__weight"
   samples <- c(
     "mu_intercept" = 10,
-    "mu__xRE_ALLOCx_total_re__total_sd" = 2,
+    "mu__xRE_ALLOCx_total_re__allocation_sd" = 2,
     stats::setNames(
       c(1, 3),
       paste0(
@@ -1885,7 +1885,7 @@ test_that("bridge context exposes row-indexed external SD source nodes", {
     data = formula_data,
     prior_list = list(intercept = prior("normal", list(0, 1))),
     prior_random = prior_random(
-      allocation = random_variance_allocation(
+      allocation = random_variance_allocation(name = "allocation",
         sd_source = random_sd_source(tau_source),
         weights = prior("dirichlet", list(alpha = c(2, 3)))
       )

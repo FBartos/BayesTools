@@ -331,7 +331,7 @@ test_that("row-indexed independent reconstruction streams scalar and column allo
     data = data,
     prior_list = fixed_priors,
     prior_random = prior_random(
-      random_variance_allocation(
+      random_variance_allocation(name = "allocation",
         terms = "id",
         target = "sd_component",
         sd_source = random_sd_source("tau", shape = "row"),

@@ -69,6 +69,28 @@ test_that("registry materialization adds fixed values and removes internals", {
   expect_identical(as.numeric(fixed_only[[2L]][, 1L]), rep(-4, 3))
 })
 
+test_that("replacement draws refresh fitted draw geometry", {
+
+  original <- coda::mcmc.list(coda::mcmc(
+    matrix(1:6, ncol = 1L, dimnames = list(NULL, "theta"))
+  ))
+  fit <- structure(
+    list(mcmc = original),
+    class = c("runjags", "BayesTools_fit")
+  )
+  attr(fit, "draw_geometry") <- .bt_draw_geometry_from_chains(original)
+  fit <- .bt_attach_fit_contract(fit)
+  replacement <- coda::mcmc.list(coda::mcmc(
+    matrix(1:4, ncol = 1L, dimnames = list(NULL, "theta"))
+  ))
+
+  replaced <- JAGS_with_draws(fit, replacement)
+
+  expect_equal(nrow(replaced[["mcmc"]][[1L]]), 4L)
+  expect_equal(JAGS_draw_geometry(replaced)$total_draws, 4L)
+  expect_equal(nrow(fit[["mcmc"]][[1L]]), 6L)
+})
+
 test_that("zero-public materialization retains chain and iteration dimensions", {
 
   chains <- coda::mcmc.list(coda::mcmc(

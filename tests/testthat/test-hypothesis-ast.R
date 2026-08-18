@@ -33,16 +33,21 @@ test_that("hypothesis parsing recognizes exact non-syntactic catalog aliases", {
   registry <- .bt_build_parameter_registry(columns = "theta")
   catalog  <- .bt_build_parameter_catalog(registry)
   quantity <- .bt_parameter_catalog_quantity(
-    canonical_name = "random_fraction",
+    canonical_name = "(mu) random_total: var_prop(study)",
     namespace      = "mu",
-    role           = "random_variance_fraction",
+    role           = "random_var_prop",
     component      = "random",
+    owner_type     = "variance_allocation",
+    owner_name     = "random_total",
+    quantity       = "var_prop",
+    arguments      = "study",
+    source_type    = "composite",
     extraction_key = list(type = "test", dependencies = character())
   )
   quantity$provider    <- "RoBMA"
   quantity$quantity_id <- "RoBMA::random_fraction"
   aliases <- data.frame(
-    alias       = "var_frac(random_total: study)",
+    alias       = "random_total: var_prop(study)",
     quantity_id = quantity$quantity_id,
     namespace   = quantity$namespace,
     component   = quantity$component,
@@ -55,8 +60,8 @@ test_that("hypothesis parsing recognizes exact non-syntactic catalog aliases", {
     provider   = "RoBMA"
   )
   hypothesis <- c(
-    "var_frac(random_total: study) != 0 vs var_frac(random_total: study) = 0",
-    "var_frac(random_total: study) != 1 vs var_frac(random_total: study) = 1"
+    "random_total: var_prop(study) != 0 vs random_total: var_prop(study) = 0",
+    "random_total: var_prop(study) != 1 vs random_total: var_prop(study) = 1"
   )
 
   ast <- hypothesis_parse(
@@ -67,13 +72,13 @@ test_that("hypothesis parsing recognizes exact non-syntactic catalog aliases", {
 
   expect_identical(
     hypothesis_symbols(ast),
-    "var_frac(random_total: study)"
+    "random_total: var_prop(study)"
   )
   expect_identical(
     hypothesis_render(ast),
     gsub(
-      "var_frac(random_total: study)",
-      "`var_frac(random_total: study)`",
+      "random_total: var_prop(study)",
+      "`random_total: var_prop(study)`",
       hypothesis,
       fixed = TRUE
     )
