@@ -512,8 +512,7 @@ print.random_group_covariance <- function(x, ...){
     return(FALSE)
   }
   group_covariance <- random_term$group_covariance
-  identical(group_covariance$scale, "none") ||
-    any(abs(diag(group_covariance$kernel) - 1) > sqrt(.Machine$double.eps))
+  group_covariance$scale %in% c("none", "cov0")
 }
 
 .bt_random_effect_sd_summary_label <- function(component, group, random_term){
