@@ -432,6 +432,55 @@ test_that("new-level sampling rejects invalid ordinary SD draws", {
   }
 })
 
+test_that("one-column unstructured blocks sample without correlation state", {
+
+  df <- .formula_prediction_data()
+  result <- JAGS_formula(
+    formula = ~ 1 + (1 | id),
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1))
+    ),
+    prior_random = prior_random(
+      id = random_block(sd = .formula_prediction_sd_prior())
+    )
+  )
+  random_term <- result$formula_design$random_effects[[1L]]
+  posterior <- matrix(
+    c(0.5, 0.7),
+    ncol = 1L,
+    dimnames = list(NULL, random_term$sd_parameter_names[[1L]])
+  )
+  sample_contribution <- function(){
+    .bt_random_effect_group_contribution_sample(
+      random_term = random_term,
+      model_matrix = random_term$model_matrix,
+      group_map = random_term$group_map,
+      posterior = posterior,
+      prior_list = result$prior_list,
+      source_data = df
+    )
+  }
+  independent_contribution <- function(){
+    .bt_random_effect_group_contribution_sample_independent(
+      random_term = random_term,
+      model_matrix = random_term$model_matrix,
+      group_map = random_term$group_map,
+      rows = seq_len(nrow(df)),
+      posterior = posterior,
+      column_scale_draws = posterior
+    )
+  }
+
+  set.seed(42)
+  actual <- sample_contribution()
+  set.seed(42)
+  expected <- independent_contribution()
+
+  expect_identical(actual, expected)
+})
+
 test_that("row-indexed new-level sampling rejects invalid scale draws", {
 
   df <- .formula_prediction_data()

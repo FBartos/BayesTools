@@ -497,7 +497,7 @@
     random_term,
     context = "Random-effect prediction metadata"
   )
-  if(structure %in% c("diag", "id")){
+  if(n_columns == 1L || structure %in% c("diag", "id")){
     return(.bt_random_effect_group_contribution_sample_independent(
       random_term = random_term,
       model_matrix = model_matrix,
