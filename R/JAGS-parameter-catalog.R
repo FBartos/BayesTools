@@ -1423,9 +1423,11 @@ parameter_transform_jacobian <- function(values, transform){
     random_term, index, source_parameter, prior_list, parameter,
     formula_scale){
 
-  source_values <- c(1, 2)
+  # The caller has already proved a one-coordinate homogeneous SD transform
+  # from the parameter map. Evaluate its unit response through the same
+  # unscaling engine used for posterior draws.
   model_samples <- matrix(
-    source_values,
+    1,
     ncol = 1L,
     dimnames = list(NULL, source_parameter)
   )
@@ -1442,13 +1444,11 @@ parameter_transform_jacobian <- function(values, transform){
   if(is.null(summary) || ncol(summary$values) < index){
     return(NA_real_)
   }
-  scale <- as.numeric(summary$values[, index]) / source_values
-  if(length(scale) != 2L || any(!is.finite(scale) | scale <= 0) ||
-     abs(scale[1L] - scale[2L]) >
-       sqrt(.Machine$double.eps) * max(1, abs(scale))){
+  scale <- as.numeric(summary$values[, index])
+  if(length(scale) != 1L || !is.finite(scale) || scale <= 0){
     return(NA_real_)
   }
-  unname(scale[1L])
+  unname(scale)
 }
 
 .bt_parameter_catalog_random_definitions <- function(coordinates, prior_list,
