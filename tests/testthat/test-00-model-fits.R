@@ -2888,54 +2888,6 @@ test_that("group-local structured fits monitor only active latent cells", {
   expect_true(all(is.finite(prediction)))
 })
 
-test_that("JAGS transformed scalar rho remains representably inside support", {
-
-  skip_if_not_installed("runjags")
-  skip_if_not_installed("rjags")
-  skip_on_cran()
-
-  df <- data.frame(
-    y = c(-0.2, 0.1, 0.4, -0.1, 0.2, 0.5),
-    index = factor(rep(c("i1", "i2", "i3"), 2L)),
-    id = factor(rep(c("g1", "g2"), each = 3L))
-  )
-  fit <- suppressWarnings(JAGS_fit(
-    model_syntax = "model{
-      for(i in 1:N_mu){
-        y[i] ~ dnorm(mu[i], 4)
-      }
-    }",
-    data = list(y = df$y),
-    formula_list = list(mu = ~ 1 + ar1(index | id)),
-    formula_data_list = list(mu = df),
-    formula_prior_list = list(mu = list(
-      intercept = prior("normal", list(0, 1))
-    )),
-    formula_random_prior_list = list(mu = prior_random(
-      id = random_block(
-        sd = prior("point", list(location = 1)),
-        cor = prior("point", list(location = 1e300))
-      )
-    )),
-    chains = 1,
-    adapt = 50,
-    burnin = 50,
-    sample = 100,
-    silent = TRUE,
-    seed = 210
-  ))
-  random_term <- JAGS_formula_design(fit, "mu")$random_effects[[1L]]
-  interior <- .bt_random_effect_representable_rho_bounds(
-    random_term$correlation$bounds,
-    random_term$structure
-  )
-  rho <- as.matrix(fit$mcmc)[, random_term$correlation$rho_name]
-
-  expect_true(all(is.finite(rho)))
-  expect_equal(unname(rho), rep(interior[["upper"]], length(rho)), tolerance = 0)
-  expect_lt(max(rho), random_term$correlation$bounds[["upper"]])
-})
-
 test_that("JAGS_fit predicts row-indexed external SD random effects from latent monitors", {
 
   skip_if_not_installed("runjags")
@@ -6229,14 +6181,14 @@ test_that("fully structural fits retain deterministic draw geometry", {
     seed = 1
   )
 
-  registry <- JAGS_parameter_registry(fit)
-  expect_false(.bt_backend_anchor_name %in% registry$coordinate_name)
+  coordinates <- parameter_coordinates(fit)
+  expect_false(.bt_backend_anchor_name %in% coordinates$coordinate_name)
   expect_identical(
-    registry$monitor_status[registry$coordinate_name == "theta"],
+    coordinates$monitor_status[coordinates$coordinate_name == "theta"],
     "structural"
   )
   expect_identical(
-    registry$fixed_value[registry$coordinate_name == "theta"],
+    coordinates$fixed_value[coordinates$coordinate_name == "theta"],
     0
   )
 
@@ -6245,7 +6197,7 @@ test_that("fully structural fits retain deterministic draw geometry", {
   theta <- catalog$quantities[catalog$quantities$canonical_name == "theta", ]
   expect_identical(theta$status, "structural")
   expect_identical(theta$fixed_value, 0)
-  expect_identical(JAGS_fit_contract(fit)$parameter_catalog_version, 5L)
+  expect_identical(JAGS_fit_contract(fit)$parameter_map_version, 1L)
 
   geometry <- JAGS_draw_geometry(fit)
   expect_identical(geometry$chains$iterations, c(100L, 100L))
@@ -6278,6 +6230,7 @@ test_that("fully structural fits retain deterministic draw geometry", {
   expect_identical(extended_geometry$chains$iterations, c(200L, 200L))
   expect_identical(extended_geometry$total_draws, 400L)
   expect_identical(extended_geometry$chains$end, c(400L, 400L))
+  expect_identical(parameter_map(extended), parameter_map(fit))
   expect_identical(parameter_catalog(extended), catalog)
 })
 

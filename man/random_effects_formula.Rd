@@ -27,11 +27,21 @@ into a single formula and parsed BayesTools random-effect terms.
 }
 \details{
 List names define top-level random-effect components used by allocation and
-summary metadata. Missing names are replaced by \code{"Component 1"},
-\code{"Component 2"}, and so on, then sanitized for JAGS node names. Unnamed
+summary metadata. In lists with two or more entries, missing names are
+replaced by \code{"component 1"}, \code{"component 2"}, and so on, then sanitized
+for JAGS node names. An unnamed one-entry list is treated like its bare
+formula and receives no user-facing component prefix; an explicitly named
+entry retains its name. Unnamed
 random-effect terms inside a list entry are auto-named from the component
 label. Explicit \verb{name =} arguments define the final random-effect block name
 and are the names targeted by \code{prior_random()} block overrides.
+The fitted \code{\link[=parameter_map]{parameter_map()}} links concrete \code{\link[=parameter_coordinates]{parameter_coordinates()}} to
+public quantities declared by \code{\link[=parameter_catalog]{parameter_catalog()}}. Their canonical form is
+\verb{(formula) owner: quantity(arguments)}, with \verb{owner: } omitted for exactly one
+random block and retained when multiple blocks require disambiguation.
+Parentheses contain coefficient or parameter names and square brackets
+contain factor or index levels. Public correlations use \code{cor}; compact scalar
+\code{rho} and LKJ construction coordinates remain internal.
 
 Random-effect terms have two distinct left-side grammars:
 \itemize{

@@ -354,7 +354,16 @@
     prior <- .bt_random_effect_set_factor_prior_class(prior, prior_type)
 
   }else if(contrast %in% c("contr.orthonormal", "contr.meandif")){
-    sd_parameter_names <- rep(paste0(parameter, "_", model_term), length(columns))
+    prior <- .bt_random_effect_factor_sd_prior_by_column(
+      prior = prior,
+      model_term = model_term,
+      columns = columns,
+      predictors_type = predictors_type,
+      data = data
+    )
+    sd_parameter_names <- paste0(
+      parameter, "_", model_term, "[", seq_along(columns), "]"
+    )
   }else if(.prior_ordered_is_contrast_name(contrast)){
     if(is.prior.ordered(prior)){
       prior <- .bt_random_effect_bind_ordered_sd_prior(
@@ -371,13 +380,40 @@
         paste0(parameter, "_", model_term, "[", seq_along(columns), "]")
       }
     }else{
-      sd_parameter_names <- rep(paste0(parameter, "_", model_term), length(columns))
+      prior <- .bt_random_effect_factor_sd_prior_by_column(
+        prior = prior,
+        model_term = model_term,
+        columns = columns,
+        predictors_type = predictors_type,
+        data = data
+      )
+      sd_parameter_names <- paste0(
+        parameter, "_", model_term, "[", seq_along(columns), "]"
+      )
     }
   }else{
     stop("Unsupported factor contrasts for the random effects.", call. = FALSE)
   }
 
   list(prior = prior, sd_parameter_names = sd_parameter_names)
+}
+
+.bt_random_effect_factor_sd_prior_by_column <- function(
+    prior, model_term, columns, predictors_type, data){
+
+  if(is.prior.factor(prior)){
+    attr(prior, "levels") <- length(columns) + 1L
+    attr(prior, "level_names") <- .bt_random_effect_factor_prior_level_names(
+      model_term = model_term,
+      predictors_type = predictors_type,
+      data = data
+    )
+    return(prior)
+  }
+
+  attr(prior, "levels") <- length(columns)
+  attr(prior, "level_names") <- as.character(seq_along(columns))
+  .bt_random_effect_set_factor_prior_class(prior, "prior.independent")
 }
 
 .bt_random_effect_bind_ordered_sd_prior <- function(prior, parameter,
@@ -660,8 +696,12 @@
           }
         }else if(contrast %in% c("contr.orthonormal", "contr.meandif") ||
                  .prior_ordered_is_contrast_name(contrast)){
-          leaf_terms[columns] <- model_term
-          leaf_names[columns] <- paste0(parameter, "_", model_term)
+          for(j in seq_along(columns)){
+            leaf_terms[columns[j]] <- paste0(model_term, "[", j, "]")
+            leaf_names[columns[j]] <- paste0(
+              parameter, "_", model_term, "[", j, "]"
+            )
+          }
         }else{
           stop("Unsupported factor contrasts for the random effects.", call. = FALSE)
         }

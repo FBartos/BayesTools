@@ -26,7 +26,7 @@ test_that("draw geometry records exact chain-major MCMC timing", {
   expect_error(.bt_validate_draw_geometry(malformed), "Refit the model")
 })
 
-test_that("registry materialization adds fixed values and removes internals", {
+test_that("coordinate materialization adds fixed values and removes internals", {
 
   chains <- coda::mcmc.list(
     coda::mcmc(
@@ -49,7 +49,7 @@ test_that("registry materialization adds fixed values and removes internals", {
     fixed = prior("point", list(-4))
   )
   attr(fit, "backend_anchor") <- .bt_backend_anchor_name
-  attr(fit, "parameter_registry") <- .bt_build_parameter_registry(
+  attr(fit, "parameter_map") <- .bt_build_parameter_map(
     columns = colnames(chains[[1L]]),
     prior_list = attr(fit, "prior_list"),
     backend_anchor = .bt_backend_anchor_name
@@ -78,6 +78,7 @@ test_that("replacement draws refresh fitted draw geometry", {
     list(mcmc = original),
     class = c("runjags", "BayesTools_fit")
   )
+  attr(fit, "parameter_map") <- .bt_build_parameter_map(columns = "theta")
   attr(fit, "draw_geometry") <- .bt_draw_geometry_from_chains(original)
   fit <- .bt_attach_fit_contract(fit)
   replacement <- coda::mcmc.list(coda::mcmc(
@@ -102,7 +103,7 @@ test_that("zero-public materialization retains chain and iteration dimensions", 
   fit <- chains
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "backend_anchor") <- .bt_backend_anchor_name
-  attr(fit, "parameter_registry") <- .bt_build_parameter_registry(
+  attr(fit, "parameter_map") <- .bt_build_parameter_map(
     columns = .bt_backend_anchor_name,
     backend_anchor = .bt_backend_anchor_name
   )

@@ -631,6 +631,18 @@ test_that("bridge marginal evaluator supports every implemented covariance struc
       tolerance = 1e-12,
       info = paste(structure, "compact contract")
     )
+
+    batch_posterior <- posterior[rep(1L, 3L), , drop = FALSE]
+    batch_value     <- evaluator$factor_states(batch_posterior)$mu
+    expect_identical(length(batch_value$factor_states), 3L, info = structure)
+    for (draw in seq_len(3L)) {
+      expect_equal(
+        batch_value$factor_states[[draw]][[1L]],
+        compact_state,
+        tolerance = 0,
+        info = paste(structure, "batch factor state")
+      )
+    }
   }
 })
 
@@ -1047,6 +1059,20 @@ test_that("row-indexed external SD sources remain covariance factors", {
     unname(reference),
     tolerance = 1e-12
   )
+
+  batch_posterior <- rbind(posterior, posterior * 2)
+  batch_value <- evaluator$factor_states(batch_posterior)$mu
+  expect_identical(length(batch_value$factor_states), 2L)
+  expect_equal(
+    batch_value$factor_states[[1L]][[1L]]$row_scale,
+    unname(values),
+    tolerance = 0
+  )
+  expect_equal(
+    batch_value$factor_states[[2L]][[1L]]$row_scale,
+    2 * unname(values),
+    tolerance = 0
+  )
 })
 
 test_that("marginal bridge covariance reuses natural allocation parameters", {
@@ -1121,4 +1147,43 @@ test_that("marginal bridge covariance reuses natural allocation parameters", {
     unname(.bridge_marginal_random_dense(expected)),
     tolerance = 0
   )
+})
+
+test_that("random allocation draws use auxiliaries without repairing weights", {
+
+  parameter <- "allocation_weight"
+  prior_list <- stats::setNames(
+    list(prior("dirichlet", list(alpha = c(2, 3)))),
+    parameter
+  )
+  eta_names <- paste0(
+    .JAGS_prior_dirichlet_eta_name(parameter),
+    "[", 1:2, "]"
+  )
+  weight_names <- paste0(parameter, "[", 1:2, "]")
+  posterior <- matrix(
+    c(1, 3, .9, .1),
+    nrow = 1L,
+    dimnames = list(NULL, c(eta_names, weight_names))
+  )
+
+  expect_identical(
+    unname(.bt_random_effect_dirichlet_draws(
+      parameter_name = parameter,
+      posterior      = posterior,
+      prior_list     = prior_list
+    )),
+    matrix(c(.25, .75), nrow = 1L)
+  )
+
+  supplied <- matrix(
+    c(.2, .8 + .Machine$double.eps),
+    nrow = 1L,
+    dimnames = list(NULL, weight_names)
+  )
+  validated <- .bt_random_effect_validate_dirichlet_weights(
+    supplied,
+    parameter_name = parameter
+  )
+  expect_identical(validated, supplied)
 })

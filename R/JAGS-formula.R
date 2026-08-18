@@ -353,7 +353,10 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   )
   scale_info <- list()
 
-  random_effect_unscaled_data <- formula_source_data
+  # Reuse concrete fixed-factor contrasts in random-coefficient blocks unless
+  # the block supplies its own contrast override. Values remain unscaled here;
+  # only factor metadata changed above.
+  random_effect_unscaled_data <- data
   random_effect_scaled_data <- random_effect_unscaled_data
 
   # standardize continuous predictors if requested. This includes predictors
@@ -709,7 +712,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     term = semantic_model_terms,
     role = rep("coefficient", length(fixed_jags_names))
   )
-  generated_names <- unique(.bt_parameter_registry_base(
+  generated_names <- unique(.bt_parameter_coordinates_base(
     c(names(prior_list), JAGS_to_monitor(prior_list), add_parameters)
   ))
   generated_names <- generated_names[nzchar(generated_names)]

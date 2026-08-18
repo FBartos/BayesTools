@@ -27,9 +27,11 @@ test_that("as_mixed_posteriors handles treatment factor-continuous interaction c
   colnames(posterior) <- paste0("mu_alloc__xXx__year[", 1:2, "]")
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
-  attr(fit, "prior_list")    <- formula_result$prior_list
+  attr(fit, "prior_list") <- formula_result$prior_list[
+    "mu_alloc__xXx__year"
+  ]
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
-  fit <- attach_test_parameter_registry(fit)
+  fit <- attach_test_parameter_map(fit)
 
   samples <- as_mixed_posteriors(
     model            = fit,

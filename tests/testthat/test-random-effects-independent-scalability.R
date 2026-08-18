@@ -112,8 +112,8 @@ skip_if_not_test_profile("unit")
     .bt_random_effect_marginal_covariance_correlation_draws = function(...){
       stop("dense correlation helper called", call. = FALSE)
     },
-    .bt_random_effect_mvn_group_draws = function(...){
-      stop("dense eigen helper called", call. = FALSE)
+    .bt_random_effect_mvn_group_draws_from_factor = function(...){
+      stop("dense factor helper called", call. = FALSE)
     },
     .bt_JAGS_marglik_random_effect_cholesky = function(...){
       stop("dense bridge Cholesky helper called", call. = FALSE)
@@ -513,36 +513,27 @@ test_that("large independent blocks remain linear in coefficient count", {
                               sampled, marglik))))
 })
 
-test_that("prediction covariance clamps only roundoff-sized negative eigenvalues", {
+test_that("prediction samples directly from authoritative factors", {
 
-  roundoff_indefinite <- diag(c(1, -.Machine$double.eps))
+  factor <- matrix(c(1, 0.25, 0, sqrt(1 - 0.25^2)), nrow = 2L)
   set.seed(42)
-  draws <- BayesTools:::.bt_random_effect_mvn_group_draws(
-    roundoff_indefinite,
+  draws <- BayesTools:::.bt_random_effect_mvn_group_draws_from_factor(
+    factor,
     n_groups = 5L
   )
-  correction <- attr(draws, "covariance_eigen_correction", exact = TRUE)
+  set.seed(42)
+  latent <- matrix(stats::rnorm(10L), nrow = 5L, ncol = 2L)
 
   expect_identical(dim(draws), c(5L, 2L))
-  expect_identical(draws[, 2L], rep(0, 5L))
-  expect_equal(correction$minimum_eigenvalue, -.Machine$double.eps)
-  expect_lte(correction$maximum_correction, correction$tolerance)
+  expect_equal(draws, latent %*% t(factor), tolerance = 0)
+  expect_null(attr(draws, "covariance_eigen_correction", exact = TRUE))
 
   expect_error(
-    BayesTools:::.bt_random_effect_mvn_group_draws(
-      diag(c(1, -1e-6)),
+    BayesTools:::.bt_random_effect_mvn_group_draws_from_factor(
+      matrix(c(1, 0, 0, NA_real_), nrow = 2L),
       n_groups = 1L
     ),
-    "materially indefinite",
-    fixed = TRUE
-  )
-  asymmetric <- matrix(c(1, .1, .1 + .Machine$double.eps, 1), nrow = 2L)
-  expect_error(
-    BayesTools:::.bt_random_effect_mvn_group_draws(
-      asymmetric,
-      n_groups = 1L
-    ),
-    "exactly symmetric",
+    "finite numeric square matrix",
     fixed = TRUE
   )
 })

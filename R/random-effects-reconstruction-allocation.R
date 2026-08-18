@@ -527,6 +527,41 @@
 
   K <- prior$parameters[["K"]]
   cache <- .bt_random_effect_dirichlet_draw_cache(posterior)
+  eta_names <- paste0(
+    .JAGS_prior_dirichlet_eta_name(parameter_name),
+    "[", seq_len(K), "]"
+  )
+  if(all(eta_names %in% colnames(posterior))){
+    cache_key <- .bt_random_effect_dirichlet_cache_key(parameter_name, K, "eta")
+    if(!is.null(cache) && exists(cache_key, envir = cache, inherits = FALSE)){
+      return(get(cache_key, envir = cache, inherits = FALSE))
+    }
+
+    eta <- posterior[, eta_names, drop = FALSE]
+    eta_sum <- rowSums(eta)
+    invalid <- !is.finite(eta) | eta < 0
+    invalid_row <- !is.finite(eta_sum) | eta_sum <= 0
+    if(any(invalid) || any(invalid_row)){
+      if(any(invalid)){
+        invalid_column <- col(eta)[which(invalid)[1L]]
+        detail <- paste0(" for '", eta_names[invalid_column], "'")
+      }else{
+        detail <- paste0(" at row ", which(invalid_row)[1L])
+      }
+      .bt_random_effect_allocation_out_of_support(
+        "Random-effect Dirichlet allocation auxiliary samples must be finite, non-negative, and have a positive sum",
+        detail,
+        "."
+      )
+    }
+    weights <- eta / eta_sum
+    return(.bt_random_effect_dirichlet_cache_return(
+      weights = weights,
+      cache = cache,
+      cache_key = cache_key
+    ))
+  }
+
   weight_names <- paste0(parameter_name, "[", seq_len(K), "]")
   if(all(weight_names %in% colnames(posterior))){
     cache_key <- .bt_random_effect_dirichlet_cache_key(parameter_name, K, "weights")
@@ -541,35 +576,7 @@
     return(weights)
   }
 
-  eta_names <- paste0(.JAGS_prior_dirichlet_eta_name(parameter_name), "[", seq_len(K), "]")
-  if(!all(eta_names %in% colnames(posterior))){
-    return(NULL)
-  }
-
-  cache_key <- .bt_random_effect_dirichlet_cache_key(parameter_name, K, "eta")
-  if(!is.null(cache) && exists(cache_key, envir = cache, inherits = FALSE)){
-    return(get(cache_key, envir = cache, inherits = FALSE))
-  }
-
-  eta <- posterior[, eta_names, drop = FALSE]
-  invalid <- !is.finite(eta) | eta <= 0
-  if(any(invalid)){
-    invalid_column <- col(eta)[which(invalid)[1L]]
-    .bt_random_effect_allocation_out_of_support(
-      "Random-effect Dirichlet allocation auxiliary samples must be positive for '",
-      eta_names[invalid_column],
-      "'."
-    )
-  }
-  weights <- .bt_random_effect_validate_dirichlet_weights(
-    weights = eta / rowSums(eta),
-    parameter_name = parameter_name
-  )
-  .bt_random_effect_dirichlet_cache_return(
-    weights = weights,
-    cache = cache,
-    cache_key = cache_key
-  )
+  NULL
 }
 
 .bt_random_effect_dirichlet_draw_cache <- function(posterior){
@@ -634,25 +641,21 @@
       "'."
     )
   }
-  canonical <- tryCatch(
-    .canonicalize_simplex(
-      weights,
-      name = paste0("Dirichlet allocation samples for '", parameter_name, "'"),
-      diagnostics = TRUE
-    ),
-    error = function(e) e
-  )
-  if(inherits(canonical, "error")){
+  sums <- rowSums(weights)
+  n_coordinates <- ncol(weights)
+  gamma_n <- n_coordinates * .Machine$double.eps /
+    (1 - n_coordinates * .Machine$double.eps)
+  roundoff_bound <- 8 * gamma_n * pmax(1, rowSums(abs(weights)))
+  invalid_sum <- !is.finite(sums) | abs(sums - 1) > roundoff_bound
+  if(any(invalid_sum)){
+    row <- which(invalid_sum)[1L]
     .bt_random_effect_allocation_out_of_support(
       "Random-effect Dirichlet allocation samples for '",
-      parameter_name, "' are not on the simplex: ",
-      conditionMessage(canonical)
+      parameter_name, "' must sum to one; row ", row,
+      " differs by ", format(abs(sums[row] - 1), digits = 17),
+      ", exceeding the roundoff bound ",
+      format(roundoff_bound[row], digits = 17), "."
     )
-  }
-
-  weights <- canonical$values
-  if(canonical$diagnostics$max_correction > 0){
-    attr(weights, "simplex_canonicalization") <- canonical$diagnostics
   }
   weights
 }

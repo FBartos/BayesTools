@@ -1,6 +1,6 @@
 
 
-.hypothesis_BF_row <- function(quantity, parsed, result) {
+.hypothesis_BF_row <- function(quantity, result) {
 
   data.frame(
     Alternative  = result[["alternative"]],

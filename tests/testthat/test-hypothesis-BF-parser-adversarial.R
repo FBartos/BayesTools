@@ -56,26 +56,14 @@ test_that("hypothesis parser rejects malformed call nodes cleanly", {
 
 test_that("hypothesis parser implements the documented region grammar", {
 
-  expect_s3_class(
-    BayesTools:::.parse_hypothesis_BF("(theta > 0)"),
-    "BayesTools_hypothesis_BF_parsed"
-  )
-  expect_s3_class(
-    BayesTools:::.parse_hypothesis_BF("!(theta > 0)"),
-    "BayesTools_hypothesis_BF_parsed"
-  )
-  expect_s3_class(
-    BayesTools:::.parse_hypothesis_BF(
-      "(theta > 0) & (!(phi >= 1) | abs(eta) < 2)"
-    ),
-    "BayesTools_hypothesis_BF_parsed"
-  )
-  expect_s3_class(
-    BayesTools:::.parse_hypothesis_BF(
-      "theta > 0 vs (phi <= 1 | eta >= 2)"
-    ),
-    "BayesTools_hypothesis_BF_parsed"
-  )
+  hypotheses <- hypothesis_parse(c(
+    "(theta > 0)",
+    "!(theta > 0)",
+    "(theta > 0) & (!(phi >= 1) | abs(eta) < 2)",
+    "theta > 0 vs (phi <= 1 | eta >= 2)"
+  ))
+  expect_s3_class(hypotheses, "BayesTools_hypothesis_ast")
+  expect_length(hypotheses$statements, 4L)
 
   draws <- data.frame(
     theta = c(-1, 1, 2),
@@ -104,12 +92,12 @@ test_that("hypothesis parser implements the documented region grammar", {
 
 test_that("point hypotheses accept literals or symbolic right-hand sides", {
 
-  parsed <- lapply(
+  statements <- lapply(
     c("theta = -0.5", "theta == +2", "theta != 3"),
-    BayesTools:::.parse_hypothesis_BF
+    function(x) hypothesis_parse(x)$statements[[1L]]
   )
   expect_equal(
-    vapply(parsed, function(x) x[["left"]][["value"]], numeric(1)),
+    vapply(statements, function(x) x[["left"]][["value"]], numeric(1)),
     c(-0.5, 2, 3)
   )
 
@@ -126,7 +114,7 @@ test_that("point hypotheses accept literals or symbolic right-hand sides", {
     "theta = Inf"
   )){
     expect_error(
-      BayesTools:::.parse_hypothesis_BF(hypothesis),
+      hypothesis_parse(hypothesis),
       "numeric value written as one finite literal",
       fixed = TRUE
     )
@@ -208,7 +196,7 @@ test_that("escaped reserved identifiers take precedence over R constants", {
     "FALSE > theta"
   )){
     expect_error(
-      BayesTools:::.parse_hypothesis_BF(hypothesis),
+      hypothesis_parse(hypothesis),
       "finite numeric literals|Unescaped reserved literal"
     )
   }
@@ -218,37 +206,37 @@ test_that("escaped reserved identifiers take precedence over R constants", {
 test_that("hypothesis parser rejects constructs outside the grammar", {
 
   expect_error(
-    BayesTools:::.parse_hypothesis_BF("!(theta == 0)"),
+    hypothesis_parse("!(theta == 0)"),
     "Point equalities cannot be negated",
     fixed = TRUE
   )
   expect_error(
-    BayesTools:::.parse_hypothesis_BF("(theta == 0)"),
+    hypothesis_parse("(theta == 0)"),
     "point equalities cannot be parenthesized",
     fixed = TRUE
   )
   expect_error(
-    BayesTools:::.parse_hypothesis_BF("theta > 0 & abs(phi)"),
+    hypothesis_parse("theta > 0 & abs(phi)"),
     "Unsupported region operator 'abs'",
     fixed = TRUE
   )
   expect_error(
-    BayesTools:::.parse_hypothesis_BF("theta > 0 && phi < 1"),
+    hypothesis_parse("theta > 0 && phi < 1"),
     "Unsupported region operator '&&'",
     fixed = TRUE
   )
   expect_error(
-    BayesTools:::.parse_hypothesis_BF("theta > 1 / 0"),
+    hypothesis_parse("theta > 1 / 0"),
     "Constant hypothesis arithmetic must evaluate to one finite numeric value.",
     fixed = TRUE
   )
   expect_error(
-    BayesTools:::.parse_hypothesis_BF("abs(theta, phi) > 0"),
+    hypothesis_parse("abs(theta, phi) > 0"),
     "unsupported number of arguments",
     fixed = TRUE
   )
   expect_error(
-    BayesTools:::.parse_hypothesis_BF("sin(theta) > 0"),
+    hypothesis_parse("sin(theta) > 0"),
     "Unsupported hypothesis expression operator or function 'sin'.",
     fixed = TRUE
   )
@@ -257,21 +245,21 @@ test_that("hypothesis parser rejects constructs outside the grammar", {
 
 test_that("parentheses do not change comparison compatibility", {
 
-  point <- BayesTools:::.parse_hypothesis_BF("theta = 0")[["left"]]
-  explicit_not_point <- BayesTools:::.parse_hypothesis_BF(
+  point <- hypothesis_parse("theta = 0")$statements[[1L]][["left"]]
+  explicit_not_point <- hypothesis_parse(
     "(theta) != 0"
-  )[["left"]]
+  )$statements[[1L]][["left"]]
   expect_true(BayesTools:::.hypothesis_sides_point_complement(
     point,
     explicit_not_point
   ))
 
-  simple_region <- BayesTools:::.parse_hypothesis_BF(
+  simple_region <- hypothesis_parse(
     "(theta) > 1"
-  )[["left"]]
-  compound_region <- BayesTools:::.parse_hypothesis_BF(
+  )$statements[[1L]][["left"]]
+  compound_region <- hypothesis_parse(
     "(theta > 0) & (theta < 2)"
-  )[["left"]]
+  )$statements[[1L]][["left"]]
   expect_true(BayesTools:::.hypothesis_point_region_compatible(
     point,
     simple_region

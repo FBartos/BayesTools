@@ -32,37 +32,29 @@
 .bt_random_effect_summary_sd_components <- function(random_term, sd_names){
 
   leaves <- random_term$sd_leaves
-  if(!is.null(leaves) && !is.null(leaves$leaf_terms)){
-    out <- unname(leaves$leaf_terms[sd_names])
-    missing <- is.na(out)
-    if(any(missing)){
-      out[missing] <- .bt_random_effect_summary_component_from_sd_name(
-        random_term,
-        sd_names[missing]
-      )
-    }
-    if(.bt_random_effect_summary_term_structure(random_term) %in%
-       c("id", "cs", "ar1", "car") && length(out) == 1L){
-      out <- "shared"
-    }
-    return(.bt_random_effect_summary_display_components(random_term, out))
+  if(!inherits(leaves, "BayesTools_random_effect_sd_leaves") ||
+     is.null(leaves$leaf_terms)){
+    stop(
+      "Random-effect summary metadata for block '",
+      random_term$block_name,
+      "' are missing canonical 'random_term$sd_leaves'.",
+      call. = FALSE
+    )
   }
-
-  out <- .bt_random_effect_summary_component_from_sd_name(random_term, sd_names)
+  out <- unname(leaves$leaf_terms[sd_names])
+  if(anyNA(out)){
+    stop(
+      "Random-effect summary metadata for block '",
+      random_term$block_name,
+      "' do not map every SD coordinate to a semantic component.",
+      call. = FALSE
+    )
+  }
   if(.bt_random_effect_summary_term_structure(random_term) %in%
      c("id", "cs", "ar1", "car") && length(out) == 1L){
     out <- "shared"
   }
   .bt_random_effect_summary_display_components(random_term, out)
-}
-
-.bt_random_effect_summary_component_from_sd_name <- function(random_term,
-                                                            sd_names){
-
-  prefix <- paste0(random_term$parameter_stem, "_")
-  out <- sub(paste0("^", prefix), "", sd_names)
-  out <- gsub("__xXx__", ":", out, fixed = TRUE)
-  .bt_random_effect_summary_normalize_components(out)
 }
 
 .bt_random_effect_summary_normalize_components <- function(components){
@@ -84,7 +76,19 @@
     parameter,
     formula_prefix
   )
-  paste0(prefix, owner, ": ", quantity_label)
+  owner_prefix <- if(nzchar(owner)) paste0(owner, ": ") else ""
+  paste0(prefix, owner_prefix, quantity_label)
+}
+
+.bt_random_effect_allocation_public_name <- function(allocation){
+
+  display_name <- allocation$display_name
+  if(is.character(display_name) && length(display_name) == 1L &&
+     !is.na(display_name)){
+    return(display_name)
+  }
+
+  allocation$label
 }
 
 .bt_random_effect_semantic_quantity_name <- function(quantity,
@@ -245,6 +249,7 @@
     random_term = random_term
   )
   allocation_type <- .bt_random_effect_summary_allocation_type(allocation)
+  allocation_owner <- .bt_random_effect_allocation_public_name(allocation)
   names <- labels <- types <- character()
   component_values <- character()
   component_indices <- integer()
@@ -258,7 +263,7 @@
     ))
     labels <- c(labels, .bt_random_effect_semantic_name(
       parameter = "",
-      owner = allocation$label,
+      owner = allocation_owner,
       quantity = allocation_type$label,
       arguments = components[i],
       formula_prefix = FALSE
@@ -288,7 +293,7 @@
       ))
       labels <- c(labels, .bt_random_effect_semantic_name(
         parameter = "",
-        owner = allocation$label,
+        owner = allocation_owner,
         quantity = "sd_ratio",
         arguments = components[i],
         formula_prefix = FALSE
@@ -387,6 +392,10 @@
 
   for(component_label in names(inclusion)){
     record <- inclusion[[component_label]]
+    component_name <- .bt_random_effect_allocation_component_name(
+      allocation,
+      component_label
+    )
     indicator_name <- record$indicator_name
     if(!is.character(indicator_name) || length(indicator_name) != 1L ||
        is.na(indicator_name) || !nzchar(indicator_name)){
@@ -415,13 +424,13 @@
     ))
     labels <- c(labels, .bt_random_effect_semantic_name(
       parameter = "",
-      owner = allocation$label,
+      owner = .bt_random_effect_allocation_public_name(allocation),
       quantity = "inclusion",
-      arguments = component_label,
+      arguments = component_name,
       formula_prefix = FALSE
     ))
     types <- c(types, "inclusion")
-    component_values <- c(component_values, component_label)
+    component_values <- c(component_values, component_name)
     component_indices <- c(component_indices, record$index)
     values[[length(values) + 1L]] <- indicator
   }
@@ -543,12 +552,34 @@
     if(is.null(components) || !all(nzchar(components))){
       components <- unname(terms)
     }
+    public_components <- allocation$component_names
+    if(is.character(public_components) && length(public_components) == K &&
+       !anyNA(public_components) && all(nzchar(public_components))){
+      components <- unname(public_components)
+    }
   }
 
   if(length(components) != K){
     components <- paste0("component_", seq_len(K))
   }
   components
+}
+
+.bt_random_effect_allocation_component_name <- function(allocation,
+                                                        component_label){
+
+  terms <- allocation$terms
+  internal <- names(terms)
+  public <- allocation$component_names
+  if(is.character(internal) && is.character(public) &&
+     length(internal) == length(public)){
+    index <- match(component_label, internal)
+    if(!is.na(index)){
+      return(unname(public[index]))
+    }
+  }
+
+  component_label
 }
 
 .bt_random_effect_summary_prior <- function(parameter, type, label,

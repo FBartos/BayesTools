@@ -45,7 +45,7 @@ make_adversarial_indicator_fit <- function(indicator = c(rep(1, 9900), rep(0, 10
     )
   )
 
-  attach_test_parameter_registry(fit)
+  attach_test_parameter_map(fit)
 }
 
 make_point_vector_fit <- function(){
@@ -65,7 +65,7 @@ make_point_vector_fit <- function(){
     sigma = prior("gamma", list(2, 2))
   )
 
-  attach_test_parameter_registry(fit)
+  attach_test_parameter_map(fit)
 }
 
 make_random_summary_fit <- function(formula, data, prior_random_list,
@@ -100,7 +100,7 @@ make_random_summary_fit <- function(formula, data, prior_random_list,
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
 
-  attach_test_parameter_registry(fit)
+  attach_test_parameter_map(fit)
 }
 
 make_raw_random_summary_fit <- function(){
@@ -219,7 +219,7 @@ make_lkj_coordinate_summary_fit <- function(){
   samples[, random_term$correlation$cpc_names] <- rho
   fit$mcmc <- coda::mcmc.list(coda::mcmc(samples))
 
-  attach_test_parameter_registry(fit)
+  attach_test_parameter_map(fit)
 }
 
 make_two_block_random_summary_fit <- function(){
@@ -303,7 +303,7 @@ make_row_indexed_external_random_summary_fit <- function(){
   )
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
 
-  attach_test_parameter_registry(fit)
+  attach_test_parameter_map(fit)
 }
 
 expect_summary_row_order <- function(table, rows) {
@@ -457,9 +457,15 @@ test_that("standard random summaries replace LKJ coordinates with semantic rows"
   skip_if_not_installed("runjags")
 
   fit <- make_lkj_coordinate_summary_fit()
+  testthat::local_mocked_bindings(
+    .bt_random_effect_summary_samples = function(...) {
+      stop("parallel random summary path was used", call. = FALSE)
+    },
+    .package = "BayesTools"
+  )
   raw <- JAGS_estimates_table(
     fit,
-    keep_parameters = "random_effects",
+    keep_parameters = "random",
     random_effects_summary = "raw",
     return_samples = TRUE
   )
@@ -476,16 +482,15 @@ test_that("standard random summaries replace LKJ coordinates with semantic rows"
   expect_identical(colnames(location), "intercept")
 
   expected_random <- c(
-    "study: sd(group[sensitivity])",
-    "study: sd(group[specificity])",
-    "study: cor(group[sensitivity],group[specificity])"
+    "sd(group[sensitivity])",
+    "sd(group[specificity])",
+    "cor(group[sensitivity],group[specificity])"
   )
   for(summary_mode in c("standard", "full")){
     random <- JAGS_estimates_table(
       fit,
-      keep_parameters = "random_effects",
+      keep_parameters = "random",
       random_effects_summary = summary_mode,
-      random_effects_label = "component",
       formula_prefix = FALSE,
       return_samples = TRUE
     )
@@ -510,29 +515,19 @@ test_that("keep_random_effects preserves selected random rows with keep_paramete
   expect_false("(mu) site: sd(intercept)" %in% colnames(kept))
 })
 
-test_that("random_effects_label selects grouped or component labels", {
+test_that("random summaries use the canonical owner-and-quantity labels", {
 
   skip_if_not_installed("runjags")
 
   fit <- make_two_block_random_summary_fit()
-  grouped <- JAGS_estimates_table(
+  summary <- JAGS_estimates_table(
     fit,
-    keep_parameters = "random_effects",
-    return_samples = TRUE
-  )
-  component <- JAGS_estimates_table(
-    fit,
-    keep_parameters = "random_effects",
-    random_effects_label = "component",
+    keep_parameters = "random",
     return_samples = TRUE
   )
 
   expect_identical(
-    colnames(grouped),
-    c("(mu) id: sd(intercept)", "(mu) site: sd(intercept)")
-  )
-  expect_identical(
-    colnames(component),
+    colnames(summary),
     c("(mu) id: sd(intercept)", "(mu) site: sd(intercept)")
   )
 })
@@ -552,8 +547,7 @@ test_that("row-indexed external random SD summaries survive the public estimates
   for(summary_mode in c("standard", "full")){
     summary_table <- JAGS_estimates_table(
       fit,
-      random_effects_summary = summary_mode,
-      random_effects_label = "component"
+      random_effects_summary = summary_mode
     )
 
     expect_true(all(allocation_rows %in% rownames(summary_table)))
@@ -580,7 +574,7 @@ test_that("row-indexed external random SD summaries survive the public estimates
 
   kept_random <- JAGS_estimates_table(
     fit,
-    keep_parameters = "random_effects",
+    keep_parameters = "random",
     return_samples = TRUE
   )
   expect_true(all(allocation_rows %in% colnames(kept_random)))
@@ -1072,14 +1066,14 @@ test_that("runjags_estimates_table preserves point-factor and random-SD inclusio
     fit_random_factor,
     random_effects_summary = "raw"
   )
-  random_inclusion <- "(mu) id: inclusion(sd(x_fac3))"
+  random_inclusion <- "(mu) inclusion(sd(x_fac3))"
   raw_inclusion <- "(mu) _xREx__id_x_fac3 (inclusion)"
   expect_true(random_inclusion %in% rownames(random_table))
   expect_true(raw_inclusion %in% rownames(raw_random_table))
   expect_true(all(
     c(
-      "(mu) id: sd(x_fac3[B])",
-      "(mu) id: sd(x_fac3[C])"
+      "(mu) sd(x_fac3[B])",
+      "(mu) sd(x_fac3[C])"
     ) %in% rownames(random_table)
   ))
   expect_false(any(grepl(

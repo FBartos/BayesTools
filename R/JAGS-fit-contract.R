@@ -1,16 +1,15 @@
-# Versioned fitted-object compatibility contract.
+# Versioned fitted-object schema contract.
 
 .bt_parameter_encoding_version <- 1L
 .bt_formula_name_map_version <- 1L
-.bt_fit_contract_version <- 1L
+.bt_fit_contract_version <- 2L
 
 .bt_fit_contract_components <- c(
   "name_encoding",
   "formula_name_map",
   "formula_design",
-  "parameter_registry",
-  "draw_geometry",
-  "parameter_catalog"
+  "parameter_map",
+  "draw_geometry"
 )
 
 #' JAGS formula parameter encoding and fitted-object contract
@@ -24,12 +23,11 @@
 #'
 #' `JAGS_formula_name_map()` returns the persisted mapping between opaque JAGS
 #' base names and semantic formula coordinates. Downstream code should use this
-#' map or [JAGS_parameter_registry()] rather than parsing a JAGS name.
+#' map or [parameter_coordinates()] rather than parsing a JAGS name.
 #'
-#' `JAGS_fit_contract()` returns the compatibility profile attached to a new
-#' fit. `JAGS_validate_fit_contract()` checks only the components named in
-#' `requires`, so methods unrelated to new metadata can retain their existing
-#' legacy behavior.
+#' `JAGS_fit_contract()` returns the schema contract attached to a fit.
+#' `JAGS_validate_fit_contract()` checks the components named in `requires` and
+#' requires unsupported objects to be refitted rather than adapted.
 #'
 #' @param fields named list with scalar character fields `kind`,
 #'   `formula_parameter`, `term`, and `role`.
@@ -189,7 +187,7 @@ JAGS_fit_contract_schema <- function(){
     field = c("schema_version", paste0(.bt_fit_contract_components, "_version")),
     type = rep("integer", length(.bt_fit_contract_components) + 1L),
     description = c(
-      "Fitted-object compatibility-profile schema version.",
+      "Fitted-object contract schema version.",
       paste("Schema version for", gsub("_", " ", .bt_fit_contract_components), "metadata.")
     ),
     stringsAsFactors = FALSE
@@ -335,14 +333,9 @@ JAGS_fit_contract_schema <- function(){
     name_encoding = .bt_parameter_encoding_version,
     formula_name_map = .bt_formula_name_map_version,
     formula_design = .bt_formula_design_schema_version(),
-    parameter_registry = .bt_parameter_registry_version,
+    parameter_map = .bt_parameter_map_version,
     draw_geometry = if(exists(".bt_draw_geometry_version", inherits = TRUE)){
       .bt_draw_geometry_version
-    }else{
-      NA_integer_
-    },
-    parameter_catalog = if(exists(".bt_parameter_catalog_version", inherits = TRUE)){
-      .bt_parameter_catalog_version
     }else{
       NA_integer_
     }
@@ -369,7 +362,7 @@ JAGS_fit_contract_schema <- function(){
     identical(contract$schema_version, .bt_fit_contract_version)
   if(!valid){
     stop(
-      "The fitted object does not contain a supported compatibility profile. Refit the model with this version of BayesTools.",
+      "The fitted object does not contain a supported schema contract. Refit the model with this version of BayesTools.",
       call. = FALSE
     )
   }
@@ -379,7 +372,7 @@ JAGS_fit_contract_schema <- function(){
   }, logical(1))
   if(!all(scalar_integer)){
     stop(
-      "The fitted-object compatibility profile is malformed. Refit the model with this version of BayesTools.",
+      "The fitted-object schema contract is malformed. Refit the model with this version of BayesTools.",
       call. = FALSE
     )
   }

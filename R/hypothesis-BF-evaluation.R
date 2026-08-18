@@ -23,6 +23,12 @@
 }
 
 
+.hypothesis_side_expression <- function(side) {
+
+  .bt_hypothesis_node_language(side[["expression"]])
+}
+
+
 .hypothesis_region_scalar_expressions <- function(expr) {
 
   if(!is.call(expr)){
@@ -92,9 +98,6 @@
       side          = side,
       parameter     = quantity[["parameter"]]
     )
-    if(!is.null(side[["complement"]]) && isTRUE(side[["complement"]])){
-      mass <- 1 - mass
-    }
   }else{
     draws <- if(prior){
       quantity[["prior_draws"]]
@@ -112,8 +115,7 @@
 
   prior_object <- quantity[["prior_object"]]
   if(is.null(prior_object) || !is.prior.simple(prior_object) ||
-     is.prior.point(prior_object) || is.prior.discrete(prior_object) ||
-     !isTRUE(side[["simple"]])){
+     is.prior.point(prior_object) || is.prior.discrete(prior_object)){
     return(NULL)
   }
 
@@ -140,10 +142,6 @@
   }
 
   mass <- max(0, min(1, as.numeric(mass)))
-  if(!is.null(side[["complement"]]) && isTRUE(side[["complement"]])){
-    mass <- 1 - mass
-  }
-
   mass
 }
 
@@ -153,7 +151,7 @@
   prior_object <- quantity[["prior_object"]]
   if(is.null(prior_object) || !is.prior.simple(prior_object) ||
      is.prior.point(prior_object) || is.prior.discrete(prior_object) ||
-     !.hypothesis_expression_is_parameter(side[["expr"]],
+     !.hypothesis_expression_is_parameter(.hypothesis_side_expression(side),
                                           quantity[["parameter"]])){
     return(NULL)
   }
@@ -172,11 +170,11 @@
 
 .hypothesis_simple_parameter_comparison <- function(side, parameter) {
 
-  if(is.null(parameter) || is.null(side[["condition"]])){
+  if(is.null(parameter)){
     return(NULL)
   }
 
-  expr <- .hypothesis_parse_expression(side[["condition"]])
+  expr <- .hypothesis_side_expression(side)
   expr <- .hypothesis_unwrap_parentheses(expr)
   if(!is.call(expr)){
     return(NULL)
@@ -223,10 +221,10 @@
 
 .hypothesis_draw_region_indicator <- function(side, draws) {
 
-  values <- .hypothesis_eval_condition(side[["condition"]], draws)
-  if(!is.null(side[["complement"]]) && isTRUE(side[["complement"]])){
-    values <- !values
-  }
+  values <- .hypothesis_eval_condition(
+    .hypothesis_side_expression(side),
+    draws
+  )
 
   return(values)
 }
@@ -251,7 +249,10 @@
       y <- density[["y"]] * density[["mass"]]
       draws <- data.frame(x, check.names = FALSE)
       names(draws) <- parameter
-      inside <- .hypothesis_eval_condition(side[["condition"]], draws)
+      inside <- .hypothesis_eval_condition(
+        .hypothesis_side_expression(side),
+        draws
+      )
       if(length(x) > 1L){
         prob <- prob + .hypothesis_trapz(x, y * as.numeric(inside))
       }
@@ -261,7 +262,10 @@
     if(!is.null(points) && nrow(points) > 0L){
       draws <- data.frame(points[["x"]], check.names = FALSE)
       names(draws) <- parameter
-      inside <- .hypothesis_eval_condition(side[["condition"]], draws)
+      inside <- .hypothesis_eval_condition(
+        .hypothesis_side_expression(side),
+        draws
+      )
       prob <- prob + sum(points[["p"]][inside])
     }
     prob

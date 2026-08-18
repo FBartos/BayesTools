@@ -6,22 +6,23 @@ skip_if_not_test_profile("unit")
   design <- formula_result$formula_design
   parameter <- design$parameter
   formula_design <- stats::setNames(list(design), parameter)
-  registry <- .bt_build_parameter_registry(
-    columns = sampled_columns,
-    prior_list = formula_result$prior_list,
-    formula_design = formula_design
-  )
-
   fit <- structure(list(), class = "BayesTools_fit")
   attr(fit, "prior_list") <- formula_result$prior_list
+  formula_scale <- NULL
   if("formula_scale" %in% names(formula_result)){
-    attr(fit, "formula_scale") <- stats::setNames(
+    formula_scale <- stats::setNames(
       list(formula_result$formula_scale),
       parameter
     )
+    attr(fit, "formula_scale") <- formula_scale
   }
   attr(fit, "formula_design") <- formula_design
-  attr(fit, "parameter_registry") <- registry
+  attr(fit, "parameter_map") <- .bt_build_parameter_map(
+    columns = sampled_columns,
+    prior_list = formula_result$prior_list,
+    formula_design = formula_design,
+    formula_scale = formula_scale
+  )
   .bt_attach_fit_contract(fit)
 }
 
@@ -56,7 +57,7 @@ test_that("formula coefficient transforms expose the sample transformation", {
   expect_s3_class(transform, "BayesTools_formula_coefficient_transform")
   expect_identical(transform$schema_version, 1L)
   expect_identical(transform$formula_design_version, 4L)
-  expect_identical(transform$parameter_registry_version, 4L)
+  expect_identical(transform$parameter_map_version, 1L)
   expect_identical(transform$source_names, source_names)
   expect_identical(transform$target_names, source_names)
   expect_identical(
@@ -101,6 +102,37 @@ test_that("formula coefficient transforms expose the sample transformation", {
     transformed[, transform$target_names, drop = FALSE],
     expected,
     tolerance = 1e-14
+  )
+})
+
+test_that("formula coefficient transforms require current linked schemas", {
+
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + x,
+    parameter = "mu",
+    data = data.frame(x = c(-1, 0, 1)),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    )
+  )
+  source_names <- .formula_coefficient_source_names(formula_result)
+  fit <- .formula_coefficient_density_fit(formula_result, source_names)
+  transform <- JAGS_formula_coefficient_transform(fit, "mu")
+
+  stale_design <- transform
+  stale_design$formula_design_version <-
+    stale_design$formula_design_version - 1L
+  expect_error(
+    BayesTools:::.bt_validate_formula_coefficient_transform(stale_design),
+    "missing or unsupported"
+  )
+
+  unknown_map <- transform
+  unknown_map$parameter_map_version <- unknown_map$parameter_map_version + 1L
+  expect_error(
+    BayesTools:::.bt_validate_formula_coefficient_transform(unknown_map),
+    "missing or unsupported"
   )
 })
 

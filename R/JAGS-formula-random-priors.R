@@ -746,10 +746,6 @@
     block_prior$covariance$cor_scale
   }
 
-  interior_bounds <- .bt_random_effect_representable_rho_bounds(
-    bounds,
-    structure
-  )
   rho_name <- paste0(node_prefix, "_rho")
   syntax <- character()
   monitor <- character()
@@ -769,10 +765,7 @@
     prior_name <- paste0(prior_prefix, "_rho_z")
     sample_name <- paste0(node_prefix, "_rho_z")
     syntax <- c(syntax, paste0(
-      rho_name, " <- max(",
-      .bt_JAGS_numeric_literal(interior_bounds[["lower"]]), ", min(",
-      .bt_JAGS_numeric_literal(interior_bounds[["upper"]]), ", tanh(",
-      sample_name, ")))"
+      rho_name, " <- tanh(", sample_name, ")"
     ))
     monitor <- rho_name
   }else if(identical(rho_scale, "logit")){
@@ -780,9 +773,9 @@
     sample_name <- paste0(node_prefix, "_rho_logit")
     syntax <- c(syntax, paste0(
       rho_name, " <- ",
-      .bt_JAGS_numeric_literal(interior_bounds[["lower"]]), " + ",
+      .bt_JAGS_numeric_literal(bounds[["lower"]]), " + ",
       .bt_JAGS_numeric_literal(
-        interior_bounds[["upper"]] - interior_bounds[["lower"]]
+        bounds[["upper"]] - bounds[["lower"]]
       ),
       " * ilogit(", sample_name, ")"
     ))
@@ -801,6 +794,31 @@
   }
   if(is.prior.point(rho_prior)){
     sample_fixed <- rho_prior$parameters[["location"]]
+    fixed_rho <- if(identical(rho_scale, "fisher_z")){
+      tanh(sample_fixed)
+    }else if(identical(rho_scale, "logit")){
+      bounds[["lower"]] +
+        (bounds[["upper"]] - bounds[["lower"]]) *
+        stats::plogis(sample_fixed)
+    }else{
+      sample_fixed
+    }
+    if(.bt_random_effect_rho_outside_support(
+      fixed_rho,
+      bounds = bounds,
+      structure = structure
+    )){
+      stop(
+        structure,
+        " transformed point correlation is unavailable: coordinate ",
+        format(sample_fixed, digits = 17),
+        " maps numerically to the unsupported boundary ",
+        format(fixed_rho, digits = 17),
+        ". Use a point value whose transformation remains inside the ",
+        "structure-specific correlation support.",
+        call. = FALSE
+      )
+    }
   }
 
   prior_list <- stats::setNames(list(rho_prior), prior_name)

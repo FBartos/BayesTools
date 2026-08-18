@@ -431,10 +431,21 @@ test_that("ordered random slope contrasts are specified independently", {
   )
 
   random_term <- formula_info$formula_design$random_effects[[1]]
-  expect_equal(random_term$sd_leaves$leaf_names, c("mu__xREx__id_intercept", "mu__xREx__id_f"))
+  expect_equal(
+    random_term$sd_leaves$leaf_names,
+    c(
+      "mu__xREx__id_intercept",
+      "mu__xREx__id_f[1]",
+      "mu__xREx__id_f[2]"
+    )
+  )
   expect_equal(
     random_term$sd_leaves$leaf_names_by_column,
-    c("mu__xREx__id_intercept", "mu__xREx__id_f", "mu__xREx__id_f")
+    c(
+      "mu__xREx__id_intercept",
+      "mu__xREx__id_f[1]",
+      "mu__xREx__id_f[2]"
+    )
   )
   expect_equal(
     unname(formula_info$data$mu__xREx__id_xRE_DATAx[1:3, ]),

@@ -631,7 +631,7 @@ test_that("linear transformation matches expected behavior", {
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_scale") <- formula_scale
 
-  attach_test_parameter_registry(fit)
+  attach_test_parameter_map(fit)
 }
 
 .integrate_density_mass <- function(x, y) {

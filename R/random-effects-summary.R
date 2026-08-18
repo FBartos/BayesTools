@@ -2,20 +2,20 @@
 
 .bt_random_effect_summary_samples <- function(model_samples, prior_list,
                                               formula_design = NULL,
-                                              parameter_registry = NULL,
+                                              coordinates = NULL,
                                               mode = c("standard", "full", "raw", "none"),
                                               formula_scale = NULL){
 
   mode <- match.arg(mode)
-  if(is.null(parameter_registry)){
-    parameter_registry <- .bt_build_parameter_registry(
+  if(is.null(coordinates)){
+    coordinates <- .bt_build_parameter_coordinates(
       columns = colnames(model_samples),
       prior_list = prior_list,
       formula_design = formula_design,
       formula_scale = formula_scale
     )
   }
-  .bt_validate_parameter_registry(parameter_registry)
+  .bt_validate_parameter_coordinates(coordinates)
   if(is.null(formula_design) || length(formula_design) == 0L || identical(mode, "raw")){
     return(list(model_samples = model_samples, prior_list = prior_list))
   }
@@ -44,7 +44,7 @@
   .bt_random_effect_summary_remove_raw(
     model_samples = model_samples,
     prior_list = prior_list,
-    parameter_registry = parameter_registry
+    coordinates = coordinates
   )
 }
 
@@ -113,6 +113,7 @@
       model_samples = model_samples,
       prior_list = prior_list
     )
+    allocation_owner <- .bt_random_effect_allocation_public_name(allocation)
     if(!is.null(scale_values)){
       sd_quantity <- .bt_random_effect_allocation_sd_quantity(allocation)
       add_summary(
@@ -126,7 +127,7 @@
         type = sd_quantity,
         label = .bt_random_effect_semantic_name(
           parameter = "",
-          owner = allocation$label,
+          owner = allocation_owner,
           quantity = sd_quantity,
           formula_prefix = FALSE
         ),
@@ -145,7 +146,7 @@
         type = var_quantity,
         label = .bt_random_effect_semantic_name(
           parameter = "",
-          owner = allocation$label,
+          owner = allocation_owner,
           quantity = var_quantity,
           formula_prefix = FALSE
         ),

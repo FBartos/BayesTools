@@ -22,9 +22,9 @@
 #' Can be \code{NULL} (default, no removal), a character vector of parameter
 #' names to remove, or \code{TRUE} to remove all parameters that are not
 #' part of any formula. For formula random effects, character filters also
-#' accept semantic aliases \code{"random"}, \code{"random_sd"},
-#' \code{"random_correlation"},
-#' \code{"random_variance_proportion"}, \code{"random_variance_ratio"},
+#' accept semantic selectors \code{"random"}, \code{"random_sd"},
+#' \code{"random_cor"},
+#' \code{"random_var_prop"}, \code{"random_var_ratio"},
 #' \code{"random_allocation"}, and \code{"random_sd_ratio"}.
 #' @param remove_formulas character vector of formula names whose parameters
 #' should be removed from the summary. Defaults to \code{NULL}.
@@ -32,29 +32,27 @@
 #' All other parameters will be removed unless they belong to formulas
 #' specified in \code{keep_formulas}. The random-effect aliases listed for
 #' \code{remove_parameters} can also be used here, for example
-#' \code{keep_parameters = c("random_sd", "random_correlation")}.
+#' \code{keep_parameters = c("random_sd", "random_cor")}.
 #' @param keep_formulas character vector of formula names whose parameters
 #' should be kept. All other parameters will be removed unless they are
 #' specified in \code{keep_parameters}. Defaults to \code{NULL}.
 #' @param random_effects_summary random-effect reporting mode for JAGS estimates
-#' tables. \code{"standard"} replaces raw random-effect implementation
-#' parameters with semantic SD, correlation, true variance-fraction, and
-#' mean-variance SD-component variance-ratio summaries. \code{"full"} also
-#' includes heterogeneous SD multipliers.
+#' tables. \code{"standard"} replaces raw implementation parameters with the
+#' semantic quantities corresponding to the fitted prior parameterization:
+#' directly specified block scales, correlations, inclusion probabilities,
+#' allocation aggregate SDs, and variance proportions or ratios.
+#' \code{"full"} additionally includes deterministic representations such as
+#' aggregate variances, allocation-derived component SDs, and alternate SD or
+#' variance ratios.
 #' \code{"raw"} keeps the historical raw monitored parameters on their fitted
 #' scale, and
-#' \code{"none"} removes random-effect parameters from the table. When used
-#' together with \code{transform_scaled = TRUE}, SD and correlation summaries
-#' for formula random effects are computed after applying the original-scale
-#' formula transformation. Internal latent and realized group-coefficient
-#' coordinates are omitted when \code{transform_scaled = TRUE}, including in
-#' \code{"raw"} mode, because those coordinates remain on the fitted
-#' standardized scale.
-#' @param random_effects_label label style for semantic random-effect summaries.
-#' Both \code{"grouped"} and \code{"component"} use the canonical
-#' owner-and-quantity grammar, for example \code{study: sd(intercept)}.
-#' Defaults to \code{"grouped"}. Raw random-effect coordinates use the same
-#' semantic labels when a public equivalent exists.
+#' \code{"none"} removes random-effect parameters from the table. The
+#' \code{"standard"} and \code{"full"} modes always obtain public semantic
+#' quantities from the fitted parameter map on their declared display scale.
+#' \code{transform_scaled = TRUE} additionally transforms remaining formula
+#' coefficients. Internal latent and realized group-coefficient coordinates
+#' are omitted when \code{transform_scaled = TRUE}, including in \code{"raw"}
+#' mode, because those coordinates remain on the fitted standardized scale.
 #' @param random_effects_metadata whether to add random-effect metadata columns
 #' to JAGS estimates tables. When \code{TRUE}, the table includes the
 #' user-facing random-effect name, grouping label, and covariance structure
@@ -231,7 +229,6 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
                                      formula_prefix = TRUE, remove_inclusion = FALSE, remove_parameters = NULL, remove_formulas = NULL,
                                      keep_parameters = NULL, keep_formulas = NULL, return_samples = FALSE, transform_scaled = FALSE,
                                      random_effects_summary = c("standard", "full", "raw", "none"),
-                                     random_effects_label = c("grouped", "component"),
                                      random_effects_metadata = FALSE,
                                      remove_random_effects = NULL, keep_random_effects = NULL,
                                      remove_random_structures = NULL, keep_random_structures = NULL,
@@ -246,7 +243,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     stop("'fit' must be a runjags fit")
   if(!inherits(fit, "BayesTools_fit"))
     stop("'fit' must be a BayesTools fit")
-  parameter_registry <- JAGS_parameter_registry(fit)
+  coordinates <- parameter_coordinates(fit)
   prior_list <- attr(fit, "prior_list")
   check_list(prior_list, "prior_list")
   if(!all(sapply(prior_list, is.prior)))
@@ -265,7 +262,6 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   check_bool(formula_prefix, "formula_prefix")
   check_bool(transform_scaled, "transform_scaled")
   random_effects_summary <- match.arg(random_effects_summary)
-  random_effects_label <- match.arg(random_effects_label)
   check_bool(random_effects_metadata, "random_effects_metadata")
   check_bool(remove_diagnostics, "remove_diagnostics")
   diagnostic_columns <- .normalize_diagnostic_columns(diagnostic_columns, .JAGS_estimates_diagnostic_columns(), "diagnostic_columns")
@@ -296,13 +292,12 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     formula_scale <- attr(fit, "formula_scale")
   }
 
-  random_summary <- .bt_random_effect_summary_samples(
+  random_summary <- .bt_parameter_catalog_random_summary_samples(
+    fit = fit,
     model_samples = model_samples,
     prior_list = prior_list,
-    formula_design = attr(fit, "formula_design"),
-    parameter_registry = parameter_registry,
-    mode = random_effects_summary,
-    formula_scale = if(transform_scaled) formula_scale else NULL
+    coordinates = coordinates,
+    mode = random_effects_summary
   )
   model_samples <- random_summary$model_samples
   prior_list <- random_summary$prior_list
@@ -314,7 +309,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     model_samples <- transform_scale_samples(model_samples, formula_scale)
     model_samples <- .bt_remove_internal_random_coordinates(
       posterior = model_samples,
-      parameter_registry = parameter_registry
+      coordinates = coordinates
     )
   }
 
@@ -353,7 +348,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   model_samples <- .bt_JAGS_estimates_filter_raw_random_columns(
     model_samples = model_samples,
     prior_list = prior_list,
-    parameter_registry = parameter_registry,
+    coordinates = coordinates,
     remove_parameters = remove_parameters,
     remove_formulas = remove_formulas,
     keep_parameters = keep_parameters,
@@ -636,8 +631,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       raw_names = raw_parameter_names,
       prior_list = prior_list,
       formula_prefix = formula_prefix,
-      random_effects_label = random_effects_label,
-      parameter_registry = parameter_registry
+      coordinates = coordinates
     )
   }
 
@@ -662,7 +656,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
         table = empty_table,
         parameter_names = character(),
         prior_list = prior_list,
-        parameter_registry = parameter_registry
+        coordinates = coordinates
       )
     }
     return(empty_table)
@@ -692,7 +686,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       table = runjags_summary,
       parameter_names = parameter_names,
       prior_list = prior_list,
-      parameter_registry = parameter_registry
+      coordinates = coordinates
     )
   }
 
@@ -701,7 +695,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
 .bt_JAGS_estimates_filter_raw_random_columns <- function(model_samples,
                                                          prior_list,
-                                                         parameter_registry = NULL,
+                                                         coordinates = NULL,
                                                          formula_design = NULL,
                                                          remove_parameters = NULL,
                                                          remove_formulas = NULL,
@@ -712,8 +706,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
                                                          remove_random_structures = NULL,
                                                          keep_random_structures = NULL){
 
-  if(is.null(parameter_registry)){
-    parameter_registry <- .bt_build_parameter_registry(
+  if(is.null(coordinates)){
+    coordinates <- .bt_build_parameter_coordinates(
       columns = colnames(model_samples),
       prior_list = prior_list,
       formula_design = formula_design
@@ -721,7 +715,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   }
   model_samples <- .bt_random_effect_summary_filter_raw_columns(
     model_samples = model_samples,
-    parameter_registry = parameter_registry,
+    coordinates = coordinates,
     remove_random_effects = remove_random_effects,
     keep_random_effects = keep_random_effects,
     remove_random_structures = remove_random_structures,
@@ -732,11 +726,11 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   if(length(column_names) == 0L){
     return(model_samples)
   }
-  .bt_validate_parameter_registry(parameter_registry)
-  registry_rows <- match(column_names, parameter_registry$coordinate_name)
-  registered <- !is.na(registry_rows)
+  .bt_validate_parameter_coordinates(coordinates)
+  coordinate_rows <- match(column_names, coordinates$coordinate_name)
+  registered <- !is.na(coordinate_rows)
   row_roles <- rep("", length(column_names))
-  row_roles[registered] <- parameter_registry$role[registry_rows[registered]]
+  row_roles[registered] <- coordinates$role[coordinate_rows[registered]]
   raw_random <- registered &
     (startsWith(row_roles, "random_") | row_roles == "allocation")
   if(!any(raw_random)){
@@ -756,17 +750,17 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   )
   remove_columns <- rep(FALSE, length(column_names))
   random_blocks <- unique(
-    parameter_registry$random_block[registry_rows[raw_random]]
+    coordinates$random_block[coordinate_rows[raw_random]]
   )
 
   for(random_block in random_blocks){
       term_columns <- raw_random &
-        parameter_registry$random_block[registry_rows] == random_block
+        coordinates$random_block[coordinate_rows] == random_block
       if(!any(term_columns)){
         next
       }
       formula_parameter <- unique(
-        parameter_registry$formula_parameter[registry_rows[term_columns]]
+        coordinates$formula_parameter[coordinate_rows[term_columns]]
       )
       formula_parameter <- formula_parameter[nzchar(formula_parameter)]
       remove_formula <- any(formula_parameter %in% remove_formulas)
@@ -791,20 +785,20 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
         if(!is.null(keep_random_effects) || !is.null(keep_random_structures)){
           term_matches <- TRUE
           if(!is.null(keep_random_effects)){
-            term_registry_rows <- registry_rows[term_columns]
+            term_coordinate_rows <- coordinate_rows[term_columns]
             term_matches <- term_matches &&
               (random_block %in% keep_random_effects ||
-                 any(parameter_registry$random_name[
-                   term_registry_rows
+                 any(coordinates$random_name[
+                   term_coordinate_rows
                  ] %in% keep_random_effects) ||
-                 any(parameter_registry$random_grouping[
-                   term_registry_rows
+                 any(coordinates$random_grouping[
+                   term_coordinate_rows
                  ] %in% keep_random_effects))
           }
           if(!is.null(keep_random_structures)){
             term_matches <- term_matches && any(
-              parameter_registry$random_structure[
-                registry_rows[term_columns]
+              coordinates$random_structure[
+                coordinate_rows[term_columns]
               ] %in% keep_random_structures
             )
           }
@@ -842,21 +836,20 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   intersect(
     parameters,
     c(
-      "random", "random_effects", "random_sd",
-      "random_cor", "random_correlation", "random_variance_proportion",
-      "random_variance_ratio", "random_allocation", "random_sd_ratio"
+      "random", "random_sd", "random_cor", "random_var_prop",
+      "random_var_ratio", "random_allocation", "random_sd_ratio"
     )
   )
 }
 
 .bt_JAGS_estimates_random_alias_has_all <- function(aliases){
 
-  any(aliases %in% c("random", "random_effects"))
+  "random" %in% aliases
 }
 
 .bt_JAGS_estimates_random_alias_has_correlation <- function(aliases){
 
-  any(aliases %in% c("random_cor", "random_correlation"))
+  "random_cor" %in% aliases
 }
 
 .bt_JAGS_estimates_raw_random_correlation_columns <- function(column_names){

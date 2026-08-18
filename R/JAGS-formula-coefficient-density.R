@@ -8,7 +8,7 @@
 #' `JAGS_formula_coefficient_transform()` exposes the exact fixed-coefficient
 #' transformation used by [transform_scale_samples()]. It records fitted
 #' sources, original-scale targets, named source/output transforms, exact
-#' nonzero dependencies, and registry structural metadata.
+#' nonzero dependencies, and parameter-map structural metadata.
 #'
 #' `JAGS_formula_prior_density()` constructs the induced marginal prior measure
 #' for one target through BayesTools' deterministic prior-density context and
@@ -55,7 +55,7 @@ JAGS_formula_coefficient_transform <- function(
   }
   JAGS_validate_fit_contract(
     fit,
-    requires = c("formula_design", "parameter_registry")
+    requires = c("formula_design", "parameter_map")
   )
   design <- JAGS_formula_design(fit, parameter = parameter)
   if(is.null(design)){
@@ -69,8 +69,8 @@ JAGS_formula_coefficient_transform <- function(
     design,
     context = paste0("Coefficient transform for parameter '", parameter, "'")
   )
-  registry <- JAGS_parameter_registry(fit)
-  sources <- .bt_formula_coefficient_sources(design, registry, parameter)
+  coordinates <- parameter_coordinates(fit)
+  sources <- .bt_formula_coefficient_sources(design, coordinates, parameter)
 
   .bt_formula_coefficient_transform(
     source_names = sources$source,
@@ -81,7 +81,7 @@ JAGS_formula_coefficient_transform <- function(
     source_metadata = sources[, c("source", "monitor_status", "fixed_value"),
                               drop = FALSE],
     formula_design_version = design$schema_version,
-    parameter_registry_version = attr(registry, "schema_version", exact = TRUE)
+    parameter_map_version = parameter_map(fit)$schema_version
   )
 }
 
@@ -91,7 +91,7 @@ JAGS_formula_coefficient_transform_schema <- function(){
   data.frame(
     field = c(
       "schema_version", "formula_design_version",
-      "parameter_registry_version", "parameter", "target_scale",
+      "parameter_map_version", "parameter", "target_scale",
       "source_names", "target_names", "matrix", "source_transforms",
       "output_transforms", "dependencies", "sources", "targets"
     ),
@@ -102,7 +102,7 @@ JAGS_formula_coefficient_transform_schema <- function(){
     description = c(
       "Coefficient-transform schema version.",
       "Formula-design schema version used to construct the transform.",
-      "Parameter-registry schema version used for source status.",
+      "Parameter-map schema version used for source status.",
       "Formula output parameter.",
       "Requested target coefficient scale.",
       "Ordered fitted-coordinate source names.",
@@ -210,7 +210,7 @@ JAGS_formula_prior_density <- function(
   density
 }
 
-.bt_formula_coefficient_sources <- function(design, registry, parameter){
+.bt_formula_coefficient_sources <- function(design, coordinates, parameter){
 
   prior_list <- design$prior_list
   if(!is.list(prior_list) || is.null(names(prior_list)) ||
@@ -229,27 +229,27 @@ JAGS_formula_prior_density <- function(
     names(prior_list),
     prior_list
   ), use.names = FALSE))
-  rows <- registry$formula_parameter == parameter &
-    registry$role == "fixed_coefficient" & !registry$internal
-  source_registry <- registry[rows, , drop = FALSE]
-  actual <- source_registry$coordinate_name
+  rows <- coordinates$formula_parameter == parameter &
+    coordinates$role == "fixed_coefficient" & !coordinates$internal
+  source_coordinates <- coordinates[rows, , drop = FALSE]
+  actual <- source_coordinates$coordinate_name
   expected <- prior_coordinates[prior_coordinates %in% actual]
   if(length(expected) == 0L || !setequal(expected, actual)){
     .bt_formula_transform_stop(
       paste0("Formula coefficient sources for parameter '", parameter,
-             "' disagree with the parameter registry."),
+             "' disagree with the parameter-coordinate table."),
       parameter = parameter,
-      reason = "registry_source_mismatch",
+      reason = "coordinate_source_mismatch",
       expected = expected,
       registered = actual,
       prior_coordinates = prior_coordinates
     )
   }
-  source_registry <- source_registry[match(expected, actual), , drop = FALSE]
+  source_coordinates <- source_coordinates[match(expected, actual), , drop = FALSE]
   data.frame(
-    source = source_registry$coordinate_name,
-    monitor_status = source_registry$monitor_status,
-    fixed_value = source_registry$fixed_value,
+    source = source_coordinates$coordinate_name,
+    monitor_status = source_coordinates$monitor_status,
+    fixed_value = source_coordinates$fixed_value,
     stringsAsFactors = FALSE
   )
 }
@@ -259,7 +259,7 @@ JAGS_formula_prior_density <- function(
     log_intercept = FALSE,
     source_metadata = NULL,
     formula_design_version = .bt_formula_design_schema_version(),
-    parameter_registry_version = .bt_parameter_registry_version){
+    parameter_map_version = .bt_parameter_map_version){
 
   check_char(source_names, "source_names", check_length = FALSE,
              allow_NA = FALSE)
@@ -326,7 +326,7 @@ JAGS_formula_prior_density <- function(
   out <- list(
     schema_version = .bt_formula_coefficient_transform_version,
     formula_design_version = as.integer(formula_design_version),
-    parameter_registry_version = as.integer(parameter_registry_version),
+    parameter_map_version = as.integer(parameter_map_version),
     parameter = parameter,
     target_scale = target_scale,
     source_names = source_names,
@@ -474,7 +474,7 @@ JAGS_formula_prior_density <- function(
 
   expected_names <- c(
     "schema_version", "formula_design_version",
-    "parameter_registry_version", "parameter", "target_scale",
+    "parameter_map_version", "parameter", "target_scale",
     "source_names", "target_names", "matrix", "source_transforms",
     "output_transforms", "dependencies", "sources", "targets"
   )
@@ -485,11 +485,14 @@ JAGS_formula_prior_density <- function(
     is.integer(transform$formula_design_version) &&
     length(transform$formula_design_version) == 1L &&
     !is.na(transform$formula_design_version) &&
-    transform$formula_design_version >= 1L &&
-    is.integer(transform$parameter_registry_version) &&
-    length(transform$parameter_registry_version) == 1L &&
-    !is.na(transform$parameter_registry_version) &&
-    transform$parameter_registry_version >= 1L &&
+    identical(
+      transform$formula_design_version,
+      .bt_formula_design_schema_version()
+    ) &&
+    is.integer(transform$parameter_map_version) &&
+    length(transform$parameter_map_version) == 1L &&
+    !is.na(transform$parameter_map_version) &&
+    identical(transform$parameter_map_version, .bt_parameter_map_version) &&
     is.character(transform$parameter) && length(transform$parameter) == 1L &&
     !is.na(transform$parameter) && nzchar(transform$parameter) &&
     identical(transform$target_scale, "original") &&

@@ -1,37 +1,61 @@
 # version 0.3.1
 ### Features
 - consolidates unreleased formula-random public parameter names as
-  `(formula) owner: quantity(parameter[level], ...)`. The versioned parameter
-  catalog now records semantic ownership and arguments separately from
-  concrete posterior coordinates. The concrete registry field is now
-  `coordinate_name`, while `canonical_name` is reserved for semantic catalog
-  quantities. The catalog declares identity, one-to-one, or
-  composite source provenance while keeping backend LKJ and allocation
-  coordinates internal. Public correlations use `cor`; aggregate allocations
-  distinguish `sd_total` / `var_total` from `sd_common` / `var_common`, with
-  components exposed as `var_prop`, `var_ratio`, and `sd_ratio`. Variance
-  allocations now require an explicit semantic owner name.
+  `(formula) owner: quantity(parameter[level], ...)`, omitting `owner: ` for
+  exactly one random block and retaining it for multiple blocks. Formula lists
+  with two or more unnamed
+  components use `component 1`, `component 2`, and so on. Each fit stores one
+  authoritative, versioned `parameter_map` containing linked backend-coordinate,
+  public-quantity, and alias tables; `parameter_coordinates()` and
+  `parameter_catalog()` are validated views rather than separately persisted
+  metadata. The coordinate field is `coordinate_name`, while `canonical_name`
+  is reserved for semantic quantities. Quantity rows declare identity,
+  one-to-one, or composite source provenance while keeping backend LKJ and
+  allocation coordinates internal. Public correlations use `cor`; aggregate
+  allocations distinguish `sd_total` / `var_total` from `sd_common` /
+  `var_common`, with components exposed as `var_prop`, `var_ratio`, and
+  `sd_ratio`. Variance allocations retain a required stable internal name while
+  recording their public owner and component names separately. Linked formula-
+  coefficient transforms require the exact current formula-design and
+  parameter-map schemas rather than accepting stale versioned metadata.
 - adds `JAGS_with_draws()` for replacing fitted backend draws while preserving
-  and refreshing the fit's draw geometry, allowing catalog-defined semantic
+  and refreshing the fit's draw geometry, allowing map-defined semantic
   quantities to be evaluated on posterior or simulated-prior coordinates
+- routes public random-effect posterior and estimates-table summaries through
+  `parameter_catalog()` resolution and `parameter_draws()`, and adds
+  `parameter_transform()` plus authoritative forward, inverse, and Jacobian
+  evaluators for one-to-one semantic coordinate maps. Standard random-effect
+  tables now report only prior-facing quantities, while full tables retain all
+  deterministic representations; directly specified SD ratios remain standard.
+  `parameter_draws()` can also evaluate a selection on an already materialized
+  posterior matrix for downstream summaries.
 - adds `random_effects_marginal_factor_states()` so downstream likelihoods can
   reuse the bridge-sampling random-covariance compiler without constructing
-  dense draw-by-row-by-row arrays
-- adds `JAGS_marglik_priors_rows()` for exact row-preserving prior-density
-  evaluation. Supported scalar and Dirichlet prior lists use a vectorized
-  evaluator, while other prior families retain the compiled scalar route.
+  dense draw-by-row-by-row arrays. Supported non-row-indexed blocks now compile
+  their SD and correlation metadata once and reconstruct exact factor states
+  across all posterior draws in one batch.
+- adds `JAGS_marglik_priors_rows()` and
+  `JAGS_marglik_priors_rows_evaluator()` for exact row-preserving prior-density
+  evaluation and reusable compiled evaluation. Supported scalar, independent
+  or treatment factor, and Dirichlet prior lists use vectorized evaluators,
+  while other prior families retain the compiled scalar route.
 - adds `hypothesis_level_contrast()` for certifying atom-free pairwise level
   contrasts with an exact joint-prior ordinate, and normalizes symbolic
   point equalities such as `theta = phi` to a difference from zero; constant-
   left relations such as `0 > theta` and `0 = theta` are canonicalized to the
   equivalent parameter-left forms
 - adds `JAGS_formula_coefficient_transform()` and `JAGS_formula_prior_density()` for versioned fitted-to-original coefficient maps and exact induced prior measures, including structural point values, interactions, log-intercept Jacobians, and model-mixture atoms
+- adds `JAGS_formula_predictor_basis()` for exact observation-level affine
+  update bases derived from the fitted parameter map and persisted formula
+  design, including coefficient ordering, contrasts, scaling, and term
+  multipliers. Metadata-declared nonlinear or coupled coordinates are reported
+  explicitly so downstream evaluators can retain their complete formula path.
 - adds a versioned `hypothesis_parse()` syntax tree with stable rendering, exact symbol discovery and rewriting, parameter-catalog resolution including unquoted non-syntactic public aliases, and direct `hypothesis_BF()` consumption without reparsing expression text
-- adds a cached metadata-only `parameter_catalog()` with versioned quantity and alias tables, classed exact resolution, validated provider extensions, and deferred `parameter_draws()` extraction for registry coordinates and declared random-effect summaries
-- adds versioned `JAGS_draw_geometry()` metadata and registry-based `JAGS_materialize_draws()` reconstruction, including exact structural point-prior values, preserved chain timing, valid zero-column public draws, and a private deterministic backend anchor for models with no ordinary monitor
-- adds an injective UTF-8 `JAGS_parameter_encode()` / `JAGS_parameter_decode()` semantic identifier, a persisted formula name map, and a single `JAGS_fit_contract()` compatibility profile so downstream packages can consume formula and fitted metadata without parsing established JAGS column names
+- adds a metadata-only `parameter_catalog()` view over the fitted parameter map, with classed exact resolution, validated provider extensions, and deferred `parameter_draws()` extraction for declared coordinates and random-effect summaries
+- adds versioned `JAGS_draw_geometry()` metadata and parameter-map-based `JAGS_materialize_draws()` reconstruction, including exact structural point-prior values, preserved chain timing, valid zero-column public draws, and a private deterministic backend anchor for models with no ordinary monitor
+- adds an injective UTF-8 `JAGS_parameter_encode()` / `JAGS_parameter_decode()` semantic identifier, a persisted formula name map, and a single strict `JAGS_fit_contract()` schema so downstream packages can consume formula and fitted metadata without parsing established JAGS column names
 - adds `prior_density_ordinate()` for exact-value structural classification of scalar prior and induced `prior_linear_density` ordinates, including continuous limits, point masses, deterministic mixtures, analytic normal combinations, and supported named transformations
-- adds the `prior_random()` interface for formula random effects, including `random_block()` / `random_term()`, `random_covariance()`, `random_monitor()`, `random_new_levels()`, `random_variance_allocation()`, and `allocation_ref()` helpers for specifying random-effect standard deviation priors, covariance structures, monitoring policy, and total-variance allocation priors
+- adds the `prior_random()` interface for formula random effects, including `random_block()`, `random_covariance()`, `random_monitor()`, `random_new_levels()`, `random_variance_allocation()`, and `allocation_ref()` helpers for specifying random-effect standard deviation priors, covariance structures, monitoring policy, and total-variance allocation priors
 - adds lme4-like formula random-effect parsing through `reformulas`, including ordinary and independent random effects, named random-effect blocks, nested grouping expressions, factor random slopes, and structured covariance shortcuts for diagonal, shared-SD independent, unstructured, compound-symmetry, heterogeneous compound-symmetry, discrete AR(1), heterogeneous AR(1), and continuous-time AR(1) random effects
 - adds LKJ correlation priors for unstructured random-effect covariance matrices via `prior_lkj()` and `JAGS_lkj_corr_cholesky()`, using the package-shipped compiled JAGS backend
 - adds `BayesTools_load_JAGS_module()` and package compilation support for the BayesTools JAGS module used by generated LKJ-Cholesky syntax
@@ -44,9 +68,8 @@
 - adds `fit_backend_fingerprint()` for stable cache invalidation when fitted-model backend code or native binaries change
 - adds bridge-sampling support for formula random effects by using standardized latent random effects, scalar correlation coordinates, and LKJ primitive coordinates as bridge parameters
 - adds semantic random-effect summaries to `runjags_estimates_table()` / `JAGS_estimates_table()` through `random_effects_summary`, `random_effects_metadata`, `remove_random_effects`, `keep_random_effects`, `remove_random_structures`, and `keep_random_structures`
-- adds `random_effects_label = "component"` to random-effect estimates tables for labels such as `study: sd(intercept)`, using stored random-effect metadata while retaining grouped labels by default
 - adds random-effect parameter filters such as `"random"`, `"random_sd"`,
-  `"random_correlation"`, `"random_variance_proportion"`,
+  `"random_cor"`, `"random_var_prop"`, `"random_var_ratio"`,
   `"random_allocation"`, and `"random_sd_ratio"` for estimates tables
 - adds compact print methods for the public random-effect specification helpers, LKJ priors, parameter sources, random-SD sources, and variance-allocation references
 - adds `prior_ordered()` for ordered-factor priors that separate a scalar total effect from fixed or Dirichlet allocations across cumulative level increments
@@ -56,6 +79,14 @@
 - adds a `RandomEffects` vignette comparing BayesTools formula random effects with lme4 and rstanarm examples
 
 ### Changes
+- Diagonal and unstructured random-factor blocks now retain one SD per
+  generated coefficient for mean-difference, orthonormal, and ordered bases.
+  Scalar SD templates expand to indexed independent priors, while explicitly
+  multivariate factor priors retain their joint prior and map to the same
+  coefficient coordinates.
+- Random-coefficient blocks without an explicit
+  `random_block(contrasts = ...)` override now reuse the concrete contrast
+  metadata resolved for the same fixed factor.
 - Formula random-effect covariance priors are now completed after the parsed
   structure and dimension are known. Omitted US/UN correlations use `LKJ(1)`;
   omitted CS/HCS, AR1/HAR, and CAR correlations use uniform priors over their
@@ -97,6 +128,16 @@
   The same compiled evaluator now serves posterior reconstruction, prediction,
   covariance summaries, and plotting consumers; the pure-R subset recurrence
   remains the exact reference and diagnostic fallback.
+- Batched marginal random-effect factors now handle direct posterior and
+  row-indexed SD sources for every supported random structure, cache shared
+  allocation replay within a batch, and reconstruct simplex weights from their
+  authoritative gamma auxiliaries. Valid zero auxiliary components retain
+  their exact boundary weights, while invalid or non-normalized coordinates
+  fail without renormalization. Random-effect prediction samples directly from
+  persisted Cholesky factors instead of decomposing and repairing reconstructed
+  covariance matrices. Fisher-z and bounded-logit scalar correlations use
+  their declared transforms exactly; numerically saturated boundary values are
+  rejected rather than clamped into the admissible interval.
 - The compact bridge factor-state contract now labels exact diagonal and
   Markov coefficient structures. AR1, HAR, and CAR states expose their complete
   coefficient scales, adjacent transitions, and innovation variances alongside
@@ -118,10 +159,8 @@
 - `as_marginal_inference()` conditional marginal summaries use active-subset conditioning: each marginal level conditions only on requested parameters with nonzero weight in that level's linear combination, and levels with no active requested conditionals use the fully averaged context
 
 ### Fixes
-- adds semantic aliases for stored random-effect correlations, including
-  unqualified and grouping-qualified pairwise correlations and grouped scalar
-  `rho`, and generates stored LKJ primitive coordinates when drawing formula
-  priors so semantic correlation summaries can be reconstructed exactly.
+- generates stored LKJ primitive coordinates when drawing formula priors so
+  public semantic `cor(...)` summaries can be reconstructed exactly.
 - preserves matrix dimensions while validating one-coefficient random-effect
   correlation Cholesky draws.
 - evaluates transformed prior density grids on the displayed plotting range,
@@ -132,15 +171,15 @@
   secondary axis and all point masses, and reuses it for base posterior and
   prior line overlays across fitted objects; out-of-range overlays warn instead
   of silently rescaling the active plot
-- exposes every fitted factor level and interaction cell as a named coefficient-level catalog quantity, using injective named-cell components, semantic display labels, direct coordinates, structural zeroes, or the persisted term-only contrast transformation for treatment, independent, mean-difference, orthonormal, and ordered encodings; incomplete factor registries now fail closed and boundary whitespace remains resolvable
-- finalizes parameter-catalog schema 3 by reusing identity random-effect coordinates with their sampled or structural provenance, hiding transformed fitted-scale and private implementation rows, declaring only evaluator dependencies, validating native extraction recipes, and reserving the `BayesTools` provider namespace
+- exposes every fitted factor level and interaction cell as a named coefficient-level quantity, using injective named-cell components, semantic display labels, direct coordinates, structural zeroes, or the persisted term-only contrast transformation for treatment, independent, mean-difference, orthonormal, and ordered encodings; incomplete coordinate maps now fail closed and boundary whitespace remains resolvable
+- validates the parameter map atomically, reusing identity random-effect coordinates with their sampled or structural provenance, hiding transformed fitted-scale and private implementation rows, checking every native extraction dependency, and reserving the `BayesTools` provider namespace
 - preserves exact finite transformed-support endpoints through structural
   transformation provenance, avoiding round-trip misclassification for
   transformations such as negative powers of truncated positive priors
 - corrects the zero-boundary exponent for negative powers of inverse-gamma variables, distinguishing infinite, finite nonzero, and zero transformed densities according to the inverse-gamma shape and power
 - ensures targeted `JAGS_check_convergence()` checks still include eligible product-space indicators when `check_indicators = TRUE`, while auxiliary inclusion-probability coordinates remain opt-in
 - makes optional model-indicator convergence checks label invariant by diagnosing binary state occupancy and each observed categorical state separately, while recognizing one-state indicators as structural only when the prior fixes their support
-- derives formula coefficient transforms from registry rows with the `fixed_coefficient` role, so sampled and marginalized random-effect priors no longer make mixed-formula coefficient transforms and prior densities fail with a source mismatch
+- derives formula coefficient transforms from parameter-coordinate rows with the `fixed_coefficient` role, so sampled and marginalized random-effect priors no longer make mixed-formula coefficient transforms and prior densities fail with a source mismatch
 - makes `JAGS_extend()` validate the declared fit contract and every preserved metadata object before backend work, preventing stale formula designs from being relabeled as current after an early exit or extension
 - restores literal `expression()` formula terms that reference sampled scalar or one-dimensional indexed parameters, including individually monitored indexed coordinates, persisting their data and parameter dependencies for draw-aware fitted/new-data prediction and marginal-likelihood reconstruction while rejecting opaque JAGS-derived nodes that cannot be replayed
 - resolves level-qualified hypothesis symbols through semantic catalog components, including multiple factor levels in the same hypothesis, instead of dropping the level and reporting the factor term as ambiguous

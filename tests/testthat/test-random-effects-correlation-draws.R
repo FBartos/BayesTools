@@ -406,7 +406,7 @@ test_that("correlation reconstruction accepts coda posterior containers", {
   expect_equal(actual[2L, 1L, 3L], 0.4^2, tolerance = 0)
 })
 
-test_that("transformed rho coordinates stay in the representable interior", {
+test_that("transformed rho coordinates are exact and saturated boundaries fail", {
 
   cases <- list(
     ar1_fisher = list(
@@ -426,39 +426,54 @@ test_that("transformed rho coordinates stay in the representable interior", {
   for(name in names(cases)){
     random_term <- cases[[name]]$term
     correlation <- random_term$correlation
-    interior <- BayesTools:::.bt_random_effect_representable_rho_bounds(
-      correlation$bounds,
-      random_term$structure
-    )
     posterior <- matrix(
       cases[[name]]$coordinates,
       ncol = 1L,
       dimnames = list(NULL, correlation$sample_name)
     )
-    rho <- BayesTools:::.bt_random_effect_rho_draws(
-      random_term = random_term,
-      posterior = posterior,
-      out_of_support = "error"
+    transformed <- BayesTools:::.bt_random_effect_transform_rho(
+      posterior[, 1L],
+      correlation = correlation,
+      random_term = random_term
     )
-
-    expect_equal(rho, unname(interior), tolerance = 0, info = name)
-    if(identical(random_term$structure, "car")){
-      expect_gte(rho[[1L]], correlation$bounds[["lower"]])
+    expected <- if(identical(correlation$rho_scale, "fisher_z")){
+      tanh(posterior[, 1L])
     }else{
-      expect_gt(rho[[1L]], correlation$bounds[["lower"]])
+      correlation$bounds[["lower"]] +
+        unname(diff(correlation$bounds)) * stats::plogis(posterior[, 1L])
     }
-    expect_lt(rho[[2L]], correlation$bounds[["upper"]])
-    expect_equal(
-      vapply(seq_len(nrow(posterior)), function(i){
-        BayesTools:::.bt_JAGS_marglik_random_effect_rho(
-          posterior[i, ],
-          random_term
-        )
-      }, numeric(1)),
-      unname(interior),
-      tolerance = 0,
-      info = paste(name, "bridge")
+    expect_equal(transformed, expected, tolerance = 0, info = name)
+
+    invalid <- BayesTools:::.bt_random_effect_rho_outside_support(
+      transformed,
+      bounds = correlation$bounds,
+      structure = random_term$structure
     )
+    for(i in seq_len(nrow(posterior))){
+      if(invalid[[i]]){
+        expect_error(
+          BayesTools:::.bt_random_effect_rho_draws(
+            random_term = random_term,
+            posterior = posterior[i, , drop = FALSE],
+            out_of_support = "error"
+          ),
+          "out-of-support draw",
+          fixed = TRUE,
+          info = name
+        )
+      }else{
+        expect_equal(
+          unname(BayesTools:::.bt_random_effect_rho_draws(
+            random_term = random_term,
+            posterior = posterior[i, , drop = FALSE],
+            out_of_support = "error"
+          )),
+          transformed[[i]],
+          tolerance = 0,
+          info = name
+        )
+      }
+    }
   }
 
   near_zero <- BayesTools:::.bt_random_effect_representable_rho_bounds(

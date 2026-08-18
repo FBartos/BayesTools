@@ -225,7 +225,7 @@ test_that("structured random-effect JAGS literals are locale independent", {
   )
 
   expect_true(grepl(
-    "max(0, min(0.99999999999999989,",
+    "mu__xREx__id_rho <- tanh(mu__xREx__id_rho_z)",
     result$formula_syntax,
     fixed = TRUE
   ))
@@ -507,8 +507,7 @@ test_that("CAR Fisher-z syntax matches reconstruction at small positive values",
   expect_match(
     result$formula_syntax,
     paste0(
-      "mu__xREx__id_rho <- max(0, ",
-      "min(0.99999999999999989, tanh(mu__xREx__id_rho_z)))"
+      "mu__xREx__id_rho <- tanh(mu__xREx__id_rho_z)"
     ),
     fixed = TRUE
   )
@@ -525,4 +524,28 @@ test_that("CAR Fisher-z syntax matches reconstruction at small positive values",
   expect_equal(support_upper, reconstructed, tolerance = 0)
   expect_equal(reconstructed, tanh(z), tolerance = 0)
   expect_gt(reconstructed, 0)
+})
+
+test_that("transformed scalar rho rejects saturated point coordinates", {
+
+  data <- data.frame(
+    index = factor(rep(c("i1", "i2", "i3"), 2L)),
+    id = factor(rep(c("g1", "g2"), each = 3L))
+  )
+  expect_error(
+    JAGS_formula(
+      formula = ~ 1 + ar1(index | id),
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        id = random_block(
+          sd = prior("point", list(location = 1)),
+          cor = prior("point", list(location = 1e300))
+        )
+      )
+    ),
+    "transformed point correlation is unavailable",
+    fixed = TRUE
+  )
 })

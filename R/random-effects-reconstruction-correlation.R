@@ -331,16 +331,13 @@
       context = context
     )
   }
-  interior <- .bt_random_effect_representable_rho_bounds(bounds, structure)
-
   list(
     structure = structure,
     correlation = correlation,
     rho_scale = rho_scale,
     bounds = bounds,
     sample_fixed = sample_fixed,
-    sample_bounds = sample_bounds,
-    interior = interior
+    sample_bounds = sample_bounds
   )
 }
 
@@ -444,19 +441,17 @@
       random_term,
       context
     )
-    structure <- .bt_random_effect_structure(random_term, context = context)
-    interior <- .bt_random_effect_representable_rho_bounds(bounds, structure)
   }else{
     rho_scale <- plan$rho_scale
-    interior  <- plan$interior
+    bounds    <- plan$bounds
   }
   if(identical(rho_scale, "fisher_z")){
-    return(pmax(interior[["lower"]], pmin(interior[["upper"]], tanh(value))))
+    return(tanh(value))
   }
   if(identical(rho_scale, "logit")){
     return(
-      interior[["lower"]] +
-        (interior[["upper"]] - interior[["lower"]]) * stats::plogis(value)
+      bounds[["lower"]] +
+        (bounds[["upper"]] - bounds[["lower"]]) * stats::plogis(value)
     )
   }
 

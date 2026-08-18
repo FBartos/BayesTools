@@ -8,11 +8,21 @@
 #'
 #' @details
 #' List names define top-level random-effect components used by allocation and
-#' summary metadata. Missing names are replaced by `"Component 1"`,
-#' `"Component 2"`, and so on, then sanitized for JAGS node names. Unnamed
+#' summary metadata. In lists with two or more entries, missing names are
+#' replaced by `"component 1"`, `"component 2"`, and so on, then sanitized
+#' for JAGS node names. An unnamed one-entry list is treated like its bare
+#' formula and receives no user-facing component prefix; an explicitly named
+#' entry retains its name. Unnamed
 #' random-effect terms inside a list entry are auto-named from the component
 #' label. Explicit `name =` arguments define the final random-effect block name
 #' and are the names targeted by `prior_random()` block overrides.
+#' The fitted [parameter_map()] links concrete [parameter_coordinates()] to
+#' public quantities declared by [parameter_catalog()]. Their canonical form is
+#' `(formula) owner: quantity(arguments)`, with `owner: ` omitted for exactly one
+#' random block and retained when multiple blocks require disambiguation.
+#' Parentheses contain coefficient or parameter names and square brackets
+#' contain factor or index levels. Public correlations use `cor`; compact scalar
+#' `rho` and LKJ construction coordinates remain internal.
 #'
 #' Random-effect terms have two distinct left-side grammars:
 #'
@@ -63,6 +73,12 @@ random_effects_formula <- function(random, envir = parent.frame(),
 
   formulas <- .bt_random_effects_input_formulas(random)
   is_list_input <- is.list(random) && !inherits(random, "formula")
+  is_multi_component_list <- is_list_input && length(formulas) >= 2L
+  supplied_component_names <- if(is_list_input) names(random) else NULL
+  single_component_named <- is_list_input && length(formulas) == 1L &&
+    !is.null(supplied_component_names) &&
+    !is.na(supplied_component_names[[1L]]) &&
+    nzchar(supplied_component_names[[1L]])
   component_names <- if(is_list_input){
     .bt_random_effects_input_names(random, length(formulas))
   }else{
@@ -110,7 +126,8 @@ random_effects_formula <- function(random, envir = parent.frame(),
       terms <- .bt_random_effects_apply_component_name(
         terms = terms,
         component = component,
-        component_label = component_label
+        component_label = component_label,
+        rename_blocks = is_multi_component_list || single_component_named
       )
       components[[component_label]] <- vapply(terms, `[[`, character(1), "block_name")
     }
@@ -304,7 +321,7 @@ random_effects_formula <- function(random, envir = parent.frame(),
   }
   random_names[is.na(random_names)] <- ""
   missing_names <- !nzchar(random_names)
-  random_names[missing_names] <- paste0("Component ", which(missing_names))
+  random_names[missing_names] <- paste0("component ", which(missing_names))
 
   random_names
 }
@@ -323,7 +340,8 @@ random_effects_formula <- function(random, envir = parent.frame(),
 }
 
 .bt_random_effects_apply_component_name <- function(terms, component,
-                                                   component_label){
+                                                   component_label,
+                                                   rename_blocks = TRUE){
 
   explicit <- vapply(terms, function(term){
     isTRUE(term$has_explicit_name)
@@ -332,7 +350,7 @@ random_effects_formula <- function(random, envir = parent.frame(),
   original_blocks <- vapply(terms, `[[`, character(1), "block_name")
   for(i in seq_along(terms)){
     child_label <- original_blocks[[i]]
-    if(!explicit[[i]]){
+    if(isTRUE(rename_blocks) && !explicit[[i]]){
       terms[[i]]$block_name <- if(length(terms) == 1L){
         component_label
       }else{

@@ -3552,6 +3552,26 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     sd_prior,
     prior("dirichlet", list(alpha = c(1, 1)))
   )
+
+  unnamed_single <- random_effects_formula(list(~ 1 | study))
+  expect_equal(
+    vapply(unnamed_single$terms, `[[`, character(1), "block_name"),
+    "study"
+  )
+  expect_equal(unnamed_single$components, list(component_1 = "study"))
+  expect_equal(unnamed_single$terms[[1L]]$component, "component 1")
+
+  unnamed_multiple <- random_effects_formula(
+    list(~ 1 | study, ~ 1 | id)
+  )
+  expect_equal(
+    vapply(unnamed_multiple$terms, `[[`, character(1), "block_name"),
+    c("component_1", "component_2")
+  )
+  expect_equal(
+    vapply(unnamed_multiple$terms, `[[`, character(1), "component"),
+    c("component 1", "component 2")
+  )
   expect_s3_class(positional_allocation$weights, "prior.simplex")
   positional_named_allocation <- random_variance_allocation(
     "total_re",
@@ -4658,16 +4678,18 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
     ),
     -Inf
   )
-  expect_error(
-    JAGS_marglik_parameters_formula(
+  edge_reconstructed <- JAGS_marglik_parameters_formula(
       samples = edge_bridge_samples,
       formula_list = list(mu = result$formula),
       formula_data_list = list(mu = result$data),
       formula_prior_list = list(mu = result$prior_list),
       prior_list_parameters = list(),
       formula_design_list = list(mu = result$formula_design)
-    ),
-    "Dirichlet allocation auxiliary samples must be positive"
+  )
+  expect_equal(
+    edge_reconstructed$mu,
+    10 + 2 * c(1, 2, 1, 2, 1, 2),
+    tolerance = 1e-12
   )
   expect_equal(
     BayesTools:::.bt_JAGS_marglik_priors_formula_random(
@@ -4831,6 +4853,14 @@ test_that("external variance allocation sources generate scalar and row-indexed 
   )
   expect_false(direct_scalar_result$formula_design$random_effects[[1]]$sd_binding$true_allocation)
   expect_true("tau" %in% direct_scalar_result$add_parameters)
+  direct_scalar_coordinates <- BayesTools:::.bt_build_parameter_coordinates(
+    columns = "tau",
+    monitor_names = direct_scalar_result$add_parameters,
+    prior_list = direct_scalar_result$prior_list,
+    formula_design = list(mu = direct_scalar_result$formula_design)
+  )
+  expect_identical(direct_scalar_coordinates$role, "parameter")
+  expect_identical(direct_scalar_coordinates$display_label, "tau")
   direct_scalar_summary <- BayesTools:::.bt_random_effect_summary_samples(
     model_samples = matrix(
       2,
@@ -5730,6 +5760,7 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     tolerance = 1e-12
   )
   row_sd_leaf_bad_eta <- row_sd_leaf_samples
+  row_sd_leaf_bad_eta[["prior_par_eta_mu__xRE_ALLOCx_allocation__weight[1]"]] <- 0
   row_sd_leaf_bad_eta[["prior_par_eta_mu__xRE_ALLOCx_allocation__weight[2]"]] <- 0
   row_sd_leaf_bad_eta_error <- tryCatch(
     BayesTools:::.bt_JAGS_marglik_random_effect_value(
@@ -6831,6 +6862,7 @@ test_that("random-effect summary samples expose semantic SD, correlation, and al
   )
   edge_nested_posterior <- nested_posterior
   edge_nested_posterior[1, "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[1]"] <- 0
+  edge_nested_posterior[1, "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[2]"] <- 0
   expect_error(
     BayesTools:::.bt_random_effect_summary_samples(
       model_samples = edge_nested_posterior,
@@ -6838,7 +6870,7 @@ test_that("random-effect summary samples expose semantic SD, correlation, and al
       formula_design = list(mu = nested_result$formula_design),
       mode = "standard"
     ),
-    "Dirichlet allocation auxiliary samples must be positive"
+    "finite, non-negative, and have a positive sum"
   )
 
   direct_sd_names <- unique(unlist(lapply(
@@ -7130,7 +7162,7 @@ test_that("random-effect summary samples expose semantic SD, correlation, and al
 
   remove_for_proportion <- BayesTools:::.filter_parameters(
     nested_summary$prior_list,
-    keep_parameters = "random_variance_proportion",
+    keep_parameters = "random_var_prop",
     remove_spike_0 = FALSE
   )
   kept_proportion <- setdiff(names(nested_summary$prior_list), remove_for_proportion)
@@ -7268,7 +7300,7 @@ test_that("random-effect summary samples expose semantic SD, correlation, and al
 
   remove_for_proportion_sd_leaf <- BayesTools:::.filter_parameters(
     sd_leaf_summary$prior_list,
-    keep_parameters = "random_variance_proportion",
+    keep_parameters = "random_var_prop",
     remove_spike_0 = FALSE
   )
   kept_proportion_sd_leaf <- setdiff(names(sd_leaf_summary$prior_list), remove_for_proportion_sd_leaf)
@@ -7276,7 +7308,7 @@ test_that("random-effect summary samples expose semantic SD, correlation, and al
 
   remove_for_ratio <- BayesTools:::.filter_parameters(
     sd_leaf_summary$prior_list,
-    keep_parameters = "random_variance_ratio",
+    keep_parameters = "random_var_ratio",
     remove_spike_0 = FALSE
   )
   kept_ratio <- setdiff(names(sd_leaf_summary$prior_list), remove_for_ratio)
@@ -7463,7 +7495,7 @@ test_that("random-effect summary samples expose semantic SD, correlation, and al
   )
   remove_for_correlation <- BayesTools:::.filter_parameters(
     rho_summary$prior_list,
-    keep_parameters = "random_correlation",
+    keep_parameters = "random_cor",
     remove_spike_0 = FALSE
   )
   kept_correlation <- setdiff(names(rho_summary$prior_list), remove_for_correlation)
@@ -8266,23 +8298,21 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
 
   ar_saturated_samples <- ar_samples
   ar_saturated_samples[["mu__xREx__id_rho_z"]] <- 20
-  ar_saturated_rho <- BayesTools:::.bt_JAGS_marglik_random_effect_rho(
-    ar_saturated_samples,
-    ar_result$formula_design$random_effects[[1]]
-  )
-  expect_lt(ar_saturated_rho, 1)
-  expect_gt(ar_saturated_rho, .999999999999)
   expect_equal(
     BayesTools:::.bt_JAGS_marglik_random_effect_scalar_rho_support(
       ar_saturated_samples,
       ar_result$formula_design$random_effects[[1]]
     ),
-    0
+    -Inf
   )
-  expect_true(all(is.finite(BayesTools:::.bt_JAGS_marglik_random_effect_cholesky(
-    ar_saturated_samples,
-    ar_result$formula_design$random_effects[[1]]
-  ))))
+  expect_error(
+    BayesTools:::.bt_JAGS_marglik_random_effect_rho(
+      ar_saturated_samples,
+      ar_result$formula_design$random_effects[[1]]
+    ),
+    "missing or invalid scalar correlation coordinates",
+    fixed = TRUE
+  )
 
   missing_rho_scale <- ar_result$formula_design
   missing_rho_scale$random_effects[[1]]$correlation$rho_scale <- NULL
@@ -8365,18 +8395,20 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
     car_samples[names(car_samples) != "mu__xREx__id_rho_z"],
     mu__xREx__id_rho_logit = 1000
   )
-  car_logit_saturated_rho <- BayesTools:::.bt_JAGS_marglik_random_effect_rho(
-    car_logit_saturated_samples,
-    car_logit$formula_design$random_effects[[1]]
-  )
-  expect_lt(car_logit_saturated_rho, 1)
-  expect_gt(car_logit_saturated_rho, .999999999999)
   expect_equal(
     BayesTools:::.bt_JAGS_marglik_random_effect_scalar_rho_support(
       car_logit_saturated_samples,
       car_logit$formula_design$random_effects[[1]]
     ),
-    0
+    -Inf
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_marglik_random_effect_rho(
+      car_logit_saturated_samples,
+      car_logit$formula_design$random_effects[[1]]
+    ),
+    "missing or invalid scalar correlation coordinates",
+    fixed = TRUE
   )
 
   hcs_df <- data.frame(
@@ -10286,10 +10318,19 @@ test_that("JAGS_estimates_table backtransforms random-effect correlations", {
   source_cor <- matrix(c(1, 0.8, 0.8, 1), 2, 2)
   source_L <- t(chol(source_cor))
   posterior <- matrix(
-    rep(c(source_sd, as.vector(source_cor), as.vector(source_L)), 2),
+    rep(c(0, 0, source_sd, as.vector(source_cor), as.vector(source_L)), 2),
     nrow = 2,
     byrow = TRUE,
-    dimnames = list(NULL, c(sd_names, as.vector(R_names), as.vector(L_names)))
+    dimnames = list(
+      NULL,
+      c(
+        "mu_intercept",
+        "mu_x",
+        sd_names,
+        as.vector(R_names),
+        as.vector(L_names)
+      )
+    )
   )
 
   fit <- list(
@@ -10302,9 +10343,9 @@ test_that("JAGS_estimates_table backtransforms random-effect correlations", {
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
-  fit <- attach_test_parameter_registry(fit)
+  fit <- attach_test_parameter_map(fit)
 
-  scaled_samples <- JAGS_estimates_table(
+  semantic_samples <- JAGS_estimates_table(
     fit,
     transform_scaled = FALSE,
     random_effects_summary = "standard",
@@ -10338,27 +10379,37 @@ test_that("JAGS_estimates_table backtransforms random-effect correlations", {
   expected_cor <- expected_cov[1, 2] / prod(expected_sd)
 
   expect_equal(
-    unname(scaled_samples[, "(mu) id: cor(intercept,x)"]),
-    rep(0.8, 2),
-    tolerance = 1e-12
-  )
-  expect_equal(
-    unname(original_samples[, "(mu) id: sd(intercept)"]),
+    unname(semantic_samples[, "(mu) sd(intercept)"]),
     rep(expected_sd[1], 2),
     tolerance = 1e-12
   )
   expect_equal(
-    unname(original_samples[, "(mu) id: sd(x)"]),
+    unname(semantic_samples[, "(mu) sd(x)"]),
     rep(expected_sd[2], 2),
     tolerance = 1e-12
   )
   expect_equal(
-    unname(original_samples[, "(mu) id: cor(intercept,x)"]),
+    unname(semantic_samples[, "(mu) cor(intercept,x)"]),
     rep(expected_cor, 2),
     tolerance = 1e-12
   )
   expect_equal(
-    unname(original_table["(mu) id: cor(intercept,x)", "Mean"]),
+    unname(original_samples[, "(mu) sd(intercept)"]),
+    rep(expected_sd[1], 2),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    unname(original_samples[, "(mu) sd(x)"]),
+    rep(expected_sd[2], 2),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    unname(original_samples[, "(mu) cor(intercept,x)"]),
+    rep(expected_cor, 2),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    unname(original_table["(mu) cor(intercept,x)", "Mean"]),
     expected_cor,
     tolerance = 1e-12
   )
@@ -10565,7 +10616,7 @@ test_that("transform_scale_samples keeps indexed random-effect correlations in o
   )
 })
 
-test_that("transform_scale_samples unscales shared-SD random-factor correlations in column space", {
+test_that("transform_scale_samples unscales random-factor correlations in column space", {
 
   df <- data.frame(
     x = 1:9,
@@ -10592,7 +10643,10 @@ test_that("transform_scale_samples unscales shared-SD random-factor correlations
   )
 
   random_term <- formula_result$formula_design$random_effects[[1]]
-  expect_equal(random_term$sd_parameter_names[3:4], rep("mu__xREx__id_f", 2))
+  expect_equal(
+    random_term$sd_parameter_names[3:4],
+    paste0("mu__xREx__id_f[", 1:2, "]")
+  )
   sd_cols <- unique(random_term$sd_parameter_names)
   R_names <- outer(
     seq_len(random_term$n_columns),
@@ -10621,7 +10675,7 @@ test_that("transform_scale_samples unscales shared-SD random-factor correlations
   )
   source_L <- t(chol(source_cor))
   posterior <- matrix(
-    c(source_sd[1:3], as.vector(source_cor), as.vector(source_L)),
+    c(source_sd, as.vector(source_cor), as.vector(source_L)),
     nrow = 1,
     dimnames = list(NULL, c(sd_cols, as.vector(R_names), as.vector(L_names)))
   )
@@ -10643,7 +10697,7 @@ test_that("transform_scale_samples unscales shared-SD random-factor correlations
 
   expect_equal(
     unname(transformed[1, sd_cols]),
-    expected_sd[1:3],
+    expected_sd,
     tolerance = 1e-12
   )
   expect_equal(
@@ -11399,6 +11453,33 @@ test_that("fixed and random blocks own independent concrete factor bases", {
     id_treatment = factor(rep(c("s1", "s2", "s3", "s4"), each = 3)),
     id_meandif = factor(rep(c("q1", "q2", "q3"), 4))
   )
+  inherited <- JAGS_formula(
+    formula = ~ 0 + f + diag(0 + f | id_treatment),
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      f = prior_factor(
+        "normal",
+        list(0, 1),
+        contrast = "independent"
+      )
+    ),
+    prior_random = prior_random(
+      id_treatment = random_block(sd = prior("gamma", list(2, 2)))
+    )
+  )
+  inherited_term <- inherited$formula_design$random_effects[[1L]]
+
+  expect_equal(
+    inherited$formula_design$contrast_matrices$f,
+    contr.independent(levels(data$f))
+  )
+  expect_equal(
+    inherited_term$contrast_matrices$f,
+    contr.independent(levels(data$f))
+  )
+  expect_equal(inherited_term$n_columns, nlevels(data$f))
+
   result <- JAGS_formula(
     formula = ~ f +
       diag(0 + f | id_treatment) +
@@ -11439,6 +11520,14 @@ test_that("fixed and random blocks own independent concrete factor bases", {
   expect_identical(meandif_term$contrast_owner, "random_block")
   expect_false(isTRUE(all.equal(fixed_matrix, treatment_matrix)))
   expect_false(isTRUE(all.equal(fixed_matrix, meandif_matrix)))
+  expect_identical(
+    meandif_term$sd_parameter_names,
+    paste0("mu__xREx__id_meandif_f[", 1:2, "]")
+  )
+  expect_identical(
+    meandif_term$sd_leaves$leaf_terms_by_column,
+    paste0("f[", 1:2, "]")
+  )
 
   treatment_prediction <- .bt_random_effect_prediction_data(
     treatment_term,
@@ -12179,8 +12268,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
   hcs_component_display_names <- BayesTools:::.bt_random_effect_summary_display_names(
     names = colnames(hcs_summary$model_samples),
     raw_names = colnames(hcs_summary$model_samples),
-    prior_list = hcs_summary$prior_list,
-    random_effects_label = "component"
+    prior_list = hcs_summary$prior_list
   )
   expect_true("(mu) id: sd(f[a])" %in% hcs_display_names)
   expect_false("(mu) id: sd(f[1])" %in% hcs_display_names)
@@ -12371,12 +12459,12 @@ test_that("structured random-effect terms use level-indexed factor columns and s
   expect_equal(car_result$prior_list$mu__xREx__id_rho_z$truncation$upper, Inf)
   expect_match(
     car_result$formula_syntax,
-    "mu__xREx__id_rho <- max(0, min(0.99999999999999989",
+    "mu__xREx__id_rho <- tanh(mu__xREx__id_rho_z)",
     fixed = TRUE
   )
   expect_match(
     car_result$formula_syntax,
-    "tanh(mu__xREx__id_rho_z)))",
+    "tanh(mu__xREx__id_rho_z)",
     fixed = TRUE
   )
   expect_match(
@@ -12648,7 +12736,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     )
   )
   expect_equal(names(ar_logit$prior_list), c("mu_intercept", "mu__xREx__id_sd", "mu__xREx__id_rho_logit"))
-  expect_match(ar_logit$formula_syntax, "mu__xREx__id_rho <- -0.99999999999999989", fixed = TRUE)
+  expect_match(ar_logit$formula_syntax, "mu__xREx__id_rho <- -1 + 2", fixed = TRUE)
   expect_match(ar_logit$formula_syntax, "* ilogit(mu__xREx__id_rho_logit)", fixed = TRUE)
 
   expect_error(
@@ -12774,7 +12862,7 @@ test_that("structured correlation Cholesky syntax exposes intended covariance pa
     ),
     include_correlation = TRUE
   )
-  expect_match(logit_module$syntax, "mu__xREx__id_rho <- -0.49999999999999994", fixed = TRUE)
+  expect_match(logit_module$syntax, "mu__xREx__id_rho <- -0.5 + 1.5", fixed = TRUE)
   expect_match(logit_module$syntax, "* ilogit(mu__xREx__id_rho_logit)", fixed = TRUE)
   expect_true("_xREx__id_rho_logit" %in% names(logit_module$prior_list))
 })

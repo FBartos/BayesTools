@@ -135,6 +135,15 @@
 
 .bt_random_effect_public_name <- function(random_term){
 
+  if(!is.null(random_term$component) &&
+     is.character(random_term$component) &&
+     length(random_term$component) == 1L &&
+     !is.na(random_term$component) && nzchar(random_term$component) &&
+     !is.null(random_term$component_label) &&
+     identical(random_term$block_name, random_term$component_label)){
+    return(random_term$component)
+  }
+
   if(!is.null(random_term$block_name) &&
      length(random_term$block_name) == 1L &&
      nzchar(random_term$block_name)){
@@ -209,12 +218,10 @@
   matches <- switch(
     alias,
     "random" = flags$any,
-    "random_effects" = flags$any,
     "random_sd" = flags$summary %in% c("sd", "sd_total", "sd_common") | random_sd,
     "random_cor" = flags$summary == "cor" | random_rho,
-    "random_correlation" = flags$summary == "cor" | random_rho,
-    "random_variance_proportion" = flags$summary == "var_prop" | is_dirichlet_allocation,
-    "random_variance_ratio" = flags$summary == "var_ratio",
+    "random_var_prop" = flags$summary == "var_prop" | is_dirichlet_allocation,
+    "random_var_ratio" = flags$summary == "var_ratio",
     "random_allocation" = flags$summary %in% c(
       "sd_total", "var_total", "sd_common", "var_common",
       "var_prop", "var_ratio", "sd_ratio"

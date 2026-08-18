@@ -20,6 +20,14 @@ skip_if_not_test_profile("unit")
 REFERENCE_DIR <<- testthat::test_path("..", "results", "summary-tables-helpers")
 source(testthat::test_path("common-functions.R"))
 
+.summary_test_sd_leaves <- function(sd_names, terms) {
+
+  structure(
+    list(leaf_terms = stats::setNames(terms, sd_names)),
+    class = c("BayesTools_random_effect_sd_leaves", "list")
+  )
+}
+
 
 test_that("semantic inclusion rows retain probability-only summaries", {
 
@@ -260,7 +268,7 @@ test_that("indicator BF diagnostics use indicator MCSE and handle boundaries", {
     )
   )
 
-  attach_test_parameter_registry(fit)
+  attach_test_parameter_map(fit)
 }
 
 
@@ -447,7 +455,7 @@ test_that("update preserves relative BF MC error percentage across BF scales", {
     theta = prior("normal", list(0, 1)),
     beta  = prior("mnormal", list(mean = 0, sd = 1, K = 1))
   )
-  attach_test_parameter_registry(fit)
+  attach_test_parameter_map(fit)
 }
 
 .expect_runjags_estimate_values_for_test <- function(table, samples, probs) {
@@ -530,17 +538,18 @@ test_that("raw random-effect correlation aliases include logit-scale rho columns
           block_name = "id",
           group_label = "id",
           has_explicit_name = TRUE,
-          structure = "diag",
-          column_names = "sd",
-          sd_parameter_names = "mu__xREx__id_sd",
-          group_levels = "a"
+           structure = "diag",
+           column_names = "sd",
+           sd_parameter_names = "mu__xREx__id_sd",
+           sd_leaves = .summary_test_sd_leaves("mu__xREx__id_sd", "sd"),
+           group_levels = "a"
         ))
       ),
       class = c("BayesTools_formula_design", "list")
     )
   )
 
-  parameter_registry <- build_test_parameter_registry(
+  coordinates <- build_test_parameter_coordinates(
     columns = colnames(samples),
     formula_design = formula_design
   )
@@ -548,8 +557,8 @@ test_that("raw random-effect correlation aliases include logit-scale rho columns
   removed <- BayesTools:::.bt_JAGS_estimates_filter_raw_random_columns(
     model_samples = samples,
     prior_list = list(),
-    parameter_registry = parameter_registry,
-    remove_parameters = "random_correlation"
+    coordinates = coordinates,
+    remove_parameters = "random_cor"
   )
   expect_true("mu__xREx__id_sd" %in% colnames(removed))
   expect_false("mu__xREx__id_rho" %in% colnames(removed))
@@ -559,8 +568,8 @@ test_that("raw random-effect correlation aliases include logit-scale rho columns
   kept <- BayesTools:::.bt_JAGS_estimates_filter_raw_random_columns(
     model_samples = samples,
     prior_list = list(),
-    parameter_registry = parameter_registry,
-    keep_parameters = "random_correlation"
+    coordinates = coordinates,
+    keep_parameters = "random_cor"
   )
   expect_true("mu_intercept" %in% colnames(kept))
   expect_false("mu__xREx__id_sd" %in% colnames(kept))
@@ -607,10 +616,11 @@ test_that("raw random-effect monitors respect formula filters", {
           block_name = "id",
           group_label = "id",
           has_explicit_name = TRUE,
-          structure = "diag",
-          column_names = "sd",
-          sd_parameter_names = "mu__xREx__id_sd",
-          group_levels = "a"
+           structure = "diag",
+           column_names = "sd",
+           sd_parameter_names = "mu__xREx__id_sd",
+           sd_leaves = .summary_test_sd_leaves("mu__xREx__id_sd", "sd"),
+           group_levels = "a"
         ))
       ),
       class = c("BayesTools_formula_design", "list")
@@ -624,16 +634,20 @@ test_that("raw random-effect monitors respect formula filters", {
           block_name = "site",
           group_label = "site",
           has_explicit_name = TRUE,
-          structure = "diag",
-          column_names = "sd",
-          sd_parameter_names = "log_sigma__xREx__site_sd",
-          group_levels = "a"
+           structure = "diag",
+           column_names = "sd",
+           sd_parameter_names = "log_sigma__xREx__site_sd",
+           sd_leaves = .summary_test_sd_leaves(
+             "log_sigma__xREx__site_sd",
+             "sd"
+           ),
+           group_levels = "a"
         ))
       ),
       class = c("BayesTools_formula_design", "list")
     )
   )
-  fit <- attach_test_parameter_registry(fit)
+  fit <- attach_test_parameter_map(fit)
 
   removed <- suppressWarnings(runjags_estimates_table(
     fit,
@@ -670,6 +684,10 @@ test_that("raw random-effect columns use their longest matching parameter stem",
     structure = "diag",
     column_names = "intercept",
     sd_parameter_names = "mu__xREx__a_intercept",
+    sd_leaves = .summary_test_sd_leaves(
+      "mu__xREx__a_intercept",
+      "intercept"
+    ),
     group_levels = "a"
   )
   long_term <- list(
@@ -681,6 +699,10 @@ test_that("raw random-effect columns use their longest matching parameter stem",
     structure = "diag",
     column_names = "intercept",
     sd_parameter_names = "mu__xREx__a_b_intercept",
+    sd_leaves = .summary_test_sd_leaves(
+      "mu__xREx__a_b_intercept",
+      "intercept"
+    ),
     group_levels = "a"
   )
   formula_design <- list(
@@ -699,18 +721,18 @@ test_that("raw random-effect columns use their longest matching parameter stem",
     nrow = 2L,
     dimnames = list(NULL, c("mu_intercept", short_column, long_column))
   )
-  parameter_registry <- build_test_parameter_registry(
+  coordinates <- build_test_parameter_coordinates(
     columns = colnames(samples),
     formula_design = formula_design
   )
 
   short_metadata <- BayesTools:::.bt_random_effect_summary_raw_metadata_for_parameter(
     parameter_name = short_column,
-    parameter_registry = parameter_registry
+    coordinates = coordinates
   )
   long_metadata <- BayesTools:::.bt_random_effect_summary_raw_metadata_for_parameter(
     parameter_name = long_column,
-    parameter_registry = parameter_registry
+    coordinates = coordinates
   )
   expect_equal(
     short_metadata,
@@ -723,7 +745,7 @@ test_that("raw random-effect columns use their longest matching parameter stem",
 
   removed_short <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
     model_samples = samples,
-    parameter_registry = parameter_registry,
+    coordinates = coordinates,
     remove_random_effects = "a"
   )
   expect_identical(
@@ -733,7 +755,7 @@ test_that("raw random-effect columns use their longest matching parameter stem",
 
   removed_long <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
     model_samples = samples,
-    parameter_registry = parameter_registry,
+    coordinates = coordinates,
     remove_random_effects = "a_b"
   )
   expect_identical(
@@ -743,7 +765,7 @@ test_that("raw random-effect columns use their longest matching parameter stem",
 
   kept_short <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
     model_samples = samples,
-    parameter_registry = parameter_registry,
+    coordinates = coordinates,
     keep_random_effects = "a"
   )
   expect_identical(
@@ -753,7 +775,7 @@ test_that("raw random-effect columns use their longest matching parameter stem",
 
   kept_long <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
     model_samples = samples,
-    parameter_registry = parameter_registry,
+    coordinates = coordinates,
     keep_random_effects = "a_b"
   )
   expect_identical(
@@ -764,7 +786,7 @@ test_that("raw random-effect columns use their longest matching parameter stem",
   kept_long_for_table <- BayesTools:::.bt_JAGS_estimates_filter_raw_random_columns(
     model_samples = samples,
     prior_list = list(),
-    parameter_registry = parameter_registry,
+    coordinates = coordinates,
     keep_parameters = "intercept",
     keep_random_effects = "a_b"
   )
@@ -795,7 +817,7 @@ test_that("backend logit-scale correlations use semantic correlation labels", {
     ),
     class = c("BayesTools_formula_design", "list")
   )
-  parameter_registry <- build_test_parameter_registry(
+  coordinates <- build_test_parameter_coordinates(
     columns = raw_name,
     formula_design = list(mu = formula_design)
   )
@@ -805,7 +827,7 @@ test_that("backend logit-scale correlations use semantic correlation labels", {
     raw_names = raw_name,
     prior_list = list(),
     formula_prefix = TRUE,
-    parameter_registry = parameter_registry
+    coordinates = coordinates
   )
 
   expect_identical(display_name, "(mu) id: cor")

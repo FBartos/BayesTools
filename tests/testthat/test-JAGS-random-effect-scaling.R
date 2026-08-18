@@ -15,7 +15,7 @@ make_random_scale_table_fit <- function(formula_result, posterior){
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
 
-  attach_test_parameter_registry(fit)
+  attach_test_parameter_map(fit)
 }
 
 test_that("JAGS_estimates_table suppresses fixed warnings for random-only scaled slopes", {
@@ -60,7 +60,7 @@ test_that("JAGS_estimates_table suppresses fixed warnings for random-only scaled
   ))
 
   expect_equal(
-    unname(samples[, "(mu) id: sd(x)"]),
+    unname(samples[, "(mu) sd(x)"]),
     rep(2 / formula_result$formula_scale$mu_x$sd, nrow(samples)),
     tolerance = 1e-12
   )
@@ -109,7 +109,7 @@ test_that("JAGS_estimates_table suppresses fixed warnings for homogeneous random
   ))
 
   expect_equal(
-    unname(samples[, "(mu) id: sd"]),
+    unname(samples[, "(mu) sd"]),
     rep(2 / formula_result$formula_scale$mu_x$sd, nrow(samples)),
     tolerance = 1e-12
   )
@@ -158,7 +158,7 @@ test_that("JAGS_estimates_table treats sd as a valid random-only predictor name"
   ))
 
   expect_equal(
-    unname(samples[, "(mu) id: sd(sd)"]),
+    unname(samples[, "(mu) sd(sd)"]),
     rep(2 / formula_result$formula_scale$mu_sd$sd, nrow(samples)),
     tolerance = 1e-12
   )
@@ -218,7 +218,7 @@ test_that("JAGS_estimates_table still warns about genuinely unused scale entries
   expect_match(warnings, "mu_z", fixed = TRUE)
   expect_false(grepl("mu_x", warnings, fixed = TRUE))
   expect_equal(
-    unname(samples[, "(mu) id: sd(x)"]),
+    unname(samples[, "(mu) sd(x)"]),
     rep(2 / formula_result$formula_scale$mu_x$sd, nrow(samples)),
     tolerance = 1e-12
   )
@@ -274,12 +274,12 @@ test_that("JAGS_estimates_table unscales diagonal random intercept-slope blocks 
   expected_slope_sd <- 2 / scale_info$sd
 
   expect_equal(
-    unname(samples[, "(mu) id: sd(intercept)"]),
+    unname(samples[, "(mu) sd(intercept)"]),
     rep(expected_intercept_sd, nrow(samples)),
     tolerance = 1e-12
   )
   expect_equal(
-    unname(samples[, "(mu) id: sd(x)"]),
+    unname(samples[, "(mu) sd(x)"]),
     rep(expected_slope_sd, nrow(samples)),
     tolerance = 1e-12
   )
@@ -345,7 +345,7 @@ test_that("JAGS_estimates_table keeps fixed and random scaled slope transforms t
     tolerance = 1e-12
   )
   expect_equal(
-    unname(samples[, "(mu) id: sd(x)"]),
+    unname(samples[, "(mu) sd(x)"]),
     rep(2 / scale_info$sd, nrow(samples)),
     tolerance = 1e-12
   )

@@ -219,10 +219,30 @@ unresolved.
   labels in formula metadata. Prediction, covariance reconstruction,
   summaries, and downstream packages must consume that metadata rather than
   reconstructing a basis from formula text.
+- Persist fitted-parameter metadata as one versioned `parameter_map()` with
+  linked `coordinates`, `quantities`, and `aliases` tables. Obtain the concrete
+  backend view with `parameter_coordinates()` and the semantic public view with
+  `parameter_catalog()`. User selection, display, hypotheses, plotting, and
+  density estimation must resolve catalog quantities and obtain draws through
+  `parameter_draws()`. Never expose a coordinate as a public alias merely
+  because it is monitored.
 - LKJ primitive coordinates and other covariance-construction nodes are
-  internal implementation parameters. Register them as internal through
-  `JAGS_parameter_registry()` and expose only semantic SDs, correlations, and
-  other declared public summaries.
+  internal implementation parameters. Mark them internal in the map's
+  coordinate table and omit them from its semantic quantities; expose only
+  declared semantic SDs, correlations, allocations, and other public summaries.
+- Random-effect catalog names use
+  `(formula) owner: quantity(arguments)`. Parentheses contain coefficient or
+  parameter names and square brackets contain factor or index levels. Public
+  correlations use `cor`, never the backend `rho` coordinate. Total-variance
+  allocations expose `sd_total`, `var_total`, and `var_prop(...)`;
+  mean-variance allocations expose `sd_common`, `var_common`,
+  `var_ratio(...)`, and `sd_ratio(...)`.
+- A bare random formula or unnamed one-entry formula list has no redundant
+  top-level component prefix. An explicitly named one-entry list retains its
+  name. Lists with two or more entries replace missing names with
+  `component 1`, `component 2`, and so on. Allocation `name` is a required
+  stable backend identifier; `display_name` and `component_names` independently
+  own its public semantic labels.
 - Complete omitted correlation priors only after the random-effect structure
   and dimension are resolved: US/UN uses `LKJ(1)`; CS/HCS uses a raw uniform
   prior on `(-1 / (K - 1), 1)`; AR1/HAR uses raw `Uniform(-1, 1)`; and CAR uses
@@ -231,10 +251,10 @@ unresolved.
   to the outcome model; direct `JAGS_formula()` use still requires an SD prior,
   SD source, or variance allocation.
 
-`JAGS_parameter_registry()` is the authoritative mapping from posterior columns
-to semantic roles, formula terms, fitted scales, and display labels. Downstream
-code must use the registry or its accessors instead of parsing JAGS names or
-fitted-object internals.
+The stored parameter map is authoritative. Its coordinate view owns concrete
+fitted coordinates and provenance; its catalog view owns public quantities and
+exact aliases. Code must use these views instead of parsing JAGS names, summary
+labels, or fitted-object internals.
 
 Native JAGS distributions live in `src/distributions/`; shared kernels are in
 `src/invgamma/`, `src/lkj/`, and `src/nonlocal/`; registrations are in

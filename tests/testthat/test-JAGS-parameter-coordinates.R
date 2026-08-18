@@ -1,8 +1,10 @@
 skip_if_not_test_profile("unit")
 
-test_that("parameter registry schema is explicit and versioned", {
+test_that("parameter map and coordinate schemas are explicit and versioned", {
 
-  schema <- JAGS_parameter_registry_schema()
+  map_schema <- parameter_map_schema()
+  schema <- parameter_coordinates_schema()
+  expect_identical(map_schema$schema_version, 1L)
   expect_identical(
     schema$field,
     c(
@@ -16,7 +18,7 @@ test_that("parameter registry schema is explicit and versioned", {
   expect_identical(anyDuplicated(schema$field), 0L)
 })
 
-test_that("fitted registry classifies concrete random coordinates exactly", {
+test_that("fitted coordinates classify concrete random coordinates exactly", {
 
   data <- data.frame(
     x = c(1, 2, 3, 4),
@@ -45,7 +47,7 @@ test_that("fitted registry classifies concrete random coordinates exactly", {
     "mu__xREx__id_xRE_Zx[1,1]",
     "mu__xREx__id_xRE_COEFx[1,1]"
   )
-  registry <- build_test_parameter_registry(
+  coordinates <- build_test_parameter_coordinates(
     columns = columns,
     monitor_names = c(
       "mu_intercept",
@@ -58,12 +60,11 @@ test_that("fitted registry classifies concrete random coordinates exactly", {
     formula_scale = list(mu = formula_result$formula_scale)
   )
 
-  expect_s3_class(registry, "BayesTools_parameter_registry")
-  expect_identical(attr(registry, "schema_version"), 4L)
-  expect_identical(registry$coordinate_name, columns)
-  expect_identical(anyDuplicated(registry$coordinate_name), 0L)
+  expect_s3_class(coordinates, "BayesTools_parameter_coordinates")
+  expect_identical(coordinates$coordinate_name, columns)
+  expect_identical(anyDuplicated(coordinates$coordinate_name), 0L)
   expect_identical(
-    registry$role,
+    coordinates$role,
     c(
       "fixed_coefficient",
       "random_sd",
@@ -72,7 +73,7 @@ test_that("fitted registry classifies concrete random coordinates exactly", {
     )
   )
   expect_identical(
-    registry$fitted_scale,
+    coordinates$fitted_scale,
     c(
       "fitted_standardized",
       "fitted_covariance",
@@ -80,11 +81,11 @@ test_that("fitted registry classifies concrete random coordinates exactly", {
       "fitted_standardized"
     )
   )
-  expect_identical(registry$internal, c(FALSE, FALSE, TRUE, TRUE))
-  expect_identical(registry$random_block, c("", "id", "id", "id"))
-  expect_identical(registry$column, c("mu_intercept", "x", "x", "x"))
+  expect_identical(coordinates$internal, c(FALSE, FALSE, TRUE, TRUE))
+  expect_identical(coordinates$random_block, c("", "id", "id", "id"))
+  expect_identical(coordinates$column, c("mu_intercept", "x", "x", "x"))
   expect_identical(
-    registry$display_label,
+    coordinates$display_label,
     c(
       "(mu) intercept",
       "(mu) id: sd(x)",
@@ -94,7 +95,7 @@ test_that("fitted registry classifies concrete random coordinates exactly", {
   )
 })
 
-test_that("registry keeps LKJ primitive coordinates internal to their random block", {
+test_that("coordinate map keeps LKJ primitives internal to their random block", {
 
   data <- data.frame(
     group = factor(
@@ -118,12 +119,12 @@ test_that("registry keeps LKJ primitive coordinates internal to their random blo
     )
   )
   random_term <- formula_result$formula_design$random_effects[[1L]]
-  coordinates <- c(
+  coordinate_names <- c(
     random_term$correlation$primitive_names,
     random_term$correlation$cpc_names
   )
-  registry <- build_test_parameter_registry(
-    columns = coordinates,
+  coordinates <- build_test_parameter_coordinates(
+    columns = coordinate_names,
     prior_list = formula_result$prior_list,
     formula_design = list(mu = formula_result$formula_design)
   )
@@ -133,21 +134,21 @@ test_that("registry keeps LKJ primitive coordinates internal to their random blo
     c("group[sensitivity]", "group[specificity]")
   )
   expect_identical(random_term$contrast_owner, "random_block")
-  expect_identical(registry$coordinate_name, coordinates)
+  expect_identical(coordinates$coordinate_name, coordinate_names)
   expect_identical(
-    registry$role,
-    rep("random_correlation_coordinate", length(coordinates))
+    coordinates$role,
+    rep("random_correlation_coordinate", length(coordinate_names))
   )
-  expect_identical(registry$formula_parameter, rep("mu", length(coordinates)))
-  expect_identical(registry$random_block, rep("study", length(coordinates)))
-  expect_identical(registry$random_name, rep("study", length(coordinates)))
-  expect_identical(registry$random_grouping, rep("study", length(coordinates)))
-  expect_identical(registry$random_structure, rep("us", length(coordinates)))
-  expect_identical(registry$fitted_scale, rep("unitless", length(coordinates)))
-  expect_true(all(registry$internal))
+  expect_identical(coordinates$formula_parameter, rep("mu", length(coordinate_names)))
+  expect_identical(coordinates$random_block, rep("study", length(coordinate_names)))
+  expect_identical(coordinates$random_name, rep("study", length(coordinate_names)))
+  expect_identical(coordinates$random_grouping, rep("study", length(coordinate_names)))
+  expect_identical(coordinates$random_structure, rep("us", length(coordinate_names)))
+  expect_identical(coordinates$fitted_scale, rep("unitless", length(coordinate_names)))
+  expect_true(all(coordinates$internal))
 })
 
-test_that("registry owns random SD spike-and-slab auxiliaries", {
+test_that("coordinate map owns random SD spike-and-slab auxiliaries", {
 
   data <- data.frame(
     x_fac3 = factor(
@@ -177,7 +178,13 @@ test_that("registry owns random SD spike-and-slab auxiliaries", {
   )
   random_term <- formula_result$formula_design$random_effects[[1L]]
   sd_names <- random_term$sd_parameter_names
-  sd_base <- unique(BayesTools:::.bt_parameter_registry_base(sd_names))
+  sd_columns <- random_term$sd_leaves$column_names
+  n_sd <- length(sd_names)
+  expect_identical(
+    random_term$sd_leaves$leaf_terms_by_column,
+    paste0("x_fac3[", levels(data$x_fac3), "]")
+  )
+  sd_base <- unique(BayesTools:::.bt_parameter_coordinates_base(sd_names))
   expect_length(sd_base, 1L)
 
   columns <- c(
@@ -186,7 +193,7 @@ test_that("registry owns random SD spike-and-slab auxiliaries", {
     sd_names,
     paste0(sd_base, "_variable[", seq_along(sd_names), "]")
   )
-  registry <- build_test_parameter_registry(
+  coordinates <- build_test_parameter_coordinates(
     columns = columns,
     monitor_names = c(
       paste0(sd_base, "_indicator"),
@@ -197,47 +204,42 @@ test_that("registry owns random SD spike-and-slab auxiliaries", {
     prior_list = formula_result$prior_list,
     formula_design = list(mu = formula_result$formula_design)
   )
-  registry <- registry[
-    match(columns, registry$coordinate_name),
+  coordinates <- coordinates[
+    match(columns, coordinates$coordinate_name),
     ,
     drop = FALSE
   ]
 
   expect_identical(
-    registry$role,
+    coordinates$role,
     c(
       "random_inclusion_indicator",
       "random_inclusion_probability",
-      "random_sd",
-      "random_sd",
-      "random_sd_variable",
-      "random_sd_variable"
+      rep("random_sd", n_sd),
+      rep("random_sd_variable", n_sd)
     )
   )
-  expect_identical(registry$random_block, rep("id", length(columns)))
-  expect_identical(registry$formula_parameter, rep("mu", length(columns)))
+  expect_identical(coordinates$random_block, rep("id", length(columns)))
+  expect_identical(coordinates$formula_parameter, rep("mu", length(columns)))
   expect_identical(
-    registry$fitted_scale,
+    coordinates$fitted_scale,
     c(
       "unitless",
       "unitless",
-      "fitted_covariance",
-      "fitted_covariance",
-      "fitted_covariance",
-      "fitted_covariance"
+      rep("fitted_covariance", 2L * n_sd)
     )
   )
   expect_identical(
-    registry$column,
-    c("", "", "x_fac3B", "x_fac3C", "x_fac3B", "x_fac3C")
+    coordinates$column,
+    c("", "", sd_columns, sd_columns)
   )
   expect_identical(
-    registry$internal,
-    c(TRUE, TRUE, FALSE, FALSE, TRUE, TRUE)
+    coordinates$internal,
+    c(TRUE, TRUE, rep(FALSE, n_sd), rep(TRUE, n_sd))
   )
 })
 
-test_that("registry display labels do not overwrite fixed scale formatting", {
+test_that("coordinate labels do not overwrite fixed scale formatting", {
 
   interaction_prior <- prior("normal", list(0, 1))
   attr(interaction_prior, "parameter") <- "mu"
@@ -248,13 +250,13 @@ test_that("registry display labels do not overwrite fixed scale formatting", {
     log_sigma_intercept = log_intercept_prior
   )
   coordinate_names <- names(prior_list)
-  registry <- build_test_parameter_registry(
+  coordinates <- build_test_parameter_coordinates(
     columns = coordinate_names,
     prior_list = prior_list
   )
 
   expect_identical(
-    registry$display_label,
+    coordinates$display_label,
     c("(mu) x:z", "(log_sigma) intercept")
   )
 
@@ -264,13 +266,13 @@ test_that("registry display labels do not overwrite fixed scale formatting", {
       names = formatted_names,
       raw_names = coordinate_names,
       prior_list = prior_list,
-      parameter_registry = registry
+      coordinates = coordinates
     ),
     formatted_names
   )
 })
 
-test_that("registry accessor rejects unversioned and malformed fitted objects", {
+test_that("parameter-map accessors reject missing and malformed fitted objects", {
 
   samples <- coda::mcmc(matrix(
     1:4,
@@ -282,27 +284,58 @@ test_that("registry accessor rejects unversioned and malformed fitted objects", 
   attr(fit, "prior_list") <- list(theta = prior("normal", list(0, 1)))
 
   expect_error(
-    JAGS_parameter_registry(fit),
+    parameter_map(fit),
     "Refit the model"
   )
 
-  fit <- attach_test_parameter_registry(fit)
-  registry <- JAGS_parameter_registry(fit)
-  expect_identical(registry$coordinate_name, "theta")
-  expect_identical(registry$role, "parameter")
+  fit <- attach_test_parameter_map(fit)
+  fit <- .bt_attach_draw_geometry(fit)
+  fit <- .bt_attach_fit_contract(fit)
+  map <- parameter_map(fit)
+  coordinates <- parameter_coordinates(fit)
+  catalog <- parameter_catalog(fit)
+  expect_null(attr(fit, "parameter_registry", exact = TRUE))
+  expect_null(attr(fit, "parameter_catalog", exact = TRUE))
+  expect_identical(names(map), c(
+    "schema_version", "coordinates", "quantities", "aliases"
+  ))
+  expect_identical(map$coordinates, coordinates)
+  expect_identical(map$quantities, catalog$quantities)
+  expect_identical(map$aliases, catalog$aliases)
+  expect_identical(JAGS_fit_contract(fit)$parameter_map_version,
+                   map$schema_version)
+  expect_identical(coordinates$coordinate_name, "theta")
+  expect_identical(coordinates$role, "parameter")
 
-  malformed <- registry
+  malformed <- coordinates
   malformed$coordinate_name <- ""
-  attr(fit, "parameter_registry") <- malformed
+  map$coordinates <- malformed
+  attr(fit, "parameter_map") <- map
   expect_error(
-    JAGS_parameter_registry(fit),
+    parameter_coordinates(fit),
     "unique, non-missing coordinate names"
+  )
+})
+
+test_that("parameter map validates semantic dependencies atomically", {
+
+  map <- .bt_build_parameter_map(columns = "theta")
+  broken <- map
+  broken$quantities$extraction_key[[1L]] <- list(
+    type = "factor_level",
+    dependencies = "missing_coordinate",
+    weights = 1
+  )
+
+  expect_error(
+    .bt_validate_parameter_map(broken),
+    "unknown coordinate dependencies: 'missing_coordinate'"
   )
 })
 
 test_that("structural point parameters are registered when JAGS omits them", {
 
-  registry <- build_test_parameter_registry(
+  coordinates <- build_test_parameter_coordinates(
     columns = "theta",
     prior_list = list(
       theta = prior("normal", list(0, 1)),
@@ -310,14 +343,14 @@ test_that("structural point parameters are registered when JAGS omits them", {
     )
   )
 
-  fixed <- registry[registry$coordinate_name == "fixed", , drop = FALSE]
+  fixed <- coordinates[coordinates$coordinate_name == "fixed", , drop = FALSE]
   expect_equal(nrow(fixed), 1L)
   expect_identical(fixed$monitor_status, "structural")
   expect_identical(fixed$fixed_value, 0)
   expect_identical(fixed$role, "parameter")
   expect_false(fixed$internal)
 
-  monitored <- build_test_parameter_registry(
+  monitored <- build_test_parameter_coordinates(
     columns = c("theta", "fixed"),
     monitor_names = c("theta", "fixed"),
     prior_list = list(
@@ -334,7 +367,7 @@ test_that("structural point parameters are registered when JAGS omits them", {
   expect_identical(fixed_monitored$fixed_value, 0)
 })
 
-test_that("structural registry coordinates retain exact scalar and vector values", {
+test_that("structural coordinates retain exact scalar and vector values", {
 
   factor_prior <- prior_factor(
     "point",
@@ -342,7 +375,7 @@ test_that("structural registry coordinates retain exact scalar and vector values
     contrast = "treatment"
   )
   attr(factor_prior, "levels") <- 3L
-  registry <- build_test_parameter_registry(
+  coordinates <- build_test_parameter_coordinates(
     columns = "theta",
     prior_list = list(
       theta = prior("normal", list(0, 1)),
@@ -352,16 +385,16 @@ test_that("structural registry coordinates retain exact scalar and vector values
     )
   )
 
-  structural <- registry[registry$monitor_status == "structural", ]
+  structural <- coordinates[coordinates$monitor_status == "structural", ]
   expect_identical(
     structural$coordinate_name,
     c("scalar", "vector[1]", "vector[2]", "vector[3]", "factor[1]", "factor[2]")
   )
   expect_identical(structural$fixed_value, c(3.5, 2, 2, 2, -2, -2))
-  expect_true(all(is.na(registry$fixed_value[registry$monitor_status == "sampled"])))
+  expect_true(all(is.na(coordinates$fixed_value[coordinates$monitor_status == "sampled"])))
 })
 
-test_that("registry prevents prefix-related random-block ownership collisions", {
+test_that("coordinate map prevents random-block ownership collisions", {
 
   short_term <- list(
     parameter_stem = "mu__xREx__a",
@@ -372,6 +405,10 @@ test_that("registry prevents prefix-related random-block ownership collisions", 
     structure = "diag",
     column_names = "intercept",
     sd_parameter_names = "mu__xREx__a_intercept",
+    sd_leaves = structure(
+      list(leaf_terms = c(mu__xREx__a_intercept = "intercept")),
+      class = c("BayesTools_random_effect_sd_leaves", "list")
+    ),
     group_levels = "one"
   )
   long_term <- list(
@@ -383,6 +420,10 @@ test_that("registry prevents prefix-related random-block ownership collisions", 
     structure = "diag",
     column_names = "intercept",
     sd_parameter_names = "mu__xREx__a_b_intercept",
+    sd_leaves = structure(
+      list(leaf_terms = c(mu__xREx__a_b_intercept = "intercept")),
+      class = c("BayesTools_random_effect_sd_leaves", "list")
+    ),
     group_levels = "one"
   )
   formula_design <- list(
@@ -399,12 +440,12 @@ test_that("registry prevents prefix-related random-block ownership collisions", 
     "mu__xREx__a_intercept",
     "mu__xREx__a_b_intercept"
   )
-  registry <- build_test_parameter_registry(
+  coordinates <- build_test_parameter_coordinates(
     columns = columns,
     formula_design = formula_design
   )
 
-  expect_identical(registry$random_block, c("", "a", "a_b"))
+  expect_identical(coordinates$random_block, c("", "a", "a_b"))
 
   samples <- matrix(
     seq_len(6L),
@@ -413,7 +454,7 @@ test_that("registry prevents prefix-related random-block ownership collisions", 
   )
   removed <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
     model_samples = samples,
-    parameter_registry = registry,
+    coordinates = coordinates,
     remove_random_effects = "a"
   )
   expect_identical(

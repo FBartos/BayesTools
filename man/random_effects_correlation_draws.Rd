@@ -11,10 +11,11 @@ random_effects_correlation_draws(random_term, posterior_samples)
 \code{BayesTools_formula_design} object.}
 
 \item{posterior_samples}{posterior sample matrix, data frame, \code{mcmc}, or
-\code{mcmc.list}. Samples must contain the canonical scalar correlation
-coordinate unless it is fixed in \code{random_term} metadata. A one-coefficient
-block needs no correlation coordinate and accepts a numeric draw-by-zero
-matrix.}
+\code{mcmc.list}. Samples must contain the compiled internal scalar-correlation
+coordinate unless it is fixed in \code{random_term} metadata. This coordinate
+is a backend dependency, not the public semantic \code{cor} quantity. A
+one-coefficient block needs no correlation coordinate and accepts a numeric
+draw-by-zero matrix.}
 }
 \value{
 A dense numeric array with dimensions

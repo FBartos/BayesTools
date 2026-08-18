@@ -107,6 +107,12 @@ HCS estimates one common pairwise correlation and an SD per index level.
 US estimates an unrestricted correlation matrix among the selected coefficient columns.
 For two columns each has only one correlation, but their basis ownership and correlation prior remain different; with three or more columns HCS additionally imposes equality across every pair.
 
+A bare random formula or unnamed one-entry formula list has no redundant top-level component prefix in public parameter names; an explicitly named one-entry list retains its name.
+In a formula list with two or more entries, missing names become `component 1`, `component 2`, and so on.
+Public random-effect quantities come from the semantic parameter catalog and follow `(formula) owner: quantity(arguments)`, for example `(mu) Subject: sd(Days)` and `(mu) Subject: cor(intercept,Days)`.
+Parentheses contain coefficient or parameter names, while square brackets contain factor or index levels.
+Coordinate-table entries, compact scalar `rho`, and LKJ construction variables are backend details rather than public aliases. The coordinate, quantity, and alias tables are stored and validated together in one fitted parameter map.
+
 ### Default correlation priors
 
 Correlation priors are completed only after the formula determines the structure and its dimension.
@@ -297,7 +303,7 @@ compare_nested_estimates <- function(lme4_model, bayes_model) {
     "sigma"                      = stats::sigma(lme4_model),
     "batch: sd(intercept)"        = lme4_sd_batch,
     "cask_batch: sd(intercept)"   = lme4_sd_nested,
-    "nested_re: sd"               = sqrt(lme4_total_variance),
+    "nested_re: sd_total"         = sqrt(lme4_total_variance),
     "nested_re: var_prop(batch)"  = lme4_sd_batch^2 / lme4_total_variance,
     "nested_re: var_prop(cask)"   = lme4_sd_nested^2 / lme4_total_variance
   )
@@ -313,7 +319,9 @@ compare_nested_estimates <- function(lme4_model, bayes_model) {
     "cask_batch: sd(intercept)" = mean(
       bayes_samples[, "(mu) cask_batch: sd(intercept)"]
     ),
-    "nested_re: sd" = mean(bayes_samples[, "(mu) nested_re: sd"]),
+    "nested_re: sd_total" = mean(
+      bayes_samples[, "(mu) nested_re: sd_total"]
+    ),
     "nested_re: var_prop(batch)" = mean(
       bayes_samples[, "(mu) nested_re: var_prop(batch)"]
     ),
@@ -1048,6 +1056,7 @@ nested_allocation_priors <- list(
     monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = FALSE),
     allocation = random_variance_allocation(
       name = "nested_re",
+      display_name = "nested_re",
       terms = c(batch = "batch", cask = "cask_batch"),
       sd = unit_sd_prior,
       weights = prior("dirichlet", parameters = list(alpha = c(1, 1)))
@@ -1086,7 +1095,7 @@ JAGS_estimates_table(
 )
 ```
 
-The nested lme4 and BayesTools estimates are compared below. The BayesTools allocation rows report the posterior total nested random-effect SD and the variance fractions assigned to the batch and cask-within-batch components.
+The nested lme4 and BayesTools estimates are compared below. The BayesTools allocation rows report `nested_re: sd_total` and the `nested_re: var_prop(...)` values assigned to the batch and cask-within-batch components. Here `name` is the stable allocation identifier and `display_name` is its public semantic owner; set `display_name = ""` when no owner prefix is needed.
 
 ```{r, purl = FALSE}
 compare_nested_estimates(lme4_model = lme4_nested, bayes_model = fit_nested)
@@ -1182,7 +1191,8 @@ crossed_allocation_priors <- list(
   mu = prior_random(
     monitor = random_monitor(latent = FALSE),
     allocation = random_variance_allocation(
-      name = "total_re", terms = c(plate = "plate", sample = "sample"),
+      name = "total_re", display_name = "total_re",
+      terms = c(plate = "plate", sample = "sample"),
       sd = unit_sd_prior, weights = prior("dirichlet", parameters = list(alpha = c(1, 1)))
     )
   )

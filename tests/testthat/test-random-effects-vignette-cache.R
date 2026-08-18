@@ -234,7 +234,7 @@ test_that("writer installs one strict manifest envelope", {
     "model_schema",
     "model_hashes",
     "dependencies",
-    "compatibility_fingerprint",
+    "contract_fingerprint",
     "producer",
     "generation_fingerprint"
   ))
@@ -262,7 +262,7 @@ test_that("writer installs one strict manifest envelope", {
   )))
   expect_identical(envelope$manifest$dependencies, dependencies)
   expect_match(
-    envelope$manifest$compatibility_fingerprint,
+    envelope$manifest$contract_fingerprint,
     "^[[:xdigit:]]{32}$"
   )
   expect_match(
@@ -384,7 +384,7 @@ test_that("canonicalization rejects payloads that do not stabilize", {
   )
 })
 
-test_that("missing and legacy caches are graceful but never loadable", {
+test_that("missing and schema-less caches fail the current contract", {
   cache_root <- withr::local_tempdir()
   cache_file <- file.path(cache_root, "models", "RandomEffects.RDS")
   impossible_root <- file.path(cache_root, "does-not-exist")
@@ -404,25 +404,25 @@ test_that("missing and legacy caches are graceful but never loadable", {
 
   dir.create(dirname(cache_file), recursive = TRUE)
   saveRDS(.random_effects_test_models(), cache_file)
-  legacy <- validate_random_effects_vignette_cache(
+  schema_less <- validate_random_effects_vignette_cache(
     cache_file,
     load = TRUE,
     project_root = impossible_root
   )
-  expect_true(legacy$file_exists)
-  expect_true(legacy$legacy_cache)
-  expect_false(legacy$valid)
-  expect_null(legacy$cache)
+  expect_true(schema_less$file_exists)
+  expect_false(schema_less$envelope_valid)
+  expect_false(schema_less$valid)
+  expect_null(schema_less$cache)
   expect_match(
-    format_random_effects_vignette_cache_error(legacy),
-    "legacy format without a manifest; regenerate it"
+    format_random_effects_vignette_cache_error(schema_less),
+    "must contain manifest and models"
   )
   expect_error(
     stop_if_invalid_random_effects_vignette_cache(
       cache_file,
       project_root = impossible_root
     ),
-    "legacy format without a manifest; regenerate it",
+    "must contain manifest and models",
     fixed = TRUE
   )
 })
@@ -458,7 +458,7 @@ test_that("malformed and corrupt envelopes return cache NULL", {
 
   .random_effects_test_write(cache_file, dependencies = dependencies)
   envelope <- readRDS(cache_file)
-  envelope$manifest$compatibility_fingerprint <-
+  envelope$manifest$contract_fingerprint <-
     .random_effects_test_hash("f")
   saveRDS(envelope, cache_file)
   tampered <- validate_random_effects_vignette_cache(
@@ -604,7 +604,7 @@ test_that("backend and runtime are provenance, not host compatibility", {
   dependencies <- .random_effects_test_dependencies()
   .random_effects_test_write(cache_file, dependencies = dependencies)
   envelope <- readRDS(cache_file)
-  original_compatibility <- envelope$manifest$compatibility_fingerprint
+  original_contract <- envelope$manifest$contract_fingerprint
 
   envelope$manifest$producer <- .random_effects_test_producer(
     backend = .random_effects_test_hash("d"),
@@ -627,7 +627,7 @@ test_that("backend and runtime are provenance, not host compatibility", {
 
   envelope$manifest$generation_fingerprint <-
     .random_effects_vignette_generation_fingerprint(
-      envelope$manifest$compatibility_fingerprint,
+      envelope$manifest$contract_fingerprint,
       envelope$manifest$model_hashes,
       envelope$manifest$producer
     )
@@ -640,8 +640,8 @@ test_that("backend and runtime are provenance, not host compatibility", {
   )
   expect_true(status$valid)
   expect_identical(
-    envelope$manifest$compatibility_fingerprint,
-    original_compatibility
+    envelope$manifest$contract_fingerprint,
+    original_contract
   )
   expect_identical(status$cache, envelope$models)
 })

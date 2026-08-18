@@ -35,7 +35,6 @@ random_effects_summary_posterior <- function(
   if(!inherits(fit, "runjags") || !inherits(fit, "BayesTools_fit")){
     stop("'fit' must be a BayesTools JAGS fit.", call. = FALSE)
   }
-  parameter_registry <- JAGS_parameter_registry(fit)
   summary <- .bt_random_effect_summary_posterior_type(summary)
   check_char(allocation, "allocation", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_char(component, "component", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
@@ -48,54 +47,31 @@ random_effects_summary_posterior <- function(
     stop("'prior_list' must be a list of priors.", call. = FALSE)
   }
 
-  model_samples <- .extract_posterior_samples(fit, as_list = FALSE)
-  summary_mode <- if(identical(summary$summary, "sd_ratio")) "full" else "standard"
-  random_summary <- .bt_random_effect_summary_samples(
-    model_samples = model_samples,
-    prior_list = prior_list,
-    formula_design = attr(fit, "formula_design", exact = TRUE),
-    parameter_registry = parameter_registry,
-    mode = summary_mode
-  )
-
-  summary_samples <- random_summary$model_samples
-  summary_priors <- random_summary$prior_list
-  if(ncol(summary_samples) == 0L || length(summary_priors) == 0L){
-    stop("No random-effect summaries are available in 'fit'.", call. = FALSE)
-  }
-
-  keep <- vapply(summary_priors, function(prior){
-    identical(attr(prior, "random_summary", exact = TRUE), summary$summary)
-  }, logical(1))
+  catalog <- parameter_catalog(fit)
+  quantities <- catalog$quantities
+  keep <- startsWith(quantities$role, "random_") &
+    !quantities$internal & quantities$status != "unavailable" &
+    quantities$quantity == summary$summary
+  keys <- quantities$extraction_key
   if(!is.null(allocation)){
-    keep <- keep & vapply(summary_priors, function(prior){
-      .bt_random_effect_summary_posterior_attr_matches(
-        prior,
-        "random_allocation",
-        allocation
-      )
+    keep <- keep & vapply(keys, function(key){
+      !is.null(key$allocation_label) && key$allocation_label %in% allocation
     }, logical(1))
   }
   if(!is.null(component)){
-    keep <- keep & vapply(summary_priors, function(prior){
-      .bt_random_effect_summary_posterior_attr_matches(
-        prior,
-        "random_component",
-        component
-      )
-    }, logical(1))
+    keep <- keep & quantities$component %in% component
   }
   if(!is.null(formula_parameter)){
-    keep <- keep & vapply(summary_priors, function(prior){
-      .bt_random_effect_summary_posterior_attr_matches(
-        prior,
-        "parameter",
-        formula_parameter
-      )
-    }, logical(1))
+    keep <- keep & quantities$formula_parameter %in% formula_parameter
   }
-
-  if(!any(keep)){
+  quantities <- quantities[keep, , drop = FALSE]
+  if(nrow(quantities) == 0L && !any(startsWith(
+    catalog$quantities$role,
+    "random_"
+  ))){
+    stop("No random-effect summaries are available in 'fit'.", call. = FALSE)
+  }
+  if(nrow(quantities) == 0L){
     .bt_random_effect_summary_posterior_no_match_stop(
       summary = summary,
       allocation = allocation,
@@ -104,40 +80,36 @@ random_effects_summary_posterior <- function(
     )
   }
 
-  raw_names <- names(summary_priors)[keep]
-  display_names <- .bt_random_effect_summary_display_names(
-    names = raw_names,
-    raw_names = raw_names,
-    prior_list = summary_priors,
-    formula_prefix = TRUE,
-    parameter_registry = parameter_registry
-  )
-  display_names <- make.unique(display_names)
+  display_names <- quantities$canonical_name
 
-  out <- vector("list", length(raw_names))
+  out <- vector("list", nrow(quantities))
   names(out) <- display_names
-  out_prior_list <- vector("list", length(raw_names))
+  out_prior_list <- vector("list", nrow(quantities))
   names(out_prior_list) <- display_names
 
-  for(i in seq_along(raw_names)){
-    raw_name <- raw_names[i]
-    summary_prior <- summary_priors[[raw_name]]
-    values <- unname(as.numeric(summary_samples[, raw_name]))
+  for(i in seq_len(nrow(quantities))){
+    quantity <- quantities[i, , drop = FALSE]
+    key <- quantity$extraction_key[[1L]]
+    selection <- parameter_catalog_resolve(
+      catalog,
+      alias = quantity$canonical_name,
+      namespace = quantity$namespace
+    )
+    values <- unname(as.numeric(as.matrix(parameter_draws(fit, selection))[, 1L]))
     attr(values, "sample_ind") <- FALSE
     attr(values, "models_ind") <- rep(1, length(values))
     attr(values, "parameter") <- display_names[i]
-    attr(values, "summary_name") <- raw_name
+    attr(values, "summary_name") <- key$summary_name
     attr(values, "random_summary") <- summary$summary
-    attr(values, "random_summary_label") <- attr(summary_prior, "random_summary_label", exact = TRUE)
-    attr(values, "random_allocation") <- attr(summary_prior, "random_allocation", exact = TRUE)
-    attr(values, "random_component") <- attr(summary_prior, "random_component", exact = TRUE)
-    attr(values, "formula_parameter") <- attr(summary_prior, "parameter", exact = TRUE)
+    attr(values, "random_summary_label") <- quantity$display_label
+    attr(values, "random_allocation") <- key$allocation_label
+    attr(values, "random_component") <- quantity$component
+    attr(values, "formula_parameter") <- quantity$formula_parameter
     attr(values, "prior_list") <- prior_none()
 
     prior_density <- .bt_random_effect_summary_posterior_prior_density(
-      summary_prior = summary_prior,
-      prior_list = prior_list,
-      summary_type = summary$summary,
+      fit = fit,
+      quantity = quantity,
       n_grid = n_prior_points
     )
     if(!is.null(prior_density)){
@@ -164,20 +136,14 @@ random_effects_summary_posterior <- function(
   }
 
   attr(out, "prior_list") <- out_prior_list
-  attr(out, "summary_names") <- raw_names
+  attr(out, "summary_names") <- vapply(
+    quantities$extraction_key,
+    `[[`,
+    character(1),
+    "summary_name"
+  )
   class(out) <- c("as_mixed_posteriors", "mixed_posteriors", "list")
   out
-}
-
-.bt_random_effect_summary_posterior_attr_matches <- function(prior, attribute,
-                                                             values){
-
-  value <- attr(prior, attribute, exact = TRUE)
-  if(is.null(value)){
-    return(FALSE)
-  }
-
-  any(value %in% values)
 }
 
 .bt_random_effect_summary_posterior_type <- function(summary){
@@ -233,17 +199,30 @@ random_effects_summary_posterior <- function(
 }
 
 .bt_random_effect_summary_posterior_prior_density <- function(
-    summary_prior,
-    prior_list,
-    summary_type,
+    fit,
+    quantity,
     n_grid){
 
-  allocation <- attr(summary_prior, "random_allocation_metadata", exact = TRUE)
-  index <- attr(summary_prior, "random_allocation_index", exact = TRUE)
+  key <- quantity$extraction_key[[1L]]
+  if(is.null(key$allocation_label) || is.null(key$index)){
+    return(NULL)
+  }
+  random_term <- if(nzchar(key$random_block)){
+    .bt_parameter_catalog_find_random_term(fit, key)
+  }else{
+    NULL
+  }
+  allocation <- .bt_parameter_catalog_find_allocation(fit, key, random_term)
+  index <- key$index
+  if(identical(quantity$quantity, "sd_ratio") &&
+     index > allocation$n_targets){
+    index <- index - allocation$n_targets
+  }
   if(is.null(allocation) || is.null(index) || length(index) != 1L || is.na(index)){
     return(NULL)
   }
 
+  prior_list <- attr(fit, "prior_list", exact = TRUE)
   weight_prior <- prior_list[[allocation$weight_name]]
   if(is.null(weight_prior) ||
      !is.prior.simplex(weight_prior) ||
@@ -262,40 +241,36 @@ random_effects_summary_posterior <- function(
     return(NULL)
   }
 
-  scale <- .bt_random_effect_summary_posterior_prior_scale(
-    allocation = allocation,
-    summary_type = summary_type,
-    K = length(alpha)
+  selection <- parameter_catalog_resolve(
+    parameter_catalog(fit),
+    alias = quantity$canonical_name,
+    namespace = quantity$namespace
   )
+  semantic_transform <- parameter_transform(fit, selection)
+  density_transform <- if(identical(
+    semantic_transform,
+    list(type = "identity")
+  )){
+    list(scale = 1, type = "linear")
+  }else if(is.list(semantic_transform) &&
+           identical(semantic_transform$type, "affine") &&
+           identical(semantic_transform$offset, 0) &&
+           semantic_transform$scale > 0){
+    list(scale = semantic_transform$scale, type = "linear")
+  }else if(is.list(semantic_transform) &&
+           identical(semantic_transform$type, "sqrt_scale")){
+    list(scale = semantic_transform$scale, type = "sqrt")
+  }else{
+    return(NULL)
+  }
 
   .bt_random_effect_summary_posterior_scaled_beta_density(
     alpha = alpha_i,
     beta = beta_i,
-    scale = scale,
-    transform = if(identical(summary_type, "sd_ratio")) "sqrt" else "linear",
+    scale = density_transform$scale,
+    transform = density_transform$type,
     n_grid = n_grid
   )
-}
-
-.bt_random_effect_summary_posterior_prior_scale <- function(allocation,
-                                                            summary_type,
-                                                            K){
-
-  if(identical(summary_type, "var_ratio")){
-    return(.bt_random_effect_summary_allocation_n_targets(allocation, K))
-  }
-
-  if(identical(summary_type, "sd_ratio")){
-    allocation_scale <- .bt_random_effect_allocation_scale_metadata(
-      allocation,
-      context = "Random-effect allocation posterior metadata"
-    )
-    if(identical(allocation_scale, "mean_variance")){
-      return(.bt_random_effect_summary_allocation_n_targets(allocation, K))
-    }
-  }
-
-  1
 }
 
 .bt_random_effect_summary_posterior_scaled_beta_density <- function(alpha, beta,

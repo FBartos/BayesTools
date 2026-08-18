@@ -46,7 +46,7 @@ test_that("Random-effect specification print methods use prior notation", {
     monitor = monitor,
     terms = list(
       intercept = sd_prior,
-      slope     = random_term(sd = sd_prior)
+      slope     = random_block(sd = sd_prior)
     )
   )
   source <- parameter_source(
@@ -113,7 +113,6 @@ test_that("Random-effect specification print methods use prior notation", {
     "  sigma_slope ~ Gamma(2, 2)",
     "  monitor: latent = TRUE, coefficients = TRUE, correlation = TRUE, lkj_primitives = TRUE"
   ))
-  expect_s3_class(random_term(sd = sd_prior), "random_block")
   expect_equal(utils::capture.output(print(source)), c(
     "parameter_source()",
     "  name: tau",

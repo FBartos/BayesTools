@@ -1,10 +1,10 @@
 
 
-.hypothesis_BF_compute <- function(quantity, parsed, density_method) {
+.hypothesis_BF_compute <- function(quantity, statement, density_method) {
 
-  left  <- parsed[["left"]]
-  right <- parsed[["right"]]
-  explicit <- isTRUE(parsed[["explicit"]])
+  left  <- statement[["left"]]
+  right <- statement[["right"]]
+  explicit <- isTRUE(statement[["explicit"]])
 
   if(.hypothesis_sides_point_complement(left, right)){
     if(explicit){
@@ -82,8 +82,8 @@
   }
 
   identical(
-    .hypothesis_expression_key(point_side[["expr"]]),
-    .hypothesis_expression_key(other_side[["expr"]])
+    .hypothesis_expression_key(.hypothesis_side_expression(point_side)),
+    .hypothesis_expression_key(.hypothesis_side_expression(other_side))
   ) &&
     isTRUE(all.equal(point_side[["value"]], other_side[["value"]]))
 }
@@ -136,13 +136,13 @@
     }
   }else{
     posterior <- .hypothesis_eval_expression(
-      side[["expr"]],
+      .hypothesis_side_expression(side),
       quantity[["posterior_draws"]]
     )
     prior_value <- .hypothesis_prior_object_density_height(quantity, side)
     if(is.null(prior_value)){
       if(!is.null(quantity[["prior_density"]]) &&
-         .hypothesis_expression_is_parameter(side[["expr"]],
+         .hypothesis_expression_is_parameter(.hypothesis_side_expression(side),
                                              quantity[["parameter"]])){
         prior_value <- .hypothesis_prior_density_height(
           quantity[["prior_density"]],
@@ -150,7 +150,7 @@
         )
       }else{
         prior <- .hypothesis_eval_expression(
-          side[["expr"]],
+          .hypothesis_side_expression(side),
           .hypothesis_prior_draws(quantity)
         )
         prior_value <- .hypothesis_draw_density_height(
@@ -196,7 +196,7 @@
 .hypothesis_point_marginal <- function(quantity, side) {
 
   if(!is.null(quantity[["posterior_marginal"]]) &&
-     .hypothesis_expression_is_parameter(side[["expr"]],
+     .hypothesis_expression_is_parameter(.hypothesis_side_expression(side),
                                          quantity[["parameter"]])){
     return(list(
       posterior        = quantity[["posterior_marginal"]],
@@ -206,7 +206,7 @@
     ))
   }
 
-  symbol <- .hypothesis_direct_symbol(side[["expr"]])
+  symbol <- .hypothesis_direct_symbol(.hypothesis_side_expression(side))
   if(is.null(symbol) || is.null(quantity[["posterior_marginals"]]) ||
      !symbol %in% names(quantity[["posterior_marginals"]])){
     return(NULL)
@@ -471,13 +471,11 @@
 
 .hypothesis_point_region_compatible <- function(point_side, region_side) {
 
-  point_key <- .hypothesis_expression_key(point_side[["expr"]])
-  if(!is.null(region_side[["expr"]])){
-    return(identical(point_key, .hypothesis_expression_key(region_side[["expr"]])))
-  }
-
+  point_key <- .hypothesis_expression_key(
+    .hypothesis_side_expression(point_side)
+  )
   region_exprs <- .hypothesis_region_scalar_expressions(
-    .hypothesis_parse_expression(region_side[["condition"]])
+    .hypothesis_side_expression(region_side)
   )
   if(length(region_exprs) == 0L || anyNA(region_exprs)){
     return(FALSE)

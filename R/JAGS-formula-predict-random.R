@@ -530,7 +530,20 @@
       sd_draws = sd_draws
     ))
   }
-  correlation <- .bt_random_effect_marginal_covariance_correlation_draws(
+  cholesky <- .bt_random_effect_cholesky_draws(
+    random_term = random_term,
+    n_columns = n_columns,
+    posterior = posterior
+  )
+  if(is.null(cholesky)){
+    .bt_random_effect_marginal_covariance_missing_correlation_stop(
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = posterior
+    )
+  }
+  .bt_random_effect_marginal_covariance_validate_correlation_cholesky(
+    cholesky = cholesky,
     random_term = random_term,
     n_columns = n_columns,
     posterior = posterior
@@ -539,13 +552,14 @@
   groups <- sort(unique(group_map[rows]))
   group_index <- match(group_map[rows], groups)
   for(draw in seq_len(n_draws)){
-    G <- matrix(
-      correlation[draw, , ],
-      nrow = n_columns,
-      ncol = n_columns
-    ) * tcrossprod(sd_draws[draw, ])
-    effects <- .bt_random_effect_mvn_group_draws(
-      covariance = G,
+    factor <- sweep(
+      cholesky[draw, , ],
+      MARGIN = 1L,
+      STATS = sd_draws[draw, ],
+      FUN = "*"
+    )
+    effects <- .bt_random_effect_mvn_group_draws_from_factor(
+      factor = factor,
       n_groups = length(groups)
     )
     output[rows, draw] <- rowSums(
@@ -612,8 +626,9 @@
   groups <- sort(unique(group_map[rows]))
   group_index <- match(group_map[rows], groups)
   kernel <- group_covariance$kernel[groups, groups, drop = FALSE]
-  group_effects <- .bt_random_effect_mvn_group_draws(
-    covariance = kernel,
+  factor <- t(chol(kernel))
+  group_effects <- .bt_random_effect_mvn_group_draws_from_factor(
+    factor = factor,
     n_groups = n_draws
   )
   group_effects <- group_effects * sd_draws[, 1L]
@@ -952,7 +967,20 @@
     }
     return(unit_contribution * t(source_draws) * allocation_matrix)
   }
-  correlation <- .bt_random_effect_marginal_covariance_correlation_draws(
+  cholesky <- .bt_random_effect_cholesky_draws(
+    random_term = random_term,
+    n_columns = n_columns,
+    posterior = posterior
+  )
+  if(is.null(cholesky)){
+    .bt_random_effect_marginal_covariance_missing_correlation_stop(
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = posterior
+    )
+  }
+  .bt_random_effect_marginal_covariance_validate_correlation_cholesky(
+    cholesky = cholesky,
     random_term = random_term,
     n_columns = n_columns,
     posterior = posterior
@@ -961,8 +989,8 @@
   groups <- sort(unique(group_map[rows]))
   group_index <- match(group_map[rows], groups)
   for(draw in seq_len(n_draws)){
-    effects <- .bt_random_effect_mvn_group_draws(
-      covariance = matrix(correlation[draw, , ], nrow = n_columns, ncol = n_columns),
+    effects <- .bt_random_effect_mvn_group_draws_from_factor(
+      factor = cholesky[draw, , ],
       n_groups = length(groups)
     )
     Z <- model_matrix[rows, , drop = FALSE] *
@@ -983,55 +1011,23 @@
   output
 }
 
-.bt_random_effect_mvn_group_draws <- function(covariance, n_groups){
+.bt_random_effect_mvn_group_draws_from_factor <- function(factor, n_groups){
 
   if(n_groups == 0L){
-    return(matrix(numeric(), nrow = 0L, ncol = ncol(covariance)))
+    return(matrix(numeric(), nrow = 0L, ncol = ncol(factor)))
   }
-  if(!is.matrix(covariance) || !is.numeric(covariance) ||
-     nrow(covariance) != ncol(covariance) ||
-     any(!is.finite(covariance))){
-    stop("Random-effect prediction covariance must be a finite numeric square matrix.",
+  if(!is.matrix(factor) || !is.numeric(factor) ||
+     nrow(factor) != ncol(factor) || any(!is.finite(factor))){
+    stop("Random-effect prediction factor must be a finite numeric square matrix.",
          call. = FALSE)
   }
-  if(!isTRUE(all(covariance == t(covariance)))){
-    stop("Random-effect prediction covariance must be exactly symmetric.",
-         call. = FALSE)
-  }
-  decomposition <- eigen(covariance, symmetric = TRUE)
-  covariance_scale <- max(1, norm(covariance, type = "I"))
-  eigen_tolerance <- 8 * nrow(covariance) * .Machine$double.eps *
-    covariance_scale
-  minimum_eigenvalue <- min(decomposition$values)
-  if(minimum_eigenvalue < -eigen_tolerance){
-    stop(
-      "Random-effect prediction covariance is materially indefinite: minimum ",
-      "eigenvalue ", format(minimum_eigenvalue, digits = 17),
-      " is below the roundoff bound -",
-      format(eigen_tolerance, digits = 17), ".",
-      call. = FALSE
-    )
-  }
-  values <- decomposition$values
-  corrected <- values < 0
-  values[corrected] <- 0
-  transform <- decomposition$vectors %*%
-    (sqrt(values) * t(decomposition$vectors))
   z <- matrix(
-    stats::rnorm(n_groups * ncol(covariance)),
+    stats::rnorm(n_groups * ncol(factor)),
     nrow = n_groups,
-    ncol = ncol(covariance)
+    ncol = ncol(factor)
   )
 
-  out <- z %*% transform
-  if(any(corrected)){
-    attr(out, "covariance_eigen_correction") <- list(
-      minimum_eigenvalue = minimum_eigenvalue,
-      tolerance = eigen_tolerance,
-      maximum_correction = max(-decomposition$values[corrected])
-    )
-  }
-  out
+  unname(z %*% t(factor))
 }
 
 .bt_random_effect_prediction_data <- function(random_term, data,

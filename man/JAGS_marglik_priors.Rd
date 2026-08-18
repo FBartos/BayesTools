@@ -3,12 +3,15 @@
 \name{JAGS_marglik_priors}
 \alias{JAGS_marglik_priors}
 \alias{JAGS_marglik_priors_rows}
+\alias{JAGS_marglik_priors_rows_evaluator}
 \alias{JAGS_marglik_priors_formula}
 \title{Compute marginal likelihood for 'JAGS' priors}
 \usage{
 JAGS_marglik_priors(samples, prior_list)
 
 JAGS_marglik_priors_rows(samples, prior_list)
+
+JAGS_marglik_priors_rows_evaluator(prior_list)
 
 JAGS_marglik_priors_formula(samples, formula_prior_list)
 }
@@ -33,7 +36,9 @@ within the \code{formula}}
 \code{JAGS_marglik_priors} returns a numeric value
 of likelihood evaluated at the current posterior sample.
 \code{JAGS_marglik_priors_rows} returns one numeric value for every row of
-posterior samples.
+posterior samples. \code{JAGS_marglik_priors_rows_evaluator} returns a
+function that applies the same row-wise evaluation without recompiling the
+prior structure on each call.
 }
 \description{
 Computes marginal likelihood for the

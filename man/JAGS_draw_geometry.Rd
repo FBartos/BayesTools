@@ -18,10 +18,10 @@ JAGS_with_draws(fit, draws)
 \arguments{
 \item{fit}{fitted object created by \code{\link[=JAGS_fit]{JAGS_fit()}}.}
 
-\item{parameters}{optional exact vector of registry \code{coordinate_name} values.
-\code{NULL} selects every available public coordinate in registry order.}
+\item{parameters}{optional exact vector of \code{coordinate_name} values.
+\code{NULL} selects every available public coordinate in map order.}
 
-\item{include_internal}{whether internal registry coordinates may be returned.}
+\item{include_internal}{whether internal coordinates may be returned.}
 
 \item{draws}{replacement draws coercible to a \code{coda::mcmc.list}.}
 }
@@ -38,8 +38,8 @@ draw geometry replaced.
 stored from the actual chains returned by JAGS. Geometry is independent of
 which coordinates are public.
 
-\code{JAGS_materialize_draws()} reconstructs requested public coordinates from
-the parameter registry. Sampled coordinates are selected from the fitted
+\code{JAGS_materialize_draws()} reconstructs requested coordinates from the
+fitted parameter map. Sampled coordinates are selected from the fitted
 chains and structural coordinates are filled with their exact \code{fixed_value}.
 Internal coordinates, including a private backend anchor, are excluded by
 default.

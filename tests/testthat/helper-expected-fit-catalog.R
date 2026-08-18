@@ -1126,9 +1126,11 @@ bayestools_semantic_fit_catalog_overrides <- function() {
         "mu__xREx__id_x_fac3_indicator",
         "mu__xREx__id_x_fac3_inclusion",
         "mu__xREx__id_x_fac3[1]", "mu__xREx__id_x_fac3[2]",
+        "mu__xREx__id_x_fac3[3]",
         "mu__xREx__id_x_fac3_variable[1]", "mu__xREx__id_x_fac3_variable[2]",
+        "mu__xREx__id_x_fac3_variable[3]",
         "sigma",
-        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 2L)
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 3L)
       ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",

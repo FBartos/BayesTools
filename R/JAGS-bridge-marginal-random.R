@@ -463,6 +463,26 @@
 
   list(
     active = TRUE,
+    factor_states = function(posterior){
+      posterior <- as.matrix(posterior)
+      if(nrow(posterior) < 1L ||
+         (ncol(posterior) > 0L && is.null(colnames(posterior)))){
+        stop(
+          "Random-effect factor-state samples must be a non-empty matrix with column names when coordinates are present.",
+          call. = FALSE
+        )
+      }
+      out <- lapply(plans, function(plan){
+        .bt_JAGS_bridge_marginal_random_factor_states_batch(
+          plan = plan,
+          posterior = posterior
+        )
+      })
+      if(any(vapply(out, is.null, logical(1)))){
+        return(NULL)
+      }
+      out
+    },
     covariance = function(samples, prior_parameters,
                           formula_prior_parameters, formula_parameters,
                           factor_covariance = TRUE,
@@ -506,6 +526,187 @@
       out
     }
   )
+}
+
+.bt_JAGS_bridge_marginal_random_factor_states_batch <- function(plan,
+                                                                 posterior){
+
+  if(!isTRUE(plan$factor_state) || is.null(plan$row_blocks)){
+    return(NULL)
+  }
+  attr(
+    posterior,
+    "BayesTools_random_effect_dirichlet_draw_cache"
+  ) <- new.env(parent = emptyenv())
+
+  block_states <- lapply(
+    plan$blocks,
+    .bt_JAGS_bridge_marginal_random_block_factor_states_batch,
+    posterior = posterior,
+    prior_list = plan$prior_list
+  )
+  if(any(vapply(block_states, is.null, logical(1)))){
+    return(NULL)
+  }
+
+  states <- lapply(seq_len(nrow(posterior)), function(draw){
+    out <- lapply(block_states, `[[`, draw)
+    names(out) <- names(block_states)
+    out
+  })
+  list(
+    representation = "factor_state",
+    contract_id = plan$contract_id,
+    row_blocks = plan$row_blocks,
+    factor_plans = plan$factor_plans,
+    factor_states = states
+  )
+}
+
+.bt_JAGS_bridge_marginal_random_block_factor_states_batch <- function(
+    block_plan, posterior, prior_list){
+
+  random_term <- block_plan$random_term
+  n_columns   <- ncol(block_plan$model_matrix)
+  row_scale_draws <- NULL
+  if(isTRUE(block_plan$row_indexed)){
+    source <- .bt_random_effect_row_indexed_source(random_term)
+    if(.bt_parameter_source_has_values(source$source)){
+      return(NULL)
+    }
+    source_draws <- .bt_random_effect_row_indexed_source_draws(
+      random_term = random_term,
+      n_rows = nrow(block_plan$model_matrix),
+      posterior = posterior,
+      data = block_plan$source_data,
+      prediction_rows = block_plan$prediction_rows,
+      context = "Bridge-only random-effect marginal covariance"
+    )
+    .bt_random_effect_marginal_covariance_validate_draw_matrix(
+      draws = source_draws,
+      n_draws = nrow(posterior),
+      n_columns = nrow(block_plan$model_matrix),
+      label = "row-indexed SD source",
+      random_term = random_term,
+      nonnegative = TRUE,
+      context = "Bridge-only random-effect marginal covariance"
+    )
+    column_allocation <-
+      .bt_random_effect_row_indexed_column_allocation_draws(
+        random_term = random_term,
+        posterior = posterior,
+        prior_list = prior_list,
+        n_columns = n_columns
+      )
+    if(is.null(column_allocation)){
+      allocation <- .bt_random_effect_row_indexed_allocation_draws(
+        random_term = random_term,
+        posterior = posterior,
+        prior_list = prior_list
+      )
+      .bt_random_effect_marginal_covariance_validate_draw_matrix(
+        draws = matrix(allocation, ncol = 1L),
+        n_draws = nrow(posterior),
+        n_columns = 1L,
+        label = "row-indexed SD allocation",
+        random_term = random_term,
+        nonnegative = TRUE,
+        context = "Bridge-only random-effect marginal covariance"
+      )
+      row_scale_draws <- source_draws * allocation
+      sd_draws <- matrix(1, nrow = nrow(posterior), ncol = n_columns)
+    }else{
+      .bt_random_effect_marginal_covariance_validate_draw_matrix(
+        draws = column_allocation,
+        n_draws = nrow(posterior),
+        n_columns = n_columns,
+        label = "row-indexed column SD allocation",
+        random_term = random_term,
+        nonnegative = TRUE,
+        context = "Bridge-only random-effect marginal covariance"
+      )
+      row_scale_draws <- source_draws
+      sd_draws <- column_allocation
+    }
+  }else if(is.null(block_plan$sd_evaluator)){
+    sd_draws <- .bt_random_effect_sd_draws(
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = posterior,
+      prior_list = prior_list
+    )
+  }else{
+    sd_draws <- block_plan$sd_evaluator$posterior_draws(posterior)
+  }
+  if(is.null(sd_draws)){
+    return(NULL)
+  }
+  .bt_random_effect_marginal_covariance_validate_draw_matrix(
+    draws = sd_draws,
+    n_draws = nrow(posterior),
+    n_columns = n_columns,
+    label = "SD",
+    random_term = random_term,
+    nonnegative = TRUE
+  )
+
+  structure <- block_plan$structure
+  if(structure %in% c("diag", "id") || n_columns == 1L){
+    cholesky_draws <- NULL
+  }else{
+    cholesky_draws <- if(is.null(block_plan$coefficient_cholesky_evaluator)){
+      .bt_random_effect_cholesky_draws(
+        random_term = random_term,
+        n_columns = n_columns,
+        posterior = posterior
+      )
+    }else{
+      block_plan$coefficient_cholesky_evaluator(posterior)
+    }
+    if(is.null(cholesky_draws)){
+      return(NULL)
+    }
+    .bt_random_effect_marginal_covariance_validate_correlation_cholesky(
+      cholesky = cholesky_draws,
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = posterior
+    )
+  }
+
+  markov <- structure %in% c("ar1", "car", "har") && n_columns > 1L
+  out <- vector("list", nrow(posterior))
+  for(draw in seq_len(nrow(posterior))){
+    if(is.null(cholesky_draws)){
+      factor <- diag(
+        sd_draws[draw, ],
+        nrow = n_columns,
+        ncol = n_columns
+      )
+      cholesky <- NULL
+    }else{
+      cholesky <- matrix(
+        cholesky_draws[draw, , ],
+        nrow = n_columns,
+        ncol = n_columns
+      )
+      factor <- cholesky * sd_draws[draw, ]
+    }
+    value <- list(coefficient_factor = factor)
+    if(markov){
+      value$coefficient_scale <- sd_draws[draw, ]
+      value$markov_transition <-
+        cholesky[cbind(2:n_columns, seq_len(n_columns - 1L))] /
+        diag(cholesky)[seq_len(n_columns - 1L)]
+      value$markov_innovation_variance <- diag(cholesky)[2:n_columns]^2
+    }
+    if(!is.null(row_scale_draws)){
+      value$row_scale <- as.numeric(row_scale_draws[draw, ])
+    }
+    out[[draw]] <- value
+  }
+  names(out) <- NULL
+  out
 }
 
 .bt_JAGS_bridge_marginal_random_covariance <- function(

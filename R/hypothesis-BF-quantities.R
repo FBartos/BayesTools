@@ -111,12 +111,12 @@
 }
 
 
-.as_hypothesis_quantities <- function(posterior, prior, parsed, parameter) {
+.as_hypothesis_quantities <- function(posterior, prior, statements, parameter) {
 
   if(inherits(posterior, "marginal_inference")){
     return(.as_hypothesis_quantities_marginal_inference(
       posterior = posterior,
-      parsed    = parsed,
+      statements    = statements,
       parameter = parameter
     ))
   }
@@ -124,7 +124,7 @@
   if(.hypothesis_inherits_marginal_posterior(posterior)){
     return(.as_hypothesis_quantities_marginal_posterior(
       posterior = posterior,
-      parsed    = parsed,
+      statements    = statements,
       parameter = parameter
     ))
   }
@@ -148,7 +148,7 @@
     }
     check_real(posterior, "posterior", check_length = 0, allow_NA = FALSE)
     if(is.null(parameter)){
-      parameter <- .hypothesis_single_symbol(parsed)
+      parameter <- .hypothesis_single_symbol(statements)
     }
     if(is.null(parameter)){
       stop("The 'parameter' argument is required for numeric draws unless ",
@@ -186,7 +186,7 @@
 }
 
 
-.as_hypothesis_quantities_marginal_inference <- function(posterior, parsed,
+.as_hypothesis_quantities_marginal_inference <- function(posterior, statements,
                                                          parameter) {
 
   if(is.null(posterior[["conditional"]])){
@@ -196,8 +196,8 @@
 
   available <- names(posterior[["conditional"]])
   if(is.null(parameter)){
-    level_refs <- .hypothesis_level_references(parsed)
-    symbols <- .hypothesis_all_symbols(parsed)
+    level_refs <- .hypothesis_level_references(statements)
+    symbols <- .hypothesis_all_symbols(statements)
     matches <- intersect(symbols, available)
     if(nrow(level_refs) > 0L &&
        length(unique(level_refs[["parameter"]])) == 1L &&
@@ -219,17 +219,17 @@
 
   return(.as_hypothesis_quantities_marginal_posterior(
     posterior = posterior[["conditional"]][[parameter]],
-    parsed    = parsed,
+    statements    = statements,
     parameter = parameter
   ))
 }
 
 
-.as_hypothesis_quantities_marginal_posterior <- function(posterior, parsed,
+.as_hypothesis_quantities_marginal_posterior <- function(posterior, statements,
                                                          parameter) {
 
-  level_refs <- .hypothesis_level_references(parsed, parameter)
-  symbol_parameter <- .hypothesis_single_symbol(parsed)
+  level_refs <- .hypothesis_level_references(statements, parameter)
+  symbol_parameter <- .hypothesis_single_symbol(statements)
   if(is.null(parameter) && nrow(level_refs) > 0L &&
      length(unique(level_refs[["parameter"]])) == 1L){
     parameter <- unique(level_refs[["parameter"]])
@@ -246,13 +246,13 @@
   }
 
   if(is.list(posterior)){
-    level_refs <- .hypothesis_level_references(parsed, parameter)
+    level_refs <- .hypothesis_level_references(statements, parameter)
     if(nrow(level_refs) > 0L){
       return(list(.hypothesis_quantity_from_marginal_posterior_levels(
         posterior  = posterior,
         parameter  = parameter,
         level_refs = level_refs,
-        parsed     = parsed
+        statements     = statements
       )))
     }
 
@@ -288,9 +288,9 @@
 }
 
 
-.hypothesis_level_references <- function(parsed, parameter = NULL) {
+.hypothesis_level_references <- function(statements, parameter = NULL) {
 
-  symbols <- .hypothesis_all_symbols(parsed)
+  symbols <- .hypothesis_all_symbols(statements)
   refs <- regexec("^([^\\[]+)\\[([^\\]]+)\\]$", symbols, perl = TRUE)
   matches <- regmatches(symbols, refs)
   has_match <- vapply(matches, length, integer(1)) == 3L
@@ -381,7 +381,7 @@
 .hypothesis_quantity_from_marginal_posterior_levels <- function(posterior,
                                                                 parameter,
                                                                 level_refs,
-                                                                parsed) {
+                                                                statements) {
 
   levels <- unique(level_refs[["level"]])
   available <- names(posterior)
@@ -405,7 +405,7 @@
   names(posterior_df) <- paste0(parameter, "[", levels, "]")
 
   prior_df <- NULL
-  if(.hypothesis_level_hypotheses_need_prior_draws(parsed, level_refs)){
+  if(.hypothesis_level_hypotheses_need_prior_draws(statements, level_refs)){
     prior_df <- .hypothesis_prior_draws_from_marginal_levels(
       posterior = posterior,
       parameter = parameter,
@@ -566,10 +566,10 @@
 }
 
 
-.hypothesis_level_hypotheses_need_prior_draws <- function(parsed, level_refs) {
+.hypothesis_level_hypotheses_need_prior_draws <- function(statements, level_refs) {
 
   valid_symbols <- unique(level_refs[["symbol"]])
-  for(hypothesis in parsed){
+  for(hypothesis in statements){
     if(!.hypothesis_sides_point_complement(hypothesis[["left"]],
                                            hypothesis[["right"]]) &&
        !.hypothesis_sides_point_complement(hypothesis[["right"]],
@@ -582,7 +582,9 @@
     }else{
       hypothesis[["right"]]
     }
-    symbol <- .hypothesis_direct_symbol(point_side[["expr"]])
+    symbol <- .hypothesis_direct_symbol(
+      .hypothesis_side_expression(point_side)
+    )
     if(is.null(symbol) || !symbol %in% valid_symbols){
       return(TRUE)
     }

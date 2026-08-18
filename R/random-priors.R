@@ -21,9 +21,6 @@
 #' if the formula contains a block named `"study"`, then
 #' `prior_random(study = random_block(...))` overrides only that block.
 #'
-#' `random_term()` is an alias of `random_block()` retained for readability in
-#' user-facing code.
-#'
 #' @section Standard-deviation priors:
 #' `sd` must be a BayesTools prior object with nonnegative support, such as a
 #' truncated normal, gamma, point prior at zero, or mixture prior. When a
@@ -113,6 +110,23 @@
 #' components are exposed as `var_ratio(...)` and `sd_ratio(...)`. Thus
 #' `sd_common` is the shared variance-scale anchor before the component ratios
 #' are applied; it is not a sum of SDs.
+#'
+#' The fitted [parameter_map()] links concrete [parameter_coordinates()] to the
+#' public random-effect quantities in [parameter_catalog()]. Canonical names use
+#' `(formula) owner: quantity(arguments)`, with `owner: ` omitted for exactly one
+#' random block and retained when multiple blocks require disambiguation.
+#' Parentheses contain coefficient or parameter names and square brackets
+#' contain factor or index levels. Public correlations use `cor`; compact scalar
+#' `rho` and LKJ construction coordinates remain internal backend dependencies.
+#'
+#' Allocation `name` is a required stable backend identifier. `display_name`
+#' independently controls an allocation-specific public owner, and
+#' `component_names` controls the public component arguments. An unnamed local
+#' SD-component allocation inherits its enclosing block's public owner under
+#' the same one-block/multiple-block rule. Total-variance allocations expose
+#' `sd_total`, `var_total`, and `var_prop(...)`;
+#' mean-variance allocations expose `sd_common`, `var_common`,
+#' `var_ratio(...)`, and `sd_ratio(...)`.
 #'
 #' This is useful for nested or crossed random intercepts when the prior should
 #' control total heterogeneity separately from how that heterogeneity is
@@ -215,7 +229,7 @@
 #'
 #' # Scalar-correlation structure with a Fisher-z prior.
 #' prior_random(
-#'   study_time = random_term(
+#'   study_time = random_block(
 #'     covariance = random_covariance(
 #'       structure = "AR",
 #'       sd = sd_prior,
@@ -226,11 +240,12 @@
 #' )
 #'
 #' # Total heterogeneity plus Dirichlet variance allocation. The allocation
-#' # name is the public semantic owner: heterogeneity: sd_total,
-#' # heterogeneity: var_prop(study), and heterogeneity: var_prop(outcome).
+#' # has an internal name but no redundant public owner: sd_total,
+#' # var_prop(study), and var_prop(outcome).
 #' prior_random(
 #'   random_variance_allocation(
 #'     name = "heterogeneity",
+#'     display_name = "",
 #'     terms = c(study = "study", outcome = "outcome"),
 #'     sd = sd_prior,
 #'     weights = prior("dirichlet", list(alpha = c(1, 1)))
@@ -392,13 +407,14 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL,
 }
 
 #' @rdname prior_random
-#' @export
-random_term <- random_block
-
-#' @rdname prior_random
-#' @param name required allocation label and public semantic owner used in
-#'   parameter names such as `heterogeneity: sd_total` and
-#'   `heterogeneity: var_prop(study)`.
+#' @param name required stable allocation identifier used by the backend and
+#'   by [allocation_ref()].
+#' @param display_name public semantic owner used as the parameter-name prefix.
+#'   It defaults to `name`; use `""` when a single model component needs no
+#'   disambiguating prefix.
+#' @param component_names optional public names for the allocation components,
+#'   in the same order as `terms`. Internal component identifiers remain the
+#'   (sanitized) names of `terms`.
 #' @param parent optional `allocation_ref()` object selecting a component of an
 #'   earlier named allocation. Child allocations inherit that component's SD
 #'   budget and must not specify `sd` or `sd_source`.
@@ -425,7 +441,9 @@ random_variance_allocation <- function(name, terms = NULL, sd = NULL,
                                        target = c("block", "sd_component"),
                                        scale = c("total_variance", "mean_variance"),
                                        sd_source = NULL,
-                                       inclusion = NULL){
+                                       inclusion = NULL,
+                                       display_name = name,
+                                       component_names = NULL){
 
   check_char(terms, "terms", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   if(!is.null(terms) && anyDuplicated(terms)){
@@ -481,6 +499,17 @@ random_variance_allocation <- function(name, terms = NULL, sd = NULL,
   if(!grepl("^[A-Za-z][A-Za-z0-9_]*$", name)){
     stop("'name' must start with a letter and contain only letters, numbers, and underscores.", call. = FALSE)
   }
+  check_char(display_name, "display_name", allow_NA = FALSE)
+  check_char(component_names, "component_names", check_length = 0,
+             allow_NULL = TRUE, allow_NA = FALSE)
+  if(!is.null(component_names)){
+    if(is.null(terms) || length(component_names) != length(terms)){
+      stop("'component_names' must have one public name for each entry in 'terms'.", call. = FALSE)
+    }
+    if(any(!nzchar(component_names)) || anyDuplicated(component_names)){
+      stop("'component_names' must be non-empty and unique.", call. = FALSE)
+    }
+  }
 
   if(identical(target, "block") && !is.null(terms) &&
      !is.null(weights) && length(terms) != weights$parameters[["K"]]){
@@ -497,6 +526,8 @@ random_variance_allocation <- function(name, terms = NULL, sd = NULL,
     weights    = weights,
     inclusion  = inclusion,
     name       = name,
+    display_name = display_name,
+    component_names = component_names,
     parent     = parent,
     target     = target,
     scale      = scale
@@ -609,8 +640,9 @@ random_covariance <- function(structure = NULL, sd = NULL, cor = NULL,
 #' @rdname prior_random
 #' @param include_correlation whether to monitor the correlation matrix for
 #'   `prior_lkj()`.
-#' @param include_primitives whether to monitor LKJ primitive beta coordinates
-#'   for `prior_lkj()`.
+#' @param include_primitives whether to retain LKJ primitive beta coordinates
+#'   for backend inspection. They remain internal and are not added to the
+#'   public semantic parameter catalog.
 #' @export
 prior_lkj <- function(eta = 1, include_correlation = TRUE,
                       include_primitives = FALSE){
@@ -638,13 +670,15 @@ prior_lkj <- function(eta = 1, include_correlation = TRUE,
 #' @param coefficients whether to monitor realized group-level coefficients.
 #'   This is convenient for inspection but can be memory intensive.
 #' @param correlation whether correlation matrices are part of the semantic
-#'   monitored output. Scalar CS/HCS/AR1/HAR/CAR backends retain only `rho`
-#'   during sampling and derive the requested matrix afterward; this avoids a
-#'   quadratic JAGS graph without changing the correlation target.
-#' @param lkj_primitives whether to monitor user-facing LKJ primitive beta
-#'   coordinates. For formula `us` random effects, raw LKJ primitive `u`
-#'   coordinates are always retained internally because bridge sampling evaluates
-#'   the LKJ prior on those coordinates.
+#'   monitored output. Scalar CS/HCS/AR1/HAR/CAR backends retain only an
+#'   internal `rho` coordinate during sampling and derive the requested matrix
+#'   afterward; this avoids a quadratic JAGS graph without changing the public
+#'   `cor` target.
+#' @param lkj_primitives whether to retain LKJ primitive beta coordinates for
+#'   backend inspection. They remain internal rather than semantic catalog
+#'   quantities. For formula `us` random effects, raw LKJ primitive `u`
+#'   coordinates are always retained internally because bridge sampling
+#'   evaluates the LKJ prior on those coordinates.
 #' @export
 random_monitor <- function(latent = TRUE, coefficients = FALSE,
                            correlation = TRUE, lkj_primitives = FALSE){
@@ -1027,6 +1061,19 @@ is.prior_random <- function(x){
   )
   if(!grepl("^[A-Za-z][A-Za-z0-9_]*$", allocation$name)){
     stop("'name' must start with a letter and contain only letters, numbers, and underscores.", call. = FALSE)
+  }
+  check_char(allocation$display_name, "display_name", allow_NA = FALSE)
+  check_char(allocation$component_names, "component_names", check_length = 0,
+             allow_NULL = TRUE, allow_NA = FALSE)
+  if(!is.null(allocation$component_names)){
+    if(is.null(allocation$terms) ||
+       length(allocation$component_names) != length(allocation$terms)){
+      stop("'component_names' must have one public name for each entry in 'terms'.", call. = FALSE)
+    }
+    if(any(!nzchar(allocation$component_names)) ||
+       anyDuplicated(allocation$component_names)){
+      stop("'component_names' must be non-empty and unique.", call. = FALSE)
+    }
   }
   target <- allocation$target
   scale <- allocation$scale

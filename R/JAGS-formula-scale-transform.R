@@ -39,9 +39,9 @@
 #' @export
 transform_scale_samples <- function(fit, formula_scale = NULL){
 
-  parameter_registry <- NULL
+  coordinates <- NULL
   if(inherits(fit, "BayesTools_fit")){
-    parameter_registry <- JAGS_parameter_registry(fit)
+    coordinates <- parameter_coordinates(fit)
   }
 
   # extract formula_scale from fit if available
@@ -69,14 +69,14 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
   posterior <- .apply_unscale_transform(posterior, formula_scale)
   posterior <- .bt_remove_internal_random_coordinates(
     posterior = posterior,
-    parameter_registry = parameter_registry
+    coordinates = coordinates
   )
 
   return(posterior)
 }
 
 .bt_remove_internal_random_coordinates <- function(posterior,
-                                                   parameter_registry = NULL){
+                                                   coordinates = NULL){
 
   posterior <- as.matrix(posterior)
   column_names <- colnames(posterior)
@@ -90,15 +90,15 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
     perl = TRUE
   )
 
-  if(!is.null(parameter_registry)){
-    .bt_validate_parameter_registry(parameter_registry)
-    registry_rows <- match(
+  if(!is.null(coordinates)){
+    .bt_validate_parameter_coordinates(coordinates)
+    coordinate_rows <- match(
       column_names,
-      parameter_registry$coordinate_name
+      coordinates$coordinate_name
     )
-    registered <- !is.na(registry_rows)
-    remove[registered] <- parameter_registry$internal[registry_rows[registered]] &
-      parameter_registry$role[registry_rows[registered]] %in% c(
+    registered <- !is.na(coordinate_rows)
+    remove[registered] <- coordinates$internal[coordinate_rows[registered]] &
+      coordinates$role[coordinate_rows[registered]] %in% c(
         "random_latent",
         "random_group_coefficient"
       )

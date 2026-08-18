@@ -146,26 +146,25 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
     set.seed(seed)
   }
 
-  parsed <- .bt_hypothesis_ast_legacy(hypothesis_ast)
+  statements <- hypothesis_ast$statements
   quantities <- .as_hypothesis_quantities(
     posterior  = posterior,
     prior      = prior,
-    parsed     = parsed,
+    statements = statements,
     parameter  = parameter
   )
 
   rows <- list()
   row_i <- 1L
-  for(hyp_i in seq_along(parsed)){
+  for(hyp_i in seq_along(statements)){
     for(quantity_i in seq_along(quantities)){
       result <- .hypothesis_BF_compute(
         quantity       = quantities[[quantity_i]],
-        parsed         = parsed[[hyp_i]],
+        statement      = statements[[hyp_i]],
         density_method = density_method
       )
       rows[[row_i]] <- .hypothesis_BF_row(
         quantity = quantities[[quantity_i]],
-        parsed   = parsed[[hyp_i]],
         result   = result
       )
       row_i <- row_i + 1L
@@ -181,7 +180,6 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
   out      <- out[, columns, drop = FALSE]
 
   attr(out, "raw_BF")   <- raw_BF
-  attr(out, "parsed")   <- parsed
   attr(out, "hypothesis_ast") <- hypothesis_ast
   attr(out, "logBF")    <- logBF
   attr(out, "BF01")     <- BF01

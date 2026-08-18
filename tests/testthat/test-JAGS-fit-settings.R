@@ -119,7 +119,7 @@ test_that("JAGS_extend validates runtime controls before extension", {
   attr(fit, "required_packages") <- character()
   attr(fit, "jags_modules") <- character()
   attr(fit, "add_parameters") <- character()
-  attr(fit, "parameter_registry") <- build_test_parameter_registry(character())
+  attr(fit, "parameter_map") <- .bt_build_parameter_map(character())
   fit
 }
 
@@ -221,9 +221,8 @@ test_that("JAGS_fit autofit preserves the last valid fit after a backend error",
     JAGS_check_convergence = function(...) FALSE,
     .JAGS_require_packages = function(...) invisible(NULL),
     .JAGS_load_modules = function(...) invisible(NULL),
-    .bt_attach_parameter_registry = function(fit, ...) fit,
+    .bt_attach_parameter_map = function(fit, ...) fit,
     .bt_attach_draw_geometry = function(fit, ...) fit,
-    .bt_attach_parameter_catalog = function(fit, ...) fit,
     .package = "BayesTools"
   )
 

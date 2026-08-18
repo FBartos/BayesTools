@@ -249,7 +249,7 @@ test_that("JAGS_bridgesampling evaluates fixed scalar and vector models exactly"
   expect_identical(result[["diagnostics"]][["chains"]][["draws"]], 20L)
 })
 
-test_that("BayesTools fits require the canonical registry for bridge replay", {
+test_that("BayesTools fits require the parameter map for bridge replay", {
 
   fit <- coda::as.mcmc(matrix(
     seq_len(20),

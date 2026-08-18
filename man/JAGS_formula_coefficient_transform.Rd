@@ -43,7 +43,7 @@ product-space or conditional prior mixtures; when \code{NULL}, the fitted
 \code{JAGS_formula_coefficient_transform()} exposes the exact fixed-coefficient
 transformation used by \code{\link[=transform_scale_samples]{transform_scale_samples()}}. It records fitted
 sources, original-scale targets, named source/output transforms, exact
-nonzero dependencies, and registry structural metadata.
+nonzero dependencies, and parameter-map structural metadata.
 
 \code{JAGS_formula_prior_density()} constructs the induced marginal prior measure
 for one target through BayesTools' deterministic prior-density context and

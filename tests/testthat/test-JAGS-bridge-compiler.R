@@ -126,6 +126,9 @@ test_that("row prior evaluation preserves joint prior boundaries", {
   }, numeric(1))
 
   expect_equal(JAGS_marglik_priors_rows(samples, prior_list), expected)
+  evaluator <- JAGS_marglik_priors_rows_evaluator(prior_list)
+  expect_equal(evaluator(samples), expected)
+  expect_equal(evaluator(samples[c(3L, 1L), , drop = FALSE]), expected[c(3L, 1L)])
   expect_equal(
     JAGS_marglik_priors_rows(samples[1L, ], prior_list),
     expected[1L]
@@ -177,7 +180,8 @@ test_that("row prior evaluation retains an exact scalar fallback", {
   }, numeric(1))
   expect_equal(
     JAGS_marglik_priors_rows(factor_samples, factor_list),
-    factor_expected
+    factor_expected,
+    tolerance = 0
   )
 })
 

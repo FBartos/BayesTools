@@ -216,58 +216,65 @@ random_effects_marginal_factor_states <- function(
     formula_prior_list = formula_prior_list,
     model_data = NULL
   )
-  values <- lapply(seq_len(nrow(posterior)), function(row){
-    samples <- posterior[row, ]
-    formula_prior_parameters <- list()
-    for(prior_name in names(prior_list)){
-      prior <- prior_list[[prior_name]]
-      if(is.prior.simplex(prior) &&
-         identical(prior$distribution, "dirichlet")){
-        K <- prior$parameters[["K"]]
-        weights <- paste0(prior_name, "[", seq_len(K), "]")
-        eta <- paste0(
-          .JAGS_prior_dirichlet_eta_name(prior_name),
-          "[", seq_len(K), "]"
-        )
-        if(all(weights %in% names(samples))){
-          formula_prior_parameters[[prior_name]] <- unname(samples[weights])
-        }else if(all(eta %in% names(samples))){
-          eta_values <- unname(samples[eta])
-          eta_sum    <- sum(eta_values)
-          if(any(!is.finite(eta_values)) || any(eta_values < 0) ||
-             !is.finite(eta_sum) || eta_sum <= 0){
-            stop(
-              "Dirichlet auxiliary coordinates for '", prior_name,
-              "' must be finite, non-negative, and have a positive sum.",
-              call. = FALSE
-            )
+  batch <- evaluator$factor_states(posterior)
+  if(!is.null(batch)){
+    batch <- batch[[parameter_name]]
+    factor_plans  <- batch$factor_plans
+    factor_states <- batch$factor_states
+  }else{
+    values <- lapply(seq_len(nrow(posterior)), function(row){
+      samples <- posterior[row, ]
+      formula_prior_parameters <- list()
+      for(prior_name in names(prior_list)){
+        prior <- prior_list[[prior_name]]
+        if(is.prior.simplex(prior) &&
+           identical(prior$distribution, "dirichlet")){
+          K <- prior$parameters[["K"]]
+          weights <- paste0(prior_name, "[", seq_len(K), "]")
+          eta <- paste0(
+            .JAGS_prior_dirichlet_eta_name(prior_name),
+            "[", seq_len(K), "]"
+          )
+          if(all(weights %in% names(samples))){
+            formula_prior_parameters[[prior_name]] <- unname(samples[weights])
+          }else if(all(eta %in% names(samples))){
+            eta_values <- unname(samples[eta])
+            eta_sum    <- sum(eta_values)
+            if(any(!is.finite(eta_values)) || any(eta_values < 0) ||
+               !is.finite(eta_sum) || eta_sum <= 0){
+              stop(
+                "Dirichlet auxiliary coordinates for '", prior_name,
+                "' must be finite, non-negative, and have a positive sum.",
+                call. = FALSE
+              )
+            }
+            formula_prior_parameters[[prior_name]] <-
+              eta_values / eta_sum
           }
-          formula_prior_parameters[[prior_name]] <-
-            eta_values / eta_sum
+          if(all(weights %in% names(samples)) && all(eta %in% names(samples))){
+            samples <- samples[setdiff(names(samples), eta)]
+          }
+          next
         }
-        if(all(weights %in% names(samples)) && all(eta %in% names(samples))){
-          samples <- samples[setdiff(names(samples), eta)]
+        if(is.prior.point(prior)){
+          formula_prior_parameters <- c(
+            formula_prior_parameters,
+            JAGS_marglik_parameters(samples, prior_list[prior_name])
+          )
         }
-        next
       }
-      if(is.prior.point(prior)){
-        formula_prior_parameters <- c(
-          formula_prior_parameters,
-          JAGS_marglik_parameters(samples, prior_list[prior_name])
-        )
-      }
-    }
-    evaluator$covariance(
-      samples = samples,
-      prior_parameters = list(),
-      formula_prior_parameters = formula_prior_parameters,
-      formula_parameters = list(),
-      factor_covariance = FALSE,
-      factor_state = TRUE
-    )[[parameter_name]]
-  })
-  factor_plans <- values[[1L]]$factor_plans
-  factor_states <- lapply(values, `[[`, "factor_states")
+      evaluator$covariance(
+        samples = samples,
+        prior_parameters = list(),
+        formula_prior_parameters = formula_prior_parameters,
+        formula_parameters = list(),
+        factor_covariance = FALSE,
+        factor_state = TRUE
+      )[[parameter_name]]
+    })
+    factor_plans  <- values[[1L]]$factor_plans
+    factor_states <- lapply(values, `[[`, "factor_states")
+  }
   structures <- stats::setNames(vapply(
     random_effects,
     .bt_random_effect_structure,
@@ -2094,15 +2101,15 @@ random_effects_marginal_variance_factors <- function(
     )
   }
 
-  diagonal <- matrix(NA_real_, nrow = dim(cholesky)[1L], ncol = n_columns)
-  for(draw in seq_len(nrow(posterior))){
-    draw_cholesky <- matrix(
-      cholesky[draw, , ],
-      nrow = n_columns,
+  diagonal <- matrix(
+    rowSums(matrix(
+      cholesky^2,
+      nrow = nrow(posterior) * n_columns,
       ncol = n_columns
-    )
-    diagonal[draw, ] <- rowSums(draw_cholesky^2)
-  }
+    )),
+    nrow = nrow(posterior),
+    ncol = n_columns
+  )
   if(any(!is.finite(diagonal))){
     stop(
       "Random-effect marginal covariance correlation draws for block '",

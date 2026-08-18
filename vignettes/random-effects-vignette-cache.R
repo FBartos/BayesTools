@@ -522,16 +522,16 @@ random_effects_vignette_dependency_state <- function(
   )
 }
 
-.random_effects_vignette_compatibility_fingerprint <- function(dependencies){
+.random_effects_vignette_contract_fingerprint <- function(dependencies){
   .random_effects_vignette_object_md5(
     .random_effects_vignette_contract(dependencies)
   )
 }
 
 .random_effects_vignette_generation_fingerprint <- function(
-    compatibility_fingerprint, model_hashes, producer){
+    contract_fingerprint, model_hashes, producer){
   .random_effects_vignette_object_sha256(list(
-    compatibility_fingerprint = compatibility_fingerprint,
+    contract_fingerprint = contract_fingerprint,
     model_hashes = model_hashes,
     producer = producer
   ))
@@ -639,8 +639,8 @@ random_effects_vignette_dependency_state <- function(
 
 .random_effects_vignette_manifest <- function(
     dependencies, model_hashes, producer){
-  compatibility_fingerprint <-
-    .random_effects_vignette_compatibility_fingerprint(dependencies)
+  contract_fingerprint <-
+    .random_effects_vignette_contract_fingerprint(dependencies)
   list(
     format = .random_effects_vignette_cache_format(),
     manifest_version = .random_effects_vignette_manifest_version(),
@@ -648,11 +648,11 @@ random_effects_vignette_dependency_state <- function(
     model_schema = random_effects_vignette_cache_model_schema(),
     model_hashes = model_hashes,
     dependencies = dependencies,
-    compatibility_fingerprint = compatibility_fingerprint,
+    contract_fingerprint = contract_fingerprint,
     producer = producer,
     generation_fingerprint =
       .random_effects_vignette_generation_fingerprint(
-        compatibility_fingerprint,
+        contract_fingerprint,
         model_hashes,
         producer
       )
@@ -674,7 +674,7 @@ random_effects_vignette_dependency_state <- function(
     names(manifest),
     c(
       "format", "manifest_version", "cache_schema_version", "model_schema",
-      "model_hashes", "dependencies", "compatibility_fingerprint",
+      "model_hashes", "dependencies", "contract_fingerprint",
       "producer", "generation_fingerprint"
     )
   )){
@@ -711,22 +711,22 @@ random_effects_vignette_dependency_state <- function(
   if(!is.null(dependency_error)){
     return(dependency_error)
   }
-  expected_compatibility <-
-    .random_effects_vignette_compatibility_fingerprint(
+  expected_contract <-
+    .random_effects_vignette_contract_fingerprint(
       manifest$dependencies
     )
   if(!identical(
-    manifest$compatibility_fingerprint,
-    expected_compatibility
+    manifest$contract_fingerprint,
+    expected_contract
   )){
-    return("compatibility fingerprint does not match the manifest inputs")
+    return("contract fingerprint does not match the manifest inputs")
   }
   producer_error <- .random_effects_vignette_producer_error(manifest$producer)
   if(!is.null(producer_error)){
     return(producer_error)
   }
   expected_generation <- .random_effects_vignette_generation_fingerprint(
-    manifest$compatibility_fingerprint,
+    manifest$contract_fingerprint,
     manifest$model_hashes,
     manifest$producer
   )
@@ -781,7 +781,6 @@ validate_random_effects_vignette_cache <- function(
   status <- list(
     file_exists = file.exists(cache_file),
     read_error = NULL,
-    legacy_cache = FALSE,
     envelope_valid = FALSE,
     manifest_valid = FALSE,
     manifest_error = NULL,
@@ -809,12 +808,6 @@ validate_random_effects_vignette_cache <- function(
   )
   if(inherits(envelope, "error")){
     status$read_error <- conditionMessage(envelope)
-    return(status)
-  }
-  if(is.list(envelope) &&
-      is.null(envelope$manifest) &&
-      length(intersect(names(schema), names(envelope))) > 0L){
-    status$legacy_cache <- TRUE
     return(status)
   }
   status$envelope_valid <- is.list(envelope) &&
@@ -901,14 +894,6 @@ format_random_effects_vignette_cache_error <- function(status){
       "Could not read precomputed RandomEffects vignette cache: ",
       status$read_error
     ))
-  }
-  if(isTRUE(status$legacy_cache)){
-    return(
-      paste0(
-        "Precomputed RandomEffects vignette cache uses the legacy format ",
-        "without a manifest; regenerate it."
-      )
-    )
   }
   if(!isTRUE(status$envelope_valid)){
     return(

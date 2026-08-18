@@ -68,7 +68,9 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
     }
   }
   statements <- lapply(hypothesis, function(statement){
-    .bt_hypothesis_ast_statement(.parse_hypothesis_BF(statement))
+    .bt_hypothesis_ast_statement_from_spec(
+      .hypothesis_parse_statement_spec(statement)
+    )
   })
   out <- list(
     schema_version = .bt_hypothesis_ast_version,
@@ -210,7 +212,7 @@ hypothesis_ast_schema <- function(){
       "source", "explicit", "left", "right",
       "type", "source", "label", "expression", "value",
       "type", "source", "operator/name", "children/value",
-      "schema_version", "ast_schema_version", "catalog_schema_version",
+      "schema_version", "ast_schema_version", "parameter_map_version",
       "occurrences"
     ),
     type = c(
@@ -237,7 +239,7 @@ hypothesis_ast_schema <- function(){
       "Typed node payload.",
       "Resolution schema version.",
       "AST schema version used for resolution.",
-      "Parameter-catalog schema version used for resolution.",
+      "Parameter-map schema version used for resolution.",
       "Occurrence-to-quantity mapping table."
     ),
     stringsAsFactors = FALSE
@@ -426,7 +428,7 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
   out <- list(
     schema_version = .bt_hypothesis_resolution_version,
     ast_schema_version = ast$schema_version,
-    catalog_schema_version = catalog$schema_version,
+    parameter_map_version = catalog$schema_version,
     occurrences = do.call(rbind, resolved)
   )
   rownames(out$occurrences) <- NULL
@@ -448,11 +450,11 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
     identical(reparsed$name, root)
 }
 
-.bt_hypothesis_ast_statement <- function(parsed){
+.bt_hypothesis_ast_statement_from_spec <- function(spec){
 
-  left <- .bt_hypothesis_ast_side(parsed$left)
-  right <- .bt_hypothesis_ast_side(parsed$right)
-  source <- if(isTRUE(parsed$explicit)){
+  left <- .bt_hypothesis_ast_side(spec$left)
+  right <- .bt_hypothesis_ast_side(spec$right)
+  source <- if(isTRUE(spec$explicit)){
     paste(.bt_hypothesis_render_side(left), "vs",
           .bt_hypothesis_render_side(right))
   }else{
@@ -460,7 +462,7 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
   }
   list(
     source = source,
-    explicit = isTRUE(parsed$explicit),
+    explicit = isTRUE(spec$explicit),
     left = left,
     right = right
   )
@@ -725,9 +727,7 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
            call. = FALSE)
     }
     if(!isTRUE(statement$explicit)){
-      expected <- .bt_hypothesis_ast_side(.hypothesis_complement_side(
-        .bt_hypothesis_side_legacy(statement$left)
-      ))
+      expected <- .bt_hypothesis_complement_side(statement$left)
       if(!identical(statement$right$type, expected$type) ||
          !identical(.bt_hypothesis_render_side(statement$right),
                     .bt_hypothesis_render_side(expected))){
@@ -737,6 +737,41 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
     }
   }
   invisible(TRUE)
+}
+
+.bt_hypothesis_complement_side <- function(side) {
+
+  if(side$type %in% c("point", "not_point")) {
+    out <- side
+    out$type <- if(identical(side$type, "point")) "not_point" else "point"
+    return(.bt_hypothesis_refresh_side(out))
+  }
+
+  expression <- .bt_hypothesis_node_language(side$expression)
+  simple <- .hypothesis_unwrap_parentheses(expression)
+  operator <- .hypothesis_call_name(simple)
+  if(!is.null(operator) && operator %in% c("<", "<=", ">", ">=")) {
+    complement <- switch(
+      operator,
+      ">"  = "<=",
+      ">=" = "<",
+      "<"  = ">=",
+      "<=" = ">"
+    )
+    expression <- as.call(list(
+      as.name(complement),
+      simple[[2L]],
+      simple[[3L]]
+    ))
+  } else {
+    expression <- as.call(list(
+      as.name("!"),
+      as.call(list(as.name("("), expression))
+    ))
+  }
+  out <- side
+  out$expression <- .bt_hypothesis_ast_node(expression)
+  .bt_hypothesis_refresh_side(out)
 }
 
 .bt_validate_hypothesis_side <- function(side){
@@ -858,59 +893,4 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
          call. = FALSE)
   }
   invisible(TRUE)
-}
-
-.bt_hypothesis_ast_legacy <- function(ast){
-
-  .bt_validate_hypothesis_ast(ast)
-  lapply(ast$statements, function(statement){
-    out <- list(
-      input = statement$source,
-      left = .bt_hypothesis_side_legacy(statement$left),
-      right = .bt_hypothesis_side_legacy(statement$right),
-      explicit = statement$explicit
-    )
-    class(out) <- "BayesTools_hypothesis_BF_parsed"
-    out
-  })
-}
-
-.bt_hypothesis_side_legacy <- function(side){
-
-  expression <- .bt_hypothesis_node_language(side$expression)
-  if(side$type %in% c("point", "not_point")){
-    return(list(
-      type = side$type,
-      label = side$label,
-      expr = expression,
-      expression = expression,
-      value = side$value
-    ))
-  }
-  simple_expression <- .hypothesis_unwrap_parentheses(expression)
-  fun <- .hypothesis_call_name(simple_expression)
-  simple <- !is.null(fun) && fun %in% c("<", "<=", ">", ">=")
-  out <- list(
-    type = "region",
-    label = side$label,
-    condition = expression,
-    condition_expression = expression,
-    simple = simple
-  )
-  if(simple){
-    lhs <- simple_expression[[2L]]
-    rhs <- simple_expression[[3L]]
-    rhs_symbols <- .hypothesis_expression_symbols(rhs)
-    out$expr <- lhs
-    out$expression <- lhs
-    out$value <- if(length(rhs_symbols) == 0L){
-      .hypothesis_parse_number(rhs)
-    }else{
-      NULL
-    }
-    out$operator <- fun
-    out$rhs <- rhs
-    out$rhs_expression <- rhs
-  }
-  out
 }

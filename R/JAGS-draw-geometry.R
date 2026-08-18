@@ -1,4 +1,4 @@
-# Draw geometry and registry-based deterministic materialization.
+# Draw geometry and coordinate-based deterministic materialization.
 
 .bt_draw_geometry_version <- 1L
 .bt_backend_anchor_name <- "BayesTools_backend_anchor"
@@ -10,8 +10,8 @@
 #' stored from the actual chains returned by JAGS. Geometry is independent of
 #' which coordinates are public.
 #'
-#' `JAGS_materialize_draws()` reconstructs requested public coordinates from
-#' the parameter registry. Sampled coordinates are selected from the fitted
+#' `JAGS_materialize_draws()` reconstructs requested coordinates from the
+#' fitted parameter map. Sampled coordinates are selected from the fitted
 #' chains and structural coordinates are filled with their exact `fixed_value`.
 #' Internal coordinates, including a private backend anchor, are excluded by
 #' default.
@@ -20,9 +20,9 @@
 #' and matching draw-geometry metadata.
 #'
 #' @param fit fitted object created by [JAGS_fit()].
-#' @param parameters optional exact vector of registry `coordinate_name` values.
-#'   `NULL` selects every available public coordinate in registry order.
-#' @param include_internal whether internal registry coordinates may be returned.
+#' @param parameters optional exact vector of `coordinate_name` values.
+#'   `NULL` selects every available public coordinate in map order.
+#' @param include_internal whether internal coordinates may be returned.
 #' @param draws replacement draws coercible to a `coda::mcmc.list`.
 #'
 #' @return `JAGS_draw_geometry()` returns a `BayesTools_draw_geometry` list.
@@ -87,11 +87,11 @@ JAGS_materialize_draws <- function(fit, parameters = NULL,
              allow_NA = FALSE)
   check_bool(include_internal, "include_internal", allow_NA = FALSE)
   geometry <- JAGS_draw_geometry(fit)
-  registry <- JAGS_parameter_registry(fit)
+  coordinates <- parameter_coordinates(fit)
 
-  available <- registry$monitor_status %in% c("sampled", "structural")
+  available <- coordinates$monitor_status %in% c("sampled", "structural")
   if(!include_internal){
-    available <- available & !registry$internal
+    available <- available & !coordinates$internal
   }
   if(is.null(parameters)){
     selected <- which(available)
@@ -99,10 +99,10 @@ JAGS_materialize_draws <- function(fit, parameters = NULL,
     if(anyDuplicated(parameters)){
       stop("'parameters' must not contain duplicates.", call. = FALSE)
     }
-    matches <- match(parameters, registry$coordinate_name)
+    matches <- match(parameters, coordinates$coordinate_name)
     if(anyNA(matches)){
       stop(
-        "Unknown registry parameter",
+        "Unknown parameter coordinate",
         if(sum(is.na(matches)) > 1L) "s: " else ": ",
         paste0("'", parameters[is.na(matches)], "'", collapse = ", "),
         ".",
@@ -117,7 +117,7 @@ JAGS_materialize_draws <- function(fit, parameters = NULL,
     }
     selected <- matches
   }
-  selected_registry <- registry[selected, , drop = FALSE]
+  selected_coordinates <- coordinates[selected, , drop = FALSE]
 
   chains <- .extract_posterior_samples(fit, as_list = TRUE)
   if(length(chains) != nrow(geometry$chains)){
@@ -137,24 +137,24 @@ JAGS_materialize_draws <- function(fit, parameters = NULL,
       )
     }
     values <- matrix(
-      numeric(nrow(chain) * nrow(selected_registry)),
+      numeric(nrow(chain) * nrow(selected_coordinates)),
       nrow = nrow(chain),
-      ncol = nrow(selected_registry),
-      dimnames = list(NULL, selected_registry$coordinate_name)
+      ncol = nrow(selected_coordinates),
+      dimnames = list(NULL, selected_coordinates$coordinate_name)
     )
-    for(parameter_i in seq_len(nrow(selected_registry))){
-      registry_row <- selected_registry[parameter_i, , drop = FALSE]
-      if(identical(registry_row$monitor_status, "sampled")){
-        column <- match(registry_row$coordinate_name, colnames(chain))
+    for(parameter_i in seq_len(nrow(selected_coordinates))){
+      coordinate_row <- selected_coordinates[parameter_i, , drop = FALSE]
+      if(identical(coordinate_row$monitor_status, "sampled")){
+        column <- match(coordinate_row$coordinate_name, colnames(chain))
         if(is.na(column)){
           stop(
-            "A sampled registry coordinate is missing from the fitted chains. Refit the model with this version of BayesTools.",
+            "A sampled parameter coordinate is missing from the fitted chains. Refit the model with this version of BayesTools.",
             call. = FALSE
           )
         }
         values[, parameter_i] <- chain[, column]
       }else{
-        values[, parameter_i] <- registry_row$fixed_value
+        values[, parameter_i] <- coordinate_row$fixed_value
       }
     }
     out[[chain_i]] <- coda::mcmc(

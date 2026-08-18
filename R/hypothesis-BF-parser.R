@@ -158,7 +158,7 @@ hypothesis_normalize_level_references <- function(text){
 }
 
 
-.parse_hypothesis_BF <- function(hypothesis) {
+.hypothesis_parse_statement_spec <- function(hypothesis) {
 
   hypothesis <- .hypothesis_normalize_level_references(hypothesis)
   .hypothesis_reject_assignment_arrow(hypothesis)
@@ -170,15 +170,12 @@ hypothesis_normalize_level_references <- function(text){
     .hypothesis_complement_side(left)
   }
 
-  out <- list(
+  list(
     input    = hypothesis,
     left     = left,
     right    = right,
     explicit = length(parts) == 2L
   )
-  class(out) <- "BayesTools_hypothesis_BF_parsed"
-
-  return(out)
 }
 
 
@@ -979,36 +976,36 @@ hypothesis_normalize_level_references <- function(text){
 }
 
 
-.hypothesis_parsed_symbols <- function(parsed) {
+.hypothesis_statement_symbols <- function(statement) {
 
   symbols <- character()
   for(side_name in c("left", "right")){
-    side <- parsed[[side_name]]
-    if(!is.null(side[["expr"]])){
-      symbols <- c(symbols, .hypothesis_expression_symbols(
-        .hypothesis_parse_expression(side[["expr"]])
-      ))
-    }
-    if(!is.null(side[["condition"]])){
-      symbols <- c(symbols, .hypothesis_expression_symbols(
-        .hypothesis_parse_expression(side[["condition"]])
-      ))
-    }
+    nodes <- .bt_hypothesis_symbol_nodes(statement[[side_name]]$expression)
+    symbols <- c(symbols, vapply(nodes, function(node) {
+      if(identical(node$type, "level_reference")) {
+        paste0(node$parameter, "[", node$level, "]")
+      } else {
+        node$name
+      }
+    }, character(1)))
   }
 
   return(unique(symbols))
 }
 
 
-.hypothesis_all_symbols <- function(parsed) {
+.hypothesis_all_symbols <- function(statements) {
 
-  unique(unlist(lapply(parsed, .hypothesis_parsed_symbols), use.names = FALSE))
+  unique(unlist(
+    lapply(statements, .hypothesis_statement_symbols),
+    use.names = FALSE
+  ))
 }
 
 
-.hypothesis_single_symbol <- function(parsed) {
+.hypothesis_single_symbol <- function(statements) {
 
-  symbols <- .hypothesis_all_symbols(parsed)
+  symbols <- .hypothesis_all_symbols(statements)
   if(length(symbols) == 1L){
     return(symbols)
   }

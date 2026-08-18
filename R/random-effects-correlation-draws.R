@@ -9,10 +9,11 @@
 #' @param random_term compiled random-effect term metadata from a
 #'   `BayesTools_formula_design` object.
 #' @param posterior_samples posterior sample matrix, data frame, `mcmc`, or
-#'   `mcmc.list`. Samples must contain the canonical scalar correlation
-#'   coordinate unless it is fixed in `random_term` metadata. A one-coefficient
-#'   block needs no correlation coordinate and accepts a numeric draw-by-zero
-#'   matrix.
+#'   `mcmc.list`. Samples must contain the compiled internal scalar-correlation
+#'   coordinate unless it is fixed in `random_term` metadata. This coordinate
+#'   is a backend dependency, not the public semantic `cor` quantity. A
+#'   one-coefficient block needs no correlation coordinate and accepts a numeric
+#'   draw-by-zero matrix.
 #'
 #' @return A dense numeric array with dimensions
 #'   `draw x coefficient x coefficient`. Coefficient dimension names use the

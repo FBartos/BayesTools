@@ -8,6 +8,10 @@
 \alias{parameter_catalog_resolve}
 \alias{parameter_draws}
 \alias{parameter_draws.BayesTools_fit}
+\alias{parameter_transform}
+\alias{parameter_transform_forward}
+\alias{parameter_transform_inverse}
+\alias{parameter_transform_jacobian}
 \title{Semantic parameter catalogs and deferred draw extraction}
 \usage{
 parameter_catalog(object, ...)
@@ -22,7 +26,15 @@ parameter_catalog_resolve(catalog, alias, namespace = NULL, component = NULL)
 
 parameter_draws(object, selection, ...)
 
-\method{parameter_draws}{BayesTools_fit}(object, selection, ...)
+\method{parameter_draws}{BayesTools_fit}(object, selection, model_samples = NULL, ...)
+
+parameter_transform(object, selection)
+
+parameter_transform_forward(values, transform)
+
+parameter_transform_inverse(values, transform)
+
+parameter_transform_jacobian(values, transform)
 }
 \arguments{
 \item{object}{fitted object.}
@@ -45,18 +57,32 @@ parameter_draws(object, selection, ...)
 
 \item{selection}{a \code{BayesTools_parameter_selection} returned by
 \code{parameter_catalog_resolve()}.}
+
+\item{model_samples}{optional numeric matrix containing the declared source
+coordinates. This lets downstream summaries evaluate a selected semantic
+quantity on an already materialized posterior sample.}
+
+\item{values}{numeric values on the source scale for
+\code{parameter_transform_forward()} and \code{parameter_transform_jacobian()}, or
+on the public quantity scale for \code{parameter_transform_inverse()}.}
+
+\item{transform}{a serializable transform descriptor returned by
+\code{parameter_transform()}.}
 }
 \value{
 \code{parameter_catalog()} and \code{parameter_catalog_extend()} return a
 \code{BayesTools_parameter_catalog}. \code{parameter_catalog_schema()} returns schema
 descriptions. \code{parameter_catalog_resolve()} returns a
 \code{BayesTools_parameter_selection}. \code{parameter_draws()} returns a
-\code{coda::mcmc.list} for BayesTools-owned quantities.
+\code{coda::mcmc.list} for BayesTools-owned quantities. \code{parameter_transform()}
+returns a serializable transform descriptor or \code{NULL}; the transform helpers
+return numeric values.
 }
 \description{
-\code{parameter_catalog()} returns the versioned semantic catalog cached on a
-fitted object. The catalog contains only metadata: selectable quantities,
-exact aliases, and serializable extraction keys. Fixed factor terms expose
+\code{parameter_catalog()} returns the semantic quantities and aliases from the
+fitted object's versioned \code{\link[=parameter_map]{parameter_map()}}. The catalog contains only
+metadata: selectable quantities, exact aliases, and serializable extraction
+keys. Fixed factor terms expose
 every fitted level or interaction cell as a catalog component, so both
 \code{term[level]} and \code{term} plus \code{component = "level"} resolve without parsing
 backend coordinate names. Direct coordinates are reused; reference cells are
@@ -66,17 +92,19 @@ syntax-sensitive characters are percent-escaped and ambiguous interaction
 tokens are quoted so that every component remains hypothesis-safe and
 injective. These are coefficient-level quantities, distinct from estimated
 marginal means based on full predictions.
-\code{\link[=JAGS_parameter_registry]{JAGS_parameter_registry()}} remains the concrete posterior-coordinate map;
-the catalog is the separate semantic layer. Random-effect canonical names
-follow \verb{(formula) owner: quantity(arguments)}: parentheses contain parameter
-or coefficient names, while square brackets inside an argument contain its
+\code{\link[=parameter_coordinates]{parameter_coordinates()}} is the linked concrete posterior-coordinate view;
+the catalog is the semantic view of the same fitted map. Random-effect
+canonical names follow \verb{(formula) owner: quantity(arguments)}, with \verb{owner: }
+omitted when the formula contains exactly one random block and retained when
+multiple blocks require disambiguation. Parentheses contain parameter or
+coefficient names, while square brackets inside an argument contain its
 factor or index level. Examples include \verb{(mu) study: sd(intercept)},
 \verb{(mu) study: cor(group[sensitivity],group[specificity])}, and
-\verb{(mu) heterogeneity: var_prop(study)}. Formula-prefix omission is accepted as
+\verb{(mu) var_prop(study)}. Formula-prefix omission is accepted as
 an alias. Additional aliases are limited to genuine semantic equivalences,
 such as a CS/HCS pairwise correlation referring to its shared \code{cor}.
 
-Identity random-effect summaries reuse their sampled or structural registry
+Identity random-effect summaries reuse their sampled or structural
 coordinate. Summaries requiring a scale or covariance transformation expose
 only the transformed quantity; their fitted-scale inputs and all other
 private implementation coordinates remain dependencies rather than public
@@ -92,7 +120,14 @@ and component filters and returns a versioned selection only when the match
 is unique.
 
 \code{parameter_draws()} is the deferred extraction boundary. The BayesTools fit
-method reads only the registry coordinates declared by the selected
+method reads only the coordinates declared by the selected
 extraction key. Downstream packages can provide methods for package-owned
 derived quantities.
+
+\code{parameter_transform()} returns the one-to-one map from the selected source
+coordinate to its public semantic quantity when that map exists. Composite
+quantities return \code{NULL}. The forward, inverse, and Jacobian helpers are the
+authoritative evaluators for these serializable descriptors, so downstream
+consumers do not need to reproduce backend correlation, allocation, or
+formula-scale transformations.
 }

@@ -13,14 +13,13 @@ skip_if_not_test_profile("unit")
   if(!is.null(formula_scale)){
     attr(fit, "formula_scale") <- formula_scale
   }
-  attr(fit, "parameter_registry") <- .bt_build_parameter_registry(
+  attr(fit, "parameter_map") <- .bt_build_parameter_map(
     columns = colnames(chains[[1L]]),
     prior_list = prior_list,
     formula_design = formula_design,
     formula_scale = formula_scale
   )
   fit <- .bt_attach_draw_geometry(fit)
-  fit <- .bt_attach_parameter_catalog(fit)
   .bt_attach_fit_contract(fit)
 }
 
@@ -30,7 +29,7 @@ test_that("parameter catalog construction is metadata-only and versioned", {
     theta = prior("normal", list(0, 1)),
     fixed = prior("point", list(-3))
   )
-  registry <- .bt_build_parameter_registry(
+  coordinates <- .bt_build_parameter_coordinates(
     columns = "theta",
     prior_list = prior_list
   )
@@ -42,11 +41,11 @@ test_that("parameter catalog construction is metadata-only and versioned", {
   )
 
   expect_silent(catalog <- .bt_build_parameter_catalog(
-    registry = registry,
+    coordinates = coordinates,
     prior_list = prior_list
   ))
   expect_s3_class(catalog, "BayesTools_parameter_catalog")
-  expect_identical(catalog$schema_version, 5L)
+  expect_identical(catalog$schema_version, 1L)
   expect_identical(
     names(catalog$quantities),
     .bt_parameter_catalog_quantity_columns
@@ -69,13 +68,13 @@ test_that("factor catalog components preserve fitted level identities", {
       f = prior_factor("normal", list(0, 1), contrast = "treatment")
     )
   )
-  registry <- .bt_build_parameter_registry(
+  coordinates <- .bt_build_parameter_coordinates(
     columns = c("mu_intercept", "mu_f[1]", "mu_f[2]"),
     prior_list = formula_result$prior_list,
     formula_design = list(mu = formula_result$formula_design)
   )
   catalog <- .bt_build_parameter_catalog(
-    registry = registry,
+    coordinates = coordinates,
     prior_list = formula_result$prior_list,
     formula_design = list(mu = formula_result$formula_design)
   )
@@ -137,10 +136,10 @@ test_that("factor catalog components preserve fitted level identities", {
     fixed = TRUE
   )
 
-  incomplete <- registry[registry$coordinate_name != "mu_f[2]", , drop = FALSE]
+  incomplete <- coordinates[coordinates$coordinate_name != "mu_f[2]", , drop = FALSE]
   expect_error(
     .bt_build_parameter_catalog(
-      registry = incomplete,
+      coordinates = incomplete,
       prior_list = formula_result$prior_list,
       formula_design = list(mu = formula_result$formula_design)
     ),
@@ -156,12 +155,12 @@ test_that("factor cell mapping is limited to fixed formula terms", {
     contrast = "orthonormal"
   )
   attr(ordinary, "levels") <- 3L
-  ordinary_registry <- .bt_build_parameter_registry(
+  ordinary_coordinates <- .bt_build_parameter_coordinates(
     .JAGS_prior_factor_names("p1", ordinary),
     prior_list = list(p1 = ordinary)
   )
   ordinary_catalog <- .bt_build_parameter_catalog(
-    ordinary_registry,
+    ordinary_coordinates,
     prior_list = list(p1 = ordinary)
   )
   expect_false(any(vapply(
@@ -184,13 +183,13 @@ test_that("factor cell mapping is limited to fixed formula terms", {
     )
   )
   random_term <- formula_result$formula_design$random_effects[[1L]]
-  random_registry <- .bt_build_parameter_registry(
+  random_coordinates <- .bt_build_parameter_coordinates(
     c("mu_intercept", random_term$sd_parameter_names),
     prior_list = formula_result$prior_list,
     formula_design = list(mu = formula_result$formula_design)
   )
   expect_silent(.bt_build_parameter_catalog(
-    random_registry,
+    random_coordinates,
     formula_result$prior_list,
     list(mu = formula_result$formula_design)
   ))
@@ -409,13 +408,13 @@ test_that("factor interaction cells use only their persisted term design", {
       name
     }
   }), use.names = FALSE)
-  registry <- .bt_build_parameter_registry(
+  coordinates <- .bt_build_parameter_coordinates(
     columns = coordinates,
     prior_list = formula_result$prior_list,
     formula_design = list(mu = formula_result$formula_design)
   )
   catalog <- .bt_build_parameter_catalog(
-    registry,
+    coordinates,
     formula_result$prior_list,
     list(mu = formula_result$formula_design)
   )
@@ -482,13 +481,13 @@ test_that("factor interaction components quote ambiguous level delimiters", {
       name
     }
   }), use.names = FALSE)
-  registry <- .bt_build_parameter_registry(
+  coordinates <- .bt_build_parameter_coordinates(
     columns = coordinates,
     prior_list = formula_result$prior_list,
     formula_design = list(mu = formula_result$formula_design)
   )
   catalog <- .bt_build_parameter_catalog(
-    registry,
+    coordinates,
     formula_result$prior_list,
     list(mu = formula_result$formula_design)
   )
@@ -542,13 +541,13 @@ test_that("factor components escape hypothesis syntax characters", {
     "mu_intercept",
     .JAGS_prior_factor_names("mu_f", prior)
   )
-  registry <- .bt_build_parameter_registry(
+  coordinates <- .bt_build_parameter_coordinates(
     columns = coordinates,
     prior_list = formula_result$prior_list,
     formula_design = list(mu = formula_result$formula_design)
   )
   catalog <- .bt_build_parameter_catalog(
-    registry,
+    coordinates,
     formula_result$prior_list,
     list(mu = formula_result$formula_design)
   )
@@ -589,13 +588,13 @@ test_that("factor components preserve boundary whitespace", {
     )
   )
   prior <- formula_result$prior_list$mu_f
-  registry <- .bt_build_parameter_registry(
+  coordinates <- .bt_build_parameter_coordinates(
     columns = c("mu_intercept", .JAGS_prior_factor_names("mu_f", prior)),
     prior_list = formula_result$prior_list,
     formula_design = list(mu = formula_result$formula_design)
   )
   catalog <- .bt_build_parameter_catalog(
-    registry,
+    coordinates,
     formula_result$prior_list,
     list(mu = formula_result$formula_design)
   )
@@ -617,11 +616,11 @@ test_that("factor components preserve boundary whitespace", {
 
 test_that("catalog extensions preserve ambiguity until filtered", {
 
-  registry <- .bt_build_parameter_registry(
+  coordinates <- .bt_build_parameter_coordinates(
     columns = "theta",
     prior_list = list(theta = prior("normal", list(0, 1)))
   )
-  catalog <- .bt_build_parameter_catalog(registry)
+  catalog <- .bt_build_parameter_catalog(coordinates)
   location <- .bt_parameter_catalog_quantity(
     canonical_name = "effect_location",
     namespace = "location",
@@ -818,7 +817,7 @@ test_that("random summaries are cataloged and extracted from declared dependenci
   expect_false(any(c("mu_intercept", random_term$sd_parameter_names) %in%
                      correlation$extraction_key[[1L]]$dependencies))
 
-  sd_label <- "(mu) id: sd(intercept)"
+  sd_label <- "(mu) sd(intercept)"
   expect_identical(
     sum(catalog$quantities$display_label == sd_label),
     1L
@@ -848,11 +847,58 @@ test_that("random summaries are cataloged and extracted from declared dependenci
     catalog,
     correlation$canonical_name
   )
+  transform <- parameter_transform(fit, selection)
+  expect_identical(
+    transform,
+    list(type = "affine", offset = -1, scale = 2)
+  )
+  expect_equal(
+    parameter_transform_forward(c(.25, .75), transform),
+    c(-.5, .5)
+  )
   draws <- parameter_draws(fit, selection)
 
   expect_identical(observed, correlation$extraction_key[[1L]]$dependencies)
   expect_identical(colnames(draws[[1L]]), correlation$canonical_name)
   expect_equal(as.numeric(draws[[1L]][, 1L]), c(0, .2, .4))
+})
+
+test_that("semantic parameter transforms own scalar transform algebra", {
+
+  transforms <- list(
+    identity = list(type = "identity"),
+    affine = list(type = "affine", offset = -1, scale = 2),
+    tanh = list(type = "tanh"),
+    bounded_logit = list(type = "bounded_logit", lower = -.5, upper = 1),
+    sqrt_scale = list(type = "sqrt_scale", scale = 4),
+    square = list(type = "square")
+  )
+  source <- list(
+    identity = c(-1, 1),
+    affine = c(.25, .75),
+    tanh = c(-.5, .5),
+    bounded_logit = c(-1, 1),
+    sqrt_scale = c(.25, 1),
+    square = c(1, 2)
+  )
+  for(name in names(transforms)){
+    transformed <- parameter_transform_forward(source[[name]], transforms[[name]])
+    expect_equal(
+      parameter_transform_inverse(transformed, transforms[[name]]),
+      source[[name]],
+      info = name
+    )
+    expect_true(
+      all(parameter_transform_jacobian(source[[name]], transforms[[name]]) > 0),
+      info = name
+    )
+  }
+
+  expect_error(
+    parameter_transform_forward(1, list(type = "affine", offset = 0, scale = 0)),
+    "Unsupported semantic parameter transform",
+    fixed = TRUE
+  )
 })
 
 test_that("prior sampling includes stored LKJ primitive coordinates", {
@@ -975,29 +1021,29 @@ test_that("random covariance families share one semantic naming grammar", {
     car = ~ 1 + car(time | group)
   )
   expected <- list(
-    id = "(mu) group: sd",
+    id = "(mu) sd",
     diag = c(
-      "(mu) group: sd(intercept)",
-      "(mu) group: sd(time)"
+      "(mu) sd(intercept)",
+      "(mu) sd(time)"
     ),
     us = c(
-      "(mu) group: sd(intercept)",
-      "(mu) group: sd(time)",
-      "(mu) group: cor(intercept,time)"
+      "(mu) sd(intercept)",
+      "(mu) sd(time)",
+      "(mu) cor(intercept,time)"
     ),
-    cs = c("(mu) group: sd", "(mu) group: cor"),
+    cs = c("(mu) sd", "(mu) cor"),
     hcs = c(
-      "(mu) group: sd(level[x])",
-      "(mu) group: sd(level[y])",
-      "(mu) group: cor"
+      "(mu) sd(level[x])",
+      "(mu) sd(level[y])",
+      "(mu) cor"
     ),
-    ar1 = c("(mu) group: sd", "(mu) group: cor"),
+    ar1 = c("(mu) sd", "(mu) cor"),
     har = c(
-      "(mu) group: sd(level[x])",
-      "(mu) group: sd(level[y])",
-      "(mu) group: cor"
+      "(mu) sd(level[x])",
+      "(mu) sd(level[y])",
+      "(mu) cor"
     ),
-    car = c("(mu) group: sd", "(mu) group: cor")
+    car = c("(mu) sd", "(mu) cor")
   )
 
   catalogs <- lapply(formulas, function(formula){
@@ -1033,13 +1079,13 @@ test_that("random covariance families share one semantic naming grammar", {
       random_term$sd_parameter_names,
       correlation_coordinates
     ))
-    registry <- .bt_build_parameter_registry(
+    coordinates <- .bt_build_parameter_coordinates(
       columns = columns,
       prior_list = formula_result$prior_list,
       formula_design = list(mu = formula_result$formula_design)
     )
     .bt_build_parameter_catalog(
-      registry = registry,
+      coordinates = coordinates,
       prior_list = formula_result$prior_list,
       formula_design = list(mu = formula_result$formula_design)
     )
@@ -1066,15 +1112,15 @@ test_that("random covariance families share one semantic naming grammar", {
   expect_identical(
     parameter_catalog_resolve(
       catalogs$cs,
-      "group: cor(level[x],level[y])",
+      "cor(level[x],level[y])",
       "mu"
     )$quantities$canonical_name,
-    "(mu) group: cor"
+    "(mu) cor"
   )
   expect_error(
     parameter_catalog_resolve(
       catalogs$ar1,
-      "group: cor(level[x],level[y])",
+      "cor(level[x],level[y])",
       "mu"
     ),
     "No public parameter quantity matches"
@@ -1217,18 +1263,18 @@ test_that("identity random summaries preserve structural provenance", {
     )
   )
   random_term <- formula_result$formula_design$random_effects[[1L]]
-  registry <- .bt_build_parameter_registry(
+  coordinates <- .bt_build_parameter_coordinates(
     columns = c("mu_intercept", random_term$sd_parameter_names),
     prior_list = formula_result$prior_list,
     formula_design = list(mu = formula_result$formula_design)
   )
   catalog <- .bt_build_parameter_catalog(
-    registry,
+    coordinates,
     formula_result$prior_list,
     list(mu = formula_result$formula_design)
   )
 
-  label <- "(mu) id: sd(intercept)"
+  label <- "(mu) sd(intercept)"
   quantity <- parameter_catalog_resolve(
     catalog,
     label,
@@ -1275,13 +1321,13 @@ test_that("declared variance allocations have metadata-only catalog rows", {
     "mu__xRE_ALLOCx_allocation__weight[2]",
     unlist(lapply(random_terms, `[[`, "sd_parameter_names"))
   )
-  registry <- .bt_build_parameter_registry(
+  coordinates <- .bt_build_parameter_coordinates(
     columns = columns,
     prior_list = formula_result$prior_list,
     formula_design = list(mu = formula_result$formula_design)
   )
   catalog <- .bt_build_parameter_catalog(
-    registry = registry,
+    coordinates = coordinates,
     prior_list = formula_result$prior_list,
     formula_design = list(mu = formula_result$formula_design)
   )
@@ -1348,16 +1394,158 @@ test_that("declared variance allocations have metadata-only catalog rows", {
     study_fraction$quantities$canonical_name,
     fractions$canonical_name[fractions$component == "study"]
   )
+
+  unprefixed_result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name            = "internal_allocation",
+        display_name    = "",
+        terms           = c(component_1 = "study", component_2 = "drug"),
+        component_names = c("component 1", "component 2"),
+        sd              = prior("gamma", list(2, 2))
+      )
+    )
+  )
+  unprefixed_coordinates <- .bt_build_parameter_coordinates(
+    columns = c(
+      "mu_intercept",
+      "mu__xRE_ALLOCx_internal_allocation__allocation_sd",
+      "mu__xRE_ALLOCx_internal_allocation__weight[1]",
+      "mu__xRE_ALLOCx_internal_allocation__weight[2]"
+    ),
+    prior_list = unprefixed_result$prior_list,
+    formula_design = list(mu = unprefixed_result$formula_design)
+  )
+  unprefixed_catalog <- .bt_build_parameter_catalog(
+    coordinates = unprefixed_coordinates,
+    prior_list = unprefixed_result$prior_list,
+    formula_design = list(mu = unprefixed_result$formula_design)
+  )
+  expect_identical(
+    parameter_catalog_resolve(
+      unprefixed_catalog,
+      "sd_total",
+      "mu"
+    )$quantities$canonical_name,
+    "(mu) sd_total"
+  )
+  expect_identical(
+    parameter_catalog_resolve(
+      unprefixed_catalog,
+      "var_prop(component 1)",
+      "mu"
+    )$quantities$component,
+    "component 1"
+  )
+  unprefixed_hypothesis <- hypothesis_parse(
+    "var_prop(component 1) = 0",
+    catalog = unprefixed_catalog
+  )
+  expect_identical(
+    unique(hypothesis_resolve(
+      unprefixed_hypothesis,
+      unprefixed_catalog,
+      namespace = "mu"
+    )$occurrences$quantity_id),
+    parameter_catalog_resolve(
+      unprefixed_catalog,
+      "var_prop(component 1)",
+      "mu"
+    )$quantity_id
+  )
+})
+
+test_that("unnamed local allocations retain owners with multiple blocks", {
+
+  data <- data.frame(
+    study = factor(c("a", "a", "b", "b")),
+    site  = factor(c("x", "y", "x", "y")),
+    z     = c(-1, 0, 1, 2)
+  )
+  scale_prior  <- prior("gamma", list(2, 2))
+  weight_prior <- prior("dirichlet", list(alpha = c(1, 1)))
+  formula_result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 + z | study, name = "study", covariance = "diag") +
+      random(1 + z | site, name = "site", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      random_variance_allocation(
+        name = "study_allocation", display_name = "", terms = "study",
+        target = "sd_component", scale = "mean_variance",
+        sd = scale_prior, weights = weight_prior
+      ),
+      random_variance_allocation(
+        name = "site_allocation", display_name = "", terms = "site",
+        target = "sd_component", scale = "mean_variance",
+        sd = scale_prior, weights = weight_prior
+      )
+    )
+  )
+  allocations <- unlist(lapply(
+    formula_result$formula_design$random_effects,
+    function(term) term$sd_binding$allocations
+  ), recursive = FALSE)
+  columns <- unique(c(
+    "mu_intercept",
+    unlist(lapply(
+      formula_result$formula_design$random_effects,
+      `[[`,
+      "sd_parameter_names"
+    )),
+    unlist(lapply(allocations, function(allocation){
+      c(
+        allocation$source_node,
+        paste0(allocation$weight_name, "[", seq_len(allocation$n_targets), "]")
+      )
+    }))
+  ))
+  coordinates <- .bt_build_parameter_coordinates(
+    columns = columns,
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  catalog <- .bt_build_parameter_catalog(
+    coordinates = coordinates,
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  common_sd <- catalog$quantities[
+    catalog$quantities$quantity == "sd_common",
+    ,
+    drop = FALSE
+  ]
+
+  expect_setequal(
+    common_sd$canonical_name,
+    c("(mu) study: sd_common", "(mu) site: sd_common")
+  )
+  expect_error(
+    parameter_catalog_resolve(catalog, "sd_common", "mu"),
+    "No public parameter quantity matches"
+  )
+  expect_identical(
+    parameter_catalog_resolve(catalog, "study: sd_common", "mu")$quantity_id,
+    common_sd$quantity_id[common_sd$owner_name == "study"]
+  )
 })
 
 test_that("malformed catalogs and stale selections fail closed", {
 
-  registry <- .bt_build_parameter_registry(columns = "theta")
-  catalog <- .bt_build_parameter_catalog(registry)
+  coordinates <- .bt_build_parameter_coordinates(columns = "theta")
+  catalog <- .bt_build_parameter_catalog(coordinates)
   selection <- parameter_catalog_resolve(catalog, "theta")
 
   broken <- catalog
-  broken$schema_version <- 6L
+  broken$schema_version <- 7L
   expect_error(
     .bt_validate_parameter_catalog(broken),
     "Refit or rebuild"

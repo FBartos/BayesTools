@@ -17,10 +17,13 @@
 #' @return \code{JAGS_marglik_priors} returns a numeric value
 #' of likelihood evaluated at the current posterior sample.
 #' \code{JAGS_marglik_priors_rows} returns one numeric value for every row of
-#' posterior samples.
+#' posterior samples. \code{JAGS_marglik_priors_rows_evaluator} returns a
+#' function that applies the same row-wise evaluation without recompiling the
+#' prior structure on each call.
 #'
 #' @export JAGS_marglik_priors
 #' @export JAGS_marglik_priors_rows
+#' @export JAGS_marglik_priors_rows_evaluator
 #' @export JAGS_marglik_priors_formula
 #' @name JAGS_marglik_priors
 NULL
@@ -101,9 +104,19 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 #' @rdname JAGS_marglik_priors
 JAGS_marglik_priors_rows <- function(samples, prior_list){
 
-  samples <- .bt_JAGS_marglik_prior_rows(samples)
+  evaluator <- JAGS_marglik_priors_rows_evaluator(prior_list)
+  return(evaluator(samples))
+}
+
+
+#' @rdname JAGS_marglik_priors
+JAGS_marglik_priors_rows_evaluator <- function(prior_list){
+
   evaluator <- .bt_JAGS_marglik_compile_prior_rows_evaluator(prior_list)
-  return(unname(evaluator(samples)))
+  return(function(samples){
+    samples <- .bt_JAGS_marglik_prior_rows(samples)
+    return(unname(evaluator(samples)))
+  })
 }
 
 
@@ -166,6 +179,21 @@ JAGS_marglik_priors_rows <- function(samples, prior_list){
 
   if(is.prior.none(prior_object) || is.prior.point(prior_object)){
     return(function(samples) numeric(nrow(samples)))
+  }
+
+  if(is.prior.factor(prior_object) &&
+     (is.prior.treatment(prior_object) || is.prior.independent(prior_object))){
+    parameter_names <- .JAGS_prior_factor_names(parameter_name, prior_object)
+    return(function(samples){
+      if(!all(parameter_names %in% colnames(samples)))
+        stop("'samples' does not contain all monitored factor prior parameters.", call. = FALSE)
+
+      marglik <- numeric(nrow(samples))
+      for(name in parameter_names){
+        marglik <- marglik + lpdf(prior_object, samples[, name])
+      }
+      return(marglik)
+    })
   }
 
   is_plain_simple <- is.prior.simple(prior_object) &&

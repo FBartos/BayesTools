@@ -252,7 +252,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     stop("'log_posterior' must be a function.", call. = FALSE)
   }
   if(inherits(fit, "BayesTools_fit")){
-    JAGS_parameter_registry(fit)
+    parameter_coordinates(fit)
   }
 
   formula_context <- .bt_JAGS_bridge_formula_context(

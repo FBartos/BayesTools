@@ -1153,9 +1153,9 @@ test_that("marginal sampling draws fitted levels jointly under known covariance"
   groups <- sort(unique(group_map))
 
   set.seed(904)
-  group_effects <- BayesTools:::.bt_random_effect_mvn_group_draws(
-    covariance =
-      random_term$group_covariance$kernel[groups, groups, drop = FALSE],
+  kernel <- random_term$group_covariance$kernel[groups, groups, drop = FALSE]
+  group_effects <- BayesTools:::.bt_random_effect_mvn_group_draws_from_factor(
+    factor = t(chol(kernel)),
     n_groups = nrow(posterior)
   )
   group_effects <- group_effects * posterior[, random_term$sd_parameter_names]

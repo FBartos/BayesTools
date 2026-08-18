@@ -88,6 +88,8 @@ test_that("hypothesis_BF computes point-null Savage-Dickey from numeric draws", 
     stats::dnorm(0, mean = 0.4, sd = 1.2)
 
   expect_equal(attr(out, "raw_BF"), expected, tolerance = 0.08)
+  expect_s3_class(attr(out, "hypothesis_ast"), "BayesTools_hypothesis_ast")
+  expect_null(attr(out, "parsed", exact = TRUE))
 
   equivalent <- hypothesis_BF(
     posterior  = posterior,

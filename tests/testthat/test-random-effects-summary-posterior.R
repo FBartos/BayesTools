@@ -45,7 +45,7 @@ skip_if_not_test_profile("unit")
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
 
-  attach_test_parameter_registry(fit)
+  attach_test_parameter_map(fit)
 }
 
 .random_effects_total_variance_allocation_fit <- function(){
@@ -93,7 +93,7 @@ skip_if_not_test_profile("unit")
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
 
-  attach_test_parameter_registry(fit)
+  attach_test_parameter_map(fit)
 }
 
 test_that("random-effect summary posterior extracts mean-variance ratios", {
@@ -101,6 +101,12 @@ test_that("random-effect summary posterior extracts mean-variance ratios", {
   skip_if_not_installed("runjags")
 
   fit <- .random_effects_mean_variance_allocation_fit()
+  testthat::local_mocked_bindings(
+    .bt_random_effect_summary_samples = function(...) {
+      stop("parallel random summary path was used", call. = FALSE)
+    },
+    .package = "BayesTools"
+  )
   ratios <- random_effects_summary_posterior(fit, summary = "var_ratio")
   ratio_name <- "(mu) allocation: var_ratio(x)"
 
@@ -108,6 +114,30 @@ test_that("random-effect summary posterior extracts mean-variance ratios", {
   expect_true(ratio_name %in% names(ratios))
   expect_s3_class(ratios[[ratio_name]], "marginal_posterior")
   expect_equal(unname(as.numeric(ratios[[ratio_name]])), c(1.5, 0.5), tolerance = 1e-12)
+  ratio_selection <- parameter_catalog_resolve(
+    parameter_catalog(fit),
+    ratio_name,
+    namespace = "mu"
+  )
+  expect_identical(
+    parameter_transform(fit, ratio_selection),
+    list(type = "affine", offset = 0, scale = 2)
+  )
+  supplied_samples <- as.matrix(fit$mcmc[[1L]])
+  supplied_samples[, grep("weight\\[1\\]$", colnames(supplied_samples))] <-
+    c(.1, .2)
+  supplied_samples[, grep("weight\\[2\\]$", colnames(supplied_samples))] <-
+    c(.9, .8)
+  supplied_draws <- parameter_draws(
+    fit,
+    ratio_selection,
+    model_samples = supplied_samples
+  )
+  expect_equal(
+    unname(as.numeric(supplied_draws[[1L]][, 1L])),
+    c(1.8, 1.6),
+    tolerance = 1e-12
+  )
 
   prior_density <- attr(ratios[[ratio_name]], "prior_density", exact = TRUE)
   expect_s3_class(prior_density, "prior_linear_density")
@@ -159,6 +189,92 @@ test_that("random-effect summary posterior extracts SD ratios", {
     stats::dbeta(0.5, 3, 2),
     tolerance = 1e-8
   )
+})
+
+test_that("full estimates summaries add SD ratios to standard quantities", {
+
+  skip_if_not_installed("runjags")
+
+  fit <- .random_effects_mean_variance_allocation_fit()
+  standard <- JAGS_estimates_table(
+    fit,
+    random_effects_summary = "standard",
+    return_samples = TRUE
+  )
+  full <- JAGS_estimates_table(
+    fit,
+    random_effects_summary = "full",
+    return_samples = TRUE
+  )
+
+  expect_setequal(
+    colnames(standard),
+    c(
+      "(mu) allocation: sd_common",
+      "(mu) allocation: var_ratio(intercept)",
+      "(mu) allocation: var_ratio(x)"
+    )
+  )
+  expect_false(any(grepl(": sd_ratio\\(", colnames(standard))))
+  expect_false(any(grepl("(^|: )sd\\(", colnames(standard))))
+  expect_false(any(grepl("var_common", colnames(standard), fixed = TRUE)))
+  expect_true("(mu) allocation: var_ratio(x)" %in% colnames(full))
+  expect_true("(mu) allocation: sd_ratio(x)" %in% colnames(full))
+  expect_true("(mu) allocation: var_common" %in% colnames(full))
+  expect_true("(mu) sd(x)" %in% colnames(full))
+})
+
+test_that("standard summaries retain directly prior-specified SD ratios", {
+
+  skip_if_not_installed("runjags")
+
+  data <- data.frame(study = factor(c("s1", "s1", "s2", "s2")))
+  kernel <- matrix(
+    c(1, .25, .25, 1),
+    nrow = 2,
+    dimnames = list(c("s1", "s2"), c("s1", "s2"))
+  )
+  random_formula <- random_effects_formula(
+    ~ 1 | study,
+    group_covariance = random_group_covariance(kernel, scale = "none")
+  )
+  formula_result <- JAGS_formula(
+    formula = random_formula,
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      study = random_block(sd = prior("gamma", list(2, 2)))
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  samples <- matrix(
+    c(1, 2),
+    ncol = 1L,
+    dimnames = list(NULL, random_term$sd_parameter_names)
+  )
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  fit <- attach_test_parameter_map(fit)
+
+  standard <- JAGS_estimates_table(
+    fit,
+    random_effects_summary = "standard",
+    return_samples = TRUE
+  )
+  full <- JAGS_estimates_table(
+    fit,
+    random_effects_summary = "full",
+    return_samples = TRUE
+  )
+
+  expect_identical(colnames(standard), "(mu) sd_ratio(intercept)")
+  expect_true("(mu) sd_ratio(intercept)" %in% colnames(full))
+  expect_true("(mu) var_ratio(intercept)" %in% colnames(full))
 })
 
 test_that("random-effect summary posterior extracts total-variance proportions", {

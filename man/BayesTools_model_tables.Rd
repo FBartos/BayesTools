@@ -48,7 +48,6 @@ runjags_estimates_table(
   return_samples = FALSE,
   transform_scaled = FALSE,
   random_effects_summary = c("standard", "full", "raw", "none"),
-  random_effects_label = c("grouped", "component"),
   random_effects_metadata = FALSE,
   remove_random_effects = NULL,
   keep_random_effects = NULL,
@@ -92,7 +91,6 @@ JAGS_estimates_table(
   return_samples = FALSE,
   transform_scaled = FALSE,
   random_effects_summary = c("standard", "full", "raw", "none"),
-  random_effects_label = c("grouped", "component"),
   random_effects_metadata = FALSE,
   remove_random_effects = NULL,
   keep_random_effects = NULL,
@@ -215,9 +213,9 @@ be printed. Defaults to \code{TRUE}.}
 Can be \code{NULL} (default, no removal), a character vector of parameter
 names to remove, or \code{TRUE} to remove all parameters that are not
 part of any formula. For formula random effects, character filters also
-accept semantic aliases \code{"random"}, \code{"random_sd"},
-\code{"random_correlation"},
-\code{"random_variance_proportion"}, \code{"random_variance_ratio"},
+accept semantic selectors \code{"random"}, \code{"random_sd"},
+\code{"random_cor"},
+\code{"random_var_prop"}, \code{"random_var_ratio"},
 \code{"random_allocation"}, and \code{"random_sd_ratio"}.}
 
 \item{fit}{runjags model fit}
@@ -248,7 +246,7 @@ should be removed from the summary. Defaults to \code{NULL}.}
 All other parameters will be removed unless they belong to formulas
 specified in \code{keep_formulas}. The random-effect aliases listed for
 \code{remove_parameters} can also be used here, for example
-\code{keep_parameters = c("random_sd", "random_correlation")}.}
+\code{keep_parameters = c("random_sd", "random_cor")}.}
 
 \item{keep_formulas}{character vector of formula names whose parameters
 should be kept. All other parameters will be removed unless they are
@@ -265,25 +263,22 @@ also derived on the transformed scale when the fit contains
 computed from the transformed covariance draws. Defaults to \code{FALSE}.}
 
 \item{random_effects_summary}{random-effect reporting mode for JAGS estimates
-tables. \code{"standard"} replaces raw random-effect implementation
-parameters with semantic SD, correlation, true variance-fraction, and
-mean-variance SD-component variance-ratio summaries. \code{"full"} also
-includes heterogeneous SD multipliers.
+tables. \code{"standard"} replaces raw implementation parameters with the
+semantic quantities corresponding to the fitted prior parameterization:
+directly specified block scales, correlations, inclusion probabilities,
+allocation aggregate SDs, and variance proportions or ratios.
+\code{"full"} additionally includes deterministic representations such as
+aggregate variances, allocation-derived component SDs, and alternate SD or
+variance ratios.
 \code{"raw"} keeps the historical raw monitored parameters on their fitted
 scale, and
-\code{"none"} removes random-effect parameters from the table. When used
-together with \code{transform_scaled = TRUE}, SD and correlation summaries
-for formula random effects are computed after applying the original-scale
-formula transformation. Internal latent and realized group-coefficient
-coordinates are omitted when \code{transform_scaled = TRUE}, including in
-\code{"raw"} mode, because those coordinates remain on the fitted
-standardized scale.}
-
-\item{random_effects_label}{label style for semantic random-effect summaries.
-Both \code{"grouped"} and \code{"component"} use the canonical
-owner-and-quantity grammar, for example \code{study: sd(intercept)}.
-Defaults to \code{"grouped"}. Raw random-effect coordinates use the same
-semantic labels when a public equivalent exists.}
+\code{"none"} removes random-effect parameters from the table. The
+\code{"standard"} and \code{"full"} modes always obtain public semantic
+quantities from the fitted parameter map on their declared display scale.
+\code{transform_scaled = TRUE} additionally transforms remaining formula
+coefficients. Internal latent and realized group-coefficient coordinates
+are omitted when \code{transform_scaled = TRUE}, including in \code{"raw"}
+mode, because those coordinates remain on the fitted standardized scale.}
 
 \item{random_effects_metadata}{whether to add random-effect metadata columns
 to JAGS estimates tables. When \code{TRUE}, the table includes the

@@ -375,7 +375,7 @@ test_that("runjags_estimates_table unscales before parameter filtering", {
   class(fit) <- c("runjags", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_scale") <- list(mu = list(mu_x = list(mean = 10, sd = 2)))
-  fit <- attach_test_parameter_registry(
+  fit <- attach_test_parameter_map(
     fit,
     monitor_names = colnames(posterior)
   )

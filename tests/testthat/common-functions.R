@@ -5,6 +5,13 @@ if (!exists("GENERATE_REFERENCE_FILES")) {
   GENERATE_REFERENCE_FILES <- FALSE
 }
 
+if (!exists("cache_reference_table_candidate", mode = "function")) {
+  source(
+    testthat::test_path("helper-00-reference-table-review.R"),
+    local = environment()
+  )
+}
+
 
 test_files_dir <- Sys.getenv("BAYESTOOLS_TEST_FILES_DIR")
 if (test_files_dir == "") {
@@ -29,18 +36,20 @@ Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = test_files_dir)
 
 # Use skip_if_no_fits() for tests that need pre-fitted models.
 
-attach_test_parameter_registry <- function(fit, monitor_names = NULL) {
-  BayesTools:::.bt_attach_parameter_registry(
+attach_test_parameter_map <- function(fit, monitor_names = NULL) {
+  fit <- BayesTools:::.bt_attach_parameter_map(
     fit,
     monitor_names = monitor_names
   )
+  fit <- BayesTools:::.bt_attach_draw_geometry(fit)
+  BayesTools:::.bt_attach_fit_contract(fit)
 }
 
-build_test_parameter_registry <- function(columns, monitor_names = columns,
+build_test_parameter_coordinates <- function(columns, monitor_names = columns,
                                           prior_list = NULL,
                                           formula_design = NULL,
                                           formula_scale = NULL) {
-  BayesTools:::.bt_build_parameter_registry(
+  BayesTools:::.bt_build_parameter_coordinates(
     columns = columns,
     monitor_names = monitor_names,
     prior_list = prior_list,
@@ -56,19 +65,28 @@ build_test_parameter_registry <- function(columns, monitor_names = columns,
 # Process reference file: save if GENERATE_REFERENCE_FILES=TRUE, test otherwise
 test_reference_table <- function(table, filename, info_msg = NULL,
                                  print_dir = REFERENCE_DIR) {
+  ref_file <- file.path(print_dir, filename)
   if (GENERATE_REFERENCE_FILES) {
     # Save mode
     if (!dir.exists(print_dir)) {
       dir.create(print_dir, recursive = TRUE)
     }
     writeLines(capture_output_lines(table, print = TRUE, width = 150),
-               file.path(print_dir, filename))
+               ref_file)
+    unlink(reference_table_candidate_path(ref_file))
   } else {
     # Test mode
-    ref_file <- file.path(print_dir, filename)
     if (file.exists(ref_file)) {
       expected_output <- readLines(ref_file, warn = FALSE)
       actual_output   <- capture_output_lines(table, print = TRUE, width = 150)
+      candidate <- cache_reference_table_candidate(
+        actual_output,
+        expected_output,
+        ref_file
+      )
+      if (!is.null(candidate)) {
+        info_msg <- reference_table_failure_info(info_msg, candidate)
+      }
       expect_equal(actual_output, expected_output, info = info_msg)
     } else {
       skip(paste("Reference file", filename, "not found."))
@@ -229,9 +247,22 @@ test_reference_table_stochastic <- function(table, filename, info_msg = NULL,
       expected_output <- readLines(ref_file, warn = FALSE)
       actual_output   <- capture_output_lines(table, print = TRUE, width = 150)
 
+      actual_signature   <- stochastic_reference_signature(actual_output)
+      expected_signature <- stochastic_reference_signature(expected_output)
+      candidate <- cache_reference_table_candidate(
+        actual_output,
+        expected_output,
+        ref_file,
+        actual_comparison   = actual_signature,
+        expected_comparison = expected_signature
+      )
+      if (!is.null(candidate)) {
+        info_msg <- reference_table_failure_info(info_msg, candidate)
+      }
+
       expect_equal(
-        stochastic_reference_signature(actual_output),
-        stochastic_reference_signature(expected_output),
+        actual_signature,
+        expected_signature,
         info = info_msg
       )
       expect_stochastic_table_invariants(table, info_msg = info_msg)
@@ -906,7 +937,8 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
         "JAGS-formula-scale-transform.R",
         "JAGS-formula-contrasts.R",
         "JAGS-parameter-names.R",
-        "JAGS-parameter-registry.R",
+        "aaa-parameter-map.R",
+        "JAGS-parameter-coordinates.R",
         "JAGS-parameter-catalog.R",
         "JAGS-draw-geometry.R",
         "JAGS-fit-contract.R",
@@ -993,7 +1025,8 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
         "JAGS-formula-scale-transform.R",
         "JAGS-formula-contrasts.R",
         "JAGS-parameter-names.R",
-        "JAGS-parameter-registry.R",
+        "aaa-parameter-map.R",
+        "JAGS-parameter-coordinates.R",
         "JAGS-parameter-catalog.R",
         "JAGS-draw-geometry.R",
         "JAGS-fit-contract.R",
@@ -1077,7 +1110,8 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
         "JAGS-formula-scale-transform.R",
         "JAGS-formula-contrasts.R",
         "JAGS-parameter-names.R",
-        "JAGS-parameter-registry.R",
+        "aaa-parameter-map.R",
+        "JAGS-parameter-coordinates.R",
         "JAGS-parameter-catalog.R",
         "JAGS-draw-geometry.R",
         "JAGS-fit-contract.R",

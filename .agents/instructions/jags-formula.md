@@ -44,21 +44,45 @@ The implementation is split across `R/JAGS-formula-scale.R`,
 the related design and prediction files. Reuse those maps rather than creating
 a second transformation path.
 
-## Parameter Registry
+## Parameter Map
 
-`JAGS_parameter_registry()` is the public, versioned mapping from concrete
-posterior columns to formula ownership, semantic role, random-effect block,
-fitted scale, monitor status, display label, and internal status. It is the
-source of truth for downstream packages.
+Fitted-parameter metadata has one authoritative, versioned
+`BayesTools_parameter_map` with three linked tables:
 
-- Build and attach the registry through `R/JAGS-parameter-registry.R`.
-- Use `R/parameter-source.R` and existing accessors rather than parsing names.
-- Keep canonical names unique and schema fields type-stable.
-- Internal latent, realized, and spike-and-slab implementation coordinates must
-  not be presented as original-scale public coefficients.
-- Missing, malformed, or unsupported registry versions require refitting with
-  the current BayesTools version. Do not add in-memory migrations for stale
-  fitted objects without an explicit maintainer decision.
+- `coordinates` maps concrete posterior coordinates, keyed by
+  `coordinate_name`, to formula ownership, semantic role, random-effect block,
+  fitted scale, monitor status, display metadata, and internal status.
+- `quantities` declares selectable semantic quantities, keyed by
+  `canonical_name`, together with structured ownership, source provenance, and
+  deferred extraction keys.
+- `aliases` maps exact accepted selectors to quantity IDs.
+
+Build and attach all three atomically through `R/aaa-parameter-map.R`; the
+coordinate and semantic compilers remain pure stages in
+`R/JAGS-parameter-registry.R` and `R/JAGS-parameter-catalog.R`.
+`parameter_coordinates()` and `parameter_catalog()` are views over the same
+stored map. Use these accessors and `R/parameter-source.R` rather than parsing
+names.
+
+- Keep coordinate and canonical names unique within their respective schemas,
+  and keep every schema field type-stable.
+- User-facing summaries, plotting, density estimation, and hypotheses must
+  resolve catalog quantities and obtain their draws through
+  `parameter_draws()`. Do not promote monitored coordinate rows to public
+  aliases.
+- Declare source mappings as identity, one-to-one transforms, or composites.
+  Record dependencies in extraction keys instead of adding private inputs as
+  public catalog rows.
+- Internal latent, realized, allocation, LKJ, spike-and-slab, and other
+  implementation coordinates remain coordinate-only and must not be presented as
+  original-scale public parameters.
+- Validate coordinate uniqueness, quantity uniqueness, aliases, extraction
+  recipes, and coordinate dependencies atomically. The fit contract stores one
+  `parameter_map_version`; there are no separate registry/catalog versions or
+  fit attributes.
+- Missing, malformed, or unsupported map metadata requires refitting with the
+  current BayesTools version. Do not add in-memory migrations for stale fitted
+  objects without an explicit maintainer decision.
 
 ## Random Effects
 
@@ -80,6 +104,20 @@ Keep the parser's two random-effect families separate:
 
 Do not treat `hcs()` as an alias for `us()`: HCS has one common pairwise
 correlation, whereas US estimates an unrestricted correlation matrix.
+
+Random-effect catalog names use `(formula) owner: quantity(arguments)`.
+Parentheses contain coefficient or parameter names; square brackets contain
+factor or index levels. Use public `cor`, while any compact backend `rho`
+coordinate remains internal. Total-variance allocations expose `sd_total`,
+`var_total`, and `var_prop(...)`; mean-variance allocations expose `sd_common`,
+`var_common`, `var_ratio(...)`, and `sd_ratio(...)`.
+
+A bare random formula or unnamed one-entry formula list suppresses a redundant
+top-level component prefix. An explicitly named one-entry list retains its
+name. In lists with two or more entries, generate missing names as
+`component 1`, `component 2`, and so on. Keep allocation `name` as a required
+stable backend identifier and use `display_name` and `component_names` for its
+public semantic labels.
 
 `random_effects_marginal_vcov()` owns posterior `Z G Z'` construction.
 `random_effects_marginal_variance_factors()` exposes validated row-aligned

@@ -52,10 +52,9 @@ encoding.
 
 \code{JAGS_formula_name_map()} returns the persisted mapping between opaque JAGS
 base names and semantic formula coordinates. Downstream code should use this
-map or \code{\link[=JAGS_parameter_registry]{JAGS_parameter_registry()}} rather than parsing a JAGS name.
+map or \code{\link[=parameter_coordinates]{parameter_coordinates()}} rather than parsing a JAGS name.
 
-\code{JAGS_fit_contract()} returns the compatibility profile attached to a new
-fit. \code{JAGS_validate_fit_contract()} checks only the components named in
-\code{requires}, so methods unrelated to new metadata can retain their existing
-legacy behavior.
+\code{JAGS_fit_contract()} returns the schema contract attached to a fit.
+\code{JAGS_validate_fit_contract()} checks the components named in \code{requires} and
+requires unsupported objects to be refitted rather than adapted.
 }

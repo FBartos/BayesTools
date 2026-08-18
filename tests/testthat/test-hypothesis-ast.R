@@ -30,8 +30,8 @@ test_that("hypothesis AST preserves structure and quoted symbols", {
 
 test_that("hypothesis parsing recognizes exact non-syntactic catalog aliases", {
 
-  registry <- .bt_build_parameter_registry(columns = "theta")
-  catalog  <- .bt_build_parameter_catalog(registry)
+  coordinates <- .bt_build_parameter_coordinates(columns = "theta")
+  catalog     <- .bt_build_parameter_catalog(coordinates)
   quantity <- .bt_parameter_catalog_quantity(
     canonical_name = "(mu) random_total: var_prop(study)",
     namespace      = "mu",
@@ -135,8 +135,8 @@ test_that("hypothesis rewriting edits exact symbol roots only", {
 
 test_that("hypothesis resolution delegates ambiguity to the catalog", {
 
-  registry <- .bt_build_parameter_registry(columns = "theta")
-  catalog <- .bt_build_parameter_catalog(registry)
+  coordinates <- .bt_build_parameter_coordinates(columns = "theta")
+  catalog <- .bt_build_parameter_catalog(coordinates)
   location <- .bt_parameter_catalog_quantity(
     canonical_name = "effect_location",
     namespace = "location",

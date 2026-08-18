@@ -61,12 +61,19 @@ temporary directory by default. Relevant controls are
 `BAYESTOOLS_TEST_SKIP_REFIT`.
 
 Run `fit` after fitting, prior/data input, generated JAGS, native distribution,
-scaling, registry, or marginal-likelihood changes. The centralized fit file
+scaling, parameter-map, or marginal-likelihood changes. The centralized fit file
 refreshes the required catalog by default; reuse it only when the existing cache
 has been intentionally validated. Do not run `fit` for unrelated plotting,
 summary, documentation, or post-fit changes.
 
 Do not modify `GENERATE_REFERENCE_FILES` unless the maintainer explicitly asks.
+
+The interactive `.dev/user-tests.R` runner caches changed
+`test_reference_table()` output beside its baseline as `<name>.new.txt`. After
+the test summary, it opens testthat's snapshot reviewer for explicit
+Accept/Reject/Skip decisions. Accept replaces the baseline, Reject removes the
+candidate, and Skip keeps it for later review. Non-interactive runs retain
+candidates and never update baselines.
 
 ## Correctness Evidence
 

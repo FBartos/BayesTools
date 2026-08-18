@@ -992,6 +992,15 @@
   }
   direct_indices <- NULL
   posterior_values <- function(posterior, parameters = NULL){
+    draws <- posterior_draws(posterior, parameters = parameters)
+    if(is.null(draws)){
+      return(NULL)
+    }
+    unname(draws[1L, ])
+  }
+
+  posterior_draws <- function(posterior, parameters = NULL){
+    posterior <- as.matrix(posterior)
     posterior_names <- colnames(posterior)
     direct <- !is.null(direct_names) &&
       length(direct_names) == random_term$n_columns &&
@@ -1003,8 +1012,11 @@
           parameters[direct_names],
           as.numeric
         )
-        if(all(lengths(parameter_values) == 1L)){
-          return(unname(as.numeric(unlist(parameter_values))))
+        parameter_lengths <- lengths(parameter_values)
+        if(all(parameter_lengths %in% c(1L, nrow(posterior)))){
+          return(unname(do.call(cbind, lapply(parameter_values, function(x){
+            if(length(x) == 1L) rep(x, nrow(posterior)) else x
+          }))))
         }
       }
       direct <- !is.null(posterior_names)
@@ -1019,18 +1031,18 @@
         direct_indices <<- match(direct_names, posterior_names)
       }
       if(!anyNA(direct_indices)){
-        return(unname(posterior[1L, direct_indices]))
+        return(unname(posterior[, direct_indices, drop = FALSE]))
       }
     }
 
-    samples <- as.numeric(posterior[1L, ])
-    names(samples) <- posterior_names
-    values(samples, parameters = parameters)
+    check_ambiguity(posterior)
+    evaluate(posterior, parameters = parameters)
   }
 
   list(
     values = values,
-    posterior_values = posterior_values
+    posterior_values = posterior_values,
+    posterior_draws = posterior_draws
   )
 }
 

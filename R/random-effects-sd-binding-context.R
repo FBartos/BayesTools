@@ -75,6 +75,8 @@
     terms <- allocation_terms[[allocation_i]]
     component_labels <- allocation_component_labels[[allocation_i]]
     label <- allocation_labels[[allocation_i]]
+    display_name <- allocation$display_name
+    component_names <- allocation$component_names
     target <- .bt_random_variance_allocation_target(allocation)
     scale <- .bt_random_variance_allocation_scale(allocation)
     if(identical(target, "sd_component") && !is.null(allocation$inclusion)){
@@ -238,6 +240,8 @@
           .bt_validate_random_variance_allocation_block_overrides(terms[term_i], prior_random)
           allocation_record <- list(
             label = label,
+            display_name = display_name,
+            component_names = component_names,
             terms = terms,
             index = term_i,
             target = "block",
@@ -267,6 +271,8 @@
 
       allocation_meta[[label]] <- list(
         label = label,
+        display_name = display_name,
+        component_names = component_names,
         terms = terms,
         component_labels = component_labels,
         components = component_meta,
@@ -303,6 +309,8 @@
       .bt_validate_random_variance_allocation_block_overrides(block, prior_random)
       allocation_record <- list(
         label = label,
+        display_name = display_name,
+        component_names = component_names,
         terms = terms,
         index = NA_integer_,
         target = "sd_component",
@@ -325,6 +333,8 @@
       )
       allocation_meta[[label]] <- list(
         label = label,
+        display_name = display_name,
+        component_names = component_names,
         terms = terms,
         component_labels = character(),
         components = list(),

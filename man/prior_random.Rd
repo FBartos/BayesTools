@@ -3,7 +3,6 @@
 \name{prior_random}
 \alias{prior_random}
 \alias{random_block}
-\alias{random_term}
 \alias{random_variance_allocation}
 \alias{allocation_ref}
 \alias{random_covariance}
@@ -35,18 +34,6 @@ random_block(
   parameterization = NULL
 )
 
-random_term(
-  sd = NULL,
-  covariance = NULL,
-  cor = NULL,
-  monitor = NULL,
-  new_levels = NULL,
-  terms = NULL,
-  contrasts = NULL,
-  sd_source = NULL,
-  parameterization = NULL
-)
-
 random_variance_allocation(
   name,
   terms = NULL,
@@ -56,7 +43,9 @@ random_variance_allocation(
   target = c("block", "sd_component"),
   scale = c("total_variance", "mean_variance"),
   sd_source = NULL,
-  inclusion = NULL
+  inclusion = NULL,
+  display_name = name,
+  component_names = NULL
 )
 
 allocation_ref(allocation_name, component)
@@ -129,9 +118,8 @@ term-specific SD overrides. For \code{random_variance_allocation()}, root
 allocations must specify exactly one of \code{sd} or \code{sd_source}; child
 allocations inherit their SD budget from \code{parent}.}
 
-\item{name}{required allocation label and public semantic owner used in
-parameter names such as \code{heterogeneity: sd_total} and
-\code{heterogeneity: var_prop(study)}.}
+\item{name}{required stable allocation identifier used by the backend and
+by \code{\link[=allocation_ref]{allocation_ref()}}.}
 
 \item{weights}{optional Dirichlet simplex prior over allocation weights.}
 
@@ -157,6 +145,14 @@ allocation component label. For \code{target = "block"}, each listed component
 receives an independent Bernoulli gate and its SD contribution is multiplied
 by that gate. Gate names must match resolved allocation component labels.}
 
+\item{display_name}{public semantic owner used as the parameter-name prefix.
+It defaults to \code{name}; use \code{""} when a single model component needs no
+disambiguating prefix.}
+
+\item{component_names}{optional public names for the allocation components,
+in the same order as \code{terms}. Internal component identifiers remain the
+(sanitized) names of \code{terms}.}
+
 \item{allocation_name}{allocation name referenced by \code{allocation_ref()}.}
 
 \item{component}{component label inside the referenced allocation. Named
@@ -180,8 +176,9 @@ correlation scale; explicitly requesting another scale without supplying
 \item{include_correlation}{whether to monitor the correlation matrix for
 \code{prior_lkj()}.}
 
-\item{include_primitives}{whether to monitor LKJ primitive beta coordinates
-for \code{prior_lkj()}.}
+\item{include_primitives}{whether to retain LKJ primitive beta coordinates
+for backend inspection. They remain internal and are not added to the
+public semantic parameter catalog.}
 
 \item{latent}{whether to monitor standardized latent random effects.
 Required for bridge sampling and coefficient reconstruction.}
@@ -190,14 +187,16 @@ Required for bridge sampling and coefficient reconstruction.}
 This is convenient for inspection but can be memory intensive.}
 
 \item{correlation}{whether correlation matrices are part of the semantic
-monitored output. Scalar CS/HCS/AR1/HAR/CAR backends retain only \code{rho}
-during sampling and derive the requested matrix afterward; this avoids a
-quadratic JAGS graph without changing the correlation target.}
+monitored output. Scalar CS/HCS/AR1/HAR/CAR backends retain only an
+internal \code{rho} coordinate during sampling and derive the requested matrix
+afterward; this avoids a quadratic JAGS graph without changing the public
+\code{cor} target.}
 
-\item{lkj_primitives}{whether to monitor user-facing LKJ primitive beta
-coordinates. For formula \code{us} random effects, raw LKJ primitive \code{u}
-coordinates are always retained internally because bridge sampling evaluates
-the LKJ prior on those coordinates.}
+\item{lkj_primitives}{whether to retain LKJ primitive beta coordinates for
+backend inspection. They remain internal rather than semantic catalog
+quantities. For formula \code{us} random effects, raw LKJ primitive \code{u}
+coordinates are always retained internally because bridge sampling
+evaluates the LKJ prior on those coordinates.}
 
 \item{method}{new-level prediction method: \code{"error"} disallows new levels,
 \code{"zero"} fixes their random-effect contribution at zero, and \code{"sample"}
@@ -227,9 +226,6 @@ from the formula parser or supplied by the user through named random terms.
 This keeps prior specification separate from formula syntax. For example,
 if the formula contains a block named \code{"study"}, then
 \code{prior_random(study = random_block(...))} overrides only that block.
-
-\code{random_term()} is an alias of \code{random_block()} retained for readability in
-user-facing code.
 }
 \section{Standard-deviation priors}{
 
@@ -330,6 +326,23 @@ components are exposed as \code{var_ratio(...)} and \code{sd_ratio(...)}. Thus
 \code{sd_common} is the shared variance-scale anchor before the component ratios
 are applied; it is not a sum of SDs.
 
+The fitted \code{\link[=parameter_map]{parameter_map()}} links concrete \code{\link[=parameter_coordinates]{parameter_coordinates()}} to the
+public random-effect quantities in \code{\link[=parameter_catalog]{parameter_catalog()}}. Canonical names use
+\verb{(formula) owner: quantity(arguments)}, with \verb{owner: } omitted for exactly one
+random block and retained when multiple blocks require disambiguation.
+Parentheses contain coefficient or parameter names and square brackets
+contain factor or index levels. Public correlations use \code{cor}; compact scalar
+\code{rho} and LKJ construction coordinates remain internal backend dependencies.
+
+Allocation \code{name} is a required stable backend identifier. \code{display_name}
+independently controls an allocation-specific public owner, and
+\code{component_names} controls the public component arguments. An unnamed local
+SD-component allocation inherits its enclosing block's public owner under
+the same one-block/multiple-block rule. Total-variance allocations expose
+\code{sd_total}, \code{var_total}, and \code{var_prop(...)};
+mean-variance allocations expose \code{sd_common}, \code{var_common},
+\code{var_ratio(...)}, and \code{sd_ratio(...)}.
+
 This is useful for nested or crossed random intercepts when the prior should
 control total heterogeneity separately from how that heterogeneity is
 allocated across components. The allocation targets named random-effect
@@ -409,7 +422,7 @@ prior_random(
 
 # Scalar-correlation structure with a Fisher-z prior.
 prior_random(
-  study_time = random_term(
+  study_time = random_block(
     covariance = random_covariance(
       structure = "AR",
       sd = sd_prior,
@@ -420,11 +433,12 @@ prior_random(
 )
 
 # Total heterogeneity plus Dirichlet variance allocation. The allocation
-# name is the public semantic owner: heterogeneity: sd_total,
-# heterogeneity: var_prop(study), and heterogeneity: var_prop(outcome).
+# has an internal name but no redundant public owner: sd_total,
+# var_prop(study), and var_prop(outcome).
 prior_random(
   random_variance_allocation(
     name = "heterogeneity",
+    display_name = "",
     terms = c(study = "study", outcome = "outcome"),
     sd = sd_prior,
     weights = prior("dirichlet", list(alpha = c(1, 1)))

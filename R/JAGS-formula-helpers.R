@@ -489,7 +489,7 @@
   formula_data_list <- .bt_formula_expression_data_list(formula_data, context)
   model_data_list <- .bt_formula_expression_data_list(model_data, context)
   data_names <- unique(c(names(formula_data_list), names(model_data_list)))
-  parameter_names <- unique(.bt_parameter_registry_base(parameter_names))
+  parameter_names <- unique(.bt_parameter_coordinates_base(parameter_names))
   specs <- .bt_formula_expression_specs(
     expressions = expressions,
     data_names = data_names,
@@ -533,7 +533,7 @@
 
   sample_names <- .bt_formula_expression_sample_names(samples)
   sample_roots <- if(is.null(sample_names)) character() else
-    .bt_parameter_registry_base(sample_names)
+    .bt_parameter_coordinates_base(sample_names)
   unique(c(sample_roots, names(parameters)))
 }
 .bt_formula_expression_indexed_draws <- function(values, indices){
