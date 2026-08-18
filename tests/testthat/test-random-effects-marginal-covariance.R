@@ -1658,6 +1658,41 @@ test_that("row-varying SD-component allocation weights columns and rows", {
   )
 })
 
+
+test_that("near-indicator designs retain every nonzero covariance contribution", {
+
+  result <- .re_cov_formula(
+    formula = ~ 1 + hcs(f | id),
+    data = .re_cov_structured_data(),
+    prior_random = prior_random(
+      id = random_block(
+        sd = .re_cov_sd_prior(),
+        cor = prior("normal", list(0, 0.5))
+      )
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  random_term$model_matrix <- matrix(
+    c(1, 1e-9, rep(0, random_term$n_columns - 2L)),
+    nrow = 1L,
+    dimnames = list("contrast", random_term$column_names)
+  )
+  random_term$group_map <- 1L
+  result$formula_design$random_effects[[1L]] <- random_term
+  sd <- c(1, 1e9, rep(1, random_term$n_columns - 2L))
+  posterior <- .re_cov_posterior(c(
+    .re_cov_sd_values(random_term, sd),
+    .re_cov_rho_sample(random_term, 0)
+  ))
+
+  out <- .re_cov_output(result, posterior, diagonal_only = TRUE)
+  expect_equal(unname(out$samples[1L, 1L]), 2, tolerance = 1e-14)
+  expect_null(.bt_random_effect_marginal_covariance_structured_columns(
+    random_term,
+    random_term$model_matrix
+  ))
+})
+
 test_that("marginalized blocks keep usable covariance metadata", {
 
   df <- data.frame(

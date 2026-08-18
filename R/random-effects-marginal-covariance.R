@@ -1908,13 +1908,13 @@ random_effects_marginal_variance_factors <- function(
   if(!structure %in% c("cs", "hcs", "ar1", "car", "har")){
     return(NULL)
   }
-  nonzero <- abs(model_matrix) > sqrt(.Machine$double.eps)
+  nonzero <- model_matrix != 0
   if(any(rowSums(nonzero) != 1L)){
     return(NULL)
   }
   row_column <- max.col(nonzero, ties.method = "first")
   selected <- model_matrix[cbind(seq_len(nrow(model_matrix)), row_column)]
-  if(any(abs(selected - 1) > sqrt(.Machine$double.eps))){
+  if(any(selected != 1)){
     return(NULL)
   }
 

@@ -198,7 +198,7 @@
 .bt_random_effect_structured_indicator_columns <- function(model_matrix,
                                                            context){
 
-  nonzero <- abs(model_matrix) > sqrt(.Machine$double.eps)
+  nonzero <- model_matrix != 0
   if(any(rowSums(nonzero) != 1L)){
     stop(
       context, " requires one index level per row.",
@@ -207,7 +207,7 @@
   }
   row_column <- max.col(nonzero, ties.method = "first")
   selected <- model_matrix[cbind(seq_len(nrow(model_matrix)), row_column)]
-  if(any(abs(selected - 1) > sqrt(.Machine$double.eps))){
+  if(any(selected != 1)){
     stop(
       context, " requires unit index indicators.",
       call. = FALSE
