@@ -1,4 +1,108 @@
-# Exact fixed-formula predictor update bases.
+# Exact fixed-formula predictor dependencies and update bases.
+
+#' Fitted-formula coordinate dependencies
+#'
+#' @description
+#' `JAGS_formula_coordinate_dependencies()` reports every fitted formula
+#' predictor that structurally depends on the supplied posterior coordinates.
+#' It uses the persisted formula designs and parameter map, including direct
+#' coefficients, formula expressions, coefficient multipliers, and external
+#' random-effect SD sources. A row-source callback is reported as opaque for
+#' every queried coordinate because its R code may inspect arbitrary posterior
+#' parameters.
+#'
+#' @param fit fitted object created by [JAGS_fit()].
+#' @param coordinates unique fitted coordinate names.
+#'
+#' @return A data frame with `coordinate_name`, `formula_parameter`, and
+#'   `dependency_type` columns. An empty data frame means that none of the
+#'   fitted formula predictors depends on the supplied coordinates.
+#'
+#' @seealso [JAGS_formula_design()] [parameter_map()]
+#' @export
+JAGS_formula_coordinate_dependencies <- function(fit, coordinates){
+
+  if(!inherits(fit, "BayesTools_fit")){
+    stop("'fit' must be a 'BayesTools_fit' object.", call. = FALSE)
+  }
+  JAGS_validate_fit_contract(
+    fit,
+    requires = c("formula_design", "parameter_map")
+  )
+  if(!is.character(coordinates) || length(coordinates) < 1L ||
+     anyNA(coordinates) || any(!nzchar(coordinates)) ||
+     anyDuplicated(coordinates)){
+    stop("'coordinates' must contain unique non-empty fitted coordinate names.",
+         call. = FALSE)
+  }
+
+  coordinate_map <- parameter_coordinates(fit)
+  unknown <- setdiff(coordinates, coordinate_map$coordinate_name)
+  if(length(unknown) > 0L){
+    stop(
+      "Formula dependency lookup references unknown fitted coordinate",
+      if(length(unknown) > 1L) "s " else " ",
+      paste0("'", unknown, "'", collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+  designs <- JAGS_formula_design(fit)
+  rows <- list()
+  row_i <- 0L
+  for(parameter in names(designs)){
+    design <- designs[[parameter]]
+    .bt_validate_formula_design_replay_schema(
+      design,
+      context = paste0("Formula dependencies for parameter '", parameter, "'")
+    )
+    dependencies <- .bt_formula_predictor_design_dependencies(design)
+    opaque <- .bt_formula_predictor_has_opaque_random_dependency(design)
+    for(coordinate_name in coordinates){
+      coordinate_row <- coordinate_map[
+        coordinate_map$coordinate_name == coordinate_name,
+        ,
+        drop = FALSE
+      ]
+      types <- character()
+      if(identical(coordinate_row$role, "fixed_coefficient") &&
+         identical(coordinate_row$formula_parameter, parameter)){
+        types <- c(types, "coefficient")
+      }
+      coordinate_base <- .bt_parameter_coordinates_base(coordinate_name)
+      for(type in names(dependencies)){
+        dependency_bases <- .bt_parameter_coordinates_base(dependencies[[type]])
+        if(coordinate_base %in% dependency_bases){
+          types <- c(types, type)
+        }
+      }
+      if(opaque){
+        types <- c(types, "opaque_random_sd_callback")
+      }
+      for(type in unique(types)){
+        row_i <- row_i + 1L
+        rows[[row_i]] <- data.frame(
+          coordinate_name = coordinate_name,
+          formula_parameter = parameter,
+          dependency_type = type,
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+  }
+
+  if(length(rows) == 0L){
+    return(data.frame(
+      coordinate_name = character(),
+      formula_parameter = character(),
+      dependency_type = character(),
+      stringsAsFactors = FALSE
+    ))
+  }
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+  out
+}
 
 #' Exact fitted-formula predictor update basis
 #'
@@ -87,7 +191,6 @@ JAGS_formula_predictor_basis <- function(fit, directions,
     any(directions[, i] != 0)
   }, logical(1))
   moving_coordinates <- coordinate_names[moving]
-  moving_bases <- unique(.bt_parameter_coordinates_base(moving_coordinates))
 
   intercept <- paste0(parameter, "_intercept")
   if(isTRUE(design$log_intercept) && intercept %in% moving_coordinates){
@@ -98,45 +201,22 @@ JAGS_formula_predictor_basis <- function(fit, directions,
       coordinates = coordinate_names
     ))
   }
-  expression_dependencies <- unique(unlist(lapply(
-    design$expression_specs,
-    `[[`,
-    "parameter_dependencies"
-  ), use.names = FALSE))
-  expression_dependencies <- .bt_parameter_coordinates_base(
-    expression_dependencies
-  )
-  if(length(intersect(moving_bases, expression_dependencies)) > 0L){
-    return(.bt_formula_predictor_basis_result(
-      status = "unsupported",
-      reason = "Selected coefficient coordinates are reused by a persisted formula expression.",
-      parameter = parameter,
-      coordinates = coordinate_names
-    ))
-  }
-  multiplier_dependencies <- .bt_formula_predictor_multiplier_dependencies(
-    design
-  )
-  multiplier_dependencies <- .bt_parameter_coordinates_base(
-    multiplier_dependencies
-  )
-  if(length(intersect(moving_bases, multiplier_dependencies)) > 0L){
-    return(.bt_formula_predictor_basis_result(
-      status = "unsupported",
-      reason = "Selected coefficient coordinates are reused as formula-term multipliers.",
-      parameter = parameter,
-      coordinates = coordinate_names
-    ))
-  }
-  random_dependencies <- .bt_formula_predictor_random_dependencies(design)
-  random_dependencies <- .bt_parameter_coordinates_base(random_dependencies)
-  if(length(intersect(moving_bases, random_dependencies)) > 0L){
-    return(.bt_formula_predictor_basis_result(
-      status = "unsupported",
-      reason = "Selected coefficient coordinates are reused as random-effect scale sources.",
-      parameter = parameter,
-      coordinates = coordinate_names
-    ))
+  if(length(moving_coordinates) > 0L){
+    dependencies <- JAGS_formula_coordinate_dependencies(
+      fit,
+      coordinates = moving_coordinates
+    )
+    indirect <- dependencies$dependency_type != "coefficient"
+    if(any(indirect)){
+      dependency_types <- unique(dependencies$dependency_type[indirect])
+      reason <- .bt_formula_predictor_dependency_reason(dependency_types)
+      return(.bt_formula_predictor_basis_result(
+        status = "unsupported",
+        reason = reason,
+        parameter = parameter,
+        coordinates = coordinate_names
+      ))
+    }
   }
 
   multiplier_names <- unique(coordinate_map$multiplier[
@@ -361,6 +441,67 @@ JAGS_formula_predictor_basis <- function(fit, directions,
     character()
   })
   unique(unlist(dependencies, use.names = FALSE))
+}
+
+.bt_formula_predictor_design_dependencies <- function(design){
+
+  list(
+    expression = unique(unlist(lapply(
+      design$expression_specs,
+      `[[`,
+      "parameter_dependencies"
+    ), use.names = FALSE)),
+    multiplier = .bt_formula_predictor_multiplier_dependencies(design),
+    random_sd_source = .bt_formula_predictor_random_dependencies(design)
+  )
+}
+
+.bt_formula_predictor_has_opaque_random_dependency <- function(design){
+
+  for(random_term in design$random_effects){
+    binding <- random_term$sd_binding
+    if(is.null(binding)){
+      next
+    }
+    .bt_check_random_sd_binding(binding)
+    sources <- c(list(binding$source), binding$sources_by_column)
+    for(source in sources){
+      if(.bt_random_sd_binding_source_is_external(source) &&
+         .bt_parameter_source_has_values(source)){
+        return(TRUE)
+      }
+    }
+  }
+  FALSE
+}
+
+.bt_formula_predictor_dependency_reason <- function(types){
+
+  if("opaque_random_sd_callback" %in% types){
+    return(paste(
+      "A persisted random-effect SD callback has opaque posterior-coordinate",
+      "dependencies."
+    ))
+  }
+  if("expression" %in% types){
+    return(paste(
+      "Selected coefficient coordinates are reused by a persisted formula",
+      "expression."
+    ))
+  }
+  if("multiplier" %in% types){
+    return(paste(
+      "Selected coefficient coordinates are reused as formula-term",
+      "multipliers."
+    ))
+  }
+  if("random_sd_source" %in% types){
+    return(paste(
+      "Selected coefficient coordinates are reused as random-effect scale",
+      "sources."
+    ))
+  }
+  "Selected coefficient coordinates have unsupported formula dependencies."
 }
 
 .bt_formula_predictor_random_dependencies <- function(design){
