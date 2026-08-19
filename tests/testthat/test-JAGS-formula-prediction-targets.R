@@ -481,6 +481,77 @@ test_that("one-column unstructured blocks sample without correlation state", {
   expect_identical(actual, expected)
 })
 
+test_that("one-column row-indexed blocks sample without correlation state", {
+
+  df <- .formula_prediction_data()
+  result <- JAGS_formula(
+    formula = ~ 1 + (1 | id),
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1))
+    ),
+    prior_random = prior_random(
+      id = random_block(
+        sd_source = random_sd_source("tau", shape = "row")
+      )
+    )
+  )
+  random_term <- result$formula_design$random_effects[[1L]]
+  posterior <- matrix(
+    0,
+    nrow = 2L,
+    ncol = 1L,
+    dimnames = list(NULL, "mu_intercept")
+  )
+  source_draws <- matrix(
+    seq_len(nrow(posterior) * nrow(df)) / 10,
+    nrow = nrow(posterior),
+    ncol = nrow(df)
+  )
+  allocation <- c(0.5, 0.75)
+  testthat::local_mocked_bindings(
+    .bt_random_effect_row_indexed_source_draws = function(...){
+      source_draws
+    },
+    .bt_random_effect_row_indexed_allocation_draws = function(...){
+      allocation
+    },
+    .bt_random_effect_row_indexed_column_allocation_draws = function(...){
+      NULL
+    },
+    .package = "BayesTools"
+  )
+  sample_contribution <- function(){
+    .bt_random_effect_group_contribution_sample(
+      random_term = random_term,
+      model_matrix = random_term$model_matrix,
+      group_map = random_term$group_map,
+      posterior = posterior,
+      prior_list = result$prior_list,
+      source_data = df
+    )
+  }
+  independent_contribution <- function(){
+    .bt_random_effect_group_contribution_sample_independent(
+      random_term = random_term,
+      model_matrix = random_term$model_matrix,
+      group_map = random_term$group_map,
+      rows = seq_len(nrow(df)),
+      posterior = posterior,
+      row_scale_draws = source_draws,
+      draw_scale = allocation
+    )
+  }
+
+  set.seed(42)
+  actual <- sample_contribution()
+  set.seed(42)
+  expected <- independent_contribution()
+
+  expect_identical(actual, expected)
+})
+
 test_that("row-indexed new-level sampling rejects invalid scale draws", {
 
   df <- .formula_prediction_data()

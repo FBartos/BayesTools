@@ -162,7 +162,8 @@
 - preserves exact numeric values when hypothesis accessors consume an existing
   syntax tree, and retains authoritative attached prior-density metadata when
   constructing marginal posteriors. Scalar random blocks no longer require
-  unused correlation state, and Dirichlet auxiliary coordinates must be
+  unused correlation state, including when their SD source is row-indexed,
+  and Dirichlet auxiliary coordinates must be
   strictly positive before simplex reconstruction.
 - generates stored LKJ primitive coordinates when drawing formula priors so
   public semantic `cor(...)` summaries can be reconstructed exactly.
