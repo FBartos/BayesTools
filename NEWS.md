@@ -159,6 +159,11 @@
 - `as_marginal_inference()` conditional marginal summaries use active-subset conditioning: each marginal level conditions only on requested parameters with nonzero weight in that level's linear combination, and levels with no active requested conditionals use the fully averaged context
 
 ### Fixes
+- preserves exact numeric values when hypothesis accessors consume an existing
+  syntax tree, and retains authoritative attached prior-density metadata when
+  constructing marginal posteriors. Scalar random blocks no longer require
+  unused correlation state, and Dirichlet auxiliary coordinates must be
+  strictly positive before simplex reconstruction.
 - generates stored LKJ primitive coordinates when drawing formula priors so
   public semantic `cor(...)` summaries can be reconstructed exactly.
 - preserves matrix dimensions while validating one-coefficient random-effect
