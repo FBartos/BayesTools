@@ -193,7 +193,11 @@ random_effects_marginal_update_plan <- function(fit, selection){
     }
     return(.bt_random_effect_marginal_update_affine(
       update = "scale",
-      blocks = .bt_random_effect_marginal_update_allocation_blocks(allocation),
+      blocks = .bt_random_effect_marginal_update_allocation_blocks(
+        fit,
+        key,
+        allocation
+      ),
       coefficient_transform = coefficient_transform,
       coefficient_input = coefficient_input
     ))
@@ -214,7 +218,11 @@ random_effects_marginal_update_plan <- function(fit, selection){
     )
     return(.bt_random_effect_marginal_update_affine(
       update = "allocation",
-      blocks = .bt_random_effect_marginal_update_allocation_blocks(allocation),
+      blocks = .bt_random_effect_marginal_update_allocation_blocks(
+        fit,
+        key,
+        allocation
+      ),
       coefficient_transform = list(type = "identity"),
       coefficient_input = "source",
       allocation = list(
@@ -323,6 +331,8 @@ random_effects_marginal_update_plan <- function(fit, selection){
     return(.bt_random_effect_marginal_update_affine(
       update = "scale",
       blocks = .bt_random_effect_marginal_update_allocation_blocks(
+        fit,
+        key,
         allocations[[1L]]
       ),
       coefficient_transform = if(identical(key$evaluator, "sd_variance")){
@@ -389,11 +399,75 @@ random_effects_marginal_update_plan <- function(fit, selection){
 }
 
 
-.bt_random_effect_marginal_update_allocation_blocks <- function(allocation){
+.bt_random_effect_marginal_update_allocation_blocks <- function(
+    fit, key, allocation){
 
-  blocks <- unname(allocation$terms)
-  if(!is.character(blocks) || length(blocks) == 0L || anyNA(blocks) ||
-     any(!nzchar(blocks)) || anyDuplicated(blocks)){
+  design <- .bt_random_effect_marginal_covariance_design(
+    fit = fit,
+    parameter = key$formula_parameter
+  )
+  random_terms <- .bt_formula_design_random_effects(design)
+  block_names <- vapply(random_terms, `[[`, character(1), "block_name")
+  allocations <- design$random_allocations
+  if(is.null(allocations)){
+    allocations <- list()
+  }
+  expand <- function(current, trail = character()){
+    label <- current$label
+    if(!is.character(label) || length(label) != 1L || is.na(label) ||
+       !nzchar(label) || label %in% trail){
+      stop(
+        "Variance-allocation metadata contain an invalid dependency graph.",
+        call. = FALSE
+      )
+    }
+    terms <- unname(current$terms)
+    if(!is.character(terms) || length(terms) == 0L || anyNA(terms) ||
+       any(!nzchar(terms))){
+      stop(
+        "Variance-allocation metadata do not identify valid components.",
+        call. = FALSE
+      )
+    }
+    if(all(terms %in% block_names)){
+      return(terms)
+    }
+    components <- current$component_labels
+    if(!is.character(components) || length(components) != length(terms) ||
+       anyNA(components) || any(!nzchar(components))){
+      components <- names(current$terms)
+    }
+    if(!is.character(components) || length(components) != length(terms) ||
+       anyNA(components) || any(!nzchar(components))){
+      stop(
+        "Variance-allocation metadata do not identify valid components.",
+        call. = FALSE
+      )
+    }
+    out <- character()
+    for(i in seq_along(terms)){
+      children <- Filter(function(candidate){
+        parent <- candidate$parent
+        is.list(parent) && identical(parent$allocation, label) &&
+          identical(parent$component, components[[i]])
+      }, allocations)
+      if(length(children) == 1L){
+        out <- c(out, expand(children[[1L]], c(trail, label)))
+      }else if(length(children) == 0L && terms[[i]] %in% block_names){
+        out <- c(out, terms[[i]])
+      }else{
+        stop(
+          "Variance-allocation metadata do not resolve to fitted random-effect blocks.",
+          call. = FALSE
+        )
+      }
+    }
+    out
+  }
+
+  blocks <- expand(allocation)
+  if(length(blocks) == 0L || anyDuplicated(blocks) ||
+     !all(blocks %in% block_names)){
     stop(
       "Variance-allocation metadata do not identify unique random-effect blocks.",
       call. = FALSE

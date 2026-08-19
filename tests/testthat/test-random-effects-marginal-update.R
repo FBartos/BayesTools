@@ -269,7 +269,14 @@ test_that("nested aggregate allocations use their public covariance scale", {
     "random_var_total",
     "nested_split"
   )
+  outer_sd <- .random_update_test_plan(
+    fit,
+    "random_sd_total",
+    "total_re"
+  )
 
+  expect_identical(outer_sd$blocks, c("study", "paper", "drug"))
+  expect_identical(nested_sd$blocks, c("study", "paper"))
   expect_identical(nested_sd$coefficient_input, "quantity")
   expect_identical(nested_sd$coefficient_transform, list(type = "square"))
   expect_identical(nested_var$coefficient_input, "quantity")
