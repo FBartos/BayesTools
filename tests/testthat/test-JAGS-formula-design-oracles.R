@@ -2599,6 +2599,7 @@ test_that("random-effect formula lists retain component hierarchy", {
   )
   expect_equal(explicit_named_component$components, list(study = "id"))
   expect_equal(explicit_named_component$terms[[1]]$component_label, "study")
+  expect_true(explicit_named_component$terms[[1]]$component_visible)
 
   explicit_named_result <- JAGS_formula(
     formula = explicit_named_component$formula,
@@ -3560,6 +3561,7 @@ test_that("prior_random rejects unsupported and ignored production settings", {
   )
   expect_equal(unnamed_single$components, list(component_1 = "study"))
   expect_equal(unnamed_single$terms[[1L]]$component, "component 1")
+  expect_false(unnamed_single$terms[[1L]]$component_visible)
 
   unnamed_multiple <- random_effects_formula(
     list(~ 1 | study, ~ 1 | id)
@@ -3572,6 +3574,12 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     vapply(unnamed_multiple$terms, `[[`, character(1), "component"),
     c("component 1", "component 2")
   )
+  expect_true(all(vapply(
+    unnamed_multiple$terms,
+    `[[`,
+    logical(1),
+    "component_visible"
+  )))
   expect_s3_class(positional_allocation$weights, "prior.simplex")
   positional_named_allocation <- random_variance_allocation(
     "total_re",

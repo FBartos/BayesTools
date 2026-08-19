@@ -127,7 +127,8 @@ random_effects_formula <- function(random, envir = parent.frame(),
         terms = terms,
         component = component,
         component_label = component_label,
-        rename_blocks = is_multi_component_list || single_component_named
+        rename_blocks = is_multi_component_list || single_component_named,
+        component_visible = is_multi_component_list || single_component_named
       )
       components[[component_label]] <- vapply(terms, `[[`, character(1), "block_name")
     }
@@ -341,7 +342,8 @@ random_effects_formula <- function(random, envir = parent.frame(),
 
 .bt_random_effects_apply_component_name <- function(terms, component,
                                                    component_label,
-                                                   rename_blocks = TRUE){
+                                                   rename_blocks = TRUE,
+                                                   component_visible = TRUE){
 
   explicit <- vapply(terms, function(term){
     isTRUE(term$has_explicit_name)
@@ -359,6 +361,7 @@ random_effects_formula <- function(random, envir = parent.frame(),
     }
     terms[[i]]$component <- component
     terms[[i]]$component_label <- component_label
+    terms[[i]]$component_visible <- isTRUE(component_visible)
     terms[[i]]$component_child_label <- if(length(terms) == 1L){
       component_label
     }else{
