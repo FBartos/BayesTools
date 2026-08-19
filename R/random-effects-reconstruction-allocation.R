@@ -539,7 +539,7 @@
 
     eta <- posterior[, eta_names, drop = FALSE]
     eta_sum <- rowSums(eta)
-    invalid <- !is.finite(eta) | eta < 0
+    invalid <- !is.finite(eta) | eta <= 0
     invalid_row <- !is.finite(eta_sum) | eta_sum <= 0
     if(any(invalid) || any(invalid_row)){
       if(any(invalid)){
@@ -549,7 +549,7 @@
         detail <- paste0(" at row ", which(invalid_row)[1L])
       }
       .bt_random_effect_allocation_out_of_support(
-        "Random-effect Dirichlet allocation auxiliary samples must be finite, non-negative, and have a positive sum",
+        "Random-effect Dirichlet allocation auxiliary samples must be finite and positive",
         detail,
         "."
       )
