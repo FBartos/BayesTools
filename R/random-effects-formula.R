@@ -82,15 +82,14 @@ random_effects_formula <- function(random, envir = parent.frame(),
   component_names <- if(is_list_input){
     .bt_random_effects_input_names(random, length(formulas))
   }else{
-    rep(NA_character_, length(formulas))
+    rep("component 1", length(formulas))
   }
-  component_labels <- rep(NA_character_, length(formulas))
+  component_labels <- vapply(
+    component_names,
+    .bt_random_effect_sanitize_name,
+    character(1)
+  )
   if(is_list_input){
-    component_labels <- vapply(
-      component_names,
-      .bt_random_effect_sanitize_name,
-      character(1)
-    )
     if(anyDuplicated(component_labels)){
       stop(
         "Random-effect list names must be unique after sanitization.",

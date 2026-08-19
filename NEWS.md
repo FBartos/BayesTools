@@ -164,7 +164,9 @@
   constructing marginal posteriors. Scalar random blocks no longer require
   unused correlation state, including when their SD source is row-indexed,
   and compiled random terms persist whether their top-level component is
-  user-facing. Dirichlet auxiliary coordinates must be
+  user-facing. Bare formulas retain an invisible internal component mapping,
+  so downstream allocation consumers need not recreate formula metadata.
+  Dirichlet auxiliary coordinates must be
   strictly positive before simplex reconstruction.
 - generates stored LKJ primitive coordinates when drawing formula priors so
   public semantic `cor(...)` summaries can be reconstructed exactly.

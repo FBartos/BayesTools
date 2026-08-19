@@ -3563,6 +3563,11 @@ test_that("prior_random rejects unsupported and ignored production settings", {
   expect_equal(unnamed_single$terms[[1L]]$component, "component 1")
   expect_false(unnamed_single$terms[[1L]]$component_visible)
 
+  bare_single <- random_effects_formula(~ 1 | study)
+  expect_equal(bare_single$components, list(component_1 = "study"))
+  expect_equal(bare_single$terms[[1L]]$component, "component 1")
+  expect_false(bare_single$terms[[1L]]$component_visible)
+
   unnamed_multiple <- random_effects_formula(
     list(~ 1 | study, ~ 1 | id)
   )
