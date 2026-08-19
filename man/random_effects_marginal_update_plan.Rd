@@ -30,8 +30,8 @@ form.
 \details{
 \code{family = "affine"} means that, conditional on every non-selected posterior
 coordinate, the row covariance has the exact form \code{A + h(value) * B}, where
-\code{value} is the selected quantity's \code{source_parameter} coordinate and \code{h} is
-recorded in \code{coefficient_transform}.
+\code{value} is the coordinate declared by \code{coefficient_input} (\code{"source"} or
+\code{"quantity"}) and \code{h} is recorded in \code{coefficient_transform}.
 \code{family = "factor"} identifies an exact candidate-dependent covariance
 factor, while \code{family = "markov"} identifies a compiled structured Markov
 state. Unsupported plans carry a structural reason. The accessor never
