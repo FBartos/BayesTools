@@ -4691,18 +4691,17 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
     ),
     -Inf
   )
-  edge_reconstructed <- JAGS_marglik_parameters_formula(
-      samples = edge_bridge_samples,
-      formula_list = list(mu = result$formula),
-      formula_data_list = list(mu = result$data),
-      formula_prior_list = list(mu = result$prior_list),
-      prior_list_parameters = list(),
-      formula_design_list = list(mu = result$formula_design)
-  )
-  expect_equal(
-    edge_reconstructed$mu,
-    10 + 2 * c(1, 2, 1, 2, 1, 2),
-    tolerance = 1e-12
+  expect_error(
+    JAGS_marglik_parameters_formula(
+      samples                 = edge_bridge_samples,
+      formula_list            = list(mu = result$formula),
+      formula_data_list       = list(mu = result$data),
+      formula_prior_list      = list(mu = result$prior_list),
+      prior_list_parameters   = list(),
+      formula_design_list     = list(mu = result$formula_design)
+    ),
+    "must be finite and positive",
+    fixed = TRUE
   )
   expect_equal(
     BayesTools:::.bt_JAGS_marglik_priors_formula_random(
@@ -6883,7 +6882,8 @@ test_that("random-effect summary samples expose semantic SD, correlation, and al
       formula_design = list(mu = nested_result$formula_design),
       mode = "standard"
     ),
-    "finite, non-negative, and have a positive sum"
+    "must be finite and positive",
+    fixed = TRUE
   )
 
   direct_sd_names <- unique(unlist(lapply(
