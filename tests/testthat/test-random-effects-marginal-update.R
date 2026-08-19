@@ -158,9 +158,13 @@ test_that("single direct random scale exposes its exact row covariance basis", {
   data <- data.frame(id = factor(c("a", "a", "b", "c")))
   fit <- .random_update_test_fit(~ 1 + (1 | id), data)
   plan <- .random_update_test_plan(fit, "random_sd")
+  var_plan <- .random_update_test_plan(fit, "random_var")
 
   expect_identical(plan$family, "affine")
   expect_identical(plan$coefficient_transform, list(type = "square"))
+  expect_identical(var_plan$family, "affine")
+  expect_identical(var_plan$coefficient_input, "source")
+  expect_identical(var_plan$coefficient_transform, list(type = "square"))
   expect_equal(
     plan$invariant_covariance$update_covariance,
     outer(as.integer(data$id), as.integer(data$id), "==") * 1
@@ -184,6 +188,11 @@ test_that("variance allocations declare exact scalar covariance inputs", {
     "random_sd",
     "intercept"
   )
+  component_var <- .random_update_test_plan(
+    fit,
+    "random_var",
+    "intercept"
+  )
 
   expect_identical(total_sd$family, "affine")
   expect_identical(total_sd$coefficient_input, "source")
@@ -195,6 +204,9 @@ test_that("variance allocations declare exact scalar covariance inputs", {
   expect_identical(component_sd$update, "scale")
   expect_identical(component_sd$coefficient_input, "quantity")
   expect_identical(component_sd$coefficient_transform, list(type = "square"))
+  expect_identical(component_var$update, "scale")
+  expect_identical(component_var$coefficient_input, "quantity")
+  expect_identical(component_var$coefficient_transform, list(type = "identity"))
 })
 
 
