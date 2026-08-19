@@ -64,6 +64,56 @@ skip_if_not_test_profile("unit")
 }
 
 
+.random_update_test_allocation_fit <- function(){
+
+  data <- data.frame(
+    id = factor(c("a", "a", "b", "b")),
+    x = c(-1, 0, 1, 2)
+  )
+  result <- JAGS_formula(
+    formula = ~ 1 + random(1 + x | id, name = "study",
+                           covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name = "allocation",
+        terms = "study",
+        target = "sd_component",
+        scale = "total_variance",
+        sd_source = random_sd_source("tau"),
+        weights = prior("dirichlet", list(alpha = c(1, 1)))
+      )
+    )
+  )
+  weight <- "mu__xRE_ALLOCx_allocation__weight"
+  columns <- c(
+    "mu_intercept", "tau",
+    result$formula_design$random_effects[[1L]]$sd_parameter_names,
+    paste0(weight, "[", 1:2, "]"),
+    paste0("prior_par_eta_", weight, "[", 1:2, "]")
+  )
+  draws <- matrix(
+    0.5,
+    nrow = 2L,
+    ncol = length(columns),
+    dimnames = list(NULL, columns)
+  )
+  fit <- coda::mcmc.list(coda::mcmc(draws))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- result$prior_list
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  attr(fit, "parameter_map") <- .bt_build_parameter_map(
+    columns = columns,
+    prior_list = result$prior_list,
+    formula_design = list(mu = result$formula_design)
+  )
+  fit <- .bt_attach_draw_geometry(fit)
+  .bt_attach_fit_contract(fit)
+}
+
+
 test_that("random covariance updates are classified from formula metadata", {
 
   data <- data.frame(
@@ -116,6 +166,35 @@ test_that("single direct random scale exposes its exact row covariance basis", {
     outer(as.integer(data$id), as.integer(data$id), "==") * 1
   )
   expect_equal(plan$invariant_covariance$base_covariance, matrix(0, 4L, 4L))
+})
+
+
+test_that("variance allocations declare exact scalar covariance inputs", {
+
+  fit <- .random_update_test_allocation_fit()
+  total_sd <- .random_update_test_plan(fit, "random_sd_total")
+  total_var <- .random_update_test_plan(fit, "random_var_total")
+  proportion <- .random_update_test_plan(
+    fit,
+    "random_var_prop",
+    "intercept"
+  )
+  component_sd <- .random_update_test_plan(
+    fit,
+    "random_sd",
+    "intercept"
+  )
+
+  expect_identical(total_sd$family, "affine")
+  expect_identical(total_sd$coefficient_input, "source")
+  expect_identical(total_sd$coefficient_transform, list(type = "square"))
+  expect_identical(total_var$coefficient_transform, list(type = "square"))
+  expect_identical(proportion$update, "allocation")
+  expect_identical(proportion$coefficient_input, "source")
+  expect_identical(proportion$coefficient_transform, list(type = "identity"))
+  expect_identical(component_sd$update, "scale")
+  expect_identical(component_sd$coefficient_input, "quantity")
+  expect_identical(component_sd$coefficient_transform, list(type = "square"))
 })
 
 
