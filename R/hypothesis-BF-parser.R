@@ -3,7 +3,8 @@
 #' @description Utilities for parsing point-null hypothesis references and
 #' level references in the same syntax accepted by \code{\link{hypothesis_BF}}.
 #'
-#' @param hypothesis character vector with hypothesis statements.
+#' @param hypothesis character vector with hypothesis statements or a validated
+#'   code{BayesTools_hypothesis_ast}.
 #' @param allow_compound whether compound left-hand side expressions such as
 #' \code{"theta + 0 = 0"} should be returned with \code{direct = FALSE}
 #' instead of rejected.
@@ -23,10 +24,15 @@
 hypothesis_parse_point_reference <- function(hypothesis,
                                              allow_compound = TRUE){
 
-  check_char(hypothesis, "hypothesis", check_length = 0, allow_NA = FALSE)
   check_bool(allow_compound, "allow_compound", allow_NA = FALSE)
-
-  ast <- hypothesis_parse(hypothesis)
+  if(inherits(hypothesis, "BayesTools_hypothesis_ast")){
+    ast <- hypothesis
+    hypothesis_text <- hypothesis_render(ast)
+  }else{
+    check_char(hypothesis, "hypothesis", check_length = 0, allow_NA = FALSE)
+    hypothesis_text <- hypothesis
+    ast <- hypothesis_parse(hypothesis)
+  }
   rows <- list()
   for(i in seq_along(ast$statements)){
     statement <- ast$statements[[i]]
@@ -37,7 +43,7 @@ hypothesis_parse_point_reference <- function(hypothesis,
         next
       }
       row <- .bt_hypothesis_point_reference_row(
-        hypothesis = hypothesis[[i]],
+        hypothesis = hypothesis_text[[i]],
         side_name  = side_name,
         side       = side
       )

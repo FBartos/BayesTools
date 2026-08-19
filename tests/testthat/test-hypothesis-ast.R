@@ -222,6 +222,13 @@ test_that("public reference helpers agree with AST nodes", {
       character(1)
     )
   )
+
+  precise <- hypothesis_parse("theta = 0.701406683025")
+  precise_reference <- hypothesis_parse_point_reference(precise)
+  expect_identical(
+    precise_reference$value,
+    precise$statements[[1L]]$left$value
+  )
 })
 
 test_that("hypothesis BF consumes validated ASTs without changing results", {
