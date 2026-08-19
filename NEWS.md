@@ -1,5 +1,11 @@
 # version 0.3.1
 ### Features
+- adds `parameter_prior_density()` for deterministic prior densities of mapped
+  one-to-one quantities, variance-allocation marginals, and allocation-derived
+  random-component SDs, including squared nonnegative scales with integrable
+  density singularities at zero.
+- exposes component `var(...)` quantities alongside random-component SDs and
+  orders standard random summaries by scale, allocation, then correlation.
 - consolidates unreleased formula-random public parameter names as
   `(formula) owner: quantity(parameter[level], ...)`, omitting `owner: ` for
   a bare or unnamed one-entry random formula while retaining it for explicitly
@@ -16,8 +22,9 @@
   allocation coordinates, including Dirichlet auxiliary gamma nodes, internal.
   Public correlations use `cor`; aggregate
   allocations distinguish `sd_total` / `var_total` from `sd_common` /
-  `var_common`, with components exposed as `var_prop`, `var_ratio`, and
-  `sd_ratio`. Variance allocations retain a required stable internal name while
+  `var_common`, with random-block components exposed as `sd` / `var` and
+  allocation components as `var_prop`, `var_ratio`, and `sd_ratio`. Variance
+  allocations retain a required stable internal name while
   recording their public owner and component names separately. Linked formula-
   coefficient transforms require the exact current formula-design and
   parameter-map schemas rather than accepting stale versioned metadata.
@@ -162,6 +169,9 @@
 - `as_marginal_inference()` conditional marginal summaries use active-subset conditioning: each marginal level conditions only on requested parameters with nonzero weight in that level's linear combination, and levels with no active requested conditionals use the fully averaged context
 
 ### Fixes
+- treats complete LKJ primitive coordinates as authoritative over monitored
+  derived Cholesky values during covariance reconstruction, so candidate-draw
+  likelihoods cannot reuse stale correlation factors.
 - preserves exact numeric values when hypothesis accessors consume an existing
   syntax tree, and retains authoritative attached prior-density metadata when
   constructing marginal posteriors. Scalar random blocks no longer require

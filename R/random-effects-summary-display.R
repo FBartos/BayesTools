@@ -391,6 +391,10 @@
     keep <- keep & .bt_parameter_catalog_random_standard_quantities(quantities)
   }
   quantities <- quantities[keep, , drop = FALSE]
+  quantities <- .bt_parameter_catalog_random_summary_order(
+    quantities,
+    mode = mode
+  )
   if(nrow(quantities) == 0L){
     return(cleaned)
   }
@@ -426,6 +430,21 @@
     model_samples = cbind(cleaned$model_samples, summary_matrix),
     prior_list = c(cleaned$prior_list, summary_priors)
   )
+}
+
+.bt_parameter_catalog_random_summary_order <- function(quantities, mode){
+
+  if(nrow(quantities) < 2L || !identical(mode, "standard")){
+    return(quantities)
+  }
+  quantity_order <- match(
+    quantities$quantity,
+    c(
+      "sd_total", "sd_common", "sd", "sd_ratio",
+      "var_prop", "var_ratio", "inclusion", "cor"
+    )
+  )
+  quantities[order(quantity_order, na.last = TRUE), , drop = FALSE]
 }
 
 .bt_parameter_catalog_random_standard_quantities <- function(quantities){

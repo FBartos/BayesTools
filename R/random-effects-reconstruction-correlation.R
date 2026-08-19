@@ -22,6 +22,14 @@
   }
 
   if(identical(structure, "us")){
+    u_names <- .bt_random_effect_lkj_primitive_names(random_term, n_columns)
+    if(length(u_names) > 0L && all(u_names %in% colnames(posterior))){
+      return(.bt_lkj_cholesky_cpc_u_to_L(
+        posterior[, u_names, drop = FALSE],
+        K = n_columns
+      ))
+    }
+
     L_names <- .bt_random_effect_cholesky_names(
       random_term = random_term,
       n_columns = n_columns
@@ -36,13 +44,6 @@
       return(out)
     }
 
-    u_names <- .bt_random_effect_lkj_primitive_names(random_term, n_columns)
-    if(all(u_names %in% colnames(posterior))){
-      return(.bt_lkj_cholesky_cpc_u_to_L(
-        posterior[, u_names, drop = FALSE],
-        K = n_columns
-      ))
-    }
   }
 
   NULL

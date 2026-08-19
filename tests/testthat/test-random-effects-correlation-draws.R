@@ -484,6 +484,42 @@ test_that("transformed rho coordinates are exact and saturated boundaries fail",
   expect_lt(near_zero[["lower"]] - (-1e-20), 1e-30)
 })
 
+test_that("complete LKJ primitives override monitored Cholesky values", {
+
+  random_term <- list(
+    block_name = "study",
+    structure  = "us",
+    n_columns  = 2L,
+    correlation = list(
+      type             = "lkj",
+      primitive_names  = "u[1]",
+      primitive_bounds = list(
+        lb = c("u[1]" = 0),
+        ub = c("u[1]" = 1)
+      ),
+      cholesky_name = "L"
+    )
+  )
+  posterior <- cbind(
+    `u[1]`   = c(.25, .75),
+    `L[1,1]` = 1,
+    `L[2,1]` = -.9,
+    `L[1,2]` = 0,
+    `L[2,2]` = sqrt(1 - .9^2)
+  )
+  cholesky <- BayesTools:::.bt_random_effect_cholesky_draws(
+    random_term = random_term,
+    n_columns  = 2L,
+    posterior  = posterior
+  )
+  correlation <- vapply(seq_len(2L), function(i){
+    stats::cov2cor(tcrossprod(cholesky[i, , ]))[1L, 2L]
+  }, numeric(1))
+
+  expect_equal(correlation, c(-.5, .5), tolerance = 1e-12)
+})
+
+
 test_that("scalar structured Cholesky reconstruction requires canonical rho", {
 
   random_term <- .correlation_draws_term("ar1")

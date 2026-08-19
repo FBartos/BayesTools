@@ -1607,6 +1607,15 @@ prior_density_ordinate <- function(x, value){
     if(any(behavior == "regular")) return("regular")
     return("zero")
   }
+  if(identical(provenance$kind, "scalar_affine") &&
+     is.list(provenance$source) &&
+     is.null(provenance$source_transform) &&
+     is.numeric(provenance$offset) && length(provenance$offset) == 1L &&
+     is.finite(provenance$offset) && provenance$offset == 0 &&
+     is.numeric(provenance$scale) && length(provenance$scale) == 1L &&
+     is.finite(provenance$scale) && provenance$scale > 0){
+    return(.prior_density_ordinate_exp_lin_boundary(provenance$source, b))
+  }
   if(!identical(provenance$kind, "primitive")){
     return("unknown")
   }
@@ -1623,10 +1632,11 @@ prior_density_ordinate <- function(x, value){
     return("zero")
   }
   exponent <- if(b > 0){
-    if(identical(family, "gamma")) parameters$shape - b else
-      if(identical(family, "exp")) 1 - b else
-        if(identical(family, "beta")) parameters$alpha - b else
-          if(identical(family, "uniform")) 1 - b else NA_real_
+    if(identical(family, "normal")) 1 - b else
+      if(identical(family, "gamma")) parameters$shape - b else
+        if(identical(family, "exp")) 1 - b else
+          if(identical(family, "beta")) parameters$alpha - b else
+            if(identical(family, "uniform")) 1 - b else NA_real_
   }else{
     if(identical(family, "invgamma")){
       -(parameters$shape + b) / b

@@ -7,7 +7,9 @@
 \alias{parameter_catalog_extend}
 \alias{parameter_catalog_resolve}
 \alias{parameter_draws}
+\alias{parameter_prior_density}
 \alias{parameter_draws.BayesTools_fit}
+\alias{parameter_prior_density.BayesTools_fit}
 \alias{parameter_transform}
 \alias{parameter_transform_forward}
 \alias{parameter_transform_inverse}
@@ -26,7 +28,17 @@ parameter_catalog_resolve(catalog, alias, namespace = NULL, component = NULL)
 
 parameter_draws(object, selection, ...)
 
+parameter_prior_density(object, selection, ...)
+
 \method{parameter_draws}{BayesTools_fit}(object, selection, model_samples = NULL, ...)
+
+\method{parameter_prior_density}{BayesTools_fit}(
+  object,
+  selection,
+  n_grid = .prior_linear_density_default_grid(),
+  tail_prob = .prior_linear_density_tail_prob(),
+  ...
+)
 
 parameter_transform(object, selection)
 
@@ -62,6 +74,12 @@ parameter_transform_jacobian(values, transform)
 coordinates. This lets downstream summaries evaluate a selected semantic
 quantity on an already materialized posterior sample.}
 
+\item{n_grid}{number of grid points used for deterministic induced prior
+densities.}
+
+\item{tail_prob}{probability omitted from each continuous source-prior tail
+when constructing a finite numerical grid.}
+
 \item{values}{numeric values on the source scale for
 \code{parameter_transform_forward()} and \code{parameter_transform_jacobian()}, or
 on the public quantity scale for \code{parameter_transform_inverse()}.}
@@ -74,9 +92,10 @@ on the public quantity scale for \code{parameter_transform_inverse()}.}
 \code{BayesTools_parameter_catalog}. \code{parameter_catalog_schema()} returns schema
 descriptions. \code{parameter_catalog_resolve()} returns a
 \code{BayesTools_parameter_selection}. \code{parameter_draws()} returns a
-\code{coda::mcmc.list} for BayesTools-owned quantities. \code{parameter_transform()}
-returns a serializable transform descriptor or \code{NULL}; the transform helpers
-return numeric values.
+\code{coda::mcmc.list} for BayesTools-owned quantities.
+\code{parameter_prior_density()} returns a \code{prior_linear_density} or \code{NULL}.
+\code{parameter_transform()} returns a serializable transform descriptor or
+\code{NULL}; the transform helpers return numeric values.
 }
 \description{
 \code{parameter_catalog()} returns the semantic quantities and aliases from the
@@ -124,6 +143,12 @@ is unique.
 method reads only the coordinates declared by the selected
 extraction key. Downstream packages can provide methods for package-owned
 derived quantities.
+
+\code{parameter_prior_density()} constructs a deterministic
+\code{prior_linear_density} for supported map-defined quantities, including
+one-to-one transformations, Dirichlet allocation marginals, and
+allocation-derived component SDs. It returns \code{NULL} when the fitted map does
+not declare a supported deterministic prior composition.
 
 \code{parameter_transform()} returns the one-to-one map from the selected source
 coordinate to its public semantic quantity when that map exists. Composite

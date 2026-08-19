@@ -833,6 +833,18 @@ test_that("random summaries are cataloged and extracted from declared dependenci
     parameter_catalog_resolve(catalog, sd_label, namespace = "mu")
   )
   expect_identical(as.numeric(sd_draws[[1L]][, 1L]), c(1, 2, 3))
+  var_label <- "(mu) var(intercept)"
+  var_quantity <- parameter_catalog_resolve(
+    catalog,
+    var_label,
+    namespace = "mu"
+  )$quantities
+  expect_identical(var_quantity$role, "random_var")
+  var_draws <- parameter_draws(
+    fit,
+    parameter_catalog_resolve(catalog, var_label, namespace = "mu")
+  )
+  expect_identical(as.numeric(var_draws[[1L]][, 1L]), c(1, 4, 9))
 
   observed <- NULL
   original <- .bt_parameter_draw_dependencies
@@ -1031,7 +1043,7 @@ test_that("explicitly named one-entry random lists retain their public owner", {
 
   expect_setequal(
     catalog$quantities$canonical_name,
-    "(mu) study: sd(intercept)"
+    c("(mu) study: sd(intercept)", "(mu) study: var(intercept)")
   )
   expect_identical(
     parameter_catalog_resolve(
@@ -1518,6 +1530,151 @@ test_that("declared variance allocations have metadata-only catalog rows", {
     )$quantity_id
   )
 })
+
+test_that("allocation quantities expose deterministic induced prior densities", {
+
+  data <- data.frame(
+    group = factor(c("a", "b", "a", "b")),
+    study = factor(c("s1", "s1", "s2", "s2"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 0 + group + us(0 + group | study),
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      group = prior_factor(
+        "normal",
+        list(mean = 0, sd = 1),
+        contrast = "independent"
+      )
+    ),
+    prior_random = prior_random(
+      study = random_block(contrasts = c(group = "independent")),
+      random_variance_allocation(
+        name = "heterogeneity",
+        display_name = "",
+        terms = "study",
+        target = "sd_component",
+        scale = "mean_variance",
+        sd = prior(
+          "normal",
+          list(mean = 0, sd = 1),
+          truncation = list(0, Inf)
+        ),
+        weights = prior("dirichlet", list(alpha = c(2, 3)))
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  allocation  <- random_term$sd_binding$allocations[[1L]]
+  cholesky    <- random_term$correlation$cholesky_name
+  columns <- c(
+    "mu_group[1]", "mu_group[2]",
+    allocation$source_node,
+    paste0(allocation$weight_name, "[", 1:2, "]"),
+    random_term$correlation$primitive_names,
+    paste0(cholesky, c("[1,1]", "[2,1]", "[1,2]", "[2,2]"))
+  )
+  values <- rbind(
+    c(0, 0, 1, .4, .6, .25, 1, -.5, 0, sqrt(.75)),
+    c(0, 0, 1, .4, .6, .25, 1, -.5, 0, sqrt(.75))
+  )
+  colnames(values) <- columns
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(values)),
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  catalog <- parameter_catalog(fit)
+  component_selection <- parameter_catalog_resolve(
+    catalog,
+    "sd(group[a])",
+    "mu"
+  )
+  ratio_selection <- parameter_catalog_resolve(
+    catalog,
+    "var_ratio(group[a])",
+    "mu"
+  )
+  common_variance_selection <- parameter_catalog_resolve(
+    catalog,
+    "var_common",
+    "mu"
+  )
+  component_density <- parameter_prior_density(
+    fit,
+    component_selection,
+    n_grid = 512L
+  )
+  repeated_density <- parameter_prior_density(
+    fit,
+    component_selection,
+    n_grid = 512L
+  )
+  ratio_density <- parameter_prior_density(
+    fit,
+    ratio_selection,
+    n_grid = 512L
+  )
+  common_variance_density <- parameter_prior_density(
+    fit,
+    common_variance_selection,
+    n_grid = 512L
+  )
+  x <- component_density$density$x
+  y <- component_density$density$y
+  second_moment <- sum(diff(x) *
+    (head(x^2 * y, -1L) + tail(x^2 * y, -1L)) / 2)
+
+  expect_s3_class(component_density, "prior_linear_density")
+  expect_identical(component_density$density, repeated_density$density)
+  expect_equal(second_moment, 2 * (2 / 5), tolerance = .03)
+  expect_equal(
+    .prior_linear_density_height(ratio_density, .5),
+    stats::dbeta(.25, 2, 3) / 2,
+    tolerance = .02
+  )
+  common_variance_interior <- prior_density_ordinate(
+    common_variance_density,
+    .5
+  )
+  expect_identical(common_variance_interior$behavior, "regular")
+  expect_true(common_variance_interior$exact)
+  expect_equal(
+    common_variance_interior$log_density,
+    stats::dchisq(.5, df = 1, log = TRUE)
+  )
+  common_variance_boundary <- prior_density_ordinate(
+    common_variance_density,
+    0
+  )
+  expect_identical(common_variance_boundary$behavior, "infinite")
+  expect_true(common_variance_boundary$exact)
+  standard <- .bt_parameter_catalog_random_summary_samples(
+    fit = fit,
+    model_samples = values,
+    prior_list = formula_result$prior_list,
+    coordinates = parameter_coordinates(fit),
+    mode = "standard"
+  )$model_samples
+  semantic <- intersect(
+    colnames(standard),
+    catalog$quantities$canonical_name[startsWith(
+      catalog$quantities$role,
+      "random_"
+    )]
+  )
+  expect_identical(
+    sub("^\\(mu\\) ", "", semantic),
+    c(
+      "sd_common",
+      "var_ratio(group[a])",
+      "var_ratio(group[b])",
+      "cor(group[a],group[b])"
+    )
+  )
+})
+
 
 test_that("unnamed local allocations retain owners with multiple blocks", {
 

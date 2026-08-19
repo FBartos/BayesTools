@@ -640,12 +640,28 @@
     x_new <- .density.prior_transformation_x(x_old, transformation, transformation_arguments)
     y_new <- .density.prior_transformation_y(x_new, y_old, transformation, transformation_arguments)
 
-    if(any(!is.finite(x_new)) || any(!is.finite(y_new))){
+    singular_exp_lin <- is.character(transformation) &&
+      length(transformation) == 1L &&
+      identical(transformation, "exp_lin") &&
+      is.list(transformation_arguments) &&
+      is.numeric(transformation_arguments$b) &&
+      length(transformation_arguments$b) == 1L &&
+      is.finite(transformation_arguments$b) &&
+      transformation_arguments$b > 1
+    singular_boundary <- rep(FALSE, length(x_new))
+    if(isTRUE(singular_exp_lin)){
+      singular_boundary <- x_old == 0 & x_new == 0 & !is.finite(y_new)
+    }
+    if(any(!is.finite(x_new)) || any(!is.finite(y_new) & !singular_boundary)){
       stop(
         "The requested prior-density transformation produced non-finite ",
         "grid values.",
         call. = FALSE
       )
+    }
+    if(any(singular_boundary)){
+      x_new <- x_new[!singular_boundary]
+      y_new <- y_new[!singular_boundary]
     }
 
     if(length(x_new) >= 2){

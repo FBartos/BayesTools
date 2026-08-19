@@ -63,6 +63,12 @@
 #' extraction key. Downstream packages can provide methods for package-owned
 #' derived quantities.
 #'
+#' `parameter_prior_density()` constructs a deterministic
+#' `prior_linear_density` for supported map-defined quantities, including
+#' one-to-one transformations, Dirichlet allocation marginals, and
+#' allocation-derived component SDs. It returns `NULL` when the fitted map does
+#' not declare a supported deterministic prior composition.
+#'
 #' `parameter_transform()` returns the one-to-one map from the selected source
 #' coordinate to its public semantic quantity when that map exists. Composite
 #' quantities return `NULL`. The forward, inverse, and Jacobian helpers are the
@@ -85,6 +91,10 @@
 #'   quantity on an already materialized posterior sample.
 #' @param transform a serializable transform descriptor returned by
 #'   `parameter_transform()`.
+#' @param n_grid number of grid points used for deterministic induced prior
+#'   densities.
+#' @param tail_prob probability omitted from each continuous source-prior tail
+#'   when constructing a finite numerical grid.
 #' @param values numeric values on the source scale for
 #'   `parameter_transform_forward()` and `parameter_transform_jacobian()`, or
 #'   on the public quantity scale for `parameter_transform_inverse()`.
@@ -94,15 +104,17 @@
 #' `BayesTools_parameter_catalog`. `parameter_catalog_schema()` returns schema
 #' descriptions. `parameter_catalog_resolve()` returns a
 #' `BayesTools_parameter_selection`. `parameter_draws()` returns a
-#' `coda::mcmc.list` for BayesTools-owned quantities. `parameter_transform()`
-#' returns a serializable transform descriptor or `NULL`; the transform helpers
-#' return numeric values.
+#' `coda::mcmc.list` for BayesTools-owned quantities.
+#' `parameter_prior_density()` returns a `prior_linear_density` or `NULL`.
+#' `parameter_transform()` returns a serializable transform descriptor or
+#' `NULL`; the transform helpers return numeric values.
 #'
 #' @export parameter_catalog
 #' @export parameter_catalog_schema
 #' @export parameter_catalog_extend
 #' @export parameter_catalog_resolve
 #' @export parameter_draws
+#' @export parameter_prior_density
 #' @export parameter_transform
 #' @export parameter_transform_forward
 #' @export parameter_transform_inverse
@@ -316,6 +328,12 @@ parameter_draws <- function(object, selection, ...){
 }
 
 #' @rdname parameter_catalog
+parameter_prior_density <- function(object, selection, ...){
+
+  UseMethod("parameter_prior_density")
+}
+
+#' @rdname parameter_catalog
 #' @exportS3Method parameter_draws BayesTools_fit
 parameter_draws.BayesTools_fit <- function(object, selection,
                                             model_samples = NULL, ...){
@@ -410,6 +428,315 @@ parameter_draws.BayesTools_fit <- function(object, selection,
     )
   }
   coda::mcmc.list(out)
+}
+
+#' @rdname parameter_catalog
+#' @exportS3Method parameter_prior_density BayesTools_fit
+parameter_prior_density.BayesTools_fit <- function(
+    object, selection, n_grid = .prior_linear_density_default_grid(),
+    tail_prob = .prior_linear_density_tail_prob(), ...){
+
+  catalog <- parameter_catalog(object)
+  .bt_validate_parameter_selection(selection, catalog = catalog)
+  if(nrow(selection$quantities) != 1L){
+    stop("'selection' must contain exactly one parameter quantity.",
+         call. = FALSE)
+  }
+  check_int(n_grid, "n_grid", lower = 16)
+  check_real(tail_prob, "tail_prob", lower = 0, upper = 0.5,
+             allow_bound = FALSE)
+  quantity <- selection$quantities[1L, , drop = FALSE]
+  if(!identical(quantity$provider, "BayesTools")){
+    stop("The selected quantity is owned by another provider.",
+         call. = FALSE)
+  }
+  key <- quantity$extraction_key[[1L]]
+  if(!identical(key$type, "random_summary")){
+    return(NULL)
+  }
+
+  out <- if(identical(key$evaluator, "sd") &&
+             isTRUE(key$allocation_derived)){
+    .bt_parameter_prior_density_random_component_sd(
+      object = object,
+      key = key,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
+  }else if(identical(key$evaluator, "allocation")){
+    .bt_parameter_prior_density_allocation_quantity(
+      object = object,
+      selection = selection,
+      key = key,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
+  }else{
+    .bt_parameter_prior_density_direct_quantity(
+      object = object,
+      selection = selection,
+      key = key,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
+  }
+  if(!is.null(out)){
+    attr(out, "parameter_prior_density") <- list(
+      quantity_id = quantity$quantity_id,
+      source = "fitted_parameter_map"
+    )
+  }
+  out
+}
+
+.bt_parameter_prior_density_direct_quantity <- function(
+    object, selection, key, n_grid, tail_prob){
+
+  if(!key$source_type %in% c("identity", "one_to_one_transform")){
+    return(NULL)
+  }
+  prior_list <- attr(object, "prior_list", exact = TRUE)
+  source_prior <- if(nzchar(key$source_prior) &&
+                     key$source_prior %in% names(prior_list)){
+    prior_list[[key$source_prior]]
+  }else{
+    NULL
+  }
+  if(is.null(source_prior) && identical(key$source_transform, "lkj2")){
+    random_term <- .bt_parameter_catalog_find_random_term(object, key)
+    eta <- random_term$correlation$eta
+    if(is.numeric(eta) && length(eta) == 1L && is.finite(eta) && eta > 0){
+      source_prior <- prior("beta", list(alpha = eta, beta = eta))
+    }
+  }
+  if(is.null(source_prior) || !is.prior(source_prior) ||
+     .prior_linear_prior_dimension(source_prior) != 1L){
+    return(NULL)
+  }
+  transform <- parameter_transform(object, selection)
+  if(identical(transform$type, "square")){
+    lower <- source_prior$truncation$lower
+    if(!is.numeric(lower) || length(lower) != 1L || is.na(lower) || lower < 0){
+      return(NULL)
+    }
+    return(.bt_parameter_prior_density_scalar(
+      source_prior,
+      n_grid = n_grid,
+      tail_prob = tail_prob,
+      output_transformation = "exp_lin",
+      output_transformation_arguments = list(a = 0, b = 2)
+    ))
+  }
+  dist <- .bt_parameter_prior_density_scalar(
+    source_prior,
+    n_grid = n_grid,
+    tail_prob = tail_prob
+  )
+  .bt_parameter_prior_density_transform(dist, transform, n_grid)
+}
+
+.bt_parameter_prior_density_allocation_quantity <- function(
+    object, selection, key, n_grid, tail_prob){
+
+  random_term <- if(nzchar(key$random_block)){
+    .bt_parameter_catalog_find_random_term(object, key)
+  }else{
+    NULL
+  }
+  allocation <- .bt_parameter_catalog_find_allocation(
+    object,
+    key,
+    random_term
+  )
+  source_prior <- allocation$weights
+  index <- key$index
+  beta_prior <- .bt_parameter_prior_density_simplex_marginal(
+    source_prior,
+    index
+  )
+  if(is.null(beta_prior)){
+    return(NULL)
+  }
+  dist <- .bt_parameter_prior_density_scalar(
+    beta_prior,
+    n_grid = n_grid,
+    tail_prob = tail_prob
+  )
+  transform <- parameter_transform(object, selection)
+  .bt_parameter_prior_density_transform(dist, transform, n_grid)
+}
+
+.bt_parameter_prior_density_random_component_sd <- function(
+    object, key, n_grid, tail_prob){
+
+  random_term <- .bt_parameter_catalog_find_random_term(object, key)
+  if(!.bt_parameter_catalog_random_sd_is_direct(
+    random_term = random_term,
+    parameter = key$formula_parameter,
+    formula_scale = attr(object, "formula_scale", exact = TRUE)
+  )){
+    return(NULL)
+  }
+  binding <- random_term$sd_binding
+  if(is.null(binding) || !isTRUE(binding$true_allocation) ||
+     length(binding$allocations) == 0L ||
+     !is.numeric(key$index) || length(key$index) != 1L ||
+     is.na(key$index)){
+    return(NULL)
+  }
+  allocations <- Filter(function(allocation){
+    identical(
+      .bt_random_effect_allocation_target_metadata(allocation),
+      "sd_component"
+    )
+  }, binding$allocations)
+  if(length(allocations) != 1L){
+    return(NULL)
+  }
+  allocation <- allocations[[1L]]
+  source <- allocation$source
+  source_prior <- source$prior
+  if(is.null(source_prior) || !is.prior(source_prior) ||
+     .prior_linear_prior_dimension(source_prior) != 1L){
+    return(NULL)
+  }
+  leaf_index <- allocation$leaf_index_by_column
+  if(length(leaf_index) < key$index || is.na(leaf_index[[key$index]])){
+    return(NULL)
+  }
+  factors <- allocation$parent_factors
+  factors[[length(factors) + 1L]] <- list(
+    weight_name = allocation$weight_name,
+    index = leaf_index[[key$index]],
+    scale = allocation$scale,
+    n_targets = allocation$n_targets
+  )
+  prior_list <- attr(object, "prior_list", exact = TRUE)
+  dist <- .bt_parameter_prior_density_scalar(
+    source_prior,
+    n_grid = n_grid,
+    tail_prob = tail_prob
+  )
+  for(factor in factors){
+    factor_prior <- prior_list[[factor$weight_name]]
+    beta_prior <- .bt_parameter_prior_density_simplex_marginal(
+      factor_prior,
+      factor$index
+    )
+    if(is.null(beta_prior)){
+      return(NULL)
+    }
+    factor_dist <- .bt_parameter_prior_density_scalar(
+      beta_prior,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
+    scale <- if(identical(factor$scale, "mean_variance")){
+      factor$n_targets
+    }else if(identical(factor$scale, "total_variance")){
+      1
+    }else{
+      return(NULL)
+    }
+    factor_dist <- .bt_parameter_prior_density_transform(
+      factor_dist,
+      list(type = "sqrt_scale", scale = as.numeric(scale)),
+      n_grid
+    )
+    dist <- .prior_linear_density_product(
+      dist,
+      factor_dist,
+      n_grid = n_grid
+    )
+  }
+  dist
+}
+
+.bt_parameter_prior_density_simplex_marginal <- function(prior_object,
+                                                         index){
+
+  if(!is.prior.simplex(prior_object) ||
+     !identical(prior_object$distribution, "dirichlet")){
+    return(NULL)
+  }
+  alpha <- prior_object$parameters$alpha
+  if(!is.numeric(alpha) || length(alpha) < 2L ||
+     any(!is.finite(alpha)) || any(alpha <= 0) ||
+     !is.numeric(index) || length(index) != 1L || is.na(index) ||
+     index != as.integer(index) || index < 1L || index > length(alpha)){
+    return(NULL)
+  }
+  index <- as.integer(index)
+  prior(
+    "beta",
+    list(alpha = alpha[[index]], beta = sum(alpha[-index]))
+  )
+}
+
+.bt_parameter_prior_density_scalar <- function(
+    prior_object, n_grid, tail_prob, output_transformation = NULL,
+    output_transformation_arguments = NULL){
+
+  .prior_linear_combination_density(
+    prior_list = list(source = prior_object),
+    weights = c(source = 1),
+    n_grid = n_grid,
+    tail_prob = tail_prob,
+    output_transformation = output_transformation,
+    output_transformation_arguments = output_transformation_arguments
+  )
+}
+
+.bt_parameter_prior_density_transform <- function(dist, transform, n_grid){
+
+  if(is.null(transform)){
+    return(NULL)
+  }
+  if(identical(transform$type, "identity")){
+    return(dist)
+  }
+  if(identical(transform$type, "affine")){
+    return(.prior_linear_density_transform(
+      dist,
+      "lin",
+      list(a = transform$offset, b = transform$scale),
+      n_grid
+    ))
+  }
+  if(identical(transform$type, "tanh")){
+    return(.prior_linear_density_transform(dist, "tanh", n_grid = n_grid))
+  }
+  transformation <- if(identical(transform$type, "bounded_logit")){
+    width <- transform$upper - transform$lower
+    list(
+      fun = function(x) transform$lower + width * stats::plogis(x),
+      inv = function(x) stats::qlogis((x - transform$lower) / width),
+      jac = function(x) width * stats::plogis(x) * (1 - stats::plogis(x))
+    )
+  }else if(identical(transform$type, "sqrt_scale")){
+    list(
+      fun = function(x) sqrt(transform$scale * x),
+      inv = function(x) x^2 / transform$scale,
+      jac = function(x) transform$scale /
+        (2 * sqrt(transform$scale * x))
+    )
+  }else if(identical(transform$type, "square")){
+    if(.prior_linear_density_range(dist)[1L] < 0){
+      return(NULL)
+    }
+    list(
+      fun = function(x) x^2,
+      inv = function(x) sqrt(x),
+      jac = function(x) 2 * x
+    )
+  }else{
+    return(NULL)
+  }
+  .prior_linear_density_transform(
+    dist,
+    transformation,
+    n_grid = n_grid
+  )
 }
 
 #' @rdname parameter_catalog
@@ -1906,7 +2233,39 @@ parameter_transform_jacobian <- function(values, transform){
             source_scale = source_scale,
             allocation_derived = allocation_sd
           )
-          if(identical(sd_quantity, "sd_ratio")){
+          if(identical(sd_quantity, "sd")){
+            var_name <- .bt_random_effect_summary_name(
+              parameter = parameter,
+              type = "var",
+              parts = c(block, components[i])
+            )
+            add_definition(
+              raw_name = var_name,
+              role = "random_var",
+              parameter = parameter,
+              label = label,
+              evaluator = "sd_variance",
+              dependencies = dependencies,
+              metadata = c(term_metadata, list(index = i)),
+              block = block,
+              term = block,
+              component = components[i],
+              owner_type = "random_block",
+              owner_name = owner,
+              public_owner = public_owner,
+              quantity = "var",
+              arguments = sd_arguments,
+              source_type = if(direct_source){
+                "one_to_one_transform"
+              }else{
+                "composite"
+              },
+              source_parameter = if(direct_source) source_parameter else "",
+              source_prior = source_prior,
+              source_transform = "square",
+              allocation_derived = allocation_sd
+            )
+          }else if(identical(sd_quantity, "sd_ratio")){
             var_name <- .bt_random_effect_summary_name(
               parameter = parameter,
               type = "var_ratio",
