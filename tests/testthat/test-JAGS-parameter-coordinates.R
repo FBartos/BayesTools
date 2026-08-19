@@ -148,6 +148,36 @@ test_that("coordinate map keeps LKJ primitives internal to their random block", 
   expect_true(all(coordinates$internal))
 })
 
+test_that("Dirichlet auxiliary coordinates remain coordinate-only", {
+
+  prior_list <- list(
+    weights = prior("dirichlet", list(alpha = c(2, 3)))
+  )
+  columns <- c(
+    "weights[1]",
+    "weights[2]",
+    "prior_par_eta_weights[1]",
+    "prior_par_eta_weights[2]"
+  )
+  coordinates <- build_test_parameter_coordinates(
+    columns = columns,
+    prior_list = prior_list
+  )
+  catalog <- .bt_build_parameter_catalog(
+    coordinates = coordinates,
+    prior_list = prior_list
+  )
+
+  expect_identical(
+    coordinates$internal,
+    c(FALSE, FALSE, TRUE, TRUE)
+  )
+  expect_identical(
+    catalog$quantities$canonical_name,
+    c("weights[1]", "weights[2]")
+  )
+})
+
 test_that("formula metadata exposes exact LKJ primitive coordinate priors", {
 
   data <- data.frame(

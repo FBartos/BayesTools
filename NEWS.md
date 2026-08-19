@@ -11,7 +11,8 @@
   metadata. The coordinate field is `coordinate_name`, while `canonical_name`
   is reserved for semantic quantities. Quantity rows declare identity,
   one-to-one, or composite source provenance while keeping backend LKJ and
-  allocation coordinates internal. Public correlations use `cor`; aggregate
+  allocation coordinates, including Dirichlet auxiliary gamma nodes, internal.
+  Public correlations use `cor`; aggregate
   allocations distinguish `sd_total` / `var_total` from `sd_common` /
   `var_common`, with components exposed as `var_prop`, `var_ratio`, and
   `sd_ratio`. Variance allocations retain a required stable internal name while

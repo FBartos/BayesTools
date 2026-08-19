@@ -1314,11 +1314,16 @@ test_that("declared variance allocations have metadata-only catalog rows", {
     )
   )
   random_terms <- formula_result$formula_design$random_effects
-  columns <- c(
-    "mu_intercept",
+  allocation_columns <- c(
     "mu__xRE_ALLOCx_allocation__allocation_sd",
     "mu__xRE_ALLOCx_allocation__weight[1]",
     "mu__xRE_ALLOCx_allocation__weight[2]",
+    "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[1]",
+    "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[2]"
+  )
+  columns <- c(
+    "mu_intercept",
+    allocation_columns,
     unlist(lapply(random_terms, `[[`, "sd_parameter_names"))
   )
   coordinates <- .bt_build_parameter_coordinates(
@@ -1334,6 +1339,13 @@ test_that("declared variance allocations have metadata-only catalog rows", {
   derived <- catalog$quantities[
     startsWith(catalog$quantities$role, "random_"),
   ]
+
+  expect_true(all(coordinates$internal[
+    coordinates$coordinate_name %in% allocation_columns
+  ]))
+  expect_false(any(
+    allocation_columns %in% catalog$quantities$canonical_name
+  ))
 
   expect_true("random_var_prop" %in% derived$role)
   expect_identical(

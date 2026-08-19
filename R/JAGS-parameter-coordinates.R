@@ -569,6 +569,11 @@
   name_map <- .bt_parameter_coordinates_name_map(formula_design)
   allocation_indicators <-
     .bt_random_variance_allocation_inclusion_indicator_names(formula_design)
+  dirichlet_auxiliaries <- vapply(
+    names(prior_list)[vapply(prior_list, is.prior.simplex, logical(1))],
+    .JAGS_prior_dirichlet_eta_name,
+    character(1)
+  )
   bases <- .bt_parameter_coordinates_base(coordinate_names)
   coordinates <- .bt_parameter_coordinates_empty()
   coordinates <- coordinates[rep(NA_integer_, length(coordinate_names)), , drop = FALSE]
@@ -578,6 +583,7 @@
     base_name <- bases[i]
     name_map_row <- name_map[name_map$jags_name == base_name, , drop = FALSE]
     prior <- .bt_parameter_coordinates_prior_owner(base_name, prior_list)
+    prior_metadata <- .bt_random_effect_metadata(prior)
     owner <- .bt_parameter_coordinates_term_owner(base_name, random_terms)
     random_term <- if(is.null(owner)) NULL else owner$random_term
     role <- if(is.null(owner)){
@@ -701,7 +707,9 @@
         "random_inclusion_indicator",
         "random_inclusion_probability",
         "random_sd_variable"
-      )
+      ) ||
+        base_name %in% dirichlet_auxiliaries ||
+        isTRUE(prior_metadata$allocation)
     )
   }
 
