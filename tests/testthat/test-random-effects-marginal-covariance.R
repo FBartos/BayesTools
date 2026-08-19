@@ -1653,7 +1653,7 @@ test_that("row-varying SD-component allocation weights columns and rows", {
       blocks            = "id",
       row_blocks        = split(seq_len(nrow(df)), random_term$group_map)
     ),
-    "finite, non-negative, and have a positive sum",
+    "must be finite and positive",
     fixed = TRUE
   )
 })
