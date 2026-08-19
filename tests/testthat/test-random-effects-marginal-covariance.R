@@ -839,6 +839,10 @@ test_that("us covariance uses monitored LKJ Cholesky samples", {
 
   expect_equal(random_term$structure, "us")
   expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+  expect_identical(
+    unname(out$samples[1L, , ]),
+    unname(t(out$samples[1L, , ]))
+  )
   expect_equal(unname(diagonal$samples), .re_cov_dense_diagonal(out),
                tolerance = 1e-12)
   expect_equal(out$metadata$blocks$id$correlation_type, "lkj")

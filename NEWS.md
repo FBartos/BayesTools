@@ -6,6 +6,14 @@
   density singularities at zero.
 - exposes component `var(...)` quantities alongside random-component SDs and
   orders standard random summaries by scale, allocation, then correlation.
+- adds `random_effects_marginal_update_plan()` as the authoritative metadata
+  view for exact scalar updates to formula-random marginal covariance. The
+  accessor distinguishes affine, factor, Markov, and unsupported families,
+  records whether the covariance coefficient consumes a backend source or a
+  public quantity, and exposes exact invariant covariance bases when the
+  compiled design permits them. Marginal covariance reconstruction now emits
+  structurally symmetric matrices directly, without downstream tolerance,
+  averaging, or covariance repair.
 - consolidates unreleased formula-random public parameter names as
   `(formula) owner: quantity(parameter[level], ...)`, omitting `owner: ` for
   a bare or unnamed one-entry random formula while retaining it for explicitly

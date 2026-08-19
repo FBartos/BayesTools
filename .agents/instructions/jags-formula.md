@@ -122,6 +122,10 @@ public semantic labels.
 `random_effects_marginal_vcov()` owns posterior `Z G Z'` construction.
 `random_effects_marginal_variance_factors()` exposes validated row-aligned
 factors for downstream likelihoods that can marginalize only supported blocks.
+`random_effects_marginal_update_plan()` classifies a selected public quantity's
+exact scalar covariance update from the parameter map and compiled random
+design; downstream optimizations must use this metadata rather than infer an
+update form from posterior samples or evaluated covariance matrices.
 Do not make a downstream package reconstruct these quantities from raw JAGS
 columns.
 

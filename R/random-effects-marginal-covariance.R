@@ -1456,6 +1456,7 @@ random_effects_marginal_variance_factors <- function(
       dimnames = list(draw = NULL, row = row_names, column = row_names)
     )
   }
+  lower <- lower.tri(group_kernel)
   for(draw in seq_len(n_draws)){
     coefficient_covariance <- if(is.null(correlation)){
       diag(sd_draws[draw, ]^2, nrow = n_columns, ncol = n_columns)
@@ -1467,6 +1468,7 @@ random_effects_marginal_variance_factors <- function(
       model_matrix
     )
     covariance <- group_kernel * design_covariance
+    covariance[lower] <- t(covariance)[lower]
     if(isTRUE(diagonal_only)){
       out[draw, ] <- diag(covariance)
     }else{
@@ -2349,6 +2351,7 @@ random_effects_marginal_variance_factors <- function(
       list(
         rows = rows,
         model_matrix = model_matrix[rows, , drop = FALSE],
+        lower = lower.tri(matrix(FALSE, n_group_rows, n_group_rows)),
         array_offset = rep(rows0, times = n_group_rows) * n_draws_num +
           rep(rows0, each = n_group_rows) * n_draws_num * n_rows_num
       )
@@ -2385,7 +2388,11 @@ random_effects_marginal_variance_factors <- function(
       }else if(n_columns == 1L){
         out[index] <- out[index] + G[1L, 1L] * as.vector(tcrossprod(Z[, 1L]))
       }else{
-        out[index] <- out[index] + as.vector(Z %*% G %*% t(Z))
+        contribution <- Z %*% G %*% t(Z)
+        # Covariance symmetry is structural; compute one triangle once rather
+        # than averaging independently rounded matrix-product entries.
+        contribution[group$lower] <- t(contribution)[group$lower]
+        out[index] <- out[index] + as.vector(contribution)
       }
     }
   }
