@@ -179,11 +179,23 @@ random_effects_marginal_update_plan <- function(fit, selection){
       key = key,
       random_term = random_term
     )
+    direct_source <- key$source_type %in% c(
+      "identity", "one_to_one_transform"
+    ) && is.character(key$source_parameter) &&
+      length(key$source_parameter) == 1L &&
+      !is.na(key$source_parameter) && nzchar(key$source_parameter)
+    coefficient_input <- if(direct_source) "source" else "quantity"
+    coefficient_transform <- if(direct_source ||
+                                    identical(evaluator, "allocation_sd")){
+      list(type = "square")
+    }else{
+      list(type = "identity")
+    }
     return(.bt_random_effect_marginal_update_affine(
       update = "scale",
       blocks = .bt_random_effect_marginal_update_allocation_blocks(allocation),
-      coefficient_transform = list(type = "square"),
-      coefficient_input = "source"
+      coefficient_transform = coefficient_transform,
+      coefficient_input = coefficient_input
     ))
   }
 

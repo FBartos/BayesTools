@@ -198,6 +198,85 @@ test_that("variance allocations declare exact scalar covariance inputs", {
 })
 
 
+test_that("nested aggregate allocations use their public covariance scale", {
+
+  data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2")),
+    paper = factor(c("p1", "p2", "p1", "p2")),
+    drug = factor(c("a", "b", "a", "b"))
+  )
+  result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | paper, name = "paper", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      random_variance_allocation(
+        name = "total_re",
+        terms = c(nested = "nested", drug = "drug"),
+        sd = prior("gamma", list(2, 2)),
+        weights = prior("dirichlet", list(alpha = c(1, 1)))
+      ),
+      random_variance_allocation(
+        name = "nested_split",
+        parent = allocation_ref("total_re", "nested"),
+        terms = c(study = "study", paper = "paper"),
+        weights = prior("dirichlet", list(alpha = c(3, 2)))
+      )
+    )
+  )
+  allocation_columns <- function(name){
+    weight <- paste0("mu__xRE_ALLOCx_", name, "__weight")
+    c(
+      paste0(weight, "[", 1:2, "]"),
+      paste0("prior_par_eta_", weight, "[", 1:2, "]")
+    )
+  }
+  columns <- c(
+    "mu_intercept",
+    "mu__xRE_ALLOCx_total_re__allocation_sd",
+    allocation_columns("total_re"),
+    allocation_columns("nested_split")
+  )
+  draws <- matrix(
+    0.5,
+    nrow = 2L,
+    ncol = length(columns),
+    dimnames = list(NULL, columns)
+  )
+  fit <- coda::mcmc.list(coda::mcmc(draws))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- result$prior_list
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  attr(fit, "parameter_map") <- .bt_build_parameter_map(
+    columns = columns,
+    prior_list = result$prior_list,
+    formula_design = list(mu = result$formula_design)
+  )
+  fit <- .bt_attach_draw_geometry(fit)
+  fit <- .bt_attach_fit_contract(fit)
+
+  nested_sd <- .random_update_test_plan(
+    fit,
+    "random_sd_total",
+    "nested_split"
+  )
+  nested_var <- .random_update_test_plan(
+    fit,
+    "random_var_total",
+    "nested_split"
+  )
+
+  expect_identical(nested_sd$coefficient_input, "quantity")
+  expect_identical(nested_sd$coefficient_transform, list(type = "square"))
+  expect_identical(nested_var$coefficient_input, "quantity")
+  expect_identical(nested_var$coefficient_transform, list(type = "identity"))
+})
+
+
 test_that("shared independent-coefficient scale exposes an exact dense basis", {
 
   data <- data.frame(
