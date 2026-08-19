@@ -1226,6 +1226,43 @@ test_that("marginal_posterior propagates exact scalar support from mixed samples
   expect_false(disjoint_support$exact)
 })
 
+test_that("marginal_posterior preserves an attached simple prior density", {
+
+  theta <- seq(.1, .9, length.out = 101)
+  class(theta) <- c("mixed_posteriors", "mixed_posteriors.simple", class(theta))
+  attr(theta, "sample_ind") <- seq_along(theta)
+  attr(theta, "models_ind") <- rep(1, length(theta))
+  attr(theta, "parameter")  <- "theta"
+  attr(theta, "prior_list") <- prior_none()
+  stored_prior <- prior("uniform", list(a = 0, b = 1))
+  attr(theta, "prior_density") <- stored_prior
+
+  samples <- list(theta = theta)
+  class(samples) <- c("mixed_posteriors", "list")
+
+  marginal <- marginal_posterior(
+    samples,
+    parameter     = "theta",
+    prior_samples = TRUE
+  )
+  transformed <- marginal_posterior(
+    samples,
+    parameter                = "theta",
+    prior_samples            = TRUE,
+    transformation           = "lin",
+    transformation_arguments = list(a = 1, b = 2)
+  )
+
+  expect_identical(
+    attr(marginal, "prior_density", exact = TRUE),
+    stored_prior
+  )
+  expect_false(identical(
+    attr(transformed, "prior_density", exact = TRUE),
+    stored_prior
+  ))
+})
+
 test_that("marginal_posterior infers support from the current prior context", {
 
   raw_prior <- prior("beta", list(alpha = 1, beta = 1))

@@ -109,7 +109,9 @@
 #' @param prior_samples whether marginal prior distributions should be generated
 #' @param use_formula whether the parameter should be evaluated as a part of supplied formula
 #' @param n_samples controls the numerical grid used for model-averaged
-#' prior densities
+#' prior densities. For an untransformed simple parameter, an explicitly
+#' attached \code{prior_density} is authoritative and is propagated instead of
+#' being reconstructed from \code{prior_list}.
 #' @inheritParams density.prior
 #'
 #' @details When the mixed posterior samples carry deterministic
@@ -957,6 +959,26 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   if(is.null(transformation)){
+    if(inherits(samples[[parameter]], "mixed_posteriors.simple")){
+      stored_prior_density <- attr(
+        samples[[parameter]],
+        "prior_density",
+        exact = TRUE
+      )
+      if(!is.null(stored_prior_density)){
+        attr(marginal_posterior_samples, "prior_density") <-
+          stored_prior_density
+        stored_prior_context <- attr(
+          samples[[parameter]],
+          "prior_density_context",
+          exact = TRUE
+        )
+        if(!is.null(stored_prior_context)){
+          attr(marginal_posterior_samples, "prior_density_context") <-
+            stored_prior_context
+        }
+      }
+    }
     marginal_posterior_samples <- .marginal_posterior_attach_precomputed_metadata(
       marginal              = marginal_posterior_samples,
       samples               = samples,

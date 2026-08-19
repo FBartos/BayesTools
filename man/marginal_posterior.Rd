@@ -56,7 +56,9 @@ settings the \code{x_seq} or \code{x_range} was specified on
 the transformed support}
 
 \item{n_samples}{controls the numerical grid used for model-averaged
-prior densities}
+prior densities. For an untransformed simple parameter, an explicitly
+attached \code{prior_density} is authoritative and is propagated instead of
+being reconstructed from \code{prior_list}.}
 
 \item{...}{additional arguments}
 }
