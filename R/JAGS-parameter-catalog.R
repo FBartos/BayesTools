@@ -33,8 +33,9 @@
 #' [parameter_coordinates()] is the linked concrete posterior-coordinate view;
 #' the catalog is the semantic view of the same fitted map. Random-effect
 #' canonical names follow `(formula) owner: quantity(arguments)`, with `owner: `
-#' omitted when the formula contains exactly one random block and retained when
-#' multiple blocks require disambiguation. Parentheses contain parameter or
+#' omitted for a bare or unnamed one-entry random formula, retained for an
+#' explicitly named one-entry list, and required when multiple blocks need
+#' disambiguation. Parentheses contain parameter or
 #' coefficient names, while square brackets inside an argument contain its
 #' factor or index level. Examples include `(mu) study: sd(intercept)`,
 #' `(mu) study: cor(group[sensitivity],group[specificity])`, and
@@ -1098,30 +1099,9 @@ parameter_transform_jacobian <- function(values, transform){
         )
       }
     }
-    qualified_label <- character()
-    if(startsWith(quantity$role, "random_") && nzchar(quantity$owner_name)){
-      qualified_label <- .bt_random_effect_semantic_name(
-        parameter = quantity$formula_parameter,
-        owner = quantity$owner_name,
-        quantity = quantity$quantity,
-        arguments = quantity$arguments[[1L]],
-        formula_prefix = TRUE
-      )
-      prefix <- .bt_random_effect_summary_formula_prefix(
-        quantity$formula_parameter,
-        TRUE
-      )
-      if(nzchar(prefix) && startsWith(qualified_label, prefix)){
-        qualified_label <- c(
-          qualified_label,
-          substring(qualified_label, nchar(prefix) + 1L)
-        )
-      }
-    }
     values <- if(startsWith(quantity$role, "random_")){
       unique(c(
         semantic_label,
-        qualified_label,
         .bt_parameter_catalog_random_correlation_aliases(
           quantity,
           formula_design
@@ -1169,14 +1149,11 @@ parameter_transform_jacobian <- function(values, transform){
   if(!is.list(random_term)){
     return(character())
   }
-  owners <- unique(c(
-    .bt_parameter_catalog_random_public_block_owner(
-      formula_design,
-      quantity$formula_parameter,
-      random_term
-    ),
-    quantity$owner_name
-  ))
+  owners <- .bt_parameter_catalog_random_public_block_owner(
+    formula_design,
+    quantity$formula_parameter,
+    random_term
+  )
   if(!is.character(owners) || anyNA(owners)){
     return(character())
   }
@@ -1225,7 +1202,7 @@ parameter_transform_jacobian <- function(values, transform){
   }, designs)
   terms <- unlist(lapply(designs, `[[`, "random_effects"), recursive = FALSE)
   blocks <- unique(vapply(terms, `[[`, character(1), "block_name"))
-  if(length(blocks) <= 1L){
+  if(length(blocks) <= 1L && !isTRUE(random_term$component_visible)){
     return("")
   }
 

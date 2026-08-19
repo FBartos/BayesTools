@@ -793,7 +793,7 @@ test_that("random summaries are cataloged and extracted from declared dependenci
   expect_identical(
     parameter_catalog_resolve(
       catalog,
-      "(mu) id: cor(intercept,x)",
+      "(mu) cor(intercept,x)",
       namespace = "mu"
     )$quantity_id,
     correlation$quantity_id
@@ -801,7 +801,7 @@ test_that("random summaries are cataloged and extracted from declared dependenci
   expect_identical(
     parameter_catalog_resolve(
       catalog,
-      "id: cor(intercept,x)",
+      "cor(intercept,x)",
       namespace = "mu"
     )$quantity_id,
     correlation$quantity_id
@@ -981,12 +981,12 @@ test_that("structured correlation aliases expose shared and pairwise semantics",
     formula_design = list(mu = formula_result$formula_design)
   )
   catalog <- parameter_catalog(fit)
-  rho <- parameter_catalog_resolve(catalog, "study: cor", "mu")
+  rho <- parameter_catalog_resolve(catalog, "cor", "mu")
 
   expect_identical(
     parameter_catalog_resolve(
       catalog,
-      "(mu) study: cor(outcome[sensitivity],outcome[specificity])",
+      "(mu) cor(outcome[sensitivity],outcome[specificity])",
       "mu"
     )$quantity_id,
     rho$quantity_id
@@ -994,10 +994,56 @@ test_that("structured correlation aliases expose shared and pairwise semantics",
   expect_identical(
     parameter_catalog_resolve(
       catalog,
-      "study: cor(outcome[sensitivity],outcome[specificity])",
+      "cor(outcome[sensitivity],outcome[specificity])",
       "mu"
     )$quantity_id,
     rho$quantity_id
+  )
+  expect_error(
+    parameter_catalog_resolve(catalog, "study: cor", "mu"),
+    "No public parameter quantity matches"
+  )
+})
+
+test_that("explicitly named one-entry random lists retain their public owner", {
+
+  data <- data.frame(id = factor(c("a", "a", "b", "b")))
+  formula_result <- JAGS_formula(
+    random_effects_formula(list(study = ~ 1 | id)),
+    "mu",
+    data,
+    list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      study = random_block(sd = prior("gamma", list(2, 2)))
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  coordinates <- .bt_build_parameter_coordinates(
+    columns = random_term$sd_parameter_names,
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  catalog <- .bt_build_parameter_catalog(
+    coordinates = coordinates,
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+
+  expect_setequal(
+    catalog$quantities$canonical_name,
+    "(mu) study: sd(intercept)"
+  )
+  expect_identical(
+    parameter_catalog_resolve(
+      catalog,
+      "study: sd(intercept)",
+      "mu"
+    )$quantities$canonical_name,
+    "(mu) study: sd(intercept)"
+  )
+  expect_error(
+    parameter_catalog_resolve(catalog, "sd(intercept)", "mu"),
+    "No public parameter quantity matches"
   )
 })
 
@@ -1157,7 +1203,7 @@ test_that("transformed random summaries hide fitted-scale implementation rows", 
   )
   catalog <- parameter_catalog(fit)
 
-  label <- "(mu) id: sd(x)"
+  label <- "(mu) sd(x)"
   quantity <- parameter_catalog_resolve(catalog, label, "mu")$quantities
   expect_identical(quantity$status, "sampled")
   expect_identical(quantity$source_type, "one_to_one_transform")

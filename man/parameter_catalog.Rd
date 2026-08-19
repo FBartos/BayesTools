@@ -95,8 +95,9 @@ marginal means based on full predictions.
 \code{\link[=parameter_coordinates]{parameter_coordinates()}} is the linked concrete posterior-coordinate view;
 the catalog is the semantic view of the same fitted map. Random-effect
 canonical names follow \verb{(formula) owner: quantity(arguments)}, with \verb{owner: }
-omitted when the formula contains exactly one random block and retained when
-multiple blocks require disambiguation. Parentheses contain parameter or
+omitted for a bare or unnamed one-entry random formula, retained for an
+explicitly named one-entry list, and required when multiple blocks need
+disambiguation. Parentheses contain parameter or
 coefficient names, while square brackets inside an argument contain its
 factor or index level. Examples include \verb{(mu) study: sd(intercept)},
 \verb{(mu) study: cor(group[sensitivity],group[specificity])}, and

@@ -2,7 +2,9 @@
 ### Features
 - consolidates unreleased formula-random public parameter names as
   `(formula) owner: quantity(parameter[level], ...)`, omitting `owner: ` for
-  exactly one random block and retaining it for multiple blocks. Formula lists
+  a bare or unnamed one-entry random formula while retaining it for explicitly
+  named one-entry lists and multiple blocks. Formula-prefix omission is the
+  only naming alias except for genuine semantic equivalences. Formula lists
   with two or more unnamed
   components use `component 1`, `component 2`, and so on. Each fit stores one
   authoritative, versioned `parameter_map` containing linked backend-coordinate,
