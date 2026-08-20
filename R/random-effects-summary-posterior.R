@@ -13,6 +13,8 @@
 #' @param allocation optional allocation label filter.
 #' @param component optional allocation component label filter.
 #' @param formula_parameter optional formula parameter filter.
+#' @param simplify_names whether returned quantities should use centrally
+#'   generated simplified display labels. Defaults to `FALSE`.
 #' @param n_prior_points number of grid points used for the attached analytic
 #'   prior density.
 #'
@@ -30,6 +32,7 @@ random_effects_summary_posterior <- function(
     allocation = NULL,
     component = NULL,
     formula_parameter = NULL,
+    simplify_names = FALSE,
     n_prior_points = 4096){
 
   if(!inherits(fit, "runjags") || !inherits(fit, "BayesTools_fit")){
@@ -39,6 +42,7 @@ random_effects_summary_posterior <- function(
   check_char(allocation, "allocation", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_char(component, "component", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_char(formula_parameter, "formula_parameter", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
+  check_bool(simplify_names, "simplify_names", allow_NA = FALSE)
   check_int(n_prior_points, "n_prior_points", lower = 16)
 
   prior_list <- attr(fit, "prior_list", exact = TRUE)
@@ -80,7 +84,11 @@ random_effects_summary_posterior <- function(
     )
   }
 
-  display_names <- quantities$canonical_name
+  display_names <- if(simplify_names){
+    quantities$display_label
+  }else{
+    quantities$canonical_name
+  }
 
   out <- vector("list", nrow(quantities))
   names(out) <- display_names
@@ -101,7 +109,7 @@ random_effects_summary_posterior <- function(
     attr(values, "parameter") <- display_names[i]
     attr(values, "summary_name") <- key$summary_name
     attr(values, "random_summary") <- summary$summary
-    attr(values, "random_summary_label") <- quantity$display_label
+    attr(values, "random_summary_label") <- display_names[i]
     attr(values, "random_allocation") <- key$allocation_label
     attr(values, "random_component") <- quantity$component
     attr(values, "formula_parameter") <- quantity$formula_parameter

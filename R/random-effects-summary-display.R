@@ -368,9 +368,11 @@
 
 .bt_parameter_catalog_random_summary_samples <- function(
     fit, model_samples, prior_list, coordinates,
-    mode = c("standard", "full", "raw", "none")){
+    mode = c("standard", "full", "raw", "none"),
+    simplify_names = FALSE){
 
   mode <- match.arg(mode)
+  check_bool(simplify_names, "simplify_names", allow_NA = FALSE)
   if(identical(mode, "raw")){
     return(list(model_samples = model_samples, prior_list = prior_list))
   }
@@ -418,7 +420,8 @@
     summary_columns[[i]] <- as.numeric(values[, 1L])
     summary_priors[[i]] <- .bt_parameter_catalog_random_summary_prior(
       fit,
-      quantity
+      quantity,
+      simplify_names = simplify_names
     )
   }
   names(summary_columns) <- quantities$canonical_name
@@ -455,7 +458,7 @@
   correlation <- quantities$quantity == "cor"
   inclusion   <- quantities$quantity == "inclusion"
   block_scale <- quantities$owner_type == "random_block" &
-    quantities$quantity %in% c("sd", "sd_ratio") &
+    quantities$quantity == "sd" &
     !allocation_derived
   allocation <- quantities$owner_type == "variance_allocation" &
     quantities$quantity %in% c(
@@ -465,7 +468,8 @@
   correlation | inclusion | block_scale | allocation
 }
 
-.bt_parameter_catalog_random_summary_prior <- function(fit, quantity){
+.bt_parameter_catalog_random_summary_prior <- function(
+    fit, quantity, simplify_names = FALSE){
 
   key <- quantity$extraction_key[[1L]]
   random_term <- if(nzchar(key$random_block)){
@@ -482,7 +486,11 @@
     quantity$quantity,
     quantity$arguments[[1L]]
   )
-  summary_label <- quantity$display_label
+  summary_label <- if(simplify_names){
+    quantity$display_label
+  }else{
+    quantity$canonical_name
+  }
   prefix <- .bt_random_effect_summary_formula_prefix(
     quantity$formula_parameter,
     TRUE
@@ -583,12 +591,10 @@
     prior_list = prior_list
   )
   components <- .bt_random_effect_summary_sd_components(random_term, sd_names)
-  owner <- .bt_random_effect_public_name(random_term)
   labels <- paste0(prefix, vapply(
     components,
     .bt_random_effect_sd_summary_label,
     character(1),
-    group = owner,
     random_term = random_term
   ))
 

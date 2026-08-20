@@ -209,7 +209,6 @@
   for(design in random_design){
     parameter <- design$parameter
     for(random_term in design$random_effects){
-      display_group <- .bt_random_effect_summary_group_label(random_term)
       display_structure <- .bt_random_effect_summary_term_structure(random_term)
       sd_summary <- .bt_random_effect_summary_sd_samples(
         random_term = random_term,
@@ -226,7 +225,6 @@
         formula_scale = formula_scale
       )
       for(i in seq_along(sd_summary$names)){
-        sd_quantity <- .bt_random_effect_semantic_sd_quantity(random_term)
         add_summary(
           name = .bt_random_effect_summary_name(
             parameter = parameter,
@@ -235,15 +233,13 @@
           ),
           values = sd_summary$values[, i],
           parameter = parameter,
-          type = sd_quantity,
+          type = "sd",
           label = .bt_random_effect_sd_summary_label(
             component = sd_summary$components[i],
-            group = display_group,
             random_term = random_term
           ),
           component_label = .bt_random_effect_sd_component_summary_label(
-            component = sd_summary$components[i],
-            random_term = random_term
+            component = sd_summary$components[i]
           ),
           block = random_term$block_name,
           grouping = random_term$group_label,
@@ -251,37 +247,6 @@
           effect_label = .bt_random_effect_public_name(random_term),
           component = sd_summary$components[i]
         )
-        if(identical(sd_quantity, "sd_ratio")){
-          arguments <- .bt_random_effect_semantic_sd_arguments(
-            sd_summary$components[i]
-          )
-          add_summary(
-            name = .bt_random_effect_summary_name(
-              parameter = parameter,
-              type = "var_ratio",
-              parts = c(random_term$block_name, sd_summary$components[i])
-            ),
-            values = sd_summary$values[, i]^2,
-            parameter = parameter,
-            type = "var_ratio",
-            label = .bt_random_effect_semantic_name(
-              parameter = "",
-              owner = .bt_random_effect_public_name(random_term),
-              quantity = "var_ratio",
-              arguments = arguments,
-              formula_prefix = FALSE
-            ),
-            component_label = .bt_random_effect_semantic_quantity_name(
-              "var_ratio",
-              arguments
-            ),
-            block = random_term$block_name,
-            grouping = random_term$group_label,
-            structure = display_structure,
-            effect_label = .bt_random_effect_public_name(random_term),
-            component = sd_summary$components[i]
-          )
-        }
       }
 
       inclusion_summary <- .bt_random_effect_summary_inclusion_samples(

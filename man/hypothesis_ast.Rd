@@ -14,7 +14,8 @@ hypothesis_parse(
   hypothesis,
   catalog = NULL,
   namespace = NULL,
-  component = NULL
+  component = NULL,
+  simplify_names = FALSE
 )
 
 hypothesis_ast_schema()
@@ -25,7 +26,13 @@ hypothesis_symbols(ast, occurrences = FALSE)
 
 hypothesis_rewrite(ast, mapping)
 
-hypothesis_resolve(ast, catalog, namespace = NULL, component = NULL)
+hypothesis_resolve(
+  ast,
+  catalog,
+  namespace = NULL,
+  component = NULL,
+  simplify_names = FALSE
+)
 }
 \arguments{
 \item{hypothesis}{character vector of hypothesis statements.}
@@ -39,6 +46,9 @@ without requiring the caller to add backticks.}
 \item{component}{optional exact catalog component filter for unqualified
 symbols. A level-qualified symbol such as \code{term[level]} supplies its own
 per-occurrence component and must agree with this value when both are used.}
+
+\item{simplify_names}{whether to recognize centrally generated simplified
+random-effect aliases. Defaults to \code{FALSE}.}
 
 \item{ast}{a \code{BayesTools_hypothesis_ast} object.}
 

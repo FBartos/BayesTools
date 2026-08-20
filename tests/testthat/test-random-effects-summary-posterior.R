@@ -224,7 +224,7 @@ test_that("full estimates summaries add SD ratios to standard quantities", {
   expect_true("(mu) sd(x)" %in% colnames(full))
 })
 
-test_that("standard summaries retain directly prior-specified SD ratios", {
+test_that("known group covariance retains its fitted kernel scale", {
 
   skip_if_not_installed("runjags")
 
@@ -272,9 +272,18 @@ test_that("standard summaries retain directly prior-specified SD ratios", {
     return_samples = TRUE
   )
 
-  expect_identical(colnames(standard), "(mu) sd_ratio(intercept)")
-  expect_true("(mu) sd_ratio(intercept)" %in% colnames(full))
-  expect_true("(mu) var_ratio(intercept)" %in% colnames(full))
+  expect_identical(colnames(standard), "(mu) sd(intercept)")
+  expect_true("(mu) sd(intercept)" %in% colnames(full))
+  expect_true("(mu) var(intercept)" %in% colnames(full))
+
+  simplified <- JAGS_estimates_table(
+    fit,
+    random_effects_summary = "standard",
+    simplify_names = TRUE,
+    return_samples = TRUE
+  )
+  expect_identical(colnames(simplified), "(mu) sd")
+  expect_equal(simplified[, 1L], samples[, 1L])
 })
 
 test_that("random-effect summary posterior extracts total-variance proportions", {

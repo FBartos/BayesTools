@@ -8,6 +8,11 @@
 #' it describes covariance across grouping levels and is separate from
 #' column-level random-effect covariance structures such as
 #' [random_covariance()].
+#' The associated fitted block scale remains the public `sd` quantity (with
+#' `var` as its square). It multiplies the supplied kernel; it is not an
+#' `sd_ratio`. Consequently, when an unscaled kernel has a non-unit diagonal,
+#' the fitted `sd` need not equal every grouping level's marginal standard
+#' deviation.
 #'
 #' @param covariance numeric square matrix with row and column names identifying
 #'   grouping levels.
@@ -506,39 +511,19 @@ print.random_group_covariance <- function(x, ...){
   -0.5 * (n * log(2 * pi) + log_det + quadratic)
 }
 
-.bt_random_effect_sd_is_multiplier <- function(random_term){
-
-  if(!.bt_random_effect_has_known_group_covariance(random_term)){
-    return(FALSE)
-  }
-  group_covariance <- random_term$group_covariance
-  group_covariance$scale %in% c("none", "cov0")
-}
-
-.bt_random_effect_sd_summary_label <- function(component, group, random_term){
+.bt_random_effect_sd_summary_label <- function(component, random_term){
 
   .bt_random_effect_semantic_name(
     parameter = "",
     owner = .bt_random_effect_public_name(random_term),
-    quantity = .bt_random_effect_semantic_sd_quantity(random_term),
+    quantity = "sd",
     arguments = .bt_random_effect_semantic_sd_arguments(component),
     formula_prefix = FALSE
   )
 }
 
-.bt_random_effect_sd_component_summary_label <- function(component, random_term){
+.bt_random_effect_sd_component_summary_label <- function(component){
 
-  quantity <- .bt_random_effect_semantic_sd_quantity(random_term)
   arguments <- .bt_random_effect_semantic_sd_arguments(component)
-  .bt_random_effect_semantic_quantity_name(quantity, arguments)
-}
-
-.bt_random_effect_sd_summary_prefix <- function(random_term){
-
-  prefix <- if(.bt_random_effect_sd_is_multiplier(random_term)){
-    "sd_ratio"
-  }else{
-    "sd"
-  }
-  prefix
+  .bt_random_effect_semantic_quantity_name("sd", arguments)
 }

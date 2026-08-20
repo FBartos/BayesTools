@@ -118,6 +118,10 @@
 #' Parentheses contain coefficient or parameter names and square brackets
 #' contain factor or index levels. Public correlations use `cor`; compact scalar
 #' `rho` and LKJ construction coordinates remain internal backend dependencies.
+#' Downstream packages can opt into centrally generated simplified aliases. A
+#' sole `intercept` argument is then omitted (`sd(intercept)` becomes `sd`), and
+#' an owner-free shorthand is accepted only when it resolves uniquely. A
+#' non-intercept argument such as `sd(x)` is retained.
 #'
 #' Allocation `name` is a required stable backend identifier. `display_name`
 #' independently controls an allocation-specific public owner, and

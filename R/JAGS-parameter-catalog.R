@@ -11,7 +11,7 @@
   "source_type", "extraction_key"
 )
 .bt_parameter_catalog_alias_columns <- c(
-  "alias", "quantity_id", "namespace", "component"
+  "alias", "quantity_id", "namespace", "component", "simplified"
 )
 
 #' Semantic parameter catalogs and deferred draw extraction
@@ -42,6 +42,9 @@
 #' `(mu) var_prop(study)`. Formula-prefix omission is accepted as
 #' an alias. Additional aliases are limited to genuine semantic equivalences,
 #' such as a CS/HCS pairwise correlation referring to its shared `cor`.
+#' Random-effect quantities also carry centrally generated simplified aliases.
+#' These remove a sole intercept argument and may omit a redundant owner, but
+#' are considered by resolvers only when `simplify_names = TRUE`.
 #'
 #' Identity random-effect summaries reuse their sampled or structural
 #' coordinate. Summaries requiring a scale or covariance transformation expose
@@ -84,6 +87,8 @@
 #' @param alias scalar exact canonical name or alias.
 #' @param namespace optional exact namespace filter.
 #' @param component optional exact component filter.
+#' @param simplify_names whether to accept centrally generated simplified
+#'   random-effect aliases. Defaults to `FALSE`.
 #' @param selection a `BayesTools_parameter_selection` returned by
 #'   `parameter_catalog_resolve()`.
 #' @param model_samples optional numeric matrix containing the declared source
@@ -173,12 +178,13 @@ parameter_catalog_schema <- function(){
   )
   aliases <- data.frame(
     field = .bt_parameter_catalog_alias_columns,
-    type = rep("character", 4L),
+    type = c(rep("character", 4L), "logical"),
     description = c(
       "Exact accepted alias.",
       "Quantity identifier targeted by the alias.",
       "Exact resolver namespace.",
-      "Optional component filter, or an empty string."
+      "Optional component filter, or an empty string.",
+      "Whether the alias requires 'simplify_names = TRUE'."
     ),
     stringsAsFactors = FALSE
   )
@@ -247,7 +253,8 @@ parameter_catalog_extend <- function(catalog, quantities, aliases,
 
 #' @rdname parameter_catalog
 parameter_catalog_resolve <- function(catalog, alias, namespace = NULL,
-                                      component = NULL){
+                                      component = NULL,
+                                      simplify_names = FALSE){
 
   .bt_validate_parameter_catalog(catalog)
   check_char(alias, "alias", check_length = 1L, allow_NA = FALSE)
@@ -255,6 +262,7 @@ parameter_catalog_resolve <- function(catalog, alias, namespace = NULL,
              allow_NA = FALSE)
   check_char(component, "component", check_length = 1L, allow_NULL = TRUE,
              allow_NA = FALSE)
+  check_bool(simplify_names, "simplify_names", allow_NA = FALSE)
 
   quantities <- catalog$quantities
   public <- !quantities$internal
@@ -266,7 +274,8 @@ parameter_catalog_resolve <- function(catalog, alias, namespace = NULL,
     canonical_rows <- canonical_rows & quantities$component == component
   }
   canonical_ids <- quantities$quantity_id[canonical_rows]
-  alias_rows <- catalog$aliases$alias == alias
+  alias_rows <- catalog$aliases$alias == alias &
+    (!catalog$aliases$simplified | simplify_names)
   if(!is.null(namespace)){
     alias_rows <- alias_rows & catalog$aliases$namespace == namespace
   }
@@ -287,7 +296,8 @@ parameter_catalog_resolve <- function(catalog, alias, namespace = NULL,
     available <- sort(unique(c(
       quantities$canonical_name[public],
       catalog$aliases$alias[
-        catalog$aliases$quantity_id %in% quantities$quantity_id[public]
+        catalog$aliases$quantity_id %in% quantities$quantity_id[public] &
+          (!catalog$aliases$simplified | simplify_names)
       ]
     )))
     .bt_parameter_catalog_stop(
@@ -994,6 +1004,7 @@ parameter_transform_jacobian <- function(values, transform){
     quantity_id = character(),
     namespace = character(),
     component = character(),
+    simplified = logical(),
     stringsAsFactors = FALSE
   )
 }
@@ -1416,7 +1427,22 @@ parameter_transform_jacobian <- function(values, transform){
   if(nrow(public) == 0L){
     return(out)
   }
-  rows <- vector("list", nrow(public))
+  rows <- list()
+  add_aliases <- function(quantity, values, simplified){
+    values <- unique(values[!is.na(values) & nzchar(values)])
+    if(length(values) == 0L){
+      return(invisible(NULL))
+    }
+    rows[[length(rows) + 1L]] <<- data.frame(
+      alias = values,
+      quantity_id = rep(quantity$quantity_id, length(values)),
+      namespace = rep(quantity$namespace, length(values)),
+      component = rep(quantity$component, length(values)),
+      simplified = rep(simplified, length(values)),
+      stringsAsFactors = FALSE
+    )
+    invisible(NULL)
+  }
   for(i in seq_len(nrow(public))){
     quantity <- public[i, , drop = FALSE]
     semantic_label <- character()
@@ -1426,9 +1452,9 @@ parameter_transform_jacobian <- function(values, transform){
         quantity$formula_parameter,
         TRUE
       )
-      if(nzchar(prefix) && startsWith(quantity$display_label, prefix)){
+      if(nzchar(prefix) && startsWith(quantity$canonical_name, prefix)){
         semantic_label <- substring(
-          quantity$display_label,
+          quantity$canonical_name,
           nchar(prefix) + 1L
         )
       }
@@ -1454,19 +1480,39 @@ parameter_transform_jacobian <- function(values, transform){
         }
       ))
     }
-    values <- values[!is.na(values) & nzchar(values)]
-    rows[[i]] <- data.frame(
-      alias = values,
-      quantity_id = rep(quantity$quantity_id, length(values)),
-      namespace = rep(quantity$namespace, length(values)),
-      component = rep(quantity$component, length(values)),
-      stringsAsFactors = FALSE
-    )
+    add_aliases(quantity, values, simplified = FALSE)
+    if(startsWith(quantity$role, "random_")){
+      add_aliases(
+        quantity,
+        .bt_parameter_catalog_random_simplified_aliases(quantity),
+        simplified = TRUE
+      )
+    }
+  }
+  if(length(rows) == 0L){
+    return(out)
   }
   out <- do.call(rbind, rows)
   out <- unique(out)
   rownames(out) <- NULL
   out
+}
+
+.bt_parameter_catalog_random_simplified_aliases <- function(quantity){
+
+  label <- quantity$display_label
+  prefix <- .bt_random_effect_summary_formula_prefix(
+    quantity$formula_parameter,
+    TRUE
+  )
+  without_prefix <- if(nzchar(prefix) && startsWith(label, prefix)){
+    substring(label, nchar(prefix) + 1L)
+  }else{
+    label
+  }
+  without_owner <- sub("^.*: ", "", without_prefix)
+
+  unique(c(label, without_prefix, without_owner))
 }
 
 .bt_parameter_catalog_random_correlation_aliases <- function(
@@ -1791,6 +1837,7 @@ parameter_transform_jacobian <- function(values, transform){
                              public_owner = owner_name,
                               scale_role = "", parent_quantity_id = "",
                               arguments = character(),
+                              display_arguments = arguments,
                               source_type, source_parameter = "",
                               source_prior = "",
                               source_transform = "identity",
@@ -1836,7 +1883,13 @@ parameter_transform_jacobian <- function(values, transform){
         "prior_name", "allocation_label", "parent_allocation", "index"
       )]
     )
-    display_label <- canonical_name
+    display_label <- .bt_random_effect_semantic_name(
+      parameter = parameter,
+      owner = public_owner,
+      quantity = quantity,
+      arguments = display_arguments,
+      formula_prefix = TRUE
+    )
     state <- .bt_parameter_catalog_random_status(
       key = key,
       coordinates = coordinates,
@@ -2153,10 +2206,15 @@ parameter_transform_jacobian <- function(values, transform){
           ))
         }
         for(i in seq_along(sd_names)){
-          sd_quantity <- .bt_random_effect_semantic_sd_quantity(random_term)
+          sd_quantity <- "sd"
           sd_arguments <- .bt_random_effect_semantic_sd_arguments(
             components[i]
           )
+          sd_display_arguments <-
+            .bt_random_effect_semantic_sd_display_arguments(
+              random_term,
+              components[i]
+            )
           raw_name <- .bt_random_effect_summary_name(
             parameter = parameter,
             type = "sd",
@@ -2164,7 +2222,6 @@ parameter_transform_jacobian <- function(values, transform){
           )
           label <- .bt_random_effect_sd_summary_label(
             component = components[i],
-            group = group,
             random_term = random_term
           )
           out$suppress <- unique(c(
@@ -2215,11 +2272,7 @@ parameter_transform_jacobian <- function(values, transform){
           }
           add_definition(
             raw_name = raw_name,
-            role = if(identical(sd_quantity, "sd")){
-              "random_sd"
-            }else{
-              "random_sd_ratio"
-            },
+            role = "random_sd",
             parameter = parameter,
             label = label,
             evaluator = "sd",
@@ -2233,6 +2286,7 @@ parameter_transform_jacobian <- function(values, transform){
             public_owner = public_owner,
             quantity = sd_quantity,
             arguments = sd_arguments,
+            display_arguments = sd_display_arguments,
             source_type = source_type,
             source_parameter = source_parameter,
             source_prior = source_prior,
@@ -2240,70 +2294,38 @@ parameter_transform_jacobian <- function(values, transform){
             source_scale = source_scale,
             allocation_derived = allocation_sd
           )
-          if(identical(sd_quantity, "sd")){
-            var_name <- .bt_random_effect_summary_name(
-              parameter = parameter,
-              type = "var",
-              parts = c(block, components[i])
-            )
-            add_definition(
-              raw_name = var_name,
-              role = "random_var",
-              parameter = parameter,
-              label = label,
-              evaluator = "sd_variance",
-              dependencies = dependencies,
-              metadata = c(term_metadata, list(index = i)),
-              block = block,
-              term = block,
-              component = components[i],
-              owner_type = "random_block",
-              owner_name = owner,
-              public_owner = public_owner,
-              quantity = "var",
-              arguments = sd_arguments,
-              source_type = if(direct_source){
-                "one_to_one_transform"
-              }else{
-                "composite"
-              },
-              source_parameter = if(direct_source) source_parameter else "",
-              source_prior = source_prior,
-              source_transform = "square",
-              allocation_derived = allocation_sd
-            )
-          }else if(identical(sd_quantity, "sd_ratio")){
-            var_name <- .bt_random_effect_summary_name(
-              parameter = parameter,
-              type = "var_ratio",
-              parts = c(block, components[i])
-            )
-            add_definition(
-              raw_name = var_name,
-              role = "random_var_ratio",
-              parameter = parameter,
-              label = label,
-              evaluator = "sd_variance",
-              dependencies = dependencies,
-              metadata = c(term_metadata, list(index = i)),
-              block = block,
-              term = block,
-              component = components[i],
-              owner_type = "random_block",
-              owner_name = owner,
-              public_owner = public_owner,
-              quantity = "var_ratio",
-              arguments = sd_arguments,
-              source_type = if(direct_source){
-                "one_to_one_transform"
-              }else{
-                "composite"
-              },
-              source_parameter = if(direct_source) source_parameter else "",
-              source_prior = source_prior,
-              source_transform = "square"
-            )
-          }
+          var_name <- .bt_random_effect_summary_name(
+            parameter = parameter,
+            type = "var",
+            parts = c(block, components[i])
+          )
+          add_definition(
+            raw_name = var_name,
+            role = "random_var",
+            parameter = parameter,
+            label = label,
+            evaluator = "sd_variance",
+            dependencies = dependencies,
+            metadata = c(term_metadata, list(index = i)),
+            block = block,
+            term = block,
+            component = components[i],
+            owner_type = "random_block",
+            owner_name = owner,
+            public_owner = public_owner,
+            quantity = "var",
+            arguments = sd_arguments,
+            display_arguments = sd_display_arguments,
+            source_type = if(direct_source){
+              "one_to_one_transform"
+            }else{
+              "composite"
+            },
+            source_parameter = if(direct_source) source_parameter else "",
+            source_prior = source_prior,
+            source_transform = "square",
+            allocation_derived = allocation_sd
+          )
         }
       }
 
@@ -2698,7 +2720,12 @@ parameter_transform_jacobian <- function(values, transform){
      !is.numeric(quantities$fixed_value) ||
      !is.logical(quantities$internal) ||
      !is.list(quantities$extraction_key) ||
-     !all(vapply(aliases, is.character, logical(1))) ||
+     !all(vapply(
+       aliases[setdiff(names(aliases), "simplified")],
+       is.character,
+       logical(1)
+     )) ||
+     !is.logical(aliases$simplified) ||
      anyNA(quantities[setdiff(names(quantities),
                              c("fixed_value", "extraction_key"))]) ||
      anyNA(aliases)){

@@ -230,10 +230,15 @@ unresolved.
   internal implementation parameters. Mark them internal in the map's
   coordinate table and omit them from its semantic quantities; expose only
   declared semantic SDs, correlations, allocations, and other public summaries.
-- Random-effect catalog names use
-  `(formula) owner: quantity(arguments)`. Parentheses contain coefficient or
-  parameter names and square brackets contain factor or index levels. Public
-  correlations use `cor`, never the backend `rho` coordinate. Total-variance
+- Canonical random-effect catalog names use
+  `(formula) owner: quantity(arguments)`. Downstream packages can explicitly
+  request centrally generated simplified names. Simplification removes only a
+  sole `intercept` argument (`sd(intercept)` becomes `sd`) and permits omission
+  of an owner only when resolution remains unique; non-intercept arguments stay
+  explicit. Parentheses contain coefficient or parameter names and square
+  brackets contain factor or index levels. Public correlations use `cor`, never
+  the backend `rho` coordinate. A known group covariance has a fitted `sd`/`var`
+  kernel scale, not an `sd_ratio`/`var_ratio`. Total-variance
   allocations expose `sd_total`, `var_total`, and `var_prop(...)`;
   mean-variance allocations expose `sd_common`, `var_common`,
   `var_ratio(...)`, and `sd_ratio(...)`.

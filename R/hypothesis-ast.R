@@ -27,6 +27,8 @@
 #' @param component optional exact catalog component filter for unqualified
 #'   symbols. A level-qualified symbol such as `term[level]` supplies its own
 #'   per-occurrence component and must agree with this value when both are used.
+#' @param simplify_names whether to recognize centrally generated simplified
+#'   random-effect aliases. Defaults to `FALSE`.
 #'
 #' @return `hypothesis_parse()` and `hypothesis_rewrite()` return a
 #' `BayesTools_hypothesis_ast`. `hypothesis_render()` returns character text.
@@ -45,7 +47,7 @@ NULL
 
 #' @rdname hypothesis_ast
 hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
-                             component = NULL){
+                             component = NULL, simplify_names = FALSE){
 
   check_char(hypothesis, "hypothesis", check_length = 0, allow_NA = FALSE)
   if(length(hypothesis) == 0L){
@@ -56,13 +58,15 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
       hypothesis = hypothesis,
       catalog    = catalog,
       namespace  = namespace,
-      component  = component
+      component  = component,
+      simplify_names = simplify_names
     )
   }else{
     check_char(namespace, "namespace", check_length = 1L, allow_NULL = TRUE,
                allow_NA = FALSE)
     check_char(component, "component", check_length = 1L, allow_NULL = TRUE,
                allow_NA = FALSE)
+    check_bool(simplify_names, "simplify_names", allow_NA = FALSE)
     if(!is.null(namespace) || !is.null(component)){
       stop("'namespace' and 'component' require 'catalog'.", call. = FALSE)
     }
@@ -82,13 +86,14 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
 }
 
 .bt_hypothesis_quote_catalog_aliases <- function(
-    hypothesis, catalog, namespace, component){
+    hypothesis, catalog, namespace, component, simplify_names){
 
   .bt_validate_parameter_catalog(catalog)
   check_char(namespace, "namespace", check_length = 1L, allow_NULL = TRUE,
              allow_NA = FALSE)
   check_char(component, "component", check_length = 1L, allow_NULL = TRUE,
              allow_NA = FALSE)
+  check_bool(simplify_names, "simplify_names", allow_NA = FALSE)
 
   quantities <- catalog$quantities
   public <- !quantities$internal
@@ -101,7 +106,8 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
   }
 
   aliases <- catalog$aliases
-  alias_rows <- aliases$quantity_id %in% quantities$quantity_id[public]
+  alias_rows <- aliases$quantity_id %in% quantities$quantity_id[public] &
+    (!aliases$simplified | simplify_names)
   if(!is.null(namespace)){
     alias_rows <- alias_rows & aliases$namespace == namespace
   }
@@ -377,7 +383,7 @@ hypothesis_rewrite <- function(ast, mapping){
 
 #' @rdname hypothesis_ast
 hypothesis_resolve <- function(ast, catalog, namespace = NULL,
-                               component = NULL){
+                               component = NULL, simplify_names = FALSE){
 
   .bt_validate_hypothesis_ast(ast)
   .bt_validate_parameter_catalog(catalog)
@@ -385,6 +391,7 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
              allow_NA = FALSE)
   check_char(component, "component", check_length = 1L, allow_NULL = TRUE,
              allow_NA = FALSE)
+  check_bool(simplify_names, "simplify_names", allow_NA = FALSE)
   occurrences <- hypothesis_symbols(ast, occurrences = TRUE)
   if(nrow(occurrences) == 0L){
     stop("The hypothesis contains no parameter symbols to resolve.",
@@ -408,7 +415,8 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
       catalog,
       alias = occurrences$parameter[i],
       namespace = namespace,
-      component = occurrence_component
+      component = occurrence_component,
+      simplify_names = simplify_names
     )
     quantity <- selection$quantities
     resolved[[i]] <- data.frame(

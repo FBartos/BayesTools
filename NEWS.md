@@ -17,8 +17,11 @@
 - consolidates unreleased formula-random public parameter names as
   `(formula) owner: quantity(parameter[level], ...)`, omitting `owner: ` for
   a bare or unnamed one-entry random formula while retaining it for explicitly
-  named one-entry lists and multiple blocks. Formula-prefix omission is the
-  only naming alias except for genuine semantic equivalences. Formula lists
+  named one-entry lists and multiple blocks. Formula-prefix omission remains a
+  canonical alias. Downstream packages can opt into centrally generated
+  simplified aliases and display labels: a sole `intercept` argument is
+  omitted (`sd(intercept)` becomes `sd`), while non-intercept arguments remain
+  explicit; owner-free shorthand resolves only when unique. Formula lists
   with two or more unnamed
   components use `component 1`, `component 2`, and so on. Each fit stores one
   authoritative, versioned `parameter_map` containing linked backend-coordinate,
@@ -36,6 +39,9 @@
   recording their public owner and component names separately. Linked formula-
   coefficient transforms require the exact current formula-design and
   parameter-map schemas rather than accepting stale versioned metadata.
+  Known group-covariance blocks expose their fitted kernel multiplier as
+  `sd` / `var`, not as an allocation ratio; with a non-unit kernel diagonal,
+  this scale need not equal every grouping level's marginal SD.
 - adds `JAGS_with_draws()` for replacing fitted backend draws while preserving
   and refreshing the fit's draw geometry, allowing map-defined semantic
   quantities to be evaluated on posterior or simulated-prior coordinates
@@ -44,7 +50,7 @@
   `parameter_transform()` plus authoritative forward, inverse, and Jacobian
   evaluators for one-to-one semantic coordinate maps. Standard random-effect
   tables now report only prior-facing quantities, while full tables retain all
-  deterministic representations; directly specified SD ratios remain standard.
+  deterministic representations; genuine allocation SD ratios remain standard.
   `parameter_draws()` can also evaluate a selection on an already materialized
   posterior matrix for downstream summaries.
 - adds `random_effects_marginal_factor_states()` and

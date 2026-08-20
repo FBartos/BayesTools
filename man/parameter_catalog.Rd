@@ -24,7 +24,13 @@ parameter_catalog_schema()
 
 parameter_catalog_extend(catalog, quantities, aliases, provider)
 
-parameter_catalog_resolve(catalog, alias, namespace = NULL, component = NULL)
+parameter_catalog_resolve(
+  catalog,
+  alias,
+  namespace = NULL,
+  component = NULL,
+  simplify_names = FALSE
+)
 
 parameter_draws(object, selection, ...)
 
@@ -66,6 +72,9 @@ parameter_transform_jacobian(values, transform)
 \item{namespace}{optional exact namespace filter.}
 
 \item{component}{optional exact component filter.}
+
+\item{simplify_names}{whether to accept centrally generated simplified
+random-effect aliases. Defaults to \code{FALSE}.}
 
 \item{selection}{a \code{BayesTools_parameter_selection} returned by
 \code{parameter_catalog_resolve()}.}
@@ -123,6 +132,9 @@ factor or index level. Examples include \verb{(mu) study: sd(intercept)},
 \verb{(mu) var_prop(study)}. Formula-prefix omission is accepted as
 an alias. Additional aliases are limited to genuine semantic equivalences,
 such as a CS/HCS pairwise correlation referring to its shared \code{cor}.
+Random-effect quantities also carry centrally generated simplified aliases.
+These remove a sole intercept argument and may omit a redundant owner, but
+are considered by resolvers only when \code{simplify_names = TRUE}.
 
 Identity random-effect summaries reuse their sampled or structural
 coordinate. Summaries requiring a scale or covariance transformation expose

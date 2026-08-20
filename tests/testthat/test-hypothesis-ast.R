@@ -51,6 +51,7 @@ test_that("hypothesis parsing recognizes exact non-syntactic catalog aliases", {
     quantity_id = quantity$quantity_id,
     namespace   = quantity$namespace,
     component   = quantity$component,
+    simplified  = FALSE,
     stringsAsFactors = FALSE
   )
   catalog <- parameter_catalog_extend(
@@ -157,6 +158,7 @@ test_that("hypothesis resolution delegates ambiguity to the catalog", {
     quantity_id = quantities$quantity_id,
     namespace = quantities$namespace,
     component = c("", ""),
+    simplified = c(FALSE, FALSE),
     stringsAsFactors = FALSE
   )
   catalog <- parameter_catalog_extend(

@@ -342,8 +342,8 @@ test_that("known group covariance uses tau squared times ZKZ prime", {
 
   expect_equal(random_term$group_covariance$scale, "none")
   expect_equal(
-    BayesTools:::.bt_random_effect_sd_summary_label("intercept", "id", random_term),
-    "id: sd_ratio(intercept)"
+    BayesTools:::.bt_random_effect_sd_summary_label("intercept", random_term),
+    "id: sd(intercept)"
   )
   derived <- BayesTools:::.bt_random_effect_summary_derived_samples(
     model_samples = posterior,
@@ -352,21 +352,23 @@ test_that("known group covariance uses tau squared times ZKZ prime", {
     mode           = "standard",
     formula_scale  = list()
   )
-  var_ratio_name <- grep(
-    "__var_ratio__",
+  sd_name <- grep(
+    "__sd__",
     names(derived$prior_list),
     value = TRUE,
     fixed = TRUE
   )
-  expect_identical(length(var_ratio_name), 1L)
+  expect_identical(length(sd_name), 1L)
   expect_identical(
     attr(
-      derived$prior_list[[var_ratio_name]],
+      derived$prior_list[[sd_name]],
       "random_summary_component_label",
       exact = TRUE
     ),
-    "var_ratio(intercept)"
+    "sd(intercept)"
   )
+  expect_false(any(grepl("__var_ratio__", names(derived$prior_list),
+                         fixed = TRUE)))
   expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
   expect_equal(unname(diagonal$samples), .re_cov_dense_diagonal(out),
                tolerance = 1e-12)

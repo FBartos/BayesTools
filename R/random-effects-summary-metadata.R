@@ -103,14 +103,22 @@
   paste0(quantity, "(", paste(arguments, collapse = ","), ")")
 }
 
-.bt_random_effect_semantic_sd_quantity <- function(random_term){
-
-  if(.bt_random_effect_sd_is_multiplier(random_term)) "sd_ratio" else "sd"
-}
-
 .bt_random_effect_semantic_sd_arguments <- function(component){
 
   if(identical(component, "shared")) character() else component
+}
+
+.bt_random_effect_semantic_sd_display_arguments <- function(random_term,
+                                                            component){
+
+  arguments <- .bt_random_effect_semantic_sd_arguments(component)
+  sd_names <- unique(random_term$sd_parameter_names)
+  sd_names <- sd_names[!is.na(sd_names)]
+  if(length(sd_names) == 1L && identical(arguments, "intercept")){
+    return(character())
+  }
+
+  arguments
 }
 
 .bt_random_effect_summary_display_components <- function(random_term, components){

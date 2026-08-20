@@ -327,7 +327,7 @@ test_that("known group covariance remains an exact affine scale basis", {
     group_covariance = random_group_covariance(kernel, scale = "none")
   )
   fit <- .random_update_test_fit(formula, data)
-  plan <- .random_update_test_plan(fit, "random_sd_ratio")
+  plan <- .random_update_test_plan(fit, "random_sd")
   expected <- kernel[as.character(data$id), as.character(data$id)]
 
   expect_identical(plan$family, "affine")

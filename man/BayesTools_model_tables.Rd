@@ -48,6 +48,7 @@ runjags_estimates_table(
   return_samples = FALSE,
   transform_scaled = FALSE,
   random_effects_summary = c("standard", "full", "raw", "none"),
+  simplify_names = FALSE,
   random_effects_metadata = FALSE,
   remove_random_effects = NULL,
   keep_random_effects = NULL,
@@ -91,6 +92,7 @@ JAGS_estimates_table(
   return_samples = FALSE,
   transform_scaled = FALSE,
   random_effects_summary = c("standard", "full", "raw", "none"),
+  simplify_names = FALSE,
   random_effects_metadata = FALSE,
   remove_random_effects = NULL,
   keep_random_effects = NULL,
@@ -279,6 +281,11 @@ quantities from the fitted parameter map on their declared display scale.
 coefficients. Internal latent and realized group-coefficient coordinates
 are omitted when \code{transform_scaled = TRUE}, including in \code{"raw"}
 mode, because those coordinates remain on the fitted standardized scale.}
+
+\item{simplify_names}{whether semantic random-effect row names should use
+simplified display labels. A sole random intercept is shown as \code{sd}, while
+canonical names such as \code{sd(intercept)} remain stored in the parameter map.
+Defaults to \code{FALSE}.}
 
 \item{random_effects_metadata}{whether to add random-effect metadata columns
 to JAGS estimates tables. When \code{TRUE}, the table includes the

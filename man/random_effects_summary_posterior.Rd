@@ -11,6 +11,7 @@ random_effects_summary_posterior(
   allocation = NULL,
   component = NULL,
   formula_parameter = NULL,
+  simplify_names = FALSE,
   n_prior_points = 4096
 )
 }
@@ -26,6 +27,9 @@ random_effects_summary_posterior(
 \item{component}{optional allocation component label filter.}
 
 \item{formula_parameter}{optional formula parameter filter.}
+
+\item{simplify_names}{whether returned quantities should use centrally
+generated simplified display labels. Defaults to \code{FALSE}.}
 
 \item{n_prior_points}{number of grid points used for the attached analytic
 prior density.}

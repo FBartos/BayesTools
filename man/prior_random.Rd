@@ -333,6 +333,10 @@ random block and retained when multiple blocks require disambiguation.
 Parentheses contain coefficient or parameter names and square brackets
 contain factor or index levels. Public correlations use \code{cor}; compact scalar
 \code{rho} and LKJ construction coordinates remain internal backend dependencies.
+Downstream packages can opt into centrally generated simplified aliases. A
+sole \code{intercept} argument is then omitted (\code{sd(intercept)} becomes \code{sd}), and
+an owner-free shorthand is accepted only when it resolves uniquely. A
+non-intercept argument such as \code{sd(x)} is retained.
 
 Allocation \code{name} is a required stable backend identifier. \code{display_name}
 independently controls an allocation-specific public owner, and

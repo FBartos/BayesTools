@@ -45,7 +45,7 @@ test_that("parameter catalog construction is metadata-only and versioned", {
     prior_list = prior_list
   ))
   expect_s3_class(catalog, "BayesTools_parameter_catalog")
-  expect_identical(catalog$schema_version, 1L)
+  expect_identical(catalog$schema_version, 2L)
   expect_identical(
     names(catalog$quantities),
     .bt_parameter_catalog_quantity_columns
@@ -641,6 +641,7 @@ test_that("catalog extensions preserve ambiguity until filtered", {
     quantity_id = quantities$quantity_id,
     namespace = quantities$namespace,
     component = c("", ""),
+    simplified = c(FALSE, FALSE),
     stringsAsFactors = FALSE
   )
 
@@ -685,6 +686,7 @@ test_that("catalog extensions preserve ambiguity until filtered", {
       quantity_id = theta_id,
       namespace = "model",
       component = "",
+      simplified = FALSE,
       stringsAsFactors = FALSE
     ),
     provider = "RoBMA"
@@ -1073,6 +1075,45 @@ test_that("explicitly named one-entry random lists retain their public owner", {
     parameter_catalog_resolve(catalog, "sd(intercept)", "mu"),
     "No public parameter quantity matches"
   )
+  expect_identical(
+    parameter_catalog_resolve(
+      catalog,
+      "study: sd",
+      "mu",
+      simplify_names = TRUE
+    )$quantities$canonical_name,
+    "(mu) study: sd(intercept)"
+  )
+  expect_identical(
+    parameter_catalog_resolve(
+      catalog,
+      "sd",
+      "mu",
+      simplify_names = TRUE
+    )$quantities$canonical_name,
+    "(mu) study: sd(intercept)"
+  )
+  expect_identical(
+    catalog$quantities$display_label[
+      catalog$quantities$quantity == "sd"
+    ],
+    "(mu) study: sd"
+  )
+  simplified_ast <- hypothesis_parse(
+    "study: sd > 0",
+    catalog = catalog,
+    namespace = "mu",
+    simplify_names = TRUE
+  )
+  expect_identical(
+    unique(hypothesis_resolve(
+      simplified_ast,
+      catalog,
+      namespace = "mu",
+      simplify_names = TRUE
+    )$occurrences$canonical_name),
+    "(mu) study: sd(intercept)"
+  )
 })
 
 test_that("random covariance families share one semantic naming grammar", {
@@ -1356,7 +1397,12 @@ test_that("identity random summaries preserve structural provenance", {
   )$quantities
   expect_identical(quantity$status, "structural")
   expect_identical(quantity$fixed_value, 2)
-  expect_identical(sum(catalog$quantities$display_label == label), 1L)
+  expect_identical(
+    catalog$quantities$display_label[
+      catalog$quantities$canonical_name == label
+    ],
+    "(mu) sd"
+  )
   expect_false(any(
     catalog$quantities$role == "random_sd" &
       catalog$quantities$status == "sampled"
@@ -1457,8 +1503,19 @@ test_that("declared variance allocations have metadata-only catalog rows", {
   )
   expect_identical(study_sd$quantities$status, "sampled")
   expect_identical(
-    sum(catalog$quantities$display_label == study_sd_label),
-    1L
+    catalog$quantities$display_label[
+      catalog$quantities$canonical_name == study_sd_label
+    ],
+    "(mu) study: sd"
+  )
+  expect_error(
+    parameter_catalog_resolve(
+      catalog,
+      alias = "sd",
+      namespace = "mu",
+      simplify_names = TRUE
+    ),
+    class = "BayesTools_parameter_ambiguous"
   )
   fractions <- derived[derived$role == "random_var_prop", ]
   expect_identical(fractions$component, c("study", "drug"))
