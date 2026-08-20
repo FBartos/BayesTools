@@ -911,6 +911,22 @@ test_that("semantic parameter transforms own scalar transform algebra", {
     "Unsupported semantic parameter transform",
     fixed = TRUE
   )
+
+  sqrt_transform <- list(type = "sqrt_scale", scale = 4)
+  expect_warning(
+    expect_equal(
+      parameter_transform_forward(c(-1, 0, 1), sqrt_transform),
+      c(NaN, 0, 2)
+    ),
+    NA
+  )
+  expect_warning(
+    expect_equal(
+      parameter_transform_jacobian(c(-1, 0, 1), sqrt_transform),
+      c(NaN, Inf, 1)
+    ),
+    NA
+  )
 })
 
 test_that("prior sampling includes stored LKJ primitive coordinates", {

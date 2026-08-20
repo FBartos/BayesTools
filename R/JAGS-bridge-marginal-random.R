@@ -637,6 +637,14 @@
     )
   }else{
     sd_draws <- block_plan$sd_evaluator$posterior_draws(posterior)
+    if(is.null(sd_draws)){
+      sd_draws <- .bt_random_effect_sd_draws(
+        random_term = random_term,
+        n_columns = n_columns,
+        posterior = posterior,
+        prior_list = prior_list
+      )
+    }
   }
   if(is.null(sd_draws)){
     return(NULL)
@@ -876,13 +884,20 @@
       prior_list = prior_list
     )
   } else {
-    matrix(
-      block_plan$sd_evaluator$posterior_values(
-        posterior,
-        parameters = source_parameters
-      ),
-      nrow = 1L
+    sd_values <- block_plan$sd_evaluator$posterior_values(
+      posterior,
+      parameters = source_parameters
     )
+    if(is.null(sd_values)){
+      .bt_random_effect_sd_draws(
+        random_term = random_term,
+        n_columns = n_columns,
+        posterior = posterior,
+        prior_list = prior_list
+      )
+    }else{
+      matrix(sd_values, nrow = 1L)
+    }
   }
   if(is.null(sd_draws)){
     .bt_random_effect_marginal_covariance_missing_sd_stop(

@@ -47,11 +47,13 @@
   deterministic representations; directly specified SD ratios remain standard.
   `parameter_draws()` can also evaluate a selection on an already materialized
   posterior matrix for downstream summaries.
-- adds `random_effects_marginal_factor_states()` so downstream likelihoods can
-  reuse the bridge-sampling random-covariance compiler without constructing
-  dense draw-by-row-by-row arrays. Supported non-row-indexed blocks now compile
-  their SD and correlation metadata once and reconstruct exact factor states
-  across all posterior draws in one batch.
+- adds `random_effects_marginal_factor_states()` and
+  `random_effects_marginal_factor_product()` so downstream likelihoods and
+  conditional summaries can reuse the bridge-sampling random-covariance
+  compiler and multiply its exact covariance factors by row vectors without
+  constructing dense draw-by-row-by-row arrays. Supported non-row-indexed
+  blocks compile their SD and correlation metadata once and reconstruct exact
+  factor states across all posterior draws in one batch.
 - adds `JAGS_marglik_priors_rows()` and
   `JAGS_marglik_priors_rows_evaluator()` for exact row-preserving prior-density
   evaluation and reusable compiled evaluation. Supported scalar, independent
@@ -177,6 +179,10 @@
 - `as_marginal_inference()` conditional marginal summaries use active-subset conditioning: each marginal level conditions only on requested parameters with nonzero weight in that level's linear combination, and levels with no active requested conditionals use the fully averaged context
 
 ### Fixes
+- lets compact random-effect factor states fall back to monitored semantic SD
+  coordinates when allocation-source coordinates are unavailable, and maps
+  out-of-support square-root transforms to `NaN` without emitting expected
+  numerical warnings.
 - treats complete LKJ primitive coordinates as authoritative over monitored
   derived Cholesky values during covariance reconstruction, so candidate-draw
   likelihoods cannot reuse stale correlation factors.

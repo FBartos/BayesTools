@@ -852,7 +852,11 @@ parameter_transform_forward <- function(values, transform){
       (transform$upper - transform$lower) * stats::plogis(values))
   }
   if(identical(transform$type, "sqrt_scale")){
-    return(sqrt(transform$scale * values))
+    scaled <- transform$scale * values
+    out <- rep(NaN, length(scaled))
+    valid <- !is.na(scaled) & scaled >= 0
+    out[valid] <- sqrt(scaled[valid])
+    return(out)
   }
   if(identical(transform$type, "square")){
     return(values^2)
@@ -908,8 +912,11 @@ parameter_transform_jacobian <- function(values, transform){
       probability * (1 - probability))
   }
   if(identical(transform$type, "sqrt_scale")){
-    return(transform$scale /
-      (2 * sqrt(transform$scale * values)))
+    scaled <- transform$scale * values
+    out <- rep(NaN, length(scaled))
+    valid <- !is.na(scaled) & scaled >= 0
+    out[valid] <- transform$scale / (2 * sqrt(scaled[valid]))
+    return(out)
   }
   if(identical(transform$type, "square")){
     return(2 * abs(values))

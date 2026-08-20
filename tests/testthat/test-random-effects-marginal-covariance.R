@@ -1453,6 +1453,114 @@ test_that("nested random-effect blocks are expanded and summed", {
   }
 })
 
+test_that("factor products match dense covariance multiplication", {
+
+  model_matrix <- matrix(
+    c(1, 0, 1, 1,
+      0, 1, 1, -1),
+    nrow = 4L,
+    ncol = 2L
+  )
+  group_map <- c(1L, 3L, 2L, 3L)
+  plans <- list(
+    group = list(
+      type         = "group",
+      model_matrix = model_matrix,
+      group_map    = group_map
+    ),
+    row_group = list(
+      type         = "row_group",
+      model_matrix = model_matrix,
+      group_map    = group_map
+    ),
+    known_group = list(
+      type             = "known_group",
+      model_matrix     = model_matrix,
+      group_map        = group_map,
+      group_covariance = matrix(
+        c(1.0, 0.2, 0.1,
+          0.2, 1.4, 0.3,
+          0.1, 0.3, 0.8),
+        nrow = 3L,
+        byrow = TRUE
+      )
+    )
+  )
+  factor_states <- lapply(c(1, 1.5), function(scale){
+    list(
+      group = list(
+        coefficient_factor = diag(c(scale, scale / 2))
+      ),
+      row_group = list(
+        coefficient_factor = matrix(c(scale, 0, 0.2, scale / 2), 2L, 2L),
+        row_scale = c(1, 2, 0.5, 1.5)
+      ),
+      known_group = list(
+        coefficient_factor = matrix(c(scale, 0, 0.1, scale / 3), 2L, 2L)
+      )
+    )
+  })
+  vectors <- matrix(
+    c(1, -2, 0.5, 3,
+      -1, 0.25, 2, 1.5),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(c("draw 1", "draw 2"), paste0("row ", 1:4))
+  )
+  factors <- list(
+    factor_plans  = plans,
+    factor_states = factor_states,
+    metadata = list(
+      n_draws         = 2L,
+      n_rows          = 4L,
+      included_blocks = names(plans)
+    )
+  )
+  class(factors) <- c(
+    "BayesTools_random_effects_marginal_factor_states",
+    "list"
+  )
+
+  expected <- lapply(seq_along(plans), function(block){
+    out <- matrix(NA_real_, nrow(vectors), ncol(vectors),
+                  dimnames = dimnames(vectors))
+    for(draw in seq_len(nrow(vectors))){
+      plan  <- plans[[block]]
+      state <- factor_states[[draw]][[block]]
+      basis <- plan$model_matrix %*% state$coefficient_factor
+      if(identical(plan$type, "row_group")){
+        basis <- basis * state$row_scale
+      }
+      group_covariance <- if(identical(plan$type, "known_group")){
+        plan$group_covariance[plan$group_map, plan$group_map, drop = FALSE]
+      }else{
+        outer(plan$group_map, plan$group_map, "==")
+      }
+      covariance <- tcrossprod(basis) * group_covariance
+      out[draw, ] <- covariance %*% vectors[draw, ]
+    }
+    out
+  })
+  names(expected) <- names(plans)
+
+  by_block <- random_effects_marginal_factor_product(
+    factors,
+    vectors,
+    by_block = TRUE
+  )
+  expect_equal(by_block, expected, tolerance = 1e-12)
+  expect_equal(
+    random_effects_marginal_factor_product(factors, vectors),
+    Reduce(`+`, expected),
+    tolerance = 1e-12
+  )
+  expect_error(
+    random_effects_marginal_factor_product(factors, vectors[, -1L]),
+    "metadata are inconsistent",
+    fixed = TRUE
+  )
+})
+
 test_that("row-varying direct SD sources weight rows inside groups", {
 
   df <- data.frame(

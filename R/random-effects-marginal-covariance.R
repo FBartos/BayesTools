@@ -303,6 +303,171 @@ random_effects_marginal_factor_states <- function(
   out
 }
 
+
+#' Multiply random-effect marginal covariance factors by row vectors
+#'
+#' @description
+#' Applies the covariance represented by
+#' [random_effects_marginal_factor_states()] to one row vector per posterior
+#' draw without constructing a dense `draw x row x row` covariance array.
+#'
+#' @param factors a `BayesTools_random_effects_marginal_factor_states` object.
+#' @param vectors numeric matrix with one posterior draw per row and one fitted
+#'   observation per column.
+#' @param by_block whether to return one product matrix per random-effect block.
+#'
+#' @return A numeric matrix when `by_block = FALSE`; otherwise a named list of
+#'   numeric matrices in fitted random-block order.
+#'
+#' @seealso [random_effects_marginal_factor_states()]
+#' @export
+random_effects_marginal_factor_product <- function(
+    factors, vectors, by_block = FALSE){
+
+  if(!inherits(
+      factors,
+      "BayesTools_random_effects_marginal_factor_states"
+    )){
+    stop(
+      "'factors' must be returned by random_effects_marginal_factor_states().",
+      call. = FALSE
+    )
+  }
+  check_bool(by_block, "by_block")
+  if(!is.numeric(vectors) || !is.matrix(vectors) ||
+     any(!is.finite(vectors))){
+    stop("'vectors' must be a finite numeric matrix.", call. = FALSE)
+  }
+
+  metadata <- factors$metadata
+  n_draws  <- metadata$n_draws
+  n_rows   <- metadata$n_rows
+  blocks   <- metadata$included_blocks
+  plans    <- factors$factor_plans
+  states   <- factors$factor_states
+  if(!is.numeric(n_draws) || length(n_draws) != 1L ||
+     !is.finite(n_draws) || n_draws < 1L || n_draws != as.integer(n_draws) ||
+     !is.numeric(n_rows) || length(n_rows) != 1L ||
+     !is.finite(n_rows) || n_rows < 1L || n_rows != as.integer(n_rows) ||
+     !identical(dim(vectors), c(as.integer(n_draws), as.integer(n_rows))) ||
+     !is.character(blocks) || length(blocks) < 1L || anyNA(blocks) ||
+     any(!nzchar(blocks)) || anyDuplicated(blocks) || !is.list(plans) ||
+     length(plans) != length(blocks) ||
+     !is.list(states) || length(states) != n_draws){
+    stop("Random-effect marginal factor metadata are inconsistent.",
+         call. = FALSE)
+  }
+  names(plans) <- blocks
+
+  out <- stats::setNames(lapply(blocks, function(block){
+    matrix(
+      0,
+      nrow = n_draws,
+      ncol = n_rows,
+      dimnames = dimnames(vectors)
+    )
+  }), blocks)
+  for(draw in seq_len(n_draws)){
+    draw_states <- states[[draw]]
+    if(!is.list(draw_states) || length(draw_states) != length(blocks)){
+      stop("Random-effect marginal factor states are inconsistent.",
+           call. = FALSE)
+    }
+    for(block in seq_along(blocks)){
+      out[[block]][draw, ] <- .bt_random_effect_marginal_factor_product_block(
+        plan   = plans[[block]],
+        state  = draw_states[[block]],
+        vector = vectors[draw, ],
+        block  = blocks[[block]]
+      )
+    }
+  }
+
+  if(by_block){
+    return(out)
+  }
+  Reduce(`+`, out)
+}
+
+
+.bt_random_effect_marginal_factor_product_block <- function(
+    plan, state, vector, block){
+
+  if(!is.list(plan) || !is.list(state)){
+    stop(
+      "Random-effect marginal factor metadata for block '", block,
+      "' are invalid.",
+      call. = FALSE
+    )
+  }
+  type         <- plan$type
+  model_matrix <- plan$model_matrix
+  group_map    <- plan$group_map
+  factor       <- state$coefficient_factor
+  valid <- type %in% c("group", "row_group", "known_group") &&
+    is.numeric(model_matrix) && is.matrix(model_matrix) &&
+    nrow(model_matrix) == length(vector) && all(is.finite(model_matrix)) &&
+    is.numeric(group_map) && length(group_map) == length(vector) &&
+    all(is.finite(group_map)) && all(group_map == as.integer(group_map)) &&
+    all(group_map >= 1L) && is.numeric(factor) &&
+    is.matrix(factor) && nrow(factor) == ncol(model_matrix) &&
+    ncol(factor) == ncol(model_matrix) && all(is.finite(factor))
+  if(!isTRUE(valid)){
+    stop(
+      "Random-effect marginal factor metadata for block '", block,
+      "' are invalid.",
+      call. = FALSE
+    )
+  }
+
+  basis <- model_matrix %*% factor
+  if(identical(type, "row_group")){
+    row_scale <- state$row_scale
+    if(!is.numeric(row_scale) || length(row_scale) != length(vector) ||
+       any(!is.finite(row_scale)) || any(row_scale < 0)){
+      stop(
+        "Random-effect marginal row scales for block '", block,
+        "' are invalid.",
+        call. = FALSE
+      )
+    }
+    basis <- basis * row_scale
+  }
+
+  grouped <- rowsum(
+    basis * vector,
+    group   = group_map,
+    reorder = FALSE
+  )
+  group_ids <- as.integer(rownames(grouped))
+  if(identical(type, "known_group")){
+    group_covariance <- plan$group_covariance
+    if(!is.numeric(group_covariance) || !is.matrix(group_covariance) ||
+       nrow(group_covariance) != ncol(group_covariance) ||
+       any(!is.finite(group_covariance)) ||
+       any(group_map > nrow(group_covariance))){
+      stop(
+        "Known group covariance for block '", block, "' is invalid.",
+        call. = FALSE
+      )
+    }
+    ordered <- matrix(
+      0,
+      nrow = nrow(group_covariance),
+      ncol = ncol(grouped)
+    )
+    ordered[group_ids, ] <- grouped
+    grouped  <- group_covariance %*% ordered
+    group_ids <- seq_len(nrow(grouped))
+  }
+
+  rowSums(basis * grouped[
+    match(group_map, group_ids),
+    ,
+    drop = FALSE
+  ])
+}
+
 #' Random-effect marginal variance factors
 #'
 #' @description
