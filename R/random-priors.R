@@ -107,9 +107,10 @@
 #' \deqn{\sigma_j = \sigma_{\mathrm{common}}\sqrt{K w_j}, \quad
 #'       w \sim \mathrm{Dirichlet}(\alpha).}
 #' Its public aggregate names are `sd_common` and `var_common`, and its
-#' components are exposed as `var_ratio(...)` and `sd_ratio(...)`. Thus
-#' `sd_common` is the shared variance-scale anchor before the component ratios
-#' are applied; it is not a sum of SDs.
+#' components are exposed as `var_mult(...)` and `sd_mult(...)`, where
+#' `var_mult(j) = K * w[j]` and `sd_mult(j) = sqrt(K * w[j])`. Thus
+#' `sd_common` is the shared variance-scale anchor before the component
+#' multipliers are applied; it is not a sum of SDs.
 #'
 #' The fitted [parameter_map()] links concrete [parameter_coordinates()] to the
 #' public random-effect quantities in [parameter_catalog()]. Canonical names use
@@ -130,7 +131,7 @@
 #' the same one-block/multiple-block rule. Total-variance allocations expose
 #' `sd_total`, `var_total`, and `var_prop(...)`;
 #' mean-variance allocations expose `sd_common`, `var_common`,
-#' `var_ratio(...)`, and `sd_ratio(...)`.
+#' `var_mult(...)`, and `sd_mult(...)`.
 #'
 #' This is useful for nested or crossed random intercepts when the prior should
 #' control total heterogeneity separately from how that heterogeneity is
@@ -257,8 +258,8 @@
 #' )
 #'
 #' # Allocate a block SD across its coefficient components. This exposes
-#' # study_components: sd_common, study_components: var_ratio(intercept), and
-#' # study_components: sd_ratio(intercept), with analogous names for slopes.
+#' # study_components: sd_common, study_components: var_mult(intercept), and
+#' # study_components: sd_mult(intercept), with analogous names for slopes.
 #' prior_random(
 #'   random_variance_allocation(
 #'     name = "study_components",
@@ -431,7 +432,7 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL,
 #'   `sd_child = sd_parent * sqrt(K * w)` and is intended for
 #'   `target = "sd_component"` heterogeneity tests.
 #'   Summaries report `w` as a variance proportion for `"total_variance"` and
-#'   `K * w` as a variance ratio to the average SD-component variance for
+#'   `K * w` as a variance multiplier to the average SD-component variance for
 #'   `"mean_variance"`.
 #' @param weights optional Dirichlet simplex prior over allocation weights.
 #' @param inclusion optional named list of scalar probability priors, keyed by

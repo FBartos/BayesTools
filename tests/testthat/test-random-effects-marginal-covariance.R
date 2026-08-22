@@ -367,7 +367,7 @@ test_that("known group covariance uses tau squared times ZKZ prime", {
     ),
     "sd(intercept)"
   )
-  expect_false(any(grepl("__var_ratio__", names(derived$prior_list),
+  expect_false(any(grepl("__var_mult__", names(derived$prior_list),
                          fixed = TRUE)))
   expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
   expect_equal(unname(diagonal$samples), .re_cov_dense_diagonal(out),
@@ -1550,10 +1550,38 @@ test_that("factor products match dense covariance multiplication", {
     vectors,
     by_block = TRUE
   )
+  expected_diagonal <- lapply(seq_along(plans), function(block){
+    out <- matrix(NA_real_, nrow(vectors), ncol(vectors))
+    for(draw in seq_len(nrow(vectors))){
+      plan  <- plans[[block]]
+      state <- factor_states[[draw]][[block]]
+      basis <- plan$model_matrix %*% state$coefficient_factor
+      if(identical(plan$type, "row_group")){
+        basis <- basis * state$row_scale
+      }
+      out[draw, ] <- rowSums(basis^2)
+      if(identical(plan$type, "known_group")){
+        out[draw, ] <- out[draw, ] *
+          diag(plan$group_covariance)[plan$group_map]
+      }
+    }
+    out
+  })
+  names(expected_diagonal) <- names(plans)
+  diagonal_by_block <- random_effects_marginal_factor_diagonal(
+    factors,
+    by_block = TRUE
+  )
   expect_equal(by_block, expected, tolerance = 1e-12)
   expect_equal(
     random_effects_marginal_factor_product(factors, vectors),
     Reduce(`+`, expected),
+    tolerance = 1e-12
+  )
+  expect_equal(diagonal_by_block, expected_diagonal, tolerance = 1e-12)
+  expect_equal(
+    random_effects_marginal_factor_diagonal(factors),
+    Reduce(`+`, expected_diagonal),
     tolerance = 1e-12
   )
   expect_error(

@@ -81,7 +81,8 @@ test_that("Simple prior models fit correctly", {
   }
   marglik_simple_normal <- JAGS_bridgesampling(fit_simple_normal,
                                                log_posterior = log_posterior_simple_normal,
-                                               data = data, prior_list = priors_simple_normal)
+                                               data = data, prior_list = priors_simple_normal,
+                                               seed = 1)
 
   result <- save_fit(fit_simple_normal, "fit_simple_normal",
                      marglik = marglik_simple_normal,
@@ -102,7 +103,8 @@ test_that("Simple prior models fit correctly", {
   # Compute marginal likelihood for model averaging
   marglik_simple_spike <- JAGS_bridgesampling(fit_simple_spike,
                                               log_posterior = log_posterior_simple_normal,
-                                              data = data, prior_list = priors_simple_spike)
+                                              data = data, prior_list = priors_simple_spike,
+                                              seed = 2)
 
   result <- save_fit(fit_simple_spike, "fit_simple_spike",
                      marglik = marglik_simple_spike,
@@ -205,7 +207,8 @@ test_that("Summary tables models fit correctly", {
 
   marglik_summary0 <- JAGS_bridgesampling(fit_summary0,
                                           log_posterior = log_posterior_summary,
-                                          data = data_summary, prior_list = priors_summary0)
+                                          data = data_summary, prior_list = priors_summary0,
+                                          seed = 0)
 
   result <- save_fit(fit_summary0, "fit_summary0",
                      marglik = marglik_summary0,
@@ -225,7 +228,8 @@ test_that("Summary tables models fit correctly", {
 
   marglik_summary1 <- JAGS_bridgesampling(fit_summary1,
                                           log_posterior = log_posterior_summary,
-                                          data = data_summary, prior_list = priors_summary1)
+                                          data = data_summary, prior_list = priors_summary1,
+                                          seed = 1)
 
   result <- save_fit(fit_summary1, "fit_summary1",
                      marglik = marglik_summary1,
@@ -245,7 +249,8 @@ test_that("Summary tables models fit correctly", {
 
   marglik_summary2 <- JAGS_bridgesampling(fit_summary2,
                                           log_posterior = log_posterior_summary,
-                                          data = data_summary, prior_list = priors_summary2)
+                                          data = data_summary, prior_list = priors_summary2,
+                                          seed = 1)
 
   result <- save_fit(fit_summary2, "fit_summary2",
                      marglik = marglik_summary2,
@@ -265,7 +270,8 @@ test_that("Summary tables models fit correctly", {
 
   marglik_summary3 <- JAGS_bridgesampling(fit_summary3,
                                           log_posterior = log_posterior_summary,
-                                          data = data_summary, prior_list = priors_summary3)
+                                          data = data_summary, prior_list = priors_summary3,
+                                          seed = 1)
 
   result <- save_fit(fit_summary3, "fit_summary3",
                      marglik = marglik_summary3,
@@ -774,7 +780,7 @@ test_that("Simple formula-based regression models fit correctly", {
     fit_formula_simple, log_posterior = log_posterior_formula, data = data,
     prior_list = prior_list_simple,
     formula_list = formula_list_simple, formula_data_list = formula_data_list_simple,
-    formula_prior_list = formula_prior_list_simple)
+    formula_prior_list = formula_prior_list_simple, seed = 1)
 
   result <- save_fit(fit_formula_simple, "fit_formula_simple",
                      marglik = marglik_formula_simple,
@@ -805,7 +811,7 @@ test_that("Simple formula-based regression models fit correctly", {
     fit_formula_treatment, log_posterior = log_posterior_formula, data = data,
     prior_list = prior_list_simple,
     formula_list = formula_list_treatment, formula_data_list = formula_data_list_treatment,
-    formula_prior_list = formula_prior_list_treatment)
+    formula_prior_list = formula_prior_list_treatment, seed = 2)
 
   result <- save_fit(fit_formula_treatment, "fit_formula_treatment",
                      marglik = marglik_formula_treatment,
@@ -838,7 +844,7 @@ test_that("Simple formula-based regression models fit correctly", {
     fit_formula_treatment_positive, log_posterior = log_posterior_formula, data = data,
     prior_list = prior_list_simple,
     formula_list = formula_list_treatment, formula_data_list = formula_data_list_treatment,
-    formula_prior_list = formula_prior_list_treatment_positive)
+    formula_prior_list = formula_prior_list_treatment_positive, seed = 4)
 
   result <- save_fit(fit_formula_treatment_positive, "fit_formula_treatment_positive",
                      marglik = marglik_formula_treatment_positive,
@@ -871,7 +877,7 @@ test_that("Simple formula-based regression models fit correctly", {
     fit_formula_treatment_negative, log_posterior = log_posterior_formula, data = data,
     prior_list = prior_list_simple,
     formula_list = formula_list_treatment, formula_data_list = formula_data_list_treatment,
-    formula_prior_list = formula_prior_list_treatment_negative)
+    formula_prior_list = formula_prior_list_treatment_negative, seed = 5)
 
   result <- save_fit(fit_formula_treatment_negative, "fit_formula_treatment_negative",
                      marglik = marglik_formula_treatment_negative,
@@ -902,7 +908,7 @@ test_that("Simple formula-based regression models fit correctly", {
     fit_formula_orthonormal, log_posterior = log_posterior_formula, data = data,
     prior_list = prior_list_simple,
     formula_list = formula_list_orthonormal, formula_data_list = formula_data_list_orthonormal,
-    formula_prior_list = formula_prior_list_orthonormal)
+    formula_prior_list = formula_prior_list_orthonormal, seed = 3)
 
   result <- save_fit(fit_formula_orthonormal, "fit_formula_orthonormal",
                      marglik = marglik_formula_orthonormal,
@@ -1596,7 +1602,8 @@ test_that("Advanced JAGS_fit features work correctly", {
     data               = data,
     prior_list         = priors_list,
     add_parameters     = "g",
-    add_bounds         = list("lb" = add_l, "ub" = add_u)
+    add_bounds         = list("lb" = add_l, "ub" = add_u),
+    seed               = 1
     )
 
   result <- save_fit(fit_add_parameters, "fit_add_parameters",
@@ -1763,7 +1770,8 @@ test_that("Marginal distribution models fit correctly", {
     prior_list         = prior_list_marg,
     formula_list       = model_formula_marg,
     formula_prior_list = list(mu = prior_list_marg_0),
-    formula_data_list  = list(mu = data_formula_marg))
+    formula_data_list  = list(mu = data_formula_marg),
+    seed               = 1)
 
   result <- save_fit(fit_marginal_0, "fit_marginal_0",
                      marglik = marglik_marginal_0,
@@ -1788,7 +1796,8 @@ test_that("Marginal distribution models fit correctly", {
     prior_list         = prior_list_marg,
     formula_list       = model_formula_marg,
     formula_prior_list = list(mu = prior_list_marg_1),
-    formula_data_list  = list(mu = data_formula_marg))
+    formula_data_list  = list(mu = data_formula_marg),
+    seed               = 2)
 
   result <- save_fit(fit_marginal_1, "fit_marginal_1",
                      marglik = marglik_marginal_1,
@@ -1845,7 +1854,7 @@ test_that("PET-PEESE models fit correctly", {
     PET   = prior_PET("normal", list(0, .2))
   )
   fit_pet <- suppressWarnings(JAGS_fit(model_syntax, data, priors_pet, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 0))
-  marglik_pet <- JAGS_bridgesampling(fit_pet, log_posterior = log_posterior, data = data, prior_list = priors_pet)
+  marglik_pet <- JAGS_bridgesampling(fit_pet, log_posterior = log_posterior, data = data, prior_list = priors_pet, seed = 0)
   result <- save_fit(fit_pet, "fit_pet", marglik = marglik_pet, pub_bias_priors = TRUE, note = "PET prior only")
   model_registry[["fit_pet"]] <<- result$registry_entry
 
@@ -1855,7 +1864,7 @@ test_that("PET-PEESE models fit correctly", {
     PEESE = prior_PEESE("normal", list(0, .8))
   )
   fit_peese <- suppressWarnings(JAGS_fit(model_syntax, data, priors_peese, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 1))
-  marglik_peese <- JAGS_bridgesampling(fit_peese, log_posterior = log_posterior, data = data, prior_list = priors_peese)
+  marglik_peese <- JAGS_bridgesampling(fit_peese, log_posterior = log_posterior, data = data, prior_list = priors_peese, seed = 1)
   result <- save_fit(fit_peese, "fit_peese", marglik = marglik_peese, pub_bias_priors = TRUE, note = "PEESE prior only")
   model_registry[["fit_peese"]] <<- result$registry_entry
 
@@ -1864,7 +1873,7 @@ test_that("PET-PEESE models fit correctly", {
     mu = prior("normal", list(.2, .2), prior_weights = 4)
   )
   fit_missing <- suppressWarnings(JAGS_fit(model_syntax, data, priors_missing, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 1))
-  marglik_missing <- JAGS_bridgesampling(fit_missing, log_posterior = log_posterior, data = data, prior_list = priors_missing)
+  marglik_missing <- JAGS_bridgesampling(fit_missing, log_posterior = log_posterior, data = data, prior_list = priors_missing, seed = 1)
   result <- save_fit(fit_missing, "fit_missing", marglik = marglik_missing, simple_priors = TRUE, note = "Overwhelming missing model")
   model_registry[["fit_missing"]] <<- result$registry_entry
 })
@@ -1883,7 +1892,7 @@ test_that("Weightfunction models fit correctly", {
     omega = prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))
   )
   fit_wf_onesided <- suppressWarnings(JAGS_fit(model_syntax, data, priors_wf_onesided, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 0))
-  marglik_wf_onesided <- JAGS_bridgesampling(fit_wf_onesided, log_posterior = log_posterior, data = data, prior_list = priors_wf_onesided)
+  marglik_wf_onesided <- JAGS_bridgesampling(fit_wf_onesided, log_posterior = log_posterior, data = data, prior_list = priors_wf_onesided, seed = 0)
   result <- save_fit(fit_wf_onesided, "fit_wf_onesided", marglik = marglik_wf_onesided, weightfunction_priors = TRUE, note = "One-sided weightfunction")
   model_registry[["fit_wf_onesided"]] <<- result$registry_entry
 
@@ -1892,7 +1901,7 @@ test_that("Weightfunction models fit correctly", {
     omega = prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1)))
   )
   fit_wf_twosided <- suppressWarnings(JAGS_fit(model_syntax, data, priors_wf_twosided, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 1))
-  marglik_wf_twosided <- JAGS_bridgesampling(fit_wf_twosided, log_posterior = log_posterior, data = data, prior_list = priors_wf_twosided)
+  marglik_wf_twosided <- JAGS_bridgesampling(fit_wf_twosided, log_posterior = log_posterior, data = data, prior_list = priors_wf_twosided, seed = 1)
   result <- save_fit(fit_wf_twosided, "fit_wf_twosided", marglik = marglik_wf_twosided, weightfunction_priors = TRUE, note = "Two-sided weightfunction")
   model_registry[["fit_wf_twosided"]] <<- result$registry_entry
 
@@ -1901,7 +1910,7 @@ test_that("Weightfunction models fit correctly", {
     mu = prior("normal", list(0, .8), prior_weights = 4)
   )
   fit_wf_missing <- suppressWarnings(JAGS_fit(model_syntax, data, priors_wf_missing, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 1))
-  marglik_wf_missing <- JAGS_bridgesampling(fit_wf_missing, log_posterior = log_posterior, data = data, prior_list = priors_wf_missing)
+  marglik_wf_missing <- JAGS_bridgesampling(fit_wf_missing, log_posterior = log_posterior, data = data, prior_list = priors_wf_missing, seed = 1)
   result <- save_fit(fit_wf_missing, "fit_wf_missing", marglik = marglik_wf_missing, simple_priors = TRUE, note = "Overwhelming missing model for WF")
   model_registry[["fit_wf_missing"]] <<- result$registry_entry
 })
@@ -1954,7 +1963,8 @@ test_that("Orthonormal contrast models fit correctly", {
     formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0, seed = 1)
   marglik_orthonormal_0 <- JAGS_bridgesampling(
     fit_orthonormal_0, log_posterior = log_posterior, data = data, prior_list = prior_list,
-    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0)
+    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0,
+    seed = 1)
   result <- save_fit(fit_orthonormal_0, "fit_orthonormal_0", marglik = marglik_orthonormal_0, formulas = TRUE, factor_priors = TRUE, note = "Orthonormal null model")
   model_registry[["fit_orthonormal_0"]] <<- result$registry_entry
 
@@ -1963,7 +1973,8 @@ test_that("Orthonormal contrast models fit correctly", {
     formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1, seed = 2)
   marglik_orthonormal_1 <- JAGS_bridgesampling(
     fit_orthonormal_1, log_posterior = log_posterior, data = data, prior_list = prior_list,
-    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
+    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1,
+    seed = 2)
   result <- save_fit(fit_orthonormal_1, "fit_orthonormal_1", marglik = marglik_orthonormal_1, formulas = TRUE, factor_priors = TRUE, note = "Orthonormal alternative model")
   model_registry[["fit_orthonormal_1"]] <<- result$registry_entry
 })
@@ -2230,7 +2241,8 @@ test_that("Dual parameter regression with log(intercept) and formula_scale fits 
     formula_list       = formula_list_dual,
     formula_data_list  = formula_data_list_dual,
     formula_prior_list = formula_prior_list_dual,
-    formula_scale_list = formula_scale_list_dual)
+    formula_scale_list = formula_scale_list_dual,
+    seed               = 1)
 
   result <- save_fit(fit_dual_param_regression, "fit_dual_param_regression",
                      marglik = marglik_dual_param_regression,
@@ -6052,7 +6064,10 @@ test_that("JAGS_bridgesampling handles runjags output", {
     modules = "glm"
   ))
 
-  marglik <- JAGS_bridgesampling(fit, prior_list = prior_list, data = list(), log_posterior = log_posterior)
+  marglik <- JAGS_bridgesampling(
+    fit, prior_list = prior_list, data = list(),
+    log_posterior = log_posterior, seed = 11
+  )
   expect_s3_class(marglik, "BayesTools_marglik")
   expect_equal(marglik$logml, 0, tolerance = 0.1)
 
@@ -6197,7 +6212,7 @@ test_that("fully structural fits retain deterministic draw geometry", {
   theta <- catalog$quantities[catalog$quantities$canonical_name == "theta", ]
   expect_identical(theta$status, "structural")
   expect_identical(theta$fixed_value, 0)
-  expect_identical(JAGS_fit_contract(fit)$parameter_map_version, 2L)
+  expect_identical(JAGS_fit_contract(fit)$parameter_map_version, 3L)
 
   geometry <- JAGS_draw_geometry(fit)
   expect_identical(geometry$chains$iterations, c(100L, 100L))

@@ -68,12 +68,21 @@ summary, documentation, or post-fit changes.
 
 Do not modify `GENERATE_REFERENCE_FILES` unless the maintainer explicitly asks.
 
-The interactive `.dev/user-tests.R` runner caches changed
+The interactive `test_tests()` runner, loaded by the project `.Rprofile` and
+invoked comprehensively by sourcing `.dev/user-tests.R`, caches changed
 `test_reference_table()` output beside its baseline as `<name>.new.txt`. After
 the test summary, it opens testthat's snapshot reviewer for explicit
 Accept/Reject/Skip decisions. Accept replaces the baseline, Reject removes the
 candidate, and Skip keeps it for later review. Non-interactive runs retain
 candidates and never update baselines.
+
+`test_tests()` runs all five lanes by default. It reuses a validated fit cache;
+use `refit = TRUE` to clean and rebuild it. With `filter`, refitting first runs
+the centralized `fit` lane and then the selected test files. `regenerate = TRUE`
+combines refitting with forced snapshot review. BayesTools has no timing
+baselines, so `update_timings = TRUE` fails explicitly. Interactive calls use
+the standard progress reporter and leave `AGENT` unset; agent-oriented output
+is available explicitly with `reporter = "llm"`.
 
 ## Correctness Evidence
 

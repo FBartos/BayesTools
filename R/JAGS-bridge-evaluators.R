@@ -769,14 +769,17 @@
     structure = structure,
     context = "Bridge sampling random-effect metadata"
   )
+  rho_evaluator <- .bt_random_effect_compile_rho_draw_evaluator(
+    random_term = random_term,
+    missing = "error",
+    out_of_support = "null",
+    context = "Bridge sampling random-effect metadata"
+  )
+  force(rho_evaluator)
 
   function(samples){
-    rho <- .bt_random_effect_rho_draws(
-      random_term = random_term,
-      posterior = .bt_JAGS_marglik_random_effect_posterior_row(samples),
-      missing = "error",
-      out_of_support = "null",
-      context = "Bridge sampling random-effect metadata"
+    rho <- rho_evaluator(
+      .bt_JAGS_marglik_random_effect_posterior_row(samples)
     )
     if(is.null(rho) || any(is.na(rho) | !is.finite(rho))){
       return(-Inf)

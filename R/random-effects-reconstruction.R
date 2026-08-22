@@ -163,33 +163,40 @@
     model_matrix,
     context = "Prediction for a scalar-structured random effect"
   )
-  out <- matrix(
-    NA_real_,
-    nrow = nrow(model_matrix),
-    ncol = nrow(posterior)
+  n_draws <- nrow(posterior)
+  latent <- do.call(cbind, lapply(seq_len(n_columns), function(column){
+    as.vector(unname(posterior[, z_names[, column], drop = FALSE]))
+  }))
+  transition_context <- function(index){
+    draw  <- (index - 1L) %% n_draws + 1L
+    group <- (index - 1L) %/% n_draws + 1L
+    paste0(
+      "Random-effect posterior reconstruction",
+      .bt_random_effect_metadata_block_detail(random_term),
+      ", posterior draw ", draw, ", group ", group
+    )
+  }
+  unit <- .bt_random_effect_structured_subset_transform_draws(
+    structure = structure,
+    columns = seq_len(n_columns),
+    latent = latent,
+    rho = rep(rho, times = n_groups),
+    global_n_columns = n_columns,
+    column_coordinates = coordinates,
+    context = transition_context
   )
-  rows_by_group <- split(seq_len(nrow(model_matrix)), group_map)
-  for(draw in seq_len(nrow(posterior))){
-    for(group_name in names(rows_by_group)){
-      group <- as.integer(group_name)
-      rows  <- rows_by_group[[group_name]]
-      transition_context <- paste0(
-        "Random-effect posterior reconstruction",
-        .bt_random_effect_metadata_block_detail(random_term),
-        ", posterior draw ", draw, ", group ", group
-      )
-      unit <- .bt_random_effect_structured_subset_transform(
-        structure = structure,
-        columns = seq_len(n_columns),
-        latent = as.numeric(posterior[draw, z_names[group, ]]),
-        rho = rho[draw],
-        global_n_columns = n_columns,
-        column_coordinates = coordinates,
-        context = transition_context
-      )
-      out[rows, draw] <- unit[row_column[rows]] *
-        scale_draws[draw, row_column[rows]]
+  out <- matrix(NA_real_, nrow = nrow(model_matrix), ncol = n_draws)
+  for(column in seq_len(n_columns)){
+    rows <- which(row_column == column)
+    if(length(rows) == 0L){
+      next
     }
+    coefficient <- matrix(
+      unit[, column] * rep(scale_draws[, column], times = n_groups),
+      nrow = n_draws,
+      ncol = n_groups
+    )
+    out[rows, ] <- t(coefficient[, group_map[rows], drop = FALSE])
   }
 
   out
@@ -245,6 +252,48 @@
     model_matrix,
     context = "Prediction for a group-local structured random effect"
   )
+  requested_columns <- lapply(seq_len(layout$n_groups), function(group){
+    unique(row_column[group_map == group])
+  })
+  has_missing_columns <- any(vapply(seq_len(layout$n_groups), function(group){
+    length(setdiff(requested_columns[[group]], layout$group_columns[[group]])) > 0L
+  }, logical(1)))
+  if(!has_missing_columns){
+    for(group in seq_len(layout$n_groups)){
+      rows <- which(group_map == group)
+      if(length(rows) == 0L){
+        next
+      }
+      observed_columns <- layout$group_columns[[group]]
+      names <- .bt_random_effect_structured_local_node_names(
+        parameter_stem = random_term$parameter_stem,
+        group = rep(group, length(observed_columns)),
+        column = observed_columns
+      )
+      transition_context <- function(draw){
+        paste0(
+          "Random-effect posterior reconstruction",
+          .bt_random_effect_metadata_block_detail(random_term),
+          ", posterior draw ", draw, ", group ", group
+        )
+      }
+      unit <- .bt_random_effect_structured_subset_transform_draws(
+        structure = layout$structure,
+        columns = observed_columns,
+        latent = unname(posterior[, names, drop = FALSE]),
+        rho = rho,
+        global_n_columns = layout$global_n_columns,
+        column_coordinates = layout$column_coordinates,
+        context = transition_context
+      )
+      observed_coefficients <- unit *
+        scale_draws[, observed_columns, drop = FALSE]
+      requested_index <- match(row_column[rows], observed_columns)
+      out[rows, ] <- t(observed_coefficients[, requested_index, drop = FALSE])
+    }
+    return(out)
+  }
+
   for(draw in seq_len(nrow(posterior))){
     group_coefficients <- vector("list", layout$n_groups)
     for(group in seq_len(layout$n_groups)){

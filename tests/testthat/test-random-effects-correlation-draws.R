@@ -622,6 +622,74 @@ test_that("scalar structured Cholesky reconstruction matches dense factors", {
   }
 })
 
+test_that("dense latent reconstruction batches every compiled scalar structure", {
+
+  set.seed(8127)
+  cases <- list(
+    cs = c(-0.2, 0, 0.4, 0.8),
+    hcs = c(-0.2, 0, 0.4, 0.8),
+    ar1 = c(-0.7, 0, 0.4, 0.8),
+    har = c(-0.7, 0, 0.4, 0.8),
+    car = c(0, 0.2, 0.4, 0.8)
+  )
+  for(structure in names(cases)){
+    random_term <- .correlation_draws_term(structure)
+    n_draws <- length(cases[[structure]])
+    n_groups <- length(random_term$group_levels)
+    n_columns <- ncol(random_term$model_matrix)
+    z_names <- BayesTools:::.bt_random_effect_latent_names(
+      random_term = random_term,
+      n_groups = n_groups,
+      n_columns = n_columns
+    )
+    latent <- matrix(
+      stats::rnorm(n_draws * n_groups * n_columns),
+      nrow = n_draws,
+      dimnames = list(NULL, as.vector(z_names))
+    )
+    posterior <- cbind(cases[[structure]], latent)
+    colnames(posterior)[[1L]] <- random_term$correlation$rho_name
+    scale_draws <- matrix(
+      seq(0.5, 1.5, length.out = n_draws * n_columns),
+      nrow = n_draws,
+      ncol = n_columns
+    )
+
+    actual <- BayesTools:::.bt_random_effect_structured_dense_contribution(
+      random_term = random_term,
+      model_matrix = random_term$model_matrix,
+      group_map = random_term$group_map,
+      posterior = posterior,
+      scale_draws = scale_draws
+    )
+    row_column <- max.col(random_term$model_matrix != 0, ties.method = "first")
+    expected <- matrix(
+      NA_real_,
+      nrow = nrow(random_term$model_matrix),
+      ncol = n_draws
+    )
+    distance <- if(structure %in% c("cs", "hcs")){
+      1 - diag(n_columns)
+    }else if(identical(structure, "car")){
+      coordinates <- random_term$correlation$time_values
+      abs(outer(coordinates, coordinates, "-"))
+    }else{
+      abs(outer(seq_len(n_columns), seq_len(n_columns), "-"))
+    }
+    for(draw in seq_len(n_draws)){
+      L <- t(chol(cases[[structure]][[draw]]^distance))
+      for(group in seq_len(n_groups)){
+        unit <- as.vector(L %*% posterior[draw, z_names[group, ]])
+        rows <- which(random_term$group_map == group)
+        expected[rows, draw] <-
+          unit[row_column[rows]] * scale_draws[draw, row_column[rows]]
+      }
+    }
+
+    expect_equal(actual, expected, tolerance = 2e-14, info = structure)
+  }
+})
+
 test_that("CS Cholesky reconstruction is stable near its global lower bound", {
 
   n_columns <- 100L

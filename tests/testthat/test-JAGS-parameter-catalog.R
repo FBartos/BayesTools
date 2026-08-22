@@ -45,7 +45,7 @@ test_that("parameter catalog construction is metadata-only and versioned", {
     prior_list = prior_list
   ))
   expect_s3_class(catalog, "BayesTools_parameter_catalog")
-  expect_identical(catalog$schema_version, 2L)
+  expect_identical(catalog$schema_version, 3L)
   expect_identical(
     names(catalog$quantities),
     .bt_parameter_catalog_quantity_columns
@@ -1664,10 +1664,33 @@ test_that("allocation quantities expose deterministic induced prior densities", 
     "sd(group[a])",
     "mu"
   )
-  ratio_selection <- parameter_catalog_resolve(
+  multiplier_selection <- parameter_catalog_resolve(
     catalog,
-    "var_ratio(group[a])",
+    "var_mult(group[a])",
     "mu"
+  )
+  sd_mult_selection <- parameter_catalog_resolve(
+    catalog,
+    "sd_mult(group[a])",
+    "mu"
+  )
+  expect_error(
+    parameter_catalog_resolve(
+      catalog,
+      paste0("var_", "ratio(group[a])"),
+      "mu"
+    ),
+    "No public parameter quantity matches",
+    fixed = TRUE
+  )
+  expect_error(
+    parameter_catalog_resolve(
+      catalog,
+      paste0("sd_", "ratio(group[a])"),
+      "mu"
+    ),
+    "No public parameter quantity matches",
+    fixed = TRUE
   )
   common_variance_selection <- parameter_catalog_resolve(
     catalog,
@@ -1684,9 +1707,14 @@ test_that("allocation quantities expose deterministic induced prior densities", 
     component_selection,
     n_grid = 512L
   )
-  ratio_density <- parameter_prior_density(
+  multiplier_density <- parameter_prior_density(
     fit,
-    ratio_selection,
+    multiplier_selection,
+    n_grid = 512L
+  )
+  sd_mult_density <- parameter_prior_density(
+    fit,
+    sd_mult_selection,
     n_grid = 512L
   )
   common_variance_density <- parameter_prior_density(
@@ -1703,8 +1731,13 @@ test_that("allocation quantities expose deterministic induced prior densities", 
   expect_identical(component_density$density, repeated_density$density)
   expect_equal(second_moment, 2 * (2 / 5), tolerance = .03)
   expect_equal(
-    .prior_linear_density_height(ratio_density, .5),
+    .prior_linear_density_height(multiplier_density, .5),
     stats::dbeta(.25, 2, 3) / 2,
+    tolerance = .02
+  )
+  expect_equal(
+    .prior_linear_density_height(sd_mult_density, 1),
+    stats::dbeta(.5, 2, 3),
     tolerance = .02
   )
   common_variance_interior <- prior_density_ordinate(
@@ -1741,11 +1774,72 @@ test_that("allocation quantities expose deterministic induced prior densities", 
     sub("^\\(mu\\) ", "", semantic),
     c(
       "sd_common",
-      "var_ratio(group[a])",
-      "var_ratio(group[b])",
+      "var_mult(group[a])",
+      "var_mult(group[b])",
       "cor(group[a],group[b])"
     )
   )
+})
+
+
+test_that("block allocations expose deterministic component-SD priors", {
+
+  data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2")),
+    observation = factor(seq_len(4L))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | observation, name = "observation", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      random_variance_allocation(
+        name            = "heterogeneity",
+        display_name    = "",
+        terms           = c(study = "study", observation = "observation"),
+        component_names = c("study", "observation"),
+        sd = prior(
+          "normal",
+          list(mean = 0, sd = 1),
+          truncation = list(0, Inf)
+        ),
+        weights = prior("dirichlet", list(alpha = c(2, 3)))
+      )
+    )
+  )
+  allocation <- formula_result$formula_design$random_allocations[[1L]]
+  columns <- c(
+    "mu_intercept",
+    allocation$source_node,
+    paste0(allocation$weight_name, "[", 1:2, "]")
+  )
+  values <- matrix(
+    rep(c(0, 1, .4, .6), 2L),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, columns)
+  )
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(values)),
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  selection <- parameter_catalog_resolve(
+    parameter_catalog(fit),
+    "study: sd(intercept)",
+    "mu"
+  )
+  density <- parameter_prior_density(fit, selection, n_grid = 512L)
+  x <- density$density$x
+  y <- density$density$y
+  second_moment <- sum(diff(x) *
+    (head(x^2 * y, -1L) + tail(x^2 * y, -1L)) / 2)
+
+  expect_s3_class(density, "prior_linear_density")
+  expect_equal(second_moment, 2 / 5, tolerance = .03)
 })
 
 

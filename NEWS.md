@@ -1,9 +1,19 @@
 # version 0.3.1
 ### Features
+- adds an explicit `seed` argument to `JAGS_bridgesampling()` and seeds every
+  cached marginal-likelihood fixture so cache refreshes reproduce bridge
+  proposal draws and downstream model-averaged figures
+- adds the interactive `test_tests()` development runner with the same control
+  interface used by downstream scenario tests, including cache refitting,
+  focused filters, standard interactive progress reporting, optional quiet LLM
+  reporting, and explicit visual/reference-table snapshot review; the helper
+  is loaded automatically with the BayesTools project and `.dev/user-tests.R`
+  can be sourced directly
 - adds `parameter_prior_density()` for deterministic prior densities of mapped
   one-to-one quantities, variance-allocation marginals, and allocation-derived
-  random-component SDs, including squared nonnegative scales with integrable
-  density singularities at zero.
+  random-component SDs. This includes SD-multiplier catalog indices and block-level
+  total-variance allocations, as well as squared nonnegative scales with
+  integrable density singularities at zero.
 - exposes component `var(...)` quantities alongside random-component SDs and
   orders standard random summaries by scale, allocation, then correlation.
 - adds `random_effects_marginal_update_plan()` as the authoritative metadata
@@ -14,6 +24,20 @@
   compiled design permits them. Marginal covariance reconstruction now emits
   structurally symmetric matrices directly, without downstream tolerance,
   averaging, or covariance repair.
+- adds `random_effects_marginal_update_grid()` for compact exact candidate
+  states from metadata-declared factor and Markov updates. The same compiled
+  coefficient-scale and correlation-Cholesky evaluators now drive ordinary
+  factor-state reconstruction and downstream q-grids for ID, DIAG, US, CS,
+  HCS, AR1, AR, HAR, and CAR random structures without materializing a
+  draw-by-grid covariance array. Bridge marginal-likelihood proposals reuse
+  these compiled state evaluators, including allocation, scalar-correlation,
+  LKJ, and fixed-coordinate routing, rather than reconstructing random-effect
+  metadata for every proposal row.
+- adds `random_effects_marginal_factor_diagonal()` for evaluating exact
+  observation-level variances from compiled random-effect factor states without
+  dense covariance reconstruction or repeated formula compilation. The same
+  metadata-driven implementation covers grouped, row-scaled, and known
+  group-covariance factor plans.
 - consolidates unreleased formula-random public parameter names as
   `(formula) owner: quantity(parameter[level], ...)`, omitting `owner: ` for
   a bare or unnamed one-entry random formula while retaining it for explicitly
@@ -34,13 +58,13 @@
   Public correlations use `cor`; aggregate
   allocations distinguish `sd_total` / `var_total` from `sd_common` /
   `var_common`, with random-block components exposed as `sd` / `var` and
-  allocation components as `var_prop`, `var_ratio`, and `sd_ratio`. Variance
+  allocation components as `var_prop`, `var_mult`, and `sd_mult`. Variance
   allocations retain a required stable internal name while
   recording their public owner and component names separately. Linked formula-
   coefficient transforms require the exact current formula-design and
   parameter-map schemas rather than accepting stale versioned metadata.
   Known group-covariance blocks expose their fitted kernel multiplier as
-  `sd` / `var`, not as an allocation ratio; with a non-unit kernel diagonal,
+  `sd` / `var`, not as an allocation multiplier; with a non-unit kernel diagonal,
   this scale need not equal every grouping level's marginal SD.
 - adds `JAGS_with_draws()` for replacing fitted backend draws while preserving
   and refreshing the fit's draw geometry, allowing map-defined semantic
@@ -50,7 +74,7 @@
   `parameter_transform()` plus authoritative forward, inverse, and Jacobian
   evaluators for one-to-one semantic coordinate maps. Standard random-effect
   tables now report only prior-facing quantities, while full tables retain all
-  deterministic representations; genuine allocation SD ratios remain standard.
+  deterministic representations; genuine allocation SD multipliers remain standard.
   `parameter_draws()` can also evaluate a selection on an already materialized
   posterior matrix for downstream summaries.
 - adds `random_effects_marginal_factor_states()` and
@@ -60,6 +84,11 @@
   constructing dense draw-by-row-by-row arrays. Supported non-row-indexed
   blocks compile their SD and correlation metadata once and reconstruct exact
   factor states across all posterior draws in one batch.
+- batches metadata-compiled CS, HCS, AR/AR1, HAR, and CAR latent-effect
+  reconstruction across posterior draws and grouping levels. Dense and
+  observed group-local layouts share the same exact structured recurrence;
+  group-local requests that require stochastic missing coordinates retain the
+  scalar conditional simulator and its established random-number stream.
 - adds `JAGS_marglik_priors_rows()` and
   `JAGS_marglik_priors_rows_evaluator()` for exact row-preserving prior-density
   evaluation and reusable compiled evaluation. Supported scalar, independent
@@ -95,8 +124,8 @@
 - adds bridge-sampling support for formula random effects by using standardized latent random effects, scalar correlation coordinates, and LKJ primitive coordinates as bridge parameters
 - adds semantic random-effect summaries to `runjags_estimates_table()` / `JAGS_estimates_table()` through `random_effects_summary`, `random_effects_metadata`, `remove_random_effects`, `keep_random_effects`, `remove_random_structures`, and `keep_random_structures`
 - adds random-effect parameter filters such as `"random"`, `"random_sd"`,
-  `"random_cor"`, `"random_var_prop"`, `"random_var_ratio"`,
-  `"random_allocation"`, and `"random_sd_ratio"` for estimates tables
+  `"random_cor"`, `"random_var_prop"`, `"random_var_mult"`,
+  `"random_allocation"`, and `"random_sd_mult"` for estimates tables
 - adds compact print methods for the public random-effect specification helpers, LKJ priors, parameter sources, random-SD sources, and variance-allocation references
 - adds `prior_ordered()` for ordered-factor priors that separate a scalar total effect from fixed or Dirichlet allocations across cumulative level increments
 - adds Dirichlet simplex priors via `prior("dirichlet", ...)` / `prior("simplex", ...)`, including random generation, log-density, marginal distribution helpers, JAGS syntax, initialization, posterior extraction, and bridge-sampling support

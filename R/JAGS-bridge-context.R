@@ -799,7 +799,8 @@
 }
 
 .bt_JAGS_bridge_compile_random_sd_evaluator <- function(random_term,
-                                                        prior_list){
+                                                        prior_list,
+                                                        posterior_names = NULL){
 
   binding <- random_term$sd_binding
   if(is.null(binding)){
@@ -830,10 +831,10 @@
   })
   ambiguity <- Filter(Negate(is.null), ambiguity)
 
-  check_ambiguity <- function(samples){
+  check_ambiguity_names <- function(sample_names){
     for(spec in ambiguity){
-      if(all(spec$weight %in% names(samples)) &&
-         all(spec$eta %in% names(samples))){
+      if(all(spec$weight %in% sample_names) &&
+         all(spec$eta %in% sample_names)){
         stop(
           "Bridge samples contain both normalized Dirichlet allocation coordinates ",
           "and auxiliary eta coordinates for parameter '",
@@ -844,6 +845,15 @@
       }
     }
     invisible(TRUE)
+  }
+  if(!is.null(posterior_names)){
+    check_ambiguity_names(posterior_names)
+    check_ambiguity <- function(samples) invisible(TRUE)
+  }else{
+    check_ambiguity <- function(samples){
+      sample_names <- if(is.matrix(samples)) colnames(samples) else names(samples)
+      check_ambiguity_names(sample_names)
+    }
   }
 
   evaluate <- if(isTRUE(binding$true_allocation)){
@@ -857,6 +867,16 @@
     }
     factor_plan <- .bt_random_effect_compile_allocation_factor_plan(factors)
     source_name <- .bt_random_sd_binding_source_name(allocation$source)
+    source_evaluator <- .bt_JAGS_bridge_compile_parameter_draw_evaluator(
+      parameter_name = source_name,
+      prior_list = prior_list,
+      posterior_names = posterior_names
+    )
+    factor_evaluator <- .bt_JAGS_bridge_compile_allocation_factor_evaluator(
+      factor_plan = factor_plan,
+      prior_list = prior_list,
+      posterior_names = posterior_names
+    )
 
     if(identical(target, "sd_component")){
       component <- .bt_check_random_sd_component_allocation(
@@ -868,23 +888,25 @@
       n_targets <- component$n_targets
       weight_name <- allocation$weight_name
       scale <- allocation$scale
+      weight_evaluator <- .bt_JAGS_bridge_compile_dirichlet_draw_evaluator(
+        parameter_name = weight_name,
+        prior_list = prior_list,
+        posterior_names = posterior_names
+      )
+      multiplier <- .bt_JAGS_bridge_compile_allocation_multiplier(
+        scale = scale,
+        n_targets = n_targets
+      )
     }
 
     function(posterior, parameters = NULL){
-      base <- .bt_JAGS_bridge_compiled_parameter_draws(
-        parameter_name = source_name,
-        posterior = posterior,
-        prior_list = prior_list,
-        parameters = parameters
-      )
+      base <- source_evaluator(posterior, parameters)
       if(is.null(base)){
         return(NULL)
       }
-      base <- .bt_JAGS_bridge_compiled_allocation_factor_plan(
+      base <- factor_evaluator(
         base = base,
-        factor_plan = factor_plan,
         posterior = posterior,
-        prior_list = prior_list,
         parameters = parameters
       )
       if(is.null(base)){
@@ -898,12 +920,7 @@
         ))
       }
 
-      weights <- .bt_JAGS_bridge_compiled_dirichlet_draws(
-        parameter_name = weight_name,
-        posterior = posterior,
-        prior_list = prior_list,
-        parameters = parameters
-      )
+      weights <- weight_evaluator(posterior, parameters)
       if(is.null(weights)){
         return(NULL)
       }
@@ -921,19 +938,27 @@
         ncol = random_term$n_columns
       )
       for(column in seq_len(random_term$n_columns)){
-        out[, column] <- base * .bt_random_effect_allocation_multiplier(
-          weights = weights[, leaf_index[column]],
-          scale = scale,
-          n_targets = n_targets
-        )
+        out[, column] <- base * multiplier(weights[, leaf_index[column]])
       }
       out
     }
   }else{
     sd_names <- random_term$sd_parameter_names
+    sd_evaluators <- if(
+      is.null(sd_names) || length(sd_names) != random_term$n_columns ||
+      any(is.na(sd_names))
+    ){
+      NULL
+    }else{
+      lapply(
+        sd_names,
+        .bt_JAGS_bridge_compile_parameter_draw_evaluator,
+        prior_list = prior_list,
+        posterior_names = posterior_names
+      )
+    }
     function(posterior, parameters = NULL){
-      if(is.null(sd_names) || length(sd_names) != random_term$n_columns ||
-         any(is.na(sd_names))){
+      if(is.null(sd_evaluators)){
         return(NULL)
       }
       out <- matrix(
@@ -942,12 +967,7 @@
         ncol = random_term$n_columns
       )
       for(column in seq_len(random_term$n_columns)){
-        values <- .bt_JAGS_bridge_compiled_parameter_draws(
-          parameter_name = sd_names[column],
-          posterior = posterior,
-          prior_list = prior_list,
-          parameters = parameters
-        )
+        values <- sd_evaluators[[column]](posterior, parameters)
         if(is.null(values)){
           return(NULL)
         }
@@ -992,7 +1012,8 @@
   }
   direct_indices <- NULL
   posterior_values <- function(posterior, parameters = NULL){
-    draws <- posterior_draws(posterior, parameters = parameters)
+    check_ambiguity(posterior)
+    draws <- evaluate(posterior, parameters = parameters)
     if(is.null(draws)){
       return(NULL)
     }
@@ -1046,84 +1067,279 @@
   )
 }
 
-.bt_JAGS_bridge_compiled_parameter_draws <- function(
-    parameter_name, posterior, prior_list, parameters = NULL){
+.bt_JAGS_bridge_compile_parameter_draw_evaluator <- function(
+    parameter_name, prior_list, posterior_names = NULL){
 
-  if(is.list(parameters) && parameter_name %in% names(parameters)){
-    value <- as.numeric(parameters[[parameter_name]])
-    if(length(value) == 1L){
-      return(rep(value, nrow(posterior)))
-    }
-    if(length(value) == nrow(posterior)){
-      return(value)
-    }
+  prior_name <- sub("\\[[0-9]+\\]$", "", parameter_name)
+  prior <- prior_list[[prior_name]]
+  fixed <- if(!is.null(prior) && is.prior.point(prior)){
+    location <- prior$parameters[["location"]]
+    if(length(location) == 1L && !is.na(location)) location else NULL
+  }else{
+    NULL
   }
-  .bt_random_effect_parameter_draws(
-    parameter_name = parameter_name,
-    posterior = posterior,
-    prior_list = prior_list
-  )
+  fixed_posterior_names <- !is.null(posterior_names)
+  cached_posterior_names <- posterior_names
+  posterior_index <- if(fixed_posterior_names){
+    match(parameter_name, posterior_names)
+  }else{
+    NA_integer_
+  }
+  force(parameter_name)
+  force(fixed)
+
+  function(posterior, parameters = NULL){
+    if(is.list(parameters) && parameter_name %in% names(parameters)){
+      value <- as.numeric(parameters[[parameter_name]])
+      if(length(value) == 1L){
+        return(rep(value, nrow(posterior)))
+      }
+      if(length(value) == nrow(posterior)){
+        return(value)
+      }
+    }
+    if(!fixed_posterior_names){
+      current_names <- colnames(posterior)
+      if(!identical(current_names, cached_posterior_names)){
+        posterior_index <<- match(parameter_name, current_names)
+        cached_posterior_names <<- current_names
+      }
+    }
+    if(!is.na(posterior_index)){
+      return(posterior[, posterior_index])
+    }
+    if(!is.null(fixed)){
+      return(rep(fixed, nrow(posterior)))
+    }
+    NULL
+  }
 }
 
-.bt_JAGS_bridge_compiled_dirichlet_draws <- function(
-    parameter_name, posterior, prior_list, parameters = NULL){
+.bt_JAGS_bridge_compile_dirichlet_draw_evaluator <- function(
+    parameter_name, prior_list, posterior_names = NULL){
 
-  if(is.list(parameters) && parameter_name %in% names(parameters)){
-    value <- as.numeric(parameters[[parameter_name]])
-    return(matrix(value, nrow = nrow(posterior), ncol = length(value),
-                  byrow = TRUE))
+  prior <- prior_list[[parameter_name]]
+  if(is.null(prior) || !is.prior.simplex(prior) ||
+     !identical(prior$distribution, "dirichlet")){
+    return(function(posterior, parameters = NULL) NULL)
   }
-  .bt_random_effect_dirichlet_draws(
-    parameter_name = parameter_name,
-    posterior = posterior,
-    prior_list = prior_list
+  K <- prior$parameters[["K"]]
+  eta_names <- paste0(
+    .JAGS_prior_dirichlet_eta_name(parameter_name),
+    "[", seq_len(K), "]"
   )
+  weight_names <- paste0(parameter_name, "[", seq_len(K), "]")
+  eta_cache_key <- .bt_random_effect_dirichlet_cache_key(
+    parameter_name,
+    K,
+    "eta"
+  )
+  weight_cache_key <- .bt_random_effect_dirichlet_cache_key(
+    parameter_name,
+    K,
+    "weights"
+  )
+  fixed_posterior_names <- !is.null(posterior_names)
+  cached_posterior_names <- posterior_names
+  eta_indices <- if(fixed_posterior_names){
+    match(eta_names, posterior_names)
+  }else{
+    rep(NA_integer_, K)
+  }
+  weight_indices <- if(fixed_posterior_names){
+    match(weight_names, posterior_names)
+  }else{
+    rep(NA_integer_, K)
+  }
+  force(parameter_name)
+  force(K)
+
+  function(posterior, parameters = NULL){
+    if(is.list(parameters) && parameter_name %in% names(parameters)){
+      value <- as.numeric(parameters[[parameter_name]])
+      return(matrix(
+        value,
+        nrow = nrow(posterior),
+        ncol = length(value),
+        byrow = TRUE
+      ))
+    }
+    if(!fixed_posterior_names){
+      current_names <- colnames(posterior)
+      if(!identical(current_names, cached_posterior_names)){
+        eta_indices     <<- match(eta_names, current_names)
+        weight_indices  <<- match(weight_names, current_names)
+        cached_posterior_names <<- current_names
+      }
+    }
+    cache <- .bt_random_effect_dirichlet_draw_cache(posterior)
+    if(!anyNA(eta_indices)){
+      if(!is.null(cache) &&
+         exists(eta_cache_key, envir = cache, inherits = FALSE)){
+        return(get(eta_cache_key, envir = cache, inherits = FALSE))
+      }
+      eta <- posterior[, eta_indices, drop = FALSE]
+      eta_sum <- rowSums(eta)
+      invalid <- !is.finite(eta) | eta <= 0
+      invalid_row <- !is.finite(eta_sum) | eta_sum <= 0
+      if(any(invalid) || any(invalid_row)){
+        if(any(invalid)){
+          invalid_column <- col(eta)[which(invalid)[1L]]
+          detail <- paste0(" for '", eta_names[invalid_column], "'")
+        }else{
+          detail <- paste0(" at row ", which(invalid_row)[1L])
+        }
+        .bt_random_effect_allocation_out_of_support(
+          "Random-effect Dirichlet allocation auxiliary samples must be finite and positive",
+          detail,
+          "."
+        )
+      }
+      weights <- eta / eta_sum
+      return(.bt_random_effect_dirichlet_cache_return(
+        weights = weights,
+        cache = cache,
+        cache_key = eta_cache_key
+      ))
+    }
+    if(!anyNA(weight_indices)){
+      if(!is.null(cache) &&
+         exists(weight_cache_key, envir = cache, inherits = FALSE)){
+        return(get(weight_cache_key, envir = cache, inherits = FALSE))
+      }
+      weights <- .bt_random_effect_validate_dirichlet_weights(
+        weights = posterior[, weight_indices, drop = FALSE],
+        parameter_name = parameter_name
+      )
+      .bt_random_effect_dirichlet_cache_assign(
+        cache,
+        weight_cache_key,
+        weights
+      )
+      return(weights)
+    }
+    NULL
+  }
 }
 
-.bt_JAGS_bridge_compiled_allocation_factor_plan <- function(
-    base, factor_plan, posterior, prior_list, parameters = NULL){
+.bt_JAGS_bridge_compile_allocation_factor_evaluator <- function(
+    factor_plan, prior_list, posterior_names = NULL){
 
   if(length(factor_plan) == 0L){
-    return(base)
+    return(function(base, posterior, parameters = NULL) base)
   }
-  out <- base
-  for(factor in factor_plan){
-    weights <- .bt_JAGS_bridge_compiled_dirichlet_draws(
-      parameter_name = factor$weight_name,
-      posterior = posterior,
-      prior_list = prior_list,
-      parameters = parameters
+  plans <- lapply(factor_plan, function(factor){
+    list(
+      weight_evaluator = .bt_JAGS_bridge_compile_dirichlet_draw_evaluator(
+        parameter_name = factor$weight_name,
+        prior_list = prior_list,
+        posterior_names = posterior_names
+      ),
+      multiplier = .bt_JAGS_bridge_compile_allocation_multiplier(
+        scale = factor$scale,
+        n_targets = factor$n_targets
+      ),
+      index = factor$index,
+      n_targets = factor$n_targets,
+      weight_name = factor$weight_name,
+      inclusion_name = factor$inclusion_name,
+      gate_evaluator = .bt_JAGS_bridge_compile_allocation_gate_evaluator(
+        factor$inclusion_name,
+        posterior_names = posterior_names
+      )
     )
-    if(is.null(weights)){
+  })
+  force(plans)
+
+  function(base, posterior, parameters = NULL){
+    out <- base
+    for(plan in plans){
+      weights <- plan$weight_evaluator(posterior, parameters)
+      if(is.null(weights)){
+        return(NULL)
+      }
+      if(ncol(weights) != plan$n_targets || plan$index > ncol(weights)){
+        stop(
+          "Random-effect allocation factor metadata for '",
+          plan$weight_name,
+          "' do not match the reconstructed Dirichlet coordinates.",
+          call. = FALSE
+        )
+      }
+      gate <- plan$gate_evaluator(posterior)
+      if(is.null(gate)){
+        stop(
+          "Random-effect allocation inclusion samples are missing Bernoulli indicator '",
+          plan$inclusion_name,
+          "'.",
+          call. = FALSE
+        )
+      }
+      out <- out * plan$multiplier(weights[, plan$index]) * gate
+    }
+    out
+  }
+}
+
+.bt_JAGS_bridge_compile_allocation_gate_evaluator <- function(
+    parameter_name, posterior_names = NULL){
+
+  if(is.null(parameter_name)){
+    return(function(posterior) rep(1, nrow(posterior)))
+  }
+  fixed_posterior_names <- !is.null(posterior_names)
+  cached_posterior_names <- posterior_names
+  posterior_index <- if(fixed_posterior_names){
+    match(parameter_name, posterior_names)
+  }else{
+    NA_integer_
+  }
+  force(parameter_name)
+
+  function(posterior){
+    if(!fixed_posterior_names){
+      current_names <- colnames(posterior)
+      if(!identical(current_names, cached_posterior_names)){
+        posterior_index <<- match(parameter_name, current_names)
+        cached_posterior_names <<- current_names
+      }
+    }
+    if(is.na(posterior_index)){
       return(NULL)
     }
-    if(ncol(weights) != factor$n_targets || factor$index > ncol(weights)){
-      stop(
-        "Random-effect allocation factor metadata for '",
-        factor$weight_name,
-        "' do not match the reconstructed Dirichlet coordinates.",
-        call. = FALSE
+    values <- as.numeric(posterior[, posterior_index])
+    invalid <- !is.finite(values) | !(values %in% c(0, 1))
+    if(any(invalid)){
+      .bt_random_effect_allocation_out_of_support(
+        "Random-effect allocation inclusion samples for '",
+        parameter_name,
+        "' must be Bernoulli indicators."
       )
     }
-    gate <- .bt_random_effect_allocation_gate_draws(
-      parameter_name = factor$inclusion_name,
-      posterior = posterior
-    )
-    if(is.null(gate)){
-      stop(
-        "Random-effect allocation inclusion samples are missing Bernoulli indicator '",
-        factor$inclusion_name,
-        "'.",
-        call. = FALSE
-      )
-    }
-    out <- out * .bt_random_effect_allocation_multiplier(
-      weights = weights[, factor$index],
-      scale = factor$scale,
-      n_targets = factor$n_targets
-    ) * gate
+    values
   }
-  out
+}
+
+.bt_JAGS_bridge_compile_allocation_multiplier <- function(scale, n_targets){
+
+  if(identical(scale, "mean_variance")){
+    if(!is.numeric(n_targets) || length(n_targets) != 1L ||
+       is.na(n_targets) || n_targets < 1L){
+      stop(
+        "Random-effect allocation metadata are missing canonical 'allocation$n_targets'.",
+        call. = FALSE
+      )
+    }
+    force(n_targets)
+    return(function(weights) sqrt(n_targets * weights))
+  }
+  if(identical(scale, "total_variance")){
+    return(function(weights) sqrt(weights))
+  }
+  stop(
+    "Random-effect allocation metadata are missing canonical 'allocation$scale'.",
+    call. = FALSE
+  )
 }
 
 .bt_JAGS_bridge_context_random_block <- function(samples, random_term,

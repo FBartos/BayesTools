@@ -197,6 +197,22 @@
   if(length(rho) != 1L || !is.finite(rho)){
     stop("'rho' must be one finite numeric value.", call. = FALSE)
   }
+  .bt_random_effect_structured_check_rho_draws(
+    structure        = structure,
+    rho              = rho,
+    global_n_columns = global_n_columns
+  )
+}
+
+# Validate a vector of scalar-correlation draws against the global structure.
+.bt_random_effect_structured_check_rho_draws <- function(
+    structure, rho, global_n_columns){
+
+  structure <- .bt_random_effect_structured_local_normalize_structure(structure)
+  check_int(global_n_columns, "global_n_columns", lower = 1, allow_NA = FALSE)
+  if(!is.numeric(rho) || length(rho) < 1L || any(!is.finite(rho))){
+    stop("'rho' must contain one or more finite numeric values.", call. = FALSE)
+  }
   if(global_n_columns == 1L){
     return(invisible(TRUE))
   }
@@ -210,7 +226,8 @@
   }else{
     rho > bounds[["lower"]]
   }
-  if(!lower_valid || rho >= bounds[["upper"]]){
+  valid <- lower_valid & rho < bounds[["upper"]]
+  if(any(!valid)){
     interval <- paste0(
       if(identical(structure, "car")) "[" else "(",
       bounds[["lower"]], ", ", bounds[["upper"]], ")"
@@ -239,12 +256,31 @@
   paste0(context, ": structured Markov ", operation)
 }
 
-# Return a stable Markov transition over one increasing coordinate interval.
-.bt_random_effect_markov_transition <- function(
+.bt_random_effect_batch_context <- function(context, row){
+
+  if(is.function(context)){
+    context <- context(row)
+  }
+  if(is.null(context)){
+    return(NULL)
+  }
+  if(!is.character(context) || length(context) != 1L ||
+     is.na(context) || !nzchar(context)){
+    stop(
+      "Batch 'context' must be NULL, one non-empty string, or a function returning one non-empty string.",
+      call. = FALSE
+    )
+  }
+
+  context
+}
+
+# Return stable Markov transitions for a vector of rho draws.
+.bt_random_effect_markov_transition_draws <- function(
     rho, left_coordinate, right_coordinate, context = NULL){
 
-  if(!is.numeric(rho) || length(rho) != 1L || !is.finite(rho)){
-    stop("'rho' must be one finite numeric value.", call. = FALSE)
+  if(!is.numeric(rho) || length(rho) < 1L || any(!is.finite(rho))){
+    stop("'rho' must contain one or more finite numeric values.", call. = FALSE)
   }
   if(!is.numeric(left_coordinate) || length(left_coordinate) != 1L ||
      !is.finite(left_coordinate) ||
@@ -255,19 +291,19 @@
       call. = FALSE
     )
   }
-  error_label <- .bt_random_effect_markov_error_label(
-    context,
-    operation = "transition"
-  )
 
   gap <- right_coordinate - left_coordinate
-  transition_values <- format(
-    c(left_coordinate, right_coordinate, gap, rho),
-    digits = 17L,
-    scientific = TRUE,
-    trim = TRUE
-  )
   if(!is.finite(gap) || gap <= 0){
+    transition_values <- format(
+      c(left_coordinate, right_coordinate, gap, rho[[1L]]),
+      digits = 17L,
+      scientific = TRUE,
+      trim = TRUE
+    )
+    error_label <- .bt_random_effect_markov_error_label(
+      .bt_random_effect_batch_context(context, 1L),
+      operation = "transition"
+    )
     stop(
       error_label, " from coordinate ",
       transition_values[1L], " to ", transition_values[2L],
@@ -277,36 +313,51 @@
       call. = FALSE
     )
   }
-  if(rho == 0){
-    return(list(
-      log_phi = -Inf,
-      phi = 0,
-      innovation_variance = 1
-    ))
+
+  negative <- rho < 0
+  if(any(negative) && gap != floor(gap)){
+    row <- which(negative)[[1L]]
+    transition_values <- format(
+      c(left_coordinate, right_coordinate, gap, rho[[row]]),
+      digits = 17L,
+      scientific = TRUE,
+      trim = TRUE
+    )
+    error_label <- .bt_random_effect_markov_error_label(
+      .bt_random_effect_batch_context(context, row),
+      operation = "transition"
+    )
+    stop(
+      error_label, " with a negative correlation requires an integer ",
+      "coordinate gap; transition from coordinate ",
+      transition_values[1L], " to ", transition_values[2L],
+      " has rho = ", transition_values[4L],
+      " and gap = ", transition_values[3L], ".",
+      call. = FALSE
+    )
   }
 
-  if(rho > 0){
-    log_phi <- gap * base::log(rho)
-    phi <- base::exp(log_phi)
-  }else{
-    if(gap != floor(gap)){
-      stop(
-        error_label, " with a negative correlation requires an integer ",
-        "coordinate gap; transition from coordinate ",
-        transition_values[1L], " to ",
-        transition_values[2L], " has rho = ", transition_values[4L],
-        " and gap = ", transition_values[3L], ".",
-        call. = FALSE
-      )
-    }
-    log_phi <- gap * base::log(-rho)
-    phi <- base::exp(log_phi)
-    if(gap %% 2 != 0){
-      phi <- -phi
-    }
+  log_phi <- rep(-Inf, length(rho))
+  nonzero <- rho != 0
+  log_phi[nonzero] <- gap * base::log(abs(rho[nonzero]))
+  phi <- base::exp(log_phi)
+  if(gap %% 2 != 0){
+    phi[negative] <- -phi[negative]
   }
   innovation_variance <- -base::expm1(2 * log_phi)
-  if(!is.finite(innovation_variance) || innovation_variance <= 0){
+  invalid <- !is.finite(innovation_variance) | innovation_variance <= 0
+  if(any(invalid)){
+    row <- which(invalid)[[1L]]
+    transition_values <- format(
+      c(left_coordinate, right_coordinate, gap, rho[[row]]),
+      digits = 17L,
+      scientific = TRUE,
+      trim = TRUE
+    )
+    error_label <- .bt_random_effect_markov_error_label(
+      .bt_random_effect_batch_context(context, row),
+      operation = "transition"
+    )
     stop(
       error_label, " from coordinate ",
       transition_values[1L], " to ", transition_values[2L],
@@ -323,6 +374,23 @@
     phi = phi,
     innovation_variance = innovation_variance
   )
+}
+
+# Return a stable Markov transition over one increasing coordinate interval.
+.bt_random_effect_markov_transition <- function(
+    rho, left_coordinate, right_coordinate, context = NULL){
+
+  if(!is.numeric(rho) || length(rho) != 1L || !is.finite(rho)){
+    stop("'rho' must be one finite numeric value.", call. = FALSE)
+  }
+
+  transition <- .bt_random_effect_markov_transition_draws(
+    rho = rho,
+    left_coordinate = left_coordinate,
+    right_coordinate = right_coordinate,
+    context = context
+  )
+  lapply(transition, `[[`, 1L)
 }
 
 # Exact Cholesky factor for a principal structured-correlation block.
@@ -425,8 +493,8 @@
   correlation
 }
 
-# Apply a principal structured Cholesky factor without materializing it.
-.bt_random_effect_structured_subset_transform <- function(
+# Apply a principal structured Cholesky recurrence to multiple draws.
+.bt_random_effect_structured_subset_transform_draws <- function(
     structure, columns, latent, rho, global_n_columns,
     column_coordinates = NULL, context = NULL){
 
@@ -438,12 +506,17 @@
     stop("'columns' must contain unique global column indices.", call. = FALSE)
   }
   columns <- as.integer(columns)
-  if(!is.numeric(latent) || length(latent) != length(columns) ||
-     any(!is.finite(latent))){
-    stop("'latent' must contain one finite value per structured column.",
-         call. = FALSE)
+  if(!is.matrix(latent) || !is.numeric(latent) || nrow(latent) < 1L ||
+     ncol(latent) != length(columns) || any(!is.finite(latent))){
+    stop(
+      "'latent' must be a finite numeric matrix with one column per structured column.",
+      call. = FALSE
+    )
   }
-  .bt_random_effect_structured_local_check_rho(
+  if(!is.numeric(rho) || length(rho) != nrow(latent) || any(!is.finite(rho))){
+    stop("'rho' must contain one finite value per latent row.", call. = FALSE)
+  }
+  .bt_random_effect_structured_check_rho_draws(
     structure = structure,
     rho = rho,
     global_n_columns = global_n_columns
@@ -460,14 +533,14 @@
     )
   }
 
-  out <- numeric(length(columns))
-  out[1L] <- latent[1L]
+  out <- matrix(NA_real_, nrow = nrow(latent), ncol = length(columns))
+  out[, 1L] <- latent[, 1L]
   if(length(columns) == 1L){
     return(out)
   }
 
   if(structure %in% c("cs", "hcs")){
-    prefix <- rho * latent[1L]
+    prefix <- rho * latent[, 1L]
     for(index in 2:length(columns)){
       diagonal <- sqrt(
         (1 - rho) * (1 + (index - 1L) * rho) /
@@ -477,24 +550,52 @@
         (1 - rho) /
           ((1 + (index - 2L) * rho) * (1 + (index - 1L) * rho))
       )
-      out[index] <- prefix + diagonal * latent[index]
-      prefix <- prefix + update * latent[index]
+      out[, index] <- prefix + diagonal * latent[, index]
+      prefix <- prefix + update * latent[, index]
     }
     return(out)
   }
 
   for(index in 2:length(columns)){
-    transition <- .bt_random_effect_markov_transition(
+    transition <- .bt_random_effect_markov_transition_draws(
       rho = rho,
       left_coordinate = coordinates[index - 1L],
       right_coordinate = coordinates[index],
       context = context
     )
-    out[index] <- transition$phi * out[index - 1L] +
-      sqrt(transition$innovation_variance) * latent[index]
+    out[, index] <- transition$phi * out[, index - 1L] +
+      sqrt(transition$innovation_variance) * latent[, index]
   }
 
   out
+}
+
+# Scalar wrapper retained for conditional simulation and independent callers.
+.bt_random_effect_structured_subset_transform <- function(
+    structure, columns, latent, rho, global_n_columns,
+    column_coordinates = NULL, context = NULL){
+
+  if(!is.numeric(latent) || length(latent) != length(columns) ||
+     any(!is.finite(latent))){
+    stop("'latent' must contain one finite value per structured column.",
+         call. = FALSE)
+  }
+  .bt_random_effect_structured_local_check_rho(
+    structure = structure,
+    rho = rho,
+    global_n_columns = global_n_columns
+  )
+  out <- .bt_random_effect_structured_subset_transform_draws(
+    structure = structure,
+    columns = columns,
+    latent = matrix(latent, nrow = 1L),
+    rho = rho,
+    global_n_columns = global_n_columns,
+    column_coordinates = column_coordinates,
+    context = context
+  )
+
+  as.numeric(out[1L, ])
 }
 
 # Closed-form equicorrelation Cholesky factor, including admissible negative rho.

@@ -106,6 +106,8 @@
 #' Defaults to one. Parallel workers must be able to load every package used by
 #' \code{log_posterior}; these can be supplied through the upstream
 #' \code{packages} argument in \code{...}.
+#' @param seed optional integer seed for the random bridge-sampling proposal
+#' draws. The default, `NULL`, uses the current R random-number-generator state.
 #' @param silent whether the progress should be printed, defaults to \code{TRUE}
 #' @param nonfinite handling of non-finite repetition-level log marginal
 #' likelihoods. The default, `"error"`, aborts. `"drop"` aggregates only the
@@ -195,7 +197,7 @@
 #'   }"
 #'
 #' # fit the models
-#' fit <- JAGS_fit(model_syntax, data, priors_list)
+#' fit <- JAGS_fit(model_syntax, data, priors_list, seed = 1)
 #'
 #' # define log posterior for bridge sampling
 #' log_posterior <- function(parameters, data){
@@ -203,7 +205,9 @@
 #' }
 #'
 #' # get marginal likelihoods
-#' marglik <- JAGS_bridgesampling(fit, log_posterior, data, priors_list)
+#' marglik <- JAGS_bridgesampling(
+#'   fit, log_posterior, data, priors_list, seed = 1
+#' )
 #' }
 #' @return A `BayesTools_marglik` object. `logml` is one scalar natural-log
 #' marginal likelihood, aggregated as the median of finite repetition-level
@@ -220,9 +224,10 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
                                  bridge_context = FALSE,
                                  bridge_context_node_names = NULL,
                                  repetitions = 1L,
-                                 method = c("normal", "warp3"),
-                                 maxiter = 10000, silent = TRUE,
-                                 nonfinite = c("error", "drop"), cores = 1, ...){
+                                  method = c("normal", "warp3"),
+                                  maxiter = 10000, silent = TRUE,
+                                  nonfinite = c("error", "drop"), cores = 1,
+                                  seed = NULL, ...){
 
   ### check input
   bridge_context <- .bt_JAGS_bridge_context_mode(bridge_context)
@@ -246,6 +251,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   check_bool(silent, "silent")
   check_int(maxiter, "maxiter", lower = 1)
   check_int(cores, "cores", lower = 1)
+  check_int(seed, "seed", allow_NULL = TRUE, allow_NA = FALSE)
   nonfinite <- match.arg(nonfinite)
   log_posterior <- force(log_posterior)
   if(!is.function(log_posterior)){
@@ -360,7 +366,8 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     marginal_random_spec = marginal_random_spec,
     formula_data_list = formula_data_list,
     formula_prior_list = formula_prior_list,
-    model_data = data
+    model_data = data,
+    posterior_names = colnames(bridgesampling_posterior)
   )
   bridge_context_evaluator <- .bt_JAGS_bridge_compile_context_evaluator(
     mode = bridge_context,
@@ -513,6 +520,9 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
 
 
   ### perform bridgesampling
+  if(!is.null(seed)){
+    set.seed(seed)
+  }
   upstream_warnings <- character()
   marglik <- tryCatch(withCallingHandlers(bridgesampling::bridge_sampler(
       samples            = bridgesampling_posterior,

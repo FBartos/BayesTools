@@ -533,7 +533,7 @@ test_that("bridge marginal evaluator supports every implemented covariance struc
     )
     if(structure %in% c("cs", "hcs", "ar1", "har", "car")){
       compiled_cholesky <-
-        .bt_random_effect_compile_structured_cholesky_evaluator(
+        .bt_random_effect_compile_cholesky_evaluator(
           random_term = random_term,
           n_columns = ncol(random_term$model_matrix),
           structure = structure
@@ -567,7 +567,8 @@ test_that("bridge marginal evaluator supports every implemented covariance struc
       ),
       formula_data_list = list(mu = data),
       formula_prior_list = list(mu = formula_result$prior_list),
-      model_data = list()
+      model_data = list(),
+      posterior_names = names(values)
     )
     actual_value <- evaluator$covariance(
       samples = values,
@@ -674,7 +675,7 @@ test_that("compiled bridge correlation geometry preserves sampled rho", {
     ncol = 1L,
     dimnames = list(NULL, rho_name)
   )
-  compiled <- .bt_random_effect_compile_structured_cholesky_evaluator(
+  compiled <- .bt_random_effect_compile_cholesky_evaluator(
     random_term = random_term,
     n_columns = 4L,
     structure = "ar1"

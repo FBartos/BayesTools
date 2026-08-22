@@ -322,7 +322,8 @@
     marginal_random_spec,
     formula_data_list,
     formula_prior_list,
-    model_data){
+    model_data,
+    posterior_names = NULL){
 
   if(length(marginal_random_spec) == 0L){
     return(list(
@@ -405,14 +406,16 @@
         structure = structure,
         group_covariance = group_covariance,
         coefficient_cholesky_evaluator =
-          .bt_random_effect_compile_structured_cholesky_evaluator(
+          .bt_random_effect_compile_cholesky_evaluator(
             random_term = random_term,
             n_columns = ncol(block_data$model_matrix),
-            structure = structure
+            structure = structure,
+            posterior_names = posterior_names
           ),
         sd_evaluator = .bt_JAGS_bridge_compile_random_sd_evaluator(
           random_term = random_term,
-          prior_list = formula_prior_list[[parameter]]
+          prior_list = formula_prior_list[[parameter]],
+          posterior_names = posterior_names
         ),
         model_matrix = block_data$model_matrix,
         group_map = block_data$group_map,
@@ -426,10 +429,16 @@
           design = design
         ),
         prediction_rows = prediction_rows,
+        posterior_names = posterior_names,
         factor_plan = factor_plan
       )
     })
     names(block_plans) <- selected
+    factor_state_evaluators <- lapply(
+      block_plans,
+      .bt_JAGS_bridge_compile_marginal_random_block_factor_state_evaluator,
+      prior_list = formula_prior_list[[parameter]]
+    )
     row_names <- rownames(block_plans[[1L]]$model_matrix)
     if(is.null(row_names)){
       row_names <- as.character(seq_len(nrow(block_plans[[1L]]$model_matrix)))
@@ -437,6 +446,7 @@
     list(
       parameter = parameter,
       blocks = block_plans,
+      factor_state_evaluators = factor_state_evaluators,
       factor_plans = lapply(block_plans, `[[`, "factor_plan"),
       block_names = selected,
       structures = stats::setNames(vapply(
@@ -483,11 +493,72 @@
       }
       out
     },
+    factor_components = function(posterior){
+      posterior <- as.matrix(posterior)
+      if(nrow(posterior) < 1L ||
+         (ncol(posterior) > 0L && is.null(colnames(posterior)))){
+        stop(
+          "Random-effect factor-component samples must be a non-empty matrix with column names when coordinates are present.",
+          call. = FALSE
+        )
+      }
+      out <- lapply(plans, function(plan){
+        .bt_JAGS_bridge_marginal_random_factor_components_batch(
+          plan = plan,
+          posterior = posterior
+        )
+      })
+      if(any(vapply(out, is.null, logical(1)))){
+        return(NULL)
+      }
+      out
+    },
+    coefficient_scales = function(posterior, parameter, block){
+      posterior <- as.matrix(posterior)
+      plan <- plans[[parameter]]
+      if(is.null(plan) || is.null(plan$blocks[[block]])){
+        stop("Random-effect coefficient-scale block is unavailable.",
+             call. = FALSE)
+      }
+      .bt_JAGS_bridge_marginal_random_block_coefficient_scales_batch(
+        block_plan = plan$blocks[[block]],
+        posterior = posterior,
+        prior_list = plan$prior_list
+      )
+    },
+    coefficient_cholesky = function(posterior, parameter, block){
+      posterior <- as.matrix(posterior)
+      plan <- plans[[parameter]]
+      if(is.null(plan) || is.null(plan$blocks[[block]])){
+        stop("Random-effect coefficient-correlation block is unavailable.",
+             call. = FALSE)
+      }
+      .bt_JAGS_bridge_marginal_random_block_coefficient_cholesky_batch(
+        block_plan = plan$blocks[[block]],
+        posterior = posterior
+      )
+    },
     covariance = function(samples, prior_parameters,
                           formula_prior_parameters, formula_parameters,
                           factor_covariance = TRUE,
                           factor_state = FALSE){
       posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
+      if(isTRUE(factor_state) && !isTRUE(factor_covariance)){
+        compact <- lapply(plans, function(plan){
+          value <- .bt_JAGS_bridge_marginal_random_factor_state_posterior(
+            plan = plan,
+            posterior = posterior
+          )
+          if(is.null(value)){
+            return(NULL)
+          }
+          .bt_JAGS_bridge_marginal_random_parameter_value(plan, value)
+        })
+        if(!any(vapply(compact, is.null, logical(1)))){
+          class(compact) <- c("BayesTools_bridge_marginal_random", "list")
+          return(compact)
+        }
+      }
       source_parameters <- .bt_JAGS_bridge_context_source_parameters(
         samples = samples,
         prior_parameters = prior_parameters,
@@ -507,25 +578,153 @@
           factor_covariance = factor_covariance,
           factor_state = factor_state
         )
-        value <- c(
-          covariance,
-          list(
-            blocks = plan$block_names,
-            structures = plan$structures,
-            row_names = plan$row_names,
-            dimension = length(plan$row_names)
-          )
+        .bt_JAGS_bridge_marginal_random_parameter_value(
+          plan = plan,
+          covariance = covariance
         )
-        class(value) <- c(
-          "BayesTools_bridge_marginal_random_parameter",
-          "list"
-        )
-        value
       })
       class(out) <- c("BayesTools_bridge_marginal_random", "list")
       out
     }
   )
+}
+
+.bt_JAGS_bridge_marginal_random_parameter_value <- function(plan,
+                                                             covariance){
+
+  value <- c(
+    covariance,
+    list(
+      blocks = plan$block_names,
+      structures = plan$structures,
+      row_names = plan$row_names,
+      dimension = length(plan$row_names)
+    )
+  )
+  class(value) <- c(
+    "BayesTools_bridge_marginal_random_parameter",
+    "list"
+  )
+  value
+}
+
+.bt_JAGS_bridge_marginal_random_factor_state_posterior <- function(plan,
+                                                                   posterior){
+
+  if(!isTRUE(plan$factor_state) || is.null(plan$row_blocks)){
+    return(NULL)
+  }
+  states <- lapply(
+    plan$factor_state_evaluators,
+    function(evaluator) evaluator(posterior)
+  )
+  if(any(vapply(states, is.null, logical(1)))){
+    return(NULL)
+  }
+  names(states) <- names(plan$blocks)
+  list(
+    representation = "factor_state",
+    contract_id = plan$contract_id,
+    row_blocks = plan$row_blocks,
+    factor_plans = plan$factor_plans,
+    factor_states = states
+  )
+}
+
+.bt_JAGS_bridge_compile_marginal_random_block_factor_state_evaluator <-
+    function(block_plan, prior_list){
+
+  if(isTRUE(block_plan$row_indexed)){
+    return(function(posterior) NULL)
+  }
+  random_term <- block_plan$random_term
+  n_columns   <- ncol(block_plan$model_matrix)
+  sd_evaluator <- block_plan$sd_evaluator
+  direct_sd_evaluators <- if(is.null(sd_evaluator)){
+    sd_names <- random_term$sd_parameter_names
+    if(is.null(sd_names) || length(sd_names) != n_columns || anyNA(sd_names)){
+      NULL
+    }else{
+      lapply(
+        sd_names,
+        .bt_JAGS_bridge_compile_parameter_draw_evaluator,
+        prior_list = prior_list,
+        posterior_names = block_plan$posterior_names
+      )
+    }
+  }else{
+    NULL
+  }
+  include_markov <- identical(
+    block_plan$factor_plan$coefficient_structure,
+    "markov"
+  )
+  force(random_term)
+  force(n_columns)
+  force(sd_evaluator)
+  force(direct_sd_evaluators)
+  force(include_markov)
+
+  function(posterior){
+    column_scale <- if(!is.null(sd_evaluator)){
+      sd_evaluator$posterior_values(posterior)
+    }else if(!is.null(direct_sd_evaluators)){
+      values <- lapply(
+        direct_sd_evaluators,
+        function(evaluator) evaluator(posterior)
+      )
+      if(any(vapply(values, is.null, logical(1)))){
+        NULL
+      }else{
+        vapply(values, `[[`, numeric(1), 1L)
+      }
+    }else{
+      NULL
+    }
+    if(is.null(column_scale)){
+      return(NULL)
+    }
+    .bt_random_effect_marginal_covariance_validate_draw_matrix(
+      draws = matrix(column_scale, nrow = 1L),
+      n_draws = 1L,
+      n_columns = n_columns,
+      label = "SD",
+      random_term = random_term,
+      nonnegative = TRUE
+    )
+    coefficient <- .bt_JAGS_bridge_marginal_random_coefficient_geometry(
+      random_term = random_term,
+      posterior = posterior,
+      column_scale = column_scale,
+      covariance = FALSE,
+      structure = block_plan$structure,
+      cholesky_evaluator = block_plan$coefficient_cholesky_evaluator
+    )
+    .bt_JAGS_bridge_marginal_random_factor_value(
+      coefficient = coefficient,
+      include_markov = include_markov
+    )
+  }
+}
+
+.bt_JAGS_bridge_marginal_random_factor_components_batch <- function(
+    plan, posterior){
+
+  attr(
+    posterior,
+    "BayesTools_random_effect_dirichlet_draw_cache"
+  ) <- new.env(parent = emptyenv())
+  out <- lapply(
+    plan$blocks,
+    .bt_JAGS_bridge_marginal_random_block_factor_components_batch,
+    posterior = posterior,
+    prior_list = plan$prior_list
+  )
+  if(any(vapply(out, is.null, logical(1)))){
+    return(NULL)
+  }
+  names(out) <- names(plan$blocks)
+  out
 }
 
 .bt_JAGS_bridge_marginal_random_factor_states_batch <- function(plan,
@@ -564,6 +763,57 @@
 }
 
 .bt_JAGS_bridge_marginal_random_block_factor_states_batch <- function(
+    block_plan, posterior, prior_list){
+
+  components <- .bt_JAGS_bridge_marginal_random_block_factor_components_batch(
+    block_plan = block_plan,
+    posterior = posterior,
+    prior_list = prior_list
+  )
+  if(is.null(components)){
+    return(NULL)
+  }
+
+  n_columns <- ncol(block_plan$model_matrix)
+  out <- vector("list", nrow(posterior))
+  for(draw in seq_len(nrow(posterior))){
+    cholesky <- if(is.null(components$coefficient_cholesky)){
+      NULL
+    }else{
+      matrix(
+        components$coefficient_cholesky[draw, , ],
+        nrow = n_columns,
+        ncol = n_columns
+      )
+    }
+    factor <- if(is.null(cholesky)){
+      diag(
+        components$coefficient_scale[draw, ],
+        nrow = n_columns,
+        ncol = n_columns
+      )
+    }else{
+      cholesky * components$coefficient_scale[draw, ]
+    }
+    value <- list(coefficient_factor = factor)
+    if(isTRUE(components$markov)){
+      value$coefficient_scale <- components$coefficient_scale[draw, ]
+      value$markov_transition <-
+        cholesky[cbind(2:n_columns, seq_len(n_columns - 1L))] /
+        diag(cholesky)[seq_len(n_columns - 1L)]
+      value$markov_innovation_variance <- diag(cholesky)[2:n_columns]^2
+    }
+    if(!is.null(components$row_scale)){
+      value$row_scale <- as.numeric(components$row_scale[draw, ])
+    }
+    out[[draw]] <- value
+  }
+  names(out) <- NULL
+  out
+}
+
+
+.bt_JAGS_bridge_marginal_random_block_factor_components_batch <- function(
     block_plan, posterior, prior_list){
 
   random_term <- block_plan$random_term
@@ -628,23 +878,67 @@
       row_scale_draws <- source_draws
       sd_draws <- column_allocation
     }
-  }else if(is.null(block_plan$sd_evaluator)){
-    sd_draws <- .bt_random_effect_sd_draws(
+  }else{
+    sd_draws <- .bt_JAGS_bridge_marginal_random_block_coefficient_scales_batch(
+      block_plan = block_plan,
+      posterior = posterior,
+      prior_list = prior_list
+    )
+  }
+  if(is.null(sd_draws)){
+    return(NULL)
+  }
+
+  structure <- block_plan$structure
+  cholesky_draws <-
+    .bt_JAGS_bridge_marginal_random_block_coefficient_cholesky_batch(
+      block_plan = block_plan,
+      posterior = posterior
+    )
+  if(!structure %in% c("diag", "id") && n_columns > 1L &&
+     is.null(cholesky_draws)){
+    return(NULL)
+  }
+
+  list(
+    coefficient_scale = unname(sd_draws),
+    coefficient_cholesky = if(is.null(cholesky_draws)){
+      NULL
+    }else{
+      unname(cholesky_draws)
+    },
+    row_scale = if(is.null(row_scale_draws)){
+      NULL
+    }else{
+      unname(row_scale_draws)
+    },
+    markov = structure %in% c("ar1", "car", "har") && n_columns > 1L
+  )
+}
+
+
+.bt_JAGS_bridge_marginal_random_block_coefficient_scales_batch <- function(
+    block_plan, posterior, prior_list){
+
+  random_term <- block_plan$random_term
+  n_columns   <- ncol(block_plan$model_matrix)
+  sd_draws <- if(is.null(block_plan$sd_evaluator)){
+    .bt_random_effect_sd_draws(
       random_term = random_term,
       n_columns = n_columns,
       posterior = posterior,
       prior_list = prior_list
     )
   }else{
-    sd_draws <- block_plan$sd_evaluator$posterior_draws(posterior)
-    if(is.null(sd_draws)){
-      sd_draws <- .bt_random_effect_sd_draws(
-        random_term = random_term,
-        n_columns = n_columns,
-        posterior = posterior,
-        prior_list = prior_list
-      )
-    }
+    block_plan$sd_evaluator$posterior_draws(posterior)
+  }
+  if(is.null(sd_draws) && !is.null(block_plan$sd_evaluator)){
+    sd_draws <- .bt_random_effect_sd_draws(
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = posterior,
+      prior_list = prior_list
+    )
   }
   if(is.null(sd_draws)){
     return(NULL)
@@ -657,64 +951,37 @@
     random_term = random_term,
     nonnegative = TRUE
   )
+  unname(sd_draws)
+}
 
-  structure <- block_plan$structure
-  if(structure %in% c("diag", "id") || n_columns == 1L){
-    cholesky_draws <- NULL
-  }else{
-    cholesky_draws <- if(is.null(block_plan$coefficient_cholesky_evaluator)){
-      .bt_random_effect_cholesky_draws(
-        random_term = random_term,
-        n_columns = n_columns,
-        posterior = posterior
-      )
-    }else{
-      block_plan$coefficient_cholesky_evaluator(posterior)
-    }
-    if(is.null(cholesky_draws)){
-      return(NULL)
-    }
-    .bt_random_effect_marginal_covariance_validate_correlation_cholesky(
-      cholesky = cholesky_draws,
+
+.bt_JAGS_bridge_marginal_random_block_coefficient_cholesky_batch <- function(
+    block_plan, posterior){
+
+  random_term <- block_plan$random_term
+  n_columns   <- ncol(block_plan$model_matrix)
+  if(block_plan$structure %in% c("diag", "id") || n_columns == 1L){
+    return(NULL)
+  }
+  cholesky <- if(is.null(block_plan$coefficient_cholesky_evaluator)){
+    .bt_random_effect_cholesky_draws(
       random_term = random_term,
       n_columns = n_columns,
       posterior = posterior
     )
+  }else{
+    block_plan$coefficient_cholesky_evaluator(posterior)
   }
-
-  markov <- structure %in% c("ar1", "car", "har") && n_columns > 1L
-  out <- vector("list", nrow(posterior))
-  for(draw in seq_len(nrow(posterior))){
-    if(is.null(cholesky_draws)){
-      factor <- diag(
-        sd_draws[draw, ],
-        nrow = n_columns,
-        ncol = n_columns
-      )
-      cholesky <- NULL
-    }else{
-      cholesky <- matrix(
-        cholesky_draws[draw, , ],
-        nrow = n_columns,
-        ncol = n_columns
-      )
-      factor <- cholesky * sd_draws[draw, ]
-    }
-    value <- list(coefficient_factor = factor)
-    if(markov){
-      value$coefficient_scale <- sd_draws[draw, ]
-      value$markov_transition <-
-        cholesky[cbind(2:n_columns, seq_len(n_columns - 1L))] /
-        diag(cholesky)[seq_len(n_columns - 1L)]
-      value$markov_innovation_variance <- diag(cholesky)[2:n_columns]^2
-    }
-    if(!is.null(row_scale_draws)){
-      value$row_scale <- as.numeric(row_scale_draws[draw, ])
-    }
-    out[[draw]] <- value
+  if(is.null(cholesky)){
+    return(NULL)
   }
-  names(out) <- NULL
-  out
+  .bt_random_effect_marginal_covariance_validate_correlation_cholesky(
+    cholesky = cholesky,
+    random_term = random_term,
+    n_columns = n_columns,
+    posterior = posterior
+  )
+  unname(cholesky)
 }
 
 .bt_JAGS_bridge_marginal_random_covariance <- function(

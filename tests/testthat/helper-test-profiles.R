@@ -1,5 +1,30 @@
 bayestools_known_test_profiles <- c("unit", "fixture", "visual", "visual-fixture", "fit")
 
+
+bayestools_quiet_llm_reporter <- function(...) {
+
+  reporter_class <- R6::R6Class(
+    classname = "BayesToolsQuietLlmReporter",
+    inherit   = testthat::LlmReporter,
+    public    = list(
+      add_result = function(context, test, result) {
+
+        if (self$is_full()) {
+          return(invisible())
+        }
+        if (inherits(result, "expectation_skip")) {
+          self$n_skip <- self$n_skip + 1L
+          return(invisible())
+        }
+
+        super$add_result(context, test, result)
+      }
+    )
+  )
+
+  reporter_class$new(...)
+}
+
 bayestools_test_profile_contexts <- list(
   unit = c(
     "backend-fingerprint",
@@ -13,6 +38,7 @@ bayestools_test_profile_contexts <- list(
     "hypothesis-BF",
     "hypothesis-BF-parser-adversarial",
     "interpret",
+    "interactive-test-runner",
     "JAGS-bridge-compiler",
     "JAGS-bridge-formula-context-validation",
     "JAGS-bridgesampling-wrapper",

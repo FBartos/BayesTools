@@ -10,7 +10,7 @@
 #' [random_covariance()].
 #' The associated fitted block scale remains the public `sd` quantity (with
 #' `var` as its square). It multiplies the supplied kernel; it is not an
-#' `sd_ratio`. Consequently, when an unscaled kernel has a non-unit diagonal,
+#' `sd_mult`. Consequently, when an unscaled kernel has a non-unit diagonal,
 #' the fitted `sd` need not equal every grouping level's marginal standard
 #' deviation.
 #'

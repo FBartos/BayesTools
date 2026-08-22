@@ -81,6 +81,238 @@ random_effects_marginal_update_plan <- function(fit, selection){
 }
 
 
+#' Random-effect marginal covariance update grid
+#'
+#' @description
+#' Compiles the draw- and candidate-varying coefficient state for an exact
+#' non-affine random-effect covariance update. The output remains compact in
+#' the number of posterior draws and grid values; it does not materialize one
+#' random-effect state for every draw-by-grid combination.
+#'
+#' @param fit a fitted object carrying formula random-effect metadata.
+#' @param update a plan returned by
+#'   [random_effects_marginal_update_plan()].
+#' @param values finite candidate values on the source-coordinate scale
+#'   declared by `update`.
+#' @param posterior_samples optional posterior sample object. By default the
+#'   posterior is obtained from `fit`.
+#' @param prior_list optional formula prior list used to reconstruct random SD
+#'   bindings. By default it is obtained from `fit`.
+#'
+#' @return A list of class
+#'   `BayesTools_random_effects_marginal_update_grid`. Factor updates contain
+#'   posterior coefficient scales, correlation Cholesky factors, and the
+#'   selected candidate scales. Markov updates contain posterior coefficient
+#'   scales plus candidate correlation Cholesky factors, transitions, and
+#'   innovation variances.
+#'
+#' @details
+#' This accessor supports plans whose `family` is `"factor"` or `"markov"`.
+#' Every state is evaluated by the same compiled formula machinery used by
+#' [random_effects_marginal_factor_states()]. No covariance form is inferred
+#' from posterior samples or candidate covariance matrices.
+#'
+#' @seealso [random_effects_marginal_update_plan()]
+#'   [random_effects_marginal_factor_states()]
+#' @export
+random_effects_marginal_update_grid <- function(
+    fit, update, values, posterior_samples = NULL, prior_list = NULL){
+
+  if(!inherits(
+    update,
+    "BayesTools_random_effects_marginal_update_plan"
+  ) || !update$family %in% c("factor", "markov")){
+    stop(
+      "'update' must be a factor or Markov random-effect marginal update plan.",
+      call. = FALSE
+    )
+  }
+  if(!is.numeric(values) || length(values) < 1L ||
+     anyNA(values) || any(!is.finite(values))){
+    stop("'values' must contain finite numeric source-coordinate values.",
+         call. = FALSE)
+  }
+  if(!is.character(update$blocks) || length(update$blocks) != 1L ||
+     is.na(update$blocks) || !nzchar(update$blocks)){
+    stop("Non-affine random-effect updates must identify one fitted block.",
+         call. = FALSE)
+  }
+  source <- update$source_parameter
+  if(!is.character(source) || length(source) != 1L ||
+     is.na(source) || !nzchar(source)){
+    stop("Non-affine random-effect updates must identify one source coordinate.",
+         call. = FALSE)
+  }
+
+  compiled <- .bt_random_effect_marginal_update_grid_evaluator(
+    fit = fit,
+    update = update,
+    posterior_samples = posterior_samples,
+    prior_list = prior_list
+  )
+  posterior <- compiled$posterior
+  if(!source %in% colnames(posterior)){
+    stop(
+      "Random-effect update source coordinate '", source,
+      "' is unavailable in 'posterior_samples'.",
+      call. = FALSE
+    )
+  }
+  evaluator <- compiled$evaluator
+  parameter <- update$formula_parameter
+  block     <- update$blocks[[1L]]
+  scale <- evaluator$coefficient_scales(
+    posterior = posterior,
+    parameter = parameter,
+    block = block
+  )
+  if(is.null(scale)){
+    stop("Random-effect coefficient scales are unavailable for this update.",
+         call. = FALSE)
+  }
+
+  if(identical(update$family, "factor")){
+    component <- update$component_index
+    if(!is.numeric(component) || length(component) != 1L ||
+       is.na(component) || component < 1L ||
+       component > ncol(scale) || component != floor(component)){
+      stop("Factor updates must identify one valid coefficient component.",
+           call. = FALSE)
+    }
+    component <- as.integer(component)
+    candidate_scale <- matrix(
+      NA_real_,
+      nrow = length(values),
+      ncol = nrow(posterior)
+    )
+    for(value_i in seq_along(values)){
+      candidate <- posterior
+      candidate[, source] <- values[[value_i]]
+      current <- evaluator$coefficient_scales(
+        posterior = candidate,
+        parameter = parameter,
+        block = block
+      )
+      if(is.null(current) || !identical(dim(current), dim(scale))){
+        stop("Candidate random-effect coefficient scales are unavailable.",
+             call. = FALSE)
+      }
+      candidate_scale[value_i, ] <- current[, component]
+    }
+    cholesky <- evaluator$coefficient_cholesky(
+      posterior = posterior,
+      parameter = parameter,
+      block = block
+    )
+    if(is.null(cholesky)){
+      stop("Factor updates require coefficient-correlation Cholesky states.",
+           call. = FALSE)
+    }
+    out <- list(
+      family = "factor",
+      block = block,
+      component_index = component,
+      coefficient_scale = unname(scale),
+      coefficient_cholesky = unname(cholesky),
+      candidate_scale = unname(candidate_scale)
+    )
+  }else{
+    candidate <- posterior[rep(1L, length(values)), , drop = FALSE]
+    candidate[, source] <- values
+    cholesky <- evaluator$coefficient_cholesky(
+      posterior = candidate,
+      parameter = parameter,
+      block = block
+    )
+    if(is.null(cholesky)){
+      stop("Markov updates require candidate correlation Cholesky states.",
+           call. = FALSE)
+    }
+    n_columns <- ncol(scale)
+    if(n_columns < 2L || !identical(
+      dim(cholesky),
+      c(length(values), n_columns, n_columns)
+    )){
+      stop("Candidate Markov coefficient states have inconsistent dimensions.",
+           call. = FALSE)
+    }
+    transition <- matrix(NA_real_, nrow = length(values),
+                         ncol = n_columns - 1L)
+    innovation <- matrix(NA_real_, nrow = length(values),
+                         ncol = n_columns - 1L)
+    for(value_i in seq_along(values)){
+      current <- matrix(cholesky[value_i, , ], n_columns, n_columns)
+      transition[value_i, ] <-
+        current[cbind(2:n_columns, seq_len(n_columns - 1L))] /
+        diag(current)[seq_len(n_columns - 1L)]
+      innovation[value_i, ] <- diag(current)[2:n_columns]^2
+    }
+    out <- list(
+      family = "markov",
+      block = block,
+      coefficient_scale = unname(scale),
+      candidate_cholesky = unname(cholesky),
+      candidate_transition = unname(transition),
+      candidate_innovation_variance = unname(innovation)
+    )
+  }
+  class(out) <- c(
+    "BayesTools_random_effects_marginal_update_grid",
+    "list"
+  )
+  out
+}
+
+
+.bt_random_effect_marginal_update_grid_evaluator <- function(
+    fit, update, posterior_samples, prior_list){
+
+  parameter <- update$formula_parameter
+  design <- .bt_random_effect_marginal_covariance_design(
+    fit = fit,
+    parameter = parameter
+  )
+  posterior <- .bt_random_effect_marginal_covariance_posterior(
+    fit = fit,
+    posterior_samples = posterior_samples
+  )
+  prior_list <- .bt_random_effect_marginal_covariance_prior_list(
+    prior_list = prior_list,
+    fit = fit,
+    design = design
+  )
+  selected <- .bt_random_effect_marginal_covariance_terms(
+    design = design,
+    blocks = update$blocks
+  )
+  random_effects <- selected$terms
+  if(length(random_effects) != 1L){
+    stop("Non-affine random-effect updates must resolve to one fitted block.",
+         call. = FALSE)
+  }
+  n_rows <- nrow(random_effects[[1L]]$model_matrix)
+  row_blocks <- list(seq_len(n_rows))
+  .bt_JAGS_bridge_validate_marginal_random_row_blocks(
+    random_effects = random_effects,
+    row_blocks = row_blocks,
+    parameter = parameter
+  )
+  evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
+    formula_design_list = stats::setNames(list(design), parameter),
+    marginal_random_spec = stats::setNames(list(list(
+      blocks = update$blocks,
+      row_blocks = row_blocks,
+      factor_state = TRUE
+    )), parameter),
+    formula_data_list = stats::setNames(list(NULL), parameter),
+    formula_prior_list = stats::setNames(list(prior_list), parameter),
+    model_data = NULL
+  )
+
+  list(evaluator = evaluator, posterior = posterior)
+}
+
+
 .bt_random_effect_marginal_update_invariant_covariance <- function(
     design, plan, key){
 
@@ -204,7 +436,7 @@ random_effects_marginal_update_plan <- function(fit, selection){
   }
 
   if(identical(evaluator, "allocation") &&
-     quantity$quantity %in% c("var_prop", "var_ratio", "sd_ratio") &&
+     quantity$quantity %in% c("var_prop", "var_mult", "sd_mult") &&
      key$source_type %in% c("identity", "one_to_one_transform")){
     random_term <- if(nzchar(key$random_block)){
       .bt_parameter_catalog_find_random_term(fit, key)

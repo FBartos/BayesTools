@@ -217,8 +217,8 @@ names to remove, or \code{TRUE} to remove all parameters that are not
 part of any formula. For formula random effects, character filters also
 accept semantic selectors \code{"random"}, \code{"random_sd"},
 \code{"random_cor"},
-\code{"random_var_prop"}, \code{"random_var_ratio"},
-\code{"random_allocation"}, and \code{"random_sd_ratio"}.}
+\code{"random_var_prop"}, \code{"random_var_mult"},
+\code{"random_allocation"}, and \code{"random_sd_mult"}.}
 
 \item{fit}{runjags model fit}
 
@@ -268,10 +268,10 @@ computed from the transformed covariance draws. Defaults to \code{FALSE}.}
 tables. \code{"standard"} replaces raw implementation parameters with the
 semantic quantities corresponding to the fitted prior parameterization:
 directly specified block scales, correlations, inclusion probabilities,
-allocation aggregate SDs, and variance proportions or ratios.
+allocation aggregate SDs, and variance proportions or multipliers.
 \code{"full"} additionally includes deterministic representations such as
 aggregate variances, allocation-derived component SDs, and alternate SD or
-variance ratios.
+variance multipliers.
 \code{"raw"} keeps the historical raw monitored parameters on their fitted
 scale, and
 \code{"none"} removes random-effect parameters from the table. The

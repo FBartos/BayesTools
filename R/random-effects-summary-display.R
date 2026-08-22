@@ -443,8 +443,8 @@
   quantity_order <- match(
     quantities$quantity,
     c(
-      "sd_total", "sd_common", "sd", "sd_ratio",
-      "var_prop", "var_ratio", "inclusion", "cor"
+      "sd_total", "sd_common", "sd", "sd_mult",
+      "var_prop", "var_mult", "inclusion", "cor"
     )
   )
   quantities[order(quantity_order, na.last = TRUE), , drop = FALSE]
@@ -462,7 +462,7 @@
     !allocation_derived
   allocation <- quantities$owner_type == "variance_allocation" &
     quantities$quantity %in% c(
-      "sd_total", "sd_common", "var_prop", "var_ratio", "inclusion"
+      "sd_total", "sd_common", "var_prop", "var_mult", "inclusion"
     )
 
   correlation | inclusion | block_scale | allocation

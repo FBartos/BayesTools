@@ -5,52 +5,20 @@
     random_term,
     context = "Random-effect posterior reconstruction metadata"
   )
-  if(structure %in% c("diag", "id") || n_columns == 1L){
-    out <- array(0, dim = c(nrow(posterior), n_columns, n_columns))
-    for(column in seq_len(n_columns)){
-      out[, column, column] <- 1
-    }
-    return(out)
+  cholesky_evaluator <- .bt_random_effect_compile_cholesky_evaluator(
+    random_term,
+    n_columns = n_columns,
+    structure = structure,
+    posterior_names = colnames(posterior)
+  )
+  if(is.null(cholesky_evaluator)){
+    return(NULL)
   }
-  if(structure %in% c("cs", "hcs", "ar1", "car", "har")){
-    cholesky_evaluator <- .bt_random_effect_compile_structured_cholesky_evaluator(
-      random_term,
-      n_columns = n_columns,
-      structure = structure
-    )
-    return(cholesky_evaluator(posterior))
-  }
-
-  if(identical(structure, "us")){
-    u_names <- .bt_random_effect_lkj_primitive_names(random_term, n_columns)
-    if(length(u_names) > 0L && all(u_names %in% colnames(posterior))){
-      return(.bt_lkj_cholesky_cpc_u_to_L(
-        posterior[, u_names, drop = FALSE],
-        K = n_columns
-      ))
-    }
-
-    L_names <- .bt_random_effect_cholesky_names(
-      random_term = random_term,
-      n_columns = n_columns
-    )
-    if(all(as.vector(L_names) %in% colnames(posterior))){
-      out <- array(NA_real_, dim = c(nrow(posterior), n_columns, n_columns))
-      for(row in seq_len(n_columns)){
-        for(column in seq_len(n_columns)){
-          out[, row, column] <- posterior[, L_names[row, column]]
-        }
-      }
-      return(out)
-    }
-
-  }
-
-  NULL
+  cholesky_evaluator(posterior)
 }
 
-.bt_random_effect_compile_structured_cholesky_evaluator <- function(
-    random_term, n_columns, structure = NULL){
+.bt_random_effect_compile_cholesky_evaluator <- function(
+    random_term, n_columns, structure = NULL, posterior_names = NULL){
 
   if(is.null(structure)){
     structure <- .bt_random_effect_structure(
@@ -58,8 +26,69 @@
       context = "Random-effect posterior reconstruction metadata"
     )
   }
-  if(!structure %in% c("cs", "hcs", "ar1", "car", "har") ||
-     n_columns <= 1L){
+  if(structure %in% c("diag", "id") || n_columns <= 1L){
+    force(n_columns)
+    return(function(posterior){
+      out <- array(0, dim = c(nrow(posterior), n_columns, n_columns))
+      for(column in seq_len(n_columns)){
+        out[, column, column] <- 1
+      }
+      out
+    })
+  }
+
+  if(identical(structure, "us")){
+    primitive_names <- .bt_random_effect_lkj_primitive_names(
+      random_term,
+      n_columns
+    )
+    cholesky_names <- as.vector(.bt_random_effect_cholesky_names(
+      random_term = random_term,
+      n_columns = n_columns
+    ))
+    fixed_posterior_names <- !is.null(posterior_names)
+    cached_posterior_names <- posterior_names
+    primitive_indices <- if(fixed_posterior_names){
+      match(primitive_names, posterior_names)
+    }else{
+      rep(NA_integer_, length(primitive_names))
+    }
+    cholesky_indices <- if(fixed_posterior_names){
+      match(cholesky_names, posterior_names)
+    }else{
+      rep(NA_integer_, length(cholesky_names))
+    }
+    force(primitive_names)
+    force(cholesky_names)
+    force(n_columns)
+
+    return(function(posterior){
+      if(!fixed_posterior_names){
+        current_names <- colnames(posterior)
+        if(!identical(current_names, cached_posterior_names)){
+          primitive_indices <<- match(primitive_names, current_names)
+          cholesky_indices  <<- match(cholesky_names, current_names)
+          cached_posterior_names <<- current_names
+        }
+      }
+      if(length(primitive_names) > 0L && !anyNA(primitive_indices)){
+        return(.bt_lkj_cholesky_cpc_u_to_L(
+          posterior[, primitive_indices, drop = FALSE],
+          K = n_columns
+        ))
+      }
+      if(length(cholesky_names) > 0L && !anyNA(cholesky_indices)){
+        values <- posterior[, cholesky_indices, drop = FALSE]
+        return(array(
+          unname(values),
+          dim = c(nrow(posterior), n_columns, n_columns)
+        ))
+      }
+      NULL
+    })
+  }
+
+  if(!structure %in% c("cs", "hcs", "ar1", "car", "har")){
     return(NULL)
   }
 
@@ -88,39 +117,24 @@
     K = n_columns,
     structure = structure
   )
-  fixed_rho <- if(is.null(rho_plan$sample_fixed)){
-    NULL
-  }else{
-    .bt_random_effect_rho_draws(
-      random_term = random_term,
-      posterior = matrix(numeric(), nrow = 1L),
-      missing = "error",
-      out_of_support = "error",
-      context = context,
-      plan = rho_plan
-    )[[1L]]
-  }
+  rho_evaluator <- .bt_random_effect_compile_rho_draw_evaluator(
+    random_term = random_term,
+    missing = "error",
+    out_of_support = "error",
+    context = context,
+    plan = rho_plan,
+    posterior_names = posterior_names
+  )
   force(random_term)
   force(n_columns)
   force(structure)
   force(rho_plan)
   force(coordinates)
   force(structure_bounds)
-  force(fixed_rho)
+  force(rho_evaluator)
 
   function(posterior){
-    rho <- if(is.null(fixed_rho)){
-      .bt_random_effect_rho_draws(
-        random_term = random_term,
-        posterior = posterior,
-        missing = "error",
-        out_of_support = "error",
-        context = context,
-        plan = rho_plan
-      )
-    }else{
-      rep(fixed_rho, nrow(posterior))
-    }
+    rho <- rho_evaluator(posterior)
     invalid <- .bt_random_effect_rho_outside_support(
       rho,
       bounds = structure_bounds,
@@ -159,6 +173,143 @@
         stop(conditionMessage(error), call. = FALSE)
       }
     )
+  }
+}
+
+.bt_random_effect_compile_rho_draw_evaluator <- function(
+    random_term,
+    missing = c("null", "error"),
+    out_of_support = c("null", "error"),
+    context = "Random-effect posterior reconstruction metadata",
+    plan = NULL,
+    posterior_names = NULL){
+
+  missing        <- match.arg(missing)
+  out_of_support <- match.arg(out_of_support)
+  if(is.null(plan)){
+    plan <- .bt_random_effect_compile_rho_draw_plan(
+      random_term = random_term,
+      context = context
+    )
+  }
+  structure   <- plan$structure
+  correlation <- plan$correlation
+  rho_scale   <- plan$rho_scale
+  bounds      <- plan$bounds
+  sample_fixed <- plan$sample_fixed
+  sample_bounds <- plan$sample_bounds
+  sample_name <- correlation$sample_name
+  rho_name    <- correlation$rho_name
+  fixed_posterior_names <- !is.null(posterior_names)
+  cached_posterior_names <- posterior_names
+  sample_index <- if(fixed_posterior_names){
+    match(sample_name, posterior_names)
+  }else{
+    NA_integer_
+  }
+  rho_index <- if(fixed_posterior_names){
+    match(rho_name, posterior_names)
+  }else{
+    NA_integer_
+  }
+  force(random_term)
+  force(plan)
+  force(missing)
+  force(out_of_support)
+  force(context)
+
+  function(posterior){
+    if(!fixed_posterior_names){
+      current_names <- colnames(posterior)
+      if(!identical(current_names, cached_posterior_names)){
+        sample_index <<- match(sample_name, current_names)
+        rho_index    <<- match(rho_name, current_names)
+        cached_posterior_names <<- current_names
+      }
+    }
+
+    sample_value <- NULL
+    if(!identical(rho_scale, "rho") && !is.na(sample_index)){
+      sample_value <- posterior[, sample_index]
+      rho_source <- "sample"
+      rho <- .bt_random_effect_transform_rho(
+        sample_value,
+        correlation = correlation,
+        random_term = random_term,
+        context = context,
+        plan = plan
+      )
+    }else if(!is.na(rho_index)){
+      rho_source <- "rho"
+      rho <- posterior[, rho_index]
+    }else if(!is.na(sample_index)){
+      sample_value <- posterior[, sample_index]
+      rho_source <- "sample"
+      rho <- .bt_random_effect_transform_rho(
+        sample_value,
+        correlation = correlation,
+        random_term = random_term,
+        context = context,
+        plan = plan
+      )
+    }else if(!is.null(sample_fixed)){
+      sample_value <- rep(sample_fixed, nrow(posterior))
+      rho_source <- "fixed_sample"
+      rho <- .bt_random_effect_transform_rho(
+        sample_value,
+        correlation = correlation,
+        random_term = random_term,
+        context = context,
+        plan = plan
+      )
+    }else{
+      if(identical(missing, "error")){
+        .bt_random_effect_missing_rho_draws_stop(
+          random_term = random_term,
+          correlation = correlation,
+          context = context
+        )
+      }
+      return(NULL)
+    }
+
+    if(rho_source %in% c("sample", "fixed_sample") &&
+       !identical(rho_scale, "rho")){
+      invalid_sample <- .bt_random_effect_rho_outside_support(
+        sample_value,
+        sample_bounds,
+        structure
+      )
+      if(any(invalid_sample)){
+        if(identical(out_of_support, "error")){
+          .bt_random_effect_rho_out_of_support_draw_stop(
+            random_term = random_term,
+            rho = rho,
+            invalid = invalid_sample,
+            bounds = bounds,
+            structure = structure,
+            context = context
+          )
+        }
+        return(NULL)
+      }
+    }
+    invalid <- .bt_random_effect_rho_outside_support(rho, bounds, structure)
+    if(any(invalid)){
+      if(identical(out_of_support, "error")){
+        .bt_random_effect_rho_out_of_support_draw_stop(
+          random_term = random_term,
+          rho = rho,
+          invalid = invalid,
+          bounds = bounds,
+          structure = structure,
+          context = context
+        )
+      }
+      return(NULL)
+    }
+
+    rho
   }
 }
 

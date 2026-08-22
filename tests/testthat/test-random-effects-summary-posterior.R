@@ -96,7 +96,7 @@ skip_if_not_test_profile("unit")
   attach_test_parameter_map(fit)
 }
 
-test_that("random-effect summary posterior extracts mean-variance ratios", {
+test_that("random-effect summary posterior extracts mean-variance multipliers", {
 
   skip_if_not_installed("runjags")
 
@@ -107,20 +107,20 @@ test_that("random-effect summary posterior extracts mean-variance ratios", {
     },
     .package = "BayesTools"
   )
-  ratios <- random_effects_summary_posterior(fit, summary = "var_ratio")
-  ratio_name <- "(mu) allocation: var_ratio(x)"
+  multipliers <- random_effects_summary_posterior(fit, summary = "var_mult")
+  multiplier_name <- "(mu) allocation: var_mult(x)"
 
-  expect_s3_class(ratios, "mixed_posteriors")
-  expect_true(ratio_name %in% names(ratios))
-  expect_s3_class(ratios[[ratio_name]], "marginal_posterior")
-  expect_equal(unname(as.numeric(ratios[[ratio_name]])), c(1.5, 0.5), tolerance = 1e-12)
-  ratio_selection <- parameter_catalog_resolve(
+  expect_s3_class(multipliers, "mixed_posteriors")
+  expect_true(multiplier_name %in% names(multipliers))
+  expect_s3_class(multipliers[[multiplier_name]], "marginal_posterior")
+  expect_equal(unname(as.numeric(multipliers[[multiplier_name]])), c(1.5, 0.5), tolerance = 1e-12)
+  multiplier_selection <- parameter_catalog_resolve(
     parameter_catalog(fit),
-    ratio_name,
+    multiplier_name,
     namespace = "mu"
   )
   expect_identical(
-    parameter_transform(fit, ratio_selection),
+    parameter_transform(fit, multiplier_selection),
     list(type = "affine", offset = 0, scale = 2)
   )
   supplied_samples <- as.matrix(fit$mcmc[[1L]])
@@ -130,7 +130,7 @@ test_that("random-effect summary posterior extracts mean-variance ratios", {
     c(.9, .8)
   supplied_draws <- parameter_draws(
     fit,
-    ratio_selection,
+    multiplier_selection,
     model_samples = supplied_samples
   )
   expect_equal(
@@ -139,7 +139,7 @@ test_that("random-effect summary posterior extracts mean-variance ratios", {
     tolerance = 1e-12
   )
 
-  prior_density <- attr(ratios[[ratio_name]], "prior_density", exact = TRUE)
+  prior_density <- attr(multipliers[[multiplier_name]], "prior_density", exact = TRUE)
   expect_s3_class(prior_density, "prior_linear_density")
   expect_equal(attr(prior_density, "support", exact = TRUE), c(0, 2))
   expect_equal(
@@ -148,31 +148,31 @@ test_that("random-effect summary posterior extracts mean-variance ratios", {
     tolerance = 1e-8
   )
 
-  intercept_ratio <- random_effects_summary_posterior(
+  intercept_multiplier <- random_effects_summary_posterior(
     fit,
-    summary = "var_ratio",
+    summary = "var_mult",
     component = "intercept"
   )
-  expect_equal(names(intercept_ratio), "(mu) allocation: var_ratio(intercept)")
+  expect_equal(names(intercept_multiplier), "(mu) allocation: var_mult(intercept)")
 
   expect_error(
     random_effects_summary_posterior(fit, summary = "var_prop"),
-    "Mean-variance SD-component allocations are returned by summary = \"var_ratio\"",
+    "Mean-variance SD-component allocations are returned by summary = \"var_mult\"",
     fixed = TRUE
   )
   expect_s3_class(
-    plot_posterior(ratios, ratio_name, prior = TRUE, plot_type = "ggplot"),
+    plot_posterior(multipliers, multiplier_name, prior = TRUE, plot_type = "ggplot"),
     "ggplot"
   )
 })
 
-test_that("random-effect summary posterior extracts SD ratios", {
+test_that("random-effect summary posterior extracts SD multipliers", {
 
   skip_if_not_installed("runjags")
 
   fit <- .random_effects_mean_variance_allocation_fit()
-  multipliers <- random_effects_summary_posterior(fit, summary = "sd_ratio")
-  multiplier_name <- "(mu) allocation: sd_ratio(x)"
+  multipliers <- random_effects_summary_posterior(fit, summary = "sd_mult")
+  multiplier_name <- "(mu) allocation: sd_mult(x)"
 
   expect_true(multiplier_name %in% names(multipliers))
   expect_equal(
@@ -191,7 +191,7 @@ test_that("random-effect summary posterior extracts SD ratios", {
   )
 })
 
-test_that("full estimates summaries add SD ratios to standard quantities", {
+test_that("full estimates summaries add SD multipliers to standard quantities", {
 
   skip_if_not_installed("runjags")
 
@@ -211,15 +211,15 @@ test_that("full estimates summaries add SD ratios to standard quantities", {
     colnames(standard),
     c(
       "(mu) allocation: sd_common",
-      "(mu) allocation: var_ratio(intercept)",
-      "(mu) allocation: var_ratio(x)"
+      "(mu) allocation: var_mult(intercept)",
+      "(mu) allocation: var_mult(x)"
     )
   )
-  expect_false(any(grepl(": sd_ratio\\(", colnames(standard))))
+  expect_false(any(grepl(": sd_mult\\(", colnames(standard))))
   expect_false(any(grepl("(^|: )sd\\(", colnames(standard))))
   expect_false(any(grepl("var_common", colnames(standard), fixed = TRUE)))
-  expect_true("(mu) allocation: var_ratio(x)" %in% colnames(full))
-  expect_true("(mu) allocation: sd_ratio(x)" %in% colnames(full))
+  expect_true("(mu) allocation: var_mult(x)" %in% colnames(full))
+  expect_true("(mu) allocation: sd_mult(x)" %in% colnames(full))
   expect_true("(mu) allocation: var_common" %in% colnames(full))
   expect_true("(mu) sd(x)" %in% colnames(full))
 })
@@ -311,8 +311,8 @@ test_that("random-effect summary posterior extracts total-variance proportions",
   )
 
   expect_error(
-    random_effects_summary_posterior(fit, summary = "var_ratio"),
-    "Variance-ratio summaries are created only",
+    random_effects_summary_posterior(fit, summary = "var_mult"),
+    "Variance-multiplier summaries are created only",
     fixed = TRUE
   )
 })
@@ -322,13 +322,13 @@ test_that("random-effect summary posterior handles singular Dirichlet boundaries
   skip_if_not_installed("runjags")
 
   fit <- .random_effects_mean_variance_allocation_fit(alpha = c(0.5, 2))
-  ratios <- random_effects_summary_posterior(
+  multipliers <- random_effects_summary_posterior(
     fit,
-    summary = "var_ratio",
+    summary = "var_mult",
     component = "intercept",
     n_prior_points = 64
   )
-  prior_density <- attr(ratios[[1]], "prior_density", exact = TRUE)
+  prior_density <- attr(multipliers[[1]], "prior_density", exact = TRUE)
 
   expect_equal(attr(prior_density, "support", exact = TRUE), c(0, 2))
   expect_true(all(is.finite(prior_density$density$x)))

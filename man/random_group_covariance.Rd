@@ -26,7 +26,7 @@ column-level random-effect covariance structures such as
 \code{\link[=random_covariance]{random_covariance()}}.
 The associated fitted block scale remains the public \code{sd} quantity (with
 \code{var} as its square). It multiplies the supplied kernel; it is not an
-\code{sd_ratio}. Consequently, when an unscaled kernel has a non-unit diagonal,
+\code{sd_mult}. Consequently, when an unscaled kernel has a non-unit diagonal,
 the fitted \code{sd} need not equal every grouping level's marginal standard
 deviation.
 }

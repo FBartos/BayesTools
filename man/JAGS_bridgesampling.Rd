@@ -26,6 +26,7 @@ JAGS_bridgesampling(
   silent = TRUE,
   nonfinite = c("error", "drop"),
   cores = 1,
+  seed = NULL,
   ...
 )
 }
@@ -155,6 +156,9 @@ Defaults to one. Parallel workers must be able to load every package used by
 \code{log_posterior}; these can be supplied through the upstream
 \code{packages} argument in \code{...}.}
 
+\item{seed}{optional integer seed for the random bridge-sampling proposal
+draws. The default, \code{NULL}, uses the current R random-number-generator state.}
+
 \item{...}{additional argument to the \link[bridgesampling]{bridge_sampler}
 and \code{log_posterior} function. The upstream-only \code{packages} argument is
 consumed by the sampler and is not forwarded to \code{log_posterior}, including
@@ -255,7 +259,7 @@ model_syntax <-
   }"
 
 # fit the models
-fit <- JAGS_fit(model_syntax, data, priors_list)
+fit <- JAGS_fit(model_syntax, data, priors_list, seed = 1)
 
 # define log posterior for bridge sampling
 log_posterior <- function(parameters, data){
@@ -263,6 +267,8 @@ log_posterior <- function(parameters, data){
 }
 
 # get marginal likelihoods
-marglik <- JAGS_bridgesampling(fit, log_posterior, data, priors_list)
+marglik <- JAGS_bridgesampling(
+  fit, log_posterior, data, priors_list, seed = 1
+)
 }
 }

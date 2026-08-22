@@ -481,21 +481,34 @@ test_that("standard random summaries replace LKJ coordinates with semantic rows"
   )
   expect_identical(colnames(location), "intercept")
 
-  expected_random <- c(
+  expected_standard <- c(
     "sd(group[sensitivity])",
     "sd(group[specificity])",
     "cor(group[sensitivity],group[specificity])"
   )
-  for(summary_mode in c("standard", "full")){
-    random <- JAGS_estimates_table(
-      fit,
-      keep_parameters = "random",
-      random_effects_summary = summary_mode,
-      formula_prefix = FALSE,
-      return_samples = TRUE
-    )
-    expect_identical(colnames(random), expected_random)
-  }
+  expected_full <- c(
+    "sd(group[sensitivity])",
+    "var(group[sensitivity])",
+    "sd(group[specificity])",
+    "var(group[specificity])",
+    "cor(group[sensitivity],group[specificity])"
+  )
+  standard <- JAGS_estimates_table(
+    fit,
+    keep_parameters = "random",
+    random_effects_summary = "standard",
+    formula_prefix = FALSE,
+    return_samples = TRUE
+  )
+  full <- JAGS_estimates_table(
+    fit,
+    keep_parameters = "random",
+    random_effects_summary = "full",
+    formula_prefix = FALSE,
+    return_samples = TRUE
+  )
+  expect_identical(colnames(standard), expected_standard)
+  expect_identical(colnames(full), expected_full)
 })
 
 test_that("keep_random_effects preserves selected random rows with keep_parameters", {
@@ -1085,8 +1098,22 @@ test_that("runjags_estimates_table preserves point-factor and random-SD inclusio
     as.numeric(random_table[random_inclusion, "Mean"]),
     as.numeric(raw_random_table[raw_inclusion, "Mean"])
   )
-  expect_true(is.na(random_table[random_inclusion, "SD"]))
-  expect_true(all(is.na(random_table[random_inclusion, c("0.025", "0.5", "0.975")])))
+  inclusion_selection <- parameter_catalog_resolve(
+    parameter_catalog(fit_random_factor),
+    alias = random_inclusion
+  )
+  inclusion_draws <- as.numeric(as.matrix(parameter_draws(
+    fit_random_factor,
+    inclusion_selection
+  ))[, 1L])
+  expect_equal(
+    as.numeric(random_table[random_inclusion, "SD"]),
+    stats::sd(inclusion_draws)
+  )
+  expect_equal(
+    as.numeric(random_table[random_inclusion, c("0.025", "0.5", "0.975")]),
+    as.numeric(stats::quantile(inclusion_draws, c(0.025, 0.5, 0.975)))
+  )
 
   no_inclusion_table <- runjags_estimates_table(
     fit_random_factor,

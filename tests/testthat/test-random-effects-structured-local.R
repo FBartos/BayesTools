@@ -671,6 +671,160 @@ test_that("direct subset transforms equal explicit Cholesky products", {
   }
 })
 
+test_that("batched structured transforms cover every scalar-correlation family", {
+
+  set.seed(9031)
+  K <- 8L
+  columns <- c(1L, 3L, 6L, 8L)
+  car_coordinates <- c(0, 0.25, 1, 2.5, 4, 7, 8.5, 13)
+  cases <- list(
+    cs = list(rho = c(-0.1, 0, 0.35, 0.8), coordinates = seq_len(K)),
+    hcs = list(rho = c(-0.1, 0, 0.35, 0.8), coordinates = seq_len(K)),
+    ar1 = list(rho = c(-0.8, 0, 0.35, 0.8), coordinates = seq_len(K)),
+    har = list(rho = c(-0.8, 0, 0.35, 0.8), coordinates = seq_len(K)),
+    car = list(rho = c(0, 0.1, 0.35, 0.8), coordinates = car_coordinates)
+  )
+  latent <- matrix(stats::rnorm(4L * length(columns)), nrow = 4L)
+
+  for(structure in names(cases)){
+    case <- cases[[structure]]
+    coordinates <- if(identical(structure, "car")){
+      case$coordinates
+    }else{
+      NULL
+    }
+    actual <- BayesTools:::.bt_random_effect_structured_subset_transform_draws(
+      structure = structure,
+      columns = columns,
+      latent = latent,
+      rho = case$rho,
+      global_n_columns = K,
+      column_coordinates = coordinates
+    )
+    expected <- t(vapply(seq_len(nrow(latent)), function(draw){
+      selected_coordinates <- case$coordinates[columns]
+      distance <- if(structure %in% c("cs", "hcs")){
+        1 - diag(length(columns))
+      }else{
+        abs(outer(selected_coordinates, selected_coordinates, "-"))
+      }
+      correlation <- case$rho[[draw]]^distance
+      as.vector(t(chol(correlation)) %*% latent[draw, ])
+    }, numeric(length(columns))))
+
+    expect_equal(actual, expected, tolerance = 2e-14, info = structure)
+  }
+})
+
+test_that("group-local reconstruction batches every compiled scalar structure", {
+
+  set.seed(7314)
+  data <- data.frame(
+    index = factor(
+      c("i1", "i3", "i2", "i5", "i1", "i4"),
+      levels = paste0("i", 1:5)
+    ),
+    time = c(0, 1.5, 0.25, 5, 0, 3),
+    id = factor(rep(c("g1", "g2", "g3"), each = 2L))
+  )
+  formulas <- list(
+    cs = ~ 1 + cs(index | id),
+    hcs = ~ 1 + hcs(index | id),
+    ar1 = ~ 1 + ar1(index | id),
+    har = ~ 1 + har(index | id),
+    car = ~ 1 + car(time | id)
+  )
+  rho_draws <- list(
+    cs = c(-0.2, 0, 0.7),
+    hcs = c(-0.2, 0, 0.7),
+    ar1 = c(-0.7, 0, 0.7),
+    har = c(-0.7, 0, 0.7),
+    car = c(0, 0.2, 0.7)
+  )
+  for(structure in names(formulas)){
+    result <- JAGS_formula(
+      formula = formulas[[structure]],
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        id = random_block(
+          sd = prior("point", list(location = 1)),
+          cor = prior("normal", list(0, 0.5))
+        )
+      )
+    )
+    random_term <- result$formula_design$random_effects[[1L]]
+    column_coordinates <- if(identical(structure, "car")){
+      random_term$correlation$time_values
+    }else{
+      NULL
+    }
+    layout <- BayesTools:::.bt_random_effect_structured_local_layout(
+      model_matrix = random_term$model_matrix,
+      group_map = random_term$group_map,
+      structure = structure,
+      parameter_stem = random_term$parameter_stem,
+      column_coordinates = column_coordinates,
+      n_groups = length(random_term$group_levels),
+      exact_indicator = TRUE
+    )
+    random_term$latent_layout <- layout
+    expect_s3_class(
+      layout,
+      "BayesTools_random_effect_structured_local_layout"
+    )
+    latent <- matrix(
+      stats::rnorm(3L * layout$n_local),
+      nrow = 3L,
+      dimnames = list(NULL, layout$node_names)
+    )
+    posterior <- cbind(rho_draws[[structure]], latent)
+    colnames(posterior)[[1L]] <- random_term$correlation$rho_name
+    scale_draws <- matrix(
+      seq(0.5, 1.5, length.out = 3L * layout$global_n_columns),
+      nrow = 3L,
+      ncol = layout$global_n_columns
+    )
+    actual <- BayesTools:::.bt_random_effect_structured_local_contribution(
+      random_term = random_term,
+      model_matrix = random_term$model_matrix,
+      group_map = random_term$group_map,
+      posterior = posterior,
+      scale_draws = scale_draws
+    )
+    expected <- matrix(
+      NA_real_,
+      nrow = nrow(random_term$model_matrix),
+      ncol = nrow(posterior)
+    )
+    for(draw in seq_len(nrow(posterior))){
+      for(group in seq_len(layout$n_groups)){
+        columns <- layout$group_columns[[group]]
+        names <- BayesTools:::.bt_random_effect_structured_local_node_names(
+          parameter_stem = random_term$parameter_stem,
+          group = rep(group, length(columns)),
+          column = columns
+        )
+        selected_coordinates <- layout$column_coordinates[columns]
+        distance <- if(structure %in% c("cs", "hcs")){
+          1 - diag(length(columns))
+        }else{
+          abs(outer(selected_coordinates, selected_coordinates, "-"))
+        }
+        L <- t(chol(rho_draws[[structure]][[draw]]^distance))
+        unit <- as.vector(L %*% posterior[draw, names])
+        rows <- which(random_term$group_map == group)
+        expected[rows, draw] <-
+          unit[layout$row_local[rows]] *
+          scale_draws[draw, layout$row_column[rows]]
+      }
+    }
+
+    expect_equal(actual, expected, tolerance = 2e-14, info = structure)
+  }
+})
+
 test_that("irrelevant formula scaling does not materialize structured matrices", {
 
   random_term <- list(

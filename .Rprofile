@@ -1,6 +1,17 @@
-if(interactive()){
+if (interactive()) {
+
   library(devtools)
   library(testthat)
   library(vdiffr)
-  source("C:/R-Packages/BayesTools/tests/testthat/common-functions.R")
+
+  .bayestools_profile_root <- normalizePath(
+    getwd(),
+    winslash = "/",
+    mustWork = TRUE
+  )
+  source(
+    file.path(.bayestools_profile_root, ".dev", "test-tests.R"),
+    local = .GlobalEnv
+  )
+  rm(.bayestools_profile_root, envir = .GlobalEnv)
 }

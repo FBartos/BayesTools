@@ -383,8 +383,8 @@
   )
   is_allocation_summary <- summary_type %in% c(
     "var_prop",
-    "var_ratio",
-    "sd_ratio"
+    "var_mult",
+    "sd_mult"
   ) | (summary_type == "inclusion" & nzchar(summary_allocation))
   used <- stats::setNames(rep(FALSE, length(parameter_names)), parameter_names)
   ordered <- character()

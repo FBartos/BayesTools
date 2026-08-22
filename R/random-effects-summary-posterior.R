@@ -4,11 +4,11 @@
 #' quantities and attaches analytic marginal prior densities where available.
 #' For allocation summaries, the helper keeps raw Dirichlet allocation weights
 #' internal and exposes interpretable scalar summaries such as mean-variance
-#' SD-component variance ratios.
+#' SD-component variance multipliers.
 #'
 #' @param fit model fit created by [JAGS_fit].
-#' @param summary semantic quantity to extract: `"var_ratio"`, `"var_prop"`,
-#'   `"sd_ratio"`, `"sd_total"`, `"var_total"`, `"sd_common"`, or
+#' @param summary semantic quantity to extract: `"var_mult"`, `"var_prop"`,
+#'   `"sd_mult"`, `"sd_total"`, `"var_total"`, `"sd_common"`, or
 #'   `"var_common"`.
 #' @param allocation optional allocation label filter.
 #' @param component optional allocation component label filter.
@@ -26,7 +26,7 @@
 random_effects_summary_posterior <- function(
     fit,
     summary = c(
-      "var_ratio", "var_prop", "sd_ratio",
+      "var_mult", "var_prop", "sd_mult",
       "sd_total", "var_total", "sd_common", "var_common"
     ),
     allocation = NULL,
@@ -159,7 +159,7 @@ random_effects_summary_posterior <- function(
   summary <- match.arg(
     summary,
     c(
-      "var_ratio", "var_prop", "sd_ratio",
+      "var_mult", "var_prop", "sd_mult",
       "sd_total", "var_total", "sd_common", "var_common"
     )
   )
@@ -177,8 +177,8 @@ random_effects_summary_posterior <- function(
 
   detail <- switch(
     summary$summary,
-    "var_ratio" = paste0(
-      "Variance-ratio summaries are created only for ",
+    "var_mult" = paste0(
+      "Variance-multiplier summaries are created only for ",
       "random_variance_allocation(..., target = \"sd_component\", ",
       "scale = \"mean_variance\"). Total-variance allocations are returned ",
       "by summary = \"var_prop\"."
@@ -186,10 +186,10 @@ random_effects_summary_posterior <- function(
     "var_prop" = paste0(
       "Variance-proportion summaries are created for true total-variance ",
       "allocations. Mean-variance SD-component allocations are returned by ",
-      "summary = \"var_ratio\"."
+      "summary = \"var_mult\"."
     ),
-    "sd_ratio" = paste0(
-      "SD-ratio summaries are available only for SD-component ",
+    "sd_mult" = paste0(
+      "SD-multiplier summaries are available only for SD-component ",
       "variance allocations."
     ),
     "Requested random-effect summaries are not available."
@@ -222,7 +222,7 @@ random_effects_summary_posterior <- function(
   }
   allocation <- .bt_parameter_catalog_find_allocation(fit, key, random_term)
   index <- key$index
-  if(identical(quantity$quantity, "sd_ratio") &&
+  if(identical(quantity$quantity, "sd_mult") &&
      index > allocation$n_targets){
     index <- index - allocation$n_targets
   }

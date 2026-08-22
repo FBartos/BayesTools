@@ -24,8 +24,8 @@
 #' part of any formula. For formula random effects, character filters also
 #' accept semantic selectors \code{"random"}, \code{"random_sd"},
 #' \code{"random_cor"},
-#' \code{"random_var_prop"}, \code{"random_var_ratio"},
-#' \code{"random_allocation"}, and \code{"random_sd_ratio"}.
+#' \code{"random_var_prop"}, \code{"random_var_mult"},
+#' \code{"random_allocation"}, and \code{"random_sd_mult"}.
 #' @param remove_formulas character vector of formula names whose parameters
 #' should be removed from the summary. Defaults to \code{NULL}.
 #' @param keep_parameters character vector of parameter names to keep.
@@ -40,10 +40,10 @@
 #' tables. \code{"standard"} replaces raw implementation parameters with the
 #' semantic quantities corresponding to the fitted prior parameterization:
 #' directly specified block scales, correlations, inclusion probabilities,
-#' allocation aggregate SDs, and variance proportions or ratios.
+#' allocation aggregate SDs, and variance proportions or multipliers.
 #' \code{"full"} additionally includes deterministic representations such as
 #' aggregate variances, allocation-derived component SDs, and alternate SD or
-#' variance ratios.
+#' variance multipliers.
 #' \code{"raw"} keeps the historical raw monitored parameters on their fitted
 #' scale, and
 #' \code{"none"} removes random-effect parameters from the table. The
@@ -844,7 +844,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     parameters,
     c(
       "random", "random_sd", "random_cor", "random_var_prop",
-      "random_var_ratio", "random_allocation", "random_sd_ratio"
+      "random_var_mult", "random_allocation", "random_sd_mult"
     )
   )
 }

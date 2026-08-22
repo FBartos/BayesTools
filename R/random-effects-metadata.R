@@ -221,13 +221,13 @@
     "random_sd" = flags$summary %in% c("sd", "sd_total", "sd_common") | random_sd,
     "random_cor" = flags$summary == "cor" | random_rho,
     "random_var_prop" = flags$summary == "var_prop" | is_dirichlet_allocation,
-    "random_var_ratio" = flags$summary == "var_ratio",
+    "random_var_mult" = flags$summary == "var_mult",
     "random_allocation" = flags$summary %in% c(
       "sd_total", "var_total", "sd_common", "var_common",
-      "var_prop", "var_ratio", "sd_ratio"
+      "var_prop", "var_mult", "sd_mult"
     ) |
       flags$allocation,
-    "random_sd_ratio" = flags$summary == "sd_ratio",
+    "random_sd_mult" = flags$summary == "sd_mult",
     rep(FALSE, nrow(flags))
   )
 

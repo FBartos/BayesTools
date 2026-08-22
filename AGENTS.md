@@ -238,10 +238,10 @@ unresolved.
   explicit. Parentheses contain coefficient or parameter names and square
   brackets contain factor or index levels. Public correlations use `cor`, never
   the backend `rho` coordinate. A known group covariance has a fitted `sd`/`var`
-  kernel scale, not an `sd_ratio`/`var_ratio`. Total-variance
+  kernel scale, not an `sd_mult`/`var_mult`. Total-variance
   allocations expose `sd_total`, `var_total`, and `var_prop(...)`;
   mean-variance allocations expose `sd_common`, `var_common`,
-  `var_ratio(...)`, and `sd_ratio(...)`.
+  `var_mult(...)`, and `sd_mult(...)`.
 - A bare random formula or unnamed one-entry formula list has no redundant
   top-level component prefix. An explicitly named one-entry list retains its
   name. Lists with two or more entries replace missing names with

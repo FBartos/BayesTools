@@ -137,7 +137,7 @@ SD components.}
 \code{sd_child = sd_parent * sqrt(K * w)} and is intended for
 \code{target = "sd_component"} heterogeneity tests.
 Summaries report \code{w} as a variance proportion for \code{"total_variance"} and
-\code{K * w} as a variance ratio to the average SD-component variance for
+\code{K * w} as a variance multiplier to the average SD-component variance for
 \code{"mean_variance"}.}
 
 \item{inclusion}{optional named list of scalar probability priors, keyed by
@@ -322,9 +322,10 @@ variance:
 \deqn{\sigma_j = \sigma_{\mathrm{common}}\sqrt{K w_j}, \quad
       w \sim \mathrm{Dirichlet}(\alpha).}
 Its public aggregate names are \code{sd_common} and \code{var_common}, and its
-components are exposed as \code{var_ratio(...)} and \code{sd_ratio(...)}. Thus
-\code{sd_common} is the shared variance-scale anchor before the component ratios
-are applied; it is not a sum of SDs.
+components are exposed as \code{var_mult(...)} and \code{sd_mult(...)}, where
+\code{var_mult(j) = K * w[j]} and \code{sd_mult(j) = sqrt(K * w[j])}. Thus
+\code{sd_common} is the shared variance-scale anchor before the component
+multipliers are applied; it is not a sum of SDs.
 
 The fitted \code{\link[=parameter_map]{parameter_map()}} links concrete \code{\link[=parameter_coordinates]{parameter_coordinates()}} to the
 public random-effect quantities in \code{\link[=parameter_catalog]{parameter_catalog()}}. Canonical names use
@@ -345,7 +346,7 @@ SD-component allocation inherits its enclosing block's public owner under
 the same one-block/multiple-block rule. Total-variance allocations expose
 \code{sd_total}, \code{var_total}, and \code{var_prop(...)};
 mean-variance allocations expose \code{sd_common}, \code{var_common},
-\code{var_ratio(...)}, and \code{sd_ratio(...)}.
+\code{var_mult(...)}, and \code{sd_mult(...)}.
 
 This is useful for nested or crossed random intercepts when the prior should
 control total heterogeneity separately from how that heterogeneity is
@@ -450,8 +451,8 @@ prior_random(
 )
 
 # Allocate a block SD across its coefficient components. This exposes
-# study_components: sd_common, study_components: var_ratio(intercept), and
-# study_components: sd_ratio(intercept), with analogous names for slopes.
+# study_components: sd_common, study_components: var_mult(intercept), and
+# study_components: sd_mult(intercept), with analogous names for slopes.
 prior_random(
   random_variance_allocation(
     name = "study_components",

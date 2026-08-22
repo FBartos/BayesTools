@@ -159,7 +159,7 @@ parameter_catalog_schema <- function(){
       "Owning formula output parameter, or an empty string.",
       "Semantic owner type, such as random_block or variance_allocation, or an empty string.",
       "Stable semantic owner name, or an empty string.",
-      "Semantic quantity such as sd, cor, var_prop, var_ratio, or sd_ratio, or an empty string.",
+      "Semantic quantity such as sd, cor, var_prop, var_mult, or sd_mult, or an empty string.",
       "Allocation scale role: total, common, or an empty string.",
       "Owning aggregate quantity identifier for a nested quantity, or an empty string.",
       "Ordered semantic parameter arguments; factor/index levels use square brackets inside each argument.",
@@ -560,6 +560,10 @@ parameter_prior_density.BayesTools_fit <- function(
   )
   source_prior <- allocation$weights
   index <- key$index
+  if(identical(selection$quantities$quantity, "sd_mult") &&
+     index > allocation$n_targets){
+    index <- index - allocation$n_targets
+  }
   beta_prior <- .bt_parameter_prior_density_simplex_marginal(
     source_prior,
     index
@@ -589,38 +593,36 @@ parameter_prior_density.BayesTools_fit <- function(
   }
   binding <- random_term$sd_binding
   if(is.null(binding) || !isTRUE(binding$true_allocation) ||
-     length(binding$allocations) == 0L ||
+     length(binding$allocations) != 1L ||
      !is.numeric(key$index) || length(key$index) != 1L ||
      is.na(key$index)){
     return(NULL)
   }
-  allocations <- Filter(function(allocation){
-    identical(
-      .bt_random_effect_allocation_target_metadata(allocation),
-      "sd_component"
-    )
-  }, binding$allocations)
-  if(length(allocations) != 1L){
-    return(NULL)
-  }
-  allocation <- allocations[[1L]]
+  allocation <- binding$allocations[[1L]]
+  target <- .bt_random_effect_allocation_target_metadata(allocation)
   source <- allocation$source
   source_prior <- source$prior
   if(is.null(source_prior) || !is.prior(source_prior) ||
      .prior_linear_prior_dimension(source_prior) != 1L){
     return(NULL)
   }
-  leaf_index <- allocation$leaf_index_by_column
-  if(length(leaf_index) < key$index || is.na(leaf_index[[key$index]])){
+  if(identical(target, "sd_component")){
+    leaf_index <- allocation$leaf_index_by_column
+    if(length(leaf_index) < key$index || is.na(leaf_index[[key$index]])){
+      return(NULL)
+    }
+    factors <- allocation$parent_factors
+    factors[[length(factors) + 1L]] <- list(
+      weight_name = allocation$weight_name,
+      index = leaf_index[[key$index]],
+      scale = allocation$scale,
+      n_targets = allocation$n_targets
+    )
+  }else if(identical(target, "block")){
+    factors <- allocation$factors
+  }else{
     return(NULL)
   }
-  factors <- allocation$parent_factors
-  factors[[length(factors) + 1L]] <- list(
-    weight_name = allocation$weight_name,
-    index = leaf_index[[key$index]],
-    scale = allocation$scale,
-    n_targets = allocation$n_targets
-  )
   prior_list <- attr(object, "prior_list", exact = TRUE)
   dist <- .bt_parameter_prior_density_scalar(
     source_prior,
@@ -628,6 +630,12 @@ parameter_prior_density.BayesTools_fit <- function(
     tail_prob = tail_prob
   )
   for(factor in factors){
+    if(!is.null(factor$inclusion_name) &&
+       is.character(factor$inclusion_name) &&
+       length(factor$inclusion_name) == 1L &&
+       !is.na(factor$inclusion_name) && nzchar(factor$inclusion_name)){
+      return(NULL)
+    }
     factor_prior <- prior_list[[factor$weight_name]]
     beta_prior <- .bt_parameter_prior_density_simplex_marginal(
       factor_prior,
@@ -805,7 +813,7 @@ parameter_transform <- function(object, selection){
     }else{
       NULL
     }
-  }else if(source_transform %in% c("var_ratio", "sd_ratio")){
+  }else if(source_transform %in% c("var_mult", "sd_mult")){
     random_term <- if(nzchar(key$random_block)){
       .bt_parameter_catalog_find_random_term(object, key)
     }else{
@@ -829,7 +837,7 @@ parameter_transform <- function(object, selection){
     }else{
       1
     }
-    if(identical(source_transform, "var_ratio")){
+    if(identical(source_transform, "var_mult")){
       list(type = "affine", offset = 0, scale = variance_scale)
     }else{
       list(type = "sqrt_scale", scale = variance_scale)
@@ -2075,12 +2083,12 @@ parameter_transform_jacobian <- function(values, transform){
                    "sd_component")){
         multiplier_name <- .bt_random_effect_summary_name(
           parameter = sub("__xRE_ALLOCx_.*$", "", allocation$weight_name),
-          type = "sd_ratio",
+          type = "sd_mult",
           parts = c(allocation$label, components[i])
         )
         add_definition(
           raw_name = multiplier_name,
-          role = "random_sd_ratio",
+          role = "random_sd_mult",
           parameter = parameter,
           label = allocation$label,
           evaluator = "allocation",
@@ -2094,13 +2102,13 @@ parameter_transform_jacobian <- function(values, transform){
           owner_type = "variance_allocation",
           owner_name = allocation_owner,
           public_owner = allocation_public_owner,
-          quantity = "sd_ratio",
+          quantity = "sd_mult",
           scale_role = scale_role,
           arguments = components[i],
           source_type = "one_to_one_transform",
           source_parameter = allocation$weight_name,
           source_prior = allocation$weight_name,
-          source_transform = "sd_ratio"
+          source_transform = "sd_mult"
         )
       }
     }

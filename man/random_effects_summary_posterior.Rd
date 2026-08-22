@@ -6,7 +6,7 @@
 \usage{
 random_effects_summary_posterior(
   fit,
-  summary = c("var_ratio", "var_prop", "sd_ratio", "sd_total", "var_total", "sd_common",
+  summary = c("var_mult", "var_prop", "sd_mult", "sd_total", "var_total", "sd_common",
     "var_common"),
   allocation = NULL,
   component = NULL,
@@ -18,8 +18,8 @@ random_effects_summary_posterior(
 \arguments{
 \item{fit}{model fit created by \link{JAGS_fit}.}
 
-\item{summary}{semantic quantity to extract: \code{"var_ratio"}, \code{"var_prop"},
-\code{"sd_ratio"}, \code{"sd_total"}, \code{"var_total"}, \code{"sd_common"}, or
+\item{summary}{semantic quantity to extract: \code{"var_mult"}, \code{"var_prop"},
+\code{"sd_mult"}, \code{"sd_total"}, \code{"var_total"}, \code{"sd_common"}, or
 \code{"var_common"}.}
 
 \item{allocation}{optional allocation label filter.}
@@ -44,5 +44,5 @@ Extracts posterior draws for derived random-effect summary
 quantities and attaches analytic marginal prior densities where available.
 For allocation summaries, the helper keeps raw Dirichlet allocation weights
 internal and exposes interpretable scalar summaries such as mean-variance
-SD-component variance ratios.
+SD-component variance multipliers.
 }

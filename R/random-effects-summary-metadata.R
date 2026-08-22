@@ -296,17 +296,17 @@
     for(i in seq_len(ncol(weights))){
       names <- c(names, .bt_random_effect_summary_name(
         parameter = sub("__xRE_ALLOCx_.*$", "", allocation$weight_name),
-        type = "sd_ratio",
+        type = "sd_mult",
         parts = c(allocation$label, components[i])
       ))
       labels <- c(labels, .bt_random_effect_semantic_name(
         parameter = "",
         owner = allocation_owner,
-        quantity = "sd_ratio",
+        quantity = "sd_mult",
         arguments = components[i],
         formula_prefix = FALSE
       ))
-      types <- c(types, "sd_ratio")
+      types <- c(types, "sd_mult")
       component_values <- c(component_values, components[i])
       component_indices <- c(component_indices, i)
       values[[length(values) + 1L]] <- .bt_random_effect_allocation_multiplier(
@@ -465,9 +465,9 @@
   if(identical(allocation_target, "sd_component") &&
      identical(allocation_scale, "mean_variance")){
     return(list(
-      name = "var_ratio",
-      label = "var_ratio",
-      summary = "var_ratio",
+      name = "var_mult",
+      label = "var_mult",
+      summary = "var_mult",
       scale = allocation_scale
     ))
   }
@@ -483,8 +483,8 @@
 .bt_random_effect_summary_allocation_values <- function(weights, allocation,
                                                         allocation_type, K){
 
-  if(identical(allocation_type$summary, "var_ratio")){
-    return(.bt_random_effect_allocation_variance_ratio(
+  if(identical(allocation_type$summary, "var_mult")){
+    return(.bt_random_effect_allocation_variance_multiplier(
       weights = weights,
       n_targets = .bt_random_effect_summary_allocation_n_targets(
         allocation,
@@ -511,7 +511,7 @@
   )
 }
 
-.bt_random_effect_allocation_variance_ratio <- function(weights, n_targets){
+.bt_random_effect_allocation_variance_multiplier <- function(weights, n_targets){
 
   if(!is.numeric(n_targets) || length(n_targets) != 1L ||
      is.na(n_targets) || n_targets < 1L){

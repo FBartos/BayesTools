@@ -7301,12 +7301,12 @@ test_that("random-effect summary samples expose semantic SD, correlation, and al
   expect_false("mu__xRE_SUMMARY__var_prop__het_sd__x" %in%
                  colnames(sd_leaf_summary$model_samples))
   expect_equal(
-    unname(sd_leaf_summary$model_samples[1, "mu__xRE_SUMMARY__var_ratio__het_sd__x"]),
+    unname(sd_leaf_summary$model_samples[1, "mu__xRE_SUMMARY__var_mult__het_sd__x"]),
     2 * 3 / 4,
     tolerance = 1e-12
   )
   expect_equal(
-    unname(sd_leaf_summary$model_samples[1, "mu__xRE_SUMMARY__sd_ratio__het_sd__x"]),
+    unname(sd_leaf_summary$model_samples[1, "mu__xRE_SUMMARY__sd_mult__het_sd__x"]),
     sqrt(2 * 3 / 4),
     tolerance = 1e-12
   )
@@ -7317,16 +7317,16 @@ test_that("random-effect summary samples expose semantic SD, correlation, and al
     remove_spike_0 = FALSE
   )
   kept_proportion_sd_leaf <- setdiff(names(sd_leaf_summary$prior_list), remove_for_proportion_sd_leaf)
-  expect_false(any(grepl("__var_ratio__", kept_proportion_sd_leaf, fixed = TRUE)))
+  expect_false(any(grepl("__var_mult__", kept_proportion_sd_leaf, fixed = TRUE)))
 
-  remove_for_ratio <- BayesTools:::.filter_parameters(
+  remove_for_multiplier <- BayesTools:::.filter_parameters(
     sd_leaf_summary$prior_list,
-    keep_parameters = "random_var_ratio",
+    keep_parameters = "random_var_mult",
     remove_spike_0 = FALSE
   )
-  kept_ratio <- setdiff(names(sd_leaf_summary$prior_list), remove_for_ratio)
-  expect_gt(length(kept_ratio), 0L)
-  expect_true(all(grepl("__var_ratio__", kept_ratio, fixed = TRUE)))
+  kept_multiplier <- setdiff(names(sd_leaf_summary$prior_list), remove_for_multiplier)
+  expect_gt(length(kept_multiplier), 0L)
+  expect_true(all(grepl("__var_mult__", kept_multiplier, fixed = TRUE)))
 
   homogeneous_result <- JAGS_formula(
     formula = ~ 1 + id(1 + x | study),
@@ -11962,7 +11962,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     prior_list = hcs_composite_allocation_summary$prior_list
   )
   expect_true("(mu) leaf_alloc: var_prop(f:g[a.u])" %in% hcs_composite_allocation_display)
-  expect_true("(mu) leaf_alloc: sd_ratio(f:g[a.u])" %in% hcs_composite_allocation_display)
+  expect_true("(mu) leaf_alloc: sd_mult(f:g[a.u])" %in% hcs_composite_allocation_display)
   expect_false(any(grepl("leaf_alloc: f_g", hcs_composite_allocation_display, fixed = TRUE)))
 
   malformed_allocation_design <- hcs_composite_allocation$formula_design

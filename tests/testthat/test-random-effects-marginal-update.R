@@ -153,6 +153,180 @@ test_that("random covariance updates are classified from formula metadata", {
 })
 
 
+test_that("non-affine update grids reproduce compiled factor states", {
+
+  data <- data.frame(
+    id = factor(rep(c("a", "b"), each = 3L)),
+    f = factor(rep(c("x", "y", "z"), 2L))
+  )
+  cases <- list(
+    factor = list(
+      fit = .random_update_test_fit(~ 1 + hcs(f | id), data),
+      role = "random_sd",
+      component = "f[x]",
+      values = c(0.25, 0.8)
+    ),
+    markov = list(
+      fit = .random_update_test_fit(~ 1 + ar1(f | id), data),
+      role = "random_correlation",
+      component = NULL,
+      values = c(-0.25, 0.4)
+    )
+  )
+
+  for(family in names(cases)){
+    current <- cases[[family]]
+    fit     <- current$fit
+    plan <- .random_update_test_plan(
+      fit,
+      current$role,
+      current$component
+    )
+    posterior <- as.matrix(fit)
+    grid <- random_effects_marginal_update_grid(
+      fit = fit,
+      update = plan,
+      values = current$values,
+      posterior_samples = posterior
+    )
+    expect_s3_class(
+      grid,
+      "BayesTools_random_effects_marginal_update_grid"
+    )
+    expect_identical(grid$family, family)
+
+    for(value_i in seq_along(current$values)){
+      candidate <- posterior
+      candidate[, plan$source_parameter] <- current$values[[value_i]]
+      direct <- random_effects_marginal_factor_states(
+        fit = fit,
+        parameter = "mu",
+        posterior_samples = candidate,
+        prior_list = attr(fit, "prior_list"),
+        blocks = plan$blocks,
+        row_blocks = list(seq_len(nrow(data)))
+      )
+      for(draw in seq_len(nrow(posterior))){
+        if(identical(family, "factor")){
+          scale <- grid$coefficient_scale[draw, ]
+          scale[[grid$component_index]] <-
+            grid$candidate_scale[value_i, draw]
+          cholesky <- matrix(
+            grid$coefficient_cholesky[draw, , ],
+            nrow = length(scale),
+            ncol = length(scale)
+          )
+        }else{
+          scale <- grid$coefficient_scale[draw, ]
+          cholesky <- matrix(
+            grid$candidate_cholesky[value_i, , ],
+            nrow = length(scale),
+            ncol = length(scale)
+          )
+          expect_equal(
+            direct$factor_states[[draw]][[1L]]$markov_transition,
+            grid$candidate_transition[value_i, ],
+            tolerance = 1e-12
+          )
+          expect_equal(
+            direct$factor_states[[draw]][[1L]]$markov_innovation_variance,
+            grid$candidate_innovation_variance[value_i, ],
+            tolerance = 1e-12
+          )
+        }
+        expect_equal(
+          direct$factor_states[[draw]][[1L]]$coefficient_factor,
+          cholesky * scale,
+          tolerance = 1e-12
+        )
+      }
+    }
+  }
+})
+
+
+test_that("every random covariance structure declares an exact update route", {
+
+  data <- data.frame(
+    id = factor(rep(c("a", "b"), each = 3L)),
+    f = factor(rep(c("x", "y", "z"), 2L)),
+    time = rep(1:3, 2L)
+  )
+  formulas <- list(
+    id = ~ 1 + id(1 + f | id),
+    diag = ~ 1 + diag(1 + f | id),
+    us = ~ 1 + us(1 + f | id),
+    cs = ~ 1 + cs(f | id),
+    hcs = ~ 1 + hcs(f | id),
+    ar1 = ~ 1 + ar1(f | id),
+    har = ~ 1 + har(f | id),
+    car = ~ 1 + car(time | id)
+  )
+
+  for(structure in names(formulas)){
+    fit <- .random_update_test_fit(formulas[[structure]], data)
+    catalog <- parameter_catalog(fit)
+    quantities <- catalog$quantities[
+      catalog$quantities$role %in% c("random_sd", "random_correlation"),
+      ,
+      drop = FALSE
+    ]
+    plans <- lapply(seq_len(nrow(quantities)), function(index){
+      selection <- parameter_catalog_resolve(
+        catalog,
+        quantities$canonical_name[[index]],
+        "mu"
+      )
+      random_effects_marginal_update_plan(fit, selection)
+    })
+    sd_plans <- plans[quantities$role == "random_sd"]
+    expect_true(
+      length(sd_plans) > 0L &&
+        all(vapply(
+          sd_plans,
+          function(plan) plan$family %in% c("affine", "factor"),
+          logical(1)
+        )),
+      info = structure
+    )
+    correlation_plans <- plans[quantities$role == "random_correlation"]
+    if(identical(structure, "us")){
+      expect_true(all(vapply(
+        correlation_plans,
+        function(plan) identical(plan$family, "unsupported"),
+        logical(1)
+      )))
+    }else{
+      expect_true(all(vapply(
+        correlation_plans,
+        function(plan) plan$family %in% c("affine", "markov"),
+        logical(1)
+      )), info = structure)
+    }
+
+    non_affine <- Filter(
+      function(plan) plan$family %in% c("factor", "markov"),
+      plans
+    )
+    for(update in non_affine){
+      values <- if(identical(update$family, "factor")){
+        c(0.25, 0.75)
+      }else{
+        c(0.2, 0.4)
+      }
+      grid <- random_effects_marginal_update_grid(
+        fit = fit,
+        update = update,
+        values = values,
+        posterior_samples = as.matrix(fit)
+      )
+      expect_identical(grid$family, update$family, info = structure)
+      expect_identical(nrow(grid$coefficient_scale), 2L, info = structure)
+    }
+  }
+})
+
+
 test_that("single direct random scale exposes its exact row covariance basis", {
 
   data <- data.frame(id = factor(c("a", "a", "b", "c")))

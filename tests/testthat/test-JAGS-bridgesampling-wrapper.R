@@ -109,6 +109,45 @@ test_that("JAGS_bridgesampling forwards bridge controls and fitted-chain neff", 
   )
 })
 
+test_that("JAGS_bridgesampling seeds bridge proposal draws explicitly", {
+
+  seen <- new.env(parent = emptyenv())
+  seen$draws <- numeric()
+  bridge_sampler <- function(...){
+    seen$draws <- c(seen$draws, stats::runif(1))
+    .mock_bridge_sampler(...)
+  }
+  testthat::local_mocked_bindings(
+    bridge_sampler = bridge_sampler,
+    .package = "bridgesampling"
+  )
+  posterior <- coda::as.mcmc(matrix(
+    seq_len(20),
+    ncol = 1,
+    dimnames = list(NULL, "mu")
+  ))
+  call_bridge <- function(seed){
+    JAGS_bridgesampling(
+      fit = posterior,
+      log_posterior = function(parameters, data) 0,
+      data = list(),
+      prior_list = list(mu = prior("normal", list(0, 1))),
+      seed = seed
+    )
+  }
+
+  call_bridge(11)
+  invisible(stats::runif(10))
+  call_bridge(11)
+
+  expect_identical(seen$draws[[1L]], seen$draws[[2L]])
+  expect_error(
+    call_bridge(1.5),
+    "The 'seed' argument must be an integer vector.",
+    fixed = TRUE
+  )
+})
+
 test_that("JAGS_bridgesampling checks repeated iteration limits collectively", {
 
   testthat::local_mocked_bindings(
