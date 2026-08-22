@@ -1148,6 +1148,24 @@ test_that("marginal bridge covariance reuses natural allocation parameters", {
     unname(.bridge_marginal_random_dense(expected)),
     tolerance = 0
   )
+
+  weight_names <- paste0(weight_name, "[", 1:2, "]")
+  posterior <- matrix(
+    c(valid_samples, stats::setNames(c(.6, .4), weight_names)),
+    nrow = 1L,
+    dimnames = list(NULL, c(names(valid_samples), weight_names))
+  )
+  posterior_state <- evaluator$factor_states(posterior)$mu
+  state <- posterior_state$factor_states[[1L]]
+  expect_equal(
+    unname(vapply(
+      state,
+      function(block) block$coefficient_factor[1L, 1L],
+      numeric(1)
+    )),
+    2 * sqrt(c(.6, .4)),
+    tolerance = 1e-12
+  )
 })
 
 test_that("random allocation draws use auxiliaries without repairing weights", {

@@ -214,6 +214,9 @@
 - `as_marginal_inference()` conditional marginal summaries use active-subset conditioning: each marginal level conditions only on requested parameters with nonzero weight in that level's linear combination, and levels with no active requested conditionals use the fully averaged context
 
 ### Fixes
+- reconstructs posterior random-allocation covariance from monitored semantic
+  Dirichlet weights when posterior matrices also retain auxiliary eta
+  coordinates, while preserving eta-only strictness for bridge proposals.
 - lets compact random-effect factor states fall back to monitored semantic SD
   coordinates when allocation-source coordinates are unavailable, and maps
   out-of-support square-root transforms to `NaN` without emitting expected

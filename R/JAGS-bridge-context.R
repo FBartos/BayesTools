@@ -846,14 +846,9 @@
     }
     invisible(TRUE)
   }
-  if(!is.null(posterior_names)){
-    check_ambiguity_names(posterior_names)
-    check_ambiguity <- function(samples) invisible(TRUE)
-  }else{
-    check_ambiguity <- function(samples){
-      sample_names <- if(is.matrix(samples)) colnames(samples) else names(samples)
-      check_ambiguity_names(sample_names)
-    }
+  check_ambiguity <- function(samples){
+    sample_names <- if(is.matrix(samples)) colnames(samples) else names(samples)
+    check_ambiguity_names(sample_names)
   }
 
   evaluate <- if(isTRUE(binding$true_allocation)){
@@ -899,7 +894,7 @@
       )
     }
 
-    function(posterior, parameters = NULL){
+    function(posterior, parameters = NULL, prefer_weights = FALSE){
       base <- source_evaluator(posterior, parameters)
       if(is.null(base)){
         return(NULL)
@@ -907,7 +902,8 @@
       base <- factor_evaluator(
         base = base,
         posterior = posterior,
-        parameters = parameters
+        parameters = parameters,
+        prefer_weights = prefer_weights
       )
       if(is.null(base)){
         return(NULL)
@@ -920,7 +916,11 @@
         ))
       }
 
-      weights <- weight_evaluator(posterior, parameters)
+      weights <- weight_evaluator(
+        posterior,
+        parameters,
+        prefer_weights = prefer_weights
+      )
       if(is.null(weights)){
         return(NULL)
       }
@@ -957,7 +957,7 @@
         posterior_names = posterior_names
       )
     }
-    function(posterior, parameters = NULL){
+    function(posterior, parameters = NULL, prefer_weights = FALSE){
       if(is.null(sd_evaluators)){
         return(NULL)
       }
@@ -1012,8 +1012,11 @@
   }
   direct_indices <- NULL
   posterior_values <- function(posterior, parameters = NULL){
-    check_ambiguity(posterior)
-    draws <- evaluate(posterior, parameters = parameters)
+    draws <- evaluate(
+      posterior,
+      parameters = parameters,
+      prefer_weights = TRUE
+    )
     if(is.null(draws)){
       return(NULL)
     }
@@ -1056,8 +1059,11 @@
       }
     }
 
-    check_ambiguity(posterior)
-    evaluate(posterior, parameters = parameters)
+    evaluate(
+      posterior,
+      parameters = parameters,
+      prefer_weights = TRUE
+    )
   }
 
   list(
@@ -1121,7 +1127,7 @@
   prior <- prior_list[[parameter_name]]
   if(is.null(prior) || !is.prior.simplex(prior) ||
      !identical(prior$distribution, "dirichlet")){
-    return(function(posterior, parameters = NULL) NULL)
+    return(function(posterior, parameters = NULL, prefer_weights = FALSE) NULL)
   }
   K <- prior$parameters[["K"]]
   eta_names <- paste0(
@@ -1154,7 +1160,7 @@
   force(parameter_name)
   force(K)
 
-  function(posterior, parameters = NULL){
+  function(posterior, parameters = NULL, prefer_weights = FALSE){
     if(is.list(parameters) && parameter_name %in% names(parameters)){
       value <- as.numeric(parameters[[parameter_name]])
       return(matrix(
@@ -1173,6 +1179,22 @@
       }
     }
     cache <- .bt_random_effect_dirichlet_draw_cache(posterior)
+    if(isTRUE(prefer_weights) && !anyNA(weight_indices)){
+      if(!is.null(cache) &&
+         exists(weight_cache_key, envir = cache, inherits = FALSE)){
+        return(get(weight_cache_key, envir = cache, inherits = FALSE))
+      }
+      weights <- .bt_random_effect_validate_dirichlet_weights(
+        weights = posterior[, weight_indices, drop = FALSE],
+        parameter_name = parameter_name
+      )
+      .bt_random_effect_dirichlet_cache_assign(
+        cache,
+        weight_cache_key,
+        weights
+      )
+      return(weights)
+    }
     if(!anyNA(eta_indices)){
       if(!is.null(cache) &&
          exists(eta_cache_key, envir = cache, inherits = FALSE)){
@@ -1226,7 +1248,8 @@
     factor_plan, prior_list, posterior_names = NULL){
 
   if(length(factor_plan) == 0L){
-    return(function(base, posterior, parameters = NULL) base)
+    return(function(base, posterior, parameters = NULL,
+                    prefer_weights = FALSE) base)
   }
   plans <- lapply(factor_plan, function(factor){
     list(
@@ -1251,10 +1274,14 @@
   })
   force(plans)
 
-  function(base, posterior, parameters = NULL){
+  function(base, posterior, parameters = NULL, prefer_weights = FALSE){
     out <- base
     for(plan in plans){
-      weights <- plan$weight_evaluator(posterior, parameters)
+      weights <- plan$weight_evaluator(
+        posterior,
+        parameters,
+        prefer_weights = prefer_weights
+      )
       if(is.null(weights)){
         return(NULL)
       }
