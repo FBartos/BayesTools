@@ -231,6 +231,19 @@ test_that("uniform prior honors truncation", {
 })
 
 
+test_that("near-support truncation remains an exact truncation", {
+  lower <- 1e-12
+  p <- prior("exp", list(rate = 1), truncation = list(lower, Inf))
+
+  expect_false(.is_prior_default_range(p))
+  expect_identical(pdf(p, lower / 2), 0)
+  expect_equal(
+    pdf(p, 1),
+    stats::dexp(1) / stats::pexp(lower, lower.tail = FALSE)
+  )
+})
+
+
 test_that("vector priors reject unsupported truncation", {
   expect_error(
     prior("mnormal", list(mean = 0, sd = 1, K = 2), truncation = list(0, Inf)),

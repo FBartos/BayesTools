@@ -219,6 +219,9 @@
 - `as_marginal_inference()` conditional marginal summaries use active-subset conditioning: each marginal level conditions only on requested parameters with nonzero weight in that level's linear combination, and levels with no active requested conditionals use the fully averaged context
 
 ### Fixes
+- identifies natural prior-support bounds by exact equality, so finite
+  near-support truncations remain truncated and repeated density evaluation
+  avoids tolerance-based bound comparisons.
 - reconstructs posterior random-allocation covariance from monitored semantic
   Dirichlet weights when posterior matrices also retain auxiliary eta
   coordinates, while preserving eta-only strictness for bridge proposals.
