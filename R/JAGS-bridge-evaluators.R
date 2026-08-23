@@ -152,6 +152,7 @@
   force(parameter_name)
 
   distribution <- prior_object[["distribution"]]
+  log_density  <- .prior_simple_lpdf_evaluator(prior_object)
 
   if(identical(distribution, "invgamma")){
     return(list(
@@ -164,7 +165,7 @@
         if(is.null(value)){
           return(-Inf)
         }
-        .prior_simple_lpdf(prior_object, value)
+        log_density(value)
       },
       parameters = function(samples){
         value <- .bt_JAGS_marglik_invgamma_values(
@@ -194,7 +195,7 @@
 
   list(
     log_prior = function(samples){
-      .prior_simple_lpdf(prior_object, samples[[parameter_name]])
+      log_density(samples[[parameter_name]])
     },
     parameters = function(samples){
       parameter <- list()

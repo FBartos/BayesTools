@@ -184,13 +184,14 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
   if(is.prior.factor(prior_object) &&
      (is.prior.treatment(prior_object) || is.prior.independent(prior_object))){
     parameter_names <- .JAGS_prior_factor_names(parameter_name, prior_object)
+    log_density <- .prior_simple_lpdf_evaluator(prior_object)
     return(function(samples){
       if(!all(parameter_names %in% colnames(samples)))
         stop("'samples' does not contain all monitored factor prior parameters.", call. = FALSE)
 
       marglik <- numeric(nrow(samples))
       for(name in parameter_names){
-        marglik <- marglik + lpdf(prior_object, samples[, name])
+        marglik <- marglik + log_density(samples[, name])
       }
       return(marglik)
     })
@@ -202,6 +203,7 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
     !is.prior.PEESE(prior_object)
   if(is_plain_simple &&
      identical(prior_object[["distribution"]], "invgamma")){
+    log_density <- .prior_simple_lpdf_evaluator(prior_object)
     return(function(samples){
       if(parameter_name %in% colnames(samples)){
         values <- samples[, parameter_name]
@@ -215,16 +217,17 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
       invalid   <- !is.finite(values) | values <= 0
       marglik   <- rep(-Inf, nrow(samples))
       supported <- !invalid
-      marglik[supported] <- lpdf(prior_object, values[supported])
+      marglik[supported] <- log_density(values[supported])
       return(marglik)
     })
   }
 
   if(is_plain_simple){
+    log_density <- .prior_simple_lpdf_evaluator(prior_object)
     return(function(samples){
       if(!parameter_name %in% colnames(samples))
         stop("'samples' does not contain all monitored prior parameters.", call. = FALSE)
-      return(lpdf(prior_object, samples[, parameter_name]))
+      return(log_density(samples[, parameter_name]))
     })
   }
 

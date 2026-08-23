@@ -4,6 +4,11 @@
   weights, point-complement hypotheses, and overlapping bridge bounds instead
   of accepting nearby values under a numerical-comparison tolerance
 
+### Performance
+- compiles invariant support and normalization metadata once for simple-prior
+  bridge and row-density evaluators, avoiding repeated prior reconstruction
+  work while retaining the canonical density calculation
+
 ### Features
 - adds an explicit `seed` argument to `JAGS_bridgesampling()` and seeds every
   cached marginal-likelihood fixture so cache refreshes reproduce bridge

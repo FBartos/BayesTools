@@ -1,5 +1,27 @@
 skip_if_not_test_profile("unit")
 
+test_that("compiled simple-prior densities preserve the canonical calculation", {
+
+  priors <- list(
+    prior("normal", list(0, 1)),
+    prior("normal", list(0, 1), list(0, 2)),
+    prior("gamma", list(2, 1), list(.2, 3)),
+    prior("point", list(.25))
+  )
+  values <- list(
+    c(-2, 0, 2, NA_real_),
+    c(-1, 0, .5, 2, 3, NA_real_),
+    c(0, .2, 1, 3, 4, NA_real_),
+    c(0, .25, 1, NA_real_)
+  )
+
+  for(i in seq_along(priors)){
+    canonical <- BayesTools:::.prior_simple_lpdf(priors[[i]], values[[i]])
+    compiled  <- BayesTools:::.prior_simple_lpdf_evaluator(priors[[i]])
+    expect_identical(compiled(values[[i]]), canonical)
+  }
+})
+
 test_that("compiled bridge prior evaluators match public marglik helpers", {
 
   theta_prior <- prior_factor("invgamma", list(2, 1), list(.1, 2), contrast = "independent")

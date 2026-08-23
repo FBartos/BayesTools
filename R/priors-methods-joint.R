@@ -843,9 +843,14 @@ quant.prior <- function(x, p, ...){
   return(p)
 }
 
-.prior_simple_lpdf <- function(prior, x){
+.prior_simple_lpdf <- function(prior, x, plan = NULL){
 
-  if(.is_prior_default_range(prior)){
+  default_range <- if(is.null(plan)){
+    .is_prior_default_range(prior)
+  }else{
+    plan[["default_range"]]
+  }
+  if(default_range){
     return(.prior_simple_base_d(prior, x, log = TRUE))
   }
 
@@ -853,14 +858,42 @@ quant.prior <- function(x, p, ...){
   log_lik[x < prior$truncation[["lower"]] | x > prior$truncation[["upper"]]] <- -Inf
 
   if(prior[["distribution"]] != "point"){
-    if(prior[["distribution"]] == "normal"){
-      log_lik <- log_lik - .prior_normal_log_C(prior)
+    if(is.null(plan)){
+      log_normalizer <- if(prior[["distribution"]] == "normal"){
+        .prior_normal_log_C(prior)
+      }else{
+        log(.prior_C(prior))
+      }
     }else{
-      log_lik <- log_lik - log(.prior_C(prior))
+      log_normalizer <- plan[["log_normalizer"]]
     }
+    log_lik <- log_lik - log_normalizer
   }
 
   return(log_lik)
+}
+
+.prior_simple_lpdf_evaluator <- function(prior){
+
+  default_range <- .is_prior_default_range(prior)
+  log_normalizer <- if(default_range ||
+                       prior[["distribution"]] == "point"){
+    0
+  }else if(prior[["distribution"]] == "normal"){
+    .prior_normal_log_C(prior)
+  }else{
+    log(.prior_C(prior))
+  }
+  plan <- list(
+    default_range  = default_range,
+    log_normalizer = log_normalizer
+  )
+  force(prior)
+  force(plan)
+
+  function(x){
+    .prior_simple_lpdf(prior, x, plan = plan)
+  }
 }
 
 .prior_simple_pdf <- function(prior, x){
