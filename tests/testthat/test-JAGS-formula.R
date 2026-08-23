@@ -328,13 +328,6 @@ test_that("Expression handling functions work", {
   f5 <- formula(y ~ expression(x) + z)
   f6 <- formula(y ~ expression(x) + z + expression(b))
 
-  expect_true(!.has_expression(f1))
-  expect_true(!.has_expression(f2))
-  expect_true(.has_expression(f3))
-  expect_true(.has_expression(f4))
-  expect_true(.has_expression(f5))
-  expect_true(.has_expression(f6))
-
   expect_equal(.extract_expressions(f3), list("x"))
   expect_equal(.extract_expressions(f4), list("x"))
   expect_equal(.extract_expressions(f5), list("x"))
@@ -421,15 +414,6 @@ test_that("-1 (no intercept) formula handling works correctly", {
   expect_true(is.prior.point(result_basic$prior_list$mu_intercept))
   expect_equal(result_basic$prior_list$mu_intercept$parameters$location, 0)
   expect_true(grepl("mu_intercept", result_basic$formula_syntax))
-
-  # Test 2: Helper function test
-  expect_equal(.add_intercept_to_formula(~ x - 1), ~ x, ignore_formula_env = TRUE)
-  expect_equal(.add_intercept_to_formula(~ x + y - 1), ~ x + y, ignore_formula_env = TRUE)
-  expect_equal(.add_intercept_to_formula(~ - 1), ~ 1, ignore_formula_env = TRUE)
-
-  expect_equal(.add_intercept_to_formula(~ x + 0), ~ x, ignore_formula_env = TRUE)
-  expect_equal(.add_intercept_to_formula(~ x + y + 0), ~ x + y, ignore_formula_env = TRUE)
-  expect_equal(.add_intercept_to_formula(~ 0), ~ 1, ignore_formula_env = TRUE)
 
   skip_if_not_installed("coda")
 

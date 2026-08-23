@@ -587,10 +587,10 @@ test_that("selection prior means handle point, cumulative, and log-scale compone
     wf_independent(prior("normal", list(0, .2)), scale = "log_omega")
   )
 
-  expect_equal(BayesTools:::.selection_weightfunction_mean(cumulative), c(1, 5 / 6, 1 / 2))
-  expect_equal(BayesTools:::.selection_weightfunction_mean(log_scale), c(1, exp(.2^2 / 2)), tolerance = 1e-8)
-  expect_equal(BayesTools:::.selection_prior_mean(prior("point", list(3))), 3)
-  expect_equal(BayesTools:::.selection_prior_mean(prior("beta", list(2, 6))), 2 / 8)
+  expect_equal(mean(cumulative), c(1, 5 / 6, 1 / 2))
+  expect_equal(mean(log_scale), c(1, exp(.2^2 / 2)), tolerance = 1e-8)
+  expect_equal(mean(prior("point", list(3))), 3)
+  expect_equal(mean(prior("beta", list(2, 6))), 2 / 8)
 })
 
 test_that("selection_backend_spec compiles mixtures with active identity transforms", {

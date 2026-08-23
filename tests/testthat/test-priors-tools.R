@@ -24,10 +24,6 @@ test_that("Prior handling works", {
   expect_error(BayesTools:::.check_parameter_positive(0, "par"), "The 'par' must be positive.")
   expect_null(BayesTools:::.check_parameter_positive(0, "par", TRUE))
   expect_error(BayesTools:::.check_parameter_positive(-.01, "par", TRUE), "The 'par' must be non-negative.")
-  expect_error(BayesTools:::.check_parameter_negative(0, "par"), "The 'par' must be negative.")
-  expect_null(BayesTools:::.check_parameter_negative(0, "par", TRUE))
-  expect_error(BayesTools:::.check_parameter_negative(.01, "par", TRUE), "The 'par' must be non-positive.")
-
   expect_error(BayesTools:::.check_parameter_range(-.01, "par", lower = 0, upper = 1, include_bounds = TRUE), "The 'par' must be higher than 0 and lower than 1.")
   expect_error(BayesTools:::.check_parameter_range(3, "par", lower = 1, upper = 3, include_bounds = FALSE), "The 'par' must be higher or equal to than 1 and lower or equal to than 3.")
 

@@ -642,8 +642,8 @@ test_that("nonlocal priors request the BayesTools JAGS module recursively", {
   p_mixture <- prior_mixture(list(prior("normal", list(0, 1)), p_moment))
 
   expect_true(BayesTools:::.JAGS_prior_list_uses_BayesTools_module(list(theta = p_invgamma)))
-  expect_true(BayesTools:::.JAGS_prior_list_uses_nonlocal(list(theta = p_moment)))
-  expect_true(BayesTools:::.JAGS_prior_list_uses_nonlocal(list(theta = p_spike_and_slab)))
-  expect_true(BayesTools:::.JAGS_prior_list_uses_nonlocal(list(theta = p_mixture)))
+  expect_true(BayesTools:::.JAGS_prior_list_uses_BayesTools_module(list(theta = p_moment)))
+  expect_true(BayesTools:::.JAGS_prior_list_uses_BayesTools_module(list(theta = p_spike_and_slab)))
+  expect_true(BayesTools:::.JAGS_prior_list_uses_BayesTools_module(list(theta = p_mixture)))
   expect_false(BayesTools:::.JAGS_prior_list_uses_BayesTools_module(list(theta = prior("normal", list(0, 1)))))
 })

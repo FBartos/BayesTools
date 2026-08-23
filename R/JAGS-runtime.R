@@ -162,7 +162,3 @@
 
   length(prior_list) > 0L && any(vapply(prior_list, .JAGS_prior_uses_BayesTools_module, logical(1)))
 }
-.JAGS_prior_list_uses_nonlocal <- function(prior_list){
-
-  .JAGS_prior_list_uses_BayesTools_module(prior_list)
-}

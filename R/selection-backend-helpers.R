@@ -432,21 +432,6 @@
   )
 }
 
-.selection_weightfunction_mean <- function(selection){
-
-  components <- .weightfunction_marginal_components(selection)
-  vapply(components, .prior_weightfunction_component_mean, numeric(1))
-}
-
-.selection_prior_mean <- function(prior){
-
-  if(is.prior.point(prior)){
-    return(prior$parameters[["location"]])
-  }
-
-  return(mean(prior))
-}
-
 .selection_format_number <- function(x){
   format(x, scientific = FALSE, digits = 16, trim = TRUE)
 }

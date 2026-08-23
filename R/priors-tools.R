@@ -111,24 +111,6 @@
       stop(paste0("The '", name, "' must be positive."), call. = FALSE)
   }
 }
-.check_parameter_negative  <- function(parameter, name, include_zero = FALSE){
-
-  # allow expressions to be forwarded through the construction functions
-  if(is.expression(parameter))
-    return()
-
-  check_real(parameter, name, check_length = 0, allow_NA = FALSE)
-  if(any(!is.finite(parameter)))
-    stop(paste0("The '", name, "' must be finite."), call. = FALSE)
-
-  if(include_zero){
-    if(any(parameter > 0, na.rm = TRUE))
-      stop(paste0("The '", name, "' must be non-positive."), call. = FALSE)
-  }else{
-    if(any(parameter >= 0, na.rm = TRUE))
-      stop(paste0("The '", name, "' must be negative."), call. = FALSE)
-  }
-}
 .check_parameter_dimensions<- function(parameter, name, allow_NA = FALSE){
 
   # allow expressions to be forwarded through the construction functions

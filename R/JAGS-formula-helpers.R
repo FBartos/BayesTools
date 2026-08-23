@@ -7,10 +7,6 @@
   }
   return(formula)
 }
-.has_expression         <- function(formula){
-  # check if there is any expression in the formula
-  return(.bt_contains_expression_call(.bt_formula_rhs(formula)))
-}
 .extract_expressions    <- function(formula){
   # extract all expressions from the formula
 
@@ -1127,8 +1123,6 @@ formula_add_intercept <- function(formula){
 
   return(out)
 }
-.add_intercept_to_formula <- formula_add_intercept
-
 .formula_strip_no_intercept <- function(expr){
 
   if(is.call(expr) && length(expr) == 2L &&
