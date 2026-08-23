@@ -159,7 +159,9 @@
   the complete context option, can select an exact named node subset without
   flattening unrelated state, and forwards an explicit `cores` setting to
   `bridgesampling::bridge_sampler()`. Marginal random-effect covariance replay
-  now consumes the already reconstructed natural formula-prior parameters, and
+  skips random-node reconstruction when metadata request an empty node set,
+  reuses the indexed batch SD extractor for scalar factor states, consumes the
+  already reconstructed natural formula-prior parameters, and
   compiled scalar priors call the same validated primitive density calculation
   without repeating public-interface validation for every bridge row.
 - `JAGS_bridgesampling()` can exactly integrate selected fitted sampled

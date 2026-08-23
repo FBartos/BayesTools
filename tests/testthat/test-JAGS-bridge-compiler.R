@@ -1737,6 +1737,35 @@ test_that("bridge context exposes resolved formula allocation nodes", {
   )
 })
 
+test_that("marginal bridge context skips an explicitly empty node selection", {
+
+  random_evaluator <- list(
+    nodes = function(...) stop("random nodes should not be evaluated")
+  )
+  marginal_evaluator <- list(
+    covariance = function(...) list(mu = list(representation = "factor_state"))
+  )
+
+  context <- BayesTools:::.bt_JAGS_bridge_marginal_context(
+    samples = c(theta = 0),
+    prior_parameters = list(),
+    formula_prior_parameters = list(),
+    formula_parameters = list(),
+    add_parameters = NULL,
+    random_context_evaluator = random_evaluator,
+    marginal_random_evaluator = marginal_evaluator,
+    node_names = character(),
+    random_only = TRUE
+  )
+
+  expect_s3_class(context, "BayesTools_bridge_marginal_context")
+  expect_identical(context$nodes, numeric())
+  expect_identical(
+    context$marginalized_random$mu$representation,
+    "factor_state"
+  )
+})
+
 test_that("bridge context exposes marginalized random blocks without latent draws", {
 
   formula_data <- data.frame(

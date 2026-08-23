@@ -51,9 +51,9 @@
 <line x1='547.20' y1='91.20' x2='554.40' y2='91.20' style='stroke-width: 0.75; stroke: none;' />
 <text x='561.60' y='407.33' style='font-size: 12.00px; font-family: sans;' textLength='86.74px' lengthAdjust='spacingAndGlyphs'>1.19 [0.80, 1.80]</text>
 <text x='561.60' y='215.33' style='font-size: 12.00px; font-family: sans;' textLength='86.74px' lengthAdjust='spacingAndGlyphs'>1.22 [0.82, 1.88]</text>
-<text x='561.60' y='191.33' style='font-size: 12.00px; font-family: sans;' textLength='126.76px' lengthAdjust='spacingAndGlyphs'>BF = 0.60 [0.50 -&gt; 0.37]</text>
+<text x='561.60' y='191.33' style='font-size: 12.00px; font-family: sans;' textLength='126.76px' lengthAdjust='spacingAndGlyphs'>BF = 0.57 [0.50 -&gt; 0.36]</text>
 <text x='561.60' y='119.33' style='font-size: 12.00px; font-family: sans;' textLength='86.74px' lengthAdjust='spacingAndGlyphs'>1.17 [0.78, 1.64]</text>
-<text x='561.60' y='95.33' style='font-size: 12.00px; font-family: sans;' textLength='126.76px' lengthAdjust='spacingAndGlyphs'>BF = 1.68 [0.50 -&gt; 0.63]</text>
+<text x='561.60' y='95.33' style='font-size: 12.00px; font-family: sans;' textLength='126.76px' lengthAdjust='spacingAndGlyphs'>BF = 1.76 [0.50 -&gt; 0.64]</text>
 </g>
 <defs>
   <clipPath id='cpMTM0LjQwfDU0Ny4yMHwwLjAwfDUxOC40MA=='>
@@ -68,8 +68,8 @@
 <line x1='199.04' y1='115.20' x2='434.57' y2='115.20' style='stroke-width: 0.75;' />
 <polyline points='199.04,108.00 199.04,115.20 199.04,122.40 ' style='stroke-width: 0.75;' />
 <polyline points='434.57,122.40 434.57,115.20 434.57,108.00 ' style='stroke-width: 0.75;' />
-<polygon points='314.64,215.23 322.70,215.23 322.70,207.17 314.64,207.17 ' style='stroke-width: 0.75; stroke: none; fill: #000000;' />
-<polygon points='297.92,121.97 311.46,121.97 311.46,108.43 297.92,108.43 ' style='stroke-width: 0.75; stroke: none; fill: #000000;' />
-<polygon points='204.82,403.20 310.27,379.20 477.00,403.20 310.27,427.20 ' style='stroke-width: 0.75; fill: #000000;' />
+<polygon points='314.76,215.11 322.58,215.11 322.58,207.29 314.76,207.29 ' style='stroke-width: 0.75; stroke: none; fill: #000000;' />
+<polygon points='297.81,122.09 311.58,122.09 311.58,108.31 297.81,108.31 ' style='stroke-width: 0.75; stroke: none; fill: #000000;' />
+<polygon points='204.82,403.20 310.54,379.20 477.00,403.20 310.54,427.20 ' style='stroke-width: 0.75; fill: #000000;' />
 </g>
 </svg>

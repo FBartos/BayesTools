@@ -666,8 +666,8 @@
   force(include_markov)
 
   function(posterior){
-    column_scale <- if(!is.null(sd_evaluator)){
-      sd_evaluator$posterior_values(posterior)
+    sd_draws <- if(!is.null(sd_evaluator)){
+      sd_evaluator$posterior_draws(posterior)
     }else if(!is.null(direct_sd_evaluators)){
       values <- lapply(
         direct_sd_evaluators,
@@ -676,22 +676,23 @@
       if(any(vapply(values, is.null, logical(1)))){
         NULL
       }else{
-        vapply(values, `[[`, numeric(1), 1L)
+        matrix(vapply(values, `[[`, numeric(1), 1L), nrow = 1L)
       }
     }else{
       NULL
     }
-    if(is.null(column_scale)){
+    if(is.null(sd_draws)){
       return(NULL)
     }
     .bt_random_effect_marginal_covariance_validate_draw_matrix(
-      draws = matrix(column_scale, nrow = 1L),
+      draws = sd_draws,
       n_draws = 1L,
       n_columns = n_columns,
       label = "SD",
       random_term = random_term,
       nonnegative = TRUE
     )
+    column_scale <- unname(sd_draws[1L, ])
     coefficient <- .bt_JAGS_bridge_marginal_random_coefficient_geometry(
       random_term = random_term,
       posterior = posterior,
@@ -1259,17 +1260,8 @@
       n_columns = n_columns,
       posterior = posterior
     )
-    cholesky <- matrix(
-      cholesky_draws[1L, , ],
-      nrow = n_columns,
-      ncol = n_columns
-    )
-    factor <- sweep(
-      matrix(cholesky, nrow = n_columns, ncol = n_columns),
-      MARGIN = 1L,
-      STATS = column_scale,
-      FUN = "*"
-    )
+    cholesky <- cholesky_draws[1L, , ]
+    factor   <- cholesky * column_scale
   }
   if(any(!is.finite(factor))){
     stop(

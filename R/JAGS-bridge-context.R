@@ -250,16 +250,20 @@
     node_names = NULL,
     random_only = FALSE){
 
-  nodes_context <- .bt_JAGS_bridge_nodes_context(
-    samples = samples,
-    prior_parameters = prior_parameters,
-    formula_prior_parameters = formula_prior_parameters,
-    formula_parameters = formula_parameters,
-    add_parameters = add_parameters,
-    random_context_evaluator = random_context_evaluator,
-    node_names = node_names,
-    random_only = random_only
-  )
+  nodes <- if(!is.null(node_names) && length(node_names) == 0L){
+    numeric()
+  }else{
+    .bt_JAGS_bridge_nodes_context(
+      samples = samples,
+      prior_parameters = prior_parameters,
+      formula_prior_parameters = formula_prior_parameters,
+      formula_parameters = formula_parameters,
+      add_parameters = add_parameters,
+      random_context_evaluator = random_context_evaluator,
+      node_names = node_names,
+      random_only = random_only
+    )$nodes
+  }
   marginalized_random <- marginal_random_evaluator$covariance(
     samples = samples,
     prior_parameters = prior_parameters,
@@ -270,7 +274,7 @@
   )
 
   out <- list(
-    nodes = nodes_context$nodes,
+    nodes = nodes,
     marginalized_random = marginalized_random
   )
   class(out) <- c(
