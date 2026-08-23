@@ -435,12 +435,12 @@ test_that("plot_models handles order argument", {
   })
 
   # Test with transformation ggplot
-  vdiffr::expect_doppelganger("plot-models-order-trans-ggplot", function() {
+  vdiffr::expect_doppelganger("plot-models-order-trans-ggplot", {
     BayesTools::plot_models(models, mixed_posteriors, inference, "m", transformation = "exp", plot_type = "ggplot")
   })
 
   # Test with transformation and prior ggplot
-  vdiffr::expect_doppelganger("plot-models-order-trans-prior-ggplot", function() {
+  vdiffr::expect_doppelganger("plot-models-order-trans-prior-ggplot", {
     BayesTools::plot_models(models, mixed_posteriors, inference, "m", prior = TRUE, transformation = "exp", plot_type = "ggplot")
   })
 

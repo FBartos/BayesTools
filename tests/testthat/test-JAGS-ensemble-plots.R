@@ -127,7 +127,7 @@ test_that("prior plot functions (simple) work", {
     plot_prior_list(prior_list, col = "red", lwd = 4)
     lines(prior_list$p1, col = "blue", lwd = 3, lty = 2)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-6", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-6", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4) + geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2)
   })
 
@@ -143,7 +143,7 @@ test_that("prior plot functions (simple) work", {
     par(mar = c(4, 4, 1, 4))
     plot_prior_list(prior_list)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-8", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-8", {
     plot_prior_list(prior_list, plot_type = "ggplot")
   })
 
@@ -154,7 +154,7 @@ test_that("prior plot functions (simple) work", {
     par(mar = c(4, 4, 1, 4))
     plot_prior_list(prior_list, xlab = "xlab", ylab = "ylab", ylab2 = "ylab2", main = "main")
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-10", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-10", {
     plot_prior_list(prior_list, plot_type = "ggplot", xlab = "xlab", ylab = "ylab", ylab2 = "ylab2", main = "main")
   })
 
@@ -171,7 +171,7 @@ test_that("prior plot functions (simple) work", {
     par(mar = c(4, 4, 1, 4))
     plot_prior_list(prior_list)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-12", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-12", {
     plot_prior_list(prior_list, plot_type = "ggplot")
   })
 
@@ -247,7 +247,7 @@ test_that("prior plot functions (PET-PEESE) work", {
     PEESE1 = prior_PEESE("cauchy",   list(0, 1)),
     PEESE2 = prior_PEESE("cauchy",   list(0, 1.001))
   )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-6", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-6", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", col.fill = scales::alpha("red", .20), lwd = 4, n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu) + geom_prior_list(prior_list, col = "blue", col.fill = scales::alpha("blue", .20), lwd = 3, lty = 2, n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
 
@@ -261,7 +261,7 @@ test_that("prior plot functions (PET-PEESE) work", {
     plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-8", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-8", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
 
@@ -269,7 +269,7 @@ test_that("prior plot functions (PET-PEESE) work", {
   vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-9", function(){
     plot_prior_list(prior_list, n_samples = 1000, n_points = 50, xlab = "xlab", ylab = "ylab", main = "main", prior_list_mu = prior_list_mu)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-10", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-10", {
     plot_prior_list(prior_list, n_samples = 1000, n_points = 50, plot_type = "ggplot", xlab = "xlab", ylab = "ylab", main = "main", prior_list_mu = prior_list_mu)
   })
 
@@ -289,7 +289,7 @@ test_that("prior plot functions (PET-PEESE) work", {
     plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, ylim = c(0, .5), prior_list_mu = prior_list_mu)
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-12", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-12", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, ylim = c(0, .5), prior_list_mu = prior_list_mu) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
 })
@@ -318,7 +318,7 @@ test_that("prior plot functions (PET-PEESE) effect_direction works", {
   })
 
   # Test ggplot version with effect_direction
-  vdiffr::expect_doppelganger("prior-PETPEESE-effect-negative-ggplot", function(){
+  vdiffr::expect_doppelganger("prior-PETPEESE-effect-negative-ggplot", {
     plot_prior_list(prior_list, effect_direction = "negative", plot_type = "ggplot", col = "blue", lwd = 4, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, ylim = c(-0.5, 0.5), prior_list_mu = prior_list_mu)
   })
 
@@ -375,7 +375,7 @@ test_that("prior plot functions (weightfunctions) work", {
     lines(prior_list$p1, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20))
   })
   set.seed(1)
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-6", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-6", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20)) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20))
   })
 
@@ -392,7 +392,7 @@ test_that("prior plot functions (weightfunctions) work", {
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), rescale_x = TRUE)
   })
   set.seed(1)
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-8", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-8", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), rescale_x = TRUE) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), rescale_x = TRUE)
   })
 
@@ -402,7 +402,7 @@ test_that("prior plot functions (weightfunctions) work", {
     plot_prior_list(prior_list, xlab = "xlab", ylab = "ylab", main = "main")
   })
   set.seed(1)
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-10", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-10", {
     plot_prior_list(prior_list, plot_type = "ggplot", xlab = "xlab", ylab = "ylab", main = "main")
   })
 
@@ -419,7 +419,7 @@ test_that("prior plot functions (weightfunctions) work", {
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), rescale_x = TRUE)
   })
   set.seed(1)
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-12", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-12", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), rescale_x = TRUE) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), rescale_x = TRUE)
   })
 
@@ -472,7 +472,7 @@ test_that("prior plot functions (orthonormal) work", {
     plot_prior_list(prior_list, col = "red", lwd = 4)
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-orthonormal-6", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-orthonormal-6", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2) +
       geom_prior_list(prior_list, col = "blue", lwd = 1, lty = 2)
   })
@@ -522,7 +522,7 @@ test_that("prior plot functions (treatment) work", {
     plot_prior_list(prior_list, col = "red", lwd = 4)
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-treatment-6", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-treatment-6", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2) +
       geom_prior_list(prior_list, col = "blue", lwd = 1, lty = 2)
   })
@@ -563,7 +563,7 @@ test_that("prior plot functions (independent) work", {
     plot_prior_list(prior_list, col = "red", lwd = 4)
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-independent-4", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-independent-4", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2) +
       geom_prior_list(prior_list, col = "blue", lwd = 1, lty = 2)
   })
@@ -617,7 +617,7 @@ test_that("prior plot functions (meandif) work", {
     plot_prior_list(prior_list, col = "red", lwd = 4)
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-meandif-6", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-meandif-6", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2) +
       geom_prior_list(prior_list, col = "blue", lwd = 1, lty = 2)
   })
@@ -685,7 +685,7 @@ test_that("posterior plot functions (simple) work", {
     plot_posterior(mixed_posteriors, "m", lwd = 2, col = "red", prior = TRUE, dots_prior = list(col = "blue", lty = 2))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-simple-7", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-simple-7", {
     plot_posterior(mixed_posteriors, "m", plot_type = "ggplot", lwd = 2, col = "red", prior = TRUE, dots_prior = list(col = "blue", lty = 2))
   })
 
@@ -741,7 +741,7 @@ test_that("posterior plot functions (PET-PEESE) work", {
     plot_posterior(mixed_posteriors, "PETPEESE", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), prior = TRUE, n_points = 50, n_samples = 1000, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-7", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-7", {
     plot_posterior(mixed_posteriors, "PETPEESE", plot_type = "ggplot", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, prior = TRUE, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
   })
 
@@ -813,7 +813,7 @@ test_that("posterior plot functions (PET-PEESE) effect_direction works", {
   })
 
   # Test ggplot version with effect_direction
-  vdiffr::expect_doppelganger("posterior-PETPEESE-effect-negative-ggplot", function(){
+  vdiffr::expect_doppelganger("posterior-PETPEESE-effect-negative-ggplot", {
     plot_posterior(mixed_posteriors, "PETPEESE", effect_direction = "negative", plot_type = "ggplot", lwd = 2, col = "blue", col.fill = scales::alpha("blue", .20), n_points = 50, ylim = c(-1, 1))
   })
 })
@@ -865,7 +865,7 @@ test_that("posterior plot functions (weightfunctions) work", {
     plot_posterior(mixed_posteriors, "omega", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), prior = TRUE, n_points = 50, n_samples = 1000, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-7", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-7", {
     plot_posterior(mixed_posteriors, "omega", plot_type = "ggplot", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, prior = TRUE, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
   })
 
@@ -874,7 +874,7 @@ test_that("posterior plot functions (weightfunctions) work", {
     plot_posterior(mixed_posteriors, "omega", rescale_x = TRUE, lwd = 2, col = "red", col.fill = scales::alpha("red", .20), prior = TRUE, n_points = 50, n_samples = 1000, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-9", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-9", {
     plot_posterior(mixed_posteriors, "omega", rescale_x = TRUE, plot_type = "ggplot", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, prior = TRUE, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
   })
 
