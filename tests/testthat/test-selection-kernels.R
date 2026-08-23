@@ -569,6 +569,8 @@ test_that("selection_backend_spec rejects malformed global breaks", {
   expect_error(selection_backend_spec(selection, global_breaks = c(0, .025, .025, 1)), "duplicate")
   expect_error(selection_backend_spec(selection, global_breaks = c(0, .05, .025, 1)), "monotonically")
   expect_error(selection_backend_spec(selection, global_breaks = c(.001, .025, 1)), "start at 0 and end at 1")
+  expect_error(selection_backend_spec(selection, global_breaks = c(1e-12, .025, 1)), "start at 0 and end at 1")
+  expect_error(selection_backend_spec(selection, global_breaks = c(0, .025, 1 - 1e-12)), "start at 0 and end at 1")
   expect_error(selection_backend_spec(selection, global_breaks = c(0, .02, 1)), "contain all step-selection")
 
   spec <- selection_backend_spec(selection, global_breaks = c(0, .025, .50, 1))

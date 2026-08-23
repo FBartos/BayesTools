@@ -85,7 +85,7 @@
     .hypothesis_expression_key(.hypothesis_side_expression(point_side)),
     .hypothesis_expression_key(.hypothesis_side_expression(other_side))
   ) &&
-    isTRUE(all.equal(point_side[["value"]], other_side[["value"]]))
+    point_side[["value"]] == other_side[["value"]]
 }
 
 

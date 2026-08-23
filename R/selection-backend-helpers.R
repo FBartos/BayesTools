@@ -205,7 +205,7 @@
   if(!all(global_breaks == cummax(global_breaks))){
     stop("'global_breaks' must be monotonically increasing.", call. = FALSE)
   }
-  if(!isTRUE(all.equal(global_breaks[1], 0)) || !isTRUE(all.equal(global_breaks[length(global_breaks)], 1))){
+  if(global_breaks[1] != 0 || global_breaks[length(global_breaks)] != 1){
     stop("'global_breaks' must start at 0 and end at 1.", call. = FALSE)
   }
 

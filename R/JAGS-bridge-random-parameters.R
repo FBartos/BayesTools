@@ -354,8 +354,8 @@
   if(length(overlapping_bridge) > 0L){
     conflicting_bridge <- overlapping_bridge[
       vapply(overlapping_bridge, function(parameter){
-        !isTRUE(all.equal(unname(user_lb[[parameter]]), unname(bridge_lb[[parameter]]))) ||
-          !isTRUE(all.equal(unname(user_ub[[parameter]]), unname(bridge_ub[[parameter]])))
+        unname(user_lb[[parameter]]) != unname(bridge_lb[[parameter]]) ||
+          unname(user_ub[[parameter]]) != unname(bridge_ub[[parameter]])
       }, logical(1))
     ]
     if(length(conflicting_bridge) > 0L){

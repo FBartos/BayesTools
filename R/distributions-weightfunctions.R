@@ -1099,8 +1099,8 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
     stop(paste0("'", name, "' must be finite."))
   if(!all(omega >= 0))
     stop(paste0("'", name, "' must be non-negative."))
-  if(is.vector(omega) && !isTRUE(all.equal(omega[1], 1)))
+  if(is.vector(omega) && omega[1] != 1)
     stop(paste0("The reference-bin '", name, "' weight must be exactly 1."))
-  if(is.matrix(omega) && !all(vapply(seq_len(nrow(omega)), function(i) isTRUE(all.equal(omega[i,1], 1)), logical(1))))
+  if(is.matrix(omega) && any(omega[,1] != 1))
     stop(paste0("The reference-bin '", name, "' weight must be exactly 1."))
 }

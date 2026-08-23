@@ -390,6 +390,8 @@ test_that("weightfunction helper input validation is explicit", {
   expect_error(mdone.sided_fixed(0.5, omega = c(1, Inf)), "'omega' must be finite.")
   expect_error(mdone.sided_fixed(0.5, omega = c(-.1, 1)), "'omega' must be non-negative.")
   expect_error(mdone.sided_fixed(0.5, omega = c(.5, 1)), "reference-bin")
+  expect_error(mdone.sided_fixed(0.5, omega = c(1 - 1e-12, .5)), "reference-bin")
+  expect_error(mdone.sided_fixed(0.5, omega = matrix(c(1, .5, 1 - 1e-12, .5), nrow = 2, byrow = TRUE)), "reference-bin")
 })
 
 test_that("weightfunction helper dimension checks happen after valid parameter checks", {

@@ -1,4 +1,9 @@
 # version 0.3.1
+### Fixes
+- requires exact equality for structural probability endpoints, reference-bin
+  weights, point-complement hypotheses, and overlapping bridge bounds instead
+  of accepting nearby values under a numerical-comparison tolerance
+
 ### Features
 - adds an explicit `seed` argument to `JAGS_bridgesampling()` and seeds every
   cached marginal-likelihood fixture so cache refreshes reproduce bridge

@@ -8020,6 +8020,22 @@ test_that("formula random effects expose bridge-ready stochastic coordinates", {
     BayesTools:::.bt_JAGS_bridge_merge_add_parameters(
       add_parameters = expected_z[1],
       add_bounds = list(
+        lb = stats::setNames(-Inf, expected_z[1]),
+        ub = stats::setNames(1 - 1e-12, expected_z[1])
+      ),
+      bridge_parameters = expected_z[1],
+      bridge_bounds = list(
+        lb = stats::setNames(-Inf, expected_z[1]),
+        ub = stats::setNames(1, expected_z[1])
+      )
+    ),
+    "conflict",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_merge_add_parameters(
+      add_parameters = expected_z[1],
+      add_bounds = list(
         lb = stats::setNames(-Inf, "wrong_name"),
         ub = stats::setNames( Inf, expected_z[1])
       ),

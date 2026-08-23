@@ -253,6 +253,11 @@ test_that("parentheses do not change comparison compatibility", {
     point,
     explicit_not_point
   ))
+  explicit_not_point[["value"]] <- explicit_not_point[["value"]] + 1e-12
+  expect_false(BayesTools:::.hypothesis_sides_point_complement(
+    point,
+    explicit_not_point
+  ))
 
   simple_region <- hypothesis_parse(
     "(theta) > 1"
