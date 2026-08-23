@@ -1534,7 +1534,7 @@ test_that("formula marginal_posterior attaches matched top-level precomputed met
   expect_null(attr(transformed[["1SD"]], "posterior_density", exact = TRUE))
 })
 
-test_that("spike-and-slab and vector constructors attach support metadata", {
+test_that("spike-and-slab posterior constructors attach support metadata", {
 
   slab <- prior(
     "beta",
@@ -1546,40 +1546,16 @@ test_that("spike-and-slab and vector constructors attach support metadata", {
     prior_inclusion = prior("point", list(location = .5))
   )
 
-  prior_samples <- BayesTools:::.as_mixed_priors.spike_and_slab(
-    spike_slab,
-    parameter = "theta",
-    n_samples = 200
-  )
   posterior_samples <- BayesTools:::.as_mixed_posteriors.spike_and_slab(
     cbind(theta = seq(.2, .8, length.out = 100),
           theta_indicator = rep(c(0, 1), 50)),
     spike_slab,
     parameter = "theta"
   )
-  prior_support <- BayesTools:::.posterior_support_get(prior_samples)
   posterior_support <- BayesTools:::.posterior_support_get(posterior_samples)
 
-  expect_equal(prior_support$bounds, c(0, .8))
   expect_equal(posterior_support$bounds, c(0, .8))
-  expect_true(0 %in% prior_support$points)
   expect_true(0 %in% posterior_support$points)
-  expect_false(prior_support$exact)
-
-  vector_prior <- prior("mnormal", list(mean = 0, sd = 1, K = 2))
-  vector_samples <- BayesTools:::.as_mixed_priors.vector(
-    vector_prior,
-    parameter = "theta",
-    n_samples = 25
-  )
-  vector_support <- attr(vector_samples, "posterior_support", exact = TRUE)
-
-  expect_equal(names(vector_support), colnames(vector_samples))
-  expect_true(all(vapply(
-    vector_support,
-    function(support) identical(support$bounds, c(-Inf, Inf)),
-    logical(1)
-  )))
 })
 
 test_that("simplex posterior support uses component and convex-hull bounds", {
@@ -1589,18 +1565,6 @@ test_that("simplex posterior support uses component and convex-hull bounds", {
   component_support <- BayesTools:::.posterior_support_from_prior(simplex_prior)
   expect_equal(component_support$bounds, c(0, 1))
   expect_true(component_support$exact)
-
-  simplex_samples <- BayesTools:::.as_mixed_priors.vector(
-    simplex_prior,
-    parameter = "w",
-    n_samples = 25
-  )
-  simplex_support <- attr(simplex_samples, "posterior_support", exact = TRUE)
-  expect_true(all(vapply(
-    simplex_support,
-    function(support) identical(support$bounds, c(0, 1)),
-    logical(1)
-  )))
 
   context <- BayesTools:::.prior_density_context(
     prior_list   = list(w = simplex_prior),
@@ -3851,79 +3815,6 @@ test_that("Marginal distribution prior and posterior functions work", {
 
 })
 
-test_that("Marginal distribution prior functions work", {
-
-  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
-  skip_on_cran()
-  set.seed(1)
-
-  ### independent prior distribution ----
-  priors <- list(
-      prior_factor("spike",  list(0), contrast = "independent"),
-      prior_factor("normal", list(0, .3), contrast = "independent"),
-      prior_factor("normal", list(2, .3), contrast = "independent")
-  )
-  attr(priors[[1]], "levels") <- 3
-  attr(priors[[2]], "levels") <- 3
-  attr(priors[[3]], "levels") <- 3
-  temp_prior <- BayesTools:::.mix_priors.factor(priors, "mu", seed = NULL, n_samples = 10000)
-
-
-  vdiffr::expect_doppelganger("marginal-prior-ind", function(){
-
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
-
-    par(mfrow = c(1, 3))
-    hist(temp_prior[,1], freq = FALSE, main = "marginal prior independent (1)", breaks = 50)
-    hist(temp_prior[,2], freq = FALSE, main = "marginal prior independent (2)", breaks = 50)
-    hist(temp_prior[,3], freq = FALSE, main = "marginal prior independent (3)", breaks = 50)
-
-  })
-
-  ### 3 level treatment prior distribution ----
-  priors <- list(
-    prior_factor("spike",  list(0),     contrast = "treatment"),
-    prior_factor("normal", list(2, .3), contrast = "treatment")
-  )
-  attr(priors[[1]], "levels") <- 3
-  attr(priors[[2]], "levels") <- 3
-  temp_prior <- BayesTools:::.mix_priors.factor(priors, "mu", seed = NULL, n_samples = 10000)
-
-
-  vdiffr::expect_doppelganger("marginal-prior-trt", function(){
-
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
-
-    par(mfrow = c(1, 2))
-    hist(temp_prior[,1], freq = FALSE, main = "marginal prior treatment (1)", breaks = 50)
-    hist(temp_prior[,2], freq = FALSE, main = "marginal prior treatment (2)", breaks = 50)
-
-  })
-
-  ### weightfunction prior distribution ----
-  priors <- list(
-    prior_weightfunction("one-sided", c(0.05, 0.50), wf_fixed(c(1, 1, 1))),
-    prior_weightfunction("one-sided", c(0.10), wf_cumulative(c(1, 1)))
-  )
-  temp_prior <- BayesTools:::.mix_priors.weightfunction(priors, "mu", seed = NULL, n_samples = 10000)
-
-  vdiffr::expect_doppelganger("marginal-prior-weightfunction", function(){
-
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
-
-    par(mfrow = c(1, 4))
-    hist(temp_prior[,1], freq = FALSE, main = "marginal prior weightfunction (1)", breaks = 50)
-    hist(temp_prior[,2], freq = FALSE, main = "marginal prior weightfunction (2)", breaks = 50)
-    hist(temp_prior[,3], freq = FALSE, main = "marginal prior weightfunction (3)", breaks = 50)
-    hist(temp_prior[,4], freq = FALSE, main = "marginal prior weightfunction (4)", breaks = 50)
-
-  })
-
-})
-
 test_that("Marginal distributions with spike and slab and mixture priors work", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
@@ -4418,10 +4309,6 @@ test_that("Marginal distributions with one-sided weightfunction model work", {
     parameters   = "omega"
   )
 
-  # Not implemented for weightfunctions
-  #  marginal_posterior(mixed_posteriors, parameter = "omega", prior_samples = TRUE)
-  temp_samples <- .as_mixed_priors.weightfunction(attr(fit_wf, "prior_list")[[1]], parameter = "omega")
-
   # Visual tests for weightfunction posteriors
   vdiffr::expect_doppelganger("marginal-wf-onesided-hist", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
@@ -4429,10 +4316,6 @@ test_that("Marginal distributions with one-sided weightfunction model work", {
 
     par(mfrow = c(1, 2))
     hist(mixed_posteriors$omega[,1], freq = FALSE, main = "omega[0,0.025]", breaks = 50, xlim = c(0, 1))
-    # The first one-sided weight is the fixed reference bin; do not smooth a point mass.
-    if(stats::sd(temp_samples[,1]) > sqrt(.Machine$double.eps)){
-      lines(density(temp_samples[,1]))
-    }
     hist(mixed_posteriors$omega[,2], freq = FALSE, main = "omega[0.025,1]", breaks = 50, xlim = c(0, 1))
   })
 

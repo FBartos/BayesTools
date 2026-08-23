@@ -38,17 +38,6 @@ test_that("model-averaging compatibility guards report metadata mismatches", {
   attr(factor_b, "level_names") <- c("X", "Y", "Z")
 
   expect_error(
-    .mix_priors.factor(
-      priors = list(factor_a, factor_b),
-      parameter = "fac",
-      seed = 1,
-      n_samples = 10
-    ),
-    "non-matching prior factor type specifications",
-    fixed = TRUE
-  )
-
-  expect_error(
     .mix_posteriors.factor(
       fits = list(fake_fit, fake_fit),
       priors = list(factor_a, factor_b),

@@ -1170,18 +1170,6 @@ test_that("ordered mixed measures propagate through marginal inference", {
     }
   }
 
-  prior_samples <- BayesTools:::.as_mixed_priors.factor(
-    formula_info$prior_list$mu_f,
-    parameter = "mu_f",
-    seed = 991,
-    n_samples = 50
-  )
-  expect_length(attr(prior_samples, "ordered_total_indicator"), 50)
-  expect_equal(
-    BayesTools:::.posterior_atoms_get(prior_samples)$mass,
-    .5
-  )
-
   expect_error(
     BayesTools:::.as_mixed_posteriors.factor(
       posterior[, c("mu_f[1]", "mu_f[2]"), drop = FALSE],

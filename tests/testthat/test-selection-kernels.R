@@ -838,12 +838,10 @@ test_that("p-hacking report_scale controls public summary coordinates", {
 
   attr(model, "prior_list") <- list(ph = ph_alpha)
   expect_equal(colnames(as_mixed_posteriors(model, parameters = "ph")$ph), "alpha")
-  expect_equal(colnames(.as_mixed_priors(list(ph = ph_alpha), seed = 1, n_samples = 10)$ph), "alpha")
   expect_match(print(ph_alpha, silent = TRUE), "^alpha\\[phacking:")
 
   attr(model, "prior_list") <- list(ph = ph_pi)
   expect_equal(colnames(as_mixed_posteriors(model, parameters = "ph")$ph), "pi_null")
-  expect_equal(colnames(.as_mixed_priors(list(ph = ph_pi), seed = 1, n_samples = 10)$ph), "pi_null")
   expect_match(print(ph_pi, silent = TRUE), "^pi_null\\[phacking:")
 })
 
@@ -861,14 +859,8 @@ test_that("bias priors sample direct and mixture prior draws", {
   expect_true(all(direct[, "alpha"] > 0 & direct[, "alpha"] < 1))
   expect_true(all(direct[, "pi_null"] >= 0))
 
-  mixed_direct <- .as_mixed_priors(list(pub_bias = bias), seed = 20, n_samples = 20)
-  expect_s3_class(mixed_direct$pub_bias, "mixed_posteriors.bias")
-  expect_equal(colnames(mixed_direct$pub_bias), c("omega[0,0.025]", "omega[0.025,1]", "pi_null"))
-
   phacking_only <- prior_bias(phacking = phacking)
   expect_equal(colnames(rng(phacking_only, 10)), c("alpha", "pi_null"))
-  mixed_phacking <- .as_mixed_priors(list(pub_bias = phacking_only), seed = 21, n_samples = 10)
-  expect_equal(colnames(mixed_phacking$pub_bias), "pi_null")
 
   bias_mixture <- prior_mixture(list(
     prior_none(prior_weights = 1),
@@ -882,19 +874,6 @@ test_that("bias priors sample direct and mixture prior draws", {
   expect_true(all(mixture_rng[attr(mixture_rng, "components") == 1, c("omega[1]", "omega[2]")] == 1))
   expect_true(all(mixture_rng[attr(mixture_rng, "components") == 1, c("alpha", "pi_null", "PET")] == 0))
 
-  mixed <- .as_mixed_priors(list(pub_bias = bias_mixture), seed = 22, n_samples = 40)
-  expect_s3_class(mixed$pub_bias, "mixed_posteriors.bias")
-  expect_s3_class(mixed$pub_bias, "mixed_posteriors.mixture")
-  expect_equal(colnames(mixed$pub_bias), c("omega[0,0.025]", "omega[0.025,1]", "pi_null", "PET"))
-  expect_setequal(attr(mixed$pub_bias, "models_ind"), 1:4)
-  expect_true(all(mixed$pub_bias[attr(mixed$pub_bias, "models_ind") == 1, c("omega[0,0.025]", "omega[0.025,1]")] == 1))
-  expect_true(all(mixed$pub_bias[attr(mixed$pub_bias, "models_ind") == 1, c("pi_null", "PET")] == 0))
-  expect_equal(
-    mixed$pub_bias[attr(mixed$pub_bias, "models_ind") == 2, "omega[0.025,1]"],
-    rep(.5, sum(attr(mixed$pub_bias, "models_ind") == 2))
-  )
-  expect_true(all(mixed$pub_bias[attr(mixed$pub_bias, "models_ind") == 3, "pi_null"] > 0))
-  expect_true(all(mixed$pub_bias[attr(mixed$pub_bias, "models_ind") != 4, "PET"] == 0))
 })
 
 test_that("selection-family prior generics fail explicitly when scalar semantics are ambiguous", {

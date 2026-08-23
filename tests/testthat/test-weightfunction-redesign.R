@@ -327,19 +327,16 @@ test_that("heterogeneous bias mixtures map cumulative, omega, log-omega, fixed, 
   expect_match(syntax, "omega\\[3\\] <- omega_component_1\\[3\\] \\* equals\\(bias_indicator, 1\\)")
   expect_false(grepl("eta2omega", syntax, fixed = TRUE))
 
-  prior_samples <- .mix_priors.weightfunction(
-    as.list(bias)[c(1, which(sapply(bias, is.prior.weightfunction)))],
-    parameter = "omega",
-    seed = 13,
-    n_samples = 600
-  )
+  set.seed(13)
+  prior_samples <- rng(bias, 600)
+  components <- attr(prior_samples, "components")
 
-  expect_equal(colnames(prior_samples), c("omega[0,0.025]", "omega[0.025,0.05]", "omega[0.05,0.1]", "omega[0.1,0.975]", "omega[0.975,1]"))
-  expect_true(all(prior_samples[attr(prior_samples, "models_ind") == 1, ] == 1))
-  expect_true(all(prior_samples[attr(prior_samples, "models_ind") == 5, "omega[0.025,0.05]"] == .4))
-  expect_true(all(prior_samples[attr(prior_samples, "models_ind") == 5, "omega[0.975,1]"] == 1))
-  expect_gt(mean(prior_samples[attr(prior_samples, "models_ind") == 3, "omega[0.05,0.1]"] > 1), .90)
-  expect_gt(mean(prior_samples[attr(prior_samples, "models_ind") == 4, "omega[0.025,0.05]"] > 1), .95)
+  expect_equal(colnames(prior_samples), paste0("omega[", 1:5, "]"))
+  expect_true(all(prior_samples[components == 1, ] == 1))
+  expect_true(all(prior_samples[components == 5, "omega[2]"] == .4))
+  expect_true(all(prior_samples[components == 5, "omega[5]"] == 1))
+  expect_gt(mean(prior_samples[components == 3, "omega[3]"] > 1), .90)
+  expect_gt(mean(prior_samples[components == 4, "omega[2]"] > 1), .95)
 })
 
 test_that("JAGS syntax and fitting allow independent omega weights above one", {
@@ -496,57 +493,6 @@ test_that("JAGS fits full bias mixtures with PET, PEESE, and heterogeneous weigh
   expect_true(any(table_samples[, "PEESE"] > 0, na.rm = TRUE))
   expect_true(any(is.na(table_samples[, "omega[0.05,0.1]"])))
   expect_true(any(table_samples[, "omega[0.05,0.1]"] > 1, na.rm = TRUE))
-})
-
-test_that("point(1) weightfunction null components are handled explicitly", {
-
-  wf <- prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)), prior_weights = 3)
-  point_null <- prior("point", list(1), prior_weights = 1)
-
-  mixed <- .mix_priors.weightfunction(
-    list(point_null, wf),
-    parameter = "omega",
-    seed = 1,
-    n_samples = 40
-  )
-
-  expect_equal(colnames(mixed), c("omega[0,0.05]", "omega[0.05,1]"))
-  null_n <- sum(attr(mixed, "models_ind") == 1)
-  expect_equal(
-    unname(mixed[attr(mixed, "models_ind") == 1, ]),
-    matrix(1, nrow = null_n, ncol = 2)
-  )
-  expect_error(
-    .mix_priors.weightfunction(
-      list(prior("point", list(.5), prior_weights = 1), wf),
-      parameter = "omega",
-      n_samples = 40
-    ),
-    "point\\(1\\)/none null priors"
-  )
-})
-
-test_that("weightfunction prior mixing samples tiny positive components exactly", {
-
-  dominant <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5)), prior_weights = 999)
-  tiny     <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .2)), prior_weights = 1)
-
-  mixed <- .mix_priors.weightfunction(
-    list(dominant, tiny),
-    parameter = "omega",
-    seed = 4,
-    n_samples = 1000
-  )
-
-  set.seed(4)
-  expected_counts <- .prior_mixture_sample_counts(c(.999, .001), 1000)
-  expect_equal(sum(attr(mixed, "models_ind") == 2), expected_counts[2])
-  if(expected_counts[2] > 0){
-    expect_equal(
-      unname(mixed[attr(mixed, "models_ind") == 2, "omega[0.05,1]"]),
-      rep(.2, expected_counts[2])
-    )
-  }
 })
 
 test_that("omega diagnostics reject bias mixtures without weightfunctions", {
