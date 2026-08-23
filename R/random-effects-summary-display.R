@@ -389,7 +389,11 @@
       alias = quantity$canonical_name,
       namespace = quantity$namespace
     )
-    values <- as.matrix(parameter_draws(fit, selection))
+    values <- as.matrix(parameter_draws(
+      fit,
+      selection,
+      model_samples = model_samples
+    ))
     if(ncol(values) != 1L || nrow(values) != nrow(model_samples)){
       stop(
         "A semantic random-effect summary could not be aligned with the fitted posterior draws.",

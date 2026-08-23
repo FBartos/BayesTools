@@ -8,6 +8,9 @@
 - compiles invariant support and normalization metadata once for simple-prior
   bridge and row-density evaluators, avoiding repeated prior reconstruction
   work while retaining the canonical density calculation
+- reuses the already extracted posterior matrix while materializing semantic
+  random-effect summary quantities instead of extracting fitted draws once per
+  quantity
 
 ### Maintenance
 - reuses the common line renderer for simple and contrast-transformed priors
