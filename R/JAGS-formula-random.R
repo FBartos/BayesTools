@@ -863,12 +863,6 @@
   is.call(expr) && identical(expr[[1L]], as.name(":")) && length(expr) == 3L
 }
 
-.bt_random_group_is_slash_expr <- function(expr){
-
-  expr <- .bt_random_effect_strip_group_parens(expr)
-  is.call(expr) && identical(expr[[1L]], as.name("/")) && length(expr) == 3L
-}
-
 .bt_random_group_colon_terms <- function(expr){
 
   expr <- .bt_random_effect_strip_group_parens(expr)
@@ -880,20 +874,6 @@
   }
 
   list(expr)
-}
-
-.bt_random_group_interaction_values <- function(expr, data, env){
-
-  components <- .bt_random_group_colon_terms(expr)
-  values <- lapply(components, function(component){
-    eval(component, envir = data, enclos = env)
-  })
-
-  do.call(interaction, c(values, list(
-    drop = TRUE,
-    sep = ":",
-    lex.order = TRUE
-  )))
 }
 
 .bt_random_group_component_names <- function(term){
