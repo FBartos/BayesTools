@@ -775,10 +775,16 @@ test_that("loaded BayesTools implementation must match the current source", {
     "loaded BayesTools namespace is not the current source tree"
   )
 
-  clear_fingerprint <- getFromNamespace(
-    ".clear_fit_backend_fingerprint_cache",
+  fingerprint_cache <- getFromNamespace(
+    ".fit_backend_fingerprint_cache",
     "BayesTools"
   )
+  clear_fingerprint <- function() {
+    rm(
+      list  = ls(envir = fingerprint_cache),
+      envir = fingerprint_cache
+    )
+  }
   freeze_fingerprint <- getFromNamespace(
     ".freeze_fit_backend_fingerprint",
     "BayesTools"

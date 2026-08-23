@@ -140,17 +140,6 @@
 }
 
 
-# Clear memoized state after reloading BayesTools during development.
-.clear_fit_backend_fingerprint_cache <- function() {
-
-  rm(
-    list  = ls(envir = .fit_backend_fingerprint_cache),
-    envir = .fit_backend_fingerprint_cache
-  )
-  return(invisible(TRUE))
-}
-
-
 # Freeze the implementation fingerprint that belongs to the loaded namespace.
 .freeze_fit_backend_fingerprint <- function(
     value = .compute_fit_backend_fingerprint()) {

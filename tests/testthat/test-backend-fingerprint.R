@@ -1,5 +1,14 @@
 skip_if_not_test_profile("unit")
 
+.test_clear_fit_backend_fingerprint_cache <- function() {
+
+  rm(
+    list  = ls(envir = .fit_backend_fingerprint_cache),
+    envir = .fit_backend_fingerprint_cache
+  )
+  invisible(TRUE)
+}
+
 test_that("loaded fit backend fingerprint is stable and well formed", {
 
   expect_true(exists(
@@ -18,9 +27,9 @@ test_that("loaded fit backend fingerprint is stable and well formed", {
 
 test_that("fit backend fingerprint freezes the loaded implementation", {
 
-  .clear_fit_backend_fingerprint_cache()
+  .test_clear_fit_backend_fingerprint_cache()
   on.exit({
-    .clear_fit_backend_fingerprint_cache()
+    .test_clear_fit_backend_fingerprint_cache()
     .freeze_fit_backend_fingerprint()
   }, add = TRUE)
   loaded_fingerprint <- paste(rep("a", 32L), collapse = "")

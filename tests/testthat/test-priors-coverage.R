@@ -138,21 +138,6 @@ test_that("prior_spike_and_slab() requires scalar inclusion probability priors",
 })
 
 
-test_that(".set_spike_and_slab_variable_attr() sets attributes correctly", {
-  p_ss <- prior_spike_and_slab(
-    prior_parameter = prior("normal", list(0, 1)),
-    prior_inclusion = prior("beta", list(1, 1))
-  )
-
-  p_ss2 <- BayesTools:::.set_spike_and_slab_variable_attr(p_ss, "test_attr", "test_value")
-  expect_true(is.prior.spike_and_slab(p_ss2))
-
-  # Error when not spike_and_slab
-  expect_error(BayesTools:::.set_spike_and_slab_variable_attr(prior("normal", list(0, 1)), "attr", "val"),
-               "only works with spike_and_slab priors")
-})
-
-
 test_that(".get_spike_and_slab_variable() requires spike_and_slab prior", {
   expect_error(BayesTools:::.get_spike_and_slab_variable(prior("normal", list(0, 1))),
                "only works with spike_and_slab priors")

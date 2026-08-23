@@ -543,25 +543,6 @@ prior_spike_and_slab <- function(prior_parameter,
   return(inclusion_prior)
 }
 
-# Setter functions to allow modifying variable and inclusion components
-.set_spike_and_slab_variable_attr <- function(spike_and_slab_prior, attr_name, value) {
-  if (!is.prior.spike_and_slab(spike_and_slab_prior)) {
-    stop("This function only works with spike_and_slab priors")
-  }
-
-  # Find the alternative component (this is the variable/slab part)
-  components <- attr(spike_and_slab_prior, "components")
-  alternative_idx <- which(components == "alternative")
-
-  # Set attribute on the variable component
-  attr(spike_and_slab_prior[[alternative_idx]], attr_name) <- value
-
-  return(spike_and_slab_prior)
-}
-
-
-
-
 #' @title Creates a mixture of prior distributions
 #' @description \code{prior_mixture} creates a mixture of prior distributions.
 #' This is a more generic version of the \code{prior_spike_and_slab} function.
