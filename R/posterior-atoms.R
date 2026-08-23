@@ -378,45 +378,6 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
   )
 }
 
-.posterior_atoms_refresh_from_prior <- function(samples, prior,
-                                                parameter = NULL){
-
-  n_columns <- if(is.null(dim(samples))) 1L else ncol(samples)
-  column_names <- if(is.null(dim(samples))){
-    if(is.null(parameter)) "value" else parameter
-  }else{
-    colnames(samples)
-  }
-  indicator <- attr(samples, "models_ind", exact = TRUE)
-
-  if(is.prior.spike_and_slab(prior)){
-    atoms <- .posterior_atoms_from_indicator(
-      prior,
-      indicator,
-      n_columns,
-      column_names,
-      spike_and_slab = TRUE
-    )
-  }else if(is.prior.mixture(prior)){
-    atoms <- .posterior_atoms_from_indicator(
-      prior,
-      indicator,
-      n_columns,
-      column_names
-    )
-  }else{
-    atoms <- .posterior_atoms_from_priors(
-      prior,
-      1,
-      n_columns,
-      column_names,
-      source = "prior_structure"
-    )
-  }
-
-  .posterior_atoms_set(samples, atoms)
-}
-
 .posterior_atoms_component_prior <- function(prior_entry, component,
                                              model_mixture){
 

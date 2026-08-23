@@ -141,14 +141,6 @@ is_prior_bias <- function(x){
   inherits(x, "prior.bias")
 }
 
-is.prior.phacking <- function(x){
-  is_prior_phacking(x)
-}
-
-is.prior.bias <- function(x){
-  is_prior_bias(x)
-}
-
 .phacking_report_parameter <- function(prior){
 
   if(!is_prior_phacking(prior)){
