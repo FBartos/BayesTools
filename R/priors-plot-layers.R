@@ -393,18 +393,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   return(invisible())
 }
-.lines.prior.orthonormal_or_meandif <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  lwd       <- if(!is.null(dots[["lwd"]]))      dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
-
-
-  graphics::lines(x = plot_data$x, y = plot_data$y, type = "l", lwd = lwd, lty = lty, col = col)
-
-  return(invisible())
-}
+.lines.prior.orthonormal_or_meandif <- .lines.prior.simple
 .lines.prior.factor          <- function(plot_data, ...){
 
   dots <- list(...)
@@ -451,7 +440,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   lwd       <- if(!is.null(dots[["lwd"]]))   dots[["lwd"]]   else .plot.prior_settings()[["lwd"]]
   lty       <- if(!is.null(dots[["lty"]]))   dots[["lty"]]   else .plot.prior_settings()[["lty"]]
 
-  geom <-   geom <- ggplot2::geom_bar(
+  geom <- ggplot2::geom_bar(
     data    = data.frame(
       x = plot_data$x,
       y = plot_data$y),
@@ -588,24 +577,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   return(geom)
 }
-.geom_prior.orthonormal_or_meandif <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  lwd       <- if(!is.null(dots[["size"]]))     dots[["size"]]     else  if(!is.null(dots[["lwd"]])) dots[["lwd"]] else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["linetype"]])) dots[["linetype"]] else  if(!is.null(dots[["lty"]])) dots[["lty"]] else .plot.prior_settings()[["lty"]]
-
-  geom <- ggplot2::geom_line(
-    data    = data.frame(
-      x = plot_data$x,
-      y = plot_data$y),
-    mapping = ggplot2::aes(
-      x = .data[["x"]],
-      y = .data[["y"]]),
-    linewidth = lwd, linetype = lty, color = col)
-
-  return(geom)
-}
+.geom_prior.orthonormal_or_meandif <- .geom_prior.simple
 .geom_prior.factors          <- function(plot_data, ...){
 
   # this function notably differs from the .line_prior.factor counterpart

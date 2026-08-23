@@ -679,29 +679,9 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
 
 .lines_diagnostics.density         <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  lwd       <- if(!is.null(dots[["lwd"]]))      dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
-
-
-  graphics::lines(x = plot_data$x, y = plot_data$y, type = "l", lwd = lwd, lty = lty, col = col)
-
-  return(invisible())
+  .lines.prior.simple(plot_data, ...)
 }
-.lines_diagnostics.trace           <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  lwd       <- if(!is.null(dots[["lwd"]]))      dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
-
-
-  graphics::lines(x = plot_data$x, y = plot_data$y, type = "l", lwd = lwd, lty = lty, col = col)
-
-  return(invisible())
-}
+.lines_diagnostics.trace           <- .lines_diagnostics.density
 .lines_diagnostics.autocorrelation <- function(plot_data, ...){
 
   dots      <- list(...)
@@ -718,41 +698,9 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 }
 
 .geom_diagnostics.density         <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  lwd       <- if(!is.null(dots[["size"]]))     dots[["size"]]     else  if(!is.null(dots[["lwd"]])) dots[["lwd"]] else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["linetype"]])) dots[["linetype"]] else  if(!is.null(dots[["lty"]])) dots[["lty"]] else .plot.prior_settings()[["lty"]]
-
-  geom <- ggplot2::geom_line(
-    data    = data.frame(
-      x = plot_data$x,
-      y = plot_data$y),
-    mapping = ggplot2::aes(
-      x = .data[["x"]],
-      y = .data[["y"]]),
-    linewidth = lwd, linetype = lty, color = col)
-
-  return(geom)
+  .geom_prior.simple(plot_data, ...)
 }
-.geom_diagnostics.trace           <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  lwd       <- if(!is.null(dots[["size"]]))     dots[["size"]]     else  if(!is.null(dots[["lwd"]])) dots[["lwd"]] else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["linetype"]])) dots[["linetype"]] else  if(!is.null(dots[["lty"]])) dots[["lty"]] else .plot.prior_settings()[["lty"]]
-
-  geom <- ggplot2::geom_line(
-    data    = data.frame(
-      x = plot_data$x,
-      y = plot_data$y),
-    mapping = ggplot2::aes(
-      x = .data[["x"]],
-      y = .data[["y"]]),
-    linewidth = lwd, linetype = lty, color = col)
-
-  return(geom)
-}
+.geom_diagnostics.trace           <- .geom_diagnostics.density
 .geom_diagnostics.autocorrelation <- function(plot_data, ...){
 
   dots      <- list(...)

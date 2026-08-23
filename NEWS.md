@@ -9,6 +9,10 @@
   bridge and row-density evaluators, avoiding repeated prior reconstruction
   work while retaining the canonical density calculation
 
+### Maintenance
+- reuses the common line renderer for simple and contrast-transformed priors
+  and density/trace diagnostics
+
 ### Features
 - adds an explicit `seed` argument to `JAGS_bridgesampling()` and seeds every
   cached marginal-likelihood fixture so cache refreshes reproduce bridge
