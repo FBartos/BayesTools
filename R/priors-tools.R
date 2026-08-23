@@ -158,7 +158,11 @@
 }
 
 .get_prior_factor_levels       <- function(prior){
-  if(is.prior.ordered(prior)){
+  mixture_K <- attr(prior, "K", exact = TRUE)
+  if(inherits(prior, "prior.factor_mixture") &&
+     !is.null(mixture_K) && !is.na(mixture_K)){
+    return(mixture_K)
+  }else if(is.prior.ordered(prior)){
     coefficient_dim <- attr(prior, "coefficient_dim", exact = TRUE)
     if(!is.null(coefficient_dim)){
       return(coefficient_dim)

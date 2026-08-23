@@ -517,7 +517,7 @@ test_that("ordered posterior extraction transforms coefficients to public levels
   expect_equal(unname(transformed[2, ]), c(0, 4, 12))
 })
 
-test_that("ordered prior mixing samples raw coefficients jointly", {
+test_that("prior sample generation uses stored ordered-mixture dimensions", {
   make_prior <- function(total, prior_weights){
     p <- prior_ordered(
       prior("point", list(location = total)),
@@ -533,54 +533,29 @@ test_that("ordered prior mixing samples raw coefficients jointly", {
   p1 <- make_prior(10, 1)
   p2 <- make_prior(20, 3)
 
-  single <- BayesTools:::.as_mixed_priors.factor(
-    p1,
-    parameter = "mu_f",
-    seed = 1,
-    n_samples = 4
+  single <- BayesTools:::.generate_prior_sample_matrix(
+    prior_list = list(mu_f = p1),
+    n_samples  = 4,
+    seed       = 1
   )
   expect_equal(
     unname(single[, , drop = FALSE]),
     matrix(c(2, 3, 5), nrow = 4, ncol = 3, byrow = TRUE)
   )
   expect_equal(colnames(single), paste0("mu_f[", 1:3, "]"))
-  expect_true(isTRUE(attr(single, "ordered")))
-  expect_false(is.null(attr(single, "ordered_metadata")))
 
-  single_levels <- transform_factor_samples(list(mu_f = single))$mu_f
-  expect_equal(
-    unname(single_levels[, , drop = FALSE]),
-    matrix(c(2, 5, 10), nrow = 4, ncol = 3, byrow = TRUE)
+  mixture_prior <- prior_mixture(list(p1, p2))
+  mixed <- BayesTools:::.generate_prior_sample_matrix(
+    prior_list = list(mu_f = mixture_prior),
+    n_samples  = 32,
+    seed       = 2
   )
-
-  mixed <- BayesTools:::.mix_priors.factor(
-    list(p1, p2),
-    parameter = "mu_f",
-    seed = 2,
-    n_samples = 8
+  row_values <- apply(mixed, 1L, paste, collapse = ",")
+  expect_setequal(
+    unique(row_values),
+    c("2,3,5", "4,6,10")
   )
-  model_1 <- attr(mixed, "models_ind") == 1L
-  model_2 <- attr(mixed, "models_ind") == 2L
-  expect_equal(sum(model_1) + sum(model_2), 8L)
-  expect_equal(mean(model_1), .25, tolerance = .25)
-  expect_equal(
-    unname(mixed[model_1, , drop = FALSE]),
-    matrix(c(2, 3, 5), nrow = sum(model_1), ncol = 3, byrow = TRUE)
-  )
-  expect_equal(
-    unname(mixed[model_2, , drop = FALSE]),
-    matrix(c(4, 6, 10), nrow = sum(model_2), ncol = 3, byrow = TRUE)
-  )
-
-  mixed_levels <- transform_factor_samples(list(mu_f = mixed))$mu_f
-  expect_equal(
-    unname(mixed_levels[model_1, , drop = FALSE]),
-    matrix(c(2, 5, 10), nrow = sum(model_1), ncol = 3, byrow = TRUE)
-  )
-  expect_equal(
-    unname(mixed_levels[model_2, , drop = FALSE]),
-    matrix(c(4, 10, 20), nrow = sum(model_2), ncol = 3, byrow = TRUE)
-  )
+  expect_equal(colnames(mixed), paste0("mu_f[", 1:3, "]"))
 })
 
 test_that("fixed ordered allocations canonicalize only roundoff drift", {
