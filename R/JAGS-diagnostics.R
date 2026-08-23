@@ -541,7 +541,6 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
   chain <- attr(plot_data, "chain")
   iter  <- attr(plot_data, "iter")
-  prior <- attr(plot_data, "prior")
 
   out   <- list()
 
@@ -590,8 +589,6 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 .diagnostics_plot_data_autocorrelation <- function(plot_data, n_points, lags){
 
   chain <- attr(plot_data, "chain")
-  iter  <- attr(plot_data, "iter")
-  prior <- attr(plot_data, "prior")
   .bt_diagnostics_validate_plot_data(
     plot_data,
     chain,

@@ -240,7 +240,9 @@ test_that("LKJ CPC beta density induces Stan Cholesky density kernel", {
 test_that("LKJ primitive beta construction has the expected marginal behavior", {
   set.seed(17)
   eta <- 2
-  draws <- BayesTools:::.bt_lkj_cholesky_rng(n = 8000, K = 2, eta = eta)
+  alpha <- BayesTools:::.bt_lkj_cholesky_alpha(K = 2, eta = eta)
+  u <- matrix(stats::rbeta(8000, alpha, alpha), ncol = 1L)
+  draws <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(u, K = 2)
   rho <- draws[, 2, 1]
 
   expect_equal(mean(rho), 0, tolerance = 0.03)

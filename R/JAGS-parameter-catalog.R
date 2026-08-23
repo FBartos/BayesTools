@@ -1199,7 +1199,7 @@ parameter_transform_jacobian <- function(values, transform){
   derived_rows <- list()
   for(parameter in names(prior_list)){
     prior <- prior_list[[parameter]]
-    formula_factor <- .bt_formula_prior_is_factor(prior) &&
+    formula_factor <- .bt_prior_is_factor_family(prior) &&
       !is.null(attr(prior, "term_components", exact = TRUE)) &&
       !isTRUE(attr(prior, "random_sd", exact = TRUE))
     if(!formula_factor){

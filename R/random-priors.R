@@ -915,16 +915,9 @@ is.prior_random <- function(x){
   invisible(TRUE)
 }
 
-.bt_random_prior_is_factor_family <- function(x){
-
-  is.prior.factor(x) ||
-    inherits(x, "prior.factor_mixture") ||
-    inherits(x, "prior.factor_spike_and_slab")
-}
-
 .bt_random_prior_has_non_scalar_family <- function(x){
 
-  if(.bt_random_prior_is_factor_family(x) ||
+  if(.bt_prior_is_factor_family(x) ||
      is.prior.simplex(x) ||
      is.prior.vector(x) ||
      (is.prior.discrete(x) && !is.prior.point(x)) ||

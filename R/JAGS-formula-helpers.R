@@ -1005,19 +1005,13 @@
 
   output
 }
-.bt_formula_prior_is_factor <- function(x){
-
-  is.prior.factor(x) ||
-    inherits(x, "prior.factor_mixture") ||
-    inherits(x, "prior.factor_spike_and_slab")
-}
 .bt_validate_formula_term_priors <- function(prior_list, model_terms,
                                              model_terms_type){
 
   for(model_term in model_terms){
     this_prior <- prior_list[[model_term]]
     term_type <- model_terms_type[[model_term]]
-    factor_prior <- .bt_formula_prior_is_factor(this_prior)
+    factor_prior <- .bt_prior_is_factor_family(this_prior)
 
     if(factor_prior){
       .validate_centered_factor_prior(
@@ -1085,9 +1079,6 @@
       paste0("formula_prior_list[[\"", intercept_name, "\"]]")
     }
   )
-}
-.remove_grouping_factor <- function(formula){
-  return(trimws(sub("\\|.*$", "", formula)))
 }
 #' @title Add an Intercept to a Formula
 #'

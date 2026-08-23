@@ -158,10 +158,6 @@
 
   FALSE
 }
-.JAGS_prior_uses_nonlocal <- function(prior){
-
-  .JAGS_prior_uses_BayesTools_module(prior)
-}
 .JAGS_prior_list_uses_BayesTools_module <- function(prior_list){
 
   length(prior_list) > 0L && any(vapply(prior_list, .JAGS_prior_uses_BayesTools_module, logical(1)))

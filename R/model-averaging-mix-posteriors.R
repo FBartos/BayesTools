@@ -55,10 +55,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   # extract the object
   fits           <- lapply(model_list, function(m) m[["fit"]])
-  margliks       <- .model_averaging_marglik_values(model_list)
   priors         <- lapply(model_list, function(m) attr(m[["fit"]], "prior_list"))
-  formula_priors <- lapply(model_list, function(m) m[["formula_priors"]])
-  prior_weights  <- sapply(model_list, function(m) m[["prior_weights"]])
 
   inference <- ensemble_inference(
     model_list,

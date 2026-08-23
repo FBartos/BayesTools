@@ -2475,16 +2475,6 @@ test_that("nested grouping expands consistently across covariance specials and w
   named_three <- block_labels(~ 1 + random(1 | g1 / g2 / g3, name = "spatial"))
   expect_equal(named_three$blocks, c("spatial_g3_g2_g1", "spatial_g2_g1", "spatial_g1"))
 
-  # Defensive guard: an un-expanded slash grouping must never reach evaluation.
-  slash_term <- BayesTools:::.bt_parse_random_effects(~ 1 + (1 | g1 / g2))$terms[[1]]
-  slash_term$group_expr <- quote(g1 / g2)
-  slash_term$group_is_symbol <- FALSE
-  expect_error(
-    BayesTools:::.bt_random_group_values(slash_term, data.frame(g1 = 1:4, g2 = 1:4)),
-    "was not expanded into separate per-level blocks",
-    fixed = TRUE
-  )
-
   # End-to-end: numeric grouping IDs must build two nested blocks, not a single
   # block keyed on the literal 'g1 / g2' quotient.
   df_numeric <- data.frame(

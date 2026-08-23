@@ -385,6 +385,12 @@ is.prior.weightfunction  <- function(x){
 is.prior.factor          <- function(x){
   inherits(x, "prior.factor")
 }
+.bt_prior_is_factor_family <- function(x){
+
+  is.prior.factor(x) ||
+    inherits(x, "prior.factor_mixture") ||
+    inherits(x, "prior.factor_spike_and_slab")
+}
 #' @rdname is.prior
 is.prior.ordered         <- function(x){
   inherits(x, "prior.ordered")

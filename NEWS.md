@@ -134,6 +134,9 @@
 - adds a `RandomEffects` vignette comparing BayesTools formula random effects with lme4 and rstanarm examples
 
 ### Changes
+- removes unreachable and superseded bridge, formula, prior, random-effect, and
+  summary helpers; consolidates shared formula-prior predicates and metadata
+  comparisons; and prunes implementation-only tests of replaced pathways.
 - Diagonal and unstructured random-factor blocks now retain one SD per
   generated coefficient for mean-difference, orthonormal, and ordered bases.
   Scalar SD templates expand to indexed independent priors, while explicitly

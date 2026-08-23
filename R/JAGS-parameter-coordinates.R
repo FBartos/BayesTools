@@ -719,11 +719,3 @@
   coordinates
 }
 
-.bt_parameter_coordinates_rows <- function(coordinates, coordinate_names){
-
-  .bt_validate_parameter_coordinates(coordinates)
-  match <- match(coordinate_names, coordinates$coordinate_name)
-  out <- coordinates[match, , drop = FALSE]
-  rownames(out) <- NULL
-  out
-}

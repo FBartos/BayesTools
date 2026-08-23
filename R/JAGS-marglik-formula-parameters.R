@@ -1,19 +1,3 @@
-# .JAGS_marglik_parameters.spike_and_slab <- function(samples, prior, parameter_name){
-#
-#   .check_prior(prior)
-#   if(!is.prior.spike_and_slab(prior))
-#     stop("improper prior provided")
-#   check_char(parameter_name, "parameter_name")
-#
-#   parameter <- list()
-#   parameter[paste0(parameter_name, "_variable")]  <- .JAGS_marglik_parameters.simple(samples, prior[["variable"]],  paste0(parameter_name, "_variable"))
-#   if(!is.prior.point(prior[[parameter_name]][["inclusion"]])){
-#     parameter[paste0(parameter_name, "_inclusion")] <- .JAGS_marglik_parameters.simple(samples, prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
-#   }
-#
-#   return(parameter)
-# }
-
 #' @rdname JAGS_marglik_parameters
 JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_data_list, formula_prior_list, prior_list_parameters,
                                                  formula_design_list = NULL,
@@ -162,7 +146,7 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   }
   overlap <- intersect(names(fitted), names(supplied))
   for(name in overlap){
-    if(!.bt_JAGS_marglik_source_data_equal(
+    if(!identical(
       fitted[[name]],
       supplied[[name]]
     )){
@@ -201,7 +185,7 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   data_list <- data_list[keep]
   overlap <- intersect(names(out), names(data_list))
   for(name in overlap){
-    if(!.bt_JAGS_marglik_source_data_equal(out[[name]], data_list[[name]])){
+    if(!identical(out[[name]], data_list[[name]])){
       stop(
         "JAGS_bridgesampling() row-indexed source reconstruction received ",
         "conflicting data for variable '", name, "'. Supply formula data, fitted ",
@@ -214,11 +198,6 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   out[names(data_list)] <- data_list
 
   out
-}
-
-.bt_JAGS_marglik_source_data_equal <- function(x, y){
-
-  identical(x, y)
 }
 
 .bt_JAGS_formula_design_can_reconstruct <- function(design){

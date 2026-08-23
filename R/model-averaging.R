@@ -183,15 +183,6 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
   )
 }
 
-.model_averaging_margliks <- function(margliks, prior_probs){
-
-  .model_averaging_prepare_margliks(
-    margliks,
-    prior_probs,
-    on_failure = "error"
-  )$margliks
-}
-
 .model_averaging_post_probs <- function(margliks, prior_probs){
 
   log_weights <- rep(-Inf, length(margliks))

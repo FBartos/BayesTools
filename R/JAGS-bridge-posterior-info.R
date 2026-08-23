@@ -197,7 +197,6 @@
 .JAGS_bridgesampling_posterior_info.ordered <- function(prior, parameter_name, emitted_allocations = character()){
 
   .prior_ordered_bridge_check(prior)
-  metadata <- .prior_ordered_metadata(prior)
   total_names <- .prior_ordered_total_monitor_names(prior, parameter_name)
 
   parameter <- character()
@@ -321,30 +320,3 @@
   attr(parameter, "ub") <- parameter_ub
   return(parameter)
 }
-# .JAGS_bridgesampling_posterior_info.spike_and_slab <- function(prior, parameter_name){
-#
-#   .check_prior(prior)
-#   if(!is.prior.spike_and_slab(prior))
-#     stop("improper prior provided")
-#   check_char(parameter_name, "parameter_name")
-#
-#   if(!is.prior.point(prior[["inclusion"]])){
-#
-#     parameter_variable  <- .JAGS_bridgesampling_posterior_info.simple(prior[["variable"]],  paste0(parameter_name, "_variable"))
-#     parameter_inclusion <- .JAGS_bridgesampling_posterior_info.simple(prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
-#
-#     parameter <- c(parameter_variable, parameter_inclusion)
-#
-#     attr(parameter, "lb") <- c(attr(parameter_variable, "lb"), attr(parameter_inclusion, "lb"))
-#     attr(parameter, "ub") <- c(attr(parameter_variable, "ub"), attr(parameter_inclusion, "ub"))
-#
-#     names(attr(parameter, "lb")) <- c(names(attr(parameter_variable, "lb")), names(attr(parameter_inclusion, "lb")))
-#     names(attr(parameter, "ub")) <- c(names(attr(parameter_variable, "ub")), names(attr(parameter_inclusion, "ub")))
-#
-#   }else{
-#     parameter  <- .JAGS_bridgesampling_posterior_info.simple(prior[["variable"]],  paste0(parameter_name, "_variable"))
-#   }
-#
-#
-#   return(parameter)
-# }

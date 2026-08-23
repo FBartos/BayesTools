@@ -963,34 +963,6 @@ quant.prior <- function(x, p, ...){
   .prior_simple_base_q(prior, C1 + p * .prior_C(prior))
 }
 
-.prior_simple_quant_optim <- function(prior, p){
-
-  if(!is.infinite(prior$truncation[["lower"]]) & !is.infinite(prior$truncation[["upper"]])){
-    start_value <- prior$truncation[["lower"]] + (prior$truncation[["upper"]]  - prior$truncation[["lower"]]) / 2
-  }else if(!is.infinite(prior$truncation[["upper"]])){
-    start_value <- prior$truncation[["upper"]] - 1
-  }else if(!is.infinite(prior$truncation[["lower"]])){
-    start_value <- prior$truncation[["lower"]] + 1
-  }else{
-    start_value <- 0
-  }
-
-  sapply(p, function(p_i){
-    stats::optim(
-      par     = start_value,
-      fn      = function(x, prior, p_i)(.prior_simple_cdf(prior, x) - p_i)^2,
-      lower   = prior$truncation[["lower"]],
-      upper   = prior$truncation[["upper"]],
-      prior   = prior,
-      p_i     = p_i,
-      method  = "L-BFGS-B",
-      control = list(
-        factr = 1e3
-      )
-    )$par
-  })
-}
-
 .prior_simple_rng <- function(prior, n){
 
   if(.is_prior_default_range(prior)){
@@ -1008,19 +980,6 @@ quant.prior <- function(x, p, ...){
 
   C1 <- .prior_C1(prior)
   .prior_simple_base_q(prior, stats::runif(n, min = C1, max = C1 + .prior_C(prior)))
-}
-
-.prior_simple_rng_rejection <- function(prior, n){
-
-  x  <- NULL
-  nn <- round(n * 1 / .prior_C(prior) * 1.10)
-
-  while(length(x) < n){
-    temp_x <- .prior_simple_base_r(prior, nn)
-    x      <- c(x, temp_x[temp_x >= prior$truncation[["lower"]] & temp_x <= prior$truncation[["upper"]]])
-  }
-
-  x[1:n]
 }
 
 .prior_C1 <- function(prior){
@@ -1298,7 +1257,7 @@ quant.prior <- function(x, p, ...){
 
 # tools
 .is_prior_default_range   <- function(prior){
-  default_range <- switch(
+  switch(
     prior[["distribution"]],
     "normal"    = is.infinite(prior$truncation[["lower"]])          & is.infinite(prior$truncation[["upper"]]),
     "lognormal" = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & is.infinite(prior$truncation[["upper"]]),

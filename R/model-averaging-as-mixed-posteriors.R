@@ -482,7 +482,6 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   # obtain mapping for the weight coefficients
   omega_info    <- .weightfunction_mapping_info(list(prior))
-  omega_mapping <- omega_info$mapping
   omega_names   <- omega_info$names
   omega_par     <- omega_info$pars
 
@@ -665,7 +664,6 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     if(any(has_selection)){
       selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
       omega_info    <- .weightfunction_mapping_info(selection_priors, one_sided = TRUE)
-      omega_mapping <- omega_info$mapping
       omega_names   <- omega_info$names
       omega_par     <- omega_info$pars
     }

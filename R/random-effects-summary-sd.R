@@ -460,21 +460,6 @@
   )
 }
 
-.bt_random_effect_summary_missing_allocation_sd_stop <- function(allocation){
-
-  label <- allocation
-  if(!is.character(label) || length(label) != 1L || is.na(label) || !nzchar(label)){
-    label <- "<unknown>"
-  }
-
-  stop(
-    "Random-effect allocation-scale summary samples are missing canonical SD coordinates for allocation '",
-    label,
-    "'. Expected monitored allocation SD or point-prior coordinates.",
-    call. = FALSE
-  )
-}
-
 .bt_random_effect_summary_inconsistent_sd_stop <- function(random_term){
 
   stop(

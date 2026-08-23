@@ -112,7 +112,7 @@
       "random-effect block names or order differ"
     )
   }
-  if(!.bt_JAGS_bridge_metadata_equal(
+  if(!identical(
     .bt_JAGS_bridge_random_compile_metadata(fitted),
     .bt_JAGS_bridge_random_compile_metadata(rebuilt)
   )){
@@ -165,7 +165,7 @@
     design$random_effects_compile
   )
   if(!is.null(stored) &&
-     !.bt_JAGS_bridge_metadata_equal(expected, stored)){
+     !identical(expected, stored)){
     .bt_JAGS_bridge_random_design_mismatch(
       parameter,
       paste0(label, " random-effect compile metadata is inconsistent with random-effect terms")
@@ -278,7 +278,7 @@
     )
   }
   if(!identical(fitted$contrast_owner, rebuilt$contrast_owner) ||
-     !.bt_JAGS_bridge_metadata_equal(
+     !identical(
        fitted$contrast_matrices,
        rebuilt$contrast_matrices
      )){
@@ -314,7 +314,7 @@
       block = block
     )
   }
-  if(!.bt_JAGS_bridge_metadata_equal(
+  if(!identical(
     .bt_JAGS_bridge_scale_metadata(fitted),
     .bt_JAGS_bridge_scale_metadata(rebuilt)
   )){
@@ -324,7 +324,7 @@
       block = block
     )
   }
-  if(!.bt_JAGS_bridge_metadata_equal(
+  if(!identical(
     .bt_JAGS_bridge_structured_index_metadata(fitted),
     .bt_JAGS_bridge_structured_index_metadata(rebuilt)
   )){
@@ -334,7 +334,7 @@
       block = block
     )
   }
-  if(!.bt_JAGS_bridge_metadata_equal(
+  if(!identical(
     .bt_JAGS_bridge_car_metadata(fitted),
     .bt_JAGS_bridge_car_metadata(rebuilt)
   )){
@@ -344,7 +344,7 @@
       block = block
     )
   }
-  if(!.bt_JAGS_bridge_metadata_equal(
+  if(!identical(
     .bt_JAGS_bridge_correlation_metadata(fitted),
     .bt_JAGS_bridge_correlation_metadata(rebuilt)
   )){
@@ -368,7 +368,7 @@
       block = block
     )
   }
-  if(!.bt_JAGS_bridge_metadata_equal(
+  if(!identical(
     .bt_JAGS_bridge_group_covariance_metadata(fitted),
     .bt_JAGS_bridge_group_covariance_metadata(rebuilt)
   )){
@@ -378,7 +378,7 @@
       block = block
     )
   }
-  if(!.bt_JAGS_bridge_metadata_equal(
+  if(!identical(
     .bt_JAGS_bridge_latent_layout_metadata(fitted),
     .bt_JAGS_bridge_latent_layout_metadata(rebuilt)
   )){
@@ -604,11 +604,6 @@
 .bt_JAGS_bridge_group_covariance_metadata <- function(random_term){
 
   .bt_random_effect_group_covariance_metadata(random_term)
-}
-
-.bt_JAGS_bridge_metadata_equal <- function(x, y){
-
-  identical(x, y)
 }
 
 .bt_JAGS_bridge_random_design_mismatch <- function(parameter, detail,

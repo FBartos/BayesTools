@@ -340,8 +340,6 @@
                                                           group_data,
                                                           prediction_rows = NULL){
 
-  n_draws <- nrow(posterior)
-  n_rows <- nrow(model_matrix)
   n_columns <- ncol(model_matrix)
   n_groups <- length(random_term$group_levels)
 

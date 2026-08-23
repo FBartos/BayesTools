@@ -222,27 +222,6 @@
   model_samples[, !remove_columns, drop = FALSE]
 }
 
-.bt_random_effect_summary_term_filter_matches <- function(random_term,
-                                                         random_effects = NULL,
-                                                         random_structures = NULL){
-
-  matches <- TRUE
-  if(!is.null(random_effects)){
-    effect_names <- c(
-      random_term$block_name,
-      .bt_random_effect_public_name(random_term),
-      random_term$group_label
-    )
-    matches <- matches && any(effect_names %in% random_effects)
-  }
-  if(!is.null(random_structures)){
-    matches <- matches &&
-      .bt_random_effect_summary_term_structure(random_term) %in% random_structures
-  }
-
-  matches
-}
-
 .bt_random_effect_summary_term_structure <- function(random_term){
 
   .bt_random_effect_structure(
@@ -513,45 +492,6 @@
     allocation_index = if(is.null(key$index)) NULL else key$index,
     component = if(nzchar(quantity$component)) quantity$component else NULL
   )
-}
-
-.bt_random_effect_summary_raw_display_names <- function(names, raw_names,
-                                                        prior_list,
-                                                        formula_prefix,
-                                                        formula_design = NULL){
-
-  random_design <- .bt_random_effect_summary_designs(formula_design)
-  if(length(random_design) == 0L){
-    return(names)
-  }
-
-  for(design in random_design){
-    parameter <- design$parameter
-    prefix <- .bt_random_effect_summary_formula_prefix(parameter, formula_prefix)
-    for(random_term in design$random_effects){
-      names <- .bt_random_effect_summary_raw_sd_display_names(
-        names = names,
-        raw_names = raw_names,
-        prior_list = prior_list,
-        random_term = random_term,
-        prefix = prefix
-      )
-      names <- .bt_random_effect_summary_raw_rho_display_names(
-        names = names,
-        raw_names = raw_names,
-        random_term = random_term,
-        prefix = prefix
-      )
-      names <- .bt_random_effect_summary_raw_matrix_display_names(
-        names = names,
-        raw_names = raw_names,
-        random_term = random_term,
-        prefix = prefix
-      )
-    }
-  }
-
-  names
 }
 
 .bt_random_effect_summary_renamed_parameter_names <- function(parameter_names,

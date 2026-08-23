@@ -95,16 +95,6 @@
   return(out)
 }
 
-.bt_merge_random_wrapper_bars <- function(formula, bars, expand_method){
-
-  wrapper_bars <- .bt_find_random_wrapper_calls(formula)
-  if(length(wrapper_bars) == 0L){
-    return(bars)
-  }
-
-  .bt_find_random_effect_calls_ordered(formula, expand_method)
-}
-
 # TRUE for a `expr | group` or `expr || group` bar call.
 .bt_random_effect_is_bar_call <- function(x){
   is.call(x) && length(x) == 3L &&
@@ -865,51 +855,6 @@
   }
 
   invisible(TRUE)
-}
-
-.bt_random_group_values <- function(term, data){
-
-  if(isTRUE(term$group_is_symbol)){
-    if(!term$group_label %in% colnames(data)){
-      stop("The '", term$group_label, "' grouping factor is missing in the data set.", call. = FALSE)
-    }
-    return(.bt_validate_random_group_values(data[[term$group_label]], term, data))
-  }
-
-  if(.bt_random_group_is_slash_expr(term$group_expr)){
-    stop(
-      "Random-effect nested grouping '", term$group_label,
-      "' was not expanded into separate per-level blocks before evaluation. ",
-      "This is an internal BayesTools error; please report it.",
-      call. = FALSE
-    )
-  }
-
-  term_env <- environment(term$term_formula)
-  if(is.null(term_env)){
-    term_env <- parent.frame()
-  }
-  if(.bt_random_group_is_colon_expr(term$group_expr)){
-    value <- try(
-      .bt_random_group_interaction_values(term$group_expr, data, term_env),
-      silent = TRUE
-    )
-  }else{
-    stop(
-      "Random-effect grouping expressions must be variables, ':' interactions, or '/' nested grouping.",
-      call. = FALSE
-    )
-  }
-  if(inherits(value, "try-error")){
-    stop(
-      "Could not evaluate random-effect grouping expression '",
-      term$group_label,
-      "' in the data set.",
-      call. = FALSE
-    )
-  }
-
-  .bt_validate_random_group_values(value, term, data)
 }
 
 .bt_random_group_is_colon_expr <- function(expr){

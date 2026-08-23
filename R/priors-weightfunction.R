@@ -245,15 +245,9 @@ wf_independent <- function(prior, scale = "omega"){
 
   nrow(prior$bins)
 }
-.weightfunction_is_fixed <- function(prior){
-  prior$weights$type == "fixed"
-}
 .weightfunction_local_cuts <- function(prior){
 
   c(prior$bins$lower[1], prior$bins$upper)
-}
-.weightfunction_reference_index <- function(prior){
-  which(prior$bins$reference)
 }
 .weightfunction_alpha_marginal <- function(alpha, index){
 

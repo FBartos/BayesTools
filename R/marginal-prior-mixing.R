@@ -1006,7 +1006,6 @@
   }
 
   # obtain mapping for the weight coefficients
-  omega_mapping <- weightfunctions_mapping(list(prior))
   omega_cuts    <- weightfunctions_mapping(list(prior), cuts_only = TRUE)
   omega_names   <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
 
@@ -1183,7 +1182,6 @@
 
   }else{
 
-    is_simple <- sapply(prior, is.prior.simple)
     is_factor <- sapply(prior, is.prior.factor)
 
     if(any(is_factor)){

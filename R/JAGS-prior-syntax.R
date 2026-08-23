@@ -46,7 +46,6 @@ JAGS_add_priors           <- function(syntax, prior_list){
 .JAGS_add_priors.fun       <- function(prior_list){
 
   syntax_priors <- ""
-  syntax_attributes <- NULL
   ordered_allocation_keys <- character()
 
   for(i in seq_along(prior_list)){
@@ -603,35 +602,6 @@ JAGS_add_priors           <- function(syntax, prior_list){
 }
 
 
-.add_JAGS_vector   <- function(name, vector){
-
-  if(!is.vector(vector))
-    stop("vector must be a vector")
-  check_char(name, "name")
-
-  syntax <- paste0(" ", name, " = c(", paste0(vector, collapse = ", "), ")\n")
-
-  return(syntax)
-}
-.add_JAGS_matrix   <- function(name, matrix){
-
-  if(!is.matrix(matrix))
-    stop("matrix must be a matrix")
-  check_char(name, "name")
-
-  syntax <- ""
-
-  # this unfortunatelly cannot be defined on row/column basis
-  # I tried simplifying this before but only possible initialization is elementwise
-  for(i in 1:nrow(matrix)){
-   syntax <- paste0(
-     syntax, " ",
-     paste0(name,"[", i, ",", seq_len(ncol(matrix)), "] = ", matrix[i,], collapse = "; "), "\n"
-   )
-  }
-
-  return(syntax)
-}
 .check_JAGS_syntax <- function(syntax){
 
   check_char(syntax, "syntax", allow_NULL = TRUE)

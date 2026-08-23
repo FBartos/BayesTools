@@ -1363,8 +1363,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   if(simple_list){
     temp_multiply_by <- .get_parameter_scaling_factor_matrix(term, prior_list, posterior, nrow = nrow, ncol = nrow(posterior))
   }else{
-    model_samples <- table(models_ind)
-
     temp_multiply_by <- do.call(cbind, lapply(unique(models_ind), function(m){
       temp_prior_list <- lapply(prior_list, function(parameter_priors) parameter_priors[[m]])
       temp_posterior  <- posterior[models_ind == m,,drop=FALSE]

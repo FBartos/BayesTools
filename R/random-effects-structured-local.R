@@ -663,26 +663,3 @@
   )
 }
 
-# Return exact group-local Cholesky blocks for one scalar rho draw.
-.bt_random_effect_structured_local_cholesky_blocks <- function(layout, rho){
-
-  if(!inherits(layout, "BayesTools_random_effect_structured_local_layout")){
-    stop(
-      "'layout' must be created by .bt_random_effect_structured_local_layout().",
-      call. = FALSE
-    )
-  }
-
-  lapply(layout$group_columns, function(columns){
-    if(length(columns) == 0L){
-      return(matrix(numeric(), nrow = 0L, ncol = 0L))
-    }
-    .bt_random_effect_structured_subset_cholesky(
-      structure = layout$structure,
-      columns = columns,
-      rho = rho,
-      global_n_columns = layout$global_n_columns,
-      column_coordinates = layout$column_coordinates
-    )
-  })
-}

@@ -379,7 +379,7 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
     omega <- do.call(rbind, lapply(1:length(x), function(i)omega))
   }
 
-  lik <- do.call(cbind, lapply(1:ncol(omega), function(i)dpoint(x, location = omega[,i], log = log)))
+  do.call(cbind, lapply(1:ncol(omega), function(i)dpoint(x, location = omega[,i], log = log)))
 }
 
 #### random number generators ####

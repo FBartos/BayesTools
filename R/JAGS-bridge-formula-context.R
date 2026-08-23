@@ -315,28 +315,6 @@
   prior_list[!vapply(prior_list, function(x) length(x) == 0L, logical(1))]
 }
 
-.bt_JAGS_bridge_formula_input_names_match <- function(formula_list,
-                                                      formula_data_list,
-                                                      formula_prior_list,
-                                                      formula_scale_list = NULL,
-                                                      formula_random_prior_list = NULL,
-                                                      formula_random_effects_compile_list = NULL){
-
-  tryCatch({
-    .bt_validate_jags_formula_lists(
-      formula_list = formula_list,
-      formula_data_list = formula_data_list,
-      formula_prior_list = formula_prior_list,
-      formula_random_prior_list = formula_random_prior_list,
-      formula_random_effects_compile_list = formula_random_effects_compile_list,
-      formula_scale_list = formula_scale_list
-    )
-    TRUE
-  }, error = function(e){
-    FALSE
-  })
-}
-
 .bt_JAGS_bridge_stop_formula_mismatch <- function(mismatches){
 
   if(length(mismatches) == 0L){
@@ -415,15 +393,15 @@
   if(!identical(fitted$assign, rebuilt$assign)){
     mismatches <- c(mismatches, paste0("fixed-effect model term assignments differ for parameter '", parameter, "'"))
   }
-  if(!.bt_JAGS_bridge_metadata_equal(fitted$contrasts, rebuilt$contrasts) ||
-     !.bt_JAGS_bridge_metadata_equal(
+  if(!identical(fitted$contrasts, rebuilt$contrasts) ||
+     !identical(
        fitted$contrast_matrices,
        rebuilt$contrast_matrices
      ) ||
-     !.bt_JAGS_bridge_metadata_equal(fitted$xlevels, rebuilt$xlevels)){
+     !identical(fitted$xlevels, rebuilt$xlevels)){
     mismatches <- c(mismatches, paste0("factor contrasts or levels differ for parameter '", parameter, "'"))
   }
-  if(!.bt_JAGS_bridge_metadata_equal(fitted$formula_scale, rebuilt$formula_scale)){
+  if(!identical(fitted$formula_scale, rebuilt$formula_scale)){
     mismatches <- c(mismatches, paste0("formula scaling metadata differ for parameter '", parameter, "'"))
   }
   if(!identical(fitted$source_data, rebuilt$source_data)){

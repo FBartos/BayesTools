@@ -513,11 +513,6 @@
   source$kind
 }
 
-.bt_random_sd_binding_source_owned <- function(source){
-  .bt_check_random_sd_binding_source(source)
-  source$owned
-}
-
 .bt_random_sd_binding_source_jags_expression <- function(source,
                                                          row_index = NULL){
 

@@ -432,18 +432,6 @@
   )
 }
 
-.selection_initial_omega <- function(selection, breaks){
-
-  local <- .selection_weightfunction_mean(selection)
-  expansion <- .weightfunction_mapping_expansion(selection, force_one_sided = TRUE)
-  global_bin_indices <- .weightfunction_global_bin_indices(breaks, expansion)
-
-  vapply(seq_len(length(breaks) - 1L), function(i){
-    ind <- global_bin_indices[i]
-    local[expansion$index[ind]]
-  }, numeric(1))
-}
-
 .selection_weightfunction_mean <- function(selection){
 
   components <- .weightfunction_marginal_components(selection)

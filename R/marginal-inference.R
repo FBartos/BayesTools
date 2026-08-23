@@ -162,9 +162,6 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
   check_bool(compute_BF, "compute_BF")
   density_method <- .marginal_inference_density_method(density_method)
 
-  priors <- attr(model, "prior_list")
-
-
   # create one full model-averaged ensemble
   averaged_posterior <- as_mixed_posteriors(
     model        = model,
@@ -248,11 +245,6 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
   }
 
   return(density_method)
-}
-
-.marginal_inference_condition_key <- function(conditional, conditional_rule = "AND"){
-
-  .condition_event_key(conditional, conditional_rule)
 }
 
 .marginal_inference_level_conditionals <- function(marginal, prior_list, conditional,

@@ -615,8 +615,6 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   col  <- if(!is.null(dots[["col"]]))      dots[["col"]]      else rep(.plot.prior_settings()[["col"]], length(dots[["level_names"]]))
   lty  <- if(!is.null(dots[["linetype"]])) dots[["linetype"]]
   else  if(!is.null(dots[["lty"]]))        dots[["lty"]]      else rep(.plot.prior_settings()[["lty"]], length(dots[["level_names"]]))
-  lwd  <- if(!is.null(dots[["size"]]))     dots[["size"]]
-  else  if(!is.null(dots[["lwd"]]))        dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
   legend_title <- if(!is.null(dots[["legend_title"]])) dots[["legend_title"]] else NULL
 
   names(col) <- dots[["level_names"]]

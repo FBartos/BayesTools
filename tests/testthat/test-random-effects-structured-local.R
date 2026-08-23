@@ -605,32 +605,6 @@ test_that("stable CAR recurrence is shared by reconstruction and prediction", {
   )
 })
 
-test_that("layout Cholesky blocks follow group-specific principal subsets", {
-
-  model_matrix <- matrix(0, nrow = 7L, ncol = 6L)
-  row_column   <- c(1L, 4L, 4L, 2L, 5L, 6L, 2L)
-  group_map    <- c(1L, 1L, 1L, 2L, 2L, 2L, 3L)
-  model_matrix[cbind(seq_len(nrow(model_matrix)), row_column)] <- 1
-  layout <- BayesTools:::.bt_random_effect_structured_local_layout(
-    model_matrix = model_matrix,
-    group_map = group_map,
-    structure = "ar1",
-    exact_indicator = TRUE
-  )
-  blocks <- BayesTools:::.bt_random_effect_structured_local_cholesky_blocks(
-    layout = layout,
-    rho = -0.4
-  )
-  global_R <- (-0.4)^abs(outer(seq_len(6L), seq_len(6L), "-"))
-
-  expect_length(blocks, 3L)
-  for(group in seq_along(blocks)){
-    columns <- layout$group_columns[[group]]
-    expect_equal(tcrossprod(blocks[[group]]), global_R[columns, columns, drop = FALSE],
-                 tolerance = 1e-12)
-  }
-})
-
 test_that("direct subset transforms equal explicit Cholesky products", {
 
   set.seed(4813)

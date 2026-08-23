@@ -536,7 +536,6 @@
     has_intercept = has_intercept,
     homogeneous_sd = homogeneous_sd
   )
-  terms_indexes <- sd_spec$terms_indexes
   sd_parameter_names <- sd_spec$sd_parameter_names
   sd_leaves <- sd_spec$sd_leaves
   random_scale_terms <- c(random_scale_terms, sd_spec$random_scale_terms)

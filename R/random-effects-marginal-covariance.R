@@ -2420,7 +2420,6 @@ random_effects_marginal_variance_factors <- function(
     diagonal_only = FALSE){
 
   n_rows    <- nrow(model_matrix)
-  n_columns <- ncol(model_matrix)
   row_names <- rownames(model_matrix)
   if(is.null(row_names)){
     row_names <- as.character(seq_len(n_rows))

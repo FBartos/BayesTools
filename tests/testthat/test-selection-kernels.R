@@ -576,16 +576,6 @@ test_that("selection_backend_spec rejects malformed global breaks", {
   expect_equal(spec$step$coefficient_ids, paste0("omega[", 1:3, "]"))
 })
 
-test_that("selection initial omega expands two-sided weights onto one-sided global bins", {
-
-  selection <- prior_weightfunction("two-sided", c(.05, .10), wf_fixed(c(1, .2, .5)))
-
-  expect_equal(
-    BayesTools:::.selection_initial_omega(selection, c(0, .025, .05, .95, .975, 1)),
-    c(1, .2, .5, .2, 1)
-  )
-})
-
 test_that("selection prior means handle point, cumulative, and log-scale components", {
 
   cumulative <- prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 2, 3)))

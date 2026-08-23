@@ -240,29 +240,6 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
   .Call("BayesTools_lkj_cholesky_from_u", u, as.integer(K), PACKAGE = "BayesTools")
 }
 
-.bt_lkj_cholesky_rng <- function(n, K, eta = 1){
-
-  if(!is.numeric(n) || length(n) != 1L || is.na(n) || n != as.integer(n) || n < 1L){
-    stop("'n' must be a positive integer scalar.", call. = FALSE)
-  }
-  K <- .bt_lkj_cholesky_check_K(K)
-  eta <- .bt_lkj_cholesky_check_eta(eta)
-  alpha <- .bt_lkj_cholesky_alpha(K = K, eta = eta)
-  n_pairs <- length(alpha)
-
-  if(n_pairs == 0L){
-    draws <- array(1, dim = c(n, 1L, 1L))
-    return(draws)
-  }
-
-  u <- matrix(NA_real_, nrow = n, ncol = n_pairs)
-  for(p in seq_len(n_pairs)){
-    u[, p] <- stats::rbeta(n, alpha[p], alpha[p])
-  }
-
-  .bt_lkj_cholesky_cpc_u_to_L(u, K = K)
-}
-
 .bt_lkj_cholesky_cpc_u_to_R <- function(u, K){
 
   K <- .bt_lkj_cholesky_check_K(K)

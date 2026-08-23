@@ -859,12 +859,6 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   "random_cor" %in% aliases
 }
 
-.bt_JAGS_estimates_raw_random_correlation_columns <- function(column_names){
-
-  grepl("_xRE_CORx", column_names, fixed = TRUE) |
-    grepl("_rho(_z|_logit)?(\\[|$)", column_names)
-}
-
 #' @rdname BayesTools_model_tables
 runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnings = NULL, formula_prefix = TRUE,
                                      logBF = FALSE, BF01 = FALSE, BF_diagnostics = FALSE,
