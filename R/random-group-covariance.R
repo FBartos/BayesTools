@@ -470,9 +470,3 @@ print.random_group_covariance <- function(x, ...){
     formula_prefix = FALSE
   )
 }
-
-.bt_random_effect_sd_component_summary_label <- function(component){
-
-  arguments <- .bt_random_effect_semantic_sd_arguments(component)
-  .bt_random_effect_semantic_quantity_name("sd", arguments)
-}
