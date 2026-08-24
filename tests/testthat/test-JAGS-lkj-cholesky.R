@@ -45,7 +45,7 @@ test_that("JAGS_lkj_corr_cholesky validates inputs and exposes metadata", {
 test_that("LKJ primitive helpers enforce open u support before native transforms", {
 
   near_lower <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(1e-8, K = 2)
-  near_upper <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_R(1 - 1e-8, K = 2)
+  near_upper <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(1 - 1e-8, K = 2)
   expect_true(all(is.finite(as.vector(near_lower))))
   expect_true(all(is.finite(as.vector(near_upper))))
 
@@ -54,7 +54,7 @@ test_that("LKJ primitive helpers enforce open u support before native transforms
     length.out = BayesTools:::.bt_lkj_cholesky_n_pairs(8L)
   )
   extreme_L <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(extreme_u, K = 8L)
-  extreme_R <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_R(extreme_u, K = 8L)
+  extreme_R <- tcrossprod(extreme_L)
   expect_true(all(is.finite(extreme_L)))
   expect_true(all(diag(extreme_L) >= 0))
   expect_identical(extreme_R, t(extreme_R))
@@ -66,11 +66,6 @@ test_that("LKJ primitive helpers enforce open u support before native transforms
       "strictly between 0 and 1",
       fixed = TRUE
     )
-    expect_error(
-      BayesTools:::.bt_lkj_cholesky_cpc_u_to_R(value, K = 2),
-      "strictly between 0 and 1",
-      fixed = TRUE
-    )
   }
 
   invalid_matrix <- matrix(c(0.25, 0, 0.75), nrow = 1)
@@ -79,12 +74,6 @@ test_that("LKJ primitive helpers enforce open u support before native transforms
     "strictly between 0 and 1",
     fixed = TRUE
   )
-  expect_error(
-    BayesTools:::.bt_lkj_cholesky_cpc_u_to_R(invalid_matrix, K = 3),
-    "strictly between 0 and 1",
-    fixed = TRUE
-  )
-
   prior_values <- BayesTools:::.bt_lkj_cholesky_cpc_u_log_prior(
     matrix(c(0.25, 0.5, 0.75, 0.25, 0, 0.75), nrow = 2, byrow = TRUE),
     K = 3,
@@ -179,7 +168,10 @@ test_that("native LKJ helpers handle vectorized R-side transforms", {
     c(0.42, 0.81, 0.35)
   )
   L <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(u, K = 3)
-  R <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_R(u, K = 3)
+  R <- array(NA_real_, dim = dim(L))
+  for(draw in seq_len(dim(L)[1L])){
+    R[draw, , ] <- tcrossprod(L[draw, , ])
+  }
   alpha <- BayesTools:::.bt_lkj_cholesky_alpha(K = 3, eta = 1.4)
   log_prior <- BayesTools:::.bt_lkj_cholesky_cpc_u_log_prior(u, K = 3, eta = 1.4)
 

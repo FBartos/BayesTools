@@ -226,17 +226,6 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
   .Call("BayesTools_lkj_cholesky_from_u", u, as.integer(K), PACKAGE = "BayesTools")
 }
 
-.bt_lkj_cholesky_cpc_u_to_R <- function(u, K){
-
-  K <- .bt_lkj_cholesky_check_K(K)
-  n_pairs <- .bt_lkj_cholesky_n_pairs(K)
-  .bt_lkj_cholesky_check_u_shape(u, n_pairs)
-  .bt_lkj_cholesky_check_u_support(u)
-
-  .BayesTools_require_native_lkj()
-  .Call("BayesTools_lkj_corr_from_u", u, as.integer(K), PACKAGE = "BayesTools")
-}
-
 .bt_lkj_cholesky_check_u_shape <- function(u, n_pairs){
 
   if(is.matrix(u)){

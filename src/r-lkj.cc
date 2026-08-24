@@ -71,7 +71,7 @@ SEXP coerce_numeric(SEXP x, const char *name)
   return Rf_coerceVector(x, REALSXP);
 }
 
-SEXP lkj_matrix_from_u(SEXP u, SEXP K, bool correlation)
+SEXP lkj_cholesky_from_u(SEXP u, SEXP K)
 {
   const unsigned int K_value = scalar_K(K);
   const unsigned int n_pairs = bayestools::lkj::n_cpc(K_value);
@@ -93,10 +93,6 @@ SEXP lkj_matrix_from_u(SEXP u, SEXP K, bool correlation)
 
   double const *u_ptr = REAL(u_real);
   std::vector<double> row_major(K_value * K_value);
-  std::vector<double> corr_work;
-  if(correlation){
-    corr_work.resize(K_value * K_value);
-  }
 
   SEXP out = PROTECT(Rf_allocVector(REALSXP, n_draws * K_value * K_value));
   double *out_ptr = REAL(out);
@@ -105,19 +101,10 @@ SEXP lkj_matrix_from_u(SEXP u, SEXP K, bool correlation)
     if(matrix_input){
       double const *draw_u = u_ptr + draw;
       check_u_values_strided(draw_u, n_pairs, n_draws);
-      if(correlation){
-        bayestools::lkj::fill_cholesky_from_u_strided(&corr_work[0], n_pairs == 0 ? 0 : draw_u, K_value, n_draws);
-        bayestools::lkj::fill_corr_from_cholesky(&row_major[0], &corr_work[0], K_value);
-      }else{
-        bayestools::lkj::fill_cholesky_from_u_strided(&row_major[0], n_pairs == 0 ? 0 : draw_u, K_value, n_draws);
-      }
+      bayestools::lkj::fill_cholesky_from_u_strided(&row_major[0], n_pairs == 0 ? 0 : draw_u, K_value, n_draws);
     }else{
       check_u_values(u_ptr, n_pairs);
-      if(correlation){
-        bayestools::lkj::fill_corr_from_u(&row_major[0], n_pairs == 0 ? 0 : u_ptr, K_value);
-      }else{
-        bayestools::lkj::fill_cholesky_from_u(&row_major[0], n_pairs == 0 ? 0 : u_ptr, K_value);
-      }
+      bayestools::lkj::fill_cholesky_from_u(&row_major[0], n_pairs == 0 ? 0 : u_ptr, K_value);
     }
 
     for(unsigned int row = 0; row < K_value; ++row){
@@ -159,12 +146,7 @@ SEXP lkj_matrix_from_u(SEXP u, SEXP K, bool correlation)
 
 extern "C" SEXP BayesTools_lkj_cholesky_from_u(SEXP u, SEXP K)
 {
-  return lkj_matrix_from_u(u, K, false);
-}
-
-extern "C" SEXP BayesTools_lkj_corr_from_u(SEXP u, SEXP K)
-{
-  return lkj_matrix_from_u(u, K, true);
+  return lkj_cholesky_from_u(u, K);
 }
 
 extern "C" SEXP BayesTools_lkj_log_prior_u(SEXP u, SEXP alpha)
