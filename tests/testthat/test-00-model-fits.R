@@ -6185,15 +6185,19 @@ test_that("fully structural fits retain deterministic draw geometry", {
   skip_if_not_installed("rjags")
   skip_on_cran()
 
-  fit <- JAGS_fit(
-    model_syntax = "model{}",
-    prior_list = list(theta = prior("point", list(0))),
-    chains = 2,
-    adapt = 100,
-    burnin = 100,
-    sample = 100,
-    silent = TRUE,
-    seed = 1
+  fit <- NULL
+  expect_warning(
+    fit <- JAGS_fit(
+      model_syntax = "model{}",
+      prior_list = list(theta = prior("point", list(0))),
+      chains = 2,
+      adapt = 100,
+      burnin = 100,
+      sample = 100,
+      silent = TRUE,
+      seed = 1
+    ),
+    "No data was specified or found"
   )
 
   coordinates <- parameter_coordinates(fit)

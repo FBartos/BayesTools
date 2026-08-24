@@ -25,3 +25,4 @@ check/
 .positai
 CLAUDE.md
 .StatsVault/
+/.agents/tmp

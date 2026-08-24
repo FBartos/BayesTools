@@ -58,16 +58,32 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
     plot_data_prior <- unlist(lapply(plot_data, attr, which = "prior"), recursive = FALSE)
 
-    # transplant common xlim and ylim
+    # Resolve one plotting range for the jointly displayed prior and posterior.
     plot_data_joined <- c(plot_data, plot_data_prior)
-
-    xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "x_range")))
-    attr(plot_data_prior[[1]], "x_range") <- xlim
-
-    xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "y_range")))
-    attr(plot_data_prior[[1]], "y_range") <- xlim
-
     dots_prior <- .transfer_dots(dots_prior, ...)
+
+    if(is.null(dots_prior[["xlim"]])){
+      dots_prior$xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "x_range")))
+    }
+
+    is_simple <- sapply(plot_data_joined, inherits, what = "density.prior.simple")
+    is_point  <- sapply(plot_data_joined, inherits, what = "density.prior.point")
+    if(any(is_simple) && any(is_point)){
+      if(is.null(dots_prior[["ylim"]])){
+        dots_prior$ylim <- range(as.vector(sapply(plot_data_joined[is_simple], attr, which = "y_range")))
+      }
+      if(is.null(dots_prior[["ylim2"]])){
+        dots_prior$ylim2 <- range(as.vector(sapply(plot_data_joined[is_point], attr, which = "y_range")))
+      }
+    }else{
+      if(is.null(dots_prior[["ylim"]])){
+        dots_prior$ylim <- range(as.vector(sapply(plot_data_joined, attr, which = "y_range")))
+      }
+    }
+    if(!is.null(dots[["scale_y2"]])){
+      dots_prior$scale_y2 <- dots[["scale_y2"]]
+    }
+    scale_y2 <- .plot_scale_y2_resolve(plot_data_joined, dots_prior)
 
 
     # plot prior
@@ -75,6 +91,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     args_prior$plot_data <- plot_data_prior
     args_prior$plot_type <- plot_type
     args_prior$par_name  <- par_name
+    args_prior$scale_y2  <- scale_y2
     args_prior$hardcode  <- TRUE
     args_prior$legend    <- FALSE
     args_prior$legend_title <- legend_title
@@ -98,6 +115,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     if(plot_type == "base"){
       plot <- do.call(.plot_prior_list.factor, args)
     }else if(plot_type == "ggplot"){
+      args$scale_y2 <- scale_y2
       plot <- plot + do.call(.plot_prior_list.factor, args)
     }
 

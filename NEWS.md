@@ -1,5 +1,10 @@
 # version 0.3.1
 ### Fixes
+- unregisters the JAGS module before destroying module-owned native objects at
+  process shutdown, preventing intermittent Windows access violations
+- uses the joint prior-posterior density and point-mass ranges when composing
+  marginal plots, so automatic secondary probability axes include every
+  displayed atom while explicit later overlays still diagnose clipping
 - requires exact equality for structural probability endpoints, reference-bin
   weights, point-complement hypotheses, and overlapping bridge bounds instead
   of accepting nearby values under a numerical-comparison tolerance

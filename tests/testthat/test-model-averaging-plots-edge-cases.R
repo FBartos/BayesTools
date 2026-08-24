@@ -1271,6 +1271,52 @@ test_that("marginal prior grids receive the displayed plotting range", {
   expect_true(all(is.finite(prior_data[["y"]])))
 })
 
+test_that("marginal prior overlays include posterior point-mass limits", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior_mixture(
+      list(
+        prior("spike", list(0), prior_weights = 1),
+        prior("normal", list(0, 1), prior_weights = 4)
+      ),
+      is_null = c(TRUE, FALSE)
+    )),
+    weights = c(theta = 1),
+    n_grid  = 512
+  )
+  set.seed(2)
+  posterior <- c(rep(0, 80), stats::rnorm(20))
+  class(posterior) <- c(
+    "marginal_posterior.simple",
+    "marginal_posterior",
+    class(posterior)
+  )
+  attr(posterior, "prior_density")   <- prior_density
+  attr(posterior, "posterior_atoms") <- posterior_atom_attribute(
+    list(location = 0, mass = .8)
+  )
+
+  file <- tempfile(fileext = ".png")
+  grDevices::png(file)
+  on.exit({
+    grDevices::dev.off()
+    unlink(file)
+  }, add = TRUE)
+
+  expect_no_warning(
+    plot_marginal(list(theta = posterior), "theta", prior = TRUE)
+  )
+  scale_state <- BayesTools:::.plot_scale_y2_state_current()
+  expect_gte(max(scale_state[["ylim2"]]), .8)
+  expect_warning(
+    plot_marginal(
+      list(theta = posterior), "theta",
+      prior = TRUE, ylim2 = c(0, .5)
+    ),
+    "wider 'ylim2'"
+  )
+})
+
 test_that("factor plot data normalization preserves unnamed points", {
 
   density_data <- BayesTools:::.prior_linear_density_to_plot_data(
