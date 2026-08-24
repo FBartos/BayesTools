@@ -36,9 +36,15 @@ test_that("quiet LLM reporter counts skips without printing each reason", {
 
 test_that("interactive runner dispatches comprehensive and filtered profiles", {
 
+  runner_path <- testthat::test_path("..", "..", ".dev", "test-tests.R")
+  skip_if_not(
+    file.exists(runner_path),
+    "Repository interactive-runner source is unavailable in installed-package tests."
+  )
+
   runner_env <- new.env(parent = globalenv())
   source(
-    testthat::test_path("..", "..", ".dev", "test-tests.R"),
+    runner_path,
     local = runner_env
   )
   calls   <- list()

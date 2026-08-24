@@ -4,7 +4,7 @@
 #' level references in the same syntax accepted by \code{\link{hypothesis_BF}}.
 #'
 #' @param hypothesis character vector with hypothesis statements or a validated
-#'   code{BayesTools_hypothesis_ast}.
+#'   `BayesTools_hypothesis_ast`.
 #' @param allow_compound whether compound left-hand side expressions such as
 #' \code{"theta + 0 = 0"} should be returned with \code{direct = FALSE}
 #' instead of rejected.

@@ -14,7 +14,7 @@ hypothesis_normalize_level_references(text)
 }
 \arguments{
 \item{hypothesis}{character vector with hypothesis statements or a validated
-code{BayesTools_hypothesis_ast}.}
+\code{BayesTools_hypothesis_ast}.}
 
 \item{allow_compound}{whether compound left-hand side expressions such as
 \code{"theta + 0 = 0"} should be returned with \code{direct = FALSE}
