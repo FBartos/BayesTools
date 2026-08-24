@@ -215,20 +215,6 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
   do.call(rbind, out)
 }
 
-.bt_lkj_cholesky_cpc_to_L <- function(cpc, K){
-
-  K <- .bt_lkj_cholesky_check_K(K)
-  n_pairs <- .bt_lkj_cholesky_n_pairs(K)
-  if(length(cpc) != n_pairs){
-    stop("'cpc' must have length K * (K - 1) / 2.", call. = FALSE)
-  }
-  if(n_pairs > 0L && (any(!is.finite(cpc)) || any(abs(cpc) >= 1))){
-    stop("'cpc' values must be finite and strictly between -1 and 1.", call. = FALSE)
-  }
-
-  .bt_lkj_cholesky_cpc_u_to_L((cpc + 1) / 2, K = K)
-}
-
 .bt_lkj_cholesky_cpc_u_to_L <- function(u, K){
 
   K <- .bt_lkj_cholesky_check_K(K)
@@ -288,21 +274,6 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
   }
 
   invisible(TRUE)
-}
-
-.bt_lkj_cholesky_corr <- function(L){
-
-  if(length(dim(L)) == 2L){
-    return(L %*% t(L))
-  }
-  if(length(dim(L)) == 3L){
-    out <- array(NA_real_, dim = dim(L))
-    for(i in seq_len(dim(L)[1L])){
-      out[i, , ] <- L[i, , ] %*% t(L[i, , ])
-    }
-    return(out)
-  }
-  stop("'L' must be a matrix or a draw-by-row-by-column array.", call. = FALSE)
 }
 
 .bt_lkj_cholesky_cpc_u_log_prior <- function(u, K, eta = 1){

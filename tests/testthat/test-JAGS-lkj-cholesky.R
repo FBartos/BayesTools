@@ -126,7 +126,7 @@ test_that("LKJ alpha generation is available without native routines", {
 
 test_that("LKJ CPC construction returns valid lower Cholesky factors", {
   cpc <- c(0.2, -0.4, 0.5)
-  L <- BayesTools:::.bt_lkj_cholesky_cpc_to_L(cpc, K = 3)
+  L <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L((cpc + 1) / 2, K = 3)
 
   expected <- matrix(
     c(
@@ -143,7 +143,7 @@ test_that("LKJ CPC construction returns valid lower Cholesky factors", {
   expect_true(all(diag(L) > 0))
   expect_equal(rowSums(L^2), rep(1, 3), tolerance = 1e-12)
 
-  R <- BayesTools:::.bt_lkj_cholesky_corr(L)
+  R <- L %*% t(L)
   expect_equal(R, L %*% t(L), tolerance = 1e-12)
   expect_equal(diag(R), rep(1, 3), tolerance = 1e-12)
   expect_equal(R, t(R), tolerance = 1e-12)
@@ -160,7 +160,7 @@ test_that("LKJ CPC construction remains stable near primitive boundaries", {
 
   for(setting in settings){
     L <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(setting$u, K = setting$K)
-    R <- BayesTools:::.bt_lkj_cholesky_corr(L)
+    R <- L %*% t(L)
 
     expect_true(all(is.finite(L)))
     expect_equal(L[upper.tri(L)], rep(0, setting$K * (setting$K - 1L) / 2L), tolerance = 1e-12)
@@ -222,8 +222,8 @@ test_that("LKJ CPC beta density induces Stan Cholesky density kernel", {
     out
   }
 
-  L_1 <- BayesTools:::.bt_lkj_cholesky_cpc_to_L(cpc_1, K = K)
-  L_2 <- BayesTools:::.bt_lkj_cholesky_cpc_to_L(cpc_2, K = K)
+  L_1 <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(u_1, K = K)
+  L_2 <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(u_2, K = K)
   induced_log_density_difference <-
     BayesTools:::.bt_lkj_cholesky_cpc_u_log_prior(u_1, K = K, eta = eta) -
     log_row_jacobian(cpc_1) -
@@ -326,6 +326,6 @@ test_that("one-dimensional LKJ-Cholesky module degenerates to identity", {
   expect_match(module$syntax, "One_R[1,1] <- 1", fixed = TRUE)
   expect_false(grepl("dbt_lkj_cpc", module$syntax, fixed = TRUE))
 
-  L <- BayesTools:::.bt_lkj_cholesky_cpc_to_L(numeric(0), K = 1)
+  L <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(numeric(0), K = 1)
   expect_equal(L, matrix(1, 1, 1))
 })
