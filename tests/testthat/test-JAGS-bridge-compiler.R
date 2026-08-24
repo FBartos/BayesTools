@@ -501,7 +501,7 @@ test_that("compiled random-effect prior evaluator matches public helper", {
   expect_true(compiled$uses_posterior_row)
   expect_equal(
     compiled$log_prior(samples),
-    BayesTools:::.bt_JAGS_marglik_random_effect_prior(
+    bayestools_reference_random_effect_log_prior(
       samples = samples,
       random_term = random_term
     ),
@@ -562,7 +562,7 @@ test_that("known group covariance random-effect prior uses MVN kernel density", 
 
   expect_equal(compiled$log_prior(samples), expected, tolerance = 1e-12)
   expect_equal(
-    BayesTools:::.bt_JAGS_marglik_random_effect_prior(
+    bayestools_reference_random_effect_log_prior(
       samples = samples,
       random_term = random_term
     ),

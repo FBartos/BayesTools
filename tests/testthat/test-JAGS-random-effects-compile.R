@@ -661,7 +661,7 @@ test_that("bridge prior helpers use all structural metadata and sampled latent e
 
   samples <- c("mu__xREx__id_rho_z" = 0)
   expect_equal(
-    BayesTools:::.bt_JAGS_marglik_priors_formula_random(
+    bayestools_reference_formula_random_log_prior(
       samples,
       list(mu = hcs_result$formula_design)
     ),
@@ -669,7 +669,7 @@ test_that("bridge prior helpers use all structural metadata and sampled latent e
   )
   samples_bad <- c("mu__xREx__id_rho_z" = NA_real_)
   expect_identical(
-    BayesTools:::.bt_JAGS_marglik_priors_formula_random(
+    bayestools_reference_formula_random_log_prior(
       samples_bad,
       list(mu = hcs_result$formula_design)
     ),

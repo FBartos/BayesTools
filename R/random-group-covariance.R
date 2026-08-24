@@ -443,57 +443,6 @@ print.random_group_covariance <- function(x, ...){
   invisible(TRUE)
 }
 
-.bt_random_effect_latent_log_density <- function(random_term, samples){
-
-  n_groups <- random_term$n_groups
-  n_columns <- random_term$n_columns
-  z_names <- as.vector(.bt_random_effect_latent_names(
-    random_term = random_term,
-    n_groups = n_groups,
-    n_columns = n_columns
-  ))
-  if(!all(z_names %in% names(samples))){
-    stop(
-      "Bridge samples are missing standardized latent random effects for block '",
-      random_term$block_name,
-      "'.",
-      call. = FALSE
-    )
-  }
-
-  z_values <- samples[z_names]
-  if(any(is.na(z_values))){
-    return(-Inf)
-  }
-
-  if(.bt_random_effect_has_known_group_covariance(random_term)){
-    group_covariance <- .bt_random_effect_known_group_covariance(
-      random_term,
-      context = "Bridge sampling"
-    )
-    z_values <- matrix(
-      as.numeric(z_values),
-      nrow = n_groups,
-      ncol = n_columns
-    )
-    out <- 0
-    for(column in seq_len(n_columns)){
-      out <- out + .bt_mvn_zero_log_density(
-        z = z_values[, column],
-        precision = group_covariance$precision,
-        log_det = group_covariance$log_det
-      )
-    }
-    return(out)
-  }
-
-  marglik <- sum(stats::dnorm(z_values, mean = 0, sd = 1, log = TRUE))
-  if(is.na(marglik)){
-    return(-Inf)
-  }
-  marglik
-}
-
 .bt_mvn_zero_log_density <- function(z, precision, log_det){
 
   if(any(!is.finite(z))){

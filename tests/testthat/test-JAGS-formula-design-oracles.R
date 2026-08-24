@@ -4456,7 +4456,7 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
     fixed = TRUE
   )
   expect_error(
-    BayesTools:::.bt_JAGS_marglik_priors_formula_random(
+    bayestools_reference_formula_random_log_prior(
       samples = allocation_inclusion_posterior[1, ],
       formula_design_list = list(mu = allocation_inclusion_result$formula_design)
     ),
@@ -4694,7 +4694,7 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
     fixed = TRUE
   )
   expect_equal(
-    BayesTools:::.bt_JAGS_marglik_priors_formula_random(
+    bayestools_reference_formula_random_log_prior(
       bridge_samples,
       list(mu = result$formula_design)
     ),
@@ -8090,7 +8090,7 @@ test_that("formula random effects expose bridge-ready stochastic coordinates", {
 
   expect_equal(parameters$mu, c(10.5, 12, 15.5, 17.5), tolerance = 1e-12)
   expect_equal(
-    BayesTools:::.bt_JAGS_marglik_priors_formula_random(
+    bayestools_reference_formula_random_log_prior(
       samples,
       list(mu = formula_result$formula_design)
     ),
@@ -8188,7 +8188,7 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
     lkj_result$formula_design$random_effects[[1]]$model_matrix)
   expect_equal(lkj_parameters$mu, unname(expected_lkj), tolerance = 1e-12)
   expect_equal(
-    BayesTools:::.bt_JAGS_marglik_priors_formula_random(
+    bayestools_reference_formula_random_log_prior(
       lkj_samples,
       list(mu = lkj_result$formula_design)
     ),
@@ -8197,7 +8197,7 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
     tolerance = 1e-12
   )
   expect_error(
-    BayesTools:::.bt_JAGS_marglik_priors_formula_random(
+    bayestools_reference_formula_random_log_prior(
       lkj_samples,
       list(mu = malformed_lkj)
     ),
@@ -8207,7 +8207,7 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
   missing_correlation_lkj <- lkj_result$formula_design
   missing_correlation_lkj$random_effects[[1]]$correlation <- NULL
   expect_error(
-    BayesTools:::.bt_JAGS_marglik_priors_formula_random(
+    bayestools_reference_formula_random_log_prior(
       lkj_samples,
       list(mu = missing_correlation_lkj)
     ),
@@ -8237,7 +8237,7 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
   missing_eta_lkj <- lkj_result$formula_design
   missing_eta_lkj$random_effects[[1]]$correlation$eta <- NULL
   expect_error(
-    BayesTools:::.bt_JAGS_marglik_priors_formula_random(
+    bayestools_reference_formula_random_log_prior(
       lkj_samples,
       list(mu = missing_eta_lkj)
     ),
@@ -8318,7 +8318,7 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
   ar_saturated_samples <- ar_samples
   ar_saturated_samples[["mu__xREx__id_rho_z"]] <- 20
   expect_equal(
-    BayesTools:::.bt_JAGS_marglik_random_effect_scalar_rho_support(
+    bayestools_reference_random_effect_scalar_rho_support(
       ar_saturated_samples,
       ar_result$formula_design$random_effects[[1]]
     ),
@@ -8415,7 +8415,7 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
     mu__xREx__id_rho_logit = 1000
   )
   expect_equal(
-    BayesTools:::.bt_JAGS_marglik_random_effect_scalar_rho_support(
+    bayestools_reference_random_effect_scalar_rho_support(
       car_logit_saturated_samples,
       car_logit$formula_design$random_effects[[1]]
     ),
@@ -8468,7 +8468,7 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
     mu__xREx__id_rho_z = atanh(-1 / 2)
   )
   expect_equal(
-    BayesTools:::.bt_JAGS_marglik_priors_formula_random(
+    bayestools_reference_formula_random_log_prior(
       hcs_boundary_samples,
       list(mu = hcs_result$formula_design)
     ),
@@ -8477,7 +8477,7 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
   hcs_interior_samples <- hcs_boundary_samples
   hcs_interior_samples[["mu__xREx__id_rho_z"]] <- 0
   expect_true(is.finite(
-    BayesTools:::.bt_JAGS_marglik_priors_formula_random(
+    bayestools_reference_formula_random_log_prior(
       hcs_interior_samples,
       list(mu = hcs_result$formula_design)
     )
@@ -8505,7 +8505,7 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
   ))
   hcs_fixed_samples <- stats::setNames(rep(0, length(hcs_fixed_z_names)), hcs_fixed_z_names)
   expect_true(is.finite(
-    BayesTools:::.bt_JAGS_marglik_priors_formula_random(
+    bayestools_reference_formula_random_log_prior(
       hcs_fixed_samples,
       list(mu = hcs_fixed_rho$formula_design)
     )
@@ -12564,7 +12564,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     )
   )
   expect_equal(
-    BayesTools:::.bt_JAGS_marglik_random_effect_scalar_rho_support(
+    bayestools_reference_random_effect_scalar_rho_support(
       empty_posterior,
       car_independent_term
     ),

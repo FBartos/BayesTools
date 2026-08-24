@@ -38,7 +38,7 @@ skip_if_not_test_profile("unit")
   )
 
   unname(c(
-    marglik = BayesTools:::.bt_JAGS_marglik_random_effect_scalar_rho_support(
+    marglik = bayestools_reference_random_effect_scalar_rho_support(
       samples = samples,
       random_term = random_term
     ),
@@ -148,7 +148,7 @@ test_that("scalar rho support validates canonical bounds and CAR metadata", {
   malformed_bounds <- .structured_rho_support_term("har")
   malformed_bounds$correlation$bounds <- c(lower = -2, upper = 2)
   expect_error(
-    BayesTools:::.bt_JAGS_marglik_random_effect_scalar_rho_support(
+    bayestools_reference_random_effect_scalar_rho_support(
       samples = c(rho = 0),
       random_term = malformed_bounds
     ),
@@ -167,7 +167,7 @@ test_that("scalar rho support validates canonical bounds and CAR metadata", {
   missing_car_distance <- .structured_rho_support_term("car")
   missing_car_distance$correlation$time_values <- NULL
   expect_error(
-    BayesTools:::.bt_JAGS_marglik_random_effect_scalar_rho_support(
+    bayestools_reference_random_effect_scalar_rho_support(
       samples = c(rho = 0.5),
       random_term = missing_car_distance
     ),
@@ -189,7 +189,7 @@ test_that("scalar rho support validates canonical bounds and CAR metadata", {
   )
   invalid_car_distance$correlation$time_values <- c(1, 1, 2)
   expect_error(
-    BayesTools:::.bt_JAGS_marglik_random_effect_scalar_rho_support(
+    bayestools_reference_random_effect_scalar_rho_support(
       samples = c(rho = 0.5),
       random_term = invalid_car_distance
     ),
