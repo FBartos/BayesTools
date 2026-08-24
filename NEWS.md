@@ -15,6 +15,12 @@
 ### Maintenance
 - reuses the common line renderer for simple and contrast-transformed priors
   and density/trace diagnostics
+- removes the superseded random-effect summary builder and its private
+  ordering, validation, labeling, and bridge-evaluation helpers; active
+  summaries use the authoritative parameter catalog and draw extractor
+- repairs visual regression tests that passed unprinted ggplot callbacks and
+  therefore recorded empty SVG references; replacement references remain
+  subject to human visual approval
 
 ### Features
 - adds an explicit `seed` argument to `JAGS_bridgesampling()` and seeds every
