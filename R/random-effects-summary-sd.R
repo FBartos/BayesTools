@@ -1,31 +1,3 @@
-.bt_random_effect_summary_validate_values <- function(values, name, label,
-                                                      n_draws){
-
-  if(is.null(values)){
-    stop(
-      "Random-effect summary '", label,
-      "' could not be computed for derived column '", name, "'.",
-      call. = FALSE
-    )
-  }
-  if(length(values) != n_draws){
-    stop(
-      "Random-effect summary '", label,
-      "' returned ", length(values), " draw(s), but expected ", n_draws, ".",
-      call. = FALSE
-    )
-  }
-  if(all(is.na(values))){
-    stop(
-      "Random-effect summary '", label,
-      "' contains only missing values.",
-      call. = FALSE
-    )
-  }
-
-  as.numeric(values)
-}
-
 .bt_random_effect_summary_complete_scaled_samples <- function(random_term,
                                                               model_samples,
                                                               prior_list,

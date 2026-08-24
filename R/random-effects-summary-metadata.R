@@ -669,18 +669,3 @@
   }
   x
 }
-
-.bt_random_effect_summary_unique_name <- function(name, used_names){
-
-  if(!name %in% used_names){
-    return(name)
-  }
-  i <- 2L
-  candidate <- paste0(name, "_", i)
-  while(candidate %in% used_names){
-    i <- i + 1L
-    candidate <- paste0(name, "_", i)
-  }
-
-  candidate
-}

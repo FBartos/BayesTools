@@ -101,12 +101,6 @@ test_that("random-effect summary posterior extracts mean-variance multipliers", 
   skip_if_not_installed("runjags")
 
   fit <- .random_effects_mean_variance_allocation_fit()
-  testthat::local_mocked_bindings(
-    .bt_random_effect_summary_samples = function(...) {
-      stop("parallel random summary path was used", call. = FALSE)
-    },
-    .package = "BayesTools"
-  )
   multipliers <- random_effects_summary_posterior(fit, summary = "var_mult")
   multiplier_name <- "(mu) allocation: var_mult(x)"
 

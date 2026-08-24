@@ -345,30 +345,28 @@ test_that("known group covariance uses tau squared times ZKZ prime", {
     BayesTools:::.bt_random_effect_sd_summary_label("intercept", random_term),
     "id: sd(intercept)"
   )
-  derived <- BayesTools:::.bt_random_effect_summary_derived_samples(
+  summary <- .parameter_catalog_random_summary_samples(
     model_samples = posterior,
-    prior_list     = result$prior_list,
-    random_design  = list(result$formula_design),
-    mode           = "standard",
-    formula_scale  = list()
+    prior_list = result$prior_list,
+    formula_design = list(mu = result$formula_design),
+    mode = "standard",
+    formula_scale = list()
   )
-  sd_name <- grep(
-    "__sd__",
-    names(derived$prior_list),
-    value = TRUE,
-    fixed = TRUE
-  )
+  summary_types <- vapply(summary$prior_list, function(prior){
+    type <- attr(prior, "random_summary", exact = TRUE)
+    if(is.null(type)) "" else type
+  }, character(1))
+  sd_name <- names(summary$prior_list)[summary_types == "sd"]
   expect_identical(length(sd_name), 1L)
   expect_identical(
     attr(
-      derived$prior_list[[sd_name]],
+      summary$prior_list[[sd_name]],
       "random_summary_component_label",
       exact = TRUE
     ),
     "sd(intercept)"
   )
-  expect_false(any(grepl("__var_mult__", names(derived$prior_list),
-                         fixed = TRUE)))
+  expect_false(any(summary_types == "var_mult"))
   expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
   expect_equal(unname(diagonal$samples), .re_cov_dense_diagonal(out),
                tolerance = 1e-12)

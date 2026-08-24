@@ -457,12 +457,6 @@ test_that("standard random summaries replace LKJ coordinates with semantic rows"
   skip_if_not_installed("runjags")
 
   fit <- make_lkj_coordinate_summary_fit()
-  testthat::local_mocked_bindings(
-    .bt_random_effect_summary_samples = function(...) {
-      stop("parallel random summary path was used", call. = FALSE)
-    },
-    .package = "BayesTools"
-  )
   raw <- JAGS_estimates_table(
     fit,
     keep_parameters = "random",
