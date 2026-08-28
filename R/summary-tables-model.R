@@ -292,6 +292,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   # get model samples
   model_samples <- .extract_posterior_samples(fit, as_list = FALSE)
+  raw_model_samples <- model_samples
 
   formula_scale <- NULL
   if(transform_scaled){
@@ -308,6 +309,17 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   )
   model_samples <- random_summary$model_samples
   prior_list <- random_summary$prior_list
+  if(conditional){
+    conditioned <- .bt_random_effect_summary_condition_on_inclusion(
+      fit = fit,
+      model_samples = model_samples,
+      raw_model_samples = raw_model_samples,
+      prior_list = prior_list,
+      warnings = warnings
+    )
+    model_samples <- conditioned$model_samples
+    warnings <- conditioned$warnings
+  }
 
   # Transform scaled coefficients after deriving random-effect summaries. This
   # lets summaries reconstruct point-prior/allocation SDs before covariance
@@ -884,8 +896,11 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   BF_diagnostics        <- length(BF_diagnostic_columns) > 0
   BF_error_diagnostics  <- "BF_error_percent" %in% BF_diagnostic_columns
 
-  # return empty table if none of the priors is spike and slab
-  if(!any(sapply(prior_list, function(p) is.prior.spike_and_slab(p) | is.prior.mixture(p)))){
+  # return empty table if none of the priors defines a model component
+  if(!any(sapply(prior_list, function(p){
+    is.prior.spike_and_slab(p) | is.prior.mixture(p) |
+      .bt_is_random_allocation_inclusion_prior(p)
+  }))){
     runjags_summary <- runjags_inference_empty_table(
       title          = title,
       footnotes      = footnotes,
@@ -908,6 +923,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   runjags_summary <- data.frame(matrix(nrow = 0, ncol = 4 + length(BF_diagnostic_columns)))
   colnames(runjags_summary) <- c("Parameter", "prior_prob", "post_prob", "inclusion_BF", BF_diagnostic_columns)
   BF_bound_operators <- character()
+  parameter_roles <- character()
 
   for(par in names(prior_list)){
     if(is.prior.spike_and_slab(prior_list[[par]])){
@@ -937,9 +953,17 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
 
       runjags_summary <- rbind(runjags_summary, temp_row)
       BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
+      parameter_roles <- c(parameter_roles, "model_inclusion")
     }else if(is.prior.mixture(prior_list[[par]])){
 
       # extract the components and prior probabilities
+      mixture_role <- if(isTRUE(attr(
+        prior_list[[par]], "random_allocation_sd", exact = TRUE
+      ))){
+        "random_slab"
+      }else{
+        "model_inclusion"
+      }
       components      <- attr(prior_list[[par]], "components")
       temp_prior_prob <- attr(prior_list[[par]], "prior_weights")
       temp_prior_prob <- sapply(unique(components), function(component) sum(temp_prior_prob[which(components == component)])) / sum(temp_prior_prob)
@@ -976,6 +1000,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
 
         runjags_summary <- rbind(runjags_summary, temp_row)
         BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
+        parameter_roles <- c(parameter_roles, mixture_role)
 
       }else{
 
@@ -1001,9 +1026,72 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
 
           runjags_summary <- rbind(runjags_summary, temp_row)
           BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
+          parameter_roles <- c(parameter_roles, mixture_role)
         }
 
       }
+    }else if(.bt_is_random_allocation_inclusion_prior(prior_list[[par]])){
+
+      indicator_name <- attr(
+        prior_list[[par]],
+        "random_allocation_indicator",
+        exact = TRUE
+      )
+      temp_prior_prob <- mean(prior_list[[par]])
+      temp_post_prob <- mean(model_samples[, indicator_name])
+      temp_BF <- inclusion_BF(
+        prior_probs = c(null = 1 - temp_prior_prob, alternative = temp_prior_prob),
+        post_probs = c(null = 1 - temp_post_prob, alternative = temp_post_prob),
+        is_null = c(TRUE, FALSE)
+      )
+      temp_BF_reporting <- .indicator_BF_reporting_value(
+        temp_BF,
+        temp_post_prob,
+        temp_prior_prob,
+        nrow(model_samples)
+      )
+      temp_parameter <- .bt_random_allocation_inference_label(
+        fit = fit,
+        indicator_name = indicator_name,
+        formula_prefix = formula_prefix
+      )
+      temp_row <- data.frame(
+        Parameter = temp_parameter,
+        prior_prob = temp_prior_prob,
+        post_prob = temp_post_prob,
+        inclusion_BF = temp_BF_reporting$value
+      )
+      if(BF_diagnostics){
+        temp_indicator_list <- .runjags_indicator_list(
+          model_samples_list,
+          indicator_name,
+          1
+        )
+        temp_diagnostics <- .indicator_BF_diagnostics(
+          temp_indicator_list,
+          temp_prior_prob,
+          temp_BF
+        )
+        temp_row <- cbind(
+          temp_row,
+          .indicator_BF_diagnostic_row(temp_diagnostics)[
+            , BF_diagnostic_columns, drop = FALSE
+          ]
+        )
+        if(BF_error_diagnostics){
+          warnings <- c(
+            warnings,
+            .indicator_BF_warnings(temp_parameter, temp_diagnostics)
+          )
+        }
+      }
+
+      runjags_summary <- rbind(runjags_summary, temp_row)
+      BF_bound_operators <- c(
+        BF_bound_operators,
+        temp_BF_reporting$operator
+      )
+      parameter_roles <- c(parameter_roles, "random_inclusion")
     }
   }
 
@@ -1036,12 +1124,120 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   class(runjags_summary)               <- c("BayesTools_table", "BayesTools_runjags_inference", class(runjags_summary))
   attr(runjags_summary, "type")        <- c("prior_prob", "post_prob", "inclusion_BF", .JAGS_BF_diagnostic_column_types(BF_diagnostic_columns))
   attr(runjags_summary, "parameters")  <- parameter_names
+  attr(runjags_summary, "parameter_roles") <- parameter_roles
   attr(runjags_summary, "rownames")    <- TRUE
   attr(runjags_summary, "title")       <- title
   attr(runjags_summary, "footnotes")   <- footnotes
   attr(runjags_summary, "warnings")    <- warnings
 
   return(runjags_summary)
+}
+
+.bt_random_effect_summary_condition_on_inclusion <- function(
+    fit, model_samples, raw_model_samples, prior_list, warnings){
+
+  designs <- attr(fit, "formula_design", exact = TRUE)
+  for(parameter_name in intersect(colnames(model_samples), names(prior_list))){
+    prior <- prior_list[[parameter_name]]
+    summary_type <- attr(prior, "random_summary", exact = TRUE)
+    if(is.null(summary_type) || identical(summary_type, "inclusion")){
+      next
+    }
+
+    gate_names <- character()
+    formula_parameter <- attr(prior, "parameter", exact = TRUE)
+    random_block <- attr(prior, "random_factor", exact = TRUE)
+    if(!is.null(formula_parameter) && !is.null(random_block) &&
+       !is.null(designs[[formula_parameter]])){
+      random_terms <- designs[[formula_parameter]]$random_effects
+      matches <- vapply(random_terms, function(term){
+        identical(term$block_name, random_block)
+      }, logical(1))
+      if(sum(matches) == 1L){
+        binding <- random_terms[[which(matches)]]$sd_binding
+        if(!is.null(binding)){
+          gate_names <- c(
+            gate_names,
+            unlist(lapply(binding$factors, `[[`, "inclusion_name"),
+                   use.names = FALSE)
+          )
+        }
+      }
+    }
+
+    allocation <- attr(prior, "random_allocation_metadata", exact = TRUE)
+    if(is.list(allocation) && is.list(allocation$parent_factors)){
+      gate_names <- c(
+        gate_names,
+        unlist(lapply(allocation$parent_factors, `[[`, "inclusion_name"),
+               use.names = FALSE)
+      )
+    }
+    gate_names <- unique(gate_names[
+      !is.na(gate_names) & nzchar(gate_names)
+    ])
+    if(length(gate_names) == 0L){
+      next
+    }
+    missing <- setdiff(gate_names, colnames(raw_model_samples))
+    if(length(missing) > 0L){
+      stop(
+        "Conditional random-effect summaries are missing Bernoulli indicator '",
+        missing[1L],
+        "'.",
+        call. = FALSE
+      )
+    }
+    included <- rowSums(
+      raw_model_samples[, gate_names, drop = FALSE] != 1
+    ) == 0L
+    model_samples[!included, parameter_name] <- NA_real_
+    warnings <- c(
+      warnings,
+      .runjags_conditional_warning(parameter_name, sum(included))
+    )
+  }
+
+  list(model_samples = model_samples, warnings = warnings)
+}
+
+.bt_is_random_allocation_inclusion_prior <- function(prior){
+
+  allocation <- attr(prior, "random_allocation", exact = TRUE)
+  component <- attr(prior, "random_allocation_inclusion", exact = TRUE)
+  indicator <- attr(prior, "random_allocation_indicator", exact = TRUE)
+  is.character(allocation) && length(allocation) == 1L && nzchar(allocation) &&
+    is.character(component) && length(component) == 1L && nzchar(component) &&
+    is.character(indicator) && length(indicator) == 1L && nzchar(indicator)
+}
+
+.bt_random_allocation_inference_label <- function(fit, indicator_name,
+                                                  formula_prefix){
+
+  quantities <- parameter_catalog(fit)$quantities
+  matches <- quantities$role == "random_inclusion" & vapply(
+    quantities$extraction_key,
+    function(key){
+      identical(key$source_parameter, indicator_name)
+    },
+    logical(1)
+  )
+  if(sum(matches) != 1L){
+    stop(
+      "Random-effect inclusion metadata have no unique semantic quantity. Refit the model with this version of BayesTools.",
+      call. = FALSE
+    )
+  }
+  quantity <- quantities[which(matches), , drop = FALSE]
+  label <- quantity$canonical_name
+  if(!formula_prefix){
+    prefix <- paste0("(", quantity$formula_parameter, ") ")
+    if(startsWith(label, prefix)){
+      label <- substring(label, nchar(prefix) + 1L)
+    }
+  }
+
+  label
 }
 
 #' @rdname BayesTools_model_tables

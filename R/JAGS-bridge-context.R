@@ -1257,15 +1257,17 @@
   }
   plans <- lapply(factor_plan, function(factor){
     list(
-      weight_evaluator = .bt_JAGS_bridge_compile_dirichlet_draw_evaluator(
-        parameter_name = factor$weight_name,
-        prior_list = prior_list,
-        posterior_names = posterior_names
-      ),
-      multiplier = .bt_JAGS_bridge_compile_allocation_multiplier(
-        scale = factor$scale,
-        n_targets = factor$n_targets
-      ),
+      weight_evaluator = if(is.null(factor$weight_name)) NULL else
+        .bt_JAGS_bridge_compile_dirichlet_draw_evaluator(
+          parameter_name = factor$weight_name,
+          prior_list = prior_list,
+          posterior_names = posterior_names
+        ),
+      multiplier = if(is.null(factor$weight_name)) NULL else
+        .bt_JAGS_bridge_compile_allocation_multiplier(
+          scale = factor$scale,
+          n_targets = factor$n_targets
+        ),
       index = factor$index,
       n_targets = factor$n_targets,
       weight_name = factor$weight_name,
@@ -1281,21 +1283,25 @@
   function(base, posterior, parameters = NULL, prefer_weights = FALSE){
     out <- base
     for(plan in plans){
-      weights <- plan$weight_evaluator(
-        posterior,
-        parameters,
-        prefer_weights = prefer_weights
-      )
-      if(is.null(weights)){
-        return(NULL)
-      }
-      if(ncol(weights) != plan$n_targets || plan$index > ncol(weights)){
-        stop(
-          "Random-effect allocation factor metadata for '",
-          plan$weight_name,
-          "' do not match the reconstructed Dirichlet coordinates.",
-          call. = FALSE
+      multiplier <- 1
+      if(!is.null(plan$weight_evaluator)){
+        weights <- plan$weight_evaluator(
+          posterior,
+          parameters,
+          prefer_weights = prefer_weights
         )
+        if(is.null(weights)){
+          return(NULL)
+        }
+        if(ncol(weights) != plan$n_targets || plan$index > ncol(weights)){
+          stop(
+            "Random-effect allocation factor metadata for '",
+            plan$weight_name,
+            "' do not match the reconstructed Dirichlet coordinates.",
+            call. = FALSE
+          )
+        }
+        multiplier <- plan$multiplier(weights[, plan$index])
       }
       gate <- plan$gate_evaluator(posterior)
       if(is.null(gate)){
@@ -1306,7 +1312,7 @@
           call. = FALSE
         )
       }
-      out <- out * plan$multiplier(weights[, plan$index]) * gate
+      out <- out * multiplier * gate
     }
     out
   }

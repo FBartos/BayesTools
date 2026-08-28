@@ -232,9 +232,17 @@
       call. = FALSE
     )
   }
-  if(!is.character(allocation$weight_name) ||
-     length(allocation$weight_name) != 1L ||
-     is.na(allocation$weight_name) || !nzchar(allocation$weight_name)){
+  gate_only <- isTRUE(allocation$gate_only)
+  if(gate_only){
+    if(!is.null(allocation$weight_name) || !is.null(allocation$weight_suffix)){
+      stop(
+        "Gate-only random-effect SD binding metadata must not contain allocation weights.",
+        call. = FALSE
+      )
+    }
+  }else if(!is.character(allocation$weight_name) ||
+           length(allocation$weight_name) != 1L ||
+           is.na(allocation$weight_name) || !nzchar(allocation$weight_name)){
     stop(
       "Random-effect SD binding metadata are missing canonical 'allocation$weight_name'.",
       call. = FALSE
@@ -256,8 +264,10 @@
       label = "allocation$factors"
     )
     if(!is.numeric(allocation$index) || length(allocation$index) != 1L ||
-       is.na(allocation$index) || allocation$index != as.integer(allocation$index) ||
-       allocation$index < 1L){
+       (!gate_only && (is.na(allocation$index) ||
+        allocation$index != as.integer(allocation$index) ||
+        allocation$index < 1L)) ||
+       (gate_only && !is.na(allocation$index))){
       stop(
         "Random-effect SD binding metadata are missing canonical 'allocation$index'.",
         call. = FALSE
@@ -266,13 +276,13 @@
     if(!is.numeric(allocation$n_targets) || length(allocation$n_targets) != 1L ||
        is.na(allocation$n_targets) ||
        allocation$n_targets != as.integer(allocation$n_targets) ||
-       allocation$n_targets < 2L){
+       allocation$n_targets < if(gate_only) 1L else 2L){
       stop(
         "Random-effect SD binding metadata are missing canonical 'allocation$n_targets'.",
         call. = FALSE
       )
     }
-    if(allocation$index > allocation$n_targets){
+    if(!gate_only && allocation$index > allocation$n_targets){
       stop(
         "Random-effect SD binding metadata reference an allocation coordinate outside 'allocation$n_targets'.",
         call. = FALSE

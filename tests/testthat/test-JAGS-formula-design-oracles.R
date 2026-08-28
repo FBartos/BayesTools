@@ -384,6 +384,102 @@ test_that("JAGS_fit requires uniquely named formula-indexed lists", {
   out
 }
 
+test_that("one-component random-effect gates do not create artificial weights", {
+
+  data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2"))
+  )
+  result <- JAGS_formula(
+    formula = ~ 1 + random(1 | study, name = "study", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name = "component",
+        terms = c(study = "study"),
+        sd = prior("gamma", list(2, 2)),
+        inclusion = list(study = prior("spike", list(location = 0.5)))
+      )
+    )
+  )
+
+  allocation <- result$formula_design$random_effects[[1]]$
+    sd_binding$allocations[[1]]
+  expect_true(allocation$gate_only)
+  expect_null(allocation$weight_name)
+  expect_false(any(grepl("__weight", names(result$prior_list), fixed = TRUE)))
+  expect_match(
+    result$formula_syntax,
+    paste0(
+      "mu__xREx__study_intercept = ",
+      "mu__xRE_ALLOCx_component__allocation_sd * ",
+      "mu__xRE_ALLOCx_component__include_study_indicator"
+    ),
+    fixed = TRUE
+  )
+
+  samples <- matrix(
+    c(1, 0, 2, 1),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(
+      NULL,
+      c(
+        allocation$source_node,
+        allocation$inclusion$study$indicator_name
+      )
+    )
+  )
+  sd_draws <- BayesTools:::.bt_random_effect_sd_draws(
+    random_term = result$formula_design$random_effects[[1]],
+    n_columns = 1,
+    posterior = samples,
+    prior_list = result$prior_list
+  )
+  expect_equal(sd_draws[, 1], c(0, 2))
+
+  fit <- structure(
+    list(
+      mcmc = coda::mcmc.list(coda::mcmc(samples)),
+      sample = nrow(samples)
+    ),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- result$prior_list
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  fit <- attach_test_parameter_map(fit)
+  catalog <- parameter_catalog(fit)
+  inclusion <- parameter_catalog_resolve(
+    catalog,
+    "(mu) component: inclusion(study)"
+  )
+  sd <- parameter_catalog_resolve(catalog, "(mu) sd(intercept)")
+  expect_equal(as.numeric(as.matrix(parameter_draws(fit, inclusion))), c(0, 1))
+  expect_equal(as.numeric(as.matrix(parameter_draws(fit, sd))), c(0, 2))
+  expect_false(any(catalog$quantities$quantity == "var_prop"))
+
+  inference <- JAGS_inference_table(fit)
+  expect_equal(rownames(inference), "(mu) component: inclusion(study)")
+  expect_equal(as.numeric(inference$prior_prob), 0.5)
+  expect_equal(as.numeric(inference$post_prob), 0.5)
+  expect_equal(as.numeric(inference$inclusion_BF), 1)
+  expect_identical(attr(inference, "parameter_roles"), "random_inclusion")
+
+  conditional_samples <- JAGS_estimates_table(
+    fit,
+    keep_parameters = "random",
+    random_effects_summary = "standard",
+    conditional = TRUE,
+    remove_inclusion = TRUE,
+    return_samples = TRUE
+  )
+  expect_equal(
+    conditional_samples[, "(mu) sd(intercept)"],
+    c(NA_real_, 2)
+  )
+})
+
 .jags_formula_posterior_from_lm <- function(formula_result, lm_fit) {
   design <- formula_result$formula_design
   coefficients <- stats::coef(lm_fit)

@@ -42,10 +42,11 @@
     }
   }
 
-  if(identical(target, "block") && length(terms) < 2L){
+  if(identical(target, "block") && length(terms) < 2L &&
+     !.bt_random_variance_allocation_gate_only(allocation, terms)){
     stop(
-      "Block variance allocation requires at least two resolved random-effect blocks. ",
-      "Use random_block(sd_source = ...) for a direct one-block SD source.",
+      "Block variance allocation requires at least two resolved random-effect blocks, ",
+      "unless one block is supplied with a sole 'inclusion' gate and no 'weights'.",
       call. = FALSE
     )
   }
@@ -55,6 +56,18 @@
   }
 
   terms
+}
+
+.bt_random_variance_allocation_gate_only <- function(allocation,
+                                                     terms = allocation$terms){
+
+  if(!identical(.bt_random_variance_allocation_target(allocation), "block") ||
+     length(terms) != 1L || !is.null(allocation$weights) ||
+     is.null(allocation$inclusion)){
+    return(FALSE)
+  }
+  component_labels <- .bt_random_variance_allocation_component_labels(terms)
+  identical(sort(names(allocation$inclusion)), sort(component_labels))
 }
 
 .bt_random_variance_allocation_component_labels <- function(terms){
@@ -232,24 +245,33 @@
   if(!is.list(factor)){
     stop("Random-effect allocation factor metadata are missing canonical fields.", call. = FALSE)
   }
-  if(!is.character(factor$weight_name) || length(factor$weight_name) != 1L ||
-     is.na(factor$weight_name) || !nzchar(factor$weight_name)){
-    stop("Random-effect allocation factor metadata are missing canonical 'weight_name'.", call. = FALSE)
-  }
-  if(!is.numeric(factor$index) || length(factor$index) != 1L ||
-     is.na(factor$index) || factor$index != as.integer(factor$index) ||
-     factor$index < 1L){
-    stop("Random-effect allocation factor metadata are missing canonical 'index'.", call. = FALSE)
+  gate_only <- is.null(factor$weight_name)
+  if(gate_only){
+    if(!is.numeric(factor$index) || length(factor$index) != 1L ||
+       !is.na(factor$index) || !identical(factor$n_targets, 1L) ||
+       is.null(factor$inclusion_name)){
+      stop("Gate-only random-effect factor metadata are malformed.", call. = FALSE)
+    }
+  }else{
+    if(!is.character(factor$weight_name) || length(factor$weight_name) != 1L ||
+       is.na(factor$weight_name) || !nzchar(factor$weight_name)){
+      stop("Random-effect allocation factor metadata are missing canonical 'weight_name'.", call. = FALSE)
+    }
+    if(!is.numeric(factor$index) || length(factor$index) != 1L ||
+       is.na(factor$index) || factor$index != as.integer(factor$index) ||
+       factor$index < 1L){
+      stop("Random-effect allocation factor metadata are missing canonical 'index'.", call. = FALSE)
+    }
   }
   check_char(factor$scale, "factor$scale",
              allow_values = c("total_variance", "mean_variance"),
              allow_NA = FALSE)
   if(!is.numeric(factor$n_targets) || length(factor$n_targets) != 1L ||
      is.na(factor$n_targets) || factor$n_targets != as.integer(factor$n_targets) ||
-     factor$n_targets < 2L){
+     factor$n_targets < if(gate_only) 1L else 2L){
     stop("Random-effect allocation factor metadata are missing canonical 'n_targets'.", call. = FALSE)
   }
-  if(factor$index > factor$n_targets){
+  if(!gate_only && factor$index > factor$n_targets){
     stop("Random-effect allocation factor metadata reference a coordinate outside 'n_targets'.", call. = FALSE)
   }
   if(!is.null(factor$inclusion_name)){
@@ -288,6 +310,9 @@
 
 .bt_random_variance_allocation_factor_expression <- function(factor){
 
+  if(is.null(factor$weight_name)){
+    return(factor$inclusion_name)
+  }
   multiplier <- .bt_random_variance_allocation_multiplier_expression(
     weight_name = factor$weight_name,
     index = factor$index,

@@ -263,7 +263,7 @@
 .bt_format_random_allocation_weight_prior <- function(x, digits_estimates){
 
   if(is.null(x$weights)){
-    return("Dirichlet(1, ..., 1)")
+    return(character())
   }
 
   .bt_format_random_print_prior(x$weights, digits_estimates)
@@ -327,6 +327,20 @@
       ),
       "terms: resolved from formula"
     ))
+  }
+  if(is.null(x$weights)){
+    return(vapply(labels, function(label){
+      gate <- if(is.list(x$inclusion) && label %in% names(x$inclusion)){
+        paste0("I_", label)
+      }else{
+        ""
+      }
+      .bt_format_random_prior_equation(
+        .bt_format_random_sigma_name(label),
+        if(nzchar(gate)) paste0(source_name, " * ", gate) else source_name,
+        operator = "="
+      )
+    }, character(1)))
   }
 
   vapply(seq_along(labels), function(i){
@@ -404,10 +418,12 @@
       ))
     }
   }
-  lines <- c(lines, .bt_format_random_prior_equation(
-    "w",
-    .bt_format_random_allocation_weight_prior(x, digits_estimates)
-  ))
+  if(!is.null(x$weights)){
+    lines <- c(lines, .bt_format_random_prior_equation(
+      "w",
+      .bt_format_random_allocation_weight_prior(x, digits_estimates)
+    ))
+  }
   lines <- c(lines, .bt_format_random_allocation_inclusion_lines(
     x,
     digits_estimates

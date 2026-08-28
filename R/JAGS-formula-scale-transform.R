@@ -220,6 +220,12 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
     column_names   = column_names,
     n_samples      = n_samples
   )
+  prior_samples <- .bt_add_random_allocation_indicator_prior_samples(
+    samples      = prior_samples,
+    prior_list   = prior_list,
+    column_names = column_names,
+    n_samples    = n_samples
+  )
 
   if(!is.null(formula_scale) && length(formula_scale) > 0){
     prior_samples <- .apply_unscale_transform(prior_samples, formula_scale)
@@ -227,6 +233,47 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
 
   return(prior_samples)
 }
+
+
+.bt_add_random_allocation_indicator_prior_samples <- function(
+    samples, prior_list, column_names, n_samples){
+
+  for(parameter in names(prior_list)){
+    prior <- prior_list[[parameter]]
+    indicator <- attr(prior, "random_allocation_indicator", exact = TRUE)
+    if(!is.character(indicator) || length(indicator) != 1L ||
+       is.na(indicator) || !nzchar(indicator) ||
+       !indicator %in% column_names || indicator %in% colnames(samples)){
+      next
+    }
+    if(!parameter %in% colnames(samples)){
+      stop(
+        "Random-effect allocation gate prior samples are missing probability coordinate '",
+        parameter, "'.",
+        call. = FALSE
+      )
+    }
+
+    probability <- samples[, parameter]
+    if(length(probability) != n_samples || any(!is.finite(probability)) ||
+       any(probability < 0 | probability > 1)){
+      stop(
+        "Random-effect allocation gate prior probabilities are invalid for '",
+        parameter, "'.",
+        call. = FALSE
+      )
+    }
+    samples <- cbind(
+      samples,
+      stats::rbinom(n_samples, size = 1L, prob = probability)
+    )
+    colnames(samples)[ncol(samples)] <- indicator
+  }
+
+  ordered <- intersect(column_names, colnames(samples))
+  samples[, ordered, drop = FALSE]
+}
+
 
 .bt_add_lkj_prior_samples <- function(samples, formula_design, column_names,
                                       n_samples){

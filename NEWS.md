@@ -28,6 +28,11 @@
   subject to human visual approval
 
 ### Features
+- allows variance allocations to attach independent Bernoulli inclusion gates
+  to random components, including a gate-only one-component allocation without
+  an artificial Dirichlet coordinate. Gate metadata propagate through formula
+  compilation, reconstruction, parameter catalogs, prior simulation, bridge
+  contexts, and averaged or conditional model summaries.
 - adds an explicit `seed` argument to `JAGS_bridgesampling()` and seeds every
   cached marginal-likelihood fixture so cache refreshes reproduce bridge
   proposal draws and downstream model-averaged figures

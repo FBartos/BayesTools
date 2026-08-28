@@ -238,6 +238,13 @@
   }
   match <- which(names(prior_list) == base_name)
   if(length(match) == 0L){
+    auxiliary_owners <-
+      .bt_parameter_coordinates_random_prior_auxiliary_owners(prior_list)
+    if(base_name %in% names(auxiliary_owners)){
+      match <- match(auxiliary_owners[[base_name]], names(prior_list))
+    }
+  }
+  if(length(match) == 0L){
     eta_names <- vapply(
       names(prior_list),
       .JAGS_prior_dirichlet_eta_name,
@@ -249,6 +256,24 @@
     return(NULL)
   }
   prior_list[[match]]
+}
+
+.bt_parameter_coordinates_random_prior_auxiliary_owners <- function(prior_list){
+
+  if(length(prior_list) == 0L || is.null(names(prior_list))){
+    return(stats::setNames(character(), character()))
+  }
+  random_prior_names <- names(prior_list)[vapply(prior_list, function(prior){
+    isTRUE(attr(prior, "random_allocation_sd", exact = TRUE))
+  }, logical(1))]
+  owners <- unlist(lapply(random_prior_names, function(parameter){
+    stats::setNames(
+      rep(parameter, 3L),
+      paste0(parameter, c("_indicator", "_inclusion", "_variable"))
+    )
+  }), use.names = TRUE)
+
+  owners
 }
 
 .bt_parameter_coordinates_point_values <- function(parameter, prior){
@@ -569,6 +594,9 @@
   name_map <- .bt_parameter_coordinates_name_map(formula_design)
   allocation_indicators <-
     .bt_random_variance_allocation_inclusion_indicator_names(formula_design)
+  random_prior_auxiliaries <- names(
+    .bt_parameter_coordinates_random_prior_auxiliary_owners(prior_list)
+  )
   dirichlet_auxiliaries <- vapply(
     names(prior_list)[vapply(prior_list, is.prior.simplex, logical(1))],
     .JAGS_prior_dirichlet_eta_name,
@@ -592,6 +620,10 @@
       owner$role
     }
     if(coordinate_name %in% allocation_indicators){
+      role <- "allocation"
+    }
+    random_prior_auxiliary <- base_name %in% random_prior_auxiliaries
+    if(random_prior_auxiliary){
       role <- "allocation"
     }
     if(is.null(random_term) && !is.null(prior)){
@@ -709,7 +741,7 @@
         "random_sd_variable"
       ) ||
         base_name %in% dirichlet_auxiliaries ||
-        isTRUE(prior_metadata$allocation)
+        (isTRUE(prior_metadata$allocation) && !random_prior_auxiliary)
     )
   }
 

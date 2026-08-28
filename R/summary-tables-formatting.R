@@ -87,6 +87,7 @@
   if(length(x) > 0){
 
     add_to_right <- max(nchar(reference)) - nchar(x)
+    add_to_right <- ifelse(add_to_right < 0, 0, add_to_right)
     x <- paste0(x, sapply(seq_along(x), function(i)paste0(rep(" ", add_to_right[i]), collapse = "")))
 
   }

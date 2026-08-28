@@ -79,6 +79,7 @@
     component_names <- allocation$component_names
     target <- .bt_random_variance_allocation_target(allocation)
     scale <- .bt_random_variance_allocation_scale(allocation)
+    gate_only <- .bt_random_variance_allocation_gate_only(allocation, terms)
     if(identical(target, "sd_component") && !is.null(allocation$inclusion)){
       stop(
         "Variance allocation inclusion currently supports target = \"block\".",
@@ -144,14 +145,18 @@
         )
       }
 
-      allocation_prior <- .bt_random_variance_allocation_prior(allocation, length(terms))
-      allocation_prior <- .bt_random_effect_set_allocation_metadata(
-        allocation_prior,
-        allocation = label,
-        terms = terms,
-        parent = allocation$parent
-      )
-      prior_list[[allocation_names$weight_suffix]] <- allocation_prior
+      weight_name <- if(gate_only) NULL else allocation_names$weight_name
+      weight_suffix <- if(gate_only) NULL else allocation_names$weight_suffix
+      if(!gate_only){
+        allocation_prior <- .bt_random_variance_allocation_prior(allocation, length(terms))
+        allocation_prior <- .bt_random_effect_set_allocation_metadata(
+          allocation_prior,
+          allocation = label,
+          terms = terms,
+          parent = allocation$parent
+        )
+        prior_list[[allocation_names$weight_suffix]] <- allocation_prior
+      }
 
       inclusion_info <- .bt_random_variance_allocation_inclusion_info(
         allocation = allocation,
@@ -181,8 +186,8 @@
         }
         expression <- .bt_random_variance_allocation_expression(
           source_name = source_name,
-          weight_name = allocation_names$weight_name,
-          index = term_i,
+          weight_name = weight_name,
+          index = if(gate_only) NA_integer_ else term_i,
           scale = scale,
           n_targets = length(terms),
           inclusion_name = inclusion_name
@@ -212,8 +217,8 @@
           syntax <- c(syntax, paste0(node_name, " = ", expression))
         }
         factor <- .bt_random_variance_allocation_factor(
-          weight_name = allocation_names$weight_name,
-          index = term_i,
+          weight_name = weight_name,
+          index = if(gate_only) NA_integer_ else term_i,
           scale = scale,
           n_targets = length(terms),
           inclusion_name = inclusion_name
@@ -243,7 +248,7 @@
             display_name = display_name,
             component_names = component_names,
             terms = terms,
-            index = term_i,
+            index = if(gate_only) NA_integer_ else term_i,
             target = "block",
             scale = scale,
             parent = allocation$parent,
@@ -253,10 +258,12 @@
             factors = c(source_factors, list(factor)),
             n_targets = length(terms),
             scale_name = source$scale_name,
-            weight_name = allocation_names$weight_name,
+            weight_name = weight_name,
             scale_suffix = source$scale_suffix,
-            weight_suffix = allocation_names$weight_suffix,
-            inclusion = inclusion_info
+            weight_suffix = weight_suffix,
+            inclusion = inclusion_info,
+            gate_only = gate_only,
+            parameter = parameter
           )
           by_block[[terms[term_i]]] <- .bt_random_sd_binding(
             source = source,
@@ -282,11 +289,14 @@
         source_node = source_name,
         source = source,
         parent_factors = source_factors,
+        n_targets = length(terms),
         scale_name = source$scale_name,
-        weight_name = allocation_names$weight_name,
+        weight_name = weight_name,
         scale_suffix = source$scale_suffix,
-        weight_suffix = allocation_names$weight_suffix,
-        inclusion = inclusion_info
+        weight_suffix = weight_suffix,
+        inclusion = inclusion_info,
+        gate_only = gate_only,
+        parameter = parameter
       )
     }else if(identical(target, "sd_component")){
       block <- terms[[1L]]
@@ -386,6 +396,7 @@
     attr(inclusion_prior, "random_allocation") <- label
     attr(inclusion_prior, "random_allocation_inclusion") <- component_label
     attr(inclusion_prior, "random_component") <- component_label
+    attr(inclusion_prior, "random_allocation_indicator") <- inclusion_names$indicator_name
     inclusion_info[[component_label]] <- list(
       component = component_label,
       index = match(component_label, component_labels),

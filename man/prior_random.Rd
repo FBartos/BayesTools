@@ -143,7 +143,9 @@ Summaries report \code{w} as a variance proportion for \code{"total_variance"} a
 \item{inclusion}{optional named list of scalar probability priors, keyed by
 allocation component label. For \code{target = "block"}, each listed component
 receives an independent Bernoulli gate and its SD contribution is multiplied
-by that gate. Gate names must match resolved allocation component labels.}
+by that gate. Gate names must match resolved allocation component labels.
+A block allocation with exactly one term is permitted only as a gate-only
+allocation: \code{weights} must be \code{NULL} and \code{inclusion} must name that term.}
 
 \item{display_name}{public semantic owner used as the parameter-name prefix.
 It defaults to \code{name}; use \code{""} when a single model component needs no
@@ -302,7 +304,10 @@ the structure-specific valid interval.
 \section{Variance allocation}{
 
 \code{random_variance_allocation()} expresses one aggregate SD source plus a Dirichlet
-prior over variance proportions. Root allocations must specify exactly one of
+prior over variance proportions. A one-component block allocation is also
+supported when it supplies only an \code{inclusion} gate; this multiplies the
+component SD by the Bernoulli indicator without creating an artificial
+allocation weight. Root allocations must specify exactly one of
 a prior-owned \code{sd} prior or \code{sd_source = random_sd_source(...)}.
 \code{sd_source} can reference an already-defined JAGS node such as scalar \code{tau}
 or row-shaped \code{tau} without creating a prior for that node. Multiple named

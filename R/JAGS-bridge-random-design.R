@@ -492,7 +492,8 @@
       "parent", "source", "factors", "parent_factors", "n_targets", "scale_name",
       "weight_name", "leaf_names", "leaf_terms",
       "leaf_index_by_column", "source_node", "weight_suffix",
-      "scale_suffix", "sd_component_names", "sd_component_terms",
+      "scale_suffix", "sd_component_names", "sd_component_terms", "gate_only",
+      "parameter",
       "sd_component_index_by_column", "inclusion"
     )
   )]

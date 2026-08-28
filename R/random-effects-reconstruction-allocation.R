@@ -325,55 +325,14 @@
   factor_plan <- vector("list", length(factors))
   for(factor_i in seq_along(factors)){
     factor <- factors[[factor_i]]
-    if(!is.list(factor)){
-      stop(
-        "Random-effect allocation factor metadata are missing canonical fields.",
-        call. = FALSE
-      )
-    }
-    if(!is.character(factor$weight_name) || length(factor$weight_name) != 1L ||
-       is.na(factor$weight_name) || !nzchar(factor$weight_name)){
-      stop(
-        "Random-effect allocation factor metadata are missing canonical 'weight_name'.",
-        call. = FALSE
-      )
-    }
-    if(!is.numeric(factor$index) || length(factor$index) != 1L ||
-       is.na(factor$index) || factor$index != as.integer(factor$index) ||
-       factor$index < 1L){
-      stop(
-        "Random-effect allocation factor metadata are missing canonical 'index'.",
-        call. = FALSE
-      )
-    }
-    if(!is.numeric(factor$n_targets) || length(factor$n_targets) != 1L ||
-       is.na(factor$n_targets) || factor$n_targets != as.integer(factor$n_targets) ||
-       factor$n_targets < 2L){
-      stop(
-        "Random-effect allocation factor metadata are missing canonical 'n_targets'.",
-        call. = FALSE
-      )
-    }
+    .bt_check_random_variance_allocation_factor(factor)
     factor_plan[[factor_i]] <- list(
       weight_name = factor$weight_name,
       index = factor$index,
-      scale = .bt_random_effect_allocation_scale_metadata(
-        factor,
-        context = "Random-effect allocation factor metadata"
-      ),
+      scale = factor$scale,
       n_targets = factor$n_targets,
       inclusion_name = factor$inclusion_name
     )
-    if(!is.null(factor_plan[[factor_i]]$inclusion_name) &&
-       (!is.character(factor_plan[[factor_i]]$inclusion_name) ||
-        length(factor_plan[[factor_i]]$inclusion_name) != 1L ||
-        is.na(factor_plan[[factor_i]]$inclusion_name) ||
-        !nzchar(factor_plan[[factor_i]]$inclusion_name))){
-      stop(
-        "Random-effect allocation factor metadata are missing canonical 'inclusion_name'.",
-        call. = FALSE
-      )
-    }
   }
 
   factor_plan
@@ -393,30 +352,38 @@
       factor,
       context = "Random-effect allocation factor metadata"
     )
-    weights <- .bt_random_effect_dirichlet_draws(
-      parameter_name = factor$weight_name,
-      posterior = posterior,
-      prior_list = prior_list
-    )
-    if(is.null(weights)){
-      return(NULL)
-    }
-    if(ncol(weights) != factor$n_targets){
-      stop(
-        "Random-effect allocation factor metadata for '",
-        factor$weight_name,
-        "' expected ", factor$n_targets,
-        " Dirichlet coordinate(s), but found ", ncol(weights), ".",
-        call. = FALSE
+    multiplier <- 1
+    if(!is.null(factor$weight_name)){
+      weights <- .bt_random_effect_dirichlet_draws(
+        parameter_name = factor$weight_name,
+        posterior = posterior,
+        prior_list = prior_list
       )
-    }
-    if(factor$index > ncol(weights)){
-      stop(
-        "Random-effect allocation factor metadata for '",
-        factor$weight_name,
-        "' reference coordinate ", factor$index,
-        ", but only ", ncol(weights), " coordinate(s) are available.",
-        call. = FALSE
+      if(is.null(weights)){
+        return(NULL)
+      }
+      if(ncol(weights) != factor$n_targets){
+        stop(
+          "Random-effect allocation factor metadata for '",
+          factor$weight_name,
+          "' expected ", factor$n_targets,
+          " Dirichlet coordinate(s), but found ", ncol(weights), ".",
+          call. = FALSE
+        )
+      }
+      if(factor$index > ncol(weights)){
+        stop(
+          "Random-effect allocation factor metadata for '",
+          factor$weight_name,
+          "' reference coordinate ", factor$index,
+          ", but only ", ncol(weights), " coordinate(s) are available.",
+          call. = FALSE
+        )
+      }
+      multiplier <- .bt_random_effect_allocation_multiplier(
+        weights = weights[, factor$index],
+        scale = scale,
+        n_targets = factor$n_targets
       )
     }
     gate <- .bt_random_effect_allocation_gate_draws(
@@ -431,11 +398,7 @@
         call. = FALSE
       )
     }
-    out <- out * .bt_random_effect_allocation_multiplier(
-      weights = weights[, factor$index],
-      scale = scale,
-      n_targets = factor$n_targets
-    ) * gate
+    out <- out * multiplier * gate
   }
 
   out

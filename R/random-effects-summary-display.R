@@ -438,11 +438,18 @@
   allocation_derived <- vapply(quantities$extraction_key, function(key){
     isTRUE(key$allocation_derived)
   }, logical(1))
+  gated_allocation <- vapply(quantities$extraction_key, function(key){
+    dependencies <- key$dependencies
+    is.character(dependencies) && any(grepl(
+      "__include_.*_indicator$",
+      dependencies
+    ))
+  }, logical(1))
   correlation <- quantities$quantity == "cor"
   inclusion   <- quantities$quantity == "inclusion"
   block_scale <- quantities$owner_type == "random_block" &
     quantities$quantity == "sd" &
-    !allocation_derived
+    (!allocation_derived | gated_allocation)
   allocation <- quantities$owner_type == "variance_allocation" &
     quantities$quantity %in% c(
       "sd_total", "sd_common", "var_prop", "var_mult", "inclusion"
@@ -481,16 +488,17 @@
   if(nzchar(prefix) && startsWith(summary_label, prefix)){
     summary_label <- substring(summary_label, nchar(prefix) + 1L)
   }
+  block_quantity <- identical(quantity$owner_type, "random_block")
   .bt_random_effect_summary_prior(
     parameter = quantity$formula_parameter,
     type = quantity$quantity,
     label = summary_label,
     component_label = component_label,
-    block = if(is.null(random_term)) NULL else random_term$block_name,
-    grouping = if(is.null(random_term)) NULL else random_term$group_label,
-    structure = if(is.null(random_term)) NULL else
+    block = if(!block_quantity || is.null(random_term)) NULL else random_term$block_name,
+    grouping = if(!block_quantity || is.null(random_term)) NULL else random_term$group_label,
+    structure = if(!block_quantity || is.null(random_term)) NULL else
       .bt_random_effect_summary_term_structure(random_term),
-    effect_label = if(is.null(random_term)) NULL else quantity$owner_name,
+    effect_label = if(!block_quantity || is.null(random_term)) NULL else quantity$owner_name,
     allocation = if(is.null(allocation)) NULL else key$allocation_label,
     allocation_metadata = allocation,
     allocation_index = if(is.null(key$index)) NULL else key$index,

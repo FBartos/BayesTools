@@ -242,6 +242,12 @@
                                                          prior_list,
                                                          include_multipliers = FALSE){
 
+  if(isTRUE(allocation$gate_only)){
+    stop(
+      "Gate-only random-effect allocations do not define variance weights.",
+      call. = FALSE
+    )
+  }
   weights <- .bt_random_effect_dirichlet_draws(
     parameter_name = allocation$weight_name,
     posterior = model_samples,
@@ -265,7 +271,7 @@
 
   for(i in seq_len(ncol(weights))){
     names <- c(names, .bt_random_effect_summary_name(
-      parameter = sub("__xRE_ALLOCx_.*$", "", allocation$weight_name),
+      parameter = .bt_random_effect_allocation_formula_parameter(allocation),
       type = allocation_type$name,
       parts = c(allocation$label, components[i])
     ))
@@ -295,7 +301,7 @@
     )
     for(i in seq_len(ncol(weights))){
       names <- c(names, .bt_random_effect_summary_name(
-        parameter = sub("__xRE_ALLOCx_.*$", "", allocation$weight_name),
+        parameter = .bt_random_effect_allocation_formula_parameter(allocation),
         type = "sd_mult",
         parts = c(allocation$label, components[i])
       ))
@@ -426,7 +432,7 @@
     }
 
     names <- c(names, .bt_random_effect_summary_name(
-      parameter = sub("__xRE_ALLOCx_.*$", "", allocation$weight_name),
+      parameter = .bt_random_effect_allocation_formula_parameter(allocation),
       type = "inclusion",
       parts = c(allocation$label, component_label)
     ))
@@ -451,6 +457,25 @@
     components = component_values,
     indices = component_indices,
     values = values
+  )
+}
+
+.bt_random_effect_allocation_formula_parameter <- function(allocation){
+
+  parameter <- allocation$parameter
+  if(is.character(parameter) && length(parameter) == 1L &&
+     !is.na(parameter) && nzchar(parameter)){
+    return(parameter)
+  }
+  weight_name <- allocation$weight_name
+  if(is.character(weight_name) && length(weight_name) == 1L &&
+     !is.na(weight_name) && nzchar(weight_name)){
+    return(sub("__xRE_ALLOCx_.*$", "", weight_name))
+  }
+
+  stop(
+    "Random-effect allocation metadata are missing canonical 'parameter'.",
+    call. = FALSE
   )
 }
 

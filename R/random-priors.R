@@ -87,7 +87,10 @@
 #'
 #' @section Variance allocation:
 #' `random_variance_allocation()` expresses one aggregate SD source plus a Dirichlet
-#' prior over variance proportions. Root allocations must specify exactly one of
+#' prior over variance proportions. A one-component block allocation is also
+#' supported when it supplies only an `inclusion` gate; this multiplies the
+#' component SD by the Bernoulli indicator without creating an artificial
+#' allocation weight. Root allocations must specify exactly one of
 #' a prior-owned `sd` prior or `sd_source = random_sd_source(...)`.
 #' `sd_source` can reference an already-defined JAGS node such as scalar `tau`
 #' or row-shaped `tau` without creating a prior for that node. Multiple named
@@ -439,6 +442,8 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL,
 #'   allocation component label. For `target = "block"`, each listed component
 #'   receives an independent Bernoulli gate and its SD contribution is multiplied
 #'   by that gate. Gate names must match resolved allocation component labels.
+#'   A block allocation with exactly one term is permitted only as a gate-only
+#'   allocation: `weights` must be `NULL` and `inclusion` must name that term.
 #' @export
 random_variance_allocation <- function(name, terms = NULL, sd = NULL,
                                        weights = NULL,
@@ -481,15 +486,27 @@ random_variance_allocation <- function(name, terms = NULL, sd = NULL,
   if(identical(target, "sd_component") && (is.null(terms) || length(terms) != 1L)){
     stop("'target = \"sd_component\"' requires exactly one random-effect block in 'terms'.", call. = FALSE)
   }
-  if(identical(target, "block") && !is.null(terms) && length(terms) < 2L){
+  gate_only <- identical(target, "block") && !is.null(terms) &&
+    length(terms) == 1L && is.null(weights) && !is.null(inclusion)
+  if(gate_only){
+    component_labels <- .bt_random_variance_allocation_component_labels(terms)
+    if(!identical(sort(names(inclusion)), sort(component_labels))){
+      stop(
+        "A one-component block allocation requires 'inclusion' to name its sole resolved component.",
+        call. = FALSE
+      )
+    }
+  }
+  if(identical(target, "block") && !is.null(terms) && length(terms) < 2L &&
+     !gate_only){
     stop(
-      "Block variance allocation requires at least two resolved random-effect blocks. ",
-      "Use random_block(sd_source = ...) for a direct one-block SD source.",
+      "Block variance allocation requires at least two resolved random-effect blocks, ",
+      "unless one block is supplied with a sole 'inclusion' gate and no 'weights'.",
       call. = FALSE
     )
   }
   if(is.null(weights)){
-    if(identical(target, "block") && !is.null(terms)){
+    if(identical(target, "block") && !is.null(terms) && length(terms) >= 2L){
       weights <- prior("dirichlet", list(alpha = rep(1, length(terms))))
     }
   }else{

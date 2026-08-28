@@ -1828,6 +1828,11 @@ parameter_transform_jacobian <- function(values, transform){
   if(is.null(prior_list)){
     prior_list <- list()
   }
+  out$suppress <- unique(c(
+    out$suppress,
+    names(.bt_parameter_coordinates_random_prior_auxiliary_owners(prior_list)),
+    .bt_random_variance_allocation_inclusion_indicator_names(formula_design)
+  ))
   random_design <- .bt_random_effect_summary_designs(formula_design)
   if(length(random_design) == 0L){
     return(out)
@@ -1934,7 +1939,9 @@ parameter_transform_jacobian <- function(values, transform){
       return(invisible(NULL))
     }
     K <- allocation$n_targets
-    if(!is.numeric(K) || length(K) != 1L || is.na(K) || K < 2L){
+    gate_only <- isTRUE(allocation$gate_only)
+    if(!is.numeric(K) || length(K) != 1L || is.na(K) ||
+       K < if(gate_only) 1L else 2L){
       stop("Random-effect allocation metadata have no valid 'n_targets'. Refit the model with this version of BayesTools.",
            call. = FALSE)
     }
@@ -1973,7 +1980,8 @@ parameter_transform_jacobian <- function(values, transform){
       coordinates,
       scale_names
     )
-    if(length(scale_names) > 0L && length(scale_dependencies) > 0L){
+    if(length(scale_names) > 0L && length(scale_dependencies) > 0L &&
+       !gate_only){
       source_name <- .bt_random_sd_binding_source_name(allocation$source)
       parent_factors <- allocation$parent_factors
       if(is.null(parent_factors)){
@@ -2037,16 +2045,16 @@ parameter_transform_jacobian <- function(values, transform){
         source_prior = source_prior,
         source_transform = "square"
       )
-      out$suppress <<- unique(c(out$suppress, scale_dependencies))
     }
+    out$suppress <<- unique(c(out$suppress, scale_dependencies))
     dependencies <- .bt_parameter_catalog_coordinates(
       coordinates,
       allocation$weight_name
     )
     out$suppress <<- unique(c(out$suppress, dependencies))
-    for(i in seq_len(K)){
+    if(!gate_only) for(i in seq_len(K)){
       raw_name <- .bt_random_effect_summary_name(
-        parameter = sub("__xRE_ALLOCx_.*$", "", allocation$weight_name),
+        parameter = parameter,
         type = allocation_type$name,
         parts = c(allocation$label, components[i])
       )
@@ -2082,7 +2090,7 @@ parameter_transform_jacobian <- function(values, transform){
       if(identical(.bt_random_effect_summary_allocation_target(allocation),
                    "sd_component")){
         multiplier_name <- .bt_random_effect_summary_name(
-          parameter = sub("__xRE_ALLOCx_.*$", "", allocation$weight_name),
+          parameter = parameter,
           type = "sd_mult",
           parts = c(allocation$label, components[i])
         )
@@ -2122,7 +2130,7 @@ parameter_transform_jacobian <- function(values, transform){
           component_label
         )
         raw_name <- .bt_random_effect_summary_name(
-          parameter = sub("__xRE_ALLOCx_.*$", "", allocation$weight_name),
+          parameter = parameter,
           type = "inclusion",
           parts = c(allocation$label, component_label)
         )
@@ -2189,6 +2197,11 @@ parameter_transform_jacobian <- function(values, transform){
         )
         allocation_sd <- !is.null(random_term$sd_binding) &&
           length(random_term$sd_binding$allocations) > 0L
+        allocation_derived <- allocation_sd && !all(vapply(
+          random_term$sd_binding$allocations,
+          function(allocation) isTRUE(allocation$gate_only),
+          logical(1)
+        ))
         direct_source <- direct_sd && !allocation_sd
         allocation_dependencies <- .bt_parameter_catalog_coordinates(
           coordinates,
@@ -2300,7 +2313,7 @@ parameter_transform_jacobian <- function(values, transform){
             source_prior = source_prior,
             source_transform = source_transform,
             source_scale = source_scale,
-            allocation_derived = allocation_sd
+            allocation_derived = allocation_derived
           )
           var_name <- .bt_random_effect_summary_name(
             parameter = parameter,
@@ -2332,7 +2345,7 @@ parameter_transform_jacobian <- function(values, transform){
             source_parameter = if(direct_source) source_parameter else "",
             source_prior = source_prior,
             source_transform = "square",
-            allocation_derived = allocation_sd
+            allocation_derived = allocation_derived
           )
         }
       }
@@ -2556,16 +2569,18 @@ parameter_transform_jacobian <- function(values, transform){
         random_term$sd_binding$allocations
       }
       for(allocation in allocations){
-        if(!allocation$weight_name %in% seen_allocations){
+        allocation_key <- paste(parameter, allocation$label, sep = "::")
+        if(!allocation_key %in% seen_allocations){
           add_allocation(allocation, parameter, random_term)
-          seen_allocations <- c(seen_allocations, allocation$weight_name)
+          seen_allocations <- c(seen_allocations, allocation_key)
         }
       }
     }
     for(allocation in design$random_allocations){
-      if(!allocation$weight_name %in% seen_allocations){
+      allocation_key <- paste(parameter, allocation$label, sep = "::")
+      if(!allocation_key %in% seen_allocations){
         add_allocation(allocation, parameter)
-        seen_allocations <- c(seen_allocations, allocation$weight_name)
+        seen_allocations <- c(seen_allocations, allocation_key)
       }
     }
   }
@@ -2956,7 +2971,7 @@ parameter_transform_jacobian <- function(values, transform){
   }
   allocations <- c(allocations, design$random_allocations)
   allocation_keys <- vapply(allocations, function(allocation){
-    allocation$weight_name
+    allocation$label
   }, character(1))
   allocations <- allocations[!duplicated(allocation_keys)]
   matches <- vapply(allocations, function(allocation){
@@ -3073,26 +3088,32 @@ parameter_transform_jacobian <- function(values, transform){
     )
     return(summary$values[, key$index])
   }
-  if(evaluator %in% c("allocation", "allocation_inclusion")){
+  if(identical(evaluator, "allocation_inclusion")){
+    values <- .bt_random_effect_allocation_gate_draws(
+      parameter_name = key$source_parameter,
+      posterior = model_samples
+    )
+    if(is.null(values)){
+      stop(
+        "Selected random allocation inclusion is unavailable from its declared dependency.",
+        call. = FALSE
+      )
+    }
+    return(values)
+  }
+  if(identical(evaluator, "allocation")){
     allocation <- .bt_parameter_catalog_find_allocation(
       fit,
       key,
       random_term
     )
-    summary <- if(identical(evaluator, "allocation")){
-      .bt_random_effect_summary_allocation_samples(
-        allocation = allocation,
-        random_term = random_term,
-        model_samples = model_samples,
-        prior_list = prior_list,
-        include_multipliers = TRUE
-      )
-    }else{
-      .bt_random_effect_summary_allocation_inclusion_samples(
-        allocation,
-        model_samples
-      )
-    }
+    summary <- .bt_random_effect_summary_allocation_samples(
+      allocation = allocation,
+      random_term = random_term,
+      model_samples = model_samples,
+      prior_list = prior_list,
+      include_multipliers = TRUE
+    )
     match <- match(key$summary_name, summary$names)
     if(is.na(match)){
       stop("Selected random allocation summary is unavailable from its declared dependencies.",
