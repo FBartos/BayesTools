@@ -24,7 +24,16 @@
   and density/trace diagnostics
 - removes the superseded random-effect summary builder and its private
   ordering, validation, labeling, and bridge-evaluation helpers; active
-  summaries use the authoritative parameter catalog and draw extractor
+  summaries use the authoritative parameter catalog and draw extractor, and
+  obsolete allocation, SD-leaf, prediction, and bridge-context plumbing is
+  removed from the shared random-effect implementation
+- removes an unreachable dense-CAR Cholesky argument and empty selection-model
+  monitor hook after those responsibilities moved to the Markov compiler and
+  common selection metadata
+- makes `selection_backend_spec()` the single owner of global and per-branch
+  kernel mode codes and removes the unreleased `phack_z_destination` naming
+  adapter in favor of the canonical `phack_z_dest`; native contexts now consume
+  the authoritative top-level mode instead of a duplicated backend-data copy
 - repairs visual regression tests that passed unprinted ggplot callbacks and
   therefore recorded empty SVG references; replacement references remain
   subject to human visual approval

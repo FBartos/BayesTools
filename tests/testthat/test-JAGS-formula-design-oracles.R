@@ -11753,8 +11753,7 @@ test_that("structured correlation Cholesky syntax exposes intended covariance pa
       K = 3,
       structure = "car",
       block_prior = block_prior,
-      include_correlation = TRUE,
-      distance_matrix = car_distance
+      include_correlation = TRUE
     ),
     "Dense CAR Cholesky compilation is unsupported",
     fixed = TRUE

@@ -309,11 +309,15 @@ test_that("selection_backend_spec compiles none, step, phack, and combined prior
 
   none_spec <- selection_backend_spec(prior_none())
   expect_equal(none_spec$mode, "none")
+  expect_identical(none_spec$kernel_mode, 0L)
+  expect_identical(none_spec$branch_kernel_mode, 0L)
   expect_equal(none_spec$step$breaks, c(0, 1))
   expect_equal(none_spec$prior_code, "")
 
   step_spec <- selection_backend_spec(selection)
   expect_equal(step_spec$mode, "step")
+  expect_identical(step_spec$kernel_mode, 1L)
+  expect_identical(step_spec$branch_kernel_mode, 1L)
   expect_equal(step_spec$step$breaks, c(0, .025, .05, 1))
   expect_equal(step_spec$step$coefficient_ids, paste0("omega[", 1:3, "]"))
   expect_match(step_spec$prior_code, "omega\\[2\\] <- 0.5")
@@ -333,6 +337,8 @@ test_that("selection_backend_spec compiles none, step, phack, and combined prior
 
   phack_spec <- selection_backend_spec(phacking)
   expect_equal(phack_spec$mode, "phack_power")
+  expect_identical(phack_spec$kernel_mode, 2L)
+  expect_identical(phack_spec$branch_kernel_mode, 2L)
   expect_equal(phack_spec$step$breaks, c(0, 1))
   expect_equal(phack_spec$phacking$form, "linear")
   expect_equal(phack_spec$phacking$q, 1L)
@@ -351,6 +357,8 @@ test_that("selection_backend_spec compiles none, step, phack, and combined prior
 
   combined_spec <- selection_backend_spec(combined)
   expect_equal(combined_spec$mode, "step_phack_power")
+  expect_identical(combined_spec$kernel_mode, 3L)
+  expect_identical(combined_spec$branch_kernel_mode, 3L)
   expect_equal(combined_spec$branch_type, "combined")
   expect_equal(combined_spec$step$breaks, c(0, .025, .05, 1))
   expect_match(combined_spec$prior_code, "omega\\[3\\] <- 0.25")
@@ -374,20 +382,6 @@ test_that("selection backend spec and context helpers expose generic names and r
     "must be named",
     fixed = TRUE
   )
-  expect_error(
-    selection_backend_spec(
-      selection,
-      names = list(phack_z_dest = "dest_a", phack_z_destination = "dest_b")
-    ),
-    "must not conflict",
-    fixed = TRUE
-  )
-  phacking_alias <- selection_backend_spec(
-    prior_phacking(),
-    names = list(phack_z_destination = "custom_dest")
-  )
-  expect_equal(phacking_alias$jags_phack_z_dest, "custom_dest")
-
   context <- spec
   context$z_lower <- c(1.96, -Inf)
   context$z_upper <- c(Inf, 1.96)
@@ -582,6 +576,14 @@ test_that("selection native helpers use compiled bare specs instead of neutral p
   expect_equal(step_args$phack_kind, c(0L, 0L))
   expect_equal(step_args$kernel_mode, c(1L, 1L))
 
+  missing_mode <- step_spec
+  missing_mode$kernel_mode <- NULL
+  expect_error(
+    selection_native_static_args(missing_mode),
+    "Invalid selection specification 'kernel_mode'.",
+    fixed = TRUE
+  )
+
   phacking <- prior_phacking()
   phack_spec <- selection_backend_spec(phacking)
   phack_static <- selection_native_static_args(phack_spec)
@@ -658,6 +660,8 @@ test_that("selection_backend_spec compiles mixtures with active identity transfo
 
   expect_equal(spec$mode, "step_phack_power")
   expect_equal(spec$branch_type, c("none", "weightfunction", "phack", "combined"))
+  expect_identical(spec$kernel_mode, 3L)
+  expect_identical(spec$branch_kernel_mode, 0:3)
   expect_equal(spec$step$breaks, c(0, .025, 1))
   expect_equal(spec$phacking$branch_phack_kind, c(1L, 2L))
   expect_match(spec$prior_code, "bias_indicator ~ dcat\\(c\\(1, 1, 1, 1\\)\\)")

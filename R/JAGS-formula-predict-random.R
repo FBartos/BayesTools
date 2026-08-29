@@ -84,7 +84,6 @@
     requested_terms = random_terms,
     formula_target = formula_target,
     blocks = blocks,
-    parameter = parameter,
     replay_fitted_formula = replay_fitted_formula
   )
 
@@ -147,7 +146,6 @@
                                                           requested_terms,
                                                           formula_target,
                                                           blocks,
-                                                          parameter,
                                                           replay_fitted_formula = FALSE){
 
   fitted_terms <- .bt_formula_design_random_effects(fitted_design)
@@ -497,7 +495,6 @@
   )
   if(n_columns == 1L || structure %in% c("diag", "id")){
     return(.bt_random_effect_group_contribution_sample_independent(
-      random_term = random_term,
       model_matrix = model_matrix,
       group_map = group_map,
       rows = rows,
@@ -767,7 +764,6 @@
 
 # Sample independent new groups without an identity covariance decomposition.
 .bt_random_effect_group_contribution_sample_independent <- function(
-    random_term,
     model_matrix,
     group_map,
     rows,
@@ -908,7 +904,6 @@
   if(n_columns == 1L || structure %in% c("diag", "id")){
     if(is.null(column_allocation)){
       return(.bt_random_effect_group_contribution_sample_independent(
-        random_term = random_term,
         model_matrix = model_matrix,
         group_map = group_map,
         rows = rows,
@@ -918,7 +913,6 @@
       ))
     }
     return(.bt_random_effect_group_contribution_sample_independent(
-      random_term = random_term,
       model_matrix = model_matrix,
       group_map = group_map,
       rows = rows,

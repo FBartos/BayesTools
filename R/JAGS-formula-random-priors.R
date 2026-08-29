@@ -201,8 +201,7 @@
 
 .bt_JAGS_structured_corr_cholesky <- function(node_prefix, prior_prefix, K,
                                               structure, block_prior,
-                                              include_correlation = TRUE,
-                                              distance_matrix = NULL){
+                                              include_correlation = TRUE){
 
   check_char(node_prefix, "node_prefix", allow_NA = FALSE)
   check_char(prior_prefix, "prior_prefix", allow_NA = FALSE)

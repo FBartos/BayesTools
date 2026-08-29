@@ -464,7 +464,6 @@ test_that("one-column unstructured blocks sample without correlation state", {
   }
   independent_contribution <- function(){
     .bt_random_effect_group_contribution_sample_independent(
-      random_term = random_term,
       model_matrix = random_term$model_matrix,
       group_map = random_term$group_map,
       rows = seq_len(nrow(df)),
@@ -534,7 +533,6 @@ test_that("one-column row-indexed blocks sample without correlation state", {
   }
   independent_contribution <- function(){
     .bt_random_effect_group_contribution_sample_independent(
-      random_term = random_term,
       model_matrix = random_term$model_matrix,
       group_map = random_term$group_map,
       rows = seq_len(nrow(df)),

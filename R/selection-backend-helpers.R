@@ -69,18 +69,6 @@
      any(!nzchar(backend_name_names))){
     stop("All entries in the 'names' argument must be named.", call. = FALSE)
   }
-  if(!is.null(backend_names[["phack_z_destination"]]) &&
-     !is.null(backend_names[["phack_z_dest"]]) &&
-     !identical(backend_names[["phack_z_destination"]], backend_names[["phack_z_dest"]])){
-    stop(
-      "'names$phack_z_destination' and 'names$phack_z_dest' must not conflict.",
-      call. = FALSE
-    )
-  }
-  if(!is.null(backend_names[["phack_z_destination"]]) && is.null(backend_names[["phack_z_dest"]])){
-    backend_names[["phack_z_dest"]] <- backend_names[["phack_z_destination"]]
-  }
-  backend_names[["phack_z_destination"]] <- NULL
 
   defaults <- list(
     omega               = "omega",
@@ -286,12 +274,7 @@
   ))
 }
 
-.selection_backend_phacking_auxiliary_monitors <- function(branch_info, has_phacking, names, uses_indicator){
-
-  character()
-}
-
-.selection_backend_init <- function(branch_info, breaks, prior_weights, names, uses_indicator){
+.selection_backend_init <- function(branch_info, prior_weights, uses_indicator){
 
   active_branch <- which.max(prior_weights)
 

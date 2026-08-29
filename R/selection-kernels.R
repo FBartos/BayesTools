@@ -287,7 +287,7 @@ selection_backend_spec <- function(priors,
                                    global_breaks = NULL){
 
   check_char(backend, "backend", allow_values = "jags")
-  check_list(names, "names", check_names = c("omega", "alpha", "pi_null", "beta_null", "phack_kind", "phack_z_source", "phack_z_dest", "phack_z_destination"), allow_other = FALSE)
+  check_list(names, "names", check_names = c("omega", "alpha", "pi_null", "beta_null", "phack_kind", "phack_z_source", "phack_z_dest"), allow_other = FALSE)
   names <- .selection_backend_names(names)
 
   branches <- .selection_normalize_priors(priors)
@@ -298,6 +298,17 @@ selection_backend_spec <- function(priors,
   branch_type   <- vapply(branch_info, function(x) x$type, character(1))
 
   mode <- .selection_backend_mode(any(has_selection), any(has_phacking))
+  kernel_mode <- .selection_mode_code(mode)
+  branch_kernel_mode <- vapply(
+    branch_info,
+    function(x){
+      .selection_mode_code(.selection_backend_mode(
+        !is.null(x$selection),
+        !is.null(x$phacking)
+      ))
+    },
+    integer(1)
+  )
 
   step_priors <- lapply(branch_info[has_selection], function(x) x$selection)
   if(is.null(global_breaks)){
@@ -395,7 +406,6 @@ selection_backend_spec <- function(priors,
     monitor <- c(
       monitor,
       names$alpha,
-      .selection_backend_phacking_auxiliary_monitors(branch_info, has_phacking, names, uses_indicator),
       names$phack_kind,
       names$pi_null
     )
@@ -404,11 +414,13 @@ selection_backend_spec <- function(priors,
   phacking_priors <- lapply(branch_info[has_phacking], function(x) x$phacking)
   phacking <- .selection_backend_phacking_info(phacking_priors, names)
 
-  init <- .selection_backend_init(branch_info, breaks, prior_weights, names, uses_indicator)
+  init <- .selection_backend_init(branch_info, prior_weights, uses_indicator)
 
   return(list(
     mode           = mode,
+    kernel_mode    = kernel_mode,
     branch_type    = branch_type,
+    branch_kernel_mode = branch_kernel_mode,
     prior_weights  = prior_weights,
     jags_omega     = names$omega,
     jags_alpha     = names$alpha,
@@ -444,8 +456,7 @@ selection_backend_spec <- function(priors,
       phack_component_z_source = phacking$branch_z_source,
       phack_component_z_dest   = phacking$branch_z_destination,
       phack_component_q        = phacking$branch_q,
-      phack_component_beta_null_per_alpha = phacking$branch_beta_null_per_alpha,
-      kernel_mode      = .selection_mode_code(mode)
+      phack_component_beta_null_per_alpha = phacking$branch_beta_null_per_alpha
     )
   ))
 }

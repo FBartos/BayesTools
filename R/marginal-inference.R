@@ -247,8 +247,8 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
   return(density_method)
 }
 
-.marginal_inference_level_conditionals <- function(marginal, prior_list, conditional,
-                                                   conditional_rule = "AND"){
+.marginal_inference_level_conditionals <- function(marginal, prior_list,
+                                                   conditional){
 
   scalar_marginal <- !is.list(marginal)
   levels <- if(scalar_marginal) ".scalar" else names(marginal)
@@ -299,8 +299,7 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
   level_conditionals <- .marginal_inference_level_conditionals(
     marginal    = averaged_marginal,
     prior_list  = prior_list,
-    conditional = conditional,
-    conditional_rule = conditional_rule
+    conditional = conditional
   )
 
   conditional_marginal <- averaged_marginal

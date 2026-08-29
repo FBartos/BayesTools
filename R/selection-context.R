@@ -290,10 +290,7 @@ selection_native_kernel_args <- function(selection_spec, S, alpha = NULL,
     )
   }
   if(is.null(kernel_mode)){
-    kernel_mode <- rep(
-      .selection_spec_kernel_mode(selection_spec),
-      S
-    )
+    kernel_mode <- .selection_spec_kernel_mode(selection_spec)
   }
 
   alpha <- selection_row_arg(alpha, S, "alpha")
@@ -601,33 +598,14 @@ selection_row_arg <- function(x, n, name){
   return(data)
 }
 
-.selection_spec_mode_code <- function(selection_spec){
-
-  data <- .selection_spec_data(selection_spec)
-  if(!is.null(selection_spec[["kernel_mode"]])){
-    mode <- selection_spec[["kernel_mode"]]
-    if(length(mode) == 1L){
-      return(as.integer(mode))
-    }
-  }
-  if(!is.null(data[["kernel_mode"]])){
-    return(as.integer(data[["kernel_mode"]]))
-  }
-  if(!is.null(selection_spec[["mode"]])){
-    return(.selection_mode_code(selection_spec[["mode"]]))
-  }
-
-  return(0L)
-}
-
 .selection_spec_kernel_mode <- function(selection_spec){
 
-  mode <- .selection_spec_mode_code(selection_spec)
-  if(length(mode) != 1L ||
-     is.na(mode) ||
-     !is.finite(mode) ||
-     abs(mode - round(mode)) > sqrt(.Machine$double.eps) ||
-     !as.integer(round(mode)) %in% 0:3){
+  mode <- selection_spec[["kernel_mode"]]
+  if(length(mode) == 0L ||
+     anyNA(mode) ||
+     any(!is.finite(mode)) ||
+     any(abs(mode - round(mode)) > sqrt(.Machine$double.eps)) ||
+     any(!as.integer(round(mode)) %in% 0:3)){
     stop("Invalid selection specification 'kernel_mode'.", call. = FALSE)
   }
 
@@ -639,7 +617,7 @@ selection_row_arg <- function(x, n, name){
   if(!is.null(selection_spec[["has_phack"]])){
     return(isTRUE(selection_spec[["has_phack"]]))
   }
-  .selection_spec_kernel_mode(selection_spec) %in% c(2L, 3L)
+  any(.selection_spec_kernel_mode(selection_spec) %in% c(2L, 3L))
 }
 
 .selection_spec_z_lower <- function(selection_spec){
@@ -853,7 +831,7 @@ selection_row_arg <- function(x, n, name){
      length(args[["z_lower"]]) != length(args[["z_upper"]])){
     stop("Invalid selection native static z bounds.", call. = FALSE)
   }
-  if(kernel_mode != 0L && length(args[["z_lower"]]) == 0L){
+  if(any(kernel_mode != 0L) && length(args[["z_lower"]]) == 0L){
     stop("Invalid selection native static z bounds.", call. = FALSE)
   }
   if(any(args[["z_lower"]] >= args[["z_upper"]])){

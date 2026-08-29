@@ -771,12 +771,10 @@
             samples = samples,
             random_term = random_term,
             prior_list = plan$prior_list,
-            formula_prior_parameters = formula_prior_parameters,
             data = plan$source_data,
             parameters = parameter_sources,
             posterior = posterior,
             row_indexed = term_plan$row_indexed,
-            allocation_parameters = term_plan$allocation_parameters,
             sd_evaluator = term_plan$sd_evaluator
           )
           nodes <- .bt_JAGS_bridge_merge_nodes(nodes, block$nodes)
@@ -1562,12 +1560,10 @@
     samples,
     random_term,
     prior_list,
-    formula_prior_parameters,
     data,
     parameters,
     posterior = NULL,
     row_indexed = NULL,
-    allocation_parameters = NULL,
     sd_evaluator = NULL){
 
   if(is.null(posterior)){
@@ -1604,9 +1600,9 @@
     )
   }
 
-  # Normalized allocation parameters are already flattened from
-  # formula_prior_parameters by .bt_JAGS_bridge_context_nodes(). Replaying
-  # them here would reconstruct and merge the same exact nodes a second time.
+  # Normalized allocation parameters are already flattened by
+  # .bt_JAGS_bridge_context_nodes(). Replaying them here would reconstruct and
+  # merge the same exact nodes a second time.
   list(nodes = nodes, allocations = list())
 }
 

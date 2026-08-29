@@ -32,8 +32,7 @@
       data = data,
       random_structure = random_structure,
       has_intercept = has_intercept,
-      homogeneous_sd = homogeneous_sd,
-      structured_index = random_term$structured_index
+      homogeneous_sd = homogeneous_sd
     ))
   }
 
@@ -60,8 +59,7 @@
       data = data,
       random_structure = random_structure,
       has_intercept = has_intercept,
-      homogeneous_sd = homogeneous_sd,
-      structured_index = random_term$structured_index
+      homogeneous_sd = homogeneous_sd
     )
     sd_binding$sd_component_names <- sd_leaves$leaf_names
     sd_binding$sd_component_terms <- sd_leaves$leaf_terms
@@ -166,7 +164,6 @@
     random_structure = random_structure,
     has_intercept = has_intercept,
     homogeneous_sd = homogeneous_sd,
-    structured_index = random_term$structured_index,
     prior_list = prior_list
   )
   if(!identical(unname(sd_leaves$leaf_names_by_column), unname(sd_parameter_names))){
@@ -243,8 +240,6 @@
       parameter = parameter,
       model_term = model_term,
       columns = columns,
-      terms_indexes = terms_indexes,
-      term_index = term_index,
       predictors_type = predictors_type,
       data = data,
       random_structure = random_structure
@@ -313,8 +308,6 @@
 
 .bt_random_effect_factor_sd_term_spec <- function(prior, parameter,
                                                   model_term, columns,
-                                                  terms_indexes,
-                                                  term_index,
                                                   predictors_type, data,
                                                   random_structure){
 
@@ -521,8 +514,7 @@
                                                 predictors_type, data,
                                                 random_structure,
                                                 has_intercept,
-                                                homogeneous_sd,
-                                                structured_index = NULL){
+                                                homogeneous_sd){
 
   terms_indexes <- .bt_random_effect_term_indexes(model_matrix, has_intercept)
   allocation_info <- sd_binding$allocations[[1L]]
@@ -538,8 +530,7 @@
       data = data,
       random_structure = random_structure,
       has_intercept = has_intercept,
-      homogeneous_sd = homogeneous_sd,
-      structured_index = structured_index
+      homogeneous_sd = homogeneous_sd
     ))
   }
 
@@ -560,8 +551,7 @@
     data = data,
     random_structure = random_structure,
     has_intercept = has_intercept,
-    homogeneous_sd = homogeneous_sd,
-    structured_index = structured_index
+    homogeneous_sd = homogeneous_sd
   )
 
   if(isTRUE(homogeneous_sd)){
@@ -644,7 +634,6 @@
                                                  random_structure,
                                                  has_intercept,
                                                  homogeneous_sd,
-                                                 structured_index = NULL,
                                                  prior_list = NULL){
 
   n_columns <- ncol(model_matrix)
@@ -840,8 +829,7 @@
                                                        data,
                                                        random_structure,
                                                        has_intercept,
-                                                       homogeneous_sd,
-                                                       structured_index = NULL){
+                                                       homogeneous_sd){
 
   allocation_info <- sd_binding$allocations[[1L]]
   leaves <- .bt_random_effect_resolved_sd_leaves(
@@ -853,8 +841,7 @@
     data = data,
     random_structure = random_structure,
     has_intercept = has_intercept,
-    homogeneous_sd = homogeneous_sd,
-    structured_index = structured_index
+    homogeneous_sd = homogeneous_sd
   )
   K <- length(leaves$leaf_names)
   if(K < 2L){

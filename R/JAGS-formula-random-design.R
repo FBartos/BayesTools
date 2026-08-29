@@ -789,12 +789,7 @@
         K = n_par,
         structure = random_structure,
         block_prior = block_prior,
-        include_correlation = TRUE,
-        distance_matrix = if(identical(random_structure, "car")){
-          abs(outer(car_metadata$time_values, car_metadata$time_values, "-"))
-        }else{
-          NULL
-        }
+        include_correlation = TRUE
       )
     }else{
       .bt_JAGS_structured_corr_direct(
