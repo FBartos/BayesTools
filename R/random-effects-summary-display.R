@@ -384,14 +384,9 @@
   summary_priors <- vector("list", nrow(quantities))
   for(i in seq_len(nrow(quantities))){
     quantity <- quantities[i, , drop = FALSE]
-    selection <- parameter_catalog_resolve(
-      catalog,
-      alias = quantity$canonical_name,
-      namespace = quantity$namespace
-    )
-    values <- as.matrix(parameter_draws(
-      fit,
-      selection,
+    values <- as.matrix(.bt_parameter_draws_from_quantities(
+      object        = fit,
+      quantities    = quantity,
       model_samples = model_samples
     ))
     if(ncol(values) != 1L || nrow(values) != nrow(model_samples)){

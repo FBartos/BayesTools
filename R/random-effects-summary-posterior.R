@@ -97,13 +97,9 @@ random_effects_summary_posterior <- function(
 
   for(i in seq_len(nrow(quantities))){
     quantity <- quantities[i, , drop = FALSE]
-    key <- quantity$extraction_key[[1L]]
-    selection <- parameter_catalog_resolve(
-      catalog,
-      alias = quantity$canonical_name,
-      namespace = quantity$namespace
-    )
-    values <- unname(as.numeric(as.matrix(parameter_draws(fit, selection))[, 1L]))
+    key      <- quantity$extraction_key[[1L]]
+    draws    <- .bt_parameter_draws_from_quantities(fit, quantity)
+    values   <- unname(as.numeric(as.matrix(draws)[, 1L]))
     attr(values, "sample_ind") <- FALSE
     attr(values, "models_ind") <- rep(1, length(values))
     attr(values, "parameter") <- display_names[i]
@@ -116,9 +112,9 @@ random_effects_summary_posterior <- function(
     attr(values, "prior_list") <- prior_none()
 
     prior_density <- .bt_random_effect_summary_posterior_prior_density(
-      fit = fit,
+      fit      = fit,
       quantity = quantity,
-      n_grid = n_prior_points
+      n_grid   = n_prior_points
     )
     if(!is.null(prior_density)){
       attr(values, "prior_density") <- prior_density
@@ -249,12 +245,7 @@ random_effects_summary_posterior <- function(
     return(NULL)
   }
 
-  selection <- parameter_catalog_resolve(
-    parameter_catalog(fit),
-    alias = quantity$canonical_name,
-    namespace = quantity$namespace
-  )
-  semantic_transform <- parameter_transform(fit, selection)
+  semantic_transform <- .bt_parameter_transform_from_quantity(fit, quantity)
   density_transform <- if(identical(
     semantic_transform,
     list(type = "identity")

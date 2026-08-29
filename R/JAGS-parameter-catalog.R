@@ -351,6 +351,17 @@ parameter_draws.BayesTools_fit <- function(object, selection,
   catalog <- parameter_catalog(object)
   .bt_validate_parameter_selection(selection, catalog = catalog)
   quantities <- selection$quantities
+
+  .bt_parameter_draws_from_quantities(
+    object        = object,
+    quantities    = quantities,
+    model_samples = model_samples
+  )
+}
+
+.bt_parameter_draws_from_quantities <- function(
+    object, quantities, model_samples = NULL){
+
   if(any(quantities$provider != "BayesTools")){
     stop(
       "The selection contains quantities owned by another provider; use that provider's 'parameter_draws()' method.",
@@ -523,7 +534,10 @@ parameter_prior_density.BayesTools_fit <- function(
      .prior_linear_prior_dimension(source_prior) != 1L){
     return(NULL)
   }
-  transform <- parameter_transform(object, selection)
+  transform <- .bt_parameter_transform_from_quantity(
+    object,
+    selection$quantities[1L, , drop = FALSE]
+  )
   if(identical(transform$type, "square")){
     lower <- source_prior$truncation$lower
     if(!is.numeric(lower) || length(lower) != 1L || is.na(lower) || lower < 0){
@@ -576,7 +590,10 @@ parameter_prior_density.BayesTools_fit <- function(
     n_grid = n_grid,
     tail_prob = tail_prob
   )
-  transform <- parameter_transform(object, selection)
+  transform <- .bt_parameter_transform_from_quantity(
+    object,
+    selection$quantities[1L, , drop = FALSE]
+  )
   .bt_parameter_prior_density_transform(dist, transform, n_grid)
 }
 
@@ -770,6 +787,12 @@ parameter_transform <- function(object, selection){
          call. = FALSE)
   }
   quantity <- selection$quantities[1L, , drop = FALSE]
+
+  .bt_parameter_transform_from_quantity(object, quantity)
+}
+
+.bt_parameter_transform_from_quantity <- function(object, quantity){
+
   if(!identical(quantity$provider, "BayesTools")){
     stop("The selected quantity is owned by another provider.",
          call. = FALSE)
