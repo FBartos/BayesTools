@@ -102,8 +102,11 @@ random-effect compilation policy; otherwise a fitted marginalized model would
 not be rebuilt as the same model.}
 
 \item{formula_random_effects_marginalize_list}{optional named list
-identifying fitted sampled formula random-effect blocks to integrate
-analytically only in the bridge target. Each formula-parameter entry can be
+identifying fitted formula random-effect blocks whose covariance is required
+by the bridge target. Selected sampled blocks are integrated analytically
+only in the bridge target; blocks already fitted as marginalized expose the
+same covariance contract without changing the fitted model. Each
+formula-parameter entry can be
 a character vector of block names, which requests a dense covariance, or a
 named list with \code{blocks} and optional \code{row_blocks}. \code{row_blocks} must
 partition the formula rows and may not separate any structurally nonzero
@@ -111,8 +114,9 @@ selected random-effect covariance; it requests the exact factorized block
 representation described below. With \code{row_blocks}, \code{factor_state = TRUE}
 additionally requests a compact exact contract that separates invariant
 factor plans from draw-varying coefficient factors and row scales. Every
-selected Gaussian latent block is
-removed from the bridge coordinates and formula predictor. All SD,
+selected sampled Gaussian latent block is removed from the bridge coordinates
+and formula predictor. Already-marginalized blocks have no latent coordinates
+to remove. All SD,
 allocation, correlation, and other covariance parameters and their priors
 remain in the target. This requires \code{bridge_context = "marginal"} or the full
 context. The likelihood callback is responsible for adding the supplied

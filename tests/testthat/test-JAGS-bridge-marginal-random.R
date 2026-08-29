@@ -46,6 +46,75 @@ skip_if_not_test_profile("unit")
   covariance
 }
 
+test_that("marginalized random formulas compile block covariance nodes", {
+
+  data <- data.frame(
+    study = factor(c("a", "a", "b")),
+    x     = c(-1, 1, 2)
+  )
+  formula_result <- JAGS_formula(
+    formula   = ~ 1 + diag(1 + x | study),
+    parameter = "mu",
+    data      = data,
+    prior_list = list(
+      intercept = prior("point", list(location = 0))
+    ),
+    prior_random = prior_random(
+      study = random_block(
+        sd    = prior("point", list(location = 0.4)),
+        terms = list(x = prior("point", list(location = 0.2)))
+      )
+    ),
+    random_effects_compile = random_effects_compile(
+      marginalized = "study"
+    )
+  )
+  compiled <- JAGS_formula_random_marginal_covariance(
+    formula_design = formula_result$formula_design,
+    row_blocks     = list(1:2, 3L),
+    prefix         = "target_cov"
+  )
+
+  expect_s3_class(
+    compiled,
+    "BayesTools_JAGS_random_marginal_covariance"
+  )
+  expect_identical(compiled$row_blocks, list(1:2, 3L))
+  expect_identical(
+    compiled$lower_names,
+    c("target_cov_block_1_lower", "target_cov_block_2_lower")
+  )
+  expect_identical(compiled$term_names, "study")
+  expect_equal(
+    compiled$data$target_cov_term_1_data,
+    cbind(intercept = 1, x = data$x),
+    ignore_attr = TRUE
+  )
+  expect_identical(
+    compiled$data$target_cov_block_1_term_1_group,
+    c(1, 1, 1)
+  )
+  expect_match(
+    compiled$syntax,
+    "target_cov_term_1_cor_data\\[a,c\\]",
+    perl = TRUE
+  )
+  expect_match(
+    compiled$syntax,
+    "target_cov_block_1_lower\\[l\\] = target_cov_block_1_term_1\\[l\\]",
+    perl = TRUE
+  )
+
+  expect_error(
+    JAGS_formula_random_marginal_covariance(
+      formula_design = formula_result$formula_design,
+      row_blocks     = list(1:2),
+      prefix         = "target_cov"
+    ),
+    "partition every fitted row"
+  )
+})
+
 .bridge_structured_cholesky_reference <- function(
     random_term, n_columns, posterior, structure){
 
@@ -280,6 +349,60 @@ test_that("marginalization removes exactly the selected latent coordinates", {
   expect_true(all(random_term$correlation$primitive_names %in%
                     marginalized$parameters))
   expect_setequal(marginalized$omitted_latent, latent_names)
+})
+
+test_that("bridge covariance exposes blocks already fitted as marginalized", {
+
+  data <- data.frame(study = factor(c("a", "a", "b")))
+  formula_result <- JAGS_formula(
+    formula   = ~ 1 + diag(1 | study),
+    parameter = "mu",
+    data      = data,
+    prior_list = list(
+      intercept = prior("point", list(location = 0))
+    ),
+    prior_random = prior_random(
+      study = random_block(sd = prior("gamma", list(2, 2)))
+    ),
+    random_effects_compile = random_effects_compile(
+      marginalized = "study"
+    )
+  )
+  design <- list(mu = formula_result$formula_design)
+  spec <- .bt_JAGS_bridge_marginal_random_spec(
+    formula_design_list = design,
+    formula_random_effects_marginalize_list = list(
+      mu = list(blocks = "study", row_blocks = list(1:2, 3L))
+    ),
+    bridge_context = "marginal"
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  sd_name <- random_term$sd_parameter_names[[1L]]
+
+  expect_identical(
+    .bt_JAGS_bridge_marginal_random_latent_names(design, spec),
+    character()
+  )
+  evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
+    formula_design_list = design,
+    marginal_random_spec = spec,
+    formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = formula_result$prior_list),
+    model_data = list(),
+    posterior_names = sd_name
+  )
+  covariance <- evaluator$covariance(
+    samples = stats::setNames(0.4, sd_name),
+    prior_parameters = list(),
+    formula_prior_parameters = list(mu = list()),
+    formula_parameters = list(mu = rep(0, nrow(data)))
+  )$mu
+
+  expect_equal(
+    unname(.bridge_marginal_random_dense(covariance)),
+    0.4^2 * outer(data$study, data$study, "=="),
+    tolerance = 1e-12
+  )
 })
 
 test_that("compiled bridge SD extraction safely reuses posterior positions", {

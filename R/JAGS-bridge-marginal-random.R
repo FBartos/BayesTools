@@ -128,10 +128,11 @@
       .bt_random_effect_term_compile_mode,
       character(1)
     )
-    if(any(compile_modes != "sampled")){
-      invalid <- blocks[compile_modes != "sampled"]
+    valid_compile_modes <- c("sampled", "marginalized")
+    if(any(!compile_modes %in% valid_compile_modes)){
+      invalid <- blocks[!compile_modes %in% valid_compile_modes]
       stop(
-        "Bridge-only random-effect marginalization can select only fitted sampled blocks. Already marginalized block(s): ",
+        "Bridge random-effect covariance evaluation received unsupported block(s): ",
         paste(invalid, collapse = ", "),
         ".",
         call. = FALSE
@@ -304,6 +305,12 @@
     random_effects <- .bt_formula_design_random_effects(design)
     for(random_term in random_effects){
       if(!random_term$block_name %in% selected){
+        next
+      }
+      if(!identical(
+        .bt_random_effect_term_compile_mode(random_term),
+        "sampled"
+      )){
         next
       }
       out <- c(out, as.vector(.bt_random_effect_latent_names(

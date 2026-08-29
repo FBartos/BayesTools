@@ -18,6 +18,8 @@
   quantity
 
 ### Maintenance
+- centralizes lower-triangle covariance ordering in the finite-vector
+  selection plan and reuses it in marginal JAGS covariance compilation
 - reuses the common line renderer for simple and contrast-transformed priors
   and density/trace diagnostics
 - removes the superseded random-effect summary builder and its private
@@ -28,6 +30,13 @@
   subject to human visual approval
 
 ### Features
+- adds `JAGS_formula_random_marginal_covariance()` to compile the full
+  observation covariance of marginalized formula-random effects for ID, DIAG,
+  US/UN, CS/HCS, AR1/AR/HAR, CAR, and known group-covariance structures,
+  including row-scale sources and variance allocations.
+- adds `selection_likelihood_plan()` for versioned, local-RNG shifted-Halton
+  designs and explicit integration-error settings shared by deterministic
+  finite-vector selection likelihood evaluators.
 - allows variance allocations to attach independent Bernoulli inclusion gates
   to random components, including a gate-only one-component allocation without
   an artificial Dirichlet coordinate. Gate metadata propagate through formula

@@ -191,10 +191,10 @@ compare_estimates <- function(lme4_model, stan_model, bayes_model,
     "intercept"             = mean(bayes_samples[, "(mu) intercept"]),
     "Days"                  = mean(bayes_samples[, "(mu) Days"]),
     "sigma"                 = mean(bayes_samples[, "sigma"]),
-    "Subject: sd(intercept)" = mean(bayes_samples[, "(mu) Subject: sd(intercept)"]),
-    "Subject: sd(Days)" = mean(bayes_samples[, "(mu) Subject: sd(Days)"]),
+    "Subject: sd(intercept)" = mean(bayes_samples[, "(mu) sd(intercept)"]),
+    "Subject: sd(Days)" = mean(bayes_samples[, "(mu) sd(Days)"]),
     "Subject: cor(intercept,Days)" = mean(
-      bayes_samples[, "(mu) Subject: cor(intercept,Days)"]
+      bayes_samples[, "(mu) cor(intercept,Days)"]
     )
   )
 
@@ -236,8 +236,8 @@ compare_independent_estimates <- function(lme4_model, bayes_model,
     "intercept"             = mean(bayes_samples[, "(mu) intercept"]),
     "Days"                  = mean(bayes_samples[, "(mu) Days"]),
     "sigma"                 = mean(bayes_samples[, "sigma"]),
-    "Subject: sd(intercept)" = mean(bayes_samples[, "(mu) Subject: sd(intercept)"]),
-    "Subject: sd(Days)"      = mean(bayes_samples[, "(mu) Subject: sd(Days)"])
+    "Subject: sd(intercept)" = mean(bayes_samples[, "(mu) sd(intercept)"]),
+    "Subject: sd(Days)"      = mean(bayes_samples[, "(mu) sd(Days)"])
   )
 
   comparison <- data.frame(
@@ -270,7 +270,7 @@ compare_crossed_estimates <- function(lme4_model, stan_model,
 
   bayes_estimates <- function(model) {
     samples <- JAGS_estimates_table(
-      model, random_effects_summary = "standard", remove_diagnostics = TRUE, return_samples = TRUE
+      model, random_effects_summary = "full", remove_diagnostics = TRUE, return_samples = TRUE
     )
     c(
       "intercept"            = mean(samples[, "(mu) intercept"]),
@@ -309,7 +309,7 @@ compare_nested_estimates <- function(lme4_model, bayes_model) {
   )
 
   bayes_samples <- JAGS_estimates_table(
-    bayes_model, random_effects_summary = "standard",
+    bayes_model, random_effects_summary = "full",
     remove_diagnostics = TRUE, return_samples = TRUE
   )
   bayes_estimates <- c(
@@ -372,10 +372,10 @@ compare_recipe_estimates <- function(lme4_model, bayes_model) {
     "recipe[C]"                  = mean(bayes_samples[, "(mu) recipe[C]"]),
     "sigma"                      = mean(bayes_samples[, "sigma"]),
     "recipe_by_replicate: sd(recipe[B])" = mean(
-      bayes_samples[, "(mu) recipe_by_replicate: sd(recipe[B])"]
+      bayes_samples[, "(mu) sd(recipe[B])"]
     ),
     "recipe_by_replicate: sd(recipe[C])" = mean(
-      bayes_samples[, "(mu) recipe_by_replicate: sd(recipe[C])"]
+      bayes_samples[, "(mu) sd(recipe[C])"]
     )
   )
 
@@ -402,7 +402,7 @@ compare_hcs_estimates <- function(lme4_model, bayes_model, levels) {
     bayes_model, transform_scaled = FALSE, random_effects_summary = "standard",
     remove_diagnostics = TRUE, return_samples = TRUE
   )
-  bayes_sd_names <- paste0("(mu) replicate: sd(temperature[", levels, "])")
+  bayes_sd_names <- paste0("(mu) sd(temperature[", levels, "])")
   bayes_estimates <- c(
     "temp" = mean(bayes_samples[, "(mu) temp"]),
     "sigma" = mean(bayes_samples[, "sigma"]),
@@ -410,7 +410,7 @@ compare_hcs_estimates <- function(lme4_model, bayes_model, levels) {
       vapply(bayes_sd_names, function(x) mean(bayes_samples[, x]), numeric(1)),
       paste0("replicate: sd(temperature[", levels, "])")
     ),
-    "replicate: cor" = mean(bayes_samples[, "(mu) replicate: cor"])
+    "replicate: cor" = mean(bayes_samples[, "(mu) cor"])
   )
 
   comparison <- data.frame(
@@ -441,8 +441,8 @@ compare_ar1_estimates <- function(lme4_model, bayes_model) {
   bayes_estimates <- c(
     "temp" = mean(bayes_samples[, "(mu) temp"]),
     "sigma" = mean(bayes_samples[, "sigma"]),
-    "replicate: sd" = mean(bayes_samples[, "(mu) replicate: sd"]),
-    "replicate: cor" = mean(bayes_samples[, "(mu) replicate: cor"])
+    "replicate: sd" = mean(bayes_samples[, "(mu) sd"]),
+    "replicate: cor" = mean(bayes_samples[, "(mu) cor"])
   )
 
   comparison <- data.frame(
@@ -470,7 +470,7 @@ compare_har_estimates <- function(lme4_model, bayes_model, levels) {
     bayes_model, transform_scaled = FALSE, random_effects_summary = "standard",
     remove_diagnostics = TRUE, return_samples = TRUE
   )
-  bayes_sd_names <- paste0("(mu) replicate: sd(temperature[", levels, "])")
+  bayes_sd_names <- paste0("(mu) sd(temperature[", levels, "])")
   bayes_estimates <- c(
     "temp" = mean(bayes_samples[, "(mu) temp"]),
     "sigma" = mean(bayes_samples[, "sigma"]),
@@ -478,7 +478,7 @@ compare_har_estimates <- function(lme4_model, bayes_model, levels) {
       vapply(bayes_sd_names, function(x) mean(bayes_samples[, x]), numeric(1)),
       paste0("replicate: sd(temperature[", levels, "])")
     ),
-    "replicate: cor" = mean(bayes_samples[, "(mu) replicate: cor"])
+    "replicate: cor" = mean(bayes_samples[, "(mu) cor"])
   )
 
   comparison <- data.frame(
@@ -520,7 +520,7 @@ compare_structured_correlation_estimates <- function(lme4_model, hcs_model,
     hcs_model, transform_scaled = FALSE, random_effects_summary = "standard",
     remove_diagnostics = TRUE, return_samples = TRUE
   )
-  hcs_sd_names <- paste0("(mu) replicate: sd(temperature[", levels, "])")
+  hcs_sd_names <- paste0("(mu) sd(temperature[", levels, "])")
   hcs_estimates <- c(
     "temp" = mean(hcs_samples[, "(mu) temp"]),
     "sigma" = mean(hcs_samples[, "sigma"]),
@@ -528,7 +528,7 @@ compare_structured_correlation_estimates <- function(lme4_model, hcs_model,
       vapply(hcs_sd_names, function(x) mean(hcs_samples[, x]), numeric(1)),
       paste0("replicate: sd(temperature[", levels, "])")
     ),
-    "cor_common" = mean(hcs_samples[, "(mu) replicate: cor"])
+    "cor_common" = mean(hcs_samples[, "(mu) cor"])
   )
 
   ar1_samples <- JAGS_estimates_table(
@@ -538,15 +538,15 @@ compare_structured_correlation_estimates <- function(lme4_model, hcs_model,
   ar1_estimates <- c(
     "temp" = mean(ar1_samples[, "(mu) temp"]),
     "sigma" = mean(ar1_samples[, "sigma"]),
-    "replicate: sd" = mean(ar1_samples[, "(mu) replicate: sd"]),
-    "cor_lag1" = mean(ar1_samples[, "(mu) replicate: cor"])
+    "replicate: sd" = mean(ar1_samples[, "(mu) sd"]),
+    "cor_lag1" = mean(ar1_samples[, "(mu) cor"])
   )
 
   har_samples <- JAGS_estimates_table(
     har_model, transform_scaled = FALSE, random_effects_summary = "standard",
     remove_diagnostics = TRUE, return_samples = TRUE
   )
-  har_sd_names <- paste0("(mu) replicate: sd(temperature[", levels, "])")
+  har_sd_names <- paste0("(mu) sd(temperature[", levels, "])")
   har_estimates <- c(
     "temp" = mean(har_samples[, "(mu) temp"]),
     "sigma" = mean(har_samples[, "sigma"]),
@@ -554,7 +554,7 @@ compare_structured_correlation_estimates <- function(lme4_model, hcs_model,
       vapply(har_sd_names, function(x) mean(har_samples[, x]), numeric(1)),
       paste0("replicate: sd(temperature[", levels, "])")
     ),
-    "cor_lag1" = mean(har_samples[, "(mu) replicate: cor"])
+    "cor_lag1" = mean(har_samples[, "(mu) cor"])
   )
 
   comparison <- data.frame(
