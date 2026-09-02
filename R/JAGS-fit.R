@@ -112,6 +112,16 @@
 #' @export JAGS_extend
 #' @name JAGS_fit
 NULL
+
+.bt_append_fit_warnings <- function(fit, messages){
+
+  attr(fit, "warnings") <- unique(c(
+    attr(fit, "warnings", exact = TRUE),
+    messages
+  ))
+  fit
+}
+
 #' @rdname JAGS_fit
 JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL, formula_random_prior_list = NULL, formula_random_effects_compile_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
@@ -325,6 +335,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   }
 
   start_time <- Sys.time()
+  restart_warnings <- character()
   # special fitting procedure for JASP
   # singlcore interrupted fits allowing for bar progression
   if(isTRUE(dots[["is_JASP"]])){
@@ -355,6 +366,13 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         if(!inherits(fit, "error")){
           break
         }else{
+          restart_warnings <- c(
+            restart_warnings,
+            paste0(
+              "JAGS fitting attempt ", i, " failed and was restarted: ",
+              conditionMessage(fit), "."
+            )
+          )
           # restart with different inits
           model_call$inits <- JAGS_get_inits(prior_list, chains = chains, seed = if(!is.null(seed)) seed + i)
         }
@@ -391,16 +409,18 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     while(!converged){
 
       if(!is.null(autofit_control[["max_time"]]) && difftime(Sys.time(), start_time, units = autofit_control[["max_time"]][["unit"]]) > autofit_control[["max_time"]][["time"]]){
+        warning_message <- "The automatic model fitting was terminated due to the 'max_time' constraint."
+        fit <- .bt_append_fit_warnings(fit, warning_message)
         if(!silent){
-          attr(fit, "warning") <- "The automatic model fitting was terminated due to the 'max_time' constraint."
-          warning(attr(fit, "warning"), immediate. = TRUE)
+          warning(warning_message, immediate. = TRUE)
         }
         break
       }
       if(!is.null(autofit_control[["max_extend"]]) && itteration > autofit_control[["max_extend"]]){
+        warning_message <- "The automatic model fitting was terminated due to the 'max_extend' constraint."
+        fit <- .bt_append_fit_warnings(fit, warning_message)
         if(!silent){
-          attr(fit, "warning") <- "The automatic model fitting was terminated due to the 'max_extend' constraint."
-          warning(attr(fit, "warning"), immediate. = TRUE)
+          warning(warning_message, immediate. = TRUE)
         }
         break
       }
@@ -411,16 +431,17 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       )
 
       if(inherits(extension, "error")){
+        warning_message <- paste0(
+          "The model extension failed; returning the last valid fit. ",
+          "Backend error: ",
+          conditionMessage(extension)
+        )
+        fit <- .bt_append_fit_warnings(last_valid_fit, warning_message)
         warning(
-          paste0(
-            "The model extension failed; returning the last valid fit. ",
-            "Backend error: ",
-            conditionMessage(extension)
-          ),
+          warning_message,
           call. = FALSE,
           immediate. = TRUE
         )
-        fit <- last_valid_fit
         break
       }
 
@@ -454,6 +475,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   attr(fit, "required_packages") <- required_packages
   attr(fit, "jags_modules") <- jags_modules
   attr(fit, "backend_anchor") <- backend_anchor
+  if(length(restart_warnings) > 0L && !inherits(fit, "error")){
+    fit <- .bt_append_fit_warnings(fit, restart_warnings)
+  }
   if(!is.null(formula_scale_info)){
     # Keep formula_scale as a nested list keyed by parameter name
     # Each element contains the scaling info for that parameter's predictors
@@ -696,16 +720,18 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   while(!converged){
 
     if(!is.null(autofit_control[["max_time"]]) && difftime(.bt_jags_extend_time(), start_time, units = autofit_control[["max_time"]][["unit"]]) > autofit_control[["max_time"]][["time"]]){
+      warning_message <- "The automatic model fitting was terminated due to the 'max_time' constraint."
+      fit <- .bt_append_fit_warnings(fit, warning_message)
       if(!silent){
-        attr(fit, "warning") <- "The automatic model fitting was terminated due to the 'max_time' constraint."
-        warning(attr(fit, "warning"), immediate. = TRUE)
+        warning(warning_message, immediate. = TRUE)
       }
       break
     }
     if(!is.null(autofit_control[["max_extend"]]) && iteration >= autofit_control[["max_extend"]]){
+      warning_message <- "The automatic model fitting was terminated due to the 'max_extend' constraint."
+      fit <- .bt_append_fit_warnings(fit, warning_message)
       if(!silent){
-        attr(fit, "warning") <- "The automatic model fitting was terminated due to the 'max_extend' constraint."
-        warning(attr(fit, "warning"), immediate. = TRUE)
+        warning(warning_message, immediate. = TRUE)
       }
       break
     }
@@ -716,16 +742,17 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     )
 
     if(inherits(extension, "error")){
+      warning_message <- paste0(
+        "The model extension failed; returning the last valid fit. ",
+        "Backend error: ",
+        conditionMessage(extension)
+      )
+      fit <- .bt_append_fit_warnings(last_valid_fit, warning_message)
       warning(
-        paste0(
-          "The model extension failed; returning the last valid fit. ",
-          "Backend error: ",
-          conditionMessage(extension)
-        ),
+        warning_message,
         call. = FALSE,
         immediate. = TRUE
       )
-      fit <- last_valid_fit
       break
     }
 

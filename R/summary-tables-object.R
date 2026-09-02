@@ -21,7 +21,16 @@ print.BayesTools_table <- function(x, ...){
   }
 
   # print the table
-  print(as.data.frame(x), quote = FALSE, right = TRUE, row.names = attr(x, "rownames"))
+  print_rownames <- attr(x, "rownames")
+  if(is.null(print_rownames)){
+    print_rownames <- TRUE
+  }
+  print(
+    as.data.frame(x),
+    quote = FALSE,
+    right = TRUE,
+    row.names = print_rownames
+  )
 
   # print footnotes
   for(i in seq_along(attr(x, "footnotes"))){
@@ -133,6 +142,10 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   n_models <- attr(x, "n_models")
   if(length(n_models) == length(original_names)){
     attr(out, "n_models") <- n_models[source_cols]
+  }
+
+  for(attribute in c("title", "footnotes", "rownames")){
+    attr(out, attribute) <- attr(x, attribute)
   }
 
   selected_parameters <- .subset_table_parameters(x, out)

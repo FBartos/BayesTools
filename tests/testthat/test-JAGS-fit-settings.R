@@ -201,7 +201,14 @@ test_that("JAGS_extend preserves the last valid fit after a backend error", {
     ),
     "returning the last valid fit.*backend exploded"
   )
-  expect_identical(result, fit)
+  expected_fit <- fit
+  attr(expected_fit, "warnings") <-
+    "The model extension failed; returning the last valid fit. Backend error: backend exploded"
+  expect_identical(result, expected_fit)
+  expect_identical(
+    attr(result, "warnings"),
+    "The model extension failed; returning the last valid fit. Backend error: backend exploded"
+  )
 })
 
 test_that("JAGS_fit autofit preserves the last valid fit after a backend error", {
@@ -254,6 +261,67 @@ test_that("JAGS_fit autofit preserves the last valid fit after a backend error",
   expect_s3_class(result, "BayesTools_fit")
   expect_false(inherits(result, "error"))
   expect_identical(result$mcmc, initial_fit$mcmc)
+  expect_identical(
+    attr(result, "warnings"),
+    "The model extension failed; returning the last valid fit. Backend error: backend exploded"
+  )
+})
+
+test_that("JAGS_fit records backend errors recovered by a restart", {
+
+  skip_if_not_installed("runjags")
+  backend_calls <- 0L
+  recovered_fit <- structure(
+    list(mcmc = list(matrix(0, nrow = 2, ncol = 1,
+                            dimnames = list(NULL, "mu")))),
+    class = "runjags"
+  )
+  testthat::local_mocked_bindings(
+    run.jags = function(...){
+      backend_calls <<- backend_calls + 1L
+      if(backend_calls == 1L){
+        stop("backend exploded")
+      }
+      recovered_fit
+    },
+    .package = "runjags"
+  )
+  testthat::local_mocked_bindings(
+    .JAGS_require_packages = function(...) invisible(NULL),
+    .JAGS_load_modules = function(...) invisible(NULL),
+    .bt_attach_parameter_map = function(fit, ...) fit,
+    .bt_attach_draw_geometry = function(fit, ...) fit,
+    .package = "BayesTools"
+  )
+
+  result <- JAGS_fit(
+    model_syntax = "model{ mu ~ dnorm(0, 1) }",
+    prior_list = list(mu = prior("normal", list(0, 1))),
+    chains = 1,
+    adapt = 50,
+    burnin = 50,
+    sample = 100,
+    autofit_control = list(
+      max_Rhat = NULL,
+      min_ESS = NULL,
+      max_error = NULL,
+      max_SD_error = NULL,
+      max_time = list(time = 60, unit = "secs"),
+      sample_extend = 1,
+      restarts = 2,
+      max_extend = 1,
+      check_indicators = FALSE
+    ),
+    silent = TRUE,
+    seed = 1
+  )
+
+  expect_identical(backend_calls, 2L)
+  expect_s3_class(result, "BayesTools_fit")
+  expect_identical(
+    attr(result, "warnings"),
+    "JAGS fitting attempt 1 failed and was restarted: backend exploded."
+  )
 })
 
 test_that("JAGS_extend resets its time budget for every call", {

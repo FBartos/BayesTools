@@ -392,6 +392,37 @@ test_that("BayesTools table row subsetting keeps printed diagnostics local", {
 })
 
 
+test_that("BayesTools table row and column subsets retain print metadata", {
+
+  table <- data.frame(
+    Mean = c(1, 2),
+    SD   = c(0.1, 0.2),
+    ESS  = c(1000, 900),
+    row.names = c("theta", "beta")
+  )
+  class(table) <- c(
+    "BayesTools_table",
+    "BayesTools_runjags_summary",
+    class(table)
+  )
+  attr(table, "type")       <- c("estimate", "estimate", "ESS")
+  attr(table, "parameters") <- c("theta", "beta")
+  attr(table, "title")      <- "Estimates"
+  attr(table, "footnotes")  <- "Posterior summaries."
+  attr(table, "rownames")   <- TRUE
+
+  subset <- table["theta", c("Mean", "ESS"), drop = FALSE]
+  output <- capture_output_lines(subset, print = TRUE, width = 80)
+
+  expect_identical(attr(subset, "parameters"), "theta")
+  expect_identical(attr(subset, "title"), "Estimates")
+  expect_identical(attr(subset, "footnotes"), "Posterior summaries.")
+  expect_true(isTRUE(attr(subset, "rownames")))
+  expect_true(any(grepl("theta", output, fixed = TRUE)))
+  expect_true(any(grepl("Posterior summaries.", output, fixed = TRUE)))
+})
+
+
 test_that("update preserves relative BF MC error percentage across BF scales", {
 
   table <- data.frame(

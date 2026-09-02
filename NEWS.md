@@ -1,5 +1,9 @@
 # version 0.3.1
 ### Fixes
+- preserves failed-backend messages when `JAGS_fit()` succeeds after a restart,
+  and retains fit warnings consistently through automatic extensions
+- preserves BayesTools table metadata and safe row names when tables are
+  subsetted by row
 - unregisters the JAGS module before destroying module-owned native objects at
   process shutdown, preventing intermittent Windows access violations
 - uses the joint prior-posterior density and point-mass ranges when composing
