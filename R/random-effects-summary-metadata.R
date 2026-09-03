@@ -257,6 +257,12 @@
     .bt_random_effect_summary_missing_allocation_stop(allocation)
   }
 
+  realized <- .bt_random_effect_summary_realized_allocation(
+    allocation = allocation,
+    weights = weights,
+    model_samples = model_samples
+  )
+
   components <- .bt_random_effect_summary_allocation_components(
     allocation = allocation,
     K = ncol(weights),
@@ -286,7 +292,11 @@
     component_values <- c(component_values, components[i])
     component_indices <- c(component_indices, i)
     values[[length(values) + 1L]] <- .bt_random_effect_summary_allocation_values(
-      weights = weights[, i],
+      weights = if(identical(allocation_type$summary, "var_prop")){
+        realized$proportions[, i]
+      }else{
+        weights[, i]
+      },
       allocation = allocation,
       allocation_type = allocation_type,
       K = ncol(weights)
@@ -376,12 +386,186 @@
   if(is.null(factors)){
     factors <- list()
   }
-  .bt_random_effect_apply_allocation_factors(
+  values <- .bt_random_effect_apply_allocation_factors(
     base = values,
     factors = factors,
     posterior = model_samples,
     prior_list = prior_list
   )
+  if(is.null(values) ||
+     !identical(.bt_random_effect_allocation_scale_metadata(
+       allocation,
+       context = "Random-effect allocation summary metadata"
+     ), "total_variance") ||
+     length(.bt_random_effect_summary_allocation_gate_names(
+       allocation,
+       include_parents = FALSE
+     )) == 0L){
+    return(values)
+  }
+
+  if(isTRUE(allocation$gate_only)){
+    gate_fraction <- rep(1, nrow(model_samples))
+    for(record in allocation$inclusion){
+      gate <- .bt_random_effect_allocation_gate_draws(
+        parameter_name = record$indicator_name,
+        posterior = model_samples
+      )
+      if(is.null(gate)){
+        stop(
+          "Random-effect allocation inclusion samples are missing Bernoulli indicator '",
+          record$indicator_name,
+          "'.",
+          call. = FALSE
+        )
+      }
+      gate_fraction <- gate_fraction * gate
+    }
+    return(values * sqrt(gate_fraction))
+  }
+
+  weights <- .bt_random_effect_dirichlet_draws(
+    parameter_name = allocation$weight_name,
+    posterior = model_samples,
+    prior_list = prior_list
+  )
+  if(is.null(weights)){
+    .bt_random_effect_summary_missing_allocation_stop(allocation)
+  }
+  realized <- .bt_random_effect_summary_realized_allocation(
+    allocation = allocation,
+    weights = weights,
+    model_samples = model_samples
+  )
+
+  values * sqrt(realized$total_fraction)
+}
+
+.bt_random_effect_summary_realized_allocation <- function(
+    allocation, weights, model_samples){
+
+  if(!is.matrix(weights) || !is.numeric(weights) ||
+     nrow(weights) != nrow(model_samples)){
+    stop(
+      "Random-effect allocation weights do not align with posterior draws.",
+      call. = FALSE
+    )
+  }
+  K <- .bt_random_effect_summary_allocation_n_targets(
+    allocation,
+    K = ncol(weights)
+  )
+  scale <- .bt_random_effect_allocation_scale_metadata(
+    allocation,
+    context = "Random-effect allocation summary metadata"
+  )
+  if(!identical(scale, "total_variance")){
+    return(list(
+      total_fraction = rep(1, nrow(weights)),
+      proportions = weights,
+      defined = rep(TRUE, nrow(weights))
+    ))
+  }
+  if(length(.bt_random_effect_summary_allocation_gate_names(
+    allocation
+  )) == 0L){
+    return(list(
+      total_fraction = rep(1, nrow(weights)),
+      proportions = weights,
+      defined = rep(TRUE, nrow(weights))
+    ))
+  }
+
+  component_gates <- matrix(1, nrow = nrow(weights), ncol = K)
+  inclusion <- allocation$inclusion
+  if(is.null(inclusion)){
+    inclusion <- list()
+  }
+  for(record in inclusion){
+    index <- record$index
+    if(!is.numeric(index) || length(index) != 1L || is.na(index) ||
+       index != as.integer(index) || index < 1L || index > K){
+      stop(
+        "Random-effect allocation inclusion metadata reference an invalid component index.",
+        call. = FALSE
+      )
+    }
+    gate <- .bt_random_effect_allocation_gate_draws(
+      parameter_name = record$indicator_name,
+      posterior = model_samples
+    )
+    if(is.null(gate)){
+      stop(
+        "Random-effect allocation inclusion samples are missing Bernoulli indicator '",
+        record$indicator_name,
+        "'.",
+        call. = FALSE
+      )
+    }
+    component_gates[, as.integer(index)] <- gate
+  }
+
+  parent_active <- rep(TRUE, nrow(weights))
+  parent_factors <- allocation$parent_factors
+  if(is.null(parent_factors)){
+    parent_factors <- list()
+  }
+  for(factor in parent_factors){
+    if(is.null(factor$inclusion_name)){
+      next
+    }
+    gate <- .bt_random_effect_allocation_gate_draws(
+      parameter_name = factor$inclusion_name,
+      posterior = model_samples
+    )
+    if(is.null(gate)){
+      stop(
+        "Random-effect allocation inclusion samples are missing Bernoulli indicator '",
+        factor$inclusion_name,
+        "'.",
+        call. = FALSE
+      )
+    }
+    parent_active <- parent_active & gate == 1
+  }
+
+  gated_weights <- weights * component_gates
+  total_fraction <- rowSums(gated_weights) * as.numeric(parent_active)
+  defined <- parent_active & total_fraction > 0
+  proportions <- matrix(
+    NA_real_,
+    nrow = nrow(weights),
+    ncol = K,
+    dimnames = dimnames(weights)
+  )
+  if(any(defined)){
+    proportions[defined, ] <-
+      gated_weights[defined, , drop = FALSE] / total_fraction[defined]
+  }
+
+  list(
+    total_fraction = total_fraction,
+    proportions = proportions,
+    defined = defined
+  )
+}
+
+.bt_random_effect_summary_allocation_gate_names <- function(
+    allocation, include_components = TRUE, include_parents = TRUE){
+
+  names <- character()
+  if(include_components && is.list(allocation$inclusion)){
+    names <- c(names, unlist(lapply(allocation$inclusion, function(record){
+      record$indicator_name
+    }), use.names = FALSE))
+  }
+  if(include_parents && is.list(allocation$parent_factors)){
+    names <- c(names, unlist(lapply(allocation$parent_factors, function(factor){
+      factor$inclusion_name
+    }), use.names = FALSE))
+  }
+
+  unique(names[!is.na(names) & nzchar(names)])
 }
 
 .bt_random_effect_allocation_formula_parameter <- function(allocation){

@@ -411,6 +411,24 @@ random_effects_marginal_update_grid <- function(
       key = key,
       random_term = random_term
     )
+    if(identical(
+      .bt_random_effect_allocation_scale_metadata(
+        allocation,
+        context = "Random-effect marginal covariance update plan"
+      ),
+      "total_variance"
+    ) && length(.bt_random_effect_summary_allocation_gate_names(
+      allocation
+    )) > 0L){
+      return(.bt_random_effect_marginal_update_unavailable(
+        quantity = quantity,
+        reason = "gated_realized_allocation",
+        message = paste0(
+          "The selected realized allocation aggregate has no single ",
+          "unconditional scalar covariance update across inclusion states."
+        )
+      ))
+    }
     direct_source <- key$source_type %in% c(
       "identity", "one_to_one_transform"
     ) && is.character(key$source_parameter) &&

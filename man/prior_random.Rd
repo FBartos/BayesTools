@@ -136,14 +136,16 @@ SD components.}
 \code{sd_child = sd_parent * sqrt(w)}. \code{"mean_variance"} uses
 \code{sd_child = sd_parent * sqrt(K * w)} and is intended for
 \code{target = "sd_component"} heterogeneity tests.
-Summaries report \code{w} as a variance proportion for \code{"total_variance"} and
-\code{K * w} as a variance multiplier to the average SD-component variance for
-\code{"mean_variance"}.}
+Summaries report the realized, gate-adjusted variance proportion for
+\code{"total_variance"} and \code{K * w} as a variance multiplier to the average
+SD-component variance for \code{"mean_variance"}.}
 
 \item{inclusion}{optional named list of scalar probability priors, keyed by
 allocation component label. For \code{target = "block"}, each listed component
 receives an independent Bernoulli gate and its SD contribution is multiplied
-by that gate. Gate names must match resolved allocation component labels.
+by that gate. Public total-variance aggregates include these zero branches,
+while variance proportions condition on at least one active component.
+Gate names must match resolved allocation component labels.
 A block allocation with exactly one term is permitted only as a gate-only
 allocation: \code{weights} must be \code{NULL} and \code{inclusion} must name that term.}
 
@@ -153,7 +155,8 @@ disambiguating prefix.}
 
 \item{component_names}{optional public names for the allocation components,
 in the same order as \code{terms}. Internal component identifiers remain the
-(sanitized) names of \code{terms}.}
+(sanitized) names of \code{terms}. A sole \code{""} suppresses the redundant public
+component argument for a one-component allocation.}
 
 \item{allocation_name}{allocation name referenced by \code{allocation_ref()}.}
 
@@ -315,12 +318,18 @@ allocations can be supplied in
 \code{prior_random()}; child allocations can inherit one component of an earlier
 allocation through \code{parent = allocation_ref(...)}.
 
-With \code{scale = "total_variance"}, the aggregate SD preserves summed
-component variance:
-\deqn{\sigma_j = \sigma_{\mathrm{total}}\sqrt{w_j}, \quad
-      w \sim \mathrm{Dirichlet}(\alpha).}
-Its public aggregate names are \code{sd_total} and \code{var_total}, and its component
-weights are exposed as \code{var_prop(...)}.
+With \code{scale = "total_variance"}, the ungated allocation preserves summed
+component variance. With optional independent component gates, the realized
+component SD and total variance are
+\deqn{\sigma_j = I_j\sigma_{\mathrm{slab}}\sqrt{w_j}, \quad
+      \sigma_{\mathrm{total}}^2 = \sigma_{\mathrm{slab}}^2
+      \sum_j I_j w_j, \quad w \sim \mathrm{Dirichlet}(\alpha).}
+Its public aggregate names \code{sd_total} and \code{var_total} refer to the realized
+gated total. \code{var_prop(j)} is the realized share
+\eqn{I_j w_j / \sum_k I_k w_k}, conditional on positive realized total
+variance. It is undefined on all-off draws, which are omitted when the
+variance proportions are summarized. The positive slab scale and raw
+Dirichlet weights remain internal coordinates.
 
 With \code{scale = "mean_variance"}, the aggregate SD preserves mean component
 variance:
@@ -349,7 +358,7 @@ independently controls an allocation-specific public owner, and
 \code{component_names} controls the public component arguments. An unnamed local
 SD-component allocation inherits its enclosing block's public owner under
 the same one-block/multiple-block rule. Total-variance allocations expose
-\code{sd_total}, \code{var_total}, and \code{var_prop(...)};
+realized \code{sd_total}, \code{var_total}, and \code{var_prop(...)};
 mean-variance allocations expose \code{sd_common}, \code{var_common},
 \code{var_mult(...)}, and \code{sd_mult(...)}.
 

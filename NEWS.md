@@ -1,5 +1,13 @@
 # version 0.3.1
 ### Fixes
+- permits a sole hidden variance-allocation component to omit a redundant
+  public component argument, and avoids re-reading a child allocation's
+  Dirichlet weights when only an already-applied parent gate affects its total
+- reports gated total-variance allocations on their realized model-averaged
+  scale: `sd_total` and `var_total` include the all-off zero branch, while
+  `var_prop(...)` is normalized over active components and summarized
+  conditional on positive realized total variance; the pre-gate slab scale and
+  raw Dirichlet weights remain private coordinates
 - preserves the original outer-to-inner component order of nested `/`
   random-effect groups in compiled grouping metadata, matching metafor while
   retaining the declared order of explicit `:` interactions

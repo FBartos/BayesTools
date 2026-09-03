@@ -4,7 +4,7 @@ test_that("parameter map and coordinate schemas are explicit and versioned", {
 
   map_schema <- parameter_map_schema()
   schema <- parameter_coordinates_schema()
-  expect_identical(map_schema$schema_version, 3L)
+  expect_identical(map_schema$schema_version, 4L)
   expect_identical(
     schema$field,
     c(

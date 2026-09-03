@@ -154,7 +154,10 @@ is unique.
 \code{parameter_draws()} is the deferred extraction boundary. The BayesTools fit
 method reads only the coordinates declared by the selected
 extraction key. Downstream packages can provide methods for package-owned
-derived quantities.
+derived quantities. For gated total-variance allocations, realized
+\code{sd_total} and \code{var_total} draws include the all-off zero branch.
+\code{var_prop(...)} draws are normalized over active components and are \code{NA} on
+draws where the realized allocation total is zero.
 
 \code{parameter_prior_density()} constructs a deterministic
 \code{prior_linear_density} for supported map-defined quantities, including

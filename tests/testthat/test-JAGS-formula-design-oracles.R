@@ -3662,6 +3662,33 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     "dimension must match",
     fixed = TRUE
   )
+  hidden_component_allocation <- random_variance_allocation(
+    name            = "hidden_component",
+    terms           = c(component_1 = "study"),
+    sd              = sd_prior,
+    inclusion       = list(
+      component_1 = prior("spike", list(location = 0.5))
+    ),
+    component_names = ""
+  )
+  expect_identical(hidden_component_allocation$component_names, "")
+  expect_identical(
+    BayesTools:::.bt_random_effect_allocation_component_name(
+      hidden_component_allocation,
+      "component_1"
+    ),
+    ""
+  )
+  expect_error(
+    random_variance_allocation(
+      name            = "bad_hidden_component",
+      terms           = c(study = "study", drug = "drug"),
+      sd              = sd_prior,
+      component_names = c("", "drug")
+    ),
+    "sole empty name",
+    fixed = TRUE
+  )
   positional_allocation <- random_variance_allocation(
     "allocation",
     c("study", "drug"),

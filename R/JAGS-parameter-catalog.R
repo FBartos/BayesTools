@@ -64,7 +64,10 @@
 #' `parameter_draws()` is the deferred extraction boundary. The BayesTools fit
 #' method reads only the coordinates declared by the selected
 #' extraction key. Downstream packages can provide methods for package-owned
-#' derived quantities.
+#' derived quantities. For gated total-variance allocations, realized
+#' `sd_total` and `var_total` draws include the all-off zero branch.
+#' `var_prop(...)` draws are normalized over active components and are `NA` on
+#' draws where the realized allocation total is zero.
 #'
 #' `parameter_prior_density()` constructs a deterministic
 #' `prior_linear_density` for supported map-defined quantities, including
@@ -1999,6 +2002,22 @@ parameter_transform_jacobian <- function(values, transform){
     )
     scale_role <- .bt_random_effect_allocation_scale_role(allocation)
     scale_names <- .bt_parameter_catalog_allocation_scale_names(allocation)
+    allocation_gate_names <-
+      .bt_random_effect_summary_allocation_gate_names(allocation)
+    component_gate_names <-
+      .bt_random_effect_summary_allocation_gate_names(
+        allocation,
+        include_parents = FALSE
+      )
+    realized_total <- identical(scale_role, "total") &&
+      length(component_gate_names) > 0L
+    if(realized_total){
+      scale_names <- unique(c(
+        scale_names,
+        allocation$weight_name,
+        component_gate_names
+      ))
+    }
     scale_dependencies <- .bt_parameter_catalog_coordinates(
       coordinates,
       scale_names
@@ -2010,8 +2029,12 @@ parameter_transform_jacobian <- function(values, transform){
       if(is.null(parent_factors)){
         parent_factors <- list()
       }
-      direct_scale <- length(parent_factors) == 0L
-      source_prior <- if(source_name %in% names(prior_list)) source_name else ""
+      direct_scale <- length(parent_factors) == 0L && !realized_total
+      source_prior <- if(direct_scale && source_name %in% names(prior_list)){
+        source_name
+      }else{
+        ""
+      }
       sd_quantity <- .bt_random_effect_allocation_sd_quantity(allocation)
       add_definition(
         raw_name = .bt_random_effect_summary_name(
@@ -2072,7 +2095,7 @@ parameter_transform_jacobian <- function(values, transform){
     out$suppress <<- unique(c(out$suppress, scale_dependencies))
     dependencies <- .bt_parameter_catalog_coordinates(
       coordinates,
-      allocation$weight_name
+      c(allocation$weight_name, allocation_gate_names)
     )
     out$suppress <<- unique(c(out$suppress, dependencies))
     if(!gate_only) for(i in seq_len(K)){
@@ -2101,13 +2124,26 @@ parameter_transform_jacobian <- function(values, transform){
         quantity = allocation_type$summary,
         scale_role = scale_role,
         arguments = components[i],
-        source_type = if(identical(allocation_type$summary, "var_prop")){
+        source_type = if(identical(allocation_type$summary, "var_prop") &&
+                         length(allocation_gate_names) == 0L){
           "identity"
+        }else if(identical(allocation_type$summary, "var_prop")){
+          "composite"
         }else{
           "one_to_one_transform"
         },
-        source_parameter = allocation$weight_name,
-        source_prior = allocation$weight_name,
+        source_parameter = if(identical(allocation_type$summary, "var_prop") &&
+                              length(allocation_gate_names) > 0L){
+          ""
+        }else{
+          allocation$weight_name
+        },
+        source_prior = if(identical(allocation_type$summary, "var_prop") &&
+                          length(allocation_gate_names) > 0L){
+          ""
+        }else{
+          allocation$weight_name
+        },
         source_transform = allocation_type$summary
       )
       if(identical(.bt_random_effect_summary_allocation_target(allocation),

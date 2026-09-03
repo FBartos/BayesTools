@@ -50,6 +50,31 @@ test_that("semantic inclusion rows retain probability-only summaries", {
 })
 
 
+test_that("undefined semantic draws are omitted without fake diagnostics", {
+
+  samples <- cbind(
+    "var_prop(study)" = c(NA, 1, 0, 0.25, NA, 1, 0, 0.25),
+    theta = seq_len(8L)
+  )
+  actual <- .runjags_summary_fast(
+    model_samples = samples,
+    n_samples     = 4L,
+    n_chains      = 2L,
+    conditional   = FALSE
+  )
+
+  expect_equal(actual["var_prop(study)", "Mean"], mean(c(1, 0, 0.25)))
+  expect_equal(actual["var_prop(study)", "SD"], stats::sd(c(1, 0, 0.25, 1, 0, 0.25)))
+  expect_true(all(is.na(actual[
+    "var_prop(study)",
+    c("ESS", "R_hat", "MCMC_error")
+  ])))
+  expect_true(all(is.finite(as.numeric(
+    actual["theta", c("ESS", "MCMC_error")]
+  ))))
+})
+
+
 test_that("format_BF works correctly", {
 
   # Basic usage

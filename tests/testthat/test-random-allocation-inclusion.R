@@ -70,6 +70,69 @@ test_that("variance-allocation gate priors sample independent indicators", {
     model_samples = samples_a
   )
   expect_equal(as.numeric(as.matrix(draws)), samples_a[, indicators[[1L]]])
+
+  weight_columns <- paste0(allocation$weight_name, "[", 1:2, "]")
+  gated_weights <- samples_a[, weight_columns, drop = FALSE] *
+    samples_a[, indicators, drop = FALSE]
+  realized_fraction <- rowSums(gated_weights)
+  source <- samples_a[, allocation$source_node]
+
+  total_selection <- parameter_catalog_resolve(
+    parameter_catalog(fit),
+    "(mu) total: sd_total"
+  )
+  total_draws <- as.numeric(as.matrix(parameter_draws(
+    fit,
+    total_selection,
+    model_samples = samples_a
+  )))
+  expect_equal(
+    total_draws,
+    source * sqrt(realized_fraction),
+    tolerance = 1e-12
+  )
+  expect_true(all(total_draws[realized_fraction == 0] == 0))
+  expect_true(all(c(weight_columns, indicators) %in%
+                    total_selection$quantities$extraction_key[[1L]]$dependencies))
+  expect_identical(total_selection$quantities$source_type, "composite")
+  total_plan <- random_effects_marginal_update_plan(fit, total_selection)
+  expect_identical(total_plan$family, "unsupported")
+  expect_identical(total_plan$reason, "gated_realized_allocation")
+
+  proportion_draws <- lapply(c("study", "drug"), function(component){
+    proportion_selection <- parameter_catalog_resolve(
+      parameter_catalog(fit),
+      paste0("(mu) total: var_prop(", component, ")")
+    )
+    expect_true(all(c(weight_columns, indicators) %in%
+                      proportion_selection$quantities$extraction_key[[1L]]$dependencies))
+    expect_identical(proportion_selection$quantities$source_type, "composite")
+    proportion_plan <- random_effects_marginal_update_plan(
+      fit,
+      proportion_selection
+    )
+    expect_identical(proportion_plan$family, "unsupported")
+    as.numeric(as.matrix(parameter_draws(
+      fit,
+      proportion_selection,
+      model_samples = samples_a
+    )))
+  })
+  active <- realized_fraction > 0
+  expect_true(all(vapply(proportion_draws, function(x){
+    all(is.na(x[!active]))
+  }, logical(1))))
+  expect_equal(
+    unname(do.call(cbind, proportion_draws)[active, , drop = FALSE]),
+    unname(gated_weights[active, , drop = FALSE] /
+             realized_fraction[active]),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    rowSums(do.call(cbind, proportion_draws)[active, , drop = FALSE]),
+    rep(1, sum(active)),
+    tolerance = 1e-12
+  )
 })
 
 
@@ -107,9 +170,99 @@ test_that("a consumed unary root gate retains canonical allocation size", {
   )
 
   root <- result$formula_design$random_allocations$root
+  split <- result$formula_design$random_allocations$split
   expect_true(root$gate_only)
   expect_identical(root$n_targets, 1L)
   expect_identical(root$components$component$factors[[1L]]$n_targets, 1L)
+
+  source_name <- root$source_node
+  gate_name   <- root$inclusion$component$indicator_name
+  weight_name <- split$weight_name
+  samples <- matrix(
+    c(
+      0, 1, 0, 0.2, 0.8,
+      0, 2, 1, 0.7, 0.3
+    ),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, c(
+      "mu_intercept",
+      source_name,
+      gate_name,
+      paste0(weight_name, "[1]"),
+      paste0(weight_name, "[2]")
+    ))
+  )
+  fit <- structure(
+    list(
+      mcmc = coda::mcmc.list(coda::mcmc(samples)),
+      sample = nrow(samples)
+    ),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- result$prior_list
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  fit <- attach_test_parameter_map(fit)
+
+  sd_total <- random_effects_summary_posterior(
+    fit,
+    summary = "sd_total"
+  )
+  expect_equal(as.numeric(sd_total[[1L]]), c(0, 2))
+})
+
+
+test_that("a sole hidden allocation omits its public component argument", {
+
+  data <- data.frame(study = factor(c("s1", "s1", "s2", "s2")))
+  result <- JAGS_formula(
+    formula = ~ 1 + random(1 | study, name = "study", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name            = "component",
+        display_name    = "",
+        terms           = c(component_1 = "study"),
+        component_names = "",
+        sd              = prior("gamma", list(2, 2)),
+        inclusion       = list(
+          component_1 = prior("spike", list(location = 0.5))
+        )
+      )
+    )
+  )
+  allocation  <- result$formula_design$random_allocations$component
+  source_name <- allocation$source_node
+  gate_name   <- allocation$inclusion$component_1$indicator_name
+  samples <- matrix(
+    c(0, 1, 0, 0, 2, 1),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, c("mu_intercept", source_name, gate_name))
+  )
+  fit <- structure(
+    list(
+      mcmc = coda::mcmc.list(coda::mcmc(samples)),
+      sample = nrow(samples)
+    ),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list")     <- result$prior_list
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  fit <- attach_test_parameter_map(fit)
+
+  selection <- parameter_catalog_resolve(
+    parameter_catalog(fit),
+    "(mu) inclusion"
+  )
+  expect_identical(selection$quantities$arguments[[1L]], "")
+  expect_false(any(grepl(
+    "component 1",
+    parameter_catalog(fit)$quantities$canonical_name,
+    fixed = TRUE
+  )))
 })
 
 

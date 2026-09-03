@@ -96,6 +96,62 @@ skip_if_not_test_profile("unit")
   attach_test_parameter_map(fit)
 }
 
+.random_effects_gated_total_variance_allocation_fit <- function(){
+
+  data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2")),
+    drug = factor(c("a", "b", "a", "b"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name = "allocation",
+        terms = c(study = "study", drug = "drug"),
+        sd = prior("gamma", list(2, 2)),
+        weights = prior("dirichlet", list(alpha = c(2, 3))),
+        inclusion = list(
+          study = prior("spike", list(location = 0.5)),
+          drug = prior("spike", list(location = 0.5))
+        )
+      )
+    )
+  )
+  allocation <- formula_result$formula_design$random_allocations[[1L]]
+  indicators <- vapply(
+    allocation$inclusion,
+    `[[`,
+    character(1),
+    "indicator_name"
+  )
+  samples <- cbind(
+    rep(2, 4),
+    c(.25, .25, .25, .25),
+    c(.75, .75, .75, .75),
+    c(0, 1, 0, 1),
+    c(0, 0, 1, 1)
+  )
+  colnames(samples) <- c(
+    allocation$source_node,
+    paste0(allocation$weight_name, "[1]"),
+    paste0(allocation$weight_name, "[2]"),
+    indicators
+  )
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+
+  attach_test_parameter_map(fit)
+}
+
 test_that("random-effect summary posterior extracts mean-variance multipliers", {
 
   skip_if_not_installed("runjags")
@@ -309,6 +365,98 @@ test_that("random-effect summary posterior extracts total-variance proportions",
     "Variance-multiplier summaries are created only",
     fixed = TRUE
   )
+})
+
+test_that("gated total-variance summaries use realized totals and proportions", {
+
+  skip_if_not_installed("runjags")
+
+  fit <- .random_effects_gated_total_variance_allocation_fit()
+  catalog <- parameter_catalog(fit)
+  total <- parameter_draws(
+    fit,
+    parameter_catalog_resolve(catalog, "(mu) allocation: sd_total")
+  )
+  expect_equal(
+    unname(as.numeric(total[[1L]][, 1L])),
+    c(0, 1, sqrt(3), 2),
+    tolerance = 1e-12
+  )
+
+  study <- parameter_draws(
+    fit,
+    parameter_catalog_resolve(
+      catalog,
+      "(mu) allocation: var_prop(study)"
+    )
+  )
+  drug <- parameter_draws(
+    fit,
+    parameter_catalog_resolve(
+      catalog,
+      "(mu) allocation: var_prop(drug)"
+    )
+  )
+  expect_equal(unname(as.numeric(study[[1L]][, 1L])), c(NA, 1, 0, .25))
+  expect_equal(unname(as.numeric(drug[[1L]][, 1L])), c(NA, 0, 1, .75))
+
+  proportions <- random_effects_summary_posterior(
+    fit,
+    summary = "var_prop"
+  )
+  expect_equal(
+    unname(as.numeric(proportions[[
+      "(mu) allocation: var_prop(drug)"
+    ]])),
+    c(0, 1, .75)
+  )
+  expect_null(attr(
+    proportions[["(mu) allocation: var_prop(drug)"]],
+    "prior_density",
+    exact = TRUE
+  ))
+
+  estimates <- JAGS_estimates_table(
+    fit,
+    random_effects_summary = "standard",
+    remove_diagnostics = TRUE
+  )
+  expect_equal(
+    estimates["(mu) allocation: sd_total", "Mean"],
+    mean(c(0, 1, sqrt(3), 2)),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    estimates["(mu) allocation: var_prop(drug)", "Mean"],
+    mean(c(0, 1, .75)),
+    tolerance = 1e-12
+  )
+})
+
+
+test_that("inherited gates zero descendant realized allocations", {
+
+  allocation <- list(
+    scale          = "total_variance",
+    n_targets      = 2L,
+    inclusion      = list(),
+    parent_factors = list(list(inclusion_name = "parent_gate"))
+  )
+  weights <- matrix(
+    c(0.25, 0.75, 0.4, 0.6),
+    nrow = 2L,
+    byrow = TRUE
+  )
+  samples <- cbind(parent_gate = c(0, 1))
+  realized <- .bt_random_effect_summary_realized_allocation(
+    allocation    = allocation,
+    weights       = weights,
+    model_samples = samples
+  )
+
+  expect_equal(realized[["total_fraction"]], c(0, 1))
+  expect_true(all(is.na(realized[["proportions"]][1L, ])))
+  expect_equal(realized[["proportions"]][2L, ], weights[2L, ])
 })
 
 test_that("random-effect summary posterior handles singular Dirichlet boundaries", {

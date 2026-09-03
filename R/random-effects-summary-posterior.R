@@ -4,7 +4,9 @@
 #' quantities and attaches analytic marginal prior densities where available.
 #' For allocation summaries, the helper keeps raw Dirichlet allocation weights
 #' internal and exposes interpretable scalar summaries such as mean-variance
-#' SD-component variance multipliers.
+#' SD-component variance multipliers. Gated total-variance proportions are
+#' normalized over active components and omit draws on which every component
+#' is excluded because a variance share is undefined there.
 #'
 #' @param fit model fit created by [JAGS_fit].
 #' @param summary semantic quantity to extract: `"var_mult"`, `"var_prop"`,
@@ -100,6 +102,15 @@ random_effects_summary_posterior <- function(
     key      <- quantity$extraction_key[[1L]]
     draws    <- .bt_parameter_draws_from_quantities(fit, quantity)
     values   <- unname(as.numeric(as.matrix(draws)[, 1L]))
+    if(identical(quantity$quantity, "var_prop")){
+      values <- values[!is.na(values)]
+      if(length(values) == 0L){
+        stop(
+          "The selected variance proportion is undefined because no posterior draw has positive realized allocation variance.",
+          call. = FALSE
+        )
+      }
+    }
     attr(values, "sample_ind") <- FALSE
     attr(values, "models_ind") <- rep(1, length(values))
     attr(values, "parameter") <- display_names[i]

@@ -98,12 +98,18 @@
 #' `prior_random()`; child allocations can inherit one component of an earlier
 #' allocation through `parent = allocation_ref(...)`.
 #'
-#' With `scale = "total_variance"`, the aggregate SD preserves summed
-#' component variance:
-#' \deqn{\sigma_j = \sigma_{\mathrm{total}}\sqrt{w_j}, \quad
-#'       w \sim \mathrm{Dirichlet}(\alpha).}
-#' Its public aggregate names are `sd_total` and `var_total`, and its component
-#' weights are exposed as `var_prop(...)`.
+#' With `scale = "total_variance"`, the ungated allocation preserves summed
+#' component variance. With optional independent component gates, the realized
+#' component SD and total variance are
+#' \deqn{\sigma_j = I_j\sigma_{\mathrm{slab}}\sqrt{w_j}, \quad
+#'       \sigma_{\mathrm{total}}^2 = \sigma_{\mathrm{slab}}^2
+#'       \sum_j I_j w_j, \quad w \sim \mathrm{Dirichlet}(\alpha).}
+#' Its public aggregate names `sd_total` and `var_total` refer to the realized
+#' gated total. `var_prop(j)` is the realized share
+#' \eqn{I_j w_j / \sum_k I_k w_k}, conditional on positive realized total
+#' variance. It is undefined on all-off draws, which are omitted when the
+#' variance proportions are summarized. The positive slab scale and raw
+#' Dirichlet weights remain internal coordinates.
 #'
 #' With `scale = "mean_variance"`, the aggregate SD preserves mean component
 #' variance:
@@ -132,7 +138,7 @@
 #' `component_names` controls the public component arguments. An unnamed local
 #' SD-component allocation inherits its enclosing block's public owner under
 #' the same one-block/multiple-block rule. Total-variance allocations expose
-#' `sd_total`, `var_total`, and `var_prop(...)`;
+#' realized `sd_total`, `var_total`, and `var_prop(...)`;
 #' mean-variance allocations expose `sd_common`, `var_common`,
 #' `var_mult(...)`, and `sd_mult(...)`.
 #'
@@ -422,7 +428,8 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL,
 #'   disambiguating prefix.
 #' @param component_names optional public names for the allocation components,
 #'   in the same order as `terms`. Internal component identifiers remain the
-#'   (sanitized) names of `terms`.
+#'   (sanitized) names of `terms`. A sole `""` suppresses the redundant public
+#'   component argument for a one-component allocation.
 #' @param parent optional `allocation_ref()` object selecting a component of an
 #'   earlier named allocation. Child allocations inherit that component's SD
 #'   budget and must not specify `sd` or `sd_source`.
@@ -434,14 +441,16 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL,
 #'   `sd_child = sd_parent * sqrt(w)`. `"mean_variance"` uses
 #'   `sd_child = sd_parent * sqrt(K * w)` and is intended for
 #'   `target = "sd_component"` heterogeneity tests.
-#'   Summaries report `w` as a variance proportion for `"total_variance"` and
-#'   `K * w` as a variance multiplier to the average SD-component variance for
-#'   `"mean_variance"`.
+#'   Summaries report the realized, gate-adjusted variance proportion for
+#'   `"total_variance"` and `K * w` as a variance multiplier to the average
+#'   SD-component variance for `"mean_variance"`.
 #' @param weights optional Dirichlet simplex prior over allocation weights.
 #' @param inclusion optional named list of scalar probability priors, keyed by
 #'   allocation component label. For `target = "block"`, each listed component
 #'   receives an independent Bernoulli gate and its SD contribution is multiplied
-#'   by that gate. Gate names must match resolved allocation component labels.
+#'   by that gate. Public total-variance aggregates include these zero branches,
+#'   while variance proportions condition on at least one active component.
+#'   Gate names must match resolved allocation component labels.
 #'   A block allocation with exactly one term is permitted only as a gate-only
 #'   allocation: `weights` must be `NULL` and `inclusion` must name that term.
 #' @export
@@ -528,8 +537,14 @@ random_variance_allocation <- function(name, terms = NULL, sd = NULL,
     if(is.null(terms) || length(component_names) != length(terms)){
       stop("'component_names' must have one public name for each entry in 'terms'.", call. = FALSE)
     }
-    if(any(!nzchar(component_names)) || anyDuplicated(component_names)){
-      stop("'component_names' must be non-empty and unique.", call. = FALSE)
+    hidden_single_component <- length(component_names) == 1L &&
+      identical(component_names, "")
+    if((any(!nzchar(component_names)) && !hidden_single_component) ||
+       anyDuplicated(component_names)){
+      stop(
+        "'component_names' must be unique and non-empty, except that a sole empty name may suppress a redundant public component argument.",
+        call. = FALSE
+      )
     }
   }
 
@@ -1085,9 +1100,15 @@ is.prior_random <- function(x){
        length(allocation$component_names) != length(allocation$terms)){
       stop("'component_names' must have one public name for each entry in 'terms'.", call. = FALSE)
     }
-    if(any(!nzchar(allocation$component_names)) ||
+    hidden_single_component <- length(allocation$component_names) == 1L &&
+      identical(allocation$component_names, "")
+    if((any(!nzchar(allocation$component_names)) &&
+        !hidden_single_component) ||
        anyDuplicated(allocation$component_names)){
-      stop("'component_names' must be non-empty and unique.", call. = FALSE)
+      stop(
+        "'component_names' must be unique and non-empty, except that a sole empty name may suppress a redundant public component argument.",
+        call. = FALSE
+      )
     }
   }
   target <- allocation$target

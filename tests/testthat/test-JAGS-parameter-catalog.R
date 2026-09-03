@@ -22,7 +22,7 @@ test_that("parameter catalog construction is metadata-only and versioned", {
     prior_list = prior_list
   ))
   expect_s3_class(catalog, "BayesTools_parameter_catalog")
-  expect_identical(catalog$schema_version, 3L)
+  expect_identical(catalog$schema_version, 4L)
   expect_identical(
     names(catalog$quantities),
     .bt_parameter_catalog_quantity_columns

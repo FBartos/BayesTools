@@ -193,27 +193,59 @@
     return(runjags_summary)
   }
 
-  # split back the chains (allows for diagnostics calculation)
-  model_samples_list <- split(as.data.frame(model_samples), rep(1:n_chains, each = n_samples), drop = FALSE)
-  model_samples_list <- coda::as.mcmc.list(lapply(model_samples_list, coda::as.mcmc))
-  mcmc_summary       <- summary(model_samples_list, quantiles = NULL)$statistics
+  # Split back the chains for diagnostics. Quantities that are undefined for
+  # some product-space branches retain NA diagnostics while their estimates are
+  # summarized from the branches on which they are defined.
+  complete_columns <- colSums(is.na(model_samples)) == 0L
+  runjags_diagnostics <- as.data.frame(matrix(
+    NA_real_,
+    nrow = ncol(model_samples),
+    ncol = 4L,
+    dimnames = list(
+      colnames(model_samples),
+      c("MCMC_error", "MCMC_SD_error", "ESS", "R_hat")
+    )
+  ))
+  if(any(complete_columns)){
+    diagnostic_samples <- model_samples[, complete_columns, drop = FALSE]
+    model_samples_list <- split(
+      as.data.frame(diagnostic_samples),
+      rep(seq_len(n_chains), each = n_samples),
+      drop = FALSE
+    )
+    model_samples_list <- coda::as.mcmc.list(lapply(
+      model_samples_list,
+      coda::as.mcmc
+    ))
+    mcmc_summary <- summary(model_samples_list, quantiles = NULL)$statistics
 
-  # fix single parameter summaries
-  if(is.null(dim(mcmc_summary))){
-    mcmc_summary <- t(mcmc_summary)
+    # fix single parameter summaries
+    if(is.null(dim(mcmc_summary))){
+      mcmc_summary <- t(mcmc_summary)
+    }
+
+    complete_diagnostics <- cbind.data.frame(
+      "MCMC_error"    = mcmc_summary[, "Time-series SE"],
+      "MCMC_SD_error" = mcmc_summary[, "Time-series SE"] / mcmc_summary[, "SD"],
+      "ESS"           = coda::effectiveSize(model_samples_list),
+      "R_hat"         = if(n_chains > 1){
+        coda::gelman.diag(
+          model_samples_list,
+          multivariate = FALSE,
+          autoburnin = FALSE
+        )$psrf[, 1]
+      }else{
+        NA
+      }
+    )
+    runjags_diagnostics[complete_columns, ] <- complete_diagnostics
   }
-
-  # add diagnostics to non-conditional samples
-  runjags_diagnostics <- cbind.data.frame(
-    "MCMC_error"    = mcmc_summary[,"Time-series SE"],
-    "MCMC_SD_error" = mcmc_summary[,"Time-series SE"] / mcmc_summary[,"SD"],
-    "ESS"           = coda::effectiveSize(model_samples_list),
-    "R_hat"         = if(n_chains > 1) coda::gelman.diag(model_samples_list, multivariate = FALSE, autoburnin = FALSE)$psrf[,1] else NA
-  )
 
   # remove incorrect NANs and NAs from the diagnostics
   runjags_diagnostics[is.nan(runjags_diagnostics[,"MCMC_SD_error"]),"MCMC_SD_error"] <- NA
-  runjags_diagnostics[runjags_diagnostics[,"ESS"] == 0, "ESS"]                       <- 0
+  zero_ess <- !is.na(runjags_diagnostics[, "ESS"]) &
+    runjags_diagnostics[, "ESS"] == 0
+  runjags_diagnostics[zero_ess, "ESS"]                                               <- 0
   runjags_diagnostics[is.nan(runjags_diagnostics[,"R_hat"]),"R_hat"]                 <- NA
 
   # first omega parameter is always constant
