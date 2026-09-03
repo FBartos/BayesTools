@@ -337,14 +337,21 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
   if(prior$weights$type == "cumulative"){
 
-    eta     <- .bt_JAGS_marglik_positive_auxiliary_values(
-      samples = samples,
-      parameter_names = paste0("eta[", seq_len(J), "]"),
-      missing_message = "'samples' does not contain all monitored cumulative weightfunction parameters.",
-      signal = TRUE
-    )
-    std_eta <- eta / sum(eta)
-    omega <- unname(rev(cumsum(rev(std_eta))))
+    if(J == 2L){
+      omega <- c(
+        1,
+        .bt_JAGS_marglik_binary_cumulative_weight(samples, signal = TRUE)
+      )
+    }else{
+      eta     <- .bt_JAGS_marglik_positive_auxiliary_values(
+        samples = samples,
+        parameter_names = paste0("eta[", seq_len(J), "]"),
+        missing_message = "'samples' does not contain all monitored cumulative weightfunction parameters.",
+        signal = TRUE
+      )
+      std_eta <- eta / sum(eta)
+      omega <- unname(rev(cumsum(rev(std_eta))))
+    }
 
   }else if(prior$weights$type == "independent"){
 
@@ -366,6 +373,32 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   parameter[["omega"]] <- unname(omega[expansion$index])
 
   return(parameter)
+}
+
+.bt_JAGS_marglik_binary_cumulative_weight <- function(samples, signal = FALSE){
+
+  parameter_name <- "omega[2]"
+  if(!parameter_name %in% names(samples)){
+    stop(
+      "'samples' does not contain the monitored binary cumulative weightfunction parameter.",
+      call. = FALSE
+    )
+  }
+
+  value <- unname(samples[[parameter_name]])
+  invalid <- length(value) != 1L || !is.finite(value) || value < 0 || value > 1
+  if(invalid){
+    if(isTRUE(signal)){
+      .bt_JAGS_marglik_out_of_support(
+        "Bridge samples contain out-of-support binary cumulative weightfunction coordinate '",
+        parameter_name,
+        "'."
+      )
+    }
+    return(NULL)
+  }
+
+  value
 }
 
 .bt_JAGS_marglik_positive_auxiliary_values <- function(samples,

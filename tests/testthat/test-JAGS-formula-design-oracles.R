@@ -1385,6 +1385,27 @@ test_that("random formulas reject transformations and persist tuple ordering", {
     match(as.character(expected_shuffled), random_term$group_levels)
   )
 
+  nested_result <- JAGS_formula(
+    ~ 1 + diag(1 | g1 / g2),
+    "mu",
+    data,
+    list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(sd = sd_prior)
+  )
+  nested_term <- nested_result$formula_design$random_effects[[1L]]
+  expect_identical(nested_term$group_components, c("g1", "g2"))
+  expect_identical(nested_term$group_levels, levels(expected_group))
+  expect_identical(nested_term$group_map, as.integer(expected_group))
+  expect_identical(
+    nested_term$group_tuples,
+    matrix(
+      c("a", "x", "a", "y", "b", "x", "b", "y"),
+      ncol = 2,
+      byrow = TRUE,
+      dimnames = list(NULL, c("g1", "g2"))
+    )
+  )
+
   collision_data <- data.frame(
     g1 = factor(c("a", "a:b"), levels = c("a", "a:b")),
     g2 = factor(c("b:c", "c"), levels = c("b:c", "c"))
@@ -2478,7 +2499,8 @@ test_that("nested grouping expands consistently across covariance specials and w
     list(
       labels     = vapply(terms, function(t) t$group_label, character(1)),
       structures = vapply(terms, function(t) t$structure, character(1)),
-      blocks     = vapply(terms, function(t) t$block_name, character(1))
+      blocks     = vapply(terms, function(t) t$block_name, character(1)),
+      nesting    = lapply(terms, function(t) t$group_nesting_components)
     )
   }
 
@@ -2487,12 +2509,15 @@ test_that("nested grouping expands consistently across covariance specials and w
   reference <- block_labels(~ 1 + (1 | g1 / g2))
   expect_equal(reference$labels, c("g2:g1", "g1"))
   expect_equal(reference$blocks, c("g2_g1", "g1"))
+  expect_identical(reference$nesting, list(c("g1", "g2"), "g1"))
   parenthesized_reference <- block_labels(~ 1 + random(1 | (g1 / g2)))
   expect_equal(parenthesized_reference$labels, c("g2:g1", "g1"))
   expect_equal(parenthesized_reference$blocks, c("g2_g1", "g1"))
+  expect_identical(parenthesized_reference$nesting, reference$nesting)
   parenthesized_special <- block_labels(~ 1 + diag(1 | (g1 / g2)))
   expect_equal(parenthesized_special$labels, c("g2:g1", "g1"))
   expect_equal(parenthesized_special$blocks, c("g2_g1", "g1"))
+  expect_identical(parenthesized_special$nesting, reference$nesting)
 
   for(structure in c("diag", "id", "us", "un", "cs", "hcs", "ar1", "ar", "har", "car")){
     parsed <- block_labels(stats::as.formula(
@@ -2519,6 +2544,10 @@ test_that("nested grouping expands consistently across covariance specials and w
   three <- block_labels(~ 1 + diag(1 | g1 / g2 / g3))
   expect_equal(three$labels, c("g3:g2:g1", "g2:g1", "g1"))
   expect_equal(three$blocks, c("g3_g2_g1", "g2_g1", "g1"))
+  expect_identical(
+    three$nesting,
+    list(c("g1", "g2", "g3"), c("g1", "g2"), "g1")
+  )
 
   # Formula order is preserved when wrapped and plain terms are mixed.
   mixed <- block_labels(~ 1 + x + diag(1 | g1 / g2) + random(1 | h))

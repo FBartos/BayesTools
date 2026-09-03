@@ -419,16 +419,33 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
 
   }else if(prior$weights$type == "cumulative"){
 
-    eta_names <- paste0("eta[", seq_len(J), "]")
-    eta <- .bt_JAGS_marglik_positive_auxiliary_values(
-      samples = samples,
-      parameter_names = eta_names,
-      missing_message = "'samples' does not contain all monitored cumulative weightfunction parameters."
-    )
-    if(is.null(eta)){
-      return(-Inf)
+    if(J == 2L){
+      beta_parameters <- .weightfunction_alpha_marginal(
+        prior$weights$alpha,
+        2L
+      )
+      omega <- .bt_JAGS_marglik_binary_cumulative_weight(samples)
+      if(is.null(omega)){
+        return(-Inf)
+      }
+      marglik <- stats::dbeta(
+        omega,
+        shape1 = beta_parameters$alpha,
+        shape2 = beta_parameters$beta,
+        log = TRUE
+      )
+    }else{
+      eta_names <- paste0("eta[", seq_len(J), "]")
+      eta <- .bt_JAGS_marglik_positive_auxiliary_values(
+        samples = samples,
+        parameter_names = eta_names,
+        missing_message = "'samples' does not contain all monitored cumulative weightfunction parameters."
+      )
+      if(is.null(eta)){
+        return(-Inf)
+      }
+      marglik <- sum(stats::dgamma(eta, shape = prior$weights$alpha, rate = 1, log = TRUE))
     }
-    marglik <- sum(stats::dgamma(eta, shape = prior$weights$alpha, rate = 1, log = TRUE))
 
   }else if(prior$weights$type == "independent"){
 

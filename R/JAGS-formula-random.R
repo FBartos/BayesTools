@@ -69,16 +69,7 @@
     stop("'double_bar' must be either 'diag' or 'split'.", call. = FALSE)
   )
 
-  if(length(.bt_find_random_wrapper_calls(parsed_formula)) > 0L){
-    bars <- .bt_find_random_effect_calls_ordered(parsed_formula, expand_method)
-  }else{
-    bars <- reformulas::findbars_x(
-      parsed_formula,
-      specials = .bt_random_effect_specials(),
-      default.special = NULL,
-      expand_doublevert_method = expand_method
-    )
-  }
+  bars <- .bt_find_random_effect_calls_ordered(parsed_formula, expand_method)
 
   terms <- lapply(seq_along(bars), function(i){
     .bt_random_effect_term_from_call(bars[[i]], index = i, env = environment(formula))
@@ -135,12 +126,19 @@
   }
   if(.bt_random_effect_is_bar_call(x)){
     term_formula <- stats::as.formula(call("~", x), env = env)
-    return(reformulas::findbars_x(
+    expanded <- reformulas::findbars_x(
       term_formula,
       specials = .bt_random_effect_specials(),
       default.special = NULL,
       expand_doublevert_method = expand_method
-    ))
+    )
+    group_expr <- .bt_random_effect_strip_group_parens(x[[3L]])
+    if(is.call(group_expr) && identical(group_expr[[1L]], as.name("/"))){
+      expanded <- lapply(expanded, function(bar){
+        .bt_random_effect_annotate_nested_group(bar, bar[[3L]])
+      })
+    }
+    return(expanded)
   }
 
   out <- list()
@@ -197,8 +195,19 @@
     if(!is.null(base_name)){
       new_args[["name"]] <- paste0(base_name, "_", .bt_deparse_expr(level_group))
     }
-    as.call(new_args)
+    .bt_random_effect_annotate_nested_group(as.call(new_args), level_group)
   })
+}
+
+.bt_random_effect_annotate_nested_group <- function(x, group_expr){
+
+  components <- rev(.bt_random_group_colon_terms(group_expr))
+  attr(x, "BayesTools_group_nesting_components") <- vapply(
+    components,
+    .bt_deparse_expr,
+    character(1)
+  )
+  x
 }
 
 # Return the per-level grouping expressions for a nested grouping expression
@@ -338,6 +347,11 @@
 
 .bt_random_effect_term_from_call <- function(x, index, env){
 
+  group_nesting_components <- attr(
+    x,
+    "BayesTools_group_nesting_components",
+    exact = TRUE
+  )
   specials <- .bt_random_effect_specials()
   structure <- "us"
   explicit_special <- FALSE
@@ -437,6 +451,7 @@
     expr = expr,
     group_expr = group_expr,
     group_label = group_label,
+    group_nesting_components = group_nesting_components,
     group_is_symbol = is.symbol(group_expr),
     structure = structure,
     explicit_special = explicit_special,
@@ -895,6 +910,24 @@
       "' repeats a grouping variable.",
       call. = FALSE
     )
+  }
+
+  nesting_components <- term$group_nesting_components
+  if(!is.null(nesting_components)){
+    valid_nesting <- is.character(nesting_components) &&
+      length(nesting_components) == length(component_names) &&
+      !anyNA(nesting_components) &&
+      !anyDuplicated(nesting_components) &&
+      setequal(nesting_components, component_names)
+    if(!isTRUE(valid_nesting)){
+      stop(
+        "Internal error: invalid nested random-effect grouping metadata for block '",
+        term$block_name,
+        "'.",
+        call. = FALSE
+      )
+    }
+    component_names <- nesting_components
   }
 
   component_names

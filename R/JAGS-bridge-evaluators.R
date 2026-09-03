@@ -373,6 +373,34 @@
   }
 
   if(prior_object$weights$type == "cumulative"){
+    if(J == 2L){
+      beta_parameters <- .weightfunction_alpha_marginal(
+        prior_object$weights$alpha,
+        2L
+      )
+      return(list(
+        log_prior = function(samples){
+          omega <- .bt_JAGS_marglik_binary_cumulative_weight(samples)
+          if(is.null(omega)){
+            return(-Inf)
+          }
+          stats::dbeta(
+            omega,
+            shape1 = beta_parameters$alpha,
+            shape2 = beta_parameters$beta,
+            log = TRUE
+          )
+        },
+        parameters = function(samples){
+          omega <- c(
+            1,
+            .bt_JAGS_marglik_binary_cumulative_weight(samples, signal = TRUE)
+          )
+          list(omega = unname(omega[expansion$index]))
+        }
+      ))
+    }
+
     eta_names <- paste0("eta[", seq_len(J), "]")
     alpha <- prior_object$weights$alpha
     return(list(

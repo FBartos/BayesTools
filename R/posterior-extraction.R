@@ -61,6 +61,9 @@ NULL
     # weightfunction parameters
     if (is.prior.weightfunction(prior_list[[i]])) {
       private_parameters <- .JAGS_monitor_private.weightfunction(prior_list[[i]])
+      if(prior_list[[i]]$weights$type == "cumulative"){
+        private_parameters <- unique(c(private_parameters, "eta", "omega_ratio"))
+      }
       if(length(private_parameters) > 0){
         private_pattern <- paste0("^(", paste(private_parameters, collapse = "|"), ")(\\[|$)")
         model_samples <- model_samples[, !grepl(private_pattern, colnames(model_samples)), drop = FALSE]

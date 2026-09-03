@@ -4106,22 +4106,22 @@ test_that("direct composed bias priors support bridge-sampling helpers", {
 
   posterior <- matrix(
     c(
-      1.5, 2.5, .2,
-      1.1, 2.1, .4
+      .625, .2,
+      .65625, .4
     ),
-    ncol = 3,
+    ncol = 2,
     byrow = TRUE
   )
-  colnames(posterior) <- c("eta[1]", "eta[2]", "alpha")
+  colnames(posterior) <- c("omega[2]", "alpha")
 
   prepared <- JAGS_bridgesampling_posterior(posterior, list(bias = bias))
-  expect_equal(colnames(prepared), c("eta[1]", "eta[2]", "alpha"))
-  expect_equal(attr(prepared, "lb"), c("eta[1]" = 0, "eta[2]" = 0, "alpha" = 0))
-  expect_equal(attr(prepared, "ub"), c("eta[1]" = Inf, "eta[2]" = Inf, "alpha" = 1))
+  expect_equal(colnames(prepared), c("omega[2]", "alpha"))
+  expect_equal(attr(prepared, "lb"), c("omega[2]" = 0, "alpha" = 0))
+  expect_equal(attr(prepared, "ub"), c("omega[2]" = 1, "alpha" = 1))
 
   samples <- posterior[1, ]
   expected_prior_density <-
-    sum(stats::dgamma(samples[c("eta[1]", "eta[2]")], shape = c(1, 2), rate = 1, log = TRUE)) +
+    stats::dbeta(samples[["omega[2]"]], 2, 1, log = TRUE) +
     stats::dbeta(samples[["alpha"]], 2, 3, log = TRUE)
   expect_equal(
     JAGS_marglik_priors(samples, list(bias = bias)),
@@ -4131,7 +4131,7 @@ test_that("direct composed bias priors support bridge-sampling helpers", {
 
   parameters <- JAGS_marglik_parameters(samples, list(bias = bias))
   constants <- phack_backend_constants(phacking$form, phacking$source, phacking$destination, target = phacking$target)
-  expect_equal(parameters$omega, c(1, samples[["eta[2]"]] / sum(samples[c("eta[1]", "eta[2]")])))
+  expect_equal(parameters$omega, c(1, samples[["omega[2]"]]))
   expect_equal(parameters$alpha, samples[["alpha"]])
   expect_equal(
     parameters$pi_null,
@@ -4156,23 +4156,23 @@ test_that("p-hacking bridge helpers support point and inverse-gamma alpha priors
   point_bias <- prior_bias(selection = selection, phacking = point_alpha)
   point_posterior <- matrix(
     c(
-      1.5, 2.5,
-      1.1, 2.1
+      .625,
+      .65625
     ),
-    ncol = 2,
+    ncol = 1,
     byrow = TRUE
   )
-  colnames(point_posterior) <- c("eta[1]", "eta[2]")
+  colnames(point_posterior) <- "omega[2]"
 
   point_prepared <- JAGS_bridgesampling_posterior(point_posterior, list(bias = point_bias))
-  expect_equal(colnames(point_prepared), c("eta[1]", "eta[2]"))
-  expect_equal(attr(point_prepared, "lb"), c("eta[1]" = 0, "eta[2]" = 0))
-  expect_equal(attr(point_prepared, "ub"), c("eta[1]" = Inf, "eta[2]" = Inf))
+  expect_equal(colnames(point_prepared), "omega[2]")
+  expect_equal(attr(point_prepared, "lb"), c("omega[2]" = 0))
+  expect_equal(attr(point_prepared, "ub"), c("omega[2]" = 1))
 
   point_samples <- point_posterior[1, ]
   expect_equal(
     JAGS_marglik_priors(point_samples, list(bias = point_bias)),
-    sum(stats::dgamma(point_samples[c("eta[1]", "eta[2]")], shape = c(1, 2), rate = 1, log = TRUE)),
+    stats::dbeta(point_samples[["omega[2]"]], 2, 1, log = TRUE),
     tolerance = 1e-12
   )
 
@@ -4201,22 +4201,22 @@ test_that("p-hacking bridge helpers support point and inverse-gamma alpha priors
   invgamma_bias <- prior_bias(selection = selection, phacking = invgamma_alpha)
   invgamma_posterior <- matrix(
     c(
-      1.5, 2.5, 0.4,
-      1.1, 2.1, 0.5
+      .625, 0.4,
+      .65625, 0.5
     ),
-    ncol = 3,
+    ncol = 2,
     byrow = TRUE
   )
-  colnames(invgamma_posterior) <- c("eta[1]", "eta[2]", "alpha")
+  colnames(invgamma_posterior) <- c("omega[2]", "alpha")
 
   invgamma_prepared <- JAGS_bridgesampling_posterior(invgamma_posterior, list(bias = invgamma_bias))
-  expect_equal(colnames(invgamma_prepared), c("eta[1]", "eta[2]", "alpha"))
-  expect_equal(attr(invgamma_prepared, "lb"), c("eta[1]" = 0, "eta[2]" = 0, "alpha" = 0))
-  expect_equal(attr(invgamma_prepared, "ub"), c("eta[1]" = Inf, "eta[2]" = Inf, "alpha" = 1))
+  expect_equal(colnames(invgamma_prepared), c("omega[2]", "alpha"))
+  expect_equal(attr(invgamma_prepared, "lb"), c("omega[2]" = 0, "alpha" = 0))
+  expect_equal(attr(invgamma_prepared, "ub"), c("omega[2]" = 1, "alpha" = 1))
 
   invgamma_samples <- invgamma_posterior[1, ]
   expected_invgamma_prior_density <-
-    sum(stats::dgamma(invgamma_samples[c("eta[1]", "eta[2]")], shape = c(1, 2), rate = 1, log = TRUE)) +
+    stats::dbeta(invgamma_samples[["omega[2]"]], 2, 1, log = TRUE) +
     lpdf(invgamma_alpha_prior, invgamma_samples[["alpha"]])
   expect_equal(
     JAGS_marglik_priors(invgamma_samples, list(bias = invgamma_bias)),
@@ -4243,10 +4243,10 @@ test_that("p-hacking bridge helpers support point and inverse-gamma alpha priors
 
   # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
   legacy_invgamma_posterior <- invgamma_posterior
-  colnames(legacy_invgamma_posterior)[3] <- "inv_alpha"
+  colnames(legacy_invgamma_posterior)[2] <- "inv_alpha"
   legacy_invgamma_posterior[, "inv_alpha"] <- 1 / legacy_invgamma_posterior[, "inv_alpha"]
   legacy_prepared <- JAGS_bridgesampling_posterior(legacy_invgamma_posterior, list(bias = invgamma_bias))
-  expect_equal(colnames(legacy_prepared), c("eta[1]", "eta[2]", "alpha"))
+  expect_equal(colnames(legacy_prepared), c("omega[2]", "alpha"))
   expect_equal(legacy_prepared[, "alpha"], invgamma_posterior[, "alpha"])
 })
 

@@ -163,6 +163,9 @@ JAGS_to_monitor             <- function(prior_list){
 .JAGS_monitor_private.weightfunction <- function(prior){
 
   if(prior$weights$type == "cumulative"){
+    if(.weightfunction_n_bins(prior) == 2L){
+      return(character())
+    }
     return("eta")
   }
   if(prior$weights$type == "independent" && prior$weights$scale == "log_omega"){

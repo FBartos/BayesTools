@@ -1,3 +1,40 @@
+#' Fixed randomized quasi-Monte Carlo design
+#'
+#' @description
+#' Constructs a deterministic shifted-Halton design in an explicitly supplied
+#' integration dimension. Random shifts are generated locally and do not alter
+#' R's random-number state. Returned points are strictly inside the open unit
+#' hypercube; a design that lands on a boundary is rejected rather than
+#' modified.
+#'
+#' @param dimensions positive integration dimension.
+#' @param points number of points per scramble.
+#' @param scrambles number of independently shifted designs.
+#' @param seed non-negative integer seed used only to construct the shifts.
+#'
+#' @return Numeric array with dimensions `scrambles`, `points`, and
+#'   `dimensions`.
+#'
+#' @export
+selection_qmc_design <- function(dimensions, points, scrambles, seed = 1L){
+
+  check_int(dimensions, "dimensions", lower = 1L, check_length = 1L,
+            allow_NA = FALSE)
+  check_int(points, "points", lower = 1L, check_length = 1L,
+            allow_NA = FALSE)
+  check_int(scrambles, "scrambles", lower = 2L, check_length = 1L,
+            allow_NA = FALSE)
+  check_int(seed, "seed", lower = 0L, check_length = 1L, allow_NA = FALSE)
+
+  .bt_selection_shifted_halton_design(
+    dimensions = as.integer(dimensions),
+    points     = as.integer(points),
+    scrambles  = as.integer(scrambles),
+    seed       = as.double(seed)
+  )
+}
+
+
 #' Numerical design for a finite-vector selection likelihood
 #'
 #' @description
@@ -63,7 +100,7 @@ selection_likelihood_plan <- function(
     block_seed <- (
       as.double(seed) + 104729 * as.double(block_size)
     ) %% 4294967296
-    .bt_selection_shifted_halton_design(
+    selection_qmc_design(
       dimensions = 2L * block_size,
       points = as.integer(points_per_scramble),
       scrambles = as.integer(scrambles),
@@ -118,8 +155,13 @@ selection_likelihood_plan <- function(
   design <- array(NA_real_, dim = c(scrambles, points, dimensions))
   for(scramble in seq_len(scrambles)){
     shifted <- sweep(base_design, 2L, shifts[scramble, ], "+") %% 1
-    shifted[shifted <= 0] <- .Machine$double.eps
-    shifted[shifted >= 1] <- 1 - .Machine$double.eps
+    if(any(!is.finite(shifted)) || any(shifted <= 0) || any(shifted >= 1)){
+      stop(
+        "The shifted-Halton design reached the boundary of the unit ",
+        "hypercube; use a different 'seed'.",
+        call. = FALSE
+      )
+    }
     design[scramble, , ] <- shifted
   }
   design

@@ -56,8 +56,7 @@ test_that("compiled bridge prior evaluators match public marglik helpers", {
     "theta[2]" = 1 / 3,
     PET = .4,
     PEESE = .6,
-    "eta[1]" = 1.5,
-    "eta[2]" = 2.5,
+    "omega[2]" = .625,
     alpha = .4
   )
 

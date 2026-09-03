@@ -185,6 +185,24 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
   medians
 }
+.JAGS_binary_cumulative_initialization <- function(alpha, label){
+
+  eta <- .JAGS_positive_gamma_initialization(
+    shape = alpha,
+    label = label
+  )
+  eta <- eta / max(eta)
+  omega_ratio <- eta[2L] / sum(eta)
+  if(!is.finite(omega_ratio) || omega_ratio <= 0 || omega_ratio >= 1){
+    stop(
+      "The initialization for ", label,
+      " is not representable as a finite interior cumulative weight.",
+      call. = FALSE
+    )
+  }
+
+  omega_ratio
+}
 
 .JAGS_init.vector          <- function(prior, parameter_name){
 
@@ -346,19 +364,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     return(selection_backend_spec(prior)$init)
   }
 
-  init <- list()
-  if(prior$weights$type == "fixed"){
-    return()
-  }else if(prior$weights$type == "cumulative"){
-    eta_name <- paste0("eta_component_", component_id)
-    eta_init <- .JAGS_positive_gamma_initialization(
-      shape = prior$weights[["alpha"]],
-      label = paste0("cumulative weight-function component '", component_id, "'")
-    )
-    init[[eta_name]] <- eta_init
-  }
-
-  return(init)
+  .selection_JAGS_init_weightfunction_component(prior, component_id)
 }
 .JAGS_init.phacking       <- function(prior, component_id = NULL){
 

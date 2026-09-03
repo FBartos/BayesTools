@@ -7,7 +7,8 @@
 JAGS_formula_random_marginal_covariance(
   formula_design,
   row_blocks,
-  prefix = "random_marginal_covariance"
+  prefix = "random_marginal_covariance",
+  representation = c("dense", "auto")
 )
 }
 \arguments{
@@ -17,10 +18,17 @@ JAGS_formula_random_marginal_covariance(
 \item{row_blocks}{list of integer vectors partitioning the fitted rows.}
 
 \item{prefix}{valid JAGS node prefix used for generated nodes and data.}
+
+\item{representation}{covariance representation to compile. \code{"dense"}
+preserves the lower-triangle interface. \code{"auto"} returns the complete
+structurally certified diagonal-plus-factor representation when available
+and otherwise uses the dense representation.}
 }
 \value{
-A list with \code{syntax}, \code{data}, \code{row_blocks}, and one lower-triangle
-covariance node name per row block in \code{lower_names}.
+A list with \code{syntax}, \code{data}, \code{row_blocks}, and \code{representation}.
+Dense results contain one lower-triangle covariance node name per row block
+in \code{lower_names}. Diagonal-plus-factor results instead contain
+\code{diagonal_names}, \code{loading_names}, and structural \code{loading_ranks}.
 }
 \description{
 Compiles marginalized formula random-effect metadata into deterministic JAGS

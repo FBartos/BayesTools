@@ -10,13 +10,20 @@
 #'   [JAGS_formula()].
 #' @param row_blocks list of integer vectors partitioning the fitted rows.
 #' @param prefix valid JAGS node prefix used for generated nodes and data.
+#' @param representation covariance representation to compile. `"dense"`
+#'   preserves the lower-triangle interface. `"auto"` returns the complete
+#'   structurally certified diagonal-plus-factor representation when available
+#'   and otherwise uses the dense representation.
 #'
-#' @return A list with `syntax`, `data`, `row_blocks`, and one lower-triangle
-#'   covariance node name per row block in `lower_names`.
+#' @return A list with `syntax`, `data`, `row_blocks`, and `representation`.
+#'   Dense results contain one lower-triangle covariance node name per row block
+#'   in `lower_names`. Diagonal-plus-factor results instead contain
+#'   `diagonal_names`, `loading_names`, and structural `loading_ranks`.
 #'
 #' @export
 JAGS_formula_random_marginal_covariance <- function(
-    formula_design, row_blocks, prefix = "random_marginal_covariance"){
+    formula_design, row_blocks, prefix = "random_marginal_covariance",
+    representation = c("dense", "auto")){
 
   if(!inherits(formula_design, "BayesTools_formula_design")){
     stop("'formula_design' must be a BayesTools formula design.", call. = FALSE)
@@ -25,6 +32,7 @@ JAGS_formula_random_marginal_covariance <- function(
   if(!grepl("^[A-Za-z][A-Za-z0-9_]*$", prefix)){
     stop("'prefix' must be a valid JAGS node prefix.", call. = FALSE)
   }
+  representation <- match.arg(representation)
 
   random_effects <- formula_design$random_effects
   if(is.null(random_effects)){
@@ -44,7 +52,11 @@ JAGS_formula_random_marginal_covariance <- function(
       syntax = "",
       data = list(),
       row_blocks = row_blocks,
+      representation = "dense",
       lower_names = rep(NA_character_, length(row_blocks)),
+      diagonal_names = rep(NA_character_, length(row_blocks)),
+      loading_names = rep(NA_character_, length(row_blocks)),
+      loading_ranks = integer(length(row_blocks)),
       term_names = character()
     ), class = c("BayesTools_JAGS_random_marginal_covariance", "list")))
   }
@@ -66,6 +78,18 @@ JAGS_formula_random_marginal_covariance <- function(
     row_blocks = row_blocks,
     parameter = formula_design$parameter
   )
+
+  if(identical(representation, "auto")){
+    factorized <- .bt_JAGS_formula_random_marginal_diagonal_factor(
+      random_effects = random_effects,
+      row_blocks     = row_blocks,
+      prefix         = prefix,
+      n_rows         = n_rows
+    )
+    if(!is.null(factorized)){
+      return(factorized)
+    }
+  }
 
   syntax <- character()
   data <- list()
@@ -154,9 +178,222 @@ JAGS_formula_random_marginal_covariance <- function(
     syntax = paste0(syntax, collapse = ""),
     data = data,
     row_blocks = row_blocks,
+    representation = "dense",
     lower_names = lower_names,
+    diagonal_names = rep(NA_character_, length(row_blocks)),
+    loading_names = rep(NA_character_, length(row_blocks)),
+    loading_ranks = integer(length(row_blocks)),
     term_names = term_names
   ), class = c("BayesTools_JAGS_random_marginal_covariance", "list"))
+}
+
+
+.bt_JAGS_formula_random_marginal_factor_plans <- function(random_effects){
+
+  lapply(random_effects, function(random_term){
+    structure <- .bt_random_effect_structure(
+      random_term,
+      context = "Marginal JAGS factor compilation"
+    )
+    group_covariance <- random_term$group_covariance
+    known_group <- is.list(group_covariance) &&
+      identical(group_covariance$type, "known")
+    list(
+      type = if(known_group){
+        "known_group"
+      }else if(.bt_random_sd_binding_has_row_external_source(
+        random_term$sd_binding
+      )){
+        "row_group"
+      }else{
+        "group"
+      },
+      model_matrix = random_term$model_matrix,
+      group_map = random_term$group_map,
+      coefficient_structure = if(
+        structure %in% c("id", "diag") || random_term$n_columns == 1L
+      ){
+        "diagonal"
+      }else if(structure %in% c("ar1", "car", "har")){
+        "markov"
+      }else{
+        "dense"
+      }
+    )
+  })
+}
+
+
+.bt_JAGS_formula_random_marginal_diagonal_factor <- function(
+    random_effects, row_blocks, prefix, n_rows){
+
+  factor_plans <- .bt_JAGS_formula_random_marginal_factor_plans(random_effects)
+  factor_plan <- .bt_random_effect_marginal_diagonal_factor_plan(
+    factor_plans = factor_plans,
+    row_blocks   = row_blocks,
+    n_rows       = n_rows
+  )
+  if(!isTRUE(factor_plan$available)){
+    return(NULL)
+  }
+
+  syntax       <- character()
+  data         <- list()
+  factor_names <- character(length(random_effects))
+  term_names   <- character(length(random_effects))
+  for(term_index in seq_along(random_effects)){
+    random_term <- random_effects[[term_index]]
+    term_prefix <- paste0(prefix, "_term_", term_index)
+    term_names[[term_index]] <- random_term$block_name
+    term <- .bt_JAGS_formula_random_covariance_term(
+      random_term = random_term,
+      prefix       = term_prefix,
+      n_rows       = n_rows
+    )
+    factor <- .bt_JAGS_formula_random_covariance_factor(
+      random_term = random_term,
+      prefix       = term_prefix,
+      n_rows       = n_rows
+    )
+    syntax <- c(syntax, term$syntax, factor$syntax)
+    data   <- c(data, term$data, factor$data)
+    factor_names[[term_index]] <- factor$name
+  }
+
+  diagonal_names <- character(length(row_blocks))
+  loading_names  <- rep(NA_character_, length(row_blocks))
+  loading_ranks  <- integer(length(row_blocks))
+  for(block_index in seq_along(row_blocks)){
+    block <- factor_plan$blocks[[block_index]]
+    diagonal_name <- paste0(prefix, "_block_", block_index, "_diagonal")
+    diagonal_names[[block_index]] <- diagonal_name
+    loading_ranks[[block_index]] <- length(block$loadings)
+    if(loading_ranks[[block_index]] > 0L){
+      loading_names[[block_index]] <- paste0(
+        prefix, "_block_", block_index, "_loading"
+      )
+    }
+
+    for(local_row in seq_along(block$rows)){
+      row <- block$rows[[local_row]]
+      diagonal_terms <- vapply(Filter(function(component){
+        identical(component$row, row)
+      }, block$diagonal), function(component){
+        paste0(
+          "pow(", factor_names[[component$factor_index]], "[", row, ",",
+          component$column, "],2)"
+        )
+      }, character(1))
+      diagonal_expression <- if(length(diagonal_terms) == 0L){
+        "0"
+      }else{
+        paste(diagonal_terms, collapse = " + ")
+      }
+      syntax <- c(syntax, paste0(
+        diagonal_name, "[", local_row, "] = ", diagonal_expression, "\n"
+      ))
+
+      for(loading_index in seq_along(block$loadings)){
+        component <- block$loadings[[loading_index]]
+        loading_expression <- if(row %in% component$rows){
+          paste0(
+            factor_names[[component$factor_index]], "[", row, ",",
+            component$column, "]"
+          )
+        }else{
+          "0"
+        }
+        syntax <- c(syntax, paste0(
+          loading_names[[block_index]], "[", local_row, ",",
+          loading_index, "] = ", loading_expression, "\n"
+        ))
+      }
+    }
+  }
+
+  structure(list(
+    syntax          = paste0(syntax, collapse = ""),
+    data            = data,
+    row_blocks      = row_blocks,
+    representation  = "diagonal_factor",
+    lower_names     = rep(NA_character_, length(row_blocks)),
+    diagonal_names  = diagonal_names,
+    loading_names   = loading_names,
+    loading_ranks   = loading_ranks,
+    term_names      = term_names
+  ), class = c("BayesTools_JAGS_random_marginal_covariance", "list"))
+}
+
+
+.bt_JAGS_formula_random_covariance_factor <- function(
+    random_term, prefix, n_rows){
+
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Marginal JAGS factor compilation"
+  )
+  n_columns <- random_term$n_columns
+  basis_name <- paste0(prefix, "_basis")
+  if(structure %in% c("id", "diag") || n_columns == 1L){
+    return(list(name = basis_name, syntax = "", data = list()))
+  }
+
+  cholesky_name <- NULL
+  syntax <- character()
+  if(identical(structure, "us")){
+    correlation <- random_term$correlation
+    if(!is.list(correlation) ||
+       !is.character(correlation$cholesky_name) ||
+       length(correlation$cholesky_name) != 1L ||
+       is.na(correlation$cholesky_name) ||
+       !nzchar(correlation$cholesky_name)){
+      stop(
+        "Unstructured random-effect block '", random_term$block_name,
+        "' is missing Cholesky-factor node metadata.",
+        call. = FALSE
+      )
+    }
+    cholesky_name <- correlation$cholesky_name
+  }else{
+    cholesky_name <- paste0(prefix, "_factor_cholesky")
+    correlation_name <- paste0(prefix, "_cor")
+    for(row in seq_len(n_columns)){
+      for(column in seq_len(n_columns)){
+        target <- paste0(cholesky_name, "[", row, ",", column, "]")
+        if(column > row){
+          expression <- "0"
+        }else if(row == column){
+          crossprod <- .bt_JAGS_cholesky_crossprod_sum(
+            cholesky_name, row, row, column - 1L
+          )
+          expression <- paste0(
+            "sqrt(", correlation_name, "[", row, ",", row, "] - (",
+            crossprod, "))"
+          )
+        }else{
+          crossprod <- .bt_JAGS_cholesky_crossprod_sum(
+            cholesky_name, row, column, column - 1L
+          )
+          expression <- paste0(
+            "(", correlation_name, "[", row, ",", column, "] - (",
+            crossprod, ")) / ", cholesky_name, "[", column, ",", column,
+            "]"
+          )
+        }
+        syntax <- c(syntax, paste0(target, " = ", expression, "\n"))
+      }
+    }
+  }
+
+  factor_name <- paste0(prefix, "_factor_basis")
+  syntax <- c(syntax, paste0(
+    "for(i in 1:", n_rows, "){\n",
+    "  for(c in 1:", n_columns, "){ ", factor_name,
+    "[i,c] = inprod(", basis_name, "[i,1:", n_columns, "], ",
+    cholesky_name, "[1:", n_columns, ",c]) }\n",
+    "}\n"
+  ))
+  list(name = factor_name, syntax = paste0(syntax, collapse = ""), data = list())
 }
 
 

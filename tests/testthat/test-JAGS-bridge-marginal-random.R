@@ -115,6 +115,52 @@ test_that("marginalized random formulas compile block covariance nodes", {
   )
 })
 
+test_that("marginalized random formulas compile certified factor nodes", {
+
+  data <- data.frame(
+    study = factor(rep("a", 3)),
+    x     = c(-1, 1, 2),
+    z     = c(2, -1, 1)
+  )
+  formula_result <- JAGS_formula(
+    formula   = ~ 1 + diag(1 + x + z | study),
+    parameter = "mu",
+    data      = data,
+    prior_list = list(
+      intercept = prior("point", list(location = 0))
+    ),
+    prior_random = prior_random(
+      study = random_block(
+        sd = prior("point", list(location = 0.4)),
+        terms = list(
+          x = prior("point", list(location = 0.2)),
+          z = prior("point", list(location = 0.3))
+        )
+      )
+    ),
+    random_effects_compile = random_effects_compile(
+      marginalized = "study"
+    )
+  )
+  compiled <- JAGS_formula_random_marginal_covariance(
+    formula_design = formula_result$formula_design,
+    row_blocks     = list(1:3),
+    prefix         = "target_cov",
+    representation = "auto"
+  )
+
+  expect_identical(compiled$representation, "diagonal_factor")
+  expect_identical(compiled$diagonal_names, "target_cov_block_1_diagonal")
+  expect_identical(compiled$loading_names, "target_cov_block_1_loading")
+  expect_identical(compiled$loading_ranks, 3L)
+  expect_match(
+    compiled$syntax,
+    "target_cov_block_1_loading\\[1,3\\] = target_cov_term_1_basis\\[1,3\\]",
+    perl = TRUE
+  )
+  expect_false(grepl("target_cov_block_1_lower", compiled$syntax, fixed = TRUE))
+})
+
 .bridge_structured_cholesky_reference <- function(
     random_term, n_columns, posterior, structure){
 
@@ -557,6 +603,15 @@ test_that("bridge marginal evaluator supports every implemented covariance struc
     time = rep(c(0, 2, 5), 2L)
   )
   cases <- list(
+    id = list(
+      formula = ~ 1 + id(1 + x | id),
+      prior_random = prior_random(
+        id = random_block(
+          sd = prior("point", list(location = 0.4))
+        )
+      ),
+      values = numeric()
+    ),
     diag = list(
       formula = ~ 1 + diag(1 + x | id),
       prior_random = prior_random(
@@ -755,6 +810,25 @@ test_that("bridge marginal evaluator supports every implemented covariance struc
       tolerance = 1e-12,
       info = paste(structure, "compact contract")
     )
+    reduced <- random_effects_marginal_diagonal_factor(compact_value)
+    for(block_index in seq_along(reduced$row_blocks)){
+      rows <- reduced$row_blocks[[block_index]]
+      loading <- reduced$loadings[[block_index]][
+        1L,
+        ,
+        ,
+        drop = FALSE
+      ]
+      dim(loading) <- c(length(rows), reduced$ranks[[block_index]])
+      reconstructed <- diag(reduced$diagonal[1L, rows]) +
+        tcrossprod(loading)
+      expect_equal(
+        unname(reconstructed),
+        unname(reference[rows, rows, drop = FALSE]),
+        tolerance = 1e-12,
+        info = paste(structure, "diagonal-factor reduction")
+      )
+    }
 
     batch_posterior <- posterior[rep(1L, 3L), , drop = FALSE]
     batch_value     <- evaluator$factor_states(batch_posterior)$mu
@@ -958,7 +1032,8 @@ test_that("bridge marginal evaluator supports known group covariance", {
     prior_list = list(intercept = prior("point", list(location = 0))),
     prior_random = prior_random(
       id = random_block(sd = prior("point", list(location = 0.5)))
-    )
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "id")
   )
   evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
     formula_design_list = list(mu = formula_result$formula_design),
@@ -1014,6 +1089,17 @@ test_that("bridge marginal evaluator supports known group covariance", {
     unname(expected),
     tolerance = 1e-12
   )
+  expect_error(
+    random_effects_marginal_diagonal_factor(compact_value),
+    "unsupported factor structure",
+    class = "BayesTools_random_effects_marginal_factor_unavailable"
+  )
+  compiled <- JAGS_formula_random_marginal_covariance(
+    formula_design = formula_result$formula_design,
+    row_blocks     = list(seq_len(nrow(data))),
+    representation = "auto"
+  )
+  expect_identical(compiled$representation, "dense")
 })
 
 test_that("known group covariance carries the full coefficient covariance", {
@@ -1183,6 +1269,17 @@ test_that("row-indexed external SD sources remain covariance factors", {
     unname(reference),
     tolerance = 1e-12
   )
+  reduced <- random_effects_marginal_diagonal_factor(compact_value)
+  for(block_index in seq_along(reduced$row_blocks)){
+    rows <- reduced$row_blocks[[block_index]]
+    loading <- reduced$loadings[[block_index]][1L, , , drop = FALSE]
+    dim(loading) <- c(length(rows), reduced$ranks[[block_index]])
+    expect_equal(
+      unname(diag(reduced$diagonal[1L, rows]) + tcrossprod(loading)),
+      unname(reference[rows, rows, drop = FALSE]),
+      tolerance = 1e-12
+    )
+  }
 
   batch_posterior <- rbind(posterior, posterior * 2)
   batch_value <- evaluator$factor_states(batch_posterior)$mu

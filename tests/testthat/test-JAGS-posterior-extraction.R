@@ -321,6 +321,31 @@ test_that(".remove_auxiliary_parameters renames selection omegas and drops unrep
 })
 
 
+test_that(".remove_auxiliary_parameters drops cumulative-weight auxiliaries from old and new fits", {
+
+  selection <- prior_weightfunction(
+    "one-sided",
+    .025,
+    wf_cumulative(c(1, 2))
+  )
+  model_samples <- matrix(seq_len(50), ncol = 5)
+  colnames(model_samples) <- c(
+    "omega[1]", "omega[2]", "eta[1]", "eta[2]", "omega_ratio"
+  )
+
+  result <- BayesTools:::.remove_auxiliary_parameters(
+    model_samples,
+    list(pub_bias = selection),
+    remove_parameters = NULL
+  )
+
+  expect_equal(
+    colnames(result$model_samples),
+    c("omega[0,0.025]", "omega[0.025,1]")
+  )
+})
+
+
 test_that(".process_spike_and_slab handles conditional samples", {
   skip_on_cran()
   skip_if_not_installed("rjags")

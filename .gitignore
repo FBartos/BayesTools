@@ -26,3 +26,4 @@ check/
 CLAUDE.md
 .StatsVault/
 /.agents/tmp
+/.dev/mcmc-error

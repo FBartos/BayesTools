@@ -442,20 +442,26 @@ JAGS_add_priors           <- function(syntax, prior_list){
   omega_target <- if(is.null(component_id)) "omega" else paste0("omega_component_", component_id)
 
   if(prior$weights$type == "cumulative"){
-    eta_name <- if(is.null(component_id)) "eta" else paste0("eta_component_", component_id)
-    std_eta_name <- if(is.null(component_id)) "std_eta" else paste0("std_eta_component_", component_id)
-
-    for(i in seq_len(J)){
-      syntax <- paste0(syntax, eta_name, "[", i, "] ~ dgamma(", prior$weights$alpha[i], ", 1)\n")
-    }
-    syntax <- paste0(syntax,
-      "for(j in 1:", J, "){\n",
-      "  ", std_eta_name, "[j] <- ", eta_name, "[j] / sum(", eta_name, ")\n",
-      "}\n",
-      omega_local, "[1] <- 1\n"
-    )
-    if(J > 1L){
+    if(J == 2L){
+      omega_ratio_name <- if(is.null(component_id)) "omega_ratio" else paste0("omega_ratio_component_", component_id)
+      beta_parameters <- .weightfunction_alpha_marginal(prior$weights$alpha, 2L)
       syntax <- paste0(syntax,
+        omega_ratio_name, " ~ dbeta(", beta_parameters$alpha, ", ", beta_parameters$beta, ")\n",
+        omega_local, "[1] <- 1\n",
+        omega_local, "[2] <- ", omega_ratio_name, "\n"
+      )
+    }else{
+      eta_name <- if(is.null(component_id)) "eta" else paste0("eta_component_", component_id)
+      std_eta_name <- if(is.null(component_id)) "std_eta" else paste0("std_eta_component_", component_id)
+
+      for(i in seq_len(J)){
+        syntax <- paste0(syntax, eta_name, "[", i, "] ~ dgamma(", prior$weights$alpha[i], ", 1)\n")
+      }
+      syntax <- paste0(syntax,
+        "for(j in 1:", J, "){\n",
+        "  ", std_eta_name, "[j] <- ", eta_name, "[j] / sum(", eta_name, ")\n",
+        "}\n",
+        omega_local, "[1] <- 1\n",
         "for(j in 2:", J, "){\n",
         "  ", omega_local, "[j] <- sum(", std_eta_name, "[j:", J, "])\n",
         "}\n"

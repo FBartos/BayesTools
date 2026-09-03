@@ -580,7 +580,7 @@ test_that("JAGS handles bias mixture with weightfunction", {
   result <- JAGS_add_priors("model{}", priors_bias_wf)
   expect_true(grepl("bias_indicator", result))
   expect_true(grepl("omega", result))
-  expect_true(grepl("eta", result))
+  expect_true(grepl("omega_ratio_component_2", result, fixed = TRUE))
 
   # Test inits
   inits <- JAGS_get_inits(priors_bias_wf, chains = 2, seed = 1)

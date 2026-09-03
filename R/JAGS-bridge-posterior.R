@@ -575,7 +575,8 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
     owned <- c(
       owned,
       "eta", paste0("eta[", seq_len(J), "]"),
-      "std_eta", paste0("std_eta[", seq_len(J), "]")
+      "std_eta", paste0("std_eta[", seq_len(J), "]"),
+      "omega_ratio"
     )
   }else if(identical(prior$weights$type, "independent") &&
            identical(prior$weights$scale, "log_omega")){

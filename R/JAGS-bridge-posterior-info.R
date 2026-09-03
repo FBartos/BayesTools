@@ -252,9 +252,15 @@
 
   if(prior$weights$type == "cumulative"){
 
-    parameter <- paste0("eta[", seq_len(J), "]")
-    attr(parameter, "lb") <- rep(0,   length(parameter))
-    attr(parameter, "ub") <- rep(Inf, length(parameter))
+    if(J == 2L){
+      parameter <- "omega[2]"
+      attr(parameter, "lb") <- 0
+      attr(parameter, "ub") <- 1
+    }else{
+      parameter <- paste0("eta[", seq_len(J), "]")
+      attr(parameter, "lb") <- rep(0,   length(parameter))
+      attr(parameter, "ub") <- rep(Inf, length(parameter))
+    }
 
   }else if(prior$weights$type == "independent" && prior$weights$scale == "omega"){
 

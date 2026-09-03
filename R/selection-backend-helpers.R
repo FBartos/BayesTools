@@ -301,16 +301,24 @@
   if(prior$weights$type == "fixed"){
     return()
   }else if(prior$weights$type == "cumulative"){
-    eta_name <- if(is.null(component_id)) "eta" else paste0("eta_component_", component_id)
-    eta_init <- .JAGS_positive_gamma_initialization(
-      shape = prior$weights[["alpha"]],
-      label = if(is.null(component_id)){
-        "cumulative weight function"
-      }else{
-        paste0("cumulative weight-function component '", component_id, "'")
-      }
-    )
-    init[[eta_name]] <- eta_init
+    label <- if(is.null(component_id)){
+      "cumulative weight function"
+    }else{
+      paste0("cumulative weight-function component '", component_id, "'")
+    }
+    if(.weightfunction_n_bins(prior) == 2L){
+      omega_ratio_name <- if(is.null(component_id)) "omega_ratio" else paste0("omega_ratio_component_", component_id)
+      init[[omega_ratio_name]] <- .JAGS_binary_cumulative_initialization(
+        alpha = prior$weights[["alpha"]],
+        label = label
+      )
+    }else{
+      eta_name <- if(is.null(component_id)) "eta" else paste0("eta_component_", component_id)
+      init[[eta_name]] <- .JAGS_positive_gamma_initialization(
+        shape = prior$weights[["alpha"]],
+        label = label
+      )
+    }
   }
 
   return(init)

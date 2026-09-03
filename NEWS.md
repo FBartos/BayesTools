@@ -1,5 +1,8 @@
 # version 0.3.1
 ### Fixes
+- preserves the original outer-to-inner component order of nested `/`
+  random-effect groups in compiled grouping metadata, matching metafor while
+  retaining the declared order of explicit `:` interactions
 - preserves failed-backend messages when `JAGS_fit()` succeeds after a restart,
   and retains fit warnings consistently through automatic extensions
 - preserves BayesTools table metadata and safe row names when tables are
@@ -14,12 +17,20 @@
   of accepting nearby values under a numerical-comparison tolerance
 
 ### Performance
+- samples two-bin cumulative weight-function priors through their exact Beta
+  marginal, removing the non-identifiable auxiliary Gamma scale and one
+  likelihood-updating JAGS coordinate while using the same reduced coordinate
+  for bridge sampling
 - compiles invariant support and normalization metadata once for simple-prior
   bridge and row-density evaluators, avoiding repeated prior reconstruction
   work while retaining the canonical density calculation
 - reuses the already extracted posterior matrix while materializing semantic
   random-effect summary quantities instead of extracting fitted draws once per
   quantity
+- compiles metadata-certified diagonal-plus-factor random covariance directly
+  for JAGS likelihoods and evaluates the same representation from posterior or
+  bridge factor states, avoiding dense covariance construction without
+  inferring rank or structure from evaluated values
 
 ### Maintenance
 - centralizes lower-triangle covariance ordering in the finite-vector
@@ -93,6 +104,11 @@
   dense covariance reconstruction or repeated formula compilation. The same
   metadata-driven implementation covers grouped, row-scaled, and known
   group-covariance factor plans.
+- adds `random_effects_marginal_diagonal_factor()` and an automatic factor
+  representation to `JAGS_formula_random_marginal_covariance()`. Both consume
+  one shared compiled metadata plan and expose the structural rank of every
+  dependency block without inspecting evaluated covariance values; unsupported
+  structures fail closed to dense covariance compilation.
 - consolidates unreleased formula-random public parameter names as
   `(formula) owner: quantity(parameter[level], ...)`, omitting `owner: ` for
   a bare or unnamed one-entry random formula while retaining it for explicitly

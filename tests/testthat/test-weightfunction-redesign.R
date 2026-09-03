@@ -136,6 +136,71 @@ test_that("JAGS generation uses component-local omega for bias mixtures", {
   expect_false(grepl("eta2omega", syntax, fixed = TRUE))
 })
 
+test_that("binary cumulative weights use their exact beta marginal", {
+
+  cumulative <- prior_weightfunction(
+    "one-sided",
+    .05,
+    wf_cumulative(c(2, 4))
+  )
+  syntax <- JAGS_add_priors("model{}", list(omega = cumulative))
+  expect_match(syntax, "omega_ratio ~ dbeta\\(4, 2\\)")
+  expect_match(syntax, "omega\\[2\\] <- omega_ratio")
+  expect_false(grepl("eta\\[|std_eta", syntax))
+
+  inits <- JAGS_get_inits(list(omega = cumulative), chains = 2, seed = 1)
+  expect_true(all(vapply(inits, function(x){
+    is.finite(x$omega_ratio) && x$omega_ratio > 0 && x$omega_ratio < 1
+  }, logical(1))))
+  expect_equal(JAGS_to_monitor(list(omega = cumulative)), "omega")
+
+  posterior_info <- .JAGS_bridgesampling_posterior_info.weightfunction(cumulative)
+  expect_equal(as.vector(posterior_info), "omega[2]")
+  expect_equal(attr(posterior_info, "lb"), c("omega[2]" = 0))
+  expect_equal(attr(posterior_info, "ub"), c("omega[2]" = 1))
+
+  samples <- c("omega[2]" = .6)
+  expect_equal(
+    JAGS_marglik_priors(samples, list(omega = cumulative)),
+    stats::dbeta(.6, 4, 2, log = TRUE),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    JAGS_marglik_parameters(samples, list(omega = cumulative))$omega,
+    c(1, .6)
+  )
+  expect_equal(
+    JAGS_marglik_priors(c("omega[2]" = 1.1), list(omega = cumulative)),
+    -Inf
+  )
+  expect_error(
+    JAGS_marglik_parameters(
+      c("omega[2]" = 1.1),
+      list(omega = cumulative)
+    ),
+    "out-of-support binary cumulative weightfunction coordinate"
+  )
+  expect_error(
+    JAGS_marglik_priors(numeric(), list(omega = cumulative)),
+    "does not contain the monitored binary cumulative weightfunction parameter"
+  )
+
+  eta <- c(.8, 1.2)
+  total <- sum(eta)
+  omega <- eta[2] / total
+  gamma_density_with_jacobian <-
+    sum(stats::dgamma(eta, shape = c(2, 4), rate = 1, log = TRUE)) +
+    log(total)
+  factorized_density <-
+    stats::dbeta(omega, 4, 2, log = TRUE) +
+    stats::dgamma(total, 6, rate = 1, log = TRUE)
+  expect_equal(
+    gamma_density_with_jacobian,
+    factorized_density,
+    tolerance = 1e-12
+  )
+})
+
 test_that("JAGS bridge helpers use natural latent weight parameters", {
 
   cumulative <- prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 2, 3)))

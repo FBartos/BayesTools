@@ -17,8 +17,9 @@ test_that("cumulative selection initializations stay strictly positive", {
     "deterministic, order-one rescaling"
   )
   for(chain_inits in direct_inits){
-    expect_true(all(is.finite(chain_inits$eta)))
-    expect_true(all(chain_inits$eta > 0))
+    expect_true(is.finite(chain_inits$omega_ratio))
+    expect_true(chain_inits$omega_ratio > 0)
+    expect_true(chain_inits$omega_ratio < 1)
   }
 
   mixture <- prior_mixture(list(
@@ -34,8 +35,9 @@ test_that("cumulative selection initializations stay strictly positive", {
     "deterministic, order-one rescaling"
   )
   for(chain_inits in mixture_inits){
-    expect_true(all(is.finite(chain_inits$eta_component_2)))
-    expect_true(all(chain_inits$eta_component_2 > 0))
+    expect_true(is.finite(chain_inits$omega_ratio_component_2))
+    expect_true(chain_inits$omega_ratio_component_2 > 0)
+    expect_true(chain_inits$omega_ratio_component_2 < 1)
   }
 
   expect_warning(
@@ -45,8 +47,9 @@ test_that("cumulative selection initializations stay strictly positive", {
     ),
     "deterministic, order-one rescaling"
   )
-  expect_true(all(is.finite(component_inits$eta_component_2)))
-  expect_true(all(component_inits$eta_component_2 > 0))
+  expect_true(is.finite(component_inits$omega_ratio_component_2))
+  expect_true(component_inits$omega_ratio_component_2 > 0)
+  expect_true(component_inits$omega_ratio_component_2 < 1)
 })
 
 test_that("Gamma initialization fallback preserves representable median proportions", {

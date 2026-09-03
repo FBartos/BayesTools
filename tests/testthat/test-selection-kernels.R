@@ -52,6 +52,30 @@ test_that("finite-vector selection plans are deterministic and RNG-local", {
   ))
 })
 
+test_that("selection QMC designs use the requested integration dimension", {
+
+  set.seed(2026)
+  rng_state <- .Random.seed
+  design <- selection_qmc_design(
+    dimensions = 4L,
+    points     = 17L,
+    scrambles  = 3L,
+    seed       = 11L
+  )
+
+  expect_identical(.Random.seed, rng_state)
+  expect_identical(dim(design), c(3L, 17L, 4L))
+  expect_true(all(design > 0 & design < 1))
+  expect_identical(
+    design,
+    selection_qmc_design(4L, 17L, 3L, seed = 11L)
+  )
+  expect_false(identical(
+    design,
+    selection_qmc_design(4L, 17L, 3L, seed = 12L)
+  ))
+})
+
 test_that("prior_phacking validates geometry, form, alpha, and stores constants", {
 
   ph <- prior_phacking(
@@ -728,16 +752,17 @@ test_that("direct selection-family JAGS helpers use active public names", {
   bias      <- prior_bias(selection, phacking)
 
   syntax <- JAGS_add_priors("model{}", list(bias = bias))
-  expect_match(syntax, "eta\\[1\\] ~ dgamma\\(1, 1\\)")
+  expect_match(syntax, "omega_ratio ~ dbeta\\(2, 1\\)")
   expect_match(syntax, "alpha ~ dbeta\\(2,3\\)")
   expect_false(grepl("_component_", syntax, fixed = TRUE))
 
   inits <- JAGS_get_inits(list(bias = bias), chains = 1, seed = 1)[[1]]
-  expect_true(all(c("eta", "alpha") %in% names(inits)))
+  expect_true(all(c("omega_ratio", "alpha") %in% names(inits)))
   expect_false(any(grepl("_component_", names(inits), fixed = TRUE)))
 
   monitor <- JAGS_to_monitor(list(bias = bias))
-  expect_true(all(c("omega", "eta", "alpha", "phack_kind", "pi_null") %in% monitor))
+  expect_true(all(c("omega", "alpha", "phack_kind", "pi_null") %in% monitor))
+  expect_false("eta" %in% monitor)
   expect_false(any(grepl("_component_", monitor, fixed = TRUE)))
 
   phacking_syntax <- JAGS_add_priors("model{}", list(phacking = phacking))

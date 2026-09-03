@@ -367,6 +367,284 @@ random_effects_marginal_factor_diagonal <- function(
 }
 
 
+#' Diagonal-plus-factor random-effect marginal representation
+#'
+#' @description
+#' Reduces structurally eligible random-effect covariance factor states to a
+#' diagonal contribution and structurally certified loading columns for every
+#' supplied row block. Eligibility and factor dimension are determined from
+#' compiled metadata, never from evaluated covariance values.
+#'
+#' @param factors A
+#'   `BayesTools_random_effects_marginal_factor_states` object, or a single
+#'   bridge-likelihood `factor_state` value carrying `factor_plans`,
+#'   `factor_states`, and `row_blocks`.
+#'
+#' @return A list with a numeric `diagonal` matrix, one loading array and
+#'   structural rank per row block, and `row_blocks`.
+#'
+#' @seealso [random_effects_marginal_factor_states()]
+#' @export
+random_effects_marginal_diagonal_factor <- function(factors){
+
+  components <- .bt_random_effect_marginal_diagonal_factor_input(factors)
+  plan <- .bt_random_effect_marginal_diagonal_factor_plan(
+    factor_plans = components$plans,
+    row_blocks   = components$row_blocks,
+    n_rows       = components$n_rows
+  )
+  if(!isTRUE(plan$available)){
+    condition <- structure(
+      list(
+        message = paste0(
+          "Random-effect marginal covariance is unavailable as diagonal plus factors: ",
+          plan$reason,
+          "."
+        ),
+        call = NULL,
+        reason = plan$reason
+      ),
+      class = c(
+        "BayesTools_random_effects_marginal_factor_unavailable",
+        "error", "condition"
+      )
+    )
+    stop(condition)
+  }
+
+  plans      <- components$plans
+  states     <- components$states
+  n_draws    <- components$n_draws
+  n_rows     <- components$n_rows
+  row_blocks <- components$row_blocks
+  diagonal <- matrix(0, nrow = n_draws, ncol = n_rows)
+  loadings <- lapply(plan$blocks, function(block){
+    array(
+      0,
+      dim = c(n_draws, length(block$rows), length(block$loadings))
+    )
+  })
+  plan_names <- names(plans)
+  if(is.null(plan_names)){
+    plan_names <- as.character(seq_along(plans))
+  }
+  names(plans) <- plan_names
+
+  for(draw in seq_len(n_draws)){
+    draw_states <- states[[draw]]
+    if(!is.list(draw_states) || length(draw_states) != length(plans)){
+      stop("Random-effect marginal factor states are inconsistent.",
+           call. = FALSE)
+    }
+    if(!is.null(names(draw_states))){
+      draw_states <- draw_states[plan_names]
+    }
+    geometries <- lapply(seq_along(plans), function(block){
+      .bt_random_effect_marginal_factor_block_geometry(
+        plan   = plans[[block]],
+        state  = draw_states[[block]],
+        n_rows = n_rows,
+        block  = plan_names[[block]]
+      )
+    })
+
+    for(block_index in seq_along(plan$blocks)){
+      block <- plan$blocks[[block_index]]
+      for(component in block$diagonal){
+        value <- geometries[[component$factor_index]]$basis[
+          component$row,
+          component$column
+        ]
+        diagonal[draw, component$row] <-
+          diagonal[draw, component$row] + value^2
+      }
+      for(loading_index in seq_along(block$loadings)){
+        component <- block$loadings[[loading_index]]
+        geometry  <- geometries[[component$factor_index]]
+        local_rows <- match(component$rows, block$rows)
+        loadings[[block_index]][draw, local_rows, loading_index] <-
+          geometry$basis[component$rows, component$column]
+      }
+    }
+  }
+
+  out <- list(
+    diagonal   = unname(diagonal),
+    loadings   = unname(loadings),
+    ranks      = as.integer(vapply(
+      plan$blocks,
+      function(block) length(block$loadings),
+      integer(1)
+    )),
+    row_blocks = row_blocks
+  )
+  class(out) <- c(
+    "BayesTools_random_effects_marginal_diagonal_factor",
+    "list"
+  )
+  out
+}
+
+
+# Normalize the two supported public and bridge factor-state containers.
+.bt_random_effect_marginal_diagonal_factor_input <- function(factors){
+
+  if(inherits(
+      factors,
+      "BayesTools_random_effects_marginal_factor_states"
+    )){
+    components <- .bt_random_effect_marginal_factor_components(factors)
+    return(list(
+      plans      = components$plans,
+      states     = components$states,
+      row_blocks = factors$row_blocks,
+      n_rows     = components$n_rows,
+      n_draws    = components$n_draws
+    ))
+  }
+  if(is.list(factors) &&
+     identical(factors$representation, "factor_state") &&
+     is.list(factors$factor_plans) &&
+     is.list(factors$factor_states) &&
+     is.list(factors$row_blocks)){
+    plans <- factors$factor_plans
+    if(length(plans) == 0L || !is.matrix(plans[[1L]]$model_matrix)){
+      stop("Random-effect marginal factor metadata are inconsistent.",
+           call. = FALSE)
+    }
+    return(list(
+      plans      = plans,
+      states     = list(factors$factor_states),
+      row_blocks = factors$row_blocks,
+      n_rows     = nrow(plans[[1L]]$model_matrix),
+      n_draws    = 1L
+    ))
+  }
+  stop(
+    "'factors' must contain compiled random-effect marginal factor states.",
+    call. = FALSE
+  )
+}
+
+
+.bt_random_effect_marginal_diagonal_factor_plan <- function(
+    factor_plans, row_blocks, n_rows){
+
+  unavailable <- function(reason){
+    list(available = FALSE, reason = reason, blocks = list())
+  }
+  if(!is.list(factor_plans) || length(factor_plans) == 0L ||
+     !is.list(row_blocks) || length(row_blocks) == 0L ||
+     !is.numeric(n_rows) || length(n_rows) != 1L || !is.finite(n_rows) ||
+     n_rows < 1L || n_rows != as.integer(n_rows)){
+    return(unavailable("invalid factor metadata"))
+  }
+  normalized_blocks <- lapply(row_blocks, function(rows){
+    if(!is.numeric(rows) || length(rows) == 0L || anyNA(rows) ||
+       any(!is.finite(rows)) || any(rows != as.integer(rows)) ||
+       any(rows < 1L) || any(rows > n_rows) || anyDuplicated(rows)){
+      return(NULL)
+    }
+    as.integer(rows)
+  })
+  if(any(vapply(normalized_blocks, is.null, logical(1))) ||
+     !identical(
+       sort(as.integer(unlist(normalized_blocks, use.names = FALSE))),
+       seq_len(n_rows)
+     )){
+    return(unavailable("invalid row-block metadata"))
+  }
+
+  plan_components <- vector("list", length(factor_plans))
+  for(factor_index in seq_along(factor_plans)){
+    factor <- factor_plans[[factor_index]]
+    if(!is.list(factor) ||
+       !is.character(factor$type) || length(factor$type) != 1L ||
+       is.na(factor$type) ||
+       !factor$type %in% c("group", "row_group") ||
+       !is.character(factor$coefficient_structure) ||
+       length(factor$coefficient_structure) != 1L ||
+       is.na(factor$coefficient_structure) ||
+       !factor$coefficient_structure %in% c("diagonal", "dense", "markov") ||
+       !is.numeric(factor$model_matrix) || !is.matrix(factor$model_matrix) ||
+       nrow(factor$model_matrix) != n_rows ||
+       any(!is.finite(factor$model_matrix)) ||
+       !is.numeric(factor$group_map) || length(factor$group_map) != n_rows ||
+       anyNA(factor$group_map) || any(!is.finite(factor$group_map)) ||
+       any(factor$group_map != as.integer(factor$group_map)) ||
+       any(factor$group_map < 1L)){
+      return(unavailable("unsupported factor structure"))
+    }
+    plan_components[[factor_index]] <- list(
+      model_matrix         = factor$model_matrix,
+      group_map            = as.integer(factor$group_map),
+      coefficient_structure = factor$coefficient_structure
+    )
+  }
+
+  blocks <- vector("list", length(normalized_blocks))
+  for(block_index in seq_along(normalized_blocks)){
+    rows                <- normalized_blocks[[block_index]]
+    diagonal_components <- list()
+    rank_components     <- list()
+
+    for(factor_index in seq_along(plan_components)){
+      factor      <- plan_components[[factor_index]]
+      model_matrix <- factor$model_matrix
+      group_map    <- factor$group_map
+      n_columns    <- ncol(model_matrix)
+      for(column in seq_len(n_columns)){
+        model_columns <- if(identical(
+            factor$coefficient_structure,
+            "diagonal"
+          )){
+          column
+        }else{
+          seq.int(column, n_columns)
+        }
+        structural_rows <- which(
+          rowSums(model_matrix[, model_columns, drop = FALSE] != 0) > 0
+        )
+        for(group in unique(group_map[structural_rows])){
+          support <- intersect(
+            structural_rows[group_map[structural_rows] == group],
+            rows
+          )
+          if(length(support) == 0L){
+            next
+          }
+          full_support <- structural_rows[group_map[structural_rows] == group]
+          if(length(full_support) > 1L && !all(full_support %in% rows)){
+            return(unavailable("row blocks split a covariance factor"))
+          }
+          component <- list(
+            factor_index = factor_index,
+            group        = group,
+            column       = column,
+            rows         = support
+          )
+          if(length(support) == 1L){
+            component$row <- support[[1L]]
+            diagonal_components[[length(diagonal_components) + 1L]] <-
+              component
+          }else{
+            rank_components[[length(rank_components) + 1L]] <- component
+          }
+        }
+      }
+    }
+
+    blocks[[block_index]] <- list(
+      rows     = rows,
+      diagonal = diagonal_components,
+      loadings = rank_components
+    )
+  }
+
+  list(available = TRUE, reason = "", blocks = blocks)
+}
+
+
 #' Multiply random-effect marginal covariance factors by row vectors
 #'
 #' @description
