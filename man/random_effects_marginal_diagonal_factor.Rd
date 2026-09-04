@@ -4,13 +4,18 @@
 \alias{random_effects_marginal_diagonal_factor}
 \title{Diagonal-plus-factor random-effect marginal representation}
 \usage{
-random_effects_marginal_diagonal_factor(factors)
+random_effects_marginal_diagonal_factor(factors, cache = NULL)
 }
 \arguments{
 \item{factors}{A
 \code{BayesTools_random_effects_marginal_factor_states} object, or a single
 bridge-likelihood \code{factor_state} value carrying \code{factor_plans},
 \code{factor_states}, and \code{row_blocks}.}
+
+\item{cache}{Optional environment used to retain the invariant reduction
+plan across repeated evaluations of one bridge-likelihood factor-state
+contract. Changing numerical factor states are still validated on every
+call.}
 }
 \value{
 A list with a numeric \code{diagonal} matrix, one loading array and

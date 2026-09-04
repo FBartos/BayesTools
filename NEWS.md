@@ -39,10 +39,13 @@
   for JAGS likelihoods and evaluates the same representation from posterior or
   bridge factor states, avoiding dense covariance construction without
   inferring rank or structure from evaluated values
+- caches the invariant reduction plan for repeated bridge factor-state
+  evaluations while validating every changing coefficient factor and row scale
 
 ### Maintenance
-- centralizes lower-triangle covariance ordering in the finite-vector
-  selection plan and reuses it in marginal JAGS covariance compilation
+- centralizes lower-triangle covariance ordering in marginal JAGS covariance
+  compilation and removes the superseded finite-vector selection-plan wrapper;
+  callers compose explicit QMC designs with their own target metadata
 - reuses the common line renderer for simple and contrast-transformed priors
   and density/trace diagnostics
 - removes the superseded random-effect summary builder and its private
@@ -66,9 +69,8 @@
   observation covariance of marginalized formula-random effects for ID, DIAG,
   US/UN, CS/HCS, AR1/AR/HAR, CAR, and known group-covariance structures,
   including row-scale sources and variance allocations.
-- adds `selection_likelihood_plan()` for versioned, local-RNG shifted-Halton
-  designs and explicit integration-error settings shared by deterministic
-  finite-vector selection likelihood evaluators.
+- adds `selection_qmc_design()` for deterministic, local-RNG shifted-Halton
+  designs in explicitly supplied integration dimensions.
 - allows variance allocations to attach independent Bernoulli inclusion gates
   to random components, including a gate-only one-component allocation without
   an artificial Dirichlet coordinate. Gate metadata propagate through formula

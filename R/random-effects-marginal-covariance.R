@@ -379,20 +379,50 @@ random_effects_marginal_factor_diagonal <- function(
 #'   `BayesTools_random_effects_marginal_factor_states` object, or a single
 #'   bridge-likelihood `factor_state` value carrying `factor_plans`,
 #'   `factor_states`, and `row_blocks`.
+#' @param cache Optional environment used to retain the invariant reduction
+#'   plan across repeated evaluations of one bridge-likelihood factor-state
+#'   contract. Changing numerical factor states are still validated on every
+#'   call.
 #'
 #' @return A list with a numeric `diagonal` matrix, one loading array and
 #'   structural rank per row block, and `row_blocks`.
 #'
 #' @seealso [random_effects_marginal_factor_states()]
 #' @export
-random_effects_marginal_diagonal_factor <- function(factors){
+random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
 
+  if(!is.null(cache) && !is.environment(cache)){
+    stop("'cache' must be NULL or an environment.", call. = FALSE)
+  }
   components <- .bt_random_effect_marginal_diagonal_factor_input(factors)
-  plan <- .bt_random_effect_marginal_diagonal_factor_plan(
-    factor_plans = components$plans,
-    row_blocks   = components$row_blocks,
-    n_rows       = components$n_rows
-  )
+  plan <- NULL
+  if(is.environment(cache) && is.environment(components$contract_id)){
+    process_id <- Sys.getpid()
+    cached <- cache[["random_effects_marginal_diagonal_factor"]]
+    if(!is.null(cached) && identical(cached$process_id, process_id)){
+      if(!identical(cached$contract_id, components$contract_id)){
+        stop(
+          "Random-effect marginal factor-state contract changed between evaluations.",
+          call. = FALSE
+        )
+      }
+      plan <- cached$plan
+    }
+  }
+  if(is.null(plan)){
+    plan <- .bt_random_effect_marginal_diagonal_factor_plan(
+      factor_plans = components$plans,
+      row_blocks   = components$row_blocks,
+      n_rows       = components$n_rows
+    )
+    if(is.environment(cache) && is.environment(components$contract_id)){
+      cache[["random_effects_marginal_diagonal_factor"]] <- list(
+        process_id = Sys.getpid(),
+        contract_id = components$contract_id,
+        plan = plan
+      )
+    }
+  }
   if(!isTRUE(plan$available)){
     condition <- structure(
       list(
@@ -499,7 +529,8 @@ random_effects_marginal_diagonal_factor <- function(factors){
       states     = components$states,
       row_blocks = factors$row_blocks,
       n_rows     = components$n_rows,
-      n_draws    = components$n_draws
+      n_draws    = components$n_draws,
+      contract_id = NULL
     ))
   }
   if(is.list(factors) &&
@@ -517,7 +548,8 @@ random_effects_marginal_diagonal_factor <- function(factors){
       states     = list(factors$factor_states),
       row_blocks = factors$row_blocks,
       n_rows     = nrow(plans[[1L]]$model_matrix),
-      n_draws    = 1L
+      n_draws    = 1L,
+      contract_id = factors$contract_id
     ))
   }
   stop(

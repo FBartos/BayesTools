@@ -5,53 +5,6 @@ skip_if_not_test_profile(c("unit", "fixture"))
 
 source(testthat::test_path("common-functions.R"))
 
-test_that("finite-vector selection plans are deterministic and RNG-local", {
-
-  set.seed(2026)
-  rng_state <- .Random.seed
-  plan <- selection_likelihood_plan(
-    block_sizes         = c(2L, 1L, 2L),
-    points_per_scramble = 16L,
-    scrambles           = 3L,
-    seed                 = 9L,
-    relative_tolerance   = 0.01
-  )
-
-  expect_identical(.Random.seed, rng_state)
-  expect_s3_class(plan, "BayesTools_selection_likelihood_plan")
-  expect_identical(plan$schema_version, 2L)
-  expect_identical(names(plan$designs), c("1", "2"))
-  expect_identical(names(plan$lower_pairs), c("1", "2"))
-  expect_identical(
-    plan$lower_pairs[["2"]],
-    data.frame(row_1 = c(1L, 2L, 2L), row_2 = c(1L, 1L, 2L))
-  )
-  expect_identical(dim(plan$designs[["1"]]), c(3L, 16L, 2L))
-  expect_identical(dim(plan$designs[["2"]]), c(3L, 16L, 4L))
-  expect_true(all(unlist(plan$designs, use.names = FALSE) > 0))
-  expect_true(all(unlist(plan$designs, use.names = FALSE) < 1))
-  expect_identical(
-    plan$designs,
-    selection_likelihood_plan(
-      block_sizes         = c(2L, 1L, 2L),
-      points_per_scramble = 16L,
-      scrambles           = 3L,
-      seed                 = 9L,
-      relative_tolerance   = 0.01
-    )$designs
-  )
-  expect_false(identical(
-    plan$designs,
-    selection_likelihood_plan(
-      block_sizes         = c(2L, 1L, 2L),
-      points_per_scramble = 16L,
-      scrambles           = 3L,
-      seed                 = 10L,
-      relative_tolerance   = 0.01
-    )$designs
-  ))
-})
-
 test_that("selection QMC designs use the requested integration dimension", {
 
   set.seed(2026)

@@ -188,6 +188,19 @@ JAGS_formula_random_marginal_covariance <- function(
 }
 
 
+.bt_lower_triangle_pairs <- function(rows){
+
+  row_1 <- integer()
+  row_2 <- integer()
+  for(column in seq_along(rows)){
+    local_rows <- column:length(rows)
+    row_1 <- c(row_1, rows[local_rows])
+    row_2 <- c(row_2, rep.int(rows[[column]], length(local_rows)))
+  }
+  data.frame(row_1 = row_1, row_2 = row_2)
+}
+
+
 .bt_JAGS_formula_random_marginal_factor_plans <- function(random_effects){
 
   lapply(random_effects, function(random_term){

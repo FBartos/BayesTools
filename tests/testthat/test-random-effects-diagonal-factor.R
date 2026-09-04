@@ -149,3 +149,59 @@ test_that("certified factor reduction preserves higher structural rank", {
     class = "BayesTools_random_effects_marginal_factor_unavailable"
   )
 })
+
+
+test_that("bridge factor reduction caches only invariant contract plans", {
+
+  factors <- .rank_one_factor_fixture()
+  contract_id <- new.env(parent = emptyenv())
+  bridge_state <- list(
+    representation = "factor_state",
+    contract_id    = contract_id,
+    factor_plans   = factors$factor_plans,
+    factor_states  = factors$factor_states[[1L]],
+    row_blocks     = factors$row_blocks
+  )
+  cache <- new.env(parent = emptyenv())
+  plan_calls <- 0L
+  original_plan <- .bt_random_effect_marginal_diagonal_factor_plan
+  testthat::local_mocked_bindings(
+    .bt_random_effect_marginal_diagonal_factor_plan = function(...) {
+      plan_calls <<- plan_calls + 1L
+      original_plan(...)
+    },
+    .package = "BayesTools"
+  )
+
+  first <- random_effects_marginal_diagonal_factor(
+    bridge_state,
+    cache = cache
+  )
+  bridge_state$factor_states <- lapply(
+    bridge_state$factor_states,
+    function(state) {
+      state$coefficient_factor <- 2 * state$coefficient_factor
+      state
+    }
+  )
+  second <- random_effects_marginal_diagonal_factor(
+    bridge_state,
+    cache = cache
+  )
+
+  expect_identical(plan_calls, 1L)
+  expect_equal(second$loadings[[1L]], 2 * first$loadings[[1L]])
+  expect_equal(second$diagonal, 4 * first$diagonal)
+
+  bridge_state$contract_id <- new.env(parent = emptyenv())
+  expect_error(
+    random_effects_marginal_diagonal_factor(bridge_state, cache = cache),
+    "contract changed",
+    fixed = TRUE
+  )
+  expect_error(
+    random_effects_marginal_diagonal_factor(bridge_state, cache = list()),
+    "'cache' must be NULL or an environment.",
+    fixed = TRUE
+  )
+})
