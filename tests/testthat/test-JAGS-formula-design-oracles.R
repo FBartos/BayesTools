@@ -8062,6 +8062,30 @@ test_that("JAGS_evaluate_formula reconstructs allocated random effects from simp
       sqrt(3) * c(1, 2, 1, 2, 1, 2),
     tolerance = 1e-12
   )
+
+  boundary_simplex <- cbind(
+    public_simplex,
+    "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[1]" = 0,
+    "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[2]" = 1
+  )
+  boundary_simplex[, "mu__xRE_ALLOCx_allocation__weight[1]"] <- 0
+  boundary_simplex[, "mu__xRE_ALLOCx_allocation__weight[2]"] <- 1
+  boundary_fit <- coda::mcmc(boundary_simplex)
+  attr(boundary_fit, "formula_design") <- list(mu = formula_result$formula_design)
+  boundary_prediction <- JAGS_evaluate_formula(
+    fit = boundary_fit,
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    parameter = "mu",
+    data = df,
+    prior_list = formula_result$prior_list
+  )
+  expect_equal(
+    unname(drop(boundary_prediction)),
+    5 + 2 * c(1, 2, 1, 2, 1, 2),
+    tolerance = 1e-12
+  )
 })
 
 test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random effects", {

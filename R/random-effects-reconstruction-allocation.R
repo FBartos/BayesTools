@@ -478,7 +478,8 @@
 }
 
 .bt_random_effect_dirichlet_draws <- function(parameter_name, posterior,
-                                             prior_list){
+                                             prior_list,
+                                             prefer_weights = TRUE){
 
   if(!parameter_name %in% names(prior_list)){
     return(NULL)
@@ -490,6 +491,19 @@
 
   K <- prior$parameters[["K"]]
   cache <- .bt_random_effect_dirichlet_draw_cache(posterior)
+  weight_names <- paste0(parameter_name, "[", seq_len(K), "]")
+  if(isTRUE(prefer_weights) && all(weight_names %in% colnames(posterior))){
+    cache_key <- .bt_random_effect_dirichlet_cache_key(parameter_name, K, "weights")
+    if(!is.null(cache) && exists(cache_key, envir = cache, inherits = FALSE)){
+      return(get(cache_key, envir = cache, inherits = FALSE))
+    }
+    weights <- .bt_random_effect_validate_dirichlet_weights(
+      weights = posterior[, weight_names, drop = FALSE],
+      parameter_name = parameter_name
+    )
+    .bt_random_effect_dirichlet_cache_assign(cache, cache_key, weights)
+    return(weights)
+  }
   eta_names <- paste0(
     .JAGS_prior_dirichlet_eta_name(parameter_name),
     "[", seq_len(K), "]"
@@ -525,7 +539,6 @@
     ))
   }
 
-  weight_names <- paste0(parameter_name, "[", seq_len(K), "]")
   if(all(weight_names %in% colnames(posterior))){
     cache_key <- .bt_random_effect_dirichlet_cache_key(parameter_name, K, "weights")
     if(!is.null(cache) && exists(cache_key, envir = cache, inherits = FALSE)){

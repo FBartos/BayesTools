@@ -1649,7 +1649,8 @@
     value <- .bt_random_effect_dirichlet_draws(
       parameter_name = parameter_name,
       posterior = posterior,
-      prior_list = prior_list
+      prior_list = prior_list,
+      prefer_weights = FALSE
     )
     if(!is.null(value)){
       weights[[parameter_name]] <- unname(value[1L, ])
