@@ -152,21 +152,11 @@
   force(parameter_name)
 
   distribution <- prior_object[["distribution"]]
-  log_density  <- .prior_simple_lpdf_evaluator(prior_object)
+  log_prior    <- .bt_JAGS_bridge_compile_simple_log_prior(prior_object, parameter_name)
 
   if(identical(distribution, "invgamma")){
     return(list(
-      log_prior = function(samples){
-        value <- .bt_JAGS_marglik_invgamma_values(
-          samples = samples,
-          parameter_names = parameter_name,
-          missing_message = "'samples' does not contain all monitored inverse-gamma prior parameters."
-        )
-        if(is.null(value)){
-          return(-Inf)
-        }
-        log_density(value)
-      },
+      log_prior = log_prior,
       parameters = function(samples){
         value <- .bt_JAGS_marglik_invgamma_values(
           samples = samples,
@@ -184,7 +174,7 @@
   if(identical(distribution, "point")){
     location <- prior_object$parameters[["location"]]
     return(list(
-      log_prior = function(samples) 0,
+      log_prior = log_prior,
       parameters = function(samples){
         parameter <- list()
         parameter[[parameter_name]] <- location
@@ -194,15 +184,46 @@
   }
 
   list(
-    log_prior = function(samples){
-      log_density(samples[[parameter_name]])
-    },
+    log_prior = log_prior,
     parameters = function(samples){
       parameter <- list()
       parameter[[parameter_name]] <- samples[[parameter_name]]
       parameter
     }
   )
+}
+
+.bt_JAGS_bridge_compile_simple_log_prior <- function(prior_object, parameter_names){
+
+  log_density <- .prior_simple_lpdf_evaluator(prior_object)
+  force(parameter_names)
+  if(identical(prior_object[["distribution"]], "point")){
+    return(function(samples) 0)
+  }
+  if(identical(prior_object[["distribution"]], "invgamma")){
+    return(function(samples){
+
+      values <- .bt_JAGS_marglik_invgamma_values(
+        samples = samples,
+        parameter_names = parameter_names,
+        missing_message = "'samples' does not contain all monitored inverse-gamma prior parameters."
+      )
+      if(is.null(values)){
+        return(-Inf)
+      }
+      sum(log_density(values))
+    })
+  }
+  if(length(parameter_names) == 1L){
+    return(function(samples) log_density(samples[[parameter_names]]))
+  }
+  function(samples){
+
+    if(!all(parameter_names %in% names(samples))){
+      stop("'samples' does not contain all monitored factor prior parameters.", call. = FALSE)
+    }
+    sum(log_density(unlist(samples[parameter_names], use.names = FALSE)))
+  }
 }
 
 .bt_JAGS_bridge_compile_parameter_values <- function(prior_object, parameter_names){
@@ -321,19 +342,11 @@
       return(.bt_JAGS_bridge_compile_simple_evaluator(prior_object, parameter_name))
     }
 
-    parameter_names <- paste0(parameter_name, "[", seq_len(levels), "]")
-    density_evaluators <- lapply(parameter_names, function(name){
-      .bt_JAGS_bridge_compile_simple_evaluator(prior_object, name)$log_prior
-    })
+    parameter_names  <- paste0(parameter_name, "[", seq_len(levels), "]")
+    log_prior        <- .bt_JAGS_bridge_compile_simple_log_prior(prior_object, parameter_names)
     parameter_values <- .bt_JAGS_bridge_compile_parameter_values(prior_object, parameter_names)
     return(list(
-      log_prior = function(samples){
-        marglik <- 0
-        for(evaluator in density_evaluators){
-          marglik <- marglik + evaluator(samples)
-        }
-        marglik
-      },
+      log_prior = log_prior,
       parameters = function(samples){
         parameter <- list()
         parameter[[parameter_name]] <- parameter_values(samples)

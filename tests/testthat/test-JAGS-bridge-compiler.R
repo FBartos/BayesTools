@@ -22,6 +22,47 @@ test_that("compiled simple-prior densities preserve the canonical calculation", 
   }
 })
 
+test_that("compiled factor densities preserve product priors and boundaries", {
+
+  values <- c(.25, .5, 1, 1.5)
+  samples <- stats::setNames(values, paste0("theta[", seq_along(values), "]"))
+  for(contrast in c("independent", "treatment")){
+    specifications <- list(
+      prior_factor("normal", list(0, 1), list(0, 2), contrast = contrast),
+      prior_factor("invgamma", list(2, 1), contrast = contrast),
+      prior_factor("point", list(.25), contrast = contrast)
+    )
+    expected <- c(
+      sum(stats::dnorm(values, log = TRUE)) -
+        length(values) * log(stats::pnorm(2) - stats::pnorm(0)),
+      sum(stats::dgamma(1 / values, shape = 2, rate = 1, log = TRUE) -
+            2 * log(values)),
+      0
+    )
+    for(i in seq_along(specifications)){
+      prior <- specifications[[i]]
+      attr(prior, "levels") <- length(values) + as.integer(contrast == "treatment")
+      evaluator <- BayesTools:::.bt_JAGS_bridge_compile_factor_evaluator(prior, "theta")
+      expect_equal(evaluator$log_prior(samples), expected[[i]], tolerance = 1e-12)
+      expect_equal(evaluator$log_prior(as.list(samples)), expected[[i]], tolerance = 1e-12)
+      expect_equal(evaluator$parameters(samples)$theta,
+                   if(i == 3L) rep(.25, length(values)) else values)
+      if(i < 3L){
+        invalid <- samples
+        invalid[[2L]] <- -1
+        expect_equal(evaluator$log_prior(invalid), -Inf)
+      }
+      if(i == 1L){
+        expect_error(
+          evaluator$log_prior(samples[-1L]),
+          "'samples' does not contain all monitored factor prior parameters.",
+          fixed = TRUE
+        )
+      }
+    }
+  }
+})
+
 test_that("compiled bridge prior evaluators match public marglik helpers", {
 
   theta_prior <- prior_factor("invgamma", list(2, 1), list(.1, 2), contrast = "independent")
@@ -590,9 +631,10 @@ test_that("known group covariance random-effect prior uses MVN kernel density", 
     )
   )
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(
-      list(mu = formula_output$formula_design),
-      list(mu = changed_output$formula_design)
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = formula_output$formula_design,
+      rebuilt = changed_output$formula_design
     ),
     "group covariance metadata differ",
     fixed = TRUE
@@ -619,9 +661,10 @@ test_that("known group covariance random-effect prior uses MVN kernel density", 
     random_effects_compile = random_effects_compile(marginalized = "id")
   )
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(
-      list(mu = marginalized_output$formula_design),
-      list(mu = changed_marginalized_output$formula_design)
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = marginalized_output$formula_design,
+      rebuilt = changed_marginalized_output$formula_design
     ),
     "group covariance metadata differ",
     fixed = TRUE
@@ -680,6 +723,40 @@ test_that("compiled formula parameter evaluator matches design reconstruction", 
     ),
     tolerance = 1e-12
   )
+})
+
+test_that("compiled random formula plans retain analytic contributions", {
+
+  data <- data.frame(x = c(-1, 0, 2, 3), group = factor(c("a", "b", "a", "b")))
+  for(structure in c("id", "us")){
+    output <- JAGS_formula(
+      formula = if(structure == "id") ~ id(1 + x | group) else ~ 1 + (1 | group),
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("point", list(0))),
+      prior_random = prior_random(group = random_block(sd = prior("point", list(2))))
+    )
+    term <- output$formula_design$random_effects[[1L]]
+    latent <- if(structure == "id") c(.5, 2, -1, .25) else c(.5, 2)
+    samples <- stats::setNames(latent, as.vector(BayesTools:::.bt_random_effect_latent_names(
+      term, n_groups = 2L, n_columns = term$n_columns)))
+    plan <- BayesTools:::.bt_JAGS_bridge_compile_random_value_plan(term, output$prior_list)
+    expected <- if(structure == "id") c(3, 4, -3, 5.5) else c(1, 4, 1, 4)
+    expect_false(is.null(plan))
+    expect_equal(BayesTools:::.bt_JAGS_marglik_random_effect_value(
+      samples, term, output$prior_list, value_plan = plan), expected)
+    evaluator <- BayesTools:::.bt_JAGS_bridge_compile_formula_parameter_evaluator(
+      formula_list = list(mu = output$formula),
+      formula_data_list = list(mu = output$data),
+      formula_prior_list = list(mu = output$prior_list),
+      formula_design_list = list(mu = output$formula_design),
+      model_data = list())
+    expect_equal(evaluator$parameters(samples, list())$mu, expected)
+    expect_error(
+      evaluator$parameters(samples[-1L], list()),
+      "Bridge samples are missing standardized latent random effects for block 'group'.",
+      fixed = TRUE)
+  }
 })
 
 test_that("ordered formula parameters are reconstructed from bridge coordinates", {
@@ -1916,6 +1993,52 @@ test_that("bridge context exposes marginalized random blocks without latent draw
   )
   expect_identical(nodes_context$nodes, context$nodes)
 })
+
+test_that("compiled row sources retain per-draw validation", {
+
+  source <- parameter_source(
+    "tau", shape = "row",
+    values = function(parameters, data, n_rows){
+
+      parameters$value
+    }
+  )
+  formula_output <- JAGS_formula(
+    formula = ~ 1 + random(1 | study, name = "study", covariance = "diag"),
+    parameter = "mu",
+    data = data.frame(study = factor(c("s1", "s1"))),
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      study = random_block(sd_source = random_sd_source(source))
+    )
+  )
+  evaluator <- BayesTools:::.bt_JAGS_bridge_compile_row_source_evaluator(
+    formula_output$formula_design$random_effects[[1L]],
+    n_rows = 2L,
+    context = "Bridge context"
+  )
+  posterior <- matrix(numeric(), nrow = 1L, ncol = 0L)
+  expect_equal(
+    evaluator(posterior, parameters = list(value = c(0, 2))),
+    matrix(c(0, 2), nrow = 1L, dimnames = list(NULL, c("tau[1]", "tau[2]")))
+  )
+  expect_error(
+    evaluator(posterior, parameters = list(value = "invalid")),
+    "Bridge context for source 'tau[row]' must return a numeric vector.",
+    fixed = TRUE
+  )
+  expect_error(
+    evaluator(posterior, parameters = list(value = 1)),
+    "Bridge context for source 'tau[row]' must return a numeric vector of length 2.",
+    fixed = TRUE
+  )
+  expect_error(
+    evaluator(posterior, parameters = list(value = c(1, NA_real_))),
+    "Bridge context for source 'tau[row]' returned missing values.",
+    fixed = TRUE
+  )
+})
+
 
 test_that("bridge context exposes row-indexed external SD source nodes", {
 

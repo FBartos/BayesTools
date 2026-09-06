@@ -393,16 +393,19 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
 .bt_JAGS_marglik_random_effects_value <- function(samples, design,
                                                   formula_prior_list,
                                                   data = NULL,
-                                                  parameters = NULL){
+                                                  parameters = NULL,
+                                                  value_plans = NULL){
 
   output <- rep(0, nrow(design$model_matrix))
-  for(random_term in .bt_formula_design_sampled_random_effects(design)){
+  random_terms <- .bt_formula_design_sampled_random_effects(design)
+  for(i in seq_along(random_terms)){
     output <- output + .bt_JAGS_marglik_random_effect_value(
       samples = samples,
-      random_term = random_term,
+      random_term = random_terms[[i]],
       prior_list = formula_prior_list,
       data = data,
-      parameters = parameters
+      parameters = parameters,
+      value_plan = if(is.null(value_plans)) NULL else value_plans[[i]]
     )
   }
 
@@ -412,15 +415,19 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
 .bt_JAGS_marglik_random_effect_value <- function(samples, random_term,
                                                  prior_list,
                                                  data = NULL,
-                                                 parameters = NULL){
+                                                 parameters = NULL,
+                                                 value_plan = NULL){
 
-  .bt_JAGS_marglik_check_random_effect_dirichlet_samples(
-    samples = samples,
-    random_term = random_term,
-    prior_list = prior_list
-  )
+  # A compiled SD evaluator owns the same per-draw allocation ambiguity check.
+  if(is.null(value_plan)){
+    .bt_JAGS_marglik_check_random_effect_dirichlet_samples(
+      samples = samples,
+      random_term = random_term,
+      prior_list = prior_list
+    )
+  }
 
-  if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
+  if(is.null(value_plan) && .bt_random_effect_has_row_indexed_external_sd(random_term)){
     return(.bt_JAGS_marglik_random_effect_row_indexed_value(
       samples = samples,
       random_term = random_term,
@@ -445,10 +452,14 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   group_map <- random_term$group_map
   n_groups <- random_term$n_groups
   n_columns <- random_term$n_columns
-  structure <- .bt_random_effect_structure(
-    random_term,
-    context = "Bridge-sampling random-effect metadata"
-  )
+  structure <- if(!is.null(value_plan)){
+    value_plan$structure
+  }else{
+    .bt_random_effect_structure(
+      random_term,
+      context = "Bridge-sampling random-effect metadata"
+    )
+  }
   if(n_columns > 1L &&
      structure %in% c("cs", "hcs", "ar1", "car", "har")){
     posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
@@ -469,11 +480,15 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     }
   }
 
-  z_names <- .bt_random_effect_latent_names(
-    random_term = random_term,
-    n_groups = n_groups,
-    n_columns = n_columns
-  )
+  z_names <- if(!is.null(value_plan)){
+    value_plan$latent_names
+  }else{
+    .bt_random_effect_latent_names(
+      random_term = random_term,
+      n_groups = n_groups,
+      n_columns = n_columns
+    )
+  }
   if(!all(as.vector(z_names) %in% names(samples))){
     stop(
       "Bridge samples are missing standardized latent random effects for block '",
@@ -491,11 +506,15 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     matrix(z[, column], nrow = 1L)
   })
 
-  sd_values <- .bt_JAGS_marglik_random_effect_sd_values(
-    samples = samples,
-    random_term = random_term,
-    prior_list = prior_list
-  )
+  sd_values <- if(!is.null(value_plan)){
+    value_plan$sd_evaluator$values(samples)
+  }else{
+    .bt_JAGS_marglik_random_effect_sd_values(
+      samples = samples,
+      random_term = random_term,
+      prior_list = prior_list
+    )
+  }
   if(structure %in% c("diag", "id")){
     contribution <- .bt_random_effect_independent_contribution_from_latent(
       random_term = random_term,
@@ -880,91 +899,108 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
                                                                   parameters = NULL,
   context = "Bridge-sampling reconstruction"){
 
+  evaluator <- .bt_JAGS_bridge_compile_row_source_evaluator(
+    random_term = random_term,
+    n_rows = n_rows,
+    context = context
+  )
+  evaluator(posterior = posterior, data = data, parameters = parameters)
+}
+
+.bt_JAGS_bridge_compile_row_source_evaluator <- function(
+    random_term, n_rows, context = "Bridge-sampling reconstruction"){
+
   source <- .bt_random_effect_row_indexed_source(random_term)
   source_parameter <- source$source
   source_label <- .bt_random_sd_source_label(source)
   source_names <- .bt_parameter_source_row_names(source_parameter, n_rows)
   values_function <- .bt_parameter_source_values_function(source_parameter)
+  force(context)
   if(is.null(values_function)){
-    return(.bt_random_effect_row_indexed_source_draws(
-      random_term = random_term,
-      n_rows = n_rows,
-      posterior = posterior,
-      data = data,
-      parameters = parameters,
-      context = context
-    ))
-  }
-  present <- intersect(source_names, colnames(posterior))
-  if(length(present) > 0L){
-    stop(
-      context, " for source '", source_label,
-      "' is ambiguous: the source provides a values function and the posterior ",
-      "also contains sampled row-source column(s): ",
-      paste0("'", present[seq_len(min(3L, length(present)))], "'",
-             collapse = ", "),
-      if(length(present) > 3L) ", ..." else "",
-      ". Use one row-source reconstruction path only.",
-      call. = FALSE
-    )
-  }
-  if(!is.matrix(posterior)){
-    stop("'posterior' must be a matrix.", call. = FALSE)
-  }
-  check_int(n_rows, "n_rows", lower = 1, allow_NA = FALSE)
+    return(function(posterior, data = NULL, parameters = NULL){
 
-  out <- matrix(NA_real_, nrow = nrow(posterior), ncol = n_rows)
-  for(draw in seq_len(nrow(posterior))){
-    draw_parameters <- .bt_JAGS_marglik_row_indexed_source_parameters(
-      posterior = posterior,
-      draw = draw,
-      parameters = parameters
-    )
-    draw_parameters <- .bt_parameter_source_guard_parameters(
-      draw_parameters,
-      source_parameter
-    )
-    values <- tryCatch(
-      values_function(
-        parameters = draw_parameters,
+      .bt_random_effect_row_indexed_source_draws(
+        random_term = random_term,
+        n_rows = n_rows,
+        posterior = posterior,
         data = data,
-        n_rows = n_rows
-      ),
-      error = function(e)e
-    )
-    if(inherits(values, "error")){
-      stop(
-        context, " for source '", source_label,
-        "' failed: ", conditionMessage(values),
-        call. = FALSE
+        parameters = parameters,
+        context = context
       )
-    }
-    if(!is.numeric(values)){
-      stop(
-        context, " for source '", source_label,
-        "' must return a numeric vector.",
-        call. = FALSE
-      )
-    }
-    values <- as.numeric(values)
-    if(length(values) != n_rows){
-      stop(
-        context, " for source '", source_label,
-        "' must return a numeric vector of length ", n_rows, ".",
-        call. = FALSE
-      )
-    }
-    if(anyNA(values)){
-      .bt_JAGS_marglik_out_of_support(
-        context, " for source '", source_label,
-        "' returned missing values."
-      )
-    }
-    out[draw, ] <- values
+    })
   }
 
-  colnames(out) <- source_names
-  out
+  function(posterior, data = NULL, parameters = NULL){
+
+    present <- intersect(source_names, colnames(posterior))
+    if(length(present) > 0L){
+      stop(
+        context, " for source '", source_label,
+        "' is ambiguous: the source provides a values function and the posterior ",
+        "also contains sampled row-source column(s): ",
+        paste0("'", present[seq_len(min(3L, length(present)))], "'",
+               collapse = ", "),
+        if(length(present) > 3L) ", ..." else "",
+        ". Use one row-source reconstruction path only.",
+        call. = FALSE
+      )
+    }
+    if(!is.matrix(posterior)){
+      stop("'posterior' must be a matrix.", call. = FALSE)
+    }
+    out <- matrix(NA_real_, nrow = nrow(posterior), ncol = n_rows)
+    for(draw in seq_len(nrow(posterior))){
+      draw_parameters <- .bt_JAGS_marglik_row_indexed_source_parameters(
+        posterior = posterior,
+        draw = draw,
+        parameters = parameters
+      )
+      draw_parameters <- .bt_parameter_source_guard_parameters(
+        draw_parameters,
+        source_parameter
+      )
+      values <- tryCatch(
+        values_function(
+          parameters = draw_parameters,
+          data = data,
+          n_rows = n_rows
+        ),
+        error = function(e)e
+      )
+      if(inherits(values, "error")){
+        stop(
+          context, " for source '", source_label,
+          "' failed: ", conditionMessage(values),
+          call. = FALSE
+        )
+      }
+      if(!is.numeric(values)){
+        stop(
+          context, " for source '", source_label,
+          "' must return a numeric vector.",
+          call. = FALSE
+        )
+      }
+      values <- as.numeric(values)
+      if(length(values) != n_rows){
+        stop(
+          context, " for source '", source_label,
+          "' must return a numeric vector of length ", n_rows, ".",
+          call. = FALSE
+        )
+      }
+      if(anyNA(values)){
+        .bt_JAGS_marglik_out_of_support(
+          context, " for source '", source_label,
+          "' returned missing values."
+        )
+      }
+      out[draw, ] <- values
+    }
+
+    colnames(out) <- source_names
+    out
+  }
 }
 
 .bt_JAGS_marglik_row_indexed_source_parameters <- function(posterior,

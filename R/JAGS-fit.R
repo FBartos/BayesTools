@@ -71,7 +71,10 @@
 #' monitored but were not specified in the \code{prior_list}
 #' @param required_packages character vector specifying list of packages containing
 #' JAGS models required for sampling (in case that the function is run in parallel or in
-#' detached R session). Defaults to \code{NULL}.
+#' detached R session). Defaults to \code{NULL}. Parallel workers must load
+#' the same versions and native library builds as the parent session. When
+#' developing packages with \code{load_all()}, install matching builds into
+#' a library and set \code{R_LIBS_USER} before starting R and its workers.
 #' @param jags_modules character vector specifying JAGS modules required by the
 #' generated model syntax. Defaults to \code{NULL}.
 #' @param fit a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be

@@ -60,7 +60,10 @@
         parameter = parameter,
         design = design,
         formula_prior_list = parameter_prior_list,
-        source_data = source_data
+        source_data = source_data,
+        value_plans = lapply(.bt_formula_design_sampled_random_effects(design),
+          .bt_JAGS_bridge_compile_random_value_plan,
+          prior_list = parameter_prior_list)
       )
     }
 
@@ -105,13 +108,44 @@
               design = random_plan$design,
               formula_prior_list = random_plan$formula_prior_list,
               data = random_plan$source_data,
-              parameters = source_parameters
+              parameters = source_parameters,
+              value_plans = random_plan$value_plans
             )
         }
       }
 
       parameters
     }
+  )
+}
+
+.bt_JAGS_bridge_compile_random_value_plan <- function(random_term, prior_list){
+
+  if(.bt_random_effect_has_row_indexed_external_sd(random_term) ||
+     inherits(random_term$latent_layout,
+              "BayesTools_random_effect_structured_local_layout")){
+    return(NULL)
+  }
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Bridge-sampling random-effect metadata"
+  )
+  if(random_term$n_columns > 1L &&
+     structure %in% c("cs", "hcs", "ar1", "car", "har")){
+    return(NULL)
+  }
+  sd_evaluator <- .bt_JAGS_bridge_compile_random_sd_evaluator(random_term, prior_list)
+  if(is.null(sd_evaluator)){
+    return(NULL)
+  }
+  list(
+    structure = structure,
+    sd_evaluator = sd_evaluator,
+    latent_names = .bt_random_effect_latent_names(
+      random_term = random_term,
+      n_groups = random_term$n_groups,
+      n_columns = random_term$n_columns
+    )
   )
 }
 

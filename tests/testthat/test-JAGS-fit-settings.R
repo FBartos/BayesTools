@@ -1,5 +1,39 @@
 skip_if_not_test_profile("unit")
 
+test_that("parallel JAGS checks the actual workers' package builds", {
+
+  native <- getLoadedDLLs()[["BayesTools"]][["path"]]
+  expect_identical(
+    unname(.JAGS_package_builds("BayesTools")$BayesTools$dll),
+    unname(tools::md5sum(native))
+  )
+  expected <- .JAGS_package_builds("stats")
+  actual <- expected
+  testthat::local_mocked_bindings(
+    clusterCall = function(cl, fun, packages) list(actual, actual),
+    .package = "parallel"
+  )
+  expect_identical(unname(.JAGS_require_packages("stats", cl = list())), TRUE)
+  message <- paste0(
+    "Parallel JAGS fitting is unavailable with mismatched package versions, R code, or native builds: 'stats'. ",
+    "Install the parent-session builds into a library and set 'R_LIBS_USER' ",
+    "to that library before starting R and its workers."
+  )
+  actual$stats$version <- "0.0.0"
+  expect_error(.JAGS_require_packages("stats", cl = list()), message, fixed = TRUE)
+  actual <- expected
+  actual$stats$dll[] <- "different-build"
+  expect_error(.JAGS_require_packages("stats", cl = list()), message, fixed = TRUE)
+  actual <- expected
+  actual$stats$r_code <- "different-code"
+  expect_error(.JAGS_require_packages("stats", cl = list()), message, fixed = TRUE)
+  actual$stats <- NULL
+  expect_error(
+    .JAGS_require_packages("stats", cl = list()),
+    "Required packages are not available: 'stats'.", fixed = TRUE
+  )
+})
+
 test_that("JAGS fit settings reject missing and non-finite controls", {
   valid <- list(
     chains = 1,
@@ -265,6 +299,18 @@ test_that("JAGS_fit autofit preserves the last valid fit after a backend error",
     attr(result, "warnings"),
     "The model extension failed; returning the last valid fit. Backend error: backend exploded"
   )
+})
+
+test_that("JAGS build checks fingerprint loaded R definitions", {
+
+  original <- .JAGS_package_builds("stats")$stats
+  sd <- stats::sd
+  body(sd) <- quote(stop("modified implementation"))
+  testthat::local_mocked_bindings(sd = sd, .package = "stats")
+  changed <- .JAGS_package_builds("stats")$stats
+  expect_identical(changed$version, original$version)
+  expect_identical(changed$dll, original$dll)
+  expect_false(identical(changed$r_code, original$r_code))
 })
 
 test_that("JAGS_fit records backend errors recovered by a restart", {

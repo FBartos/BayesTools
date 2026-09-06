@@ -4861,12 +4861,20 @@ test_that("JAGS bridgesampling validates rebuilt formula random design metadata"
   fitted <- list(mu = fixture$result$formula_design)
   rebuilt <- list(mu = fixture$result$formula_design)
 
-  expect_silent(BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, rebuilt))
+  expect_silent(BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = fitted[["mu"]],
+      rebuilt = rebuilt[["mu"]]
+    ))
 
   changed <- rebuilt
   changed$mu$random_effects[[1]]$structure <- "diag"
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = fitted[["mu"]],
+      rebuilt = changed[["mu"]]
+    ),
     "covariance structure",
     fixed = TRUE
   )
@@ -4875,28 +4883,44 @@ test_that("JAGS bridgesampling validates rebuilt formula random design metadata"
   changed$mu$random_effects[[1]]$structure <- NULL
   changed$mu$random_effects[[1]]$covariance <- "us"
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = fitted[["mu"]],
+      rebuilt = changed[["mu"]]
+    ),
     "missing canonical 'random_term\\$structure'"
   )
 
   changed <- rebuilt
   changed$mu$random_effects[[1]]$homogeneous_sd <- NULL
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = fitted[["mu"]],
+      rebuilt = changed[["mu"]]
+    ),
     "missing canonical 'random_term\\$homogeneous_sd'"
   )
 
   changed <- rebuilt
   changed$mu$random_effects[[1]]$correlation <- NULL
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = fitted[["mu"]],
+      rebuilt = changed[["mu"]]
+    ),
     "missing canonical 'random_term\\$correlation'"
   )
 
   changed <- rebuilt
   changed$mu$random_effects[[1]]$block_name <- "other"
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = fitted[["mu"]],
+      rebuilt = changed[["mu"]]
+    ),
     "block names",
     fixed = TRUE
   )
@@ -4904,7 +4928,11 @@ test_that("JAGS bridgesampling validates rebuilt formula random design metadata"
   changed <- rebuilt
   changed$mu$random_effects[[1]]$group_levels <- rev(changed$mu$random_effects[[1]]$group_levels)
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = fitted[["mu"]],
+      rebuilt = changed[["mu"]]
+    ),
     "group levels",
     fixed = TRUE
   )
@@ -4912,7 +4940,11 @@ test_that("JAGS bridgesampling validates rebuilt formula random design metadata"
   changed <- rebuilt
   changed$mu$random_effects[[1]]$column_names[1] <- "changed"
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = fitted[["mu"]],
+      rebuilt = changed[["mu"]]
+    ),
     "column names",
     fixed = TRUE
   )
@@ -4920,7 +4952,11 @@ test_that("JAGS bridgesampling validates rebuilt formula random design metadata"
   changed <- rebuilt
   changed$mu$random_effects[[1]]$n_columns <- changed$mu$random_effects[[1]]$n_columns + 1L
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = fitted[["mu"]],
+      rebuilt = changed[["mu"]]
+    ),
     "group or column counts",
     fixed = TRUE
   )
@@ -4928,7 +4964,11 @@ test_that("JAGS bridgesampling validates rebuilt formula random design metadata"
   changed <- rebuilt
   changed$mu$random_effects[[1]]$model_matrix <- changed$mu$random_effects[[1]]$model_matrix[-1, , drop = FALSE]
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = fitted[["mu"]],
+      rebuilt = changed[["mu"]]
+    ),
     "model matrix shape or columns",
     fixed = TRUE
   )
@@ -4936,7 +4976,11 @@ test_that("JAGS bridgesampling validates rebuilt formula random design metadata"
   changed <- rebuilt
   changed$mu$random_effects[[1]]$group_map <- rev(changed$mu$random_effects[[1]]$group_map)
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = fitted[["mu"]],
+      rebuilt = changed[["mu"]]
+    ),
     "group map",
     fixed = TRUE
   )
@@ -4958,9 +5002,10 @@ test_that("JAGS bridgesampling validates rebuilt formula random design metadata"
   structured_changed <- structured_fitted
   structured_changed$mu$random_effects[[1]]$structured_index$label <- "changed"
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(
-      structured_fitted,
-      structured_changed
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = structured_fitted[["mu"]],
+      rebuilt = structured_changed[["mu"]]
     ),
     "structured random-effect index metadata",
     fixed = TRUE
@@ -4995,9 +5040,10 @@ test_that("JAGS bridgesampling validates rebuilt formula random design metadata"
     )
   )
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(
-      list(mu = allocation_fixture$result$formula_design),
-      list(mu = independent_fixture$result$formula_design)
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = allocation_fixture$result$formula_design,
+      rebuilt = independent_fixture$result$formula_design
     ),
     "scale/allocation",
     fixed = TRUE

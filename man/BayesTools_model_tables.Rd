@@ -269,6 +269,8 @@ tables. \code{"standard"} replaces raw implementation parameters with the
 semantic quantities corresponding to the fitted prior parameterization:
 directly specified block scales, correlations, inclusion probabilities,
 allocation aggregate SDs, and variance proportions or multipliers.
+Inclusion indicators do not add allocation-derived component SDs to this
+standard set.
 \code{"full"} additionally includes deterministic representations such as
 aggregate variances, allocation-derived component SDs, and alternate SD or
 variance multipliers.

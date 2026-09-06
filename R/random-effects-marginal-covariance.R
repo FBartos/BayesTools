@@ -394,7 +394,7 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
   if(!is.null(cache) && !is.environment(cache)){
     stop("'cache' must be NULL or an environment.", call. = FALSE)
   }
-  components <- .bt_random_effect_marginal_diagonal_factor_input(factors)
+  components <- .bt_random_effect_marginal_factor_input(factors)
   plan <- NULL
   if(is.environment(cache) && is.environment(components$contract_id)){
     process_id <- Sys.getpid()
@@ -460,8 +460,7 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
   }
   names(plans) <- plan_names
 
-  for(draw in seq_len(n_draws)){
-    draw_states <- states[[draw]]
+  states <- lapply(states, function(draw_states){
     if(!is.list(draw_states) || length(draw_states) != length(plans)){
       stop("Random-effect marginal factor states are inconsistent.",
            call. = FALSE)
@@ -469,31 +468,44 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
     if(!is.null(names(draw_states))){
       draw_states <- draw_states[plan_names]
     }
-    geometries <- lapply(seq_along(plans), function(block){
+    draw_states
+  })
+
+  # Structural row/column assignments are shared by all draws. Materialize
+  # each coefficient basis once, then scatter whole draw columns rather than
+  # repeating the block and component loops for every posterior candidate.
+  for(factor_index in seq_along(plans)){
+    factor_plan <- plans[[factor_index]]
+    basis_size  <- n_rows * ncol(factor_plan$model_matrix)
+    basis <- vapply(states, function(draw_states){
       .bt_random_effect_marginal_factor_block_geometry(
-        plan   = plans[[block]],
-        state  = draw_states[[block]],
+        plan   = factor_plan,
+        state  = draw_states[[factor_index]],
         n_rows = n_rows,
-        block  = plan_names[[block]]
-      )
-    })
+        block  = plan_names[[factor_index]]
+      )$basis
+    }, numeric(basis_size))
+    dim(basis) <- c(basis_size, n_draws)
 
     for(block_index in seq_along(plan$blocks)){
       block <- plan$blocks[[block_index]]
       for(component in block$diagonal){
-        value <- geometries[[component$factor_index]]$basis[
-          component$row,
-          component$column
-        ]
-        diagonal[draw, component$row] <-
-          diagonal[draw, component$row] + value^2
+        if(component$factor_index != factor_index){
+          next
+        }
+        index <- component$row + n_rows * (component$column - 1L)
+        diagonal[, component$row] <-
+          diagonal[, component$row] + basis[index, ]^2
       }
       for(loading_index in seq_along(block$loadings)){
         component <- block$loadings[[loading_index]]
-        geometry  <- geometries[[component$factor_index]]
+        if(component$factor_index != factor_index){
+          next
+        }
         local_rows <- match(component$rows, block$rows)
-        loadings[[block_index]][draw, local_rows, loading_index] <-
-          geometry$basis[component$rows, component$column]
+        index <- component$rows + n_rows * (component$column - 1L)
+        loadings[[block_index]][, local_rows, loading_index] <-
+          t(basis[index, , drop = FALSE])
       }
     }
   }
@@ -516,8 +528,56 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
 }
 
 
+#' Materialize random-effect marginal covariance factors
+#'
+#' @description
+#' Constructs dense covariance draws from compiled factor states, using the
+#' same group, row-scale, and coefficient-factor geometry as the diagonal and
+#' matrix-product helpers. Prefer those helpers when full covariance is not
+#' required by the consuming likelihood.
+#'
+#' @param factors See [random_effects_marginal_diagonal_factor()].
+#'
+#' @return A numeric array with dimensions `draw x row x row`.
+#' @seealso [random_effects_marginal_factor_diagonal()]
+#'   [random_effects_marginal_factor_product()]
+#' @export
+random_effects_marginal_factor_vcov <- function(factors){
+
+  components <- .bt_random_effect_marginal_factor_input(factors)
+  n_rows <- components$n_rows
+  plans  <- components$plans
+  out <- array(0, dim = c(components$n_draws, n_rows, n_rows))
+  for(draw in seq_len(components$n_draws)){
+    states <- components$states[[draw]]
+    if(!is.list(states) || length(states) != length(plans)){
+      stop("Random-effect marginal factor states are inconsistent.",
+           call. = FALSE)
+    }
+    if(!is.null(names(states)) && !is.null(names(plans))){
+      states <- states[names(plans)]
+    }
+    for(block in seq_along(plans)){
+      geometry <- .bt_random_effect_marginal_factor_block_geometry(
+        plan = plans[[block]], state = states[[block]],
+        n_rows = n_rows, block = block
+      )
+      group_map <- geometry$group_map
+      group_covariance <- if(identical(geometry$type, "known_group")){
+        geometry$group_covariance[group_map, group_map, drop = FALSE]
+      }else{
+        outer(group_map, group_map, "==")
+      }
+      out[draw, , ] <- out[draw, , ] +
+        tcrossprod(geometry$basis) * group_covariance
+    }
+  }
+  out
+}
+
+
 # Normalize the two supported public and bridge factor-state containers.
-.bt_random_effect_marginal_diagonal_factor_input <- function(factors){
+.bt_random_effect_marginal_factor_input <- function(factors){
 
   if(inherits(
       factors,

@@ -670,9 +670,19 @@
     }
     random_terms <- .bt_formula_design_random_effects(design)
     term_plans <- lapply(random_terms, function(random_term){
+      row_indexed <- .bt_random_effect_has_row_indexed_external_sd(random_term)
       list(
         random_term = random_term,
-        row_indexed = .bt_random_effect_has_row_indexed_external_sd(random_term),
+        row_indexed = row_indexed,
+        row_source_evaluator = if(row_indexed){
+          .bt_JAGS_bridge_compile_row_source_evaluator(
+            random_term = random_term,
+            n_rows = nrow(random_term$model_matrix),
+            context = "Bridge context"
+          )
+        }else{
+          NULL
+        },
         allocation_parameters =
           .bt_JAGS_marglik_random_effect_allocation_parameters(random_term),
         sd_evaluator = .bt_JAGS_bridge_compile_random_sd_evaluator(
@@ -743,6 +753,7 @@
               parameters = parameter_sources,
               posterior = posterior,
               row_indexed = term_plan$row_indexed,
+              row_source_evaluator = term_plan$row_source_evaluator,
               allocation_parameters = term_plan$allocation_parameters,
               sd_evaluator = term_plan$sd_evaluator
             )
@@ -775,6 +786,7 @@
             parameters = parameter_sources,
             posterior = posterior,
             row_indexed = term_plan$row_indexed,
+            row_source_evaluator = term_plan$row_source_evaluator,
             sd_evaluator = term_plan$sd_evaluator
           )
           nodes <- .bt_JAGS_bridge_merge_nodes(nodes, block$nodes)
@@ -1385,7 +1397,8 @@
                                                  posterior = NULL,
                                                  row_indexed = NULL,
                                                  allocation_parameters = NULL,
-                                                 sd_evaluator = NULL){
+                                                 sd_evaluator = NULL,
+                                                 row_source_evaluator = NULL){
 
   if(is.null(posterior)){
     posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
@@ -1495,14 +1508,18 @@
     row_indexed <- .bt_random_effect_has_row_indexed_external_sd(random_term)
   }
   if(isTRUE(row_indexed)){
-    source_draws <- .bt_JAGS_marglik_row_indexed_external_sd_source_draws(
-      random_term = random_term,
-      n_rows = nrow(random_term$model_matrix),
-      posterior = posterior,
-      data = data,
-      parameters = parameters,
-      context = "Bridge context"
-    )
+    source_draws <- if(is.null(row_source_evaluator)) {
+      .bt_JAGS_marglik_row_indexed_external_sd_source_draws(
+        random_term = random_term,
+        n_rows = nrow(random_term$model_matrix),
+        posterior = posterior,
+        data = data,
+        parameters = parameters,
+        context = "Bridge context"
+      )
+    } else {
+      row_source_evaluator(posterior, data = data, parameters = parameters)
+    }
     out$scale$type <- "row_indexed"
     out$scale$row_sd_source <- unname(source_draws[1L, ])
     names(out$scale$row_sd_source) <- colnames(source_draws)
@@ -1564,7 +1581,8 @@
     parameters,
     posterior = NULL,
     row_indexed = NULL,
-    sd_evaluator = NULL){
+    sd_evaluator = NULL,
+    row_source_evaluator = NULL){
 
   if(is.null(posterior)){
     posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
@@ -1574,14 +1592,18 @@
     row_indexed <- .bt_random_effect_has_row_indexed_external_sd(random_term)
   }
   if(isTRUE(row_indexed)){
-    source_draws <- .bt_JAGS_marglik_row_indexed_external_sd_source_draws(
-      random_term = random_term,
-      n_rows = nrow(random_term$model_matrix),
-      posterior = posterior,
-      data = data,
-      parameters = parameters,
-      context = "Bridge context"
-    )
+    source_draws <- if(is.null(row_source_evaluator)) {
+      .bt_JAGS_marglik_row_indexed_external_sd_source_draws(
+        random_term = random_term,
+        n_rows = nrow(random_term$model_matrix),
+        posterior = posterior,
+        data = data,
+        parameters = parameters,
+        context = "Bridge context"
+      )
+    } else {
+      row_source_evaluator(posterior, data = data, parameters = parameters)
+    }
     nodes <- unname(source_draws[1L, ])
     names(nodes) <- colnames(source_draws)
   }else{

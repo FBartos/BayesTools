@@ -1,5 +1,15 @@
 # version 0.3.1
 ### Fixes
+- keeps allocation-derived component SDs in full summaries, consistently for
+  models with and without random-effect inclusion indicators
+- batches random-effect diagonal/factor covariance reconstruction across
+  posterior draws, avoiding repeated draw-by-draw allocation and loading
+  assembly in downstream likelihood and conditional-density calculations
+- checks required package versions, loaded R function definitions, and native
+  builds on the actual parallel JAGS workers before fitting or extending chains
+- exposes structural random-effect row dependencies and dense factor-state
+  covariance reconstruction for downstream likelihoods, using the shared
+  compiled grouping and factor geometry
 - permits a sole hidden variance-allocation component to omit a redundant
   public component argument, and avoids re-reading a child allocation's
   Dirichlet weights when only an already-applied parent gate affects its total
@@ -25,6 +35,14 @@
   of accepting nearby values under a numerical-comparison tolerance
 
 ### Performance
+- reuses compiled SD and latent-coordinate metadata while reconstructing
+  sampled random-coefficient formulas for bridge sampling, retaining generic
+  reconstruction for row-shaped and structured-index effects
+- evaluates independent factor-prior densities in one vectorized call during
+  bridge sampling, sharing the scalar density evaluator and retaining point,
+  truncation, and inverse-gamma support semantics
+- compiles row-shaped external SD source metadata once for bridge contexts,
+  retaining per-draw value, ambiguity, and formula-dependency checks
 - samples two-bin cumulative weight-function priors through their exact Beta
   marginal, removing the non-identifiable auxiliary Gamma scale and one
   likelihood-updating JAGS coordinate while using the same reduced coordinate

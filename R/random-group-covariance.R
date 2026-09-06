@@ -1,5 +1,77 @@
 # Known group-level covariance kernels for formula random effects.
 
+#' Structural row dependencies of formula random effects
+#'
+#' @description
+#' Returns conservative row adjacency implied by compiled random-effect group
+#' maps and known group covariance. This is independent of posterior draws and
+#' compile mode. Rows sharing a group remain connected even when a particular
+#' design coefficient or sampled covariance is zero. Downstream likelihoods can
+#' combine this matrix with their sampling dependencies before partitioning rows.
+#'
+#' @param random_effects Compiled `random_effects` terms from a
+#'   `BayesTools_formula_design`, or the `metadata$blocks` returned by
+#'   [random_effects_marginal_vcov()] for prediction rows.
+#' @param n_rows Number of observation rows.
+#' @param blocks Optional character vector of block names to include. `NULL`
+#'   includes every block; `character()` includes none.
+#'
+#' @return A symmetric logical `n_rows` by `n_rows` matrix with a true diagonal.
+#' @export
+random_effects_dependency_matrix <- function(random_effects, n_rows,
+                                             blocks = NULL){
+
+  check_list(random_effects, "random_effects", allow_NULL = TRUE)
+  check_int(n_rows, "n_rows", lower = 1L, check_length = 1L, allow_NA = FALSE)
+  check_char(blocks, "blocks", check_length = 0, allow_NULL = TRUE,
+             allow_NA = FALSE)
+  block_names <- vapply(random_effects, function(term){
+    name <- term$block_name
+    if(!is.character(name) || length(name) != 1L || is.na(name) || !nzchar(name)){
+      stop("Random-effect block names must be non-empty and unique.",
+           call. = FALSE)
+    }
+    name
+  }, character(1))
+  if(anyDuplicated(block_names)){
+    stop("Random-effect block names must be non-empty and unique.",
+         call. = FALSE)
+  }
+  if(!is.null(blocks)){
+    if(anyDuplicated(blocks) || any(!blocks %in% block_names)){
+      stop("Requested random-effect dependency blocks must be unique existing block names.",
+           call. = FALSE)
+    }
+    random_effects <- random_effects[block_names %in% blocks]
+  }
+
+  adjacency <- diag(TRUE, n_rows)
+  for(term in random_effects){
+    group_map <- term$group_map
+    if(!is.numeric(group_map) || length(group_map) != n_rows ||
+       anyNA(group_map) || any(!is.finite(group_map)) ||
+       any(group_map < 1L) || any(group_map != as.integer(group_map))){
+      stop("Random-effect grouping metadata are invalid for dependency construction.",
+           call. = FALSE)
+    }
+    if(.bt_random_effect_has_known_group_covariance(term)){
+      kernel <- .bt_random_effect_known_group_covariance(
+        term, context = "Random-effect dependencies"
+      )$kernel
+      if(!is.matrix(kernel) || !is.numeric(kernel) ||
+         nrow(kernel) != ncol(kernel) || any(!is.finite(kernel)) ||
+         any(kernel != t(kernel)) || any(group_map > nrow(kernel))){
+        stop("Known random-effect group covariance is invalid for dependency construction.",
+             call. = FALSE)
+      }
+      adjacency <- adjacency | kernel[group_map, group_map, drop = FALSE] != 0
+    }else{
+      adjacency <- adjacency | outer(group_map, group_map, "==")
+    }
+  }
+  unname(adjacency)
+}
+
 #' Known group covariance for random effects
 #'
 #' @description

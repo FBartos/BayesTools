@@ -431,6 +431,22 @@ test_that("gated total-variance summaries use realized totals and proportions", 
     mean(c(0, 1, .75)),
     tolerance = 1e-12
   )
+  component_names <- c("(mu) study: sd(intercept)", "(mu) drug: sd(intercept)")
+  expect_false(any(component_names %in% rownames(estimates)))
+  full <- JAGS_estimates_table(
+    fit,
+    random_effects_summary = "full",
+    remove_diagnostics = TRUE
+  )
+  expect_equal(full[component_names, "Mean"], c(.5, sqrt(3) / 2),
+               tolerance = 1e-12)
+  conditional <- JAGS_estimates_table(
+    fit,
+    conditional = TRUE,
+    random_effects_summary = "standard",
+    remove_diagnostics = TRUE
+  )
+  expect_false(any(component_names %in% rownames(conditional)))
 })
 
 

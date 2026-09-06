@@ -571,9 +571,10 @@ test_that("bridge rebuild validation preserves compile policy", {
   )
   all_sampled <- .re_compile_result()
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(
-      list(mu = result$formula_design),
-      list(mu = all_sampled$formula_design)
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = result$formula_design,
+      rebuilt = all_sampled$formula_design
     ),
     "compile metadata",
     fixed = TRUE

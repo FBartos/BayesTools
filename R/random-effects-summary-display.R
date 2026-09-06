@@ -433,18 +433,11 @@
   allocation_derived <- vapply(quantities$extraction_key, function(key){
     isTRUE(key$allocation_derived)
   }, logical(1))
-  gated_allocation <- vapply(quantities$extraction_key, function(key){
-    dependencies <- key$dependencies
-    is.character(dependencies) && any(grepl(
-      "__include_.*_indicator$",
-      dependencies
-    ))
-  }, logical(1))
   correlation <- quantities$quantity == "cor"
   inclusion   <- quantities$quantity == "inclusion"
   block_scale <- quantities$owner_type == "random_block" &
     quantities$quantity == "sd" &
-    (!allocation_derived | gated_allocation)
+    !allocation_derived
   allocation <- quantities$owner_type == "variance_allocation" &
     quantities$quantity %in% c(
       "sd_total", "sd_common", "var_prop", "var_mult", "inclusion"

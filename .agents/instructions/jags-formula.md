@@ -59,7 +59,7 @@ Fitted-parameter metadata has one authoritative, versioned
 
 Build and attach all three atomically through `R/aaa-parameter-map.R`; the
 coordinate and semantic compilers remain pure stages in
-`R/JAGS-parameter-registry.R` and `R/JAGS-parameter-catalog.R`.
+`R/JAGS-parameter-coordinates.R` and `R/JAGS-parameter-catalog.R`.
 `parameter_coordinates()` and `parameter_catalog()` are views over the same
 stored map. Use these accessors and `R/parameter-source.R` rather than parsing
 names.
@@ -110,7 +110,7 @@ Parentheses contain coefficient or parameter names; square brackets contain
 factor or index levels. Use public `cor`, while any compact backend `rho`
 coordinate remains internal. Total-variance allocations expose `sd_total`,
 `var_total`, and `var_prop(...)`; mean-variance allocations expose `sd_common`,
-`var_common`, `var_ratio(...)`, and `sd_ratio(...)`.
+`var_common`, `var_mult(...)`, and `sd_mult(...)`.
 
 A bare random formula or unnamed one-entry formula list suppresses a redundant
 top-level component prefix. An explicitly named one-entry list retains its

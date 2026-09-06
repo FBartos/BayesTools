@@ -1388,7 +1388,7 @@ test_that("marginal bridge covariance reuses natural allocation parameters", {
   )
 })
 
-test_that("random allocation draws use auxiliaries without repairing weights", {
+test_that("random allocation draws honor coordinate precedence without repairing weights", {
 
   parameter <- "allocation_weight"
   prior_list <- stats::setNames(
@@ -1411,6 +1411,15 @@ test_that("random allocation draws use auxiliaries without repairing weights", {
       parameter_name = parameter,
       posterior      = posterior,
       prior_list     = prior_list
+    )),
+    matrix(c(.9, .1), nrow = 1L)
+  )
+  expect_identical(
+    unname(.bt_random_effect_dirichlet_draws(
+      parameter_name = parameter,
+      posterior      = posterior,
+      prior_list     = prior_list,
+      prefer_weights = FALSE
     )),
     matrix(c(.25, .75), nrow = 1L)
   )

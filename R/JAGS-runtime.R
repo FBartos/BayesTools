@@ -5,17 +5,26 @@
 
   required_packages <- unique(required_packages)
 
-  if(is.null(cl)){
-    package_loaded <- vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
+  builds <- if(is.null(cl)){
+    stats::setNames(lapply(required_packages, function(package){
+      if(requireNamespace(package, quietly = TRUE)) TRUE else NULL
+    }), required_packages)
   }else{
-    package_loaded <- vapply(required_packages, function(package){
-      all(unlist(parallel::clusterCall(
-        cl,
-        function(package) requireNamespace(package, quietly = TRUE),
-        package
-      ), use.names = FALSE))
-    }, logical(1))
+    .JAGS_package_builds(required_packages)
   }
+  workers <- if(is.null(cl)){
+    list()
+  }else{
+    # Send a self-contained probe: a worker may have an older BayesTools loaded.
+    probe <- .JAGS_package_builds
+    environment(probe) <- baseenv()
+    parallel::clusterCall(cl, probe, required_packages)
+  }
+  package_loaded <- vapply(required_packages, function(package){
+    !is.null(builds[[package]]) && all(vapply(workers, function(worker){
+      !is.null(worker[[package]])
+    }, logical(1)))
+  }, logical(1))
 
   missing_packages <- names(package_loaded)[!package_loaded]
   if(length(missing_packages) > 0)
@@ -28,7 +37,65 @@
       call. = FALSE
     )
 
+  mismatched <- required_packages[vapply(required_packages, function(package){
+    any(vapply(workers, function(worker){
+      !identical(worker[[package]], builds[[package]])
+    }, logical(1)))
+  }, logical(1))]
+  if(length(mismatched) > 0L){
+    stop(
+      "Parallel JAGS fitting is unavailable with mismatched package versions, R code, or native builds: '",
+      paste(mismatched, collapse = "', '"),
+      "'. Install the parent-session builds into a library and set 'R_LIBS_USER' ",
+      "to that library before starting R and its workers.",
+      call. = FALSE
+    )
+  }
+
   invisible(package_loaded)
+}
+
+.JAGS_package_builds <- function(packages){
+
+  out <- lapply(packages, function(package){
+    if(!requireNamespace(package, quietly = TRUE)){
+      return(NULL)
+    }
+    # JAGS modules may load a package DLL before its namespace loader does.
+    dlls <- getLoadedDLLs()
+    paths <- vapply(dlls, function(dll) dll[["path"]], character(1))
+    # Development tools also register in-memory entries without a DLL file.
+    paths <- paths[file.exists(paths)]
+    package_path <- normalizePath(
+      getNamespaceInfo(package, "path"), winslash = "/"
+    )
+    normalized_paths <- normalizePath(paths, winslash = "/")
+    paths <- paths[names(paths) == package |
+      startsWith(normalized_paths, paste0(package_path, "/libs/")) |
+      startsWith(normalized_paths, paste0(package_path, "/src/"))]
+    # Compare loaded definitions, not source files or lazy-load databases: the
+    # latter differ between load_all() and an equivalent installed package.
+    namespace <- asNamespace(package)
+    functions <- Filter(function(value){
+      is.function(value) && identical(environment(value), namespace)
+    }, as.list(namespace, all.names = TRUE))
+    functions <- functions[sort(names(functions), method = "radix")]
+    definitions <- vapply(functions, function(value){
+      paste(deparse(value, width.cutoff = 500L,
+                    control = c("keepNA", "keepInteger", "niceNames")),
+            collapse = "\n")
+    }, character(1))
+    code_file <- tempfile("JAGS-package-code-")
+    on.exit(unlink(code_file), add = TRUE)
+    saveRDS(definitions, code_file, version = 2L, compress = FALSE)
+    list(
+      version = as.character(utils::packageVersion(package)),
+      r_code = unname(tools::md5sum(code_file)),
+      dll = stats::setNames(unname(tools::md5sum(paths)), names(paths))
+    )
+  })
+  names(out) <- packages
+  out
 }
 
 .JAGS_load_modules <- function(jags_modules, cl = NULL, warn = TRUE){

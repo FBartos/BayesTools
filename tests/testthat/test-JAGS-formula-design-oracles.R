@@ -6155,9 +6155,10 @@ test_that("external variance allocation sources generate scalar and row-indexed 
   row_child_bridge_changed_term$sd_binding$allocations[[1L]] <- row_child_bridge_changed_allocation
   row_child_bridge_changed$mu$random_effects[[1]] <- row_child_bridge_changed_term
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(
-      row_child_bridge_design,
-      row_child_bridge_changed
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = row_child_bridge_design[["mu"]],
+      rebuilt = row_child_bridge_changed[["mu"]]
     ),
     "binding$factors",
     fixed = TRUE
@@ -7261,9 +7262,10 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
   bridge_changed <- bridge_fitted
   bridge_changed$mu$random_effects[[1]]$homogeneous_sd <- NULL
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(
-      bridge_fitted,
-      bridge_changed
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = bridge_fitted[["mu"]],
+      rebuilt = bridge_changed[["mu"]]
     ),
     "missing canonical 'random_term\\$homogeneous_sd'"
   )
@@ -7271,9 +7273,10 @@ test_that("formula random-effect bridge helpers handle LKJ and scalar rho blocks
   bridge_changed <- bridge_fitted
   bridge_changed$mu$random_effects[[1]]$correlation <- NULL
   expect_error(
-    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(
-      bridge_fitted,
-      bridge_changed
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_design(
+      parameter = "mu",
+      fitted = bridge_fitted[["mu"]],
+      rebuilt = bridge_changed[["mu"]]
     ),
     "missing canonical 'random_term\\$correlation'"
   )
