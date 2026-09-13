@@ -29,6 +29,11 @@ condition.
 
 ## Formula Coordinates and Scaling
 
+Fixed-factor contrasts belong to `prior_factor()`, independently of the
+intercept. Removing the intercept specifies a structural zero intercept and
+preserves the prior-owned factor basis; it does not silently select indicator
+or treatment coding as ordinary `stats::model.matrix()` can do.
+
 Formula design metadata is authoritative for fixed and random terms. Preserve
 the distinction between fitted standardized coordinates, original-scale
 display coordinates, unit latent variables, realized group coefficients, and
@@ -97,13 +102,34 @@ Keep the parser's two random-effect families separate:
   bars default to `us()` and double bars to `diag()`. Intercept controls have
   their formula meaning, while factor bases come from stored contrast metadata;
   `random_block(contrasts = ...)` is the explicit block-level override.
+  The left side supports continuous slopes, factor slopes, and interactions;
+  `1`, `0`, and `-1` control its intercept. `id()` shares one SD across
+  independent columns, `diag()` has one SD per independent column, and `us()`
+  has one SD per column plus an unstructured correlation matrix. Reuse existing
+  fixed-factor contrasts by default when available. For example,
+  `us(0 + group | study)` with independent block contrasts has one correlated
+  coefficient per group level and no random intercept; `0 + group` alone does
+  not require level indicators.
 - `cs()` / `hcs()`, `ar1()` / `ar()` / `har()`, and `car()` own an index basis.
   They reject intercept controls and block contrast overrides. Discrete indices
   use persisted factor levels or sorted unique values; `car()` uses actual
-  finite numeric distances.
+  finite numeric distances. CS/HCS accepts one or more discrete columns,
+  combining multiple columns by their observed interaction. AR1/HAR accepts
+  exactly one discrete column. Discrete indices accept factor, character,
+  numeric/integer, or logical values. CAR accepts exactly one finite
+  numeric/integer coordinate or an ordered factor with numeric level labels.
 
 Do not treat `hcs()` as an alias for `us()`: HCS has one common pairwise
-correlation, whereas US estimates an unrestricted correlation matrix.
+correlation and level-specific SDs, whereas US estimates an unrestricted
+correlation matrix. Persist basis ownership, resolved index levels, design
+columns, and public labels for every consumer.
+
+Complete omitted correlation priors after resolving the structure and dimension:
+US/UN uses `LKJ(1)`; CS/HCS uses raw `Uniform(-1 / (K - 1), 1)`; AR1/HAR uses
+raw `Uniform(-1, 1)`; CAR uses raw `Uniform(0, 1)`. Explicit scalar priors retain
+their Fisher-z default scale. SD magnitude belongs to the outcome model:
+BayesTools must not supply a generic scale, and direct `JAGS_formula()` use
+requires an SD prior, SD source, or variance allocation.
 
 Random-effect catalog names use `(formula) owner: quantity(arguments)`.
 Parentheses contain coefficient or parameter names; square brackets contain
@@ -111,6 +137,12 @@ factor or index levels. Use public `cor`, while any compact backend `rho`
 coordinate remains internal. Total-variance allocations expose `sd_total`,
 `var_total`, and `var_prop(...)`; mean-variance allocations expose `sd_common`,
 `var_common`, `var_mult(...)`, and `sd_mult(...)`.
+
+Downstream consumers may explicitly request centrally generated simplified
+names. Simplification removes only a sole `intercept` argument and permits
+omitting an owner only when resolution remains unique; non-intercept arguments
+stay explicit. A known group covariance has a fitted `sd`/`var` kernel scale,
+not an `sd_mult`/`var_mult`.
 
 A bare random formula or unnamed one-entry formula list suppresses a redundant
 top-level component prefix. An explicitly named one-entry list retains its

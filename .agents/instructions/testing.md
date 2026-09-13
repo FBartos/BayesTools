@@ -3,6 +3,11 @@
 Use this guide for changes under `tests/testthat/`, `tools/test-profile.R`, or
 the test workflows.
 
+In BayesToolsVerse, the shared validation guide defines tests, verification,
+and scenarios. Profiles below select existing runner lanes; they do not make
+expensive fitting part of the routine development loop. Use the workspace's
+configured R and private agent library when available.
+
 ## Development Workflow
 
 Always use the LLM reporter. Prefer the profile runner, for example:
@@ -27,18 +32,11 @@ use repeated full-suite runs as an iteration loop.
   intentionally for a validated cache.
 - `all`: every profile; this is the default CI and coverage profile.
 
-Use the following verification order:
-
-- JAGS fitting, generated syntax, or marginal likelihoods: `unit`, `fit`, then
-  `fixture`; add `visual-fixture` when fitted-object plots can change.
-- Formula parsing, scaling, design matrices, contrasts, or prediction targets:
-  `unit` and `fit`; add `fixture` when cached objects or reference output can
-  change.
-- Fixture catalogs, cached fits, reference files, or fixture helpers: `unit`,
-  `fit`, and `fixture`.
-- Pure plotting: `unit` and `visual`.
-- Plotting that loads cached fits: `unit`, `fit`, and `visual-fixture`; add
-  `fixture` when tables or fixture metadata change.
+Start with relevant `unit` tests. Use `fixture` for cached-object behavior and
+`visual`/`visual-fixture` for affected plotting. Add `fit` before dependent
+profiles when a fitting change invalidates required caches; post-fit or
+plotting changes alone do not require refitting. Establish one representative
+path before expanding expensive validation.
 
 ## Test Organization and Caches
 
@@ -92,9 +90,9 @@ is available explicitly with `reporter = "llm"`.
   numerical kernels.
 - Justify tolerances from numerical or Monte Carlo error. Do not use a broad
   package-wide tolerance merely because it makes a test pass.
-- Do not update committed expected results when a test fails. Determine whether
-  the implementation or the verified expectation is wrong and involve the
-  maintainer before changing a baseline.
+- A failing expectation requires diagnosis. Generate a candidate when the
+  intended result changed; accept a verified baseline change only after
+  maintainer or explicitly delegated review.
 - Do not add redundant matrices, samples, fits, or assertions for coverage
   alone.
 - Treat Codecov misses as leads, not goals. Reduce reports to missed clusters,
@@ -108,9 +106,10 @@ Use the existing `vdiffr::expect_doppelganger()` pattern and the relevant
 visual profile. Structural plot-data tests supplement visual snapshots; they do
 not replace them.
 
-Never auto-accept or auto-update snapshots. Ask the maintainer to review every
-intentional visual change. Keep stochastic plot inputs deterministic so a
-snapshot represents rendering behavior rather than random draws.
+Retain candidates for review; accept intentional visual changes only after
+maintainer or explicitly delegated review. Keep stochastic plot inputs
+deterministic so a snapshot represents rendering behavior rather than random
+draws.
 
 ## Final Verification
 

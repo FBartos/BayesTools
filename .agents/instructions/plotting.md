@@ -41,5 +41,5 @@ regression.
 
 Use the `visual` profile for pure plots and `visual-fixture` for plots that load
 cached JAGS fits. Run `fit` first when the required fitted cache is affected.
-Never auto-accept snapshots. Make stochastic plot inputs deterministic and ask
-the maintainer to review every intentional visual difference.
+Make stochastic plot inputs deterministic. Retain changed candidates for
+maintainer or explicitly delegated review before accepting a baseline change.
