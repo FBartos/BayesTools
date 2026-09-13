@@ -27,3 +27,7 @@ CLAUDE.md
 .StatsVault/
 /.agents/tmp
 /.dev/mcmc-error
+
+# Snapshot and reference-table candidates awaiting review.
+*.new.svg
+*.new.txt
