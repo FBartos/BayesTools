@@ -14,6 +14,54 @@
   invisible(runtime_cache)
 }
 
+
+.JAGS_validate_worker_output <- function(worker_output){
+
+  check_char(worker_output, "worker_output", check_length = 1L,
+    allow_NULL = TRUE, allow_NA = FALSE)
+  if(is.null(worker_output)) return(NULL)
+  if(!nzchar(worker_output)){
+    stop("'worker_output' must be NULL or a nonempty file path.", call. = FALSE)
+  }
+  worker_output <- path.expand(worker_output)
+  directory <- dirname(worker_output)
+  if(!dir.exists(directory) || dir.exists(worker_output)){
+    stop("'worker_output' must name a file in an existing directory.", call. = FALSE)
+  }
+  file.path(normalizePath(directory, winslash = "/", mustWork = TRUE),
+    basename(worker_output))
+}
+
+
+.JAGS_make_cluster <- function(cores, worker_output = NULL){
+
+  if(is.null(worker_output)) return(parallel::makePSOCKcluster(cores))
+  parallel::makePSOCKcluster(cores, outfile = worker_output)
+}
+
+
+.JAGS_run_backend <- function(fun, args, parallel){
+
+  result <- tryCatch(do.call(fun, args), error = identity)
+  if(!parallel || !inherits(result, "error")) return(result)
+  # runjags wraps worker conditions in text, so the original socket condition's
+  # class/call need not survive. These transport failures cannot be repaired by
+  # changing JAGS initial values and reusing the same worker connections.
+  transport_failure <- grepl(paste0(
+    "error (reading from|writing to) connection|",
+    "invalid connection|connection is not open|",
+    "broken pipe|connection reset by peer|",
+    "error (reading from|writing to) socket"
+  ), conditionMessage(result), ignore.case = TRUE)
+  if(!transport_failure) return(result)
+  errorCondition(
+    paste0("Parallel JAGS worker communication failed. Automatic retries were stopped. ",
+      "Inspect the first backend error and worker output before refitting. Backend error: ",
+      conditionMessage(result)),
+    class = "BayesTools_JAGS_worker_connection_error", parent = result
+  )
+}
+
 # Cached values are optional computational state. Keep payloads out of callback
 # environments and send each old process shard to at most one current process.
 .JAGS_run_runtime_cache <- function(runtime_cache, phase, chains, cl = NULL,
@@ -130,6 +178,21 @@
       NULL
     }, error = identity)
     if(!is.null(cleanup_error)){
+      # stopCluster() stops at the first failed send, leaving subsequent nodes
+      # untouched. Attempt every node, including closing a failed socket, while
+      # retaining the original failure and the conservative no-finish contract.
+      for(index in seq_along(cl)){
+        tryCatch(
+          parallel::stopCluster(structure(cl[index], class = class(cl))),
+          error = function(error){
+            node <- cl[[index]]
+            if(is.list(node) && inherits(node[["con"]], "connection")){
+              tryCatch(close(node[["con"]]), error = function(error) NULL)
+            }
+            NULL
+          }
+        )
+      }
       warning(
         operation, " worker cleanup failed: ", conditionMessage(cleanup_error),
         ". The runtime finish callback was not run.", call. = FALSE

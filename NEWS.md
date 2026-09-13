@@ -1,5 +1,9 @@
 # version 0.3.1
 ### Features
+- stops automatic retries after parallel JAGS connection failures, retaining
+  the original backend error. Cleanup attempts every worker after a failed
+  stop. Optional 'worker_output' captures worker stdout and stderr in fits
+  and extensions without retaining a machine-specific log path in the fit.
 - clarifies that `selection_model(group = NULL)` needs publication groups only
   for `weight_rule = "best"`; product selection is invariant to publication
   partitions, with joint integration following the integrated covariance sources

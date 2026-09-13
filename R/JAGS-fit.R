@@ -67,6 +67,12 @@
 #'  defaults to \code{chains}
 #' @param silent whether the function should proceed silently, defaults to \code{TRUE}
 #' @param seed seed for random number generation by \code{JAGS_fit()}.
+#' @param worker_output optional file path for parallel worker stdout and stderr.
+#'   The parent directory must exist. Workers append to the same file, so messages
+#'   can interleave. \code{NULL} retains the backend default of discarding worker
+#'   output. This setting is call-specific and is not retained with the fit;
+#'   supply it again to \code{JAGS_extend()} when needed. Connection failures stop
+#'   automatic fitting retries and preserve the original backend error.
 #' @param add_parameters vector of additional parameter names that should be used
 #' monitored but were not specified in the \code{prior_list}
 #' @param required_packages character vector specifying list of packages containing
@@ -89,7 +95,8 @@
 #' workers are stopped before the calling process receives \code{phase = "finish"}
 #' with its original topology context. Worker processes do not receive a finish
 #' callback. If stopping workers fails, a warning is issued and the finish
-#' callback is not run. This permits releasing coordinator resources before
+#' callback is not run; cleanup still attempts every remaining worker and
+#' closes failed connections. This permits releasing coordinator resources before
 #' parallel work and restoring them afterward. Return values are ignored. The callback must be
 #' idempotent, must not change random-number generator state, and should capture
 #' only small immutable settings. Packages it uses must be included in
@@ -171,10 +178,11 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
                      autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable = FALSE),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
-                     add_parameters = NULL, required_packages = NULL, jags_modules = NULL, runtime_setup = NULL, runtime_cache = NULL, ...){
+                     add_parameters = NULL, required_packages = NULL, jags_modules = NULL, runtime_setup = NULL, runtime_cache = NULL, worker_output = NULL, ...){
 
   .check_runjags()
   dots <- list(...)
+  worker_output <- .JAGS_validate_worker_output(worker_output)
 
   ### check input
   model_syntax <- .check_JAGS_syntax(model_syntax)
@@ -350,7 +358,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   # Configure the actual backend topology, including automatic extensions.
   runtime_started <- FALSE
   if(parallel){
-    cl <- parallel::makePSOCKcluster(min(cores, chains))
+    cl <- .JAGS_make_cluster(min(cores, chains), worker_output)
     on.exit(.JAGS_finish_runtime_setup(
       if(runtime_started) runtime_setup else NULL, chains, cl), add = TRUE)
     .JAGS_require_packages(required_packages, cl)
@@ -403,28 +411,30 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
     # adapt & burnin
     .JASP_progress_bar_start(n = 1, label = paste0(if(!is.null(dots[["is_JASP_prefix"]])) paste0(dots[["is_JASP_prefix"]], ": "), "Adapting and burnin the model"))
-    fit <- tryCatch(do.call(runjags::run.jags, model_call_adapt), error = function(e) e)
+    fit <- .JAGS_run_backend(runjags::run.jags, model_call_adapt, parallel)
     .JASP_progress_bar_tick()
 
     # sample
     .JASP_progress_bar_start(n = 5, label = paste0(if(!is.null(dots[["is_JASP_prefix"]])) paste0(dots[["is_JASP_prefix"]], ": "), "Sampling the model"))
     for(i in 1:5){
       if(!inherits(fit, "error")){
-        fit <- tryCatch(do.call(runjags::extend.jags, c(
+        fit <- .JAGS_run_backend(runjags::extend.jags, c(
           list(runjags.object = fit, burnin = 0, sample = floor((model_call[["sample"]])/5)),
           extension_runtime
-        )), error = function(e)e)
+        ), parallel)
         .JASP_progress_bar_tick()
       }
     }
 
   }else{
     if(is.null(autofit_control[["restarts"]])){
-      fit <- tryCatch(do.call(runjags::run.jags, model_call), error = function(e) e)
+      fit <- .JAGS_run_backend(runjags::run.jags, model_call, parallel)
     }else{
       for(i in 1:autofit_control[["restarts"]]){
-        fit <- tryCatch(do.call(runjags::run.jags, model_call), error = function(e) e)
+        fit <- .JAGS_run_backend(runjags::run.jags, model_call, parallel)
         if(!inherits(fit, "error")){
+          break
+        }else if(inherits(fit, "BayesTools_JAGS_worker_connection_error")){
           break
         }else{
           restart_warnings <- c(
@@ -493,12 +503,11 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         break
       }
 
-      extension <- tryCatch(
-        do.call(runjags::extend.jags, c(
+      extension <- .JAGS_run_backend(
+        runjags::extend.jags, c(
           list(runjags.object = fit, sample = autofit_control[["sample_extend"]]),
           extension_runtime
-        )),
-        error = function(e) e
+        ), parallel
       )
 
       if(inherits(extension, "error")){
@@ -695,7 +704,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable = FALSE),
                         parallel = FALSE, cores = NULL, silent = TRUE,
                         runtime_setup = attr(fit, "runtime_setup", exact = TRUE),
-                        runtime_cache = attr(fit, "runtime_cache", exact = TRUE)){
+                        runtime_cache = attr(fit, "runtime_cache", exact = TRUE),
+                        worker_output = NULL){
 
   if(!inherits(fit, "BayesTools_fit"))
     stop("'fit' must be a 'BayesTools_fit'")
@@ -703,6 +713,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   check_bool(parallel, "parallel", allow_NA = FALSE)
   check_int(cores, "cores", lower = 1, allow_NULL = TRUE, allow_NA = FALSE)
   check_bool(silent, "silent", allow_NA = FALSE)
+  worker_output <- .JAGS_validate_worker_output(worker_output)
   .JAGS_validate_runtime_setup(runtime_setup)
   .JAGS_validate_runtime_cache(runtime_cache)
   runtime_state <- attr(fit, "runtime_state", exact = TRUE)
@@ -769,7 +780,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     if(is.null(cores)){
       cores <- chains
     }
-    cl <- parallel::makePSOCKcluster(min(cores, chains))
+    cl <- .JAGS_make_cluster(min(cores, chains), worker_output)
     on.exit(.JAGS_finish_runtime_setup(
       if(runtime_started) runtime_setup else NULL, chains, cl), add = TRUE)
     .JAGS_require_packages(required_packages, cl)
@@ -836,10 +847,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       break
     }
 
-    extension <- tryCatch(
-      do.call(runjags::extend.jags, refit_call),
-      error = function(e) e
-    )
+    extension <- .JAGS_run_backend(runjags::extend.jags, refit_call, parallel)
 
     if(inherits(extension, "error")){
       warning_message <- paste0(

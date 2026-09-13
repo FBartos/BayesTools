@@ -34,6 +34,7 @@ JAGS_fit(
   jags_modules = NULL,
   runtime_setup = NULL,
   runtime_cache = NULL,
+  worker_output = NULL,
   ...
 )
 
@@ -47,7 +48,8 @@ JAGS_extend(
   cores = NULL,
   silent = TRUE,
   runtime_setup = attr(fit, "runtime_setup", exact = TRUE),
-  runtime_cache = attr(fit, "runtime_cache", exact = TRUE)
+  runtime_cache = attr(fit, "runtime_cache", exact = TRUE),
+  worker_output = NULL
 )
 }
 \arguments{
@@ -159,15 +161,14 @@ most \code{min(cores, chains)} workers. On exit, including fitting failures,
 workers are stopped before the calling process receives \code{phase = "finish"}
 with its original topology context. Worker processes do not receive a finish
 callback. If stopping workers fails, a warning is issued and the finish
-callback is not run. This permits releasing coordinator resources before
+callback is not run; cleanup still attempts every remaining worker and
+closes failed connections. This permits releasing coordinator resources before
 parallel work and restoring them afterward. Return values are ignored. The callback must be
 idempotent, must not change random-number generator state, and should capture
 only small immutable settings. Packages it uses must be included in
 \code{required_packages}. The callback is stored with the fit;
 \code{JAGS_extend()} reuses it with the current chain and worker topology.
 Supplying \code{NULL} explicitly disables replay.}
-
-\item{...}{additional hidden arguments}
 
 \item{runtime_cache}{optional function accepting \code{context} and
 \code{state = NULL} for optional computational caches. It must not change
@@ -189,6 +190,15 @@ not attempt capture; ordinary runtime cleanup still runs. Retained R snapshots,
 serialization buffers, and the caller's old fitted object consume memory in
 addition to active cache storage. Callback packages must be listed in
 \code{required_packages}. Passing \code{NULL} disables capture and restore.}
+
+\item{worker_output}{optional file path for parallel worker stdout and stderr.
+The parent directory must exist. Workers append to the same file, so messages
+can interleave. \code{NULL} retains the backend default of discarding worker
+output. This setting is call-specific and is not retained with the fit;
+supply it again to \code{JAGS_extend()} when needed. Connection failures stop
+automatic fitting retries and preserve the original backend error.}
+
+\item{...}{additional hidden arguments}
 
 \item{fit}{a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
 extended}

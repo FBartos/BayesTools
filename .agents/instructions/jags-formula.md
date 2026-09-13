@@ -20,6 +20,13 @@ others rather than patched only at the first failing consumer.
 - Posterior extraction: `R/posterior-extraction.R` and
   `R/JAGS-bridge-posterior*.R`.
 
+Worker connection failures stop fitting retries; new initial values cannot
+repair the existing cluster. Preserve the original backend condition. If
+cluster shutdown fails, attempt every remaining worker and close failed
+connections before reporting cleanup failure; do not run the runtime finish
+callback when worker shutdown failed. Explicit worker-output paths are
+call-specific and must not be replayed from a serialized fit.
+
 Do not silently repair malformed covariance matrices, alter prior bounds, drop
 formula terms, or substitute a different likelihood target. If a covariance
 structure requires intersecting a prior with its mathematical support, make the
