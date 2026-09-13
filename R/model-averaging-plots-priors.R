@@ -190,7 +190,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     dots$.scale_y2_resolved <- scale_y2
   }
   if(!scale_y2_supplied && !is.null(scale_y2_state)){
-    .plot_point_mass_warn_outside(plot_data, scale_y2_state[["ylim2"]])
+    .plot_point_mass_warn_outside(plot_data, scale_y2_state)
   }
 
 
@@ -441,7 +441,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     dots$.scale_y2_resolved <- scale_y2
   }
   if(!scale_y2_supplied && !is.null(scale_y2_state)){
-    .plot_point_mass_warn_outside(plot_data, scale_y2_state[["ylim2"]])
+    .plot_point_mass_warn_outside(plot_data, scale_y2_state)
   }
 
   # normalize factor component metadata before rendering

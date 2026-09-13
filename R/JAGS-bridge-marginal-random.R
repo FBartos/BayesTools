@@ -226,6 +226,7 @@
   for(block_i in seq_along(row_blocks)){
     membership[row_blocks[[block_i]]] <- block_i
   }
+  cross_block <- outer(membership, membership, "!=")
 
   for(random_term in random_effects){
     group_map <- as.integer(random_term$group_map)
@@ -236,24 +237,8 @@
         call. = FALSE
       )
     }
-    if(.bt_random_effect_has_known_group_covariance(random_term)){
-      group_covariance <- .bt_random_effect_known_group_covariance(
-        random_term,
-        context = "Bridge-only random-effect row blocks"
-      )
-      cross_block <- outer(membership, membership, "!=")
-      structural_covariance <-
-        group_covariance$kernel[group_map, group_map, drop = FALSE] != 0
-      separated <- any(cross_block & structural_covariance)
-    }else{
-      group_membership <- split(membership, group_map)
-      separated <- any(vapply(
-        group_membership,
-        function(x) length(unique(x)) > 1L,
-        logical(1)
-      ))
-    }
-    if(separated){
+    dependency <- random_effects_dependency_matrix(list(random_term), n_rows)
+    if(any(dependency[cross_block])){
       stop(
         "Bridge-marginalized 'row_blocks' separate a structurally nonzero covariance contribution from random-effect block '",
         random_term$block_name,
@@ -771,47 +756,39 @@
 }
 
 .bt_JAGS_bridge_marginal_random_block_factor_states_batch <- function(
-    block_plan, posterior, prior_list){
+    block_plan, posterior, prior_list) {
 
   components <- .bt_JAGS_bridge_marginal_random_block_factor_components_batch(
-    block_plan = block_plan,
-    posterior = posterior,
-    prior_list = prior_list
-  )
-  if(is.null(components)){
-    return(NULL)
-  }
-
+    block_plan = block_plan, posterior = posterior, prior_list = prior_list)
+  if (is.null(components)) return(NULL)
   n_columns <- ncol(block_plan$model_matrix)
+  markov <- isTRUE(components$markov)
+  if (markov) {
+    previous_columns <- seq_len(n_columns - 1L)
+    next_columns <- previous_columns + 1L
+    transition_index <- cbind(next_columns, previous_columns)
+    diagonal_index <- seq.int(1L, by = n_columns + 1L, length.out = n_columns)
+  }
   out <- vector("list", nrow(posterior))
-  for(draw in seq_len(nrow(posterior))){
-    cholesky <- if(is.null(components$coefficient_cholesky)){
-      NULL
-    }else{
-      matrix(
-        components$coefficient_cholesky[draw, , ],
-        nrow = n_columns,
-        ncol = n_columns
-      )
-    }
-    factor <- if(is.null(cholesky)){
-      diag(
-        components$coefficient_scale[draw, ],
-        nrow = n_columns,
-        ncol = n_columns
-      )
-    }else{
-      cholesky * components$coefficient_scale[draw, ]
-    }
+  for (draw in seq_len(nrow(posterior))) {
+    coefficient_scale <- components$coefficient_scale[draw, ]
+    cholesky <- if (is.null(components$coefficient_cholesky)) NULL else
+      components$coefficient_cholesky[draw, , ]
+    factor <- if (is.null(cholesky)) {
+      diag(coefficient_scale, nrow = n_columns, ncol = n_columns)
+    } else cholesky * coefficient_scale
     value <- list(coefficient_factor = factor)
-    if(isTRUE(components$markov)){
-      value$coefficient_scale <- components$coefficient_scale[draw, ]
-      value$markov_transition <-
-        cholesky[cbind(2:n_columns, seq_len(n_columns - 1L))] /
-        diag(cholesky)[seq_len(n_columns - 1L)]
-      value$markov_innovation_variance <- diag(cholesky)[2:n_columns]^2
+    if (markov) {
+      cholesky_diagonal <- cholesky[diagonal_index]
+      value$coefficient_scale <- coefficient_scale
+      previous_diagonal <- cholesky_diagonal[previous_columns]
+      value$markov_transition <- if (any(previous_diagonal == 0)) {
+        .bt_JAGS_bridge_marginal_random_markov_boundary_transition(
+          cholesky, transition_index, previous_diagonal)
+      } else cholesky[transition_index] / previous_diagonal
+      value$markov_innovation_variance <- cholesky_diagonal[next_columns]^2
     }
-    if(!is.null(components$row_scale)){
+    if (!is.null(components$row_scale)) {
       value$row_scale <- as.numeric(components$row_scale[draw, ])
     }
     out[[draw]] <- value
@@ -1227,6 +1204,21 @@
   value
 }
 
+# The caller has validated a unit-variance root for a declared Markov block.
+# At a zero Cholesky diagonal, the adjacent row inner product is its transition.
+.bt_JAGS_bridge_marginal_random_markov_boundary_transition <- function(
+    cholesky, transition_index, previous_diagonal){
+
+  transition <- cholesky[transition_index]
+  nonzero <- previous_diagonal != 0
+  transition[nonzero] <- transition[nonzero] / previous_diagonal[nonzero]
+  for(index in which(!nonzero)){
+    rows <- transition_index[index, ]
+    transition[index] <- sum(cholesky[rows[[1L]], ] * cholesky[rows[[2L]], ])
+  }
+  transition
+}
+
 .bt_JAGS_bridge_marginal_random_coefficient_geometry <- function(
     random_term, posterior, column_scale, covariance = TRUE,
     structure = NULL, cholesky_evaluator = NULL){
@@ -1287,8 +1279,14 @@
     markov_transition = if(
       structure %in% c("ar1", "car", "har") && n_columns > 1L
     ){
-      cholesky[cbind(2:n_columns, seq_len(n_columns - 1L))] /
-        diag(cholesky)[seq_len(n_columns - 1L)]
+      previous_diagonal <- diag(cholesky)[seq_len(n_columns - 1L)]
+      transition_index <- cbind(2:n_columns, seq_len(n_columns - 1L))
+      if(any(previous_diagonal == 0)){
+        .bt_JAGS_bridge_marginal_random_markov_boundary_transition(
+          cholesky, transition_index, previous_diagonal)
+      }else{
+        cholesky[transition_index] / previous_diagonal
+      }
     }else{
       NULL
     },

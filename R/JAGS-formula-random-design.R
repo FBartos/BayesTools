@@ -260,7 +260,8 @@
                                         prior_random = NULL,
                                         sd_binding_context = NULL,
                                         group_data = data,
-                                        compile_mode = c("sampled", "marginalized")){
+                                        compile_mode = c("sampled", "marginalized"),
+                                        fixed_intercept = NULL){
 
   if(is.null(prior_random)){
     stop("Formula random effects require 'prior_random'.", call. = FALSE)
@@ -623,6 +624,10 @@
     row_indexed_external_sd = row_indexed_external_sd,
     parameterization = parameterization$resolved
   )
+  mean_translation <- if(identical(parameterization$resolved, "mean_centered")){
+    .bt_random_effect_mean_translation(random_term, parameter, fixed_intercept,
+      has_intercept, model_matrix, random_structure, group_covariance)
+  }else NULL
   # step 1:
   if(isTRUE(sampled_random_effect) &&
      identical(parameterization$resolved, "noncentered") &&
@@ -699,6 +704,16 @@
         "_xRE_COEFx[i,1] / ", parameter, "_xRE_STDx[1]\n",
         " }\n"
       ))
+    }else if(isTRUE(sampled_random_effect) && !is.null(mean_translation)){
+      random_syntax <- c(random_syntax, paste0(
+        " for(g in 1:", n_id, "){\n",
+        "   ", mean_translation$location_name, "[g,1] ~ dnorm(",
+        mean_translation$fixed_intercept_expression, ", pow(", parameter, "_xRE_STDx[1], -2))\n",
+        "   ", mean_translation$coefficient_name, "[g,1] <- ",
+        mean_translation$location_name, "[g,1] - ", mean_translation$fixed_intercept_expression, "\n",
+        "   ", mean_translation$latent_name, "[g,1] <- ",
+        mean_translation$coefficient_name, "[g,1] / ", parameter, "_xRE_STDx[1]\n",
+        " }\n"))
     }else if(isTRUE(sampled_random_effect) &&
              identical(parameterization$resolved, "centered")){
       random_syntax <- c(random_syntax, .bt_JAGS_centered_independent_random(
@@ -708,15 +723,20 @@
         sd_name = paste0(parameter, "_xRE_STDx")
       ))
     }else if(isTRUE(sampled_random_effect) && isTRUE(row_indexed_external_sd)){
+      # Separate group nodes keep local updates from reevaluating other groups.
       random_syntax <- c(random_syntax, paste0(
         " for(i in 1:",n_par,"){\n",
-        "   ",paste0(parameter, "_xRE_UNIT_COEFx"),"[1:",n_id,",i] = ",paste0(parameter, "_xRE_Zx"),"[1:",n_id,",i]\n",
+        "   for(g in 1:",n_id,"){\n",
+        "     ",paste0(parameter, "_xRE_UNIT_COEFx"),"[g,i] = ",paste0(parameter, "_xRE_Zx"),"[g,i]\n",
+        "   }\n",
         " }\n"
       ))
     }else if(isTRUE(sampled_random_effect)){
       random_syntax <- c(random_syntax, paste0(
         " for(i in 1:",n_par,"){\n",
-        "   ",paste0(parameter, "_xRE_COEFx"),"[1:",n_id,",i] = ",paste0(parameter, "_xRE_Zx"),"[1:",n_id,",i] * ",paste0(parameter, "_xRE_STDx"),"[i]\n",
+        "   for(g in 1:",n_id,"){\n",
+        "     ",paste0(parameter, "_xRE_COEFx"),"[g,i] = ",paste0(parameter, "_xRE_Zx"),"[g,i] * ",paste0(parameter, "_xRE_STDx"),"[i]\n",
+        "   }\n",
         " }\n"
       ))
     }
@@ -1125,13 +1145,16 @@
   random_term$parameterization_resolved  <- parameterization$resolved
   random_term$parameterization_reason    <- parameterization$reason
   random_term$parameterization_policy    <- parameterization$policy
+  random_term$mean_translation           <- mean_translation
   random_term$latent_layout <- latent_layout
   attr(random_term, "random_block") <- random_term$block_name
   attr(random_term, "compile_mode") <- compile_mode
 
   return(list(
     random_syntax  = random_syntax,
-    formula_term   = if(isTRUE(sampled_random_effect)) paste0(parameter,"[i]") else character(),
+    formula_term   = if(!is.null(mean_translation)) {
+      paste0(mean_translation$location_name, "[", mean_translation$group_map_name, "[i],1]")
+    }else if(isTRUE(sampled_random_effect)) paste0(parameter,"[i]") else character(),
     data           = JAGS_data,
     prior_list     = new_prior_list,
     random_scale_terms = random_scale_terms,

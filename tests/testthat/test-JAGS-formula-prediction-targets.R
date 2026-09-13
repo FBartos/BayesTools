@@ -99,6 +99,53 @@ test_that("conditional target equals fixed target for fixed-only formulas", {
   expect_equal(conditional, fixed)
 })
 
+test_that("conditional random components do not subtract unequal fixed means", {
+
+  df <- .formula_prediction_data()
+  df$offset <- c(.2, .3, .4, .5)
+  for(mode in c("noncentered", "mean_centered")){
+    result <- JAGS_formula(
+      ~ 1 + x + expression(offset[i]) + diag(1 | id), "mu", df,
+      prior_list = list(intercept = prior("normal", list(0, 1)),
+                        x = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(
+        sd = .formula_prediction_sd_prior(), parameterization = mode,
+        monitor = random_monitor(latent = TRUE, coefficients = FALSE)
+      ))
+    )
+    term <- result$formula_design$random_effects[[1L]]
+    latent_names <- as.vector(.bt_random_effect_latent_names(
+      term, term$n_groups, term$n_columns
+    ))
+    posterior <- cbind(c(1, 2), c(1, .7), c(.5, .5), c(.2, .3), c(-.4, -.6))
+    colnames(posterior) <- c("mu_intercept", "mu_x", term$sd_parameter_names,
+                            latent_names)
+    fit <- coda::mcmc(posterior)
+    attr(fit, "formula_design") <- list(mu = result$formula_design)
+
+    base <- cbind(1 + df$x, 2 + .7 * df$x)
+    random <- cbind(.5 * c(.2, .2, -.4, -.4), .5 * c(.3, .3, -.6, -.6))
+    offset <- matrix(df$offset, nrow = nrow(df), ncol = nrow(posterior))
+    prediction <- JAGS_predict_formula(fit, "mu", components = TRUE)
+    expect_identical(unname(prediction$random), random)
+    expect_identical(prediction$random[1L, ], prediction$random[2L, ])
+    expect_identical(unname(prediction$mean), base + offset)
+    # Preserve the historical evaluator's fixed, then random, then expression
+    # addition order, even when fixed + random cannot reconstruct components.
+    expect_identical(unname(prediction$value), (base + random) + offset)
+    expect_identical(prediction$value,
+      JAGS_evaluate_formula(fit, parameter = "mu", formula_target = "conditional"))
+    expect_identical(prediction$components,
+      list(fixed = prediction$mean, random = prediction$random))
+    expect_false(identical(prediction$value - prediction$mean, prediction$random))
+
+    rows <- c(4L, 2L, 2L)
+    mapped <- JAGS_predict_formula(fit, "mu", data = df[rows, ], fitted_rows = rows)
+    expect_identical(unname(mapped$random), random[rows, , drop = FALSE])
+    expect_identical(unname(mapped$value), ((base + random) + offset)[rows, , drop = FALSE])
+  }
+})
+
 test_that("formula prediction validates parameter names and seeds", {
   result <- .formula_prediction_result()
   fit <- .formula_prediction_fit(result)
@@ -393,6 +440,17 @@ test_that("conditional target handles new levels by explicit policy", {
     formula_target = "conditional",
     new_levels = "sample"
   )
+  sampled_rng <- .Random.seed
+  set.seed(123)
+  prediction <- JAGS_predict_formula(
+    fit = fit,
+    parameter = "mu",
+    data = repeated_new,
+    formula_target = "conditional",
+    new_levels = "sample"
+  )
+  expect_identical(prediction$value, sampled)
+  expect_identical(.Random.seed, sampled_rng)
   random <- sampled - fixed
   expect_equal(
     unname(random[3, ] - random[2, ]),

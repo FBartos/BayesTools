@@ -1817,6 +1817,103 @@ test_that("block allocations expose deterministic component-SD priors", {
 
   expect_s3_class(density, "prior_linear_density")
   expect_equal(second_moment, 2 / 5, tolerance = .03)
+  proportion <- parameter_catalog_resolve(
+    parameter_catalog(fit), "var_prop(study)", "mu"
+  )
+  proportion_density <- parameter_prior_density(fit, proportion, n_grid = 512L)
+  expect_s3_class(proportion_density, "prior_linear_density")
+  expect_equal(prior_density_ordinate(proportion_density, .4)$log_density,
+               stats::dbeta(.4, 2, 3, log = TRUE))
+})
+
+
+test_that("shared-gate proportions use their declared conditional Dirichlet prior", {
+
+  make_fit <- function(independent = FALSE, probability = .5,
+                       scale_prior = prior("gamma", list(2, 2))){
+
+    split <- random_variance_allocation(
+      name = "split", terms = c(study = "study", esid = "esid"),
+      parent = if(!independent) allocation_ref("root", "component") else NULL,
+      sd = if(independent) scale_prior else NULL,
+      weights = prior("dirichlet", list(alpha = c(2, 3))),
+      inclusion = if(independent) list(
+        study = prior("spike", list(location = probability)),
+        esid = prior("spike", list(location = probability))
+      ) else NULL
+    )
+    allocations <- if(independent) list(split) else list(
+      random_variance_allocation(
+        name = "root", terms = c(component = "both"),
+        sd = scale_prior,
+        inclusion = list(component = prior("spike", list(location = probability)))
+      ),
+      split
+    )
+    result <- JAGS_formula(
+      formula = ~ 1 +
+        random(1 | study, name = "study", covariance = "diag") +
+        random(1 | esid, name = "esid", covariance = "diag"),
+      parameter = "mu",
+      data = data.frame(study = factor(c("a", "a", "b", "b")),
+                        esid = factor(seq_len(4L))),
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(allocation = allocations)
+    )
+    allocation <- result$formula_design$random_allocations$split
+    gates <- .bt_random_effect_summary_allocation_gate_names(allocation)
+    columns <- c("mu_intercept", allocation$source$name,
+                  paste0(allocation$weight_name, "[", 1:2, "]"), gates)
+    samples <- matrix(.5, nrow = 2L, ncol = length(columns),
+                       dimnames = list(NULL, columns))
+    if(is.prior.point(scale_prior)){
+      samples[, allocation$source$name] <- scale_prior$parameters$location
+    }
+    samples[, gates] <- if(probability %in% c(0, 1)) probability else c(0, 1)
+    .parameter_catalog_test_fit(
+      coda::mcmc.list(coda::mcmc(samples)),
+      prior_list = result$prior_list,
+      formula_design = list(mu = result$formula_design)
+    )
+  }
+
+  fit <- make_fit()
+  points <- c(0, .1, .5, .9, 1)
+  set.seed(1)
+  before <- .Random.seed
+  for(i in 1:2){
+    selection <- parameter_catalog_resolve(
+      parameter_catalog(fit),
+      paste0("split: var_prop(", c("study", "esid")[[i]], ")"), "mu"
+    )
+    expect_null(parameter_transform(fit, selection))
+    density <- parameter_prior_density(fit, selection, n_grid = 512L)
+    expect_s3_class(density, "prior_linear_density")
+    ordinates <- vapply(points, function(value){
+      prior_density_ordinate(density, value)$log_density
+    }, numeric(1))
+    expect_equal(ordinates, stats::dbeta(points, c(2, 3)[[i]],
+                                       c(3, 2)[[i]], log = TRUE))
+  }
+  expect_identical(.Random.seed, before)
+
+  fixed_positive <- make_fit(probability = 1,
+                             scale_prior = prior("point", list(location = .7)))
+  selection <- parameter_catalog_resolve(
+    parameter_catalog(fixed_positive), "split: var_prop(study)", "mu"
+  )
+  density <- parameter_prior_density(fixed_positive, selection)
+  expect_equal(prior_density_ordinate(density, .4)$log_density,
+               stats::dbeta(.4, 2, 3, log = TRUE))
+
+  for(unavailable in list(make_fit(independent = TRUE),
+                          make_fit(probability = 0),
+                          make_fit(scale_prior = prior("point", list(location = 0))))){
+    selection <- parameter_catalog_resolve(
+      parameter_catalog(unavailable), "split: var_prop(study)", "mu"
+    )
+    expect_null(parameter_prior_density(unavailable, selection))
+  }
 })
 
 

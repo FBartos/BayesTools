@@ -66,8 +66,11 @@ prepare small argument lists for native selected-normal backends.
 Context validation checks row-wise posterior fields, observation
 fields, and compiled selection-bin metadata together. Custom row-wise
 fields may be listed in a character vector named \code{row_fields}; row
-subsetting rejects undeclared fields that otherwise look row-wise. Native
-argument helpers accept either an augmented context or a bare
+subsetting rejects undeclared fields that otherwise look row-wise.
+The built-in \code{vector_rule} field accepts the integer codes \code{0}
+(product), \code{1} (best one-sided p-value), and \code{2} (best two-sided
+p-value), with one value or one value per posterior row.
+Native argument helpers accept either an augmented context or a bare
 \code{selection_backend_spec()} object, using compiled \code{step},
 \code{phacking}, and \code{data} fallbacks where available.
 }

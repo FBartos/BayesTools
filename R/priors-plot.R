@@ -680,6 +680,15 @@ plot.prior <- function(x, plot_type = "base",
       .plot_scale_y2_from_limits(ylim, ylim2, dots[["scale_y2"]])
     }
 
+    # Reserve the same space as an ordinary labelled y axis for this panel.
+    mar <- graphics::par("mar")
+    if(mar[[4L]] < 4.1){
+      plot_mar <- mar
+      plot_mar[[4L]] <- 4.1
+      graphics::par(mar = plot_mar)
+      on.exit(graphics::par(mar = mar), add = TRUE)
+    }
+
     graphics::plot(NA, type = "n", bty  = "n", las = 1, xlab = xlab, ylab = ylab, main = main,
                    xlim = xlim, ylim = range(c(pretty(ylim), pretty(ylim2) * scale_y2)), axes = FALSE,
                    cex.axis = cex.axis, cex.lab = cex.lab, cex.main = cex.main,
@@ -687,7 +696,9 @@ plot.prior <- function(x, plot_type = "base",
     graphics::axis(1, at = x_at, labels = x_labels, col = col.axis, cex = cex.axis)
     graphics::axis(2, at = pretty(ylim),             labels = pretty(ylim),  col = col.axis, cex = cex.axis, las = 1)
     graphics::axis(4, at = pretty(ylim2) * scale_y2, labels = pretty(ylim2), col = col.axis, cex = cex.axis, las = 1)
-    graphics::mtext(ylab2, side = 4, line = 3)
+    graphics::mtext(ylab2, side = 4, line = 3,
+                    cex = cex.lab * graphics::par("cex"), col = col.lab,
+                    font = graphics::par("font.lab"))
 
     return(invisible(list(scale_y2 = scale_y2)))
   }
@@ -909,9 +920,9 @@ plot.prior <- function(x, plot_type = "base",
 
   return(state)
 }
-.plot_point_mass_warn_outside <- function(plot_data, ylim2){
+.plot_point_mass_warn_outside <- function(plot_data, scale_y2_state){
 
-  if(is.null(ylim2)){
+  if(is.null(scale_y2_state)){
     return(invisible(NULL))
   }
 
@@ -925,6 +936,7 @@ plot.prior <- function(x, plot_type = "base",
   }
 
   probabilities <- unlist(lapply(plot_data[is_point], function(x) x[["y"]]))
+  ylim2 <- scale_y2_state[["usr"]][3:4] / scale_y2_state[["scale_y2"]]
   if(any(probabilities < min(ylim2) | probabilities > max(ylim2))){
     warning(
       "Point-mass probabilities outside the active secondary-axis limits ",

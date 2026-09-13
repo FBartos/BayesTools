@@ -77,6 +77,45 @@
 #' a library and set \code{R_LIBS_USER} before starting R and its workers.
 #' @param jags_modules character vector specifying JAGS modules required by the
 #' generated model syntax. Defaults to \code{NULL}.
+#' @param runtime_setup optional function accepting one \code{context} list. After
+#' required packages and JAGS modules load, it is called with \code{phase = "start"}
+#' in the calling process, then each parallel worker. The context contains
+#' \code{role} (\code{"local"}, \code{"coordinator"}, or \code{"worker"}),
+#' \code{chains} (total chains), \code{processes} (sampling processes),
+#' \code{process_id} (one-based worker index, or zero for the coordinator),
+#' \code{process_chains} (chains assigned to this process; zero for the
+#' coordinator), and \code{parallel}. Chains are divided round-robin among at
+#' most \code{min(cores, chains)} workers. On exit, including fitting failures,
+#' workers are stopped before the calling process receives \code{phase = "finish"}
+#' with its original topology context. Worker processes do not receive a finish
+#' callback. If stopping workers fails, a warning is issued and the finish
+#' callback is not run. This permits releasing coordinator resources before
+#' parallel work and restoring them afterward. Return values are ignored. The callback must be
+#' idempotent, must not change random-number generator state, and should capture
+#' only small immutable settings. Packages it uses must be included in
+#' \code{required_packages}. The callback is stored with the fit;
+#' \code{JAGS_extend()} reuses it with the current chain and worker topology.
+#' Supplying \code{NULL} explicitly disables replay.
+#' @param runtime_cache optional function accepting \code{context} and
+#' \code{state = NULL} for optional computational caches. It must not change
+#' inference targets or random-number state and must capture only small settings.
+#' After runtime setup, a fit or extension calls it with \code{context$phase = "restore"}
+#' and a list of prior process shards assigned to this process (empty for new
+#' fits or workers without an assigned shard). Each prior shard
+#' is sent to at most one current process, in round-robin order; shards are not
+#' duplicated when worker count increases. Before workers stop, a completed fit
+#' calls it with \code{context$phase = "capture"} and \code{state = NULL}.
+#' Capture returns one serializable shard, or \code{NULL} to retain no state.
+#' The fitted object's \code{runtime_state} attribute stores process shards
+#' separately from its small \code{runtime_cache} callback. Backend extension
+#' calls receive neither attribute. \code{JAGS_extend()} restores old state
+#' independently of whether its callback elects to capture fresh state.
+#' Callback warnings and errors are reported without discarding valid draws;
+#' failed captures leave a \code{NULL} shard. Error and interrupt cleanup does
+#' not attempt capture; ordinary runtime cleanup still runs. Retained R snapshots,
+#' serialization buffers, and the caller's old fitted object consume memory in
+#' addition to active cache storage. Callback packages must be listed in
+#' \code{required_packages}. Passing \code{NULL} disables capture and restore.
 #' @param fit a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
 #' extended
 #' @param ... additional hidden arguments
@@ -108,6 +147,8 @@
 #' @return \code{JAGS_fit} returns an object of class 'runjags' and 'BayesTools_fit'.
 #' \code{JAGS_extend} continues the backend random-number generator state of the
 #' existing chains; it does not reseed them.
+#' Stored parameter and RNG states initialize reconstruction; recompilation can
+#' reset sampler tuning and follows runjags' adaptation policy.
 #'
 #' @seealso [JAGS_check_convergence()]
 #'
@@ -130,7 +171,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
                      autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable = FALSE),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
-                     add_parameters = NULL, required_packages = NULL, jags_modules = NULL, ...){
+                     add_parameters = NULL, required_packages = NULL, jags_modules = NULL, runtime_setup = NULL, runtime_cache = NULL, ...){
 
   .check_runjags()
   dots <- list(...)
@@ -142,6 +183,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_char(required_packages, "required_packages", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_char(jags_modules, "jags_modules", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
+  .JAGS_validate_runtime_setup(runtime_setup)
+  .JAGS_validate_runtime_cache(runtime_cache)
   check_list(formula_list, "formula_list", allow_NULL = TRUE)
   check_list(formula_data_list, "formula_data_list", allow_NULL = is.null(formula_list))
   check_list(formula_prior_list, "formula_prior_list", allow_NULL = is.null(formula_list))
@@ -304,26 +347,38 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     summarise = FALSE
   )
 
-  # parallel vs. not
+  # Configure the actual backend topology, including automatic extensions.
+  runtime_started <- FALSE
   if(parallel){
-    cl <- parallel::makePSOCKcluster(cores)
-    on.exit(try(parallel::stopCluster(cl), silent = TRUE), add = TRUE)
+    cl <- parallel::makePSOCKcluster(min(cores, chains))
+    on.exit(.JAGS_finish_runtime_setup(
+      if(runtime_started) runtime_setup else NULL, chains, cl), add = TRUE)
     .JAGS_require_packages(required_packages, cl)
     .JAGS_load_modules(jags_modules, cl, warn = !silent)
+    runtime_started <- TRUE
+    .JAGS_run_runtime_setup(runtime_setup, chains, cl)
+    .JAGS_run_runtime_cache(runtime_cache, "restore", chains, cl)
     model_call <- c(
       model_call,
       method = "rjparallel",
-      cl     = list(cl)
+      cl     = list(cl),
+      n.sims = length(cl)
     )
   }else{
+    on.exit(.JAGS_finish_runtime_setup(
+      if(runtime_started) runtime_setup else NULL, chains), add = TRUE)
     .JAGS_require_packages(required_packages)
     .JAGS_load_modules(jags_modules, warn = !silent)
+    runtime_started <- TRUE
+    .JAGS_run_runtime_setup(runtime_setup, chains)
+    .JAGS_run_runtime_cache(runtime_cache, "restore", chains)
     model_call <- c(
       model_call,
       method = "rjags"
     )
   }
 
+  extension_runtime <- model_call[intersect(c("method", "cl", "n.sims"), names(model_call))]
 
   if(!is.null(seed)){
     set.seed(seed)
@@ -355,7 +410,10 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     .JASP_progress_bar_start(n = 5, label = paste0(if(!is.null(dots[["is_JASP_prefix"]])) paste0(dots[["is_JASP_prefix"]], ": "), "Sampling the model"))
     for(i in 1:5){
       if(!inherits(fit, "error")){
-        fit <- tryCatch(runjags::extend.jags(fit, burnin = 0, sample = floor((model_call[["sample"]])/5)), error = function(e)e)
+        fit <- tryCatch(do.call(runjags::extend.jags, c(
+          list(runjags.object = fit, burnin = 0, sample = floor((model_call[["sample"]])/5)),
+          extension_runtime
+        )), error = function(e)e)
         .JASP_progress_bar_tick()
       }
     }
@@ -376,6 +434,13 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
               conditionMessage(fit), "."
             )
           )
+          if(!silent){
+            warning(
+              restart_warnings[[length(restart_warnings)]],
+              call. = FALSE,
+              immediate. = TRUE
+            )
+          }
           # restart with different inits
           model_call$inits <- JAGS_get_inits(prior_list, chains = chains, seed = if(!is.null(seed)) seed + i)
         }
@@ -429,7 +494,10 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       }
 
       extension <- tryCatch(
-        runjags::extend.jags(fit, sample = autofit_control[["sample_extend"]]),
+        do.call(runjags::extend.jags, c(
+          list(runjags.object = fit, sample = autofit_control[["sample_extend"]]),
+          extension_runtime
+        )),
         error = function(e) e
       )
 
@@ -477,6 +545,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   attr(fit, "add_parameters") <- add_parameters
   attr(fit, "required_packages") <- required_packages
   attr(fit, "jags_modules") <- jags_modules
+  attr(fit, "runtime_setup") <- runtime_setup
   attr(fit, "backend_anchor") <- backend_anchor
   if(length(restart_warnings) > 0L && !inherits(fit, "error")){
     fit <- .bt_append_fit_warnings(fit, restart_warnings)
@@ -498,6 +567,11 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   fit <- .bt_attach_draw_geometry(fit)
   fit <- .bt_attach_fit_contract(fit)
 
+  attr(fit, "runtime_cache") <- runtime_cache
+  if(!inherits(fit, "error")){
+    attr(fit, "runtime_state") <- .JAGS_run_runtime_cache(
+      runtime_cache, "capture", chains, if(parallel) cl else NULL)
+  }
   return(fit)
 }
 
@@ -619,7 +693,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
 #' @rdname JAGS_fit
 JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable = FALSE),
-                        parallel = FALSE, cores = NULL, silent = TRUE){
+                        parallel = FALSE, cores = NULL, silent = TRUE,
+                        runtime_setup = attr(fit, "runtime_setup", exact = TRUE),
+                        runtime_cache = attr(fit, "runtime_cache", exact = TRUE)){
 
   if(!inherits(fit, "BayesTools_fit"))
     stop("'fit' must be a 'BayesTools_fit'")
@@ -627,6 +703,13 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   check_bool(parallel, "parallel", allow_NA = FALSE)
   check_int(cores, "cores", lower = 1, allow_NULL = TRUE, allow_NA = FALSE)
   check_bool(silent, "silent", allow_NA = FALSE)
+  .JAGS_validate_runtime_setup(runtime_setup)
+  .JAGS_validate_runtime_cache(runtime_cache)
+  runtime_state <- attr(fit, "runtime_state", exact = TRUE)
+  # Only the local input copy loses these attributes. Retained snapshots must
+  # never travel inside runjags.object to every extension worker.
+  attr(fit, "runtime_state") <- NULL
+  attr(fit, "runtime_cache") <- NULL
   fit_contract       <- attr(fit, "fit_contract", exact = TRUE)
   draw_geometry      <- attr(fit, "draw_geometry", exact = TRUE)
   fitted_parameter_map <- attr(fit, "parameter_map", exact = TRUE)
@@ -679,25 +762,39 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   .bt_validate_jags_add_parameters(add_parameters, prior_list)
   autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
 
-  # parallel vs. not
+  # The backend uses end.state to determine the chains being extended.
+  chains <- length(fit[["end.state"]])
+  runtime_started <- FALSE
   if(parallel){
     if(is.null(cores)){
-      cores <- length(fit[["mcmc"]])
+      cores <- chains
     }
-    cl <- parallel::makePSOCKcluster(cores)
-    on.exit(try(parallel::stopCluster(cl), silent = TRUE), add = TRUE)
+    cl <- parallel::makePSOCKcluster(min(cores, chains))
+    on.exit(.JAGS_finish_runtime_setup(
+      if(runtime_started) runtime_setup else NULL, chains, cl), add = TRUE)
     .JAGS_require_packages(required_packages, cl)
     .JAGS_load_modules(jags_modules, cl, warn = !silent)
+    runtime_started <- TRUE
+    .JAGS_run_runtime_setup(runtime_setup, chains, cl)
+    .JAGS_run_runtime_cache(runtime_cache, "restore", chains, cl, runtime_state)
+    runtime_state <- NULL
     refit_call <- list(
       runjags.object = fit,
       sample         = autofit_control[["sample_extend"]],
       method         = "rjparallel",
       cl             = cl,
+      n.sims         = length(cl),
       summarise      = FALSE
     )
   }else{
+    on.exit(.JAGS_finish_runtime_setup(
+      if(runtime_started) runtime_setup else NULL, chains), add = TRUE)
     .JAGS_require_packages(required_packages)
     .JAGS_load_modules(jags_modules, warn = !silent)
+    runtime_started <- TRUE
+    .JAGS_run_runtime_setup(runtime_setup, chains)
+    .JAGS_run_runtime_cache(runtime_cache, "restore", chains, state = runtime_state)
+    runtime_state <- NULL
     refit_call <- list(
       runjags.object = fit,
       sample         = autofit_control[["sample_extend"]],
@@ -788,6 +885,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   attr(fit, "add_parameters") <- add_parameters
   attr(fit, "required_packages") <- required_packages
   attr(fit, "jags_modules") <- jags_modules
+  attr(fit, "runtime_setup") <- runtime_setup
   attr(fit, "backend_anchor") <- backend_anchor
   if(!is.null(formula_scale)){
     attr(fit, "formula_scale") <- formula_scale
@@ -805,6 +903,9 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     attr(fit, "draw_geometry") <- draw_geometry
   }
 
+  attr(fit, "runtime_cache") <- runtime_cache
+  attr(fit, "runtime_state") <- .JAGS_run_runtime_cache(
+    runtime_cache, "capture", chains, if(parallel) cl else NULL)
   return(fit)
 }
 

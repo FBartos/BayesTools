@@ -233,6 +233,8 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
                                   nonfinite = c("error", "drop"), cores = 1,
                                   seed = NULL, ...){
 
+  # The bridge callback may capture this frame and be sent to workers.
+  attr(fit, "runtime_state") <- NULL
   ### check input
   bridge_context <- .bt_JAGS_bridge_context_mode(bridge_context)
   if(!is.null(bridge_context_node_names)){
@@ -337,6 +339,9 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     add_parameters = add_parameters,
     formula_design_list = formula_design_list,
     formula_prior_list = formula_prior_list
+  )
+  posterior <- .bt_JAGS_bridge_normalize_singleton_coordinates(
+    posterior, random_bridge_parameters$parameters
   )
   .bt_JAGS_bridge_check_random_posterior(posterior, random_bridge_parameters$parameters)
   bridgesampling_posterior <- JAGS_bridgesampling_posterior(posterior = posterior, prior_list = all_prior_list, add_parameters = add_parameters, add_bounds = add_bounds)

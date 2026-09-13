@@ -12,7 +12,8 @@ grouping levels.}
 
 \item{scale}{how to scale the kernel before fitting. \code{"cor"} converts the
 reordered matrix to a correlation matrix, \code{"none"} uses the matrix as
-supplied, \code{"cor0"} applies \code{(stats::cov2cor(K) - min(K)) / (1 - min(K))},
+supplied, \code{"cor0"} forms \code{C = stats::cov2cor(K)} and applies
+\code{(C - min(C)) / (1 - min(C))},
 and \code{"cov0"} applies \code{K - min(K)}.}
 }
 \value{
@@ -29,6 +30,11 @@ The associated fitted block scale remains the public \code{sd} quantity (with
 \code{sd_mult}. Consequently, when an unscaled kernel has a non-unit diagonal,
 the fitted \code{sd} need not equal every grouping level's marginal standard
 deviation.
+
+Before fitting, the kernel is restricted to the fitted grouping levels and
+transformed according to \code{scale}. Its positive definiteness must be resolvable
+at working precision. Validation uses correlation units and preserves the
+chosen scaled kernel; unresolved near-singular kernels are unavailable.
 }
 \seealso{
 \code{\link[=random_effects_formula]{random_effects_formula()}}

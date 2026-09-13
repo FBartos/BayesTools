@@ -158,7 +158,7 @@ JAGS_to_monitor             <- function(prior_list){
   if(!is.prior.weightfunction(prior))
     stop("improper prior provided")
 
-  return(selection_backend_spec(prior)$monitor)
+  return(selection_backend_spec(prior, include_init = FALSE)$monitor)
 }
 .JAGS_monitor_private.weightfunction <- function(prior){
 
@@ -180,7 +180,7 @@ JAGS_to_monitor             <- function(prior_list){
   if(!is_prior_phacking(prior))
     stop("improper prior provided")
 
-  selection_backend_spec(prior)$monitor
+  selection_backend_spec(prior, include_init = FALSE)$monitor
 }
 .JAGS_monitor.bias          <- function(prior){
 
@@ -188,7 +188,7 @@ JAGS_to_monitor             <- function(prior_list){
   if(!is_prior_bias(prior))
     stop("improper prior provided")
 
-  selection_backend_spec(prior)$monitor
+  selection_backend_spec(prior, include_init = FALSE)$monitor
 }
 .JAGS_monitor.spike_and_slab <- function(prior, parameter_name){
 
@@ -236,7 +236,7 @@ JAGS_to_monitor             <- function(prior_list){
       stop("Mixture of publication bias and standard priors is not supported.")
 
     monitor <- if(any(has_selection) || any(has_phacking)){
-      selection_backend_spec(prior_list)$monitor
+      selection_backend_spec(prior_list, include_init = FALSE)$monitor
     }else{
       "bias_indicator"
     }

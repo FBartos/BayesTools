@@ -5,6 +5,103 @@ skip_if_not_test_profile(c("unit", "fixture"))
 
 source(testthat::test_path("common-functions.R"))
 
+test_that("selection metadata omits unused draws while JAGS initialization is preserved", {
+
+  withr::local_seed(2026)
+  selection <- prior_weightfunction(steps = c(.025, .05),
+    weights = wf_cumulative(c(1.5, 2, 3)))
+  phacking <- prior_phacking(form = "linear")
+  combined <- prior_bias(selection, phacking)
+  mixture <- prior_mixture(list(prior_none(), combined))
+  priors <- list(selection, phacking, combined, mixture)
+  initialize <- list(
+    function(x) .JAGS_init.weightfunction(x),
+    function(x) .JAGS_init.phacking(x),
+    function(x) .JAGS_init.bias(x),
+    function(x) .JAGS_init.mixture(x, "bias")
+  )
+  for(i in seq_along(priors)){
+    set.seed(2026)
+    initial_seed <- .Random.seed
+    complete <- selection_backend_spec(priors[[i]])
+    complete_seed <- .Random.seed
+    set.seed(2026)
+    metadata <- selection_backend_spec(priors[[i]], include_init = FALSE)
+    expect_identical(.Random.seed, initial_seed)
+    expect_null(metadata$init)
+    expect_identical(metadata[names(metadata) != "init"],
+                     complete[names(complete) != "init"])
+    expect_true(all(is.finite(unlist(complete$init))))
+    set.seed(2026)
+    expect_identical(initialize[[i]](priors[[i]]), complete$init)
+    expect_identical(.Random.seed, complete_seed)
+  }
+
+  set.seed(2026)
+  expected_eta <- stats::rgamma(3L, shape = c(1.5, 2, 3), rate = 1)
+  set.seed(2026)
+  expect_identical(.JAGS_init.weightfunction(selection)$eta, expected_eta)
+  expect_true(all(expected_eta > 0))
+
+  set.seed(2026)
+  initial_seed <- .Random.seed
+  syntax <- JAGS_add_priors("model{}", list(bias = mixture))
+  monitor <- JAGS_to_monitor(list(bias = mixture))
+  expect_match(syntax, "dgamma(1.5, 1)", fixed = TRUE)
+  expect_true("bias_indicator" %in% monitor)
+  expect_identical(.Random.seed, initial_seed)
+  expect_error(selection_backend_spec(selection, include_init = NA),
+    "The 'include_init' argument cannot contain NA/NaN values.", fixed = TRUE)
+})
+
+test_that("selection context vector rules follow rows while branch models stay fixed", {
+
+  branches <- list(
+    prior_weightfunction(steps = .05, prior_weights = 2),
+    prior_weightfunction(steps = .05, prior_weights = 3,
+      model = selection_model(weight_rule = "best", group = paper_id)),
+    prior_weightfunction(side = "two-sided", steps = .05, prior_weights = 5,
+      model = selection_model("condition", "integrate", "integrate", "best", group = study_id))
+  )
+  spec <- selection_backend_spec(prior_mixture(branches))
+  expect_identical(spec$branch_model, lapply(branches, selection_model_spec))
+  expect_identical(spec$branch_vector_rule, 0:2)
+  expect_identical(spec$prior_weights, c(2, 3, 5))
+  expect_false(spec$jags_vector_rule %in% spec$monitor)
+  expect_match(spec$transform_code,
+    "sel_vector_rule <- 0 * equals(bias_indicator, 1) + 1 * equals(bias_indicator, 2) + 2 * equals(bias_indicator, 3)", fixed = TRUE)
+
+  context <- spec
+  context$omega <- matrix(1, nrow = 3, ncol = spec$step$n_bins)
+  context$bias_indicator <- c(3L, 1L, 2L)
+  context$vector_rule <- spec$branch_vector_rule[context$bias_indicator]
+  context <- selection_context_validate(context, required = "vector_rule")
+  expect_identical(context$vector_rule, c(2L, 0L, 1L))
+  subset <- selection_context_subset_rows(context, c(3L, 1L))
+  expect_identical(subset$vector_rule, c(1L, 2L))
+  expect_identical(subset$bias_indicator, c(2L, 3L))
+  expect_identical(subset$branch_model, spec$branch_model)
+  expect_identical(subset$branch_vector_rule, spec$branch_vector_rule)
+  expect_identical(subset$jags_vector_rule, spec$jags_vector_rule)
+
+  scalar <- context
+  scalar$vector_rule <- 1
+  expect_identical(selection_context_validate(scalar)$vector_rule, rep(1L, 3L))
+  for(invalid in list(-1, 3, 1 + 1e-12, NA_real_, Inf, "best", matrix(1, 1, 1))){
+    bad <- context
+    bad$vector_rule <- invalid
+    expect_error(selection_context_validate(bad),
+                 "Invalid selection context 'vector_rule'.", fixed = TRUE)
+  }
+  bad <- context
+  bad$vector_rule <- c(0L, 1L)
+  expect_error(selection_context_validate(bad, n_samples = 3L),
+               "Selection argument 'vector_rule' must have length 1 or 3.", fixed = TRUE)
+  bad$vector_rule <- NULL
+  expect_error(selection_context_validate(bad, required = "vector_rule"),
+               "Missing selection context 'vector_rule'.", fixed = TRUE)
+})
+
 test_that("selection QMC designs use the requested integration dimension", {
 
   set.seed(2026)
@@ -330,7 +427,7 @@ test_that("selection_backend_spec compiles none, step, phack, and combined prior
   expect_true(all(c("omega", "alpha", "phack_kind", "pi_null") %in% phack_spec$monitor))
   expect_false("phack_z_source" %in% names(phack_spec$data))
   expect_true("phack_component_beta_null_per_alpha" %in% names(phack_spec$data))
-  expect_equal(phack_spec$transform_code, "")
+  expect_equal(phack_spec$transform_code, "sel_vector_rule <- 0 * 1")
 
   combined_spec <- selection_backend_spec(combined)
   expect_equal(combined_spec$mode, "step_phack_power")
@@ -985,4 +1082,66 @@ test_that("summary tables handle ordinary mixtures next to selection kernels", {
 
   table <- suppressWarnings(runjags_estimates_table(fit, remove_diagnostics = TRUE))
   expect_true(all(c("mu (inclusion)", "bias (inclusion)", "pi_null") %in% rownames(table)))
+})
+
+
+test_that("selection support distinguishes hard-zero endpoint geometries", {
+
+  hard <- function(side = "one-sided", rule = "product"){
+
+    prior_weightfunction(side, .05, wf_fixed(c(1, 0)),
+                         model = selection_model(weight_rule = rule))
+  }
+  same <- matrix(c(1, 2), ncol = 1L)
+  opposed <- matrix(c(1, -1), ncol = 1L)
+  partly_fixed <- matrix(c(1, 0), ncol = 1L)
+  fixed <- matrix(numeric(), 2L, 0L)
+  expect_identical(selection_event_support(hard(), same),
+    list(feasible = TRUE, reason = "positive_direction"))
+  expect_identical(selection_event_support(hard(), opposed),
+    list(feasible = FALSE, reason = "opposed_candidate_direction"))
+  expect_identical(selection_event_support(hard(), partly_fixed),
+    list(feasible = FALSE, reason = "deterministic_candidate_rows"))
+  expect_identical(selection_event_support(hard("two-sided"), opposed),
+    list(feasible = TRUE, reason = "varying_two_tails"))
+  expect_false(selection_event_support(hard("two-sided"), partly_fixed)$feasible)
+  tails <- prior_weightfunction("one-sided", c(.025, .05), wf_fixed(c(1, 0, 1)))
+  expect_identical(selection_event_support(tails, opposed),
+    list(feasible = TRUE, reason = "varying_two_tails"))
+  for(side in c("one-sided", "two-sided")){
+    expect_identical(selection_event_support(hard(side, "best"), partly_fixed),
+      list(feasible = TRUE, reason = "varying_best_result"))
+    expect_identical(selection_event_support(hard(side, "best"), fixed),
+      list(feasible = FALSE, reason = "deterministic_candidate"))
+  }
+  for(weights in list(wf_fixed(c(1, 1e-300)), wf_cumulative(),
+                     wf_independent(prior("gamma", list(1, 1))))){
+    positive <- prior_weightfunction(steps = .05, weights = weights)
+    expect_identical(selection_event_support(positive, fixed),
+      list(feasible = TRUE, reason = "positive_weights"))
+  }
+  expect_error(selection_event_support(prior_none(), same),
+               "'prior' must be a weightfunction prior.", fixed = TRUE)
+  expect_error(selection_event_support(hard(), c(1, 2)),
+    "'candidate_basis' must be a finite numeric matrix with at least one row.",
+    fixed = TRUE)
+})
+
+
+test_that("selection positive directions are certificates rather than rank guesses", {
+
+  hard <- prior_weightfunction(steps = .05, weights = wf_fixed(c(1, 0)))
+  # This singular basis has a positive direction: 2.5 * column 1 + column 2.
+  first <- c(1, -1, 1)
+  second <- c(-2, 3, -1)
+  basis <- cbind(first, second, first + second)
+  expect_true(selection_event_support(hard, basis)$feasible)
+  # The positive sum of these three rows is exactly zero: no positive direction
+  # exists. An unsuccessful generic search must not pretend it proved that fact.
+  triangle <- rbind(c(1, 0), c(0, 1), c(-1, -1))
+  expect_identical(selection_event_support(hard, triangle),
+    list(feasible = NA, reason = "positive_direction_unavailable"))
+  # Exact opposite rows give a direct infeasibility certificate for a Gram input.
+  expect_identical(selection_event_support(hard, tcrossprod(c(1, -1))),
+    list(feasible = FALSE, reason = "opposed_candidate_direction"))
 })

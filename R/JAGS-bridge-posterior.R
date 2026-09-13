@@ -350,6 +350,10 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   }
 
 
+  # JAGS/coda omits indices when an entire monitored array has one cell.
+  posterior <- .bt_JAGS_bridge_normalize_singleton_coordinates(
+    posterior, parameters_names
+  )
   # check that all parameter names exist in the posterior
   if(!all(parameters_names %in% colnames(posterior)))
     stop("'posterior' does not contain all of the parameters corresponding to the 'prior_list' and the 'add_parameter' argument.")
@@ -529,7 +533,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
     }else if(is_prior_phacking(prior)){
       owned <- c(owned, .bt_JAGS_bridge_owned_phacking_names(prior))
     }else if(is_prior_bias(prior)){
-      spec <- selection_backend_spec(prior)
+      spec <- selection_backend_spec(prior, include_init = FALSE)
       owned <- c(owned, spec$monitor)
       if(!is.null(prior$selection)){
         owned <- c(owned, .bt_JAGS_bridge_owned_weightfunction_names(prior$selection))
@@ -563,7 +567,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
     stop("improper prior provided")
   }
 
-  spec <- selection_backend_spec(prior)
+  spec <- selection_backend_spec(prior, include_init = FALSE)
   J <- .weightfunction_n_bins(prior)
   owned <- c(
     spec$monitor,
@@ -596,7 +600,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
     stop("improper prior provided")
   }
 
-  spec <- selection_backend_spec(prior)
+  spec <- selection_backend_spec(prior, include_init = FALSE)
   c(
     spec$monitor,
     spec$step$coefficient_ids,
@@ -634,4 +638,27 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   }
 
   owned
+}
+
+
+.bt_JAGS_bridge_normalize_singleton_coordinates <- function(posterior, parameters){
+
+  observed <- colnames(posterior)
+  requested_base <- .bt_parameter_coordinates_base(parameters)
+  observed_base <- .bt_parameter_coordinates_base(observed)
+  for(base in unique(requested_base)){
+    requested <- parameters[requested_base == base]
+    columns <- which(observed_base == base)
+    if(length(requested) != 1L || length(columns) != 1L ||
+       requested %in% observed){
+      next
+    }
+    aliases <- c(requested, observed[columns])
+    suffix <- substring(aliases, nchar(base) + 1L)
+    if(all(suffix == "" | grepl("^\\[1(,1)*\\]$", suffix))){
+      observed[columns] <- requested
+    }
+  }
+  colnames(posterior) <- observed
+  posterior
 }

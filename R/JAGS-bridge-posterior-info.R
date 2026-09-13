@@ -1,7 +1,7 @@
 .JAGS_marglik_stop_unsupported_mixture <- function(prior){
 
   if(inherits(prior, "prior.bias_mixture")){
-    selection_backend_spec(prior)
+    selection_backend_spec(prior, include_init = FALSE)
     stop(
       "Marginal likelihood computation for bias mixture priors is not implemented because bridge sampling does not support discrete bias indicators.",
       call. = FALSE
@@ -303,7 +303,7 @@
   if(!is_prior_bias(prior))
     stop("improper prior provided")
 
-  selection_backend_spec(prior)
+  selection_backend_spec(prior, include_init = FALSE)
 
   parameter <- NULL
   parameter_lb <- NULL

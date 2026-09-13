@@ -4,10 +4,12 @@
 #'
 #' @description
 #' Returns conservative row adjacency implied by compiled random-effect group
-#' maps and known group covariance. This is independent of posterior draws and
-#' compile mode. Rows sharing a group remain connected even when a particular
-#' design coefficient or sampled covariance is zero. Downstream likelihoods can
-#' combine this matrix with their sampling dependencies before partitioning rows.
+#' maps, known group covariance, and the fixed coefficient supports of `id()`
+#' and `diag()` blocks. Disjoint independent coefficient supports do not connect
+#' rows. Other covariance structures retain conservative group dependencies.
+#' This is independent of posterior draws, sampled covariance, and compile mode.
+#' Downstream likelihoods can combine this matrix with their sampling dependencies
+#' before partitioning rows.
 #'
 #' @param random_effects Compiled `random_effects` terms from a
 #'   `BayesTools_formula_design`, or the `metadata$blocks` returned by
@@ -20,6 +22,162 @@
 #' @export
 random_effects_dependency_matrix <- function(random_effects, n_rows,
                                              blocks = NULL){
+
+  random_effects <- .bt_random_effect_dependency_terms(random_effects, n_rows, blocks)
+  adjacency <- diag(TRUE, n_rows)
+  for(term in random_effects){
+    group_map <- term$group_map
+    if(.bt_random_effect_has_known_group_covariance(term)){
+      kernel <- term$group_covariance$kernel
+      term_adjacency <- kernel[group_map, group_map, drop = FALSE] != 0
+    }else{
+      term_adjacency <- outer(group_map, group_map, "==")
+    }
+    if(identical(term$structure, "id") || identical(term$structure, "diag")){
+      model_matrix <- term$model_matrix
+      if(!is.matrix(model_matrix) || !is.numeric(model_matrix) ||
+         nrow(model_matrix) != n_rows || ncol(model_matrix) < 1L ||
+         any(!is.finite(model_matrix)) ||
+         !identical(as.integer(term$n_columns), ncol(model_matrix))){
+        stop("Random-effect coefficient support is unavailable for block '",
+             term$block_name, "': valid compiled 'model_matrix' metadata are required.",
+             call. = FALSE)
+      }
+      coefficient_adjacency <- tcrossprod(1L * (model_matrix != 0)) > 0
+      term_adjacency <- term_adjacency & coefficient_adjacency
+    }
+    adjacency <- adjacency | term_adjacency
+  }
+  unname(adjacency)
+}
+
+#' Grouping-level roles of formula random effects
+#'
+#' @description Identifies the sole declared estimate-level term from the
+#' compiled grouping maps. This classification selects a source term; it does
+#' not assert independent observations or alter its covariance representation.
+#'
+#' @param random_effects Compiled `random_effects` terms from a
+#'   `BayesTools_formula_design`.
+#' @param n_rows Number of retained observation rows.
+#'
+#' @details A term is `"estimate"` when its `group_map` has a distinct grouping
+#' level for every retained row. There may be zero or one such term; multiple
+#' qualifying terms are an error. All remaining terms are `"other"`, including
+#' terms with independent or mixed coefficient supports within repeated groups.
+#'
+#' A qualifying term keeps the estimate role even when a known group covariance
+#' correlates its distinct levels. Consumers must preserve that full covariance
+#' and its row dependencies. Roles do not depend on SD values, coefficient
+#' supports, posterior draws, or sampled versus marginalized compile modes.
+#' [random_effects_source_roles()] separately describes covariance geometry.
+#'
+#' @return A named character vector, keyed by block name, containing
+#'   `"estimate"` or `"other"` for every term.
+#' @seealso [random_effects_dependency_matrix()]
+#' @md
+#' @export
+random_effects_level_roles <- function(random_effects, n_rows){
+
+  if(is.null(random_effects)){
+    random_effects <- list()
+  }
+  random_effects <- .bt_random_effect_dependency_terms(random_effects, n_rows)
+  roles <- vapply(random_effects, function(term){
+    if(anyDuplicated(term$group_map)) "other" else "estimate"
+  }, character(1))
+  estimate <- names(roles)[roles == "estimate"]
+  if(length(estimate) > 1L){
+    stop(
+      "Estimate-level random-effect identification is unavailable: multiple ",
+      "declared terms have one grouping level per retained estimate (",
+      paste0("'", estimate, "'", collapse = ", "),
+      "). Specify at most one such term.",
+      call. = FALSE
+    )
+  }
+  roles
+}
+
+#' Structural source roles of formula random effects
+#'
+#' @description Classifies compiled random-effect terms as wholly independent
+#' estimate-level variation or contextual variation shared across observations.
+#' Classification uses the declared group map, coefficient structure, fixed
+#' design supports, and known group covariance, never draws or numerical factors.
+#'
+#' @param random_effects Compiled `random_effects` terms from a
+#'   `BayesTools_formula_design`.
+#' @param n_rows Number of observation rows.
+#'
+#' @details A term with one observation per independent group remains
+#' estimate-level variation even with random slopes or multiple coefficients.
+#' Exact zeros in a compiled known group covariance can certify independence.
+#' For `id()` and `diag()`, disjoint coefficient supports can also certify an
+#' independent term. A contextual coefficient family remains contextual when
+#' some of its observed groups contain only one row. Terms mixing independent
+#' and contextual coefficient families have the role `"mixed"`. Integrating
+#' the complete term remains well defined; a downstream conditioning model
+#' must reject partial-term retention unless it explicitly supports it.
+#'
+#' Roles do not depend on whether coefficients are sampled or marginalized,
+#' on their SDs, or on the realized covariance in a posterior row.
+#'
+#' @return A named character vector, keyed by block name, containing
+#'   `"estimate"`, `"context"`, or `"mixed"` for every term.
+#' @seealso [random_effects_dependency_matrix()]
+#' @md
+#' @export
+random_effects_source_roles <- function(random_effects, n_rows){
+
+  random_effects <- .bt_random_effect_dependency_terms(random_effects, n_rows)
+  vapply(random_effects, function(term){
+    structure <- term$structure
+    model_matrix <- term$model_matrix
+    if(!is.character(structure) || length(structure) != 1L ||
+       is.na(structure) || !structure %in% c("id", "diag", "us", "cs", "hcs", "ar1", "har", "car") ||
+       !is.matrix(model_matrix) || !is.numeric(model_matrix) ||
+       nrow(model_matrix) != n_rows || ncol(model_matrix) < 1L ||
+       any(!is.finite(model_matrix)) ||
+       !identical(as.integer(term$n_columns), ncol(model_matrix))){
+      stop("Random-effect source roles are unavailable for block '", term$block_name,
+           "': valid compiled coefficient metadata are required.", call. = FALSE)
+    }
+    if(!.bt_random_effect_dependency_shared(term, seq_len(n_rows))){
+      return("estimate")
+    }
+    if(!structure %in% c("id", "diag")){
+      return("context")
+    }
+    supports <- lapply(seq_len(ncol(model_matrix)), function(column){
+      which(model_matrix[, column] != 0)
+    })
+    supports <- supports[lengths(supports) > 0L]
+    contextual <- vapply(supports, function(rows){
+      .bt_random_effect_dependency_shared(term, rows)
+    }, logical(1))
+    if(any(contextual) && !all(contextual)){
+      return("mixed")
+    }
+    if(any(contextual)) "context" else "estimate"
+  }, character(1))
+}
+
+.bt_random_effect_dependency_shared <- function(term, rows){
+
+  group_map <- term$group_map[rows]
+  if(anyDuplicated(group_map)){
+    return(TRUE)
+  }
+  if(length(rows) < 2L || !.bt_random_effect_has_known_group_covariance(term)){
+    return(FALSE)
+  }
+  kernel <- term$group_covariance$kernel[group_map, group_map, drop = FALSE]
+  any(kernel[upper.tri(kernel)] != 0)
+}
+
+.bt_random_effect_dependency_terms <- function(random_effects, n_rows,
+                                               blocks = NULL){
 
   check_list(random_effects, "random_effects", allow_NULL = TRUE)
   check_int(n_rows, "n_rows", lower = 1L, check_length = 1L, allow_NA = FALSE)
@@ -37,6 +195,7 @@ random_effects_dependency_matrix <- function(random_effects, n_rows,
     stop("Random-effect block names must be non-empty and unique.",
          call. = FALSE)
   }
+  names(random_effects) <- block_names
   if(!is.null(blocks)){
     if(anyDuplicated(blocks) || any(!blocks %in% block_names)){
       stop("Requested random-effect dependency blocks must be unique existing block names.",
@@ -45,13 +204,19 @@ random_effects_dependency_matrix <- function(random_effects, n_rows,
     random_effects <- random_effects[block_names %in% blocks]
   }
 
-  adjacency <- diag(TRUE, n_rows)
   for(term in random_effects){
     group_map <- term$group_map
     if(!is.numeric(group_map) || length(group_map) != n_rows ||
        anyNA(group_map) || any(!is.finite(group_map)) ||
-       any(group_map < 1L) || any(group_map != as.integer(group_map))){
+       any(group_map < 1L) || any(group_map > .Machine$integer.max) ||
+       any(group_map != as.integer(group_map))){
       stop("Random-effect grouping metadata are invalid for dependency construction.",
+           call. = FALSE)
+    }
+    if(!is.null(term$group_covariance) &&
+       !.bt_random_effect_has_known_group_covariance(term)){
+      stop("Known random-effect group covariance metadata are unavailable for block '",
+           term$block_name, "'. Compile the formula before resolving dependencies.",
            call. = FALSE)
     }
     if(.bt_random_effect_has_known_group_covariance(term)){
@@ -60,16 +225,14 @@ random_effects_dependency_matrix <- function(random_effects, n_rows,
       )$kernel
       if(!is.matrix(kernel) || !is.numeric(kernel) ||
          nrow(kernel) != ncol(kernel) || any(!is.finite(kernel)) ||
-         any(kernel != t(kernel)) || any(group_map > nrow(kernel))){
+         any(kernel != t(kernel)) || any(diag(kernel) <= 0) ||
+         any(group_map > nrow(kernel))){
         stop("Known random-effect group covariance is invalid for dependency construction.",
              call. = FALSE)
       }
-      adjacency <- adjacency | kernel[group_map, group_map, drop = FALSE] != 0
-    }else{
-      adjacency <- adjacency | outer(group_map, group_map, "==")
     }
   }
-  unname(adjacency)
+  random_effects
 }
 
 #' Known group covariance for random effects
@@ -86,11 +249,17 @@ random_effects_dependency_matrix <- function(random_effects, n_rows,
 #' the fitted `sd` need not equal every grouping level's marginal standard
 #' deviation.
 #'
+#' Before fitting, the kernel is restricted to the fitted grouping levels and
+#' transformed according to `scale`. Its positive definiteness must be resolvable
+#' at working precision. Validation uses correlation units and preserves the
+#' chosen scaled kernel; unresolved near-singular kernels are unavailable.
+#'
 #' @param covariance numeric square matrix with row and column names identifying
 #'   grouping levels.
 #' @param scale how to scale the kernel before fitting. `"cor"` converts the
 #'   reordered matrix to a correlation matrix, `"none"` uses the matrix as
-#'   supplied, `"cor0"` applies `(stats::cov2cor(K) - min(K)) / (1 - min(K))`,
+#'   supplied, `"cor0"` forms `C = stats::cov2cor(K)` and applies
+#'   `(C - min(C)) / (1 - min(C))`,
 #'   and `"cov0"` applies `K - min(K)`.
 #'
 #' @return A `random_group_covariance` object.
@@ -332,7 +501,10 @@ print.random_group_covariance <- function(x, ...){
         call. = FALSE
       )
     }
-    kernel <- stats::cov2cor(kernel)
+    # Each symmetric pair uses the same divisor, avoiding the last-bit
+    # asymmetry that two sequential row/column multiplications can introduce.
+    kernel <- kernel / tcrossprod(sqrt(diag(kernel)))
+    diag(kernel) <- 1
   }
   if(identical(scale, "cor0")){
     denominator <- 1 - min(kernel)
@@ -371,10 +543,31 @@ print.random_group_covariance <- function(x, ...){
       call. = FALSE
     )
   }
-  chol_result <- tryCatch(
-    chol(kernel),
-    error = function(e) NULL
-  )
+  chol_result <- NULL
+  if(all(diag(kernel) > 0)){
+    # Validate support in dimensionless coordinates. A rounded positive
+    # Cholesky pivot alone can accept an exactly dependent covariance.
+    correlation <- .bt_random_group_covariance_scale(kernel, "cor", block_name)
+    values <- tryCatch(eigen(correlation, symmetric = TRUE, only.values = TRUE)$values,
+      error = function(e) NULL)
+    unresolved <- is.null(values) || any(!is.finite(values))
+    if(!unresolved){
+      operations <- 4 * nrow(kernel)
+      roundoff <- operations * .Machine$double.eps /
+        (1 - operations * .Machine$double.eps) * max(abs(values))
+      unresolved <- abs(min(values)) <= roundoff
+    }
+    if(unresolved){
+      stop(
+        "Known group covariance for random-effect block '", block_name,
+        "' is unavailable because positive definiteness after scaling cannot be resolved at working precision.",
+        call. = FALSE
+      )
+    }
+    if(min(values) > roundoff){
+      chol_result <- tryCatch(chol(kernel), error = function(e) NULL)
+    }
+  }
   if(is.null(chol_result)){
     stop(
       "Known group covariance for random-effect block '",

@@ -316,7 +316,8 @@
      !identical(fitted$parameterization_reason,
                 rebuilt$parameterization_reason) ||
      !identical(fitted$parameterization_policy,
-                rebuilt$parameterization_policy)){
+                rebuilt$parameterization_policy) ||
+     !identical(fitted$mean_translation, rebuilt$mean_translation)){
     .bt_JAGS_bridge_random_design_mismatch(
       parameter,
       "random-effect parameterization differs",

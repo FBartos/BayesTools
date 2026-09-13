@@ -205,6 +205,37 @@ test_that("row prior evaluation preserves joint prior boundaries", {
   expect_equal(invalid_density[3L], -Inf)
 })
 
+test_that("row prior evaluation uses PET and PEESE backend coordinates", {
+
+  prior_list <- list(
+    location   = prior("normal", list(0, 1)),
+    bias_pet   = prior_PET("normal", list(0, 2), list(0, 3)),
+    bias_peese = prior_PEESE("gamma", list(2, 1)),
+    allocation = prior("dirichlet", list(alpha = c(2, 3)))
+  )
+  samples <- cbind(
+    location = c(-.2, .4, .8, 0, -.1),
+    PET = c(0, .3, 3, 3.1, 1),
+    PEESE = c(.2, 1, 2, 1, 0),
+    "prior_par_eta_allocation[1]" = c(1.2, 1.8, 2.1, 1, 1),
+    "prior_par_eta_allocation[2]" = c(2.4, 1.1, 3.2, 1, 1)
+  )
+  expected <- stats::dnorm(samples[, "location"], log = TRUE) +
+    stats::dnorm(samples[, "PET"], sd = 2, log = TRUE) -
+    log(stats::pnorm(3 / 2) - .5) +
+    stats::dgamma(samples[, "PEESE"], shape = 2, rate = 1, log = TRUE) +
+    stats::dgamma(samples[, "prior_par_eta_allocation[1]"],
+                  shape = 2, rate = 1, log = TRUE) +
+    stats::dgamma(samples[, "prior_par_eta_allocation[2]"],
+                  shape = 3, rate = 1, log = TRUE)
+  expected[samples[, "PET"] > 3] <- -Inf
+
+  evaluator <- JAGS_marglik_priors_rows_evaluator(prior_list)
+  expect_equal(evaluator(samples), expected, tolerance = 1e-12)
+  expect_equal(evaluator(as.data.frame(samples)), expected, tolerance = 1e-12)
+  expect_equal(evaluator(samples[3L, ]), expected[3L], tolerance = 1e-12)
+})
+
 test_that("row prior evaluation retains an exact scalar fallback", {
 
   prior_list <- list(
@@ -2176,4 +2207,39 @@ test_that("compiled bridge prior evaluator rejects unsupported mixtures at setup
     ),
     "mixture"
   )
+})
+
+
+test_that("bridge posterior resolves only complete singleton coordinate families", {
+
+  raw <- matrix(c(-.3, .4, 1.1), ncol = 1L, dimnames = list(NULL, "z"))
+  for(coordinate in c("z", "z[1]", "z[1,1]")){
+    value <- JAGS_bridgesampling_posterior(
+      posterior = raw, prior_list = list(), add_parameters = coordinate,
+      add_bounds = list(lb = stats::setNames(-Inf, coordinate),
+                        ub = stats::setNames(Inf, coordinate))
+    )
+    expect_identical(colnames(value), coordinate)
+    expect_identical(unname(value[, 1L]), unname(raw[, 1L]))
+    expect_identical(names(attr(value, "lb")), coordinate)
+  }
+  expect_identical(colnames(raw), "z")
+  indexed <- raw
+  colnames(indexed) <- "z[1,1]"
+  value <- JAGS_bridgesampling_posterior(
+    posterior = indexed, prior_list = list(), add_parameters = "z",
+    add_bounds = list(lb = c(z = -Inf), ub = c(z = Inf))
+  )
+  expect_identical(colnames(value), "z")
+  expect_identical(unname(value[, 1L]), unname(raw[, 1L]))
+  # Neither a partly monitored array nor a competing indexed family is scalar.
+  for(posterior in list(cbind(raw, "z[2,1]" = 0),
+                       stats::setNames(data.frame(z = raw[, 1L]), "z[2,1]"))){
+    expect_error(JAGS_bridgesampling_posterior(
+      posterior = as.matrix(posterior), prior_list = list(),
+      add_parameters = "z[1,1]",
+      add_bounds = list(lb = c("z[1,1]" = -Inf), ub = c("z[1,1]" = Inf))
+    ), "'posterior' does not contain all of the parameters corresponding to the 'prior_list' and the 'add_parameter' argument.",
+    fixed = TRUE)
+  }
 })

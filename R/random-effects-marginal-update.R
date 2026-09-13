@@ -5,7 +5,10 @@
 #' dependence of its marginal covariance contribution. The result is compiled
 #' exclusively from the fitted parameter map and formula random-effect
 #' metadata; posterior draws are neither inspected nor used to infer an update
-#' form.
+#' form. An unsupported plan can include a `conditional` entry containing
+#' `required_active` and `plan`. The nested plan applies only to posterior rows
+#' where every named inclusion indicator equals one. It does not declare an
+#' unconditional update for the selected public quantity.
 #'
 #' @param fit a fitted object carrying a BayesTools parameter map and formula
 #'   design metadata.
@@ -61,6 +64,22 @@ random_effects_marginal_update_plan <- function(fit, selection){
     quantity = quantity,
     key = key
   )
+  if(identical(plan$family, "unsupported") && plan$reason %in% c(
+    "gated_realized_allocation", "ambiguous_allocation_scale",
+    "non_scalar_covariance_path"
+  )){
+    block_allocation <- .bt_random_effect_marginal_update_block_allocation(
+      design = design,
+      key = key
+    )
+    if(!is.null(block_allocation)){
+      if(length(block_allocation$required_active) > 0L){
+        plan$conditional <- block_allocation
+      }else{
+        plan <- block_allocation$plan
+      }
+    }
+  }
   plan$invariant_covariance <-
     .bt_random_effect_marginal_update_invariant_covariance(
       design = design,
@@ -70,13 +89,24 @@ random_effects_marginal_update_plan <- function(fit, selection){
   plan$quantity_id       <- quantity$quantity_id
   plan$canonical_name    <- quantity$canonical_name
   plan$formula_parameter <- parameter
-  plan$source_parameter  <- key$source_parameter
-  plan$source_transform  <- key$source_transform
+  if(is.null(plan$source_parameter)){
+    plan$source_parameter <- key$source_parameter
+  }
+  if(is.null(plan$source_transform)){
+    plan$source_transform <- key$source_transform
+  }
   plan$dependencies      <- key$dependencies
   class(plan) <- c(
     "BayesTools_random_effects_marginal_update_plan",
     "list"
   )
+  if(!is.null(plan$conditional)){
+    for(field in c("quantity_id", "canonical_name", "formula_parameter",
+                   "dependencies")){
+      plan$conditional$plan[[field]] <- plan[[field]]
+    }
+    class(plan$conditional$plan) <- class(plan)
+  }
   plan
 }
 
@@ -466,6 +496,25 @@ random_effects_marginal_update_grid <- function(
       key = key,
       random_term = random_term
     )
+    if(identical(
+      .bt_random_effect_allocation_target_metadata(allocation),
+      "sd_component"
+    )){
+      structure <- .bt_random_effect_structure(
+        random_term,
+        context = "Random-effect marginal covariance update plan"
+      )
+      if(random_term$n_columns > 1L && !structure %in% c("id", "diag")){
+        return(.bt_random_effect_marginal_update_unavailable(
+          quantity = quantity,
+          reason = "correlated_component_allocation",
+          message = paste0(
+            "Correlated component allocations require candidate-dependent ",
+            "covariance evaluation."
+          )
+        ))
+      }
+    }
     return(.bt_random_effect_marginal_update_affine(
       update = "allocation",
       blocks = .bt_random_effect_marginal_update_allocation_blocks(
@@ -648,6 +697,145 @@ random_effects_marginal_update_grid <- function(
   )
 }
 
+
+.bt_random_effect_marginal_update_block_allocation <- function(design, key){
+
+  component <- key$evaluator %in% c("sd", "sd_variance") &&
+    isTRUE(key$allocation_derived)
+  aggregate <- key$evaluator %in% c("allocation_sd", "allocation_var")
+  proportion <- identical(key$evaluator, "allocation") &&
+    identical(key$source_transform, "var_prop")
+  if(!component && !aggregate && !proportion){
+    return(NULL)
+  }
+
+  random_terms <- .bt_formula_design_random_effects(design)
+  if(length(random_terms) != 2L || any(vapply(random_terms, function(term){
+    term$n_columns != 1L || !identical(term$sd_binding$application, "block") ||
+      length(term$sd_binding$allocations) != 1L ||
+      length(term$sd_binding$sources_by_column) > 0L ||
+      length(term$sd_binding$factors_by_column) > 0L
+  }, logical(1)))){
+    return(NULL)
+  }
+  block_names <- vapply(random_terms, `[[`, character(1), "block_name")
+  allocation <- random_terms[[1L]]$sd_binding$allocations[[1L]]
+  if(!identical(.bt_random_effect_allocation_target_metadata(allocation),
+                "block") ||
+     !identical(allocation$n_targets, 2L) ||
+     !setequal(unname(allocation$terms), block_names) ||
+     length(allocation$inclusion) > 0L ||
+     !identical(allocation$scale, "total_variance") ||
+     !is.list(allocation$source) ||
+     !identical(allocation$source$shape, "scalar")){
+    return(NULL)
+  }
+  source <- .bt_random_sd_binding_source_name(allocation$source)
+  weight <- allocation$weight_name
+  if(!is.character(source) || length(source) != 1L || is.na(source) ||
+     !nzchar(source) || !is.character(weight) || length(weight) != 1L ||
+     is.na(weight) || !nzchar(weight)){
+    return(NULL)
+  }
+  if((aggregate || proportion) &&
+     !identical(key$allocation_label, allocation$label)){
+    return(NULL)
+  }
+
+  term_metadata <- lapply(random_terms, function(term){
+
+    binding <- term$sd_binding
+    current <- binding$allocations[[1L]]
+    if(!identical(current$label, allocation$label) ||
+       !identical(current$weight_name, weight) ||
+       !identical(current$n_targets, 2L) ||
+       !identical(current$scale, allocation$scale) ||
+       length(current$inclusion) > 0L ||
+       !identical(binding$source$shape, "scalar") ||
+       !identical(.bt_random_sd_binding_source_name(binding$source), source)){
+      return(NULL)
+    }
+    factors <- .bt_random_effect_allocation_factors_metadata(binding)
+    split <- vapply(factors, function(factor){
+      identical(factor$weight_name, weight)
+    }, logical(1))
+    if(sum(split) != 1L){
+      return(NULL)
+    }
+    factor <- factors[[which(split)]]
+    if(!identical(factor$scale, allocation$scale) ||
+       !identical(factor$n_targets, 2L) ||
+       !is.numeric(factor$index) || length(factor$index) != 1L ||
+       is.na(factor$index) || !factor$index %in% 1:2 ||
+       !is.null(factor$inclusion_name)){
+      return(NULL)
+    }
+    parents <- factors[!split]
+    pure_gates <- vapply(parents, function(parent){
+      is.null(parent$weight_name) && identical(parent$n_targets, 1L) &&
+        identical(parent$scale, "total_variance") &&
+        is.character(parent$inclusion_name) &&
+        length(parent$inclusion_name) == 1L &&
+        !is.na(parent$inclusion_name) && nzchar(parent$inclusion_name)
+    }, logical(1))
+    if(!all(pure_gates)){
+      return(NULL)
+    }
+    list(
+      index = as.integer(factor$index),
+      required_active = sort(unique(vapply(
+        parents, `[[`, character(1), "inclusion_name"
+      )))
+    )
+  })
+  if(any(vapply(term_metadata, is.null, logical(1))) ||
+     !identical(sort(vapply(term_metadata, `[[`, integer(1), "index")), 1:2) ||
+     !identical(term_metadata[[1L]]$required_active,
+                term_metadata[[2L]]$required_active)){
+    return(NULL)
+  }
+  required_active <- term_metadata[[1L]]$required_active
+  if(length(required_active) == 0L && !component){
+    return(NULL)
+  }
+
+  index <- if(component){
+    block <- match(key$random_block, block_names)
+    if(is.na(block)){
+      return(NULL)
+    }
+    term_metadata[[block]]$index
+  }else if(proportion){
+    key$index
+  }else{
+    NA_integer_
+  }
+  if(proportion && (!is.numeric(index) || length(index) != 1L ||
+                    is.na(index) || !index %in% 1:2)){
+    return(NULL)
+  }
+  plan <- .bt_random_effect_marginal_update_affine(
+    update = if(proportion) "allocation" else "scale",
+    blocks = block_names,
+    coefficient_transform = if(proportion ||
+                               identical(key$evaluator, "sd_variance")){
+      list(type = "identity")
+    }else{
+      list(type = "square")
+    },
+    coefficient_input = if(component) "quantity" else "source",
+    component_index = if(component) key$index else NA_integer_,
+    allocation = list(
+      weight_name = weight,
+      index = as.integer(index),
+      n_targets = 2L,
+      scale = allocation$scale
+    )
+  )
+  plan$source_parameter <- if(proportion) weight else source
+  plan$source_transform <- key$source_transform
+  list(required_active = required_active, plan = plan)
+}
 
 .bt_random_effect_marginal_update_allocation_blocks <- function(
     fit, key, allocation){

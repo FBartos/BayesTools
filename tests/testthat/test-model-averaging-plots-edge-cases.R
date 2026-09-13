@@ -580,7 +580,7 @@ test_that("prior line overlays reuse the active probability scale", {
   point_scale <- NULL
   testthat::local_mocked_bindings(
     .plot_scale_y2_state_current = function(){
-      list(scale_y2 = 9, ylim2 = c(0, 1))
+      list(scale_y2 = 9, ylim2 = c(0, 1), usr = c(0, 1, 0, 9))
     },
     .lines.prior.simple = function(...) invisible(NULL),
     .lines.prior.point = function(plot_data, scale_y2 = 1, ...){
@@ -2691,4 +2691,38 @@ test_that("plot_posterior owns factor legends in transformed prior overlays", {
     ),
     0L
   )
+})
+
+
+test_that("point-mass clipping warnings follow visible probability bounds", {
+
+  make_priors <- function(mass) {
+
+    list(
+      prior("point", list(location = 0), prior_weights = mass),
+      prior("normal", list(mean = 0, sd = 1), prior_weights = 1 - mass)
+    )
+  }
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  plot_prior_list(make_priors(.7), ylim = c(0, 1), ylim2 = c(0, .735))
+  state <- BayesTools:::.plot_scale_y2_state_current()
+
+  # Pretty ticks and base axis padding make .75 visible above the requested
+  # upper limit .735, while the .9 arrow lies outside the actual plot region.
+  tip_y <- graphics::grconvertY(c(.75, .9) * state[["scale_y2"]], "user", "nfc")
+  plot_top <- graphics::grconvertY(graphics::par("usr")[[4L]], "user", "nfc")
+  expect_equal(state[["ylim2"]], c(0, .735))
+  expect_lt(tip_y[[1L]], plot_top)
+  expect_gt(tip_y[[2L]], plot_top)
+  expect_no_warning(lines_prior_list(make_priors(.75)))
+  expect_warning(
+    lines_prior_list(make_priors(.9)),
+    paste0(
+      "Point-mass probabilities outside the active secondary-axis limits ",
+      "will be clipped. Redraw the initial plot with a wider 'ylim2'."
+    ),
+    fixed = TRUE
+  )
+  expect_identical(BayesTools:::.plot_scale_y2_state_current(), state)
 })

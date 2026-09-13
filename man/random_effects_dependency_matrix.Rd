@@ -21,8 +21,10 @@ A symmetric logical \code{n_rows} by \code{n_rows} matrix with a true diagonal.
 }
 \description{
 Returns conservative row adjacency implied by compiled random-effect group
-maps and known group covariance. This is independent of posterior draws and
-compile mode. Rows sharing a group remain connected even when a particular
-design coefficient or sampled covariance is zero. Downstream likelihoods can
-combine this matrix with their sampling dependencies before partitioning rows.
+maps, known group covariance, and the fixed coefficient supports of \code{id()}
+and \code{diag()} blocks. Disjoint independent coefficient supports do not connect
+rows. Other covariance structures retain conservative group dependencies.
+This is independent of posterior draws, sampled covariance, and compile mode.
+Downstream likelihoods can combine this matrix with their sampling dependencies
+before partitioning rows.
 }

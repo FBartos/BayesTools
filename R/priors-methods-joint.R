@@ -102,7 +102,7 @@ rng.prior   <- function(x, n, ...){
     if(inherits(prior, "prior.bias_mixture")){
 
       branch_info <- lapply(prior, .selection_branch_info)
-      spec        <- selection_backend_spec(prior)
+      spec        <- selection_backend_spec(prior, include_init = FALSE)
 
       is_PET        <- sapply(prior, is.prior.PET)
       is_PEESE      <- sapply(prior, is.prior.PEESE)
@@ -299,7 +299,7 @@ rng.prior   <- function(x, n, ...){
 
   }else if(is_prior_bias(prior)){
 
-    selection_backend_spec(prior)
+    selection_backend_spec(prior, include_init = FALSE)
 
     x <- NULL
     if(!is.null(prior$selection)){

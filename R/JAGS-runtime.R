@@ -1,4 +1,153 @@
-.JAGS_require_packages <- function(required_packages, cl = NULL){
+.JAGS_validate_runtime_setup <- function(runtime_setup){
+
+  if(!is.null(runtime_setup) && !is.function(runtime_setup)){
+    stop("'runtime_setup' must be NULL or a function accepting one context argument.", call. = FALSE)
+  }
+  invisible(runtime_setup)
+}
+
+.JAGS_validate_runtime_cache <- function(runtime_cache){
+
+  if(!is.null(runtime_cache) && !is.function(runtime_cache)){
+    stop("'runtime_cache' must be NULL or a function accepting 'context' and 'state' arguments.", call. = FALSE)
+  }
+  invisible(runtime_cache)
+}
+
+# Cached values are optional computational state. Keep payloads out of callback
+# environments and send each old process shard to at most one current process.
+.JAGS_run_runtime_cache <- function(runtime_cache, phase, chains, cl = NULL,
+                                    state = NULL){
+
+  if(is.null(runtime_cache)) return(NULL)
+  if(is.null(state)) state <- list()
+  if(phase == "restore" && !is.list(state)){
+    warning("Runtime cache restore is unavailable because the retained state is not a list.", call. = FALSE)
+    state <- list()
+  }
+  processes <- if(is.null(cl)) 1L else length(cl)
+  assigned <- rep(list(list()), processes)
+  if(phase == "restore"){
+    for(index in seq_along(state)){
+      if(is.null(state[[index]])) next
+      process <- (index - 1L) %% processes + 1L
+      assigned[[process]] <- c(assigned[[process]], list(state[[index]]))
+    }
+  }
+  tasks <- lapply(seq_len(processes), function(process){
+    list(context = .JAGS_runtime_context(chains, processes, !is.null(cl), process, phase),
+      state = if(phase == "restore") assigned[[process]] else NULL)
+  })
+  worker <- function(task, callback){
+
+    messages <- character()
+    value <- tryCatch(withCallingHandlers(
+      callback(task$context, state = task$state),
+      warning = function(condition){
+        messages <<- c(messages, conditionMessage(condition))
+        invokeRestart("muffleWarning")
+      }), error = function(condition){
+        messages <<- c(messages, conditionMessage(condition))
+        NULL
+      })
+    list(value = value, messages = messages)
+  }
+  environment(worker) <- baseenv()
+  results <- tryCatch({
+    if(is.null(cl)) list(worker(tasks[[1L]], runtime_cache)) else
+      parallel::clusterApply(cl, tasks, worker, callback = runtime_cache)
+  }, error = function(condition){
+    warning("Runtime cache ", phase, " could not be completed: ", conditionMessage(condition),
+      call. = FALSE)
+    NULL
+  })
+  if(is.null(results)) return(NULL)
+  for(process in seq_along(results)){
+    location <- if(is.null(cl)) "the local process" else paste("worker", process)
+    for(message in results[[process]]$messages){
+      warning("Runtime cache ", phase, " in ", location, ": ", message, call. = FALSE)
+    }
+  }
+  if(phase != "capture") return(NULL)
+  captured <- lapply(results, `[[`, "value")
+  if(all(vapply(captured, is.null, logical(1L)))) NULL else captured
+}
+
+.JAGS_runtime_context <- function(chains, processes = 1L, parallel = FALSE,
+                                  process_id = 1L, phase = "start"){
+
+  # runjags assigns chains round-robin to its simulations, with at most one
+  # simulation per worker. The first workers receive any remaining chains.
+  process_chains <- if(!parallel){
+    chains
+  }else if(process_id == 0L){
+    0L
+  }else{
+    chains %/% processes + as.integer(process_id <= chains %% processes)
+  }
+  list(
+    phase          = phase,
+    role           = if(!parallel) "local" else if(process_id == 0L) "coordinator" else "worker",
+    chains         = as.integer(chains),
+    processes      = as.integer(processes),
+    process_id     = as.integer(process_id),
+    process_chains = as.integer(process_chains),
+    parallel       = parallel
+  )
+}
+
+.JAGS_run_runtime_setup <- function(runtime_setup, chains, cl = NULL){
+
+  if(is.null(runtime_setup)){
+    return(invisible(NULL))
+  }
+  context <- .JAGS_runtime_context(chains,
+    processes = if(is.null(cl)) 1L else length(cl),
+    parallel = !is.null(cl), process_id = if(is.null(cl)) 1L else 0L)
+  runtime_setup(context)
+  if(!is.null(cl)){
+    contexts <- lapply(seq_along(cl), function(process_id){
+      .JAGS_runtime_context(chains, length(cl), TRUE, process_id)
+    })
+    run_setup <- function(context, setup){
+
+      setup(context)
+      NULL
+    }
+    environment(run_setup) <- baseenv()
+    parallel::clusterApply(cl, contexts, run_setup, setup = runtime_setup)
+  }
+  invisible(NULL)
+}
+
+.JAGS_finish_runtime_setup <- function(runtime_setup, chains, cl = NULL,
+                                        operation = "Parallel JAGS"){
+
+  # Release workers before restoring resources to the calling process.
+  if(!is.null(cl)){
+    cleanup_error <- tryCatch({
+      parallel::stopCluster(cl)
+      NULL
+    }, error = identity)
+    if(!is.null(cleanup_error)){
+      warning(
+        operation, " worker cleanup failed: ", conditionMessage(cleanup_error),
+        ". The runtime finish callback was not run.", call. = FALSE
+      )
+      return(invisible(NULL))
+    }
+  }
+  if(!is.null(runtime_setup)){
+    runtime_setup(.JAGS_runtime_context(chains,
+      processes = if(is.null(cl)) 1L else length(cl),
+      parallel = !is.null(cl), process_id = if(is.null(cl)) 1L else 0L,
+      phase = "finish"))
+  }
+  invisible(NULL)
+}
+
+.JAGS_require_packages <- function(required_packages, cl = NULL,
+                                   operation = "Parallel JAGS fitting"){
 
   if(length(required_packages) == 0)
     return(invisible(logical(0)))
@@ -44,7 +193,7 @@
   }, logical(1))]
   if(length(mismatched) > 0L){
     stop(
-      "Parallel JAGS fitting is unavailable with mismatched package versions, R code, or native builds: '",
+      operation, " is unavailable with mismatched package versions, R code, or native builds: '",
       paste(mismatched, collapse = "', '"),
       "'. Install the parent-session builds into a library and set 'R_LIBS_USER' ",
       "to that library before starting R and its workers.",
@@ -76,18 +225,33 @@
     # Compare loaded definitions, not source files or lazy-load databases: the
     # latter differ between load_all() and an equivalent installed package.
     namespace <- asNamespace(package)
+    values <- as.list(namespace, all.names = TRUE)
     functions <- Filter(function(value){
       is.function(value) && identical(environment(value), namespace)
-    }, as.list(namespace, all.names = TRUE))
+    }, values)
     functions <- functions[sort(names(functions), method = "radix")]
     definitions <- vapply(functions, function(value){
       paste(deparse(value, width.cutoff = 500L,
                     control = c("keepNA", "keepInteger", "niceNames")),
             collapse = "\n")
     }, character(1))
+    # Numerical rule vectors and immutable metadata are executable settings
+    # too. Reject environments/pointers/closures/language anywhere, including
+    # attributes, so mutable caches and installation-specific DLL records do
+    # not enter this source-versus-installed comparison.
+    immutable <- function(value){
+
+      if(!typeof(value) %in% c("NULL", "logical", "integer", "double", "complex", "character", "raw", "list")) return(FALSE)
+      if(is.list(value) && !all(vapply(value, immutable, logical(1L)))) return(FALSE)
+      value_attributes <- attributes(value)
+      is.null(value_attributes) || all(vapply(value_attributes, immutable, logical(1L)))
+    }
+    constants <- Filter(immutable, values)
+    constants <- constants[sort(names(constants), method = "radix")]
     code_file <- tempfile("JAGS-package-code-")
     on.exit(unlink(code_file), add = TRUE)
-    saveRDS(definitions, code_file, version = 2L, compress = FALSE)
+    saveRDS(list(functions = definitions, constants = constants), code_file,
+      version = 2L, compress = FALSE)
     list(
       version = as.character(utils::packageVersion(package)),
       r_code = unname(tools::md5sum(code_file)),

@@ -1,5 +1,69 @@
 # version 0.3.1
+### Features
+- supports optional process-sharded computational cache capture and restoration
+  across saved fits and extensions, without embedding retained payloads in
+  callbacks or broadcasting them in backend fit objects; cache failures retain
+  valid draws and existing runtime cleanup.
+- preserves exact symmetry when converting known group covariance to correlation,
+  avoiding rejection caused by independently rounded row and column scaling.
+  Fitted kernels whose positive definiteness cannot be resolved at working
+  precision are rejected explicitly after fitted-level subsetting.
+- includes loaded immutable R constants in parallel package-build checks and
+  supports operation-specific diagnostics for consumers of the runtime helpers.
+- exposes `diagonal_support` in `random_effects_marginal_diagonal_factor()`,
+  identifying rows with a diagonal covariance contribution from compiled
+  structural metadata, including when an evaluated SD is zero. Numerical
+  covariances and existing loading-support metadata are unchanged.
+- adds a persisted `runtime_setup(context)` callback with the actual chain and
+  process topology, coordinator/worker roles, and start/finish lifecycle;
+  extensions refresh worker assignments, automatic extensions retain the
+  configured workers, and coordinator resources can be released during
+  parallel work and restored after workers stop
+- supports explicit `mean_centered` sampling for an eligible scalar random
+  intercept block, preserving the supplied effect and scale priors, residual
+  moderators, semantic deviations, and canonical bridge coordinates; existing
+  parameterization defaults remain unchanged
+- adds `selection_model()` specifications to weightfunction priors with separate
+  estimate-random-effect, other-random-effect and complete sampling-error choices,
+  defaulting to integrate/condition/integrate; conditioning retains the entire
+  sampling-error vector, including in univariate models, independently of its
+  covariance factorization; preserves deferred publication groups, branch odds
+  and the released weight-height prior semantics
+- resolves at most one estimate-level random term by its one-to-one grouping
+  map, rejects multiple qualifying terms, and preserves correlated known group
+  covariance independently of this source classification
+- compiles covariance factors for sampled or marginalized random effects,
+  including known group covariance and exact Markov unit roots, so consumers
+  can distinguish selection integration from backend latent sampling
+- exposes structural selection-event support checks that distinguish impossible
+  retained contexts from unverified positive-direction certificates
+- compiles product and best p-value vector selection rules as fixed branch
+  metadata, with validated row routing and no additional sampled parameters
+- exposes source roles from compiled random-effect groups, coefficient supports,
+  and known group covariance, explicitly identifying mixed independent and
+  contextual coefficient ownership for covariance-support validation
+- preserves independent coefficient supports in structural dependency graphs,
+  including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- reconstructs conditional random-effect contributions directly instead of
+  subtracting fixed effects from total predictions, preserving small random
+  effects and consistent group coefficients when fixed moderators differ
+- generates independent random-effect coefficient transformations separately
+  for each group, avoiding unrelated likelihood reevaluation while preserving
+  known group covariances, correlated coefficients, and row-specific SDs
+- resolves JAGS scalar names for complete singleton bridge-coordinate arrays
+  without renaming stored fits or aliasing partially monitored arrays
+- preserves finite Markov transition metadata for valid unit-correlation roots
+  with zero Cholesky diagonals, without changing public correlation-prior support
+- resolves allocation prior densities from compiled weight metadata, including
+  exact conditional Dirichlet marginals for variance proportions with one
+  shared parent inclusion gate and positive prior allocation variance
+- stops adaptive prior-density and prior-probability refinement at convergence,
+  avoiding unused finer grids while preserving the numerical error checks
+- rejects affine marginal-update plans for correlated component-SD variance
+  allocations, whose covariance contains nonlinear cross-component products
+- reserves room for secondary probability-axis labels in mixed density plots
+  and checks overlay clipping against the actual displayed axis limits
 - keeps allocation-derived component SDs in full summaries, consistently for
   models with and without random-effect inclusion indicators
 - batches random-effect diagonal/factor covariance reconstruction across
@@ -22,7 +86,8 @@
   random-effect groups in compiled grouping metadata, matching metafor while
   retaining the declared order of explicit `:` interactions
 - preserves failed-backend messages when `JAGS_fit()` succeeds after a restart,
-  and retains fit warnings consistently through automatic extensions
+  emits them immediately during visible fitting, and retains fit warnings
+  consistently through automatic extensions
 - preserves BayesTools table metadata and safe row names when tables are
   subsetted by row
 - unregisters the JAGS module before destroying module-owned native objects at
@@ -35,6 +100,11 @@
   of accepting nearby values under a numerical-comparison tolerance
 
 ### Performance
+- reduces repeated scale and Cholesky extraction and Markov index construction
+  when preparing random-effect covariance states
+- Random-effect covariance plans now expose exact updates for a two-block variance split conditional on its shared inclusion gate, and resolve the split's component SD updates from their declared scalar source.
+- includes PET and PEESE priors in the shared vectorized bridge-prior evaluator
+- exposes compiled factor loading supports for downstream integration routing
 - reuses compiled SD and latent-coordinate metadata while reconstructing
   sampled random-coefficient formulas for bridge sampling, retaining generic
   reconstruction for row-shaped and structured-index effects
@@ -318,6 +388,9 @@
 - `as_marginal_inference()` conditional marginal summaries use active-subset conditioning: each marginal level conditions only on requested parameters with nonzero weight in that level's linear combination, and levels with no active requested conditionals use the fully averaged context
 
 ### Fixes
+- makes selection metadata lookup deterministic by omitting discarded JAGS
+  initialization draws, while retaining initial values for fitting and by
+  default in `selection_backend_spec()`
 - identifies natural prior-support bounds by exact equality, so finite
   near-support truncations remain truncated and repeated density evaluation
   avoids tolerance-based bound comparisons.
@@ -665,4 +738,3 @@
 
 ## version 0.0.0.9000
 - priors and related methods
-

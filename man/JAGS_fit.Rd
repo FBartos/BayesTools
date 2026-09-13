@@ -32,6 +32,8 @@ JAGS_fit(
   add_parameters = NULL,
   required_packages = NULL,
   jags_modules = NULL,
+  runtime_setup = NULL,
+  runtime_cache = NULL,
   ...
 )
 
@@ -43,7 +45,9 @@ JAGS_extend(
     FALSE),
   parallel = FALSE,
   cores = NULL,
-  silent = TRUE
+  silent = TRUE,
+  runtime_setup = attr(fit, "runtime_setup", exact = TRUE),
+  runtime_cache = attr(fit, "runtime_cache", exact = TRUE)
 )
 }
 \arguments{
@@ -143,7 +147,48 @@ a library and set \code{R_LIBS_USER} before starting R and its workers.}
 \item{jags_modules}{character vector specifying JAGS modules required by the
 generated model syntax. Defaults to \code{NULL}.}
 
+\item{runtime_setup}{optional function accepting one \code{context} list. After
+required packages and JAGS modules load, it is called with \code{phase = "start"}
+in the calling process, then each parallel worker. The context contains
+\code{role} (\code{"local"}, \code{"coordinator"}, or \code{"worker"}),
+\code{chains} (total chains), \code{processes} (sampling processes),
+\code{process_id} (one-based worker index, or zero for the coordinator),
+\code{process_chains} (chains assigned to this process; zero for the
+coordinator), and \code{parallel}. Chains are divided round-robin among at
+most \code{min(cores, chains)} workers. On exit, including fitting failures,
+workers are stopped before the calling process receives \code{phase = "finish"}
+with its original topology context. Worker processes do not receive a finish
+callback. If stopping workers fails, a warning is issued and the finish
+callback is not run. This permits releasing coordinator resources before
+parallel work and restoring them afterward. Return values are ignored. The callback must be
+idempotent, must not change random-number generator state, and should capture
+only small immutable settings. Packages it uses must be included in
+\code{required_packages}. The callback is stored with the fit;
+\code{JAGS_extend()} reuses it with the current chain and worker topology.
+Supplying \code{NULL} explicitly disables replay.}
+
 \item{...}{additional hidden arguments}
+
+\item{runtime_cache}{optional function accepting \code{context} and
+\code{state = NULL} for optional computational caches. It must not change
+inference targets or random-number state and must capture only small settings.
+After runtime setup, a fit or extension calls it with \code{context$phase = "restore"}
+and a list of prior process shards assigned to this process (empty for new
+fits or workers without an assigned shard). Each prior shard
+is sent to at most one current process, in round-robin order; shards are not
+duplicated when worker count increases. Before workers stop, a completed fit
+calls it with \code{context$phase = "capture"} and \code{state = NULL}.
+Capture returns one serializable shard, or \code{NULL} to retain no state.
+The fitted object's \code{runtime_state} attribute stores process shards
+separately from its small \code{runtime_cache} callback. Backend extension
+calls receive neither attribute. \code{JAGS_extend()} restores old state
+independently of whether its callback elects to capture fresh state.
+Callback warnings and errors are reported without discarding valid draws;
+failed captures leave a \code{NULL} shard. Error and interrupt cleanup does
+not attempt capture; ordinary runtime cleanup still runs. Retained R snapshots,
+serialization buffers, and the caller's old fitted object consume memory in
+addition to active cache storage. Callback packages must be listed in
+\code{required_packages}. Passing \code{NULL} disables capture and restore.}
 
 \item{fit}{a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
 extended}
@@ -152,6 +197,8 @@ extended}
 \code{JAGS_fit} returns an object of class 'runjags' and 'BayesTools_fit'.
 \code{JAGS_extend} continues the backend random-number generator state of the
 existing chains; it does not reseed them.
+Stored parameter and RNG states initialize reconstruction; recompilation can
+reset sampler tuning and follows runjags' adaptation policy.
 }
 \description{
 A wrapper around

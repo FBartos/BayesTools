@@ -103,6 +103,40 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
     )
   }
 
+  if(identical(formula_target, "conditional")){
+    seed_state <- .bt_formula_prediction_seed(seed)
+    on.exit(.bt_formula_prediction_restore_seed(seed_state), add = TRUE)
+    evaluated <- .bt_JAGS_evaluate_formula(
+      fit = fit,
+      formula = formula,
+      parameter = parameter,
+      data = data,
+      prior_list = prior_list,
+      formula_target = "conditional",
+      blocks = blocks,
+      new_levels = new_levels,
+      fitted_rows = fitted_rows,
+      return_components = TRUE
+    )
+    value <- evaluated$value
+    fixed <- evaluated$fixed
+    random <- evaluated$random
+    return(.bt_formula_prediction_object(
+      value = value,
+      mean = fixed,
+      random = random,
+      vcov = NULL,
+      components = if(isTRUE(components)) list(fixed = fixed, random = random) else NULL,
+      metadata = .bt_formula_prediction_metadata(
+        parameter = parameter,
+        formula_target = formula_target,
+        marginal_method = NA_character_,
+        blocks = blocks,
+        new_levels = new_levels
+      )
+    ))
+  }
+
   fixed <- JAGS_evaluate_formula(
     fit = fit,
     formula = formula,
@@ -118,37 +152,6 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
       random = NULL,
       vcov = NULL,
       components = NULL,
-      metadata = .bt_formula_prediction_metadata(
-        parameter = parameter,
-        formula_target = formula_target,
-        marginal_method = NA_character_,
-        blocks = blocks,
-        new_levels = new_levels
-      )
-    ))
-  }
-
-  if(identical(formula_target, "conditional")){
-    seed_state <- .bt_formula_prediction_seed(seed)
-    on.exit(.bt_formula_prediction_restore_seed(seed_state), add = TRUE)
-    value <- JAGS_evaluate_formula(
-      fit = fit,
-      formula = formula,
-      parameter = parameter,
-      data = data,
-      prior_list = prior_list,
-      formula_target = "conditional",
-      blocks = blocks,
-      new_levels = new_levels,
-      fitted_rows = fitted_rows
-    )
-    random <- value - fixed
-    return(.bt_formula_prediction_object(
-      value = value,
-      mean = fixed,
-      random = random,
-      vcov = NULL,
-      components = if(isTRUE(components)) list(fixed = fixed, random = random) else NULL,
       metadata = .bt_formula_prediction_metadata(
         parameter = parameter,
         formula_target = formula_target,

@@ -193,6 +193,19 @@
 #' or row-indexed SD sources. `"auto"` falls back to `"noncentered"` when those
 #' contracts or its design-information checks do not support centering.
 #'
+#' An explicitly named `random_block()` may request `"mean_centered"` for a
+#' sampled scalar random intercept. It samples group locations around the
+#' fixed intercept's compiled contribution, preserving the original effect,
+#' SD, allocation, and correlation priors. The fixed effect need not have a
+#' Normal prior; a compiled `log(intercept)` contribution is also supported.
+#' Other moderator terms remain in the predictor. At most one block per
+#' formula may receive the intercept. This mode requires the positive-SD
+#' contract above and currently excludes known between-group covariance and
+#' random slopes. Selection-model callers must additionally require that the
+#' translated block is retained in the selection normalizer. Semantic random
+#' coefficients remain zero-mean deviations; prediction and bridge sampling
+#' retain their existing coefficient and standardized-latent conventions.
+#'
 #' @param ... named `random_block()` specifications and, optionally,
 #'   top-level `random_variance_allocation()` specifications.
 #' @param sd prior distribution for random-effect standard deviations.
@@ -206,6 +219,7 @@
 #' @param parameterization requested sampled random-effect parameterization:
 #'   `"noncentered"`, `"centered"`, or `"auto"`. The top-level value is
 #'   inherited by blocks without an explicit `random_block()` override.
+#'   A named block can additionally request `"mean_centered"`; see details.
 #' @param allocation optional `random_variance_allocation()` specification, or
 #'   a list of such specifications, defining aggregate-SD plus Dirichlet variance
 #'   allocation across named random-effect blocks.
@@ -329,7 +343,7 @@ prior_random <- function(..., sd = NULL, covariance = NULL, cor = NULL,
 
   .bt_check_random_monitor(monitor)
   .bt_check_random_new_levels(new_levels)
-  .bt_check_random_parameterization(parameterization)
+  .bt_check_random_parameterization(parameterization, allow_mean_centered = FALSE)
   .bt_check_random_allocation(allocation)
 
   out <- list(
@@ -795,7 +809,7 @@ is.prior_random <- function(x){
   if(!is.prior_random(x)){
     stop("'prior_random' must be created with prior_random().", call. = FALSE)
   }
-  .bt_check_random_parameterization(x$parameterization)
+  .bt_check_random_parameterization(x$parameterization, allow_mean_centered = FALSE)
   .bt_check_random_prior_blocks(x$blocks)
 
   invisible(TRUE)
@@ -1001,12 +1015,18 @@ is.prior_random <- function(x){
   invisible(TRUE)
 }
 
-.bt_check_random_parameterization <- function(x, allow_NULL = FALSE){
+.bt_check_random_parameterization <- function(x, allow_NULL = FALSE,
+                                               allow_mean_centered = TRUE){
+
+  if(!allow_mean_centered && identical(x, "mean_centered")){
+    stop("Mean-centered parameterization requires an explicitly named 'random_block()'.",
+         call. = FALSE)
+  }
 
   check_char(
     x,
     "parameterization",
-    allow_values = c("noncentered", "centered", "auto"),
+    allow_values = c("noncentered", "centered", "mean_centered", "auto"),
     allow_NULL = allow_NULL,
     allow_NA = FALSE
   )

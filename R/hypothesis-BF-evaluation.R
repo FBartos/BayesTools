@@ -272,13 +272,13 @@
   }
 
   prob <- evaluate_probability(prior_density)
-  refinements <- .prior_linear_density_refinements(prior_density)
-  if(length(refinements) > 0L){
+  refined <- .prior_linear_density_refinement(prior_density)
+  if(!is.null(refined)){
     tolerance <- .prior_linear_density_refinement_tolerance()
     previous <- prob
     converged <- FALSE
-    for(i in seq_along(refinements)){
-      current <- evaluate_probability(refinements[[i]])
+    for(i in seq_len(4L)){
+      current <- evaluate_probability(refined)
       change <- abs(current - previous)
       bound <- tolerance$absolute +
         tolerance$relative * max(abs(current), abs(previous))
@@ -288,6 +288,9 @@
         break
       }
       previous <- current
+      if(i < 4L){
+        refined <- .prior_linear_density_refinement(refined)
+      }
     }
     if(!converged){
       stop(

@@ -37,6 +37,11 @@ posterior summaries, diagnostics, and interpretation.
 - Use independent references, analytic identities, or human-verified results
   for numerical tests. Do not test an implementation against the same
   unverified calculation.
+- When a product-space Bayes factor has zero or one draw in the rare state,
+  require agreement in conclusion, not high numerical precision, if bridge or
+  density-based estimates show overwhelming evidence in the same direction.
+  Keep reported error percentages and uncertainty visible. This does not relax
+  density or integration diagnostics; estimator ESS is not state occupancy.
 
 ### Complexity Budget
 
@@ -60,6 +65,9 @@ posterior summaries, diagnostics, and interpretation.
   earlier iterations of that same unreleased code. Replace inferior architecture
   instead of adding migrations, deprecated aliases, schema adapters, or
   compatibility layers.
+- Refactor and unify unreleased implementations across BayesTools and RoBMA
+  within the requested scope when this improves correctness, performance, or
+  maintenance. This permission does not extend to breaking released interfaces.
 - For functionality present in a released version, prefer backward-compatible
   changes.
 - If released architecture prevents a clean solution or appears short-sighted,
@@ -93,6 +101,10 @@ posterior summaries, diagnostics, and interpretation.
 - Before non-trivial work, state consequential assumptions and success
   criteria. Do not narrate obvious assumptions.
 - Use a short visible plan for multi-step work; revise it when evidence changes.
+- Apply the maintainer's existing authorization without asking again for
+  routine in-scope fixes or unreleased refactors. Before substantial work,
+  consult `.agents/instructions-decisions.md` when present for pending design
+  choices.
 - When requirements, code, tests, or documentation conflict, name the conflict
   and seek or record a decision instead of guessing.
 - Push back with concrete correctness, complexity, maintenance, or runtime
@@ -103,6 +115,27 @@ posterior summaries, diagnostics, and interpretation.
   existing code. Remove the former; do not remove the latter without approval.
 - State uncertainty, verification performed, and verification omitted. Never
   present incomplete evidence as completion.
+
+### Performance Investigations
+
+- Profile suspiciously slow original calls. Prioritize missing optimized paths,
+  unused compiled metadata, and repeated construction or calculation of values
+  already available before adding new machinery.
+- For large cross-package investigations, use several agents for independent
+  analysis and review, and coordinate work in BayesTools and RoBMA. Read each
+  package's instructions and pending decisions. Parallel agent work does not
+  authorize adding parallel computation to scenarios.
+- Measure improvements with the same scenario expressions, draws, requested
+  grids and sample budgets, seeds, diagnostic criteria, and parallel settings.
+  Do not reduce or otherwise alter numerical budgets to manufacture speedups.
+  Avoid resource contention during comparative timing runs.
+- When defaults are insufficient, explicit sample or integration budget
+  increases in the affected scenario calls are authorized, including for
+  qCMDE failures. Keep diagnostic criteria unchanged. Do not introduce arbitrary
+  hidden sampling changes or silently alter package defaults.
+- Record budget increases and their timings separately from matched-workload
+  performance evidence. Historical minima or an unchanged artifact name do not
+  establish a comparable workload or a fresh measurement.
 
 ### Change Discipline
 

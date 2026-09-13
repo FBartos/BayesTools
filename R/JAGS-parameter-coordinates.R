@@ -183,6 +183,7 @@
         "_xRE_GROUP_Zx",
         "_xRE_UNIT_COEFx",
         "_xRE_COEFx",
+        "_xRE_MEANx",
         "_xRE_CORx_R",
         "_xRE_CORx_L",
         "_rho",
@@ -195,6 +196,7 @@
       "random_latent",
       "random_latent",
       "random_group_coefficient",
+      "random_mean_coordinate",
       "random_correlation",
       "random_correlation",
       "random_correlation",
@@ -433,7 +435,7 @@
   if(!is.character(column_names)){
     column_names <- character()
   }
-  if(role %in% c("random_latent", "random_group_coefficient",
+  if(role %in% c("random_latent", "random_group_coefficient", "random_mean_coordinate",
                  "random_correlation") &&
      length(index) >= 2L && !is.na(index[2L]) &&
      index[2L] >= 1L && index[2L] <= length(column_names)){
@@ -471,7 +473,7 @@
   if(identical(role, "random_latent")){
     return("unit_latent")
   }
-  if(identical(role, "random_group_coefficient")){
+  if(role %in% c("random_group_coefficient", "random_mean_coordinate")){
     return("fitted_standardized")
   }
   if(role %in% c("random_sd", "random_sd_variable",
@@ -734,6 +736,7 @@
         "backend_anchor",
         "random_latent",
         "random_group_coefficient",
+        "random_mean_coordinate",
         "random_correlation",
         "random_correlation_coordinate",
         "random_inclusion_indicator",

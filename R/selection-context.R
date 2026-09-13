@@ -6,8 +6,11 @@
 #' @details Context validation checks row-wise posterior fields, observation
 #' fields, and compiled selection-bin metadata together. Custom row-wise
 #' fields may be listed in a character vector named \code{row_fields}; row
-#' subsetting rejects undeclared fields that otherwise look row-wise. Native
-#' argument helpers accept either an augmented context or a bare
+#' subsetting rejects undeclared fields that otherwise look row-wise.
+#' The built-in \code{vector_rule} field accepts the integer codes \code{0}
+#' (product), \code{1} (best one-sided p-value), and \code{2} (best two-sided
+#' p-value), with one value or one value per posterior row.
+#' Native argument helpers accept either an augmented context or a bare
 #' \code{selection_backend_spec()} object, using compiled \code{step},
 #' \code{phacking}, and \code{data} fallbacks where available.
 #'
@@ -104,6 +107,18 @@ selection_context_validate <- function(context, n_samples = NULL,
       stop("Invalid selection context '", field, "'.", call. = FALSE)
     }
     out[[field]] <- as.integer(round(out[[field]]))
+  }
+
+  if("vector_rule" %in% names(out) || "vector_rule" %in% required){
+    if(is.null(out[["vector_rule"]])){
+      stop("Missing selection context 'vector_rule'.", call. = FALSE)
+    }
+    vector_rule <- out[["vector_rule"]]
+    if(!is.numeric(vector_rule) || !is.null(dim(vector_rule)) ||
+       any(!vector_rule %in% 0:2)){
+      stop("Invalid selection context 'vector_rule'.", call. = FALSE)
+    }
+    out[["vector_rule"]] <- as.integer(selection_row_arg(vector_rule, n_samples, "vector_rule"))
   }
 
   if("use_normal" %in% names(out) || "use_normal" %in% required){
@@ -364,7 +379,7 @@ selection_row_arg <- function(x, n, name){
 
 .selection_context_builtin_row_fields <- function(){
 
-  c("omega", "alpha", "phack_kind", "kernel_mode",
+  c("omega", "alpha", "phack_kind", "kernel_mode", "vector_rule",
     "bias_indicator", "use_normal")
 }
 
@@ -424,13 +439,13 @@ selection_row_arg <- function(x, n, name){
     "mode", "family", "branch_type", "prior_weights",
     "jags_omega", "jags_alpha", "jags_pi_null", "jags_beta_null",
     "jags_phack_kind", "jags_phack_z_source", "jags_phack_z_dest",
-    "jags_kernel_mode", "jags_kernel_mode_expr", "jags_code",
+    "jags_kernel_mode", "jags_kernel_mode_expr", "jags_vector_rule", "jags_code",
     "step", "phacking", "prior_code", "transform_code", "monitor", "init",
     "data", "backend_data", "jags_data", "native_cache", "row_fields",
     "z_lower", "z_upper", "sign", "n_bins", "p_rule", "p_cuts",
     "telescope_probabilities", "has_step", "has_phack", "phack_q",
     "phack_q_values", "mixed_phack_q", "phack_z_source", "phack_z_dest",
-    "segments", "branch_kernel_mode", "fixed_omega",
+    "segments", "branch_kernel_mode", "branch_vector_rule", "branch_model", "fixed_omega",
     "jags_use_step_switch"
   )
 }

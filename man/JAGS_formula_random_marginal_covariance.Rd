@@ -31,8 +31,9 @@ in \code{lower_names}. Diagonal-plus-factor results instead contain
 \code{diagonal_names}, \code{loading_names}, and structural \code{loading_ranks}.
 }
 \description{
-Compiles marginalized formula random-effect metadata into deterministic JAGS
+Compiles sampled or marginalized formula random-effect metadata into deterministic JAGS
 nodes containing observation-level covariance contributions. The compiler is
 intentionally likelihood agnostic: callers provide dependency-preserving row
-blocks and add the returned covariance to their sampling covariance.
+blocks and choose which terms contribute by subsetting the formula design.
+Sampling latent coordinates does not change their population covariance.
 }

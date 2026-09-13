@@ -394,7 +394,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(!is.prior.weightfunction(prior))
     stop("improper prior provided")
 
-  spec <- selection_backend_spec(prior)
+  spec <- selection_backend_spec(prior, include_init = FALSE)
   return(.JAGS_selection_backend_syntax(spec))
 }
 .JAGS_prior.phacking      <- function(prior){
@@ -403,7 +403,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(!is_prior_phacking(prior))
     stop("improper prior provided")
 
-  spec <- selection_backend_spec(prior)
+  spec <- selection_backend_spec(prior, include_init = FALSE)
   return(.JAGS_selection_backend_syntax(spec))
 }
 .JAGS_prior.bias          <- function(prior){
@@ -412,7 +412,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(!is_prior_bias(prior))
     stop("improper prior provided")
 
-  spec <- selection_backend_spec(prior)
+  spec <- selection_backend_spec(prior, include_init = FALSE)
   return(.JAGS_selection_backend_syntax(spec))
 }
 
@@ -557,7 +557,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
     prior_weights <- attr(prior_list, "prior_weights")
     if(any(has_selection) || any(has_phacking)){
-      spec <- selection_backend_spec(prior_list)
+      spec <- selection_backend_spec(prior_list, include_init = FALSE)
       syntax <- .JAGS_selection_backend_syntax(spec)
     }else{
       syntax <- paste0(" bias_indicator ~ dcat(c(", paste0(prior_weights, collapse = ", "), "))\n")

@@ -19,13 +19,19 @@ call.}
 }
 \value{
 A list with a numeric \code{diagonal} matrix, one loading array and
-structural rank per row block, and \code{row_blocks}.
+structural rank per row block, and \code{row_blocks}. The \code{loading_supports}
+list contains one logical row-by-loading matrix per block, derived from
+compiled metadata independently of the evaluated loading values. The
+logical \code{diagonal_support} vector marks rows with a structurally declared
+diagonal contribution, including when its evaluated SD is zero.
 }
 \description{
 Reduces structurally eligible random-effect covariance factor states to a
 diagonal contribution and structurally certified loading columns for every
 supplied row block. Eligibility and factor dimension are determined from
-compiled metadata, never from evaluated covariance values.
+compiled metadata, never from evaluated covariance values. Known group
+covariance uses its fixed Cholesky factor while retaining the complete
+coefficient covariance. Sampled zero SDs do not alter the structural supports.
 }
 \seealso{
 \code{\link[=random_effects_marginal_factor_states]{random_effects_marginal_factor_states()}}

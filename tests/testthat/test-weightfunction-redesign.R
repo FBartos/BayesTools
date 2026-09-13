@@ -13,6 +13,194 @@ skip_if_not_test_profile(c("unit", "fixture"))
 
 source(testthat::test_path("common-functions.R"))
 
+test_that("selection models declare three fixed source choices without changing weight priors", {
+
+  default <- selection_model()
+  expect_identical(unclass(default), list(
+    estimate_random_effects = "integrate", other_random_effects = "condition",
+    known_sampling_variance = "integrate",
+    weight_rule = "product", group = NULL
+  ))
+  expect_identical(selection_model_spec(prior_weightfunction()), default)
+
+  weights <- list(
+    wf_cumulative(c(2, 3)), wf_fixed(c(1, 0)),
+    wf_independent(prior("gamma", list(2, 1))),
+    wf_independent(prior("normal", list(0, 1)), scale = "log_omega")
+  )
+  for(weight in weights){
+    reference <- prior_weightfunction(steps = .05, weights = weight, prior_weights = 3)
+    for(estimate in c("integrate", "condition")){
+      for(other in c("condition", "integrate")){
+        for(sampling in c("condition", "integrate")){
+          for(rule in c("product", "best")){
+            model <- selection_model(estimate, other, sampling, rule, group = paper_id)
+            candidate <- prior_weightfunction(steps = .05, weights = weight,
+                                               prior_weights = 3, model = model)
+            expect_identical(selection_model_spec(candidate), model)
+            expect_identical(candidate[names(candidate) != "model"],
+                             reference[names(reference) != "model"])
+          }
+        }
+      }
+    }
+    set.seed(31)
+    reference_draws <- rng(reference, 20)
+    set.seed(31)
+    expect_identical(rng(candidate, 20), reference_draws)
+    expect_identical(JAGS_to_monitor(list(omega = candidate)),
+                     JAGS_to_monitor(list(omega = reference)))
+    expect_identical(JAGS_get_inits(list(omega = candidate), chains = 1, seed = 31),
+                     JAGS_get_inits(list(omega = reference), chains = 1, seed = 31))
+    expect_identical(.JAGS_bridgesampling_posterior_info.weightfunction(candidate),
+                     .JAGS_bridgesampling_posterior_info.weightfunction(reference))
+  }
+})
+
+test_that("selection group references survive deferred and wrapper capture", {
+
+  paper_id <- seq_len(3)
+  expect_identical(selection_model(group = paper_id)$group, "paper_id")
+  expect_identical(selection_model(group = `paper id`)$group, "paper id")
+  expect_identical(selection_model(group = "paper id")$group, "paper id")
+  expect_null(selection_model(group = NULL)$group)
+
+  wrapper <- function(group = paper_id) selection_model(group = group)
+  nested_wrapper <- function(column) wrapper(group = column)
+  explicit_wrapper <- function(group) selection_model(group = {{group}})
+  forced_wrapper <- function(group) {
+    force(group)
+    selection_model(group = group)
+  }
+  expect_identical(wrapper()$group, "paper_id")
+  expect_identical(wrapper(paper_id)$group, "paper_id")
+  expect_identical(nested_wrapper(`paper id`)$group, "paper id")
+  expect_identical(explicit_wrapper(paper_id)$group, "paper_id")
+  expect_identical(forced_wrapper("paper_id")$group, "paper_id")
+  expect_error(forced_wrapper(1:3), "'group' must be a data-column name", fixed = TRUE)
+
+  column_name <- "paper id"
+  stored <- do.call(selection_model, list(group = column_name))
+  expect_identical(stored, selection_model(group = `paper id`))
+  expect_identical(unserialize(serialize(stored, NULL)), stored)
+  expect_identical(attributes(stored), list(
+    names = c("estimate_random_effects", "other_random_effects",
+              "known_sampling_variance", "weight_rule", "group"),
+    class = "selection_model"
+  ))
+  expect_true(all(vapply(unclass(stored), is.character, logical(1))))
+
+  evaluated <- FALSE
+  expect_error(selection_model(group = { evaluated <- TRUE; "paper_id" }),
+               "'group' must be a data-column name", fixed = TRUE)
+  expect_false(evaluated)
+  expect_error(selection_model(group = ""), "'group' must be a data-column name", fixed = TRUE)
+  expect_error(selection_model(group = NA_character_), "'group' must be a data-column name", fixed = TRUE)
+  expect_error(do.call(selection_model, list(group = c("paper_id", "study"))),
+               "'group' must be a data-column name", fixed = TRUE)
+  circular <- function(group = other, other = group) selection_model(group = group)
+  expect_error(circular(), "'group' contains a circular wrapper argument reference. Forward a data-column name.", fixed = TRUE)
+})
+
+test_that("selection model validation rejects malformed and obsolete specifications", {
+
+  expect_error(selection_model(estimate_random_effects = "exact"), "estimate_random_effects", fixed = TRUE)
+  expect_error(selection_model(other_random_effects = "approximate"), "other_random_effects", fixed = TRUE)
+  expect_error(selection_model(known_sampling_variance = "approximate"), "known_sampling_variance", fixed = TRUE)
+  expect_error(selection_model(known_sampling_variance = .5), "known_sampling_variance", fixed = TRUE)
+  expect_error(selection_model(random_effects = "condition"), "unused argument", fixed = TRUE)
+  expect_error(selection_model(known_covariance = "condition"), "unused argument", fixed = TRUE)
+  expect_error(selection_model(weight_rule = "maximum_weight"), "weight_rule", fixed = TRUE)
+  expect_error(selection_model(estimate_random_effects = c("condition", "integrate")), "length", fixed = TRUE)
+  expect_error(selection_model(known_sampling_variance = NA_character_), "cannot contain NA/NaN", fixed = TRUE)
+  expect_identical(withVisible(check_selection_model(selection_model())),
+                   list(value = selection_model(), visible = FALSE))
+  expect_error(check_selection_model(NULL, name = "selection"),
+               "'selection' must be a specification from 'selection_model()'.", fixed = TRUE)
+  expect_error(prior_weightfunction(model = NULL),
+               "'model' must be a specification from 'selection_model()'.", fixed = TRUE)
+  malformed <- prior_weightfunction()
+  malformed$model$weight_rule <- "maximum_weight"
+  expect_error(selection_model_spec(malformed), "weight_rule", fixed = TRUE)
+  expect_error(prior_mixture(list(prior_none(), malformed)), "weight_rule", fixed = TRUE)
+  expect_error(prior_bias(selection = malformed), "weight_rule", fixed = TRUE)
+  missing_model <- prior_weightfunction()
+  missing_model$model <- NULL
+  expect_error(selection_model_spec(missing_model),
+               "'prior$model' must be a specification from 'selection_model()'.", fixed = TRUE)
+})
+
+test_that("bias composition preserves each child selection model and its odds", {
+
+  first <- prior_weightfunction(steps = .05, prior_weights = 2,
+    model = selection_model(group = paper_id))
+  second <- prior_weightfunction(steps = .05, weights = wf_fixed(c(1, 1.5)),
+    prior_weights = 3,
+    model = selection_model("condition", "integrate", "integrate", "best", group = study_id))
+  combined <- prior_bias(selection = second, phacking = prior_phacking(), prior_weights = 5)
+  branches <- list(prior_none(prior_weights = 7), first, combined)
+  before <- serialize(branches, NULL)
+  mixture <- prior_mixture(branches, is_null = c(TRUE, FALSE, FALSE),
+                           components = c("null", "product", "best"))
+  expected <- list(NULL, first$model, second$model)
+  expect_identical(lapply(branches, selection_model_spec), expected)
+  expect_identical(lapply(mixture, selection_model_spec), expected)
+  expect_identical(lapply(unserialize(serialize(mixture, NULL)), selection_model_spec), expected)
+  expect_identical(attr(mixture, "prior_weights"), c(7, 2, 5))
+  expect_identical(attr(mixture, "components"), c("null", "product", "best"))
+  expect_identical(vapply(mixture, attr, character(1), which = "component"),
+                   c("null", "product", "best"))
+  expect_identical(lapply(lapply(branches, .selection_branch_info), function(branch){
+    selection_model_spec(branch$selection)
+  }), expected)
+  expect_error(selection_model_spec(mixture),
+    "A selection-model specification is unavailable for a mixture as a whole. Inspect each prior branch with 'selection_model_spec()'.", fixed = TRUE)
+  expect_error(prior_mixture(list(first, prior("normal", list(0, 1)))),
+               "Publication-bias prior mixtures", fixed = TRUE)
+  expect_identical(serialize(branches, NULL), before)
+  expect_null(selection_model_spec(prior_bias(phacking = prior_phacking())))
+  expect_null(selection_model_spec(prior_PET("normal", list(0, 1))))
+})
+
+test_that("selection model printing distinguishes source choices from weight-prior labels", {
+
+  model <- selection_model("integrate", "condition", "integrate", "best", group = `paper id`)
+  expect_identical(utils::capture.output(print(model)), c(
+    "Selection model:",
+    "  Estimate random effects: integrate (average effects before normalization).",
+    "  Other random effects: condition (retain unknown effects during normalization).",
+    "  Known sampling error: integrate (average full error vector before normalization).",
+    "  Weight rule: best (Weight of the best p-value).",
+    "  Group: 'paper id' (unresolved data column).",
+    "  Sources are resolved when model data are bound."
+  ))
+  expect_identical(utils::capture.output(print(selection_model(
+    known_sampling_variance = "condition"
+  ))), c(
+    "Selection model:",
+    "  Estimate random effects: integrate (average effects before normalization).",
+    "  Other random effects: condition (retain unknown effects during normalization).",
+    "  Known sampling error: condition (retain full unknown error vector during normalization).",
+    "  Weight rule: product (Product of estimate weights).",
+    "  Group: automatic (resolved when data are bound).",
+    "  Sources are resolved when model data are bound."
+  ))
+  candidate <- prior_weightfunction(steps = .05, model = model)
+  reference <- prior_weightfunction(steps = .05)
+  expect_identical(print(candidate, silent = TRUE),
+                   "omega[one-sided: .05] ~ CumDirichlet(1, 1)")
+  expect_identical(print(candidate, plot = TRUE), print(reference, plot = TRUE))
+  expect_identical(utils::capture.output(print(candidate, inline = TRUE)),
+                   "omega[one-sided: .05] ~ CumDirichlet(1, 1)")
+  combined <- prior_bias(selection = candidate)
+  expect_true(any(grepl("Weight of the best p-value", utils::capture.output(print(combined)), fixed = TRUE)))
+  mixture <- prior_mixture(list(reference, combined))
+  printed <- utils::capture.output(print(mixture))
+  expect_true(all(c("Prior branch 1", "Prior branch 2") %in% printed))
+  expect_true(any(grepl("Product of estimate weights", printed, fixed = TRUE)))
+  expect_true(any(grepl("Weight of the best p-value", printed, fixed = TRUE)))
+})
+
 test_that("prior_weightfunction stores canonical geometry and weight priors", {
 
   wf <- prior_weightfunction(

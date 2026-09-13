@@ -597,6 +597,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     add_parameters <- c(add_parameters, random_sd_binding_context$add_parameters)
   }
   compiled_random_effects <- parsed_random_effects
+  mean_translation_owner <- NULL
+  mean_intercept <- if(has_intercept) list(coordinate = paste0(parameter, "_intercept"),
+    expression = formula_syntax[[1L]]) else NULL
   for(random_i in seq_along(parsed_random_effects)){
     random_effect_data <- random_effect_scaled_data
     random_structure <- .bt_random_effect_structure(parsed_random_effects[[random_i]])
@@ -614,9 +617,23 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       prior_random = prior_random,
       sd_binding_context = random_sd_binding_context,
       group_data = random_effect_unscaled_data,
-      compile_mode = compile_mode
+      compile_mode = compile_mode,
+      fixed_intercept = mean_intercept
     )
     compiled_random_effects[[random_i]] <- temp_random[["random_effect"]]
+    if(!is.null(temp_random[["random_effect"]]$mean_translation)){
+      if(!is.null(mean_translation_owner)){
+        stop("Mean-centered parameterization requires one explicitly selected random-effect block per formula.",
+             call. = FALSE)
+      }
+      mean_translation_owner <- temp_random[["random_effect"]]$block_name
+      intercept_term <- temp_random[["random_effect"]]$mean_translation$fixed_intercept_expression
+      if(sum(formula_syntax == intercept_term) != 1L){
+        stop("Mean-centered parameterization is unavailable because the fixed-intercept contribution could not be resolved.",
+             call. = FALSE)
+      }
+      formula_syntax <- formula_syntax[formula_syntax != intercept_term]
+    }
 
     for(data_i in seq_along(temp_random[["data"]])){
       JAGS_data[[names(temp_random[["data"]])[data_i]]] <- temp_random[["data"]][[data_i]]

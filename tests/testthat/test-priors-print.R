@@ -279,14 +279,23 @@ test_that("Prior print function works", {
   p8  <- prior_weightfunction("one-sided", c(0.05, .95), wf_independent(prior("beta", list(1, 1))))
   p9  <- prior_weightfunction("two-sided", c(0.05), wf_cumulative(c(1, 1)))
   p10 <- prior_weightfunction("one-sided", c(0.10), wf_fixed(c(1, .7)))
-  expect_equal(utils::capture.output(print(p7)),  "omega[one-sided: .05] ~ CumDirichlet(1, 1)")
-  expect_equal(utils::capture.output(print(p8)),  "omega[one-sided: .05, .95] ~ Independent(Beta(1, 1))")
-  expect_equal(utils::capture.output(print(p9)),  "omega[two-sided: .05] ~ CumDirichlet(1, 1)")
-  expect_equal(utils::capture.output(print(p10)), "omega[one-sided: .1] = (1, 0.7)")
-  expect_equal(utils::capture.output(print(p7,  parameter_names = TRUE)), "omega[one-sided: .05] ~ CumDirichlet(alpha = 1, 1)")
-  expect_equal(utils::capture.output(print(p8,  parameter_names = TRUE)), "omega[one-sided: .05, .95] ~ Independent(Beta(alpha = 1, beta = 1))")
-  expect_equal(utils::capture.output(print(p9,  parameter_names = TRUE)), "omega[two-sided: .05] ~ CumDirichlet(alpha = 1, 1)")
-  expect_equal(utils::capture.output(print(p10, parameter_names = TRUE)), "omega[one-sided: .1] = (1, 0.7)")
+  model_lines <- c(
+    "Selection model:",
+    "  Estimate random effects: integrate (average effects before normalization).",
+    "  Other random effects: condition (retain unknown effects during normalization).",
+    "  Known sampling error: integrate (average full error vector before normalization).",
+    "  Weight rule: product (Product of estimate weights).",
+    "  Group: automatic (resolved when data are bound).",
+    "  Sources are resolved when model data are bound."
+  )
+  expect_equal(utils::capture.output(print(p7)),  c("omega[one-sided: .05] ~ CumDirichlet(1, 1)", model_lines))
+  expect_equal(utils::capture.output(print(p8)),  c("omega[one-sided: .05, .95] ~ Independent(Beta(1, 1))", model_lines))
+  expect_equal(utils::capture.output(print(p9)),  c("omega[two-sided: .05] ~ CumDirichlet(1, 1)", model_lines))
+  expect_equal(utils::capture.output(print(p10)), c("omega[one-sided: .1] = (1, 0.7)", model_lines))
+  expect_equal(utils::capture.output(print(p7,  parameter_names = TRUE)), c("omega[one-sided: .05] ~ CumDirichlet(alpha = 1, 1)", model_lines))
+  expect_equal(utils::capture.output(print(p8,  parameter_names = TRUE)), c("omega[one-sided: .05, .95] ~ Independent(Beta(alpha = 1, beta = 1))", model_lines))
+  expect_equal(utils::capture.output(print(p9,  parameter_names = TRUE)), c("omega[two-sided: .05] ~ CumDirichlet(alpha = 1, 1)", model_lines))
+  expect_equal(utils::capture.output(print(p10, parameter_names = TRUE)), c("omega[one-sided: .1] = (1, 0.7)", model_lines))
 
   # check vector priors
   p11 <- prior(distribution = "mnormal", parameters = list(mean = 0, sd = 1, K = 3))

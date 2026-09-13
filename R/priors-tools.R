@@ -544,6 +544,10 @@ is.prior.mixture         <- function(x){
   if(!allow_expressions && .is_prior_expression(prior))
     stop(paste0("The '", name, "' argument must not contain parameter expressions."), call. = FALSE)
 
+  if(is.prior.weightfunction(prior) || is_prior_bias(prior)){
+    selection_model_spec(prior)
+  }
+
   return()
 }
 .prior_model_weight <- function(prior){

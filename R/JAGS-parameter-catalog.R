@@ -72,7 +72,10 @@
 #' `parameter_prior_density()` constructs a deterministic
 #' `prior_linear_density` for supported map-defined quantities, including
 #' one-to-one transformations, Dirichlet allocation marginals, and
-#' allocation-derived component SDs. It returns `NULL` when the fitted map does
+#' allocation-derived component SDs. For variance proportions under a shared
+#' parent inclusion gate, the prior is conditional on positive allocation
+#' variance; independently gated components remain unsupported. It returns
+#' `NULL` when the fitted map does
 #' not declare a supported deterministic prior composition.
 #'
 #' `parameter_transform()` returns the one-to-one map from the selected source
@@ -575,7 +578,49 @@ parameter_prior_density.BayesTools_fit <- function(
     key,
     random_term
   )
-  source_prior <- allocation$weights
+  prior_list <- attr(object, "prior_list", exact = TRUE)
+  source_prior <- prior_list[[allocation$weight_name]]
+  transform <- .bt_parameter_transform_from_quantity(
+    object,
+    selection$quantities[1L, , drop = FALSE]
+  )
+  if(is.null(transform)){
+    if(!identical(selection$quantities$quantity, "var_prop") ||
+       !identical(allocation$scale, "total_variance") ||
+       length(allocation$inclusion) != 0L ||
+       length(allocation$parent_factors) != 1L){
+      return(NULL)
+    }
+    parent <- allocation$parent_factors[[1L]]
+    .bt_check_random_variance_allocation_factor(parent)
+    if(!is.null(parent$weight_name)){
+      return(NULL)
+    }
+    gate_priors <- Filter(function(prior){
+      identical(attr(prior, "random_allocation_indicator", exact = TRUE),
+                parent$inclusion_name)
+    }, prior_list)
+    if(length(gate_priors) != 1L){
+      return(NULL)
+    }
+    gate_probability <- mean(gate_priors[[1L]])
+    if(!is.numeric(gate_probability) || length(gate_probability) != 1L ||
+       !is.finite(gate_probability) || gate_probability <= 0 ||
+       gate_probability > 1){
+      return(NULL)
+    }
+    scale_prior <- allocation$source$prior
+    if(!is.prior.simple(scale_prior)){
+      return(NULL)
+    }
+    positive_scale <- ccdf(scale_prior, 0)
+    if(!is.numeric(positive_scale) || length(positive_scale) != 1L ||
+       !is.finite(positive_scale) || positive_scale <= 0){
+      return(NULL)
+    }
+    # The shared gate cancels from proportions whenever the total is positive.
+    transform <- list(type = "identity")
+  }
   index <- key$index
   if(identical(selection$quantities$quantity, "sd_mult") &&
      index > allocation$n_targets){
@@ -592,10 +637,6 @@ parameter_prior_density.BayesTools_fit <- function(
     beta_prior,
     n_grid = n_grid,
     tail_prob = tail_prob
-  )
-  transform <- .bt_parameter_transform_from_quantity(
-    object,
-    selection$quantities[1L, , drop = FALSE]
   )
   .bt_parameter_prior_density_transform(dist, transform, n_grid)
 }

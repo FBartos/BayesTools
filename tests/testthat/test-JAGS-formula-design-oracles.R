@@ -2931,6 +2931,80 @@ test_that("random group covariance constructor validates and scales kernels", {
   )
 })
 
+test_that("known heteroscedastic covariance scaling preserves exact symmetry", {
+
+  # X_i = s_i * (sqrt(.4) * U + sqrt(.6) * E_i), independent standard
+  # normals U/E_i, with s = (1.7, 2.1, 3.7). These literal covariances
+  # therefore have independently known common correlation .4.
+  K <- matrix(c(2.89, 1.428, 2.516,
+                1.428, 4.41, 3.108,
+                2.516, 3.108, 13.69), 3L, byrow = TRUE,
+    dimnames = list(c("a", "b", "c"), c("a", "b", "c")))
+  expected_cor <- matrix(.4, 3L, 3L, dimnames = dimnames(K))
+  diag(expected_cor) <- 1
+  prepared <- BayesTools:::.bt_prepare_group_covariance_kernel(
+    random_group_covariance(K, scale = "cor"),
+    group_levels = rownames(K), block_name = "study")
+  expect_identical(prepared$kernel, t(prepared$kernel))
+  expect_equal(prepared$kernel, expected_cor, tolerance = 1e-14)
+
+  # This positive-definite Gram-plus-diagonal fixture made cov2cor() differ
+  # across triangles by 1.11e-16 and rejected the public formula constructor.
+  K <- tcrossprod(matrix(c(.1, .2, .3, .7, 1.1, .2, .4, 1.3),
+    4L, 2L, byrow = TRUE)) + diag(.1, 4L)
+  labels <- letters[1:4]
+  dimnames(K) <- list(labels, labels)
+  original <- K
+  formula <- random_effects_formula(~ 1 | study,
+    group_covariance = random_group_covariance(K, scale = "cor"))
+  result <- JAGS_formula(formula = formula, parameter = "mu",
+    data = data.frame(study = factor(rep(labels, each = 2L), levels = labels)),
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(sd = prior("normal", list(0, 1),
+      truncation = list(lower = 0, upper = Inf))))
+  actual <- result$formula_design$random_effects[[1L]]$group_covariance$kernel
+  expect_identical(actual, t(actual))
+  expect_identical(dimnames(actual), dimnames(original))
+  expect_equal(actual, stats::cov2cor(original), tolerance = 1e-12)
+  expect_identical(K, original)
+})
+
+test_that("known group kernels require resolvable positive definiteness", {
+
+  # Covariance of (U + W, U, W), with independent unit-variance U and W.
+  # The first column is exactly the sum of the other two, even when raw
+  # floating-point Cholesky returns three positive pivots.
+  K <- matrix(c(2, 1, 1, 1, 1, 0, 1, 0, 1), 3L,
+    dimnames = list(letters[1:3], letters[1:3]))
+  message <- paste0("Known group covariance for random-effect block 'study' is unavailable ",
+    "because positive definiteness after scaling cannot be resolved at working precision.")
+  for(scale in c("none", "cor")){
+    specification <- random_group_covariance(K, scale = scale)
+    expect_error(BayesTools:::.bt_prepare_group_covariance_kernel(specification,
+      group_levels = letters[1:3], block_name = "study"), message, fixed = TRUE)
+  }
+  # Subsetting remains prior to the support check: the fitted principal
+  # submatrix can be positive definite even when unused levels are dependent.
+  subset <- BayesTools:::.bt_prepare_group_covariance_kernel(
+    random_group_covariance(K, scale = "none"), group_levels = c("a", "b"),
+    block_name = "study")
+  expect_identical(subset$kernel, K[c("a", "b"), c("a", "b")])
+
+  # Rescaling units must not turn small independent variances into null axes.
+  independent <- diag(c(1e-24, 1, 1e12))
+  dimnames(independent) <- dimnames(K)
+  prepared <- BayesTools:::.bt_prepare_group_covariance_kernel(
+    random_group_covariance(independent, scale = "none"),
+    group_levels = letters[1:3], block_name = "study")
+  expect_identical(prepared$kernel, independent)
+  near_singular <- matrix(c(1, 1 - .Machine$double.eps,
+    1 - .Machine$double.eps, 1), 2L,
+    dimnames = list(letters[1:2], letters[1:2]))
+  expect_error(BayesTools:::.bt_prepare_group_covariance_kernel(
+    random_group_covariance(near_singular, scale = "none"),
+    group_levels = letters[1:2], block_name = "study"), message, fixed = TRUE)
+})
+
 test_that("random_effects_formula attaches known group covariance by block names", {
 
   study_kernel <- diag(2)
@@ -3121,6 +3195,28 @@ test_that("random-effect design exposes grouping maps and correlated syntax", {
       "mu__xREx__id_xRE_CORx_lkj_u[1]"
     )
   )
+})
+
+test_that("independent random-effect transforms keep group-local JAGS dependencies", {
+
+  df <- data.frame(study = rep(c("a", "b", "c"), each = 2L), x = rep(c(-1, 1), 3L))
+  formulas <- list(~ 1 + (1 | study), ~ 1 + id(1 + x | study),
+                   ~ 1 + diag(1 + x | study))
+  for(formula in formulas){
+    result <- JAGS_formula(
+      formula = formula,
+      parameter = "mu",
+      data = df,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(sd = prior("gamma", list(2, 2)))
+    )
+    expect_match(
+      result$formula_syntax,
+      "for(g in 1:3){\n     mu__xREx__study_xRE_COEFx[g,i] = mu__xREx__study_xRE_Zx[g,i] * mu__xREx__study_xRE_STDx[i]",
+      fixed = TRUE
+    )
+    expect_false(grepl("_xRE_COEFx[1:3,", result$formula_syntax, fixed = TRUE))
+  }
 })
 
 test_that("random-effect terms use structure as canonical internal metadata", {
@@ -5278,7 +5374,7 @@ test_that("external variance allocation sources generate scalar and row-indexed 
   expect_false(grepl("mu__xREx__study_xRE_STDx", row_id_result$formula_syntax, fixed = TRUE))
   expect_match(
     row_id_result$formula_syntax,
-    "mu__xREx__study_xRE_UNIT_COEFx[1:2,i] = mu__xREx__study_xRE_Zx[1:2,i]",
+    "for(g in 1:2){\n     mu__xREx__study_xRE_UNIT_COEFx[g,i] = mu__xREx__study_xRE_Zx[g,i]",
     fixed = TRUE
   )
   expect_match(

@@ -98,6 +98,9 @@ prior_bias <- function(selection = NULL, phacking = NULL, prior_weights = 1){
   if(!is.null(selection) && !is.prior.weightfunction(selection)){
     stop("'selection' must be a weightfunction prior created by prior_weightfunction().", call. = FALSE)
   }
+  if(!is.null(selection)){
+    selection_model_spec(selection)
+  }
   if(!is.null(phacking) && !is_prior_phacking(phacking)){
     stop("'phacking' must be a p-hacking prior created by prior_phacking().", call. = FALSE)
   }
@@ -270,13 +273,17 @@ phack_backend_constants <- function(form, source, destination, target = .025){
 #' @description \code{selection_backend_spec()} compiles step-selection and
 #' p-hacking prior objects into active backend parameters. The returned object
 #' contains stable p/z geometry, JAGS prior/transform code, monitor names,
-#' initial values, and data constants.
+#' initial values, and data constants. Set \code{include_init = FALSE} for
+#' deterministic metadata without drawing unused initial values.
 #'
 #' @param priors a selection prior, p-hacking prior, composed bias prior,
 #' \code{prior_none()}, \code{prior_mixture()}, or a list of those priors.
 #' @param backend backend target. Currently only \code{"jags"} is supported.
 #' @param names list of backend parameter names.
 #' @param global_breaks optional global p-value break grid.
+#' @param include_init whether to generate JAGS initial values. Defaults to
+#' \code{TRUE}; when \code{FALSE}, the returned \code{init} field is \code{NULL}
+#' and compilation does not change the random-number state.
 #'
 #' @return A list describing the compiled backend specification.
 #'
@@ -284,9 +291,11 @@ phack_backend_constants <- function(form, source, destination, target = .025){
 selection_backend_spec <- function(priors,
                                    backend = "jags",
                                    names = list(omega = "omega", alpha = "alpha"),
-                                   global_breaks = NULL){
+                                   global_breaks = NULL,
+                                   include_init = TRUE){
 
   check_char(backend, "backend", allow_values = "jags")
+  check_bool(include_init, "include_init", allow_NA = FALSE)
   check_list(names, "names", check_names = c("omega", "alpha", "pi_null", "beta_null", "phack_kind", "phack_z_source", "phack_z_dest"), allow_other = FALSE)
   names <- .selection_backend_names(names)
 
@@ -296,6 +305,14 @@ selection_backend_spec <- function(priors,
   has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
   has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
   branch_type   <- vapply(branch_info, function(x) x$type, character(1))
+  branch_model <- lapply(branch_info, function(x){
+    if(is.null(x$selection)) NULL else selection_model_spec(x$selection)
+  })
+  branch_vector_rule <- vapply(seq_along(branch_info), function(i){
+    model <- branch_model[[i]]
+    if(is.null(model) || identical(model[["weight_rule"]], "product")) return(0L)
+    if(identical(branch_info[[i]]$selection[["side"]], "two-sided")) 2L else 1L
+  }, integer(1))
 
   mode <- .selection_backend_mode(any(has_selection), any(has_phacking))
   kernel_mode <- .selection_mode_code(mode)
@@ -338,6 +355,10 @@ selection_backend_spec <- function(priors,
 
   prior_code <- character()
   transform_code <- character()
+  transform_code <- paste0(
+    "sel_vector_rule <- ",
+    paste0(branch_vector_rule, " * ", indicator_terms, collapse = " + ")
+  )
 
   if(uses_indicator){
     prior_code <- c(prior_code, paste0("bias_indicator ~ dcat(c(", paste0(prior_weights, collapse = ", "), "))"))
@@ -414,13 +435,20 @@ selection_backend_spec <- function(priors,
   phacking_priors <- lapply(branch_info[has_phacking], function(x) x$phacking)
   phacking <- .selection_backend_phacking_info(phacking_priors, names)
 
-  init <- .selection_backend_init(branch_info, prior_weights, uses_indicator)
+  init <- if(include_init){
+    .selection_backend_init(branch_info, prior_weights, uses_indicator)
+  }else{
+    NULL
+  }
 
   return(list(
     mode           = mode,
     kernel_mode    = kernel_mode,
     branch_type    = branch_type,
     branch_kernel_mode = branch_kernel_mode,
+    branch_model   = branch_model,
+    branch_vector_rule = branch_vector_rule,
+    jags_vector_rule = "sel_vector_rule",
     prior_weights  = prior_weights,
     jags_omega     = names$omega,
     jags_alpha     = names$alpha,

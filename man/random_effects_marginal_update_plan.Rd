@@ -25,7 +25,10 @@ Resolves a selected public random-effect quantity to the exact scalar
 dependence of its marginal covariance contribution. The result is compiled
 exclusively from the fitted parameter map and formula random-effect
 metadata; posterior draws are neither inspected nor used to infer an update
-form.
+form. An unsupported plan can include a \code{conditional} entry containing
+\code{required_active} and \code{plan}. The nested plan applies only to posterior rows
+where every named inclusion indicator equals one. It does not declare an
+unconditional update for the selected public quantity.
 }
 \details{
 \code{family = "affine"} means that, conditional on every non-selected posterior

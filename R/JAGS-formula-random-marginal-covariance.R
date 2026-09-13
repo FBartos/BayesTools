@@ -1,10 +1,11 @@
 #' Compile formula random effects as marginal JAGS covariance nodes
 #'
 #' @description
-#' Compiles marginalized formula random-effect metadata into deterministic JAGS
+#' Compiles sampled or marginalized formula random-effect metadata into deterministic JAGS
 #' nodes containing observation-level covariance contributions. The compiler is
 #' intentionally likelihood agnostic: callers provide dependency-preserving row
-#' blocks and add the returned covariance to their sampling covariance.
+#' blocks and choose which terms contribute by subsetting the formula design.
+#' Sampling latent coordinates does not change their population covariance.
 #'
 #' @param formula_design a `BayesTools_formula_design` object created by
 #'   [JAGS_formula()].
@@ -66,10 +67,10 @@ JAGS_formula_random_marginal_covariance <- function(
     .bt_random_effect_term_compile_mode,
     character(1)
   )
-  if(any(compile_modes != "marginalized")){
+  if(any(!compile_modes %in% c("sampled", "marginalized"))){
     stop(
-      "Every formula random-effect block must be compiled as 'marginalized' ",
-      "before constructing marginal JAGS covariance nodes.",
+      "Every formula random-effect block must be compiled as 'sampled' or ",
+      "'marginalized' before constructing JAGS covariance nodes.",
       call. = FALSE
     )
   }
@@ -223,6 +224,7 @@ JAGS_formula_random_marginal_covariance <- function(
       },
       model_matrix = random_term$model_matrix,
       group_map = random_term$group_map,
+      group_covariance = if(known_group) group_covariance$kernel else NULL,
       coefficient_structure = if(
         structure %in% c("id", "diag") || random_term$n_columns == 1L
       ){
@@ -292,10 +294,15 @@ JAGS_formula_random_marginal_covariance <- function(
       diagonal_terms <- vapply(Filter(function(component){
         identical(component$row, row)
       }, block$diagonal), function(component){
-        paste0(
-          "pow(", factor_names[[component$factor_index]], "[", row, ",",
-          component$column, "],2)"
+        factor <- paste0(
+          factor_names[[component$factor_index]], "[", row, ",",
+          component$column, "]"
         )
+        if(!is.null(component$multiplier)){
+          factor <- paste0(.bt_JAGS_numeric_literal(component$multiplier),
+                           " * ", factor)
+        }
+        paste0("pow(", factor, ",2)")
       }, character(1))
       diagonal_expression <- if(length(diagonal_terms) == 0L){
         "0"
@@ -315,6 +322,13 @@ JAGS_formula_random_marginal_covariance <- function(
           )
         }else{
           "0"
+        }
+        if(row %in% component$rows && !is.null(component$multiplier)){
+          loading_expression <- paste0(
+            .bt_JAGS_numeric_literal(component$multiplier[
+              match(row, component$rows)
+            ]), " * ", loading_expression
+          )
         }
         syntax <- c(syntax, paste0(
           loading_names[[block_index]], "[", local_row, ",",
@@ -349,6 +363,32 @@ JAGS_formula_random_marginal_covariance <- function(
   basis_name <- paste0(prefix, "_basis")
   if(structure %in% c("id", "diag") || n_columns == 1L){
     return(list(name = basis_name, syntax = "", data = list()))
+  }
+
+  if(structure %in% c("ar1", "har", "car")){
+    root_prefix <- paste0(prefix, "_root")
+    root_name   <- paste0(root_prefix, "_xRE_UNIT_COEFx")
+    factor_name <- paste0(prefix, "_factor_basis")
+    data <- stats::setNames(list(diag(n_columns)),
+                            paste0(root_prefix, "_xRE_Zx"))
+    syntax <- .bt_JAGS_structured_dense_transform(
+      parameter               = root_prefix,
+      structure               = structure,
+      K                       = n_columns,
+      n_groups                = n_columns,
+      rho_name                = random_term$correlation$rho_name,
+      sd_name                 = NULL,
+      row_indexed_external_sd = TRUE,
+      car_time_values         = random_term$correlation$time_values
+    )
+    syntax <- paste0(syntax,
+      "for(i in 1:", n_rows, "){\n",
+      "  for(c in 1:", n_columns, "){ ", factor_name,
+      "[i,c] = inprod(", basis_name, "[i,1:", n_columns, "], ",
+      root_name, "[c,1:", n_columns, "]) }\n",
+      "}\n"
+    )
+    return(list(name = factor_name, syntax = syntax, data = data))
   }
 
   cholesky_name <- NULL

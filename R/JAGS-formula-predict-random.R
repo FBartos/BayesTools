@@ -49,7 +49,8 @@
                                                           fitted_rows = NULL,
                                                           data_supplied = FALSE,
                                                           replay_fitted_formula = FALSE,
-                                                          expressions_to_eval = list()){
+                                                          expressions_to_eval = list(),
+                                                          return_components = FALSE){
 
   fitted_design <- .bt_JAGS_evaluate_formula_design(fit, parameter)
   if(is.null(fitted_design)){
@@ -96,6 +97,8 @@
     prior_list = prior_list,
     formula_target = "fixed"
   )
+  fixed <- output
+  random <- NULL
   random_data <- .bt_apply_formula_scale_to_data(
     fit = fit,
     parameter = parameter,
@@ -108,7 +111,7 @@
       random_term,
       context = "Random-effect prediction metadata"
     )
-    output <- output + .bt_JAGS_evaluate_random_effect_term(
+    contribution <- .bt_JAGS_evaluate_random_effect_term(
       random_term = random_term,
       data = if(random_structure %in% c("cs", "hcs", "ar1", "car", "har")) data else random_data,
       group_data = data,
@@ -118,6 +121,10 @@
       fitted_rows = fitted_rows,
       data_supplied = data_supplied
     )
+    output <- output + contribution
+    if(isTRUE(return_components)){
+      random <- if(is.null(random)) contribution else random + contribution
+    }
   }
   if(length(expressions_to_eval) > 0L){
     expression_data <- .bt_formula_expression_merge_data(
@@ -127,7 +134,7 @@
         "JAGS_evaluate_formula() for parameter '", parameter, "'"
       )
     )
-    output <- output + .bt_formula_expression_contribution_matrix(
+    contribution <- .bt_formula_expression_contribution_matrix(
       expressions = expressions_to_eval,
       data = expression_data,
       n_rows = nrow(data),
@@ -137,8 +144,20 @@
       ),
       samples = posterior
     )
+    output <- output + contribution
+    if(isTRUE(return_components)){
+      fixed <- fixed + contribution
+    }
   }
 
+  if(isTRUE(return_components)){
+    if(is.null(random)){
+      random <- output
+      random[] <- 0
+    }
+    dimnames(random) <- dimnames(output)
+    return(list(value = output, fixed = fixed, random = random))
+  }
   output
 }
 

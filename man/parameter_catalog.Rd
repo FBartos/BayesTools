@@ -162,7 +162,10 @@ draws where the realized allocation total is zero.
 \code{parameter_prior_density()} constructs a deterministic
 \code{prior_linear_density} for supported map-defined quantities, including
 one-to-one transformations, Dirichlet allocation marginals, and
-allocation-derived component SDs. It returns \code{NULL} when the fitted map does
+allocation-derived component SDs. For variance proportions under a shared
+parent inclusion gate, the prior is conditional on positive allocation
+variance; independently gated components remain unsupported. It returns
+\code{NULL} when the fitted map does
 not declare a supported deterministic prior composition.
 
 \code{parameter_transform()} returns the one-to-one map from the selected source

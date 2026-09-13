@@ -97,7 +97,7 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
       }
     }
     if(!is.null(scale_y2_state)){
-      .plot_point_mass_warn_outside(plot_data, scale_y2_state[["ylim2"]])
+      .plot_point_mass_warn_outside(plot_data, scale_y2_state)
     }
     for(i in seq_along(plot_data)){
       if(inherits(plot_data[[i]], what = "density.prior.simple")){

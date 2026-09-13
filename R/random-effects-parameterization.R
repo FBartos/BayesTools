@@ -18,7 +18,7 @@
   check_char(
     parameterization,
     "parameterization",
-    allow_values = c("noncentered", "centered", "auto"),
+    allow_values = c("noncentered", "centered", "mean_centered", "auto"),
     allow_NA = FALSE
   )
 
@@ -146,6 +146,10 @@
   requested <- .bt_random_effect_parameterization_requested(block_prior)
   policy <- .bt_random_effect_auto_parameterization_policy()
   if(!identical(compile_mode, "sampled")){
+    if(identical(requested, "mean_centered")){
+      stop("Mean-centered parameterization is unavailable for marginalized random-effect blocks.",
+           call. = FALSE)
+    }
     return(list(
       requested = requested,
       resolved = "marginalized",
@@ -160,6 +164,14 @@
     sd_binding = sd_binding,
     row_indexed_external_sd = row_indexed_external_sd
   )
+  if(identical(requested, "mean_centered")){
+    if(!isTRUE(eligibility$ok)){
+      stop("Mean-centered parameterization is unavailable for random-effect block '",
+        block_name, "': ", eligibility$reason, ".", call. = FALSE)
+    }
+    return(list(requested = requested, resolved = "mean_centered",
+      reason = "explicit translation of a scalar random intercept", policy = policy))
+  }
   if(identical(requested, "centered") && !isTRUE(eligibility$ok)){
     block_label <- if(is.null(block_name)) "unknown" else block_name
     stop(
@@ -207,4 +219,35 @@
     reason = design$reason,
     policy = policy
   )
+}
+
+.bt_random_effect_mean_translation <- function(random_term, parameter,
+                                                fixed_intercept, has_intercept,
+                                                model_matrix, structure,
+                                                group_covariance){
+
+  if(!is.list(fixed_intercept) ||
+     !is.character(fixed_intercept$coordinate) || length(fixed_intercept$coordinate) != 1L ||
+     !nzchar(fixed_intercept$coordinate) || !is.character(fixed_intercept$expression) ||
+     length(fixed_intercept$expression) != 1L || !nzchar(fixed_intercept$expression)){
+    stop("Mean-centered parameterization requires a compatible fixed-intercept contribution.",
+         call. = FALSE)
+  }
+  if(!isTRUE(has_intercept) || ncol(model_matrix) != 1L ||
+     !identical(colnames(model_matrix), "(Intercept)") ||
+     !all(model_matrix == 1) || !structure %in% c("id", "diag", "us")){
+    stop("Mean-centered parameterization is available only for a scalar random intercept.",
+         call. = FALSE)
+  }
+  if(!is.null(group_covariance)){
+    stop("Mean-centered parameterization is unavailable with known between-group covariance.",
+         call. = FALSE)
+  }
+  list(schema_version = 1L, block_name = random_term$block_name,
+    fixed_intercept = fixed_intercept$coordinate,
+    fixed_intercept_expression = fixed_intercept$expression,
+    location_name = paste0(parameter, "_xRE_MEANx"),
+    coefficient_name = paste0(parameter, "_xRE_COEFx"),
+    latent_name = paste0(parameter, "_xRE_Zx"),
+    group_map_name = paste0(parameter, "_xRE_MAPx"))
 }

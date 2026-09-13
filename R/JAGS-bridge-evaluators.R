@@ -506,7 +506,7 @@
 
   force(prior_object)
 
-  selection_backend_spec(prior_object)
+  selection_backend_spec(prior_object, include_init = FALSE)
 
   selection_evaluator <- if(!is.null(prior_object$selection)){
     .bt_JAGS_bridge_compile_weightfunction_evaluator(prior_object$selection)

@@ -110,3 +110,127 @@ selection_qmc_design <- function(dimensions, points, scrambles, seed = 1L){
   }
   out
 }
+
+
+#' Check Gaussian selection-event support
+#'
+#' @description
+#' Checks whether a Gaussian candidate law can reach a positive-weight event
+#' for almost every retained latent context. The complete candidate-plus-retained
+#' covariance must be positive definite. Retained covariance itself may be
+#' singular. This is a support check, not a numerical integration diagnostic.
+#'
+#' @param prior a weightfunction prior specifying one publication group's rule.
+#' @param candidate_basis finite numeric matrix whose column space is exactly
+#'   the candidate variation in that group. Zero columns are allowed, including
+#'   a matrix with no columns. Use compiler-declared source geometry, not
+#'   posterior covariance estimates or numerical rank truncation.
+#'
+#' @details Positive weights require no candidate variation. With hard-zero
+#'   bins, the best-result rule needs at least one varying result. Two-sided
+#'   product selection, and one-sided product selection with a positive
+#'   least-significant weight, need every result to vary. One-sided product
+#'   selection with a zero least-significant weight instead needs a strictly
+#'   positive vector in the candidate column space.
+#'
+#'   The positive-direction check uses sign-definite columns, then base-R QR
+#'   and optimization as candidate finders. A computed direction is accepted
+#'   only when its positive entries exceed a standard dot-product roundoff
+#'   bound. Failed searches return unknown rather than proving infeasibility.
+#'
+#'   The caller must check every candidate span having positive prior
+#'   probability, including zero-SD and inclusion branches. When only a
+#'   guaranteed subspace is supplied, only a positive result is conclusive;
+#'   other results cannot classify the complete candidate law. This helper does
+#'   not derive scale guarantees or change weights, priors, or source geometry.
+#'
+#' @return A list with `feasible` (`TRUE`, `FALSE`, or `NA`) and a stable
+#'   character `reason`. `FALSE` proves that some positive-probability retained
+#'   contexts have zero acceptance probability. `NA` means that a positive
+#'   direction could not be certified. Reasons are `positive_weights`,
+#'   `varying_best_result`, `varying_two_tails`, `positive_direction`,
+#'   `deterministic_candidate`, `deterministic_candidate_rows`,
+#'   `opposed_candidate_direction`, or `positive_direction_unavailable`.
+#'
+#' @export
+selection_event_support <- function(prior, candidate_basis){
+
+  if(!is.prior.weightfunction(prior)){
+    stop("'prior' must be a weightfunction prior.", call. = FALSE)
+  }
+  model <- selection_model_spec(prior)
+  if(!is.numeric(candidate_basis) || !is.matrix(candidate_basis) ||
+     nrow(candidate_basis) < 1L || any(!is.finite(candidate_basis))){
+    stop("'candidate_basis' must be a finite numeric matrix with at least one row.",
+         call. = FALSE)
+  }
+  result <- function(feasible, reason){
+
+    list(feasible = feasible, reason = reason)
+  }
+  weights <- prior$weights
+  if(!identical(weights$type, "fixed") || all(weights$omega > 0)){
+    return(result(TRUE, "positive_weights"))
+  }
+  varying <- rowSums(candidate_basis != 0) > 0L
+  if(identical(model$weight_rule, "best")){
+    return(if(any(varying)) result(TRUE, "varying_best_result") else
+      result(FALSE, "deterministic_candidate"))
+  }
+  if(!all(varying)){
+    return(result(FALSE, "deterministic_candidate_rows"))
+  }
+  if(identical(prior$side, "two-sided") || tail(weights$omega, 1L) > 0){
+    return(result(TRUE, "varying_two_tails"))
+  }
+  basis <- candidate_basis[, colSums(candidate_basis != 0) > 0L, drop = FALSE]
+  sign_definite <- vapply(seq_len(ncol(basis)), function(column){
+    all(basis[, column] >= 0) || all(basis[, column] <= 0)
+  }, logical(1))
+  if(all(rowSums(basis[, sign_definite, drop = FALSE] != 0) > 0L)){
+    return(result(TRUE, "positive_direction"))
+  }
+  if(ncol(basis) == 1L){
+    return(result(FALSE, "opposed_candidate_direction"))
+  }
+  for(row in seq_len(nrow(basis) - 1L)){
+    if(any(vapply(seq.int(row + 1L, nrow(basis)), function(other){
+      all(basis[row, ] == -basis[other, ])
+    }, logical(1)))){
+      return(result(FALSE, "opposed_candidate_direction"))
+    }
+  }
+  positive_direction <- function(coefficients){
+
+    if(length(coefficients) != ncol(basis) || any(!is.finite(coefficients))){
+      return(FALSE)
+    }
+    direction <- as.vector(basis %*% coefficients)
+    magnitude <- as.vector(abs(basis) %*% abs(coefficients))
+    product_error <- ncol(basis) * .Machine$double.eps
+    gamma <- product_error / (1 - product_error)
+    bound <- gamma * magnitude / (1 - gamma)
+    all(is.finite(direction)) && all(is.finite(bound)) && all(direction > bound)
+  }
+  coefficients <- tryCatch(qr.solve(basis, rep(1, nrow(basis))),
+                           error = function(e) numeric())
+  if(positive_direction(coefficients)){
+    return(result(TRUE, "positive_direction"))
+  }
+  objective <- function(coefficients){
+
+    deficit <- pmin(as.vector(basis %*% coefficients) - 1, 0)
+    sum(deficit^2) / 2
+  }
+  gradient <- function(coefficients){
+
+    deficit <- pmin(as.vector(basis %*% coefficients) - 1, 0)
+    as.vector(crossprod(basis, deficit))
+  }
+  optimum <- tryCatch(stats::optim(rep(0, ncol(basis)), objective, gradient,
+                                   method = "BFGS"), error = function(e) NULL)
+  if(!is.null(optimum) && positive_direction(optimum$par)){
+    return(result(TRUE, "positive_direction"))
+  }
+  result(NA, "positive_direction_unavailable")
+}

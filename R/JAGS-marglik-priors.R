@@ -197,10 +197,13 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
     })
   }
 
+  if(is.prior.PET(prior_object)){
+    parameter_name <- "PET"
+  }else if(is.prior.PEESE(prior_object)){
+    parameter_name <- "PEESE"
+  }
   is_plain_simple <- is.prior.simple(prior_object) &&
-    !is.prior.factor(prior_object) &&
-    !is.prior.PET(prior_object) &&
-    !is.prior.PEESE(prior_object)
+    !is.prior.factor(prior_object)
   if(is_plain_simple &&
      identical(prior_object[["distribution"]], "invgamma")){
     log_density <- .prior_simple_lpdf_evaluator(prior_object)
@@ -475,7 +478,7 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
   if(!is_prior_bias(prior))
     stop("improper prior provided")
 
-  selection_backend_spec(prior)
+  selection_backend_spec(prior, include_init = FALSE)
 
   marglik <- 0
   if(!is.null(prior$selection)){

@@ -66,6 +66,25 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
                                   formula_target = NULL, blocks = NULL,
                                   new_levels = NULL, fitted_rows = NULL){
 
+  .bt_JAGS_evaluate_formula(
+    fit = fit,
+    formula = formula,
+    parameter = parameter,
+    data = data,
+    prior_list = prior_list,
+    formula_target = formula_target,
+    blocks = blocks,
+    new_levels = new_levels,
+    fitted_rows = fitted_rows
+  )
+}
+
+.bt_JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
+                                      data = NULL, prior_list = NULL,
+                                      formula_target = NULL, blocks = NULL,
+                                      new_levels = NULL, fitted_rows = NULL,
+                                      return_components = FALSE){
+
   check_char(parameter, "parameter", allow_NA = FALSE)
   .bt_check_jags_node_name(parameter, "parameter")
   data_supplied <- !is.null(data)
@@ -164,7 +183,8 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
       fitted_rows = fitted_rows,
       data_supplied = data_supplied,
       replay_fitted_formula = replay_fitted_formula,
-      expressions_to_eval = expressions_to_eval
+      expressions_to_eval = expressions_to_eval,
+      return_components = return_components
     ))
   }
   if(is.null(formula_target) &&
@@ -375,6 +395,11 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
     )
   }
 
+  if(isTRUE(return_components)){
+    random <- output
+    random[] <- 0
+    return(list(value = output, fixed = output, random = random))
+  }
   return(output)
 }
 

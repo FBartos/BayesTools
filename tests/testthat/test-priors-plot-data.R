@@ -176,3 +176,44 @@ test_that("prior plot data rejects invalid plotting options before rendering", {
   )
   expect_error(ggplot2::ggplot() + geom_prior(p, scale_y2 = -1), "'scale_y2'")
 })
+
+
+test_that("base probability axes fit panels without moving subsequent overlays", {
+
+  grDevices::pdf(NULL, width = 10, height = 8)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  graphics::par(mfrow = c(2, 2))
+  original_mar <- graphics::par("mar")
+  priors <- list(
+    prior("normal", list(mean = 0, sd = 1)),
+    prior("point", list(location = 0))
+  )
+
+  for (panel in seq_len(2L)) {
+    plot_prior_list(priors)
+    expect_equal(graphics::par("mfg")[1:2], c(1L, panel))
+    expect_equal(graphics::par("mar"), original_mar)
+
+    # The title is three lines beyond the plot's right edge, inside its panel.
+    right_edge <- graphics::grconvertX(graphics::par("usr")[[2L]], "user", "nfc")
+    right_space <- (1 - right_edge) * graphics::par("fin")[[1L]]
+    expect_gt(right_space, 3 * graphics::par("csi") * graphics::par("mex"))
+
+    overlay_before <- graphics::grconvertX(c(-1, 0, 1), "user", "ndc")
+    lines_prior_list(priors, col = "red", lty = 2)
+    expect_equal(graphics::grconvertX(c(-1, 0, 1), "user", "ndc"), overlay_before)
+  }
+
+  plot(priors[[1L]])
+  right_edge <- graphics::grconvertX(graphics::par("usr")[[2L]], "user", "nfc")
+  expect_equal(
+    (1 - right_edge) * graphics::par("fin")[[1L]],
+    original_mar[[4L]] * graphics::par("csi") * graphics::par("mex")
+  )
+
+  custom_mar <- original_mar
+  custom_mar[[4L]] <- 6.1
+  graphics::par(mar = custom_mar)
+  plot_prior_list(priors)
+  expect_equal(graphics::par("mar"), custom_mar)
+})

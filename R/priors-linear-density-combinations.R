@@ -999,58 +999,57 @@
   height
 }
 
-.prior_linear_density_refinements <- function(x, max_refinements = 4L){
+.prior_linear_density_refinement <- function(x){
 
   context <- attr(x, "adaptive_evaluation", exact = TRUE)
   if(is.null(context) ||
      !context$kind %in%
        c("linear_combination", "density_context", "density_context_rows")){
-    return(list())
+    return(NULL)
   }
 
   arguments <- context$arguments
-  refinements <- vector("list", max_refinements)
-  for(i in seq_len(max_refinements)){
-    if(identical(context$kind, "linear_combination")){
-      arguments$n_grid <- min(
-        max(as.integer(arguments$n_grid) * 2L, 4096L),
-        32768L
-      )
-      arguments$tail_prob <- max(arguments$tail_prob / 1000, 1e-12)
-    }else{
-      arguments$context$n_grid <- min(
-        max(as.integer(arguments$context$n_grid) * 2L, 4096L),
-        32768L
-      )
-      arguments$context$tail_prob <- max(
-        arguments$context$tail_prob / 1000,
-        1e-12
-      )
-    }
-    refined_arguments <- arguments
-    refined_arguments$.record_evaluation <- FALSE
-    refinements[[i]] <- if(identical(context$kind, "linear_combination")){
-      do.call(.prior_linear_combination_density, refined_arguments)
-    }else if(identical(context$kind, "density_context_rows")){
-      do.call(.prior_density_from_context_rows, refined_arguments)
-    }else{
-      do.call(.prior_density_from_context, refined_arguments)
-    }
-    attr(refinements[[i]], "refinement_settings") <- list(
-      n_grid = if(identical(context$kind, "linear_combination")){
-        arguments$n_grid
-      }else{
-        arguments$context$n_grid
-      },
-      tail_prob = if(identical(context$kind, "linear_combination")){
-        arguments$tail_prob
-      }else{
-        arguments$context$tail_prob
-      }
+  if(identical(context$kind, "linear_combination")){
+    arguments$n_grid <- min(
+      max(as.integer(arguments$n_grid) * 2L, 4096L),
+      32768L
+    )
+    arguments$tail_prob <- max(arguments$tail_prob / 1000, 1e-12)
+  }else{
+    arguments$context$n_grid <- min(
+      max(as.integer(arguments$context$n_grid) * 2L, 4096L),
+      32768L
+    )
+    arguments$context$tail_prob <- max(
+      arguments$context$tail_prob / 1000,
+      1e-12
     )
   }
+  refined_arguments <- arguments
+  refined_arguments$.record_evaluation <- FALSE
+  refined <- if(identical(context$kind, "linear_combination")){
+    do.call(.prior_linear_combination_density, refined_arguments)
+  }else if(identical(context$kind, "density_context_rows")){
+    do.call(.prior_density_from_context_rows, refined_arguments)
+  }else{
+    do.call(.prior_density_from_context, refined_arguments)
+  }
+  context$arguments <- arguments
+  attr(refined, "adaptive_evaluation") <- context
+  attr(refined, "refinement_settings") <- list(
+    n_grid = if(identical(context$kind, "linear_combination")){
+      arguments$n_grid
+    }else{
+      arguments$context$n_grid
+    },
+    tail_prob = if(identical(context$kind, "linear_combination")){
+      arguments$tail_prob
+    }else{
+      arguments$context$tail_prob
+    }
+  )
 
-  refinements
+  refined
 }
 
 .prior_linear_density_to_plot_data <- function(x, n_points = 1000, x_range = NULL,
@@ -1227,8 +1226,8 @@
   }
 
   height <- .prior_linear_density_grid_height(x, value)
-  refinements <- .prior_linear_density_refinements(x)
-  if(length(refinements) == 0L){
+  refined <- .prior_linear_density_refinement(x)
+  if(is.null(refined)){
     if(!is.null(x$density) &&
        (value < min(x$density$x) || value > max(x$density$x))){
       stop(
@@ -1242,8 +1241,7 @@
 
   tolerance <- .prior_linear_density_refinement_tolerance()
   previous <- height
-  for(i in seq_along(refinements)){
-    refined <- refinements[[i]]
+  for(i in seq_len(4L)){
     current <- .prior_linear_density_grid_height(refined, value)
     change <- abs(current - previous)
     bound <- tolerance$absolute +
@@ -1266,11 +1264,12 @@
       return(current)
     }
     previous <- current
+    if(i < 4L){
+      refined <- .prior_linear_density_refinement(refined)
+    }
   }
 
-  final_range <- .prior_linear_density_range(
-    refinements[[length(refinements)]]
-  )
+  final_range <- .prior_linear_density_range(refined)
   if(value < final_range[1L] || value > final_range[2L]){
     stop(
       "The requested ordinate remains outside the numerical approximation ",

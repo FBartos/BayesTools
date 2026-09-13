@@ -72,8 +72,26 @@ test_that("linear prior ordinates adapt across center and omitted tails", {
     tail_prob = 1e-3
   )
 
+  evaluate_density <- BayesTools:::.prior_linear_combination_density
+  refinement_calls <- 0L
+  testthat::local_mocked_bindings(
+    .prior_linear_combination_density = function(...) {
+
+      refinement_calls <<- refinement_calls + 1L
+      evaluate_density(...)
+    },
+    .package = "BayesTools"
+  )
+
   center <- BayesTools:::.prior_linear_density_height(density, 0)
+  expect_identical(refinement_calls, 2L)
+  expect_equal(
+    attr(center, "adaptive_evaluation")[c("n_grid", "tail_prob", "refinements")],
+    list(n_grid = 8192L, tail_prob = 1e-9, refinements = 2L)
+  )
+  refinement_calls <- 0L
   tail <- BayesTools:::.prior_linear_density_height(density, 8)
+  expect_identical(refinement_calls, 4L)
   expect_lt(
     abs(as.numeric(center) / stats::dnorm(0, sd = sqrt(2)) - 1),
     1e-4
@@ -85,6 +103,14 @@ test_that("linear prior ordinates adapt across center and omitted tails", {
   expect_true(isTRUE(attr(center, "adaptive_evaluation")$converged))
   expect_true(isTRUE(attr(tail, "adaptive_evaluation")$converged))
   expect_gt(attr(tail, "adaptive_evaluation")$refinements, 0)
+
+  refinement_calls <- 0L
+  side <- hypothesis_parse("theta < 0")$statements[[1L]]$left
+  probability <- BayesTools:::.hypothesis_prior_density_prob(
+    density, side, "theta"
+  )
+  expect_lt(abs(probability / .5 - 1), 1e-4)
+  expect_identical(refinement_calls, 1L)
 
   diagnostics <- attr(density, "numerical_diagnostics", exact = TRUE)
   expect_equal(diagnostics$tail_probability_per_source, 1e-3)

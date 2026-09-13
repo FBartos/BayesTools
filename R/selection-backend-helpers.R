@@ -368,7 +368,7 @@
 .selection_prior_stop_unsupported_generic <- function(generic, prior){
 
   if(is_prior_bias(prior)){
-    selection_backend_spec(prior)
+    selection_backend_spec(prior, include_init = FALSE)
     stop(
       sprintf(
         "No %s is implemented for composed bias priors; use the selection or p-hacking component explicitly.",
@@ -379,7 +379,7 @@
   }
 
   if(is_prior_phacking(prior)){
-    selection_backend_spec(prior)
+    selection_backend_spec(prior, include_init = FALSE)
     stop(
       sprintf(
         "No %s is implemented for p-hacking priors; use the alpha prior component explicitly.",

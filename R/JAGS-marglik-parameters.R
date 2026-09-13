@@ -483,7 +483,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   if(!is_prior_bias(prior))
     stop("improper prior provided")
 
-  selection_backend_spec(prior)
+  selection_backend_spec(prior, include_init = FALSE)
 
   parameter <- list()
   if(!is.null(prior$selection)){

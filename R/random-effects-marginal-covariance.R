@@ -373,7 +373,9 @@ random_effects_marginal_factor_diagonal <- function(
 #' Reduces structurally eligible random-effect covariance factor states to a
 #' diagonal contribution and structurally certified loading columns for every
 #' supplied row block. Eligibility and factor dimension are determined from
-#' compiled metadata, never from evaluated covariance values.
+#' compiled metadata, never from evaluated covariance values. Known group
+#' covariance uses its fixed Cholesky factor while retaining the complete
+#' coefficient covariance. Sampled zero SDs do not alter the structural supports.
 #'
 #' @param factors A
 #'   `BayesTools_random_effects_marginal_factor_states` object, or a single
@@ -385,7 +387,11 @@ random_effects_marginal_factor_diagonal <- function(
 #'   call.
 #'
 #' @return A list with a numeric `diagonal` matrix, one loading array and
-#'   structural rank per row block, and `row_blocks`.
+#'   structural rank per row block, and `row_blocks`. The `loading_supports`
+#'   list contains one logical row-by-loading matrix per block, derived from
+#'   compiled metadata independently of the evaluated loading values. The
+#'   logical `diagonal_support` vector marks rows with a structurally declared
+#'   diagonal contribution, including when its evaluated SD is zero.
 #'
 #' @seealso [random_effects_marginal_factor_states()]
 #' @export
@@ -447,12 +453,26 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
   n_draws    <- components$n_draws
   n_rows     <- components$n_rows
   row_blocks <- components$row_blocks
+  diagonal_support <- rep(FALSE, n_rows)
+  for(block in plan$blocks){
+    for(component in block$diagonal){
+      diagonal_support[component$row] <- TRUE
+    }
+  }
   diagonal <- matrix(0, nrow = n_draws, ncol = n_rows)
   loadings <- lapply(plan$blocks, function(block){
     array(
       0,
       dim = c(n_draws, length(block$rows), length(block$loadings))
     )
+  })
+  loading_supports <- lapply(plan$blocks, function(block){
+
+    support <- matrix(FALSE, length(block$rows), length(block$loadings))
+    for(column in seq_along(block$loadings)){
+      support[match(block$loadings[[column]]$rows, block$rows), column] <- TRUE
+    }
+    support
   })
   plan_names <- names(plans)
   if(is.null(plan_names)){
@@ -494,8 +514,12 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
           next
         }
         index <- component$row + n_rows * (component$column - 1L)
+        values <- basis[index, ]
+        if(!is.null(component$multiplier)){
+          values <- values * component$multiplier
+        }
         diagonal[, component$row] <-
-          diagonal[, component$row] + basis[index, ]^2
+          diagonal[, component$row] + values^2
       }
       for(loading_index in seq_along(block$loadings)){
         component <- block$loadings[[loading_index]]
@@ -504,15 +528,20 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
         }
         local_rows <- match(component$rows, block$rows)
         index <- component$rows + n_rows * (component$column - 1L)
-        loadings[[block_index]][, local_rows, loading_index] <-
-          t(basis[index, , drop = FALSE])
+        values <- basis[index, , drop = FALSE]
+        if(!is.null(component$multiplier)){
+          values <- values * component$multiplier
+        }
+        loadings[[block_index]][, local_rows, loading_index] <- t(values)
       }
     }
   }
 
   out <- list(
     diagonal   = unname(diagonal),
+    diagonal_support = diagonal_support,
     loadings   = unname(loadings),
+    loading_supports = unname(loading_supports),
     ranks      = as.integer(vapply(
       plan$blocks,
       function(block) length(block$loadings),
@@ -653,7 +682,7 @@ random_effects_marginal_factor_vcov <- function(factors){
     if(!is.list(factor) ||
        !is.character(factor$type) || length(factor$type) != 1L ||
        is.na(factor$type) ||
-       !factor$type %in% c("group", "row_group") ||
+       !factor$type %in% c("group", "row_group", "known_group") ||
        !is.character(factor$coefficient_structure) ||
        length(factor$coefficient_structure) != 1L ||
        is.na(factor$coefficient_structure) ||
@@ -667,9 +696,24 @@ random_effects_marginal_factor_vcov <- function(factors){
        any(factor$group_map < 1L)){
       return(unavailable("unsupported factor structure"))
     }
+    group_factor <- NULL
+    if(identical(factor$type, "known_group")){
+      kernel <- factor$group_covariance
+      if(!is.numeric(kernel) || !is.matrix(kernel) ||
+         nrow(kernel) != ncol(kernel) || any(!is.finite(kernel)) ||
+         !identical(unname(kernel), unname(t(kernel))) ||
+         any(factor$group_map > nrow(kernel))){
+        return(unavailable("invalid known group covariance"))
+      }
+      group_factor <- tryCatch(t(chol(kernel)), error = function(e) NULL)
+      if(is.null(group_factor)){
+        return(unavailable("known group covariance is not positive definite"))
+      }
+    }
     plan_components[[factor_index]] <- list(
-      model_matrix         = factor$model_matrix,
-      group_map            = as.integer(factor$group_map),
+      model_matrix          = factor$model_matrix,
+      group_map             = as.integer(factor$group_map),
+      group_covariance      = if(is.null(group_factor)) NULL else kernel,
       coefficient_structure = factor$coefficient_structure
     )
   }
@@ -685,6 +729,12 @@ random_effects_marginal_factor_vcov <- function(factors){
       model_matrix <- factor$model_matrix
       group_map    <- factor$group_map
       n_columns    <- ncol(model_matrix)
+      group_levels <- unique(group_map[rows])
+      group_factor <- if(is.null(factor$group_covariance)){
+        NULL
+      }else{
+        t(chol(factor$group_covariance[group_levels, group_levels, drop = FALSE]))
+      }
       for(column in seq_len(n_columns)){
         model_columns <- if(identical(
             factor$coefficient_structure,
@@ -697,15 +747,34 @@ random_effects_marginal_factor_vcov <- function(factors){
         structural_rows <- which(
           rowSums(model_matrix[, model_columns, drop = FALSE] != 0) > 0
         )
-        for(group in unique(group_map[structural_rows])){
-          support <- intersect(
-            structural_rows[group_map[structural_rows] == group],
-            rows
-          )
+        if(!is.null(group_factor)){
+          inside  <- intersect(structural_rows, rows)
+          outside <- setdiff(structural_rows, rows)
+          if(length(inside) > 0L && length(outside) > 0L && any(
+            factor$group_covariance[group_map[inside], group_map[outside],
+                                    drop = FALSE] != 0
+          )){
+            return(unavailable("row blocks split a covariance factor"))
+          }
+        }
+        groups <- if(is.null(group_factor)){
+          unique(group_map[structural_rows])
+        }else{
+          seq_len(ncol(group_factor))
+        }
+        for(group in groups){
+          multiplier <- if(is.null(group_factor)){
+            as.numeric(group_map == group)
+          }else{
+            values <- numeric(n_rows)
+            values[rows] <- group_factor[match(group_map[rows], group_levels), group]
+            values
+          }
+          full_support <- structural_rows[multiplier[structural_rows] != 0]
+          support <- intersect(full_support, rows)
           if(length(support) == 0L){
             next
           }
-          full_support <- structural_rows[group_map[structural_rows] == group]
           if(length(full_support) > 1L && !all(full_support %in% rows)){
             return(unavailable("row blocks split a covariance factor"))
           }
@@ -715,6 +784,9 @@ random_effects_marginal_factor_vcov <- function(factors){
             column       = column,
             rows         = support
           )
+          if(!is.null(group_factor)){
+            component$multiplier <- unname(multiplier[support])
+          }
           if(length(support) == 1L){
             component$row <- support[[1L]]
             diagonal_components[[length(diagonal_components) + 1L]] <-

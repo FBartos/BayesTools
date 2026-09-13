@@ -8,7 +8,8 @@ selection_backend_spec(
   priors,
   backend = "jags",
   names = list(omega = "omega", alpha = "alpha"),
-  global_breaks = NULL
+  global_breaks = NULL,
+  include_init = TRUE
 )
 }
 \arguments{
@@ -20,6 +21,10 @@ selection_backend_spec(
 \item{names}{list of backend parameter names.}
 
 \item{global_breaks}{optional global p-value break grid.}
+
+\item{include_init}{whether to generate JAGS initial values. Defaults to
+\code{TRUE}; when \code{FALSE}, the returned \code{init} field is \code{NULL}
+and compilation does not change the random-number state.}
 }
 \value{
 A list describing the compiled backend specification.
@@ -28,5 +33,6 @@ A list describing the compiled backend specification.
 \code{selection_backend_spec()} compiles step-selection and
 p-hacking prior objects into active backend parameters. The returned object
 contains stable p/z geometry, JAGS prior/transform code, monitor names,
-initial values, and data constants.
+initial values, and data constants. Set \code{include_init = FALSE} for
+deterministic metadata without drawing unused initial values.
 }

@@ -64,15 +64,16 @@ skip_if_not_test_profile("unit")
 }
 
 
-.random_update_test_allocation_fit <- function(){
+.random_update_test_allocation_fit <- function(
+    formula = ~ 1 + random(1 + x | id, name = "study", covariance = "diag")){
 
   data <- data.frame(
     id = factor(c("a", "a", "b", "b")),
-    x = c(-1, 0, 1, 2)
+    x = c(-1, 0, 1, 2),
+    index = c(1, 2, 1, 2)
   )
   result <- JAGS_formula(
-    formula = ~ 1 + random(1 + x | id, name = "study",
-                           covariance = "diag"),
+    formula = formula,
     parameter = "mu",
     data = data,
     prior_list = list(intercept = prior("normal", list(0, 1))),
@@ -88,7 +89,9 @@ skip_if_not_test_profile("unit")
     )
   )
   weight <- "mu__xRE_ALLOCx_allocation__weight"
+  term <- result$formula_design$random_effects[[1L]]
   columns <- c(
+    term$correlation$rho_name,
     "mu_intercept", "tau",
     result$formula_design$random_effects[[1L]]$sd_parameter_names,
     paste0(weight, "[", 1:2, "]"),
@@ -384,6 +387,42 @@ test_that("variance allocations declare exact scalar covariance inputs", {
 })
 
 
+
+test_that("correlated component allocations retain nonlinear covariances", {
+
+  fit <- .random_update_test_allocation_fit(
+    ~ 1 + har(index | id, name = "study")
+  )
+  plan <- .random_update_test_plan(fit, "random_var_prop", "index[1]")
+  expect_identical(plan$family, "unsupported")
+  expect_identical(plan$reason, "correlated_component_allocation")
+  expect_identical(.random_update_test_plan(fit, "random_sd_total")$family,
+                   "affine")
+
+  posterior <- as.matrix(fit)[rep(1L, 3L), , drop = FALSE]
+  weight <- "mu__xRE_ALLOCx_allocation__weight"
+  values <- c(.1, .5, .9)
+  posterior[, paste0(weight, "[1]")] <- values
+  posterior[, paste0(weight, "[2]")] <- 1 - values
+  covariance <- random_effects_marginal_vcov(
+    fit,
+    parameter = "mu",
+    posterior_samples = posterior
+  )$samples
+  for(i in seq_along(values)){
+    w <- values[[i]]
+    block <- .5^2 * matrix(
+      c(w, .5 * sqrt(w * (1 - w)), .5 * sqrt(w * (1 - w)), 1 - w),
+      2L, 2L
+    )
+    expected <- matrix(0, 4L, 4L)
+    expected[1:2, 1:2] <- block
+    expected[3:4, 3:4] <- block
+    expect_equal(unname(covariance[i, , ]), expected, tolerance = 1e-14)
+  }
+  expect_gt(abs(covariance[2L, 1L, 2L] -
+                  mean(covariance[c(1L, 3L), 1L, 2L])), .01)
+})
 test_that("nested aggregate allocations use their public covariance scale", {
 
   data <- data.frame(
@@ -539,4 +578,172 @@ test_that("LKJ correlation updates distinguish scalar and composite paths", {
   expect_identical(two_plan$family, "affine")
   expect_identical(three_plan$family, "unsupported")
   expect_identical(three_plan$reason, "non_scalar_covariance_path")
+})
+
+
+.random_update_test_block_allocation_fit <- function(gates = "shared"){
+
+  data <- data.frame(
+    study = factor(c("a", "a", "b", "b")),
+    esid = factor(seq_len(4L))
+  )
+  if(identical(gates, "shared")){
+    allocations <- list(
+      random_variance_allocation(
+        name = "root",
+        terms = c(component = "component_gated"),
+        sd = prior("gamma", list(2, 2)),
+        inclusion = list(component = prior("spike", list(location = 0.5)))
+      ),
+      random_variance_allocation(
+        name = "split",
+        terms = c(study = "study", esid = "esid"),
+        parent = allocation_ref("root", "component"),
+        weights = prior("dirichlet", list(alpha = c(1, 1)))
+      )
+    )
+  }else{
+    allocations <- random_variance_allocation(
+      name = "split",
+      terms = c(study = "study", esid = "esid"),
+      sd = prior("gamma", list(2, 2)),
+      weights = prior("dirichlet", list(alpha = c(1, 1))),
+      inclusion = if(identical(gates, "independent")) list(
+        study = prior("spike", list(location = 0.5)),
+        esid = prior("spike", list(location = 0.5))
+      ) else NULL
+    )
+  }
+  result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | esid, name = "esid", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(allocation = allocations)
+  )
+  allocation <- result$formula_design$random_allocations$split
+  source <- allocation$source$name
+  weight <- allocation$weight_name
+  indicators <- .bt_random_effect_summary_allocation_gate_names(allocation)
+  columns <- c("mu_intercept", source, paste0(weight, "[", 1:2, "]"),
+               indicators)
+  samples <- matrix(
+    0.5, nrow = 2L, ncol = length(columns),
+    dimnames = list(NULL, columns)
+  )
+  samples[, source] <- c(0.7, 0.9)
+  samples[, paste0(weight, "[1]")] <- c(0.25, 0.4)
+  samples[, paste0(weight, "[2]")] <- c(0.75, 0.6)
+  if(length(indicators) > 0L){
+    samples[, indicators] <- 1
+    samples[1L, indicators] <- 0
+  }
+  fit <- coda::mcmc.list(coda::mcmc(samples))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- result$prior_list
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  attr(fit, "parameter_map") <- .bt_build_parameter_map(
+    columns = columns,
+    prior_list = result$prior_list,
+    formula_design = list(mu = result$formula_design)
+  )
+  fit <- .bt_attach_draw_geometry(fit)
+  fit <- .bt_attach_fit_contract(fit)
+  list(fit = fit, samples = samples, data = data, source = source,
+       weight = weight, indicators = indicators)
+}
+
+
+test_that("shared parent gates declare conditional block-allocation updates", {
+
+  fixture <- .random_update_test_block_allocation_fit()
+  selectors <- c("(mu) split: sd_total", "(mu) esid: sd(intercept)",
+                 "(mu) split: var_prop(esid)")
+  coefficient_inputs <- c("source", "quantity", "source")
+  transforms <- c("square", "square", "identity")
+  values <- c(0.2, 0.5, 0.8)
+  study_covariance <- outer(fixture$data$study, fixture$data$study, "==") * 1
+  estimate_covariance <- diag(nrow(fixture$data))
+
+  for(i in seq_along(selectors)){
+    selection <- parameter_catalog_resolve(parameter_catalog(fixture$fit),
+                                           selectors[[i]])
+    update <- random_effects_marginal_update_plan(fixture$fit, selection)
+    expect_identical(update$family, "unsupported")
+    expect_identical(update$conditional$required_active, fixture$indicators)
+    plan <- update$conditional$plan
+    expect_s3_class(plan, "BayesTools_random_effects_marginal_update_plan")
+    expect_identical(plan$family, "affine")
+    expect_identical(plan$coefficient_input, coefficient_inputs[[i]])
+    expect_identical(plan$coefficient_transform, list(type = transforms[[i]]))
+    expect_setequal(plan$blocks, c("study", "esid"))
+    expect_identical(plan$source_parameter,
+                     if(i == 3L) fixture$weight else fixture$source)
+    expect_identical(plan$allocation$weight_name, fixture$weight)
+    expect_identical(plan$allocation$n_targets, 2L)
+
+    samples <- fixture$samples[rep(2L, length(values)), , drop = FALSE]
+    source <- samples[1L, fixture$source]
+    proportion <- samples[1L, paste0(fixture$weight, "[2]")]
+    if(i == 1L){
+      samples[, fixture$source] <- values
+      expected <- lapply(values, function(value){
+        value^2 * ((1 - proportion) * study_covariance +
+                     proportion * estimate_covariance)
+      })
+    }else if(i == 2L){
+      samples[, fixture$source] <- values / sqrt(proportion)
+      expected <- lapply(values, function(value){
+        value^2 * ((1 - proportion) / proportion * study_covariance +
+                     estimate_covariance)
+      })
+    }else{
+      samples[, paste0(fixture$weight, "[1]")] <- 1 - values
+      samples[, paste0(fixture$weight, "[2]")] <- values
+      expected <- lapply(values, function(value){
+        source^2 * ((1 - value) * study_covariance +
+                      value * estimate_covariance)
+      })
+    }
+    covariance <- random_effects_marginal_vcov(
+      fixture$fit, parameter = "mu", posterior_samples = samples
+    )$samples
+    for(row in seq_along(values)){
+      expect_equal(unname(covariance[row, , ]), unname(expected[[row]]),
+                   tolerance = 1e-12)
+    }
+    samples[, fixture$indicators] <- 0
+    inactive <- random_effects_marginal_vcov(
+      fixture$fit, parameter = "mu", posterior_samples = samples
+    )$samples
+    expect_equal(unname(inactive), array(0, dim = dim(inactive)))
+  }
+})
+
+
+test_that("block component scales resolve uniquely without enabling independent gates", {
+
+  fixture <- .random_update_test_block_allocation_fit("none")
+  selection <- parameter_catalog_resolve(
+    parameter_catalog(fixture$fit), "(mu) esid: sd(intercept)"
+  )
+  plan <- random_effects_marginal_update_plan(fixture$fit, selection)
+  expect_identical(plan$family, "affine")
+  expect_null(plan$conditional)
+  expect_identical(plan$coefficient_input, "quantity")
+  expect_identical(plan$coefficient_transform, list(type = "square"))
+  expect_identical(plan$source_parameter, fixture$source)
+  expect_identical(plan$allocation$index, 2L)
+
+  independent <- .random_update_test_block_allocation_fit("independent")
+  for(selector in c("(mu) split: sd_total", "(mu) esid: sd(intercept)",
+                    "(mu) split: var_prop(esid)")){
+    selection <- parameter_catalog_resolve(parameter_catalog(independent$fit),
+                                           selector)
+    plan <- random_effects_marginal_update_plan(independent$fit, selection)
+    expect_identical(plan$family, "unsupported")
+    expect_null(plan$conditional)
+  }
 })

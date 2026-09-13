@@ -92,7 +92,8 @@ allocation across named random-effect blocks.}
 
 \item{parameterization}{requested sampled random-effect parameterization:
 \code{"noncentered"}, \code{"centered"}, or \code{"auto"}. The top-level value is
-inherited by blocks without an explicit \code{random_block()} override.}
+inherited by blocks without an explicit \code{random_block()} override.
+A named block can additionally request \code{"mean_centered"}; see details.}
 
 \item{terms}{for \code{random_block()}, an optional named list of term-specific
 SD overrides. Each entry must be either a prior object or
@@ -416,6 +417,19 @@ strictly positive backend-owned SD coordinates and therefore rejects
 point-mass-at-zero scales, inclusion-gated variance allocations, and external
 or row-indexed SD sources. \code{"auto"} falls back to \code{"noncentered"} when those
 contracts or its design-information checks do not support centering.
+
+An explicitly named \code{random_block()} may request \code{"mean_centered"} for a
+sampled scalar random intercept. It samples group locations around the
+fixed intercept's compiled contribution, preserving the original effect,
+SD, allocation, and correlation priors. The fixed effect need not have a
+Normal prior; a compiled \code{log(intercept)} contribution is also supported.
+Other moderator terms remain in the predictor. At most one block per
+formula may receive the intercept. This mode requires the positive-SD
+contract above and currently excludes known between-group covariance and
+random slopes. Selection-model callers must additionally require that the
+translated block is retained in the selection normalizer. Semantic random
+coefficients remain zero-mean deviations; prediction and bridge sampling
+retain their existing coefficient and standardized-latent conventions.
 }
 
 \examples{
