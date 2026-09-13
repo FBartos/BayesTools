@@ -1,5 +1,8 @@
 # version 0.3.1
 ### Features
+- clarifies that `selection_model(group = NULL)` needs publication groups only
+  for `weight_rule = "best"`; product selection is invariant to publication
+  partitions, with joint integration following the integrated covariance sources
 - supports optional process-sharded computational cache capture and restoration
   across saved fits and extensions, without embedding retained payloads in
   callbacks or broadcasting them in backend fit objects; cache failures retain

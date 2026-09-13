@@ -122,7 +122,9 @@ print.selection_model <- function(x, ...){
     product = "Product of estimate weights",
     best = "Weight of the best p-value"
   )
-  group <- if(is.null(x[["group"]])){
+  group <- if(x[["weight_rule"]] == "product"){
+    "unused for the product rule"
+  }else if(is.null(x[["group"]])){
     "automatic (resolved when data are bound)"
   }else{
     paste0("'", x[["group"]], "' (unresolved data column)")

@@ -89,14 +89,18 @@ prior_weightfunction <- function(side = "one-sided", steps = c(.025, .05),
 #' covariance. This choice also applies to univariate models and independent
 #' sampling errors. Conditioning retains the full unknown realized error;
 #' integration averages its full distribution before selection normalization.
-#' @param weight_rule either \code{"product"}, the product of estimate weights,
-#' or \code{"best"}, the weight of the bin containing the smallest p-value.
-#' The best-p-value rule does not select the largest publication weight.
-#' @param group an optional data-column reference: a bare or backticked column
-#' name, or a single character string. It is captured without evaluating the
-#' column and bound by the consuming model when its data are available.
-#' \code{NULL} requests automatic group resolution. Derived groups must first
-#' be stored as data columns.
+#' @param weight_rule either \code{"product"} (the default), the product of
+#' estimate weights, or \code{"best"}, the weight of the bin containing the
+#' smallest p-value within each publication group. The best-p-value rule does
+#' not select the largest publication weight.
+#' @param group publication-group column for \code{weight_rule = "best"},
+#' specified as a bare or backticked column name or a single character string.
+#' The default \code{NULL} requests automatic resolution by the consuming model;
+#' a best-rule branch requires resolved publication groups when its data are
+#' bound. For \code{weight_rule = "product"}, \code{group} is inactive: no
+#' publication-group column is required or resolved. References are captured
+#' without evaluating the column. Derived groups must first be stored as data
+#' columns.
 #' @param prior a single prior object or \code{NULL}. Mixtures must be examined
 #' one branch at a time.
 #' @param model a selection-model specification to validate.
@@ -108,8 +112,20 @@ prior_weightfunction <- function(side = "one-sided", steps = c(.025, .05),
 #' unknown latent effects during selection normalization; it does not make them
 #' observed or fixed. Integration averages the source before normalization.
 #' Sampling versus marginalizing a JAGS node is a separate computational choice.
-#' The consuming model binds source roles and publication groups to its data, so
-#' a prior can be constructed before data exist.
+#' The consuming model binds source roles and, for the best-p-value rule,
+#' publication groups to its data, so a prior can be constructed before data
+#' exist. An ensemble needs publication groups only for its best-rule branches.
+#'
+#' Publication groups describe how the best-p-value selection rule combines
+#' outcomes. They do not create random effects or define sampling covariance.
+#' Under the product rule, multiplying all estimate weights gives the same
+#' selection weight for every partition into groups. Its joint normalization
+#' therefore does not depend on \code{group}, including with correlated
+#' outcomes. Integration blocks instead follow dependencies from sampling
+#' covariance and random effects marked \code{"integrate"}; assigning singleton
+#' publication groups does not make correlated outcomes independent. A consuming
+#' model may impose additional covariance-support restrictions on best-rule
+#' publication groups.
 #'
 #' Known sampling covariance \eqn{V} describes the complete error vector
 #' \eqn{e \sim N(0,V)}. With positive sampling standard deviations it can be

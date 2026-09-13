@@ -182,7 +182,7 @@ test_that("selection model printing distinguishes source choices from weight-pri
     "  Other random effects: condition (retain unknown effects during normalization).",
     "  Known sampling error: condition (retain full unknown error vector during normalization).",
     "  Weight rule: product (Product of estimate weights).",
-    "  Group: automatic (resolved when data are bound).",
+    "  Group: unused for the product rule.",
     "  Sources are resolved when model data are bound."
   ))
   candidate <- prior_weightfunction(steps = .05, model = model)
