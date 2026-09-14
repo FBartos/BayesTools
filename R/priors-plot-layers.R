@@ -7,7 +7,9 @@
 #' @param show_parameter which parameter should be returned in case of
 #' multiple parameters per prior. Useful when priors for the omega
 #' parameter are plotted and \code{individual = TRUE}.
-#' @param scale_y2 scaling factor for a secondary axis
+#' @param scale_y2 scaling factor for a secondary axis. The default
+#' \code{NULL} reuses the probability mapping from the active mixed
+#' base plot when one is available.
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #'
@@ -19,14 +21,14 @@
 lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_points = 1000,
                         n_samples = 10000, force_samples = FALSE,
                         transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                        show_parameter = if(individual) 1 else NULL, individual = FALSE, rescale_x = FALSE, scale_y2 = 1, ...){
+                        show_parameter = if(individual) 1 else NULL, individual = FALSE, rescale_x = FALSE, scale_y2 = NULL, ...){
 
   # check input (most arguments are checked within density)
   .check_prior(x)
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
   check_int(show_parameter, "show_parameter", allow_NULL = TRUE)
-  check_real(scale_y2, "scale_y2", lower = 0)
+  check_real(scale_y2, "scale_y2", lower = 0, allow_NULL = TRUE)
 
   if(is.prior.mixture(x)){
     return(lines_prior_list(x, xlim = xlim, x_seq = x_seq, x_range_quant = x_range_quant, n_points = n_points,
@@ -53,6 +55,7 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
                        n_points = n_points, n_samples = n_samples, force_samples = force_samples,
                        transformation = transformation, transformation_arguments = transformation_arguments,
                        transformation_settings = transformation_settings, individual = individual)
+  scale_y2 <- .plot_scale_y2_overlay(plot_data, scale_y2)
 
 
   # plot a weightfunction
@@ -60,10 +63,11 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     .lines.prior.weightfunction(plot_data = plot_data, rescale_x = rescale_x, ...)
     return(invisible())
   }else if(is.prior.weightfunction(x) & individual){
-    if(inherits(plot_data[[show_parameter]], "density.prior.simple")){
-      .lines.prior.simple(plot_data, ...)
-    }else if(inherits(plot_data[[show_parameter]], "density.prior.point")){
-      .lines.prior.point(plot_data, scale_y2 = scale_y2, ...)
+    selected <- plot_data[[show_parameter]]
+    if(inherits(selected, "density.prior.simple")){
+      .lines.prior.simple(selected, ...)
+    }else if(inherits(selected, "density.prior.point")){
+      .lines.prior.point(selected, scale_y2 = scale_y2, ...)
     }
     return(invisible())
   }
@@ -82,7 +86,7 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   # plot spike and slab prior
   if(is.prior.spike_and_slab(x)){
-    .lines.prior.spike_and_slab(plot_data, ...)
+    .lines.prior.spike_and_slab(plot_data, scale_y2 = scale_y2, ...)
     return(invisible())
   }
 
@@ -92,7 +96,7 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     return(invisible())
   }
 
-  if(is.prior.ordered(x)){
+  if(is.prior.ordered(x) || is.prior.simplex(x)){
     selected <- if(is.null(show_parameter)){
       seq_along(plot_data)
     }else{
@@ -169,6 +173,9 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   if(is.null(xlim) & is.null(x_seq)){
     if((is.prior.PET(x) | is.prior.PEESE(x) | is.prior.weightfunction(x)) & !individual){
       xlim   <- c(0, 1)
+    }else if(is.prior.spike_and_slab(x)){
+      xlim   <- range(c(0, range(.get_spike_and_slab_variable(x), quantiles = x_range_quant)))
+      xlim   <- range(pretty(xlim))
     }else{
       xlim   <- range(x, quantiles = x_range_quant)
       xlim   <- range(pretty(xlim))
@@ -185,9 +192,9 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     if(!individual){
       geom <- .geom_prior.weightfunction(plot_data = plot_data, rescale_x = rescale_x, ...)
     }else if(inherits(plot_data[[show_parameter]], "density.prior.simple")){
-      geom <- .geom_prior.simple(plot_data, ...)
+      geom <- .geom_prior.simple(plot_data[[show_parameter]], ...)
     }else if(inherits(plot_data[[show_parameter]], "density.prior.point")){
-      geom <- .geom_prior.point(plot_data, ...)
+      geom <- .geom_prior.point(plot_data[[show_parameter]], scale_y2 = scale_y2, ...)
     }
     return(geom)
   }
@@ -198,9 +205,9 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     if(!individual){
       geom <- .geom_prior.PETPEESE(plot_data, ...)
     }else if(inherits(plot_data, "density.prior.simple")){
-      .geom_prior.simple(plot_data, ...)
+      geom <- .geom_prior.simple(plot_data, ...)
     }else if(inherits(plot_data, "density.prior.point")){
-      geom <- .geom_prior.point(plot_data, ...)
+      geom <- .geom_prior.point(plot_data, scale_y2 = scale_y2, ...)
     }
     return(geom)
   }
@@ -208,18 +215,18 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   # plot spike and slab prior
   if(is.prior.spike_and_slab(x)){
-    geom <- .geom_prior.spike_and_slab(plot_data, ...)
+    geom <- .geom_prior.spike_and_slab(plot_data, scale_y2 = scale_y2, ...)
     return(geom)
   }
 
 
   # plot point prior
   if(is.prior.point(x)){
-    geom <- .geom_prior.point(plot_data, ...)
+    geom <- .geom_prior.point(plot_data, scale_y2 = scale_y2, ...)
     return(geom)
   }
 
-  if(is.prior.ordered(x)){
+  if(is.prior.ordered(x) || is.prior.simplex(x)){
     selected <- if(is.null(show_parameter)){
       seq_along(plot_data)
     }else{
@@ -351,17 +358,10 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
 
   # weightfunction specific stuff
-  x_cuts <- plot_data$x
   x_mean <- plot_data$y
   x_lCI  <- plot_data$y_lCI
   x_uCI  <- plot_data$y_uCI
-
-  if(rescale_x){
-    x_at <- seq(0, 1, length.out = length(unique(plot_data$x)))
-    x_at <- x_at[c(1, sort(rep(2:(length(x_at)-1), 2)), length(x_at))]
-  }else{
-    x_at <- x_cuts
-  }
+  x_at   <- .weightfunction_plot_x_at(plot_data, rescale_x)
 
 
   graphics::polygon(
@@ -405,10 +405,10 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   return(invisible())
 }
-.lines.prior.spike_and_slab  <- function(plot_data, ...){
+.lines.prior.spike_and_slab  <- function(plot_data, scale_y2 = 1, ...){
 
   .lines.prior.simple(plot_data[["variable"]], ...)
-  .lines.prior.point(plot_data[["inclusion"]], ...)
+  .lines.prior.point(plot_data[["inclusion"]], scale_y2 = scale_y2, ...)
 
   return(invisible())
 }
@@ -511,17 +511,10 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   lty       <- if(!is.null(dots[["linetype"]])) dots[["linetype"]] else  if(!is.null(dots[["lty"]])) dots[["lty"]] else .plot.prior_settings()[["lty"]]
 
   # weightfunction specific stuff
-  x_cuts <- plot_data$x
   x_mean <- plot_data$y
   x_lCI  <- plot_data$y_lCI
   x_uCI  <- plot_data$y_uCI
-
-  if(rescale_x){
-    x_at <- seq(0, 1, length.out = length(unique(plot_data$x)))
-    x_at <- x_at[c(1, sort(rep(2:(length(x_at)-1), 2)), length(x_at))]
-  }else{
-    x_at <- x_cuts
-  }
+  x_at   <- .weightfunction_plot_x_at(plot_data, rescale_x)
 
 
   geom <- list(
@@ -627,11 +620,11 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   return(geom)
 }
-.geom_prior.spike_and_slab   <- function(plot_data, ...){
+.geom_prior.spike_and_slab   <- function(plot_data, scale_y2 = 1, ...){
 
   geom <- list(
     .geom_prior.simple(plot_data[["variable"]], ...),
-    .geom_prior.point(plot_data[["inclusion"]], ...)
+    .geom_prior.point(plot_data[["inclusion"]], scale_y2 = scale_y2, ...)
   )
 
   return(geom)

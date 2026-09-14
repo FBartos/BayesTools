@@ -526,3 +526,53 @@ test_that("analytical plotting handles heterogeneous weightfunction mixtures", {
   expect_gt(max(posterior_plot_data$density$x), 1)
   expect_s3_class(plot_posterior(mixed, "omega", prior = TRUE, plot_type = "ggplot"), "ggplot")
 })
+
+test_that("two-cut weightfunction plot data keeps matching x and y steps", {
+
+  expect_equal(.weightfunction_step_indices(2L), list(x = c(1L, 2L), y = c(1L, 1L)))
+  expect_equal(.weightfunction_step_indices(3L), list(x = c(1L, 2L, 2L, 3L), y = c(1L, 1L, 2L, 2L)))
+  expect_equal(
+    .weightfunction_step_indices(4L),
+    list(x = c(1L, 2L, 2L, 3L, 3L, 4L), y = c(1L, 1L, 2L, 2L, 3L, 3L))
+  )
+
+  none_data <- .plot_data_prior_list.weightfunction(
+    list(prior_none()),
+    x_seq = NULL,
+    x_range = c(0, 1),
+    x_range_quant = NULL,
+    n_points = 16,
+    n_samples = 1
+  )
+  expect_equal(none_data$x, c(0, 1))
+  expect_equal(none_data$y, c(1, 1))
+  expect_equal(length(none_data$x), length(none_data$y))
+  expect_equal(length(none_data$y_lCI), length(none_data$x))
+  expect_equal(length(none_data$y_uCI), length(none_data$x))
+
+  omega_samples <- matrix(rep(1, 20), ncol = 1)
+  colnames(omega_samples) <- "omega[0,1]"
+  attr(omega_samples, "prior_list") <- list(prior_none())
+  attr(omega_samples, "models_ind") <- rep(1, nrow(omega_samples))
+
+  sample_data <- .plot_data_samples.weightfunction(
+    list(omega = omega_samples),
+    x_seq = NULL,
+    x_range = c(0, 1),
+    x_range_quant = NULL,
+    n_points = 16
+  )
+  expect_equal(sample_data$x, c(0, 1))
+  expect_equal(unname(sample_data$y), c(1, 1))
+  expect_equal(length(sample_data$x), length(sample_data$y))
+  expect_equal(length(sample_data$y_lCI), length(sample_data$x))
+  expect_equal(length(sample_data$y_uCI), length(sample_data$x))
+
+  wf_data <- density(
+    prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5))),
+    individual = FALSE
+  )
+  expect_equal(wf_data$x, c(0, .05, .05, 1))
+  expect_equal(wf_data$y, c(1, 1, .5, .5))
+  expect_equal(length(wf_data$x), length(wf_data$y))
+})

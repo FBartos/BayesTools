@@ -81,6 +81,10 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
 
   # get the plotting data
+  if(prior_type == "weightfunction" && individual){
+    stop("'individual = TRUE' is not supported for weightfunction prior lists. Plot a single weightfunction prior, or the full mapped weightfunction.", call. = FALSE)
+  }
+
   if(prior_type == "weightfunction" && !individual){
     # special dispatching for visualizing the whole weightfunction
 
@@ -100,8 +104,9 @@ plot_prior_list <- function(prior_list, plot_type = "base",
                                                 effect_direction = effect_direction)
     plot <- .plot.prior.PETPEESE(prior_list, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
 
-  }else if(prior_type %in% c("simple", "orthonormal", "meandif")){
-    # regular prior distributions (or individual plots for parameters from weightfunctions/PET-PEESE)
+  }else if(prior_type %in% c("simple", "orthonormal", "meandif") ||
+           (individual && prior_type == "PETPEESE")){
+    # regular prior distributions (or individual plots for parameters from PET-PEESE)
 
     # solve analytically
     plot_data <- .plot_data_prior_list.simple(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
@@ -118,6 +123,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
     }
 
+  }else{
+    stop("Unable to dispatch plot_prior_list() for this prior combination.", call. = FALSE)
   }
 
 

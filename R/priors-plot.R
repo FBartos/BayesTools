@@ -454,13 +454,7 @@ plot.prior <- function(x, plot_type = "base",
 
   # weightfunction specific stuff (required for axes)
   x_cuts <- plot_data$x
-
-  if(rescale_x){
-    x_at <- seq(0, 1, length.out = length(unique(plot_data$x)))
-    x_at <- x_at[c(1, sort(rep(2:(length(x_at)-1), 2)), length(x_at))]
-  }else{
-    x_at <- x_cuts
-  }
+  x_at   <- .weightfunction_plot_x_at(plot_data, rescale_x)
 
   # add it to the user input if desired
   if(is.null(dots[["main"]])) dots$main <-  main
@@ -834,6 +828,34 @@ plot.prior <- function(x, plot_type = "base",
   scale_y2  = 1.10,
   width     = 0.20
   ))
+}
+.weightfunction_plot_x_at <- function(plot_data, rescale_x){
+
+  x_cuts <- plot_data$x
+  if(!isTRUE(rescale_x)){
+    return(x_cuts)
+  }
+
+  x_at <- seq(0, 1, length.out = length(unique(x_cuts)))
+  if(length(x_at) > 2L){
+    x_at <- x_at[c(1, sort(rep(2:(length(x_at) - 1L), 2)), length(x_at))]
+  }
+
+  x_at
+}
+.plot_scale_y2_overlay <- function(plot_data, scale_y2 = NULL){
+
+  if(!is.null(scale_y2)){
+    return(scale_y2)
+  }
+
+  scale_y2_state <- .plot_scale_y2_state_current()
+  if(!is.null(scale_y2_state)){
+    .plot_point_mass_warn_outside(plot_data, scale_y2_state)
+    return(scale_y2_state[["scale_y2"]])
+  }
+
+  1
 }
 .plot_scale_y2_from_limits <- function(ylim, ylim2, scale_y2 = NULL){
 

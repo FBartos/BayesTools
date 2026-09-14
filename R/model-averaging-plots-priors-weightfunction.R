@@ -16,13 +16,9 @@
   }
 
   x_seq     <- omega_cuts
-  if(length(x_seq) > 2){
-    x_seq_rep <- c(1, sort(rep(2:(length(x_seq)-1), 2)) ,length(x_seq))
-    x_val_rep <- sort(rep(1:(length(x_seq)-1), 2))
-  }else{
-    x_seq_rep <- c(1, 2)
-    x_val_rep <- c(1, 1)
-  }
+  step_idx  <- .weightfunction_step_indices(length(x_seq))
+  x_seq_rep <- step_idx$x
+  x_val_rep <- step_idx$y
 
 
   out <- list(

@@ -985,8 +985,9 @@ density.prior <- function(x,
 
     # weightfunction specific stuff
     x_seq     <- .weightfunction_local_cuts(x)
-    x_seq_rep <- c(1, sort(rep(2:(length(x_seq)-1), 2)) ,length(x_seq))
-    x_val_rep <- sort(rep(1:(length(x_seq)-1), 2))
+    step_idx  <- .weightfunction_step_indices(length(x_seq))
+    x_seq_rep <- step_idx$x
+    x_val_rep <- step_idx$y
     if(force_samples | .density.prior_need_samples(x)){
       x_sam  <- rng(x, n_samples)
       x_lCI  <- apply(x_sam, 2, stats::quantile, probs = .025)

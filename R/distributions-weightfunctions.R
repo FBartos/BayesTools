@@ -1104,3 +1104,20 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
   if(is.matrix(omega) && any(omega[,1] != 1))
     stop(paste0("The reference-bin '", name, "' weight must be exactly 1."))
 }
+.weightfunction_step_indices <- function(n_cuts){
+
+  if(!is.numeric(n_cuts) || length(n_cuts) != 1L || !is.finite(n_cuts) ||
+     n_cuts < 2 || n_cuts != as.integer(n_cuts)){
+    stop("'n_cuts' must be an integer of at least 2.", call. = FALSE)
+  }
+  n_cuts <- as.integer(n_cuts)
+  n_bins <- n_cuts - 1L
+  if(n_cuts == 2L){
+    return(list(x = c(1L, 2L), y = c(1L, 1L)))
+  }
+
+  list(
+    x = c(1L, sort(rep(2L:(n_cuts - 1L), 2L)), n_cuts),
+    y = sort(rep(seq_len(n_bins), 2L))
+  )
+}
