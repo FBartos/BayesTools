@@ -51,7 +51,13 @@ parameter_map.BayesTools_fit <- function(object, ...){
       call. = FALSE
     )
   }
-  .bt_validate_parameter_map(map)
+  cache <- attr(map, "runtime_cache", exact = TRUE)
+  if(!(is.environment(cache) && isTRUE(cache$validated))){
+    .bt_validate_parameter_map(map)
+    if(is.environment(cache)){
+      cache$validated <- TRUE
+    }
+  }
   map
 }
 
@@ -124,6 +130,8 @@ parameter_map_schema <- function(){
   )
   class(out) <- c("BayesTools_parameter_map", "list")
   .bt_validate_parameter_map(out)
+  attr(out, "runtime_cache") <- new.env(parent = emptyenv())
+  attr(out, "runtime_cache")$validated <- TRUE
   out
 }
 
