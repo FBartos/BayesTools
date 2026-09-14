@@ -28,8 +28,11 @@
 #' `"quantity"`) and `h` is recorded in `coefficient_transform`.
 #' `family = "factor"` identifies an exact candidate-dependent covariance
 #' factor, while `family = "markov"` identifies a compiled structured Markov
-#' state. Unsupported plans carry a structural reason. The accessor never
-#' estimates affineness from evaluated covariance matrices.
+#' state. Allocation-derived component SDs stay affine on `id`/`diag` and
+#' single-column blocks. On correlated multi-column structures they are
+#' factor `column_scale` updates of the selected quantity, not
+#' `A + h(sigma) B`. Unsupported plans carry a structural reason. The accessor
+#' never estimates affineness from evaluated covariance matrices.
 #'
 #' @seealso [parameter_catalog()] [random_effects_marginal_factor_states()]
 #' @export
@@ -122,8 +125,10 @@ random_effects_marginal_update_plan <- function(fit, selection){
 #' @param fit a fitted object carrying formula random-effect metadata.
 #' @param update a plan returned by
 #'   [random_effects_marginal_update_plan()].
-#' @param values finite candidate values on the source-coordinate scale
-#'   declared by `update`.
+#' @param values finite candidate values on the scale declared by `update`.
+#'   Source-coordinate factor updates replace `source_parameter` in the
+#'   posterior. Quantity-scale factor updates use `values` as the selected
+#'   component's coefficient scale.
 #' @param posterior_samples optional posterior sample object. By default the
 #'   posterior is obtained from `fit`.
 #' @param prior_list optional formula prior list used to reconstruct random SD
@@ -167,9 +172,11 @@ random_effects_marginal_update_grid <- function(
     stop("Non-affine random-effect updates must identify one fitted block.",
          call. = FALSE)
   }
+  quantity_scale <- identical(update$coefficient_input, "quantity")
   source <- update$source_parameter
-  if(!is.character(source) || length(source) != 1L ||
-     is.na(source) || !nzchar(source)){
+  if(!quantity_scale &&
+     (!is.character(source) || length(source) != 1L ||
+      is.na(source) || !nzchar(source))){
     stop("Non-affine random-effect updates must identify one source coordinate.",
          call. = FALSE)
   }
@@ -181,7 +188,7 @@ random_effects_marginal_update_grid <- function(
     prior_list = prior_list
   )
   posterior <- compiled$posterior
-  if(!source %in% colnames(posterior)){
+  if(!quantity_scale && !source %in% colnames(posterior)){
     stop(
       "Random-effect update source coordinate '", source,
       "' is unavailable in 'posterior_samples'.",
@@ -215,19 +222,23 @@ random_effects_marginal_update_grid <- function(
       nrow = length(values),
       ncol = nrow(posterior)
     )
-    for(value_i in seq_along(values)){
-      candidate <- posterior
-      candidate[, source] <- values[[value_i]]
-      current <- evaluator$coefficient_scales(
-        posterior = candidate,
-        parameter = parameter,
-        block = block
-      )
-      if(is.null(current) || !identical(dim(current), dim(scale))){
-        stop("Candidate random-effect coefficient scales are unavailable.",
-             call. = FALSE)
+    if(quantity_scale){
+      candidate_scale[] <- rep(values, times = nrow(posterior))
+    }else{
+      for(value_i in seq_along(values)){
+        candidate <- posterior
+        candidate[, source] <- values[[value_i]]
+        current <- evaluator$coefficient_scales(
+          posterior = candidate,
+          parameter = parameter,
+          block = block
+        )
+        if(is.null(current) || !identical(dim(current), dim(scale))){
+          stop("Candidate random-effect coefficient scales are unavailable.",
+               call. = FALSE)
+        }
+        candidate_scale[value_i, ] <- current[, component]
       }
-      candidate_scale[value_i, ] <- current[, component]
     }
     cholesky <- evaluator$coefficient_cholesky(
       posterior = posterior,
@@ -627,21 +638,44 @@ random_effects_marginal_update_grid <- function(
         )
       ))
     }
-    return(.bt_random_effect_marginal_update_affine(
-      update = "scale",
-      blocks = .bt_random_effect_marginal_update_allocation_blocks(
-        fit,
-        key,
-        allocations[[1L]]
-      ),
-      coefficient_transform = if(identical(key$evaluator, "sd_variance")){
-        list(type = "identity")
-      }else{
-        list(type = "square")
-      },
-      coefficient_input = "quantity",
-      component_index = key$index,
-      structure = structure
+    n_columns <- random_term$n_columns
+    affine <- n_columns == 1L || structure %in% c("id", "diag")
+    if(isTRUE(affine)){
+      return(.bt_random_effect_marginal_update_affine(
+        update = "scale",
+        blocks = .bt_random_effect_marginal_update_allocation_blocks(
+          fit,
+          key,
+          allocations[[1L]]
+        ),
+        coefficient_transform = if(identical(key$evaluator, "sd_variance")){
+          list(type = "identity")
+        }else{
+          list(type = "square")
+        },
+        coefficient_input = "quantity",
+        component_index = key$index,
+        structure = structure
+      ))
+    }
+    if(structure %in% c("us", "hcs", "har") ||
+       structure %in% c("cs", "ar1", "car")){
+      return(list(
+        family = "factor",
+        update = "column_scale",
+        blocks = random_term$block_name,
+        component_index = key$index,
+        structure = structure,
+        coefficient_input = "quantity"
+      ))
+    }
+    return(.bt_random_effect_marginal_update_unavailable(
+      quantity = quantity,
+      reason = "unsupported_sd_structure",
+      message = paste0(
+        "The selected allocation-derived SD has no declared marginal ",
+        "covariance update path."
+      )
     ))
   }
 

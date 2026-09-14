@@ -422,7 +422,24 @@ test_that("correlated component allocations retain nonlinear covariances", {
   }
   expect_gt(abs(covariance[2L, 1L, 2L] -
                   mean(covariance[c(1L, 3L), 1L, 2L])), .01)
+
+  component_sd <- .random_update_test_plan(fit, "random_sd", "index[1]")
+  expect_identical(component_sd$family, "factor")
+  expect_identical(component_sd$update, "column_scale")
+  expect_identical(component_sd$coefficient_input, "quantity")
+  expect_identical(component_sd$blocks, "study")
+  grid <- random_effects_marginal_update_grid(
+    fit = fit,
+    update = component_sd,
+    values = c(0.25, 0.75),
+    posterior_samples = as.matrix(fit)
+  )
+  expect_identical(grid$family, "factor")
+  expect_equal(grid$candidate_scale[, 1L], c(0.25, 0.75))
+  expect_equal(grid$candidate_scale[, 2L], c(0.25, 0.75))
 })
+
+
 test_that("nested aggregate allocations use their public covariance scale", {
 
   data <- data.frame(

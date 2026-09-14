@@ -37,8 +37,11 @@ coordinate, the row covariance has the exact form \code{A + h(value) * B}, where
 \code{"quantity"}) and \code{h} is recorded in \code{coefficient_transform}.
 \code{family = "factor"} identifies an exact candidate-dependent covariance
 factor, while \code{family = "markov"} identifies a compiled structured Markov
-state. Unsupported plans carry a structural reason. The accessor never
-estimates affineness from evaluated covariance matrices.
+state. Allocation-derived component SDs stay affine on \code{id}/\code{diag} and
+single-column blocks. On correlated multi-column structures they are
+factor \code{column_scale} updates of the selected quantity, not
+\verb{A + h(sigma) B}. Unsupported plans carry a structural reason. The accessor
+never estimates affineness from evaluated covariance matrices.
 }
 \seealso{
 \code{\link[=parameter_catalog]{parameter_catalog()}} \code{\link[=random_effects_marginal_factor_states]{random_effects_marginal_factor_states()}}

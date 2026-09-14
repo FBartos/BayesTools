@@ -18,8 +18,10 @@ random_effects_marginal_update_grid(
 \item{update}{a plan returned by
 \code{\link[=random_effects_marginal_update_plan]{random_effects_marginal_update_plan()}}.}
 
-\item{values}{finite candidate values on the source-coordinate scale
-declared by \code{update}.}
+\item{values}{finite candidate values on the scale declared by \code{update}.
+Source-coordinate factor updates replace \code{source_parameter} in the
+posterior. Quantity-scale factor updates use \code{values} as the selected
+component's coefficient scale.}
 
 \item{posterior_samples}{optional posterior sample object. By default the
 posterior is obtained from \code{fit}.}

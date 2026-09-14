@@ -52,6 +52,9 @@
 - preserves independent coefficient supports in structural dependency graphs,
   including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- classifies allocation-derived component SDs on correlated US/HCS structures
+  as factor `column_scale` updates of the selected quantity, not affine
+  `A + h(sigma) B`; `id`/`diag` and single-column allocations stay affine
 - ggplot mixed overlays reuse the stored secondary-axis mapping and warn when
   a later point mass is off-scale, matching the base-graphics clipping check
 - rejects variance-allocation `inclusion` with `target = "sd_component"` at

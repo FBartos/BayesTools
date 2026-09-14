@@ -181,6 +181,9 @@ factors for downstream likelihoods that can marginalize only supported blocks.
 exact scalar covariance update from the parameter map and compiled random
 design; downstream optimizations must use this metadata rather than infer an
 update form from posterior samples or evaluated covariance matrices.
+Allocation-derived component SDs remain affine on `id`/`diag` and
+single-column blocks. On correlated multi-column structures they are factor
+`column_scale` updates of the selected quantity, not `A + h(sigma) B`.
 Do not make a downstream package reconstruct these quantities from raw JAGS
 columns.
 
