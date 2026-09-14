@@ -52,6 +52,8 @@
 - preserves independent coefficient supports in structural dependency graphs,
   including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- `selection_model(group = )` is rejected under `weight_rule = "product"`
+- draws independent weight-function JAGS initial values for free omega bins
 - keeps allocation-role coordinates, including inclusion-gate indicators,
   internal so public summaries use `inclusion(...)` rather than backend names
 - preserves `log(intercept)` when stripping random-effect bars for fixed-target
