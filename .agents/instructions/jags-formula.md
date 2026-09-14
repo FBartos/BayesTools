@@ -89,7 +89,9 @@ names.
   implementation coordinates remain coordinate-only and must not be presented as
   original-scale public parameters.
 - Validate coordinate uniqueness, quantity uniqueness, aliases, extraction
-  recipes, and coordinate dependencies atomically. The fit contract stores one
+  recipes, and coordinate dependencies atomically at map construction. Public
+  accessors reuse that result through the map runtime cache rather than
+  rebuilding schema checks on every call. The fit contract stores one
   `parameter_map_version`; there are no separate registry/catalog versions or
   fit attributes.
 - Missing, malformed, or unsupported map metadata requires refitting with the
@@ -132,8 +134,11 @@ correlation matrix. Persist basis ownership, resolved index levels, design
 columns, and public labels for every consumer.
 
 Complete omitted correlation priors after resolving the structure and dimension:
-US/UN uses `LKJ(1)`; CS/HCS uses raw `Uniform(-1 / (K - 1), 1)`; AR1/HAR uses
-raw `Uniform(-1, 1)`; CAR uses raw `Uniform(0, 1)`. Explicit scalar priors retain
+US/UN uses `LKJ(1)`; CS/HCS uses raw `Uniform(-1 / (K - 1), 1)` whose JAGS hull
+is closed while evaluation treats the CS singular bound `-1/(K-1)` as open;
+AR1/HAR uses raw `Uniform(-1, 1)`; CAR uses raw `Uniform(0, 1)` and includes
+`rho = 0`. Do not treat Uniform as an open-interval family. Explicit scalar
+priors retain
 their Fisher-z default scale. SD magnitude belongs to the outcome model:
 BayesTools must not supply a generic scale, and direct `JAGS_formula()` use
 requires an SD prior, SD source, or variance allocation.

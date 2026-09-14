@@ -52,6 +52,18 @@
 - preserves independent coefficient supports in structural dependency graphs,
   including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- independently gated `var_prop` prior densities are the mixed measure
+  conditional on a positive total: atoms at 0 and 1 plus a Beta mixture over
+  nonempty active sets of other components, folding always-on/always-off
+  gates and grouping identical Beta pieces
+- CS/HCS evaluation keeps the singular bound `-1/(K-1)` open; Uniform as a
+  family is unchanged. AR `|rho| = 1` remains a kernel singularity; CAR
+  includes `rho = 0`
+- `JAGS_bridgesampling()` computes `use_neff` from fitted chains before merge
+- `compute_inference(conditional = TRUE)` documents that inclusion BF stays
+  the unconditional inclusion odds
+- unknown or non-conditional labels in posterior conditioning fail closed
+- `parameter_map()` skips repeated schema revalidation after a map is built
 - `selection_model(group = )` is rejected under `weight_rule = "product"`
 - draws independent weight-function JAGS initial values for free omega bins
 - keeps allocation-role coordinates, including inclusion-gate indicators,
