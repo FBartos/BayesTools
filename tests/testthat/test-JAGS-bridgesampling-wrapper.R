@@ -109,8 +109,11 @@ test_that("JAGS_bridgesampling forwards bridge controls and fitted-chain neff", 
   )
 })
 
-test_that("JAGS_bridgesampling passes multi-chain ESS into use_neff", {
+test_that("JAGS_bridgesampling passes use_neff as the logical flag upstream defines", {
 
+  # bridgesampling::bridge_sampler() branches on `if (use_neff)` and computes
+  # the ESS itself. Anything but a logical scalar is either silently ignored
+  # (length 1) or aborts the sampler with "the condition has length > 1".
   seen <- new.env(parent = emptyenv())
   bridge_sampler <- function(...){
     arguments <- list(...)
@@ -133,10 +136,6 @@ test_that("JAGS_bridgesampling passes multi-chain ESS into use_neff", {
     dimnames = list(NULL, c("mu", "sigma"))
   ))
   posterior <- coda::mcmc.list(chain1, chain2)
-  expected <- BayesTools:::.bt_JAGS_bridge_samples_neff(
-    do.call(rbind, posterior),
-    list(count = 2L, draws_per_chain = c(20L, 20L))
-  )
 
   JAGS_bridgesampling(
     fit = posterior,
@@ -148,9 +147,39 @@ test_that("JAGS_bridgesampling passes multi-chain ESS into use_neff", {
     )
   )
 
-  expect_true(is.numeric(seen$use_neff))
-  expect_equal(unname(seen$use_neff), unname(expected))
-  expect_identical(names(seen$use_neff), c("mu", "sigma"))
+  expect_true(is.logical(seen$use_neff))
+  expect_length(seen$use_neff, 1L)
+  expect_false(is.na(seen$use_neff))
+})
+
+
+test_that("JAGS_bridgesampling drives the real upstream sampler on multiple chains", {
+
+  # Deliberately NOT mocked: every argument this wrapper forwards has to be
+  # one bridgesampling::bridge_sampler() actually accepts. A mocked sampler
+  # cannot catch a forwarded value that upstream rejects.
+  set.seed(1)
+  make_chain <- function() coda::mcmc(matrix(
+    c(rnorm(400), rnorm(400)),
+    ncol = 2,
+    dimnames = list(NULL, c("mu", "sigma"))
+  ))
+  posterior <- coda::mcmc.list(make_chain(), make_chain(), make_chain())
+
+  result <- JAGS_bridgesampling(
+    fit = posterior,
+    log_posterior = function(parameters, data) 0,
+    data = list(),
+    prior_list = list(
+      mu = prior("normal", list(0, 1)),
+      sigma = prior("normal", list(0, 1))
+    ),
+    seed = 1
+  )
+
+  expect_s3_class(result, "BayesTools_marglik")
+  expect_true(is.finite(result[["logml"]]))
+  expect_identical(result[["diagnostics"]][["chains"]][["count"]], 3L)
 })
 
 test_that("JAGS_bridgesampling seeds bridge proposal draws explicitly", {

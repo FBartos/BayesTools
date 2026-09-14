@@ -201,11 +201,14 @@ fixed parameter values. The returned marginal likelihood is exact and uses
 the aggregation rule \code{"exact_zero_dimensional"}; no bridge repetitions are
 performed.
 
-Effective sample sizes passed to \link[bridgesampling]{bridge_sampler} as
-\code{use_neff} are computed with \code{coda::effectiveSize()} on the fitted
-chains before those chains are merged into the integrand matrix. A single
-chain, or a posterior whose chain layout cannot be recovered, keeps the
-upstream default of computing ESS from the merged matrix.
+\code{use_neff} is passed to \link[bridgesampling]{bridge_sampler} as the logical
+flag that upstream defines. \pkg{bridgesampling} computes the effective
+sample size itself, from the merged integrand matrix, and accepts no
+caller-supplied value: a numeric \code{use_neff} is a length-\verb{>1} condition
+upstream and aborts the sampler. Per-chain effective sample sizes therefore
+cannot be injected here; the merged-chain ESS is conservative, because
+concatenating chains that have not mixed inflates the estimated
+autocorrelation and so lowers the ESS.
 
 When \code{bridge_context = TRUE}, the callback receives an object of class
 \code{BayesTools_bridge_context} with fields \code{state}, \code{state_matrix}, \code{nodes},

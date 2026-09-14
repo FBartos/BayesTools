@@ -140,11 +140,14 @@
 #' the aggregation rule `"exact_zero_dimensional"`; no bridge repetitions are
 #' performed.
 #'
-#' Effective sample sizes passed to \link[bridgesampling]{bridge_sampler} as
-#' `use_neff` are computed with \code{coda::effectiveSize()} on the fitted
-#' chains before those chains are merged into the integrand matrix. A single
-#' chain, or a posterior whose chain layout cannot be recovered, keeps the
-#' upstream default of computing ESS from the merged matrix.
+#' `use_neff` is passed to \link[bridgesampling]{bridge_sampler} as the logical
+#' flag that upstream defines. \pkg{bridgesampling} computes the effective
+#' sample size itself, from the merged integrand matrix, and accepts no
+#' caller-supplied value: a numeric `use_neff` is a length-`>1` condition
+#' upstream and aborts the sampler. Per-chain effective sample sizes therefore
+#' cannot be injected here; the merged-chain ESS is conservative, because
+#' concatenating chains that have not mixed inflates the estimated
+#' autocorrelation and so lowers the ESS.
 #'
 #' When `bridge_context = TRUE`, the callback receives an object of class
 #' `BayesTools_bridge_context` with fields `state`, `state_matrix`, `nodes`,
@@ -538,10 +541,6 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   if(!is.null(seed)){
     set.seed(seed)
   }
-  use_neff <- .bt_JAGS_bridge_samples_neff(
-    bridgesampling_posterior,
-    chain_metadata
-  )
   upstream_warnings <- character()
   marglik <- tryCatch(withCallingHandlers(bridgesampling::bridge_sampler(
       samples            = bridgesampling_posterior,
@@ -558,7 +557,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       silent             = silent,
       maxiter            = maxiter,
       cores              = cores,
-      use_neff           = use_neff,
+      use_neff           = TRUE,
       add_parameters     = add_parameters,
       fixed_random_latent = random_bridge_parameters$fixed_latent,
       bridge_context     = bridge_context,
