@@ -433,23 +433,34 @@
   }
 
   labels <- vapply(factors, function(factor){
-    if(!is.list(factor) ||
-       !is.character(factor$weight_name) ||
-       length(factor$weight_name) != 1L ||
-       is.na(factor$weight_name) ||
-       !is.numeric(factor$index) ||
-       length(factor$index) != 1L ||
-       is.na(factor$index)){
+    if(!is.list(factor)){
       return("<malformed>")
     }
-    label <- paste0(factor$weight_name, "[", factor$index, "]")
-    if(is.character(factor$inclusion_name) &&
-       length(factor$inclusion_name) == 1L &&
-       !is.na(factor$inclusion_name) &&
-       nzchar(factor$inclusion_name)){
-      label <- paste0(label, " * ", factor$inclusion_name)
+    gate <- if(is.character(factor$inclusion_name) &&
+               length(factor$inclusion_name) == 1L &&
+               !is.na(factor$inclusion_name) &&
+               nzchar(factor$inclusion_name)){
+      factor$inclusion_name
+    }else{
+      NULL
     }
-    label
+    has_weight <- is.character(factor$weight_name) &&
+      length(factor$weight_name) == 1L &&
+      !is.na(factor$weight_name) &&
+      is.numeric(factor$index) &&
+      length(factor$index) == 1L &&
+      !is.na(factor$index)
+    if(has_weight){
+      label <- paste0(factor$weight_name, "[", factor$index, "]")
+      if(!is.null(gate)){
+        label <- paste0(label, " * ", gate)
+      }
+      return(label)
+    }
+    if(!is.null(gate)){
+      return(gate)
+    }
+    "<malformed>"
   }, character(1))
 
   paste0(" (", paste(labels, collapse = " -> "), ")")

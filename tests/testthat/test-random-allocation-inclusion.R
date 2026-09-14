@@ -266,6 +266,33 @@ test_that("a sole hidden allocation omits its public component argument", {
 })
 
 
+test_that("gate-only allocation factor chains keep diagnostic labels", {
+
+  expect_identical(
+    .bt_random_effect_allocation_factor_chain_label(list(
+      list(
+        weight_name = NULL,
+        index = NA_integer_,
+        scale = "total_variance",
+        n_targets = 1L,
+        inclusion_name = "mu_xRE_ALLOCx_root__include_component_indicator"
+      ),
+      list(
+        weight_name = "mu_xRE_ALLOCx_split__weight",
+        index = 1L,
+        scale = "total_variance",
+        n_targets = 2L,
+        inclusion_name = NULL
+      )
+    )),
+    paste0(
+      " (mu_xRE_ALLOCx_root__include_component_indicator -> ",
+      "mu_xRE_ALLOCx_split__weight[1])"
+    )
+  )
+})
+
+
 test_that("allocation slab auxiliaries remain private coordinates", {
 
   data <- data.frame(study = factor(c("s1", "s1", "s2", "s2")))
@@ -323,7 +350,7 @@ test_that("allocation slab auxiliaries remain private coordinates", {
   source_row <- match(source_name, coordinates$coordinate_name)
   expect_false(anyNA(c(source_row, indicator_rows)))
   expect_true(coordinates$internal[[source_row]])
-  expect_false(any(coordinates$internal[indicator_rows]))
+  expect_true(all(coordinates$internal[indicator_rows]))
   expect_true(all(coordinates$role[indicator_rows] == "allocation"))
 
   catalog <- parameter_catalog(fit)
@@ -334,8 +361,11 @@ test_that("allocation slab auxiliaries remain private coordinates", {
     "(mu) component: inclusion(study)"
   ))
   expect_no_error(parameter_catalog_resolve(catalog, "(mu) sd(intercept)"))
-  expect_true(all(product_indicators %in% colnames(as.matrix(
+  expect_false(any(product_indicators %in% colnames(as.matrix(
     JAGS_materialize_draws(fit)
+  ))))
+  expect_true(all(product_indicators %in% colnames(as.matrix(
+    JAGS_materialize_draws(fit, include_internal = TRUE)
   ))))
 
   inference <- JAGS_inference_table(fit)
