@@ -25,7 +25,10 @@
 #' corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
 #' when no models are null)
 #' @param conditional whether prior and posterior model probabilities should
-#' be returned only for the conditional model. Defaults to \code{FALSE}
+#' be returned only for the non-null models. Defaults to \code{FALSE}.
+#' Inclusion Bayes factors stay the unconditional inclusion odds; after
+#' conditioning, posterior inclusion is 1, so recomputing the Bayes factor
+#' from the renormalized probabilities would be \code{Inf}.
 #' @param on_failure policy for missing (\code{NA}) marginal likelihoods in
 #' models with positive prior probability. \code{"error"} aborts (the default),
 #' \code{"drop"} removes failed models from the prior model space and
@@ -78,6 +81,9 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
     is_null      = is_null,
     on_failure  = "error"
   )
+
+  # Renormalize probabilities among non-null models. Keep the unconditional
+  # inclusion BF; a BF recomputed after conditioning would be Inf.
 
   if(conditional){
     if(all(is_null))
