@@ -32,10 +32,24 @@ one-sided boundary behavior; do not replace valid endpoints with nearby values.
 `selection_model()` captures fixed source choices and a deferred publication
 column reference. Keep `group = NULL` immediately after `weight_rule`; consumers
 resolve publication groups only for `"best"` branches. Product selection is
-invariant to publication partitions and must not store, require, or bind a
-group column. Integration dependencies come from the integrated sampling and
-random-effect covariances, independently of publication groups. Preserve typed
-reference capture, branch metadata, and source-conditioning choices.
+invariant to publication partitions and must not require or bind a group
+column. `group` is a deferred column reference rather than a modelling
+instruction, and callers parameterize `weight_rule` while forwarding one
+`group` for both rules, so a group supplied alongside the product rule is inert
+rather than contradictory: keep the combination constructible and let `print()`
+report the group as unused. Integration dependencies come from the integrated
+sampling and random-effect covariances, independently of publication groups.
+Preserve typed reference capture, branch metadata, and source-conditioning
+choices.
+
+Generated JAGS syntax and generated initial values are two renderings of one
+node layout, so derive both from `.weightfunction_component_node_names()`
+rather than rebuilding names on either side. Initial values belong on the
+stochastic node; `omega_target` (`omega`, `omega_component_<id>`) is
+deterministic and expanded onto the global cut grid, and initializing it either
+does nothing or aborts JAGS with a dimension mismatch. Any check that mocks the
+model, the sampler, or the backend cannot establish that the two sides still
+agree - keep at least one test that compiles the real model.
 
 ## Structural Prior-Density Ordinates
 

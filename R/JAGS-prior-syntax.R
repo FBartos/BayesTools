@@ -428,22 +428,62 @@ JAGS_add_priors           <- function(syntax, prior_list){
   paste0(paste0(code, collapse = "\n"), "\n")
 }
 
-.JAGS_weightfunction_component_syntax <- function(prior, component_id = NULL, global_cuts = NULL, force_one_sided = FALSE){
+# Single source of truth for the JAGS node names of one weightfunction
+# component. The model syntax and the initial values must agree on which node
+# is stochastic: `omega_target` is a deterministic array expanded onto the
+# global cut grid, so initial values placed there are either ignored or, when
+# the expansion changes the array length, abort JAGS with a dimension mismatch.
+# Initial values belong on `omega_local` / `log_omega`.
+.weightfunction_component_node_names <- function(prior, component_id = NULL,
+                                                 global_cuts = NULL,
+                                                 force_one_sided = FALSE){
 
-  J <- .weightfunction_n_bins(prior)
-  syntax <- character()
-
+  n_bins        <- .weightfunction_n_bins(prior)
   expansion     <- .weightfunction_mapping_expansion(prior, force_one_sided)
   all_cuts      <- if(is.null(global_cuts)) expansion$cuts else global_cuts
   needs_mapping <- !identical(all_cuts, .weightfunction_local_cuts(prior)) ||
-    !identical(expansion$index, seq_len(J))
+    !identical(expansion$index, seq_len(n_bins))
+  suffix        <- if(is.null(component_id)) "" else paste0("_component_", component_id)
 
-  omega_local <- if(is.null(component_id) && !needs_mapping) "omega" else if(is.null(component_id)) "omega_local" else paste0("omega_local_component_", component_id)
-  omega_target <- if(is.null(component_id)) "omega" else paste0("omega_component_", component_id)
+  list(
+    n_bins        = n_bins,
+    expansion     = expansion,
+    all_cuts      = all_cuts,
+    needs_mapping = needs_mapping,
+    omega_local   = if(is.null(component_id) && !needs_mapping){
+      "omega"
+    }else{
+      paste0("omega_local", suffix)
+    },
+    omega_target  = paste0("omega", suffix),
+    log_omega     = paste0("log_omega", suffix),
+    omega_ratio   = paste0("omega_ratio", suffix),
+    eta           = paste0("eta", suffix),
+    std_eta       = paste0("std_eta", suffix)
+  )
+}
+
+.JAGS_weightfunction_component_syntax <- function(prior, component_id = NULL, global_cuts = NULL, force_one_sided = FALSE){
+
+  node_names <- .weightfunction_component_node_names(
+    prior           = prior,
+    component_id    = component_id,
+    global_cuts     = global_cuts,
+    force_one_sided = force_one_sided
+  )
+  J <- node_names$n_bins
+  syntax <- character()
+
+  expansion     <- node_names$expansion
+  all_cuts      <- node_names$all_cuts
+  needs_mapping <- node_names$needs_mapping
+
+  omega_local  <- node_names$omega_local
+  omega_target <- node_names$omega_target
 
   if(prior$weights$type == "cumulative"){
     if(J == 2L){
-      omega_ratio_name <- if(is.null(component_id)) "omega_ratio" else paste0("omega_ratio_component_", component_id)
+      omega_ratio_name <- node_names$omega_ratio
       beta_parameters <- .weightfunction_alpha_marginal(prior$weights$alpha, 2L)
       syntax <- paste0(syntax,
         omega_ratio_name, " ~ dbeta(", beta_parameters$alpha, ", ", beta_parameters$beta, ")\n",
@@ -451,8 +491,8 @@ JAGS_add_priors           <- function(syntax, prior_list){
         omega_local, "[2] <- ", omega_ratio_name, "\n"
       )
     }else{
-      eta_name <- if(is.null(component_id)) "eta" else paste0("eta_component_", component_id)
-      std_eta_name <- if(is.null(component_id)) "std_eta" else paste0("std_eta_component_", component_id)
+      eta_name <- node_names$eta
+      std_eta_name <- node_names$std_eta
 
       for(i in seq_len(J)){
         syntax <- paste0(syntax, eta_name, "[", i, "] ~ dgamma(", prior$weights$alpha[i], ", 1)\n")
@@ -480,7 +520,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
         if(prior$weights$scale == "omega"){
           syntax <- paste0(syntax, .JAGS_prior.simple(prior$weights$prior, paste0(omega_local, "[", i, "]")))
         }else if(prior$weights$scale == "log_omega"){
-          log_omega_name <- if(is.null(component_id)) "log_omega" else paste0("log_omega_component_", component_id)
+          log_omega_name <- node_names$log_omega
           syntax <- paste0(
             syntax,
             .JAGS_prior.simple(prior$weights$prior, paste0(log_omega_name, "[", i, "]")),

@@ -442,7 +442,7 @@ selection_backend_spec <- function(priors,
   phacking <- .selection_backend_phacking_info(phacking_priors, names)
 
   init <- if(include_init){
-    .selection_backend_init(branch_info, prior_weights, uses_indicator)
+    .selection_backend_init(branch_info, prior_weights, uses_indicator, global_cuts = breaks)
   }else{
     NULL
   }

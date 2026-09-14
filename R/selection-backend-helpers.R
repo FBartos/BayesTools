@@ -274,7 +274,7 @@
   ))
 }
 
-.selection_backend_init <- function(branch_info, prior_weights, uses_indicator){
+.selection_backend_init <- function(branch_info, prior_weights, uses_indicator, global_cuts = NULL){
 
   active_branch <- which.max(prior_weights)
 
@@ -282,7 +282,7 @@
   for(i in seq_along(branch_info)){
     component_id <- if(uses_indicator) i else NULL
     if(!is.null(branch_info[[i]]$selection)){
-      init <- c(init, .selection_JAGS_init_weightfunction_component(branch_info[[i]]$selection, component_id = component_id))
+      init <- c(init, .selection_JAGS_init_weightfunction_component(branch_info[[i]]$selection, component_id = component_id, global_cuts = global_cuts))
     }
     if(!is.null(branch_info[[i]]$phacking)){
       init <- c(init, .selection_JAGS_init_phacking_component(branch_info[[i]]$phacking, component_id = component_id))
@@ -295,9 +295,17 @@
   return(init)
 }
 
-.selection_JAGS_init_weightfunction_component <- function(prior, component_id = NULL){
+.selection_JAGS_init_weightfunction_component <- function(prior, component_id = NULL, global_cuts = NULL){
 
   init <- list()
+  # Same resolver as the model syntax: initial values must name the stochastic
+  # node, never the deterministic `omega_target` expanded onto the global cuts.
+  node_names <- .weightfunction_component_node_names(
+    prior           = prior,
+    component_id    = component_id,
+    global_cuts     = global_cuts,
+    force_one_sided = TRUE
+  )
   if(prior$weights$type == "fixed"){
     return()
   }else if(prior$weights$type == "cumulative"){
@@ -306,21 +314,19 @@
     }else{
       paste0("cumulative weight-function component '", component_id, "'")
     }
-    if(.weightfunction_n_bins(prior) == 2L){
-      omega_ratio_name <- if(is.null(component_id)) "omega_ratio" else paste0("omega_ratio_component_", component_id)
-      init[[omega_ratio_name]] <- .JAGS_binary_cumulative_initialization(
+    if(node_names$n_bins == 2L){
+      init[[node_names$omega_ratio]] <- .JAGS_binary_cumulative_initialization(
         alpha = prior$weights[["alpha"]],
         label = label
       )
     }else{
-      eta_name <- if(is.null(component_id)) "eta" else paste0("eta_component_", component_id)
-      init[[eta_name]] <- .JAGS_positive_gamma_initialization(
+      init[[node_names$eta]] <- .JAGS_positive_gamma_initialization(
         shape = prior$weights[["alpha"]],
         label = label
       )
     }
   }else if(prior$weights$type == "independent"){
-    n_bins <- .weightfunction_n_bins(prior)
+    n_bins <- node_names$n_bins
     if(n_bins > 1L){
       n_free <- n_bins - 1L
       draws <- as.numeric(rng(prior$weights$prior, n_free))
@@ -333,9 +339,9 @@
       values <- rep(NA_real_, n_bins)
       values[seq.int(2L, n_bins)] <- draws
       node_name <- if(identical(prior$weights$scale, "log_omega")){
-        if(is.null(component_id)) "log_omega" else paste0("log_omega_component_", component_id)
+        node_names$log_omega
       }else{
-        if(is.null(component_id)) "omega" else paste0("omega_component_", component_id)
+        node_names$omega_local
       }
       init[[node_name]] <- values
     }
