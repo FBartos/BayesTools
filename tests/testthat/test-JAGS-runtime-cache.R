@@ -162,5 +162,19 @@ test_that("saved fit caches restore without entering backend extension payloads"
   check_failure <- TRUE
   expect_error(JAGS_extend(extended, autofit_control = control, parallel = TRUE, cores = 2L),
     "Unexpected convergence failure.", fixed = TRUE)
+  expect_identical(events, c("restore", "capture", "stop"))
+  fail_extend <- TRUE
+  testthat::local_mocked_bindings(
+    extend.jags = function(...) stop("JAGS model compilation failed"),
+    .package = "runjags"
+  )
+  events <- character()
+  expect_warning(
+    failed <- JAGS_extend(extended, autofit_control = control, parallel = TRUE, cores = 2L),
+    "The model extension failed; returning the last valid fit.",
+    fixed = TRUE
+  )
   expect_identical(events, c("restore", "stop"))
+  expect_identical(attr(failed, "runtime_state", exact = TRUE),
+    attr(extended, "runtime_state", exact = TRUE))
 })

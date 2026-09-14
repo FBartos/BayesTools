@@ -463,6 +463,10 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   if(inherits(fit, "error") & !silent)
     warning(paste0("The model estimation failed with the following error: ", fit$message), immediate. = TRUE)
 
+  extension_failed <- FALSE
+  last_valid_runtime_state <- NULL
+  captured_after_success <- FALSE
+
   if(autofit && !inherits(fit, "error")){
 
     converged <- JAGS_check_convergence(
@@ -517,6 +521,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
           conditionMessage(extension)
         )
         fit <- .bt_append_fit_warnings(last_valid_fit, warning_message)
+        extension_failed <- TRUE
         warning(
           warning_message,
           call. = FALSE,
@@ -527,6 +532,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
       fit <- runjags::add.summary(extension)
       last_valid_fit <- fit
+      last_valid_runtime_state <- .JAGS_run_runtime_cache(
+        runtime_cache, "capture", chains, if(parallel) cl else NULL)
+      captured_after_success <- TRUE
 
       converged <- JAGS_check_convergence(
         fit = fit,
@@ -578,8 +586,12 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
   attr(fit, "runtime_cache") <- runtime_cache
   if(!inherits(fit, "error")){
-    attr(fit, "runtime_state") <- .JAGS_run_runtime_cache(
-      runtime_cache, "capture", chains, if(parallel) cl else NULL)
+    if(isTRUE(extension_failed) || isTRUE(captured_after_success)){
+      attr(fit, "runtime_state") <- last_valid_runtime_state
+    }else{
+      attr(fit, "runtime_state") <- .JAGS_run_runtime_cache(
+        runtime_cache, "capture", chains, if(parallel) cl else NULL)
+    }
   }
   return(fit)
 }
@@ -717,6 +729,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   .JAGS_validate_runtime_setup(runtime_setup)
   .JAGS_validate_runtime_cache(runtime_cache)
   runtime_state <- attr(fit, "runtime_state", exact = TRUE)
+  last_valid_runtime_state <- runtime_state
   # Only the local input copy loses these attributes. Retained snapshots must
   # never travel inside runjags.object to every extension worker.
   attr(fit, "runtime_state") <- NULL
@@ -827,6 +840,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   iteration  <- 0
   converged  <- FALSE
   last_valid_fit <- fit
+  extension_failed <- FALSE
+  captured_after_success <- FALSE
 
   while(!converged){
 
@@ -856,6 +871,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
         conditionMessage(extension)
       )
       fit <- .bt_append_fit_warnings(last_valid_fit, warning_message)
+      extension_failed <- TRUE
       warning(
         warning_message,
         call. = FALSE,
@@ -866,6 +882,9 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 
     fit <- extension
     last_valid_fit <- fit
+    last_valid_runtime_state <- .JAGS_run_runtime_cache(
+      runtime_cache, "capture", chains, if(parallel) cl else NULL)
+    captured_after_success <- TRUE
     converged <- JAGS_check_convergence(
       fit = fit,
       prior_list = prior_list,
@@ -912,8 +931,12 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   }
 
   attr(fit, "runtime_cache") <- runtime_cache
-  attr(fit, "runtime_state") <- .JAGS_run_runtime_cache(
-    runtime_cache, "capture", chains, if(parallel) cl else NULL)
+  if(isTRUE(extension_failed) || isTRUE(captured_after_success)){
+    attr(fit, "runtime_state") <- last_valid_runtime_state
+  }else{
+    attr(fit, "runtime_state") <- .JAGS_run_runtime_cache(
+      runtime_cache, "capture", chains, if(parallel) cl else NULL)
+  }
   return(fit)
 }
 
