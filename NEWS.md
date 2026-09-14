@@ -52,6 +52,19 @@
 - preserves independent coefficient supports in structural dependency graphs,
   including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- `JAGS_bridgesampling()` passes `use_neff` as the logical flag
+  \pkg{bridgesampling} defines. Supplying per-chain effective sample sizes is
+  not supported upstream and aborted every multi-parameter bridge estimate
+- selection initial values name the stochastic weight-function node
+  (`omega_local*` / `log_omega*`) rather than the deterministic array expanded
+  onto the global cut grid, so heterogeneous bias mixtures compile again
+- `selection_model(group = )` stays constructible under `weight_rule =
+  "product"`, where grouping is inactive and `print()` reports it as unused;
+  rejecting the combination broke wrappers that parameterize the rule while
+  forwarding one group for both
+- selection row routing treats kernel mode `0` as the absence of a selection
+  kernel, so specifications whose active branches share one kernel route on it
+  instead of failing as ambiguous
 - parameter-map accessors revalidate when stored coordinate, quantity, or alias
   tables are replaced after construction, while still skipping schema checks for
   the original constructed tables
@@ -76,7 +89,7 @@
 - classifies parallel JAGS connection/socket wording as fail-closed transport
   errors rather than retryable sampler failures
 - keeps spec-level `kernel_mode` as a union capability flag and refuses to
-  route rows on that union
+  route rows on that union when two or more active branch kernels differ
 - distinguishes factor-level `structural_zero` cells from one-cell `identity`
   maps
 - documents experimental p-hacking mixed-geometry and static `phack_q`
@@ -88,13 +101,12 @@
 - CS/HCS evaluation keeps the singular bound `-1/(K-1)` open; Uniform as a
   family is unchanged. AR `|rho| = 1` remains a kernel singularity; CAR
   includes `rho = 0`
-- `JAGS_bridgesampling()` computes `use_neff` from fitted chains before merge
 - `compute_inference(conditional = TRUE)` documents that inclusion BF stays
   the unconditional inclusion odds
 - unknown or non-conditional labels in posterior conditioning fail closed
 - `parameter_map()` skips repeated schema revalidation after a map is built
-- `selection_model(group = )` is rejected under `weight_rule = "product"`
-- draws independent weight-function JAGS initial values for free omega bins
+- draws independent weight-function JAGS initial values for free omega bins,
+  on the stochastic local node
 - keeps allocation-role coordinates, including inclusion-gate indicators,
   internal so public summaries use `inclusion(...)` rather than backend names
 - preserves `log(intercept)` when stripping random-effect bars for fixed-target
