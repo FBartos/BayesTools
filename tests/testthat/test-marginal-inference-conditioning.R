@@ -52,6 +52,42 @@ test_that("as_mixed_posteriors applies AND and OR conditioning exactly", {
   expect_equal(attr(or_samples$mu_b, "models_ind"), c(0, 1, 1, 1))
 })
 
+test_that("unknown and non-conditional labels fail closed", {
+
+  prior_list <- list(
+    mu_a = prior_spike_and_slab(
+      prior("normal", list(0, 1)),
+      prior_inclusion = prior("point", list(0.5))
+    ),
+    theta = prior("normal", list(0, 1))
+  )
+  posterior <- cbind(
+    mu_a = c(0, 10),
+    theta = c(1, 2),
+    mu_a_indicator = c(0, 1)
+  )
+  fit <- .mock_marginal_fit(posterior, prior_list)
+
+  expect_error(
+    as_mixed_posteriors(fit, parameters = "theta", conditional = "theta"),
+    "The parameter 'theta' is not a conditional parameter.",
+    fixed = TRUE
+  )
+  expect_error(
+    as_mixed_posteriors(fit, parameters = "mu_a", conditional = "omega"),
+    "The parameter 'omega' is not a conditional parameter.",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.condition_event_family_options(
+      prior_list,
+      list(name = "<unknown>:PETT", type = "unknown", labels = "PETT")
+    ),
+    "The parameter 'PETT' is not a conditional parameter.",
+    fixed = TRUE
+  )
+})
+
 test_that("as_mixed_posteriors refreshes support from conditional context", {
 
   prior_list <- list(

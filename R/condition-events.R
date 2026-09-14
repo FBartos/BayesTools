@@ -175,15 +175,13 @@
   }
 
   if(!label %in% names(prior_list)){
-    warning(
+    stop(
       sprintf(
-        "The parameter '%s' is not a conditional parameter. All samples are assumed to come from the conditional posterior distribution.",
+        "The parameter '%s' is not a conditional parameter.",
         label
       ),
-      call. = FALSE,
-      immediate. = TRUE
+      call. = FALSE
     )
-    return(rep(TRUE, nrow(model_samples)))
   }
 
   prior <- prior_list[[label]]
@@ -203,15 +201,13 @@
              which(components == "alternative"))
   }
 
-  warning(
+  stop(
     sprintf(
-      "The parameter '%s' is not a conditional parameter. All samples are assumed to come from the conditional posterior distribution.",
+      "The parameter '%s' is not a conditional parameter.",
       label
     ),
-    call. = FALSE,
-    immediate. = TRUE
+    call. = FALSE
   )
-  rep(TRUE, nrow(model_samples))
 }
 
 .condition_event_posterior_mask <- function(event, prior_list, model_samples){
@@ -299,7 +295,17 @@
 
   labels <- unique(family[["labels"]])
 
-  if(family[["type"]] %in% c("unknown", "tautology")){
+  if(family[["type"]] == "unknown"){
+    stop(
+      sprintf(
+        "The parameter '%s' is not a conditional parameter.",
+        labels[[1L]]
+      ),
+      call. = FALSE
+    )
+  }
+
+  if(family[["type"]] == "tautology"){
     values <- rep(TRUE, length(labels))
     names(values) <- labels
     return(list(list(
