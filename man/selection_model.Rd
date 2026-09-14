@@ -46,8 +46,12 @@ not select the largest publication weight.}
 specified as a bare or backticked column name or a single character string.
 The default \code{NULL} requests automatic resolution by the consuming model;
 a best-rule branch requires resolved publication groups when its data are
-bound. For \code{weight_rule = "product"}, \code{group} must be \code{NULL}:
-no publication-group column is required or stored. References are captured
+bound. Product selection is invariant to publication partitions, so under
+\code{weight_rule = "product"} no publication-group column is required or
+resolved and \code{print()} reports the group as unused. Supplying a
+\code{group} alongside the product rule is inert rather than an error, so
+that a caller can parameterize \code{weight_rule} and forward one
+\code{group} for both rules. References are captured
 without evaluating the column. Derived groups must first be stored as data
 columns.}
 

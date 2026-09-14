@@ -97,8 +97,12 @@ prior_weightfunction <- function(side = "one-sided", steps = c(.025, .05),
 #' specified as a bare or backticked column name or a single character string.
 #' The default \code{NULL} requests automatic resolution by the consuming model;
 #' a best-rule branch requires resolved publication groups when its data are
-#' bound. For \code{weight_rule = "product"}, \code{group} must be \code{NULL}:
-#' no publication-group column is required or stored. References are captured
+#' bound. Product selection is invariant to publication partitions, so under
+#' \code{weight_rule = "product"} no publication-group column is required or
+#' resolved and \code{print()} reports the group as unused. Supplying a
+#' \code{group} alongside the product rule is inert rather than an error, so
+#' that a caller can parameterize \code{weight_rule} and forward one
+#' \code{group} for both rules. References are captured
 #' without evaluating the column. Derived groups must first be stored as data
 #' columns.
 #' @param prior a single prior object or \code{NULL}. Mixtures must be examined
@@ -180,6 +184,13 @@ selection_model <- function(estimate_random_effects = "integrate",
                             weight_rule = "product", group = NULL){
 
   group <- .selection_model_group_reference(rlang::enquo(group))
+  # `group` is a deferred column reference, not a modelling instruction: which
+  # rule consumes it is decided by `weight_rule`, and callers routinely
+  # parameterize that rule while forwarding one `group` for both. Product
+  # selection is invariant to publication partitions, so a group supplied
+  # alongside it is inert rather than contradictory, and `print()` reports it
+  # as unused. Refusing the combination would reject ordinary wrappers without
+  # preventing any incorrect inference.
   output <- structure(list(
     estimate_random_effects = estimate_random_effects,
     other_random_effects    = other_random_effects,
@@ -242,9 +253,6 @@ check_selection_model <- function(model, name = "model"){
     check_char(model[["group"]], "group", allow_NA = FALSE)
     if(!nzchar(model[["group"]])){
       stop("'group' must name a non-empty data column.", call. = FALSE)
-    }
-    if(identical(model[["weight_rule"]], "product")){
-      stop("'group' is only used when weight_rule = \"best\".", call. = FALSE)
     }
   }
   invisible(model)

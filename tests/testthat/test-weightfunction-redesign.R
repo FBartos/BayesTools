@@ -68,11 +68,32 @@ test_that("selection group references survive deferred and wrapper capture", {
   expect_identical(selection_model(weight_rule = "best", group = `paper id`)$group, "paper id")
   expect_identical(selection_model(weight_rule = "best", group = "paper id")$group, "paper id")
   expect_null(selection_model(group = NULL)$group)
-  expect_error(
+
+  # Product selection is invariant to publication partitions, so a group
+  # supplied alongside it is inert, not contradictory. Callers parameterize
+  # the rule and forward one `group` for both rules, so the combination must
+  # stay constructible; `print()` is what reports the group as unused.
+  for(spec in list(
     selection_model(group = paper_id),
-    "'group' is only used when weight_rule = \"best\"",
-    fixed = TRUE
-  )
+    selection_model(weight_rule = "product", group = paper_id)
+  )){
+    expect_identical(spec$group, "paper_id")
+    expect_silent(check_selection_model(spec))
+    expect_match(
+      paste(utils::capture.output(print(spec)), collapse = "\n"),
+      "Group: unused for the product rule"
+    )
+    expect_silent(prior_weightfunction(
+      "one-sided", steps = .05, weights = wf_fixed(c(1, .5)), model = spec
+    ))
+  }
+
+  # the same wrapper shape RoBMA uses: one `group`, either rule
+  parameterized <- function(weight_rule){
+    selection_model(weight_rule = weight_rule, group = "study")
+  }
+  expect_identical(parameterized("product")$group, "study")
+  expect_identical(parameterized("best")$group, "study")
 
   wrapper <- function(group = paper_id) selection_model(weight_rule = "best", group = group)
   nested_wrapper <- function(column) wrapper(group = column)
