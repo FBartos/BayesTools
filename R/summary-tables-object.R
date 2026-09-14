@@ -9,10 +9,12 @@
 print.BayesTools_table <- function(x, ...){
 
   # print formatting
+  # n_models is row-aligned (one denominator per table row), so the Models
+  # column must see the full vector rather than n_models[[column]].
   for(i in seq_along(attr(x, "type"))){
     values         <- x[[i]]
     colnames(x)[i] <- .format_column_names(colnames(x)[i], attr(x, "type")[i], values)
-    x[[i]]         <- .format_column(values, attr(x, "type")[i], attr(x, "n_models")[i])
+    x[[i]]         <- .format_column(values, attr(x, "type")[i], attr(x, "n_models"))
   }
 
   # print title
@@ -140,8 +142,11 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   }
 
   n_models <- attr(x, "n_models")
-  if(length(n_models) == length(original_names)){
-    attr(out, "n_models") <- n_models[source_cols]
+  if(!is.null(n_models) && length(n_models) == nrow(x)){
+    row_indices <- match(rownames(out), rownames(x))
+    if(length(row_indices) == nrow(out) && !any(is.na(row_indices))){
+      attr(out, "n_models") <- n_models[row_indices]
+    }
   }
 
   for(attribute in c("title", "footnotes", "rownames")){

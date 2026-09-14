@@ -448,6 +448,32 @@ test_that("BayesTools table row and column subsets retain print metadata", {
 })
 
 
+test_that("BayesTools table row subsets keep per-row n_models denominators", {
+
+  table <- data.frame(
+    models     = c(1, 2),
+    prior_prob = c(0.75, 0.80)
+  )
+  rownames(table) <- c("theta", "beta")
+  class(table) <- c("BayesTools_table", "BayesTools_ensemble_summary", class(table))
+  attr(table, "type")     <- c("n_models", "prior_prob")
+  attr(table, "n_models") <- c(2L, 3L)
+  attr(table, "rownames") <- TRUE
+
+  output <- capture_output_lines(table, print = TRUE, width = 80)
+  expect_true(any(grepl("1/2", output, fixed = TRUE)))
+  expect_true(any(grepl("2/3", output, fixed = TRUE)))
+
+  subset <- table["beta", , drop = FALSE]
+  expect_identical(attr(subset, "n_models"), 3L)
+  subset_output <- capture_output_lines(subset, print = TRUE, width = 80)
+  expect_true(any(grepl("2/3", subset_output, fixed = TRUE)))
+  expect_false(any(grepl("1/2", subset_output, fixed = TRUE)))
+  expect_false(any(grepl("2/", subset_output, fixed = TRUE) &
+                     !grepl("2/3", subset_output, fixed = TRUE)))
+})
+
+
 test_that("update preserves relative BF MC error percentage across BF scales", {
 
   table <- data.frame(
