@@ -47,11 +47,16 @@
   # runjags wraps worker conditions in text, so the original socket condition's
   # class/call need not survive. These transport failures cannot be repaired by
   # changing JAGS initial values and reusing the same worker connections.
+  # Match the connection/socket class rather than a closed list of phrases:
+  # unknown wording in that class is fail-closed (no retry), not treated as a
+  # restartable JAGS sampler error.
   transport_failure <- grepl(paste0(
     "error (reading from|writing to) connection|",
     "invalid connection|connection is not open|",
+    "cannot open the connection|connection timed out|",
     "broken pipe|connection reset by peer|",
-    "error (reading from|writing to) socket"
+    "error (reading from|writing to) socket|",
+    "\\bsocket\\b"
   ), conditionMessage(result), ignore.case = TRUE)
   if(!transport_failure) return(result)
   errorCondition(

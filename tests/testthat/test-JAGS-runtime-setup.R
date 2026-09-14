@@ -94,6 +94,8 @@ test_that("backend transport classification preserves the original condition", {
 
   for(message in c("error reading from connection", "error writing to connection",
       "invalid connection", "connection is not open",
+      "cannot open the connection", "connection timed out",
+      "error writing to socket", "worker socket is unavailable",
       "one node produced an error: error writing to connection")){
     original <- simpleError(message, call = quote(unserialize(node$con)))
     failing_backend <- function(...) stop(original)
