@@ -1179,3 +1179,49 @@ test_that("selection positive directions are certificates rather than rank guess
   expect_identical(selection_event_support(hard, tcrossprod(c(1, -1))),
     list(feasible = FALSE, reason = "opposed_candidate_direction"))
 })
+
+
+test_that("row kernel_mode routes on the single active branch kernel", {
+
+  # SELKERNEL: 0 = no selection kernel, 1 = step, 2 = p-hack power,
+  # 3 = step + p-hack power. Mode 0 is the *absence* of a kernel, so branches
+  # without selection (none / PET / PEESE) cannot make a route ambiguous.
+  route <- function(spec, kernel_mode = NULL, S = 4L){
+    BayesTools:::.selection_row_kernel_mode(spec, kernel_mode, S)
+  }
+
+  # a RoBMA-shaped ensemble: several unselected branches plus step branches
+  mixed_none <- list(kernel_mode = 1L, branch_kernel_mode = c(0L, 1L, 1L, 0L))
+  expect_identical(route(mixed_none), 1L)
+  expect_identical(route(mixed_none, kernel_mode = 1L), 1L)
+
+  # every branch inactive
+  expect_identical(
+    route(list(kernel_mode = 0L, branch_kernel_mode = c(0L, 0L))),
+    0L
+  )
+
+  # two genuinely different active kernels: the bitwise union (1 | 2 == 3)
+  # names step+phack, which is a third kernel and not a route
+  ambiguous <- list(kernel_mode = 3L, branch_kernel_mode = c(1L, 2L))
+  expect_error(route(ambiguous), "Row kernel_mode is required")
+  expect_error(route(ambiguous, kernel_mode = 3L), "Cannot route rows on the union kernel_mode")
+
+  # ... unless each row can be mapped back to its branch
+  routed <- route(
+    c(ambiguous, list(bias_indicator = c(1L, 2L, 2L, 1L))),
+    kernel_mode = 3L
+  )
+  expect_identical(routed, c(1L, 2L, 2L, 1L))
+
+  # an inactive branch alongside one active kernel is still unambiguous
+  expect_identical(
+    route(list(kernel_mode = 2L, branch_kernel_mode = c(0L, 2L, 2L))),
+    2L
+  )
+  # but two active kernels stay ambiguous even with an inactive branch present
+  expect_error(
+    route(list(kernel_mode = 3L, branch_kernel_mode = c(0L, 1L, 3L))),
+    "Row kernel_mode is required"
+  )
+})

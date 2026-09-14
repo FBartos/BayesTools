@@ -15,8 +15,12 @@
 #' \code{phacking}, and \code{data} fallbacks where available.
 #' Spec-level \code{kernel_mode} is the union of branch kernels (a capability
 #' flag). Row routing uses \code{branch_kernel_mode} or an explicit per-row
-#' vector; passing the union when branches differ is an error unless
-#' \code{bias_indicator} can map each row to a branch.
+#' vector. Branches with kernel mode \code{0} carry no selection kernel and
+#' never compete for a route, so a specification whose active branches all
+#' share one kernel routes on that kernel. When two or more \emph{different}
+#' active kernels coexist, their bitwise union names a third kernel rather
+#' than a route, and passing it is an error unless \code{bias_indicator} can
+#' map each row to a branch.
 #'
 #' @param context selection context list.
 #' @param selection_spec selection backend specification or context list.
@@ -641,6 +645,23 @@ selection_row_arg <- function(x, n, name){
     branch_modes <- as.integer(branch_modes)
   }
   unique_branches <- unique(branch_modes)
+  # Mode 0 is the absence of a selection kernel, not a competing route: a
+  # branch without selection never enters the kernel, so it cannot disagree
+  # with one that does. Only two or more distinct *active* kernels make a row
+  # route ambiguous - and there the bitwise union names a third kernel
+  # (step | phack_power == step_phack_power), which is why it must not be used
+  # as a route.
+  active_branches <- unique(branch_modes[branch_modes != 0L])
+  ambiguous <- length(active_branches) > 1L
+  route_mode <- if(length(unique_branches) == 0L){
+    integer()
+  }else if(length(active_branches) == 0L){
+    0L
+  }else if(!ambiguous){
+    active_branches
+  }else{
+    integer()
+  }
   union_mode <- if(length(unique_branches) > 0L){
     Reduce(function(a, b) bitwOr(as.integer(a), as.integer(b)), unique_branches)
   }else{
@@ -652,10 +673,10 @@ selection_row_arg <- function(x, n, name){
   }
 
   if(is.null(kernel_mode)){
-    if(length(unique_branches) == 1L){
-      return(unique_branches)
+    if(length(route_mode) == 1L){
+      return(route_mode)
     }
-    if(length(unique_branches) > 1L){
+    if(ambiguous){
       kernel_mode <- .selection_map_union_kernel_mode(
         selection_spec,
         union_mode,
@@ -676,7 +697,7 @@ selection_row_arg <- function(x, n, name){
 
   kernel_mode <- as.integer(round(kernel_mode))
   if(length(kernel_mode) == 1L &&
-     length(unique_branches) > 1L &&
+     ambiguous &&
      identical(kernel_mode, as.integer(union_mode))){
     mapped <- .selection_map_union_kernel_mode(
       selection_spec,
@@ -700,7 +721,8 @@ selection_row_arg <- function(x, n, name){
 .selection_map_union_kernel_mode <- function(selection_spec, union_mode,
                                              branch_modes, S){
 
-  if(is.null(branch_modes) || length(unique(branch_modes)) <= 1L){
+  if(is.null(branch_modes) ||
+     length(unique(branch_modes[branch_modes != 0L])) <= 1L){
     return(NULL)
   }
   indicator <- selection_spec[["bias_indicator"]]
