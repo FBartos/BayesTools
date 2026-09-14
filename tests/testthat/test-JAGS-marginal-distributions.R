@@ -3631,7 +3631,9 @@ test_that("Marginal distribution prior and posterior functions work", {
   })
 
   ### Savage-Dickey BFs ----
-  # (uses model-averaged posteriors rather than conditional ones -- which would be correct)
+  # Smoke tests on mixed_posteriors (model-averaged). Savage-Dickey for a
+  # spike-and-slab / mixture parameter is defined on the continuous
+  # (conditional-on-inclusion) posterior; use as_marginal_inference() for that.
   # test input
   expect_error(Savage_Dickey_BF(list(posterior_manual0)), "'Savage_Dickey_BF' requires an object of class 'marginal_posterior'.")
   expect_error(Savage_Dickey_BF(marginal_posterior(
