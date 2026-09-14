@@ -6,6 +6,12 @@
 #' \code{target}, with depleted probability mass redistributed between
 #' \code{target} and \code{destination}.
 #'
+#' This path is experimental and is not used by a released consumer yet.
+#' Mixed source/destination cuts across branches cannot be expressed;
+#' \code{segments} does not supply that geometry. Mixed or missing \code{q}
+#' currently falls back to a static linear bin rather than encoding mixed
+#' forms.
+#'
 #' @param side side geometry. Currently only \code{"one-sided"} is supported.
 #' @param target target p-value cut point.
 #' @param source source p-value cut point. Must be larger than \code{target}.
