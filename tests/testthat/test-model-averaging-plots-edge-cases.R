@@ -2726,3 +2726,34 @@ test_that("point-mass clipping warnings follow visible probability bounds", {
   )
   expect_identical(BayesTools:::.plot_scale_y2_state_current(), state)
 })
+
+
+test_that("ggplot overlays reuse mixed-plot clipping bounds", {
+
+  skip_if_not_installed("ggplot2")
+  make_priors <- function(mass) {
+
+    list(
+      prior("point", list(location = 0), prior_weights = mass),
+      prior("normal", list(mean = 0, sd = 1), prior_weights = 1 - mass)
+    )
+  }
+  plot <- plot_prior_list(
+    make_priors(.7),
+    plot_type = "ggplot",
+    ylim = c(0, 1),
+    ylim2 = c(0, .735)
+  )
+  expect_false(is.null(plot$bt_scale_y2_state))
+  expect_no_warning(plot + geom_prior_list(make_priors(.75)))
+  expect_warning(
+    plot + geom_prior_list(make_priors(.9)),
+    paste0(
+      "Point-mass probabilities outside the active secondary-axis limits ",
+      "will be clipped. Redraw the initial plot with a wider 'ylim2'."
+    ),
+    fixed = TRUE
+  )
+  overlay <- plot + geom_prior_list(make_priors(.75))
+  expect_identical(overlay$bt_scale_y2_state, plot$bt_scale_y2_state)
+})

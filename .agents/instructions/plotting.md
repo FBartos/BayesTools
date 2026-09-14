@@ -23,6 +23,11 @@ where both backends exist. Preserve each public function's documented return
 value; ggplot paths return plot objects, while base paths may return invisible
 metadata or `NULL` according to the existing family.
 
+Mixed continuous-and-point plots keep one probability-axis mapping. Base
+overlays reuse `par("usr")` and warn when a later point mass is off-scale.
+ggplot overlays reuse the mixed plot's stored secondary-axis mapping and issue
+the same clipping warning. Do not invent a fake `usr` for ggplot.
+
 Prior plot dispatch and layers live in `R/priors-plot.R` and
 `R/priors-plot-layers.R`. Model-averaging plot families live in
 `R/model-averaging-plots*.R`. JAGS diagnostic data and rendering live in

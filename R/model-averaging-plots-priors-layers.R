@@ -195,16 +195,31 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
                                               transformation = transformation, transformation_arguments = transformation_arguments,
                                               transformation_settings = transformation_settings)
     geom     <- NULL
+    inherit_scale <- is.null(scale_y2)
     if(is.null(scale_y2)){
       scale_y2 <- .get_scale_y2(plot_data, ...)
     }
+    simple_geoms <- list()
+    point_builders <- list()
     for(i in seq_along(plot_data)){
       if(inherits(plot_data[[i]], what = "density.prior.simple")){
-        geom <- c(geom, list(.geom_prior.simple(plot_data[[i]], ...)))
+        simple_geoms <- c(simple_geoms, list(.geom_prior.simple(plot_data[[i]], ...)))
       }else if(inherits(plot_data[[i]], what = "density.prior.point")){
         geom <- c(geom, list(.geom_prior.point(plot_data[[i]], scale_y2 = scale_y2, ...)))
+        point_builders <- c(point_builders, list(list(
+          fun = .geom_prior.point,
+          plot_data = plot_data[[i]],
+          dots = list(...)
+        )))
       }
     }
+    geom <- .bt_ggplot_prior_overlay(
+      c(simple_geoms, geom),
+      plot_data,
+      if(inherit_scale) NULL else scale_y2,
+      point_builders = point_builders,
+      other_geoms = simple_geoms
+    )
 
   }
 

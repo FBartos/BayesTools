@@ -243,7 +243,12 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     }
 
     if(!add){
-      plot <- .ggplot.prior_empty(type, dots) + plot
+      empty <- .ggplot.prior_empty(type, dots)
+      state <- empty$bt_scale_y2_state
+      plot <- empty + plot
+      plot$bt_scale_y2_state <- state
+    }else{
+      plot <- .bt_ggplot_prior_overlay(plot, plot_data, scale_y2)
     }
 
   }
@@ -637,7 +642,12 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     }
 
     if(!add){
-      plot <- .ggplot.prior_empty(type, dots) + plot
+      empty <- .ggplot.prior_empty(type, dots)
+      state <- empty$bt_scale_y2_state
+      plot <- empty + plot
+      plot$bt_scale_y2_state <- state
+    }else{
+      plot <- .bt_ggplot_prior_overlay(plot, plot_data, scale_y2)
     }
 
   }

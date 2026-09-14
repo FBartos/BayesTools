@@ -18,7 +18,7 @@ geom_prior(
   show_parameter = if (individual) 1 else NULL,
   individual = FALSE,
   rescale_x = FALSE,
-  scale_y2 = 1,
+  scale_y2 = NULL,
   ...
 )
 }
@@ -79,7 +79,7 @@ weightfunction is plotted.}
 
 \item{scale_y2}{scaling factor for a secondary axis. The default
 \code{NULL} reuses the probability mapping from the active mixed
-base plot when one is available.}
+plot when one is available.}
 
 \item{...}{additional arguments}
 }

@@ -9,7 +9,7 @@
 #' parameter are plotted and \code{individual = TRUE}.
 #' @param scale_y2 scaling factor for a secondary axis. The default
 #' \code{NULL} reuses the probability mapping from the active mixed
-#' base plot when one is available.
+#' plot when one is available.
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #'
@@ -152,14 +152,14 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_points = 1000,
                         n_samples = 10000, force_samples = FALSE,
                         transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                        show_parameter = if(individual) 1 else NULL, individual = FALSE, rescale_x = FALSE, scale_y2 = 1, ...){
+                        show_parameter = if(individual) 1 else NULL, individual = FALSE, rescale_x = FALSE, scale_y2 = NULL, ...){
 
   # check input (most arguments are checked within density)
   .check_prior(x)
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
   check_int(show_parameter, "show_parameter", allow_NULL = TRUE)
-  check_real(scale_y2, "scale_y2", lower = 0)
+  check_real(scale_y2, "scale_y2", lower = 0, allow_NULL = TRUE)
 
   if(is.prior.mixture(x)){
     class(x) <- NULL
@@ -194,7 +194,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     }else if(inherits(plot_data[[show_parameter]], "density.prior.simple")){
       geom <- .geom_prior.simple(plot_data[[show_parameter]], ...)
     }else if(inherits(plot_data[[show_parameter]], "density.prior.point")){
-      geom <- .geom_prior.point(plot_data[[show_parameter]], scale_y2 = scale_y2, ...)
+      geom <- .bt_geom_prior_point_overlay(plot_data[[show_parameter]], scale_y2 = scale_y2, ...)
     }
     return(geom)
   }
@@ -207,7 +207,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     }else if(inherits(plot_data, "density.prior.simple")){
       geom <- .geom_prior.simple(plot_data, ...)
     }else if(inherits(plot_data, "density.prior.point")){
-      geom <- .geom_prior.point(plot_data, scale_y2 = scale_y2, ...)
+      geom <- .bt_geom_prior_point_overlay(plot_data, scale_y2 = scale_y2, ...)
     }
     return(geom)
   }
@@ -215,14 +215,15 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   # plot spike and slab prior
   if(is.prior.spike_and_slab(x)){
-    geom <- .geom_prior.spike_and_slab(plot_data, scale_y2 = scale_y2, ...)
-    return(geom)
+    built_scale <- if(is.null(scale_y2)) 1 else scale_y2
+    geom <- .geom_prior.spike_and_slab(plot_data, scale_y2 = built_scale, ...)
+    return(.bt_ggplot_prior_overlay(geom, plot_data, scale_y2))
   }
 
 
   # plot point prior
   if(is.prior.point(x)){
-    geom <- .geom_prior.point(plot_data, scale_y2 = scale_y2, ...)
+    geom <- .bt_geom_prior_point_overlay(plot_data, scale_y2 = scale_y2, ...)
     return(geom)
   }
 

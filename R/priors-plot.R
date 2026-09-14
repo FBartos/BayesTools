@@ -770,6 +770,12 @@ plot.prior <- function(x, plot_type = "base",
 
     attr(plot, "scale_y2") <- scale_y2
     attr(plot, "sec_axis") <- TRUE
+    plot$bt_scale_y2_state <- list(
+      scale_y2 = scale_y2,
+      ylim2    = ylim2,
+      usr      = c(NA_real_, NA_real_,
+                   range(c(pretty(ylim), pretty(ylim2) * scale_y2)))
+    )
 
   }
 
@@ -969,6 +975,100 @@ plot.prior <- function(x, plot_type = "base",
 
   return(invisible(NULL))
 }
+
+.plot_scale_y2_state_from_ggplot <- function(plot){
+
+  state <- plot$bt_scale_y2_state
+  if(!is.null(state)){
+    return(state)
+  }
+
+  scale_y2 <- attr(plot, "scale_y2")
+  y_scale <- tryCatch(plot$scales$get_scales("y"), error = function(e) NULL)
+  limits <- if(!is.null(y_scale)) y_scale$limits else NULL
+  if(is.null(scale_y2) || is.null(limits) || length(limits) != 2L ||
+     any(!is.finite(limits))){
+    return(NULL)
+  }
+
+  list(
+    scale_y2 = scale_y2,
+    ylim2    = limits / scale_y2,
+    usr      = c(NA_real_, NA_real_, limits)
+  )
+}
+
+.bt_ggplot_prior_overlay <- function(geoms, plot_data, scale_y2 = NULL,
+                                     point_builders = NULL,
+                                     other_geoms = NULL){
+
+  if(inherits(geoms, "BayesTools_prior_overlay")){
+    return(geoms)
+  }
+
+  structure(
+    list(
+      geoms = geoms,
+      plot_data = plot_data,
+      scale_y2 = scale_y2,
+      point_builders = point_builders,
+      other_geoms = other_geoms
+    ),
+    class = "BayesTools_prior_overlay"
+  )
+}
+
+.bt_geom_prior_point_overlay <- function(plot_data, scale_y2 = NULL, ...){
+
+  built_scale <- if(is.null(scale_y2)) 1 else scale_y2
+  .bt_ggplot_prior_overlay(
+    geoms = .geom_prior.point(plot_data, scale_y2 = built_scale, ...),
+    plot_data = plot_data,
+    scale_y2 = scale_y2,
+    point_builders = list(list(
+      fun = .geom_prior.point,
+      plot_data = plot_data,
+      dots = list(...)
+    ))
+  )
+}
+
+#' @exportS3Method ggplot2::ggplot_add
+ggplot_add.BayesTools_prior_overlay <- function(object, plot, object_name){
+
+  state <- .plot_scale_y2_state_from_ggplot(plot)
+  scale_y2 <- object[["scale_y2"]]
+  geoms <- object[["geoms"]]
+  if(is.null(scale_y2) && !is.null(state) &&
+     is.list(object[["point_builders"]]) &&
+     length(object[["point_builders"]]) > 0L){
+    scale_y2 <- state[["scale_y2"]]
+    rebuilt <- lapply(object[["point_builders"]], function(builder){
+      do.call(builder$fun, c(list(plot_data = builder$plot_data,
+                                  scale_y2 = scale_y2), builder$dots))
+    })
+    geoms <- c(object[["other_geoms"]], rebuilt)
+  }
+  if(!is.null(state)){
+    .plot_point_mass_warn_outside(object[["plot_data"]], state)
+  }
+  if(is.null(geoms)){
+    return(plot)
+  }
+  if(inherits(geoms, "ggproto") || inherits(geoms, "Layer")){
+    geoms <- list(geoms)
+  }
+  geoms <- geoms[!vapply(geoms, is.null, logical(1))]
+  if(length(geoms) == 0L){
+    return(plot)
+  }
+  plot <- ggplot2::ggplot_add(geoms, plot, object_name)
+  if(!is.null(state)){
+    plot$bt_scale_y2_state <- state
+  }
+  plot
+}
+
 .transfer_dots       <- function(dots, ...){
 
   dots_main <- list(...)
