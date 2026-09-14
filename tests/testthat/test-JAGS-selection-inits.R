@@ -52,6 +52,38 @@ test_that("cumulative selection initializations stay strictly positive", {
   expect_true(component_inits$omega_ratio_component_2 < 1)
 })
 
+test_that("independent weight functions emit JAGS inits for free bins", {
+
+  omega <- prior_weightfunction(
+    side = "one-sided",
+    steps = c(.025, .05),
+    weights = wf_independent(prior("gamma", list(2, 1)))
+  )
+  log_omega <- prior_weightfunction(
+    side = "one-sided",
+    steps = .05,
+    weights = wf_independent(prior("normal", list(0, 1)), scale = "log_omega")
+  )
+
+  set.seed(1)
+  omega_inits <- JAGS_get_inits(list(bias = omega), chains = 1, seed = 1)[[1]]
+  expect_equal(length(omega_inits$omega), 3L)
+  expect_true(is.na(omega_inits$omega[[1L]]))
+  expect_true(all(is.finite(omega_inits$omega[-1L])))
+  expect_true(all(omega_inits$omega[-1L] > 0))
+
+  log_inits <- JAGS_get_inits(list(bias = log_omega), chains = 1, seed = 1)[[1]]
+  expect_equal(length(log_inits$log_omega), 2L)
+  expect_true(is.na(log_inits$log_omega[[1L]]))
+  expect_true(is.finite(log_inits$log_omega[[2L]]))
+
+  mixture <- prior_mixture(list(prior_none(), omega))
+  mixture_inits <- JAGS_get_inits(list(bias = mixture), chains = 1, seed = 1)[[1]]
+  expect_equal(length(mixture_inits$omega_component_2), 3L)
+  expect_true(is.na(mixture_inits$omega_component_2[[1L]]))
+  expect_true(all(is.finite(mixture_inits$omega_component_2[-1L])))
+})
+
 test_that("Gamma initialization fallback preserves representable median proportions", {
 
   set.seed(1)

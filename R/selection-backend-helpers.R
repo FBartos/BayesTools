@@ -319,6 +319,26 @@
         label = label
       )
     }
+  }else if(prior$weights$type == "independent"){
+    n_bins <- .weightfunction_n_bins(prior)
+    if(n_bins > 1L){
+      n_free <- n_bins - 1L
+      draws <- as.numeric(rng(prior$weights$prior, n_free))
+      if(length(draws) != n_free || any(!is.finite(draws))){
+        stop(
+          "Independent weight-function initialization produced a non-finite draw.",
+          call. = FALSE
+        )
+      }
+      values <- rep(NA_real_, n_bins)
+      values[seq.int(2L, n_bins)] <- draws
+      node_name <- if(identical(prior$weights$scale, "log_omega")){
+        if(is.null(component_id)) "log_omega" else paste0("log_omega_component_", component_id)
+      }else{
+        if(is.null(component_id)) "omega" else paste0("omega_component_", component_id)
+      }
+      init[[node_name]] <- values
+    }
   }
 
   return(init)
