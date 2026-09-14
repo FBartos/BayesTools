@@ -679,9 +679,17 @@
             leaf_names[columns[j]] <- paste0(parameter, "_", model_term, "[", j, "]")
           }
         }else if(.prior_ordered_is_contrast_name(contrast) && isTRUE(ordered_sd_prior)){
-          for(j in seq_along(columns)){
-            leaf_terms[columns[j]] <- paste0(model_term, "[", j, "]")
-            leaf_names[columns[j]] <- paste0(parameter, "_", model_term, "[", j, "]")
+          # A sole generated coefficient uses the unindexed node emitted by
+          # one-dimensional ordered-prior JAGS syntax; multiple coefficients
+          # keep [j] indexes.
+          if(length(columns) == 1L){
+            leaf_terms[columns] <- model_term
+            leaf_names[columns] <- paste0(parameter, "_", model_term)
+          }else{
+            for(j in seq_along(columns)){
+              leaf_terms[columns[j]] <- paste0(model_term, "[", j, "]")
+              leaf_names[columns[j]] <- paste0(parameter, "_", model_term, "[", j, "]")
+            }
           }
         }else if(contrast %in% c("contr.orthonormal", "contr.meandif") ||
                  .prior_ordered_is_contrast_name(contrast)){

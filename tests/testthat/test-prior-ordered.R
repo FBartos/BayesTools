@@ -485,6 +485,38 @@ test_that("prior_ordered() can define ordered random slope SD components", {
   expect_match(syntax, "mu__xREx__id_f\\[2\\] <- mu__xREx__id_f_ordered_total \\* 0.6")
 })
 
+test_that("prior_ordered() indexes a sole two-level random slope SD", {
+  df <- data.frame(
+    y = seq_len(8),
+    f = ordered(rep(c("low", "high"), 4), levels = c("low", "high")),
+    id = factor(rep(seq_len(4), each = 2))
+  )
+
+  formula_info <- JAGS_formula(
+    ~ 1 + (0 + f || id),
+    "mu",
+    data = df,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior_ordered(
+          prior("normal", list(0, 1), truncation = list(lower = 0, upper = Inf)),
+          allocation = 1
+        )
+      )
+    )
+  )
+
+  random_term <- formula_info$formula_design$random_effects[[1]]
+  expect_equal(random_term$n_columns, 1L)
+  expect_equal(random_term$sd_parameter_names, "mu__xREx__id_f")
+  expect_s3_class(formula_info$prior_list$mu__xREx__id_f, "prior.ordered")
+
+  syntax <- JAGS_add_priors("model{}", formula_info$prior_list)
+  expect_match(syntax, "mu__xREx__id_f_ordered_total ~ dnorm\\(0,1\\)T\\(0,\\)")
+  expect_match(syntax, "mu__xREx__id_f <- mu__xREx__id_f_ordered_total \\* 1")
+})
+
 test_that("ordered posterior extraction transforms coefficients to public levels", {
   df <- data.frame(
     y = seq_len(6),
