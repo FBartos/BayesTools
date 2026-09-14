@@ -492,6 +492,121 @@ test_that("not-assessable diagnostics require an explicit opt-in to ignore", {
   expect_null(attr(result, "errors"))
 })
 
+test_that("weightfunction reference omega bins are structural constants", {
+
+  set.seed(21)
+  n <- 200
+  cumulative <- prior_weightfunction("one-sided", .05, wf_cumulative(c(2, 4)))
+  chain_1 <- cbind(
+    mu = stats::rnorm(n),
+    "omega[1]" = 1,
+    "omega[2]" = pmin(pmax(stats::rbeta(n, 4, 2), 1e-3), 1 - 1e-3)
+  )
+  chain_2 <- cbind(
+    mu = stats::rnorm(n),
+    "omega[1]" = 1,
+    "omega[2]" = pmin(pmax(stats::rbeta(n, 4, 2), 1e-3), 1 - 1e-3)
+  )
+  priors <- list(
+    mu = prior("normal", list(0, 1)),
+    omega = cumulative
+  )
+
+  conv <- JAGS_check_convergence(
+    .mock_convergence_fit(chain_1, chain_2),
+    prior_list = priors,
+    max_Rhat = 1.2,
+    min_ESS = 1,
+    max_error = 1,
+    max_SD_error = 1
+  )
+  expect_true(conv)
+  diagnostics <- attr(conv, "diagnostics")
+  expect_equal(
+    setNames(diagnostics$state, diagnostics$parameter),
+    c(
+      mu = "assessable",
+      "omega[0,0.05]" = "structural_constant",
+      "omega[0.05,1]" = "assessable"
+    )
+  )
+
+  monitored <- JAGS_check_convergence(
+    .mock_convergence_fit(chain_1, chain_2),
+    prior_list = priors,
+    max_Rhat = 1.2,
+    min_ESS = 1,
+    max_error = 1,
+    max_SD_error = 1,
+    monitor = "omega"
+  )
+  expect_true(monitored)
+  expect_equal(
+    attr(monitored, "diagnostics")$state[attr(monitored, "diagnostics")$parameter == "omega[0,0.05]"],
+    "structural_constant"
+  )
+
+  mix <- prior_mixture(list(prior_none(), cumulative))
+  mixture <- JAGS_check_convergence(
+    .mock_convergence_fit(
+      cbind(mu = chain_1[, "mu"], "omega[1]" = 1, "omega[2]" = chain_1[, "omega[2]"]),
+      cbind(mu = chain_2[, "mu"], "omega[1]" = 1, "omega[2]" = chain_2[, "omega[2]"])
+    ),
+    prior_list = list(mu = priors$mu, bias = mix),
+    max_Rhat = 1.2,
+    min_ESS = 1,
+    max_error = 1,
+    max_SD_error = 1
+  )
+  expect_true(mixture)
+  mixture_diagnostics <- attr(mixture, "diagnostics")
+  expect_equal(
+    mixture_diagnostics$state[mixture_diagnostics$parameter == "omega[1]"],
+    "structural_constant"
+  )
+  expect_equal(
+    mixture_diagnostics$state[mixture_diagnostics$parameter == "omega[2]"],
+    "assessable"
+  )
+})
+
+test_that("fixed weightfunction omega bins are structural constants", {
+
+  set.seed(22)
+  n <- 80
+  fixed <- prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5)))
+  chain_1 <- cbind(
+    mu = stats::rnorm(n),
+    "omega[1]" = 1,
+    "omega[2]" = .5
+  )
+  chain_2 <- cbind(
+    mu = stats::rnorm(n),
+    "omega[1]" = 1,
+    "omega[2]" = .5
+  )
+  conv <- JAGS_check_convergence(
+    .mock_convergence_fit(chain_1, chain_2),
+    prior_list = list(
+      mu = prior("normal", list(0, 1)),
+      omega = fixed
+    ),
+    max_Rhat = NULL,
+    min_ESS = NULL,
+    max_error = NULL,
+    max_SD_error = NULL
+  )
+  expect_true(conv)
+  expect_equal(
+    setNames(attr(conv, "diagnostics")$state, attr(conv, "diagnostics")$parameter),
+    c(
+      mu = "assessable",
+      "omega[0,0.05]" = "structural_constant",
+      "omega[0.05,1]" = "structural_constant"
+    )
+  )
+})
+
 test_that("one chain cannot satisfy an enabled R-hat criterion", {
 
   set.seed(44)

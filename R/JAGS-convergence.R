@@ -219,6 +219,7 @@ JAGS_check_convergence <- function(
     columns <- character()
   }
   supports <- .bt_convergence_indicator_supports(prior_list)
+  structural_omega <- .bt_convergence_structural_omega_bins(prior_list)
   samples  <- list()
   metadata <- list()
 
@@ -240,7 +241,14 @@ JAGS_check_convergence <- function(
     is_indicator <- grepl("_indicator(\\[[^]]+\\])?$", column)
     is_inclusion <- grepl("_inclusion(\\[[^]]+\\])?$", column)
     if(!is_indicator){
-      add_target(column, column, values, FALSE, is_inclusion)
+      add_target(
+        column,
+        column,
+        values,
+        FALSE,
+        is_inclusion,
+        structural = column %in% structural_omega
+      )
       next
     }
 
@@ -300,6 +308,54 @@ JAGS_check_convergence <- function(
   }
 
   list(samples = samples, metadata = metadata)
+}
+
+.bt_convergence_structural_omega_bins <- function(prior_list){
+
+  if(length(prior_list) == 0L){
+    return(character())
+  }
+
+  structural <- character()
+  for(prior in prior_list){
+    if(is.prior.weightfunction(prior)){
+      cuts <- weightfunctions_mapping(list(prior), cuts_only = TRUE)
+      names <- if(length(cuts) >= 2L){
+        paste0("omega[", cuts[-length(cuts)], ",", cuts[-1], "]")
+      }else{
+        character()
+      }
+      structural <- c(structural, "omega[1]")
+      if(identical(prior$weights$type, "fixed")){
+        structural <- c(
+          structural,
+          names,
+          paste0("omega[", seq_len(max(length(cuts) - 1L, 0L)), "]")
+        )
+      }else if(length(names) > 0L){
+        structural <- c(structural, names[[1L]])
+      }
+    }else if((is_prior_bias(prior) || inherits(prior, "prior.bias_mixture")) &&
+             .selection_prior_has_selection(prior)){
+      selection_priors <- .selection_prior_selection_priors(prior)
+      cuts <- weightfunctions_mapping(
+        selection_priors,
+        cuts_only = TRUE,
+        one_sided = TRUE
+      )
+      names <- if(length(cuts) >= 2L){
+        paste0("omega[", cuts[-length(cuts)], ",", cuts[-1], "]")
+      }else{
+        character()
+      }
+      structural <- c(structural, "omega[1]")
+      if(length(names) > 0L){
+        structural <- c(structural, names[[1L]])
+      }
+    }
+  }
+
+  unique(structural)
 }
 
 .bt_convergence_indicator_supports <- function(prior_list){
