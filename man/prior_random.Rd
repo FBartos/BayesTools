@@ -289,8 +289,14 @@ Use an ordinary scalar prior in \code{cor} for scalar-correlation structures
 (\code{"CS"}, \code{"HCS"}, \code{"AR"}, \code{"HAR"}, and \code{"CAR"}). When \code{cor} is omitted,
 BayesTools places a uniform
 prior directly on the complete valid raw-correlation interval:
-\verb{(-1 / (K - 1), 1)} for CS/HCS, \verb{(-1, 1)} for AR/HAR, and \verb{(0, 1)} for CAR.
-Here \code{K} is the resolved number of index levels. Thus the default does not
+\verb{(-1 / (K - 1), 1)} for CS/HCS, \verb{(-1, 1)} for AR/HAR, and \verb{[0, 1)} for CAR.
+Here \code{K} is the resolved number of index levels. The CS/HCS lower bound
+\code{-1/(K-1)} is a singular kernel point and is open; the stored default
+Uniform parameters name the closed JAGS \code{dunif} hull. Uniform as a family
+is not an open-interval distribution. User-supplied Uniforms that include
+the CS bound are retained, and density there remains \code{-Inf} / a native
+error. AR/HAR \verb{|rho| = 1} is likewise a kernel singularity, not a Uniform
+policy. CAR includes \code{rho = 0}. Thus the default does not
 silently exclude negative correlations wherever the structure permits them.
 \code{cor_scale} controls the scale of an explicitly supplied scalar \code{cor} prior:
 \itemize{

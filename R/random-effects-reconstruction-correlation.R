@@ -731,7 +731,12 @@
 }
 
 .bt_random_effect_rho_lower_inclusive <- function(structure){
-  identical(structure, "car")
+  # CS/HCS exclude the singular compound-symmetry bound -1/(K-1).
+  # That is kernel support, not a Uniform-endpoint policy: user-supplied
+  # Uniforms that include the bound are retained, and Uniform as a family
+  # remains closed. AR/HAR exclude the unit-root bound -1 for the same
+  # kernel reason. CAR includes rho = 0, a valid zero-innovation limit.
+  !structure %in% c("cs", "hcs", "ar1", "har")
 }
 
 .bt_random_effect_cholesky_names <- function(random_term, n_columns){

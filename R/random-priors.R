@@ -71,8 +71,14 @@
 #' (`"CS"`, `"HCS"`, `"AR"`, `"HAR"`, and `"CAR"`). When `cor` is omitted,
 #' BayesTools places a uniform
 #' prior directly on the complete valid raw-correlation interval:
-#' `(-1 / (K - 1), 1)` for CS/HCS, `(-1, 1)` for AR/HAR, and `(0, 1)` for CAR.
-#' Here `K` is the resolved number of index levels. Thus the default does not
+#' `(-1 / (K - 1), 1)` for CS/HCS, `(-1, 1)` for AR/HAR, and `[0, 1)` for CAR.
+#' Here `K` is the resolved number of index levels. The CS/HCS lower bound
+#' `-1/(K-1)` is a singular kernel point and is open; the stored default
+#' Uniform parameters name the closed JAGS `dunif` hull. Uniform as a family
+#' is not an open-interval distribution. User-supplied Uniforms that include
+#' the CS bound are retained, and density there remains `-Inf` / a native
+#' error. AR/HAR `|rho| = 1` is likewise a kernel singularity, not a Uniform
+#' policy. CAR includes `rho = 0`. Thus the default does not
 #' silently exclude negative correlations wherever the structure permits them.
 #' `cor_scale` controls the scale of an explicitly supplied scalar `cor` prior:
 #'
