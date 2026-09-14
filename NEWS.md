@@ -52,6 +52,22 @@
 - preserves independent coefficient supports in structural dependency graphs,
   including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- keeps allocation-role coordinates, including inclusion-gate indicators,
+  internal so public summaries use `inclusion(...)` rather than backend names
+- preserves `log(intercept)` when stripping random-effect bars for fixed-target
+  and mixed-model prediction
+- treats constant reference-bin `omega[1]` (and every bin of a fixed
+  weightfunction) as a structural constant in convergence checks
+- forwards `scale_y2` through `geom_prior()` overlays and uses shared two-cut
+  weightfunction step coordinates so plot data and renderers stay aligned
+- prints ensemble `n_models` as one denominator per table row
+- normalizes structured-covariance aliases before native or dense Cholesky
+  compilation, so `"CS"` cannot fall into the Markov / AR path
+- matches one-coefficient ordered random-slope SD names to the unindexed JAGS
+  node
+- uses the requested factor column for the `plot_models()` overall diamond
+- treats a list of bias priors as one condition-label branch each
+- labels gate-only allocation factor chains by the inclusion indicator
 - reconstructs conditional random-effect contributions directly instead of
   subtracting fixed effects from total predictions, preserving small random
   effects and consistent group coefficients when fixed moderators differ
