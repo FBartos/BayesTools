@@ -65,6 +65,7 @@
                                                 row_indexed_external_sd = FALSE,
                                                 car_time_values = NULL){
 
+  structure <- .bt_random_effect_structured_local_normalize_structure(structure)
   z_name      <- paste0(parameter, "_xRE_Zx")
   unit_name   <- paste0(parameter, "_xRE_UNIT_COEFx")
   coef_name   <- paste0(parameter, "_xRE_COEFx")

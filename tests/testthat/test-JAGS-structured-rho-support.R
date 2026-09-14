@@ -549,3 +549,77 @@ test_that("transformed scalar rho rejects saturated point coordinates", {
     fixed = TRUE
   )
 })
+
+test_that("native structured Cholesky aliases match the R reference and fail at unit roots", {
+
+  coordinates <- seq_len(4L)
+  rho <- c(-0.2, 0.6)
+  native_cs <- BayesTools:::.bt_random_effect_native_structured_cholesky(
+    structure = "CS",
+    rho = rho,
+    coordinates = coordinates
+  )
+  native_cs_lower <- BayesTools:::.bt_random_effect_native_structured_cholesky(
+    structure = "cs",
+    rho = rho,
+    coordinates = coordinates
+  )
+  expect_equal(native_cs, native_cs_lower, tolerance = 0)
+
+  for(draw in seq_along(rho)){
+    expect_equal(
+      native_cs[draw, , ],
+      BayesTools:::.bt_random_effect_structured_subset_cholesky(
+        structure = "hcs",
+        columns = coordinates,
+        rho = rho[draw],
+        global_n_columns = 4L
+      ),
+      tolerance = 0,
+      info = paste("cs draw", draw)
+    )
+  }
+
+  native_ar <- BayesTools:::.bt_random_effect_native_structured_cholesky(
+    structure = "AR",
+    rho = c(-0.4, 0.5),
+    coordinates = c(1, 2, 4, 7)
+  )
+  native_ar1 <- BayesTools:::.bt_random_effect_native_structured_cholesky(
+    structure = "ar1",
+    rho = c(-0.4, 0.5),
+    coordinates = c(1, 2, 4, 7)
+  )
+  expect_equal(native_ar, native_ar1, tolerance = 0)
+
+  expect_error(
+    BayesTools:::.bt_random_effect_native_structured_cholesky(
+      structure = "cs",
+      rho = 1,
+      coordinates = coordinates
+    ),
+    "non-positive or non-finite diagonal",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_random_effect_native_structured_cholesky(
+      structure = "ar1",
+      rho = 1,
+      coordinates = coordinates
+    ),
+    "non-positive or non-finite innovation variance",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_structured_dense_transform(
+      parameter = "mu",
+      structure = "US",
+      K = 3L,
+      n_groups = 2L,
+      rho_name = "rho",
+      sd_name = "sd"
+    ),
+    "structure",
+    fixed = FALSE
+  )
+})

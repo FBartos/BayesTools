@@ -654,6 +654,15 @@
 .bt_random_effect_native_structured_cholesky <- function(
     structure, rho, coordinates){
 
+  structure <- .bt_random_effect_structured_local_normalize_structure(structure)
+  if(!isTRUE(.BayesTools_native_routines_loaded(pkgname = "BayesTools"))){
+    .BayesTools_load_native_routines(pkgname = "BayesTools", warn = TRUE)
+    if(!isTRUE(.BayesTools_native_routines_loaded(pkgname = "BayesTools"))){
+      stop("BayesTools native structured-Cholesky routines are not loaded.",
+           call. = FALSE)
+    }
+  }
+
   .Call(
     "BayesTools_structured_cholesky",
     as.numeric(rho),
