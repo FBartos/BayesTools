@@ -140,6 +140,12 @@
 #' the aggregation rule `"exact_zero_dimensional"`; no bridge repetitions are
 #' performed.
 #'
+#' Effective sample sizes passed to \link[bridgesampling]{bridge_sampler} as
+#' `use_neff` are computed with \code{coda::effectiveSize()} on the fitted
+#' chains before those chains are merged into the integrand matrix. A single
+#' chain, or a posterior whose chain layout cannot be recovered, keeps the
+#' upstream default of computing ESS from the merged matrix.
+#'
 #' When `bridge_context = TRUE`, the callback receives an object of class
 #' `BayesTools_bridge_context` with fields `state`, `state_matrix`, `nodes`,
 #' `prior_parameters`, `formula_prior_parameters`, `formula_parameters`,
@@ -532,6 +538,10 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   if(!is.null(seed)){
     set.seed(seed)
   }
+  use_neff <- .bt_JAGS_bridge_samples_neff(
+    bridgesampling_posterior,
+    chain_metadata
+  )
   upstream_warnings <- character()
   marglik <- tryCatch(withCallingHandlers(bridgesampling::bridge_sampler(
       samples            = bridgesampling_posterior,
@@ -548,7 +558,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       silent             = silent,
       maxiter            = maxiter,
       cores              = cores,
-      use_neff           = TRUE,
+      use_neff           = use_neff,
       add_parameters     = add_parameters,
       fixed_random_latent = random_bridge_parameters$fixed_latent,
       bridge_context     = bridge_context,

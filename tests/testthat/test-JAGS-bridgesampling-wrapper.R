@@ -109,6 +109,50 @@ test_that("JAGS_bridgesampling forwards bridge controls and fitted-chain neff", 
   )
 })
 
+test_that("JAGS_bridgesampling passes multi-chain ESS into use_neff", {
+
+  seen <- new.env(parent = emptyenv())
+  bridge_sampler <- function(...){
+    arguments <- list(...)
+    seen$use_neff <- arguments[["use_neff"]]
+    .mock_bridge_sampler(...)
+  }
+  testthat::local_mocked_bindings(
+    bridge_sampler = bridge_sampler,
+    .package = "bridgesampling"
+  )
+
+  chain1 <- coda::mcmc(matrix(
+    c(rnorm(20, 0, 1), rnorm(20, 0.1, 1)),
+    ncol = 2,
+    dimnames = list(NULL, c("mu", "sigma"))
+  ))
+  chain2 <- coda::mcmc(matrix(
+    c(rnorm(20, 0, 1), rnorm(20, 0.1, 1)),
+    ncol = 2,
+    dimnames = list(NULL, c("mu", "sigma"))
+  ))
+  posterior <- coda::mcmc.list(chain1, chain2)
+  expected <- BayesTools:::.bt_JAGS_bridge_samples_neff(
+    do.call(rbind, posterior),
+    list(count = 2L, draws_per_chain = c(20L, 20L))
+  )
+
+  JAGS_bridgesampling(
+    fit = posterior,
+    log_posterior = function(parameters, data) 0,
+    data = list(),
+    prior_list = list(
+      mu = prior("normal", list(0, 1)),
+      sigma = prior("normal", list(0, 1))
+    )
+  )
+
+  expect_true(is.numeric(seen$use_neff))
+  expect_equal(unname(seen$use_neff), unname(expected))
+  expect_identical(names(seen$use_neff), c("mu", "sigma"))
+})
+
 test_that("JAGS_bridgesampling seeds bridge proposal draws explicitly", {
 
   seen <- new.env(parent = emptyenv())

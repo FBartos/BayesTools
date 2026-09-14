@@ -201,6 +201,12 @@ fixed parameter values. The returned marginal likelihood is exact and uses
 the aggregation rule \code{"exact_zero_dimensional"}; no bridge repetitions are
 performed.
 
+Effective sample sizes passed to \link[bridgesampling]{bridge_sampler} as
+\code{use_neff} are computed with \code{coda::effectiveSize()} on the fitted
+chains before those chains are merged into the integrand matrix. A single
+chain, or a posterior whose chain layout cannot be recovered, keeps the
+upstream default of computing ESS from the merged matrix.
+
 When \code{bridge_context = TRUE}, the callback receives an object of class
 \code{BayesTools_bridge_context} with fields \code{state}, \code{state_matrix}, \code{nodes},
 \code{prior_parameters}, \code{formula_prior_parameters}, \code{formula_parameters},

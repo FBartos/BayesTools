@@ -313,6 +313,36 @@
   )
 }
 
+.bt_JAGS_bridge_samples_neff <- function(samples, chain_metadata){
+
+  if(!is.matrix(samples) || ncol(samples) == 0L){
+    return(TRUE)
+  }
+  draws <- chain_metadata$draws_per_chain
+  n_chain <- chain_metadata$count
+  if(!is.numeric(n_chain) || length(n_chain) != 1L || is.na(n_chain) ||
+     n_chain <= 1L || !is.numeric(draws) || length(draws) != n_chain ||
+     anyNA(draws) || any(draws < 1)){
+    return(TRUE)
+  }
+  if(sum(draws) != nrow(samples)){
+    return(TRUE)
+  }
+
+  ends <- cumsum(draws)
+  starts <- c(1L, ends[-length(ends)] + 1L)
+  chains <- coda::mcmc.list(lapply(seq_len(n_chain), function(i){
+    coda::mcmc(samples[starts[[i]]:ends[[i]], , drop = FALSE])
+  }))
+  neff <- suppressWarnings(coda::effectiveSize(chains))
+  if(!is.numeric(neff) || length(neff) != ncol(samples)){
+    return(TRUE)
+  }
+  neff[!is.finite(neff)] <- 1
+  names(neff) <- colnames(samples)
+  neff
+}
+
 #' @export
 print.BayesTools_marglik <- function(x, ...){
 
