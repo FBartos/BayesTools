@@ -384,3 +384,18 @@ test_that("allocation slab auxiliaries remain private coordinates", {
   expect_identical(colnames(summary_samples), "(mu) sd(intercept)")
   expect_equal(summary_samples[, 1L], c(0, 2))
 })
+
+test_that("sd_component allocations reject inclusion at construction", {
+
+  expect_error(
+    random_variance_allocation(
+      name = "x",
+      terms = c(study = "study"),
+      target = "sd_component",
+      sd = prior("gamma", list(2, 2)),
+      inclusion = list(study = prior("spike", list(location = 0.5)))
+    ),
+    "Variance allocation inclusion currently supports target = \"block\".",
+    fixed = TRUE
+  )
+})

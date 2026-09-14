@@ -473,6 +473,9 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL,
 #'   Gate names must match resolved allocation component labels.
 #'   A block allocation with exactly one term is permitted only as a gate-only
 #'   allocation: `weights` must be `NULL` and `inclusion` must name that term.
+#'   Conditioning a gated total on presence uses the binding-factor (parent)
+#'   gates that define a positive realized source, not every nested component
+#'   gate. `inclusion` is not supported with `target = "sd_component"`.
 #' @export
 random_variance_allocation <- function(name, terms = NULL, sd = NULL,
                                        weights = NULL,
@@ -514,6 +517,12 @@ random_variance_allocation <- function(name, terms = NULL, sd = NULL,
   }
   if(identical(target, "sd_component") && (is.null(terms) || length(terms) != 1L)){
     stop("'target = \"sd_component\"' requires exactly one random-effect block in 'terms'.", call. = FALSE)
+  }
+  if(identical(target, "sd_component") && !is.null(inclusion)){
+    stop(
+      "Variance allocation inclusion currently supports target = \"block\".",
+      call. = FALSE
+    )
   }
   gate_only <- identical(target, "block") && !is.null(terms) &&
     length(terms) == 1L && is.null(weights) && !is.null(inclusion)
