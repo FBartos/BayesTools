@@ -216,12 +216,16 @@ test_that("factor catalog quantities reconstruct fitted term-level cells", {
   reference_draws <- parameter_draws(treatment$fit, reference)
   expect_identical(as.numeric(reference_draws[[1L]][, 1L]), c(0, 0))
   expect_identical(attr(reference_draws[[1L]], "mcpar"), c(5, 7, 2))
+  expect_identical(reference$quantities$status, "structural")
+  expect_identical(reference$quantities$fixed_value, 0)
+  expect_identical(reference$quantities$source_type, "structural_zero")
   direct <- parameter_catalog_resolve(
     treatment_catalog,
     "f[b]",
     namespace = "mu"
   )
   expect_identical(direct$quantities$canonical_name, "mu_f[1]")
+  expect_identical(direct$quantities$source_type, "identity")
   expect_identical(
     as.numeric(parameter_draws(treatment$fit, direct)[[1L]][, 1L]),
     c(1, 2)

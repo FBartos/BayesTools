@@ -1618,7 +1618,9 @@ parameter_transform_jacobian <- function(values, transform){
         status = status,
         fixed_value = fixed_value,
         internal = FALSE,
-        source_type = if(length(dependencies) <= 1L){
+        source_type = if(length(dependencies) == 0L){
+          "structural_zero"
+        }else if(length(dependencies) == 1L){
           "identity"
         }else{
           "composite"
@@ -3076,7 +3078,8 @@ parameter_transform_jacobian <- function(values, transform){
      anyDuplicated(quantities$quantity_id) ||
      anyDuplicated(quantities$canonical_name) ||
      any(!quantities$source_type %in%
-           c("identity", "one_to_one_transform", "composite", "none")) ||
+           c("identity", "one_to_one_transform", "composite",
+             "structural_zero", "none")) ||
      any(!quantities$status %in%
            c("sampled", "structural", "derived", "unavailable")) ||
      any(!is.na(quantities$fixed_value[quantities$status != "structural"])) ||
