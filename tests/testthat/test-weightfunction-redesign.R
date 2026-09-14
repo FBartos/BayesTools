@@ -34,7 +34,11 @@ test_that("selection models declare three fixed source choices without changing 
       for(other in c("condition", "integrate")){
         for(sampling in c("condition", "integrate")){
           for(rule in c("product", "best")){
-            model <- selection_model(estimate, other, sampling, rule, group = paper_id)
+            model <- if(identical(rule, "best")){
+              selection_model(estimate, other, sampling, rule, group = paper_id)
+            }else{
+              selection_model(estimate, other, sampling, rule)
+            }
             candidate <- prior_weightfunction(steps = .05, weights = weight,
                                                prior_weights = 3, model = model)
             expect_identical(selection_model_spec(candidate), model)
@@ -60,17 +64,22 @@ test_that("selection models declare three fixed source choices without changing 
 test_that("selection group references survive deferred and wrapper capture", {
 
   paper_id <- seq_len(3)
-  expect_identical(selection_model(group = paper_id)$group, "paper_id")
-  expect_identical(selection_model(group = `paper id`)$group, "paper id")
-  expect_identical(selection_model(group = "paper id")$group, "paper id")
+  expect_identical(selection_model(weight_rule = "best", group = paper_id)$group, "paper_id")
+  expect_identical(selection_model(weight_rule = "best", group = `paper id`)$group, "paper id")
+  expect_identical(selection_model(weight_rule = "best", group = "paper id")$group, "paper id")
   expect_null(selection_model(group = NULL)$group)
+  expect_error(
+    selection_model(group = paper_id),
+    "'group' is only used when weight_rule = \"best\"",
+    fixed = TRUE
+  )
 
-  wrapper <- function(group = paper_id) selection_model(group = group)
+  wrapper <- function(group = paper_id) selection_model(weight_rule = "best", group = group)
   nested_wrapper <- function(column) wrapper(group = column)
-  explicit_wrapper <- function(group) selection_model(group = {{group}})
+  explicit_wrapper <- function(group) selection_model(weight_rule = "best", group = {{group}})
   forced_wrapper <- function(group) {
     force(group)
-    selection_model(group = group)
+    selection_model(weight_rule = "best", group = group)
   }
   expect_identical(wrapper()$group, "paper_id")
   expect_identical(wrapper(paper_id)$group, "paper_id")
@@ -80,8 +89,8 @@ test_that("selection group references survive deferred and wrapper capture", {
   expect_error(forced_wrapper(1:3), "'group' must be a data-column name", fixed = TRUE)
 
   column_name <- "paper id"
-  stored <- do.call(selection_model, list(group = column_name))
-  expect_identical(stored, selection_model(group = `paper id`))
+  stored <- do.call(selection_model, list(weight_rule = "best", group = column_name))
+  expect_identical(stored, selection_model(weight_rule = "best", group = `paper id`))
   expect_identical(unserialize(serialize(stored, NULL)), stored)
   expect_identical(attributes(stored), list(
     names = c("estimate_random_effects", "other_random_effects",
@@ -133,7 +142,7 @@ test_that("selection model validation rejects malformed and obsolete specificati
 test_that("bias composition preserves each child selection model and its odds", {
 
   first <- prior_weightfunction(steps = .05, prior_weights = 2,
-    model = selection_model(group = paper_id))
+    model = selection_model())
   second <- prior_weightfunction(steps = .05, weights = wf_fixed(c(1, 1.5)),
     prior_weights = 3,
     model = selection_model("condition", "integrate", "integrate", "best", group = study_id))

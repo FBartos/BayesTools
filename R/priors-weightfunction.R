@@ -97,8 +97,8 @@ prior_weightfunction <- function(side = "one-sided", steps = c(.025, .05),
 #' specified as a bare or backticked column name or a single character string.
 #' The default \code{NULL} requests automatic resolution by the consuming model;
 #' a best-rule branch requires resolved publication groups when its data are
-#' bound. For \code{weight_rule = "product"}, \code{group} is inactive: no
-#' publication-group column is required or resolved. References are captured
+#' bound. For \code{weight_rule = "product"}, \code{group} must be \code{NULL}:
+#' no publication-group column is required or stored. References are captured
 #' without evaluating the column. Derived groups must first be stored as data
 #' columns.
 #' @param prior a single prior object or \code{NULL}. Mixtures must be examined
@@ -242,6 +242,9 @@ check_selection_model <- function(model, name = "model"){
     check_char(model[["group"]], "group", allow_NA = FALSE)
     if(!nzchar(model[["group"]])){
       stop("'group' must name a non-empty data column.", call. = FALSE)
+    }
+    if(identical(model[["weight_rule"]], "product")){
+      stop("'group' is only used when weight_rule = \"best\".", call. = FALSE)
     }
   }
   invisible(model)
