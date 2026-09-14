@@ -21,11 +21,15 @@ others rather than patched only at the first failing consumer.
   `R/JAGS-bridge-posterior*.R`.
 
 Worker connection failures stop fitting retries; new initial values cannot
-repair the existing cluster. Preserve the original backend condition. If
-cluster shutdown fails, attempt every remaining worker and close failed
+repair the existing cluster. Preserve the original backend condition. Classify
+parallel worker transport by connection/socket wording rather than a closed
+phrase list; unmatched wording in that class is fail-closed (no retry), not a
+restartable sampler error. If cluster shutdown fails, attempt every remaining worker and close failed
 connections before reporting cleanup failure; do not run the runtime finish
 callback when worker shutdown failed. Explicit worker-output paths are
 call-specific and must not be replayed from a serialized fit.
+After a graceful last-valid-fit return, do not recapture `runtime_state` onto
+the retained fit from the failed attempt.
 
 Do not silently repair malformed covariance matrices, alter prior bounds, drop
 formula terms, or substitute a different likelihood target. If a covariance
@@ -82,7 +86,10 @@ names.
   resolve catalog quantities and obtain their draws through
   `parameter_draws()`. Do not promote monitored coordinate rows to public
   aliases.
-- Declare source mappings as identity, one-to-one transforms, or composites.
+- Declare source mappings as identity, one-to-one transforms, composites, or
+  structural zeros. A factor-level cell with no nonzero contrast weights is
+  `structural_zero`; a single weighted cell is `identity`. Do not infer that
+  distinction from posterior draws.
   Record dependencies in extraction keys instead of adding private inputs as
   public catalog rows.
 - Internal latent, realized, allocation, LKJ, spike-and-slab, and other
@@ -149,6 +156,10 @@ factor or index levels. Use public `cor`, while any compact backend `rho`
 coordinate remains internal. Total-variance allocations expose `sd_total`,
 `var_total`, and `var_prop(...)`; mean-variance allocations expose `sd_common`,
 `var_common`, `var_mult(...)`, and `sd_mult(...)`.
+Gate-only roots are slab-plus-inclusion containers and do not publish a root
+`sd_total`; the child-split total is the public realized total.
+Conditioning a gated total on presence ANDs the binding-factor (parent) gates
+that define a positive realized source, not every nested component gate.
 
 Downstream consumers may explicitly request centrally generated simplified
 names. Simplification removes only a sole `intercept` argument and permits

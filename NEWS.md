@@ -52,6 +52,22 @@
 - preserves independent coefficient supports in structural dependency graphs,
   including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- ggplot mixed overlays reuse the stored secondary-axis mapping and warn when
+  a later point mass is off-scale, matching the base-graphics clipping check
+- rejects variance-allocation `inclusion` with `target = "sd_component"` at
+  construction, with the same error as formula compile
+- documents that gated-total `conditional = TRUE` ANDs binding-factor/parent
+  gates, and that gate-only roots do not publish a root `sd_total`
+- does not recapture `runtime_state` onto a last-valid fit after a failed
+  extend
+- classifies parallel JAGS connection/socket wording as fail-closed transport
+  errors rather than retryable sampler failures
+- keeps spec-level `kernel_mode` as a union capability flag and refuses to
+  route rows on that union
+- distinguishes factor-level `structural_zero` cells from one-cell `identity`
+  maps
+- documents experimental p-hacking mixed-geometry and static `phack_q`
+  fallbacks without changing that unused path
 - independently gated `var_prop` prior densities are the mixed measure
   conditional on a positive total: atoms at 0 and 1 plus a Beta mixture over
   nonempty active sets of other components, folding always-on/always-off
