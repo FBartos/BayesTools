@@ -232,7 +232,19 @@
 .condition_event_bias_label_values <- function(prior, labels){
 
   labels <- .condition_normalize_labels(labels)
-  branches <- if(is.prior.mixture(prior)) prior else list(prior)
+  if(is.prior.mixture(prior)){
+    branches <- prior
+  }else if(is.prior(prior)){
+    branches <- list(prior)
+  }else if(is.list(prior) && length(prior) > 0L &&
+           all(vapply(prior, is.prior, logical(1)))){
+    branches <- prior
+  }else{
+    stop(
+      "Bias condition labels require a prior, a prior mixture, or a list of priors.",
+      call. = FALSE
+    )
+  }
   branch_info <- lapply(branches, .selection_branch_info)
 
   is_PET        <- vapply(branches, is.prior.PET, logical(1))

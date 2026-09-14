@@ -185,10 +185,21 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
     )
   }
 
-  # compute overall estimate
-  overal_mean <- mean(total_samples)
-  overal_lCI  <- unname(stats::quantile(total_samples, .025))
-  overal_uCI  <- unname(stats::quantile(total_samples, .975))
+  # compute overall estimate for the requested parameter only
+  samples_for_overall <- total_samples
+  if((is.matrix(total_samples) || is.data.frame(total_samples)) &&
+     NCOL(total_samples) > 1L){
+    if(is.null(colnames(total_samples)) || !parameter %in% colnames(total_samples)){
+      stop(
+        "Overall plot_models estimate requires a column named '", parameter, "'.",
+        call. = FALSE
+      )
+    }
+    samples_for_overall <- total_samples[, parameter]
+  }
+  overal_mean <- mean(samples_for_overall)
+  overal_lCI  <- unname(stats::quantile(samples_for_overall, .025))
+  overal_uCI  <- unname(stats::quantile(samples_for_overall, .975))
   vertical_0  <- 0
 
   # apply transformations
