@@ -554,3 +554,68 @@ test_that("coordinate map prevents random-block ownership collisions", {
     c("mu_intercept", "mu__xREx__a_b_intercept")
   )
 })
+
+test_that("allocation inclusion indicators stay internal coordinates", {
+
+  data <- data.frame(
+    study = factor(c("a", "a", "b", "b")),
+    esid = factor(seq_len(4L))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | esid, name = "esid", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name = "split",
+        terms = c(study = "study", esid = "esid"),
+        sd = prior("gamma", list(2, 2)),
+        inclusion = list(
+          study = prior("spike", list(location = 0.5)),
+          esid = prior("spike", list(location = 0.5))
+        )
+      )
+    )
+  )
+  allocation <- formula_result$formula_design$random_allocations[[1L]]
+  gates <- .bt_random_variance_allocation_inclusion_indicator_names(
+    list(mu = formula_result$formula_design)
+  )
+  columns <- c(
+    "mu_intercept",
+    allocation$source$name,
+    paste0(allocation$weight_name, "[", 1:2, "]"),
+    gates
+  )
+  coordinates <- build_test_parameter_coordinates(
+    columns = columns,
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  allocation_columns <- setdiff(columns, "mu_intercept")
+
+  expect_true(all(coordinates$role[coordinates$coordinate_name %in% allocation_columns] == "allocation"))
+  expect_true(all(coordinates$internal[coordinates$coordinate_name %in% allocation_columns]))
+  expect_false(coordinates$internal[coordinates$coordinate_name == "mu_intercept"])
+})
+
+test_that("coordinate schema validation rejects malformed tables", {
+
+  coordinates <- build_test_parameter_coordinates(columns = "theta")
+  extra <- coordinates
+  extra$extra <- "x"
+  expect_error(
+    .bt_validate_parameter_coordinates(extra),
+    "malformed"
+  )
+
+  numeric_name <- coordinates
+  numeric_name$coordinate_name <- 1
+  expect_error(
+    .bt_validate_parameter_coordinates(numeric_name),
+    "unique, non-missing coordinate names"
+  )
+})

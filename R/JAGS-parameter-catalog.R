@@ -2864,6 +2864,7 @@ parameter_transform_jacobian <- function(values, transform){
      any(!nzchar(aliases$alias)) || any(!nzchar(aliases$quantity_id)) ||
      any(!nzchar(aliases$namespace)) ||
      anyDuplicated(quantities$quantity_id) ||
+     anyDuplicated(quantities$canonical_name) ||
      any(!quantities$source_type %in%
            c("identity", "one_to_one_transform", "composite", "none")) ||
      any(!quantities$status %in%

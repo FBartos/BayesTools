@@ -55,17 +55,31 @@
       call. = FALSE
     )
   }
-  missing <- setdiff(.bt_parameter_coordinates_columns, names(coordinates))
-  if(length(missing) > 0L){
+  if(!identical(names(coordinates), .bt_parameter_coordinates_columns)){
+    missing <- setdiff(.bt_parameter_coordinates_columns, names(coordinates))
+    if(length(missing) > 0L){
+      stop(
+        "The fitted parameter-coordinate table is missing required field",
+        if(length(missing) > 1L) "s " else " ",
+        paste0("'", missing, "'", collapse = ", "),
+        ". Refit the model with the current BayesTools version.",
+        call. = FALSE
+      )
+    }
     stop(
-      "The fitted parameter-coordinate table is missing required field",
-      if(length(missing) > 1L) "s " else " ",
-      paste0("'", missing, "'", collapse = ", "),
-      ". Refit the model with the current BayesTools version.",
+      "The fitted parameter-coordinate table is malformed. Refit the model with the current BayesTools version.",
       call. = FALSE
     )
   }
-  if(anyNA(coordinates$coordinate_name) ||
+  character_columns <- setdiff(
+    .bt_parameter_coordinates_columns,
+    c("fixed_value", "internal")
+  )
+  if(!all(vapply(coordinates[character_columns], is.character, logical(1))) ||
+     !is.numeric(coordinates$fixed_value) ||
+     !is.logical(coordinates$internal) ||
+     anyNA(coordinates[character_columns]) ||
+     anyNA(coordinates$internal) ||
      any(!nzchar(coordinates$coordinate_name)) ||
      anyDuplicated(coordinates$coordinate_name)){
     stop(
@@ -74,15 +88,7 @@
       call. = FALSE
     )
   }
-  if(anyNA(coordinates$internal)){
-    stop(
-      "The fitted parameter-coordinate table contains an undefined 'internal' flag. ",
-      "Refit the model with the current BayesTools version.",
-      call. = FALSE
-    )
-  }
-  if(!is.numeric(coordinates$fixed_value) ||
-     any(!coordinates$monitor_status %in% c("sampled", "structural", "unavailable")) ||
+  if(any(!coordinates$monitor_status %in% c("sampled", "structural", "unavailable")) ||
      any(!is.na(coordinates$fixed_value[coordinates$monitor_status != "structural"])) ||
      any(!is.finite(coordinates$fixed_value[coordinates$monitor_status == "structural"]))){
     stop(
@@ -734,6 +740,7 @@
       structure,
       role %in% c(
         "backend_anchor",
+        "allocation",
         "random_latent",
         "random_group_coefficient",
         "random_mean_coordinate",
@@ -744,7 +751,7 @@
         "random_sd_variable"
       ) ||
         base_name %in% dirichlet_auxiliaries ||
-        (isTRUE(prior_metadata$allocation) && !random_prior_auxiliary)
+        isTRUE(prior_metadata$allocation)
     )
   }
 

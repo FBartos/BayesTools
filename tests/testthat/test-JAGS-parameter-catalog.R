@@ -2023,4 +2023,154 @@ test_that("malformed catalogs and stale selections fail closed", {
     .bt_validate_parameter_catalog(spoofed),
     "extraction keys are malformed"
   )
+
+  duplicated_name <- catalog
+  duplicated_name$quantities <- rbind(
+    duplicated_name$quantities,
+    duplicated_name$quantities
+  )
+  duplicated_name$quantities$quantity_id[2L] <- "BayesTools::duplicate"
+  expect_error(
+    .bt_validate_parameter_catalog(duplicated_name),
+    "invalid names, statuses, or structural values"
+  )
+})
+
+test_that("gated totals include the all-off zero and leave var_prop undefined", {
+
+  data <- data.frame(
+    study = factor(c("a", "a", "b", "b")),
+    esid = factor(seq_len(4L))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | esid, name = "esid", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name = "split",
+        terms = c(study = "study", esid = "esid"),
+        sd = prior("gamma", list(2, 2)),
+        weights = prior("dirichlet", list(alpha = c(2, 3))),
+        inclusion = list(
+          study = prior("spike", list(location = 0.5)),
+          esid = prior("spike", list(location = 0.5))
+        )
+      )
+    )
+  )
+  allocation <- formula_result$formula_design$random_allocations[[1L]]
+  gates <- .bt_random_effect_summary_allocation_gate_names(allocation)
+  columns <- c(
+    "mu_intercept",
+    allocation$source$name,
+    paste0(allocation$weight_name, "[", 1:2, "]"),
+    gates
+  )
+  samples <- matrix(
+    c(
+      0, 2, 0.4, 0.6, 0, 0,
+      0, 2, 0.4, 0.6, 1, 1
+    ),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, columns)
+  )
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(samples)),
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  catalog <- parameter_catalog(fit)
+  coordinates <- parameter_coordinates(fit)
+
+  expect_true(all(coordinates$internal[coordinates$coordinate_name %in% gates]))
+  expect_false(any(gates %in% catalog$quantities$canonical_name))
+  expect_false(any(gates %in% catalog$aliases$alias))
+  expect_false(any(gates %in% colnames(JAGS_materialize_draws(fit)[[1L]])))
+
+  sd_total <- parameter_catalog_resolve(catalog, "split: sd_total", "mu")
+  var_total <- parameter_catalog_resolve(catalog, "split: var_total", "mu")
+  var_prop <- parameter_catalog_resolve(catalog, "split: var_prop(study)", "mu")
+  expect_identical(sd_total$quantities$source_type, "composite")
+  expect_identical(var_prop$quantities$source_type, "composite")
+  expect_identical(
+    as.numeric(parameter_draws(fit, sd_total)[[1L]][, 1L]),
+    c(0, 2)
+  )
+  expect_identical(
+    as.numeric(parameter_draws(fit, var_total)[[1L]][, 1L]),
+    c(0, 4)
+  )
+  expect_identical(
+    as.numeric(parameter_draws(fit, var_prop)[[1L]][, 1L]),
+    c(NA_real_, 0.4)
+  )
+
+  mixed <- sd_total
+  intercept <- parameter_catalog_resolve(catalog, "mu_intercept")
+  mixed$quantity_id <- c(intercept$quantity_id, sd_total$quantity_id)
+  mixed$quantities <- rbind(intercept$quantities, sd_total$quantities)
+  expect_error(
+    parameter_draws(fit, mixed),
+    "Mixed or multiple derived selections are not supported in one extraction call.",
+    fixed = TRUE
+  )
+})
+
+test_that("known group-covariance scale remains sd/var rather than sd_mult", {
+
+  data <- data.frame(
+    id = factor(c("a", "b", "a", "c"), levels = c("a", "b", "c"))
+  )
+  kernel <- matrix(
+    c(2, .4, .2,
+      .4, 3, .5,
+      .2, .5, 4),
+    nrow = 3L,
+    byrow = TRUE,
+    dimnames = list(c("a", "b", "c"), c("a", "b", "c"))
+  )
+  formula_result <- JAGS_formula(
+    formula = random_effects_formula(
+      ~ 1 | id,
+      group_covariance = random_group_covariance(kernel, scale = "none")
+    ),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd = prior("gamma", list(2, 1)))
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  coordinates <- .bt_build_parameter_coordinates(
+    columns = c("mu_intercept", random_term$sd_parameter_names),
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  catalog <- .bt_build_parameter_catalog(
+    coordinates,
+    formula_result$prior_list,
+    list(mu = formula_result$formula_design)
+  )
+  random <- catalog$quantities[
+    startsWith(catalog$quantities$role, "random_"),
+    ,
+    drop = FALSE
+  ]
+
+  expect_setequal(random$quantity, c("sd", "var"))
+  expect_setequal(
+    random$canonical_name,
+    c("(mu) sd(intercept)", "(mu) var(intercept)")
+  )
+  expect_false(any(random$quantity %in% c("sd_mult", "var_mult")))
+  expect_error(
+    parameter_catalog_resolve(catalog, "sd_mult", "mu"),
+    "No public parameter quantity matches"
+  )
 })
