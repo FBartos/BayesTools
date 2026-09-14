@@ -758,8 +758,16 @@
 
   .bt_require_reformulas()
 
+  formula_attrs <- attributes(formula)
   fixed_formula <- reformulas::nobars(formula)
   environment(fixed_formula) <- environment(formula)
+  # nobars() rebuilds the formula and drops custom attributes. Keep the
+  # documented log(intercept) semantics; do not copy random-term metadata
+  # onto a formula that no longer contains those terms.
+  drop_attrs <- c("class", ".Environment", "names", "random_terms", "random_components")
+  for(attribute in setdiff(names(formula_attrs), drop_attrs)){
+    attr(fixed_formula, attribute) <- formula_attrs[[attribute]]
+  }
 
   return(fixed_formula)
 }

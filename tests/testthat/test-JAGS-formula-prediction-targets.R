@@ -146,6 +146,81 @@ test_that("conditional random components do not subtract unequal fixed means", {
   }
 })
 
+test_that("log(intercept) is preserved when random effects are stripped for prediction", {
+
+  df <- .formula_prediction_data()
+  formula <- ~ 1 + x + diag(1 | id)
+  attr(formula, "log(intercept)") <- TRUE
+  result <- JAGS_formula(
+    formula = formula,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("gamma", list(2, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    prior_random = prior_random(
+      id = random_block(
+        sd = .formula_prediction_sd_prior(),
+        monitor = random_monitor(
+          latent = FALSE,
+          coefficients = TRUE,
+          correlation = FALSE
+        )
+      )
+    )
+  )
+  expect_true(isTRUE(result$formula_design$log_intercept))
+  stripped <- .bt_fixed_formula(formula)
+  expect_true(isTRUE(attr(stripped, "log(intercept)")))
+  expect_false(.has_random_effects(stripped))
+  expect_null(attr(stripped, "random_terms", exact = TRUE))
+
+  term <- result$formula_design$random_effects[[1L]]
+  coefficient_names <- as.vector(.bt_random_effect_coefficient_names(
+    term,
+    term$n_groups,
+    term$n_columns
+  ))
+  posterior <- cbind(
+    c(2, 4),
+    c(0.5, 1),
+    c(1, 1),
+    c(0.1, 0.3),
+    c(-0.2, -0.4)
+  )
+  colnames(posterior) <- c(
+    "mu_intercept",
+    "mu_x",
+    term$sd_parameter_names,
+    coefficient_names
+  )
+  fit <- coda::mcmc(posterior)
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+
+  expected_fixed <- cbind(log(2) + 0.5 * df$x, log(4) + 1 * df$x)
+  expected_random <- cbind(
+    c(0.1, 0.1, -0.2, -0.2),
+    c(0.3, 0.3, -0.4, -0.4)
+  )
+
+  # formula_target = "fixed" always strips bars; nobars() must not drop log().
+  fixed <- JAGS_evaluate_formula(fit, parameter = "mu", formula_target = "fixed")
+  expect_equal(unname(fixed), expected_fixed, tolerance = 1e-12)
+
+  conditional <- JAGS_evaluate_formula(
+    fit,
+    parameter = "mu",
+    formula_target = "conditional"
+  )
+  expect_equal(unname(conditional), expected_fixed + expected_random, tolerance = 1e-12)
+
+  predicted <- JAGS_predict_formula(fit, "mu", components = TRUE)
+  expect_equal(unname(predicted$mean), expected_fixed, tolerance = 1e-12)
+  expect_equal(unname(predicted$random), expected_random, tolerance = 1e-12)
+  expect_equal(unname(predicted$value), expected_fixed + expected_random, tolerance = 1e-12)
+})
+
 test_that("formula prediction validates parameter names and seeds", {
   result <- .formula_prediction_result()
   fit <- .formula_prediction_fit(result)
