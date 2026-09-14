@@ -73,4 +73,8 @@ p-value), with one value or one value per posterior row.
 Native argument helpers accept either an augmented context or a bare
 \code{selection_backend_spec()} object, using compiled \code{step},
 \code{phacking}, and \code{data} fallbacks where available.
+Spec-level \code{kernel_mode} is the union of branch kernels (a capability
+flag). Row routing uses \code{branch_kernel_mode} or an explicit per-row
+vector; passing the union when branches differ is an error unless
+\code{bias_indicator} can map each row to a branch.
 }

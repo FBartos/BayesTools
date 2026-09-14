@@ -13,6 +13,10 @@
 #' Native argument helpers accept either an augmented context or a bare
 #' \code{selection_backend_spec()} object, using compiled \code{step},
 #' \code{phacking}, and \code{data} fallbacks where available.
+#' Spec-level \code{kernel_mode} is the union of branch kernels (a capability
+#' flag). Row routing uses \code{branch_kernel_mode} or an explicit per-row
+#' vector; passing the union when branches differ is an error unless
+#' \code{bias_indicator} can map each row to a branch.
 #'
 #' @param context selection context list.
 #' @param selection_spec selection backend specification or context list.
@@ -304,9 +308,6 @@ selection_native_kernel_args <- function(selection_spec, S, alpha = NULL,
       S
     )
   }
-  if(is.null(kernel_mode)){
-    kernel_mode <- .selection_spec_kernel_mode(selection_spec)
-  }
 
   alpha <- selection_row_arg(alpha, S, "alpha")
   if(!is.numeric(alpha) && !is.integer(alpha)){
@@ -330,7 +331,11 @@ selection_native_kernel_args <- function(selection_spec, S, alpha = NULL,
     stop("Invalid selection native argument 'phack_kind'.", call. = FALSE)
   }
 
-  kernel_mode <- selection_row_arg(kernel_mode, S, "kernel_mode")
+  kernel_mode <- selection_row_arg(
+    .selection_row_kernel_mode(selection_spec, kernel_mode, S),
+    S,
+    "kernel_mode"
+  )
   if(!is.numeric(kernel_mode) && !is.integer(kernel_mode)){
     stop("Invalid selection native argument 'kernel_mode'.", call. = FALSE)
   }
@@ -627,6 +632,89 @@ selection_row_arg <- function(x, n, name){
   return(as.integer(round(mode)))
 }
 
+# Spec-level kernel_mode is the union of branch kernels (capability flag).
+# Row routing must use branch_kernel_mode (or an explicit per-row vector).
+.selection_row_kernel_mode <- function(selection_spec, kernel_mode, S){
+
+  branch_modes <- selection_spec[["branch_kernel_mode"]]
+  if(!is.null(branch_modes)){
+    branch_modes <- as.integer(branch_modes)
+  }
+  unique_branches <- unique(branch_modes)
+  union_mode <- if(length(unique_branches) > 0L){
+    Reduce(function(a, b) bitwOr(as.integer(a), as.integer(b)), unique_branches)
+  }else{
+    NA_integer_
+  }
+  spec_union <- unique(.selection_spec_kernel_mode(selection_spec))
+  if(length(spec_union) == 1L){
+    union_mode <- spec_union
+  }
+
+  if(is.null(kernel_mode)){
+    if(length(unique_branches) == 1L){
+      return(unique_branches)
+    }
+    if(length(unique_branches) > 1L){
+      kernel_mode <- .selection_map_union_kernel_mode(
+        selection_spec,
+        union_mode,
+        branch_modes,
+        S
+      )
+      if(!is.null(kernel_mode)){
+        return(kernel_mode)
+      }
+      stop(
+        "Row kernel_mode is required when selection branches use different kernels. ",
+        "The spec-level kernel_mode is a union capability flag, not a row route.",
+        call. = FALSE
+      )
+    }
+    return(.selection_spec_kernel_mode(selection_spec))
+  }
+
+  kernel_mode <- as.integer(round(kernel_mode))
+  if(length(kernel_mode) == 1L &&
+     length(unique_branches) > 1L &&
+     identical(kernel_mode, as.integer(union_mode))){
+    mapped <- .selection_map_union_kernel_mode(
+      selection_spec,
+      union_mode,
+      branch_modes,
+      S
+    )
+    if(!is.null(mapped)){
+      return(mapped)
+    }
+    stop(
+      "Cannot route rows on the union kernel_mode. Pass per-row modes or ",
+      "branch_kernel_mode indexed by bias_indicator.",
+      call. = FALSE
+    )
+  }
+
+  kernel_mode
+}
+
+.selection_map_union_kernel_mode <- function(selection_spec, union_mode,
+                                             branch_modes, S){
+
+  if(is.null(branch_modes) || length(unique(branch_modes)) <= 1L){
+    return(NULL)
+  }
+  indicator <- selection_spec[["bias_indicator"]]
+  if(is.null(indicator)){
+    return(NULL)
+  }
+  indicator <- selection_row_arg(indicator, S, "bias_indicator")
+  if(any(indicator < 1L | indicator > length(branch_modes))){
+    stop("Invalid selection context 'bias_indicator'.", call. = FALSE)
+  }
+
+  branch_modes[indicator]
+}
+
 .selection_spec_has_phack <- function(selection_spec){
 
   if(!is.null(selection_spec[["has_phack"]])){
@@ -693,10 +781,15 @@ selection_row_arg <- function(x, n, name){
     q <- selection_spec[["phacking"]][["q"]]
   }
   if(is.null(q) || length(q) == 0L){
+    # Experimental p-hacking: missing q is not a geometry. Static native
+    # arguments currently fall back to linear (bin 1).
     return(1L)
   }
   q <- unique(q)
   if(length(q) > 1L){
+    # Experimental p-hacking: mixed linear/quadratic forms cannot share one
+    # static phack_q. Callers that need mixed q must pass phack_kind per row;
+    # this fallback is bin 1 and is not a geometry choice.
     return(1L)
   }
 
@@ -724,6 +817,8 @@ selection_row_arg <- function(x, n, name){
   if(is.matrix(out)){
     if(nrow(out) != 1L &&
        any(out != matrix(out[1L,], nrow = nrow(out), ncol = ncol(out), byrow = TRUE))){
+      # Experimental p-hacking: mixed source cuts cannot be expressed through
+      # `segments`. Reject rather than inventing a third geometry path.
       stop(
         "Selection specification requires explicit 'segments' for mixed p-hacking geometry.",
         call. = FALSE
@@ -747,6 +842,8 @@ selection_row_arg <- function(x, n, name){
   if(is.matrix(out)){
     if(nrow(out) != 1L &&
        any(out != matrix(out[1L,], nrow = nrow(out), ncol = ncol(out), byrow = TRUE))){
+      # Experimental p-hacking: mixed destination cuts cannot be expressed
+      # through `segments`. Reject rather than inventing a third geometry path.
       stop(
         "Selection specification requires explicit 'segments' for mixed p-hacking geometry.",
         call. = FALSE

@@ -755,6 +755,40 @@ test_that("selection_backend_spec compiles mixtures with active identity transfo
   expect_match(spec$transform_code, "phack_kind <- phack_kind_component_1 \\* equals\\(bias_indicator, 1\\)")
 })
 
+test_that("union kernel_mode is not used as a row route", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
+  phacking_linear <- prior_phacking(form = "linear")
+  combined <- prior_bias(selection, prior_phacking(form = "quadratic"))
+  spec <- selection_backend_spec(prior_mixture(list(
+    prior_none(),
+    selection,
+    phacking_linear,
+    combined
+  )))
+  expect_identical(spec$kernel_mode, 3L)
+  expect_identical(spec$branch_kernel_mode, 0:3)
+  expect_error(
+    selection_native_kernel_args(spec, S = 3L, phack_kind = 1L),
+    "union capability flag",
+    fixed = TRUE
+  )
+  expect_error(
+    selection_native_kernel_args(spec, S = 3L, phack_kind = 1L, kernel_mode = 3L),
+    "Cannot route rows on the union kernel_mode.",
+    fixed = TRUE
+  )
+  explicit <- selection_native_kernel_args(
+    spec, S = 2L, phack_kind = 1L, kernel_mode = c(0L, 1L)
+  )
+  expect_identical(explicit$kernel_mode, c(0L, 1L))
+  spec$bias_indicator <- c(1L, 3L)
+  mapped <- selection_native_kernel_args(
+    spec, S = 2L, phack_kind = c(0L, 1L), kernel_mode = 3L
+  )
+  expect_identical(mapped$kernel_mode, c(0L, 2L))
+})
+
 test_that("JAGS_add_priors emits p-hacking active and inactive identity branches", {
 
   selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
