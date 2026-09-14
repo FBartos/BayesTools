@@ -3633,7 +3633,7 @@ test_that("Marginal distribution prior and posterior functions work", {
   ### Savage-Dickey BFs ----
   # (uses model-averaged posteriors rather than conditional ones -- which would be correct)
   # test input
-  expect_error(Savage_Dickey_BF(list(posterior_manual0)), "'BF_savage_dickey' function requires an object of class 'marginal_posteriors'")
+  expect_error(Savage_Dickey_BF(list(posterior_manual0)), "'Savage_Dickey_BF' requires an object of class 'marginal_posterior'.")
   expect_error(Savage_Dickey_BF(marginal_posterior(
     samples           = mixed_posteriors,
     parameter         = "sigma",

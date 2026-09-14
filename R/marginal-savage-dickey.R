@@ -56,7 +56,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
                              density_method = c("KDE", "precomputed")){
 
   if(!inherits(posterior, "marginal_posterior"))
-    stop("'BF_savage_dickey' function requires an object of class 'marginal_posteriors'")
+    stop("'Savage_Dickey_BF' requires an object of class 'marginal_posterior'.")
   check_real(null_hypothesis, "null_hypothesis", allow_NA = FALSE)
   if(!is.finite(null_hypothesis)){
     stop("The 'null_hypothesis' argument must be finite.", call. = FALSE)
