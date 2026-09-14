@@ -72,9 +72,12 @@
 #' `parameter_prior_density()` constructs a deterministic
 #' `prior_linear_density` for supported map-defined quantities, including
 #' one-to-one transformations, Dirichlet allocation marginals, and
-#' allocation-derived component SDs. For variance proportions under a shared
-#' parent inclusion gate, the prior is conditional on positive allocation
-#' variance; independently gated components remain unsupported. It returns
+#' allocation-derived component SDs. Variance proportions are conditional on
+#' positive allocation variance. A shared parent inclusion gate cancels from
+#' that conditional law, leaving the Dirichlet marginal
+#' `Beta(α_i, α_•−α_i)`. Independently gated components keep the mixed measure
+#' over the realized active set: atoms at 0 and 1, and a Beta mixture over
+#' nonempty sets of other active components. It returns
 #' `NULL` when the fitted map does
 #' not declare a supported deterministic prior composition.
 #'
@@ -586,40 +589,17 @@ parameter_prior_density.BayesTools_fit <- function(
   )
   if(is.null(transform)){
     if(!identical(selection$quantities$quantity, "var_prop") ||
-       !identical(allocation$scale, "total_variance") ||
-       length(allocation$inclusion) != 0L ||
-       length(allocation$parent_factors) != 1L){
+       !identical(allocation$scale, "total_variance")){
       return(NULL)
     }
-    parent <- allocation$parent_factors[[1L]]
-    .bt_check_random_variance_allocation_factor(parent)
-    if(!is.null(parent$weight_name)){
-      return(NULL)
-    }
-    gate_priors <- Filter(function(prior){
-      identical(attr(prior, "random_allocation_indicator", exact = TRUE),
-                parent$inclusion_name)
-    }, prior_list)
-    if(length(gate_priors) != 1L){
-      return(NULL)
-    }
-    gate_probability <- mean(gate_priors[[1L]])
-    if(!is.numeric(gate_probability) || length(gate_probability) != 1L ||
-       !is.finite(gate_probability) || gate_probability <= 0 ||
-       gate_probability > 1){
-      return(NULL)
-    }
-    scale_prior <- allocation$source$prior
-    if(!is.prior.simple(scale_prior)){
-      return(NULL)
-    }
-    positive_scale <- ccdf(scale_prior, 0)
-    if(!is.numeric(positive_scale) || length(positive_scale) != 1L ||
-       !is.finite(positive_scale) || positive_scale <= 0){
-      return(NULL)
-    }
-    # The shared gate cancels from proportions whenever the total is positive.
-    transform <- list(type = "identity")
+    return(.bt_parameter_prior_density_gated_var_prop(
+      allocation = allocation,
+      source_prior = source_prior,
+      prior_list = prior_list,
+      index = key$index,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    ))
   }
   index <- key$index
   if(identical(selection$quantities$quantity, "sd_mult") &&
@@ -639,6 +619,236 @@ parameter_prior_density.BayesTools_fit <- function(
     tail_prob = tail_prob
   )
   .bt_parameter_prior_density_transform(dist, transform, n_grid)
+}
+
+.bt_parameter_prior_density_gated_var_prop_free_gate_limit <- function(){
+  20L
+}
+
+.bt_parameter_prior_density_inclusion_probability <- function(prior_object){
+
+  if(is.null(prior_object) || !is.prior(prior_object)){
+    return(NA_real_)
+  }
+  probability <- mean(prior_object)
+  if(!is.numeric(probability) || length(probability) != 1L ||
+     !is.finite(probability) || probability < 0 || probability > 1){
+    return(NA_real_)
+  }
+  probability
+}
+
+.bt_parameter_prior_density_allocation_parent_gate_probability <- function(
+    allocation, prior_list){
+
+  parent_factors <- allocation$parent_factors
+  if(!is.list(parent_factors) || length(parent_factors) == 0L){
+    return(1)
+  }
+
+  probability <- 1
+  for(parent in parent_factors){
+    if(is.null(parent$inclusion_name) || !nzchar(parent$inclusion_name)){
+      next
+    }
+    gate_priors <- Filter(function(prior){
+      identical(attr(prior, "random_allocation_indicator", exact = TRUE),
+                parent$inclusion_name)
+    }, prior_list)
+    if(length(gate_priors) != 1L){
+      return(NA_real_)
+    }
+    parent_probability <- .bt_parameter_prior_density_inclusion_probability(
+      gate_priors[[1L]]
+    )
+    if(!is.finite(parent_probability) || parent_probability <= 0){
+      return(parent_probability)
+    }
+    probability <- probability * parent_probability
+  }
+  probability
+}
+
+.bt_parameter_prior_density_allocation_component_probabilities <- function(
+    allocation, K){
+
+  probability <- rep(1, K)
+  inclusion <- allocation$inclusion
+  if(!is.list(inclusion) || length(inclusion) == 0L){
+    return(probability)
+  }
+
+  for(record in inclusion){
+    index <- record$index
+    if(!is.numeric(index) || length(index) != 1L || is.na(index) ||
+       index != as.integer(index) || index < 1L || index > K){
+      return(NULL)
+    }
+    component_probability <- .bt_parameter_prior_density_inclusion_probability(
+      record$prior
+    )
+    if(!is.finite(component_probability)){
+      return(NULL)
+    }
+    probability[[as.integer(index)]] <- component_probability
+  }
+  probability
+}
+
+.bt_parameter_prior_density_gated_var_prop <- function(
+    allocation, source_prior, prior_list, index, n_grid, tail_prob){
+
+  scale_prior <- allocation$source$prior
+  if(!is.prior.simple(scale_prior)){
+    return(NULL)
+  }
+  positive_scale <- ccdf(scale_prior, 0)
+  if(!is.numeric(positive_scale) || length(positive_scale) != 1L ||
+     !is.finite(positive_scale) || positive_scale <= 0){
+    return(NULL)
+  }
+
+  parent_probability <- .bt_parameter_prior_density_allocation_parent_gate_probability(
+    allocation,
+    prior_list
+  )
+  if(!is.numeric(parent_probability) || length(parent_probability) != 1L ||
+     !is.finite(parent_probability) || parent_probability <= 0 ||
+     parent_probability > 1){
+    return(NULL)
+  }
+
+  if(!is.prior.simplex(source_prior) ||
+     !identical(source_prior$distribution, "dirichlet")){
+    return(NULL)
+  }
+  alpha <- source_prior$parameters$alpha
+  if(!is.numeric(alpha) || length(alpha) < 2L ||
+     any(!is.finite(alpha)) || any(alpha <= 0) ||
+     !is.numeric(index) || length(index) != 1L || is.na(index) ||
+     index != as.integer(index) || index < 1L || index > length(alpha)){
+    return(NULL)
+  }
+  index <- as.integer(index)
+  K <- length(alpha)
+  probability <- .bt_parameter_prior_density_allocation_component_probabilities(
+    allocation,
+    K
+  )
+  if(is.null(probability)){
+    return(NULL)
+  }
+
+  .bt_parameter_prior_density_gated_var_prop_mixture(
+    alpha = alpha,
+    index = index,
+    probability = probability,
+    n_grid = n_grid,
+    tail_prob = tail_prob
+  )
+}
+
+.bt_parameter_prior_density_gated_var_prop_mixture <- function(
+    alpha, index, probability, n_grid, tail_prob){
+
+  K <- length(alpha)
+  p_i <- probability[[index]]
+  others <- seq_len(K)[-index]
+  p_others <- probability[others]
+  alpha_i <- alpha[[index]]
+  alpha_others <- alpha[others]
+
+  p_all_off <- prod(1 - probability)
+  p_positive <- 1 - p_all_off
+  if(!is.finite(p_positive) || p_positive <= 0){
+    return(NULL)
+  }
+
+  always_off <- p_others <= 0
+  always_on <- p_others >= 1
+  free <- !always_off & !always_on
+  fixed_beta <- sum(alpha_others[always_on])
+  free_alpha <- alpha_others[free]
+  free_p <- p_others[free]
+  n_free <- length(free_p)
+  if(n_free > .bt_parameter_prior_density_gated_var_prop_free_gate_limit()){
+    stop(
+      "Independently gated variance-proportion prior density is unavailable for more than 20 free inclusion gates.",
+      call. = FALSE
+    )
+  }
+
+  p_others_all_off <- prod(1 - p_others)
+  p_atom0 <- (1 - p_i) * (1 - p_others_all_off) / p_positive
+  p_atom1 <- p_i * p_others_all_off / p_positive
+
+  mix_weight <- 1
+  mix_beta <- fixed_beta
+  if(n_free > 0L){
+    for(j in seq_len(n_free)){
+      mix_weight <- c(mix_weight * (1 - free_p[[j]]), mix_weight * free_p[[j]])
+      mix_beta <- c(mix_beta, mix_beta + free_alpha[[j]])
+    }
+  }
+
+  cont_keep <- mix_beta > 0
+  cont_weight <- (p_i / p_positive) * mix_weight[cont_keep]
+  cont_beta <- mix_beta[cont_keep]
+  if(length(cont_beta) > 0L){
+    key <- sprintf("%a", cont_beta)
+    unique_key <- unique(key)
+    grouped_beta <- cont_beta[match(unique_key, key)]
+    grouped_weight <- vapply(unique_key, function(k){
+      sum(cont_weight[key == k])
+    }, numeric(1), USE.NAMES = FALSE)
+  }else{
+    grouped_beta <- numeric()
+    grouped_weight <- numeric()
+  }
+
+  dists <- list()
+  weights <- numeric()
+  if(p_atom0 > 0){
+    dists[[length(dists) + 1L]] <- .prior_linear_density_point(0)
+    weights <- c(weights, p_atom0)
+  }
+  if(p_atom1 > 0){
+    dists[[length(dists) + 1L]] <- .prior_linear_density_point(1)
+    weights <- c(weights, p_atom1)
+  }
+  for(j in seq_along(grouped_beta)){
+    beta_prior <- prior(
+      "beta",
+      list(alpha = alpha_i, beta = grouped_beta[[j]])
+    )
+    dists[[length(dists) + 1L]] <- .bt_parameter_prior_density_scalar(
+      beta_prior,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
+    weights <- c(weights, grouped_weight[[j]])
+  }
+  keep <- weights > 0
+  dists <- dists[keep]
+  weights <- weights[keep]
+  if(length(dists) == 0L){
+    return(NULL)
+  }
+  if(length(dists) == 1L){
+    return(.prior_linear_density_normalize(dists[[1L]], warn = TRUE))
+  }
+
+  dx_values <- vapply(dists, .prior_linear_density_dx, numeric(1))
+  dx_values <- dx_values[is.finite(dx_values) & dx_values > 0]
+  dx <- if(length(dx_values) > 0L){
+    min(dx_values)
+  }else{
+    1 / max(n_grid - 1L, 1L)
+  }
+  .prior_linear_density_normalize(
+    .prior_linear_density_mix(dists, weights, dx = dx, n_grid = n_grid),
+    warn = TRUE
+  )
 }
 
 .bt_parameter_prior_density_random_component_sd <- function(

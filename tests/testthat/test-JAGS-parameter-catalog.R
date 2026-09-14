@@ -1906,14 +1906,89 @@ test_that("shared-gate proportions use their declared conditional Dirichlet prio
   expect_equal(prior_density_ordinate(density, .4)$log_density,
                stats::dbeta(.4, 2, 3, log = TRUE))
 
-  for(unavailable in list(make_fit(independent = TRUE),
-                          make_fit(probability = 0),
+  independent <- make_fit(independent = TRUE)
+  independent_points <- c(.1, .4, .9)
+  for(i in 1:2){
+    selection <- parameter_catalog_resolve(
+      parameter_catalog(independent),
+      paste0("split: var_prop(", c("study", "esid")[[i]], ")"), "mu"
+    )
+    density <- parameter_prior_density(independent, selection, n_grid = 512L)
+    expect_s3_class(density, "prior_linear_density")
+    expect_equal(
+      .prior_linear_density_point_mass(density, 0),
+      1 / 3,
+      tolerance = 1e-8
+    )
+    expect_equal(
+      .prior_linear_density_point_mass(density, 1),
+      1 / 3,
+      tolerance = 1e-8
+    )
+    alpha_i <- c(2, 3)[[i]]
+    beta_i <- c(3, 2)[[i]]
+    ordinates <- vapply(independent_points, function(value){
+      prior_density_ordinate(density, value)$log_density
+    }, numeric(1))
+    expect_equal(
+      ordinates,
+      log((1 / 3) * stats::dbeta(independent_points, alpha_i, beta_i)),
+      tolerance = 1e-3
+    )
+  }
+
+  independent_fixed <- make_fit(independent = TRUE, probability = 1)
+  selection <- parameter_catalog_resolve(
+    parameter_catalog(independent_fixed), "split: var_prop(study)", "mu"
+  )
+  density <- parameter_prior_density(independent_fixed, selection)
+  expect_equal(prior_density_ordinate(density, .4)$log_density,
+               stats::dbeta(.4, 2, 3, log = TRUE))
+  expect_equal(.prior_linear_density_point_mass(density, 0), 0)
+  expect_equal(.prior_linear_density_point_mass(density, 1), 0)
+
+  for(unavailable in list(make_fit(probability = 0),
+                          make_fit(independent = TRUE, probability = 0),
                           make_fit(scale_prior = prior("point", list(location = 0))))){
     selection <- parameter_catalog_resolve(
       parameter_catalog(unavailable), "split: var_prop(study)", "mu"
     )
     expect_null(parameter_prior_density(unavailable, selection))
   }
+})
+
+test_that("independently gated proportion mixtures fold fixed inclusion gates", {
+
+  # One free gate, one always-on component, one always-off component:
+  # the Beta second parameter is the always-on alpha only.
+  density <- BayesTools:::.bt_parameter_prior_density_gated_var_prop_mixture(
+    alpha = c(2, 3, 4),
+    index = 1L,
+    probability = c(0.5, 1, 0),
+    n_grid = 256L,
+    tail_prob = 1e-4
+  )
+  expect_s3_class(density, "prior_linear_density")
+  expect_equal(.prior_linear_density_point_mass(density, 0), 0.5, tolerance = 1e-8)
+  expect_equal(.prior_linear_density_point_mass(density, 1), 0)
+  expect_equal(
+    prior_density_ordinate(density, 0.4)$log_density,
+    log(0.5 * stats::dbeta(0.4, 2, 3)),
+    tolerance = 1e-3
+  )
+
+  too_many <- rep(0.5, 22L)
+  expect_error(
+    BayesTools:::.bt_parameter_prior_density_gated_var_prop_mixture(
+      alpha = rep(1, 22L),
+      index = 1L,
+      probability = too_many,
+      n_grid = 32L,
+      tail_prob = 1e-4
+    ),
+    "Independently gated variance-proportion prior density is unavailable for more than 20 free inclusion gates.",
+    fixed = TRUE
+  )
 })
 
 
