@@ -77,7 +77,9 @@ parameter are plotted and \code{individual = TRUE}.}
 \item{rescale_x}{allows to rescale x-axis in case a
 weightfunction is plotted.}
 
-\item{scale_y2}{scaling factor for a secondary axis}
+\item{scale_y2}{scaling factor for a secondary axis. The default
+\code{NULL} reuses the probability mapping from the active mixed
+base plot when one is available.}
 
 \item{...}{additional arguments}
 }
