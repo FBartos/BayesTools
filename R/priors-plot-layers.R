@@ -454,6 +454,9 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 }
 .geom_prior.point            <- function(plot_data, scale_y2 = 1, ...){
 
+  if(is.null(scale_y2)){
+    scale_y2 <- 1
+  }
   dots      <- list(...)
   col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
   lwd       <- if(!is.null(dots[["size"]]))     dots[["size"]]     else  if(!is.null(dots[["lwd"]])) dots[["lwd"]] else .plot.prior_settings()[["lwd"]]

@@ -163,3 +163,35 @@ test_that("vignettes never fit models during ordinary rendering", {
   expect_identical(violations, character())
   expect_identical(missing_caches, character())
 })
+
+
+test_that("every test file is registered in a profile and declares a skip", {
+
+  test_directory <- testthat::test_path()
+  test_files <- list.files(
+    test_directory,
+    pattern = "^test-.*\\.R$",
+    full.names = TRUE
+  )
+  contexts <- sub("^test-", "", sub("\\.R$", "", basename(test_files)))
+  registered <- unique(unlist(
+    bayestools_test_profile_contexts,
+    use.names = FALSE
+  ))
+
+  expect_identical(sort(setdiff(contexts, registered)), character())
+  expect_identical(sort(setdiff(registered, contexts)), character())
+
+  skip_pattern <- paste(
+    "skip_if_not_test_profile\\(",
+    "skip_if_not_visual_tests\\(",
+    "skip_if_not_visual_fixture_tests\\(",
+    "skip_if_not_heavy_tests\\(",
+    sep = "|"
+  )
+  missing_skip <- vapply(test_files, function(path){
+    lines <- readLines(path, warn = FALSE, n = 20L)
+    !any(grepl(skip_pattern, lines))
+  }, logical(1))
+  expect_identical(basename(test_files[missing_skip]), character())
+})

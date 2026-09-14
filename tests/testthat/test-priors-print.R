@@ -285,7 +285,7 @@ test_that("Prior print function works", {
     "  Other random effects: condition (retain unknown effects during normalization).",
     "  Known sampling error: integrate (average full error vector before normalization).",
     "  Weight rule: product (Product of estimate weights).",
-    "  Group: automatic (resolved when data are bound).",
+    "  Group: unused for the product rule.",
     "  Sources are resolved when model data are bound."
   )
   expect_equal(utils::capture.output(print(p7)),  c("omega[one-sided: .05] ~ CumDirichlet(1, 1)", model_lines))

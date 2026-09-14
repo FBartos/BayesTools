@@ -52,11 +52,9 @@ parameter_map.BayesTools_fit <- function(object, ...){
     )
   }
   cache <- attr(map, "runtime_cache", exact = TRUE)
-  if(!(is.environment(cache) && isTRUE(cache$validated))){
+  if(!.bt_parameter_map_cache_matches(map, cache)){
     .bt_validate_parameter_map(map)
-    if(is.environment(cache)){
-      cache$validated <- TRUE
-    }
+    .bt_parameter_map_cache_store(map, cache)
   }
   map
 }
@@ -131,8 +129,29 @@ parameter_map_schema <- function(){
   class(out) <- c("BayesTools_parameter_map", "list")
   .bt_validate_parameter_map(out)
   attr(out, "runtime_cache") <- new.env(parent = emptyenv())
-  attr(out, "runtime_cache")$validated <- TRUE
+  .bt_parameter_map_cache_store(out, attr(out, "runtime_cache"))
   out
+}
+
+.bt_parameter_map_cache_matches <- function(map, cache){
+
+  is.environment(cache) &&
+    isTRUE(cache$validated) &&
+    identical(cache$coordinates, map$coordinates) &&
+    identical(cache$quantities, map$quantities) &&
+    identical(cache$aliases, map$aliases)
+}
+
+.bt_parameter_map_cache_store <- function(map, cache){
+
+  if(!is.environment(cache)){
+    return(invisible(NULL))
+  }
+  cache$validated <- TRUE
+  cache$coordinates <- map$coordinates
+  cache$quantities <- map$quantities
+  cache$aliases <- map$aliases
+  invisible(NULL)
 }
 
 .bt_parameter_map_catalog <- function(map){

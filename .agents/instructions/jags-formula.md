@@ -98,7 +98,9 @@ names.
 - Validate coordinate uniqueness, quantity uniqueness, aliases, extraction
   recipes, and coordinate dependencies atomically at map construction. Public
   accessors reuse that result through the map runtime cache rather than
-  rebuilding schema checks on every call. The fit contract stores one
+  rebuilding schema checks on every call, as long as the stored coordinate,
+  quantity, and alias tables are still the constructed objects. Replacing those
+  tables re-runs validation. The fit contract stores one
   `parameter_map_version`; there are no separate registry/catalog versions or
   fit attributes.
 - Missing, malformed, or unsupported map metadata requires refitting with the

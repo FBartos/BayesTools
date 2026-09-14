@@ -1,3 +1,5 @@
+skip_if_not_test_profile("unit")
+
 test_that("variance-allocation gate priors sample independent indicators", {
 
   data <- data.frame(
