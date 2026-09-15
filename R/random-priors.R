@@ -944,6 +944,46 @@ is.prior_random <- function(x){
   if(!is.prior(x)){
     stop("Random-effect SD specifications must be prior objects.", call. = FALSE)
   }
+  .bt_check_random_sd_prior_support(x)
+
+  invisible(TRUE)
+}
+
+# Standard deviations are nonnegative, so their priors must be too. The check
+# runs at construction; the backend must never receive a prior it would have to
+# silently truncate.
+.bt_check_random_sd_prior_support <- function(x){
+
+  if(is.prior.ordered(x)){
+    .bt_check_random_sd_prior_support(x$total)
+    return(invisible(TRUE))
+  }
+
+  if(is.prior.spike_and_slab(x) || is.prior.mixture(x)){
+    for(i in seq_along(x)){
+      .bt_check_random_sd_prior_support(x[[i]])
+    }
+    return(invisible(TRUE))
+  }
+
+  # Factor, vector, and simplex families carry their support in the structure
+  # the backend resolves, not in a scalar truncation; leave those to it.
+  if(is.prior.none(x) || !is.prior.simple(x)){
+    return(invisible(TRUE))
+  }
+
+  if(is.prior.point(x)){
+    location <- x$parameters[["location"]]
+    if(length(location) == 0L || anyNA(location) || any(location < 0)){
+      stop("The 'sd' prior must have nonnegative support.", call. = FALSE)
+    }
+    return(invisible(TRUE))
+  }
+
+  lower <- x$truncation[["lower"]]
+  if(!is.null(lower) && length(lower) == 1L && !is.na(lower) && lower < 0){
+    stop("The 'sd' prior must have nonnegative support.", call. = FALSE)
+  }
 
   invisible(TRUE)
 }

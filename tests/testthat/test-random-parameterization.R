@@ -392,3 +392,55 @@ test_that("marginalized random effects record backend-independent resolution", {
   expect_identical(resolved$requested, "centered")
   expect_identical(resolved$resolved, "marginalized")
 })
+
+test_that("random-effect SD priors must have nonnegative support", {
+
+  expect_error(
+    prior_random(sd = prior("normal", list(0, 1))),
+    "The 'sd' prior must have nonnegative support.",
+    fixed = TRUE
+  )
+  expect_error(
+    prior_random(sd = prior("normal", list(0, 1),
+                            truncation = list(-1, Inf))),
+    "The 'sd' prior must have nonnegative support.",
+    fixed = TRUE
+  )
+  expect_error(
+    random_block(sd = prior("cauchy", list(0, 1))),
+    "The 'sd' prior must have nonnegative support.",
+    fixed = TRUE
+  )
+  expect_error(
+    random_covariance(sd = prior("normal", list(0, 1))),
+    "The 'sd' prior must have nonnegative support.",
+    fixed = TRUE
+  )
+  expect_error(
+    prior_random(sd = prior("point", list(location = -1))),
+    "The 'sd' prior must have nonnegative support.",
+    fixed = TRUE
+  )
+  # A component of a mixture is checked like any other SD prior.
+  expect_error(
+    prior_random(sd = prior_spike_and_slab(
+      prior_parameter = prior("normal", list(0, 1)),
+      prior_inclusion = prior("beta", list(1, 1))
+    )),
+    "The 'sd' prior must have nonnegative support.",
+    fixed = TRUE
+  )
+
+  # Families whose support is already nonnegative are accepted unchanged.
+  expect_s3_class(
+    prior_random(sd = prior("normal", list(0, 1),
+                            truncation = list(0, Inf))),
+    "prior_random"
+  )
+  expect_s3_class(prior_random(sd = prior("lognormal", list(0, 1))),
+                  "prior_random")
+  expect_s3_class(prior_random(sd = prior("invgamma", list(2, 1))),
+                  "prior_random")
+  expect_s3_class(prior_random(sd = prior("point", list(location = 0))),
+                  "prior_random")
+})

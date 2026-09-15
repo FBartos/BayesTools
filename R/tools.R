@@ -26,6 +26,11 @@
 #' Defaults to \code{Inf} (do not check).
 #' @param allow_bound whether the values at the boundary are allowed.
 #' Defaults to \code{TRUE}.
+#' @section NA values:
+#' \code{allow_NA} defaults to \code{TRUE} for \code{check_char},
+#' \code{check_int}, and \code{check_real}, but to \code{FALSE} for
+#' \code{check_bool}: a missing value cannot be used as a switch, so an
+#' \code{NA} flag is rejected unless \code{allow_NA = TRUE} is requested.
 #' @param call string to be placed as a prefix to the error call.
 #'
 #' @examples
@@ -47,7 +52,7 @@
 #' @export check_list
 
 #' @rdname check_input
-check_bool   <- function(x, name = deparse(substitute(x)), check_length = 1, allow_NULL = FALSE, allow_NA = TRUE, call = ""){
+check_bool   <- function(x, name = deparse(substitute(x)), check_length = 1, allow_NULL = FALSE, allow_NA = FALSE, call = ""){
 
   if(is.null(x) || length(x) == 0){
     if(allow_NULL){

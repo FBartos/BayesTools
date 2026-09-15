@@ -3629,7 +3629,8 @@ test_that("prior_random rejects unsupported and ignored production settings", {
       prior_list = list(intercept = prior("normal", list(0, 1))),
       prior_random = prior_random(id = random_block(sd = prior("point", list(-1))))
     ),
-    "point mass must be nonnegative",
+    # random_block() rejects the negative SD support before the formula is built
+    "The 'sd' prior must have nonnegative support.",
     fixed = TRUE
   )
   expect_error(
@@ -4042,7 +4043,8 @@ test_that("prior_random rejects unsupported and ignored production settings", {
         id = random_block(sd = prior_mixture(list(prior("point", list(-1)), prior("gamma", list(2, 2)))))
       )
     ),
-    "point mass must be nonnegative",
+    # random_block() checks each mixture component's support at construction
+    "The 'sd' prior must have nonnegative support.",
     fixed = TRUE
   )
   zero_sd <- JAGS_formula(

@@ -52,6 +52,15 @@
 - preserves independent coefficient supports in structural dependency graphs,
   including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- rejects ordinary scalar random-effect SD priors with negative support at
+  construction, in `prior_random()`, `random_block()`, `random_covariance()`,
+  and variance allocations, instead of silently truncating them to zero when
+  the JAGS formula is built. Spike-and-slab, mixture, and ordered SD priors are
+  checked component by component. Factor, vector, and simplex SD priors carry
+  their support in the resolved structure and keep the backend's handling.
+- `check_bool()` now rejects `NA` by default, matching the fact that a missing
+  value cannot be used as a switch. Pass `allow_NA = TRUE` to keep the previous
+  behaviour. The other `check_*` helpers are unchanged.
 - catalog `canonical_name` uniqueness is enforced per namespace and component,
   the key `parameter_catalog_resolve()` narrows on, instead of over the whole
   table. Two providers may describe one term under the same public selector, as
