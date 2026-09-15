@@ -51,9 +51,11 @@ parameter_map.BayesTools_fit <- function(object, ...){
       call. = FALSE
     )
   }
-  cache <- attr(map, "runtime_cache", exact = TRUE)
+  cache <- .bt_parameter_map_cache(map)
   if(!.bt_parameter_map_cache_matches(map, cache)){
     .bt_validate_parameter_map(map)
+    # The map this cache slot described has been replaced, so every derived
+    # entry in it is stale, including entries this package did not create.
     .bt_parameter_map_cache_store(map, cache)
   }
   map
@@ -128,9 +130,90 @@ parameter_map_schema <- function(){
   )
   class(out) <- c("BayesTools_parameter_map", "list")
   .bt_validate_parameter_map(out)
-  attr(out, "runtime_cache") <- new.env(parent = emptyenv())
-  .bt_parameter_map_cache_store(out, attr(out, "runtime_cache"))
+  attr(out, "runtime_cache_id") <- .bt_parameter_map_cache_new_id()
+  .bt_parameter_map_cache_store(out, .bt_parameter_map_cache(out))
   out
+}
+
+
+# Parameter-map runtime cache
+#
+# The cache lives in a session-local registry keyed by an id carried on the
+# map, never in the map itself. A cache attached to the object would be
+# serialized with every saved fit: it would inflate the file, and - worse -
+# a fit reloaded months later would replay entries derived from whatever the
+# packages looked like when it was saved. Keying by id means a reloaded fit
+# simply misses and recomputes.
+#
+# The registry is bounded, because entries hold references to the map tables
+# (so the validity check stays an O(1) pointer comparison) and to whatever
+# consumers store.
+.bt_parameter_map_cache_limit <- function(){
+  64L
+}
+
+# Ids must never draw from the \R RNG: maps are built inside seeded fitting
+# code, and consuming the stream there would move seeded results. A per-session
+# stamp plus a counter is unique within a session and across sessions, so a
+# reloaded fit cannot land on a live slot belonging to a different map.
+.bt_parameter_map_cache_new_id <- function(){
+
+  stamp <- .BayesTools_private$parameter_map_cache_session
+  if(is.null(stamp)){
+    stamp <- paste0(
+      Sys.getpid(), "-",
+      format(as.numeric(Sys.time()), digits = 15, scientific = FALSE)
+    )
+    .BayesTools_private$parameter_map_cache_session <- stamp
+  }
+  sequence <- .BayesTools_private$parameter_map_cache_sequence
+  sequence <- if(is.null(sequence)) 1L else sequence + 1L
+  .BayesTools_private$parameter_map_cache_sequence <- sequence
+
+  paste0("map-", stamp, "-", sequence)
+}
+
+.bt_parameter_map_cache_registry <- function(){
+
+  registry <- .BayesTools_private$parameter_map_cache
+  if(!is.environment(registry)){
+    registry <- new.env(parent = emptyenv())
+    .BayesTools_private$parameter_map_cache <- registry
+    .BayesTools_private$parameter_map_cache_order <- character()
+  }
+  registry
+}
+
+.bt_parameter_map_cache <- function(map){
+
+  id <- attr(map, "runtime_cache_id", exact = TRUE)
+  if(!is.character(id) || length(id) != 1L || is.na(id) || !nzchar(id)){
+    return(NULL)
+  }
+  registry <- .bt_parameter_map_cache_registry()
+
+  # A hit does no bookkeeping at all. Reordering for recency would allocate a
+  # character vector on every accessor call, and this is the hot path the
+  # cache exists to keep cheap; with a bound of 64 slots and a handful of live
+  # maps, insertion order evicts just as well.
+  existing <- registry[[id]]
+  if(!is.null(existing)){
+    return(existing)
+  }
+
+  order <- .BayesTools_private$parameter_map_cache_order
+  cache <- new.env(parent = emptyenv())
+  cache$providers <- new.env(parent = emptyenv())
+  registry[[id]] <- cache
+  order <- c(order, id)
+  if(length(order) > .bt_parameter_map_cache_limit()){
+    evicted <- order[seq_len(length(order) - .bt_parameter_map_cache_limit())]
+    rm(list = evicted, envir = registry)
+    order <- setdiff(order, evicted)
+  }
+  .BayesTools_private$parameter_map_cache_order <- order
+
+  cache
 }
 
 .bt_parameter_map_cache_matches <- function(map, cache){
@@ -151,7 +234,66 @@ parameter_map_schema <- function(){
   cache$coordinates <- map$coordinates
   cache$quantities <- map$quantities
   cache$aliases <- map$aliases
+  # Consumer entries were derived from the map that was here before, so they
+  # cannot survive it. BayesTools owns this environment and clears it whole.
+  cache$providers <- new.env(parent = emptyenv())
   invisible(NULL)
+}
+
+
+#' @title Cache a value derived from a fitted parameter map
+#'
+#' @description Stores one value per provider against a fitted parameter map,
+#' for the lifetime of the \R session. It exists so that packages building on
+#' BayesTools can avoid recomputing map-derived metadata without inventing
+#' their own storage inside fitted objects.
+#'
+#' The cache is keyed by the map \emph{and} by `key`, a value naming everything
+#' else the cached result was derived from. Whenever `key` stops being
+#' [identical()] to the stored one the value is recomputed, so a result that
+#' also depends on data or priors stays correct when those change. Passing a
+#' `key` that does not cover every input is the one way to use this
+#' incorrectly.
+#'
+#' Entries never travel with a saved fit, and BayesTools discards every
+#' provider's entries whenever the map's own tables are replaced.
+#'
+#' @param map a parameter map, as returned by [parameter_map()].
+#' @param provider name of the calling package.
+#' @param key a value identifying every input other than `map` that `compute`
+#'   depends on. Compared with [identical()].
+#' @param compute a function of no arguments returning the value to cache.
+#'
+#' @return The cached or freshly computed value of `compute()`.
+#'
+#' @seealso [parameter_map()]
+#' @export
+parameter_map_cache <- function(map, provider, key, compute){
+
+  if(!inherits(map, "BayesTools_parameter_map")){
+    stop("'map' must be a 'BayesTools_parameter_map' object.", call. = FALSE)
+  }
+  check_char(provider, "provider", check_length = 1L, allow_NA = FALSE)
+  if(!nzchar(provider)){
+    stop("'provider' must be a non-empty package name.", call. = FALSE)
+  }
+  if(!is.function(compute)){
+    stop("'compute' must be a function of no arguments.", call. = FALSE)
+  }
+
+  cache <- .bt_parameter_map_cache(map)
+  if(!is.environment(cache) || !is.environment(cache$providers)){
+    return(compute())
+  }
+
+  entry <- cache$providers[[provider]]
+  if(is.list(entry) && identical(entry$key, key)){
+    return(entry$value)
+  }
+
+  value <- compute()
+  cache$providers[[provider]] <- list(key = key, value = value)
+  value
 }
 
 .bt_parameter_map_catalog <- function(map){

@@ -619,3 +619,107 @@ test_that("coordinate schema validation rejects malformed tables", {
     "unique, non-missing coordinate names"
   )
 })
+
+
+test_that("the parameter-map cache is session-local and never saved with a fit", {
+
+  samples <- coda::mcmc(matrix(
+    1:4,
+    ncol = 1L,
+    dimnames = list(NULL, "theta")
+  ))
+  fit <- samples
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- list(theta = prior("normal", list(0, 1)))
+  fit <- attach_test_parameter_map(fit)
+  fit <- .bt_attach_draw_geometry(fit)
+  fit <- .bt_attach_fit_contract(fit)
+  map <- parameter_map(fit)
+
+  # Nothing cacheable may be attached to the object: a cache stored there is
+  # serialized into every saved fit and replayed on load, long after the
+  # packages that filled it have changed.
+  expect_null(attr(map, "runtime_cache", exact = TRUE))
+  expect_type(attr(map, "runtime_cache_id", exact = TRUE), "character")
+
+  BayesTools::parameter_map_cache(
+    map, provider = "TestPkg", key = "k", compute = function() "stored"
+  )
+  saved <- serialize(fit, NULL)
+  expect_false(grepl("stored", rawToChar(saved[saved != as.raw(0L)]), fixed = TRUE))
+
+  # A session that never saw this fit holds no entry for it, so the value is
+  # recomputed rather than replayed from whenever the fit was written. (A
+  # round trip inside one session does legitimately reuse the live entry: the
+  # id still points at it and the map tables are unchanged.)
+  withr::defer({
+    .BayesTools_private$parameter_map_cache <- NULL
+    .BayesTools_private$parameter_map_cache_order <- NULL
+  })
+  .BayesTools_private$parameter_map_cache <- NULL
+  .BayesTools_private$parameter_map_cache_order <- NULL
+
+  reloaded <- unserialize(saved)
+  expect_identical(
+    BayesTools::parameter_map_cache(
+      parameter_map(reloaded), provider = "TestPkg", key = "k",
+      compute = function() "recomputed"
+    ),
+    "recomputed"
+  )
+})
+
+
+test_that("parameter_map_cache recomputes when its key or the map changes", {
+
+  samples <- coda::mcmc(matrix(
+    1:4,
+    ncol = 1L,
+    dimnames = list(NULL, "theta")
+  ))
+  fit <- samples
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- list(theta = prior("normal", list(0, 1)))
+  fit <- attach_test_parameter_map(fit)
+  fit <- .bt_attach_draw_geometry(fit)
+  fit <- .bt_attach_fit_contract(fit)
+
+  calls <- 0L
+  ask <- function(map, key){
+    BayesTools::parameter_map_cache(
+      map, provider = "TestPkg", key = key,
+      compute = function(){ calls <<- calls + 1L; paste0("value-", calls) }
+    )
+  }
+
+  map <- parameter_map(fit)
+  expect_identical(ask(map, "a"), "value-1")
+  expect_identical(ask(map, "a"), "value-1")
+  expect_identical(calls, 1L)
+
+  # a different key is a different derivation, even for the same map
+  expect_identical(ask(map, "b"), "value-2")
+  expect_identical(ask(map, "a"), "value-3")
+
+  # providers cannot read or clobber one another
+  expect_identical(
+    BayesTools::parameter_map_cache(
+      map, provider = "OtherPkg", key = "a", compute = function() "other"
+    ),
+    "other"
+  )
+  expect_identical(ask(map, "a"), "value-3")
+
+  # replacing the map's tables invalidates every provider's entry, including
+  # entries BayesTools did not create
+  replaced <- fit
+  attr(replaced, "parameter_map")$quantities$display_label[[1L]] <- "relabelled"
+  expect_identical(ask(parameter_map(replaced), "a"), "value-4")
+  expect_identical(
+    BayesTools::parameter_map_cache(
+      parameter_map(replaced), provider = "OtherPkg", key = "a",
+      compute = function() "other-recomputed"
+    ),
+    "other-recomputed"
+  )
+})

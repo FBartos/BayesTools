@@ -108,6 +108,13 @@ names.
   tables re-runs validation. The fit contract stores one
   `parameter_map_version`; there are no separate registry/catalog versions or
   fit attributes.
+- That cache is session-local: the map carries only a `runtime_cache_id`, and
+  the entries live in a bounded package registry. Never attach a cache to the
+  map itself - it would be serialized into every saved fit and replayed on load,
+  long after the code that derived it changed. Consumers store map-derived
+  values through `parameter_map_cache()`, supplying a key covering every other
+  input they used; BayesTools owns that environment and discards all providers'
+  entries whenever the map tables are replaced.
 - Missing, malformed, or unsupported map metadata requires refitting with the
   current BayesTools version. Do not add in-memory migrations for stale fitted
   objects without an explicit maintainer decision.

@@ -52,6 +52,16 @@
 - preserves independent coefficient supports in structural dependency graphs,
   including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- catalog `canonical_name` uniqueness is enforced per namespace and component,
+  the key `parameter_catalog_resolve()` narrows on, instead of over the whole
+  table. Two providers may describe one term under the same public selector, as
+  `parameter_catalog_extend()` produces; rows the resolver could not tell apart
+  are still refused, and ambiguity surfaces as `BayesTools_parameter_ambiguous`
+- adds `parameter_map_cache()` for map-derived values, keyed by a caller
+  supplied token covering every other input. The parameter-map runtime cache
+  moved into a bounded session registry: it is no longer attached to the map,
+  so nothing cached is serialized into saved fits or replayed on load, and
+  replacing the map tables discards every provider's entries
 - `JAGS_bridgesampling()` passes `use_neff` as the logical flag
   \pkg{bridgesampling} defines. Supplying per-chain effective sample sizes is
   not supported upstream and aborted every multi-parameter bridge estimate
