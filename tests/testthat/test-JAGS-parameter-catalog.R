@@ -2109,9 +2109,11 @@ test_that("malformed catalogs and stale selections fail closed", {
     duplicated_name$quantities
   )
   duplicated_name$quantities$quantity_id[2L] <- "BayesTools::duplicate"
+  # identical in canonical name, namespace, and component: the resolver could
+  # not tell these apart, so construction still refuses them
   expect_error(
     .bt_validate_parameter_catalog(duplicated_name),
-    "invalid names, statuses, or structural values"
+    "cannot be resolved"
   )
 })
 
@@ -2251,5 +2253,69 @@ test_that("known group-covariance scale remains sd/var rather than sd_mult", {
   expect_error(
     parameter_catalog_resolve(catalog, "sd_mult", "mu"),
     "No public parameter quantity matches"
+  )
+})
+
+
+test_that("extended catalogs may reuse a canonical name across components", {
+
+  # `canonical_name` is a selector, not a key. A provider extending the catalog
+  # routinely describes the same underlying term as BayesTools does - a factor
+  # moderator gets both the backend coefficient and the extending provider's
+  # grouped view - so the two legitimately share a public name and differ by
+  # component. Rejecting that at construction made the whole catalog
+  # unbuildable, with an error telling the user to refit, which cannot help.
+  coordinates <- .bt_build_parameter_coordinates(
+    columns = "mu_group",
+    prior_list = list(mu_group = prior("normal", list(0, 1)))
+  )
+  catalog <- .bt_build_parameter_catalog(coordinates)
+  canonical <- catalog$quantities$canonical_name[[1L]]
+  namespace <- catalog$quantities$namespace[[1L]]
+
+  shared_name <- .bt_parameter_catalog_quantity(
+    canonical_name = canonical,
+    namespace = namespace,
+    role = "formula_coefficient_group",
+    extraction_key = list(type = "robma", dependencies = character())
+  )
+  shared_name$component <- "mods"
+  shared_name$provider <- "RoBMA"
+  shared_name$quantity_id <- "RoBMA::grouped"
+
+  extended <- parameter_catalog_extend(
+    catalog,
+    quantities = shared_name,
+    aliases = .bt_parameter_catalog_empty_aliases(),
+    provider = "RoBMA"
+  )
+  expect_true(canonical %in% extended$quantities$canonical_name)
+  expect_identical(sum(extended$quantities$canonical_name == canonical), 2L)
+
+  # the collision surfaces where it is actionable - at resolution, as a typed
+  # ambiguity the caller can narrow - rather than at construction
+  expect_error(
+    parameter_catalog_resolve(extended, canonical, namespace),
+    class = "BayesTools_parameter_ambiguous"
+  )
+  expect_identical(
+    parameter_catalog_resolve(
+      extended, canonical, namespace, component = "mods"
+    )$quantity_id,
+    "RoBMA::grouped"
+  )
+
+  # genuinely indistinguishable rows stay refused
+  indistinguishable <- shared_name
+  indistinguishable$component <- catalog$quantities$component[[1L]]
+  indistinguishable$quantity_id <- "RoBMA::indistinguishable"
+  expect_error(
+    parameter_catalog_extend(
+      catalog,
+      quantities = indistinguishable,
+      aliases = .bt_parameter_catalog_empty_aliases(),
+      provider = "RoBMA"
+    ),
+    "cannot be resolved"
   )
 })

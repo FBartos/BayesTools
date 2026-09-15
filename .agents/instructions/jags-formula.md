@@ -80,8 +80,13 @@ coordinate and semantic compilers remain pure stages in
 stored map. Use these accessors and `R/parameter-source.R` rather than parsing
 names.
 
-- Keep coordinate and canonical names unique within their respective schemas,
-  and keep every schema field type-stable.
+- Keep coordinate names and quantity IDs unique within their respective
+  schemas, and keep every schema field type-stable. `canonical_name` is a
+  selector rather than a key: it must be unique per namespace and component,
+  because that is what `parameter_catalog_resolve()` narrows on before raising
+  a typed ambiguity. A catalog extended by another provider may reuse a
+  canonical name for its own view of the same term, and must not be rejected
+  at construction for it.
 - User-facing summaries, plotting, density estimation, and hypotheses must
   resolve catalog quantities and obtain their draws through
   `parameter_draws()`. Do not promote monitored coordinate rows to public

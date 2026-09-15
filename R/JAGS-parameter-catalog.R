@@ -3076,7 +3076,6 @@ parameter_transform_jacobian <- function(values, transform){
      any(!nzchar(aliases$alias)) || any(!nzchar(aliases$quantity_id)) ||
      any(!nzchar(aliases$namespace)) ||
      anyDuplicated(quantities$quantity_id) ||
-     anyDuplicated(quantities$canonical_name) ||
      any(!quantities$source_type %in%
            c("identity", "one_to_one_transform", "composite",
              "structural_zero", "none")) ||
@@ -3086,6 +3085,22 @@ parameter_transform_jacobian <- function(values, transform){
      any(!is.finite(quantities$fixed_value[quantities$status == "structural"]))){
     stop("Parameter catalog tables contain invalid names, statuses, or structural values. Refit or rebuild the catalog with this version of BayesTools.",
          call. = FALSE)
+  }
+  # `quantity_id` is the key; `canonical_name` is a selector, and
+  # `parameter_catalog_resolve()` narrows it by namespace and component before
+  # reporting a typed ambiguity. Two providers describing one term under the
+  # same public name is therefore legitimate - that is what
+  # `parameter_catalog_extend()` exists to produce - and only rows that the
+  # resolver could not tell apart are rejected here.
+  selector <- duplicated(quantities[c("canonical_name", "namespace", "component")])
+  if(any(selector)){
+    stop(
+      "Parameter catalog quantities repeat the selector '",
+      quantities$canonical_name[selector][[1L]],
+      "' within one namespace and component, so it cannot be resolved. ",
+      "Give the extending provider a distinct canonical name or component.",
+      call. = FALSE
+    )
   }
   provider_prefix <- paste0(quantities$provider, "::")
   if(any(!startsWith(quantities$quantity_id, provider_prefix))){
