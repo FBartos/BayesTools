@@ -11,6 +11,7 @@ random_effects_marginal_factor_states(
   prior_list = NULL,
   blocks = NULL,
   row_blocks,
+  cache = NULL,
   ...
 )
 }
@@ -22,13 +23,19 @@ random_effects_marginal_factor_states(
 fitted rows without separating any structurally nonzero covariance
 contribution.}
 
+\item{cache}{optional environment used to retain the compiled contract --
+the design, its priors, the selected blocks and the evaluator -- across
+repeated calls that differ only in their posterior draws. The key is
+compared by value, so a different contract recompiles.}
+
 \item{...}{reserved for future extensions. Unused arguments are rejected.}
 }
 \value{
 A list of class
 \code{BayesTools_random_effects_marginal_factor_states} with invariant
 \code{factor_plans}, one \code{factor_states} list per posterior draw, \code{row_blocks},
-and structural \code{metadata}.
+a \code{contract_id} identifying the compiled contract, and structural
+\code{metadata}.
 }
 \description{
 Compiles the same structural covariance representation used by bridge

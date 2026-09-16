@@ -131,18 +131,23 @@ random_effects_marginal_vcov <- function(
 #' @param row_blocks a list of integer row-index vectors that partitions the
 #'   fitted rows without separating any structurally nonzero covariance
 #'   contribution.
+#' @param cache optional environment used to retain the compiled contract --
+#'   the design, its priors, the selected blocks and the evaluator -- across
+#'   repeated calls that differ only in their posterior draws. The key is
+#'   compared by value, so a different contract recompiles.
 #' @param ... reserved for future extensions. Unused arguments are rejected.
 #'
 #' @return A list of class
 #'   `BayesTools_random_effects_marginal_factor_states` with invariant
 #'   `factor_plans`, one `factor_states` list per posterior draw, `row_blocks`,
-#'   and structural `metadata`.
+#'   a `contract_id` identifying the compiled contract, and structural
+#'   `metadata`.
 #'
 #' @seealso [random_effects_marginal_vcov()] [JAGS_bridgesampling()]
 #' @export
 random_effects_marginal_factor_states <- function(
     fit, parameter = NULL, posterior_samples = NULL, prior_list = NULL,
-    blocks = NULL, row_blocks, ...){
+    blocks = NULL, row_blocks, cache = NULL, ...){
 
   dots <- list(...)
   if(length(dots) > 0L){
@@ -161,60 +166,108 @@ random_effects_marginal_factor_states <- function(
   }
   check_char(parameter, "parameter", allow_NULL = TRUE, allow_NA = FALSE)
   check_char(blocks, "blocks", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
+  if(!is.null(cache) && !is.environment(cache)){
+    stop("'cache' must be NULL or an environment.", call. = FALSE)
+  }
 
+  # Everything except the posterior draws is a property of the contract: the
+  # design, its priors, the selected blocks and the compiled evaluator. A
+  # density line calls this once per replacement chunk with the same contract
+  # and different draws, so an optional cache keeps the compilation out of that
+  # loop. The fit itself is not part of the key -- it carries the draws -- but
+  # the design and priors resolved from it are, and they are compared by value,
+  # so a different contract misses.
   design <- .bt_random_effect_marginal_covariance_design(
     fit = fit,
     parameter = parameter
-  )
-  posterior <- .bt_random_effect_marginal_covariance_posterior(
-    fit = fit,
-    posterior_samples = posterior_samples
   )
   prior_list <- .bt_random_effect_marginal_covariance_prior_list(
     prior_list = prior_list,
     fit = fit,
     design = design
   )
-  selected <- .bt_random_effect_marginal_covariance_terms(
-    design = design,
-    blocks = blocks
-  )
-  random_effects <- selected$terms
-  block_names <- vapply(random_effects, `[[`, character(1), "block_name")
-  parameter_name <- design$parameter
-  if(!is.character(parameter_name) || length(parameter_name) != 1L ||
-     is.na(parameter_name) || !nzchar(parameter_name)){
-    stop("Formula design parameter name is unavailable.", call. = FALSE)
+  key <- list(design = design, parameter = parameter, prior_list = prior_list,
+              blocks = blocks, row_blocks = row_blocks)
+  contract <- NULL
+  if(is.environment(cache)){
+    cached <- cache[["random_effects_marginal_factor_states"]]
+    if(!is.null(cached) && identical(cached$process_id, Sys.getpid()) &&
+       identical(cached$key, key)){
+      contract <- cached$contract
+    }
   }
 
-  row_blocks <- .bt_JAGS_bridge_marginal_random_row_blocks(
-    row_blocks = row_blocks,
-    n_rows = nrow(random_effects[[1L]]$model_matrix),
-    parameter = parameter_name
-  )
-  if(is.null(row_blocks)){
-    stop("'row_blocks' must be supplied.", call. = FALSE)
-  }
-  .bt_JAGS_bridge_validate_marginal_random_row_blocks(
-    random_effects = random_effects,
-    row_blocks = row_blocks,
-    parameter = parameter_name
-  )
+  if(is.null(contract)){
+    selected <- .bt_random_effect_marginal_covariance_terms(
+      design = design,
+      blocks = blocks
+    )
+    random_effects <- selected$terms
+    block_names <- vapply(random_effects, `[[`, character(1), "block_name")
+    parameter_name <- design$parameter
+    if(!is.character(parameter_name) || length(parameter_name) != 1L ||
+       is.na(parameter_name) || !nzchar(parameter_name)){
+      stop("Formula design parameter name is unavailable.", call. = FALSE)
+    }
 
-  formula_design_list <- stats::setNames(list(design), parameter_name)
-  formula_data_list <- stats::setNames(list(NULL), parameter_name)
-  formula_prior_list <- stats::setNames(list(prior_list), parameter_name)
-  marginal_random_spec <- stats::setNames(list(list(
-    blocks = block_names,
-    row_blocks = row_blocks,
-    factor_state = TRUE
-  )), parameter_name)
-  evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
-    formula_design_list = formula_design_list,
-    marginal_random_spec = marginal_random_spec,
-    formula_data_list = formula_data_list,
-    formula_prior_list = formula_prior_list,
-    model_data = NULL
+    contract_rows <- .bt_JAGS_bridge_marginal_random_row_blocks(
+      row_blocks = row_blocks,
+      n_rows = nrow(random_effects[[1L]]$model_matrix),
+      parameter = parameter_name
+    )
+    if(is.null(contract_rows)){
+      stop("'row_blocks' must be supplied.", call. = FALSE)
+    }
+    .bt_JAGS_bridge_validate_marginal_random_row_blocks(
+      random_effects = random_effects,
+      row_blocks = contract_rows,
+      parameter = parameter_name
+    )
+
+    formula_design_list <- stats::setNames(list(design), parameter_name)
+    formula_data_list <- stats::setNames(list(NULL), parameter_name)
+    formula_prior_list <- stats::setNames(list(prior_list), parameter_name)
+    marginal_random_spec <- stats::setNames(list(list(
+      blocks = block_names,
+      row_blocks = contract_rows,
+      factor_state = TRUE
+    )), parameter_name)
+    contract <- list(
+      design         = design,
+      prior_list     = prior_list,
+      selected       = selected,
+      random_effects = random_effects,
+      block_names    = block_names,
+      parameter_name = parameter_name,
+      row_blocks     = contract_rows,
+      evaluator      = .bt_JAGS_bridge_compile_marginal_random_evaluator(
+        formula_design_list = formula_design_list,
+        marginal_random_spec = marginal_random_spec,
+        formula_data_list = formula_data_list,
+        formula_prior_list = formula_prior_list,
+        model_data = NULL
+      ),
+      contract_id    = new.env(parent = emptyenv())
+    )
+    if(is.environment(cache)){
+      cache[["random_effects_marginal_factor_states"]] <- list(
+        process_id = Sys.getpid(), key = key, contract = contract
+      )
+    }
+  }
+
+  design         <- contract$design
+  prior_list     <- contract$prior_list
+  selected       <- contract$selected
+  random_effects <- contract$random_effects
+  block_names    <- contract$block_names
+  parameter_name <- contract$parameter_name
+  row_blocks     <- contract$row_blocks
+  evaluator      <- contract$evaluator
+
+  posterior <- .bt_random_effect_marginal_covariance_posterior(
+    fit = fit,
+    posterior_samples = posterior_samples
   )
   batch <- evaluator$factor_states(posterior)
   if(!is.null(batch)){
@@ -286,6 +339,7 @@ random_effects_marginal_factor_states <- function(
     factor_plans = factor_plans,
     factor_states = factor_states,
     row_blocks = row_blocks,
+    contract_id = contract$contract_id,
     metadata = list(
       parameter = parameter_name,
       n_draws = nrow(posterior),
@@ -337,6 +391,11 @@ random_effects_marginal_factor_diagonal <- function(
     matrix(0, nrow = n_draws, ncol = n_rows)
   }), blocks)
 
+  designs <- lapply(seq_along(blocks), function(block){
+    .bt_random_effect_marginal_factor_block_design(
+      plan = plans[[block]], n_rows = n_rows, block = blocks[[block]]
+    )
+  })
   for(draw in seq_len(n_draws)){
     draw_states <- states[[draw]]
     if(!is.list(draw_states) || length(draw_states) != length(blocks)){
@@ -344,16 +403,17 @@ random_effects_marginal_factor_diagonal <- function(
            call. = FALSE)
     }
     for(block in seq_along(blocks)){
-      geometry <- .bt_random_effect_marginal_factor_block_geometry(
-        plan   = plans[[block]],
+      design <- designs[[block]]
+      basis <- .bt_random_effect_marginal_factor_block_basis(
+        design = design,
         state  = draw_states[[block]],
         n_rows = n_rows,
         block  = blocks[[block]]
       )
-      variance <- rowSums(geometry$basis^2)
-      if(identical(geometry$type, "known_group")){
-        variance <- variance * diag(geometry$group_covariance)[
-          geometry$group_map
+      variance <- rowSums(basis^2)
+      if(identical(design$type, "known_group")){
+        variance <- variance * diag(design$group_covariance)[
+          design$group_map
         ]
       }
       out[[block]][draw, ] <- variance
@@ -495,17 +555,14 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
   # each coefficient basis once, then scatter whole draw columns rather than
   # repeating the block and component loops for every posterior candidate.
   for(factor_index in seq_along(plans)){
-    factor_plan <- plans[[factor_index]]
-    basis_size  <- n_rows * ncol(factor_plan$model_matrix)
-    basis <- vapply(states, function(draw_states){
-      .bt_random_effect_marginal_factor_block_geometry(
-        plan   = factor_plan,
-        state  = draw_states[[factor_index]],
-        n_rows = n_rows,
-        block  = plan_names[[factor_index]]
-      )$basis
-    }, numeric(basis_size))
-    dim(basis) <- c(basis_size, n_draws)
+    design <- .bt_random_effect_marginal_factor_block_design(
+      plan = plans[[factor_index]], n_rows = n_rows,
+      block = plan_names[[factor_index]]
+    )
+    basis <- .bt_random_effect_marginal_factor_block_basis_batch(
+      design = design, states = states, factor_index = factor_index,
+      n_rows = n_rows, block = plan_names[[factor_index]]
+    )
 
     for(block_index in seq_along(plan$blocks)){
       block <- plan$blocks[[block_index]]
@@ -577,6 +634,19 @@ random_effects_marginal_factor_vcov <- function(factors){
   n_rows <- components$n_rows
   plans  <- components$plans
   out <- array(0, dim = c(components$n_draws, n_rows, n_rows))
+  designs <- lapply(seq_along(plans), function(block){
+    .bt_random_effect_marginal_factor_block_design(
+      plan = plans[[block]], n_rows = n_rows, block = block
+    )
+  })
+  group_covariances <- lapply(designs, function(design){
+    group_map <- design$group_map
+    if(identical(design$type, "known_group")){
+      design$group_covariance[group_map, group_map, drop = FALSE]
+    }else{
+      outer(group_map, group_map, "==")
+    }
+  })
   for(draw in seq_len(components$n_draws)){
     states <- components$states[[draw]]
     if(!is.list(states) || length(states) != length(plans)){
@@ -587,18 +657,12 @@ random_effects_marginal_factor_vcov <- function(factors){
       states <- states[names(plans)]
     }
     for(block in seq_along(plans)){
-      geometry <- .bt_random_effect_marginal_factor_block_geometry(
-        plan = plans[[block]], state = states[[block]],
+      basis <- .bt_random_effect_marginal_factor_block_basis(
+        design = designs[[block]], state = states[[block]],
         n_rows = n_rows, block = block
       )
-      group_map <- geometry$group_map
-      group_covariance <- if(identical(geometry$type, "known_group")){
-        geometry$group_covariance[group_map, group_map, drop = FALSE]
-      }else{
-        outer(group_map, group_map, "==")
-      }
       out[draw, , ] <- out[draw, , ] +
-        tcrossprod(geometry$basis) * group_covariance
+        tcrossprod(basis) * group_covariances[[block]]
     }
   }
   out
@@ -619,7 +683,7 @@ random_effects_marginal_factor_vcov <- function(factors){
       row_blocks = factors$row_blocks,
       n_rows     = components$n_rows,
       n_draws    = components$n_draws,
-      contract_id = NULL
+      contract_id = factors$contract_id
     ))
   }
   if(is.list(factors) &&
@@ -957,10 +1021,15 @@ random_effects_marginal_factor_product <- function(
 }
 
 
-.bt_random_effect_marginal_factor_block_geometry <- function(
-    plan, state, n_rows, block){
+# The design, the grouping and any known group covariance are the same for
+# every draw of one factor-state contract. A density line evaluates tens of
+# thousands of draws through this geometry, so validating them per draw is the
+# per-draw cost; validate them once and keep only the coefficient factor, which
+# does change, on the per-draw path.
+.bt_random_effect_marginal_factor_block_design <- function(
+    plan, n_rows, block){
 
-  if(!is.list(plan) || !is.list(state)){
+  if(!is.list(plan)){
     stop(
       "Random-effect marginal factor metadata for block '", block,
       "' are invalid.",
@@ -970,35 +1039,18 @@ random_effects_marginal_factor_product <- function(
   type         <- plan$type
   model_matrix <- plan$model_matrix
   group_map    <- plan$group_map
-  factor       <- state$coefficient_factor
   valid <- type %in% c("group", "row_group", "known_group") &&
     is.numeric(model_matrix) && is.matrix(model_matrix) &&
     nrow(model_matrix) == n_rows && all(is.finite(model_matrix)) &&
     is.numeric(group_map) && length(group_map) == n_rows &&
     all(is.finite(group_map)) && all(group_map == as.integer(group_map)) &&
-    all(group_map >= 1L) && is.numeric(factor) &&
-    is.matrix(factor) && nrow(factor) == ncol(model_matrix) &&
-    ncol(factor) == ncol(model_matrix) && all(is.finite(factor))
+    all(group_map >= 1L)
   if(!isTRUE(valid)){
     stop(
       "Random-effect marginal factor metadata for block '", block,
       "' are invalid.",
       call. = FALSE
     )
-  }
-
-  basis <- model_matrix %*% factor
-  if(identical(type, "row_group")){
-    row_scale <- state$row_scale
-    if(!is.numeric(row_scale) || length(row_scale) != n_rows ||
-       any(!is.finite(row_scale)) || any(row_scale < 0)){
-      stop(
-        "Random-effect marginal row scales for block '", block,
-        "' are invalid.",
-        call. = FALSE
-      )
-    }
-    basis <- basis * row_scale
   }
 
   group_covariance <- NULL
@@ -1017,9 +1069,126 @@ random_effects_marginal_factor_product <- function(
 
   list(
     type             = type,
-    basis            = basis,
+    model_matrix     = model_matrix,
+    columns          = ncol(model_matrix),
     group_map        = as.integer(group_map),
     group_covariance = group_covariance
+  )
+}
+
+
+.bt_random_effect_marginal_factor_block_factor <- function(
+    design, state, block){
+
+  factor <- if(is.list(state)) state$coefficient_factor else NULL
+  if(!is.numeric(factor) || !is.matrix(factor) ||
+     nrow(factor) != design$columns || ncol(factor) != design$columns ||
+     !all(is.finite(factor))){
+    stop(
+      "Random-effect marginal factor metadata for block '", block,
+      "' are invalid.",
+      call. = FALSE
+    )
+  }
+  factor
+}
+
+
+.bt_random_effect_marginal_factor_block_row_scale <- function(
+    design, state, n_rows, block){
+
+  if(!identical(design$type, "row_group")){
+    return(NULL)
+  }
+  row_scale <- state$row_scale
+  if(!is.numeric(row_scale) || length(row_scale) != n_rows ||
+     any(!is.finite(row_scale)) || any(row_scale < 0)){
+    stop(
+      "Random-effect marginal row scales for block '", block,
+      "' are invalid.",
+      call. = FALSE
+    )
+  }
+  row_scale
+}
+
+
+# Every draw multiplies the same design by its own coefficient factor, so
+# stacking the factors column-wise turns the whole batch into one product. A
+# density line evaluates tens of thousands of draws through this.
+.bt_random_effect_marginal_factor_block_basis_batch <- function(
+    design, states, factor_index, n_rows, block){
+
+  columns <- design$columns
+  n_draws <- length(states)
+  # vapply enforces the numeric type and the factor length on every draw; the
+  # finiteness of the whole batch is one pass rather than one per draw.
+  factors <- vapply(states, function(draw_states){
+    value <- draw_states[[factor_index]]$coefficient_factor
+    if(!is.matrix(value)){
+      stop(
+        "Random-effect marginal factor metadata for block '", block,
+        "' are invalid.",
+        call. = FALSE
+      )
+    }
+    value
+  }, numeric(columns * columns))
+  if(!all(is.finite(factors))){
+    stop(
+      "Random-effect marginal factor metadata for block '", block,
+      "' are invalid.",
+      call. = FALSE
+    )
+  }
+  dim(factors) <- c(columns, columns * n_draws)
+  basis <- design$model_matrix %*% factors
+  if(identical(design$type, "row_group")){
+    dim(basis) <- c(n_rows, columns, n_draws)
+    for(draw in seq_len(n_draws)){
+      basis[, , draw] <- basis[, , draw] *
+        .bt_random_effect_marginal_factor_block_row_scale(
+          design = design, state = states[[draw]][[factor_index]],
+          n_rows = n_rows, block = block
+        )
+    }
+  }
+  dim(basis) <- c(n_rows * columns, n_draws)
+  basis
+}
+
+
+.bt_random_effect_marginal_factor_block_basis <- function(
+    design, state, n_rows, block){
+
+  factor <- .bt_random_effect_marginal_factor_block_factor(
+    design = design, state = state, block = block
+  )
+  basis <- design$model_matrix %*% factor
+  row_scale <- .bt_random_effect_marginal_factor_block_row_scale(
+    design = design, state = state, n_rows = n_rows, block = block
+  )
+  if(!is.null(row_scale)){
+    basis <- basis * row_scale
+  }
+
+  basis
+}
+
+
+.bt_random_effect_marginal_factor_block_geometry <- function(
+    plan, state, n_rows, block){
+
+  design <- .bt_random_effect_marginal_factor_block_design(
+    plan = plan, n_rows = n_rows, block = block
+  )
+  list(
+    type             = design$type,
+    basis            = .bt_random_effect_marginal_factor_block_basis(
+      design = design, state = state, n_rows = n_rows, block = block
+    ),
+    group_map        = design$group_map,
+    group_covariance = design$group_covariance
   )
 }
 

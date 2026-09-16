@@ -1,5 +1,15 @@
 # version 0.3.1
 ### Features
+- keeps the invariant parts of a random-effect marginal factor contract out of
+  the per-draw path. `random_effects_marginal_factor_states()` takes an optional
+  `cache` that retains the design, its priors, the selected blocks and the
+  compiled evaluator across calls that differ only in their draws, and returns a
+  `contract_id` that `random_effects_marginal_diagonal_factor()` can cache its
+  reduction plan against. The design, the grouping and any known group
+  covariance are validated once per call rather than once per draw, and every
+  draw of a block now shares one matrix product instead of one each. Results are
+  unchanged; a density line that evaluates tens of thousands of draws through
+  this stops paying for the compilation and the revalidation.
 - stops automatic retries after parallel JAGS connection failures, retaining
   the original backend error. Cleanup attempts every worker after a failed
   stop. Optional 'worker_output' captures worker stdout and stderr in fits
