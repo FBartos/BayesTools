@@ -426,9 +426,15 @@ random_sd_source <- function(source, shape = c("scalar", "row")){
 .bt_parameter_source_value_draws <- function(source, n_rows, posterior,
                                             data = NULL,
                                             parameters = NULL,
-                                            context = "Parameter source"){
+                                            context = "Parameter source",
+                                            validated = FALSE){
 
-  .bt_check_parameter_source(source)
+  # `validated` says the caller resolved this source once and validated it
+  # then. A bridge evaluates one source over thousands of draws, and the
+  # source is a property of the term rather than of the draw.
+  if(!isTRUE(validated)){
+    .bt_check_parameter_source(source)
+  }
   values_function <- .bt_parameter_source_values_function(source)
   if(is.null(values_function)){
     return(NULL)

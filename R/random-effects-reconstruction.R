@@ -932,9 +932,14 @@
                                                        data = NULL,
                                                        parameters = NULL,
                                                        prediction_rows = NULL,
-                                                       context = "Prediction"){
+                                                       context = "Prediction",
+                                                       source = NULL){
 
-  source <- .bt_random_effect_row_indexed_source(random_term)
+  # The source is a property of the term, not of the draw. A caller that
+  # evaluates many draws through one term resolves it once and passes it here.
+  if(is.null(source)){
+    source <- .bt_random_effect_row_indexed_source(random_term)
+  }
   if(is.null(prediction_rows)){
     prediction_rows <- seq_len(n_rows)
   }
@@ -960,7 +965,8 @@
     posterior = posterior,
     data = data,
     parameters = parameters,
-    context = context
+    context = context,
+    validated = TRUE
   )
   if(!is.null(source_values)){
     colnames(source_values) <- source_names
@@ -1072,9 +1078,15 @@
 
 .bt_random_effect_row_indexed_allocation_draws <- function(random_term,
                                                           posterior,
-                                                          prior_list){
+                                                          prior_list,
+                                                          binding = NULL){
 
-  binding <- random_term$sd_binding
+  # A caller that evaluates many draws through one term validates the binding
+  # once and passes it; the binding belongs to the term, not to the draw.
+  validated <- !is.null(binding)
+  if(is.null(binding)){
+    binding <- random_term$sd_binding
+  }
   if(is.null(binding)){
     stop(
       "Random-effect row-indexed external SD metadata",
@@ -1083,7 +1095,9 @@
       call. = FALSE
     )
   }
-  .bt_check_random_sd_binding(binding)
+  if(!validated){
+    .bt_check_random_sd_binding(binding)
+  }
   if(identical(binding$application, "column")){
     stop(
       "Random-effect row-indexed external SD metadata",
@@ -1121,13 +1135,19 @@
 .bt_random_effect_row_indexed_column_allocation_draws <- function(random_term,
                                                                  posterior,
                                                                  prior_list,
-                                                                 n_columns){
+                                                                 n_columns,
+                                                                 binding = NULL){
 
-  binding <- random_term$sd_binding
+  validated <- !is.null(binding)
+  if(is.null(binding)){
+    binding <- random_term$sd_binding
+  }
   if(is.null(binding)){
     return(NULL)
   }
-  .bt_check_random_sd_binding(binding)
+  if(!validated){
+    .bt_check_random_sd_binding(binding)
+  }
   if(isTRUE(binding$true_allocation)){
     allocation_target <- .bt_random_effect_allocation_target_metadata(
       binding$allocations[[1L]],

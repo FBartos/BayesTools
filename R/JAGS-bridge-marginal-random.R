@@ -422,6 +422,19 @@
         ),
         prediction_rows = prediction_rows,
         posterior_names = posterior_names,
+        # The row-indexed SD source and its validation belong to the term, not
+        # to the draw; a bridge evaluates thousands of draws through this plan.
+        row_indexed_source = if(row_indexed){
+          .bt_random_effect_row_indexed_source(random_term)
+        }else{
+          NULL
+        },
+        sd_binding = if(row_indexed && !is.null(random_term$sd_binding)){
+          .bt_check_random_sd_binding(random_term$sd_binding)
+          random_term$sd_binding
+        }else{
+          NULL
+        },
         factor_plan = factor_plan
       )
     })
@@ -831,13 +844,15 @@
         random_term = random_term,
         posterior = posterior,
         prior_list = prior_list,
-        n_columns = n_columns
+        n_columns = n_columns,
+        binding = block_plan$sd_binding
       )
     if(is.null(column_allocation)){
       allocation <- .bt_random_effect_row_indexed_allocation_draws(
         random_term = random_term,
         posterior = posterior,
-        prior_list = prior_list
+        prior_list = prior_list,
+        binding = block_plan$sd_binding
       )
       .bt_random_effect_marginal_covariance_validate_draw_matrix(
         draws = matrix(allocation, ncol = 1L),
@@ -1057,7 +1072,8 @@
       data = block_plan$source_data,
       parameters = source_parameters,
       prediction_rows = block_plan$prediction_rows,
-      context = "Bridge-only random-effect marginal covariance"
+      context = "Bridge-only random-effect marginal covariance",
+      source = block_plan$row_indexed_source
     )
     .bt_random_effect_marginal_covariance_validate_draw_matrix(
       draws = source_draws,
@@ -1073,13 +1089,15 @@
         random_term = random_term,
         posterior = posterior,
         prior_list = prior_list,
-        n_columns = ncol(model_matrix)
+        n_columns = ncol(model_matrix),
+        binding = block_plan$sd_binding
       )
     if(is.null(column_allocation)){
       allocation <- .bt_random_effect_row_indexed_allocation_draws(
         random_term = random_term,
         posterior = posterior,
-        prior_list = prior_list
+        prior_list = prior_list,
+        binding = block_plan$sd_binding
       )
       .bt_random_effect_marginal_covariance_validate_draw_matrix(
         draws = matrix(allocation, ncol = 1L),

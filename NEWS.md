@@ -1,5 +1,11 @@
 # version 0.3.1
 ### Features
+- keeps random-effect SD-source validation out of the bridge's per-draw path.
+  A row-indexed external SD source and its binding belong to the term, not to
+  the draw, so the compiled block plan resolves and validates them once and the
+  per-draw evaluators are given the result. A marginal likelihood on an
+  eighteen-row scale model takes 14.7 s where it took 24.9 s, with the same
+  evaluators and the same values.
 - records the resolved source transform on
   `random_effects_marginal_update_plan()` as `source_transform_spec`. The plan
   already named the transform; consumers that apply it to a draw needed the
