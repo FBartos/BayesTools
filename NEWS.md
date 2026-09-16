@@ -1,5 +1,9 @@
 # version 0.3.1
 ### Features
+- records the resolved source transform on
+  `random_effects_marginal_update_plan()` as `source_transform_spec`. The plan
+  already named the transform; consumers that apply it to a draw needed the
+  transform itself, and had no way to obtain it from the plan.
 - keeps the invariant parts of a random-effect marginal factor contract out of
   the per-draw path. `random_effects_marginal_factor_states()` takes an optional
   `cache` that retains the design, its priors, the selected blocks and the

@@ -98,6 +98,15 @@ random_effects_marginal_update_plan <- function(fit, selection){
   if(is.null(plan$source_transform)){
     plan$source_transform <- key$source_transform
   }
+  # `source_transform` names the transform; `source_transform_spec` is the
+  # transform itself, so a consumer that needs to apply it to a draw does not
+  # have to re-derive it from the catalog. NULL when the quantity has none.
+  if(is.null(plan$source_transform_spec)){
+    plan$source_transform_spec <- tryCatch(
+      .bt_parameter_transform_from_quantity(fit, quantity),
+      error = function(e) NULL
+    )
+  }
   plan$dependencies      <- key$dependencies
   class(plan) <- c(
     "BayesTools_random_effects_marginal_update_plan",
