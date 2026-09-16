@@ -292,13 +292,17 @@ random_sd_source <- function(source, shape = c("scalar", "row")){
   .bt_parameter_source_is_row(x$source)
 }
 
-.bt_parameter_source_values_function <- function(source){
+.bt_parameter_source_values_function <- function(source, validated = FALSE){
 
   if(inherits(source, "random_sd_source")){
-    .bt_check_random_sd_source(source)
+    if(!isTRUE(validated)){
+      .bt_check_random_sd_source(source)
+    }
     return(source$source$values)
   }
-  .bt_check_parameter_source(source)
+  if(!isTRUE(validated)){
+    .bt_check_parameter_source(source)
+  }
 
   source$values
 }
@@ -435,7 +439,7 @@ random_sd_source <- function(source, shape = c("scalar", "row")){
   if(!isTRUE(validated)){
     .bt_check_parameter_source(source)
   }
-  values_function <- .bt_parameter_source_values_function(source)
+  values_function <- .bt_parameter_source_values_function(source, validated)
   if(is.null(values_function)){
     return(NULL)
   }
