@@ -340,3 +340,22 @@ test_that("bridge formula context treats fitted source semantics as authoritativ
     fixed = TRUE
   )
 })
+
+
+test_that("bridge node pieces merge by name with the last assignment winning", {
+
+  # The merge runs for every draw of a bridge. Its contract: first appearance
+  # decides a node's position, the last assignment decides its value, and
+  # empty or unnamed pieces contribute nothing.
+  merged <- .bt_JAGS_bridge_merge_nodes(
+    c(a = 1, b = 2),
+    numeric(),
+    c(3, 4),
+    NULL,
+    c(b = 20, c = 30),
+    c(a = 10L)
+  )
+  expect_identical(merged, c(a = 10, b = 20, c = 30))
+  expect_identical(.bt_JAGS_bridge_merge_nodes(), numeric())
+  expect_identical(.bt_JAGS_bridge_merge_nodes(numeric(), c(1, 2)), numeric())
+})
