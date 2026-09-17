@@ -67,11 +67,21 @@ selection_context_validate <- function(context, n_samples = NULL,
   out <- .selection_context_validate_row_fields(out, n_samples)
 
   if("omega" %in% names(out) || "omega" %in% required){
+    # One pass over the weight matrix rejects what the separate finiteness and
+    # sign scans rejected: a missing, infinite or NaN entry leaves the range
+    # non-finite, and a negative entry lowers its minimum.
+    omega_range <- if((is.numeric(out[["omega"]]) || is.integer(out[["omega"]])) &&
+                      length(out[["omega"]]) > 0L){
+      range(out[["omega"]])
+    }else{
+      # Nothing to scan; the type and shape clauses below decide the outcome.
+      c(0, 0)
+    }
     if(is.null(out[["omega"]]) || !is.matrix(out[["omega"]]) ||
        nrow(out[["omega"]]) != n_samples ||
        (!is.numeric(out[["omega"]]) && !is.integer(out[["omega"]])) ||
-       any(!is.finite(out[["omega"]])) ||
-       any(out[["omega"]] < 0)){
+       !is.finite(omega_range[1L]) || !is.finite(omega_range[2L]) ||
+       omega_range[1L] < 0){
       stop("Invalid selection context 'omega'.", call. = FALSE)
     }
     if(!is.null(n_bins) && ncol(out[["omega"]]) != n_bins){
@@ -90,12 +100,15 @@ selection_context_validate <- function(context, n_samples = NULL,
     if(!is.numeric(out[["alpha"]]) && !is.integer(out[["alpha"]])){
       stop("Invalid selection context 'alpha'.", call. = FALSE)
     }
-    if(any(!is.finite(out[["alpha"]]))){
+    # One pass rejects the same values: a missing, infinite or NaN severity
+    # leaves the range non-finite, and the bounds are the range's bounds.
+    alpha_range <- range(out[["alpha"]])
+    if(!is.finite(alpha_range[1L]) || !is.finite(alpha_range[2L]) ||
+       alpha_range[1L] < 0 || alpha_range[2L] >= 1){
       stop("Invalid selection context 'alpha'.", call. = FALSE)
     }
-    out[["alpha"]] <- as.numeric(out[["alpha"]])
-    if(any(out[["alpha"]] < 0 | out[["alpha"]] >= 1)){
-      stop("Invalid selection context 'alpha'.", call. = FALSE)
+    if(!is.double(out[["alpha"]])){
+      out[["alpha"]] <- as.numeric(out[["alpha"]])
     }
   }
 
@@ -106,15 +119,10 @@ selection_context_validate <- function(context, n_samples = NULL,
     if(is.null(out[[field]])){
       stop("Missing selection context '", field, "'.", call. = FALSE)
     }
-    out[[field]] <- selection_row_arg(out[[field]], n_samples, field)
-    if(!is.numeric(out[[field]]) && !is.integer(out[[field]])){
-      stop("Invalid selection context '", field, "'.", call. = FALSE)
-    }
-    if(any(!is.finite(out[[field]])) ||
-       any(abs(out[[field]] - round(out[[field]])) > sqrt(.Machine$double.eps))){
-      stop("Invalid selection context '", field, "'.", call. = FALSE)
-    }
-    out[[field]] <- as.integer(round(out[[field]]))
+    out[[field]] <- .selection_context_integer_field(
+      selection_row_arg(out[[field]], n_samples, field),
+      field
+    )
   }
 
   if("vector_rule" %in% names(out) || "vector_rule" %in% required){
@@ -138,27 +146,38 @@ selection_context_validate <- function(context, n_samples = NULL,
       n_samples,
       "use_normal"
     )
-    if(any(is.na(out[["use_normal"]]))){
+    if(anyNA(out[["use_normal"]])){
       stop("Invalid selection context 'use_normal'.", call. = FALSE)
     }
   }
 
-  if("kernel_mode" %in% names(out) &&
-     any(!out[["kernel_mode"]] %in% 0:3)){
-    stop("Invalid selection context 'kernel_mode'.", call. = FALSE)
+  # The routing fields are validated integer vectors without missing values by
+  # now, so their range decides membership exactly as the element-wise tests
+  # did, in one pass instead of one logical vector per test.
+  if("kernel_mode" %in% names(out)){
+    kernel_mode_range <- range(out[["kernel_mode"]])
+    if(kernel_mode_range[1L] < 0L || kernel_mode_range[2L] > 3L){
+      stop("Invalid selection context 'kernel_mode'.", call. = FALSE)
+    }
   }
-  if("phack_kind" %in% names(out) &&
-     any(!out[["phack_kind"]] %in% 0:2)){
-    stop("Invalid selection context 'phack_kind'.", call. = FALSE)
+  if("phack_kind" %in% names(out)){
+    phack_kind_range <- range(out[["phack_kind"]])
+    if(phack_kind_range[1L] < 0L || phack_kind_range[2L] > 2L){
+      stop("Invalid selection context 'phack_kind'.", call. = FALSE)
+    }
   }
-  if("bias_indicator" %in% names(out) &&
-     any(out[["bias_indicator"]] < 1L)){
+  bias_indicator_range <- if("bias_indicator" %in% names(out)){
+    range(out[["bias_indicator"]])
+  }else{
+    NULL
+  }
+  if(!is.null(bias_indicator_range) && bias_indicator_range[1L] < 1L){
     stop("Invalid selection context 'bias_indicator'.", call. = FALSE)
   }
   n_branches <- .selection_context_n_branches(out)
-  if("bias_indicator" %in% names(out) &&
+  if(!is.null(bias_indicator_range) &&
      !is.null(n_branches) &&
-     any(out[["bias_indicator"]] > n_branches)){
+     bias_indicator_range[2L] > n_branches){
     stop("Invalid selection context 'bias_indicator'.", call. = FALSE)
   }
   out <- .selection_context_validate_observations(out, required, n_bins)
@@ -297,8 +316,11 @@ selection_native_kernel_args <- function(selection_spec, S, alpha = NULL,
   check_list(selection_spec, "selection_spec")
   check_int(S, "S", lower = 1, allow_NA = FALSE)
 
+  # A row-wise argument is usually one value shared by every posterior row.
+  # Validating the supplied value and expanding it afterwards keeps every
+  # rejection while the checks stop repeating over rows known to be identical.
   if(is.null(alpha)){
-    alpha <- .selection_null_default(selection_spec[["alpha"]], rep(0, S))
+    alpha <- .selection_null_default(selection_spec[["alpha"]], 0)
   }
   if(is.null(phack_kind)){
     if(.selection_spec_mixed_phack_q(selection_spec)){
@@ -307,50 +329,28 @@ selection_native_kernel_args <- function(selection_spec, S, alpha = NULL,
         call. = FALSE
       )
     }
-    phack_kind <- rep(
-      if(.selection_spec_has_phack(selection_spec)) .selection_spec_phack_q(selection_spec) else 0L,
-      S
-    )
+    phack_kind <-
+      if(.selection_spec_has_phack(selection_spec)) .selection_spec_phack_q(selection_spec) else 0L
   }
 
-  alpha <- selection_row_arg(alpha, S, "alpha")
+  .selection_native_row_length(alpha, S, "alpha")
   if(!is.numeric(alpha) && !is.integer(alpha)){
     stop("Invalid selection native argument 'alpha'.", call. = FALSE)
   }
-  if(any(!is.finite(alpha)) || any(alpha < 0 | alpha >= 1)){
+  alpha_range <- range(alpha)
+  if(!is.finite(alpha_range[1L]) || !is.finite(alpha_range[2L]) ||
+     alpha_range[1L] < 0 || alpha_range[2L] >= 1){
     stop("Invalid selection native argument 'alpha'.", call. = FALSE)
   }
-  alpha <- as.numeric(alpha)
+  alpha <- selection_row_arg(as.numeric(alpha), S, "alpha")
 
-  phack_kind <- selection_row_arg(phack_kind, S, "phack_kind")
-  if(!is.numeric(phack_kind) && !is.integer(phack_kind)){
-    stop("Invalid selection native argument 'phack_kind'.", call. = FALSE)
-  }
-  if(any(!is.finite(phack_kind)) ||
-     any(abs(phack_kind - round(phack_kind)) > sqrt(.Machine$double.eps))){
-    stop("Invalid selection native argument 'phack_kind'.", call. = FALSE)
-  }
-  phack_kind <- as.integer(round(phack_kind))
-  if(any(!phack_kind %in% 0:2)){
-    stop("Invalid selection native argument 'phack_kind'.", call. = FALSE)
-  }
-
-  kernel_mode <- selection_row_arg(
-    .selection_row_kernel_mode(selection_spec, kernel_mode, S),
-    S,
-    "kernel_mode"
+  phack_kind <- .selection_native_integer_arg(
+    phack_kind, S, "phack_kind", 2L
   )
-  if(!is.numeric(kernel_mode) && !is.integer(kernel_mode)){
-    stop("Invalid selection native argument 'kernel_mode'.", call. = FALSE)
-  }
-  if(any(!is.finite(kernel_mode)) ||
-     any(abs(kernel_mode - round(kernel_mode)) > sqrt(.Machine$double.eps))){
-    stop("Invalid selection native argument 'kernel_mode'.", call. = FALSE)
-  }
-  kernel_mode <- as.integer(round(kernel_mode))
-  if(any(!kernel_mode %in% 0:3)){
-    stop("Invalid selection native argument 'kernel_mode'.", call. = FALSE)
-  }
+  kernel_mode <- .selection_native_integer_arg(
+    .selection_row_kernel_mode(selection_spec, kernel_mode, S),
+    S, "kernel_mode", 3L
+  )
 
   return(list(
     alpha       = alpha,
@@ -379,6 +379,77 @@ selection_row_arg <- function(x, n, name){
   return(x)
 }
 
+
+# The length rejection of selection_row_arg(), without the expansion: a native
+# row argument is validated before it is repeated over the posterior rows.
+.selection_native_row_length <- function(x, n, name){
+
+  if(length(x) != 1L && length(x) != n){
+    stop("Selection argument '", name, "' must have length 1 or ", n, ".",
+         call. = FALSE)
+  }
+
+  return(invisible(TRUE))
+}
+
+
+# Validate one row-wise integer native argument before expanding it. An integer
+# vector needs no rounding repair, and a real vector's finiteness scan and its
+# membership test become range comparisons; the accepted values and every
+# rejection are the ones the element-wise checks produced.
+.selection_native_integer_arg <- function(x, n, name, upper){
+
+  .selection_native_row_length(x, n, name)
+  if(!is.numeric(x) && !is.integer(x)){
+    stop("Invalid selection native argument '", name, "'.", call. = FALSE)
+  }
+  if(is.integer(x)){
+    if(anyNA(x)){
+      stop("Invalid selection native argument '", name, "'.", call. = FALSE)
+    }
+  }else{
+    limits <- range(x)
+    if(!is.finite(limits[1L]) || !is.finite(limits[2L]) ||
+       any(abs(x - round(x)) > sqrt(.Machine$double.eps))){
+      stop("Invalid selection native argument '", name, "'.", call. = FALSE)
+    }
+    x <- as.integer(round(x))
+  }
+  limits <- range(x)
+  if(limits[1L] < 0L || limits[2L] > upper){
+    stop("Invalid selection native argument '", name, "'.", call. = FALSE)
+  }
+
+  return(selection_row_arg(x, n, name))
+}
+
+
+# Row-wise integer fields are already integer vectors on every path that builds
+# a context from posterior draws. Recognizing that skips the rounding repair
+# such a vector cannot need, and the finiteness scan of a real vector becomes
+# one range pass; the values and the rejections are the ones the element-wise
+# checks produce.
+.selection_context_integer_field <- function(x, field){
+
+  if(!is.numeric(x) && !is.integer(x)){
+    stop("Invalid selection context '", field, "'.", call. = FALSE)
+  }
+  if(is.integer(x)){
+    if(anyNA(x)){
+      stop("Invalid selection context '", field, "'.", call. = FALSE)
+    }
+
+    return(x)
+  }
+
+  limits <- range(x)
+  if(!is.finite(limits[1L]) || !is.finite(limits[2L]) ||
+     any(abs(x - round(x)) > sqrt(.Machine$double.eps))){
+    stop("Invalid selection context '", field, "'.", call. = FALSE)
+  }
+
+  return(as.integer(round(x)))
+}
 
 .selection_context_known_fields <- function(){
 
@@ -624,16 +695,33 @@ selection_row_arg <- function(x, n, name){
 
 .selection_spec_kernel_mode <- function(selection_spec){
 
+  # An augmented context carries one kernel mode per posterior row, and the
+  # native batches ask for it twice per call, so this is a scan over the whole
+  # batch. A validated integer vector needs no rounding repair and no copy, and
+  # membership in 0:3 is the range of an integer vector. The rejections are the
+  # ones the element-wise tests made.
   mode <- selection_spec[["kernel_mode"]]
-  if(length(mode) == 0L ||
-     anyNA(mode) ||
-     any(!is.finite(mode)) ||
-     any(abs(mode - round(mode)) > sqrt(.Machine$double.eps)) ||
-     any(!as.integer(round(mode)) %in% 0:3)){
+  if(length(mode) == 0L){
+    stop("Invalid selection specification 'kernel_mode'.", call. = FALSE)
+  }
+  if(is.integer(mode)){
+    if(anyNA(mode)){
+      stop("Invalid selection specification 'kernel_mode'.", call. = FALSE)
+    }
+  }else{
+    limits <- range(mode)
+    if(!is.finite(limits[1L]) || !is.finite(limits[2L]) ||
+       any(abs(mode - round(mode)) > sqrt(.Machine$double.eps))){
+      stop("Invalid selection specification 'kernel_mode'.", call. = FALSE)
+    }
+    mode <- as.integer(round(mode))
+  }
+  limits <- range(mode)
+  if(limits[1L] < 0L || limits[2L] > 3L){
     stop("Invalid selection specification 'kernel_mode'.", call. = FALSE)
   }
 
-  return(as.integer(round(mode)))
+  return(mode)
 }
 
 # Spec-level kernel_mode is the union of branch kernels (capability flag).

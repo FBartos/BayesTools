@@ -1300,6 +1300,22 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 }
 
 
+# stats::density() records its data argument in the returned 'call' and
+# 'data.name'. Handing it the sample vector by value puts the whole vector into
+# that call, and deparsing it costs more than the kernel estimate itself on a
+# posterior-sized sample. Binding the sample to a name first leaves the
+# estimate, its grid and its bandwidth untouched and deparses one symbol.
+.density_kde_evaluate       <- function(arguments){
+
+  x         <- arguments[["x"]]
+  arguments <- arguments[names(arguments) != "x"]
+
+  eval(
+    as.call(c(list(quote(stats::density), x = quote(x)), arguments)),
+    environment()
+  )
+}
+
 .density_kde_boundary       <- function(x, n, from = NULL, to = NULL, bounds = c(-Inf, Inf), na.rm = FALSE, ...){
 
   if(!is.numeric(bounds) || length(bounds) != 2L || anyNA(bounds)){
@@ -1320,7 +1336,7 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     density_args$to <- to
   }
 
-  density_base <- do.call(stats::density, density_args)
+  density_base <- .density_kde_evaluate(density_args)
   attr(density_base, "boundary_reflection") <- FALSE
 
   if(!any(is.finite(bounds))){
@@ -1374,7 +1390,7 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     density_reflected_args
   )
 
-  density_reflected <- do.call(stats::density, density_reflected_args)
+  density_reflected <- .density_kde_evaluate(density_reflected_args)
   if(is.finite(bounds[1])){
     density_reflected$y[density_reflected$x < bounds[1]] <- 0
   }

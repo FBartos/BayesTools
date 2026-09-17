@@ -217,6 +217,18 @@
   of accepting nearby values under a numerical-comparison tolerance
 
 ### Performance
+- validates row-wise selection arguments in one pass instead of a dozen.
+  `selection_native_kernel_args()` now checks the value a caller supplied and
+  expands it over the posterior rows afterwards, `selection_context_validate()`
+  scans the weight matrix, the p-hacking severities and the routing fields once
+  through their range, and an integer field skips the rounding repair it cannot
+  need. Every value and every rejection is the one the element-wise checks
+  produced; a selection density line stops spending a tenth of its time here.
+- keeps the whole sample out of the call `stats::density()` records. The
+  boundary-reflected kernel estimate handed the sample by value, so the
+  returned `call` and `data.name` deparsed thousands of numbers on every
+  posterior plot; binding the sample to a name first leaves the estimate, the
+  grid and the bandwidth untouched and makes that deparse trivial.
 - reduces repeated scale and Cholesky extraction and Markov index construction
   when preparing random-effect covariance states
 - Random-effect covariance plans now expose exact updates for a two-block variance split conditional on its shared inclusion gate, and resolve the split's component SD updates from their declared scalar source.
