@@ -1,5 +1,18 @@
 # version 0.3.1
 ### Features
+- reports a logged formula intercept as affine in its own log coordinate.
+  `log tau_k(alpha') = log tau_k(alpha) + m * (log alpha' - log alpha)`, so the
+  update is additive with the intercept's model column as its basis - just not
+  in the fitted coordinate. `JAGS_formula_predictor_basis()` refused every
+  direction through such an intercept as `non_affine`, which left callers
+  re-evaluating the whole formula for each candidate value. It now returns the
+  basis with a new `coordinate` field that names the coordinate the update is
+  additive in, `"log"` for a logged intercept that is the only moving
+  coordinate and `"identity"` everywhere else. A direction that moves a logged
+  intercept together with ordinary coefficients mixes the two coordinates and
+  stays `non_affine`, and the expression, multiplier and random-scale
+  dependency checks apply to the logged intercept as they do to any other
+  coordinate.
 - keeps the bridge context's node layout, its requested-node selection and the
   validated selection kernel arguments out of the per-draw path. The node
   names, the merged node order and the availability check of the requested

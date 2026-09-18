@@ -114,10 +114,19 @@ JAGS_formula_coordinate_dependencies <- function(fit, coordinates){
 #' direction, including fitted random effects.
 #'
 #' The accessor reports `"affine"` only when the stored metadata proves that
-#' the selected update is additive on the fitted predictor scale. Logged
-#' intercepts and coordinates reused by formula expressions, coefficient
-#' multipliers, or random-effect scale sources are reported as non-affine or
-#' unsupported so callers can retain a generic evaluator.
+#' the selected update is additive on the fitted predictor scale. Coordinates
+#' reused by formula expressions, coefficient multipliers, or random-effect
+#' scale sources are reported as non-affine or unsupported so callers can
+#' retain a generic evaluator.
+#'
+#' A logged intercept is additive in its own logarithm rather than in the
+#' fitted coordinate: the predictor adds `log(new) - log(current)` times the
+#' intercept's model column. Such a direction is reported as `"affine"` with
+#' `coordinate = "log"` when the intercept is the only moving coordinate, and
+#' the caller must form the update from the logarithms. Every other affine
+#' result carries `coordinate = "identity"`. A direction that moves a logged
+#' intercept together with ordinary coefficients mixes the two coordinates and
+#' remains non-affine.
 #'
 #' @param fit fitted object created by [JAGS_fit()].
 #' @param directions a fully named numeric vector, or a numeric matrix with
@@ -129,8 +138,9 @@ JAGS_formula_coordinate_dependencies <- function(fit, coordinates){
 #'   from `fit`.
 #'
 #' @return A `BayesTools_formula_predictor_basis` list with `status`, `reason`,
-#' formula `parameter`, selected `coordinates`, and an `S` by `N` numeric
-#' `basis`. `basis` is present only when `status` is `"affine"`.
+#' formula `parameter`, selected `coordinates`, the `coordinate` the update is
+#' additive in (`"identity"` or `"log"`), and an `S` by `N` numeric `basis`.
+#' `basis` is present only when `status` is `"affine"`.
 #'
 #' @seealso [JAGS_formula_design()] [parameter_map()]
 #' @export
@@ -192,11 +202,21 @@ JAGS_formula_predictor_basis <- function(fit, directions,
   }, logical(1))
   moving_coordinates <- coordinate_names[moving]
 
+  # A logged intercept is affine in its own log coordinate: the predictor adds
+  # log(alpha') - log(alpha) times the intercept's model column and nothing
+  # else. That holds only while the intercept is the sole moving coordinate;
+  # a direction that also moves ordinary coefficients mixes the two
+  # coordinates and has no single additive update.
   intercept <- paste0(parameter, "_intercept")
-  if(isTRUE(design$log_intercept) && intercept %in% moving_coordinates){
+  log_intercept <- isTRUE(design$log_intercept) &&
+    intercept %in% moving_coordinates
+  if(log_intercept && length(moving_coordinates) > 1L){
     return(.bt_formula_predictor_basis_result(
       status = "non_affine",
-      reason = "The selected fitted intercept enters the predictor through log().",
+      reason = paste(
+        "The selected fitted intercept enters the predictor through log() and",
+        "moves together with other coefficients."
+      ),
       parameter = parameter,
       coordinates = coordinate_names
     ))
@@ -286,6 +306,7 @@ JAGS_formula_predictor_basis <- function(fit, directions,
     reason = "",
     parameter = parameter,
     coordinates = coordinate_names,
+    coordinate = if(log_intercept) "log" else "identity",
     basis = basis
   )
 }
@@ -528,13 +549,15 @@ JAGS_formula_predictor_basis <- function(fit, directions,
 }
 
 .bt_formula_predictor_basis_result <- function(
-    status, reason, parameter = "", coordinates = character(), basis = NULL){
+    status, reason, parameter = "", coordinates = character(),
+    coordinate = "identity", basis = NULL){
 
   out <- list(
     status = status,
     reason = reason,
     parameter = parameter,
     coordinates = coordinates,
+    coordinate = coordinate,
     basis = basis
   )
   class(out) <- c("BayesTools_formula_predictor_basis", "list")

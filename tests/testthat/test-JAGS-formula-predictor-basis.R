@@ -140,25 +140,29 @@ test_that("formula predictor bases apply persisted scaling and multipliers", {
 
 test_that("formula predictor bases expose metadata-declared fallbacks", {
 
-  log_formula <- ~ 1
+  log_formula <- ~ 1 + x
   attr(log_formula, "log(intercept)") <- TRUE
   log_result <- JAGS_formula(
     formula = log_formula,
     parameter = "mu",
-    data = data.frame(row = 1:2),
+    data = data.frame(x = c(-1, 2)),
     prior_list = list(
-      intercept = prior("gamma", list(shape = 2, rate = 1))
+      intercept = prior("gamma", list(shape = 2, rate = 1)),
+      x = prior("normal", list(mean = 0, sd = 1))
     )
   )
   log_samples <- matrix(
-    c(0.5, 1.5),
-    ncol = 1L,
-    dimnames = list(NULL, "mu_intercept")
+    c(0.5, -0.3, 1.5, 0.2),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, c("mu_intercept", "mu_x"))
   )
   log_fit <- .formula_predictor_basis_fit(log_result, log_samples)
+  # The logged intercept and an ordinary coefficient are additive in different
+  # coordinates, so a direction moving both has no single additive update.
   log_basis <- JAGS_formula_predictor_basis(
     log_fit,
-    directions = c(mu_intercept = 1),
+    directions = c(mu_intercept = 1, mu_x = 1),
     posterior_samples = log_samples
   )
 
@@ -196,6 +200,118 @@ test_that("formula predictor bases expose metadata-declared fallbacks", {
   expect_identical(multiplier_basis$status, "unsupported")
   expect_match(multiplier_basis$reason, "multipliers")
   expect_null(multiplier_basis$basis)
+})
+
+
+test_that("logged intercepts are affine in their own log coordinate", {
+
+  log_formula <- ~ 1 + x
+  attr(log_formula, "log(intercept)") <- TRUE
+  intercept_prior <- prior("gamma", list(shape = 2, rate = 1))
+  attr(intercept_prior, "multiply_by") <- 2
+  result <- JAGS_formula(
+    formula = log_formula,
+    parameter = "log_tau",
+    data = data.frame(x = c(-1, 0.5, 2)),
+    prior_list = list(
+      intercept = intercept_prior,
+      x = prior("normal", list(mean = 0, sd = 1))
+    )
+  )
+  coordinate_names <- c("log_tau_intercept", "log_tau_x")
+  samples <- matrix(
+    c(0.5, -0.2, 1.5, 0.3),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, coordinate_names)
+  )
+  fit <- .formula_predictor_basis_fit(result, samples)
+  model_matrix <- result$formula_design$model_matrix
+
+  # log tau_k(alpha') = log tau_k(alpha) + m * (log alpha' - log alpha): the
+  # basis is the intercept's model column times the direction and the term
+  # multiplier, and the caller forms the update from the logarithms.
+  directions <- matrix(
+    c(1, 0, 0.5, 0),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, coordinate_names)
+  )
+  intercept_basis <- JAGS_formula_predictor_basis(
+    fit,
+    directions = directions,
+    posterior_samples = samples
+  )
+
+  expect_identical(intercept_basis$status, "affine")
+  expect_identical(intercept_basis$coordinate, "log")
+  expect_identical(intercept_basis$parameter, "log_tau")
+  expect_identical(
+    unname(intercept_basis$basis),
+    unname(outer(directions[, 1L] * 2, model_matrix[, "(Intercept)"]))
+  )
+
+  # An ordinary coefficient of the same design keeps the fitted coordinate.
+  coefficient_basis <- JAGS_formula_predictor_basis(
+    fit,
+    directions = c(log_tau_x = 1),
+    posterior_samples = samples
+  )
+
+  expect_identical(coefficient_basis$status, "affine")
+  expect_identical(coefficient_basis$coordinate, "identity")
+  expect_identical(
+    unname(coefficient_basis$basis),
+    unname(outer(rep(1, nrow(samples)), model_matrix[, "x"]))
+  )
+
+  # A zero direction moves nothing and stays in the fitted coordinate.
+  still_basis <- JAGS_formula_predictor_basis(
+    fit,
+    directions = c(log_tau_intercept = 0),
+    posterior_samples = samples
+  )
+
+  expect_identical(still_basis$status, "affine")
+  expect_identical(still_basis$coordinate, "identity")
+  expect_true(all(still_basis$basis == 0))
+})
+
+
+test_that("logged intercepts keep their indirect-dependency fallbacks", {
+
+  log_formula <- ~ 1 + x
+  attr(log_formula, "log(intercept)") <- TRUE
+  x_prior <- prior("normal", list(mean = 0, sd = 1))
+  attr(x_prior, "multiply_by") <- "log_tau_intercept"
+  result <- JAGS_formula(
+    formula = log_formula,
+    parameter = "log_tau",
+    data = data.frame(x = c(-1, 2)),
+    prior_list = list(
+      intercept = prior("gamma", list(shape = 2, rate = 1)),
+      x = x_prior
+    )
+  )
+  samples <- matrix(
+    c(0.5, -0.2, 1.5, 0.3),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, c("log_tau_intercept", "log_tau_x"))
+  )
+  fit <- .formula_predictor_basis_fit(result, samples)
+
+  # The log coordinate does not excuse the indirect-dependency checks: the
+  # intercept also scales another term here, so no additive update exists.
+  basis <- JAGS_formula_predictor_basis(
+    fit,
+    directions = c(log_tau_intercept = 1),
+    posterior_samples = samples
+  )
+
+  expect_identical(basis$status, "unsupported")
+  expect_match(basis$reason, "multipliers")
+  expect_null(basis$basis)
 })
 
 

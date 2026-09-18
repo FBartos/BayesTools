@@ -20,8 +20,9 @@ from \code{fit}.}
 }
 \value{
 A \code{BayesTools_formula_predictor_basis} list with \code{status}, \code{reason},
-formula \code{parameter}, selected \code{coordinates}, and an \code{S} by \code{N} numeric
-\code{basis}. \code{basis} is present only when \code{status} is \code{"affine"}.
+formula \code{parameter}, selected \code{coordinates}, the \code{coordinate} the update is
+additive in (\code{"identity"} or \code{"log"}), and an \code{S} by \code{N} numeric \code{basis}.
+\code{basis} is present only when \code{status} is \code{"affine"}.
 }
 \description{
 \code{JAGS_formula_predictor_basis()} uses the fitted parameter map and persisted
@@ -31,10 +32,19 @@ coordinates. The result is conditional on all coordinates outside that
 direction, including fitted random effects.
 
 The accessor reports \code{"affine"} only when the stored metadata proves that
-the selected update is additive on the fitted predictor scale. Logged
-intercepts and coordinates reused by formula expressions, coefficient
-multipliers, or random-effect scale sources are reported as non-affine or
-unsupported so callers can retain a generic evaluator.
+the selected update is additive on the fitted predictor scale. Coordinates
+reused by formula expressions, coefficient multipliers, or random-effect
+scale sources are reported as non-affine or unsupported so callers can
+retain a generic evaluator.
+
+A logged intercept is additive in its own logarithm rather than in the
+fitted coordinate: the predictor adds \code{log(new) - log(current)} times the
+intercept's model column. Such a direction is reported as \code{"affine"} with
+\code{coordinate = "log"} when the intercept is the only moving coordinate, and
+the caller must form the update from the logarithms. Every other affine
+result carries \code{coordinate = "identity"}. A direction that moves a logged
+intercept together with ordinary coefficients mixes the two coordinates and
+remains non-affine.
 }
 \seealso{
 \code{\link[=JAGS_formula_design]{JAGS_formula_design()}} \code{\link[=parameter_map]{parameter_map()}}
