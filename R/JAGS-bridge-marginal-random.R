@@ -366,6 +366,26 @@
       }else{
         NULL
       }
+      # The row-indexed SD source and the node names its rows determine are
+      # properties of the term; a bridge replays thousands of draws through it.
+      row_indexed_source <- if(row_indexed){
+        .bt_random_effect_row_indexed_source(random_term)
+      }else{
+        NULL
+      }
+      row_indexed_source_names <- if(row_indexed){
+        source_rows <- if(is.null(prediction_rows)){
+          seq_len(nrow(block_data$model_matrix))
+        }else{
+          prediction_rows
+        }
+        .bt_parameter_source_row_names(
+          row_indexed_source$source,
+          max(source_rows)
+        )[source_rows]
+      }else{
+        NULL
+      }
       factor_plan <- list(
         type = if(row_indexed){
           "row_group"
@@ -424,11 +444,8 @@
         posterior_names = posterior_names,
         # The row-indexed SD source and its validation belong to the term, not
         # to the draw; a bridge evaluates thousands of draws through this plan.
-        row_indexed_source = if(row_indexed){
-          .bt_random_effect_row_indexed_source(random_term)
-        }else{
-          NULL
-        },
+        row_indexed_source = row_indexed_source,
+        row_indexed_source_names = row_indexed_source_names,
         sd_binding = if(row_indexed && !is.null(random_term$sd_binding)){
           .bt_check_random_sd_binding(random_term$sd_binding)
           random_term$sd_binding
@@ -828,7 +845,9 @@
       posterior = posterior,
       data = block_plan$source_data,
       prediction_rows = block_plan$prediction_rows,
-      context = "Bridge-only random-effect marginal covariance"
+      context = "Bridge-only random-effect marginal covariance",
+      source = block_plan$row_indexed_source,
+      source_names = block_plan$row_indexed_source_names
     )
     .bt_random_effect_marginal_covariance_validate_draw_matrix(
       draws = source_draws,
@@ -1073,7 +1092,8 @@
       parameters = source_parameters,
       prediction_rows = block_plan$prediction_rows,
       context = "Bridge-only random-effect marginal covariance",
-      source = block_plan$row_indexed_source
+      source = block_plan$row_indexed_source,
+      source_names = block_plan$row_indexed_source_names
     )
     .bt_random_effect_marginal_covariance_validate_draw_matrix(
       draws = source_draws,

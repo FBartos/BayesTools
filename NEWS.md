@@ -1,5 +1,18 @@
 # version 0.3.1
 ### Features
+- keeps the bridge context's node layout, its requested-node selection and the
+  validated selection kernel arguments out of the per-draw path. The node
+  names, the merged node order and the availability check of the requested
+  nodes are decided by the model, so a bridge resolves them once when its
+  evaluators are compiled and replays them by position for every draw, and a
+  draw whose reconstructed pieces have another shape rebuilds the layout. The
+  row-wise native selection arguments are kept with the specification's own
+  native cache, alongside the static arguments it already held, and reused only
+  while every input they are derived from is unchanged. A row-indexed SD
+  source's node names and a marginal factor contract's row supports, block
+  names and coefficient-basis designs travel with the compiled plan instead of
+  being rebuilt per draw. Node positions, node values and every rejection are
+  unchanged.
 - keeps random-effect SD-source validation out of the bridge's per-draw path.
   A row-indexed external SD source and its binding belong to the term, not to
   the draw, so the compiled block plan resolves and validates them once and the

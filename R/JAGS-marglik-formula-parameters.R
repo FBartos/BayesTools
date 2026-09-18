@@ -925,14 +925,27 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
         posterior = posterior,
         data = data,
         parameters = parameters,
-        context = context
+        context = context,
+        source = source,
+        source_names = source_names
       )
     })
   }
 
+  # The posterior a bridge evaluates keeps its coordinates, so the ambiguity
+  # scan over its column names is settled once per column set rather than once
+  # per draw.
+  ambiguity_names <- NULL
+  ambiguity_present <- NULL
+
   function(posterior, data = NULL, parameters = NULL){
 
-    present <- intersect(source_names, colnames(posterior))
+    posterior_names <- colnames(posterior)
+    if(!identical(posterior_names, ambiguity_names)){
+      ambiguity_present <<- intersect(source_names, posterior_names)
+      ambiguity_names <<- posterior_names
+    }
+    present <- ambiguity_present
     if(length(present) > 0L){
       stop(
         context, " for source '", source_label,

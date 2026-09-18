@@ -359,3 +359,143 @@ test_that("bridge node pieces merge by name with the last assignment winning", {
   expect_identical(.bt_JAGS_bridge_merge_nodes(), numeric())
   expect_identical(.bt_JAGS_bridge_merge_nodes(numeric(), c(1, 2)), numeric())
 })
+
+
+test_that("the cached bridge node layout reproduces the by-name merge", {
+
+  # A bridge builds the node layout once and replays it by position. Every
+  # state must give the vector the by-name merge builds, including repeated
+  # names across pieces, matrix coordinates and logical values.
+  state <- c("mu" = 0.5, "tau" = 1.25, "rho[1]" = 0.1)
+  pieces <- list(
+    prior_parameters = list(mu = 2.5, tau = 1.25),
+    formula_prior_parameters = list(`mu_gamma` = c(1, 2, 3)),
+    formula_parameters = list(mu = c(0.1, 0.2), flag = TRUE),
+    add_parameter_values = list(block = matrix(1:6 / 2, nrow = 2L))
+  )
+  random_nodes <- c("tau" = 3.5, "sigma[2]" = 0.75)
+
+  reference <- .bt_JAGS_bridge_context_nodes(
+    state = state,
+    prior_parameters = pieces$prior_parameters,
+    formula_prior_parameters = pieces$formula_prior_parameters,
+    formula_parameters = pieces$formula_parameters,
+    add_parameter_values = pieces$add_parameter_values,
+    random_nodes = random_nodes
+  )
+
+  node_cache <- new.env(parent = emptyenv())
+  cached <- .bt_JAGS_bridge_context_nodes(
+    state = state,
+    prior_parameters = pieces$prior_parameters,
+    formula_prior_parameters = pieces$formula_prior_parameters,
+    formula_parameters = pieces$formula_parameters,
+    add_parameter_values = pieces$add_parameter_values,
+    random_nodes = random_nodes,
+    node_cache = node_cache
+  )
+  expect_identical(cached, reference)
+
+  # a second state of the same shape reuses the layout
+  other_state <- state + 1
+  other_pieces <- pieces
+  other_pieces$formula_parameters$mu <- c(-1, -2)
+  other_random <- random_nodes * 2
+  expect_identical(
+    .bt_JAGS_bridge_context_nodes(
+      state = other_state,
+      prior_parameters = other_pieces$prior_parameters,
+      formula_prior_parameters = other_pieces$formula_prior_parameters,
+      formula_parameters = other_pieces$formula_parameters,
+      add_parameter_values = other_pieces$add_parameter_values,
+      random_nodes = other_random,
+      node_cache = node_cache
+    ),
+    .bt_JAGS_bridge_context_nodes(
+      state = other_state,
+      prior_parameters = other_pieces$prior_parameters,
+      formula_prior_parameters = other_pieces$formula_prior_parameters,
+      formula_parameters = other_pieces$formula_parameters,
+      add_parameter_values = other_pieces$add_parameter_values,
+      random_nodes = other_random
+    )
+  )
+
+  # a different shape rebuilds the layout instead of replaying a stale one
+  changed <- pieces
+  changed$formula_parameters$mu <- c(0.1, 0.2, 0.3)
+  expect_identical(
+    .bt_JAGS_bridge_context_nodes(
+      state = state,
+      prior_parameters = changed$prior_parameters,
+      formula_prior_parameters = changed$formula_prior_parameters,
+      formula_parameters = changed$formula_parameters,
+      add_parameter_values = changed$add_parameter_values,
+      random_nodes = random_nodes,
+      node_cache = node_cache
+    ),
+    .bt_JAGS_bridge_context_nodes(
+      state = state,
+      prior_parameters = changed$prior_parameters,
+      formula_prior_parameters = changed$formula_prior_parameters,
+      formula_parameters = changed$formula_parameters,
+      add_parameter_values = changed$add_parameter_values,
+      random_nodes = random_nodes
+    )
+  )
+
+  # unnamed pieces have no position rule and return to the by-name merge
+  unnamed_state <- unname(state)
+  expect_identical(
+    .bt_JAGS_bridge_context_nodes(
+      state = unnamed_state,
+      prior_parameters = pieces$prior_parameters,
+      formula_prior_parameters = pieces$formula_prior_parameters,
+      formula_parameters = pieces$formula_parameters,
+      add_parameter_values = pieces$add_parameter_values,
+      random_nodes = random_nodes,
+      node_cache = node_cache
+    ),
+    .bt_JAGS_bridge_context_nodes(
+      state = unnamed_state,
+      prior_parameters = pieces$prior_parameters,
+      formula_prior_parameters = pieces$formula_prior_parameters,
+      formula_parameters = pieces$formula_parameters,
+      add_parameter_values = pieces$add_parameter_values,
+      random_nodes = random_nodes
+    )
+  )
+})
+
+
+test_that("the cached node selection keeps the availability check", {
+
+  nodes <- c(a = 1, b = 2, c = 3)
+  node_cache <- new.env(parent = emptyenv())
+
+  expect_identical(
+    .bt_JAGS_bridge_select_nodes(nodes, c("c", "a"), node_cache),
+    .bt_JAGS_bridge_select_nodes(nodes, c("c", "a"))
+  )
+  # replayed selection on a second state of the same layout
+  expect_identical(
+    .bt_JAGS_bridge_select_nodes(c(a = 10, b = 20, c = 30), c("c", "a"),
+                                 node_cache),
+    c(c = 30, a = 10)
+  )
+  # a different request and a missing node are rejected as before
+  expect_identical(
+    .bt_JAGS_bridge_select_nodes(nodes, "b", node_cache),
+    c(b = 2)
+  )
+  expect_error(
+    .bt_JAGS_bridge_select_nodes(nodes, c("a", "d"), node_cache),
+    "Requested bridge context node(s) are unavailable: d",
+    fixed = TRUE
+  )
+  expect_error(
+    .bt_JAGS_bridge_select_nodes(c(a = 1), c("a", "d"), node_cache),
+    "Requested bridge context node(s) are unavailable: d",
+    fixed = TRUE
+  )
+})

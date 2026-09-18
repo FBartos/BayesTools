@@ -75,6 +75,10 @@
                             factor_state = FALSE) list()
     )
   }
+  # The node layout and the requested-node selection belong to this compiled
+  # evaluator, i.e. to one bridge. A worker receives its own copy with the
+  # closure, and a new bridge compiles a new evaluator with an empty cache.
+  node_cache <- new.env(parent = emptyenv())
   if(identical(mode, "full")){
     return(list(
       context = function(samples, prior_parameters,
@@ -90,7 +94,8 @@
           formula_prior_list = formula_prior_list,
           model_data = model_data,
           random_context_evaluator = random_evaluator,
-          marginal_random_evaluator = marginal_random_evaluator
+          marginal_random_evaluator = marginal_random_evaluator,
+          node_cache = node_cache
         )
       }
     ))
@@ -109,7 +114,8 @@
           random_context_evaluator = random_evaluator,
           marginal_random_evaluator = marginal_random_evaluator,
           node_names = node_names,
-          random_only = selected_random_only
+          random_only = selected_random_only,
+          node_cache = node_cache
         )
       }
     ))
@@ -126,7 +132,8 @@
         add_parameters = add_parameters,
         random_context_evaluator = random_evaluator,
         node_names = node_names,
-        random_only = selected_random_only
+        random_only = selected_random_only,
+        node_cache = node_cache
       )
     }
   )
@@ -158,7 +165,8 @@
                                      formula_prior_list,
                                      model_data,
                                      random_context_evaluator = NULL,
-                                     marginal_random_evaluator = NULL){
+                                     marginal_random_evaluator = NULL,
+                                     node_cache = NULL){
 
   state <- .bt_JAGS_bridge_context_state(samples)
   state_matrix <- .bt_JAGS_bridge_context_state_matrix(samples)
@@ -203,7 +211,8 @@
     formula_prior_parameters = formula_prior_parameters,
     formula_parameters = formula_parameters,
     add_parameter_values = add_parameter_values,
-    random_nodes = random_nodes
+    random_nodes = random_nodes,
+    node_cache = node_cache
   )
   node_info <- .bt_JAGS_bridge_context_node_info(
     state = state,
@@ -248,7 +257,8 @@
     random_context_evaluator,
     marginal_random_evaluator,
     node_names = NULL,
-    random_only = FALSE){
+    random_only = FALSE,
+    node_cache = NULL){
 
   nodes <- if(!is.null(node_names) && length(node_names) == 0L){
     numeric()
@@ -261,7 +271,8 @@
       add_parameters = add_parameters,
       random_context_evaluator = random_context_evaluator,
       node_names = node_names,
-      random_only = random_only
+      random_only = random_only,
+      node_cache = node_cache
     )$nodes
   }
   marginalized_random <- marginal_random_evaluator$covariance(
@@ -291,7 +302,8 @@
                                           add_parameters,
                                           random_context_evaluator,
                                           node_names = NULL,
-                                          random_only = FALSE){
+                                          random_only = FALSE,
+                                          node_cache = NULL){
 
   state <- .bt_JAGS_bridge_context_state(samples)
   add_parameter_values <- .bt_JAGS_bridge_context_add_parameters(
@@ -305,7 +317,7 @@
     formula_parameters = formula_parameters
   )
   if(isTRUE(random_only)){
-    nodes <- .bt_JAGS_bridge_select_nodes(random_nodes, node_names)
+    nodes <- .bt_JAGS_bridge_select_nodes(random_nodes, node_names, node_cache)
     out <- list(nodes = nodes)
     class(out) <- c(
       "BayesTools_bridge_nodes_context",
@@ -320,9 +332,10 @@
     formula_prior_parameters = formula_prior_parameters,
     formula_parameters = formula_parameters,
     add_parameter_values = add_parameter_values,
-    random_nodes = random_nodes
+    random_nodes = random_nodes,
+    node_cache = node_cache
   )
-  nodes <- .bt_JAGS_bridge_select_nodes(nodes, node_names)
+  nodes <- .bt_JAGS_bridge_select_nodes(nodes, node_names, node_cache)
 
   out <- list(nodes = nodes)
   class(out) <- c(
@@ -333,12 +346,33 @@
   out
 }
 
-.bt_JAGS_bridge_select_nodes <- function(nodes, node_names){
+.bt_JAGS_bridge_select_nodes <- function(nodes, node_names, node_cache = NULL){
 
   if(is.null(node_names)){
     return(nodes)
   }
-  missing <- setdiff(node_names, names(nodes))
+  # The requested names and the available ones are both fixed by the model, so
+  # the availability check and the name lookup are resolved once per bridge and
+  # replayed as positions while the available names stay the same. Name lookup
+  # and `match()` take the first occurrence of a duplicated name alike.
+  if(is.environment(node_cache)){
+    available <- names(nodes)
+    if(!identical(available, node_cache$select_names) ||
+       !identical(node_names, node_cache$select_requested)){
+      .bt_JAGS_bridge_check_selected_nodes(available, node_names)
+      node_cache$select_names <- available
+      node_cache$select_requested <- node_names
+      node_cache$select_index <- match(node_names, available)
+    }
+    return(nodes[node_cache$select_index])
+  }
+  .bt_JAGS_bridge_check_selected_nodes(names(nodes), node_names)
+  nodes[node_names]
+}
+
+.bt_JAGS_bridge_check_selected_nodes <- function(available, node_names){
+
+  missing <- setdiff(node_names, available)
   if(length(missing) > 0L){
     stop(
       "Requested bridge context node(s) are unavailable: ",
@@ -346,7 +380,8 @@
       call. = FALSE
     )
   }
-  nodes[node_names]
+
+  invisible(TRUE)
 }
 
 .bt_JAGS_bridge_context_state <- function(samples){
@@ -374,7 +409,31 @@
                                           formula_prior_parameters,
                                           formula_parameters,
                                           add_parameter_values,
-                                          random_nodes){
+                                          random_nodes,
+                                          node_cache = NULL){
+
+  if(is.environment(node_cache)){
+    entries <- .bt_JAGS_bridge_node_entries(
+      prior_parameters,
+      formula_prior_parameters,
+      formula_parameters,
+      add_parameter_values
+    )
+    layout <- .bt_JAGS_bridge_node_layout(
+      node_cache = node_cache,
+      state = state,
+      entries = entries,
+      random_nodes = random_nodes
+    )
+    if(!is.null(layout)){
+      return(.bt_JAGS_bridge_fill_node_layout(
+        layout = layout,
+        state = state,
+        entries = entries,
+        random_nodes = random_nodes
+      ))
+    }
+  }
 
   .bt_JAGS_bridge_merge_nodes(
     state,
@@ -384,6 +443,138 @@
     .bt_JAGS_bridge_flatten_parameter_nodes(add_parameter_values),
     random_nodes
   )
+}
+
+
+# The pieces the reconstructed parameter lists contribute to the merged node
+# vector, in the order .bt_JAGS_bridge_flatten_parameter_nodes() merges them,
+# with the parameter name, value length and value dimensions that decide their
+# node names. Named lookup keeps a duplicated parameter name resolving to the
+# same value the flattening loop takes.
+.bt_JAGS_bridge_node_entries <- function(...){
+
+  parameter_lists <- list(...)
+  n_max <- sum(vapply(parameter_lists, length, integer(1L)))
+  parameter <- character(n_max)
+  value_length <- integer(n_max)
+  dimension <- vector("list", n_max)
+  value <- vector("list", n_max)
+  kept <- 0L
+
+  for(parameters in parameter_lists){
+    if(length(parameters) == 0L){
+      next
+    }
+    parameter_names <- names(parameters)
+    if(is.null(parameter_names)){
+      next
+    }
+    for(name in parameter_names){
+      if(!nzchar(name)){
+        next
+      }
+      parameter_value <- parameters[[name]]
+      if(is.null(parameter_value) || length(parameter_value) == 0L ||
+         (!is.numeric(parameter_value) && !is.logical(parameter_value))){
+        next
+      }
+      kept <- kept + 1L
+      parameter[[kept]] <- name
+      value_length[[kept]] <- length(parameter_value)
+      # A vector has no dimensions; `[[<-` would drop the entry for NULL.
+      dimension[kept] <- list(dim(parameter_value))
+      value[[kept]] <- parameter_value
+    }
+  }
+
+  kept_index <- seq_len(kept)
+
+  list(
+    parameter = parameter[kept_index],
+    length = value_length[kept_index],
+    dimension = dimension[kept_index],
+    value = value[kept_index]
+  )
+}
+
+
+# The node layout a bridge merges is a property of the model: the names,
+# lengths and dimensions of the reconstructed pieces are fixed by the formula
+# and the monitored coordinates, and only their values change between draws.
+# The layout is therefore built once per bridge and replayed by position, which
+# gives the vector .bt_JAGS_bridge_merge_nodes() builds by name -- first
+# appearance decides the position, the last assignment decides the value, and
+# one positional assignment applies the pieces in that same order -- without
+# rebuilding the names. A draw whose pieces have another shape rebuilds the
+# layout; a piece with a missing or empty node name has no position rule here
+# and returns to the by-name merge.
+.bt_JAGS_bridge_node_layout <- function(node_cache, state, entries,
+                                        random_nodes){
+
+  state_names  <- names(state)
+  random_names <- names(random_nodes)
+  shape <- list(
+    state_names,
+    entries$parameter,
+    entries$length,
+    entries$dimension,
+    random_names
+  )
+  if(identical(shape, node_cache$nodes_shape)){
+    return(node_cache$nodes_layout)
+  }
+
+  entry_names <- vector("list", length(entries$parameter))
+  for(entry in seq_along(entry_names)){
+    entry_names[[entry]] <- .bt_JAGS_bridge_flatten_parameter_names(
+      parameter = entries$parameter[[entry]],
+      value = entries$value[[entry]]
+    )
+  }
+  all_names <- c(
+    state_names,
+    unlist(entry_names, use.names = FALSE),
+    random_names
+  )
+
+  layout <- if(length(all_names) == 0L || anyNA(all_names) ||
+               !all(nzchar(all_names))){
+    NULL
+  }else{
+    merged <- unique(all_names)
+    list(
+      names = merged,
+      index = match(all_names, merged),
+      state = !is.null(state_names),
+      random = !is.null(random_names)
+    )
+  }
+  node_cache$nodes_shape <- shape
+  node_cache$nodes_layout <- layout
+
+  layout
+}
+
+
+.bt_JAGS_bridge_fill_node_layout <- function(layout, state, entries,
+                                             random_nodes){
+
+  values <- c(
+    if(isTRUE(layout$state)) as.numeric(state) else NULL,
+    unlist(entries$value, use.names = FALSE),
+    if(isTRUE(layout$random)) as.numeric(random_nodes) else NULL
+  )
+  index <- layout$index
+  if(length(values) != length(index)){
+    stop("Bridge context node layout and values are inconsistent.",
+         call. = FALSE)
+  }
+
+  out <- numeric(length(layout$names))
+  names(out) <- layout$names
+  out[index] <- values
+
+  out
 }
 
 .bt_JAGS_bridge_context_node_info <- function(state, prior_parameters,
@@ -568,25 +759,33 @@
   }
 
   values <- as.numeric(value)
+  names(values) <- .bt_JAGS_bridge_flatten_parameter_names(
+    parameter = parameter,
+    value = value
+  )
+  values
+}
+
+
+.bt_JAGS_bridge_flatten_parameter_names <- function(parameter, value){
+
   dims <- dim(value)
   if(is.null(dims)){
-    node_names <- if(length(values) == 1L){
-      parameter
-    }else{
-      paste0(parameter, "[", seq_along(values), "]")
+    if(length(value) == 1L){
+      return(parameter)
     }
-  }else{
-    indices <- do.call(expand.grid, lapply(dims, seq_len))
-    node_names <- paste0(
-      parameter,
-      "[",
-      apply(indices, 1L, paste, collapse = ","),
-      "]"
-    )
+
+    return(paste0(parameter, "[", seq_along(value), "]"))
   }
 
-  names(values) <- node_names
-  values
+  indices <- do.call(expand.grid, lapply(dims, seq_len))
+
+  paste0(
+    parameter,
+    "[",
+    apply(indices, 1L, paste, collapse = ","),
+    "]"
+  )
 }
 
 .bt_JAGS_bridge_merge_nodes <- function(...){

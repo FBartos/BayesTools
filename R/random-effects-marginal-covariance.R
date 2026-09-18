@@ -461,8 +461,10 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
     stop("'cache' must be NULL or an environment.", call. = FALSE)
   }
   components <- .bt_random_effect_marginal_factor_input(factors)
-  plan <- NULL
-  if(is.environment(cache) && is.environment(components$contract_id)){
+  cacheable <- is.environment(cache) && is.environment(components$contract_id)
+  plan   <- NULL
+  layout <- NULL
+  if(cacheable){
     process_id <- Sys.getpid()
     cached <- cache[["random_effects_marginal_diagonal_factor"]]
     if(!is.null(cached) && identical(cached$process_id, process_id)){
@@ -472,7 +474,8 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
           call. = FALSE
         )
       }
-      plan <- cached$plan
+      plan   <- cached$plan
+      layout <- cached$layout
     }
   }
   if(is.null(plan)){
@@ -481,7 +484,7 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
       row_blocks   = components$row_blocks,
       n_rows       = components$n_rows
     )
-    if(is.environment(cache) && is.environment(components$contract_id)){
+    if(cacheable){
       cache[["random_effects_marginal_diagonal_factor"]] <- list(
         process_id = Sys.getpid(),
         contract_id = components$contract_id,
@@ -513,12 +516,54 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
   n_draws    <- components$n_draws
   n_rows     <- components$n_rows
   row_blocks <- components$row_blocks
-  diagonal_support <- rep(FALSE, n_rows)
-  for(block in plan$blocks){
-    for(component in block$diagonal){
-      diagonal_support[component$row] <- TRUE
+  # The row/column supports, the block names and the coefficient-basis designs
+  # are decided by the contract the cache is keyed on; only the states are not.
+  # A bridge evaluates one state per call through the same contract.
+  if(is.null(layout)){
+    diagonal_support <- rep(FALSE, n_rows)
+    for(block in plan$blocks){
+      for(component in block$diagonal){
+        diagonal_support[component$row] <- TRUE
+      }
+    }
+    loading_supports <- lapply(plan$blocks, function(block){
+
+      support <- matrix(FALSE, length(block$rows), length(block$loadings))
+      for(column in seq_along(block$loadings)){
+        support[match(block$loadings[[column]]$rows, block$rows), column] <- TRUE
+      }
+      support
+    })
+    plan_names <- names(plans)
+    if(is.null(plan_names)){
+      plan_names <- as.character(seq_along(plans))
+    }
+    designs <- lapply(seq_along(plans), function(factor_index){
+      .bt_random_effect_marginal_factor_block_design(
+        plan = plans[[factor_index]], n_rows = n_rows,
+        block = plan_names[[factor_index]]
+      )
+    })
+    layout <- list(
+      diagonal_support = diagonal_support,
+      loading_supports = loading_supports,
+      plan_names = plan_names,
+      designs = designs,
+      ranks = as.integer(vapply(
+        plan$blocks,
+        function(block) length(block$loadings),
+        integer(1)
+      ))
+    )
+    if(cacheable){
+      cached <- cache[["random_effects_marginal_diagonal_factor"]]
+      cached$layout <- layout
+      cache[["random_effects_marginal_diagonal_factor"]] <- cached
     }
   }
+  diagonal_support <- layout$diagonal_support
+  loading_supports <- layout$loading_supports
+  plan_names       <- layout$plan_names
   diagonal <- matrix(0, nrow = n_draws, ncol = n_rows)
   loadings <- lapply(plan$blocks, function(block){
     array(
@@ -526,18 +571,6 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
       dim = c(n_draws, length(block$rows), length(block$loadings))
     )
   })
-  loading_supports <- lapply(plan$blocks, function(block){
-
-    support <- matrix(FALSE, length(block$rows), length(block$loadings))
-    for(column in seq_along(block$loadings)){
-      support[match(block$loadings[[column]]$rows, block$rows), column] <- TRUE
-    }
-    support
-  })
-  plan_names <- names(plans)
-  if(is.null(plan_names)){
-    plan_names <- as.character(seq_along(plans))
-  }
   names(plans) <- plan_names
 
   states <- lapply(states, function(draw_states){
@@ -555,10 +588,7 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
   # each coefficient basis once, then scatter whole draw columns rather than
   # repeating the block and component loops for every posterior candidate.
   for(factor_index in seq_along(plans)){
-    design <- .bt_random_effect_marginal_factor_block_design(
-      plan = plans[[factor_index]], n_rows = n_rows,
-      block = plan_names[[factor_index]]
-    )
+    design <- layout$designs[[factor_index]]
     basis <- .bt_random_effect_marginal_factor_block_basis_batch(
       design = design, states = states, factor_index = factor_index,
       n_rows = n_rows, block = plan_names[[factor_index]]
@@ -599,11 +629,7 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
     diagonal_support = diagonal_support,
     loadings   = unname(loadings),
     loading_supports = unname(loading_supports),
-    ranks      = as.integer(vapply(
-      plan$blocks,
-      function(block) length(block$loadings),
-      integer(1)
-    )),
+    ranks      = layout$ranks,
     row_blocks = row_blocks
   )
   class(out) <- c(

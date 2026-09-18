@@ -684,6 +684,62 @@ test_that("selection native helpers use compiled bare specs instead of neutral p
   )
 })
 
+test_that("validated selection kernel arguments are reused only for unchanged inputs", {
+
+  # Bridge sampling calls this once per evaluated state with the same constant
+  # row arguments. The reused set must equal the freshly validated one, and any
+  # changed input must leave the reuse.
+  spec <- selection_backend_spec(
+    prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
+  )
+  spec$omega <- matrix(c(1, .5), nrow = 2L, ncol = 2L, byrow = TRUE)
+  spec$obs_bin <- c(1L, 2L)
+  spec$yi <- c(.1, .2)
+  spec$sei <- c(.2, .2)
+  spec <- selection_context_validate(spec, n_samples = 2L)
+  # a context carries the per-object native cache the reused arguments live in
+  spec$native_cache <- new.env(parent = emptyenv())
+
+  first <- selection_native_kernel_args(spec, S = 2)
+  expect_identical(selection_native_kernel_args(spec, S = 2), first)
+
+  fresh <- spec
+  fresh$native_cache <- new.env(parent = emptyenv())
+  expect_identical(selection_native_kernel_args(fresh, S = 2), first)
+
+  # the number of rows and the supplied row arguments belong to the key
+  expect_identical(
+    selection_native_kernel_args(spec, S = 3L)$kernel_mode,
+    rep(first$kernel_mode[[1L]], 3L)
+  )
+  expect_identical(
+    selection_native_kernel_args(spec, S = 2, alpha = c(.1, .2))$alpha,
+    c(.1, .2)
+  )
+  expect_identical(selection_native_kernel_args(spec, S = 2), first)
+
+  # so does a specification field the arguments are derived from
+  changed <- spec
+  changed$alpha <- .25
+  expect_identical(
+    selection_native_kernel_args(changed, S = 2)$alpha,
+    c(.25, .25)
+  )
+  expect_identical(selection_native_kernel_args(spec, S = 2), first)
+
+  # every rejection still fires after a reused call
+  expect_error(
+    selection_native_kernel_args(spec, S = 2, alpha = 1),
+    "Invalid selection native argument 'alpha'.",
+    fixed = TRUE
+  )
+  expect_error(
+    selection_native_kernel_args(spec, S = 2, kernel_mode = 4L),
+    "Invalid selection native argument 'kernel_mode'.",
+    fixed = TRUE
+  )
+})
+
 test_that("selection_backend_spec rejects malformed global breaks", {
 
   selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))

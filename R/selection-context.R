@@ -314,6 +314,34 @@ selection_native_kernel_args <- function(selection_spec, S, alpha = NULL,
                                          kernel_mode = NULL){
 
   check_list(selection_spec, "selection_spec")
+
+  # Bridge sampling calls this once per evaluated state with S = 1, so the
+  # row-wise arguments of a call are the constants the previous call already
+  # validated and expanded. The validated set is kept with the spec's native
+  # cache -- the same per-object cache that already holds the static arguments
+  # -- and is reused only while every input this function reads is unchanged,
+  # 'S' included, so a reused set is one whose inputs were accepted here; any
+  # other input revalidates and rejects exactly as before.
+  cache <- selection_spec[["native_cache"]]
+  cache_key <- if(is.environment(cache)){
+    list(
+      S = S,
+      alpha = alpha,
+      phack_kind = phack_kind,
+      kernel_mode = kernel_mode,
+      spec = selection_spec[.selection_native_kernel_args_fields()]
+    )
+  }else{
+    NULL
+  }
+  if(!is.null(cache_key) &&
+     exists("kernel_args_key", envir = cache, inherits = FALSE) &&
+     identical(
+       cache_key,
+       get("kernel_args_key", envir = cache, inherits = FALSE)
+     )){
+    return(get("kernel_args", envir = cache, inherits = FALSE))
+  }
   check_int(S, "S", lower = 1, allow_NA = FALSE)
 
   # A row-wise argument is usually one value shared by every posterior row.
@@ -352,12 +380,29 @@ selection_native_kernel_args <- function(selection_spec, S, alpha = NULL,
     S, "kernel_mode", 3L
   )
 
-  return(list(
+  out <- list(
     alpha       = alpha,
     phack_kind  = phack_kind,
     kernel_mode = kernel_mode,
     static      = selection_native_static_args(selection_spec)
-  ))
+  )
+
+  if(!is.null(cache_key)){
+    assign("kernel_args_key", cache_key, envir = cache)
+    assign("kernel_args", out, envir = cache)
+  }
+
+  return(out)
+}
+
+
+# Every specification field selection_native_kernel_args() reads, directly or
+# through the defaults and the row routing it resolves. The cached arguments
+# are reused only while all of them are unchanged.
+.selection_native_kernel_args_fields <- function(){
+
+  c("alpha", "phack_kind", "phack_q", "has_phack", "mixed_phack_q",
+    "phacking", "kernel_mode", "branch_kernel_mode", "bias_indicator")
 }
 
 

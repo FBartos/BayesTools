@@ -933,10 +933,12 @@
                                                        parameters = NULL,
                                                        prediction_rows = NULL,
                                                        context = "Prediction",
-                                                       source = NULL){
+                                                       source = NULL,
+                                                       source_names = NULL){
 
   # The source is a property of the term, not of the draw. A caller that
-  # evaluates many draws through one term resolves it once and passes it here.
+  # evaluates many draws through one term resolves it once and passes it here,
+  # together with the row names the resolved source and rows determine.
   if(is.null(source)){
     source <- .bt_random_effect_row_indexed_source(random_term)
   }
@@ -955,10 +957,12 @@
     )
   }
   prediction_rows <- as.integer(prediction_rows)
-  source_names <- .bt_parameter_source_row_names(
-    source$source,
-    max(prediction_rows)
-  )[prediction_rows]
+  if(is.null(source_names)){
+    source_names <- .bt_parameter_source_row_names(
+      source$source,
+      max(prediction_rows)
+    )[prediction_rows]
+  }
   source_values <- .bt_parameter_source_value_draws(
     source = source$source,
     n_rows = n_rows,
@@ -966,7 +970,8 @@
     data = data,
     parameters = parameters,
     context = context,
-    validated = TRUE
+    validated = TRUE,
+    row_names = source_names
   )
   if(!is.null(source_values)){
     colnames(source_values) <- source_names
