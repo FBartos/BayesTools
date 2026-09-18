@@ -1652,3 +1652,231 @@ test_that("known covariance factors respect zero design supports across row bloc
   expect_equal(reduced$diagonal, matrix(c(0, .25, 0, .25), 1L), tolerance = 1e-14)
   expect_identical(reduced$ranks, rep(0L, 4L))
 })
+
+
+# The node half and the marginal half of a bridge state need the same
+# random-effect SD vector, in different shapes. They used to evaluate the same
+# allocation chain twice per state.
+.bridge_shared_sd_fixture <- function() {
+
+  data <- data.frame(
+    study   = factor(c("s1", "s1", "s2", "s2"), levels = c("s1", "s2")),
+    outcome = factor(c("o1", "o2", "o3", "o4"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | outcome, name = "outcome", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name    = "total_re",
+        terms   = c(study = "study", outcome = "outcome"),
+        sd      = prior("gamma", list(2, 2)),
+        weights = prior("dirichlet", list(alpha = c(2, 3)))
+      )
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "outcome")
+  )
+  design <- list(mu = formula_result$formula_design)
+  study_term <- formula_result$formula_design$random_effects[[1L]]
+  weight_name <- "mu__xRE_ALLOCx_total_re__weight"
+  samples <- c(
+    "mu_intercept" = 0.4,
+    "mu__xRE_ALLOCx_total_re__allocation_sd" = 2,
+    stats::setNames(
+      c(1, 3),
+      paste0(.JAGS_prior_dirichlet_eta_name(weight_name), "[", 1:2, "]")
+    ),
+    stats::setNames(c(.1, .2), as.vector(.bt_random_effect_latent_names(
+      random_term = study_term,
+      n_groups    = study_term$n_groups,
+      n_columns   = study_term$n_columns
+    )))
+  )
+  samples <- .bt_JAGS_bridge_cache_posterior_row(samples, TRUE)
+
+  list(
+    data = data,
+    design = design,
+    prior_list = formula_result$prior_list,
+    weight_name = weight_name,
+    samples = samples,
+    spec = .bt_JAGS_bridge_marginal_random_spec(
+      formula_design_list = design,
+      formula_random_effects_marginalize_list = list(
+        mu = list(
+          blocks       = "outcome",
+          row_blocks   = list(1:2, 3:4),
+          factor_state = TRUE
+        )
+      ),
+      bridge_context = "marginal"
+    )
+  )
+}
+
+
+test_that("a marginal bridge state evaluates a shared random SD vector once", {
+
+  fixture <- .bridge_shared_sd_fixture()
+  formula_prior_list <- list(mu = fixture$prior_list)
+  formula_prior_evaluator <- .bt_JAGS_bridge_compile_formula_prior_evaluator(
+    formula_prior_list
+  )
+  formula_prior_parameters <- formula_prior_evaluator$parameters(fixture$samples)
+  formula_parameters <- list(mu = rep(0, nrow(fixture$data)))
+
+  # 'shared = FALSE' restores the two separate evaluations the design replaces.
+  build <- function(shared) {
+    values_calls <- 0L
+    draws_calls  <- 0L
+    original_compile <- .bt_JAGS_bridge_compile_random_sd_evaluator
+    original_shared  <- .bt_JAGS_bridge_random_sd_shared_binding
+    context <- local({
+      testthat::local_mocked_bindings(
+        .bt_JAGS_bridge_compile_random_sd_evaluator = function(...) {
+          evaluator <- original_compile(...)
+          if (is.null(evaluator)) return(NULL)
+          list(
+            values = function(...) {
+              values_calls <<- values_calls + 1L
+              evaluator$values(...)
+            },
+            posterior_values = evaluator$posterior_values,
+            posterior_draws = function(...) {
+              draws_calls <<- draws_calls + 1L
+              evaluator$posterior_draws(...)
+            },
+            bindings = evaluator$bindings
+          )
+        },
+        .bt_JAGS_bridge_random_sd_shared_binding = function(...) {
+          if (!shared) return(FALSE)
+          original_shared(...)
+        },
+        .package = "BayesTools"
+      )
+      marginal_evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
+        formula_design_list  = fixture$design,
+        marginal_random_spec = fixture$spec,
+        formula_data_list    = list(mu = fixture$data),
+        formula_prior_list   = formula_prior_list,
+        model_data           = list(),
+        posterior_names      = names(fixture$samples)
+      )
+      evaluator <- .bt_JAGS_bridge_compile_context_evaluator(
+        mode                      = "marginal",
+        add_parameters            = NULL,
+        formula_design_list       = fixture$design,
+        formula_data_list         = list(mu = fixture$data),
+        formula_prior_list        = formula_prior_list,
+        model_data                = list(),
+        marginal_random_evaluator = marginal_evaluator
+      )
+      evaluator$context(
+        samples                  = fixture$samples,
+        prior_parameters         = list(),
+        formula_prior_parameters = formula_prior_parameters,
+        formula_parameters       = formula_parameters
+      )
+    })
+    list(context = context, values = values_calls, draws = draws_calls)
+  }
+
+  shared   <- build(TRUE)
+  separate <- build(FALSE)
+
+  expect_s3_class(shared$context, "BayesTools_bridge_marginal_context")
+  expect_identical(shared$context$nodes, separate$context$nodes)
+  expect_identical(
+    shared$context$marginalized_random$mu$factor_states,
+    separate$context$marginalized_random$mu$factor_states
+  )
+  expect_identical(
+    shared$context$marginalized_random$mu$factor_plans,
+    separate$context$marginalized_random$mu$factor_plans
+  )
+  expect_true(all(vapply(
+    shared$context$marginalized_random$mu$factor_states,
+    function(state) is.matrix(state$coefficient_factor),
+    logical(1)
+  )))
+
+  # The node half is unchanged; the marginal half stops evaluating the chain.
+  expect_identical(shared$values, separate$values)
+  expect_gt(separate$draws, 0L)
+  expect_identical(shared$draws, 0L)
+})
+
+
+test_that("shared random SD bindings refuse ambiguous and overridden sources", {
+
+  fixture <- .bridge_shared_sd_fixture()
+  outcome_term <- fixture$design$mu$random_effects[[2L]]
+  evaluator <- .bt_JAGS_bridge_compile_random_sd_evaluator(
+    random_term = outcome_term,
+    prior_list  = fixture$prior_list
+  )
+  bindings <- evaluator$bindings
+
+  expect_identical(bindings$block_name, "outcome")
+  expect_true("mu__xRE_ALLOCx_total_re__allocation_sd" %in% bindings$coordinates)
+  expect_true(fixture$weight_name %in% bindings$coordinates)
+
+  eta_names <- paste0(
+    .JAGS_prior_dirichlet_eta_name(fixture$weight_name), "[", 1:2, "]"
+  )
+  weight_names <- paste0(fixture$weight_name, "[", 1:2, "]")
+
+  # Only the auxiliary coordinates: both preferences read the same columns.
+  expect_true(.bt_JAGS_bridge_random_sd_shared_binding(bindings, eta_names))
+  expect_true(.bt_JAGS_bridge_random_sd_shared_binding(bindings, weight_names))
+  # Both coordinate sets: the preference decides, so the two evaluations stay.
+  expect_false(.bt_JAGS_bridge_random_sd_shared_binding(
+    bindings, c(eta_names, weight_names)
+  ))
+  expect_false(.bt_JAGS_bridge_random_sd_shared_binding(bindings, NULL))
+
+  posterior <- matrix(
+    c(2, 1, 3),
+    nrow     = 1L,
+    dimnames = list(NULL, c("sd", eta_names))
+  )
+  sd_bindings <- list(coordinates = "sd", ambiguity = bindings$ambiguity)
+  weight_bindings <- list(
+    coordinates = fixture$weight_name,
+    ambiguity   = bindings$ambiguity
+  )
+  # A source that is absent, or that carries what the posterior row gives,
+  # leaves the two evaluations reading the same value; any other source keeps
+  # them apart.
+  expect_true(.bt_JAGS_bridge_random_sd_sources_agree(
+    sd_bindings, list(), posterior
+  ))
+  expect_true(.bt_JAGS_bridge_random_sd_sources_agree(
+    sd_bindings, list(sd = 2), posterior
+  ))
+  expect_false(.bt_JAGS_bridge_random_sd_sources_agree(
+    sd_bindings, list(sd = 2.5), posterior
+  ))
+  # The reconstructed Dirichlet weights of a state are the normalized auxiliary
+  # coordinates the row carries, and nothing else.
+  expect_true(.bt_JAGS_bridge_random_sd_sources_agree(
+    weight_bindings,
+    stats::setNames(list(c(1, 3) / 4), fixture$weight_name),
+    posterior
+  ))
+  expect_false(.bt_JAGS_bridge_random_sd_sources_agree(
+    weight_bindings,
+    stats::setNames(list(c(.5, .5)), fixture$weight_name),
+    posterior
+  ))
+  expect_false(.bt_JAGS_bridge_random_sd_sources_agree(
+    list(coordinates = "absent", ambiguity = list()),
+    list(absent = 1),
+    posterior
+  ))
+})

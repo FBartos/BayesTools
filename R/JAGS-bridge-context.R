@@ -260,6 +260,10 @@
     random_only = FALSE,
     node_cache = NULL){
 
+  # Both halves of this state read the same random-effect SD vectors, in
+  # different shapes. The node half evaluates them first and leaves them here
+  # for the marginal half.
+  sd_cache <- new.env(parent = emptyenv())
   nodes <- if(!is.null(node_names) && length(node_names) == 0L){
     numeric()
   }else{
@@ -272,7 +276,8 @@
       random_context_evaluator = random_context_evaluator,
       node_names = node_names,
       random_only = random_only,
-      node_cache = node_cache
+      node_cache = node_cache,
+      sd_cache = sd_cache
     )$nodes
   }
   marginalized_random <- marginal_random_evaluator$covariance(
@@ -281,7 +286,8 @@
     formula_prior_parameters = formula_prior_parameters,
     formula_parameters = formula_parameters,
     factor_covariance = FALSE,
-    factor_state = TRUE
+    factor_state = TRUE,
+    sd_cache = sd_cache
   )
 
   out <- list(
@@ -303,7 +309,8 @@
                                           random_context_evaluator,
                                           node_names = NULL,
                                           random_only = FALSE,
-                                          node_cache = NULL){
+                                          node_cache = NULL,
+                                          sd_cache = NULL){
 
   state <- .bt_JAGS_bridge_context_state(samples)
   add_parameter_values <- .bt_JAGS_bridge_context_add_parameters(
@@ -314,7 +321,8 @@
     samples = samples,
     prior_parameters = prior_parameters,
     formula_prior_parameters = formula_prior_parameters,
-    formula_parameters = formula_parameters
+    formula_parameters = formula_parameters,
+    sd_cache = sd_cache
   )
   if(isTRUE(random_only)){
     nodes <- .bt_JAGS_bridge_select_nodes(random_nodes, node_names, node_cache)
@@ -964,7 +972,8 @@
       out
     },
     nodes = function(samples, prior_parameters,
-                     formula_prior_parameters, formula_parameters){
+                     formula_prior_parameters, formula_parameters,
+                     sd_cache = NULL){
       if(length(plans) == 0L){
         return(numeric())
       }
@@ -988,7 +997,12 @@
             posterior = posterior,
             row_indexed = term_plan$row_indexed,
             row_source_evaluator = term_plan$row_source_evaluator,
-            sd_evaluator = term_plan$sd_evaluator
+            sd_evaluator = term_plan$sd_evaluator,
+            sd_cache = sd_cache,
+            sd_share_key = .bt_JAGS_bridge_random_sd_share_key(
+              plan$parameter,
+              random_term$block_name
+            )
           )
           nodes <- .bt_JAGS_bridge_merge_nodes(nodes, block$nodes)
           for(allocation in block$allocations){
@@ -1087,6 +1101,12 @@
       prior_list = prior_list,
       posterior_names = posterior_names
     )
+    chain_coordinates <- c(
+      source_name,
+      vapply(factor_plan, function(factor){
+        if(is.null(factor$weight_name)) NA_character_ else factor$weight_name
+      }, character(1))
+    )
 
     if(identical(target, "sd_component")){
       component <- .bt_check_random_sd_component_allocation(
@@ -1107,6 +1127,7 @@
         scale = scale,
         n_targets = n_targets
       )
+      chain_coordinates <- c(chain_coordinates, weight_name)
     }
 
     function(posterior, parameters = NULL, prefer_weights = FALSE){
@@ -1172,6 +1193,7 @@
         posterior_names = posterior_names
       )
     }
+    chain_coordinates <- if(is.null(sd_evaluators)) character() else sd_names
     function(posterior, parameters = NULL, prefer_weights = FALSE){
       if(is.null(sd_evaluators)){
         return(NULL)
@@ -1281,11 +1303,147 @@
     )
   }
 
+  # What the compiled chain reads, so a caller can decide - from the metadata
+  # alone - whether two evaluators of the same term bind the same posterior
+  # columns. 'coordinates' are the names the chain looks up in a supplied
+  # parameter list; 'ambiguity' names the Dirichlet allocations whose
+  # normalized weights and auxiliary eta coordinates are distinguished by
+  # 'prefer_weights'.
+  bindings <- list(
+    block_name = random_term$block_name,
+    n_columns = random_term$n_columns,
+    coordinates = unique(chain_coordinates[!is.na(chain_coordinates)]),
+    ambiguity = ambiguity,
+    index_cache = new.env(parent = emptyenv())
+  )
+
   list(
     values = values,
     posterior_values = posterior_values,
-    posterior_draws = posterior_draws
+    posterior_draws = posterior_draws,
+    bindings = bindings
   )
+}
+
+
+.bt_JAGS_bridge_random_sd_share_key <- function(parameter, block_name){
+
+  if(!is.character(parameter) || length(parameter) != 1L ||
+     !is.character(block_name) || length(block_name) != 1L ||
+     is.na(parameter) || is.na(block_name)){
+    return(NULL)
+  }
+  paste0(parameter, "\r", block_name)
+}
+
+
+# The two evaluators of one term differ only in 'prefer_weights', and that
+# preference selects a posterior column only when a Dirichlet allocation
+# carries both its normalized weights and its auxiliary eta coordinates.
+# Nothing is evaluated here: the verdict comes from the compiled bindings and
+# the bridge's own coordinate names.
+.bt_JAGS_bridge_random_sd_shared_binding <- function(bindings, posterior_names){
+
+  if(is.null(bindings) || is.null(posterior_names)){
+    return(FALSE)
+  }
+  for(spec in bindings$ambiguity){
+    if(all(spec$weight %in% posterior_names) &&
+       all(spec$eta %in% posterior_names)){
+      return(FALSE)
+    }
+  }
+  TRUE
+}
+
+
+# What the posterior row alone gives for one coordinate of an SD chain: its own
+# column, or, for a Dirichlet allocation parameter, the normalized weights the
+# draw evaluator reconstructs from the coordinates the row carries. NULL when
+# the row determines no value.
+.bt_JAGS_bridge_random_sd_posterior_value <- function(coordinate, bindings,
+                                                      posterior){
+
+  posterior_names <- colnames(posterior)
+  # A bridge replays thousands of states through the same column layout, so
+  # the name lookup belongs to the compiled bindings, not to the state.
+  cache <- bindings$index_cache
+  resolved <- if(is.environment(cache) &&
+                 exists(coordinate, envir = cache, inherits = FALSE)){
+    entry <- get(coordinate, envir = cache, inherits = FALSE)
+    if(identical(entry$names, posterior_names)) entry else NULL
+  }else{
+    NULL
+  }
+  if(is.null(resolved)){
+    resolved <- list(names = posterior_names, kind = "none", index = integer())
+    index <- match(coordinate, posterior_names)
+    if(!is.na(index)){
+      resolved$kind <- "column"
+      resolved$index <- index
+    }else{
+      for(spec in bindings$ambiguity){
+        if(!identical(spec$parameter, coordinate)){
+          next
+        }
+        if(all(spec$weight %in% posterior_names)){
+          resolved$kind <- "column"
+          resolved$index <- match(spec$weight, posterior_names)
+        }else if(all(spec$eta %in% posterior_names)){
+          resolved$kind <- "eta"
+          resolved$index <- match(spec$eta, posterior_names)
+        }
+        break
+      }
+    }
+    if(is.environment(cache)){
+      assign(coordinate, resolved, envir = cache)
+    }
+  }
+  if(identical(resolved$kind, "column")){
+    return(as.numeric(posterior[, resolved$index]))
+  }
+  if(identical(resolved$kind, "eta")){
+    eta <- posterior[, resolved$index, drop = FALSE]
+    return(as.numeric(eta / rowSums(eta)))
+  }
+  NULL
+}
+
+
+# A shared SD vector must also have been resolved from the same values. The
+# node evaluator consults the state's parameter sources first, the marginal
+# evaluator reads the posterior row, so a source that carries another value
+# than the row does keeps the two evaluations apart.
+.bt_JAGS_bridge_random_sd_sources_agree <- function(bindings, parameters,
+                                                    posterior){
+
+  coordinates <- bindings$coordinates
+  if(length(coordinates) == 0L || !is.list(parameters)){
+    return(TRUE)
+  }
+  coordinates <- coordinates[coordinates %in% names(parameters)]
+  if(length(coordinates) == 0L){
+    return(TRUE)
+  }
+  for(coordinate in coordinates){
+    supplied <- as.numeric(parameters[[coordinate]])
+    reference <- .bt_JAGS_bridge_random_sd_posterior_value(
+      coordinate = coordinate,
+      bindings = bindings,
+      posterior = posterior
+    )
+    if(is.null(reference)){
+      return(FALSE)
+    }
+    if(length(supplied) == 1L && length(reference) > 1L){
+      supplied <- rep(supplied, length(reference))
+    }
+    if(!identical(supplied, reference)){
+      return(FALSE)
+    }
+  }
+  TRUE
 }
 
 .bt_JAGS_bridge_compile_parameter_draw_evaluator <- function(
@@ -1783,7 +1941,9 @@
     posterior = NULL,
     row_indexed = NULL,
     sd_evaluator = NULL,
-    row_source_evaluator = NULL){
+    row_source_evaluator = NULL,
+    sd_cache = NULL,
+    sd_share_key = NULL){
 
   if(is.null(posterior)){
     posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
@@ -1816,6 +1976,19 @@
       )
     } else {
       sd_evaluator$values(samples, parameters = parameters)
+    }
+    # The marginal block plan needs this state's SD vector in another shape.
+    # Leave it where that plan can take it instead of evaluating the same
+    # allocation chain a second time, but only while both would have read the
+    # same values.
+    if(!is.null(sd_evaluator) && is.environment(sd_cache) &&
+       is.character(sd_share_key) && length(sd_share_key) == 1L &&
+       .bt_JAGS_bridge_random_sd_sources_agree(
+         bindings = sd_evaluator$bindings,
+         parameters = parameters,
+         posterior = posterior
+       )){
+      assign(sd_share_key, sd_values, envir = sd_cache)
     }
     nodes <- .bt_JAGS_bridge_context_random_sd_nodes(
       random_term = random_term,

@@ -456,11 +456,15 @@
       )
     })
     names(block_plans) <- selected
-    factor_state_evaluators <- lapply(
-      block_plans,
-      .bt_JAGS_bridge_compile_marginal_random_block_factor_state_evaluator,
-      prior_list = formula_prior_list[[parameter]]
-    )
+    factor_state_evaluators <- lapply(selected, function(block_name){
+      .bt_JAGS_bridge_compile_marginal_random_block_factor_state_evaluator(
+        block_plan = block_plans[[block_name]],
+        prior_list = formula_prior_list[[parameter]],
+        share_key = .bt_JAGS_bridge_random_sd_share_key(parameter, block_name),
+        posterior_names = posterior_names
+      )
+    })
+    names(factor_state_evaluators) <- selected
     row_names <- rownames(block_plans[[1L]]$model_matrix)
     if(is.null(row_names)){
       row_names <- as.character(seq_len(nrow(block_plans[[1L]]$model_matrix)))
@@ -563,13 +567,15 @@
     covariance = function(samples, prior_parameters,
                           formula_prior_parameters, formula_parameters,
                           factor_covariance = TRUE,
-                          factor_state = FALSE){
+                          factor_state = FALSE,
+                          sd_cache = NULL){
       posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
       if(isTRUE(factor_state) && !isTRUE(factor_covariance)){
         compact <- lapply(plans, function(plan){
           value <- .bt_JAGS_bridge_marginal_random_factor_state_posterior(
             plan = plan,
-            posterior = posterior
+            posterior = posterior,
+            sd_cache = sd_cache
           )
           if(is.null(value)){
             return(NULL)
@@ -631,14 +637,15 @@
 }
 
 .bt_JAGS_bridge_marginal_random_factor_state_posterior <- function(plan,
-                                                                   posterior){
+                                                                   posterior,
+                                                                   sd_cache = NULL){
 
   if(!isTRUE(plan$factor_state) || is.null(plan$row_blocks)){
     return(NULL)
   }
   states <- lapply(
     plan$factor_state_evaluators,
-    function(evaluator) evaluator(posterior)
+    function(evaluator) evaluator(posterior, sd_cache = sd_cache)
   )
   if(any(vapply(states, is.null, logical(1)))){
     return(NULL)
@@ -654,10 +661,10 @@
 }
 
 .bt_JAGS_bridge_compile_marginal_random_block_factor_state_evaluator <-
-    function(block_plan, prior_list){
+    function(block_plan, prior_list, share_key = NULL, posterior_names = NULL){
 
   if(isTRUE(block_plan$row_indexed)){
-    return(function(posterior) NULL)
+    return(function(posterior, sd_cache = NULL) NULL)
   }
   random_term <- block_plan$random_term
   n_columns   <- ncol(block_plan$model_matrix)
@@ -681,14 +688,38 @@
     block_plan$factor_plan$coefficient_structure,
     "markov"
   )
+  # The bridge context evaluates this term's SD vector for the same state, one
+  # allocation chain earlier. Take it when the two compiled evaluators bind the
+  # same posterior columns; a Dirichlet allocation whose weights and auxiliary
+  # coordinates are both present keeps its own evaluation.
+  shared <- !is.null(share_key) && !is.null(sd_evaluator) &&
+    .bt_JAGS_bridge_random_sd_shared_binding(
+      bindings = sd_evaluator$bindings,
+      posterior_names = posterior_names
+    )
   force(random_term)
   force(n_columns)
   force(sd_evaluator)
   force(direct_sd_evaluators)
   force(include_markov)
+  force(share_key)
+  force(shared)
 
-  function(posterior){
-    sd_draws <- if(!is.null(sd_evaluator)){
+  function(posterior, sd_cache = NULL){
+    shared_draws <- if(shared && is.environment(sd_cache) &&
+                       exists(share_key, envir = sd_cache, inherits = FALSE)){
+      cached <- get(share_key, envir = sd_cache, inherits = FALSE)
+      if(is.numeric(cached) && length(cached) == n_columns){
+        matrix(cached, nrow = 1L)
+      }else{
+        NULL
+      }
+    }else{
+      NULL
+    }
+    sd_draws <- if(!is.null(shared_draws)){
+      shared_draws
+    }else if(!is.null(sd_evaluator)){
       sd_evaluator$posterior_draws(posterior)
     }else if(!is.null(direct_sd_evaluators)){
       values <- lapply(

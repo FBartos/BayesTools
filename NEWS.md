@@ -1,5 +1,16 @@
 # version 0.3.1
 ### Features
+- evaluates a random-effect SD vector once per bridge state instead of twice.
+  A marginal bridge context builds the state's named SD nodes and the
+  marginalized block's factor geometry, and each half ran the term's whole
+  allocation chain - source draw, allocation factors, Dirichlet weights - from
+  the same posterior row. The node half now leaves its vector on the state for
+  the marginal half, which takes it when the two compiled evaluators bind the
+  same posterior columns and the state's parameter sources carry what the row
+  itself gives. A Dirichlet allocation whose normalized weights and auxiliary
+  coordinates are both present, or a source that overrides a coordinate, keeps
+  its own evaluation. Node values, factor geometry and every marginal
+  likelihood are unchanged.
 - reports a logged formula intercept as affine in its own log coordinate.
   `log tau_k(alpha') = log tau_k(alpha) + m * (log alpha' - log alpha)`, so the
   update is additive with the intercept's model column as its basis - just not
