@@ -109,6 +109,29 @@
 - preserves independent coefficient supports in structural dependency graphs,
   including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- corrects edge cases in bridge priors, conditional model probabilities,
+  hypothesis thresholds, formula metadata, and mixed-measure plotting. Missing
+  bridge coordinates and undefined prior densities now fail explicitly; legacy
+  inverse-gamma factor coordinates agree between scalar and row evaluators.
+  Formula prior evaluation can share allocation context with ordinary priors.
+- preserves full-precision hypothesis thresholds and the caller's RNG state for
+  explicitly seeded hypothesis tests. Nearby distinct atoms retain separate
+  probability masses, and clipped ordered-prior curves retain their density heights.
+- restores single-chain convergence checks of ESS and Monte Carlo error, warning
+  that R-hat is unavailable. Sampled constants remain not assessable unless the
+  existing explicit opt-in permits them. Early failure now stops further diagnostic
+  computation and labels remaining selected rows as `not_checked`.
+- preserves the valid initial runtime cache when the first automatic extension
+  fails, fixes prefix-ambiguous random-block metadata and one-coordinate CAR
+  reconstruction, and warns about misleading numeric AR1/HAR labels while
+  preserving declared index order. The generic wrapper's documented heterogeneous
+  covariance aliases remain unchanged.
+- fixes prior quantile error handling, bias-mixture summary metadata, indexed
+  random-prior lookup, homogeneous diagonal SD labels, and exclusion-BF error
+  labels. Adaptive prior-density refinement no longer treats an unchanged capped
+  grid as convergence.
+- sequences nonlocal RNG draws explicitly in R and JAGS, preserving this build's
+  seeded output and making the draw order independent of the C++ compiler.
 - rejects ordinary scalar random-effect SD priors with negative support at
   construction, in `prior_random()`, `random_block()`, `random_covariance()`,
   and variance allocations, instead of silently truncating them to zero when
@@ -254,6 +277,8 @@
   of accepting nearby values under a numerical-comparison tolerance
 
 ### Performance
+- groups parameter coordinates before computing dimensions and materializes draw
+  geometry by matrix blocks, avoiding repeated full-column scans.
 - validates row-wise selection arguments in one pass instead of a dozen.
   `selection_native_kernel_args()` now checks the value a caller supplied and
   expands it over the posterior rows afterwards, `selection_context_validate()`
