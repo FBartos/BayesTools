@@ -1062,14 +1062,16 @@ test_that("ordered mixed-measure densities preserve atoms and continuous mass", 
       data.frame(location = 0, mass = .5)
     )
     expect_equal(attr(density_fixed[[i]]$continuous, "mass"), .5)
-    expect_equal(
-      BayesTools:::.density.prior.ordered_curve_integral(
-        density_fixed[[i]]$continuous$x,
-        density_fixed[[i]]$continuous$density
-      ),
-      .5,
-      tolerance = 1e-10
+    curve <- density_fixed[[i]]$continuous
+    integral <- BayesTools:::.density.prior.ordered_curve_integral(
+      curve$x, curve$density
     )
+    scale <- c(.25, 1)[[i - 1L]]
+    expected <- .5 * diff(stats::pnorm(range(curve$x) / scale))
+    # The source grid drops 1e-4 in each normal tail; allow that
+    # normalization error and trapezoid discretization, not display clipping.
+    expect_lt(abs(integral - expected), 2e-4)
+    expect_equal(density_fixed[[i]]$diagnostics$continuous_integral, integral)
     expect_equal(density_fixed[[i]]$diagnostics$atom_mass, .5)
     expect_equal(density_fixed[[i]]$diagnostics$continuous_mass, .5)
     expect_equal(
@@ -1122,6 +1124,45 @@ test_that("ordered mixed-measure densities preserve atoms and continuous mass", 
     vapply(layer_geoms, function(layer) class(layer$geom)[1L], character(1)),
     c("GeomLine", "GeomSegment")
   )
+})
+
+test_that("clipping ordered mixed densities preserves their heights", {
+
+  dist <- list(
+    density = list(x = seq(-3, 3, length.out = 601),
+                   y = stats::dnorm(seq(-3, 3, length.out = 601)), mass = .5),
+    points = data.frame(x = 0, p = .5),
+    n_grid = 601L
+  )
+  grid <- seq(-.5, .5, length.out = 101)
+  clipped <- BayesTools:::.density.prior.ordered_regrid_mixed(dist, grid)
+  expect_equal(clipped$density$y, stats::dnorm(grid), tolerance = 1e-14)
+  expect_identical(clipped$density$mass, .5)
+  expect_identical(clipped$points, dist$points)
+  expect_lt(abs(
+    attr(clipped, "ordered_grid_diagnostics")$captured_continuous_shape_integral -
+    diff(stats::pnorm(c(-.5, .5)))
+  ), 4e-6)
+
+  total <- prior_spike_and_slab(
+    prior("normal", list(0, 1)),
+    prior_inclusion = prior("spike", list(.5))
+  )
+  ordered <- prior_ordered(total, allocation = c(.25, .75),
+                           contrast = "cumulative")
+  attr(ordered, "levels") <- 3
+  result <- density(ordered, x_range = c(-.5, .5), n_points = 1001)
+  curve <- result[[3]]$continuous
+  expect_lt(max(abs(curve$density - .5 * stats::dnorm(curve$x))), 1e-4)
+  expect_lt(result[[3]]$diagnostics$continuous_integral, .2)
+  expect_equal(result[[3]]$atoms$mass, .5)
+  expect_equal(result[[3]]$diagnostics$continuous_mass, .5)
+  transformed <- density(ordered, x_range = c(-.5, .5), n_points = 1001,
+                         transformation = "exp")
+  curve <- transformed[[3]]$continuous
+  expect_lt(max(abs(curve$density - .5 * stats::dlnorm(curve$x))), 1e-4)
+  expect_lt(transformed[[3]]$diagnostics$continuous_integral, .2)
+  expect_equal(transformed[[3]]$atoms, data.frame(location = 1, mass = .5))
 })
 
 test_that("ordered mixed measures propagate through marginal inference", {

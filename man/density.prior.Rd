@@ -82,7 +82,9 @@ objects, one for each simplex coordinate. Ordered priors return one component
 per factor level. When a level has both discrete and continuous probability,
 its \code{atoms} table stores exact \code{location} and \code{mass} values,
 while its \code{continuous} table stores a density already weighted to
-integrate to the remaining continuous mass.
+integrate to the remaining continuous mass over its full support. A clipped
+plotting grid preserves density heights and therefore captures less mass;
+\code{diagnostics$continuous_integral} reports the mass on that grid.
 }
 \description{
 Computes density of a prior

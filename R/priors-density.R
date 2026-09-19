@@ -51,7 +51,9 @@
 #' per factor level. When a level has both discrete and continuous probability,
 #' its \code{atoms} table stores exact \code{location} and \code{mass} values,
 #' while its \code{continuous} table stores a density already weighted to
-#' integrate to the remaining continuous mass.
+#' integrate to the remaining continuous mass over its full support. A clipped
+#' plotting grid preserves density heights and therefore captures less mass;
+#' \code{diagnostics$continuous_integral} reports the mass on that grid.
 #'
 #' @details Sample-based density estimates for continuous priors with finite
 #' support use boundary-reflected kernel density estimates. The plotting range
@@ -393,7 +395,7 @@ density.prior <- function(x,
       n_grid = n_points,
       tail_prob = .prior_linear_density_tail_prob()
     )
-    dist <- .density.prior.ordered_regrid_mixed(dist, x_seq)
+    component_grid <- x_seq
     if(!is.null(transformation)){
       dist <- .prior_linear_density_transform(
         dist,
@@ -401,7 +403,12 @@ density.prior <- function(x,
         transformation_arguments,
         n_grid = n_points
       )
+      component_grid <- sort(unique(.density.prior_transformation_x(
+        x_seq, transformation, transformation_arguments
+      )))
     }
+    # Transform the full distribution before clipping it to a display grid.
+    dist <- .density.prior.ordered_regrid_mixed(dist, component_grid)
     component_samples <- if(is.null(samples)){
       NULL
     }else{
@@ -458,15 +465,15 @@ density.prior <- function(x,
     yright = 0
   )$y
   area <- .density.prior.ordered_curve_integral(x_seq, y)
-  if(!is.finite(area) || area <= 0){
+  if(!is.finite(area) || area < 0){
     stop(
-      "The continuous part of an ordered mixed-measure prior has no ",
+      "The continuous part of an ordered mixed-measure prior has invalid ",
       "numerical mass on the requested density grid.",
       call. = FALSE
     )
   }
   dist$density$x <- x_seq
-  dist$density$y <- y / area
+  dist$density$y <- y
   dist$n_grid <- length(x_seq)
   attr(dist, "ordered_grid_diagnostics") <- list(
     captured_continuous_shape_integral = area
@@ -521,8 +528,7 @@ density.prior <- function(x,
     )
   }
   mass_bound <- 128 * .Machine$double.eps
-  if(abs(atom_mass + continuous_mass - 1) > mass_bound ||
-     abs(continuous_integral - continuous_mass) > 1e-10){
+  if(abs(atom_mass + continuous_mass - 1) > mass_bound){
     stop(
       "The ordered mixed-measure density did not preserve unit probability ",
       "mass.",
