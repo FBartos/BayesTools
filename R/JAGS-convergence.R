@@ -6,7 +6,8 @@
 #' @param prior_list named list of prior distribution
 #' (names correspond to the parameter names)
 #' @param max_Rhat maximum R-hat error for the autofit function.
-#'   Defaults to \code{1.05}.
+#'   Defaults to \code{1.05}. With one chain, this criterion is skipped with
+#'   a warning; the remaining enabled criteria are still assessed.
 #' @param min_ESS minimum effective sample size. Defaults to \code{500}.
 #' @param max_error maximum MCMC error. Defaults to \code{0.01}.
 #' @param max_SD_error maximum MCMC error as the proportion of standard
@@ -24,7 +25,10 @@
 #' checks. A base name selects all of its indexed elements. \code{NULL} selects
 #' every eligible parameter; \code{character()} requests no parameters.
 #' @param allow_not_assessable whether requested sampled parameters with
-#' undefined diagnostics may be ignored. Defaults to \code{FALSE}.
+#' undefined diagnostics may be ignored. Defaults to \code{FALSE}. A sampled
+#' column that never changes, including a constant model indicator, is not
+#' evidence of convergence and remains not assessable. Only constants declared
+#' by the prior are structural.
 #'
 #' @examples \dontrun{
 #' # simulate data
@@ -59,7 +63,9 @@
 #' satisfied rather than as an empty selection. The \code{diagnostics}
 #' attribute contains one row per available parameter and classifies it as
 #' \code{"assessable"}, \code{"structural_constant"}, \code{"not_assessable"},
-#' or \code{"not_requested"}. The \code{errors} attribute carries failed checks.
+#' \code{"not_requested"}, or \code{"not_checked"} when \code{fail_fast = TRUE}
+#' stops before reaching that parameter. The \code{errors} attribute carries
+#' failed checks.
 #'
 #' @seealso [JAGS_fit()]
 #' @export
@@ -173,9 +179,18 @@ JAGS_check_convergence <- function(
     diagnostics[["state"]][selected_rows] == "assessable"
   ]
   if(length(sample_rows) > 0L){
+    diagnostics[["state"]][sample_rows] <- "not_checked"
+    if(length(mcmc_samples_list) == 1L && !is.null(max_Rhat)){
+      warning(
+        "Only one chain was run. R-hat cannot be computed; checking the remaining enabled convergence criteria.",
+        call. = FALSE
+      )
+      max_Rhat <- NULL
+    }
     chain_lengths <- vapply(mcmc_samples_list, nrow, integer(1))
     chain_id <- rep.int(seq_along(chain_lengths), chain_lengths)
     for(row in sample_rows){
+      diagnostics[["state"]][[row]] <- "assessable"
       parameter <- diagnostics[["parameter"]][[row]]
       target_row <- match(parameter, targets$metadata$parameter)
       parameter_samples <- targets$samples[[target_row]]
@@ -192,6 +207,14 @@ JAGS_check_convergence <- function(
         parameter_diagnostics
       if(!isTRUE(parameter_diagnostics[["assessable"]])){
         diagnostics[["state"]][[row]] <- "not_assessable"
+      }
+      if(fail_fast && length(.bt_convergence_failures(
+        diagnostics = diagnostics[row, , drop = FALSE],
+        max_Rhat = max_Rhat, min_ESS = min_ESS,
+        max_error = max_error, max_SD_error = max_SD_error,
+        allow_not_assessable = allow_not_assessable
+      )) > 0L){
+        break
       }
     }
   }
@@ -518,7 +541,7 @@ JAGS_check_convergence <- function(
     assessable = TRUE
   )
   enabled <- c(
-    Rhat = assess_Rhat,
+    Rhat = assess_Rhat && n_chains >= 2L,
     ESS = assess_ESS,
     MCMC_error = assess_error,
     MCMC_SD_error = assess_SD_error

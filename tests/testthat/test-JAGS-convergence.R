@@ -607,25 +607,70 @@ test_that("fixed weightfunction omega bins are structural constants", {
   )
 })
 
-test_that("one chain cannot satisfy an enabled R-hat criterion", {
+test_that("one chain warns and retains its other convergence criteria", {
 
   set.seed(44)
-  chain <- cbind(mu = rnorm(20))
+  chain <- cbind(mu = rnorm(2000))
   fit <- list(
     mcmc = coda::mcmc.list(coda::mcmc(chain)),
     summary.pars = list(mutate = NULL)
   )
   class(fit) <- "runjags"
-  result <- JAGS_check_convergence(
+  expect_warning(result <- JAGS_check_convergence(
     fit,
     prior_list = list(mu = prior("normal", list(0, 1))),
     max_Rhat = 1.05,
-    min_ESS = NULL,
+    min_ESS = 100,
     max_error = NULL,
     max_SD_error = NULL
-  )
+  ), "Only one chain was run. R-hat cannot be computed; checking the remaining enabled convergence criteria.", fixed = TRUE)
 
+  expect_true(result)
+  expect_null(attr(result, "errors"))
+  expect_true(is.na(attr(result, "diagnostics")$Rhat))
+  expect_equal(attr(result, "diagnostics")$state, "assessable")
+  expect_warning(failed <- JAGS_check_convergence(
+    fit,
+    prior_list = list(mu = prior("normal", list(0, 1))),
+    min_ESS = 1e6,
+    max_error = NULL,
+    max_SD_error = NULL
+  ), "Only one chain was run", fixed = TRUE)
+  expect_false(failed)
+  expect_match(attr(failed, "errors"), "ESS")
+})
+
+test_that("fail_fast stops computing after a failed parameter", {
+
+  set.seed(46)
+  chain <- cbind(mu = rnorm(100), tau = rnorm(100))
+  fit <- .mock_convergence_fit(chain, chain)
+  priors <- list(mu = prior("normal", list(0, 1)),
+                 tau = prior("normal", list(0, 1)))
+  calls <- 0L
+  original <- BayesTools:::.bt_convergence_parameter_diagnostics
+  testthat::local_mocked_bindings(
+    .bt_convergence_parameter_diagnostics = function(...){
+      calls <<- calls + 1L
+      original(...)
+    },
+    .package = "BayesTools"
+  )
+  result <- JAGS_check_convergence(
+    fit, priors, min_ESS = 1e6, max_Rhat = NULL, max_error = NULL,
+    max_SD_error = NULL, fail_fast = TRUE
+  )
   expect_false(result)
-  expect_match(attr(result, "errors"), "R-hat.*not assessable")
-  expect_equal(attr(result, "diagnostics")$state, "not_assessable")
+  expect_identical(calls, 1L)
+  expect_equal(attr(result, "diagnostics")$state,
+               c("assessable", "not_checked"))
+  expect_length(attr(result, "errors"), 1L)
+  complete <- JAGS_check_convergence(
+    fit, priors, min_ESS = 1e6, max_Rhat = NULL, max_error = NULL,
+    max_SD_error = NULL, fail_fast = FALSE
+  )
+  expect_false(complete)
+  expect_identical(calls, 3L)
+  expect_equal(attr(complete, "diagnostics")$state,
+               c("assessable", "assessable"))
 })

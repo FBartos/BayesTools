@@ -25,7 +25,8 @@ JAGS_check_convergence(
 (names correspond to the parameter names)}
 
 \item{max_Rhat}{maximum R-hat error for the autofit function.
-Defaults to \code{1.05}.}
+Defaults to \code{1.05}. With one chain, this criterion is skipped with
+a warning; the remaining enabled criteria are still assessed.}
 
 \item{min_ESS}{minimum effective sample size. Defaults to \code{500}.}
 
@@ -51,7 +52,10 @@ checks. A base name selects all of its indexed elements. \code{NULL} selects
 every eligible parameter; \code{character()} requests no parameters.}
 
 \item{allow_not_assessable}{whether requested sampled parameters with
-undefined diagnostics may be ignored. Defaults to \code{FALSE}.}
+undefined diagnostics may be ignored. Defaults to \code{FALSE}. A sampled
+column that never changes, including a constant model indicator, is not
+evidence of convergence and remains not assessable. Only constants declared
+by the prior are structural.}
 }
 \value{
 \code{JAGS_check_convergence} returns a boolean indicating whether
@@ -63,7 +67,9 @@ claiming convergence. When no parameters remain available after cleaning
 satisfied rather than as an empty selection. The \code{diagnostics}
 attribute contains one row per available parameter and classifies it as
 \code{"assessable"}, \code{"structural_constant"}, \code{"not_assessable"},
-or \code{"not_requested"}. The \code{errors} attribute carries failed checks.
+\code{"not_requested"}, or \code{"not_checked"} when \code{fail_fast = TRUE}
+stops before reaching that parameter. The \code{errors} attribute carries
+failed checks.
 }
 \description{
 Checks whether the supplied \link[runjags]{runjags-package} model

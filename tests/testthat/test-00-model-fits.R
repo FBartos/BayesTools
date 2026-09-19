@@ -3121,7 +3121,7 @@ test_that("JAGS_check_convergence ignores add_parameters without priors", {
 })
 
 
-test_that("JAGS_check_convergence marks single-chain R-hat as not assessable", {
+test_that("single-chain fits skip R-hat and retain the remaining criteria", {
 
   skip_if_not_installed("rjags")
   skip_on_cran()
@@ -3143,18 +3143,32 @@ test_that("JAGS_check_convergence marks single-chain R-hat as not assessable", {
     silent.jags = TRUE
   ))
 
-  convergence <- expect_silent(
-    JAGS_check_convergence(
+  expect_warning(
+    convergence <- JAGS_check_convergence(
       fit,
       prior_list = prior_list,
       max_Rhat = 1.05,
       min_ESS = NULL,
       max_error = NULL,
       max_SD_error = NULL
-    )
+    ),
+    "Only one chain was run", fixed = TRUE
   )
-  expect_false(convergence)
-  expect_match(attr(convergence, "errors"), "R-hat.*not assessable")
+  expect_true(convergence)
+  expect_true(is.na(attr(convergence, "diagnostics")$Rhat))
+
+  expect_warning(autofit <- JAGS_fit(
+    "model{}", prior_list = prior_list, chains = 1,
+    adapt = 50, burnin = 50, sample = 1000, seed = 1, silent = TRUE,
+    autofit = TRUE,
+    autofit_control = list(max_Rhat = 1.05, min_ESS = 10,
+      max_error = NULL, max_SD_error = NULL, max_extend = 1,
+      max_time = NULL, sample_extend = 100, restarts = 1,
+      check_indicators = FALSE)
+  ), "Only one chain was run", fixed = TRUE)
+  expect_s3_class(autofit, "runjags")
+  expect_equal(nrow(.extract_posterior_samples(autofit, as_list = TRUE)[[1L]]), 1000)
+  expect_false(any(grepl("max_extend", attr(autofit, "warnings"), fixed = TRUE)))
 
 })
 
