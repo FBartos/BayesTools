@@ -1,5 +1,15 @@
 skip_if_not_test_profile("unit")
 
+test_that("factor joint quantiles fail clearly instead of returning a function", {
+
+  p <- prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal")
+  expect_error(
+    quant(p, .5),
+    "Joint quantiles are unavailable for factor priors. Use 'mquant()' for marginal quantiles.",
+    fixed = TRUE
+  )
+})
+
 # ============================================================================ #
 # TEST FILE: Prior Distribution Coverage Tests
 # ============================================================================ #

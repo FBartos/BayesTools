@@ -210,74 +210,12 @@
 }
 .petpeese_prior_simple_functions <- function(prior){
 
-  default_range <- .is_prior_default_range(prior)
-  if(default_range){
-    return(list(
-      cdf = function(q) .prior_simple_base_p(prior, q, lower.tail = TRUE),
-      ccdf = function(q) .prior_simple_base_p(prior, q, lower.tail = FALSE),
-      pdf = function(x) .prior_simple_base_d(prior, x, log = FALSE),
-      quant = function(p) .prior_simple_base_q(prior, p)
-    ))
-  }
-
-  C1 <- .prior_C1(prior)
-  C2 <- .prior_C2(prior)
-  C  <- .prior_C(prior)
-  lower <- prior$truncation[["lower"]]
-  upper <- prior$truncation[["upper"]]
-  use_survival <- .prior_simple_use_survival_truncation(prior)
-  if(use_survival){
-    S1 <- .prior_simple_base_p(prior, lower, lower.tail = FALSE)
-    S2 <- .prior_simple_base_p(prior, upper, lower.tail = FALSE)
-  }
-
+  force(prior)
   list(
-    cdf = function(q){
-      p <- numeric(length(q))
-      q_lower  <- q < lower
-      q_higher <- q > upper
-      q_inside <- !q_lower & !q_higher
-
-      p[q_lower]  <- 0
-      p[q_higher] <- 1
-      if(any(q_inside)){
-        if(use_survival){
-          S_q         <- .prior_simple_base_p(prior, q[q_inside], lower.tail = FALSE)
-          p[q_inside] <- (S1 - S_q) / C
-        }else{
-          p[q_inside] <- (.prior_simple_base_p(prior, q[q_inside], lower.tail = TRUE) - C1) / C
-        }
-      }
-      p
-    },
-    ccdf = function(q){
-      p <- numeric(length(q))
-      q_lower  <- q < lower
-      q_higher <- q > upper
-      q_inside <- !q_lower & !q_higher
-
-      p[q_lower]  <- 1
-      p[q_higher] <- 0
-      if(any(q_inside)){
-        if(use_survival){
-          p[q_inside] <- (.prior_simple_base_p(prior, q[q_inside], lower.tail = FALSE) - S2) / C
-        }else{
-          p[q_inside] <- (.prior_simple_base_p(prior, q[q_inside], lower.tail = FALSE) - (1 - C2)) / C
-        }
-      }
-      p
-    },
-    pdf = function(x){
-      y <- .prior_simple_base_d(prior, x, log = FALSE)
-      y[x < lower | x > upper] <- 0
-      y / C
-    },
-    quant = function(p){
-      if(use_survival){
-        return(.prior_simple_base_q(prior, S1 - p * (S1 - S2), lower.tail = FALSE))
-      }
-      .prior_simple_base_q(prior, C1 + p * C)
-    }
+    cdf = function(q) .prior_simple_cdf(prior, q),
+    ccdf = function(q) .prior_simple_ccdf(prior, q),
+    pdf = function(x) .prior_simple_pdf(prior, x),
+    quant = function(p) .prior_simple_quant(prior, p)
   )
 }
 .petpeese_prior_components_normalize <- function(components){

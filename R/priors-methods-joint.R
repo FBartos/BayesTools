@@ -6,6 +6,8 @@
 #' random generation (rng), mean, standard deviation (sd),
 #' and marginal variants of the functions (mpdf, mlpf, mcdf,
 #' mccdf, mquant) for prior distributions.
+#' Joint quantiles are unavailable for vector factor priors; use
+#' \code{mquant()} for their marginal quantiles.
 #'
 #' @param x prior distribution
 #' @param y vector of observations
@@ -493,6 +495,10 @@ quant.prior <- function(x, p, ...){
   }else if(is.prior.vector(prior) && !is.prior.factor(prior)){
 
     q <- mquant(prior, p)
+
+  }else if(is.prior.factor(prior)){
+
+    stop("Joint quantiles are unavailable for factor priors. Use 'mquant()' for marginal quantiles.", call. = FALSE)
 
   }else if(is.prior.weightfunction(prior)){
 

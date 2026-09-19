@@ -642,7 +642,8 @@ wf_independent <- function(prior, scale = "omega"){
         mlpdf(component$prior, x)
       }else{
         out <- rep(-Inf, length(x))
-        inside <- x > 0
+        out[is.na(x)] <- NA_real_
+        inside <- !is.na(x) & x > 0
         out[inside] <- mlpdf(component$prior, log(x[inside])) - log(x[inside])
         out
       }

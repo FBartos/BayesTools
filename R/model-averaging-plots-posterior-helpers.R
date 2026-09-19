@@ -48,7 +48,7 @@
 
   # collect them
   for(i in 1:nrow(unique_map)){
-    unique_map[i, "frequency"] <- sum(priors_point_map[sapply(priors_point_map[, "location"], function(l) isTRUE(all.equal(l, unname(unique_map[i, "location"])))), "frequency"])
+    unique_map[i, "frequency"] <- sum(priors_point_map[priors_point_map[, "location"] == unique_map[i, "location"], "frequency"])
   }
 
   spike_probability = data.frame(cbind(

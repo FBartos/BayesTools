@@ -465,8 +465,8 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   if(!all(plot_data$y == 0)){
     geom <- ggplot2::geom_segment(
       data    = data.frame(
-        x    = unique(plot_data$x[plot_data$y != 0]),
-        xend = unique(plot_data$x[plot_data$y != 0]),
+        x    = plot_data$x[plot_data$y != 0],
+        xend = plot_data$x[plot_data$y != 0],
         y    = 0,
         yend = plot_data$y[plot_data$y != 0] * scale_y2),
       mapping = ggplot2::aes(

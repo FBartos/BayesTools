@@ -450,13 +450,16 @@
   y_points <- NULL
   if(length(point_components) > 0){
     point_locations <- vapply(point_components, function(component) component$location, numeric(1))
-    point_keys      <- as.character(signif(point_locations, 15))
+    point_keys      <- sprintf("%a", point_locations)
     point_groups    <- split(seq_along(point_components), point_keys)
 
     x_points <- unname(vapply(point_groups, function(ind) point_locations[ind[1]], numeric(1)))
     y_points <- unname(vapply(point_groups, function(ind){
       sum(vapply(point_components[ind], function(component) component$weight, numeric(1)))
     }, numeric(1)))
+    point_order <- order(x_points)
+    x_points <- x_points[point_order]
+    y_points <- y_points[point_order]
   }
 
   out <- list()

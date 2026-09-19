@@ -1,5 +1,15 @@
 skip_if_not_test_profile(c("unit", "fixture"))
 
+test_that("log-weight component density propagates missing values", {
+
+  component <- list(type = "prior", scale = "log_omega", prior = prior("normal", list(0, 1)))
+  x <- c(-1, 0, 1, 2, NA_real_)
+  expect_equal(
+    BayesTools:::.prior_weightfunction_component_lpdf(component, x),
+    stats::dlnorm(x, log = TRUE)
+  )
+})
+
 # TEST FILE: Weightfunction prior redesign
 # ============================================================================ #
 #

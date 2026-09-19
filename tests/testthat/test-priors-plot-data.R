@@ -1,5 +1,52 @@
 skip_if_not_test_profile("unit")
 
+test_that("spike plotting preserves distinct nearby atoms and exact duplicates", {
+
+  for(locations in list(c(0, 1e-10), c(1e6, 1e6 + .005), c(1, 1))){
+    priors <- lapply(locations, function(location) prior("spike", list(location)))
+    samples <- rep(locations, each = 2)
+    attr(samples, "models_ind") <- rep(1:2, each = 2)
+    atoms <- BayesTools:::.simplify_spike_samples(samples, priors)
+    expect_equal(sum(atoms$probability), 1)
+    expect_equal(atoms$location, unique(locations))
+    expect_equal(atoms$probability, rep(1 / length(unique(locations)), length(unique(locations))))
+  }
+
+  plot_data <- list(x = c(0, 0, 1), y = c(.2, .3, .5))
+  layer <- BayesTools:::.geom_prior.point(plot_data)
+  expect_equal(layer$data$x, plot_data$x)
+  expect_equal(layer$data$yend, plot_data$y)
+})
+
+test_that("weight prior plotting preserves adjacent representable atom locations", {
+
+  locations <- c(1, 1 + .Machine$double.eps, 1, .5)
+  components <- lapply(locations, function(location){
+    list(type = "point", location = location, weight = 1 / 4)
+  })
+  plotted <- BayesTools:::.plot_data_prior_weightparameter_components(
+    components, parameter = "omega", n_points = 10
+  )
+  expect_length(plotted, 3L)
+  expect_equal(unname(vapply(plotted, function(x) x$y, numeric(1))), c(1 / 4, 1 / 2, 1 / 4))
+  expect_equal(unname(vapply(plotted, function(x) x$x, numeric(1))), sort(unique(locations)), tolerance = 0)
+})
+
+test_that("PET-PEESE plot functions retain truncated-normal tail probabilities", {
+
+  p <- prior_PET("normal", list(0, 1), truncation = list(40, 41))
+  functions <- BayesTools:::.petpeese_prior_simple_functions(p)
+  probabilities <- c(.1, .5, .9)
+  quantiles <- functions$quant(probabilities)
+  expect_true(all(is.finite(quantiles)))
+  expect_equal(functions$cdf(quantiles), probabilities, tolerance = 1e-10)
+  expect_equal(functions$ccdf(quantiles), 1 - probabilities, tolerance = 1e-10)
+  expected_pdf <- exp(stats::dnorm(quantiles, log = TRUE) -
+    stats::pnorm(40, lower.tail = FALSE, log.p = TRUE))
+  # The omitted upper tail has relative mass below exp(-40).
+  expect_equal(functions$pdf(quantiles), expected_pdf, tolerance = 1e-12)
+})
+
 # ============================================================================ #
 # TEST FILE: Prior Plot Data Semantics
 # ============================================================================ #

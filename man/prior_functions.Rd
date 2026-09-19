@@ -65,6 +65,8 @@ function (cdf / ccdf), quantile function (quant),
 random generation (rng), mean, standard deviation (sd),
 and marginal variants of the functions (mpdf, mlpf, mcdf,
 mccdf, mquant) for prior distributions.
+Joint quantiles are unavailable for vector factor priors; use
+\code{mquant()} for their marginal quantiles.
 }
 \examples{
 # create a standard normal prior distribution
