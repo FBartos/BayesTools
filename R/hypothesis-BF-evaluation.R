@@ -273,6 +273,14 @@
 
   prob <- evaluate_probability(prior_density)
   refined <- .prior_linear_density_refinement(prior_density)
+  if(is.null(refined) &&
+     !is.null(attr(prior_density, "adaptive_evaluation", exact = TRUE))){
+    stop(
+      "Adaptive prior-probability evaluation did not converge within the ",
+      "documented grid-refinement error criterion.",
+      call. = FALSE
+    )
+  }
   if(!is.null(refined)){
     tolerance <- .prior_linear_density_refinement_tolerance()
     previous <- prob
@@ -289,7 +297,11 @@
       }
       previous <- current
       if(i < 4L){
-        refined <- .prior_linear_density_refinement(refined)
+        next_refined <- .prior_linear_density_refinement(refined)
+        if(is.null(next_refined)){
+          break
+        }
+        refined <- next_refined
       }
     }
     if(!converged){

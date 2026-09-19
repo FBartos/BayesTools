@@ -1,5 +1,54 @@
 skip_if_not_test_profile("unit")
 
+test_that("linear group ranges accept omitted source transformations", {
+
+  group <- list(prior = prior("normal", list(0, 1)), weights = c(mu = 1), indices = 1L)
+  expect_equal(
+    BayesTools:::.prior_linear_group_range(group, tail_prob = .001),
+    stats::qnorm(c(.001, .999))
+  )
+})
+
+test_that("adaptive ordinates cannot converge by repeating the capped grid", {
+
+  density <- structure(
+    list(density = list(x = c(-1, 1), y = c(1, 1), mass = 1), points = NULL),
+    class = "prior_linear_density"
+  )
+  attr(density, "adaptive_evaluation") <- list(
+    kind = "linear_combination", arguments = list(n_grid = 32768, tail_prob = 1e-12)
+  )
+  expect_null(BayesTools:::.prior_linear_density_refinement(density))
+  expect_error(
+    BayesTools:::.prior_linear_density_height(density, 0),
+    "Adaptive prior-density evaluation did not converge within the documented grid-refinement error criterion.",
+    fixed = TRUE
+  )
+  side <- hypothesis_parse("theta < 0")$statements[[1L]]$left
+  expect_error(
+    BayesTools:::.hypothesis_prior_density_prob(density, side, "theta"),
+    "Adaptive prior-probability evaluation did not converge within the documented grid-refinement error criterion.",
+    fixed = TRUE
+  )
+
+  attr(density, "adaptive_evaluation")$arguments$n_grid <- 16384L
+  testthat::local_mocked_bindings(
+    .prior_linear_combination_density = function(n_grid, tail_prob, .record_evaluation){
+      density$density$y <- c(2, 2)
+      density
+    },
+    .package = "BayesTools"
+  )
+  expect_error(
+    BayesTools:::.prior_linear_density_height(density, 0),
+    "did not converge", fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.hypothesis_prior_density_prob(density, side, "theta"),
+    "did not converge", fixed = TRUE
+  )
+})
+
 test_that("linear density normalize warns only for large mass deviation", {
 
   quiet <- BayesTools:::.prior_linear_density_normalize(list(

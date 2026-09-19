@@ -231,7 +231,11 @@
 
   prior <- group$prior
   weights <- group$weights
-  source_transforms <- source_transforms[names(weights)]
+  source_transforms <- if(is.null(source_transforms)){
+    rep(NA_character_, length(weights))
+  }else{
+    source_transforms[names(weights)]
+  }
 
   if(is.prior.none(prior)){
     return(c(0, 0))
@@ -1025,6 +1029,9 @@
       1e-12
     )
   }
+  if(isTRUE(all.equal(arguments, context$arguments, tolerance = 0))){
+    return(NULL)
+  }
   refined_arguments <- arguments
   refined_arguments$.record_evaluation <- FALSE
   refined <- if(identical(context$kind, "linear_combination")){
@@ -1228,6 +1235,13 @@
   height <- .prior_linear_density_grid_height(x, value)
   refined <- .prior_linear_density_refinement(x)
   if(is.null(refined)){
+    if(!is.null(attr(x, "adaptive_evaluation", exact = TRUE))){
+      stop(
+        "Adaptive prior-density evaluation did not converge within the documented ",
+        "grid-refinement error criterion.",
+        call. = FALSE
+      )
+    }
     if(!is.null(x$density) &&
        (value < min(x$density$x) || value > max(x$density$x))){
       stop(
@@ -1265,7 +1279,11 @@
     }
     previous <- current
     if(i < 4L){
-      refined <- .prior_linear_density_refinement(refined)
+      next_refined <- .prior_linear_density_refinement(refined)
+      if(is.null(next_refined)){
+        break
+      }
+      refined <- next_refined
     }
   }
 
