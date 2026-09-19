@@ -7,7 +7,7 @@
 fit_backend_fingerprint()
 }
 \value{
-A length-one MD5 character string, or \code{NA_character_} when the
+A length-one 32-character hexadecimal fingerprint, or \code{NA_character_} when the
 loaded implementation cannot be resolved.
 }
 \description{

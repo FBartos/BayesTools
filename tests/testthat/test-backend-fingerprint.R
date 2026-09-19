@@ -116,3 +116,14 @@ test_that("installed backend fingerprint uses installed artifacts", {
     "^[[:xdigit:]]{32}$"
   )
 })
+
+test_that("backend fingerprints do not require temporary file writes", {
+
+  testthat::local_mocked_bindings(
+    tempfile = function(...) stop("Temporary file writes are unavailable."),
+    .package = "base"
+  )
+  expect_match(.compute_fit_backend_fingerprint(), "^[[:xdigit:]]{32}$")
+  expect_match(.JAGS_package_builds("stats")$stats$r_code,
+               "^[[:xdigit:]]{32}$")
+})

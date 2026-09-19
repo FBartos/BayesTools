@@ -300,7 +300,7 @@
     functions <- functions[sort(names(functions), method = "radix")]
     definitions <- vapply(functions, function(value){
       paste(deparse(value, width.cutoff = 500L,
-                    control = c("keepNA", "keepInteger", "niceNames")),
+                    control = c("keepNA", "keepInteger", "niceNames", "digits17")),
             collapse = "\n")
     }, character(1))
     # Numerical rule vectors and immutable metadata are executable settings
@@ -316,13 +316,9 @@
     }
     constants <- Filter(immutable, values)
     constants <- constants[sort(names(constants), method = "radix")]
-    code_file <- tempfile("JAGS-package-code-")
-    on.exit(unlink(code_file), add = TRUE)
-    saveRDS(list(functions = definitions, constants = constants), code_file,
-      version = 2L, compress = FALSE)
     list(
       version = as.character(utils::packageVersion(package)),
-      r_code = unname(tools::md5sum(code_file)),
+      r_code = rlang::hash(list(functions = definitions, constants = constants)),
       dll = stats::setNames(unname(tools::md5sum(paths)), names(paths))
     )
   })

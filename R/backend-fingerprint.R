@@ -129,14 +129,10 @@
     paste0("loaded-dll/", basename(files))
   )
   input <- c(
-    "BayesTools-fit-backend-schema:1",
+    "BayesTools-fit-backend-schema:2",
     paste0(labels, ":", hashes)
   )
-  normalized <- tempfile("BayesTools-fit-backend-", fileext = ".txt")
-  on.exit(unlink(normalized), add = TRUE)
-  writeLines(input, normalized, useBytes = TRUE)
-
-  return(unname(tools::md5sum(normalized)))
+  return(rlang::hash(input))
 }
 
 
@@ -185,7 +181,7 @@
 #' is not a cross-platform cache key. External runtimes and dependencies such as
 #' JAGS are outside this BayesTools implementation fingerprint.
 #'
-#' @return A length-one MD5 character string, or `NA_character_` when the
+#' @return A length-one 32-character hexadecimal fingerprint, or `NA_character_` when the
 #' loaded implementation cannot be resolved.
 #'
 #' @export

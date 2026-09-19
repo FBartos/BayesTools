@@ -317,6 +317,31 @@ test_that("JAGS build checks fingerprint loaded R definitions", {
   expect_false(identical(changed$r_code, original$r_code))
 })
 
+test_that("JAGS build checks distinguish adjacent numeric literals", {
+
+  probe <- function(value){
+    fn <- function() NULL
+    body(fn) <- value
+    environment(fn) <- asNamespace("BayesTools")
+    fn
+  }
+  testthat::local_mocked_bindings(
+    .prior_linear_density_default_grid = probe(1), .package = "BayesTools")
+  original <- .JAGS_package_builds("BayesTools")$BayesTools
+  testthat::local_mocked_bindings(
+    .prior_linear_density_default_grid = probe(1 + .Machine$double.eps),
+    .package = "BayesTools")
+  changed <- .JAGS_package_builds("BayesTools")$BayesTools
+  expect_false(identical(changed$r_code, original$r_code))
+  expect_identical(changed[c("version", "dll")], original[c("version", "dll")])
+
+  testthat::local_mocked_bindings(
+    .prior_linear_density_default_grid = compiler::cmpfun(probe(1)),
+    .package = "BayesTools")
+  compiled <- .JAGS_package_builds("BayesTools")$BayesTools
+  expect_identical(compiled, original)
+})
+
 test_that("JAGS_fit reports and records backend errors recovered by a restart", {
 
   skip_if_not_installed("runjags")
