@@ -453,6 +453,40 @@ test_that("nonlocal priors report analytic moments and finite random draws", {
   expect_false(any(draws == p_invmoment$parameters$location))
 })
 
+test_that("nonlocal generators consume size then sign uniforms reproducibly", {
+
+  n <- 12L
+  location <- .25
+  tau <- .5
+  order <- 2L
+  df <- 3
+  set.seed(5819)
+  uniforms <- matrix(stats::runif(2L * n), nrow = 2L)
+  rng_state <- .Random.seed
+  signs <- ifelse(uniforms[2L, ] < .5, -1, 1)
+  expected_moment <- location + signs * sqrt(
+    tau * stats::qchisq(uniforms[1L, ], 2 * order + 1)
+  )
+  expected_invmoment <- location + signs * sqrt(
+    tau / stats::qgamma(uniforms[1L, ], df / (2 * order))^(1 / order)
+  )
+
+  set.seed(5819)
+  expect_equal(
+    BayesTools:::.rmoment_prior(n, location, tau, order),
+    expected_moment,
+    tolerance = 1e-13
+  )
+  expect_identical(.Random.seed, rng_state)
+  set.seed(5819)
+  expect_equal(
+    BayesTools:::.rinvmoment_prior(n, location, tau, order, df),
+    expected_invmoment,
+    tolerance = 1e-13
+  )
+  expect_identical(.Random.seed, rng_state)
+})
+
 test_that("nonlocal priors normalize truncation", {
   priors <- list(
     prior("moment", list(mode = .5, location = .25), truncation = list(lower = .25, upper = Inf)),

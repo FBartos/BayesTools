@@ -97,8 +97,11 @@ namespace jags {
           );
         }
       }
+      // Match the R generator's explicit size-then-sign draw order.
+      double u_size = rng->uniform();
+      double u_sign = rng->uniform();
       return bayestools::nonlocal::moment_rng(
-        rng->uniform(), rng->uniform(), *par[0], *par[1], *par[2]
+        u_sign, u_size, *par[0], *par[1], *par[2]
       );
     }
 

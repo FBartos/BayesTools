@@ -163,12 +163,15 @@ SEXP nonlocal_r(SEXP n, SEXP location, SEXP tau, SEXP order,
   double *out_ptr = REAL(out);
   GetRNGstate();
   for(int i = 0; i < n_value; ++i){
+    // Fix the draw order while retaining the existing GCC seeded stream.
+    double u_size = unif_rand();
+    double u_sign = unif_rand();
     out_ptr[i] = invmoment ?
       bayestools::nonlocal::invmoment_rng(
-        unif_rand(), unif_rand(), location_value, tau_value, order_value, df_value
+        u_sign, u_size, location_value, tau_value, order_value, df_value
       ) :
       bayestools::nonlocal::moment_rng(
-        unif_rand(), unif_rand(), location_value, tau_value, order_value
+        u_sign, u_size, location_value, tau_value, order_value
       );
   }
   PutRNGstate();
