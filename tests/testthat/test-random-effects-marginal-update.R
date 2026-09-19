@@ -64,6 +64,23 @@ skip_if_not_test_profile("unit")
 }
 
 
+test_that("marginal update plans propagate invalid transformation metadata", {
+
+  fit <- .random_update_test_fit(
+    ~ 1 + (1 | study),
+    data.frame(study = factor(c("a", "a", "b", "b")))
+  )
+  testthat::local_mocked_bindings(
+    .bt_parameter_transform_from_quantity = function(...){
+      stop("Invalid source transformation metadata.", call. = FALSE)
+    },
+    .package = "BayesTools"
+  )
+  expect_error(.random_update_test_plan(fit, "random_sd"),
+               "Invalid source transformation metadata.", fixed = TRUE)
+})
+
+
 .random_update_test_allocation_fit <- function(
     formula = ~ 1 + random(1 + x | id, name = "study", covariance = "diag")){
 

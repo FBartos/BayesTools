@@ -1,5 +1,22 @@
 skip_if_not_test_profile("unit")
 
+test_that("homogeneous diagonal random effects have a shared SD label", {
+
+  compiled <- JAGS_formula(
+    ~ 1 + diag(1 + x | study, hom = TRUE), "mu",
+    data.frame(study = factor(c("a", "a", "b", "b")), x = 1:4),
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(sd = prior("gamma", list(2, 2)))
+  )
+  term <- compiled$formula_design$random_effects[[1L]]
+  expect_identical(
+    BayesTools:::.bt_random_effect_summary_sd_components(
+      term, unique(term$sd_parameter_names)
+    ),
+    "shared"
+  )
+})
+
 .random_effects_mean_variance_allocation_fit <- function(alpha = c(2, 3)){
 
   data <- data.frame(

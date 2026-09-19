@@ -102,10 +102,8 @@ random_effects_marginal_update_plan <- function(fit, selection){
   # transform itself, so a consumer that needs to apply it to a draw does not
   # have to re-derive it from the catalog. NULL when the quantity has none.
   if(is.null(plan$source_transform_spec)){
-    plan$source_transform_spec <- tryCatch(
-      .bt_parameter_transform_from_quantity(fit, quantity),
-      error = function(e) NULL
-    )
+    plan$source_transform_spec <- .bt_parameter_transform_from_quantity(
+      fit, quantity)
   }
   plan$dependencies      <- key$dependencies
   class(plan) <- c(

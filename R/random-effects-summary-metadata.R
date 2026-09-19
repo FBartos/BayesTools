@@ -50,8 +50,10 @@
       call. = FALSE
     )
   }
-  if(.bt_random_effect_summary_term_structure(random_term) %in%
-     c("id", "cs", "ar1", "car") && length(out) == 1L){
+  structure <- .bt_random_effect_summary_term_structure(random_term)
+  shared <- structure %in% c("id", "cs", "ar1", "car") ||
+    (identical(structure, "diag") && isTRUE(random_term$homogeneous_sd))
+  if(shared && length(out) == 1L){
     out <- "shared"
   }
   .bt_random_effect_summary_display_components(random_term, out)
