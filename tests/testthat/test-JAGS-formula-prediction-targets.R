@@ -1,5 +1,76 @@
 skip_if_not_test_profile("unit")
 
+test_that("scaled predictors retain original values inside formula expressions", {
+
+  df <- data.frame(x = c(10, 20, 30))
+  result <- JAGS_formula(
+    ~ 1 + x + expression(x[i]), "mu", df,
+    prior_list = list(intercept = prior("normal", list(0, 1)),
+                      x = prior("normal", list(0, 1))),
+    formula_scale = TRUE
+  )
+  fit <- coda::mcmc(matrix(c(5, 2), nrow = 1L,
+                          dimnames = list(NULL, c("mu_intercept", "mu_x"))))
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+
+  expect_equal(result$data$x, df$x)
+  expect_equal(unname(result$data$mu_data_x), as.numeric(scale(df$x)))
+  expect_match(result$formula_syntax, "mu_x * mu_data_x[i] + x[i]", fixed = TRUE)
+  expected <- unname(5 + 2 * result$data$mu_data_x + result$data$x)
+  expect_equal(unname(drop(JAGS_evaluate_formula(fit, parameter = "mu"))), expected)
+  expect_equal(unname(drop(JAGS_evaluate_formula(fit, parameter = "mu", data = df))), expected)
+
+  new_data <- data.frame(x = c(15, 35))
+  expect_equal(
+    unname(drop(JAGS_evaluate_formula(fit, parameter = "mu", data = new_data))),
+    5 + 2 * (new_data$x - 20) / 10 + new_data$x
+  )
+})
+
+test_that("explicit prediction subsets can suppress a fitted intercept", {
+
+  df <- data.frame(x = c(10, 20, 30))
+  result <- JAGS_formula(
+    ~ 1 + x, "mu", df,
+    prior_list = list(intercept = prior("normal", list(0, 1)),
+                      x = prior("normal", list(0, 1)))
+  )
+  fit <- coda::mcmc(matrix(c(5, 2), nrow = 1L,
+                          dimnames = list(NULL, c("mu_intercept", "mu_x"))))
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  for(formula in list(~ 0 + x, ~ x - 1)){
+    expect_equal(
+      unname(drop(JAGS_evaluate_formula(fit, formula = formula, parameter = "mu"))),
+      2 * df$x
+    )
+  }
+  expect_equal(
+    unname(drop(JAGS_evaluate_formula(fit, formula = ~ 0, parameter = "mu"))),
+    rep(0, nrow(df))
+  )
+  log_formula <- ~ 0 + x
+  attr(log_formula, "log(intercept)") <- TRUE
+  expect_equal(
+    unname(drop(JAGS_evaluate_formula(fit, formula = log_formula, parameter = "mu"))),
+    2 * df$x
+  )
+  expect_identical(attr(fit, "formula_design")$mu$prior_list, result$prior_list)
+
+  df <- data.frame(group = factor(c("a", "b", "c")))
+  result <- JAGS_formula(
+    ~ 1 + group, "mu", df,
+    prior_list = list(intercept = prior("normal", list(0, 1)),
+                      group = prior_factor("normal", list(0, 1), contrast = "treatment"))
+  )
+  fit <- coda::mcmc(matrix(c(5, 2, -3), nrow = 1L,
+                          dimnames = list(NULL, c("mu_intercept", "mu_group[1]", "mu_group[2]"))))
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  expect_equal(
+    unname(drop(JAGS_evaluate_formula(fit, formula = ~ 0 + group, parameter = "mu"))),
+    c(0, 2, -3)
+  )
+})
+
 .formula_prediction_data <- function(){
   data.frame(
     x = c(-1, 0, 1, 2),

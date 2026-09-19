@@ -136,6 +136,7 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   formula <- .remove_expressions(formula)
   if(!is.data.frame(data))
     stop("'data' must be a data.frame")
+  expression_source_data <- data
   if(!is.null(fitted_rows)){
     check_int(
       fitted_rows,
@@ -198,7 +199,8 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
     )
   }
   log_intercept <- isTRUE(attr(formula, "log(intercept)"))
-  if(attr(stats::terms(formula), "intercept") == 0){
+  no_intercept_specified <- attr(stats::terms(formula), "intercept") == 0
+  if(no_intercept_specified){
     formula <- formula_add_intercept(formula)
     if(log_intercept){
       attr(formula, "log(intercept)") <- TRUE
@@ -211,6 +213,11 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
     stop("The specified parameter '", parameter, "' was not used in any of the prior distributions.")
   prior_list_formula <- prior_list[prior_parameter == parameter]
   names(prior_list_formula) <- format_parameter_names(names(prior_list_formula), formula_parameters = parameter, formula_prefix = FALSE)
+  if(no_intercept_specified){
+    prior_list_formula[["intercept"]] <- prior(
+      "spike", list(if(log_intercept) 1 else 0)
+    )
+  }
 
   # extract the terms information from the formula
   formula_terms    <- stats::terms(formula)
@@ -377,7 +384,7 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
 
   if(length(expressions_to_eval) > 0L){
     expression_data <- .bt_formula_expression_merge_data(
-      data,
+      expression_source_data,
       if(!data_supplied) fitted_design$expression_data else NULL,
       context = paste0(
         "JAGS_evaluate_formula() for parameter '", parameter, "'"
