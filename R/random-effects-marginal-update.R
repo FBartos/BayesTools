@@ -31,7 +31,9 @@
 #' state. Allocation-derived component SDs stay affine on `id`/`diag` and
 #' single-column blocks. On correlated multi-column structures they are
 #' factor `column_scale` updates of the selected quantity, not
-#' `A + h(sigma) B`. Unsupported plans carry a structural reason. The accessor
+#' `A + h(sigma) B`. Their `coefficient_scale_transform` converts a selected
+#' variance to its square root and leaves a selected SD unchanged.
+#' Unsupported plans carry a structural reason. The accessor
 #' never estimates affineness from evaluated covariance matrices.
 #'
 #' @seealso [parameter_catalog()] [random_effects_marginal_factor_states()]
@@ -134,8 +136,9 @@ random_effects_marginal_update_plan <- function(fit, selection){
 #'   [random_effects_marginal_update_plan()].
 #' @param values finite candidate values on the scale declared by `update`.
 #'   Source-coordinate factor updates replace `source_parameter` in the
-#'   posterior. Quantity-scale factor updates use `values` as the selected
-#'   component's coefficient scale.
+#'   posterior. Quantity-scale factor updates accept non-negative values of
+#'   the selected SD or variance; variance values are converted to SDs using
+#'   the plan's `coefficient_scale_transform`.
 #' @param posterior_samples optional posterior sample object. By default the
 #'   posterior is obtained from `fit`.
 #' @param prior_list optional formula prior list used to reconstruct random SD
@@ -180,6 +183,10 @@ random_effects_marginal_update_grid <- function(
          call. = FALSE)
   }
   quantity_scale <- identical(update$coefficient_input, "quantity")
+  if(quantity_scale && any(values < 0)){
+    stop("'values' must be non-negative for a random-effect SD or variance update.",
+         call. = FALSE)
+  }
   source <- update$source_parameter
   if(!quantity_scale &&
      (!is.character(source) || length(source) != 1L ||
@@ -230,7 +237,16 @@ random_effects_marginal_update_grid <- function(
       ncol = nrow(posterior)
     )
     if(quantity_scale){
-      candidate_scale[] <- rep(values, times = nrow(posterior))
+      transform <- update$coefficient_scale_transform
+      candidate_values <- if(identical(transform, list(type = "sqrt"))){
+        sqrt(values)
+      }else if(identical(transform, list(type = "identity"))){
+        values
+      }else{
+        stop("Quantity-scale factor updates require a supported coefficient-scale transform.",
+             call. = FALSE)
+      }
+      candidate_scale[] <- rep(candidate_values, times = nrow(posterior))
     }else{
       for(value_i in seq_along(values)){
         candidate <- posterior
@@ -673,7 +689,12 @@ random_effects_marginal_update_grid <- function(
         blocks = random_term$block_name,
         component_index = key$index,
         structure = structure,
-        coefficient_input = "quantity"
+        coefficient_input = "quantity",
+        coefficient_scale_transform = if(identical(key$evaluator, "sd_variance")){
+          list(type = "sqrt")
+        }else{
+          list(type = "identity")
+        }
       ))
     }
     return(.bt_random_effect_marginal_update_unavailable(

@@ -20,8 +20,9 @@ random_effects_marginal_update_grid(
 
 \item{values}{finite candidate values on the scale declared by \code{update}.
 Source-coordinate factor updates replace \code{source_parameter} in the
-posterior. Quantity-scale factor updates use \code{values} as the selected
-component's coefficient scale.}
+posterior. Quantity-scale factor updates accept non-negative values of
+the selected SD or variance; variance values are converted to SDs using
+the plan's \code{coefficient_scale_transform}.}
 
 \item{posterior_samples}{optional posterior sample object. By default the
 posterior is obtained from \code{fit}.}

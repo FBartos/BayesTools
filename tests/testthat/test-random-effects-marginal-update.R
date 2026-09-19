@@ -454,6 +454,43 @@ test_that("correlated component allocations retain nonlinear covariances", {
   expect_identical(grid$family, "factor")
   expect_equal(grid$candidate_scale[, 1L], c(0.25, 0.75))
   expect_equal(grid$candidate_scale[, 2L], c(0.25, 0.75))
+
+  component_var <- .random_update_test_plan(fit, "random_var", "index[1]")
+  variance_grid <- random_effects_marginal_update_grid(
+    fit = fit,
+    update = component_var,
+    values = c(0.25, 0.75)^2
+  )
+  expect_identical(component_var$coefficient_input, "quantity")
+  expect_identical(component_var$coefficient_scale_transform, list(type = "sqrt"))
+  expect_equal(variance_grid$candidate_scale, grid$candidate_scale)
+
+  for(i in seq_len(nrow(grid$candidate_scale))){
+    scales <- c(grid$candidate_scale[i, 1L], 0.5 / sqrt(2))
+    expected <- kronecker(diag(2), tcrossprod(scales) *
+      matrix(c(1, 0.5, 0.5, 1), nrow = 2L))
+    coefficient_factor <- diag(scales) %*%
+      variance_grid$coefficient_cholesky[1L, , ]
+    expect_equal(kronecker(diag(2), tcrossprod(coefficient_factor)),
+                 expected, tolerance = 1e-14)
+
+    candidate <- as.matrix(fit)
+    candidate[, "tau"] <- sqrt(sum(scales^2))
+    candidate[, paste0(weight, "[1]")] <- scales[1L]^2 / sum(scales^2)
+    candidate[, paste0(weight, "[2]")] <- scales[2L]^2 / sum(scales^2)
+    direct <- random_effects_marginal_vcov(
+      fit, parameter = "mu", posterior_samples = candidate
+    )$samples
+    expect_equal(unname(direct[1L, , ]), expected, tolerance = 1e-14)
+  }
+  for(update in list(component_sd, component_var)){
+    expect_error(
+      random_effects_marginal_update_grid(fit, update, values = -0.2),
+      "must be non-negative"
+    )
+    zero <- random_effects_marginal_update_grid(fit, update, values = 0)
+    expect_equal(zero$candidate_scale, matrix(0, nrow = 1L, ncol = 2L))
+  }
 })
 
 
