@@ -148,6 +148,24 @@
   ### assign prior list and model indicator
   attr(prior_list, "omega_context") <- attr(samples[["bias"]], "omega_context")
   attr(new_samples, "prior_list") <- prior_list
+  if(parameter %in% c("PET", "PEESE") && ncol(new_samples) == 1L){
+    atoms <- .posterior_atoms_get(samples[["bias"]])
+    if(!is.null(atoms)){
+      probabilities <- atoms$component_probabilities
+      scalar_atoms <- if(is.null(probabilities)){
+        .posterior_atoms_from_indicator(
+          prior_list, attr(new_samples, "models_ind"),
+          n_columns = 1L, column_names = parameter
+        )
+      }else{
+        .posterior_atoms_from_priors(
+          prior_list, probabilities, n_columns = 1L,
+          column_names = parameter, source = atoms$source
+        )
+      }
+      new_samples <- .posterior_atoms_set(new_samples, scalar_atoms)
+    }
+  }
 
   ### remove the old samples & store new samples
   samples[["bias"]]    <- NULL

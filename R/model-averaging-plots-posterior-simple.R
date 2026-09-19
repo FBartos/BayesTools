@@ -310,10 +310,13 @@
     prior_list <- list(prior_list)
 
   if(!is.null(posterior_atoms)){
-    if(ncol(posterior_atoms$locations) != 1L){
-      stop("Simple posterior plotting is unavailable for multivariate atom metadata.", call. = FALSE)
+    posterior_atoms <- .posterior_atoms_for_column(
+      posterior_atoms,
+      if(ncol(posterior_atoms$locations) == 1L) 1L else parameter
+    )
+    if(is.null(posterior_atoms)){
+      stop("Simple posterior plotting is unavailable because atom metadata do not identify the requested parameter.", call. = FALSE)
     }
-    posterior_atoms <- .posterior_atoms_for_column(posterior_atoms, 1L)
     continuous <- .Savage_Dickey_BF.continuous_posterior(samples, posterior_atoms)
     samples_density <- as.numeric(continuous$samples)
     continuous_mass <- continuous$continuous_mass

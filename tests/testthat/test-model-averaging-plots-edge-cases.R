@@ -1,5 +1,61 @@
 skip_if_not_test_profile("unit")
 
+test_that("simple plots select the requested named atom coordinate", {
+
+  theta <- rep(2, 20)
+  attr(theta, "prior_list") <- prior("point", list(2))
+  attr(theta, "models_ind") <- rep(1L, 20)
+  attr(theta, "posterior_atoms") <- BayesTools:::.posterior_atoms_new(
+    matrix(c(7, 2), nrow = 1L, dimnames = list(NULL, c("other", "theta"))),
+    mass = 1
+  )
+  plotted <- BayesTools:::.plot_data_samples.simple(
+    list(theta = theta), "theta", 64, NULL, NULL, FALSE
+  )
+  expect_equal(plotted$points1$x, 2)
+  expect_equal(plotted$points1$y, 1)
+})
+
+test_that("PET and PEESE plots rebuild scalar atoms from bias branches", {
+
+  prior_list <- list(bias = prior_mixture(list(
+    prior_none(), prior_PET("normal", list(0, 1)), prior_PEESE("normal", list(0, 1))
+  )))
+  posterior <- cbind(
+    bias_indicator = rep(1:3, each = 10),
+    PET = c(rep(0, 10), seq(.1, 1, length.out = 10), rep(0, 10)),
+    PEESE = c(rep(0, 20), seq(.2, 2, length.out = 10))
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  samples <- as_mixed_posteriors(fit, "bias")
+  # Declared branch probabilities remain authoritative even after resampling.
+  attr(samples$bias, "posterior_atoms")$component_probabilities <- c(.2, .3, .5)
+  for(parameter in c("PET", "PEESE")){
+    scalar <- BayesTools:::.simplify_as_mixed_posterior_bias(samples, parameter)
+    atoms <- BayesTools:::.posterior_atoms_get(scalar[[parameter]])
+    expect_identical(colnames(atoms$locations), parameter)
+    plotted <- BayesTools:::.plot_data_samples.simple(
+      scalar, parameter, 64, NULL, NULL, FALSE
+    )
+    expect_equal(plotted$points1$x, 0)
+    expect_equal(plotted$points1$y, if(parameter == "PET") .7 else .5)
+    expect_equal(length(plotted$density$samples), 10L)
+    expect_s3_class(
+      plot_posterior(samples, parameter, individual = TRUE, plot_type = "ggplot", n_points = 64),
+      "ggplot"
+    )
+    conditioned <- as_mixed_posteriors(fit, "bias", conditional = parameter)
+    conditional_scalar <- BayesTools:::.simplify_as_mixed_posterior_bias(conditioned, parameter)
+    expect_length(BayesTools:::.posterior_atoms_get(conditional_scalar[[parameter]])$mass, 0L)
+    conditional_plot <- BayesTools:::.plot_data_samples.simple(
+      conditional_scalar, parameter, 64, NULL, NULL, FALSE
+    )
+    expect_identical(names(conditional_plot), "density")
+  }
+})
+
 .scaled_atom_plot_samples_for_test <- function(slope, slope_prior, indicator = NULL){
 
   posterior <- cbind(mu_intercept = rep(0, length(slope)), mu_x = slope)
