@@ -7,6 +7,44 @@ skip_if_not_test_profile("unit")
   fit
 }
 
+test_that("unscaled coefficient atoms follow joint structural contributors", {
+
+  make_fit <- function(slope, slope_prior, indicator = NULL){
+    posterior <- cbind(mu_intercept = rep(0, length(slope)), mu_x = slope)
+    if(!is.null(indicator)) posterior <- cbind(posterior, mu_x_indicator = indicator)
+    fit <- .mock_marginal_fit(
+      posterior, list(mu_intercept = prior("point", list(0)), mu_x = slope_prior)
+    )
+    attr(fit, "formula_scale") <- list(mu = list(mu_x = list(mean = 5, sd = 2)))
+    .bt_attach_parameter_map(fit, monitor_names = colnames(posterior))
+  }
+  fit <- make_fit(rep(1, 20), prior("point", list(1)))
+  fixed <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x"), transform_scaled = TRUE)
+  expect_equal(as.numeric(.posterior_atoms_get(fixed$mu_intercept)$locations), -2.5)
+  expect_equal(as.numeric(.posterior_atoms_get(fixed$mu_x)$locations), .5)
+  expect_equal(.posterior_atoms_get(fixed$mu_intercept)$mass, 1)
+  marginal <- marginal_posterior(fixed, "mu_x", use_formula = FALSE, prior_samples = TRUE)
+  expect_equal(as.numeric(.posterior_atoms_get(marginal)$locations), .5)
+
+  fit <- make_fit(seq(-1, 1, length.out = 20), prior("normal", list(0, 1)))
+  continuous <- as_mixed_posteriors(fit, "mu_intercept", transform_scaled = TRUE)
+  expect_length(.posterior_atoms_get(continuous$mu_intercept)$mass, 0L)
+  expect_equal(as.numeric(continuous$mu_intercept), -2.5 * seq(-1, 1, length.out = 20))
+
+  fit <- make_fit(
+    c(rep(0, 8), seq(.1, 1, length.out = 12)),
+    prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5))),
+    indicator = c(rep(0L, 8), rep(1L, 12))
+  )
+  mixed <- as_mixed_posteriors(fit, "mu_intercept", transform_scaled = TRUE)
+  expect_equal(.posterior_atoms_get(mixed$mu_intercept)$mass, .4)
+  expect_equal(as.numeric(.posterior_atoms_get(mixed$mu_intercept)$locations), 0)
+  conditional <- as_mixed_posteriors(
+    fit, c("mu_intercept", "mu_x"), conditional = "mu_x", transform_scaled = TRUE
+  )
+  expect_length(.posterior_atoms_get(conditional$mu_intercept)$mass, 0L)
+})
+
 test_that("as_mixed_posteriors applies AND and OR conditioning exactly", {
 
   prior_list <- list(

@@ -31,4 +31,6 @@ conditioning event, and carry complete posterior-atom declarations. The
 exact induced contrast prior must be atom-free; by absolute continuity, its
 posterior is then atom-free as well. Scaled, nonlinear, row-varying, and
 multiple-target hypotheses are rejected.
+Affine transformations already applied to the marginal levels retain their
+scale and offset; nonlinear transformed marginal levels are unsupported.
 }

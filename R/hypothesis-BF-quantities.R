@@ -596,7 +596,7 @@
   }
 
   level_weights <- lapply(levels, function(level) {
-    weights <- attr(posterior[[level]], "linear_weights", exact = TRUE)
+    weights <- .hypothesis_level_linear_weights(posterior[[level]])
     if(is.null(weights)){
       stop("Linear prior weights are missing for level '", level, "'.",
            call. = FALSE)
@@ -610,7 +610,8 @@
   row_i <- .hypothesis_level_weight_rows(level_weights, nrow(prior_matrix))
 
   prior_values <- lapply(levels, function(level){
-    .hypothesis_apply_level_weights(prior_matrix, level_weights[[level]], row_i)
+    .hypothesis_apply_level_weights(prior_matrix, level_weights[[level]], row_i) +
+      .hypothesis_level_linear_offset(posterior[[level]])
   })
 
   out <- as.data.frame(prior_values, check.names = FALSE)
@@ -952,4 +953,19 @@
   class(out) <- "BayesTools_hypothesis_quantity"
 
   return(out)
+}
+
+.hypothesis_level_linear_weights <- function(posterior){
+
+  if(!is.null(attr(posterior, "joint_prior_transformation", exact = TRUE))){
+    stop("Joint prior information is unavailable for nonlinear transformed level hypotheses. Use untransformed levels or a direct scalar hypothesis.",
+         call. = FALSE)
+  }
+  attr(posterior, "linear_weights", exact = TRUE)
+}
+
+.hypothesis_level_linear_offset <- function(posterior){
+
+  offset <- attr(posterior, "linear_offset", exact = TRUE)
+  if(is.null(offset)) 0 else offset
 }

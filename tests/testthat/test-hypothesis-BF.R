@@ -70,6 +70,50 @@ test_that("hypothesis_BF requires a finite seed", {
   )
 })
 
+test_that("transformed factor levels preserve joint affine prior provenance", {
+
+  formula <- JAGS_formula(
+    ~ fac, "mu", data.frame(fac = factor(c("A", "B"))),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      fac = prior_factor("normal", list(0, 1), contrast = "treatment")
+    )
+  )
+  fit <- coda::mcmc(cbind(mu_intercept = seq(-1, 1, length.out = 201),
+                          mu_fac = seq(-2, 2, length.out = 201)))
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula$prior_list
+  mixed <- as_mixed_posteriors(fit, "mu_fac")
+  raw <- marginal_posterior(mixed, "mu_fac", use_formula = FALSE,
+                             prior_samples = TRUE)
+  affine <- marginal_posterior(
+    mixed, "mu_fac", use_formula = FALSE, prior_samples = TRUE,
+    transformation = "lin", transformation_arguments = list(a = 3, b = 2)
+  )
+  target <- hypothesis_level_contrast(affine, "mu_fac[B] - mu_fac[A] = 0", "mu_fac")
+  ordinate <- prior_density_ordinate(attr(target$posterior, "prior_density"), 0)
+  expect_equal(ordinate$log_density, stats::dnorm(0, sd = 2, log = TRUE), tolerance = 1e-12)
+  expect_identical(attr(affine$B, "linear_offset"), 3)
+  expect_equal(attr(affine$B, "linear_weights")[["mu_fac"]], 2)
+
+  raw_region <- hypothesis_BF(raw, hypothesis = "mu_fac[B] > 0", seed = 82, columns = "all")
+  affine_region <- hypothesis_BF(affine, hypothesis = "mu_fac[B] > 3", seed = 82, columns = "all")
+  expect_identical(affine_region$prior, raw_region$prior)
+  expect_identical(attr(affine_region, "raw_BF"), attr(raw_region, "raw_BF"))
+
+  nonlinear <- marginal_posterior(
+    mixed, "mu_fac", use_formula = FALSE, prior_samples = TRUE,
+    transformation = "exp"
+  )
+  message <- "Joint prior information is unavailable for nonlinear transformed level hypotheses. Use untransformed levels or a direct scalar hypothesis."
+  expect_error(hypothesis_level_contrast(nonlinear, "mu_fac[B] - mu_fac[A] = 0", "mu_fac"),
+               message, fixed = TRUE)
+  expect_error(hypothesis_BF(nonlinear, hypothesis = "mu_fac[B] > mu_fac[A]", seed = 82),
+               message, fixed = TRUE)
+  expect_s3_class(hypothesis_BF(nonlinear, hypothesis = "mu_fac[B] = 1", density_method = "normal"),
+                  "BayesTools_hypothesis_BF")
+})
+
 test_that("explicit hypothesis seeds preserve the caller's RNG state", {
 
   withr::local_seed(714)

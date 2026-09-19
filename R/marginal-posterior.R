@@ -992,6 +992,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     samples,
     condition_source = samples[[parameter]]
   )
+  marginal_posterior_samples <- .marginal_posterior_transform_linear_metadata(
+    marginal_posterior_samples, transformation, transformation_arguments
+  )
   class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior")
   return(marginal_posterior_samples)
 }
@@ -1371,4 +1374,37 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   return(temp_multiply_by)
+}
+
+.marginal_posterior_transform_linear_metadata <- function(
+    posterior, transformation, transformation_arguments){
+
+  if(is.null(transformation)){
+    return(posterior)
+  }
+  if(is.list(posterior)){
+    for(i in seq_along(posterior)){
+      posterior[[i]] <- .marginal_posterior_transform_linear_metadata(
+        posterior[[i]], transformation, transformation_arguments
+      )
+    }
+    return(posterior)
+  }
+  weights <- attr(posterior, "linear_weights", exact = TRUE)
+  if(is.null(weights)){
+    return(posterior)
+  }
+  if(identical(transformation, "lin")){
+    a <- transformation_arguments[["a"]]
+    b <- transformation_arguments[["b"]]
+    if(is.null(a)) a <- 0
+    if(is.null(b)) b <- 1
+    attr(posterior, "linear_weights") <- b * weights
+    attr(posterior, "linear_offset") <- a
+  }else{
+    attr(posterior, "linear_weights") <- NULL
+    attr(posterior, "joint_prior_transformation") <-
+      if(is.character(transformation)) transformation else "custom"
+  }
+  posterior
 }

@@ -80,6 +80,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   }
 
   # apply scale transformation to posterior samples if requested
+  original_model_samples <- model_samples
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
     model_samples <- transform_scale_samples(model_samples, formula_scale)
     posterior_density_sources <- list()
@@ -225,6 +226,12 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   }
 
   class(out) <- c(class(out), "as_mixed_posteriors", "mixed_posteriors")
+  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+    out <- .posterior_atoms_unscale_mixed(
+      out, model, original_model_samples, priors, formula_scale,
+      conditional, conditional_rule
+    )
+  }
   return(out)
 }
 

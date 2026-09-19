@@ -12,6 +12,8 @@
 #' exact induced contrast prior must be atom-free; by absolute continuity, its
 #' posterior is then atom-free as well. Scaled, nonlinear, row-varying, and
 #' multiple-target hypotheses are rejected.
+#' Affine transformations already applied to the marginal levels retain their
+#' scale and offset; nonlinear transformed marginal levels are unsupported.
 #'
 #' @param posterior a factor-like marginal posterior containing the referenced
 #'   levels.
@@ -98,7 +100,7 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
 
   level_weights <- lapply(levels, function(level){
     weights <- .hypothesis_prepare_level_weights(
-      attr(posterior[[level]], "linear_weights", exact = TRUE)
+      .hypothesis_level_linear_weights(posterior[[level]])
     )
     if(nrow(weights) != 1L){
       stop("Level contrasts require one fixed linear-weight row per level.",
@@ -125,7 +127,14 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
   if(length(weights) == 0L || all(weights == 0)){
     stop("The level contrast has zero combined linear weight.", call. = FALSE)
   }
-  prior_density <- .prior_density_from_context(context, weights)
+  offset <- sum(coefficients * vapply(
+    posterior[levels], .hypothesis_level_linear_offset, numeric(1)
+  ))
+  prior_density <- .prior_density_from_context(
+    context, weights,
+    output_transformation = if(offset != 0) "lin" else NULL,
+    output_transformation_arguments = if(offset != 0) list(a = offset, b = 1) else NULL
+  )
   if(!.hypothesis_level_contrast_prior_atom_free(prior_density)){
     stop("The level contrast prior is not structurally atom-free.",
          call. = FALSE)
@@ -149,6 +158,7 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
   )
   attr(values, "parameter")             <- target_name
   attr(values, "linear_weights")        <- weights
+  attr(values, "linear_offset")         <- offset
   attr(values, "prior_density")         <- prior_density
   attr(values, "prior_density_context") <- context
   attr(values, "posterior_atoms") <- .posterior_atoms_new(

@@ -505,6 +505,18 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
   if(nrow(weights) == 0L || is.null(colnames(weights))){
     return(NULL)
   }
+  if(isTRUE(attr(samples, "transform_scaled", exact = TRUE))){
+    context <- .prior_density_context(
+      prior_list, colnames(weights),
+      formula_scale = attr(samples, "formula_scale", exact = TRUE)
+    )
+    standardized <- matrix(0, nrow(weights), ncol(weights), dimnames = dimnames(weights))
+    for(i in seq_len(nrow(weights))){
+      row <- .prior_density_context_standardized_weights(context, weights[i, ])
+      standardized[i, names(row)] <- row
+    }
+    weights <- standardized
+  }
   plan <- .posterior_atoms_formula_plan(samples, prior_list)
   if(is.null(plan)){
     return(NULL)
@@ -579,4 +591,124 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
     )
   }
   atoms
+}
+
+.posterior_atoms_joint_linear <- function(prior_list, plan, design,
+                                           source_transforms = NULL,
+                                           output_transforms = NULL){
+
+  active <- colSums(abs(design)) != 0
+  design <- design[, active, drop = FALSE]
+  source_transforms <- if(is.null(source_transforms)){
+    rep("identity", ncol(design))
+  }else{
+    source_transforms[colnames(design)]
+  }
+  if(anyNA(source_transforms) || any(!source_transforms %in% c("identity", "log"))){
+    stop("Coefficient source-transform metadata are incomplete or unsupported.", call. = FALSE)
+  }
+  locations <- matrix(numeric(), 0L, ncol(design),
+                      dimnames = list(NULL, colnames(design)))
+  masses <- numeric()
+  for(i in seq_len(nrow(plan$components))){
+    component_locations <- stats::setNames(rep(NA_real_, ncol(design)), colnames(design))
+    for(parameter in colnames(plan$components)){
+      columns <- colnames(design) == parameter |
+        startsWith(colnames(design), paste0(parameter, "["))
+      if(!any(columns)) next
+      component_prior <- .posterior_atoms_component_prior(
+        prior_list[[parameter]], plan$components[i, parameter], plan$model_mixture
+      )
+      point <- .posterior_atoms_point_location(component_prior, sum(columns))
+      if(!is.null(point)) component_locations[columns] <- point
+    }
+    if(anyNA(component_locations)) next
+    logged <- source_transforms == "log"
+    component_locations[logged] <- log(component_locations[logged])
+    locations <- rbind(locations, component_locations)
+    masses <- c(masses, plan$probabilities[i])
+  }
+  atoms <- .posterior_atoms_new(
+    locations, masses, source = "joint_coefficient_structure"
+  )
+  atoms <- .posterior_atoms_linear_transform(atoms, design, rownames(design))
+  if(!is.null(output_transforms)){
+    output_transforms <- output_transforms[colnames(atoms$locations)]
+    if(anyNA(output_transforms) || any(!output_transforms %in% c("identity", "exp"))){
+      stop("Coefficient output-transform metadata are incomplete or unsupported.", call. = FALSE)
+    }
+    exponentiated <- output_transforms == "exp"
+    atoms$locations[, exponentiated] <- exp(atoms$locations[, exponentiated, drop = FALSE])
+  }
+  atoms
+}
+
+.posterior_atoms_unscale_mixed <- function(
+    samples, model, model_samples, prior_list, formula_scale,
+    conditional, conditional_rule){
+
+  for(prefix in names(formula_scale)){
+    columns <- colnames(model_samples)[
+      .formula_scale_matches_prefix(colnames(model_samples), prefix)
+    ]
+    columns <- columns[
+      !.formula_scale_matches_prefix(columns, prefix, "__xREx__") &
+      !.formula_scale_matches_prefix(columns, prefix, "__xRE_ALLOCx") &
+      !.formula_scale_matches_prefix(columns, prefix, "__xRE_SUMMARY__")
+    ]
+    if(length(columns) == 0L) next
+    transform <- .bt_formula_coefficient_transform(
+      source_names = columns, formula_scale = formula_scale[[prefix]],
+      parameter = prefix
+    )
+    requested_columns <- unique(unlist(lapply(names(samples), function(parameter){
+      if(is.matrix(samples[[parameter]])) colnames(samples[[parameter]]) else parameter
+    }), use.names = FALSE))
+    requested_columns <- intersect(requested_columns, transform$target_names)
+    if(length(requested_columns) == 0L) next
+    requested_design <- transform$matrix[requested_columns, , drop = FALSE]
+    active_columns <- colnames(requested_design)[colSums(abs(requested_design)) != 0]
+    contributors <- names(prior_list)[vapply(names(prior_list), function(name){
+      any(active_columns == name | startsWith(active_columns, paste0(name, "[")))
+    }, logical(1))]
+    continuous <- vapply(prior_list[contributors], function(prior){
+      is.prior.simple(prior) && !is.prior.point(prior) &&
+        !is.prior.discrete(prior) && !is.prior.spike_and_slab(prior) &&
+        !is.prior.mixture(prior) && is.null(attr(prior, "multiply_by", exact = TRUE))
+    }, logical(1))
+    if(length(contributors) > 0L && all(continuous) &&
+       all(rowSums(abs(requested_design)) > 0)){
+      # Nonconstant combinations of independent continuous coefficients remain
+      # atom-free, so their existing empty declarations require no draw replay.
+      next
+    }
+    raw_samples <- as_mixed_posteriors(
+      model, parameters = unique(c(contributors, intersect(conditional, names(prior_list)))),
+      conditional = conditional, conditional_rule = conditional_rule,
+      transform_scaled = FALSE
+    )
+    plan <- .posterior_atoms_formula_plan(raw_samples, prior_list)
+    if(is.null(plan)){
+      stop("Joint posterior atom metadata are unavailable for unscaled coefficients of '",
+           prefix, "'.", call. = FALSE)
+    }
+    for(parameter in names(samples)){
+      target_columns <- if(is.matrix(samples[[parameter]])){
+        colnames(samples[[parameter]])
+      }else{
+        parameter
+      }
+      if(!all(target_columns %in% transform$target_names)) next
+      design <- transform$matrix[target_columns, , drop = FALSE]
+      samples[[parameter]] <- .posterior_atoms_set(
+        samples[[parameter]],
+        .posterior_atoms_joint_linear(
+          prior_list, plan, design,
+          source_transforms = transform$source_transforms,
+          output_transforms = transform$output_transforms
+        )
+      )
+    }
+  }
+  samples
 }
