@@ -282,6 +282,10 @@ parameter_map_cache <- function(map, provider, key, compute){
   }
 
   cache <- .bt_parameter_map_cache(map)
+  if(!.bt_parameter_map_cache_matches(map, cache)){
+    .bt_validate_parameter_map(map)
+    .bt_parameter_map_cache_store(map, cache)
+  }
   if(!is.environment(cache) || !is.environment(cache$providers)){
     return(compute())
   }

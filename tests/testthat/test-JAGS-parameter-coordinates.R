@@ -745,4 +745,20 @@ test_that("parameter_map_cache recomputes when its key or the map changes", {
     ),
     "other-recomputed"
   )
+
+  # A caller can also replace a returned map table without another fit accessor.
+  direct_map <- parameter_map(replaced)
+  direct_map$quantities$display_label[[1L]] <- "directly relabelled"
+  expect_identical(ask(direct_map, "a"), "value-5")
+  expect_identical(ask(direct_map, "a"), "value-5")
+  expect_identical(
+    BayesTools::parameter_map_cache(
+      direct_map, provider = "OtherPkg", key = "a",
+      compute = function() "other-directly-recomputed"
+    ),
+    "other-directly-recomputed"
+  )
+  malformed <- direct_map
+  malformed$coordinates$coordinate_name[1L] <- NA_character_
+  expect_error(ask(malformed, "a"), "unique, non-missing coordinate names")
 })
