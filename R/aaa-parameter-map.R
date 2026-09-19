@@ -218,7 +218,8 @@ parameter_map_schema <- function(){
 
 .bt_parameter_map_cache_matches <- function(map, cache){
 
-  is.environment(cache) &&
+  .bt_parameter_map_header_valid(map) &&
+    is.environment(cache) &&
     isTRUE(cache$validated) &&
     identical(cache$coordinates, map$coordinates) &&
     identical(cache$quantities, map$quantities) &&
@@ -311,16 +312,20 @@ parameter_map_cache <- function(map, provider, key, compute){
   out
 }
 
-.bt_validate_parameter_map <- function(map){
+.bt_parameter_map_header_valid <- function(map){
 
-  valid <- inherits(map, "BayesTools_parameter_map") &&
+  inherits(map, "BayesTools_parameter_map") &&
     is.list(map) &&
     identical(
       names(map),
       c("schema_version", "coordinates", "quantities", "aliases")
     ) &&
     identical(map$schema_version, .bt_parameter_map_version)
-  if(!valid){
+}
+
+.bt_validate_parameter_map <- function(map){
+
+  if(!.bt_parameter_map_header_valid(map)){
     stop(
       "Parameter-map metadata are missing, malformed, or unsupported. ",
       "Refit the model with the current BayesTools version.",

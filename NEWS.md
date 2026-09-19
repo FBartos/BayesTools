@@ -109,6 +109,8 @@
 - preserves independent coefficient supports in structural dependency graphs,
   including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- validates parameter-map schema metadata even when unchanged tables have a
+  live cache entry.
 - excludes generated reference-review candidates from source packages and
   checks portable snapshot paths only for files included in the package.
 - evaluates supported Gaussian-plus-scaled-Gaussian prior ordinates through

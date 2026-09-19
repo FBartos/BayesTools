@@ -761,4 +761,17 @@ test_that("parameter_map_cache recomputes when its key or the map changes", {
   malformed <- direct_map
   malformed$coordinates$coordinate_name[1L] <- NA_character_
   expect_error(ask(malformed, "a"), "unique, non-missing coordinate names")
+
+  # A live cache never makes unsupported schema metadata acceptable.
+  malformed_schema <- direct_map
+  malformed_schema$schema_version <- NA_integer_
+  expect_error(ask(malformed_schema, "a"), "metadata are missing, malformed, or unsupported")
+  malformed_fit <- replaced
+  attr(malformed_fit, "parameter_map") <- malformed_schema
+  expect_error(parameter_map(malformed_fit), "metadata are missing, malformed, or unsupported")
+  malformed_names <- direct_map
+  malformed_names$extra <- TRUE
+  expect_error(ask(malformed_names, "a"), "metadata are missing, malformed, or unsupported")
+  attr(malformed_fit, "parameter_map") <- unclass(direct_map)
+  expect_error(parameter_map(malformed_fit), "metadata are missing, malformed, or unsupported")
 })
