@@ -1,5 +1,154 @@
 skip_if_not_test_profile("unit")
 
+.scaled_atom_plot_samples_for_test <- function(slope, slope_prior, indicator = NULL){
+
+  posterior <- cbind(mu_intercept = rep(0, length(slope)), mu_x = slope)
+  if(!is.null(indicator)){
+    posterior <- cbind(posterior, mu_x_indicator = indicator)
+  }
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(mu_intercept = prior("point", list(0)), mu_x = slope_prior)
+  attr(fit, "formula_scale") <- list(mu = list(mu_x = list(mean = 5, sd = 2)))
+  fit <- BayesTools:::.bt_attach_parameter_map(fit, monitor_names = colnames(posterior))
+  as_mixed_posteriors(fit, c("mu_intercept", "mu_x"), transform_scaled = TRUE)
+}
+
+test_that("public posterior plots retain unscaled fixed coefficient locations", {
+
+  samples <- .scaled_atom_plot_samples_for_test(rep(1, 20), prior("point", list(1)))
+  expected <- c(mu_intercept = -2.5, mu_x = .5)
+  for(parameter in names(expected)){
+    for(show_prior in c(FALSE, TRUE)){
+      plot <- plot_posterior(samples, parameter, plot_type = "ggplot", prior = show_prior)
+      layers <- ggplot2::ggplot_build(plot)$data
+      expect_length(layers, if(show_prior) 2L else 1L)
+      for(layer in layers){
+        expect_equal(layer$x, unname(expected[parameter]))
+        expect_equal(layer$xend, layer$x)
+        expect_equal(layer$yend, 1)
+      }
+    }
+  }
+})
+
+test_that("unscaled intercept plots use joint continuous and atomic contributors", {
+
+  slopes <- seq(-1, 1, length.out = 20)
+  continuous <- .scaled_atom_plot_samples_for_test(slopes, prior("normal", list(0, 1)))
+  mixed <- .scaled_atom_plot_samples_for_test(
+    c(rep(0, 8), seq(.1, 1, length.out = 12)),
+    prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5))),
+    indicator = c(rep(0L, 8), rep(1L, 12))
+  )
+  # A declared mass remains authoritative when it differs from draw frequency.
+  declared <- mixed
+  attr(declared$mu_intercept, "posterior_atoms") <- posterior_atom_attribute(
+    data.frame(x = 0, mass = .25)
+  )
+  for(samples in list(continuous, mixed, declared)){
+    atoms <- BayesTools:::.posterior_atoms_get(samples$mu_intercept)
+    values <- as.numeric(samples$mu_intercept)
+    values <- values[!values %in% as.numeric(atoms$locations)]
+    plot_data <- BayesTools:::.plot_data_samples.simple(
+      samples, "mu_intercept", 64, NULL, NULL, FALSE
+    )
+    expected <- stats::density(values, n = 64)
+    expect_equal(as.numeric(plot_data$density$samples), values)
+    expect_equal(plot_data$density$x, expected$x)
+    expect_equal(plot_data$density$y, expected$y * (1 - sum(atoms$mass)))
+    points <- plot_data[vapply(plot_data, inherits, logical(1), "density.prior.point")]
+    expect_equal(length(points), length(atoms$mass))
+    if(length(atoms$mass) > 0){
+      expect_equal(points[[1]]$x, 0)
+      expect_equal(points[[1]]$y, atoms$mass)
+    }
+    layers <- ggplot2::ggplot_build(plot_posterior(
+      samples, "mu_intercept", plot_type = "ggplot", n_points = 64
+    ))$data
+    expect_true(any(vapply(layers, nrow, integer(1)) > 1L))
+  }
+})
+
+test_that("precomputed simple densities override declared sample atoms", {
+
+  samples <- .scaled_atom_plot_samples_for_test(rep(1, 20), prior("point", list(1)))
+  stored_x <- seq(-5, 5, length.out = 64)
+  stored_y <- .75 * stats::dnorm(stored_x)
+  attr(samples$mu_intercept, "posterior_density") <- list(
+    x = stored_x, y = stored_y, method = "user",
+    point_masses = data.frame(x = 2, mass = .25)
+  )
+  plotted <- BayesTools:::.plot_data_samples.simple(
+    samples, "mu_intercept", 64, NULL, NULL, FALSE, density_method = "precomputed"
+  )
+  expect_equal(plotted$density$x, stored_x)
+  expect_equal(plotted$density$y, stored_y)
+  expect_equal(plotted$points1$x, 2)
+  expect_equal(plotted$points1$y, .25)
+
+  attr(samples$mu_intercept, "posterior_density")$point_masses <- NULL
+  expect_warning(
+    plotted <- BayesTools:::.plot_data_samples.simple(
+      samples, "mu_intercept", 64, NULL, NULL, FALSE, density_method = "precomputed"
+    ),
+    "Stored posterior density does not declare 'point_masses'", fixed = TRUE
+  )
+  expect_equal(names(plotted), "density")
+})
+
+test_that("declared continuous constant draws cannot become plotting atoms", {
+
+  samples <- rep(0, 20)
+  attr(samples, "prior_list") <- list(prior("normal", list(0, 1)))
+  attr(samples, "models_ind") <- rep(1L, 20)
+  attr(samples, "posterior_atoms") <- posterior_atom_attribute()
+  expected_error <- paste0(
+    "Posterior density is unavailable for declared continuous samples with fewer than two distinct values. ",
+    "Provide a valid 'posterior_density' attribute and set 'density_method' to 'precomputed'."
+  )
+  expect_error(
+    BayesTools:::.plot_data_samples.simple(list(theta = samples), "theta", 64, NULL, NULL, FALSE),
+    expected_error, fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.plot_data_marginal_samples.den(
+      samples, 64, NULL, NULL, FALSE,
+      prior_density = BayesTools:::.prior_linear_density_point(0)
+    ),
+    expected_error, fixed = TRUE
+  )
+  stored <- list(x = seq(-3, 3, length.out = 64), y = stats::dnorm(seq(-3, 3, length.out = 64)))
+  attr(samples, "posterior_density") <- stored
+  expect_equal(
+    BayesTools:::.plot_data_samples.simple(
+      list(theta = samples), "theta", 64, NULL, NULL, FALSE, density_method = "precomputed"
+    )$density$y,
+    stored$y
+  )
+  expect_equal(
+    BayesTools:::.plot_data_marginal_samples.den(
+      samples, 64, NULL, NULL, FALSE, posterior_density = stored, density_method = "precomputed"
+    )$density$y,
+    stored$y
+  )
+
+  attr(samples, "posterior_atoms") <- NULL
+  attr(samples, "posterior_density") <- NULL
+  expect_true("density" %in% names(BayesTools:::.plot_data_samples.simple(
+    list(theta = samples), "theta", 64, NULL, NULL, FALSE
+  )))
+  legacy <- BayesTools:::.plot_data_marginal_samples.den(samples, 64, NULL, NULL, FALSE)
+  expect_equal(legacy$points1$x, 0)
+  expect_equal(legacy$points1$y, 1)
+  expect_length(BayesTools:::.plot_data_samples.simple(
+    list(theta = numeric()), "theta", 64, NULL, NULL, FALSE
+  ), 0L)
+  expect_length(BayesTools:::.plot_data_marginal_samples.den(
+    numeric(), 64, NULL, NULL, FALSE
+  ), 0L)
+})
+
 # ============================================================================ #
 # TEST FILE: Model Averaging Plots Edge Cases
 # ============================================================================ #

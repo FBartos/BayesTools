@@ -223,8 +223,21 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   y_points        <- NULL
   density_method <- .posterior_density_method(density_method)
   posterior_density <- .posterior_density_for_method(posterior_density, density_method)
+  posterior_atoms <- .posterior_atoms_get(x)
 
-  if(length(point_locations) > 0){
+  if(!is.null(posterior_atoms)){
+    if(ncol(posterior_atoms$locations) != 1L){
+      stop("Marginal posterior plotting is unavailable for multivariate atom metadata.", call. = FALSE)
+    }
+    posterior_atoms <- .posterior_atoms_for_column(posterior_atoms, 1L)
+    continuous <- .Savage_Dickey_BF.continuous_posterior(x, posterior_atoms)
+    samples_density <- as.numeric(continuous$samples)
+    continuous_mass <- continuous$continuous_mass
+    if(nrow(posterior_atoms$locations) > 0L){
+      x_points <- as.numeric(posterior_atoms$locations[, 1L])
+      y_points <- posterior_atoms$mass
+    }
+  }else if(length(point_locations) > 0){
     point_counts <- numeric(length(point_locations))
     for(i in seq_along(point_locations)){
       tol <- sqrt(.Machine$double.eps) * max(1, abs(point_locations[i]))
@@ -238,7 +251,10 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     y_points <- point_counts[point_keep] / length(x)
   }
 
-  samples_density <- x[!point_samples]
+  if(is.null(posterior_atoms)){
+    samples_density <- x[!point_samples]
+    continuous_mass <- if(length(x) > 0L) length(samples_density) / length(x) else 0
+  }
 
   # create the output object
   out <- list()
@@ -284,12 +300,12 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
     out[["density"]] <- out_den
 
-  }else if(length(samples_density) > 1 && diff(range(samples_density)) > 0){
+  }else if(continuous_mass > 0 && length(samples_density) > 1 && diff(range(samples_density)) > 0){
     args <- list(x = samples_density, n = n_points)
 
     density_continuous <- do.call(stats::density, args)
     x_den    <- density_continuous$x
-    y_den    <- density_continuous$y * (length(samples_density) / length(x))
+    y_den    <- density_continuous$y * continuous_mass
 
     # apply transformations
     if(!is.null(transformation)){
@@ -313,7 +329,13 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
     out[["density"]] <- out_den
 
-  }else if(length(samples_density) > 0){
+  }else if(continuous_mass > 0 && !is.null(posterior_atoms)){
+    stop(
+      "Posterior density is unavailable for declared continuous samples with fewer than two distinct values. ",
+      "Provide a valid 'posterior_density' attribute and set 'density_method' to 'precomputed'.",
+      call. = FALSE
+    )
+  }else if(length(samples_density) > 0 && is.null(posterior_atoms)){
     x_points <- c(x_points, unique(samples_density))
     y_points <- c(y_points, tabulate(match(samples_density, unique(samples_density))) / length(x))
   }

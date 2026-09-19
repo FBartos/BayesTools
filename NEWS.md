@@ -115,6 +115,9 @@
   and rebuilds unscaled posterior atoms from joint coefficient structure.
   Nonlinear transformed level combinations fail explicitly when joint prior
   information is unavailable instead of using the untransformed prior.
+- uses declared atom locations and continuous masses in posterior plots,
+  including unscaled coefficients. Constant draws declared continuous are no
+  longer displayed as invented point masses.
 - converts selected component variances to SDs in covariance factor update grids,
   rejects negative SD/variance candidates, and aligns named factor states
   consistently across covariance, diagonal, and matrix-product consumers.
