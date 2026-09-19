@@ -10,6 +10,22 @@ test_that("visual snapshot paths fit the portable tar name field", {
     recursive = TRUE,
     full.names = FALSE
   )
+  build_ignore <- readLines(testthat::test_path("..", "..", ".Rbuildignore"),
+                            warn = FALSE)
+  build_excludes <- function(path){
+    any(vapply(build_ignore, grepl, logical(1), x = path,
+               ignore.case = TRUE, perl = TRUE))
+  }
+  review_candidates <- c(
+    "tests/testthat/_snaps/context/figure.new.svg",
+    "tests/results/context/table.new.txt"
+  )
+  expect_true(all(vapply(review_candidates, build_excludes, logical(1))))
+  expect_false(any(vapply(sub("\\.new\\.", ".", review_candidates),
+                         build_excludes, logical(1))))
+  snapshot_paths <- snapshot_paths[!vapply(
+    paste0("tests/testthat/_snaps/", snapshot_paths), build_excludes, logical(1)
+  )]
   package_paths <- file.path(
     "BayesTools",
     "tests",
