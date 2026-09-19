@@ -18,7 +18,8 @@ JAGS_marglik_priors_formula(samples, formula_prior_list, prior_list = NULL)
 \arguments{
 \item{samples}{samples provided by the bridgesampling function. Supply one
 named posterior row to \code{JAGS_marglik_priors()} and a named matrix or data
-frame to \code{JAGS_marglik_priors_rows()}.}
+frame to \code{JAGS_marglik_priors_rows()}. Row-wise samples must have real
+numeric columns.}
 
 \item{prior_list}{named list of model-level prior distributions. For
 \code{JAGS_marglik_priors_formula()}, optional model priors whose shared ordered

@@ -1,5 +1,82 @@
 skip_if_not_test_profile("unit")
 
+test_that("row prior fallback preserves named numeric data-frame rows", {
+
+  cases <- list(
+    list(priors = list(v = prior("mnormal", list(0, 1, 2))),
+         samples = cbind("v[1]" = c(.1, .2), "v[2]" = c(.3, .4))),
+    list(priors = list(v = prior("mnormal", list(0, 1, 1))),
+         samples = cbind(v = c(.1, .2))),
+    list(priors = list(w = prior_weightfunction("one-sided", .05,
+           wf_independent(prior("beta", list(2, 3))))),
+         samples = cbind("omega[2]" = c(.4, .6))),
+    list(priors = list(mu = prior("normal", list(0, 1)),
+           w = prior_weightfunction("one-sided", .05,
+             wf_independent(prior("beta", list(2, 3))))),
+         samples = cbind(mu = c(.1, .2), "omega[2]" = c(.4, .6)))
+  )
+  for(case in cases){
+    samples <- as.data.frame(case$samples)
+    expected <- vapply(seq_len(nrow(samples)), function(i){
+      JAGS_marglik_priors(case$samples[i, ], case$priors)
+    }, numeric(1))
+    evaluator <- JAGS_marglik_priors_rows_evaluator(case$priors)
+    expect_equal(evaluator(samples), expected, tolerance = 1e-12)
+    expect_equal(evaluator(samples[1L, , drop = FALSE]), expected[1L], tolerance = 1e-12)
+    expect_length(evaluator(samples[FALSE, , drop = FALSE]), 0L)
+  }
+
+  prior_list <- list(v = prior("mnormal", list(0, 1, 2)))
+  samples <- cbind("v[1]" = c(.1, .2), "v[2]" = c(.3, .4))
+  expect_error(
+    JAGS_marglik_priors_rows(as.data.frame(samples[, 1L, drop = FALSE]), prior_list),
+    "'samples' does not contain all monitored vector prior parameters.", fixed = TRUE
+  )
+  for(values in list(c(".1", ".2"), factor(c(".1", ".2")), c(TRUE, FALSE), c(1i, 2i))){
+    invalid <- as.data.frame(samples)
+    invalid[[1L]] <- values
+    expect_error(
+      JAGS_marglik_priors_rows(invalid, prior_list),
+      "'samples' must contain only real numeric posterior sample columns.", fixed = TRUE
+    )
+  }
+  expect_error(
+    JAGS_marglik_priors_rows(matrix(".1", nrow = 1, dimnames = list(NULL, "v[1]")), prior_list),
+    "'samples' must contain only real numeric posterior sample columns.", fixed = TRUE
+  )
+})
+
+test_that("mixed inverse-gamma coordinates retain scalar precedence in compiled rows", {
+
+  factor_prior <- prior_factor("invgamma", list(2, 1), contrast = "independent")
+  attr(factor_prior, "levels") <- 2L
+  prior_list <- list(g = factor_prior, v = prior("mnormal", list(0, 1, 2)))
+  samples <- cbind("g[1]" = c(.4, .6), "inv_g[2]" = c(1, 2),
+                   "v[1]" = c(.1, .2), "v[2]" = c(.3, .4))
+  factor_values <- cbind(samples[, "g[1]"], 1 / samples[, "inv_g[2]"])
+  expected <- rowSums(stats::dgamma(1 / factor_values, 2, 1, log = TRUE) -
+    2 * log(factor_values)) + rowSums(stats::dnorm(samples[, c("v[1]", "v[2]")], log = TRUE))
+  scalar <- vapply(seq_len(nrow(samples)), function(i){
+    JAGS_marglik_priors(samples[i, ], prior_list)
+  }, numeric(1))
+  expect_equal(scalar, expected, tolerance = 1e-12)
+  evaluator <- JAGS_marglik_priors_rows_evaluator(prior_list)
+  expect_equal(evaluator(samples), expected, tolerance = 1e-12)
+  expect_equal(evaluator(as.data.frame(samples)), expected, tolerance = 1e-12)
+  samples <- cbind(samples, "inv_g[1]" = c(100, 200))
+  expect_equal(evaluator(samples), expected, tolerance = 1e-12)
+  compiled <- BayesTools:::.bt_JAGS_bridge_compile_prior_list_evaluator(prior_list)
+  expect_equal(compiled$parameters(samples[1L, ])$g, c(.4, 1))
+  expect_equal(JAGS_marglik_parameters(samples[1L, ], prior_list)$g, c(.4, 1))
+  samples[1L, "g[1]"] <- 0
+  samples[2L, "inv_g[2]"] <- 0
+  expect_equal(evaluator(samples), rep(-Inf, 2L))
+  expect_error(
+    evaluator(samples[, colnames(samples) != "inv_g[2]", drop = FALSE]),
+    "'samples' does not contain all monitored inverse-gamma prior parameters.", fixed = TRUE
+  )
+})
+
 test_that("inverse-gamma factor rows accept legacy coordinates and preserve support", {
 
   for(contrast in c("treatment", "independent")){

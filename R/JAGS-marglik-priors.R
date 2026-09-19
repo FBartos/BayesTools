@@ -6,7 +6,8 @@
 #'
 #' @param samples samples provided by the bridgesampling function. Supply one
 #' named posterior row to `JAGS_marglik_priors()` and a named matrix or data
-#' frame to `JAGS_marglik_priors_rows()`.
+#' frame to `JAGS_marglik_priors_rows()`. Row-wise samples must have real
+#' numeric columns.
 #' @param prior_list named list of model-level prior distributions. For
 #' `JAGS_marglik_priors_formula()`, optional model priors whose shared ordered
 #' allocations have already been included by `JAGS_marglik_priors()`.
@@ -155,6 +156,15 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
 
   if(!is.matrix(samples) && !is.data.frame(samples))
     stop("'samples' must be a matrix or data frame.", call. = FALSE)
+  numeric_columns <- if(is.data.frame(samples)){
+    all(vapply(samples, function(column){
+      is.numeric(column) && !is.complex(column)
+    }, logical(1)))
+  }else{
+    is.numeric(samples) && !is.complex(samples)
+  }
+  if(!numeric_columns)
+    stop("'samples' must contain only real numeric posterior sample columns.", call. = FALSE)
   if(ncol(samples) > 0L && is.null(colnames(samples)))
     stop("'samples' must contain named posterior samples.", call. = FALSE)
 
@@ -177,7 +187,11 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
   if(any(vapply(evaluators, is.null, logical(1)))){
     return(function(samples){
       vapply(seq_len(nrow(samples)), function(i){
-        scalar_evaluator$log_prior(samples[i, ])
+        sample_row <- stats::setNames(
+          as.numeric(unlist(samples[i, , drop = FALSE], use.names = FALSE)),
+          colnames(samples)
+        )
+        scalar_evaluator$log_prior(sample_row)
       }, numeric(1))
     })
   }
