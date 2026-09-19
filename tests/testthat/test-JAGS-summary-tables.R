@@ -393,7 +393,7 @@ test_that("runjags_inference_table reports known BF error percent in adversarial
   inference_BF01 <- runjags_inference_table(fit, BF_diagnostics = TRUE, BF01 = TRUE)
   expect_equal(as.numeric(inference_BF01["theta", "inclusion_BF"]), 1 / expected_BF)
   expect_equal(as.numeric(inference_BF01["theta", "BF_error_percent"]), expected_error)
-  expect_equal(attr(inference_BF01[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+  expect_equal(attr(inference_BF01[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 
   test_reference_table(inference, "runjags_inference_adversarial_diagnostics.txt", "Adversarial BF diagnostics table mismatch")
   test_reference_table(inference_BF01, "runjags_inference_adversarial_diagnostics_BF01.txt", "Adversarial BF01 diagnostics table mismatch")
@@ -657,7 +657,7 @@ test_that("Summary table advanced features work correctly", {
   runjags_inference_spike_log_BF01 <- runjags_inference_table(fit_spike, BF_diagnostics = TRUE, logBF = TRUE, BF01 = TRUE)
   expect_equal(as.numeric(runjags_inference_spike_log_BF01[["inclusion_BF"]]), log(1 / as.numeric(runjags_inference_spike_diagnostics[["inclusion_BF"]])), tolerance = 1e-10)
   expect_equal(as.numeric(runjags_inference_spike_log_BF01[["BF_error_percent"]]), as.numeric(runjags_inference_spike_diagnostics[["BF_error_percent"]]), tolerance = 1e-10)
-  expect_equal(attr(runjags_inference_spike_log_BF01[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+  expect_equal(attr(runjags_inference_spike_log_BF01[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 
   # Test 6: Orthonormal contrast transformations to differences from the mean
   fit_orthonormal <- readRDS(file.path(temp_fits_dir, "fit_factor_orthonormal.RDS"))
@@ -1250,12 +1250,12 @@ test_that("runjags_inference_table with mixture priors", {
   runjags_mixture_inference_BF01 <- runjags_inference_table(fit_mixture, BF_diagnostics = TRUE, BF01 = TRUE)
   expect_equal(as.numeric(runjags_mixture_inference_BF01[["inclusion_BF"]]), 1 / as.numeric(runjags_mixture_inference_diagnostics[["inclusion_BF"]]), tolerance = 1e-10)
   expect_equal(as.numeric(runjags_mixture_inference_BF01[["BF_error_percent"]]), as.numeric(runjags_mixture_inference_diagnostics[["BF_error_percent"]]), tolerance = 1e-10)
-  expect_equal(attr(runjags_mixture_inference_BF01[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+  expect_equal(attr(runjags_mixture_inference_BF01[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 
   runjags_mixture_inference_log_BF01 <- runjags_inference_table(fit_mixture, BF_diagnostics = TRUE, logBF = TRUE, BF01 = TRUE)
   expect_equal(as.numeric(runjags_mixture_inference_log_BF01[["inclusion_BF"]]), log(1 / as.numeric(runjags_mixture_inference_diagnostics[["inclusion_BF"]])), tolerance = 1e-10)
   expect_equal(as.numeric(runjags_mixture_inference_log_BF01[["BF_error_percent"]]), as.numeric(runjags_mixture_inference_diagnostics[["BF_error_percent"]]), tolerance = 1e-10)
-  expect_equal(attr(runjags_mixture_inference_log_BF01[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+  expect_equal(attr(runjags_mixture_inference_log_BF01[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 
   # Test with mixture containing spike
   fit_mixture_spike <- readRDS(file.path(temp_fits_dir, "fit_mixture_spike.RDS"))
@@ -1324,7 +1324,7 @@ test_that("runjags_inference_empty_table works correctly", {
   expect_s3_class(empty_diagnostics, "BayesTools_table")
   expect_equal(colnames(empty_diagnostics), c("prior_prob", "post_prob", "inclusion_BF", "ESS", "MCMC_error", "BF_error_percent"))
   expect_equal(attr(empty_diagnostics[["inclusion_BF"]], "name"), "log(Exclusion BF)")
-  expect_equal(attr(empty_diagnostics[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+  expect_equal(attr(empty_diagnostics[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
   expect_null(attr(empty_diagnostics, "footnotes"))
 
 })
