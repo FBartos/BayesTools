@@ -193,6 +193,9 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
 
   log_weights <- rep(-Inf, length(margliks))
   active <- prior_probs > 0 & is.finite(margliks)
+  if(!any(active)){
+    stop("No finite marginal likelihoods are available for models with positive prior probability.", call. = FALSE)
+  }
   log_weights[active] <- log(prior_probs[active]) + margliks[active]
   normalizer <- max(log_weights)
   weights <- exp(log_weights - normalizer)

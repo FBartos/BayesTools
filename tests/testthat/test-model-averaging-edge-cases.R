@@ -208,6 +208,35 @@ test_that("conditional compute_inference renormalizes alternatives but keeps ful
   )
 })
 
+test_that("conditional inference rejects a subset with no finite evidence", {
+
+  expect_error(
+    compute_inference(c(1, 1), c(0, -Inf),
+                      is_null = c(TRUE, FALSE), conditional = TRUE),
+    "No finite marginal likelihoods are available for models with positive prior probability.",
+    fixed = TRUE
+  )
+  expect_error(
+    compute_inference(c(1, 1, 0), c(0, -Inf, 10),
+                      is_null = c(TRUE, FALSE, FALSE), conditional = TRUE),
+    "No finite marginal likelihoods are available for models with positive prior probability.",
+    fixed = TRUE
+  )
+})
+
+test_that("inclusion_BF diagnoses missing probability inputs before dispatch", {
+
+  message <- "'prior_probs' and either 'post_probs' or 'margliks' must be specified."
+  expect_error(
+    inclusion_BF(post_probs = c(.5, .5), is_null = c(TRUE, FALSE)),
+    message, fixed = TRUE
+  )
+  expect_error(
+    inclusion_BF(prior_probs = c(.5, .5), is_null = c(TRUE, FALSE)),
+    message, fixed = TRUE
+  )
+})
+
 test_that("compute_inference handles no-null and invalid model-index indicators", {
   no_null <- compute_inference(c(1, 1), c(0, 0), is_null = 0)
   expect_equal(attr(no_null, "is_null"), c(FALSE, FALSE))

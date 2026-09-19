@@ -122,7 +122,15 @@
 
 .hypothesis_number_label <- function(x) {
 
-  format(x, trim = TRUE, scientific = FALSE)
+  # Keep familiar short labels when they preserve the exact parsed value.
+  for(digits in 7:17){
+    label <- format(x, digits = digits, trim = TRUE, scientific = FALSE,
+                    decimal.mark = ".")
+    if(identical(as.numeric(label), as.numeric(x))){
+      return(label)
+    }
+  }
+  label
 }
 
 

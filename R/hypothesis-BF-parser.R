@@ -489,7 +489,9 @@ hypothesis_normalize_level_references <- function(text){
     return(name)
   }
   expr <- .hypothesis_restore_escaped_constants(expr)
-  paste(deparse(expr, width.cutoff = 500L), collapse = "")
+  paste(deparse(expr, width.cutoff = 500L,
+               control = c("keepNA", "keepInteger", "niceNames", "digits17")),
+        collapse = "")
 }
 
 .hypothesis_restore_escaped_constants <- function(expr){

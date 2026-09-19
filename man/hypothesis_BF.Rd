@@ -37,7 +37,8 @@ in the restricted grammar described in Details, or a validated object from
 
 \item{BF01}{whether to display the inverse Bayes factor.}
 
-\item{seed}{optional finite seed used only by downstream helpers that sample.}
+\item{seed}{optional finite seed used by downstream helpers that sample.
+The caller's random-number generator state is restored after the call.}
 
 \item{density_method}{posterior density source for point-null tests.
 \code{"KDE"} uses kernel density estimates. \code{"normal"} uses a normal

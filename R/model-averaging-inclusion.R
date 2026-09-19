@@ -28,19 +28,21 @@ inclusion_BF <- function(prior_probs, post_probs, margliks, is_null,
 
   on_failure <- match.arg(on_failure)
 
+  if(missing(prior_probs) || (missing(post_probs) && missing(margliks))){
+    stop("'prior_probs' and either 'post_probs' or 'margliks' must be specified.",
+         call. = FALSE)
+  }
   is_null <- .model_averaging_is_null(is_null, length(prior_probs))
 
-  if(!missing(prior_probs) && !missing(margliks)){
+  if(!missing(margliks)){
     return(.inclusion_BF.margliks(
       prior_probs = prior_probs,
       margliks     = margliks,
       is_null      = is_null,
       on_failure  = on_failure
     ))
-  }else if(!missing(prior_probs) && !missing(post_probs)){
-    return(.inclusion_BF.probs(prior_probs = prior_probs, post_probs = post_probs, is_null = is_null))
   }else{
-    stop("'prior_probs' and either 'post_probs' or 'marglik' must be specified.")
+    return(.inclusion_BF.probs(prior_probs = prior_probs, post_probs = post_probs, is_null = is_null))
   }
 }
 

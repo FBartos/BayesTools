@@ -70,6 +70,9 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
     if(!is.null(namespace) || !is.null(component)){
       stop("'namespace' and 'component' require 'catalog'.", call. = FALSE)
     }
+    if(simplify_names){
+      stop("'simplify_names = TRUE' requires 'catalog'.", call. = FALSE)
+    }
   }
   statements <- lapply(hypothesis, function(statement){
     .bt_hypothesis_ast_statement_from_spec(
@@ -353,11 +356,13 @@ hypothesis_rewrite <- function(ast, mapping){
       call. = FALSE
     )
   }
-  rewritten_roots <- roots
-  matches <- match(roots, names(mapping))
+  occurrences <- hypothesis_symbols(ast, occurrences = TRUE)
+  symbols <- unique(occurrences[, c("parameter", "level"), drop = FALSE])
+  rewritten_symbols <- symbols
+  matches <- match(symbols$parameter, names(mapping))
   replace <- !is.na(matches)
-  rewritten_roots[replace] <- unname(mapping[matches[replace]])
-  if(anyDuplicated(rewritten_roots)){
+  rewritten_symbols$parameter[replace] <- unname(mapping[matches[replace]])
+  if(anyDuplicated(rewritten_symbols)){
     stop("Rewrite mapping creates duplicate or colliding hypothesis symbols.",
          call. = FALSE)
   }

@@ -374,11 +374,7 @@
     return(NULL)
   }
 
-  has_ordinate <- if(is.null(null_hypothesis)){
-    !is.null(source)
-  }else{
-    !is.null(.posterior_ordinate_from_attribute(source, null_hypothesis))
-  }
+  has_ordinate <- !is.null(.posterior_ordinate_from_attribute(source, null_hypothesis))
   if(has_ordinate &&
      .posterior_ordinate_candidate_matches(
        source,

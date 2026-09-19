@@ -70,6 +70,48 @@ test_that("hypothesis_BF requires a finite seed", {
   )
 })
 
+test_that("explicit hypothesis seeds preserve the caller's RNG state", {
+
+  withr::local_seed(714)
+  original_seed <- .Random.seed
+  arguments <- list(
+    posterior = seq(-2, 2, length.out = 201),
+    prior = prior("normal", list(0, 1)),
+    hypothesis = "theta > 0",
+    parameter = "theta",
+    seed = 19
+  )
+  first <- do.call(hypothesis_BF, arguments)
+  expect_identical(.Random.seed, original_seed)
+  expect_identical(do.call(hypothesis_BF, arguments), first)
+  expect_identical(.Random.seed, original_seed)
+  expect_error(
+    hypothesis_BF(environment(), hypothesis = "theta > 0", seed = 1),
+    "Unsupported posterior input"
+  )
+  expect_identical(.Random.seed, original_seed)
+
+  rm(".Random.seed", envir = .GlobalEnv)
+  do.call(hypothesis_BF, arguments)
+  expect_false(exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
+})
+
+test_that("prior density construction failures remain visible in hypothesis tests", {
+
+  testthat::local_mocked_bindings(
+    .prior_linear_combination_density = function(...) {
+      stop("Prior density construction failed.", call. = FALSE)
+    }
+  )
+  expect_error(
+    hypothesis_BF(seq(-2, 2, length.out = 201),
+                  prior = prior("normal", list(0, 1)),
+                  hypothesis = "theta = 0", parameter = "theta"),
+    "Prior density construction failed.",
+    fixed = TRUE
+  )
+})
+
 
 test_that("hypothesis_BF computes point-null Savage-Dickey from numeric draws", {
 
@@ -1203,6 +1245,18 @@ test_that("hypothesis_level_contrast compiles an exact atom-free contrast", {
   expect_true(is.finite(attr(out, "raw_BF")))
   expect_identical(out$method, "transitive Savage-Dickey")
 
+  precise <- hypothesis_level_contrast(
+    posterior = posterior,
+    hypothesis = paste(
+      "mu_alloc[alternate] - mu_alloc[random] > 123456789.123 vs",
+      "mu_alloc[alternate] - mu_alloc[random] = 0.123456789"
+    ),
+    parameter = "mu_alloc"
+  )
+  precise_statement <- precise$hypothesis$statements[[1L]]
+  expect_identical(precise_statement$left$expression$right$value, 123456789.123)
+  expect_identical(precise_statement$right$value, 0.123456789)
+
   expect_error(
     hypothesis_level_contrast(
       posterior  = posterior,
@@ -1521,6 +1575,19 @@ test_that("hypothesis_BF rejects missing nonzero level weight columns", {
     seed       = 16
   )
   expect_true(is.finite(attr(out, "raw_BF")))
+
+  attr(posterior[["random"]], "linear_weights") <- c(alt = 1, rand = 0)
+  testthat::local_mocked_bindings(
+    .generate_transformed_prior_samples = function(..., n_samples) {
+      matrix(numeric(), nrow = n_samples, ncol = 0L)
+    }
+  )
+  expect_error(
+    hypothesis_BF(posterior, hypothesis = "mu_alloc[alternate] > mu_alloc[random]",
+                  seed = 16),
+    "Linear prior weights reference columns not available in the joint prior context: alt.",
+    fixed = TRUE
+  )
 })
 
 

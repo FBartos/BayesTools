@@ -335,8 +335,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
 
       # obtain samples information
-      models_ind <- do.call(cbind, lapply(c(if(has_intercept) "intercept", model_terms), function(x) attr(samples[[JAGS_parameter_names(x, formula_parameter = formula_parameter)]], "models_ind")))
-      sample_ind <- do.call(cbind, lapply(c(if(has_intercept) "intercept", model_terms), function(x) attr(samples[[JAGS_parameter_names(x, formula_parameter = formula_parameter)]], "sample_ind")))
+      models_ind <- do.call(cbind, lapply(model_terms, function(x) attr(samples[[JAGS_parameter_names(x, formula_parameter = formula_parameter)]], "models_ind")))
+      sample_ind <- do.call(cbind, lapply(model_terms, function(x) attr(samples[[JAGS_parameter_names(x, formula_parameter = formula_parameter)]], "sample_ind")))
       if(!inherits(samples, "as_mixed_posteriors") && (!all(models_ind[,1] == models_ind) || !all(sample_ind[,1] == sample_ind)))
         stop("the posterior samples are not alligned across models/draws")
       models_ind <- models_ind[,1]

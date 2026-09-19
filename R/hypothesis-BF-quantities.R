@@ -290,26 +290,13 @@
 
 .hypothesis_level_references <- function(statements, parameter = NULL) {
 
-  symbols <- .hypothesis_all_symbols(statements)
-  refs <- regexec("^([^\\[]+)\\[([^\\]]+)\\]$", symbols, perl = TRUE)
-  matches <- regmatches(symbols, refs)
-  has_match <- vapply(matches, length, integer(1)) == 3L
-  if(!any(has_match)){
-    return(data.frame(
-      symbol    = character(),
-      parameter = character(),
-      level     = character(),
-      stringsAsFactors = FALSE
-    ))
-  }
-
-  matches <- matches[has_match]
-  out <- data.frame(
-    symbol    = vapply(matches, `[[`, character(1), 1L),
-    parameter = vapply(matches, `[[`, character(1), 2L),
-    level     = trimws(vapply(matches, `[[`, character(1), 3L)),
-    stringsAsFactors = FALSE
+  ast <- structure(
+    list(schema_version = .bt_hypothesis_ast_version, statements = statements),
+    class = c("BayesTools_hypothesis_ast", "list")
   )
+  occurrences <- hypothesis_symbols(ast, occurrences = TRUE)
+  out <- occurrences[!is.na(occurrences$level),
+                     c("symbol", "parameter", "level"), drop = FALSE]
 
   if(!is.null(parameter)){
     out <- out[out[["parameter"]] == parameter, , drop = FALSE]
@@ -325,13 +312,10 @@
   prior_object <- NULL
   if(inherits(prior, "prior")){
     prior_object <- prior
-    prior_density <- tryCatch(
-      .prior_linear_combination_density(
-        prior_list = setNames(list(prior), parameter),
-        weights    = setNames(1, parameter),
-        n_grid     = .prior_linear_density_default_grid()
-      ),
-      error = function(e) NULL
+    prior_density <- .prior_linear_combination_density(
+      prior_list = setNames(list(prior), parameter),
+      weights    = setNames(1, parameter),
+      n_grid     = .prior_linear_density_default_grid()
     )
     prior <- rng(prior, n)
     if(is.matrix(prior) || is.data.frame(prior)){
@@ -597,30 +581,7 @@
 .hypothesis_prior_draws_from_marginal_levels <- function(posterior, parameter,
                                                          levels, n) {
 
-  attr_prior_draws <- attr(posterior, "prior_draws", exact = TRUE)
   columns <- paste0(parameter, "[", levels, "]")
-  if(!is.null(attr_prior_draws)){
-    attr_prior_draws <- as.data.frame(attr_prior_draws, check.names = FALSE)
-    missing <- setdiff(columns, names(attr_prior_draws))
-    if(length(missing) == 0L){
-      return(attr_prior_draws[, columns, drop = FALSE])
-    }
-  }
-
-  child_prior_draws <- lapply(levels, function(level) {
-    attr(posterior[[level]], "prior_draws", exact = TRUE)
-  })
-  if(all(!vapply(child_prior_draws, is.null, logical(1)))){
-    n_draws <- vapply(child_prior_draws, length, integer(1))
-    if(length(unique(n_draws)) != 1L){
-      stop("Level comparisons require equal-length prior draws.",
-           call. = FALSE)
-    }
-    out <- as.data.frame(child_prior_draws, check.names = FALSE)
-    names(out) <- columns
-    return(out)
-  }
-
   context <- .hypothesis_child_prior_context(posterior, levels)
   if(is.null(context)){
     context <- attr(posterior, "prior_density_context", exact = TRUE)
@@ -874,7 +835,13 @@
 .hypothesis_complete_prior_sample_matrix <- function(samples, column_names, n) {
 
   samples <- as.matrix(samples)
+  if(nrow(samples) != n){
+    stop("Joint prior samples do not match the requested number of draws.",
+         call. = FALSE)
+  }
   out <- .hypothesis_empty_prior_sample_matrix(column_names, n)
+  # Missing context coordinates are unavailable, not structural zero effects.
+  out[] <- NA_real_
   columns <- intersect(column_names, colnames(samples))
   if(length(columns) > 0L){
     out[, columns] <- samples[, columns, drop = FALSE]
@@ -923,13 +890,17 @@
   weights <- .hypothesis_prepare_level_weights(weights)
   nonzero_columns <- colnames(weights)[colSums(abs(weights), na.rm = TRUE) > 0]
   missing <- setdiff(nonzero_columns, colnames(samples))
+  available <- intersect(nonzero_columns, colnames(samples))
+  missing <- union(missing, available[
+    colSums(!is.finite(samples[, available, drop = FALSE])) > 0L
+  ])
   if(length(missing) > 0L){
     stop("Linear prior weights reference columns not available in the joint ",
          "prior context: ", paste(missing, collapse = ", "), ".",
          call. = FALSE)
   }
 
-  columns <- intersect(colnames(weights), colnames(samples))
+  columns <- intersect(nonzero_columns, colnames(samples))
   if(length(columns) == 0L){
     return(rep(0, nrow(samples)))
   }

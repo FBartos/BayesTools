@@ -28,6 +28,31 @@ test_that("hypothesis AST preserves structure and quoted symbols", {
                     hypothesis_ast_schema()$object))
 })
 
+test_that("hypothesis rendering preserves numeric values exactly", {
+
+  values <- c(0.123456789, 123456789.123, pi, 1 + .Machine$double.eps,
+              .Machine$double.xmin, .Machine$double.xmax)
+  for(value in values){
+    literal <- sprintf("%.17g", value)
+    for(hypothesis in c(paste("theta =", literal),
+                        paste("theta >", literal),
+                        paste("theta +", literal, "> 0"))){
+      ast <- hypothesis_parse(hypothesis)
+      reparsed <- hypothesis_parse(hypothesis_render(ast))
+      expect_identical(reparsed$statements[[1L]]$left$value,
+                       ast$statements[[1L]]$left$value)
+      expect_identical(reparsed$statements[[1L]]$left$expression,
+                       ast$statements[[1L]]$left$expression)
+      expect_identical(hypothesis_render(reparsed), hypothesis_render(ast))
+    }
+  }
+
+  withr::local_options(OutDec = ",")
+  ast <- hypothesis_parse("theta = 0.123456789")
+  expect_identical(hypothesis_render(ast), "theta = 0.123456789")
+  expect_identical(hypothesis_parse(hypothesis_render(ast)), ast)
+})
+
 test_that("hypothesis parsing recognizes exact non-syntactic catalog aliases", {
 
   coordinates <- .bt_build_parameter_coordinates(columns = "theta")
@@ -97,6 +122,11 @@ test_that("hypothesis parsing recognizes exact non-syntactic catalog aliases", {
     "require 'catalog'",
     fixed = TRUE
   )
+  expect_error(
+    hypothesis_parse("theta > 0", simplify_names = TRUE),
+    "'simplify_names = TRUE' requires 'catalog'.",
+    fixed = TRUE
+  )
 })
 
 test_that("hypothesis rewriting edits exact symbol roots only", {
@@ -132,6 +162,22 @@ test_that("hypothesis rewriting edits exact symbol roots only", {
     c(theta = "TRUE")
   )
   expect_identical(hypothesis_render(reserved), "`TRUE` > 0")
+
+  qualified <- hypothesis_rewrite(
+    hypothesis_parse("mu - fac[A] > 0"),
+    c(fac = "mu")
+  )
+  expect_identical(hypothesis_render(qualified), "mu - `mu[A]` > 0")
+  expect_identical(
+    unique(hypothesis_symbols(qualified, occurrences = TRUE)$symbol),
+    c("mu", "mu[A]")
+  )
+  expect_error(
+    hypothesis_rewrite(hypothesis_parse("mu[A] - fac[A] > 0"),
+                       c(fac = "mu")),
+    "Rewrite mapping creates duplicate or colliding hypothesis symbols.",
+    fixed = TRUE
+  )
 })
 
 test_that("hypothesis resolution delegates ambiguity to the catalog", {
