@@ -1582,6 +1582,37 @@ test_that("factor products match dense covariance multiplication", {
     Reduce(`+`, expected_diagonal),
     tolerance = 1e-12
   )
+
+  reordered <- factors
+  reordered$factor_plans <- rev(reordered$factor_plans)
+  reordered$factor_states <- lapply(reordered$factor_states, function(states){
+    states[c(2L, 3L, 1L)]
+  })
+  expect_equal(
+    random_effects_marginal_factor_product(reordered, vectors, by_block = TRUE),
+    expected,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    random_effects_marginal_factor_diagonal(reordered, by_block = TRUE),
+    expected_diagonal,
+    tolerance = 1e-12
+  )
+  expect_equal(random_effects_marginal_factor_vcov(reordered),
+               random_effects_marginal_factor_vcov(factors))
+
+  duplicate <- factors
+  names(duplicate$factor_states[[1L]])[2L] <- "group"
+  expect_error(random_effects_marginal_factor_product(duplicate, vectors),
+               "duplicate block names")
+  missing <- factors
+  missing$factor_states[[1L]]$known_group <- NULL
+  expect_error(random_effects_marginal_factor_diagonal(missing),
+               "Missing block names: known_group", fixed = TRUE)
+  unexpected <- factors
+  names(unexpected$factor_states[[1L]])[1L] <- "unexpected"
+  expect_error(random_effects_marginal_factor_vcov(unexpected),
+               "Unexpected block names: unexpected", fixed = TRUE)
   expect_error(
     random_effects_marginal_factor_product(factors, vectors[, -1L]),
     "metadata are inconsistent",

@@ -398,10 +398,6 @@ random_effects_marginal_factor_diagonal <- function(
   })
   for(draw in seq_len(n_draws)){
     draw_states <- states[[draw]]
-    if(!is.list(draw_states) || length(draw_states) != length(blocks)){
-      stop("Random-effect marginal factor states are inconsistent.",
-           call. = FALSE)
-    }
     for(block in seq_along(blocks)){
       design <- designs[[block]]
       basis <- .bt_random_effect_marginal_factor_block_basis(
@@ -573,17 +569,6 @@ random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
   })
   names(plans) <- plan_names
 
-  states <- lapply(states, function(draw_states){
-    if(!is.list(draw_states) || length(draw_states) != length(plans)){
-      stop("Random-effect marginal factor states are inconsistent.",
-           call. = FALSE)
-    }
-    if(!is.null(names(draw_states))){
-      draw_states <- draw_states[plan_names]
-    }
-    draw_states
-  })
-
   # Structural row/column assignments are shared by all draws. Materialize
   # each coefficient basis once, then scatter whole draw columns rather than
   # repeating the block and component loops for every posterior candidate.
@@ -675,13 +660,6 @@ random_effects_marginal_factor_vcov <- function(factors){
   })
   for(draw in seq_len(components$n_draws)){
     states <- components$states[[draw]]
-    if(!is.list(states) || length(states) != length(plans)){
-      stop("Random-effect marginal factor states are inconsistent.",
-           call. = FALSE)
-    }
-    if(!is.null(names(states)) && !is.null(names(plans))){
-      states <- states[names(plans)]
-    }
     for(block in seq_along(plans)){
       basis <- .bt_random_effect_marginal_factor_block_basis(
         design = designs[[block]], state = states[[block]],
@@ -722,9 +700,21 @@ random_effects_marginal_factor_vcov <- function(factors){
       stop("Random-effect marginal factor metadata are inconsistent.",
            call. = FALSE)
     }
+    states <- factors$factor_states
+    if(!is.null(names(plans))){
+      plans <- .bt_random_effect_marginal_factor_align(
+        plans, names(plans), "plans"
+      )
+      states <- .bt_random_effect_marginal_factor_align(
+        states, names(plans), "states"
+      )
+    }else if(length(states) != length(plans)){
+      stop("Random-effect marginal factor states are inconsistent.",
+           call. = FALSE)
+    }
     return(list(
       plans      = plans,
-      states     = list(factors$factor_states),
+      states     = list(states),
       row_blocks = factors$row_blocks,
       n_rows     = nrow(plans[[1L]]$model_matrix),
       n_draws    = 1L,
@@ -946,10 +936,6 @@ random_effects_marginal_factor_product <- function(
   }), blocks)
   for(draw in seq_len(n_draws)){
     draw_states <- states[[draw]]
-    if(!is.list(draw_states) || length(draw_states) != length(blocks)){
-      stop("Random-effect marginal factor states are inconsistent.",
-           call. = FALSE)
-    }
     for(block in seq_along(blocks)){
       out[[block]][draw, ] <- .bt_random_effect_marginal_factor_product_block(
         plan   = plans[[block]],
@@ -997,7 +983,10 @@ random_effects_marginal_factor_product <- function(
     stop("Random-effect marginal factor metadata are inconsistent.",
          call. = FALSE)
   }
+  plans <- .bt_random_effect_marginal_factor_align(plans, blocks, "plans")
   names(plans) <- blocks
+  states <- lapply(states, .bt_random_effect_marginal_factor_align,
+                   blocks = blocks, kind = "states")
 
   list(
     n_draws = as.integer(n_draws),
@@ -1006,6 +995,44 @@ random_effects_marginal_factor_product <- function(
     plans   = plans,
     states  = states
   )
+}
+
+
+.bt_random_effect_marginal_factor_align <- function(items, blocks, kind){
+
+  context <- paste("Random-effect marginal factor", kind)
+  if(!is.list(items)){
+    stop(context, " are inconsistent.", call. = FALSE)
+  }
+  item_names <- names(items)
+  if(!is.null(item_names)){
+    if(anyNA(item_names) || any(!nzchar(item_names))){
+      stop(context, " must have non-empty, non-missing block names.",
+           call. = FALSE)
+    }
+    if(anyDuplicated(item_names)){
+      stop(context, " contain duplicate block names.", call. = FALSE)
+    }
+    missing <- setdiff(blocks, item_names)
+    unexpected <- setdiff(item_names, blocks)
+    if(length(missing) > 0L || length(unexpected) > 0L){
+      stop(
+        context, " are inconsistent with the fitted blocks.",
+        if(length(missing) > 0L){
+          paste0(" Missing block names: ", paste(missing, collapse = ", "), ".")
+        },
+        if(length(unexpected) > 0L){
+          paste0(" Unexpected block names: ", paste(unexpected, collapse = ", "), ".")
+        },
+        call. = FALSE
+      )
+    }
+    return(items[blocks])
+  }
+  if(length(items) != length(blocks)){
+    stop(context, " are inconsistent.", call. = FALSE)
+  }
+  items
 }
 
 
