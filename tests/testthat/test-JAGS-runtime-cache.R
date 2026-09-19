@@ -177,4 +177,26 @@ test_that("saved fit caches restore without entering backend extension payloads"
   expect_identical(events, c("restore", "stop"))
   expect_identical(attr(failed, "runtime_state", exact = TRUE),
     attr(extended, "runtime_state", exact = TRUE))
+
+  # The initial successful fit also needs a snapshot before an extension
+  # fails; capturing afterward could save the failed backend's partial state.
+  check_failure <- FALSE
+  testthat::local_mocked_bindings(
+    JAGS_check_convergence = function(...) FALSE,
+    .package = "BayesTools"
+  )
+  events <- character()
+  expect_warning(
+    failed_first <- JAGS_fit(
+      "model{ x ~ dnorm(mu, 1) }", data = list(x = 0),
+      prior_list = list(mu = prior("normal", list(0, 1))), chains = 2,
+      adapt = 50, burnin = 50, sample = 100, seed = 1, silent = TRUE,
+      autofit = TRUE, autofit_control = control, runtime_cache = callback
+    ),
+    "The model extension failed; returning the last valid fit.",
+    fixed = TRUE
+  )
+  expect_identical(events, c("restore", "capture"))
+  expect_identical(attr(failed_first, "runtime_state", exact = TRUE),
+    list(list(process = 1L, identity = "fixture")))
 })

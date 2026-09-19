@@ -469,6 +469,12 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
   if(autofit && !inherits(fit, "error")){
 
+    # An unsuccessful first extension must retain the cache belonging to the
+    # initial valid fit, before the backend has a chance to mutate it.
+    last_valid_runtime_state <- .JAGS_run_runtime_cache(
+      runtime_cache, "capture", chains, if(parallel) cl else NULL)
+    captured_after_success <- TRUE
+
     converged <- JAGS_check_convergence(
       fit = fit,
       prior_list = prior_list,
