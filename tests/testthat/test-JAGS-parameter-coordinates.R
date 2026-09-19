@@ -1,5 +1,27 @@
 skip_if_not_test_profile("unit")
 
+test_that("coordinate dimensions preserve sampled array extents per base", {
+
+  columns <- c(
+    "theta", "v[4]", "m[2,1]", "v[2]", "m[1,3]", "cube[2,1,4]"
+  )
+  coordinates <- .bt_build_parameter_coordinates(
+    columns = columns,
+    prior_list = list(fixed = prior("point", list(2)))
+  )
+  expect_identical(coordinates$coordinate_name, c(columns, "fixed"))
+  expect_identical(
+    coordinates$dimensions,
+    c("", "4", "2x3", "4", "2x3", "2x1x4", "")
+  )
+  expect_identical(
+    .bt_build_parameter_coordinates(
+      character(), prior_list = list(fixed = prior("point", list(2)))
+    )$dimensions,
+    ""
+  )
+})
+
 test_that("parameter map and coordinate schemas are explicit and versioned", {
 
   map_schema <- parameter_map_schema()
@@ -522,6 +544,7 @@ test_that("coordinate map prevents random-block ownership collisions", {
     mu = structure(
       list(
         parameter = "mu",
+        name_map = .bt_formula_name_map_empty(),
         random_effects = list(short_term, long_term)
       ),
       class = c("BayesTools_formula_design", "list")

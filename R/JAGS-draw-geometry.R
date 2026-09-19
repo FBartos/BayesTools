@@ -118,6 +118,10 @@ JAGS_materialize_draws <- function(fit, parameters = NULL,
     selected <- matches
   }
   selected_coordinates <- coordinates[selected, , drop = FALSE]
+  sampled <- which(selected_coordinates$monitor_status == "sampled")
+  structural <- which(selected_coordinates$monitor_status != "sampled")
+  sampled_names <- selected_coordinates$coordinate_name[sampled]
+  fixed_values <- selected_coordinates$fixed_value[structural]
 
   chains <- .extract_posterior_samples(fit, as_list = TRUE)
   if(length(chains) != nrow(geometry$chains)){
@@ -142,20 +146,18 @@ JAGS_materialize_draws <- function(fit, parameters = NULL,
       ncol = nrow(selected_coordinates),
       dimnames = list(NULL, selected_coordinates$coordinate_name)
     )
-    for(parameter_i in seq_len(nrow(selected_coordinates))){
-      coordinate_row <- selected_coordinates[parameter_i, , drop = FALSE]
-      if(identical(coordinate_row$monitor_status, "sampled")){
-        column <- match(coordinate_row$coordinate_name, colnames(chain))
-        if(is.na(column)){
-          stop(
-            "A sampled parameter coordinate is missing from the fitted chains. Refit the model with this version of BayesTools.",
-            call. = FALSE
-          )
-        }
-        values[, parameter_i] <- chain[, column]
-      }else{
-        values[, parameter_i] <- coordinate_row$fixed_value
-      }
+    columns <- match(sampled_names, colnames(chain))
+    if(anyNA(columns)){
+      stop(
+        "A sampled parameter coordinate is missing from the fitted chains. Refit the model with this version of BayesTools.",
+        call. = FALSE
+      )
+    }
+    if(length(sampled) > 0L){
+      values[, sampled] <- chain[, columns, drop = FALSE]
+    }
+    if(length(structural) > 0L){
+      values[, structural] <- rep(fixed_values, each = nrow(chain))
     }
     out[[chain_i]] <- coda::mcmc(
       values,

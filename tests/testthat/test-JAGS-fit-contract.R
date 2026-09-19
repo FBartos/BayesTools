@@ -28,6 +28,13 @@ test_that("structured JAGS parameter encoding is injective and reversible", {
   expect_false(identical(left, right))
   expect_error(JAGS_parameter_decode("BT2_00_00_00_00"), "unsupported")
   expect_error(JAGS_parameter_decode("BT1_0_00_00_00"), "malformed")
+  for(invalid_utf8 in c("FF", "C0AF", "EDA080", "C3")){
+    expect_error(
+      JAGS_parameter_decode(paste0("BT1_", invalid_utf8, "_6D75__636F6566")),
+      "invalid UTF-8",
+      fixed = TRUE
+    )
+  }
 })
 
 test_that("formula designs persist a validated semantic name map", {
@@ -85,5 +92,17 @@ test_that("formula designs persist a validated semantic name map", {
   expect_error(
     JAGS_formula_name_map(broken, "mu"),
     "Refit the model"
+  )
+
+  missing_map <- list(mu = result$formula_design)
+  missing_map$mu$name_map <- NULL
+  attr(broken, "formula_design") <- missing_map
+  broken <- .bt_attach_fit_contract(broken)
+  expect_error(JAGS_formula_name_map(broken), "name-map metadata are missing")
+  expect_error(
+    .bt_build_parameter_coordinates(
+      columns = "mu_intercept", formula_design = missing_map
+    ),
+    "name-map metadata are missing"
   )
 })

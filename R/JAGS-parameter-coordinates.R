@@ -113,10 +113,9 @@
   out
 }
 
-.bt_parameter_coordinates_dimensions <- function(base_name, columns){
+.bt_parameter_coordinates_dimensions <- function(columns){
 
-  selected <- columns[.bt_parameter_coordinates_base(columns) == base_name]
-  indices <- .bt_parameter_coordinates_index(selected)
+  indices <- .bt_parameter_coordinates_index(columns)
   indices <- indices[nzchar(indices)]
   if(length(indices) == 0L){
     return("")
@@ -150,13 +149,7 @@
   if(is.null(formula_design) || length(formula_design) == 0L){
     return(.bt_formula_name_map_empty())
   }
-  has_map <- vapply(formula_design, function(design){
-    !is.null(design$name_map)
-  }, logical(1))
-  if(!any(has_map)){
-    return(.bt_formula_name_map_empty())
-  }
-  maps <- lapply(formula_design[has_map], function(design){
+  maps <- lapply(formula_design, function(design){
     map <- design$name_map
     .bt_validate_formula_name_map(map)
     map
@@ -611,6 +604,12 @@
     character(1)
   )
   bases <- .bt_parameter_coordinates_base(coordinate_names)
+  column_groups <- split(columns, bases[seq_along(columns)])
+  base_dimensions <- vapply(
+    column_groups, .bt_parameter_coordinates_dimensions, character(1)
+  )
+  dimensions <- unname(base_dimensions[match(bases, names(base_dimensions))])
+  dimensions[is.na(dimensions)] <- ""
   coordinates <- .bt_parameter_coordinates_empty()
   coordinates <- coordinates[rep(NA_integer_, length(coordinate_names)), , drop = FALSE]
 
@@ -725,7 +724,7 @@
       coordinate$term,
       coordinate$column,
       .bt_parameter_coordinates_index(coordinate_name),
-      .bt_parameter_coordinates_dimensions(base_name, columns),
+      dimensions[i],
       .bt_parameter_coordinates_scale(role, formula_parameter, formula_scale),
       monitor_status,
       fixed_value,

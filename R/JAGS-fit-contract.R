@@ -243,7 +243,7 @@ JAGS_fit_contract_schema <- function(){
   }
   out <- rawToChar(as.raw(values))
   Encoding(out) <- "UTF-8"
-  if(!identical(enc2utf8(out), out)){
+  if(!validUTF8(out)){
     stop("Encoded parameter name contains invalid UTF-8.", call. = FALSE)
   }
   out
@@ -334,11 +334,7 @@ JAGS_fit_contract_schema <- function(){
     formula_name_map = .bt_formula_name_map_version,
     formula_design = .bt_formula_design_schema_version(),
     parameter_map = .bt_parameter_map_version,
-    draw_geometry = if(exists(".bt_draw_geometry_version", inherits = TRUE)){
-      .bt_draw_geometry_version
-    }else{
-      NA_integer_
-    }
+    draw_geometry = .bt_draw_geometry_version
   )
 }
 

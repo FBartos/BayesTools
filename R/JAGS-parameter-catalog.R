@@ -2075,22 +2075,25 @@ parameter_transform_jacobian <- function(values, transform){
     ncol = 1L,
     dimnames = list(NULL, source_parameter)
   )
-  summary <- tryCatch(
-    .bt_random_effect_summary_sd_samples(
-      random_term = random_term,
-      model_samples = model_samples,
-      prior_list = prior_list,
-      parameter = parameter,
-      formula_scale = formula_scale
-    ),
-    error = function(error) NULL
+  summary <- .bt_random_effect_summary_sd_samples(
+    random_term = random_term,
+    model_samples = model_samples,
+    prior_list = prior_list,
+    parameter = parameter,
+    formula_scale = formula_scale
   )
   if(is.null(summary) || ncol(summary$values) < index){
-    return(NA_real_)
+    stop(
+      "Parameter catalog could not resolve a one-coordinate random-SD transform. Refit the model with this version of BayesTools.",
+      call. = FALSE
+    )
   }
   scale <- as.numeric(summary$values[, index])
   if(length(scale) != 1L || !is.finite(scale) || scale <= 0){
-    return(NA_real_)
+    stop(
+      "Parameter catalog random-SD transform must have one finite positive source scale. Refit the model with this version of BayesTools.",
+      call. = FALSE
+    )
   }
   unname(scale)
 }
@@ -2100,7 +2103,6 @@ parameter_transform_jacobian <- function(values, transform){
                                                      formula_scale = NULL){
 
   out <- list(
-    direct = .bt_parameter_catalog_empty_overrides(),
     derived = .bt_parameter_catalog_empty_quantities(),
     suppress = character()
   )
@@ -2905,12 +2907,15 @@ parameter_transform_jacobian <- function(values, transform){
     )
     allocation_labels <- vapply(allocation_rows, function(i){
       key <- out$derived$extraction_key[[i]]
-      if(is.character(key$allocation_label) &&
-         length(key$allocation_label) == 1L){
-        key$allocation_label
-      }else{
-        ""
+      if(!is.character(key$allocation_label) ||
+         length(key$allocation_label) != 1L ||
+         is.na(key$allocation_label) || !nzchar(key$allocation_label)){
+        stop(
+          "Parameter catalog variance-allocation metadata require one non-empty allocation label. Refit the model with this version of BayesTools.",
+          call. = FALSE
+        )
       }
+      key$allocation_label
     }, character(1))
     allocation_owners <- unique(allocation_labels)
     allocation_sd_ids <- stats::setNames(rep("", length(allocation_owners)),
@@ -2957,10 +2962,9 @@ parameter_transform_jacobian <- function(values, transform){
     formula_design = formula_design,
     formula_scale = formula_scale
   )
-  overrides <- rbind(factor_map$direct, random_map$direct)
   base <- .bt_parameter_catalog_coordinate_quantities(
     coordinates = coordinates,
-    overrides = overrides,
+    overrides = factor_map$direct,
     suppress = random_map$suppress
   )
   quantities <- rbind(base, factor_map$derived, random_map$derived)

@@ -1271,6 +1271,23 @@ test_that("transformed random summaries hide fitted-scale implementation rows", 
     as.numeric(draws[[1L]][, 1L]),
     c(2, 4) / stats::sd(data$x)
   )
+
+  testthat::local_mocked_bindings(
+    .bt_random_effect_summary_sd_samples = function(...){
+      stop("Invalid random-SD scaling metadata.", call. = FALSE)
+    },
+    .package = "BayesTools"
+  )
+  expect_error(
+    .bt_build_parameter_catalog(
+      coordinates = parameter_coordinates(fit),
+      prior_list = formula_result$prior_list,
+      formula_design = list(mu = formula_result$formula_design),
+      formula_scale = list(mu = formula_result$formula_scale)
+    ),
+    "Invalid random-SD scaling metadata.",
+    fixed = TRUE
+  )
 })
 
 test_that("transformed correlations declare SD and Cholesky inputs", {

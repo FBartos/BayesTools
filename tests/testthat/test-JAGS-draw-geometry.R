@@ -46,7 +46,8 @@ test_that("coordinate materialization adds fixed values and removes internals", 
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- list(
     theta = prior("normal", list(0, 1)),
-    fixed = prior("point", list(-4))
+    fixed = prior("point", list(-4)),
+    fixed_two = prior("point", list(7))
   )
   attr(fit, "backend_anchor") <- .bt_backend_anchor_name
   attr(fit, "parameter_map") <- .bt_build_parameter_map(
@@ -59,14 +60,21 @@ test_that("coordinate materialization adds fixed values and removes internals", 
 
   materialized <- JAGS_materialize_draws(fit)
   expect_s3_class(materialized, "mcmc.list")
-  expect_identical(colnames(materialized[[1L]]), c("theta", "fixed"))
+  expect_identical(colnames(materialized[[1L]]), c("theta", "fixed", "fixed_two"))
   expect_identical(as.numeric(materialized[[1L]][, "fixed"]), rep(-4, 3))
+  expect_identical(as.numeric(materialized[[2L]][, "fixed_two"]), rep(7, 3))
   expect_identical(attr(materialized[[1L]], "mcpar"), c(5, 11, 3))
   expect_false(.bt_backend_anchor_name %in% colnames(materialized[[1L]]))
 
   fixed_only <- JAGS_materialize_draws(fit, "fixed")
   expect_identical(dim(fixed_only[[1L]]), c(3L, 1L))
   expect_identical(as.numeric(fixed_only[[2L]][, 1L]), rep(-4, 3))
+
+  reordered <- JAGS_materialize_draws(fit, c("fixed_two", "theta", "fixed"))
+  expect_equal(
+    as.matrix(reordered[[2L]]),
+    cbind(fixed_two = rep(7, 3), theta = 4:6, fixed = rep(-4, 3))
+  )
 })
 
 test_that("replacement draws refresh fitted draw geometry", {

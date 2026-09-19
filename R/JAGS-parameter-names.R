@@ -66,16 +66,10 @@ format_parameter_names <- function(parameters, formula_parameters = NULL, formul
 
   for(i in seq_along(formula_parameters)){
     formula_prefix_pattern <- paste0(formula_parameters[i], "_")
-    matching_parameters <- grepl(
-      formula_prefix_pattern,
-      parameters,
-      fixed = TRUE
-    )
-    parameters[matching_parameters] <- gsub(
-      formula_prefix_pattern,
+    matching_parameters <- startsWith(parameters, formula_prefix_pattern)
+    parameters[matching_parameters] <- paste0(
       if(formula_prefix) paste0("(", formula_parameters[i], ") ") else "",
-      parameters[matching_parameters],
-      fixed = TRUE
+      substring(parameters[matching_parameters], nchar(formula_prefix_pattern) + 1L)
     )
   }
 
@@ -271,18 +265,7 @@ JAGS_indexed_parameter_vector <- function(row, parameter){
     )
   }
   out[has_match] <- as.integer(index_values)
-
-  return(out)
-}
-
-.JAGS_indexed_parameter_sorted_columns <- function(columns, parameter){
-
-  indices <- .JAGS_indexed_parameter_indices(columns, parameter)
-  keep <- which(!is.na(indices))
-  if(length(keep) == 0L){
-    return(integer())
-  }
-  duplicate_indices <- unique(indices[keep][duplicated(indices[keep])])
+  duplicate_indices <- unique(out[has_match][duplicated(out[has_match])])
   if(length(duplicate_indices) > 0L){
     stop(
       "Indexed JAGS parameter '", parameter,
@@ -294,6 +277,13 @@ JAGS_indexed_parameter_vector <- function(row, parameter){
     )
   }
 
+  return(out)
+}
+
+.JAGS_indexed_parameter_sorted_columns <- function(columns, parameter){
+
+  indices <- .JAGS_indexed_parameter_indices(columns, parameter)
+  keep <- which(!is.na(indices))
   return(keep[order(indices[keep])])
 }
 

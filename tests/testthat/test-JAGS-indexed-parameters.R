@@ -10,6 +10,12 @@ test_that("formula parameter formatting matches identifiers literally", {
     ),
     c("theta", "muX_theta")
   )
+  expect_equal(
+    format_parameter_names(
+      c("x_mu_a", "mu_a", "mu_a_mu_b"), formula_parameters = "mu"
+    ),
+    c("x_mu_a", "(mu) a", "(mu) a_mu_b")
+  )
 
   expect_equal(
     format_parameter_names(
@@ -150,6 +156,16 @@ test_that("JAGS indexed parameter extraction rejects duplicate indices", {
 
   expect_error(
     JAGS_indexed_parameter_matrix(samples, "omega"),
+    "duplicate index: 1",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_indexed_parameter_columns(colnames(samples), "omega"),
+    "duplicate index: 1",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_indexed_parameter_vector(samples[1L, ], "omega"),
     "duplicate index: 1",
     fixed = TRUE
   )
