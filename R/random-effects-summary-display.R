@@ -103,7 +103,7 @@
     return(prior_list[[parameter_name]])
   }
 
-  base_name <- sub("\\[[^\\]]+\\]$", "", parameter_name)
+  base_name <- sub("\\[[^]]+\\]$", "", parameter_name)
   if(base_name %in% names(prior_list)){
     return(prior_list[[base_name]])
   }
@@ -561,11 +561,12 @@
     rho_z = paste0(stem, "_rho_z"),
     rho_logit = paste0(stem, "_rho_logit")
   )
+  rho_quantities <- c(rho = "cor", rho_z = "cor (Fisher z)", rho_logit = "cor (logit)")
   for(rho_label in names(rho_names)){
     names[raw_names == rho_names[[rho_label]]] <- .bt_random_effect_semantic_name(
       parameter = "",
       owner = owner,
-      quantity = "cor",
+      quantity = rho_quantities[[rho_label]],
       formula_prefix = FALSE
     )
     names[raw_names == rho_names[[rho_label]]] <- paste0(

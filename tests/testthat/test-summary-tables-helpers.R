@@ -136,7 +136,7 @@ test_that("format_BF input validation works", {
 test_that("BF MC error helper formats relative percentage column", {
 
   expect_equal(.BF_error_column_name(), "error%(Inclusion BF)")
-  expect_equal(.BF_error_column_name(BF01 = TRUE), "error%(Inclusion BF)")
+  expect_equal(.BF_error_column_name(BF01 = TRUE), "error%(Exclusion BF)")
 
 })
 
@@ -501,17 +501,17 @@ test_that("update preserves relative BF MC error percentage across BF scales", {
   BF01_table <- update(table, BF01 = TRUE)
   expect_equal(as.numeric(BF01_table[["inclusion_BF"]]), 1/3)
   expect_equal(as.numeric(BF01_table[["BF_error_percent"]]), 8)
-  expect_equal(attr(BF01_table[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+  expect_equal(attr(BF01_table[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 
   BF01_from_log <- update(log_table, BF01 = TRUE)
   expect_equal(as.numeric(BF01_from_log[["inclusion_BF"]]), 1/3)
   expect_equal(as.numeric(BF01_from_log[["BF_error_percent"]]), 8)
-  expect_equal(attr(BF01_from_log[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+  expect_equal(attr(BF01_from_log[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 
   log_BF01_table <- update(table, logBF = TRUE, BF01 = TRUE)
   expect_equal(as.numeric(log_BF01_table[["inclusion_BF"]]), log(1/3))
   expect_equal(as.numeric(log_BF01_table[["BF_error_percent"]]), 8)
-  expect_equal(attr(log_BF01_table[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+  expect_equal(attr(log_BF01_table[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 
   default_from_log_BF01 <- update(log_BF01_table)
   expect_equal(as.numeric(default_from_log_BF01[["inclusion_BF"]]), 3)
@@ -558,6 +558,75 @@ test_that("update preserves relative BF MC error percentage across BF scales", {
   expect_equal(attr(table, "parameters"), colnames(samples))
   expect_true(attr(table, "rownames"))
 }
+
+test_that("bias summary filtering preserves branch metadata and unrelated draws", {
+
+  skip_if_not_installed("runjags")
+  indicator <- rep(1:3, 2)
+  samples <- cbind(
+    bias_indicator = indicator,
+    "omega[1]" = 1,
+    "omega[2]" = ifelse(indicator == 1, .5, 1),
+    PET = ifelse(indicator == 2, .2, 0),
+    PEESE = ifelse(indicator == 3, .3, 0),
+    mu_omega_level = seq_along(indicator)
+  )
+  priors <- list(
+    bias = prior_mixture(list(
+      prior_weightfunction("one-sided", .05, wf_cumulative(c(1, 1))),
+      prior_PET("normal", list(0, 1)),
+      prior_PEESE("normal", list(0, 1))
+    )),
+    mu_omega_level = prior("normal", list(0, 1))
+  )
+  fit <- .runjags_table_fit_for_test(samples)
+  attr(fit, "prior_list") <- priors
+  fit <- attach_test_parameter_map(fit)
+
+  conditional <- runjags_estimates_table(
+    fit, conditional = TRUE, return_samples = TRUE, remove_diagnostics = TRUE
+  )
+  expect_equal(as.numeric(conditional[, "mu_omega_level"]), samples[, "mu_omega_level"])
+  expect_equal(is.na(conditional[, "omega[0.05,1]"]), indicator != 1)
+  conditional_priors <- attr(conditional, "prior_list")
+  expect_true(is.prior.PET(conditional_priors$PET))
+  expect_true(is.prior.PEESE(conditional_priors$PEESE))
+
+  removed <- runjags_estimates_table(
+    fit, remove_parameters = "omega", return_samples = TRUE, remove_diagnostics = TRUE
+  )
+  expect_false(any(grepl("^omega\\[", colnames(removed))))
+  remaining_priors <- attr(removed, "prior_list")
+  expect_identical(remaining_priors$bias, priors$bias)
+  expect_null(remaining_priors$omega)
+  expect_true(is.prior.PET(remaining_priors$PET))
+  expect_true(is.prior.PEESE(remaining_priors$PEESE))
+})
+
+test_that("indexed random-effect columns recover their declared prior", {
+
+  p <- prior("mnormal", list(mean = 0, sd = 1, K = 2))
+  for(name in c("mu_fac[1]", "mu_fac[1,2]")){
+    expect_identical(
+      BayesTools:::.bt_random_effect_summary_prior_for_column(name, list(mu_fac = p)),
+      p
+    )
+  }
+})
+
+test_that("raw correlation labels distinguish backend transforms", {
+
+  raw_names <- paste0("mu__xREx__study", c("_rho", "_rho_z", "_rho_logit"))
+  random_term <- list(parameter_stem = "mu__xREx__study", block_name = "study", has_explicit_name = TRUE)
+  expect_identical(
+    BayesTools:::.bt_random_effect_summary_raw_rho_display_names(
+      raw_names, raw_names, random_term, prefix = ""
+    ),
+    c("study: cor", "study: cor (Fisher z)", "study: cor (logit)")
+  )
+  expect_identical(BayesTools:::.BF_error_column_name(TRUE), "error%(Exclusion BF)")
+  expect_identical(BayesTools:::.BF_error_column_name(FALSE), "error%(Inclusion BF)")
+})
 
 test_that("runjags_estimates_table reports exact sample summaries without snapshots", {
 
@@ -614,6 +683,7 @@ test_that("raw random-effect correlation aliases include logit-scale rho columns
     mu = structure(
       list(
         parameter = "mu",
+        name_map = BayesTools:::.bt_formula_name_map_empty(),
         random_effects = list(list(
           parameter_stem = "mu__xREx__id",
           parameter = "mu",
@@ -692,6 +762,7 @@ test_that("raw random-effect monitors respect formula filters", {
     mu = structure(
       list(
         parameter = "mu",
+        name_map = BayesTools:::.bt_formula_name_map_empty(),
         random_effects = list(list(
           parameter_stem = "mu__xREx__id",
           parameter = "mu",
@@ -710,6 +781,7 @@ test_that("raw random-effect monitors respect formula filters", {
     log_sigma = structure(
       list(
         parameter = "log_sigma",
+        name_map = BayesTools:::.bt_formula_name_map_empty(),
         random_effects = list(list(
           parameter_stem = "log_sigma__xREx__site",
           parameter = "log_sigma",
@@ -791,6 +863,7 @@ test_that("raw random-effect columns use their longest matching parameter stem",
     mu = structure(
       list(
         parameter = "mu",
+        name_map = BayesTools:::.bt_formula_name_map_empty(),
         random_effects = list(short_term, long_term)
       ),
       class = c("BayesTools_formula_design", "list")
@@ -885,6 +958,7 @@ test_that("backend logit-scale correlations use semantic correlation labels", {
   formula_design <- structure(
     list(
       parameter = "mu",
+      name_map = BayesTools:::.bt_formula_name_map_empty(),
       random_effects = list(list(
         parameter_stem = "mu__xREx__id",
         parameter = "mu",
@@ -912,7 +986,7 @@ test_that("backend logit-scale correlations use semantic correlation labels", {
     coordinates = coordinates
   )
 
-  expect_identical(display_name, "(mu) id: cor")
+  expect_identical(display_name, "(mu) id: cor (logit)")
 })
 
 

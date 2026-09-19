@@ -291,7 +291,7 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 
 .BF_error_column_name <- function(BF01 = FALSE){
 
-  "error%(Inclusion BF)"
+  if(BF01) "error%(Exclusion BF)" else "error%(Inclusion BF)"
 }
 
 .standardize_BF_bound_operator <- function(operator, n){

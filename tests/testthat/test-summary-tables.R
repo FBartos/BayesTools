@@ -612,7 +612,7 @@ test_that("marginal_estimates_table reports Savage-Dickey BF error attributes", 
 
   marginal_table_BF01 <- update(marginal_table, BF01 = TRUE)
   expect_equal(as.numeric(marginal_table_BF01[["BF_error_percent"]]), c(6.25, NA_real_))
-  expect_equal(attr(marginal_table_BF01[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+  expect_equal(attr(marginal_table_BF01[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 })
 
 

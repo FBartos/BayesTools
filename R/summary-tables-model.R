@@ -412,6 +412,14 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
       if(any(is_PET | is_PEESE | has_selection | has_phacking)){
 
+        omega_cuts <- if(any(has_selection)){
+          selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
+          weightfunctions_mapping(selection_priors, cuts_only = TRUE, one_sided = TRUE)
+        }else{
+          c(0, 1)
+        }
+        omega_names_old <- paste0("omega[", seq_len(length(omega_cuts) - 1L), "]")
+
         # change the samples between conditional/averaged based on the preferences
         if(conditional){
 
@@ -442,7 +450,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
             n_conditional_samples <- sum(model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(has_selection))
 
             # replace null samples with NAs (important for later transformations)
-            model_samples[!model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(has_selection), grepl("omega", colnames(model_samples))] <- NA
+            model_samples[!model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(has_selection), colnames(model_samples) %in% omega_names_old] <- NA
 
             # add warnings about conditional summary
             warnings <- c(warnings, .runjags_conditional_warning("omega", n_conditional_samples))
@@ -472,33 +480,24 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
         if(any(has_selection) || any(has_phacking)){
 
           # rename
-          omega_cuts      <- if(any(has_selection)){
-            selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
-            weightfunctions_mapping(selection_priors, cuts_only = TRUE, one_sided = TRUE)
-          }else{
-            c(0, 1)
-          }
-          omega_names_old <- paste0("omega[", 1:(length(omega_cuts)-1),"]")
           omega_names     <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
-          colnames(model_samples)[which(colnames(model_samples) %in% omega_names_old)] <- omega_names
+          omega_columns <- which(colnames(model_samples) %in% omega_names_old)
+          colnames(model_samples)[omega_columns] <- omega_names[match(colnames(model_samples)[omega_columns], omega_names_old)]
 
           # remove if requested
           if("omega" %in% remove_parameters){
             model_samples <- model_samples[,!colnames(model_samples) %in% omega_names,drop=FALSE]
-            if(any(has_selection)){
-              prior_list[[par]][has_selection] <- NULL
-            }
           }
         }
 
         # add the simpler priors to the prior list
         if(any(is_PET)){
-          prior_list[["PET"]] <- prior_list[[par]][is_PET][1]
+          prior_list[["PET"]] <- prior_list[[par]][[which(is_PET)[1]]]
         }
         if(any(is_PEESE)){
-          prior_list[["PEESE"]] <- prior_list[[par]][is_PEESE][1]
+          prior_list[["PEESE"]] <- prior_list[[par]][[which(is_PEESE)[1]]]
         }
-        if(any(has_selection)){
+        if(any(has_selection) && !"omega" %in% remove_parameters){
           prior_list[["omega"]] <- branch_info[has_selection][[1]]$selection
         }
         if(any(has_phacking)){
