@@ -320,7 +320,12 @@
 
   x_range <- .prior_linear_scalar_range(prior, weight, tail_prob, source_transform)
   if(x_range[1] == x_range[2]){
-    return(.prior_linear_density_point(x_range[1]))
+    stop(
+      "Continuous prior density is unavailable because its numerical range ",
+      "collapses to one representable value. Center or rescale the modeled ",
+      "quantity and its prior parameters before evaluating this density.",
+      call. = FALSE
+    )
   }
 
   x <- seq(x_range[1], x_range[2], by = dx)

@@ -1,5 +1,82 @@
 skip_if_not_test_profile("unit")
 
+test_that("FFT removed-mass diagnostics have probability units", {
+
+  set.seed(135)
+  a <- stats::runif(64)
+  b <- stats::runif(64)
+  a[1:40] <- 0
+  b[25:64] <- 0
+  a <- a / sum(a)
+  b <- b / sum(b)
+  distribution <- function(y, mass, scale){
+    list(
+      density = list(x = (seq_along(y) - 1) * scale,
+                     y = y / scale, mass = mass),
+      points = data.frame(x = 0, p = 1 - mass), n_grid = length(y)
+    )
+  }
+  clipping <- function(scale, mass_a = 1, mass_b = 1){
+    result <- .prior_linear_density_convolve(
+      distribution(a, mass_a, scale), distribution(b, mass_b, scale),
+      dx = scale
+    )
+    attr(result, "fft_clipping")[[1L]]
+  }
+  original <- clipping(1)
+  rescaled <- clipping(16)
+  mixed <- clipping(16, .5, .25)
+  expect_gt(original$clipped_value_count, 0L)
+  expect_identical(rescaled$clipped_value_count, original$clipped_value_count)
+  expect_equal(rescaled$clipped_negative_mass / original$clipped_negative_mass, 1)
+  expect_equal(mixed$clipped_negative_mass / rescaled$clipped_negative_mass, .125)
+  expect_equal(mixed$continuous_component_mass, .125)
+})
+
+test_that("underflow cannot turn a continuous prior into zero density", {
+
+  priors <- list(a = prior("normal", list(mean = 0, sd = 1e200)),
+                 b = prior("normal", list(mean = 0, sd = 1e200)))
+  # The convolution is a proper normal with a representable positive height;
+  # its FFT product underflows before multiplication by the grid spacing.
+  expect_gt(stats::dnorm(0, sd = sqrt(2) * 1e200), 0)
+  expect_error(
+    .prior_linear_combination_density(priors, c(a = 1, b = 1), n_grid = 256),
+    paste0("Continuous prior density is unavailable because its numerical grid ",
+           "has no finite positive mass. Rescale the modeled quantity and its ",
+           "prior parameters before evaluating this density."),
+    fixed = TRUE
+  )
+})
+
+test_that("unrepresentable continuous grids cannot become atoms or non-finite densities", {
+
+  normal <- prior("normal", list(mean = 1e20, sd = 1))
+  expect_identical(prior_density_ordinate(normal, 1e20)$behavior, "regular")
+  expect_error(
+    .prior_linear_combination_density(list(a = normal), c(a = 1), n_grid = 256),
+    paste0("Continuous prior density is unavailable because its numerical range ",
+           "collapses to one representable value. Center or rescale the modeled ",
+           "quantity and its prior parameters before evaluating this density."),
+    fixed = TRUE
+  )
+  point <- .prior_linear_combination_density(
+    list(a = prior("spike", list(location = 1e20))), c(a = 1), n_grid = 256
+  )
+  expect_equal(point$points, data.frame(x = 1e20, p = 1))
+
+  narrow <- list(a = prior("normal", list(mean = 0, sd = 1e-200)),
+                 b = prior("normal", list(mean = 0, sd = 1e-200)))
+  expect_true(is.finite(stats::dnorm(0, sd = sqrt(2) * 1e-200)))
+  expect_error(
+    .prior_linear_combination_density(narrow, c(a = 1, b = 1), n_grid = 256),
+    paste0("FFT prior convolution is unavailable because its numerical values ",
+           "are non-finite. Rescale the modeled quantity and its prior parameters ",
+           "before evaluating this density."),
+    fixed = TRUE
+  )
+})
+
 test_that("linear group ranges accept omitted source transformations", {
 
   group <- list(prior = prior("normal", list(0, 1)), weights = c(mu = 1), indices = 1L)

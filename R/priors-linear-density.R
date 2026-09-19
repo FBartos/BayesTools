@@ -79,6 +79,14 @@
   ) / n_fft
 
   out <- Re(out[seq_len(n)])
+  if(any(!is.finite(out))){
+    stop(
+      "FFT prior convolution is unavailable because its numerical values ",
+      "are non-finite. Rescale the modeled quantity and its prior parameters ",
+      "before evaluating this density.",
+      call. = FALSE
+    )
+  }
   error_bound <- 64 * .Machine$double.eps * max(1, log2(n_fft)) *
     max(1, max(abs(out)))
   minimum <- min(out)
@@ -165,16 +173,20 @@
 
     density_mass <- sum(vapply(densities, function(d) d$mass, numeric(1)))
     area <- if(length(x) > 1) sum(y_mass) * (x[2] - x[1]) else density_mass
-    if(is.finite(area) && area > 0 && density_mass > 0){
-      y <- y_mass / area
-      grid_normalization <- list(
-        captured_numerical_mass = area,
-        target_continuous_mass = density_mass,
-        normalization_factor = density_mass / area
+    if(!is.finite(area) || area <= 0){
+      stop(
+        "Continuous prior density is unavailable because its numerical grid ",
+        "has no finite positive mass. Rescale the modeled quantity and its ",
+        "prior parameters before evaluating this density.",
+        call. = FALSE
       )
-    }else{
-      y <- y_mass
     }
+    y <- y_mass / area
+    grid_normalization <- list(
+      captured_numerical_mass = area,
+      target_continuous_mass = density_mass,
+      normalization_factor = density_mass / area
+    )
 
     density <- list(
       x    = x,
@@ -213,7 +225,14 @@
     fft_clipping <- attr(y, "fft_clipping", exact = TRUE)
     y <- as.numeric(y) * dx
     if(!is.null(fft_clipping)){
-      fft_clipping$clipped_negative_mass <- fft_clipping$clipped_negative_sum * dx
+      # One dx converts the discrete convolution to a density; a second
+      # integrates it. Record this component's mass before normalization.
+      fft_clipping$grid_spacing <- dx
+      fft_clipping$continuous_component_mass <-
+        lhs$density$mass * rhs$density$mass
+      fft_clipping$clipped_negative_mass <-
+        fft_clipping$clipped_negative_sum * dx^2 *
+        fft_clipping$continuous_component_mass
     }
     area <- sum(y) * dx
     if(is.finite(area) && area > 0){
