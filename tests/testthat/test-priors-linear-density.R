@@ -1,5 +1,206 @@
 skip_if_not_test_profile("unit")
 
+test_that("bounded conditional-normal prior ordinates retain their numerical error", {
+
+  priors <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1)),
+                 s = prior("cauchy", list(0, 1), list(0, 5)))
+  attr(priors$b, "multiply_by") <- "s"
+  density <- .prior_linear_combination_density(priors, c(a = 1, b = -1), n_grid = 1024)
+  expected <- 5 / (sqrt(26) * sqrt(2 * pi) * atan(5))
+  ordinate <- prior_density_ordinate(density, 0)
+  expect_identical(ordinate$behavior, "regular")
+  expect_identical(ordinate$method, "conditional_normal_mixture")
+  expect_true(ordinate$exact)
+  expect_false(ordinate$provenance$integration$exact)
+  expect_equal(exp(ordinate$log_density), expected, tolerance = 1e-9)
+  integration <- ordinate$provenance$integration
+  expect_lte(integration$absolute_error, integration$error_bound)
+  expect_lte(integration$evaluations, 1024)
+  expect_equal(as.numeric(.prior_linear_density_height(density, 0)), expected, tolerance = 1e-9)
+
+  # atan(s) is uniform: an independent change-of-variable integral avoids
+  # the multiplier-density routine and its original integration coordinates.
+  for(value in c(-2, .75, 4)){
+    reference <- stats::integrate(function(angle){
+      stats::dnorm(value, sd = 1 / cos(angle)) / atan(5)
+    }, 0, atan(5), rel.tol = 1e-12)$value
+    result <- prior_density_ordinate(density, value)
+    expect_lt(abs(exp(result$log_density) - reference),
+              .prior_linear_density_refinement_tolerance()$absolute +
+                .prior_linear_density_refinement_tolerance()$relative * reference)
+  }
+
+  shifted_priors <- list(a = prior("normal", list(.7, .5)),
+                         b = prior("normal", list(.3, 1.2)),
+                         s = prior("uniform", list(-2, 3)))
+  attr(shifted_priors$b, "multiply_by") <- "s"
+  shifted <- .prior_linear_combination_density(shifted_priors, c(a = 1, b = 1), n_grid = 512)
+  shifted_reference <- stats::integrate(function(probability){
+    s <- -2 + 5 * probability
+    stats::dnorm(1.1, mean = .7 + .3 * s, sd = sqrt(.5^2 + 1.2^2 * s^2))
+  }, 0, 1, rel.tol = 1e-12)$value
+  expect_equal(as.numeric(.prior_linear_density_height(shifted, 1.1)),
+               shifted_reference, tolerance = 1e-7)
+
+  pure_product <- .prior_linear_combination_density(priors, c(b = 1), n_grid = 128)
+  expect_identical(prior_density_ordinate(pure_product, 0)$behavior, "infinite")
+  expect_identical(prior_density_ordinate(pure_product, 0)$method, "unsupported_provenance")
+  split <- .prior_linear_split_multiply_groups(priors, c(a = 1, b = 1))
+  split$additive_weights <- c(b = 1)
+  expect_null(.prior_conditional_normal_spec(priors, split, c(a = NA_character_, b = NA_character_)))
+})
+
+test_that("conditional-normal ordinates preserve model and inclusion mixture weights", {
+
+  priors <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1)),
+                 s = prior("cauchy", list(0, 1), list(0, 5)))
+  attr(priors$b, "multiply_by") <- "s"
+  alternative_height <- 5 / (sqrt(26) * sqrt(2 * pi) * atan(5))
+  second <- priors
+  second$b <- prior("point", list(0))
+  attr(second$b, "multiply_by") <- "s"
+  models <- lapply(names(priors), function(parameter){
+    list(.set_prior_model_weight(priors[[parameter]], 3),
+         .set_prior_model_weight(second[[parameter]], 1))
+  })
+  names(models) <- names(priors)
+  context <- .prior_density_model_mixture_context(models, names(priors), n_grid = 512)
+  density <- .prior_density_from_context(context, c(a = 1, b = -1))
+  expected <- .75 * alternative_height + .25 * stats::dnorm(0)
+  expect_equal(as.numeric(.prior_linear_density_height(density, 0)), expected, tolerance = 1e-9)
+  expect_true(prior_density_ordinate(density, 0)$exact)
+
+  priors$b <- prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.3)))
+  attr(priors$b, "multiply_by") <- "s"
+  context <- .prior_density_build_context(priors, names(priors), conditional = "b", n_grid = 512)
+  density <- .prior_density_from_context(context, c(a = 1, b = -1))
+  expect_equal(as.numeric(.prior_linear_density_height(density, 0)), alternative_height, tolerance = 1e-9)
+  context <- .prior_density_build_context(priors, names(priors), n_grid = 512)
+  density <- .prior_density_from_context(context, c(a = 1, b = -1))
+  expect_equal(as.numeric(.prior_linear_density_height(density, 0)),
+               .3 * alternative_height + .7 * stats::dnorm(0), tolerance = 1e-9)
+
+  rows <- rbind(c(a = 1, b = -1), c(a = 1, b = 0))
+  row_density <- .prior_density_from_context_rows(context, rows)
+  expected <- .5 * (.3 * alternative_height + .7 * stats::dnorm(0)) + .5 * stats::dnorm(0)
+  expect_equal(as.numeric(.prior_linear_density_height(row_density, 0)), expected, tolerance = 1e-9)
+  expect_false(prior_density_ordinate(row_density, 0)$provenance$integration$exact)
+})
+
+test_that("conditional-normal classification survives exhausted numerical budgets", {
+
+  priors <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1)),
+                 s = prior("beta", list(.1, .1)))
+  attr(priors$b, "multiply_by") <- "s"
+  spec <- .prior_conditional_normal_spec(
+    priors, .prior_linear_split_multiply_groups(priors, c(a = 1, b = 1)),
+    c(a = NA_character_, b = NA_character_)
+  )
+  result <- .prior_conditional_normal_ordinate(spec, 0, n_grid = 21)
+  expect_identical(result$behavior, "regular")
+  expect_true(result$exact)
+  expect_true(is.na(result$log_density))
+  expect_false(result$provenance$integration$converged)
+})
+
+test_that("failed conditional-normal quadrature cannot fall back to grid heights", {
+
+  priors <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1)),
+                 s = prior("cauchy", list(0, 1), list(0, 5)))
+  attr(priors$b, "multiply_by") <- "s"
+  density <- .prior_linear_combination_density(priors, c(a = 1, b = 1), n_grid = 128)
+  integration_reply <- list(value = .2, abs.error = .1, subdivisions = 1L,
+                            message = "maximum number of subdivisions reached")
+  testthat::local_mocked_bindings(
+    integrate = function(...) integration_reply,
+    .package = "stats"
+  )
+  testthat::local_mocked_bindings(
+    .prior_linear_density_grid_height = function(...) stop("Grid fallback is forbidden."),
+    .package = "BayesTools"
+  )
+  result <- prior_density_ordinate(density, 0)
+  expect_identical(result$behavior, "regular")
+  expect_true(result$exact)
+  expect_true(is.na(result$log_density))
+  expect_false(result$provenance$integration$converged)
+  expect_error(.prior_linear_density_height(density, 0),
+               "Conditional-normal prior density was rejected by diagnostics: integration reported",
+               fixed = TRUE)
+  integration_reply <- list(value = 0, abs.error = 0, subdivisions = 1L, message = "OK")
+  zero <- prior_density_ordinate(density, 0)
+  expect_identical(zero$behavior, "regular")
+  expect_true(zero$exact)
+  expect_true(is.na(zero$log_density))
+  expect_error(.prior_linear_density_height(density, 0),
+               "zero ordinate for a structurally positive density", fixed = TRUE)
+})
+
+test_that("conditional-normal mixtures preflight expansion before numerical evaluation", {
+
+  slab <- prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5)))
+  attr(slab, "multiply_by") <- "s"
+  names_b <- paste0("b", seq_len(25))
+  priors <- c(list(a = prior("normal", list(0, 1)),
+                   s = prior("cauchy", list(0, 1), list(0, 5))),
+               stats::setNames(rep(list(slab), 25), names_b))
+  weights <- c(a = 1, stats::setNames(rep(1, 25), names_b))
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    .prior_conditional_normal_ordinate = function(...) {
+      calls <<- calls + 1L
+      stop("Numerical expansion must not start.")
+    }
+  )
+  result <- .prior_density_ordinate_linear_base(priors, weights, NULL, 0, n_grid = 512)
+  expect_identical(result$behavior, "unknown")
+  expect_identical(calls, 0L)
+  priors$s <- prior("cauchy", list(0, 1))
+  expect_identical(.prior_density_ordinate_linear_base(priors, weights, NULL, 0, n_grid = 512)$behavior, "unknown")
+  expect_identical(calls, 0L)
+
+  # Nested stored metadata are counted recursively even though constructors
+  # currently reject nesting. Three positive leaves cannot fit 42 evaluations.
+  nested <- prior_mixture(list(prior("point", list(0)), prior("normal", list(0, 1))))
+  nested[[2L]] <- prior_mixture(list(prior("normal", list(0, 1)), prior("normal", list(0, 2))))
+  attr(nested, "multiply_by") <- "s"
+  priors <- list(a = prior("normal", list(0, 1)), b = nested,
+                 s = prior("cauchy", list(0, 1), list(0, 5)))
+  expect_identical(.prior_density_ordinate_linear_base(priors, c(a = 1, b = 1), NULL, 0, n_grid = 42)$behavior, "unknown")
+  expect_identical(calls, 0L)
+})
+
+test_that("feasible conditional-normal leaves share one evaluation budget", {
+
+  budget <- .prior_linear_density_default_grid()
+  slab <- prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5)))
+  attr(slab, "multiply_by") <- "s"
+  priors <- list(a = prior("normal", list(0, 1)),
+                 s = prior("cauchy", list(0, 1), list(0, 5)),
+                 b1 = slab, b2 = slab, b3 = slab)
+  original <- .prior_conditional_normal_ordinate
+  budgets <- evaluations <- numeric()
+  testthat::local_mocked_bindings(
+    .prior_conditional_normal_ordinate = function(spec, value, n_grid){
+      result <- original(spec, value, n_grid)
+      budgets <<- c(budgets, n_grid)
+      evaluations <<- c(evaluations, result$provenance$integration$evaluations)
+      result
+    }
+  )
+  result <- .prior_density_ordinate_linear_base(priors, c(a = 1, b1 = 1, b2 = 1, b3 = 1), NULL, 0, n_grid = budget)
+  expected <- sum(vapply(0:3, function(k){
+    stats::dbinom(k, 3, .5) * stats::integrate(function(angle){
+      stats::dnorm(0, sd = sqrt(1 + k * tan(angle)^2)) / atan(5)
+    }, 0, atan(5), rel.tol = 1e-12)$value
+  }, numeric(1)))
+  expect_equal(exp(result$log_density), expected, tolerance = 1e-7)
+  expect_length(budgets, 7L)
+  expect_lte(sum(budgets), budget)
+  expect_lte(sum(evaluations), budget)
+  expect_lte(.prior_density_ordinate_integration(result$provenance)$budget, budget)
+})
+
 test_that("FFT removed-mass diagnostics have probability units", {
 
   set.seed(135)

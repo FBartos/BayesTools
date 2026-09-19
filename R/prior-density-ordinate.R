@@ -31,6 +31,13 @@
 #' floating-point evaluation. General numerical convolutions, products, and
 #' arbitrary user transformations are reported as `unknown` unless exact point
 #' mass or singular-point metadata establishes the requested behavior.
+#' Supported conditional-normal mixtures are structurally regular because they
+#' include an independent positive-variance Gaussian term. Their ordinates use
+#' bounded quadrature and retain integration errors and evaluation budgets in
+#' `provenance`. Their structural classification has `exact = TRUE`, while
+#' `provenance$integration$exact = FALSE` describes the numerical ordinate.
+#' Failed quadrature retains that classification with `log_density = NA` and
+#' failure diagnostics; requesting a density height then rejects the result.
 #'
 #' @examples
 #' normal_prior <- prior("normal", list(mean = 0, sd = 1))
@@ -77,7 +84,7 @@ prior_density_ordinate <- function(x, value){
 .prior_density_ordinate_methods <- function(){
   c(
     "primitive", "point", "finite_mixture", "scalar_affine",
-    "linear_normal", "named_transform", "unsupported_provenance"
+    "linear_normal", "conditional_normal_mixture", "named_transform", "unsupported_provenance"
   )
 }
 
@@ -628,6 +635,10 @@ prior_density_ordinate <- function(x, value){
   if(!is.na(log_density)){
     log_density <- log_density - log_jacobian
   }
+  if(.prior_density_ordinate_has_quadrature(source$provenance)){
+    provenance$source <- source$provenance
+    provenance$integration_scale <- exp(-log_jacobian)
+  }
 
   .prior_density_ordinate_result(
     value               = value,
@@ -640,6 +651,47 @@ prior_density_ordinate <- function(x, value){
     provenance          = provenance,
     continuous_behavior = continuous_behavior
   )
+}
+
+.prior_density_ordinate_has_quadrature <- function(provenance){
+
+  if(!is.list(provenance)) return(FALSE)
+  if(identical(provenance$kind, "conditional_normal_mixture") ||
+     identical(provenance$source_kind, "conditional_normal_mixture")) return(TRUE)
+  any(vapply(provenance, .prior_density_ordinate_has_quadrature, logical(1)))
+}
+
+.prior_density_ordinate_integration <- function(provenance){
+
+  if(!is.list(provenance)) return(NULL)
+  if(!is.null(provenance$integration)) return(provenance$integration)
+  if(!is.null(provenance$components)){
+    components <- lapply(provenance$components, function(component){
+      .prior_density_ordinate_integration(component$provenance)
+    })
+    included <- !vapply(components, is.null, logical(1))
+    if(!any(included)) return(NULL)
+    weights <- vapply(provenance$components, `[[`, numeric(1), "weight")[included]
+    components <- components[included]
+    return(list(
+      kind = "conditional_normal_mixture", exact = FALSE,
+      absolute_error = sum(weights * vapply(components, `[[`, numeric(1), "absolute_error")),
+      error_bound = sum(weights * vapply(components, `[[`, numeric(1), "error_bound")),
+      evaluations = sum(vapply(components, `[[`, numeric(1), "evaluations")),
+      budget = sum(vapply(components, `[[`, numeric(1), "budget")),
+      converged = all(vapply(components, `[[`, logical(1), "converged")),
+      message = paste(unique(vapply(components, `[[`, character(1), "message")), collapse = "; ")
+    ))
+  }
+  if(!is.null(provenance$source) && !is.null(provenance$integration_scale)){
+    integration <- .prior_density_ordinate_integration(provenance$source)
+    if(!is.null(integration)){
+      integration$absolute_error <- integration$absolute_error * provenance$integration_scale
+      integration$error_bound <- integration$error_bound * provenance$integration_scale
+    }
+    return(integration)
+  }
+  NULL
 }
 
 .prior_density_ordinate_prior_affine <- function(prior, value, offset, scale,
@@ -1189,7 +1241,8 @@ prior_density_ordinate <- function(x, value){
 }
 
 .prior_density_ordinate_linear_base <- function(prior_list, weights,
-                                                source_transforms, value){
+                                                source_transforms, value,
+                                                n_grid = .prior_linear_density_default_grid()){
 
   weights <- weights[weights != 0]
   if(length(weights) == 0L){
@@ -1239,6 +1292,53 @@ prior_density_ordinate <- function(x, value){
     ))
   }
   if(length(split$product_groups) > 0L){
+    if(length(split$product_groups) == 1L){
+      product <- split$product_groups[[1L]]
+      active <- unique(c(
+        .prior_linear_active_parameters(prior_list, split$additive_weights),
+        names(product$prior_list)
+      ))
+      mixtures <- active[vapply(prior_list[active], function(prior){
+        is.prior.mixture(prior) || is.prior.spike_and_slab(prior)
+      }, logical(1))]
+      if(length(mixtures) > 0L){
+        expansion <- .prior_conditional_normal_expansion(prior_list, split, source_transforms, n_grid)
+        if(!is.null(expansion)){
+          parameter <- expansion$parameter
+          parent <- prior_list[[parameter]]
+          probabilities <- .prior_density_ordinate_mixture_weights(parent)
+          components <- lapply(seq_along(expansion$indices), function(j){
+            i <- expansion$indices[j]
+            component_priors <- prior_list
+            component_priors[[parameter]] <- .prior_density_copy_parent_attributes(parent[[i]], parent)
+            .prior_density_ordinate_linear_base(
+              component_priors, weights, source_transforms, value, expansion$budgets[j]
+            )
+          })
+          combined <- .prior_density_ordinate_combine(
+            components, probabilities[expansion$indices], value
+          )
+          if(!identical(combined$behavior, "unknown")){
+            return(combined)
+          }
+        }
+      }
+      product_constant <- .prior_density_ordinate_deterministic_offset(
+        product$prior_list, product$weights, source_transforms
+      )
+      if(identical(product_constant, 0)){
+        additive <- .prior_density_ordinate_additive_factor(
+          prior_list, split$additive_weights, source_transforms, value
+        )
+        if(!is.null(additive)) return(additive)
+      }
+    }
+    conditional_normal <- .prior_conditional_normal_spec(
+      prior_list, split, source_transforms
+    )
+    if(!is.null(conditional_normal)){
+      return(.prior_conditional_normal_ordinate(conditional_normal, value, n_grid))
+    }
     singularity <- .prior_density_ordinate_product_singularity(
       prior_list,
       split,
@@ -2050,7 +2150,8 @@ prior_density_ordinate <- function(x, value){
       prior_list,
       weights,
       source_transforms,
-      source_value
+      source_value,
+      n_grid = if(is.null(arguments$n_grid)) .prior_linear_density_default_grid() else arguments$n_grid
     )
   }
   if(is.null(transformation)){
@@ -2092,6 +2193,7 @@ prior_density_ordinate <- function(x, value){
     }
     result <- .prior_density_ordinate_linear_arguments(list(
       prior_list                      = context$prior_list,
+      n_grid                          = context$n_grid,
       weights                         = standardized,
       source_transforms               = source_transforms,
       output_transformation           = transformation,
@@ -2107,7 +2209,9 @@ prior_density_ordinate <- function(x, value){
 
   if(inherits(context, "prior_density_model_mixture_context")){
     component_classifier <- function(source_value){
-      results <- lapply(seq_along(context$model_weights), function(model_i){
+      component_indices <- which(context$model_weights > 0)
+      component_budget <- floor(context$n_grid / length(component_indices))
+      results <- lapply(component_indices, function(model_i){
         model_prior_list <- lapply(context$prior_list, function(parameter_priors){
           if(is.prior(parameter_priors)) parameter_priors else parameter_priors[[model_i]]
         })
@@ -2120,12 +2224,13 @@ prior_density_ordinate <- function(x, value){
           model_prior_list,
           weights,
           source_transforms,
-          source_value
+          source_value,
+          n_grid = component_budget
         )
       })
       .prior_density_ordinate_combine(
         results,
-        context$model_weights,
+        context$model_weights[component_indices],
         source_value,
         provenance_extra = list(context = "model_mixture")
       )
@@ -2145,7 +2250,9 @@ prior_density_ordinate <- function(x, value){
 
   if(inherits(context, "prior_density_conditional_context")){
     component_classifier <- function(source_value){
-      results <- lapply(context$prior_lists, function(prior_list){
+      component_indices <- which(context$model_weights > 0)
+      component_budget <- floor(context$n_grid / length(component_indices))
+      results <- lapply(context$prior_lists[component_indices], function(prior_list){
         if(!is.null(context$formula_scale) && length(context$formula_scale) > 0L){
           component_context <- .prior_density_context(
             prior_list,
@@ -2154,6 +2261,7 @@ prior_density_ordinate <- function(x, value){
             context$n_grid,
             context$tail_prob
           )
+          component_context$n_grid <- component_budget
           return(.prior_density_ordinate_context_classifier(
             component_context,
             weights,
@@ -2167,12 +2275,13 @@ prior_density_ordinate <- function(x, value){
           prior_list,
           weights,
           source_transforms,
-          source_value
+          source_value,
+          n_grid = component_budget
         )
       })
       .prior_density_ordinate_combine(
         results,
-        context$model_weights,
+        context$model_weights[component_indices],
         source_value,
         provenance_extra = list(context = "conditional_mixture")
       )
@@ -2252,9 +2361,11 @@ prior_density_ordinate <- function(x, value){
     unique_keys <- unique(row_keys)
     row_counts <- tabulate(match(row_keys, unique_keys), nbins = length(unique_keys))
     row_indices <- match(unique_keys, row_keys)
+    row_context <- arguments$context
+    row_context$n_grid <- floor(row_context$n_grid / length(row_indices))
     results <- lapply(row_indices, function(row_i){
       .prior_density_ordinate_context_classifier(
-        arguments$context,
+        row_context,
         weights[row_i, ],
         arguments$source_transforms,
         arguments$output_transformation,
@@ -2269,6 +2380,7 @@ prior_density_ordinate <- function(x, value){
     )
     continuous_behavior <-
       .prior_density_ordinate_continuous_behavior(combined)
+    integration <- .prior_density_ordinate_integration(combined$provenance)
     combined$provenance <- list(
       kind              = "finite_mixture",
       context           = "density_context_rows",
@@ -2288,6 +2400,7 @@ prior_density_ordinate <- function(x, value){
         )
       }, results, row_counts)
     )
+    if(!is.null(integration)) combined$provenance$integration <- integration
     if(identical(combined$behavior, "point_mass")){
       combined$provenance$continuous_behavior <- continuous_behavior
     }

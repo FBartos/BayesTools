@@ -992,6 +992,186 @@
   list(relative = 1e-4, absolute = 1e-12)
 }
 
+.prior_conditional_normal_groups <- function(prior_list, split){
+
+  if(length(split$product_groups) != 1L){
+    return(NULL)
+  }
+  product <- split$product_groups[[1L]]
+  multiplier <- prior_list[[product$multiplier]]
+  if(!is.prior.simple(multiplier) || is.prior.point(multiplier) ||
+     is.prior.discrete(multiplier) || is.prior.mixture(multiplier) ||
+     is.prior.spike_and_slab(multiplier) ||
+     !is.null(attr(multiplier, "multiply_by", exact = TRUE)) ||
+     .prior_linear_prior_dimension(multiplier) != 1L){
+    return(NULL)
+  }
+  bounds <- unlist(multiplier$truncation[c("lower", "upper")], use.names = FALSE)
+  if(length(bounds) != 2L || any(!is.finite(bounds)) || bounds[1L] >= bounds[2L]){
+    return(NULL)
+  }
+  additive_groups <- .prior_linear_weight_groups(prior_list, split$additive_weights)
+  product_groups <- .prior_linear_weight_groups(product$prior_list, product$weights)
+  if(length(intersect(names(additive_groups), names(product_groups))) > 0L ||
+     product$multiplier %in% c(names(additive_groups), names(product_groups))){
+    return(NULL)
+  }
+  list(multiplier = multiplier, bounds = bounds,
+       additive = additive_groups, multiplied = product_groups)
+}
+
+.prior_conditional_normal_expansion <- function(prior_list, split, source_transforms, n_grid){
+
+  groups <- .prior_conditional_normal_groups(prior_list, split)
+  max_leaves <- floor(n_grid / 21)
+  if(is.null(groups) || max_leaves < 1) return(NULL)
+  inspect_group <- function(group, limit){
+    prior <- group$prior
+    if(is.prior.mixture(prior) || is.prior.spike_and_slab(prior)){
+      probabilities <- .prior_density_ordinate_mixture_weights(prior)
+      if(is.null(probabilities)) return(NULL)
+      indices <- which(probabilities > 0)
+      count <- 0
+      always_normal <- TRUE
+      zero_points <- TRUE
+      branch_counts <- numeric(length(indices))
+      for(j in seq_along(indices)){
+        child <- group
+        child$prior <- .prior_density_copy_parent_attributes(prior[[indices[j]]], prior)
+        if(!identical(attr(child$prior, "multiply_by", exact = TRUE),
+                      attr(prior, "multiply_by", exact = TRUE))) return(NULL)
+        info <- inspect_group(child, limit - count)
+        if(is.null(info)) return(NULL)
+        count <- count + info$count
+        branch_counts[j] <- info$count
+        always_normal <- always_normal && info$always_normal
+        zero_points <- zero_points && info$zero_points
+      }
+      return(list(count = count, always_normal = always_normal,
+                  zero_points = zero_points, indices = indices,
+                  branch_counts = branch_counts))
+    }
+    if(limit < 1) return(NULL)
+    normal <- .prior_density_ordinate_linear_normal(
+      stats::setNames(list(prior), group$parameter), group$weights, source_transforms, 0
+    )
+    if(!is.null(normal) && isTRUE(normal$exact) && identical(normal$method, "linear_normal")){
+      return(list(count = 1, always_normal = TRUE, zero_points = TRUE))
+    }
+    point <- .prior_density_ordinate_point_group_location(group, source_transforms)
+    if(length(point) == 1L && is.finite(point)){
+      return(list(count = 1, always_normal = FALSE, zero_points = point == 0))
+    }
+    NULL
+  }
+  all_groups <- c(groups$additive, groups$multiplied)
+  counts <- list()
+  total <- 1
+  for(parameter in names(all_groups)){
+    info <- inspect_group(all_groups[[parameter]], floor(max_leaves / total))
+    if(is.null(info)) return(NULL)
+    total <- total * info$count
+    counts[[parameter]] <- info
+  }
+  additive_normal <- vapply(counts[names(groups$additive)], `[[`, logical(1), "always_normal")
+  product_normal <- vapply(counts[names(groups$multiplied)], `[[`, logical(1), "always_normal")
+  product_zero <- vapply(counts[names(groups$multiplied)], `[[`, logical(1), "zero_points")
+  if(!any(additive_normal) || (!any(product_normal) && !all(product_zero))) return(NULL)
+  mixture_names <- names(counts)[vapply(counts, function(x) !is.null(x$indices), logical(1))]
+  if(length(mixture_names) == 0L) return(NULL)
+  parameter <- mixture_names[[1L]]
+  first <- counts[[parameter]]
+  list(parameter = parameter, indices = first$indices,
+       budgets = floor(n_grid / total) * (total / first$count) * first$branch_counts)
+}
+
+.prior_conditional_normal_spec <- function(prior_list, split, source_transforms){
+
+  groups <- .prior_conditional_normal_groups(prior_list, split)
+  if(is.null(groups)) return(NULL)
+  product <- split$product_groups[[1L]]
+  additive <- .prior_density_ordinate_linear_normal(
+    prior_list, split$additive_weights, source_transforms, 0
+  )
+  multiplied <- .prior_density_ordinate_linear_normal(
+    product$prior_list, product$weights, source_transforms, 0
+  )
+  if(is.null(additive) || is.null(multiplied) ||
+     !identical(additive$method, "linear_normal") ||
+     !identical(multiplied$method, "linear_normal") ||
+     !isTRUE(additive$exact) || !isTRUE(multiplied$exact) ||
+     !is.finite(additive$provenance$sd) || additive$provenance$sd <= 0 ||
+     !is.finite(multiplied$provenance$sd) || multiplied$provenance$sd <= 0){
+    return(NULL)
+  }
+  list(
+    additive_mean = additive$provenance$mean,
+    additive_sd = additive$provenance$sd,
+    product_mean = multiplied$provenance$mean,
+    product_sd = multiplied$provenance$sd,
+    multiplier = groups$multiplier,
+    bounds = groups$bounds,
+    sources = list(additive = names(groups$additive),
+                   multiplied = names(groups$multiplied), multiplier = product$multiplier)
+  )
+}
+
+.prior_conditional_normal_ordinate <- function(spec, value, n_grid){
+
+  # QUADPACK's finite-interval rule uses 21 initial evaluations and 42 for
+  # each additional subdivision. Keep these within the existing grid budget.
+  subdivisions <- floor((n_grid + 21) / 42)
+  tolerance <- .prior_linear_density_refinement_tolerance()
+  integrand <- function(multiplier){
+    product_sd <- abs(multiplier) * spec$product_sd
+    scale <- pmax(spec$additive_sd, product_sd)
+    conditional_sd <- scale * sqrt((spec$additive_sd / scale)^2 + (product_sd / scale)^2)
+    conditional_mean <- spec$additive_mean + multiplier * spec$product_mean
+    exp(stats::dnorm(value, conditional_mean, conditional_sd, log = TRUE) +
+          lpdf(spec$multiplier, multiplier))
+  }
+  integral <- if(!is.finite(subdivisions) || subdivisions < 1){
+    list(value = NA_real_, abs.error = NA_real_, subdivisions = 0L,
+         message = "fewer than 21 integration evaluations are available")
+  }else tryCatch(
+    stats::integrate(integrand, spec$bounds[1L], spec$bounds[2L],
+                     subdivisions = subdivisions, rel.tol = tolerance$relative,
+                     abs.tol = tolerance$absolute, stop.on.error = FALSE),
+    error = function(e){
+      list(value = NA_real_, abs.error = NA_real_, subdivisions = 0L,
+           message = conditionMessage(e))
+    }
+  )
+  if(identical(integral$message, "OK") && isTRUE(integral$value == 0)){
+    integral$message <- "zero ordinate for a structurally positive density"
+  }
+  bound <- tolerance$absolute + tolerance$relative * abs(integral$value)
+  accepted <- identical(integral$message, "OK") && is.finite(integral$value) &&
+    integral$value > 0 && is.finite(integral$abs.error) && integral$abs.error <= bound
+  if(!isTRUE(accepted)){
+    integral$value <- NA_real_
+  }
+  .prior_density_ordinate_result(
+    value = value, behavior = "regular",
+    log_density = log(integral$value), exact = TRUE,
+    method = "conditional_normal_mixture",
+    provenance = list(
+      kind = "conditional_normal_mixture",
+      additive = c(mean = spec$additive_mean, sd = spec$additive_sd),
+      multiplied = c(mean = spec$product_mean, sd = spec$product_sd),
+      multiplier = .prior_density_ordinate_prior_provenance(spec$multiplier),
+      independent_sources = spec$sources,
+      structural_regularity = "positive_variance_gaussian_convolution",
+      integration = list(
+        kind = "conditional_normal_mixture", exact = FALSE,
+        absolute_error = integral$abs.error, error_bound = bound,
+        evaluations = if(integral$subdivisions > 0L) 42L * integral$subdivisions - 21L else 0L,
+        budget = n_grid, converged = isTRUE(accepted), message = integral$message
+      )
+    )
+  )
+}
+
 .prior_linear_density_grid_height <- function(x, value){
 
   height <- 0
@@ -1216,6 +1396,25 @@
 
   if(!inherits(x, "prior_linear_density")){
     stop("'x' must be a prior linear density object.", call. = FALSE)
+  }
+
+  if(length(value) == 1L && is.finite(value)){
+    ordinate <- .prior_density_ordinate_from_adaptive(
+      attr(x, "adaptive_evaluation", exact = TRUE), value
+    )
+    if(!is.null(ordinate) && identical(ordinate$behavior, "regular") &&
+       .prior_density_ordinate_has_quadrature(ordinate$provenance)){
+      integration <- .prior_density_ordinate_integration(ordinate$provenance)
+      if(is.na(ordinate$log_density) || !isTRUE(integration$converged)){
+        stop("Conditional-normal prior density was rejected by diagnostics: integration reported '",
+             integration$message, "' with absolute error ", format(integration$absolute_error),
+             ". Inspect the prior specification and increase 'n_samples' for marginal inference.",
+             call. = FALSE)
+      }
+      height <- exp(ordinate$log_density)
+      attr(height, "numerical_diagnostics") <- integration
+      return(height)
+    }
   }
 
   singular_points <- attr(x, "singular_density_points", exact = TRUE)

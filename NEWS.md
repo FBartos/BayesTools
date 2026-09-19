@@ -109,6 +109,13 @@
 - preserves independent coefficient supports in structural dependency graphs,
   including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- excludes generated reference-review candidates from source packages and
+  checks portable snapshot paths only for files included in the package.
+- evaluates supported Gaussian-plus-scaled-Gaussian prior ordinates through
+  bounded conditional-normal quadrature instead of a biased product-density
+  grid. Model, conditional, and row mixture weights are preserved; numerical
+  integration shares the existing budget and tolerance. Structural regularity
+  remains exact even when the numerical ordinate is unavailable.
 - preserves raw expression inputs during scaled formula prediction and honors
   explicit no-intercept prediction subsets without changing fitted contrasts.
 - carries affine transformations into joint marginal-prior weights and offsets,
