@@ -422,7 +422,6 @@
       )
     }
     structure <- "diag"
-    independent <- TRUE
     x[[1L]] <- as.name("|")
   }
 

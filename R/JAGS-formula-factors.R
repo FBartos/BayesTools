@@ -29,7 +29,9 @@
 
     if(is.prior.factor(x)){
       level_names <- .get_prior_factor_level_names(x)
-    }else if(isTRUE(attr(x, "independent"))){
+    }else if(isTRUE(attr(x, "independent")) ||
+             identical(unname(attr(x, "factor_contrasts")),
+                       "contr.ordered_cumulative_levels")){
       level_names <- seq_len(n_levels)
     }else{
       level_names <- seq_len(n_levels + 1)

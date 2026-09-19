@@ -615,6 +615,9 @@ JAGS_formula_random_marginal_covariance <- function(
       call. = FALSE
     )
   }
+  if(n_columns == 1L){
+    return(list(syntax = paste0(prefix, "_cor[1,1] = 1\n"), data = data))
+  }
   correlation <- random_term$correlation
   if(!is.list(correlation) || !is.character(correlation$rho_name) ||
      length(correlation$rho_name) != 1L || !nzchar(correlation$rho_name)){

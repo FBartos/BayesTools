@@ -449,7 +449,13 @@
   random_factor_predictors <- names(predictors_type)[predictors_type == "factor"]
   random_xlevels <- lapply(random_factor_predictors, function(predictor){
     if(predictor %in% names(model_frame) && is.factor(model_frame[[predictor]])){
-      levels(model_frame[[predictor]])
+      level_names <- levels(model_frame[[predictor]])
+      if(identical(random_structure, "car")){
+        numeric_levels <- as.numeric(level_names)
+        level_names <- level_names[order(numeric_levels)]
+        level_names <- level_names[as.numeric(level_names) %in% car_metadata$time_values]
+      }
+      level_names
     }else{
       NULL
     }
@@ -461,6 +467,11 @@
   )
   random_contrast_matrices <- if(isTRUE(structure_owned_basis)){
     lapply(random_xlevels, function(level_names){
+      if(identical(random_structure, "car")){
+        out <- outer(as.numeric(level_names), car_metadata$time_values, "==") * 1
+        dimnames(out) <- list(level_names, raw_column_names)
+        return(out)
+      }
       out <- diag(length(level_names))
       dimnames(out) <- list(level_names, level_names)
       out
@@ -672,7 +683,6 @@
 
   # step 3
   if(random_structure == "us" && n_par == 1L){
-    block_prior <- .bt_random_prior_for_block(prior_random, random_term$block_name)
     if(!is.null(block_prior$covariance$cor)){
       stop(
         "Single-column random-effect structure 'us' has no correlation parameter; remove the 'cor' prior.",
@@ -741,7 +751,6 @@
       ))
     }
   }else if(random_structure == "us"){
-    block_prior <- .bt_random_prior_for_block(prior_random, random_term$block_name)
     lkj_prior <- .bt_random_block_lkj_prior(block_prior)
     lkj_module <- JAGS_lkj_corr_cholesky(
       name = paste0(parameter, "_xRE_CORx"),
@@ -798,7 +807,6 @@
       ))
     }
   }else if(random_structure %in% c("cs", "hcs", "ar1", "car", "har")){
-    block_prior <- .bt_random_prior_for_block(prior_random, random_term$block_name)
     centered_structure <- identical(parameterization$resolved, "centered")
     centered_dense_structure <- isTRUE(centered_structure) &&
       !identical(random_structure, "car")
@@ -878,7 +886,7 @@
     }
     add_parameters <- c(add_parameters, correlation_monitors)
     correlation_metadata <- corr_module$bridge
-    if(identical(random_structure, "car")){
+    if(identical(random_structure, "car") && n_par > 1L){
       correlation_metadata$time_variable <- car_metadata$time_variable
       correlation_metadata$time_values <- car_metadata$time_values
     }

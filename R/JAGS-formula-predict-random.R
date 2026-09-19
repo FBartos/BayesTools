@@ -1086,12 +1086,14 @@
         }
         prediction_data[[factor_name]] <- factor(
           as.character(prediction_data[[factor_name]]),
-          levels = factor_levels[[factor_name]]
+          levels = factor_levels[[factor_name]],
+          ordered = identical(random_structure, "car")
         )
       }else if(all(unique(prediction_data[[factor_name]]) %in% factor_levels[[factor_name]])){
         prediction_data[[factor_name]] <- factor(
           prediction_data[[factor_name]],
-          levels = factor_levels[[factor_name]]
+          levels = factor_levels[[factor_name]],
+          ordered = identical(random_structure, "car")
         )
       }else{
         stop(

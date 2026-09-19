@@ -66,6 +66,17 @@ levels are preserved; otherwise sorted unique values define levels and
 AR(1) order. CS/HCS can combine several columns with \code{+}; AR1/HAR require
 exactly one. CAR requires one finite numeric/integer column, or an ordered
 factor with numeric labels, and uses actual coordinate distances.
+AR1/HAR warns when character or unordered-factor numeric labels resolve to
+a non-increasing numeric order, such as \verb{1, 10, 2}. The order is retained;
+use numeric values for numeric ordering, or an ordered factor with explicit
+levels to confirm another intended order.
+
+The \code{random()} / \code{re()} wrappers also accept \code{hom = FALSE} with
+\code{covariance = "cs"} or \code{"ar1"} as aliases for \code{"hcs"} or \code{"har"},
+respectively. An explicit \code{random_covariance(structure = ...)} prior must
+match that resolved heterogeneous structure. Direct \code{cs()} / \code{ar1()} tags
+retain their homogeneous meaning; use \code{hcs()} / \code{har()} for heterogeneous
+SDs.
 
 Random-effect predictors must be literal data-column names combined with
 standard formula operators. Inline transformations and arbitrary calls are

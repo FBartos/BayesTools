@@ -1,5 +1,99 @@
 skip_if_not_test_profile("unit")
 
+test_that("AR1 and HAR warn without changing misleading numeric label order", {
+  dat <- data.frame(g = factor(rep(c("a", "b"), each = 3)))
+  compile <- function(wave, structure){
+    dat$wave <- wave
+    JAGS_formula(
+      stats::as.formula(paste0("~ ", structure, "(wave | g)")), "mu", dat,
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(sd = prior("point", list(location = 1)))
+    )$formula_design$random_effects[[1]]
+  }
+  for(structure in c("ar1", "har")){
+    for(wave in list(rep(c("1", "2", "10"), 2), factor(rep(c("1", "2", "10"), 2)))){
+      expect_warning(block <- compile(wave, structure), "order: 1, 10, 2", fixed = TRUE)
+      expect_identical(block$column_names, c("wave1", "wave10", "wave2"))
+    }
+    expect_no_warning(block <- compile(rep(c(1, 2, 10), 2), structure))
+    expect_identical(block$column_names, c("wave1", "wave2", "wave10"))
+    expect_no_warning(block <- compile(ordered(rep(c("1", "2", "10"), 2),
+      levels = c("1", "10", "2")), structure))
+    expect_identical(block$column_names, c("wave1", "wave10", "wave2"))
+  }
+})
+
+test_that("random name maps distinguish prefix-related block names", {
+  dat <- data.frame(g = factor(c("a", "b", "a", "b")))
+  result <- JAGS_formula(
+    ~ random(1 | g, name = "study", covariance = "diag") +
+      random(1 | g, name = "study_long", covariance = "diag") +
+      random(1 | g, name = "study2", covariance = "diag"),
+    "mu", dat, list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(sd = prior("point", list(location = 1)))
+  )
+  map <- result$formula_design$name_map
+  for(block in result$formula_design$random_effects){
+    row <- match(block$sd_parameter_names, map$jags_name)
+    expect_false(anyNA(row))
+    expect_true(all(map$kind[row] == "random"))
+    expect_true(all(map$term[row] == block$block_name))
+  }
+})
+
+test_that("CAR single-coordinate covariance and observed factor basis replay", {
+  dat <- data.frame(g = factor(rep(c("a", "b"), each = 3)), time = 0)
+  compile <- function(data){
+    JAGS_formula(~ car(time | g), "mu", data,
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(sd = prior("point", list(location = 1))))
+  }
+  result <- compile(dat)
+  block <- result$formula_design$random_effects[[1]]
+  expect_null(block$correlation)
+  expect_equal(block$car$time_values, 0)
+  covariance <- JAGS_formula_random_marginal_covariance(
+    result$formula_design, list(seq_len(nrow(dat))))
+  expect_match(covariance$syntax, "_cor[1,1] = 1", fixed = TRUE)
+  expect_equal(as.numeric(random_effects_correlation_draws(block, matrix(numeric(), 2, 0))), c(1, 1))
+
+  dat$time <- ordered(rep(c("0", "1", "5"), 2), levels = c("0", "1", "5", "20"))
+  result <- compile(dat)
+  block <- result$formula_design$random_effects[[1]]
+  expect_identical(block$xlevels$time, c("0", "1", "5"))
+  expect_equal(unname(block$contrast_matrices$time), diag(3))
+  replay <- .bt_random_effect_prediction_data(block, dat)
+  expect_equal(replay$model_matrix, block$model_matrix)
+})
+
+test_that("expression-only subtraction preserves structural zero intercept", {
+  expect_equal(.remove_expressions(~ expression(x) - 1), ~ 1 - 1,
+    ignore_formula_env = TRUE)
+  result <- JAGS_formula(~ expression(x[i]) - 1, "mu", data.frame(x = 1:3),
+                        list(intercept = prior("point", list(location = 0))))
+  expect_true(is.prior.point(result$prior_list$mu_intercept))
+  expect_equal(result$prior_list$mu_intercept$parameters$location, 0)
+  expect_identical(result$formula_design$transformed_terms, list("x[i]"))
+})
+
+test_that("cumulative-level factor metadata retains all and only its levels", {
+  p <- prior_ordered(prior("normal", list(0, 1)), contrast = "cumulative_levels")
+  attr(p, "levels") <- 4L
+  attr(p, "factor_terms") <- "f"
+  attr(p, "factor_contrasts") <- c(f = "contr.ordered_cumulative_levels")
+  expect_identical(.factor_level_list(p)$f, as.character(1:4))
+  expect_equal(dim(.factor_term_design_from_metadata(p)$design), c(4L, 4L))
+  samples <- matrix(1:8, 2, 4)
+  class(samples) <- c("mixed_posteriors.factor", class(samples))
+  attr(samples, "ordered") <- TRUE
+  attr(samples, "levels") <- 4L
+  attr(samples, "factor_terms") <- "f"
+  attr(samples, "factor_contrasts") <- c(f = "contr.ordered_cumulative_levels")
+  transformed <- transform_factor_samples(list(f = samples))$f
+  expect_equal(dim(transformed), c(2L, 4L))
+  expect_identical(attr(transformed, "level_names"), as.character(1:4))
+})
+
 # ============================================================================ #
 # TEST FILE: JAGS Formula Design Oracles
 # ============================================================================ #
@@ -4940,8 +5034,9 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
       prior_list_parameters   = list(),
       formula_design_list     = list(mu = result$formula_design)
     ),
-    "must be finite and positive",
-    fixed = TRUE
+    "Bridge samples contain out-of-support positive auxiliary coordinate 'prior_par_eta_mu__xRE_ALLOCx_allocation__weight[1]'.",
+    fixed = TRUE,
+    class = "BayesTools_marglik_out_of_support"
   )
   expect_equal(
     bayestools_reference_formula_random_log_prior(
@@ -11490,7 +11585,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
   expect_false(grepl("rho_z", raw_result$formula_syntax, fixed = TRUE))
   expect_match(
     raw_result$formula_syntax,
-    "mu__xREx__id_xRE_AR_PHIX[i] * mu__xREx__id_xRE_UNIT_COEFx[g,i - 1]",
+    "mu__xREx__id_rho * mu__xREx__id_xRE_UNIT_COEFx[g,i - 1]",
     fixed = TRUE
   )
 

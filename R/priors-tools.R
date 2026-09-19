@@ -188,8 +188,9 @@
 }
 .get_prior_factor_level_names  <- function(prior){
   if(is.null(attr(prior, "level_names"))){
-    if(is.prior.independent(prior)){
-      return(1:.get_prior_factor_levels(prior))
+    if(is.prior.independent(prior) ||
+       (is.prior.ordered(prior) && identical(prior$contrast, "cumulative_levels"))){
+      return(seq_len(.get_prior_factor_levels(prior)))
     }else{
       return(1:(.get_prior_factor_levels(prior)+1))
     }

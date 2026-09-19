@@ -741,10 +741,14 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       matches <- vapply(compiled_random_effects, function(random_term){
         is.character(random_term$parameter_stem) &&
           length(random_term$parameter_stem) == 1L &&
-          startsWith(random_names[i], random_term$parameter_stem)
+          startsWith(random_names[i], paste0(random_term$parameter_stem, "_"))
       }, logical(1))
-      if(sum(matches) == 1L){
-        random_term <- compiled_random_effects[[which(matches)]]
+      if(any(matches)){
+        matching_terms <- compiled_random_effects[matches]
+        stem_lengths <- vapply(matching_terms, function(random_term){
+          nchar(random_term$parameter_stem)
+        }, integer(1))
+        random_term <- matching_terms[[which.max(stem_lengths)]]
         random_kinds[i] <- "random"
         random_terms[i] <- random_term$block_name
         random_roles[i] <- substring(

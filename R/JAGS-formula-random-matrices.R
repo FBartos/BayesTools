@@ -89,6 +89,14 @@
 
   index_name <- .bt_random_effect_structured_index_name(index_variables)
   data[[index_name]] <- .bt_random_effect_structured_index_values(data, index_variables)
+  if(structure %in% c("ar1", "har")){
+    .bt_random_effect_warn_index_order(
+      x = out$data[[index_variables]],
+      resolved_levels = levels(data[[index_name]]),
+      variable = index_variables,
+      structure = structure
+    )
+  }
   out$data <- data
   out$formula <- stats::as.formula(
     call("~", call("-", as.name(index_name), 1)),
@@ -226,14 +234,30 @@
   if(is.factor(x)){
     return(x)
   }
-  if(is.character(x)){
-    return(factor(x, levels = sort(unique(x))))
+  factor(x, levels = sort(unique(x)))
+}
+
+.bt_random_effect_warn_index_order <- function(x, resolved_levels, variable,
+                                                structure){
+
+  if(is.ordered(x) || !(is.factor(x) || is.character(x))){
+    return(invisible(NULL))
   }
-  if(is.numeric(x) || is.integer(x) || is.logical(x)){
-    return(factor(x, levels = sort(unique(x))))
+  numeric_levels <- suppressWarnings(as.numeric(resolved_levels))
+  if(any(!is.finite(numeric_levels)) || !is.unsorted(numeric_levels)){
+    return(invisible(NULL))
   }
 
-  factor(x, levels = sort(unique(x)))
+  warning(
+    "The '", structure, "' index variable '", variable, "' uses ",
+    if(is.factor(x)) "declared factor level" else "sorted character",
+    " order: ", paste(resolved_levels, collapse = ", "),
+    ". Its numeric labels are not in increasing numeric order. ",
+    "Use numeric values for numeric ordering, or an ordered factor with ",
+    "explicit levels to confirm the intended order. The existing order is preserved.",
+    call. = FALSE
+  )
+  invisible(NULL)
 }
 
 .bt_random_effect_car_design_matrix <- function(formula, data,

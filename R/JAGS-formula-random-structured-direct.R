@@ -129,27 +129,24 @@
         syntax <- c(syntax, paste0(transition$syntax, "\n"))
       }
       phi_name <- transition_names$phi
+      phi_expression <- paste0(phi_name, "[i]")
       innovation_name <- transition_names$innovation_var
       innovation_expression <- paste0(
         "sqrt(", innovation_name, "[i])"
       )
     }else{
-      phi_name <- paste0(parameter, "_xRE_AR_PHIX")
+      phi_expression <- rho_name
       innovation_name <- paste0(parameter, "_xRE_AR_INNOVx")
-      for(i in 2:K){
-        syntax <- c(syntax, paste0(
-          phi_name, "[", i, "] <- pow(", rho_name, ", 1)\n",
-          innovation_name, "[", i, "] <- sqrt(1 - pow(",
-          phi_name, "[", i, "], 2))\n"
-        ))
-      }
-      innovation_expression <- paste0(innovation_name, "[i]")
+      syntax <- c(syntax, paste0(
+        innovation_name, " <- sqrt(1 - pow(", rho_name, ", 2))\n"
+      ))
+      innovation_expression <- innovation_name
     }
     syntax <- c(syntax, paste0(
       " for(g in 1:", n_groups, "){\n",
       "   ", unit_name, "[g,1] <- ", z_name, "[g,1]\n",
       "   for(i in 2:", K, "){\n",
-      "     ", unit_name, "[g,i] <- ", phi_name, "[i] * ",
+      "     ", unit_name, "[g,i] <- ", phi_expression, " * ",
       unit_name, "[g,i - 1] + ", innovation_expression, " * ", z_name,
       "[g,i]\n",
       "   }\n",
