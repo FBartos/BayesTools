@@ -109,6 +109,25 @@
 - preserves independent coefficient supports in structural dependency graphs,
   including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- preserves raw expression inputs during scaled formula prediction and honors
+  explicit no-intercept prediction subsets without changing fitted contrasts.
+- carries affine transformations into joint marginal-prior weights and offsets,
+  and rebuilds unscaled posterior atoms from joint coefficient structure.
+  Nonlinear transformed level combinations fail explicitly when joint prior
+  information is unavailable instead of using the untransformed prior.
+- converts selected component variances to SDs in covariance factor update grids,
+  rejects negative SD/variance candidates, and aligns named factor states
+  consistently across covariance, diagonal, and matrix-product consumers.
+- invalidates parameter-map provider caches after valid map-table edits, and
+  distinguishes adjacent numeric literals during parallel build compatibility
+  checks. Fingerprints preserve load-time freezing while hashing metadata in
+  memory instead of writing temporary files.
+- preserves named numeric rows in data-frame bridge-prior evaluation and resolves
+  mixed canonical/legacy inverse-gamma coordinates with consistent precedence.
+- reports FFT clipping mass in probability units, including grid spacing and
+  component mass. Numerical underflow of a continuous density to an all-zero
+  grid, overflow, and collapsed continuous ranges fail explicitly instead of
+  returning a purported normalized density or inventing a point mass.
 - corrects edge cases in bridge priors, conditional model probabilities,
   hypothesis thresholds, formula metadata, and mixed-measure plotting. Missing
   bridge coordinates and undefined prior densities now fail explicitly; legacy
