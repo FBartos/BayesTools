@@ -56,6 +56,50 @@ test_that("PET and PEESE plots rebuild scalar atoms from bias branches", {
   }
 })
 
+test_that("conditional bias plots restore omitted structural scalar values", {
+
+  prior_list <- list(bias = prior_mixture(list(
+    prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5))),
+    prior_PET("normal", list(0, 1)), prior_PEESE("normal", list(0, 1))
+  )))
+  posterior <- cbind(
+    bias_indicator = rep(1:3, each = 6),
+    "omega[1]" = 1,
+    "omega[2]" = c(rep(.5, 6), rep(1, 12)),
+    PET = c(rep(0, 6), seq(.1, 1, length.out = 6), rep(0, 6)),
+    PEESE = c(rep(0, 12), seq(.2, 2, length.out = 6))
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  for(condition in list(NULL, "PETPEESE", "PET", "omega")){
+    samples <- as_mixed_posteriors(fit, "bias", conditional = condition, force_plots = TRUE)
+    for(parameter in c("PET", "PEESE")){
+      scalar <- BayesTools:::.simplify_as_mixed_posterior_bias(samples, parameter)
+      indicator <- attr(scalar[[parameter]], "models_ind")
+      expected <- posterior[posterior[, "bias_indicator"] %in% unique(indicator), parameter]
+      expect_equal(as.numeric(scalar[[parameter]]), as.numeric(expected))
+      expect_identical(colnames(scalar[[parameter]]), parameter)
+      expect_identical(colnames(BayesTools:::.posterior_atoms_get(scalar[[parameter]])$locations), parameter)
+      expect_s3_class(plot_posterior(
+        samples, parameter, individual = TRUE, prior = TRUE, plot_type = "ggplot", n_points = 64
+      ), "ggplot")
+    }
+  }
+
+  incomplete <- as_mixed_posteriors(fit, "bias")
+  incomplete$bias <- incomplete$bias[, colnames(incomplete$bias) != "PET", drop = FALSE]
+  attributes_to_restore <- attributes(as_mixed_posteriors(fit, "bias")$bias)
+  for(attribute in setdiff(names(attributes_to_restore), c("dim", "dimnames"))){
+    attr(incomplete$bias, attribute) <- attributes_to_restore[[attribute]]
+  }
+  expect_error(
+    BayesTools:::.simplify_as_mixed_posterior_bias(incomplete, "PET"),
+    "Posterior samples for 'PET' are unavailable because an active bias branch is not a point prior.",
+    fixed = TRUE
+  )
+})
+
 .scaled_atom_plot_samples_for_test <- function(slope, slope_prior, indicator = NULL){
 
   posterior <- cbind(mu_intercept = rep(0, length(slope)), mu_x = slope)

@@ -131,6 +131,29 @@
 
   ### create new samples
   new_samples <- samples[["bias"]][, grepl(parameter, colnames(samples[["bias"]])),drop=FALSE]
+  if(parameter %in% c("PET", "PEESE") && ncol(new_samples) == 0L){
+    indicator <- attr(samples[["bias"]], "models_ind", exact = TRUE)
+    atoms <- .posterior_atoms_get(samples[["bias"]])
+    probabilities <- if(is.null(atoms)) NULL else atoms$component_probabilities
+    active <- unique(c(which(probabilities > 0), indicator))
+    if(length(indicator) != nrow(new_samples) ||
+       any(!indicator %in% seq_along(prior_list)) ||
+       any(!active %in% seq_along(prior_list))){
+      stop("Bias posterior component metadata are unavailable for scalar plotting.", call. = FALSE)
+    }
+    if(!all(vapply(prior_list[active], is.prior.point, logical(1)))){
+      stop("Posterior samples for '", parameter,
+           "' are unavailable because an active bias branch is not a point prior.",
+           call. = FALSE)
+    }
+    locations <- vapply(prior_list[active], function(prior){
+      prior$parameters[["location"]]
+    }, numeric(1))
+    new_samples <- matrix(
+      locations[match(indicator, active)], ncol = 1L,
+      dimnames = list(NULL, parameter)
+    )
+  }
 
   ### store attribute
   std_attrs  <- c("dim", "dimnames", "names", "prior_list", "mcpar")
