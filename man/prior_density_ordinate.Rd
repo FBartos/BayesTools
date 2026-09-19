@@ -36,8 +36,9 @@ arbitrary user transformations are reported as \code{unknown} unless exact point
 mass or singular-point metadata establishes the requested behavior.
 Supported conditional-normal mixtures are structurally regular because they
 include an independent positive-variance Gaussian term. Their ordinates use
-bounded quadrature and retain integration errors and evaluation budgets in
-\code{provenance}. Their structural classification has \code{exact = TRUE}, while
+quadrature over the multiplier's declared support and retain integration
+errors and evaluation budgets in \code{provenance}. Their structural
+classification has \code{exact = TRUE}, while
 \code{provenance$integration$exact = FALSE} describes the numerical ordinate.
 Failed quadrature retains that classification with \code{log_density = NA} and
 failure diagnostics; requesting a density height then rejects the result.

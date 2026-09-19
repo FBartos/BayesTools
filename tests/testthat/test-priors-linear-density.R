@@ -50,6 +50,60 @@ test_that("bounded conditional-normal prior ordinates retain their numerical err
   expect_null(.prior_conditional_normal_spec(priors, split, c(a = NA_character_, b = NA_character_)))
 })
 
+test_that("unbounded conditional-normal ordinates retain exact support and counted budgets", {
+
+  multipliers <- list(prior("normal", list(0, 1)),
+                       prior("cauchy", list(0, 1), list(0, Inf)),
+                       prior("cauchy", list(0, 1), list(-Inf, 0)))
+  # s = sinh(t) reduces the normal-multiplier center to the K0 integral:
+  # https://dlmf.nist.gov/10.32.E9
+  expected <- c(besselK(.25, 0, expon.scaled = TRUE) / (2 * pi),
+                 rep(sqrt(2) / pi^(3/2), 2))
+  original_integrate <- stats::integrate
+  counted <- 0L
+  testthat::local_mocked_bindings(
+    integrate = function(f, ...){
+      original_integrate(function(x){
+        counted <<- counted + length(x)
+        f(x)
+      }, ...)
+    },
+    .package = "stats"
+  )
+  for(i in seq_along(multipliers)){
+    priors <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1)),
+                   s = multipliers[[i]])
+    attr(priors$b, "multiply_by") <- "s"
+    density <- .prior_linear_combination_density(priors, c(a = 1, b = 1), n_grid = 512)
+    counted <- 0L
+    ordinate <- prior_density_ordinate(density, 0)
+    expect_identical(ordinate$behavior, "regular")
+    expect_true(ordinate$exact)
+    expect_equal(exp(ordinate$log_density), expected[[i]], tolerance = 1e-7)
+    expect_identical(ordinate$provenance$integration$evaluations, counted)
+    expect_lte(counted, 512)
+    expect_equal(as.numeric(.prior_linear_density_height(density, 0)), expected[[i]], tolerance = 1e-7)
+  }
+})
+
+test_that("legacy product flags cannot establish an infinite density", {
+
+  priors <- list(a = prior("uniform", list(-1, 1)), b = prior("normal", list(0, 1)),
+                 s = prior("normal", list(0, 1)))
+  attr(priors$b, "multiply_by") <- "s"
+  unsupported <- .prior_linear_combination_density(priors, c(a = 1, b = 1), n_grid = 128)
+  expect_true(0 %in% attr(unsupported, "singular_density_points"))
+  expect_identical(prior_density_ordinate(unsupported, 0)$behavior, "unknown")
+  expect_error(.prior_linear_density_height(unsupported, 0),
+               "The prior density at the flagged product ordinate is unavailable from supported deterministic provenance.",
+               fixed = TRUE)
+  pure <- .prior_linear_combination_density(priors, c(b = 1), n_grid = 128)
+  expect_identical(prior_density_ordinate(pure, 0)$behavior, "infinite")
+  expect_identical(.prior_linear_density_height(pure, 0), Inf)
+  attr(pure, "singular_density_points") <- NULL
+  expect_identical(.prior_linear_density_height(pure, 0), Inf)
+})
+
 test_that("conditional-normal ordinates preserve model and inclusion mixture weights", {
 
   priors <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1)),
@@ -155,7 +209,7 @@ test_that("conditional-normal mixtures preflight expansion before numerical eval
   result <- .prior_density_ordinate_linear_base(priors, weights, NULL, 0, n_grid = 512)
   expect_identical(result$behavior, "unknown")
   expect_identical(calls, 0L)
-  priors$s <- prior("cauchy", list(0, 1))
+  priors$s <- prior("point", list(1))
   expect_identical(.prior_density_ordinate_linear_base(priors, weights, NULL, 0, n_grid = 512)$behavior, "unknown")
   expect_identical(calls, 0L)
 

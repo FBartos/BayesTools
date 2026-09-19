@@ -1007,7 +1007,7 @@
     return(NULL)
   }
   bounds <- unlist(multiplier$truncation[c("lower", "upper")], use.names = FALSE)
-  if(length(bounds) != 2L || any(!is.finite(bounds)) || bounds[1L] >= bounds[2L]){
+  if(length(bounds) != 2L || anyNA(bounds) || bounds[1L] >= bounds[2L]){
     return(NULL)
   }
   additive_groups <- .prior_linear_weight_groups(prior_list, split$additive_weights)
@@ -1023,8 +1023,9 @@
 .prior_conditional_normal_expansion <- function(prior_list, split, source_transforms, n_grid){
 
   groups <- .prior_conditional_normal_groups(prior_list, split)
-  max_leaves <- floor(n_grid / 21)
-  if(is.null(groups) || max_leaves < 1) return(NULL)
+  if(is.null(groups)) return(NULL)
+  max_leaves <- floor(n_grid / .prior_conditional_normal_initial_evaluations(groups$bounds))
+  if(max_leaves < 1) return(NULL)
   inspect_group <- function(group, limit){
     prior <- group$prior
     if(is.prior.mixture(prior) || is.prior.spike_and_slab(prior)){
@@ -1118,11 +1119,17 @@
 
 .prior_conditional_normal_ordinate <- function(spec, value, n_grid){
 
-  # QUADPACK's finite-interval rule uses 21 initial evaluations and 42 for
-  # each additional subdivision. Keep these within the existing grid budget.
-  subdivisions <- floor((n_grid + 21) / 42)
+  # Finite bounds use 21-point rules; infinite bounds use 15-point rules,
+  # with paired evaluations for two-sided infinite intervals.
+  initial_evaluations <- .prior_conditional_normal_initial_evaluations(spec$bounds)
+  subdivisions <- floor((n_grid + initial_evaluations) / (2 * initial_evaluations))
   tolerance <- .prior_linear_density_refinement_tolerance()
+  evaluations <- 0L
   integrand <- function(multiplier){
+    if(evaluations + length(multiplier) > n_grid){
+      stop("the integration evaluation budget was exhausted", call. = FALSE)
+    }
+    evaluations <<- evaluations + length(multiplier)
     product_sd <- abs(multiplier) * spec$product_sd
     scale <- pmax(spec$additive_sd, product_sd)
     conditional_sd <- scale * sqrt((spec$additive_sd / scale)^2 + (product_sd / scale)^2)
@@ -1132,7 +1139,8 @@
   }
   integral <- if(!is.finite(subdivisions) || subdivisions < 1){
     list(value = NA_real_, abs.error = NA_real_, subdivisions = 0L,
-         message = "fewer than 21 integration evaluations are available")
+         message = paste0("fewer than ", initial_evaluations,
+                          " integration evaluations are available"))
   }else tryCatch(
     stats::integrate(integrand, spec$bounds[1L], spec$bounds[2L],
                      subdivisions = subdivisions, rel.tol = tolerance$relative,
@@ -1165,11 +1173,18 @@
       integration = list(
         kind = "conditional_normal_mixture", exact = FALSE,
         absolute_error = integral$abs.error, error_bound = bound,
-        evaluations = if(integral$subdivisions > 0L) 42L * integral$subdivisions - 21L else 0L,
+        evaluations = evaluations,
         budget = n_grid, converged = isTRUE(accepted), message = integral$message
       )
     )
   )
+}
+
+.prior_conditional_normal_initial_evaluations <- function(bounds){
+
+  if(all(is.finite(bounds))) return(21L)
+  if(all(is.infinite(bounds))) return(30L)
+  15L
 }
 
 .prior_linear_density_grid_height <- function(x, value){
@@ -1398,6 +1413,7 @@
     stop("'x' must be a prior linear density object.", call. = FALSE)
   }
 
+  ordinate <- NULL
   if(length(value) == 1L && is.finite(value)){
     ordinate <- .prior_density_ordinate_from_adaptive(
       attr(x, "adaptive_evaluation", exact = TRUE), value
@@ -1415,11 +1431,21 @@
       attr(height, "numerical_diagnostics") <- integration
       return(height)
     }
+    if(!is.null(ordinate) && isTRUE(ordinate$exact) &&
+       identical(.prior_density_ordinate_continuous_behavior(ordinate), "infinite")){
+      return(Inf)
+    }
   }
 
   singular_points <- attr(x, "singular_density_points", exact = TRUE)
   if(length(value) == 1L && value %in% singular_points){
-    return(Inf)
+    if(!is.null(ordinate) && isTRUE(ordinate$exact) &&
+       .prior_density_ordinate_continuous_behavior(ordinate) %in% c("regular", "zero") &&
+       !is.na(ordinate$log_density)){
+      return(exp(ordinate$log_density))
+    }
+    stop("The prior density at the flagged product ordinate is unavailable from supported deterministic provenance. Inspect the prior specification or use a supported prior-density evaluator.",
+         call. = FALSE)
   }
 
   evaluator <- attr(x, "density_evaluator", exact = TRUE)
