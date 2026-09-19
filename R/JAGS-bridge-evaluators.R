@@ -115,6 +115,9 @@
     log_prior = function(samples){
       marglik <- 0
       if(!is.prior.point(total_prior)){
+        if(!all(total_names %in% names(samples))){
+          stop("'samples' does not contain all monitored ordered total prior parameters.", call. = FALSE)
+        }
         total_values <- unname(unlist(samples[total_names], use.names = FALSE))
         marglik <- marglik + sum(lpdf(total_prior, total_values))
       }
@@ -215,7 +218,12 @@
     })
   }
   if(length(parameter_names) == 1L){
-    return(function(samples) log_density(samples[[parameter_names]]))
+    return(function(samples){
+      if(!parameter_names %in% names(samples)){
+        stop("'samples' does not contain all monitored prior parameters.", call. = FALSE)
+      }
+      log_density(samples[[parameter_names]])
+    })
   }
   function(samples){
 
@@ -317,6 +325,9 @@
 
   list(
     log_prior = function(samples){
+      if(!all(parameter_monitor_names %in% names(samples))){
+        stop("'samples' does not contain all monitored vector prior parameters.", call. = FALSE)
+      }
       if(length(parameter_monitor_names) == 1L){
         lpdf(prior_object, samples[[parameter_monitor_names]])
       }else{
@@ -324,6 +335,9 @@
       }
     },
     parameters = function(samples){
+      if(!all(parameter_monitor_names %in% names(samples))){
+        stop("'samples' does not contain all monitored vector prior parameters.", call. = FALSE)
+      }
       parameter <- list()
       parameter[[parameter_name]] <- samples[parameter_monitor_names]
       parameter
@@ -455,9 +469,15 @@
     weight_prior <- prior_object$weights$prior
     return(list(
       log_prior = function(samples){
+        if(!all(omega_names %in% names(samples))){
+          stop("'samples' does not contain all monitored independent weightfunction parameters.", call. = FALSE)
+        }
         sum(mlpdf(weight_prior, samples[omega_names]))
       },
       parameters = function(samples){
+        if(!all(omega_names %in% names(samples))){
+          stop("'samples' does not contain all monitored independent weightfunction parameters.", call. = FALSE)
+        }
         omega[2:J] <- samples[omega_names]
         list(omega = unname(omega[expansion$index]))
       }
@@ -468,9 +488,15 @@
   weight_prior <- prior_object$weights$prior
   list(
     log_prior = function(samples){
+      if(!all(log_omega_names %in% names(samples))){
+        stop("'samples' does not contain all monitored independent weightfunction parameters.", call. = FALSE)
+      }
       sum(mlpdf(weight_prior, samples[log_omega_names]))
     },
     parameters = function(samples){
+      if(!all(log_omega_names %in% names(samples))){
+        stop("'samples' does not contain all monitored independent weightfunction parameters.", call. = FALSE)
+      }
       omega[2:J] <- exp(samples[log_omega_names])
       list(omega = unname(omega[expansion$index]))
     }
@@ -638,10 +664,14 @@
     .bt_random_effect_term_compile_mode(random_term),
     "sampled"
   )
-  latent_evaluator <- .bt_JAGS_bridge_compile_random_effect_latent_log_density(
-    random_term = random_term,
-    omitted_latent = omitted_latent
-  )
+  latent_evaluator <- if(isTRUE(sampled_random_effect)){
+    .bt_JAGS_bridge_compile_random_effect_latent_log_density(
+      random_term = random_term,
+      omitted_latent = omitted_latent
+    )
+  }else{
+    NULL
+  }
   structure <- .bt_JAGS_bridge_random_term_structure(random_term)
   scalar_rho_support_evaluator <- .bt_JAGS_bridge_compile_random_effect_scalar_rho_support(
     random_term = random_term,
@@ -668,9 +698,6 @@
 
       if(!is.null(lkj_evaluator)){
         marglik <- marglik + lkj_evaluator(samples)
-        if(is.na(marglik)){
-          return(-Inf)
-        }
       }
 
       marglik

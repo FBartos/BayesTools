@@ -58,13 +58,19 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     }
   }
 
+  formula_prior_parameters <- if(length(random_parameters) > 0L){
+    JAGS_marglik_parameters(samples, do.call(c, unname(formula_prior_list)))
+  }else{
+    list()
+  }
   for(parameter in random_parameters){
     design <- if(!is.null(formula_design_list)) formula_design_list[[parameter]] else NULL
     if(.bt_formula_design_has_sampled_random_effects(design)){
       source_parameters <- .bt_JAGS_marglik_parameter_source_parameters(
         samples = samples,
         prior_list_parameters = prior_list_parameters,
-        formula_parameters = parameters
+        formula_parameters = parameters,
+        formula_prior_parameters = formula_prior_parameters
       )
       source_parameters <- .bt_parameter_source_forbid_formula_parameters(
         source_parameters,
@@ -96,11 +102,15 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
 
 .bt_JAGS_marglik_parameter_source_parameters <- function(samples,
                                                          prior_list_parameters,
-                                                         formula_parameters){
+                                                         formula_parameters,
+                                                         formula_prior_parameters = list()){
 
   out <- as.list(samples)
   if(length(prior_list_parameters) > 0L){
     out[names(prior_list_parameters)] <- prior_list_parameters
+  }
+  if(length(formula_prior_parameters) > 0L){
+    out[names(formula_prior_parameters)] <- formula_prior_parameters
   }
   if(length(formula_parameters) > 0L){
     out[names(formula_parameters)] <- formula_parameters
@@ -216,9 +226,6 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
 
   parameter <- design$parameter
   output <- rep(0, nrow(design$model_matrix))
-  if(length(formula_prior_list) == 0L){
-    return(output)
-  }
 
   intercept_name <- paste0(parameter, "_intercept")
   if(intercept_name %in% names(formula_prior_list)){
@@ -245,7 +252,7 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   for(term in remaining_terms){
     term_prior <- formula_prior_list[[term]]
     .bt_validate_formula_reconstruction_prior(term_prior, term)
-    model_term <- sub(paste0("^", parameter, "_"), "", term)
+    model_term <- sub(paste0("^", JAGS_regex_escape(parameter), "_"), "", term)
     columns <- .bt_JAGS_formula_design_term_columns(design, model_term)
     term_data <- design$model_matrix[, columns, drop = FALSE]
     multiply_by <- .bt_JAGS_marglik_prior_multiply_by(
@@ -497,15 +504,6 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
       call. = FALSE
     )
   }
-  z <- matrix(
-    unname(samples[as.vector(z_names)]),
-    nrow = n_groups,
-    ncol = n_columns
-  )
-  z_draws <- lapply(seq_len(n_columns), function(column){
-    matrix(z[, column], nrow = 1L)
-  })
-
   sd_values <- if(!is.null(value_plan)){
     value_plan$sd_evaluator$values(samples)
   }else{
@@ -533,6 +531,14 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     }
     return(as.vector(contribution[, 1L]))
   }
+  z <- matrix(
+    unname(samples[as.vector(z_names)]),
+    nrow = n_groups,
+    ncol = n_columns
+  )
+  z_draws <- lapply(seq_len(n_columns), function(column){
+    matrix(z[, column], nrow = 1L)
+  })
   L <- .bt_JAGS_marglik_random_effect_cholesky(
     samples = samples,
     random_term = random_term
@@ -1293,7 +1299,7 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
 .JAGS_marglik_parameters_formula_get <- function(samples, parameter, formula_data_list, formula_prior_list, prior_list_parameters, log_intercept = FALSE){
 
   formula_terms            <- names(formula_prior_list)
-  names(formula_data_list) <- sub(paste0("^", parameter, "_data_"), paste0(parameter, "_"), names(formula_data_list))
+  names(formula_data_list) <- sub(paste0("^", JAGS_regex_escape(parameter), "_data_"), paste0(parameter, "_"), names(formula_data_list))
 
   # start with intercept
   if(sum(formula_terms == paste0(parameter, "_intercept")) == 1){

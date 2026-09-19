@@ -7,10 +7,21 @@
 #' @param samples samples provided by the bridgesampling function. Supply one
 #' named posterior row to `JAGS_marglik_priors()` and a named matrix or data
 #' frame to `JAGS_marglik_priors_rows()`.
+#' @param prior_list named list of model-level prior distributions. For
+#' `JAGS_marglik_priors_formula()`, optional model priors whose shared ordered
+#' allocations have already been included by `JAGS_marglik_priors()`.
 #'
 #' @details `JAGS_marglik_priors_rows()` preserves joint prior boundaries
 #' within each posterior row. In particular, auxiliary-gamma contributions for
 #' vector and Dirichlet priors are summed separately within each row.
+#'
+#' When model and formula priors share an ordered Dirichlet allocation, supply
+#' the model priors as `prior_list` to `JAGS_marglik_priors_formula()`. Its
+#' contribution then excludes allocations already included by
+#' `JAGS_marglik_priors(samples, prior_list)`, so the two log prior contributions
+#' can be added without counting shared allocations twice.
+#' Evaluate the combined contribution as
+#' `JAGS_marglik_priors(samples, prior_list) + JAGS_marglik_priors_formula(samples, formula_prior_list, prior_list)`.
 #'
 #' @inheritParams JAGS_bridgesampling
 #'
@@ -31,6 +42,12 @@ NULL
 #' @rdname JAGS_marglik_priors
 JAGS_marglik_priors                <- function(samples, prior_list){
 
+  .bt_JAGS_marglik_priors(samples, prior_list)
+}
+
+
+.bt_JAGS_marglik_priors <- function(samples, prior_list, emitted_allocations = character()){
+
   # return zero log prior contribution in case that no prior was specified
   if(length(prior_list) == 0){
     return(0)
@@ -45,7 +62,7 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 
   # add the resulting parameters
   marglik <- 0
-  ordered_allocation_keys <- character()
+  ordered_allocation_keys <- unique(emitted_allocations)
   for(i in seq_along(prior_list)){
 
     if(is.prior.weightfunction(prior_list[[i]])){
@@ -93,6 +110,10 @@ JAGS_marglik_priors                <- function(samples, prior_list){
     }else if(is.prior.simple(prior_list[[i]])){
 
       marglik <- marglik + .JAGS_marglik_priors.simple(samples, prior_list[[i]], names(prior_list)[i])
+
+    }else if(!is.prior.none(prior_list[[i]])){
+
+      stop("Unsupported prior object.", call. = FALSE)
 
     }
   }
@@ -184,6 +205,9 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
   if(is.prior.factor(prior_object) &&
      (is.prior.treatment(prior_object) || is.prior.independent(prior_object))){
     parameter_names <- .JAGS_prior_factor_names(parameter_name, prior_object)
+    if(identical(prior_object[["distribution"]], "invgamma")){
+      return(.bt_JAGS_marglik_compile_invgamma_prior_rows(prior_object, parameter_names))
+    }
     log_density <- .prior_simple_lpdf_evaluator(prior_object)
     return(function(samples){
       if(!all(parameter_names %in% colnames(samples)))
@@ -206,23 +230,7 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
     !is.prior.factor(prior_object)
   if(is_plain_simple &&
      identical(prior_object[["distribution"]], "invgamma")){
-    log_density <- .prior_simple_lpdf_evaluator(prior_object)
-    return(function(samples){
-      if(parameter_name %in% colnames(samples)){
-        values <- samples[, parameter_name]
-      }else{
-        legacy_name <- paste0("inv_", parameter_name)
-        if(!legacy_name %in% colnames(samples))
-          stop("'samples' does not contain all monitored inverse-gamma prior parameters.", call. = FALSE)
-        values <- samples[, legacy_name]^-1
-      }
-
-      invalid   <- !is.finite(values) | values <= 0
-      marglik   <- rep(-Inf, nrow(samples))
-      supported <- !invalid
-      marglik[supported] <- log_density(values[supported])
-      return(marglik)
-    })
+    return(.bt_JAGS_marglik_compile_invgamma_prior_rows(prior_object, parameter_name))
   }
 
   if(is_plain_simple){
@@ -266,6 +274,32 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
 }
 
 
+.bt_JAGS_marglik_compile_invgamma_prior_rows <- function(prior_object, parameter_names){
+
+  log_density <- .prior_simple_lpdf_evaluator(prior_object)
+  force(parameter_names)
+  function(samples){
+    marglik <- numeric(nrow(samples))
+    for(parameter_name in parameter_names){
+      if(parameter_name %in% colnames(samples)){
+        values <- samples[, parameter_name]
+      }else{
+        legacy_name <- paste0("inv_", parameter_name)
+        if(!legacy_name %in% colnames(samples))
+          stop("'samples' does not contain all monitored inverse-gamma prior parameters.", call. = FALSE)
+        values <- samples[, legacy_name]^-1
+      }
+
+      supported <- is.finite(values) & values > 0
+      contribution <- rep(-Inf, nrow(samples))
+      contribution[supported] <- log_density(values[supported])
+      marglik <- marglik + contribution
+    }
+    marglik
+  }
+}
+
+
 .JAGS_marglik_priors.ordered        <- function(samples, prior, parameter_name, emitted_allocations = character()){
 
   .prior_ordered_bridge_check(prior)
@@ -273,6 +307,9 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
 
   marglik <- 0
   if(!is.prior.point(prior$total)){
+    if(!all(total_names %in% names(samples))){
+      stop("'samples' does not contain all monitored ordered total prior parameters.", call. = FALSE)
+    }
     total_values <- unname(unlist(samples[total_names], use.names = FALSE))
     marglik <- marglik + sum(lpdf(prior$total, total_values))
   }
@@ -323,6 +360,9 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
 
   }else{
 
+    if(!parameter_name %in% names(samples)){
+      stop("'samples' does not contain all monitored prior parameters.", call. = FALSE)
+    }
     marglik <- lpdf(prior, samples[[ parameter_name ]])
 
   }
@@ -357,10 +397,16 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
       rate = 1,
       log = TRUE
     ))
-  }else if(prior$parameters[["K"]] == 1){
-    marglik <- lpdf(prior, samples[[ parameter_name ]])
   }else{
-    marglik <- lpdf(prior, samples[ paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]") ])
+    parameter_names <- if(prior$parameters[["K"]] == 1L){
+      parameter_name
+    }else{
+      paste0(parameter_name, "[", seq_len(prior$parameters[["K"]]), "]")
+    }
+    if(!all(parameter_names %in% names(samples))){
+      stop("'samples' does not contain all monitored vector prior parameters.", call. = FALSE)
+    }
+    marglik <- lpdf(prior, unlist(samples[parameter_names], use.names = FALSE))
   }
 
   return(marglik)
@@ -455,8 +501,14 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
     if(J == 1L){
       marglik <- 0
     }else if(prior$weights$scale == "omega"){
+      if(!all(paste0("omega[", 2:J, "]") %in% names(samples))){
+        stop("'samples' does not contain all monitored independent weightfunction parameters.", call. = FALSE)
+      }
       marglik <- sum(mlpdf(prior$weights$prior, samples[paste0("omega[", 2:J, "]")]))
     }else if(prior$weights$scale == "log_omega"){
+      if(!all(paste0("log_omega[", 2:J, "]") %in% names(samples))){
+        stop("'samples' does not contain all monitored independent weightfunction parameters.", call. = FALSE)
+      }
       marglik <- sum(mlpdf(prior$weights$prior, samples[paste0("log_omega[", 2:J, "]")]))
     }
 
@@ -491,14 +543,19 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
   return(marglik)
 }
 #' @rdname JAGS_marglik_priors
-JAGS_marglik_priors_formula <- function(samples, formula_prior_list){
+JAGS_marglik_priors_formula <- function(samples, formula_prior_list, prior_list = NULL){
 
   if(length(formula_prior_list) == 0L){
     return(0)
   }
 
-  prior_list <- do.call(c, unname(formula_prior_list))
-  JAGS_marglik_priors(samples, prior_list)
+  model_evaluator <- .bt_JAGS_bridge_compile_prior_list_evaluator(prior_list)
+  formula_priors <- do.call(c, unname(formula_prior_list))
+  .bt_JAGS_marglik_priors(
+    samples = samples,
+    prior_list = formula_priors,
+    emitted_allocations = model_evaluator$allocation_keys
+  )
 }
 
 .bt_JAGS_random_effect_scalar_rho_support_spec <- function(

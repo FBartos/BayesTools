@@ -77,6 +77,10 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.simple(samples, prior_list[[i]], names(prior_list)[i]))
 
+    }else if(!is.prior.none(prior_list[[i]])){
+
+      stop("Unsupported prior object.", call. = FALSE)
+
     }
   }
 

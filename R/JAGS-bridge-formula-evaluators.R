@@ -273,7 +273,7 @@
   term_names <- setdiff(names(formula_prior_list), intercept_name)
   term_plans <- lapply(term_names, function(term_name){
     term_prior <- formula_prior_list[[term_name]]
-    model_term <- sub(paste0("^", parameter, "_"), "", term_name)
+    model_term <- sub(paste0("^", JAGS_regex_escape(parameter), "_"), "", term_name)
     columns <- .bt_JAGS_formula_design_term_columns(design, model_term)
     .bt_JAGS_bridge_compile_formula_term_plan(
       term_name = term_name,

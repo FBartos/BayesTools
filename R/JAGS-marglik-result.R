@@ -277,13 +277,8 @@
   }else if(inherits(fit, "mcmc")){
     chain_draws <- nrow(fit)
   }else if(inherits(fit, "runjags")){
-    chains <- tryCatch(
-      coda::as.mcmc.list(fit),
-      error = function(e) NULL
-    )
-    if(!is.null(chains)){
-      chain_draws <- vapply(chains, nrow, integer(1))
-    }
+    chains <- coda::as.mcmc.list(fit)
+    chain_draws <- vapply(chains, nrow, integer(1))
   }else if(is.list(fit) && length(fit) > 0L &&
            all(vapply(fit, inherits, logical(1), what = "mcarray"))){
     dimensions <- dim(fit[[1L]])

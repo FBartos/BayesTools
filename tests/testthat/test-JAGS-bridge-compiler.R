@@ -1,5 +1,120 @@
 skip_if_not_test_profile("unit")
 
+test_that("inverse-gamma factor rows accept legacy coordinates and preserve support", {
+
+  for(contrast in c("treatment", "independent")){
+    for(n_coefficients in c(1L, 2L)){
+      factor_prior <- prior_factor("invgamma", list(2, 1), contrast = contrast)
+      attr(factor_prior, "levels") <- n_coefficients + as.integer(contrast == "treatment")
+      parameter_names <- if(n_coefficients == 1L) "g" else c("g[1]", "g[2]")
+      samples <- matrix(
+        c(.4, 1.2, 0, .8, .6, 2)[seq_len(3L * n_coefficients)],
+        nrow = 3L,
+        dimnames = list(NULL, parameter_names)
+      )
+      legacy <- 1 / samples
+      colnames(legacy) <- paste0("inv_", parameter_names)
+      prior_list <- list(g = factor_prior)
+      expected <- vapply(seq_len(nrow(samples)), function(i){
+        JAGS_marglik_priors(samples[i, ], prior_list)
+      }, numeric(1))
+      evaluator <- JAGS_marglik_priors_rows_evaluator(prior_list)
+      expect_equal(evaluator(samples), expected, tolerance = 1e-12)
+      expect_equal(evaluator(legacy), expected, tolerance = 1e-12)
+      expect_equal(evaluator(as.data.frame(legacy)), expected, tolerance = 1e-12)
+      expect_equal(evaluator(legacy[1L, ]), expected[1L], tolerance = 1e-12)
+      expect_equal(expected[3L], -Inf)
+      expect_error(
+        evaluator(legacy[, -1L, drop = FALSE]),
+        "'samples' does not contain all monitored inverse-gamma prior parameters.",
+        fixed = TRUE
+      )
+    }
+  }
+})
+
+test_that("bridge priors reject missing vector and weightfunction coordinates", {
+
+  factor_prior <- prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+  attr(factor_prior, "levels") <- 3L
+  for(prior_object in list(prior("mnormal", list(0, 1, 2)), factor_prior)){
+    prior_list <- list(o = prior_object)
+    compiled <- BayesTools:::.bt_JAGS_bridge_compile_prior_list_evaluator(prior_list)
+    for(samples in list(c("o[1]" = .3), list("o[1]" = .3))){
+      expected <- "'samples' does not contain all monitored vector prior parameters."
+      expect_error(compiled$log_prior(samples), expected, fixed = TRUE)
+      expect_error(compiled$parameters(samples), expected, fixed = TRUE)
+      expect_error(JAGS_marglik_priors(samples, prior_list), expected, fixed = TRUE)
+    }
+  }
+
+  for(scale in c("omega", "log_omega")){
+    weight_prior <- if(scale == "omega") prior("gamma", list(2, 1)) else prior("normal", list(0, 1))
+    prior_list <- list(selection = prior_weightfunction(
+      "one-sided", c(.025, .05), wf_independent(weight_prior, scale)
+    ))
+    compiled <- BayesTools:::.bt_JAGS_bridge_compile_prior_list_evaluator(prior_list)
+    samples <- stats::setNames(.3, paste0(scale, "[2]"))
+    expected <- "'samples' does not contain all monitored independent weightfunction parameters."
+    expect_error(compiled$log_prior(samples), expected, fixed = TRUE)
+    expect_error(compiled$parameters(samples), expected, fixed = TRUE)
+    expect_error(JAGS_marglik_priors(samples, prior_list), expected, fixed = TRUE)
+  }
+})
+
+test_that("reference prior helpers reject unsupported prior classes", {
+
+  prior_list <- list(theta = structure(list(), class = "prior"))
+  expect_error(JAGS_marglik_priors(c(theta = 0), prior_list), "Unsupported prior object.", fixed = TRUE)
+  expect_error(JAGS_marglik_parameters(c(theta = 0), prior_list), "Unsupported prior object.", fixed = TRUE)
+  expect_equal(JAGS_marglik_priors(numeric(), list(theta = prior_none())), 0)
+  expect_identical(JAGS_marglik_parameters(numeric(), list(theta = prior_none())), list())
+})
+
+test_that("expression-only design reconstruction retains its expression value", {
+
+  output <- JAGS_formula(
+    ~ expression(theta), "mu", data.frame(x = c(-1, 1)),
+    list(intercept = prior("normal", list(0, 1)))
+  )
+  expected <- c(2.5, 2.5)
+  samples <- c(theta = 2.5)
+  parameters <- list(theta = 2.5)
+  expect_equal(
+    BayesTools:::.bt_JAGS_marglik_parameters_formula_design(
+      samples, output$formula_design, list(), parameters
+    ),
+    expected
+  )
+  compiled <- BayesTools:::.bt_JAGS_bridge_compile_formula_design_plan(
+    output$formula_design, list(), FALSE
+  )
+  expect_equal(compiled$value(samples, parameters), expected)
+})
+
+test_that("formula reconstruction treats parameter prefixes literally", {
+
+  output <- JAGS_formula(
+    ~ x, "mu.a", data.frame(x = c(-1, 1)),
+    list(intercept = prior("point", list(0)), x = prior("normal", list(0, 1)))
+  )
+  prior_list <- output$prior_list
+  names(prior_list)[names(prior_list) == "mu.a_x"] <- "muXa_x"
+  expected <- "Stored formula design for parameter 'mu.a' is missing model term 'muXa_x'."
+  expect_error(
+    BayesTools:::.bt_JAGS_marglik_parameters_formula_design(
+      c(muXa_x = 1), output$formula_design, prior_list, list()
+    ),
+    expected, fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_compile_formula_design_plan(
+      output$formula_design, prior_list, FALSE
+    ),
+    expected, fixed = TRUE
+  )
+})
+
 test_that("compiled simple-prior densities preserve the canonical calculation", {
 
   priors <- list(
@@ -381,6 +496,16 @@ test_that("shared ordered allocations contribute one prior density across scopes
   expect_equal(
     model_evaluators$prior$log_prior(samples) +
       model_evaluators$formula$log_prior(samples),
+    expected,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    JAGS_marglik_priors(samples, formula_prior_list$mu) +
+      JAGS_marglik_priors_formula(
+        samples,
+        list(tau = formula_prior_list$tau),
+        prior_list = formula_prior_list$mu
+      ),
     expected,
     tolerance = 1e-12
   )
@@ -1528,6 +1653,19 @@ test_that("compiled row sources receive natural formula-prior parameters", {
   )
 
   expect_equal(parameters$mu, 10 + expected_random, tolerance = 1e-12)
+  expect_equal(
+    JAGS_marglik_parameters_formula(
+      samples = samples,
+      formula_list = list(mu = formula_output$formula),
+      formula_data_list = list(mu = formula_data),
+      formula_prior_list = formula_prior_list,
+      prior_list_parameters = list(),
+      formula_design_list = list(mu = formula_output$formula_design),
+      model_data = list()
+    ),
+    parameters,
+    tolerance = 1e-12
+  )
 })
 
 test_that("row-source callbacks reject sampled random formula dependencies", {

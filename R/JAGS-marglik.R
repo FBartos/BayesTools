@@ -427,7 +427,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     marglik <- marglik + bridge_formula_prior_evaluator$log_prior(samples.row)
     marglik <- marglik + bridge_formula_random_prior_evaluator$log_prior(samples.row)
     if(is.na(marglik)){
-      return(-Inf)
+      stop("Bridge log prior evaluated to NA or NaN. Check the prior specification and monitored posterior samples.", call. = FALSE)
     }
     if(!is.finite(marglik)){
       return(marglik)
@@ -495,7 +495,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
 
       marglik <- bridge_prior_evaluator$log_prior(samples.row)
       if(is.na(marglik)){
-        return(-Inf)
+        stop("Bridge log prior evaluated to NA or NaN. Check the prior specification and monitored posterior samples.", call. = FALSE)
       }
       if(!is.finite(marglik)){
         return(marglik)

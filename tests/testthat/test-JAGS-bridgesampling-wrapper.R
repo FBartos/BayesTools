@@ -1,5 +1,99 @@
 skip_if_not_test_profile("unit")
 
+test_that("bridge callbacks reject undefined priors and retain zero density outside support", {
+
+  posterior <- coda::mcmc(cbind(mu = seq(-.5, .5, length.out = 20), auxiliary = 1:20))
+  proposal <- NA_real_
+  callback_value <- NULL
+  random_prior <- NULL
+  testthat::local_mocked_bindings(
+    bridge_sampler = function(...){
+      arguments <- list(...)
+      samples <- arguments$samples[1L, ]
+      samples[["mu"]] <- proposal
+      if(!is.null(random_prior)){
+        arguments$bridge_formula_random_prior_evaluator <- random_prior
+      }
+      callback_names <- c(
+        "data", "bridge_prior_evaluator", "bridge_formula_prior_evaluator",
+        "bridge_formula_random_prior_evaluator", "bridge_formula_parameter_evaluator",
+        "add_parameters", "fixed_random_latent", "bridge_context", "bridge_context_evaluator"
+      )
+      callback_value <<- do.call(
+        arguments$log_posterior,
+        c(list(samples.row = samples), arguments[callback_names])
+      )
+      structure(list(logml = 0, niter = 1L, mcse_logml = 0, method = "normal"), class = "bridge")
+    },
+    .package = "bridgesampling"
+  )
+  for(with_auxiliary in c(FALSE, TRUE)){
+    arguments <- list(
+      fit = posterior,
+      log_posterior = function(parameters, data) 0,
+      data = list(),
+      prior_list = list(mu = prior("normal", list(0, 1), list(-1, 1)))
+    )
+    if(with_auxiliary){
+      arguments$add_parameters <- "auxiliary"
+      arguments$add_bounds <- list(lb = c(auxiliary = -Inf), ub = c(auxiliary = Inf))
+    }
+    for(invalid in c(NA_real_, NaN)){
+      proposal <- invalid
+      expect_error(
+        do.call(JAGS_bridgesampling, arguments),
+        "Bridge log prior evaluated to NA or NaN. Check the prior specification and monitored posterior samples.",
+        fixed = TRUE
+      )
+    }
+    proposal <- 2
+    do.call(JAGS_bridgesampling, arguments)
+    expect_identical(callback_value, -Inf)
+  }
+
+  formula_output <- JAGS_formula(
+    ~ 1 + diag(1 | id), "mu", data.frame(id = factor(c("a", "b"))),
+    list(intercept = prior("point", list(0))),
+    prior_random = prior_random(id = random_block(sd = prior("point", list(1))))
+  )
+  testthat::local_mocked_bindings(
+    .bt_JAGS_bridge_compile_random_effect_lkj_prior = function(...) function(samples) NaN,
+    .package = "BayesTools"
+  )
+  compiled_random <- BayesTools:::.bt_JAGS_bridge_compile_formula_random_prior_evaluator(
+    list(mu = formula_output$formula_design)
+  )
+  random_term <- formula_output$formula_design$random_effects[[1L]]
+  latent_names <- as.vector(BayesTools:::.bt_random_effect_latent_names(
+    random_term, random_term$n_groups, random_term$n_columns
+  ))
+  latent_samples <- stats::setNames(rep(0, length(latent_names)), latent_names)
+  random_prior <- list(
+    log_prior = function(samples) compiled_random$log_prior(latent_samples),
+    uses_posterior_row = FALSE
+  )
+  proposal <- .2
+  expect_error(
+    do.call(JAGS_bridgesampling, arguments),
+    "Bridge log prior evaluated to NA or NaN. Check the prior specification and monitored posterior samples.",
+    fixed = TRUE
+  )
+})
+
+test_that("bridge chain metadata preserves runjags conversion errors", {
+
+  testthat::local_mocked_bindings(
+    as.mcmc.list = function(...) stop("Malformed runjags chains.", call. = FALSE),
+    .package = "coda"
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_chain_metadata(
+      structure(list(), class = "runjags"), matrix(1, nrow = 2)
+    ),
+    "Malformed runjags chains.", fixed = TRUE
+  )
+})
+
 .mock_bridge_sampler <- function(...){
 
   arguments <- list(...)

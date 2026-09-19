@@ -13,19 +13,16 @@ JAGS_marglik_priors_rows(samples, prior_list)
 
 JAGS_marglik_priors_rows_evaluator(prior_list)
 
-JAGS_marglik_priors_formula(samples, formula_prior_list)
+JAGS_marglik_priors_formula(samples, formula_prior_list, prior_list = NULL)
 }
 \arguments{
 \item{samples}{samples provided by the bridgesampling function. Supply one
 named posterior row to \code{JAGS_marglik_priors()} and a named matrix or data
 frame to \code{JAGS_marglik_priors_rows()}.}
 
-\item{prior_list}{named list of prior distributions
-(names correspond to the parameter names) of parameters not specified within the
-\code{formula_list}. For \code{BayesTools_fit} objects, stored non-formula
-priors are used when \code{prior_list = NULL}; if fitted formula priors are
-supplied here, they are ignored with a warning in favor of the stored formula
-metadata.}
+\item{prior_list}{named list of model-level prior distributions. For
+\code{JAGS_marglik_priors_formula()}, optional model priors whose shared ordered
+allocations have already been included by \code{JAGS_marglik_priors()}.}
 
 \item{formula_prior_list}{named list of named lists of prior distributions
 (names of the lists correspond to the parameter name created by each of the formula and
@@ -49,4 +46,12 @@ function
 \code{JAGS_marglik_priors_rows()} preserves joint prior boundaries
 within each posterior row. In particular, auxiliary-gamma contributions for
 vector and Dirichlet priors are summed separately within each row.
+
+When model and formula priors share an ordered Dirichlet allocation, supply
+the model priors as \code{prior_list} to \code{JAGS_marglik_priors_formula()}. Its
+contribution then excludes allocations already included by
+\code{JAGS_marglik_priors(samples, prior_list)}, so the two log prior contributions
+can be added without counting shared allocations twice.
+Evaluate the combined contribution as
+\code{JAGS_marglik_priors(samples, prior_list) + JAGS_marglik_priors_formula(samples, formula_prior_list, prior_list)}.
 }
