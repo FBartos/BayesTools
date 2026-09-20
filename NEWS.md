@@ -109,6 +109,11 @@
 - preserves independent coefficient supports in structural dependency graphs,
   including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- integrates deterministic prior densities at the requested scalar inequality
+  boundary. Directional and point-versus-region hypotheses no longer shift the
+  boundary to density-grid knots or fail refinement for ordinary normal and
+  spike-and-slab priors. Strict inequalities retain their exact atom semantics;
+  refinement budgets and tolerances are unchanged.
 - validates parameter-map schema metadata even when unchanged tables have a
   live cache entry.
 - excludes generated reference-review candidates from source packages and

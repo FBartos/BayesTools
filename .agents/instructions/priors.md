@@ -80,6 +80,11 @@ The density-provenance implementation is shared across
 density algebra. Provenance must remain deterministic and compact: do not store
 draws, large grids, fitted objects, environments, or closures capturing them.
 
+For direct scalar prior-region probabilities, integrate the continuous grid's
+piecewise-linear interpolant at the exact comparison boundary, and evaluate
+point masses with the requested strict or inclusive operator. Do not move a
+region boundary to nearby grid knots. Keep the existing refinement gate.
+
 ## Numerical Evidence
 
 Use distribution-library references, analytic identities, or independently

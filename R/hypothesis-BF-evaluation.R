@@ -241,19 +241,36 @@
          call. = FALSE)
   }
 
+  comparison <- .hypothesis_simple_parameter_comparison(side, parameter)
   evaluate_probability <- function(density_object){
     prob <- 0
     if(!is.null(density_object[["density"]])){
       density <- density_object[["density"]]
       x <- density[["x"]]
       y <- density[["y"]] * density[["mass"]]
-      draws <- data.frame(x, check.names = FALSE)
-      names(draws) <- parameter
-      inside <- .hypothesis_eval_condition(
-        .hypothesis_side_expression(side),
-        draws
-      )
-      if(length(x) > 1L){
+      if(!is.null(comparison)){
+        # Integrate the continuous interpolant up to the actual boundary.
+        # Multiplying grid ordinates by a step indicator moves that boundary
+        # to neighbouring knots and introduces first-order grid error.
+        value <- comparison[["value"]]
+        lower <- comparison[["operator"]] %in% c("<", "<=")
+        keep <- if(lower) x <= value else x >= value
+        boundary <- value > min(x) && value < max(x) && !any(x == value)
+        boundary_y <- if(boundary) stats::approx(x, y, xout = value)$y else NULL
+        x <- x[keep]
+        y <- y[keep]
+        if(boundary){
+          x <- if(lower) c(x, value) else c(value, x)
+          y <- if(lower) c(y, boundary_y) else c(boundary_y, y)
+        }
+        prob <- prob + .hypothesis_trapz(x, y)
+      }else{
+        draws <- data.frame(x, check.names = FALSE)
+        names(draws) <- parameter
+        inside <- .hypothesis_eval_condition(
+          .hypothesis_side_expression(side),
+          draws
+        )
         prob <- prob + .hypothesis_trapz(x, y * as.numeric(inside))
       }
     }
