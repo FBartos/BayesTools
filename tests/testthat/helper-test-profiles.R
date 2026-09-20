@@ -37,6 +37,7 @@ bayestools_test_profile_contexts <- list(
     "hypothesis-ast",
     "hypothesis-BF",
     "hypothesis-BF-parser-adversarial",
+    "hypothesis-prior-region-grid",
     "interpret",
     "interactive-test-runner",
     "JAGS-bridge-compiler",
