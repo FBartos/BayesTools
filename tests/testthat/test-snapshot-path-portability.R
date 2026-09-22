@@ -1,6 +1,34 @@
 skip_if_not_test_profile("unit")
 
 
+.snapshot_build_excludes <- function(paths, build_ignore) {
+
+  vapply(paths, function(path) {
+    any(vapply(build_ignore, grepl, logical(1), x = path,
+               ignore.case = TRUE, perl = TRUE))
+  }, logical(1))
+}
+
+
+test_that("repository build policy excludes snapshot review candidates", {
+
+  build_ignore_path <- testthat::test_path("..", "..", ".Rbuildignore")
+  skip_if_not(
+    file.exists(build_ignore_path),
+    "Repository build-ignore policy is unavailable in this installed-package test context."
+  )
+  build_ignore <- readLines(build_ignore_path, warn = FALSE)
+  review_candidates <- c(
+    "tests/testthat/_snaps/context/figure.new.svg",
+    "tests/results/context/table.new.txt"
+  )
+  expect_true(all(.snapshot_build_excludes(review_candidates, build_ignore)))
+  expect_false(any(.snapshot_build_excludes(
+    sub("\\.new\\.", ".", review_candidates), build_ignore
+  )))
+})
+
+
 test_that("visual snapshot paths fit the portable tar name field", {
 
   snapshot_root <- testthat::test_path("_snaps")
@@ -10,22 +38,13 @@ test_that("visual snapshot paths fit the portable tar name field", {
     recursive = TRUE,
     full.names = FALSE
   )
-  build_ignore <- readLines(testthat::test_path("..", "..", ".Rbuildignore"),
-                            warn = FALSE)
-  build_excludes <- function(path){
-    any(vapply(build_ignore, grepl, logical(1), x = path,
-               ignore.case = TRUE, perl = TRUE))
+  build_ignore_path <- testthat::test_path("..", "..", ".Rbuildignore")
+  if (file.exists(build_ignore_path)) {
+    build_ignore <- readLines(build_ignore_path, warn = FALSE)
+    snapshot_paths <- snapshot_paths[!.snapshot_build_excludes(
+      paste0("tests/testthat/_snaps/", snapshot_paths), build_ignore
+    )]
   }
-  review_candidates <- c(
-    "tests/testthat/_snaps/context/figure.new.svg",
-    "tests/results/context/table.new.txt"
-  )
-  expect_true(all(vapply(review_candidates, build_excludes, logical(1))))
-  expect_false(any(vapply(sub("\\.new\\.", ".", review_candidates),
-                         build_excludes, logical(1))))
-  snapshot_paths <- snapshot_paths[!vapply(
-    paste0("tests/testthat/_snaps/", snapshot_paths), build_excludes, logical(1)
-  )]
   package_paths <- file.path(
     "BayesTools",
     "tests",
