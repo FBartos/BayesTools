@@ -103,7 +103,8 @@ test_that("density rejects invalid range and transformation shapes", {
       x_seq = 0,
       transformation = list(fun = exp, inv = log, jac = exp, extra = identity)
     ),
-    "must have length '3'"
+    "The 'extra' objects are not recognized by the 'transformation' argument.",
+    fixed = TRUE
   )
 })
 

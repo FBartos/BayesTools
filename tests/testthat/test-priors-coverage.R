@@ -646,7 +646,8 @@ test_that("density.prior rejects bad transformation lists", {
 
   expect_error(
     density(p, x_seq = 0, transformation = list(fun = exp, inv = log)),
-    "transformation.*must have length '3'"
+    "The 'jac' objects are missing in the 'transformation' argument.",
+    fixed = TRUE
   )
   expect_error(
     density(p, x_seq = 0, transformation = list(fun = exp, inv = log, bad = exp)),

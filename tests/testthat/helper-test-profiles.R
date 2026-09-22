@@ -28,6 +28,7 @@ bayestools_quiet_llm_reporter <- function(...) {
 bayestools_test_profile_contexts <- list(
   unit = c(
     "backend-fingerprint",
+    "bounded-plot-transformations",
     "distributions-mpoint",
     "distributions-point",
     "distributions-tools",

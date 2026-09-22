@@ -302,6 +302,7 @@ check_list   <- function(x, name = deparse(substitute(x)), check_length = 0, che
       check_char(transformation, "transformation")
     }else if(is.list(transformation)){
       check_list(transformation, "transformation", check_names = c("fun", "inv", "jac"), all_objects = TRUE, allow_other = TRUE)
+      check_list(transformation, "transformation", check_names = c("fun", "inv", "jac", "output_support"))
       .density.prior_transformation_functions(transformation)
     }else{
       stop("Uknown format of the 'transformation' argument.")
