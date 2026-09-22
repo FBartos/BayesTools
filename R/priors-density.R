@@ -34,8 +34,12 @@
 #'   \item{exp}{exponential transformation}
 #' }, or a list containing the transformation function \code{fun},
 #' inverse transformation function \code{inv}, and derivative of the
-#' transformation \code{jac}, evaluated on the original support. See examples
-#' for details.
+#' transformation \code{jac}, evaluated on the original support. A custom
+#' transformation can also declare \code{output_support = c(lower, upper)}.
+#' Display grids on the transformed scale are evaluated only within these
+#' bounds; a wider plotting range is retained without extending the density.
+#' Infinite inverse values at support boundaries are omitted from continuous
+#' density grids. Point masses retain their transformed locations.
 #' @param transformation_arguments a list with named arguments for
 #' the \code{transformation}
 #' @param transformation_settings boolean indicating whether the
@@ -117,9 +121,12 @@ density.prior <- function(x,
     }
   }
 
+  # Keep display limits distinct from the domain of the inverse transformation.
+  transformed_x_range <- NULL
   # specify it on the transformed range if requested
   if(transformation_settings & !is.null(transformation)){
-    x_seq <- suppressWarnings(.density.prior_transformation_inv_x(
+    transformed_x_range <- x_range
+    x_seq <- suppressWarnings(.density.prior_transformation_inv_grid(
       x_seq,
       transformation,
       transformation_arguments
@@ -159,6 +166,16 @@ density.prior <- function(x,
 
   if(!is.null(transformation)){
     attr(out, "transformation") <- transformation
+  }
+  if(!is.null(transformed_x_range)){
+    attr(out, "x_range") <- transformed_x_range
+    if(!inherits(out, "density")){
+      for(i in seq_along(out)){
+        if(inherits(out[[i]], "density")){
+          attr(out[[i]], "x_range") <- transformed_x_range
+        }
+      }
+    }
   }
 
   return(out)
@@ -1494,6 +1511,22 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 
   do.call(.density.prior_transformation_functions(transformation)$inv, arg)
 }
+.density.prior_transformation_inv_grid <- function(x, transformation, transformation_arguments = NULL){
+
+  support <- .density.prior_transformation_functions(transformation)[["output_support"]]
+  if(is.null(support)){
+    return(.density.prior_transformation_inv_x(x, transformation, transformation_arguments))
+  }
+
+  inside <- is.finite(x) & x >= support[1] & x <= support[2]
+  out <- rep(NA_real_, length(x))
+  if(any(inside)){
+    out[inside] <- .density.prior_transformation_inv_x(
+      x[inside], transformation, transformation_arguments
+    )
+  }
+  out
+}
 .density.prior_transformation_y         <- function(x, y, transformation, transformation_arguments = NULL){
 
   x_inv <- .density.prior_transformation_inv_x(x, transformation, transformation_arguments)
@@ -1521,27 +1554,41 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
         # When a = 0 and b = 1, this is identity: exp(log(x)) = x
         fun = function(x, a = 0, b = 1) exp(a + b * log(x)),
         inv = function(x, a = 0, b = 1) exp((log(x) - a) / b),
-        jac = function(x, a = 0, b = 1) b * exp(a + b * log(x)) / x
+        jac = function(x, a = 0, b = 1) b * exp(a + b * log(x)) / x,
+        output_support = c(0, Inf)
       ),
       "tanh" = list(
         fun = tanh,
         inv = atanh,
-        jac = function(x)1 - tanh(x)^2
+        jac = function(x)1 - tanh(x)^2,
+        output_support = c(-1, 1)
       ),
       "exp"  = list(
         fun = exp,
         inv = log,
-        jac = exp
+        jac = exp,
+        output_support = c(0, Inf)
       )
     ))
 
-  }else if(is.list(transformation) & length(transformation) == 3 & all(names(transformation) %in% c("fun", "inv", "jac"))){
+  }else if(is.list(transformation) &&
+           all(c("fun", "inv", "jac") %in% names(transformation)) &&
+           all(names(transformation) %in% c("fun", "inv", "jac", "output_support")) &&
+           !anyDuplicated(names(transformation))){
+
+    support <- transformation[["output_support"]]
+    if(!is.null(support)){
+      check_real(support, "transformation$output_support", check_length = 2, allow_NA = FALSE)
+      if(support[1] >= support[2]){
+        stop("'transformation$output_support' must have increasing bounds.", call. = FALSE)
+      }
+    }
 
     return(transformation)
 
   }else{
 
-    stop("Transformation must be either a character vector of length 1 corresponding to one of known transformations ('lin' = linear, 'exp_lin' = exponential-linear for log-intercept, 'tanh' = hyperbolic tangent, 'exp' = exponential) or a list of three functions (fun = transformation function, inv = inverse transformation, jac = derivative of the transformation).")
+    stop("Transformation must be either a character vector of length 1 corresponding to one of known transformations ('lin' = linear, 'exp_lin' = exponential-linear for log-intercept, 'tanh' = hyperbolic tangent, 'exp' = exponential) or a list of three functions (fun = transformation function, inv = inverse transformation, jac = derivative of the transformation), optionally with 'output_support'.")
 
   }
 

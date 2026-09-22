@@ -121,7 +121,7 @@
     )
 
     class(out_den) <- c("density", "density.prior", "density.prior.simple")
-    attr(out_den, "x_range") <- range(x_den)
+    attr(out_den, "x_range") <- if(transformation_settings && !is.null(transformation)) x_range else range(x_den)
     attr(out_den, "y_range") <- c(0, max(y_den))
 
     out[["density"]] <- out_den
@@ -140,7 +140,7 @@
       )
 
       class(temp_points) <- c("density", "density.prior", "density.prior.point")
-      attr(temp_points, "x_range") <- range(x_points)
+      attr(temp_points, "x_range") <- if(transformation_settings && !is.null(transformation)) x_range else range(x_points)
       attr(temp_points, "y_range") <- c(0, max(y_points[i]))
 
       out[[paste0("points",i)]] <- temp_points

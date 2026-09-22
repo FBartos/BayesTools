@@ -60,8 +60,12 @@ specifying one of the prepared transformations:
 \item{exp}{exponential transformation}
 }, or a list containing the transformation function \code{fun},
 inverse transformation function \code{inv}, and derivative of the
-transformation \code{jac}, evaluated on the original support. See examples
-for details.}
+transformation \code{jac}, evaluated on the original support. A custom
+transformation can also declare \code{output_support = c(lower, upper)}.
+Display grids on the transformed scale are evaluated only within these
+bounds; a wider plotting range is retained without extending the density.
+Infinite inverse values at support boundaries are omitted from continuous
+density grids. Point masses retain their transformed locations.}
 
 \item{transformation_arguments}{a list with named arguments for
 the \code{transformation}}

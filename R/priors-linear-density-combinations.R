@@ -1279,11 +1279,7 @@
   transformed_x_range <- NULL
   if(!is.null(transformation) && transformation_settings && !is.null(x_range)){
     transformed_x_range <- x_range
-    x_range <- suppressWarnings(.density.prior_transformation_inv_x(
-      x_range,
-      transformation,
-      transformation_arguments
-    ))
+    x_range <- NULL
   }
 
   out <- list()
@@ -1291,7 +1287,7 @@
   if(!is.null(dist$density) && dist$density$mass > 0){
     if(!is.null(transformed_x_range)){
       x_den <- seq(transformed_x_range[1], transformed_x_range[2], length.out = n_points)
-      x_raw <- suppressWarnings(.density.prior_transformation_inv_x(
+      x_raw <- suppressWarnings(.density.prior_transformation_inv_grid(
         x_den,
         transformation,
         transformation_arguments
@@ -1359,7 +1355,7 @@
       )
       class(out_den) <- c("density", "density.prior", "density.prior.simple",
                           if(factor) "density.prior.factor")
-      attr(out_den, "x_range") <- range(x_den)
+      attr(out_den, "x_range") <- if(is.null(transformed_x_range)) range(x_den) else transformed_x_range
       attr(out_den, "y_range") <- c(0, max(y_den, 0, na.rm = TRUE))
       if(!is.null(level)) attr(out_den, "level") <- level
       if(!is.null(level_name)) attr(out_den, "level_name") <- level_name
@@ -1396,7 +1392,7 @@
       )
       class(out_point) <- c("density", "density.prior", "density.prior.point",
                             if(factor) "density.prior.factor")
-      attr(out_point, "x_range") <- range(points$x)
+      attr(out_point, "x_range") <- if(is.null(transformed_x_range)) range(points$x) else transformed_x_range
       attr(out_point, "y_range") <- c(0, max(points$p))
       if(!is.null(level)) attr(out_point, "level") <- level
       if(!is.null(level_name)) attr(out_point, "level_name") <- level_name

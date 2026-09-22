@@ -36,6 +36,11 @@ source files.
 
 Plotting density grids are approximations for display. They are not evidence
 for the structural classifications returned by `prior_density_ordinate()`.
+Keep requested display limits separate from transformation support. Custom
+transformations can declare `output_support = c(lower, upper)`; inverse-grid
+evaluation must exclude coordinates outside that interval, without clamping
+actual values or moving point masses. An infinite inverse at a boundary does
+not supply a finite continuous-density ordinate.
 
 ## Verification
 
