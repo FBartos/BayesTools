@@ -1,5 +1,8 @@
 # version 0.3.1
 ### Features
+- supports declared output intervals for density transformations. Wider display
+  limits remain available while inverse/Jacobian evaluations and continuous
+  curves stay inside the transformed support; boundary point masses are retained.
 - evaluates a random-effect SD vector once per bridge state instead of twice.
   A marginal bridge context builds the state's named SD nodes and the
   marginalized block's factor geometry, and each half ran the term's whole
