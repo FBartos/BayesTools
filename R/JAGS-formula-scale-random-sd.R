@@ -107,27 +107,23 @@
       }
     }else{
       transformed_cor <- array(NA_real_, dim = dim(source_cor))
-      valid_cor_draw <- rep(FALSE, nrow(source_sd))
       for(draw_i in seq_len(nrow(source_sd))){
         source_cov <- diag(source_sd[draw_i, ], nrow = ncol(source_sd)) %*%
           source_cor[draw_i, , ] %*%
           diag(source_sd[draw_i, ], nrow = ncol(source_sd))
         transformed_cov <- M %*% source_cov %*% t(M)
         transformed_sd[draw_i, ] <- sqrt(diag(transformed_cov))
-        if(any(!is.finite(transformed_sd[draw_i, ]) | transformed_sd[draw_i, ] <= 0)){
-          next
-        }
-        transformed_cor[draw_i, , ] <- transformed_cov /
-          tcrossprod(transformed_sd[draw_i, ])
-        diag(transformed_cor[draw_i, , ]) <- 1
-        valid_cor_draw[draw_i] <- all(is.finite(transformed_cor[draw_i, , ]))
+        transformed_cor[draw_i, , ] <- .random_sd_transformed_correlation(
+          covariance = transformed_cov,
+          sd = transformed_sd[draw_i, ],
+          group_key = group_key
+        )
       }
       posterior <- .random_sd_assign_transformed_correlation(
         posterior = posterior,
         prefix = prefix,
         group_key = group_key,
-        correlation = transformed_cor,
-        valid_draw = valid_cor_draw
+        correlation = transformed_cor
       )
     }
 
@@ -183,28 +179,23 @@
       }
     }else{
       transformed_cor <- array(NA_real_, dim = dim(source_cor))
-      valid_cor_draw <- rep(FALSE, nrow(source_sd))
       for(draw_i in seq_len(nrow(source_sd))){
         source_cov <- diag(source_sd[draw_i, ], nrow = ncol(source_sd)) %*%
           source_cor[draw_i, , ] %*%
           diag(source_sd[draw_i, ], nrow = ncol(source_sd))
         transformed_cov <- M %*% source_cov %*% t(M)
         transformed_sd_by_column[draw_i, ] <- sqrt(diag(transformed_cov))
-        if(any(!is.finite(transformed_sd_by_column[draw_i, ]) |
-               transformed_sd_by_column[draw_i, ] <= 0)){
-          next
-        }
-        transformed_cor[draw_i, , ] <- transformed_cov /
-          tcrossprod(transformed_sd_by_column[draw_i, ])
-        diag(transformed_cor[draw_i, , ]) <- 1
-        valid_cor_draw[draw_i] <- all(is.finite(transformed_cor[draw_i, , ]))
+        transformed_cor[draw_i, , ] <- .random_sd_transformed_correlation(
+          covariance = transformed_cov,
+          sd = transformed_sd_by_column[draw_i, ],
+          group_key = group_key
+        )
       }
       posterior <- .random_sd_assign_transformed_correlation(
         posterior = posterior,
         prefix = prefix,
         group_key = group_key,
-        correlation = transformed_cor,
-        valid_draw = valid_cor_draw
+        correlation = transformed_cor
       )
     }
 
@@ -257,20 +248,45 @@
   }, logical(1)))
 }
 
+# Original-scale correlation matrix of one draw from its transformed
+# covariance. A correlation is defined whenever both SDs are positive,
+# including a singular covariance (perfect correlation); entries of a
+# coefficient with a zero SD are missing. Rounding can push a perfect
+# correlation just beyond +-1, which is set to +-1; a larger excess signals an
+# inconsistent covariance.
+.random_sd_transformed_correlation <- function(covariance, sd, group_key,
+                                               tolerance = 1e-8){
+
+  n_terms <- length(sd)
+  correlation <- matrix(NA_real_, nrow = n_terms, ncol = n_terms)
+  positive <- !is.na(sd) & is.finite(sd) & sd > 0
+  if(!any(positive)){
+    return(correlation)
+  }
+
+  correlation[positive, positive] <- covariance[positive, positive, drop = FALSE] /
+    tcrossprod(sd[positive])
+  diag(correlation)[positive] <- 1
+  excess <- abs(correlation) - 1
+  if(any(excess > tolerance, na.rm = TRUE)){
+    stop(
+      "Internal error: an original-scale random-effect correlation of block '",
+      group_key, "' exceeds 1 in absolute value by ",
+      signif(max(excess, na.rm = TRUE), 3), ".",
+      call. = FALSE
+    )
+  }
+  rounded <- !is.na(excess) & excess > 0
+  correlation[rounded] <- sign(correlation[rounded])
+
+  correlation
+}
+
 .random_sd_assign_transformed_correlation <- function(posterior, prefix,
                                                       group_key,
-                                                      correlation,
-                                                      valid_draw = NULL){
+                                                      correlation){
 
   n_terms <- dim(correlation)[2L]
-  if(is.null(valid_draw)){
-    valid_draw <- rep(TRUE, dim(correlation)[1L])
-  }
-  valid_draw <- valid_draw & is.finite(vapply(
-    seq_len(dim(correlation)[1L]),
-    function(draw_i) sum(correlation[draw_i, , ]),
-    numeric(1)
-  ))
 
   R_names <- .random_sd_correlation_matrix_names(
     prefix = prefix,
@@ -303,9 +319,22 @@
     return(posterior)
   }
 
+  # Correlation entries are defined whenever both SDs are positive, singular
+  # draws included.
   if(has_R){
-    posterior[, as.vector(R_names)] <- NA_real_
+    for(row in seq_len(n_terms)){
+      for(column in seq_len(n_terms)){
+        posterior[, R_names[row, column]] <- correlation[, row, column]
+      }
+    }
   }
+  if(!has_L && !has_u && !has_cpc){
+    return(posterior)
+  }
+
+  # The Cholesky factor and the LKJ primitives parameterize positive-definite
+  # correlation matrices. Draws with a zero SD or a singular (perfect)
+  # correlation leave them missing.
   if(has_L){
     posterior[, as.vector(L_names)] <- NA_real_
   }
@@ -315,34 +344,23 @@
   if(has_cpc){
     posterior[, cpc_names] <- NA_real_
   }
+  valid_draw <- rep(FALSE, dim(correlation)[1L])
+  L <- array(NA_real_, dim = dim(correlation))
+  for(draw_i in seq_len(dim(correlation)[1L])){
+    if(!all(is.finite(correlation[draw_i, , ]))){
+      next
+    }
+    this_L <- try(t(chol(correlation[draw_i, , ])), silent = TRUE)
+    if(inherits(this_L, "try-error")){
+      next
+    }
+    L[draw_i, , ] <- this_L
+    valid_draw[draw_i] <- TRUE
+  }
   if(!any(valid_draw)){
     return(posterior)
   }
 
-  L <- NULL
-  if(has_L || has_u || has_cpc){
-    L <- array(NA_real_, dim = dim(correlation))
-    for(draw_i in which(valid_draw)){
-      this_L <- try(t(chol(correlation[draw_i, , ])), silent = TRUE)
-      if(inherits(this_L, "try-error")){
-        valid_draw[draw_i] <- FALSE
-        next
-      }
-      L[draw_i, , ] <- this_L
-    }
-    if(!any(valid_draw)){
-      return(posterior)
-    }
-  }
-
-  if(has_R){
-    for(row in seq_len(n_terms)){
-      for(column in seq_len(n_terms)){
-        posterior[valid_draw, R_names[row, column]] <-
-          correlation[valid_draw, row, column]
-      }
-    }
-  }
   if(has_L){
     for(row in seq_len(n_terms)){
       for(column in seq_len(n_terms)){

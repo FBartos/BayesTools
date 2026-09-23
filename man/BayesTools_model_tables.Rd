@@ -363,11 +363,16 @@ estimate. If the prior inclusion probability is exactly 0 or 1, the
 inclusion Bayes factor is undefined and reported as \code{NA}, because
 the corresponding inclusion/exclusion comparison was not tested.
 
-Original-scale random-effect correlations are undefined in posterior draws
-with a zero random-effect SD or a singular covariance (for example, an
-excluded spike-and-slab SD of a scaled slope). Such draws are missing, the
-affected rows are summarized over the defined draws, and a table footnote
-reports the share of defined draws for each affected row.
+An original-scale random-effect correlation is defined in a posterior draw
+whenever both of its SDs are positive, including draws with a singular
+covariance (for example, a zero scaled intercept SD with a nonzero scaled
+slope SD gives an intercept-slope correlation of \eqn{\pm 1}{+-1}). It is
+missing in draws with a zero SD (for example, an excluded spike-and-slab SD
+of a scaled slope). The affected rows are summarized over the defined draws,
+and a table footnote reports the share of defined draws for each affected
+row. Raw Cholesky and LKJ-primitive coordinates
+(\code{random_effects_summary = "raw"}) exist only for positive-definite
+correlation matrices and are also missing in singular draws.
 }
 \seealso{
 \link{BayesTools_ensemble_tables}

@@ -183,12 +183,28 @@
     return(out)
   }
 
-  cholesky <- .bt_random_effect_cholesky_draws(
-    random_term = random_term,
-    n_columns = random_term$n_columns,
-    posterior = model_samples
+  # Original-scale (unscaled) samples carry their correlations in the
+  # correlation matrix columns: they are defined whenever both SDs are
+  # positive, also in singular draws without a Cholesky factor.
+  R_names <- outer(
+    seq_len(random_term$n_columns),
+    seq_len(random_term$n_columns),
+    Vectorize(function(row, column){
+      paste0(random_term$parameter_stem, "_xRE_CORx_R[", row, ",", column, "]")
+    })
   )
-  if(is.null(cholesky)){
+  original_scale <- isTRUE(attr(model_samples, "original_scale_correlation", exact = TRUE)) &&
+    all(as.vector(R_names) %in% colnames(model_samples))
+  cholesky <- if(original_scale){
+    NULL
+  }else{
+    .bt_random_effect_cholesky_draws(
+      random_term = random_term,
+      n_columns = random_term$n_columns,
+      posterior = model_samples
+    )
+  }
+  if(!original_scale && is.null(cholesky)){
     .bt_random_effect_summary_missing_correlation_stop(random_term)
   }
 
@@ -199,11 +215,15 @@
   for(i in seq_len(ncol(pairs))){
     first <- pairs[1L, i]
     second <- pairs[2L, i]
-    first_values <- cholesky[, first, , drop = FALSE]
-    second_values <- cholesky[, second, , drop = FALSE]
-    dim(first_values) <- c(dim(cholesky)[1L], dim(cholesky)[3L])
-    dim(second_values) <- c(dim(cholesky)[1L], dim(cholesky)[3L])
-    values[, i] <- rowSums(first_values * second_values)
+    if(original_scale){
+      values[, i] <- model_samples[, R_names[second, first]]
+    }else{
+      first_values <- cholesky[, first, , drop = FALSE]
+      second_values <- cholesky[, second, , drop = FALSE]
+      dim(first_values) <- c(dim(cholesky)[1L], dim(cholesky)[3L])
+      dim(second_values) <- c(dim(cholesky)[1L], dim(cholesky)[3L])
+      values[, i] <- rowSums(first_values * second_values)
+    }
     pair <- .bt_random_effect_summary_column_components(random_term)[c(first, second)]
     labels[i] <- paste0(pair[1L], ",", pair[2L])
     parts[[i]] <- pair

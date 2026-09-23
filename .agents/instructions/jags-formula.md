@@ -70,6 +70,14 @@ original-scale intercept `u0 - u1 m / s` and slope `u1 / s` then have
 correlation `-(t1 m / s) / sqrt(t0^2 + (t1 m / s)^2)` (about -0.93 for equal
 SDs and `m / s = 2.5`), which such blocks do not report.
 
+Unscaled correlations are `cov / (sd_i * sd_j)` of the transformed
+covariance: defined whenever both SDs are positive, including singular draws
+(perfect correlation), and missing only when an SD is zero. A rounding excess
+of `|r| - 1 <= 1e-8` is set to `sign(r)`; a larger excess is an internal
+error. The Cholesky factor and LKJ primitives exist only for positive-definite
+correlation matrices, so semantic correlations are read from the unscaled
+correlation matrix, not reconstructed from those coordinates.
+
 The implementation is split across `R/JAGS-formula-scale.R`,
 `R/JAGS-formula-scale-random-sd.R`, `R/JAGS-formula-scale-transform.R`, and
 the related design and prediction files. Reuse those maps rather than creating

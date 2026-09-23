@@ -495,7 +495,7 @@ test_that("estimates tables report the share of draws with a defined original-sc
   expected_footnote <- c(
     "(mu) cor(intercept,x)" = paste0(
       "(mu) cor(intercept,x): summarized over 3 of 5 draws where the ",
-      "correlation is defined."
+      "correlation is defined, i.e. both SDs are positive."
     )
   )
   for(transform_scaled in c(FALSE, TRUE)){
@@ -529,7 +529,7 @@ test_that("estimates tables report the share of draws with a defined original-sc
   )
   expect_output(
     print(table),
-    "summarized over 3 of 5 draws where the correlation is defined.",
+    "summarized over 3 of 5 draws where the correlation is defined, i.e. both SDs are positive.",
     fixed = TRUE
   )
   # The row footnote follows its row when the table is subset.
@@ -557,23 +557,47 @@ test_that("estimates tables report the share of draws with a defined original-sc
     unname(attr(simplified, "footnotes")),
     paste0(
       "cor(intercept,x): summarized over 3 of 5 draws where the correlation ",
-      "is defined."
+      "is defined, i.e. both SDs are positive."
     )
   )
 
   # Raw original-scale correlation coordinates are reported per row as well;
-  # on the fitted scale every draw is defined.
+  # the Cholesky and LKJ coordinates exist only for positive-definite
+  # correlation matrices. On the fitted scale every draw is defined.
   raw <- JAGS_estimates_table(
     fit,
     transform_scaled = TRUE,
     random_effects_summary = "raw"
   )
-  expect_true(
-    "(mu) cor(intercept,x | id)" %in% names(attr(raw, "footnotes"))
+  raw_footnotes <- attr(raw, "footnotes")
+  correlation_rows <- c(
+    "(mu) cor(x,intercept | id)", "(mu) cor(intercept,x | id)",
+    "(mu) cor(x,x | id)"
+  )
+  expect_identical(
+    unname(raw_footnotes[correlation_rows]),
+    paste0(
+      correlation_rows, ": summarized over 3 of 5 draws where the ",
+      "correlation is defined, i.e. both SDs are positive."
+    )
+  )
+  # cor(intercept,intercept) needs only the intercept SD, positive in all draws.
+  expect_false("(mu) cor(intercept,intercept | id)" %in% names(raw_footnotes))
+  coordinate_rows <- setdiff(names(raw_footnotes), correlation_rows)
+  expect_setequal(
+    coordinate_rows,
+    c(
+      "(mu) cor_chol(intercept,intercept | id)",
+      "(mu) cor_chol(x,intercept | id)",
+      "(mu) cor_chol(intercept,x | id)",
+      "(mu) cor_chol(x,x | id)",
+      "mu__xREx__id_xRE_CORx_lkj_u[1]",
+      "mu__xREx__id_xRE_CORx_lkj_cpc[1]"
+    )
   )
   expect_true(all(grepl(
-    ": summarized over 3 of 5 draws where the correlation is defined.$",
-    attr(raw, "footnotes")
+    ": summarized over 3 of 5 draws where the correlation matrix is positive definite.$",
+    raw_footnotes[coordinate_rows]
   )))
   expect_null(attr(
     JAGS_estimates_table(fit, random_effects_summary = "raw"),
@@ -591,6 +615,198 @@ test_that("estimates tables report the share of draws with a defined original-sc
       "footnotes"
     ))
   }
+})
+
+test_that("original-scale correlations of singular draws with positive SDs are +-1", {
+
+  skip_if_not_installed("runjags")
+
+  # With a zero scaled intercept SD and a positive scaled slope SD, the
+  # original-scale intercept -u1 m / s and slope u1 / s are perfectly
+  # correlated: cor = -sign(m) = -1 (m = mean(x) > 0), although the covariance
+  # is singular. Only a zero original-scale SD leaves the correlation missing.
+  source_sd <- rbind(c(1, 2), c(0, 1), c(0, 2), c(0.7, 0), c(0, 0))
+  source_rho <- c(0.8, 0.5, -0.7, 0.4, 0.3)
+  fit <- .undefined_correlation_table_fit(source_sd, source_rho)
+  scale_info <- attr(fit, "formula_scale")$mu$mu_x
+  expect_gt(scale_info$mean, 0)
+  M <- matrix(
+    c(1, -scale_info$mean / scale_info$sd, 0, 1 / scale_info$sd),
+    nrow = 2,
+    byrow = TRUE
+  )
+  source_cov <- diag(source_sd[1, ]) %*%
+    matrix(c(1, source_rho[1], source_rho[1], 1), 2, 2) %*%
+    diag(source_sd[1, ])
+  expected_cov <- M %*% source_cov %*% t(M)
+  expected <- c(
+    expected_cov[1, 2] / sqrt(prod(diag(expected_cov))),
+    -1, -1, NA, NA
+  )
+
+  draws <- parameter_draws(
+    fit,
+    parameter_catalog_resolve(parameter_catalog(fit), "(mu) cor(intercept,x)")
+  )
+  values <- as.numeric(as.matrix(draws[[1]]))
+  expect_equal(values, expected, tolerance = 1e-12)
+  expect_true(all(abs(values) <= 1, na.rm = TRUE))
+
+  for(transform_scaled in c(FALSE, TRUE)){
+    table <- JAGS_estimates_table(fit, transform_scaled = transform_scaled)
+    expect_identical(
+      unname(attr(table, "footnotes")),
+      paste0(
+        "(mu) cor(intercept,x): summarized over 3 of 5 draws where the ",
+        "correlation is defined, i.e. both SDs are positive."
+      )
+    )
+  }
+
+  # The monitored correlation matrix follows the same rule entrywise; the
+  # Cholesky factor and LKJ primitives exist only for positive-definite
+  # correlation matrices.
+  transformed <- transform_scale_samples(fit)
+  R_21 <- "mu__xREx__id_xRE_CORx_R[2,1]"
+  R_11 <- "mu__xREx__id_xRE_CORx_R[1,1]"
+  L_21 <- "mu__xREx__id_xRE_CORx_L[2,1]"
+  u_1  <- "mu__xREx__id_xRE_CORx_lkj_u[1]"
+  expect_equal(unname(transformed[, R_21]), expected, tolerance = 1e-12)
+  expect_equal(unname(transformed[, R_11]), c(1, 1, 1, 1, NA))
+  expect_equal(which(is.na(transformed[, L_21])), 2:5)
+  expect_equal(which(is.na(transformed[, u_1])), 2:5)
+})
+
+test_that("larger blocks define correlations entrywise in singular draws", {
+
+  skip_if_not_installed("runjags")
+
+  # (1 + x + z | id) with a zero scaled intercept SD. Draw 1: the
+  # original-scale intercept is a linear combination of both slopes, so the
+  # covariance has rank 2, yet every SD is positive and every correlation is
+  # defined. Draw 2 also has a zero z-slope SD: correlations involving z are
+  # missing, while the intercept is -u1 m_x / s_x, perfectly correlated with
+  # the x slope (cor = -1).
+  df <- data.frame(
+    x = c(4, 5, 6, 8, 3, 7),
+    z = c(10, 14, 11, 16, 12, 9),
+    id = factor(c("a", "a", "b", "b", "c", "c"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + x + z + random(1 + x + z | id, name = "id", covariance = "us"),
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)),
+      z = prior("normal", list(0, 1))
+    ),
+    formula_scale = list(x = TRUE, z = TRUE),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("normal", list(0, 1), truncation = list(0, Inf)),
+        cor = prior_lkj(eta = 1),
+        monitor = random_monitor(
+          latent = FALSE,
+          coefficients = FALSE,
+          correlation = TRUE
+        )
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1]]
+  R_names <- outer(
+    seq_len(3),
+    seq_len(3),
+    Vectorize(function(row, column){
+      paste0(random_term$parameter_stem, "_xRE_CORx_R[", row, ",", column, "]")
+    })
+  )
+  L_names <- BayesTools:::.bt_random_effect_cholesky_names(random_term, 3L)
+  source_sd <- rbind(c(0, 1, 2), c(0, 1, 0))
+  source_cor <- matrix(
+    c(1, 0.3, -0.2, 0.3, 1, 0.4, -0.2, 0.4, 1),
+    nrow = 3
+  )
+  posterior <- t(vapply(seq_len(2), function(draw){
+    c(0, 0, 0, source_sd[draw, ], as.vector(source_cor),
+      as.vector(t(chol(source_cor))))
+  }, numeric(24)))
+  colnames(posterior) <- c(
+    "mu_intercept", "mu_x", "mu_z", random_term$sd_parameter_names,
+    as.vector(R_names), as.vector(L_names)
+  )
+  fit <- make_random_scale_table_fit(formula_result, posterior)
+
+  x_scale <- formula_result$formula_scale$mu_x
+  z_scale <- formula_result$formula_scale$mu_z
+  M <- rbind(
+    c(1, -x_scale$mean / x_scale$sd, -z_scale$mean / z_scale$sd),
+    c(0, 1 / x_scale$sd, 0),
+    c(0, 0, 1 / z_scale$sd)
+  )
+  expected_cov <- M %*% diag(source_sd[1, ]) %*% source_cor %*%
+    diag(source_sd[1, ]) %*% t(M)
+  expected_cor <- stats::cov2cor(expected_cov)
+  expect_lt(abs(det(expected_cor)), 1e-12)
+  expected <- list(
+    "intercept,x" = c(expected_cor[1, 2], -1),
+    "intercept,z" = c(expected_cor[1, 3], NA),
+    "x,z"         = c(expected_cor[2, 3], NA)
+  )
+
+  for(pair in names(expected)){
+    name <- paste0("(mu) cor(", pair, ")")
+    value <- as.numeric(as.matrix(parameter_draws(
+      fit,
+      parameter_catalog_resolve(parameter_catalog(fit), name)
+    )[[1]]))
+    expect_equal(value, expected[[pair]], tolerance = 1e-12, info = name)
+  }
+  footnotes <- attr(
+    JAGS_estimates_table(fit, remove_diagnostics = TRUE),
+    "footnotes"
+  )
+  expect_identical(
+    unname(footnotes),
+    paste0(
+      c("(mu) cor(intercept,z)", "(mu) cor(x,z)"),
+      ": summarized over 1 of 2 draws where the correlation is defined, ",
+      "i.e. both SDs are positive."
+    )
+  )
+})
+
+test_that("original-scale correlations are defined entrywise and clamp rounding only", {
+
+  correlation <- BayesTools:::.random_sd_transformed_correlation(
+    covariance = matrix(c(4, 2, 0, 2, 1, 0, 0, 0, 0), nrow = 3),
+    sd = c(2, 1, 0),
+    group_key = "id"
+  )
+  expect_identical(correlation[1:2, 1:2], matrix(1, 2, 2))
+  expect_true(all(is.na(correlation[3, ])))
+  expect_true(all(is.na(correlation[, 3])))
+
+  # A rounding excess of at most 1e-8 is set to +-1.
+  rounded <- BayesTools:::.random_sd_transformed_correlation(
+    covariance = matrix(c(1, -(1 + 1e-12), -(1 + 1e-12), 1), nrow = 2),
+    sd = c(1, 1),
+    group_key = "id"
+  )
+  expect_identical(rounded[1, 2], -1)
+  expect_error(
+    BayesTools:::.random_sd_transformed_correlation(
+      covariance = matrix(c(1, 1.5, 1.5, 1), nrow = 2),
+      sd = c(1, 1),
+      group_key = "id"
+    ),
+    paste0(
+      "Internal error: an original-scale random-effect correlation of block ",
+      "'id' exceeds 1 in absolute value by 0.5."
+    ),
+    fixed = TRUE
+  )
 })
 
 test_that("correlation footnotes count only draws retained by conditioning", {
@@ -617,7 +833,7 @@ test_that("correlation footnotes count only draws retained by conditioning", {
     footnotes,
     c("(mu) cor(a,b)" = paste0(
       "(mu) cor(a,b): summarized over 2 of 3 draws where the correlation is ",
-      "defined."
+      "defined, i.e. both SDs are positive."
     ))
   )
   expect_null(BayesTools:::.bt_random_effect_summary_correlation_footnotes(

@@ -74,8 +74,10 @@
       if(length(primitive_names) > 0L && !anyNA(primitive_indices)){
         primitives <- posterior[, primitive_indices, drop = FALSE]
         # Original-scale unscaling clears the primitives of draws whose
-        # transformed correlation is undefined (e.g., a zero random-effect
-        # SD); those draws have no Cholesky factor. Partially missing or
+        # transformed correlation matrix is not positive definite (a zero
+        # random-effect SD or a singular covariance); those draws have no
+        # Cholesky factor. Their original-scale correlations are read from
+        # the correlation matrix columns instead. Partially missing or
         # out-of-support primitives still fail below.
         cleared <- rowSums(!is.na(primitives)) == 0L
         if(!any(cleared)){

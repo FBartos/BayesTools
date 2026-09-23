@@ -116,11 +116,16 @@
 #' inclusion Bayes factor is undefined and reported as \code{NA}, because
 #' the corresponding inclusion/exclusion comparison was not tested.
 #'
-#' Original-scale random-effect correlations are undefined in posterior draws
-#' with a zero random-effect SD or a singular covariance (for example, an
-#' excluded spike-and-slab SD of a scaled slope). Such draws are missing, the
-#' affected rows are summarized over the defined draws, and a table footnote
-#' reports the share of defined draws for each affected row.
+#' An original-scale random-effect correlation is defined in a posterior draw
+#' whenever both of its SDs are positive, including draws with a singular
+#' covariance (for example, a zero scaled intercept SD with a nonzero scaled
+#' slope SD gives an intercept-slope correlation of \eqn{\pm 1}{+-1}). It is
+#' missing in draws with a zero SD (for example, an excluded spike-and-slab SD
+#' of a scaled slope). The affected rows are summarized over the defined draws,
+#' and a table footnote reports the share of defined draws for each affected
+#' row. Raw Cholesky and LKJ-primitive coordinates
+#' (\code{random_effects_summary = "raw"}) exist only for positive-definite
+#' correlation matrices and are also missing in singular draws.
 #'
 #' @export JAGS_summary_table
 #' @export JAGS_estimates_table
@@ -731,7 +736,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       parameter_names = parameter_names,
       prior_list      = prior_list,
       coordinates     = coordinates,
-      included        = random_included
+      included        = random_included,
+      cholesky_names  = .bt_random_effect_summary_cholesky_coordinate_names(
+        attr(fit, "formula_design", exact = TRUE)
+      )
     ))
   }
 
@@ -1274,15 +1282,19 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   )
 }
 
-# Original-scale random-effect correlations are undefined (NA) in draws with a
-# zero SD or a singular covariance, and the table statistics summarise only the
-# defined draws. Each affected row reports that share; conditional summaries
-# count only the draws retained by conditioning (`included`).
+# An original-scale random-effect correlation is defined when both SDs are
+# positive (singular draws included) and missing (NA) when an SD is zero; the
+# table statistics summarize only the defined draws. Each affected row reports
+# that share; conditional summaries count only the draws retained by
+# conditioning (`included`). Raw Cholesky and LKJ-primitive coordinates
+# (`cholesky_names`, role `random_correlation_coordinate`) exist only for
+# positive-definite correlation matrices.
 .bt_random_effect_summary_correlation_footnotes <- function(model_samples,
                                                             parameter_names,
                                                             prior_list,
                                                             coordinates,
-                                                            included = list()){
+                                                            included = list(),
+                                                            cholesky_names = character()){
 
   footnotes <- character()
   for(i in seq_along(parameter_names)){
@@ -1293,12 +1305,21 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
       "cor"
     )
     coordinate_row <- match(parameter_name, coordinates$coordinate_name)
-    coordinate_correlation <- !is.na(coordinate_row) && isTRUE(
-      startsWith(coordinates$role[coordinate_row], "random_correlation")
+    coordinate_role <- if(is.na(coordinate_row)){
+      ""
+    }else{
+      coordinates$role[coordinate_row]
+    }
+    coordinate_correlation <- isTRUE(
+      startsWith(coordinate_role, "random_correlation")
     )
     if(!summary_correlation && !coordinate_correlation){
       next
     }
+    positive_definite_coordinate <- !summary_correlation && (
+      identical(coordinate_role, "random_correlation_coordinate") ||
+        parameter_name %in% cholesky_names
+    )
 
     values <- model_samples[, i]
     retained <- included[[parameter_name]]
@@ -1310,7 +1331,12 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     if(n_defined < n_draws){
       footnotes[[colnames(model_samples)[[i]]]] <- paste0(
         colnames(model_samples)[[i]], ": summarized over ", n_defined, " of ",
-        n_draws, " draws where the correlation is defined."
+        n_draws, " draws ",
+        if(positive_definite_coordinate){
+          "where the correlation matrix is positive definite."
+        }else{
+          "where the correlation is defined, i.e. both SDs are positive."
+        }
       )
     }
   }
@@ -1320,6 +1346,30 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   }
 
   footnotes
+}
+
+# Raw Cholesky-factor coordinate names of the LKJ random-effect blocks.
+.bt_random_effect_summary_cholesky_coordinate_names <- function(formula_design){
+
+  terms <- unlist(
+    lapply(
+      .bt_random_effect_summary_designs(formula_design),
+      .bt_formula_design_random_effects
+    ),
+    recursive = FALSE
+  )
+  names <- lapply(terms, function(random_term){
+    correlation <- random_term$correlation
+    n_columns <- random_term$n_columns
+    if(!is.list(correlation) || !identical(correlation$type, "lkj") ||
+       !is.numeric(n_columns) || length(n_columns) != 1L ||
+       is.na(n_columns) || n_columns < 2L){
+      return(character())
+    }
+    as.vector(.bt_random_effect_cholesky_names(random_term, n_columns))
+  })
+
+  unique(unlist(names, use.names = FALSE))
 }
 
 .bt_is_random_allocation_inclusion_prior <- function(prior){

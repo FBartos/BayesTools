@@ -59,13 +59,19 @@
     NULL
   }
 
-  .apply_random_sd_unscale(
+  unscaled <- .apply_random_sd_unscale(
     posterior = completed,
     random_sd_cols = sd_names,
     formula_scale = parameter_scale,
     prefix = parameter,
     correlation_required_groups = correlation_required_groups
   )
+  # The unscaled correlation matrix columns hold the original-scale
+  # correlations, which are defined also in singular draws where the
+  # Cholesky coordinates are missing.
+  attr(unscaled, "original_scale_correlation") <- TRUE
+
+  unscaled
 }
 
 .bt_random_effect_summary_complete_correlation_samples <- function(random_term,
@@ -75,43 +81,86 @@
     return(model_samples)
   }
 
+  n_columns <- random_term$n_columns
   L_names <- .bt_random_effect_cholesky_names(
     random_term = random_term,
-    n_columns = random_term$n_columns
+    n_columns = n_columns
   )
   L_vector_names <- as.vector(L_names)
-  if(all(L_vector_names %in% colnames(model_samples))){
+  # Unscaling writes the original-scale correlations into the correlation
+  # matrix columns of LKJ blocks; complete them so that correlations of
+  # singular draws (where the Cholesky factor is missing) are kept.
+  correlation <- random_term$correlation
+  R_names <- if(is.list(correlation) && identical(correlation$type, "lkj")){
+    outer(
+      seq_len(n_columns),
+      seq_len(n_columns),
+      Vectorize(function(row, column){
+        paste0(random_term$parameter_stem, "_xRE_CORx_R[", row, ",", column, "]")
+      })
+    )
+  }else{
+    NULL
+  }
+  R_vector_names <- as.vector(R_names)
+  complete_L <- !all(L_vector_names %in% colnames(model_samples))
+  complete_R <- length(R_vector_names) > 0L &&
+    !all(R_vector_names %in% colnames(model_samples))
+  if(!complete_L && !complete_R){
     return(model_samples)
   }
 
-  cholesky <- .bt_random_effect_cholesky_draws(
-    random_term = random_term,
-    n_columns = random_term$n_columns,
-    posterior = model_samples
-  )
-  if(is.null(cholesky)){
-    .bt_random_effect_summary_rho_samples(random_term, model_samples)
-    .bt_random_effect_summary_missing_correlation_stop(random_term)
-  }
-
-  completed_L <- matrix(NA_real_, nrow = nrow(model_samples), ncol = length(L_vector_names))
-  colnames(completed_L) <- L_vector_names
-  for(row in seq_len(random_term$n_columns)){
-    for(column in seq_len(random_term$n_columns)){
-      completed_L[, L_names[row, column]] <- cholesky[, row, column]
-    }
-  }
-
   completed <- model_samples
-  existing <- L_vector_names %in% colnames(completed)
-  if(any(existing)){
-    completed[, L_vector_names[existing]] <- completed_L[, existing, drop = FALSE]
+  if(complete_L){
+    cholesky <- .bt_random_effect_cholesky_draws(
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = model_samples
+    )
+    if(is.null(cholesky)){
+      .bt_random_effect_summary_rho_samples(random_term, model_samples)
+      .bt_random_effect_summary_missing_correlation_stop(random_term)
+    }
+
+    completed_L <- matrix(NA_real_, nrow = nrow(model_samples), ncol = length(L_vector_names))
+    colnames(completed_L) <- L_vector_names
+    for(row in seq_len(n_columns)){
+      for(column in seq_len(n_columns)){
+        completed_L[, L_names[row, column]] <- cholesky[, row, column]
+      }
+    }
+    completed <- .bt_random_effect_summary_replace_columns(completed, completed_L)
   }
-  if(any(!existing)){
-    completed <- cbind(completed, completed_L[, !existing, drop = FALSE])
+  if(complete_R){
+    # R = L L', as the unscaling reads a Cholesky-only correlation.
+    completed_R <- matrix(NA_real_, nrow = nrow(model_samples), ncol = length(R_vector_names))
+    colnames(completed_R) <- R_vector_names
+    for(draw_i in seq_len(nrow(model_samples))){
+      L <- matrix(
+        completed[draw_i, L_vector_names],
+        nrow = n_columns,
+        ncol = n_columns
+      )
+      completed_R[draw_i, ] <- as.vector(L %*% t(L))
+    }
+    completed <- .bt_random_effect_summary_replace_columns(completed, completed_R)
   }
 
   completed
+}
+
+.bt_random_effect_summary_replace_columns <- function(samples, values){
+
+  value_names <- colnames(values)
+  existing <- value_names %in% colnames(samples)
+  if(any(existing)){
+    samples[, value_names[existing]] <- values[, existing, drop = FALSE]
+  }
+  if(any(!existing)){
+    samples <- cbind(samples, values[, !existing, drop = FALSE])
+  }
+
+  samples
 }
 
 .bt_random_effect_summary_requires_correlation <- function(random_term){
