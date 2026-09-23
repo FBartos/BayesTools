@@ -90,9 +90,9 @@ expanded.
 Mixture ordinates (model, conditional, and mixture or spike-and-slab terms of
 one linear combination) are weighted sums of per-component ordinates, each from
 its own exact or regular method, so a numerical grid never spans a density jump
-between components. Within a component, a Gaussian term plus one other scalar
-term uses the conditional-normal quadrature; outside mixtures such
-combinations keep the adaptive grid.
+between components. A Gaussian term plus one other continuous scalar term uses
+the conditional-normal quadrature wherever it occurs, so the same combination
+is never exact in one context and a grid approximation in another.
 
 For scalar prior-region probabilities, integrate the continuous grid's
 piecewise-linear interpolant up to the exact region boundaries (the comparison

@@ -535,15 +535,12 @@ test_that("mixture prior ordinates evaluate every component exactly at a density
       }, 0, Inf, rel.tol = 1e-10)$value
   })
 
-  # Outside mixtures the same convolution keeps its previous classification
-  # and adaptive grid height.
+  # Outside mixtures the same convolution uses the same quadrature.
   plain <- .prior_linear_combination_density(
     list(a = prior("normal", list(0, 1)), b = truncated), c(a = 1, b = 1)
   )
-  expect_identical(prior_density_ordinate(plain, .05)$method, "unsupported_provenance")
-  plain_height <- .prior_linear_density_height(plain, .05)
-  expect_true(isTRUE(attr(plain_height, "adaptive_evaluation")$converged))
-  expect_equal(as.numeric(plain_height), f_sum(.05), tolerance = 1e-4)
+  expect_identical(prior_density_ordinate(plain, .05)$method, "conditional_normal_mixture")
+  expect_height(plain, f_sum)
 })
 
 test_that("FFT removed-mass diagnostics have probability units", {
@@ -816,25 +813,27 @@ test_that("heavy-tailed combinations resolve their narrowest source and mixtures
   expect_equal(.prior_linear_density_grid_height(heavy, 0), reference, tolerance = 1e-3)
 
   # Refinement halves the source spacing and omits less tail probability, by
-  # 10 when polynomial tails would more than double the range. t3 + N(0, .1)
+  # 10 when polynomial tails would more than double the range. t3 + t30(0, .1)
   # converges to its quadrature reference; Cauchy combinations exceed the grid
   # limit before converging and stop loudly instead of reporting a height
-  # biased by their omitted tail mass. A spike-and-slab mixture is instead
-  # evaluated per component (the slab component is a Gaussian convolution by
-  # quadrature), so it matches the reference above.
+  # biased by their omitted tail mass. (A normal term plus one other term has
+  # an exact Gaussian-convolution ordinate and never reaches the grid, so these
+  # grid vehicles use a t30 term.) A spike-and-slab mixture is evaluated per
+  # component (the slab component is a Gaussian convolution by quadrature), so
+  # it matches the reference above.
   student <- .prior_linear_combination_density(
-    list(a = prior("t", list(0, 1, 3)), b = prior("normal", list(0, .1))), c(a = 1, b = 1)
+    list(a = prior("t", list(0, 1, 3)), b = prior("t", list(0, .1, 30))), c(a = 1, b = 1)
   )
   student_height <- .prior_linear_density_height(student, 0)
   expect_true(isTRUE(attr(student_height, "adaptive_evaluation")$converged))
   expect_equal(
     as.numeric(student_height),
-    stats::integrate(function(t) stats::dt(t, 3) * stats::dnorm(-t, 0, .1),
+    stats::integrate(function(t) stats::dt(t, 3) * stats::dt(-t / .1, 30) / .1,
                      -Inf, Inf, rel.tol = 1e-12)$value,
     tolerance = 1e-4
   )
   cauchy_sum <- .prior_linear_combination_density(
-    list(a = prior("normal", list(0, .2)), b = prior("cauchy", list(0, .707))), c(a = 1, b = 1)
+    list(a = prior("t", list(0, .2, 30)), b = prior("cauchy", list(0, .707))), c(a = 1, b = 1)
   )
   expect_error(
     .prior_linear_density_height(cauchy_sum, 0),
@@ -850,11 +849,11 @@ test_that("heavy-tailed combinations resolve their narrowest source and mixtures
     list(priors = list(a = half_normal, b = half_normal), value = .5,
          reference = stats::integrate(function(t) 2 * stats::dnorm(t) * 2 * stats::dnorm(.5 - t),
                                       0, .5, rel.tol = 1e-12)$value),
-    list(priors = list(a = half_normal, b = prior("normal", list(0, 1))), value = -1,
-         reference = stats::integrate(function(t) 2 * stats::dnorm(t) * stats::dnorm(-1 - t),
+    list(priors = list(a = half_normal, b = prior("t", list(0, 1, 30))), value = -1,
+         reference = stats::integrate(function(t) 2 * stats::dnorm(t) * stats::dt(-1 - t, 30),
                                       0, Inf, rel.tol = 1e-12)$value),
-    list(priors = list(a = prior("uniform", list(0, 1)), b = prior("normal", list(0, .3))), value = -.2,
-         reference = stats::integrate(function(t) stats::dnorm(-.2 - t, 0, .3),
+    list(priors = list(a = prior("uniform", list(0, 1)), b = prior("t", list(0, .3, 30))), value = -.2,
+         reference = stats::integrate(function(t) stats::dt((-.2 - t) / .3, 30) / .3,
                                       0, 1, rel.tol = 1e-12)$value)
   )
   for(jump in jumps){
@@ -893,13 +892,14 @@ test_that("mixture grids beyond the limit end adaptive refinement as non-converg
 
   # The initial model mixture fits the grid (about 4.8e5 knots). After halving
   # the spacing each model stays below the limit, but their union at the finest
-  # model spacing needs about 3.3e6 knots: refinement ends and the height is
-  # reported as not converged, instead of failing with the mixing error meant
-  # for incompatible scales in the requested density itself. The narrow model
-  # (t30 + gamma) has no exact or regular per-component ordinate, so the
-  # mixture height uses the grid.
+  # model spacing needs about 3.3e6 knots: refinement of the mixture grid (used
+  # for prior probabilities) ends and is reported as not converged, instead of
+  # failing with the mixing error meant for incompatible scales in the
+  # requested density itself. The height is the weighted sum of the models'
+  # own ordinates (both Gaussian convolutions) and never refines the mixture
+  # grid; reference by quadrature.
   context <- .prior_density_build_context(
-    list(a = list(prior("t", list(0, .01, 30), prior_weights = 1),
+    list(a = list(prior("normal", list(0, .01), prior_weights = 1),
                   prior("t", list(0, 1, 3), prior_weights = 1)),
          b = list(prior("gamma", list(3, 2), prior_weights = 1),
                   prior("normal", list(0, 1), prior_weights = 1))),
@@ -907,10 +907,19 @@ test_that("mixture grids beyond the limit end adaptive refinement as non-converg
   )
   density <- .prior_density_from_context(context, c(a = 1, b = 1))
   expect_lt(length(density$density$x), .prior_linear_density_max_grid())
+  side <- hypothesis_parse("theta < .3")$statements[[1L]]$left
   expect_error(
-    .prior_linear_density_height(density, .3),
-    "Adaptive prior-density evaluation did not converge within the documented grid-refinement error criterion.",
+    .hypothesis_prior_density_prob(density, side, "theta"),
+    "Adaptive prior-probability evaluation did not converge within the documented grid-refinement error criterion.",
     fixed = TRUE
+  )
+  expect_equal(
+    as.numeric(.prior_linear_density_height(density, .3)),
+    .5 * stats::integrate(function(t) stats::dnorm(.3 - t, 0, .01) * stats::dgamma(t, 3, 2),
+                          0, Inf, rel.tol = 1e-12)$value +
+      .5 * stats::integrate(function(t) stats::dt(t, 3) * stats::dnorm(.3 - t),
+                            -Inf, Inf, rel.tol = 1e-12)$value,
+    tolerance = 1e-8
   )
 })
 
@@ -929,9 +938,11 @@ test_that("adaptive ordinates stop when a halved grid spacing exceeds the grid l
     list(density = list(x = c(-1, 1), y = c(1, 1), mass = 1), points = NULL),
     class = "prior_linear_density"
   )
+  # (a t30 term: a normal plus uniform sum has an exact Gaussian-convolution
+  # ordinate and would not reach the grid)
   attr(density, "adaptive_evaluation") <- list(
     kind = "linear_combination",
-    arguments = list(prior_list = list(a = prior("normal", list(0, 1)),
+    arguments = list(prior_list = list(a = prior("t", list(0, 1, 30)),
                                        b = prior("uniform", list(0, 1))),
                      weights = c(a = 1, b = 1), n_grid = 4096, tail_prob = 1e-4)
   )
@@ -1036,7 +1047,7 @@ test_that("linear prior ordinates adapt across center and omitted tails", {
   # instead of refining the grid.
   skewed <- BayesTools:::.prior_linear_combination_density(
     prior_list = list(
-      x = prior("normal", list(0, 1)),
+      x = prior("t", list(0, 1, 30)),
       y = prior("gamma", list(3, 2))
     ),
     weights   = c(x = 1, y = 1),
@@ -1044,7 +1055,7 @@ test_that("linear prior ordinates adapt across center and omitted tails", {
     tail_prob = 1e-3
   )
   skewed_reference <- function(value){
-    stats::integrate(function(t) stats::dnorm(value - t) * stats::dgamma(t, 3, 2),
+    stats::integrate(function(t) stats::dt(value - t, 30) * stats::dgamma(t, 3, 2),
                      0, Inf, rel.tol = 1e-12)$value
   }
 
@@ -1065,11 +1076,12 @@ test_that("linear prior ordinates adapt across center and omitted tails", {
   expect_equal(exact_center, stats::dnorm(0, sd = sqrt(2)), tolerance = 1e-12)
   expect_equal(exact_tail, stats::dnorm(8, sd = sqrt(2)), tolerance = 1e-12)
 
-  # A normal plus gamma sum has no structural ordinate and is refined; the
-  # reference is the convolution integral.
+  # A t30 plus gamma sum has no structural ordinate and is refined (a normal
+  # plus gamma sum would be an exact Gaussian convolution); the reference is
+  # the convolution integral.
   center <- BayesTools:::.prior_linear_density_height(skewed, 0)
   expect_identical(refinement_calls, 2L)
-  # Each refinement halves the source spacing (1024 knots over [-3.09, 8.69]
+  # Each refinement halves the source spacing (1023 knots over [-3.39, 8.99]
   # initially) and omits 1000 times less tail probability.
   expect_equal(
     attr(center, "adaptive_evaluation")[c("n_grid", "tail_prob", "refinements")],
