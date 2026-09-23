@@ -3425,6 +3425,193 @@ test_that("Savage-Dickey extrapolation warnings use the components supporting th
   expect_null(attr(bf, "warnings"))
 })
 
+.single_fit_for_test <- function(posterior, prior_list){
+
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- prior_list
+  fit
+}
+
+# Checks a Savage-Dickey BF of prior-only draws (true BF 1) against the
+# quadrature reference of the per-component KDE ordinate: the ordinate lies
+# within 4 Monte Carlo SD of its expectation, and the BF within the KDE
+# smoothing bias plus 4 Monte Carlo SD (plus the prior ordinate's numerical
+# error) of 1. 'components' lists the density, lower support bound and draws of
+# each component; the draws are used without resampling.
+.expect_component_ordinate_for_test <- function(bf, marginal, null, truth, components){
+
+  n_total <- sum(vapply(components, function(component) length(component$draws), numeric(1)))
+  moments <- vapply(components, function(component){
+    if(null < component$lower){
+      return(c(mean = 0, variance = 0))
+    }
+    .reflected_kde_moments_for_test(
+      null, h = stats::bw.nrd0(component$draws), density = component$density,
+      lower = component$lower, n = length(component$draws), n_source = Inf
+    )
+  }, numeric(2))
+  shares <- vapply(components, function(component) length(component$draws), numeric(1)) / n_total
+  expected <- sum(shares * moments["mean", ])
+  mc_sd <- sqrt(sum(shares^2 * moments["variance", ]))
+
+  prior_height <- as.numeric(BayesTools:::.prior_linear_density_height(attr(marginal, "prior_density"), null))
+  prior_error <- abs(prior_height / truth - 1)
+  expect_lt(prior_error, 1e-4)
+  posterior_height <- prior_height / as.numeric(bf)
+  expect_lte(abs(posterior_height - expected), 4 * mc_sd)
+  expect_lte(abs(log(as.numeric(bf))),
+             abs(log(expected / truth)) + 4 * mc_sd / expected + prior_error)
+}
+
+test_that("Savage-Dickey mixes per-component ordinates of single-fit mixture priors", {
+
+  set.seed(12)
+  n <- 20000
+  unbounded <- prior("normal", list(0, 1))
+  bounded   <- prior("normal", list(.5, 1), list(0, Inf))
+  density_bounded <- function(y) ifelse(y >= 0, stats::dnorm(y, .5, 1) / stats::pnorm(.5), 0)
+
+  # simple parameter: mu ~ mixture(N(0, 1), N(0.5, 1)T[0, Inf)), prior-only draws
+  indicator <- sample(1:2, n, TRUE)
+  mu <- ifelse(indicator == 1L, rng(unbounded, n), rng(bounded, n))
+  mixed <- as_mixed_posteriors(
+    .single_fit_for_test(cbind(mu = mu, mu_indicator = indicator),
+                         list(mu = prior_mixture(list(unbounded, bounded), is_null = c(FALSE, FALSE)))),
+    parameters = "mu"
+  )
+  marginal <- marginal_posterior(mixed, "mu", prior_samples = TRUE)
+  components <- attr(marginal, "posterior_components")
+  expect_setequal(components$keys[, "mu"], c(1, 2))
+  expect_equal(
+    lapply(components$supports, `[[`, "bounds")[match(c(1, 2), components$keys[, "mu"])],
+    list(c(-Inf, Inf), c(0, Inf))
+  )
+  for(null in c(0, .001, .05, -.5)){
+    bf <- Savage_Dickey_BF(marginal, null_hypothesis = null)
+    .expect_component_ordinate_for_test(
+      bf, marginal, null,
+      truth = .5 * stats::dnorm(null) + .5 * density_bounded(null),
+      components = list(
+        list(density = stats::dnorm, lower = -Inf, draws = mu[indicator == 1L]),
+        list(density = density_bounded, lower = 0, draws = mu[indicator == 2L])
+      )
+    )
+  }
+
+  # formula level mu = intercept + x with intercept ~ mixture(N(0, 1),
+  # N(0.5, 1)T[0, Inf)) and x ~ mixture(spike(0), N(0, 1)): four components,
+  # one of them (bounded intercept, spike slope) on [0, Inf)
+  formula_result <- JAGS_formula(
+    ~ x, "mu", data = data.frame(x = c(-1, 0, 1)),
+    prior_list = list(
+      intercept = prior_mixture(list(unbounded, bounded), is_null = c(FALSE, FALSE)),
+      x         = prior_mixture(list(prior("spike", list(0)), unbounded), is_null = c(TRUE, FALSE))
+    )
+  )
+  intercept_indicator <- sample(1:2, n, TRUE)
+  slope_indicator     <- sample(1:2, n, TRUE)
+  intercept <- ifelse(intercept_indicator == 1L, rng(unbounded, n), rng(bounded, n))
+  slope     <- ifelse(slope_indicator == 1L, 0, stats::rnorm(n))
+  mixed <- as_mixed_posteriors(
+    .single_fit_for_test(
+      cbind(mu_intercept = intercept, mu_x = slope,
+            mu_intercept_indicator = intercept_indicator, mu_x_indicator = slope_indicator),
+      formula_result$prior_list
+    ),
+    parameters = c("mu_intercept", "mu_x")
+  )
+  levels <- marginal_posterior(mixed, "mu_x", formula = ~ x, prior_samples = TRUE)
+  level <- levels[["1SD"]]
+  class(level) <- c(class(level), "marginal_posterior")
+  keys <- attr(level, "posterior_components")$keys
+  expect_setequal(paste(keys[, "mu_intercept"], keys[, "mu_x"]), c("1 1", "1 2", "2 1", "2 2"))
+
+  # bounded intercept + N(0, 1) slope: N(0.5, sqrt(2)) * P(T >= 0 | T + Z)
+  density_sum <- function(q){
+    stats::dnorm(q, .5, sqrt(2)) * stats::pnorm(sqrt(2) * (q + .5) / 2) / stats::pnorm(.5)
+  }
+  tuple <- paste(intercept_indicator, slope_indicator)
+  level_draws <- intercept + slope
+  # the prior ordinate at the density jump itself (null 0) is unavailable
+  # (adaptive grid refinement cannot converge across the jump)
+  for(null in c(.001, .05, -.5)){
+    bf <- Savage_Dickey_BF(level, null_hypothesis = null)
+    .expect_component_ordinate_for_test(
+      bf, level, null,
+      truth = .25 * (stats::dnorm(null) + stats::dnorm(null, 0, sqrt(2)) +
+                       density_bounded(null) + density_sum(null)),
+      components = list(
+        list(density = stats::dnorm, lower = -Inf, draws = level_draws[tuple == "1 1"]),
+        list(density = function(y) stats::dnorm(y, 0, sqrt(2)), lower = -Inf, draws = level_draws[tuple == "1 2"]),
+        list(density = density_bounded, lower = 0, draws = level_draws[tuple == "2 1"]),
+        list(density = density_sum, lower = -Inf, draws = level_draws[tuple == "2 2"])
+      )
+    )
+  }
+})
+
+test_that("Savage-Dickey keeps the pooled ordinate of single-fit mixtures with shared supports", {
+
+  set.seed(13)
+  n <- 4000
+  expect_pooled <- function(marginal, nulls = c(0, .3)){
+    stripped <- marginal
+    attr(stripped, "posterior_components") <- NULL
+    for(null in nulls){
+      bf <- Savage_Dickey_BF(marginal, null_hypothesis = null, silent = TRUE)
+      expect_identical(bf, Savage_Dickey_BF(stripped, null_hypothesis = null, silent = TRUE))
+      expect_null(attr(bf, "posterior_density_components"))
+    }
+  }
+
+  # spike-and-slab: the spike draws are atoms, one continuous component
+  included <- stats::rbinom(n, 1, .5)
+  spike_and_slab <- as_mixed_posteriors(
+    .single_fit_for_test(cbind(mu = included * stats::rnorm(n, .2), mu_indicator = included),
+                         list(mu = prior_spike_and_slab(prior("normal", list(0, 1))))),
+    parameters = "mu"
+  )
+  marginal <- marginal_posterior(spike_and_slab, "mu", prior_samples = TRUE)
+  expect_s3_class(attr(marginal, "posterior_components"), "BayesTools_posterior_components")
+  expect_pooled(marginal, nulls = c(.3, -.4))
+
+  # RoBMA-like effect: mixture of a null spike and a normal alternative
+  component <- sample(1:2, n, TRUE)
+  robma_like <- as_mixed_posteriors(
+    .single_fit_for_test(
+      cbind(mu = ifelse(component == 1L, 0, stats::rnorm(n, .2)), mu_indicator = component),
+      list(mu = prior_mixture(list(prior("spike", list(0)), prior("normal", list(0, 1))),
+                              is_null = c(TRUE, FALSE)))
+    ),
+    parameters = "mu"
+  )
+  expect_pooled(marginal_posterior(robma_like, "mu", prior_samples = TRUE), nulls = c(.3, -.4))
+
+  # formula levels whose components all live on the real line
+  formula_result <- JAGS_formula(
+    ~ x, "mu", data = data.frame(x = c(-1, 0, 1)),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x         = prior_spike_and_slab(prior("normal", list(0, 1)))
+    )
+  )
+  levels <- marginal_posterior(
+    as_mixed_posteriors(
+      .single_fit_for_test(
+        cbind(mu_intercept = stats::rnorm(n), mu_x = included * stats::rnorm(n), mu_x_indicator = included),
+        formula_result$prior_list
+      ),
+      parameters = c("mu_intercept", "mu_x")
+    ),
+    "mu_x", formula = ~ x, prior_samples = TRUE
+  )
+  level <- levels[["1SD"]]
+  class(level) <- c(class(level), "marginal_posterior")
+  expect_s3_class(attr(level, "posterior_components"), "BayesTools_posterior_components")
+  expect_pooled(level)
+})
+
 .treatment_factor_prior_for_test <- function(sd){
 
   treatment <- prior_factor("normal", list(0, sd), contrast = "treatment")

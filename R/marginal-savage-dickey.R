@@ -54,16 +54,20 @@
 #' the point-null Savage-Dickey ratio is not a regular density ratio at that
 #' point.
 #'
-#' Model-averaged marginal posteriors created by \code{marginal_posterior()}
-#' from \code{mix_posteriors()} record each draw's model and each model's exact
-#' support. When the continuous components of different models have different
-#' exact supports (for example, a truncated prior in only some models), the KDE
-#' posterior ordinate is estimated per model and mixed by the models' shares of
-#' the continuous draws: each model's ordinate uses its own support (zero when
-#' the support excludes the null, the one-sided limit on a support bound, as
-#' for the prior ordinate). The \code{"posterior_density_components"} attribute
-#' of the Bayes factor lists the components. When all continuous components
-#' share their support, the pooled KDE is used.
+#' Marginal posteriors created by \code{marginal_posterior()} record the
+#' mixture component of each draw and each component's exact support: the
+#' model for \code{mix_posteriors()} ensembles, and, for single fits with
+#' mixture or spike-and-slab priors (\code{as_mixed_posteriors()}), the
+#' combination of the component indicators of the terms entering the parameter
+#' or level. When continuous components have different exact supports (for
+#' example, a truncated prior in only some models or mixture components), the
+#' KDE posterior ordinate is estimated per component and mixed by the
+#' components' shares of the continuous draws: each component's ordinate uses
+#' its own support (zero when the support excludes the null, the one-sided
+#' limit on a support bound, as for the prior ordinate). The
+#' \code{"posterior_density_components"} attribute of the Bayes factor lists the
+#' components. When all continuous components share their support, the pooled
+#' KDE is used.
 #'
 #' When the null hypothesis lies outside the continuous posterior draws (and is
 #' not an exact support bound), the KDE posterior density at the null is an

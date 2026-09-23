@@ -988,6 +988,18 @@
   model_prior_list
 }
 
+# Rows of a linear-weight vector or matrix as named numeric vectors.
+.posterior_support_weight_rows <- function(weights){
+
+  if(is.null(dim(weights))){
+    return(list(weights))
+  }
+
+  lapply(seq_len(nrow(weights)), function(row_i){
+    stats::setNames(as.numeric(weights[row_i, ]), colnames(weights))
+  })
+}
+
 # Exact support of each model's component of a model-mixture marginal: the
 # union over the rows of 'weights' of that model's linear-combination support.
 # NULL unless 'context' is a model-mixture context; the entry of a model with
@@ -1000,22 +1012,124 @@
     return(NULL)
   }
 
-  weight_rows <- if(is.null(dim(weights))){
-    list(weights)
+  keys <- matrix(
+    seq_along(context$model_weights),
+    ncol = 1L,
+    dimnames = list(NULL, ".model")
+  )
+  .posterior_components_supports(
+    context                         = context,
+    keys                            = keys,
+    weights                         = weights,
+    output_transformation           = output_transformation,
+    output_transformation_arguments = output_transformation_arguments
+  )
+}
+
+# Components of a mixture marginal posterior. A component is identified by a
+# key: the model of a model-mixture context (column '.model'), or, for a single
+# fit, the selected component of each mixture or spike-and-slab prior entering
+# the quantity (one column per parameter holding its posterior indicator: the
+# 1-based mixture component, or 0 = spike and 1 = slab).
+
+.posterior_components_is_mixture <- function(x){
+
+  is.prior(x) && (is.prior.spike_and_slab(x) || is.prior.mixture(x)) &&
+    !is_prior_bias(x)
+}
+
+.posterior_components_component_prior <- function(mixture, indicator){
+
+  indicator <- as.numeric(indicator)
+  if(is.prior.spike_and_slab(mixture)){
+    if(!indicator %in% c(0, 1)){
+      stop("Spike-and-slab component indicators must be 0 or 1.", call. = FALSE)
+    }
+    component_i <- which(attr(mixture, "components") ==
+                           if(indicator == 0) "null" else "alternative")
   }else{
-    lapply(seq_len(nrow(weights)), function(row_i){
-      stats::setNames(as.numeric(weights[row_i, ]), colnames(weights))
-    })
+    component_i <- indicator
+  }
+  if(length(component_i) != 1L || !is.finite(component_i) ||
+     component_i != round(component_i) || component_i < 1 ||
+     component_i > length(mixture)){
+    stop("Mixture component indicators must identify one mixture component.",
+         call. = FALSE)
   }
 
-  lapply(seq_along(context$model_weights), function(model_i){
-    model_weight <- context$model_weights[model_i]
-    if(!is.finite(model_weight) || model_weight <= 0){
-      return(NULL)
+  .prior_density_copy_parent_attributes(mixture[[component_i]], mixture)
+}
+
+# Prior list of the component identified by 'key' (a named vector).
+.posterior_components_prior_list <- function(context, key){
+
+  if(".model" %in% names(key)){
+    prior_list <- .posterior_support_model_prior_list(context, key[[".model"]])
+  }else{
+    prior_list <- context$prior_list
+  }
+  for(parameter in setdiff(names(key), ".model")){
+    if(!.posterior_components_is_mixture(prior_list[[parameter]])){
+      stop("Component keys must refer to mixture priors.", call. = FALSE)
     }
-    model_prior_list <- .posterior_support_model_prior_list(context, model_i)
+    prior_list[[parameter]] <- .posterior_components_component_prior(
+      prior_list[[parameter]],
+      key[[parameter]]
+    )
+  }
+
+  prior_list
+}
+
+# Weights on the context's source coefficients: formula-scale transformations
+# map scaled-coefficient weights to the fitted coefficients. Model-mixture
+# contexts use the coefficient weights directly.
+.posterior_components_source_weights <- function(context, weights){
+
+  if(inherits(context, "prior_density_context")){
+    return(.prior_density_context_standardized_weights(context, weights))
+  }
+  if(inherits(context, "prior_density_conditional_context") &&
+     !is.null(context$formula_scale) && length(context$formula_scale) > 0L){
+    scaled_context <- .prior_density_context(
+      prior_list    = context$prior_list,
+      column_names  = context$column_names,
+      formula_scale = context$formula_scale,
+      n_grid        = context$n_grid,
+      tail_prob     = context$tail_prob
+    )
+    return(.prior_density_context_standardized_weights(scaled_context, weights))
+  }
+
+  weights[weights != 0]
+}
+
+# Exact support of the linear combination 'weights' (the union over its rows)
+# within each component of 'keys' (one row per component); NULL entries for
+# models with zero prior weight or unknown support.
+.posterior_components_supports <- function(context, keys, weights,
+                                           output_transformation = NULL,
+                                           output_transformation_arguments = NULL){
+
+  weight_rows <- .posterior_support_weight_rows(weights)
+  model_mixture <- inherits(context, "prior_density_model_mixture_context")
+  if(!model_mixture){
+    weight_rows <- lapply(weight_rows, .posterior_components_source_weights,
+                          context = context)
+  }
+
+  lapply(seq_len(nrow(keys)), function(key_i){
+    key <- keys[key_i, , drop = TRUE]
+    names(key) <- colnames(keys)
+    if(model_mixture){
+      model_weight <- context$model_weights[key[[".model"]]]
+      if(!is.finite(model_weight) || model_weight <= 0){
+        return(NULL)
+      }
+    }
+    prior_list <- .posterior_components_prior_list(context, key)
     supports <- lapply(weight_rows, function(row_weights){
-      .posterior_support_from_prior_list_weights(model_prior_list, row_weights)
+      .posterior_support_from_prior_list_weights(prior_list, row_weights)
     })
     support <- if(length(supports) == 1L){
       supports[[1L]]
@@ -1030,10 +1144,27 @@
   })
 }
 
-# Per-draw component (model) index and per-component exact supports of a
-# model-mixture marginal posterior. 'supports[[m]]' is the support of the draws
-# with index m (NULL when unknown).
-.posterior_components_new <- function(index, supports){
+# Mixture parameters of a single-fit context entering the linear combination
+# 'weights' (any row).
+.posterior_components_mixture_parameters <- function(context, weights){
+
+  parameters <- lapply(.posterior_support_weight_rows(weights), function(row_weights){
+    groups <- .prior_linear_weight_groups(
+      context$prior_list,
+      .posterior_components_source_weights(context, row_weights)
+    )
+    names(groups)[vapply(groups, function(group){
+      .posterior_components_is_mixture(group$prior)
+    }, logical(1))]
+  })
+
+  unique(unlist(parameters, use.names = FALSE))
+}
+
+# Per-draw component index and per-component exact supports of a mixture
+# marginal posterior. 'supports[[m]]' is the support of the draws with index m
+# (NULL when unknown); row m of 'keys' identifies the component.
+.posterior_components_new <- function(index, supports, keys = NULL){
 
   if(!is.numeric(index) || anyNA(index) || any(index < 1) ||
      any(index != round(index))){
@@ -1042,10 +1173,15 @@
   if(!is.list(supports) || length(supports) < max(c(0, index))){
     stop("'supports' must list the support of every component.", call. = FALSE)
   }
+  if(!is.null(keys) && (!is.matrix(keys) || nrow(keys) != length(supports) ||
+                        is.null(colnames(keys)))){
+    stop("'keys' must identify every component.", call. = FALSE)
+  }
 
   out <- list(
     index    = as.integer(index),
-    supports = lapply(supports, .posterior_support_from_attribute)
+    supports = lapply(supports, .posterior_support_from_attribute),
+    keys     = keys
   )
   class(out) <- c("BayesTools_posterior_components", "list")
 

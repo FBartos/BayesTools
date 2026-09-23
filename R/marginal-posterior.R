@@ -128,10 +128,13 @@
 #' absent, support is inferred from prior metadata only when the posterior
 #' samples are on the raw, unconditioned prior scale; otherwise the deterministic
 #' prior-density context is used so formula-scale transformations and
-#' conditional model restrictions are respected. Marginal posteriors of
-#' \code{mix_posteriors()} ensembles with prior samples also record each draw's model and each
-#' model's exact support (attribute \code{posterior_components}), which
-#' \code{Savage_Dickey_BF()} uses when the models' supports differ.
+#' conditional model restrictions are respected. Marginal posteriors with
+#' prior samples also record each draw's mixture component and each
+#' component's exact support (attribute \code{posterior_components}): the model
+#' of \code{mix_posteriors()} ensembles, or the combination of the mixture and
+#' spike-and-slab component indicators of a single fit
+#' (\code{as_mixed_posteriors()}). \code{Savage_Dickey_BF()} uses them when the
+#' components' supports differ.
 #'
 #' @return \code{marginal_posterior} returns a named list of mixed marginal posterior
 #' distributions (either vectors or matrices).
@@ -971,7 +974,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             models_ind               = attr(samples[[parameter]], "models_ind", exact = TRUE),
             n_values                 = length(marginal_posterior_samples[[level_names[lvl_i]]]),
             transformation           = transformation,
-            transformation_arguments = transformation_arguments
+            transformation_arguments = transformation_arguments,
+            samples                  = samples
           )
         }
 
@@ -998,7 +1002,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             models_ind               = attr(samples[[parameter]], "models_ind", exact = TRUE),
             n_values                 = length(marginal_posterior_samples),
             transformation           = transformation,
-            transformation_arguments = transformation_arguments
+            transformation_arguments = transformation_arguments,
+            samples                  = samples
           )
         )
       }
@@ -1185,7 +1190,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       models_ind               = models_ind,
       n_values                 = length(marginal),
       transformation           = transformation,
-      transformation_arguments = transformation_arguments
+      transformation_arguments = transformation_arguments,
+      samples                  = samples
     )
   }
   marginal <- .posterior_support_set(marginal, support)
@@ -1256,35 +1262,105 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   tryCatch(expr, error = function(e) NULL)
 }
 
-# Per-draw model index and per-model exact supports of a model-mixture
-# marginal (Savage-Dickey mixes per-model posterior ordinates when the models'
-# supports differ). A marginal evaluated at several design rows stores each
-# draw's rows consecutively, so the model index repeats per row. The metadata
-# are optional: without them the pooled posterior ordinate is used.
+# Per-draw component index and per-component exact supports of a mixture
+# marginal (Savage-Dickey mixes per-component posterior ordinates when the
+# components' supports differ). The component of a draw is its model in a
+# model-mixture ensemble (mix_posteriors()), or, for a single fit
+# (as_mixed_posteriors()), the combination of the component indicators of the
+# mixture and spike-and-slab priors entering the quantity. A marginal evaluated
+# at several design rows stores each draw's rows consecutively, so the index
+# repeats per row. The metadata are optional: without them the pooled posterior
+# ordinate is used.
 .marginal_posterior_components <- function(context, weights, models_ind, n_values,
                                            transformation = NULL,
-                                           transformation_arguments = NULL){
+                                           transformation_arguments = NULL,
+                                           samples = NULL){
 
-  if(!inherits(context, "prior_density_model_mixture_context") ||
-     is.null(models_ind)){
+  n_rows <- if(is.null(dim(weights))) 1L else nrow(weights)
+  if(n_rows < 1L){
     return(NULL)
   }
-  n_rows <- if(is.null(dim(weights))) 1L else nrow(weights)
-  if(n_rows < 1L || length(models_ind) * n_rows != n_values){
+
+  if(inherits(context, "prior_density_model_mixture_context")){
+    if(is.null(models_ind) || length(models_ind) * n_rows != n_values){
+      return(NULL)
+    }
+    return(.marginal_posterior_optional_metadata(
+      .posterior_components_new(
+        index    = rep(models_ind, each = n_rows),
+        supports = .posterior_support_model_components(
+          context,
+          weights,
+          output_transformation           = transformation,
+          output_transformation_arguments = transformation_arguments
+        ),
+        keys     = matrix(
+          seq_along(context$model_weights),
+          ncol = 1L,
+          dimnames = list(NULL, ".model")
+        )
+      ),
+      required = FALSE
+    ))
+  }
+
+  if(!inherits(samples, "as_mixed_posteriors") ||
+     !(inherits(context, "prior_density_context") ||
+       inherits(context, "prior_density_conditional_context"))){
     return(NULL)
   }
 
   .marginal_posterior_optional_metadata(
-    .posterior_components_new(
-      index    = rep(models_ind, each = n_rows),
-      supports = .posterior_support_model_components(
-        context,
-        weights,
-        output_transformation           = transformation,
-        output_transformation_arguments = transformation_arguments
-      )
+    .marginal_posterior_indicator_components(
+      context                  = context,
+      weights                  = weights,
+      samples                  = samples,
+      n_values                 = n_values,
+      transformation           = transformation,
+      transformation_arguments = transformation_arguments
     ),
     required = FALSE
+  )
+}
+
+.marginal_posterior_indicator_components <- function(context, weights, samples,
+                                                     n_values,
+                                                     transformation = NULL,
+                                                     transformation_arguments = NULL){
+
+  parameters <- .posterior_components_mixture_parameters(context, weights)
+  if(length(parameters) == 0L){
+    return(NULL)
+  }
+
+  n_rows <- if(is.null(dim(weights))) 1L else nrow(weights)
+  indicators <- lapply(parameters, function(parameter){
+    indicator <- attr(samples[[parameter]], "models_ind", exact = TRUE)
+    if(is.null(indicator) || anyNA(indicator) ||
+       length(indicator) * n_rows != n_values){
+      stop("Mixture component indicators are unavailable.", call. = FALSE)
+    }
+    as.numeric(indicator)
+  })
+  indicators <- do.call(cbind, indicators)
+  colnames(indicators) <- parameters
+
+  draw_keys <- do.call(paste, c(as.data.frame(indicators), sep = "\r"))
+  unique_keys <- unique(draw_keys)
+  index <- match(draw_keys, unique_keys)
+  keys <- indicators[match(unique_keys, draw_keys), , drop = FALSE]
+  rownames(keys) <- NULL
+
+  .posterior_components_new(
+    index    = rep(index, each = n_rows),
+    supports = .posterior_components_supports(
+      context                         = context,
+      keys                            = keys,
+      weights                         = weights,
+      output_transformation           = transformation,
+      output_transformation_arguments = transformation_arguments
+    ),
+    keys     = keys
   )
 }
 
