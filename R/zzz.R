@@ -95,7 +95,7 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
     if(warn){
       warning(
         "BayesTools JAGS module was not found in the package library. ",
-        "Reinstall BayesTools after installing JAGS >= 4.3.0.",
+        "Reinstall BayesTools after installing JAGS 4.x (>= 4.3.0; JAGS 5 is not supported).",
         call. = FALSE
       )
     }
@@ -112,7 +112,7 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
   if(!loaded && warn){
     message <- paste0(
       "BayesTools JAGS module failed to load from '", path, "'. ",
-      "Reinstall BayesTools after installing JAGS >= 4.3.0."
+      "Reinstall BayesTools after installing JAGS 4.x (>= 4.3.0; JAGS 5 is not supported)."
     )
     if(!is.null(load_error)){
       message <- paste0(message, " rjags error: ", load_error)
