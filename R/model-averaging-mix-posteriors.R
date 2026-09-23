@@ -591,9 +591,13 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
     ordered_prior <- priors[[which(vapply(priors, is.prior.ordered, logical(1)))[1]]]
     coefficient_names <- .JAGS_prior_factor_names(parameter, ordered_prior)
+    indicator_name    <- paste0(.prior_ordered_total_name(parameter), "_indicator")
     samples    <- matrix(nrow = 0, ncol = levels)
     sample_ind <- NULL
     models_ind <- NULL
+    # per-draw total indicator of models whose ordered total has a spike at
+    # zero (NA for the other models); formula-level atoms split by it
+    total_indicator <- NULL
 
     sample_counts <- .posterior_mixture_sample_counts(post_probs, n_samples)
     for(i in seq_along(fits)[sample_counts > 0]){
@@ -628,8 +632,17 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
         samples <- rbind(samples, model_samples[temp_ind, temp_names, drop = FALSE])
       }
 
+      temp_total_indicator <- rep(NA_integer_, length(temp_ind))
+      if(.mix_posteriors_ordered_total_has_indicator(priors[[i]])){
+        if(!indicator_name %in% colnames(model_samples)){
+          .mix_posteriors_stop_missing_total_indicator(parameter, indicator_name)
+        }
+        temp_total_indicator <- as.integer(model_samples[temp_ind, indicator_name])
+      }
+
       sample_ind <- c(sample_ind, temp_ind)
       models_ind <- c(models_ind, rep(i, length(temp_ind)))
+      total_indicator <- c(total_indicator, temp_total_indicator)
     }
 
     rownames(samples) <- NULL
@@ -638,6 +651,9 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     attr(samples, "models_ind") <- models_ind
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- priors
+    if(any(!is.na(total_indicator))){
+      attr(samples, "ordered_total_indicator") <- total_indicator
+    }
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
 
   }else if(priors_info[["treatment"]]){
@@ -789,9 +805,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   indicator_name <- paste0(.prior_ordered_total_name(parameter), "_indicator")
   vapply(seq_along(priors), function(i){
-    if(post_probs[i] <= 0 || !is.prior.ordered(priors[[i]]) ||
-       .posterior_atoms_is_ordered_zero_total(priors[[i]]) ||
-       !.posterior_atoms_ordered_total_has_spike(priors[[i]]$total)){
+    if(post_probs[i] <= 0 || !.mix_posteriors_ordered_total_has_indicator(priors[[i]])){
       return(0)
     }
     model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
@@ -800,15 +814,27 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       colnames(model_samples) <- fits[[i]]$monitor
     }
     if(!indicator_name %in% colnames(model_samples)){
-      stop(
-        "The fitted samples for ordered factor '", parameter,
-        "' do not contain the required total-prior indicator '",
-        indicator_name, "'. Refit the model with this package version.",
-        call. = FALSE
-      )
+      .mix_posteriors_stop_missing_total_indicator(parameter, indicator_name)
     }
     .posterior_atoms_ordered_exclusion(priors[[i]]$total, model_samples[, indicator_name])
   }, numeric(1))
+}
+# Whether a model's ordered prior has a total with a within-model spike at zero
+# whose posterior share is read from the fitted total-prior indicator.
+.mix_posteriors_ordered_total_has_indicator <- function(prior){
+
+  is.prior.ordered(prior) &&
+    !.posterior_atoms_is_ordered_zero_total(prior) &&
+    .posterior_atoms_ordered_total_has_spike(prior$total)
+}
+.mix_posteriors_stop_missing_total_indicator <- function(parameter, indicator_name){
+
+  stop(
+    "The fitted samples for ordered factor '", parameter,
+    "' do not contain the required total-prior indicator '",
+    indicator_name, "'. Refit the model with this package version.",
+    call. = FALSE
+  )
 }
 .mix_posteriors.weightfunction <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
 

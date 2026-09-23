@@ -3679,6 +3679,86 @@ test_that("ordered mixture totals with a spike(0) component declare their point 
   }
 })
 
+test_that("mixed formula levels declare within-model ordered-total spikes", {
+
+  data <- data.frame(f = ordered(c("low", "mid", "high"), levels = c("low", "mid", "high")))
+  formula_priors <- function(total){
+    JAGS_formula(
+      ~ f, "mu", data = data,
+      prior_list = list(
+        intercept = prior("spike", list(.3)),
+        f         = prior_ordered(total, allocation = c(.4, .6))
+      )
+    )$prior_list
+  }
+  spike_and_slab_priors <- formula_priors(prior_spike_and_slab(prior("normal", list(0, 1))))
+  mixture_priors <- formula_priors(prior_mixture(
+    list(prior("spike", list(0)), prior("normal", list(0, 1))),
+    is_null = c(TRUE, FALSE)
+  ))
+  ordered_draws <- function(total, indicator){
+    cbind(
+      mu_intercept = .3,
+      "mu_f[1]" = .4 * total,
+      "mu_f[2]" = .6 * total,
+      "mu_f_ordered_total_indicator" = indicator
+    )
+  }
+
+  # prior-only draws of three models with the point intercept .3: a
+  # spike-and-slab total (spike: indicator 0), a mixture total (spike:
+  # component 1), each zero with probability 1/2, and a model without 'f'
+  set.seed(21)
+  n <- 30000
+  ss_indicator  <- stats::rbinom(n, 1, .5)
+  mix_indicator <- sample(1:2, n, TRUE)
+  models <- list(
+    list(fit = .mock_mixing_fit_for_marginal(
+      ordered_draws(ss_indicator * stats::rnorm(n), ss_indicator), spike_and_slab_priors),
+      marglik = bridgesampling_object(0), prior_weights = 1),
+    list(fit = .mock_mixing_fit_for_marginal(
+      ordered_draws(ifelse(mix_indicator == 1L, 0, stats::rnorm(n)), mix_indicator), mixture_priors),
+      marglik = bridgesampling_object(0), prior_weights = 1),
+    list(fit = .mock_mixing_fit_for_marginal(
+      cbind(mu_intercept = rep(.3, n)), spike_and_slab_priors["mu_intercept"]),
+      marglik = bridgesampling_object(0), prior_weights = 1)
+  )
+  mixed <- mix_posteriors(
+    models, parameters = c("mu_intercept", "mu_f"),
+    is_null_list = list(mu_intercept = c(FALSE, FALSE, FALSE), mu_f = c(FALSE, FALSE, TRUE)),
+    seed = 1, n_samples = n
+  )
+
+  # per-draw total indicators follow the mixture draws (NA without a spiked total)
+  models_ind <- attr(mixed$mu_f, "models_ind")
+  total_indicator <- attr(mixed$mu_f, "ordered_total_indicator")
+  expect_length(total_indicator, n)
+  expect_true(all(is.na(total_indicator[models_ind == 3L])))
+  excluded <- ifelse(models_ind == 1L, total_indicator == 0L, total_indicator == 1L)
+  # posterior model probability 1/3 times the within-model zero frequency
+  expected_mass <- (mean(excluded[models_ind == 1L]) + mean(excluded[models_ind == 2L]) + 1) / 3
+
+  levels <- marginal_posterior(mixed, "mu_f", formula = ~ f, prior_samples = TRUE)
+  for(level in c("mid", "high")){
+    level_posterior <- levels[[level]]
+    atoms <- attr(level_posterior, "posterior_atoms")
+    expect_equal(unname(atoms$locations[, 1]), .3)
+    expect_equal(atoms$mass, expected_mass, tolerance = 1e-12)
+    # the observed share of draws at .3 differs only through the multinomial
+    # model counts (|difference| ~ 1e-4 here)
+    expect_lt(abs(atoms$mass - mean(level_posterior == .3)), 2e-3)
+    expect_equal(prior_density_ordinate(attr(level_posterior, "prior_density"), .3)$point_mass, 2 / 3,
+                 tolerance = 1e-12)
+    # prior-only draws: the Savage-Dickey ratio is 1 up to KDE error (10,000
+    # continuous draws: relative sd ~2%, bias ~1-2%; |log BF| < 0.1)
+    class(level_posterior) <- c(class(level_posterior), "marginal_posterior")
+    for(null_hypothesis in c(.35, .8)){
+      BF <- Savage_Dickey_BF(level_posterior, null_hypothesis = null_hypothesis, silent = TRUE)
+      expect_lt(abs(log(as.numeric(BF))), .1)
+    }
+  }
+})
+
 test_that("ordered point(0) totals are structural zero coefficients", {
 
   alternative_prior <- .ordered_prior_for_test(prior("normal", list(0, 1)))

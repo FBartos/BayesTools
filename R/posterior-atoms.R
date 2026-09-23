@@ -469,7 +469,8 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
 }
 
 .posterior_atoms_component_prior <- function(prior_entry, component,
-                                             model_mixture){
+                                             model_mixture,
+                                             total_indicator = NA_integer_){
 
   if(is.prior.ordered(prior_entry)){
     if(.posterior_atoms_is_ordered_zero_total(prior_entry)){
@@ -498,6 +499,12 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
     prior <- prior_entry[[component]]
     if(is.null(prior)){
       return(prior("point", list(location = 0)))
+    }
+    if(!is.na(total_indicator) && is.prior.ordered(prior)){
+      # the model's total indicator selects its spike at zero or its slab
+      return(.posterior_atoms_component_prior(
+        prior, total_indicator, model_mixture = FALSE
+      ))
     }
     return(prior)
   }
@@ -586,11 +593,89 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
     ncol = length(parameter_names)
   )
   colnames(components) <- parameter_names
-  list(
-    components = components,
-    probabilities = reference,
-    model_mixture = TRUE
+  .posterior_atoms_split_model_ordered_totals(
+    list(
+      components = components,
+      probabilities = reference,
+      model_mixture = TRUE
+    ),
+    samples,
+    parameter_names
   )
+}
+
+# Model-averaged ordered factors whose total has a within-model spike at zero
+# carry the per-draw total indicator (mix_posteriors()). Each model component is
+# split by the joint indicator values of its draws, with the posterior model
+# probability times the within-model draw frequency (the single-model plan of
+# as_mixed_posteriors() uses the draw frequencies of the indicators).
+.posterior_atoms_split_model_ordered_totals <- function(plan, samples, parameter_names){
+
+  indicators <- lapply(parameter_names, function(parameter){
+    attr(samples[[parameter]], "ordered_total_indicator", exact = TRUE)
+  })
+  names(indicators) <- parameter_names
+  carrying <- parameter_names[!vapply(indicators, is.null, logical(1))]
+  if(length(carrying) == 0L){
+    return(plan)
+  }
+
+  # the indicators must describe the same mixture draws
+  models_ind <- as.integer(attr(samples[[carrying[1L]]], "models_ind", exact = TRUE))
+  aligned <- vapply(carrying, function(parameter){
+    parameter_models <- as.integer(attr(samples[[parameter]], "models_ind", exact = TRUE))
+    identical(parameter_models, models_ind) &&
+      length(indicators[[parameter]]) == length(models_ind)
+  }, logical(1))
+  if(length(models_ind) == 0L || !all(aligned)){
+    return(NULL)
+  }
+  indicator_matrix <- do.call(cbind, lapply(indicators[carrying], as.integer))
+  colnames(indicator_matrix) <- carrying
+
+  n_components <- nrow(plan$components)
+  components <- vector("list", n_components)
+  total_indicators <- vector("list", n_components)
+  probabilities <- vector("list", n_components)
+  for(i in seq_len(n_components)){
+    draws <- which(models_ind == plan$components[i, 1L])
+    if(length(draws) == 0L){
+      # a model without mixture draws keeps its unsplit component
+      rows <- integer()
+      frequencies <- 1
+      row_indicators <- matrix(NA_integer_, 1L, length(carrying))
+    }else{
+      keys <- apply(indicator_matrix[draws, , drop = FALSE], 1L, paste0, collapse = "\r")
+      unique_keys <- unique(keys)
+      rows <- draws[match(unique_keys, keys)]
+      frequencies <- tabulate(
+        match(keys, unique_keys),
+        nbins = length(unique_keys)
+      ) / length(keys)
+      row_indicators <- indicator_matrix[rows, , drop = FALSE]
+    }
+    component_indicators <- matrix(
+      NA_integer_, length(frequencies), length(parameter_names),
+      dimnames = list(NULL, parameter_names)
+    )
+    component_indicators[, carrying] <- row_indicators
+    components[[i]] <- plan$components[rep(i, length(frequencies)), , drop = FALSE]
+    total_indicators[[i]] <- component_indicators
+    probabilities[[i]] <- plan$probabilities[i] * frequencies
+  }
+
+  plan$components <- do.call(rbind, components)
+  plan$total_indicators <- do.call(rbind, total_indicators)
+  plan$probabilities <- unlist(probabilities, use.names = FALSE)
+  plan
+}
+
+.posterior_atoms_plan_total_indicator <- function(plan, row, parameter){
+
+  if(is.null(plan$total_indicators)){
+    return(NA_integer_)
+  }
+  plan$total_indicators[row, parameter]
 }
 
 .posterior_atoms_formula <- function(samples, prior_list, weights,
@@ -637,7 +722,8 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
       component_prior <- .posterior_atoms_component_prior(
         prior_list[[parameter]],
         plan$components[component_i, parameter],
-        model_mixture = plan$model_mixture
+        model_mixture = plan$model_mixture,
+        total_indicator = .posterior_atoms_plan_total_indicator(plan, component_i, parameter)
       )
       if(is.null(component_prior)){
         next
@@ -726,7 +812,8 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
         startsWith(colnames(design), paste0(parameter, "["))
       if(!any(columns)) next
       component_prior <- .posterior_atoms_component_prior(
-        prior_list[[parameter]], plan$components[i, parameter], plan$model_mixture
+        prior_list[[parameter]], plan$components[i, parameter], plan$model_mixture,
+        total_indicator = .posterior_atoms_plan_total_indicator(plan, i, parameter)
       )
       point <- .posterior_atoms_point_location(component_prior, sum(columns))
       if(!is.null(point)) component_locations[columns] <- point
