@@ -49,6 +49,14 @@
 #' the point-null Savage-Dickey ratio is not a regular density ratio at that
 #' point.
 #'
+#' When the null hypothesis lies outside the continuous posterior draws (and is
+#' not an exact support bound), the KDE posterior density at the null is an
+#' extrapolation from Gaussian kernel tails. The finite Bayes factor is then
+#' returned with a warning that it is not reliable evidence. Diagnostic
+#' messages are stored in the \code{"warnings"} attribute of each Bayes factor
+#' and, unless \code{silent = TRUE}, emitted once per parameter or level,
+#' prefixed with its label (for example \code{mu[A]}).
+#'
 #' @return \code{Savage_Dickey_BF} returns a Bayes factor.
 #'
 #' @export
@@ -65,6 +73,20 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   check_bool(silent, "silent", allow_NA = FALSE)
   density_method <- .posterior_density_method(density_method)
 
+  .Savage_Dickey_BF.marginal(
+    posterior            = posterior,
+    null_hypothesis      = null_hypothesis,
+    normal_approximation = normal_approximation,
+    silent               = silent,
+    density_method       = density_method
+  )
+}
+
+# Savage-Dickey Bayes factors of a scalar marginal posterior or of each level of
+# a list of marginal posteriors.
+.Savage_Dickey_BF.marginal <- function(posterior, null_hypothesis, normal_approximation,
+                                       silent, density_method){
+
   if(is.list(posterior)){
     bf <- list()
     for(i in seq_along(posterior)){
@@ -75,17 +97,63 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
         null_hypothesis = null_hypothesis,
         density_method  = density_method
       )
-      bf[[i]] <- .Savage_Dickey_BF.fun(posterior_i, null_hypothesis, normal_approximation, silent, density_method)
+      bf[[i]] <- .Savage_Dickey_BF.fun(
+        posterior_i, null_hypothesis, normal_approximation, silent, density_method,
+        label = .Savage_Dickey_BF.level_label(posterior, i)
+      )
     }
     names(bf) <- names(posterior)
   }else{
-    bf <- .Savage_Dickey_BF.fun(posterior, null_hypothesis, normal_approximation, silent, density_method)
+    bf <- .Savage_Dickey_BF.fun(
+      posterior, null_hypothesis, normal_approximation, silent, density_method,
+      label = .Savage_Dickey_BF.parameter_label(posterior)
+    )
   }
 
   return(bf)
 }
 
-.Savage_Dickey_BF.fun    <- function(posterior, null_hypothesis, normal_approximation, silent, density_method){
+# Labels of emitted Savage-Dickey diagnostics follow the marginal summary
+# tables: 'parameter[level]', or 'parameter' for a single intercept level.
+.Savage_Dickey_BF.parameter_label <- function(posterior){
+
+  parameter <- attr(posterior, "parameter", exact = TRUE)
+  if(!is.character(parameter) || length(parameter) != 1L ||
+     is.na(parameter) || !nzchar(parameter)){
+    return(NULL)
+  }
+
+  parameter
+}
+
+.Savage_Dickey_BF.level_label <- function(posterior, index){
+
+  parameter <- .Savage_Dickey_BF.parameter_label(posterior)
+  if(is.null(parameter)){
+    parameter <- .Savage_Dickey_BF.parameter_label(posterior[[index]])
+  }
+  level <- names(posterior)[index]
+  if(is.null(level) || is.na(level) || !nzchar(level)){
+    return(parameter)
+  }
+  if(is.null(parameter)){
+    return(level)
+  }
+  if(length(posterior) == 1L && identical(level, "intercept")){
+    return(parameter)
+  }
+
+  paste0(parameter, "[", level, "]")
+}
+
+.Savage_Dickey_BF_extrapolation_warning <- paste0(
+  "Posterior samples do not span both sides of the null hypothesis. ",
+  "The posterior density at the null hypothesis is an extrapolation from ",
+  "Gaussian kernel tails; the Bayes factor is not reliable evidence."
+)
+
+.Savage_Dickey_BF.fun    <- function(posterior, null_hypothesis, normal_approximation, silent, density_method,
+                                     label = NULL){
 
   if(is.null(attr(posterior, "prior_density")))
     stop("there are no prior densities for the posterior distribution", call. = FALSE)
@@ -99,7 +167,6 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   posterior_density_boundary_reflection <- FALSE
   posterior_density_support_bounds <- NULL
   posterior_density_fallback_warnings <- NULL
-  kde_extrapolation_warning_emitted <- FALSE
   BF_error_percent <- NA_real_
   posterior_ordinate_status <- NULL
   posterior_density_status <- NULL
@@ -236,10 +303,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   if(is.null(stored_posterior_ordinate) &&
      (null_hypothesis < posterior_range[1] || null_hypothesis > posterior_range[2]) &&
      !isTRUE(null_at_support_boundary)){
-    warnings <- c(
-      warnings,
-      "Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable."
-    )
+    warnings <- c(warnings, .Savage_Dickey_BF_extrapolation_warning)
   }
 
   kde_height <- function(support = NULL){
@@ -252,12 +316,12 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       samples         = continuous_samples,
       null_hypothesis = null_hypothesis,
       support         = support,
-      warn_extrapolation = !silent
+      warn_extrapolation = FALSE
     )
     height <- height * continuous_mass
     attr(height, "continuous_mass") <- continuous_mass
     if(!is.null(attr(height, "kde_extrapolation", exact = TRUE))){
-      kde_extrapolation_warning_emitted <<- !silent
+      warnings <<- c(warnings, .Savage_Dickey_BF_extrapolation_warning)
     }
     support_warning <- attr(height, "posterior_support_warning", exact = TRUE)
     if(!is.null(support_warning)){
@@ -348,17 +412,9 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     )
   }
 
-  if(!silent && !is.null(warnings)){
-    warnings_to_emit <- warnings
-    if(isTRUE(kde_extrapolation_warning_emitted)){
-      warnings_to_emit <- warnings_to_emit[
-        warnings_to_emit != paste0(
-          "Posterior samples do not span both sides of the null hypothesis. ",
-          "The posterior KDE height is estimated from Gaussian kernel tails and may be unstable."
-        )
-      ]
-    }
-    lapply(warnings_to_emit, warning, call. = FALSE)
+  warnings <- unique(warnings)
+  if(!silent){
+    .Savage_Dickey_BF.emit_warnings(warnings, label)
   }
 
   BF <- exp(log(prior_height) - log(posterior_height))
@@ -382,6 +438,18 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   }
 
   return(BF)
+}
+
+.Savage_Dickey_BF.emit_warnings <- function(warnings, label = NULL){
+
+  for(message in warnings){
+    if(!is.null(label)){
+      message <- paste0(label, ": ", message)
+    }
+    warning(message, call. = FALSE)
+  }
+
+  invisible(NULL)
 }
 
 .Savage_Dickey_BF.continuous_posterior <- function(posterior, posterior_atoms){
@@ -517,13 +585,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
           bounds = support_bounds
         )
         if(isTRUE(warn_extrapolation)){
-          warning(
-            "Posterior samples do not span both sides of the null hypothesis. ",
-            "The posterior KDE height is estimated from Gaussian kernel tails ",
-            "and may be unstable.",
-            call. = FALSE,
-            immediate. = TRUE
-          )
+          warning(.Savage_Dickey_BF_extrapolation_warning, call. = FALSE)
         }
       }
       attr(height, "boundary_reflection") <- isTRUE(attr(density_posterior, "boundary_reflection"))
@@ -545,13 +607,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       bw    = density_posterior$bw
     )
     if(isTRUE(warn_extrapolation)){
-      warning(
-        "Posterior samples do not span both sides of the null hypothesis. ",
-        "The posterior KDE height is estimated from Gaussian kernel tails ",
-        "and may be unstable.",
-        call. = FALSE,
-        immediate. = TRUE
-      )
+      warning(.Savage_Dickey_BF_extrapolation_warning, call. = FALSE)
     }
   }
 

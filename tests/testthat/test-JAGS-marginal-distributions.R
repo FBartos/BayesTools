@@ -3138,6 +3138,88 @@ test_that("marginal_estimates_table keeps Bayes factor warnings of scalar parame
   expect_lte(abs(as.numeric(height) - expected), error_bound)
 }
 
+.collect_warnings_for_test <- function(expr){
+  messages <- character()
+  value <- withCallingHandlers(expr, warning = function(w){
+    messages <<- c(messages, conditionMessage(w))
+    invokeRestart("muffleWarning")
+  })
+  list(value = value, warnings = messages)
+}
+
+test_that("Savage-Dickey BFs with the null outside the posterior draws warn once per parameter and level", {
+
+  extrapolation <- paste0(
+    "Posterior samples do not span both sides of the null hypothesis. ",
+    "The posterior density at the null hypothesis is an extrapolation from ",
+    "Gaussian kernel tails; the Bayes factor is not reliable evidence."
+  )
+
+  # model-averaged simple parameters: 'mu' lies above the null, 'tau' spans it
+  set.seed(11)
+  n <- 1000
+  draws <- cbind(mu = 1.5 + .25 * stats::rnorm(n), tau = stats::rnorm(n))
+  prior_list <- list(mu = prior("normal", list(0, 1)), tau = prior("normal", list(0, 1)))
+  models <- lapply(1:2, function(i) list(
+    fit = .mock_mixing_fit_for_marginal(draws, prior_list),
+    marglik = bridgesampling_object(0), prior_weights = 1
+  ))
+  inference <- .collect_warnings_for_test(marginal_inference(
+    models, marginal_parameters = c("mu", "tau"), parameters = c("mu", "tau"),
+    is_null_list = list(mu = c(FALSE, FALSE), tau = c(FALSE, FALSE)),
+    formula = NULL, n_samples = n, seed = 1
+  ))
+  expect_gt(min(inference$value$conditional$mu), 0)
+  expect_identical(inference$warnings, paste0("mu: ", extrapolation))
+  bf_mu <- inference$value$inference$mu
+  expect_true(is.finite(bf_mu) && bf_mu > 1)
+  expect_identical(attr(bf_mu, "warnings"), extrapolation)
+  expect_null(attr(inference$value$inference$tau, "warnings"))
+  table <- marginal_estimates_table(
+    inference$value$conditional, inference$value$inference, c("mu", "tau")
+  )
+  expect_identical(attr(table, "warnings"), paste0("mu: ", extrapolation))
+
+  # a null within the draws is an ordinary KDE ordinate
+  expect_no_warning(
+    bf_inside <- Savage_Dickey_BF(inference$value$conditional$mu, null_hypothesis = 1.5)
+  )
+  expect_null(attr(bf_inside, "warnings"))
+
+  # formula levels: one warning per level, labelled as in the summary table
+  formula_result <- JAGS_formula(
+    ~ x, "mu", data = data.frame(x = c(-1, 0, 1)),
+    prior_list = list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)))
+  )
+  posterior <- cbind(
+    mu_intercept = 1.5 + .2 * stats::rnorm(n),
+    mu_x         = .3 + .05 * stats::rnorm(n)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- formula_result$prior_list
+  level_inference <- .collect_warnings_for_test(as_marginal_inference(
+    fit, marginal_parameters = "mu_x", parameters = c("mu_intercept", "mu_x"),
+    conditional_list = list(mu_x = NULL), conditional_rule = "AND",
+    formula = ~ x, n_samples = n
+  ))
+  level_warnings <- paste0("mu_x[", c("-1SD", "0SD", "1SD"), "]: ", extrapolation)
+  expect_identical(level_inference$warnings, level_warnings)
+  level_BFs <- unlist(level_inference$value$inference$mu_x)
+  expect_true(all(is.finite(level_BFs) & level_BFs > 1))
+  level_table <- marginal_estimates_table(
+    level_inference$value$conditional, level_inference$value$inference, "mu_x"
+  )
+  expect_identical(attr(level_table, "warnings"), level_warnings)
+
+  # the list method labels the same levels
+  direct <- .collect_warnings_for_test(
+    Savage_Dickey_BF(level_inference$value$conditional$mu_x)
+  )
+  expect_identical(direct$warnings, level_warnings)
+  expect_identical(unlist(direct$value), level_BFs)
+})
+
 test_that("use_formula = FALSE prior densities ignore the coefficient's own multiply_by", {
 
   # JAGS monitors the raw coefficient; 'multiply_by' only scales the linear
@@ -4413,7 +4495,7 @@ test_that("Marginal distribution prior and posterior functions work", {
   expect_true(all(is.finite(BF.marg_post_x_fac3md_values)))
   expect_gt(min(BF.marg_post_x_fac3md_values), 1e50)
   expect_equal(attr(BF.marg_post_x_fac3md[["A"]], "warnings"),
-               "Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.")
+               "Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.")
 
   BF2.marg_post_x_fac3md <- suppressWarnings(Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5))
   BF2.marg_post_x_fac3md_values <- unlist(BF2.marg_post_x_fac3md, use.names = FALSE)
