@@ -874,6 +874,7 @@ is.prior_random <- function(x){
   for(term in term_names){
     override <- terms[[term]]
     if(is.prior(override)){
+      .bt_check_random_sd_prior(override)
       next
     }
     if(inherits(override, "random_block") && !is.null(override$sd)){

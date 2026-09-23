@@ -503,3 +503,35 @@ test_that("random-effect SD priors must have nonnegative support", {
   expect_s3_class(prior_random(sd = prior("point", list(location = 0))),
                   "prior_random")
 })
+
+test_that("term-specific SD overrides are validated at construction", {
+
+  # A bare prior and random_block(sd = ...) are equivalent term overrides;
+  # both must be rejected before the backend could silently truncate them.
+  expect_error(
+    random_block(terms = list(intercept = prior("normal", list(0, 1)))),
+    "The 'sd' prior must have nonnegative support.",
+    fixed = TRUE
+  )
+  expect_error(
+    random_block(terms = list(
+      intercept = random_block(sd = prior("normal", list(0, 1)))
+    )),
+    "The 'sd' prior must have nonnegative support.",
+    fixed = TRUE
+  )
+  expect_error(
+    prior_random(study = random_block(terms = list(
+      x = prior_mixture(list(prior("point", list(-1)), prior("gamma", list(2, 2))))
+    ))),
+    "The 'sd' prior must have nonnegative support.",
+    fixed = TRUE
+  )
+  expect_s3_class(
+    random_block(terms = list(
+      intercept = .parameterization_sd_prior(),
+      x = prior("gamma", list(2, 2))
+    )),
+    "random_block"
+  )
+})
