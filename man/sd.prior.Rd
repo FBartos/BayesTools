@@ -18,6 +18,11 @@ a standard deviation of an object of class 'prior'.
 Computes standard deviation
 of a prior distribution.
 }
+\details{
+The standard deviation is the square root of \code{var()}; see
+\code{\link[=var.prior]{var()}} for the precision check of truncated normal
+priors.
+}
 \examples{
 # create a standard normal prior distribution
 p1 <- prior(distribution = "normal", parameters = list(mean = 1, sd = 1))

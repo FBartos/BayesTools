@@ -1129,17 +1129,32 @@ test_that("truncated normal moments are analytic for narrow, offset, and far-tai
     list(prior = prior("normal", list(0, 1), list(8, 9)),
          mean = 8.121188992979797123, var = 0.01414854278274811104, tol_var = 1e-10),
     # 39 SD into the tail the variance cancels terms of order 39^2 whose
-    # log-space ratios carry about 1e-13 relative error: 1e-6 bounds it.
+    # log-space ratios carry about 1e-13 relative error: the closed form is
+    # still accurate to 1e-6 (actual error about 1e-7), but the conservative
+    # rounding-error bound of var() exceeds 1e-6 there, so var() and sd()
+    # stop; the closed form itself is checked below.
     list(prior = prior("normal", list(0, 1), list(39, 40)),
-         mean = 39.02560741993010845, var = 6.548827702932774827e-4, tol_var = 1e-6),
+         mean = 39.02560741993010845, var = 6.548827702932774827e-4, tol_var = 1e-6,
+         bounded = FALSE),
     list(prior = prior("normal", list(0, 1), list(-Inf, -39)),
-         mean = -39.02560741993010846, var = 6.548827702932843032e-4, tol_var = 1e-6)
+         mean = -39.02560741993010846, var = 6.548827702932843032e-4, tol_var = 1e-6,
+         bounded = FALSE)
   )
   for(case in cases){
     if(case$mean == 0){
       expect_lt(abs(mean(case$prior)), 1e-15)
     }else{
       expect_equal(mean(case$prior), case$mean, tolerance = 1e-12)
+    }
+    if(isFALSE(case$bounded)){
+      expect_equal(
+        BayesTools:::.prior_normal_truncated_variance(case$prior)$value,
+        case$var,
+        tolerance = case$tol_var
+      )
+      expect_error(var(case$prior), "is unavailable in double-precision arithmetic", fixed = TRUE)
+      expect_error(sd(case$prior), "is unavailable in double-precision arithmetic", fixed = TRUE)
+      next
     }
     expect_equal(var(case$prior), case$var, tolerance = case$tol_var)
     expect_equal(sd(case$prior), sqrt(case$var), tolerance = case$tol_var)
@@ -1148,6 +1163,79 @@ test_that("truncated normal moments are analytic for narrow, offset, and far-tai
   expect_error(
     var(prior("normal", list(0, 1), list(5000, Inf))),
     "The variance of the truncated normal prior is unavailable in double-precision arithmetic",
+    fixed = TRUE
+  )
+})
+
+test_that("truncated normal variances stop when their rounding error may exceed 1e-6", {
+
+  # References: the closed form evaluated in 50-digit mpmath arithmetic from
+  # the exact double bounds (agreeing with an 80-digit evaluation to < 1e-21).
+  # The returned values must lie within the estimated rounding-error bound,
+  # which is at most 1e-6 whenever a value is returned. Validation over 4610
+  # far-tail and narrow truncations from 1 to 5000 SD found no accepted value
+  # with a larger error and no error above the bound.
+  accepted <- list(
+    list(prior = prior("normal", list(0, 1), list(10, Inf)),
+         var = 0.00944537782565626116413681765037),
+    list(prior = prior("normal", list(0, 1), list(-Inf, -20)),
+         var = 0.00246326161505216359968528619983),
+    list(prior = prior("normal", list(0, 1), list(20, 21)),
+         var = 0.0024632604300108293913512820229),
+    list(prior = prior("normal", list(0, 1), list(30, Inf)),
+         var = 0.0011037715118900910011367413855),
+    list(prior = prior("normal", list(0.3, 0.7), list(0.3 + 0.7 * 25, Inf)),
+         var = 0.000776572320492515523112347483473),
+    list(prior = prior("normal", list(0, 1), list(5, 5.1)),
+         var = 0.000822546087919772895415146023238),
+    list(prior = prior("normal", list(0, 1), list(1, 1.01)),
+         var = 0.00000833326347178311381650572698637)
+  )
+  for(case in accepted){
+    bound <- BayesTools:::.prior_normal_truncated_variance(case$prior)$relative_error
+    expect_lte(bound, 1e-6)
+    expect_lte(abs(var(case$prior) - case$var) / case$var, bound)
+    expect_lte(abs(sd(case$prior) - sqrt(case$var)) / sqrt(case$var), bound)
+  }
+
+  # 1000 SD into a tail the double-precision value is 49 times too large
+  # (4.90e-5 instead of 1.0e-6).
+  expect_error(
+    var(prior("normal", list(0, 1), list(1000, Inf))),
+    paste0(
+      "The variance of the truncated normal prior is unavailable in double-precision ",
+      "arithmetic: its estimated rounding error exceeds the computed variance for a ",
+      "truncation from 1000 to Inf prior standard deviations from the mean. Use a ",
+      "truncation closer to the prior mean or a wider truncation interval."
+    ),
+    fixed = TRUE
+  )
+  expect_error(
+    sd(prior("normal", list(2, 0.5), list(-Inf, 2 - 0.5 * 1000))),
+    "exceeds the computed variance for a truncation from -Inf to -1000 prior standard deviations",
+    fixed = TRUE
+  )
+  expect_error(
+    var(prior("normal", list(0, 1), list(50, Inf))),
+    paste0(
+      "The variance of the truncated normal prior is unavailable in double-precision ",
+      "arithmetic: its estimated relative rounding error is 1.2e-05 for a ",
+      "truncation from 50 to Inf prior standard deviations from the mean. Use a ",
+      "truncation closer to the prior mean or a wider truncation interval."
+    ),
+    fixed = TRUE
+  )
+  # A 1e-4 SD wide interval: the value is 1e-3 relative off (mpmath reference
+  # 8.333333330387e-10).
+  expect_error(
+    var(prior("normal", list(0, 1), list(0.2, 0.2001))),
+    "its estimated relative rounding error is 0.075 for a truncation from 0.2 to 0.2001 prior",
+    fixed = TRUE
+  )
+  # Spike-and-slab variances use the same slab variance.
+  expect_error(
+    var(prior_spike_and_slab(prior("normal", list(0, 1), list(1000, Inf)))),
+    "is unavailable in double-precision arithmetic",
     fixed = TRUE
   )
 })

@@ -18,6 +18,15 @@ a variance of an object of class 'prior'.
 Computes variance
 of a prior distribution.
 }
+\details{
+The variance of a truncated normal prior is computed in closed
+form. Its terms cancel far in a tail and for narrow truncation intervals,
+so the variance is returned only when its estimated relative rounding error
+in double precision is at most 1e-6; otherwise the function stops with an
+error. For a one-sided truncation, the error is raised beyond about 33
+prior standard deviations from the mean. The same applies to \code{sd()}
+and to spike-and-slab priors with such a slab.
+}
 \examples{
 # create a standard normal prior distribution
 p1 <- prior(distribution = "normal", parameters = list(mean = 1, sd = 1))
