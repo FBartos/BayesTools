@@ -226,6 +226,39 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
   .Call("BayesTools_lkj_cholesky_from_u", u, as.integer(K), PACKAGE = "BayesTools")
 }
 
+# Correlation matrices R = L L' of lower Cholesky factors of correlation
+# matrices, such as .bt_lkj_cholesky_cpc_u_to_L() output. The rows of such a
+# factor have unit norm by construction, so the diagonal is exactly 1, as in
+# the module's bt_lkj_corr(), instead of the rounded row sums of squares
+# (1 +/- a few eps), which would make a constant diagonal vary between draws.
+# `L` is a K x K matrix or an n x K x K array; the result has the same shape.
+# Draws with a missing factor (NA entries) keep missing diagonals.
+.bt_lkj_cholesky_L_to_R <- function(L){
+
+  single <- is.matrix(L)
+  if(single){
+    L <- array(L, dim = c(1L, dim(L)))
+  }
+  if(!is.array(L) || length(dim(L)) != 3L || dim(L)[2L] != dim(L)[3L]){
+    stop("'L' must be a K x K matrix or an n x K x K array.", call. = FALSE)
+  }
+
+  K <- dim(L)[2L]
+  R <- array(NA_real_, dim = dim(L))
+  for(draw_i in seq_len(dim(L)[1L])){
+    R[draw_i, , ] <- tcrossprod(matrix(L[draw_i, , ], nrow = K, ncol = K))
+  }
+  for(k in seq_len(K)){
+    defined <- is.finite(R[, k, k])
+    R[defined, k, k] <- 1
+  }
+
+  if(single){
+    return(matrix(R[1L, , ], nrow = K, ncol = K))
+  }
+  R
+}
+
 # Exact inverse of .bt_lkj_cholesky_cpc_u_to_L(): recover the LKJ primitive
 # coordinates from lower Cholesky factors of correlation matrices. For row i
 # and column j < i, the canonical partial correlation is

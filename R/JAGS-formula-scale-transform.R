@@ -382,10 +382,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
     samples <- cbind(samples, L_values)
   }
   if(add_R){
-    R <- array(NA_real_, dim = dim(L))
-    for(draw_i in seq_len(nrow(samples))){
-      R[draw_i, , ] <- tcrossprod(L[draw_i, , ])
-    }
+    R <- .bt_lkj_cholesky_L_to_R(L)
     R_values <- matrix(R, nrow = nrow(samples), ncol = K * K)
     colnames(R_values) <- R_names
     samples <- cbind(samples, R_values)

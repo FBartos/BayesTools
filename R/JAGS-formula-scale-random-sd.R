@@ -770,11 +770,7 @@
       posterior[, u_names, drop = FALSE],
       K = n_terms
     )
-    out <- array(NA_real_, dim = c(nrow(posterior), n_terms, n_terms))
-    for(draw_i in seq_len(nrow(posterior))){
-      out[draw_i, , ] <- tcrossprod(L[draw_i, , ])
-    }
-    return(out)
+    return(.bt_lkj_cholesky_L_to_R(L))
   }
 
   if(!all(L_present)){
@@ -796,10 +792,5 @@
     }
   }
 
-  out <- array(NA_real_, dim = c(nrow(posterior), n_terms, n_terms))
-  for(draw_i in seq_len(nrow(posterior))){
-    out[draw_i, , ] <- L[draw_i, , ] %*% t(L[draw_i, , ])
-  }
-
-  out
+  .bt_lkj_cholesky_L_to_R(L)
 }

@@ -133,16 +133,16 @@
   }
   if(complete_R){
     # R = L L', as the unscaling reads a Cholesky-only correlation.
-    completed_R <- matrix(NA_real_, nrow = nrow(model_samples), ncol = length(R_vector_names))
+    L <- array(
+      completed[, L_vector_names, drop = FALSE],
+      dim = c(nrow(model_samples), n_columns, n_columns)
+    )
+    completed_R <- matrix(
+      .bt_lkj_cholesky_L_to_R(L),
+      nrow = nrow(model_samples),
+      ncol = length(R_vector_names)
+    )
     colnames(completed_R) <- R_vector_names
-    for(draw_i in seq_len(nrow(model_samples))){
-      L <- matrix(
-        completed[draw_i, L_vector_names],
-        nrow = n_columns,
-        ncol = n_columns
-      )
-      completed_R[draw_i, ] <- as.vector(L %*% t(L))
-    }
     completed <- .bt_random_effect_summary_replace_columns(completed, completed_R)
   }
 

@@ -110,19 +110,23 @@ void fill_cholesky_from_u_strided(double *value, double const *u, unsigned int K
   }
 }
 
+// L is the lower Cholesky factor of a correlation matrix, as built by
+// fill_cholesky_from_u(): its rows have unit norm by construction (for every
+// primitive, including the clamped extension), so the diagonal is exactly 1.
+// The rounded row sum of squares would scatter within 1 +/- a few eps and make
+// a constant diagonal monitor look like varying draws.
 void fill_corr_from_cholesky(double *value, double const *L, unsigned int K)
 {
   for(unsigned int row = 1; row <= K; ++row){
-    for(unsigned int column = 1; column <= row; ++column){
+    for(unsigned int column = 1; column < row; ++column){
       double cell = 0.0;
       for(unsigned int m = 1; m <= column; ++m){
         cell += L[flat_index(row, m, K)] * L[flat_index(column, m, K)];
       }
       value[flat_index(row, column, K)] = cell;
-      if(column != row){
-        value[flat_index(column, row, K)] = cell;
-      }
+      value[flat_index(column, row, K)] = cell;
     }
+    value[flat_index(row, row, K)] = 1.0;
   }
 }
 

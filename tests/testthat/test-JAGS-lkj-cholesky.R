@@ -239,6 +239,192 @@ test_that("native LKJ helpers handle vectorized R-side transforms", {
   )), tolerance = 1e-12)
 })
 
+.lkj_unit_diagonal_random_term <- function(){
+  data <- data.frame(
+    x = c(-1, 0.5, 1.2, -0.3, 0.8, -1.4),
+    z = c(0.2, -0.7, 1.1, 0.4, -1.5, 0.9),
+    id = factor(rep(c("a", "b", "c"), each = 2L))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + x + z + (1 + x + z | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)),
+      z = prior("normal", list(0, 1))
+    ),
+    prior_random = prior_random(id = random_block(
+      sd = prior("normal", list(0, 1), list(0, Inf)),
+      cor = prior_lkj(eta = 1)
+    ))
+  )
+  formula_result$formula_design$random_effects[[1L]]
+}
+
+test_that("R-side LKJ correlation reconstructions have an exactly unit diagonal", {
+
+  # The rounded row sums of squares of an LKJ Cholesky factor scatter within
+  # 1 +/- a few eps. Correlation matrices rebuilt from the LKJ primitives or
+  # their factor carry the exact unit diagonal of the module's bt_lkj_corr();
+  # their off-diagonal entries stay the plain L L' products.
+  random_term <- .lkj_unit_diagonal_random_term()
+  K <- random_term$n_columns
+  expect_identical(K, 3L)
+  correlation <- random_term$correlation
+  u_names <- correlation$primitive_names
+  matrix_names <- function(name){
+    as.vector(outer(seq_len(K), seq_len(K), Vectorize(function(row, column){
+      paste0(name, "[", row, ",", column, "]")
+    })))
+  }
+  L_names <- matrix_names(correlation$cholesky_name)
+  R_names <- matrix_names(correlation$correlation_name)
+  on_diagonal <- as.vector(diag(K) == 1)
+
+  set.seed(20260924)
+  n_draws <- 200L
+  u <- matrix(
+    stats::rbeta(n_draws * length(u_names), 1.2, 1.2),
+    ncol = length(u_names),
+    dimnames = list(NULL, u_names)
+  )
+  L <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(u, K = K)
+  plain_R <- t(vapply(seq_len(n_draws), function(draw){
+    as.vector(tcrossprod(L[draw, , ]))
+  }, numeric(K * K)))
+  # The draws exercise the rounding: plain row sums of squares miss 1.
+  expect_true(any(plain_R[, on_diagonal] != 1))
+
+  # Prior draws of the monitored correlation columns.
+  prior_samples <- BayesTools:::.bt_add_lkj_matrix_prior_samples(
+    samples = u,
+    correlation = correlation,
+    primitive_names = u_names,
+    K = K,
+    column_names = c(u_names, L_names, R_names)
+  )
+  expect_true(all(prior_samples[, R_names[on_diagonal]] == 1))
+  expect_identical(
+    unname(prior_samples[, R_names[!on_diagonal]]),
+    unname(plain_R[, !on_diagonal])
+  )
+
+  # Source correlations of SD unscaling, from the primitives and from a
+  # monitored Cholesky factor.
+  group_key <- sub("^mu__xREx__", "", random_term$parameter_stem)
+  for(posterior in list(u, prior_samples[, L_names, drop = FALSE])){
+    source_R <- BayesTools:::.random_sd_correlation_draws(
+      posterior = posterior,
+      prefix = "mu",
+      group_key = group_key,
+      n_terms = K
+    )
+    source_R <- matrix(source_R, nrow = n_draws, ncol = K * K)
+    expect_true(all(source_R[, on_diagonal] == 1))
+    expect_identical(source_R[, !on_diagonal], unname(plain_R[, !on_diagonal]))
+  }
+
+  # Correlation columns completed for random-effect summaries.
+  completed <- BayesTools:::.bt_random_effect_summary_complete_correlation_samples(
+    random_term = random_term,
+    model_samples = u
+  )
+  expect_true(all(completed[, R_names[on_diagonal]] == 1))
+  expect_identical(
+    unname(completed[, R_names[!on_diagonal]]),
+    unname(plain_R[, !on_diagonal])
+  )
+
+  # Draws without a factor keep missing correlations.
+  L[1L, , ] <- NA_real_
+  R <- BayesTools:::.bt_lkj_cholesky_L_to_R(L)
+  expect_true(all(is.na(R[1L, , ])))
+  expect_true(all(R[-1L, 2L, 2L] == 1))
+  expect_identical(
+    BayesTools:::.bt_lkj_cholesky_L_to_R(L[2L, , ]),
+    R[2L, , ]
+  )
+})
+
+test_that("JAGS LKJ correlation diagonals are exactly 1 and structural in convergence checks", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  skip_if_not(
+    isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)),
+    "BayesTools JAGS module is unavailable."
+  )
+
+  # bt_lkj_corr() returned the diagonal as rounded row sums of squares
+  # (1 +/- 2.2e-16), so the monitored R[k,k] had undefined ESS, were "not
+  # assessable", and every fit with an unstructured block failed its check.
+  set.seed(1)
+  data_formula <- data.frame(
+    x  = stats::rnorm(48),
+    z  = stats::rnorm(48),
+    id = factor(rep(LETTERS[1:6], each = 8L))
+  )
+  data <- list(y = stats::rnorm(48, 0.3 * data_formula$x), N = 48L)
+  fit_block <- function(formula, seed){
+    JAGS_fit(
+      model_syntax = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 1)\n}\n}",
+      data = data,
+      formula_list = list(mu = formula),
+      formula_data_list = list(mu = data_formula),
+      formula_prior_list = list(mu = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1)),
+        z = prior("normal", list(0, 1))
+      )),
+      formula_random_prior_list = list(mu = prior_random(id = random_block(
+        sd = prior("normal", list(0, 1), list(0, Inf)),
+        cor = prior_lkj(eta = 1)
+      ))),
+      chains = 2, adapt = 100, burnin = 100, sample = 300, seed = seed
+    )
+  }
+  fits <- list(
+    K2 = fit_block(~ 1 + x + z + (1 + x | id), seed = 11L),
+    K3 = fit_block(~ 1 + x + z + (1 + x + z | id), seed = 12L)
+  )
+
+  for(K in 2:3){
+    fit <- fits[[paste0("K", K)]]
+    samples <- as.matrix(fit$mcmc)
+    stem <- attr(fit, "formula_design")$mu$random_effects[[1L]]$parameter_stem
+    cell <- function(matrix_name, row, column){
+      samples[, paste0(stem, "_xRE_CORx_", matrix_name, "[", row, ",", column, "]")]
+    }
+    R_diagonal <- paste0(stem, "_xRE_CORx_R[", seq_len(K), ",", seq_len(K), "]")
+
+    # Every monitored diagonal entry is exactly 1 in every draw; the
+    # off-diagonal entries are the correlations of the Cholesky factor.
+    expect_true(all(samples[, R_diagonal] == 1))
+    for(row in 2:K){
+      for(column in seq_len(row - 1L)){
+        from_L <- rowSums(vapply(seq_len(column), function(m){
+          cell("L", row, m) * cell("L", column, m)
+        }, numeric(nrow(samples))))
+        expect_equal(cell("R", row, column), from_L, tolerance = 1e-12)
+        expect_identical(cell("R", row, column), cell("R", column, row))
+      }
+    }
+
+    check <- JAGS_check_convergence(
+      fit, attr(fit, "prior_list"),
+      max_Rhat = 2, min_ESS = 1, max_error = NULL, max_SD_error = NULL
+    )
+    diagnostics <- attr(check, "diagnostics")
+    expect_equal(
+      diagnostics$state[match(R_diagonal, diagnostics$parameter)],
+      rep("structural_constant", K)
+    )
+    expect_false(any(grepl("_xRE_CORx_R[", attr(check, "errors"), fixed = TRUE)))
+    expect_true(check)
+  }
+})
+
 test_that("LKJ CPC beta density induces Stan Cholesky density kernel", {
   K <- 5L
   eta <- 0.7
