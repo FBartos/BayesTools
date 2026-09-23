@@ -487,14 +487,14 @@ test_that("estimates tables report the share of draws with a defined original-sc
 
   # A zero slope SD (e.g., an excluded spike-and-slab SD) leaves the
   # original-scale intercept-slope correlation undefined (0/0): draws 3 and 4
-  # are missing and the row summarises the 3 defined draws of 5.
+  # are missing and the row summarizes the 3 defined draws of 5.
   fit <- .undefined_correlation_table_fit(
     source_sd = rbind(c(1, 2), c(0.5, 1.5), c(0.7, 0), c(0.3, 0), c(1, 1)),
     source_rho = c(0.8, -0.3, 0.4, 0.1, 0.2)
   )
   expected_footnote <- c(
     "(mu) cor(intercept,x)" = paste0(
-      "(mu) cor(intercept,x): summarised over 3 of 5 draws where the ",
+      "(mu) cor(intercept,x): summarized over 3 of 5 draws where the ",
       "correlation is defined."
     )
   )
@@ -529,7 +529,7 @@ test_that("estimates tables report the share of draws with a defined original-sc
   )
   expect_output(
     print(table),
-    "summarised over 3 of 5 draws where the correlation is defined.",
+    "summarized over 3 of 5 draws where the correlation is defined.",
     fixed = TRUE
   )
   # The row footnote follows its row when the table is subset.
@@ -556,7 +556,7 @@ test_that("estimates tables report the share of draws with a defined original-sc
   expect_identical(
     unname(attr(simplified, "footnotes")),
     paste0(
-      "cor(intercept,x): summarised over 3 of 5 draws where the correlation ",
+      "cor(intercept,x): summarized over 3 of 5 draws where the correlation ",
       "is defined."
     )
   )
@@ -572,7 +572,7 @@ test_that("estimates tables report the share of draws with a defined original-sc
     "(mu) cor(intercept,x | id)" %in% names(attr(raw, "footnotes"))
   )
   expect_true(all(grepl(
-    ": summarised over 3 of 5 draws where the correlation is defined.$",
+    ": summarized over 3 of 5 draws where the correlation is defined.$",
     attr(raw, "footnotes")
   )))
   expect_null(attr(
@@ -616,7 +616,7 @@ test_that("correlation footnotes count only draws retained by conditioning", {
   expect_identical(
     footnotes,
     c("(mu) cor(a,b)" = paste0(
-      "(mu) cor(a,b): summarised over 2 of 3 draws where the correlation is ",
+      "(mu) cor(a,b): summarized over 2 of 3 draws where the correlation is ",
       "defined."
     ))
   )
@@ -629,7 +629,7 @@ test_that("correlation footnotes count only draws retained by conditioning", {
   ))
 })
 
-test_that("scaled predictors are centred in terms without a free intercept", {
+test_that("scaled predictors are centered in terms without a free intercept", {
 
   skip_if_not_installed("runjags")
 
@@ -713,7 +713,7 @@ test_that("scaled predictors are centred in terms without a free intercept", {
 
 test_that("independent scaled random slopes imply the documented original-scale correlation", {
 
-  # `(1 + x || id)` is independent on the centred scale. The original-scale
+  # `(1 + x || id)` is independent on the centered scale. The original-scale
   # intercept u0 - u1 m / s and slope u1 / s have correlation
   # -(t1 m / s) / sqrt(t0^2 + (t1 m / s)^2). Reference: the package's marginal
   # covariance Z G Z' for one group at x = 0 and x = 1, which gives

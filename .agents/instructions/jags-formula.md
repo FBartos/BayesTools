@@ -55,7 +55,7 @@ transformation, prediction, summaries, and tests together. Do not infer an
 unscaling map from sampled values or parameter-name coincidences when the
 structural formula metadata is available.
 
-`formula_scale` centres every scaled predictor, also in terms without a free
+`formula_scale` centers every scaled predictor, also in terms without a free
 intercept (maintainer decision): the model is specified on the standardized
 scale. `~ 0 + x` with scaled `x` fits `mu = b (x - m) / s`, whose
 original-scale intercept is `-b m / s`; original-scale tables report it even
@@ -64,7 +64,7 @@ random intercept, such as `(0 + x | g)`, likewise implies an original-scale
 random intercept `-u m / s`, perfectly correlated with the slope `u / s`; its
 summaries report only the block's own coefficients.
 
-Independence is also specified on the centred scale. `(1 + x || g)`, `diag()`,
+Independence is also specified on the centered scale. `(1 + x || g)`, `diag()`,
 or `id()` with scaled `x` has independent `u0`, `u1` (SDs `t0`, `t1`); the
 original-scale intercept `u0 - u1 m / s` and slope `u1 / s` then have
 correlation `-(t1 m / s) / sqrt(t0^2 + (t1 m / s)^2)` (about -0.93 for equal

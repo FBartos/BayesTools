@@ -366,7 +366,7 @@ the corresponding inclusion/exclusion comparison was not tested.
 Original-scale random-effect correlations are undefined in posterior draws
 with a zero random-effect SD or a singular covariance (for example, an
 excluded spike-and-slab SD of a scaled slope). Such draws are missing, the
-affected rows are summarised over the defined draws, and a table footnote
+affected rows are summarized over the defined draws, and a table footnote
 reports the share of defined draws for each affected row.
 }
 \seealso{

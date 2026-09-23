@@ -119,7 +119,7 @@
 #' Original-scale random-effect correlations are undefined in posterior draws
 #' with a zero random-effect SD or a singular covariance (for example, an
 #' excluded spike-and-slab SD of a scaled slope). Such draws are missing, the
-#' affected rows are summarised over the defined draws, and a table footnote
+#' affected rows are summarized over the defined draws, and a table footnote
 #' reports the share of defined draws for each affected row.
 #'
 #' @export JAGS_summary_table
@@ -1309,7 +1309,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     n_defined <- sum(retained & !is.na(values))
     if(n_defined < n_draws){
       footnotes[[colnames(model_samples)[[i]]]] <- paste0(
-        colnames(model_samples)[[i]], ": summarised over ", n_defined, " of ",
+        colnames(model_samples)[[i]], ": summarized over ", n_defined, " of ",
         n_draws, " draws where the correlation is defined."
       )
     }
