@@ -79,6 +79,10 @@ mean.prior   <- function(x, ...){
         }
       }
 
+      if(x[["distribution"]] == "normal"){
+        return(.prior_normal_truncated_moments(x, "mean"))
+      }
+
       m <- stats::integrate(
         f       = function(x, prior) x * pdf(prior, x),
         lower   = x$truncation[["lower"]],
@@ -265,6 +269,10 @@ var.prior   <- function(x, ...){
         }
       }
 
+      if(x[["distribution"]] == "normal"){
+        return(.prior_normal_truncated_moments(x, "var"))
+      }
+
       E2 <- stats::integrate(
         f       = function(x, prior) x^2 * pdf(prior, x),
         lower   = x$truncation[["lower"]],
@@ -376,6 +384,46 @@ sd.prior     <- function(x, ...){
   sd <- sqrt(var(x))
 
   return(sd)
+}
+
+.prior_normal_truncated_moments <- function(prior, moment = c("mean", "var")){
+
+  moment <- match.arg(moment)
+
+  # Closed-form moments of N(mu, sigma^2) truncated to [lower, upper] with
+  # alpha, beta the standardized bounds and Z = Phi(beta) - Phi(alpha):
+  # mean = mu + sigma * (phi(alpha) - phi(beta)) / Z and
+  # var  = sigma^2 * (1 + (alpha phi(alpha) - beta phi(beta)) / Z
+  #                   - ((phi(alpha) - phi(beta)) / Z)^2).
+  # The ratios phi / Z use the log-space normalizing constant.
+  mu    <- prior$parameters[["mean"]]
+  sigma <- prior$parameters[["sd"]]
+  bounds <- (c(prior$truncation[["lower"]], prior$truncation[["upper"]]) - mu) / sigma
+  log_Z  <- .prior_normal_log_C(prior)
+
+  ratio <- ifelse(
+    is.infinite(bounds),
+    0,
+    exp(stats::dnorm(bounds, log = TRUE) - log_Z)
+  )
+  scaled_ratio <- ifelse(is.infinite(bounds), 0, bounds * ratio)
+  shift <- ratio[1] - ratio[2]
+  if(identical(moment, "mean")){
+    return(mu + sigma * shift)
+  }
+
+  # The variance cancels terms of order bound^2; truncations hundreds of
+  # standard deviations into a tail exhaust double precision.
+  variance <- sigma^2 * (1 + scaled_ratio[1] - scaled_ratio[2] - shift^2)
+  if(!is.finite(variance) || variance <= 0){
+    stop(
+      "The variance of the truncated normal prior is unavailable in double-precision ",
+      "arithmetic because its truncation lies too far in the tail. Rescale the prior ",
+      "or its truncation.",
+      call. = FALSE
+    )
+  }
+  variance
 }
 
 .mean.weightfunction <- function(prior){

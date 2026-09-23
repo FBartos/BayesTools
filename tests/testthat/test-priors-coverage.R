@@ -1110,6 +1110,48 @@ test_that("mean() handles truncated distributions and undefined moments", {
   expect_true(is.nan(mean(prior("invgamma", list(.5, 1)))))
 })
 
+test_that("truncated normal moments are analytic for narrow, offset, and far-tail priors", {
+
+  # References: closed forms for the half-normal and the effectively
+  # untruncated / shifted cases; the others from the closed form evaluated in
+  # 80-digit mpmath arithmetic (erfc normaliser), confirmed by split mpmath
+  # quadrature. Integration previously returned 0 for the narrow and offset
+  # priors.
+  cases <- list(
+    list(prior = prior("normal", list(0, 1), list(0, Inf)),
+         mean = sqrt(2 / pi), var = 1 - 2 / pi, tol_var = 1e-12),
+    list(prior = prior("normal", list(0, 1), list(-1, 2)),
+         mean = 0.2296371790913289686, var = 0.5197625392115339359, tol_var = 1e-12),
+    list(prior = prior("normal", list(0, .02), list(-10, 10)),
+         mean = 0, var = 4e-4, tol_var = 1e-12),
+    list(prior = prior("normal", list(1e4, 1), list(0, Inf)),
+         mean = 1e4, var = 1, tol_var = 1e-12),
+    list(prior = prior("normal", list(0, 1), list(8, 9)),
+         mean = 8.121188992979797123, var = 0.01414854278274811104, tol_var = 1e-10),
+    # 39 SD into the tail the variance cancels terms of order 39^2 whose
+    # log-space ratios carry about 1e-13 relative error: 1e-6 bounds it.
+    list(prior = prior("normal", list(0, 1), list(39, 40)),
+         mean = 39.02560741993010845, var = 6.548827702932774827e-4, tol_var = 1e-6),
+    list(prior = prior("normal", list(0, 1), list(-Inf, -39)),
+         mean = -39.02560741993010846, var = 6.548827702932843032e-4, tol_var = 1e-6)
+  )
+  for(case in cases){
+    if(case$mean == 0){
+      expect_lt(abs(mean(case$prior)), 1e-15)
+    }else{
+      expect_equal(mean(case$prior), case$mean, tolerance = 1e-12)
+    }
+    expect_equal(var(case$prior), case$var, tolerance = case$tol_var)
+    expect_equal(sd(case$prior), sqrt(case$var), tolerance = case$tol_var)
+  }
+
+  expect_error(
+    var(prior("normal", list(0, 1), list(5000, Inf))),
+    "The variance of the truncated normal prior is unavailable in double-precision arithmetic",
+    fixed = TRUE
+  )
+})
+
 test_that("native inverse-gamma helpers match gamma-transform identities", {
   p <- prior("invgamma", list(shape = 3, scale = 2))
   x <- c(.25, 1, 2)
