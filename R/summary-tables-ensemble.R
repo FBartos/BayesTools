@@ -517,12 +517,14 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
       }))
     }else{
       temp_samples  <- .marginal_posterior_parameter_samples(samples, parameter)
-      temp_BF       <- inference[[parameter]][[1]]
+      # a scalar Savage-Dickey BF keeps its attributes only when not subset
+      temp_BF       <- if(is.list(inference[[parameter]])) inference[[parameter]][[1]] else inference[[parameter]]
       temp_BF_error <- .marginal_inference_BF_error_percent(inference[[parameter]], temp_BF)
-      if(is.null(attr(inference[[parameter]][[1]], "warnings"))){
+      temp_level    <- names(inference[[parameter]])
+      if(is.null(attr(temp_BF, "warnings"))){
         temp_warnings <- NULL
       }else{
-        temp_warnings <- paste0(if(names(inference[[parameter]]) != "intercept") paste0("[", names(inference[[parameter]]), "]: ") else ": ", attr(inference[[parameter]][[1]], "warnings"))
+        temp_warnings <- paste0(if(length(temp_level) == 1L && temp_level != "intercept") paste0("[", temp_level, "]: ") else ": ", attr(temp_BF, "warnings"))
       }
     }
 

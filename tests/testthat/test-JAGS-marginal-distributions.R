@@ -3081,6 +3081,28 @@ test_that("marginal_estimates_table reports exact level summaries and Bayes fact
   expect_equal(attr(log_table$inclusion_BF, "name"), "log(Exclusion BF)")
 })
 
+test_that("marginal_estimates_table keeps Bayes factor warnings of scalar parameters", {
+
+  # Savage_Dickey_BF() returns a bare numeric for a scalar marginal posterior;
+  # its warnings must reach the table like those of formula levels
+  bf_theta <- structure(4, warnings = "Scalar warning.", BF_error_percent = 2)
+  bf_level <- structure(.5, warnings = "Level warning.")
+  table <- marginal_estimates_table(
+    samples    = list(theta = c(1, 2, 3, 4), mu = list(intercept = c(2, 3, 4, 5)),
+                      gamma = list(A = c(0, 1, 2, 3))),
+    inference  = list(theta = bf_theta, mu = list(intercept = bf_level),
+                      gamma = list(A = bf_level)),
+    parameters = c("theta", "mu", "gamma")
+  )
+
+  expect_equal(as.numeric(table$inclusion_BF), c(4, .5, .5))
+  expect_equal(as.numeric(table$BF_error_percent), c(2, NA, NA))
+  expect_equal(
+    attr(table, "warnings"),
+    c("theta: Scalar warning.", "mu: Level warning.", "gamma[A]: Level warning.")
+  )
+})
+
 # ============================================================================ #
 # SECTION: Marginal posterior regressions (review round 3)
 # ============================================================================ #
