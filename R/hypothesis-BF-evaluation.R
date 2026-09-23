@@ -242,46 +242,35 @@
   }
 
   comparison <- .hypothesis_simple_parameter_comparison(side, parameter)
+  condition  <- .hypothesis_side_expression(side)
   evaluate_probability <- function(density_object){
     prob <- 0
     if(!is.null(density_object[["density"]])){
       density <- density_object[["density"]]
       x <- density[["x"]]
-      y <- density[["y"]] * density[["mass"]]
-      if(!is.null(comparison)){
-        # Integrate the continuous interpolant up to the actual boundary.
-        # Multiplying grid ordinates by a step indicator moves that boundary
-        # to neighbouring knots and introduces first-order grid error.
-        value <- comparison[["value"]]
-        lower <- comparison[["operator"]] %in% c("<", "<=")
-        keep <- if(lower) x <= value else x >= value
-        boundary <- value > min(x) && value < max(x) && !any(x == value)
-        boundary_y <- if(boundary) stats::approx(x, y, xout = value)$y else NULL
-        x <- x[keep]
-        y <- y[keep]
-        if(boundary){
-          x <- if(lower) c(x, value) else c(value, x)
-          y <- if(lower) c(y, boundary_y) else c(boundary_y, y)
-        }
-        prob <- prob + .hypothesis_trapz(x, y)
-      }else{
-        draws <- data.frame(x, check.names = FALSE)
-        names(draws) <- parameter
-        inside <- .hypothesis_eval_condition(
-          .hypothesis_side_expression(side),
-          draws
-        )
-        prob <- prob + .hypothesis_trapz(x, y * as.numeric(inside))
+      y <- density[["y"]]
+      # The continuous part is the linear interpolant of the grid ordinates.
+      # Region and total masses both integrate that interpolant exactly
+      # (trapezoid rule), so their ratio is independent of the grid's
+      # Riemann-sum normalization.
+      total <- .hypothesis_trapz(x, y)
+      if(length(x) < 2L || !is.finite(total) || total <= 0){
+        stop("The continuous prior density grid has no positive integrable ",
+             "mass; the prior region probability is unavailable.",
+             call. = FALSE)
       }
+      inside <- if(!is.null(comparison)){
+        .hypothesis_comparison_grid_integral(x, y, comparison)
+      }else{
+        .hypothesis_condition_grid_integral(x, y, condition, parameter)
+      }
+      prob <- prob + density[["mass"]] * inside / total
     }
 
     points <- density_object[["points"]]
     if(!is.null(points) && nrow(points) > 0L){
-      draws <- data.frame(points[["x"]], check.names = FALSE)
-      names(draws) <- parameter
-      inside <- .hypothesis_eval_condition(
-        .hypothesis_side_expression(side),
-        draws
+      inside <- .hypothesis_condition_indicator(
+        condition, parameter, points[["x"]]
       )
       prob <- prob + sum(points[["p"]][inside])
     }
@@ -339,6 +328,109 @@
   prob <- max(0, min(1, prob))
 
   return(prob)
+}
+
+
+.hypothesis_condition_indicator <- function(condition, parameter, values) {
+
+  draws <- data.frame(values, check.names = FALSE)
+  names(draws) <- parameter
+
+  .hypothesis_eval_condition(condition, draws)
+}
+
+
+.hypothesis_comparison_grid_integral <- function(x, y, comparison) {
+
+  # Integrate the continuous interpolant up to the actual boundary.
+  # Multiplying grid ordinates by a step indicator moves that boundary
+  # to neighbouring knots and introduces first-order grid error.
+  value <- comparison[["value"]]
+  lower <- comparison[["operator"]] %in% c("<", "<=")
+  keep <- if(lower) x <= value else x >= value
+  boundary <- value > min(x) && value < max(x) && !any(x == value)
+  boundary_y <- if(boundary) stats::approx(x, y, xout = value)$y else NULL
+  x <- x[keep]
+  y <- y[keep]
+  if(boundary){
+    x <- if(lower) c(x, value) else c(value, x)
+    y <- if(lower) c(y, boundary_y) else c(boundary_y, y)
+  }
+
+  .hypothesis_trapz(x, y)
+}
+
+
+.hypothesis_condition_grid_integral <- function(x, y, condition, parameter) {
+
+  # Integrate the linear interpolant of the grid density over the region.
+  # Grid cells whose endpoints disagree on the condition contain a region
+  # boundary; it is located by bisection on the condition and inserted as
+  # a knot with a linearly interpolated ordinate, so the integral has no
+  # first-order boundary error.
+  n <- length(x)
+  inside <- .hypothesis_condition_indicator(condition, parameter, x)
+  left_inside  <- inside[-n]
+  right_inside <- inside[-1L]
+  width        <- diff(x)
+  cell_area    <- width * (y[-n] + y[-1L]) / 2
+
+  unchanged <- left_inside == right_inside
+  integral  <- sum(cell_area[unchanged & left_inside])
+
+  changed <- which(!unchanged)
+  if(length(changed) > 0L){
+    boundary <- .hypothesis_condition_boundary(
+      condition    = condition,
+      parameter    = parameter,
+      lower        = x[changed],
+      upper        = x[changed + 1L],
+      lower_inside = left_inside[changed]
+    )
+    boundary_y <- y[changed] + (y[changed + 1L] - y[changed]) *
+      (boundary - x[changed]) / width[changed]
+    left_area  <- (boundary - x[changed]) * (y[changed] + boundary_y) / 2
+    right_area <- (x[changed + 1L] - boundary) *
+      (boundary_y + y[changed + 1L]) / 2
+    integral <- integral +
+      sum(left_area[left_inside[changed]]) +
+      sum(right_area[right_inside[changed]])
+  }
+
+  integral
+}
+
+
+.hypothesis_condition_boundary <- function(condition, parameter, lower, upper,
+                                           lower_inside) {
+
+  # Vectorized bisection: each interval keeps one endpoint on each side of
+  # the condition boundary until it is resolved to about 1e-12 relative
+  # precision (or to 2^-40 of the grid cell width near zero).
+  cell_width <- upper - lower
+  for(i in seq_len(64L)){
+    width  <- upper - lower
+    active <- width > 1e-12 * pmax(abs(lower), abs(upper)) &
+      width > 2^-40 * cell_width
+    if(!any(active)){
+      break
+    }
+    middle <- (lower[active] + upper[active]) / 2
+    stalled <- middle <= lower[active] | middle >= upper[active]
+    if(all(stalled)){
+      break
+    }
+    middle_inside <- .hypothesis_condition_indicator(
+      condition, parameter, middle
+    )
+    move_lower <- middle_inside == lower_inside[active] & !stalled
+    move_upper <- middle_inside != lower_inside[active] & !stalled
+    active_i <- which(active)
+    lower[active_i[move_lower]] <- middle[move_lower]
+    upper[active_i[move_upper]] <- middle[move_upper]
+  }
+
+  (lower + upper) / 2
 }
 
 .hypothesis_prior_draws <- function(quantity) {
