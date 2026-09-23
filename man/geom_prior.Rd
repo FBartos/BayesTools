@@ -73,7 +73,11 @@ the transformed support}
 
 \item{show_parameter}{which parameter should be returned in case of
 multiple parameters per prior. Useful when priors for the omega
-parameter are plotted and \code{individual = TRUE}.}
+parameter are plotted and \code{individual = TRUE}. For weight functions,
+\code{k} selects the publication weight omega of the \code{k}-th p-value
+interval in ascending order, as \code{show_figures} in \code{\link[=plot.prior]{plot.prior()}} and
+the order of the summary tables; \code{1} is the reference weight fixed at
+1.}
 
 \item{individual}{should individual densities be returned
 (e.g., in case of weightfunction)}

@@ -6,7 +6,11 @@
 #' weightfunction is plotted.
 #' @param show_parameter which parameter should be returned in case of
 #' multiple parameters per prior. Useful when priors for the omega
-#' parameter are plotted and \code{individual = TRUE}.
+#' parameter are plotted and \code{individual = TRUE}. For weight functions,
+#' \code{k} selects the publication weight omega of the \code{k}-th p-value
+#' interval in ascending order, as \code{show_figures} in [plot.prior()] and
+#' the order of the summary tables; \code{1} is the reference weight fixed at
+#' 1.
 #' @param scale_y2 scaling factor for a secondary axis. The default
 #' \code{NULL} reuses the probability mapping from the active mixed
 #' plot when one is available.
@@ -63,6 +67,7 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     .lines.prior.weightfunction(plot_data = plot_data, rescale_x = rescale_x, ...)
     return(invisible())
   }else if(is.prior.weightfunction(x) & individual){
+    .weightfunction_check_individual_index(show_parameter, length(plot_data), "show_parameter", select_one = TRUE)
     selected <- plot_data[[show_parameter]]
     if(inherits(selected, "density.prior.simple")){
       .lines.prior.simple(selected, ...)
@@ -198,6 +203,9 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   # plot a weightfunction
   if(is.prior.weightfunction(x)){
+    if(individual){
+      .weightfunction_check_individual_index(show_parameter, length(plot_data), "show_parameter", select_one = TRUE)
+    }
     if(!individual){
       geom <- .geom_prior.weightfunction(plot_data = plot_data, rescale_x = rescale_x, ...)
     }else if(inherits(plot_data[[show_parameter]], "density.prior.simple")){

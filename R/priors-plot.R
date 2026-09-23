@@ -11,7 +11,16 @@
 #' weightfunction is plotted.
 #' @param show_figures which figures should be returned in case of
 #' multiple plots are generated. Useful when priors for the omega
-#' parameter are plotted and \code{individual = TRUE}.
+#' parameter are plotted and \code{individual = TRUE}. For weight functions
+#' plotted individually by \code{plot.prior()} and \code{plot_posterior()},
+#' figure \code{k} shows the publication weight omega of the \code{k}-th
+#' p-value interval in ascending order, the order in which summary tables
+#' (including RoBMA's) print the omegas; figure 1 is the reference weight of
+#' the most significant interval. In \code{plot.prior()}, a negative \code{k}
+#' omits figure \code{-k} (the default \code{-1} omits the reference weight
+#' fixed at 1). For a two-sided weight function prior, the intervals are its
+#' two-sided p-value bins; tables on the one-sided p-value scale print these
+#' weights first and then repeat them for the mirrored intervals.
 #' @param ... additional graphical arguments. For mixed continuous and point
 #' distributions, \code{ylim} controls the density axis, \code{ylim2} controls
 #' the probability-mass axis, and \code{ylab2} controls its label.
@@ -110,17 +119,16 @@ plot.prior <- function(x, plot_type = "base",
       }
     }
 
-    # plot individual weights
+    # plot individual weights; figure k is the weight of the k-th p-value
+    # interval in ascending order, as printed in the summary tables
     if(individual){
       # deal with the multiple figures
+      .weightfunction_check_individual_index(show_figures, length(plot_data), "show_figures")
       if(is.null(show_figures)){
         plots_ind <- c(1:length(plot_data))
       }else{
         plots_ind <- c(1:length(plot_data))[show_figures]
       }
-
-      # reverse the order
-      plot_data <- plot_data[length(plot_data):1]
 
       plots <- list()
       for(figure in plots_ind){
@@ -224,6 +232,27 @@ plot.prior <- function(x, plot_type = "base",
       return(invisible())
     }
   }
+}
+
+# Individual weight-function indices refer to the publication weights of the
+# p-value intervals in ascending order (the reference weight first).
+.weightfunction_check_individual_index <- function(index, n_weights, name, select_one = FALSE){
+
+  valid <- if(select_one){
+    !is.null(index) && index >= 1 && index <= n_weights
+  }else{
+    is.null(index) || (index != 0 && abs(index) <= n_weights)
+  }
+  if(!valid){
+    stop(
+      "'", name, "' must be ",
+      if(select_one) paste0("between 1 and ", n_weights) else paste0("between -", n_weights, " and ", n_weights, ", excluding 0,"),
+      " for a weight function with ", n_weights, " publication weights.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
 }
 
 .plot.prior.simplex       <- function(x, plot_type, plot_data, show_figures = NULL, par_name = NULL, ...){

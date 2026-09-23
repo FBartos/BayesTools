@@ -55,7 +55,16 @@ of obtaining analytic solution whenever possible}
 
 \item{show_figures}{which figures should be returned in case of
 multiple plots are generated. Useful when priors for the omega
-parameter are plotted and \code{individual = TRUE}.}
+parameter are plotted and \code{individual = TRUE}. For weight functions
+plotted individually by \code{plot.prior()} and \code{plot_posterior()},
+figure \code{k} shows the publication weight omega of the \code{k}-th
+p-value interval in ascending order, the order in which summary tables
+(including RoBMA's) print the omegas; figure 1 is the reference weight of
+the most significant interval. In \code{plot.prior()}, a negative \code{k}
+omits figure \code{-k} (the default \code{-1} omits the reference weight
+fixed at 1). For a two-sided weight function prior, the intervals are its
+two-sided p-value bins; tables on the one-sided p-value scale print these
+weights first and then repeat them for the mirrored intervals.}
 
 \item{transformation}{transformation to be applied
 to the prior distribution. Either a character

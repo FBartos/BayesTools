@@ -307,6 +307,131 @@ test_that("individual weightfunction and PET overlays use the selected component
   expect_equal(pet_layer$y, pet_data$y, tolerance = 1e-12)
 })
 
+test_that("individual weight-function index k is the k-th omega of the summary tables", {
+
+  # Cumulative weights: omega_k = sum_{j >= k} theta_j with theta ~
+  # Dirichlet(alpha), so by Dirichlet aggregation omega_1 = 1 and
+  # omega_k ~ Beta(sum(alpha[k:J]), sum(alpha[1:(k - 1)])) for k >= 2.
+  cases <- list(
+    list(prior = prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 2, 3))),
+         alpha = c(1, 2, 3)),
+    list(prior = prior_weightfunction("two-sided", c(.05, .10), wf_cumulative(c(2, 1, 4))),
+         alpha = c(2, 1, 4))
+  )
+
+  drawn <- list()
+  record <- function(plot_data, ...){
+    drawn[[length(drawn) + 1L]] <<- plot_data
+    invisible(NULL)
+  }
+  testthat::local_mocked_bindings(
+    .plot.prior.simple  = function(x, plot_type, plot_data, ...) record(plot_data),
+    .plot.prior.point   = function(x, plot_type, plot_data, ...) record(plot_data),
+    .lines.prior.simple = function(plot_data, ...) record(plot_data),
+    .lines.prior.point  = function(plot_data, ...) record(plot_data),
+    .package = "BayesTools"
+  )
+  expect_omega <- function(x, y, k, alpha, info){
+    if(k == 1L){
+      expect_equal(unique(x), 1, info = info)
+      return(invisible())
+    }
+    inside <- x > 0 & x < 1
+    expect_gt(sum(inside), 10)
+    expect_equal(
+      y[inside],
+      stats::dbeta(x[inside], sum(alpha[k:length(alpha)]), sum(alpha[seq_len(k - 1L)])),
+      tolerance = 1e-10,
+      info = info
+    )
+  }
+
+  for(case in cases){
+    p <- case$prior
+    J <- nrow(p$bins)
+    # The k-th omega printed by the summary tables (one-sided p-value scale,
+    # as in RoBMA) maps to the prior's k-th weight, and its interval is the
+    # prior's k-th bin (two-sided bins are twice the one-sided p-values).
+    table_cuts <- weightfunctions_mapping(list(p), cuts_only = TRUE, one_sided = TRUE)
+    expect_equal(weightfunctions_mapping(list(p), one_sided = TRUE)[[1]][seq_len(J)], seq_len(J))
+
+    for(k in seq_len(J)){
+      info <- paste(p$side, "k =", k)
+      table_interval <- table_cuts[c(k, k + 1L)]
+      if(p$side == "two-sided"){
+        table_interval <- pmin(2 * table_interval, 1)
+      }
+      expect_equal(c(p$bins$lower[k], p$bins$upper[k]), table_interval, info = info)
+
+      drawn <- list()
+      plot(p, individual = TRUE, show_figures = k)
+      lines(p, individual = TRUE, show_parameter = k)
+      expect_length(drawn, 2L)
+      for(plot_data in drawn){
+        expect_equal(attr(plot_data, "steps"), table_interval, info = info)
+        expect_omega(plot_data$x, plot_data$y, k, case$alpha, info)
+      }
+
+      layer <- ggplot2::ggplot_build(
+        ggplot2::ggplot() + geom_prior(p, individual = TRUE, show_parameter = k)
+      )$data[[1]]
+      expect_omega(layer$x, layer$y, k, case$alpha, info)
+    }
+
+    # The default omits the reference weight fixed at 1.
+    drawn <- list()
+    plot(p, individual = TRUE)
+    expect_equal(
+      lapply(drawn, attr, "steps"),
+      lapply(2:J, function(k) c(p$bins$lower[k], p$bins$upper[k]))
+    )
+
+    expect_error(
+      plot(p, individual = TRUE, show_figures = J + 1L),
+      paste0("'show_figures' must be between -", J, " and ", J,
+             ", excluding 0, for a weight function with ", J, " publication weights."),
+      fixed = TRUE
+    )
+    expect_error(
+      lines(p, individual = TRUE, show_parameter = J + 1L),
+      paste0("'show_parameter' must be between 1 and ", J,
+             " for a weight function with ", J, " publication weights."),
+      fixed = TRUE
+    )
+  }
+})
+
+test_that("individual posterior omega figures follow the summary-table columns", {
+
+  priors <- list(
+    prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1))),
+    .set_prior_model_weight(prior_weightfunction("one-sided", c(.01), wf_cumulative(c(1, 1))), 0),
+    prior_none()
+  )
+  omega_cuts <- weightfunctions_mapping(priors, cuts_only = TRUE)
+  models_ind <- rep(c(1, 3), c(60, 40))
+  omega <- matrix(1, nrow = length(models_ind), ncol = 4)
+  omega[models_ind == 1, 3] <- seq(.2, .9, length.out = 60)
+  colnames(omega) <- .weightfunction_omega_names(omega_cuts)
+  attr(omega, "models_ind") <- models_ind
+  attr(omega, "prior_list") <- priors
+  attr(omega, "posterior_atoms") <- .posterior_atoms_from_priors(
+    priors,
+    c(.6, 0, .4),
+    n_columns = ncol(omega),
+    column_names = colnames(omega),
+    null_location = 1
+  )
+  class(omega) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
+  samples <- list(omega = omega)
+  class(samples) <- c("mixed_posteriors", "list")
+
+  for(k in seq_len(ncol(omega))){
+    figure <- plot_posterior(samples, "omega", plot_type = "ggplot", individual = TRUE, show_figures = k)
+    expect_identical(names(figure), colnames(omega)[k])
+  }
+})
+
 test_that("plot_prior_list individual PET-PEESE uses the parameter density", {
 
   pet <- prior_PET("normal", list(0, 1))
