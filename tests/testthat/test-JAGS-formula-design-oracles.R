@@ -9917,6 +9917,116 @@ test_that("backtransformed random-effect correlations use the transformed LKJ pr
   )
 })
 
+test_that("backtransformed LKJ coordinates are consistent and missing for undefined correlations", {
+
+  testthat::skip_if_not_installed("runjags")
+
+  # Monitored canonical partial correlations (cpc = 2u - 1) follow the
+  # rewritten primitives. A zero slope SD (e.g., an excluded spike-and-slab
+  # SD) leaves the original-scale correlation undefined: that draw is missing
+  # instead of failing every correlation summary.
+  df <- data.frame(
+    x = c(4, 5, 6, 8),
+    id = factor(c("a", "a", "b", "b"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + x + random(1 + x | id, name = "id", covariance = "us"),
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("normal", list(0, 1), truncation = list(0, Inf)),
+        cor = prior_lkj(eta = 1, include_primitives = TRUE),
+        monitor = random_monitor(
+          latent = FALSE,
+          coefficients = FALSE,
+          correlation = TRUE
+        )
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1]]
+  sd_names <- random_term$sd_parameter_names
+  R_names <- as.vector(outer(
+    seq_len(2),
+    seq_len(2),
+    Vectorize(function(row, column) {
+      paste0(random_term$parameter_stem, "_xRE_CORx_R[", row, ",", column, "]")
+    })
+  ))
+  L_names <- as.vector(BayesTools:::.bt_random_effect_cholesky_names(random_term, 2L))
+  u_names <- random_term$correlation$primitive_names
+  cpc_names <- random_term$correlation$cpc_names
+  expect_identical(cpc_names, "mu__xREx__id_xRE_CORx_lkj_cpc[1]")
+
+  source_sd <- rbind(c(1, 2), c(0.5, 1.5), c(0.7, 0))
+  source_rho <- c(0.8, -0.3, 0.4)
+  rows <- lapply(seq_len(3), function(draw) {
+    source_cor <- matrix(c(1, source_rho[draw], source_rho[draw], 1), 2, 2)
+    c(0, 0, source_sd[draw, ], as.vector(source_cor),
+      as.vector(t(chol(source_cor))), (source_rho[draw] + 1) / 2,
+      source_rho[draw])
+  })
+  posterior <- do.call(rbind, rows)
+  colnames(posterior) <- c(
+    "mu_intercept", "mu_x", sd_names, R_names, L_names, u_names, cpc_names
+  )
+  fit <- list(
+    mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+    summary.pars = list(mutate = NULL),
+    monitor = colnames(posterior),
+    sample = nrow(posterior)
+  )
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+
+  scale_info <- formula_result$formula_scale$mu_x
+  M <- matrix(
+    c(1, -scale_info$mean / scale_info$sd, 0, 1 / scale_info$sd),
+    nrow = 2,
+    byrow = TRUE
+  )
+  expected_cor <- vapply(seq_len(2), function(draw) {
+    source_cor <- matrix(c(1, source_rho[draw], source_rho[draw], 1), 2, 2)
+    source_cov <- diag(source_sd[draw, ]) %*% source_cor %*% diag(source_sd[draw, ])
+    expected_cov <- M %*% source_cov %*% t(M)
+    expected_cov[1, 2] / sqrt(prod(diag(expected_cov)))
+  }, numeric(1))
+  expected_cor <- c(expected_cor, NA_real_)
+
+  transformed <- transform_scale_samples(fit)
+  expect_equal(unname(transformed[, L_names[2]]), expected_cor, tolerance = 1e-12)
+  expect_equal(unname(transformed[, u_names]), (expected_cor + 1) / 2,
+               tolerance = 1e-12)
+  expect_equal(unname(transformed[, cpc_names]), expected_cor, tolerance = 1e-12)
+
+  original_samples <- JAGS_estimates_table(
+    fit,
+    transform_scaled = TRUE,
+    random_effects_summary = "standard",
+    remove_diagnostics = TRUE,
+    return_samples = TRUE
+  )
+  expect_equal(
+    unname(original_samples[, "(mu) cor(intercept,x)"]),
+    expected_cor,
+    tolerance = 1e-12
+  )
+  draws <- parameter_draws(
+    fit,
+    parameter_catalog_resolve(parameter_catalog(fit), "(mu) cor(intercept,x)")
+  )
+  expect_equal(as.numeric(as.matrix(draws[[1]])), expected_cor, tolerance = 1e-12)
+})
+
 test_that("transform_prior_samples unscales correlated random slopes from LKJ primitives", {
 
   testthat::skip_if_not_installed("runjags")

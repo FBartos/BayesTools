@@ -290,13 +290,16 @@
     group_key = group_key,
     n_terms = n_terms
   )
+  cpc_names <- sub("_lkj_u[", "_lkj_cpc[", u_names, fixed = TRUE)
 
   has_R <- all(as.vector(R_names) %in% colnames(posterior))
   has_L <- all(as.vector(L_names) %in% colnames(posterior))
   # Monitored LKJ primitives define the Cholesky factor preferred by the
-  # reconstruction evaluators; they are rewritten from the transformed factor.
+  # reconstruction evaluators; they (and their monitored canonical partial
+  # correlations, cpc = 2u - 1) are rewritten from the transformed factor.
   has_u <- length(u_names) > 0L && all(u_names %in% colnames(posterior))
-  if(!has_R && !has_L && !has_u){
+  has_cpc <- length(cpc_names) > 0L && all(cpc_names %in% colnames(posterior))
+  if(!has_R && !has_L && !has_u && !has_cpc){
     return(posterior)
   }
 
@@ -309,12 +312,15 @@
   if(has_u){
     posterior[, u_names] <- NA_real_
   }
+  if(has_cpc){
+    posterior[, cpc_names] <- NA_real_
+  }
   if(!any(valid_draw)){
     return(posterior)
   }
 
   L <- NULL
-  if(has_L || has_u){
+  if(has_L || has_u || has_cpc){
     L <- array(NA_real_, dim = dim(correlation))
     for(draw_i in which(valid_draw)){
       this_L <- try(t(chol(correlation[draw_i, , ])), silent = TRUE)
@@ -345,12 +351,17 @@
       }
     }
   }
-  if(has_u){
+  if(has_u || has_cpc){
     u <- .bt_lkj_cholesky_L_to_cpc_u(
       L[valid_draw, , , drop = FALSE],
       K = n_terms
     )
-    posterior[valid_draw, u_names] <- u
+    if(has_u){
+      posterior[valid_draw, u_names] <- u
+    }
+    if(has_cpc){
+      posterior[valid_draw, cpc_names] <- 2 * u - 1
+    }
   }
 
   posterior

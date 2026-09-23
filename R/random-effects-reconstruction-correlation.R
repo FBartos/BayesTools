@@ -72,10 +72,23 @@
         }
       }
       if(length(primitive_names) > 0L && !anyNA(primitive_indices)){
-        return(.bt_lkj_cholesky_cpc_u_to_L(
-          posterior[, primitive_indices, drop = FALSE],
-          K = n_columns
-        ))
+        primitives <- posterior[, primitive_indices, drop = FALSE]
+        # Original-scale unscaling clears the primitives of draws whose
+        # transformed correlation is undefined (e.g., a zero random-effect
+        # SD); those draws have no Cholesky factor. Partially missing or
+        # out-of-support primitives still fail below.
+        cleared <- rowSums(!is.na(primitives)) == 0L
+        if(!any(cleared)){
+          return(.bt_lkj_cholesky_cpc_u_to_L(primitives, K = n_columns))
+        }
+        out <- array(NA_real_, dim = c(nrow(posterior), n_columns, n_columns))
+        if(!all(cleared)){
+          out[!cleared, , ] <- .bt_lkj_cholesky_cpc_u_to_L(
+            primitives[!cleared, , drop = FALSE],
+            K = n_columns
+          )
+        }
+        return(out)
       }
       if(length(cholesky_names) > 0L && !anyNA(cholesky_indices)){
         values <- posterior[, cholesky_indices, drop = FALSE]
