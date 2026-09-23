@@ -150,7 +150,9 @@ hypothesis_normalize_level_references <- function(text){
     return(empty)
   }
 
-  ref <- regexec("^([^\\[]+)\\[([^\\]]+)\\]$", symbol, perl = TRUE)
+  # The level extends from the first `[` to the final `]`, so backticked
+  # level names may themselves contain brackets (e.g. cut() levels "(0,1]").
+  ref <- regexec("^([^\\[]+)\\[(.+)\\]$", symbol, perl = TRUE)
   match <- regmatches(symbol, ref)[[1L]]
   if(length(match) != 3L){
     return(empty)

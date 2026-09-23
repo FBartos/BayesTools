@@ -72,15 +72,12 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
     nchar(expected_prefix) + 1L,
     nchar(names(coefficients)) - 1L
   )
+  levels <- .hypothesis_match_level_names(
+    levels    = levels,
+    available = names(posterior),
+    parameter = parameter
+  )
   names(coefficients) <- levels
-  missing <- setdiff(levels, names(posterior))
-  if(length(missing) > 0L){
-    stop(
-      "Hypothesis references unknown level '", paste(missing, collapse = "', '"),
-      "' for parameter '", parameter, "'.",
-      call. = FALSE
-    )
-  }
 
   .hypothesis_validate_level_conditionals(posterior, parameter, levels)
   level_draws <- lapply(levels, function(level){

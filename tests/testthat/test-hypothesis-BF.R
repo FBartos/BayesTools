@@ -1160,6 +1160,82 @@ test_that("hypothesis_BF evaluates explicit marginal posterior level comparisons
 })
 
 
+test_that("hypothesis_BF references level names that contain brackets", {
+
+  context <- BayesTools:::.prior_density_context(
+    prior_list   = list(
+      a = prior("normal", list(mean = 0, sd = 1)),
+      b = prior("normal", list(mean = 0, sd = 1))
+    ),
+    column_names = c("a", "b"),
+    n_grid       = 128
+  )
+  make_posterior <- function(level_names){
+    set.seed(2)
+    posterior <- list(
+      structure(
+        stats::rnorm(4000, 0.5, 0.2),
+        class           = c("marginal_posterior.simple", "numeric"),
+        linear_weights  = c(a = 1, b = 0),
+        posterior_atoms = posterior_atom_attribute()
+      ),
+      structure(
+        stats::rnorm(4000, 0, 0.2),
+        class           = c("marginal_posterior.simple", "numeric"),
+        linear_weights  = c(a = 0, b = 1),
+        posterior_atoms = posterior_atom_attribute()
+      )
+    )
+    names(posterior) <- level_names
+    class(posterior) <- c("list", "marginal_posterior.factor",
+                          "marginal_posterior")
+    attr(posterior, "parameter")             <- "mu"
+    attr(posterior, "prior_density_context") <- context
+    posterior
+  }
+
+  reference <- hypothesis_BF(
+    make_posterior(c("A", "B")),
+    hypothesis = "mu[A] > mu[B]",
+    seed       = 1,
+    columns    = "all"
+  )
+  # cut() levels; backticks or the parameter catalog's escaped component
+  # form ("(0,1%5D", optionally quoted) reference them.
+  posterior <- make_posterior(c("(0,1]", "(1,2]"))
+  for(hypothesis in c(
+    "`mu[(0,1]]` > `mu[(1,2]]`",
+    "mu[\"(0,1%5D\"] > mu[\"(1,2%5D\"]",
+    "mu[(0,1%5D] > `mu[(1,2]]`"
+  )){
+    out <- hypothesis_BF(posterior, hypothesis = hypothesis, seed = 1,
+                         columns = "all")
+    expect_equal(attr(out, "raw_BF"), attr(reference, "raw_BF"),
+                 tolerance = 1e-12, info = hypothesis)
+    expect_equal(out[["method"]], "prior-posterior odds", info = hypothesis)
+  }
+  expect_identical(
+    hypothesis_parse_level_reference("`mu[(0,1]]`")[c("parameter", "level")],
+    data.frame(parameter = "mu", level = "(0,1]", stringsAsFactors = FALSE)
+  )
+  expect_error(
+    hypothesis_BF(posterior, hypothesis = "`mu[(0,2]]` > `mu[(1,2]]`"),
+    "unknown level '(0,2]'",
+    fixed = TRUE
+  )
+
+  contrast <- hypothesis_level_contrast(
+    posterior, "`mu[(0,1]]` - `mu[(1,2]]` = 0.1", "mu"
+  )
+  reference_contrast <- hypothesis_level_contrast(
+    make_posterior(c("A", "B")), "mu[A] - mu[B] = 0.1", "mu"
+  )
+  expect_identical(contrast$weights, reference_contrast$weights)
+  expect_equal(as.numeric(contrast$posterior),
+               as.numeric(reference_contrast$posterior))
+})
+
+
 test_that("hypothesis_BF rejects conditional level comparisons with different conditionals", {
 
   context <- BayesTools:::.prior_density_context(

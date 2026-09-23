@@ -368,23 +368,24 @@
                                                                 statements) {
 
   levels <- unique(level_refs[["level"]])
-  available <- names(posterior)
-  missing <- setdiff(levels, available)
-  if(length(missing) > 0L){
-    stop("Hypothesis references unknown level '",
-         paste(missing, collapse = "', '"), "' for parameter '", parameter, "'.",
-         call. = FALSE)
-  }
+  level_names <- .hypothesis_match_level_names(
+    levels    = levels,
+    available = names(posterior),
+    parameter = parameter
+  )
 
-  posterior_draws <- lapply(levels, function(level) as.numeric(posterior[[level]]))
+  posterior_draws <- lapply(level_names, function(level) {
+    as.numeric(posterior[[level]])
+  })
   n_draws <- vapply(posterior_draws, length, integer(1))
   if(length(unique(n_draws)) != 1L){
     stop("Level comparisons require equal-length posterior draws.",
          call. = FALSE)
   }
 
-  .hypothesis_validate_level_conditionals(posterior, parameter, levels)
+  .hypothesis_validate_level_conditionals(posterior, parameter, level_names)
 
+  # Columns keep the level spelling used in the hypothesis symbols.
   posterior_df <- as.data.frame(posterior_draws, check.names = FALSE)
   names(posterior_df) <- paste0(parameter, "[", levels, "]")
 
@@ -393,18 +394,19 @@
     prior_df <- .hypothesis_prior_draws_from_marginal_levels(
       posterior = posterior,
       parameter = parameter,
-      levels    = levels,
-      n         = max(nrow(posterior_df), 10000L)
+      levels    = level_names,
+      n         = max(nrow(posterior_df), 10000L),
+      columns   = names(posterior_df)
     )
   }
 
-  posterior_marginals <- lapply(levels, function(level) {
+  posterior_marginals <- lapply(level_names, function(level) {
     .hypothesis_marginal_child(posterior[[level]])
   })
   names(posterior_marginals) <- names(posterior_df)
-  posterior_marginal_indices <- match(levels, names(posterior))
+  posterior_marginal_indices <- match(level_names, names(posterior))
   names(posterior_marginal_indices) <- names(posterior_df)
-  prior_densities <- lapply(levels, function(level) {
+  prior_densities <- lapply(level_names, function(level) {
     attr(posterior[[level]], "prior_density", exact = TRUE)
   })
   names(prior_densities) <- names(posterior_df)
@@ -426,6 +428,73 @@
   class(out) <- "BayesTools_hypothesis_quantity"
 
   return(out)
+}
+
+
+.hypothesis_match_level_names <- function(levels, available, parameter) {
+
+  # Level references match posterior level names exactly. A reference
+  # written in the parameter catalog's escaped component form (for example
+  # "(0,1%5D" or "\"(0,1%5D\"" for the cut() level "(0,1]") is decoded
+  # before matching.
+  matched <- levels
+  unmatched <- which(!levels %in% available)
+  for(i in unmatched){
+    decoded <- .hypothesis_decode_catalog_level(levels[[i]])
+    if(decoded %in% available){
+      matched[[i]] <- decoded
+    }
+  }
+
+  missing <- levels[!matched %in% available]
+  if(length(missing) > 0L){
+    stop("Hypothesis references unknown level '",
+         paste(missing, collapse = "', '"), "' for parameter '", parameter, "'.",
+         call. = FALSE)
+  }
+
+  matched
+}
+
+
+.hypothesis_decode_catalog_level <- function(level) {
+
+  # Inverse of the parameter catalog's factor-component token: optional
+  # double quotes (added for tokens with ',' '=' or edge whitespace) around
+  # a percent-escaped level name.
+  if(nchar(level) >= 2L && startsWith(level, "\"") && endsWith(level, "\"")){
+    parsed <- tryCatch(
+      parse(text = level, keep.source = FALSE),
+      error = function(e) NULL
+    )
+    if(length(parsed) == 1L && is.character(parsed[[1L]]) &&
+       length(parsed[[1L]]) == 1L){
+      level <- parsed[[1L]]
+    }
+  }
+
+  escapes <- c(
+    "%25" = "%",
+    "%5B" = "[",
+    "%5D" = "]",
+    "%60" = "`",
+    "%5C" = "\\",
+    "%22" = "\"",
+    "%0D" = "\r",
+    "%0A" = "\n",
+    "%09" = "\t",
+    "%0C" = "\f",
+    "%08" = "\b",
+    "%07" = "\a",
+    "%0B" = "\v"
+  )
+  tokens <- gregexpr(paste(names(escapes), collapse = "|"), level)
+  regmatches(level, tokens) <- lapply(
+    regmatches(level, tokens),
+    function(token) unname(escapes[token])
+  )
+
+  level
 }
 
 
@@ -578,10 +647,10 @@
 }
 
 
-.hypothesis_prior_draws_from_marginal_levels <- function(posterior, parameter,
-                                                         levels, n) {
+.hypothesis_prior_draws_from_marginal_levels <- function(
+    posterior, parameter, levels, n,
+    columns = paste0(parameter, "[", levels, "]")) {
 
-  columns <- paste0(parameter, "[", levels, "]")
   context <- .hypothesis_child_prior_context(posterior, levels)
   if(is.null(context)){
     context <- attr(posterior, "prior_density_context", exact = TRUE)
