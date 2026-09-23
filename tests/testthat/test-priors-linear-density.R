@@ -498,16 +498,40 @@ test_that("heavy-tailed combinations resolve their narrowest source and mixtures
   expect_lte(diff(heavy$density$x[1:2]), .2 / 64)
   expect_equal(.prior_linear_density_grid_height(heavy, 0), reference, tolerance = 1e-3)
 
-  # t3 + N(0, .1): the adaptive height converges (reference by quadrature).
+  # Refinement halves the source spacing and omits 1000 times less tail
+  # probability. Polynomial tails then widen the range faster than the grid
+  # limit allows, so t3 + N(0, .1) and Cauchy combinations stop loudly
+  # instead of reporting a height biased by their omitted tail mass.
   student <- .prior_linear_combination_density(
     list(a = prior("t", list(0, 1, 3)), b = prior("normal", list(0, .1))), c(a = 1, b = 1)
   )
-  expect_equal(
-    as.numeric(.prior_linear_density_height(student, 0)),
-    stats::integrate(function(t) stats::dt(t, 3) * stats::dnorm(-t, 0, .1),
-                     -Inf, Inf, rel.tol = 1e-12)$value,
-    tolerance = 1e-4
+  expect_error(
+    .prior_linear_density_height(student, 0),
+    "Adaptive prior-density evaluation did not converge within the documented grid-refinement error criterion.",
+    fixed = TRUE
   )
+  expect_error(.prior_linear_density_height(heavy, 0), "did not converge", fixed = TRUE)
+
+  # Density jumps (half-normal, truncated normal and uniform components)
+  # converge once the spacing strictly halves; references by quadrature.
+  half_normal <- prior("normal", list(0, 1), truncation = list(0, Inf))
+  jumps <- list(
+    list(priors = list(a = half_normal, b = half_normal), value = .5,
+         reference = stats::integrate(function(t) 2 * stats::dnorm(t) * 2 * stats::dnorm(.5 - t),
+                                      0, .5, rel.tol = 1e-12)$value),
+    list(priors = list(a = half_normal, b = prior("normal", list(0, 1))), value = -1,
+         reference = stats::integrate(function(t) 2 * stats::dnorm(t) * stats::dnorm(-1 - t),
+                                      0, Inf, rel.tol = 1e-12)$value),
+    list(priors = list(a = prior("uniform", list(0, 1)), b = prior("normal", list(0, .3))), value = -.2,
+         reference = stats::integrate(function(t) stats::dnorm(-.2 - t, 0, .3),
+                                      0, 1, rel.tol = 1e-12)$value)
+  )
+  for(jump in jumps){
+    density <- .prior_linear_combination_density(jump$priors, c(a = 1, b = 1))
+    height  <- .prior_linear_density_height(density, jump$value)
+    expect_true(isTRUE(attr(height, "adaptive_evaluation")$converged))
+    expect_equal(as.numeric(height), jump$reference, tolerance = 1e-4)
+  }
 
   # Mixing a narrow and a Cauchy model needs about 5e7 knots at the finest
   # spacing (previously 2.4 GB); it now stops before allocating.
@@ -532,16 +556,30 @@ test_that("linear group ranges accept omitted source transformations", {
   )
 })
 
-test_that("adaptive ordinates cannot converge by repeating the capped grid", {
+test_that("adaptive ordinates stop when a halved grid spacing exceeds the grid limit", {
 
   density <- structure(
     list(density = list(x = c(-1, 1), y = c(1, 1), mass = 1), points = NULL),
     class = "prior_linear_density"
   )
   attr(density, "adaptive_evaluation") <- list(
-    kind = "linear_combination", arguments = list(n_grid = 32768, tail_prob = 1e-12)
+    kind = "linear_combination",
+    arguments = list(prior_list = list(a = prior("normal", list(0, 1)),
+                                       b = prior("uniform", list(0, 1))),
+                     weights = c(a = 1, b = 1), n_grid = 4096, tail_prob = 1e-4)
+  )
+  attr(density, "grid_resolution") <- c(spacing = 1e-6, n_grid = 2097152)
+  requested <- NULL
+  testthat::local_mocked_bindings(
+    .prior_linear_combination_density = function(prior_list, weights, n_grid, tail_prob,
+                                                 grid_spacing, .record_evaluation){
+      requested <<- c(tail_prob = tail_prob, grid_spacing = grid_spacing)
+      stop(BayesTools:::.prior_linear_density_grid_limit_error(2, grid_spacing))
+    },
+    .package = "BayesTools"
   )
   expect_null(BayesTools:::.prior_linear_density_refinement(density))
+  expect_equal(requested, c(tail_prob = 1e-7, grid_spacing = 5e-7))
   expect_error(
     BayesTools:::.prior_linear_density_height(density, 0),
     "Adaptive prior-density evaluation did not converge within the documented grid-refinement error criterion.",
@@ -552,26 +590,6 @@ test_that("adaptive ordinates cannot converge by repeating the capped grid", {
     BayesTools:::.hypothesis_prior_density_prob(density, side, "theta"),
     "Adaptive prior-probability evaluation did not converge within the documented grid-refinement error criterion.",
     fixed = TRUE
-  )
-
-  attr(density, "adaptive_evaluation")$arguments$n_grid <- 16384L
-  # The refined grid must describe a different distribution: region
-  # probabilities are ratios of grid integrals, so a pure rescaling of the
-  # ordinates would legitimately converge.
-  testthat::local_mocked_bindings(
-    .prior_linear_combination_density = function(n_grid, tail_prob, .record_evaluation){
-      density$density$y <- c(1, 3)
-      density
-    },
-    .package = "BayesTools"
-  )
-  expect_error(
-    BayesTools:::.prior_linear_density_height(density, 0),
-    "did not converge", fixed = TRUE
-  )
-  expect_error(
-    BayesTools:::.hypothesis_prior_density_prob(density, side, "theta"),
-    "did not converge", fixed = TRUE
   )
 })
 
@@ -684,9 +702,11 @@ test_that("linear prior ordinates adapt across center and omitted tails", {
   # reference is the convolution integral.
   center <- BayesTools:::.prior_linear_density_height(skewed, 0)
   expect_identical(refinement_calls, 2L)
+  # Each refinement halves the source spacing (1024 knots over [-3.09, 8.69]
+  # initially) and omits 1000 times less tail probability.
   expect_equal(
     attr(center, "adaptive_evaluation")[c("n_grid", "tail_prob", "refinements")],
-    list(n_grid = 8192L, tail_prob = 1e-9, refinements = 2L)
+    list(n_grid = 16384L, tail_prob = 1e-9, refinements = 2L)
   )
   refinement_calls <- 0L
   tail <- BayesTools:::.prior_linear_density_height(skewed, 9)

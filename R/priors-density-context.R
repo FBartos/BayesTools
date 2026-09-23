@@ -111,7 +111,8 @@
     tail_prob                        = context$tail_prob,
     source_transforms                = source_transforms,
     output_transformation            = output_transformation,
-    output_transformation_arguments  = output_transformation_arguments
+    output_transformation_arguments  = output_transformation_arguments,
+    grid_spacing                     = context$grid_spacing
   )
 }
 
@@ -300,7 +301,8 @@
       weights    = weights,
       n_grid     = context$n_grid,
       tail_prob  = context$tail_prob,
-      source_transforms = source_transforms
+      source_transforms = source_transforms,
+      grid_spacing      = context$grid_spacing
     )
   }
 
@@ -320,6 +322,7 @@
     dx      = dx,
     n_grid  = context$n_grid
   )
+  attr(dist, "grid_resolution") <- .prior_linear_density_mixture_resolution(dist, dx)
 
   .prior_linear_density_transform(dist, output_transformation,
                                   output_transformation_arguments,
@@ -348,6 +351,7 @@
         n_grid        = context$n_grid,
         tail_prob     = context$tail_prob
       )
+      component_context$grid_spacing <- context$grid_spacing
       return(.prior_density_context_density(
         context           = component_context,
         weights           = weights,
@@ -360,7 +364,8 @@
       weights           = weights,
       n_grid            = context$n_grid,
       tail_prob         = context$tail_prob,
-      source_transforms = source_transforms
+      source_transforms = source_transforms,
+      grid_spacing      = context$grid_spacing
     )
   })
 
@@ -380,6 +385,7 @@
     dx      = dx,
     n_grid  = context$n_grid
   )
+  attr(dist, "grid_resolution") <- .prior_linear_density_mixture_resolution(dist, dx)
 
   .prior_linear_density_transform(dist, output_transformation,
                                   output_transformation_arguments,
@@ -555,6 +561,7 @@
     dx      = dx,
     n_grid  = if(!is.null(context$n_grid)) context$n_grid else NULL
   )
+  attr(out, "grid_resolution") <- .prior_linear_density_mixture_resolution(out, dx)
   out <- .prior_linear_density_transform(
     out,
     output_transformation,
@@ -596,4 +603,14 @@
     weights[[parameter]] <- 1
   }
   weights
+}
+
+.prior_linear_density_mixture_resolution <- function(dist, dx){
+
+  # Spacing and knot count of a mixture evaluated on its finest component
+  # spacing; refinement halves this spacing.
+  if(is.null(dist$density) || !is.finite(dx) || dx <= 0){
+    return(NULL)
+  }
+  c(spacing = dx, n_grid = length(dist$density$x))
 }

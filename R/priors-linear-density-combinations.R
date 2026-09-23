@@ -737,11 +737,13 @@
   }
 
   if(length(densities) == 0){
-    return(.prior_linear_density_coalesce(
+    out <- .prior_linear_density_coalesce(
       points = points,
       dx     = NA_real_,
       n_grid = if(is.null(n_grid)) dist$n_grid else n_grid
-    ))
+    )
+    attr(out, "grid_resolution") <- attr(dist, "grid_resolution", exact = TRUE)
+    return(out)
   }
 
   out <- list(
@@ -750,6 +752,9 @@
     n_grid  = if(is.null(n_grid)) dist$n_grid else n_grid
   )
   class(out) <- c("prior_linear_density", "prior_density")
+  # Adaptive refinement halves the spacing of the source (linear-predictor)
+  # grid, which the transformed knots no longer show.
+  attr(out, "grid_resolution") <- attr(dist, "grid_resolution", exact = TRUE)
   .prior_linear_density_normalize(out, warn = TRUE)
 }
 
@@ -872,7 +877,8 @@
 .prior_linear_additive_combination_density <- function(prior_list, weights,
                                                        n_grid = .prior_linear_density_default_grid(),
                                                        tail_prob = .prior_linear_density_tail_prob(),
-                                                       source_transforms = NULL){
+                                                       source_transforms = NULL,
+                                                       grid_spacing = NULL){
 
   weights <- weights[is.finite(weights)]
   weights <- weights[weights != 0]
@@ -899,12 +905,18 @@
                                         source_transforms = source_transforms))
   target_range <- c(sum(group_ranges[, 1]), sum(group_ranges[, 2]))
   target_width <- diff(target_range)
-  # A heavy-tailed source sets the range; resolve the narrowest continuous
-  # source on it.
+  # Resolve the narrowest continuous source even when a heavy-tailed source
+  # sets the range.
   robust_scale <- min(c(Inf, vapply(groups, .prior_linear_group_robust_scale,
                                     numeric(1), source_transforms = source_transforms)))
-  n_grid <- .prior_linear_density_resolution(target_width, n_grid, robust_scale)
-  dx <- target_width / max(1, n_grid - 1)
+  resolution <- .prior_linear_density_resolution(
+    width        = target_width,
+    n_grid       = n_grid,
+    scale        = robust_scale,
+    grid_spacing = grid_spacing
+  )
+  n_grid <- resolution$n_grid
+  dx <- resolution$dx
   if(!is.finite(dx) || dx <= 0){
     dx <- 1
   }
@@ -926,6 +938,7 @@
   }
 
   attr(dist, "weights") <- weights
+  attr(dist, "grid_resolution") <- c(spacing = dx, n_grid = n_grid)
   return(dist)
 }
 
@@ -948,6 +961,7 @@
                                               source_transforms = NULL,
                                               output_transformation = NULL,
                                               output_transformation_arguments = NULL,
+                                              grid_spacing = NULL,
                                               .record_evaluation = TRUE){
 
   check_list(prior_list, "prior_list")
@@ -961,6 +975,7 @@
   }
   check_int(n_grid, "n_grid", lower = 16)
   check_real(tail_prob, "tail_prob", lower = 0, upper = 0.5, allow_bound = FALSE)
+  check_real(grid_spacing, "grid_spacing", lower = 0, allow_bound = FALSE, allow_NULL = TRUE)
 
   weights <- weights[weights != 0]
 
@@ -984,7 +999,8 @@
       weights            = split$additive_weights,
       n_grid             = n_grid,
       tail_prob          = tail_prob,
-      source_transforms  = source_transforms
+      source_transforms  = source_transforms,
+      grid_spacing       = grid_spacing
     )
   )
   singular_density_points <- numeric()
@@ -1023,7 +1039,8 @@
         weights            = product_group$weights,
         n_grid             = n_grid,
         tail_prob          = tail_prob,
-        source_transforms  = source_transforms
+        source_transforms  = source_transforms,
+        grid_spacing       = grid_spacing
       )
 
       multiplier_weights <- 1
@@ -1033,7 +1050,8 @@
         weights            = multiplier_weights,
         n_grid             = n_grid,
         tail_prob          = tail_prob,
-        source_transforms  = source_transforms
+        source_transforms  = source_transforms,
+        grid_spacing       = grid_spacing
       )
       if(.prior_linear_density_grid_height(linear_dist, 0) > 0 &&
          .prior_linear_density_grid_height(multiplier_dist, 0) > 0){
@@ -1048,7 +1066,13 @@
     }
   }
 
-  dist <- .prior_linear_density_sum_independent(components, n_grid = n_grid)
+  dist <- .prior_linear_density_sum_independent(
+    components,
+    n_grid       = max(c(n_grid, vapply(components, function(component){
+      as.integer(component$n_grid)
+    }, integer(1)))),
+    grid_spacing = grid_spacing
+  )
   dist <- .prior_linear_density_transform(dist, output_transformation,
                                           output_transformation_arguments, n_grid)
   attr(dist, "weights") <- weights
@@ -1066,11 +1090,13 @@
         tail_prob = tail_prob,
         source_transforms = source_transforms,
         output_transformation = output_transformation,
-        output_transformation_arguments = output_transformation_arguments
+        output_transformation_arguments = output_transformation_arguments,
+        grid_spacing = grid_spacing
       )
     )
     attr(dist, "numerical_diagnostics") <- list(
       n_grid = n_grid,
+      grid_resolution = attr(dist, "grid_resolution", exact = TRUE),
       tail_probability_per_source = tail_prob,
       intended_captured_probability_per_continuous_source =
         max(0, 1 - 2 * tail_prob),
@@ -1332,43 +1358,44 @@
     return(NULL)
   }
 
+  # Each refinement omits a thousand times less tail probability and strictly
+  # halves the spacing of the source grid. When the halved spacing needs more
+  # knots than the grid limit (polynomial tails widen the range quickly), no
+  # refinement is available and callers report non-convergence.
+  spacing <- attr(x, "grid_resolution", exact = TRUE)[["spacing"]]
+  if(is.null(spacing) || !is.finite(spacing) || spacing <= 0){
+    spacing <- .prior_linear_density_dx(x)
+  }
+  if(!is.finite(spacing) || spacing <= 0){
+    return(NULL)
+  }
   arguments <- context$arguments
   if(identical(context$kind, "linear_combination")){
-    arguments$n_grid <- min(
-      max(as.integer(arguments$n_grid) * 2L, 4096L),
-      32768L
-    )
-    arguments$tail_prob <- max(arguments$tail_prob / 1000, 1e-12)
+    arguments$tail_prob    <- max(arguments$tail_prob / 1000, 1e-12)
+    arguments$grid_spacing <- spacing / 2
   }else{
-    arguments$context$n_grid <- min(
-      max(as.integer(arguments$context$n_grid) * 2L, 4096L),
-      32768L
-    )
-    arguments$context$tail_prob <- max(
-      arguments$context$tail_prob / 1000,
-      1e-12
-    )
-  }
-  if(isTRUE(all.equal(arguments, context$arguments, tolerance = 0))){
-    return(NULL)
+    arguments$context$tail_prob    <- max(arguments$context$tail_prob / 1000, 1e-12)
+    arguments$context$grid_spacing <- spacing / 2
   }
   refined_arguments <- arguments
   refined_arguments$.record_evaluation <- FALSE
-  refined <- if(identical(context$kind, "linear_combination")){
-    do.call(.prior_linear_combination_density, refined_arguments)
-  }else if(identical(context$kind, "density_context_rows")){
-    do.call(.prior_density_from_context_rows, refined_arguments)
-  }else{
-    do.call(.prior_density_from_context, refined_arguments)
+  refined <- tryCatch(
+    if(identical(context$kind, "linear_combination")){
+      do.call(.prior_linear_combination_density, refined_arguments)
+    }else if(identical(context$kind, "density_context_rows")){
+      do.call(.prior_density_from_context_rows, refined_arguments)
+    }else{
+      do.call(.prior_density_from_context, refined_arguments)
+    },
+    BayesTools_prior_grid_limit = function(e) NULL
+  )
+  if(is.null(refined)){
+    return(NULL)
   }
   context$arguments <- arguments
   attr(refined, "adaptive_evaluation") <- context
   attr(refined, "refinement_settings") <- list(
-    n_grid = if(identical(context$kind, "linear_combination")){
-      arguments$n_grid
-    }else{
-      arguments$context$n_grid
-    },
+    n_grid = as.integer(attr(refined, "grid_resolution", exact = TRUE)[["n_grid"]]),
     tail_prob = if(identical(context$kind, "linear_combination")){
       arguments$tail_prob
     }else{

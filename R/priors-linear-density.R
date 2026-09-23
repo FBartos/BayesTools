@@ -18,16 +18,53 @@
   2097152L
 }
 
-.prior_linear_density_resolution <- function(width, n_grid, scale = Inf){
+.prior_linear_density_nextpow2 <- function(x){
 
-  # Knots across a combination range: at least 'n_grid' and at least 64 per
-  # robust scale of the narrowest continuous source, capped at the grid limit.
-  if(!is.finite(width) || width <= 0 || !is.finite(scale) || scale <= 0){
-    return(as.integer(n_grid))
-  }
-  required <- 2^ceiling(log2(width / (scale / 64) + 1))
-  as.integer(max(n_grid, min(required, .prior_linear_density_max_grid())))
+  2^ceiling(log2(max(1, x)))
 }
+
+.prior_linear_density_grid_limit_error <- function(width, spacing){
+
+  structure(
+    class = c("BayesTools_prior_grid_limit", "error", "condition"),
+    list(
+      message = paste0(
+        "Prior-density grid refinement is unavailable because a spacing of ",
+        format(spacing, digits = 4), " over a range of ", format(width, digits = 4),
+        " exceeds ", .prior_linear_density_max_grid(), " grid points."
+      ),
+      call = NULL
+    )
+  )
+}
+
+.prior_linear_density_resolution <- function(width, n_grid, scale = Inf, grid_spacing = NULL){
+
+  # Number of knots across a combination range: at least 'n_grid', at least 64
+  # per robust scale of the narrowest continuous source (capped at the grid
+  # limit), and fine enough for a spacing requested by adaptive refinement,
+  # which is unavailable beyond the limit.
+  if(!is.finite(width) || width <= 0){
+    return(list(n_grid = as.integer(n_grid), dx = NA_real_))
+  }
+
+  limit <- .prior_linear_density_max_grid()
+  size  <- n_grid
+  if(is.finite(scale) && scale > 0){
+    size <- max(size, min(.prior_linear_density_nextpow2(width / (scale / 64) + 1), limit))
+  }
+  if(!is.null(grid_spacing)){
+    required <- .prior_linear_density_nextpow2(width / grid_spacing + 1)
+    if(required > limit){
+      stop(.prior_linear_density_grid_limit_error(width, grid_spacing))
+    }
+    size <- max(size, required)
+  }
+
+  size <- as.integer(size)
+  list(n_grid = size, dx = width / (size - 1))
+}
+
 .prior_linear_source_transform <- function(source_transform){
 
   if(is.null(source_transform) || length(source_transform) == 0 || is.na(source_transform)){
@@ -389,7 +426,7 @@
   )
 }
 
-.prior_linear_density_sum_independent <- function(dists, n_grid = NULL){
+.prior_linear_density_sum_independent <- function(dists, n_grid = NULL, grid_spacing = NULL){
 
   dists <- dists[!vapply(dists, is.null, logical(1))]
   if(length(dists) == 0){
@@ -404,7 +441,9 @@
   if(is.null(n_grid)){
     n_grid <- max(vapply(dists, function(dist) dist$n_grid, integer(1)))
   }
-  dx <- target_width / max(1, n_grid - 1)
+  resolution <- .prior_linear_density_resolution(target_width, n_grid, grid_spacing = grid_spacing)
+  n_grid <- resolution$n_grid
+  dx <- resolution$dx
   if(!is.finite(dx) || dx <= 0){
     dx_values <- vapply(dists, .prior_linear_density_dx, numeric(1))
     dx_values <- dx_values[is.finite(dx_values) & dx_values > 0]
@@ -422,6 +461,7 @@
       dx
     )
   }
+  attr(dist, "grid_resolution") <- c(spacing = dx, n_grid = n_grid)
 
   dist
 }
