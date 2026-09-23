@@ -35,6 +35,9 @@
 #' renormalizes, and \code{"zero"} explicitly assigns the failed models zero
 #' evidence. Non-default policies emit a warning and return audit metadata.
 #' Only \code{NA} is treated as a computation failure under this policy.
+#' In model lists, store a failed computation as
+#' \code{\link{bridgesampling_object}(NA)}, a result flagged as failed whose
+#' marginal likelihood is read as \code{NA}.
 #' A finite failure must be reported as \code{NA}; by contrast,
 #' \code{-Inf} is an intentional zero-evidence shortcut (for example via
 #' \code{\link{bridgesampling_object}()}) and quietly receives posterior

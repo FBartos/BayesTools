@@ -239,13 +239,16 @@
 #' @param logml scalar natural-log marginal likelihood. Defaults to \code{-Inf},
 #' representing intentional zero evidence (posterior model probability zero
 #' under model averaging). Use \code{NA} only when a marginal-likelihood
-#' computation failed and the ensemble \code{on_failure} policy should apply;
-#' do not store failed bridge-sampling attempts as \code{-Inf} unless zero
-#' evidence is scientifically intended.
+#' computation failed: the result is flagged as failed (\code{success = FALSE},
+#' \code{logml = NA}) and the \code{on_failure} policy of
+#' [ensemble_inference()], [models_inference()], and [mix_posteriors()]
+#' applies to that model. Do not store failed bridge-sampling attempts as
+#' \code{-Inf} unless zero evidence is scientifically intended.
 #'
 #'
-#' @return A `BayesTools_marglik` object with the `"supplied_scalar"`
-#' aggregation rule and no repetition rows.
+#' @return A `BayesTools_marglik` object with no repetition rows and the
+#' `"supplied_scalar"` aggregation rule, or the `"supplied_failure"` rule for
+#' a failed computation (\code{logml = NA}).
 #'
 #' @export
 bridgesampling_object <- function(logml = -Inf){

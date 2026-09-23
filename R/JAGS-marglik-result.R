@@ -21,27 +21,37 @@
   )
 }
 
+.bt_marglik_is_failure_value <- function(logml){
+
+  (is.numeric(logml) || is.logical(logml)) && length(logml) == 1L &&
+    is.na(logml) && !is.nan(logml)
+}
+
 .bt_marglik_manual_result <- function(logml){
 
-  if(!is.numeric(logml) || length(logml) != 1L || is.na(logml) ||
-     is.nan(logml) || is.infinite(logml) && logml > 0){
+  failed <- .bt_marglik_is_failure_value(logml)
+  if(!failed &&
+     (!is.numeric(logml) || length(logml) != 1L || is.na(logml) ||
+      is.nan(logml) || is.infinite(logml) && logml > 0)){
     stop(
-      "'logml' must be one numeric natural-log marginal likelihood and may only be infinite when it is -Inf.",
+      "'logml' must be one numeric natural-log marginal likelihood (NA for a ",
+      "failed computation) and may only be infinite when it is -Inf.",
       call. = FALSE
     )
   }
 
   out <- list(
     schema_version = .bt_marglik_result_version,
-    logml = as.numeric(logml),
+    logml = if(failed) NA_real_ else as.numeric(logml),
     scale = "natural_log",
+    success = !failed,
     repetitions = .bt_marglik_empty_repetitions(),
     aggregation = list(
-      rule = "supplied_scalar",
+      rule = if(failed) "supplied_failure" else "supplied_scalar",
       nonfinite_policy = "not_applicable",
       n_repetitions = 0L,
-      n_included = 1L,
-      n_failed = 0L
+      n_included = if(failed) 0L else 1L,
+      n_failed = if(failed) 1L else 0L
     ),
     diagnostics = list(
       upstream = NULL,
@@ -210,6 +220,7 @@
     schema_version = .bt_marglik_result_version,
     logml = stats::median(logml[finite]),
     scale = "natural_log",
+    success = TRUE,
     repetitions = repetitions,
     aggregation = list(
       rule = "median_finite_logml",
@@ -250,12 +261,33 @@
       call. = FALSE
     )
   }
+  success <- x[["success"]]
+  if(!is.null(success) &&
+     (!is.logical(success) || length(success) != 1L || is.na(success))){
+    stop(
+      "'", name, "$success' must be TRUE or FALSE.",
+      call. = FALSE
+    )
+  }
   logml <- x[["logml"]]
+  if(isFALSE(success)){
+    # A failed computation is stored as NA so that the ensemble 'on_failure'
+    # policy applies; it never carries a numeric value.
+    if(!.bt_marglik_is_failure_value(logml)){
+      stop(
+        "'", name, "' is flagged as a failed marginal-likelihood computation ",
+        "and must store logml = NA.",
+        call. = FALSE
+      )
+    }
+    return(invisible(x))
+  }
   if(!is.numeric(logml) || length(logml) != 1L || is.na(logml) ||
      is.nan(logml) || is.infinite(logml) && logml > 0){
     stop(
       "'", name, "$logml' must be one natural-log marginal likelihood ",
-      "and may only be infinite when it is -Inf.",
+      "and may only be infinite when it is -Inf. Store a failed computation ",
+      "with bridgesampling_object(NA).",
       call. = FALSE
     )
   }
@@ -265,6 +297,9 @@
 .bt_marglik_value <- function(x, name = "marglik"){
 
   .bt_validate_marglik_result(x, name)
+  if(isFALSE(x[["success"]])){
+    return(NA_real_)
+  }
   as.numeric(x[["logml"]])
 }
 
@@ -313,6 +348,10 @@ print.BayesTools_marglik <- function(x, ...){
 
   .bt_validate_marglik_result(x)
   cat("BayesTools marginal-likelihood result\n")
+  if(isFALSE(x[["success"]])){
+    cat("  failed computation (logml = NA; the ensemble 'on_failure' policy applies)\n")
+    return(invisible(x))
+  }
   cat("  logml (natural log): ", format(x[["logml"]]), "\n", sep = "")
   cat("  aggregation: ", x[["aggregation"]][["rule"]], "\n", sep = "")
   if(x[["aggregation"]][["n_repetitions"]] > 0L){

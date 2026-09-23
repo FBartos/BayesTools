@@ -537,6 +537,65 @@ test_that("model averaging distinguishes failures from zero evidence", {
   expect_null(attr(zero_evidence, "marglik_failure"))
 })
 
+test_that("failed marginal-likelihood results reach the on_failure policy of model lists", {
+
+  failed <- bridgesampling_object(NA)
+  expect_s3_class(failed, "BayesTools_marglik")
+  expect_false(failed[["success"]])
+  expect_identical(failed[["logml"]], NA_real_)
+  expect_identical(failed[["aggregation"]][["rule"]], "supplied_failure")
+  expect_true(bridgesampling_object(0)[["success"]])
+  expect_output(print(failed), "failed computation")
+
+  models <- list(
+    list(marglik = failed, prior_weights = 1),
+    list(marglik = bridgesampling_object(0), prior_weights = 1)
+  )
+  expect_error(models_inference(models), class = "BayesTools_marglik_failure")
+  dropped <- NULL
+  expect_warning(dropped <- models_inference(models, on_failure = "drop"), "Dropped model")
+  expect_equal(vapply(dropped, function(m) m$inference$post_prob, numeric(1)), c(0, 1))
+  expect_equal(attr(dropped, "marglik_failure")$model, 1)
+
+  mixing_models <- list(
+    .mock_mixing_model(offset = 100, logml = 0),
+    .mock_mixing_model(offset = 200, logml = 0)
+  )
+  mixing_models[[1]]$marglik <- failed
+  expect_error(
+    ensemble_inference(mixing_models, "theta", list(theta = c(TRUE, FALSE))),
+    class = "BayesTools_marglik_failure"
+  )
+  zeroed <- NULL
+  expect_warning(
+    zeroed <- ensemble_inference(
+      mixing_models, "theta", list(theta = c(TRUE, FALSE)), on_failure = "zero"
+    ),
+    "zero evidence"
+  )
+  expect_equal(zeroed$theta$post_probs, c(0, 1))
+  mixed <- NULL
+  expect_warning(
+    mixed <- mix_posteriors(
+      mixing_models, parameters = "theta", is_null_list = list(theta = c(TRUE, FALSE)),
+      seed = 1, n_samples = 10, on_failure = "drop"
+    ),
+    "Dropped model"
+  )
+  expect_true(all(attr(mixed$theta, "models_ind") == 2L))
+
+  # NA is accepted only with the failure flag, and the flag only with NA
+  unflagged <- bridgesampling_object(0)
+  unflagged$logml <- NA_real_
+  expect_error(models_inference(list(list(marglik = unflagged, prior_weights = 1))),
+               "bridgesampling_object(NA)", fixed = TRUE)
+  inconsistent <- failed
+  inconsistent$logml <- 0
+  expect_error(models_inference(list(list(marglik = inconsistent, prior_weights = 1))),
+               "must store logml = NA", fixed = TRUE)
+  expect_error(bridgesampling_object(NaN), "one numeric", fixed = TRUE)
+})
+
 test_that("model averaging rejects malformed prior weights at each public entry point", {
 
   expect_error(compute_inference(c(0, 0), c(0, 1)), "At least one prior model weight")
