@@ -50,7 +50,14 @@ attributes and errors if no valid precomputed source is available. KDE
 point-null tests use boundary reflection when exact support metadata is
 attached to the marginal posterior or to a matched \code{posterior_density}
 attribute; numeric and data-frame expression tests use standard Gaussian
-sample KDE. Finite sample and KDE evaluation ranges are not treated as exact
+sample KDE. A point hypothesis on a linear expression of marginal-posterior
+parameters or levels (e.g., \code{mu[B] - mu[A] = 0}) whose exact support
+is bounded, or whose mixture components have different exact supports, is
+tested as a Savage-Dickey ratio of that linear combination: the prior
+density and exact support come from the joint prior context and the
+posterior ordinate uses boundary reflection (per mixture component, see
+\link{Savage_Dickey_BF}); other expressions use the sample KDE of the expression
+draws. Finite sample and KDE evaluation ranges are not treated as exact
 support, so finite point hypotheses outside those ranges use kernel-tail
 density estimates.}
 

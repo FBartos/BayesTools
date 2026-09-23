@@ -3612,6 +3612,109 @@ test_that("Savage-Dickey keeps the pooled ordinate of single-fit mixtures with s
   expect_pooled(level)
 })
 
+.half_normal_levels_for_test <- function(n, intercept_prior = NULL, seed = 4){
+
+  set.seed(seed)
+  half_normal <- prior("normal", list(0, 1), list(0, Inf))
+  if(is.null(intercept_prior)){
+    intercept_prior <- half_normal
+  }
+  formula_result <- JAGS_formula(
+    ~ f, "mu", data = data.frame(f = factor(c("A", "B", "C"), levels = c("A", "B", "C"))),
+    prior_list = list(
+      intercept = intercept_prior,
+      f         = prior_factor("normal", list(0, 1), list(0, Inf), contrast = "treatment")
+    )
+  )
+  list(formula_result = formula_result, half_normal = half_normal)
+}
+
+test_that("linear level hypotheses use the exact support of the combination", {
+
+  n <- 20000
+  fixture <- .half_normal_levels_for_test(n)
+  # prior-only draws: intercept and both treatment coefficients half-normal
+  posterior <- cbind(
+    mu_intercept = abs(stats::rnorm(n)),
+    "mu_f[1]"    = abs(stats::rnorm(n)),
+    "mu_f[2]"    = abs(stats::rnorm(n))
+  )
+  mixed <- as_mixed_posteriors(
+    .single_fit_for_test(posterior, fixture$formula_result$prior_list),
+    parameters = c("mu_intercept", "mu_f")
+  )
+  levels <- marginal_posterior(mixed, "mu_f", formula = ~ f, prior_samples = TRUE)
+  half_normal <- function(y) ifelse(y >= 0, 2 * stats::dnorm(y), 0)
+
+  # B - A is the half-normal coefficient: support [0, Inf) although each level
+  # alone is supported on [0, Inf); the null 0 lies on the bound
+  difference <- hypothesis_BF(levels, hypothesis = "mu_f[B] - mu_f[A] = 0", columns = "all", seed = 1)
+  expect_identical(difference$method, "Savage-Dickey")
+  expect_equal(as.numeric(difference$prior), 2 * stats::dnorm(0), tolerance = 1e-6)
+  moments <- .reflected_kde_moments_for_test(
+    0, h = stats::bw.nrd0(posterior[, "mu_f[1]"]), density = half_normal,
+    lower = 0, n = n, n_source = Inf
+  )
+  # the reflected ordinate (the unreflected KDE gave about half of it)
+  expect_lte(abs(difference$posterior - moments[["mean"]]), 4 * sqrt(moments[["variance"]]))
+
+  # 2 A + B = 3 intercept + coefficient: [0, Inf); prior by quadrature
+  combination <- hypothesis_BF(levels, hypothesis = "2*mu_f[A] + mu_f[B] = 1", columns = "all", seed = 1)
+  expect_identical(combination$method, "Savage-Dickey")
+  convolution <- stats::integrate(
+    function(t) half_normal(t / 3) / 3 * half_normal(1 - t), 0, 1, rel.tol = 1e-10
+  )$value
+  expect_equal(as.numeric(combination$prior), convolution, tolerance = 1e-4)
+
+  # unbounded linear and nonlinear expressions keep the expression-draw KDE
+  draws <- data.frame(check.names = FALSE,
+                      "mu_f[B]" = as.numeric(levels[["B"]]), "mu_f[C]" = as.numeric(levels[["C"]]),
+                      "mu_f[A]" = as.numeric(levels[["A"]]))
+  unbounded <- hypothesis_BF(levels, hypothesis = "mu_f[B] - mu_f[C] = 0", columns = "all", seed = 1)
+  expect_identical(unbounded$method, "kernel Savage-Dickey")
+  expect_identical(
+    unbounded$posterior,
+    BayesTools:::.hypothesis_sample_density_height(draws[["mu_f[B]"]] - draws[["mu_f[C]"]], 0, "posterior")
+  )
+  nonlinear <- hypothesis_BF(levels, hypothesis = "exp(mu_f[B]) - exp(mu_f[C]) = 0",
+                             columns = "all", seed = 1)
+  expect_identical(nonlinear$method, "kernel Savage-Dickey")
+})
+
+test_that("linear level hypotheses mix per-component ordinates of mixture terms", {
+
+  n <- 8000
+  bounded <- prior("normal", list(.5, 1), list(0, Inf))
+  fixture <- .half_normal_levels_for_test(
+    n, intercept_prior = prior_mixture(list(prior("normal", list(0, 1)), bounded),
+                                       is_null = c(FALSE, FALSE)),
+    seed = 6
+  )
+  indicator <- sample(1:2, n, TRUE)
+  posterior <- cbind(
+    mu_intercept = ifelse(indicator == 1L, stats::rnorm(n), rng(bounded, n)),
+    "mu_f[1]"    = abs(stats::rnorm(n)),
+    "mu_f[2]"    = abs(stats::rnorm(n)),
+    mu_intercept_indicator = indicator
+  )
+  mixed <- as_mixed_posteriors(
+    .single_fit_for_test(posterior, fixture$formula_result$prior_list),
+    parameters = c("mu_intercept", "mu_f")
+  )
+  levels <- marginal_posterior(mixed, "mu_f", formula = ~ f, prior_samples = TRUE)
+
+  # A + B = 2 intercept + coefficient: the real line with the unbounded
+  # intercept component, [0, Inf) with the bounded one
+  out <- hypothesis_BF(levels, hypothesis = "mu_f[A] + mu_f[B] = 0.2", columns = "all", seed = 1)
+  expect_identical(out$method, "Savage-Dickey")
+  values <- 2 * posterior[, "mu_intercept"] + posterior[, "mu_f[1]"]
+  heights <- c(
+    BayesTools:::.Savage_Dickey_BF.kd(values[indicator == 1L], .2, support = c(-Inf, Inf)),
+    BayesTools:::.Savage_Dickey_BF.kd(values[indicator == 2L], .2, support = c(0, Inf))
+  )
+  expect_equal(as.numeric(out$posterior), sum(tabulate(indicator, 2) / n * heights), tolerance = 1e-12)
+})
+
 .treatment_factor_prior_for_test <- function(sd){
 
   treatment <- prior_factor("normal", list(0, sd), contrast = "treatment")

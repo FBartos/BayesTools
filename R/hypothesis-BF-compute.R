@@ -95,6 +95,9 @@
                                  inverse = FALSE) {
 
   marginal <- .hypothesis_point_marginal(quantity, side)
+  if(is.null(marginal) && identical(density_method, "KDE")){
+    marginal <- .hypothesis_linear_point_marginal(quantity, side)
+  }
   if(!is.null(marginal)){
     normal_approximation <- identical(density_method, "normal")
     posterior <- .posterior_precomputed_child(
@@ -220,6 +223,261 @@
     posterior_index  = quantity[["posterior_marginal_indices"]][[symbol]],
     prior_density    = quantity[["prior_densities"]][[symbol]]
   ))
+}
+
+
+# A linear expression of marginal posteriors (e.g., mu[b] - mu[a] or
+# 2 * mu[a] + mu[b]) whose exact support is bounded, or whose mixture
+# components have different exact supports, is evaluated as the marginal
+# posterior of the linear combination: the prior density and exact support of
+# the combination come from the joint prior context and the posterior ordinate
+# is the (per-component) boundary-reflected KDE of Savage_Dickey_BF(). NULL
+# keeps the kernel density of the expression draws: nonlinear expressions,
+# unbounded shared supports, point masses, row-varying level weights, or
+# missing joint metadata.
+.hypothesis_linear_point_marginal <- function(quantity, side) {
+
+  expr <- .hypothesis_side_expression(side)
+  symbols <- unique(.hypothesis_expression_symbols(expr))
+  marginals <- .hypothesis_symbol_marginals(quantity, symbols)
+  if(is.null(marginals)){
+    return(NULL)
+  }
+  linear <- .hypothesis_linear_coefficients(expr, symbols, quantity[["posterior_draws"]])
+  if(is.null(linear)){
+    return(NULL)
+  }
+  active <- names(linear[["coefficients"]])[linear[["coefficients"]] != 0]
+  if(length(active) == 0L){
+    return(NULL)
+  }
+
+  context <- NULL
+  weights <- NULL
+  offset  <- linear[["constant"]]
+  for(symbol in active){
+    level <- marginals[[symbol]]
+    atoms <- .posterior_atoms_get(level)
+    if(is.null(atoms) || any(atoms$mass > 0)){
+      return(NULL)
+    }
+    level_context <- attr(level, "prior_density_context", exact = TRUE)
+    if(!.hypothesis_is_prior_density_context(level_context) ||
+       (!is.null(context) && !identical(level_context, context))){
+      return(NULL)
+    }
+    context <- level_context
+    level_weights <- attr(level, "linear_weights", exact = TRUE)
+    if(is.null(level_weights) ||
+       !is.null(attr(level, "joint_prior_transformation", exact = TRUE))){
+      return(NULL)
+    }
+    if(!is.null(dim(level_weights))){
+      if(nrow(level_weights) != 1L){
+        return(NULL)
+      }
+      level_weights <- stats::setNames(as.numeric(level_weights[1L, ]), colnames(level_weights))
+    }
+    if(is.null(names(level_weights))){
+      return(NULL)
+    }
+    coefficient <- linear[["coefficients"]][[symbol]]
+    weights <- .hypothesis_add_linear_weights(weights, coefficient * level_weights)
+    offset  <- offset + coefficient * .hypothesis_level_linear_offset(level)
+  }
+
+  shift <- list(a = offset, b = 1)
+  support <- tryCatch(
+    .posterior_support_from_prior_context_weights(
+      context,
+      weights,
+      output_transformation           = "lin",
+      output_transformation_arguments = shift
+    ),
+    error = function(e) NULL
+  )
+  if(!.hypothesis_linear_support_usable(support)){
+    return(NULL)
+  }
+
+  n_draws <- nrow(quantity[["posterior_draws"]])
+  components <- tryCatch(
+    .hypothesis_linear_components(marginals[active], context, weights, shift, n_draws),
+    error = function(e) NULL
+  )
+  component_supports <- if(is.null(components)) list() else
+    components$supports[!vapply(components$supports, is.null, logical(1))]
+  if(!all(vapply(component_supports, .hypothesis_linear_support_usable, logical(1)))){
+    return(NULL)
+  }
+  component_bounds <- unique(lapply(component_supports, `[[`, "bounds"))
+  if(!any(is.finite(support$bounds)) && length(component_bounds) < 2L){
+    return(NULL)
+  }
+
+  prior_density <- .prior_density_from_context(
+    context,
+    weights,
+    output_transformation           = "lin",
+    output_transformation_arguments = shift
+  )
+  posterior <- .hypothesis_eval_expression(expr, quantity[["posterior_draws"]])
+  class(posterior) <- c("marginal_posterior.simple", "marginal_posterior")
+  attr(posterior, "prior_density") <- prior_density
+  posterior <- .posterior_support_set(posterior, support)
+  posterior <- .posterior_atoms_set(posterior, .posterior_atoms_new(
+    column_names = "value",
+    source       = "linear_combination",
+    declared     = TRUE
+  ))
+  posterior <- .posterior_components_set(posterior, components)
+
+  return(list(
+    posterior        = posterior,
+    posterior_parent = NULL,
+    posterior_index  = NULL,
+    prior_density    = prior_density
+  ))
+}
+
+
+.hypothesis_symbol_marginals <- function(quantity, symbols) {
+
+  if(length(symbols) == 0L){
+    return(NULL)
+  }
+
+  out <- list()
+  for(symbol in symbols){
+    if(!is.null(quantity[["posterior_marginals"]]) &&
+       symbol %in% names(quantity[["posterior_marginals"]])){
+      out[[symbol]] <- quantity[["posterior_marginals"]][[symbol]]
+    }else if(!is.null(quantity[["posterior_marginal"]]) &&
+             identical(symbol, quantity[["parameter"]])){
+      out[[symbol]] <- quantity[["posterior_marginal"]]
+    }else{
+      return(NULL)
+    }
+  }
+
+  out
+}
+
+
+# Coefficients of an expression that is linear in its symbols, from its values
+# at the origin, the unit vectors, and two checking points with mixed signs;
+# NULL for a nonlinear expression.
+.hypothesis_linear_coefficients <- function(expr, symbols, draws) {
+
+  n_symbols <- length(symbols)
+  probe_values <- rbind(
+    0,
+    diag(n_symbols),
+    seq_len(n_symbols) * .37 - 1.21,
+    rev(seq_len(n_symbols)) * -.53 + .89
+  )
+  probe <- as.data.frame(
+    matrix(0, nrow = nrow(probe_values), ncol = ncol(draws),
+           dimnames = list(NULL, names(draws))),
+    check.names = FALSE
+  )
+  for(symbol_i in seq_len(n_symbols)){
+    probe[[symbols[symbol_i]]] <- probe_values[, symbol_i]
+  }
+
+  values <- tryCatch(
+    .hypothesis_eval_expression(expr, probe),
+    error = function(e) NULL
+  )
+  if(length(values) != nrow(probe_values)){
+    return(NULL)
+  }
+
+  constant <- values[1L]
+  coefficients <- values[1L + seq_len(n_symbols)] - constant
+  names(coefficients) <- symbols
+  predicted <- as.numeric(constant + probe_values %*% coefficients)
+  if(any(abs(values - predicted) > 1e-8 * pmax(1, abs(values)))){
+    return(NULL)
+  }
+
+  list(constant = constant, coefficients = coefficients)
+}
+
+
+.hypothesis_add_linear_weights <- function(total, weights) {
+
+  if(is.null(total)){
+    return(weights)
+  }
+
+  columns <- union(names(total), names(weights))
+  out <- stats::setNames(numeric(length(columns)), columns)
+  out[names(total)] <- out[names(total)] + total
+  out[names(weights)] <- out[names(weights)] + weights
+
+  out
+}
+
+
+# Exact interval support without point masses.
+.hypothesis_linear_support_usable <- function(support) {
+
+  support <- .posterior_support_from_attribute(support)
+  !is.null(support) && isTRUE(support$exact) &&
+    identical(support$type, "interval") && length(support$points) == 0L
+}
+
+
+# Components of a linear combination of marginal posteriors: the component of a
+# draw combines the component keys of its terms (the model of a model-mixture
+# ensemble, or the mixture indicators of a single fit), and each component's
+# exact support is that of the combination within the component.
+.hypothesis_linear_components <- function(levels, context, weights, shift, n_draws) {
+
+  level_components <- lapply(levels, .posterior_components_get)
+  level_components <- level_components[!vapply(level_components, is.null, logical(1))]
+  if(length(level_components) == 0L){
+    return(NULL)
+  }
+
+  draw_keys <- list()
+  for(components in level_components){
+    if(is.null(components$keys) || length(components$index) != n_draws){
+      return(NULL)
+    }
+    keys <- components$keys[components$index, , drop = FALSE]
+    for(column in colnames(keys)){
+      draw_keys[[column]] <- keys[, column]
+    }
+  }
+  draw_keys <- do.call(cbind, draw_keys)
+
+  if(!".model" %in% colnames(draw_keys)){
+    # every mixture prior entering the combination needs its indicator
+    parameters <- .posterior_components_mixture_parameters(context, weights)
+    if(length(parameters) == 0L || !all(parameters %in% colnames(draw_keys))){
+      return(NULL)
+    }
+    draw_keys <- draw_keys[, parameters, drop = FALSE]
+  }
+
+  key_text <- do.call(paste, c(as.data.frame(draw_keys), sep = "\r"))
+  index <- match(key_text, unique(key_text))
+  keys <- draw_keys[!duplicated(key_text), , drop = FALSE]
+  rownames(keys) <- NULL
+
+  .posterior_components_new(
+    index    = index,
+    supports = .posterior_components_supports(
+      context                         = context,
+      keys                            = keys,
+      weights                         = weights,
+      output_transformation           = "lin",
+      output_transformation_arguments = shift
+    ),
+    keys     = keys
+  )
 }
 
 
