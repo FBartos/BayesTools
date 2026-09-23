@@ -17,7 +17,8 @@ test_that("homogeneous diagonal random effects have a shared SD label", {
   )
 })
 
-.random_effects_mean_variance_allocation_fit <- function(alpha = c(2, 3)){
+.random_effects_mean_variance_allocation_fit <- function(alpha = c(2, 3),
+                                                          scale = "mean_variance"){
 
   data <- data.frame(
     study = factor(c("s1", "s1", "s2", "s2")),
@@ -32,7 +33,7 @@ test_that("homogeneous diagonal random effects have a shared SD label", {
       allocation = random_variance_allocation(name = "allocation",
         terms = "study",
         target = "sd_component",
-        scale = "mean_variance",
+        scale = scale,
         sd = prior("gamma", list(2, 2)),
         weights = prior("dirichlet", list(alpha = alpha))
       )
@@ -65,7 +66,7 @@ test_that("homogeneous diagonal random effects have a shared SD label", {
   attach_test_parameter_map(fit)
 }
 
-.random_effects_total_variance_allocation_fit <- function(){
+.random_effects_total_variance_allocation_fit <- function(alpha = c(2, 3)){
 
   data <- data.frame(
     study = factor(c("s1", "s1", "s2", "s2")),
@@ -82,7 +83,7 @@ test_that("homogeneous diagonal random effects have a shared SD label", {
       allocation = random_variance_allocation(name = "allocation",
         terms = c("study", "drug"),
         sd = prior("gamma", list(2, 2)),
-        weights = prior("dirichlet", list(alpha = c(2, 3)))
+        weights = prior("dirichlet", list(alpha = alpha))
       )
     )
   )
@@ -528,6 +529,85 @@ test_that("random-effect summary posterior handles singular Dirichlet boundaries
     n_points = 32
   )
   expect_true(all(is.finite(prior_plot_data$density$y)))
+})
+
+test_that("unit-scale Dirichlet summaries keep singular upper bounds off the grid", {
+
+  skip_if_not_installed("runjags")
+
+  # With scale 1, the unit reference value is the upper support bound. It is
+  # singular when the complementary Dirichlet mass sum(alpha) - alpha_i < 1.
+  for(alpha in list(c(0.5, 0.5), c(1, 0.6))){
+    fit <- .random_effects_total_variance_allocation_fit(alpha = alpha)
+    proportions <- random_effects_summary_posterior(
+      fit,
+      summary = "var_prop",
+      n_prior_points = 64
+    )
+    for(index in 1:2){
+      component <- c("study", "drug")[index]
+      prior_density <- attr(
+        proportions[[paste0("(mu) allocation: var_prop(", component, ")")]],
+        "prior_density",
+        exact = TRUE
+      )
+      alpha_i <- alpha[index]
+      beta_i  <- sum(alpha) - alpha_i
+      info <- paste0("alpha = c(", toString(alpha), "), ", component)
+
+      expect_s3_class(prior_density, "prior_linear_density")
+      expect_equal(attr(prior_density, "support", exact = TRUE), c(0, 1),
+                   info = info)
+      expect_true(all(is.finite(prior_density$density$y)), info = info)
+      if(beta_i < 1){
+        expect_true(max(prior_density$density$x) < 1, info = info)
+      }else{
+        expect_identical(max(prior_density$density$x), 1, info = info)
+      }
+      # Reference: the analytic Beta(alpha_i, sum(alpha) - alpha_i) margin.
+      expect_equal(
+        BayesTools:::.prior_linear_density_height(prior_density, 0.5),
+        stats::dbeta(0.5, alpha_i, beta_i),
+        tolerance = 1e-12,
+        info = info
+      )
+      expect_identical(
+        BayesTools:::.prior_linear_density_height(prior_density, 1),
+        if(beta_i < 1) Inf else alpha_i
+      )
+    }
+  }
+
+  # A total-variance SD-component allocation exposes sqrt(w) with scale 1.
+  fit <- .random_effects_mean_variance_allocation_fit(
+    alpha = c(0.5, 0.5),
+    scale = "total_variance"
+  )
+  multipliers <- random_effects_summary_posterior(
+    fit,
+    summary = "sd_mult",
+    component = "x",
+    n_prior_points = 64
+  )
+  prior_density <- attr(multipliers[[1L]], "prior_density", exact = TRUE)
+  expect_equal(attr(prior_density, "support", exact = TRUE), c(0, 1))
+  expect_true(all(is.finite(prior_density$density$y)))
+  expect_true(max(prior_density$density$x) < 1)
+  # Reference: density of sqrt(w), w ~ Beta(0.5, 0.5), is dbeta(x^2) * 2x.
+  expect_equal(
+    BayesTools:::.prior_linear_density_height(prior_density, 0.5),
+    stats::dbeta(0.25, 0.5, 0.5) * 2 * 0.5,
+    tolerance = 1e-12
+  )
+  proportions <- random_effects_summary_posterior(
+    fit,
+    summary = "var_prop",
+    n_prior_points = 64
+  )
+  expect_length(proportions, 2L)
+  expect_true(all(vapply(proportions, function(x){
+    all(is.finite(attr(x, "prior_density", exact = TRUE)$density$y))
+  }, logical(1))))
 })
 
 test_that("scaled-Beta analytic evaluators preserve square-root endpoint limits", {

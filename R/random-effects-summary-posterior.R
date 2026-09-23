@@ -391,7 +391,9 @@ random_effects_summary_posterior <- function(
   }
 
   x <- seq(lower, upper, length.out = n_grid)
-  if(support[1] <= 1 && support[2] >= 1){
+  # Keep the unit reference value on the grid only inside the plotted range;
+  # outside it, x = 1 can be a singular support boundary (scale = 1, beta < 1).
+  if(lower < 1 && 1 < upper){
     x <- sort(unique(c(x, 1)))
   }
 
