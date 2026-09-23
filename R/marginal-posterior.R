@@ -1211,8 +1211,19 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     if(is.prior(entry)){
       prior_list[[parameter]] <- .marginal_posterior_structural_zero_prior(entry)
     }else if(is.list(entry)){
+      K <- .marginal_posterior_model_list_dimension(entry)
       for(i in seq_along(entry)){
-        if(is.prior(entry[[i]])){
+        if(!is.prior(entry[[i]])){
+          next
+        }
+        if(K > 1L && is.prior.point(entry[[i]]) && !is.prior.vector(entry[[i]])){
+          # a scalar point prior (e.g. the spike(0) filled in for a model that
+          # omits the term) fixes every coefficient column of the term
+          entry[[i]] <- .marginal_posterior_zero_vector_prior(
+            entry[[i]], K,
+            location = entry[[i]]$parameters[["location"]]
+          )
+        }else{
           entry[[i]] <- .marginal_posterior_structural_zero_prior(entry[[i]])
         }
       }
@@ -1238,9 +1249,26 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   .marginal_posterior_zero_vector_prior(prior, .prior_linear_prior_dimension(prior))
 }
 
-.marginal_posterior_zero_vector_prior <- function(prior, K){
+# Number of coefficient columns of a model-averaged term, from the models whose
+# prior is not a scalar point.
+.marginal_posterior_model_list_dimension <- function(priors){
 
-  zero_prior <- prior("mpoint", list(location = 0, K = K))
+  for(prior in priors){
+    if(!is.prior(prior) || (is.prior.point(prior) && !is.prior.vector(prior))){
+      next
+    }
+    K <- .prior_linear_prior_dimension(prior)
+    if(length(K) == 1L && !is.na(K)){
+      return(as.integer(K))
+    }
+  }
+
+  1L
+}
+
+.marginal_posterior_zero_vector_prior <- function(prior, K, location = 0){
+
+  zero_prior <- prior("mpoint", list(location = location, K = K))
   model_weight <- .prior_model_weight(prior)
   if(!is.null(model_weight)){
     zero_prior <- .set_prior_model_weight(zero_prior, model_weight)

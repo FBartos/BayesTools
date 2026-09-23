@@ -3368,6 +3368,52 @@ test_that("transform_scaled factor atoms are rescaled for level-labelled columns
   }
 })
 
+test_that("factor terms omitted by a mixed model are zero on every coefficient column", {
+
+  data <- data.frame(t = factor(c("lo", "mid", "hi"), levels = c("lo", "mid", "hi")))
+  formula_result <- JAGS_formula(
+    ~ 1 + t, "mu", data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      t         = prior_factor("normal", list(0, 1), contrast = "treatment")
+    )
+  )
+  set.seed(7)
+  n <- 200
+  alternative <- cbind(mu_intercept = rnorm(n), "mu_t[1]" = rnorm(n, .4), "mu_t[2]" = rnorm(n, 1))
+  null <- cbind(mu_intercept = rnorm(n))
+  models <- list(
+    list(fit = .mock_mixing_fit_for_marginal(alternative, formula_result$prior_list),
+         marglik = bridgesampling_object(0), prior_weights = 1),
+    list(fit = .mock_mixing_fit_for_marginal(null, formula_result$prior_list["mu_intercept"]),
+         marglik = bridgesampling_object(0), prior_weights = 1)
+  )
+  mixed <- mix_posteriors(
+    models, parameters = c("mu_intercept", "mu_t"),
+    is_null_list = list(mu_intercept = c(FALSE, FALSE), mu_t = c(FALSE, TRUE)),
+    seed = 1, n_samples = n
+  )
+
+  levels <- marginal_posterior(mixed, "mu_t", formula = ~ 1 + t)
+  expect_equal(as.numeric(levels[["mid"]]), as.numeric(mixed$mu_intercept) + unclass(mixed$mu_t)[, 1],
+               tolerance = 1e-12)
+
+  # the omitted term contributes a point at zero with prior model probability 1/2
+  coefficients <- marginal_posterior(mixed, "mu_t", use_formula = FALSE, prior_samples = TRUE)
+  for(level in c("mid", "hi")){
+    prior_density <- attr(coefficients[[level]], "prior_density")
+    expect_equal(prior_density_ordinate(prior_density, 0)$point_mass, .5, tolerance = 1e-12)
+    .expect_prior_height_for_test(coefficients[[level]], .5, .5 * stats::dnorm(.5))
+    expect_equal(attr(coefficients[[level]], "posterior_atoms")$mass, .5, tolerance = 1e-12)
+  }
+  formula_levels <- marginal_posterior(mixed, "mu_t", formula = ~ 1 + t, prior_samples = TRUE)
+  # level mid = intercept + coefficient: N(0, 1) + {0 or N(0, 1)}
+  .expect_prior_height_for_test(
+    formula_levels[["mid"]], .5,
+    .5 * stats::dnorm(.5) + .5 * stats::dnorm(.5, 0, sqrt(2))
+  )
+})
+
 test_that("terms with unknown support leave level support unknown", {
 
   data <- data.frame(f = ordered(c("low", "mid", "high"), levels = c("low", "mid", "high")))
