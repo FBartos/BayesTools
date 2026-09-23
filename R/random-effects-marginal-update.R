@@ -493,11 +493,7 @@ random_effects_marginal_update_grid <- function(
         )
       ))
     }
-    direct_source <- key$source_type %in% c(
-      "identity", "one_to_one_transform"
-    ) && is.character(key$source_parameter) &&
-      length(key$source_parameter) == 1L &&
-      !is.na(key$source_parameter) && nzchar(key$source_parameter)
+    direct_source <- .bt_random_effect_marginal_update_single_source(key)
     coefficient_input <- if(direct_source) "source" else "quantity"
     coefficient_transform <- if(direct_source ||
                                     identical(evaluator, "allocation_sd")){
@@ -707,6 +703,18 @@ random_effects_marginal_update_grid <- function(
     ))
   }
 
+  if(!.bt_random_effect_marginal_update_single_source(key)){
+    return(.bt_random_effect_marginal_update_unavailable(
+      quantity = quantity,
+      reason = "composite_sd_source",
+      message = paste0(
+        "The selected random-effect SD or variance depends on several fitted ",
+        "coordinates (for example, after formula scaling), so it has no exact ",
+        "covariance update in one source coordinate."
+      )
+    ))
+  }
+
   n_columns <- random_term$n_columns
   homogeneous <- length(unique(random_term$sd_parameter_names)) == 1L
   affine <- n_columns == 1L || structure %in% c("id", "diag") || homogeneous
@@ -740,6 +748,15 @@ random_effects_marginal_update_grid <- function(
       "update path."
     )
   )
+}
+
+
+.bt_random_effect_marginal_update_single_source <- function(key){
+
+  key$source_type %in% c("identity", "one_to_one_transform") &&
+    is.character(key$source_parameter) &&
+    length(key$source_parameter) == 1L &&
+    !is.na(key$source_parameter) && nzchar(key$source_parameter)
 }
 
 

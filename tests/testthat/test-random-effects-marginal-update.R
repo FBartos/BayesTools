@@ -134,6 +134,126 @@ test_that("marginal update plans propagate invalid transformation metadata", {
 }
 
 
+.random_update_test_generic_fit <- function(formula, data, prior_random,
+                                            prior_list, formula_scale = NULL,
+                                            extra_columns = character()){
+
+  result <- JAGS_formula(
+    formula = formula,
+    parameter = "mu",
+    data = data,
+    prior_list = prior_list,
+    formula_scale = formula_scale,
+    prior_random = prior_random
+  )
+  columns <- character()
+  for(name in names(result$prior_list)){
+    current <- result$prior_list[[name]]
+    if(is.prior.point(current)){
+      next
+    }
+    if(is.prior.simplex(current)){
+      K <- current$parameters$K
+      columns <- c(
+        columns,
+        paste0(name, "[", seq_len(K), "]"),
+        paste0("prior_par_eta_", name, "[", seq_len(K), "]")
+      )
+    }else{
+      columns <- c(columns, name)
+    }
+  }
+  for(term in result$formula_design$random_effects){
+    correlation <- term$correlation
+    if(!is.null(correlation)){
+      columns <- c(columns, if(identical(correlation$type, "lkj")){
+        correlation$primitive_names
+      }else{
+        correlation$sample_name
+      })
+    }
+  }
+  columns <- unique(c(columns, extra_columns))
+  draws <- matrix(
+    0.5,
+    nrow = 2L,
+    ncol = length(columns),
+    dimnames = list(NULL, columns)
+  )
+  scale <- if(is.null(result$formula_scale)){
+    NULL
+  }else{
+    list(mu = result$formula_scale)
+  }
+  fit <- coda::mcmc.list(coda::mcmc(draws))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- result$prior_list
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  attr(fit, "formula_scale") <- scale
+  attr(fit, "parameter_map") <- .bt_build_parameter_map(
+    columns = columns,
+    prior_list = result$prior_list,
+    formula_design = list(mu = result$formula_design),
+    formula_scale = scale
+  )
+  fit <- .bt_attach_draw_geometry(fit)
+  .bt_attach_fit_contract(fit)
+}
+
+
+test_that("composite random SD sources have no single-coordinate update", {
+
+  data <- data.frame(
+    id = factor(rep(letters[1:4], each = 3L)),
+    x = c(1.2, 3.5, 4.1, 2.2, 5.3, 0.4, 3.3, 2.9, 6.1, 1.7, 4.4, 2.6)
+  )
+  fixed <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1))
+  )
+  sd_prior <- prior_random(sd = prior("gamma", list(2, 2)))
+  formulas <- list(
+    diag = ~ 1 + x + (1 + x || id),
+    us = ~ 1 + x + (1 + x | id)
+  )
+
+  # With a scaled slope, the public intercept SD mixes the fitted SDs (and
+  # the correlation), so no single source coordinate carries the update.
+  for(structure in names(formulas)){
+    fit <- .random_update_test_generic_fit(
+      formulas[[structure]], data, sd_prior, fixed,
+      formula_scale = list(x = TRUE)
+    )
+    catalog <- parameter_catalog(fit)
+    quantities <- catalog$quantities[
+      catalog$quantities$role %in% c("random_sd", "random_var"), ,
+      drop = FALSE
+    ]
+    expect_identical(nrow(quantities), 4L, info = structure)
+    expect_true(all(quantities$source_type == "composite"), info = structure)
+    for(name in quantities$canonical_name){
+      plan <- random_effects_marginal_update_plan(
+        fit,
+        parameter_catalog_resolve(catalog, name, "mu")
+      )
+      expect_identical(plan$family, "unsupported", info = name)
+      expect_identical(plan$reason, "composite_sd_source", info = name)
+    }
+  }
+
+  unscaled <- .random_update_test_generic_fit(
+    formulas$us, data, sd_prior, fixed
+  )
+  plan <- .random_update_test_plan(unscaled, "random_sd", "x")
+  expect_identical(plan$family, "factor")
+  expect_identical(plan$source_parameter, "mu__xREx__id_x")
+  grid <- random_effects_marginal_update_grid(
+    unscaled, plan, values = c(0.3, 0.6)
+  )
+  expect_equal(grid$candidate_scale[, 1L], c(0.3, 0.6))
+})
+
+
 test_that("random covariance updates are classified from formula metadata", {
 
   data <- data.frame(
