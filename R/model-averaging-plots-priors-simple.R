@@ -154,10 +154,23 @@
 
   # as_mixed_priors stores non-listed priors
   # (needs to be kept for marginal_ etc)
-  if(is.prior.mixture(prior_list)){
+  if(is.prior.spike_and_slab(prior_list)){
+    prior_list <- .plot_prior_spike_and_slab_components(prior_list)
+  }else if(is.prior.mixture(prior_list)){
     class(prior_list) <- NULL
   } else if(is.prior(prior_list)){
     prior_list <- list(prior_list)
+  }
+
+  # spike-and-slab entries enter as their inclusion-weighted components
+  if(any(vapply(prior_list, is.prior.spike_and_slab, logical(1)))){
+    prior_list <- do.call(c, lapply(prior_list, function(prior){
+      if(is.prior.spike_and_slab(prior)){
+        .plot_prior_spike_and_slab_components(prior)
+      }else{
+        list(prior)
+      }
+    }))
   }
 
 
@@ -204,4 +217,31 @@
   prior_list[to_remove] <- NULL
 
   return(prior_list)
+}
+.plot_prior_spike_and_slab_components <- function(prior){
+
+  # The components of a spike-and-slab mixture carry unit weights; the
+  # inclusion probability lives in the inclusion prior.
+  inclusion <- mean(.get_spike_and_slab_inclusion(prior))
+  if(!is.finite(inclusion) || inclusion < 0 || inclusion > 1){
+    stop("Spike-and-slab inclusion prior must have a finite mean in [0, 1].", call. = FALSE)
+  }
+  model_weight <- .prior_model_weight(prior)
+  if(is.null(model_weight)){
+    model_weight <- 1
+  }
+
+  components <- attr(prior, "components")
+  variable   <- prior[[which(components == "alternative")]]
+  null       <- prior[[which(components == "null")]]
+
+  out <- list()
+  if(inclusion > 0){
+    out[[length(out) + 1L]] <- .set_prior_model_weight(variable, model_weight * inclusion)
+  }
+  if(inclusion < 1){
+    out[[length(out) + 1L]] <- .set_prior_model_weight(null, model_weight * (1 - inclusion))
+  }
+
+  out
 }

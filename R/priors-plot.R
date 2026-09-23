@@ -62,6 +62,15 @@ plot.prior <- function(x, plot_type = "base",
   check_bool(rescale_x, "rescale_x")
   check_int(show_figures, "show_figures", allow_NULL = TRUE)
 
+  # spike-and-slab priors are mixtures whose components carry unit weights;
+  # plot them with the inclusion probability
+  if(is.prior.spike_and_slab(x)){
+    x <- .plot_prior_spike_and_slab_components(x)
+    return(plot_prior_list(x, plot_type = plot_type, x_seq = x_seq, xlim = xlim, x_range_quant = x_range_quant, n_points = n_points,
+                           n_samples = n_samples, force_samples = force_samples, transformation = transformation,
+                           transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
+                           show_figures = show_figures, individual = individual, rescale_x = rescale_x, par_name = par_name, ...))
+  }
   if(is.prior.mixture(x)){
     class(x) <- NULL
     return(plot_prior_list(x, plot_type = plot_type, x_seq = x_seq, xlim = xlim, x_range_quant = x_range_quant, n_points = n_points,

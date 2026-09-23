@@ -931,6 +931,39 @@ test_that("conditional posterior prior overlay uses conditioned spike-and-slab s
   )
 })
 
+test_that("posterior prior overlays use the spike-and-slab inclusion probability", {
+
+  prior_list <- list(
+    theta = prior_spike_and_slab(
+      prior("normal", list(mean = 0, sd = 1)),
+      prior_inclusion = prior("point", list(location = 0.2))
+    )
+  )
+  posterior <- cbind(
+    theta           = c(rep(0, 60), seq(-1, 1, length.out = 40)),
+    theta_indicator = c(rep(0, 60), rep(1, 40))
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+
+  samples <- as_mixed_posteriors(fit, parameters = "theta")
+  prior_list_plot <- BayesTools:::.simplify_prior_list(attr(samples$theta, "prior_list"))
+  expect_equal(
+    vapply(prior_list_plot, BayesTools:::.prior_model_weight, numeric(1)),
+    c(.2, .8)
+  )
+
+  plot <- plot_posterior(samples, "theta", plot_type = "ggplot", prior = TRUE, n_points = 512)
+  layers <- ggplot2::ggplot_build(plot)$data
+  scale_y2 <- plot$bt_scale_y2_state$scale_y2
+
+  # prior layers precede the posterior layers: slab .2 * N(0, 1), spike .8
+  expect_equal(max(layers[[1]]$y), .2 * stats::dnorm(0), tolerance = 1e-3)
+  expect_equal(layers[[2]]$x, 0)
+  expect_equal(layers[[2]]$yend / scale_y2, .8, tolerance = 1e-12)
+})
+
 test_that("conditional posterior prior overlays do not scale raw coefficients by multiply_by", {
 
   # The monitored column is the coefficient node itself; 'multiply_by' only

@@ -161,6 +161,15 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   check_int(show_parameter, "show_parameter", allow_NULL = TRUE)
   check_real(scale_y2, "scale_y2", lower = 0, allow_NULL = TRUE)
 
+  # spike-and-slab priors are mixtures whose components carry unit weights;
+  # draw them with the inclusion probability
+  if(is.prior.spike_and_slab(x)){
+    x <- .plot_prior_spike_and_slab_components(x)
+    return(geom_prior_list(x, xlim = xlim, x_seq = x_seq, x_range_quant = x_range_quant, n_points = n_points,
+                            n_samples = n_samples, force_samples = force_samples,
+                            transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
+                            rescale_x = rescale_x, scale_y2 = scale_y2, ...))
+  }
   if(is.prior.mixture(x)){
     class(x) <- NULL
     return(geom_prior_list(x, xlim = xlim, x_seq = x_seq, x_range_quant = x_range_quant, n_points = n_points,

@@ -353,6 +353,50 @@ test_that("lines.prior reuses the active probability scale", {
   expect_equal(point_scale, 9)
 })
 
+test_that("spike-and-slab prior plots use the inclusion probability", {
+
+  x <- seq(-2, 2, length.out = 9)
+  p <- prior_spike_and_slab(
+    prior("normal", list(mean = 0, sd = .5)),
+    prior_inclusion = prior("spike", list(.3))
+  )
+  expected_slab <- .3 * stats::dnorm(x, 0, .5)
+
+  # ggplot plot(): slab .3 * N(0, .5) (peak .239) and spike mass .7
+  g <- plot(p, plot_type = "ggplot", x_seq = x)
+  layers <- prior_plot_layer_data(g)
+  expect_equal(layers[[1]]$x, x)
+  expect_equal(layers[[1]]$y, expected_slab, tolerance = 1e-12)
+  expect_equal(layers[[2]]$x, 0)
+  expect_equal(layers[[2]]$yend / attr(g, "scale_y2"), .7, tolerance = 1e-12)
+
+  # geom_prior() on its own probability scale
+  geom_layers <- prior_plot_layer_data(ggplot2::ggplot() + geom_prior(p, x_seq = x, scale_y2 = 2))
+  expect_equal(geom_layers[[1]]$y, expected_slab, tolerance = 1e-12)
+  expect_equal(geom_layers[[2]]$yend / 2, .7, tolerance = 1e-12)
+
+  # base plot() and lines() agree
+  drawn <- list()
+  testthat::local_mocked_bindings(
+    .lines.prior.simple = function(plot_data, ...){
+      drawn$slab <<- c(drawn$slab, max(plot_data$y))
+      invisible(NULL)
+    },
+    .lines.prior.point = function(plot_data, scale_y2 = 1, ...){
+      drawn$spike <<- c(drawn$spike, plot_data$y)
+      invisible(NULL)
+    },
+    .package = "BayesTools"
+  )
+  device_file <- tempfile(fileext = ".pdf")
+  grDevices::pdf(device_file)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  plot(p, x_seq = x)
+  lines(p, x_seq = x)
+  expect_equal(drawn$slab, rep(.3 * stats::dnorm(0, 0, .5), 2), tolerance = 1e-12)
+  expect_equal(drawn$spike, rep(.7, 2), tolerance = 1e-12)
+})
+
 test_that("geom_prior spike-and-slab xlim includes the spike at zero", {
 
   p <- prior_spike_and_slab(
