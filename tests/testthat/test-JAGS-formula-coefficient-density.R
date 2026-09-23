@@ -257,6 +257,61 @@ test_that("formula coefficient transforms refuse terms whose centering is not re
   }
 })
 
+test_that("formula prior densities of raw coefficients ignore their multiply_by", {
+
+  # As in fixture fit_complex_mixed: the monitored mu_x node is the raw
+  # coefficient with a spike-and-slab N(0, 1) x Spike(0.5) prior; 'sigma'
+  # multiplies only its linear-predictor contribution.
+  x_prior <- prior_spike_and_slab(prior("normal", list(0, 1), prior_weights = 1))
+  attr(x_prior, "multiply_by") <- "sigma"
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + x,
+    parameter = "mu",
+    data = data.frame(x = c(-1, 0.5, 2)),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = x_prior
+    )
+  )
+  expect_identical(attr(formula_result$prior_list$mu_x, "multiply_by"), "sigma")
+  source_names <- .formula_coefficient_source_names(formula_result)
+  fit <- .formula_coefficient_density_fit(formula_result, source_names)
+  attr(fit, "prior_list") <- c(
+    attr(fit, "prior_list"),
+    list(sigma = prior("lognormal", list(0, 1)))
+  )
+
+  density <- JAGS_formula_prior_density(fit, parameter = "mu", target = "mu_x")
+  continuous <- density$density
+  expect_equal(continuous$mass, 0.5, tolerance = 1e-12)
+  expect_equal(continuous$mass * max(continuous$y), 0.5 * stats::dnorm(0),
+               tolerance = 1e-3)
+  expect_lt(max(abs(continuous$x)), 10)
+
+  ordinate <- prior_density_ordinate(density, 1)
+  expect_identical(ordinate$behavior, "regular")
+  expect_true(ordinate$exact)
+  expect_equal(ordinate$log_density, log(0.5) + stats::dnorm(1, log = TRUE),
+               tolerance = 1e-12)
+  null_ordinate <- prior_density_ordinate(density, 0)
+  expect_identical(null_ordinate$behavior, "point_mass")
+  expect_equal(null_ordinate$point_mass, 0.5, tolerance = 1e-12)
+
+  # A supplied (e.g., conditional or model-mixture) context is treated alike.
+  context <- .prior_density_build_context(
+    prior_list = attr(fit, "prior_list"),
+    column_names = c(source_names, "sigma")
+  )
+  supplied <- JAGS_formula_prior_density(
+    fit, parameter = "mu", target = "mu_x", context = context
+  )
+  expect_equal(
+    prior_density_ordinate(supplied, 1)$log_density,
+    log(0.5) + stats::dnorm(1, log = TRUE),
+    tolerance = 1e-12
+  )
+})
+
 test_that("formula coefficient transforms require current linked schemas", {
 
   formula_result <- JAGS_formula(

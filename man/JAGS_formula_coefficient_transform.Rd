@@ -53,7 +53,10 @@ nonzero dependencies, and parameter-map structural metadata.
 \code{JAGS_formula_prior_density()} constructs the induced marginal prior measure
 for one target through BayesTools' deterministic prior-density context and
 linear-density algebra. The result can be passed directly to
-\code{\link[=prior_density_ordinate]{prior_density_ordinate()}}.
+\code{\link[=prior_density_ordinate]{prior_density_ordinate()}}. Targets and sources are the raw fitted
+coefficients: a coefficient prior's \code{multiply_by} scales only its
+contribution to the linear predictor and does not enter the coefficient's
+prior density.
 
 \code{JAGS_formula_internal_coordinate_priors()} returns exact scalar priors for
 stochastic formula coordinates that are intentionally absent from the

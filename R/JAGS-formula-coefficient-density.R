@@ -13,7 +13,10 @@
 #' `JAGS_formula_prior_density()` constructs the induced marginal prior measure
 #' for one target through BayesTools' deterministic prior-density context and
 #' linear-density algebra. The result can be passed directly to
-#' [prior_density_ordinate()].
+#' [prior_density_ordinate()]. Targets and sources are the raw fitted
+#' coefficients: a coefficient prior's `multiply_by` scales only its
+#' contribution to the linear predictor and does not enter the coefficient's
+#' prior density.
 #'
 #' `JAGS_formula_internal_coordinate_priors()` returns exact scalar priors for
 #' stochastic formula coordinates that are intentionally absent from the
@@ -679,7 +682,59 @@ JAGS_formula_prior_density <- function(
   }else if(inherits(out, "prior_density_conditional_context")){
     out$formula_scale <- NULL
   }
-  out
+
+  # The sources are the raw monitored coefficients (the JAGS nodes). A
+  # coefficient's 'multiply_by' scales only its linear-predictor contribution,
+  # so it must not enter the density of the coefficient itself.
+  .bt_formula_prior_density_context_raw_sources(out, source_names)
+}
+
+.bt_formula_prior_density_context_raw_sources <- function(context,
+                                                           source_names){
+
+  source_priors <- unique(sub("\\[[^]]+\\]$", "", source_names))
+  strip_list <- function(prior_list){
+    if(!is.list(prior_list) || is.null(names(prior_list))){
+      return(prior_list)
+    }
+    for(name in intersect(names(prior_list), source_priors)){
+      prior <- prior_list[[name]]
+      if(is.prior(prior)){
+        prior_list[[name]] <- .bt_prior_without_multiply_by(prior)
+      }else if(is.list(prior)){
+        # model-mixture contexts hold one prior per model
+        for(model_i in seq_along(prior)){
+          if(is.prior(prior[[model_i]])){
+            prior[[model_i]] <- .bt_prior_without_multiply_by(prior[[model_i]])
+          }
+        }
+        prior_list[[name]] <- prior
+      }
+    }
+    prior_list
+  }
+
+  context$prior_list <- strip_list(context$prior_list)
+  if(inherits(context, "prior_density_conditional_context") &&
+     is.list(context$prior_lists)){
+    context$prior_lists <- lapply(context$prior_lists, strip_list)
+  }
+
+  context
+}
+
+.bt_prior_without_multiply_by <- function(prior){
+
+  attr(prior, "multiply_by") <- NULL
+  if(is.prior.spike_and_slab(prior) || is.prior.mixture(prior)){
+    for(component_i in seq_along(prior)){
+      if(is.prior(prior[[component_i]])){
+        prior[[component_i]] <- .bt_prior_without_multiply_by(prior[[component_i]])
+      }
+    }
+  }
+
+  prior
 }
 
 .bt_formula_prior_density_context_valid <- function(context){
