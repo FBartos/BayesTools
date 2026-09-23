@@ -268,6 +268,56 @@ test_that("a sole hidden allocation omits its public component argument", {
 })
 
 
+test_that("gate-only allocations accept unnamed single terms", {
+
+  sd_prior <- prior("normal", list(0, 1), truncation = list(lower = 0))
+  gate <- list(study = prior("beta", list(1, 1)))
+  unnamed <- random_variance_allocation(
+    name = "gate", terms = "study", sd = sd_prior, inclusion = gate
+  )
+  named <- random_variance_allocation(
+    name = "gate", terms = c(study = "study"), sd = sd_prior, inclusion = gate
+  )
+  expect_s3_class(unnamed, "random_variance_allocation")
+  expect_true(.bt_random_variance_allocation_gate_only(unnamed))
+  expect_true(.bt_random_variance_allocation_gate_only(named))
+  # The resolver check is independent of the constructor check.
+  expect_true(.bt_random_variance_allocation_gate_only(
+    list(target = "block", terms = "study", weights = NULL, inclusion = gate)
+  ))
+  expect_error(
+    random_variance_allocation(
+      name = "gate", terms = "study", sd = sd_prior,
+      inclusion = list(site = prior("beta", list(1, 1)))
+    ),
+    "requires 'inclusion' to name its sole resolved component",
+    fixed = TRUE
+  )
+
+  data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2")),
+    site  = factor(c("a", "b", "a", "b"))
+  )
+  compile <- function(allocation){
+    JAGS_formula(
+      formula = ~ 1 +
+        random(1 | study, name = "study", covariance = "diag") +
+        random(1 | site, name = "site", covariance = "diag"),
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(sd = sd_prior, allocation = allocation)
+    )
+  }
+  unnamed_result <- compile(unnamed)
+  named_result   <- compile(named)
+  expect_true(unnamed_result$formula_design$random_allocations$gate$gate_only)
+  expect_identical(unnamed_result$formula_syntax, named_result$formula_syntax)
+  expect_identical(names(unnamed_result$prior_list),
+                   names(named_result$prior_list))
+})
+
+
 test_that("gate-only allocation factor chains keep diagnostic labels", {
 
   expect_identical(

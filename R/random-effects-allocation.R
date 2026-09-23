@@ -66,8 +66,9 @@
      is.null(allocation$inclusion)){
     return(FALSE)
   }
+  # Labels of unnamed terms carry the terms as names; compare the values only.
   component_labels <- .bt_random_variance_allocation_component_labels(terms)
-  identical(sort(names(allocation$inclusion)), sort(component_labels))
+  identical(sort(names(allocation$inclusion)), sort(unname(component_labels)))
 }
 
 .bt_random_variance_allocation_component_labels <- function(terms){

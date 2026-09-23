@@ -528,7 +528,7 @@ random_variance_allocation <- function(name, terms = NULL, sd = NULL,
     length(terms) == 1L && is.null(weights) && !is.null(inclusion)
   if(gate_only){
     component_labels <- .bt_random_variance_allocation_component_labels(terms)
-    if(!identical(sort(names(inclusion)), sort(component_labels))){
+    if(!identical(sort(names(inclusion)), sort(unname(component_labels)))){
       stop(
         "A one-component block allocation requires 'inclusion' to name its sole resolved component.",
         call. = FALSE
