@@ -201,6 +201,54 @@ test_that("formula coefficient transforms follow the fitted design for nested sl
   )
 })
 
+test_that("JAGS_formula formula-scale metadata carry the fitted design", {
+
+  data <- data.frame(
+    x = c(1, 3, 7, 2, 6, 11, 4, 5, 9),
+    f = factor(rep(c("A", "B", "C"), each = 3L), levels = c("A", "B", "C"))
+  )
+  prior_list <- list(
+    intercept = prior("normal", list(0, 1)),
+    f = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    "f:x" = prior_factor("normal", list(0, 1), contrast = "treatment")
+  )
+  scaled <- JAGS_formula(~ f/x, "mu", data, prior_list,
+                         formula_scale = list(x = TRUE))
+  original <- JAGS_formula(~ f/x, "mu", data, prior_list)
+  expect_false(is.null(attr(scaled$formula_scale, "unscale_design")))
+  # the design keeps its fitted formula-scale copy (compared on bridge rebuilds)
+  expect_null(attr(scaled$formula_design$formula_scale, "unscale_design"))
+  expect_null(original$formula_scale)
+
+  # formula-scale-only consumers: a posterior matrix and the stored metadata
+  source_names <- .formula_coefficient_source_names(scaled)
+  coefficients <- rbind(
+    c(0.3, -0.7, 1.1, 0.25, -0.4, 0.9),
+    c(-1.2, 0.5, 0.2, -0.6, 0.35, 0.15)
+  )
+  colnames(coefficients) <- source_names
+  transformed <- transform_scale_samples(
+    coefficients,
+    formula_scale = list(mu = scaled$formula_scale)
+  )
+  expect_equal(
+    .formula_coefficient_design_matrix(original) %*% t(transformed[, source_names]),
+    .formula_coefficient_design_matrix(scaled) %*% t(coefficients),
+    tolerance = 1e-12
+  )
+
+  # Formula-scale metadata stored before the design was attached keep the
+  # name-paired map without error.
+  legacy_scale <- scaled$formula_scale
+  attr(legacy_scale, "unscale_design") <- NULL
+  expect_identical(
+    transform_scale_samples(coefficients, formula_scale = list(mu = legacy_scale)),
+    coefficients %*% t(.build_unscale_matrix_by_names(
+      source_names, legacy_scale, "mu", require_closure = FALSE
+    ))
+  )
+})
+
 test_that("formula coefficient transforms refuse terms whose centering is not representable", {
 
   data <- data.frame(
@@ -362,11 +410,10 @@ test_that("design-derived unscaling applies only to fitted coefficient coordinat
     ),
     formula_scale = list(x = TRUE)
   )
-  with_design <- list(mu = .bt_formula_scale_with_unscale_design(
-    formula_result$formula_scale,
-    formula_result$formula_design
-  ))
-  without_design <- list(mu = formula_result$formula_scale)
+  with_design <- list(mu = formula_result$formula_scale)
+  expect_false(is.null(attr(with_design$mu, "unscale_design")))
+  without_design <- with_design
+  attr(without_design$mu, "unscale_design") <- NULL
 
   # Level-wise summaries (one column per level, or level-labelled columns)
   # are not the fitted coefficient vector and keep the name-paired map.

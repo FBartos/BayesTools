@@ -817,6 +817,13 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     random_allocations = random_sd_binding_context$allocations,
     random_effects_interface = random_effects_interface
   )
+  # Carry the fitted fixed-effect design with the formula-scale metadata so
+  # that every consumer derives original-scale coefficients from the design
+  # (the design's own formula_scale copy stays as fitted).
+  output$formula_scale <- .bt_formula_scale_with_unscale_design(
+    output$formula_scale,
+    output$formula_design
+  )
   output$random_effects_interface <- random_effects_interface
 
   return(output)
