@@ -806,6 +806,31 @@ test_that("linear prior density handles multiply_by products and point mass", {
   expect_gt(BayesTools:::.prior_linear_density_height(density, 0), 0)
 })
 
+test_that("a multiply_by scale with its own weight is rejected as dependent", {
+
+  # x * sigma + sigma shares sigma between both terms (density at 1: 0.280 by
+  # Monte Carlo); convolving them as independent gave 0.383.
+  x <- prior("normal", list(0, 1))
+  attr(x, "multiply_by") <- "sigma"
+  priors <- list(x = x, sigma = prior("normal", list(0, 1), truncation = list(0, Inf)))
+  expect_error(
+    .prior_linear_combination_density(priors, c(x = 1, sigma = 1)),
+    paste0("The prior density of this linear combination is unavailable because 'sigma' ",
+           "enters it both as the 'multiply_by' scale of other coefficients and with its ",
+           "own weight, which makes the terms dependent. Evaluate the terms separately."),
+    fixed = TRUE
+  )
+  context <- .prior_density_build_context(priors, c("x", "sigma"))
+  expect_error(.prior_density_from_context(context, c(x = 1, sigma = 1)),
+               "enters it both as the 'multiply_by' scale", fixed = TRUE)
+
+  # Each term alone keeps its density.
+  expect_s3_class(.prior_linear_combination_density(priors, c(x = 1), n_grid = 256),
+                  "prior_linear_density")
+  expect_s3_class(.prior_linear_combination_density(priors, c(sigma = 1), n_grid = 256),
+                  "prior_linear_density")
+})
+
 test_that("product densities count each mixed-measure component once", {
 
   make_dist <- function(inclusion){

@@ -1005,6 +1005,18 @@
       if(.prior_linear_prior_dimension(multiplier_prior) != 1L){
         stop("The 'multiply_by' parameter '", multiplier, "' must have a scalar prior distribution.", call. = FALSE)
       }
+      # The product and the multiplier's own term share one random variable,
+      # so they cannot be convolved as independent components.
+      multiplier_columns <- .prior_linear_prior_columns(multiplier, multiplier_prior)
+      if(any(split$additive_weights[intersect(multiplier_columns, names(split$additive_weights))] != 0)){
+        stop(
+          "The prior density of this linear combination is unavailable because '",
+          multiplier, "' enters it both as the 'multiply_by' scale of other ",
+          "coefficients and with its own weight, which makes the terms dependent. ",
+          "Evaluate the terms separately.",
+          call. = FALSE
+        )
+      }
 
       linear_dist <- .prior_linear_additive_combination_density(
         prior_list         = product_group$prior_list,
