@@ -82,6 +82,10 @@ weight for that parameter. Requested conditionals with zero weight are ignored
 for that level; if no requested conditionals are active, the level uses the
 fully averaged posterior and prior context. Level comparisons require the
 compared levels to use the same effective conditional subset and rule.
+As in \code{marginal_inference()}, a parameter or level whose conditional
+posterior has a declared point mass at the null hypothesis gets an
+\code{NA} inclusion Bayes factor with the reason in its \code{"warnings"}
+attribute.
 }
 \seealso{
 \link{marginal_inference} \link{as_mixed_posteriors}

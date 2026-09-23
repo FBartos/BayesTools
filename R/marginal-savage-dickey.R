@@ -20,7 +20,12 @@
 #' \code{posterior_atoms} metadata, \code{posterior_atom_attribute()}, or a
 #' posterior-density attribute that explicitly declares point masses. An
 #' ordinary Savage-Dickey density ratio is rejected when atom status is unknown
-#' or when any positive atom is located exactly at the null. Declared atoms at
+#' or when any positive atom is located exactly at the null. For a scalar
+#' marginal posterior, a positive atom at the null is an error; for a list of
+#' marginal posteriors (levels), such a level returns \code{NA} with the reason
+#' in its \code{"warnings"} attribute ("fixed at the null hypothesis value" for
+#' an atom of mass one, e.g., the reference level of a treatment-coded factor)
+#' and the other levels are computed. Declared atoms at
 #' other locations are removed from the continuous posterior ordinate and the
 #' resulting density is scaled by the remaining continuous mass.
 #'
@@ -76,6 +81,22 @@
 Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximation = FALSE, silent = FALSE,
                              density_method = c("KDE", "precomputed")){
 
+  .Savage_Dickey_BF.checked(
+    posterior            = posterior,
+    null_hypothesis      = null_hypothesis,
+    normal_approximation = normal_approximation,
+    silent               = silent,
+    density_method       = density_method,
+    null_mass_NA         = is.list(posterior)
+  )
+}
+
+# 'null_mass_NA': a level with a declared posterior point mass at the null gets
+# an NA Bayes factor with its reason instead of stopping the whole evaluation
+# (list posteriors and marginal inference; a scalar call keeps the error).
+.Savage_Dickey_BF.checked <- function(posterior, null_hypothesis, normal_approximation,
+                                      silent, density_method, null_mass_NA){
+
   if(!inherits(posterior, "marginal_posterior"))
     stop("'Savage_Dickey_BF' requires an object of class 'marginal_posterior'.")
   check_real(null_hypothesis, "null_hypothesis", allow_NA = FALSE)
@@ -91,14 +112,15 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     null_hypothesis      = null_hypothesis,
     normal_approximation = normal_approximation,
     silent               = silent,
-    density_method       = density_method
+    density_method       = density_method,
+    null_mass_NA         = null_mass_NA
   )
 }
 
 # Savage-Dickey Bayes factors of a scalar marginal posterior or of each level of
 # a list of marginal posteriors.
 .Savage_Dickey_BF.marginal <- function(posterior, null_hypothesis, normal_approximation,
-                                       silent, density_method){
+                                       silent, density_method, null_mass_NA = FALSE){
 
   if(is.list(posterior)){
     bf <- list()
@@ -112,14 +134,16 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       )
       bf[[i]] <- .Savage_Dickey_BF.fun(
         posterior_i, null_hypothesis, normal_approximation, silent, density_method,
-        label = .Savage_Dickey_BF.level_label(posterior, i)
+        label        = .Savage_Dickey_BF.level_label(posterior, i),
+        null_mass_NA = null_mass_NA
       )
     }
     names(bf) <- names(posterior)
   }else{
     bf <- .Savage_Dickey_BF.fun(
       posterior, null_hypothesis, normal_approximation, silent, density_method,
-      label = .Savage_Dickey_BF.parameter_label(posterior)
+      label        = .Savage_Dickey_BF.parameter_label(posterior),
+      null_mass_NA = null_mass_NA
     )
   }
 
@@ -166,7 +190,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 )
 
 .Savage_Dickey_BF.fun    <- function(posterior, null_hypothesis, normal_approximation, silent, density_method,
-                                     label = NULL){
+                                     label = NULL, null_mass_NA = FALSE){
 
   if(is.null(attr(posterior, "prior_density")))
     stop("there are no prior densities for the posterior distribution", call. = FALSE)
@@ -255,11 +279,28 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     ]
   )
   if(null_point_mass > 0){
-    stop(
+    point_mass_reason <- paste0(
       "The posterior contains a declared point mass at the exact null ",
-      "hypothesis value. The ordinary Savage-Dickey density ratio is invalid.",
-      call. = FALSE
+      "hypothesis value. The ordinary Savage-Dickey density ratio is invalid."
     )
+    if(!isTRUE(null_mass_NA)){
+      stop(point_mass_reason, call. = FALSE)
+    }
+    reason <- if(null_point_mass >= 1 - sqrt(.Machine$double.eps)){
+      paste0(
+        "The posterior is fixed at the null hypothesis value. The ",
+        "Savage-Dickey Bayes factor is undefined."
+      )
+    }else{
+      point_mass_reason
+    }
+    BF <- NA_real_
+    attr(BF, "warnings") <- reason
+    attr(BF, "posterior_density_source") <- "null_point_mass"
+    if(!silent){
+      .Savage_Dickey_BF.emit_warnings(reason, label)
+    }
+    return(BF)
   }
   if(.prior_linear_density_point_mass(prior, null_hypothesis) > 0){
     stop(

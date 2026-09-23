@@ -3425,6 +3425,86 @@ test_that("Savage-Dickey extrapolation warnings use the components supporting th
   expect_null(attr(bf, "warnings"))
 })
 
+.treatment_factor_prior_for_test <- function(sd){
+
+  treatment <- prior_factor("normal", list(0, sd), contrast = "treatment")
+  attr(treatment, "levels") <- 3
+  attr(treatment, "level_names") <- c("A", "B", "C")
+  # JAGS_fit() completes the factor metadata of fitted prior lists
+  BayesTools:::.complete_factor_metadata_prior_list(list(mu_f = treatment))$mu_f
+}
+
+test_that("marginal inference gives levels fixed at the null an NA Bayes factor with its reason", {
+
+  fixed <- paste0(
+    "The posterior is fixed at the null hypothesis value. The ",
+    "Savage-Dickey Bayes factor is undefined."
+  )
+  point_mass <- paste0(
+    "The posterior contains a declared point mass at the exact null ",
+    "hypothesis value. The ordinary Savage-Dickey density ratio is invalid."
+  )
+  set.seed(3)
+  n <- 2000
+  factor_draws <- function(){
+    cbind("mu_f[1]" = stats::rnorm(n, .3, .4), "mu_f[2]" = stats::rnorm(n, .6, .4))
+  }
+
+  # treatment-coded coefficients: the reference level A is fixed at 0
+  models <- lapply(c(1, .5), function(sd) list(
+    fit = .mock_mixing_fit_for_marginal(factor_draws(), list(mu_f = .treatment_factor_prior_for_test(sd))),
+    marglik = bridgesampling_object(0), prior_weights = 1
+  ))
+  inference <- .collect_warnings_for_test(marginal_inference(
+    models, marginal_parameters = "mu_f", parameters = "mu_f",
+    is_null_list = list(mu_f = c(FALSE, FALSE)), formula = NULL, n_samples = n, seed = 1
+  ))
+  expect_identical(inference$warnings, paste0("mu_f[A]: ", fixed))
+  bf <- inference$value$inference$mu_f
+  expect_identical(names(bf), c("A", "B", "C"))
+  expect_true(is.na(bf[["A"]]))
+  expect_identical(attr(bf[["A"]], "warnings"), fixed)
+  levels <- lapply(inference$value$conditional$mu_f, function(level){
+    class(level) <- c(class(level), "marginal_posterior")
+    level
+  })
+  # the other levels match their direct Savage-Dickey Bayes factors
+  for(level in c("B", "C")){
+    expect_true(is.finite(bf[[level]]))
+    expect_identical(bf[[level]], Savage_Dickey_BF(levels[[level]]))
+  }
+  # a scalar call keeps its error
+  expect_error(Savage_Dickey_BF(levels[["A"]]), point_mass, fixed = TRUE)
+
+  table <- marginal_estimates_table(
+    inference$value$conditional, inference$value$inference, "mu_f"
+  )
+  expect_equal(as.numeric(table$inclusion_BF), c(NA, as.numeric(bf[["B"]]), as.numeric(bf[["C"]])))
+  expect_identical(attr(table, "warnings"), paste0("mu_f[A]: ", fixed))
+
+  # a partial point mass at the null: NA with the point-mass reason
+  partial <- inference$value$conditional$mu_f
+  attr(partial[["B"]], "posterior_atoms") <- posterior_atom_attribute(data.frame(x = 0, mass = .5))
+  partial_BF <- Savage_Dickey_BF(partial, silent = TRUE)
+  expect_true(is.na(partial_BF[["B"]]))
+  expect_identical(attr(partial_BF[["B"]], "warnings"), point_mass)
+  expect_identical(partial_BF[["C"]], bf[["C"]])
+
+  # as_marginal_inference on one fit
+  fit <- coda::mcmc(factor_draws())
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- list(mu_f = .treatment_factor_prior_for_test(1))
+  single <- .collect_warnings_for_test(as_marginal_inference(
+    fit, marginal_parameters = "mu_f", parameters = "mu_f",
+    conditional_list = list(mu_f = NULL), conditional_rule = "AND",
+    formula = NULL, n_samples = n
+  ))
+  expect_identical(single$warnings, paste0("mu_f[A]: ", fixed))
+  single_BF <- single$value$inference$mu_f
+  expect_true(is.na(single_BF[["A"]]))
+  expect_true(all(is.finite(unlist(single_BF[c("B", "C")]))))
+})
+
 test_that("use_formula = FALSE prior densities ignore the coefficient's own multiply_by", {
 
   # JAGS monitors the raw coefficient; 'multiply_by' only scales the linear
@@ -4681,10 +4761,17 @@ test_that("Marginal distribution prior and posterior functions work", {
   expect_true(isTRUE(attr(BF.marg_post_sigma, "posterior_density_boundary_reflection")))
   expect_equal(attr(BF.marg_post_sigma, "posterior_density_support"), c(0, 5))
 
-  # simple factor
-  expect_error(
-    Savage_Dickey_BF(marg_post_simple_x_fac2t),
-    "exact null hypothesis value|point mass in the prior"
+  # simple factor: the reference level A is fixed at 0 and level B has the
+  # null model's point mass at 0, so both levels are NA with their reasons
+  BF.marg_post_simple_x_fac2t <- Savage_Dickey_BF(marg_post_simple_x_fac2t, silent = TRUE)
+  expect_true(all(is.na(unlist(BF.marg_post_simple_x_fac2t))))
+  expect_identical(
+    attr(BF.marg_post_simple_x_fac2t[["A"]], "warnings"),
+    "The posterior is fixed at the null hypothesis value. The Savage-Dickey Bayes factor is undefined."
+  )
+  expect_identical(
+    attr(BF.marg_post_simple_x_fac2t[["B"]], "warnings"),
+    "The posterior contains a declared point mass at the exact null hypothesis value. The ordinary Savage-Dickey density ratio is invalid."
   )
   marg_post_simple_x_fac2t_B <- marg_post_simple_x_fac2t[["B"]]
   class(marg_post_simple_x_fac2t_B) <- c(class(marg_post_simple_x_fac2t_B), "marginal_posterior")

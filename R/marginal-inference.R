@@ -22,6 +22,12 @@
 #' @inheritParams marginal_posterior
 #' @inheritParams Savage_Dickey_BF
 #'
+#' @details A parameter or level whose conditional marginal posterior has a
+#' declared point mass at the null hypothesis (e.g., the reference level of a
+#' treatment-coded factor, fixed at zero) gets an \code{NA} inclusion Bayes
+#' factor with the reason in its \code{"warnings"} attribute, which summary
+#' tables report; the other parameters and levels are computed.
+#'
 #' @return \code{marginal_inference} returns an object of class 'marginal_inference'.
 #'
 #' @seealso [ensemble_inference] [mix_posteriors] [BayesTools_ensemble_tables]
@@ -94,12 +100,13 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
     )
 
     # and inclusion Bayes factor
-    out[["inference"]][[marginal_parameters[i]]] <- Savage_Dickey_BF(
+    out[["inference"]][[marginal_parameters[i]]] <- .Savage_Dickey_BF.checked(
       posterior            = out[["conditional"]][[marginal_parameters[i]]],
       null_hypothesis      = null_hypothesis,
       normal_approximation = normal_approximation,
       silent               = silent,
-      density_method       = density_method
+      density_method       = density_method,
+      null_mass_NA         = TRUE
     )
   }
 
@@ -140,6 +147,10 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
 #' for that level; if no requested conditionals are active, the level uses the
 #' fully averaged posterior and prior context. Level comparisons require the
 #' compared levels to use the same effective conditional subset and rule.
+#' As in \code{marginal_inference()}, a parameter or level whose conditional
+#' posterior has a declared point mass at the null hypothesis gets an
+#' \code{NA} inclusion Bayes factor with the reason in its \code{"warnings"}
+#' attribute.
 #'
 #' @return \code{as_marginal_inference} returns an object of class 'marginal_inference'.
 #'
@@ -214,12 +225,13 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
 
     if(compute_BF){
       # and inclusion Bayes factor
-      out[["inference"]][[marginal_parameters[i]]] <- Savage_Dickey_BF(
+      out[["inference"]][[marginal_parameters[i]]] <- .Savage_Dickey_BF.checked(
         posterior            = out[["conditional"]][[marginal_parameters[i]]],
         null_hypothesis      = null_hypothesis,
         normal_approximation = normal_approximation,
         silent               = silent,
-        density_method       = density_method
+        density_method       = density_method,
+        null_mass_NA         = TRUE
       )
     }
   }

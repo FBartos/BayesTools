@@ -34,7 +34,12 @@ Posterior atom status must be declared through package-generated
 \code{posterior_atoms} metadata, \code{posterior_atom_attribute()}, or a
 posterior-density attribute that explicitly declares point masses. An
 ordinary Savage-Dickey density ratio is rejected when atom status is unknown
-or when any positive atom is located exactly at the null. Declared atoms at
+or when any positive atom is located exactly at the null. For a scalar
+marginal posterior, a positive atom at the null is an error; for a list of
+marginal posteriors (levels), such a level returns \code{NA} with the reason
+in its \code{"warnings"} attribute ("fixed at the null hypothesis value" for
+an atom of mass one, e.g., the reference level of a treatment-coded factor)
+and the other levels are computed. Declared atoms at
 other locations are removed from the continuous posterior ordinate and the
 resulting density is scaled by the remaining continuous mass.}
 }
