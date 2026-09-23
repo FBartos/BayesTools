@@ -39,7 +39,10 @@
 #' @param formula_scale named list specifying whether to standardize continuous predictors.
 #' If \code{NULL} (default), no standardization is applied. If a named list is provided,
 #' continuous predictors with \code{TRUE} values will be standardized (mean-centered and
-#' scaled by standard deviation). The intercept is never standardized.
+#' scaled by standard deviation). The intercept is never standardized. Scaled
+#' predictors are centered in every fixed and random term, including terms
+#' without a free intercept, so the model is specified on the standardized
+#' scale; see Details.
 #' @param prior_random optional `prior_random()` object defining random-effect
 #' standard-deviation, covariance, monitoring, and prediction policies. Required
 #' when \code{formula} contains random effects.
@@ -52,6 +55,25 @@
 #' \code{-1}, the function adds an intercept back to the compiled formula and
 #' includes a point prior that contributes zero on the formula scale: spike(0)
 #' ordinarily and spike(1) for a log-transformed intercept.
+#'
+#' Scaling with \code{formula_scale} replaces a continuous predictor \eqn{x}
+#' by \eqn{(x - m) / s} in every term, where \eqn{m} and \eqn{s} are its mean
+#' and standard deviation in the fitting data. Centering also applies to terms
+#' without a free intercept, which is intended: the model is specified on the
+#' standardized scale. For example, \code{~ 0 + x} with a scaled \code{x} fits
+#' \eqn{\mu = b (x - m) / s}, a line through \eqn{(m, 0)} rather than through
+#' the origin; on the original scale its slope is \eqn{b / s} and its implied
+#' intercept is \eqn{-b m / s}. Original-scale summaries
+#' (\code{transform_scaled = TRUE}) report that implied intercept although the
+#' standardized intercept is fixed at zero. Likewise, a random-effect block
+#' without a random intercept, such as \code{(0 + x | g)}, fits group
+#' contributions \eqn{u (x - m) / s}. It implies an original-scale random
+#' intercept \eqn{-u m / s} (SD \eqn{\tau |m| / s} for a scaled-slope SD
+#' \eqn{\tau}), perfectly correlated with the original-scale slope
+#' \eqn{u / s}; random-effect summaries report the block's own coefficients,
+#' such as \code{sd(x)} \eqn{= \tau / s}, and not this implied intercept.
+#' Leave a predictor unscaled when a line or group slope through the origin of
+#' \eqn{x} is intended.
 #'
 #' Factor contrasts are owned by [prior_factor()] and stored formula metadata,
 #' not inferred from whether an intercept is present. Thus `~ 0 + group` with

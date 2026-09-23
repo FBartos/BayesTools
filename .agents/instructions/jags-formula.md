@@ -55,6 +55,15 @@ transformation, prediction, summaries, and tests together. Do not infer an
 unscaling map from sampled values or parameter-name coincidences when the
 structural formula metadata is available.
 
+`formula_scale` centres every scaled predictor, also in terms without a free
+intercept (maintainer decision): the model is specified on the standardized
+scale. `~ 0 + x` with scaled `x` fits `mu = b (x - m) / s`, whose
+original-scale intercept is `-b m / s`; original-scale tables report it even
+though the standardized intercept is `spike(0)`. A random block without a
+random intercept, such as `(0 + x | g)`, likewise implies an original-scale
+random intercept `-u m / s`, perfectly correlated with the slope `u / s`; its
+summaries report only the block's own coefficients.
+
 The implementation is split across `R/JAGS-formula-scale.R`,
 `R/JAGS-formula-scale-random-sd.R`, `R/JAGS-formula-scale-transform.R`, and
 the related design and prediction files. Reuse those maps rather than creating

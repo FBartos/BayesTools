@@ -612,3 +612,85 @@ test_that("correlation footnotes count only draws retained by conditioning", {
     included = list("(mu) cor(a,b)" = c(TRUE, FALSE, FALSE, TRUE, FALSE))
   ))
 })
+
+test_that("scaled predictors are centred in terms without a free intercept", {
+
+  skip_if_not_installed("runjags")
+
+  # Maintainer decision M52 (c): `~ 0 + x` with scaled x fits
+  # mu = b (x - m) / s, so the original-scale intercept is -b m / s.
+  df <- data.frame(
+    x = c(3, 7, 3, 7),
+    id = factor(c("a", "a", "b", "b"))
+  )
+  m <- mean(df$x)
+  s <- stats::sd(df$x)
+  formula_result <- JAGS_formula(
+    formula = ~ 0 + x,
+    parameter = "mu",
+    data = df,
+    prior_list = list(x = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE)
+  )
+  b <- c(0.75, 0.8, 0.7)
+  fit <- make_random_scale_table_fit(formula_result, cbind(mu_x = b))
+
+  expect_equal(
+    unname(drop(JAGS_evaluate_formula(fit, parameter = "mu", data = data.frame(x = 0)))),
+    -b * m / s,
+    tolerance = 1e-12
+  )
+  samples <- JAGS_estimates_table(
+    fit,
+    transform_scaled = TRUE,
+    return_samples = TRUE
+  )
+  expect_equal(unname(samples[, "(mu) intercept"]), -b * m / s, tolerance = 1e-12)
+  expect_equal(unname(samples[, "(mu) x"]), b / s, tolerance = 1e-12)
+  table <- JAGS_estimates_table(fit, transform_scaled = TRUE)
+  expect_true("(mu) intercept" %in% rownames(table))
+  expect_false("(mu) intercept" %in% rownames(JAGS_estimates_table(fit)))
+
+  # The random analogue `(0 + x | id)` implies the group intercept -u m / s.
+  random_result <- JAGS_formula(
+    formula = ~ 1 + diag(0 + x | id),
+    parameter = "mu",
+    data = df,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        monitor = random_monitor(
+          latent = FALSE,
+          coefficients = TRUE,
+          correlation = FALSE
+        )
+      )
+    )
+  )
+  random_term <- random_result$formula_design$random_effects[[1]]
+  coefficient_names <- BayesTools:::.bt_random_effect_coefficient_names(
+    random_term = random_term,
+    n_groups = 2L,
+    n_columns = 1L
+  )
+  u <- c(1, -1)
+  posterior <- matrix(
+    c(0, 2, u),
+    nrow = 1L,
+    dimnames = list(NULL, c(
+      "mu_intercept",
+      random_term$sd_parameter_names,
+      as.vector(coefficient_names)
+    ))
+  )
+  random_fit <- make_random_scale_table_fit(random_result, posterior)
+  offsets <- JAGS_evaluate_formula(
+    random_fit,
+    parameter = "mu",
+    data = data.frame(x = c(0, 0), id = factor(c("a", "b"))),
+    formula_target = "conditional"
+  )
+  expect_equal(unname(drop(offsets)), -u * m / s, tolerance = 1e-12)
+})
