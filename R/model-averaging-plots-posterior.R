@@ -363,13 +363,20 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
           )
         })
 
-        # make cross product of the mixture priors
-        priors_grid <- expand.grid(
-          "mu" = prior_list_mu,
-          "PP" = prior_list
-        )
-        prior_list_mu <- priors_grid[["mu"]]
-        prior_list    <- priors_grid[["PP"]]
+        if(is.prior(prior_list_mu)){
+          # mu and bias are independent priors of one model: pair every bias
+          # branch with the complete mu prior so that its mixture or
+          # spike-and-slab weights are retained
+          prior_list_mu <- rep(list(prior_list_mu), length(prior_list))
+        }else{
+          # make cross product of the mixture priors
+          priors_grid <- expand.grid(
+            "mu" = prior_list_mu,
+            "PP" = prior_list
+          )
+          prior_list_mu <- priors_grid[["mu"]]
+          prior_list    <- priors_grid[["PP"]]
+        }
       }
 
       # cannot simplify prior_list - it would break the dependency with mu

@@ -1175,6 +1175,63 @@ test_that("full PET-PEESE and weightfunction prior overlays follow the bias cond
   expect_equal(unique(wf_prior$y), c(1, .5), tolerance = 1e-8)
 })
 
+test_that("full PET-PEESE prior overlays keep the mu mixture weights", {
+
+  prior_list <- list(
+    mu   = prior_mixture(
+      list(
+        prior("spike",  list(0),       prior_weights = 2),
+        prior("normal", list(-1, 0.5), prior_weights = 1),
+        prior("normal", list( 1, 0.5), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE, FALSE)
+    ),
+    bias = prior_mixture(
+      list(
+        prior_none(prior_weights = 1),
+        prior_PET("normal", list(mean = 0, sd = 1), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE)
+    )
+  )
+  mu_indicator <- rep(1:3, length.out = 60)
+  bias_indicator <- rep(1:2, each = 30)
+  posterior <- cbind(
+    mu             = ifelse(mu_indicator == 1, 0, seq(-1.5, 1.5, length.out = 60)),
+    mu_indicator   = mu_indicator,
+    bias_indicator = bias_indicator,
+    PET            = ifelse(bias_indicator == 2, seq(.1, 1.5, length.out = 60), 0)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+
+  # independent reference for mu + se * PET with PET ~ N(0, 1)[0, Inf) and
+  # mu ~ .5 * spike(0) + .25 * N(-1, .5) + .25 * N(1, .5)
+  reference_quantile <- function(p, se){
+    component_cdf <- function(q, mean, sd){
+      stats::integrate(function(b) stats::pnorm(q - se * b, mean, sd) * 2 * stats::dnorm(b),
+                       lower = 0, upper = Inf, rel.tol = 1e-10)$value
+    }
+    cdf <- function(q){
+      .5 * max(0, 2 * stats::pnorm(q / se) - 1) +
+        .25 * component_cdf(q, -1, .5) + .25 * component_cdf(q, 1, .5)
+    }
+    stats::uniroot(function(q) cdf(q) - p, c(-10, 10), tol = 1e-12)$root
+  }
+
+  samples <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = "PETPEESE", force_plots = TRUE)
+  layers <- ggplot2::ggplot_build(
+    plot_posterior(samples, "PETPEESE", plot_type = "ggplot", prior = TRUE, n_points = 3)
+  )$data
+  band   <- layers[[1]]
+  median <- layers[[2]]
+
+  expect_equal(median$y[3], reference_quantile(.5, 1), tolerance = 1e-6)
+  expect_equal(max(band$y[band$x == 1]), reference_quantile(.975, 1), tolerance = 1e-6)
+  expect_equal(min(band$y[band$x == 1]), reference_quantile(.025, 1), tolerance = 1e-6)
+})
+
 test_that("omega posterior KDE does not infer spikes from exact sample values", {
   continuous_samples <- seq(.005, .995, length.out = 75)
   omega_samples <- cbind(
