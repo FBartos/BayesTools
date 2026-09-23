@@ -90,5 +90,8 @@ is transformed when the transformation is supported. If support metadata is
 absent, support is inferred from prior metadata only when the posterior
 samples are on the raw, unconditioned prior scale; otherwise the deterministic
 prior-density context is used so formula-scale transformations and
-conditional model restrictions are respected.
+conditional model restrictions are respected. Marginal posteriors of
+\code{mix_posteriors()} ensembles with prior samples also record each draw's model and each
+model's exact support (attribute \code{posterior_components}), which
+\code{Savage_Dickey_BF()} uses when the models' supports differ.
 }

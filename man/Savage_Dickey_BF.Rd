@@ -71,10 +71,23 @@ is zero or non-finite, the returned Bayes factor carries a warning because
 the point-null Savage-Dickey ratio is not a regular density ratio at that
 point.
 
+Model-averaged marginal posteriors created by \code{marginal_posterior()}
+from \code{mix_posteriors()} record each draw's model and each model's exact
+support. When the continuous components of different models have different
+exact supports (for example, a truncated prior in only some models), the KDE
+posterior ordinate is estimated per model and mixed by the models' shares of
+the continuous draws: each model's ordinate uses its own support (zero when
+the support excludes the null, the one-sided limit on a support bound, as
+for the prior ordinate). The \code{"posterior_density_components"} attribute
+of the Bayes factor lists the components. When all continuous components
+share their support, the pooled KDE is used.
+
 When the null hypothesis lies outside the continuous posterior draws (and is
 not an exact support bound), the KDE posterior density at the null is an
 extrapolation from Gaussian kernel tails. The finite Bayes factor is then
-returned with a warning that it is not reliable evidence. Diagnostic
+returned with a warning that it is not reliable evidence; for a model
+mixture, only the draws of models whose support contains the null count.
+Diagnostic
 messages are stored in the \code{"warnings"} attribute of each Bayes factor
 and, unless \code{silent = TRUE}, emitted once per parameter or level,
 prefixed with its label (for example \code{mu[A]}).

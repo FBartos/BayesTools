@@ -128,7 +128,10 @@
 #' absent, support is inferred from prior metadata only when the posterior
 #' samples are on the raw, unconditioned prior scale; otherwise the deterministic
 #' prior-density context is used so formula-scale transformations and
-#' conditional model restrictions are respected.
+#' conditional model restrictions are respected. Marginal posteriors of
+#' \code{mix_posteriors()} ensembles with prior samples also record each draw's model and each
+#' model's exact support (attribute \code{posterior_components}), which
+#' \code{Savage_Dickey_BF()} uses when the models' supports differ.
 #'
 #' @return \code{marginal_posterior} returns a named list of mixed marginal posterior
 #' distributions (either vectors or matrices).
@@ -543,6 +546,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       if(has_intercept && log_intercept){
         log_source_transforms <- stats::setNames("log", intercept_name)
       }
+      # draws of model-averaged ensembles are aligned across terms by model
+      component_models_ind <- if(!inherits(samples, "as_mixed_posteriors")) models_ind
 
       if(length(at_manipulated) == 1 && format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) == "intercept"){
 
@@ -557,7 +562,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           source_transforms        = log_source_transforms,
           transformation           = transformation,
           transformation_arguments = transformation_arguments,
-          required                 = prior_samples
+          required                 = prior_samples,
+          models_ind               = component_models_ind
         )
 
       }else{
@@ -577,7 +583,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             source_transforms        = log_source_transforms,
             transformation           = transformation,
             transformation_arguments = transformation_arguments,
-            required                 = prior_samples
+            required                 = prior_samples,
+            models_ind               = component_models_ind
           )
         }
       }
@@ -958,6 +965,14 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           attr(marginal_posterior_samples[[level_names[lvl_i]]], "linear_weights") <- weights
           attr(marginal_posterior_samples[[level_names[lvl_i]]], "prior_density") <- prior_density
           attr(marginal_posterior_samples[[level_names[lvl_i]]], "prior_density_context") <- prior_density_context
+          attr(marginal_posterior_samples[[level_names[lvl_i]]], "posterior_components") <- .marginal_posterior_components(
+            context                  = prior_density_context,
+            weights                  = weights,
+            models_ind               = attr(samples[[parameter]], "models_ind", exact = TRUE),
+            n_values                 = length(marginal_posterior_samples[[level_names[lvl_i]]]),
+            transformation           = transformation,
+            transformation_arguments = transformation_arguments
+          )
         }
 
       }else if(inherits(samples[[parameter]], "mixed_posteriors.simple")){
@@ -975,6 +990,17 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         attr(marginal_posterior_samples, "linear_weights") <- weights
         attr(marginal_posterior_samples, "prior_density") <- prior_density
         attr(marginal_posterior_samples, "prior_density_context") <- prior_density_context
+        marginal_posterior_samples <- .posterior_components_set(
+          marginal_posterior_samples,
+          .marginal_posterior_components(
+            context                  = prior_density_context,
+            weights                  = weights,
+            models_ind               = attr(samples[[parameter]], "models_ind", exact = TRUE),
+            n_values                 = length(marginal_posterior_samples),
+            transformation           = transformation,
+            transformation_arguments = transformation_arguments
+          )
+        )
       }
 
       attr(marginal_posterior_samples, "prior_density_context") <- prior_density_context
@@ -1133,9 +1159,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
                                                        source_transforms = NULL,
                                                        transformation = NULL,
                                                        transformation_arguments = NULL,
-                                                       required = TRUE){
+                                                       required = TRUE,
+                                                       models_ind = NULL){
 
   log_columns <- intersect(names(source_transforms)[source_transforms == "log"], colnames(weights))
+  components <- NULL
   if(length(log_columns) > 0L && any(weights[, log_columns] != 0)){
     # Support algebra is linear in the coefficients; a log(intercept) term
     # leaves the exact support unavailable.
@@ -1151,8 +1179,17 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       ),
       required = required
     )
+    components <- .marginal_posterior_components(
+      context                  = prior_density_context,
+      weights                  = weights,
+      models_ind               = models_ind,
+      n_values                 = length(marginal),
+      transformation           = transformation,
+      transformation_arguments = transformation_arguments
+    )
   }
   marginal <- .posterior_support_set(marginal, support)
+  marginal <- .posterior_components_set(marginal, components)
 
   atoms <- .marginal_posterior_optional_metadata(
     .posterior_atoms_formula(
@@ -1217,6 +1254,38 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   tryCatch(expr, error = function(e) NULL)
+}
+
+# Per-draw model index and per-model exact supports of a model-mixture
+# marginal (Savage-Dickey mixes per-model posterior ordinates when the models'
+# supports differ). A marginal evaluated at several design rows stores each
+# draw's rows consecutively, so the model index repeats per row. The metadata
+# are optional: without them the pooled posterior ordinate is used.
+.marginal_posterior_components <- function(context, weights, models_ind, n_values,
+                                           transformation = NULL,
+                                           transformation_arguments = NULL){
+
+  if(!inherits(context, "prior_density_model_mixture_context") ||
+     is.null(models_ind)){
+    return(NULL)
+  }
+  n_rows <- if(is.null(dim(weights))) 1L else nrow(weights)
+  if(n_rows < 1L || length(models_ind) * n_rows != n_values){
+    return(NULL)
+  }
+
+  .marginal_posterior_optional_metadata(
+    .posterior_components_new(
+      index    = rep(models_ind, each = n_rows),
+      supports = .posterior_support_model_components(
+        context,
+        weights,
+        output_transformation           = transformation,
+        output_transformation_arguments = transformation_arguments
+      )
+    ),
+    required = FALSE
+  )
 }
 
 # Prior lists used by marginal prior-density contexts. Structural zeros are

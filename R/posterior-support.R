@@ -934,19 +934,10 @@
   }else if(inherits(context, "prior_density_model_mixture_context")){
     model_indices <- which(is.finite(context$model_weights) & context$model_weights > 0)
     supports <- lapply(model_indices, function(model_i){
-      model_prior_list <- lapply(context$prior_list, function(parameter_priors){
-        if(is.prior(parameter_priors)){
-          return(parameter_priors)
-        }
-        parameter_priors[[model_i]]
-      })
-      names(model_prior_list) <- names(context$prior_list)
-      for(parameter in names(model_prior_list)){
-        if(is.null(model_prior_list[[parameter]])){
-          model_prior_list[[parameter]] <- prior("point", list(location = 0))
-        }
-      }
-      .posterior_support_from_prior_list_weights(model_prior_list, weights)
+      .posterior_support_from_prior_list_weights(
+        .posterior_support_model_prior_list(context, model_i),
+        weights
+      )
     })
     support <- .posterior_support_union(supports, source = "linear_prior_models")
   }else if(inherits(context, "prior_density_conditional_context")){
@@ -975,6 +966,106 @@
     transformation          = output_transformation,
     transformation_arguments = output_transformation_arguments
   )
+}
+
+# Prior list of one model of a model-mixture prior-density context; parameters
+# the model omits are fixed at zero.
+.posterior_support_model_prior_list <- function(context, model_i){
+
+  model_prior_list <- lapply(context$prior_list, function(parameter_priors){
+    if(is.prior(parameter_priors)){
+      return(parameter_priors)
+    }
+    parameter_priors[[model_i]]
+  })
+  names(model_prior_list) <- names(context$prior_list)
+  for(parameter in names(model_prior_list)){
+    if(is.null(model_prior_list[[parameter]])){
+      model_prior_list[[parameter]] <- prior("point", list(location = 0))
+    }
+  }
+
+  model_prior_list
+}
+
+# Exact support of each model's component of a model-mixture marginal: the
+# union over the rows of 'weights' of that model's linear-combination support.
+# NULL unless 'context' is a model-mixture context; the entry of a model with
+# zero prior weight or unknown support is NULL.
+.posterior_support_model_components <- function(context, weights,
+                                                output_transformation = NULL,
+                                                output_transformation_arguments = NULL){
+
+  if(!inherits(context, "prior_density_model_mixture_context")){
+    return(NULL)
+  }
+
+  weight_rows <- if(is.null(dim(weights))){
+    list(weights)
+  }else{
+    lapply(seq_len(nrow(weights)), function(row_i){
+      stats::setNames(as.numeric(weights[row_i, ]), colnames(weights))
+    })
+  }
+
+  lapply(seq_along(context$model_weights), function(model_i){
+    model_weight <- context$model_weights[model_i]
+    if(!is.finite(model_weight) || model_weight <= 0){
+      return(NULL)
+    }
+    model_prior_list <- .posterior_support_model_prior_list(context, model_i)
+    supports <- lapply(weight_rows, function(row_weights){
+      .posterior_support_from_prior_list_weights(model_prior_list, row_weights)
+    })
+    support <- if(length(supports) == 1L){
+      supports[[1L]]
+    }else{
+      .posterior_support_union(supports, source = "linear_prior_rows")
+    }
+    .posterior_support_transform(
+      support,
+      transformation           = output_transformation,
+      transformation_arguments = output_transformation_arguments
+    )
+  })
+}
+
+# Per-draw component (model) index and per-component exact supports of a
+# model-mixture marginal posterior. 'supports[[m]]' is the support of the draws
+# with index m (NULL when unknown).
+.posterior_components_new <- function(index, supports){
+
+  if(!is.numeric(index) || anyNA(index) || any(index < 1) ||
+     any(index != round(index))){
+    stop("'index' must contain positive integer component indices.", call. = FALSE)
+  }
+  if(!is.list(supports) || length(supports) < max(c(0, index))){
+    stop("'supports' must list the support of every component.", call. = FALSE)
+  }
+
+  out <- list(
+    index    = as.integer(index),
+    supports = lapply(supports, .posterior_support_from_attribute)
+  )
+  class(out) <- c("BayesTools_posterior_components", "list")
+
+  out
+}
+
+.posterior_components_get <- function(x){
+
+  components <- attr(x, "posterior_components", exact = TRUE)
+  if(!inherits(components, "BayesTools_posterior_components")){
+    return(NULL)
+  }
+
+  components
+}
+
+.posterior_components_set <- function(x, components){
+
+  attr(x, "posterior_components") <- components
+  x
 }
 
 .posterior_support_set_from_prior_context <- function(samples, context,

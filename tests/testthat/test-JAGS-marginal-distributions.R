@@ -3220,6 +3220,211 @@ test_that("Savage-Dickey BFs with the null outside the posterior draws warn once
   expect_identical(unlist(direct$value), level_BFs)
 })
 
+# Mean and variance of a Gaussian KDE ordinate at x (reflected at a finite
+# lower support bound) for n draws resampled with replacement from n_source
+# draws of 'density', by quadrature: the reference for the per-component
+# Savage-Dickey ordinates.
+.reflected_kde_moments_for_test <- function(x, h, density, lower = -Inf, n, n_source){
+
+  kernel <- function(y){
+    k <- stats::dnorm(x, mean = y, sd = h)
+    if(is.finite(lower)){
+      k <- k + stats::dnorm(x, mean = 2 * lower - y, sd = h)
+    }
+    k
+  }
+  centres <- if(is.finite(lower)) c(x, 2 * lower - x) else x
+  from <- max(lower, min(centres) - 12 * h)
+  to <- max(centres) + 12 * h
+  first <- stats::integrate(function(y) kernel(y) * density(y), from, to,
+                            rel.tol = 1e-10, subdivisions = 500L)$value
+  second <- stats::integrate(function(y) kernel(y)^2 * density(y), from, to,
+                             rel.tol = 1e-10, subdivisions = 500L)$value
+  # resampling n of n_source iid draws: Var(mean) = sigma^2 (1/n + 1/n_source)
+  c(mean = first, variance = (second - first^2) * (1 / n + 1 / n_source))
+}
+
+.component_mixture_for_test <- function(n_source, seed){
+
+  set.seed(seed)
+  bounded <- prior("normal", list(.5, 1), list(0, Inf))
+  data <- data.frame(t = factor(c("lo", "mid", "hi"), levels = c("lo", "mid", "hi")))
+  prior_lists <- lapply(list(prior("normal", list(0, 1)), bounded), function(intercept){
+    JAGS_formula(~ 1 + t, "mu", data = data, prior_list = list(
+      intercept = intercept,
+      t         = prior_factor("normal", list(0, 1), contrast = "treatment")
+    ))$prior_list
+  })
+  # prior-only draws with equal marginal likelihoods: the posterior is the prior
+  draws <- list(
+    cbind(mu_intercept = stats::rnorm(n_source)),
+    cbind(mu_intercept = rng(bounded, n_source))
+  )
+  draws <- lapply(draws, function(x){
+    cbind(x, "mu_t[1]" = stats::rnorm(n_source), "mu_t[2]" = stats::rnorm(n_source))
+  })
+  models <- lapply(1:2, function(i) list(
+    fit = .mock_mixing_fit_for_marginal(draws[[i]], prior_lists[[i]]),
+    marglik = bridgesampling_object(0), prior_weights = 1
+  ))
+  list(models = models, bounded = bounded)
+}
+
+test_that("Savage-Dickey mixes per-model ordinates when model supports differ", {
+
+  n_source <- 20000
+  n_mixed  <- 20000
+  fixture <- .component_mixture_for_test(n_source, seed = 5)
+  mixed <- mix_posteriors(
+    fixture$models, parameters = c("mu_intercept", "mu_t"),
+    is_null_list = list(mu_intercept = c(FALSE, FALSE), mu_t = c(FALSE, FALSE)),
+    seed = 1, n_samples = n_mixed
+  )
+  simple <- marginal_posterior(mixed, "mu_intercept", use_formula = FALSE, prior_samples = TRUE)
+  levels <- marginal_posterior(mixed, "mu_t", formula = ~ 1 + t, prior_samples = TRUE)
+  levels <- lapply(levels, function(level){
+    class(level) <- c(class(level), "marginal_posterior")
+    level
+  })
+  models_ind <- attr(mixed$mu_intercept, "models_ind")
+  intercept <- as.numeric(mixed$mu_intercept)
+
+  # model 1: N(0, 1) on the real line; model 2: N(0.5, 1) truncated to [0, Inf)
+  densities <- list(
+    function(y) stats::dnorm(y),
+    function(y) stats::dnorm(y, .5, 1) / stats::pnorm(0, .5, 1, lower.tail = FALSE)
+  )
+  lower <- c(-Inf, 0)
+  expect_equal(
+    lapply(attr(simple, "posterior_components")$supports, `[[`, "bounds"),
+    list(c(-Inf, Inf), c(0, Inf))
+  )
+
+  for(null in c(0, .001, .05, -.5)){
+    # the true posterior (and prior) ordinate, one-sided on model 2's bound
+    truth <- .5 * densities[[1]](null) + .5 * if(null >= 0) densities[[2]](null) else 0
+
+    # reference: sum_m (n_m / n) E[f_m(null)], its Monte Carlo variance
+    moments <- vapply(1:2, function(m){
+      draws_m <- intercept[models_ind == m]
+      if(null < lower[m]) return(c(mean = 0, variance = 0))
+      .reflected_kde_moments_for_test(
+        null, h = stats::bw.nrd0(draws_m), density = densities[[m]],
+        lower = lower[m], n = length(draws_m), n_source = n_source
+      )
+    }, numeric(2))
+    shares <- tabulate(models_ind, 2) / length(models_ind)
+    expected <- sum(shares * moments["mean", ])
+    mc_sd <- sqrt(sum(shares^2 * moments["variance", ]))
+
+    for(marginal in list(simple, levels[["lo"]])){
+      bf <- Savage_Dickey_BF(marginal, null_hypothesis = null)
+      prior_height <- BayesTools:::.prior_linear_density_height(attr(marginal, "prior_density"), null)
+      expect_equal(as.numeric(prior_height), truth, tolerance = 1e-6)
+      posterior_height <- as.numeric(prior_height) / as.numeric(bf)
+      # the ordinate is the per-model KDE mixture (4 Monte Carlo SD)
+      expect_lte(abs(posterior_height - expected), 4 * mc_sd)
+      # BF = 1 up to the reflected-KDE smoothing bias and 4 Monte Carlo SD
+      # (at null 0: bias 1.6%, SD 2.4%; the pooled KDE gave BF 1.37, 11.7 SD off)
+      expect_lte(abs(log(as.numeric(bf))), abs(log(expected / truth)) + 4 * mc_sd / expected)
+      components <- attr(bf, "posterior_density_components")
+      expect_equal(components$n, tabulate(models_ind, 2))
+      expect_true(all(components$ordinate[lower > null] == 0))
+    }
+  }
+
+  # direct point hypotheses use the same ordinate
+  bf <- Savage_Dickey_BF(simple, null_hypothesis = .001)
+  hypothesis <- hypothesis_BF(simple, hypothesis = "mu_intercept = 0.001", columns = "all")
+  expect_equal(
+    hypothesis$posterior,
+    as.numeric(BayesTools:::.prior_linear_density_height(attr(simple, "prior_density"), .001)) /
+      as.numeric(bf),
+    tolerance = 1e-12
+  )
+
+  # levels whose supports agree across models keep the pooled estimate
+  for(level in c("mid", "hi")){
+    pooled <- levels[[level]]
+    attr(pooled, "posterior_components") <- NULL
+    bf <- Savage_Dickey_BF(levels[[level]], null_hypothesis = .05)
+    expect_identical(bf, Savage_Dickey_BF(pooled, null_hypothesis = .05))
+    expect_null(attr(bf, "posterior_density_components"))
+  }
+})
+
+test_that("Savage-Dickey keeps the pooled ordinate for shared or single-model supports", {
+
+  set.seed(8)
+  n <- 4000
+  bounded_1 <- prior("normal", list(0, 1), list(0, Inf))
+  bounded_2 <- prior("normal", list(.5, 1), list(0, Inf))
+  pooled_BF <- function(models){
+    mixed <- mix_posteriors(
+      models, parameters = "mu", is_null_list = list(mu = rep(FALSE, length(models))),
+      seed = 1, n_samples = n
+    )
+    marginal <- marginal_posterior(mixed, "mu", prior_samples = TRUE)
+    expect_s3_class(attr(marginal, "posterior_components"), "BayesTools_posterior_components")
+    stripped <- marginal
+    attr(stripped, "posterior_components") <- NULL
+    for(null in c(0, .3)){
+      bf <- Savage_Dickey_BF(marginal, null_hypothesis = null, silent = TRUE)
+      expect_identical(bf, Savage_Dickey_BF(stripped, null_hypothesis = null, silent = TRUE))
+      expect_null(attr(bf, "posterior_density_components"))
+    }
+  }
+
+  # both models truncated to [0, Inf)
+  pooled_BF(list(
+    list(fit = .mock_mixing_fit_for_marginal(cbind(mu = rng(bounded_1, n)), list(mu = bounded_1)),
+         marglik = bridgesampling_object(0), prior_weights = 1),
+    list(fit = .mock_mixing_fit_for_marginal(cbind(mu = rng(bounded_2, n)), list(mu = bounded_2)),
+         marglik = bridgesampling_object(0), prior_weights = 1)
+  ))
+  # a point-null model contributes atoms only: one continuous component
+  pooled_BF(list(
+    list(fit = .mock_mixing_fit_for_marginal(cbind(mu = rep(.5, n)), list(mu = prior("spike", list(.5)))),
+         marglik = bridgesampling_object(0), prior_weights = 1),
+    list(fit = .mock_mixing_fit_for_marginal(cbind(mu = rng(bounded_2, n)), list(mu = bounded_2)),
+         marglik = bridgesampling_object(0), prior_weights = 1)
+  ))
+})
+
+test_that("Savage-Dickey extrapolation warnings use the components supporting the null", {
+
+  n <- 4000
+  unbounded <- prior("normal", list(0, 1))
+  shifted <- prior("normal", list(6, 1), list(5, Inf))
+  models <- list(
+    list(fit = .mock_mixing_fit_for_marginal(cbind(mu = stats::qnorm(stats::ppoints(n))), list(mu = unbounded)),
+         marglik = bridgesampling_object(0), prior_weights = 1),
+    list(fit = .mock_mixing_fit_for_marginal(cbind(mu = 5 + abs(stats::qnorm(stats::ppoints(n)))), list(mu = shifted)),
+         marglik = bridgesampling_object(0), prior_weights = 1)
+  )
+  mixed <- mix_posteriors(
+    models, parameters = "mu", is_null_list = list(mu = c(FALSE, FALSE)),
+    seed = 1, n_samples = n
+  )
+  marginal <- marginal_posterior(mixed, "mu", prior_samples = TRUE)
+  draws <- as.numeric(marginal)
+  models_ind <- attr(mixed$mu, "models_ind")
+  expect_gt(min(draws[models_ind == 2]), 5)
+
+  # 4.5 lies within the pooled draws, but only model 1 supports it and its
+  # draws end below 4.5: the ordinate is model 1's kernel tail
+  expect_lt(max(draws[models_ind == 1]), 4.5)
+  warnings <- .collect_warnings_for_test(Savage_Dickey_BF(marginal, null_hypothesis = 4.5))
+  expect_match(warnings$warnings, "^mu: Posterior samples do not span both sides", all = TRUE)
+  expect_length(warnings$warnings, 1L)
+  expect_true(is.finite(warnings$value) && warnings$value > 0)
+  expect_equal(attr(warnings$value, "posterior_density_components")$ordinate[2], 0)
+
+  # a null spanned by the supporting component's draws is an ordinary ordinate
+  expect_no_warning(bf <- Savage_Dickey_BF(marginal, null_hypothesis = -.5))
+  expect_null(attr(bf, "warnings"))
+})
+
 test_that("use_formula = FALSE prior densities ignore the coefficient's own multiply_by", {
 
   # JAGS monitors the raw coefficient; 'multiply_by' only scales the linear

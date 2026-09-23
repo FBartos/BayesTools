@@ -49,10 +49,23 @@
 #' the point-null Savage-Dickey ratio is not a regular density ratio at that
 #' point.
 #'
+#' Model-averaged marginal posteriors created by \code{marginal_posterior()}
+#' from \code{mix_posteriors()} record each draw's model and each model's exact
+#' support. When the continuous components of different models have different
+#' exact supports (for example, a truncated prior in only some models), the KDE
+#' posterior ordinate is estimated per model and mixed by the models' shares of
+#' the continuous draws: each model's ordinate uses its own support (zero when
+#' the support excludes the null, the one-sided limit on a support bound, as
+#' for the prior ordinate). The \code{"posterior_density_components"} attribute
+#' of the Bayes factor lists the components. When all continuous components
+#' share their support, the pooled KDE is used.
+#'
 #' When the null hypothesis lies outside the continuous posterior draws (and is
 #' not an exact support bound), the KDE posterior density at the null is an
 #' extrapolation from Gaussian kernel tails. The finite Bayes factor is then
-#' returned with a warning that it is not reliable evidence. Diagnostic
+#' returned with a warning that it is not reliable evidence; for a model
+#' mixture, only the draws of models whose support contains the null count.
+#' Diagnostic
 #' messages are stored in the \code{"warnings"} attribute of each Bayes factor
 #' and, unless \code{silent = TRUE}, emitted once per parameter or level,
 #' prefixed with its label (for example \code{mu[A]}).
@@ -261,6 +274,23 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   continuous_samples <- continuous_posterior$samples
   continuous_mass <- continuous_posterior$continuous_mass
 
+  # A model mixture whose continuous components have different exact supports
+  # mixes per-component KDE ordinates (KDE path only).
+  component_plan <- NULL
+  posterior_density_components <- NULL
+  if(!isTRUE(normal_approximation) && is.null(stored_posterior_ordinate) &&
+     is.null(stored_posterior_density) && continuous_mass > 0){
+    component_plan <- .Savage_Dickey_BF.component_plan(
+      samples    = continuous_samples,
+      index      = continuous_posterior$component_index,
+      components = continuous_posterior$components
+    )
+    if(!is.null(component_plan[["warning"]])){
+      warnings <- c(warnings, component_plan[["warning"]])
+      component_plan <- NULL
+    }
+  }
+
   prior_range <- range(c(
     if(!is.null(prior$density)) prior$density$x else NULL,
     if(!is.null(prior$points) && nrow(prior$points) > 0) prior$points$x else NULL
@@ -290,6 +320,18 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       is.finite(posterior_support_bounds) &
         null_hypothesis == posterior_support_bounds
     )
+  }
+  if(!is.null(component_plan)){
+    # only components whose support contains the null contribute an ordinate
+    contains <- .Savage_Dickey_BF.component_contains(component_plan, null_hypothesis)
+    if(any(contains)){
+      posterior_range <- range(unlist(component_plan$draws[contains], use.names = FALSE))
+      null_at_support_boundary <- any(vapply(
+        component_plan$bounds[contains],
+        function(bounds) any(is.finite(bounds) & null_hypothesis == bounds),
+        logical(1)
+      ))
+    }
   }
   if(!is.null(stored_posterior_density) && is.null(stored_posterior_ordinate)){
     posterior_range <- range(stored_posterior_density[["x"]], finite = TRUE)
@@ -401,8 +443,23 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       posterior_density_source <- "precomputed"
       BF_error_percent <- .posterior_density_bf_error_percent(stored_posterior_density, null_hypothesis)
     }
+  }else if(!is.null(component_plan)){
+    posterior_height <- .Savage_Dickey_BF.component_height(
+      plan            = component_plan,
+      null_hypothesis = null_hypothesis,
+      pooled_samples  = continuous_samples
+    ) * continuous_mass
+    posterior_density_boundary_reflection <- isTRUE(attr(posterior_height, "boundary_reflection", exact = TRUE))
+    if(isTRUE(attr(posterior_height, "posterior_support_exclusion", exact = TRUE))){
+      posterior_density_source <- "exact_support_exclusion"
+    }
+    posterior_density_components <- attr(posterior_height, "components", exact = TRUE)
   }else{
     posterior_height <- kde_height(stored_posterior_density_support)
+  }
+  if(identical(posterior_density_source, "exact_support_exclusion")){
+    # an exact zero posterior density is not a kernel-tail extrapolation
+    warnings <- warnings[warnings != .Savage_Dickey_BF_extrapolation_warning]
   }
   prior_height <- .prior_linear_density_height(prior, null_hypothesis)
   if(!is.finite(prior_height) || prior_height <= 0){
@@ -432,6 +489,9 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   if(!is.null(posterior_density_support_bounds)){
     attr(BF, "posterior_density_support") <- posterior_density_support_bounds
   }
+  if(!is.null(posterior_density_components)){
+    attr(BF, "posterior_density_components") <- posterior_density_components
+  }
   if(length(posterior_density_fallback_warnings) > 0L){
     attr(BF, "posterior_density_fallback") <- TRUE
     attr(BF, "posterior_density_fallback_warnings") <- posterior_density_fallback_warnings
@@ -456,6 +516,11 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 
   sample_values <- as.numeric(posterior)
   finite <- is.finite(sample_values)
+  components <- .posterior_components_get(posterior)
+  component_index <- NULL
+  if(!is.null(components) && length(components$index) == length(sample_values)){
+    component_index <- components$index[finite]
+  }
   sample_values <- sample_values[finite]
   atom_mass <- sum(posterior_atoms$mass)
   if(!is.finite(atom_mass) || atom_mass < 0 || atom_mass > 1){
@@ -486,10 +551,116 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   }
 
   list(
-    samples = continuous_samples,
+    samples         = continuous_samples,
     continuous_mass = continuous_mass,
-    atom_mass = atom_mass
+    atom_mass       = atom_mass,
+    component_index = if(!is.null(component_index)) component_index[keep],
+    components      = components
   )
+}
+
+# Per-component posterior ordinates of a model mixture whose continuous
+# components have different exact supports. Returns NULL for the pooled
+# estimate: without component metadata, with a single continuous component, or
+# when all continuous components share their support. Components whose support
+# or draws cannot be used also fall back to the pooled estimate, with a warning.
+.Savage_Dickey_BF.component_plan <- function(samples, index, components){
+
+  if(is.null(index) || is.null(components) || length(samples) < 2L){
+    return(NULL)
+  }
+
+  ids <- sort(unique(index))
+  if(length(ids) < 2L){
+    return(NULL)
+  }
+
+  draws  <- vector("list", length(ids))
+  bounds <- vector("list", length(ids))
+  for(i in seq_along(ids)){
+    support <- components$supports[[ids[i]]]
+    if(is.null(support) || !isTRUE(support$exact)){
+      return(NULL)
+    }
+    draws[[i]]   <- as.numeric(samples)[index == ids[i]]
+    support_info <- .posterior_support_for_kde(draws[[i]], support = support)
+    if(is.null(support_info[["bounds"]])){
+      return(list(warning = paste0(
+        "Exact posterior support metadata of the mixed model components is ",
+        "unusable for their posterior samples. Falling back to the pooled ",
+        "kernel density estimate."
+      )))
+    }
+    bounds[[i]] <- support_info[["bounds"]]
+  }
+
+  if(all(vapply(bounds, function(x) all(x == bounds[[1L]]), logical(1)))){
+    return(NULL)
+  }
+
+  list(
+    ids    = ids,
+    counts = vapply(draws, length, integer(1)),
+    draws  = draws,
+    bounds = bounds
+  )
+}
+
+.Savage_Dickey_BF.component_contains <- function(plan, null_hypothesis){
+
+  vapply(plan$bounds, function(bounds){
+    null_hypothesis >= bounds[1] && null_hypothesis <= bounds[2]
+  }, logical(1))
+}
+
+# height = sum_m (n_m / n_c) f_m(null) over the continuous components, where
+# f_m is the boundary-reflected KDE of component m's draws with its exact
+# support (zero outside the support, the one-sided limit on its bound). A
+# component with a single draw uses the pooled bandwidth.
+.Savage_Dickey_BF.component_height <- function(plan, null_hypothesis, pooled_samples){
+
+  contains <- .Savage_Dickey_BF.component_contains(plan, null_hypothesis)
+  heights <- numeric(length(plan$ids))
+  boundary_reflection <- FALSE
+  pooled_bw <- NULL
+
+  for(i in which(contains)){
+    if(plan$counts[i] >= 2L){
+      height <- .Savage_Dickey_BF.kd(
+        samples            = plan$draws[[i]],
+        null_hypothesis    = null_hypothesis,
+        support            = plan$bounds[[i]],
+        warn_extrapolation = FALSE
+      )
+      boundary_reflection <- boundary_reflection ||
+        isTRUE(attr(height, "boundary_reflection", exact = TRUE))
+    }else{
+      if(is.null(pooled_bw)){
+        pooled_bw <- stats::bw.nrd0(as.numeric(pooled_samples))
+      }
+      height <- .density_kde_gaussian_height(
+        x      = plan$draws[[i]],
+        value  = null_hypothesis,
+        bw     = pooled_bw,
+        bounds = plan$bounds[[i]]
+      )
+      boundary_reflection <- boundary_reflection || any(is.finite(plan$bounds[[i]]))
+    }
+    heights[i] <- as.numeric(height)
+  }
+
+  height <- sum(plan$counts / sum(plan$counts) * heights)
+  attr(height, "boundary_reflection") <- boundary_reflection
+  attr(height, "posterior_support_exclusion") <- !any(contains)
+  attr(height, "components") <- data.frame(
+    component = plan$ids,
+    n         = plan$counts,
+    lower     = vapply(plan$bounds, `[`, numeric(1), 1L),
+    upper     = vapply(plan$bounds, `[`, numeric(1), 2L),
+    ordinate  = heights
+  )
+
+  height
 }
 
 .Savage_Dickey_BF.normal <- function(samples, null_hypothesis){
