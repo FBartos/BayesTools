@@ -38,11 +38,16 @@ examples should not acquire a fitted-model cache.
 
 Cache validity depends only on source fingerprints: the vignette source, its
 cache helper, `DESCRIPTION` without build fields and `Version`, `NAMESPACE`,
-package data, and the `R/` and `src/` sources. Changing any of them makes the
-cache stale until it is regenerated. R and package versions are producer
-provenance: manifests record them, and validation reports differences in its
-status and with a message when the cache is loaded, but they never make a
-cache stale. Caches therefore build on newer R versions and after version bumps.
+package data, and the `R/` and `src/` sources (RandomEffects also fingerprints
+its lme4 data sets). Changing any of them makes the cache stale until it is
+regenerated. R and package versions are producer provenance: manifests record
+them, and validation reports differences in its status and with a message when
+the cache is loaded, but they never make a cache stale. Caches therefore build
+on newer R versions and after version bumps. Keep integrity checks independent
+of the validating session: hash stored serialized bytes, and fingerprint R
+objects without the `serialize()` header. Re-serialized output records the
+session's R version and native encoding, and fitted models embed the versions
+of the namespaces they reference.
 
 The repository tests reject evaluated calls to `JAGS_fit()`,
 `JAGS_bridgesampling()`, and `rstanarm::stan_lmer()` during ordinary rendering.

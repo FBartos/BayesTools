@@ -61,7 +61,7 @@ source(
 .random_effects_test_producer <- function(
     backend = .random_effects_test_hash("b"),
     platform = "x86_64-test-platform",
-    r_version = "4.6.0",
+    r_version = as.character(getRversion()),
     jags_version = "4.3.2"){
   list(
     generated_at_utc = "2026-07-27T08:15:00Z",
@@ -123,6 +123,51 @@ source(
     implementation_state = implementation,
     producer = producer
   )
+}
+
+.random_effects_test_restamp <- function(envelope, models){
+  envelope$payload <- serialize(models, NULL, version = 3, xdr = TRUE)
+  envelope$manifest$payload_hash <-
+    .random_effects_vignette_sha256_raw(envelope$payload)
+  envelope$manifest$generation_fingerprint <-
+    .random_effects_vignette_generation_fingerprint(
+      envelope$manifest$contract_fingerprint,
+      envelope$manifest$payload_hash,
+      envelope$manifest$producer
+    )
+  envelope
+}
+
+# serialize() as another R release writes it: the header records the writer's
+# R version, and namespace references record c(name, version), where base
+# namespaces such as stats carry the R version.
+.random_effects_test_other_release_serialize <- function(){
+  current_version <- as.character(getRversion())
+  other_version <- gsub("[0-9]", "9", current_version)
+  length_prefix <- function(value){
+    writeBin(nchar(value, type = "bytes"), raw(), size = 4L, endian = "big")
+  }
+  namespace_name <- c(length_prefix("stats"), charToRaw("stats"))
+  version_bytes <- c(length_prefix(current_version), charToRaw(current_version))
+  function(object, connection, ...){
+    bytes <- base::serialize(object, connection, ...)
+    bytes[7:10] <- writeBin(
+      4L * 65536L + 99L * 256L + 9L,
+      raw(),
+      size = 4L,
+      endian = "big"
+    )
+    positions <- grepRaw(namespace_name, bytes, fixed = TRUE, all = TRUE)
+    for(position in positions){
+      version_start <- position + length(namespace_name) + 4L
+      version_end <- version_start + length(version_bytes) - 1L
+      if(version_end <= length(bytes) &&
+          identical(bytes[version_start:version_end], version_bytes)){
+        bytes[(version_start + 4L):version_end] <- charToRaw(other_version)
+      }
+    }
+    bytes
+  }
 }
 
 .random_effects_test_chunk <- function(lines, label){
@@ -226,13 +271,13 @@ test_that("writer installs one strict manifest envelope", {
   envelope <- readRDS(cache_file)
 
   expect_true(written$valid)
-  expect_identical(names(envelope), c("manifest", "models"))
+  expect_identical(names(envelope), c("manifest", "payload"))
   expect_identical(names(envelope$manifest), c(
     "format",
     "manifest_version",
     "cache_schema_version",
     "model_schema",
-    "model_hashes",
+    "payload_hash",
     "dependencies",
     "contract_fingerprint",
     "producer",
@@ -242,24 +287,19 @@ test_that("writer installs one strict manifest envelope", {
     envelope$manifest$format,
     "BayesTools.RandomEffects.vignette-cache"
   )
-  expect_identical(envelope$manifest$manifest_version, 1L)
-  expect_identical(envelope$manifest$cache_schema_version, 1L)
+  expect_identical(envelope$manifest$manifest_version, 2L)
+  expect_identical(envelope$manifest$cache_schema_version, 2L)
   expect_identical(
     envelope$manifest$model_schema,
     random_effects_vignette_cache_model_schema()
   )
+  expect_true(is.raw(envelope$payload))
+  expect_identical(unserialize(envelope$payload), models)
   expect_identical(
-    envelope$manifest$model_hashes,
-    .random_effects_vignette_model_hashes(models)
+    envelope$manifest$payload_hash,
+    .random_effects_vignette_sha256_raw(envelope$payload)
   )
-  expect_identical(
-    names(envelope$manifest$model_hashes),
-    random_effects_vignette_cache_names()
-  )
-  expect_true(all(grepl(
-    "^[[:xdigit:]]{64}$",
-    envelope$manifest$model_hashes
-  )))
+  expect_match(envelope$manifest$payload_hash, "^[[:xdigit:]]{64}$")
   expect_identical(envelope$manifest$dependencies, dependencies)
   expect_match(
     envelope$manifest$contract_fingerprint,
@@ -286,7 +326,7 @@ test_that("writer installs one strict manifest envelope", {
   expect_identical(loaded$cache, models)
 })
 
-test_that("writer canonicalizes models before payload hashing", {
+test_that("writer stores the models as one hashed serialized payload", {
   cache_file <- file.path(withr::local_tempdir(), "models", "RandomEffects.RDS")
   dependencies <- .random_effects_test_dependencies()
   implementation <- .random_effects_test_implementation(dependencies)
@@ -333,13 +373,19 @@ test_that("writer canonicalizes models before payload hashing", {
   )
 
   expect_true(written$valid)
+  expect_true(is.raw(captured_envelope$payload))
+  restored_models <- unserialize(captured_envelope$payload)
   expect_false(identical(
-    attr(captured_envelope$models[[1L]], "live_environment"),
+    attr(restored_models[[1L]], "live_environment"),
     live_environment
   ))
   expect_identical(
-    captured_envelope$manifest$model_hashes,
-    .random_effects_vignette_model_hashes(captured_envelope$models)
+    attr(restored_models[[1L]], "live_environment")$value,
+    1
+  )
+  expect_identical(
+    captured_envelope$manifest$payload_hash,
+    .random_effects_vignette_sha256_raw(captured_envelope$payload)
   )
 
   dir.create(dirname(cache_file), recursive = TRUE)
@@ -350,38 +396,55 @@ test_that("writer canonicalizes models before payload hashing", {
   )$valid)
 })
 
-test_that("canonicalization rejects payloads that do not stabilize", {
+test_that("validation does not depend on how this R session serializes", {
+  cache_file <- file.path(
+    withr::local_tempdir(),
+    "models",
+    "RandomEffects.RDS"
+  )
+  dependencies <- .random_effects_test_dependencies()
   models <- .random_effects_test_models()
-  helper_environment <- environment(
-    .random_effects_vignette_canonicalize_models
-  )
-  original_roundtrip <- get(
-    ".random_effects_vignette_serialization_roundtrip",
-    envir = helper_environment,
-    inherits = FALSE
-  )
-  on.exit(assign(
-    ".random_effects_vignette_serialization_roundtrip",
-    original_roundtrip,
-    envir = helper_environment
-  ), add = TRUE)
-
-  roundtrip_count <- 0L
-  assign(
-    ".random_effects_vignette_serialization_roundtrip",
-    function(value){
-      roundtrip_count <<- roundtrip_count + 1L
-      value[[1L]]$serialization_generation <- roundtrip_count
-      value
-    },
-    envir = helper_environment
+  # Fitted models reference namespaces; stats carries the R version.
+  models$fit_sleep$reference <- stats::sd
+  .random_effects_test_write(
+    cache_file,
+    models = models,
+    dependencies = dependencies
   )
 
-  expect_error(
-    .random_effects_vignette_canonicalize_models(models),
-    "fitted model payloads do not have a stable serialized representation",
-    fixed = TRUE
+  other_release_serialize <- .random_effects_test_other_release_serialize()
+  current_bytes <- serialize(models, NULL, version = 3, xdr = TRUE)
+  other_bytes <- other_release_serialize(models, NULL, version = 3, xdr = TRUE)
+  expect_false(identical(current_bytes[1:10], other_bytes[1:10]))
+  expect_false(identical(current_bytes[-(1:10)], other_bytes[-(1:10)]))
+  dataset <- datasets::warpbreaks
+  current_dataset_md5 <- .random_effects_vignette_object_md5(dataset)
+  current_contract <- .random_effects_vignette_contract_fingerprint(
+    dependencies
   )
+
+  helper_environment <- environment(validate_random_effects_vignette_cache)
+  expect_false(exists("serialize", envir = helper_environment, inherits = FALSE))
+  assign("serialize", other_release_serialize, envir = helper_environment)
+  withr::defer(rm(list = "serialize", envir = helper_environment))
+
+  expect_identical(
+    .random_effects_vignette_object_md5(dataset),
+    current_dataset_md5
+  )
+  expect_identical(
+    .random_effects_vignette_contract_fingerprint(dependencies),
+    current_contract
+  )
+  status <- validate_random_effects_vignette_cache(
+    cache_file,
+    load = TRUE,
+    dependency_state = dependencies
+  )
+  expect_true(status$manifest_valid)
+  expect_true(status$payload_valid)
+  expect_true(status$valid)
+  expect_identical(status$cache, models)
 })
 
 test_that("missing and schema-less caches fail the current contract", {
@@ -415,14 +478,14 @@ test_that("missing and schema-less caches fail the current contract", {
   expect_null(schema_less$cache)
   expect_match(
     format_random_effects_vignette_cache_error(schema_less),
-    "must contain manifest and models"
+    "must contain manifest and payload"
   )
   expect_error(
     stop_if_invalid_random_effects_vignette_cache(
       cache_file,
       project_root = impossible_root
     ),
-    "must contain manifest and models",
+    "must contain manifest and payload",
     fixed = TRUE
   )
 })
@@ -511,6 +574,82 @@ test_that("dependency changes make a well-formed cache stale", {
   )
 })
 
+test_that("R and package version differences are reported, not stale", {
+  cache_file <- file.path(
+    withr::local_tempdir(),
+    "models",
+    "RandomEffects.RDS"
+  )
+  dependencies <- .random_effects_test_dependencies()
+  models <- .random_effects_test_models()
+  # R 4.2.3 predates the package's R requirement, so it always differs from
+  # the running R version.
+  .random_effects_test_write(
+    cache_file,
+    models = models,
+    dependencies = dependencies,
+    producer = .random_effects_test_producer(r_version = "4.2.3")
+  )
+
+  # A CI runner with a newer R, a development version bump of BayesTools, and
+  # another rstanarm release must reuse the cache.
+  current_dependencies <- dependencies
+  current_dependencies$package_versions[["BayesTools"]] <- "0.3.1.7"
+  current_dependencies$package_versions[["rstanarm"]] <- "2.32.2"
+  current_r_version <- as.character(getRversion())
+  expected_differences <- data.frame(
+    component = c("R", "BayesTools", "rstanarm"),
+    cache = c("4.2.3", "0.3.1.6", "2.32.1"),
+    current = c(current_r_version, "0.3.1.7", "2.32.2"),
+    stringsAsFactors = FALSE
+  )
+  status <- validate_random_effects_vignette_cache(
+    cache_file,
+    dependency_state = current_dependencies
+  )
+  expect_true(status$valid)
+  expect_length(status$stale_dependencies, 0L)
+  expect_identical(status$version_differences, expected_differences)
+
+  version_message <- paste0(
+    "Precomputed RandomEffects vignette cache was generated with other ",
+    "versions: R 4.2.3 (current ", current_r_version, "), BayesTools ",
+    "0.3.1.6 (current 0.3.1.7), rstanarm 2.32.1 (current 2.32.2). Its ",
+    "source fingerprints match, so the cache is used."
+  )
+  expect_message(
+    loaded <- validate_random_effects_vignette_cache(
+      cache_file,
+      load = TRUE,
+      dependency_state = current_dependencies
+    ),
+    version_message,
+    fixed = TRUE
+  )
+  expect_true(loaded$valid)
+  expect_identical(loaded$cache, models)
+
+  changed_sources <- current_dependencies
+  changed_sources$bayestools_sources[["R/JAGS-fit.R"]] <-
+    .random_effects_test_hash("c")
+  stale <- validate_random_effects_vignette_cache(
+    cache_file,
+    load = TRUE,
+    dependency_state = changed_sources
+  )
+  expect_false(stale$valid)
+  expect_null(stale$cache)
+  expect_identical(stale$stale_dependencies, "bayestools_sources")
+  expect_identical(stale$version_differences, expected_differences)
+  expect_identical(
+    format_random_effects_vignette_cache_error(stale),
+    paste0(
+      "Precomputed RandomEffects vignette cache is stale; changed ",
+      "dependencies: bayestools_sources."
+    )
+  )
+})
+
 test_that("model payloads require exact names, order, and classes", {
   cache_file <- file.path(
     withr::local_tempdir(),
@@ -520,8 +659,10 @@ test_that("model payloads require exact names, order, and classes", {
   dependencies <- .random_effects_test_dependencies()
   .random_effects_test_write(cache_file, dependencies = dependencies)
   valid_envelope <- readRDS(cache_file)
-  valid_models <- valid_envelope$models
+  valid_models <- unserialize(valid_envelope$payload)
 
+  # Each mutation is stored with a matching payload hash, so validation
+  # reaches the model checks instead of stopping at payload integrity.
   mutations <- list(
     missing = valid_models[-1L],
     extra = c(
@@ -534,22 +675,38 @@ test_that("model payloads require exact names, order, and classes", {
       fit_sleep <- structure(list(), class = "unexpected_fit")
     })
   )
+  expected_messages <- c(
+    missing = "is missing objects: stan_correlated",
+    extra = "has unexpected objects: unexpected",
+    reordered = "objects are in the wrong order",
+    unnamed = "models must be a named list",
+    wrong_class = "has unexpected object classes: fit_sleep"
+  )
 
   for(mutation in names(mutations)){
-    envelope <- valid_envelope
-    envelope$models <- mutations[[mutation]]
+    envelope <- .random_effects_test_restamp(
+      valid_envelope,
+      mutations[[mutation]]
+    )
     saveRDS(envelope, cache_file)
     status <- validate_random_effects_vignette_cache(
       cache_file,
       load = TRUE,
       dependency_state = dependencies
     )
+    expect_true(status$manifest_valid, info = mutation)
+    expect_true(status$payload_valid, info = mutation)
     expect_false(status$valid, info = mutation)
     expect_null(status$cache, info = mutation)
+    expect_match(
+      format_random_effects_vignette_cache_error(status),
+      expected_messages[[mutation]],
+      fixed = TRUE,
+      info = mutation
+    )
   }
 
-  envelope <- valid_envelope
-  envelope$models <- 1
+  envelope <- .random_effects_test_restamp(valid_envelope, 1)
   saveRDS(envelope, cache_file)
   non_list <- validate_random_effects_vignette_cache(
     cache_file,
@@ -559,6 +716,25 @@ test_that("model payloads require exact names, order, and classes", {
   expect_false(non_list$is_list)
   expect_false(non_list$valid)
   expect_null(non_list$cache)
+
+  envelope <- valid_envelope
+  envelope$payload <- 1
+  saveRDS(envelope, cache_file)
+  non_raw <- validate_random_effects_vignette_cache(
+    cache_file,
+    load = TRUE,
+    dependency_state = dependencies
+  )
+  expect_false(non_raw$payload_valid)
+  expect_false(non_raw$valid)
+  expect_null(non_raw$cache)
+  expect_identical(
+    format_random_effects_vignette_cache_error(non_raw),
+    paste0(
+      "Could not verify the RandomEffects model payload: the model payload ",
+      "is not a serialized raw vector."
+    )
+  )
 })
 
 test_that("same-class model replacement fails payload integrity", {
@@ -571,10 +747,12 @@ test_that("same-class model replacement fails payload integrity", {
   .random_effects_test_write(cache_file, dependencies = dependencies)
   envelope <- readRDS(cache_file)
 
-  envelope$models$fit_sleep <- structure(
+  models <- unserialize(envelope$payload)
+  models$fit_sleep <- structure(
     list(identifier = "same class, different payload"),
     class = "BayesTools_fit"
   )
+  envelope$payload <- serialize(models, NULL, version = 3, xdr = TRUE)
   saveRDS(envelope, cache_file)
   replaced <- validate_random_effects_vignette_cache(
     cache_file,
@@ -583,15 +761,17 @@ test_that("same-class model replacement fails payload integrity", {
   )
 
   expect_true(replaced$manifest_valid)
-  expect_true(replaced$is_list)
-  expect_length(replaced$invalid_objects, 0L)
+  expect_length(replaced$stale_dependencies, 0L)
+  expect_null(replaced$payload_error)
   expect_false(replaced$payload_valid)
-  expect_identical(replaced$invalid_payloads, "fit_sleep")
   expect_false(replaced$valid)
   expect_null(replaced$cache)
-  expect_match(
+  expect_identical(
     format_random_effects_vignette_cache_error(replaced),
-    "modified payloads: fit_sleep"
+    paste0(
+      "Precomputed RandomEffects vignette cache has a modified model ",
+      "payload; it does not match the manifest hash."
+    )
   )
 })
 
@@ -628,22 +808,34 @@ test_that("backend and runtime are provenance, not host compatibility", {
   envelope$manifest$generation_fingerprint <-
     .random_effects_vignette_generation_fingerprint(
       envelope$manifest$contract_fingerprint,
-      envelope$manifest$model_hashes,
+      envelope$manifest$payload_hash,
       envelope$manifest$producer
     )
   saveRDS(envelope, cache_file)
 
-  status <- validate_random_effects_vignette_cache(
-    cache_file,
-    load = TRUE,
-    dependency_state = dependencies
-  )
+  load_cache <- function(){
+    validate_random_effects_vignette_cache(
+      cache_file,
+      load = TRUE,
+      dependency_state = dependencies
+    )
+  }
+  if(identical(as.character(getRversion()), "4.7.1")){
+    status <- load_cache()
+  }else{
+    expect_message(
+      status <- load_cache(),
+      "generated with other versions: R 4.7.1 (current ",
+      fixed = TRUE
+    )
+  }
   expect_true(status$valid)
   expect_identical(
     envelope$manifest$contract_fingerprint,
     original_contract
   )
-  expect_identical(status$cache, envelope$models)
+  expect_identical(status$cache, unserialize(envelope$payload))
+  expect_identical(status$cache, .random_effects_test_models())
 })
 
 test_that("regeneration removes cached fits and guards dependency drift", {
@@ -1283,7 +1475,7 @@ test_that("text fingerprints normalize line endings and use relative labels", {
   expect_true("^src/Makevars$" %in% buildignore)
 })
 
-test_that("DESCRIPTION fingerprints ignore only build-time normalization", {
+test_that("DESCRIPTION fingerprints ignore build fields and the version", {
   description_root <- withr::local_tempdir()
   source_description <- file.path(description_root, "source")
   staged_description <- file.path(description_root, "staged")
@@ -1309,8 +1501,17 @@ test_that("DESCRIPTION fingerprints ignore only build-time normalization", {
     .random_effects_vignette_description_md5(staged_description)
   )
 
+  # A development version bump is provenance, not a source change.
   staged <- readLines(staged_description, warn = FALSE)
   staged[staged == "Version: 0.3.1.7"] <- "Version: 0.3.1.8"
+  writeLines(staged, staged_description, useBytes = TRUE)
+  expect_identical(
+    .random_effects_vignette_description_md5(source_description),
+    .random_effects_vignette_description_md5(staged_description)
+  )
+
+  staged[staged == "Depends: R (>= 4.3.0), stats"] <-
+    "Depends: R (>= 4.4.0), stats"
   writeLines(staged, staged_description, useBytes = TRUE)
   expect_false(identical(
     .random_effects_vignette_description_md5(source_description),

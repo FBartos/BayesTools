@@ -69,11 +69,11 @@ random_effects_vignette_cache_names <- function(){
 }
 
 .random_effects_vignette_manifest_version <- function(){
-  1L
+  2L
 }
 
 .random_effects_vignette_cache_schema_version <- function(){
-  1L
+  2L
 }
 
 .random_effects_vignette_md5_raw <- function(value){
@@ -83,8 +83,35 @@ random_effects_vignette_cache_names <- function(){
   unname(tools::md5sum(hash_file))
 }
 
+.random_effects_vignette_serialized_content <- function(value){
+  bytes <- serialize(value, NULL, version = 3, xdr = TRUE)
+  # A version-3 header records the session that wrote it: "X\n", the format
+  # version, the writer's R version, the minimum reader version, and the
+  # native encoding. Fingerprints describe content, so they skip the header.
+  header_valid <- length(bytes) >= 18L &&
+    identical(bytes[1:2], charToRaw("X\n")) &&
+    identical(readBin(bytes[3:6], "integer", size = 4L, endian = "big"), 3L)
+  encoding_length <- if(header_valid){
+    readBin(bytes[15:18], "integer", size = 4L, endian = "big")
+  }else{
+    NA_integer_
+  }
+  if(is.na(encoding_length) ||
+      encoding_length < 0L ||
+      length(bytes) < 18L + encoding_length){
+    stop(
+      "Could not fingerprint a RandomEffects cache value: unexpected ",
+      "serialization header.",
+      call. = FALSE
+    )
+  }
+  bytes[-seq_len(18L + encoding_length)]
+}
+
 .random_effects_vignette_object_md5 <- function(value){
-  .random_effects_vignette_md5_raw(serialize(value, NULL, version = 3, xdr = TRUE))
+  .random_effects_vignette_md5_raw(
+    .random_effects_vignette_serialized_content(value)
+  )
 }
 
 .random_effects_vignette_sha256_raw <- function(value){
@@ -124,44 +151,17 @@ random_effects_vignette_cache_names <- function(){
 
 .random_effects_vignette_object_sha256 <- function(value){
   .random_effects_vignette_sha256_raw(
-    serialize(value, NULL, version = 3, xdr = TRUE)
+    .random_effects_vignette_serialized_content(value)
   )
 }
 
-.random_effects_vignette_serialization_roundtrip <- function(value){
-  unserialize(serialize(value, NULL, version = 3, xdr = TRUE))
-}
-
-.random_effects_vignette_canonicalize_models <- function(models){
-  canonical <- .random_effects_vignette_serialization_roundtrip(models)
-  .random_effects_vignette_validate_models_or_stop(canonical)
-  rehydrated <- .random_effects_vignette_serialization_roundtrip(canonical)
-  .random_effects_vignette_validate_models_or_stop(rehydrated)
-  if(!identical(
-    .random_effects_vignette_model_hashes(canonical),
-    .random_effects_vignette_model_hashes(rehydrated)
-  )){
-    stop(
-      paste0(
-        "Cannot write RandomEffects cache: fitted model payloads do not have ",
-        "a stable serialized representation."
-      ),
-      call. = FALSE
-    )
-  }
-  canonical
-}
-
-.random_effects_vignette_model_hashes <- function(models){
-  model_names <- random_effects_vignette_cache_names()
-  hashes <- vapply(
-    model_names,
-    function(name){
-      .random_effects_vignette_object_sha256(models[[name]])
-    },
-    character(1)
-  )
-  stats::setNames(unname(hashes), model_names)
+.random_effects_vignette_models_payload <- function(models){
+  # The models are stored as one serialized payload and verified by the hash
+  # of these stored bytes. Re-serializing fitted models in the validating
+  # session would embed that session's R and namespace versions (fitted
+  # objects reference namespaces such as stats), and serializing each model
+  # separately would duplicate the environments the models share.
+  serialize(models, NULL, version = 3, xdr = TRUE)
 }
 
 .random_effects_vignette_text_md5 <- function(path){
@@ -175,7 +175,9 @@ random_effects_vignette_cache_names <- function(){
 
 .random_effects_vignette_description_md5 <- function(path){
   description <- read.dcf(path, all = TRUE)
-  description[c("Author", "Built", "Packaged")] <- NULL
+  # Build fields and the package version are not source content: versions are
+  # producer provenance, reported by validation but never a staleness reason.
+  description[c("Author", "Built", "Packaged", "Version")] <- NULL
   description <- description[order(names(description), method = "radix")]
   values <- vapply(description, function(value){
     gsub("[[:space:]]+", " ", trimws(value))
@@ -350,6 +352,63 @@ random_effects_vignette_dependency_state <- function(
     bayestools_sources = .random_effects_vignette_bayestools_sources(project_root),
     datasets = .random_effects_vignette_dataset_hashes(),
     package_versions = .random_effects_vignette_package_versions()
+  )
+}
+
+# Dependencies whose change makes the cache stale. Package versions are
+# recorded with them but are producer provenance, reported when they differ.
+.random_effects_vignette_validity_dependencies <- function(){
+  c("generator_sources", "bayestools_sources", "datasets")
+}
+
+.random_effects_vignette_version_differences <- function(
+    manifest = NULL,
+    dependency_state = NULL,
+    r_version = as.character(getRversion())){
+  differences <- data.frame(
+    component = character(),
+    cache = character(),
+    current = character(),
+    stringsAsFactors = FALSE
+  )
+  if(is.null(manifest) || is.null(dependency_state)){
+    return(differences)
+  }
+  cache_versions <- c(
+    R = manifest$producer$runtime$r_version,
+    manifest$dependencies$package_versions
+  )
+  current_versions <- c(R = r_version, dependency_state$package_versions)
+  components <- union(names(cache_versions), names(current_versions))
+  cache <- unname(cache_versions[components])
+  current <- unname(current_versions[components])
+  differs <- is.na(cache) | is.na(current) | cache != current
+  cache <- cache[differs]
+  current <- current[differs]
+  cache[is.na(cache)] <- "unrecorded"
+  current[is.na(current)] <- "unavailable"
+  data.frame(
+    component = components[differs],
+    cache = cache,
+    current = current,
+    stringsAsFactors = FALSE
+  )
+}
+
+.random_effects_vignette_version_message <- function(status){
+  differences <- status$version_differences
+  if(is.null(differences) || nrow(differences) == 0L){
+    return(NULL)
+  }
+  paste0(
+    "Precomputed RandomEffects vignette cache was generated with other ",
+    "versions: ",
+    paste0(
+      differences$component, " ", differences$cache,
+      " (current ", differences$current, ")",
+      collapse = ", "
+    ),
+    ". Its source fingerprints match, so the cache is used."
   )
 }
 
@@ -529,10 +588,10 @@ random_effects_vignette_dependency_state <- function(
 }
 
 .random_effects_vignette_generation_fingerprint <- function(
-    contract_fingerprint, model_hashes, producer){
+    contract_fingerprint, payload_hash, producer){
   .random_effects_vignette_object_sha256(list(
     contract_fingerprint = contract_fingerprint,
-    model_hashes = model_hashes,
+    payload_hash = payload_hash,
     producer = producer
   ))
 }
@@ -638,7 +697,7 @@ random_effects_vignette_dependency_state <- function(
 }
 
 .random_effects_vignette_manifest <- function(
-    dependencies, model_hashes, producer){
+    dependencies, payload_hash, producer){
   contract_fingerprint <-
     .random_effects_vignette_contract_fingerprint(dependencies)
   list(
@@ -646,25 +705,26 @@ random_effects_vignette_dependency_state <- function(
     manifest_version = .random_effects_vignette_manifest_version(),
     cache_schema_version = .random_effects_vignette_cache_schema_version(),
     model_schema = random_effects_vignette_cache_model_schema(),
-    model_hashes = model_hashes,
+    payload_hash = payload_hash,
     dependencies = dependencies,
     contract_fingerprint = contract_fingerprint,
     producer = producer,
     generation_fingerprint =
       .random_effects_vignette_generation_fingerprint(
         contract_fingerprint,
-        model_hashes,
+        payload_hash,
         producer
       )
   )
 }
 
-.random_effects_vignette_model_hashes_error <- function(value){
+.random_effects_vignette_payload_hash_error <- function(value){
   if(!is.character(value) ||
-      !identical(names(value), random_effects_vignette_cache_names()) ||
-      anyNA(value) ||
-      !all(grepl("^[[:xdigit:]]{64}$", value))){
-    return("model payload hashes are invalid")
+      length(value) != 1L ||
+      !is.null(names(value)) ||
+      is.na(value) ||
+      !grepl("^[[:xdigit:]]{64}$", value)){
+    return("model payload hash is invalid")
   }
   NULL
 }
@@ -674,7 +734,7 @@ random_effects_vignette_dependency_state <- function(
     names(manifest),
     c(
       "format", "manifest_version", "cache_schema_version", "model_schema",
-      "model_hashes", "dependencies", "contract_fingerprint",
+      "payload_hash", "dependencies", "contract_fingerprint",
       "producer", "generation_fingerprint"
     )
   )){
@@ -701,10 +761,10 @@ random_effects_vignette_dependency_state <- function(
   )){
     return("model schema does not match the current vignette contract")
   }
-  model_hashes_error <-
-    .random_effects_vignette_model_hashes_error(manifest$model_hashes)
-  if(!is.null(model_hashes_error)){
-    return(model_hashes_error)
+  payload_hash_error <-
+    .random_effects_vignette_payload_hash_error(manifest$payload_hash)
+  if(!is.null(payload_hash_error)){
+    return(payload_hash_error)
   }
   dependency_error <-
     .random_effects_vignette_dependency_state_error(manifest$dependencies)
@@ -727,7 +787,7 @@ random_effects_vignette_dependency_state <- function(
   }
   expected_generation <- .random_effects_vignette_generation_fingerprint(
     manifest$contract_fingerprint,
-    manifest$model_hashes,
+    manifest$payload_hash,
     manifest$producer
   )
   if(!identical(manifest$generation_fingerprint, expected_generation)){
@@ -786,15 +846,16 @@ validate_random_effects_vignette_cache <- function(
     manifest_error = NULL,
     dependency_error = NULL,
     stale_dependencies = character(),
+    version_differences = .random_effects_vignette_version_differences(),
+    payload_error = NULL,
+    payload_valid = FALSE,
+    restore_error = NULL,
     is_list = FALSE,
     is_named = FALSE,
     missing_objects = names(schema),
     extra_objects = character(),
     order_valid = FALSE,
     invalid_objects = names(schema),
-    payload_hash_error = NULL,
-    invalid_payloads = names(schema),
-    payload_valid = FALSE,
     valid = FALSE,
     cache = NULL
   )
@@ -811,7 +872,7 @@ validate_random_effects_vignette_cache <- function(
     return(status)
   }
   status$envelope_valid <- is.list(envelope) &&
-    identical(names(envelope), c("manifest", "models"))
+    identical(names(envelope), c("manifest", "payload"))
   if(!status$envelope_valid){
     return(status)
   }
@@ -842,8 +903,15 @@ validate_random_effects_vignette_cache <- function(
     status$dependency_error <- dependency_error
     return(status)
   }
-  status$stale_dependencies <- names(dependency_state)[
-    !vapply(names(dependency_state), function(name){
+  # Only source and data fingerprints decide validity. R and package versions
+  # are producer provenance: they are reported when they differ, never stale.
+  status$version_differences <- .random_effects_vignette_version_differences(
+    envelope$manifest,
+    dependency_state
+  )
+  validity_dependencies <- .random_effects_vignette_validity_dependencies()
+  status$stale_dependencies <- validity_dependencies[
+    !vapply(validity_dependencies, function(name){
       identical(
         dependency_state[[name]],
         envelope$manifest$dependencies[[name]]
@@ -851,9 +919,38 @@ validate_random_effects_vignette_cache <- function(
     }, logical(1))
   ]
 
-  model_status <- .random_effects_vignette_model_status(envelope$models)
-  for(name in names(model_status)){
-    status[[name]] <- model_status[[name]]
+  if(!is.raw(envelope$payload)){
+    status$payload_error <- "the model payload is not a serialized raw vector"
+  }else{
+    payload_hash <- tryCatch(
+      .random_effects_vignette_sha256_raw(envelope$payload),
+      error = function(e) e
+    )
+    if(inherits(payload_hash, "error")){
+      status$payload_error <- conditionMessage(payload_hash)
+    }else{
+      status$payload_valid <- identical(
+        payload_hash,
+        envelope$manifest$payload_hash
+      )
+    }
+  }
+
+  models <- NULL
+  if(status$payload_valid){
+    models <- tryCatch(
+      unserialize(envelope$payload),
+      error = function(e) e
+    )
+    if(inherits(models, "error")){
+      status$restore_error <- conditionMessage(models)
+      models <- NULL
+    }else{
+      model_status <- .random_effects_vignette_model_status(models)
+      for(name in names(model_status)){
+        status[[name]] <- model_status[[name]]
+      }
+    }
   }
   model_structure_valid <- status$is_list &&
     status$is_named &&
@@ -861,26 +958,17 @@ validate_random_effects_vignette_cache <- function(
     length(status$extra_objects) == 0L &&
     status$order_valid &&
     length(status$invalid_objects) == 0L
-  if(model_structure_valid){
-    current_model_hashes <- tryCatch(
-      .random_effects_vignette_model_hashes(envelope$models),
-      error = function(e) e
-    )
-    if(inherits(current_model_hashes, "error")){
-      status$payload_hash_error <- conditionMessage(current_model_hashes)
-    }else{
-      hash_matches <- current_model_hashes == envelope$manifest$model_hashes
-      hash_matches[is.na(hash_matches)] <- FALSE
-      status$invalid_payloads <- names(current_model_hashes)[!hash_matches]
-      status$payload_valid <- length(status$invalid_payloads) == 0L
-    }
-  }
   status$valid <- status$manifest_valid &&
     length(status$stale_dependencies) == 0L &&
-    model_structure_valid &&
-    status$payload_valid
+    status$payload_valid &&
+    is.null(status$restore_error) &&
+    model_structure_valid
   if(isTRUE(status$valid) && isTRUE(load)){
-    status$cache <- envelope$models
+    status$cache <- models
+    version_message <- .random_effects_vignette_version_message(status)
+    if(!is.null(version_message)){
+      message(version_message)
+    }
   }
   status
 }
@@ -897,7 +985,7 @@ format_random_effects_vignette_cache_error <- function(status){
   }
   if(!isTRUE(status$envelope_valid)){
     return(
-      "Precomputed RandomEffects vignette cache must contain manifest and models."
+      "Precomputed RandomEffects vignette cache must contain manifest and payload."
     )
   }
   if(!isTRUE(status$manifest_valid)){
@@ -918,6 +1006,25 @@ format_random_effects_vignette_cache_error <- function(status){
       "Precomputed RandomEffects vignette cache is stale; changed dependencies: ",
       paste(status$stale_dependencies, collapse = ", "),
       "."
+    ))
+  }
+  if(!is.null(status$payload_error)){
+    return(paste0(
+      "Could not verify the RandomEffects model payload: ",
+      status$payload_error,
+      "."
+    ))
+  }
+  if(!isTRUE(status$payload_valid)){
+    return(paste0(
+      "Precomputed RandomEffects vignette cache has a modified model payload; ",
+      "it does not match the manifest hash."
+    ))
+  }
+  if(!is.null(status$restore_error)){
+    return(paste0(
+      "Could not restore the RandomEffects cached models: ",
+      status$restore_error
     ))
   }
   if(!isTRUE(status$is_list) || !isTRUE(status$is_named)){
@@ -946,18 +1053,6 @@ format_random_effects_vignette_cache_error <- function(status){
     return(paste0(
       "Precomputed RandomEffects vignette cache has unexpected object classes: ",
       paste(status$invalid_objects, collapse = ", ")
-    ))
-  }
-  if(!is.null(status$payload_hash_error)){
-    return(paste0(
-      "Could not verify RandomEffects model payloads: ",
-      status$payload_hash_error
-    ))
-  }
-  if(length(status$invalid_payloads) > 0L){
-    return(paste0(
-      "Precomputed RandomEffects vignette cache has modified payloads: ",
-      paste(status$invalid_payloads, collapse = ", ")
     ))
   }
   "Precomputed RandomEffects vignette cache is invalid."
@@ -1625,7 +1720,7 @@ write_random_effects_vignette_cache <- function(
     )
   }
   .random_effects_vignette_validate_models_or_stop(models)
-  models <- .random_effects_vignette_canonicalize_models(models)
+  payload <- .random_effects_vignette_models_payload(models)
   if(is.null(producer)){
     producer <- .random_effects_vignette_producer()
   }
@@ -1650,13 +1745,12 @@ write_random_effects_vignette_cache <- function(
       call. = FALSE
     )
   }
-  model_hashes <- .random_effects_vignette_model_hashes(models)
   manifest <- .random_effects_vignette_manifest(
     dependency_state,
-    model_hashes,
+    .random_effects_vignette_sha256_raw(payload),
     producer
   )
-  envelope <- list(manifest = manifest, models = models)
+  envelope <- list(manifest = manifest, payload = payload)
   status <- .random_effects_vignette_atomic_write(
     envelope = envelope,
     cache_file = cache_file,
