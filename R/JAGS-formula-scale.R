@@ -842,9 +842,18 @@
   X_o <- .bt_formula_unscale_model_matrix(spec, data$original, prefix)
   coefficient_names <- .bt_formula_unscale_coefficient_names(spec, prefix)
 
-  tolerance <- 1e-8 * max(1, max(abs(X_s)))
-  residual <- function(A){
-    abs(X_o %*% A - X_s)
+  # Elementwise acceptance: an absolute floor relative to the standardized
+  # design, or a backward-error bound for evaluating X_o A in floating point
+  # (large centering products m / s make exact maps round to more than the
+  # floor). Omitted induced effects leave residuals of the order of the
+  # centering constants and fail both bounds.
+  absolute_tolerance <- 1e-8 * max(1, max(abs(X_s)))
+  violation <- function(A){
+    bound <- pmax(
+      absolute_tolerance,
+      1e3 * .Machine$double.eps * (abs(X_o) %*% abs(A))
+    )
+    abs(X_o %*% A - X_s) > bound
   }
 
   name_paired <- .build_unscale_matrix_by_names(
@@ -853,7 +862,7 @@
     prefix = prefix,
     require_closure = FALSE
   )
-  if(max(residual(name_paired)) <= tolerance){
+  if(!any(violation(name_paired))){
     return(list(
       matrix = name_paired,
       method = "name_paired",
@@ -861,7 +870,11 @@
     ))
   }
 
-  qr_original <- qr(X_o)
+  # Equilibrate columns before the rank decision: raw products of centered
+  # predictors can differ in magnitude by many orders.
+  column_magnitude <- apply(abs(X_o), 2L, max)
+  column_magnitude[column_magnitude == 0] <- 1
+  qr_original <- qr(X_o / rep(column_magnitude, each = nrow(X_o)))
   if(qr_original$rank < ncol(X_o)){
     .bt_formula_transform_stop(
       paste0(
@@ -873,19 +886,16 @@
       reason = "original_scale_not_identified"
     )
   }
-  least_squares <- qr.coef(qr_original, X_s)
+  least_squares <- qr.coef(qr_original, X_s) / column_magnitude
   column_scale <- pmax(1, apply(abs(least_squares), 2L, max))
   zapped <- least_squares
   zapped[abs(zapped) <= 1e-10 * rep(column_scale, each = nrow(zapped))] <- 0
-  if(max(residual(zapped)) <= tolerance){
+  if(!any(violation(zapped))){
     least_squares <- zapped
   }
-  column_residual <- apply(residual(least_squares), 2L, max)
-  if(any(column_residual > tolerance)){
-    terms <- .bt_formula_unscale_term_labels(
-      spec,
-      which(column_residual > tolerance)
-    )
+  violated_columns <- which(colSums(violation(least_squares)) > 0L)
+  if(length(violated_columns) > 0L){
+    terms <- .bt_formula_unscale_term_labels(spec, violated_columns)
     .bt_formula_transform_stop(
       paste0(
         "Cannot transform the coefficients of formula parameter '", prefix,

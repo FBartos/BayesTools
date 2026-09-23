@@ -257,6 +257,95 @@ test_that("formula coefficient transforms refuse terms whose centering is not re
   }
 })
 
+test_that("design-derived unscaling accepts exact maps under extreme centering", {
+
+  # Centering products up to (m / s)^3 ~ 2e8: the exact name-paired map
+  # reproduces the standardized design only to ~1e-7 in floating point, which
+  # an absolute 1e-8 bound would reject as "not representable".
+  offsets <- c(-0.9, -0.5, -0.2, 0, 0.1, 0.3, 0.6, 1.0, -0.7, 0.4, -0.1, 0.8)
+  data <- data.frame(
+    year = 2010 + 0.5 * offsets,
+    x = 100 + rev(offsets),
+    z = 100 + offsets[c(4:12, 1:3)]
+  )
+  normal <- prior("normal", list(0, 1))
+  scale <- list(year = TRUE, x = TRUE, z = TRUE)
+  full_priors <- list(
+    intercept = normal, year = normal, x = normal, z = normal,
+    "year:x" = normal, "year:z" = normal, "x:z" = normal, "year:x:z" = normal
+  )
+  formula_result <- JAGS_formula(~ year * x * z, "mu", data, full_priors,
+                                 formula_scale = scale)
+  source_names <- .formula_coefficient_source_names(formula_result)
+  fit <- .formula_coefficient_density_fit(formula_result, source_names)
+  transform <- JAGS_formula_coefficient_transform(fit, "mu")
+
+  expect_identical(
+    transform$matrix,
+    .build_unscale_matrix_by_names(
+      source_names, formula_result$formula_scale, "mu",
+      require_closure = FALSE
+    )
+  )
+  original <- JAGS_formula(~ year * x * z, "mu", data, full_priors)
+  coefficients <- c(0.3, -0.7, 1.1, 0.25, -0.4, 0.9, 0.2, -0.15)
+  # absolute error of X_o (A b): about eps * |X_o| |A| |b| < 1e-6 here
+  expect_equal(
+    .formula_coefficient_design_matrix(original) %*%
+      (transform$matrix %*% coefficients),
+    .formula_coefficient_design_matrix(formula_result) %*% coefficients,
+    tolerance = 1e-6
+  )
+
+  # The least-squares path (nested slopes, m / s ~ 7000) stays exact and keeps
+  # its structural zeros.
+  nested_data <- data.frame(
+    x = 2010 + 0.5 * offsets[1:9],
+    f = factor(rep(c("A", "B", "C"), each = 3L), levels = c("A", "B", "C"))
+  )
+  nested_priors <- list(
+    intercept = normal,
+    f = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    "f:x" = prior_factor("normal", list(0, 1), contrast = "treatment")
+  )
+  nested <- JAGS_formula(~ f/x, "mu", nested_data, nested_priors,
+                         formula_scale = list(x = TRUE))
+  nested_names <- .formula_coefficient_source_names(nested)
+  nested_transform <- JAGS_formula_coefficient_transform(
+    .formula_coefficient_density_fit(nested, nested_names),
+    "mu"
+  )
+  m <- mean(nested_data$x)
+  s <- stats::sd(nested_data$x)
+  expected <- matrix(0, 6L, 6L, dimnames = list(nested_names, nested_names))
+  expected["mu_intercept", c("mu_intercept", "mu_f__xXx__x[1]")] <- c(1, -m / s)
+  expected["mu_f[1]", c("mu_f[1]", "mu_f__xXx__x[1]", "mu_f__xXx__x[2]")] <-
+    c(1, m / s, -m / s)
+  expected["mu_f[2]", c("mu_f[2]", "mu_f__xXx__x[1]", "mu_f__xXx__x[3]")] <-
+    c(1, m / s, -m / s)
+  for(k in 1:3){
+    slope <- paste0("mu_f__xXx__x[", k, "]")
+    expected[slope, slope] <- 1 / s
+  }
+  expect_equal(nested_transform$matrix, expected, tolerance = 1e-10)
+  expect_identical(nested_transform$matrix != 0, expected != 0)
+
+  # Omitting x:z, which centering year in year:x:z induces, stays rejected
+  # at the same scaling.
+  reduced_priors <- full_priors[names(full_priors) != "x:z"]
+  reduced <- JAGS_formula(~ year * x * z - x:z, "mu", data, reduced_priors,
+                          formula_scale = scale)
+  reduced_fit <- .formula_coefficient_density_fit(
+    reduced,
+    .formula_coefficient_source_names(reduced)
+  )
+  error <- tryCatch(JAGS_formula_coefficient_transform(reduced_fit, "mu"),
+                    error = identity)
+  expect_s3_class(error, "BayesTools_formula_transform_unavailable")
+  expect_identical(error$reason, "original_scale_not_representable")
+  expect_identical(error$terms, "year:x:z")
+})
+
 test_that("design-derived unscaling applies only to fitted coefficient coordinates", {
 
   data <- data.frame(
