@@ -427,3 +427,188 @@ test_that("original-scale accessors exclude internal random coordinates", {
   expect_false(any(grepl("z\\(", colnames(raw_original))))
   expect_false(any(grepl("coef\\(", colnames(raw_original))))
 })
+
+.undefined_correlation_table_fit <- function(source_sd, source_rho){
+
+  df <- data.frame(
+    x = c(4, 5, 6, 8),
+    id = factor(c("a", "a", "b", "b"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + x + random(1 + x | id, name = "id", covariance = "us"),
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("normal", list(0, 1), truncation = list(0, Inf)),
+        cor = prior_lkj(eta = 1, include_primitives = TRUE),
+        monitor = random_monitor(
+          latent = FALSE,
+          coefficients = FALSE,
+          correlation = TRUE
+        )
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1]]
+  R_names <- as.vector(outer(
+    seq_len(2),
+    seq_len(2),
+    Vectorize(function(row, column){
+      paste0(random_term$parameter_stem, "_xRE_CORx_R[", row, ",", column, "]")
+    })
+  ))
+  L_names <- as.vector(
+    BayesTools:::.bt_random_effect_cholesky_names(random_term, 2L)
+  )
+  rows <- lapply(seq_along(source_rho), function(draw){
+    source_cor <- matrix(c(1, source_rho[draw], source_rho[draw], 1), 2, 2)
+    c(0, 0, source_sd[draw, ], as.vector(source_cor),
+      as.vector(t(chol(source_cor))), (source_rho[draw] + 1) / 2,
+      source_rho[draw])
+  })
+  posterior <- do.call(rbind, rows)
+  colnames(posterior) <- c(
+    "mu_intercept", "mu_x", random_term$sd_parameter_names, R_names, L_names,
+    random_term$correlation$primitive_names, random_term$correlation$cpc_names
+  )
+
+  make_random_scale_table_fit(formula_result, posterior)
+}
+
+test_that("estimates tables report the share of draws with a defined original-scale correlation", {
+
+  skip_if_not_installed("runjags")
+
+  # A zero slope SD (e.g., an excluded spike-and-slab SD) leaves the
+  # original-scale intercept-slope correlation undefined (0/0): draws 3 and 4
+  # are missing and the row summarises the 3 defined draws of 5.
+  fit <- .undefined_correlation_table_fit(
+    source_sd = rbind(c(1, 2), c(0.5, 1.5), c(0.7, 0), c(0.3, 0), c(1, 1)),
+    source_rho = c(0.8, -0.3, 0.4, 0.1, 0.2)
+  )
+  expected_footnote <- c(
+    "(mu) cor(intercept,x)" = paste0(
+      "(mu) cor(intercept,x): summarised over 3 of 5 draws where the ",
+      "correlation is defined."
+    )
+  )
+  for(transform_scaled in c(FALSE, TRUE)){
+    samples <- JAGS_estimates_table(
+      fit,
+      transform_scaled = transform_scaled,
+      return_samples = TRUE
+    )
+    expect_equal(
+      which(is.na(samples[, "(mu) cor(intercept,x)"])),
+      c(3L, 4L)
+    )
+    for(mode in c("standard", "full")){
+      table <- JAGS_estimates_table(
+        fit,
+        transform_scaled = transform_scaled,
+        random_effects_summary = mode
+      )
+      expect_identical(
+        attr(table, "footnotes"),
+        expected_footnote,
+        info = paste(mode, transform_scaled)
+      )
+    }
+  }
+
+  table <- JAGS_estimates_table(fit, footnotes = "User note.")
+  expect_identical(
+    attr(table, "footnotes"),
+    c("User note.", expected_footnote)
+  )
+  expect_output(
+    print(table),
+    "summarised over 3 of 5 draws where the correlation is defined.",
+    fixed = TRUE
+  )
+  simplified <- JAGS_estimates_table(
+    fit,
+    formula_prefix = FALSE,
+    simplify_names = TRUE
+  )
+  expect_identical(
+    unname(attr(simplified, "footnotes")),
+    paste0(
+      "cor(intercept,x): summarised over 3 of 5 draws where the correlation ",
+      "is defined."
+    )
+  )
+
+  # Raw original-scale correlation coordinates are reported per row as well;
+  # on the fitted scale every draw is defined.
+  raw <- JAGS_estimates_table(
+    fit,
+    transform_scaled = TRUE,
+    random_effects_summary = "raw"
+  )
+  expect_true(
+    "(mu) cor(intercept,x | id)" %in% names(attr(raw, "footnotes"))
+  )
+  expect_true(all(grepl(
+    ": summarised over 3 of 5 draws where the correlation is defined.$",
+    attr(raw, "footnotes")
+  )))
+  expect_null(attr(
+    JAGS_estimates_table(fit, random_effects_summary = "raw"),
+    "footnotes"
+  ))
+
+  # Every draw defined: no footnote.
+  defined <- .undefined_correlation_table_fit(
+    source_sd = rbind(c(1, 2), c(0.5, 1.5), c(0.7, 0.2)),
+    source_rho = c(0.8, -0.3, 0.4)
+  )
+  for(transform_scaled in c(FALSE, TRUE)){
+    expect_null(attr(
+      JAGS_estimates_table(defined, transform_scaled = transform_scaled),
+      "footnotes"
+    ))
+  }
+})
+
+test_that("correlation footnotes count only draws retained by conditioning", {
+
+  correlation_prior <- prior_none()
+  attr(correlation_prior, "random_summary") <- "cor"
+  model_samples <- cbind(
+    "(mu) cor(a,b)" = c(0.1, NA, NA, 0.3, NA),
+    "(mu) sd(a)"    = c(NA, 1, 1, 1, 1)
+  )
+  coordinates <- data.frame(
+    coordinate_name = character(),
+    role = character(),
+    stringsAsFactors = FALSE
+  )
+  footnotes <- BayesTools:::.bt_random_effect_summary_correlation_footnotes(
+    model_samples = model_samples,
+    parameter_names = colnames(model_samples),
+    prior_list = list("(mu) cor(a,b)" = correlation_prior),
+    coordinates = coordinates,
+    included = list("(mu) cor(a,b)" = c(TRUE, TRUE, FALSE, TRUE, FALSE))
+  )
+  expect_identical(
+    footnotes,
+    c("(mu) cor(a,b)" = paste0(
+      "(mu) cor(a,b): summarised over 2 of 3 draws where the correlation is ",
+      "defined."
+    ))
+  )
+  expect_null(BayesTools:::.bt_random_effect_summary_correlation_footnotes(
+    model_samples = model_samples,
+    parameter_names = colnames(model_samples),
+    prior_list = list("(mu) cor(a,b)" = correlation_prior),
+    coordinates = coordinates,
+    included = list("(mu) cor(a,b)" = c(TRUE, FALSE, FALSE, TRUE, FALSE))
+  ))
+})

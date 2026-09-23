@@ -116,6 +116,12 @@
 #' inclusion Bayes factor is undefined and reported as \code{NA}, because
 #' the corresponding inclusion/exclusion comparison was not tested.
 #'
+#' Original-scale random-effect correlations are undefined in posterior draws
+#' with a zero random-effect SD or a singular covariance (for example, an
+#' excluded spike-and-slab SD of a scaled slope). Such draws are missing, the
+#' affected rows are summarised over the defined draws, and a table footnote
+#' reports the share of defined draws for each affected row.
+#'
 #' @export JAGS_summary_table
 #' @export JAGS_estimates_table
 #' @export JAGS_inference_table
@@ -311,6 +317,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   )
   model_samples <- random_summary$model_samples
   prior_list <- random_summary$prior_list
+  random_included <- list()
   if(conditional){
     conditioned <- .bt_random_effect_summary_condition_on_inclusion(
       fit = fit,
@@ -321,6 +328,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     )
     model_samples <- conditioned$model_samples
     warnings <- conditioned$warnings
+    random_included <- conditioned$included
   }
 
   # Transform scaled coefficients after deriving random-effect summaries. This
@@ -718,6 +726,13 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       remove_diagnostics  = remove_diagnostics,
       diagnostic_columns  = diagnostic_columns
     )
+    footnotes <- c(footnotes, .bt_random_effect_summary_correlation_footnotes(
+      model_samples   = model_samples,
+      parameter_names = parameter_names,
+      prior_list      = prior_list,
+      coordinates     = coordinates,
+      included        = random_included
+    ))
   }
 
   # prepare output
@@ -1189,6 +1204,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     fit, model_samples, raw_model_samples, prior_list, warnings){
 
   designs <- attr(fit, "formula_design", exact = TRUE)
+  included_draws <- list()
   for(parameter_name in intersect(colnames(model_samples), names(prior_list))){
     prior <- prior_list[[parameter_name]]
     summary_type <- attr(prior, "random_summary", exact = TRUE)
@@ -1244,13 +1260,66 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
       raw_model_samples[, gate_names, drop = FALSE] != 1
     ) == 0L
     model_samples[!included, parameter_name] <- NA_real_
+    included_draws[[parameter_name]] <- included
     warnings <- c(
       warnings,
       .runjags_conditional_warning(parameter_name, sum(included))
     )
   }
 
-  list(model_samples = model_samples, warnings = warnings)
+  list(
+    model_samples = model_samples,
+    warnings = warnings,
+    included = included_draws
+  )
+}
+
+# Original-scale random-effect correlations are undefined (NA) in draws with a
+# zero SD or a singular covariance, and the table statistics summarise only the
+# defined draws. Each affected row reports that share; conditional summaries
+# count only the draws retained by conditioning (`included`).
+.bt_random_effect_summary_correlation_footnotes <- function(model_samples,
+                                                            parameter_names,
+                                                            prior_list,
+                                                            coordinates,
+                                                            included = list()){
+
+  footnotes <- character()
+  for(i in seq_along(parameter_names)){
+    parameter_name <- parameter_names[[i]]
+    prior <- prior_list[[parameter_name]]
+    summary_correlation <- !is.null(prior) && identical(
+      attr(prior, "random_summary", exact = TRUE),
+      "cor"
+    )
+    coordinate_row <- match(parameter_name, coordinates$coordinate_name)
+    coordinate_correlation <- !is.na(coordinate_row) && isTRUE(
+      startsWith(coordinates$role[coordinate_row], "random_correlation")
+    )
+    if(!summary_correlation && !coordinate_correlation){
+      next
+    }
+
+    values <- model_samples[, i]
+    retained <- included[[parameter_name]]
+    if(is.null(retained)){
+      retained <- rep(TRUE, length(values))
+    }
+    n_draws <- sum(retained)
+    n_defined <- sum(retained & !is.na(values))
+    if(n_defined < n_draws){
+      footnotes[[colnames(model_samples)[[i]]]] <- paste0(
+        colnames(model_samples)[[i]], ": summarised over ", n_defined, " of ",
+        n_draws, " draws where the correlation is defined."
+      )
+    }
+  }
+
+  if(length(footnotes) == 0L){
+    return(NULL)
+  }
+
+  footnotes
 }
 
 .bt_is_random_allocation_inclusion_prior <- function(prior){
