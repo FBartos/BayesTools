@@ -325,6 +325,9 @@
       }
       prior <- prior[, 1L]
     }
+    # Mixture and spike-and-slab rng() draws carry component/inclusion
+    # indicator attributes; only the numeric draws are needed here.
+    prior <- as.numeric(prior)
   }
 
   check_real(prior, "prior", check_length = 0, allow_NA = FALSE)

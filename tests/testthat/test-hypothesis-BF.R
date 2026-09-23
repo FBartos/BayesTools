@@ -698,6 +698,56 @@ test_that("hypothesis_BF accepts scalar BayesTools prior objects", {
 })
 
 
+test_that("hypothesis_BF accepts mixture and spike-and-slab prior objects", {
+
+  set.seed(7)
+  posterior <- stats::rnorm(20000, mean = 0.3, sd = 0.2)
+  mixture <- prior_mixture(list(
+    prior("normal", list(mean = 0, sd = 1), prior_weights = 1),
+    prior("normal", list(mean = 0, sd = 0.3), prior_weights = 3)
+  ), is_null = c(FALSE, FALSE))
+  spike_and_slab <- prior_spike_and_slab(
+    prior("normal", list(mean = 0, sd = 1)),
+    prior_inclusion = prior("spike", list(0.3))
+  )
+
+  # Reference: analytic mixture densities; 1e-4 is the grid-refinement
+  # criterion of the deterministic prior density.
+  point <- hypothesis_BF(posterior, mixture, hypothesis = "theta = 0",
+                         parameter = "theta", columns = "all", seed = 1)
+  expect_equal(as.numeric(point[["prior"]]),
+               .25 * stats::dnorm(0) + .75 * stats::dnorm(0, sd = 0.3),
+               tolerance = 1e-4)
+  slab <- hypothesis_BF(posterior, spike_and_slab, hypothesis = "theta = 0.3",
+                        parameter = "theta", columns = "all", seed = 1)
+  expect_equal(as.numeric(slab[["prior"]]), 0.3 * stats::dnorm(0.3),
+               tolerance = 1e-4)
+  expect_error(
+    hypothesis_BF(posterior, spike_and_slab, hypothesis = "theta = 0",
+                  parameter = "theta", seed = 1),
+    "point mass in the prior"
+  )
+
+  # Region masses of non-simple prior objects come from 20000 prior draws;
+  # compare the prior odds with the analytic value within 5 Monte Carlo SEs.
+  region_cases <- list(
+    list(prior = mixture,
+         mass  = .25 * stats::pnorm(0.2, lower.tail = FALSE) +
+           .75 * stats::pnorm(0.2, sd = 0.3, lower.tail = FALSE)),
+    list(prior = spike_and_slab,
+         mass  = 0.3 * stats::pnorm(0.2, lower.tail = FALSE))
+  )
+  for(case in region_cases){
+    region <- hypothesis_BF(posterior, case$prior, hypothesis = "theta > 0.2",
+                            parameter = "theta", columns = "all", seed = 1)
+    odds    <- case$mass / (1 - case$mass)
+    odds_se <- sqrt(case$mass * (1 - case$mass) / 20000) / (1 - case$mass)^2
+    expect_lt(abs(region[["prior"]] - odds), 5 * odds_se)
+    expect_true(is.finite(attr(region, "raw_BF")))
+  }
+})
+
+
 test_that("hypothesis_BF uses exact scalar prior density beyond its grid", {
 
   theta_prior <- prior("normal", list(mean = 0, sd = 1))
