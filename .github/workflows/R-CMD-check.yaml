@@ -141,9 +141,12 @@ jobs:
         run: |
           options(repos = c(CRAN = "https://cloud.r-project.org"))
 
-          # Check if packages are already installed before installing
+          # Check installation without loading namespaces: loading RoBMA would
+          # load a cached BayesTools DLL that the installation step cannot
+          # replace on Windows while this process holds it.
           required_packages <- c('devtools', 'rcmdcheck', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'rstanarm', 'scales', 'vdiffr', 'testthat', 'covr', 'knitr', 'rmarkdown', 'lme4')
-          missing_packages <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
+          is_installed <- nzchar(vapply(required_packages, function(package) system.file(package = package), character(1)))
+          missing_packages <- required_packages[!is_installed]
 
           if (length(missing_packages) > 0) {
             cat("Installing missing packages:", paste(missing_packages, collapse = ", "), "\n")
@@ -151,7 +154,12 @@ jobs:
           } else {
             cat("All required packages are already installed\n")
           }
+        shell: Rscript {0}
 
+      # Install BayesTools in a fresh process that has not loaded any package
+      - name: Install BayesTools
+        run: |
+          options(repos = c(CRAN = "https://cloud.r-project.org"))
           devtools::install()
         shell: Rscript {0}
 

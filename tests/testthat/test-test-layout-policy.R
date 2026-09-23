@@ -486,6 +486,28 @@ test_that("macOS CI builds against a cached JAGS 4 installer, never Homebrew's j
   }
 })
 
+test_that("CI installs BayesTools in a process that has loaded no packages", {
+
+  # A namespace loaded before devtools::install() in the same process (RoBMA
+  # loads BayesTools) keeps the old BayesTools DLL open, which Windows then
+  # refuses to overwrite. The loaders are matched as names because they are
+  # also passed as functions, e.g. sapply(packages, requireNamespace).
+  loads_packages <- "\\b(requireNamespace|loadNamespace|library|require)\\b"
+  install_steps <- 0L
+  for(path in .layout_workflow_files()){
+    for(step in .layout_workflow_steps(path)){
+      run <- paste(step$run, collapse = "\n")
+      if(!grepl("devtools::install(", run, fixed = TRUE)){
+        next
+      }
+      install_steps <- install_steps + 1L
+      expect_false(grepl(loads_packages, run, perl = TRUE), info = paste0(basename(path), ": ", step$name))
+    }
+  }
+
+  expect_gt(install_steps, 0L)
+})
+
 test_that("DESCRIPTION declares the supported JAGS range", {
 
   description_file <- .layout_repository_file("DESCRIPTION")
