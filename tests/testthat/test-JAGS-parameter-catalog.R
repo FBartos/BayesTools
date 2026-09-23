@@ -2295,6 +2295,96 @@ test_that("gated totals include the all-off zero and leave var_prop undefined", 
   )
 })
 
+test_that("gated totals without a source coordinate are unavailable", {
+
+  data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2")),
+    drug = factor(c("a", "b", "a", "b"))
+  )
+  build_fit <- function(sd_source, monitor_source){
+    formula_result <- JAGS_formula(
+      formula = ~ 1 +
+        random(1 | study, name = "study", covariance = "diag") +
+        random(1 | drug, name = "drug", covariance = "diag"),
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        allocation = random_variance_allocation(
+          name = "total_re",
+          terms = c(study = "study", drug = "drug"),
+          sd_source = sd_source,
+          weights = prior("dirichlet", list(alpha = c(2, 2))),
+          inclusion = list(study = prior("beta", list(2, 2)))
+        )
+      )
+    )
+    allocation <- formula_result$formula_design$random_allocations[[1L]]
+    gates <- .bt_random_effect_summary_allocation_gate_names(allocation)
+    expect_length(gates, 1L)
+    samples <- cbind(
+      mu_intercept = c(0, 0),
+      tau = c(2, 2),
+      matrix(c(0.4, 0.6, 0.4, 0.6), nrow = 2L, byrow = TRUE,
+             dimnames = list(NULL, paste0(allocation$weight_name, "[", 1:2, "]"))),
+      matrix(c(0, 1), ncol = 1L, dimnames = list(NULL, gates))
+    )
+    if(!monitor_source){
+      samples <- samples[, colnames(samples) != "tau", drop = FALSE]
+    }
+    fit <- structure(
+      list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
+      class = c("runjags", "BayesTools_fit", "list")
+    )
+    attr(fit, "prior_list") <- formula_result$prior_list
+    attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+    attach_test_parameter_map(fit)
+  }
+  totals <- c("(mu) total_re: sd_total", "(mu) total_re: var_total")
+  proportions <- c(
+    "(mu) total_re: var_prop(study)",
+    "(mu) total_re: var_prop(drug)"
+  )
+  draws <- function(fit, label){
+    as.numeric(parameter_draws(
+      fit,
+      parameter_catalog_resolve(parameter_catalog(fit), label, "mu")
+    )[[1L]][, 1L])
+  }
+
+  unavailable <- list(
+    row = build_fit(random_sd_source("tau", shape = "row"), FALSE),
+    scalar_unmonitored = build_fit(random_sd_source("tau"), FALSE)
+  )
+  for(case in names(unavailable)){
+    fit <- unavailable[[case]]
+    quantities <- parameter_catalog(fit)$quantities
+    expect_false(any(totals %in% quantities$canonical_name), info = case)
+    expect_true(all(proportions %in% quantities$canonical_name), info = case)
+    estimates <- JAGS_estimates_table(fit, return_samples = TRUE)
+    expect_true(all(proportions %in% colnames(estimates)), info = case)
+    expect_false(any(totals %in% colnames(estimates)), info = case)
+    # var_prop is the realized share: the gated study component is off in
+    # the first draw.
+    expect_equal(draws(fit, proportions[1L]), c(0, 0.4), info = case)
+    expect_equal(draws(fit, proportions[2L]), c(1, 0.6), info = case)
+    expect_error(
+      random_effects_summary_posterior(fit, "sd_total"),
+      "No random-effect sd_total summaries are available",
+      fixed = TRUE,
+      info = case
+    )
+  }
+
+  # A monitored scalar source keeps the realized total with its gate and
+  # weight dependencies: tau * sqrt(I_study * w_study + w_drug).
+  fit <- build_fit(random_sd_source("tau"), TRUE)
+  sd_total <- parameter_catalog_resolve(parameter_catalog(fit), totals[1L], "mu")
+  expect_true("tau" %in% sd_total$quantities$extraction_key[[1L]]$dependencies)
+  expect_equal(draws(fit, totals[1L]), 2 * sqrt(c(0.6, 1)), tolerance = 1e-12)
+  expect_equal(draws(fit, totals[2L]), 4 * c(0.6, 1), tolerance = 1e-12)
+})
+
 test_that("known group-covariance scale remains sd/var rather than sd_mult", {
 
   data <- data.frame(

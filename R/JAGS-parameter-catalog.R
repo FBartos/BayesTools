@@ -2311,6 +2311,18 @@ parameter_transform_jacobian <- function(values, transform){
     )
     scale_role <- .bt_random_effect_allocation_scale_role(allocation)
     scale_names <- .bt_parameter_catalog_allocation_scale_names(allocation)
+    # The allocation scale is evaluable only from its scalar source
+    # coordinate; without it (a row-shaped or unmonitored source) the
+    # sd/var totals are unavailable, and gate or weight coordinates must not
+    # stand in as their dependencies.
+    source_dependencies <- if(length(scale_names) > 0L){
+      .bt_parameter_catalog_coordinates(
+        coordinates,
+        .bt_random_sd_binding_source_name(allocation$source)
+      )
+    }else{
+      character()
+    }
     allocation_gate_names <-
       .bt_random_effect_summary_allocation_gate_names(allocation)
     component_gate_names <-
@@ -2320,7 +2332,7 @@ parameter_transform_jacobian <- function(values, transform){
       )
     realized_total <- identical(scale_role, "total") &&
       length(component_gate_names) > 0L
-    if(realized_total){
+    if(realized_total && length(source_dependencies) > 0L){
       scale_names <- unique(c(
         scale_names,
         allocation$weight_name,
@@ -2331,8 +2343,7 @@ parameter_transform_jacobian <- function(values, transform){
       coordinates,
       scale_names
     )
-    if(length(scale_names) > 0L && length(scale_dependencies) > 0L &&
-       !gate_only){
+    if(length(source_dependencies) > 0L && !gate_only){
       source_name <- .bt_random_sd_binding_source_name(allocation$source)
       parent_factors <- allocation$parent_factors
       if(is.null(parent_factors)){
