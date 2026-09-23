@@ -9553,6 +9553,8 @@ test_that("random-effect grouping variables use raw data when predictors are sca
 
 test_that("random-effect grouping factors preserve unused training levels", {
 
+  # Declared levels without fitting rows stay fitted groups, but prediction
+  # routes them through the new-level policy (maintainer decision M10 (a)).
   df <- data.frame(
     id = factor(c("a", "a", "b", "b"), levels = c("a", "b", "unused"))
   )
@@ -9570,6 +9572,8 @@ test_that("random-effect grouping factors preserve unused training levels", {
   )
   random_term <- formula_result$formula_design$random_effects[[1]]
   expect_equal(random_term$group_levels, c("a", "b", "unused"))
+  expect_equal(random_term$group_observed_levels, c("a", "b"))
+  expect_equal(random_term$n_groups, 3L)
 
   coefficient_names <- BayesTools:::.bt_random_effect_coefficient_names(
     random_term = random_term,
@@ -9584,14 +9588,35 @@ test_that("random-effect grouping factors preserve unused training levels", {
   fit <- coda::mcmc(posterior)
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
 
+  unused_data <- data.frame(
+    id = factor(c("b", "unused"), levels = c("a", "b", "unused"))
+  )
+  expect_error(
+    JAGS_evaluate_formula(
+      fit = fit,
+      formula = ~ 1 + diag(1 | id),
+      parameter = "mu",
+      data = unused_data,
+      prior_list = formula_result$prior_list
+    ),
+    paste0(
+      "New random-effect level(s) for block 'id' are not supported by ",
+      "JAGS_evaluate_formula(): unused. Declared grouping level(s) unused ",
+      "have no rows in the fitting data and are predicted as new levels. ",
+      "Use a \"zero\" or \"sample\" 'new_levels' policy to predict them."
+    ),
+    fixed = TRUE
+  )
   prediction <- JAGS_evaluate_formula(
     fit = fit,
     formula = ~ 1 + diag(1 | id),
     parameter = "mu",
-    data = data.frame(id = factor("unused", levels = c("a", "b", "unused"))),
-    prior_list = formula_result$prior_list
+    data = unused_data,
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional",
+    new_levels = "zero"
   )
-  expect_equal(unname(drop(prediction)), 30)
+  expect_equal(unname(drop(prediction)), c(20, 0))
 })
 
 test_that("random effects evaluate on non-mu formula parameters", {

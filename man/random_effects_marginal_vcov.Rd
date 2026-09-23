@@ -41,7 +41,10 @@ include. The default includes all formula random-effect blocks.}
 \item{new_levels}{optional new-level policy. Use a \code{random_new_levels()}
 object or one of \code{"error"}, \code{"zero"}, or \code{"sample"}. \code{"zero"} assigns
 zero covariance contribution to unseen grouping levels. \code{"sample"} treats
-unseen grouping levels as independent draws from the block covariance \code{G}.}
+unseen grouping levels as independent draws from the block covariance \code{G}.
+Grouping levels declared in the fitted grouping factor but without rows in
+the fitting data are unseen levels, except in blocks with a known group
+covariance; see \code{\link[=prior_random]{prior_random()}}.}
 
 \item{diagonal_only}{whether to return only observation-level marginal
 variances. This avoids allocating a \verb{draw x row x row} array when callers

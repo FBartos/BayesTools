@@ -46,7 +46,9 @@ those blocks.}
 
 \item{new_levels}{new-level policy for conditional or marginal random-effect
 prediction. Use a \code{random_new_levels()} object or one of \code{"error"}, \code{"zero"},
-or \code{"sample"}.}
+or \code{"sample"}. Grouping levels declared in the fitted grouping factor but
+without rows in the fitting data are predicted as new levels, except in
+blocks with a known group covariance; see \code{\link[=prior_random]{prior_random()}}.}
 
 \item{marginal_method}{marginal representation used only with
 \code{formula_target = "marginal"}: \code{"covariance"} returns fixed means plus

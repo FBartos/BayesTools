@@ -46,7 +46,10 @@ explicitly generated random-effect contributions.}
 
 \item{new_levels}{optional new-level policy used only with
 \code{formula_target = "conditional"}. Use a \code{random_new_levels()} object or one
-of \code{"error"}, \code{"zero"}, or \code{"sample"}.}
+of \code{"error"}, \code{"zero"}, or \code{"sample"}. Grouping levels declared in the
+fitted grouping factor but without rows in the fitting data are predicted as
+new levels, except in blocks with a known group covariance; see
+\code{\link[=prior_random]{prior_random()}}.}
 
 \item{fitted_rows}{optional integer vector mapping supplied prediction rows
 to fitted observation indices. It is required whenever \code{data} is supplied

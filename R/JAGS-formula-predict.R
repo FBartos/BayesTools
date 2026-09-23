@@ -53,7 +53,10 @@
 #' `formula_target = "conditional"`.
 #' @param new_levels optional new-level policy used only with
 #' `formula_target = "conditional"`. Use a `random_new_levels()` object or one
-#' of `"error"`, `"zero"`, or `"sample"`.
+#' of `"error"`, `"zero"`, or `"sample"`. Grouping levels declared in the
+#' fitted grouping factor but without rows in the fitting data are predicted as
+#' new levels, except in blocks with a known group covariance; see
+#' [prior_random()].
 #'
 #'
 #' @return \code{JAGS_evaluate_formula} returns a matrix of the evaluated posterior samples on

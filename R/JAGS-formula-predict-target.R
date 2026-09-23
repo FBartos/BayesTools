@@ -29,7 +29,9 @@
 #' those blocks.
 #' @param new_levels new-level policy for conditional or marginal random-effect
 #' prediction. Use a `random_new_levels()` object or one of `"error"`, `"zero"`,
-#' or `"sample"`.
+#' or `"sample"`. Grouping levels declared in the fitted grouping factor but
+#' without rows in the fitting data are predicted as new levels, except in
+#' blocks with a known group covariance; see [prior_random()].
 #' @param marginal_method marginal representation used only with
 #' `formula_target = "marginal"`: `"covariance"` returns fixed means plus
 #' marginal random-effect covariance; `"sample"` returns materialized

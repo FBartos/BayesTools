@@ -208,6 +208,14 @@ Preserve explicit new-level policy and the distinction between full covariance
 and `diagonal_only` output. Structural unavailability is not permission to
 silently substitute zero covariance or a diagonal approximation.
 
+A single grouping factor keeps its declared levels as fitted groups, including
+levels without fitting rows, and the fitted term records the observed ones in
+`group_observed_levels`. Prediction (conditional and marginal) routes every
+unobserved level through `new_levels` exactly like a new level. Blocks with a
+known group covariance are the exception: the kernel intends its declared
+levels, which keep their fitted coefficients. Multi-variable groupings contain
+only observed tuples.
+
 ## Verification
 
 Use deterministic syntax and design assertions before live fitting. Follow the

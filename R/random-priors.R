@@ -187,6 +187,14 @@
 #' levels and `method = "sample"` draws new group-level coefficients from the
 #' fitted random-effect distribution during draw-valued prediction or integrates
 #' them through the block covariance for covariance-valued prediction.
+#' A level declared in a single grouping factor (for example, an unused factor
+#' level) but without rows in the fitting data remains a fitted group whose
+#' coefficients are informed only by the random-effect distribution; prediction
+#' treats it as a new level. Blocks with a known group covariance
+#' ([random_group_covariance()]) are the exception: the kernel links declared
+#' levels to the observed ones, so their declared levels are predicted from
+#' the fitted coefficients, and new levels are unsupported.
+#' Groupings of several variables contain only observed combinations.
 #'
 #' @section Parameterization:
 #' `parameterization` controls how sampled random-effect blocks are represented

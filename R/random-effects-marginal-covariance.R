@@ -29,6 +29,9 @@
 #'   object or one of `"error"`, `"zero"`, or `"sample"`. `"zero"` assigns
 #'   zero covariance contribution to unseen grouping levels. `"sample"` treats
 #'   unseen grouping levels as independent draws from the block covariance `G`.
+#'   Grouping levels declared in the fitted grouping factor but without rows in
+#'   the fitting data are unseen levels, except in blocks with a known group
+#'   covariance; see [prior_random()].
 #' @param diagonal_only whether to return only observation-level marginal
 #'   variances. This avoids allocating a `draw x row x row` array when callers
 #'   need only `diag(Z G Z')`.

@@ -1131,6 +1131,7 @@
   random_term$model_terms      <- model_terms
   random_term$model_terms_type <- model_terms_type
   random_term$group_levels     <- grouping_factor_levels
+  random_term$group_observed_levels <- grouping_metadata$observed_levels
   random_term$group_map        <- grouping_mapping
   random_term$group_components <- grouping_metadata$components
   random_term$group_component_levels <- grouping_metadata$component_levels

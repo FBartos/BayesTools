@@ -1045,10 +1045,14 @@
     group_labels,
     group_tuple_keys
   )
+  # A single grouping factor keeps its declared levels as fitted groups, also
+  # those without fitting rows; prediction needs to know which were observed.
+  observed_levels <- group_levels[seq_along(group_levels) %in% group_map]
 
   list(
     values = group_levels[group_map],
     levels = group_levels,
+    observed_levels = observed_levels,
     map = group_map,
     components = observations$component_names,
     component_levels = observations$component_levels,

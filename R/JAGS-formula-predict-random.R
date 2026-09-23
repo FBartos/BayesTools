@@ -1210,6 +1210,16 @@
   group_levels <- random_term$group_levels
   group_tuple_keys <- random_term$group_tuple_keys
   group_tuple_index <- random_term$group_tuple_index
+  # Declared levels without fitting rows are predicted as new levels: their
+  # fitted slots are left out of the prediction map and they are appended as
+  # new groups, so every consumer applies the new-level policy to them.
+  unobserved_groups <- .bt_random_effect_prediction_unobserved_groups(
+    random_term
+  )
+  unobserved_keys <- group_tuple_keys[unobserved_groups]
+  group_tuple_index <- group_tuple_index[
+    !group_tuple_index %in% unobserved_groups
+  ]
   group_map <- unname(group_tuple_index[grouping_observations$tuple_keys])
   if(any(is.na(group_map))){
     new_keys <- unique(grouping_observations$tuple_keys[is.na(group_map)])
@@ -1228,7 +1238,9 @@
       new_groups <- .bt_random_group_unique_labels(
         new_groups,
         new_keys,
-        existing = group_levels
+        existing = group_levels[
+          !seq_along(group_levels) %in% unobserved_groups
+        ]
       )
       group_levels <- c(group_levels, new_groups)
       new_indices <- seq.int(
@@ -1251,11 +1263,18 @@
         group_tuple_index = group_tuple_index
       ))
     }
+    unobserved_new <- new_groups[new_keys %in% unobserved_keys]
     stop(
       "New random-effect level(s) for block '", random_term$block_name,
       "' are not supported by ", context, ": ",
       paste(new_groups, collapse = ", "),
       ".",
+      if(length(unobserved_new) > 0L) paste0(
+        " Declared grouping level(s) ",
+        paste(unobserved_new, collapse = ", "),
+        " have no rows in the fitting data and are predicted as new levels."
+      ),
+      " Use a \"zero\" or \"sample\" 'new_levels' policy to predict them.",
       call. = FALSE
     )
   }
@@ -1267,6 +1286,32 @@
     group_tuple_keys = group_tuple_keys,
     group_tuple_index = group_tuple_index
   )
+}
+
+# Fitted group indices of declared grouping levels without fitting rows. Their
+# coefficients are prior draws informed only through the random-effect
+# distribution, so prediction treats them as new levels. A known group
+# covariance kernel links declared levels to the observed ones, so those
+# blocks keep every declared level as a fitted group.
+.bt_random_effect_prediction_unobserved_groups <- function(random_term){
+
+  if(.bt_random_effect_has_known_group_covariance(random_term)){
+    return(integer())
+  }
+  group_levels <- random_term$group_levels
+  observed_levels <- random_term$group_observed_levels
+  if(!is.character(observed_levels) || length(observed_levels) < 1L ||
+     anyNA(observed_levels) || anyDuplicated(observed_levels) ||
+     !all(observed_levels %in% group_levels)){
+    stop(
+      "Random-effect prediction metadata for block '", random_term$block_name,
+      "' are missing the observed grouping levels. Refit the model with this ",
+      "version of BayesTools.",
+      call. = FALSE
+    )
+  }
+
+  which(!group_levels %in% observed_levels)
 }
 
 .bt_random_effect_prediction_structured_index_data <- function(random_term,

@@ -1305,6 +1305,229 @@ test_that("stored new-level policies are used when no override is supplied", {
   expect_true(all(marginal_zero$vcov$samples[, , 2:3] == 0))
 })
 
+test_that("declared but unobserved grouping levels are predicted as new levels", {
+
+  # g declares level "c", but no fitting row belongs to it: "c" stays a fitted
+  # group (its coefficient column exists) while prediction routes it through
+  # the new-level policy.
+  fit_data <- data.frame(
+    g = factor(c("a", "b"), levels = c("a", "b", "c"))
+  )
+  result <- JAGS_formula(
+    formula = ~ 1 + diag(1 | g),
+    parameter = "mu",
+    data = fit_data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      g = random_block(
+        sd = .formula_prediction_sd_prior(),
+        monitor = random_monitor(
+          latent = FALSE,
+          coefficients = TRUE,
+          correlation = FALSE
+        )
+      )
+    )
+  )
+  random_term <- result$formula_design$random_effects[[1L]]
+  expect_equal(random_term$group_levels, c("a", "b", "c"))
+  expect_equal(random_term$group_observed_levels, c("a", "b"))
+  expect_equal(random_term$n_groups, 3L)
+  coefficient_names <- BayesTools:::.bt_random_effect_coefficient_names(
+    random_term = random_term,
+    n_groups = 3L,
+    n_columns = 1L
+  )
+
+  # SD draws spread over a wide range so that a draw-independent scale would
+  # not reproduce standard-normal ratios; the fitted "c" coefficient is a
+  # sentinel that must never enter a prediction.
+  n_draws <- 4000L
+  sd_draws <- seq(0.25, 4, length.out = n_draws)
+  posterior <- cbind(
+    rep(1, n_draws),
+    sd_draws,
+    rep(10, n_draws),
+    rep(20, n_draws),
+    rep(1e6, n_draws)
+  )
+  colnames(posterior) <- c(
+    "mu_intercept",
+    random_term$sd_parameter_names,
+    as.vector(coefficient_names)
+  )
+  fit <- coda::mcmc(posterior)
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  new_data <- data.frame(
+    g = factor(c("c", "a", "c", "b"), levels = c("a", "b", "c"))
+  )
+  evaluate <- function(new_levels, formula_target = "conditional"){
+    JAGS_evaluate_formula(
+      fit = fit,
+      parameter = "mu",
+      data = new_data,
+      formula_target = formula_target,
+      new_levels = new_levels
+    )
+  }
+
+  unobserved_message <- paste0(
+    "New random-effect level(s) for block 'g' are not supported by ",
+    "JAGS_evaluate_formula(): c. Declared grouping level(s) c have no rows ",
+    "in the fitting data and are predicted as new levels. Use a \"zero\" or ",
+    "\"sample\" 'new_levels' policy to predict them."
+  )
+  expect_error(evaluate("error"), unobserved_message, fixed = TRUE)
+  expect_error(evaluate(NULL), unobserved_message, fixed = TRUE)
+
+  zero <- evaluate("zero")
+  expect_equal(unname(zero[1L, ]), rep(1, n_draws))
+  expect_equal(unname(zero[3L, ]), rep(1, n_draws))
+  expect_equal(unname(zero[2L, ]), rep(11, n_draws))
+  expect_equal(unname(zero[4L, ]), rep(21, n_draws))
+
+  set.seed(20260923)
+  sampled <- evaluate("sample")
+  # Observed levels keep their fitted coefficients under every policy.
+  expect_equal(unname(sampled[2L, ]), rep(11, n_draws))
+  expect_equal(unname(sampled[4L, ]), rep(21, n_draws))
+  # Rows of the same new level share one sampled group effect per draw.
+  expect_equal(unname(sampled[1L, ]), unname(sampled[3L, ]))
+  # Given the SD draw, the new-level effect is N(0, sd^2): the standardized
+  # effects are i.i.d. N(0, 1). Tolerances are 4 Monte Carlo SEs (mean:
+  # 1/sqrt(n); variance: sqrt(2/n)); the KS test guards the shape.
+  z <- unname((sampled[1L, ] - 1) / sd_draws)
+  expect_lt(abs(mean(z)), 4 / sqrt(n_draws))
+  expect_lt(abs(stats::var(z) - 1), 4 * sqrt(2 / n_draws))
+  expect_gt(suppressWarnings(stats::ks.test(z, "pnorm")$p.value), 1e-3)
+  expect_true(all(abs(sampled[1L, ] - 1) < 1e3))
+
+  # Marginal prediction applies the same new-level policy to "c".
+  expect_error(
+    JAGS_predict_formula(
+      fit = fit,
+      parameter = "mu",
+      data = new_data,
+      formula_target = "marginal"
+    ),
+    "require an explicit new-level policy: c.",
+    fixed = TRUE
+  )
+  marginal_zero <- JAGS_predict_formula(
+    fit = fit,
+    parameter = "mu",
+    data = new_data,
+    formula_target = "marginal",
+    marginal_method = "covariance",
+    new_levels = "zero"
+  )
+  expect_equal(marginal_zero$vcov$metadata$blocks$g$new_group_levels, "c")
+  expect_true(all(marginal_zero$vcov$samples[, c(1L, 3L), ] == 0))
+  expect_true(all(marginal_zero$vcov$samples[, , c(1L, 3L)] == 0))
+  expect_equal(
+    marginal_zero$vcov$samples[, 2L, 2L],
+    sd_draws^2,
+    ignore_attr = TRUE
+  )
+  marginal_sample <- JAGS_predict_formula(
+    fit = fit,
+    parameter = "mu",
+    data = new_data,
+    formula_target = "marginal",
+    marginal_method = "covariance",
+    new_levels = "sample"
+  )
+  expect_equal(marginal_sample$vcov$metadata$blocks$g$new_group_levels, "c")
+  expect_equal(
+    marginal_sample$vcov$samples[, 1L, 3L],
+    sd_draws^2,
+    ignore_attr = TRUE
+  )
+  expect_true(all(marginal_sample$vcov$samples[, 1L, c(2L, 4L)] == 0))
+})
+
+test_that("known group covariance keeps declared unobserved levels as fitted groups", {
+
+  fit_data <- data.frame(
+    g = factor(c("a", "b"), levels = c("a", "b", "c"))
+  )
+  K <- matrix(
+    c(
+      1, 0.5, 0.25,
+      0.5, 1, 0.5,
+      0.25, 0.5, 1
+    ),
+    nrow = 3L,
+    dimnames = list(c("a", "b", "c"), c("a", "b", "c"))
+  )
+  result <- JAGS_formula(
+    formula = random_effects_formula(
+      ~ 1 | g,
+      group_covariance = random_group_covariance(K, scale = "none")
+    ),
+    parameter = "mu",
+    data = fit_data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      g = random_block(
+        sd = .formula_prediction_sd_prior(),
+        monitor = random_monitor(
+          latent = FALSE,
+          coefficients = TRUE,
+          correlation = FALSE
+        )
+      )
+    )
+  )
+  random_term <- result$formula_design$random_effects[[1L]]
+  expect_equal(random_term$group_levels, c("a", "b", "c"))
+  expect_equal(random_term$group_observed_levels, c("a", "b"))
+  coefficient_names <- BayesTools:::.bt_random_effect_coefficient_names(
+    random_term = random_term,
+    n_groups = 3L,
+    n_columns = 1L
+  )
+  posterior <- matrix(
+    c(1, 0.5, 10, 20, 30),
+    nrow = 1L,
+    dimnames = list(NULL, c(
+      "mu_intercept",
+      random_term$sd_parameter_names,
+      as.vector(coefficient_names)
+    ))
+  )
+  fit <- coda::mcmc(posterior)
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+
+  # The kernel links "c" to the observed levels, so its fitted coefficient is
+  # the conditional prediction under the default (error) policy.
+  prediction <- JAGS_evaluate_formula(
+    fit = fit,
+    parameter = "mu",
+    data = data.frame(g = factor(c("c", "a"), levels = c("a", "b", "c"))),
+    formula_target = "conditional"
+  )
+  expect_equal(unname(drop(prediction)), c(31, 11))
+})
+
+test_that("multi-variable groupings record only observed tuples", {
+
+  fit_data <- data.frame(
+    a = factor(c("x", "x", "y"), levels = c("x", "y", "z")),
+    b = factor(c("p", "q", "p"), levels = c("p", "q"))
+  )
+  result <- JAGS_formula(
+    formula = ~ 1 + diag(1 | a:b),
+    parameter = "mu",
+    data = fit_data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(sd = .formula_prediction_sd_prior())
+  )
+  random_term <- result$formula_design$random_effects[[1L]]
+  expect_equal(random_term$group_levels, c("x:p", "x:q", "y:p"))
+  expect_equal(random_term$group_observed_levels, random_term$group_levels)
+})
+
 test_that("JAGS_predict_formula composes fixed means with marginal covariance", {
 
   result <- .formula_prediction_result()
