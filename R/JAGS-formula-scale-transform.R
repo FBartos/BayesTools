@@ -31,7 +31,8 @@
 #' contribution from this expansion. If it does not, the function stops rather
 #' than returning an incomplete transformation.
 #'
-#' For a fitted object, the fixed-coefficient transformation is derived from the
+#' For a fitted object, or formula-scale metadata created by [JAGS_formula()] or
+#' [JAGS_fit()], the fixed-coefficient transformation is derived from the
 #' stored fixed-effect design (persisted factor levels and contrasts) and
 #' verified to reproduce the fitted linear predictor exactly, which also covers
 #' nested terms such as \code{~ f/x}. Formulas whose centered terms induce
