@@ -1727,7 +1727,8 @@ parameter_transform_jacobian <- function(values, transform){
   out
 }
 
-.bt_parameter_catalog_aliases <- function(quantities, formula_design = NULL){
+.bt_parameter_catalog_aliases <- function(quantities, formula_design = NULL,
+                                          table_labels = NULL){
 
   out <- .bt_parameter_catalog_empty_aliases()
   public <- quantities[!quantities$internal, , drop = FALSE]
@@ -1801,6 +1802,67 @@ parameter_transform_jacobian <- function(values, transform){
   }
   out <- do.call(rbind, rows)
   out <- unique(out)
+  rownames(out) <- NULL
+  .bt_parameter_catalog_table_label_aliases(out, public, table_labels)
+}
+
+# Adds displayed estimates-table labels of coordinate quantities as aliases,
+# unless the label already names a different quantity in the same namespace.
+.bt_parameter_catalog_table_label_aliases <- function(aliases, public,
+                                                      table_labels){
+
+  if(is.null(table_labels) || nrow(table_labels) == 0L){
+    return(aliases)
+  }
+  coordinate_rows <- vapply(public$extraction_key, function(key){
+    if(identical(key$type, "coordinate") && length(key$dependencies) == 1L){
+      key$dependencies
+    }else{
+      NA_character_
+    }
+  }, character(1))
+  rows <- list()
+  for(i in seq_len(nrow(table_labels))){
+    quantity_row <- which(coordinate_rows == table_labels$coordinate_name[i])
+    if(length(quantity_row) != 1L){
+      next
+    }
+    quantity <- public[quantity_row, , drop = FALSE]
+    alias <- table_labels$alias[i]
+    namespace <- quantity$namespace
+    taken <- c(
+      aliases$alias[
+        aliases$namespace == namespace &
+          aliases$quantity_id != quantity$quantity_id
+      ],
+      public$canonical_name[
+        public$namespace == namespace &
+          public$quantity_id != quantity$quantity_id
+      ]
+    )
+    if(alias %in% taken){
+      next
+    }
+    rows[[length(rows) + 1L]] <- data.frame(
+      alias = alias,
+      quantity_id = quantity$quantity_id,
+      namespace = namespace,
+      component = quantity$component,
+      simplified = FALSE,
+      stringsAsFactors = FALSE
+    )
+  }
+  if(length(rows) == 0L){
+    return(aliases)
+  }
+  added <- unique(do.call(rbind, rows))
+  # A label shown for several coordinates identifies none of them.
+  label_key <- paste(added$alias, added$namespace, sep = "\r")
+  n_owners <- tapply(added$quantity_id, label_key, function(x){
+    length(unique(x))
+  })
+  added <- added[n_owners[label_key] == 1L, , drop = FALSE]
+  out <- unique(rbind(aliases, added))
   rownames(out) <- NULL
   out
 }
@@ -3059,8 +3121,74 @@ parameter_transform_jacobian <- function(values, transform){
   )
   quantities <- rbind(base, factor_map$derived, random_map$derived)
   rownames(quantities) <- NULL
-  aliases <- .bt_parameter_catalog_aliases(quantities, formula_design)
+  aliases <- .bt_parameter_catalog_aliases(
+    quantities,
+    formula_design,
+    table_labels = .bt_parameter_catalog_table_labels(
+      coordinates = coordinates,
+      prior_list = prior_list,
+      formula_scale = formula_scale
+    )
+  )
   .bt_parameter_catalog_new(quantities, aliases)
+}
+
+# Row labels that JAGS_estimates_table() and runjags_estimates_table() display
+# for public coordinates: factor levels renamed as those tables do, with and
+# without the formula prefix, and with the log-intercept exp(intercept) label
+# of transformed tables. A label that cannot be computed is simply not added.
+.bt_parameter_catalog_table_labels <- function(coordinates, prior_list,
+                                               formula_scale = NULL){
+
+  empty <- data.frame(
+    coordinate_name = character(),
+    alias = character(),
+    stringsAsFactors = FALSE
+  )
+  public <- !coordinates$internal & coordinates$role != "backend_anchor"
+  coordinate_names <- coordinates$coordinate_name[public]
+  if(length(coordinate_names) == 0L || length(prior_list) == 0L){
+    return(empty)
+  }
+  renamed <- tryCatch(
+    .bt_random_effect_summary_renamed_parameter_names(
+      coordinate_names,
+      prior_list
+    ),
+    error = function(error) NULL
+  )
+  if(!is.character(renamed) || length(renamed) != length(coordinate_names)){
+    return(empty)
+  }
+  formula_parameters <- unique(unlist(
+    lapply(prior_list, attr, which = "parameter"),
+    use.names = FALSE
+  ))
+  formula_random <- unique(unlist(
+    lapply(prior_list, attr, which = "random_factor"),
+    use.names = FALSE
+  ))
+  settings <- expand.grid(
+    prefix = c(TRUE, FALSE),
+    scaled = c(FALSE, TRUE)
+  )
+  labels <- lapply(seq_len(nrow(settings)), function(i){
+    format_parameter_names(
+      renamed,
+      formula_parameters = formula_parameters,
+      formula_random = formula_random,
+      formula_prefix = settings$prefix[i],
+      formula_scale = if(settings$scaled[i]) formula_scale else NULL
+    )
+  })
+  out <- data.frame(
+    coordinate_name = rep(coordinate_names, length(labels)),
+    alias = unlist(labels, use.names = FALSE),
+    stringsAsFactors = FALSE
+  )
+  out <- unique(out[!is.na(out$alias) & nzchar(out$alias), , drop = FALSE])
+  rownames(out) <- NULL
+  out
 }
 
 .bt_parameter_catalog_valid_native_key <- function(key, quantity){

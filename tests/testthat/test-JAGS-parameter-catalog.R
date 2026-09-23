@@ -595,6 +595,114 @@ test_that("factor components preserve boundary whitespace", {
   )
 })
 
+test_that("estimates-table row labels resolve to their catalog quantities", {
+
+  data <- data.frame(
+    x = seq(1, 9, length.out = 24),
+    h = factor(rep(c("lo", "hi"), 12), levels = c("lo", "hi")),
+    g = factor(rep(c("u", "v", "w", "q"), 6), levels = c("u", "v", "w", "q")),
+    f = factor(rep(c("a", "b", "c"), each = 8))
+  )
+  table_fit <- function(formula, prior_list, formula_scale = NULL){
+    result <- JAGS_formula(
+      formula, "mu", data, prior_list,
+      formula_scale = formula_scale
+    )
+    columns <- unlist(lapply(names(result$prior_list), function(name){
+      prior <- result$prior_list[[name]]
+      if(is.prior.factor(prior)){
+        .JAGS_prior_factor_names(name, prior)
+      }else{
+        name
+      }
+    }), use.names = FALSE)
+    samples <- matrix(
+      seq_len(2L * length(columns)) / 10,
+      nrow = 2L,
+      dimnames = list(NULL, columns)
+    )
+    fit <- structure(
+      list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = 2L),
+      class = c("runjags", "BayesTools_fit", "list")
+    )
+    attr(fit, "prior_list") <- result$prior_list
+    attr(fit, "formula_design") <- list(mu = result$formula_design)
+    if(!is.null(result$formula_scale)){
+      attr(fit, "formula_scale") <- list(mu = result$formula_scale)
+    }
+    attach_test_parameter_map(fit)
+  }
+  expect_rows_resolve <- function(fit, expected, transform_scaled = FALSE){
+    table <- JAGS_estimates_table(fit, transform_scaled = transform_scaled)
+    catalog <- parameter_catalog(fit)
+    for(row in names(expected)){
+      expect_true(row %in% rownames(table), info = row)
+      selection <- parameter_catalog_resolve(catalog, row)
+      expect_identical(
+        selection$quantities$canonical_name,
+        expected[[row]],
+        info = row
+      )
+      if(!transform_scaled){
+        expect_equal(
+          mean(as.matrix(parameter_draws(fit, selection))),
+          table[row, "Mean"],
+          info = row
+        )
+      }
+    }
+  }
+  normal <- prior("normal", list(0, 1))
+
+  # Two-level treatment interaction: one unindexed coefficient.
+  expect_rows_resolve(
+    table_fit(~ x * h, list(
+      intercept = normal, x = normal,
+      h = prior_factor("normal", list(0, 1), contrast = "treatment"),
+      "x:h" = prior_factor("normal", list(0, 1), contrast = "treatment")
+    )),
+    c("(mu) x:h" = "mu_x__xXx__h", "(mu) h[hi]" = "mu_h")
+  )
+  # Mean-difference coefficients whose contrast row is a unit vector.
+  expect_rows_resolve(
+    table_fit(~ x * g, list(
+      intercept = normal, x = normal,
+      g = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "x:g" = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+    )),
+    stats::setNames(
+      c(paste0("mu_g[", 1:3, "]"), paste0("mu_x__xXx__g[", 1:3, "]")),
+      c(paste0("(mu) g[", 1:3, "]"), paste0("(mu) x:g[", 1:3, "]"))
+    )
+  )
+  # Treatment-by-treatment interaction cells.
+  expect_rows_resolve(
+    table_fit(~ f * g, list(
+      intercept = normal,
+      f = prior_factor("normal", list(0, 1), contrast = "treatment"),
+      g = prior_factor("normal", list(0, 1), contrast = "treatment"),
+      "f:g" = prior_factor("normal", list(0, 1), contrast = "treatment")
+    )),
+    c(
+      "(mu) f[b]:g[v]" = "mu_f__xXx__g[1]",
+      "(mu) f[c]:g[v]" = "mu_f__xXx__g[2]",
+      "(mu) f[c]:g[q]" = "mu_f__xXx__g[6]"
+    )
+  )
+  # Log-intercept label of transformed tables.
+  log_formula <- ~ x
+  attr(log_formula, "log(intercept)") <- TRUE
+  expect_rows_resolve(
+    table_fit(
+      log_formula,
+      list(intercept = prior("lognormal", list(0, 0.5)), x = normal),
+      formula_scale = list(x = TRUE)
+    ),
+    c("(mu) exp(intercept)" = "mu_intercept", "(mu) x" = "mu_x"),
+    transform_scaled = TRUE
+  )
+})
+
 test_that("catalog extensions preserve ambiguity until filtered", {
 
   coordinates <- .bt_build_parameter_coordinates(
