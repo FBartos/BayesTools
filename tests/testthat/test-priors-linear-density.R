@@ -332,6 +332,61 @@ test_that("unrepresentable continuous grids cannot become atoms or non-finite de
   )
 })
 
+test_that("boundary-singular prior densities keep exact edge-cell masses", {
+
+  # Shapes below one give an integrable infinite density at a support bound.
+  # The bound knot carries the exact CDF mass of its grid cell. The relative
+  # tolerance covers the grid renormalisation, which absorbs the O(sqrt(dx))
+  # midpoint error of the neighbouring singular cells (about 1.2e-3 for
+  # gamma(0.5, 1) on the default grid).
+  singular <- list(
+    list(prior = prior("beta", list(0.5, 0.5)), lower = TRUE, upper = TRUE),
+    list(prior = prior("gamma", list(0.5, 1)), lower = TRUE, upper = FALSE),
+    list(prior = prior("beta", list(2, 0.7)), lower = FALSE, upper = TRUE),
+    list(prior = prior("beta", list(0.5, 1.5)), lower = TRUE, upper = FALSE)
+  )
+  for(case in singular){
+    density <- .prior_linear_combination_density(list(p = case$prior), c(p = 1))
+    x  <- density$density$x
+    y  <- density$density$y
+    dx <- x[2] - x[1]
+    expect_true(all(is.finite(y)))
+    if(case$lower){
+      expect_equal(x[1], 0)
+      expect_equal(y[1] * dx, cdf(case$prior, dx / 2), tolerance = 5e-3)
+    }
+    if(case$upper){
+      expect_equal(x[length(x)], 1)
+      expect_equal(y[length(y)] * dx, ccdf(case$prior, 1 - dx / 2), tolerance = 5e-3)
+    }
+    expect_equal(
+      .prior_linear_density_height(density, .3),
+      pdf(case$prior, .3)
+    )
+
+    sum_density <- .prior_linear_combination_density(
+      list(p = case$prior, q = prior("normal", list(0, 1))),
+      c(p = 1, q = 1)
+    )
+    expect_true(all(is.finite(sum_density$density$y)))
+    context <- .prior_density_build_context(list(p = case$prior), "p")
+    expect_s3_class(.prior_density_from_context(context, c(p = 1)), "prior_linear_density")
+  }
+
+  fit <- coda::mcmc(cbind(p = stats::qgamma(stats::ppoints(64), .5, 1)))
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(p = prior("gamma", list(.5, 1)))
+  fit <- .bt_attach_parameter_map(fit, monitor_names = "p")
+  marginal <- marginal_posterior(
+    as_mixed_posteriors(fit, "p"), "p", use_formula = FALSE,
+    prior_samples = TRUE, n_samples = 128
+  )
+  expect_equal(
+    .prior_linear_density_height(attr(marginal, "prior_density"), .5),
+    stats::dgamma(.5, .5, 1)
+  )
+})
+
 test_that("linear group ranges accept omitted source transformations", {
 
   group <- list(prior = prior("normal", list(0, 1)), weights = c(mu = 1), indices = 1L)

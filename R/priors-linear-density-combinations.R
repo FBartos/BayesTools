@@ -341,6 +341,20 @@
     y <- mpdf(prior, source_x) / abs(weight)
   }
 
+  # An integrable singularity at a support bound (e.g., gamma or beta shape
+  # below one) has no finite ordinate; its knot carries the exact mass of the
+  # grid cell instead.
+  infinite <- is.infinite(y) & y > 0
+  if(any(infinite)){
+    y[infinite] <- .prior_linear_scalar_cell_density(
+      prior            = prior,
+      x                = x[infinite],
+      dx               = x[2] - x[1],
+      weight           = weight,
+      source_transform = source_transform
+    )
+  }
+
   if(any(!is.finite(y))){
     stop(
       "A continuous prior component produced a non-finite density on its ",
@@ -359,6 +373,20 @@
     dx = dx,
     n_grid = n_grid
   )
+}
+
+.prior_linear_scalar_cell_density <- function(prior, x, dx, weight, source_transform = NULL){
+
+  # Average density of weight * source over [x - dx / 2, x + dx / 2]. The
+  # prior CDF restricts the cell to the prior support.
+  source_bounds <- cbind(x - dx / 2, x + dx / 2) / weight
+  if(identical(source_transform, "log")){
+    source_bounds <- exp(source_bounds)
+  }
+  mass <- abs(
+    mcdf(prior, source_bounds[, 2L]) - mcdf(prior, source_bounds[, 1L])
+  )
+  as.numeric(mass) / dx
 }
 
 .prior_linear_group_distribution <- function(group, dx, tail_prob, source_transforms = NULL, n_grid = NULL){

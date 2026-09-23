@@ -2235,6 +2235,82 @@ test_that("block allocations expose deterministic component-SD priors", {
                stats::dbeta(.4, 2, 3, log = TRUE))
 })
 
+test_that("sparse allocation margins keep boundary-singular prior densities", {
+
+  data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2")),
+    observation = factor(seq_len(4L))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | observation, name = "observation", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      random_variance_allocation(
+        name            = "heterogeneity",
+        display_name    = "",
+        terms           = c(study = "study", observation = "observation"),
+        component_names = c("study", "observation"),
+        sd = prior(
+          "normal",
+          list(mean = 0, sd = 1),
+          truncation = list(0, Inf)
+        ),
+        weights = prior("dirichlet", list(alpha = c(.5, 1.5)))
+      )
+    )
+  )
+  allocation <- formula_result$formula_design$random_allocations[[1L]]
+  columns <- c(
+    "mu_intercept",
+    allocation$source_node,
+    paste0(allocation$weight_name, "[", 1:2, "]")
+  )
+  values <- matrix(
+    rep(c(0, 1, .4, .6), 2L),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, columns)
+  )
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(values)),
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  catalog <- parameter_catalog(fit)
+
+  # var_prop(study) is the Beta(0.5, 1.5) margin, infinite at zero.
+  proportion <- parameter_catalog_resolve(catalog, "var_prop(study)", "mu")
+  proportion_density <- parameter_prior_density(fit, proportion)
+  x  <- proportion_density$density$x
+  y  <- proportion_density$density$y
+  dx <- x[2] - x[1]
+  expect_true(all(is.finite(y)))
+  # Exact CDF cell mass at the singular bound; the tolerance covers the grid
+  # renormalisation of the O(sqrt(dx)) neighbouring-cell midpoint error.
+  expect_equal(y[1] * dx, stats::pbeta(dx / 2, .5, 1.5), tolerance = 5e-3)
+  expect_equal(
+    .prior_linear_density_height(proportion_density, .4),
+    stats::dbeta(.4, .5, 1.5)
+  )
+  expect_identical(prior_density_ordinate(proportion_density, 0)$behavior, "infinite")
+
+  # The component SD is total SD * sqrt(var_prop): E[sd^2] = 1 * .5 / 2.
+  # The square root of the x^(-1/2) singularity leaves an O(sqrt(dx)) error in
+  # the first cell (4.7%, 2.9%, 1.8% at 512, 1024, 4096 knots), so the default
+  # grid is used with a 3% tolerance.
+  component <- parameter_catalog_resolve(catalog, "study: sd(intercept)", "mu")
+  component_density <- parameter_prior_density(fit, component)
+  x <- component_density$density$x
+  y <- component_density$density$y
+  second_moment <- sum(diff(x) *
+    (head(x^2 * y, -1L) + tail(x^2 * y, -1L)) / 2)
+  expect_equal(second_moment, .25, tolerance = .03)
+})
+
 
 test_that("shared-gate proportions use their declared conditional Dirichlet prior", {
 

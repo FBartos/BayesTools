@@ -731,6 +731,15 @@ density.prior <- function(x,
     x_value <- x_seq[i]
     density_at_zero <- if(x_value == 0) pdf(total, 0) else NA_real_
 
+    if(x_value == 0 && is.infinite(density_at_zero) && density_at_zero > 0){
+      # f(0) = integral of f_total(0) f_c(c) / c dc diverges with f_total(0).
+      quadrature[[i]] <<- list(
+        value = Inf,
+        abs.error = 0,
+        message = "analytic singular boundary"
+      )
+      return(Inf)
+    }
     if(x_value == 0 && is.finite(density_at_zero) && density_at_zero > 0){
       if(alpha1 <= 1){
         quadrature[[i]] <<- list(

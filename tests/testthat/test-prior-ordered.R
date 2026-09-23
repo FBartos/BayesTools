@@ -891,6 +891,45 @@ test_that("ordered densities are direct when supported and bridge sampling stops
   )
 })
 
+test_that("ordered totals with boundary-infinite densities keep direct densities", {
+
+  p <- prior_ordered(prior("gamma", list(shape = .5, rate = 1)))
+  attr(p, "levels") <- 3
+  densities <- density(p, n_points = 101)
+  expect_equal(attr(densities, "method"), "direct")
+
+  # Level 2 is total * c with c ~ Beta(1, 1): its density diverges at zero
+  # with the total's density, and interior values are the product integral.
+  middle <- densities[[2]]
+  expect_identical(middle$y[middle$x == 0], Inf)
+  interior <- which(middle$x > 0)[c(1, 25, 60)]
+  reference <- vapply(middle$x[interior], function(value){
+    stats::integrate(
+      function(c) stats::dgamma(value / c, .5, 1) / c,
+      lower = 0, upper = 1, rel.tol = 1e-10
+    )$value
+  }, numeric(1))
+  expect_equal(middle$y[interior], reference, tolerance = 1e-6)
+
+  highest <- densities[[3]]
+  positive <- highest$x > 0
+  expect_equal(highest$y[positive], stats::dgamma(highest$x[positive], .5, 1))
+
+  bounded <- prior_ordered(prior("beta", list(.5, 1)))
+  attr(bounded, "levels") <- 3
+  expect_equal(attr(density(bounded, n_points = 51), "method"), "direct")
+
+  mixed <- prior_ordered(prior_spike_and_slab(
+    prior("gamma", list(shape = .5, rate = 1)),
+    prior_inclusion = prior("spike", list(.5))
+  ))
+  attr(mixed, "levels") <- 3
+  mixed_densities <- density(mixed, n_points = 101)
+  expect_equal(attr(mixed_densities, "method"), "analytic_mixed_measure")
+  expect_equal(mixed_densities[[3]]$atoms, data.frame(location = 0, mass = .5))
+  expect_equal(attr(mixed_densities[[3]]$continuous, "mass"), .5)
+})
+
 test_that("ordered ranges cover zero and scaled total densities", {
   p_positive <- prior_ordered(
     prior("normal", list(10, 1)),
