@@ -120,6 +120,12 @@ names.
   distinction from posterior draws.
   Record dependencies in extraction keys instead of adding private inputs as
   public catalog rows.
+- Draws that can be undefined are declared, never inferred from names or
+  values: `parameter_draws()` sets the `mcmc.list` attribute `undefined_draws`
+  (canonical name to reason, `"correlation"` for original-scale random-effect
+  correlations). Summaries such as `ensemble_estimates_table()` accept missing
+  draws only for declared columns, summarize the defined draws, and footnote
+  their share; any other missing draw is an error.
 - Internal latent, realized, allocation, LKJ, spike-and-slab, and other
   implementation coordinates remain coordinate-only and must not be presented as
   original-scale public parameters.

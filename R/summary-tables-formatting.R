@@ -254,6 +254,38 @@
 
   return(runjags_summary)
 }
+# Quantities whose draws can be undefined (NA) declare why through the
+# attribute 'undefined_draws' (see parameter_draws()): "correlation" for an
+# original-scale random-effect correlation (NA when an SD is zero), and
+# "positive_definite" for raw Cholesky and LKJ coordinates (NA unless the
+# correlation matrix is positive definite). Summaries of such quantities use
+# the defined draws and report their share in a row footnote.
+.bt_undefined_draws_reasons <- c(
+  correlation       = "where the correlation is defined, i.e. both SDs are positive",
+  positive_definite = "where the correlation matrix is positive definite"
+)
+
+.bt_undefined_draws_footnote <- function(row, n_defined, n_draws, reason){
+
+  if(!is.character(reason) || length(reason) != 1L || is.na(reason) ||
+     !reason %in% names(.bt_undefined_draws_reasons)){
+    stop(
+      "Unknown 'undefined_draws' declaration for '", row, "'. Use one of ",
+      paste0("\"", names(.bt_undefined_draws_reasons), "\"", collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  stats::setNames(
+    paste0(
+      row, ": summarized over ", n_defined, " of ", n_draws, " draws ",
+      .bt_undefined_draws_reasons[[reason]], "."
+    ),
+    row
+  )
+}
+
 .runjags_conditional_warning <- function(parameters, n_samples, warning_limit = 500){
   if(n_samples == 0){
     return(sprintf("Conditional summary for %1$s parameter could not be computed due to no posterior samples.", paste0(parameters, collapse = ", ")))

@@ -822,6 +822,95 @@ test_that("original-scale correlations are defined entrywise and clamp rounding 
   )
 })
 
+test_that("parameter_draws declares undefined correlation draws for ensemble tables", {
+
+  skip_if_not_installed("runjags")
+
+  # Zero slope SDs in draws 3 and 4 leave the original-scale correlation
+  # undefined (NA).
+  fit <- .undefined_correlation_table_fit(
+    source_sd = rbind(c(1, 2), c(0.5, 1.5), c(0.7, 0), c(0.3, 0), c(1, 1)),
+    source_rho = c(0.8, -0.3, 0.4, 0.1, 0.2)
+  )
+
+  # Built as RoBMA's multivariate heterogeneity summary does
+  # (RoBMA 04d283e9, R/heterogeneity-mv.R:491-528,
+  # .brma_mv_correlation_sample_lists(): catalog rows with quantity "cor"
+  # owned by a random block, resolved and drawn with
+  # parameter_draws(model_samples = posterior_samples) at :515, one numeric
+  # vector per correlation at :525; .summary_heterogeneity_brma_mv_one() at
+  # :459-487 appends them to tau and tau2 and calls ensemble_estimates_table()
+  # at :473).
+  catalog <- parameter_catalog(fit)
+  quantities <- catalog$quantities
+  selected <- quantities[
+    quantities$namespace == "mu" &
+      quantities$owner_type == "random_block" &
+      quantities$quantity == "cor" &
+      !quantities$internal &
+      quantities$status != "unavailable",
+    ,
+    drop = FALSE
+  ]
+  expect_equal(nrow(selected), 1L)
+  posterior_samples <- as.matrix(fit$mcmc[[1L]])
+  selection <- parameter_catalog_resolve(
+    catalog = catalog,
+    alias = selected$canonical_name[1L],
+    namespace = selected$namespace[1L]
+  )
+  draws <- parameter_draws(fit, selection, model_samples = posterior_samples)
+  expect_identical(
+    attr(draws, "undefined_draws"),
+    c("(mu) cor(intercept,x)" = "correlation")
+  )
+  expect_identical(
+    attr(parameter_draws(fit, selection), "undefined_draws"),
+    attr(draws, "undefined_draws")
+  )
+  sd_samples <- JAGS_estimates_table(fit, return_samples = TRUE)[
+    , c("(mu) sd(intercept)", "(mu) sd(x)")
+  ]
+  var_samples <- rowMeans(sd_samples^2)
+
+  # RoBMA's current extraction, as.numeric(draws[[1L]][, 1L])
+  # (heterogeneity-mv.R:525 and :749), drops the declaration: the table stops clearly.
+  undeclared <- as.numeric(draws[[1L]][, 1L])
+  expect_error(
+    ensemble_estimates_table(
+      samples = list(tau = sqrt(var_samples), tau2 = var_samples,
+                     "cor(intercept,x)" = undeclared),
+      parameters = c("tau", "tau2", "cor(intercept,x)")
+    ),
+    "The posterior draws of 'cor(intercept,x)' contain missing values.",
+    fixed = TRUE
+  )
+
+  # Keeping the declaration on the extracted vector summarizes the defined
+  # draws and footnotes their share.
+  declared <- as.numeric(draws[[1L]][, 1L])
+  attr(declared, "undefined_draws") <- attr(draws, "undefined_draws")[[1L]]
+  samples_list <- list(tau = sqrt(var_samples), tau2 = var_samples,
+                       "cor(intercept,x)" = declared)
+  estimates <- ensemble_estimates_table(
+    samples = samples_list,
+    parameters = names(samples_list),
+    probs = c(.025, .975),
+    title = "Heterogeneity Estimates (id):"
+  )
+  defined <- declared[!is.na(declared)]
+  expect_equal(length(defined), 3L)
+  expect_equal(estimates["cor(intercept,x)", "Mean"], mean(defined))
+  expect_equal(estimates["cor(intercept,x)", "Median"], stats::median(defined))
+  expect_identical(
+    unname(attr(estimates, "footnotes")),
+    paste0(
+      "cor(intercept,x): summarized over 3 of 5 draws where the correlation ",
+      "is defined, i.e. both SDs are positive."
+    )
+  )
+})
+
 test_that("correlation footnotes count only draws retained by conditioning", {
 
   correlation_prior <- prior_none()

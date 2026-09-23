@@ -67,7 +67,15 @@
 #' derived quantities. For gated total-variance allocations, realized
 #' `sd_total` and `var_total` draws include the all-off zero branch.
 #' `var_prop(...)` draws are normalized over active components and are `NA` on
-#' draws where the realized allocation total is zero.
+#' draws where the realized allocation total is zero. Original-scale
+#' random-effect correlations (`cor(...)` of LKJ blocks) are `NA` on draws
+#' where the correlation is undefined, i.e. where one of its SDs is zero; the
+#' returned `mcmc.list` then carries the attribute `undefined_draws`, a
+#' character vector named by the quantity's canonical name with value
+#' `"correlation"`. Summaries such as [ensemble_estimates_table()] accept
+#' missing draws only for columns carrying this declaration: callers that
+#' extract a numeric vector keep it by copying the element to the vector's
+#' `undefined_draws` attribute.
 #'
 #' `parameter_prior_density()` constructs a deterministic
 #' `prior_linear_density` for supported map-defined quantities, including
@@ -466,7 +474,16 @@ parameter_draws.BayesTools_fit <- function(object, selection,
       thin = mcpar[3L]
     )
   }
-  coda::mcmc.list(out)
+  out <- coda::mcmc.list(out)
+  # Original-scale random-effect correlations are undefined (NA) in draws with
+  # a zero SD; declare it so that summaries accept those missing draws.
+  if(identical(key$evaluator, "correlation")){
+    attr(out, "undefined_draws") <- stats::setNames(
+      "correlation",
+      quantities$canonical_name
+    )
+  }
+  out
 }
 
 #' @rdname parameter_catalog

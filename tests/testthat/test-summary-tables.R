@@ -165,6 +165,106 @@ test_that("ensemble estimates use equal-tailed 95 percent defaults", {
 })
 
 
+test_that("ensemble estimates summarize declared undefined draws over defined draws", {
+
+  correlation <- c(0.2, NA, -0.4, 0.6, NA, 0.1)
+  attr(correlation, "undefined_draws") <- "correlation"
+  defined <- correlation[!is.na(correlation)]
+  estimates <- ensemble_estimates_table(
+    list(tau = c(1, 2, 3, 4, 5, 6), "cor(intercept,x)" = correlation),
+    parameters = c("tau", "cor(intercept,x)"),
+    footnotes = "User note."
+  )
+  expect_equal(
+    unlist(estimates["cor(intercept,x)", ], use.names = FALSE),
+    c(mean(defined), stats::median(defined),
+      stats::quantile(defined, c(0.025, 0.975), names = FALSE))
+  )
+  expect_equal(
+    unlist(estimates["tau", ], use.names = FALSE),
+    c(3.5, 3.5, stats::quantile(1:6, c(0.025, 0.975), names = FALSE))
+  )
+  expect_identical(
+    attr(estimates, "footnotes"),
+    c(
+      "User note.",
+      "cor(intercept,x)" = paste0(
+        "cor(intercept,x): summarized over 4 of 6 draws where the ",
+        "correlation is defined, i.e. both SDs are positive."
+      )
+    )
+  )
+  # The row footnote is dropped with its row.
+  expect_identical(attr(estimates["tau", ], "footnotes"), "User note.")
+
+  # Fully defined declared draws add no footnote.
+  complete <- c(0.2, 0.3)
+  attr(complete, "undefined_draws") <- "correlation"
+  expect_null(attr(
+    ensemble_estimates_table(list(r = complete), parameters = "r"),
+    "footnotes"
+  ))
+
+  # Matrix samples declare undefined columns by name.
+  matrix_samples <- cbind(a = c(1, NA, 3), b = c(1, 2, 3))
+  attr(matrix_samples, "undefined_draws") <- c(a = "correlation")
+  matrix_estimates <- ensemble_estimates_table(
+    list(m = matrix_samples),
+    parameters = "m"
+  )
+  expect_equal(matrix_estimates["a", "Mean"], 2)
+  expect_identical(
+    unname(attr(matrix_estimates, "footnotes")),
+    paste0(
+      "a: summarized over 2 of 3 draws where the correlation is defined, ",
+      "i.e. both SDs are positive."
+    )
+  )
+})
+
+
+test_that("ensemble estimates reject undeclared missing draws", {
+
+  message <- paste0(
+    "The posterior draws of 'theta' contain missing values. Missing draws ",
+    "are accepted only for quantities declared as possibly undefined ",
+    "(attribute 'undefined_draws', set by parameter_draws() for ",
+    "original-scale random-effect correlations)."
+  )
+  expect_error(
+    ensemble_estimates_table(list(theta = c(1, NA, 3)), parameters = "theta"),
+    message,
+    fixed = TRUE
+  )
+  expect_error(
+    ensemble_estimates_table(
+      list(theta = c(1, NA, 3)),
+      parameters = "theta",
+      probs = NULL
+    ),
+    message,
+    fixed = TRUE
+  )
+  matrix_samples <- cbind(a = c(1, NA, 3), b = c(1, 2, NA))
+  attr(matrix_samples, "undefined_draws") <- c(a = "correlation")
+  expect_error(
+    ensemble_estimates_table(list(m = matrix_samples), parameters = "m"),
+    "The posterior draws of 'b' contain missing values.",
+    fixed = TRUE
+  )
+  unknown <- c(1, NA, 3)
+  attr(unknown, "undefined_draws") <- "other"
+  expect_error(
+    ensemble_estimates_table(list(theta = unknown), parameters = "theta"),
+    paste0(
+      "Unknown 'undefined_draws' declaration for 'theta'. Use one of ",
+      "\"correlation\", \"positive_definite\"."
+    ),
+    fixed = TRUE
+  )
+})
+
+
 test_that("update.BayesTools_table remove_parameters removes matching rows", {
   table <- data.frame(value = c("1.000", "2.000"), row.names = c("keep", "drop"))
   class(table) <- c("BayesTools_table", class(table))

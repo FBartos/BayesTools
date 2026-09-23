@@ -92,7 +92,15 @@ marginal_estimates_table(
 )
 }
 \arguments{
-\item{samples}{posterior samples created by \link{mix_posteriors}}
+\item{samples}{posterior samples created by \link{mix_posteriors}. For
+\code{ensemble_estimates_table()}, a sample vector or matrix may contain
+missing draws only if it declares them as undefined through its
+\code{undefined_draws} attribute (a single value for a vector, or values
+named by column for a matrix), as set by \code{\link[=parameter_draws]{parameter_draws()}} for
+original-scale random-effect correlations (\code{"correlation"}). Such a row
+is summarized over its defined draws and a table footnote reports their
+share, e.g., "summarized over k of n draws where the correlation is
+defined, i.e. both SDs are positive". Any other missing draw is an error.}
 
 \item{parameters}{character vector of parameters (or a
 named list with of character vectors for summary and

@@ -1329,15 +1329,16 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     n_draws <- sum(retained)
     n_defined <- sum(retained & !is.na(values))
     if(n_defined < n_draws){
-      footnotes[[colnames(model_samples)[[i]]]] <- paste0(
-        colnames(model_samples)[[i]], ": summarized over ", n_defined, " of ",
-        n_draws, " draws ",
-        if(positive_definite_coordinate){
-          "where the correlation matrix is positive definite."
+      footnotes <- c(footnotes, .bt_undefined_draws_footnote(
+        row = colnames(model_samples)[[i]],
+        n_defined = n_defined,
+        n_draws = n_draws,
+        reason = if(positive_definite_coordinate){
+          "positive_definite"
         }else{
-          "where the correlation is defined, i.e. both SDs are positive."
+          "correlation"
         }
-      )
+      ))
     }
   }
 

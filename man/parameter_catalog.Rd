@@ -157,7 +157,15 @@ extraction key. Downstream packages can provide methods for package-owned
 derived quantities. For gated total-variance allocations, realized
 \code{sd_total} and \code{var_total} draws include the all-off zero branch.
 \code{var_prop(...)} draws are normalized over active components and are \code{NA} on
-draws where the realized allocation total is zero.
+draws where the realized allocation total is zero. Original-scale
+random-effect correlations (\code{cor(...)} of LKJ blocks) are \code{NA} on draws
+where the correlation is undefined, i.e. where one of its SDs is zero; the
+returned \code{mcmc.list} then carries the attribute \code{undefined_draws}, a
+character vector named by the quantity's canonical name with value
+\code{"correlation"}. Summaries such as \code{\link[=ensemble_estimates_table]{ensemble_estimates_table()}} accept
+missing draws only for columns carrying this declaration: callers that
+extract a numeric vector keep it by copying the element to the vector's
+\code{undefined_draws} attribute.
 
 \code{parameter_prior_density()} constructs a deterministic
 \code{prior_linear_density} for supported map-defined quantities, including

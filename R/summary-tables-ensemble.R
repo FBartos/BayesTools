@@ -6,7 +6,15 @@
 #' summary/diagnostics based on a list of [models_inference] models
 #' (or [marginal_inference] in case of [marginal_estimates_table]).
 #'
-#' @param samples posterior samples created by [mix_posteriors]
+#' @param samples posterior samples created by [mix_posteriors]. For
+#' \code{ensemble_estimates_table()}, a sample vector or matrix may contain
+#' missing draws only if it declares them as undefined through its
+#' \code{undefined_draws} attribute (a single value for a vector, or values
+#' named by column for a matrix), as set by [parameter_draws()] for
+#' original-scale random-effect correlations (\code{"correlation"}). Such a row
+#' is summarized over its defined draws and a table footnote reports their
+#' share, e.g., "summarized over k of n draws where the correlation is
+#' defined, i.e. both SDs are positive". Any other missing draw is an error.
 #' @param inference model inference created by [ensemble_inference]
 #' @param parameters character vector of parameters (or a
 #' named list with of character vectors for summary and
@@ -99,6 +107,13 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
   # depreciate
   transform_factors <- .depreciate.transform_orthonormal(transform_orthonormal, transform_factors)
 
+  # declared possibly undefined draws (attribute 'undefined_draws'), captured
+  # before transformations that may rebuild the sample objects
+  undefined_draws <- lapply(parameters, function(parameter){
+    attr(samples[[parameter]], "undefined_draws", exact = TRUE)
+  })
+  names(undefined_draws) <- parameters
+
 
   # transform scaled coefficients back to original scale
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
@@ -113,18 +128,10 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
 
   # extract values
   estimates_table <- NULL
+  undefined_footnotes <- NULL
   for(parameter in parameters){
 
     if(is.matrix(samples[[parameter]])){
-
-      par_summary <- cbind(
-        "Mean"   = apply(samples[[parameter]], 2, mean),
-        "Median" = apply(samples[[parameter]], 2, stats::median)
-      )
-      for(i in seq_along(probs)){
-        par_summary <- cbind(par_summary, apply(samples[[parameter]], 2, stats::quantile, probs = probs[i]))
-        colnames(par_summary)[ncol(par_summary)] <- probs[i]
-      }
 
       if(inherits(samples[[parameter]], "mixed_posteriors.formula")){
         parameter_name <- format_parameter_names(colnames(samples[[parameter]]), formula_parameters = attr(samples[[parameter]], "formula_parameter"), formula_prefix = formula_prefix, formula_scale = formula_scale)
@@ -132,19 +139,39 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
         parameter_name <- colnames(samples[[parameter]])
       }
 
+      par_summary <- NULL
+      for(column in seq_len(ncol(samples[[parameter]]))){
+        column_name <- colnames(samples[[parameter]])[column]
+        defined <- .bt_ensemble_defined_draws(
+          values = samples[[parameter]][, column],
+          label  = if(is.null(column_name)) parameter else column_name,
+          reason = .bt_ensemble_undefined_draws_reason(
+            undefined_draws[[parameter]],
+            column_name
+          )
+        )
+        par_summary <- rbind(par_summary, .bt_ensemble_draw_summary(defined$values, probs))
+        if(defined$n_defined < defined$n_draws){
+          undefined_footnotes <- c(undefined_footnotes, .bt_undefined_draws_footnote(
+            row       = if(is.null(parameter_name)) parameter else parameter_name[column],
+            n_defined = defined$n_defined,
+            n_draws   = defined$n_draws,
+            reason    = defined$reason
+          ))
+        }
+      }
+
       rownames(par_summary) <- parameter_name
       estimates_table       <- rbind(estimates_table, par_summary)
 
     }else if(is.numeric(samples[[parameter]])){
 
-      par_summary <- c(
-        "Mean"   = mean(samples[[parameter]]),
-        "Median" = stats::median((samples[[parameter]]))
+      defined <- .bt_ensemble_defined_draws(
+        values = samples[[parameter]],
+        label  = parameter,
+        reason = .bt_ensemble_undefined_draws_reason(undefined_draws[[parameter]])
       )
-      for(i in seq_along(probs)){
-        par_summary <- c(par_summary, stats::quantile(samples[[parameter]], probs = probs[i]))
-        names(par_summary)[length(par_summary)] <- probs[i]
-      }
+      par_summary <- .bt_ensemble_draw_summary(defined$values, probs)
       estimates_table <- rbind(estimates_table, par_summary)
 
       if(inherits(samples[[parameter]], "mixed_posteriors.formula")){
@@ -158,6 +185,14 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
       }
 
       rownames(estimates_table)[nrow(estimates_table)] <- parameter_name
+      if(defined$n_defined < defined$n_draws){
+        undefined_footnotes <- c(undefined_footnotes, .bt_undefined_draws_footnote(
+          row       = parameter_name,
+          n_defined = defined$n_defined,
+          n_draws   = defined$n_draws,
+          reason    = defined$reason
+        ))
+      }
 
 
     }else{
@@ -172,10 +207,75 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
   attr(estimates_table, "type")      <- rep("estimate", ncol(estimates_table))
   attr(estimates_table, "rownames")  <- TRUE
   attr(estimates_table, "title")     <- title
-  attr(estimates_table, "footnotes") <- footnotes
+  attr(estimates_table, "footnotes") <- c(footnotes, undefined_footnotes)
   attr(estimates_table, "warnings")  <- warnings
 
   return(estimates_table)
+}
+
+.bt_ensemble_draw_summary <- function(values, probs){
+
+  quantiles <- vapply(
+    probs,
+    function(prob) unname(stats::quantile(values, probs = prob)),
+    numeric(1)
+  )
+  names(quantiles) <- probs
+
+  c("Mean" = mean(values), "Median" = stats::median(values), quantiles)
+}
+
+# The 'undefined_draws' declaration of one sample column: a scalar applies to
+# every column; a named vector is looked up by column name.
+.bt_ensemble_undefined_draws_reason <- function(declaration, column = NULL){
+
+  if(is.null(declaration) || length(declaration) == 0L){
+    return(NULL)
+  }
+  if(!is.null(column) && !is.null(names(declaration)) &&
+     any(nzchar(names(declaration)))){
+    if(!column %in% names(declaration)){
+      return(NULL)
+    }
+    return(declaration[[column]])
+  }
+  if(length(declaration) != 1L){
+    stop(
+      "An 'undefined_draws' declaration of a sample vector must be a single ",
+      "value.",
+      call. = FALSE
+    )
+  }
+
+  declaration[[1L]]
+}
+
+# Missing draws are accepted only for a quantity declared as possibly
+# undefined; the summary then uses its defined draws. Any other missing draw
+# signals an error upstream.
+.bt_ensemble_defined_draws <- function(values, label, reason = NULL){
+
+  missing <- is.na(values)
+  if(any(missing) && is.null(reason)){
+    stop(
+      "The posterior draws of '", label, "' contain missing values. Missing ",
+      "draws are accepted only for quantities declared as possibly undefined ",
+      "(attribute 'undefined_draws', set by parameter_draws() for ",
+      "original-scale random-effect correlations).",
+      call. = FALSE
+    )
+  }
+  if(any(missing)){
+    # validates the declaration
+    .bt_undefined_draws_footnote(label, 0L, 0L, reason)
+  }
+
+  list(
+    values    = as.numeric(values[!missing]),
+    n_defined = sum(!missing),
+    n_draws   = length(values),
+    reason    = reason
+  )
 }
 
 #' @rdname BayesTools_ensemble_tables
