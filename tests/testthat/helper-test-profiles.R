@@ -101,6 +101,7 @@ bayestools_test_profile_contexts <- list(
     "selection-kernels",
     "snapshot-path-portability",
     "stochastic-reference-policy",
+    "summary-tables",
     "summary-tables-helpers",
     "test-layout-policy",
     "tools-evaluation",
@@ -118,7 +119,6 @@ bayestools_test_profile_contexts <- list(
     "JAGS-summary-tables",
     "model-averaging",
     "selection-kernels",
-    "summary-tables",
     "weightfunction-redesign"
   ),
   visual = c(

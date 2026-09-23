@@ -196,6 +196,80 @@ test_that("every test file is registered in a profile and declares a skip", {
   expect_identical(basename(test_files[missing_skip]), character())
 })
 
+test_that("every test file's profile gate matches its registry lanes", {
+
+  # The runner selects files by registry lane while each file skips itself
+  # unless its gate lane is active: a file registered under a lane its gate
+  # does not declare runs nowhere in that lane, and a gated lane without
+  # registration never selects the file.
+  gate_names <- c(
+    "skip_if_not_test_profile", "skip_if_not_visual_tests",
+    "skip_if_not_visual_fixture_tests", "skip_if_not_heavy_tests"
+  )
+  gate_lanes <- function(call){
+
+    switch(
+      as.character(call[[1L]]),
+      skip_if_not_test_profile         = bayestools_normalize_test_profiles(eval(call[[2L]], baseenv())),
+      skip_if_not_visual_tests         = "visual",
+      skip_if_not_visual_fixture_tests = "visual-fixture",
+      skip_if_not_heavy_tests          = "fit"
+    )
+  }
+  is_gate <- function(expression){
+
+    is.call(expression) && is.name(expression[[1L]]) &&
+      as.character(expression[[1L]]) %in% gate_names
+  }
+  gate_line <- paste0("^\\s*(", paste(gate_names, collapse = "|"), ")\\(")
+
+  test_files <- list.files(
+    testthat::test_path(),
+    pattern = "^test-.*\\.R$",
+    full.names = TRUE
+  )
+  problems <- character()
+  for(path in test_files){
+    context <- sub("^test-", "", sub("\\.R$", "", basename(path)))
+    registry_lanes <- names(bayestools_test_profile_contexts)[vapply(
+      bayestools_test_profile_contexts,
+      function(contexts) context %in% contexts,
+      logical(1)
+    )]
+
+    file_gate <- Filter(is_gate, as.list(parse(path, keep.source = FALSE)))
+    if(length(file_gate) == 0L){
+      problems <- c(problems, paste0(basename(path), ": no file-level profile gate"))
+      next
+    }
+    file_lanes <- gate_lanes(file_gate[[1L]])
+    if(!setequal(file_lanes, registry_lanes)){
+      problems <- c(problems, sprintf(
+        "%s: gate lanes {%s}, registry lanes {%s}",
+        basename(path),
+        paste(sort(file_lanes), collapse = ", "),
+        paste(sort(registry_lanes), collapse = ", ")
+      ))
+    }
+
+    # Gates inside the file can only narrow the file gate.
+    lines <- readLines(path, warn = FALSE)
+    for(line in lines[grepl(gate_line, lines)]){
+      inner_lanes <- gate_lanes(parse(text = trimws(line), keep.source = FALSE)[[1L]])
+      if(!all(inner_lanes %in% file_lanes)){
+        problems <- c(problems, sprintf(
+          "%s: inner gate {%s} outside the file gate {%s}",
+          basename(path),
+          paste(inner_lanes, collapse = ", "),
+          paste(file_lanes, collapse = ", ")
+        ))
+      }
+    }
+  }
+
+  expect_identical(problems, character(), info = paste(problems, collapse = "\n"))
+})
+
 
 # ---------------------------------------------------------------------------- #
 # Build configuration: JAGS 4.x only
