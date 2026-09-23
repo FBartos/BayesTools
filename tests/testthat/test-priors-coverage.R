@@ -942,6 +942,44 @@ test_that("extreme finite truncated normal methods remain tail-stable", {
   )
 })
 
+test_that("far-tail truncated normal and t draws stay finite and inside the truncation", {
+
+  # With n = 2000 draws the median of cdf(draws) ~ U(0, 1) has SE 0.011;
+  # 0.05 is about 4.5 SE.
+  set.seed(4101)
+  for(truncation in list(c(-40, -39), c(-Inf, -39), c(39, 40))){
+    p <- prior("normal", list(0, 1), truncation = as.list(truncation))
+    x <- rng(p, 2000)
+    expect_true(all(is.finite(x)))
+    expect_true(all(x >= truncation[1] & x <= truncation[2]))
+    expect_lt(abs(stats::median(cdf(p, x)) - .5), .05)
+  }
+  # Ordinary truncations keep the lower-tail inversion bit for bit.
+  set.seed(4102)
+  half_normal <- rng(prior("normal", list(0, 1), truncation = list(0, Inf)), 5)
+  set.seed(4102)
+  expect_identical(half_normal, stats::qnorm(stats::runif(5, .5, 1)))
+
+  # Truncation masses below 1e-12 need the exact upper tail of stats::pt.
+  far_t <- prior("t", list(0, 1, 3), truncation = list(1e5, 2e5))
+  upper <- stats::pt(c(1e5, 2e5), 3, lower.tail = FALSE)
+  probs <- c(.1, .5, .9)
+  reference <- stats::qt(upper[1] - probs * (upper[1] - upper[2]), 3, lower.tail = FALSE)
+  expect_equal(quant(far_t, probs), reference, tolerance = 1e-10)
+  expect_equal(cdf(far_t, reference), probs, tolerance = 1e-8)
+  expect_equal(stats::integrate(function(x) pdf(far_t, x), 1e5, 2e5, rel.tol = 1e-10)$value,
+               1, tolerance = 1e-8)
+  x <- rng(far_t, 2000)
+  expect_true(all(x >= 1e5 & x <= 2e5))
+
+  # Cauchy: S(x) = atan(1 / x) / pi, so the conditional median beyond x0 is
+  # 1 / tan(pi * S(x0) / 2).
+  far_cauchy <- prior("cauchy", list(0, 1), truncation = list(1e13, Inf))
+  expect_equal(quant(far_cauchy, .5), 1 / tan(pi * atan(1 / 1e13) / pi / 2), tolerance = 1e-10)
+  expect_equal(ccdf(far_cauchy, 2e13), atan(1 / 2e13) / atan(1 / 1e13), tolerance = 1e-10)
+  expect_true(all(rng(far_cauchy, 2000) >= 1e13))
+})
+
 
 # ============================================================================ #
 # SECTION: Multivariate distribution functions (mcdf, mccdf, mlpdf, mquant)

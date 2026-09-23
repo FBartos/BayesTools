@@ -582,7 +582,8 @@ quant.prior <- function(x, p, ...){
     prior[["distribution"]],
     "normal"    = stats::pnorm(q, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = lower.tail, log.p = FALSE),
     "lognormal" = stats::plnorm(q, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = lower.tail, log.p = FALSE),
-    "t"         = extraDistr::plst(q, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = lower.tail, log.p = FALSE),
+    # stats::pt keeps the requested tail exact; extraDistr's upper tail is 1 - p.
+    "t"         = stats::pt((q - prior$parameters[["location"]]) / prior$parameters[["scale"]], df = prior$parameters[["df"]], lower.tail = lower.tail, log.p = FALSE),
     "gamma"     = stats::pgamma(q, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = FALSE),
     "invgamma"  = .pinvgamma_prior(q, shape = prior$parameters[["shape"]], scale = prior$parameters[["scale"]], lower.tail = lower.tail, log.p = FALSE),
     "beta"      = stats::pbeta(q, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = lower.tail, log.p = FALSE),
@@ -601,7 +602,7 @@ quant.prior <- function(x, p, ...){
     prior[["distribution"]],
     "normal"    = stats::qnorm(p, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = lower.tail, log.p = FALSE),
     "lognormal" = stats::qlnorm(p, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = lower.tail, log.p = FALSE),
-    "t"         = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = lower.tail, log.p = FALSE),
+    "t"         = prior$parameters[["location"]] + prior$parameters[["scale"]] * stats::qt(p, df = prior$parameters[["df"]], lower.tail = lower.tail, log.p = FALSE),
     "gamma"     = stats::qgamma(p, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = FALSE),
     "invgamma"  = .qinvgamma_prior(p, shape = prior$parameters[["shape"]], scale = prior$parameters[["scale"]], lower.tail = lower.tail, log.p = FALSE),
     "beta"      = stats::qbeta(p, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = lower.tail, log.p = FALSE),
@@ -1057,7 +1058,12 @@ quant.prior <- function(x, p, ...){
     return(sample(discrete[["support"]], size = n, replace = TRUE, prob = discrete[["prob"]]))
   }
 
-  if(.prior_simple_use_survival_truncation(prior)){
+  # A truncated normal whose probability mass is not a normal double (far-tail
+  # truncation) is sampled through the log-space quantile; the lower-tail
+  # inversion would underflow to infinite draws.
+  if(.prior_simple_use_survival_truncation(prior) ||
+     (prior[["distribution"]] == "normal" &&
+      !(.prior_normal_log_C(prior) >= log(.Machine$double.xmin)))){
     return(.prior_simple_quant(prior, stats::runif(n)))
   }
 
