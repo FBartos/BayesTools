@@ -31,6 +31,53 @@ skip_if_no_fits()
 }
 
 
+# Log posterior odds of `parameter > 0` in the fitted draws and their
+# delta-method Monte Carlo standard error, 1 / sqrt(ESS p (1 - p)), from the
+# effective sample size of the region indicator across chains. For the
+# treatment contrast, level B minus level A is the coefficient itself.
+.hypothesis_draws_log_odds_for_test <- function(fit, parameter){
+
+  indicator <- coda::mcmc.list(lapply(fit[["mcmc"]], function(chain){
+    coda::mcmc(as.numeric(chain[, parameter] > 0))
+  }))
+  p   <- mean(unlist(indicator))
+  ess <- unname(coda::effectiveSize(indicator))
+
+  list(
+    log_odds = log(p / (1 - p)),
+    mcse     = 1 / sqrt(ess * p * (1 - p))
+  )
+}
+
+
+# Checks an inequality hypothesis BF against the ratio of the truncated-prior
+# bridge marginal likelihoods (the encompassing-prior identity; the symmetric
+# N(0, 1) treatment prior has prior odds 1). The fixture's log BF is small
+# (0.22), so the direction is asserted explicitly: a reciprocal BF or BF = 1
+# fails. The magnitude must agree within 3 Monte Carlo standard errors of the
+# difference: the bridge MCSEs of both marginal likelihoods and the posterior
+# draw error of the encompassing fit (together about 0.09 on the log scale).
+# The hypothesis BF must also reproduce the log posterior odds of the same
+# draws within 0.08, four standard errors of resampling 20000 posterior and
+# 20000 prior draws (sqrt(1 / (20000 p (1 - p)) + 1 / (20000 / 4)) = 0.02).
+.expect_inequality_BF_matches_bridge <- function(bf_hyp, fit, ml_positive, ml_negative){
+
+  log_BF_hypothesis <- log(attr(bf_hyp, "raw_BF"))
+  log_BF_bridge     <- ml_positive[["logml"]] - ml_negative[["logml"]]
+  draws             <- .hypothesis_draws_log_odds_for_test(fit, "mu_x_fac2t")
+  bridge_mcse       <- sqrt(sum(c(
+    ml_positive[["repetitions"]][["mcse"]],
+    ml_negative[["repetitions"]][["mcse"]]
+  )^2))
+  difference_mcse   <- sqrt(draws$mcse^2 + bridge_mcse^2)
+
+  expect_gt(log_BF_bridge, 0)
+  expect_gt(log_BF_hypothesis, 0)
+  expect_lt(abs(log_BF_hypothesis - log_BF_bridge), 3 * difference_mcse)
+  expect_lt(abs(log_BF_hypothesis - draws$log_odds), 0.08)
+}
+
+
 test_that("hypothesis_BF point-null agrees with bridge-sampling model BF", {
 
   fit_alt <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
@@ -104,9 +151,8 @@ test_that("hypothesis_BF treatment-level inequality agrees with truncated-prior 
     hypothesis = "mu_x_fac2t[B] > mu_x_fac2t[A] vs mu_x_fac2t[B] < mu_x_fac2t[A]",
     seed       = 103
   )
-  bf_bridge <- exp(ml_positive[["logml"]] - ml_negative[["logml"]])
 
-  expect_equal(log(attr(bf_hyp, "raw_BF")), log(bf_bridge), tolerance = 0.45)
+  .expect_inequality_BF_matches_bridge(bf_hyp, fit_alt, ml_positive, ml_negative)
 })
 
 
@@ -127,9 +173,8 @@ test_that("hypothesis_BF transformed level inequality agrees with truncated-prio
     ),
     seed       = 104
   )
-  bf_bridge <- exp(ml_positive[["logml"]] - ml_negative[["logml"]])
 
-  expect_equal(log(attr(bf_hyp, "raw_BF")), log(bf_bridge), tolerance = 0.45)
+  .expect_inequality_BF_matches_bridge(bf_hyp, fit_alt, ml_positive, ml_negative)
 })
 
 
