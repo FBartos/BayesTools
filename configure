@@ -1,6 +1,12 @@
 #!/bin/sh
 
+# BayesTools builds against the JAGS 4 module interface only: the native
+# distributions and functions implement the JAGS 4 virtual signatures and are
+# abstract under JAGS 5. Every version source below is checked against this
+# range before src/Makevars is written.
 JAGS_MIN_VERSION="4.3.0"
+JAGS_REQUIRED_MAJOR="4"
+JAGS_SUPPORTED_RANGE="JAGS 4.x (>= ${JAGS_MIN_VERSION}, < 5.0.0)"
 JAGS_CFLAGS=""
 JAGS_LIBS="-ljags"
 JAGS_RPATH=""
@@ -47,6 +53,34 @@ version_ge() {
   if [ "$version_minor" -gt "$minimum_minor" ]; then return 0; fi
   if [ "$version_minor" -lt "$minimum_minor" ]; then return 1; fi
   [ "$version_patch" -ge "$minimum_patch" ]
+}
+
+jags_version_major() {
+  normalize_version "$1" | sed 's/\..*$//'
+}
+
+jags_version_hint() {
+  printf '%s\n' "Install JAGS 4.3.x (JAGS 5 is not supported) and select it with JAGS_ROOT or --with-jags-prefix; set JAGS_VERSION or PKG_CONFIG_PATH when pkg-config reports another JAGS installation."
+}
+
+# Reject any reported JAGS version outside the supported range, naming the
+# source that reported it.
+jags_check_version() {
+  checked_version="$1"
+  checked_source="$2"
+  checked_major=`jags_version_major "$checked_version"`
+
+  if [ "$checked_major" != "$JAGS_REQUIRED_MAJOR" ] ||
+     ! version_ge "$checked_version" "$JAGS_MIN_VERSION"; then
+    as_error "BayesTools requires ${JAGS_SUPPORTED_RANGE}; ${checked_source} reported ${checked_version}. `jags_version_hint`"
+  fi
+}
+
+# Major version declared by the JAGS headers (version.h defines JAGS_MAJOR).
+jags_header_major() {
+  if [ -f "$1/version.h" ]; then
+    sed -n 's/^[[:space:]]*#[[:space:]]*define[[:space:]][[:space:]]*JAGS_MAJOR[[:space:]][[:space:]]*\([0-9][0-9]*\).*$/\1/p' "$1/version.h" | sed -n '1p'
+  fi
 }
 
 jags_header_ok() {
@@ -195,6 +229,10 @@ if [ -z "$JAGS_VERSION" ] && [ -n "$JAGS_PREFIX" ]; then
   esac
 fi
 
+if [ -n "$JAGS_VERSION" ]; then
+  jags_check_version "$JAGS_VERSION" "$JAGS_VERSION_SOURCE"
+fi
+
 if [ -z "$JAGS_INCLUDE_DIR" ]; then
   for flag in $JAGS_CFLAGS; do
     case "$flag" in
@@ -227,10 +265,14 @@ if [ -z "$JAGS_INCLUDE_DIR" ]; then
 fi
 
 if [ -z "$JAGS_INCLUDE_DIR" ]; then
-  as_error "JAGS headers were not found. Install JAGS >= ${JAGS_MIN_VERSION}, set JAGS_ROOT, or pass --with-jags-prefix/--with-jags-includedir."
+  as_error "JAGS headers were not found. Install ${JAGS_SUPPORTED_RANGE}, set JAGS_ROOT, or pass --with-jags-prefix/--with-jags-includedir."
 fi
 if ! jags_header_ok "$JAGS_INCLUDE_DIR"; then
   as_error "JAGS header module/Module.h was not found under '${JAGS_INCLUDE_DIR}'."
+fi
+JAGS_HEADER_MAJOR=`jags_header_major "$JAGS_INCLUDE_DIR"`
+if [ -n "$JAGS_HEADER_MAJOR" ] && [ "$JAGS_HEADER_MAJOR" != "$JAGS_REQUIRED_MAJOR" ]; then
+  as_error "BayesTools requires ${JAGS_SUPPORTED_RANGE}; the JAGS headers in '${JAGS_INCLUDE_DIR}' declare JAGS_MAJOR ${JAGS_HEADER_MAJOR}. `jags_version_hint`"
 fi
 
 case " $JAGS_CFLAGS " in
@@ -288,11 +330,9 @@ if [ -z "$JAGS_VERSION" ]; then
 fi
 
 if [ -z "$JAGS_VERSION" ]; then
-  as_error "JAGS version could not be determined. Install JAGS >= ${JAGS_MIN_VERSION} with pkg-config metadata, set JAGS_VERSION, or use a versioned JAGS_ROOT/--with-jags-prefix."
+  as_error "JAGS version could not be determined. Install ${JAGS_SUPPORTED_RANGE} with pkg-config metadata, set JAGS_VERSION, or use a versioned JAGS_ROOT/--with-jags-prefix."
 fi
-if ! version_ge "$JAGS_VERSION" "$JAGS_MIN_VERSION"; then
-  as_error "JAGS >= ${JAGS_MIN_VERSION} is required; ${JAGS_VERSION_SOURCE} reported ${JAGS_VERSION}."
-fi
+jags_check_version "$JAGS_VERSION" "$JAGS_VERSION_SOURCE"
 as_echo "detected JAGS ${JAGS_VERSION} with ${JAGS_VERSION_SOURCE}"
 as_echo "using JAGS CFLAGS: ${JAGS_CFLAGS}"
 as_echo "using JAGS LIBS: ${JAGS_LIBS}"

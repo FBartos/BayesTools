@@ -1,5 +1,9 @@
+# BayesTools builds against the JAGS 4 module interface only; JAGS 5 installs
+# are skipped during discovery and rejected when selected explicitly.
 JAGS_MIN_VERSION := 4.3.0
-JAGS_ROOT_CANDIDATES := $(sort $(wildcard /c/progra~1/JAGS/JAGS-*))
+JAGS_REQUIRED_MAJOR := 4
+JAGS_SUPPORTED_RANGE := JAGS 4.x (>= $(JAGS_MIN_VERSION), < 5.0.0)
+JAGS_INSTALL_ROOTS := $(sort $(wildcard /c/progra~1/JAGS/JAGS-*))
 empty :=
 space := $(empty) $(empty)
 
@@ -7,15 +11,21 @@ define version_ge
 $(shell awk -v version="$(1)" -v minimum="$(2)" 'BEGIN { split(version, v, "."); split(minimum, m, "."); for(i = 1; i <= 3; i++){ if(v[i] == "") v[i] = 0; if(m[i] == "") m[i] = 0; if(v[i] + 0 > m[i] + 0){ print "yes"; exit } if(v[i] + 0 < m[i] + 0){ print "no"; exit } } print "yes" }')
 endef
 
+# Newest installed JAGS-4.* root; installs of other major versions are ignored.
 define newest_jags_root
-$(shell printf '%s\n' $(JAGS_ROOT_CANDIDATES) | awk 'NF { n=split($$0, p, "/"); name=p[n]; sub(/^JAGS-/, "", name); split(name, v, "."); key=sprintf("%06d.%06d.%06d", v[1], v[2], v[3]); if(key > best){ best=key; root=$$0 } } END { print root }')
+$(shell printf '%s\n' $(JAGS_INSTALL_ROOTS) | awk -v major="$(JAGS_REQUIRED_MAJOR)" 'NF { n=split($$0, p, "/"); name=p[n]; sub(/^JAGS-/, "", name); split(name, v, "."); if(v[1] != major) next; key=sprintf("%06d.%06d.%06d", v[1], v[2], v[3]); if(key > best){ best=key; root=$$0 } } END { print root }')
 endef
 
 ifeq ($(strip $(JAGS_ROOT)),)
 JAGS_ROOT := $(call newest_jags_root)
+ifeq ($(strip $(JAGS_ROOT)),)
+ifneq ($(strip $(JAGS_INSTALL_ROOTS)),)
+$(error BayesTools requires $(JAGS_SUPPORTED_RANGE), but only other JAGS versions were found: $(notdir $(JAGS_INSTALL_ROOTS)). Install JAGS 4.3.x (JAGS 5 is not supported) or set JAGS_ROOT to a JAGS 4.x installation)
+endif
+endif
 endif
 ifeq ($(strip $(JAGS_ROOT)),)
-$(error JAGS was not found. Install JAGS >= $(JAGS_MIN_VERSION) or set JAGS_ROOT=/c/progra~1/JAGS/JAGS-4.3.1. You may also set JAGS_INCLUDE_DIR, JAGS_LIB_DIR, and JAGS_VERSION explicitly)
+$(error JAGS was not found. Install $(JAGS_SUPPORTED_RANGE) or set JAGS_ROOT=/c/progra~1/JAGS/JAGS-4.3.1. You may also set JAGS_INCLUDE_DIR, JAGS_LIB_DIR, and JAGS_VERSION explicitly)
 endif
 
 ifeq ($(strip $(JAGS_INCLUDE_DIR)),)
@@ -28,6 +38,12 @@ endif
 endif
 ifeq ($(shell test -f "$(JAGS_INCLUDE_DIR)/module/Module.h" && echo yes),)
 $(error Could not find JAGS headers at "$(JAGS_INCLUDE_DIR)"; expected module/Module.h. Set JAGS_ROOT or JAGS_INCLUDE_DIR)
+endif
+JAGS_HEADER_MAJOR := $(strip $(shell sed -n 's/^.define[[:space:]][[:space:]]*JAGS_MAJOR[[:space:]][[:space:]]*\([0-9][0-9]*\).*/\1/p' "$(JAGS_INCLUDE_DIR)/version.h" 2>/dev/null))
+ifneq ($(JAGS_HEADER_MAJOR),)
+ifneq ($(JAGS_HEADER_MAJOR),$(JAGS_REQUIRED_MAJOR))
+$(error BayesTools requires $(JAGS_SUPPORTED_RANGE); the JAGS headers in "$(JAGS_INCLUDE_DIR)" declare JAGS_MAJOR $(JAGS_HEADER_MAJOR). Install JAGS 4.3.x (JAGS 5 is not supported) or set JAGS_ROOT to a JAGS 4.x installation)
+endif
 endif
 
 ifeq ($(strip $(JAGS_LIB_DIR)),)
@@ -49,11 +65,13 @@ endif
 ifeq ($(strip $(JAGS_VERSION)),)
 JAGS_VERSION := $(strip $(shell basename "$(JAGS_ROOT)" | sed 's/^JAGS-//'))
 endif
-ifeq ($(strip $(call version_ge,$(JAGS_VERSION),$(JAGS_MIN_VERSION))),no)
-$(error JAGS >= $(JAGS_MIN_VERSION) is required; JAGS_VERSION/JAGS_ROOT reported $(JAGS_VERSION))
-endif
-
 JAGS_DLL_MAJOR := $(firstword $(subst .,$(space),$(JAGS_VERSION)))
+ifneq ($(strip $(JAGS_DLL_MAJOR)),$(JAGS_REQUIRED_MAJOR))
+$(error BayesTools requires $(JAGS_SUPPORTED_RANGE); JAGS_VERSION/JAGS_ROOT reported $(JAGS_VERSION). Install JAGS 4.3.x (JAGS 5 is not supported) or set JAGS_ROOT to a JAGS 4.x installation)
+endif
+ifeq ($(strip $(call version_ge,$(JAGS_VERSION),$(JAGS_MIN_VERSION))),no)
+$(error BayesTools requires $(JAGS_SUPPORTED_RANGE); JAGS_VERSION/JAGS_ROOT reported $(JAGS_VERSION))
+endif
 JAGS_LIB_NAME := $(notdir $(firstword $(wildcard $(JAGS_LIB_DIR)/libjags.dll.a $(JAGS_LIB_DIR)/libjags-$(JAGS_DLL_MAJOR).dll.a $(JAGS_LIB_DIR)/jags-$(JAGS_DLL_MAJOR).dll $(JAGS_LIB_DIR)/libjags-$(JAGS_DLL_MAJOR).dll)))
 ifeq ($(strip $(JAGS_LIB_NAME)),)
 JAGS_LIB_NAME := $(notdir $(strip $(shell for file in "$(JAGS_LIB_DIR)"/libjags.dll.a "$(JAGS_LIB_DIR)"/libjags-$(JAGS_DLL_MAJOR).dll.a "$(JAGS_LIB_DIR)"/jags-$(JAGS_DLL_MAJOR).dll "$(JAGS_LIB_DIR)"/libjags-$(JAGS_DLL_MAJOR).dll "$(JAGS_LIB_DIR)"/jags.dll "$(JAGS_LIB_DIR)"/libjags.dll; do test -f "$$file" && basename "$$file" && break; done)))

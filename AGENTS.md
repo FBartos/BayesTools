@@ -53,7 +53,8 @@ formatting, including the blank line after a function's opening brace.
 
 ## Development and backend
 
-Requires R >= 4.3.0 and JAGS >= 4.3.0, through `runjags`/`rjags`. In the
+Requires R >= 4.3.0 and JAGS 4.x (>= 4.3.0; the native module does not
+support JAGS 5), through `runjags`/`rjags`. In the
 workspace, use its configured R and private agent library for these commands:
 
 ```r
