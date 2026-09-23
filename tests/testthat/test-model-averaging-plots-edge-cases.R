@@ -1328,6 +1328,117 @@ test_that("full PET-PEESE prior overlays follow a condition on mu", {
   expect_equal(line_mu[2:3], c(reference_quantile(.5, .5, pairs_mu), reference_quantile(.5, 1, pairs_mu)), tolerance = 1e-6)
 })
 
+test_that("weightfunction and individual bias prior overlays follow OR conditions with other parameters", {
+
+  prior_list <- list(
+    mu   = prior_mixture(
+      list(
+        prior("spike",  list(0),       prior_weights = 2),
+        prior("normal", list(-1, 0.5), prior_weights = 1),
+        prior("normal", list( 1, 0.5), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE, FALSE)
+    ),
+    bias = prior_mixture(
+      list(
+        prior_none(prior_weights = 1),
+        prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)), prior_weights = 1),
+        prior_PET("normal", list(mean = 0, sd = 1), prior_weights = 1),
+        prior_PEESE("normal", list(mean = 0, sd = 1), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE, FALSE, FALSE)
+    )
+  )
+  mu_indicator   <- rep(1:3, length.out = 240)
+  bias_indicator <- rep(1:4, each = 60)
+  posterior <- cbind(
+    mu             = ifelse(mu_indicator == 1, 0, seq(-1.5, 1.5, length.out = 240)),
+    mu_indicator   = mu_indicator,
+    bias_indicator = bias_indicator,
+    "omega[1]"     = 1,
+    "omega[2]"     = ifelse(bias_indicator == 2, seq(.05, .95, length.out = 240), 1),
+    PET            = ifelse(bias_indicator == 3, seq(.1, 1.5, length.out = 240), 0),
+    PEESE          = ifelse(bias_indicator == 4, seq(.1, 1.5, length.out = 240), 0)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+
+  # P(mu included) = .5 and equal bias branch weights, so under
+  # 'mu OR <bias label>' the labelled branch has P = .4 and every other
+  # branch .2; under AND only the labelled branch remains
+  base_calls <- function(code, functions){
+    drawn <- list()
+    recorder <- function(name){
+      force(name)
+      function(plot_data, ...){
+        drawn[[length(drawn) + 1L]] <<- list(name = name, plot_data = plot_data)
+        invisible(NULL)
+      }
+    }
+    bindings <- stats::setNames(lapply(functions, recorder), functions)
+    do.call(testthat::local_mocked_bindings, c(bindings, list(.package = "BayesTools")))
+    device_file <- tempfile(fileext = ".pdf")
+    grDevices::pdf(device_file)
+    on.exit({
+      grDevices::dev.off()
+      unlink(device_file)
+    }, add = TRUE)
+    code()
+    drawn
+  }
+  first_call <- function(calls, name){
+    calls[[which(vapply(calls, `[[`, character(1), "name") == name)[1L]]]$plot_data
+  }
+
+  # weightfunction overlay, mu OR omega: omega[0.05,1] mean .4 * .5 + .6 * 1
+  samples_or <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = c("mu", "omega"),
+                                    conditional_rule = "OR", force_plots = TRUE)
+  expect_equal(
+    vapply(BayesTools:::.bias_samples_prior_list(samples_or), BayesTools:::.prior_model_weight, numeric(1)),
+    c(.2, .4, .2, .2)
+  )
+  wf_layer <- ggplot2::ggplot_build(
+    plot_posterior(samples_or, "weightfunction", plot_type = "ggplot", prior = TRUE)
+  )$data[[2]]
+  expect_equal(unique(wf_layer$y), c(1, .8), tolerance = 1e-8)
+  wf_base <- first_call(base_calls(function(){
+    plot_posterior(samples_or, "weightfunction", prior = TRUE)
+  }, ".lines.prior.weightfunction"), ".lines.prior.weightfunction")
+  expect_equal(unname(wf_base$y), wf_layer$y, tolerance = 1e-12)
+
+  # individual omega overlay, mu OR omega: mass .6 at one, Beta(1, 1) with .4
+  omega_plot <- plot_posterior(samples_or, "omega", plot_type = "ggplot", prior = TRUE, individual = TRUE, show_figures = 2)[[1]]
+  omega_layers <- ggplot2::ggplot_build(omega_plot)$data
+  expect_equal(omega_layers[[2]]$yend / omega_plot$bt_scale_y2_state$scale_y2, .6, tolerance = 1e-12)
+  expect_equal(max(omega_layers[[1]]$y), .4, tolerance = 1e-8)
+
+  # individual PET and PEESE overlays, mu OR PET / PEESE: spike .6 at zero
+  for(label in c("PET", "PEESE")){
+    samples_label <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = c("mu", label),
+                                         conditional_rule = "OR", force_plots = TRUE)
+    label_plot <- plot_posterior(samples_label, label, plot_type = "ggplot", prior = TRUE, individual = TRUE)
+    label_layers <- ggplot2::ggplot_build(label_plot)$data
+    expect_equal(label_layers[[2]]$x, 0)
+    expect_equal(label_layers[[2]]$yend / label_plot$bt_scale_y2_state$scale_y2, .6, tolerance = 1e-12)
+    expect_equal(max(label_layers[[1]]$y), .4 * 2 * stats::dnorm(0), tolerance = 1e-3)
+
+    label_base <- base_calls(function(){
+      plot_posterior(samples_label, label, prior = TRUE, individual = TRUE)
+    }, c(".lines.prior.simple", ".lines.prior.point"))
+    expect_equal(first_call(label_base, ".lines.prior.point")$y, .6, tolerance = 1e-12)
+    expect_equal(first_call(label_base, ".lines.prior.simple")$y, label_layers[[1]]$y, tolerance = 1e-12)
+  }
+
+  # AND conditions keep only the labelled branch
+  samples_and <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = c("mu", "omega"),
+                                     force_plots = TRUE)
+  expect_equal(
+    vapply(BayesTools:::.bias_samples_prior_list(samples_and), BayesTools:::.prior_model_weight, numeric(1)),
+    c(0, 1, 0, 0)
+  )
+})
+
 test_that("omega posterior KDE does not infer spikes from exact sample values", {
   continuous_samples <- seq(.005, .995, length.out = 75)
   omega_samples <- cbind(

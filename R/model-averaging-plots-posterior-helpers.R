@@ -120,9 +120,67 @@
     attr(samples[["bias"]], "prior_list"),
     .bias_samples_condition_event(samples)
   )
+
+  # with the model prior list, the weights are P(branch | event) of the joint
+  # condition event, which may combine bias labels with other parameters
+  branch_weights <- .bias_samples_branch_weights(samples)
+  if(!is.null(branch_weights) && length(branch_weights) == length(prior_list)){
+    for(i in seq_along(prior_list)){
+      prior_list[[i]] <- .set_prior_model_weight(prior_list[[i]], branch_weights[i])
+    }
+  }
+
   attr(prior_list, "omega_context") <- attr(samples[["bias"]], "omega_context")
 
   prior_list
+}
+.bias_samples_branch_weights <- function(samples){
+
+  condition_event <- .bias_samples_condition_event(samples)
+  if(is.null(condition_event) ||
+     length(.posterior_density_normalize_condition(condition_event[["conditional"]])) == 0L){
+    return(NULL)
+  }
+
+  model_prior_list <- attr(samples, "prior_list", exact = TRUE)
+  if(!is.list(model_prior_list) || is.prior(model_prior_list) ||
+     !is.prior.mixture(model_prior_list[["bias"]])){
+    return(NULL)
+  }
+
+  # tag the branches to recover them from the model options
+  bias_prior <- model_prior_list[["bias"]]
+  n_branches <- length(bias_prior)
+  for(k in seq_len(n_branches)){
+    branch <- bias_prior[[k]]
+    attr(branch, "bias_branch_index") <- k
+    bias_prior[[k]] <- branch
+  }
+  model_prior_list[["bias"]] <- bias_prior
+
+  models <- .condition_event_model_options(model_prior_list, condition_event)
+  if(is.null(models) || length(models[["prior_lists"]]) == 0L){
+    return(NULL)
+  }
+
+  prior_weights <- attr(bias_prior, "prior_weights")
+  if(is.null(prior_weights)){
+    prior_weights <- vapply(seq_len(n_branches), function(k) .prior_model_weight(bias_prior[[k]]), numeric(1))
+  }
+  prior_weights <- prior_weights / sum(prior_weights)
+
+  weights <- numeric(n_branches)
+  for(i in seq_along(models[["prior_lists"]])){
+    branch <- attr(models[["prior_lists"]][[i]][["bias"]], "bias_branch_index", exact = TRUE)
+    if(is.null(branch)){
+      # the bias prior is not part of this option: all branches in proportion
+      weights <- weights + models[["weights"]][i] * prior_weights
+    }else{
+      weights[branch] <- weights[branch] + models[["weights"]][i]
+    }
+  }
+
+  weights / sum(weights)
 }
 .petpeese_samples_prior_pairs <- function(samples, mu_name){
 
