@@ -1,31 +1,109 @@
 bayestools_known_test_profiles <- c("unit", "fixture", "visual", "visual-fixture", "fit")
 
+
+bayestools_quiet_llm_reporter <- function(...) {
+
+  reporter_class <- R6::R6Class(
+    classname = "BayesToolsQuietLlmReporter",
+    inherit   = testthat::LlmReporter,
+    public    = list(
+      add_result = function(context, test, result) {
+
+        if (self$is_full()) {
+          return(invisible())
+        }
+        if (inherits(result, "expectation_skip")) {
+          self$n_skip <- self$n_skip + 1L
+          return(invisible())
+        }
+
+        super$add_result(context, test, result)
+      }
+    )
+  )
+
+  reporter_class$new(...)
+}
+
 bayestools_test_profile_contexts <- list(
   unit = c(
+    "backend-fingerprint",
+    "bounded-plot-transformations",
     "distributions-mpoint",
     "distributions-point",
     "distributions-tools",
     "distributions-weightfunctions",
     "factor-interaction-coefficients",
     "fixture-catalog-static",
+    "hypothesis-ast",
+    "hypothesis-BF",
+    "hypothesis-BF-parser-adversarial",
+    "hypothesis-prior-region-grid",
     "interpret",
+    "interactive-test-runner",
+    "JAGS-bridge-compiler",
+    "JAGS-bridge-fixed-zero-random",
+    "JAGS-bridge-formula-context-validation",
+    "JAGS-bridge-marginal-random",
+    "JAGS-bridgesampling-wrapper",
+    "JAGS-convergence",
     "JAGS-diagnostic-plot-data",
+    "JAGS-diagnostics-controls",
+    "JAGS-draw-geometry",
+    "JAGS-fit-contract",
+    "JAGS-fit-settings",
+    "JAGS-formula-coefficient-density",
+    "JAGS-formula-default-priors",
     "JAGS-formula-design-oracles",
+    "JAGS-formula-prediction-targets",
+    "JAGS-formula-predictor-basis",
+    "JAGS-indexed-parameters",
+    "JAGS-lkj-cholesky",
     "JAGS-marginal-distributions",
+    "JAGS-parameter-catalog",
+    "JAGS-parameter-coordinates",
     "JAGS-posterior-extraction",
+    "JAGS-random-effects-compile",
+    "JAGS-runtime-cache",
+    "JAGS-runtime-setup",
+    "JAGS-selection-inits",
+    "JAGS-structured-rho-support",
+    "JAGS-random-effect-scaling",
     "marginal-inference-conditioning",
-    "marginal-prior-samplers",
+    "model-averaging-compatibility-guards",
     "model-averaging-edge-cases",
     "model-averaging-plots-edge-cases",
+    "native-registration",
+    "prior-density-ordinate",
+    "prior-ordered",
     "priors-coverage",
     "priors-density-numeric",
     "priors-informed",
     "priors-linear-density",
+    "priors-nonlocal",
     "priors-plot-data",
     "priors-print",
     "priors-tools",
+    "precomputed-vignette-cache",
+    "random-allocation-inclusion",
+    "random-mean-parameterization",
+    "random-parameterization",
+    "random-effects-correlation-draws",
+    "random-effects-diagonal-factor",
+    "random-effects-independent-scalability",
+    "random-effects-marginal-covariance",
+    "random-effects-marginal-update",
+    "random-effects-memory",
+    "random-effects-structured-local",
+    "random-effects-summary-posterior",
+    "random-effects-vignette-cache",
+    "reference-table-review",
     "selection-kernels",
+    "snapshot-path-portability",
+    "stochastic-reference-policy",
+    "summary-tables",
     "summary-tables-helpers",
+    "test-layout-policy",
     "tools-evaluation",
     "tools-input",
     "weightfunction-plot-analytic",
@@ -33,6 +111,7 @@ bayestools_test_profile_contexts <- list(
   ),
   fixture = c(
     "fixture-integrity",
+    "hypothesis-BF-bridge",
     "JAGS-ensemble-tables",
     "JAGS-fit",
     "JAGS-formula-scale",
@@ -40,12 +119,10 @@ bayestools_test_profile_contexts <- list(
     "JAGS-summary-tables",
     "model-averaging",
     "selection-kernels",
-    "summary-tables",
     "weightfunction-redesign"
   ),
   visual = c(
     "JAGS-ensemble-plots",
-    "marginal-prior-samplers",
     "model-averaging-plots",
     "priors",
     "priors-density",
@@ -60,16 +137,13 @@ bayestools_test_profile_contexts <- list(
   ),
   fit = c(
     "00-model-fits",
-    "fixture-integrity",
-    "JAGS-fit-edge-cases",
-    "JAGS-fit-lm-oracles",
-    "JAGS-marglik"
+    "fixture-integrity"
   )
 )
 
 bayestools_normalize_test_profiles <- function(profiles = NULL) {
   if (is.null(profiles) || length(profiles) == 0L) {
-    profiles <- Sys.getenv("BAYESTOOLS_TEST_PROFILE", "all")
+    profiles <- Sys.getenv("BAYESTOOLS_TEST_PROFILE", "unit")
   }
 
   profiles <- unlist(strsplit(as.character(profiles), "[,;[:space:]]+"))

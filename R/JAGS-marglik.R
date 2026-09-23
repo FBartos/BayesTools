@@ -4,9 +4,8 @@
 #' \link[bridgesampling]{bridge_sampler} that automatically
 #' computes likelihood part dependent on the prior distribution
 #' and prepares parameter samples. \code{log_posterior} must
-#' specify a function that takes two arguments - a named list
-#' of samples from the prior distributions and the data, and returns
-#' log likelihood of the model part.
+#' specify a function that takes a named parameter list, the data, and any
+#' additional arguments, and returns the log likelihood of the model part.
 #'
 #' @param fit model fitted with either \link[runjags]{runjags} posterior
 #' samples obtained with \link[rjags]{rjags-package}
@@ -14,13 +13,22 @@
 #' and additional list of parameters passed as \code{...} as input and
 #' returns the log of the unnormalized posterior density of the model part
 #' @param data list containing data to fit the model (not including data for the formulas)
-#' @param prior_list named list of prior distribution
+#' @param prior_list named list of prior distributions
 #' (names correspond to the parameter names) of parameters not specified within the
-#' \code{formula_list}
+#' \code{formula_list}. For \code{BayesTools_fit} objects, stored non-formula
+#' priors are used when \code{prior_list = NULL}; if fitted formula priors are
+#' supplied here, they are ignored with a warning in favor of the stored formula
+#' metadata.
 #' @param formula_list named list of formulas to be added to the model
-#' (names correspond to the parameter name created by each of the formula)
+#' (names correspond to the parameter name created by each of the formula). For
+#' \code{BayesTools_fit} objects with stored formula-design metadata, formula
+#' inputs can be omitted; if supplied, they are rebuilt only to check exact
+#' consistency with the fitted design and never replace fitted replay metadata.
+#' Fits without versioned formula-design metadata must be refitted.
 #' @param formula_data_list named list of data frames containing data for each formula
-#' (names of the lists correspond to the parameter name created by each of the formula)
+#' (names of the lists correspond to the parameter name created by each
+#' formula). When supplied for a fitted formula, these data must exactly match
+#' the fitted original-scale formula source snapshot.
 #' @param formula_prior_list named list of named lists of prior distributions
 #' (names of the lists correspond to the parameter name created by each of the formula and
 #' the names of the prior distribution correspond to the parameter names) of parameters specified
@@ -28,17 +36,167 @@
 #' @param formula_scale_list named list of named lists for standardizing continuous predictors
 #' (names of the lists correspond to the parameter name created by each of the formula).
 #' Each entry should be a named list where continuous predictors with \code{TRUE} values will
-#' be standardized. Defaults to \code{NULL} (no standardization).
-#' @param add_parameters vector of additional parameter names that should be used
-#' in bridgesampling but were not specified in the \code{prior_list}
-#' @param add_bounds list with two name vectors (\code{"lb"} and \code{"up"})
-#' containing lower and upper bounds of the additional parameters that were not
-#' specified in the \code{prior_list}
+#' be standardized. Defaults to stored fit metadata when available and to
+#' \code{NULL} (no standardization) otherwise.
+#' @param add_parameters character vector of additional monitored posterior
+#' parameter names to include in the bridge-sampling state and in the
+#' `parameters` object passed to `log_posterior`. These are for free stochastic
+#' JAGS nodes that are not owned by `prior_list`, such as special likelihood
+#' parameters, and `log_posterior` must add their prior density. Deterministic
+#' nodes computed from other parameters are not valid bridge coordinates;
+#' reconstruct them inside `log_posterior` or, for row-shaped external SD
+#' sources, with a `parameter_source(values = ...)` callback. Linearly
+#' dependent bridge coordinate draws are rejected. The `parameters` object is a named superset of
+#' prior-owned and additional values; user code should index it by name, for
+#' example `parameters[["tau"]]`. Parameters already covered by `prior_list`
+#' must not be listed here. For Dirichlet priors generated through BayesTools,
+#' add the monitored auxiliary `prior_par_eta_*` coordinates when needed, not
+#' the normalized simplex coordinates owned by the prior.
+#' @param add_bounds list with two named numeric vectors, \code{"lb"} and
+#' \code{"ub"}, containing lower and upper bounds for every
+#' \code{add_parameters} entry. Must be supplied whenever
+#' \code{add_parameters} is non-empty.
+#' @param bridge_context whether the \code{log_posterior} callback receives a
+#' read-only \code{bridge_context} argument. Defaults to \code{FALSE}, preserving
+#' the historical \code{log_posterior(parameters, data, ...)} call. \code{TRUE}
+#' supplies the complete context. \code{"nodes"} supplies a lightweight context
+#' containing only its exact flat named \code{nodes} vector.
+#' \code{"marginal"} supplies those nodes plus exact observation-level
+#' covariance contributions for bridge-marginalized Gaussian random effects.
+#' A context contains
+#' the current independent bridge state and BayesTools-resolved deterministic
+#' formula/random-effect nodes; it is not necessarily an original MCMC
+#' posterior row.
+#' @param bridge_context_node_names optional character vector selecting an exact
+#' subset of the complete context's named `nodes` vector for
+#' `bridge_context = "nodes"` or `"marginal"`. The default, `NULL`, retains
+#' every node. The complete context cannot be subset. Missing requested names
+#' are errors.
+#' @param formula_random_prior_list optional named list of `prior_random()`
+#' objects for random effects in `formula_list`. Bridge sampling for formula
+#' random effects requires the `prior_random()` interface because the
+#' stochastic bridge coordinates are the standardized latent effects and
+#' correlation primitives. For \code{BayesTools_fit} objects with stored
+#' formula-design metadata, this can be omitted unless formula inputs are being
+#' supplied for a strict consistency check. Supplied callbacks never replace
+#' callbacks stored in the fitted formula design.
+#' @param formula_random_effects_compile_list optional named list of
+#' `random_effects_compile()` objects. When formula inputs are supplied for
+#' bridge-sampling rebuild/validation, this must match the fitted
+#' random-effect compilation policy; otherwise a fitted marginalized model would
+#' not be rebuilt as the same model.
+#' @param formula_random_effects_marginalize_list optional named list
+#' identifying fitted formula random-effect blocks whose covariance is required
+#' by the bridge target. Selected sampled blocks are integrated analytically
+#' only in the bridge target; blocks already fitted as marginalized expose the
+#' same covariance contract without changing the fitted model. Each
+#' formula-parameter entry can be
+#' a character vector of block names, which requests a dense covariance, or a
+#' named list with `blocks` and optional `row_blocks`. `row_blocks` must
+#' partition the formula rows and may not separate any structurally nonzero
+#' selected random-effect covariance; it requests the exact factorized block
+#' representation described below. With `row_blocks`, `factor_state = TRUE`
+#' additionally requests a compact exact contract that separates invariant
+#' factor plans from draw-varying coefficient factors and row scales. Every
+#' selected sampled Gaussian latent block is removed from the bridge coordinates
+#' and formula predictor. Already-marginalized blocks have no latent coordinates
+#' to remove. All SD,
+#' allocation, correlation, and other covariance parameters and their priors
+#' remain in the target. This requires `bridge_context = "marginal"` or the full
+#' context. The likelihood callback is responsible for adding the supplied
+#' covariance to its observation covariance.
 #' @param maxiter maximum number of iterations for the
 #' \link[bridgesampling]{bridge_sampler}
+#' @param repetitions number of independent bridge-sampling repetitions.
+#' @param method bridge transformation passed to
+#' \link[bridgesampling]{bridge_sampler}; either `"normal"` or `"warp3"`.
+#' @param cores number of cores used by \link[bridgesampling]{bridge_sampler}.
+#' Defaults to one. Parallel workers must be able to load every package used by
+#' \code{log_posterior}; these can be supplied through the upstream
+#' \code{packages} argument in \code{...}.
+#' @param seed optional integer seed for the random bridge-sampling proposal
+#' draws. The default, `NULL`, uses the current R random-number-generator state.
 #' @param silent whether the progress should be printed, defaults to \code{TRUE}
+#' @param nonfinite handling of non-finite repetition-level log marginal
+#' likelihoods. The default, `"error"`, aborts. `"drop"` aggregates only the
+#' remaining finite repetitions, emits a warning, and records every excluded
+#' repetition in the returned diagnostics.
 #' @param ... additional argument to the \link[bridgesampling]{bridge_sampler}
-#' and \code{log_posterior} function
+#' and \code{log_posterior} function. The upstream-only `packages` argument is
+#' consumed by the sampler and is not forwarded to `log_posterior`, including
+#' for exact zero-dimensional evaluation.
+#'
+#' @details Row-shaped external random-effect SD sources, such as
+#' `random_sd_source("tau", shape = "row")`, must be reconstructable during
+#' bridge sampling. A source computed from other parameters, for example
+#' `tau[i] <- s * tau_data[i]`, is deterministic and must be supplied as
+#' `parameter_source("tau", shape = "row", values = function(parameters,
+#' data, n_rows) ...)`. The `values` function is evaluated from the named
+#' `parameters` object and the original-scale formula data stored at fit time;
+#' it must return finite, non-negative row values on the support of the model.
+#' Any callback data must therefore be included in `formula_data_list` when
+#' fitting. Data supplied only to `JAGS_bridgesampling()` do not extend or
+#' replace the fitted source snapshot. Posterior columns named `tau[1]`, ...,
+#' `tau[n]` with non-negative lower bounds in `add_bounds` are valid only when
+#' every `tau[i]` is a free stochastic node whose prior density `log_posterior`
+#' adds. Supplying deterministic nodes as bridge coordinates makes the target
+#' improper; such rank-deficient bridge coordinate draws are rejected with an
+#' error.
+#'
+#' If every bridge coordinate is fixed by a point prior,
+#' `JAGS_bridgesampling()` evaluates `log_posterior` once at the reconstructed
+#' fixed parameter values. The returned marginal likelihood is exact and uses
+#' the aggregation rule `"exact_zero_dimensional"`; no bridge repetitions are
+#' performed.
+#'
+#' `use_neff` is passed to \link[bridgesampling]{bridge_sampler} as the logical
+#' flag that upstream defines. \pkg{bridgesampling} computes the effective
+#' sample size itself, from the merged integrand matrix, and accepts no
+#' caller-supplied value: a numeric `use_neff` is a length-`>1` condition
+#' upstream and aborts the sampler. Per-chain effective sample sizes therefore
+#' cannot be injected here; the merged-chain ESS is conservative, because
+#' concatenating chains that have not mixed inflates the estimated
+#' autocorrelation and so lowers the ESS.
+#'
+#' When `bridge_context = TRUE`, the callback receives an object of class
+#' `BayesTools_bridge_context` with fields `state`, `state_matrix`, `nodes`,
+#' `prior_parameters`, `formula_prior_parameters`, `formula_parameters`,
+#' `add_parameters`, `random`, `marginalized_random`, `node_info`, and
+#' `metadata`. The `state` field
+#' contains the independent bridge coordinates. The `nodes` field is a flat
+#' named numeric vector that also includes deterministic BayesTools-resolved
+#' nodes such as normalized Dirichlet allocation weights reconstructed from
+#' `prior_par_eta_*` coordinates. The `node_info` field records the owner and
+#' role of each exposed node. The `random` field contains structured
+#' random-effect block state including resolved SDs, allocation weights,
+#' correlations, Cholesky factors, covariance matrices where row-invariant, and
+#' row-indexed SD source values where applicable. Each random block is keyed by
+#' formula parameter and block name, and contains `block_name`, `compile_mode`,
+#' `dimensions`, `levels`, `scale`, `allocation`, `correlation`, `covariance`,
+#' `latent`, and `nodes` fields.
+#'
+#' When `bridge_context = "nodes"`, the callback receives an object inheriting
+#' from `BayesTools_bridge_context` with only the `nodes` field. Its values and
+#' names are identical to the `nodes` field in the complete context for the
+#' same bridge state. Random-effect replay metadata that is invariant across
+#' states is compiled once before bridge sampling.
+#'
+#' When `bridge_context = "marginal"`, the callback receives the same exact
+#' `nodes` vector plus `marginalized_random`. If `bridge_context_node_names` is
+#' supplied, `nodes` is the requested exact subset in the requested order. The latter is keyed by formula
+#' parameter and contains `representation`, `blocks`, `structures`, `row_names`,
+#' and `dimension`. Without `row_blocks`, `representation = "dense"` and the
+#' `covariance` field equals the sum of \eqn{ZGZ'} over exactly the requested
+#' random-effect blocks. With validated `row_blocks`,
+#' `representation = "factor"`; `row_blocks` gives the exact observation
+#' partition and `factors` contains dense, ordinary grouped
+#' \eqn{Z_b G_b Z_b'}, or known-group covariance factors. This avoids
+#' materializing zero cross-block entries. For requests with
+#' `factor_state = TRUE`, the marginal context instead reports
+#' `representation = "factor_state"`, with invariant `factor_plans` and
+#' draw-varying `factor_states`; the complete context and direct covariance
+#' evaluator retain the full representation. All representations define the
+#' same covariance without approximation.
 #'
 #' @examples \dontrun{
 #' # simulate data
@@ -61,7 +219,7 @@
 #'   }"
 #'
 #' # fit the models
-#' fit <- JAGS_fit(model_syntax, data, priors_list)
+#' fit <- JAGS_fit(model_syntax, data, priors_list, seed = 1)
 #'
 #' # define log posterior for bridge sampling
 #' log_posterior <- function(parameters, data){
@@ -69,1215 +227,474 @@
 #' }
 #'
 #' # get marginal likelihoods
-#' marglik <- JAGS_bridgesampling(fit, log_posterior, data, priors_list)
+#' marglik <- JAGS_bridgesampling(
+#'   fit, log_posterior, data, priors_list, seed = 1
+#' )
 #' }
-#' @return \code{JAGS_bridgesampling} returns an object of class 'bridge'.
+#' @return A `BayesTools_marglik` object. `logml` is one scalar natural-log
+#' marginal likelihood, aggregated as the median of finite repetition-level
+#' log marginal likelihoods. `repetitions` contains one diagnostic row per
+#' bridge repetition, `aggregation` records the aggregation and failure policy,
+#' and `diagnostics$upstream` retains the original `bridgesampling` result.
 #'
 #' @export
 JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
                                 add_parameters = NULL, add_bounds = NULL,
-                                maxiter = 10000, silent = TRUE, ...){
+                                 formula_random_prior_list = NULL,
+                                 formula_random_effects_compile_list = NULL,
+                                 formula_random_effects_marginalize_list = NULL,
+                                 bridge_context = FALSE,
+                                 bridge_context_node_names = NULL,
+                                 repetitions = 1L,
+                                  method = c("normal", "warp3"),
+                                  maxiter = 10000, silent = TRUE,
+                                  nonfinite = c("error", "drop"), cores = 1,
+                                  seed = NULL, ...){
 
+  # The bridge callback may capture this frame and be sent to workers.
+  attr(fit, "runtime_state") <- NULL
   ### check input
+  bridge_context <- .bt_JAGS_bridge_context_mode(bridge_context)
+  if(!is.null(bridge_context_node_names)){
+    if(!is.character(bridge_context_node_names) ||
+       anyNA(bridge_context_node_names) ||
+       any(!nzchar(bridge_context_node_names)) ||
+       anyDuplicated(bridge_context_node_names)){
+      stop("'bridge_context_node_names' must be NULL or a unique character vector.",
+           call. = FALSE)
+    }
+    if(!bridge_context %in% c("nodes", "marginal")){
+      stop(
+        "'bridge_context_node_names' requires bridge_context = 'nodes' or 'marginal'.",
+        call. = FALSE
+      )
+    }
+  }
+  check_int(repetitions, "repetitions", lower = 1)
+  method <- match.arg(method)
   check_bool(silent, "silent")
   check_int(maxiter, "maxiter", lower = 1)
-  check_list(formula_list, "formula_list", allow_NULL = TRUE)
-  check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
-  check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
-  check_list(formula_scale_list, "formula_scale_list", allow_NULL = TRUE)
+  check_int(cores, "cores", lower = 1)
+  check_int(seed, "seed", allow_NULL = TRUE, allow_NA = FALSE)
+  nonfinite <- match.arg(nonfinite)
+  log_posterior <- force(log_posterior)
+  if(!is.function(log_posterior)){
+    stop("'log_posterior' must be a function.", call. = FALSE)
+  }
+  if(inherits(fit, "error")){
+    # JAGS_fit() returns the backend condition when fitting fails.
+    fitting_error <- sub("[.[:space:]]+$", "", conditionMessage(fit))
+    stop(
+      "Bridge sampling is unavailable because the model fit failed: ",
+      fitting_error, ".",
+      call. = FALSE
+    )
+  }
+  if(inherits(fit, "BayesTools_fit")){
+    parameter_coordinates(fit)
+  }
 
-  if(is.null(formula_scale_list) && !is.null(formula_list)){
-    formula_scale_list <- .JAGS_formula_scale_list_from_fit(fit, names(formula_list))
+  formula_context <- .bt_JAGS_bridge_formula_context(
+    fit = fit,
+    formula_list = formula_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    formula_scale_list = formula_scale_list,
+    formula_random_prior_list = formula_random_prior_list,
+    formula_random_effects_compile_list = formula_random_effects_compile_list
+  )
+  formula_design_list <- formula_context$formula_design_list
+  formula_list <- formula_context$formula_list
+  formula_data_list <- formula_context$formula_data_list
+  formula_prior_list <- formula_context$formula_prior_list
+  .bt_JAGS_bridge_check_no_allocation_inclusion(formula_design_list)
+  marginal_random_spec <- .bt_JAGS_bridge_marginal_random_spec(
+    formula_design_list = formula_design_list,
+    formula_random_effects_marginalize_list = formula_random_effects_marginalize_list,
+    bridge_context = bridge_context
+  )
+  bridge_formula_design_list <- .bt_JAGS_bridge_marginal_random_design_list(
+    formula_design_list = formula_design_list,
+    marginal_random_spec = marginal_random_spec
+  )
+
+  if(is.null(prior_list)){
+    prior_list <- .bt_JAGS_bridge_prior_list_from_fit(
+      fit = fit,
+      formula_design_list = formula_design_list
+    )
+  }else{
+    prior_list <- .bt_JAGS_bridge_non_formula_prior_list(
+      prior_list = prior_list,
+      formula_design_list = formula_design_list,
+      warn = TRUE
+    )
+  }
+  if(is.null(prior_list)){
+    prior_list <- list()
   }
 
   # extract the posterior distribution
   posterior <- .fit_to_posterior(fit)
+  chain_metadata <- .bt_JAGS_bridge_chain_metadata(fit, posterior)
 
-  ### prepare formula objects summary
-  if(!is.null(formula_list)){
-
-    # obtain settings for each formula
-    formula_output <- list()
-    for(parameter in names(formula_list)){
-      formula_output[[parameter]] <- JAGS_formula(
-        formula       = formula_list[[parameter]],
-        parameter     = parameter,
-        data          = formula_data_list[[parameter]],
-        prior_list    = formula_prior_list[[parameter]],
-        formula_scale = if(!is.null(formula_scale_list)) formula_scale_list[[parameter]] else NULL)
-    }
-
-    # merge with the rest of the input
-    formula_list       <- lapply(formula_output, function(output) output[["formula"]])
-    formula_prior_list <- lapply(formula_output, function(output) output[["prior_list"]])
-    formula_data_list  <- lapply(formula_output, function(output) output[["data"]])
-
+  if(length(formula_prior_list) > 0L){
     all_prior_list <- c(prior_list, do.call(c, unname(formula_prior_list)))
-
   }else{
     all_prior_list <- prior_list
   }
 
-  if(any(sapply(all_prior_list, is.prior.discrete)))
+  if(length(all_prior_list) > 0L && any(sapply(all_prior_list, is.prior.discrete)))
     stop("Discrete or spike and slab priors are not supported with bridgesampling.")
 
   ### extract relevant variables and upper and lower bound
+  random_bridge_parameters <- .bt_JAGS_formula_random_bridge_parameters(
+    formula_design_list = formula_design_list,
+    marginal_random_spec = marginal_random_spec
+  )
+  if(length(random_bridge_parameters$parameters) > 0L){
+    bridge_add <- .bt_JAGS_bridge_merge_add_parameters(
+      add_parameters = add_parameters,
+      add_bounds = add_bounds,
+      bridge_parameters = random_bridge_parameters$parameters,
+      bridge_bounds = random_bridge_parameters$bounds
+    )
+    add_parameters <- bridge_add$add_parameters
+    add_bounds <- bridge_add$add_bounds
+  }
+  .bt_JAGS_bridge_validate_add_parameters_not_formula(
+    add_parameters = add_parameters,
+    formula_design_list = formula_design_list,
+    formula_prior_list = formula_prior_list
+  )
+  posterior <- .bt_JAGS_bridge_normalize_singleton_coordinates(
+    posterior, random_bridge_parameters$parameters
+  )
+  .bt_JAGS_bridge_check_random_posterior(posterior, random_bridge_parameters$parameters)
   bridgesampling_posterior <- JAGS_bridgesampling_posterior(posterior = posterior, prior_list = all_prior_list, add_parameters = add_parameters, add_bounds = add_bounds)
-  if(ncol(bridgesampling_posterior) == 0)
-    stop("Bridge sampling cannot proceed without any estimated parameter")
+  bridgesampling_posterior <- .bt_JAGS_bridge_apply_random_scalar_rho_bounds(
+    bridgesampling_posterior = bridgesampling_posterior,
+    formula_design_list = formula_design_list
+  )
+  .bt_JAGS_bridge_check_row_indexed_external_sd_sources(
+    formula_design_list = formula_design_list,
+    bridgesampling_posterior = bridgesampling_posterior
+  )
+  bridge_prior_evaluators <- .bt_JAGS_bridge_compile_model_prior_evaluators(
+    prior_list = prior_list,
+    formula_prior_list = formula_prior_list
+  )
+  bridge_prior_evaluator <- bridge_prior_evaluators$prior
+  bridge_formula_prior_evaluator <- bridge_prior_evaluators$formula
+  bridge_formula_random_prior_evaluator <- .bt_JAGS_bridge_compile_formula_random_prior_evaluator(
+    formula_design_list = formula_design_list,
+    omitted_latent = random_bridge_parameters$omitted_latent
+  )
+  bridge_formula_parameter_evaluator <- .bt_JAGS_bridge_compile_formula_parameter_evaluator(
+    formula_list = formula_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    formula_design_list = bridge_formula_design_list,
+    model_data = data
+  )
+  marginal_random_evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
+    formula_design_list = formula_design_list,
+    marginal_random_spec = marginal_random_spec,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    model_data = data,
+    posterior_names = colnames(bridgesampling_posterior)
+  )
+  bridge_context_evaluator <- .bt_JAGS_bridge_compile_context_evaluator(
+    mode = bridge_context,
+    add_parameters = add_parameters,
+    formula_design_list = bridge_formula_design_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    model_data = data,
+    marginal_random_evaluator = marginal_random_evaluator,
+    node_names = bridge_context_node_names
+  )
 
 
   ### define the marglik function
-  full_log_posterior <- function(samples.row, data, prior_list, formula_list, formula_data_list, formula_prior_list, add_parameters, ...){
+  full_log_posterior <- function(samples.row, data,
+                                 bridge_prior_evaluator,
+                                 bridge_formula_prior_evaluator,
+                                 bridge_formula_random_prior_evaluator,
+                                 bridge_formula_parameter_evaluator,
+                                 add_parameters,
+                                 fixed_random_latent,
+                                 bridge_context,
+                                 bridge_context_evaluator,
+                                 ...){
+
+    samples.row <- .bt_JAGS_bridge_complete_fixed_random_latent(
+      samples = samples.row,
+      fixed_latent = fixed_random_latent
+    )
+    samples.row <- .bt_JAGS_bridge_cache_posterior_row(
+      samples.row,
+      bridge_formula_random_prior_evaluator$uses_posterior_row
+    )
+
+    # Check prior support before reconstructing formula parameters. Bridge
+    # proposals can hit bounded-prior edges where random-effect correlations
+    # are intentionally invalid and should contribute zero density.
+    marglik <- bridge_prior_evaluator$log_prior(samples.row)
+    marglik <- marglik + bridge_formula_prior_evaluator$log_prior(samples.row)
+    marglik <- marglik + bridge_formula_random_prior_evaluator$log_prior(samples.row)
+    if(is.na(marglik)){
+      stop("Bridge log prior evaluated to NA or NaN. Check the prior specification and monitored posterior samples.", call. = FALSE)
+    }
+    if(!is.finite(marglik)){
+      return(marglik)
+    }
 
     # prepare object for holding the parameters, later accessible to the user specified 'log_posterior'
-    parameters <- list()
-    if(length(prior_list) > 0){
-      parameters <- c(parameters, JAGS_marglik_parameters(samples.row, prior_list))
-    }
-    if(length(formula_prior_list) > 0){
-      parameters <- c(parameters, JAGS_marglik_parameters_formula(samples.row, formula_list, formula_data_list, formula_prior_list, parameters))
-    }
-    if(length(add_parameters) > 0){
-      parameters <- c(parameters, samples.row[add_parameters])
+    evaluated <- tryCatch({
+      prior_parameters <- bridge_prior_evaluator$parameters(samples.row)
+      formula_prior_parameters <- bridge_formula_prior_evaluator$parameters(samples.row)
+      formula_parameters <- bridge_formula_parameter_evaluator$parameters(
+        samples.row,
+        prior_parameters,
+        formula_prior_parameters
+      )
+      parameters <- c(prior_parameters, formula_parameters)
+      if(length(add_parameters) > 0){
+        parameters <- c(parameters, samples.row[add_parameters])
+      }
+      context <- NULL
+      if(!identical(bridge_context, "none")){
+        context <- bridge_context_evaluator$context(
+          samples = samples.row,
+          prior_parameters = prior_parameters,
+          formula_prior_parameters = formula_prior_parameters,
+          formula_parameters = formula_parameters
+        )
+      }
+      list(parameters = parameters, context = context)
+    }, BayesTools_marglik_out_of_support = function(e)e)
+    if(inherits(evaluated, "BayesTools_marglik_out_of_support")){
+      return(-Inf)
     }
 
-    # compute the marginal likelihoods
-    marglik <- 0
-    if(length(prior_list) > 0){
-      marglik <- marglik + JAGS_marglik_priors(samples.row, prior_list)
-    }
-    if(length(formula_prior_list) > 0){
-      marglik <- marglik + JAGS_marglik_priors_formula(samples.row, formula_prior_list)
-    }
-    marglik   <- marglik + log_posterior(parameters = parameters, data = data, ...)
+    marglik <- marglik + .bt_JAGS_bridge_call_log_posterior(
+      log_posterior = log_posterior,
+      parameters = evaluated$parameters,
+      data = data,
+      context = evaluated$context,
+      bridge_context = bridge_context,
+      ...
+    )
 
     return(marglik)
   }
 
+  ordinary_bridge <- identical(bridge_context, "none") &&
+    length(formula_design_list) == 0L &&
+    length(formula_prior_list) == 0L &&
+    length(random_bridge_parameters$fixed_latent) == 0L &&
+    length(add_parameters) == 0L
+  if(ordinary_bridge){
+    # Non-formula models do not need formula reconstruction, random-effect
+    # replay, or bridge-context construction. Keep their original parameter
+    # target and evaluate only the compiled ordinary priors and likelihood.
+    full_log_posterior <- function(samples.row, data,
+                                   bridge_prior_evaluator,
+                                   bridge_formula_prior_evaluator,
+                                   bridge_formula_random_prior_evaluator,
+                                   bridge_formula_parameter_evaluator,
+                                   add_parameters,
+                                   fixed_random_latent,
+                                   bridge_context,
+                                   bridge_context_evaluator,
+                                   ...){
+
+      marglik <- bridge_prior_evaluator$log_prior(samples.row)
+      if(is.na(marglik)){
+        stop("Bridge log prior evaluated to NA or NaN. Check the prior specification and monitored posterior samples.", call. = FALSE)
+      }
+      if(!is.finite(marglik)){
+        return(marglik)
+      }
+
+      parameters <- bridge_prior_evaluator$parameters(samples.row)
+      marglik <- marglik + log_posterior(
+        parameters = parameters,
+        data = data,
+        ...
+      )
+
+      marglik
+    }
+  }
+
+  if(ncol(bridgesampling_posterior) == 0L){
+    callback_dots <- list(...)
+    callback_dots[["packages"]] <- NULL
+    logml <- do.call(
+      full_log_posterior,
+      c(
+        list(
+          samples.row = numeric(),
+          data = data,
+          bridge_prior_evaluator = bridge_prior_evaluator,
+          bridge_formula_prior_evaluator = bridge_formula_prior_evaluator,
+          bridge_formula_random_prior_evaluator = bridge_formula_random_prior_evaluator,
+          bridge_formula_parameter_evaluator = bridge_formula_parameter_evaluator,
+          add_parameters = add_parameters,
+          fixed_random_latent = random_bridge_parameters$fixed_latent,
+          bridge_context = bridge_context,
+          bridge_context_evaluator = bridge_context_evaluator
+        ),
+        callback_dots
+      )
+    )
+    return(.bt_marglik_exact_result(logml, chain_metadata))
+  }
+
+
+  .bt_JAGS_bridge_check_coordinate_rank(bridgesampling_posterior)
 
   ### perform bridgesampling
-  marglik <- tryCatch(suppressWarnings(bridgesampling::bridge_sampler(
+  if(!is.null(seed)){
+    set.seed(seed)
+  }
+  upstream_warnings <- character()
+  marglik <- tryCatch(withCallingHandlers(bridgesampling::bridge_sampler(
       samples            = bridgesampling_posterior,
       data               = data,
       log_posterior      = full_log_posterior,
-      prior_list         = prior_list,
-      formula_list       = formula_list,
-      formula_data_list  = formula_data_list,
-      formula_prior_list = formula_prior_list,
+      bridge_prior_evaluator = bridge_prior_evaluator,
+      bridge_formula_prior_evaluator = bridge_formula_prior_evaluator,
+      bridge_formula_random_prior_evaluator = bridge_formula_random_prior_evaluator,
+      bridge_formula_parameter_evaluator = bridge_formula_parameter_evaluator,
       lb                 = attr(bridgesampling_posterior, "lb"),
       ub                 = attr(bridgesampling_posterior, "ub"),
+      repetitions       = repetitions,
+      method             = method,
       silent             = silent,
       maxiter            = maxiter,
+      cores              = cores,
+      use_neff           = TRUE,
       add_parameters     = add_parameters,
+      fixed_random_latent = random_bridge_parameters$fixed_latent,
+      bridge_context     = bridge_context,
+      bridge_context_evaluator = bridge_context_evaluator,
       ...
-    )), error = function(e)e)
+  ), warning = function(w){
+    upstream_warnings <<- c(upstream_warnings, conditionMessage(w))
+    invokeRestart("muffleWarning")
+  }), error = function(e)e)
 
-  # add a warning attribute and call the warning if not silent
-  if(!inherits(marglik, "error") && marglik[["niter"]] > maxiter){
-    attr(marglik, "warning") <- "Marginal likelihood could not be estimated within the maximum number of itetations and might be more variable than usual."
-    if(!silent)
-      warning(attr(marglik, "warning"), immediate. = TRUE)
-  }
-
-  return(marglik)
-}
-
-.JAGS_formula_scale_list_from_fit <- function(fit, formula_parameters){
-
-  formula_scale <- attr(fit, "formula_scale")
-  if(is.null(formula_scale) || length(formula_scale) == 0L){
-    return(NULL)
-  }
-
-  scale_list <- vector("list", length(formula_parameters))
-  names(scale_list) <- formula_parameters
-
-  for(parameter in intersect(formula_parameters, names(formula_scale))){
-    parameter_scale <- formula_scale[[parameter]]
-    if(is.null(parameter_scale) || length(parameter_scale) == 0L){
-      next
-    }
-
-    scaled_terms <- names(parameter_scale)
-    if(is.null(scaled_terms) || length(scaled_terms) == 0L){
-      next
-    }
-
-    parameter_prefix <- paste0(parameter, "_")
-    predictor_terms  <- ifelse(
-      startsWith(scaled_terms, parameter_prefix),
-      substring(scaled_terms, nchar(parameter_prefix) + 1L),
-      scaled_terms
-    )
-
-    scale_list[[parameter]] <- as.list(stats::setNames(rep(TRUE, length(predictor_terms)), predictor_terms))
-  }
-
-  scale_list <- scale_list[!vapply(scale_list, is.null, logical(1))]
-  if(length(scale_list) == 0L){
-    return(NULL)
-  }
-
-  return(scale_list)
-}
-
-.fit_to_posterior <- function(fit){
-
-  ### check the input and split it on posterior and data
-  if(inherits(fit, "runjags")){
-
-    # get posterior and merge chains
-    posterior <- .extract_posterior_samples(fit, as_list = FALSE)
-
-  }else if(is.list(fit) & all(sapply(fit, inherits, what = "mcarray"))){
-
-    # rjags model with rjags::jags.samples
-    # merge chains
-    posterior <- do.call(cbind, lapply(names(fit), function(par){
-      if(dim(fit[[par]])[1] > 1){
-        samples <- do.call(rbind, lapply(1:(dim(fit[[par]]))[3],  function(chain)t(fit[[par]][,,chain])))
-        colnames(samples) <- paste0(attr(fit[[par]], "varname"), "[",1:ncol(samples),"]")
-      }else{
-        samples <- matrix(do.call(c, lapply(1:(dim(fit[[par]]))[3],  function(chain)fit[[par]][,,chain])), ncol = 1)
-        colnames(samples) <- attr(fit[[par]], "varname")
-      }
-      return(samples)
-    }))
-
-  }else if(inherits(fit, "mcmc.list")){
-
-    # rjags model with rjags::coda.samples or samples extracted via coda::as.mcmc.list
-    # merge chains
-    posterior <- do.call(rbind, fit)
-
-  }else if (inherits(fit, "mcmc") && length(dim(fit)) == 2) {
-
-    # rjags model with samples extracted via coda::as.mcmc
-    return(fit)
-
-  } else {
-
-    stop("the method is not implemented for this output")
-
-  }
-
-  return(posterior)
-}
-
-
-#' @title Create a 'bridgesampling' object
-#'
-#' @description prepares a 'bridgesampling' object with a given
-#' log marginal likelihood.
-#'
-#' @param logml log marginal likelihood. Defaults to \code{-Inf}.
-#'
-#'
-#' @return \code{JAGS_bridgesampling} returns an object of class 'bridge'.
-#'
-#' @export
-bridgesampling_object <- function(logml = -Inf){
-
-  marglik        <- list()
-  marglik$logml  <- logml
-  class(marglik) <- "bridge"
-
-  return(marglik)
-}
-
-
-#' @title Prepare 'JAGS' posterior for 'bridgesampling'
-#'
-#' @description prepares posterior distribution for 'bridgesampling'
-#' by removing unnecessary parameters and attaching lower and upper
-#' bounds of parameters based on a list of prior distributions.
-#'
-#' @param posterior matrix of mcmc samples from the posterior
-#' distribution
-#'
-#' @inheritParams JAGS_bridgesampling
-#'
-#' @return \code{JAGS_bridgesampling_posterior} returns a matrix of
-#' posterior samples with 'lb' and 'ub' attributes carrying the
-#' lower and upper boundaries.
-#'
-#' @export
-JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters = NULL, add_bounds = NULL){
-
-  # check the input
-  if(!is.matrix(posterior))
-    stop("'posterior' must be a matrix")
-  if(!is.null(prior_list)){
-    if(!is.list(prior_list))
-      stop("'prior_list' must be a list.")
-    if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
-      stop("'prior_list' must be a list of priors.")
-  }
-  if(!is.null(add_parameters)){
-    if(!is.character(add_parameters))
-      stop("'add_parameters' must be a character vector.")
-    if(!is.list(add_bounds))
-      stop("'add_bounds' must be a list.")
-    if(length(add_bounds) != 2 | !all(names(add_bounds) %in% c("lb", "ub")))
-      stop("'add_bounds' must contain lower and upper bounds ('lb' and 'ub').")
-    if(length(add_bounds[["lb"]]) != length(add_parameters) | length(add_bounds[["ub"]]) != length(add_parameters))
-      stop("lb' and 'ub' must have the same lenght as the 'add_parameters'.")
-    if(!is.numeric(add_bounds[["lb"]]) | !is.numeric(add_bounds[["ub"]]))
-      stop("lb' and 'ub' must be numeric vectors.")
-  }
-
-  # these are not generally possible because the component indicators are discrete and bridgesampling
-  # package cannot currently deal with them
-  if(any(sapply(prior_list, is.prior.spike_and_slab)))
-    stop("Marginal likelihood computation for spike and slab priors is not implemented.")
-  if(any(sapply(prior_list, is.prior.mixture))){
-    .JAGS_marglik_stop_unsupported_mixture(prior_list[[which(sapply(prior_list, is.prior.mixture))[1L]]])
-  }
-
-  # get information about the specified parameters
-  parameters_names <- .JAGS_bridgesampling_posterior_info(prior_list)
-
-  # add the user defined parameters
-  if(!is.null(add_parameters)){
-    parameters_names_lb <- c(attr(parameters_names, "lb"), add_bounds[["lb"]])
-    parameters_names_ub <- c(attr(parameters_names, "ub"), add_bounds[["ub"]])
-    parameters_names <- c(parameters_names, add_parameters)
-    attr(parameters_names, "lb") <- parameters_names_lb
-    attr(parameters_names, "ub") <- parameters_names_ub
-  }
-
-
-  # check that all parameter names exist in the posterior
-  if(!all(parameters_names %in% colnames(posterior)))
-    stop("'posterior' does not contain all of the parameters corresponding to the 'prior_list' and the 'add_parameter' argument.")
-
-  posterior <- posterior[,parameters_names, drop = FALSE]
-  attr(posterior, "lb") <- attr(parameters_names, "lb")
-  attr(posterior, "ub") <- attr(parameters_names, "ub")
-
-  return(posterior)
-}
-
-.JAGS_marglik_stop_unsupported_mixture <- function(prior){
-
-  if(inherits(prior, "prior.bias_mixture")){
-    selection_backend_spec(prior)
+  if(inherits(marglik, "error")){
     stop(
-      "Marginal likelihood computation for bias mixture priors is not implemented because bridge sampling does not support discrete bias indicators.",
+      "Bridge sampling failed: ",
+      conditionMessage(marglik),
       call. = FALSE
     )
   }
 
-  stop("Marginal likelihood computation for prior mixture priors is not implemented.", call. = FALSE)
-}
-
-.JAGS_bridgesampling_posterior_info                <- function(prior_list){
-
-  # return empty string in case that no prior was specified
-  if(length(prior_list) == 0){
-    return(list())
-  }
-
-  if(!is.list(prior_list))
-    stop("'prior_list' must be a list.")
-  if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
-    stop("'prior_list' must be a list of priors.")
-  .check_prior_list_unique_names(prior_list)
-
-
-  # add the resulting parameters
-  parameters    <- NULL
-  parameters_lb <- NULL
-  parameters_ub <- NULL
-  for(i in seq_along(prior_list)){
-
-    add_parameter <- NULL
-
-    if(is.prior.weightfunction(prior_list[[i]])){
-
-      add_parameter <- .JAGS_bridgesampling_posterior_info.weightfunction(prior_list[[i]])
-
-    }else if(is_prior_phacking(prior_list[[i]])){
-
-      add_parameter <- .JAGS_bridgesampling_posterior_info.phacking(prior_list[[i]])
-
-    }else if(is_prior_bias(prior_list[[i]])){
-
-      add_parameter <- .JAGS_bridgesampling_posterior_info.bias(prior_list[[i]])
-
-    }else if(is.prior.mixture(prior_list[[i]])){
-
-      .JAGS_marglik_stop_unsupported_mixture(prior_list[[i]])
-
-    }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
-
-      add_parameter <- .JAGS_bridgesampling_posterior_info.PP(prior_list[[i]])
-
-    }else if(is.prior.factor(prior_list[[i]])){
-
-      add_parameter <- .JAGS_bridgesampling_posterior_info.factor(prior_list[[i]], names(prior_list)[i])
-
-    }else if(is.prior.vector(prior_list[[i]])){
-
-      add_parameter <- .JAGS_bridgesampling_posterior_info.vector(prior_list[[i]], names(prior_list)[i])
-
-    }else if(is.prior.simple(prior_list[[i]])){
-
-      add_parameter <- .JAGS_bridgesampling_posterior_info.simple(prior_list[[i]], names(prior_list)[i])
-
-    }
-
-    if(!is.null(add_parameter)){
-      parameters    <- c(parameters,    add_parameter)
-      parameters_lb <- c(parameters_lb, attr(add_parameter, "lb"))
-      parameters_ub <- c(parameters_ub, attr(add_parameter, "ub"))
-    }
-  }
-
-  attr(parameters, "lb") <- parameters_lb
-  attr(parameters, "ub") <- parameters_ub
-
-  return(parameters)
-}
-.JAGS_bridgesampling_posterior_info.simple         <- function(prior, parameter_name){
-
-  .check_prior(prior)
-  if(!is.prior.simple(prior))
-    stop("improper prior provided")
-  check_char(parameter_name, "parameter_name")
-
-
-  if(prior[["distribution"]] == "invgamma"){
-    parameter <- paste0("inv_", parameter_name)
-    attr(parameter, "lb") <- prior$truncation[["upper"]]^-1
-    attr(parameter, "ub") <- prior$truncation[["lower"]]^-1
-  }else if(prior[["distribution"]] == "point"){
-    parameter <- NULL
-  }else{
-    parameter <- parameter_name
-    attr(parameter, "lb") <- prior$truncation[["lower"]]
-    attr(parameter, "ub") <- prior$truncation[["upper"]]
-  }
-
-  names(attr(parameter, "lb")) <- parameter
-  names(attr(parameter, "ub")) <- parameter
-
-  return(parameter)
-}
-.JAGS_bridgesampling_posterior_info.vector         <- function(prior, parameter_name){
-
-  .check_prior(prior)
-  if(!is.prior.vector(prior))
-    stop("improper prior provided")
-  check_char(parameter_name, "parameter_name")
-  check_int(prior$parameters[["K"]], "K", lower = 1)
-  if(prior[["distribution"]] != "mpoint")
-    .check_vector_truncation_unsupported(prior$truncation)
-
-  if(prior[["distribution"]] == "mpoint"){
-    parameter <- NULL
-  }else{
-    if(prior$parameters[["K"]] == 1){
-      parameter <- parameter_name
-    }else{
-      parameter <- paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]")
-    }
-
-    attr(parameter, "lb") <- rep(prior$truncation[["lower"]], prior$parameters[["K"]])
-    attr(parameter, "ub") <- rep(prior$truncation[["upper"]], prior$parameters[["K"]])
-
-    names(attr(parameter, "lb")) <- parameter
-    names(attr(parameter, "ub")) <- parameter
-  }
-
-  return(parameter)
-}
-.JAGS_bridgesampling_posterior_info.factor         <- function(prior, parameter_name){
-
-  .check_prior(prior)
-  if(!is.prior.factor(prior))
-    stop("improper prior provided")
-  check_char(parameter_name, "parameter_name")
-
-  if(is.prior.treatment(prior) | is.prior.independent(prior)){
-
-    if(.get_prior_factor_levels(prior) == 1){
-
-      parameter <- .JAGS_bridgesampling_posterior_info.simple(prior, parameter_name)
-
-    }else{
-
-      parameter    <- NULL
-      parameter_lb <- NULL
-      parameter_ub <- NULL
-
-      for(i in 1:.get_prior_factor_levels(prior)){
-
-        add_parameter <- .JAGS_bridgesampling_posterior_info.simple(prior, paste0(parameter_name, "[", i, "]"))
-
-        parameter    <- c(parameter,    add_parameter)
-        parameter_lb <- c(parameter_lb, attr(add_parameter, "lb"))
-        parameter_ub <- c(parameter_ub, attr(add_parameter, "ub"))
-      }
-
-      attr(parameter, "lb") <- parameter_lb
-      attr(parameter, "ub") <- parameter_ub
-
-    }
-
-  }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
-
-    prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
-
-    parameter <- .JAGS_bridgesampling_posterior_info.vector(prior, parameter_name)
-
-  }
-
-  return(parameter)
-}
-.JAGS_bridgesampling_posterior_info.PP             <- function(prior){
-
-  .check_prior(prior)
-  if(!is.prior.PET(prior) & !is.prior.PEESE(prior))
-    stop("improper prior provided")
-
-  if(is.prior.PET(prior)){
-    parameter <- .JAGS_bridgesampling_posterior_info.simple(prior, "PET")
-  }else if(is.prior.PEESE(prior)){
-    parameter <- .JAGS_bridgesampling_posterior_info.simple(prior, "PEESE")
-  }
-
-  return(parameter)
-}
-.JAGS_bridgesampling_posterior_info.weightfunction <- function(prior){
-
-  .check_prior(prior)
-  if(!is.prior.weightfunction(prior))
-    stop("improper prior provided")
-
-  J <- .weightfunction_n_bins(prior)
-
-  if(prior$weights$type == "cumulative"){
-
-    parameter <- paste0("eta[", seq_len(J), "]")
-    attr(parameter, "lb") <- rep(0,   length(parameter))
-    attr(parameter, "ub") <- rep(Inf, length(parameter))
-
-  }else if(prior$weights$type == "independent" && prior$weights$scale == "omega"){
-
-    parameter <- if(J > 1L) paste0("omega[", 2:J, "]") else NULL
-    attr(parameter, "lb") <- rep(prior$weights$prior$truncation[["lower"]], length(parameter))
-    attr(parameter, "ub") <- rep(prior$weights$prior$truncation[["upper"]], length(parameter))
-
-  }else if(prior$weights$type == "independent" && prior$weights$scale == "log_omega"){
-
-    parameter <- if(J > 1L) paste0("log_omega[", 2:J, "]") else NULL
-    attr(parameter, "lb") <- rep(prior$weights$prior$truncation[["lower"]], length(parameter))
-    attr(parameter, "ub") <- rep(prior$weights$prior$truncation[["upper"]], length(parameter))
-
-  }else if(prior$weights$type == "fixed"){
-
-    parameter <- NULL
-
-  }
-
-  if(!is.null(parameter)){
-    names(attr(parameter, "lb")) <- parameter
-    names(attr(parameter, "ub")) <- parameter
-  }
-
-  return(parameter)
-}
-.JAGS_bridgesampling_posterior_info.phacking <- function(prior){
-
-  .check_prior(prior)
-  if(!is_prior_phacking(prior))
-    stop("improper prior provided")
-
-  parameter <- .JAGS_bridgesampling_posterior_info.simple(prior$alpha, "alpha")
-
-  return(parameter)
-}
-.JAGS_bridgesampling_posterior_info.bias <- function(prior){
-
-  .check_prior(prior)
-  if(!is_prior_bias(prior))
-    stop("improper prior provided")
-
-  selection_backend_spec(prior)
-
-  parameter <- NULL
-  parameter_lb <- NULL
-  parameter_ub <- NULL
-
-  if(!is.null(prior$selection)){
-    selection_parameter <- .JAGS_bridgesampling_posterior_info.weightfunction(prior$selection)
-    parameter <- c(parameter, selection_parameter)
-    parameter_lb <- c(parameter_lb, attr(selection_parameter, "lb"))
-    parameter_ub <- c(parameter_ub, attr(selection_parameter, "ub"))
-  }
-  if(!is.null(prior$phacking)){
-    phacking_parameter <- .JAGS_bridgesampling_posterior_info.phacking(prior$phacking)
-    parameter <- c(parameter, phacking_parameter)
-    parameter_lb <- c(parameter_lb, attr(phacking_parameter, "lb"))
-    parameter_ub <- c(parameter_ub, attr(phacking_parameter, "ub"))
-  }
-
-  attr(parameter, "lb") <- parameter_lb
-  attr(parameter, "ub") <- parameter_ub
-  return(parameter)
-}
-# .JAGS_bridgesampling_posterior_info.spike_and_slab <- function(prior, parameter_name){
-#
-#   .check_prior(prior)
-#   if(!is.prior.spike_and_slab(prior))
-#     stop("improper prior provided")
-#   check_char(parameter_name, "parameter_name")
-#
-#   if(!is.prior.point(prior[["inclusion"]])){
-#
-#     parameter_variable  <- .JAGS_bridgesampling_posterior_info.simple(prior[["variable"]],  paste0(parameter_name, "_variable"))
-#     parameter_inclusion <- .JAGS_bridgesampling_posterior_info.simple(prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
-#
-#     parameter <- c(parameter_variable, parameter_inclusion)
-#
-#     attr(parameter, "lb") <- c(attr(parameter_variable, "lb"), attr(parameter_inclusion, "lb"))
-#     attr(parameter, "ub") <- c(attr(parameter_variable, "ub"), attr(parameter_inclusion, "ub"))
-#
-#     names(attr(parameter, "lb")) <- c(names(attr(parameter_variable, "lb")), names(attr(parameter_inclusion, "lb")))
-#     names(attr(parameter, "ub")) <- c(names(attr(parameter_variable, "ub")), names(attr(parameter_inclusion, "ub")))
-#
-#   }else{
-#     parameter  <- .JAGS_bridgesampling_posterior_info.simple(prior[["variable"]],  paste0(parameter_name, "_variable"))
-#   }
-#
-#
-#   return(parameter)
-# }
-
-#' @title Compute marginal likelihood for 'JAGS' priors
-#'
-#' @description Computes marginal likelihood for the
-#' prior part of a 'JAGS' model within 'bridgesampling'
-#' function
-#'
-#' @param samples samples provided by bridgesampling
-#' function
-#'
-#' @inheritParams JAGS_bridgesampling
-#'
-#' @return \code{JAGS_marglik_priors} returns a numeric value
-#' of likelihood evaluated at the current posterior sample.
-#'
-#' @export JAGS_marglik_priors
-#' @export JAGS_marglik_priors_formula
-#' @name JAGS_marglik_priors
-NULL
-
-#' @rdname JAGS_marglik_priors
-JAGS_marglik_priors                <- function(samples, prior_list){
-
-  # return empty string in case that no prior was specified
-  if(length(prior_list) == 0){
-    return(list())
-  }
-
-  if(!is.list(prior_list))
-    stop("'prior_list' must be a list.")
-  if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
-    stop("'prior_list' must be a list of priors.")
-  .check_prior_list_unique_names(prior_list)
-
-
-  # add the resulting parameters
-  marglik <- 0
-  for(i in seq_along(prior_list)){
-
-    if(is.prior.weightfunction(prior_list[[i]])){
-
-      marglik <- marglik + .JAGS_marglik_priors.weightfunction(samples, prior_list[[i]])
-
-    }else if(is_prior_phacking(prior_list[[i]])){
-
-      marglik <- marglik + .JAGS_marglik_priors.phacking(samples, prior_list[[i]])
-
-    }else if(is_prior_bias(prior_list[[i]])){
-
-      marglik <- marglik + .JAGS_marglik_priors.bias(samples, prior_list[[i]])
-
-    }else if(is.prior.mixture(prior_list[[i]])){
-
-      .JAGS_marglik_stop_unsupported_mixture(prior_list[[i]])
-
-    }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
-
-      marglik <- marglik + .JAGS_marglik_priors.PP(samples, prior_list[[i]])
-
-    }else if(is.prior.factor(prior_list[[i]])){
-
-      marglik <- marglik + .JAGS_marglik_priors.factor(samples, prior_list[[i]], names(prior_list)[i])
-
-    }else if(is.prior.vector(prior_list[[i]])){
-
-      marglik <- marglik + .JAGS_marglik_priors.vector(samples, prior_list[[i]], names(prior_list)[i])
-
-    }else if(is.prior.simple(prior_list[[i]])){
-
-      marglik <- marglik + .JAGS_marglik_priors.simple(samples, prior_list[[i]], names(prior_list)[i])
-
-    }
-  }
-
-  return(marglik)
-}
-
-
-.JAGS_marglik_priors.simple         <- function(samples, prior, parameter_name){
-
-  .check_prior(prior)
-  if(!is.prior.simple(prior))
-    stop("improper prior provided")
-  check_char(parameter_name, "parameter_name")
-
-  if(prior[["distribution"]] == "invgamma"){
-
-    sampling_prior <- prior(
-      "distribution" = "gamma",
-      "parameters"   = list("shape" = prior$parameters[["shape"]], "rate" = prior$parameters[["scale"]]),
-      "truncation"   = list("lower" = prior$truncation[["upper"]]^-1, "upper" = prior$truncation[["lower"]]^-1))
-    marglik <- lpdf(sampling_prior, samples[[ paste0("inv_", parameter_name) ]])
-
-  }else if(prior[["distribution"]] == "point"){
-
-    marglik <- 0
-
-  }else{
-
-    marglik <- lpdf(prior, samples[[ parameter_name ]])
-
-  }
-
-  return(marglik)
-}
-.JAGS_marglik_priors.vector         <- function(samples, prior, parameter_name){
-
-  .check_prior(prior)
-  if(!is.prior.vector(prior))
-    stop("improper prior provided")
-  check_char(parameter_name, "parameter_name")
-  check_int(prior$parameters[["K"]], "K", lower = 1)
-  if(prior[["distribution"]] != "mpoint")
-    .check_vector_truncation_unsupported(prior$truncation)
-
-  if(prior[["distribution"]] == "mpoint"){
-    marglik <- 0
-  }else if(prior$parameters[["K"]] == 1){
-    marglik <- lpdf(prior, samples[[ parameter_name ]])
-  }else{
-    marglik <- lpdf(prior, samples[ paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]") ])
-  }
-
-  return(marglik)
-}
-.JAGS_marglik_priors.factor         <- function(samples, prior, parameter_name){
-
-  .check_prior(prior)
-  if(!is.prior.factor(prior))
-    stop("improper prior provided")
-  check_char(parameter_name, "parameter_name")
-
-  if(is.prior.treatment(prior) | is.prior.independent(prior)){
-
-    if(.get_prior_factor_levels(prior) == 1){
-
-      marglik <- .JAGS_marglik_priors.simple(samples, prior, parameter_name)
-
-    }else{
-
-      marglik <- sum(sapply(1:.get_prior_factor_levels(prior), function(i) .JAGS_marglik_priors.simple(samples, prior, paste0(parameter_name, "[", i, "]"))))
-
-    }
-
-  }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
-
-    prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
-
-    marglik <- .JAGS_marglik_priors.vector(samples, prior, parameter_name)
-
-  }
-
-  return(marglik)
-}
-.JAGS_marglik_priors.PP             <- function(samples, prior){
-
-  .check_prior(prior)
-  if(!is.prior.PET(prior) & !is.prior.PEESE(prior))
-    stop("improper prior provided")
-
-  if(is.prior.PET(prior)){
-    marglik <- .JAGS_marglik_priors.simple(samples, prior, "PET")
-  }else if(is.prior.PEESE(prior)){
-    marglik <- .JAGS_marglik_priors.simple(samples, prior, "PEESE")
-  }
-
-  return(marglik)
-}
-.JAGS_marglik_priors.weightfunction <- function(samples, prior){
-
-  .check_prior(prior)
-  if(!is.prior.weightfunction(prior))
-    stop("improper prior provided")
-
-  J <- .weightfunction_n_bins(prior)
-
-  if(prior$weights$type == "fixed"){
-
-    marglik <- 0
-
-  }else if(prior$weights$type == "cumulative"){
-
-    marglik <- sum(stats::dgamma(samples[paste0("eta[", seq_len(J), "]")], shape = prior$weights$alpha, rate = 1, log = TRUE))
-
-  }else if(prior$weights$type == "independent"){
-
-    if(J == 1L){
-      marglik <- 0
-    }else if(prior$weights$scale == "omega"){
-      marglik <- sum(mlpdf(prior$weights$prior, samples[paste0("omega[", 2:J, "]")]))
-    }else if(prior$weights$scale == "log_omega"){
-      marglik <- sum(mlpdf(prior$weights$prior, samples[paste0("log_omega[", 2:J, "]")]))
-    }
-
-  }
-
-  return(marglik)
-}
-.JAGS_marglik_priors.phacking <- function(samples, prior){
-
-  .check_prior(prior)
-  if(!is_prior_phacking(prior))
-    stop("improper prior provided")
-
-  .JAGS_marglik_priors.simple(samples, prior$alpha, "alpha")
-}
-.JAGS_marglik_priors.bias <- function(samples, prior){
-
-  .check_prior(prior)
-  if(!is_prior_bias(prior))
-    stop("improper prior provided")
-
-  selection_backend_spec(prior)
-
-  marglik <- 0
-  if(!is.null(prior$selection)){
-    marglik <- marglik + .JAGS_marglik_priors.weightfunction(samples, prior$selection)
-  }
-  if(!is.null(prior$phacking)){
-    marglik <- marglik + .JAGS_marglik_priors.phacking(samples, prior$phacking)
-  }
-
-  return(marglik)
-}
-# .JAGS_marglik_priors.spike_and_slab <- function(samples, prior, parameter_name){
-#
-#   .check_prior(prior)
-#   if(!is.prior.spike_and_slab(prior))
-#     stop("improper prior provided")
-#   check_char(parameter_name, "parameter_name")
-#
-#   marglik <- 0
-#   if(!is.prior.point(prior[["inclusion"]])){
-#     marglik <- marglik + .JAGS_marglik_priors.simple(samples, prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
-#   }
-#
-#   if(samples[[ paste0(if(prior[["variable"]][["distribution"]] == "invgamma") "inv_" else "", parameter_name, "_variable") ]] != 0){
-#     marglik <- marglik + .JAGS_marglik_priors.simple(samples, prior[["variable"]], paste0(parameter_name, "_variable"))
-#   }
-#
-#   return(marglik)
-# }
-
-#' @rdname JAGS_marglik_priors
-JAGS_marglik_priors_formula <- function(samples, formula_prior_list){
-
-  marglik <- 0
-
-  for(parameter in names(formula_prior_list)){
-    marglik <- marglik + JAGS_marglik_priors(samples, formula_prior_list[[parameter]])
-  }
-
-  return(marglik)
-}
-
-#' @title Extract parameters for 'JAGS' priors
-#'
-#' @description Extracts transformed parameters from the
-#' prior part of a 'JAGS' model inside of a 'bridgesampling'
-#' function (returns them as a named list)
-#'
-#' @param samples samples provided by bridgesampling
-#' function
-#' @param prior_list_parameters named list of prior distributions on model parameters
-#' (not specified within the formula but that might scale the formula parameters)
-#'
-#' @return \code{JAGS_marglik_parameters} returns a named list
-#' of (transformed) posterior samples.
-#'
-#' @inheritParams JAGS_bridgesampling
-#' @export JAGS_marglik_parameters
-#' @export JAGS_marglik_parameters_formula
-#' @name JAGS_marglik_parameters
-NULL
-
-#' @rdname JAGS_marglik_parameters
-JAGS_marglik_parameters                <- function(samples, prior_list){
-
-  # return empty list in case that no prior was specified
-  if(length(prior_list) == 0){
-    return(list())
-  }
-
-  if(!is.list(prior_list))
-    stop("'prior_list' must be a list.")
-  if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
-    stop("'prior_list' must be a list of priors.")
-
-
-  # add the resulting parameters
-  parameters <- list()
-  for(i in seq_along(prior_list)){
-
-    if(is.prior.weightfunction(prior_list[[i]])){
-
-      parameters <- c(parameters, .JAGS_marglik_parameters.weightfunction(samples, prior_list[[i]]))
-
-    }else if(is_prior_phacking(prior_list[[i]])){
-
-      parameters <- c(parameters, .JAGS_marglik_parameters.phacking(samples, prior_list[[i]]))
-
-    }else if(is_prior_bias(prior_list[[i]])){
-
-      parameters <- c(parameters, .JAGS_marglik_parameters.bias(samples, prior_list[[i]]))
-
-    }else if(is.prior.mixture(prior_list[[i]])){
-
-      .JAGS_marglik_stop_unsupported_mixture(prior_list[[i]])
-
-    }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
-
-      parameters <- c(parameters, .JAGS_marglik_parameters.PP(samples, prior_list[[i]]))
-
-    }else if(is.prior.factor(prior_list[[i]])){
-
-      parameters <- c(parameters, .JAGS_marglik_parameters.factor(samples, prior_list[[i]], names(prior_list)[i]))
-
-    }else if(is.prior.vector(prior_list[[i]])){
-
-      parameters <- c(parameters, .JAGS_marglik_parameters.vector(samples, prior_list[[i]], names(prior_list)[i]))
-
-    }else if(is.prior.simple(prior_list[[i]])){
-
-      parameters <- c(parameters, .JAGS_marglik_parameters.simple(samples, prior_list[[i]], names(prior_list)[i]))
-
-    }
-  }
-
-  return(parameters)
-}
-
-
-.JAGS_marglik_parameters.simple         <- function(samples, prior, parameter_name){
-
-  .check_prior(prior)
-  if(!is.prior.simple(prior))
-    stop("improper prior provided")
-  check_char(parameter_name, "parameter_name")
-
-
-  parameter <- list()
-  if(prior[["distribution"]] == "invgamma"){
-    parameter[[parameter_name]] <- samples[[ paste0("inv_", parameter_name) ]]^-1
-  }else if(prior[["distribution"]] == "point"){
-    parameter[[parameter_name]] <- prior$parameters[["location"]]
-  }else{
-    parameter[[parameter_name]] <- samples[[ parameter_name ]]
-  }
-
-  return(parameter)
-}
-.JAGS_marglik_parameter_values          <- function(samples, prior, parameter_names){
-
-  if(is.prior.point(prior)){
-    return(rep(prior$parameters[["location"]], length(parameter_names)))
-  }
-
-  sample_names <- parameter_names
-  if(prior[["distribution"]] == "invgamma"){
-    sample_names <- paste0("inv_", parameter_names)
-  }
-
-  if(!all(sample_names %in% names(samples))){
-    stop("'samples' does not contain all monitored formula prior parameters.", call. = FALSE)
-  }
-
-  values <- unname(unlist(samples[sample_names], use.names = FALSE))
-  if(prior[["distribution"]] == "invgamma"){
-    values <- values^-1
-  }
-
-  return(values)
-}
-.JAGS_marglik_parameters.vector         <- function(samples, prior, parameter_name){
-
-  .check_prior(prior)
-  if(!is.prior.vector(prior))
-    stop("improper prior provided")
-  check_char(parameter_name, "parameter_name")
-
-
-  parameter <- list()
-  if(prior$parameters[["K"]] == 1){
-    parameter_monitor_name <- parameter_name
-  }else{
-    parameter_monitor_name <- paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]")
-  }
-
-  if(prior[["distribution"]] == "mpoint"){
-    parameter[[parameter_name]] <- rep(prior$parameters[["location"]], length(parameter_monitor_name))
-  }else{
-    parameter[[parameter_name]] <- samples[ parameter_monitor_name ]
-  }
-
-  return(parameter)
-}
-.JAGS_marglik_parameters.factor         <- function(samples, prior, parameter_name){
-
-  .check_prior(prior)
-  if(!is.prior.factor(prior))
-    stop("improper prior provided")
-  check_char(parameter_name, "parameter_name")
-
-
-  if(is.prior.treatment(prior) | is.prior.independent(prior)){
-
-    parameter <- list()
-    if(.get_prior_factor_levels(prior) == 1){
-      parameter_names <- parameter_name
-    }else{
-      parameter_names <- paste0(parameter_name, "[", 1:.get_prior_factor_levels(prior), "]")
-    }
-    parameter[[parameter_name]] <- .JAGS_marglik_parameter_values(samples, prior, parameter_names)
-
-  }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
-
-    prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
-    parameter <- .JAGS_marglik_parameters.vector(samples, prior, parameter_name)
-
-  }
-
-
-  return(parameter)
-}
-.JAGS_marglik_parameters.PP             <- function(samples, prior){
-
-  .check_prior(prior)
-  if(!is.prior.PET(prior) & !is.prior.PEESE(prior))
-    stop("improper prior provided")
-
-  if(is.prior.PET(prior)){
-    parameter <- .JAGS_marglik_parameters.simple(samples, prior, "PET")
-  }else if(is.prior.PEESE(prior)){
-    parameter <- .JAGS_marglik_parameters.simple(samples, prior, "PEESE")
-  }
-
-  return(parameter)
-}
-.JAGS_marglik_parameters.weightfunction <- function(samples, prior){
-
-  .check_prior(prior)
-  if(!is.prior.weightfunction(prior))
-    stop("improper prior provided")
-
-  parameter <- list()
-  J <- .weightfunction_n_bins(prior)
-
-  if(prior$weights$type == "cumulative"){
-
-    eta     <- samples[paste0("eta[", seq_len(J), "]")]
-    std_eta <- eta / sum(eta)
-    omega <- unname(rev(cumsum(rev(std_eta))))
-
-  }else if(prior$weights$type == "independent"){
-
-    omega <- rep(1, J)
-    if(J > 1L){
-      if(prior$weights$scale == "omega"){
-        omega[2:J] <- samples[paste0("omega[", 2:J, "]")]
-      }else if(prior$weights$scale == "log_omega"){
-        omega[2:J] <- exp(samples[paste0("log_omega[", 2:J, "]")])
-      }
-    }
-  }else if(prior$weights$type == "fixed"){
-
-    omega <- unname(prior$weights$omega)
-
-  }
-
-  expansion <- .weightfunction_mapping_expansion(prior, force_one_sided = TRUE)
-  parameter[["omega"]] <- unname(omega[expansion$index])
-
-  return(parameter)
-}
-.JAGS_marglik_parameters.phacking <- function(samples, prior){
-
-  .check_prior(prior)
-  if(!is_prior_phacking(prior))
-    stop("improper prior provided")
-
-  alpha <- samples[["alpha"]]
-  constants <- phack_backend_constants(prior$form, prior$source, prior$destination, target = prior$target)
-  list(
-    alpha     = alpha,
-    pi_null   = alpha * constants$pi_null_per_alpha,
-    beta_null = alpha * constants$beta_null_per_alpha
+  result <- .bt_marglik_from_upstream(
+    upstream = marglik,
+    maxiter = maxiter,
+    nonfinite = nonfinite,
+    chain_metadata = chain_metadata,
+    upstream_warnings = upstream_warnings
   )
-}
-.JAGS_marglik_parameters.bias <- function(samples, prior){
 
-  .check_prior(prior)
-  if(!is_prior_bias(prior))
-    stop("improper prior provided")
-
-  selection_backend_spec(prior)
-
-  parameter <- list()
-  if(!is.null(prior$selection)){
-    parameter <- c(parameter, .JAGS_marglik_parameters.weightfunction(samples, prior$selection))
-  }
-  if(!is.null(prior$phacking)){
-    parameter <- c(parameter, .JAGS_marglik_parameters.phacking(samples, prior$phacking))
+  maxiter_warning <- result[["repetitions"]][["within_maxiter"]]
+  if(!silent && any(!maxiter_warning)){
+    warning(
+      paste(
+        "Marginal likelihood could not be estimated within the maximum number",
+        "of iterations and might be more variable than usual."
+      ),
+      call. = FALSE,
+      immediate. = TRUE
+    )
   }
 
-  return(parameter)
-}
-# .JAGS_marglik_parameters.spike_and_slab <- function(samples, prior, parameter_name){
-#
-#   .check_prior(prior)
-#   if(!is.prior.spike_and_slab(prior))
-#     stop("improper prior provided")
-#   check_char(parameter_name, "parameter_name")
-#
-#   parameter <- list()
-#   parameter[paste0(parameter_name, "_variable")]  <- .JAGS_marglik_parameters.simple(samples, prior[["variable"]],  paste0(parameter_name, "_variable"))
-#   if(!is.prior.point(prior[[parameter_name]][["inclusion"]])){
-#     parameter[paste0(parameter_name, "_inclusion")] <- .JAGS_marglik_parameters.simple(samples, prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
-#   }
-#
-#   return(parameter)
-# }
-
-#' @rdname JAGS_marglik_parameters
-JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_data_list, formula_prior_list, prior_list_parameters){
-
-  # return empty list in case that no prior was specified
-  if(length(formula_prior_list) == 0){
-    return(list())
-  }
-
-  parameters <- list()
-
-  for(parameter in names(formula_prior_list)){
-    # check for log(intercept) attribute on the formula
-    log_intercept <- if(!is.null(formula_list[[parameter]])) isTRUE(attr(formula_list[[parameter]], "log(intercept)")) else FALSE
-    parameters[[parameter]] <- .JAGS_marglik_parameters_formula_get(samples, parameter, formula_data_list[[parameter]], formula_prior_list[[parameter]], prior_list_parameters, log_intercept)
-  }
-
-  return(parameters)
+  return(result)
 }
 
-.JAGS_marglik_parameters_formula_get <- function(samples, parameter, formula_data_list, formula_prior_list, prior_list_parameters, log_intercept = FALSE){
+# Bridge sampling places a proposal on the unconstrained bridge coordinates
+# (log for one-sided and probit for two-sided bounds, as in bridgesampling).
+# A deterministic node supplied as a coordinate makes these draws linearly
+# dependent: the target is then improper, and the estimate is meaningless.
+# Coordinates with constant draws carry no dependence information and are
+# left to the sampler's own checks.
+.bt_JAGS_bridge_check_coordinate_rank <- function(bridgesampling_posterior){
 
-  formula_terms            <- names(formula_prior_list)
-  names(formula_data_list) <- sub(paste0("^", parameter, "_data_"), paste0(parameter, "_"), names(formula_data_list))
+  if(!is.matrix(bridgesampling_posterior) ||
+     ncol(bridgesampling_posterior) < 2L ||
+     nrow(bridgesampling_posterior) < 2L){
+    return(invisible(TRUE))
+  }
 
-  # start with intercept
-  if(sum(formula_terms == paste0(parameter, "_intercept")) == 1){
-
-    # check for scaling factors
-    if(!is.null(attr(formula_prior_list[[paste0(parameter, "_intercept")]], "multiply_by"))){
-      if(is.numeric(attr(formula_prior_list[[paste0(parameter, "_intercept")]], "multiply_by"))){
-        multiply_by <- attr(formula_prior_list[[paste0(parameter, "_intercept")]], "multiply_by")
-      }else{
-        multiply_by <- prior_list_parameters[[attr(formula_prior_list[[paste0(parameter, "_intercept")]], "multiply_by")]]
-      }
+  lb <- attr(bridgesampling_posterior, "lb")
+  ub <- attr(bridgesampling_posterior, "ub")
+  coordinates <- colnames(bridgesampling_posterior)
+  transformed <- vapply(seq_along(coordinates), function(i){
+    x <- as.numeric(bridgesampling_posterior[, i])
+    lower <- if(is.null(lb)) -Inf else unname(lb[[coordinates[[i]]]])
+    upper <- if(is.null(ub)) Inf else unname(ub[[coordinates[[i]]]])
+    if(is.finite(lower) && is.finite(upper)){
+      stats::qnorm((x - lower) / (upper - lower))
+    }else if(is.finite(lower)){
+      log(x - lower)
+    }else if(is.finite(upper)){
+      log(upper - x)
     }else{
-      multiply_by <- 1
+      x
     }
+  }, numeric(nrow(bridgesampling_posterior)))
+  transformed <- matrix(transformed, nrow = nrow(bridgesampling_posterior))
+  colnames(transformed) <- coordinates
 
-    intercept_prior <- formula_prior_list[[paste0(parameter, "_intercept")]]
-    intercept_value <- .JAGS_marglik_parameter_values(samples, intercept_prior, paste0(parameter, "_intercept"))
-    # apply log transformation if log(intercept) attribute is set
-    if(log_intercept){
-      intercept_value <- log(intercept_value)
-    }
-    output <- multiply_by * rep(intercept_value, formula_data_list[[paste0("N_", parameter)]])
-
-  }else{
-    output <- rep(0, formula_data_list[[paste0("N_", parameter)]])
+  informative <- apply(transformed, 2L, function(x){
+    all(is.finite(x)) && stats::sd(x) > 0
+  })
+  transformed <- transformed[, informative, drop = FALSE]
+  if(ncol(transformed) < 2L){
+    return(invisible(TRUE))
   }
 
-  # add the remaining terms
-  remaining_terms <- formula_terms[formula_terms != paste0(parameter, "_intercept")]
-  if(length(remaining_terms) > 0){
-    for(term in remaining_terms){
-
-      # check for scaling factors
-      if(!is.null(attr(formula_prior_list[[term]], "multiply_by"))){
-        if(is.numeric(attr(formula_prior_list[[term]], "multiply_by"))){
-          multiply_by <- attr(formula_prior_list[[term]], "multiply_by")
-        }else{
-          multiply_by <- prior_list_parameters[[attr(formula_prior_list[[term]], "multiply_by")]]
-        }
-      }else{
-        multiply_by <- 1
-      }
-
-
-      if(is.prior.point(formula_prior_list[[term]]) && !is.prior.factor(formula_prior_list[[term]])){
-
-        output <- output + multiply_by * formula_prior_list[[term]][["parameters"]][["location"]] * formula_data_list[[term]]
-
-      }else if(is.prior.point(formula_prior_list[[term]]) && is.prior.factor(formula_prior_list[[term]])){
-
-        if(.get_prior_factor_levels(formula_prior_list[[term]]) == 1){
-          output <- output + multiply_by * formula_prior_list[[term]][["parameters"]][["location"]] * formula_data_list[[term]]
-        }else{
-          output <- output + multiply_by * formula_data_list[[term]] %*% rep(formula_prior_list[[term]][["parameters"]][["location"]], .get_prior_factor_levels(formula_prior_list[[term]]))
-        }
-
-      }else if(is.prior.factor(formula_prior_list[[term]])){
-
-        if(.get_prior_factor_levels(formula_prior_list[[term]]) == 1){
-          term_value <- .JAGS_marglik_parameter_values(samples, formula_prior_list[[term]], term)
-          output     <- output + multiply_by * term_value * formula_data_list[[term]]
-        }else{
-          term_names  <- paste0(term,"[", 1:.get_prior_factor_levels(formula_prior_list[[term]]), "]")
-          term_values <- .JAGS_marglik_parameter_values(samples, formula_prior_list[[term]], term_names)
-          output      <- output + multiply_by * formula_data_list[[term]] %*% term_values
-        }
-
-
-      }else if(is.prior.simple(formula_prior_list[[term]])){
-
-        term_value <- .JAGS_marglik_parameter_values(samples, formula_prior_list[[term]], term)
-        output     <- output + multiply_by * term_value * formula_data_list[[term]]
-
-      }
-
-    }
+  standardized <- scale(transformed)
+  decomposition <- qr(standardized, tol = 1e-7)
+  if(decomposition$rank == ncol(standardized)){
+    return(invisible(TRUE))
   }
 
+  # Centered draws span at most one dimension fewer than their number, so
+  # too few draws are rank-deficient whether or not coordinates are dependent.
+  if(nrow(standardized) <= ncol(standardized)){
+    stop(
+      "The bridge-sampling target was rejected by diagnostics: ",
+      nrow(standardized), " posterior draws span only rank ",
+      decomposition$rank, " of ", ncol(standardized),
+      " varying bridge coordinates. Increase the number of posterior ",
+      "draws, for example with a larger 'sample' in JAGS_fit() or with ",
+      "JAGS_extend().",
+      call. = FALSE
+    )
+  }
 
-  return(as.vector(output))
+  dependent <- colnames(standardized)[
+    decomposition$pivot[seq.int(decomposition$rank + 1L, ncol(standardized))]
+  ]
+  stop(
+    "The bridge-sampling target was rejected by diagnostics: the posterior ",
+    "draws of the bridge coordinates are rank-deficient (rank ",
+    decomposition$rank, " of ", ncol(standardized),
+    " varying coordinates; linearly dependent coordinate(s): ",
+    paste0("'", utils::head(dependent, 3L), "'", collapse = ", "),
+    if(length(dependent) > 3L) ", ..." else "",
+    "). Only free stochastic nodes whose prior density 'log_posterior' adds ",
+    "can be supplied through 'add_parameters'; reconstruct deterministic ",
+    "nodes, such as row-shaped SD sources computed from other parameters, ",
+    "with parameter_source(values = ...) or inside 'log_posterior'.",
+    call. = FALSE
+  )
 }

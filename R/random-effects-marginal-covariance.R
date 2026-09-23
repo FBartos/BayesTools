@@ -1,0 +1,3402 @@
+#' Random-effect marginal variance-covariance samples
+#'
+#' @description
+#' Constructs posterior-draw marginal covariance matrices implied by
+#' BayesTools formula random effects. For each included random-effect block and
+#' posterior draw, the helper builds the observation-level contribution
+#' \eqn{Z_b G_b Z_b'} and sums contributions across blocks.
+#'
+#' @param fit a fitted object returned by [JAGS_fit()], an object carrying
+#'   `formula_design` metadata, or a `BayesTools_formula_design` object.
+#' @param parameter formula parameter name. Required when `fit` stores more than
+#'   one formula design.
+#' @param data optional data frame defining the observation rows. When `NULL`,
+#'   the fitted formula design rows are used. New random-effect grouping levels
+#'   require an explicit `new_levels` policy unless allowed by block metadata.
+#' @param fitted_rows optional integer vector mapping supplied prediction rows
+#'   to fitted observation indices. It is required whenever `data` is supplied
+#'   and a selected block uses a posterior-indexed row source. Reordering and
+#'   duplicate indices are supported. Callback-computed row sources do not use
+#'   this mapping.
+#' @param posterior_samples optional posterior sample matrix, data frame,
+#'   `mcmc`, or `mcmc.list`. When `NULL`, samples are extracted from `fit`.
+#' @param prior_list optional named prior list used to materialize fixed point
+#'   hyperparameters. When `NULL`, priors are taken from `fit` or the formula
+#'   design.
+#' @param blocks optional character vector of random-effect block names to
+#'   include. The default includes all formula random-effect blocks.
+#' @param new_levels optional new-level policy. Use a `random_new_levels()`
+#'   object or one of `"error"`, `"zero"`, or `"sample"`. `"zero"` assigns
+#'   zero covariance contribution to unseen grouping levels. `"sample"` treats
+#'   unseen grouping levels as independent draws from the block covariance `G`.
+#' @param diagonal_only whether to return only observation-level marginal
+#'   variances. This avoids allocating a `draw x row x row` array when callers
+#'   need only `diag(Z G Z')`.
+#' @param ... reserved for future extensions. Unused arguments are rejected.
+#'
+#' @return A list of class
+#'   `BayesTools_random_effects_marginal_vcov` with fields:
+#'   \describe{
+#'     \item{samples}{A dense array with dimensions `draw x row x row`, or a
+#'       `draw x row` matrix when `diagonal_only = TRUE`.}
+#'     \item{metadata}{A list describing row ordering, included blocks,
+#'       skipped blocks, structures, dimensions, and memory size. With
+#'       `diagonal_only = TRUE`, it additionally identifies the `"diagonal"`
+#'       variance representation, its sample dimensions, and the equivalent
+#'       dense entry count. The default covariance metadata schema is
+#'       unchanged.}
+#'   }
+#'
+#' @seealso [JAGS_formula_design()] [JAGS_fit()]
+#' @export
+random_effects_marginal_vcov <- function(
+    fit, parameter = NULL, data = NULL, posterior_samples = NULL,
+    prior_list = NULL, blocks = NULL, new_levels = NULL,
+    diagonal_only = FALSE, fitted_rows = NULL, ...){
+
+  dots <- list(...)
+  if(length(dots) > 0L){
+    dot_names <- names(dots)
+    if(is.null(dot_names)){
+      dot_names <- rep("", length(dots))
+    }
+    unnamed <- !nzchar(dot_names)
+    dot_names[unnamed] <- paste0("argument ", which(unnamed))
+    stop(
+      "Unused argument(s): ",
+      paste(dot_names, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+  check_char(parameter, "parameter", allow_NULL = TRUE, allow_NA = FALSE)
+  check_char(blocks, "blocks", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
+  check_bool(diagonal_only, "diagonal_only", allow_NA = FALSE)
+  if(!is.null(data) && !is.data.frame(data)){
+    stop("'data' must be a data.frame.", call. = FALSE)
+  }
+  if(!is.null(fitted_rows) && is.null(data)){
+    stop("'fitted_rows' can be supplied only with 'data'.", call. = FALSE)
+  }
+  if(!is.null(fitted_rows)){
+    check_int(
+      fitted_rows,
+      "fitted_rows",
+      lower = 1L,
+      check_length = nrow(data),
+      allow_NA = FALSE
+    )
+  }
+  if(!is.null(new_levels)){
+    new_levels <- .bt_random_new_levels_resolve(new_levels)
+  }
+
+  design <- .bt_random_effect_marginal_covariance_design(
+    fit = fit,
+    parameter = parameter
+  )
+  posterior <- .bt_random_effect_marginal_covariance_posterior(
+    fit = fit,
+    posterior_samples = posterior_samples
+  )
+  prior_list <- .bt_random_effect_marginal_covariance_prior_list(
+    prior_list = prior_list,
+    fit = fit,
+    design = design
+  )
+
+  .bt_random_effect_marginal_covariance_samples(
+    design = design,
+    posterior = posterior,
+    prior_list = prior_list,
+    data = data,
+    blocks = blocks,
+    new_levels = new_levels,
+    fitted_rows = fitted_rows,
+    diagonal_only = diagonal_only
+  )
+}
+
+
+#' Random-effect marginal covariance factor states
+#'
+#' @description
+#' Compiles the same structural covariance representation used by bridge
+#' sampling and evaluates its draw-varying factor states for fitted rows. This
+#' avoids constructing dense `draw x row x row` arrays when a downstream
+#' likelihood can consume covariance factors directly.
+#'
+#' @param fit,parameter,posterior_samples,prior_list,blocks See
+#'   [random_effects_marginal_vcov()].
+#' @param row_blocks a list of integer row-index vectors that partitions the
+#'   fitted rows without separating any structurally nonzero covariance
+#'   contribution.
+#' @param cache optional environment used to retain the compiled contract --
+#'   the design, its priors, the selected blocks and the evaluator -- across
+#'   repeated calls that differ only in their posterior draws. The key is
+#'   compared by value, so a different contract recompiles.
+#' @param ... reserved for future extensions. Unused arguments are rejected.
+#'
+#' @return A list of class
+#'   `BayesTools_random_effects_marginal_factor_states` with invariant
+#'   `factor_plans`, one `factor_states` list per posterior draw, `row_blocks`,
+#'   a `contract_id` identifying the compiled contract, and structural
+#'   `metadata`.
+#'
+#' @seealso [random_effects_marginal_vcov()] [JAGS_bridgesampling()]
+#' @export
+random_effects_marginal_factor_states <- function(
+    fit, parameter = NULL, posterior_samples = NULL, prior_list = NULL,
+    blocks = NULL, row_blocks, cache = NULL, ...){
+
+  dots <- list(...)
+  if(length(dots) > 0L){
+    dot_names <- names(dots)
+    if(is.null(dot_names)){
+      dot_names <- rep("", length(dots))
+    }
+    unnamed <- !nzchar(dot_names)
+    dot_names[unnamed] <- paste0("argument ", which(unnamed))
+    stop(
+      "Unused argument(s): ",
+      paste(dot_names, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+  check_char(parameter, "parameter", allow_NULL = TRUE, allow_NA = FALSE)
+  check_char(blocks, "blocks", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
+  if(!is.null(cache) && !is.environment(cache)){
+    stop("'cache' must be NULL or an environment.", call. = FALSE)
+  }
+
+  # Everything except the posterior draws is a property of the contract: the
+  # design, its priors, the selected blocks and the compiled evaluator. A
+  # density line calls this once per replacement chunk with the same contract
+  # and different draws, so an optional cache keeps the compilation out of that
+  # loop. The fit itself is not part of the key -- it carries the draws -- but
+  # the design and priors resolved from it are, and they are compared by value,
+  # so a different contract misses.
+  design <- .bt_random_effect_marginal_covariance_design(
+    fit = fit,
+    parameter = parameter
+  )
+  prior_list <- .bt_random_effect_marginal_covariance_prior_list(
+    prior_list = prior_list,
+    fit = fit,
+    design = design
+  )
+  key <- list(design = design, parameter = parameter, prior_list = prior_list,
+              blocks = blocks, row_blocks = row_blocks)
+  contract <- NULL
+  if(is.environment(cache)){
+    cached <- cache[["random_effects_marginal_factor_states"]]
+    if(!is.null(cached) && identical(cached$process_id, Sys.getpid()) &&
+       identical(cached$key, key)){
+      contract <- cached$contract
+    }
+  }
+
+  if(is.null(contract)){
+    selected <- .bt_random_effect_marginal_covariance_terms(
+      design = design,
+      blocks = blocks
+    )
+    random_effects <- selected$terms
+    block_names <- vapply(random_effects, `[[`, character(1), "block_name")
+    parameter_name <- design$parameter
+    if(!is.character(parameter_name) || length(parameter_name) != 1L ||
+       is.na(parameter_name) || !nzchar(parameter_name)){
+      stop("Formula design parameter name is unavailable.", call. = FALSE)
+    }
+
+    contract_rows <- .bt_JAGS_bridge_marginal_random_row_blocks(
+      row_blocks = row_blocks,
+      n_rows = nrow(random_effects[[1L]]$model_matrix),
+      parameter = parameter_name
+    )
+    if(is.null(contract_rows)){
+      stop("'row_blocks' must be supplied.", call. = FALSE)
+    }
+    .bt_JAGS_bridge_validate_marginal_random_row_blocks(
+      random_effects = random_effects,
+      row_blocks = contract_rows,
+      parameter = parameter_name
+    )
+
+    formula_design_list <- stats::setNames(list(design), parameter_name)
+    formula_data_list <- stats::setNames(list(NULL), parameter_name)
+    formula_prior_list <- stats::setNames(list(prior_list), parameter_name)
+    marginal_random_spec <- stats::setNames(list(list(
+      blocks = block_names,
+      row_blocks = contract_rows,
+      factor_state = TRUE
+    )), parameter_name)
+    contract <- list(
+      design         = design,
+      prior_list     = prior_list,
+      selected       = selected,
+      random_effects = random_effects,
+      block_names    = block_names,
+      parameter_name = parameter_name,
+      row_blocks     = contract_rows,
+      evaluator      = .bt_JAGS_bridge_compile_marginal_random_evaluator(
+        formula_design_list = formula_design_list,
+        marginal_random_spec = marginal_random_spec,
+        formula_data_list = formula_data_list,
+        formula_prior_list = formula_prior_list,
+        model_data = NULL
+      ),
+      contract_id    = new.env(parent = emptyenv())
+    )
+    if(is.environment(cache)){
+      cache[["random_effects_marginal_factor_states"]] <- list(
+        process_id = Sys.getpid(), key = key, contract = contract
+      )
+    }
+  }
+
+  design         <- contract$design
+  prior_list     <- contract$prior_list
+  selected       <- contract$selected
+  random_effects <- contract$random_effects
+  block_names    <- contract$block_names
+  parameter_name <- contract$parameter_name
+  row_blocks     <- contract$row_blocks
+  evaluator      <- contract$evaluator
+
+  posterior <- .bt_random_effect_marginal_covariance_posterior(
+    fit = fit,
+    posterior_samples = posterior_samples
+  )
+  batch <- evaluator$factor_states(posterior)
+  if(!is.null(batch)){
+    batch <- batch[[parameter_name]]
+    factor_plans  <- batch$factor_plans
+    factor_states <- batch$factor_states
+  }else{
+    values <- lapply(seq_len(nrow(posterior)), function(row){
+      samples <- posterior[row, ]
+      formula_prior_parameters <- list()
+      for(prior_name in names(prior_list)){
+        prior <- prior_list[[prior_name]]
+        if(is.prior.simplex(prior) &&
+           identical(prior$distribution, "dirichlet")){
+          K <- prior$parameters[["K"]]
+          weights <- paste0(prior_name, "[", seq_len(K), "]")
+          eta <- paste0(
+            .JAGS_prior_dirichlet_eta_name(prior_name),
+            "[", seq_len(K), "]"
+          )
+          if(all(weights %in% names(samples))){
+            formula_prior_parameters[[prior_name]] <- unname(samples[weights])
+          }else if(all(eta %in% names(samples))){
+            eta_values <- unname(samples[eta])
+            eta_sum    <- sum(eta_values)
+            if(any(!is.finite(eta_values)) || any(eta_values < 0) ||
+               !is.finite(eta_sum) || eta_sum <= 0){
+              stop(
+                "Dirichlet auxiliary coordinates for '", prior_name,
+                "' must be finite, non-negative, and have a positive sum.",
+                call. = FALSE
+              )
+            }
+            formula_prior_parameters[[prior_name]] <-
+              eta_values / eta_sum
+          }
+          if(all(weights %in% names(samples)) && all(eta %in% names(samples))){
+            samples <- samples[setdiff(names(samples), eta)]
+          }
+          next
+        }
+        if(is.prior.point(prior)){
+          formula_prior_parameters <- c(
+            formula_prior_parameters,
+            JAGS_marglik_parameters(samples, prior_list[prior_name])
+          )
+        }
+      }
+      evaluator$covariance(
+        samples = samples,
+        prior_parameters = list(),
+        formula_prior_parameters = formula_prior_parameters,
+        formula_parameters = list(),
+        factor_covariance = FALSE,
+        factor_state = TRUE
+      )[[parameter_name]]
+    })
+    factor_plans  <- values[[1L]]$factor_plans
+    factor_states <- lapply(values, `[[`, "factor_states")
+  }
+  structures <- stats::setNames(vapply(
+    random_effects,
+    .bt_random_effect_structure,
+    character(1),
+    context = "Random-effect marginal factor states"
+  ), block_names)
+
+  out <- list(
+    factor_plans = factor_plans,
+    factor_states = factor_states,
+    row_blocks = row_blocks,
+    contract_id = contract$contract_id,
+    metadata = list(
+      parameter = parameter_name,
+      n_draws = nrow(posterior),
+      n_rows = nrow(random_effects[[1L]]$model_matrix),
+      included_blocks = block_names,
+      skipped_blocks = selected$skipped,
+      structures = structures,
+      representation = "factor_state"
+    )
+  )
+  class(out) <- c(
+    "BayesTools_random_effects_marginal_factor_states",
+    "list"
+  )
+  out
+}
+
+
+#' Random-effect marginal covariance diagonals from factor states
+#'
+#' @description
+#' Evaluates the observation-level marginal variance represented by
+#' [random_effects_marginal_factor_states()] without reconstructing dense
+#' covariance matrices or recompiling the random-effect formula metadata.
+#'
+#' @param factors a `BayesTools_random_effects_marginal_factor_states` object.
+#' @param by_block whether to return one variance matrix per random-effect
+#'   block.
+#'
+#' @return A numeric matrix with one posterior draw per row and one fitted
+#'   observation per column when `by_block = FALSE`; otherwise a named list of
+#'   such matrices in fitted random-block order.
+#'
+#' @seealso [random_effects_marginal_factor_states()]
+#'   [random_effects_marginal_factor_product()]
+#' @export
+random_effects_marginal_factor_diagonal <- function(
+    factors, by_block = FALSE){
+
+  components <- .bt_random_effect_marginal_factor_components(factors)
+  check_bool(by_block, "by_block")
+
+  n_draws <- components$n_draws
+  n_rows  <- components$n_rows
+  blocks  <- components$blocks
+  plans   <- components$plans
+  states  <- components$states
+  out <- stats::setNames(lapply(blocks, function(block){
+    matrix(0, nrow = n_draws, ncol = n_rows)
+  }), blocks)
+
+  designs <- lapply(seq_along(blocks), function(block){
+    .bt_random_effect_marginal_factor_block_design(
+      plan = plans[[block]], n_rows = n_rows, block = blocks[[block]]
+    )
+  })
+  for(draw in seq_len(n_draws)){
+    draw_states <- states[[draw]]
+    for(block in seq_along(blocks)){
+      design <- designs[[block]]
+      basis <- .bt_random_effect_marginal_factor_block_basis(
+        design = design,
+        state  = draw_states[[block]],
+        n_rows = n_rows,
+        block  = blocks[[block]]
+      )
+      variance <- rowSums(basis^2)
+      if(identical(design$type, "known_group")){
+        variance <- variance * diag(design$group_covariance)[
+          design$group_map
+        ]
+      }
+      out[[block]][draw, ] <- variance
+    }
+  }
+
+  if(by_block){
+    return(out)
+  }
+  Reduce(`+`, out)
+}
+
+
+#' Diagonal-plus-factor random-effect marginal representation
+#'
+#' @description
+#' Reduces structurally eligible random-effect covariance factor states to a
+#' diagonal contribution and structurally certified loading columns for every
+#' supplied row block. Eligibility and factor dimension are determined from
+#' compiled metadata, never from evaluated covariance values. Known group
+#' covariance uses its fixed Cholesky factor while retaining the complete
+#' coefficient covariance. Sampled zero SDs do not alter the structural supports.
+#'
+#' @param factors A
+#'   `BayesTools_random_effects_marginal_factor_states` object, or a single
+#'   bridge-likelihood `factor_state` value carrying `factor_plans`,
+#'   `factor_states`, and `row_blocks`.
+#' @param cache Optional environment used to retain the invariant reduction
+#'   plan across repeated evaluations of one bridge-likelihood factor-state
+#'   contract. Changing numerical factor states are still validated on every
+#'   call.
+#'
+#' @return A list with a numeric `diagonal` matrix, one loading array and
+#'   structural rank per row block, and `row_blocks`. The `loading_supports`
+#'   list contains one logical row-by-loading matrix per block, derived from
+#'   compiled metadata independently of the evaluated loading values. The
+#'   logical `diagonal_support` vector marks rows with a structurally declared
+#'   diagonal contribution, including when its evaluated SD is zero.
+#'
+#' @seealso [random_effects_marginal_factor_states()]
+#' @export
+random_effects_marginal_diagonal_factor <- function(factors, cache = NULL){
+
+  if(!is.null(cache) && !is.environment(cache)){
+    stop("'cache' must be NULL or an environment.", call. = FALSE)
+  }
+  components <- .bt_random_effect_marginal_factor_input(factors)
+  cacheable <- is.environment(cache) && is.environment(components$contract_id)
+  plan   <- NULL
+  layout <- NULL
+  if(cacheable){
+    process_id <- Sys.getpid()
+    cached <- cache[["random_effects_marginal_diagonal_factor"]]
+    if(!is.null(cached) && identical(cached$process_id, process_id)){
+      if(!identical(cached$contract_id, components$contract_id)){
+        stop(
+          "Random-effect marginal factor-state contract changed between evaluations.",
+          call. = FALSE
+        )
+      }
+      plan   <- cached$plan
+      layout <- cached$layout
+    }
+  }
+  if(is.null(plan)){
+    plan <- .bt_random_effect_marginal_diagonal_factor_plan(
+      factor_plans = components$plans,
+      row_blocks   = components$row_blocks,
+      n_rows       = components$n_rows
+    )
+    if(cacheable){
+      cache[["random_effects_marginal_diagonal_factor"]] <- list(
+        process_id = Sys.getpid(),
+        contract_id = components$contract_id,
+        plan = plan
+      )
+    }
+  }
+  if(!isTRUE(plan$available)){
+    condition <- structure(
+      list(
+        message = paste0(
+          "Random-effect marginal covariance is unavailable as diagonal plus factors: ",
+          plan$reason,
+          "."
+        ),
+        call = NULL,
+        reason = plan$reason
+      ),
+      class = c(
+        "BayesTools_random_effects_marginal_factor_unavailable",
+        "error", "condition"
+      )
+    )
+    stop(condition)
+  }
+
+  plans      <- components$plans
+  states     <- components$states
+  n_draws    <- components$n_draws
+  n_rows     <- components$n_rows
+  row_blocks <- components$row_blocks
+  # The row/column supports, the block names and the coefficient-basis designs
+  # are decided by the contract the cache is keyed on; only the states are not.
+  # A bridge evaluates one state per call through the same contract.
+  if(is.null(layout)){
+    diagonal_support <- rep(FALSE, n_rows)
+    for(block in plan$blocks){
+      for(component in block$diagonal){
+        diagonal_support[component$row] <- TRUE
+      }
+    }
+    loading_supports <- lapply(plan$blocks, function(block){
+
+      support <- matrix(FALSE, length(block$rows), length(block$loadings))
+      for(column in seq_along(block$loadings)){
+        support[match(block$loadings[[column]]$rows, block$rows), column] <- TRUE
+      }
+      support
+    })
+    plan_names <- names(plans)
+    if(is.null(plan_names)){
+      plan_names <- as.character(seq_along(plans))
+    }
+    designs <- lapply(seq_along(plans), function(factor_index){
+      .bt_random_effect_marginal_factor_block_design(
+        plan = plans[[factor_index]], n_rows = n_rows,
+        block = plan_names[[factor_index]]
+      )
+    })
+    layout <- list(
+      diagonal_support = diagonal_support,
+      loading_supports = loading_supports,
+      plan_names = plan_names,
+      designs = designs,
+      ranks = as.integer(vapply(
+        plan$blocks,
+        function(block) length(block$loadings),
+        integer(1)
+      ))
+    )
+    if(cacheable){
+      cached <- cache[["random_effects_marginal_diagonal_factor"]]
+      cached$layout <- layout
+      cache[["random_effects_marginal_diagonal_factor"]] <- cached
+    }
+  }
+  diagonal_support <- layout$diagonal_support
+  loading_supports <- layout$loading_supports
+  plan_names       <- layout$plan_names
+  diagonal <- matrix(0, nrow = n_draws, ncol = n_rows)
+  loadings <- lapply(plan$blocks, function(block){
+    array(
+      0,
+      dim = c(n_draws, length(block$rows), length(block$loadings))
+    )
+  })
+  names(plans) <- plan_names
+
+  # Structural row/column assignments are shared by all draws. Materialize
+  # each coefficient basis once, then scatter whole draw columns rather than
+  # repeating the block and component loops for every posterior candidate.
+  for(factor_index in seq_along(plans)){
+    design <- layout$designs[[factor_index]]
+    basis <- .bt_random_effect_marginal_factor_block_basis_batch(
+      design = design, states = states, factor_index = factor_index,
+      n_rows = n_rows, block = plan_names[[factor_index]]
+    )
+
+    for(block_index in seq_along(plan$blocks)){
+      block <- plan$blocks[[block_index]]
+      for(component in block$diagonal){
+        if(component$factor_index != factor_index){
+          next
+        }
+        index <- component$row + n_rows * (component$column - 1L)
+        values <- basis[index, ]
+        if(!is.null(component$multiplier)){
+          values <- values * component$multiplier
+        }
+        diagonal[, component$row] <-
+          diagonal[, component$row] + values^2
+      }
+      for(loading_index in seq_along(block$loadings)){
+        component <- block$loadings[[loading_index]]
+        if(component$factor_index != factor_index){
+          next
+        }
+        local_rows <- match(component$rows, block$rows)
+        index <- component$rows + n_rows * (component$column - 1L)
+        values <- basis[index, , drop = FALSE]
+        if(!is.null(component$multiplier)){
+          values <- values * component$multiplier
+        }
+        loadings[[block_index]][, local_rows, loading_index] <- t(values)
+      }
+    }
+  }
+
+  out <- list(
+    diagonal   = unname(diagonal),
+    diagonal_support = diagonal_support,
+    loadings   = unname(loadings),
+    loading_supports = unname(loading_supports),
+    ranks      = layout$ranks,
+    row_blocks = row_blocks
+  )
+  class(out) <- c(
+    "BayesTools_random_effects_marginal_diagonal_factor",
+    "list"
+  )
+  out
+}
+
+
+#' Materialize random-effect marginal covariance factors
+#'
+#' @description
+#' Constructs dense covariance draws from compiled factor states, using the
+#' same group, row-scale, and coefficient-factor geometry as the diagonal and
+#' matrix-product helpers. Prefer those helpers when full covariance is not
+#' required by the consuming likelihood.
+#'
+#' @param factors See [random_effects_marginal_diagonal_factor()].
+#'
+#' @return A numeric array with dimensions `draw x row x row`.
+#' @seealso [random_effects_marginal_factor_diagonal()]
+#'   [random_effects_marginal_factor_product()]
+#' @export
+random_effects_marginal_factor_vcov <- function(factors){
+
+  components <- .bt_random_effect_marginal_factor_input(factors)
+  n_rows <- components$n_rows
+  plans  <- components$plans
+  out <- array(0, dim = c(components$n_draws, n_rows, n_rows))
+  designs <- lapply(seq_along(plans), function(block){
+    .bt_random_effect_marginal_factor_block_design(
+      plan = plans[[block]], n_rows = n_rows, block = block
+    )
+  })
+  group_covariances <- lapply(designs, function(design){
+    group_map <- design$group_map
+    if(identical(design$type, "known_group")){
+      design$group_covariance[group_map, group_map, drop = FALSE]
+    }else{
+      outer(group_map, group_map, "==")
+    }
+  })
+  for(draw in seq_len(components$n_draws)){
+    states <- components$states[[draw]]
+    for(block in seq_along(plans)){
+      basis <- .bt_random_effect_marginal_factor_block_basis(
+        design = designs[[block]], state = states[[block]],
+        n_rows = n_rows, block = block
+      )
+      out[draw, , ] <- out[draw, , ] +
+        tcrossprod(basis) * group_covariances[[block]]
+    }
+  }
+  out
+}
+
+
+# Normalize the two supported public and bridge factor-state containers.
+.bt_random_effect_marginal_factor_input <- function(factors){
+
+  if(inherits(
+      factors,
+      "BayesTools_random_effects_marginal_factor_states"
+    )){
+    components <- .bt_random_effect_marginal_factor_components(factors)
+    return(list(
+      plans      = components$plans,
+      states     = components$states,
+      row_blocks = factors$row_blocks,
+      n_rows     = components$n_rows,
+      n_draws    = components$n_draws,
+      contract_id = factors$contract_id
+    ))
+  }
+  if(is.list(factors) &&
+     identical(factors$representation, "factor_state") &&
+     is.list(factors$factor_plans) &&
+     is.list(factors$factor_states) &&
+     is.list(factors$row_blocks)){
+    plans <- factors$factor_plans
+    if(length(plans) == 0L || !is.matrix(plans[[1L]]$model_matrix)){
+      stop("Random-effect marginal factor metadata are inconsistent.",
+           call. = FALSE)
+    }
+    states <- factors$factor_states
+    if(!is.null(names(plans))){
+      plans <- .bt_random_effect_marginal_factor_align(
+        plans, names(plans), "plans"
+      )
+      states <- .bt_random_effect_marginal_factor_align(
+        states, names(plans), "states"
+      )
+    }else if(length(states) != length(plans)){
+      stop("Random-effect marginal factor states are inconsistent.",
+           call. = FALSE)
+    }
+    return(list(
+      plans      = plans,
+      states     = list(states),
+      row_blocks = factors$row_blocks,
+      n_rows     = nrow(plans[[1L]]$model_matrix),
+      n_draws    = 1L,
+      contract_id = factors$contract_id
+    ))
+  }
+  stop(
+    "'factors' must contain compiled random-effect marginal factor states.",
+    call. = FALSE
+  )
+}
+
+
+.bt_random_effect_marginal_diagonal_factor_plan <- function(
+    factor_plans, row_blocks, n_rows){
+
+  unavailable <- function(reason){
+    list(available = FALSE, reason = reason, blocks = list())
+  }
+  if(!is.list(factor_plans) || length(factor_plans) == 0L ||
+     !is.list(row_blocks) || length(row_blocks) == 0L ||
+     !is.numeric(n_rows) || length(n_rows) != 1L || !is.finite(n_rows) ||
+     n_rows < 1L || n_rows != as.integer(n_rows)){
+    return(unavailable("invalid factor metadata"))
+  }
+  normalized_blocks <- lapply(row_blocks, function(rows){
+    if(!is.numeric(rows) || length(rows) == 0L || anyNA(rows) ||
+       any(!is.finite(rows)) || any(rows != as.integer(rows)) ||
+       any(rows < 1L) || any(rows > n_rows) || anyDuplicated(rows)){
+      return(NULL)
+    }
+    as.integer(rows)
+  })
+  if(any(vapply(normalized_blocks, is.null, logical(1))) ||
+     !identical(
+       sort(as.integer(unlist(normalized_blocks, use.names = FALSE))),
+       seq_len(n_rows)
+     )){
+    return(unavailable("invalid row-block metadata"))
+  }
+
+  plan_components <- vector("list", length(factor_plans))
+  for(factor_index in seq_along(factor_plans)){
+    factor <- factor_plans[[factor_index]]
+    if(!is.list(factor) ||
+       !is.character(factor$type) || length(factor$type) != 1L ||
+       is.na(factor$type) ||
+       !factor$type %in% c("group", "row_group", "known_group") ||
+       !is.character(factor$coefficient_structure) ||
+       length(factor$coefficient_structure) != 1L ||
+       is.na(factor$coefficient_structure) ||
+       !factor$coefficient_structure %in% c("diagonal", "dense", "markov") ||
+       !is.numeric(factor$model_matrix) || !is.matrix(factor$model_matrix) ||
+       nrow(factor$model_matrix) != n_rows ||
+       any(!is.finite(factor$model_matrix)) ||
+       !is.numeric(factor$group_map) || length(factor$group_map) != n_rows ||
+       anyNA(factor$group_map) || any(!is.finite(factor$group_map)) ||
+       any(factor$group_map != as.integer(factor$group_map)) ||
+       any(factor$group_map < 1L)){
+      return(unavailable("unsupported factor structure"))
+    }
+    group_factor <- NULL
+    if(identical(factor$type, "known_group")){
+      kernel <- factor$group_covariance
+      if(!is.numeric(kernel) || !is.matrix(kernel) ||
+         nrow(kernel) != ncol(kernel) || any(!is.finite(kernel)) ||
+         !identical(unname(kernel), unname(t(kernel))) ||
+         any(factor$group_map > nrow(kernel))){
+        return(unavailable("invalid known group covariance"))
+      }
+      group_factor <- tryCatch(t(chol(kernel)), error = function(e) NULL)
+      if(is.null(group_factor)){
+        return(unavailable("known group covariance is not positive definite"))
+      }
+    }
+    plan_components[[factor_index]] <- list(
+      model_matrix          = factor$model_matrix,
+      group_map             = as.integer(factor$group_map),
+      group_covariance      = if(is.null(group_factor)) NULL else kernel,
+      coefficient_structure = factor$coefficient_structure
+    )
+  }
+
+  blocks <- vector("list", length(normalized_blocks))
+  for(block_index in seq_along(normalized_blocks)){
+    rows                <- normalized_blocks[[block_index]]
+    diagonal_components <- list()
+    rank_components     <- list()
+
+    for(factor_index in seq_along(plan_components)){
+      factor      <- plan_components[[factor_index]]
+      model_matrix <- factor$model_matrix
+      group_map    <- factor$group_map
+      n_columns    <- ncol(model_matrix)
+      group_levels <- unique(group_map[rows])
+      group_factor <- if(is.null(factor$group_covariance)){
+        NULL
+      }else{
+        t(chol(factor$group_covariance[group_levels, group_levels, drop = FALSE]))
+      }
+      for(column in seq_len(n_columns)){
+        model_columns <- if(identical(
+            factor$coefficient_structure,
+            "diagonal"
+          )){
+          column
+        }else{
+          seq.int(column, n_columns)
+        }
+        structural_rows <- which(
+          rowSums(model_matrix[, model_columns, drop = FALSE] != 0) > 0
+        )
+        if(!is.null(group_factor)){
+          inside  <- intersect(structural_rows, rows)
+          outside <- setdiff(structural_rows, rows)
+          if(length(inside) > 0L && length(outside) > 0L && any(
+            factor$group_covariance[group_map[inside], group_map[outside],
+                                    drop = FALSE] != 0
+          )){
+            return(unavailable("row blocks split a covariance factor"))
+          }
+        }
+        groups <- if(is.null(group_factor)){
+          unique(group_map[structural_rows])
+        }else{
+          seq_len(ncol(group_factor))
+        }
+        for(group in groups){
+          multiplier <- if(is.null(group_factor)){
+            as.numeric(group_map == group)
+          }else{
+            values <- numeric(n_rows)
+            values[rows] <- group_factor[match(group_map[rows], group_levels), group]
+            values
+          }
+          full_support <- structural_rows[multiplier[structural_rows] != 0]
+          support <- intersect(full_support, rows)
+          if(length(support) == 0L){
+            next
+          }
+          if(length(full_support) > 1L && !all(full_support %in% rows)){
+            return(unavailable("row blocks split a covariance factor"))
+          }
+          component <- list(
+            factor_index = factor_index,
+            group        = group,
+            column       = column,
+            rows         = support
+          )
+          if(!is.null(group_factor)){
+            component$multiplier <- unname(multiplier[support])
+          }
+          if(length(support) == 1L){
+            component$row <- support[[1L]]
+            diagonal_components[[length(diagonal_components) + 1L]] <-
+              component
+          }else{
+            rank_components[[length(rank_components) + 1L]] <- component
+          }
+        }
+      }
+    }
+
+    blocks[[block_index]] <- list(
+      rows     = rows,
+      diagonal = diagonal_components,
+      loadings = rank_components
+    )
+  }
+
+  list(available = TRUE, reason = "", blocks = blocks)
+}
+
+
+#' Multiply random-effect marginal covariance factors by row vectors
+#'
+#' @description
+#' Applies the covariance represented by
+#' [random_effects_marginal_factor_states()] to one row vector per posterior
+#' draw without constructing a dense `draw x row x row` covariance array.
+#'
+#' @param factors a `BayesTools_random_effects_marginal_factor_states` object.
+#' @param vectors numeric matrix with one posterior draw per row and one fitted
+#'   observation per column.
+#' @param by_block whether to return one product matrix per random-effect block.
+#'
+#' @return A numeric matrix when `by_block = FALSE`; otherwise a named list of
+#'   numeric matrices in fitted random-block order.
+#'
+#' @seealso [random_effects_marginal_factor_states()]
+#' @export
+random_effects_marginal_factor_product <- function(
+    factors, vectors, by_block = FALSE){
+
+  components <- .bt_random_effect_marginal_factor_components(factors)
+  check_bool(by_block, "by_block")
+  if(!is.numeric(vectors) || !is.matrix(vectors) ||
+     any(!is.finite(vectors))){
+    stop("'vectors' must be a finite numeric matrix.", call. = FALSE)
+  }
+
+  n_draws <- components$n_draws
+  n_rows  <- components$n_rows
+  blocks  <- components$blocks
+  plans   <- components$plans
+  states  <- components$states
+  if(!identical(dim(vectors), c(n_draws, n_rows))){
+    stop("Random-effect marginal factor metadata are inconsistent.",
+         call. = FALSE)
+  }
+
+  out <- stats::setNames(lapply(blocks, function(block){
+    matrix(
+      0,
+      nrow = n_draws,
+      ncol = n_rows,
+      dimnames = dimnames(vectors)
+    )
+  }), blocks)
+  for(draw in seq_len(n_draws)){
+    draw_states <- states[[draw]]
+    for(block in seq_along(blocks)){
+      out[[block]][draw, ] <- .bt_random_effect_marginal_factor_product_block(
+        plan   = plans[[block]],
+        state  = draw_states[[block]],
+        vector = vectors[draw, ],
+        block  = blocks[[block]]
+      )
+    }
+  }
+
+  if(by_block){
+    return(out)
+  }
+  Reduce(`+`, out)
+}
+
+
+.bt_random_effect_marginal_factor_components <- function(factors){
+
+  if(!inherits(
+      factors,
+      "BayesTools_random_effects_marginal_factor_states"
+    )){
+    stop(
+      "'factors' must be returned by random_effects_marginal_factor_states().",
+      call. = FALSE
+    )
+  }
+
+  metadata <- factors$metadata
+  n_draws  <- metadata$n_draws
+  n_rows   <- metadata$n_rows
+  blocks   <- metadata$included_blocks
+  plans    <- factors$factor_plans
+  states   <- factors$factor_states
+  valid <- is.numeric(n_draws) && length(n_draws) == 1L &&
+    is.finite(n_draws) && n_draws >= 1L && n_draws == as.integer(n_draws) &&
+    is.numeric(n_rows) && length(n_rows) == 1L &&
+    is.finite(n_rows) && n_rows >= 1L && n_rows == as.integer(n_rows) &&
+    is.character(blocks) && length(blocks) >= 1L && !anyNA(blocks) &&
+    all(nzchar(blocks)) && !anyDuplicated(blocks) && is.list(plans) &&
+    length(plans) == length(blocks) && is.list(states) &&
+    length(states) == n_draws
+  if(!isTRUE(valid)){
+    stop("Random-effect marginal factor metadata are inconsistent.",
+         call. = FALSE)
+  }
+  plans <- .bt_random_effect_marginal_factor_align(plans, blocks, "plans")
+  names(plans) <- blocks
+  states <- lapply(states, .bt_random_effect_marginal_factor_align,
+                   blocks = blocks, kind = "states")
+
+  list(
+    n_draws = as.integer(n_draws),
+    n_rows  = as.integer(n_rows),
+    blocks  = blocks,
+    plans   = plans,
+    states  = states
+  )
+}
+
+
+.bt_random_effect_marginal_factor_align <- function(items, blocks, kind){
+
+  context <- paste("Random-effect marginal factor", kind)
+  if(!is.list(items)){
+    stop(context, " are inconsistent.", call. = FALSE)
+  }
+  item_names <- names(items)
+  if(!is.null(item_names)){
+    if(anyNA(item_names) || any(!nzchar(item_names))){
+      stop(context, " must have non-empty, non-missing block names.",
+           call. = FALSE)
+    }
+    if(anyDuplicated(item_names)){
+      stop(context, " contain duplicate block names.", call. = FALSE)
+    }
+    missing <- setdiff(blocks, item_names)
+    unexpected <- setdiff(item_names, blocks)
+    if(length(missing) > 0L || length(unexpected) > 0L){
+      stop(
+        context, " are inconsistent with the fitted blocks.",
+        if(length(missing) > 0L){
+          paste0(" Missing block names: ", paste(missing, collapse = ", "), ".")
+        },
+        if(length(unexpected) > 0L){
+          paste0(" Unexpected block names: ", paste(unexpected, collapse = ", "), ".")
+        },
+        call. = FALSE
+      )
+    }
+    return(items[blocks])
+  }
+  if(length(items) != length(blocks)){
+    stop(context, " are inconsistent.", call. = FALSE)
+  }
+  items
+}
+
+
+.bt_random_effect_marginal_factor_product_block <- function(
+    plan, state, vector, block){
+
+  geometry <- .bt_random_effect_marginal_factor_block_geometry(
+    plan   = plan,
+    state  = state,
+    n_rows = length(vector),
+    block  = block
+  )
+  basis            <- geometry$basis
+  group_map        <- geometry$group_map
+  group_covariance <- geometry$group_covariance
+
+  grouped <- rowsum(
+    basis * vector,
+    group   = group_map,
+    reorder = FALSE
+  )
+  group_ids <- as.integer(rownames(grouped))
+  if(identical(geometry$type, "known_group")){
+    ordered <- matrix(
+      0,
+      nrow = nrow(group_covariance),
+      ncol = ncol(grouped)
+    )
+    ordered[group_ids, ] <- grouped
+    grouped  <- group_covariance %*% ordered
+    group_ids <- seq_len(nrow(grouped))
+  }
+
+  rowSums(basis * grouped[
+    match(group_map, group_ids),
+    ,
+    drop = FALSE
+  ])
+}
+
+
+# The design, the grouping and any known group covariance are the same for
+# every draw of one factor-state contract. A density line evaluates tens of
+# thousands of draws through this geometry, so validating them per draw is the
+# per-draw cost; validate them once and keep only the coefficient factor, which
+# does change, on the per-draw path.
+.bt_random_effect_marginal_factor_block_design <- function(
+    plan, n_rows, block){
+
+  if(!is.list(plan)){
+    stop(
+      "Random-effect marginal factor metadata for block '", block,
+      "' are invalid.",
+      call. = FALSE
+    )
+  }
+  type         <- plan$type
+  model_matrix <- plan$model_matrix
+  group_map    <- plan$group_map
+  valid <- type %in% c("group", "row_group", "known_group") &&
+    is.numeric(model_matrix) && is.matrix(model_matrix) &&
+    nrow(model_matrix) == n_rows && all(is.finite(model_matrix)) &&
+    is.numeric(group_map) && length(group_map) == n_rows &&
+    all(is.finite(group_map)) && all(group_map == as.integer(group_map)) &&
+    all(group_map >= 1L)
+  if(!isTRUE(valid)){
+    stop(
+      "Random-effect marginal factor metadata for block '", block,
+      "' are invalid.",
+      call. = FALSE
+    )
+  }
+
+  group_covariance <- NULL
+  if(identical(type, "known_group")){
+    group_covariance <- plan$group_covariance
+    if(!is.numeric(group_covariance) || !is.matrix(group_covariance) ||
+       nrow(group_covariance) != ncol(group_covariance) ||
+       any(!is.finite(group_covariance)) ||
+       any(group_map > nrow(group_covariance))){
+      stop(
+        "Known group covariance for block '", block, "' is invalid.",
+        call. = FALSE
+      )
+    }
+  }
+
+  list(
+    type             = type,
+    model_matrix     = model_matrix,
+    columns          = ncol(model_matrix),
+    group_map        = as.integer(group_map),
+    group_covariance = group_covariance
+  )
+}
+
+
+.bt_random_effect_marginal_factor_block_factor <- function(
+    design, state, block){
+
+  factor <- if(is.list(state)) state$coefficient_factor else NULL
+  if(!is.numeric(factor) || !is.matrix(factor) ||
+     nrow(factor) != design$columns || ncol(factor) != design$columns ||
+     !all(is.finite(factor))){
+    stop(
+      "Random-effect marginal factor metadata for block '", block,
+      "' are invalid.",
+      call. = FALSE
+    )
+  }
+  factor
+}
+
+
+.bt_random_effect_marginal_factor_block_row_scale <- function(
+    design, state, n_rows, block){
+
+  if(!identical(design$type, "row_group")){
+    return(NULL)
+  }
+  row_scale <- state$row_scale
+  if(!is.numeric(row_scale) || length(row_scale) != n_rows ||
+     any(!is.finite(row_scale)) || any(row_scale < 0)){
+    stop(
+      "Random-effect marginal row scales for block '", block,
+      "' are invalid.",
+      call. = FALSE
+    )
+  }
+  row_scale
+}
+
+
+# Every draw multiplies the same design by its own coefficient factor, so
+# stacking the factors column-wise turns the whole batch into one product. A
+# density line evaluates tens of thousands of draws through this.
+.bt_random_effect_marginal_factor_block_basis_batch <- function(
+    design, states, factor_index, n_rows, block){
+
+  columns <- design$columns
+  n_draws <- length(states)
+  # vapply enforces the numeric type and the factor length on every draw; the
+  # finiteness of the whole batch is one pass rather than one per draw.
+  factors <- vapply(states, function(draw_states){
+    value <- draw_states[[factor_index]]$coefficient_factor
+    if(!is.matrix(value)){
+      stop(
+        "Random-effect marginal factor metadata for block '", block,
+        "' are invalid.",
+        call. = FALSE
+      )
+    }
+    value
+  }, numeric(columns * columns))
+  if(!all(is.finite(factors))){
+    stop(
+      "Random-effect marginal factor metadata for block '", block,
+      "' are invalid.",
+      call. = FALSE
+    )
+  }
+  dim(factors) <- c(columns, columns * n_draws)
+  basis <- design$model_matrix %*% factors
+  if(identical(design$type, "row_group")){
+    dim(basis) <- c(n_rows, columns, n_draws)
+    for(draw in seq_len(n_draws)){
+      basis[, , draw] <- basis[, , draw] *
+        .bt_random_effect_marginal_factor_block_row_scale(
+          design = design, state = states[[draw]][[factor_index]],
+          n_rows = n_rows, block = block
+        )
+    }
+  }
+  dim(basis) <- c(n_rows * columns, n_draws)
+  basis
+}
+
+
+.bt_random_effect_marginal_factor_block_basis <- function(
+    design, state, n_rows, block){
+
+  factor <- .bt_random_effect_marginal_factor_block_factor(
+    design = design, state = state, block = block
+  )
+  basis <- design$model_matrix %*% factor
+  row_scale <- .bt_random_effect_marginal_factor_block_row_scale(
+    design = design, state = state, n_rows = n_rows, block = block
+  )
+  if(!is.null(row_scale)){
+    basis <- basis * row_scale
+  }
+
+  basis
+}
+
+
+.bt_random_effect_marginal_factor_block_geometry <- function(
+    plan, state, n_rows, block){
+
+  design <- .bt_random_effect_marginal_factor_block_design(
+    plan = plan, n_rows = n_rows, block = block
+  )
+  list(
+    type             = design$type,
+    basis            = .bt_random_effect_marginal_factor_block_basis(
+      design = design, state = state, n_rows = n_rows, block = block
+    ),
+    group_map        = design$group_map,
+    group_covariance = design$group_covariance
+  )
+}
+
+#' Random-effect marginal variance factors
+#'
+#' @description
+#' Extracts row-aligned design multipliers for one-column formula random-effect
+#' blocks that are intended to be marginalized by a downstream likelihood. For
+#' a block with SD parameter \eqn{\tau}, the marginal variance contribution is
+#' \eqn{\tau^2} times `row_multiplier`. With known group covariance this factor
+#' is built from the prepared group kernel, so the dense row-space covariance
+#' factor is \eqn{Z K Z'}.
+#'
+#' @param formula_design a `BayesTools_formula_design` object returned by
+#'   [JAGS_formula()] or [JAGS_formula_design()].
+#' @param blocks optional character vector of random-effect block names. When
+#'   `NULL`, only marginalized random-effect blocks are selected.
+#' @param require_diagonal whether to require the row-space covariance factor to
+#'   be diagonal. This protects downstream likelihoods that can only consume
+#'   row-wise variance multipliers.
+#' @param require_one_to_one whether each observation row must map to a distinct
+#'   grouping level.
+#'
+#' @return A list of class
+#'   `BayesTools_random_effects_marginal_variance_factors` with selected block
+#'   metadata. Each block contains `row_multiplier`, `group_map`,
+#'   `group_levels`, `model_matrix`, SD metadata, compile mode, and known group
+#'   covariance metadata when present.
+#'
+#' @details Unsupported factor representations signal an error inheriting from
+#'   `BayesTools_random_effects_marginal_variance_unavailable`. The condition
+#'   carries stable `block_name` and `reason` fields so downstream packages can
+#'   distinguish structural unavailability from invalid inputs. `reason` is one
+#'   of `"row_indexed_sd"`, `"multiple_columns"`,
+#'   `"non_diagonal_row_covariance"`, or `"repeated_groups"`.
+#'
+#' @seealso [random_effects_marginal_vcov()] [random_effects_compile()]
+#' @export
+random_effects_marginal_variance_factors <- function(
+    formula_design,
+    blocks = NULL,
+    require_diagonal = TRUE,
+    require_one_to_one = FALSE){
+
+  if(!inherits(formula_design, "BayesTools_formula_design")){
+    stop(
+      "'formula_design' must be a BayesTools_formula_design object.",
+      call. = FALSE
+    )
+  }
+  check_char(blocks, "blocks", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
+  check_bool(require_diagonal, "require_diagonal", allow_NA = FALSE)
+  check_bool(require_one_to_one, "require_one_to_one", allow_NA = FALSE)
+
+  selected <- .bt_random_effect_marginal_variance_factor_terms(
+    design = formula_design,
+    blocks = blocks
+  )
+  random_terms <- selected$terms
+  if(length(random_terms) == 0L){
+    stop(
+      if(is.null(blocks)){
+        "No marginalized random-effect blocks were selected."
+      }else{
+        "No random-effect blocks were selected."
+      },
+      call. = FALSE
+    )
+  }
+
+  block_metadata <- lapply(
+    random_terms,
+    .bt_random_effect_marginal_variance_factor_block,
+    design = formula_design,
+    require_diagonal = require_diagonal,
+    require_one_to_one = require_one_to_one
+  )
+  names(block_metadata) <- vapply(random_terms, `[[`, character(1), "block_name")
+
+  row_counts <- vapply(block_metadata, `[[`, integer(1), "n_rows")
+  if(length(unique(row_counts)) != 1L){
+    stop(
+      "Selected random-effect blocks do not have a common row count.",
+      call. = FALSE
+    )
+  }
+  row_names <- lapply(block_metadata, `[[`, "row_names")
+  common_row_names <- vapply(
+    row_names,
+    identical,
+    logical(1),
+    y = row_names[[1L]]
+  )
+  if(!all(common_row_names)){
+    stop(
+      "Selected random-effect blocks do not have common row names.",
+      call. = FALSE
+    )
+  }
+
+  out <- list(
+    parameter = formula_design$parameter,
+    n_rows = row_counts[[1L]],
+    row_names = row_names[[1L]],
+    included_blocks = names(block_metadata),
+    skipped_blocks = selected$skipped,
+    require_diagonal = require_diagonal,
+    require_one_to_one = require_one_to_one,
+    blocks = block_metadata
+  )
+  class(out) <- c(
+    "BayesTools_random_effects_marginal_variance_factors",
+    "list"
+  )
+  out
+}
+
+.bt_random_effect_marginal_variance_factor_terms <- function(design,
+                                                             blocks = NULL){
+
+  random_effects <- .bt_formula_design_random_effects(design)
+  if(length(random_effects) == 0L){
+    stop(
+      "Formula design for parameter '", design$parameter,
+      "' has no random-effect blocks.",
+      call. = FALSE
+    )
+  }
+
+  block_names <- vapply(random_effects, `[[`, character(1), "block_name")
+  if(anyDuplicated(block_names)){
+    stop("Formula random-effect block names must be unique.", call. = FALSE)
+  }
+
+  if(is.null(blocks)){
+    modes <- .bt_random_effects_compile_modes_from_terms(random_effects)
+    selected <- modes == "marginalized"
+    skipped <- data.frame(
+      block_name = block_names[!selected],
+      reason = rep("not marginalized", sum(!selected)),
+      stringsAsFactors = FALSE
+    )
+    return(list(terms = random_effects[selected], skipped = skipped))
+  }
+  if(anyDuplicated(blocks)){
+    stop("'blocks' must be unique.", call. = FALSE)
+  }
+
+  unknown <- setdiff(blocks, block_names)
+  if(length(unknown) > 0L){
+    stop(
+      "Unknown random-effect block(s): ",
+      paste(unknown, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  selected <- random_effects[match(blocks, block_names)]
+  skipped_names <- setdiff(block_names, blocks)
+  skipped <- data.frame(
+    block_name = skipped_names,
+    reason = rep("not requested", length(skipped_names)),
+    stringsAsFactors = FALSE
+  )
+
+  list(terms = selected, skipped = skipped)
+}
+
+.bt_random_effect_marginal_variance_factor_block <- function(random_term,
+                                                             design,
+                                                             require_diagonal,
+                                                             require_one_to_one){
+
+  block_data <- .bt_random_effect_marginal_covariance_block_data(
+    design = design,
+    random_term = random_term,
+    data = NULL
+  )
+
+  if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
+    .bt_random_effect_marginal_variance_unavailable_stop(
+      random_term = random_term,
+      reason = "row_indexed_sd",
+      "Random-effect marginal variance factors for block '",
+      random_term$block_name,
+      "' do not support row-indexed external SD sources."
+    )
+  }
+  if(random_term$n_columns != 1L || ncol(block_data$model_matrix) != 1L){
+    .bt_random_effect_marginal_variance_unavailable_stop(
+      random_term = random_term,
+      reason = "multiple_columns",
+      "Random-effect marginal variance factors for block '",
+      random_term$block_name,
+      "' require one random-effect column."
+    )
+  }
+
+  row_covariance <- .bt_random_effect_marginal_variance_base_covariance(
+    random_term = random_term,
+    model_matrix = block_data$model_matrix,
+    group_map = block_data$group_map
+  )
+  dimnames(row_covariance) <- list(block_data$row_names, block_data$row_names)
+  row_status <- .bt_random_effect_row_covariance_diagonal_status(row_covariance)
+  one_to_one <- !anyDuplicated(block_data$group_map)
+
+  if(isTRUE(require_diagonal) && !isTRUE(row_status$is_diagonal)){
+    .bt_random_effect_marginal_variance_unavailable_stop(
+      random_term = random_term,
+      reason = "non_diagonal_row_covariance",
+      "Random-effect marginal variance factors for block '",
+      random_term$block_name,
+      "' require diagonal row-space covariance, but the block has off-diagonal row covariance."
+    )
+  }
+  if(isTRUE(require_one_to_one) && !isTRUE(one_to_one)){
+    .bt_random_effect_marginal_variance_unavailable_stop(
+      random_term = random_term,
+      reason = "repeated_groups",
+      "Random-effect marginal variance factors for block '",
+      random_term$block_name,
+      "' require a one-to-one row-to-group mapping, but grouping levels repeat."
+    )
+  }
+
+  row_multiplier <- diag(row_covariance)
+  names(row_multiplier) <- block_data$row_names
+  column_names <- colnames(block_data$model_matrix)
+  if(is.null(column_names)){
+    column_names <- paste0("column", seq_len(ncol(block_data$model_matrix)))
+  }
+
+  list(
+    block_name = random_term$block_name,
+    grouping = random_term$group_label,
+    structure = .bt_random_effect_structure(
+      random_term,
+      context = "Random-effect marginal variance factor metadata"
+    ),
+    compile_mode = .bt_random_effect_term_compile_mode(random_term),
+    n_groups = length(block_data$group_levels),
+    fitted_n_groups = random_term$n_groups,
+    n_columns = random_term$n_columns,
+    n_rows = nrow(block_data$model_matrix),
+    row_names = block_data$row_names,
+    row_order = seq_len(nrow(block_data$model_matrix)),
+    group_levels = block_data$group_levels,
+    group_map = block_data$group_map,
+    column_names = column_names,
+    model_matrix = block_data$model_matrix,
+    sd_parameter_names = random_term$sd_parameter_names,
+    sd_binding = random_term$sd_binding,
+    homogeneous_sd = random_term$homogeneous_sd,
+    group_covariance = .bt_random_effect_group_covariance_metadata(random_term),
+    row_multiplier = row_multiplier,
+    row_covariance_diagonal = row_status$is_diagonal,
+    max_off_diagonal = row_status$max_off_diagonal,
+    diagonal_tolerance = row_status$tolerance,
+    one_to_one = one_to_one
+  )
+}
+
+# Signal that a valid random-effect block cannot provide row variance factors.
+.bt_random_effect_marginal_variance_unavailable_stop <- function(
+    random_term, reason, ...){
+
+  condition <- errorCondition(
+    message = paste0(...),
+    call = NULL,
+    class = "BayesTools_random_effects_marginal_variance_unavailable",
+    block_name = random_term$block_name,
+    reason = reason
+  )
+  stop(condition)
+}
+
+.bt_random_effect_marginal_variance_base_covariance <- function(random_term,
+                                                                model_matrix,
+                                                                group_map){
+
+  if(.bt_random_effect_has_known_group_covariance(random_term)){
+    group_covariance <- .bt_random_effect_known_group_covariance(
+      random_term,
+      context = "Random-effect marginal variance factor"
+    )
+    if(any(group_map > length(group_covariance$levels))){
+      stop(
+        "Random-effect marginal variance factors for block '",
+        random_term$block_name,
+        "' cannot include new levels with known group covariance.",
+        call. = FALSE
+      )
+    }
+    return(
+      group_covariance$kernel[group_map, group_map, drop = FALSE] *
+        tcrossprod(model_matrix[, 1L])
+    )
+  }
+
+  same_group <- outer(as.integer(group_map), as.integer(group_map), "==")
+  storage.mode(same_group) <- "double"
+  same_group * tcrossprod(model_matrix[, 1L])
+}
+
+.bt_random_effect_row_covariance_diagonal_status <- function(row_covariance){
+
+  off_diagonal <- row_covariance
+  diag(off_diagonal) <- 0
+  max_off_diagonal <- max(abs(off_diagonal))
+
+  list(
+    is_diagonal = isTRUE(all(off_diagonal == 0)),
+    max_off_diagonal = max_off_diagonal,
+    tolerance = 0
+  )
+}
+
+.bt_random_effect_marginal_covariance_samples <- function(design, posterior,
+                                                          prior_list,
+                                                          data = NULL,
+                                                          blocks = NULL,
+                                                          new_levels = NULL,
+                                                          fitted_rows = NULL,
+                                                          diagonal_only = FALSE,
+                                                          parameters = NULL){
+
+  selected <- .bt_random_effect_marginal_covariance_terms(
+    design = design,
+    blocks = blocks
+  )
+  random_terms <- selected$terms
+  if(length(random_terms) == 0L){
+    stop("No random-effect blocks were selected.", call. = FALSE)
+  }
+
+  samples <- NULL
+  block_metadata <- vector("list", length(random_terms))
+  for(block_i in seq_along(random_terms)){
+    random_term <- random_terms[[block_i]]
+    block_new_levels <- .bt_random_effect_new_levels_policy(
+      random_term = random_term,
+      override = new_levels
+    )
+    block_data <- .bt_random_effect_marginal_covariance_block_data(
+      design = design,
+      random_term = random_term,
+      data = data
+    )
+    .bt_random_effect_check_memory(
+      estimate = .bt_random_effect_output_memory_estimate(
+        operation = "random-effect marginal covariance",
+        n_rows = nrow(block_data$model_matrix),
+        n_draws = nrow(posterior),
+        covariance = TRUE,
+        diagonal_only = diagonal_only
+      ),
+      block_name = random_term$block_name,
+      alternative = if(isTRUE(diagonal_only)){
+        paste0(
+          "Reduce the number of rows, posterior draws, or selected blocks. ",
+          "Raise the option (or set it to Inf) only after verifying the ",
+          "operation's memory budget."
+        )
+      }else{
+        paste0(
+          "Use diagonal_only = TRUE when only marginal variances are needed, ",
+          "or reduce the number of rows, posterior draws, or selected blocks. ",
+          "Raise the option (or set it to Inf) only after verifying the ",
+          "operation's memory budget."
+        )
+      }
+    )
+    prediction_rows <- if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
+      .bt_random_effect_prediction_fitted_rows(
+        random_term = random_term,
+        n_rows = nrow(block_data$model_matrix),
+        data_supplied = block_data$data_supplied,
+        fitted_rows = fitted_rows,
+        new_row = block_data$group_map > random_term$n_groups,
+        context = "Random-effect marginal covariance"
+      )
+    }else{
+      NULL
+    }
+    new_level_info <- .bt_random_effect_marginal_covariance_new_level_info(
+      random_term = random_term,
+      block_data = block_data,
+      new_levels = block_new_levels
+    )
+    block_output <- .bt_random_effect_marginal_covariance_block_samples(
+      random_term = random_term,
+      model_matrix = block_data$model_matrix,
+      group_map = block_data$group_map,
+      source_data = block_data$source_data,
+      prediction_rows = prediction_rows,
+      posterior = posterior,
+      prior_list = prior_list,
+      parameters = parameters,
+      diagonal_only = diagonal_only
+    )
+    if(any(new_level_info$row_mask) &&
+       identical(block_new_levels$method, "zero")){
+      if(isTRUE(diagonal_only)){
+        block_output$samples[, new_level_info$row_mask] <- 0
+      }else{
+        block_output$samples[, new_level_info$row_mask, ] <- 0
+        block_output$samples[, , new_level_info$row_mask] <- 0
+      }
+    }
+    if(is.null(samples)){
+      samples <- block_output$samples
+    }else{
+      .bt_random_effect_marginal_covariance_check_block_output(
+        random_term = random_term,
+        samples = samples,
+        n_draws = nrow(posterior),
+        row_names = block_data$row_names,
+        diagonal_only = diagonal_only
+      )
+      samples <- samples + block_output$samples
+    }
+    block_metadata[[block_i]] <- .bt_random_effect_marginal_covariance_block_metadata(
+      random_term = random_term,
+      model_matrix = block_data$model_matrix,
+      group_map = block_data$group_map,
+      group_levels = block_data$group_levels,
+      row_names = block_data$row_names,
+      sample_dim = block_output$sample_dim,
+      new_level_info = new_level_info,
+      diagonal_only = diagonal_only
+    )
+  }
+  names(block_metadata) <- vapply(random_terms, `[[`, character(1), "block_name")
+
+  row_names <- if(isTRUE(diagonal_only)){
+    colnames(samples)
+  }else{
+    dimnames(samples)[[2L]]
+  }
+  sample_entries <- prod(dim(samples))
+  metadata <- list(
+    parameter = design$parameter,
+    n_draws = nrow(samples),
+    n_rows = if(isTRUE(diagonal_only)) ncol(samples) else dim(samples)[2L],
+    row_names = row_names,
+    row_order = seq_along(row_names),
+    data_source = if(is.null(data)) "fitted" else "data",
+    dense = !isTRUE(diagonal_only),
+    dense_entries = if(isTRUE(diagonal_only)) NA_real_ else sample_entries,
+    estimated_size_bytes = as.numeric(utils::object.size(samples)),
+    potentially_expensive = sample_entries > 1e7,
+    included_blocks = names(block_metadata),
+    skipped_blocks = selected$skipped,
+    structures = vapply(block_metadata, `[[`, character(1), "structure"),
+    blocks = block_metadata
+  )
+  if(isTRUE(diagonal_only)){
+    metadata$representation <- "diagonal"
+    metadata$quantity <- "variance"
+    metadata$diagonal_only <- TRUE
+    metadata$sample_dim <- dim(samples)
+    metadata$sample_entries <- sample_entries
+    metadata$equivalent_dense_entries <-
+      as.numeric(nrow(samples)) * as.numeric(ncol(samples))^2
+  }
+
+  out <- list(samples = samples, metadata = metadata)
+  class(out) <- c(
+    "BayesTools_random_effects_marginal_vcov",
+    "list"
+  )
+  out
+}
+
+.bt_random_effect_marginal_covariance_check_block_output <- function(
+    random_term,
+    samples,
+    n_draws,
+    row_names,
+    diagonal_only = FALSE){
+
+  expected_dim <- if(isTRUE(diagonal_only)){
+    c(n_draws, length(row_names))
+  }else{
+    c(n_draws, length(row_names), length(row_names))
+  }
+  if(!identical(dim(samples), expected_dim)){
+    stop(
+      "Random-effect marginal covariance block '",
+      random_term$block_name,
+      "' produced dimensions ",
+      paste(expected_dim, collapse = " x "),
+      ", but previous block contributions have dimensions ",
+      paste(dim(samples), collapse = " x "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  actual_row_names <- if(isTRUE(diagonal_only)){
+    colnames(samples)
+  }else{
+    dimnames(samples)[[2L]]
+  }
+  if(!identical(actual_row_names, row_names)){
+    stop(
+      "Random-effect marginal covariance block '",
+      random_term$block_name,
+      "' produced row names that do not match previous block contributions.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+.bt_random_effect_marginal_covariance_design <- function(fit,
+                                                         parameter = NULL){
+
+  if(inherits(fit, "BayesTools_formula_design")){
+    if(is.null(parameter)){
+      return(fit)
+    }
+    if(!identical(fit$parameter, parameter)){
+      stop(
+        "Formula design for parameter '", parameter, "' was not found.",
+        call. = FALSE
+      )
+    }
+    return(fit)
+  }
+
+  formula_design <- NULL
+  if(is.list(fit) && length(fit) > 0L &&
+     all(vapply(fit, inherits, logical(1), what = "BayesTools_formula_design"))){
+    formula_design <- fit
+  }else{
+    formula_design <- try(JAGS_formula_design(fit), silent = TRUE)
+    if(inherits(formula_design, "try-error")){
+      formula_design <- NULL
+    }
+  }
+
+  if(is.null(formula_design)){
+    stop(
+      "Random-effect marginal covariance construction needs fitted formula design metadata. ",
+      "Use a fit produced by JAGS_fit() with formula_list, or pass a BayesTools_formula_design object.",
+      call. = FALSE
+    )
+  }
+
+  if(!is.null(parameter)){
+    if(!parameter %in% names(formula_design)){
+      matches <- vapply(
+        formula_design,
+        function(design) identical(design$parameter, parameter),
+        logical(1)
+      )
+      if(!any(matches)){
+        stop(
+          "Formula design for parameter '", parameter, "' was not found.",
+          call. = FALSE
+        )
+      }
+      return(formula_design[[which(matches)[1L]]])
+    }
+    return(formula_design[[parameter]])
+  }
+
+  if(length(formula_design) != 1L){
+    stop(
+      "'parameter' is required when more than one formula design is stored.",
+      call. = FALSE
+    )
+  }
+
+  formula_design[[1L]]
+}
+
+.bt_random_effect_marginal_covariance_posterior <- function(
+    fit,
+    posterior_samples = NULL){
+
+  if(is.null(posterior_samples)){
+    if(inherits(fit, "BayesTools_formula_design") ||
+       (is.list(fit) && length(fit) > 0L &&
+        all(vapply(fit, inherits, logical(1), what = "BayesTools_formula_design")))){
+      stop(
+        "'posterior_samples' must be supplied when 'fit' is formula design metadata.",
+        call. = FALSE
+      )
+    }
+    posterior <- as.matrix(.fit_to_posterior(fit))
+  }else if(is.matrix(posterior_samples) || is.data.frame(posterior_samples)){
+    posterior <- as.matrix(posterior_samples)
+  }else{
+    posterior <- as.matrix(.fit_to_posterior(posterior_samples))
+  }
+
+  .bt_random_effect_marginal_covariance_validate_posterior(posterior)
+}
+
+.bt_random_effect_marginal_covariance_validate_posterior <- function(
+    posterior, allow_zero_columns = FALSE){
+
+  if(!is.matrix(posterior) || length(dim(posterior)) != 2L){
+    stop("'posterior_samples' must be a two-dimensional sample matrix.", call. = FALSE)
+  }
+  if(!is.numeric(posterior)){
+    stop("'posterior_samples' must be numeric.", call. = FALSE)
+  }
+  if(nrow(posterior) < 1L){
+    stop("'posterior_samples' must contain at least one draw.", call. = FALSE)
+  }
+  zero_columns_allowed <- isTRUE(allow_zero_columns) && ncol(posterior) == 0L
+  if(!zero_columns_allowed){
+    posterior_names <- colnames(posterior)
+    if(is.null(posterior_names) || length(posterior_names) != ncol(posterior) ||
+       anyNA(posterior_names) || any(!nzchar(posterior_names))){
+      stop("'posterior_samples' must have non-empty column names.", call. = FALSE)
+    }
+    if(anyDuplicated(posterior_names)){
+      duplicated_names <- unique(posterior_names[duplicated(posterior_names)])
+      stop(
+        "'posterior_samples' column names must be unique. Duplicated column(s): ",
+        paste0("'", duplicated_names[seq_len(min(4L, length(duplicated_names)))], "'",
+               collapse = ", "),
+        if(length(duplicated_names) > 4L) ", ..." else "",
+        ".",
+        call. = FALSE
+      )
+    }
+  }
+
+  if(is.null(attr(
+    posterior,
+    "BayesTools_random_effect_dirichlet_draw_cache",
+    exact = TRUE
+  ))){
+    attr(
+      posterior,
+      "BayesTools_random_effect_dirichlet_draw_cache"
+    ) <- new.env(parent = emptyenv())
+  }
+
+  posterior
+}
+
+.bt_random_effect_marginal_covariance_prior_list <- function(prior_list,
+                                                             fit,
+                                                             design){
+
+  if(!is.null(prior_list)){
+    check_list(prior_list, "prior_list", allow_NULL = FALSE)
+    return(prior_list)
+  }
+
+  fit_prior_list <- attr(fit, "prior_list", exact = TRUE)
+  if(is.list(fit_prior_list) && length(fit_prior_list) > 0L){
+    return(fit_prior_list)
+  }
+  if(is.list(design$prior_list)){
+    return(design$prior_list)
+  }
+
+  list()
+}
+
+.bt_random_effect_marginal_covariance_terms <- function(design,
+                                                        blocks = NULL){
+
+  random_effects <- .bt_formula_design_random_effects(design)
+  if(length(random_effects) == 0L){
+    stop(
+      "Formula design for parameter '", design$parameter,
+      "' has no random-effect blocks.",
+      call. = FALSE
+    )
+  }
+
+  block_names <- vapply(random_effects, `[[`, character(1), "block_name")
+  if(anyDuplicated(block_names)){
+    stop("Formula random-effect block names must be unique.", call. = FALSE)
+  }
+
+  if(is.null(blocks)){
+    skipped <- data.frame(
+      block_name = character(),
+      reason = character(),
+      stringsAsFactors = FALSE
+    )
+    return(list(terms = random_effects, skipped = skipped))
+  }
+  if(anyDuplicated(blocks)){
+    stop("'blocks' must be unique.", call. = FALSE)
+  }
+
+  unknown <- setdiff(blocks, block_names)
+  if(length(unknown) > 0L){
+    stop(
+      "Unknown random-effect block(s): ",
+      paste(unknown, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  selected <- random_effects[match(blocks, block_names)]
+  skipped_names <- setdiff(block_names, blocks)
+  skipped <- data.frame(
+    block_name = skipped_names,
+    reason = rep("not requested", length(skipped_names)),
+    stringsAsFactors = FALSE
+  )
+
+  list(terms = selected, skipped = skipped)
+}
+
+.bt_random_effect_marginal_covariance_block_data <- function(design,
+                                                             random_term,
+                                                             data = NULL){
+
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect marginal covariance metadata"
+  )
+
+  if(is.null(data)){
+    model_matrix <- random_term$model_matrix
+    group_map <- random_term$group_map
+    group_levels <- random_term$group_levels
+    source_data <- design$source_data
+  }else{
+    random_data <- if(structure %in% c("cs", "hcs", "ar1", "car", "har")){
+      data
+    }else{
+      .bt_random_effect_marginal_covariance_scaled_data(
+        design = design,
+        data = data
+      )
+    }
+    prediction <- .bt_random_effect_prediction_data(
+      random_term = random_term,
+      data = random_data,
+      group_data = data,
+      allow_new_groups = .bt_random_effect_allows_new_levels(random_term),
+      context = "random_effects_marginal_vcov()"
+    )
+    model_matrix <- prediction$model_matrix
+    group_map <- prediction$group_map
+    group_levels <- prediction$group_levels
+    source_data <- data
+  }
+
+  .bt_random_effect_marginal_covariance_validate_block_data(
+    random_term = random_term,
+    model_matrix = model_matrix,
+    group_map = group_map,
+    group_levels = group_levels
+  )
+
+  row_names <- rownames(model_matrix)
+  if(is.null(row_names)){
+    row_names <- as.character(seq_len(nrow(model_matrix)))
+  }
+
+  list(
+    model_matrix = model_matrix,
+    group_map = group_map,
+    group_levels = group_levels,
+    data_supplied = !is.null(data),
+    source_data = source_data,
+    row_names = row_names
+  )
+}
+
+.bt_random_effect_marginal_covariance_scaled_data <- function(design, data){
+
+  if(is.null(design$formula_scale)){
+    return(data)
+  }
+
+  fit <- structure(list(), class = "BayesTools_fit")
+  attr(fit, "formula_scale") <- stats::setNames(
+    list(design$formula_scale),
+    design$parameter
+  )
+
+  .bt_apply_formula_scale_to_data(
+    fit = fit,
+    parameter = design$parameter,
+    data = data,
+    predictors_type = design$predictor_types
+  )
+}
+
+.bt_random_effect_marginal_covariance_validate_block_data <- function(
+    random_term,
+    model_matrix,
+    group_map,
+    group_levels = random_term$group_levels){
+
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect marginal covariance metadata"
+  )
+  if(!structure %in% c("id", "diag", "us", "cs", "hcs", "ar1", "car", "har")){
+    stop(
+      "Random-effect marginal covariance for block '",
+      random_term$block_name,
+      "' does not support covariance structure '",
+      structure,
+      "'.",
+      call. = FALSE
+    )
+  }
+  if(!is.matrix(model_matrix) || !is.numeric(model_matrix)){
+    stop(
+      "Random-effect marginal covariance metadata for block '",
+      random_term$block_name,
+      "' are missing numeric 'random_term$model_matrix'.",
+      call. = FALSE
+    )
+  }
+  n_columns <- .bt_random_effect_marginal_covariance_int_metadata(
+    random_term$n_columns,
+    field = "random_term$n_columns",
+    random_term = random_term
+  )
+  fitted_n_groups <- .bt_random_effect_marginal_covariance_int_metadata(
+    random_term$n_groups,
+    field = "random_term$n_groups",
+    random_term = random_term
+  )
+  if(ncol(model_matrix) != n_columns){
+    stop(
+      "Random-effect marginal covariance metadata for block '",
+      random_term$block_name,
+      "' have inconsistent model-matrix and column counts.",
+      call. = FALSE
+    )
+  }
+  if(nrow(model_matrix) < 1L){
+    stop(
+      "Random-effect marginal covariance metadata for block '",
+      random_term$block_name,
+      "' must contain at least one observation row.",
+      call. = FALSE
+    )
+  }
+  if(!is.numeric(group_map) || length(group_map) != nrow(model_matrix) ||
+     anyNA(group_map) || any(!is.finite(group_map)) ||
+     any(group_map < 1L) || any(group_map > .Machine$integer.max) ||
+     any(group_map != floor(group_map)) ||
+     any(group_map > length(group_levels))){
+    stop(
+      "Random-effect marginal covariance metadata for block '",
+      random_term$block_name,
+      "' are missing valid 'random_term$group_map'.",
+      call. = FALSE
+    )
+  }
+  if(is.null(random_term$group_levels) ||
+     length(random_term$group_levels) != fitted_n_groups){
+    stop(
+      "Random-effect marginal covariance metadata for block '",
+      random_term$block_name,
+      "' are missing canonical 'random_term$group_levels'.",
+      call. = FALSE
+    )
+  }
+  if(is.null(group_levels) || length(group_levels) < fitted_n_groups){
+    stop(
+      "Random-effect marginal covariance metadata for block '",
+      random_term$block_name,
+      "' are missing row-level group levels.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+.bt_random_effect_marginal_covariance_new_level_info <- function(
+    random_term,
+    block_data,
+    new_levels){
+
+  new_row <- block_data$group_map > random_term$n_groups
+  new_group_index <- if(length(block_data$group_levels) > random_term$n_groups){
+    seq.int(random_term$n_groups + 1L, length(block_data$group_levels))
+  }else{
+    integer()
+  }
+  new_group_levels <- block_data$group_levels[new_group_index]
+  if(length(new_group_levels) > 0L && !isTRUE(new_levels$allow)){
+    stop(
+      "New random-effect level(s) for block '", random_term$block_name,
+      "' require an explicit new-level policy: ",
+      paste(new_group_levels, collapse = ", "),
+      ". Use new_levels = \"zero\" or new_levels = \"sample\".",
+      call. = FALSE
+    )
+  }
+  if(length(new_group_levels) > 0L &&
+     .bt_random_effect_has_known_group_covariance(random_term)){
+    stop(
+      "New random-effect level(s) for block '",
+      random_term$block_name,
+      "' are not supported with known group covariance: ",
+      paste(new_group_levels, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  list(
+    policy = new_levels,
+    group_levels = new_group_levels,
+    group_index = new_group_index,
+    row_mask = new_row,
+    rows = which(new_row)
+  )
+}
+
+.bt_random_effect_marginal_covariance_int_metadata <- function(x, field,
+                                                               random_term){
+
+  if(is.numeric(x) && length(x) == 1L && !is.na(x) && is.finite(x) &&
+     x == as.integer(x) && x >= 1L){
+    return(as.integer(x))
+  }
+
+  stop(
+    "Random-effect marginal covariance metadata",
+    .bt_random_effect_metadata_block_detail(random_term),
+    " are missing canonical '",
+    field,
+    "'.",
+    call. = FALSE
+  )
+}
+
+.bt_random_effect_marginal_covariance_block_samples <- function(
+    random_term,
+    model_matrix,
+    group_map,
+    source_data,
+    prediction_rows,
+    posterior,
+    prior_list,
+    parameters = NULL,
+    diagonal_only = FALSE){
+
+  if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
+    return(.bt_random_effect_marginal_covariance_row_indexed_block(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      source_data = source_data,
+      prediction_rows = prediction_rows,
+      posterior = posterior,
+      prior_list = prior_list,
+      parameters = parameters,
+      diagonal_only = diagonal_only
+    ))
+  }
+
+  n_columns <- ncol(model_matrix)
+  sd_draws <- .bt_random_effect_sd_draws(
+    random_term = random_term,
+    n_columns = n_columns,
+    posterior = posterior,
+    prior_list = prior_list
+  )
+  if(is.null(sd_draws)){
+    .bt_random_effect_marginal_covariance_missing_sd_stop(
+      random_term = random_term,
+      n_columns = n_columns
+    )
+  }
+  .bt_random_effect_marginal_covariance_validate_draw_matrix(
+    draws = sd_draws,
+    n_draws = nrow(posterior),
+    n_columns = n_columns,
+    label = "SD",
+    random_term = random_term,
+    nonnegative = TRUE
+  )
+
+  if(.bt_random_effect_has_known_group_covariance(random_term)){
+    return(.bt_random_effect_marginal_covariance_known_group_block(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      posterior = posterior,
+      sd_draws = sd_draws,
+      diagonal_only = diagonal_only
+    ))
+  }
+
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect marginal covariance metadata"
+  )
+  if(structure %in% c("diag", "id")){
+    return(.bt_random_effect_marginal_covariance_independent(
+      model_matrix = model_matrix,
+      group_map = group_map,
+      n_draws = nrow(posterior),
+      column_scale_draws = sd_draws,
+      diagonal_only = diagonal_only
+    ))
+  }
+  if(identical(structure, "car")){
+    return(.bt_random_effect_marginal_covariance_car(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      posterior = posterior,
+      row_weights = NULL,
+      column_weights = sd_draws,
+      diagonal_only = diagonal_only
+    ))
+  }
+
+  row_column <- .bt_random_effect_marginal_covariance_structured_columns(
+    random_term = random_term,
+    model_matrix = model_matrix
+  )
+  if(isTRUE(diagonal_only)){
+    one_sparse <- .bt_random_effect_marginal_covariance_one_sparse_columns(
+      model_matrix
+    )
+    if(!is.null(one_sparse)){
+      row_sd <- sd_draws[, one_sparse$row_column, drop = FALSE] *
+        matrix(
+          one_sparse$row_value,
+          nrow = nrow(posterior),
+          ncol = nrow(model_matrix),
+          byrow = TRUE
+        )
+      return(.bt_random_effect_marginal_variance_one_sparse(
+        model_matrix = model_matrix,
+        row_sd = row_sd
+      ))
+    }
+  }
+  if(!is.null(row_column)){
+    return(.bt_random_effect_marginal_covariance_structured_one_hot(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      posterior = posterior,
+      row_column = row_column,
+      row_sd = sd_draws[, row_column, drop = FALSE],
+      diagonal_only = diagonal_only
+    ))
+  }
+
+  if(isTRUE(diagonal_only)){
+    cholesky <- .bt_random_effect_cholesky_draws(
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = posterior
+    )
+    if(is.null(cholesky)){
+      .bt_random_effect_marginal_covariance_missing_correlation_stop(
+        random_term = random_term,
+        n_columns = n_columns,
+        posterior = posterior
+      )
+    }
+    return(.bt_random_effect_marginal_variance_cholesky(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      cholesky = cholesky,
+      column_weights = sd_draws
+    ))
+  }
+
+  correlation <- .bt_random_effect_marginal_covariance_correlation_draws(
+    random_term = random_term,
+    n_columns = n_columns,
+    posterior = posterior
+  )
+
+  list(
+    samples = .bt_random_effect_marginal_covariance_expand(
+      model_matrix = model_matrix,
+      group_map = group_map,
+      block_covariance = correlation,
+      column_weights = sd_draws
+    ),
+    sample_dim = c(nrow(posterior), nrow(model_matrix), nrow(model_matrix))
+  )
+}
+
+.bt_random_effect_marginal_covariance_known_group_block <- function(
+    random_term,
+    model_matrix,
+    group_map,
+    posterior,
+    sd_draws,
+    diagonal_only = FALSE){
+
+  n_draws <- nrow(posterior)
+  n_rows <- nrow(model_matrix)
+  n_columns <- ncol(model_matrix)
+  group_covariance <- .bt_random_effect_known_group_covariance(
+    random_term,
+    context = "Random-effect marginal covariance"
+  )
+  if(any(group_map > length(group_covariance$levels))){
+    stop(
+      "Random-effect marginal covariance for block '",
+      random_term$block_name,
+      "' cannot include new levels with known group covariance.",
+      call. = FALSE
+    )
+  }
+
+  row_names <- rownames(model_matrix)
+  if(is.null(row_names)){
+    row_names <- as.character(seq_len(n_rows))
+  }
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect marginal covariance metadata"
+  )
+  correlation <- if(structure %in% c("diag", "id") || n_columns == 1L){
+    NULL
+  }else{
+    .bt_random_effect_marginal_covariance_correlation_draws(
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = posterior
+    )
+  }
+  group_kernel <- group_covariance$kernel[group_map, group_map, drop = FALSE]
+  if(isTRUE(diagonal_only)){
+    out <- matrix(
+      NA_real_,
+      nrow = n_draws,
+      ncol = n_rows,
+      dimnames = list(draw = NULL, row = row_names)
+    )
+  }else{
+    out <- array(
+      NA_real_,
+      dim = c(n_draws, n_rows, n_rows),
+      dimnames = list(draw = NULL, row = row_names, column = row_names)
+    )
+  }
+  lower <- lower.tri(group_kernel)
+  for(draw in seq_len(n_draws)){
+    coefficient_covariance <- if(is.null(correlation)){
+      diag(sd_draws[draw, ]^2, nrow = n_columns, ncol = n_columns)
+    }else{
+      correlation[draw, , ] * tcrossprod(sd_draws[draw, ])
+    }
+    design_covariance <- tcrossprod(
+      model_matrix %*% coefficient_covariance,
+      model_matrix
+    )
+    covariance <- group_kernel * design_covariance
+    covariance[lower] <- t(covariance)[lower]
+    if(isTRUE(diagonal_only)){
+      out[draw, ] <- diag(covariance)
+    }else{
+      out[draw, , ] <- covariance
+    }
+  }
+
+  list(
+    samples = out,
+    sample_dim = if(isTRUE(diagonal_only)){
+      c(n_draws, n_rows)
+    }else{
+      c(n_draws, n_rows, n_rows)
+    }
+  )
+}
+
+.bt_random_effect_marginal_covariance_row_indexed_block <- function(
+    random_term,
+    model_matrix,
+    group_map,
+    source_data,
+    prediction_rows,
+    posterior,
+    prior_list,
+    parameters = NULL,
+    diagonal_only = FALSE){
+
+  n_draws <- nrow(posterior)
+  n_rows <- nrow(model_matrix)
+  n_columns <- ncol(model_matrix)
+
+  source_draws <- .bt_random_effect_row_indexed_source_draws(
+    random_term = random_term,
+    n_rows = n_rows,
+    posterior = posterior,
+    data = source_data,
+    parameters = parameters,
+    prediction_rows = prediction_rows,
+    context = "Random-effect marginal covariance"
+  )
+  .bt_random_effect_marginal_covariance_validate_draw_matrix(
+    draws = source_draws,
+    n_draws = n_draws,
+    n_columns = n_rows,
+    label = "row-indexed SD source",
+    random_term = random_term,
+    nonnegative = TRUE
+  )
+
+  column_allocation <- .bt_random_effect_row_indexed_column_allocation_draws(
+    random_term = random_term,
+    posterior = posterior,
+    prior_list = prior_list,
+    n_columns = n_columns
+  )
+  if(is.null(column_allocation)){
+    allocation <- .bt_random_effect_row_indexed_allocation_draws(
+      random_term = random_term,
+      posterior = posterior,
+      prior_list = prior_list
+    )
+    .bt_random_effect_marginal_covariance_validate_draw_matrix(
+      draws = matrix(allocation, ncol = 1L),
+      n_draws = n_draws,
+      n_columns = 1L,
+      label = "row-indexed SD allocation",
+      random_term = random_term,
+      nonnegative = TRUE
+    )
+  }else{
+    .bt_random_effect_marginal_covariance_validate_draw_matrix(
+      draws = column_allocation,
+      n_draws = n_draws,
+      n_columns = n_columns,
+      label = "row-indexed column SD allocation",
+      random_term = random_term,
+      nonnegative = TRUE
+    )
+  }
+
+  if(is.null(column_allocation)){
+    row_weights <- source_draws *
+      matrix(allocation, nrow = n_draws, ncol = n_rows)
+    column_weights <- NULL
+  }else{
+    row_weights <- source_draws
+    column_weights <- column_allocation
+  }
+
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect marginal covariance metadata"
+  )
+  if(structure %in% c("diag", "id")){
+    return(.bt_random_effect_marginal_covariance_independent(
+      model_matrix = model_matrix,
+      group_map = group_map,
+      n_draws = n_draws,
+      column_scale_draws = column_weights,
+      row_scale_draws = row_weights,
+      diagonal_only = diagonal_only
+    ))
+  }
+  if(identical(structure, "car")){
+    return(.bt_random_effect_marginal_covariance_car(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      posterior = posterior,
+      row_weights = row_weights,
+      column_weights = column_weights,
+      diagonal_only = diagonal_only
+    ))
+  }
+
+  if(isTRUE(diagonal_only)){
+    one_sparse <- .bt_random_effect_marginal_covariance_one_sparse_columns(
+      model_matrix
+    )
+    if(!is.null(one_sparse)){
+      row_sd <- if(is.null(column_allocation)){
+        row_weights
+      }else{
+        source_draws *
+          column_allocation[, one_sparse$row_column, drop = FALSE]
+      }
+      row_sd <- row_sd * matrix(
+        one_sparse$row_value,
+        nrow = n_draws,
+        ncol = n_rows,
+        byrow = TRUE
+      )
+      return(.bt_random_effect_marginal_variance_one_sparse(
+        model_matrix = model_matrix,
+        row_sd = row_sd
+      ))
+    }
+  }
+
+  row_column <- .bt_random_effect_marginal_covariance_structured_columns(
+    random_term = random_term,
+    model_matrix = model_matrix
+  )
+  if(!is.null(row_column)){
+    row_sd <- if(is.null(column_allocation)){
+      row_weights
+    }else{
+      source_draws * column_allocation[, row_column, drop = FALSE]
+    }
+    return(.bt_random_effect_marginal_covariance_structured_one_hot(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      posterior = posterior,
+      row_column = row_column,
+      row_sd = row_sd,
+      diagonal_only = diagonal_only
+    ))
+  }
+
+  if(isTRUE(diagonal_only)){
+    cholesky <- .bt_random_effect_cholesky_draws(
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = posterior
+    )
+    if(is.null(cholesky)){
+      .bt_random_effect_marginal_covariance_missing_correlation_stop(
+        random_term = random_term,
+        n_columns = n_columns,
+        posterior = posterior
+      )
+    }
+    return(.bt_random_effect_marginal_variance_cholesky(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      cholesky = cholesky,
+      row_weights = row_weights,
+      column_weights = column_weights
+    ))
+  }
+
+  correlation <- .bt_random_effect_marginal_covariance_correlation_draws(
+    random_term = random_term,
+    n_columns = n_columns,
+    posterior = posterior
+  )
+
+  list(
+    samples = .bt_random_effect_marginal_covariance_expand(
+      model_matrix = model_matrix,
+      group_map = group_map,
+      block_covariance = correlation,
+      row_weights = row_weights,
+      column_weights = column_weights
+    ),
+    sample_dim = c(n_draws, n_rows, n_rows)
+  )
+}
+
+.bt_random_effect_marginal_covariance_one_sparse_columns <- function(
+    model_matrix){
+
+  if(any(!is.finite(model_matrix))){
+    return(NULL)
+  }
+  nonzero <- model_matrix != 0
+  if(any(rowSums(nonzero) != 1L)){
+    return(NULL)
+  }
+
+  row_column <- max.col(nonzero, ties.method = "first")
+  row_value <- model_matrix[cbind(seq_len(nrow(model_matrix)), row_column)]
+  if(any(!is.finite(row_value))){
+    return(NULL)
+  }
+
+  list(row_column = row_column, row_value = row_value)
+}
+
+.bt_random_effect_marginal_variance_one_sparse <- function(model_matrix,
+                                                           row_sd){
+
+  n_draws <- nrow(row_sd)
+  n_rows  <- nrow(model_matrix)
+  if(!is.matrix(row_sd) || !identical(dim(row_sd), c(n_draws, n_rows)) ||
+     any(!is.finite(row_sd))){
+    stop("One-sparse random-effect marginal SD draws are inconsistent.",
+         call. = FALSE)
+  }
+
+  row_names <- rownames(model_matrix)
+  if(is.null(row_names)){
+    row_names <- as.character(seq_len(n_rows))
+  }
+  samples <- row_sd^2
+  colnames(samples) <- row_names
+
+  list(
+    samples = samples,
+    sample_dim = c(n_draws, n_rows)
+  )
+}
+
+.bt_random_effect_marginal_variance_cholesky <- function(
+    random_term,
+    model_matrix,
+    cholesky,
+    row_weights = NULL,
+    column_weights = NULL){
+
+  .bt_random_effect_marginal_covariance_cholesky(
+    random_term = random_term,
+    model_matrix = model_matrix,
+    group_map = NULL,
+    cholesky = cholesky,
+    row_weights = row_weights,
+    column_weights = column_weights,
+    diagonal_only = TRUE
+  )
+}
+
+.bt_random_effect_marginal_covariance_car <- function(
+    random_term,
+    model_matrix,
+    group_map,
+    posterior,
+    row_weights = NULL,
+    column_weights = NULL,
+    diagonal_only = FALSE){
+
+  n_columns <- ncol(model_matrix)
+  correlation <- .bt_random_effect_correlation_metadata(
+    random_term = random_term,
+    structure = "car",
+    context = "Random-effect marginal covariance metadata"
+  )
+  .bt_random_effect_car_time_values(
+    random_term = random_term,
+    correlation = correlation,
+    n_columns = n_columns,
+    context = "Random-effect marginal covariance metadata"
+  )
+  cholesky <- .bt_random_effect_cholesky_draws(
+    random_term = random_term,
+    n_columns = n_columns,
+    posterior = posterior
+  )
+  if(is.null(cholesky)){
+    .bt_random_effect_marginal_covariance_missing_correlation_stop(
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = posterior
+    )
+  }
+
+  .bt_random_effect_marginal_covariance_cholesky(
+    random_term = random_term,
+    model_matrix = model_matrix,
+    group_map = group_map,
+    cholesky = cholesky,
+    row_weights = row_weights,
+    column_weights = column_weights,
+    diagonal_only = diagonal_only
+  )
+}
+
+.bt_random_effect_marginal_covariance_cholesky <- function(
+    random_term,
+    model_matrix,
+    group_map,
+    cholesky,
+    row_weights = NULL,
+    column_weights = NULL,
+    diagonal_only = FALSE){
+
+  cholesky_dim <- dim(cholesky)
+  n_rows <- nrow(model_matrix)
+  n_columns <- ncol(model_matrix)
+  valid_cholesky <- is.array(cholesky) &&
+    length(cholesky_dim) == 3L &&
+    cholesky_dim[2L] == n_columns &&
+    cholesky_dim[3L] == n_columns &&
+    all(is.finite(cholesky))
+  if(!isTRUE(valid_cholesky)){
+    stop(
+      "Random-effect marginal covariance Cholesky draws for block '",
+      random_term$block_name,
+      "' do not match the expected dimensions.",
+      call. = FALSE
+    )
+  }
+  n_draws <- cholesky_dim[1L]
+  if(!is.null(row_weights) &&
+     (!is.matrix(row_weights) || !is.numeric(row_weights) ||
+      !identical(dim(row_weights), c(n_draws, n_rows)) ||
+      any(!is.finite(row_weights)))){
+    stop(
+      "Random-effect marginal covariance row weights for block '",
+      random_term$block_name,
+      "' do not match the expected dimensions.",
+      call. = FALSE
+    )
+  }
+  if(!is.null(column_weights) &&
+     (!is.matrix(column_weights) || !is.numeric(column_weights) ||
+      !identical(dim(column_weights), c(n_draws, n_columns)) ||
+      any(!is.finite(column_weights)))){
+    stop(
+      "Random-effect marginal covariance column weights for block '",
+      random_term$block_name,
+      "' do not match the expected dimensions.",
+      call. = FALSE
+    )
+  }
+  if(!isTRUE(diagonal_only) &&
+     (!is.numeric(group_map) || length(group_map) != n_rows ||
+      anyNA(group_map) || any(!is.finite(group_map)) ||
+      any(group_map < 1L) || any(group_map > .Machine$integer.max) ||
+      any(group_map != floor(group_map)))){
+    stop(
+      "Random-effect marginal covariance group map for block '",
+      random_term$block_name,
+      "' does not match the Cholesky expansion.",
+      call. = FALSE
+    )
+  }
+
+  row_names <- rownames(model_matrix)
+  if(is.null(row_names)){
+    row_names <- as.character(seq_len(n_rows))
+  }
+  if(isTRUE(diagonal_only)){
+    samples <- matrix(
+      0,
+      nrow = n_draws,
+      ncol = n_rows,
+      dimnames = list(draw = NULL, row = row_names)
+    )
+    for(draw in seq_len(n_draws)){
+      Z <- model_matrix
+      if(!is.null(row_weights)){
+        Z <- Z * row_weights[draw, ]
+      }
+      if(!is.null(column_weights)){
+        Z <- sweep(
+          Z,
+          MARGIN = 2L,
+          STATS = column_weights[draw, ],
+          FUN = "*"
+        )
+      }
+      samples[draw, ] <- rowSums((Z %*% cholesky[draw, , ])^2)
+    }
+    return(list(
+      samples = samples,
+      sample_dim = c(n_draws, n_rows)
+    ))
+  }
+
+  samples <- array(
+    0,
+    dim = c(n_draws, n_rows, n_rows),
+    dimnames = list(draw = NULL, row = row_names, column = row_names)
+  )
+  rows_by_group <- split(seq_len(n_rows), group_map)
+  for(draw in seq_len(n_draws)){
+    for(rows in rows_by_group){
+      Z <- model_matrix[rows, , drop = FALSE]
+      if(!is.null(row_weights)){
+        Z <- Z * row_weights[draw, rows]
+      }
+      if(!is.null(column_weights)){
+        Z <- sweep(
+          Z,
+          MARGIN = 2L,
+          STATS = column_weights[draw, ],
+          FUN = "*"
+        )
+      }
+      ZL <- Z %*% cholesky[draw, , ]
+      samples[draw, rows, rows] <- tcrossprod(ZL)
+    }
+  }
+  list(
+    samples = samples,
+    sample_dim = c(n_draws, n_rows, n_rows)
+  )
+}
+
+.bt_random_effect_marginal_covariance_structured_columns <- function(
+    random_term, model_matrix){
+
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect marginal covariance metadata"
+  )
+  if(!structure %in% c("cs", "hcs", "ar1", "car", "har")){
+    return(NULL)
+  }
+  nonzero <- model_matrix != 0
+  if(any(rowSums(nonzero) != 1L)){
+    return(NULL)
+  }
+  row_column <- max.col(nonzero, ties.method = "first")
+  selected <- model_matrix[cbind(seq_len(nrow(model_matrix)), row_column)]
+  if(any(selected != 1)){
+    return(NULL)
+  }
+
+  row_column
+}
+
+.bt_random_effect_marginal_covariance_structured_one_hot <- function(
+    random_term, model_matrix, group_map, posterior, row_column, row_sd,
+    diagonal_only = FALSE){
+
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect marginal covariance metadata"
+  )
+  rho <- .bt_random_effect_rho_draws(
+    random_term = random_term,
+    posterior = posterior,
+    missing = "error",
+    out_of_support = "error",
+    context = "Random-effect marginal covariance metadata"
+  )
+  n_draws <- nrow(posterior)
+  n_rows  <- nrow(model_matrix)
+  if(!is.matrix(row_sd) || !identical(dim(row_sd), c(n_draws, n_rows)) ||
+     any(!is.finite(row_sd)) || any(row_sd < 0)){
+    stop(
+      "Random-effect marginal covariance row SD draws for block '",
+      random_term$block_name,
+      "' do not match the structured one-hot design.",
+      call. = FALSE
+    )
+  }
+
+  row_names <- rownames(model_matrix)
+  if(is.null(row_names)){
+    row_names <- as.character(seq_len(n_rows))
+  }
+  if(isTRUE(diagonal_only)){
+    out <- row_sd^2
+    colnames(out) <- row_names
+    return(list(
+      samples = out,
+      sample_dim = c(n_draws, n_rows)
+    ))
+  }
+
+  exponent <- if(structure %in% c("cs", "hcs")){
+    outer(row_column, row_column, "!=") * 1
+  }else if(identical(structure, "car")){
+    correlation <- .bt_random_effect_correlation_metadata(
+      random_term = random_term,
+      structure = structure,
+      context = "Random-effect marginal covariance metadata"
+    )
+    time_values <- .bt_random_effect_car_time_values(
+      random_term = random_term,
+      correlation = correlation,
+      n_columns = ncol(model_matrix),
+      context = "Random-effect marginal covariance metadata"
+    )
+    abs(outer(time_values[row_column], time_values[row_column], "-"))
+  }else{
+    abs(outer(row_column, row_column, "-"))
+  }
+  same_group <- outer(group_map, group_map, "==")
+  out <- array(
+    0,
+    dim = c(n_draws, n_rows, n_rows),
+    dimnames = list(draw = NULL, row = row_names, column = row_names)
+  )
+  for(draw in seq_len(n_draws)){
+    out[draw, , ] <- same_group * rho[draw]^exponent *
+      tcrossprod(row_sd[draw, ])
+  }
+
+  list(
+    samples = out,
+    sample_dim = c(n_draws, n_rows, n_rows)
+  )
+}
+
+.bt_random_effect_marginal_covariance_validate_draw_matrix <- function(
+    draws,
+    n_draws,
+    n_columns,
+    label,
+    random_term,
+    nonnegative = FALSE,
+    context = "Random-effect marginal covariance"){
+
+  if(!is.matrix(draws) || !is.numeric(draws) ||
+     nrow(draws) != n_draws || ncol(draws) != n_columns){
+    stop(
+      context, " ",
+      label,
+      " draws for block '",
+      random_term$block_name,
+      "' do not match the expected dimensions.",
+      call. = FALSE
+    )
+  }
+  invalid <- !is.finite(draws)
+  if(isTRUE(nonnegative)){
+    invalid <- invalid | draws < 0
+  }
+  if(any(invalid)){
+    stop(
+      context, " ",
+      label,
+      " draws for block '",
+      random_term$block_name,
+      "' must be finite",
+      if(isTRUE(nonnegative)) " and non-negative" else "",
+      ".",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+.bt_random_effect_marginal_covariance_correlation_draws <- function(
+    random_term,
+    n_columns,
+    posterior){
+
+  cholesky <- .bt_random_effect_cholesky_draws(
+    random_term = random_term,
+    n_columns = n_columns,
+    posterior = posterior
+  )
+  if(is.null(cholesky)){
+    .bt_random_effect_marginal_covariance_missing_correlation_stop(
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = posterior
+    )
+  }
+
+  .bt_random_effect_marginal_covariance_validate_correlation_cholesky(
+    cholesky = cholesky,
+    random_term = random_term,
+    n_columns = n_columns,
+    posterior = posterior
+  )
+
+  out <- array(NA_real_, dim = dim(cholesky))
+  for(draw in seq_len(nrow(posterior))){
+    out[draw, , ] <- tcrossprod(cholesky[draw, , ])
+  }
+  if(any(!is.finite(out))){
+    stop(
+      "Random-effect marginal covariance correlation draws for block '",
+      random_term$block_name,
+      "' must define finite correlation matrices.",
+      call. = FALSE
+    )
+  }
+
+  out
+}
+
+.bt_random_effect_marginal_covariance_validate_correlation_cholesky <- function(
+    cholesky,
+    random_term,
+    n_columns,
+    posterior){
+
+  if(!is.array(cholesky) || length(dim(cholesky)) != 3L ||
+     !identical(dim(cholesky), c(nrow(posterior), n_columns, n_columns))){
+    stop(
+      "Random-effect marginal covariance correlation draws for block '",
+      random_term$block_name,
+      "' do not match the expected dimensions.",
+      call. = FALSE
+    )
+  }
+  if(any(!is.finite(cholesky))){
+    stop(
+      "Random-effect marginal covariance correlation draws for block '",
+      random_term$block_name,
+      "' must be finite.",
+      call. = FALSE
+    )
+  }
+
+  diagonal <- matrix(
+    rowSums(matrix(
+      cholesky^2,
+      nrow = nrow(posterior) * n_columns,
+      ncol = n_columns
+    )),
+    nrow = nrow(posterior),
+    ncol = n_columns
+  )
+  if(any(!is.finite(diagonal))){
+    stop(
+      "Random-effect marginal covariance correlation draws for block '",
+      random_term$block_name,
+      "' must define finite correlation matrices.",
+      call. = FALSE
+    )
+  }
+  if(any(abs(diagonal - 1) > sqrt(.Machine$double.eps))){
+    stop(
+      "Random-effect marginal covariance correlation draws for block '",
+      random_term$block_name,
+      "' must define correlation matrices with unit diagonal.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+# Expand independent random effects through their weighted design directly.
+.bt_random_effect_marginal_covariance_independent <- function(
+    model_matrix,
+    group_map,
+    n_draws,
+    column_scale_draws = NULL,
+    row_scale_draws = NULL,
+    diagonal_only = FALSE){
+
+  n_rows    <- nrow(model_matrix)
+  row_names <- rownames(model_matrix)
+  if(is.null(row_names)){
+    row_names <- as.character(seq_len(n_rows))
+  }
+  if(isTRUE(diagonal_only)){
+    out <- matrix(
+      0,
+      nrow = n_draws,
+      ncol = n_rows,
+      dimnames = list(draw = NULL, row = row_names)
+    )
+    for(draw in seq_len(n_draws)){
+      Z <- model_matrix
+      if(!is.null(column_scale_draws)){
+        Z <- sweep(
+          Z,
+          MARGIN = 2L,
+          STATS = column_scale_draws[draw, ],
+          FUN = "*"
+        )
+      }
+      if(!is.null(row_scale_draws)){
+        Z <- Z * row_scale_draws[draw, ]
+      }
+      out[draw, ] <- rowSums(Z^2)
+    }
+    return(list(
+      samples = out,
+      sample_dim = c(n_draws, n_rows)
+    ))
+  }
+  out <- array(
+    0,
+    dim = c(n_draws, n_rows, n_rows),
+    dimnames = list(draw = NULL, row = row_names, column = row_names)
+  )
+  rows_by_group <- split(seq_len(n_rows), group_map)
+  for(draw in seq_len(n_draws)){
+    for(rows in rows_by_group){
+      Z <- model_matrix[rows, , drop = FALSE]
+      if(!is.null(column_scale_draws)){
+        Z <- sweep(
+          Z,
+          MARGIN = 2L,
+          STATS = column_scale_draws[draw, ],
+          FUN = "*"
+        )
+      }
+      if(!is.null(row_scale_draws)){
+        Z <- Z * row_scale_draws[draw, rows]
+      }
+      out[draw, rows, rows] <- tcrossprod(Z)
+    }
+  }
+
+  list(
+    samples = out,
+    sample_dim = c(n_draws, n_rows, n_rows)
+  )
+}
+
+.bt_random_effect_marginal_covariance_missing_sd_stop <- function(random_term,
+                                                                  n_columns){
+
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect marginal covariance metadata"
+  )
+  sd_names <- random_term$sd_parameter_names
+  if(is.null(sd_names) || length(sd_names) != n_columns){
+    stop(
+      "Random-effect marginal covariance metadata for block '",
+      random_term$block_name,
+      "' with structure '",
+      structure,
+      "' are missing canonical 'random_term$sd_parameter_names'.",
+      call. = FALSE
+    )
+  }
+
+  expected <- .bt_random_effect_marginal_covariance_expected_sd_names(random_term)
+  stop(
+    "Random-effect marginal covariance for block '",
+    random_term$block_name,
+    "' with structure '",
+    structure,
+    "' cannot resolve SD draws. Expected posterior columns or point priors for: ",
+    paste0("'", expected[seq_len(min(4L, length(expected)))], "'", collapse = ", "),
+    if(length(expected) > 4L) ", ..." else "",
+    ".",
+    call. = FALSE
+  )
+}
+
+.bt_random_effect_marginal_covariance_expected_sd_names <- function(random_term){
+
+  expected <- character()
+  sd_names <- random_term$sd_parameter_names
+  if(is.character(sd_names)){
+    expected <- c(expected, sd_names[!is.na(sd_names) & nzchar(sd_names)])
+  }
+
+  binding <- random_term$sd_binding
+  if(!is.null(binding) && isTRUE(binding$true_allocation) &&
+     length(binding$allocations) > 0L){
+    allocation <- binding$allocations[[1L]]
+    if(!is.null(allocation$source)){
+      expected <- c(expected, .bt_random_sd_binding_source_name(allocation$source))
+    }
+    if(!is.null(allocation$weight_name)){
+      expected <- c(
+        expected,
+        allocation$weight_name,
+        paste0(.JAGS_prior_dirichlet_eta_name(allocation$weight_name), "[...]")
+      )
+    }
+  }
+
+  expected <- unique(expected[nzchar(expected)])
+  if(length(expected) == 0L){
+    expected <- "<unknown SD parameter>"
+  }
+
+  expected
+}
+
+.bt_random_effect_marginal_covariance_missing_correlation_stop <- function(
+    random_term,
+    n_columns,
+    posterior){
+
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect marginal covariance metadata"
+  )
+
+  if(structure %in% c("cs", "hcs", "ar1", "car", "har")){
+    .bt_random_effect_rho_draws(
+      random_term = random_term,
+      posterior = posterior,
+      missing = "error",
+      out_of_support = "error",
+      context = "Random-effect marginal covariance metadata"
+    )
+  }
+
+  expected <- .bt_random_effect_cholesky_names(
+    random_term = random_term,
+    n_columns = n_columns
+  )
+  if(identical(structure, "us")){
+    expected <- c(
+      as.vector(expected),
+      .bt_random_effect_lkj_primitive_names(
+        random_term = random_term,
+        n_columns = n_columns,
+        context = "Random-effect marginal covariance metadata"
+      )
+    )
+  }else{
+    correlation <- random_term$correlation
+    if(is.list(correlation)){
+      expected <- c(expected, correlation$rho_name, correlation$sample_name)
+    }
+  }
+  expected <- unique(expected[!is.na(expected) & nzchar(expected)])
+
+  stop(
+    "Random-effect marginal covariance for block '",
+    random_term$block_name,
+    "' with structure '",
+    structure,
+    "' cannot resolve correlation draws. Expected posterior column(s): ",
+    paste0("'", expected[seq_len(min(4L, length(expected)))], "'", collapse = ", "),
+    if(length(expected) > 4L) ", ..." else "",
+    ".",
+    call. = FALSE
+  )
+}
+
+.bt_random_effect_marginal_covariance_expand <- function(
+    model_matrix,
+    group_map,
+    block_covariance,
+    row_weights = NULL,
+    column_weights = NULL){
+
+  n_draws <- dim(block_covariance)[1L]
+  n_rows <- nrow(model_matrix)
+  n_columns <- ncol(model_matrix)
+  row_names <- rownames(model_matrix)
+  if(is.null(row_names)){
+    row_names <- as.character(seq_len(n_rows))
+  }
+  out <- array(0, dim = c(n_draws, n_rows, n_rows))
+  dimnames(out) <- list(draw = NULL, row = row_names, column = row_names)
+
+  rows_by_group <- split(seq_len(n_rows), group_map)
+  n_draws_num <- as.numeric(n_draws)
+  n_rows_num <- as.numeric(n_rows)
+  group_info <- lapply(
+    rows_by_group,
+    function(rows){
+      rows0 <- as.numeric(rows) - 1
+      n_group_rows <- length(rows)
+      list(
+        rows = rows,
+        model_matrix = model_matrix[rows, , drop = FALSE],
+        lower = lower.tri(matrix(FALSE, n_group_rows, n_group_rows)),
+        array_offset = rep(rows0, times = n_group_rows) * n_draws_num +
+          rep(rows0, each = n_group_rows) * n_draws_num * n_rows_num
+      )
+    }
+  )
+  intercept_only <- n_columns == 1L &&
+    is.null(row_weights) &&
+    is.null(column_weights) &&
+    isTRUE(all(model_matrix[, 1L] == 1))
+
+  for(draw in seq_len(n_draws)){
+    G <- matrix(
+      block_covariance[draw, , ],
+      nrow = n_columns,
+      ncol = n_columns
+    )
+    for(group in group_info){
+      rows <- group$rows
+      Z <- group$model_matrix
+      if(!is.null(row_weights)){
+        Z <- Z * row_weights[draw, rows]
+      }
+      if(!is.null(column_weights)){
+        Z <- Z * matrix(
+          column_weights[draw, ],
+          nrow = length(rows),
+          ncol = n_columns,
+          byrow = TRUE
+        )
+      }
+      index <- draw + group$array_offset
+      if(intercept_only){
+        out[index] <- out[index] + G[1L, 1L]
+      }else if(n_columns == 1L){
+        out[index] <- out[index] + G[1L, 1L] * as.vector(tcrossprod(Z[, 1L]))
+      }else{
+        contribution <- Z %*% G %*% t(Z)
+        # Covariance symmetry is structural; compute one triangle once rather
+        # than averaging independently rounded matrix-product entries.
+        contribution[group$lower] <- t(contribution)[group$lower]
+        out[index] <- out[index] + as.vector(contribution)
+      }
+    }
+  }
+
+  out
+}
+
+.bt_random_effect_marginal_covariance_block_metadata <- function(
+    random_term,
+    model_matrix,
+    group_map,
+    group_levels,
+    row_names,
+    sample_dim,
+    new_level_info = NULL,
+    diagonal_only = FALSE){
+
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect marginal covariance metadata"
+  )
+  correlation <- .bt_random_effect_correlation_metadata(
+    random_term = random_term,
+    structure = structure,
+    context = "Random-effect marginal covariance metadata"
+  )
+
+  metadata <- list(
+    block_name = random_term$block_name,
+    grouping = random_term$group_label,
+    structure = structure,
+    compile_mode = .bt_random_effect_term_compile_mode(random_term),
+    n_groups = length(group_levels),
+    fitted_n_groups = random_term$n_groups,
+    n_columns = random_term$n_columns,
+    n_rows = nrow(model_matrix),
+    row_names = row_names,
+    row_order = seq_len(nrow(model_matrix)),
+    group_levels = group_levels,
+    group_map = group_map,
+    new_levels = if(is.list(new_level_info)) new_level_info$policy else NULL,
+    new_group_levels = if(is.list(new_level_info)) new_level_info$group_levels else character(),
+    new_level_rows = if(is.list(new_level_info)) new_level_info$rows else integer(),
+    column_names = colnames(model_matrix),
+    model_matrix = model_matrix,
+    sd_parameter_names = random_term$sd_parameter_names,
+    row_varying_sd = .bt_random_effect_has_row_indexed_external_sd(random_term),
+    correlation_type = if(is.list(correlation)) correlation$type else NA_character_,
+    group_covariance = .bt_random_effect_group_covariance_metadata(random_term),
+    included = TRUE,
+    skipped = FALSE,
+    dense = !isTRUE(diagonal_only),
+    dense_entries = if(isTRUE(diagonal_only)) NA_real_ else prod(sample_dim)
+  )
+  if(isTRUE(diagonal_only)){
+    metadata$representation <- "diagonal"
+    metadata$quantity <- "variance"
+    metadata$diagonal_only <- TRUE
+    metadata$sample_dim <- sample_dim
+    metadata$sample_entries <- prod(sample_dim)
+    metadata$equivalent_dense_entries <-
+      as.numeric(sample_dim[[1L]]) * as.numeric(sample_dim[[2L]])^2
+  }
+
+  metadata
+}

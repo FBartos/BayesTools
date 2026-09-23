@@ -1,0 +1,891 @@
+skip_if_not_test_profile("unit")
+
+test_that("coordinate dimensions preserve sampled array extents per base", {
+
+  columns <- c(
+    "theta", "v[4]", "m[2,1]", "v[2]", "m[1,3]", "cube[2,1,4]"
+  )
+  coordinates <- .bt_build_parameter_coordinates(
+    columns = columns,
+    prior_list = list(fixed = prior("point", list(2)))
+  )
+  expect_identical(coordinates$coordinate_name, c(columns, "fixed"))
+  expect_identical(
+    coordinates$dimensions,
+    c("", "4", "2x3", "4", "2x3", "2x1x4", "")
+  )
+  expect_identical(
+    .bt_build_parameter_coordinates(
+      character(), prior_list = list(fixed = prior("point", list(2)))
+    )$dimensions,
+    ""
+  )
+})
+
+test_that("parameter map and coordinate schemas are explicit and versioned", {
+
+  map_schema <- parameter_map_schema()
+  schema <- parameter_coordinates_schema()
+  expect_identical(map_schema$schema_version, 4L)
+  expect_identical(
+    schema$field,
+    c(
+      "coordinate_name", "monitor_name", "formula_parameter", "role",
+      "random_block", "random_name", "term", "column", "index", "dimensions",
+      "fitted_scale", "monitor_status", "fixed_value", "display_label",
+      "random_grouping", "random_structure", "internal"
+    )
+  )
+  expect_identical(schema$type[nrow(schema)], "logical")
+  expect_identical(anyDuplicated(schema$field), 0L)
+})
+
+test_that("fitted coordinates classify concrete random coordinates exactly", {
+
+  data <- data.frame(
+    x = c(1, 2, 3, 4),
+    id = factor(c("a", "a", "b", "b"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + diag(0 + x | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        monitor = random_monitor(
+          latent = TRUE,
+          coefficients = TRUE,
+          correlation = FALSE
+        )
+      )
+    )
+  )
+  columns <- c(
+    "mu_intercept",
+    "mu__xREx__id_x",
+    "mu__xREx__id_xRE_Zx[1,1]",
+    "mu__xREx__id_xRE_COEFx[1,1]"
+  )
+  coordinates <- build_test_parameter_coordinates(
+    columns = columns,
+    monitor_names = c(
+      "mu_intercept",
+      "mu__xREx__id_x",
+      "mu__xREx__id_xRE_Zx",
+      "mu__xREx__id_xRE_COEFx"
+    ),
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design),
+    formula_scale = list(mu = formula_result$formula_scale)
+  )
+
+  expect_s3_class(coordinates, "BayesTools_parameter_coordinates")
+  expect_identical(coordinates$coordinate_name, columns)
+  expect_identical(anyDuplicated(coordinates$coordinate_name), 0L)
+  expect_identical(
+    coordinates$role,
+    c(
+      "fixed_coefficient",
+      "random_sd",
+      "random_latent",
+      "random_group_coefficient"
+    )
+  )
+  expect_identical(
+    coordinates$fitted_scale,
+    c(
+      "fitted_standardized",
+      "fitted_covariance",
+      "unit_latent",
+      "fitted_standardized"
+    )
+  )
+  expect_identical(coordinates$internal, c(FALSE, FALSE, TRUE, TRUE))
+  expect_identical(coordinates$random_block, c("", "id", "id", "id"))
+  expect_identical(coordinates$column, c("mu_intercept", "x", "x", "x"))
+  expect_identical(
+    coordinates$display_label,
+    c(
+      "(mu) intercept",
+      "(mu) id: sd(x)",
+      "(mu) z(id[a], x)",
+      "(mu) coef(id[a], x)"
+    )
+  )
+})
+
+test_that("coordinate map keeps LKJ primitives internal to their random block", {
+
+  data <- data.frame(
+    group = factor(
+      c("sensitivity", "specificity", "sensitivity", "specificity"),
+      levels = c("sensitivity", "specificity")
+    ),
+    study = factor(c("a", "a", "b", "b"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + us(0 + group | study),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      study = random_block(
+        sd = prior("gamma", list(2, 2)),
+        covariance = random_covariance(cor = prior_lkj(eta = 1)),
+        monitor = random_monitor(lkj_primitives = TRUE),
+        contrasts = c(group = "independent")
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  coordinate_names <- c(
+    random_term$correlation$primitive_names,
+    random_term$correlation$cpc_names
+  )
+  coordinates <- build_test_parameter_coordinates(
+    columns = coordinate_names,
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+
+  expect_identical(
+    random_term$sd_leaves$leaf_terms_by_column,
+    c("group[sensitivity]", "group[specificity]")
+  )
+  expect_identical(random_term$contrast_owner, "random_block")
+  expect_identical(coordinates$coordinate_name, coordinate_names)
+  expect_identical(
+    coordinates$role,
+    rep("random_correlation_coordinate", length(coordinate_names))
+  )
+  expect_identical(coordinates$formula_parameter, rep("mu", length(coordinate_names)))
+  expect_identical(coordinates$random_block, rep("study", length(coordinate_names)))
+  expect_identical(coordinates$random_name, rep("study", length(coordinate_names)))
+  expect_identical(coordinates$random_grouping, rep("study", length(coordinate_names)))
+  expect_identical(coordinates$random_structure, rep("us", length(coordinate_names)))
+  expect_identical(coordinates$fitted_scale, rep("unitless", length(coordinate_names)))
+  expect_true(all(coordinates$internal))
+})
+
+test_that("Dirichlet auxiliary coordinates remain coordinate-only", {
+
+  prior_list <- list(
+    weights = prior("dirichlet", list(alpha = c(2, 3)))
+  )
+  columns <- c(
+    "weights[1]",
+    "weights[2]",
+    "prior_par_eta_weights[1]",
+    "prior_par_eta_weights[2]"
+  )
+  coordinates <- build_test_parameter_coordinates(
+    columns = columns,
+    prior_list = prior_list
+  )
+  catalog <- .bt_build_parameter_catalog(
+    coordinates = coordinates,
+    prior_list = prior_list
+  )
+
+  expect_identical(
+    coordinates$internal,
+    c(FALSE, FALSE, TRUE, TRUE)
+  )
+  expect_identical(
+    catalog$quantities$canonical_name,
+    c("weights[1]", "weights[2]")
+  )
+})
+
+test_that("ordered-allocation and weight-function helpers remain coordinate-only", {
+
+  data <- data.frame(
+    f = ordered(rep(c("low", "mid", "high"), 4), levels = c("low", "mid", "high"))
+  )
+  formula_result <- JAGS_formula(
+    ~ f, "mu", data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_ordered(prior("normal", list(0, 1)))
+    )
+  )
+  ordered_prior_list <- formula_result$prior_list
+  eta_name <- .JAGS_prior_dirichlet_eta_name(
+    .prior_ordered_dirichlet_records(ordered_prior_list$mu_f)[[1L]]$node
+  )
+  expect_true(eta_name %in% JAGS_to_monitor(ordered_prior_list))
+  ordered_columns <- c(
+    "mu_intercept", "mu_f[1]", "mu_f[2]", "mu_f_ordered_total",
+    paste0(eta_name, "[", 1:2, "]")
+  )
+  ordered_samples <- matrix(
+    c(0.1, 0.2, 0.3, 0.5, 1.5, 2.5),
+    nrow = 1L,
+    dimnames = list(NULL, ordered_columns)
+  )
+
+  weightfunction_prior_list <- list(
+    mu = prior("normal", list(0, 1)),
+    omega = prior_weightfunction(steps = c(0.025, 0.05))
+  )
+  expect_true("eta" %in% JAGS_to_monitor(weightfunction_prior_list))
+  weightfunction_columns <- c(
+    "mu", paste0("omega[", 1:3, "]"), paste0("eta[", 1:3, "]")
+  )
+  weightfunction_samples <- matrix(
+    c(0.1, 1, 0.6, 0.3, 0.4, 0.3, 0.3),
+    nrow = 1L,
+    dimnames = list(NULL, weightfunction_columns)
+  )
+
+  cases <- list(
+    ordered = list(
+      samples = ordered_samples,
+      prior_list = ordered_prior_list,
+      formula_design = list(mu = formula_result$formula_design),
+      private = paste0(eta_name, "[", 1:2, "]")
+    ),
+    weightfunction = list(
+      samples = weightfunction_samples,
+      prior_list = weightfunction_prior_list,
+      formula_design = NULL,
+      private = paste0("eta[", 1:3, "]")
+    )
+  )
+  for(case in names(cases)){
+    input <- cases[[case]]
+    fit <- .parameter_catalog_test_fit(
+      coda::mcmc.list(coda::mcmc(input$samples)),
+      prior_list = input$prior_list,
+      formula_design = input$formula_design
+    )
+    coordinates <- parameter_coordinates(fit)
+    private <- coordinates$coordinate_name %in% input$private
+    expect_identical(sum(private), length(input$private), info = case)
+    expect_true(all(coordinates$internal[private]), info = case)
+    expect_false(any(coordinates$internal[!private]), info = case)
+    expect_false(
+      any(input$private %in% parameter_catalog(fit)$quantities$canonical_name),
+      info = case
+    )
+    expect_false(
+      any(input$private %in% colnames(JAGS_materialize_draws(fit)[[1L]])),
+      info = case
+    )
+  }
+})
+
+test_that("formula metadata exposes exact LKJ primitive coordinate priors", {
+
+  data <- data.frame(
+    group = factor(rep(c("a", "b", "c"), 2L)),
+    study = factor(rep(c("s1", "s2"), each = 3L))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + us(0 + group | study),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      study = random_block(
+        sd = prior("gamma", list(2, 2)),
+        covariance = random_covariance(cor = prior_lkj(eta = 2)),
+        contrasts = c(group = "independent")
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  columns <- c(
+    "mu_intercept",
+    random_term$sd_parameter_names,
+    random_term$correlation$primitive_names
+  )
+  posterior <- matrix(
+    0.5,
+    nrow = 2L,
+    ncol = length(columns),
+    dimnames = list(NULL, columns)
+  )
+  fit <- list(
+    mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+    summary.pars = list(mutate = NULL),
+    monitor = columns,
+    sample = nrow(posterior)
+  )
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit, monitor_names = columns)
+
+  coordinate_priors <- JAGS_formula_internal_coordinate_priors(fit)
+  alpha <- vapply(
+    coordinate_priors,
+    function(x) x$parameters$alpha,
+    numeric(1)
+  )
+
+  expect_identical(
+    names(coordinate_priors),
+    random_term$correlation$primitive_names
+  )
+  expect_equal(unname(alpha), c(2.5, 2.5, 2))
+  expect_true(all(vapply(coordinate_priors, is.prior, logical(1))))
+  expect_true(all(vapply(coordinate_priors, function(x) {
+    identical(x$distribution, "beta") &&
+      identical(x$parameters$alpha, x$parameters$beta)
+  }, logical(1))))
+})
+
+test_that("coordinate map owns random SD spike-and-slab auxiliaries", {
+
+  data <- data.frame(
+    x_fac3 = factor(
+      c("A", "B", "C", "A", "B", "C"),
+      levels = c("A", "B", "C")
+    ),
+    id = factor(c("one", "one", "one", "two", "two", "two"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ -1 + x_fac3 + (x_fac3 - 1 || id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      x_fac3 = prior_factor(
+        "normal",
+        list(0, 1),
+        contrast = "independent"
+      )
+    ),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior_spike_and_slab(
+          prior("normal", list(0, 1), list(0, 1))
+        )
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  sd_names <- random_term$sd_parameter_names
+  sd_columns <- random_term$sd_leaves$column_names
+  n_sd <- length(sd_names)
+  expect_identical(
+    random_term$sd_leaves$leaf_terms_by_column,
+    paste0("x_fac3[", levels(data$x_fac3), "]")
+  )
+  sd_base <- unique(BayesTools:::.bt_parameter_coordinates_base(sd_names))
+  expect_length(sd_base, 1L)
+
+  columns <- c(
+    paste0(sd_base, "_indicator"),
+    paste0(sd_base, "_inclusion"),
+    sd_names,
+    paste0(sd_base, "_variable[", seq_along(sd_names), "]")
+  )
+  coordinates <- build_test_parameter_coordinates(
+    columns = columns,
+    monitor_names = c(
+      paste0(sd_base, "_indicator"),
+      paste0(sd_base, "_inclusion"),
+      sd_base,
+      paste0(sd_base, "_variable")
+    ),
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  coordinates <- coordinates[
+    match(columns, coordinates$coordinate_name),
+    ,
+    drop = FALSE
+  ]
+
+  expect_identical(
+    coordinates$role,
+    c(
+      "random_inclusion_indicator",
+      "random_inclusion_probability",
+      rep("random_sd", n_sd),
+      rep("random_sd_variable", n_sd)
+    )
+  )
+  expect_identical(coordinates$random_block, rep("id", length(columns)))
+  expect_identical(coordinates$formula_parameter, rep("mu", length(columns)))
+  expect_identical(
+    coordinates$fitted_scale,
+    c(
+      "unitless",
+      "unitless",
+      rep("fitted_covariance", 2L * n_sd)
+    )
+  )
+  expect_identical(
+    coordinates$column,
+    c("", "", sd_columns, sd_columns)
+  )
+  expect_identical(
+    coordinates$internal,
+    c(TRUE, TRUE, rep(FALSE, n_sd), rep(TRUE, n_sd))
+  )
+})
+
+test_that("coordinate labels do not overwrite fixed scale formatting", {
+
+  interaction_prior <- prior("normal", list(0, 1))
+  attr(interaction_prior, "parameter") <- "mu"
+  log_intercept_prior <- prior("normal", list(0, 1))
+  attr(log_intercept_prior, "parameter") <- "log_sigma"
+  prior_list <- list(
+    mu_x__xXx__z = interaction_prior,
+    log_sigma_intercept = log_intercept_prior
+  )
+  coordinate_names <- names(prior_list)
+  coordinates <- build_test_parameter_coordinates(
+    columns = coordinate_names,
+    prior_list = prior_list
+  )
+
+  expect_identical(
+    coordinates$display_label,
+    c("(mu) x:z", "(log_sigma) intercept")
+  )
+
+  formatted_names <- c("(mu) x:z", "(log_sigma) exp(intercept)")
+  expect_identical(
+    BayesTools:::.bt_random_effect_summary_display_names(
+      names = formatted_names,
+      raw_names = coordinate_names,
+      prior_list = prior_list,
+      coordinates = coordinates
+    ),
+    formatted_names
+  )
+})
+
+test_that("parameter-map accessors reject missing and malformed fitted objects", {
+
+  samples <- coda::mcmc(matrix(
+    1:4,
+    ncol = 1L,
+    dimnames = list(NULL, "theta")
+  ))
+  fit <- samples
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- list(theta = prior("normal", list(0, 1)))
+
+  expect_error(
+    parameter_map(fit),
+    "Refit the model"
+  )
+
+  fit <- attach_test_parameter_map(fit)
+  fit <- .bt_attach_draw_geometry(fit)
+  fit <- .bt_attach_fit_contract(fit)
+  map <- parameter_map(fit)
+  coordinates <- parameter_coordinates(fit)
+  catalog <- parameter_catalog(fit)
+  expect_null(attr(fit, "parameter_registry", exact = TRUE))
+  expect_null(attr(fit, "parameter_catalog", exact = TRUE))
+  expect_identical(names(map), c(
+    "schema_version", "coordinates", "quantities", "aliases"
+  ))
+  expect_identical(map$coordinates, coordinates)
+  expect_identical(map$quantities, catalog$quantities)
+  expect_identical(map$aliases, catalog$aliases)
+  expect_identical(JAGS_fit_contract(fit)$parameter_map_version,
+                   map$schema_version)
+  expect_identical(coordinates$coordinate_name, "theta")
+  expect_identical(coordinates$role, "parameter")
+
+  malformed <- coordinates
+  malformed$coordinate_name <- ""
+  map$coordinates <- malformed
+  attr(fit, "parameter_map") <- map
+  expect_error(
+    parameter_coordinates(fit),
+    "unique, non-missing coordinate names"
+  )
+})
+
+test_that("parameter map validates semantic dependencies atomically", {
+
+  map <- .bt_build_parameter_map(columns = "theta")
+  broken <- map
+  broken$quantities$extraction_key[[1L]] <- list(
+    type = "factor_level",
+    dependencies = "missing_coordinate",
+    weights = 1
+  )
+
+  expect_error(
+    .bt_validate_parameter_map(broken),
+    "unknown coordinate dependencies: 'missing_coordinate'"
+  )
+})
+
+test_that("structural point parameters are registered when JAGS omits them", {
+
+  coordinates <- build_test_parameter_coordinates(
+    columns = "theta",
+    prior_list = list(
+      theta = prior("normal", list(0, 1)),
+      fixed = prior("point", list(0))
+    )
+  )
+
+  fixed <- coordinates[coordinates$coordinate_name == "fixed", , drop = FALSE]
+  expect_equal(nrow(fixed), 1L)
+  expect_identical(fixed$monitor_status, "structural")
+  expect_identical(fixed$fixed_value, 0)
+  expect_identical(fixed$role, "parameter")
+  expect_false(fixed$internal)
+
+  monitored <- build_test_parameter_coordinates(
+    columns = c("theta", "fixed"),
+    monitor_names = c("theta", "fixed"),
+    prior_list = list(
+      theta = prior("normal", list(0, 1)),
+      fixed = prior("point", list(0))
+    )
+  )
+  fixed_monitored <- monitored[
+    monitored$coordinate_name == "fixed",
+    ,
+    drop = FALSE
+  ]
+  expect_identical(fixed_monitored$monitor_status, "structural")
+  expect_identical(fixed_monitored$fixed_value, 0)
+})
+
+test_that("point priors with expression locations are derived coordinates", {
+
+  prior_list <- list(
+    a = prior("normal", list(0, 1)),
+    b = prior("point", list(location = expression(a)))
+  )
+  expect_identical(JAGS_to_monitor(prior_list), c("a", "b"))
+
+  map <- .bt_build_parameter_map(
+    columns = c("a", "b"),
+    prior_list = prior_list
+  )
+  derived <- map$coordinates[map$coordinates$coordinate_name == "b", ]
+  expect_identical(derived$monitor_status, "sampled")
+  expect_identical(derived$fixed_value, NA_real_)
+  quantity <- map$quantities[map$quantities$canonical_name == "b", ]
+  expect_identical(quantity$status, "derived")
+  expect_identical(quantity$fixed_value, NA_real_)
+
+  # An unmonitored deterministic node is not a structural constant.
+  unmonitored <- .bt_build_parameter_map(columns = "a", prior_list = prior_list)
+  expect_false("b" %in% unmonitored$coordinates$coordinate_name)
+
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(cbind(a = c(-1, 0.5), b = c(-1, 0.5)))),
+    prior_list = prior_list
+  )
+  expect_identical(
+    as.numeric(parameter_draws(
+      fit,
+      parameter_catalog_resolve(parameter_catalog(fit), "b")
+    )[[1L]][, 1L]),
+    c(-1, 0.5)
+  )
+})
+
+test_that("structural coordinates retain exact scalar and vector values", {
+
+  factor_prior <- prior_factor(
+    "point",
+    list(location = -2),
+    contrast = "treatment"
+  )
+  attr(factor_prior, "levels") <- 3L
+  coordinates <- build_test_parameter_coordinates(
+    columns = "theta",
+    prior_list = list(
+      theta = prior("normal", list(0, 1)),
+      scalar = prior("point", list(3.5)),
+      vector = prior("mpoint", list(location = 2, K = 3)),
+      factor = factor_prior
+    )
+  )
+
+  structural <- coordinates[coordinates$monitor_status == "structural", ]
+  expect_identical(
+    structural$coordinate_name,
+    c("scalar", "vector[1]", "vector[2]", "vector[3]", "factor[1]", "factor[2]")
+  )
+  expect_identical(structural$fixed_value, c(3.5, 2, 2, 2, -2, -2))
+  expect_true(all(is.na(coordinates$fixed_value[coordinates$monitor_status == "sampled"])))
+})
+
+test_that("coordinate map prevents random-block ownership collisions", {
+
+  short_term <- list(
+    parameter_stem = "mu__xREx__a",
+    parameter = "mu",
+    block_name = "a",
+    group_label = "group_a",
+    has_explicit_name = TRUE,
+    structure = "diag",
+    column_names = "intercept",
+    sd_parameter_names = "mu__xREx__a_intercept",
+    sd_leaves = structure(
+      list(leaf_terms = c(mu__xREx__a_intercept = "intercept")),
+      class = c("BayesTools_random_effect_sd_leaves", "list")
+    ),
+    group_levels = "one"
+  )
+  long_term <- list(
+    parameter_stem = "mu__xREx__a_b",
+    parameter = "mu",
+    block_name = "a_b",
+    group_label = "group_a_b",
+    has_explicit_name = TRUE,
+    structure = "diag",
+    column_names = "intercept",
+    sd_parameter_names = "mu__xREx__a_b_intercept",
+    sd_leaves = structure(
+      list(leaf_terms = c(mu__xREx__a_b_intercept = "intercept")),
+      class = c("BayesTools_random_effect_sd_leaves", "list")
+    ),
+    group_levels = "one"
+  )
+  formula_design <- list(
+    mu = structure(
+      list(
+        parameter = "mu",
+        name_map = .bt_formula_name_map_empty(),
+        random_effects = list(short_term, long_term)
+      ),
+      class = c("BayesTools_formula_design", "list")
+    )
+  )
+  columns <- c(
+    "mu_intercept",
+    "mu__xREx__a_intercept",
+    "mu__xREx__a_b_intercept"
+  )
+  coordinates <- build_test_parameter_coordinates(
+    columns = columns,
+    formula_design = formula_design
+  )
+
+  expect_identical(coordinates$random_block, c("", "a", "a_b"))
+
+  samples <- matrix(
+    seq_len(6L),
+    nrow = 2L,
+    dimnames = list(NULL, columns)
+  )
+  removed <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
+    model_samples = samples,
+    coordinates = coordinates,
+    remove_random_effects = "a"
+  )
+  expect_identical(
+    colnames(removed),
+    c("mu_intercept", "mu__xREx__a_b_intercept")
+  )
+})
+
+test_that("allocation inclusion indicators stay internal coordinates", {
+
+  data <- data.frame(
+    study = factor(c("a", "a", "b", "b")),
+    esid = factor(seq_len(4L))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | esid, name = "esid", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name = "split",
+        terms = c(study = "study", esid = "esid"),
+        sd = prior("gamma", list(2, 2)),
+        inclusion = list(
+          study = prior("spike", list(location = 0.5)),
+          esid = prior("spike", list(location = 0.5))
+        )
+      )
+    )
+  )
+  allocation <- formula_result$formula_design$random_allocations[[1L]]
+  gates <- .bt_random_variance_allocation_inclusion_indicator_names(
+    list(mu = formula_result$formula_design)
+  )
+  columns <- c(
+    "mu_intercept",
+    allocation$source$name,
+    paste0(allocation$weight_name, "[", 1:2, "]"),
+    gates
+  )
+  coordinates <- build_test_parameter_coordinates(
+    columns = columns,
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  allocation_columns <- setdiff(columns, "mu_intercept")
+
+  expect_true(all(coordinates$role[coordinates$coordinate_name %in% allocation_columns] == "allocation"))
+  expect_true(all(coordinates$internal[coordinates$coordinate_name %in% allocation_columns]))
+  expect_false(coordinates$internal[coordinates$coordinate_name == "mu_intercept"])
+})
+
+test_that("coordinate schema validation rejects malformed tables", {
+
+  coordinates <- build_test_parameter_coordinates(columns = "theta")
+  extra <- coordinates
+  extra$extra <- "x"
+  expect_error(
+    .bt_validate_parameter_coordinates(extra),
+    "malformed"
+  )
+
+  numeric_name <- coordinates
+  numeric_name$coordinate_name <- 1
+  expect_error(
+    .bt_validate_parameter_coordinates(numeric_name),
+    "unique, non-missing coordinate names"
+  )
+})
+
+
+test_that("the parameter-map cache is session-local and never saved with a fit", {
+
+  samples <- coda::mcmc(matrix(
+    1:4,
+    ncol = 1L,
+    dimnames = list(NULL, "theta")
+  ))
+  fit <- samples
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- list(theta = prior("normal", list(0, 1)))
+  fit <- attach_test_parameter_map(fit)
+  fit <- .bt_attach_draw_geometry(fit)
+  fit <- .bt_attach_fit_contract(fit)
+  map <- parameter_map(fit)
+
+  # Nothing cacheable may be attached to the object: a cache stored there is
+  # serialized into every saved fit and replayed on load, long after the
+  # packages that filled it have changed.
+  expect_null(attr(map, "runtime_cache", exact = TRUE))
+  expect_type(attr(map, "runtime_cache_id", exact = TRUE), "character")
+
+  BayesTools::parameter_map_cache(
+    map, provider = "TestPkg", key = "k", compute = function() "stored"
+  )
+  saved <- serialize(fit, NULL)
+  expect_false(grepl("stored", rawToChar(saved[saved != as.raw(0L)]), fixed = TRUE))
+
+  # A session that never saw this fit holds no entry for it, so the value is
+  # recomputed rather than replayed from whenever the fit was written. (A
+  # round trip inside one session does legitimately reuse the live entry: the
+  # id still points at it and the map tables are unchanged.)
+  withr::defer({
+    .BayesTools_private$parameter_map_cache <- NULL
+    .BayesTools_private$parameter_map_cache_order <- NULL
+  })
+  .BayesTools_private$parameter_map_cache <- NULL
+  .BayesTools_private$parameter_map_cache_order <- NULL
+
+  reloaded <- unserialize(saved)
+  expect_identical(
+    BayesTools::parameter_map_cache(
+      parameter_map(reloaded), provider = "TestPkg", key = "k",
+      compute = function() "recomputed"
+    ),
+    "recomputed"
+  )
+})
+
+
+test_that("parameter_map_cache recomputes when its key or the map changes", {
+
+  samples <- coda::mcmc(matrix(
+    1:4,
+    ncol = 1L,
+    dimnames = list(NULL, "theta")
+  ))
+  fit <- samples
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- list(theta = prior("normal", list(0, 1)))
+  fit <- attach_test_parameter_map(fit)
+  fit <- .bt_attach_draw_geometry(fit)
+  fit <- .bt_attach_fit_contract(fit)
+
+  calls <- 0L
+  ask <- function(map, key){
+    BayesTools::parameter_map_cache(
+      map, provider = "TestPkg", key = key,
+      compute = function(){ calls <<- calls + 1L; paste0("value-", calls) }
+    )
+  }
+
+  map <- parameter_map(fit)
+  expect_identical(ask(map, "a"), "value-1")
+  expect_identical(ask(map, "a"), "value-1")
+  expect_identical(calls, 1L)
+
+  # a different key is a different derivation, even for the same map
+  expect_identical(ask(map, "b"), "value-2")
+  expect_identical(ask(map, "a"), "value-3")
+
+  # providers cannot read or clobber one another
+  expect_identical(
+    BayesTools::parameter_map_cache(
+      map, provider = "OtherPkg", key = "a", compute = function() "other"
+    ),
+    "other"
+  )
+  expect_identical(ask(map, "a"), "value-3")
+
+  # replacing the map's tables invalidates every provider's entry, including
+  # entries BayesTools did not create
+  replaced <- fit
+  attr(replaced, "parameter_map")$quantities$display_label[[1L]] <- "relabelled"
+  expect_identical(ask(parameter_map(replaced), "a"), "value-4")
+  expect_identical(
+    BayesTools::parameter_map_cache(
+      parameter_map(replaced), provider = "OtherPkg", key = "a",
+      compute = function() "other-recomputed"
+    ),
+    "other-recomputed"
+  )
+
+  # A caller can also replace a returned map table without another fit accessor.
+  direct_map <- parameter_map(replaced)
+  direct_map$quantities$display_label[[1L]] <- "directly relabelled"
+  expect_identical(ask(direct_map, "a"), "value-5")
+  expect_identical(ask(direct_map, "a"), "value-5")
+  expect_identical(
+    BayesTools::parameter_map_cache(
+      direct_map, provider = "OtherPkg", key = "a",
+      compute = function() "other-directly-recomputed"
+    ),
+    "other-directly-recomputed"
+  )
+  malformed <- direct_map
+  malformed$coordinates$coordinate_name[1L] <- NA_character_
+  expect_error(ask(malformed, "a"), "unique, non-missing coordinate names")
+
+  # A live cache never makes unsupported schema metadata acceptable.
+  malformed_schema <- direct_map
+  malformed_schema$schema_version <- NA_integer_
+  expect_error(ask(malformed_schema, "a"), "metadata are missing, malformed, or unsupported")
+  malformed_fit <- replaced
+  attr(malformed_fit, "parameter_map") <- malformed_schema
+  expect_error(parameter_map(malformed_fit), "metadata are missing, malformed, or unsupported")
+  malformed_names <- direct_map
+  malformed_names$extra <- TRUE
+  expect_error(ask(malformed_names, "a"), "metadata are missing, malformed, or unsupported")
+  attr(malformed_fit, "parameter_map") <- unclass(direct_map)
+  expect_error(parameter_map(malformed_fit), "metadata are missing, malformed, or unsupported")
+})

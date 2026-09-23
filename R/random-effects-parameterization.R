@@ -1,0 +1,327 @@
+# Internal random-effect parameterization policy helpers.
+
+.bt_random_effect_auto_parameterization_policy <- function(){
+
+  list(
+    max_columns = 8L,
+    min_effective_n = 5,
+    min_rcond = 1e-4
+  )
+}
+
+.bt_random_effect_parameterization_requested <- function(block_prior){
+
+  parameterization <- block_prior$parameterization
+  if(is.null(parameterization)){
+    parameterization <- "noncentered"
+  }
+  check_char(
+    parameterization,
+    "parameterization",
+    allow_values = c("noncentered", "centered", "mean_centered", "auto"),
+    allow_NA = FALSE
+  )
+
+  parameterization
+}
+
+.bt_random_effect_prior_has_zero_atom <- function(prior){
+
+  if(is.null(prior) || is.prior.none(prior)){
+    return(FALSE)
+  }
+  if(is.prior.point(prior)){
+    location <- prior$parameters[["location"]]
+    return(length(location) == 1L && !is.na(location) && location == 0)
+  }
+  if(is.prior.spike_and_slab(prior) || is.prior.mixture(prior)){
+    return(any(vapply(prior, .bt_random_effect_prior_has_zero_atom, logical(1))))
+  }
+  if(is.prior.ordered(prior)){
+    if(.bt_random_effect_prior_has_zero_atom(prior$total)){
+      return(TRUE)
+    }
+    allocation <- prior$allocation
+    return(
+      is.list(allocation) && identical(allocation$type, "fixed") &&
+        any(allocation$weights == 0)
+    )
+  }
+
+  FALSE
+}
+
+.bt_random_effect_centered_eligibility <- function(block_prior, prior_list,
+                                                   sd_binding,
+                                                   row_indexed_external_sd){
+
+  if(isTRUE(row_indexed_external_sd)){
+    return(list(ok = FALSE, reason = "row-indexed external SD source"))
+  }
+  if(!is.null(block_prior$sd_source) ||
+     .bt_random_sd_binding_has_external_source(sd_binding)){
+    return(list(ok = FALSE, reason = "external SD source without a positive-support contract"))
+  }
+  binding_sources <- if(is.null(sd_binding)){
+    list()
+  }else{
+    c(list(sd_binding$source), sd_binding$sources_by_column)
+  }
+  binding_sources <- binding_sources[!vapply(binding_sources, is.null, logical(1))]
+  binding_priors <- lapply(binding_sources, function(source) source$prior)
+  binding_priors <- binding_priors[!vapply(binding_priors, is.null, logical(1))]
+  scale_priors <- c(prior_list, binding_priors)
+  if(any(vapply(scale_priors, .bt_random_effect_prior_has_zero_atom, logical(1)))){
+    return(list(ok = FALSE, reason = "SD prior with an atom at zero"))
+  }
+  if(!is.null(sd_binding)){
+    factors <- c(
+      sd_binding$factors,
+      unlist(sd_binding$factors_by_column, recursive = FALSE)
+    )
+    factor_inclusion <- any(vapply(factors, function(factor){
+      is.list(factor) && !is.null(factor$inclusion_name)
+    }, logical(1)))
+    allocations <- sd_binding$allocations
+    allocation_inclusion <- any(vapply(allocations, function(allocation){
+      is.list(allocation) && length(allocation$inclusion) > 0L
+    }, logical(1)))
+    if(factor_inclusion || allocation_inclusion){
+      return(list(ok = FALSE, reason = "variance-allocation inclusion gate"))
+    }
+  }
+
+  list(ok = TRUE, reason = "strictly nondegenerate random-effect scales")
+}
+
+# Structure-specific contracts of the centered compilers: a centered CAR block
+# needs one SD prior whose support endpoints give a finite positive JAGS
+# precision, and a known group covariance with several random-effect columns
+# is compiled only noncentered.
+.bt_random_effect_centered_structure_eligibility <- function(structure,
+                                                             prior_list,
+                                                             n_columns,
+                                                             group_covariance = NULL){
+
+  if(!is.null(group_covariance) && n_columns > 1L){
+    return(list(
+      ok = FALSE,
+      reason = paste0(
+        "known group covariance with multiple random-effect columns ",
+        "requires the exact noncentered parameterization"
+      )
+    ))
+  }
+  if(identical(structure, "car")){
+    car_reason <- .bt_random_effect_centered_car_sd_reason(prior_list)
+    if(!is.null(car_reason)){
+      return(list(ok = FALSE, reason = car_reason))
+    }
+  }
+
+  list(ok = TRUE, reason = "structure supports centered parameterization")
+}
+
+# Mirrors the centered CAR compiler checks of the SD support; returns NULL
+# when both support endpoints give a finite positive initial JAGS precision.
+.bt_random_effect_centered_car_sd_reason <- function(prior_list){
+
+  if(length(prior_list) != 1L){
+    return(paste0(
+      "centered CAR requires one prior-owned block SD prior, which a ",
+      "variance allocation does not provide"
+    ))
+  }
+  support <- .posterior_support_from_prior(prior_list[[1L]])
+  if(is.null(support) || !is.numeric(support$bounds) ||
+     length(support$bounds) != 2L || anyNA(support$bounds)){
+    return("centered CAR SD prior does not expose support bounds")
+  }
+  bounds <- c(lower = support$bounds[[1L]], upper = support$bounds[[2L]])
+  if(bounds[["lower"]] < 0 || bounds[["upper"]] <= 0 ||
+     bounds[["lower"]] > bounds[["upper"]]){
+    return("centered CAR SD prior does not have valid non-negative SD support")
+  }
+  initial_precision <- bounds^-2
+  invalid <- !is.finite(initial_precision) | initial_precision <= 0
+  if(any(invalid)){
+    endpoint <- which(invalid)[1L]
+    return(paste0(
+      "centered CAR SD prior has an unrepresentable initial JAGS precision ",
+      "at the ", names(bounds)[endpoint], " centered SD support ",
+      format(bounds[[endpoint]], digits = 17, scientific = TRUE),
+      "; its support must be bounded away from zero and infinity"
+    ))
+  }
+
+  NULL
+}
+
+.bt_random_effect_auto_centered_design <- function(model_matrix, group_map,
+                                                   n_groups = max(group_map),
+                                                   max_columns = .bt_random_effect_auto_parameterization_policy()$max_columns,
+                                                   min_effective_n = .bt_random_effect_auto_parameterization_policy()$min_effective_n,
+                                                   min_rcond = .bt_random_effect_auto_parameterization_policy()$min_rcond){
+
+  K <- ncol(model_matrix)
+  if(K > max_columns){
+    return(list(ok = FALSE, reason = paste0("more than ", max_columns, " columns")))
+  }
+
+  observed_groups <- sort(unique(as.integer(group_map)))
+  if(!identical(observed_groups, seq_len(as.integer(n_groups)))){
+    return(list(ok = FALSE, reason = "one or more grouping levels are unobserved"))
+  }
+
+  for(group in observed_groups){
+    X <- model_matrix[group_map == group, , drop = FALSE]
+    column_scale <- apply(abs(X), 2L, max)
+    X_scaled <- sweep(X, 2L, ifelse(column_scale > 0, column_scale, 1), "/")
+    squared <- colSums(X_scaled^2)
+    fourth  <- colSums(X_scaled^4)
+    effective_n <- ifelse(fourth > 0, squared^2 / fourth, 0)
+    if(any(!is.finite(effective_n)) || any(effective_n < min_effective_n)){
+      return(list(ok = FALSE, reason = "insufficient within-group information"))
+    }
+    if(K > 1L){
+      X_normalized <- sweep(X_scaled, 2L, sqrt(squared), "/")
+      condition <- rcond(crossprod(X_normalized))
+      if(!is.finite(condition) || condition < min_rcond){
+        return(list(ok = FALSE, reason = "rank-deficient or ill-conditioned within-group design"))
+      }
+    }
+  }
+
+  list(
+    ok = TRUE,
+    reason = "within-group replication and conditioning favor centered parameterization"
+  )
+}
+
+.bt_random_effect_resolve_parameterization <- function(block_prior, prior_list,
+                                                       sd_binding,
+                                                       row_indexed_external_sd,
+                                                       model_matrix, group_map,
+                                                       n_groups = max(group_map),
+                                                       compile_mode,
+                                                       block_name = NULL,
+                                                       structure = NULL,
+                                                       group_covariance = NULL){
+
+  requested <- .bt_random_effect_parameterization_requested(block_prior)
+  policy <- .bt_random_effect_auto_parameterization_policy()
+  if(!identical(compile_mode, "sampled")){
+    if(identical(requested, "mean_centered")){
+      stop("Mean-centered parameterization is unavailable for marginalized random-effect blocks.",
+           call. = FALSE)
+    }
+    return(list(
+      requested = requested,
+      resolved = "marginalized",
+      reason = "random effect is analytically marginalized",
+      policy = policy
+    ))
+  }
+
+  eligibility <- .bt_random_effect_centered_eligibility(
+    block_prior = block_prior,
+    prior_list = prior_list,
+    sd_binding = sd_binding,
+    row_indexed_external_sd = row_indexed_external_sd
+  )
+  if(identical(requested, "mean_centered")){
+    if(!isTRUE(eligibility$ok)){
+      stop("Mean-centered parameterization is unavailable for random-effect block '",
+        block_name, "': ", eligibility$reason, ".", call. = FALSE)
+    }
+    return(list(requested = requested, resolved = "mean_centered",
+      reason = "explicit translation of a scalar random intercept", policy = policy))
+  }
+  if(isTRUE(eligibility$ok) && !is.null(structure) &&
+     requested %in% c("centered", "auto")){
+    eligibility <- .bt_random_effect_centered_structure_eligibility(
+      structure = structure,
+      prior_list = prior_list,
+      n_columns = ncol(model_matrix),
+      group_covariance = group_covariance
+    )
+  }
+  if(identical(requested, "centered") && !isTRUE(eligibility$ok)){
+    block_label <- if(is.null(block_name)) "unknown" else block_name
+    stop(
+      "Centered parameterization is not available for random-effect block '",
+      block_label, "': ", eligibility$reason, ".",
+      call. = FALSE
+    )
+  }
+  if(identical(requested, "noncentered")){
+    return(list(
+      requested = requested,
+      resolved = "noncentered",
+      reason = "explicit noncentered parameterization",
+      policy = policy
+    ))
+  }
+  if(identical(requested, "centered")){
+    return(list(
+      requested = requested,
+      resolved = "centered",
+      reason = "explicit centered parameterization",
+      policy = policy
+    ))
+  }
+  if(!isTRUE(eligibility$ok)){
+    return(list(
+      requested = requested,
+      resolved = "noncentered",
+      reason = eligibility$reason,
+      policy = policy
+    ))
+  }
+
+  design <- .bt_random_effect_auto_centered_design(
+    model_matrix = model_matrix,
+    group_map = group_map,
+    n_groups = n_groups,
+    max_columns = policy$max_columns,
+    min_effective_n = policy$min_effective_n,
+    min_rcond = policy$min_rcond
+  )
+  list(
+    requested = requested,
+    resolved = if(isTRUE(design$ok)) "centered" else "noncentered",
+    reason = design$reason,
+    policy = policy
+  )
+}
+
+.bt_random_effect_mean_translation <- function(random_term, parameter,
+                                                fixed_intercept, has_intercept,
+                                                model_matrix, structure,
+                                                group_covariance){
+
+  if(!is.list(fixed_intercept) ||
+     !is.character(fixed_intercept$coordinate) || length(fixed_intercept$coordinate) != 1L ||
+     !nzchar(fixed_intercept$coordinate) || !is.character(fixed_intercept$expression) ||
+     length(fixed_intercept$expression) != 1L || !nzchar(fixed_intercept$expression)){
+    stop("Mean-centered parameterization requires a compatible fixed-intercept contribution.",
+         call. = FALSE)
+  }
+  if(!isTRUE(has_intercept) || ncol(model_matrix) != 1L ||
+     !identical(colnames(model_matrix), "(Intercept)") ||
+     !all(model_matrix == 1) || !structure %in% c("id", "diag", "us")){
+    stop("Mean-centered parameterization is available only for a scalar random intercept.",
+         call. = FALSE)
+  }
+  if(!is.null(group_covariance)){
+    stop("Mean-centered parameterization is unavailable with known between-group covariance.",
+         call. = FALSE)
+  }
+  list(schema_version = 1L, block_name = random_term$block_name,
+    fixed_intercept = fixed_intercept$coordinate,
+    fixed_intercept_expression = fixed_intercept$expression,
+    location_name = paste0(parameter, "_xRE_MEANx"),
+    coefficient_name = paste0(parameter, "_xRE_COEFx"),
+    latent_name = paste0(parameter, "_xRE_Zx"),
+    group_map_name = paste0(parameter, "_xRE_MAPx"))
+}

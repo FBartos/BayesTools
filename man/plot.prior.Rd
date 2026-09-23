@@ -37,8 +37,8 @@ or ggplot2 \code{"ggplot"} for plotting.}
 automatically obtaining \code{x_range}
 if both \code{x_range} and \code{x_seq}
 are unspecified. Defaults to \code{0.005}
-for all but Cauchy, Student-t, Gamma, and
-Inverse-gamme distributions that use
+for all but Cauchy, Student-t, Gamma, inverse-gamma,
+moment, and inverse-moment distributions that use
 \code{0.010}.}
 
 \item{n_points}{number of equally spaced points
@@ -61,8 +61,12 @@ specifying one of the prepared transformations:
 \item{exp}{exponential transformation}
 }, or a list containing the transformation function \code{fun},
 inverse transformation function \code{inv}, and derivative of the
-transformation \code{jac}, evaluated on the original support. See examples
-for details.}
+transformation \code{jac}, evaluated on the original support. A custom
+transformation can also declare \code{output_support = c(lower, upper)}.
+Display grids on the transformed scale are evaluated only within these
+bounds; a wider plotting range is retained without extending the density.
+Infinite inverse values at support boundaries are omitted from continuous
+density grids. Point masses retain their transformed locations.}
 
 \item{transformation_arguments}{a list with named arguments for
 the \code{transformation}}
@@ -85,11 +89,18 @@ weightfunction is plotted.}
 specified. Only relevant if the prior corresponds to a mu
 parameter that needs to be transformed.}
 
-\item{...}{additional arguments}
+\item{...}{additional graphical arguments. For mixed continuous and point
+distributions, \code{ylim} controls the density axis, \code{ylim2} controls
+the probability-mass axis, and \code{ylab2} controls its label.}
 }
 \value{
 \code{plot.prior} returns either \code{NULL} or
 an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
+Dirichlet simplex priors are plotted as one beta marginal per coordinate;
+the ggplot method returns a list unless a single figure is selected. For an
+ordered level with mixed probability measure, the continuous density and
+exact probability-mass arrows are drawn together without rescaling either
+component.
 }
 \description{
 Plots a prior object

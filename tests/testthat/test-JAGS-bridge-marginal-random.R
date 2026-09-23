@@ -1,0 +1,2073 @@
+skip_if_not_test_profile("unit")
+
+.bridge_marginal_random_fit <- function(formula_result, values, n_draws = 20L){
+
+  posterior <- matrix(
+    rep(values, each = n_draws),
+    nrow = n_draws,
+    dimnames = list(NULL, names(values))
+  )
+  fit <- coda::mcmc(posterior)
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  fit
+}
+
+.bridge_marginal_random_mvn <- function(y, mean, covariance){
+
+  chol_covariance <- chol(covariance)
+  residual <- y - mean
+  z <- backsolve(chol_covariance, residual, transpose = TRUE)
+  -0.5 * (
+    length(y) * log(2 * pi) +
+      2 * sum(log(diag(chol_covariance))) +
+      sum(z^2)
+  )
+}
+
+.bridge_marginal_random_dense <- function(x){
+
+  if(identical(x$representation, "factor_state")){
+    x$factors <- Map(c, x$factor_plans, x$factor_states)
+    x$representation <- "factor"
+  }
+  if(identical(x$representation, "dense")){
+    return(x$covariance)
+  }
+  covariance <- matrix(0, nrow = x$dimension, ncol = x$dimension)
+  for(index in x$row_blocks){
+    block_covariance <- matrix(0, nrow = length(index), ncol = length(index))
+    for(factor in x$factors){
+      block_covariance <- block_covariance +
+        .bt_JAGS_bridge_marginal_random_geometry_covariance(factor, index)
+    }
+    covariance[index, index] <- block_covariance
+  }
+  covariance
+}
+
+test_that("marginalized random formulas compile block covariance nodes", {
+
+  data <- data.frame(
+    study = factor(c("a", "a", "b")),
+    x     = c(-1, 1, 2)
+  )
+  formula_result <- JAGS_formula(
+    formula   = ~ 1 + diag(1 + x | study),
+    parameter = "mu",
+    data      = data,
+    prior_list = list(
+      intercept = prior("point", list(location = 0))
+    ),
+    prior_random = prior_random(
+      study = random_block(
+        sd    = prior("point", list(location = 0.4)),
+        terms = list(x = prior("point", list(location = 0.2)))
+      )
+    ),
+    random_effects_compile = random_effects_compile(
+      marginalized = "study"
+    )
+  )
+  compiled <- JAGS_formula_random_marginal_covariance(
+    formula_design = formula_result$formula_design,
+    row_blocks     = list(1:2, 3L),
+    prefix         = "target_cov"
+  )
+
+  expect_s3_class(
+    compiled,
+    "BayesTools_JAGS_random_marginal_covariance"
+  )
+  expect_identical(compiled$row_blocks, list(1:2, 3L))
+  expect_identical(
+    compiled$lower_names,
+    c("target_cov_block_1_lower", "target_cov_block_2_lower")
+  )
+  expect_identical(compiled$term_names, "study")
+  expect_equal(
+    compiled$data$target_cov_term_1_data,
+    cbind(intercept = 1, x = data$x),
+    ignore_attr = TRUE
+  )
+  expect_identical(
+    compiled$data$target_cov_block_1_term_1_group,
+    c(1, 1, 1)
+  )
+  expect_match(
+    compiled$syntax,
+    "target_cov_term_1_cor_data\\[a,c\\]",
+    perl = TRUE
+  )
+  expect_match(
+    compiled$syntax,
+    "target_cov_block_1_lower\\[l\\] = target_cov_block_1_term_1\\[l\\]",
+    perl = TRUE
+  )
+
+  expect_error(
+    JAGS_formula_random_marginal_covariance(
+      formula_design = formula_result$formula_design,
+      row_blocks     = list(1:2),
+      prefix         = "target_cov"
+    ),
+    "partition every fitted row"
+  )
+})
+
+test_that("marginalized random formulas compile certified factor nodes", {
+
+  data <- data.frame(
+    study = factor(rep("a", 3)),
+    x     = c(-1, 1, 2),
+    z     = c(2, -1, 1)
+  )
+  formula_result <- JAGS_formula(
+    formula   = ~ 1 + diag(1 + x + z | study),
+    parameter = "mu",
+    data      = data,
+    prior_list = list(
+      intercept = prior("point", list(location = 0))
+    ),
+    prior_random = prior_random(
+      study = random_block(
+        sd = prior("point", list(location = 0.4)),
+        terms = list(
+          x = prior("point", list(location = 0.2)),
+          z = prior("point", list(location = 0.3))
+        )
+      )
+    ),
+    random_effects_compile = random_effects_compile(
+      marginalized = "study"
+    )
+  )
+  compiled <- JAGS_formula_random_marginal_covariance(
+    formula_design = formula_result$formula_design,
+    row_blocks     = list(1:3),
+    prefix         = "target_cov",
+    representation = "auto"
+  )
+
+  expect_identical(compiled$representation, "diagonal_factor")
+  expect_identical(compiled$diagonal_names, "target_cov_block_1_diagonal")
+  expect_identical(compiled$loading_names, "target_cov_block_1_loading")
+  expect_identical(compiled$loading_ranks, 3L)
+  expect_match(
+    compiled$syntax,
+    "target_cov_block_1_loading\\[1,3\\] = target_cov_term_1_basis\\[1,3\\]",
+    perl = TRUE
+  )
+  expect_false(grepl("target_cov_block_1_lower", compiled$syntax, fixed = TRUE))
+})
+
+test_that("unstructured marginal covariance does not require a monitored correlation node", {
+
+  set.seed(1)
+  data <- data.frame(
+    g = factor(rep(letters[1:5], each = 4)),
+    x = stats::rnorm(20)
+  )
+  compile_design <- function(prior_random_input){
+    JAGS_formula(
+      formula    = ~ 1 + x + (1 + x | g),
+      parameter  = "mu",
+      data       = data,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x         = prior("normal", list(0, 1))
+      ),
+      prior_random = prior_random_input
+    )$formula_design
+  }
+  sd_prior <- prior("normal", list(0, 1), list(0, Inf))
+  designs <- list(
+    monitor_off = compile_design(prior_random(
+      sd = sd_prior,
+      monitor = random_monitor(correlation = FALSE)
+    )),
+    lkj_off = compile_design(prior_random(
+      sd = sd_prior,
+      cor = prior_lkj(include_correlation = FALSE)
+    ))
+  )
+  monitored <- compile_design(prior_random(sd = sd_prior))
+
+  for(case in names(designs)){
+    correlation <- designs[[case]]$random_effects[[1L]]$correlation
+    expect_null(correlation$correlation_name, info = case)
+    cholesky <- correlation$cholesky_name
+    for(representation in c("dense", "auto")){
+      compiled <- JAGS_formula_random_marginal_covariance(
+        formula_design = designs[[case]],
+        row_blocks     = list(seq_len(nrow(data))),
+        prefix         = "target_cov",
+        representation = representation
+      )
+      expect_match(
+        compiled$syntax,
+        paste0(
+          "target_cov_term_1_cor[a,c] = inprod(", cholesky, "[a,1:2], ",
+          cholesky, "[c,1:2])"
+        ),
+        fixed = TRUE,
+        info = paste(case, representation)
+      )
+      expect_false(
+        grepl("_xRE_CORx_R", compiled$syntax, fixed = TRUE),
+        info = paste(case, representation)
+      )
+    }
+  }
+
+  # Designs from earlier versions stop with a refit message instead of
+  # failing inside the compiler (0.3.0 stored random terms as strings).
+  stale <- monitored
+  stale$schema_version <- NULL
+  stale$random_effects <- "(1 || g)"
+  expect_error(
+    JAGS_formula_random_marginal_covariance(
+      formula_design = stale,
+      row_blocks     = list(seq_len(nrow(data)))
+    ),
+    "created by an earlier BayesTools version",
+    fixed = TRUE
+  )
+  stale$random_effects <- NULL
+  expect_identical(
+    JAGS_formula_random_marginal_covariance(
+      formula_design = stale,
+      row_blocks     = list(seq_len(nrow(data)))
+    )$term_names,
+    character()
+  )
+
+  # A monitored correlation-matrix node is still used when it exists.
+  compiled <- JAGS_formula_random_marginal_covariance(
+    formula_design = monitored,
+    row_blocks     = list(seq_len(nrow(data))),
+    prefix         = "target_cov"
+  )
+  expect_match(
+    compiled$syntax,
+    paste0(
+      "target_cov_term_1_cor[a,c] = ",
+      monitored$random_effects[[1L]]$correlation$correlation_name, "[a,c]"
+    ),
+    fixed = TRUE
+  )
+})
+
+.bridge_structured_cholesky_reference <- function(
+    random_term, n_columns, posterior, structure){
+
+  context <- "Random-effect posterior reconstruction metadata"
+  correlation <- .bt_random_effect_correlation_metadata(
+    random_term,
+    structure = structure,
+    context = context
+  )
+  rho <- .bt_random_effect_rho_draws(
+    random_term = random_term,
+    posterior = posterior,
+    missing = "error",
+    out_of_support = "error"
+  )
+  column_coordinates <- if(identical(structure, "car")){
+    .bt_random_effect_car_time_values(
+      random_term = random_term,
+      correlation = correlation,
+      n_columns = n_columns,
+      context = context
+    )
+  }else{
+    NULL
+  }
+  out <- array(NA_real_, dim = c(nrow(posterior), n_columns, n_columns))
+  for(draw in seq_len(nrow(posterior))){
+    out[draw, , ] <- .bt_random_effect_structured_subset_cholesky(
+      structure = structure,
+      columns = seq_len(n_columns),
+      rho = rho[draw],
+      global_n_columns = n_columns,
+      column_coordinates = column_coordinates,
+      context = context
+    )
+  }
+  out
+}
+
+test_that("bridge-only random marginalization preserves the exact Gaussian target", {
+
+  data <- data.frame(study = factor(c("a", "a", "b", "c")))
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + diag(1 | study),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      study = random_block(sd = prior("point", list(location = 0.4)))
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  z_names <- as.vector(.bt_random_effect_latent_names(
+    random_term,
+    random_term$n_groups,
+    random_term$n_columns
+  ))
+  fit <- .bridge_marginal_random_fit(
+    formula_result,
+    stats::setNames(c(-0.2, 0.3, 0.1), z_names)
+  )
+  y <- c(-0.1, 0.2, 0.4, -0.3)
+  sampling_covariance <- diag(c(0.2, 0.3, 0.4, 0.5))
+  same_study <- outer(data$study, data$study, "==")
+  expected_random_covariance <- 0.4^2 * same_study
+  seen <- new.env(parent = emptyenv())
+
+  result <- JAGS_bridgesampling(
+    fit = fit,
+    data = list(y = y, sampling_covariance = sampling_covariance),
+    bridge_context = "marginal",
+    formula_random_effects_marginalize_list = list(
+      mu = list(
+        blocks = "study",
+        row_blocks = list(1:2, 3L, 4L)
+      )
+    ),
+    log_posterior = function(parameters, data, bridge_context){
+      seen$parameters <- parameters
+      seen$context <- bridge_context
+      random_covariance <- .bridge_marginal_random_dense(
+        bridge_context$marginalized_random$mu
+      )
+      .bridge_marginal_random_mvn(
+        y = data$y,
+        mean = parameters$mu,
+        covariance = data$sampling_covariance +
+          random_covariance
+      )
+    }
+  )
+
+  expect_identical(result$aggregation$rule, "exact_zero_dimensional")
+  expect_equal(seen$parameters$mu, rep(0, nrow(data)), tolerance = 0)
+  expect_s3_class(seen$context, "BayesTools_bridge_marginal_context")
+  expect_identical(seen$context$marginalized_random$mu$blocks, "study")
+  expect_identical(
+    seen$context$marginalized_random$mu$representation,
+    "factor"
+  )
+  expect_equal(
+    unname(.bridge_marginal_random_dense(
+      seen$context$marginalized_random$mu
+    )),
+    unname(expected_random_covariance),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    result$logml,
+    .bridge_marginal_random_mvn(
+      y = y,
+      mean = rep(0, length(y)),
+      covariance = sampling_covariance + expected_random_covariance
+    ),
+    tolerance = 1e-12
+  )
+})
+
+test_that("bridge-only random marginalization retains covariance parameters", {
+
+  data <- data.frame(study = factor(c("a", "a", "b", "c")))
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + diag(1 | study),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      study = random_block(sd = prior("gamma", list(2, 2)))
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  z_names <- as.vector(.bt_random_effect_latent_names(
+    random_term,
+    random_term$n_groups,
+    random_term$n_columns
+  ))
+  sd_name <- random_term$sd_parameter_names[[1L]]
+  values <- stats::setNames(c(0.6, -0.2, 0.3, 0.1), c(sd_name, z_names))
+  fit <- .bridge_marginal_random_fit(formula_result, values)
+  bridge_names <- NULL
+  seen_covariance <- NULL
+
+  testthat::local_mocked_bindings(
+    bridge_sampler = function(...){
+      arguments <- list(...)
+      bridge_names <<- colnames(arguments$samples)
+      callback_names <- c(
+        "data",
+        "bridge_prior_evaluator",
+        "bridge_formula_prior_evaluator",
+        "bridge_formula_random_prior_evaluator",
+        "bridge_formula_parameter_evaluator",
+        "add_parameters",
+        "fixed_random_latent",
+        "bridge_context",
+        "bridge_context_evaluator"
+      )
+      logml <- do.call(
+        arguments$log_posterior,
+        c(
+          list(samples.row = arguments$samples[1L, ]),
+          arguments[callback_names]
+        )
+      )
+      structure(
+        list(logml = logml, niter = 1L, mcse_logml = 0, method = "normal"),
+        class = "bridge"
+      )
+    },
+    .package = "bridgesampling"
+  )
+
+  JAGS_bridgesampling(
+    fit = fit,
+    data = list(),
+    bridge_context = "marginal",
+    formula_random_effects_marginalize_list = list(mu = "study"),
+    log_posterior = function(parameters, data, bridge_context){
+      seen_covariance <<- bridge_context$marginalized_random$mu$covariance
+      0
+    }
+  )
+
+  expect_identical(bridge_names, sd_name)
+  expect_false(any(z_names %in% bridge_names))
+  expect_equal(
+    unname(seen_covariance),
+    unname(values[[sd_name]]^2 * outer(data$study, data$study, "==")),
+    tolerance = 1e-12
+  )
+})
+
+test_that("marginalization removes exactly the selected latent coordinates", {
+
+  data <- data.frame(
+    study = factor(c("a", "a", "b", "c")),
+    x = c(-1, 0, 1, 2)
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + us(1 + x | study),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      study = random_block(
+        sd = prior("gamma", list(2, 2)),
+        terms = list(x = prior("gamma", list(2, 2))),
+        cor = prior_lkj(eta = 2, include_primitives = TRUE)
+      )
+    )
+  )
+  design <- list(mu = formula_result$formula_design)
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  latent_names <- as.vector(.bt_random_effect_latent_names(
+    random_term,
+    random_term$n_groups,
+    random_term$n_columns
+  ))
+  joint <- .bt_JAGS_formula_random_bridge_parameters(design)
+  marginalized <- .bt_JAGS_formula_random_bridge_parameters(
+    formula_design_list = design,
+    marginal_random_spec = list(
+      mu = list(blocks = "study", row_blocks = NULL)
+    )
+  )
+
+  expect_setequal(
+    setdiff(joint$parameters, marginalized$parameters),
+    latent_names
+  )
+  expect_length(setdiff(marginalized$parameters, joint$parameters), 0L)
+  expect_true(all(random_term$correlation$primitive_names %in%
+                    marginalized$parameters))
+  expect_setequal(marginalized$omitted_latent, latent_names)
+})
+
+test_that("bridge covariance exposes blocks already fitted as marginalized", {
+
+  data <- data.frame(study = factor(c("a", "a", "b")))
+  formula_result <- JAGS_formula(
+    formula   = ~ 1 + diag(1 | study),
+    parameter = "mu",
+    data      = data,
+    prior_list = list(
+      intercept = prior("point", list(location = 0))
+    ),
+    prior_random = prior_random(
+      study = random_block(sd = prior("gamma", list(2, 2)))
+    ),
+    random_effects_compile = random_effects_compile(
+      marginalized = "study"
+    )
+  )
+  design <- list(mu = formula_result$formula_design)
+  spec <- .bt_JAGS_bridge_marginal_random_spec(
+    formula_design_list = design,
+    formula_random_effects_marginalize_list = list(
+      mu = list(blocks = "study", row_blocks = list(1:2, 3L))
+    ),
+    bridge_context = "marginal"
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  sd_name <- random_term$sd_parameter_names[[1L]]
+
+  expect_identical(
+    .bt_JAGS_bridge_marginal_random_latent_names(design, spec),
+    character()
+  )
+  evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
+    formula_design_list = design,
+    marginal_random_spec = spec,
+    formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = formula_result$prior_list),
+    model_data = list(),
+    posterior_names = sd_name
+  )
+  covariance <- evaluator$covariance(
+    samples = stats::setNames(0.4, sd_name),
+    prior_parameters = list(),
+    formula_prior_parameters = list(mu = list()),
+    formula_parameters = list(mu = rep(0, nrow(data)))
+  )$mu
+
+  expect_equal(
+    unname(.bridge_marginal_random_dense(covariance)),
+    0.4^2 * outer(data$study, data$study, "=="),
+    tolerance = 1e-12
+  )
+})
+
+test_that("the marginal bridge context works without marginalized blocks", {
+
+  # The marginal context has nothing to marginalize and must match the node
+  # context exactly.
+  posterior <- coda::as.mcmc(matrix(
+    rep(0.25, 20L),
+    ncol = 1L,
+    dimnames = list(NULL, "mu")
+  ))
+  y <- c(-0.3, 0.1, 0.4)
+  call_bridge <- function(mode, seen){
+    JAGS_bridgesampling(
+      fit = posterior,
+      data = list(y = y),
+      prior_list = list(mu = prior("point", list(0.25))),
+      bridge_context = mode,
+      log_posterior = function(parameters, data, bridge_context){
+        seen$context <- bridge_context
+        sum(stats::dnorm(data$y, parameters$mu, 1, log = TRUE))
+      }
+    )
+  }
+  seen_nodes <- new.env(parent = emptyenv())
+  seen_marginal <- new.env(parent = emptyenv())
+  nodes <- call_bridge("nodes", seen_nodes)
+  marginal <- call_bridge("marginal", seen_marginal)
+  expect_s3_class(seen_marginal$context, "BayesTools_bridge_marginal_context")
+  expect_identical(seen_marginal$context$nodes, seen_nodes$context$nodes)
+  expect_identical(seen_marginal$context$marginalized_random, list())
+  expect_equal(
+    marginal$logml,
+    sum(stats::dnorm(y, 0.25, 1, log = TRUE)),
+    tolerance = 1e-12
+  )
+  expect_identical(marginal$logml, nodes$logml)
+})
+
+test_that("the marginal bridge context accepts fitted marginalized blocks without a request", {
+
+  data <- data.frame(study = factor(c("a", "a", "b")))
+  formula_result <- JAGS_formula(
+    formula   = ~ 1 + diag(1 | study),
+    parameter = "mu",
+    data      = data,
+    prior_list = list(intercept = prior("point", list(location = 0.1))),
+    prior_random = prior_random(
+      study = random_block(sd = prior("point", list(location = 0.4)))
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "study")
+  )
+  fit <- .bridge_marginal_random_fit(
+    formula_result,
+    c(mu_intercept = 0.1)
+  )
+  call_formula_bridge <- function(mode){
+    JAGS_bridgesampling(
+      fit = fit,
+      data = list(y = c(0.2, -0.1, 0.3)),
+      bridge_context = mode,
+      log_posterior = function(parameters, data, bridge_context){
+        sum(stats::dnorm(data$y, parameters$mu, 1, log = TRUE))
+      }
+    )
+  }
+  formula_marginal <- call_formula_bridge("marginal")
+  expect_identical(formula_marginal$aggregation$rule, "exact_zero_dimensional")
+  expect_equal(
+    formula_marginal$logml,
+    sum(stats::dnorm(c(0.2, -0.1, 0.3), 0.1, 1, log = TRUE)),
+    tolerance = 1e-12
+  )
+  expect_identical(formula_marginal$logml, call_formula_bridge("nodes")$logml)
+})
+
+test_that("the marginal context compiler stand-in accepts the shared SD cache", {
+
+  evaluator <- BayesTools:::.bt_JAGS_bridge_compile_context_evaluator(
+    mode = "marginal",
+    add_parameters = character(),
+    formula_design_list = list(),
+    formula_data_list = list(),
+    formula_prior_list = list(),
+    model_data = list()
+  )
+  context <- evaluator$context(
+    samples = c(mu = 0.25),
+    prior_parameters = list(mu = 0.25),
+    formula_prior_parameters = list(),
+    formula_parameters = list()
+  )
+  expect_s3_class(context, "BayesTools_bridge_marginal_context")
+  expect_identical(context$marginalized_random, list())
+})
+
+test_that("compiled bridge SD extraction safely reuses posterior positions", {
+
+  data <- data.frame(
+    id = factor(rep(c("a", "b"), each = 2L)),
+    x = rep(c(0, 1), 2L)
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + diag(1 + x | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        terms = list(x = prior("gamma", list(3, 2)))
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  evaluator <- .bt_JAGS_bridge_compile_random_sd_evaluator(
+    random_term = random_term,
+    prior_list = formula_result$prior_list
+  )
+  sd_names <- random_term$sd_parameter_names
+  first <- matrix(
+    c(9, 0.3, 0.5),
+    nrow = 1L,
+    dimnames = list(NULL, c("unrelated", sd_names))
+  )
+  reordered <- matrix(
+    c(0.6, 8, 0.4),
+    nrow = 1L,
+    dimnames = list(NULL, c(sd_names[[2L]], "unrelated", sd_names[[1L]]))
+  )
+  override <- stats::setNames(list(0.7, 0.8), sd_names)
+
+  expect_equal(
+    evaluator$posterior_values(first),
+    c(0.3, 0.5),
+    tolerance = 0
+  )
+  expect_equal(
+    evaluator$posterior_values(reordered),
+    c(0.4, 0.6),
+    tolerance = 0
+  )
+  expect_equal(
+    evaluator$posterior_values(reordered, parameters = override),
+    c(0.7, 0.8),
+    tolerance = 0
+  )
+})
+
+test_that("bridge-only random marginalization requires a covariance context", {
+
+  data <- data.frame(study = factor(c("a", "b")))
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + diag(1 | study),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      study = random_block(sd = prior("point", list(location = 0.4)))
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  z_names <- as.vector(.bt_random_effect_latent_names(
+    random_term,
+    random_term$n_groups,
+    random_term$n_columns
+  ))
+  fit <- .bridge_marginal_random_fit(
+    formula_result,
+    stats::setNames(c(0.1, -0.1), z_names)
+  )
+
+  expect_error(
+    JAGS_bridgesampling(
+      fit = fit,
+      data = list(),
+      formula_random_effects_marginalize_list = list(mu = "study"),
+      log_posterior = function(parameters, data) 0
+    ),
+    "requires bridge_context"
+  )
+
+  expect_error(
+    JAGS_bridgesampling(
+      fit = fit,
+      data = list(),
+      bridge_context = "marginal",
+      formula_random_effects_marginalize_list = list(
+        mu = list(
+          blocks = "study",
+          factor_state = TRUE
+        )
+      ),
+      log_posterior = function(parameters, data, bridge_context) 0
+    ),
+    "factor_state.*requires exact 'row_blocks'"
+  )
+})
+
+test_that("block covariance contract rejects separated random dependencies", {
+
+  data <- data.frame(study = factor(c("a", "a", "b", "c")))
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + diag(1 | study),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      study = random_block(sd = prior("point", list(location = 0.4)))
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  z_names <- as.vector(.bt_random_effect_latent_names(
+    random_term,
+    random_term$n_groups,
+    random_term$n_columns
+  ))
+  fit <- .bridge_marginal_random_fit(
+    formula_result,
+    stats::setNames(c(0.1, -0.1, 0.2), z_names)
+  )
+
+  expect_error(
+    JAGS_bridgesampling(
+      fit = fit,
+      data = list(),
+      bridge_context = "marginal",
+      formula_random_effects_marginalize_list = list(
+        mu = list(
+          blocks = "study",
+          row_blocks = list(1L, 2L, 3:4)
+        )
+      ),
+      log_posterior = function(parameters, data, bridge_context) 0
+    ),
+    "structurally nonzero covariance"
+  )
+})
+
+test_that("independent coefficient supports permit fitting and bridge row partitions", {
+
+  data <- data.frame(study = factor(rep("all", 4L)),
+                     index = factor(letters[1:4]))
+  for(formula in list(~ id(0 + index | study), ~ diag(0 + index | study))){
+    formula_result <- JAGS_formula(
+      formula = formula, parameter = "mu", data = data,
+      prior_list = list(intercept = prior("point", list(location = 0))),
+      prior_random = prior_random(study = random_block(
+        sd = prior("gamma", list(2, 2)),
+        contrasts = c(index = "independent")
+      )),
+      random_effects_compile = random_effects_compile(marginalized = "study")
+    )
+    row_blocks <- list(1:2, 3:4)
+    compiled <- JAGS_formula_random_marginal_covariance(
+      formula_design = formula_result$formula_design,
+      row_blocks = row_blocks, prefix = "target_cov"
+    )
+    expect_identical(compiled$row_blocks, row_blocks)
+    design <- list(mu = formula_result$formula_design)
+    spec <- .bt_JAGS_bridge_marginal_random_spec(
+      formula_design_list = design,
+      formula_random_effects_marginalize_list = list(
+        mu = list(blocks = "study", row_blocks = row_blocks)
+      ),
+      bridge_context = "marginal"
+    )
+    sd_names <- unique(design$mu$random_effects[[1L]]$sd_parameter_names)
+    evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
+      formula_design_list = design, marginal_random_spec = spec,
+      formula_data_list = list(mu = data),
+      formula_prior_list = list(mu = formula_result$prior_list),
+      model_data = list(), posterior_names = sd_names
+    )
+    covariance <- evaluator$covariance(
+      samples = stats::setNames(rep(.2, length(sd_names)), sd_names),
+      prior_parameters = list(), formula_prior_parameters = list(mu = list()),
+      formula_parameters = list(mu = rep(0, nrow(data)))
+    )$mu
+    expect_equal(unname(.bridge_marginal_random_dense(covariance)),
+                 diag(rep(.2^2, 4L)), tolerance = 1e-12)
+  }
+})
+
+test_that("bridge marginal evaluator supports every implemented covariance structure", {
+
+  data <- data.frame(
+    id = factor(rep(c("a", "b"), each = 3L)),
+    x = rep(c(0, 1, 2), 2L),
+    f = factor(rep(c("a", "b", "c"), 2L)),
+    time = rep(c(0, 2, 5), 2L)
+  )
+  cases <- list(
+    id = list(
+      formula = ~ 1 + id(1 + x | id),
+      prior_random = prior_random(
+        id = random_block(
+          sd = prior("point", list(location = 0.4))
+        )
+      ),
+      values = numeric()
+    ),
+    diag = list(
+      formula = ~ 1 + diag(1 + x | id),
+      prior_random = prior_random(
+        id = random_block(
+          sd = prior("point", list(location = 0.3)),
+          terms = list(x = prior("point", list(location = 0.5)))
+        )
+      ),
+      values = numeric()
+    ),
+    us = list(
+      formula = ~ 1 + us(1 + x | id),
+      prior_random = prior_random(
+        id = random_block(
+          sd = prior("point", list(location = 0.3)),
+          terms = list(x = prior("point", list(location = 0.5))),
+          cor = prior_lkj(eta = 2, include_primitives = TRUE)
+        )
+      ),
+      values = NULL
+    ),
+    cs = list(
+      formula = ~ 1 + cs(f | id),
+      prior_random = prior_random(
+        id = random_block(
+          sd = prior("point", list(location = 0.4)),
+          cor = prior("point", list(location = 0.2))
+        )
+      ),
+      values = numeric()
+    ),
+    hcs = list(
+      formula = ~ 1 + hcs(f | id),
+      prior_random = prior_random(
+        id = random_block(
+          sd = prior("point", list(location = 0.3)),
+          cor = prior("point", list(location = 0.2))
+        )
+      ),
+      values = numeric()
+    ),
+    ar1 = list(
+      formula = ~ 1 + ar1(f | id),
+      prior_random = prior_random(
+        id = random_block(
+          sd = prior("point", list(location = 0.4)),
+          cor = prior("point", list(location = 0.5))
+        )
+      ),
+      values = numeric()
+    ),
+    har = list(
+      formula = ~ 1 + har(f | id),
+      prior_random = prior_random(
+        id = random_block(
+          sd = prior("point", list(location = 0.3)),
+          cor = prior("point", list(location = 0.5))
+        )
+      ),
+      values = numeric()
+    ),
+    car = list(
+      formula = ~ 1 + car(time | id),
+      prior_random = prior_random(
+        id = random_block(
+          sd = prior("point", list(location = 0.4)),
+          cor = prior("point", list(location = 0.5))
+        )
+      ),
+      values = numeric()
+    )
+  )
+
+  for(structure in names(cases)){
+    case <- cases[[structure]]
+    formula_result <- JAGS_formula(
+      formula = case$formula,
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("point", list(location = 0))),
+      prior_random = case$prior_random
+    )
+    random_term <- formula_result$formula_design$random_effects[[1L]]
+    values <- case$values
+    if(identical(structure, "us")){
+      primitive_names <- random_term$correlation$primitive_names
+      values <- stats::setNames(rep(0.5, length(primitive_names)), primitive_names)
+    }
+    posterior <- matrix(
+      values,
+      nrow = 1L,
+      dimnames = list(NULL, names(values))
+    )
+    posterior <- .bt_random_effect_marginal_covariance_validate_posterior(
+      posterior,
+      allow_zero_columns = TRUE
+    )
+    if(structure %in% c("cs", "hcs", "ar1", "har", "car")){
+      compiled_cholesky <-
+        .bt_random_effect_compile_cholesky_evaluator(
+          random_term = random_term,
+          n_columns = ncol(random_term$model_matrix),
+          structure = structure
+        )
+      expect_equal(
+        compiled_cholesky(posterior),
+        .bridge_structured_cholesky_reference(
+          random_term = random_term,
+          n_columns = ncol(random_term$model_matrix),
+          posterior = posterior,
+          structure = structure
+        ),
+        tolerance = 0,
+        info = paste(structure, "compiled Cholesky")
+      )
+    }
+    reference <- .bt_random_effect_marginal_covariance_samples(
+      design = formula_result$formula_design,
+      posterior = posterior,
+      prior_list = formula_result$prior_list,
+      blocks = "id"
+    )$samples[1L, , ]
+    evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
+      formula_design_list = list(mu = formula_result$formula_design),
+      marginal_random_spec = list(
+        mu = list(
+          blocks = "id",
+          row_blocks = list(1:3, 4:6),
+          factor_state = TRUE
+        )
+      ),
+      formula_data_list = list(mu = data),
+      formula_prior_list = list(mu = formula_result$prior_list),
+      model_data = list(),
+      posterior_names = names(values)
+    )
+    actual_value <- evaluator$covariance(
+      samples = values,
+      prior_parameters = list(),
+      formula_prior_parameters = list(mu = list()),
+      formula_parameters = list(mu = rep(0, nrow(data)))
+    )$mu
+    actual <- .bridge_marginal_random_dense(actual_value)
+
+    expect_identical(actual_value$representation, "factor", info = structure)
+    expect_equal(
+      unname(actual),
+      unname(reference),
+      tolerance = 1e-12,
+      info = structure
+    )
+    compact_value <- evaluator$covariance(
+      samples = values,
+      prior_parameters = list(),
+      formula_prior_parameters = list(mu = list()),
+      formula_parameters = list(mu = rep(0, nrow(data))),
+      factor_covariance = FALSE,
+      factor_state = TRUE
+    )$mu
+    compact_plan <- compact_value$factor_plans[[1L]]
+    compact_state <- compact_value$factor_states[[1L]]
+    expected_structure <- if(structure %in% c("ar1", "car", "har")){
+      "markov"
+    }else if(structure %in% c("diag", "id")){
+      "diagonal"
+    }else{
+      "dense"
+    }
+    expect_identical(
+      compact_plan$coefficient_structure,
+      expected_structure,
+      info = structure
+    )
+    if(identical(expected_structure, "markov")){
+      expect_identical(
+        names(compact_state),
+        c(
+          "coefficient_factor",
+          "coefficient_scale",
+          "markov_transition",
+          "markov_innovation_variance"
+        ),
+        info = structure
+      )
+      expect_equal(
+        compact_state$markov_transition^2 +
+          compact_state$markov_innovation_variance,
+        rep(1, length(compact_state$markov_transition)),
+        tolerance = 1e-15,
+        info = structure
+      )
+    }
+    expect_equal(
+      unname(.bridge_marginal_random_dense(compact_value)),
+      unname(reference),
+      tolerance = 1e-12,
+      info = paste(structure, "compact contract")
+    )
+    reduced <- random_effects_marginal_diagonal_factor(compact_value)
+    for(block_index in seq_along(reduced$row_blocks)){
+      rows <- reduced$row_blocks[[block_index]]
+      loading <- reduced$loadings[[block_index]][
+        1L,
+        ,
+        ,
+        drop = FALSE
+      ]
+      dim(loading) <- c(length(rows), reduced$ranks[[block_index]])
+      reconstructed <- diag(reduced$diagonal[1L, rows]) +
+        tcrossprod(loading)
+      expect_equal(
+        unname(reconstructed),
+        unname(reference[rows, rows, drop = FALSE]),
+        tolerance = 1e-12,
+        info = paste(structure, "diagonal-factor reduction")
+      )
+    }
+
+    batch_posterior <- posterior[rep(1L, 3L), , drop = FALSE]
+    batch_value     <- evaluator$factor_states(batch_posterior)$mu
+    expect_identical(length(batch_value$factor_states), 3L, info = structure)
+    for (draw in seq_len(3L)) {
+      expect_equal(
+        batch_value$factor_states[[draw]][[1L]],
+        compact_state,
+        tolerance = 0,
+        info = paste(structure, "batch factor state")
+      )
+    }
+  }
+})
+
+test_that("compiled bridge correlation geometry preserves sampled rho", {
+
+  data <- data.frame(
+    id = factor(rep(c("a", "b"), each = 4L)),
+    f = factor(rep(letters[1:4], 2L))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + ar1(f | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("point", list(location = 0.4)),
+        cor = prior("normal", list(mean = 0, sd = 0.5))
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  rho_name <- .bt_JAGS_bridge_scalar_rho_sample_name(
+    random_term$correlation,
+    random_term
+  )
+  posterior <- matrix(
+    c(-0.4, 0, 0.6),
+    ncol = 1L,
+    dimnames = list(NULL, rho_name)
+  )
+  compiled <- .bt_random_effect_compile_cholesky_evaluator(
+    random_term = random_term,
+    n_columns = 4L,
+    structure = "ar1"
+  )
+  rho_plan <- .bt_random_effect_compile_rho_draw_plan(random_term)
+
+  expect_equal(
+    compiled(posterior),
+    .bridge_structured_cholesky_reference(
+      random_term = random_term,
+      n_columns = 4L,
+      posterior = posterior,
+      structure = "ar1"
+    ),
+    tolerance = 0
+  )
+  expect_equal(
+    .bt_random_effect_rho_draws(
+      random_term = random_term,
+      posterior = posterior,
+      missing = "error",
+      out_of_support = "error",
+      plan = rho_plan
+    ),
+    .bt_random_effect_rho_draws(
+      random_term = random_term,
+      posterior = posterior,
+      missing = "error",
+      out_of_support = "error"
+    ),
+    tolerance = 0
+  )
+})
+
+test_that("native bridge Cholesky kernels reproduce analytic correlations", {
+
+  specifications <- list(
+    cs = list(
+      rho = c(-0.2, 0.6),
+      coordinates = seq_len(4L)
+    ),
+    ar1 = list(
+      rho = c(-0.4, 0.6),
+      coordinates = c(1, 2, 4, 7)
+    ),
+    car = list(
+      rho = c(0, 0.75),
+      coordinates = c(0, 0.5, 2, 5)
+    )
+  )
+  for(structure in names(specifications)){
+    specification <- specifications[[structure]]
+    actual <- .bt_random_effect_native_structured_cholesky(
+      structure = structure,
+      rho = specification$rho,
+      coordinates = specification$coordinates
+    )
+    distance <- if(identical(structure, "cs")){
+      1 - diag(length(specification$coordinates))
+    }else{
+      abs(outer(
+        specification$coordinates,
+        specification$coordinates,
+        "-"
+      ))
+    }
+
+    expect_identical(
+      dim(actual),
+      c(length(specification$rho), 4L, 4L),
+      info = structure
+    )
+    for(draw in seq_along(specification$rho)){
+      expected <- specification$rho[draw]^distance
+      expect_equal(
+        tcrossprod(actual[draw, , ]),
+        expected,
+        tolerance = 1e-14,
+        info = paste(structure, "draw", draw)
+      )
+    }
+  }
+})
+
+test_that("bridge coefficient geometry reconstructs a structured factor once", {
+
+  data <- data.frame(
+    id = factor(rep(c("a", "b"), each = 3L)),
+    f = factor(rep(c("a", "b", "c"), 2L))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + cs(f | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("point", list(location = 0.4)),
+        cor = prior("point", list(location = 0.2))
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  posterior <- matrix(numeric(), nrow = 1L)
+  rho <- .bt_random_effect_rho_draws(
+    random_term = random_term,
+    posterior = posterior,
+    missing = "error",
+    out_of_support = "error"
+  )
+  reconstruct <- .bt_random_effect_cholesky_draws
+  reconstruction_count <- 0L
+  testthat::local_mocked_bindings(
+    .bt_random_effect_cholesky_draws = function(...){
+
+      reconstruction_count <<- reconstruction_count + 1L
+      reconstruct(...)
+    },
+    .package = "BayesTools"
+  )
+
+  actual <- .bt_JAGS_bridge_marginal_random_coefficient_geometry(
+    random_term = random_term,
+    posterior = posterior,
+    column_scale = rep(0.4, 3L),
+    covariance = TRUE,
+    structure = "cs"
+  )
+  expected_correlation <- matrix(rho, nrow = 3L, ncol = 3L)
+  diag(expected_correlation) <- 1
+
+  expect_identical(reconstruction_count, 1L)
+  expect_equal(
+    tcrossprod(actual$factor),
+    0.4^2 * expected_correlation,
+    tolerance = 1e-15
+  )
+  expect_equal(actual$covariance, tcrossprod(actual$factor), tolerance = 0)
+})
+
+test_that("bridge marginal evaluator supports known group covariance", {
+
+  data <- data.frame(id = factor(c("b", "a", "c", "b")))
+  K <- matrix(
+    c(4, 1, 0.5, 1, 9, 2, 0.5, 2, 16),
+    nrow = 3L,
+    byrow = TRUE,
+    dimnames = list(c("a", "b", "c"), c("a", "b", "c"))
+  )
+  formula_result <- JAGS_formula(
+    formula = random_effects_formula(
+      ~ 1 | id,
+      group_covariance = random_group_covariance(K, scale = "none")
+    ),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      id = random_block(sd = prior("point", list(location = 0.5)))
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "id")
+  )
+  evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
+    formula_design_list = list(mu = formula_result$formula_design),
+    marginal_random_spec = list(
+      mu = list(
+        blocks = "id",
+        row_blocks = list(seq_len(nrow(data))),
+        factor_state = TRUE
+      )
+    ),
+    formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = formula_result$prior_list),
+    model_data = list()
+  )
+  actual_value <- evaluator$covariance(
+    samples = numeric(),
+    prior_parameters = list(),
+    formula_prior_parameters = list(mu = list()),
+    formula_parameters = list(mu = rep(0, nrow(data)))
+  )$mu
+  actual <- .bridge_marginal_random_dense(actual_value)
+  expected <- 0.5^2 * K[as.character(data$id), as.character(data$id)]
+
+  expect_identical(actual_value$representation, "factor")
+  expect_equal(unname(actual), unname(expected), tolerance = 1e-12)
+
+  compact_value <- evaluator$covariance(
+    samples = numeric(),
+    prior_parameters = list(),
+    formula_prior_parameters = list(mu = list()),
+    formula_parameters = list(mu = rep(0, nrow(data))),
+    factor_covariance = FALSE,
+    factor_state = TRUE
+  )$mu
+  expect_identical(compact_value$representation, "factor_state")
+  expect_true(is.environment(compact_value$contract_id))
+  expect_identical(
+    names(compact_value$factor_plans[[1L]]),
+    c(
+      "type",
+      "model_matrix",
+      "group_map",
+      "coefficient_structure",
+      "group_covariance"
+    )
+  )
+  expect_identical(
+    names(compact_value$factor_states[[1L]]),
+    "coefficient_factor"
+  )
+  expect_equal(
+    unname(.bridge_marginal_random_dense(compact_value)),
+    unname(expected),
+    tolerance = 1e-12
+  )
+  reduced <- random_effects_marginal_diagonal_factor(compact_value)
+  loading <- matrix(reduced$loadings[[1L]][1L, , ], nrow = nrow(data))
+  expect_equal(
+    diag(reduced$diagonal[1L, ]) + tcrossprod(loading),
+    unname(expected),
+    tolerance = 1e-12
+  )
+  compiled <- JAGS_formula_random_marginal_covariance(
+    formula_design = formula_result$formula_design,
+    row_blocks     = list(seq_len(nrow(data))),
+    representation = "auto"
+  )
+  expect_identical(compiled$representation, "diagonal_factor")
+})
+
+test_that("known group covariance carries the full coefficient covariance", {
+
+  data <- data.frame(
+    id = factor(c("b", "a", "c", "b")),
+    x = c(-1, 0, 1, 2)
+  )
+  K <- matrix(
+    c(4, 1, 0.5, 1, 9, 2, 0.5, 2, 16),
+    nrow = 3L,
+    byrow = TRUE,
+    dimnames = list(c("a", "b", "c"), c("a", "b", "c"))
+  )
+  formula_result <- JAGS_formula(
+    formula = random_effects_formula(
+      ~ 1 + us(1 + x | id),
+      group_covariance = random_group_covariance(K, scale = "none")
+    ),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("point", list(location = 0.5)),
+        terms = list(x = prior("point", list(location = 0.3))),
+        cor = prior_lkj(eta = 2, include_primitives = TRUE)
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  primitive_names <- random_term$correlation$primitive_names
+  values <- stats::setNames(rep(0.7, length(primitive_names)), primitive_names)
+  posterior <- matrix(values, nrow = 1L, dimnames = list(NULL, names(values)))
+  reference <- .bt_random_effect_marginal_covariance_samples(
+    design = formula_result$formula_design,
+    posterior = posterior,
+    prior_list = formula_result$prior_list,
+    blocks = "id"
+  )$samples[1L, , ]
+  evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
+    formula_design_list = list(mu = formula_result$formula_design),
+    marginal_random_spec = list(
+      mu = list(blocks = "id", row_blocks = list(seq_len(nrow(data))))
+    ),
+    formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = formula_result$prior_list),
+    model_data = list()
+  )
+  actual_value <- evaluator$covariance(
+    samples = values,
+    prior_parameters = list(),
+    formula_prior_parameters = list(mu = list()),
+    formula_parameters = list(mu = rep(0, nrow(data)))
+  )$mu
+  factor <- actual_value$factors[[1L]]
+
+  expect_identical(factor$type, "known_group")
+  expect_identical(dim(factor$coefficient_covariance), c(2L, 2L))
+  expect_equal(
+    factor$coefficient_covariance,
+    tcrossprod(factor$coefficient_factor),
+    tolerance = 0
+  )
+  expect_equal(
+    unname(.bridge_marginal_random_dense(actual_value)),
+    unname(reference),
+    tolerance = 1e-12
+  )
+
+  compact_value <- evaluator$covariance(
+    samples = values,
+    prior_parameters = list(),
+    formula_prior_parameters = list(mu = list()),
+    formula_parameters = list(mu = rep(0, nrow(data))),
+    factor_covariance = FALSE
+  )$mu
+  compact_factor <- compact_value$factors[[1L]]
+  compact_coefficient_covariance <- tcrossprod(
+    compact_factor$coefficient_factor
+  )
+  compact_covariance <- compact_factor$group_covariance[
+    compact_factor$group_map,
+    compact_factor$group_map,
+    drop = FALSE
+  ] * tcrossprod(
+    compact_factor$model_matrix %*% compact_coefficient_covariance,
+    compact_factor$model_matrix
+  )
+
+  expect_null(compact_factor$coefficient_covariance)
+  expect_equal(
+    unname(compact_covariance),
+    unname(reference),
+    tolerance = 1e-12
+  )
+})
+
+test_that("row-indexed external SD sources remain covariance factors", {
+
+  data <- data.frame(id = factor(c("a", "a", "b", "b")))
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + random(1 | id, name = "id", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      id = random_block(
+        sd_source = random_sd_source("tau", shape = "row")
+      )
+    )
+  )
+  tau_names <- paste0("tau[", seq_len(nrow(data)), "]")
+  values <- stats::setNames(c(0.2, 0.4, 0.3, 0.5), tau_names)
+  posterior <- matrix(values, nrow = 1L, dimnames = list(NULL, names(values)))
+  reference <- .bt_random_effect_marginal_covariance_samples(
+    design = formula_result$formula_design,
+    posterior = posterior,
+    prior_list = formula_result$prior_list,
+    blocks = "id"
+  )$samples[1L, , ]
+  evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
+    formula_design_list = list(mu = formula_result$formula_design),
+    marginal_random_spec = list(
+      mu = list(
+        blocks = "id",
+        row_blocks = list(1:2, 3:4),
+        factor_state = TRUE
+      )
+    ),
+    formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = formula_result$prior_list),
+    model_data = list()
+  )
+  actual_value <- evaluator$covariance(
+    samples = values,
+    prior_parameters = list(),
+    formula_prior_parameters = list(mu = list()),
+    formula_parameters = list(mu = rep(0, nrow(data)))
+  )$mu
+  factor <- actual_value$factors[[1L]]
+
+  expect_identical(factor$type, "row_group")
+  expect_equal(factor$row_scale, unname(values), tolerance = 0)
+  expect_equal(
+    unname(.bridge_marginal_random_dense(actual_value)),
+    unname(reference),
+    tolerance = 1e-12
+  )
+
+  compact_value <- evaluator$covariance(
+    samples = values,
+    prior_parameters = list(),
+    formula_prior_parameters = list(mu = list()),
+    formula_parameters = list(mu = rep(0, nrow(data))),
+    factor_covariance = FALSE,
+    factor_state = TRUE
+  )$mu
+  compact_state <- compact_value$factor_states[[1L]]
+  expect_identical(
+    names(compact_state),
+    c("coefficient_factor", "row_scale")
+  )
+  expect_equal(compact_state$row_scale, unname(values), tolerance = 0)
+  expect_equal(
+    unname(.bridge_marginal_random_dense(compact_value)),
+    unname(reference),
+    tolerance = 1e-12
+  )
+  reduced <- random_effects_marginal_diagonal_factor(compact_value)
+  for(block_index in seq_along(reduced$row_blocks)){
+    rows <- reduced$row_blocks[[block_index]]
+    loading <- reduced$loadings[[block_index]][1L, , , drop = FALSE]
+    dim(loading) <- c(length(rows), reduced$ranks[[block_index]])
+    expect_equal(
+      unname(diag(reduced$diagonal[1L, rows]) + tcrossprod(loading)),
+      unname(reference[rows, rows, drop = FALSE]),
+      tolerance = 1e-12
+    )
+  }
+
+  batch_posterior <- rbind(posterior, posterior * 2)
+  batch_value <- evaluator$factor_states(batch_posterior)$mu
+  expect_identical(length(batch_value$factor_states), 2L)
+  expect_equal(
+    batch_value$factor_states[[1L]][[1L]]$row_scale,
+    unname(values),
+    tolerance = 0
+  )
+  expect_equal(
+    batch_value$factor_states[[2L]][[1L]]$row_scale,
+    2 * unname(values),
+    tolerance = 0
+  )
+})
+
+test_that("marginal bridge covariance reuses natural allocation parameters", {
+
+  data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2")),
+    drug = factor(c("a", "b", "a", "b"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(name = "allocation",
+        sd = prior("gamma", list(2, 2)),
+        weights = prior("dirichlet", list(alpha = c(2, 3)))
+      )
+    )
+  )
+  evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
+    formula_design_list = list(mu = formula_result$formula_design),
+    marginal_random_spec = list(
+      mu = list(
+        blocks = c("study", "drug"),
+        row_blocks = list(seq_len(nrow(data))),
+        factor_state = TRUE
+      )
+    ),
+    formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = formula_result$prior_list),
+    model_data = list()
+  )
+  weight_name <- "mu__xRE_ALLOCx_allocation__weight"
+  eta_names <- paste0("prior_par_eta_", weight_name, "[", 1:2, "]")
+  valid_samples <- c(
+    "mu__xRE_ALLOCx_allocation__allocation_sd" = 2,
+    stats::setNames(c(1, 3), eta_names)
+  )
+  formula_prior_evaluator <- .bt_JAGS_bridge_compile_formula_prior_evaluator(
+    list(mu = formula_result$prior_list)
+  )
+  formula_prior_parameters <- formula_prior_evaluator$parameters(valid_samples)
+  expected <- evaluator$covariance(
+    samples = valid_samples,
+    prior_parameters = list(),
+    formula_prior_parameters = list(),
+    formula_parameters = list(mu = rep(0, nrow(data)))
+  )$mu
+
+  replay_count <- 0L
+  testthat::local_mocked_bindings(
+    .bt_random_effect_dirichlet_draws = function(...){
+
+      replay_count <<- replay_count + 1L
+      stop("Dirichlet replay should not be used", call. = FALSE)
+    },
+    .package = "BayesTools"
+  )
+  actual <- evaluator$covariance(
+    samples = valid_samples,
+    prior_parameters = list(),
+    formula_prior_parameters = formula_prior_parameters,
+    formula_parameters = list(mu = rep(0, nrow(data)))
+  )$mu
+
+  expect_identical(replay_count, 0L)
+  expect_equal(
+    unname(.bridge_marginal_random_dense(actual)),
+    unname(.bridge_marginal_random_dense(expected)),
+    tolerance = 0
+  )
+
+  weight_names <- paste0(weight_name, "[", 1:2, "]")
+  posterior <- matrix(
+    c(valid_samples, stats::setNames(c(.6, .4), weight_names)),
+    nrow = 1L,
+    dimnames = list(NULL, c(names(valid_samples), weight_names))
+  )
+  posterior_state <- evaluator$factor_states(posterior)$mu
+  state <- posterior_state$factor_states[[1L]]
+  expect_equal(
+    unname(vapply(
+      state,
+      function(block) block$coefficient_factor[1L, 1L],
+      numeric(1)
+    )),
+    2 * sqrt(c(.6, .4)),
+    tolerance = 1e-12
+  )
+})
+
+test_that("random allocation draws honor coordinate precedence without repairing weights", {
+
+  parameter <- "allocation_weight"
+  prior_list <- stats::setNames(
+    list(prior("dirichlet", list(alpha = c(2, 3)))),
+    parameter
+  )
+  eta_names <- paste0(
+    .JAGS_prior_dirichlet_eta_name(parameter),
+    "[", 1:2, "]"
+  )
+  weight_names <- paste0(parameter, "[", 1:2, "]")
+  posterior <- matrix(
+    c(1, 3, .9, .1),
+    nrow = 1L,
+    dimnames = list(NULL, c(eta_names, weight_names))
+  )
+
+  expect_identical(
+    unname(.bt_random_effect_dirichlet_draws(
+      parameter_name = parameter,
+      posterior      = posterior,
+      prior_list     = prior_list
+    )),
+    matrix(c(.9, .1), nrow = 1L)
+  )
+  expect_identical(
+    unname(.bt_random_effect_dirichlet_draws(
+      parameter_name = parameter,
+      posterior      = posterior,
+      prior_list     = prior_list,
+      prefer_weights = FALSE
+    )),
+    matrix(c(.25, .75), nrow = 1L)
+  )
+
+  supplied <- matrix(
+    c(.2, .8 + .Machine$double.eps),
+    nrow = 1L,
+    dimnames = list(NULL, weight_names)
+  )
+  validated <- .bt_random_effect_validate_dirichlet_weights(
+    supplied,
+    parameter_name = parameter
+  )
+  expect_identical(validated, supplied)
+})
+
+
+test_that("Markov factor states preserve declared singular unit-correlation roots", {
+
+  data <- data.frame(
+    id = factor(rep(c("a", "b"), each = 3L)),
+    f = factor(rep(c("a", "b", "c"), 2L)),
+    time = rep(c(0, 2, 5), 2L)
+  )
+  cases <- list(
+    list(formula = ~ 1 + ar1(f | id), structure = "ar1", rho = -1),
+    list(formula = ~ 1 + ar1(f | id), structure = "ar1", rho = 1),
+    list(formula = ~ 1 + ar1(f | id), structure = "ar1", rho = -.4),
+    list(formula = ~ 1 + har(f | id), structure = "har", rho = 1),
+    list(formula = ~ 1 + car(time | id), structure = "car", rho = 1),
+    list(formula = ~ 1 + car(time | id), structure = "car", rho = .4)
+  )
+  posterior <- matrix(numeric(), nrow = 2L, ncol = 0L)
+  for(case in cases){
+    # Public priors currently require interior scalar correlations. The explicit
+    # root below tests the internal Markov factor contract, not endpoint priors.
+    formula_result <- JAGS_formula(
+      formula = case$formula, parameter = "mu", data = data,
+      prior_list = list(intercept = prior("point", list(location = 0))),
+      prior_random = prior_random(id = random_block(
+        sd = prior("point", list(location = .4)),
+        covariance = random_covariance(
+          cor = prior("point", list(location = .4)), cor_scale = "cor"
+        )
+      ))
+    )
+    coordinates <- if(identical(case$structure, "car")) c(0, 2, 5) else 1:3
+    correlation <- case$rho^abs(outer(coordinates, coordinates, "-"))
+    root <- if(abs(case$rho) == 1){
+      out <- matrix(0, 3L, 3L)
+      out[, 1L] <- case$rho^(coordinates - coordinates[[1L]])
+      out
+    }else{
+      t(chol(correlation))
+    }
+    block_plan <- list(
+      random_term = formula_result$formula_design$random_effects[[1L]],
+      model_matrix = formula_result$formula_design$random_effects[[1L]]$model_matrix,
+      structure = case$structure,
+      row_indexed = FALSE,
+      factor_plan = list(coefficient_structure = "markov"),
+      coefficient_cholesky_evaluator = function(posterior){
+        out <- array(0, c(nrow(posterior), 3L, 3L))
+        for(draw in seq_len(nrow(posterior))) out[draw, , ] <- root
+        out
+      }
+    )
+    batch <- .bt_JAGS_bridge_marginal_random_block_factor_states_batch(
+      block_plan, posterior, formula_result$prior_list
+    )
+    scalar <- .bt_JAGS_bridge_marginal_random_factor_state(
+      block_plan, posterior[1L, , drop = FALSE], formula_result$prior_list,
+      source_parameters = list(), factor_covariance = FALSE
+    )
+    expect_identical(batch[[1L]], scalar)
+    expect_identical(batch[[2L]], scalar)
+    expected_transition <- case$rho^diff(coordinates)
+    expect_equal(scalar$markov_transition, expected_transition, tolerance = 1e-14)
+    expect_equal(scalar$markov_innovation_variance,
+                 1 - expected_transition^2, tolerance = 1e-14)
+    expect_equal(tcrossprod(scalar$coefficient_factor),
+                 .4^2 * correlation, tolerance = 1e-14)
+    if(abs(case$rho) < 1){
+      expect_identical(scalar$markov_transition,
+                       root[cbind(2:3, 1:2)] / diag(root)[1:2])
+    }
+  }
+
+  invalid_plan <- block_plan
+  invalid_plan$coefficient_cholesky_evaluator <- function(posterior){
+    array(NA_real_, c(nrow(posterior), 3L, 3L))
+  }
+  expect_error(
+    .bt_JAGS_bridge_marginal_random_block_factor_states_batch(
+      invalid_plan, posterior, formula_result$prior_list),
+    "Random-effect marginal covariance correlation draws for block 'id' must be finite.",
+    fixed = TRUE
+  )
+  expect_error(
+    .bt_JAGS_bridge_marginal_random_factor_state(
+      invalid_plan, posterior[1L, , drop = FALSE], formula_result$prior_list,
+      source_parameters = list(), factor_covariance = FALSE),
+    "Random-effect marginal covariance correlation draws for block 'id' must be finite.",
+    fixed = TRUE
+  )
+})
+
+
+test_that("known group factors preserve sampled covariance and zero-SD supports", {
+
+  data <- data.frame(id = factor(c("a", "a", "b", "b")), x = c(1, 1, -1, -1))
+  kernel <- matrix(c(1, .3, .3, 1.2), 2L,
+                   dimnames = list(c("a", "b"), c("a", "b")))
+  for(mode in c("sampled", "marginalized")){
+    formula_result <- JAGS_formula(
+      formula = random_effects_formula(
+        ~ 1 + diag(1 + x | id),
+        group_covariance = random_group_covariance(kernel, scale = "none")
+      ),
+      parameter = "mu", data = data,
+      prior_list = list(intercept = prior("point", list(location = 0))),
+      prior_random = prior_random(id = random_block(
+        sd = prior("point", list(location = .5)),
+        terms = list(x = prior("point", list(location = .2)))
+      )),
+      random_effects_compile = if(mode == "sampled"){
+        random_effects_compile()
+      }else{
+        random_effects_compile(marginalized = "id")
+      }
+    )
+    compiled <- JAGS_formula_random_marginal_covariance(
+      formula_result$formula_design, row_blocks = list(1:4),
+      representation = "auto"
+    )
+    expect_identical(compiled$representation, "diagonal_factor")
+    factors <- random_effects_marginal_factor_states(
+      formula_result$formula_design,
+      posterior_samples = matrix(0, 1L, 1L, dimnames = list(NULL, "mu_intercept")),
+      prior_list = formula_result$prior_list,
+      row_blocks = list(1:4)
+    )
+    reduced <- random_effects_marginal_diagonal_factor(factors)
+    loading <- matrix(reduced$loadings[[1L]][1L, , ], nrow = 4L)
+    # Independent coefficient covariance times the declared group kernel.
+    expected <- (.5^2 + .2^2 * outer(data$x, data$x)) *
+      kernel[as.character(data$id), as.character(data$id)]
+    expect_equal(diag(reduced$diagonal[1L, ]) + tcrossprod(loading),
+                 unname(expected), tolerance = 1e-14)
+    factors$factor_states[[1L]][[1L]]$coefficient_factor[,] <- 0
+    zero <- random_effects_marginal_diagonal_factor(factors)
+    expect_identical(zero$loading_supports, reduced$loading_supports)
+    expect_true(all(zero$diagonal == 0))
+    expect_true(all(zero$loadings[[1L]] == 0))
+  }
+})
+
+
+test_that("known covariance factors respect zero design supports across row blocks", {
+
+  data <- data.frame(id = factor(letters[1:4]), x = c(0, 1, 0, 1))
+  kernel <- matrix(c(1, .2, .3, .1, .2, 1, .1, 0,
+                     .3, .1, 1, .2, .1, 0, .2, 1), 4L,
+                   dimnames = list(letters[1:4], letters[1:4]))
+  specification <- JAGS_formula(
+    formula = random_effects_formula(~ 1 + diag(0 + x | id),
+      group_covariance = random_group_covariance(kernel, scale = "none")),
+    parameter = "mu", data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(sd = prior("point", list(location = .5)))
+  )
+  row_blocks <- as.list(1:4)
+  compiled <- JAGS_formula_random_marginal_covariance(
+    specification$formula_design, row_blocks, representation = "auto"
+  )
+  expect_identical(compiled$representation, "diagonal_factor")
+  factors <- random_effects_marginal_factor_states(
+    specification$formula_design,
+    posterior_samples = matrix(0, 1L, 1L, dimnames = list(NULL, "mu_intercept")),
+    prior_list = specification$prior_list, row_blocks = row_blocks
+  )
+  reduced <- random_effects_marginal_diagonal_factor(factors)
+  expect_equal(reduced$diagonal, matrix(c(0, .25, 0, .25), 1L), tolerance = 1e-14)
+  expect_identical(reduced$ranks, rep(0L, 4L))
+})
+
+
+# The node half and the marginal half of a bridge state need the same
+# random-effect SD vector, in different shapes. They used to evaluate the same
+# allocation chain twice per state.
+.bridge_shared_sd_fixture <- function() {
+
+  data <- data.frame(
+    study   = factor(c("s1", "s1", "s2", "s2"), levels = c("s1", "s2")),
+    outcome = factor(c("o1", "o2", "o3", "o4"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | outcome, name = "outcome", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name    = "total_re",
+        terms   = c(study = "study", outcome = "outcome"),
+        sd      = prior("gamma", list(2, 2)),
+        weights = prior("dirichlet", list(alpha = c(2, 3)))
+      )
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "outcome")
+  )
+  design <- list(mu = formula_result$formula_design)
+  study_term <- formula_result$formula_design$random_effects[[1L]]
+  weight_name <- "mu__xRE_ALLOCx_total_re__weight"
+  samples <- c(
+    "mu_intercept" = 0.4,
+    "mu__xRE_ALLOCx_total_re__allocation_sd" = 2,
+    stats::setNames(
+      c(1, 3),
+      paste0(.JAGS_prior_dirichlet_eta_name(weight_name), "[", 1:2, "]")
+    ),
+    stats::setNames(c(.1, .2), as.vector(.bt_random_effect_latent_names(
+      random_term = study_term,
+      n_groups    = study_term$n_groups,
+      n_columns   = study_term$n_columns
+    )))
+  )
+  samples <- .bt_JAGS_bridge_cache_posterior_row(samples, TRUE)
+
+  list(
+    data = data,
+    design = design,
+    prior_list = formula_result$prior_list,
+    weight_name = weight_name,
+    samples = samples,
+    spec = .bt_JAGS_bridge_marginal_random_spec(
+      formula_design_list = design,
+      formula_random_effects_marginalize_list = list(
+        mu = list(
+          blocks       = "outcome",
+          row_blocks   = list(1:2, 3:4),
+          factor_state = TRUE
+        )
+      ),
+      bridge_context = "marginal"
+    )
+  )
+}
+
+
+test_that("a marginal bridge state evaluates a shared random SD vector once", {
+
+  fixture <- .bridge_shared_sd_fixture()
+  formula_prior_list <- list(mu = fixture$prior_list)
+  formula_prior_evaluator <- .bt_JAGS_bridge_compile_formula_prior_evaluator(
+    formula_prior_list
+  )
+  formula_prior_parameters <- formula_prior_evaluator$parameters(fixture$samples)
+  formula_parameters <- list(mu = rep(0, nrow(fixture$data)))
+
+  # 'shared = FALSE' restores the two separate evaluations the design replaces.
+  build <- function(shared) {
+    values_calls <- 0L
+    draws_calls  <- 0L
+    original_compile <- .bt_JAGS_bridge_compile_random_sd_evaluator
+    original_shared  <- .bt_JAGS_bridge_random_sd_shared_binding
+    context <- local({
+      testthat::local_mocked_bindings(
+        .bt_JAGS_bridge_compile_random_sd_evaluator = function(...) {
+          evaluator <- original_compile(...)
+          if (is.null(evaluator)) return(NULL)
+          list(
+            values = function(...) {
+              values_calls <<- values_calls + 1L
+              evaluator$values(...)
+            },
+            posterior_values = evaluator$posterior_values,
+            posterior_draws = function(...) {
+              draws_calls <<- draws_calls + 1L
+              evaluator$posterior_draws(...)
+            },
+            bindings = evaluator$bindings
+          )
+        },
+        .bt_JAGS_bridge_random_sd_shared_binding = function(...) {
+          if (!shared) return(FALSE)
+          original_shared(...)
+        },
+        .package = "BayesTools"
+      )
+      marginal_evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
+        formula_design_list  = fixture$design,
+        marginal_random_spec = fixture$spec,
+        formula_data_list    = list(mu = fixture$data),
+        formula_prior_list   = formula_prior_list,
+        model_data           = list(),
+        posterior_names      = names(fixture$samples)
+      )
+      evaluator <- .bt_JAGS_bridge_compile_context_evaluator(
+        mode                      = "marginal",
+        add_parameters            = NULL,
+        formula_design_list       = fixture$design,
+        formula_data_list         = list(mu = fixture$data),
+        formula_prior_list        = formula_prior_list,
+        model_data                = list(),
+        marginal_random_evaluator = marginal_evaluator
+      )
+      evaluator$context(
+        samples                  = fixture$samples,
+        prior_parameters         = list(),
+        formula_prior_parameters = formula_prior_parameters,
+        formula_parameters       = formula_parameters
+      )
+    })
+    list(context = context, values = values_calls, draws = draws_calls)
+  }
+
+  shared   <- build(TRUE)
+  separate <- build(FALSE)
+
+  expect_s3_class(shared$context, "BayesTools_bridge_marginal_context")
+  expect_identical(shared$context$nodes, separate$context$nodes)
+  expect_identical(
+    shared$context$marginalized_random$mu$factor_states,
+    separate$context$marginalized_random$mu$factor_states
+  )
+  expect_identical(
+    shared$context$marginalized_random$mu$factor_plans,
+    separate$context$marginalized_random$mu$factor_plans
+  )
+  expect_true(all(vapply(
+    shared$context$marginalized_random$mu$factor_states,
+    function(state) is.matrix(state$coefficient_factor),
+    logical(1)
+  )))
+
+  # The node half is unchanged; the marginal half stops evaluating the chain.
+  expect_identical(shared$values, separate$values)
+  expect_gt(separate$draws, 0L)
+  expect_identical(shared$draws, 0L)
+})
+
+
+test_that("shared random SD bindings refuse ambiguous and overridden sources", {
+
+  fixture <- .bridge_shared_sd_fixture()
+  outcome_term <- fixture$design$mu$random_effects[[2L]]
+  evaluator <- .bt_JAGS_bridge_compile_random_sd_evaluator(
+    random_term = outcome_term,
+    prior_list  = fixture$prior_list
+  )
+  bindings <- evaluator$bindings
+
+  expect_identical(bindings$block_name, "outcome")
+  expect_true("mu__xRE_ALLOCx_total_re__allocation_sd" %in% bindings$coordinates)
+  expect_true(fixture$weight_name %in% bindings$coordinates)
+
+  eta_names <- paste0(
+    .JAGS_prior_dirichlet_eta_name(fixture$weight_name), "[", 1:2, "]"
+  )
+  weight_names <- paste0(fixture$weight_name, "[", 1:2, "]")
+
+  # Only the auxiliary coordinates: both preferences read the same columns.
+  expect_true(.bt_JAGS_bridge_random_sd_shared_binding(bindings, eta_names))
+  expect_true(.bt_JAGS_bridge_random_sd_shared_binding(bindings, weight_names))
+  # Both coordinate sets: the preference decides, so the two evaluations stay.
+  expect_false(.bt_JAGS_bridge_random_sd_shared_binding(
+    bindings, c(eta_names, weight_names)
+  ))
+  expect_false(.bt_JAGS_bridge_random_sd_shared_binding(bindings, NULL))
+
+  posterior <- matrix(
+    c(2, 1, 3),
+    nrow     = 1L,
+    dimnames = list(NULL, c("sd", eta_names))
+  )
+  sd_bindings <- list(coordinates = "sd", ambiguity = bindings$ambiguity)
+  weight_bindings <- list(
+    coordinates = fixture$weight_name,
+    ambiguity   = bindings$ambiguity
+  )
+  # A source that is absent, or that carries what the posterior row gives,
+  # leaves the two evaluations reading the same value; any other source keeps
+  # them apart.
+  expect_true(.bt_JAGS_bridge_random_sd_sources_agree(
+    sd_bindings, list(), posterior
+  ))
+  expect_true(.bt_JAGS_bridge_random_sd_sources_agree(
+    sd_bindings, list(sd = 2), posterior
+  ))
+  expect_false(.bt_JAGS_bridge_random_sd_sources_agree(
+    sd_bindings, list(sd = 2.5), posterior
+  ))
+  # The reconstructed Dirichlet weights of a state are the normalized auxiliary
+  # coordinates the row carries, and nothing else.
+  expect_true(.bt_JAGS_bridge_random_sd_sources_agree(
+    weight_bindings,
+    stats::setNames(list(c(1, 3) / 4), fixture$weight_name),
+    posterior
+  ))
+  expect_false(.bt_JAGS_bridge_random_sd_sources_agree(
+    weight_bindings,
+    stats::setNames(list(c(.5, .5)), fixture$weight_name),
+    posterior
+  ))
+  expect_false(.bt_JAGS_bridge_random_sd_sources_agree(
+    list(coordinates = "absent", ambiguity = list()),
+    list(absent = 1),
+    posterior
+  ))
+})

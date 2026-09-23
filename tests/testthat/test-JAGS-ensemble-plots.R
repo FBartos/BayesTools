@@ -127,7 +127,7 @@ test_that("prior plot functions (simple) work", {
     plot_prior_list(prior_list, col = "red", lwd = 4)
     lines(prior_list$p1, col = "blue", lwd = 3, lty = 2)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-6", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-6", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4) + geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2)
   })
 
@@ -143,7 +143,7 @@ test_that("prior plot functions (simple) work", {
     par(mar = c(4, 4, 1, 4))
     plot_prior_list(prior_list)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-8", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-8", {
     plot_prior_list(prior_list, plot_type = "ggplot")
   })
 
@@ -154,7 +154,7 @@ test_that("prior plot functions (simple) work", {
     par(mar = c(4, 4, 1, 4))
     plot_prior_list(prior_list, xlab = "xlab", ylab = "ylab", ylab2 = "ylab2", main = "main")
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-10", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-10", {
     plot_prior_list(prior_list, plot_type = "ggplot", xlab = "xlab", ylab = "ylab", ylab2 = "ylab2", main = "main")
   })
 
@@ -171,7 +171,7 @@ test_that("prior plot functions (simple) work", {
     par(mar = c(4, 4, 1, 4))
     plot_prior_list(prior_list)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-12", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-12", {
     plot_prior_list(prior_list, plot_type = "ggplot")
   })
 
@@ -247,7 +247,7 @@ test_that("prior plot functions (PET-PEESE) work", {
     PEESE1 = prior_PEESE("cauchy",   list(0, 1)),
     PEESE2 = prior_PEESE("cauchy",   list(0, 1.001))
   )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-6", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-6", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", col.fill = scales::alpha("red", .20), lwd = 4, n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu) + geom_prior_list(prior_list, col = "blue", col.fill = scales::alpha("blue", .20), lwd = 3, lty = 2, n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
 
@@ -261,7 +261,7 @@ test_that("prior plot functions (PET-PEESE) work", {
     plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-8", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-8", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
 
@@ -269,7 +269,7 @@ test_that("prior plot functions (PET-PEESE) work", {
   vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-9", function(){
     plot_prior_list(prior_list, n_samples = 1000, n_points = 50, xlab = "xlab", ylab = "ylab", main = "main", prior_list_mu = prior_list_mu)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-10", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-10", {
     plot_prior_list(prior_list, n_samples = 1000, n_points = 50, plot_type = "ggplot", xlab = "xlab", ylab = "ylab", main = "main", prior_list_mu = prior_list_mu)
   })
 
@@ -289,7 +289,7 @@ test_that("prior plot functions (PET-PEESE) work", {
     plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, ylim = c(0, .5), prior_list_mu = prior_list_mu)
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-12", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-12", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, ylim = c(0, .5), prior_list_mu = prior_list_mu) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
 })
@@ -308,22 +308,22 @@ test_that("prior plot functions (PET-PEESE) effect_direction works", {
   )
 
   # Test effect_direction = "positive" (default)
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-effect-positive", function(){
+  vdiffr::expect_doppelganger("prior-PETPEESE-effect-positive", function(){
     plot_prior_list(prior_list, effect_direction = "positive", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, ylim = c(-0.5, 0.5), prior_list_mu = prior_list_mu)
   })
 
   # Test effect_direction = "negative" (flipped)
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-effect-negative", function(){
+  vdiffr::expect_doppelganger("prior-PETPEESE-effect-negative", function(){
     plot_prior_list(prior_list, effect_direction = "negative", col = "blue", lwd = 4, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, ylim = c(-0.5, 0.5), prior_list_mu = prior_list_mu)
   })
 
   # Test ggplot version with effect_direction
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-effect-negative-ggplot", function(){
+  vdiffr::expect_doppelganger("prior-PETPEESE-effect-negative-ggplot", {
     plot_prior_list(prior_list, effect_direction = "negative", plot_type = "ggplot", col = "blue", lwd = 4, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, ylim = c(-0.5, 0.5), prior_list_mu = prior_list_mu)
   })
 
   # Test lines_prior_list with effect_direction
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-effect-direction-overlay", function(){
+  vdiffr::expect_doppelganger("prior-PETPEESE-effect-direction-overlay", function(){
     plot_prior_list(prior_list, effect_direction = "positive", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, ylim = c(-0.5, 0.5), prior_list_mu = prior_list_mu)
     lines_prior_list(prior_list, effect_direction = "negative", col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
@@ -375,7 +375,7 @@ test_that("prior plot functions (weightfunctions) work", {
     lines(prior_list$p1, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20))
   })
   set.seed(1)
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-6", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-6", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20)) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20))
   })
 
@@ -392,7 +392,7 @@ test_that("prior plot functions (weightfunctions) work", {
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), rescale_x = TRUE)
   })
   set.seed(1)
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-8", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-8", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), rescale_x = TRUE) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), rescale_x = TRUE)
   })
 
@@ -402,7 +402,7 @@ test_that("prior plot functions (weightfunctions) work", {
     plot_prior_list(prior_list, xlab = "xlab", ylab = "ylab", main = "main")
   })
   set.seed(1)
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-10", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-10", {
     plot_prior_list(prior_list, plot_type = "ggplot", xlab = "xlab", ylab = "ylab", main = "main")
   })
 
@@ -419,7 +419,7 @@ test_that("prior plot functions (weightfunctions) work", {
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), rescale_x = TRUE)
   })
   set.seed(1)
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-12", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-12", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), rescale_x = TRUE) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), rescale_x = TRUE)
   })
 
@@ -472,7 +472,7 @@ test_that("prior plot functions (orthonormal) work", {
     plot_prior_list(prior_list, col = "red", lwd = 4)
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-orthonormal-6", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-orthonormal-6", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2) +
       geom_prior_list(prior_list, col = "blue", lwd = 1, lty = 2)
   })
@@ -522,7 +522,7 @@ test_that("prior plot functions (treatment) work", {
     plot_prior_list(prior_list, col = "red", lwd = 4)
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-treatment-6", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-treatment-6", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2) +
       geom_prior_list(prior_list, col = "blue", lwd = 1, lty = 2)
   })
@@ -563,7 +563,7 @@ test_that("prior plot functions (independent) work", {
     plot_prior_list(prior_list, col = "red", lwd = 4)
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-independent-4", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-independent-4", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2) +
       geom_prior_list(prior_list, col = "blue", lwd = 1, lty = 2)
   })
@@ -617,7 +617,7 @@ test_that("prior plot functions (meandif) work", {
     plot_prior_list(prior_list, col = "red", lwd = 4)
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-meandif-6", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-meandif-6", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2) +
       geom_prior_list(prior_list, col = "blue", lwd = 1, lty = 2)
   })
@@ -685,7 +685,7 @@ test_that("posterior plot functions (simple) work", {
     plot_posterior(mixed_posteriors, "m", lwd = 2, col = "red", prior = TRUE, dots_prior = list(col = "blue", lty = 2))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-simple-7", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-simple-7", {
     plot_posterior(mixed_posteriors, "m", plot_type = "ggplot", lwd = 2, col = "red", prior = TRUE, dots_prior = list(col = "blue", lty = 2))
   })
 
@@ -741,7 +741,7 @@ test_that("posterior plot functions (PET-PEESE) work", {
     plot_posterior(mixed_posteriors, "PETPEESE", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), prior = TRUE, n_points = 50, n_samples = 1000, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-7", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-7", {
     plot_posterior(mixed_posteriors, "PETPEESE", plot_type = "ggplot", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, prior = TRUE, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
   })
 
@@ -794,26 +794,26 @@ test_that("posterior plot functions (PET-PEESE) effect_direction works", {
   )
 
   # Test effect_direction = "positive" (default behavior)
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-effect-positive", function(){
+  vdiffr::expect_doppelganger("posterior-PETPEESE-effect-positive", function(){
     plot_posterior(mixed_posteriors, "PETPEESE", effect_direction = "positive", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), par_name = "PET-PEESE (positive)", n_points = 50, ylim = c(-1, 1))
   })
 
   # Test effect_direction = "negative" (flipped regression)
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-effect-negative", function(){
+  vdiffr::expect_doppelganger("posterior-PETPEESE-effect-negative", function(){
     plot_posterior(mixed_posteriors, "PETPEESE", effect_direction = "negative", lwd = 2, col = "blue", col.fill = scales::alpha("blue", .20), par_name = "PET-PEESE (negative)", n_points = 50, ylim = c(-1, 1))
   })
 
   # Test with prior overlay using effect_direction
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-effect-positive-prior", function(){
+  vdiffr::expect_doppelganger("posterior-PETPEESE-effect-positive-prior", function(){
     plot_posterior(mixed_posteriors, "PETPEESE", effect_direction = "positive", prior = TRUE, lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, ylim = c(-1, 1), dots_prior = list(col = "grey", col.fill = scales::alpha("grey", .20), lty = 2))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-effect-negative-prior", function(){
+  vdiffr::expect_doppelganger("posterior-PETPEESE-effect-negative-prior", function(){
     plot_posterior(mixed_posteriors, "PETPEESE", effect_direction = "negative", prior = TRUE, lwd = 2, col = "blue", col.fill = scales::alpha("blue", .20), n_points = 50, n_samples = 1000, ylim = c(-1, 1), dots_prior = list(col = "grey", col.fill = scales::alpha("grey", .20), lty = 2))
   })
 
   # Test ggplot version with effect_direction
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-effect-negative-ggplot", function(){
+  vdiffr::expect_doppelganger("posterior-PETPEESE-effect-negative-ggplot", {
     plot_posterior(mixed_posteriors, "PETPEESE", effect_direction = "negative", plot_type = "ggplot", lwd = 2, col = "blue", col.fill = scales::alpha("blue", .20), n_points = 50, ylim = c(-1, 1))
   })
 })
@@ -865,7 +865,7 @@ test_that("posterior plot functions (weightfunctions) work", {
     plot_posterior(mixed_posteriors, "omega", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), prior = TRUE, n_points = 50, n_samples = 1000, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-7", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-7", {
     plot_posterior(mixed_posteriors, "omega", plot_type = "ggplot", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, prior = TRUE, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
   })
 
@@ -874,7 +874,7 @@ test_that("posterior plot functions (weightfunctions) work", {
     plot_posterior(mixed_posteriors, "omega", rescale_x = TRUE, lwd = 2, col = "red", col.fill = scales::alpha("red", .20), prior = TRUE, n_points = 50, n_samples = 1000, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-9", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-9", {
     plot_posterior(mixed_posteriors, "omega", rescale_x = TRUE, plot_type = "ggplot", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, prior = TRUE, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
   })
 
@@ -968,11 +968,11 @@ test_that("posterior plot functions (treatment) work", {
 
   fit0 <- readRDS(file.path(temp_fits_dir, "fit_factor_treatment.RDS"))
   # Create dummy marginal likelihood since this model doesn't have one
-  marglik0 <- structure(list(logml = -10), class = "bridge")
+  marglik0 <- bridgesampling_object(-10)
 
   # Create a second model with different prior for comparison
   fit1 <- readRDS(file.path(temp_fits_dir, "fit_factor_treatment.RDS"))
-  marglik1 <- structure(list(logml = -12), class = "bridge")
+  marglik1 <- bridgesampling_object(-12)
 
   # mix posteriors
   models <- list(
@@ -1018,11 +1018,11 @@ test_that("posterior plot functions (independent) work", {
 
   fit0 <- readRDS(file.path(temp_fits_dir, "fit_factor_independent.RDS"))
   # Create dummy marginal likelihood since this model doesn't have one
-  marglik0 <- structure(list(logml = -15), class = "bridge")
+  marglik0 <- bridgesampling_object(-15)
 
   # Create a second model with different prior for comparison
   fit1 <- readRDS(file.path(temp_fits_dir, "fit_factor_independent.RDS"))
-  marglik1 <- structure(list(logml = -17), class = "bridge")
+  marglik1 <- bridgesampling_object(-17)
 
   # mix posteriors
   models <- list(
@@ -1070,11 +1070,11 @@ test_that("posterior plot functions (meandif) work", {
 
   fit0 <- readRDS(file.path(temp_fits_dir, "fit_factor_meandif.RDS"))
   # Create dummy marginal likelihood since this model doesn't have one
-  marglik0 <- structure(list(logml = -20), class = "bridge")
+  marglik0 <- bridgesampling_object(-20)
 
   # Create a second model with different prior for comparison
   fit1 <- readRDS(file.path(temp_fits_dir, "fit_factor_meandif.RDS"))
-  marglik1 <- structure(list(logml = -22), class = "bridge")
+  marglik1 <- bridgesampling_object(-22)
 
   # mix posteriors
   models <- list(
@@ -1127,7 +1127,7 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
     parameters = names(attr(fit1, "prior_list"))
   )
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-intercept", function(){
+  vdiffr::expect_doppelganger("ss-posterior-intercept", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
@@ -1162,7 +1162,7 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
     plot_posterior(mixed_posteriors, "sigma", prior = T, dots_prior = list(col = "grey"))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-PETPEESE", function(){
+  vdiffr::expect_doppelganger("ss-posterior-bias-PETPEESE", function(){
     plot_posterior(mixed_posteriors, "PETPEESE", prior = T, dots_prior = list(col.fill = "orange"), ylim = c(-2, 2))
   })
 
@@ -1170,15 +1170,15 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
     plot_posterior(mixed_posteriors, "PET", prior = T, dots_prior = list(col.fill = "orange"), ylim = c(-2, 2))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-PET-ind", function(){
+  vdiffr::expect_doppelganger("ss-posterior-bias-PET-ind", function(){
     plot_posterior(mixed_posteriors, "PET", prior = T, dots_prior = list(col = "grey"), individual = TRUE)
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-weighfunction", function(){
+  vdiffr::expect_doppelganger("ss-posterior-bias-weighfunction", function(){
     plot_posterior(mixed_posteriors, "omega", prior = T, dots_prior = list(col.fill = "orange"))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-omega", function(){
+  vdiffr::expect_doppelganger("ss-posterior-bias-omega", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4), mfrow = c(2, 2))
@@ -1196,7 +1196,7 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
     force_plots = TRUE
   )
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-intercept-con", function(){
+  vdiffr::expect_doppelganger("ss-posterior-intercept-con", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
@@ -1210,7 +1210,7 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
     force_plots = TRUE
   )
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-x_cont1-con", function(){
+  vdiffr::expect_doppelganger("ss-posterior-x_cont1-con", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
@@ -1224,7 +1224,7 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
     force_plots = TRUE
   )
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-x_fac2t-con", function(){
+  vdiffr::expect_doppelganger("ss-posterior-x_fac2t-con", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
@@ -1238,7 +1238,7 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
     force_plots = TRUE
   )
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-x_fac3t-con", function(){
+  vdiffr::expect_doppelganger("ss-posterior-x_fac3t-con", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
@@ -1279,14 +1279,14 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
     force_plots = TRUE
   )
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-weightfunction", function(){
+  vdiffr::expect_doppelganger("ss-posterior-weightfunction", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors_conditional5a, parameter = "weightfunction", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-weightfunction-con", function(){
+  vdiffr::expect_doppelganger("ss-posterior-weightfunction-con", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
@@ -1300,7 +1300,7 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
     plot_posterior(mixed_posteriors_conditional5a, parameter = "PETPEESE", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)), ylim = c(-2, 2))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-PETPEESE-con", function(){
+  vdiffr::expect_doppelganger("ss-posterior-PETPEESE-con", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
@@ -1316,7 +1316,21 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
     plot_posterior(mixed_posteriors_conditional6c, parameter = "PET", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)), individual = TRUE)
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-omega-con", function(){
+  # Individual omega panels take masses and draws from the original bias
+  # branches (none, two-sided, one-sided, PET -> none).
+  omega_5a <- BayesTools:::.simplify_as_mixed_posterior_bias(mixed_posteriors_conditional5a, "omega")
+  models_ind_5a <- attr(omega_5a$omega, "models_ind")
+  plot_data_5a <- BayesTools:::.plot_data_samples.weightparameter(omega_5a, "omega[0.025,0.05]", n_points = 256)
+  expect_equal(plot_data_5a$points1$y, mean(models_ind_5a %in% c(1, 4)), tolerance = 1e-12)
+  expect_equal(plot_data_5a$points1$y, mean(omega_5a$omega[, "omega[0.025,0.05]"] == 1), tolerance = 1e-12)
+
+  omega_6c <- BayesTools:::.simplify_as_mixed_posterior_bias(mixed_posteriors_conditional6c, "omega")
+  models_ind_6c <- attr(omega_6c$omega, "models_ind")
+  plot_data_6c <- BayesTools:::.plot_data_samples.weightparameter(omega_6c, "omega[0.975,1]", n_points = 256)
+  expect_equal(plot_data_6c$points1$y, mean(models_ind_6c == 2), tolerance = 1e-12)
+  expect_equal(sort(plot_data_6c$density$samples), sort(omega_6c$omega[models_ind_6c == 3, "omega[0.975,1]"]))
+
+  vdiffr::expect_doppelganger("ss-posterior-omega-con", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
@@ -1354,35 +1368,35 @@ test_that("posterior plot model averaging based on simple single JAGS models  (f
     parameters = names(attr(fit1, "prior_list"))
   )
 
-  vdiffr::expect_doppelganger("model-averaging-simple-plot-ss-posterior-intercept", function(){
+  vdiffr::expect_doppelganger("simple-ss-posterior-intercept", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu_intercept", prior = T, dots_prior = list(col = "grey"))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-simple-plot-ss-posterior-x_cont1", function(){
+  vdiffr::expect_doppelganger("simple-ss-posterior-x_cont1", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu_x_cont1", prior = T, dots_prior = list(col = "grey"))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-simple-plot-ss-posterior-x_fac2t", function(){
+  vdiffr::expect_doppelganger("simple-ss-posterior-x_fac2t", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu_x_fac2t", prior = T, dots_prior = list(col = "grey"))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-simple-plot-ss-posterior-x_fac3t", function(){
+  vdiffr::expect_doppelganger("simple-ss-posterior-x_fac3t", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu_x_fac3t", prior = T, dots_prior = list(col = "grey"))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-simple-plot-ss-posterior-sigma", function(){
+  vdiffr::expect_doppelganger("simple-ss-posterior-sigma", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
@@ -1404,27 +1418,27 @@ test_that("posterior plot model averaging based on complex bias mixture model (P
     parameters = names(attr(fit1, "prior_list"))
   )
 
-  vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-posterior-mu", function(){
+  vdiffr::expect_doppelganger("complex-bias-posterior-mu", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu", prior = TRUE, dots_prior = list(col = "grey"))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-posterior-bias-PET", function(){
+  vdiffr::expect_doppelganger("complex-bias-posterior-bias-PET", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "PET", prior = TRUE, dots_prior = list(col = "grey"), individual = T)
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-posterior-bias-PEESE", function(){
+  vdiffr::expect_doppelganger("complex-bias-posterior-bias-PEESE", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "PEESE", prior = TRUE, dots_prior = list(col = "grey"), individual = T)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-posterior-bias-PETPEESE", function(){
+  vdiffr::expect_doppelganger("complex-bias-posterior-bias-PETPEESE", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
@@ -1460,14 +1474,14 @@ test_that("posterior plot model averaging based on complex bias mixture model (P
     force_plots = TRUE
   )
 
-  vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-conditional-posterior-PET", function(){
+  vdiffr::expect_doppelganger("complex-bias-conditional-posterior-PET", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors_conditional1, "PET", prior = TRUE, dots_prior = list(col = "grey"), individual = T)
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-conditional-posterior-PEESE", function(){
+  vdiffr::expect_doppelganger("complex-bias-conditional-posterior-PEESE", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
@@ -1495,7 +1509,7 @@ test_that("posterior plot based on as_mixed_posteriors (PET-PEESE) work", {
     force_plots = TRUE
   )
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PET-ind-no-prior", function(){
+  vdiffr::expect_doppelganger("simple-posterior-PET-ind-no-prior", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
@@ -1507,7 +1521,7 @@ test_that("posterior plot based on as_mixed_posteriors (PET-PEESE) work", {
     "mu.*mu_intercept"
   )
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PET-ind", function(){
+  vdiffr::expect_doppelganger("simple-posterior-PET-ind", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
@@ -1520,7 +1534,7 @@ test_that("posterior plot based on as_mixed_posteriors (PET-PEESE) work", {
   )
 
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PEESE-ind-no-prior", function(){
+  vdiffr::expect_doppelganger("simple-posterior-PEESE-ind-no-prior", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
@@ -1532,7 +1546,7 @@ test_that("posterior plot based on as_mixed_posteriors (PET-PEESE) work", {
     "mu.*mu_intercept"
   )
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PEESE-ind", function(){
+  vdiffr::expect_doppelganger("simple-posterior-PEESE-ind", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
@@ -1572,84 +1586,84 @@ test_that("posterior plot based on as_mixed_posteriors (weightfunction) work", {
     force_plots = TRUE
   )
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omega1-ind-no-prior", function(){
+  vdiffr::expect_doppelganger("simple-posterior-omega1-ind-no-prior", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4), mfrow = c(1, 2))
     plot_posterior(mixed_posteriors1, "omega", individual = T, show_figures = NULL)
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omega1-no-prior", function(){
+  vdiffr::expect_doppelganger("simple-posterior-omega1-no-prior", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors1, "omega")
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omega1-ind", function(){
+  vdiffr::expect_doppelganger("simple-posterior-omega1-ind", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4), mfrow = c(1, 2))
     plot_posterior(mixed_posteriors1, "omega", prior = TRUE, dots_prior = list(col = "grey"), individual = T, show_figures = NULL)
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omega1", function(){
+  vdiffr::expect_doppelganger("simple-posterior-omega1", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors1, "omega", prior = TRUE, dots_prior = list(col = "orange"))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omega2-ind-no-prior", function(){
+  vdiffr::expect_doppelganger("simple-posterior-omega2-ind-no-prior", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4), mfrow = c(1, 2))
     plot_posterior(mixed_posteriors2, "omega", individual = T, show_figures = NULL)
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omega2-no-prior", function(){
+  vdiffr::expect_doppelganger("simple-posterior-omega2-no-prior", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors2, "omega")
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omega2-ind", function(){
+  vdiffr::expect_doppelganger("simple-posterior-omega2-ind", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4), mfrow = c(1, 2))
     plot_posterior(mixed_posteriors2, "omega", prior = TRUE, dots_prior = list(col = "grey"), individual = T, show_figures = NULL)
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omega2", function(){
+  vdiffr::expect_doppelganger("simple-posterior-omega2", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors2, "omega", prior = TRUE, dots_prior = list(col = "orange"))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omegamix-ind-no-prior", function(){
+  vdiffr::expect_doppelganger("simple-posterior-omegamix-ind-no-prior", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4), mfrow = c(1, 4))
     plot_posterior(mixed_posteriorsmix, "omega", individual = T, show_figures = NULL)
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omegamix-no-prior", function(){
+  vdiffr::expect_doppelganger("simple-posterior-omegamix-no-prior", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriorsmix, "omega")
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omegamix-ind", function(){
+  vdiffr::expect_doppelganger("simple-posterior-omegamix-ind", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4), mfrow = c(1, 4))
     plot_posterior(mixed_posteriorsmix, "omega", prior = TRUE, dots_prior = list(col = "grey"), individual = T, show_figures = NULL)
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omegamix", function(){
+  vdiffr::expect_doppelganger("simple-posterior-omegamix", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))

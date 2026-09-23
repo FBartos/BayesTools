@@ -104,6 +104,16 @@ test_that("JAGS_formula stores exact fitted formula design metadata", {
   design <- result$formula_design
 
   expect_s3_class(design, "BayesTools_formula_design")
+  expect_identical(design$schema_version, 4L)
+  expect_identical(
+    design$stored_data_scale,
+    c(
+      source_data = "original",
+      expression_data = "original",
+      model_frame = "model",
+      model_matrix = "model"
+    )
+  )
   expect_identical(design$parameter, "mu")
   expect_equal(design$formula, ~ x + x2 + f, ignore_formula_env = TRUE)
   expect_equal(nrow(design$model_frame), nrow(df))
@@ -113,6 +123,10 @@ test_that("JAGS_formula stores exact fitted formula design metadata", {
   expect_equal(design$assign, attr(design$model_matrix, "assign"))
   expect_equal(attr(design$terms, "term.labels"), c("x", "x2", "f"))
   expect_equal(design$contrasts$f, "contr.treatment")
+  expect_equal(
+    design$contrast_matrices$f,
+    stats::contr.treatment(c("a", "b"))
+  )
   expect_equal(design$xlevels$f, c("a", "b"))
   expect_equal(design$predictors, c("x", "x2", "f"))
   expect_equal(design$predictor_types, c(x = "continuous", x2 = "continuous", f = "factor"))
@@ -314,13 +328,6 @@ test_that("Expression handling functions work", {
   f5 <- formula(y ~ expression(x) + z)
   f6 <- formula(y ~ expression(x) + z + expression(b))
 
-  expect_true(!.has_expression(f1))
-  expect_true(!.has_expression(f2))
-  expect_true(.has_expression(f3))
-  expect_true(.has_expression(f4))
-  expect_true(.has_expression(f5))
-  expect_true(.has_expression(f6))
-
   expect_equal(.extract_expressions(f3), list("x"))
   expect_equal(.extract_expressions(f4), list("x"))
   expect_equal(.extract_expressions(f5), list("x"))
@@ -352,25 +359,27 @@ test_that("Random effects handling functions work", {
   expect_true(.has_random_effects(f6))
   expect_true(.has_random_effects(f7))
 
-  t1 <- list("1 | id")
-  t2 <- list("1 + x_cont1 | id")
-  t3 <- list("x_cont1 | id", "0 + x_cont2 || group")
-  attr(t1[[1]], "grouping_factor") <- "id"
-  attr(t2[[1]], "grouping_factor") <- "id"
-  attr(t3[[1]], "grouping_factor") <- "id"
-  attr(t3[[2]], "grouping_factor") <- "group"
-  attr(t1[[1]], "independent") <- FALSE
-  attr(t2[[1]], "independent") <- FALSE
-  attr(t3[[1]], "independent") <- FALSE
-  attr(t3[[2]], "independent") <- TRUE
+  parsed_f3 <- .bt_parse_random_effects(f3)$terms
+  parsed_f4 <- .bt_parse_random_effects(f4)$terms
+  parsed_f7 <- .bt_parse_random_effects(f7)$terms
 
-  expect_equal(.extract_random_effects(f1), list())
-  expect_equal(.extract_random_effects(f2), list())
-  expect_equal(.extract_random_effects(f3), t1)
-  expect_equal(.extract_random_effects(f4), t2)
-  expect_equal(.extract_random_effects(f5), t2)
-  expect_equal(.extract_random_effects(f6), t2)
-  expect_equal(.extract_random_effects(f7), t3)
+  expect_length(parsed_f3, 1L)
+  expect_equal(parsed_f3[[1]]$term_formula, ~ 1, ignore_formula_env = TRUE)
+  expect_equal(parsed_f3[[1]]$group_label, "id")
+  expect_false(isTRUE(parsed_f3[[1]]$independent))
+
+  expect_length(parsed_f4, 1L)
+  expect_equal(parsed_f4[[1]]$term_formula, ~ 1 + x_cont1, ignore_formula_env = TRUE)
+  expect_equal(parsed_f4[[1]]$group_label, "id")
+  expect_false(isTRUE(parsed_f4[[1]]$independent))
+
+  expect_length(parsed_f7, 2L)
+  expect_equal(parsed_f7[[1]]$term_formula, ~ x_cont1, ignore_formula_env = TRUE)
+  expect_equal(parsed_f7[[1]]$group_label, "id")
+  expect_false(isTRUE(parsed_f7[[1]]$independent))
+  expect_equal(parsed_f7[[2]]$term_formula, ~ 0 + x_cont2, ignore_formula_env = TRUE)
+  expect_equal(parsed_f7[[2]]$group_label, "group")
+  expect_true(isTRUE(parsed_f7[[2]]$independent))
 
   expect_equal(.remove_random_effects(f1), formula( ~ 1), ignore_formula_env = TRUE)
   expect_equal(.remove_random_effects(f2), formula( ~ x_cont1), ignore_formula_env = TRUE)
@@ -405,15 +414,6 @@ test_that("-1 (no intercept) formula handling works correctly", {
   expect_true(is.prior.point(result_basic$prior_list$mu_intercept))
   expect_equal(result_basic$prior_list$mu_intercept$parameters$location, 0)
   expect_true(grepl("mu_intercept", result_basic$formula_syntax))
-
-  # Test 2: Helper function test
-  expect_equal(.add_intercept_to_formula(~ x - 1), ~ x, ignore_formula_env = TRUE)
-  expect_equal(.add_intercept_to_formula(~ x + y - 1), ~ x + y, ignore_formula_env = TRUE)
-  expect_equal(.add_intercept_to_formula(~ - 1), ~ 1, ignore_formula_env = TRUE)
-
-  expect_equal(.add_intercept_to_formula(~ x + 0), ~ x, ignore_formula_env = TRUE)
-  expect_equal(.add_intercept_to_formula(~ x + y + 0), ~ x + y, ignore_formula_env = TRUE)
-  expect_equal(.add_intercept_to_formula(~ 0), ~ 1, ignore_formula_env = TRUE)
 
   skip_if_not_installed("coda")
 
@@ -457,7 +457,7 @@ test_that("log(intercept) attribute works for specifying log(int) + sum(beta_i *
 
   # Test 1: Basic -1 formula functionality
   prior_list_basic <- list(
-    "intercept" = prior("normal", list(0, 1)),
+    "intercept" = prior("gamma", list(2, 1)),
     "x_fac3md"  = prior_factor("mnormal", contrast = "meandif", list(0, 1))
   )
 
@@ -473,7 +473,7 @@ test_that("log(intercept) attribute works for specifying log(int) + sum(beta_i *
                                data = df_test[, "x_fac3md", drop = FALSE],
                                prior_list = prior_list_basic)
 
-  # generates normal intercept
+  # generates an ordinary intercept
   expect_equal(
     result_basic[["formula_syntax"]],
     "for(i in 1:N_mu){\n  mu[i] = mu_intercept + inprod(mu_x_fac3md, mu_data_x_fac3md[i,])\n}\n"
@@ -485,11 +485,16 @@ test_that("log(intercept) attribute works for specifying log(int) + sum(beta_i *
     "for(i in 1:N_mu){\n  mu[i] = log(mu_intercept) + inprod(mu_x_fac3md, mu_data_x_fac3md[i,])\n}\n"
   )
 
+  expect_false(result_basic$formula_design$log_intercept)
+  expect_true(result_log$formula_design$log_intercept)
+
   # everything else should match
   result_basic[["formula_syntax"]] <- NULL
   result_log[["formula_syntax"]]   <- NULL
   result_basic[["formula"]] <- NULL
   result_log[["formula"]]   <- NULL
+  result_basic[["formula_design"]][["log_intercept"]] <- NULL
+  result_log[["formula_design"]][["log_intercept"]]   <- NULL
   expect_equal(result_basic, result_log)
 })
 

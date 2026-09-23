@@ -41,10 +41,21 @@ bayestools_optional_fit_requirements <- function() {
   )
 }
 
+.bayestools_random_z_monitors <- function(stem, n_groups, n_columns) {
+  as.vector(outer(
+    seq_len(n_groups),
+    seq_len(n_columns),
+    function(group, column) paste0(stem, "[", group, ",", column, "]")
+  ))
+}
+
 .bayestools_find_calls <- function(expr, fun) {
   matches <- list()
 
   walk <- function(x) {
+    if(missing(x)){
+      return(invisible(NULL))
+    }
     if (is.expression(x)) {
       for (item in as.list(x)) {
         walk(item)
@@ -217,7 +228,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = NA_character_,
       scale_policy = "point-prior-fixed",
       prior_features = "simple,point",
-      expected_monitor = "s",
+      expected_monitor = c("m", "s"),
       expected_formula_parameters = character(),
       expected_formula_scale = character(),
       oracle_type = "fixture-metadata",
@@ -225,7 +236,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_iterations = 500L,
       tolerance = NA_real_,
       flags = list(simple_priors = TRUE),
-      note = "Spike mean fixture; deterministic point prior must not be monitored."
+      note = "Spike mean fixture; deterministic point prior remains a structural monitor."
     ),
     list(
       model_name = "fit_simple_various",
@@ -235,7 +246,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = NA_character_,
       scale_policy = "point-prior-fixed",
       prior_features = "simple,point",
-      expected_monitor = c("p1", "p2", "p3", "p4", "p5", "p6", "inv_p6", "p7", "p8", "p9"),
+      expected_monitor = c("p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9", "p10"),
       expected_formula_parameters = character(),
       expected_formula_scale = character(),
       oracle_type = "fixture-metadata",
@@ -243,7 +254,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_iterations = 500L,
       tolerance = NA_real_,
       flags = list(simple_priors = TRUE),
-      note = "Prior-only scalar fixture; point prior component is deterministic and inverse-gamma exposes its inverse monitor."
+      note = "Prior-only scalar fixture; point priors remain structural monitors and inverse-gamma is monitored on its natural scale."
     ),
     list(
       model_name = "fit_simple_pub_bias",
@@ -307,7 +318,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = NA_character_,
       scale_policy = "none",
       prior_features = "simple,weightfunction",
-      expected_monitor = c("m", "omega[1]", "omega[2]", "eta[1]", "eta[2]"),
+      expected_monitor = c("m", "omega[1]", "omega[2]"),
       expected_formula_parameters = character(),
       expected_formula_scale = character(),
       oracle_type = "fixture-metadata",
@@ -516,6 +527,42 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       note = "Formula regression fixture with continuous predictor and two-level treatment factor."
     ),
     list(
+      model_name = "fit_formula_treatment_positive",
+      profile = "fixture",
+      has_marglik = TRUE,
+      model_family = "gaussian-regression",
+      formula = "~ x_cont1 + x_fac2t",
+      scale_policy = "none",
+      prior_features = "simple,formula,factor,truncated",
+      expected_monitor = c("mu_intercept", "mu_x_cont1", "mu_x_fac2t", "sigma"),
+      expected_formula_parameters = "mu",
+      expected_formula_scale = character(),
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 2L,
+      expected_iterations = 500L,
+      tolerance = NA_real_,
+      flags = list(simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE),
+      note = "Formula regression fixture with continuous predictor and positive-truncated two-level treatment factor."
+    ),
+    list(
+      model_name = "fit_formula_treatment_negative",
+      profile = "fixture",
+      has_marglik = TRUE,
+      model_family = "gaussian-regression",
+      formula = "~ x_cont1 + x_fac2t",
+      scale_policy = "none",
+      prior_features = "simple,formula,factor,truncated",
+      expected_monitor = c("mu_intercept", "mu_x_cont1", "mu_x_fac2t", "sigma"),
+      expected_formula_parameters = "mu",
+      expected_formula_scale = character(),
+      oracle_type = "formula-fixture-metadata",
+      expected_chains = 2L,
+      expected_iterations = 500L,
+      tolerance = NA_real_,
+      flags = list(simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE),
+      note = "Formula regression fixture with continuous predictor and negative-truncated two-level treatment factor."
+    ),
+    list(
       model_name = "fit_formula_orthonormal",
       profile = "fixture",
       has_marglik = TRUE,
@@ -717,6 +764,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_monitor = c(
         "mu_intercept",
         "mu_x_cont1",
+        "sigma_exp_intercept",
         "sigma_exp_x_fac2t",
         "sigma"
       ),
@@ -791,7 +839,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = NA_character_,
       scale_policy = "expression-linked",
       prior_features = "simple,expression",
-      expected_monitor = c("x", "x_sigma", "inv_x_sigma"),
+      expected_monitor = c("x", "x_sigma"),
       expected_formula_parameters = character(),
       expected_formula_scale = character(),
       oracle_type = "fixture-metadata",
@@ -799,7 +847,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_iterations = 500L,
       tolerance = NA_real_,
       flags = list(simple_priors = TRUE, expression_priors = TRUE),
-      note = "Expression prior fixture with monitored hyperparameter and inverse scale."
+      note = "Expression prior fixture with monitored hyperparameter and natural inverse-gamma scale."
     ),
     list(
       model_name = "fit_expression_mixture",
@@ -809,7 +857,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = NA_character_,
       scale_policy = "expression-linked,mixture-indicator",
       prior_features = "simple,mixture,expression",
-      expected_monitor = c("x_indicator", "x", "x_sigma", "inv_x_sigma"),
+      expected_monitor = c("x_indicator", "x", "x_sigma"),
       expected_formula_parameters = character(),
       expected_formula_scale = character(),
       oracle_type = "fixture-metadata",
@@ -817,7 +865,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_iterations = 500L,
       tolerance = NA_real_,
       flags = list(simple_priors = TRUE, mixture_priors = TRUE, expression_priors = TRUE),
-      note = "Expression mixture fixture with monitored component indicator and inverse scale."
+      note = "Expression mixture fixture with monitored component indicator and natural inverse-gamma scale."
     ),
     list(
       model_name = "fit_add_parameters",
@@ -864,7 +912,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       model_family = "prior-only-weightfunction",
       scale_policy = "weightfunction-cumulative",
       prior_features = "weightfunction",
-      expected_monitor = c("omega[1]", "omega[2]", "eta[1]", "eta[2]"),
+      expected_monitor = c("omega[1]", "omega[2]"),
       expected_chains = 2L,
       expected_iterations = 500L,
       flags = list(weightfunction_priors = TRUE),
@@ -888,7 +936,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       model_family = "prior-only-weightfunction",
       scale_policy = "weightfunction-cumulative",
       prior_features = "weightfunction",
-      expected_monitor = c("omega[1]", "omega[2]", "omega[3]", "eta[1]", "eta[2]"),
+      expected_monitor = c("omega[1]", "omega[2]", "omega[3]"),
       expected_chains = 2L,
       expected_iterations = 500L,
       flags = list(weightfunction_priors = TRUE),
@@ -943,7 +991,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       note = "Heterogeneous publication-bias mixture with five omega monitors."
     ),
     catalog_row(
-      "fit_bias_petpeese_heterogeneous_wf",
+      "fit_bias_petpeese_hetero_wf",
       has_marglik = FALSE,
       model_family = "prior-only-publication-bias-mixture",
       scale_policy = "mixture-indicator,weightfunction",
@@ -997,7 +1045,10 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = "~ 1 + (1 || id)",
       scale_policy = "random-effects",
       prior_features = "simple,formula,random-effects",
-      expected_monitor = c("mu_intercept", "mu__xREx__id_intercept", "sigma"),
+      expected_monitor = c(
+        "mu_intercept", "mu__xREx__id_intercept", "sigma",
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 1L)
+      ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
       expected_chains = 2L,
@@ -1012,7 +1063,10 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = "~ 1 + (0 + x_cont1 || id)",
       scale_policy = "random-effects",
       prior_features = "simple,formula,random-effects",
-      expected_monitor = c("mu_intercept", "mu__xREx__id_x_cont1", "sigma"),
+      expected_monitor = c(
+        "mu_intercept", "mu__xREx__id_x_cont1", "sigma",
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 1L)
+      ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
       expected_chains = 2L,
@@ -1029,7 +1083,8 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       prior_features = "simple,formula,factor,random-effects",
       expected_monitor = c(
         "mu_intercept", "mu_x_cont1", "mu__xREx__id_intercept",
-        "mu__xREx__id_x_fac3[1]", "mu__xREx__id_x_fac3[2]", "sigma"
+        "mu__xREx__id_x_fac3[1]", "mu__xREx__id_x_fac3[2]", "sigma",
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 3L)
       ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
@@ -1047,7 +1102,9 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       prior_features = "simple,formula,factor,random-effects",
       expected_monitor = c(
         "mu_intercept", "mu_x_fac3[1]", "mu_x_fac3[2]",
-        "mu__xREx__id_intercept", "mu__xREx__id_x_fac3", "sigma"
+        "mu__xREx__id_intercept",
+        "mu__xREx__id_x_fac3[1]", "mu__xREx__id_x_fac3[2]", "sigma",
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 3L)
       ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
@@ -1065,10 +1122,15 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       prior_features = "simple,formula,factor,random-effects,spike-and-slab",
       expected_monitor = c(
         "mu_x_fac3[1]", "mu_x_fac3[2]", "mu_x_fac3[3]",
+        "mu_intercept",
         "mu__xREx__id_x_fac3_indicator",
-        "mu__xREx__id_x_fac3[1]", "mu__xREx__id_x_fac3[2]", "mu__xREx__id_x_fac3[3]",
-        "mu__xREx__id_x_fac3_variable[1]", "mu__xREx__id_x_fac3_variable[2]", "mu__xREx__id_x_fac3_variable[3]",
-        "sigma"
+        "mu__xREx__id_x_fac3_inclusion",
+        "mu__xREx__id_x_fac3[1]", "mu__xREx__id_x_fac3[2]",
+        "mu__xREx__id_x_fac3[3]",
+        "mu__xREx__id_x_fac3_variable[1]", "mu__xREx__id_x_fac3_variable[2]",
+        "mu__xREx__id_x_fac3_variable[3]",
+        "sigma",
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 3L)
       ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
@@ -1084,7 +1146,13 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = "~ x_fac2i + x_fac3o + x_fac3t + x_fac3md - 1",
       scale_policy = "point-prior-fixed",
       prior_features = "formula,factor,point",
-      expected_monitor = "sigma",
+      expected_monitor = c(
+        "mu_x_fac2i[1]", "mu_x_fac2i[2]",
+        "mu_x_fac3o[1]", "mu_x_fac3o[2]",
+        "mu_x_fac3t[1]", "mu_x_fac3t[2]",
+        "mu_x_fac3md[1]", "mu_x_fac3md[2]",
+        "mu_intercept", "sigma"
+      ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
       expected_chains = 2L,
@@ -1102,7 +1170,8 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_monitor = c(
         "mu_intercept_indicator", "mu_intercept",
         "mu_x_cont1_indicator", "mu_x_cont1",
-        "mu_x_fac3t_indicator", "mu_x_fac3t[1]", "mu_x_fac3t[2]",
+        "mu_x_fac3t_indicator", "mu_x_fac3t_inclusion",
+        "mu_x_fac3t[1]", "mu_x_fac3t[2]",
         "mu_x_fac3t_variable[1]", "mu_x_fac3t_variable[2]",
         "sigma_indicator", "sigma"
       ),
@@ -1122,7 +1191,9 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       model_family = "prior-only-expression",
       scale_policy = "expression-linked,spike-and-slab-indicator",
       prior_features = "simple,expression,spike-and-slab",
-      expected_monitor = c("x_indicator", "x", "x_variable", "x_sigma", "inv_x_sigma"),
+      expected_monitor = c(
+        "x_indicator", "x_inclusion", "x", "x_variable", "x_sigma"
+      ),
       expected_chains = 2L,
       expected_iterations = 500L,
       flags = list(simple_priors = TRUE, spike_and_slab_priors = TRUE, expression_priors = TRUE),
@@ -1171,7 +1242,12 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = "~ x_cont1 + x_fac2t + x_cont1 * x_fac3md",
       scale_policy = "point-prior-fixed,multiply-by",
       prior_features = "formula,factor,interaction,point",
-      expected_monitor = c("mu_intercept", "mu_x_cont1", "sigma"),
+      expected_monitor = c(
+        "mu_intercept", "mu_x_cont1", "mu_x_fac2t",
+        "mu_x_fac3md[1]", "mu_x_fac3md[2]",
+        "mu_x_cont1__xXx__x_fac3md[1]", "mu_x_cont1__xXx__x_fac3md[2]",
+        "sigma"
+      ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
       expected_chains = 2L,
@@ -1209,10 +1285,13 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_monitor = c(
         "mu_intercept",
         "mu_x_cont1_indicator", "mu_x_cont1",
-        "mu_x_fac2t_indicator", "mu_x_fac2t", "mu_x_fac2t_variable",
-        "mu_x_fac3md_indicator", "mu_x_fac3md[1]", "mu_x_fac3md[2]",
+        "mu_x_fac2t_indicator", "mu_x_fac2t_inclusion",
+        "mu_x_fac2t", "mu_x_fac2t_variable",
+        "mu_x_fac3md_indicator", "mu_x_fac3md_inclusion",
+        "mu_x_fac3md[1]", "mu_x_fac3md[2]",
         "mu_x_fac3md_variable[1]", "mu_x_fac3md_variable[2]",
         "mu_x_cont1__xXx__x_fac3md_indicator",
+        "mu_x_cont1__xXx__x_fac3md_inclusion",
         "mu_x_cont1__xXx__x_fac3md[1]", "mu_x_cont1__xXx__x_fac3md[2]",
         "mu_x_cont1__xXx__x_fac3md_variable[1]", "mu_x_cont1__xXx__x_fac3md_variable[2]",
         "sigma"
@@ -1232,7 +1311,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       has_marglik = TRUE,
       model_family = "prior-only-publication-bias",
       prior_features = "publication-bias,PET",
-      expected_monitor = "PET",
+      expected_monitor = c("mu", "PET"),
       expected_chains = 1L,
       expected_iterations = 2000L,
       flags = list(pub_bias_priors = TRUE),
@@ -1243,7 +1322,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       has_marglik = TRUE,
       model_family = "prior-only-publication-bias",
       prior_features = "publication-bias,PEESE",
-      expected_monitor = "PEESE",
+      expected_monitor = c("mu", "PEESE"),
       expected_chains = 1L,
       expected_iterations = 2000L,
       flags = list(pub_bias_priors = TRUE),
@@ -1266,7 +1345,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       model_family = "prior-only-weightfunction",
       scale_policy = "weightfunction-cumulative",
       prior_features = "weightfunction",
-      expected_monitor = c("omega[1]", "omega[2]", "eta[1]", "eta[2]"),
+      expected_monitor = c("omega[1]", "omega[2]"),
       expected_chains = 1L,
       expected_iterations = 2000L,
       flags = list(weightfunction_priors = TRUE),
@@ -1278,7 +1357,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       model_family = "prior-only-weightfunction",
       scale_policy = "weightfunction-cumulative",
       prior_features = "weightfunction",
-      expected_monitor = c("omega[1]", "omega[2]", "omega[3]", "eta[1]", "eta[2]"),
+      expected_monitor = c("omega[1]", "omega[2]", "omega[3]"),
       expected_chains = 1L,
       expected_iterations = 2000L,
       flags = list(weightfunction_priors = TRUE),
@@ -1332,7 +1411,8 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       prior_features = "formula,publication-bias,weightfunction,mixture,spike-and-slab",
       expected_monitor = c(
         "mu_intercept_indicator", "mu_intercept",
-        "mu_x_cont1_indicator", "mu_x_cont1", "mu_x_cont1_variable",
+        "mu_x_cont1_indicator", "mu_x_cont1_inclusion",
+        "mu_x_cont1", "mu_x_cont1_variable",
         "mu_x_fac2t_indicator", "mu_x_fac2t",
         "mu_x_fac3t_indicator", "mu_x_fac3t[1]", "mu_x_fac3t[2]",
         "sigma_indicator", "sigma",
@@ -1698,7 +1778,8 @@ expect_marglik_file_present_or_absent <- function(model_name, catalog = bayestoo
 }
 
 expect_marglik_object <- function(marglik) {
-  testthat::expect_s3_class(marglik, "bridge")
+  testthat::expect_s3_class(marglik, "BayesTools_marglik")
+  testthat::expect_identical(marglik$scale, "natural_log")
   testthat::expect_true("logml" %in% names(marglik))
   testthat::expect_type(marglik$logml, "double")
   testthat::expect_length(marglik$logml, 1L)

@@ -32,6 +32,221 @@ test_that("Prior print function input validation", {
 
 })
 
+test_that("Random-effect specification print methods use prior notation", {
+
+  sd_prior  <- prior("gamma", list(shape = 2, rate = 2))
+  rho_prior <- prior("normal", list(mean = 0, sd = 0.5))
+  lkj_prior <- prior_lkj(eta = 2, include_correlation = FALSE, include_primitives = TRUE)
+  covariance <- random_covariance(structure = "us", sd = sd_prior, cor = lkj_prior)
+  monitor <- random_monitor(coefficients = TRUE, lkj_primitives = TRUE)
+  new_levels <- random_new_levels(method = "sample")
+  block <- random_block(
+    sd = sd_prior,
+    covariance = random_covariance(cor = rho_prior, cor_scale = "cor"),
+    monitor = monitor,
+    terms = list(
+      intercept = sd_prior,
+      slope     = random_block(sd = sd_prior)
+    )
+  )
+  source <- parameter_source(
+    "tau",
+    shape = "row",
+    values = function(parameters, data, n_rows) rep(1, n_rows)
+  )
+  sd_source <- random_sd_source(source)
+  allocation <- random_variance_allocation(
+    name = "total_re",
+    terms = c(study = "study", site = "site"),
+    sd = sd_prior,
+    weights = prior("dirichlet", list(alpha = c(2, 3)))
+  )
+  child_allocation <- random_variance_allocation(
+    name = "nested_split",
+    parent = allocation_ref("total_re", "study"),
+    terms = c("paper", "country"),
+    weights = prior("dirichlet", list(alpha = c(3, 1)))
+  )
+  random_prior <- prior_random(
+    sd = sd_prior,
+    covariance = random_covariance(eta = 3),
+    study = block,
+    allocation = list(total_re = allocation, nested_split = child_allocation)
+  )
+
+  expect_equal(utils::capture.output(print(lkj_prior)), c(
+    "R ~ LKJ(eta = 2)",
+    "  include_correlation: FALSE",
+    "  include_primitives: TRUE"
+  ))
+  expect_equal(print(lkj_prior, silent = TRUE), c(
+    "R ~ LKJ(eta = 2)",
+    "  include_correlation: FALSE",
+    "  include_primitives: TRUE"
+  ))
+  expect_equal(utils::capture.output(print(covariance)), c(
+    "covariance: US",
+    "  sigma ~ Gamma(2, 2)",
+    "  R ~ LKJ(eta = 2)"
+  ))
+  expect_equal(utils::capture.output(print(random_covariance(cor_scale = "cor"))), c(
+    "covariance: formula-owned",
+    "  cor_scale: cor"
+  ))
+  expect_equal(utils::capture.output(print(monitor)), c(
+    "random_monitor()",
+    "  latent: TRUE",
+    "  coefficients: TRUE",
+    "  correlation: TRUE",
+    "  lkj_primitives: TRUE"
+  ))
+  expect_equal(utils::capture.output(print(new_levels)), c(
+    "random_new_levels()",
+    "  method: sample"
+  ))
+  expect_equal(utils::capture.output(print(block)), c(
+    "block",
+    "  sigma ~ Gamma(2, 2)",
+    "  cor ~ Normal(0, 0.5)",
+    "  cor_scale: cor",
+    "  sigma_intercept ~ Gamma(2, 2)",
+    "  sigma_slope ~ Gamma(2, 2)",
+    "  monitor: latent = TRUE, coefficients = TRUE, correlation = TRUE, lkj_primitives = TRUE"
+  ))
+  expect_equal(utils::capture.output(print(source)), c(
+    "parameter_source()",
+    "  name: tau",
+    "  shape: row",
+    "  values: function"
+  ))
+  expect_equal(utils::capture.output(print(sd_source)), c(
+    "random_sd_source()",
+    "  source: tau[row]"
+  ))
+  expect_equal(utils::capture.output(print(allocation)), c(
+    "allocation: total_re",
+    "  sigma_total ~ Gamma(2, 2)",
+    "  w ~ Dirichlet(2, 3)",
+    "  sigma_study = sigma_total * sqrt(w[1])",
+    "  sigma_site = sigma_total * sqrt(w[2])"
+  ))
+  expect_equal(utils::capture.output(print(child_allocation)), c(
+    "allocation: nested_split",
+    "  w ~ Dirichlet(3, 1)",
+    "  sigma_paper = sigma_study * sqrt(w[1])",
+    "  sigma_country = sigma_study * sqrt(w[2])"
+  ))
+  expect_equal(utils::capture.output(print(allocation_ref("total_re", "study"))), c(
+    "allocation_ref()",
+    "  allocation: total_re",
+    "  component: study"
+  ))
+  expect_equal(utils::capture.output(print(random_prior)), c(
+    "defaults",
+    "  sigma ~ Gamma(2, 2)",
+    "  R ~ LKJ(eta = 3)",
+    "allocation: total_re",
+    "  sigma_total ~ Gamma(2, 2)",
+    "  w ~ Dirichlet(2, 3)",
+    "  sigma_study = sigma_total * sqrt(w[1])",
+    "  sigma_site = sigma_total * sqrt(w[2])",
+    "allocation: nested_split",
+    "  w ~ Dirichlet(3, 1)",
+    "  sigma_paper = sigma_study * sqrt(w[1])",
+    "  sigma_country = sigma_study * sqrt(w[2])",
+    "block: study",
+    "  sigma ~ Gamma(2, 2)",
+    "  cor ~ Normal(0, 0.5)",
+    "  cor_scale: cor",
+    "  sigma_intercept ~ Gamma(2, 2)",
+    "  sigma_slope ~ Gamma(2, 2)",
+    "  monitor: latent = TRUE, coefficients = TRUE, correlation = TRUE, lkj_primitives = TRUE"
+  ))
+  expect_equal(utils::capture.output(print(random_prior, silent = TRUE)), character())
+  expect_equal(utils::capture.output(print(prior_random(
+    covariance = random_covariance(cor_scale = "cor")
+  ))), c(
+    "defaults",
+    "  cor_scale: cor"
+  ))
+})
+
+test_that("Random prior printing expands allocation and term priors", {
+
+  sd_total <- prior(
+    distribution = "normal",
+    parameters = list(mean = 0, sd = 0.30),
+    truncation = list(lower = 0, upper = Inf)
+  )
+
+  alloc <- random_variance_allocation(
+    name    = "random_total",
+    terms   = c(study = "study", outcome = "outcome"),
+    sd      = sd_total,
+    weights = prior(
+      distribution = "dirichlet",
+      parameters = list(alpha = c(1, 1))
+    ),
+    inclusion = list(study = prior("spike", list(location = 0.5)))
+  )
+  pr_alloc <- prior_random(allocation = alloc)
+  expect_equal(utils::capture.output(print(pr_alloc)), c(
+    "allocation: random_total",
+    "  sigma_total ~ Normal(0, 0.3)[0, Inf]",
+    "  w ~ Dirichlet(1, 1)",
+    "  p_study ~ Spike(0.5)",
+    "  I_study ~ Bernoulli(p_study)",
+    "  sigma_study = sigma_total * I_study * sqrt(w[1])",
+    "  sigma_outcome = sigma_total * sqrt(w[2])"
+  ))
+
+  hetero_alloc <- random_variance_allocation(name = "allocation",
+    terms   = "study",
+    sd      = sd_total,
+    weights = prior(
+      distribution = "dirichlet",
+      parameters = list(alpha = c(1, 1))
+    ),
+    target = "sd_component",
+    scale  = "mean_variance"
+  )
+  pr_hetero <- prior_random(allocation = hetero_alloc)
+  expect_equal(utils::capture.output(print(pr_hetero)), c(
+    "allocation: allocation",
+    "  sigma_common ~ Normal(0, 0.3)[0, Inf]",
+    "  w ~ Dirichlet(1, 1)",
+    "  sigma_study[1] = sigma_common * sqrt(2 * w[1])",
+    "  sigma_study[2] = sigma_common * sqrt(2 * w[2])",
+    "  scale: mean_variance"
+  ))
+
+  sd_intercept <- prior(
+    distribution = "normal",
+    parameters = list(mean = 0, sd = 0.15),
+    truncation = list(lower = 0, upper = Inf)
+  )
+  sd_dose <- prior(
+    distribution = "normal",
+    parameters = list(mean = 0, sd = 0.35),
+    truncation = list(lower = 0, upper = Inf)
+  )
+  pr_terms <- prior_random(
+    study = random_block(
+      sd = sd_total,
+      terms = list(
+        intercept = sd_intercept,
+        dose      = sd_dose
+      )
+    )
+  )
+  expect_equal(utils::capture.output(print(pr_terms)), c(
+    "block: study",
+    "  sigma ~ Normal(0, 0.3)[0, Inf]",
+    "  sigma_intercept ~ Normal(0, 0.15)[0, Inf]",
+    "  sigma_dose ~ Normal(0, 0.35)[0, Inf]"
+  ))
+})
+
 
 test_that("Prior print function works", {
 
@@ -64,14 +279,23 @@ test_that("Prior print function works", {
   p8  <- prior_weightfunction("one-sided", c(0.05, .95), wf_independent(prior("beta", list(1, 1))))
   p9  <- prior_weightfunction("two-sided", c(0.05), wf_cumulative(c(1, 1)))
   p10 <- prior_weightfunction("one-sided", c(0.10), wf_fixed(c(1, .7)))
-  expect_equal(utils::capture.output(print(p7)),  "omega[one-sided: .05] ~ CumDirichlet(1, 1)")
-  expect_equal(utils::capture.output(print(p8)),  "omega[one-sided: .05, .95] ~ Independent(Beta(1, 1))")
-  expect_equal(utils::capture.output(print(p9)),  "omega[two-sided: .05] ~ CumDirichlet(1, 1)")
-  expect_equal(utils::capture.output(print(p10)), "omega[one-sided: .1] = (1, 0.7)")
-  expect_equal(utils::capture.output(print(p7,  parameter_names = TRUE)), "omega[one-sided: .05] ~ CumDirichlet(alpha = 1, 1)")
-  expect_equal(utils::capture.output(print(p8,  parameter_names = TRUE)), "omega[one-sided: .05, .95] ~ Independent(Beta(alpha = 1, beta = 1))")
-  expect_equal(utils::capture.output(print(p9,  parameter_names = TRUE)), "omega[two-sided: .05] ~ CumDirichlet(alpha = 1, 1)")
-  expect_equal(utils::capture.output(print(p10, parameter_names = TRUE)), "omega[one-sided: .1] = (1, 0.7)")
+  model_lines <- c(
+    "Selection model:",
+    "  Estimate random effects: integrate (average effects before normalization).",
+    "  Other random effects: condition (retain unknown effects during normalization).",
+    "  Known sampling error: integrate (average full error vector before normalization).",
+    "  Weight rule: product (Product of estimate weights).",
+    "  Group: unused for the product rule.",
+    "  Sources are resolved when model data are bound."
+  )
+  expect_equal(utils::capture.output(print(p7)),  c("omega[one-sided: .05] ~ CumDirichlet(1, 1)", model_lines))
+  expect_equal(utils::capture.output(print(p8)),  c("omega[one-sided: .05, .95] ~ Independent(Beta(1, 1))", model_lines))
+  expect_equal(utils::capture.output(print(p9)),  c("omega[two-sided: .05] ~ CumDirichlet(1, 1)", model_lines))
+  expect_equal(utils::capture.output(print(p10)), c("omega[one-sided: .1] = (1, 0.7)", model_lines))
+  expect_equal(utils::capture.output(print(p7,  parameter_names = TRUE)), c("omega[one-sided: .05] ~ CumDirichlet(alpha = 1, 1)", model_lines))
+  expect_equal(utils::capture.output(print(p8,  parameter_names = TRUE)), c("omega[one-sided: .05, .95] ~ Independent(Beta(alpha = 1, beta = 1))", model_lines))
+  expect_equal(utils::capture.output(print(p9,  parameter_names = TRUE)), c("omega[two-sided: .05] ~ CumDirichlet(alpha = 1, 1)", model_lines))
+  expect_equal(utils::capture.output(print(p10, parameter_names = TRUE)), c("omega[one-sided: .1] = (1, 0.7)", model_lines))
 
   # check vector priors
   p11 <- prior(distribution = "mnormal", parameters = list(mean = 0, sd = 1, K = 3))
@@ -275,6 +499,14 @@ test_that("Prior print for additional distributions", {
   p_ig <- prior("invgamma", list(shape = 1, scale = 1))
   expect_equal(utils::capture.output(print(p_ig)), "InvGamma(1, 1)")
   expect_equal(utils::capture.output(print(p_ig, short_name = TRUE)), "Ig(1, 1)")
+
+  # Alternate gamma input is printed in canonical shape/rate form
+  p_gamma_scale <- prior("gamma", list(shape = 2, scale = .5))
+  expect_equal(utils::capture.output(print(p_gamma_scale)), "Gamma(2, 2)")
+  expect_equal(
+    utils::capture.output(print(p_gamma_scale, parameter_names = TRUE)),
+    "Gamma(shape = 2, rate = 2)"
+  )
 
 })
 

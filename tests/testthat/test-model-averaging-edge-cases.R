@@ -40,7 +40,7 @@ source(testthat::test_path("common-functions.R"))
 }
 
 .mock_bridge <- function(logml) {
-  structure(list(logml = logml), class = "bridge")
+  bridgesampling_object(logml)
 }
 
 .mock_runjags_fit_for_mixing <- function(samples, prior_list) {
@@ -71,6 +71,38 @@ source(testthat::test_path("common-functions.R"))
         beta  = prior("normal", list(0, 1))
       )
     ),
+    marglik = .mock_bridge(logml),
+    prior_weights = prior_weight
+  )
+}
+
+.mock_point_mixing_model <- function(location, logml, prior_weight = 1) {
+  posterior <- cbind(
+    theta = rep(location, 20),
+    beta = seq_len(20)
+  )
+  list(
+    fit = .mock_runjags_fit_for_mixing(
+      posterior,
+      prior_list = list(
+        theta = prior("point", list(location = location)),
+        beta = prior("normal", list(0, 1))
+      )
+    ),
+    marglik = .mock_bridge(logml),
+    prior_weights = prior_weight
+  )
+}
+
+.mock_simplex_mixing_model <- function(prior_list, logml = 0, prior_weight = 1) {
+  w1 <- seq(.1, .9, length.out = 20)
+  posterior <- cbind(
+    "w[1]" = w1,
+    "w[2]" = 1 - w1,
+    theta  = seq_len(20)
+  )
+  list(
+    fit = .mock_runjags_fit_for_mixing(posterior, prior_list),
     marglik = .mock_bridge(logml),
     prior_weights = prior_weight
   )
@@ -173,6 +205,58 @@ test_that("conditional compute_inference renormalizes alternatives but keeps ful
     compute_inference(c(1, 2), c(0, 1), is_null = c(TRUE, TRUE), conditional = TRUE),
     "Conditional inference requires at least one non-null model.",
     fixed = TRUE
+  )
+})
+
+test_that("conditional inference rejects a subset with no finite evidence", {
+
+  expect_error(
+    compute_inference(c(1, 1), c(0, -Inf),
+                      is_null = c(TRUE, FALSE), conditional = TRUE),
+    "No finite marginal likelihoods are available for models with positive prior probability.",
+    fixed = TRUE
+  )
+  expect_error(
+    compute_inference(c(1, 1, 0), c(0, -Inf, 10),
+                      is_null = c(TRUE, FALSE, FALSE), conditional = TRUE),
+    "No finite marginal likelihoods are available for models with positive prior probability.",
+    fixed = TRUE
+  )
+})
+
+test_that("inclusion_BF diagnoses missing probability inputs before dispatch", {
+
+  message <- "'prior_probs' and either 'post_probs' or 'margliks' must be specified."
+  expect_error(
+    inclusion_BF(post_probs = c(.5, .5), is_null = c(TRUE, FALSE)),
+    message, fixed = TRUE
+  )
+  expect_error(
+    inclusion_BF(prior_probs = c(.5, .5), is_null = c(TRUE, FALSE)),
+    message, fixed = TRUE
+  )
+})
+
+test_that("compute_inference handles no-null and invalid model-index indicators", {
+  no_null <- compute_inference(c(1, 1), c(0, 0), is_null = 0)
+  expect_equal(attr(no_null, "is_null"), c(FALSE, FALSE))
+  expect_true(is.na(no_null$BF))
+
+  no_null_empty <- compute_inference(c(1, 1), c(0, 0), is_null = integer(0))
+  expect_equal(attr(no_null_empty, "is_null"), c(FALSE, FALSE))
+
+  expect_error(
+    compute_inference(c(1, 1), c(0, 0), is_null = c(0, 1)),
+    "can contain 0 only when no null models are specified",
+    fixed = TRUE
+  )
+  expect_error(
+    compute_inference(c(1, 1), c(0, 0), is_null = c(TRUE, NA)),
+    "cannot contain NA"
+  )
+  expect_error(
+    compute_inference(c(1, 1), c(0, 0), is_null = 1, conditional = NA),
+    "cannot contain NA"
   )
 })
 
@@ -295,7 +379,99 @@ test_that("compute_inference handles zero and tiny prior weights semantically", 
   expect_equal(tiny$BF, 3, tolerance = 1e-12)
 })
 
-test_that("model averaging rejects invalid or unavailable positive-prior marginal likelihoods", {
+test_that("prior model-weight normalization is scale invariant", {
+
+  is_null <- c(TRUE, FALSE, FALSE)
+  margliks <- log(c(1, 2, 4))
+  ordinary_weights <- c(4, 2, 1)
+  huge_weights <- .Machine$double.xmax * c(1, 0.5, 0.25)
+  tiny_weights <- .Machine$double.xmin * c(1, 0.5, 0.25)
+
+  reference <- compute_inference(
+    prior_weights = ordinary_weights,
+    margliks = margliks,
+    is_null = is_null
+  )
+
+  for(prior_weights in list(huge_weights, tiny_weights)){
+    inference <- compute_inference(
+      prior_weights = prior_weights,
+      margliks = margliks,
+      is_null = is_null
+    )
+
+    expect_equal(inference$prior_probs, reference$prior_probs, tolerance = 1e-12)
+    expect_equal(inference$post_probs, reference$post_probs, tolerance = 1e-12)
+    expect_equal(inference$BF, reference$BF, tolerance = 1e-12)
+  }
+
+  expect_equal(reference$prior_probs, c(4 / 7, 2 / 7, 1 / 7), tolerance = 1e-12)
+  expect_equal(reference$post_probs, rep(1 / 3, 3), tolerance = 1e-12)
+  expect_equal(reference$BF, 8 / 3, tolerance = 1e-12)
+
+  conditional <- compute_inference(
+    prior_weights = rep(.Machine$double.xmax, 3),
+    margliks = rep(0, 3),
+    is_null = is_null,
+    conditional = TRUE
+  )
+  expect_equal(conditional$prior_probs, c(0, 0.5, 0.5), tolerance = 1e-12)
+  expect_equal(conditional$post_probs, c(0, 0.5, 0.5), tolerance = 1e-12)
+  expect_equal(conditional$BF, 1, tolerance = 1e-12)
+})
+
+test_that("extreme finite prior weights work across model-averaging entry points", {
+
+  prior_weights <- .Machine$double.xmax * c(1, 0.5, 0.25)
+  margliks <- log(c(1, 2, 4))
+  is_null <- c(TRUE, FALSE, FALSE)
+  expected_prior <- c(4 / 7, 2 / 7, 1 / 7)
+  expected_post <- rep(1 / 3, 3)
+
+  model_list <- lapply(seq_along(prior_weights), function(i){
+    .mock_mixing_model(
+      offset = 100 * i,
+      logml = margliks[i],
+      prior_weight = prior_weights[i]
+    )
+  })
+
+  ensemble <- ensemble_inference(
+    model_list = model_list,
+    parameters = "theta",
+    is_null_list = list(theta = is_null)
+  )
+  expect_equal(ensemble$theta$prior_probs, expected_prior, tolerance = 1e-12)
+  expect_equal(ensemble$theta$post_probs, expected_post, tolerance = 1e-12)
+
+  models <- models_inference(model_list)
+  expect_equal(
+    vapply(models, function(model) model$inference$prior_prob, numeric(1)),
+    expected_prior,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    vapply(models, function(model) model$inference$post_prob, numeric(1)),
+    expected_post,
+    tolerance = 1e-12
+  )
+
+  mixed <- mix_posteriors(
+    model_list = model_list,
+    parameters = "theta",
+    is_null_list = list(theta = is_null),
+    seed = 20260724,
+    n_samples = 12
+  )
+  expect_equal(length(mixed$theta), 12)
+  expect_equal(
+    vapply(attr(mixed$theta, "prior_list"), `[[`, numeric(1), "prior_weights"),
+    expected_prior,
+    tolerance = 1e-12
+  )
+})
+
+test_that("model averaging distinguishes failures from zero evidence", {
 
   expect_error(
     compute_inference(c(1, 1), c(Inf, 0), is_null = c(TRUE, FALSE)),
@@ -304,16 +480,171 @@ test_that("model averaging rejects invalid or unavailable positive-prior margina
   )
   expect_error(
     compute_inference(c(1, 0), c(NA_real_, 1000), is_null = c(TRUE, FALSE)),
-    "No finite marginal likelihoods are available for models with positive prior probability.",
-    fixed = TRUE
+    class = "BayesTools_marglik_failure"
   )
 
-  inference <- compute_inference(
-    prior_weights = c(1, 1, 0),
-    margliks = c(NA_real_, 0, 1000),
-    is_null = c(TRUE, FALSE, FALSE)
+  expect_error(
+    compute_inference(
+      prior_weights = c(1, 1, 0),
+      margliks = c(NA_real_, 0, 1000),
+      is_null = c(TRUE, FALSE, FALSE)
+    ),
+    class = "BayesTools_marglik_failure"
   )
-  expect_equal(inference$post_probs, c(0, 1, 0), tolerance = 1e-12)
+
+  dropped <- NULL
+  expect_warning(
+    dropped <- compute_inference(
+      prior_weights = c(1, 1, 0),
+      margliks = c(NA_real_, 0, 1000),
+      is_null = c(TRUE, FALSE, FALSE),
+      on_failure = "drop"
+    ),
+    "Dropped model"
+  )
+  expect_equal(dropped$prior_probs, c(0, 1, 0))
+  expect_equal(dropped$post_probs, c(0, 1, 0), tolerance = 1e-12)
+  expect_equal(attr(dropped, "marglik_failure")$model, 1)
+
+  zeroed <- NULL
+  expect_warning(
+    zeroed <- compute_inference(
+      prior_weights = c(1, 1, 0),
+      margliks = c(NA_real_, 0, 1000),
+      is_null = c(TRUE, FALSE, FALSE),
+      on_failure = "zero"
+    ),
+    "zero evidence"
+  )
+  expect_equal(zeroed$prior_probs, c(.5, .5, 0))
+  expect_equal(zeroed$post_probs, c(0, 1, 0), tolerance = 1e-12)
+  expect_equal(attr(zeroed, "marglik_failure")$policy, "zero")
+
+  ignored <- compute_inference(
+    prior_weights = c(1, 0),
+    margliks = c(0, NA_real_),
+    is_null = c(TRUE, FALSE)
+  )
+  expect_equal(ignored$post_probs, c(1, 0))
+
+  # -Inf is an intentional zero-evidence shortcut, not an on_failure trigger.
+  zero_evidence <- compute_inference(
+    prior_weights = c(1, 1),
+    margliks = c(0, -Inf),
+    is_null = c(TRUE, FALSE)
+  )
+  expect_equal(zero_evidence$post_probs, c(1, 0))
+  expect_null(attr(zero_evidence, "marglik_failure"))
+})
+
+test_that("inclusion log Bayes factors are computed in log space", {
+
+  # log BF = log(sum over alternatives of exp(logml) / 2) - 0 = -800 + log(1 / 2)
+  margliks <- c(0, -800, -1600)
+  expected_log_BF <- -800 + log(.5)
+
+  inference <- compute_inference(c(1, 1, 1), margliks, is_null = c(TRUE, FALSE, FALSE))
+  expect_identical(inference$BF, 0)
+  expect_equal(attr(inference, "log_BF"), expected_log_BF, tolerance = 1e-12)
+  overflow <- compute_inference(c(1, 1, 1), -margliks, is_null = c(TRUE, FALSE, FALSE))
+  expect_identical(overflow$BF, Inf)
+  # log(exp(1600) / 2 * (1 + exp(-800))) - 0
+  expect_equal(attr(overflow, "log_BF"), 1600 + log(.5), tolerance = 1e-12)
+
+  models <- models_inference(lapply(margliks, function(logml){
+    list(marglik = bridgesampling_object(logml), prior_weights = 1)
+  }))
+  # model 2 against models 1 and 3 (prior odds 1:2)
+  expect_equal(
+    attr(models[[2]]$inference, "inclusion_log_BF"),
+    -800 - (log(.5) + 0 + log1p(exp(-1600))),
+    tolerance = 1e-12
+  )
+  expect_identical(models[[2]]$inference$inclusion_BF, 0)
+
+  expect_equal(
+    BayesTools:::.inclusion_log_BF.probs(c(.5, .5), c(1e-320, 1 - 1e-320), c(FALSE, TRUE)),
+    log(1e-320),
+    tolerance = 1e-12
+  )
+  expect_identical(BayesTools:::.inclusion_log_BF.probs(c(.5, .5), c(0, 1), c(FALSE, TRUE)), -Inf)
+  expect_identical(BayesTools:::.inclusion_log_BF.probs(c(1, 0), c(1, 0), c(FALSE, TRUE)), NA_real_)
+})
+
+test_that("failed marginal-likelihood results reach the on_failure policy of model lists", {
+
+  failed <- bridgesampling_object(NA)
+  expect_s3_class(failed, "BayesTools_marglik")
+  expect_false(failed[["success"]])
+  expect_identical(failed[["logml"]], NA_real_)
+  expect_identical(failed[["aggregation"]][["rule"]], "supplied_failure")
+  expect_true(bridgesampling_object(0)[["success"]])
+  expect_output(print(failed), "failed computation")
+
+  models <- list(
+    list(marglik = failed, prior_weights = 1),
+    list(marglik = bridgesampling_object(0), prior_weights = 1)
+  )
+  expect_error(models_inference(models), class = "BayesTools_marglik_failure")
+  dropped <- NULL
+  expect_warning(dropped <- models_inference(models, on_failure = "drop"), "Dropped model")
+  expect_equal(vapply(dropped, function(m) m$inference$post_prob, numeric(1)), c(0, 1))
+  expect_equal(attr(dropped, "marglik_failure")$model, 1)
+
+  mixing_models <- list(
+    .mock_mixing_model(offset = 100, logml = 0),
+    .mock_mixing_model(offset = 200, logml = 0)
+  )
+  mixing_models[[1]]$marglik <- failed
+  expect_error(
+    ensemble_inference(mixing_models, "theta", list(theta = c(TRUE, FALSE))),
+    class = "BayesTools_marglik_failure"
+  )
+  zeroed <- NULL
+  expect_warning(
+    zeroed <- ensemble_inference(
+      mixing_models, "theta", list(theta = c(TRUE, FALSE)), on_failure = "zero"
+    ),
+    "zero evidence"
+  )
+  expect_equal(zeroed$theta$post_probs, c(0, 1))
+  mixed <- NULL
+  expect_warning(
+    mixed <- mix_posteriors(
+      mixing_models, parameters = "theta", is_null_list = list(theta = c(TRUE, FALSE)),
+      seed = 1, n_samples = 10, on_failure = "drop"
+    ),
+    "Dropped model"
+  )
+  expect_true(all(attr(mixed$theta, "models_ind") == 2L))
+
+  # NA is accepted only with the failure flag, and the flag only with NA
+  unflagged <- bridgesampling_object(0)
+  unflagged$logml <- NA_real_
+  expect_error(models_inference(list(list(marglik = unflagged, prior_weights = 1))),
+               "bridgesampling_object(NA)", fixed = TRUE)
+  inconsistent <- failed
+  inconsistent$logml <- 0
+  expect_error(models_inference(list(list(marglik = inconsistent, prior_weights = 1))),
+               "must store logml = NA", fixed = TRUE)
+  expect_error(bridgesampling_object(NaN), "one numeric", fixed = TRUE)
+})
+
+test_that("exact zero-dimensional marginal likelihoods never store a silent failure", {
+
+  # Only bridgesampling_object(NA) flags a failed computation; an exact
+  # evaluation whose log-posterior callback returns NA must stop.
+  posterior <- coda::as.mcmc(matrix(0.25, nrow = 20, dimnames = list(NULL, "mu")))
+  expect_error(
+    JAGS_bridgesampling(
+      fit           = posterior,
+      log_posterior = function(parameters, data) data[["y"]] + parameters[["mu"]],
+      data          = list(y = NA_real_),
+      prior_list    = list(mu = prior("point", list(0.25)))
+    ),
+    "The exact zero-dimensional log marginal likelihood evaluated to NA",
+    fixed = TRUE
+  )
 })
 
 test_that("model averaging rejects malformed prior weights at each public entry point", {
@@ -360,15 +691,86 @@ test_that("model averaging rejects malformed prior weights at each public entry 
       n_samples    = 4
     )
   )
+
+  expect_error(
+    mix_posteriors(
+      list(.mock_mixing_model(offset = 100, logml = 0)),
+      parameters   = "typo",
+      is_null_list = list(typo = FALSE),
+      n_samples    = 4
+    ),
+    "not available in any model prior list",
+    fixed = TRUE
+  )
 })
 
-test_that("mixture sample counts are deterministic, exact length, and retain positive components", {
-  counts <- BayesTools:::.posterior_mixture_sample_counts(c(.999, .001), 1000)
+test_that("model-list inference requires the BayesTools marginal-likelihood contract", {
 
+  legacy_bridge <- structure(list(logml = 0), class = "bridge")
+
+  expect_error(
+    models_inference(list(list(
+      marglik = legacy_bridge,
+      prior_weights = 1
+    ))),
+    "must be a 'BayesTools_marglik' object",
+    fixed = TRUE
+  )
+  expect_error(
+    models_inference(list(list(
+      marglik = structure(
+        list(
+          schema_version = 1L,
+          logml = c(0, 1),
+          scale = "natural_log"
+        ),
+        class = c("BayesTools_marglik", "list")
+      ),
+      prior_weights = 1
+    ))),
+    "must be one natural-log marginal likelihood",
+    fixed = TRUE
+  )
+})
+
+test_that("mixture sample counts are categorical and may omit rare components", {
+
+  set.seed(20260726)
+  counts <- BayesTools:::.posterior_mixture_sample_counts(c(.75, .25), 1000)
   expect_equal(sum(counts), 1000)
-  expect_equal(counts, c(999L, 1L))
-  expect_equal(BayesTools:::.posterior_mixture_sample_counts(c(1, 3), 400), c(100L, 300L))
-  expect_equal(BayesTools:::.posterior_mixture_sample_counts(c(.9999, .0001), 1000), c(999L, 1L))
+  expect_equal(counts / 1000, c(.75, .25), tolerance = .04)
+
+  set.seed(20260726)
+  rare <- BayesTools:::.posterior_mixture_sample_counts(c(1 - 1e-12, 1e-12), 1000)
+  expect_equal(rare, c(1000L, 0L))
+
+  set.seed(20260726)
+  repeated <- replicate(
+    1000,
+    BayesTools:::.posterior_mixture_sample_counts(c(.7, .3), 20)[2]
+  )
+  expect_equal(mean(repeated), 6, tolerance = .2)
+  expect_gt(stats::var(repeated), 0)
+})
+
+test_that("mixed posterior atom metadata retains unsampled rare components", {
+
+  mixed <- mix_posteriors(
+    model_list = list(
+      .mock_mixing_model(offset = 100, logml = 0),
+      .mock_point_mixing_model(location = 0, logml = log(1e-20))
+    ),
+    parameters = "theta",
+    is_null_list = list(theta = c(FALSE, FALSE)),
+    seed = 20260726,
+    n_samples = 1000
+  )
+  atoms <- attr(mixed$theta, "posterior_atoms", exact = TRUE)
+
+  expect_false(any(attr(mixed$theta, "models_ind") == 2L))
+  expect_equal(atoms$locations[, 1L], 0)
+  expect_gt(atoms$mass, 0)
+  expect_equal(atoms$mass, atoms$component_probabilities[2L])
 })
 
 test_that("mix_posteriors preserves model and sample alignment across parameters", {
@@ -391,13 +793,10 @@ test_that("mix_posteriors preserves model and sample alignment across parameters
     n_samples    = 12
   )
 
-  expected_models <- c(rep(1L, 3L), rep(2L, 6L), rep(3L, 3L))
-
-  expect_equal(attr(mixed$theta, "models_ind"), expected_models)
-  expect_equal(attr(mixed$beta, "models_ind"), expected_models)
+  expect_equal(attr(mixed$theta, "models_ind"), attr(mixed$beta, "models_ind"))
   expect_equal(attr(mixed$theta, "sample_ind"), attr(mixed$beta, "sample_ind"))
   expect_equal(as.numeric(mixed$beta - mixed$theta), rep(100, 12))
-  expect_equal(as.integer(table(factor(attr(mixed$theta, "models_ind"), levels = 1:3))), c(3L, 6L, 3L))
+  expect_equal(length(attr(mixed$theta, "models_ind")), 12)
 
   sample_ind <- attr(mixed$theta, "sample_ind")
   for(model_i in seq_along(model_list)){
@@ -427,7 +826,7 @@ test_that("conditional mix_posteriors excludes null models from samples and prio
     n_samples    = 8
   )
 
-  expect_equal(as.integer(table(factor(attr(mixed$theta, "models_ind"), levels = 1:3))), c(0L, 5L, 3L))
+  expect_equal(length(attr(mixed$theta, "models_ind")), 8)
   expect_false(any(attr(mixed$theta, "models_ind") == 1L))
   expect_equal(attr(mixed$theta, "sample_ind"), attr(mixed$theta, "sample_ind")[attr(mixed$theta, "models_ind") != 1L])
 
@@ -439,6 +838,234 @@ test_that("conditional mix_posteriors excludes null models from samples and prio
   )
 })
 
+test_that("conditional mix_posteriors hard-fails when post_probs differ across parameters", {
+
+  model_list <- list(
+    .mock_mixing_model(offset = 100, logml = log(1)),
+    .mock_mixing_model(offset = 200, logml = log(2)),
+    .mock_mixing_model(offset = 300, logml = log(1))
+  )
+
+  expect_error(
+    mix_posteriors(
+      model_list   = model_list,
+      parameters   = c("theta", "beta"),
+      is_null_list = list(
+        theta = c(TRUE, FALSE, FALSE),
+        beta  = c(FALSE, TRUE, FALSE)
+      ),
+      conditional  = TRUE,
+      seed         = 20260504,
+      n_samples    = 8
+    ),
+    "identical posterior model probabilities",
+    fixed = TRUE
+  )
+})
+
+test_that("mix_posteriors rejects implicit and scalar simplex nulls", {
+
+  simplex_model <- .mock_simplex_mixing_model(
+    list(w = prior("dirichlet", list(alpha = c(1, 1)))),
+    logml = 0
+  )
+  missing_model <- .mock_simplex_mixing_model(
+    list(theta = prior("normal", list(0, 1))),
+    logml = 0
+  )
+  scalar_point_model <- .mock_simplex_mixing_model(
+    list(w = prior("spike", list(location = 0))),
+    logml = 0
+  )
+
+  expect_error(
+    mix_posteriors(
+      list(simplex_model, missing_model),
+      parameters   = "w",
+      is_null_list = list(w = c(FALSE, TRUE)),
+      n_samples    = 10
+    ),
+    "no implicit spike-at-zero null",
+    fixed = TRUE
+  )
+  expect_error(
+    mix_posteriors(
+      list(simplex_model, scalar_point_model),
+      parameters   = "w",
+      is_null_list = list(w = c(FALSE, FALSE)),
+      n_samples    = 10
+    ),
+    "can only mix Dirichlet simplex priors",
+    fixed = TRUE
+  )
+})
+
+test_that("marginal_posterior rejects simplex and weightfunction posteriors clearly", {
+
+  mixed <- mix_posteriors(
+    list(
+      .mock_simplex_mixing_model(list(w = prior("dirichlet", list(alpha = c(1, 1))))),
+      .mock_simplex_mixing_model(list(w = prior("dirichlet", list(alpha = c(2, 3)))))
+    ),
+    parameters   = "w",
+    is_null_list = list(w = c(FALSE, FALSE)),
+    seed         = 1,
+    n_samples    = 12
+  )
+  expect_error(
+    marginal_posterior(mixed, "w"),
+    "'marginal_posterior()' is not supported for vector (e.g., Dirichlet simplex) posterior samples ('w')",
+    fixed = TRUE
+  )
+
+  weightfunction <- prior_weightfunction(steps = .05)
+  omega <- seq(.1, .9, length.out = 20)
+  fit <- coda::mcmc(cbind("omega[1]" = rep(1, 20), "omega[2]" = omega))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- list(omega = weightfunction)
+  samples <- as_mixed_posteriors(fit, parameters = "omega")
+  expect_error(
+    marginal_posterior(samples, "omega"),
+    "'marginal_posterior()' is not supported for weightfunction posterior samples ('omega')",
+    fixed = TRUE
+  )
+})
+
+test_that("mix_posteriors preserves simplex draws for compatible explicit priors", {
+
+  simplex_model_1 <- .mock_simplex_mixing_model(
+    list(w = prior("dirichlet", list(alpha = c(1, 1)))),
+    logml = 0
+  )
+  simplex_model_2 <- .mock_simplex_mixing_model(
+    list(w = prior("dirichlet", list(alpha = c(2, 3)))),
+    logml = 0
+  )
+
+  mixed <- mix_posteriors(
+    list(simplex_model_1, simplex_model_2),
+    parameters   = "w",
+    is_null_list = list(w = c(FALSE, FALSE)),
+    seed         = 20260614,
+    n_samples    = 12
+  )
+
+  expect_s3_class(mixed$w, "mixed_posteriors.vector")
+  expect_equal(rowSums(mixed$w), rep(1, 12), tolerance = 1e-12)
+
+  point_model <- .mock_simplex_mixing_model(
+    list(w = prior("mpoint", list(location = .5, K = 2))),
+    logml = 0
+  )
+  mixed_point <- mix_posteriors(
+    list(simplex_model_1, point_model),
+    parameters   = "w",
+    is_null_list = list(w = c(FALSE, TRUE)),
+    seed         = 20260614,
+    n_samples    = 12
+  )
+
+  expect_equal(rowSums(mixed_point$w), rep(1, 12), tolerance = 1e-12)
+  point_rows <- attr(mixed_point$w, "models_ind") == 2L
+  expect_true(any(point_rows))
+  expect_equal(
+    unname(mixed_point$w[point_rows, , drop = FALSE]),
+    matrix(c(.5, .5), nrow = sum(point_rows), ncol = 2, byrow = TRUE),
+    tolerance = 1e-12
+  )
+})
+
+test_that("mix_posteriors preserves factor-by-factor interaction coefficients", {
+
+  data <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2", "b3"), levels = c("b1", "b2", "b3"))
+  )
+  parameter <- "mu_a__xXx__b"
+
+  interaction_specs <- list(
+    treatment = list(
+      formula = ~ a * b,
+      priors = list(
+        intercept = prior("normal", list(0, 1)),
+        a = prior_factor("normal", list(0, 1), contrast = "treatment"),
+        b = prior_factor("normal", list(0, 1), contrast = "treatment"),
+        "a:b" = prior_factor("normal", list(0, 1), contrast = "treatment")
+      ),
+      names = c(
+        "mu_a[a2]__xXx__b[b2]",
+        "mu_a[a2]__xXx__b[b3]"
+      )
+    ),
+    independent = list(
+      formula = ~ 0 + a:b,
+      priors = list(
+        "a:b" = prior_factor("normal", list(0, 1), contrast = "independent")
+      ),
+      names = c(
+        "mu_a[a1]__xXx__b[b1]",
+        "mu_a[a2]__xXx__b[b1]",
+        "mu_a[a1]__xXx__b[b2]",
+        "mu_a[a2]__xXx__b[b2]",
+        "mu_a[a1]__xXx__b[b3]",
+        "mu_a[a2]__xXx__b[b3]"
+      )
+    )
+  )
+
+  null_fit <- .mock_runjags_fit_for_mixing(
+    matrix(0, nrow = 20, ncol = 1, dimnames = list(NULL, "dummy")),
+    list(dummy = prior("normal", list(0, 1)))
+  )
+
+  for(spec in interaction_specs){
+    formula_result <- JAGS_formula(
+      formula = spec$formula,
+      parameter = "mu",
+      data = data,
+      prior_list = spec$priors
+    )
+
+    K <- length(spec$names)
+    alternative_samples <- vapply(
+      seq_len(K),
+      function(i) 100 * i + seq_len(20),
+      numeric(20)
+    )
+    colnames(alternative_samples) <- paste0(parameter, "[", seq_len(K), "]")
+    alternative_fit <- .mock_runjags_fit_for_mixing(
+      alternative_samples,
+      formula_result$prior_list
+    )
+
+    model_list <- list(
+      list(fit = null_fit, marglik = .mock_bridge(0), prior_weights = 1),
+      list(fit = alternative_fit, marglik = .mock_bridge(log(2)), prior_weights = 1)
+    )
+    mixed <- mix_posteriors(
+      model_list = model_list,
+      parameters = parameter,
+      is_null_list = list(c(TRUE, FALSE)),
+      seed = 20260724,
+      n_samples = 12
+    )[[parameter]]
+
+    expect_s3_class(mixed, "mixed_posteriors.factor")
+    expect_identical(colnames(mixed), spec$names)
+    expect_equal(nrow(mixed), 12)
+
+    null_rows <- attr(mixed, "models_ind") == 1L
+    alternative_rows <- attr(mixed, "models_ind") == 2L
+    expect_true(any(null_rows))
+    expect_true(any(alternative_rows))
+    expect_equal(unname(mixed[null_rows, , drop = FALSE]), matrix(0, sum(null_rows), K))
+    expect_equal(
+      unname(mixed[alternative_rows, , drop = FALSE]),
+      outer(attr(mixed, "sample_ind")[alternative_rows], 100 * seq_len(K), `+`)
+    )
+  }
+})
+
 test_that("inclusion_BF handles all-null models", {
 
   # All null models assign zero prior mass to the alternative comparison.
@@ -448,6 +1075,7 @@ test_that("inclusion_BF handles all-null models", {
 
   BF <- inclusion_BF(prior_probs = prior_probs, post_probs = post_probs, is_null = is_null)
   expect_true(is.na(BF))
+  expect_true(is.na(inclusion_BF(prior_probs = prior_probs, post_probs = post_probs, is_null = 1:2)))
 
 })
 
@@ -461,6 +1089,8 @@ test_that("inclusion_BF handles all-alternative models", {
 
   BF <- inclusion_BF(prior_probs = prior_probs, post_probs = post_probs, is_null = is_null)
   expect_true(is.na(BF))
+  expect_true(is.na(inclusion_BF(prior_probs = prior_probs, post_probs = post_probs, is_null = 0)))
+  expect_true(is.na(inclusion_BF(prior_probs = prior_probs, post_probs = post_probs, is_null = integer(0))))
 
 })
 
@@ -512,6 +1142,96 @@ test_that("inclusion_BF treats prior and posterior boundaries differently", {
     post_probs  = c(null = 0.5, alternative = 0.5),
     is_null     = is_null
   )))
+
+})
+
+
+test_that("inclusion_BF keeps near-boundary and extreme finite odds finite", {
+
+  is_null <- c(TRUE, FALSE)
+
+  expect_equal(
+    inclusion_BF(
+      prior_probs = c(null = 0.5, alternative = 0.5),
+      post_probs  = c(null = 1e-8, alternative = 1 - 1e-8),
+      is_null     = is_null
+    ),
+    (1 - 1e-8) / 1e-8,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    inclusion_BF(
+      prior_probs = c(null = 0.5, alternative = 0.5),
+      post_probs  = c(null = 1 - 1e-8, alternative = 1e-8),
+      is_null     = is_null
+    ),
+    1e-8 / (1 - 1e-8),
+    tolerance = 1e-12
+  )
+
+  tiny <- 1e-320
+  expect_equal(
+    inclusion_BF(
+      prior_probs = c(null = tiny, alternative = 1),
+      post_probs  = c(null = 2 * tiny, alternative = 1),
+      is_null     = is_null
+    ),
+    0.5,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    inclusion_BF(
+      prior_probs = c(null = tiny, alternative = 1),
+      margliks    = c(null = 0, alternative = 0),
+      is_null     = is_null
+    ),
+    1,
+    tolerance = 1e-12
+  )
+
+})
+
+
+test_that("inclusion_BF rejects invalid probability vectors", {
+
+  is_null <- c(TRUE, FALSE)
+
+  expect_error(
+    inclusion_BF(
+      prior_probs = c(0.4, 0.4),
+      post_probs  = c(0.5, 0.5),
+      is_null     = is_null
+    ),
+    "'prior_probs' argument must sum to 1",
+    fixed = TRUE
+  )
+  expect_error(
+    inclusion_BF(
+      prior_probs = c(0.5, 0.5),
+      post_probs  = c(0, 0),
+      is_null     = is_null
+    ),
+    "'post_probs' argument must sum to 1",
+    fixed = TRUE
+  )
+  expect_error(
+    inclusion_BF(
+      prior_probs = c(1, 1),
+      margliks    = c(0, 0),
+      is_null     = is_null
+    ),
+    "'prior_probs' argument must sum to 1",
+    fixed = TRUE
+  )
+  expect_error(
+    inclusion_BF(
+      prior_probs = c(0.5, 0.5),
+      post_probs  = c(NA_real_, 0.5),
+      is_null     = is_null
+    ),
+    "'post_probs' argument cannot contain NA/NaN values",
+    fixed = TRUE
+  )
 
 })
 
@@ -650,4 +1370,53 @@ test_that("weightfunctions_mapping handles mixed prior list", {
   )
   test_reference_text(wf_mapping_info, "weightfunctions_mapping_info.txt")
 
+})
+
+test_that("weightfunction mappings preserve distinct representable cuts", {
+
+  lower_cut <- .05
+  upper_cut <- .05 + 5e-13
+  first <- prior_weightfunction(
+    "one-sided",
+    lower_cut,
+    wf_fixed(c(1, .5))
+  )
+  second <- prior_weightfunction(
+    "one-sided",
+    upper_cut,
+    wf_fixed(c(1, .25))
+  )
+
+  cuts <- weightfunctions_mapping(
+    list(first, second),
+    cuts_only = TRUE
+  )
+  expect_equal(cuts, c(0, lower_cut, upper_cut, 1))
+  expect_equal(diff(cuts)[2L], upper_cut - lower_cut)
+})
+
+test_that("selection step bins use exact (lower, upper] boundaries", {
+
+  # Intentionally no snap/coalesce near cut endpoints (IEEE-exact bin edges).
+  cuts <- c(0, .05, 1)
+  probabilities <- c(.05 - 5e-13, .05, .05 + 5e-13)
+  bins <- vapply(probabilities, function(probability){
+    .selection_native_step_bin_from_z(
+      stats::qnorm(probability, lower.tail = FALSE),
+      cuts
+    )
+  }, integer(1))
+
+  evaluated <- stats::pnorm(
+    stats::qnorm(probabilities, lower.tail = FALSE),
+    lower.tail = FALSE
+  )
+  expected <- findInterval(
+    evaluated,
+    cuts,
+    rightmost.closed = TRUE,
+    left.open = TRUE
+  )
+  expect_equal(bins, expected)
+  expect_equal(bins[c(1L, 3L)], c(1L, 2L))
 })

@@ -1,5 +1,15 @@
 skip_if_not_test_profile(c("unit", "fixture"))
 
+test_that("log-weight component density propagates missing values", {
+
+  component <- list(type = "prior", scale = "log_omega", prior = prior("normal", list(0, 1)))
+  x <- c(-1, 0, 1, 2, NA_real_)
+  expect_equal(
+    BayesTools:::.prior_weightfunction_component_lpdf(component, x),
+    stats::dlnorm(x, log = TRUE)
+  )
+})
+
 # TEST FILE: Weightfunction prior redesign
 # ============================================================================ #
 #
@@ -12,6 +22,224 @@ skip_if_not_test_profile(c("unit", "fixture"))
 # ============================================================================ #
 
 source(testthat::test_path("common-functions.R"))
+
+test_that("selection models declare three fixed source choices without changing weight priors", {
+
+  default <- selection_model()
+  expect_identical(unclass(default), list(
+    estimate_random_effects = "integrate", other_random_effects = "condition",
+    known_sampling_variance = "integrate",
+    weight_rule = "product", group = NULL
+  ))
+  expect_identical(selection_model_spec(prior_weightfunction()), default)
+
+  weights <- list(
+    wf_cumulative(c(2, 3)), wf_fixed(c(1, 0)),
+    wf_independent(prior("gamma", list(2, 1))),
+    wf_independent(prior("normal", list(0, 1)), scale = "log_omega")
+  )
+  for(weight in weights){
+    reference <- prior_weightfunction(steps = .05, weights = weight, prior_weights = 3)
+    for(estimate in c("integrate", "condition")){
+      for(other in c("condition", "integrate")){
+        for(sampling in c("condition", "integrate")){
+          for(rule in c("product", "best")){
+            model <- if(identical(rule, "best")){
+              selection_model(estimate, other, sampling, rule, group = paper_id)
+            }else{
+              selection_model(estimate, other, sampling, rule)
+            }
+            candidate <- prior_weightfunction(steps = .05, weights = weight,
+                                               prior_weights = 3, model = model)
+            expect_identical(selection_model_spec(candidate), model)
+            expect_identical(candidate[names(candidate) != "model"],
+                             reference[names(reference) != "model"])
+          }
+        }
+      }
+    }
+    set.seed(31)
+    reference_draws <- rng(reference, 20)
+    set.seed(31)
+    expect_identical(rng(candidate, 20), reference_draws)
+    expect_identical(JAGS_to_monitor(list(omega = candidate)),
+                     JAGS_to_monitor(list(omega = reference)))
+    expect_identical(JAGS_get_inits(list(omega = candidate), chains = 1, seed = 31),
+                     JAGS_get_inits(list(omega = reference), chains = 1, seed = 31))
+    expect_identical(.JAGS_bridgesampling_posterior_info.weightfunction(candidate),
+                     .JAGS_bridgesampling_posterior_info.weightfunction(reference))
+  }
+})
+
+test_that("selection group references survive deferred and wrapper capture", {
+
+  paper_id <- seq_len(3)
+  expect_identical(selection_model(weight_rule = "best", group = paper_id)$group, "paper_id")
+  expect_identical(selection_model(weight_rule = "best", group = `paper id`)$group, "paper id")
+  expect_identical(selection_model(weight_rule = "best", group = "paper id")$group, "paper id")
+  expect_null(selection_model(group = NULL)$group)
+
+  # Product selection is invariant to publication partitions, so a group
+  # supplied alongside it is inert, not contradictory. Callers parameterize
+  # the rule and forward one `group` for both rules, so the combination must
+  # stay constructible; `print()` is what reports the group as unused.
+  for(spec in list(
+    selection_model(group = paper_id),
+    selection_model(weight_rule = "product", group = paper_id)
+  )){
+    expect_identical(spec$group, "paper_id")
+    expect_silent(check_selection_model(spec))
+    expect_match(
+      paste(utils::capture.output(print(spec)), collapse = "\n"),
+      "Group: unused for the product rule"
+    )
+    expect_silent(prior_weightfunction(
+      "one-sided", steps = .05, weights = wf_fixed(c(1, .5)), model = spec
+    ))
+  }
+
+  # the same wrapper shape RoBMA uses: one `group`, either rule
+  parameterized <- function(weight_rule){
+    selection_model(weight_rule = weight_rule, group = "study")
+  }
+  expect_identical(parameterized("product")$group, "study")
+  expect_identical(parameterized("best")$group, "study")
+
+  wrapper <- function(group = paper_id) selection_model(weight_rule = "best", group = group)
+  nested_wrapper <- function(column) wrapper(group = column)
+  explicit_wrapper <- function(group) selection_model(weight_rule = "best", group = {{group}})
+  forced_wrapper <- function(group) {
+    force(group)
+    selection_model(weight_rule = "best", group = group)
+  }
+  expect_identical(wrapper()$group, "paper_id")
+  expect_identical(wrapper(paper_id)$group, "paper_id")
+  expect_identical(nested_wrapper(`paper id`)$group, "paper id")
+  expect_identical(explicit_wrapper(paper_id)$group, "paper_id")
+  expect_identical(forced_wrapper("paper_id")$group, "paper_id")
+  expect_error(forced_wrapper(1:3), "'group' must be a data-column name", fixed = TRUE)
+
+  column_name <- "paper id"
+  stored <- do.call(selection_model, list(weight_rule = "best", group = column_name))
+  expect_identical(stored, selection_model(weight_rule = "best", group = `paper id`))
+  expect_identical(unserialize(serialize(stored, NULL)), stored)
+  expect_identical(attributes(stored), list(
+    names = c("estimate_random_effects", "other_random_effects",
+              "known_sampling_variance", "weight_rule", "group"),
+    class = "selection_model"
+  ))
+  expect_true(all(vapply(unclass(stored), is.character, logical(1))))
+
+  evaluated <- FALSE
+  expect_error(selection_model(group = { evaluated <- TRUE; "paper_id" }),
+               "'group' must be a data-column name", fixed = TRUE)
+  expect_false(evaluated)
+  expect_error(selection_model(group = ""), "'group' must be a data-column name", fixed = TRUE)
+  expect_error(selection_model(group = NA_character_), "'group' must be a data-column name", fixed = TRUE)
+  expect_error(do.call(selection_model, list(group = c("paper_id", "study"))),
+               "'group' must be a data-column name", fixed = TRUE)
+  circular <- function(group = other, other = group) selection_model(group = group)
+  expect_error(circular(), "'group' contains a circular wrapper argument reference. Forward a data-column name.", fixed = TRUE)
+})
+
+test_that("selection model validation rejects malformed and obsolete specifications", {
+
+  expect_error(selection_model(estimate_random_effects = "exact"), "estimate_random_effects", fixed = TRUE)
+  expect_error(selection_model(other_random_effects = "approximate"), "other_random_effects", fixed = TRUE)
+  expect_error(selection_model(known_sampling_variance = "approximate"), "known_sampling_variance", fixed = TRUE)
+  expect_error(selection_model(known_sampling_variance = .5), "known_sampling_variance", fixed = TRUE)
+  expect_error(selection_model(random_effects = "condition"), "unused argument", fixed = TRUE)
+  expect_error(selection_model(known_covariance = "condition"), "unused argument", fixed = TRUE)
+  expect_error(selection_model(weight_rule = "maximum_weight"), "weight_rule", fixed = TRUE)
+  expect_error(selection_model(estimate_random_effects = c("condition", "integrate")), "length", fixed = TRUE)
+  expect_error(selection_model(known_sampling_variance = NA_character_), "cannot contain NA/NaN", fixed = TRUE)
+  expect_identical(withVisible(check_selection_model(selection_model())),
+                   list(value = selection_model(), visible = FALSE))
+  expect_error(check_selection_model(NULL, name = "selection"),
+               "'selection' must be a specification from 'selection_model()'.", fixed = TRUE)
+  expect_error(prior_weightfunction(model = NULL),
+               "'model' must be a specification from 'selection_model()'.", fixed = TRUE)
+  malformed <- prior_weightfunction()
+  malformed$model$weight_rule <- "maximum_weight"
+  expect_error(selection_model_spec(malformed), "weight_rule", fixed = TRUE)
+  expect_error(prior_mixture(list(prior_none(), malformed)), "weight_rule", fixed = TRUE)
+  expect_error(prior_bias(selection = malformed), "weight_rule", fixed = TRUE)
+  missing_model <- prior_weightfunction()
+  missing_model$model <- NULL
+  expect_error(selection_model_spec(missing_model),
+               "'prior$model' must be a specification from 'selection_model()'.", fixed = TRUE)
+})
+
+test_that("bias composition preserves each child selection model and its odds", {
+
+  first <- prior_weightfunction(steps = .05, prior_weights = 2,
+    model = selection_model())
+  second <- prior_weightfunction(steps = .05, weights = wf_fixed(c(1, 1.5)),
+    prior_weights = 3,
+    model = selection_model("condition", "integrate", "integrate", "best", group = study_id))
+  combined <- prior_bias(selection = second, phacking = prior_phacking(), prior_weights = 5)
+  branches <- list(prior_none(prior_weights = 7), first, combined)
+  before <- serialize(branches, NULL)
+  mixture <- prior_mixture(branches, is_null = c(TRUE, FALSE, FALSE),
+                           components = c("null", "product", "best"))
+  expected <- list(NULL, first$model, second$model)
+  expect_identical(lapply(branches, selection_model_spec), expected)
+  expect_identical(lapply(mixture, selection_model_spec), expected)
+  expect_identical(lapply(unserialize(serialize(mixture, NULL)), selection_model_spec), expected)
+  expect_identical(attr(mixture, "prior_weights"), c(7, 2, 5))
+  expect_identical(attr(mixture, "components"), c("null", "product", "best"))
+  expect_identical(vapply(mixture, attr, character(1), which = "component"),
+                   c("null", "product", "best"))
+  expect_identical(lapply(lapply(branches, .selection_branch_info), function(branch){
+    selection_model_spec(branch$selection)
+  }), expected)
+  expect_error(selection_model_spec(mixture),
+    "A selection-model specification is unavailable for a mixture as a whole. Inspect each prior branch with 'selection_model_spec()'.", fixed = TRUE)
+  expect_error(prior_mixture(list(first, prior("normal", list(0, 1)))),
+               "Publication-bias prior mixtures", fixed = TRUE)
+  expect_identical(serialize(branches, NULL), before)
+  expect_null(selection_model_spec(prior_bias(phacking = prior_phacking())))
+  expect_null(selection_model_spec(prior_PET("normal", list(0, 1))))
+})
+
+test_that("selection model printing distinguishes source choices from weight-prior labels", {
+
+  model <- selection_model("integrate", "condition", "integrate", "best", group = `paper id`)
+  expect_identical(utils::capture.output(print(model)), c(
+    "Selection model:",
+    "  Estimate random effects: integrate (average effects before normalization).",
+    "  Other random effects: condition (retain unknown effects during normalization).",
+    "  Known sampling error: integrate (average full error vector before normalization).",
+    "  Weight rule: best (Weight of the best p-value).",
+    "  Group: 'paper id' (unresolved data column).",
+    "  Sources are resolved when model data are bound."
+  ))
+  expect_identical(utils::capture.output(print(selection_model(
+    known_sampling_variance = "condition"
+  ))), c(
+    "Selection model:",
+    "  Estimate random effects: integrate (average effects before normalization).",
+    "  Other random effects: condition (retain unknown effects during normalization).",
+    "  Known sampling error: condition (retain full unknown error vector during normalization).",
+    "  Weight rule: product (Product of estimate weights).",
+    "  Group: unused for the product rule.",
+    "  Sources are resolved when model data are bound."
+  ))
+  candidate <- prior_weightfunction(steps = .05, model = model)
+  reference <- prior_weightfunction(steps = .05)
+  expect_identical(print(candidate, silent = TRUE),
+                   "omega[one-sided: .05] ~ CumDirichlet(1, 1)")
+  expect_identical(print(candidate, plot = TRUE), print(reference, plot = TRUE))
+  expect_identical(utils::capture.output(print(candidate, inline = TRUE)),
+                   "omega[one-sided: .05] ~ CumDirichlet(1, 1)")
+  combined <- prior_bias(selection = candidate)
+  expect_true(any(grepl("Weight of the best p-value", utils::capture.output(print(combined)), fixed = TRUE)))
+  mixture <- prior_mixture(list(reference, combined))
+  printed <- utils::capture.output(print(mixture))
+  expect_true(all(c("Prior branch 1", "Prior branch 2") %in% printed))
+  expect_true(any(grepl("Product of estimate weights", printed, fixed = TRUE)))
+  expect_true(any(grepl("Weight of the best p-value", printed, fixed = TRUE)))
+})
 
 test_that("prior_weightfunction stores canonical geometry and weight priors", {
 
@@ -79,6 +307,8 @@ test_that("weightfunction constructors validate independent scales", {
     prior("normal", list(0, 1)),
     scale = "log_omega"
   ))
+  expect_error(wf_cumulative(c(1, Inf)), "finite")
+  expect_error(wf_fixed(c(1, Inf)), "finite")
 
   expect_error(
     prior_weightfunction("one-sided", c(.05), wf_fixed(c(.9, .5))),
@@ -134,6 +364,71 @@ test_that("JAGS generation uses component-local omega for bias mixtures", {
   expect_false(grepl("eta2omega", syntax, fixed = TRUE))
 })
 
+test_that("binary cumulative weights use their exact beta marginal", {
+
+  cumulative <- prior_weightfunction(
+    "one-sided",
+    .05,
+    wf_cumulative(c(2, 4))
+  )
+  syntax <- JAGS_add_priors("model{}", list(omega = cumulative))
+  expect_match(syntax, "omega_ratio ~ dbeta\\(4, 2\\)")
+  expect_match(syntax, "omega\\[2\\] <- omega_ratio")
+  expect_false(grepl("eta\\[|std_eta", syntax))
+
+  inits <- JAGS_get_inits(list(omega = cumulative), chains = 2, seed = 1)
+  expect_true(all(vapply(inits, function(x){
+    is.finite(x$omega_ratio) && x$omega_ratio > 0 && x$omega_ratio < 1
+  }, logical(1))))
+  expect_equal(JAGS_to_monitor(list(omega = cumulative)), "omega")
+
+  posterior_info <- .JAGS_bridgesampling_posterior_info.weightfunction(cumulative)
+  expect_equal(as.vector(posterior_info), "omega[2]")
+  expect_equal(attr(posterior_info, "lb"), c("omega[2]" = 0))
+  expect_equal(attr(posterior_info, "ub"), c("omega[2]" = 1))
+
+  samples <- c("omega[2]" = .6)
+  expect_equal(
+    JAGS_marglik_priors(samples, list(omega = cumulative)),
+    stats::dbeta(.6, 4, 2, log = TRUE),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    JAGS_marglik_parameters(samples, list(omega = cumulative))$omega,
+    c(1, .6)
+  )
+  expect_equal(
+    JAGS_marglik_priors(c("omega[2]" = 1.1), list(omega = cumulative)),
+    -Inf
+  )
+  expect_error(
+    JAGS_marglik_parameters(
+      c("omega[2]" = 1.1),
+      list(omega = cumulative)
+    ),
+    "out-of-support binary cumulative weightfunction coordinate"
+  )
+  expect_error(
+    JAGS_marglik_priors(numeric(), list(omega = cumulative)),
+    "does not contain the monitored binary cumulative weightfunction parameter"
+  )
+
+  eta <- c(.8, 1.2)
+  total <- sum(eta)
+  omega <- eta[2] / total
+  gamma_density_with_jacobian <-
+    sum(stats::dgamma(eta, shape = c(2, 4), rate = 1, log = TRUE)) +
+    log(total)
+  factorized_density <-
+    stats::dbeta(omega, 4, 2, log = TRUE) +
+    stats::dgamma(total, 6, rate = 1, log = TRUE)
+  expect_equal(
+    gamma_density_with_jacobian,
+    factorized_density,
+    tolerance = 1e-12
+  )
+})
+
 test_that("JAGS bridge helpers use natural latent weight parameters", {
 
   cumulative <- prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 2, 3)))
@@ -183,12 +478,115 @@ test_that("JAGS bridge helpers use natural latent weight parameters", {
     mlpdf(log_independent$weights$prior, .5),
     tolerance = 1e-12
   )
+  edge_samples <- samples
+  edge_samples[["eta[1]"]] <- 0
+  expect_equal(JAGS_marglik_priors(edge_samples, list(omega = cumulative)), -Inf)
+  expect_error(
+    JAGS_marglik_parameters(edge_samples, list(omega = cumulative)),
+    "out-of-support positive auxiliary coordinate"
+  )
 
   samples_two_sided <- c("eta[1]" = 1, "eta[2]" = 2, "eta[3]" = 3)
   expect_equal(
     JAGS_marglik_parameters(samples_two_sided, list(omega = two_sided))$omega,
     c(1, 5/6, 1/2, 5/6, 1),
     tolerance = 1e-12
+  )
+})
+
+test_that("JAGS bridge posterior rejects monitored deterministic owned aliases", {
+
+  cumulative <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 2)))
+  cumulative_posterior <- matrix(
+    c(1, 2, 1, 1 / 3),
+    nrow = 1,
+    dimnames = list(NULL, c("eta[1]", "eta[2]", "omega[1]", "std_eta[1]"))
+  )
+  expect_error(
+    JAGS_bridgesampling_posterior(
+      cumulative_posterior,
+      prior_list = list(omega = cumulative),
+      add_parameters = "omega[1]",
+      add_bounds = list(lb = c("omega[1]" = 0), ub = c("omega[1]" = Inf))
+    ),
+    "BayesTools-owned",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_bridgesampling_posterior(
+      cumulative_posterior,
+      prior_list = list(omega = cumulative),
+      add_parameters = "std_eta[1]",
+      add_bounds = list(lb = c("std_eta[1]" = 0), ub = c("std_eta[1]" = 1))
+    ),
+    "BayesTools-owned",
+    fixed = TRUE
+  )
+  two_sided <- prior_weightfunction("two-sided", c(.05, .10), wf_cumulative(c(1, 2, 3)))
+  expect_error(
+    JAGS_bridgesampling_posterior(
+      cumulative_posterior,
+      prior_list = list(omega = two_sided),
+      add_parameters = "omega[5]",
+      add_bounds = list(lb = c("omega[5]" = 0), ub = c("omega[5]" = Inf))
+    ),
+    "BayesTools-owned",
+    fixed = TRUE
+  )
+
+  phacking <- prior_phacking(form = "linear")
+  phacking_posterior <- matrix(
+    c(.2, 1, 1.5),
+    nrow = 1,
+    dimnames = list(NULL, c("alpha", "phack_kind", "phack_z_source[1]"))
+  )
+  expect_error(
+    JAGS_bridgesampling_posterior(
+      phacking_posterior,
+      prior_list = list(phacking = phacking),
+      add_parameters = "phack_kind",
+      add_bounds = list(lb = c(phack_kind = 0), ub = c(phack_kind = 2))
+    ),
+    "BayesTools-owned",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_bridgesampling_posterior(
+      phacking_posterior,
+      prior_list = list(phacking = phacking),
+      add_parameters = "omega[1]",
+      add_bounds = list(lb = c("omega[1]" = 0), ub = c("omega[1]" = Inf))
+    ),
+    "BayesTools-owned",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_bridgesampling_posterior(
+      phacking_posterior,
+      prior_list = list(phacking = phacking),
+      add_parameters = "phack_z_source[1]",
+      add_bounds = list(lb = c("phack_z_source[1]" = -Inf), ub = c("phack_z_source[1]" = Inf))
+    ),
+    "BayesTools-owned",
+    fixed = TRUE
+  )
+
+  theta <- prior_factor("invgamma", list(2, 1), contrast = "independent")
+  attr(theta, "levels") <- 2
+  theta_posterior <- matrix(
+    c(1, 0.5),
+    nrow = 1,
+    dimnames = list(NULL, c("theta[1]", "theta[2]"))
+  )
+  expect_error(
+    JAGS_bridgesampling_posterior(
+      theta_posterior,
+      prior_list = list(theta = theta),
+      add_parameters = "theta[1]",
+      add_bounds = list(lb = c("theta[1]" = 0), ub = c("theta[1]" = Inf))
+    ),
+    "BayesTools-owned",
+    fixed = TRUE
   )
 })
 
@@ -222,19 +620,16 @@ test_that("heterogeneous bias mixtures map cumulative, omega, log-omega, fixed, 
   expect_match(syntax, "omega\\[3\\] <- omega_component_1\\[3\\] \\* equals\\(bias_indicator, 1\\)")
   expect_false(grepl("eta2omega", syntax, fixed = TRUE))
 
-  prior_samples <- .mix_priors.weightfunction(
-    as.list(bias)[c(1, which(sapply(bias, is.prior.weightfunction)))],
-    parameter = "omega",
-    seed = 13,
-    n_samples = 600
-  )
+  set.seed(13)
+  prior_samples <- rng(bias, 600)
+  components <- attr(prior_samples, "components")
 
-  expect_equal(colnames(prior_samples), c("omega[0,0.025]", "omega[0.025,0.05]", "omega[0.05,0.1]", "omega[0.1,0.975]", "omega[0.975,1]"))
-  expect_true(all(prior_samples[attr(prior_samples, "models_ind") == 1, ] == 1))
-  expect_true(all(prior_samples[attr(prior_samples, "models_ind") == 5, "omega[0.025,0.05]"] == .4))
-  expect_true(all(prior_samples[attr(prior_samples, "models_ind") == 5, "omega[0.975,1]"] == 1))
-  expect_gt(mean(prior_samples[attr(prior_samples, "models_ind") == 3, "omega[0.05,0.1]"] > 1), .90)
-  expect_gt(mean(prior_samples[attr(prior_samples, "models_ind") == 4, "omega[0.025,0.05]"] > 1), .95)
+  expect_equal(colnames(prior_samples), paste0("omega[", 1:5, "]"))
+  expect_true(all(prior_samples[components == 1, ] == 1))
+  expect_true(all(prior_samples[components == 5, "omega[2]"] == .4))
+  expect_true(all(prior_samples[components == 5, "omega[5]"] == 1))
+  expect_gt(mean(prior_samples[components == 3, "omega[3]"] > 1), .90)
+  expect_gt(mean(prior_samples[components == 4, "omega[2]"] > 1), .95)
 })
 
 test_that("JAGS syntax and fitting allow independent omega weights above one", {
@@ -308,7 +703,7 @@ test_that("JAGS fits full bias mixtures with PET, PEESE, and heterogeneous weigh
 
   skip_if_not_test_profile("fixture")
   skip_if_not_installed("rjags")
-  skip_if_missing_fits("fit_bias_petpeese_heterogeneous_wf")
+  skip_if_missing_fits("fit_bias_petpeese_hetero_wf")
 
   bias <- prior_mixture(list(
     prior_none(prior_weights = 1),
@@ -333,7 +728,7 @@ test_that("JAGS fits full bias mixtures with PET, PEESE, and heterogeneous weigh
   expect_match(syntax, "omega_component_5\\[3\\] <- 1")
   expect_match(syntax, "omega\\[3\\] <- omega_component_1\\[3\\] \\* equals\\(bias_indicator, 1\\) \\+ omega_component_2\\[3\\] \\* equals\\(bias_indicator, 2\\)")
 
-  fit <- readRDS(file.path(temp_fits_dir, "fit_bias_petpeese_heterogeneous_wf.RDS"))
+  fit <- readRDS(file.path(temp_fits_dir, "fit_bias_petpeese_hetero_wf.RDS"))
 
   posterior <- as.matrix(.fit_to_posterior(fit))
   indicator <- posterior[, "bias_indicator"]
@@ -391,46 +786,6 @@ test_that("JAGS fits full bias mixtures with PET, PEESE, and heterogeneous weigh
   expect_true(any(table_samples[, "PEESE"] > 0, na.rm = TRUE))
   expect_true(any(is.na(table_samples[, "omega[0.05,0.1]"])))
   expect_true(any(table_samples[, "omega[0.05,0.1]"] > 1, na.rm = TRUE))
-})
-
-test_that("point(1) weightfunction null components are handled explicitly", {
-
-  wf <- prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)), prior_weights = 3)
-  point_null <- prior("point", list(1), prior_weights = 1)
-
-  mixed <- .mix_priors.weightfunction(
-    list(point_null, wf),
-    parameter = "omega",
-    seed = 1,
-    n_samples = 40
-  )
-
-  expect_equal(colnames(mixed), c("omega[0,0.05]", "omega[0.05,1]"))
-  expect_equal(unname(mixed[attr(mixed, "models_ind") == 1, ]), matrix(1, nrow = 10, ncol = 2))
-  expect_error(
-    .mix_priors.weightfunction(
-      list(prior("point", list(.5), prior_weights = 1), wf),
-      parameter = "omega",
-      n_samples = 40
-    ),
-    "point\\(1\\)/none null priors"
-  )
-})
-
-test_that("weightfunction prior mixing retains tiny positive components", {
-
-  dominant <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5)), prior_weights = 999)
-  tiny     <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .2)), prior_weights = 1)
-
-  mixed <- .mix_priors.weightfunction(
-    list(dominant, tiny),
-    parameter = "omega",
-    seed = 4,
-    n_samples = 1000
-  )
-
-  expect_true(2 %in% attr(mixed, "models_ind"))
-  expect_equal(unname(mixed[attr(mixed, "models_ind") == 2, "omega[0.05,1]"]), .2)
 })
 
 test_that("omega diagnostics reject bias mixtures without weightfunctions", {

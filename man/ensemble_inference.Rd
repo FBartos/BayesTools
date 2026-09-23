@@ -6,23 +6,53 @@
 \alias{models_inference}
 \title{Compute posterior probabilities and inclusion Bayes factors}
 \usage{
-compute_inference(prior_weights, margliks, is_null = NULL, conditional = FALSE)
+compute_inference(
+  prior_weights,
+  margliks,
+  is_null = NULL,
+  conditional = FALSE,
+  on_failure = c("error", "drop", "zero")
+)
 
-ensemble_inference(model_list, parameters, is_null_list, conditional = FALSE)
+ensemble_inference(
+  model_list,
+  parameters,
+  is_null_list,
+  conditional = FALSE,
+  on_failure = c("error", "drop", "zero")
+)
 
-models_inference(model_list)
+models_inference(model_list, on_failure = c("error", "drop", "zero"))
 }
 \arguments{
 \item{prior_weights}{vector of prior model odds}
 
-\item{margliks}{vector of marginal likelihoods}
+\item{margliks}{vector of natural-log marginal likelihoods}
 
 \item{is_null}{logical vector of indicators specifying whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models
-corresponding to the null hypothesis)}
+corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
+when no models are null)}
 
 \item{conditional}{whether prior and posterior model probabilities should
-be returned only for the conditional model. Defaults to \code{FALSE}}
+be returned only for the non-null models. Defaults to \code{FALSE}.
+Inclusion Bayes factors stay the unconditional inclusion odds; after
+conditioning, posterior inclusion is 1, so recomputing the Bayes factor
+from the renormalized probabilities would be \code{Inf}.}
+
+\item{on_failure}{policy for missing (\code{NA}) marginal likelihoods in
+models with positive prior probability. \code{"error"} aborts (the default),
+\code{"drop"} removes failed models from the prior model space and
+renormalizes, and \code{"zero"} explicitly assigns the failed models zero
+evidence. Non-default policies emit a warning and return audit metadata.
+Only \code{NA} is treated as a computation failure under this policy.
+In model lists, store a failed computation as
+\code{\link{bridgesampling_object}(NA)}, a result flagged as failed whose
+marginal likelihood is read as \code{NA}.
+A finite failure must be reported as \code{NA}; by contrast,
+\code{-Inf} is an intentional zero-evidence shortcut (for example via
+\code{\link{bridgesampling_object}()}) and quietly receives posterior
+model probability zero without consulting \code{on_failure}.}
 
 \item{model_list}{list of models, each of which contains marginal
 likelihood estimated with bridge sampling \code{marglik} and prior model
@@ -34,7 +64,8 @@ be drawn}
 \item{is_null_list}{list with entries for each parameter carrying either
 logical vector of indicators specifying whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models
-corresponding to the null hypothesis)}
+corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
+when no models are null)}
 }
 \value{
 \code{compute_inference} returns a named list of prior probabilities,

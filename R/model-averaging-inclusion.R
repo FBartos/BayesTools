@@ -1,0 +1,322 @@
+#' @title Compute inclusion Bayes factors
+#'
+#' @description Computes inclusion Bayes factors based on prior model probabilities,
+#' posterior model probabilities (or marginal likelihoods), and indicator whether
+#' the models represent the null or alternative hypothesis.
+#'
+#' @param prior_probs vector of prior model probabilities summing to one.
+#' @param post_probs vector of posterior model probabilities summing to one.
+#' @param margliks vector of marginal likelihoods.
+#' @param on_failure policy for missing marginal likelihoods in models with
+#' positive prior probability. See [compute_inference()].
+#' @param is_null logical vector of indicators whether the model corresponds
+#' to the null or alternative hypothesis (or an integer vector indexing models
+#' corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
+#' when no models are null)
+#'
+#' @details Supplying \code{margliks} as the input is preferred since it is better at dealing with
+#' under/overflow (posterior probabilities are very close to either 0 or 1). In case that both the
+#' \code{post_probs} and \code{margliks} are supplied, the results are based on \code{margliks}.
+#' If the prior probability of either the null or alternative hypothesis is
+#' zero, the Bayes factor is undefined and \code{NA} is returned.
+#'
+#' @return \code{inclusion_BF} returns a Bayes factor.
+#'
+#' @export
+inclusion_BF <- function(prior_probs, post_probs, margliks, is_null,
+                         on_failure = c("error", "drop", "zero")){
+
+  on_failure <- match.arg(on_failure)
+
+  if(missing(prior_probs) || (missing(post_probs) && missing(margliks))){
+    stop("'prior_probs' and either 'post_probs' or 'margliks' must be specified.",
+         call. = FALSE)
+  }
+  is_null <- .model_averaging_is_null(is_null, length(prior_probs))
+
+  if(!missing(margliks)){
+    return(.inclusion_BF.margliks(
+      prior_probs = prior_probs,
+      margliks     = margliks,
+      is_null      = is_null,
+      on_failure  = on_failure
+    ))
+  }else{
+    return(.inclusion_BF.probs(prior_probs = prior_probs, post_probs = post_probs, is_null = is_null))
+  }
+}
+
+.model_averaging_is_null <- function(is_null, n_models){
+
+  if(is.null(is_null)){
+    return(rep(FALSE, n_models))
+  }
+
+  if(is.numeric(is_null)){
+    check_int(is_null, "is_null", lower = 0, upper = n_models, check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
+    if(length(is_null) == 0L || (length(is_null) == 1L && is_null == 0)){
+      return(rep(FALSE, n_models))
+    }
+    if(any(is_null == 0)){
+      stop("'is_null' can contain 0 only when no null models are specified.", call. = FALSE)
+    }
+    return(seq_len(n_models) %in% is_null)
+  }
+
+  if(is.logical(is_null)){
+    check_bool(is_null, "is_null", check_length = n_models, allow_NA = FALSE)
+    return(is_null)
+  }
+
+  stop("'is_null' argument must be either logical vector, integer vector, or NULL.", call. = FALSE)
+}
+
+.inclusion_BF.probs    <- function(prior_probs, post_probs, is_null){
+
+  exp(.inclusion_log_BF.probs(prior_probs, post_probs, is_null))
+}
+# Natural-log inclusion Bayes factors computed in log space, so log outputs do
+# not under/overflow through exp() (NA when undefined, -Inf/Inf at bounds).
+.inclusion_log_BF.probs <- function(prior_probs, post_probs, is_null){
+
+  .inclusion_BF_check_probs(prior_probs, "prior_probs")
+  .inclusion_BF_check_probs(post_probs, "post_probs", check_length = length(prior_probs))
+
+  prior_alt  <- sum(prior_probs[!is_null])
+  prior_null <- sum(prior_probs[is_null])
+  post_alt   <- sum(post_probs[!is_null])
+  post_null  <- sum(post_probs[is_null])
+
+  if(prior_alt == 0 || prior_null == 0){
+    return(NA_real_)
+  }
+
+  if(post_alt == 0){
+    return(-Inf)
+  }
+  if(post_null == 0){
+    return(Inf)
+  }
+
+  log_BF <- (log(post_alt) - log(post_null)) -
+    (log(prior_alt) - log(prior_null))
+
+  return(log_BF)
+}
+.inclusion_BF.margliks <- function(
+    prior_probs, margliks, is_null,
+    on_failure = c("error", "drop", "zero")){
+
+  on_failure <- match.arg(on_failure)
+  exp(.inclusion_log_BF.margliks(
+    prior_probs = prior_probs,
+    margliks    = margliks,
+    is_null     = is_null,
+    on_failure  = on_failure
+  ))
+}
+.inclusion_log_BF.margliks <- function(
+    prior_probs, margliks, is_null,
+    on_failure = c("error", "drop", "zero")){
+
+  .inclusion_BF_check_probs(prior_probs, "prior_probs")
+  check_real(margliks,  "margliks", check_length = length(prior_probs))
+  on_failure <- match.arg(on_failure)
+
+  prepared <- .model_averaging_prepare_margliks(
+    margliks,
+    prior_probs,
+    on_failure = on_failure
+  )
+  margliks <- prepared$margliks
+  prior_probs <- prepared$prior_probs
+
+  prior_alt  <- sum(prior_probs[!is_null])
+  prior_null <- sum(prior_probs[is_null])
+  if(prior_alt == 0 || prior_null == 0){
+    return(NA_real_)
+  }
+
+  active <- prior_probs > 0 & is.finite(margliks)
+  if(!any(active & !is_null)){
+    return(-Inf)
+  }
+  if(!any(active & is_null)){
+    return(Inf)
+  }
+
+  alt_ind  <- active & !is_null
+  null_ind <- active & is_null
+
+  alt_log_marginal <- .inclusion_BF_log_marginal(
+    margliks[alt_ind],
+    prior_probs[alt_ind],
+    prior_alt
+  )
+  null_log_marginal <- .inclusion_BF_log_marginal(
+    margliks[null_ind],
+    prior_probs[null_ind],
+    prior_null
+  )
+
+  return(alt_log_marginal - null_log_marginal)
+}
+
+.inclusion_BF_check_probs <- function(probs, name, check_length = 0){
+
+  check_real(
+    probs,
+    name,
+    lower = 0,
+    upper = 1,
+    check_length = check_length,
+    allow_NA = FALSE
+  )
+
+  tolerance <- .Machine$double.eps * max(8, length(probs))
+  if(abs(sum(probs) - 1) > tolerance){
+    stop(paste0("The '", name, "' argument must sum to 1."), call. = FALSE)
+  }
+
+  return()
+}
+
+.inclusion_BF_log_marginal <- function(margliks, prior_probs, prior_total){
+
+  log_terms <- margliks + log(prior_probs) - log(prior_total)
+  max_log_term <- max(log_terms)
+
+  return(max_log_term + log(sum(exp(log_terms - max_log_term))))
+}
+
+
+#' @title Create coefficient mapping between multiple weightfunctions
+#'
+#' @description Creates coefficients mapping between multiple weightfunctions.
+#'
+#' @param prior_list list of prior distributions
+#' @param cuts_only whether only p-value cuts should be returned
+#' @param one_sided force one-sided output
+#'
+#' @return \code{weightfunctions_mapping} returns a list of indices
+#' mapping the publication weights omega from the individual weightfunctions
+#' into a joint weightfunction.
+#'
+#' @export
+weightfunctions_mapping <- function(prior_list, cuts_only = FALSE, one_sided = FALSE){
+
+  # check input
+  if(!all(sapply(prior_list, is.prior.weightfunction) | sapply(prior_list, .is_prior_weightfunction_null)))
+    stop("'priors' must be a list of weightfunction priors or point(1)/none null priors")
+  check_bool(cuts_only, "cuts_only")
+  check_bool(one_sided, "one_sided")
+
+  force_one_sided <- one_sided || any(sapply(prior_list, function(prior){
+    is.prior.weightfunction(prior) && prior$side == "one-sided"
+  }))
+
+  prior_expansions <- lapply(prior_list, function(prior){
+    if(!is.prior.weightfunction(prior)){
+      return(NULL)
+    }
+    .weightfunction_mapping_expansion(prior, force_one_sided)
+  })
+
+  all_cuts <- .weightfunction_unique_cuts(unlist(lapply(prior_expansions, function(expansion){
+    if(is.null(expansion)) NULL else expansion$cuts
+  })))
+  if(length(all_cuts) == 0L){
+    all_cuts <- c(0, 1)
+  }
+
+  # return the naming for summary function if only asked for labels
+  if(cuts_only){
+    return(all_cuts)
+  }
+
+  # create mapping to weights
+  omega_mapping <- list()
+  for(p in seq_along(prior_list)){
+    if(is.prior.weightfunction(prior_list[[p]])){
+      expansion <- prior_expansions[[p]]
+      omega_mapping[[p]] <- expansion$index[.weightfunction_global_bin_indices(all_cuts, expansion)]
+    }
+  }
+
+
+  return(omega_mapping)
+}
+
+.weightfunction_mapping_info <- function(prior_list, one_sided = FALSE){
+
+  cuts <- weightfunctions_mapping(prior_list, cuts_only = TRUE, one_sided = one_sided)
+  list(
+    mapping = weightfunctions_mapping(prior_list, one_sided = one_sided),
+    cuts    = cuts,
+    names   = .weightfunction_omega_names(cuts),
+    pars    = paste0("omega[", seq_len(length(cuts) - 1L), "]"),
+    one_sided = one_sided
+  )
+}
+
+.weightfunction_set_omega_context <- function(samples, omega_context){
+
+  if(is.null(omega_context)){
+    return(samples)
+  }
+
+  attr(samples, "omega_context") <- omega_context
+  prior_list <- attr(samples, "prior_list")
+  if(!is.null(prior_list)){
+    attr(prior_list, "omega_context") <- omega_context
+    attr(samples, "prior_list") <- prior_list
+  }
+
+  samples
+}
+
+.weightfunction_omega_names <- function(cuts){
+  sapply(seq_len(length(cuts) - 1L), function(i){
+    paste0("omega[", cuts[i], ",", cuts[i + 1L], "]")
+  })
+}
+
+.weightfunction_unique_cuts <- function(cuts){
+
+  # Exact unique() / sort only: nearby floating-point cut values are not
+  # coalesced. Boundary binning elsewhere also uses exact cut endpoints.
+  sort(unique(cuts))
+}
+
+.weightfunction_global_bin_indices <- function(global_cuts, expansion){
+
+  vapply(seq_len(length(global_cuts) - 1L), function(i){
+    ind <- which(
+      global_cuts[i] >= expansion$lower &
+        global_cuts[i + 1L] <= expansion$upper
+    )
+    if(length(ind) != 1L){
+      stop("Could not map global weightfunction bin to a local bin.", call. = FALSE)
+    }
+    ind
+  }, integer(1))
+}
+
+.weightfunction_mapping_expansion <- function(prior, force_one_sided = FALSE){
+
+  if(prior$side == "two-sided" && force_one_sided){
+    J <- .weightfunction_n_bins(prior)
+    cuts <- c(0, prior$steps / 2, 1 - rev(prior$steps) / 2, 1)
+    index <- c(seq_len(J), seq.int(J - 1L, 1L))
+  }else{
+    cuts <- .weightfunction_local_cuts(prior)
+    index <- seq_len(.weightfunction_n_bins(prior))
+  }
+
+  list(
+    cuts  = cuts,
+    lower = cuts[-length(cuts)],
+    upper = cuts[-1],
+    index = index
+  )
+}

@@ -1,5 +1,83 @@
 skip_if_not_test_profile("unit")
 
+test_that("factor joint quantiles fail clearly instead of returning a function", {
+
+  p <- prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal")
+  expect_error(
+    quant(p, .5),
+    "Joint quantiles are unavailable for factor priors. Use 'mquant()' for marginal quantiles.",
+    fixed = TRUE
+  )
+})
+
+test_that("unsupported prior classes stop explicitly in every distribution method", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
+  phacking  <- prior_phacking(form = "linear")
+  priors <- list(
+    ordered  = prior_ordered(prior("normal", list(0, 1))),
+    none     = prior_none(),
+    phacking = phacking,
+    bias     = prior_bias(selection, phacking)
+  )
+  kinds <- c(ordered = "ordered priors", none = "'prior_none()' priors")
+  methods <- list(
+    "random generation"          = function(p) rng(p, 3),
+    "cdf"                        = function(p) cdf(p, .5),
+    "ccdf"                       = function(p) ccdf(p, .5),
+    "lpdf"                       = function(p) lpdf(p, .5),
+    "lpdf"                       = function(p) pdf(p, .5),
+    "quantile function"          = function(p) quant(p, .5),
+    "mcdf"                       = function(p) mcdf(p, .5),
+    "mccdf"                      = function(p) mccdf(p, .5),
+    "mlpdf"                      = function(p) mlpdf(p, .5),
+    "mlpdf"                      = function(p) mpdf(p, .5),
+    "marginal quantile function" = function(p) mquant(p, .5),
+    "mean"                       = function(p) mean(p),
+    "variance"                   = function(p) var(p),
+    "variance"                   = function(p) sd(p),
+    "range"                      = function(p) range(p),
+    "density"                    = function(p) density(p)
+  )
+  supported <- list(
+    ordered  = c("random generation", "range", "density"),
+    phacking = "random generation",
+    bias     = "random generation"
+  )
+
+  for(prior_name in names(priors)){
+    for(i in seq_along(methods)){
+      method <- names(methods)[i]
+      if(method %in% supported[[prior_name]]){
+        next
+      }
+      message <- if(prior_name %in% names(kinds)){
+        paste0("No ", method, " is implemented for ", kinds[[prior_name]], ".")
+      }else if(identical(prior_name, "phacking")){
+        paste0("No ", if(identical(method, "quantile function")) "quantile functions" else method,
+               " is implemented for p-hacking priors")
+      }else{
+        paste0("No ", if(identical(method, "quantile function")) "quantile functions" else method,
+               " is implemented for composed bias priors")
+      }
+      expect_error(methods[[i]](priors[[prior_name]]), message, fixed = TRUE)
+    }
+  }
+
+  mixtures <- list(
+    spike_and_slab = prior_spike_and_slab(prior("normal", list(0, 1))),
+    mixture        = prior_mixture(list(prior("point", list(0)), prior("normal", list(0, 1))))
+  )
+  expect_error(range(mixtures$spike_and_slab),
+               "No range is implemented for spike and slab priors.", fixed = TRUE)
+  expect_error(range(mixtures$mixture),
+               "No range is implemented for prior mixtures.", fixed = TRUE)
+  expect_error(density(mixtures$mixture),
+               "No density is implemented for prior mixtures.", fixed = TRUE)
+  expect_error(density(prior("mnormal", list(mean = 0, sd = 1, K = 2))),
+               "No density is implemented for this prior distribution.", fixed = TRUE)
+})
+
 # ============================================================================ #
 # TEST FILE: Prior Distribution Coverage Tests
 # ============================================================================ #
@@ -49,6 +127,36 @@ test_that("prior_factor() requires multivariate prior for orthonormal/meandif co
                "contrasts require multivariate prior")
 })
 
+test_that("mean-difference and orthonormal factor priors require exact zero centering", {
+  for(contrast in c("meandif", "orthonormal")){
+    expect_error(
+      prior_factor("mnormal", list(mean = 1e-12, sd = 1), contrast = contrast),
+      "centered exactly at zero",
+      fixed = TRUE
+    )
+    expect_error(
+      prior_factor("mt", list(location = -1, scale = 1, df = 3), contrast = contrast),
+      "centered exactly at zero",
+      fixed = TRUE
+    )
+    expect_error(
+      prior_factor("point", list(location = 1), contrast = contrast),
+      "centered exactly at zero",
+      fixed = TRUE
+    )
+  }
+
+  expect_no_error(
+    prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal")
+  )
+  expect_no_error(
+    prior_factor("normal", list(mean = 1, sd = 1), contrast = "treatment")
+  )
+  expect_no_error(
+    prior_factor("point", list(location = 1), contrast = "independent")
+  )
+})
+
 
 test_that("prior_factor() requires univariate prior for treatment contrast", {
   expect_error(prior_factor("mnormal", list(0, 1, 2), contrast = "treatment"),
@@ -90,19 +198,21 @@ test_that("prior_spike_and_slab() preserves model prior weights", {
   expect_false("prior_weights" %in% names(p_ss))
 })
 
-
-test_that(".set_spike_and_slab_variable_attr() sets attributes correctly", {
-  p_ss <- prior_spike_and_slab(
-    prior_parameter = prior("normal", list(0, 1)),
-    prior_inclusion = prior("beta", list(1, 1))
+test_that("prior_spike_and_slab() requires scalar inclusion probability priors", {
+  expect_error(
+    prior_spike_and_slab(
+      prior_parameter = prior("normal", list(0, 1)),
+      prior_inclusion = prior("mpoint", list(0.5, 2))
+    ),
+    "scalar probability prior"
   )
-
-  p_ss2 <- BayesTools:::.set_spike_and_slab_variable_attr(p_ss, "test_attr", "test_value")
-  expect_true(is.prior.spike_and_slab(p_ss2))
-
-  # Error when not spike_and_slab
-  expect_error(BayesTools:::.set_spike_and_slab_variable_attr(prior("normal", list(0, 1)), "attr", "val"),
-               "only works with spike_and_slab priors")
+  expect_error(
+    prior_spike_and_slab(
+      prior_parameter = prior("normal", list(0, 1)),
+      prior_inclusion = prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, 1)))
+    ),
+    "scalar probability prior"
+  )
 })
 
 
@@ -181,6 +291,19 @@ test_that("uniform prior honors truncation", {
   prepared <- JAGS_bridgesampling_posterior(posterior, list(theta = p))
   expect_equal(attr(prepared, "lb"), c(theta = 2))
   expect_equal(attr(prepared, "ub"), c(theta = 5))
+})
+
+
+test_that("near-support truncation remains an exact truncation", {
+  lower <- 1e-12
+  p <- prior("exp", list(rate = 1), truncation = list(lower, Inf))
+
+  expect_false(.is_prior_default_range(p))
+  expect_identical(pdf(p, lower / 2), 0)
+  expect_equal(
+    pdf(p, 1),
+    stats::dexp(1) / stats::pexp(lower, lower.tail = FALSE)
+  )
 })
 
 
@@ -281,6 +404,14 @@ test_that("exchangeable vector priors expose exact numeric and JAGS APIs", {
   expect_true(all(is.nan(mean(p_mcauchy))))
 
   expect_equal(JAGS_to_monitor(list(theta = p_mnormal, beta = p_mt)), c("theta", "beta"))
+  expect_equal(
+    JAGS_to_monitor(list(
+      fixed_scalar = prior("point", list(0)),
+      fixed_vector = prior("mpoint", list(1, 2)),
+      fixed_factor = prior_factor("point", list(0), contrast = "treatment")
+    )),
+    c("fixed_scalar", "fixed_vector", "fixed_factor")
+  )
 
   syntax_mnormal <- JAGS_add_priors("model{}", list(theta = p_mnormal))
   expect_match(syntax_mnormal, "prior_par1_theta = rep(1,3)", fixed = TRUE)
@@ -314,6 +445,155 @@ test_that("exchangeable vector priors expose exact numeric and JAGS APIs", {
 })
 
 
+test_that("Dirichlet simplex priors expose joint, marginal, JAGS, and bridge APIs", {
+  p <- prior("dirichlet", list(alpha = c(2, 3, 5)))
+  p_alias <- prior("simplex", list(concentration = c(2, 3, 5)))
+
+  expect_true(is.prior.simplex(p))
+  expect_s3_class(p, "prior.vector")
+  expect_equal(p_alias$parameters$alpha, p$parameters$alpha)
+  expect_equal(mean(p), c(.2, .3, .5))
+  expect_equal(
+    var(p),
+    c(2, 3, 5) * (10 - c(2, 3, 5)) / (10^2 * 11)
+  )
+  expect_equal(sd(p), sqrt(var(p)))
+
+  expect_error(prior("dirichlet", list(alpha = 1)), "at least two")
+  expect_error(prior("dirichlet", list(alpha = c(1, 0))), "positive")
+  expect_error(prior("dirichlet", list(alpha = c(1, Inf))), "finite")
+  expect_error(prior("dirichlet", list(alpha = expression(alpha1))), "at least two")
+
+  p_expression <- prior("dirichlet", list(alpha = expression(alpha1, alpha2)))
+  expect_true(BayesTools:::.is_prior_expression(p_expression))
+  expect_equal(p_expression$parameters$K, 2)
+  syntax_expression <- JAGS_add_priors("model{}", list(w = p_expression))
+  expect_match(syntax_expression, "prior_par_eta_w\\[1\\] ~ dgamma\\(alpha1, 1\\)")
+  expect_match(syntax_expression, "prior_par_eta_w\\[2\\] ~ dgamma\\(alpha2, 1\\)")
+
+  d <- density(p, x_seq = c(.25, .5), truncate_end = FALSE)
+  expect_s3_class(d, "density.prior.simplex")
+  expect_equal(names(d), c("V1", "V2", "V3"))
+  expect_s3_class(d[[1]], "density.prior.simple")
+  expect_equal(
+    d[[1]]$y,
+    stats::dbeta(c(.25, .5), shape1 = 2, shape2 = 8),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    d[[2]]$y,
+    stats::dbeta(c(.25, .5), shape1 = 3, shape2 = 7),
+    tolerance = 1e-12
+  )
+  expect_s3_class(
+    plot(p, plot_type = "ggplot", n_points = 16, show_figures = 1),
+    "ggplot"
+  )
+
+  x <- c(.2, .3, .5)
+  expected_lpdf <- lgamma(10) - sum(lgamma(c(2, 3, 5))) +
+    sum((c(2, 3, 5) - 1) * log(x))
+  expect_equal(lpdf(p, x), expected_lpdf, tolerance = 1e-12)
+  expect_equal(pdf(p, x), exp(expected_lpdf), tolerance = 1e-12)
+  roundoff_x <- c(.2, .3, .5 + .Machine$double.eps)
+  canonical_x <- roundoff_x / sum(roundoff_x)
+  expect_equal(
+    lpdf(p, roundoff_x),
+    lpdf(p, canonical_x),
+    tolerance = 1e-12
+  )
+  expect_equal(lpdf(p, c(.2, .3, .5 + 1e-10)), -Inf)
+  expect_equal(lpdf(p, c(.2, .3, .4)), -Inf)
+  expect_equal(lpdf(p, c(.2, -.3, 1.1)), -Inf)
+
+  q <- rbind(c(.2, .3, .5), c(.6, .2, .2))
+  expect_equal(
+    mlpdf(p, q),
+    matrix(
+      c(
+        stats::dbeta(q[, 1], 2, 8, log = TRUE),
+        stats::dbeta(q[, 2], 3, 7, log = TRUE),
+        stats::dbeta(q[, 3], 5, 5, log = TRUE)
+      ),
+      nrow = 2
+    ),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    mcdf(p, q),
+    matrix(
+      c(
+        stats::pbeta(q[, 1], 2, 8),
+        stats::pbeta(q[, 2], 3, 7),
+        stats::pbeta(q[, 3], 5, 5)
+      ),
+      nrow = 2
+    ),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    mquant(p, c(.25, .75)),
+    cbind(
+      stats::qbeta(c(.25, .75), 2, 8),
+      stats::qbeta(c(.25, .75), 3, 7),
+      stats::qbeta(c(.25, .75), 5, 5)
+    ),
+    tolerance = 1e-12
+  )
+
+  set.seed(1)
+  draws <- rng(p, 1000)
+  expect_equal(dim(draws), c(1000L, 3L))
+  expect_true(all(draws >= 0 & draws <= 1))
+  expect_equal(rowSums(draws), rep(1, 1000), tolerance = 1e-12)
+
+  syntax <- JAGS_add_priors("model{}", list(w = p))
+  expect_match(syntax, "prior_par_eta_w\\[1\\] ~ dgamma\\(2, 1\\)")
+  expect_match(syntax, "w\\[3\\] <- prior_par_eta_w\\[3\\] / sum\\(prior_par_eta_w\\[1:3\\]\\)")
+
+  inits <- JAGS_get_inits(list(w = p), chains = 1, seed = 1)[[1]]
+  expect_true("prior_par_eta_w" %in% names(inits))
+  expect_equal(length(inits$prior_par_eta_w), 3L)
+  expect_true(all(inits$prior_par_eta_w > 0))
+  expect_equal(JAGS_to_monitor(list(w = p)), c("w", "prior_par_eta_w"))
+
+  tiny <- prior("dirichlet", list(alpha = c(1e-300, 1e-300)))
+  expect_warning(
+    tiny_inits <- JAGS_get_inits(list(w = tiny), chains = 1, seed = 1)[[1]],
+    "deterministic, order-one rescaling"
+  )
+  expect_true(all(is.finite(tiny_inits$prior_par_eta_w)))
+  expect_true(all(tiny_inits$prior_par_eta_w > 0))
+
+  posterior <- matrix(
+    c(1, 2, 3, 4, 5, 6),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(NULL, paste0("prior_par_eta_w[", 1:3, "]"))
+  )
+  prepared <- JAGS_bridgesampling_posterior(posterior, list(w = p))
+  expect_equal(colnames(prepared), colnames(posterior))
+  expect_equal(attr(prepared, "lb"), stats::setNames(rep(0, 3), colnames(posterior)))
+  expect_equal(attr(prepared, "ub"), stats::setNames(rep(Inf, 3), colnames(posterior)))
+
+  samples <- posterior[1, ]
+  expect_equal(
+    JAGS_marglik_priors(samples, list(w = p)),
+    sum(stats::dgamma(c(1, 2, 3), shape = c(2, 3, 5), rate = 1, log = TRUE)),
+    tolerance = 1e-12
+  )
+  expect_equal(JAGS_marglik_parameters(samples, list(w = p))$w, c(1, 2, 3) / 6)
+
+  public_posterior <- matrix(
+    c(.2, .3, .5, 1, 2, 3),
+    nrow = 1,
+    dimnames = list(NULL, c("w[1]", "w[2]", "w[3]", paste0("prior_par_eta_w[", 1:3, "]")))
+  )
+  cleaned <- BayesTools:::.remove_auxiliary_parameters(public_posterior, list(w = p))
+  expect_equal(colnames(cleaned$model_samples), paste0("w[", 1:3, "]"))
+})
+
+
 test_that("JAGS prior APIs reject duplicate parameter names", {
   p <- prior("normal", list(0, 1))
   duplicate_prior_list <- list(theta = p, theta = p)
@@ -337,6 +617,34 @@ test_that("JAGS prior APIs reject duplicate parameter names", {
     JAGS_bridgesampling_posterior(posterior, duplicate_prior_list),
     "must not contain duplicate names"
   )
+})
+
+test_that("JAGS prior APIs require complete parameter names", {
+  p <- prior("normal", list(0, 1))
+  malformed_prior_lists <- list(
+    list(p),
+    structure(list(p), names = ""),
+    structure(list(p), names = NA_character_),
+    structure(list(theta = p, p), names = c("theta", ""))
+  )
+
+  for(prior_list in malformed_prior_lists){
+    expect_error(
+      JAGS_to_monitor(prior_list),
+      "must be a fully named list",
+      fixed = TRUE
+    )
+    expect_error(
+      JAGS_add_priors("model{}", prior_list),
+      "must be a fully named list",
+      fixed = TRUE
+    )
+    expect_error(
+      JAGS_get_inits(prior_list, chains = 1, seed = 1),
+      "must be a fully named list",
+      fixed = TRUE
+    )
+  }
 })
 
 
@@ -406,7 +714,8 @@ test_that("density.prior rejects bad transformation lists", {
 
   expect_error(
     density(p, x_seq = 0, transformation = list(fun = exp, inv = log)),
-    "transformation.*must have length '3'"
+    "The 'jac' objects are missing in the 'transformation' argument.",
+    fixed = TRUE
   )
   expect_error(
     density(p, x_seq = 0, transformation = list(fun = exp, inv = log, bad = exp)),
@@ -484,6 +793,26 @@ test_that("rng() orthonormal prior with transform_factor_samples", {
   expect_equal(ncol(samples), 3)  # K+1 columns
 })
 
+test_that("rng() factor spike-and-slab honours transform_factor_samples", {
+
+  slab <- prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  attr(slab, "levels") <- 3
+  p <- prior_spike_and_slab(slab, prior_inclusion = prior("spike", list(.5)))
+  attr(p, "levels") <- 3
+
+  set.seed(4103)
+  raw <- rng(p, 50, transform_factor_samples = FALSE)
+  set.seed(4103)
+  levels <- rng(p, 50, transform_factor_samples = TRUE)
+
+  expect_equal(dim(raw), c(50L, 2L))
+  expect_equal(dim(levels), c(50L, 3L))
+  expect_identical(attr(raw, "inclusion"), attr(levels, "inclusion"))
+  expect_equal(as.vector(levels),
+               as.vector(unclass(raw) %*% t(contr.meandif(1:3))))
+  expect_true(all(raw[attr(raw, "inclusion") == 0, ] == 0))
+})
+
 
 # ============================================================================ #
 # SECTION: cdf() function edge cases
@@ -505,6 +834,7 @@ test_that("cdf() handles truncated priors correctly", {
   expect_true(cdf(p, 0) > 0)
   expect_true(cdf(p, -3) == 0)  # Below truncation
   expect_true(cdf(p, 3) >= 1 - 1e-6)  # Above truncation
+  expect_equal(cdf(p, c(NA_real_, -3, 0, 3)), c(NA_real_, 0, cdf(p, 0), 1))
 })
 
 
@@ -531,6 +861,7 @@ test_that("ccdf() handles truncated priors correctly", {
   p <- prior("normal", list(0, 1), truncation = list(-2, 2))
   expect_true(ccdf(p, 0) > 0)
   expect_true(ccdf(p, 3) == 0)  # Above truncation
+  expect_equal(ccdf(p, c(NA_real_, -3, 0, 3)), c(NA_real_, 1, ccdf(p, 0), 0))
 })
 
 
@@ -582,6 +913,91 @@ test_that("quant() handles truncated priors with optimization", {
   q_high <- quant(p, 0.99)
   expect_true(q_low >= 0.5)
   expect_true(q_high <= 2)
+})
+
+
+test_that("extreme finite truncated normal methods remain tail-stable", {
+  p_left  <- prior("normal", list(0, 1), truncation = list(-40, -39))
+  p_right <- prior("normal", list(0, 1), truncation = list(39, 40))
+  probs   <- c(0, .01, .25, .5, .75, .99, 1)
+
+  q_left  <- quant(p_left, probs)
+  q_right <- quant(p_right, probs)
+
+  expect_true(all(is.finite(q_left)))
+  expect_true(all(is.finite(q_right)))
+  expect_true(all(diff(q_left) > 0))
+  expect_true(all(diff(q_right) > 0))
+  expect_equal(q_left[c(1, length(q_left))], c(-40, -39))
+  expect_equal(q_right[c(1, length(q_right))], c(39, 40))
+  expect_equal(q_left, -rev(q_right), tolerance = 1e-12)
+
+  expect_equal(cdf(p_left, q_left), probs, tolerance = 1e-10)
+  expect_equal(cdf(p_right, q_right), probs, tolerance = 1e-10)
+  expect_equal(ccdf(p_left, q_left), 1 - probs, tolerance = 1e-10)
+  expect_equal(ccdf(p_right, q_right), 1 - probs, tolerance = 1e-10)
+
+  x_left    <- c(-40, -39.5, -39)
+  x_right   <- c(39, 39.5, 40)
+  pdf_left  <- pdf(p_left, x_left)
+  pdf_right <- pdf(p_right, x_right)
+
+  expect_true(all(is.finite(pdf_left)))
+  expect_true(all(is.finite(pdf_right)))
+  expect_true(all(pdf_left > 0))
+  expect_true(all(pdf_right > 0))
+  expect_equal(pdf_left, rev(pdf_right), tolerance = 1e-12)
+  expect_equal(log(pdf_left), lpdf(p_left, x_left), tolerance = 1e-12)
+  expect_equal(log(pdf_right), lpdf(p_right, x_right), tolerance = 1e-12)
+
+  expect_equal(
+    stats::integrate(function(x) pdf(p_left, x), -40, -39)$value,
+    1,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    stats::integrate(function(x) pdf(p_right, x), 39, 40)$value,
+    1,
+    tolerance = 1e-10
+  )
+})
+
+test_that("far-tail truncated normal and t draws stay finite and inside the truncation", {
+
+  # With n = 2000 draws the median of cdf(draws) ~ U(0, 1) has SE 0.011;
+  # 0.05 is about 4.5 SE.
+  set.seed(4101)
+  for(truncation in list(c(-40, -39), c(-Inf, -39), c(39, 40))){
+    p <- prior("normal", list(0, 1), truncation = as.list(truncation))
+    x <- rng(p, 2000)
+    expect_true(all(is.finite(x)))
+    expect_true(all(x >= truncation[1] & x <= truncation[2]))
+    expect_lt(abs(stats::median(cdf(p, x)) - .5), .05)
+  }
+  # Ordinary truncations keep the lower-tail inversion bit for bit.
+  set.seed(4102)
+  half_normal <- rng(prior("normal", list(0, 1), truncation = list(0, Inf)), 5)
+  set.seed(4102)
+  expect_identical(half_normal, stats::qnorm(stats::runif(5, .5, 1)))
+
+  # Truncation masses below 1e-12 need the exact upper tail of stats::pt.
+  far_t <- prior("t", list(0, 1, 3), truncation = list(1e5, 2e5))
+  upper <- stats::pt(c(1e5, 2e5), 3, lower.tail = FALSE)
+  probs <- c(.1, .5, .9)
+  reference <- stats::qt(upper[1] - probs * (upper[1] - upper[2]), 3, lower.tail = FALSE)
+  expect_equal(quant(far_t, probs), reference, tolerance = 1e-10)
+  expect_equal(cdf(far_t, reference), probs, tolerance = 1e-8)
+  expect_equal(stats::integrate(function(x) pdf(far_t, x), 1e5, 2e5, rel.tol = 1e-10)$value,
+               1, tolerance = 1e-8)
+  x <- rng(far_t, 2000)
+  expect_true(all(x >= 1e5 & x <= 2e5))
+
+  # Cauchy: S(x) = atan(1 / x) / pi, so the conditional median beyond x0 is
+  # 1 / tan(pi * S(x0) / 2).
+  far_cauchy <- prior("cauchy", list(0, 1), truncation = list(1e13, Inf))
+  expect_equal(quant(far_cauchy, .5), 1 / tan(pi * atan(1 / 1e13) / pi / 2), tolerance = 1e-10)
+  expect_equal(ccdf(far_cauchy, 2e13), atan(1 / 2e13) / atan(1 / 1e13), tolerance = 1e-10)
+  expect_true(all(rng(far_cauchy, 2000) >= 1e13))
 })
 
 
@@ -692,6 +1108,88 @@ test_that("mean() handles truncated distributions and undefined moments", {
   # Unbounded problematic tails still have undefined means
   expect_true(is.nan(mean(prior("t", list(0, 1, 1), truncation = list(0, Inf)))))
   expect_true(is.nan(mean(prior("invgamma", list(.5, 1)))))
+})
+
+test_that("truncated normal moments are analytic for narrow, offset, and far-tail priors", {
+
+  # References: closed forms for the half-normal and the effectively
+  # untruncated / shifted cases; the others from the closed form evaluated in
+  # 80-digit mpmath arithmetic (erfc normaliser), confirmed by split mpmath
+  # quadrature. Integration previously returned 0 for the narrow and offset
+  # priors.
+  cases <- list(
+    list(prior = prior("normal", list(0, 1), list(0, Inf)),
+         mean = sqrt(2 / pi), var = 1 - 2 / pi, tol_var = 1e-12),
+    list(prior = prior("normal", list(0, 1), list(-1, 2)),
+         mean = 0.2296371790913289686, var = 0.5197625392115339359, tol_var = 1e-12),
+    list(prior = prior("normal", list(0, .02), list(-10, 10)),
+         mean = 0, var = 4e-4, tol_var = 1e-12),
+    list(prior = prior("normal", list(1e4, 1), list(0, Inf)),
+         mean = 1e4, var = 1, tol_var = 1e-12),
+    list(prior = prior("normal", list(0, 1), list(8, 9)),
+         mean = 8.121188992979797123, var = 0.01414854278274811104, tol_var = 1e-10),
+    # 39 SD into the tail the variance cancels terms of order 39^2 whose
+    # log-space ratios carry about 1e-13 relative error: 1e-6 bounds it.
+    list(prior = prior("normal", list(0, 1), list(39, 40)),
+         mean = 39.02560741993010845, var = 6.548827702932774827e-4, tol_var = 1e-6),
+    list(prior = prior("normal", list(0, 1), list(-Inf, -39)),
+         mean = -39.02560741993010846, var = 6.548827702932843032e-4, tol_var = 1e-6)
+  )
+  for(case in cases){
+    if(case$mean == 0){
+      expect_lt(abs(mean(case$prior)), 1e-15)
+    }else{
+      expect_equal(mean(case$prior), case$mean, tolerance = 1e-12)
+    }
+    expect_equal(var(case$prior), case$var, tolerance = case$tol_var)
+    expect_equal(sd(case$prior), sqrt(case$var), tolerance = case$tol_var)
+  }
+
+  expect_error(
+    var(prior("normal", list(0, 1), list(5000, Inf))),
+    "The variance of the truncated normal prior is unavailable in double-precision arithmetic",
+    fixed = TRUE
+  )
+})
+
+test_that("native inverse-gamma helpers match gamma-transform identities", {
+  p <- prior("invgamma", list(shape = 3, scale = 2))
+  x <- c(.25, 1, 2)
+  expected_lpdf <- 3 * log(2) - lgamma(3) - 4 * log(x) - 2 / x
+
+  expect_equal(lpdf(p, x), expected_lpdf, tolerance = 1e-12)
+  expect_equal(pdf(p, x), exp(expected_lpdf), tolerance = 1e-12)
+  expect_equal(
+    cdf(p, x),
+    stats::pgamma(1 / x, shape = 3, rate = 2, lower.tail = FALSE),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    ccdf(p, x),
+    stats::pgamma(1 / x, shape = 3, rate = 2, lower.tail = TRUE),
+    tolerance = 1e-12
+  )
+
+  probs <- c(.05, .5, .95)
+  expected_q <- 1 / stats::qgamma(probs, shape = 3, rate = 2, lower.tail = FALSE)
+  expect_equal(quant(p, probs), expected_q, tolerance = 1e-12)
+  expect_equal(cdf(p, quant(p, probs)), probs, tolerance = 1e-12)
+  expect_equal(
+    BayesTools:::.pinvgamma_prior(x, 3, 2, log.p = TRUE),
+    log(cdf(p, x)),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    BayesTools:::.qinvgamma_prior(log(probs), 3, 2, log.p = TRUE),
+    expected_q,
+    tolerance = 1e-12
+  )
+
+  set.seed(11)
+  draws <- rng(p, 100)
+  expect_length(draws, 100)
+  expect_true(all(is.finite(draws)))
+  expect_true(all(draws > 0))
 })
 
 
@@ -834,6 +1332,8 @@ test_that("log_omega weightfunction priors expose exact transformed marginals", 
 
   expect_equal(mcdf(p_wf, q), expected_cdf, tolerance = 1e-12)
   expect_equal(mccdf(p_wf, q), 1 - expected_cdf, tolerance = 1e-12)
+  expect_true(all(is.na(mcdf(p_wf, NA_real_))))
+  expect_true(all(is.na(mccdf(p_wf, NA_real_))))
 
   x <- c(0, .5, 1, 2)
   expected_lpdf <- cbind(
@@ -856,6 +1356,7 @@ test_that("log_omega weightfunction priors expose exact transformed marginals", 
     ),
     tolerance = 1e-12
   )
+  expect_equal(mquant(p_wf, 0)[1, 1], 1)
 
   lognormal_mean <- exp(0.25 + 0.5^2 / 2)
   lognormal_var  <- (exp(0.5^2) - 1) * exp(2 * 0.25 + 0.5^2)
@@ -901,4 +1402,47 @@ test_that("cumulative weightfunction priors expose exact beta marginals", {
   )
   expect_equal(mean(p_wf), c(1, 5 / 6, 1 / 2), tolerance = 1e-12)
   expect_equal(var(p_wf), c(0, 5 / 252, 9 / 252), tolerance = 1e-12)
+})
+
+test_that("weightfunction marginal CCDFs preserve extreme upper tails", {
+  p_cumulative <- prior_weightfunction(
+    side    = "one-sided",
+    steps   = .05,
+    weights = wf_cumulative(c(100, 1))
+  )
+  beta_tail <- mccdf(p_cumulative, .9)[1, 2]
+  beta_expected <- stats::pbeta(
+    .9, shape1 = 1, shape2 = 100, lower.tail = FALSE
+  )
+
+  expect_gt(beta_tail, 0)
+  expect_equal(beta_tail / beta_expected, 1, tolerance = 1e-12)
+
+  p_omega <- prior_weightfunction(
+    side    = "one-sided",
+    steps   = .05,
+    weights = wf_independent(prior("beta", list(1, 100)))
+  )
+  omega_tail <- mccdf(p_omega, .9)[1, 2]
+
+  expect_gt(omega_tail, 0)
+  expect_equal(omega_tail / beta_expected, 1, tolerance = 1e-12)
+
+  p_log_omega <- prior_weightfunction(
+    side    = "one-sided",
+    steps   = .05,
+    weights = wf_independent(
+      prior("normal", list(mean = 0, sd = 1)),
+      scale = "log_omega"
+    )
+  )
+  log_omega_tail <- mccdf(p_log_omega, exp(10))[1, 2]
+  log_omega_expected <- stats::pnorm(10, lower.tail = FALSE)
+
+  expect_gt(log_omega_tail, 0)
+  expect_equal(
+    log_omega_tail / log_omega_expected,
+    1,
+    tolerance = 1e-12
+  )
 })

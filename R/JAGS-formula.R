@@ -5,39 +5,101 @@
 #' function.
 #'
 #' @param formula formula specifying the right hand side of the assignment (the
-#' left hand side is ignored). If the formula contains \code{-1}, it will be
-#' automatically converted to include an intercept with a spike(0) prior.
+#' left hand side is ignored), or a `BayesTools_random_effects` object returned
+#' by [random_effects_formula()]. If the formula suppresses the intercept with
+#' \code{0 +} or \code{-1}, it is converted to include an intercept with a
+#' spike(0) prior.
 #' The formula can also have a \code{"log(intercept)"} attribute set to \code{TRUE}
 #' to generate syntax of the form \code{log(intercept) + sum(beta_i * x_i)}, which
 #' is useful for parameters that must be positive (e.g., standard deviation).
-#' @param parameter name of the parameter to be created with the formula
+#' In that case, the intercept prior must have strictly positive support.
+#' @param parameter valid unindexed JAGS node name of the parameter to be
+#' created with the formula
 #' @param data data.frame containing predictors included in the formula
 #' @param prior_list named list of prior distribution of parameters specified within
-#' the \code{formula}. When using \code{-1} in the formula, an "intercept" prior
-#' can be explicitly specified; otherwise, \code{prior("spike", list(0))} is
-#' automatically added. The list can also include two special entries:
+#' the \code{formula}. When suppressing the intercept in the formula, an
+#' "intercept" prior can be explicitly specified; otherwise,
+#' \code{prior("spike", list(0))} is
+#' automatically added, or \code{prior("spike", list(1))} when the formula uses
+#' the \code{"log(intercept)"} attribute. The list can also include two special entries:
+#' \describe{
+#'   \item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
+#'     (including the intercept) that are not explicitly specified in the prior list.
+#'     This can also be a zero-argument function returning a prior object; in that
+#'     case it is evaluated only if a missing continuous term needs the default.}
+#'   \item{\code{"__default_factor"}}{A prior to use for any factor predictors
+#'     (including interactions involving factors) that are not explicitly specified
+#'     in the prior list. This can also be a zero-argument function returning a prior
+#'     object; in that case it is evaluated only if a missing factor term needs the
+#'     default.}
+#' }
+#' These default priors allow for more concise specification when many predictors
+#' share the same prior distribution. For continuous formula terms,
+#' \code{prior_none()} is canonicalized to a point prior at zero.
 #' @param formula_scale named list specifying whether to standardize continuous predictors.
 #' If \code{NULL} (default), no standardization is applied. If a named list is provided,
 #' continuous predictors with \code{TRUE} values will be standardized (mean-centered and
 #' scaled by standard deviation). The intercept is never standardized.
-#' \describe{
-#'   \item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
-#'     (including the intercept) that are not explicitly specified in the prior list.}
-#'   \item{\code{"__default_factor"}}{A prior to use for any factor predictors
-#'     (including interactions involving factors) that are not explicitly specified
-#'     in the prior list.}
-#' }
-#' These default priors allow for more concise specification when many predictors
-#' share the same prior distribution.
+#' @param prior_random optional `prior_random()` object defining random-effect
+#' standard-deviation, covariance, monitoring, and prediction policies. Required
+#' when \code{formula} contains random effects.
+#' @param random_effects_compile optional `random_effects_compile()` object
+#' specifying which resolved random-effect blocks should be compiled as sampled
+#' random effects and which should be compiled as structural marginalized
+#' blocks.
 #'
-#' @details When a formula with \code{-1} (no intercept) is specified, the
-#' function automatically removes the \code{-1}, adds an intercept back to the
-#' formula, and includes a spike(0) prior for the intercept to ensure equivalent
-#' model behavior while maintaining consistent formula parsing.
+#' @details When a formula suppresses the intercept with \code{0 +} or
+#' \code{-1}, the function adds an intercept back to the compiled formula and
+#' includes a point prior that contributes zero on the formula scale: spike(0)
+#' ordinarily and spike(1) for a log-transformed intercept.
+#'
+#' Factor contrasts are owned by [prior_factor()] and stored formula metadata,
+#' not inferred from whether an intercept is present. Thus `~ 0 + group` with
+#' an independent factor prior means a structural zero intercept plus one
+#' coefficient per group level. With treatment or mean-difference contrasts,
+#' the same no-intercept expression preserves that selected basis.
 #'
 #' When using default priors (\code{"__default_continuous"} or \code{"__default_factor"}),
 #' explicitly specified priors for individual terms take precedence over the defaults.
 #' The defaults are only applied to terms that are not already in the prior list.
+#'
+#' Formula random effects require \code{prior_random}. Random-effect SD priors in
+#' \code{prior_list} using \code{"term|group"} names are no longer supported.
+#' Continuous fixed-effect terms must expand to one design-matrix column.
+#' Matrix-valued continuous predictors are not currently supported.
+#' Fixed formulas support literal data-column names and standard formula
+#' operators. Dot expansion, \code{offset()}, inline transformations, and
+#' arbitrary calls are rejected; create explicit data columns for transformed
+#' predictors. The BayesTools \code{expression(...)} facility accepts finite
+#' numeric constants, formula or model data, JAGS-style \code{i} indexing,
+#' sampled scalar or one-dimensional indexed parameters, arithmetic operators,
+#' and \code{abs()}, \code{exp()}, \code{log()}, or \code{sqrt()}. Expressions
+#' retain literal JAGS indexing: users must write \code{x} or \code{x[i]} as
+#' required by the JAGS data shape. Their parsed syntax and dependencies are
+#' persisted and replayed draw by draw during prediction and marginal-
+#' likelihood reconstruction. Parameter dependencies must be owned by a prior
+#' or declared through \code{add_parameters}; opaque deterministic nodes and
+#' formula-output dependencies are rejected by \code{JAGS_fit()} because their
+#' defining JAGS graph is unavailable during replay.
+#' Random-effect predictors likewise support literal data-column names and
+#' formula operators, but not inline transformations or arbitrary calls.
+#' Create transformed random slopes as explicit data columns. Grouping terms
+#' support variables, \code{:} interactions, and \code{/} nesting.
+#'
+#' Random-effect structures have two left-side grammars. `id()`, `diag()`, and
+#' `us()` / `un()` use a coefficient formula, so `1`, `0`, and `-1` control the
+#' random intercept and slopes or interactions generate coefficient columns.
+#' Plain bars default to `us()` and double bars to `diag()`. A factor's concrete
+#' random basis is inherited from resolved contrast metadata by default and can
+#' be set for one block with `random_block(contrasts = ...)`.
+#'
+#' `cs()` / `hcs()`, `ar1()` / `ar()` / `har()`, and `car()` instead use a
+#' structure-owned index specification. They reject intercept controls and
+#' block contrast overrides. See [random_effects_formula()] and
+#' [prior_random()] for their index and covariance contracts.
+#' Categorical predictor and grouping levels must not contain BayesTools'
+#' reserved internal tokens, such as \code{__xXx__}.
+#' The predictor name \code{intercept} is reserved for the formula intercept.
 #'
 #' @examples
 #' # simulate data
@@ -90,31 +152,55 @@
 #'
 #' @seealso [JAGS_fit()]
 #' @export
-JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = NULL){
+JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = NULL,
+                         prior_random = NULL, random_effects_compile = NULL){
 
-  if(!is.language(formula))
-    stop("'formula' must be a formula")
-  check_char(parameter, "parameter")
+  formula_input <- formula
+  formula <- .bt_formula_random_formula(formula)
+  if(!inherits(formula, "formula"))
+    stop("'formula' must be a formula", call. = FALSE)
+  resolved_random_terms <- if(inherits(formula_input, "BayesTools_random_effects")){
+    formula_input$terms
+  }else{
+    attr(formula, "random_terms", exact = TRUE)
+  }
+  check_char(parameter, "parameter", allow_NA = FALSE)
+  .bt_check_jags_node_name(parameter, "parameter")
   if(!is.data.frame(data))
     stop("'data' must be a data.frame")
   check_list(prior_list, "prior_list")
-  if(any(!sapply(prior_list, is.prior)))
-    stop("'prior_list' must be a list of priors.")
-  # formula_scale can be TRUE/FALSE (apply to all) or a named list
+  .JAGS_formula_check_prior_list(prior_list)
+  .bt_check_prior_random(prior_random, allow_NULL = TRUE)
+  .bt_check_random_effects_compile(random_effects_compile, allow_NULL = TRUE)
+  # formula_scale can be TRUE/FALSE (apply to all continuous predictors) or a named list
   if(!is.null(formula_scale) && !is.logical(formula_scale) && !is.list(formula_scale)){
-    stop("'formula_scale' must be NULL, TRUE, FALSE, or a named list")
+    stop("'formula_scale' must be NULL, TRUE, FALSE, or a named list.", call. = FALSE)
   }
 
 
   # remove the specified response
   formula <- .remove_response(formula)
+  formula <- .bt_formula_preserve_random_terms(formula, resolved_random_terms)
+  .bt_validate_formula_replay_grammar(formula)
   # store log(intercept) attribute (for models relying on mu = log(intercept) + sum(beta_i * x_i) trick
   # exp(mu) = intercept * exp(sum(beta_i * x_i)) (e.g., Poisson regression / regression with log link etc...)
   log_intercept  <- isTRUE(attr(formula, "log(intercept)"))
   # store expressions (included later as the literal character input)
   expressions    <- .extract_expressions(formula)
+  expression_specs <- .bt_validate_formula_expressions(
+    expressions,
+    data,
+    allow_unresolved = TRUE
+  )
   # store random effects (included later via a formula interface)
-  random_effects <- .extract_random_effects(formula)
+  parsed_random_effects <- .bt_formula_random_terms(formula)
+  .bt_validate_random_effect_block_names(parsed_random_effects, prior_random)
+  random_effects_compile <- .bt_resolve_random_effects_compile(
+    random_effects = parsed_random_effects,
+    random_effects_compile = random_effects_compile
+  )
+  random_effects_interface <- .bt_random_effects_interface(parsed_random_effects, prior_random)
+  random_predictors_type <- .bt_random_effects_predictor_types(parsed_random_effects, data)
   # remove expressions and random effects from the formula
   formula <- .remove_expressions(formula)
   formula <- .remove_random_effects(formula)
@@ -124,9 +210,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   if(no_intercept_specified){
     # remove -1 from formula and add intercept back
     formula <- formula_add_intercept(formula)
-    # add spike(0) prior for intercept if not already specified
+    # add a neutral point prior for the formula-scale intercept
     if(!"intercept" %in% names(prior_list)){
-      prior_list[["intercept"]] <- prior("spike", list(0))
+      prior_list[["intercept"]] <- prior(
+        "spike",
+        list(if(log_intercept) 1 else 0)
+      )
     }
   }
 
@@ -136,13 +225,39 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   predictors       <- as.character(attr(formula_terms, "variables"))[-1]
   if(any(!predictors %in% colnames(data)))
     stop(paste0("The ", paste0("'", predictors[!predictors %in% colnames(data)], "'", collapse = ", ")," predictor variable is missing in the data set."))
+  if("intercept" %in% predictors){
+    stop(
+      "The predictor name 'intercept' is reserved for the formula intercept.",
+      call. = FALSE
+    )
+  }
+  matrix_predictors <- predictors[vapply(
+    predictors,
+    function(predictor){
+      is.matrix(data[[predictor]]) && ncol(data[[predictor]]) > 1L
+    },
+    logical(1)
+  )]
+  if(length(matrix_predictors) > 0L){
+    stop(
+      "Matrix-valued predictor",
+      if(length(matrix_predictors) > 1L) "s " else " ",
+      paste0("'", matrix_predictors, "'", collapse = ", "),
+      if(length(matrix_predictors) > 1L) " are" else " is",
+      " not supported.",
+      call. = FALSE
+    )
+  }
   predictors_type  <- sapply(predictors, function(predictor){
-    if(is.factor(data[,predictor]) | is.character(data[,predictor])){
+    if(is.factor(data[[predictor]]) | is.character(data[[predictor]])){
       return("factor")
     }else{
       return("continuous")
     }
   })
+  if(length(predictors) == 0L){
+    predictors_type <- stats::setNames(character(), character())
+  }
   model_terms      <- c(if(has_intercept) "intercept", attr(formula_terms, "term.labels"))
   model_terms_type <- sapply(model_terms, function(model_term){
     model_term <- strsplit(model_term, ":")[[1]]
@@ -155,15 +270,16 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     }
   })
 
-  # separate prior lists: extract random effects priors
-  prior_list_random_effects <- list()
-  if(length(random_effects) > 0){
-    # store the random effects specific priors in the corresponding entry
-    for(i in seq_along(random_effects)){
-      prior_list_random_effects[[i]] <- prior_list[which(.get_grouping_factor(names(prior_list)) == attr(random_effects[[i]], "grouping_factor"))]
+  scale_predictors_type <- .bt_merge_predictor_types(predictors_type, random_predictors_type)
+  .bt_validate_formula_scale(formula_scale, scale_predictors_type)
+
+  if(length(parsed_random_effects) > 0){
+    if(any(.get_grouping_factor(names(prior_list)) != "")){
+      stop(
+        "Random-effect priors must be supplied through 'prior_random'; 'prior_list' names containing '|' are no longer supported.",
+        call. = FALSE
+      )
     }
-    # remove the random effects specific priors from the prior list
-    prior_list <- prior_list[.get_grouping_factor(names(prior_list)) == ""]
   }
 
   # handle default priors: __default_factor and __default_continuous
@@ -177,6 +293,20 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 
   # fill in missing priors with defaults based on term type
   if(has_defaults){
+    missing_terms <- model_terms[!model_terms %in% names(prior_list)]
+    if(any(model_terms_type[missing_terms] == "continuous") && !is.null(default_continuous_prior)){
+      default_continuous_prior <- .JAGS_formula_resolve_default_prior(
+        default_prior = default_continuous_prior,
+        default_name  = "__default_continuous"
+      )
+    }
+    if(any(model_terms_type[missing_terms] == "factor") && !is.null(default_factor_prior)){
+      default_factor_prior <- .JAGS_formula_resolve_default_prior(
+        default_prior = default_factor_prior,
+        default_name  = "__default_factor"
+      )
+    }
+
     for(term in model_terms){
       if(!term %in% names(prior_list)){
         term_type <- model_terms_type[[term]]
@@ -189,87 +319,91 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     }
   }
 
+  for(term in intersect(model_terms, names(prior_list))){
+    prior_list[[term]] <- .JAGS_formula_canonicalize_none_prior(
+      prior_list[[term]]
+    )
+  }
+
   # check that all predictors have a prior distribution
   check_list(prior_list, "prior_list", check_names = model_terms, allow_other = FALSE, all_objects = TRUE)
 
-  # check the prior distribution for each predictor
-  # assign factor contrasts to the data based on prior distributions
-  if(any(predictors_type == "factor")){
-
-    for(factor in names(predictors_type[predictors_type == "factor"])){
-
-      # select the corresponding prior for the variable
-      this_prior <- prior_list[[factor]]
-
-      if(is.prior.treatment(this_prior)){
-        stats::contrasts(data[,factor]) <- "contr.treatment"
-      }else if(is.prior.independent(this_prior)){
-        stats::contrasts(data[,factor]) <- "contr.independent"
-      }else if(is.prior.orthonormal(this_prior)){
-        stats::contrasts(data[,factor]) <- "contr.orthonormal"
-      }else if(is.prior.meandif(this_prior)){
-        stats::contrasts(data[,factor]) <- "contr.meandif"
-      }else{
-        stop(paste0("Unsupported prior distribution defined for '", factor, "' factor variable. See '?prior_factor' for details."))
-      }
-    }
+  if(log_intercept){
+    .bt_validate_formula_log_intercept_prior(prior_list)
   }
-  if(any(predictors_type == "continuous")){
+  .bt_validate_formula_term_priors(
+    prior_list = prior_list,
+    model_terms = model_terms,
+    model_terms_type = model_terms_type
+  )
 
-    for(continuous in names(predictors_type[predictors_type == "continuous"])){
+  formula_source_data <- data
+  expression_data <- .bt_formula_expression_data(
+    specs = expression_specs,
+    formula_data = formula_source_data,
+    n_rows = nrow(formula_source_data),
+    context = paste0("Formula expression for parameter '", parameter, "'")
+  )
+  data <- .bt_apply_factor_prior_contrasts(
+    data = data,
+    predictors_type = predictors_type,
+    model_terms = model_terms,
+    model_terms_type = model_terms_type,
+    prior_list = prior_list
+  )
+  scale_info <- list()
 
-      # select the corresponding prior for the variable
-      this_prior <- prior_list[[continuous]]
+  # Reuse concrete fixed-factor contrasts in random-coefficient blocks unless
+  # the block supplies its own contrast override. Values remain unscaled here;
+  # only factor metadata changed above.
+  random_effect_unscaled_data <- data
+  random_effect_scaled_data <- random_effect_unscaled_data
 
-      if(is.prior.factor(this_prior)|| is.prior.discrete(this_prior) || is.prior.PET(this_prior) || is.prior.PEESE(this_prior) || is.prior.weightfunction(this_prior)){
-        stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."))
+  # standardize continuous predictors if requested. This includes predictors
+  # used only inside random-effect terms, excluding CAR time coordinates.
+  if(!is.null(formula_scale) && any(scale_predictors_type == "continuous")){
+    for(continuous in names(scale_predictors_type[scale_predictors_type == "continuous"])){
+      if(!.bt_should_scale_predictor(formula_scale, continuous)){
+        next
       }
-    }
-
-    # standardize continuous predictors if requested
-    scale_info <- list()
-    if(!is.null(formula_scale)){
-      for(continuous in names(predictors_type[predictors_type == "continuous"])){
-        # determine if this predictor should be scaled
-        should_scale <- FALSE
-        if(is.logical(formula_scale) && length(formula_scale) == 1){
-          # formula_scale = TRUE/FALSE applies to all continuous predictors
-          should_scale <- isTRUE(formula_scale)
-        }else if(is.list(formula_scale) && !is.null(formula_scale[[continuous]])){
-          # named list: check specific predictor
-          should_scale <- isTRUE(formula_scale[[continuous]])
-        }
-
-        if(should_scale){
-          # store original mean and sd
-          scale_info[[continuous]] <- list(
-            mean = mean(data[, continuous], na.rm = TRUE),
-            sd   = stats::sd(data[, continuous], na.rm = TRUE)
-          )
-          if(is.na(scale_info[[continuous]]$sd) || !is.finite(scale_info[[continuous]]$sd) || scale_info[[continuous]]$sd <= 0){
-            stop(paste0("Cannot standardize predictor '", continuous, "' because its standard deviation must be positive and finite."), call. = FALSE)
-          }
-          # standardize the predictor
-          data[, continuous] <- (data[, continuous] - scale_info[[continuous]]$mean) / scale_info[[continuous]]$sd
-        }
+      scale_info[[continuous]] <- list(
+        mean = mean(data[, continuous], na.rm = TRUE),
+        sd   = stats::sd(data[, continuous], na.rm = TRUE)
+      )
+      if(is.na(scale_info[[continuous]]$sd) || !is.finite(scale_info[[continuous]]$sd) || scale_info[[continuous]]$sd <= 0){
+        stop(paste0("Cannot standardize predictor '", continuous, "' because its standard deviation must be positive and finite."), call. = FALSE)
       }
+      data[, continuous] <- (data[, continuous] - scale_info[[continuous]]$mean) / scale_info[[continuous]]$sd
+      random_effect_scaled_data[, continuous] <- (
+        random_effect_scaled_data[, continuous] -
+          scale_info[[continuous]]$mean
+      ) / scale_info[[continuous]]$sd
     }
   }
 
   # get the default design matrix
-  model_frame  <- stats::model.frame(formula, data = data)
-  model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
+  model_frame  <- tryCatch(
+    stats::model.frame(formula, data = data, na.action = stats::na.pass),
+    error = function(e){
+      stop(conditionMessage(e), call. = FALSE)
+    }
+  )
+  if(anyNA(model_frame)){
+    stop("Formula predictors contain missing values.", call. = FALSE)
+  }
+  model_matrix <- .bt_model_matrix(model_frame, formula = formula, data = data)
+  .bt_validate_model_matrix_finite(model_matrix, "Formula")
   raw_column_names <- colnames(model_matrix)
+  semantic_model_terms <- model_terms
 
   # check whether intercept is unique parameter
   if(sum(grepl("intercept", names(prior_list))) > 1)
     stop("only the intercept parameter can contain 'intercept' in its name.")
   # check whether any reserved term is in usage (note: __default_factor/__default_continuous are reserved but already removed from prior_list)
-  reserved_terms <- c("__xXx__", "__xREx__", "xRE_PRECx", "xRE_CORx", "xRE_Zx", "xRE_STDx", "xRE_COEFx", "xRE_MAPx", "xRE_COEFx", "xRE_DATAx", "__default_factor", "__default_continuous")
-  for(reserved_term in reserved_terms){
-    if(any(grepl(reserved_term, colnames(data))))
-      stop(paste0("'", reserved_term, "' string is internally used by the BayesTools package and can't be used for naming variables."))
-  }
+  .bt_validate_random_effect_reserved_name(
+    colnames(data),
+    context = "naming variables"
+  )
 
 
   # replace interaction signs (due to JAGS incompatibility)
@@ -285,6 +419,11 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   JAGS_data      <- list()
   jags_data_names <- list()
   JAGS_data[[paste0("N_", parameter)]] <- nrow(data)
+  JAGS_data <- .bt_formula_expression_merge_jags_data(
+    JAGS_data,
+    expression_data,
+    context = paste0("Formula expression for parameter '", parameter, "'")
+  )
 
   # add intercept and prepare the indexing vector
   if(has_intercept){
@@ -317,8 +456,18 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     if(model_terms_type[i] == "continuous"){
 
       # continuous variables or interactions of continuous variables are simple predictors
+      term_columns <- which(terms_indexes == i)
+      if(length(term_columns) != 1L){
+        stop(
+          "Continuous formula term '",
+          gsub("__xXx__", ":", model_terms[i], fixed = TRUE),
+          "' expands to ", length(term_columns),
+          " design-matrix columns; matrix-valued continuous terms are not supported.",
+          call. = FALSE
+        )
+      }
       data_name <- paste0(parameter, "_data_", model_terms[i])
-      JAGS_data[[data_name]] <- model_matrix[,terms_indexes == i]
+      JAGS_data[[data_name]] <- model_matrix[, term_columns]
       jags_data_names[[model_terms[i]]] <- data_name
 
       formula_syntax <- c(formula_syntax, paste0(
@@ -333,7 +482,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       # factor variables or interactions with a factor requires factor style prior
 
       # add levels information attributes to factors
-      if(is.prior.independent(this_prior)){
+      if(is.prior.ordered(this_prior) && !.is_prior_interaction(this_prior)){
+        attr(this_prior, "levels") <- length(levels(data[[model_terms[i]]]))
+      }else if(is.prior.independent(this_prior)){
         attr(this_prior, "levels") <- sum(terms_indexes == i)
       }else{
         attr(this_prior, "levels") <- sum(terms_indexes == i) + 1
@@ -342,12 +493,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
         level_names <- list()
         for(sub_term in strsplit(model_terms[i], "__xXx__")[[1]]){
           if(predictors_type[sub_term] == "factor"){
-            level_names[[sub_term]] <- levels(data[,sub_term])
+            level_names[[sub_term]] <- levels(data[[sub_term]])
           }
         }
         attr(this_prior, "level_names") <- level_names
       }else{
-        attr(this_prior, "level_names") <- levels(data[,model_terms[i]])
+        attr(this_prior, "level_names") <- levels(data[[model_terms[i]]])
       }
       attr(this_prior, "term_components") <- strsplit(model_terms[i], "__xXx__", fixed = TRUE)[[1]]
       attr(this_prior, "factor_terms") <- if(is.list(attr(this_prior, "level_names"))) {
@@ -377,6 +528,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       )
       attr(this_prior, "factor_design")     <- factor_design_info[["design"]]
       attr(this_prior, "factor_cell_names") <- factor_design_info[["cell_names"]]
+      if(is.prior.ordered(this_prior)){
+        this_prior <- .bt_bind_ordered_prior_metadata(this_prior, paste0(parameter, "_", model_terms[i]))
+      }
 
       data_name <- paste0(parameter, "_data_", model_terms[i])
       JAGS_data[[data_name]] <- model_matrix[,terms_indexes == i, drop = FALSE]
@@ -406,6 +560,8 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
         attr(this_prior, "factor_contrasts")  -> attr(this_prior[[p]], "factor_contrasts")
         attr(this_prior, "factor_design")     -> attr(this_prior[[p]], "factor_design")
         attr(this_prior, "factor_cell_names") -> attr(this_prior[[p]], "factor_cell_names")
+        attr(this_prior, "coefficient_dim")   -> attr(this_prior[[p]], "coefficient_dim")
+        attr(this_prior, "ordered_metadata")  -> attr(this_prior[[p]], "ordered_metadata")
       }
       this_prior -> prior_list[[model_terms[i]]]
     }else{
@@ -421,19 +577,85 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 
   # add random effects back to the formula
   random_scale_terms <- character()
-  for(random_i in seq_along(random_effects)){
-    temp_random   <- .JAGS_random_effect_formula(random_effects[[random_i]], parameter, data, prior_list_random_effects[[random_i]])
+  random_sd_leaves <- list()
+  random_correlation_required <- character()
+  add_parameters <- character()
+  jags_modules <- character()
+  required_packages <- character()
+  random_sd_binding_context <- .bt_random_sd_binding_context(
+    random_effects = parsed_random_effects,
+    prior_random = prior_random,
+    parameter = parameter
+  )
+  if(length(random_sd_binding_context$prior_list) > 0L){
+    prior_list <- c(prior_list, random_sd_binding_context$prior_list)
+  }
+  if(length(random_sd_binding_context$syntax) > 0L){
+    random_syntax <- c(random_syntax, random_sd_binding_context$syntax)
+  }
+  if(length(random_sd_binding_context$add_parameters) > 0L){
+    add_parameters <- c(add_parameters, random_sd_binding_context$add_parameters)
+  }
+  compiled_random_effects <- parsed_random_effects
+  mean_translation_owner <- NULL
+  mean_intercept <- if(has_intercept) list(coordinate = paste0(parameter, "_intercept"),
+    expression = formula_syntax[[1L]]) else NULL
+  for(random_i in seq_along(parsed_random_effects)){
+    random_effect_data <- random_effect_scaled_data
+    random_structure <- .bt_random_effect_structure(parsed_random_effects[[random_i]])
+    if(random_structure %in% c("cs", "hcs", "ar1", "car", "har")){
+      random_effect_data <- random_effect_unscaled_data
+    }
+    compile_mode <- .bt_random_effects_compile_mode(
+      random_effects_compile,
+      parsed_random_effects[[random_i]]$block_name
+    )
+    temp_random   <- .JAGS_random_effect_formula(
+      parsed_random_effects[[random_i]],
+      parameter,
+      random_effect_data,
+      prior_random = prior_random,
+      sd_binding_context = random_sd_binding_context,
+      group_data = random_effect_unscaled_data,
+      compile_mode = compile_mode,
+      fixed_intercept = mean_intercept
+    )
+    compiled_random_effects[[random_i]] <- temp_random[["random_effect"]]
+    if(!is.null(temp_random[["random_effect"]]$mean_translation)){
+      if(!is.null(mean_translation_owner)){
+        stop("Mean-centered parameterization requires one explicitly selected random-effect block per formula.",
+             call. = FALSE)
+      }
+      mean_translation_owner <- temp_random[["random_effect"]]$block_name
+      intercept_term <- temp_random[["random_effect"]]$mean_translation$fixed_intercept_expression
+      if(sum(formula_syntax == intercept_term) != 1L){
+        stop("Mean-centered parameterization is unavailable because the fixed-intercept contribution could not be resolved.",
+             call. = FALSE)
+      }
+      formula_syntax <- formula_syntax[formula_syntax != intercept_term]
+    }
 
     for(data_i in seq_along(temp_random[["data"]])){
       JAGS_data[[names(temp_random[["data"]])[data_i]]] <- temp_random[["data"]][[data_i]]
     }
-    random_key <- paste0("__xREx__", attr(random_effects[[random_i]], "grouping_factor"))
-    jags_data_names[[random_key]] <- names(temp_random[["data"]])
+    random_key <- paste0("__xREx__", attr(compiled_random_effects[[random_i]], "random_block"))
+    jags_data_names[random_key] <- list(compiled_random_effects[[random_i]]$jags_data_names)
+    random_sd_leaves[[random_key]] <- temp_random[["random_effect"]]$sd_leaves
+    if(random_structure %in% c("us", "cs", "hcs", "ar1", "car", "har") &&
+       is.numeric(compiled_random_effects[[random_i]]$n_columns) &&
+       length(compiled_random_effects[[random_i]]$n_columns) == 1L &&
+       !is.na(compiled_random_effects[[random_i]]$n_columns) &&
+       compiled_random_effects[[random_i]]$n_columns > 1L){
+      random_correlation_required <- c(random_correlation_required, random_key)
+    }
 
     random_syntax  <- c(random_syntax,  temp_random[["random_syntax"]])
     formula_syntax <- c(formula_syntax, temp_random[["formula_term"]])
     prior_list     <- c(prior_list, temp_random[["prior_list"]])
     random_scale_terms <- c(random_scale_terms, temp_random[["random_scale_terms"]])
+    add_parameters <- c(add_parameters, temp_random[["add_parameters"]])
+    jags_modules <- c(jags_modules, temp_random[["jags_modules"]])
+    required_packages <- c(required_packages, temp_random[["required_packages"]])
   }
 
   # finish the syntax
@@ -448,6 +670,11 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   for(i in seq_along(prior_list)){
     attr(prior_list[[i]], "parameter") <- parameter
   }
+  .bt_validate_ordered_shared_allocations(prior_list)
+  if(.JAGS_prior_list_uses_BayesTools_module(prior_list)){
+    jags_modules <- c(jags_modules, "BayesTools")
+    required_packages <- c(required_packages, "BayesTools")
+  }
 
   # preserve log(intercept) attribute on output formula
   if(log_intercept){
@@ -458,7 +685,10 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     formula_syntax = formula_syntax,
     data           = JAGS_data,
     prior_list     = prior_list,
-    formula        = formula
+    formula        = formula,
+    add_parameters = unique(add_parameters),
+    jags_modules   = unique(jags_modules),
+    required_packages = unique(required_packages)
   )
 
   # add scale information if standardization was applied
@@ -469,9 +699,19 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     attr(scale_info, "parameter") <- parameter
     # store log_intercept attribute for proper unscaling transformation
     attr(scale_info, "log_intercept") <- log_intercept
+    point_terms <- .formula_scale_point_terms(
+      prior_list = prior_list,
+      parameter = parameter,
+      model_terms = model_terms
+    )
+    if(length(point_terms) > 0L){
+      attr(scale_info, "point_terms") <- point_terms
+    }
     if(length(random_scale_terms) > 0){
-      names(random_scale_terms) <- paste0(parameter, "_", names(random_scale_terms))
-      attr(scale_info, "random_effect_terms") <- random_scale_terms
+      attr(scale_info, "random_effect_sd_leaves") <- random_sd_leaves
+      if(length(random_correlation_required) > 0L){
+        attr(scale_info, "random_effect_correlation_required") <- unique(random_correlation_required)
+      }
     }
     output$formula_scale <- scale_info
   }
@@ -479,10 +719,85 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   design_formula <- formula
   attr(design_formula, "log(intercept)") <- NULL
 
+  fixed_jags_names <- paste0(parameter, "_", model_terms)
+  fixed_name_map <- .bt_formula_name_map(
+    jags_name = fixed_jags_names,
+    kind = rep("fixed", length(fixed_jags_names)),
+    formula_parameter = rep(parameter, length(fixed_jags_names)),
+    term = semantic_model_terms,
+    role = rep("coefficient", length(fixed_jags_names))
+  )
+  generated_names <- unique(.bt_parameter_coordinates_base(
+    c(names(prior_list), JAGS_to_monitor(prior_list), add_parameters)
+  ))
+  generated_names <- generated_names[nzchar(generated_names)]
+  random_names <- setdiff(generated_names, fixed_jags_names)
+  random_name_map <- .bt_formula_name_map_empty()
+  if(length(random_names) > 0L){
+    random_terms <- rep("", length(random_names))
+    random_roles <- random_names
+    random_kinds <- rep("generated", length(random_names))
+    for(i in seq_along(random_names)){
+      matches <- vapply(compiled_random_effects, function(random_term){
+        is.character(random_term$parameter_stem) &&
+          length(random_term$parameter_stem) == 1L &&
+          startsWith(random_names[i], paste0(random_term$parameter_stem, "_"))
+      }, logical(1))
+      if(any(matches)){
+        matching_terms <- compiled_random_effects[matches]
+        stem_lengths <- vapply(matching_terms, function(random_term){
+          nchar(random_term$parameter_stem)
+        }, integer(1))
+        random_term <- matching_terms[[which.max(stem_lengths)]]
+        random_kinds[i] <- "random"
+        random_terms[i] <- random_term$block_name
+        random_roles[i] <- substring(
+          random_names[i],
+          nchar(random_term$parameter_stem) + 1L
+        )
+      }else{
+        fixed_matches <- which(vapply(fixed_jags_names, function(fixed_name){
+          startsWith(random_names[i], paste0(fixed_name, "_"))
+        }, logical(1)))
+        if(length(fixed_matches) > 0L){
+          fixed_match <- fixed_matches[which.max(nchar(
+            fixed_jags_names[fixed_matches]
+          ))]
+          random_kinds[i] <- "fixed_auxiliary"
+          random_terms[i] <- semantic_model_terms[fixed_match]
+          random_roles[i] <- substring(
+            random_names[i],
+            nchar(fixed_jags_names[fixed_match]) + 1L
+          )
+        }
+      }
+    }
+    random_name_map <- .bt_formula_name_map(
+      jags_name = random_names,
+      kind = random_kinds,
+      formula_parameter = rep(parameter, length(random_names)),
+      term = random_terms,
+      role = random_roles
+    )
+  }
+  formula_output_map <- .bt_formula_name_map(
+    jags_name = parameter,
+    kind = "formula_output",
+    formula_parameter = parameter,
+    term = "",
+    role = "linear_predictor"
+  )
+  name_map <- rbind(fixed_name_map, random_name_map, formula_output_map)
+  class(name_map) <- c("BayesTools_formula_name_map", "data.frame")
+  attr(name_map, "schema_version") <- .bt_formula_name_map_version
+  .bt_validate_formula_name_map(name_map)
+
   output$formula_design <- .JAGS_formula_design_object(
     parameter         = parameter,
     formula           = design_formula,
+    log_intercept     = log_intercept,
     model_frame       = model_frame,
+    source_data       = random_effect_unscaled_data,
     model_matrix      = model_matrix,
     raw_column_names  = raw_column_names,
     column_names      = column_names,
@@ -493,2291 +808,23 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     prior_list        = prior_list,
     formula_scale     = output$formula_scale,
     expressions       = expressions,
-    random_effects    = random_effects,
-    jags_data_names   = jags_data_names
+    expression_specs  = expression_specs,
+    expression_data   = expression_data,
+    random_effects    = compiled_random_effects,
+    random_effects_compile = random_effects_compile,
+    jags_data_names   = jags_data_names,
+    name_map          = name_map,
+    random_allocations = random_sd_binding_context$allocations,
+    random_effects_interface = random_effects_interface
   )
+  # Carry the fitted fixed-effect design with the formula-scale metadata so
+  # that every consumer derives original-scale coefficients from the design
+  # (the design's own formula_scale copy stays as fitted).
+  output$formula_scale <- .bt_formula_scale_with_unscale_design(
+    output$formula_scale,
+    output$formula_design
+  )
+  output$random_effects_interface <- random_effects_interface
 
   return(output)
-}
-
-.JAGS_formula_design_object <- function(parameter, formula, model_frame, model_matrix,
-                                        raw_column_names, column_names,
-                                        predictors, predictors_type,
-                                        model_terms, model_terms_type,
-                                        prior_list, formula_scale,
-                                        expressions, random_effects,
-                                        jags_data_names){
-
-  formula_terms <- stats::terms(formula)
-  attr(formula_terms, ".Environment") <- emptyenv()
-  formula_output <- formula
-  environment(formula_output) <- emptyenv()
-  model_frame_output <- model_frame
-  attr(model_frame_output, "terms") <- formula_terms
-
-  qr_info <- qr(model_matrix)
-  aliased <- rep(FALSE, ncol(model_matrix))
-  if(qr_info$rank < ncol(model_matrix)){
-    aliased[qr_info$pivot[(qr_info$rank + 1L):ncol(model_matrix)]] <- TRUE
-  }
-  names(aliased) <- colnames(model_matrix)
-
-  factor_predictors <- names(predictors_type)[predictors_type == "factor"]
-  xlevels <- lapply(factor_predictors, function(predictor){
-    if(predictor %in% names(model_frame) && is.factor(model_frame[[predictor]])){
-      levels(model_frame[[predictor]])
-    }else{
-      NULL
-    }
-  })
-  names(xlevels) <- factor_predictors
-  xlevels <- xlevels[!vapply(xlevels, is.null, logical(1))]
-
-  out <- list(
-    parameter          = parameter,
-    formula            = formula_output,
-    model_frame        = model_frame_output,
-    model_matrix       = model_matrix,
-    column_names       = column_names,
-    raw_column_names   = raw_column_names,
-    assign             = attr(model_matrix, "assign"),
-    terms              = formula_terms,
-    contrasts          = attr(model_matrix, "contrasts"),
-    xlevels            = xlevels,
-    predictors         = predictors,
-    predictor_types    = predictors_type,
-    model_terms        = model_terms,
-    model_terms_type   = model_terms_type,
-    prior_list         = prior_list,
-    formula_scale      = formula_scale,
-    rank               = qr_info$rank,
-    qr_pivot           = qr_info$pivot,
-    aliased            = aliased,
-    transformed_terms  = expressions,
-    random_effects     = random_effects,
-    jags_data_names    = jags_data_names
-  )
-  class(out) <- c("BayesTools_formula_design", "list")
-
-  return(out)
-}
-
-#' @title Extract Fitted JAGS Formula Design Metadata
-#'
-#' @description Returns the fitted formula design metadata stored by
-#' [JAGS_fit()]. The design contains the processed formula, fitted model frame,
-#' exact model matrix used for JAGS data construction, JAGS-safe coefficient
-#' names, contrast and factor-level metadata, rank diagnostics, prior metadata,
-#' and formula-scale information.
-#'
-#' @param fit a fitted object returned by [JAGS_fit()].
-#' @param parameter optional formula parameter name. If \code{NULL}, all stored
-#' formula designs are returned.
-#'
-#' @return A named list of formula designs, or one formula design when
-#' \code{parameter} is supplied. Returns \code{NULL} when no formula design
-#' metadata is stored on \code{fit}.
-#'
-#' @seealso [JAGS_fit()] [JAGS_formula()]
-#' @export
-JAGS_formula_design <- function(fit, parameter = NULL){
-
-  check_char(parameter, "parameter", allow_NULL = TRUE)
-
-  formula_design <- attr(fit, "formula_design")
-  if(is.null(formula_design)){
-    return(NULL)
-  }
-
-  if(is.null(parameter)){
-    return(formula_design)
-  }
-
-  if(!parameter %in% names(formula_design)){
-    stop("Formula design for parameter '", parameter, "' was not found.", call. = FALSE)
-  }
-
-  return(formula_design[[parameter]])
-}
-
-.JAGS_random_effect_formula <- function(formula, parameter, data, prior_list){
-
-  # extract the grouping factor information
-  grouping_factor        <- attr(formula, "grouping_factor")
-  grouping_independent   <- attr(formula, "independent")
-  grouping_factor_levels <- levels(as.factor(data[[grouping_factor]]))
-  grouping_mapping       <- as.numeric(as.factor(data[[grouping_factor]]))
-
-  # TODO: expand to factor random effects
-  # needs to implement LKJ correlation matrix
-  if(!grouping_independent){
-    stop("Only independent random effects are supported yet.")
-  }
-
-  # remove the grouping factor from the formula
-  formula <- .remove_grouping_factor(formula)
-  formula <- stats::as.formula(paste("~", formula))
-
-  # obtain predictors characteristics factors (copy from formula)
-  formula_terms    <- stats::terms(formula)
-  has_intercept    <- attr(formula_terms, "intercept") == 1
-  predictors       <- as.character(attr(formula_terms, "variables"))[-1]
-  if(any(!predictors %in% colnames(data)))
-    stop(paste0("The ", paste0("'", predictors[!predictors %in% colnames(data)], "'", collapse = ", ")," predictor variable is missing in the data set."))
-  predictors_type  <- sapply(predictors, function(predictor){
-    if(is.factor(data[,predictor]) | is.character(data[,predictor])){
-      return("factor")
-    }else{
-      return("continuous")
-    }
-  })
-  model_terms      <- c(if(has_intercept) "intercept", attr(formula_terms, "term.labels"))
-  model_terms_type <- sapply(model_terms, function(model_term){
-    model_term <- strsplit(model_term, ":")[[1]]
-    if(length(model_term) == 1 && model_term == "intercept"){
-      return("continuous")
-    }else if(any(predictors_type[model_term] == "factor")){
-      return("factor")
-    }else{
-      return("continuous")
-    }
-  })
-
-  # check that all priors have a lower bound on 0 or their range is > 0, if not, throw a warning and correct
-  for(i in seq_along(prior_list)){
-    if(is.prior.spike_and_slab(prior_list[[i]]) || is.prior.mixture(prior_list[[i]])){
-      for(j in seq_along(prior_list[[i]])){
-        if(range(prior_list[[i]][[j]])[1] < 0){
-          warning(paste0("The lower bound of the ", j ,"-th component in '", names(prior_list)[i], "' prior distribution is below 0. Correcting to 0."), immediate. = TRUE)
-          prior_list[[i]][[j]]$truncation$lower <- 0
-        }
-      }
-    }else{
-      if(range(prior_list[[i]])[1] < 0){
-        warning(paste0("The lower bound of the '", names(prior_list)[i], "' prior distribution is below 0. Correcting to 0."), immediate. = TRUE)
-        prior_list[[i]]$truncation$lower <- 0
-      }
-    }
-  }
-
-  # drop the grouping factor from the prior names
-  names(prior_list) <- .remove_grouping_factor(names(prior_list))
-  # check that all terms have a prior distribution
-  check_list(prior_list, "prior_list", check_names = model_terms, allow_other = TRUE, all_objects = TRUE)
-
-  # get the default design matrix
-  model_frame  <- stats::model.frame(formula, data = data)
-  model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
-
-  # check whether intercept is unique parameter
-  if(sum(grepl("intercept", names(prior_list))) > 1)
-    stop("only the intercept parameter can contain 'intercept' in its name.")
-  # check whether any reserved term is in usage
-  reserved_terms <- c("__xXx__", "__xREx__", "xRE_PRECx", "xRE_CORx", "xRE_Zx", "xRE_STDx", "xRE_COEFx", "xRE_MAPx", "xRE_COEFx", "xRE_DATAx")
-  for(reserved_term in reserved_terms){
-    if(any(grepl(reserved_term, names(prior_list))))
-      stop(paste0("'", reserved_term, "' string is internally used by the BayesTools package and can't be used for naming variables or prior distributions."))
-  }
-
-  # replace interaction signs (due to JAGS incompatibility)
-  colnames(model_matrix)  <- gsub(":", "__xXx__", colnames(model_matrix))
-  names(prior_list)       <- gsub(":", "__xXx__", names(prior_list))
-  names(model_terms_type) <- gsub(":", "__xXx__", names(model_terms_type))
-  model_terms             <- gsub(":", "__xXx__", model_terms)
-
-  # prepare syntax & data based on the formula
-  parameter_suffix <- paste0("_xREx__", grouping_factor)       # priors should not be named with parameter name (done on exit from formula)
-  parameter        <- paste0(parameter, "_", parameter_suffix) # variables should be named already here
-  random_syntax    <- NULL
-  JAGS_data        <- list()
-  new_prior_list   <- list()
-  random_scale_terms <- character()
-
-  ### in essence, the following prepares constructors that:
-  # 1) samples standardized random effects xRE_Zx[ids, predictors] from a multivariate normal distribution
-  # 2) create a vector of by-parameter standard deviation of the random effects xRE_STDx[predictors]
-  # 3) multiplies the standardized random effects by parameter-specific standard deviations to create xRE_COEFx[ids, predictors] matrix
-  # 4) computes the per observation formula output based on indexing the by-id COEF and selecting the observation variables
-  # 5) appends the per-observation output to the higher order formula (done in the formula call itself)
-
-  n_id  <- length(grouping_factor_levels)
-  n_par <- ncol(model_matrix)
-
-  # step 1:
-  # TODO: get the identity matrix to sample the standardized random effects (update once correlated random effects are available with cholesky sampled correlation matrix)
-  random_syntax <- c(random_syntax, .add_JAGS_matrix(name = paste0(parameter, "_xRE_PRECx"), diag(1, n_par)))
-  random_syntax <- c(random_syntax, paste0(
-    " for(i in 1:",n_id,"){\n",
-    "   ",paste0(parameter, "_xRE_Zx"),"[i,1:", n_par ,"] ~ dmnorm(rep(0, ", n_par,"), ", paste0(parameter, "_xRE_PRECx"), ")\n",
-    " }\n"
-  ))
-
-  # step 2
-  if(has_intercept){
-    terms_indexes    <- attr(model_matrix, "assign") + 1
-    terms_indexes[1] <- 0
-
-    new_prior_list[[paste0(parameter_suffix, "_intercept")]] <- prior_list[["intercept"]]
-    random_scale_terms[[paste0(parameter_suffix, "_intercept")]] <- "intercept"
-    attr(new_prior_list[[paste0(parameter_suffix, "_intercept")]], "random_factor") <- grouping_factor
-    random_syntax   <- c(random_syntax, paste0(
-      parameter, "_xRE_STDx[1] = ", parameter, "_", "intercept"
-    ))
-  }else{
-    terms_indexes    <- attr(model_matrix, "assign")
-  }
-
-  # add remaining terms (omitting the intercept indexed as NA)
-  for(i in unique(terms_indexes[terms_indexes > 0])){
-
-    # extract the corresponding prior distribution for a given coefficient
-    this_prior <- prior_list[[model_terms[i]]]
-
-    # check whether the term is an interaction or not and save the corresponding attributes
-    attr(this_prior, "interaction") <- grepl("__xXx__", model_terms[i])
-    if(.is_prior_interaction(this_prior)){
-      attr(this_prior, "interaction_terms") <- strsplit(model_terms[i], "__xXx__")[[1]]
-    }
-
-    if(!is.null(attr(this_prior, "multiply_by")))
-      stop("'multiply_by' attribute is inadmissible for random effects")
-
-    if(model_terms_type[i] == "continuous"){
-
-      random_syntax <- c(random_syntax, paste0(
-        parameter, "_xRE_STDx[", i, "] = ", parameter, "_", model_terms[i]
-      ))
-
-    }else if(model_terms_type[i] == "factor"){
-
-      # factor random effects use the same contrasts as set in the upstream formula
-      # (in the rare case that no factor_prior on the upstream formula was set, this might default to a treatment contrast)
-
-      ## parameterization
-      # treatment contrasts: independent variances for the comparison factor levels
-      # independent contrasts: independent variances for each factor level
-      # meandif/orthonormal contrasts: one total variance for the factor
-      if(is.null(attr(data[[model_terms[i]]], "contrasts")) || attr(data[[model_terms[i]]], "contrasts") %in% c("contr.treatment", "contr.independent")){
-
-        # determine the prior type
-        if(is.null(attr(data[[model_terms[i]]], "contrasts")) || attr(data[[model_terms[i]]], "contrasts") == "contr.treatment"){
-          temp_prior_type <- "prior.treatment"
-          attr(this_prior, "levels") <- sum(terms_indexes == i) + 1
-        }else{
-          temp_prior_type <- "prior.independent"
-          attr(this_prior, "levels") <- sum(terms_indexes == i)
-        }
-
-        # store level information
-        if(.is_prior_interaction(this_prior)){
-          level_names <- list()
-          for(sub_term in strsplit(model_terms[i], "__xXx__")[[1]]){
-            if(model_terms_type[sub_term] == "factor"){
-              level_names[[sub_term]] <- levels(data[,sub_term])
-            }
-          }
-          attr(this_prior, "level_names") <- level_names
-        }else{
-          attr(this_prior, "level_names") <- levels(data[,model_terms[i]])
-        }
-
-        # distribute the individual coefficients to the STD
-        for(j in 1:sum(terms_indexes == i)){
-          random_syntax <- c(random_syntax, paste0(
-            parameter, "_xRE_STDx[", i + j - 1, "] = ", parameter, "_", model_terms[i], "[", j, "]"
-          ))
-        }
-
-        # transform the simple prior into treatment / independent factor prior (for each of the coefficients)
-        if(is.prior.simple(this_prior)){
-          class(this_prior) <- c(class(this_prior), "prior.factor", temp_prior_type)
-        }else if(is.prior.spike_and_slab(this_prior) || is.prior.mixture(this_prior)){
-          for(p in seq_along(this_prior)){
-            class(this_prior[[p]]) <- c(class(this_prior[[p]]), "prior.factor", temp_prior_type)
-          }
-          if(is.prior.spike_and_slab(this_prior)){
-            class(this_prior) <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_spike_and_slab")], "prior.factor_spike_and_slab", temp_prior_type)
-          } else {
-            class(this_prior) <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_mixture")],  "prior.factor_mixture", temp_prior_type)
-          }
-        }
-
-      }else if(attr(data[[model_terms[i]]], "contrasts") %in% c("contr.orthonormal", "contr.meandif")){
-
-        # do not change the prior type of create multiple levels
-        # distribute the same coefficients to the STD
-        for(j in 1:sum(terms_indexes == i)){
-          random_syntax <- c(random_syntax, paste0(
-            parameter, "_xRE_STDx[", i + j - 1, "] = ", parameter, "_", model_terms[i]
-          ))
-        }
-        # no prior transformation needed
-
-      }else{
-        stop("Unsupported factor contrasts for the random effects.")
-      }
-
-
-    }else{
-      stop("Unrecognized model term.")
-    }
-
-    # update the corresponding prior distribution back into the prior list
-    # (and forward attributes to lower level components in the case of spike and slab and mixture priors)
-    attr(this_prior, "random_sd")     <- TRUE
-    attr(this_prior, "random_factor") <- grouping_factor
-    if(is.prior.spike_and_slab(this_prior) || is.prior.mixture(this_prior)){
-      for(p in seq_along(this_prior)){
-        attr(this_prior, "levels")            -> attr(this_prior[[p]], "levels")
-        attr(this_prior, "level_names")       -> attr(this_prior[[p]], "level_names")
-        attr(this_prior, "interaction")       -> attr(this_prior[[p]], "interaction")
-        attr(this_prior, "interaction_terms") -> attr(this_prior[[p]], "interaction_terms")
-      }
-      this_prior -> new_prior_list[[paste0(parameter_suffix, "_", model_terms[i])]]
-      random_scale_terms[[paste0(parameter_suffix, "_", model_terms[i])]] <- model_terms[i]
-    }else{
-      this_prior -> new_prior_list[[paste0(parameter_suffix, "_", model_terms[i])]]
-      random_scale_terms[[paste0(parameter_suffix, "_", model_terms[i])]] <- model_terms[i]
-    }
-
-  }
-
-  # step 3
-  random_syntax <- c(random_syntax, paste0(
-    " for(i in 1:",n_par,"){\n",
-    "   ",paste0(parameter, "_xRE_COEFx"),"[1:",n_id,",i] = ",paste0(parameter, "_xRE_Zx"),"[1:",n_id,",i] * ",paste0(parameter, "_xRE_STDx"),"[i]\n",
-    " }\n"
-  ))
-
-  # step 4
-  random_syntax <- c(random_syntax, paste0(
-    " for(i in 1:",nrow(model_matrix),"){\n",
-    "   ",parameter,"[i] = inprod(", paste0(parameter, "_xRE_COEFx[", paste0(parameter, "_xRE_MAPx[i]"),", 1:",n_par,"]"), ", ", paste0(parameter, "_xRE_DATAx[i,1:", n_par,"]"),")\n",
-    " }\n"
-  ))
-
-  # create the JAGS data list
-  JAGS_data[[paste0(parameter, "_xRE_DATAx")]] <- model_matrix
-  JAGS_data[[paste0(parameter, "_xRE_MAPx")]]  <- grouping_mapping
-
-  return(list(
-    random_syntax  = random_syntax,
-    formula_term   = paste0(parameter,"[i]"),
-    data           = JAGS_data,
-    prior_list     = new_prior_list,
-    random_scale_terms = random_scale_terms,
-    formula        = formula
-  ))
-}
-
-# formula helper functions
-.remove_response        <- function(formula){
-  # removes response from the expression
-  # (prevents crash on formula evaluations)
-  if(attr(stats::terms(formula), "response")  == 1){
-    formula[2] <- NULL
-  }
-  return(formula)
-}
-.has_expression         <- function(formula){
-  # check if there is any expression in the formula
-  return(any(grepl("expression\\(", deparse(formula))))
-}
-.extract_expressions    <- function(formula){
-  # extract all expressions from the formula
-
-  # Convert the formula to a character string
-  formula_string <- deparse(formula)
-
-  # Use a regex to find all instances of "expression(...)"
-  matches     <- gregexpr("expression\\(.*?\\)", formula_string)
-  expressions <- regmatches(formula_string, matches)[[1]]
-
-  # Use a regex to remove "expression(" and the closing ")"
-  expressions <- lapply(expressions, .clean_from_expression)
-
-  return(expressions)
-}
-.clean_from_expression  <- function(x){
-  # expression to character
-
-  return(sub("expression\\((.*)\\)", "\\1", x))
-}
-.remove_expressions     <- function(formula){
-  # remove all expressions from the formula
-
-  # Convert the formula to a character string
-  formula_string <- paste0(deparse(formula), collapse = " ")
-
-  # Use a regex to remove all instances of "+ expression(...)" or "expression(...) +", considering spaces and newlines
-  formula_string_clean <- gsub("\\+\\s*expression\\(.*?\\)\\s*", "", formula_string)
-  formula_string_clean <- gsub("\\s*expression\\(.*?\\)\\s*\\+", "", formula_string_clean)
-
-  # Handle the case where the expression is the first term in the formula
-  formula_string_clean <- gsub("^\\s*expression\\(.*?\\)\\s*", "", formula_string_clean)
-
-  # Handle the case where the formula reduces to just "y ~ expression(...)"
-  if(grepl("^\\s*[a-zA-Z0-9._]+\\s*~\\s*expression\\(.*?\\)\\s*$", formula_string_clean)){
-    formula_string_clean <- gsub("expression\\(.*?\\)", "1", formula_string_clean)
-  }
-
-  # Reconvert the cleaned string back to a formula
-  return(stats::as.formula(formula_string_clean))
-}
-.has_random_effects     <- function(formula){
-  # Convert the formula to a character string
-  formula_str <- paste(deparse(formula), collapse = " ")
-
-  # Regular expression to match `( ... | ... )` patterns
-  has_random <- grepl("\\([^\\)]+\\|[^\\)]+\\)", formula_str)
-
-  # Return TRUE if at least one match is found, otherwise FALSE
-  return(has_random)
-}
-.extract_random_effects <- function(formula) {
-  # Convert the formula to a character string
-  formula_str <- paste(deparse(formula), collapse = " ")
-
-  # Regular expression to match `( ... | ... )` or `( ... || ... )` patterns
-  random_effects <- gregexpr("\\([^\\)]+\\|{1,2}[^\\)]+\\)", formula_str)
-
-  # Extract matches
-  matches <- regmatches(formula_str, random_effects)
-
-  # Clean up the parentheses and remove unnecessary spaces
-  clean_matches <- lapply(unlist(matches), function(x) gsub("^\\(|\\)$", "", x))  # Remove outer parentheses
-  clean_matches <- lapply(clean_matches, trimws)  # Remove extra spaces from each match
-
-  # Add random effects information
-  for (i in seq_along(clean_matches)) {
-    # Extract the grouping factor (right-hand side of | or ||)
-    grouping_factor <- trimws(sub(".*\\|{1,2}\\s*", "", clean_matches[[i]]))
-    attr(clean_matches[[i]], "grouping_factor") <- grouping_factor
-
-    # Detect whether independent `||` or correlated `|` random effects are used
-    independent <- grepl("\\|\\|", clean_matches[[i]])  # Check if `||` is used
-    attr(clean_matches[[i]], "independent") <- independent
-  }
-
-  # Return the cleaned random effects as a list
-  return(as.list(clean_matches))
-}
-
-.remove_random_effects  <- function(formula){
-  # Convert the formula to a character string
-  formula_str <- paste(deparse(formula), collapse = " ")
-
-  # Regular expression to match and remove `( ... | ... )` patterns
-  cleaned_formula <- gsub("\\+?\\s*\\([^\\)]+\\|[^\\)]+\\)", "", formula_str)
-
-  # Normalize spacing around '+' and remove any leading '+'
-  cleaned_formula <- gsub("\\s*\\+\\s*", " + ", cleaned_formula)  # Normalize '+' spacing
-  cleaned_formula <- gsub("^\\s*~\\s*\\+\\s*", "~ ", cleaned_formula)  # Remove leading '+'
-
-  # Ensure no excessive spaces remain
-  cleaned_formula <- gsub("\\s{2,}", " ", cleaned_formula)  # Replace multiple spaces with a single space
-  cleaned_formula <- trimws(cleaned_formula)  # Trim leading/trailing whitespace
-
-  # Ensure at least "1" remains if formula is empty after cleaning
-  if (grepl("^\\s*~\\s*$", cleaned_formula)) {
-    cleaned_formula <- "~ 1"
-  }
-
-  # Return as a formula
-  return(stats::as.formula(cleaned_formula))
-}
-.get_grouping_factor    <- function(x){
-  has_grouping            <- grepl("\\|", x)
-  grouping                <- rep("", length(x))
-  grouping[has_grouping]  <- trimws(sub(".*\\|\\s*", "", x[has_grouping]))
-  return(grouping)
-}
-.remove_grouping_factor <- function(formula){
-  return(trimws(sub("\\|.*$", "", formula)))
-}
-#' @title Add an Intercept to a Formula
-#'
-#' @description Converts a no-intercept formula to the corresponding formula
-#' with an intercept while preserving the formula environment. Top-level
-#' no-intercept encodings such as \code{- 1}, \code{+ 0}, and \code{0 +} are
-#' removed without editing transformed calls such as \code{I(x - 1)} or
-#' \code{offset(x - 1)}.
-#'
-#' @param formula a formula object.
-#'
-#' @return A formula object with an intercept.
-#'
-#' @export
-formula_add_intercept <- function(formula){
-
-  if(!inherits(formula, "formula")){
-    stop("'formula' must be a formula.", call. = FALSE)
-  }
-
-  if(attr(stats::terms(formula), "intercept") == 1L){
-    return(formula)
-  }
-
-  formula_env   <- environment(formula)
-  formula_attrs <- attributes(formula)
-  rhs_index     <- if(length(formula) == 3L) 3L else 2L
-  rhs           <- .formula_strip_no_intercept(formula[[rhs_index]])
-
-  if(is.null(rhs)){
-    rhs <- 1
-  }
-
-  out <- formula
-  out[[rhs_index]] <- rhs
-  environment(out) <- formula_env
-
-  for(attribute in setdiff(names(formula_attrs), c("class", ".Environment", "names"))){
-    attr(out, attribute) <- formula_attrs[[attribute]]
-  }
-
-  if(attr(stats::terms(out), "intercept") == 0L){
-    out[[rhs_index]] <- call("+", 1, out[[rhs_index]])
-    environment(out) <- formula_env
-  }
-
-  return(out)
-}
-.add_intercept_to_formula <- formula_add_intercept
-
-.formula_strip_no_intercept <- function(expr){
-
-  if(.formula_is_no_intercept_additive_term(expr)){
-    return(NULL)
-  }
-
-  if(is.call(expr) && identical(expr[[1L]], as.name("+")) && length(expr) == 3L){
-    lhs <- .formula_strip_no_intercept(expr[[2L]])
-    rhs <- .formula_strip_no_intercept(expr[[3L]])
-
-    if(is.null(lhs)){
-      return(rhs)
-    }
-    if(is.null(rhs)){
-      return(lhs)
-    }
-    return(call("+", lhs, rhs))
-  }
-
-  if(is.call(expr) && identical(expr[[1L]], as.name("-")) && length(expr) == 3L &&
-     .formula_is_numeric_constant(expr[[3L]], 1)){
-    return(.formula_strip_no_intercept(expr[[2L]]))
-  }
-
-  return(expr)
-}
-
-.formula_is_no_intercept_additive_term <- function(expr){
-
-  .formula_is_numeric_constant(expr, 0) || .formula_is_negative_one(expr)
-}
-
-.formula_is_negative_one <- function(expr){
-
-  (is.numeric(expr) && length(expr) == 1L && identical(as.numeric(expr), -1)) ||
-    (is.call(expr) && identical(expr[[1L]], as.name("-")) && length(expr) == 2L &&
-       .formula_is_numeric_constant(expr[[2L]], 1))
-}
-
-.formula_is_numeric_constant <- function(expr, value){
-
-  if(is.call(expr) && identical(expr[[1L]], as.name("(")) && length(expr) == 2L){
-    return(.formula_is_numeric_constant(expr[[2L]], value))
-  }
-
-  is.numeric(expr) && length(expr) == 1L && identical(as.numeric(expr), as.numeric(value))
-}
-
-#' @title Evaluate JAGS formula using posterior samples
-#'
-#' @description Evaluates a JAGS formula on a posterior distribution
-#' obtained from a fitted model.
-#'
-#' @param fit model fitted with either \link[runjags]{runjags} posterior
-#' samples obtained with \link[rjags]{rjags-package}
-#' @param formula formula specifying the right hand side of the assignment (the
-#' left hand side is ignored). If the formula has a \code{"log(intercept)"}
-#' attribute set to \code{TRUE}, the intercept values will be log-transformed
-#' before computing the linear predictor.
-#' @param parameter name of the parameter created with the formula
-#' @param data data.frame containing predictors included in the formula
-#' @param prior_list named list of prior distribution of parameters specified within
-#' the \code{formula}
-#'
-#'
-#' @return \code{JAGS_evaluate_formula} returns a matrix of the evaluated posterior samples on
-#' the supplied data.
-#'
-#' @seealso [JAGS_fit()] [JAGS_formula()]
-#' @export
-JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
-
-  if(!is.language(formula))
-    stop("'formula' must be a formula")
-  if(!is.data.frame(data))
-    stop("'data' must be a data.frame")
-  check_char(parameter, "parameter")
-  check_list(prior_list, "prior_list")
-  if(any(!sapply(prior_list, is.prior)))
-    stop("'prior_list' must be a list of priors.")
-
-  # extract the posterior distribution
-  posterior <- as.matrix(.fit_to_posterior(fit))
-
-  # remove the specified response (would crash the model.frame if not included)
-  formula <- .remove_response(formula)
-  log_intercept <- isTRUE(attr(formula, "log(intercept)"))
-  if(attr(stats::terms(formula), "intercept") == 0){
-    formula <- formula_add_intercept(formula)
-    if(log_intercept){
-      attr(formula, "log(intercept)") <- TRUE
-    }
-  }
-
-  # select priors corresponding to the prior distribution
-  prior_parameter <- sapply(prior_list, function(p) if(is.null(attr(p, "parameter"))) "__none" else attr(p, "parameter"))
-  if(!any(parameter %in% unique(prior_parameter)))
-    stop("The specified parameter '", parameter, "' was not used in any of the prior distributions.")
-  prior_list_formula <- prior_list[prior_parameter == parameter]
-  names(prior_list_formula) <- format_parameter_names(names(prior_list_formula), formula_parameters = parameter, formula_prefix = FALSE)
-
-  # extract the terms information from the formula
-  formula_terms    <- stats::terms(formula)
-  has_intercept    <- attr(formula_terms, "intercept") == 1
-  predictors       <- as.character(attr(formula_terms, "variables"))[-1]
-  model_terms      <- c(if(has_intercept) "intercept", attr(formula_terms, "term.labels"))
-
-  # check that all predictors have data and prior distribution
-  if(!all(predictors %in% colnames(data)))
-    stop(paste0("The ", paste0("'", predictors[!predictors %in% colnames(data)], "'", collapse = ", ")," predictor variable is missing in the data."))
-  if(!all(model_terms %in% names(prior_list_formula)))
-    stop(paste0("The prior distribution for the ", paste0("'", predictors[!model_terms %in% format_parameter_names(names(prior_list_formula), formula_parameters = parameter, formula_prefix = FALSE)], "'", collapse = ", ")," term is missing in the prior_list."))
-
-  # obtain predictors characteristics -- based on prior distributions used to fit the original model
-  # (i.e., do not truest the supplied data -- probably passed by the user)
-  model_terms_type <- sapply(model_terms, function(model_term){
-    if(model_term == "intercept"){
-      return("continuous")
-    }else if(is.prior.factor(prior_list_formula[[model_term]]) || inherits(prior_list_formula[[model_term]], "prior.factor_mixture") || inherits(prior_list_formula[[model_term]], "prior.factor_spike_and_slab")){
-      return("factor")
-    }else if(is.prior.simple(prior_list_formula[[model_term]]) || inherits(prior_list_formula[[model_term]], "prior.simple_mixture") || inherits(prior_list_formula[[model_term]], "prior.simple_spike_and_slab")){
-      return("continuous")
-    } else {
-      stop(paste0("Unrecognized prior distribution for the '", model_term, "' term."))
-    }
-  })
-  predictors_type <- model_terms_type[predictors]
-
-  # check that passed data correspond to the specified priors (factor levels etc...) and set the proper contrasts
-  if(any(predictors_type == "factor")){
-
-    # check the proper data input for each factor prior
-    for(factor in names(predictors_type[predictors_type == "factor"])){
-
-      # select the corresponding prior in the variable
-      this_prior <- prior_list_formula[[factor]]
-
-      if(is.factor(data[,factor])){
-        if(all(levels(data[,factor]) %in% .get_prior_factor_level_names(this_prior))){
-          # either the formatting is correct, or the supplied levels are a subset of the original levels
-          # reformat to check ordering and etc...
-          data[,factor] <- factor(data[,factor], levels = .get_prior_factor_level_names(this_prior))
-        }else{
-          # there are some additional levels
-          stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
-        }
-      }else if(all(unique(data[,factor]) %in% .get_prior_factor_level_names(this_prior))){
-        # the variable was not passed as a factor but the values matches the factor levels
-        data[,factor] <- factor(data[,factor], levels = .get_prior_factor_level_names(this_prior))
-      }else{
-        # there are some additional mismatching values
-        stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
-      }
-
-      # set the contrast
-      if(is.prior.orthonormal(this_prior)){
-        stats::contrasts(data[,factor]) <- "contr.orthonormal"
-      }else if(is.prior.meandif(this_prior)){
-        stats::contrasts(data[,factor]) <- "contr.meandif"
-      }else if(is.prior.independent(this_prior)){
-        stats::contrasts(data[,factor]) <- "contr.independent"
-      }else if(is.prior.treatment(this_prior)){
-        stats::contrasts(data[,factor]) <- "contr.treatment"
-      }
-    }
-  }
-  if(any(predictors_type == "continuous")){
-
-    # check the proper data input for each continuous prior
-    for(continuous in names(predictors_type[predictors_type == "continuous"])){
-
-      # select the corresponding prior in the variable
-      this_prior <- prior_list_formula[[continuous]]
-
-      if(is.prior.factor(this_prior)|| is.prior.discrete(this_prior) || is.prior.PET(this_prior) || is.prior.PEESE(this_prior) || is.prior.weightfunction(this_prior)){
-        stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."))
-      }
-    }
-
-    # apply scaling if predictors were scaled during model fitting
-    formula_scale <- attr(fit, "formula_scale")
-    if(!is.null(formula_scale)){
-      # Handle nested structure: formula_scale[[parameter]] contains the scaling info
-      param_scale <- formula_scale[[parameter]]
-      if(!is.null(param_scale)){
-        for(continuous in names(predictors_type[predictors_type == "continuous"])){
-          # check if this predictor was scaled (with parameter prefix)
-          scaled_name <- paste0(parameter, "_", continuous)
-          if(scaled_name %in% names(param_scale)){
-            # apply the same scaling transformation
-            scale_info <- param_scale[[scaled_name]]
-            data[, continuous] <- (data[, continuous] - scale_info$mean) / scale_info$sd
-          }
-        }
-      }
-    }
-  }
-
-  # get the design matrix
-  model_frame  <- stats::model.frame(formula, data = data)
-  model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
-
-  ### evaluate the design matrix on the samples -> output[data, posterior]
-  if(has_intercept){
-
-    terms_indexes    <- attr(model_matrix, "assign") + 1
-    terms_indexes[1] <- 0
-
-    # check for scaling factors
-    temp_multiply_by <- .get_parameter_scaling_factor_matrix(term = "intercept", prior_list = prior_list_formula, posterior = posterior, nrow = nrow(data), ncol = nrow(posterior))
-
-    # get intercept values and apply log() transformation if log(intercept) attribute is set
-    if(is.prior.point(prior_list_formula[["intercept"]])){
-      intercept_values <- rep(
-        prior_list_formula[["intercept"]]$parameters[["location"]],
-        nrow(posterior)
-      )
-    }else{
-      intercept_values <- posterior[, JAGS_parameter_names("intercept", formula_parameter = parameter)]
-    }
-    if(log_intercept){
-      intercept_values <- log(intercept_values)
-    }
-    output           <- temp_multiply_by * matrix(intercept_values, nrow = nrow(data), ncol = nrow(posterior), byrow = TRUE)
-
-  }else{
-
-    terms_indexes    <- attr(model_matrix, "assign")
-    output           <- matrix(0, nrow = nrow(data), ncol = nrow(posterior))
-
-  }
-
-  # add remaining terms (omitting the intercept indexed as NA)
-  for(i in unique(terms_indexes[terms_indexes > 0])){
-
-    # subset the model matrix
-    temp_data <- model_matrix[,terms_indexes == i,drop = FALSE]
-
-    # get the posterior (unless point prior was used)
-    if(is.prior.point(prior_list_formula[[model_terms[i]]])){
-      temp_posterior <- matrix(
-        prior_list_formula[[model_terms[i]]]$parameters[["location"]],
-        nrow = nrow(posterior),
-        ncol = if(model_terms_type[i] == "factor") .get_prior_factor_levels(prior_list_formula[[model_terms[i]]]) else 1
-      )
-    }else{
-      temp_posterior <- posterior[,paste0(
-        JAGS_parameter_names(model_terms[i], formula_parameter = parameter),
-        if(model_terms_type[i] == "factor" && .get_prior_factor_levels(prior_list_formula[[model_terms[i]]]) > 1) paste0("[", 1:.get_prior_factor_levels(prior_list_formula[[model_terms[i]]]), "]"))
-        ,drop = FALSE]
-    }
-
-    # check for scaling factors
-    temp_multiply_by <- .get_parameter_scaling_factor_matrix(term = model_terms[i], prior_list = prior_list_formula, posterior = posterior, nrow = nrow(data), ncol = nrow(posterior))
-
-    output <- output + temp_multiply_by * (temp_data %*% t(temp_posterior))
-
-  }
-
-  return(output)
-}
-
-
-.get_parameter_scaling_factor_matrix <- function(term, prior_list, posterior, nrow, ncol){
-
-  if(!is.null(attr(prior_list[[term]], "multiply_by"))){
-    if(is.numeric(attr(prior_list[[term]], "multiply_by"))){
-      temp_multiply_by <- matrix(attr(prior_list[[term]], "multiply_by"), nrow = nrow, ncol = ncol)
-    }else{
-      temp_multiply_by <- matrix(posterior[,JAGS_parameter_names(attr(prior_list[[term]], "multiply_by"))], nrow = nrow, ncol = ncol, byrow = TRUE)
-    }
-  }else{
-    temp_multiply_by <- matrix(1, nrow = nrow, ncol = ncol)
-  }
-
-  return(temp_multiply_by)
-}
-
-.factor_level_list <- function(x){
-
-  level_names <- attr(x, "level_names")
-  if(is.null(level_names)){
-    factor_terms <- attr(x, "factor_terms")
-    if(!is.null(factor_terms) && length(factor_terms) > 1){
-      return(NULL)
-    }
-
-    n_levels <- attr(x, "levels")
-    if(is.null(n_levels)){
-      return(NULL)
-    }
-
-    if(is.prior.factor(x)){
-      level_names <- .get_prior_factor_level_names(x)
-    }else if(isTRUE(attr(x, "independent"))){
-      level_names <- seq_len(n_levels)
-    }else{
-      level_names <- seq_len(n_levels + 1)
-    }
-  }
-
-  if(is.list(level_names)){
-    factor_terms <- attr(x, "factor_terms")
-    if(is.null(factor_terms)){
-      factor_terms <- names(level_names)
-    }
-    if(is.null(factor_terms) || any(!nzchar(factor_terms))){
-      factor_terms <- paste0("factor", seq_along(level_names))
-    }
-    level_names <- level_names[factor_terms]
-    names(level_names) <- factor_terms
-  }else{
-    factor_terms <- attr(x, "factor_terms")
-    if(is.null(factor_terms) || length(factor_terms) != 1){
-      factor_terms <- ".factor"
-    }
-    level_names <- setNames(list(level_names), factor_terms)
-  }
-
-  level_names <- lapply(level_names, as.character)
-  return(level_names)
-}
-
-.factor_cell_grid <- function(level_names){
-
-  if(is.null(level_names) || length(level_names) == 0){
-    return(data.frame())
-  }
-
-  expand.grid(level_names, KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
-}
-
-.factor_cell_labels <- function(level_names){
-
-  level_grid <- .factor_cell_grid(level_names)
-  if(ncol(level_grid) == 0){
-    return(character(0))
-  }
-
-  if(ncol(level_grid) == 1){
-    return(as.character(level_grid[[1]]))
-  }
-
-  apply(level_grid, 1, function(level_row) {
-    paste0(names(level_row), "=", unname(level_row), collapse = ", ")
-  })
-}
-
-.factor_contrast_parameter_names <- function(parameter, level_names, cell_names){
-
-  if(is.null(level_names)){
-    return(paste0(parameter, "[dif: ", cell_names, "]"))
-  }
-
-  level_grid <- .factor_cell_grid(level_names)
-  if(nrow(level_grid) != length(cell_names)){
-    return(paste0(parameter, "[dif: ", cell_names, "]"))
-  }
-
-  if(length(level_names) == 1){
-    return(paste0(parameter, "[dif: ", level_grid[[1]], "]"))
-  }
-
-  parameter_terms <- strsplit(parameter, "__xXx__", fixed = TRUE)[[1]]
-  factor_terms <- names(level_names)
-  factor_positions <- vapply(factor_terms, function(factor_term) {
-    factor_position <- which(
-      parameter_terms == factor_term |
-        endsWith(parameter_terms, paste0("_", factor_term))
-    )
-
-    if(length(factor_position) == 1){
-      return(factor_position)
-    }
-
-    return(NA_integer_)
-  }, integer(1))
-
-  if(!all(!is.na(factor_positions))){
-    return(paste0(parameter, "[dif: ", cell_names, "]"))
-  }
-
-  vapply(seq_len(nrow(level_grid)), function(level_i) {
-    formatted_terms <- parameter_terms
-
-    for(factor_term in factor_terms){
-      factor_position <- factor_positions[[factor_term]]
-      prefix_length <- nchar(formatted_terms[[factor_position]]) - nchar(factor_term)
-      formatted_terms[[factor_position]] <- paste0(
-        substr(formatted_terms[[factor_position]], 1, prefix_length),
-        factor_term,
-        "[dif: ",
-        level_grid[[factor_term]][level_i],
-        "]"
-      )
-    }
-
-    paste0(formatted_terms, collapse = "__xXx__")
-  }, character(1))
-}
-
-.factor_object_contrast_name <- function(x){
-
-  if(is.prior.independent(x) || isTRUE(attr(x, "independent"))){
-    return("contr.independent")
-  }else if(is.prior.treatment(x) || isTRUE(attr(x, "treatment"))){
-    return("contr.treatment")
-  }else if(is.prior.orthonormal(x) || isTRUE(attr(x, "orthonormal"))){
-    return("contr.orthonormal")
-  }else if(is.prior.meandif(x) || isTRUE(attr(x, "meandif"))){
-    return("contr.meandif")
-  }
-
-  return(NULL)
-}
-
-.factor_contrast_matrix <- function(level_names, contrast){
-
-  switch(
-    contrast,
-    "contr.treatment"   = stats::contr.treatment(level_names),
-    "contr.independent" = contr.independent(level_names),
-    "contr.orthonormal" = contr.orthonormal(level_names),
-    "contr.meandif"     = contr.meandif(level_names),
-    stop("Unsupported factor contrast '", contrast, "'.", call. = FALSE)
-  )
-}
-
-.add_factor_metadata_from_named_objects <- function(x, parameter, objects){
-
-  level_names <- .factor_level_list(x)
-  if(is.null(level_names)){
-    return(x)
-  }
-
-  factor_terms <- names(level_names)
-  if(is.null(attr(x, "factor_terms"))){
-    attr(x, "factor_terms") <- factor_terms
-  }
-
-  factor_contrasts <- attr(x, "factor_contrasts")
-  if(is.null(factor_contrasts)){
-    factor_contrasts <- rep(NA_character_, length(factor_terms))
-    names(factor_contrasts) <- factor_terms
-  }else{
-    factor_contrasts <- as.character(factor_contrasts)
-    if(is.null(names(factor_contrasts))){
-      names(factor_contrasts) <- factor_terms[seq_along(factor_contrasts)]
-    }
-    factor_contrasts <- factor_contrasts[factor_terms]
-  }
-
-  formula_parameter <- attr(x, "formula_parameter")
-  if(is.null(formula_parameter)){
-    formula_parameter <- attr(x, "parameter")
-    if(!is.null(formula_parameter) && identical(formula_parameter, parameter)){
-      formula_parameter <- NULL
-    }
-  }
-  if(is.null(formula_parameter) && grepl("_", parameter, fixed = TRUE)){
-    formula_parameter <- sub("_.*$", "", parameter)
-  }
-
-  for(factor_term in factor_terms[is.na(factor_contrasts)]){
-    candidates <- factor_term
-    if(!is.null(formula_parameter)){
-      candidates <- c(paste0(formula_parameter, "_", factor_term), candidates)
-    }
-    candidates <- unique(candidates)
-    candidates <- candidates[candidates %in% names(objects)]
-
-    for(candidate in candidates){
-      contrast <- .factor_object_contrast_name(objects[[candidate]])
-      if(!is.null(contrast)){
-        factor_contrasts[[factor_term]] <- contrast
-        break
-      }
-    }
-  }
-
-  if(any(is.na(factor_contrasts)) && length(factor_terms) == 1){
-    fallback_contrast <- .factor_object_contrast_name(x)
-    if(!is.null(fallback_contrast)){
-      factor_contrasts[is.na(factor_contrasts)] <- fallback_contrast
-    }
-  }
-
-  attr(x, "factor_contrasts") <- factor_contrasts
-  return(x)
-}
-
-.factor_term_design_from_formula <- function(formula, data, predictors, predictors_type, term_index, term_components, factor_terms, has_intercept){
-
-  level_names <- lapply(factor_terms, function(factor_term) levels(data[[factor_term]]))
-  names(level_names) <- factor_terms
-  cell_grid <- .factor_cell_grid(level_names)
-
-  grid_data <- data[rep(1, nrow(cell_grid)), predictors, drop = FALSE]
-  rownames(grid_data) <- NULL
-
-  for(predictor in predictors){
-    if(predictors_type[[predictor]] == "factor"){
-      predictor_values <- if(predictor %in% factor_terms){
-        cell_grid[[predictor]]
-      }else{
-        rep(levels(data[[predictor]])[1], nrow(cell_grid))
-      }
-      grid_data[[predictor]] <- factor(predictor_values, levels = levels(data[[predictor]]))
-      stats::contrasts(grid_data[[predictor]]) <- attr(data[[predictor]], "contrasts")
-    }else{
-      grid_data[[predictor]] <- if(predictor %in% term_components) 1 else 0
-    }
-  }
-
-  grid_model_frame <- stats::model.frame(formula, data = grid_data)
-  grid_model_matrix <- stats::model.matrix(grid_model_frame, formula = formula, data = grid_data)
-  grid_terms_indexes <- attr(grid_model_matrix, "assign")
-  if(has_intercept){
-    grid_terms_indexes <- grid_terms_indexes + 1
-    grid_terms_indexes[1] <- 0
-  }
-
-  design <- grid_model_matrix[, grid_terms_indexes == term_index, drop = FALSE]
-
-  return(list(
-    design     = unname(design),
-    cell_grid  = cell_grid,
-    cell_names = .factor_cell_labels(level_names),
-    level_names = level_names
-  ))
-}
-
-.factor_term_design_from_metadata <- function(x){
-
-  factor_design <- attr(x, "factor_design")
-  if(!is.null(factor_design)){
-    factor_design <- as.matrix(factor_design)
-    cell_names <- attr(x, "factor_cell_names")
-    level_names <- .factor_level_list(x)
-    if(is.null(cell_names)){
-      if(is.null(level_names)){
-        stop("Factor level names are missing and the factor contrast cannot be transformed.", call. = FALSE)
-      }
-      cell_names <- .factor_cell_labels(level_names)
-    }
-    return(list(
-      design     = factor_design,
-      cell_names = cell_names,
-      level_names = level_names
-    ))
-  }
-
-  level_names <- .factor_level_list(x)
-  if(is.null(level_names)){
-    stop("Factor level names are missing and the factor contrast cannot be transformed.", call. = FALSE)
-  }
-
-  factor_terms <- names(level_names)
-  factor_contrasts <- attr(x, "factor_contrasts")
-  if(is.null(factor_contrasts)){
-    fallback_contrast <- .factor_object_contrast_name(x)
-    if(is.null(fallback_contrast) || length(factor_terms) > 1){
-      stop("Factor contrast metadata is missing and cannot be inferred.", call. = FALSE)
-    }
-    factor_contrasts <- rep(fallback_contrast, length(factor_terms))
-    names(factor_contrasts) <- factor_terms
-  }else{
-    factor_contrasts <- as.character(factor_contrasts)
-    if(is.null(names(factor_contrasts))){
-      names(factor_contrasts) <- factor_terms[seq_along(factor_contrasts)]
-    }
-    factor_contrasts <- factor_contrasts[factor_terms]
-  }
-
-  if(any(is.na(factor_contrasts))){
-    stop("Factor contrast metadata is incomplete and cannot be inferred.", call. = FALSE)
-  }
-
-  contrast_matrices <- lapply(factor_terms, function(factor_term) {
-    .factor_contrast_matrix(level_names[[factor_term]], factor_contrasts[[factor_term]])
-  })
-  names(contrast_matrices) <- factor_terms
-
-  level_grid <- expand.grid(lapply(level_names, seq_along), KEEP.OUT.ATTRS = FALSE)
-  coef_grid <- expand.grid(lapply(contrast_matrices, function(contrast_matrix) seq_len(ncol(contrast_matrix))), KEEP.OUT.ATTRS = FALSE)
-
-  design <- matrix(NA_real_, nrow = nrow(level_grid), ncol = nrow(coef_grid))
-  for(row_i in seq_len(nrow(level_grid))){
-    for(col_i in seq_len(nrow(coef_grid))){
-      design[row_i, col_i] <- prod(vapply(factor_terms, function(factor_term) {
-        contrast_matrices[[factor_term]][level_grid[[factor_term]][row_i], coef_grid[[factor_term]][col_i]]
-      }, numeric(1)))
-    }
-  }
-
-  return(list(
-    design     = design,
-    cell_names = .factor_cell_labels(level_names),
-    level_names = level_names
-  ))
-}
-
-.transform_factor_contrast_samples <- function(coefficient_samples, metadata, parameter, transformed_class){
-
-  if(!is.matrix(coefficient_samples)){
-    coefficient_samples <- matrix(coefficient_samples, ncol = 1)
-  }
-
-  design_info <- .factor_term_design_from_metadata(metadata)
-  design <- design_info[["design"]]
-
-  if(ncol(coefficient_samples) != ncol(design)){
-    stop(
-      "The factor contrast design for '", parameter, "' has ", ncol(design),
-      " coefficient columns, but the samples contain ", ncol(coefficient_samples), ".",
-      call. = FALSE
-    )
-  }
-
-  transformed_samples <- coefficient_samples %*% t(design)
-  colnames(transformed_samples) <- .factor_contrast_parameter_names(
-    parameter = parameter,
-    level_names = design_info[["level_names"]],
-    cell_names = design_info[["cell_names"]]
-  )
-
-  old_attributes <- attributes(coefficient_samples)
-  old_class <- class(coefficient_samples)
-  old_attributes <- old_attributes[!names(old_attributes) %in% c("dim", "dimnames", "names", "class", "level_names")]
-  attributes(transformed_samples) <- c(attributes(transformed_samples), old_attributes)
-  attr(transformed_samples, "level_names")       <- design_info[["cell_names"]]
-  attr(transformed_samples, "factor_cell_names") <- design_info[["cell_names"]]
-  class(transformed_samples) <- unique(c(old_class, class(transformed_samples), transformed_class))
-
-  return(transformed_samples)
-}
-
-#' @title Transform factor posterior samples into differences from the mean
-#'
-#' @description Transforms posterior samples from model-averaged posterior
-#' distributions based on meandif/orthonormal prior distributions into differences from
-#' the mean.
-#'
-#' @param samples (a list) of mixed posterior distributions created with
-#' \code{mix_posteriors} function
-#'
-#' @return \code{transform_meandif_samples} returns a named list of mixed posterior
-#' distributions (either a vector of matrix).
-#'
-#' @seealso [mix_posteriors] [transform_meandif_samples] [transform_meandif_samples] [transform_orthonormal_samples]
-#'
-#' @export
-transform_factor_samples <- function(samples){
-
-  check_list(samples, "samples", allow_NULL = TRUE)
-
-  samples <- transform_meandif_samples(samples)
-  samples <- transform_orthonormal_samples(samples)
-
-  return(samples)
-}
-
-#' @title Transform meandif posterior samples into differences from the mean
-#'
-#' @description Transforms posterior samples from model-averaged posterior
-#' distributions based on meandif prior distributions into differences from
-#' the mean.
-#'
-#' @param samples (a list) of mixed posterior distributions created with
-#' \code{mix_posteriors} function
-#'
-#' @return \code{transform_meandif_samples} returns a named list of mixed posterior
-#' distributions (either a vector of matrix).
-#'
-#' @seealso [mix_posteriors] [contr.meandif]
-#'
-#' @export
-transform_meandif_samples <- function(samples){
-
-  check_list(samples, "samples", allow_NULL = TRUE)
-
-  for(i in seq_along(samples)){
-    if(!inherits(samples[[i]],"mixed_posteriors.meandif_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && isTRUE(attr(samples[[i]], "meandif"))){
-
-      meandif_samples <- .add_factor_metadata_from_named_objects(samples[[i]], names(samples)[i], samples)
-      samples[[i]] <- .transform_factor_contrast_samples(
-        coefficient_samples = meandif_samples,
-        metadata            = meandif_samples,
-        parameter           = names(samples)[i],
-        transformed_class   = "mixed_posteriors.meandif_transformed"
-      )
-    }
-  }
-
-  return(samples)
-}
-
-#' @title Transform orthonomal posterior samples into differences from the mean
-#'
-#' @description Transforms posterior samples from model-averaged posterior
-#' distributions based on orthonormal prior distributions into differences from
-#' the mean.
-#'
-#' @param samples (a list) of mixed posterior distributions created with
-#' \code{mix_posteriors} function
-#'
-#' @return \code{transform_orthonormal_samples} returns a named list of mixed posterior
-#' distributions (either a vector of matrix).
-#'
-#' @seealso [mix_posteriors] [contr.orthonormal]
-#'
-#' @export
-transform_orthonormal_samples <- function(samples){
-
-  check_list(samples, "samples", allow_NULL = TRUE)
-
-  for(i in seq_along(samples)){
-    if(!inherits(samples[[i]],"mixed_posteriors.orthonormal_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && isTRUE(attr(samples[[i]], "orthonormal"))){
-
-      orthonormal_samples <- .add_factor_metadata_from_named_objects(samples[[i]], names(samples)[i], samples)
-      samples[[i]] <- .transform_factor_contrast_samples(
-        coefficient_samples = orthonormal_samples,
-        metadata            = orthonormal_samples,
-        parameter           = names(samples)[i],
-        transformed_class   = "mixed_posteriors.orthonormal_transformed"
-      )
-    }
-  }
-
-  return(samples)
-}
-
-# not part of transform factor samples (as it's usefull only for marginal effects)
-transform_treatment_samples <- function(samples){
-
-  check_list(samples, "samples", allow_NULL = TRUE)
-
-  for(i in seq_along(samples)){
-    if(!inherits(samples[[i]],"mixed_posteriors.treatment_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && isTRUE(attr(samples[[i]], "treatment"))){
-
-      treatment_samples <- .add_factor_metadata_from_named_objects(samples[[i]], names(samples)[i], samples)
-      samples[[i]] <- .transform_factor_contrast_samples(
-        coefficient_samples = treatment_samples,
-        metadata            = treatment_samples,
-        parameter           = names(samples)[i],
-        transformed_class   = "mixed_posteriors.treatment_transformed"
-      )
-    }
-  }
-
-  return(samples)
-}
-
-
-# Helper: Parse a term name into its component variable names
-# e.g., "mu_x1__xXx__x2" with prefix "mu" -> c("x1", "x2")
-# e.g., "mu_intercept" -> character(0) (intercept has no components)
-# e.g., "mu_x1" -> c("x1")
-.parse_term_components <- function(term_name, prefix) {
-  # Remove prefix
-  term_part <- sub(paste0("^", prefix, "_"), "", term_name)
-
-  # Check if it's the intercept
-  if (term_part == "intercept") {
-    return(character(0))
-  }
-
-  # Indexed factor terms attach the index to the full term name. Strip the
-  # trailing index so scaled continuous components inside interactions are
-  # still detected correctly (e.g., alloc__xXx__year[1] -> alloc, year).
-  term_part <- sub("\\[[^]]+\\]$", "", term_part)
-
-  # Split by interaction separator
-  components <- strsplit(term_part, "__xXx__", fixed = TRUE)[[1]]
-  return(components)
-}
-
-
-# Helper: Parse a term into scaled components and an unscaled identity string
-# used to determine which coefficients can contribute to each other during
-# de-standardization.
-.parse_unscale_term_structure <- function(term_name, prefix, scaled_vars) {
-
-  term_part <- sub(paste0("^", prefix, "_"), "", term_name)
-
-  if (term_part == "intercept") {
-    return(list(
-      components  = character(0),
-      scaled      = character(0),
-      unscaled_id = ""
-    ))
-  }
-
-  term_index <- ""
-  if (grepl("\\[[^]]+\\]$", term_part)) {
-    term_index <- sub("^.*(\\[[^]]+\\])$", "\\1", term_part)
-    term_core  <- sub("\\[[^]]+\\]$", "", term_part)
-  } else {
-    term_core <- term_part
-  }
-
-  components <- strsplit(term_core, "__xXx__", fixed = TRUE)[[1]]
-  is_scaled  <- components %in% scaled_vars
-
-  unscaled_components <- components[!is_scaled]
-  unscaled_id <- paste(unscaled_components, collapse = "__xXx__")
-
-  if (nzchar(term_index) && length(unscaled_components) > 0) {
-    unscaled_id <- paste0(unscaled_id, term_index)
-  }
-
-  return(list(
-    components  = components,
-    scaled      = components[is_scaled],
-    unscaled_id = unscaled_id
-  ))
-}
-
-
-# Helper: Check if set A is a subset of set B (including equality)
-.is_subset <- function(A, B) {
-
-  length(A) == 0 || all(A %in% B)
-}
-
-
-# Helper: Compare lower-order unscaled term identities. Two-level factor main
-# effects are stored without [1], while their interactions are indexed.
-.unscale_ids_match <- function(target_id, source_id) {
-
-  identical(target_id, source_id) ||
-    (nzchar(target_id) && !grepl("\\[[^]]+\\]$", target_id) && identical(paste0(target_id, "[1]"), source_id))
-}
-
-
-# Helper: Validate the nested formula_scale structure used for unscaling.
-.check_formula_scale_info <- function(formula_scale, name = "formula_scale") {
-
-  check_list(formula_scale, name)
-
-  if(is.null(names(formula_scale)) || anyNA(names(formula_scale)) || any(names(formula_scale) == ""))
-    stop(paste0("The '", name, "' argument must be a named nested list keyed by parameter name."), call. = FALSE)
-
-  for(param_name in names(formula_scale)){
-    param_scale <- formula_scale[[param_name]]
-    check_list(param_scale, paste0(name, "[['", param_name, "]]"))
-
-    if(length(param_scale) == 0)
-      next
-
-    if(is.null(names(param_scale)) || anyNA(names(param_scale)) || any(names(param_scale) == ""))
-      stop(paste0("The '", name, "[['", param_name, "]]" ,"' entry must be a named list keyed by parameter term."), call. = FALSE)
-
-    for(term_name in names(param_scale)){
-      term_scale <- param_scale[[term_name]]
-
-      check_list(
-        term_scale,
-        paste0(name, "[['", param_name, "]][['", term_name, "]]"),
-        check_names = c("mean", "sd"),
-        all_objects = TRUE,
-        allow_other = TRUE
-      )
-      check_real(
-        term_scale[["mean"]],
-        paste0(name, "[['", param_name, "]][['", term_name, "]][['mean'] ]"),
-        allow_NA = FALSE
-      )
-      check_real(
-        term_scale[["sd"]],
-        paste0(name, "[['", param_name, "]][['", term_name, "]][['sd'] ]"),
-        lower = 0,
-        allow_bound = FALSE,
-        allow_NA = FALSE
-      )
-    }
-  }
-
-  invisible(NULL)
-}
-
-
-# Helper: warn when formula_scale entries do not map to posterior terms.
-.warn_unused_formula_scale_terms <- function(term_names, formula_scale, prefix) {
-
-  scaled_terms <- names(formula_scale)
-  if(length(scaled_terms) == 0)
-    return(invisible(NULL))
-
-  scaled_vars <- sub(paste0("^", prefix, "_"), "", scaled_terms)
-  term_components <- unique(unlist(lapply(term_names, .parse_term_components, prefix = prefix), use.names = FALSE))
-  unused_terms <- scaled_terms[!scaled_vars %in% term_components]
-
-  if(length(unused_terms) == 0)
-    return(invisible(NULL))
-
-  if(length(unused_terms) == length(scaled_terms)){
-    warning(
-      paste0(
-        "Ignoring all formula_scale[['", prefix, "]] entries because none match posterior terms: '",
-        paste0(unused_terms, collapse = "', '"),
-        "'. Samples for this parameter prefix are returned unchanged."
-      ),
-      call. = FALSE,
-      immediate. = TRUE
-    )
-  }else{
-    warning(
-      paste0(
-        "Ignoring unused formula_scale[['", prefix, "]] entries: '",
-        paste0(unused_terms, collapse = "', '"),
-        "'. Matched entries are still applied."
-      ),
-      call. = FALSE,
-      immediate. = TRUE
-    )
-  }
-
-  invisible(NULL)
-}
-
-
-# Helper: Build the transformation matrix for unscaling coefficients
-#
-# For each target term T and source term S, computes the coefficient M[T,S] such that:
-#   coef_orig[T] = sum over S of M[T,S] * coef_z[S]
-#
-# The formula is based on expanding products of (x_i - mu_i)/sigma_i terms.
-# For S to contribute to T:
-#   1. T_unscaled == S_unscaled (unscaled components must match exactly)
-#   2. T_scaled is a subset of S_scaled
-#
-# The contribution is: (-1)^|extra| * prod(mu_extra) / prod(sigma_S_scaled)
-# where extra = S_scaled \ T_scaled
-#
-# @param term_names Character vector of all term names in the posterior
-# @param formula_scale Named list with scaling info (mean, sd) for scaled predictors
-# @param prefix The parameter prefix (e.g., "mu")
-# @return A square transformation matrix
-.build_unscale_matrix <- function(term_names, formula_scale, prefix) {
-
-  n_terms <- length(term_names)
-  M <- diag(n_terms)  # Start with identity matrix
-  rownames(M) <- colnames(M) <- term_names
-
-  # Extract the variable names that are scaled (without prefix)
-  scaled_vars <- sub(paste0("^", prefix, "_"), "", names(formula_scale))
-
-  # Parse all terms into their scaled components and unscaled identity.
-  term_structure <- lapply(
-    term_names,
-    .parse_unscale_term_structure,
-    prefix = prefix,
-    scaled_vars = scaled_vars
-  )
-  names(term_structure) <- term_names
-
-  term_components <- lapply(term_structure, `[[`, "components")
-  term_scaled <- lapply(term_structure, `[[`, "scaled")
-  term_unscaled <- vapply(term_structure, `[[`, character(1), "unscaled_id")
-
-  # Warn about high-order interactions
-  max_order <- max(sapply(term_components, length))
-  if (max_order >= 5) {
-    warning("Model contains ", max_order, "-way or higher interactions. ",
-            "Unscaling transformation may be computationally intensive.",
-            immediate. = TRUE)
-  }
-
-  # Build the transformation matrix
-  for (t_idx in seq_along(term_names)) {
-    T_name <- term_names[t_idx]
-    T_scaled <- term_scaled[[T_name]]
-    T_unscaled <- term_unscaled[[T_name]]
-
-    for (s_idx in seq_along(term_names)) {
-      S_name <- term_names[s_idx]
-      S_scaled <- term_scaled[[S_name]]
-      S_unscaled <- term_unscaled[[S_name]]
-
-      # Check contribution conditions
-      # 1. Unscaled parts must match exactly
-      if (!.unscale_ids_match(T_unscaled, S_unscaled)) next
-
-      # 2. T_scaled must be a subset of S_scaled
-      if (!.is_subset(T_scaled, S_scaled)) next
-
-      # 3. S must have at least one scaled component (otherwise no transformation needed)
-      if (length(S_scaled) == 0) {
-        # No scaling for this source term - keep identity (already set)
-        next
-      }
-
-      # Compute the coefficient
-      extra_scaled <- setdiff(S_scaled, T_scaled)
-
-      # Sign: (-1)^|extra|
-      sign <- (-1)^length(extra_scaled)
-
-      # Product of means for extra scaled components
-      if (length(extra_scaled) > 0) {
-        extra_params <- paste0(prefix, "_", extra_scaled)
-        mean_product <- prod(sapply(extra_params, function(p) formula_scale[[p]]$mean))
-      } else {
-        mean_product <- 1
-      }
-
-      # Product of SDs for all scaled components in S
-      S_scaled_params <- paste0(prefix, "_", S_scaled)
-      sd_product <- prod(sapply(S_scaled_params, function(p) formula_scale[[p]]$sd))
-
-      # Contribution coefficient
-      M[t_idx, s_idx] <- sign * mean_product / sd_product
-    }
-  }
-
-  return(M)
-}
-
-
-# Helper: Apply unscaling transformation to a matrix of posterior samples
-#
-# @param posterior Matrix with samples in rows, parameters in columns
-# Apply the unscaling transformation to posterior samples
-#
-# @param posterior Matrix of posterior samples with parameter names as column names
-# @param formula_scale Nested list with scaling info keyed by parameter name:
-#   list(mu = list(mu_x1 = list(mean, sd)), log_sigma = list(log_sigma_x = list(mean, sd)))
-# @return Transformed posterior matrix
-.apply_unscale_transform <- function(posterior, formula_scale) {
-
-  if (is.null(formula_scale) || length(formula_scale) == 0) {
-    return(posterior)
-  }
-
-  # Handle nested structure: iterate over each parameter
-  matched_prefix <- FALSE
-  for (param_name in names(formula_scale)) {
-    param_scale <- formula_scale[[param_name]]
-    affected_cols <- grep(paste0("^", param_name, "_"), colnames(posterior), value = TRUE)
-    if(length(affected_cols) == 0)
-      next
-
-    matched_prefix <- TRUE
-    posterior <- .apply_unscale_transform_single(posterior, param_scale, prefix = param_name)
-  }
-
-  if(!matched_prefix){
-    warning(
-      "Ignoring formula_scale because none of its parameter prefixes match the posterior columns.",
-      call. = FALSE,
-      immediate. = TRUE
-    )
-  }
-
-  return(posterior)
-}
-
-# Helper: Apply unscaling for a single parameter's predictors
-# @param posterior Matrix of posterior samples
-# @param formula_scale Flat list of scaling info: list(mu_x1 = list(mean, sd), mu_x2 = list(mean, sd))
-# @param prefix Parameter prefix (e.g., "mu")
-# @return Transformed posterior matrix
-.apply_unscale_transform_single <- function(posterior, formula_scale, prefix) {
-  
-  if (is.null(formula_scale) || length(formula_scale) == 0) {
-    return(posterior)
-  }
-
-  # Check if this parameter uses log(intercept)
-  log_intercept <- isTRUE(attr(formula_scale, "log_intercept"))
-  intercept_col <- paste0(prefix, "_intercept")
-
-  # Identify which columns are affected by the transformation
-  affected_cols <- grep(paste0("^", prefix, "_"), colnames(posterior), value = TRUE)
-  random_sd_cols <- grep(paste0("^", prefix, "__xREx__"), affected_cols, value = TRUE)
-  fixed_cols     <- setdiff(affected_cols, random_sd_cols)
-
-  if (length(affected_cols) == 0) {
-    return(posterior)
-  }
-
-  if(length(fixed_cols) > 0){
-    .warn_unused_formula_scale_terms(fixed_cols, formula_scale, prefix)
-  }
-
-  # For log(intercept): transform to log scale before unscaling, then exp() back
-  # This works because: log_sigma = log(intercept) + beta * x_z
-  # is equivalent to: log_sigma = log_int + beta * x_z (standard additive form)
-  # where log_int = log(intercept)
-  if (length(fixed_cols) > 0 && log_intercept && intercept_col %in% colnames(posterior)) {
-    posterior[, intercept_col] <- log(posterior[, intercept_col])
-  }
-
-  # Build and apply standard transformation matrix
-  if(length(fixed_cols) > 0){
-    M <- .build_unscale_matrix(fixed_cols, formula_scale, prefix)
-    posterior[, fixed_cols] <- posterior[, fixed_cols, drop = FALSE] %*% t(M)
-  }
-
-  # Transform intercept back from log scale
-  if (length(fixed_cols) > 0 && log_intercept && intercept_col %in% colnames(posterior)) {
-    posterior[, intercept_col] <- exp(posterior[, intercept_col])
-  }
-
-  posterior <- .apply_random_sd_unscale(posterior, random_sd_cols, formula_scale, prefix)
-
-  return(posterior)
-}
-
-.apply_random_sd_unscale <- function(posterior, random_sd_cols, formula_scale, prefix){
-
-  if(length(random_sd_cols) == 0){
-    return(posterior)
-  }
-
-  term_map <- .random_sd_term_map(random_sd_cols, formula_scale, prefix)
-  if(length(term_map) == 0){
-    return(posterior)
-  }
-
-  random_sd_cols <- names(term_map)
-  group_keys <- vapply(random_sd_cols, .random_sd_group_key,
-                       character(1), term_map = term_map, prefix = prefix)
-
-  for(group_key in unique(group_keys)){
-    group_cols <- random_sd_cols[group_keys == group_key]
-    group_terms <- unname(term_map[group_cols])
-
-    if(any(duplicated(group_terms))){
-      next
-    }
-
-    pseudo_terms <- paste0(prefix, "_", group_terms)
-    names(pseudo_terms) <- group_cols
-    M <- .build_unscale_matrix(unname(pseudo_terms), formula_scale, prefix)
-
-    source_sd <- posterior[, group_cols, drop = FALSE]
-    transformed_sd <- matrix(NA_real_, nrow = nrow(source_sd), ncol = ncol(source_sd))
-    colnames(transformed_sd) <- group_cols
-
-    for(target_i in seq_along(group_cols)){
-      transformed_var <- rowSums(t(t(source_sd^2) * (M[target_i, ]^2)))
-      transformed_sd[, target_i] <- sqrt(transformed_var)
-    }
-
-    posterior[, group_cols] <- transformed_sd
-  }
-
-  posterior
-}
-.random_sd_term_map <- function(random_sd_cols, formula_scale, prefix){
-
-  metadata <- attr(formula_scale, "random_effect_terms")
-  if(!is.null(metadata) && length(metadata) > 0){
-    base_cols <- sub("\\[[^]]+\\]$", "", random_sd_cols)
-    term_map <- metadata[base_cols]
-    names(term_map) <- random_sd_cols
-    term_map <- term_map[!is.na(term_map)]
-    if(length(term_map) > 0){
-      return(term_map)
-    }
-  }
-
-  scaled_vars <- sub(paste0("^", prefix, "_"), "", names(formula_scale))
-  possible_terms <- c("intercept", scaled_vars)
-  names(possible_terms) <- possible_terms
-
-  term_map <- vapply(random_sd_cols, function(col){
-    rest <- sub(paste0("^", prefix, "__xREx__"), "", sub("\\[[^]]+\\]$", "", col))
-    candidates <- possible_terms[vapply(possible_terms, function(term){
-      endsWith(rest, paste0("_", term))
-    }, logical(1))]
-    if(length(candidates) == 0){
-      return(NA_character_)
-    }
-    candidates[which.max(nchar(candidates))]
-  }, character(1))
-
-  term_map[!is.na(term_map)]
-}
-.random_sd_group_key <- function(col, term_map, prefix){
-
-  base_col <- sub("\\[[^]]+\\]$", "", col)
-  rest <- sub(paste0("^", prefix, "__xREx__"), "", base_col)
-  term <- unname(term_map[[col]])
-  sub(paste0("_", term, "$"), "", rest)
-}
-
-
-#' @title Transform standardized posterior samples back to original scale
-#'
-#' @description Transforms posterior samples from standardized continuous
-#' predictors back to the original scale. This function is used when predictors
-#' were standardized during model fitting via the \code{formula_scale} parameter.
-#'
-#' @param fit a fitted model object with \code{formula_scale} attribute, or
-#' a matrix of posterior samples
-#' @param formula_scale nested list containing standardization information keyed by
-#' parameter name. Each parameter entry contains scaling info (mean and sd) for
-#' each standardized predictor, e.g., \code{list(mu = list(mu_x1 = list(mean = 0, sd = 1)))}.
-#' If \code{fit} is provided and has a \code{formula_scale} attribute, this will be used automatically.
-#'
-#' @details The function transforms regression coefficients and intercepts
-#' to account for predictor standardization using a combinatorial approach that
-#' correctly handles interactions of any order.
-#'
-#' For a k-way interaction between standardized predictors, the expansion of
-#' \eqn{\prod_{i} (x_i - \mu_i)/\sigma_i} contributes to all lower-order terms.
-#' The contribution to a target term T from a source term S (where T is a subset
-#' of S's scaled components) is:
-#' \deqn{(-1)^{|extra|} \cdot \prod_{i \in extra} \mu_i / \prod_{i \in S_{scaled}} \sigma_i}
-#' where \eqn{extra = S_{scaled} \setminus T_{scaled}}.
-#'
-#' @return \code{transform_scale_samples} returns posterior samples transformed
-#' back to the original predictor scale.
-#'
-#' @seealso [JAGS_formula()] [JAGS_fit()]
-#'
-#' @export
-transform_scale_samples <- function(fit, formula_scale = NULL){
-
-  # extract formula_scale from fit if available
-  if(is.null(formula_scale) && !is.null(attr(fit, "formula_scale"))){
-    formula_scale <- attr(fit, "formula_scale")
-  }
-
-  if(is.null(formula_scale) || length(formula_scale) == 0){
-    # no scaling information, return as is
-    return(fit)
-  }
-
-  .check_formula_scale_info(formula_scale)
-
-  # extract posterior samples
-  if(inherits(fit, "runjags") || inherits(fit, "BayesTools_fit")){
-    posterior <- as.matrix(.fit_to_posterior(fit))
-  }else if(is.matrix(fit)){
-    posterior <- fit
-  }else{
-    stop("'fit' must be a fitted model object or a matrix of posterior samples.")
-  }
-
-  # Apply the combinatorial unscaling transformation
-  posterior <- .apply_unscale_transform(posterior, formula_scale)
-
-  return(posterior)
-}
-
-
-#' @title Transform prior samples to original scale
-#'
-#' @description Generate prior samples and transform them using the same
-#' matrix transformation as posterior samples. This is the correct approach for
-#' visualizing priors on the original (unscaled) scale, especially for the intercept
-#' which depends on contributions from multiple coefficient priors.
-#'
-#' @param fit a fitted model object with \code{prior_list} and optionally
-#' \code{formula_scale} attributes
-#' @param n_samples number of samples to generate (default: 10000)
-#' @param seed random seed for reproducibility (optional)
-#' @param formula_scale optional nested list containing standardization information.
-#' If not provided, extracted from \code{fit} attribute.
-#'
-#' @details When models use auto-scaling (standardizing predictors), the posterior
-#' samples are on the standardized scale. To correctly visualize priors on the
-#' original scale, we cannot simply apply a linear transformation to individual
-#' priors because the intercept on the original scale is a weighted sum of
-#' multiple priors:
-#'
-#' \deqn{\beta_0^{orig} = \beta_0^* - \sum_i \frac{\mu_i}{\sigma_i} \beta_i^*}
-#'
-
-#' This function generates samples from ALL priors simultaneously and applies
-#' the same matrix transformation used for posterior samples, which correctly
-#' handles the intercept and all other parameters.
-#'
-#' @return A matrix of prior samples on the original (unscaled) scale, with
-#' columns matching the structure of posterior samples.
-#'
-#' @seealso [transform_scale_samples()] [plot_posterior()]
-#'
-#' @examples
-#' # With a fitted model that used formula_scale:
-#' # prior_samples <- transform_prior_samples(fit, n_samples = 10000)
-#' # This can then be used with density() or for custom plotting
-#'
-#' @export
-transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula_scale = NULL){
-
-  check_int(n_samples, "n_samples", lower = 1)
-  check_int(seed, "seed", allow_NULL = TRUE)
-
-  # Extract prior_list from fit
-
-  prior_list <- attr(fit, "prior_list")
-
-  if(is.null(prior_list)){
-    stop("'fit' must have 'prior_list' attribute.")
-  }
-
-  # Extract formula_scale from fit if not provided
-  if(is.null(formula_scale)){
-    formula_scale <- attr(fit, "formula_scale")
-  }
-
-  # Get posterior column names for structure matching
-  if(inherits(fit, "runjags") || inherits(fit, "BayesTools_fit")){
-    posterior <- as.matrix(.fit_to_posterior(fit))
-  }else{
-    stop("'fit' must be a fitted model object.")
-  }
-
-  prior_samples <- .generate_transformed_prior_samples(
-    prior_list   = prior_list,
-    column_names = colnames(posterior),
-    n_samples    = n_samples,
-    seed         = seed,
-    formula_scale = formula_scale
-  )
-
-  return(prior_samples)
-}
-
-
-# Helper: Generate prior samples and apply the same unscaling transform used
-# for posterior samples.
-#
-# @param prior_list Named list of prior objects
-# @param column_names Column names to match from the posterior structure
-# @param n_samples Number of samples to generate
-# @param seed Optional random seed
-# @param formula_scale Optional nested scaling information
-# @return Matrix with transformed prior samples
-.generate_transformed_prior_samples <- function(prior_list, column_names, n_samples, seed = NULL, formula_scale = NULL){
-
-  if(!is.null(formula_scale) && length(formula_scale) > 0){
-    .check_formula_scale_info(formula_scale)
-  }
-
-  prior_samples <- .generate_prior_sample_matrix(
-    prior_list     = prior_list,
-    n_samples      = n_samples,
-    column_names   = column_names,
-    seed           = seed
-  )
-
-  if(!is.null(formula_scale) && length(formula_scale) > 0){
-    prior_samples <- .apply_unscale_transform(prior_samples, formula_scale)
-  }
-
-  return(prior_samples)
-}
-
-.generate_factor_prior_sample_matrix <- function(prior, parameter, n_samples){
-
-  K <- .get_prior_factor_levels(prior)
-  if(is.null(K) || is.na(K)){
-    stop("The number of factor coefficients for prior '", parameter, "' is unknown.", call. = FALSE)
-  }
-
-  if(is.prior.spike_and_slab(prior)){
-    prior_variable  <- .get_spike_and_slab_variable(prior)
-    prior_inclusion <- .get_spike_and_slab_inclusion(prior)
-    samples <- .generate_factor_prior_sample_matrix(prior_variable, parameter, n_samples)
-    inclusion <- stats::rbinom(n_samples, size = 1, prob = rng(prior_inclusion, n_samples))
-    samples <- samples * inclusion
-  }else if(is.prior.mixture(prior)){
-    prior_weights <- attr(prior, "prior_weights")
-    prior_weights <- prior_weights / sum(prior_weights)
-    components <- sample(seq_along(prior_weights), size = n_samples, replace = TRUE, prob = prior_weights)
-    samples <- matrix(NA_real_, nrow = n_samples, ncol = K)
-
-    for(component in unique(components)){
-      samples[components == component, ] <- .generate_factor_prior_sample_matrix(
-        prior      = prior[[component]],
-        parameter  = parameter,
-        n_samples  = sum(components == component)
-      )
-    }
-  }else if(is.prior.point(prior)){
-    location <- prior$parameters[["location"]]
-    samples <- matrix(rep(location, length.out = K), nrow = n_samples, ncol = K, byrow = TRUE)
-  }else if(is.prior.orthonormal(prior) || is.prior.meandif(prior)){
-    prior$parameters[["K"]] <- K
-    samples <- rng(prior, n_samples, transform_factor_samples = FALSE)
-    samples <- matrix(samples, nrow = n_samples, ncol = K)
-  }else if(is.prior.treatment(prior) || is.prior.independent(prior)){
-    samples <- replicate(K, rng(prior, n_samples, transform_factor_samples = FALSE))
-    samples <- matrix(samples, nrow = n_samples, ncol = K)
-  }else{
-    samples <- rng(prior, n_samples, transform_factor_samples = FALSE)
-    samples <- matrix(samples, nrow = n_samples, ncol = K)
-  }
-
-  colnames(samples) <- .JAGS_prior_factor_names(parameter, prior)
-  return(samples)
-}
-
-
-# Helper: Generate a matrix of prior samples matching posterior structure
-#
-# @param prior_list Named list of prior objects
-# @param n_samples Number of samples to generate
-# @param column_names Optional vector of column names to match (filters output)
-# @param seed Optional random seed
-# @return Matrix with prior samples (rows = samples, columns = parameters)
-.generate_prior_sample_matrix <- function(prior_list, n_samples, column_names = NULL, seed = NULL){
-
-  if(!is.null(seed)){
-    set.seed(seed)
-  }
-
-  # Determine which parameters to sample
-  param_names <- names(prior_list)
-
-  if(is.null(param_names) || length(param_names) == 0){
-    stop("'prior_list' must be a named list of priors.")
-  }
-
-  # Initialize list to collect samples (handles varying column counts per prior)
-  samples_list <- list()
-
-  for(param_name in param_names){
-    prior <- prior_list[[param_name]]
-
-    if(is.null(prior)){
-      # No prior for this parameter - use zeros
-      samples_list[[param_name]] <- matrix(0, nrow = n_samples, ncol = 1)
-      colnames(samples_list[[param_name]]) <- param_name
-
-    }else if(is.prior.none(prior)){
-      # No effect prior - use zeros
-      samples_list[[param_name]] <- matrix(0, nrow = n_samples, ncol = 1)
-      colnames(samples_list[[param_name]]) <- param_name
-
-    }else if(is.prior.factor(prior) || inherits(prior, "prior.factor_mixture") || inherits(prior, "prior.factor_spike_and_slab")){
-      samples_list[[param_name]] <- .generate_factor_prior_sample_matrix(prior, param_name, n_samples)
-
-    }else if(is.prior.point(prior)){
-      # Point prior - constant values
-      samples_list[[param_name]] <- matrix(
-        prior$parameters[["location"]],
-        nrow = n_samples,
-        ncol = 1
-      )
-      colnames(samples_list[[param_name]]) <- param_name
-
-    }else if(is.prior.simple(prior)){
-      # Simple priors - single column
-      samples_list[[param_name]] <- matrix(
-        rng(prior, n_samples),
-        nrow = n_samples,
-        ncol = 1
-      )
-      colnames(samples_list[[param_name]]) <- param_name
-
-    }else if(is.prior.vector(prior)){
-      # Vector priors return matrix from rng
-      temp_samples <- rng(prior, n_samples)
-      if(is.matrix(temp_samples)){
-        n_cols <- ncol(temp_samples)
-        col_names <- paste0(param_name, "[", 1:n_cols, "]")
-        colnames(temp_samples) <- col_names
-        samples_list[[param_name]] <- temp_samples
-      }else{
-        samples_list[[param_name]] <- matrix(temp_samples, nrow = n_samples, ncol = 1)
-        colnames(samples_list[[param_name]]) <- param_name
-      }
-
-    }else{
-      # Fallback for other prior types - try rng
-      temp_samples <- tryCatch(
-        rng(prior, n_samples),
-        error = function(e){
-          warning(sprintf("Could not generate samples for prior '%s': %s. Using zeros.",
-                          param_name, e$message))
-          rep(0, n_samples)
-        }
-      )
-
-      if(is.matrix(temp_samples)){
-        n_cols <- ncol(temp_samples)
-        col_names <- paste0(param_name, "[", 1:n_cols, "]")
-        colnames(temp_samples) <- col_names
-        samples_list[[param_name]] <- temp_samples
-      }else{
-        samples_list[[param_name]] <- matrix(temp_samples, nrow = n_samples, ncol = 1)
-        colnames(samples_list[[param_name]]) <- param_name
-      }
-    }
-  }
-
-  # Combine all samples into one matrix
-  samples <- do.call(cbind, samples_list)
-
-  # Filter to match column_names if provided
-  if(!is.null(column_names)){
-    available_cols <- intersect(column_names, colnames(samples))
-    if(length(available_cols) > 0){
-      samples <- samples[, available_cols, drop = FALSE]
-    }
-  }
-
-  return(samples)
-}
-
-
-#' @title BayesTools Contrast Matrices
-#'
-#' @description BayesTools provides several contrast matrix functions for Bayesian factor analysis.
-#' These functions create different types of contrast matrices that can be used with factor
-#' variables in Bayesian models.
-#'
-#' @details
-#' The package includes the following contrast functions:
-#' \describe{
-#'   \item{\code{contr.orthonormal}}{Return a matrix of orthonormal contrasts.
-#'     Code is based on \code{stanova::contr.bayes} and corresponding to description
-#'     by \insertCite{rouder2012default;textual}{BayesTools}. Returns a matrix with n rows and
-#'     k columns, with k = n - 1 if \code{contrasts = TRUE} and k = n if \code{contrasts = FALSE}.}
-#'   \item{\code{contr.meandif}}{Return a matrix of mean difference contrasts.
-#'     This is an adjustment to the \code{contr.orthonormal} that ascertains that the prior
-#'     distributions on difference between the gran mean and factor level are identical independent
-#'     of the number of factor levels (which does not hold for the orthonormal contrast). Furthermore,
-#'     the contrast is re-scaled so the specified prior distribution exactly corresponds to the prior
-#'     distribution on difference between each factor level and the grand mean -- this is approximately
-#'     twice the scale of \code{contr.orthonormal}. Returns a matrix with n rows and k columns,
-#'     with k = n - 1 if \code{contrasts = TRUE} and k = n if \code{contrasts = FALSE}.}
-#'   \item{\code{contr.independent}}{Return a matrix of independent contrasts -- a level for each term.
-#'     Returns a matrix with n rows and k columns, with k = n if \code{contrasts = TRUE} and k = n
-#'     if \code{contrasts = FALSE}.}
-#' }
-#'
-#' @param n a vector of levels for a factor, or the number of levels
-#' @param contrasts logical indicating whether contrasts should be computed
-#'
-#' @examples
-#' # Orthonormal contrasts
-#' contr.orthonormal(c(1, 2))
-#' contr.orthonormal(c(1, 2, 3))
-#'
-#' # Mean difference contrasts
-#' contr.meandif(c(1, 2))
-#' contr.meandif(c(1, 2, 3))
-#'
-#' # Independent contrasts
-#' contr.independent(c(1, 2))
-#' contr.independent(c(1, 2, 3))
-#'
-#' @references
-#' \insertAllCited{}
-#'
-#' @aliases contr.orthonormal contr.meandif contr.independent
-#' @name contr.BayesTools
-NULL
-
-#' @rdname contr.BayesTools
-#' @export
-contr.orthonormal <- function(n, contrasts = TRUE){
-  # based on: stanova::contr.bayes
-  if(length(n) <= 1L){
-    if(is.numeric(n) && length(n) == 1L && n > 1L){
-      return(TRUE)
-    }else{
-      stop("Not enough degrees of freedom to define contrasts.")
-    }
-  }else{
-    n <- length(n)
-  }
-
-  cont <- diag(n)
-  if(contrasts){
-    a       <- n
-    I_a     <- diag(a)
-    J_a     <- matrix(1, nrow = a, ncol = a)
-    Sigma_a <- I_a - J_a/a
-    cont    <- eigen(Sigma_a)$vectors[, seq_len(a - 1), drop = FALSE]
-  }
-
-  return(cont)
-}
-
-#' @rdname contr.BayesTools
-#' @export
-contr.meandif <- function(n, contrasts = TRUE){
-
-  if(length(n) <= 1L){
-    if(is.numeric(n) && length(n) == 1L && n > 1L){
-      return(TRUE)
-    }else{
-      stop("Not enough degrees of freedom to define contrasts.")
-    }
-  }else{
-    n <- length(n)
-  }
-
-  cont <- diag(n)
-  if(contrasts){
-    a       <- n
-    I_a     <- diag(a)
-    J_a     <- matrix(1, nrow = a, ncol = a)
-    Sigma_a <- I_a - J_a/a
-    cont    <- eigen(Sigma_a)$vectors[, seq_len(a - 1), drop = FALSE]
-    cont    <- cont / (sqrt(1 - 1/n))
-  }
-
-  return(cont)
-}
-
-
-#' @rdname contr.BayesTools
-#' @export
-contr.independent <- function(n, contrasts = TRUE){
-
-  if(length(n) <= 1L){
-    if(is.numeric(n) && length(n) == 1L && n >= 1L){
-      return(TRUE)
-    }else{
-      stop("Not enough degrees of freedom to define contrasts.")
-    }
-  }else{
-    n <- length(n)
-  }
-
-  cont <- diag(x = 1, nrow = n, ncol = n)
-
-  return(cont)
-}
-
-
-#' @title Clean parameter names from JAGS
-#'
-#' @description Removes additional formatting from parameter names outputted from
-#' JAGS.
-#'
-#' @param parameters a vector of parameter names
-#' @param formula_parameter a formula parameter prefix name
-#' @param formula_parameters a vector of formula parameter prefix names
-#' @param formula_random a vector of random effects grouping factors
-#' @param formula_prefix whether the \code{formula_parameters} names should be
-#' kept. Defaults to \code{TRUE}.
-#' @param formula_scale optional nested list containing scaling info. When provided,
-#' intercepts from parameters with \code{log_intercept = TRUE} attribute will be
-#' renamed to \code{exp(intercept)}.
-#'
-#' @examples
-#' format_parameter_names(c("mu_x_cont", "mu_x_fac3t", "mu_x_fac3t__xXx__x_cont"),
-#'                        formula_parameters = "mu")
-#'
-#' @return A character vector with reformatted parameter names.
-#'
-#' @export format_parameter_names
-#' @export JAGS_parameter_names
-#' @name parameter_names
-NULL
-
-#' @rdname parameter_names
-format_parameter_names <- function(parameters, formula_parameters = NULL, formula_random = NULL, formula_prefix = TRUE, formula_scale = NULL){
-
-  check_char(parameters, "parameters", check_length = FALSE)
-  check_char(formula_random, "formula_random", check_length = FALSE, allow_NULL = TRUE)
-  check_char(formula_parameters, "formula_parameters", check_length = FALSE, allow_NULL = TRUE)
-  check_bool(formula_prefix, "formula_prefix")
-  check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
-
-  # rename intercept to exp(intercept) for parameters with log_intercept attribute
-  if(!is.null(formula_scale)){
-    for(param_name in names(formula_scale)){
-      if(isTRUE(attr(formula_scale[[param_name]], "log_intercept"))){
-        intercept_name <- paste0(param_name, "_intercept")
-        if(intercept_name %in% parameters){
-          parameters[parameters == intercept_name] <- paste0(param_name, "_exp(intercept)")
-        }
-      }
-    }
-  }
-
-  for(i in seq_along(formula_parameters)){
-    parameters[grep(paste0(formula_parameters[i], "_"), parameters)] <- gsub(
-      paste0(formula_parameters[i], "_"),
-      if(formula_prefix) paste0("(", formula_parameters[i], ") ") else "",
-      parameters[grep(paste0(formula_parameters[i], "_"), parameters)])
-  }
-
-  for(i in seq_along(formula_random)){
-    temp_which <- grepl(paste0("_xREx__", formula_random[i], "_"), parameters)
-    temp_incl  <- grepl("(inclusion)", parameters)
-    parameters[temp_which] <- gsub(
-      paste0("_xREx__", formula_random[i], "_"),
-      "",
-      parameters[temp_which]
-    )
-    if(any(temp_which &  temp_incl)){
-      parameters[temp_which &  temp_incl] <- paste0(gsub("(inclusion)", "", parameters[temp_which & temp_incl], fixed = TRUE), "|", formula_random[i], " (inclusion)")
-    }
-    if(any(temp_which & !temp_incl)){
-      parameters[temp_which & !temp_incl] <- paste0("sd(", parameters[temp_which & !temp_incl], "|", formula_random[i], ")")
-    }
-  }
-
-  parameters[grep("__xXx__", parameters)] <- gsub("__xXx__", ":", parameters[grep("__xXx__", parameters)])
-
-  return(parameters)
-}
-#' @rdname parameter_names
-JAGS_parameter_names   <- function(parameters, formula_parameter = NULL){
-
-  check_char(parameters, "parameters", check_length = FALSE)
-  check_char(formula_parameter, "formula_parameter", check_length = TRUE, allow_NULL = TRUE)
-
-  if(!is.null(formula_parameter)){
-    parameters <- paste0(formula_parameter, "_", parameters)
-  }
-  parameters <- gsub(":", "__xXx__", parameters)
-
-  return(parameters)
-}
-
-.JAGS_prior_factor_names <- function(parameter, prior){
-
-  levels <- .get_prior_factor_levels(prior)
-  if((is.null(levels) || length(levels) == 0L || is.na(levels)) && "K" %in% names(prior[["parameters"]])){
-    levels <- prior[["parameters"]][["K"]]
-  }
-  if(is.null(levels) || length(levels) == 0L || is.na(levels)){
-    stop("Factor-prior dimensions must be available before constructing JAGS parameter names.", call. = FALSE)
-  }
-
-  if(levels == 1){
-    par_names <- parameter
-  }else{
-    par_names <- paste0(parameter, "[", 1:levels, "]")
-  }
-
-  return(par_names)
 }

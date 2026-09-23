@@ -4,38 +4,66 @@
 \alias{JAGS_formula}
 \title{Create JAGS formula syntax and data object}
 \usage{
-JAGS_formula(formula, parameter, data, prior_list, formula_scale = NULL)
+JAGS_formula(
+  formula,
+  parameter,
+  data,
+  prior_list,
+  formula_scale = NULL,
+  prior_random = NULL,
+  random_effects_compile = NULL
+)
 }
 \arguments{
 \item{formula}{formula specifying the right hand side of the assignment (the
-left hand side is ignored). If the formula contains \code{-1}, it will be
-automatically converted to include an intercept with a spike(0) prior.
+left hand side is ignored), or a \code{BayesTools_random_effects} object returned
+by \code{\link[=random_effects_formula]{random_effects_formula()}}. If the formula suppresses the intercept with
+\code{0 +} or \code{-1}, it is converted to include an intercept with a
+spike(0) prior.
 The formula can also have a \code{"log(intercept)"} attribute set to \code{TRUE}
 to generate syntax of the form \code{log(intercept) + sum(beta_i * x_i)}, which
-is useful for parameters that must be positive (e.g., standard deviation).}
+is useful for parameters that must be positive (e.g., standard deviation).
+In that case, the intercept prior must have strictly positive support.}
 
-\item{parameter}{name of the parameter to be created with the formula}
+\item{parameter}{valid unindexed JAGS node name of the parameter to be
+created with the formula}
 
 \item{data}{data.frame containing predictors included in the formula}
 
 \item{prior_list}{named list of prior distribution of parameters specified within
-the \code{formula}. When using \code{-1} in the formula, an "intercept" prior
-can be explicitly specified; otherwise, \code{prior("spike", list(0))} is
-automatically added. The list can also include two special entries:}
+the \code{formula}. When suppressing the intercept in the formula, an
+"intercept" prior can be explicitly specified; otherwise,
+\code{prior("spike", list(0))} is
+automatically added, or \code{prior("spike", list(1))} when the formula uses
+the \code{"log(intercept)"} attribute. The list can also include two special entries:
+\describe{
+\item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
+(including the intercept) that are not explicitly specified in the prior list.
+This can also be a zero-argument function returning a prior object; in that
+case it is evaluated only if a missing continuous term needs the default.}
+\item{\code{"__default_factor"}}{A prior to use for any factor predictors
+(including interactions involving factors) that are not explicitly specified
+in the prior list. This can also be a zero-argument function returning a prior
+object; in that case it is evaluated only if a missing factor term needs the
+default.}
+}
+These default priors allow for more concise specification when many predictors
+share the same prior distribution. For continuous formula terms,
+\code{prior_none()} is canonicalized to a point prior at zero.}
 
 \item{formula_scale}{named list specifying whether to standardize continuous predictors.
 If \code{NULL} (default), no standardization is applied. If a named list is provided,
 continuous predictors with \code{TRUE} values will be standardized (mean-centered and
-scaled by standard deviation). The intercept is never standardized.
-\describe{
-\item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
-(including the intercept) that are not explicitly specified in the prior list.}
-\item{\code{"__default_factor"}}{A prior to use for any factor predictors
-(including interactions involving factors) that are not explicitly specified
-in the prior list.}
-}
-These default priors allow for more concise specification when many predictors
-share the same prior distribution.}
+scaled by standard deviation). The intercept is never standardized.}
+
+\item{prior_random}{optional \code{prior_random()} object defining random-effect
+standard-deviation, covariance, monitoring, and prediction policies. Required
+when \code{formula} contains random effects.}
+
+\item{random_effects_compile}{optional \code{random_effects_compile()} object
+specifying which resolved random-effect blocks should be compiled as sampled
+random effects and which should be compiled as structural marginalized
+blocks.}
 }
 \value{
 \code{JAGS_formula} returns a list containing the formula JAGS syntax,
@@ -48,14 +76,58 @@ returns modified prior list for further processing in the \code{JAGS_fit}
 function.
 }
 \details{
-When a formula with \code{-1} (no intercept) is specified, the
-function automatically removes the \code{-1}, adds an intercept back to the
-formula, and includes a spike(0) prior for the intercept to ensure equivalent
-model behavior while maintaining consistent formula parsing.
+When a formula suppresses the intercept with \code{0 +} or
+\code{-1}, the function adds an intercept back to the compiled formula and
+includes a point prior that contributes zero on the formula scale: spike(0)
+ordinarily and spike(1) for a log-transformed intercept.
+
+Factor contrasts are owned by \code{\link[=prior_factor]{prior_factor()}} and stored formula metadata,
+not inferred from whether an intercept is present. Thus \code{~ 0 + group} with
+an independent factor prior means a structural zero intercept plus one
+coefficient per group level. With treatment or mean-difference contrasts,
+the same no-intercept expression preserves that selected basis.
 
 When using default priors (\code{"__default_continuous"} or \code{"__default_factor"}),
 explicitly specified priors for individual terms take precedence over the defaults.
 The defaults are only applied to terms that are not already in the prior list.
+
+Formula random effects require \code{prior_random}. Random-effect SD priors in
+\code{prior_list} using \code{"term|group"} names are no longer supported.
+Continuous fixed-effect terms must expand to one design-matrix column.
+Matrix-valued continuous predictors are not currently supported.
+Fixed formulas support literal data-column names and standard formula
+operators. Dot expansion, \code{offset()}, inline transformations, and
+arbitrary calls are rejected; create explicit data columns for transformed
+predictors. The BayesTools \code{expression(...)} facility accepts finite
+numeric constants, formula or model data, JAGS-style \code{i} indexing,
+sampled scalar or one-dimensional indexed parameters, arithmetic operators,
+and \code{abs()}, \code{exp()}, \code{log()}, or \code{sqrt()}. Expressions
+retain literal JAGS indexing: users must write \code{x} or \code{x[i]} as
+required by the JAGS data shape. Their parsed syntax and dependencies are
+persisted and replayed draw by draw during prediction and marginal-
+likelihood reconstruction. Parameter dependencies must be owned by a prior
+or declared through \code{add_parameters}; opaque deterministic nodes and
+formula-output dependencies are rejected by \code{JAGS_fit()} because their
+defining JAGS graph is unavailable during replay.
+Random-effect predictors likewise support literal data-column names and
+formula operators, but not inline transformations or arbitrary calls.
+Create transformed random slopes as explicit data columns. Grouping terms
+support variables, \code{:} interactions, and \code{/} nesting.
+
+Random-effect structures have two left-side grammars. \code{id()}, \code{diag()}, and
+\code{us()} / \code{un()} use a coefficient formula, so \code{1}, \code{0}, and \code{-1} control the
+random intercept and slopes or interactions generate coefficient columns.
+Plain bars default to \code{us()} and double bars to \code{diag()}. A factor's concrete
+random basis is inherited from resolved contrast metadata by default and can
+be set for one block with \code{random_block(contrasts = ...)}.
+
+\code{cs()} / \code{hcs()}, \code{ar1()} / \code{ar()} / \code{har()}, and \code{car()} instead use a
+structure-owned index specification. They reject intercept controls and
+block contrast overrides. See \code{\link[=random_effects_formula]{random_effects_formula()}} and
+\code{\link[=prior_random]{prior_random()}} for their index and covariance contracts.
+Categorical predictor and grouping levels must not contain BayesTools'
+reserved internal tokens, such as \code{__xXx__}.
+The predictor name \code{intercept} is reserved for the formula intercept.
 }
 \examples{
 # simulate data

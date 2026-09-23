@@ -44,6 +44,8 @@
     }
   }
 
+  check_real(truncation$lower, "truncation$lower", check_length = 1, allow_NA = FALSE)
+  check_real(truncation$upper, "truncation$upper", check_length = 1, allow_NA = FALSE)
 
   if(lower != -Inf){
     # change the default value to a distribution specific value or throw an error of misspecified by user
@@ -85,6 +87,11 @@
     if(!is.numeric(parameter) | !is.vector(parameter) | length(parameter) != length)
       stop(paste0("The '", name, "' must be a numeric vector of length ", length, "."), call. = FALSE)
   }
+
+  if(anyNA(parameter))
+    stop(paste0("The '", name, "' must be defined."), call. = FALSE)
+  if(any(!is.finite(parameter)))
+    stop(paste0("The '", name, "' must be finite."), call. = FALSE)
 }
 .check_parameter_positive  <- function(parameter, name, include_zero = FALSE){
 
@@ -92,26 +99,16 @@
   if(is.expression(parameter))
     return()
 
+  check_real(parameter, name, check_length = 0, allow_NA = FALSE)
+  if(any(!is.finite(parameter)))
+    stop(paste0("The '", name, "' must be finite."), call. = FALSE)
+
   if(include_zero){
-    if(any(parameter < 0))
+    if(any(parameter < 0, na.rm = TRUE))
       stop(paste0("The '", name, "' must be non-negative."), call. = FALSE)
   }else{
-    if(any(parameter <= 0))
+    if(any(parameter <= 0, na.rm = TRUE))
       stop(paste0("The '", name, "' must be positive."), call. = FALSE)
-  }
-}
-.check_parameter_negative  <- function(parameter, name, include_zero = FALSE){
-
-  # allow expressions to be forwarded through the construction functions
-  if(is.expression(parameter))
-    return()
-
-  if(include_zero){
-    if(any(parameter > 0))
-      stop(paste0("The '", name, "' must be non-positive."), call. = FALSE)
-  }else{
-    if(any(parameter >= 0))
-      stop(paste0("The '", name, "' must be negative."), call. = FALSE)
   }
 }
 .check_parameter_dimensions<- function(parameter, name, allow_NA = FALSE){
@@ -132,6 +129,9 @@
   if(!is.numeric(parameter))
     stop(paste0("The '", name, "' must be a numeric vector of length 1."), call. = FALSE)
 
+  if(!is.finite(parameter))
+    stop(paste0("The '", name, "' must be finite."), call. = FALSE)
+
   if(!.is.wholenumber(parameter))
     stop(paste0("The '", name ,"' must be an integer"), call. = FALSE)
 
@@ -144,17 +144,36 @@
   if(is.expression(parameter))
     return()
 
+  check_real(parameter, name, check_length = 0, allow_NA = FALSE)
+  if(any(!is.finite(parameter)))
+    stop(paste0("The '", name, "' must be finite."), call. = FALSE)
+
   if(include_bounds){
-    if(any(parameter < lower) | any(parameter > upper))
+    if(any(parameter < lower, na.rm = TRUE) | any(parameter > upper, na.rm = TRUE))
       stop(paste0("The '", name, "' must be higher than ", lower, " and lower than ", upper, "."), call. = FALSE)
   }else{
-    if(any(parameter <= lower) | any(parameter >= upper))
+    if(any(parameter <= lower, na.rm = TRUE) | any(parameter >= upper, na.rm = TRUE))
       stop(paste0("The '", name, "' must be higher or equal to than ", lower, " and lower or equal to than ", upper, "."), call. = FALSE)
   }
 }
 
 .get_prior_factor_levels       <- function(prior){
-  if(is.prior.independent(prior)){
+  mixture_K <- attr(prior, "K", exact = TRUE)
+  if(inherits(prior, "prior.factor_mixture") &&
+     !is.null(mixture_K) && !is.na(mixture_K)){
+    return(mixture_K)
+  }else if(is.prior.ordered(prior)){
+    coefficient_dim <- attr(prior, "coefficient_dim", exact = TRUE)
+    if(!is.null(coefficient_dim)){
+      return(coefficient_dim)
+    }
+    if(!is.null(attr(prior, "levels", exact = TRUE))){
+      if(identical(prior$contrast, "cumulative_levels")){
+        return(attr(prior, "levels", exact = TRUE))
+      }
+      return(attr(prior, "levels", exact = TRUE) - 1)
+    }
+  }else if(is.prior.independent(prior)){
     return(attr(prior, "levels"))
   }else if(is.prior.treatment(prior)){
     return(attr(prior, "levels") - 1)
@@ -169,8 +188,9 @@
 }
 .get_prior_factor_level_names  <- function(prior){
   if(is.null(attr(prior, "level_names"))){
-    if(is.prior.independent(prior)){
-      return(1:.get_prior_factor_levels(prior))
+    if(is.prior.independent(prior) ||
+       (is.prior.ordered(prior) && identical(prior$contrast, "cumulative_levels"))){
+      return(seq_len(.get_prior_factor_levels(prior)))
     }else{
       return(1:(.get_prior_factor_levels(prior)+1))
     }
@@ -187,6 +207,7 @@
         "independent"       = NA,
         "orthonormal"       = NA,
         "meandif"           = NA,
+        "ordered"           = NA,
         "K"                 = NA
       ))
     }else{
@@ -195,7 +216,14 @@
         "independent"       = is.prior.independent(p),
         "orthonormal"       = is.prior.orthonormal(p),
         "meandif"           = is.prior.meandif(p),
-        "K"                 = if(!is.null(p[["parameters"]][["K"]])) p[["parameters"]][["K"]] else NA
+        "ordered"           = is.prior.ordered(p),
+        "K"                 = if(is.prior.ordered(p)) {
+          .get_prior_factor_levels(p)
+        }else if(!is.null(p[["parameters"]][["K"]])) {
+          p[["parameters"]][["K"]]
+        }else{
+          NA
+        }
       ))
     }
   }))
@@ -238,7 +266,9 @@
 .prior_expression_to_character <- function(prior){
   prior[["parameters"]] <- lapply(prior[["parameters"]], function(x){
     if(is.expression(x)){
-      return(.clean_from_expression(deparse(x)))
+      return(vapply(as.list(x), function(expr){
+        .clean_from_expression(paste(deparse(expr, width.cutoff = 500L), collapse = ""))
+      }, character(1)))
     }else{
       return(x)
     }
@@ -275,6 +305,7 @@
 #' @export is.prior.simple
 #' @export is.prior.discrete
 #' @export is.prior.vector
+#' @export is.prior.simplex
 #' @export is.prior.point
 #' @export is.prior.none
 #' @export is.prior.PET
@@ -285,6 +316,7 @@
 #' @export is.prior.meandif
 #' @export is.prior.treatment
 #' @export is.prior.independent
+#' @export is.prior.ordered
 #' @export is.prior.spike_and_slab
 #' @export is.prior.mixture
 #' @name is.prior
@@ -315,6 +347,10 @@ is.prior.vector          <- function(x){
   inherits(x, "prior.vector")
 }
 #' @rdname is.prior
+is.prior.simplex         <- function(x){
+  inherits(x, "prior.simplex")
+}
+#' @rdname is.prior
 is.prior.PET             <- function(x){
   inherits(x, "prior.PET")
 }
@@ -335,6 +371,16 @@ is.prior.weightfunction  <- function(x){
 #' @rdname is.prior
 is.prior.factor          <- function(x){
   inherits(x, "prior.factor")
+}
+.bt_prior_is_factor_family <- function(x){
+
+  is.prior.factor(x) ||
+    inherits(x, "prior.factor_mixture") ||
+    inherits(x, "prior.factor_spike_and_slab")
+}
+#' @rdname is.prior
+is.prior.ordered         <- function(x){
+  inherits(x, "prior.ordered")
 }
 #' @rdname is.prior
 is.prior.orthonormal     <- function(x){
@@ -361,6 +407,136 @@ is.prior.mixture         <- function(x){
   inherits(x, "prior.mixture")
 }
 
+.validate_centered_factor_prior <- function(prior, name = "prior"){
+
+  if(is.prior.mixture(prior)){
+    for(i in seq_along(prior)){
+      .validate_centered_factor_prior(
+        prior[[i]],
+        paste0(name, "[[", i, "]]")
+      )
+    }
+    return(invisible(TRUE))
+  }
+
+  if(!is.prior.orthonormal(prior) && !is.prior.meandif(prior)){
+    return(invisible(TRUE))
+  }
+
+  center_name <- switch(
+    prior[["distribution"]],
+    "mnormal" = "mean",
+    "mt"      = "location",
+    "mpoint"  = "location",
+    NULL
+  )
+  center <- if(is.null(center_name)) NULL else prior[["parameters"]][[center_name]]
+
+  if(!is.numeric(center) || length(center) != 1L ||
+     is.na(center) || !is.finite(center) || center != 0){
+    stop(
+      "The '", name, "' mean-difference or orthonormal factor prior must ",
+      "be centered exactly at zero.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+.validate_strictly_positive_prior <- function(prior, name = "prior"){
+
+  fail <- function(component = name){
+    stop(
+      "The '", component, "' prior used by log(intercept) must have ",
+      "strictly positive support.",
+      call. = FALSE
+    )
+  }
+
+  if(is.prior.none(prior)){
+    fail()
+  }
+
+  if(is.prior.spike_and_slab(prior)){
+    inclusion_prior <- .get_spike_and_slab_inclusion(prior)
+    inclusion_fixed_one <- is.prior.point(inclusion_prior) &&
+      is.numeric(inclusion_prior$parameters[["location"]]) &&
+      length(inclusion_prior$parameters[["location"]]) == 1L &&
+      is.finite(inclusion_prior$parameters[["location"]]) &&
+      inclusion_prior$parameters[["location"]] == 1
+    if(!inclusion_fixed_one){
+      fail(paste0(name, " spike component"))
+    }
+    .validate_strictly_positive_prior(
+      .get_spike_and_slab_variable(prior),
+      paste0(name, " slab component")
+    )
+    return(invisible(TRUE))
+  }
+
+  if(is.prior.mixture(prior)){
+    weights <- attr(prior, "prior_weights", exact = TRUE)
+    component_indices <- if(is.numeric(weights) &&
+                            length(weights) == length(prior) &&
+                            all(is.finite(weights)) &&
+                            all(weights >= 0)){
+      which(weights > 0)
+    }else{
+      seq_along(prior)
+    }
+    if(length(component_indices) == 0L){
+      fail()
+    }
+    for(i in component_indices){
+      .validate_strictly_positive_prior(
+        prior[[i]],
+        paste0(name, "[[", i, "]]")
+      )
+    }
+    return(invisible(TRUE))
+  }
+
+  if(is.prior.point(prior) && !is.prior.vector(prior)){
+    location <- prior$parameters[["location"]]
+    if(!is.numeric(location) || length(location) != 1L ||
+       is.na(location) || !is.finite(location) || location <= 0){
+      fail()
+    }
+    return(invisible(TRUE))
+  }
+
+  if(is.prior.discrete(prior)){
+    if(!identical(prior[["distribution"]], "bernoulli")){
+      fail()
+    }
+    probability <- prior$parameters[["probability"]]
+    excludes_zero <- is.numeric(prior$truncation[["lower"]]) &&
+      length(prior$truncation[["lower"]]) == 1L &&
+      is.finite(prior$truncation[["lower"]]) &&
+      prior$truncation[["lower"]] > 0
+    fixed_one <- is.numeric(probability) && length(probability) == 1L &&
+      is.finite(probability) && probability == 1
+    if(!excludes_zero && !fixed_one){
+      fail()
+    }
+    return(invisible(TRUE))
+  }
+
+  if(is.prior.simple(prior) && !is.prior.vector(prior)){
+    lower <- prior$truncation[["lower"]]
+    upper <- prior$truncation[["upper"]]
+    if(!is.numeric(lower) || length(lower) != 1L || is.na(lower) ||
+       !is.numeric(upper) || length(upper) != 1L || is.na(upper) ||
+       lower < 0 || upper <= 0){
+      fail()
+    }
+    return(invisible(TRUE))
+  }
+
+  fail()
+}
+
 .check_prior <- function(prior, name = "prior", allow_expressions = FALSE){
 
   if(!is.prior(prior))
@@ -368,6 +544,10 @@ is.prior.mixture         <- function(x){
 
   if(!allow_expressions && .is_prior_expression(prior))
     stop(paste0("The '", name, "' argument must not contain parameter expressions."), call. = FALSE)
+
+  if(is.prior.weightfunction(prior) || is_prior_bias(prior)){
+    selection_model_spec(prior)
+  }
 
   return()
 }
@@ -402,7 +582,15 @@ is.prior.mixture         <- function(x){
 .check_prior_list_unique_names <- function(prior_list, name = "prior_list"){
 
   prior_names <- names(prior_list)
-  if(!is.null(prior_names) && anyDuplicated(prior_names)){
+  if(length(prior_list) > 0L &&
+     (is.null(prior_names) || length(prior_names) != length(prior_list) ||
+      anyNA(prior_names) || any(!nzchar(prior_names)))){
+    stop(
+      paste0("The '", name, "' argument must be a fully named list."),
+      call. = FALSE
+    )
+  }
+  if(anyDuplicated(prior_names)){
     duplicate_names <- unique(prior_names[duplicated(prior_names)])
     stop(
       paste0(

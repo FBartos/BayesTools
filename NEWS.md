@@ -1,3 +1,993 @@
+# version 0.3.1
+### Breaking changes
+These changes affect code and saved objects written for BayesTools 0.3.0.
+This version is released together with RoBMA 4.1.0; RoBMA 4.0.0 relies on the
+old behaviour.
+- requires JAGS 4.x (>= 4.3.0, < 5.0.0). The compiled BayesTools JAGS module
+  implements the JAGS 4 module interface and does not compile against JAGS 5.
+  Installation now stops with a message naming the reported version when
+  `configure` finds another major version through `JAGS_VERSION`,
+  `--with-jags-version`, pkg-config, a versioned JAGS prefix, the
+  `jags_version()` probe, or the `JAGS_MAJOR` declared by the selected
+  headers. On Windows the build selects the newest installed `JAGS-4.*`,
+  ignores other major versions, and rejects a `JAGS_ROOT` or `JAGS_VERSION`
+  that points to another one.
+- removes the `seed` argument of `JAGS_extend()`. It only set R's random seed:
+  the extended chains always continue their own backend random-number state
+  and cannot be reseeded. Calls that pass `seed` (including
+  `update(fit, sample_extend = )` in RoBMA 4.0.0) stop with "unused
+  argument"; drop the argument. The new
+  `runtime_setup`, `runtime_cache`, and `worker_output` arguments follow
+  `silent`, so positional calls must name them.
+- fits created by BayesTools 0.3.0 or earlier must be refitted: they lack the
+  parameter map and fitted-object contract that post-fit functions now
+  require. `runjags_estimates_table()` / `JAGS_estimates_table()` (also for
+  models without formulas), `JAGS_extend()`, `JAGS_bridgesampling()`,
+  `transform_scale_samples()`, and `JAGS_evaluate_formula()` stop with
+  "Refit the model with the current BayesTools version". Mixed posteriors
+  saved from 0.3.0 cannot be passed to `marginal_posterior()`, nor marginal
+  posteriors saved from 0.3.0 to `Savage_Dickey_BF()`; rebuild them from
+  refitted models. This includes models stored by RoBMA 4.0.0.
+- conditioning on a parameter without an inclusion indicator (a prior that is
+  neither spike-and-slab nor a null/alternative mixture) stops with "The
+  parameter '...' is not a conditional parameter." instead of warning and
+  using all draws. This applies to `as_mixed_posteriors(conditional = )`,
+  `as_marginal_inference(conditional_list = )`, and the conditional
+  summaries and plots built on them; remove such parameters from the
+  conditioning set.
+- marginal likelihoods are `BayesTools_marglik` objects. `JAGS_bridgesampling()`
+  and `bridgesampling_object()` return them instead of bridgesampling
+  `"bridge"` objects, and `models_inference()`, `ensemble_inference()`, and
+  `mix_posteriors()` accept only them as `marglik`: saved 0.3.0 results and
+  `bridgesampling::bridge_sampler()` output are rejected, and bridgesampling
+  methods such as `bf()` do not apply to the new objects. Recompute marginal
+  likelihoods with `JAGS_bridgesampling()` or wrap a known natural-log value
+  with `bridgesampling_object(logml)`.
+- inverse-gamma priors use the BayesTools JAGS module distribution
+  `dbt_invgamma` instead of a gamma prior on `inv_<parameter>`. Syntax from
+  `JAGS_add_priors()` therefore needs the BayesTools module (loaded
+  automatically by `JAGS_fit()` and in sessions with BayesTools; plain JAGS
+  runs fail with "Unknown distribution"), `JAGS_get_inits()` initializes the
+  parameter itself instead of `inv_<parameter>`, `inv_<parameter>` is no
+  longer monitored, and `rng()` draws from inverse-gamma priors differ from
+  0.3.0 under the same seed (the distribution is unchanged).
+- inserts new arguments before existing ones, which changes positional calls:
+  `JAGS_fit()` takes `formula_random_prior_list` and
+  `formula_random_effects_compile_list` before `chains`;
+  `JAGS_bridgesampling()` takes `formula_random_prior_list`,
+  `formula_random_effects_compile_list`,
+  `formula_random_effects_marginalize_list`, `bridge_context`,
+  `bridge_context_node_names`, `repetitions`, and `method` before `maxiter`;
+  and `runjags_estimates_table()` / `JAGS_estimates_table()` take
+  `random_effects_summary`, `simplify_names`, `random_effects_metadata`,
+  `remove_random_effects`, `keep_random_effects`,
+  `remove_random_structures`, and `keep_random_structures` before
+  `remove_diagnostics`. Pass these and later arguments by name.
+- weight-function priors saved from 0.3.0 (alone or inside prior lists,
+  mixtures, and bias priors) lack the selection-model specification and are
+  rejected by `print()`, `rng()`, `mcdf()`, `mean()`, and `prior_mixture()`;
+  recreate them with `prior_weightfunction()`.
+
+### Features
+- supports declared output intervals for density transformations. Wider display
+  limits remain available while inverse/Jacobian evaluations and continuous
+  curves stay inside the transformed support; boundary point masses are retained.
+- evaluates a random-effect SD vector once per bridge state instead of twice.
+  A marginal bridge context builds the state's named SD nodes and the
+  marginalized block's factor geometry, and each half ran the term's whole
+  allocation chain - source draw, allocation factors, Dirichlet weights - from
+  the same posterior row. The node half now leaves its vector on the state for
+  the marginal half, which takes it when the two compiled evaluators bind the
+  same posterior columns and the state's parameter sources carry what the row
+  itself gives. A Dirichlet allocation whose normalized weights and auxiliary
+  coordinates are both present, or a source that overrides a coordinate, keeps
+  its own evaluation. Node values, factor geometry and every marginal
+  likelihood are unchanged.
+- reports a logged formula intercept as affine in its own log coordinate.
+  `log tau_k(alpha') = log tau_k(alpha) + m * (log alpha' - log alpha)`, so the
+  update is additive with the intercept's model column as its basis - just not
+  in the fitted coordinate. `JAGS_formula_predictor_basis()` refused every
+  direction through such an intercept as `non_affine`, which left callers
+  re-evaluating the whole formula for each candidate value. It now returns the
+  basis with a new `coordinate` field that names the coordinate the update is
+  additive in, `"log"` for a logged intercept that is the only moving
+  coordinate and `"identity"` everywhere else. A direction that moves a logged
+  intercept together with ordinary coefficients mixes the two coordinates and
+  stays `non_affine`, and the expression, multiplier and random-scale
+  dependency checks apply to the logged intercept as they do to any other
+  coordinate.
+- keeps the bridge context's node layout, its requested-node selection and the
+  validated selection kernel arguments out of the per-draw path. The node
+  names, the merged node order and the availability check of the requested
+  nodes are decided by the model, so a bridge resolves them once when its
+  evaluators are compiled and replays them by position for every draw, and a
+  draw whose reconstructed pieces have another shape rebuilds the layout. The
+  row-wise native selection arguments are kept with the specification's own
+  native cache, alongside the static arguments it already held, and reused only
+  while every input they are derived from is unchanged. A row-indexed SD
+  source's node names and a marginal factor contract's row supports, block
+  names and coefficient-basis designs travel with the compiled plan instead of
+  being rebuilt per draw. Node positions, node values and every rejection are
+  unchanged.
+- keeps random-effect SD-source validation out of the bridge's per-draw path.
+  A row-indexed external SD source and its binding belong to the term, not to
+  the draw, so the compiled block plan resolves and validates them once and the
+  per-draw evaluators are given the result. A marginal likelihood on an
+  eighteen-row scale model takes 14.7 s where it took 24.9 s, with the same
+  evaluators and the same values.
+- records the resolved source transform on
+  `random_effects_marginal_update_plan()` as `source_transform_spec`. The plan
+  already named the transform; consumers that apply it to a draw needed the
+  transform itself, and had no way to obtain it from the plan.
+- keeps the invariant parts of a random-effect marginal factor contract out of
+  the per-draw path. `random_effects_marginal_factor_states()` takes an optional
+  `cache` that retains the design, its priors, the selected blocks and the
+  compiled evaluator across calls that differ only in their draws, and returns a
+  `contract_id` that `random_effects_marginal_diagonal_factor()` can cache its
+  reduction plan against. The design, the grouping and any known group
+  covariance are validated once per call rather than once per draw, and every
+  draw of a block now shares one matrix product instead of one each. Results are
+  unchanged; a density line that evaluates tens of thousands of draws through
+  this stops paying for the compilation and the revalidation.
+- stops automatic retries after parallel JAGS connection failures, retaining
+  the original backend error. Cleanup attempts every worker after a failed
+  stop. Optional 'worker_output' captures worker stdout and stderr in fits
+  and extensions without retaining a machine-specific log path in the fit.
+- clarifies that `selection_model(group = NULL)` needs publication groups only
+  for `weight_rule = "best"`; product selection is invariant to publication
+  partitions, with joint integration following the integrated covariance sources
+- supports optional process-sharded computational cache capture and restoration
+  across saved fits and extensions, without embedding retained payloads in
+  callbacks or broadcasting them in backend fit objects; cache failures retain
+  valid draws and existing runtime cleanup.
+- preserves exact symmetry when converting known group covariance to correlation,
+  avoiding rejection caused by independently rounded row and column scaling.
+  Fitted kernels whose positive definiteness cannot be resolved at working
+  precision are rejected explicitly after fitted-level subsetting.
+- includes loaded immutable R constants in parallel package-build checks and
+  supports operation-specific diagnostics for consumers of the runtime helpers.
+- exposes `diagonal_support` in `random_effects_marginal_diagonal_factor()`,
+  identifying rows with a diagonal covariance contribution from compiled
+  structural metadata, including when an evaluated SD is zero. Numerical
+  covariances and existing loading-support metadata are unchanged.
+- adds a persisted `runtime_setup(context)` callback with the actual chain and
+  process topology, coordinator/worker roles, and start/finish lifecycle;
+  extensions refresh worker assignments, automatic extensions retain the
+  configured workers, and coordinator resources can be released during
+  parallel work and restored after workers stop
+- supports explicit `mean_centered` sampling for an eligible scalar random
+  intercept block, preserving the supplied effect and scale priors, residual
+  moderators, semantic deviations, and canonical bridge coordinates; existing
+  parameterization defaults remain unchanged
+- adds `selection_model()` specifications to weightfunction priors with separate
+  estimate-random-effect, other-random-effect and complete sampling-error choices,
+  defaulting to integrate/condition/integrate; conditioning retains the entire
+  sampling-error vector, including in univariate models, independently of its
+  covariance factorization; preserves deferred publication groups, branch odds
+  and the released weight-height prior semantics
+- resolves at most one estimate-level random term by its one-to-one grouping
+  map, rejects multiple qualifying terms, and preserves correlated known group
+  covariance independently of this source classification
+- compiles covariance factors for sampled or marginalized random effects,
+  including known group covariance and exact Markov unit roots, so consumers
+  can distinguish selection integration from backend latent sampling
+- exposes structural selection-event support checks that distinguish impossible
+  retained contexts from unverified positive-direction certificates
+- compiles product and best p-value vector selection rules as fixed branch
+  metadata, with validated row routing and no additional sampled parameters
+- exposes source roles from compiled random-effect groups, coefficient supports,
+  and known group covariance, explicitly identifying mixed independent and
+  contextual coefficient ownership for covariance-support validation
+- preserves independent coefficient supports in structural dependency graphs,
+  including known group covariance, for fitting and bridge row partitions
+### Fixes
+- prior densities and distribution methods:
+  - linear-combination prior densities, `marginal_posterior(prior_samples =
+    TRUE)`, allocation margins, and `density()` of ordered priors accept priors
+    whose density is infinite but integrable at a truncation bound (gamma or
+    beta shapes below one); the boundary grid cell keeps its exact mass.
+  - `exp_lin` transformations use the analytic limit at a zero source value.
+    Nonlinear transformations keep every strictly increasing knot, and
+    saturating ones omit outer knots whose transformed value or density is
+    not representable (e.g. `tanh` at +/-1, `exp` under- or overflow) instead
+    of returning `Inf` or failing.
+  - ordered-factor level densities combined with other terms (for example an
+    intercept) are resampled onto the common grid before convolution, so their
+    prior densities and Savage-Dickey Bayes factors are correct.
+  - row-varying prior densities are mixed on the linear-predictor scale and
+    then transformed once, instead of building grids of tens of millions of
+    knots under `exp` or `tanh`.
+  - prior-density heights use the exact structural ordinate when it is
+    available, also across density jumps of model-averaged priors, and are zero
+    outside a known prior support.
+  - linear combinations with heavy-tailed components start from a grid that
+    resolves the narrowest component, and adaptive refinement halves the
+    spacing at every step while shrinking the omitted tail. t-type tails now
+    converge; combinations whose grid would exceed 2^21 knots (e.g. Cauchy
+    components) and mixtures of incompatible scales stop with a clear error
+    instead of returning a biased height.
+  - linear combinations in which a `multiply_by` scale also enters as its own
+    term (e.g. `x * sigma + sigma`) stop instead of being convolved as
+    independent components.
+  - `as_mixed_posteriors(conditional = , transform_scaled = TRUE)` works for
+    `log(intercept)` formulas and conditions the intercept prior density on the
+    event.
+  - distribution methods (`rng()`, `cdf()`, `quant()`, `mquant()`, `mean()`,
+    `var()`, `range()`, `density()`, ...) stop with a clear message for prior
+    classes they do not support instead of returning a function or the prior
+    object.
+  - far-tail truncated normal, t, and Cauchy priors sample and invert exactly;
+    truncated normal moments are computed analytically; `rng()` of factor
+    spike-and-slab priors honours `transform_factor_samples = FALSE`; and
+    sampled ordered-prior level densities reflect at their exact support.
+- hypothesis Bayes factors:
+  - `hypothesis_BF()` region hypotheses on deterministic prior densities
+    (intervals, unions, negations, and transformed regions such as
+    `"abs(mu) < 0.1"`) integrate the prior up to the exact region boundaries
+    and converge instead of stopping with "Adaptive prior-probability
+    evaluation did not converge". Region probabilities are normalized with the
+    same trapezoid rule, which removes a small bias for bounded priors; region
+    features narrower than the grid spacing may be missed.
+  - explicit comparisons accept a region with prior mass one (e.g.
+    `"mu > 0.5 vs mu > 0"` under a half-normal prior); implicit statements
+    still require a complement with positive prior mass.
+  - bracketed catalog aliases such as `mu_f[1]` and `(mu) f[b]` resolve as
+    whole symbols in `hypothesis_parse(catalog = )` and `hypothesis_resolve()`,
+    interaction references with several brackets parse, and level names
+    containing brackets (e.g. the `cut()` level `(0,1]`) can be referenced with
+    backticks or in the catalog's escaped form.
+  - labels show numeric literals by their shortest representation that
+    round-trips to the exact value (`mu <= 0.2`), several statements on one
+    quantity are labelled `mu (1)`, `mu (2)`, region `error%(BF)` omits prior
+    Monte Carlo variance when the prior mass is exact, and
+    `hypothesis_BF(prior = )` accepts mixture and spike-and-slab prior objects
+    for numeric draws.
+- formula scaling and original-scale quantities:
+  - the original-scale transformation of fixed coefficients is derived from
+    the fitted formula design and verified to reproduce the linear predictor
+    exactly, in `transform_scale_samples()`, `transform_prior_samples()`,
+    `JAGS_formula_coefficient_transform()`, `JAGS_formula_prior_density()`,
+    `JAGS_estimates_table(transform_scaled = TRUE)`,
+    `as_mixed_posteriors(transform_scaled = TRUE)`, and marginal and hypothesis
+    prior draws. Nested slopes such as `~ f/x` are transformed correctly, and
+    formulas whose centered terms have no original-scale representation (e.g.
+    `~ x + x:f` with standardized `x`) stop with an informative error instead
+    of returning wrong coefficients. `JAGS_formula()` and `JAGS_fit()` store
+    the fitted design with the formula-scale metadata. For fits created by
+    earlier development versions, estimates tables and `as_mixed_posteriors()`
+    keep the name-paired transformation until refitted, while
+    `transform_scale_samples(fit)`, `transform_prior_samples(fit)`, and
+    `JAGS_formula_coefficient_transform()` use the design stored in
+    `formula_design`.
+  - correlations of random slopes on standardized predictors are reported on
+    the original scale in `JAGS_estimates_table(transform_scaled = TRUE)` and
+    `parameter_draws()` (they stayed on the standardized scale), with the LKJ
+    coordinates recomputed from the unscaled Cholesky factor. Draws in which
+    the original-scale correlation is undefined (e.g. a zero random-effect SD)
+    are missing. `transform_prior_samples()` works for such blocks.
+  - factor point priors (e.g. `prior_factor("spike", ...)`) no longer add a
+    spurious unindexed column to `transform_scale_samples()` and
+    `transform_prior_samples()` output or a duplicate row to
+    `JAGS_estimates_table(transform_scaled = TRUE, remove_spike_0 = FALSE)`.
+- marginal posteriors, model averaging, and posterior atoms:
+  - prior densities of monitored formula coefficients are the coefficients'
+    own priors: a `multiply_by` scaling, which applies only to the linear
+    predictor, is no longer applied in `marginal_posterior(use_formula =
+    FALSE)`, `JAGS_formula_prior_density()` coefficient targets, the stored
+    densities of `as_mixed_posteriors(transform_scaled = TRUE)`,
+    `plot_transformed_prior()`, and conditional prior overlays of
+    `plot_posterior()`. Linear-predictor results are unchanged.
+  - `marginal_posterior()` levels of `log(intercept)` formulas use
+    log(intercept) for draws, prior densities, and point masses, matching
+    `JAGS_evaluate_formula()`; the flag comes from the fitted formula design,
+    and an explicit `"log(intercept)"` formula attribute must agree with it.
+  - ordered factors whose total has a spike at zero (a spike-and-slab or
+    point(0) total, or a `prior_mixture()` total with a point(0) component)
+    declare their posterior point mass at zero in `mix_posteriors()` and
+    `as_mixed_posteriors()`, also in formula levels that combine them with
+    point coefficients (`mix_posteriors()` keeps the per-draw total indicator
+    for this), so Savage-Dickey Bayes factors no longer smooth the zero draws.
+    Coefficient prior densities of point(0) totals no longer fail.
+  - `bridgesampling_object(NA)` creates a failed marginal-likelihood result,
+    so the `on_failure` policies of `ensemble_inference()`,
+    `models_inference()`, and `mix_posteriors()` apply to model lists.
+  - `marginal_posterior()` works for model averages in which a model omits a
+    factor term, no longer fails with `prior_samples = FALSE` when optional
+    support or point-mass metadata are unavailable, reports no exact support
+    for terms whose support is unknown (ordered, bias, p-hacking, derived
+    point priors), and stops with a clear message for simplex, weightfunction,
+    bias, and p-hacking posteriors.
+  - `as_mixed_posteriors(transform_scaled = TRUE)` rescales point masses of
+    treatment and independent factor coefficients. Under an `OR` condition with
+    several labels (e.g. `conditional = c("mu", "omega")`),
+    `as_mixed_posteriors()` keeps the bias columns of every branch present in
+    the conditioned draws, so `plot_posterior(., "PETPEESE")` no longer stops.
+  - point masses and density-grid values are merged by exact location instead
+    of their 15-digit labels, and inclusion Bayes factors keep a log-space
+    value (`log_BF` and `inclusion_log_BF` attributes) for log-scale output.
+- plots:
+  - `plot_posterior()` bias prior overlays (full PET-PEESE and weightfunction,
+    and individual PET, PEESE, and omega) follow the samples' full condition,
+    including conditions on the effect and `OR` combinations with other
+    parameters: each bias branch is weighted by its probability given the
+    condition event, weightfunction and no-bias branches count as PET = PEESE
+    = 0, and the PET-PEESE overlay keeps the weights of mixture or
+    spike-and-slab effect priors.
+  - `plot()`, `geom_prior()`, and `plot_posterior()` prior overlays weight
+    spike-and-slab priors by the inclusion probability instead of 50/50.
+  - individual omega posterior plots take point masses and draws from the
+    correct models when an ensemble contains duplicate or zero-weight bias
+    priors or a conditioned bias mixture, and weightfunction posterior plots
+    take their bins from the mixed samples' columns, so a model with prior
+    weight 0 no longer shifts or drops bins.
+  - factor posterior plots use the declared posterior point masses of each
+    level, and PET-PEESE prior plots no longer apply the effect-size
+    transformation to the standard-error axis when
+    `transformation_settings = TRUE`.
+- random-effect priors, summaries, and update plans:
+  - `prior_random()`: a top-level `cor` prior is no longer applied to
+    `id()`/`diag()` or single-column blocks, and `random_covariance(cor =
+    NULL)` in a block override removes it (printed as
+    `cor: structure default`). A block SD given through `sd` or through
+    `covariance = random_covariance(sd = )` replaces a top-level SD given
+    through either slot, and `random_block(terms = list(<prior>))` checks the
+    nonnegative SD support at construction.
+  - `random_variance_allocation()` accepts gate-only allocations with an
+    unnamed single term (`terms = "study"`), and
+    `random_effects_summary_posterior()` attaches analytic prior densities for
+    Dirichlet allocations whose complementary concentration is below one (e.g.
+    `alpha = c(0.5, 0.5)`) instead of stopping at the singular unit bound.
+  - `random_effects_marginal_update_plan()` reports as `unsupported` the SD
+    quantities without a single source coordinate (e.g. after formula
+    scaling), formula-scaled allocation-derived component SDs (on correlated
+    and on `id()`/`diag()` blocks), and SDs of gate-only allocation blocks.
+    `sd_mult` plans report the Dirichlet weight index, and factor and Markov
+    plans declare `coefficient_input = "source"`.
+  - `parameterization = "auto"` falls back to noncentered for centered-CAR
+    blocks whose SD prior support is not bounded away from zero and infinity
+    and for known group covariance with several columns; an explicit
+    `"centered"` stops with a clear message. `random_effects_dependency_matrix()`
+    and `random_effects_source_roles()` accept `random_effects = NULL`.
+- formula random effects, prediction, and the parameter catalog:
+  - `JAGS_formula_random_marginal_covariance()` builds unstructured block
+    covariance from the Cholesky factor, so `random_monitor(correlation =
+    FALSE)` and `prior_lkj(include_correlation = FALSE)` no longer break dense
+    or `"auto"` compilation.
+  - CS/HCS index levels are identified by exact keys: distinct multi-variable
+    cells whose pasted labels coincide are no longer merged, and numeric index
+    values that print alike (0.3 and 0.1 + 0.2) no longer fail. Prediction
+    matches index values to fitted levels exactly first and otherwise by a
+    fitted display label that identifies exactly one level.
+  - `JAGS_predict_formula(formula_target = "marginal")` uses the random-effect
+    terms in `formula` to select blocks by default and validates them against
+    the fit; `blocks` may select a subset of those terms, and a block outside
+    them is an error.
+  - in the parameter catalog, a fixed SD component of a multi-SD block keeps
+    its structural status and value; point priors with expression locations
+    are derived quantities (`JAGS_fit()` no longer fails for them); allocation
+    parent links are scoped to their formula parameter; ordered-prior
+    Dirichlet and weight-function helper nodes are internal; `var()` of a
+    formula-scaled one-coordinate random SD is a one-to-one transform like
+    `sd()`; and row labels shown by `JAGS_estimates_table()` are accepted by
+    `parameter_catalog_resolve()`, except coordinate labels of meandif and
+    orthonormal factors with numeric level names, which can collide with
+    level labels.
+  - allocation-derived SDs and gated totals whose scalar SD source is not in
+    the draws are `unavailable` instead of failing in tables,
+    `parameter_draws()`, and `random_effects_summary_posterior()`;
+    `parameter_draws()` names the remedy for unavailable quantities.
+- fitting, convergence, bridge sampling, and tables:
+  - `JAGS_check_convergence()`, autofit, and `JAGS_extend()` treat declared
+    constants as structural, so such models can converge: constant
+    publication-weight bins of composed bias priors, p-hacking priors, and
+    bias mixtures (mirrored two-sided bins, fixed weights, raw mixture bins),
+    the declared p-hacking kind when all branches share it, and point totals
+    of ordered priors with their zero-total or fixed-split coefficients.
+  - an explicit `autofit_control$monitor` can request parameters listed in
+    `add_parameters` and generated formula monitors; unknown names are
+    rejected before sampling (`JAGS_fit()`) or extension (`JAGS_extend()`).
+  - `JAGS_bridgesampling()`: `bridge_context = "marginal"` works without
+    marginalized blocks; rank-deficient draws of the bridge coordinates (e.g.
+    a deterministic row-shaped SD source given through `add_parameters`) stop
+    instead of returning a meaningless estimate, and the documentation points
+    such sources to `parameter_source(values = )`; known group covariance
+    blocks with a column SD fixed at zero are bridged exactly; and bridging a
+    failed `JAGS_fit()` result reports the original fitting error.
+  - `JAGS_get_inits()` no longer draws initial values from expression priors
+    of multi-slice spike-and-slab ordered totals; `JAGS_extend()` keeps the
+    fit's warnings through successful extensions, and runtime-cache capture
+    warnings are recorded with the fit; Stan draws are extracted per parameter
+    element, so `stan_estimates_table()` handles matrix-valued parameters.
+  - estimates tables: `conditional = TRUE` supports factor mixtures with named
+    components (rows `par[component][level]`); with `transform_scaled = TRUE`,
+    removal of spike-at-zero coefficients is decided on the transformed
+    values; requested transformations apply to independent and ordered factor
+    coefficients; point priors with expression locations no longer fail; and
+    log-scale inclusion Bayes factors are formatted from log-space values and
+    stay finite beyond the double range. `interpret_records()` labels fallback
+    intervals with the probabilities of the columns it uses.
+  - documents that a dead parallel worker drops the whole runtime-cache
+    capture, and that parallel draws are reproducible for the same seed,
+    chains, and cores but need not equal serial draws.
+- selection models, build, and tests:
+  - `selection_backend_spec(names = )` uses the custom node names of
+    single-branch specifications in the generated syntax and initial values as
+    in the monitors, and validates them as distinct JAGS node names;
+    `selection_qmc_design(points = 1)` works;
+    `selection_native_kernel_args()` rejects a non-integer explicit
+    `kernel_mode` instead of rounding it onto another kernel; p-hacking null
+    masses are computed from tail probabilities, so far-tail cut points no
+    longer give negative masses (non-representable masses are rejected); and
+    mixed p-hacking source/destination geometry is reported as unsupported.
+  - CI installs BayesTools in a process that has not loaded RoBMA (fixing the
+    Windows "Permission denied" installation failure) and builds macOS against
+    JAGS 4.3.2; `tools/test.R` exports its cache directory;
+    `test-summary-tables.R` runs in the unit profile, and a test checks that
+    profile gates match the registry; the inequality bridge tests assert the
+    direction and Monte Carlo error of the Bayes factor.
+- integrates deterministic prior densities at the requested scalar inequality
+  boundary. Directional and point-versus-region hypotheses no longer shift the
+  boundary to density-grid knots or fail refinement for ordinary normal and
+  spike-and-slab priors. Strict inequalities retain their exact atom semantics;
+  refinement budgets and tolerances are unchanged.
+- validates parameter-map schema metadata even when unchanged tables have a
+  live cache entry.
+- excludes generated reference-review candidates from source packages and
+  checks portable snapshot paths only for files included in the package.
+- evaluates supported Gaussian-plus-scaled-Gaussian prior ordinates through
+  conditional-normal quadrature over finite or infinite multiplier support
+  instead of a biased product-density grid. Model, conditional, and row mixture weights are preserved; numerical
+  integration shares the existing budget and tolerance. Structural regularity
+  remains exact even when the numerical ordinate is unavailable.
+- requires structural prior provenance before reporting an infinite density;
+  a singularity in an intermediate product no longer overrides a finite
+  Gaussian-convolved prior ordinate.
+- preserves raw expression inputs during scaled formula prediction and honors
+  explicit no-intercept prediction subsets without changing fitted contrasts.
+- carries affine transformations into joint marginal-prior weights and offsets,
+  and rebuilds unscaled posterior atoms from joint coefficient structure.
+  Nonlinear transformed level combinations fail explicitly when joint prior
+  information is unavailable instead of using the untransformed prior.
+- uses declared atom locations and continuous masses in posterior plots,
+  including unscaled coefficients. Constant draws declared continuous are no
+  longer displayed as invented point masses.
+- converts selected component variances to SDs in covariance factor update grids,
+  rejects negative SD/variance candidates, and aligns named factor states
+  consistently across covariance, diagonal, and matrix-product consumers.
+- invalidates parameter-map provider caches after valid map-table edits, and
+  distinguishes adjacent numeric literals during parallel build compatibility
+  checks. Fingerprints preserve load-time freezing while hashing metadata in
+  memory instead of writing temporary files.
+- preserves named numeric rows in data-frame bridge-prior evaluation and resolves
+  mixed canonical/legacy inverse-gamma coordinates with consistent precedence.
+- reports FFT clipping mass in probability units, including grid spacing and
+  component mass. Numerical underflow of a continuous density to an all-zero
+  grid, overflow, and collapsed continuous ranges fail explicitly instead of
+  returning a purported normalized density or inventing a point mass.
+- corrects edge cases in bridge priors, conditional model probabilities,
+  hypothesis thresholds, formula metadata, and mixed-measure plotting. Missing
+  bridge coordinates and undefined prior densities now fail explicitly; legacy
+  inverse-gamma factor coordinates agree between scalar and row evaluators.
+  Formula prior evaluation can share allocation context with ordinary priors.
+- preserves full-precision hypothesis thresholds and the caller's RNG state for
+  explicitly seeded hypothesis tests. Nearby distinct atoms retain separate
+  probability masses, and clipped ordered-prior curves retain their density heights.
+- restores single-chain convergence checks of ESS and Monte Carlo error, warning
+  that R-hat is unavailable. Sampled constants remain not assessable unless the
+  existing explicit opt-in permits them. Early failure now stops further diagnostic
+  computation and labels remaining selected rows as `not_checked`.
+- preserves the valid initial runtime cache when the first automatic extension
+  fails, fixes prefix-ambiguous random-block metadata and one-coordinate CAR
+  reconstruction, and warns about misleading numeric AR1/HAR labels while
+  preserving declared index order. The generic wrapper's documented heterogeneous
+  covariance aliases remain unchanged.
+- fixes prior quantile error handling, bias-mixture summary metadata, indexed
+  random-prior lookup, homogeneous diagonal SD labels, and exclusion-BF error
+  labels. Adaptive prior-density refinement no longer treats an unchanged capped
+  grid as convergence.
+- sequences nonlocal RNG draws explicitly in R and JAGS, preserving this build's
+  seeded output and making the draw order independent of the C++ compiler.
+- rejects ordinary scalar random-effect SD priors with negative support at
+  construction, in `prior_random()`, `random_block()`, `random_covariance()`,
+  and variance allocations, instead of silently truncating them to zero when
+  the JAGS formula is built. Spike-and-slab, mixture, and ordered SD priors are
+  checked component by component. Factor, vector, and simplex SD priors carry
+  their support in the resolved structure and keep the backend's handling.
+- `check_bool()` now rejects `NA` by default, matching the fact that a missing
+  value cannot be used as a switch. Pass `allow_NA = TRUE` to keep the previous
+  behaviour. The other `check_*` helpers are unchanged.
+- catalog `canonical_name` uniqueness is enforced per namespace and component,
+  the key `parameter_catalog_resolve()` narrows on, instead of over the whole
+  table. Two providers may describe one term under the same public selector, as
+  `parameter_catalog_extend()` produces; rows the resolver could not tell apart
+  are still refused, and ambiguity surfaces as `BayesTools_parameter_ambiguous`
+- adds `parameter_map_cache()` for map-derived values, keyed by a caller
+  supplied token covering every other input. The parameter-map runtime cache
+  moved into a bounded session registry: it is no longer attached to the map,
+  so nothing cached is serialized into saved fits or replayed on load, and
+  replacing the map tables discards every provider's entries
+- `JAGS_bridgesampling()` passes `use_neff` as the logical flag
+  \pkg{bridgesampling} defines. Supplying per-chain effective sample sizes is
+  not supported upstream and aborted every multi-parameter bridge estimate
+- selection initial values name the stochastic weight-function node
+  (`omega_local*` / `log_omega*`) rather than the deterministic array expanded
+  onto the global cut grid, so heterogeneous bias mixtures compile again
+- `selection_model(group = )` stays constructible under `weight_rule =
+  "product"`, where grouping is inactive and `print()` reports it as unused;
+  rejecting the combination broke wrappers that parameterize the rule while
+  forwarding one group for both
+- selection row routing treats kernel mode `0` as the absence of a selection
+  kernel, so specifications whose active branches share one kernel route on it
+  instead of failing as ambiguous
+- parameter-map accessors revalidate when stored coordinate, quantity, or alias
+  tables are replaced after construction, while still skipping schema checks for
+  the original constructed tables
+- ggplot `geom_prior()` mixed point-mass segments treat a missing secondary-axis
+  scale as identity instead of dropping the arrows
+- default weightfunction print reports product-rule publication groups as unused,
+  matching `selection_model()`
+- registers previously unlisted unit test files in the profile runner and drops
+  deleted contexts so `test_tests()` and `tools/test-profile.R unit` select the
+  same development tests
+- classifies allocation-derived component SDs on correlated US/HCS structures
+  as factor `column_scale` updates of the selected quantity, not affine
+  `A + h(sigma) B`; `id`/`diag` and single-column allocations stay affine
+- ggplot mixed overlays reuse the stored secondary-axis mapping and warn when
+  a later point mass is off-scale, matching the base-graphics clipping check
+- rejects variance-allocation `inclusion` with `target = "sd_component"` at
+  construction, with the same error as formula compile
+- documents that gated-total `conditional = TRUE` ANDs binding-factor/parent
+  gates, and that gate-only roots do not publish a root `sd_total`
+- does not recapture `runtime_state` onto a last-valid fit after a failed
+  extend
+- classifies parallel JAGS connection/socket wording as fail-closed transport
+  errors rather than retryable sampler failures
+- keeps spec-level `kernel_mode` as a union capability flag and refuses to
+  route rows on that union when two or more active branch kernels differ
+- distinguishes factor-level `structural_zero` cells from one-cell `identity`
+  maps
+- documents experimental p-hacking mixed-geometry and static `phack_q`
+  fallbacks without changing that unused path
+- independently gated `var_prop` prior densities are the mixed measure
+  conditional on a positive total: atoms at 0 and 1 plus a Beta mixture over
+  nonempty active sets of other components, folding always-on/always-off
+  gates and grouping identical Beta pieces
+- CS/HCS evaluation keeps the singular bound `-1/(K-1)` open; Uniform as a
+  family is unchanged. AR `|rho| = 1` remains a kernel singularity; CAR
+  includes `rho = 0`
+- `compute_inference(conditional = TRUE)` documents that inclusion BF stays
+  the unconditional inclusion odds
+- unknown or non-conditional labels in posterior conditioning fail closed
+- `parameter_map()` skips repeated schema revalidation after a map is built
+- draws independent weight-function JAGS initial values for free omega bins,
+  on the stochastic local node
+- keeps allocation-role coordinates, including inclusion-gate indicators,
+  internal so public summaries use `inclusion(...)` rather than backend names
+- preserves `log(intercept)` when stripping random-effect bars for fixed-target
+  and mixed-model prediction
+- treats constant reference-bin `omega[1]` (and every bin of a fixed
+  weightfunction) as a structural constant in convergence checks
+- forwards `scale_y2` through `geom_prior()` overlays and uses shared two-cut
+  weightfunction step coordinates so plot data and renderers stay aligned
+- prints ensemble `n_models` as one denominator per table row
+- normalizes structured-covariance aliases before native or dense Cholesky
+  compilation, so `"CS"` cannot fall into the Markov / AR path
+- matches one-coefficient ordered random-slope SD names to the unindexed JAGS
+  node
+- uses the requested factor column for the `plot_models()` overall diamond
+- treats a list of bias priors as one condition-label branch each
+- labels gate-only allocation factor chains by the inclusion indicator
+- reconstructs conditional random-effect contributions directly instead of
+  subtracting fixed effects from total predictions, preserving small random
+  effects and consistent group coefficients when fixed moderators differ
+- generates independent random-effect coefficient transformations separately
+  for each group, avoiding unrelated likelihood reevaluation while preserving
+  known group covariances, correlated coefficients, and row-specific SDs
+- resolves JAGS scalar names for complete singleton bridge-coordinate arrays
+  without renaming stored fits or aliasing partially monitored arrays
+- preserves finite Markov transition metadata for valid unit-correlation roots
+  with zero Cholesky diagonals, without changing public correlation-prior support
+- resolves allocation prior densities from compiled weight metadata, including
+  exact conditional Dirichlet marginals for variance proportions with one
+  shared parent inclusion gate and positive prior allocation variance
+- stops adaptive prior-density and prior-probability refinement at convergence,
+  avoiding unused finer grids while preserving the numerical error checks
+- rejects affine marginal-update plans for correlated component-SD variance
+  allocations, whose covariance contains nonlinear cross-component products
+- reserves room for secondary probability-axis labels in mixed density plots
+  and checks overlay clipping against the actual displayed axis limits
+- keeps allocation-derived component SDs in full summaries, consistently for
+  models with and without random-effect inclusion indicators
+- batches random-effect diagonal/factor covariance reconstruction across
+  posterior draws, avoiding repeated draw-by-draw allocation and loading
+  assembly in downstream likelihood and conditional-density calculations
+- checks required package versions, loaded R function definitions, and native
+  builds on the actual parallel JAGS workers before fitting or extending chains
+- exposes structural random-effect row dependencies and dense factor-state
+  covariance reconstruction for downstream likelihoods, using the shared
+  compiled grouping and factor geometry
+- permits a sole hidden variance-allocation component to omit a redundant
+  public component argument, and avoids re-reading a child allocation's
+  Dirichlet weights when only an already-applied parent gate affects its total
+- reports gated total-variance allocations on their realized model-averaged
+  scale: `sd_total` and `var_total` include the all-off zero branch, while
+  `var_prop(...)` is normalized over active components and summarized
+  conditional on positive realized total variance; the pre-gate slab scale and
+  raw Dirichlet weights remain private coordinates
+- preserves the original outer-to-inner component order of nested `/`
+  random-effect groups in compiled grouping metadata, matching metafor while
+  retaining the declared order of explicit `:` interactions
+- preserves failed-backend messages when `JAGS_fit()` succeeds after a restart,
+  emits them immediately during visible fitting, and retains fit warnings
+  consistently through automatic extensions
+- preserves BayesTools table metadata and safe row names when tables are
+  subsetted by row
+- unregisters the JAGS module before destroying module-owned native objects at
+  process shutdown, preventing intermittent Windows access violations
+- uses the joint prior-posterior density and point-mass ranges when composing
+  marginal plots, so automatic secondary probability axes include every
+  displayed atom while explicit later overlays still diagnose clipping
+- requires exact equality for structural probability endpoints, reference-bin
+  weights, point-complement hypotheses, and overlapping bridge bounds instead
+  of accepting nearby values under a numerical-comparison tolerance
+
+### Performance
+- groups parameter coordinates before computing dimensions and materializes draw
+  geometry by matrix blocks, avoiding repeated full-column scans.
+- validates row-wise selection arguments in one pass instead of a dozen.
+  `selection_native_kernel_args()` now checks the value a caller supplied and
+  expands it over the posterior rows afterwards, `selection_context_validate()`
+  scans the weight matrix, the p-hacking severities and the routing fields once
+  through their range, and an integer field skips the rounding repair it cannot
+  need. Every value and every rejection is the one the element-wise checks
+  produced; a selection density line stops spending a tenth of its time here.
+- keeps the whole sample out of the call `stats::density()` records. The
+  boundary-reflected kernel estimate handed the sample by value, so the
+  returned `call` and `data.name` deparsed thousands of numbers on every
+  posterior plot; binding the sample to a name first leaves the estimate, the
+  grid and the bandwidth untouched and makes that deparse trivial.
+- reduces repeated scale and Cholesky extraction and Markov index construction
+  when preparing random-effect covariance states
+- Random-effect covariance plans now expose exact updates for a two-block variance split conditional on its shared inclusion gate, and resolve the split's component SD updates from their declared scalar source.
+- includes PET and PEESE priors in the shared vectorized bridge-prior evaluator
+- exposes compiled factor loading supports for downstream integration routing
+- reuses compiled SD and latent-coordinate metadata while reconstructing
+  sampled random-coefficient formulas for bridge sampling, retaining generic
+  reconstruction for row-shaped and structured-index effects
+- evaluates independent factor-prior densities in one vectorized call during
+  bridge sampling, sharing the scalar density evaluator and retaining point,
+  truncation, and inverse-gamma support semantics
+- compiles row-shaped external SD source metadata once for bridge contexts,
+  retaining per-draw value, ambiguity, and formula-dependency checks
+- samples two-bin cumulative weight-function priors through their exact Beta
+  marginal, removing the non-identifiable auxiliary Gamma scale and one
+  likelihood-updating JAGS coordinate while using the same reduced coordinate
+  for bridge sampling
+- compiles invariant support and normalization metadata once for simple-prior
+  bridge and row-density evaluators, avoiding repeated prior reconstruction
+  work while retaining the canonical density calculation
+- reuses the already extracted posterior matrix while materializing semantic
+  random-effect summary quantities instead of extracting fitted draws once per
+  quantity
+- compiles metadata-certified diagonal-plus-factor random covariance directly
+  for JAGS likelihoods and evaluates the same representation from posterior or
+  bridge factor states, avoiding dense covariance construction without
+  inferring rank or structure from evaluated values
+- caches the invariant reduction plan for repeated bridge factor-state
+  evaluations while validating every changing coefficient factor and row scale
+
+### Maintenance
+- centralizes lower-triangle covariance ordering in marginal JAGS covariance
+  compilation and removes the superseded finite-vector selection-plan wrapper;
+  callers compose explicit QMC designs with their own target metadata
+- reuses the common line renderer for simple and contrast-transformed priors
+  and density/trace diagnostics
+- removes the superseded random-effect summary builder and its private
+  ordering, validation, labeling, and bridge-evaluation helpers; active
+  summaries use the authoritative parameter catalog and draw extractor, and
+  obsolete allocation, SD-leaf, prediction, and bridge-context plumbing is
+  removed from the shared random-effect implementation
+- removes an unreachable dense-CAR Cholesky argument and empty selection-model
+  monitor hook after those responsibilities moved to the Markov compiler and
+  common selection metadata
+- makes `selection_backend_spec()` the single owner of global and per-branch
+  kernel mode codes and removes the unreleased `phack_z_destination` naming
+  adapter in favor of the canonical `phack_z_dest`; native contexts now consume
+  the authoritative top-level mode instead of a duplicated backend-data copy
+- repairs visual regression tests that passed unprinted ggplot callbacks and
+  therefore recorded empty SVG references; replacement references remain
+  subject to human visual approval
+
+### Features
+- adds `JAGS_formula_random_marginal_covariance()` to compile the full
+  observation covariance of marginalized formula-random effects for ID, DIAG,
+  US/UN, CS/HCS, AR1/AR/HAR, CAR, and known group-covariance structures,
+  including row-scale sources and variance allocations.
+- adds `selection_qmc_design()` for deterministic, local-RNG shifted-Halton
+  designs in explicitly supplied integration dimensions.
+- allows variance allocations to attach independent Bernoulli inclusion gates
+  to random components, including a gate-only one-component allocation without
+  an artificial Dirichlet coordinate. Gate metadata propagate through formula
+  compilation, reconstruction, parameter catalogs, prior simulation, bridge
+  contexts, and averaged or conditional model summaries.
+- adds an explicit `seed` argument to `JAGS_bridgesampling()` and seeds every
+  cached marginal-likelihood fixture so cache refreshes reproduce bridge
+  proposal draws and downstream model-averaged figures
+- adds the interactive `test_tests()` development runner with the same control
+  interface used by downstream scenario tests, including cache refitting,
+  focused filters, standard interactive progress reporting, optional quiet LLM
+  reporting, and explicit visual/reference-table snapshot review; the helper
+  is loaded automatically with the BayesTools project and `.dev/user-tests.R`
+  can be sourced directly
+- adds `parameter_prior_density()` for deterministic prior densities of mapped
+  one-to-one quantities, variance-allocation marginals, and allocation-derived
+  random-component SDs. This includes SD-multiplier catalog indices and block-level
+  total-variance allocations, as well as squared nonnegative scales with
+  integrable density singularities at zero.
+- exposes component `var(...)` quantities alongside random-component SDs and
+  orders standard random summaries by scale, allocation, then correlation.
+- adds `random_effects_marginal_update_plan()` as the authoritative metadata
+  view for exact scalar updates to formula-random marginal covariance. The
+  accessor distinguishes affine, factor, Markov, and unsupported families,
+  records whether the covariance coefficient consumes a backend source or a
+  public quantity, and exposes exact invariant covariance bases when the
+  compiled design permits them. Marginal covariance reconstruction now emits
+  structurally symmetric matrices directly, without downstream tolerance,
+  averaging, or covariance repair.
+- adds `random_effects_marginal_update_grid()` for compact exact candidate
+  states from metadata-declared factor and Markov updates. The same compiled
+  coefficient-scale and correlation-Cholesky evaluators now drive ordinary
+  factor-state reconstruction and downstream q-grids for ID, DIAG, US, CS,
+  HCS, AR1, AR, HAR, and CAR random structures without materializing a
+  draw-by-grid covariance array. Bridge marginal-likelihood proposals reuse
+  these compiled state evaluators, including allocation, scalar-correlation,
+  LKJ, and fixed-coordinate routing, rather than reconstructing random-effect
+  metadata for every proposal row.
+- adds `random_effects_marginal_factor_diagonal()` for evaluating exact
+  observation-level variances from compiled random-effect factor states without
+  dense covariance reconstruction or repeated formula compilation. The same
+  metadata-driven implementation covers grouped, row-scaled, and known
+  group-covariance factor plans.
+- adds `random_effects_marginal_diagonal_factor()` and an automatic factor
+  representation to `JAGS_formula_random_marginal_covariance()`. Both consume
+  one shared compiled metadata plan and expose the structural rank of every
+  dependency block without inspecting evaluated covariance values; unsupported
+  structures fail closed to dense covariance compilation.
+- consolidates unreleased formula-random public parameter names as
+  `(formula) owner: quantity(parameter[level], ...)`, omitting `owner: ` for
+  a bare or unnamed one-entry random formula while retaining it for explicitly
+  named one-entry lists and multiple blocks. Formula-prefix omission remains a
+  canonical alias. Downstream packages can opt into centrally generated
+  simplified aliases and display labels: a sole `intercept` argument is
+  omitted (`sd(intercept)` becomes `sd`), while non-intercept arguments remain
+  explicit; owner-free shorthand resolves only when unique. Formula lists
+  with two or more unnamed
+  components use `component 1`, `component 2`, and so on. Each fit stores one
+  authoritative, versioned `parameter_map` containing linked backend-coordinate,
+  public-quantity, and alias tables; `parameter_coordinates()` and
+  `parameter_catalog()` are validated views rather than separately persisted
+  metadata. The coordinate field is `coordinate_name`, while `canonical_name`
+  is reserved for semantic quantities. Quantity rows declare identity,
+  one-to-one, or composite source provenance while keeping backend LKJ and
+  allocation coordinates, including Dirichlet auxiliary gamma nodes, internal.
+  Public correlations use `cor`; aggregate
+  allocations distinguish `sd_total` / `var_total` from `sd_common` /
+  `var_common`, with random-block components exposed as `sd` / `var` and
+  allocation components as `var_prop`, `var_mult`, and `sd_mult`. Variance
+  allocations retain a required stable internal name while
+  recording their public owner and component names separately. Linked formula-
+  coefficient transforms require the exact current formula-design and
+  parameter-map schemas rather than accepting stale versioned metadata.
+  Known group-covariance blocks expose their fitted kernel multiplier as
+  `sd` / `var`, not as an allocation multiplier; with a non-unit kernel diagonal,
+  this scale need not equal every grouping level's marginal SD.
+- adds `JAGS_with_draws()` for replacing fitted backend draws while preserving
+  and refreshing the fit's draw geometry, allowing map-defined semantic
+  quantities to be evaluated on posterior or simulated-prior coordinates
+- routes public random-effect posterior and estimates-table summaries through
+  `parameter_catalog()` resolution and `parameter_draws()`, and adds
+  `parameter_transform()` plus authoritative forward, inverse, and Jacobian
+  evaluators for one-to-one semantic coordinate maps. Standard random-effect
+  tables now report only prior-facing quantities, while full tables retain all
+  deterministic representations; genuine allocation SD multipliers remain standard.
+  `parameter_draws()` can also evaluate a selection on an already materialized
+  posterior matrix for downstream summaries.
+- adds `random_effects_marginal_factor_states()` and
+  `random_effects_marginal_factor_product()` so downstream likelihoods and
+  conditional summaries can reuse the bridge-sampling random-covariance
+  compiler and multiply its exact covariance factors by row vectors without
+  constructing dense draw-by-row-by-row arrays. Supported non-row-indexed
+  blocks compile their SD and correlation metadata once and reconstruct exact
+  factor states across all posterior draws in one batch.
+- batches metadata-compiled CS, HCS, AR/AR1, HAR, and CAR latent-effect
+  reconstruction across posterior draws and grouping levels. Dense and
+  observed group-local layouts share the same exact structured recurrence;
+  group-local requests that require stochastic missing coordinates retain the
+  scalar conditional simulator and its established random-number stream.
+- adds `JAGS_marglik_priors_rows()` and
+  `JAGS_marglik_priors_rows_evaluator()` for exact row-preserving prior-density
+  evaluation and reusable compiled evaluation. Supported scalar, independent
+  or treatment factor, and Dirichlet prior lists use vectorized evaluators,
+  while other prior families retain the compiled scalar route.
+- adds `hypothesis_level_contrast()` for certifying atom-free pairwise level
+  contrasts with an exact joint-prior ordinate, and normalizes symbolic
+  point equalities such as `theta = phi` to a difference from zero; constant-
+  left relations such as `0 > theta` and `0 = theta` are canonicalized to the
+  equivalent parameter-left forms
+- adds `JAGS_formula_coefficient_transform()` and `JAGS_formula_prior_density()` for versioned fitted-to-original coefficient maps and exact induced prior measures, including structural point values, interactions, log-intercept Jacobians, and model-mixture atoms
+- adds `JAGS_formula_predictor_basis()` for exact observation-level affine
+  update bases derived from the fitted parameter map and persisted formula
+  design, including coefficient ordering, contrasts, scaling, and term
+  multipliers. Metadata-declared nonlinear or coupled coordinates are reported
+  explicitly so downstream evaluators can retain their complete formula path.
+- adds a versioned `hypothesis_parse()` syntax tree with stable rendering, exact symbol discovery and rewriting, parameter-catalog resolution including unquoted non-syntactic public aliases, and direct `hypothesis_BF()` consumption without reparsing expression text
+- adds a metadata-only `parameter_catalog()` view over the fitted parameter map, with classed exact resolution, validated provider extensions, and deferred `parameter_draws()` extraction for declared coordinates and random-effect summaries
+- adds versioned `JAGS_draw_geometry()` metadata and parameter-map-based `JAGS_materialize_draws()` reconstruction, including exact structural point-prior values, preserved chain timing, valid zero-column public draws, and a private deterministic backend anchor for models with no ordinary monitor
+- adds an injective UTF-8 `JAGS_parameter_encode()` / `JAGS_parameter_decode()` semantic identifier, a persisted formula name map, and a single strict `JAGS_fit_contract()` schema so downstream packages can consume formula and fitted metadata without parsing established JAGS column names
+- adds `prior_density_ordinate()` for exact-value structural classification of scalar prior and induced `prior_linear_density` ordinates, including continuous limits, point masses, deterministic mixtures, analytic normal combinations, and supported named transformations
+- adds the `prior_random()` interface for formula random effects, including `random_block()`, `random_covariance()`, `random_monitor()`, `random_new_levels()`, `random_variance_allocation()`, and `allocation_ref()` helpers for specifying random-effect standard deviation priors, covariance structures, monitoring policy, and total-variance allocation priors
+- adds lme4-like formula random-effect parsing through `reformulas`, including ordinary and independent random effects, named random-effect blocks, nested grouping expressions, factor random slopes, and structured covariance shortcuts for diagonal, shared-SD independent, unstructured, compound-symmetry, heterogeneous compound-symmetry, discrete AR(1), heterogeneous AR(1), and continuous-time AR(1) random effects
+- adds LKJ correlation priors for unstructured random-effect covariance matrices via `prior_lkj()` and `JAGS_lkj_corr_cholesky()`, using the package-shipped compiled JAGS backend
+- adds `BayesTools_load_JAGS_module()` and package compilation support for the BayesTools JAGS module used by generated LKJ-Cholesky syntax
+- adds `formula_random_prior_list` to `JAGS_fit()` and `JAGS_bridgesampling()` so formula random effects can be fitted and bridge sampled through the explicit `prior_random()` interface
+- adds `JAGS_predict_formula()` for fixed, conditional, and marginalized formula prediction, with selectable random-effect blocks, explicit new-level policies, and covariance- or sampling-based marginal output
+- adds block-level `"noncentered"`, `"centered"`, and `"auto"` random-effect parameterizations without changing the prior or semantic output contracts; structured scalar-correlation blocks use scalable direct recurrences and expose dense correlation draws only on explicit reconstruction
+- adds `random_group_covariance()` for known covariance or correlation kernels across random-effect grouping levels
+- adds `random_effects_compile()` and `random_effects_marginal_variance_factors()` as the public contract for structurally marginalized random-effect blocks; unsupported factor representations signal the classed `BayesTools_random_effects_marginal_variance_unavailable` condition
+- adds `random_effects_marginal_vcov()` for posterior observation-level covariance or variance draws implied by formula random effects; `diagonal_only = TRUE` provides scalable marginal-variance extraction without allocating dense draw-by-row-by-row covariance arrays
+- adds `fit_backend_fingerprint()` for stable cache invalidation when fitted-model backend code or native binaries change
+- adds bridge-sampling support for formula random effects by using standardized latent random effects, scalar correlation coordinates, and LKJ primitive coordinates as bridge parameters
+- adds semantic random-effect summaries to `runjags_estimates_table()` / `JAGS_estimates_table()` through `random_effects_summary`, `random_effects_metadata`, `remove_random_effects`, `keep_random_effects`, `remove_random_structures`, and `keep_random_structures`
+- adds random-effect parameter filters such as `"random"`, `"random_sd"`,
+  `"random_cor"`, `"random_var_prop"`, `"random_var_mult"`,
+  `"random_allocation"`, and `"random_sd_mult"` for estimates tables
+- adds compact print methods for the public random-effect specification helpers, LKJ priors, parameter sources, random-SD sources, and variance-allocation references
+- adds `prior_ordered()` for ordered-factor priors that separate a scalar total effect from fixed or Dirichlet allocations across cumulative level increments
+- adds Dirichlet simplex priors via `prior("dirichlet", ...)` / `prior("simplex", ...)`, including random generation, log-density, marginal distribution helpers, JAGS syntax, initialization, posterior extraction, and bridge-sampling support
+- adds moment and inverse-moment nonlocal priors, including R density/distribution/quantile/RNG helpers and compiled JAGS-module support for prior-only and formula-model fitting
+- adds `hypothesis_BF()` for expression-based point and region hypotheses on posterior/prior draws or marginal posterior objects, including comparisons between named factor levels
+- adds a `RandomEffects` vignette comparing BayesTools formula random effects with lme4 and rstanarm examples
+
+### Changes
+- removes unreachable and superseded bridge, formula, prior, random-effect, and
+  summary helpers; consolidates shared formula-prior predicates and metadata
+  comparisons; and prunes implementation-only tests of replaced pathways.
+- Diagonal and unstructured random-factor blocks now retain one SD per
+  generated coefficient for mean-difference, orthonormal, and ordered bases.
+  Scalar SD templates expand to indexed independent priors, while explicitly
+  multivariate factor priors retain their joint prior and map to the same
+  coefficient coordinates.
+- Random-coefficient blocks without an explicit
+  `random_block(contrasts = ...)` override now reuse the concrete contrast
+  metadata resolved for the same fixed factor.
+- Formula random-effect covariance priors are now completed after the parsed
+  structure and dimension are known. Omitted US/UN correlations use `LKJ(1)`;
+  omitted CS/HCS, AR1/HAR, and CAR correlations use uniform priors over their
+  complete admissible raw-correlation intervals. Explicit scalar correlation
+  priors retain the existing Fisher-z default scale.
+- `JAGS_bridgesampling()` bypasses formula reconstruction and bridge-context
+  replay for ordinary non-formula models while retaining their complete prior
+  and likelihood target.
+- `JAGS_bridgesampling()` can pass an exact nodes-only bridge context, compiles
+  invariant random-effect prior, replay, and SD-binding plans once, avoids
+  reconstructing allocation nodes already supplied by formula priors, retains
+  the complete context option, can select an exact named node subset without
+  flattening unrelated state, and forwards an explicit `cores` setting to
+  `bridgesampling::bridge_sampler()`. Marginal random-effect covariance replay
+  skips random-node reconstruction when metadata request an empty node set,
+  reuses the indexed batch SD extractor for scalar factor states, consumes the
+  already reconstructed natural formula-prior parameters, and
+  compiled scalar priors call the same validated primitive density calculation
+  without repeating public-interface validation for every bridge row.
+- `JAGS_bridgesampling()` can exactly integrate selected fitted sampled
+  Gaussian formula random-effect blocks during bridge evaluation. It removes
+  only their standardized latent coordinates, retains all covariance
+  parameters and priors, and supplies either the full draw-specific `ZGZ'`
+  covariance or a validated exact block-factor representation to the
+  likelihood callback. The factor contract includes full coefficient
+  covariance for known group kernels and row-specific external SD scales. Its
+  nodes-only bridge context can omit the coefficient covariance already
+  represented exactly by a supplied factor, while the complete generic context
+  and covariance-valued evaluator remain available. Sampled SD positions,
+  covariance structure, and known-group kernels are compiled once and reused
+  without changing source-parameter precedence or covariance reconstruction;
+  an opt-in compact factor-state contract separates this invariant geometry
+  from draw-varying factors while retaining the full context option.
+- Bridge evaluation of structured random-effect factors now reconstructs and
+  validates each exact coefficient Cholesky factor once instead of rebuilding
+  the same factor a second time for correlation validation, and compiles
+  invariant scalar-correlation metadata, coordinates, and structural support
+  before repeated bridge states are evaluated. Exact compound-symmetry and
+  Markov Cholesky recurrences in this bridge hotspot are evaluated by a
+  package-native kernel after the same R-level parameter and support checks.
+  The same compiled evaluator now serves posterior reconstruction, prediction,
+  covariance summaries, and plotting consumers; the pure-R subset recurrence
+  remains the exact reference and diagnostic fallback.
+- Batched marginal random-effect factors now handle direct posterior and
+  row-indexed SD sources for every supported random structure, cache shared
+  allocation replay within a batch, and reconstruct simplex weights from their
+  authoritative gamma auxiliaries. Valid zero auxiliary components retain
+  their exact boundary weights, while invalid or non-normalized coordinates
+  fail without renormalization. Random-effect prediction samples directly from
+  persisted Cholesky factors instead of decomposing and repairing reconstructed
+  covariance matrices. Fisher-z and bounded-logit scalar correlations use
+  their declared transforms exactly; numerically saturated boundary values are
+  rejected rather than clamped into the admissible interval.
+- The compact bridge factor-state contract now labels exact diagonal and
+  Markov coefficient structures. AR1, HAR, and CAR states expose their complete
+  coefficient scales, adjacent transitions, and innovation variances alongside
+  the unchanged full coefficient factor, allowing downstream exact linear-time
+  likelihood evaluation without removing the generic covariance contract.
+- `JAGS_bridgesampling()` exposes `repetitions` and `method` alongside its
+  existing bridge controls and always derives the effective sample size from
+  the fitted chains.
+- hypothesis parsing now accepts unquoted colon-separated formula interaction
+  level references such as `factor:moderator[level]`
+- `as_marginal_inference(compute_BF = FALSE)` now returns averaged and conditional marginal posteriors without computing inclusion Bayes factors
+- deterministic scalar, multivariate, and factor point-prior parameters are now monitored and retained as structural posterior columns
+- `JAGS_bridgesampling()` now evaluates zero-dimensional fixed-parameter models exactly instead of requiring an artificial sampled parameter
+- `JAGS_fit()` and `JAGS_extend()` now carry generated `add_parameters`, `required_packages`, and `jags_modules` metadata so formula-generated monitors and JAGS modules remain available during fitting, extension, convergence checks, and parallel execution
+- `JAGS_estimates_table(transform_scaled = TRUE)` now derives formula random-effect SD and correlation summaries on the transformed original scale when fitted formula-scale metadata are available
+- `JAGS_evaluate_formula()` can evaluate fitted random-effect formulas for existing grouping levels when latent random effects or group-level coefficients were monitored
+- `JAGS_check_convergence()` ignores model indicator variables by default and excludes generated auxiliary monitor parameters from convergence checks unless explicitly requested
+- `Savage_Dickey_BF()` and marginal-posterior `hypothesis_BF()` point-null tests now use boundary-reflected KDE ordinates when exact posterior-support metadata is available and validated against the samples; boundary-null Bayes factors for bounded parameters can therefore differ from version 0.3.0 standard-KDE results
+- `as_marginal_inference()` conditional marginal summaries use active-subset conditioning: each marginal level conditions only on requested parameters with nonzero weight in that level's linear combination, and levels with no active requested conditionals use the fully averaged context
+
+### Fixes
+- makes selection metadata lookup deterministic by omitting discarded JAGS
+  initialization draws, while retaining initial values for fitting and by
+  default in `selection_backend_spec()`
+- identifies natural prior-support bounds by exact equality, so finite
+  near-support truncations remain truncated and repeated density evaluation
+  avoids tolerance-based bound comparisons.
+- reconstructs posterior random-allocation covariance from monitored semantic
+  Dirichlet weights when posterior matrices also retain auxiliary eta
+  coordinates, while preserving eta-only strictness for bridge proposals.
+- lets compact random-effect factor states fall back to monitored semantic SD
+  coordinates when allocation-source coordinates are unavailable, and maps
+  out-of-support square-root transforms to `NaN` without emitting expected
+  numerical warnings.
+- treats complete LKJ primitive coordinates as authoritative over monitored
+  derived Cholesky values during covariance reconstruction, so candidate-draw
+  likelihoods cannot reuse stale correlation factors.
+- preserves exact numeric values when hypothesis accessors consume an existing
+  syntax tree, and retains authoritative attached prior-density metadata when
+  constructing marginal posteriors. Scalar random blocks no longer require
+  unused correlation state, including when their SD source is row-indexed,
+  and compiled random terms persist whether their top-level component is
+  user-facing. Bare formulas retain an invisible internal component mapping,
+  so downstream allocation consumers need not recreate formula metadata.
+  Dirichlet auxiliary coordinates must be
+  strictly positive before simplex reconstruction.
+- generates stored LKJ primitive coordinates when drawing formula priors so
+  public semantic `cor(...)` summaries can be reconstructed exactly.
+- preserves matrix dimensions while validating one-coefficient random-effect
+  correlation Cholesky draws.
+- evaluates transformed prior density grids on the displayed plotting range,
+  including valid zero boundaries, and propagates that range to marginal-prior
+  plots instead of exponentiating user-facing axis limits as fitted-scale
+  coordinates
+- resolves one density-to-probability mapping from `ylim` and `ylim2` for the
+  secondary axis and all point masses, and reuses it for base posterior and
+  prior line overlays across fitted objects; out-of-range overlays warn instead
+  of silently rescaling the active plot
+- exposes every fitted factor level and interaction cell as a named coefficient-level quantity, using injective named-cell components, semantic display labels, direct coordinates, structural zeroes, or the persisted term-only contrast transformation for treatment, independent, mean-difference, orthonormal, and ordered encodings; incomplete coordinate maps now fail closed and boundary whitespace remains resolvable
+- validates the parameter map atomically, reusing identity random-effect coordinates with their sampled or structural provenance, hiding transformed fitted-scale and private implementation rows, checking every native extraction dependency, and reserving the `BayesTools` provider namespace
+- preserves exact finite transformed-support endpoints through structural
+  transformation provenance, avoiding round-trip misclassification for
+  transformations such as negative powers of truncated positive priors
+- corrects the zero-boundary exponent for negative powers of inverse-gamma variables, distinguishing infinite, finite nonzero, and zero transformed densities according to the inverse-gamma shape and power
+- ensures targeted `JAGS_check_convergence()` checks still include eligible product-space indicators when `check_indicators = TRUE`, while auxiliary inclusion-probability coordinates remain opt-in
+- makes optional model-indicator convergence checks label invariant by diagnosing binary state occupancy and each observed categorical state separately, while recognizing one-state indicators as structural only when the prior fixes their support
+- derives formula coefficient transforms from parameter-coordinate rows with the `fixed_coefficient` role, so sampled and marginalized random-effect priors no longer make mixed-formula coefficient transforms and prior densities fail with a source mismatch
+- makes `JAGS_extend()` validate the declared fit contract and every preserved metadata object before backend work, preventing stale formula designs from being relabeled as current after an early exit or extension
+- restores literal `expression()` formula terms that reference sampled scalar or one-dimensional indexed parameters, including individually monitored indexed coordinates, persisting their data and parameter dependencies for draw-aware fitted/new-data prediction and marginal-likelihood reconstruction while rejecting opaque JAGS-derived nodes that cannot be replayed
+- resolves level-qualified hypothesis symbols through semantic catalog components, including multiple factor levels in the same hypothesis, instead of dropping the level and reporting the factor term as ambiguous
+- fixes bridge-sampling bound validation by requiring named lower and upper bounds that match `add_parameters`
+- hardens JAGS build discovery by adding non-default Unix rpath flags, enforcing JAGS >= 4.3.0 when the version is discoverable, removing unused JAGS major-version compile defines, and making Windows JAGS root detection robust to spaces and semantic version ordering
+- hardens fixture test infrastructure by routing hypothesis bridge comparisons through shared cache-currency validation, registering indexed JAGS parameter tests in the unit profile, and expanding random-effect and fitted-metadata source hashes that invalidate fitted-model caches
+- resolves package-defined factor contrasts inside the namespace across fixed, random-effect, prediction, and marginal-posterior design matrices, so `BayesTools::` calls do not require attaching the package
+
 # version 0.3.0
 ### Features
 - major refactoring and speed-up of unit tests

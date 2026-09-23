@@ -13,6 +13,8 @@ JAGS_fit(
   formula_data_list = NULL,
   formula_prior_list = NULL,
   formula_scale_list = NULL,
+  formula_random_prior_list = NULL,
+  formula_random_effects_compile_list = NULL,
   chains = 4,
   adapt = 500,
   burnin = 1000,
@@ -21,13 +23,18 @@ JAGS_fit(
   autofit = FALSE,
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
     0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10,
-    max_extend = 10, check_indicators = FALSE),
+    max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable =
+    FALSE),
   parallel = FALSE,
   cores = chains,
   silent = TRUE,
   seed = NULL,
   add_parameters = NULL,
   required_packages = NULL,
+  jags_modules = NULL,
+  runtime_setup = NULL,
+  runtime_cache = NULL,
+  worker_output = NULL,
   ...
 )
 
@@ -35,11 +42,14 @@ JAGS_extend(
   fit,
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
     0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10,
-    max_extend = 10, check_indicators = FALSE),
+    max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable =
+    FALSE),
   parallel = FALSE,
   cores = NULL,
   silent = TRUE,
-  seed = NULL
+  runtime_setup = attr(fit, "runtime_setup", exact = TRUE),
+  runtime_cache = attr(fit, "runtime_cache", exact = TRUE),
+  worker_output = NULL
 )
 }
 \arguments{
@@ -66,6 +76,15 @@ within the \code{formula}}
 (names of the lists correspond to the parameter name created by each of the formula).
 Each entry should be a named list where continuous predictors with \code{TRUE} values will
 be standardized. Defaults to \code{NULL} (no standardization).}
+
+\item{formula_random_prior_list}{optional named list of \code{prior_random()}
+objects for random effects in \code{formula_list}. Required for any formula that
+contains random effects.}
+
+\item{formula_random_effects_compile_list}{optional named list of
+\code{random_effects_compile()} objects controlling which formula random-effect
+blocks are sampled and which are compiled as marginalized structural blocks.
+Defaults to \code{NULL}, which preserves the current all-sampled behavior.}
 
 \item{chains}{number of chains to be run, defaults to \code{4}}
 
@@ -98,7 +117,17 @@ need to correspond to \code{units} passed to \link[base]{difftime} function.}
 \item{restarts}{number of times new initial values should be generated in case the model
 fails to initialize. Defaults to \code{10}.}
 \item{check_indicators}{whether model indicator variables should be included
-in convergence checks. Defaults to \code{FALSE}.}
+in convergence checks, including when \code{monitor} selects a narrower
+parameter set. Auxiliary inclusion-probability coordinates remain excluded
+unless requested explicitly. Defaults to \code{FALSE}.}
+\item{monitor}{optional character vector selecting parameters for
+convergence checks. Base names select all indexed elements. Requests are
+resolved against all monitored nodes, including \code{add_parameters} and
+generated formula monitors, which the default selection excludes. Names
+that are not monitored are rejected before sampling. Defaults to
+\code{NULL}, which checks every eligible parameter.}
+\item{allow_not_assessable}{whether undefined diagnostics for requested
+sampled parameters may be ignored. Defaults to \code{FALSE}.}
 }}
 
 \item{parallel}{whether the chains should be run in parallel \code{FALSE}}
@@ -108,14 +137,76 @@ defaults to \code{chains}}
 
 \item{silent}{whether the function should proceed silently, defaults to \code{TRUE}}
 
-\item{seed}{seed for random number generation}
+\item{seed}{seed for random number generation by \code{JAGS_fit()}.
+Draws are reproducible for the same \code{seed}, \code{chains}, and, with
+\code{parallel = TRUE}, the same \code{cores}. Parallel draws need not equal
+serial draws with the same seed, because the backend passes each chain's
+initial state to its worker in a serialized text form.}
 
 \item{add_parameters}{vector of additional parameter names that should be used
 monitored but were not specified in the \code{prior_list}}
 
 \item{required_packages}{character vector specifying list of packages containing
 JAGS models required for sampling (in case that the function is run in parallel or in
-detached R session). Defaults to \code{NULL}.}
+detached R session). Defaults to \code{NULL}. Parallel workers must load
+the same versions and native library builds as the parent session. When
+developing packages with \code{load_all()}, install matching builds into
+a library and set \code{R_LIBS_USER} before starting R and its workers.}
+
+\item{jags_modules}{character vector specifying JAGS modules required by the
+generated model syntax. Defaults to \code{NULL}.}
+
+\item{runtime_setup}{optional function accepting one \code{context} list. After
+required packages and JAGS modules load, it is called with \code{phase = "start"}
+in the calling process, then each parallel worker. The context contains
+\code{role} (\code{"local"}, \code{"coordinator"}, or \code{"worker"}),
+\code{chains} (total chains), \code{processes} (sampling processes),
+\code{process_id} (one-based worker index, or zero for the coordinator),
+\code{process_chains} (chains assigned to this process; zero for the
+coordinator), and \code{parallel}. Chains are divided round-robin among at
+most \code{min(cores, chains)} workers. On exit, including fitting failures,
+workers are stopped before the calling process receives \code{phase = "finish"}
+with its original topology context. Worker processes do not receive a finish
+callback. If stopping workers fails, a warning is issued and the finish
+callback is not run; cleanup still attempts every remaining worker and
+closes failed connections. This permits releasing coordinator resources before
+parallel work and restoring them afterward. Return values are ignored. The callback must be
+idempotent, must not change random-number generator state, and should capture
+only small immutable settings. Packages it uses must be included in
+\code{required_packages}. The callback is stored with the fit;
+\code{JAGS_extend()} reuses it with the current chain and worker topology.
+Supplying \code{NULL} explicitly disables replay.}
+
+\item{runtime_cache}{optional function accepting \code{context} and
+\code{state = NULL} for optional computational caches. It must not change
+inference targets or random-number state and must capture only small settings.
+After runtime setup, a fit or extension calls it with \code{context$phase = "restore"}
+and a list of prior process shards assigned to this process (empty for new
+fits or workers without an assigned shard). Each prior shard
+is sent to at most one current process, in round-robin order; shards are not
+duplicated when worker count increases. Before workers stop, a completed fit
+calls it with \code{context$phase = "capture"} and \code{state = NULL}.
+Capture returns one serializable shard, or \code{NULL} to retain no state.
+The fitted object's \code{runtime_state} attribute stores process shards
+separately from its small \code{runtime_cache} callback. Backend extension
+calls receive neither attribute. \code{JAGS_extend()} restores old state
+independently of whether its callback elects to capture fresh state.
+Callback warnings and errors are reported without discarding valid draws;
+a failed capture callback leaves a \code{NULL} shard for its process. If a
+worker connection fails during capture, no shard is retained from any
+process for that fit. Capture warnings, including such failures, are also
+recorded in the fit's \code{warnings} attribute. Error and interrupt cleanup does
+not attempt capture; ordinary runtime cleanup still runs. Retained R snapshots,
+serialization buffers, and the caller's old fitted object consume memory in
+addition to active cache storage. Callback packages must be listed in
+\code{required_packages}. Passing \code{NULL} disables capture and restore.}
+
+\item{worker_output}{optional file path for parallel worker stdout and stderr.
+The parent directory must exist. Workers append to the same file, so messages
+can interleave. \code{NULL} retains the backend default of discarding worker
+output. This setting is call-specific and is not retained with the fit;
+supply it again to \code{JAGS_extend()} when needed. Connection failures stop
+automatic fitting retries and preserve the original backend error.}
 
 \item{...}{additional hidden arguments}
 
@@ -124,6 +215,10 @@ extended}
 }
 \value{
 \code{JAGS_fit} returns an object of class 'runjags' and 'BayesTools_fit'.
+\code{JAGS_extend} continues the backend random-number generator state of the
+existing chains; it does not reseed them.
+Stored parameter and RNG states initialize reconstruction; recompilation can
+reset sampler tuning and follows runjags' adaptation policy.
 }
 \description{
 A wrapper around

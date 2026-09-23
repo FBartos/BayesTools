@@ -15,8 +15,18 @@ JAGS_bridgesampling(
   formula_scale_list = NULL,
   add_parameters = NULL,
   add_bounds = NULL,
+  formula_random_prior_list = NULL,
+  formula_random_effects_compile_list = NULL,
+  formula_random_effects_marginalize_list = NULL,
+  bridge_context = FALSE,
+  bridge_context_node_names = NULL,
+  repetitions = 1L,
+  method = c("normal", "warp3"),
   maxiter = 10000,
   silent = TRUE,
+  nonfinite = c("error", "drop"),
+  cores = 1,
+  seed = NULL,
   ...
 )
 }
@@ -30,15 +40,24 @@ returns the log of the unnormalized posterior density of the model part}
 
 \item{data}{list containing data to fit the model (not including data for the formulas)}
 
-\item{prior_list}{named list of prior distribution
+\item{prior_list}{named list of prior distributions
 (names correspond to the parameter names) of parameters not specified within the
-\code{formula_list}}
+\code{formula_list}. For \code{BayesTools_fit} objects, stored non-formula
+priors are used when \code{prior_list = NULL}; if fitted formula priors are
+supplied here, they are ignored with a warning in favor of the stored formula
+metadata.}
 
 \item{formula_list}{named list of formulas to be added to the model
-(names correspond to the parameter name created by each of the formula)}
+(names correspond to the parameter name created by each of the formula). For
+\code{BayesTools_fit} objects with stored formula-design metadata, formula
+inputs can be omitted; if supplied, they are rebuilt only to check exact
+consistency with the fitted design and never replace fitted replay metadata.
+Fits without versioned formula-design metadata must be refitted.}
 
 \item{formula_data_list}{named list of data frames containing data for each formula
-(names of the lists correspond to the parameter name created by each of the formula)}
+(names of the lists correspond to the parameter name created by each
+formula). When supplied for a fitted formula, these data must exactly match
+the fitted original-scale formula source snapshot.}
 
 \item{formula_prior_list}{named list of named lists of prior distributions
 (names of the lists correspond to the parameter name created by each of the formula and
@@ -48,34 +67,197 @@ within the \code{formula}}
 \item{formula_scale_list}{named list of named lists for standardizing continuous predictors
 (names of the lists correspond to the parameter name created by each of the formula).
 Each entry should be a named list where continuous predictors with \code{TRUE} values will
-be standardized. Defaults to \code{NULL} (no standardization).}
+be standardized. Defaults to stored fit metadata when available and to
+\code{NULL} (no standardization) otherwise.}
 
-\item{add_parameters}{vector of additional parameter names that should be used
-in bridgesampling but were not specified in the \code{prior_list}}
+\item{add_parameters}{character vector of additional monitored posterior
+parameter names to include in the bridge-sampling state and in the
+\code{parameters} object passed to \code{log_posterior}. These are for free stochastic
+JAGS nodes that are not owned by \code{prior_list}, such as special likelihood
+parameters, and \code{log_posterior} must add their prior density. Deterministic
+nodes computed from other parameters are not valid bridge coordinates;
+reconstruct them inside \code{log_posterior} or, for row-shaped external SD
+sources, with a \code{parameter_source(values = ...)} callback. Linearly
+dependent bridge coordinate draws are rejected. The \code{parameters} object is a named superset of
+prior-owned and additional values; user code should index it by name, for
+example \code{parameters[["tau"]]}. Parameters already covered by \code{prior_list}
+must not be listed here. For Dirichlet priors generated through BayesTools,
+add the monitored auxiliary \verb{prior_par_eta_*} coordinates when needed, not
+the normalized simplex coordinates owned by the prior.}
 
-\item{add_bounds}{list with two name vectors (\code{"lb"} and \code{"up"})
-containing lower and upper bounds of the additional parameters that were not
-specified in the \code{prior_list}}
+\item{add_bounds}{list with two named numeric vectors, \code{"lb"} and
+\code{"ub"}, containing lower and upper bounds for every
+\code{add_parameters} entry. Must be supplied whenever
+\code{add_parameters} is non-empty.}
+
+\item{formula_random_prior_list}{optional named list of \code{prior_random()}
+objects for random effects in \code{formula_list}. Bridge sampling for formula
+random effects requires the \code{prior_random()} interface because the
+stochastic bridge coordinates are the standardized latent effects and
+correlation primitives. For \code{BayesTools_fit} objects with stored
+formula-design metadata, this can be omitted unless formula inputs are being
+supplied for a strict consistency check. Supplied callbacks never replace
+callbacks stored in the fitted formula design.}
+
+\item{formula_random_effects_compile_list}{optional named list of
+\code{random_effects_compile()} objects. When formula inputs are supplied for
+bridge-sampling rebuild/validation, this must match the fitted
+random-effect compilation policy; otherwise a fitted marginalized model would
+not be rebuilt as the same model.}
+
+\item{formula_random_effects_marginalize_list}{optional named list
+identifying fitted formula random-effect blocks whose covariance is required
+by the bridge target. Selected sampled blocks are integrated analytically
+only in the bridge target; blocks already fitted as marginalized expose the
+same covariance contract without changing the fitted model. Each
+formula-parameter entry can be
+a character vector of block names, which requests a dense covariance, or a
+named list with \code{blocks} and optional \code{row_blocks}. \code{row_blocks} must
+partition the formula rows and may not separate any structurally nonzero
+selected random-effect covariance; it requests the exact factorized block
+representation described below. With \code{row_blocks}, \code{factor_state = TRUE}
+additionally requests a compact exact contract that separates invariant
+factor plans from draw-varying coefficient factors and row scales. Every
+selected sampled Gaussian latent block is removed from the bridge coordinates
+and formula predictor. Already-marginalized blocks have no latent coordinates
+to remove. All SD,
+allocation, correlation, and other covariance parameters and their priors
+remain in the target. This requires \code{bridge_context = "marginal"} or the full
+context. The likelihood callback is responsible for adding the supplied
+covariance to its observation covariance.}
+
+\item{bridge_context}{whether the \code{log_posterior} callback receives a
+read-only \code{bridge_context} argument. Defaults to \code{FALSE}, preserving
+the historical \code{log_posterior(parameters, data, ...)} call. \code{TRUE}
+supplies the complete context. \code{"nodes"} supplies a lightweight context
+containing only its exact flat named \code{nodes} vector.
+\code{"marginal"} supplies those nodes plus exact observation-level
+covariance contributions for bridge-marginalized Gaussian random effects.
+A context contains
+the current independent bridge state and BayesTools-resolved deterministic
+formula/random-effect nodes; it is not necessarily an original MCMC
+posterior row.}
+
+\item{bridge_context_node_names}{optional character vector selecting an exact
+subset of the complete context's named \code{nodes} vector for
+\code{bridge_context = "nodes"} or \code{"marginal"}. The default, \code{NULL}, retains
+every node. The complete context cannot be subset. Missing requested names
+are errors.}
+
+\item{repetitions}{number of independent bridge-sampling repetitions.}
+
+\item{method}{bridge transformation passed to
+\link[bridgesampling]{bridge_sampler}; either \code{"normal"} or \code{"warp3"}.}
 
 \item{maxiter}{maximum number of iterations for the
 \link[bridgesampling]{bridge_sampler}}
 
 \item{silent}{whether the progress should be printed, defaults to \code{TRUE}}
 
+\item{nonfinite}{handling of non-finite repetition-level log marginal
+likelihoods. The default, \code{"error"}, aborts. \code{"drop"} aggregates only the
+remaining finite repetitions, emits a warning, and records every excluded
+repetition in the returned diagnostics.}
+
+\item{cores}{number of cores used by \link[bridgesampling]{bridge_sampler}.
+Defaults to one. Parallel workers must be able to load every package used by
+\code{log_posterior}; these can be supplied through the upstream
+\code{packages} argument in \code{...}.}
+
+\item{seed}{optional integer seed for the random bridge-sampling proposal
+draws. The default, \code{NULL}, uses the current R random-number-generator state.}
+
 \item{...}{additional argument to the \link[bridgesampling]{bridge_sampler}
-and \code{log_posterior} function}
+and \code{log_posterior} function. The upstream-only \code{packages} argument is
+consumed by the sampler and is not forwarded to \code{log_posterior}, including
+for exact zero-dimensional evaluation.}
 }
 \value{
-\code{JAGS_bridgesampling} returns an object of class 'bridge'.
+A \code{BayesTools_marglik} object. \code{logml} is one scalar natural-log
+marginal likelihood, aggregated as the median of finite repetition-level
+log marginal likelihoods. \code{repetitions} contains one diagnostic row per
+bridge repetition, \code{aggregation} records the aggregation and failure policy,
+and \code{diagnostics$upstream} retains the original \code{bridgesampling} result.
 }
 \description{
 A wrapper around
 \link[bridgesampling]{bridge_sampler} that automatically
 computes likelihood part dependent on the prior distribution
 and prepares parameter samples. \code{log_posterior} must
-specify a function that takes two arguments - a named list
-of samples from the prior distributions and the data, and returns
-log likelihood of the model part.
+specify a function that takes a named parameter list, the data, and any
+additional arguments, and returns the log likelihood of the model part.
+}
+\details{
+Row-shaped external random-effect SD sources, such as
+\code{random_sd_source("tau", shape = "row")}, must be reconstructable during
+bridge sampling. A source computed from other parameters, for example
+\code{tau[i] <- s * tau_data[i]}, is deterministic and must be supplied as
+\code{parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) ...)}. The \code{values} function is evaluated from the named
+\code{parameters} object and the original-scale formula data stored at fit time;
+it must return finite, non-negative row values on the support of the model.
+Any callback data must therefore be included in \code{formula_data_list} when
+fitting. Data supplied only to \code{JAGS_bridgesampling()} do not extend or
+replace the fitted source snapshot. Posterior columns named \code{tau[1]}, ...,
+\code{tau[n]} with non-negative lower bounds in \code{add_bounds} are valid only when
+every \code{tau[i]} is a free stochastic node whose prior density \code{log_posterior}
+adds. Supplying deterministic nodes as bridge coordinates makes the target
+improper; such rank-deficient bridge coordinate draws are rejected with an
+error.
+
+If every bridge coordinate is fixed by a point prior,
+\code{JAGS_bridgesampling()} evaluates \code{log_posterior} once at the reconstructed
+fixed parameter values. The returned marginal likelihood is exact and uses
+the aggregation rule \code{"exact_zero_dimensional"}; no bridge repetitions are
+performed.
+
+\code{use_neff} is passed to \link[bridgesampling]{bridge_sampler} as the logical
+flag that upstream defines. \pkg{bridgesampling} computes the effective
+sample size itself, from the merged integrand matrix, and accepts no
+caller-supplied value: a numeric \code{use_neff} is a length-\verb{>1} condition
+upstream and aborts the sampler. Per-chain effective sample sizes therefore
+cannot be injected here; the merged-chain ESS is conservative, because
+concatenating chains that have not mixed inflates the estimated
+autocorrelation and so lowers the ESS.
+
+When \code{bridge_context = TRUE}, the callback receives an object of class
+\code{BayesTools_bridge_context} with fields \code{state}, \code{state_matrix}, \code{nodes},
+\code{prior_parameters}, \code{formula_prior_parameters}, \code{formula_parameters},
+\code{add_parameters}, \code{random}, \code{marginalized_random}, \code{node_info}, and
+\code{metadata}. The \code{state} field
+contains the independent bridge coordinates. The \code{nodes} field is a flat
+named numeric vector that also includes deterministic BayesTools-resolved
+nodes such as normalized Dirichlet allocation weights reconstructed from
+\verb{prior_par_eta_*} coordinates. The \code{node_info} field records the owner and
+role of each exposed node. The \code{random} field contains structured
+random-effect block state including resolved SDs, allocation weights,
+correlations, Cholesky factors, covariance matrices where row-invariant, and
+row-indexed SD source values where applicable. Each random block is keyed by
+formula parameter and block name, and contains \code{block_name}, \code{compile_mode},
+\code{dimensions}, \code{levels}, \code{scale}, \code{allocation}, \code{correlation}, \code{covariance},
+\code{latent}, and \code{nodes} fields.
+
+When \code{bridge_context = "nodes"}, the callback receives an object inheriting
+from \code{BayesTools_bridge_context} with only the \code{nodes} field. Its values and
+names are identical to the \code{nodes} field in the complete context for the
+same bridge state. Random-effect replay metadata that is invariant across
+states is compiled once before bridge sampling.
+
+When \code{bridge_context = "marginal"}, the callback receives the same exact
+\code{nodes} vector plus \code{marginalized_random}. If \code{bridge_context_node_names} is
+supplied, \code{nodes} is the requested exact subset in the requested order. The latter is keyed by formula
+parameter and contains \code{representation}, \code{blocks}, \code{structures}, \code{row_names},
+and \code{dimension}. Without \code{row_blocks}, \code{representation = "dense"} and the
+\code{covariance} field equals the sum of \eqn{ZGZ'} over exactly the requested
+random-effect blocks. With validated \code{row_blocks},
+\code{representation = "factor"}; \code{row_blocks} gives the exact observation
+partition and \code{factors} contains dense, ordinary grouped
+\eqn{Z_b G_b Z_b'}, or known-group covariance factors. This avoids
+materializing zero cross-block entries. For requests with
+\code{factor_state = TRUE}, the marginal context instead reports
+\code{representation = "factor_state"}, with invariant \code{factor_plans} and
+draw-varying \code{factor_states}; the complete context and direct covariance
+evaluator retain the full representation. All representations define the
+same covariance without approximation.
 }
 \examples{
 \dontrun{
@@ -99,7 +281,7 @@ model_syntax <-
   }"
 
 # fit the models
-fit <- JAGS_fit(model_syntax, data, priors_list)
+fit <- JAGS_fit(model_syntax, data, priors_list, seed = 1)
 
 # define log posterior for bridge sampling
 log_posterior <- function(parameters, data){
@@ -107,6 +289,8 @@ log_posterior <- function(parameters, data){
 }
 
 # get marginal likelihoods
-marglik <- JAGS_bridgesampling(fit, log_posterior, data, priors_list)
+marglik <- JAGS_bridgesampling(
+  fit, log_posterior, data, priors_list, seed = 1
+)
 }
 }

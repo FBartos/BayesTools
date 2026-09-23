@@ -43,4 +43,10 @@ mass-preserving p-hacking redistribution kernel. The initial backend supports
 linear and quadratic power depletion between \code{source} and
 \code{target}, with depleted probability mass redistributed between
 \code{target} and \code{destination}.
+
+This path is experimental and is not used by a released consumer yet.
+Mixed source/destination cuts across branches cannot be expressed;
+\code{segments} does not supply that geometry. Mixed or missing \code{q}
+currently falls back to a static linear bin rather than encoding mixed
+forms.
 }

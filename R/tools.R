@@ -26,6 +26,11 @@
 #' Defaults to \code{Inf} (do not check).
 #' @param allow_bound whether the values at the boundary are allowed.
 #' Defaults to \code{TRUE}.
+#' @section NA values:
+#' \code{allow_NA} defaults to \code{TRUE} for \code{check_char},
+#' \code{check_int}, and \code{check_real}, but to \code{FALSE} for
+#' \code{check_bool}: a missing value cannot be used as a switch, so an
+#' \code{NA} flag is rejected unless \code{allow_NA = TRUE} is requested.
 #' @param call string to be placed as a prefix to the error call.
 #'
 #' @examples
@@ -47,7 +52,7 @@
 #' @export check_list
 
 #' @rdname check_input
-check_bool   <- function(x, name = deparse(substitute(x)), check_length = 1, allow_NULL = FALSE, allow_NA = TRUE, call = ""){
+check_bool   <- function(x, name = deparse(substitute(x)), check_length = 1, allow_NULL = FALSE, allow_NA = FALSE, call = ""){
 
   if(is.null(x) || length(x) == 0){
     if(allow_NULL){
@@ -156,6 +161,9 @@ check_int    <- function(x, name = deparse(substitute(x)), lower = -Inf, upper =
 
   check_real(x, name = name, lower = lower, upper = upper, allow_bound = allow_bound, check_length = check_length, allow_NULL = allow_NULL, allow_NA = allow_NA, call = call)
 
+  if(any(!is.finite(x[!is.na(x)])))
+    stop(paste0(call, "The '", name, "' argument must contain only finite values."), call. = FALSE)
+
   if(!all(.is.wholenumber(x, na.rm = TRUE)))
     stop(paste0(call, "The '", name ,"' argument must be an integer vector."), call. = FALSE)
 
@@ -200,6 +208,92 @@ check_list   <- function(x, name = deparse(substitute(x)), check_length = 0, che
   }
 }
 
+.representable_interior_value <- function(value, direction){
+
+  if(!is.numeric(value) || length(value) != 1L || !is.finite(value) ||
+     !direction %in% c(-1, 1)){
+    stop("A finite scalar and an interior direction of -1 or 1 are required.",
+         call. = FALSE)
+  }
+  smallest <- .Machine$double.xmin * .Machine$double.eps
+  step <- max(abs(value) * .Machine$double.eps, smallest)
+  candidate <- value + direction * step
+  while(candidate == value && is.finite(step)){
+    step <- step * 2
+    candidate <- value + direction * step
+  }
+  if(!is.finite(candidate) || candidate == value){
+    stop("Could not construct a representable value inside the plotting support.",
+         call. = FALSE)
+  }
+  candidate
+}
+
+.simplex_roundoff_bound <- function(x){
+
+  n <- length(x)
+  magnitude <- max(1, sum(abs(x)))
+  gamma_n <- n * .Machine$double.eps /
+    (1 - n * .Machine$double.eps)
+
+  8 * gamma_n * magnitude
+}
+
+.canonicalize_simplex <- function(x, name = "x", diagnostics = FALSE){
+
+  was_matrix <- is.matrix(x)
+  if(!was_matrix){
+    original_names <- names(x)
+    x <- matrix(x, nrow = 1L)
+  }else{
+    original_dimnames <- dimnames(x)
+  }
+
+  if(!is.numeric(x) || ncol(x) < 1L || any(!is.finite(x))){
+    stop("The '", name, "' simplex values must be finite numeric values.", call. = FALSE)
+  }
+  if(any(x < 0)){
+    stop("The '", name, "' simplex values must be non-negative.", call. = FALSE)
+  }
+
+  original_sums <- rowSums(x)
+  bounds <- apply(x, 1L, .simplex_roundoff_bound)
+  invalid <- abs(original_sums - 1) > bounds
+  if(any(invalid)){
+    stop(
+      "The '", name, "' simplex values must sum to one; row ",
+      which(invalid)[1L], " differs by ",
+      format(abs(original_sums[invalid][1L] - 1), digits = 17),
+      ", exceeding the roundoff bound ",
+      format(bounds[invalid][1L], digits = 17), ".",
+      call. = FALSE
+    )
+  }
+
+  canonical <- x / original_sums
+  correction <- apply(abs(canonical - x), 1L, max)
+
+  if(was_matrix){
+    dimnames(canonical) <- original_dimnames
+  }else{
+    canonical <- as.numeric(canonical)
+    names(canonical) <- original_names
+  }
+
+  if(!diagnostics){
+    return(canonical)
+  }
+
+  list(
+    values = canonical,
+    diagnostics = list(
+      original_sum = original_sums,
+      roundoff_bound = bounds,
+      max_correction = max(correction)
+    )
+  )
+}
+
 # check transformation argument
 .check_transformation_input <- function(transformation, transformation_arguments, transformation_settings){
 
@@ -207,7 +301,9 @@ check_list   <- function(x, name = deparse(substitute(x)), check_length = 0, che
     if(is.character(transformation)){
       check_char(transformation, "transformation")
     }else if(is.list(transformation)){
-      check_list(transformation, "transformation", check_length = 3, check_names = c("fun", "inv", "jac"), all_objects = TRUE)
+      check_list(transformation, "transformation", check_names = c("fun", "inv", "jac"), all_objects = TRUE, allow_other = TRUE)
+      check_list(transformation, "transformation", check_names = c("fun", "inv", "jac", "output_support"))
+      .density.prior_transformation_functions(transformation)
     }else{
       stop("Uknown format of the 'transformation' argument.")
     }
@@ -239,24 +335,30 @@ check_list   <- function(x, name = deparse(substitute(x)), check_length = 0, che
   if(!inherits(fit, what = "stanfit"))
     stop("'fit' must be an rstan fit")
 
-  # order permutations to correspond to the other
-  # (otherwise, models with same seed produce different posterior draws, like wtf stan???)
-  for(i in seq_along(fit@sim$permutation)){
-    fit@sim$permutation[[i]] <- seq_along(fit@sim$permutation[[i]])
-  }
-
-  model_samples <- rstan::extract(fit)
-  par_names     <- names(model_samples)
-  par_dims      <- sapply(model_samples, function(s)if(is.matrix(s)) ncol(s) else if(drop) 1 else 0)
-  par_names     <- unlist(sapply(seq_along(par_names), function(p){
-    if(par_dims[p] == {if(drop) 1 else 0}){
-      return(par_names[p])
-    }else{
-      return(paste0(par_names[p], "[", 1:par_dims[p],"]"))
-    }
+  # Stack the retained draws chain by chain in iteration order, so that fits
+  # with the same seed give the same draws, with one column per flattened
+  # parameter element (matrix-valued parameters included).
+  draws <- rstan::extract(fit, permuted = FALSE, inc_warmup = FALSE)
+  n_iterations <- dim(draws)[[1L]]
+  n_chains     <- dim(draws)[[2L]]
+  par_names    <- dimnames(draws)[[3L]]
+  model_samples <- do.call(rbind, lapply(seq_len(n_chains), function(chain){
+    matrix(draws[, chain, ], nrow = n_iterations, ncol = length(par_names))
   }))
-  model_samples <- do.call(cbind, model_samples)
   colnames(model_samples) <- par_names
+
+  # Single-element array parameters are reported under the parameter name.
+  if(drop){
+    for(p in seq_along(fit@sim$pars_oi)){
+      dims <- fit@sim$dims_oi[[p]]
+      if(length(dims) > 0L && prod(dims) == 1L){
+        element <- paste0(
+          fit@sim$pars_oi[[p]], "[", paste(rep("1", length(dims)), collapse = ","), "]"
+        )
+        colnames(model_samples)[colnames(model_samples) == element] <- fit@sim$pars_oi[[p]]
+      }
+    }
+  }
 
   return(model_samples)
 }

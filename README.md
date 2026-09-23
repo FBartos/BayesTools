@@ -20,6 +20,8 @@ Currently, the package provides several tools:
 -   JAGS models automation (generating JAGS model syntax and
     `bridgesampling` marginal likelihood functions for prior
     distributions, various wrappers, …)
+-   formula random effects for JAGS models (lme4-like syntax,
+    random-effect priors, structured covariance, and LKJ helpers)
 -   model-averaging (mixing posterior distributions, computing Bayes
     factors, generating summary tables, …)
 

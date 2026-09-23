@@ -1,0 +1,352 @@
+#!/bin/sh
+
+# BayesTools builds against the JAGS 4 module interface only: the native
+# distributions and functions implement the JAGS 4 virtual signatures and are
+# abstract under JAGS 5. Every version source below is checked against this
+# range before src/Makevars is written.
+JAGS_MIN_VERSION="4.3.0"
+JAGS_REQUIRED_MAJOR="4"
+JAGS_SUPPORTED_RANGE="JAGS 4.x (>= ${JAGS_MIN_VERSION}, < 5.0.0)"
+JAGS_CFLAGS=""
+JAGS_LIBS="-ljags"
+JAGS_RPATH=""
+JAGS_INCLUDE_DIR="${JAGS_INCLUDE_DIR}"
+JAGS_LIB_DIR="${JAGS_LIB_DIR}"
+JAGS_PREFIX="${JAGS_PREFIX}"
+JAGS_VERSION="${JAGS_VERSION}"
+JAGS_VERSION_SOURCE=""
+if [ -n "$JAGS_VERSION" ]; then
+  JAGS_VERSION_SOURCE="JAGS_VERSION"
+fi
+
+as_echo() {
+  echo "configure: $*"
+}
+
+as_error() {
+  echo "configure: error: $*" >&2
+  exit 1
+}
+
+normalize_version() {
+  echo "$1" | sed 's/^[^0-9]*//; s/[^0-9.].*$//'
+}
+
+version_ge() {
+  version=`normalize_version "$1"`
+  minimum=`normalize_version "$2"`
+
+  old_ifs=$IFS
+  IFS=.
+  set -- $version
+  version_major=${1:-0}
+  version_minor=${2:-0}
+  version_patch=${3:-0}
+  set -- $minimum
+  minimum_major=${1:-0}
+  minimum_minor=${2:-0}
+  minimum_patch=${3:-0}
+  IFS=$old_ifs
+
+  if [ "$version_major" -gt "$minimum_major" ]; then return 0; fi
+  if [ "$version_major" -lt "$minimum_major" ]; then return 1; fi
+  if [ "$version_minor" -gt "$minimum_minor" ]; then return 0; fi
+  if [ "$version_minor" -lt "$minimum_minor" ]; then return 1; fi
+  [ "$version_patch" -ge "$minimum_patch" ]
+}
+
+jags_version_major() {
+  normalize_version "$1" | sed 's/\..*$//'
+}
+
+jags_version_hint() {
+  printf '%s\n' "Install JAGS 4.3.x (JAGS 5 is not supported) and select it with JAGS_ROOT or --with-jags-prefix; set JAGS_VERSION or PKG_CONFIG_PATH when pkg-config reports another JAGS installation."
+}
+
+# Reject any reported JAGS version outside the supported range, naming the
+# source that reported it.
+jags_check_version() {
+  checked_version="$1"
+  checked_source="$2"
+  checked_major=`jags_version_major "$checked_version"`
+
+  if [ "$checked_major" != "$JAGS_REQUIRED_MAJOR" ] ||
+     ! version_ge "$checked_version" "$JAGS_MIN_VERSION"; then
+    as_error "BayesTools requires ${JAGS_SUPPORTED_RANGE}; ${checked_source} reported ${checked_version}. `jags_version_hint`"
+  fi
+}
+
+# Major version declared by the JAGS headers (version.h defines JAGS_MAJOR).
+jags_header_major() {
+  if [ -f "$1/version.h" ]; then
+    sed -n 's/^[[:space:]]*#[[:space:]]*define[[:space:]][[:space:]]*JAGS_MAJOR[[:space:]][[:space:]]*\([0-9][0-9]*\).*$/\1/p' "$1/version.h" | sed -n '1p'
+  fi
+}
+
+jags_header_ok() {
+  test -f "$1/module/Module.h"
+}
+
+jags_header_dir() {
+  for dir in "$@"; do
+    if [ -n "$dir" ] && jags_header_ok "$dir"; then
+      echo "$dir"
+      return 0
+    fi
+    if [ -n "$dir" ] && jags_header_ok "$dir/JAGS"; then
+      echo "$dir/JAGS"
+      return 0
+    fi
+  done
+  return 1
+}
+
+sed_escape() {
+  printf '%s\n' "$1" | sed 's/[&\\]/\\&/g'
+}
+
+jags_runtime_flag() {
+  case "`uname -s 2>/dev/null`" in
+    SunOS) printf '%s\n' "-R$1" ;;
+    *)     printf '%s\n' "-Wl,-rpath,$1" ;;
+  esac
+}
+
+jags_default_runtime_dir() {
+  case "$1" in
+    /lib|/lib64|/usr/lib|/usr/lib64|/lib/*|/usr/lib/*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+jags_add_rpath() {
+  dir="$1"
+  if [ -z "$dir" ] || jags_default_runtime_dir "$dir"; then
+    return 0
+  fi
+
+  flag=`jags_runtime_flag "$dir"`
+  case " $JAGS_RPATH " in
+    *" $flag "*) ;;
+    *) JAGS_RPATH="${JAGS_RPATH} ${flag}" ;;
+  esac
+}
+
+jags_probe_version() {
+  R_BIN=""
+  if [ -n "$R_HOME" ] && [ -x "${R_HOME}/bin/R" ]; then
+    R_BIN="${R_HOME}/bin/R"
+  else
+    R_BIN=`command -v R 2>/dev/null`
+  fi
+  if [ -z "$R_BIN" ]; then
+    return 1
+  fi
+
+  cat > conftest-jags-version.cc <<'EOF'
+#include <stdio.h>
+#include <version.h>
+#ifndef JAGS_MAJOR
+#error JAGS_MAJOR is not defined
+#endif
+#if JAGS_MAJOR != 4
+#error BayesTools currently requires JAGS 4.x
+#endif
+int main() {
+  printf("%s\n", jags_version());
+  return 0;
+}
+EOF
+
+  CXX=`"$R_BIN" CMD config CXX 2>/dev/null`
+  CXXFLAGS=`"$R_BIN" CMD config CXXFLAGS 2>/dev/null`
+  CPPFLAGS=`"$R_BIN" CMD config CPPFLAGS 2>/dev/null`
+  LDFLAGS=`"$R_BIN" CMD config LDFLAGS 2>/dev/null`
+  if [ -z "$CXX" ]; then
+    CXX=c++
+  fi
+
+  if ${CXX} ${CPPFLAGS} ${CXXFLAGS} ${JAGS_CFLAGS} \
+      -o conftest-jags-version conftest-jags-version.cc \
+      ${LDFLAGS} ${JAGS_LIBS} ${JAGS_RPATH} -ljrmath \
+      >/dev/null 2>conftest-jags-version.err; then
+    JAGS_PROBE_VERSION=`./conftest-jags-version 2>/dev/null`
+    status=$?
+  else
+    status=1
+  fi
+
+  rm -f conftest-jags-version conftest-jags-version.exe \
+    conftest-jags-version.cc conftest-jags-version.err
+
+  if [ $status -eq 0 ] && [ -n "$JAGS_PROBE_VERSION" ]; then
+    printf '%s\n' "$JAGS_PROBE_VERSION"
+    return 0
+  fi
+  return 1
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --with-jags-prefix=*)
+      JAGS_PREFIX="${arg#*=}"
+      ;;
+    --with-jags-includedir=*)
+      JAGS_INCLUDE_DIR="${arg#*=}"
+      ;;
+    --with-jags-libdir=*)
+      JAGS_LIB_DIR="${arg#*=}"
+      ;;
+    --with-jags-version=*)
+      JAGS_VERSION="${arg#*=}"
+      JAGS_VERSION_SOURCE="configure argument"
+      ;;
+  esac
+done
+
+if [ -z "$JAGS_PREFIX" ] && [ -n "$JAGS_ROOT" ]; then
+  JAGS_PREFIX="$JAGS_ROOT"
+fi
+
+if [ -z "$JAGS_VERSION" ] && command -v pkg-config >/dev/null 2>&1; then
+  if pkg-config --exists jags; then
+    JAGS_CFLAGS=`pkg-config --cflags jags`
+    JAGS_LIBS=`pkg-config --libs jags`
+    JAGS_VERSION=`pkg-config --modversion jags 2>/dev/null`
+    JAGS_VERSION_SOURCE="pkg-config"
+  fi
+fi
+
+if [ -z "$JAGS_VERSION" ] && [ -n "$JAGS_PREFIX" ]; then
+  JAGS_PREFIX_BASE=`basename "$JAGS_PREFIX" 2>/dev/null`
+  case "$JAGS_PREFIX_BASE" in
+    JAGS-[0-9]*)
+      JAGS_VERSION=`echo "$JAGS_PREFIX_BASE" | sed 's/^JAGS-//'`
+      JAGS_VERSION_SOURCE="JAGS prefix"
+      ;;
+  esac
+fi
+
+if [ -n "$JAGS_VERSION" ]; then
+  jags_check_version "$JAGS_VERSION" "$JAGS_VERSION_SOURCE"
+fi
+
+if [ -z "$JAGS_INCLUDE_DIR" ]; then
+  for flag in $JAGS_CFLAGS; do
+    case "$flag" in
+      -I*)
+        candidate=`echo "$flag" | sed 's/^-I//'`
+        if jags_header_ok "$candidate"; then
+          JAGS_INCLUDE_DIR="$candidate"
+          break
+        fi
+        ;;
+    esac
+  done
+fi
+
+if [ -z "$JAGS_INCLUDE_DIR" ]; then
+  if [ -n "$JAGS_PREFIX" ]; then
+    JAGS_INCLUDE_DIR=`jags_header_dir \
+      "$JAGS_PREFIX/include"`
+  fi
+fi
+
+if [ -z "$JAGS_INCLUDE_DIR" ]; then
+  JAGS_INCLUDE_DIR=`jags_header_dir \
+    "/usr/local/include/JAGS" \
+    "/usr/local/include" \
+    "/opt/local/include/JAGS" \
+    "/opt/local/include" \
+    "/usr/include/JAGS" \
+    "/usr/include"`
+fi
+
+if [ -z "$JAGS_INCLUDE_DIR" ]; then
+  as_error "JAGS headers were not found. Install ${JAGS_SUPPORTED_RANGE}, set JAGS_ROOT, or pass --with-jags-prefix/--with-jags-includedir."
+fi
+if ! jags_header_ok "$JAGS_INCLUDE_DIR"; then
+  as_error "JAGS header module/Module.h was not found under '${JAGS_INCLUDE_DIR}'."
+fi
+JAGS_HEADER_MAJOR=`jags_header_major "$JAGS_INCLUDE_DIR"`
+if [ -n "$JAGS_HEADER_MAJOR" ] && [ "$JAGS_HEADER_MAJOR" != "$JAGS_REQUIRED_MAJOR" ]; then
+  as_error "BayesTools requires ${JAGS_SUPPORTED_RANGE}; the JAGS headers in '${JAGS_INCLUDE_DIR}' declare JAGS_MAJOR ${JAGS_HEADER_MAJOR}. `jags_version_hint`"
+fi
+
+case " $JAGS_CFLAGS " in
+  *" -I${JAGS_INCLUDE_DIR} "*) ;;
+  *) JAGS_CFLAGS="-I${JAGS_INCLUDE_DIR} ${JAGS_CFLAGS}" ;;
+esac
+
+if [ -n "$JAGS_PREFIX" ] && [ -z "$JAGS_LIB_DIR" ]; then
+  if [ -d "${JAGS_PREFIX}/lib" ]; then
+    JAGS_LIB_DIR="${JAGS_PREFIX}/lib"
+  elif [ -d "${JAGS_PREFIX}/lib64" ]; then
+    JAGS_LIB_DIR="${JAGS_PREFIX}/lib64"
+  else
+    as_error "JAGS library directory was not found under '${JAGS_PREFIX}'. Pass --with-jags-libdir or set JAGS_LIB_DIR."
+  fi
+fi
+
+if [ -z "$JAGS_LIB_DIR" ] && [ -z "$JAGS_VERSION" ]; then
+  case "$JAGS_INCLUDE_DIR" in
+    /usr/local/*)
+      if [ -d "/usr/local/lib" ]; then
+        JAGS_LIB_DIR="/usr/local/lib"
+      fi
+      ;;
+    /opt/local/*)
+      if [ -d "/opt/local/lib" ]; then
+        JAGS_LIB_DIR="/opt/local/lib"
+      fi
+      ;;
+  esac
+fi
+
+if [ -n "$JAGS_LIB_DIR" ]; then
+  if [ ! -d "$JAGS_LIB_DIR" ]; then
+    as_error "JAGS library directory '${JAGS_LIB_DIR}' does not exist."
+  fi
+  JAGS_LIBS="-L${JAGS_LIB_DIR} ${JAGS_LIBS}"
+fi
+
+if [ -n "$JAGS_LIB_DIR" ]; then
+  jags_add_rpath "$JAGS_LIB_DIR"
+fi
+for flag in $JAGS_LIBS; do
+  case "$flag" in
+    -L*) jags_add_rpath "${flag#-L}" ;;
+  esac
+done
+JAGS_RPATH=`printf '%s\n' "$JAGS_RPATH" | sed 's/^ *//'`
+
+if [ -z "$JAGS_VERSION" ]; then
+  JAGS_VERSION=`jags_probe_version`
+  if [ -n "$JAGS_VERSION" ]; then
+    JAGS_VERSION_SOURCE="jags_version()"
+  fi
+fi
+
+if [ -z "$JAGS_VERSION" ]; then
+  as_error "JAGS version could not be determined. Install ${JAGS_SUPPORTED_RANGE} with pkg-config metadata, set JAGS_VERSION, or use a versioned JAGS_ROOT/--with-jags-prefix."
+fi
+jags_check_version "$JAGS_VERSION" "$JAGS_VERSION_SOURCE"
+as_echo "detected JAGS ${JAGS_VERSION} with ${JAGS_VERSION_SOURCE}"
+as_echo "using JAGS CFLAGS: ${JAGS_CFLAGS}"
+as_echo "using JAGS LIBS: ${JAGS_LIBS}"
+if [ -n "$JAGS_RPATH" ]; then
+  as_echo "using JAGS RPATH: ${JAGS_RPATH}"
+fi
+as_echo "creating src/Makevars"
+
+JAGS_CFLAGS_SED=`sed_escape "$JAGS_CFLAGS"`
+JAGS_LIBS_SED=`sed_escape "$JAGS_LIBS"`
+JAGS_RPATH_SED=`sed_escape "$JAGS_RPATH"`
+
+sed \
+  -e "s|@JAGS_CFLAGS@|${JAGS_CFLAGS_SED}|g" \
+  -e "s|@JAGS_LIBS@|${JAGS_LIBS_SED}|g" \
+  -e "s|@JAGS_RPATH@|${JAGS_RPATH_SED}|g" \
+  src/Makevars.in > src/Makevars

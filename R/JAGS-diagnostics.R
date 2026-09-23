@@ -47,6 +47,14 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
   check_char(type, "type", allow_values = c("density", "trace", "autocorrelation"))
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
+  if(type == "autocorrelation"){
+    check_int(
+      lags,
+      "lags",
+      lower = 0,
+      allow_NA = FALSE
+    )
+  }
   prior_list <- attr(fit, "prior_list")
   check_list(prior_list, "prior_list")
   if(!all(sapply(prior_list, is.prior)))
@@ -311,10 +319,10 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
   # transform meandif and orthonormal factors to differences
   model_samples <- .transform_factor_contrasts(model_samples, prior_list, transform_factors, transformations)
-  
+
   # rename factor levels (treatment, independent)
   model_samples <- .rename_factor_levels(model_samples, prior_list)
-  
+
   # extract parameter names from column names after transformations and renaming
   parameter_names <- colnames(model_samples)
 
@@ -348,6 +356,9 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   attr(model_samples, "iter")      <- do.call(c, samples_iter)
   attr(model_samples, "parameter") <- parameter
   attr(model_samples, "prior")     <- if(is.prior.mixture(prior_list)) prior_list else prior_list[[parameter]]
+  # Diagnostic transformations are validated against the selected parameter;
+  # reflected KDE bounds are therefore no longer on the same support scale.
+  attr(model_samples, "density_support_transformed") <- !is.null(transformations)
 
   return(model_samples)
 }
@@ -355,14 +366,25 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
   chain <- attr(plot_data, "chain")
   prior <- attr(plot_data, "prior")
-  bounds <- .diagnostics_prior_bounds(prior, attr(plot_data, "parameter"))
-
-  prior_lower <- bounds[["lower"]]
-  prior_upper <- bounds[["upper"]]
+  .bt_diagnostics_validate_plot_data(
+    plot_data,
+    chain,
+    diagnostic = "Density"
+  )
 
   out   <- list()
 
   for(i in 1:ncol(plot_data)){
+
+    bounds <- .diagnostics_density_bounds(
+      prior          = prior,
+      parameter      = attr(plot_data, "parameter"),
+      parameter_name = colnames(plot_data)[i]
+    )
+    bounds <- c(bounds[["lower"]], bounds[["upper"]])
+    if(isTRUE(attr(plot_data, "density_support_transformed"))){
+      bounds <- c(-Inf, Inf)
+    }
 
     if(is.null(xlim)){
       x_range <- range(plot_data[,i], na.rm = TRUE)
@@ -372,25 +394,22 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
     for(j in seq_along(unique(chain))){
 
-      temp_args    <- list(x = plot_data[chain == j,i], n = n_points, from = x_range[1], to = x_range[2], na.rm = TRUE)
-      temp_density <- do.call(stats::density, temp_args)
+      density_continuous <- .density_kde_boundary(
+        x      = plot_data[chain == j,i],
+        n      = n_points,
+        from   = x_range[1],
+        to     = x_range[2],
+        bounds = bounds,
+        na.rm  = TRUE
+      )
 
-      x_den    <- temp_density$x
-      y_den    <- temp_density$y
-
-      # check for truncation
-      if(isTRUE(all.equal(prior_lower, x_den[1])) | prior_lower >= x_den[1]){
-        y_den <- c(0, y_den)
-        x_den <- c(x_den[1], x_den)
-      }
-      if(isTRUE(all.equal(prior_upper, x_den[length(x_den)])) | prior_upper <= x_den[length(x_den)]){
-        y_den <- c(y_den, 0)
-        x_den <- c(x_den, x_den[length(x_den)])
-      }
+      x_den <- density_continuous$x
+      y_den <- density_continuous$y
+      boundary_reflection <- isTRUE(attr(density_continuous, "boundary_reflection"))
 
       temp_density    <- list(
         call    = call("density"),
-        bw      = NULL,
+        bw      = density_continuous$bw,
         n       = n_points,
         x       = x_den,
         y       = y_den
@@ -402,6 +421,9 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
       attr(temp_density, "chain")          <- j
       attr(temp_density, "parameter")      <- attr(plot_data, "parameter")
       attr(temp_density, "parameter_name") <- colnames(plot_data)[i]
+      if(boundary_reflection){
+        attr(temp_density, "boundary_reflection") <- TRUE
+      }
 
       out[[colnames(plot_data)[[i]]]][[j]] <- temp_density
     }
@@ -418,6 +440,19 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   attr(out, "parameter_name") <- colnames(plot_data)
 
   return(out)
+}
+
+.diagnostics_density_bounds <- function(prior, parameter, parameter_name){
+
+  if(is_prior_bias(prior) && identical(parameter, "bias")){
+    component <- sub("\\[.*$", "", parameter_name)
+    if(component %in% c("omega", "alpha", "pi_null")){
+      return(.diagnostics_prior_bounds(prior, component))
+    }
+    return(list(lower = -Inf, upper = Inf))
+  }
+
+  return(.diagnostics_prior_bounds(prior, parameter))
 }
 
 .diagnostics_prior_bounds <- function(prior, parameter){
@@ -462,6 +497,10 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     return(list(lower = 0, upper = 1))
   }
 
+  if(is.prior.simplex(prior)){
+    return(list(lower = 0, upper = 1))
+  }
+
   if(is.prior.mixture(prior)){
     simple_priors <- prior[vapply(prior, function(x) is.prior.simple(x) || is.prior.point(x), logical(1))]
     if(length(simple_priors) == 0L){
@@ -502,7 +541,6 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
   chain <- attr(plot_data, "chain")
   iter  <- attr(plot_data, "iter")
-  prior <- attr(plot_data, "prior")
 
   out   <- list()
 
@@ -551,19 +589,20 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 .diagnostics_plot_data_autocorrelation <- function(plot_data, n_points, lags){
 
   chain <- attr(plot_data, "chain")
-  iter  <- attr(plot_data, "iter")
-  prior <- attr(plot_data, "prior")
+  .bt_diagnostics_validate_plot_data(
+    plot_data,
+    chain,
+    diagnostic = "Autocorrelation"
+  )
 
   out   <- list()
 
   for(i in 1:ncol(plot_data)){
 
-    x_range <-
-
     for(j in seq_along(unique(chain))){
 
-      temp_x  <- 0:lags
       temp_y  <- stats::acf(plot_data[chain == j,i], lag.max = lags, plot = FALSE, na.action = stats::na.pass)$acf[, , 1L]
+      temp_x  <- seq_along(temp_y) - 1L
 
 
       temp_autocor <- list(
@@ -572,7 +611,7 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
       )
 
       class(temp_autocor) <- c("BayesTools_autocorrelation")
-      attr(temp_autocor, "x_range")        <- c(0, lags)
+      attr(temp_autocor, "x_range")        <- range(temp_x)
       attr(temp_autocor, "y_range")        <- range(c(0, temp_y))
       attr(temp_autocor, "chain")          <- j
       attr(temp_autocor, "parameter")      <- attr(plot_data, "parameter")
@@ -581,8 +620,8 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
       out[[colnames(plot_data)[[i]]]][[j]] <- temp_autocor
     }
 
-    attr(out[[colnames(plot_data)[[i]]]], "x_range")        <- c(0, lags)
-    attr(out[[colnames(plot_data)[[i]]]], "y_range")        <- c(0, max(sapply(out[[i]], function(x) attr(x, "y_range"))))
+    attr(out[[colnames(plot_data)[[i]]]], "x_range")        <- range(unlist(lapply(out[[i]], function(x) attr(x, "x_range"))))
+    attr(out[[colnames(plot_data)[[i]]]], "y_range")        <- range(unlist(lapply(out[[i]], function(x) attr(x, "y_range"))))
     attr(out[[colnames(plot_data)[[i]]]], "chains")         <- length(unique(chain))
     attr(out[[colnames(plot_data)[[i]]]], "parameter")      <- attr(plot_data, "parameter")
     attr(out[[colnames(plot_data)[[i]]]], "parameter_name") <- colnames(plot_data)[i]
@@ -595,31 +634,54 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   return(out)
 }
 
+.bt_diagnostics_validate_plot_data <- function(
+    plot_data,
+    chain,
+    diagnostic){
+
+  if(ncol(plot_data) == 0L || nrow(plot_data) == 0L){
+    stop(
+      diagnostic,
+      " diagnostics require at least one parameter with posterior samples.",
+      call. = FALSE
+    )
+  }
+  if(length(chain) != nrow(plot_data)){
+    stop(
+      "Diagnostic chain metadata must identify every posterior sample.",
+      call. = FALSE
+    )
+  }
+  for(parameter in colnames(plot_data)){
+    for(chain_id in unique(chain)){
+      values <- plot_data[chain == chain_id, parameter]
+      finite_values <- values[is.finite(values)]
+      if(length(finite_values) < 2L){
+        stop(
+          diagnostic,
+          " diagnostics for '", parameter, "' in chain ", chain_id,
+          " require at least two finite posterior samples.",
+          call. = FALSE
+        )
+      }
+      if(length(unique(finite_values)) < 2L){
+        stop(
+          diagnostic,
+          " diagnostics for '", parameter, "' in chain ", chain_id,
+          " are not assessable because the posterior samples are constant.",
+          call. = FALSE
+        )
+      }
+    }
+  }
+  invisible(TRUE)
+}
+
 
 .lines_diagnostics.density         <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  lwd       <- if(!is.null(dots[["lwd"]]))      dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
-
-
-  graphics::lines(x = plot_data$x, y = plot_data$y, type = "l", lwd = lwd, lty = lty, col = col)
-
-  return(invisible())
+  .lines.prior.simple(plot_data, ...)
 }
-.lines_diagnostics.trace           <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  lwd       <- if(!is.null(dots[["lwd"]]))      dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
-
-
-  graphics::lines(x = plot_data$x, y = plot_data$y, type = "l", lwd = lwd, lty = lty, col = col)
-
-  return(invisible())
-}
+.lines_diagnostics.trace           <- .lines_diagnostics.density
 .lines_diagnostics.autocorrelation <- function(plot_data, ...){
 
   dots      <- list(...)
@@ -636,41 +698,9 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 }
 
 .geom_diagnostics.density         <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  lwd       <- if(!is.null(dots[["size"]]))     dots[["size"]]     else  if(!is.null(dots[["lwd"]])) dots[["lwd"]] else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["linetype"]])) dots[["linetype"]] else  if(!is.null(dots[["lty"]])) dots[["lty"]] else .plot.prior_settings()[["lty"]]
-
-  geom <- ggplot2::geom_line(
-    data    = data.frame(
-      x = plot_data$x,
-      y = plot_data$y),
-    mapping = ggplot2::aes(
-      x = .data[["x"]],
-      y = .data[["y"]]),
-    linewidth = lwd, linetype = lty, color = col)
-
-  return(geom)
+  .geom_prior.simple(plot_data, ...)
 }
-.geom_diagnostics.trace           <- function(plot_data, ...){
-
-  dots      <- list(...)
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  lwd       <- if(!is.null(dots[["size"]]))     dots[["size"]]     else  if(!is.null(dots[["lwd"]])) dots[["lwd"]] else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["linetype"]])) dots[["linetype"]] else  if(!is.null(dots[["lty"]])) dots[["lty"]] else .plot.prior_settings()[["lty"]]
-
-  geom <- ggplot2::geom_line(
-    data    = data.frame(
-      x = plot_data$x,
-      y = plot_data$y),
-    mapping = ggplot2::aes(
-      x = .data[["x"]],
-      y = .data[["y"]]),
-    linewidth = lwd, linetype = lty, color = col)
-
-  return(geom)
-}
+.geom_diagnostics.trace           <- .geom_diagnostics.density
 .geom_diagnostics.autocorrelation <- function(plot_data, ...){
 
   dots      <- list(...)

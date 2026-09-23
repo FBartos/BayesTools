@@ -63,6 +63,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
 
   if(is.prior.none(x)){
     output <- .print.prior.none(x, short_name, parameter_names, plot, digits_estimates, silent)
+  }else if(is.prior.ordered(x)){
+    output <- .print.prior.ordered(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.simple(x) || is.prior.vector(x)){
     output <- .print.prior.simple(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.weightfunction(x)){
@@ -80,8 +82,93 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
 
   if(!silent){
     cat(output)
+    if(!short_name && !inline){
+      models <- if(inherits(x, "prior.bias_mixture")){
+        lapply(x, selection_model_spec)
+      }else if(is.prior.weightfunction(x) || is_prior_bias(x)){
+        list(selection_model_spec(x))
+      }else{
+        list()
+      }
+      for(i in seq_along(models)){
+        if(!is.null(models[[i]])){
+          cat("\n")
+          if(length(models) > 1L){
+            cat("Prior branch ", i, "\n", sep = "")
+          }
+          print(models[[i]])
+        }
+      }
+    }
   }
   return(invisible(output))
+}
+
+#' @rdname selection_model
+#' @order 4
+#' @export
+print.selection_model <- function(x, ...){
+
+  check_selection_model(x, name = "x")
+  source_description <- c(
+    condition = "retain unknown effects during normalization",
+    integrate = "average effects before normalization"
+  )
+  sampling_description <- c(
+    condition = "retain full unknown error vector during normalization",
+    integrate = "average full error vector before normalization"
+  )
+  rule_description <- c(
+    product = "Product of estimate weights",
+    best = "Weight of the best p-value"
+  )
+  group <- if(x[["weight_rule"]] == "product"){
+    "unused for the product rule"
+  }else if(is.null(x[["group"]])){
+    "automatic (resolved when data are bound)"
+  }else{
+    paste0("'", x[["group"]], "' (unresolved data column)")
+  }
+  cat(paste0(
+    "Selection model:\n",
+    "  Estimate random effects: ", x[["estimate_random_effects"]], " (",
+    source_description[[x[["estimate_random_effects"]]]], ").\n",
+    "  Other random effects: ", x[["other_random_effects"]], " (",
+    source_description[[x[["other_random_effects"]]]], ").\n",
+    "  Known sampling error: ", x[["known_sampling_variance"]], " (",
+    sampling_description[[x[["known_sampling_variance"]]]], ").\n",
+    "  Weight rule: ", x[["weight_rule"]], " (",
+    rule_description[[x[["weight_rule"]]]], ").\n",
+    "  Group: ", group, ".\n",
+    "  Sources are resolved when model data are bound.\n"
+  ))
+  invisible(x)
+}
+
+.print.prior.ordered        <- function(x, short_name, parameter_names, plot, digits_estimates, silent){
+
+  total <- print(x$total, short_name, parameter_names, plot = FALSE, digits_estimates, silent = TRUE)
+  allocation <- switch(
+    x$allocation$type,
+    "default_dirichlet" = "Dirichlet(1, ...)",
+    "fixed" = paste0("fixed(", paste0(round(x$allocation$weights, digits_estimates), collapse = ", "), ")"),
+    "dirichlet" = paste0("Dirichlet(", paste0(round(x$allocation$alpha, digits_estimates), collapse = ", "), ")"),
+    "by_factor" = "factor-specific",
+    "allocation"
+  )
+
+  out <- paste0(
+    "ordered ", x$contrast, ": total ~ ",
+    total,
+    ", allocation ~ ",
+    allocation
+  )
+
+  if(plot){
+    return(out)
+  }
+
+  out
 }
 
 .print.prior.simple         <- function(x, short_name, parameter_names, plot, digits_estimates, silent){
@@ -121,10 +208,13 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       "bernoulli"    = "Br",
       "exp"          = "E",
       "uniform"      = "U",
+      "moment"       = "MOM",
+      "invmoment"    = "iMOM",
       "mnormal"      = "mN",
       "mt"           = "mT",
       "mCauchy"      = "mC",
-      "mpoint"       = "mS"
+      "mpoint"       = "mS",
+      "dirichlet"    = "Dir"
     )
   }else{
     out_name <- switch(
@@ -140,10 +230,13 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       "bernoulli"    = "Bernoulli",
       "exp"          = "Exponential",
       "uniform"      = "Uniform",
+      "moment"       = "Moment",
+      "invmoment"    = "InvMoment",
       "mnormal"      = "mNormal",
       "mt"           = "mStudent-t",
       "mCauchy"      = "mCauchy",
-      "mpoint"       = "mSpike"
+      "mpoint"       = "mSpike",
+      "dirichlet"    = "Dirichlet"
     )
   }
 
@@ -165,8 +258,37 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
   }
 
   # remove the dimensions parameter from multivariate prior distributions
+  force_parameter_names <- FALSE
   if(is.prior.vector(x)){
     x[["parameters"]] <- x[["parameters"]][names(x[["parameters"]]) != "K"]
+  }else if(x[["distribution"]] == "moment"){
+    default_order    <- isTRUE(all.equal(x[["parameters"]][["order"]], 1))
+    default_location <- isTRUE(all.equal(x[["parameters"]][["location"]], 0))
+    parameter_order <- "mode"
+    if(!default_order){
+      parameter_order <- c(parameter_order, "order")
+    }
+    if(!default_location){
+      parameter_order <- c(parameter_order, "location")
+    }
+    force_parameter_names <- !default_order || !default_location
+    x[["parameters"]] <- x[["parameters"]][parameter_order]
+  }else if(x[["distribution"]] == "invmoment"){
+    default_order    <- isTRUE(all.equal(x[["parameters"]][["order"]], 1))
+    default_location <- isTRUE(all.equal(x[["parameters"]][["location"]], 0))
+    parameter_order <- "mode"
+    if(!default_order){
+      parameter_order <- c(parameter_order, "order")
+    }
+    parameter_order <- c(parameter_order, "df")
+    if(!default_location){
+      parameter_order <- c(parameter_order, "location")
+    }
+    force_parameter_names <- !default_order || !default_location
+    x[["parameters"]] <- x[["parameters"]][parameter_order]
+  }
+  if(force_parameter_names){
+    parameter_names <- TRUE
   }
 
   ### prepare prior parameters

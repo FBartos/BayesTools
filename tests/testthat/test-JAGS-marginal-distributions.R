@@ -29,6 +29,79 @@ REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-marginal-distributi
 # Load common test helpers
 source(testthat::test_path("common-functions.R"))
 
+.expect_marginal_table_current_inputs <- function(table, samples, inference,
+                                                  parameters,
+                                                  probs = c(0.025, 0.5, 0.975)){
+
+  draw_groups <- list()
+  inference_groups <- list()
+  for(parameter in parameters){
+    parameter_samples <- samples[[parameter]]
+    parameter_inference <- inference[[parameter]]
+    if(is.list(parameter_samples)){
+      parameter_draws <- lapply(parameter_samples, as.numeric)
+    }else{
+      parameter_draws <- list(as.numeric(parameter_samples))
+    }
+    if(is.list(parameter_samples) && length(parameter_samples) > 1L){
+      parameter_inferences <- lapply(
+        seq_along(parameter_draws),
+        function(i) parameter_inference[[i]]
+      )
+    }else{
+      parameter_inferences <- list(parameter_inference[[1L]])
+    }
+    draw_groups <- c(draw_groups, parameter_draws)
+    inference_groups <- c(inference_groups, parameter_inferences)
+  }
+
+  estimate_names <- c("Mean", "SD", as.character(probs))
+  expected_estimates <- t(vapply(draw_groups, function(draws){
+    c(
+      Mean = mean(draws),
+      SD = stats::sd(draws),
+      vapply(
+        probs,
+        function(prob) unname(stats::quantile(draws, probs = prob)),
+        numeric(1)
+      )
+    )
+  }, numeric(length(estimate_names))))
+  colnames(expected_estimates) <- estimate_names
+
+  expect_equal(
+    unname(as.matrix(table[, estimate_names, drop = FALSE])),
+    unname(expected_estimates),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    as.numeric(table$inclusion_BF),
+    vapply(inference_groups, as.numeric, numeric(1)),
+    tolerance = 1e-12
+  )
+
+  expected_BF_errors <- vapply(inference_groups, function(x){
+    error <- attr(x, "BF_error_percent")
+    if(is.null(error)){
+      return(NA_real_)
+    }
+    error <- as.numeric(error)[1L]
+    if(!is.finite(error) || error < 0){
+      return(NA_real_)
+    }
+    error
+  }, numeric(1))
+  if("BF_error_percent" %in% names(table)){
+    expect_equal(
+      as.numeric(table$BF_error_percent),
+      expected_BF_errors,
+      tolerance = 1e-12
+    )
+  }else{
+    expect_false(any(is.finite(expected_BF_errors)))
+  }
+}
+
 .plot_prior_density_for_test <- function(x, main = "", xlim = NULL, ylim = NULL, add = FALSE,
                                          lty = 1, col = graphics::par("fg"), ...){
   prior_density <- attr(x, "prior_density")
@@ -71,6 +144,7 @@ source(testthat::test_path("common-functions.R"))
 .marginal_posterior_with_prior_density_for_test <- function(samples, prior_density) {
   class(samples) <- c("marginal_posterior.simple", "marginal_posterior", class(samples))
   attr(samples, "prior_density") <- prior_density
+  attr(samples, "posterior_atoms") <- posterior_atom_attribute()
   samples
 }
 
@@ -167,6 +241,21 @@ source(testthat::test_path("common-functions.R"))
   invisible(masses)
 }
 
+test_that("posterior density method helpers validate density sources", {
+
+  expect_equal(posterior_density_method_match("KDE"), "KDE")
+  expect_equal(posterior_density_method_match("precomputed"), "precomputed")
+  expect_error(
+    posterior_density_method_match("bad", name = "density_method"),
+    "density_method"
+  )
+
+  expect_false(posterior_density_method_uses_precomputed("KDE"))
+  expect_true(posterior_density_method_uses_precomputed("precomputed"))
+  expect_true(posterior_density_method_uses_precomputed("qCMDE"))
+  expect_true(posterior_density_method_uses_precomputed("IWMDE"))
+})
+
 test_that("Savage_Dickey_BF uses prior density over normal posterior height", {
 
   prior_density <- BayesTools:::.prior_linear_combination_density(
@@ -181,14 +270,2084 @@ test_that("Savage_Dickey_BF uses prior density over normal posterior height", {
   expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) /
     stats::dnorm(0, mean = mean(posterior), sd = stats::sd(posterior))
 
-  expect_equal(
-    Savage_Dickey_BF(posterior, null_hypothesis = 0, normal_approximation = TRUE, silent = TRUE),
-    expected,
-    tolerance = 1e-12
+  out <- Savage_Dickey_BF(posterior, null_hypothesis = 0, normal_approximation = TRUE, silent = TRUE)
+  expect_equal(as.numeric(out), expected, tolerance = 1e-12)
+  expect_equal(attr(out, "posterior_density_source"), "normal")
+})
+
+test_that("Savage_Dickey_BF uses stored posterior density when available", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  stored_x <- seq(-4, 4, length.out = 401)
+  stored_y <- stats::dnorm(stored_x, mean = 0.4, sd = 1.2)
+  attr(posterior, "posterior_density") <- list(
+    x      = stored_x,
+    y      = stored_y,
+    method = "iwmde"
+  )
+
+  expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) /
+    stats::approx(stored_x, stored_y, xout = 0)[["y"]]
+
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+  expect_equal(as.numeric(out), expected, tolerance = 1e-12)
+  expect_equal(attr(out, "posterior_density_source"), "precomputed")
+})
+
+test_that("Savage_Dickey_BF rejects mismatched direct precomputed attributes", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "parameter") <- "theta"
+
+  attr(posterior, "posterior_ordinate") <- list(
+    parameter = "phi",
+    value     = 0,
+    ordinate  = .5,
+    method    = "qCMDE"
+  )
+  expect_error(
+    Savage_Dickey_BF(
+      posterior,
+      null_hypothesis      = 0,
+      normal_approximation = FALSE,
+      silent               = TRUE,
+      density_method       = "precomputed"
+    ),
+    "requires valid posterior ordinate or posterior density metadata",
+    fixed = TRUE
+  )
+
+  attr(posterior, "posterior_ordinate") <- NULL
+  attr(posterior, "posterior_density") <- list(
+    parameter = "phi",
+    x         = seq(-1, 1, length.out = 101),
+    y         = rep(.5, 101),
+    method    = "qCMDE"
+  )
+  expect_error(
+    Savage_Dickey_BF(
+      posterior,
+      null_hypothesis      = 0,
+      normal_approximation = FALSE,
+      silent               = TRUE,
+      density_method       = "precomputed"
+    ),
+    "requires valid posterior ordinate or posterior density metadata",
+    fixed = TRUE
   )
 })
 
-test_that("Savage_Dickey_BF warns for point mass and posterior-null clusters", {
+test_that("posterior density and ordinate constructors create reusable attributes", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+
+  ordinate <- posterior_ordinate_attribute(
+    value          = 0,
+    ordinate       = .5,
+    method         = "iwmde",
+    density_method = "IWMDE",
+    diagnostics    = list(BF_error_percent = 2.5),
+    parameter      = "theta"
+  )
+  attr(posterior, "posterior_ordinate") <- ordinate
+
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis = 0,
+    silent          = TRUE,
+    density_method  = "precomputed"
+  )
+  expect_equal(attr(out, "posterior_density_source"), "precomputed")
+  expect_equal(attr(out, "BF_error_percent"), 2.5)
+  expect_true(posterior_ordinate_has_value(ordinate, 0))
+  expect_true(posterior_ordinate_supports_bf(ordinate))
+  expect_false(posterior_ordinate_supports_bf(
+    ordinate,
+    validator = function(x) FALSE
+  ))
+
+  second <- posterior_ordinate_attribute(
+    value          = 1,
+    ordinate       = .25,
+    method         = "iwmde",
+    density_method = "IWMDE"
+  )
+  appended <- posterior_ordinate_append(ordinate, second)
+  expect_true(posterior_ordinate_has_value(appended, 0))
+  expect_true(posterior_ordinate_has_value(appended, 1))
+  expect_true(posterior_ordinate_supports_bf(
+    appended,
+    validator = function(x) !is.null(x[["diagnostics"]])
+  ))
+  expect_error(
+    posterior_ordinate_append(NULL, list(value = 0)),
+    "valid posterior ordinate"
+  )
+  expect_error(
+    posterior_ordinate_attribute(
+      value          = c(0, 0),
+      ordinate       = c(.5, .6),
+      method         = "iwmde",
+      density_method = "IWMDE"
+    ),
+    "unique"
+  )
+  expect_error(
+    posterior_ordinate_append(ordinate, ordinate),
+    "duplicate"
+  )
+  expect_error(
+    posterior_ordinate_attribute(
+      value          = 0,
+      ordinate       = .5,
+      method         = "iwmde",
+      density_method = "IWMDE",
+      x              = 0
+    ),
+    "reserved fields"
+  )
+  expect_error(
+    posterior_ordinate_attribute(
+      value          = 0,
+      ordinate       = .5,
+      method         = "iwmde",
+      density_method = "IWMDE",
+      parameter      = "theta",
+      parameter      = "mu"
+    ),
+    "unique, nonmissing names",
+    fixed = TRUE
+  )
+
+  density <- posterior_density_attribute(
+    x              = seq(-2, 2, length.out = 201),
+    y              = stats::dnorm(seq(-2, 2, length.out = 201)),
+    method         = "iwmde",
+    density_method = "IWMDE",
+    point_masses   = data.frame(x = 0, mass = .01),
+    support        = list(bounds = c(-Inf, Inf), points = 0),
+    parameter      = "theta"
+  )
+  parsed_density <- BayesTools:::.posterior_density_from_attribute(density)
+  expect_equal(parsed_density[["method"]], "iwmde")
+  expect_equal(parsed_density[["point_masses"]][["mass"]], .01)
+  expect_true(BayesTools:::.posterior_density_point_masses_declared(parsed_density))
+  expect_equal(parsed_density[["support"]][["bounds"]], c(-Inf, Inf))
+  expect_equal(parsed_density[["support"]][["points"]], 0)
+  density_without_points <- posterior_density_attribute(
+    x              = seq(-2, 2, length.out = 201),
+    y              = stats::dnorm(seq(-2, 2, length.out = 201)),
+    method         = "iwmde",
+    density_method = "IWMDE"
+  )
+  expect_false(BayesTools:::.posterior_density_point_masses_declared(
+    BayesTools:::.posterior_density_from_attribute(density_without_points)
+  ))
+  expect_error(
+    posterior_density_attribute(
+      x              = c(0, 1, Inf),
+      y              = c(1, 1, 1),
+      method         = "iwmde",
+      density_method = "IWMDE"
+    ),
+    "grid values must be finite",
+    fixed = TRUE
+  )
+  expect_error(
+    posterior_density_attribute(
+      x              = 0:1,
+      y              = c(1, 1),
+      method         = "iwmde",
+      density_method = "IWMDE",
+      parameter      = "theta",
+      parameter      = "mu"
+    ),
+    "unique, nonmissing names",
+    fixed = TRUE
+  )
+  expect_error(
+    posterior_density_attribute(
+      x              = 0:1,
+      y              = c(1, 1),
+      method         = "iwmde",
+      density_method = "IWMDE",
+      point_masses   = data.frame(x = 0, mass = 1.2)
+    ),
+    "point_masses"
+  )
+  expect_error(
+    posterior_density_attribute(
+      x              = 0:1,
+      y              = c(1, 1),
+      method         = "iwmde",
+      density_method = "IWMDE",
+      point_masses   = data.frame(x = c(0, 1), mass = c(.6, .5))
+    ),
+    "point_masses"
+  )
+  expect_error(
+    posterior_density_attribute(
+      x              = 0:1,
+      y              = c(1, 1),
+      method         = "iwmde",
+      density_method = "IWMDE",
+      density        = list(x = 0:1, y = c(1, 1))
+    ),
+    "reserved fields"
+  )
+  expect_error(
+    posterior_density_attribute(
+      x              = 0:1,
+      y              = c(1, 1),
+      method         = "iwmde",
+      density_method = "IWMDE",
+      support        = c(1, 0)
+    ),
+    "support metadata"
+  )
+  expect_warning(
+    expect_error(
+      posterior_density_attribute(
+        x              = 0:1,
+        y              = c(1, 1),
+        method         = "iwmde",
+        density_method = "IWMDE",
+        support        = list(bounds = "bad")
+      ),
+      "support metadata"
+    ),
+    NA
+  )
+})
+
+test_that("Savage_Dickey_BF validates scalar options and rejects invalid precomputed source", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+
+  expect_error(
+    Savage_Dickey_BF(posterior, null_hypothesis = Inf, silent = TRUE),
+    "must be finite",
+    fixed = TRUE
+  )
+  expect_error(
+    Savage_Dickey_BF(posterior, null_hypothesis = NA_real_, silent = TRUE),
+    "cannot contain NA/NaN",
+    fixed = TRUE
+  )
+  expect_error(
+    Savage_Dickey_BF(posterior, normal_approximation = NA, silent = TRUE),
+    "cannot contain NA/NaN",
+    fixed = TRUE
+  )
+  expect_error(
+    Savage_Dickey_BF(posterior, silent = NA),
+    "cannot contain NA/NaN",
+    fixed = TRUE
+  )
+
+  attr(posterior, "posterior_density") <- list(
+    x      = seq(2, 3, length.out = 101),
+    y      = rep(1, 101),
+    method = "qCMDE"
+  )
+  expect_error(
+    Savage_Dickey_BF(
+      posterior,
+      null_hypothesis      = 0,
+      normal_approximation = FALSE,
+      silent               = TRUE,
+      density_method       = "precomputed"
+    ),
+    "Stored posterior density does not span",
+    fixed = TRUE
+  )
+})
+
+test_that("Savage_Dickey_BF reports stored density BF error only for matched nulls", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  stored_x <- seq(-4, 4, length.out = 401)
+  stored_y <- stats::dnorm(stored_x, mean = 0.4, sd = 1.2)
+  attr(posterior, "posterior_density") <- list(
+    x           = stored_x,
+    y           = stored_y,
+    method      = "iwmde",
+    diagnostics = list(bf_relative_mcse = .123)
+  )
+
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+
+  expect_null(attr(out, "BF_error_percent"))
+
+  attr(posterior, "posterior_density")$diagnostics <- list(
+    bf_value         = 0,
+    bf_relative_mcse = .123
+  )
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+
+  expect_equal(attr(out, "BF_error_percent"), 12.3)
+})
+
+test_that("Savage_Dickey_BF prefers matching stored ordinates", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_density") <- list(
+    x      = seq(2, 3, length.out = 101),
+    y      = rep(100, 101),
+    method = "plot-only"
+  )
+  attr(posterior, "posterior_ordinate") <- list(
+    value       = c(0, .5),
+    ordinate    = c(.25, .5),
+    method      = "qCMDE",
+    diagnostics = list(relative_mcse = c(.1, .2))
+  )
+
+  expected <- BayesTools:::.prior_linear_density_height(prior_density, .5) / .5
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = .5,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+
+  expect_equal(as.numeric(out), expected, tolerance = 1e-12)
+  expect_equal(attr(out, "BF_error_percent"), 20)
+})
+
+test_that("stored posterior ordinate parser rejects ambiguous values", {
+
+  parsed <- BayesTools:::.posterior_ordinate_from_attribute(
+    list(
+      ordinates = data.frame(
+        value         = c(0, .5),
+        ordinate      = c(.25, .5),
+        relative_mcse = c(.1, .2)
+      ),
+      method = "qCMDE"
+    ),
+    null_hypothesis = .5
+  )
+  expect_equal(parsed$x, .5)
+  expect_equal(parsed$y, .5)
+  expect_equal(parsed$diagnostics$relative_mcse, .2)
+
+  parsed <- BayesTools:::.posterior_ordinate_from_attribute(
+    list(
+      ordinates = data.frame(
+        value            = c(0, .5),
+        ordinate         = c(.25, .5),
+        relative_mcse    = c(.1, .2),
+        BF_error_percent = c(10, 20)
+      ),
+      diagnostics = list(relative_mcse = .9, estimator = "q_grid_cmde"),
+      method      = "qCMDE"
+    ),
+    null_hypothesis = .5
+  )
+  expect_equal(parsed$diagnostics$relative_mcse, .2)
+  expect_equal(parsed$diagnostics$BF_error_percent, 20)
+  expect_equal(parsed$diagnostics$estimator, "q_grid_cmde")
+
+  expect_null(BayesTools:::.posterior_ordinate_from_attribute(
+    list(value = c(0, 0), ordinate = c(.25, .30)),
+    null_hypothesis = 0
+  ))
+  expect_null(BayesTools:::.posterior_ordinate_from_attribute(
+    list(value = 0, ordinate = 0),
+    null_hypothesis = 0
+  ))
+  expect_null(BayesTools:::.posterior_ordinate_from_attribute(
+    list(value = 1, ordinate = .25),
+    null_hypothesis = 0
+  ))
+})
+
+test_that("stored posterior ordinate parser keeps diagnostics aligned", {
+
+  parsed <- BayesTools:::.posterior_ordinate_from_attribute(
+    list(
+      value       = c(NA, 0),
+      ordinate    = c(.25, .50),
+      method      = "qCMDE",
+      diagnostics = list(
+        relative_mcse    = c(.9, .1),
+        BF_error_percent = c(90, 10),
+        estimator        = "q_grid_cmde"
+      )
+    ),
+    null_hypothesis = 0
+  )
+
+  expect_equal(parsed$x, 0)
+  expect_equal(parsed$y, .50)
+  expect_equal(parsed$diagnostics$relative_mcse, .1)
+  expect_equal(parsed$diagnostics$BF_error_percent, 10)
+  expect_equal(parsed$diagnostics$estimator, "q_grid_cmde")
+})
+
+test_that("stored posterior ordinate attachment preserves multiple null values", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  posterior <- BayesTools:::.posterior_ordinate_attach(
+    samples = posterior,
+    sources = list(list(
+      list(parameter = "theta", value = 0,  ordinate = .25, method = "qCMDE"),
+      list(parameter = "theta", value = .5, ordinate = .50, method = "qCMDE")
+    )),
+    parameter = "theta"
+  )
+
+  expected <- BayesTools:::.prior_linear_density_height(prior_density, .5) / .50
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = .5,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+
+  expect_equal(as.numeric(out), expected, tolerance = 1e-12)
+})
+
+test_that("Savage_Dickey_BF ignores stored posterior density by default", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_density") <- list(
+    x      = seq(-4, 4, length.out = 401),
+    y      = rep(100, 401),
+    method = "iwmde"
+  )
+
+  expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) /
+    BayesTools:::.Savage_Dickey_BF.kd(posterior, 0)
+
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE
+  )
+  expect_equal(as.numeric(out), expected, tolerance = 1e-12)
+  expect_equal(attr(out, "posterior_density_source"), "KDE")
+})
+
+test_that("Savage_Dickey_BF does not infer exact support from bounded prior grids", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("beta", list(alpha = 1, beta = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(.001, .999, length.out = 301),
+    prior_density
+  )
+
+  expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) /
+    BayesTools:::.Savage_Dickey_BF.kd(posterior, 0)
+
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE
+  )
+
+  expect_equal(as.numeric(out), expected, tolerance = 1e-12)
+  expect_equal(attr(out, "posterior_density_source"), "KDE")
+  expect_null(attr(out, "posterior_density_boundary_reflection", exact = TRUE))
+})
+
+test_that("Savage_Dickey_BF uses exact posterior support for KDE fallback", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("beta", list(alpha = 1, beta = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(.001, .999, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_support") <- c(0, 1)
+
+  posterior_height <- BayesTools:::.Savage_Dickey_BF.kd(posterior, 0)
+  expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) /
+    as.numeric(posterior_height)
+
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE
+  )
+
+  expect_true(attr(posterior_height, "boundary_reflection"))
+  expect_equal(as.numeric(out), expected, tolerance = 1e-12)
+  expect_equal(attr(out, "posterior_density_source"), "KDE")
+  expect_true(attr(out, "posterior_density_boundary_reflection"))
+  expect_equal(attr(out, "posterior_density_support"), c(0, 1))
+
+  attr(posterior, "posterior_support") <- list(lower = 0, upper = 1, exact = TRUE)
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE
+  )
+  expect_true(attr(out, "posterior_density_boundary_reflection"))
+  expect_equal(attr(out, "posterior_density_support"), c(0, 1))
+})
+
+test_that("Savage_Dickey_BF rejects stored density support when grid misses the null", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("beta", list(alpha = 1, beta = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(.001, .999, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_density") <- list(
+    x       = seq(.25, .75, length.out = 101),
+    y       = rep(1, 101),
+    method  = "iwmde",
+    support = list(bounds = c(0, 1), exact = TRUE)
+  )
+
+  expect_error(
+    Savage_Dickey_BF(
+      posterior,
+      null_hypothesis      = 0,
+      normal_approximation = FALSE,
+      density_method       = "precomputed"
+    ),
+    "Stored posterior density does not span",
+    fixed = TRUE
+  )
+})
+
+test_that("Savage_Dickey_BF lets exact support override stale precomputed heights", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(0, 1, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_support") <- c(0, 1)
+  attr(posterior, "posterior_ordinate") <- list(
+    value    = -.5,
+    ordinate = .5,
+    method   = "qCMDE"
+  )
+
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = -.5,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+  expect_equal(as.numeric(out), Inf)
+  expect_equal(attr(out, "posterior_density_source"), "exact_support_exclusion")
+  expect_true(attr(out, "posterior_density_fallback"))
+  expect_match(
+    attr(out, "posterior_density_fallback_warnings"),
+    "posterior support excludes the null hypothesis"
+  )
+
+  attr(posterior, "posterior_ordinate") <- NULL
+  attr(posterior, "posterior_density") <- list(
+    x       = seq(-1, 1, length.out = 101),
+    y       = rep(.5, 101),
+    method  = "qCMDE",
+    support = list(lower = 0, upper = 1, exact = TRUE)
+  )
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = -.5,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+  expect_equal(as.numeric(out), Inf)
+  expect_equal(attr(out, "posterior_density_source"), "exact_support_exclusion")
+  expect_true(attr(out, "posterior_density_fallback"))
+  expect_equal(attr(out, "posterior_density_support"), c(0, 1))
+  expect_match(
+    attr(out, "posterior_density_fallback_warnings"),
+    "stored posterior density support excludes the null hypothesis"
+  )
+})
+
+test_that("Savage_Dickey_BF uses matched density support to reject stale ordinates", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(0, 1, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_ordinate") <- list(
+    value    = -.5,
+    ordinate = .5,
+    method   = "stale-ordinate"
+  )
+  attr(posterior, "posterior_density") <- list(
+    x       = seq(0, 1, length.out = 101),
+    y       = rep(.5, 101),
+    method  = "support-guard",
+    support = list(lower = 0, upper = 1, exact = TRUE)
+  )
+
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = -.5,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+
+  expect_equal(as.numeric(out), Inf)
+  expect_equal(attr(out, "posterior_density_source"), "exact_support_exclusion")
+  expect_true(attr(out, "posterior_density_fallback"))
+  expect_equal(attr(out, "posterior_density_support"), c(0, 1))
+  expect_match(
+    attr(out, "posterior_density_fallback_warnings"),
+    "Ignoring the precomputed posterior ordinate",
+    fixed = TRUE
+  )
+  expect_match(
+    attr(out, "posterior_density_fallback_warnings"),
+    "stored posterior density support excludes the null hypothesis"
+  )
+})
+
+test_that("Savage_Dickey_BF ignores non-exact or incompatible support metadata", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("beta", list(alpha = 1, beta = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(.001, .999, length.out = 301),
+    prior_density
+  )
+
+  attr(posterior, "posterior_support") <-
+    BayesTools:::.posterior_support_new(c(0, 1), exact = FALSE, source = "test")
+  expected <- BayesTools:::.prior_linear_density_height(prior_density, .5) /
+    BayesTools:::.Savage_Dickey_BF.kd(posterior, .5)
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = .5,
+    normal_approximation = FALSE,
+    silent               = TRUE
+  )
+  expect_equal(as.numeric(out), expected, tolerance = 1e-12)
+  expect_null(attr(out, "posterior_density_boundary_reflection", exact = TRUE))
+
+  attr(posterior, "posterior_support") <-
+    BayesTools:::.posterior_support_new(c(.2, .8), source = "test")
+  expect_warning(
+    out <- Savage_Dickey_BF(
+      posterior,
+      null_hypothesis      = .5,
+      normal_approximation = FALSE
+    ),
+    "Exact posterior support metadata is incompatible",
+    fixed = TRUE
+  )
+  expect_null(attr(out, "posterior_density_boundary_reflection", exact = TRUE))
+})
+
+test_that("posterior support distinguishes point support from interval support", {
+
+  point_support <- BayesTools:::.posterior_support_new(
+    c(0, 1),
+    points = c(0, 1),
+    type   = "points"
+  )
+  expect_false(BayesTools:::.posterior_support_contains_value(point_support, .5))
+  expect_true(BayesTools:::.posterior_support_contains_value(point_support, 1))
+
+  point_support_info <- BayesTools:::.posterior_support_for_kde(
+    c(0, 1, 0, 1),
+    support = point_support
+  )
+  expect_null(point_support_info[["bounds"]])
+  expect_match(
+    point_support_info[["warning"]],
+    "continuous interval",
+    fixed = TRUE
+  )
+
+  mixed_support <- BayesTools:::.posterior_support_new(
+    c(0, 1),
+    points = 0,
+    type   = "mixed"
+  )
+  expect_true(BayesTools:::.posterior_support_contains_value(mixed_support, .5))
+})
+
+test_that("Savage_Dickey_BF reports incompatible support on precomputed paths", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("beta", list(alpha = 1, beta = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 1024
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(.001, .999, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_support") <-
+    BayesTools:::.posterior_support_new(c(.2, .8), source = "test")
+  attr(posterior, "posterior_ordinate") <- posterior_ordinate_attribute(
+    value          = .5,
+    ordinate       = 1,
+    method         = "qCMDE",
+    density_method = "precomputed"
+  )
+
+  expect_warning(
+    out <- Savage_Dickey_BF(
+      posterior,
+      null_hypothesis = .5,
+      density_method  = "precomputed"
+    ),
+    "Exact posterior support metadata is incompatible",
+    fixed = TRUE
+  )
+  expect_equal(attr(out, "posterior_density_source"), "precomputed")
+  expect_match(
+    attr(out, "warnings"),
+    "Exact posterior support metadata is incompatible",
+    fixed = TRUE
+  )
+})
+
+test_that("Savage_Dickey_BF ignores incompatible support before excluding nulls", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 1024
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-1, 1, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_support") <-
+    BayesTools:::.posterior_support_new(c(0, 1), source = "test")
+  attr(posterior, "posterior_ordinate") <- posterior_ordinate_attribute(
+    value          = -.5,
+    ordinate       = .5,
+    method         = "qCMDE",
+    density_method = "precomputed"
+  )
+
+  expect_warning(
+    out <- Savage_Dickey_BF(
+      posterior,
+      null_hypothesis = -.5,
+      density_method  = "precomputed"
+    ),
+    "Exact posterior support metadata is incompatible",
+    fixed = TRUE
+  )
+  expect_true(is.finite(out))
+  expect_equal(attr(out, "posterior_density_source"), "precomputed")
+})
+
+test_that("marginal_posterior propagates exact scalar support from mixed samples", {
+
+  theta_prior <- prior("beta", list(alpha = 1, beta = 1))
+  theta <- seq(.001, .999, length.out = 101)
+  class(theta) <- c("mixed_posteriors", "mixed_posteriors.simple", class(theta))
+  attr(theta, "sample_ind") <- seq_along(theta)
+  attr(theta, "models_ind") <- rep(1, length(theta))
+  attr(theta, "parameter") <- "theta"
+  attr(theta, "prior_list") <- theta_prior
+  theta <- BayesTools:::.posterior_support_set_from_prior_list(theta, theta_prior)
+
+  samples <- list(theta = theta)
+  class(samples) <- c("mixed_posteriors", "list")
+  attr(samples, "prior_density_context") <- BayesTools:::.prior_density_build_context(
+    prior_list   = list(theta = theta_prior),
+    column_names = "theta",
+    n_grid       = 1024
+  )
+
+  marginal <- marginal_posterior(
+    samples,
+    parameter     = "theta",
+    prior_samples = TRUE
+  )
+  marginal_no_prior <- marginal_posterior(
+    samples,
+    parameter     = "theta",
+    prior_samples = FALSE
+  )
+  transformed <- marginal_posterior(
+    samples,
+    parameter                = "theta",
+    prior_samples            = TRUE,
+    transformation           = "lin",
+    transformation_arguments = list(a = 1, b = 2)
+  )
+
+  expect_equal(BayesTools:::.posterior_support_bounds(marginal), c(0, 1))
+  expect_equal(BayesTools:::.posterior_support_bounds(marginal_no_prior), c(0, 1))
+  expect_equal(BayesTools:::.posterior_support_bounds(transformed), c(1, 3))
+
+  attr(theta, "posterior_support") <-
+    BayesTools:::.posterior_support_new(c(.2, .8), source = "posterior")
+  samples[["theta"]] <- theta
+  marginal_existing_support <- marginal_posterior(
+    samples,
+    parameter     = "theta",
+    prior_samples = TRUE
+  )
+  expect_equal(
+    BayesTools:::.posterior_support_bounds(marginal_existing_support),
+    c(.2, .8)
+  )
+
+  support <- BayesTools:::.posterior_support_new(c(0, 1))
+  expect_null(BayesTools:::.posterior_support_transform(
+    support,
+    "lin",
+    list(a = 1, b = 0)
+  ))
+  expect_null(BayesTools:::.posterior_support_transform(
+    support,
+    "exp_lin",
+    list(a = 1, b = 0)
+  ))
+
+  connected_support <- BayesTools:::.posterior_support_union(list(c(0, 1), c(1, 2)))
+  disjoint_support <- BayesTools:::.posterior_support_union(list(c(0, 1), c(2, 3)))
+  expect_true(connected_support$exact)
+  expect_false(disjoint_support$exact)
+})
+
+test_that("marginal_posterior preserves an attached simple prior density", {
+
+  theta <- seq(.1, .9, length.out = 101)
+  class(theta) <- c("mixed_posteriors", "mixed_posteriors.simple", class(theta))
+  attr(theta, "sample_ind") <- seq_along(theta)
+  attr(theta, "models_ind") <- rep(1, length(theta))
+  attr(theta, "parameter")  <- "theta"
+  attr(theta, "prior_list") <- prior_none()
+  stored_prior <- prior("uniform", list(a = 0, b = 1))
+  attr(theta, "prior_density") <- stored_prior
+
+  samples <- list(theta = theta)
+  class(samples) <- c("mixed_posteriors", "list")
+
+  marginal <- marginal_posterior(
+    samples,
+    parameter     = "theta",
+    prior_samples = TRUE
+  )
+  transformed <- marginal_posterior(
+    samples,
+    parameter                = "theta",
+    prior_samples            = TRUE,
+    transformation           = "lin",
+    transformation_arguments = list(a = 1, b = 2)
+  )
+
+  expect_identical(
+    attr(marginal, "prior_density", exact = TRUE),
+    stored_prior
+  )
+  expect_false(identical(
+    attr(transformed, "prior_density", exact = TRUE),
+    stored_prior
+  ))
+})
+
+test_that("marginal_posterior infers support from the current prior context", {
+
+  raw_prior <- prior("beta", list(alpha = 1, beta = 1))
+  transformed_prior <- prior("uniform", list(10, 20))
+  theta <- seq(11, 19, length.out = 51)
+  class(theta) <- c("mixed_posteriors", "mixed_posteriors.simple", class(theta))
+  attr(theta, "sample_ind") <- seq_along(theta)
+  attr(theta, "models_ind") <- rep(1, length(theta))
+  attr(theta, "parameter") <- "theta"
+  attr(theta, "prior_list") <- raw_prior
+
+  samples <- list(theta = theta)
+  class(samples) <- c("mixed_posteriors", "list")
+  attr(samples, "transform_scaled") <- TRUE
+  attr(samples, "prior_density_context") <- BayesTools:::.prior_density_context(
+    prior_list   = list(theta = transformed_prior),
+    column_names = "theta",
+    n_grid       = 64
+  )
+
+  marginal <- marginal_posterior(
+    samples,
+    parameter     = "theta",
+    prior_samples = FALSE
+  )
+
+  expect_equal(BayesTools:::.posterior_support_bounds(marginal), c(10, 20))
+})
+
+test_that("marginal_posterior rebuilds conditional context for support", {
+
+  theta_prior <- prior_spike_and_slab(
+    prior("uniform", list(10, 20)),
+    prior_inclusion = prior("point", list(location = .5))
+  )
+  prior_list <- list(theta = theta_prior)
+  condition_event <- BayesTools:::.condition_event(
+    prior_list        = prior_list,
+    conditional       = "theta",
+    conditional_rule  = "AND"
+  )
+  theta <- seq(11, 19, length.out = 51)
+  class(theta) <- c("mixed_posteriors", "mixed_posteriors.simple", class(theta))
+  attr(theta, "sample_ind") <- seq_along(theta)
+  attr(theta, "models_ind") <- rep(1, length(theta))
+  attr(theta, "parameter") <- "theta"
+  attr(theta, "prior_list") <- theta_prior
+  theta <- BayesTools:::.posterior_support_set_from_prior_list(theta, theta_prior)
+  theta <- BayesTools:::.condition_event_set_attributes(theta, condition_event)
+
+  samples <- list(theta = theta)
+  class(samples) <- c("mixed_posteriors", "list")
+  attr(samples, "prior_density_context") <- BayesTools:::.prior_density_context(
+    prior_list   = prior_list,
+    column_names = "theta",
+    n_grid       = 64
+  )
+
+  marginal <- marginal_posterior(
+    samples,
+    parameter     = "theta",
+    prior_samples = FALSE
+  )
+
+  expect_equal(BayesTools:::.posterior_support_bounds(marginal), c(10, 20))
+  expect_equal(attr(marginal, "conditional", exact = TRUE), "theta")
+  expect_equal(attr(marginal, "condition_key", exact = TRUE), condition_event[["condition_key"]])
+})
+
+test_that("support propagation ignores zero-weight and stale raw components", {
+
+  null_prior <- BayesTools:::.set_prior_model_weight(
+    prior("point", list(location = 0)),
+    0
+  )
+  slab_prior <- BayesTools:::.set_prior_model_weight(
+    prior("uniform", list(10, 20)),
+    1
+  )
+  support <- BayesTools:::.posterior_support_from_prior_list(
+    list(null_prior, slab_prior)
+  )
+
+  expect_equal(support$bounds, c(10, 20))
+
+  mixture_prior <- prior_mixture(
+    list(
+      prior("point", list(location = 0)),
+      prior("uniform", list(10, 20))
+    ),
+    is_null = c(TRUE, FALSE)
+  )
+  attr(mixture_prior, "prior_weights") <- c(0, 1)
+  mixture_context <- BayesTools:::.prior_density_context(
+    prior_list   = list(theta = mixture_prior),
+    column_names = "theta"
+  )
+  mixture_support <- BayesTools:::.posterior_support_from_prior_context_weights(
+    mixture_context,
+    c(theta = 1)
+  )
+
+  expect_equal(mixture_support$bounds, c(10, 20))
+
+  zero_weight_null <- BayesTools:::.set_prior_model_weight(prior_none(), 0)
+  weightfunction_prior <- BayesTools:::.set_prior_model_weight(
+    prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .4))),
+    1
+  )
+  omega_context <- list(
+    names   = c("omega[0,0.05]", "omega[0.05,1]"),
+    mapping = list(c(NA_integer_, NA_integer_), c(1L, 2L))
+  )
+  omega_support <- BayesTools:::.posterior_support_weightfunction_columns(
+    list(zero_weight_null, weightfunction_prior),
+    omega_context
+  )
+
+  expect_equal(omega_support[["omega[0.05,1]"]]$bounds, c(.4, .4))
+
+  samples <- matrix(1, nrow = 2, ncol = 2)
+  colnames(samples) <- c("theta", "display_theta")
+  attr(samples, "posterior_support") <- list(
+    theta = BayesTools:::.posterior_support_new(
+      c(0, 20),
+      source = "prior_list"
+    ),
+    display_theta = BayesTools:::.posterior_support_new(
+      c(0, 20),
+      source = "prior_list"
+    ),
+    posterior_only = BayesTools:::.posterior_support_new(
+      c(-1, 1),
+      source = "posterior"
+    )
+  )
+  context <- BayesTools:::.prior_density_context(
+    prior_list   = list(theta = slab_prior),
+    column_names = "theta"
+  )
+
+  refreshed <- BayesTools:::.posterior_support_set_from_prior_context(
+    samples,
+    context
+  )
+  refreshed_support <- attr(refreshed, "posterior_support", exact = TRUE)
+
+  expect_equal(BayesTools:::.posterior_support_bounds(refreshed, "theta"), c(10, 20))
+  expect_null(refreshed_support[["display_theta"]])
+  expect_equal(
+    BayesTools:::.posterior_support_bounds(refreshed, "posterior_only"),
+    c(-1, 1)
+  )
+})
+
+test_that("formula marginal support is propagated without prior densities", {
+
+  theta_prior <- prior(
+    "beta",
+    list(alpha = 1, beta = 1),
+    truncation = list(lower = .2, upper = .8)
+  )
+  theta <- seq(.25, .75, length.out = 101)
+  class(theta) <- c(
+    "mixed_posteriors",
+    "mixed_posteriors.simple",
+    "mixed_posteriors.formula",
+    class(theta)
+  )
+  attr(theta, "sample_ind") <- seq_along(theta)
+  attr(theta, "models_ind") <- rep(1, length(theta))
+  attr(theta, "parameter") <- "mu_x"
+  attr(theta, "formula_parameter") <- "mu"
+  attr(theta, "prior_list") <- theta_prior
+
+  samples <- list(mu_x = theta)
+  class(samples) <- c("mixed_posteriors", "list")
+
+  marginal_no_prior <- marginal_posterior(
+    samples,
+    parameter     = "mu_x",
+    formula       = y ~ 0 + x,
+    prior_samples = FALSE
+  )
+  marginal_with_prior <- marginal_posterior(
+    samples,
+    parameter     = "mu_x",
+    formula       = y ~ 0 + x,
+    prior_samples = TRUE
+  )
+
+  expected_bounds <- list(
+    "-1SD" = c(-.8, -.2),
+    "0SD"  = c(0, 0),
+    "1SD"  = c(.2, .8)
+  )
+  for(level in names(expected_bounds)){
+    expect_equal(
+      BayesTools:::.posterior_support_bounds(marginal_no_prior[[level]]),
+      expected_bounds[[level]]
+    )
+    expect_equal(
+      BayesTools:::.posterior_support_bounds(marginal_with_prior[[level]]),
+      expected_bounds[[level]]
+    )
+  }
+})
+
+test_that("formula marginal_posterior attaches matched top-level precomputed metadata", {
+
+  mu_intercept <- rep(0, 51)
+  class(mu_intercept) <- c(
+    "mixed_posteriors",
+    "mixed_posteriors.simple",
+    "mixed_posteriors.formula",
+    class(mu_intercept)
+  )
+  attr(mu_intercept, "sample_ind") <- seq_along(mu_intercept)
+  attr(mu_intercept, "models_ind") <- rep(1, length(mu_intercept))
+  attr(mu_intercept, "parameter") <- "mu_intercept"
+  attr(mu_intercept, "formula_parameter") <- "mu"
+  attr(mu_intercept, "prior_list") <- prior("normal", list(0, 1))
+
+  mu_x <- seq(-1, 1, length.out = 51)
+  class(mu_x) <- c(
+    "mixed_posteriors",
+    "mixed_posteriors.simple",
+    "mixed_posteriors.formula",
+    class(mu_x)
+  )
+  attr(mu_x, "sample_ind") <- seq_along(mu_x)
+  attr(mu_x, "models_ind") <- rep(1, length(mu_x))
+  attr(mu_x, "parameter") <- "mu_x"
+  attr(mu_x, "formula_parameter") <- "mu"
+  attr(mu_x, "prior_list") <- prior("normal", list(0, 1))
+
+  samples <- list(mu_intercept = mu_intercept, mu_x = mu_x)
+  class(samples) <- c("mixed_posteriors", "list")
+  attr(samples, "posterior_density") <- list(
+    one_sd = posterior_density_attribute(
+      x         = seq(-1, 1, length.out = 101),
+      y         = rep(.5, 101),
+      method    = "formula-density",
+      density_method = "precomputed",
+      parameter = "mu_x[1SD]"
+    )
+  )
+
+  marginal <- marginal_posterior(
+    samples,
+    parameter     = "mu_x",
+    formula       = y ~ x,
+    prior_samples = FALSE
+  )
+  transformed <- marginal_posterior(
+    samples,
+    parameter                = "mu_x",
+    formula                  = y ~ x,
+    prior_samples            = FALSE,
+    transformation           = "lin",
+    transformation_arguments = list(a = 0, b = 2)
+  )
+
+  expect_equal(
+    attr(marginal[["1SD"]], "posterior_density", exact = TRUE)[["method"]],
+    "formula-density"
+  )
+  expect_null(attr(marginal[["0SD"]], "posterior_density", exact = TRUE))
+  expect_null(attr(transformed[["1SD"]], "posterior_density", exact = TRUE))
+})
+
+test_that("spike-and-slab posterior constructors attach support metadata", {
+
+  slab <- prior(
+    "beta",
+    list(alpha = 2, beta = 2),
+    truncation = list(lower = .2, upper = .8)
+  )
+  spike_slab <- prior_spike_and_slab(
+    slab,
+    prior_inclusion = prior("point", list(location = .5))
+  )
+
+  posterior_samples <- BayesTools:::.as_mixed_posteriors.spike_and_slab(
+    cbind(theta = seq(.2, .8, length.out = 100),
+          theta_indicator = rep(c(0, 1), 50)),
+    spike_slab,
+    parameter = "theta"
+  )
+  posterior_support <- BayesTools:::.posterior_support_get(posterior_samples)
+
+  expect_equal(posterior_support$bounds, c(0, .8))
+  expect_true(0 %in% posterior_support$points)
+})
+
+test_that("simplex posterior support uses component and convex-hull bounds", {
+
+  simplex_prior <- prior("dirichlet", list(alpha = c(2, 3, 5)))
+
+  component_support <- BayesTools:::.posterior_support_from_prior(simplex_prior)
+  expect_equal(component_support$bounds, c(0, 1))
+  expect_true(component_support$exact)
+
+  context <- BayesTools:::.prior_density_context(
+    prior_list   = list(w = simplex_prior),
+    column_names = paste0("w[", 1:3, "]")
+  )
+
+  all_weight_support <- BayesTools:::.posterior_support_from_prior_context_weights(
+    context,
+    c("w[1]" = 2, "w[2]" = 5, "w[3]" = 7)
+  )
+  expect_equal(all_weight_support$bounds, c(2, 7))
+
+  partial_weight_support <- BayesTools:::.posterior_support_from_prior_context_weights(
+    context,
+    c("w[1]" = 2, "w[3]" = 5)
+  )
+  expect_equal(partial_weight_support$bounds, c(0, 5))
+})
+
+test_that("vector point support remains exact point support", {
+
+  vector_point_prior <- prior("mpoint", list(location = 2, K = 3))
+
+  component_support <- BayesTools:::.posterior_support_from_prior(vector_point_prior)
+  expect_equal(component_support$bounds, c(2, 2))
+  expect_equal(component_support$points, 2)
+  expect_equal(component_support$type, "points")
+
+  context <- BayesTools:::.prior_density_context(
+    prior_list   = list(theta = vector_point_prior),
+    column_names = paste0("theta[", 1:3, "]")
+  )
+  linear_support <- BayesTools:::.posterior_support_from_prior_context_weights(
+    context,
+    c("theta[1]" = 2, "theta[2]" = -0.5)
+  )
+
+  expect_equal(linear_support$bounds, c(3, 3))
+  expect_equal(linear_support$points, 3)
+  expect_equal(linear_support$type, "points")
+})
+
+test_that("top-level marginal metadata does not replace child-specific metadata", {
+
+  child <- 1:10
+  class(child) <- c("marginal_posterior.simple", class(child))
+  attr(child, "level_name") <- "A"
+  attr(child, "posterior_density") <- posterior_density_attribute(
+    x              = seq(-1, 1, length.out = 11),
+    y              = rep(.5, 11),
+    method         = "child-density",
+    density_method = "precomputed",
+    parameter      = "theta[A]"
+  )
+
+  marginal <- list(A = child)
+  class(marginal) <- c("marginal_posterior.factor", "list")
+  samples <- structure(
+    list(),
+    class = c("mixed_posteriors", "list"),
+    posterior_density = list(
+      posterior_density_attribute(
+        x              = seq(-1, 1, length.out = 11),
+        y              = rep(.5, 11),
+        method         = "top-density",
+        density_method = "precomputed",
+        parameter      = "theta[A]"
+      )
+    )
+  )
+
+  out <- BayesTools:::.marginal_posterior_attach_precomputed_metadata(
+    marginal  = marginal,
+    samples   = samples,
+    parameter = "theta"
+  )
+
+  expect_equal(
+    attr(out[["A"]], "posterior_density", exact = TRUE)[["method"]],
+    "child-density"
+  )
+})
+
+test_that("Savage_Dickey_BF rejects stored density missing the null", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-1, 1, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_density") <- list(
+    x      = seq(.5, 1, length.out = 101),
+    y      = rep(1, 101),
+    method = "iwmde"
+  )
+
+  expect_error(
+    Savage_Dickey_BF(
+      posterior,
+      null_hypothesis      = 0,
+      normal_approximation = FALSE,
+      density_method       = "precomputed"
+    ),
+    "Stored posterior density does not span",
+    fixed = TRUE
+  )
+})
+
+test_that("Savage_Dickey_BF diagnoses invalid precomputed metadata", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-1, 1, length.out = 301),
+    prior_density
+  )
+
+  expect_error(
+    Savage_Dickey_BF(
+      posterior,
+      null_hypothesis = 0,
+      density_method  = "precomputed",
+      silent          = TRUE
+    ),
+    "requires valid posterior ordinate or posterior density metadata",
+    fixed = TRUE
+  )
+
+  attr(posterior, "posterior_density") <- list(
+    x      = 0,
+    y      = 1,
+    method = "invalid-density"
+  )
+  expect_error(
+    Savage_Dickey_BF(
+      posterior,
+      null_hypothesis = 0,
+      density_method  = "precomputed"
+    ),
+    "Precomputed posterior density metadata is present but invalid",
+    fixed = TRUE
+  )
+
+  attr(posterior, "posterior_density") <- list(
+    x            = seq(-1, 1, length.out = 101),
+    y            = rep(1, 101),
+    method       = "invalid-point-mass",
+    point_masses = list(location = 0, p = 1.2)
+  )
+  expect_error(
+    Savage_Dickey_BF(
+      posterior,
+      null_hypothesis = 0,
+      density_method  = "precomputed"
+    ),
+    "Precomputed posterior density metadata is present but invalid",
+    fixed = TRUE
+  )
+
+  attr(posterior, "posterior_density") <- NULL
+  attr(posterior, "posterior_ordinate") <- list(
+    value    = 1,
+    ordinate = .5,
+    method   = "wrong-null"
+  )
+  expect_error(
+    Savage_Dickey_BF(
+      posterior,
+      null_hypothesis = 0,
+      density_method  = "precomputed"
+    ),
+    "Precomputed posterior ordinate metadata is present but invalid",
+    fixed = TRUE
+  )
+})
+
+test_that("Savage_Dickey_BF rejects stored density with zero null height", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-1, 1, length.out = 301),
+    prior_density
+  )
+  stored_x <- seq(-1, 1, length.out = 101)
+  stored_y <- abs(stored_x)
+  attr(posterior, "posterior_density") <- list(
+    x      = stored_x,
+    y      = stored_y,
+    method = "iwmde"
+  )
+
+  expect_error(
+    Savage_Dickey_BF(
+      posterior,
+      null_hypothesis      = 0,
+      normal_approximation = FALSE,
+      density_method       = "precomputed"
+    ),
+    "zero or non-finite height"
+  )
+})
+
+test_that("stored posterior density parser rejects degenerate grids", {
+
+  parsed <- BayesTools:::.posterior_density_from_attribute(list(
+    x      = c(0, 0, 1),
+    y      = c(1, 3, 2),
+    method = "iwmde"
+  ))
+  expect_equal(parsed$x, c(0, 1))
+  expect_equal(unname(parsed$y), c(2, 2))
+
+  expect_null(BayesTools:::.posterior_density_from_attribute(list(
+    x = c(0, 1),
+    y = c(0, 0)
+  )))
+  expect_null(BayesTools:::.posterior_density_from_attribute(list(
+    x = c(1, 1),
+    y = c(1, 2)
+  )))
+})
+
+test_that("stored posterior density selection validates names and conditionals", {
+
+  density <- list(
+    parameter        = "theta",
+    conditional      = c("b", "a"),
+    conditional_rule = "OR",
+    x                = seq(-1, 1, length.out = 11),
+    y                = rep(1, 11),
+    method           = "iwmde"
+  )
+  sources <- list(
+    theta = density,
+    phi = modifyList(density, list(parameter = "phi"))
+  )
+
+  expect_equal(
+    BayesTools:::.posterior_density_from_sources(
+      sources          = list(sources),
+      aliases          = "theta",
+      conditional      = c("a", "b"),
+      conditional_rule = "OR"
+    )$method,
+    "iwmde"
+  )
+  expect_null(BayesTools:::.posterior_density_from_sources(
+    sources          = list(sources),
+    aliases          = "theta",
+    conditional      = c("a", "b"),
+    conditional_rule = "AND"
+  ))
+  density[["condition_key"]] <- BayesTools:::.condition_event_key(c("a", "b"), "OR")
+  sources <- list(theta = density)
+  expect_equal(
+    BayesTools:::.posterior_density_from_sources(
+      sources          = list(sources),
+      aliases          = "theta",
+      conditional      = c("a", "b"),
+      conditional_rule = "OR",
+      condition_key    = BayesTools:::.condition_event_key(c("a", "b"), "OR")
+    )$method,
+    "iwmde"
+  )
+  expect_null(BayesTools:::.posterior_density_from_sources(
+    sources          = list(sources),
+    aliases          = "theta",
+    conditional      = c("a", "b"),
+    conditional_rule = "AND",
+    condition_key    = BayesTools:::.condition_event_key(c("a", "b"), "AND")
+  ))
+  alias_density <- density
+  alias_density[["condition_key"]] <- NULL
+  alias_density[["conditional"]] <- "phacking"
+  alias_density[["conditional_rule"]] <- "AND"
+  expect_equal(
+    BayesTools:::.posterior_density_from_sources(
+      sources          = list(list(theta = alias_density)),
+      aliases          = "theta",
+      conditional      = "alpha",
+      conditional_rule = "AND"
+    )$method,
+    "iwmde"
+  )
+  expect_null(BayesTools:::.posterior_density_from_sources(
+    sources = list(sources),
+    aliases = "missing"
+  ))
+})
+
+test_that("stored posterior ordinate selection continues past empty alias branches", {
+
+  alias_branch <- list(
+    parameter = "phi",
+    value     = 0,
+    ordinate  = 100,
+    method    = "wrong-parameter"
+  )
+  valid_branch <- list(
+    parameter = "theta",
+    value     = 0,
+    ordinate  = .5,
+    method    = "valid-ordinate"
+  )
+
+  matched <- BayesTools:::.posterior_ordinate_from_sources(
+    sources = list(list(theta = alias_branch, fallback = valid_branch)),
+    aliases = "theta"
+  )
+
+  expect_equal(matched[["method"]], "valid-ordinate")
+  expect_equal(
+    BayesTools:::.posterior_ordinate_from_attribute(matched, 0)[["y"]],
+    .5
+  )
+})
+
+test_that("stored posterior density parser validates and aggregates point masses", {
+
+  parsed <- BayesTools:::.posterior_density_from_attribute(list(
+    x = seq(-1, 1, length.out = 11),
+    y = rep(1, 11),
+    point_masses = list(
+      location = c(0, 0, 1),
+      p        = c(.2, .3, .4)
+    )
+  ))
+
+  expect_equal(parsed$point_masses$x, c(0, 1))
+  expect_equal(parsed$point_masses$mass, c(.5, .4))
+
+  parsed_invalid <- BayesTools:::.posterior_density_from_attribute(list(
+    x = seq(-1, 1, length.out = 11),
+    y = rep(1, 11),
+    point_masses = list(
+      x    = c(0, 1, 2),
+      mass = c(.6, .5, 2)
+    )
+  ))
+  expect_null(parsed_invalid)
+})
+
+test_that("Savage_Dickey_BF ignores stored density range for normal approximation", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(.5, 1, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_density") <- list(
+    x      = seq(-1, 1, length.out = 101),
+    y      = rep(1, 101),
+    method = "iwmde"
+  )
+
+  expect_warning(
+    Savage_Dickey_BF(
+      posterior,
+      null_hypothesis      = 0,
+      normal_approximation = TRUE,
+      density_method       = "precomputed"
+    ),
+    "Posterior samples do not span"
+  )
+})
+
+test_that("Savage_Dickey_BF uses top-level stored density for list posteriors", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  stored_x <- seq(-4, 4, length.out = 401)
+  stored_y <- stats::dnorm(stored_x, mean = .4, sd = 1.2)
+  posterior_list <- list(level = posterior)
+  class(posterior_list) <- c("marginal_posterior", "list")
+  attr(posterior_list, "posterior_density") <- list(
+    level = list(
+      x      = stored_x,
+      y      = stored_y,
+      method = "iwmde"
+    )
+  )
+
+  expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) /
+    stats::approx(stored_x, stored_y, xout = 0)[["y"]]
+  out <- Savage_Dickey_BF(
+    posterior_list,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+
+  expect_equal(as.numeric(out[["level"]]), expected, tolerance = 1e-12)
+  expect_equal(attr(out[["level"]], "posterior_density_source"), "precomputed")
+
+  attr(posterior_list, "posterior_density") <- NULL
+  attr(posterior_list, "posterior_densities") <- list(
+    list(
+      level = list(
+        x      = stored_x,
+        y      = stored_y,
+        method = "iwmde"
+      )
+    )
+  )
+  out <- Savage_Dickey_BF(
+    posterior_list,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+
+  expect_equal(as.numeric(out[["level"]]), expected, tolerance = 1e-12)
+  expect_equal(attr(out[["level"]], "posterior_density_source"), "precomputed")
+})
+
+test_that("Savage_Dickey_BF respects child conditionals for top-level sources", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "conditional") <- "theta"
+  attr(posterior, "conditional_rule") <- "AND"
+  posterior_list <- list(level = posterior)
+  class(posterior_list) <- c("marginal_posterior", "list")
+  attr(posterior_list, "posterior_density") <- list(
+    level = list(
+      x      = seq(-1, 1, length.out = 101),
+      y      = rep(100, 101),
+      method = "stale"
+    ),
+    matching = list(
+      parameter   = "level",
+      conditional = "theta",
+      x           = seq(-1, 1, length.out = 101),
+      y           = rep(.50, 101),
+      method      = "qCMDE"
+    )
+  )
+
+  expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) / .50
+  out <- Savage_Dickey_BF(
+    posterior_list,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+
+  expect_equal(as.numeric(out[["level"]]), expected, tolerance = 1e-12)
+
+  attr(posterior_list, "posterior_density") <- NULL
+  attr(posterior_list, "posterior_ordinates") <- list(list(
+    level = list(
+      value    = 0,
+      ordinate = 100,
+      method   = "stale"
+    ),
+    matching = list(
+      parameter   = "level",
+      conditional = "theta",
+      value       = 0,
+      ordinate    = .50,
+      method      = "qCMDE"
+    )
+  ))
+
+  out <- Savage_Dickey_BF(
+    posterior_list,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+
+  expect_equal(as.numeric(out[["level"]]), expected, tolerance = 1e-12)
+})
+
+test_that("Savage_Dickey_BF revalidates positional top-level sources", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "conditional") <- "theta"
+  attr(posterior, "conditional_rule") <- "AND"
+  posterior_list <- list(level = posterior)
+  class(posterior_list) <- c("marginal_posterior", "list")
+
+  mismatched_density <- list(
+    parameter   = "level",
+    conditional = "phi",
+    x           = seq(-1, 1, length.out = 101),
+    y           = rep(100, 101),
+    method      = "stale-density"
+  )
+  attr(posterior_list, "posterior_density") <- list(mismatched_density)
+
+  expect_null(BayesTools:::.posterior_density_child_attributes(posterior_list)[[1]])
+
+  matching_density <- mismatched_density
+  matching_density[["conditional"]] <- "theta"
+  attr(posterior_list, "posterior_density") <- list(matching_density)
+  expect_equal(
+    BayesTools:::.posterior_density_child_attributes(posterior_list)[[1]][["method"]],
+    "stale-density"
+  )
+
+  mismatched_ordinate <- list(
+    parameter   = "level",
+    conditional = "phi",
+    value       = 0,
+    ordinate    = 100,
+    method      = "stale-ordinate"
+  )
+  attr(posterior_list, "posterior_density") <- NULL
+  attr(posterior_list, "posterior_ordinate") <- list(mismatched_ordinate)
+
+  expect_null(BayesTools:::.posterior_ordinate_child_attributes(
+    posterior_list,
+    null_hypothesis = 0
+  )[[1]])
+
+  matching_ordinate <- mismatched_ordinate
+  matching_ordinate[["conditional"]] <- "theta"
+  attr(posterior_list, "posterior_ordinate") <- list(matching_ordinate)
+  expect_equal(
+    BayesTools:::.posterior_ordinate_child_attributes(
+      posterior_list,
+      null_hypothesis = 0
+    )[[1]][["method"]],
+    "stale-ordinate"
+  )
+})
+
+test_that("Savage_Dickey_BF accepts list-of-record posterior ordinates", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_ordinate") <- list(
+    parameter   = "theta",
+    method      = "qCMDE",
+    diagnostics = list(relative_mcse = c(.10, .20)),
+    ordinates   = list(
+      list(value = -.50, ordinate = 100),
+      list(value = 0, ordinate = .50)
+    )
+  )
+
+  expect_true(BayesTools:::.posterior_ordinate_has_data(
+    attr(posterior, "posterior_ordinate")
+  ))
+
+  matched_source <- BayesTools:::.posterior_ordinate_from_sources(
+    sources         = list(attr(posterior, "posterior_ordinate")),
+    aliases         = "theta",
+    null_hypothesis = 0
+  )
+  expect_equal(matched_source[["method"]], "qCMDE")
+
+  parsed <- BayesTools:::.posterior_ordinate_from_attribute(matched_source, 0)
+  expect_equal(parsed[["method"]], "qCMDE")
+  expect_equal(parsed[["diagnostics"]][["relative_mcse"]], .20)
+
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis = 0,
+    silent          = TRUE,
+    density_method  = "precomputed"
+  )
+  expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) / .50
+
+  expect_equal(as.numeric(out), expected, tolerance = 1e-12)
+  expect_equal(attr(out, "BF_error_percent"), 20)
+})
+
+test_that("Savage_Dickey_BF gives valid child sources precedence over top-level sources", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_density") <- list(
+    x      = seq(-1, 1, length.out = 101),
+    y      = rep(.50, 101),
+    method = "child-density"
+  )
+  attr(posterior, "posterior_ordinate") <- list(
+    value    = 0,
+    ordinate = .50,
+    method   = "child-ordinate"
+  )
+  posterior_list <- list(level = posterior)
+  class(posterior_list) <- c("marginal_posterior", "list")
+  attr(posterior_list, "posterior_density") <- list(
+    level = list(
+      x      = seq(-1, 1, length.out = 101),
+      y      = rep(100, 101),
+      method = "top-density"
+    )
+  )
+  attr(posterior_list, "posterior_ordinate") <- list(
+    level = list(
+      value    = 0,
+      ordinate = 100,
+      method   = "top-ordinate"
+    )
+  )
+
+  child_density <- BayesTools:::.posterior_density_child_attributes(posterior_list)[[1]]
+  child_ordinate <- BayesTools:::.posterior_ordinate_child_attributes(
+    posterior_list,
+    null_hypothesis = 0
+  )[[1]]
+  out <- Savage_Dickey_BF(
+    posterior_list,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+
+  expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) / .50
+  expect_equal(child_density[["method"]], "child-density")
+  expect_equal(child_ordinate[["method"]], "child-ordinate")
+  expect_equal(as.numeric(out[["level"]]), expected, tolerance = 1e-12)
+})
+
+test_that("Savage_Dickey_BF replaces invalid child sources with valid top-level sources", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_ordinate") <- list(
+    value    = 1,
+    ordinate = 100,
+    method   = "wrong-null"
+  )
+  posterior_list <- list(level = posterior)
+  class(posterior_list) <- c("marginal_posterior", "list")
+  attr(posterior_list, "posterior_ordinate") <- list(
+    level = list(
+      value    = 0,
+      ordinate = .50,
+      method   = "top-ordinate"
+    )
+  )
+
+  out <- Savage_Dickey_BF(
+    posterior_list,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+
+  expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) / .50
+  expect_equal(as.numeric(out[["level"]]), expected, tolerance = 1e-12)
+
+  attr(posterior, "posterior_ordinate") <- NULL
+  attr(posterior, "posterior_density") <- list(
+    x      = 0,
+    y      = 100,
+    method = "invalid-child-density"
+  )
+  posterior_list <- list(level = posterior)
+  class(posterior_list) <- c("marginal_posterior", "list")
+  attr(posterior_list, "posterior_density") <- list(
+    level = list(
+      x      = seq(-1, 1, length.out = 101),
+      y      = rep(.50, 101),
+      method = "top-density"
+    )
+  )
+
+  out <- Savage_Dickey_BF(
+    posterior_list,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+
+  expect_equal(as.numeric(out[["level"]]), expected, tolerance = 1e-12)
+})
+
+test_that("Savage_Dickey_BF replaces null-unusable child density with top-level density", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_density") <- list(
+    x      = seq(1, 2, length.out = 101),
+    y      = rep(100, 101),
+    method = "child-misses-null"
+  )
+  posterior_list <- list(level = posterior)
+  class(posterior_list) <- c("marginal_posterior", "list")
+  attr(posterior_list, "posterior_density") <- list(
+    level = list(
+      x      = seq(-1, 1, length.out = 101),
+      y      = rep(.50, 101),
+      method = "top-density"
+    )
+  )
+
+  child_density <- BayesTools:::.posterior_density_child_attributes(
+    posterior_list,
+    null_hypothesis = 0
+  )[[1]]
+  out <- Savage_Dickey_BF(
+    posterior_list,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+
+  expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) / .50
+  expect_equal(child_density[["method"]], "top-density")
+  expect_equal(as.numeric(out[["level"]]), expected, tolerance = 1e-12)
+  expect_equal(attr(out[["level"]], "posterior_density_source"), "precomputed")
+})
+
+test_that("Savage_Dickey_BF uses declarations rather than posterior-null clusters", {
 
   continuous_prior <- BayesTools:::.prior_linear_combination_density(
     prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
@@ -200,9 +2359,37 @@ test_that("Savage_Dickey_BF warns for point mass and posterior-null clusters", {
     continuous_prior
   )
 
-  expect_warning(
-    Savage_Dickey_BF(posterior_cluster, null_hypothesis = 0, normal_approximation = TRUE),
-    "posterior samples at the exact null hypothesis"
+  expect_silent(
+    Savage_Dickey_BF(
+      posterior_cluster,
+      null_hypothesis = 0,
+      normal_approximation = TRUE,
+      silent = TRUE
+    )
+  )
+
+  posterior_without_declaration <- posterior_cluster
+  attr(posterior_without_declaration, "posterior_atoms") <- NULL
+  expect_error(
+    Savage_Dickey_BF(
+      posterior_without_declaration,
+      null_hypothesis = 0,
+      normal_approximation = TRUE
+    ),
+    "explicit atom/no-atom declaration",
+    fixed = TRUE
+  )
+
+  attr(posterior_cluster, "posterior_atoms") <- posterior_atom_attribute(
+    list(location = 0, mass = .08)
+  )
+  expect_error(
+    Savage_Dickey_BF(
+      posterior_cluster,
+      null_hypothesis = 0,
+      normal_approximation = TRUE
+    ),
+    "declared point mass"
   )
 
   point_prior <- BayesTools:::.prior_linear_density_point(0)
@@ -211,10 +2398,223 @@ test_that("Savage_Dickey_BF warns for point mass and posterior-null clusters", {
     point_prior
   )
 
-  expect_warning(
+  expect_error(
     Savage_Dickey_BF(posterior_continuous, null_hypothesis = 0, normal_approximation = TRUE),
     "point mass in the prior"
   )
+
+  posterior_with_stored_point <- .marginal_posterior_with_prior_density_for_test(
+    seq(-2, 2, length.out = 101),
+    continuous_prior
+  )
+  attr(posterior_with_stored_point, "posterior_density") <- list(
+    x            = seq(-2, 2, length.out = 101),
+    y            = stats::dnorm(seq(-2, 2, length.out = 101)),
+    point_masses = list(location = 0, p = .2)
+  )
+  attr(posterior_with_stored_point, "posterior_atoms") <-
+    posterior_atom_attribute(list(location = 0, mass = .2))
+
+  expect_error(
+    Savage_Dickey_BF(
+      posterior_with_stored_point,
+      null_hypothesis = 0,
+      density_method = "precomputed"
+    ),
+    "declared point mass"
+  )
+})
+
+test_that("Savage_Dickey_BF excludes off-null atoms from the continuous ordinate", {
+
+  continuous_prior <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 1024
+  )
+  continuous_draws <- stats::rnorm(800, mean = 0, sd = 1)
+  spike_draws <- rep(2, 200)
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    c(continuous_draws, spike_draws),
+    continuous_prior
+  )
+  attr(posterior, "posterior_atoms") <- posterior_atom_attribute(
+    list(location = 2, mass = 0.2)
+  )
+
+  expect_error(
+    Savage_Dickey_BF(
+      posterior,
+      null_hypothesis = 2,
+      normal_approximation = TRUE,
+      silent = TRUE
+    ),
+    "declared point mass"
+  )
+
+  with_atoms <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis = 0,
+    normal_approximation = TRUE,
+    silent = TRUE
+  )
+  continuous_only <- .marginal_posterior_with_prior_density_for_test(
+    continuous_draws,
+    continuous_prior
+  )
+  expected <- Savage_Dickey_BF(
+    continuous_only,
+    null_hypothesis = 0,
+    normal_approximation = TRUE,
+    silent = TRUE
+  )
+  # Continuous-only BF uses density of continuous draws; mixed BF scales that
+  # continuous ordinate by continuous mass 0.8, so BF is larger by 1/0.8.
+  expect_equal(as.numeric(with_atoms), as.numeric(expected) / 0.8, tolerance = 1e-10)
+
+  continuous_info <- BayesTools:::.Savage_Dickey_BF.continuous_posterior(
+    posterior,
+    attr(posterior, "posterior_atoms")
+  )
+  expect_equal(continuous_info$continuous_mass, 0.8)
+  expect_false(any(continuous_info$samples == 2))
+})
+
+test_that("Savage_Dickey_BF diagnoses zero prior density at point null", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("beta", list(alpha = 2, beta = 2))),
+    weights    = c(theta = 1),
+    n_grid     = 1024
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(.001, .999, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_support") <-
+    BayesTools:::.posterior_support_new(c(0, 1), source = "test")
+
+  out <- Savage_Dickey_BF(posterior, null_hypothesis = 0, silent = TRUE)
+  expect_equal(as.numeric(out), 0)
+  expect_match(
+    attr(out, "warnings"),
+    "Prior density at the null hypothesis value is zero or non-finite",
+    fixed = TRUE
+  )
+})
+
+test_that("plot_marginal uses stored posterior density when available", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 512
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    stats::rnorm(100, 0, 1),
+    prior_density
+  )
+  stored_x <- seq(-2, 2, length.out = 51)
+  stored_y <- stats::dnorm(stored_x, sd = .8)
+  attr(posterior, "posterior_density") <- list(
+    x      = stored_x,
+    y      = stored_y,
+    method = "iwmde"
+  )
+
+  plot_data <- BayesTools:::.plot_data_marginal_samples(
+    samples                  = list(theta = posterior),
+    parameter                = "theta",
+    prior                    = FALSE,
+    n_points                 = 16,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE,
+    density_method           = "precomputed"
+  )
+
+  expect_equal(plot_data[["density1"]][["x"]], stored_x)
+  expect_equal(plot_data[["density1"]][["y"]], stored_y)
+  expect_equal(attr(plot_data[["density1"]], "posterior_density_method"), "iwmde")
+})
+
+test_that("plot_marginal does not add sample spikes to stored full density", {
+
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    c(rep(0, 25), seq(-2, 2, length.out = 75)),
+    BayesTools:::.prior_linear_density_point(0, p = .25)
+  )
+  stored_x <- seq(-2, 2, length.out = 51)
+  stored_y <- stats::dnorm(stored_x)
+  attr(posterior, "posterior_density") <- list(
+    x      = stored_x,
+    y      = stored_y,
+    method = "iwmde"
+  )
+
+  expect_warning(
+    plot_data <- BayesTools:::.plot_data_marginal_samples(
+      samples                  = list(theta = posterior),
+      parameter                = "theta",
+      prior                    = FALSE,
+      n_points                 = 16,
+      transformation           = NULL,
+      transformation_arguments = NULL,
+      transformation_settings  = FALSE,
+      density_method           = "precomputed"
+    ),
+    "does not declare 'point_masses'",
+    fixed = TRUE
+  )
+
+  expect_equal(plot_data$density1$x, stored_x)
+  expect_equal(
+    length(plot_data[vapply(plot_data, inherits, logical(1), "density.prior.point")]),
+    0L
+  )
+})
+
+test_that("plot_marginal accepts posterior density diagnostics", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 512
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    stats::rnorm(100, 0, 1),
+    prior_density
+  )
+  stored_x <- seq(-2, 2, length.out = 51)
+  stored_y <- stats::dnorm(stored_x, sd = .8)
+  attr(posterior, "posterior_density") <- list(
+    parameter    = "theta",
+    status       = "ok",
+    point_masses = list(location = 0, p = .2),
+    x            = stored_x,
+    y            = stored_y,
+    method       = "iwmde",
+    diagnostics = list(min_ess = 40)
+  )
+
+  plot_data <- BayesTools:::.plot_data_marginal_samples(
+    samples                  = list(theta = posterior),
+    parameter                = "theta",
+    prior                    = FALSE,
+    n_points                 = 16,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE,
+    density_method           = "precomputed"
+  )
+
+  expect_equal(plot_data[["density1"]][["x"]], stored_x)
+  expect_equal(plot_data[["density1"]][["y"]], stored_y)
+  expect_equal(attr(plot_data[["density1"]], "posterior_density_method"), "iwmde")
+  expect_equal(attr(plot_data[["density1"]], "posterior_density_diagnostics")$min_ess, 40)
+  point_data <- plot_data[vapply(plot_data, inherits, logical(1), "density.prior.point")][[1]]
+  expect_equal(point_data[["x"]], 0)
+  expect_equal(point_data[["y"]], .2)
 })
 
 test_that("marginal_posterior handles direct multi-factor transformed interactions", {
@@ -681,6 +3081,729 @@ test_that("marginal_estimates_table reports exact level summaries and Bayes fact
   expect_equal(attr(log_table$inclusion_BF, "name"), "log(Exclusion BF)")
 })
 
+# ============================================================================ #
+# SECTION: Marginal posterior regressions (review round 3)
+# ============================================================================ #
+
+.mock_mixing_fit_for_marginal <- function(samples, prior_list){
+  samples <- coda::mcmc(as.matrix(samples))
+  fit <- structure(
+    list(
+      mcmc = coda::mcmc.list(samples),
+      sample = nrow(samples),
+      summary.pars = list(mutate = NULL),
+      monitor = colnames(samples)
+    ),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- prior_list
+  fit
+}
+
+.prior_height_for_test <- function(x, value){
+  ordinate <- prior_density_ordinate(attr(x, "prior_density"), value)
+  exp(ordinate$log_density)
+}
+
+# Grid-based prior heights are checked against the adaptive evaluation's own
+# documented error bound; exact ordinates must match to rounding error.
+.expect_prior_height_for_test <- function(x, value, expected){
+  height <- BayesTools:::.prior_linear_density_height(attr(x, "prior_density"), value)
+  error_bound <- attr(height, "adaptive_evaluation")$error_bound
+  if(is.null(error_bound)){
+    error_bound <- 1e-8 * max(1, abs(expected))
+  }
+  expect_lte(abs(as.numeric(height) - expected), error_bound)
+}
+
+test_that("use_formula = FALSE prior densities ignore the coefficient's own multiply_by", {
+
+  # JAGS monitors the raw coefficient; 'multiply_by' only scales the linear
+  # predictor, so the coefficient prior is its declared prior (exact normal
+  # ordinates; the product sigma * beta would be singular at zero).
+  set.seed(1)
+  n <- 200
+  sigma_prior <- prior("normal", list(0, 1), list(0, Inf))
+  beta_prior_1 <- prior("normal", list(0, 1))
+  beta_prior_2 <- prior("normal", list(0, 2))
+  attr(beta_prior_1, "multiply_by") <- "sigma"
+  attr(beta_prior_2, "multiply_by") <- "sigma"
+  models <- lapply(list(beta_prior_1, beta_prior_2), function(beta_prior){
+    list(
+      fit = .mock_mixing_fit_for_marginal(
+        cbind(mu_x = rnorm(n), sigma = abs(rnorm(n, 2, .1))),
+        list(mu_x = beta_prior, sigma = sigma_prior)
+      ),
+      marglik = bridgesampling_object(0),
+      prior_weights = 1
+    )
+  })
+  mixed <- mix_posteriors(
+    models,
+    parameters   = c("mu_x", "sigma"),
+    is_null_list = list(mu_x = c(FALSE, FALSE), sigma = c(FALSE, FALSE)),
+    seed         = 1,
+    n_samples    = n
+  )
+  marginal <- marginal_posterior(mixed, "mu_x", use_formula = FALSE, prior_samples = TRUE)
+
+  for(value in c(0, 1)){
+    expect_equal(
+      .prior_height_for_test(marginal, value),
+      .5 * stats::dnorm(value) + .5 * stats::dnorm(value, 0, 2),
+      tolerance = 1e-8
+    )
+  }
+  expect_true(is.finite(Savage_Dickey_BF(marginal, silent = TRUE)))
+
+  # Conditional single-model context: included component only.
+  spike_slab <- prior_spike_and_slab(prior("normal", list(0, 1)))
+  attr(spike_slab, "multiply_by") <- "sigma"
+  indicator <- rep(c(0, 1), length.out = n)
+  fit <- coda::mcmc(cbind(
+    mu_x = indicator * rnorm(n),
+    mu_x_indicator = indicator,
+    sigma = abs(rnorm(n, 2, .1))
+  ))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- list(mu_x = spike_slab, sigma = sigma_prior)
+  conditional <- as_mixed_posteriors(
+    fit,
+    parameters = c("mu_x", "sigma"),
+    conditional = "mu_x",
+    n_prior_samples = 1000
+  )
+  conditional_marginal <- marginal_posterior(
+    conditional, "mu_x", use_formula = FALSE, prior_samples = TRUE
+  )
+  expect_equal(.prior_height_for_test(conditional_marginal, 0), stats::dnorm(0), tolerance = 1e-8)
+  expect_equal(.prior_height_for_test(conditional_marginal, 1), stats::dnorm(1), tolerance = 1e-8)
+})
+
+test_that("transform_scaled raw-coefficient prior densities ignore multiply_by", {
+
+  set.seed(1)
+  data <- data.frame(x = rnorm(50, 3, 2))
+  x_prior <- prior_spike_and_slab(prior("normal", list(0, 1)))
+  attr(x_prior, "multiply_by") <- "sigma"
+  formula_result <- JAGS_formula(
+    ~ x, parameter = "mu", data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1)), x = x_prior),
+    formula_scale = list(x = TRUE)
+  )
+  scale <- formula_result$formula_scale[["mu_x"]]
+  n <- 400
+  indicator <- rep(c(0, 1), length.out = n)
+  posterior <- cbind(
+    mu_intercept = rnorm(n), mu_x = indicator * rnorm(n),
+    mu_x_indicator = indicator, sigma = rlnorm(n)
+  )
+  fit <- list(
+    mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+    summary.pars = list(mutate = NULL),
+    monitor = colnames(posterior),
+    sample = n
+  )
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- c(formula_result$prior_list, list(sigma = prior("lognormal", list(0, 1))))
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+
+  samples <- as_mixed_posteriors(
+    fit, c("mu_intercept", "mu_x", "sigma"), transform_scaled = TRUE, n_prior_samples = 2000
+  )
+  prior_densities <- attr(samples, "prior_densities")
+  ratio <- scale$mean / scale$sd
+  # original-scale raw slope b / s: 1/2 point at 0 + 1/2 N(0, 1 / s)
+  expect_equal(BayesTools:::.prior_linear_density_point_mass(prior_densities$mu_x, 0), .5, tolerance = 1e-12)
+  for(value in c(.2, 1)){
+    .expect_prior_height_for_test(
+      structure(0, prior_density = prior_densities$mu_x),
+      value, .5 * stats::dnorm(value, 0, 1 / scale$sd)
+    )
+  }
+  # original-scale raw intercept b0 - (m / s) b: N(0, 1) or N(0, sqrt(1 + (m / s)^2))
+  for(value in c(.5, -1)){
+    .expect_prior_height_for_test(
+      structure(0, prior_density = prior_densities$mu_intercept),
+      value, .5 * stats::dnorm(value) + .5 * stats::dnorm(value, 0, sqrt(1 + ratio^2))
+    )
+  }
+  # linear-predictor targets keep the formula prior's multiply_by
+  expect_identical(
+    attr(attr(samples, "prior_density_context")$prior_list$mu_x, "multiply_by"),
+    "sigma"
+  )
+})
+
+test_that("marginal_posterior uses log(intercept) for log-intercept formulas", {
+
+  log_formula <- ~ x
+  attr(log_formula, "log(intercept)") <- TRUE
+  formula_result <- JAGS_formula(
+    formula = log_formula,
+    parameter = "ls",
+    data = data.frame(x = c(-1, 0, 1)),
+    prior_list = list(
+      intercept = prior("lognormal", list(0, .5)),
+      x         = prior("normal", list(0, .5))
+    )
+  )
+  set.seed(2)
+  n <- 100
+  posterior <- cbind(ls_intercept = stats::rlnorm(n, -1, .2), ls_x = stats::rnorm(n, -.2, .1))
+  make_fit <- function(design){
+    fit <- coda::mcmc(posterior)
+    class(fit) <- c("BayesTools_fit", class(fit))
+    attr(fit, "prior_list") <- formula_result$prior_list
+    attr(fit, "formula_design") <- design
+    fit
+  }
+  expected <- lapply(c(-1, 0, 1), function(x){
+    log(posterior[, "ls_intercept"]) + x * posterior[, "ls_x"]
+  })
+
+  # persisted fitted-design metadata marks the formula as log(intercept)
+  samples <- as_mixed_posteriors(
+    make_fit(list(ls = list(log_intercept = TRUE))),
+    parameters = c("ls_intercept", "ls_x"),
+    n_prior_samples = 1000
+  )
+  marginal <- marginal_posterior(samples, "ls_x", formula = ~ x, prior_samples = TRUE)
+  expect_equal(unname(lapply(marginal, as.numeric)), expected, tolerance = 1e-12)
+  # log(intercept) ~ N(0, .5) and x ~ N(0, .5): the level at x is N(0, .5 * sqrt(1 + x^2))
+  .expect_prior_height_for_test(marginal[["1SD"]], -1, stats::dnorm(-1, 0, .5 * sqrt(2)))
+  .expect_prior_height_for_test(marginal[["0SD"]], -1, stats::dnorm(-1, 0, .5))
+
+  # an explicit formula attribute without persisted metadata
+  attributed <- marginal_posterior(
+    as_mixed_posteriors(make_fit(NULL), parameters = c("ls_intercept", "ls_x")),
+    "ls_x",
+    formula = log_formula
+  )
+  expect_equal(unname(lapply(attributed, as.numeric)), expected, tolerance = 1e-12)
+
+  linear_formula <- ~ x
+  attr(linear_formula, "log(intercept)") <- FALSE
+  expect_error(
+    marginal_posterior(samples, "ls_x", formula = linear_formula),
+    "does not match the fitted formula",
+    fixed = TRUE
+  )
+
+  # model-averaged draws carry the fitted-design flag from every model
+  models <- lapply(1:2, function(i){
+    fit <- .mock_mixing_fit_for_marginal(posterior, formula_result$prior_list)
+    attr(fit, "formula_design") <- list(ls = list(log_intercept = TRUE))
+    list(fit = fit, marglik = bridgesampling_object(0), prior_weights = 1)
+  })
+  mixed <- mix_posteriors(
+    models,
+    parameters   = c("ls_intercept", "ls_x"),
+    is_null_list = list(ls_intercept = c(FALSE, FALSE), ls_x = c(FALSE, FALSE)),
+    seed         = 1,
+    n_samples    = 50
+  )
+  mixed_marginal <- marginal_posterior(mixed, "ls_x", formula = ~ x)
+  rows <- attr(mixed$ls_x, "sample_ind")
+  expect_equal(
+    as.numeric(mixed_marginal[["1SD"]]),
+    log(posterior[rows, "ls_intercept"]) + posterior[rows, "ls_x"],
+    tolerance = 1e-12
+  )
+})
+
+test_that("marginal_posterior without prior samples tolerates unavailable scaled log-intercept metadata", {
+
+  log_formula <- ~ x
+  attr(log_formula, "log(intercept)") <- TRUE
+  set.seed(5)
+  formula_result <- JAGS_formula(
+    log_formula, "ls", data = data.frame(x = rnorm(50, 3, 1.5)),
+    prior_list = list(intercept = prior("lognormal", list(0, .5)), x = prior("normal", list(0, .5))),
+    formula_scale = list(x = TRUE)
+  )
+  n <- 100
+  posterior <- cbind(ls_intercept = stats::rlnorm(n, -1, .2), ls_x = stats::rnorm(n, -.2, .1))
+  fit <- list(
+    mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+    summary.pars = list(mutate = NULL),
+    monitor = colnames(posterior),
+    sample = n
+  )
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(ls = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(ls = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+
+  samples <- as_mixed_posteriors(
+    fit, parameters = c("ls_intercept", "ls_x"),
+    transform_scaled = TRUE, n_prior_samples = 500
+  )
+  original <- transform_scale_samples(posterior, list(ls = formula_result$formula_scale))
+
+  levels <- marginal_posterior(samples, "ls_x", formula = ~ x, prior_samples = FALSE)
+  expect_equal(
+    unname(lapply(levels, as.numeric)),
+    lapply(c(-1, 0, 1), function(x) log(original[, "ls_intercept"]) + x * original[, "ls_x"]),
+    tolerance = 1e-12
+  )
+  # joint scaled log-intercept metadata are unavailable, not an error
+  expect_null(attr(levels[["0SD"]], "posterior_atoms"))
+  expect_null(attr(levels[["0SD"]], "posterior_support"))
+
+  intercept <- marginal_posterior(samples, "ls_intercept", formula = ~ x, prior_samples = FALSE)
+  expect_equal(as.numeric(intercept[["intercept"]]), log(original[, "ls_intercept"]), tolerance = 1e-12)
+})
+
+.ordered_prior_for_test <- function(total, allocation = c(.4, .6)){
+  data <- data.frame(f = ordered(c("low", "mid", "high"), levels = c("low", "mid", "high")))
+  JAGS_formula(
+    ~ f, "mu", data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f         = prior_ordered(total, allocation = allocation)
+    )
+  )$prior_list$mu_f
+}
+
+test_that("transform_scaled factor atoms are rescaled for level-labelled columns", {
+
+  set.seed(6)
+  data <- data.frame(
+    x = rnorm(40, 5, 2),
+    f = factor(rep(c("a", "b", "c"), length.out = 40), levels = c("a", "b", "c"))
+  )
+  formula_result <- JAGS_formula(
+    ~ x * f, "mu", data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 5)),
+      x         = prior("normal", list(0, 1)),
+      f         = prior_spike_and_slab(prior_factor("normal", list(0, 1), contrast = "treatment")),
+      "x:f"     = prior_factor("normal", list(0, 1), contrast = "treatment")
+    ),
+    formula_scale = list(x = TRUE)
+  )
+  n <- 200
+  indicator <- rep(c(0, 1), length.out = n)
+  posterior <- cbind(
+    mu_intercept = rnorm(n), mu_x = rnorm(n),
+    "mu_f[1]" = indicator * rnorm(n), "mu_f[2]" = indicator * rnorm(n),
+    mu_f_indicator = indicator,
+    "mu_x__xXx__f[1]" = rnorm(n), "mu_x__xXx__f[2]" = rnorm(n)
+  )
+  fit <- list(
+    mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+    summary.pars = list(mutate = NULL),
+    monitor = colnames(posterior),
+    sample = n
+  )
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+
+  samples <- as_mixed_posteriors(
+    fit, c("mu_intercept", "mu_x", "mu_f", "mu_x__xXx__f"), transform_scaled = TRUE
+  )
+  # original-scale f = f* - (m / s) (x:f)* is continuous even in spike draws
+  expect_equal(colnames(samples$mu_f), c("mu_f[b]", "mu_f[c]"))
+  expect_true(all(unclass(samples$mu_f) != 0))
+  atoms <- attr(samples$mu_f, "posterior_atoms")
+  expect_true(atoms$declared)
+  expect_length(atoms$mass, 0L)
+  expect_equal(colnames(atoms$locations), c("mu_f[b]", "mu_f[c]"))
+
+  marginal <- marginal_posterior(samples, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+  for(level in c("b", "c")){
+    level_posterior <- marginal[[level]]
+    class(level_posterior) <- c(class(level_posterior), "marginal_posterior")
+    expect_true(is.finite(Savage_Dickey_BF(level_posterior, silent = TRUE)))
+  }
+})
+
+test_that("marginal posteriors of 0.3.0 objects ask for recomputation", {
+
+  fixture <- .marginal_semantic_fixture_for_test()
+  samples <- fixture$samples
+  # BayesTools 0.3.0 mixed factor posteriors did not record the ordered flag
+  attr(samples$mu_x_fac2t, "ordered") <- NULL
+
+  expect_error(
+    marginal_posterior(samples, "mu_x_fac2t", formula = ~ x_cont1 + x_fac2t + x_cont1 * x_fac3md),
+    "lack the factor metadata recorded by the current BayesTools version (missing: 'ordered')",
+    fixed = TRUE
+  )
+
+  # 0.3.0 marginal posteriors carry no atom declaration
+  legacy <- marginal_posterior(fixture$samples, "mu_x_cont1", use_formula = FALSE, prior_samples = TRUE)
+  attr(legacy, "posterior_atoms") <- NULL
+  expect_error(
+    Savage_Dickey_BF(legacy, silent = TRUE),
+    "Marginal posteriors created by BayesTools 0.3.0 do not record it",
+    fixed = TRUE
+  )
+})
+
+test_that("point-mass metadata merge atoms by exact location", {
+
+  location <- 0.1 + 0.2
+  expect_false(location == 0.3)
+  atoms <- posterior_atom_attribute(data.frame(x = c(location, location, 0.3), mass = c(.2, .2, .1)))
+  expect_identical(atoms$locations[, 1], c(0.3, location))
+  expect_equal(atoms$mass, c(.1, .4), tolerance = 1e-15)
+
+  # Savage-Dickey removes the draws of the merged atom from the continuous part
+  set.seed(9)
+  posterior <- c(rep(location, 400), rnorm(600, 1, .3))
+  class(posterior) <- c("marginal_posterior.simple", "marginal_posterior", class(posterior))
+  attr(posterior, "prior_density") <- prior("normal", list(0, 1))
+  attr(posterior, "posterior_atoms") <- posterior_atom_attribute(
+    data.frame(x = c(location, location), mass = c(.2, .2))
+  )
+  continuous <- BayesTools:::.Savage_Dickey_BF.continuous_posterior(
+    posterior, BayesTools:::.posterior_atoms_get(posterior)
+  )
+  expect_length(continuous$samples, 600L)
+  expect_equal(continuous$continuous_mass, .6, tolerance = 1e-12)
+
+  density <- BayesTools:::.posterior_density_from_attribute(list(
+    x = c(0, location, 0.3, location, 1),
+    y = c(1, 2, 3, 4, 5)
+  ))
+  expect_identical(density$x, c(0, 0.3, location, 1))
+  expect_equal(density$y, c(1, 3, 3, 5))
+})
+
+test_that("factor terms omitted by a mixed model are zero on every coefficient column", {
+
+  data <- data.frame(t = factor(c("lo", "mid", "hi"), levels = c("lo", "mid", "hi")))
+  formula_result <- JAGS_formula(
+    ~ 1 + t, "mu", data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      t         = prior_factor("normal", list(0, 1), contrast = "treatment")
+    )
+  )
+  set.seed(7)
+  n <- 200
+  alternative <- cbind(mu_intercept = rnorm(n), "mu_t[1]" = rnorm(n, .4), "mu_t[2]" = rnorm(n, 1))
+  null <- cbind(mu_intercept = rnorm(n))
+  models <- list(
+    list(fit = .mock_mixing_fit_for_marginal(alternative, formula_result$prior_list),
+         marglik = bridgesampling_object(0), prior_weights = 1),
+    list(fit = .mock_mixing_fit_for_marginal(null, formula_result$prior_list["mu_intercept"]),
+         marglik = bridgesampling_object(0), prior_weights = 1)
+  )
+  mixed <- mix_posteriors(
+    models, parameters = c("mu_intercept", "mu_t"),
+    is_null_list = list(mu_intercept = c(FALSE, FALSE), mu_t = c(FALSE, TRUE)),
+    seed = 1, n_samples = n
+  )
+
+  levels <- marginal_posterior(mixed, "mu_t", formula = ~ 1 + t)
+  expect_equal(as.numeric(levels[["mid"]]), as.numeric(mixed$mu_intercept) + unclass(mixed$mu_t)[, 1],
+               tolerance = 1e-12)
+
+  # the omitted term contributes a point at zero with prior model probability 1/2
+  coefficients <- marginal_posterior(mixed, "mu_t", use_formula = FALSE, prior_samples = TRUE)
+  for(level in c("mid", "hi")){
+    prior_density <- attr(coefficients[[level]], "prior_density")
+    expect_equal(prior_density_ordinate(prior_density, 0)$point_mass, .5, tolerance = 1e-12)
+    .expect_prior_height_for_test(coefficients[[level]], .5, .5 * stats::dnorm(.5))
+    expect_equal(attr(coefficients[[level]], "posterior_atoms")$mass, .5, tolerance = 1e-12)
+  }
+  formula_levels <- marginal_posterior(mixed, "mu_t", formula = ~ 1 + t, prior_samples = TRUE)
+  # level mid = intercept + coefficient: N(0, 1) + {0 or N(0, 1)}
+  .expect_prior_height_for_test(
+    formula_levels[["mid"]], .5,
+    .5 * stats::dnorm(.5) + .5 * stats::dnorm(.5, 0, sqrt(2))
+  )
+})
+
+test_that("terms with unknown support leave level support unknown", {
+
+  data <- data.frame(f = ordered(c("low", "mid", "high"), levels = c("low", "mid", "high")))
+  formula_result <- JAGS_formula(
+    ~ f, "mu", data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1), list(0, Inf)),
+      f         = prior_ordered(prior("normal", list(0, 1)), allocation = c(.4, .6))
+    )
+  )
+  posterior <- cbind(mu_intercept = seq(.1, 2, length.out = 20),
+                     "mu_f[1]" = seq(-1, 1, length.out = 20),
+                     "mu_f[2]" = seq(-2, 1, length.out = 20))
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- formula_result$prior_list
+  samples <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_f"))
+
+  levels <- marginal_posterior(samples, "mu_f", formula = ~ f)
+  # the reference level is the truncated intercept alone; the other levels add
+  # an ordered term whose support is not derived, so their support is unknown
+  expect_equal(BayesTools:::.posterior_support_bounds(levels[["low"]]), c(0, Inf))
+  expect_null(attr(levels[["mid"]], "posterior_support"))
+  expect_null(attr(levels[["high"]], "posterior_support"))
+
+  known <- BayesTools:::.posterior_support_new(c(0, Inf))
+  expect_null(BayesTools:::.posterior_support_sum(list(known, NULL)))
+  expect_null(BayesTools:::.posterior_support_union(list(known, NULL)))
+  expect_equal(BayesTools:::.posterior_support_sum(list(known, known))$bounds, c(0, Inf))
+})
+
+test_that("mixed ordered spike-and-slab totals declare their within-model spike", {
+
+  ordered_prior <- .ordered_prior_for_test(prior_spike_and_slab(prior("normal", list(0, 1))))
+  set.seed(3)
+  n <- 400
+  indicators <- list(rbinom(n, 1, .3), rbinom(n, 1, .6))
+  models <- lapply(indicators, function(indicator){
+    total <- indicator * rnorm(n, .3, .1)
+    posterior <- cbind(
+      "mu_f[1]" = .4 * total,
+      "mu_f[2]" = .6 * total,
+      "mu_f_ordered_total_indicator" = indicator
+    )
+    list(
+      fit = .mock_mixing_fit_for_marginal(posterior, list(mu_f = ordered_prior)),
+      marglik = bridgesampling_object(0),
+      prior_weights = 1
+    )
+  })
+  mixed <- mix_posteriors(
+    models, parameters = "mu_f", is_null_list = list(mu_f = c(FALSE, FALSE)),
+    seed = 1, n_samples = n
+  )
+
+  # posterior model probabilities are 1/2; each spike carries the model's
+  # posterior exclusion probability
+  atoms <- attr(mixed$mu_f, "posterior_atoms")
+  expect_equal(unname(atoms$locations), matrix(0, 2, 2))
+  expect_equal(atoms$mass, .5 * vapply(indicators, function(x) mean(x == 0), numeric(1)), tolerance = 1e-12)
+
+  marginal <- marginal_posterior(mixed, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+  for(level in c("mid", "high")){
+    level_atoms <- attr(marginal[[level]], "posterior_atoms")
+    expect_equal(unname(level_atoms$locations[, 1]), 0)
+    expect_equal(level_atoms$mass, sum(atoms$mass), tolerance = 1e-12)
+    # the spike-and-slab total excludes the effect with prior probability 1/2
+    ordinate <- prior_density_ordinate(attr(marginal[[level]], "prior_density"), 0)
+    expect_equal(ordinate$point_mass, .5, tolerance = 1e-12)
+  }
+
+  unmonitored <- models[[1]]
+  unmonitored$fit <- .mock_mixing_fit_for_marginal(
+    as.matrix(unmonitored$fit$mcmc[[1]])[, c("mu_f[1]", "mu_f[2]")],
+    list(mu_f = ordered_prior)
+  )
+  expect_error(
+    mix_posteriors(
+      list(unmonitored, models[[2]]), parameters = "mu_f",
+      is_null_list = list(mu_f = c(FALSE, FALSE)), seed = 1, n_samples = n
+    ),
+    "required total-prior indicator",
+    fixed = TRUE
+  )
+})
+
+test_that("ordered mixture totals with a spike(0) component declare their point mass", {
+
+  total <- prior_mixture(
+    list(prior("spike", list(0)), prior("normal", list(0, 1))),
+    is_null = c(TRUE, FALSE)
+  )
+  ordered_prior <- .ordered_prior_for_test(total)
+  mixture_posterior <- function(indicator){
+    total_draws <- ifelse(indicator == 1L, 0, rnorm(length(indicator)))
+    cbind(
+      "mu_f[1]" = .4 * total_draws,
+      "mu_f[2]" = .6 * total_draws,
+      "mu_f_ordered_total_indicator" = indicator
+    )
+  }
+
+  # model averaging: model probability 1/2 times the posterior spike fraction
+  set.seed(11)
+  n <- 400
+  indicators <- list(sample(1:2, n, TRUE, c(.3, .7)), sample(1:2, n, TRUE, c(.6, .4)))
+  models <- lapply(indicators, function(indicator){
+    list(
+      fit = .mock_mixing_fit_for_marginal(mixture_posterior(indicator), list(mu_f = ordered_prior)),
+      marglik = bridgesampling_object(0),
+      prior_weights = 1
+    )
+  })
+  mixed <- mix_posteriors(
+    models, parameters = "mu_f", is_null_list = list(mu_f = c(FALSE, FALSE)),
+    seed = 1, n_samples = n
+  )
+  atoms <- attr(mixed$mu_f, "posterior_atoms")
+  expect_equal(unname(atoms$locations), matrix(0, 2, 2))
+  expect_equal(atoms$mass, .5 * vapply(indicators, function(x) mean(x == 1L), numeric(1)), tolerance = 1e-12)
+
+  # prior-only single model: the declared mass is the observed zero fraction
+  # and the Savage-Dickey ratio of prior draws is 1 up to KDE error
+  # (relative sd ~2%, bias ~1% for 10,000 continuous draws; |log BF| < 0.1)
+  set.seed(12)
+  n <- 20000
+  prior_draws <- mixture_posterior(sample(1:2, n, TRUE))
+  fit <- coda::mcmc(prior_draws)
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- list(mu_f = ordered_prior)
+  samples <- as_mixed_posteriors(fit, parameters = "mu_f", n_prior_samples = 1000)
+  expect_equal(
+    attr(samples$mu_f, "posterior_atoms")$mass,
+    mean(prior_draws[, "mu_f[1]"] == 0),
+    tolerance = 1e-12
+  )
+
+  marginal <- marginal_posterior(samples, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+  for(level in c("mid", "high")){
+    level_posterior <- marginal[[level]]
+    expect_equal(
+      attr(level_posterior, "posterior_atoms")$mass,
+      mean(level_posterior == 0),
+      tolerance = 1e-12
+    )
+    expect_equal(prior_density_ordinate(attr(level_posterior, "prior_density"), 0)$point_mass, .5,
+                 tolerance = 1e-12)
+    class(level_posterior) <- c(class(level_posterior), "marginal_posterior")
+    for(null_hypothesis in c(.05, -.3)){
+      BF <- Savage_Dickey_BF(level_posterior, null_hypothesis = null_hypothesis, silent = TRUE)
+      expect_lt(abs(log(as.numeric(BF))), .1)
+    }
+  }
+})
+
+test_that("mixed formula levels declare within-model ordered-total spikes", {
+
+  data <- data.frame(f = ordered(c("low", "mid", "high"), levels = c("low", "mid", "high")))
+  formula_priors <- function(total){
+    JAGS_formula(
+      ~ f, "mu", data = data,
+      prior_list = list(
+        intercept = prior("spike", list(.3)),
+        f         = prior_ordered(total, allocation = c(.4, .6))
+      )
+    )$prior_list
+  }
+  spike_and_slab_priors <- formula_priors(prior_spike_and_slab(prior("normal", list(0, 1))))
+  mixture_priors <- formula_priors(prior_mixture(
+    list(prior("spike", list(0)), prior("normal", list(0, 1))),
+    is_null = c(TRUE, FALSE)
+  ))
+  ordered_draws <- function(total, indicator){
+    cbind(
+      mu_intercept = .3,
+      "mu_f[1]" = .4 * total,
+      "mu_f[2]" = .6 * total,
+      "mu_f_ordered_total_indicator" = indicator
+    )
+  }
+
+  # prior-only draws of three models with the point intercept .3: a
+  # spike-and-slab total (spike: indicator 0), a mixture total (spike:
+  # component 1), each zero with probability 1/2, and a model without 'f'
+  set.seed(21)
+  n <- 30000
+  ss_indicator  <- stats::rbinom(n, 1, .5)
+  mix_indicator <- sample(1:2, n, TRUE)
+  models <- list(
+    list(fit = .mock_mixing_fit_for_marginal(
+      ordered_draws(ss_indicator * stats::rnorm(n), ss_indicator), spike_and_slab_priors),
+      marglik = bridgesampling_object(0), prior_weights = 1),
+    list(fit = .mock_mixing_fit_for_marginal(
+      ordered_draws(ifelse(mix_indicator == 1L, 0, stats::rnorm(n)), mix_indicator), mixture_priors),
+      marglik = bridgesampling_object(0), prior_weights = 1),
+    list(fit = .mock_mixing_fit_for_marginal(
+      cbind(mu_intercept = rep(.3, n)), spike_and_slab_priors["mu_intercept"]),
+      marglik = bridgesampling_object(0), prior_weights = 1)
+  )
+  mixed <- mix_posteriors(
+    models, parameters = c("mu_intercept", "mu_f"),
+    is_null_list = list(mu_intercept = c(FALSE, FALSE, FALSE), mu_f = c(FALSE, FALSE, TRUE)),
+    seed = 1, n_samples = n
+  )
+
+  # per-draw total indicators follow the mixture draws (NA without a spiked total)
+  models_ind <- attr(mixed$mu_f, "models_ind")
+  total_indicator <- attr(mixed$mu_f, "ordered_total_indicator")
+  expect_length(total_indicator, n)
+  expect_true(all(is.na(total_indicator[models_ind == 3L])))
+  excluded <- ifelse(models_ind == 1L, total_indicator == 0L, total_indicator == 1L)
+  # posterior model probability 1/3 times the within-model zero frequency
+  expected_mass <- (mean(excluded[models_ind == 1L]) + mean(excluded[models_ind == 2L]) + 1) / 3
+
+  levels <- marginal_posterior(mixed, "mu_f", formula = ~ f, prior_samples = TRUE)
+  for(level in c("mid", "high")){
+    level_posterior <- levels[[level]]
+    atoms <- attr(level_posterior, "posterior_atoms")
+    expect_equal(unname(atoms$locations[, 1]), .3)
+    expect_equal(atoms$mass, expected_mass, tolerance = 1e-12)
+    # the observed share of draws at .3 differs only through the multinomial
+    # model counts (|difference| ~ 4e-4 here)
+    expect_lt(abs(atoms$mass - mean(level_posterior == .3)), 2e-3)
+    expect_equal(prior_density_ordinate(attr(level_posterior, "prior_density"), .3)$point_mass, 2 / 3,
+                 tolerance = 1e-12)
+    # prior-only draws: the Savage-Dickey ratio is 1 up to KDE error (10,000
+    # continuous draws: relative sd ~2%, bias ~1-2%; |log BF| < 0.1)
+    class(level_posterior) <- c(class(level_posterior), "marginal_posterior")
+    for(null_hypothesis in c(.35, .8)){
+      BF <- Savage_Dickey_BF(level_posterior, null_hypothesis = null_hypothesis, silent = TRUE)
+      expect_lt(abs(log(as.numeric(BF))), .1)
+    }
+  }
+})
+
+test_that("ordered point(0) totals are structural zero coefficients", {
+
+  alternative_prior <- .ordered_prior_for_test(prior("normal", list(0, 1)))
+  null_prior <- .ordered_prior_for_test(prior("point", list(0)))
+  set.seed(4)
+  n <- 400
+  total <- rnorm(n, .3, .1)
+  alternative <- cbind("mu_f[1]" = .4 * total, "mu_f[2]" = .6 * total)
+  null <- cbind("mu_f[1]" = rep(0, n), "mu_f[2]" = rep(0, n))
+  mixed <- mix_posteriors(
+    list(
+      list(fit = .mock_mixing_fit_for_marginal(alternative, list(mu_f = alternative_prior)),
+           marglik = bridgesampling_object(0), prior_weights = 1),
+      list(fit = .mock_mixing_fit_for_marginal(null, list(mu_f = null_prior)),
+           marglik = bridgesampling_object(log(3)), prior_weights = 1)
+    ),
+    parameters = "mu_f", is_null_list = list(mu_f = c(FALSE, TRUE)),
+    seed = 1, n_samples = n
+  )
+  atoms <- attr(mixed$mu_f, "posterior_atoms")
+  expect_equal(unname(atoms$locations), matrix(0, 1, 2))
+  expect_equal(atoms$mass, .75, tolerance = 1e-12)
+
+  marginal <- marginal_posterior(mixed, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+  # level mid = .4 * total and level high = total, each with prior null mass 1/2
+  for(level in c("mid", "high")){
+    scale <- if(level == "mid") .4 else 1
+    prior_density <- attr(marginal[[level]], "prior_density")
+    expect_equal(prior_density_ordinate(prior_density, 0)$point_mass, .5, tolerance = 1e-12)
+    .expect_prior_height_for_test(marginal[[level]], .2, .5 * stats::dnorm(.2, 0, scale))
+    expect_equal(attr(marginal[[level]], "posterior_atoms")$mass, .75, tolerance = 1e-12)
+  }
+
+  fit <- coda::mcmc(null)
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- list(mu_f = null_prior)
+  single <- as_mixed_posteriors(fit, parameters = "mu_f")
+  expect_equal(attr(single$mu_f, "posterior_atoms")$mass, 1)
+  single_marginal <- marginal_posterior(single, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+  expect_equal(
+    prior_density_ordinate(attr(single_marginal[["high"]], "prior_density"), 0)$point_mass,
+    1
+  )
+})
+
 # File-level skips: All remaining tests in this file require pre-fitted models
 skip_if_not_visual_fixture_tests()
 skip_if_no_fits()
@@ -690,6 +3813,7 @@ skip_if_not_installed("bridgesampling")
 test_that("Marginal distribution prior and posterior functions work", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  set.seed(1)
 
   # Load pre-fitted marginal distribution models
   fit0     <- readRDS(file.path(temp_fits_dir, "fit_marginal_0.RDS"))
@@ -1230,41 +4354,65 @@ test_that("Marginal distribution prior and posterior functions work", {
   })
 
   ### Savage-Dickey BFs ----
-  # (uses model-averaged posteriors rather than conditional ones -- which would be correct)
+  # Smoke tests on mixed_posteriors (model-averaged). Savage-Dickey for a
+  # spike-and-slab / mixture parameter is defined on the continuous
+  # (conditional-on-inclusion) posterior; use as_marginal_inference() for that.
   # test input
-  expect_error(Savage_Dickey_BF(list(posterior_manual0)), "'BF_savage_dickey' function requires an object of class 'marginal_posteriors'")
+  expect_error(Savage_Dickey_BF(list(posterior_manual0)), "'Savage_Dickey_BF' requires an object of class 'marginal_posterior'.")
   expect_error(Savage_Dickey_BF(marginal_posterior(
     samples           = mixed_posteriors,
     parameter         = "sigma",
     prior_samples     = FALSE)), "there are no prior densities for the posterior distribution")
 
   # simple restricted prior
-  suppressWarnings(expect_warning(Savage_Dickey_BF(marg_post_sigma)))
-  BF.marg_post_sigma <- suppressWarnings(Savage_Dickey_BF(marg_post_sigma))
-  expect_equal(BF.marg_post_sigma, Inf, ignore_attr = TRUE)
-  expect_equal(attr(BF.marg_post_sigma, "warnings"),
-               "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
+  BF.marg_post_sigma <- Savage_Dickey_BF(marg_post_sigma, silent = TRUE)
+  expect_true(is.finite(BF.marg_post_sigma))
+  expect_gt(BF.marg_post_sigma, 1e10)
+  expect_null(attr(BF.marg_post_sigma, "warnings"))
+  expect_true(isTRUE(attr(BF.marg_post_sigma, "posterior_density_boundary_reflection")))
+  expect_equal(attr(BF.marg_post_sigma, "posterior_density_support"), c(0, 5))
 
   # simple factor
-  BF.marg_post_x_fac2t <- suppressWarnings(Savage_Dickey_BF(marg_post_simple_x_fac2t))
-  expect_equal(BF.marg_post_x_fac2t, list("A" = 0, "B" = 0.0009), tolerance = 1e-3, ignore_attr = TRUE)
-  expect_equal(attr(BF.marg_post_x_fac2t[["A"]], "warnings"),
-               c("There is a considerable cluster of posterior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid.",
-                 "There is a considerable point mass in the prior at the exact null hypothesis value. The Savage-Dickey density ratio is likely to be invalid."))
+  expect_error(
+    Savage_Dickey_BF(marg_post_simple_x_fac2t),
+    "exact null hypothesis value|point mass in the prior"
+  )
+  marg_post_simple_x_fac2t_B <- marg_post_simple_x_fac2t[["B"]]
+  class(marg_post_simple_x_fac2t_B) <- c(class(marg_post_simple_x_fac2t_B), "marginal_posterior")
+  expect_error(
+    Savage_Dickey_BF(marg_post_simple_x_fac2t_B),
+    "exact null hypothesis value",
+    fixed = TRUE
+  )
 
 
   BF.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, silent = TRUE)
-  expect_equal(BF.marg_post_x_fac3md, list("A" = Inf, "B" = Inf, "C" = Inf), ignore_attr = TRUE)
+  BF.marg_post_x_fac3md_values <- unlist(BF.marg_post_x_fac3md, use.names = FALSE)
+  expect_true(all(is.finite(BF.marg_post_x_fac3md_values)))
+  expect_gt(min(BF.marg_post_x_fac3md_values), 1e50)
+  expect_equal(attr(BF.marg_post_x_fac3md[["A"]], "warnings"),
+               "Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.")
 
   BF2.marg_post_x_fac3md <- suppressWarnings(Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5))
-  expect_equal(BF2.marg_post_x_fac3md, list("A" = Inf, "B" = 0.145, "C" = 0.1654), tolerance = 5e-3, ignore_attr = TRUE)
-  expect_equal(attr(BF2.marg_post_x_fac3md[["A"]], "warnings"),
-               "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
+  BF2.marg_post_x_fac3md_values <- unlist(BF2.marg_post_x_fac3md, use.names = FALSE)
+  expect_true(all(is.finite(BF2.marg_post_x_fac3md_values)))
+  expect_true(all(BF2.marg_post_x_fac3md_values > 0))
+  expect_gt(BF2.marg_post_x_fac3md_values[1], 1)
+  expect_true(all(BF2.marg_post_x_fac3md_values[-1] < 1))
 
-  BF2.marg_post_x_fac3md <- suppressWarnings(Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5, normal_approximation = TRUE))
-  expect_equal(BF2.marg_post_x_fac3md, list("A" = 0.629, "B" = 0.0983, "C" = 0.1260), tolerance = 5e-3, ignore_attr = TRUE)
-  expect_equal(attr(BF2.marg_post_x_fac3md[["A"]], "warnings"),
-               "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
+  BF2_normal.marg_post_x_fac3md <- suppressWarnings(Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5, normal_approximation = TRUE))
+  BF2_normal.marg_post_x_fac3md_values <- unlist(
+    BF2_normal.marg_post_x_fac3md,
+    use.names = FALSE
+  )
+  expect_true(all(is.finite(BF2_normal.marg_post_x_fac3md_values)))
+  expect_true(all(BF2_normal.marg_post_x_fac3md_values > 0))
+  expect_true(all(BF2_normal.marg_post_x_fac3md_values < 1))
+  expect_true(all(
+    BF2.marg_post_x_fac3md_values >
+      BF2_normal.marg_post_x_fac3md_values
+  ))
+
 
   ### marginal_inference ----
   set.seed(1)
@@ -1346,10 +4494,28 @@ test_that("Marginal distribution prior and posterior functions work", {
   # the previous BFs were based on model-averaged posteriors so they won't match
 
   # test summary table
-  test_reference_table(
-    marginal_estimates_table(out$conditional, out$inference, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md")),
+  marginal_parameters <- c(
+    "mu_intercept",
+    "mu_x_cont1",
+    "mu_x_fac2t",
+    "mu_x_fac3md",
+    "mu_x_cont1__xXx__x_fac3md"
+  )
+  marginal_table <- marginal_estimates_table(
+    out$conditional,
+    out$inference,
+    parameters = marginal_parameters
+  )
+  test_reference_table_stochastic(
+    marginal_table,
     "marginal_estimates_table_model_avg.txt",
     info_msg = "marginal_estimates_table for model averaging"
+  )
+  .expect_marginal_table_current_inputs(
+    table = marginal_table,
+    samples = out$conditional,
+    inference = out$inference,
+    parameters = marginal_parameters
   )
 
   # plots
@@ -1371,79 +4537,6 @@ test_that("Marginal distribution prior and posterior functions work", {
   vdiffr::expect_doppelganger("ggplot_marginal-mu_x_fac3md", plot_marginal(out$averaged, plot_type = "ggplot", parameter = "mu_x_fac3md", prior = TRUE, dots_prior = list(lty = 2), xlim = c(-1, 1)))
 
   vdiffr::expect_doppelganger("plot_marginal-int", plot_marginal(out$averaged, plot_type = "ggplot", parameter = "mu_intercept", prior = TRUE, dots_prior = list(lty = 2), xlim = c(-1, 1)))
-
-})
-
-test_that("Marginal distribution prior functions work", {
-
-  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
-  skip_on_cran()
-  set.seed(1)
-
-  ### independent prior distribution ----
-  priors <- list(
-      prior_factor("spike",  list(0), contrast = "independent"),
-      prior_factor("normal", list(0, .3), contrast = "independent"),
-      prior_factor("normal", list(2, .3), contrast = "independent")
-  )
-  attr(priors[[1]], "levels") <- 3
-  attr(priors[[2]], "levels") <- 3
-  attr(priors[[3]], "levels") <- 3
-  temp_prior <- BayesTools:::.mix_priors.factor(priors, "mu", seed = NULL, n_samples = 10000)
-
-
-  vdiffr::expect_doppelganger("marginal-prior-ind", function(){
-
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
-
-    par(mfrow = c(1, 3))
-    hist(temp_prior[,1], freq = FALSE, main = "marginal prior independent (1)", breaks = 50)
-    hist(temp_prior[,2], freq = FALSE, main = "marginal prior independent (2)", breaks = 50)
-    hist(temp_prior[,3], freq = FALSE, main = "marginal prior independent (3)", breaks = 50)
-
-  })
-
-  ### 3 level treatment prior distribution ----
-  priors <- list(
-    prior_factor("spike",  list(0),     contrast = "treatment"),
-    prior_factor("normal", list(2, .3), contrast = "treatment")
-  )
-  attr(priors[[1]], "levels") <- 3
-  attr(priors[[2]], "levels") <- 3
-  temp_prior <- BayesTools:::.mix_priors.factor(priors, "mu", seed = NULL, n_samples = 10000)
-
-
-  vdiffr::expect_doppelganger("marginal-prior-trt", function(){
-
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
-
-    par(mfrow = c(1, 2))
-    hist(temp_prior[,1], freq = FALSE, main = "marginal prior treatment (1)", breaks = 50)
-    hist(temp_prior[,2], freq = FALSE, main = "marginal prior treatment (2)", breaks = 50)
-
-  })
-
-  ### weightfunction prior distribution ----
-  priors <- list(
-    prior_weightfunction("one-sided", c(0.05, 0.50), wf_fixed(c(1, 1, 1))),
-    prior_weightfunction("one-sided", c(0.10), wf_cumulative(c(1, 1)))
-  )
-  temp_prior <- BayesTools:::.mix_priors.weightfunction(priors, "mu", seed = NULL, n_samples = 10000)
-
-  vdiffr::expect_doppelganger("marginal-prior-weightfunction", function(){
-
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
-
-    par(mfrow = c(1, 4))
-    hist(temp_prior[,1], freq = FALSE, main = "marginal prior weightfunction (1)", breaks = 50)
-    hist(temp_prior[,2], freq = FALSE, main = "marginal prior weightfunction (2)", breaks = 50)
-    hist(temp_prior[,3], freq = FALSE, main = "marginal prior weightfunction (3)", breaks = 50)
-    hist(temp_prior[,4], freq = FALSE, main = "marginal prior weightfunction (4)", breaks = 50)
-
-  })
 
 })
 
@@ -1879,11 +4972,28 @@ test_that("Marginal distributions with spike and slab and mixture priors work", 
   # the previous BFs were based on model-averaged posteriors so they won't match
 
   # test summary table (note that these differ from the first set of tests because of the different model settings)
-  test_reference_table_numeric(
-    marginal_estimates_table(out$conditional, out$inference, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md")),
+  marginal_parameters <- c(
+    "mu_intercept",
+    "mu_x_cont1",
+    "mu_x_fac2t",
+    "mu_x_fac3md",
+    "mu_x_cont1__xXx__x_fac3md"
+  )
+  marginal_table <- marginal_estimates_table(
+    out$conditional,
+    out$inference,
+    parameters = marginal_parameters
+  )
+  test_reference_table_stochastic(
+    marginal_table,
     "marginal_estimates_table_spike_slab.txt",
-    tolerance = 1e-2,
     info_msg = "marginal_estimates_table for spike-and-slab"
+  )
+  .expect_marginal_table_current_inputs(
+    table = marginal_table,
+    samples = out$conditional,
+    inference = out$inference,
+    parameters = marginal_parameters
   )
 
   # plots
@@ -1924,10 +5034,6 @@ test_that("Marginal distributions with one-sided weightfunction model work", {
     parameters   = "omega"
   )
 
-  # Not implemented for weightfunctions
-  #  marginal_posterior(mixed_posteriors, parameter = "omega", prior_samples = TRUE)
-  temp_samples <- .as_mixed_priors.weightfunction(attr(fit_wf, "prior_list")[[1]], parameter = "omega")
-
   # Visual tests for weightfunction posteriors
   vdiffr::expect_doppelganger("marginal-wf-onesided-hist", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
@@ -1935,10 +5041,6 @@ test_that("Marginal distributions with one-sided weightfunction model work", {
 
     par(mfrow = c(1, 2))
     hist(mixed_posteriors$omega[,1], freq = FALSE, main = "omega[0,0.025]", breaks = 50, xlim = c(0, 1))
-    # The first one-sided weight is the fixed reference bin; do not smooth a point mass.
-    if(stats::sd(temp_samples[,1]) > sqrt(.Machine$double.eps)){
-      lines(density(temp_samples[,1]))
-    }
     hist(mixed_posteriors$omega[,2], freq = FALSE, main = "omega[0.025,1]", breaks = 50, xlim = c(0, 1))
   })
 
@@ -1979,3 +5081,24 @@ test_that("Marginal distributions with independent factor model work", {
 
 })
 
+
+test_that("transform_scaled raw coefficients of fit_complex_mixed use their own prior", {
+
+  skip_if_not_installed("rjags")
+
+  # mu_x_cont1 ~ N(0, 1) x spike(0.5) with multiply_by = "sigma"; the monitored
+  # coefficient is the raw node, so its prior is 1/2 at 0 + 1/2 N(0, 1)
+  # (the fit has no formula scaling, so transform_scaled leaves it unchanged)
+  fit <- readRDS(file.path(temp_fits_dir, "fit_complex_mixed.RDS"))
+  expect_identical(attr(attr(fit, "prior_list")$mu_x_cont1, "multiply_by"), "sigma")
+
+  samples <- as_mixed_posteriors(
+    fit, parameters = c("mu_intercept", "mu_x_cont1", "sigma"), transform_scaled = TRUE
+  )
+  marginal <- marginal_posterior(samples, "mu_x_cont1", use_formula = FALSE, prior_samples = TRUE)
+  prior_density <- attr(marginal, "prior_density")
+  expect_equal(prior_density_ordinate(prior_density, 0)$point_mass, .5, tolerance = 1e-12)
+  for(value in c(0, .5)){
+    .expect_prior_height_for_test(marginal, value, .5 * stats::dnorm(value))
+  }
+})

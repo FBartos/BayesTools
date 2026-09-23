@@ -21,6 +21,18 @@ skip_if_not_test_profile("unit")
 # TAGS: @evaluation, @JAGS, @posterior-extraction
 # ============================================================================ #
 
+.make_mock_mcarray <- function(values, dim, varname = NULL, iterations = NULL){
+  parameter <- array(values, dim = dim)
+  class(parameter) <- "mcarray"
+  if(!is.null(varname)){
+    attr(parameter, "varname") <- varname
+  }
+  if(!is.null(iterations)){
+    attr(parameter, "iterations") <- iterations
+  }
+  parameter
+}
+
 # Tests for posterior extraction helper functions
 test_that(".extract_posterior_samples extracts samples correctly", {
 
@@ -60,8 +72,162 @@ test_that(".extract_posterior_samples extracts samples correctly", {
   expect_equal(length(samples_list), 2) # 2 chains
 })
 
+test_that(".fit_to_posterior flattens multidimensional mcarrays in coda order", {
 
-test_that(".remove_auxiliary_parameters removes invgamma support", {
+  iterations <- c(start = 1, end = 3, thin = 1)
+  theta <- .make_mock_mcarray(
+    values = seq_len(2 * 3 * 3 * 2),
+    dim = c(2, 3, 3, 2),
+    varname = "theta",
+    iterations = iterations
+  )
+  psi <- .make_mock_mcarray(
+    values = 1000 + seq_len(2 * 2 * 2 * 3 * 2),
+    dim = c(2, 2, 2, 3, 2),
+    varname = "psi",
+    iterations = iterations
+  )
+  alpha <- .make_mock_mcarray(
+    values = 2000 + seq_len(1 * 3 * 2),
+    dim = c(1, 3, 2),
+    varname = "alpha",
+    iterations = iterations
+  )
+
+  posterior <- BayesTools:::.fit_to_posterior(list(
+    theta = theta,
+    psi = psi,
+    alpha = alpha
+  ))
+
+  expected_theta <- do.call(rbind, lapply(seq_len(2), function(chain){
+    do.call(rbind, lapply(seq_len(3), function(iteration){
+      as.vector(theta[, , iteration, chain])
+    }))
+  }))
+  colnames(expected_theta) <- c(
+    "theta[1,1]", "theta[2,1]",
+    "theta[1,2]", "theta[2,2]",
+    "theta[1,3]", "theta[2,3]"
+  )
+
+  expected_psi <- do.call(rbind, lapply(seq_len(2), function(chain){
+    do.call(rbind, lapply(seq_len(3), function(iteration){
+      as.vector(psi[, , , iteration, chain])
+    }))
+  }))
+  colnames(expected_psi) <- c(
+    "psi[1,1,1]", "psi[2,1,1]",
+    "psi[1,2,1]", "psi[2,2,1]",
+    "psi[1,1,2]", "psi[2,1,2]",
+    "psi[1,2,2]", "psi[2,2,2]"
+  )
+
+  expected_alpha <- do.call(rbind, lapply(seq_len(2), function(chain){
+    do.call(rbind, lapply(seq_len(3), function(iteration){
+      alpha[1, iteration, chain]
+    }))
+  }))
+  colnames(expected_alpha) <- "alpha"
+
+  expect_equal(
+    posterior,
+    cbind(expected_theta, expected_psi, expected_alpha)
+  )
+})
+
+test_that(".fit_to_posterior preserves monitored mcarray indices", {
+
+  iterations <- c(start = 10, end = 11, thin = 1)
+  theta <- .make_mock_mcarray(
+    values = seq_len(4),
+    dim = c(2, 2, 1),
+    varname = "theta[2,4:5]",
+    iterations = iterations
+  )
+  phi <- .make_mock_mcarray(
+    values = 10 + seq_len(4),
+    dim = c(2, 2, 1),
+    varname = "phi[2:3,4]",
+    iterations = iterations
+  )
+  eta <- .make_mock_mcarray(
+    values = 20 + seq_len(4),
+    dim = c(2, 2, 1),
+    iterations = iterations
+  )
+
+  posterior <- BayesTools:::.fit_to_posterior(list(
+    theta_subset = theta,
+    phi_subset = phi,
+    eta = eta
+  ))
+
+  expect_identical(
+    colnames(posterior),
+    c(
+      "theta[2,4]", "theta[2,5]",
+      "phi[2,4]", "phi[3,4]",
+      "eta[1]", "eta[2]"
+    )
+  )
+})
+
+test_that(".fit_to_posterior rejects misaligned mcarray draws", {
+
+  by_chain <- .make_mock_mcarray(
+    values = seq_len(6),
+    dim = c(1, 3, 2),
+    varname = "x"
+  )
+  different_layout <- .make_mock_mcarray(
+    values = seq_len(6),
+    dim = c(1, 2, 3),
+    varname = "y"
+  )
+  expect_error(
+    BayesTools:::.fit_to_posterior(list(
+      x = by_chain,
+      y = different_layout
+    )),
+    "matching iteration and chain dimensions",
+    fixed = TRUE
+  )
+
+  first_iterations <- .make_mock_mcarray(
+    values = seq_len(6),
+    dim = c(1, 3, 2),
+    varname = "x",
+    iterations = c(start = 1, end = 3, thin = 1)
+  )
+  shifted_iterations <- .make_mock_mcarray(
+    values = seq_len(6),
+    dim = c(1, 3, 2),
+    varname = "y",
+    iterations = c(start = 2, end = 4, thin = 1)
+  )
+  expect_error(
+    BayesTools:::.fit_to_posterior(list(
+      x = first_iterations,
+      y = shifted_iterations
+    )),
+    "matching iteration metadata",
+    fixed = TRUE
+  )
+
+  malformed <- matrix(seq_len(6), nrow = 2)
+  class(malformed) <- "mcarray"
+  attr(malformed, "varname") <- "z"
+  expect_error(
+    BayesTools:::.fit_to_posterior(list(z = malformed)),
+    "at least one parameter dimension",
+    fixed = TRUE
+  )
+})
+
+
+# TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
+test_that(".remove_auxiliary_parameters removes legacy invgamma support", {
   skip_on_cran()
   skip_if_not_installed("rjags")
 
@@ -80,7 +246,8 @@ test_that(".remove_auxiliary_parameters removes invgamma support", {
 })
 
 
-test_that(".remove_auxiliary_parameters removes indexed factor invgamma support", {
+# TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
+test_that(".remove_auxiliary_parameters removes legacy indexed factor invgamma support", {
   model_samples <- matrix(rnorm(400), ncol = 4)
   colnames(model_samples) <- c("theta[1]", "theta[2]", "inv_theta[1]", "inv_theta[2]")
 
@@ -91,6 +258,28 @@ test_that(".remove_auxiliary_parameters removes indexed factor invgamma support"
   result <- BayesTools:::.remove_auxiliary_parameters(model_samples, prior_list, NULL)
 
   expect_equal(colnames(result$model_samples), c("theta[1]", "theta[2]"))
+})
+
+test_that(".remove_auxiliary_parameters removes vector prior columns by base name", {
+
+  model_samples <- matrix(
+    seq_len(6),
+    nrow = 1,
+    dimnames = list(
+      NULL,
+      c("w[1]", "w[2]", "w[3]", "prior_par_eta_w[1]", "prior_par_eta_w[2]", "prior_par_eta_w[3]")
+    )
+  )
+  prior_list <- list(w = prior("dirichlet", list(alpha = c(1, 2, 3))))
+
+  result <- BayesTools:::.remove_auxiliary_parameters(
+    model_samples,
+    prior_list,
+    remove_parameters = "w"
+  )
+
+  expect_equal(ncol(result$model_samples), 0L)
+  expect_equal(names(result$prior_list), character())
 })
 
 
@@ -129,6 +318,31 @@ test_that(".remove_auxiliary_parameters renames selection omegas and drops unrep
 
   expect_equal(colnames(result$model_samples), c("omega[0,0.025]", "omega[0.025,1]", "alpha", "phack_kind"))
   expect_true("pub_bias" %in% names(result$prior_list))
+})
+
+
+test_that(".remove_auxiliary_parameters drops cumulative-weight auxiliaries from old and new fits", {
+
+  selection <- prior_weightfunction(
+    "one-sided",
+    .025,
+    wf_cumulative(c(1, 2))
+  )
+  model_samples <- matrix(seq_len(50), ncol = 5)
+  colnames(model_samples) <- c(
+    "omega[1]", "omega[2]", "eta[1]", "eta[2]", "omega_ratio"
+  )
+
+  result <- BayesTools:::.remove_auxiliary_parameters(
+    model_samples,
+    list(pub_bias = selection),
+    remove_parameters = NULL
+  )
+
+  expect_equal(
+    colnames(result$model_samples),
+    c("omega[0,0.025]", "omega[0.025,1]")
+  )
 })
 
 
@@ -184,6 +398,49 @@ test_that(".apply_parameter_transformations applies transformations", {
 
   expect_true(all(result[, "mu"] > 0))  # exp makes all values positive
   expect_equal(ncol(result), 1)
+})
+
+test_that("requested transformations reach independent and ordered factor coefficients", {
+
+  data <- data.frame(
+    g = factor(c("A", "B", "C"), levels = c("A", "B", "C")),
+    o = ordered(c("lo", "mid", "hi"), levels = c("lo", "mid", "hi"))
+  )
+  prior_list <- JAGS_formula(
+    ~ g + o, "mu", data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      g         = prior_factor("normal", list(0, 1), contrast = "independent"),
+      o         = prior_ordered(prior("normal", list(0, 1)), allocation = c(.4, .6))
+    )
+  )$prior_list
+  set.seed(8)
+  model_samples <- matrix(rnorm(5 * 20), ncol = 5)
+  colnames(model_samples) <- c("mu_g[1]", "mu_g[2]", "mu_g[3]", "mu_o[1]", "mu_o[2]")
+  transformations <- list(
+    mu_g = list(fun = exp, arg = list()),
+    mu_o = list(fun = exp, arg = list())
+  )
+
+  coefficients <- BayesTools:::.apply_parameter_transformations(
+    model_samples, transformations, prior_list, transform_factors = FALSE
+  )
+  expect_equal(coefficients, exp(model_samples))
+
+  # with transform_factors = TRUE, ordered coefficients are transformed only
+  # after the contrast transformation to level effects
+  levels <- BayesTools:::.apply_parameter_transformations(
+    model_samples, transformations, prior_list, transform_factors = TRUE
+  )
+  expect_equal(levels[, 1:3], exp(model_samples[, 1:3]))
+  expect_equal(levels[, 4:5], model_samples[, 4:5])
+  level_effects <- BayesTools:::.transform_factor_contrasts(
+    levels, prior_list, transform_factors = TRUE, transformations = transformations
+  )
+  expect_equal(
+    unname(level_effects[, ncol(level_effects)]),
+    exp(model_samples[, "mu_o[1]"] + model_samples[, "mu_o[2]"])
+  )
 })
 
 
@@ -335,23 +592,119 @@ test_that(".rename_factor_levels handles multi-factor treatment interactions", {
   )
 })
 
+test_that(".rename_factor_levels distinguishes treatment random interaction designs", {
 
-test_that(".format_factor_level_parameter_names falls back to numeric indices on interaction mismatch", {
+  data <- data.frame(
+    f = factor(rep(c("a", "b", "c"), 4), levels = c("a", "b", "c")),
+    g = factor(rep(c("u", "v"), each = 6), levels = c("u", "v")),
+    id = factor(rep(c("s1", "s2", "s3", "s4"), each = 3))
+  )
+  sd_prior <- prior("gamma", list(2, 2))
+  fixed_priors <- list(intercept = prior("normal", list(0, 1)))
 
-  result <- BayesTools:::.format_factor_level_parameter_names(
-    "mu_a__xXx__year__xXx__b",
-    list(a = c("a1", "a2"), missing = c("m1", "m2", "m3")),
-    n_parameters = 4
+  make_result <- function(random_formula){
+    JAGS_formula(
+      formula = random_formula,
+      parameter = "mu",
+      data = data,
+      prior_list = fixed_priors,
+      prior_random = prior_random(id = random_block(sd = sd_prior))
+    )
+  }
+  rename_interaction <- function(result){
+    parameter <- grep(
+      "f__xXx__g$",
+      names(result$prior_list),
+      value = TRUE
+    )
+    interaction_prior <- result$prior_list[parameter]
+    n_parameters <- .get_prior_factor_levels(interaction_prior[[1]])
+    model_samples <- matrix(
+      seq_len(n_parameters),
+      nrow = 1L,
+      dimnames = list(
+        NULL,
+        paste0(parameter, "[", seq_len(n_parameters), "]")
+      )
+    )
+
+    BayesTools:::.rename_factor_levels(model_samples, interaction_prior)
+  }
+
+  interaction_only <- rename_interaction(
+    make_result(~ 1 + diag(0 + f:g | id))
+  )
+  expect_equal(
+    colnames(interaction_only),
+    c(
+      "mu__xREx__id_f[a]__xXx__g[u]",
+      "mu__xREx__id_f[b]__xXx__g[u]",
+      "mu__xREx__id_f[c]__xXx__g[u]",
+      "mu__xREx__id_f[a]__xXx__g[v]",
+      "mu__xREx__id_f[b]__xXx__g[v]",
+      "mu__xREx__id_f[c]__xXx__g[v]"
+    )
   )
 
+  hierarchical <- rename_interaction(
+    make_result(~ 1 + diag(0 + f * g | id))
+  )
   expect_equal(
-    result,
+    colnames(hierarchical),
     c(
-      "mu_a__xXx__year__xXx__b[1]",
-      "mu_a__xXx__year__xXx__b[2]",
-      "mu_a__xXx__year__xXx__b[3]",
-      "mu_a__xXx__year__xXx__b[4]"
+      "mu__xREx__id_f[b]__xXx__g[v]",
+      "mu__xREx__id_f[c]__xXx__g[v]"
     )
+  )
+})
+
+
+test_that(".format_factor_level_parameter_names rejects interaction metadata mismatch", {
+
+  expect_error(
+    BayesTools:::.format_factor_level_parameter_names(
+      "mu_a__xXx__year__xXx__b",
+      list(a = c("a1", "a2"), missing = c("m1", "m2", "m3")),
+      n_parameters = 4
+    ),
+    "factor metadata do not match"
+  )
+})
+
+test_that(".generate_prior_sample_matrix errors on unsupported prior RNGs", {
+
+  unsupported_prior <- list(distribution = "unsupported")
+  class(unsupported_prior) <- c("prior", "prior.unsupported")
+
+  expect_error(
+    BayesTools:::.generate_prior_sample_matrix(
+      list(theta = unsupported_prior),
+      n_samples = 4
+    ),
+    "Could not generate samples for prior 'theta'",
+    fixed = TRUE
+  )
+})
+
+test_that("random SD unscaling ignores obsolete term-name metadata", {
+
+  posterior <- matrix(
+    1,
+    nrow = 2,
+    ncol = 2,
+    dimnames = list(NULL, c("mu__xREx__study_x[1]", "mu__xREx__study_x[2]"))
+  )
+  formula_scale <- list(mu_x = list(mean = 0, sd = 2))
+  attr(formula_scale, "random_effect_terms") <- c("mu__xREx__study_x" = "x")
+
+  expect_identical(
+    BayesTools:::.apply_random_sd_unscale(
+      posterior = posterior,
+      random_sd_cols = colnames(posterior),
+      formula_scale = formula_scale,
+      prefix = "mu"
+    ),
+    posterior
   )
 })
 
@@ -368,6 +721,8 @@ test_that(".transform_factor_contrasts transforms orthonormal to differences", {
   prior_obj <- prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
   attr(prior_obj, "levels") <- 4  # 4 levels total (orthonormal has K-1 parameters for K levels)
   attr(prior_obj, "level_names") <- c("A", "B", "C", "D")  # Should be a vector, not a list
+  attr(prior_obj, "factor_terms") <- ".factor"
+  attr(prior_obj, "factor_contrasts") <- c(.factor = "contr.orthonormal")
   
   prior_list <- list(group = prior_obj)
 
@@ -570,23 +925,18 @@ test_that(".transform_factor_contrasts reconstructs multi-factor designs from me
     `mu_b[2]` = seq_len(nrow(model_samples)) + 20,
     model_samples
   )
-  transformed_inferred <- suppressMessages(BayesTools:::.transform_factor_contrasts(
-    model_samples_full,
-    list(
-      mu_a = formula_result$prior_list$mu_a,
-      mu_b = formula_result$prior_list$mu_b,
-      mu_a__xXx__b = inferred_contrast_prior
-    ),
-    transform_factors = TRUE
-  ))
-  expected_names <- paste0(
-    "mu_a[dif: ",
-    rep(c("a1", "a2"), times = 3),
-    "]__xXx__b[dif: ",
-    rep(c("b1", "b2", "b3"), each = 2),
-    "]"
+  expect_error(
+    suppressMessages(BayesTools:::.transform_factor_contrasts(
+      model_samples_full,
+      list(
+        mu_a = formula_result$prior_list$mu_a,
+        mu_b = formula_result$prior_list$mu_b,
+        mu_a__xXx__b = inferred_contrast_prior
+      ),
+      transform_factors = TRUE
+    )),
+    "Factor contrast metadata is missing"
   )
-  expect_equal(unname(transformed_inferred[, expected_names]), unname(model_samples %*% t(expected_design)))
 })
 
 test_that(".transform_factor_contrasts validates multi-factor metadata", {
@@ -634,6 +984,59 @@ test_that(".transform_factor_contrasts validates multi-factor metadata", {
   )
 })
 
+test_that("plain factor priors are canonicalized before mixed posterior transformation", {
+
+  factor_prior <- prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  attr(factor_prior, "levels") <- 3
+  attr(factor_prior, "level_names") <- c("low", "mid", "high")
+
+  canonical_prior <- BayesTools:::.complete_factor_metadata(factor_prior, "p1")
+  expect_equal(attr(canonical_prior, "factor_terms"), "p1")
+  expect_equal(attr(canonical_prior, "factor_contrasts"), c(p1 = "contr.meandif"))
+  expect_equal(
+    attr(canonical_prior, "factor_design"),
+    contr.meandif(c("low", "mid", "high"))
+  )
+  expect_equal(attr(canonical_prior, "factor_cell_names"), c("low", "mid", "high"))
+
+  posterior <- matrix(seq_len(20), nrow = 10, ncol = 2)
+  colnames(posterior) <- paste0("p1[", 1:2, "]")
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(p1 = factor_prior)
+
+  mixed <- as_mixed_posteriors(fit, parameters = "p1")
+  expect_equal(attr(mixed$p1, "factor_terms"), "p1")
+  expect_equal(attr(mixed$p1, "factor_contrasts"), c(p1 = "contr.meandif"))
+
+  transformed <- transform_factor_samples(mixed)$p1
+  expect_equal(
+    as.vector(transformed),
+    as.vector(posterior %*% t(contr.meandif(c("low", "mid", "high"))))
+  )
+  expect_equal(colnames(transformed), paste0("p1[dif: ", c("low", "mid", "high"), "]"))
+})
+
+test_that("factor sample transformations still reject incomplete mixed posterior metadata", {
+
+  incomplete_samples <- matrix(seq_len(20), nrow = 10, ncol = 2)
+  colnames(incomplete_samples) <- paste0("p1[", 1:2, "]")
+  attr(incomplete_samples, "levels") <- 2
+  attr(incomplete_samples, "level_names") <- c("low", "mid", "high")
+  attr(incomplete_samples, "meandif") <- TRUE
+  class(incomplete_samples) <- c(
+    "mixed_posteriors",
+    "mixed_posteriors.factor",
+    "mixed_posteriors.vector",
+    "matrix"
+  )
+
+  expect_error(
+    transform_factor_samples(list(p1 = incomplete_samples)),
+    "Factor contrast metadata is missing"
+  )
+})
+
 test_that("as_mixed_posteriors propagates multi-factor contrast metadata", {
 
   df <- expand.grid(
@@ -665,12 +1068,20 @@ test_that("as_mixed_posteriors propagates multi-factor contrast metadata", {
   expect_equal(attr(mixed$mu_a__xXx__b, "factor_contrasts"), attr(interaction_prior, "factor_contrasts"))
   expect_equal(attr(mixed$mu_a__xXx__b, "factor_design"), attr(interaction_prior, "factor_design"))
   expect_equal(attr(mixed$mu_a__xXx__b, "factor_cell_names"), attr(interaction_prior, "factor_cell_names"))
+  attr(mixed$mu_a__xXx__b, "posterior_support") <- stats::setNames(
+    rep(
+      list(BayesTools:::.posterior_support_new(c(-1, 1), source = "test")),
+      ncol(mixed$mu_a__xXx__b)
+    ),
+    colnames(mixed$mu_a__xXx__b)
+  )
 
   transformed <- transform_factor_samples(mixed)$mu_a__xXx__b
   expect_equal(
     as.vector(transformed),
     as.vector(posterior %*% t(attr(interaction_prior, "factor_design")))
   )
+  expect_null(attr(transformed, "posterior_support", exact = TRUE))
 })
 
 
@@ -693,6 +1104,29 @@ test_that(".filter_parameters removes spike at 0 priors", {
   # With remove_spike_0 = FALSE
   result <- BayesTools:::.filter_parameters(prior_list, remove_spike_0 = FALSE)
   expect_equal(length(result), 0)
+})
+
+test_that(".filter_parameters keeps point priors with expression locations", {
+
+  prior_list <- list(
+    a = prior("normal", list(0, 1)),
+    b = prior("point", list(location = expression(a))),
+    c = prior("point", list(0))
+  )
+
+  # the derived point b is not a structural spike at zero (no coercion error)
+  result <- BayesTools:::.filter_parameters(prior_list, remove_spike_0 = TRUE)
+  expect_identical(result, "c")
+
+  # mixed posteriors treat the derived point as having unknown support
+  set.seed(10)
+  a <- rnorm(50)
+  fit <- coda::mcmc(cbind(a = a, b = a))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- prior_list[c("a", "b")]
+  samples <- as_mixed_posteriors(fit, c("a", "b"))
+  expect_null(attr(samples$b, "posterior_support"))
+  expect_equal(as.numeric(marginal_posterior(samples, "b")), a)
 })
 
 
@@ -983,7 +1417,7 @@ test_that("helper functions work with runjags estimates extraction", {
   # Test that remove_auxiliary_parameters helper works
   cleaned <- BayesTools:::.remove_auxiliary_parameters(model_samples, prior_list, NULL)
   
-  # Should remove inv_sigma
+  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
   expect_false("inv_sigma" %in% colnames(cleaned$model_samples))
   expect_true("mu" %in% colnames(cleaned$model_samples))
   expect_equal(ncol(cleaned$model_samples), 1)

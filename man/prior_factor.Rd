@@ -29,7 +29,7 @@ converted into a generalized t-distribution with \code{df = 1}.}
 by a \code{location}, \code{scale}, and \code{df} parameters.}
 \item{\code{"gamma"}}{for a gamma distribution characterized
 by either \code{shape} and \code{rate}, or \code{shape} and
-\code{scale} parameters. The later is internally converted to
+\code{scale} parameters. The latter is internally converted to
 the \code{shape} and \code{rate} parametrization}
 \item{\code{"invgamma"}}{for an inverse-gamma distribution
 characterized by a \code{shape} and \code{scale} parameters. The
@@ -43,6 +43,16 @@ parameter. The later is internally converted to
 \code{rate}.}
 \item{\code{"uniform"}}{for a uniform distribution defined on a
 range from \code{a} to \code{b}}
+\item{\code{"moment"}}{for a Johnson-Rossell moment prior characterized
+by exactly one of \code{mode} or \code{tau}, an optional \code{order}
+that defaults to 1, and an optional \code{location} that defaults to 0.}
+\item{\code{"invmoment"}}{for a Johnson-Rossell inverse-moment prior
+characterized by exactly one of \code{mode} or \code{tau}, a \code{df},
+an optional \code{order} that defaults to 1, and an optional
+\code{location} that defaults to 0.}
+\item{\code{"dirichlet"}}{for a Dirichlet distribution over a simplex,
+characterized by a positive concentration vector \code{alpha}. Density
+and plot methods show one beta marginal per simplex coordinate.}
 }}
 
 \item{parameters}{list of appropriate parameters for a given
@@ -67,18 +77,22 @@ across factor levels. In contrast to \code{"orthonormal"}, the marginal distribu
 are identical regardless of the number of factor levels and the specified prior
 distribution corresponds to the difference from grand mean for each factor level.
 Only supports \code{distribution = "mnormal"} and \code{distribution = "mt"}
-which generates the corresponding multivariate normal/t distributions.}
+which generates the corresponding multivariate normal/t distributions. The
+distribution must be centered exactly at zero.}
 \item{\code{"orthonormal"}}{for contrast centered around the grand mean
 with equal marginal distributions, making the prior distribution exchangeable
 across factor levels. Only supports \code{distribution = "mnormal"} and
 \code{distribution = "mt"} which generates the corresponding multivariate normal/t
-distributions.}
+distributions. The distribution must be centered exactly at zero.}
 \item{\code{"treatment"}}{for contrasts using the first level as a comparison
 group and setting equal prior distribution on differences between the individual
 factor levels and the comparison level.}
-\item{\code{"independent"}}{for contrasts specifying dependent prior distribution
-for each factor level (note that this leads to an overparameterized model if the
-intercept is included).}
+\item{\code{"independent"}}{for one independently regularized coefficient
+per factor level. With a free intercept, this coefficient design is
+likelihood-rank-deficient and its separation is prior-dependent. In a
+BayesTools formula with \code{0 + factor} or \code{factor - 1}, the intercept is
+instead fixed structurally at zero, so the level coefficients are
+identified directly.}
 }}
 }
 \value{
@@ -89,6 +103,13 @@ return an object of class 'prior'.
 models with factor predictors. (Note that results across different operating
 systems might vary due to differences in JAGS numerical precision.)
 }
+\details{
+The factor prior owns the contrast family. BayesTools does not change that
+family merely because the formula includes or removes an intercept. In
+particular, \code{~ 0 + factor} represents a point-zero intercept and the
+contrast selected here; it requests one coefficient per level only when
+\code{contrast = "independent"}.
+}
 \examples{
 # create an orthonormal prior distribution
 p1 <- prior_factor(distribution = "mnormal", contrast = "orthonormal",
@@ -96,5 +117,5 @@ p1 <- prior_factor(distribution = "mnormal", contrast = "orthonormal",
 
 }
 \seealso{
-\code{\link[=prior]{prior()}}
+\code{\link[=prior]{prior()}}, \code{\link[=JAGS_formula]{JAGS_formula()}}
 }

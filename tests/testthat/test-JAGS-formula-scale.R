@@ -275,6 +275,38 @@ test_that("transform_scale_samples handles interaction terms correctly", {
   expect_equal(posterior_original[, "mu_intercept"], expected_intercept, tolerance = 1e-10)
 })
 
+test_that("transform_scale_samples rejects incomplete centered interactions", {
+
+  posterior <- matrix(
+    c(1, 3),
+    nrow = 1,
+    dimnames = list(NULL, c("mu_intercept", "mu_x__xXx__z"))
+  )
+  formula_scale <- list(mu = list(
+    mu_x = list(mean = 10, sd = 2),
+    mu_z = list(mean = 20, sd = 5)
+  ))
+
+  expect_error(
+    transform_scale_samples(posterior, formula_scale),
+    "missing lower-order coefficient"
+  )
+
+  zero_centered_scale <- formula_scale
+  zero_centered_scale$mu$mu_x$mean <- 0
+  zero_centered_scale$mu$mu_z$mean <- 0
+  expect_equal(
+    transform_scale_samples(posterior, zero_centered_scale),
+    cbind(mu_intercept = 1, mu_x__xXx__z = 0.3)
+  )
+
+  interaction_only <- posterior[, "mu_x__xXx__z", drop = FALSE]
+  expect_equal(
+    transform_scale_samples(interaction_only, formula_scale),
+    cbind(mu_x__xXx__z = 0.3)
+  )
+})
+
 test_that("transform_scale_samples handles indexed factor interactions", {
 
   posterior <- matrix(
@@ -504,6 +536,64 @@ test_that("transform_scale_samples validates malformed formula_scale metadata", 
     transform_scale_samples(posterior, list(mu = list(mu_x1 = list(mean = NA_real_, sd = 1)))),
     "NA/NaN"
   )
+  expect_error(
+    transform_scale_samples(posterior, list(mu = list(mu_x1 = list(mean = Inf, sd = 1)))),
+    "mean.*finite"
+  )
+  expect_error(
+    transform_scale_samples(posterior, list(mu = list(mu_x1 = list(mean = -Inf, sd = 1)))),
+    "mean.*finite"
+  )
+  expect_error(
+    transform_scale_samples(posterior, list(mu = list(mu_x1 = list(mean = 0, sd = Inf)))),
+    "sd.*finite"
+  )
+  expect_error(
+    transform_scale_samples(
+      posterior,
+      list(
+        mu = list(mu_x1 = list(mean = 0, sd = 1)),
+        mu = list(mu_x1 = list(mean = 0, sd = 1))
+      )
+    ),
+    "duplicate parameter names"
+  )
+  expect_error(
+    transform_scale_samples(
+      posterior,
+      list(mu = list(
+        mu_x1 = list(mean = 0, sd = 1),
+        mu_x1 = list(mean = 1, sd = 2)
+      ))
+    ),
+    "duplicate term names"
+  )
+})
+
+test_that("transform_scale_samples treats parameter prefixes literally", {
+
+  posterior <- matrix(
+    c(10, 2, 100, 20),
+    nrow = 1,
+    dimnames = list(
+      NULL,
+      c("mu.x_intercept", "mu.x_x", "muAx_intercept", "muAx_x")
+    )
+  )
+  formula_scale <- list(
+    "mu.x" = list(
+      "mu.x_x" = list(mean = 5, sd = 2)
+    )
+  )
+
+  expect_equal(
+    transform_scale_samples(posterior, formula_scale),
+    matrix(
+      c(5, 1, 100, 20),
+      nrow = 1,
+      dimnames = dimnames(posterior)
+    )
+  )
 })
 
 test_that("transform_scale_samples warns when formula_scale prefix is unused", {
@@ -581,6 +671,17 @@ test_that("transform_prior_samples respects seed and validates formula_scale", {
     transform_prior_samples(bad_fit, n_samples = 32, seed = 1),
     "higher than 0"
   )
+
+  unsupported_prior <- list(distribution = "unsupported")
+  class(unsupported_prior) <- c("prior", "prior.unsupported")
+  expect_error(
+    BayesTools:::.generate_prior_sample_matrix(
+      list(theta = unsupported_prior),
+      n_samples = 4
+    ),
+    "Could not generate samples for prior 'theta'",
+    fixed = TRUE
+  )
 })
 
 test_that("transform_prior_samples handles scaled multi-factor interactions", {
@@ -629,6 +730,53 @@ test_that("transform_prior_samples handles scaled multi-factor interactions", {
   expect_equal(nrow(prior_samples), 64L)
   expect_equal(ncol(prior_samples[, interaction_columns, drop = FALSE]), 2L)
   expect_equal(ncol(prior_samples[, scaled_interaction_columns, drop = FALSE]), 2L)
+})
+
+test_that("design-derived unscaling equals the name-paired map on scaled fixtures", {
+
+  skip_if_no_fits()
+
+  for(model_name in c("fit_formula_auto_scaled", "fit_dual_param_regression")){
+    fit <- readRDS(file.path(temp_fits_dir, paste0(model_name, ".RDS")))
+    formula_scale <- attr(fit, "formula_scale")
+    expect_false(is.null(formula_scale))
+
+    for(parameter in names(formula_scale)){
+      spec <- BayesTools:::.bt_formula_unscale_design_spec(
+        JAGS_formula_design(fit, parameter)
+      )
+      data <- BayesTools:::.bt_formula_unscale_design_data(
+        spec, formula_scale[[parameter]], parameter
+      )
+      X_s <- BayesTools:::.bt_formula_unscale_model_matrix(
+        spec, data$standardized, parameter
+      )
+      X_o <- BayesTools:::.bt_formula_unscale_model_matrix(
+        spec, data$original, parameter
+      )
+      coefficient_names <- BayesTools:::.bt_formula_unscale_coefficient_names(
+        spec, parameter
+      )
+      name_paired <- BayesTools:::.build_unscale_matrix_by_names(
+        coefficient_names, formula_scale[[parameter]], parameter,
+        require_closure = FALSE
+      )
+      least_squares <- qr.solve(X_o, X_s)
+      expect_equal(unname(least_squares), unname(name_paired), tolerance = 1e-10,
+                   info = paste(model_name, parameter))
+
+      transform <- BayesTools:::.bt_formula_unscale_design_transform(
+        spec, formula_scale[[parameter]], parameter
+      )
+      expect_identical(transform$method, "name_paired")
+    }
+
+    posterior <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+    expect_identical(
+      transform_scale_samples(fit),
+      transform_scale_samples(posterior, formula_scale)
+    )
+  }
 })
 
 test_that("Manual and automatic scaling produce equivalent results", {
@@ -974,8 +1122,8 @@ test_that("runjags_estimates_table transform_scaled with return_samples works", 
   # beta_x1_orig = beta_x1_z/sd_x1 - beta_int_orig * mean_x2
   expected_x1 <- samples_scaled[, "(mu) x_cont1"] / sd_x_cont1 - unscaled_int * mean_x_cont2
   expect_equal(
-    samples_unscaled[, "(mu) x_cont1"],
-    expected_x1,
+    as.numeric(samples_unscaled[, "(mu) x_cont1"]),
+    as.numeric(expected_x1),
     tolerance = 1e-10
   )
 })
@@ -987,7 +1135,7 @@ test_that("ensemble_estimates_table with transform_scaled unscales coefficients"
 
   # Load pre-fitted models
   fit_auto     <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
-  marglik_auto <- structure(list(logml = -20), class = "bridge")
+  marglik_auto <- bridgesampling_object(-20)
 
   formula_scale <- attr(fit_auto, "formula_scale")
 

@@ -1,6 +1,6 @@
 Package: BayesTools
 Title: Tools for Bayesian Analyses
-Version: 0.3.0
+Version: 0.3.1.122
 Description: Provides tools for conducting Bayesian analyses and Bayesian model averaging 
     (Kass and Raftery, 1995, <doi:10.1080/01621459.1995.10476572>, 
     Hoeting et al., 1999, <doi:10.1214/ss/1009212519>). The package contains 
@@ -20,9 +20,10 @@ Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
-SystemRequirements: JAGS >= 4.3.0 (https://mcmc-jags.sourceforge.io/)
+SystemRequirements: JAGS (>= 4.3.0, < 5.0.0) (https://mcmc-jags.sourceforge.io/)
+NeedsCompilation: yes
 Depends:
-    R (>= 4.1.0),
+    R (>= 4.3.0),
     stats
 Imports:
     graphics,
@@ -34,14 +35,21 @@ Imports:
     parallel,
     ggplot2,
     Rdpack,
-    rlang
+    rlang (>= 0.4.10),
+    reformulas (>= 0.2.0)
 Suggests: 
+    R6,
     scales,
     testthat (>= 3.3.0),
+    tibble,
+    withr,
     vdiffr,
     covr,
+    digest,
     knitr,
+    pkgload,
     rstan,
+    rstanarm,
     rjags,
     runjags,
     lme4,

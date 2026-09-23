@@ -277,12 +277,21 @@ test_that("JAGS_to_monitor generates correct monitor strings", {
   )
 
   monitor_point <- JAGS_to_monitor(priors_with_point)
-  expect_equal(sort(monitor_point), "mu")
-  expect_false("fixed" %in% monitor_point)
+  expect_equal(sort(monitor_point), c("fixed", "mu"))
   test_reference_text(paste(sort(monitor_point), collapse = ", "), "JAGS_to_monitor_point.txt")
 
   monitor_point_only <- JAGS_to_monitor(list(fixed = prior("point", list(0))))
-  expect_equal(monitor_point_only, "")
+  expect_equal(monitor_point_only, "fixed")
+
+  monitor_mpoint <- JAGS_to_monitor(list(
+    fixed_vector = prior("mpoint", list(1, 2))
+  ))
+  expect_equal(monitor_mpoint, "fixed_vector")
+
+  monitor_factor_point <- JAGS_to_monitor(list(
+    fixed_factor = prior_factor("point", list(0), contrast = "treatment")
+  ))
+  expect_equal(monitor_factor_point, "fixed_factor")
 
   # Test with factor priors
   priors_factor <- list(
@@ -328,14 +337,53 @@ test_that("runjags_estimates_table works with fitted models", {
   skip_if_no_fits()
 
   fit_simple <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
+  fit_draws <- do.call(rbind, lapply(fit_simple$mcmc, as.matrix))
+  expect_estimates_from_fit <- function(table){
+    parameters <- attr(table, "parameters")
+    probs <- c(0.025, 0.5, 0.975)
+    estimate_names <- c("Mean", "SD", as.character(probs))
+    expected <- t(vapply(parameters, function(parameter){
+      draws <- fit_draws[, parameter]
+      c(
+        Mean = mean(draws, na.rm = TRUE),
+        SD = stats::sd(draws, na.rm = TRUE),
+        vapply(
+          probs,
+          function(prob) unname(stats::quantile(
+            draws,
+            probs = prob,
+            na.rm = TRUE
+          )),
+          numeric(1)
+        )
+      )
+    }, numeric(length(estimate_names))))
+    colnames(expected) <- estimate_names
+
+    expect_equal(
+      unname(as.matrix(table[, estimate_names, drop = FALSE])),
+      unname(expected),
+      tolerance = 1e-12
+    )
+  }
 
   # Test basic estimates table
   estimates_table <- runjags_estimates_table(fit_simple)
-  test_reference_table(estimates_table, "runjags_estimates_simple.txt")
+  test_reference_table_stochastic(
+    estimates_table,
+    "runjags_estimates_simple.txt"
+  )
+  expect_identical(attr(estimates_table, "parameters"), c("m", "s"))
+  expect_estimates_from_fit(estimates_table)
 
   # Test without specific parameters
   estimates_table_param <- runjags_estimates_table(fit_simple, remove_parameters = "m")
-  test_reference_table(estimates_table_param, "runjags_estimates_param_m.txt")
+  test_reference_table_stochastic(
+    estimates_table_param,
+    "runjags_estimates_param_m.txt"
+  )
+  expect_identical(attr(estimates_table_param, "parameters"), "s")
+  expect_estimates_from_fit(estimates_table_param)
 
 })
 
@@ -350,8 +398,7 @@ test_that("JAGS_extend works correctly", {
   skip_if_no_fits()
 
   fit_simple <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  formula_design <- list(mu = structure(list(parameter = "mu"), class = c("BayesTools_formula_design", "list")))
-  attr(fit_simple, "formula_design") <- formula_design
+  formula_design <- attr(fit_simple, "formula_design", exact = TRUE)
 
   # Test the extension mechanics without waiting on convergence precision targets.
   extend_control <- list(
@@ -369,8 +416,7 @@ test_that("JAGS_extend works correctly", {
   fit_extended <- JAGS_extend(
     fit_simple,
     autofit_control = extend_control,
-    silent = TRUE,
-    seed = 1
+    silent = TRUE
   )
 
   # Test extending a fitted model with parallel
@@ -379,8 +425,7 @@ test_that("JAGS_extend works correctly", {
     autofit_control = extend_control,
     parallel = TRUE,
     cores = 2,
-    silent = TRUE,
-    seed = 1
+    silent = TRUE
   )
 
   # Check that the extended fit is still a BayesTools_fit
@@ -418,16 +463,18 @@ test_that("JAGS handles invgamma prior", {
 
   # Test syntax
   result <- JAGS_add_priors("model{}", priors_inv)
-  expect_true(grepl("inv_tau", result))
-  expect_true(grepl("dgamma", result))
+  expect_true(grepl("tau ~ dbt_invgamma(3,2)", result, fixed = TRUE))
+  expect_false(grepl("inv_tau", result, fixed = TRUE))
+  expect_false(grepl("pow(inv_tau", result, fixed = TRUE))
 
   # Test inits
   inits <- JAGS_get_inits(priors_inv, chains = 2, seed = 1)
-  expect_true("inv_tau" %in% names(inits[[1]]))
+  expect_true("tau" %in% names(inits[[1]]))
+  expect_false("inv_tau" %in% names(inits[[1]]))
 
   # Test monitor
   monitor <- JAGS_to_monitor(priors_inv)
-  expect_true("tau" %in% monitor)
+  expect_equal(monitor, "tau")
 
 })
 
@@ -533,7 +580,7 @@ test_that("JAGS handles bias mixture with weightfunction", {
   result <- JAGS_add_priors("model{}", priors_bias_wf)
   expect_true(grepl("bias_indicator", result))
   expect_true(grepl("omega", result))
-  expect_true(grepl("eta", result))
+  expect_true(grepl("omega_ratio_component_2", result, fixed = TRUE))
 
   # Test inits
   inits <- JAGS_get_inits(priors_bias_wf, chains = 2, seed = 1)

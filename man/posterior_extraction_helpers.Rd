@@ -28,6 +28,10 @@
   remove_formulas = NULL,
   keep_parameters = NULL,
   keep_formulas = NULL,
+  remove_random_effects = NULL,
+  keep_random_effects = NULL,
+  remove_random_structures = NULL,
+  keep_random_structures = NULL,
   remove_spike_0 = TRUE
 )
 
@@ -80,6 +84,14 @@ If "bias" is specified and the bias prior contains PET, PEESE, or weightfunction
 the corresponding parameters (PET, PEESE, omega) are also added to the keep list.}
 
 \item{keep_formulas}{character vector of formula names whose parameters should be kept (all others removed unless in keep_parameters)}
+
+\item{remove_random_effects}{character vector of random-effect names/blocks to remove.}
+
+\item{keep_random_effects}{character vector of random-effect names/blocks to keep while leaving non-random parameters unaffected.}
+
+\item{remove_random_structures}{character vector of random-effect covariance structures to remove.}
+
+\item{keep_random_structures}{character vector of random-effect covariance structures to keep while leaving non-random parameters unaffected.}
 
 \item{remove_spike_0}{whether to remove spike at 0 priors}
 

@@ -33,8 +33,8 @@ lower and upper range for the support
 automatically obtaining \code{x_range}
 if both \code{x_range} and \code{x_seq}
 are unspecified. Defaults to \code{0.005}
-for all but Cauchy, Student-t, Gamma, and
-Inverse-gamme distributions that use
+for all but Cauchy, Student-t, Gamma, inverse-gamma,
+moment, and inverse-moment distributions that use
 \code{0.010}.}
 
 \item{n_points}{number of equally spaced points
@@ -60,8 +60,12 @@ specifying one of the prepared transformations:
 \item{exp}{exponential transformation}
 }, or a list containing the transformation function \code{fun},
 inverse transformation function \code{inv}, and derivative of the
-transformation \code{jac}, evaluated on the original support. See examples
-for details.}
+transformation \code{jac}, evaluated on the original support. A custom
+transformation can also declare \code{output_support = c(lower, upper)}.
+Display grids on the transformed scale are evaluated only within these
+bounds; a wider plotting range is retained without extending the density.
+Infinite inverse values at support boundaries are omitted from continuous
+density grids. Point masses retain their transformed locations.}
 
 \item{transformation_arguments}{a list with named arguments for
 the \code{transformation}}
@@ -70,17 +74,31 @@ the \code{transformation}}
 settings the \code{x_seq} or \code{x_range} was specified on
 the transformed support}
 
-\item{truncate_end}{whether the density should be set to zero in
-for the endpoints of truncated distributions}
+\item{truncate_end}{whether the density should be set to zero
+for endpoints of truncated distributions}
 
 \item{...}{additional arguments}
 }
 \value{
-\code{density.prior} returns an object of class 'density'.
+\code{density.prior} returns an object of class 'density'. For
+Dirichlet simplex priors it returns a named list of beta-marginal density
+objects, one for each simplex coordinate. Ordered priors return one component
+per factor level. When a level has both discrete and continuous probability,
+its \code{atoms} table stores exact \code{location} and \code{mass} values,
+while its \code{continuous} table stores a density already weighted to
+integrate to the remaining continuous mass over its full support. A clipped
+plotting grid preserves density heights and therefore captures less mass;
+\code{diagnostics$continuous_integral} reports the mass on that grid.
 }
 \description{
 Computes density of a prior
 distribution across a range of values.
+}
+\details{
+Sample-based density estimates for continuous priors with finite
+support use boundary-reflected kernel density estimates. The plotting range
+controls the evaluation grid, while reflection is based on the prior's true
+truncation bounds.
 }
 \seealso{
 \code{\link[=prior]{prior()}}

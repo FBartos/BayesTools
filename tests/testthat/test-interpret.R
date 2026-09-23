@@ -487,7 +487,6 @@ test_that("interpret_records normalizes ordered table and direct-record sources"
         upper_value = 1.50,
         lower_prob = 0.025,
         upper_prob = 0.975,
-        interval_level = 0.95,
         conditioning = "conditional on effect inclusion"
       )
     ),
@@ -545,6 +544,7 @@ test_that("interpret_records normalizes ordered table and direct-record sources"
   expect_equal(estimate$central_name, "mode")
   expect_equal(estimate$central_value, 1.25)
   expect_equal(estimate$conditioning, "conditional on effect inclusion")
+  expect_equal(estimate$interval_level, 0.95)
 
   moderator_estimate <- records[records$record_id == "moderators.moderator.x1.estimate", ]
   expect_equal(moderator_estimate$central_name, "mean")
@@ -646,6 +646,179 @@ test_that("interpret_records matches explicitly requested padded probability col
   expect_equal(out$lower_prob, .2)
   expect_equal(out$upper_prob, .8)
   expect_equal(out$interval_level, .6)
+})
+
+
+test_that("interpret_records labels fallback intervals with their own probabilities", {
+
+  estimates <- data.frame(
+    Mean = 0.3,
+    "0.025" = 0.1,
+    "0.5" = 0.3,
+    "0.975" = 0.5,
+    check.names = FALSE
+  )
+  rownames(estimates) <- "mu"
+  source <- list(
+    type = "table",
+    data = estimates,
+    schema = list(lower_prob = 0.05, upper_prob = 0.95)
+  )
+  plan <- list(list(kind = "estimate", source = "est", row = "mu"))
+
+  out <- interpret_records(sources = list(est = source), plan = plan)
+  expect_equal(out$lower_value, 0.1)
+  expect_equal(out$upper_value, 0.5)
+  expect_equal(out$lower_prob, 0.025)
+  expect_equal(out$upper_prob, 0.975)
+  expect_equal(out$interval_level, 0.95)
+
+  text <- interpret_records(sources = list(est = source), plan = plan, output = "text")
+  expect_match(text, "95%", fixed = TRUE)
+  expect_false(grepl("90%", text, fixed = TRUE))
+})
+
+
+test_that("interpret_records supports central-only estimate tables", {
+
+  estimates <- ensemble_estimates_table(
+    samples = list(theta = c(-1, 0, 2)),
+    parameters = "theta",
+    probs = NULL
+  )
+  plan <- list(list(
+    kind = "estimate",
+    source = "estimates",
+    row = "theta"
+  ))
+
+  out <- interpret_records(
+    sources = list(estimates = estimates),
+    plan = plan
+  )
+  text <- interpret_records(
+    sources = list(estimates = estimates),
+    plan = plan,
+    output = "text"
+  )
+
+  expect_equal(out$central_name, "mean")
+  expect_equal(out$central_value, mean(c(-1, 0, 2)))
+  expect_true(is.na(out$lower_value))
+  expect_true(is.na(out$upper_value))
+  expect_true(is.na(out$interval_level))
+  expect_false(grepl("interval", text, fixed = TRUE))
+})
+
+test_that("interpret_records derives interval levels from endpoint probabilities", {
+  estimate <- list(
+    kind = "estimate",
+    parameter = "theta",
+    central_name = "mean",
+    central_value = 0,
+    lower_value = -1,
+    upper_value = 1,
+    lower_prob = 0.025,
+    upper_prob = 0.975
+  )
+  out <- interpret_records(
+    sources = list(estimate = estimate),
+    plan = list(list(kind = "estimate", source = "estimate"))
+  )
+  expect_equal(out$interval_level, 0.95)
+
+  arbitrary <- data.frame(
+    Mean = 0,
+    lower = -1,
+    upper = 1,
+    check.names = FALSE
+  )
+  arbitrary_out <- interpret_records(
+    sources = list(arbitrary = list(
+      data = arbitrary,
+      schema = list(
+        central = "Mean",
+        lower = "lower",
+        upper = "upper"
+      )
+    )),
+    plan = list(list(
+      kind = "estimate",
+      source = "arbitrary",
+      row = 1
+    ))
+  )
+  arbitrary_text <- interpret_records(
+    sources = list(arbitrary = list(
+      data = arbitrary,
+      schema = list(
+        central = "Mean",
+        lower = "lower",
+        upper = "upper"
+      )
+    )),
+    plan = list(list(
+      kind = "estimate",
+      source = "arbitrary",
+      row = 1
+    )),
+    output = "text"
+  )
+  expect_true(is.na(arbitrary_out$interval_level))
+  expect_match(arbitrary_text, "uncertainty interval", fixed = TRUE)
+
+  invalid_inputs <- list(
+    schema = function(){
+      interpret_records(
+        sources = list(estimates = list(
+          data = arbitrary,
+          schema = list(
+            central = "Mean",
+            lower = "lower",
+            upper = "upper",
+            interval_level = 0.95
+          )
+        )),
+        plan = list(list(kind = "estimate", source = "estimates"))
+      )
+    },
+    plan = function(){
+      interpret_records(
+        sources = list(estimates = arbitrary),
+        plan = list(list(
+          kind = "estimate",
+          source = "estimates",
+          interval_level = 0.95
+        ))
+      )
+    },
+    record = function(){
+      bad_record <- estimate
+      bad_record$interval_level <- 0.95
+      interpret_records(
+        sources = list(estimate = bad_record),
+        plan = list(list(kind = "estimate", source = "estimate"))
+      )
+    },
+    records = function(){
+      bad_records <- as.data.frame(estimate, check.names = FALSE)
+      bad_records$interval_level <- 0.95
+      interpret_records(
+        sources = list(estimates = list(
+          type = "records",
+          data = bad_records
+        )),
+        plan = list(list(kind = "estimate", source = "estimates"))
+      )
+    }
+  )
+  for(invalid_input in invalid_inputs){
+    expect_error(
+      invalid_input(),
+      "'interval_level' is derived output and cannot be supplied",
+      fixed = TRUE
+    )
+  }
 })
 
 
