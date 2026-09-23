@@ -70,7 +70,8 @@
 #'  defaults to \code{chains}
 #' @param silent whether the function should proceed silently, defaults to \code{TRUE}
 #' @param seed seed for random number generation by \code{JAGS_fit()}.
-#'   Draws are reproducible for the same \code{seed}, \code{chains}, and, with
+#'   Draws are reproducible for the same \code{seed}, \code{chains}, and R
+#'   random-number generator settings (\code{RNGkind()}), and, with
 #'   \code{parallel = TRUE}, the same \code{cores}. Parallel draws need not equal
 #'   serial draws with the same seed, because the backend passes each chain's
 #'   initial state to its worker in a serialized text form. Initial values are
