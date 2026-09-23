@@ -73,7 +73,13 @@
 #'   Draws are reproducible for the same \code{seed}, \code{chains}, and, with
 #'   \code{parallel = TRUE}, the same \code{cores}. Parallel draws need not equal
 #'   serial draws with the same seed, because the backend passes each chain's
-#'   initial state to its worker in a serialized text form.
+#'   initial state to its worker in a serialized text form. Initial values are
+#'   drawn from the priors after \code{set.seed(seed)}, and each chain's JAGS
+#'   random-number seed is drawn from the same seed with
+#'   \code{sample.int(.Machine$integer.max, chains)} (see
+#'   \code{\link{JAGS_get_inits}}). A chain's JAGS seed therefore does not
+#'   depend on the number of chains, and the chains of adjacent seeds (e.g.,
+#'   \code{seed} and \code{seed + 1}) do not share random-number streams.
 #' @param worker_output optional file path for parallel worker stdout and stderr.
 #'   The parent directory must exist. Workers append to the same file, so messages
 #'   can interleave. \code{NULL} retains the backend default of discarding worker

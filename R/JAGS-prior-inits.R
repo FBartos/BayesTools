@@ -4,7 +4,10 @@
 #' a 'JAGS' model.
 #'
 #' @param chains number of chains
-#' @param seed seed for random number generation
+#' @param seed seed for random number generation. The initial values are drawn
+#'   after \code{set.seed(seed)}; each chain's \code{.RNG.seed} is drawn from the
+#'   same seed with \code{sample.int(.Machine$integer.max, chains)}, so the seed
+#'   of a chain does not depend on the number of chains.
 #'
 #' @inheritParams JAGS_add_priors
 #'
@@ -32,6 +35,9 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   if(is.null(seed)){
     seed <- sample(666666, 1)
   }
+  chain_seeds <- .JAGS_chain_seeds(seed, chains)
+
+  # reset the seed so that the initial values do not depend on the chain seeds
   set.seed(seed)
 
 
@@ -41,13 +47,24 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
     temp_inits <- .JAGS_get_inits.fun(prior_list)
 
-    temp_inits[[".RNG.seed"]] <- seed + j
+    temp_inits[[".RNG.seed"]] <- chain_seeds[[j]]
     temp_inits[[".RNG.name"]] <- if(chains > 4) "lecuyer::RngStream" else "base::Super-Duper"
 
     inits[[j]] <- temp_inits
   }
 
   return(inits)
+}
+
+# Derives the per-chain JAGS '.RNG.seed' values from the user seed through R's
+# RNG (and leaves R's RNG state advanced from 'set.seed(seed)'). Sampling
+# without replacement keeps the chains' seeds distinct and prefix-stable: chain
+# k's seed does not depend on the number of chains. Unlike 'seed + chain', chain
+# k + 1 of seed s does not reuse the stream of chain k of seed s + 1.
+.JAGS_chain_seeds          <- function(seed, chains){
+
+  set.seed(seed)
+  sample.int(.Machine$integer.max, chains)
 }
 
 .JAGS_get_inits.fun        <- function(prior_list){

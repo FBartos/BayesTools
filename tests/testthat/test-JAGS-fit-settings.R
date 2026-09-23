@@ -128,6 +128,113 @@ test_that("JAGS autofit settings reject missing and non-finite controls", {
   )
 })
 
+test_that("JAGS chain seeds do not overlap across adjacent seeds and keep the initial values", {
+
+  prior_list <- list(
+    mu    = prior("normal", list(0, 1)),
+    sigma = prior("gamma", list(2, 1))
+  )
+  chain_seeds <- function(seed, chains){
+    vapply(
+      JAGS_get_inits(prior_list, chains = chains, seed = seed),
+      function(inits) inits[[".RNG.seed"]],
+      numeric(1)
+    )
+  }
+
+  # The documented derivation: R's generator after set.seed(seed).
+  expected_seeds <- local({
+    set.seed(11)
+    sample.int(.Machine$integer.max, 3)
+  })
+  expect_identical(chain_seeds(11, 3), as.numeric(expected_seeds))
+
+  # 'seed + chain' gave chain k + 1 of seed s the seed of chain k of seed s + 1.
+  for(seed in c(1:50, 665, 666666)){
+    seeds      <- chain_seeds(seed, 8)
+    next_seeds <- chain_seeds(seed + 1, 8)
+    expect_false(any(seeds[-1] == next_seeds[-8]), info = paste("seed", seed))
+    expect_length(intersect(seeds, next_seeds), 0)
+    expect_length(unique(seeds), 8)
+  }
+
+  # A chain's seed does not depend on the number of chains.
+  for(seed in c(1, 42, 666)){
+    all_seeds <- chain_seeds(seed, 8)
+    for(chains in 1:7){
+      expect_identical(chain_seeds(seed, chains), all_seeds[seq_len(chains)])
+    }
+  }
+
+  # Initial values are those of 40b07c5 (drawn right after set.seed(seed)),
+  # and the R generator ends in the same state; only '.RNG.seed' changed.
+  inits <- JAGS_get_inits(prior_list, chains = 3, seed = 11)
+  state_after_inits <- .Random.seed
+  set.seed(11)
+  expected_inits <- lapply(1:3, function(chain){
+    list(
+      mu    = rng(prior_list[["mu"]], 1),
+      sigma = rng(prior_list[["sigma"]], 1)
+    )
+  })
+  expect_identical(state_after_inits, .Random.seed)
+  expect_identical(
+    lapply(inits, function(chain_inits) chain_inits[c("mu", "sigma")]),
+    expected_inits
+  )
+  expect_identical(
+    vapply(inits, function(chain_inits) chain_inits[[".RNG.name"]], character(1)),
+    rep("base::Super-Duper", 3)
+  )
+  # Values printed from 40b07c5 with 17 significant digits (exact round trip).
+  expect_identical(
+    vapply(inits, function(chain_inits) chain_inits[["mu"]], numeric(1)),
+    c(-0.59103110258436842, -1.516553097081865, -1.1590583625324684)
+  )
+  expect_identical(
+    vapply(inits, function(chain_inits) chain_inits[["sigma"]], numeric(1)),
+    c(1.5327481321762879, 0.29530333655215796, 1.3229858936207395)
+  )
+})
+
+test_that("prior-only JAGS draws differ between chains of adjacent seeds", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+
+  fit_prior_only <- function(seed){
+    withCallingHandlers(
+      JAGS_fit(
+        model_syntax = "model{}",
+        prior_list   = list(mu = prior("normal", list(0, 1))),
+        chains       = 2,
+        adapt        = 50,
+        burnin       = 50,
+        sample       = 100,
+        seed         = seed
+      ),
+      warning = function(w){
+        if(grepl("No data was specified", conditionMessage(w), fixed = TRUE)){
+          invokeRestart("muffleWarning")
+        }
+      }
+    )
+  }
+  chain_draws <- function(fit, chain) as.numeric(fit$mcmc[[chain]][, "mu"])
+
+  fit_1       <- fit_prior_only(1)
+  fit_1_again <- fit_prior_only(1)
+  fit_2       <- fit_prior_only(2)
+
+  # With '.RNG.seed = seed + chain' these two chains were identical, because a
+  # prior-only node is sampled from the prior regardless of its initial value.
+  expect_false(identical(chain_draws(fit_1, 2), chain_draws(fit_2, 1)))
+  expect_false(identical(chain_draws(fit_1, 1), chain_draws(fit_1, 2)))
+  for(chain in 1:2){
+    expect_identical(chain_draws(fit_1, chain), chain_draws(fit_1_again, chain))
+  }
+})
+
 test_that("JAGS_extend validates runtime controls before extension", {
   fit <- structure(list(), class = "BayesTools_fit")
   invalid <- list(
