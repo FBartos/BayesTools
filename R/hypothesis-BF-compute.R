@@ -366,8 +366,14 @@
 
 # Coefficients of an expression that is linear in its symbols, from its values
 # at the origin, the unit vectors, and two checking points with mixed signs;
-# NULL for a nonlinear expression.
+# NULL for a nonlinear expression. Probing alone cannot see a kink outside the
+# probe points (abs(x - 2) is x - 2 at all of them), so the expression must
+# also have a linear form.
 .hypothesis_linear_coefficients <- function(expr, symbols, draws) {
+
+  if(!.hypothesis_expression_linear_form(expr)){
+    return(NULL)
+  }
 
   n_symbols <- length(symbols)
   probe_values <- rbind(
@@ -402,6 +408,24 @@
   }
 
   list(constant = constant, coefficients = coefficients)
+}
+
+
+# Only parentheses, sums, differences, negations, products and quotients can
+# combine the symbols of a linear expression; other functions and powers may
+# act only on constant subexpressions. Products or quotients of symbols pass
+# this check and are rejected by probing.
+.hypothesis_expression_linear_form <- function(expr) {
+
+  if(!is.call(expr) || length(.hypothesis_expression_symbols(expr)) == 0L){
+    return(TRUE)
+  }
+  fun <- .hypothesis_call_name(expr)
+  if(is.null(fun) || !fun %in% c("(", "+", "-", "*", "/")){
+    return(FALSE)
+  }
+
+  all(vapply(as.list(expr[-1L]), .hypothesis_expression_linear_form, logical(1)))
 }
 
 

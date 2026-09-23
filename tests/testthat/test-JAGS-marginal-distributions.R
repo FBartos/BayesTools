@@ -3679,6 +3679,27 @@ test_that("linear level hypotheses use the exact support of the combination", {
   nonlinear <- hypothesis_BF(levels, hypothesis = "exp(mu_f[B]) - exp(mu_f[C]) = 0",
                              columns = "all", seed = 1)
   expect_identical(nonlinear$method, "kernel Savage-Dickey")
+
+  # abs(B - A - 2) equals the linear 2 - (B - A) at every probe point, but its
+  # value 0.5 is also reached at B - A = 2.5 (prior density 2 phi(1.5) +
+  # 2 phi(2.5), not 2 phi(1.5) alone): it keeps the expression-draw KDE
+  kinked <- hypothesis_BF(levels, hypothesis = "abs(mu_f[B] - mu_f[A] - 2) = 0.5",
+                          columns = "all", seed = 1)
+  expect_identical(kinked$method, "kernel Savage-Dickey")
+  expect_identical(
+    kinked$posterior,
+    BayesTools:::.hypothesis_sample_density_height(abs(draws[["mu_f[B]"]] - draws[["mu_f[A]"]] - 2), .5, "posterior")
+  )
+  expect_null(BayesTools:::.hypothesis_linear_coefficients(
+    str2lang("abs(`mu_f[B]` - `mu_f[A]` - 2)"), c("mu_f[B]", "mu_f[A]"), draws
+  ))
+  # functions of constants keep a linear form
+  expect_equal(
+    BayesTools:::.hypothesis_linear_coefficients(
+      str2lang("exp(0) * (`mu_f[B]` - `mu_f[A]`) / abs(-2) + 1"), c("mu_f[B]", "mu_f[A]"), draws
+    ),
+    list(constant = 1, coefficients = c("mu_f[B]" = .5, "mu_f[A]" = -.5))
+  )
 })
 
 test_that("linear level hypotheses mix per-component ordinates of mixture terms", {
