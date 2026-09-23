@@ -998,9 +998,11 @@ format_random_effects_vignette_cache_error <- function(status){
     ))
   }
   if(!isTRUE(status$envelope_valid)){
-    return(
-      "Precomputed RandomEffects vignette cache must contain manifest and payload."
-    )
+    return(paste0(
+      "Precomputed RandomEffects vignette cache has an unsupported format; ",
+      "it must contain manifest and payload. Regenerate it with ",
+      "tools/regenerate-random-effects-vignette.R."
+    ))
   }
   if(!isTRUE(status$manifest_valid)){
     return(paste0(

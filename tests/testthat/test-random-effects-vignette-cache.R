@@ -476,17 +476,43 @@ test_that("missing and schema-less caches fail the current contract", {
   expect_false(schema_less$envelope_valid)
   expect_false(schema_less$valid)
   expect_null(schema_less$cache)
-  expect_match(
+  unsupported_format <- paste0(
+    "Precomputed RandomEffects vignette cache has an unsupported format; ",
+    "it must contain manifest and payload. Regenerate it with ",
+    "tools/regenerate-random-effects-vignette.R."
+  )
+  expect_identical(
     format_random_effects_vignette_cache_error(schema_less),
-    "must contain manifest and payload"
+    unsupported_format
   )
   expect_error(
     stop_if_invalid_random_effects_vignette_cache(
       cache_file,
       project_root = impossible_root
     ),
-    "must contain manifest and payload",
+    unsupported_format,
     fixed = TRUE
+  )
+
+  # A cache written in the version-1 format stored the models unserialized.
+  saveRDS(list(
+    manifest = list(
+      format = "BayesTools.RandomEffects.vignette-cache",
+      manifest_version = 1L
+    ),
+    models = .random_effects_test_models()
+  ), cache_file)
+  version_one <- validate_random_effects_vignette_cache(
+    cache_file,
+    load = TRUE,
+    project_root = impossible_root
+  )
+  expect_false(version_one$envelope_valid)
+  expect_false(version_one$valid)
+  expect_null(version_one$cache)
+  expect_identical(
+    format_random_effects_vignette_cache_error(version_one),
+    unsupported_format
   )
 })
 
