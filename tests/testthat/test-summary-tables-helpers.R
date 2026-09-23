@@ -720,6 +720,64 @@ test_that("conditional component transformations store component priors", {
   )
 })
 
+test_that("spike-at-zero coefficients non-zero on the original scale are reported", {
+
+  skip_if_not_installed("runjags")
+  set.seed(63)
+  data <- data.frame(
+    x = c(3, 5, 7, 4, 6, 8),
+    f = factor(rep(c("a", "b", "c"), 2L))
+  )
+  formula_result <- JAGS_formula(
+    ~ x * f,
+    "mu",
+    data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)),
+      f = prior_factor("point", list(location = 0), contrast = "treatment"),
+      "x:f" = prior_factor("normal", list(0, 1), contrast = "treatment")
+    ),
+    formula_scale = list(x = TRUE)
+  )
+  n <- 20L
+  samples <- cbind(
+    mu_intercept = stats::rnorm(n),
+    mu_x = stats::rnorm(n),
+    "mu_f[1]" = 0,
+    "mu_f[2]" = 0,
+    "mu_x__xXx__f[1]" = stats::rnorm(n),
+    "mu_x__xXx__f[2]" = stats::rnorm(n)
+  )
+  fit <- .runjags_table_fit_for_test(samples)
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+
+  # On the standardized scale the main effect is exactly zero and omitted.
+  standardized <- runjags_estimates_table(fit, remove_diagnostics = TRUE)
+  expect_false(any(c("(mu) f[b]", "(mu) f[c]") %in% rownames(standardized)))
+
+  # On the original scale f[k] = -(x:f[k]) * mean(x) / sd(x).
+  original <- runjags_estimates_table(
+    fit, remove_diagnostics = TRUE, transform_scaled = TRUE
+  )
+  expect_true(all(c("(mu) f[b]", "(mu) f[c]") %in% rownames(original)))
+  shift <- mean(data$x) / stats::sd(data$x)
+  expected <- -samples[, c("mu_x__xXx__f[1]", "mu_x__xXx__f[2]")] * shift
+  expect_equal(
+    unname(original[c("(mu) f[b]", "(mu) f[c]"), "Mean"]),
+    unname(colMeans(expected)),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    unname(original[c("(mu) f[b]", "(mu) f[c]"), "SD"]),
+    unname(apply(expected, 2L, stats::sd)),
+    tolerance = 1e-12
+  )
+})
+
 test_that("indexed random-effect columns recover their declared prior", {
 
   p <- prior("mnormal", list(mean = 0, sd = 1, K = 2))

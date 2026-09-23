@@ -360,8 +360,18 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     keep_random_effects = keep_random_effects,
     remove_random_structures = remove_random_structures,
     keep_random_structures = keep_random_structures,
-    remove_spike_0    = remove_spike_0
+    remove_spike_0    = FALSE
   )
+  if(remove_spike_0){
+    remove_params_vec <- unique(c(
+      remove_params_vec,
+      .bt_JAGS_estimates_spike_0_parameters(
+        prior_list = prior_list,
+        model_samples = model_samples,
+        transformed = transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0
+      )
+    ))
+  }
 
   cleaned       <- .remove_auxiliary_parameters(model_samples, prior_list, remove_params_vec)
   model_samples <- cleaned$model_samples
@@ -729,6 +739,29 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   }
 
   return(runjags_summary)
+}
+
+# Parameters with a spike prior at zero are omitted from estimates tables. On
+# the original scale of scaled predictors, such a coefficient can be a
+# non-zero combination of other coefficients (for example, a factor main
+# effect in the presence of a scaled interaction); it is then reported.
+.bt_JAGS_estimates_spike_0_parameters <- function(prior_list, model_samples,
+                                                  transformed = FALSE){
+
+  spike_0 <- names(prior_list)[vapply(prior_list, function(prior){
+    is.prior.point(prior) &&
+      isTRUE(all(prior[["parameters"]][["location"]] == 0))
+  }, logical(1))]
+  if(!transformed || length(spike_0) == 0L){
+    return(spike_0)
+  }
+
+  column_names <- colnames(model_samples)
+  spike_0[vapply(spike_0, function(parameter){
+    columns <- column_names == parameter |
+      startsWith(column_names, paste0(parameter, "["))
+    isTRUE(all(model_samples[, columns, drop = FALSE] == 0))
+  }, logical(1))]
 }
 
 .bt_JAGS_estimates_filter_raw_random_columns <- function(model_samples,

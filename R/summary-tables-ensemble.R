@@ -27,7 +27,9 @@
 #' @param short_name whether the prior distribution names should be
 #' shortened. Defaults to \code{FALSE}.
 #' @param remove_spike_0 whether prior distributions equal to spike
-#' at 0 should be removed from the \code{prior_list}
+#' at 0 should be removed from the \code{prior_list}. In JAGS estimates
+#' tables with \code{transform_scaled = TRUE}, a coefficient with a spike at
+#' 0 is kept when it is non-zero on the original scale.
 #' @param transform_factors whether factors with orthonormal/meandif
 #' prior distribution should be transformed to differences from the
 #' grand mean

@@ -203,7 +203,9 @@ to be added to the table}
 \item{warnings}{warnings to be added to the table}
 
 \item{remove_spike_0}{whether prior distributions equal to spike
-at 0 should be removed from the \code{prior_list}}
+at 0 should be removed from the \code{prior_list}. In JAGS estimates
+tables with \code{transform_scaled = TRUE}, a coefficient with a spike at
+0 is kept when it is non-zero on the original scale.}
 
 \item{short_name}{whether the prior distribution names should be
 shortened. Defaults to \code{FALSE}.}
