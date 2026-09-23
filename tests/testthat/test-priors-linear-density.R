@@ -364,9 +364,12 @@ test_that("adaptive ordinates cannot converge by repeating the capped grid", {
   )
 
   attr(density, "adaptive_evaluation")$arguments$n_grid <- 16384L
+  # The refined grid must describe a different distribution: region
+  # probabilities are ratios of grid integrals, so a pure rescaling of the
+  # ordinates would legitimately converge.
   testthat::local_mocked_bindings(
     .prior_linear_combination_density = function(n_grid, tail_prob, .record_evaluation){
-      density$density$y <- c(2, 2)
+      density$density$y <- c(1, 3)
       density
     },
     .package = "BayesTools"
