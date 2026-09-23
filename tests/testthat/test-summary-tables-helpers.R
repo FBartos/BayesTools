@@ -603,6 +603,123 @@ test_that("bias summary filtering preserves branch metadata and unrelated draws"
   expect_true(is.prior.PEESE(remaining_priors$PEESE))
 })
 
+.named_component_mixture_fit_for_test <- function(data, formula, mixture, samples){
+
+  formula_result <- JAGS_formula(
+    formula,
+    "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1)), x = mixture)
+  )
+  fit <- .runjags_table_fit_for_test(samples)
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attach_test_parameter_map(fit)
+}
+
+test_that("conditional estimates split factor mixtures with named components", {
+
+  skip_if_not_installed("runjags")
+  set.seed(61)
+  n <- 40L
+  indicator <- rep(1:2, length.out = n)
+  samples <- cbind(
+    mu_intercept = stats::rnorm(n),
+    "mu_x[1]" = stats::rnorm(n),
+    "mu_x[2]" = stats::rnorm(n),
+    mu_x_indicator = indicator
+  )
+  fit <- .named_component_mixture_fit_for_test(
+    data.frame(x = factor(rep(c("a", "b", "c"), 4L))),
+    ~ 1 + x,
+    prior_mixture(list(
+      prior_factor("normal", list(0, 1), contrast = "treatment"),
+      prior_factor("normal", list(0, 2), contrast = "treatment")
+    ), components = c("narrow", "wide")),
+    samples
+  )
+
+  conditional <- suppressWarnings(runjags_estimates_table(
+    fit, conditional = TRUE, remove_diagnostics = TRUE
+  ))
+  coefficient_rows <- c(
+    "(mu) x[narrow][b]", "(mu) x[narrow][c]",
+    "(mu) x[wide][b]", "(mu) x[wide][c]"
+  )
+  expect_identical(
+    rownames(conditional),
+    c("(mu) intercept", coefficient_rows,
+      "(mu) x (inclusion: narrow)", "(mu) x (inclusion: wide)")
+  )
+  expected_means <- c(
+    mean(samples[indicator == 1L, "mu_x[1]"]),
+    mean(samples[indicator == 1L, "mu_x[2]"]),
+    mean(samples[indicator == 2L, "mu_x[1]"]),
+    mean(samples[indicator == 2L, "mu_x[2]"])
+  )
+  expect_equal(
+    unname(conditional[coefficient_rows, "Mean"]),
+    expected_means,
+    tolerance = 1e-12
+  )
+
+  transformed <- suppressWarnings(runjags_estimates_table(
+    fit, conditional = TRUE, remove_diagnostics = TRUE,
+    transformations = list(mu_x = list(fun = exp))
+  ))
+  expect_identical(rownames(transformed), rownames(conditional))
+  expect_equal(
+    unname(transformed[coefficient_rows, "Mean"]),
+    c(
+      mean(exp(samples[indicator == 1L, "mu_x[1]"])),
+      mean(exp(samples[indicator == 1L, "mu_x[2]"])),
+      mean(exp(samples[indicator == 2L, "mu_x[1]"])),
+      mean(exp(samples[indicator == 2L, "mu_x[2]"]))
+    ),
+    tolerance = 1e-12
+  )
+})
+
+test_that("conditional component transformations store component priors", {
+
+  skip_if_not_installed("runjags")
+  set.seed(62)
+  n <- 40L
+  indicator <- rep(1:2, length.out = n)
+  samples <- cbind(
+    mu_intercept = stats::rnorm(n),
+    mu_x = stats::rnorm(n),
+    mu_x_indicator = indicator
+  )
+  mixture <- prior_mixture(list(
+    prior("normal", list(0, 1)),
+    prior("normal", list(0, 2))
+  ), components = c("narrow", "wide"))
+  fit <- .named_component_mixture_fit_for_test(
+    data.frame(x = stats::rnorm(6L)),
+    ~ 1 + x,
+    mixture,
+    samples
+  )
+
+  conditional <- suppressWarnings(runjags_estimates_table(
+    fit, conditional = TRUE, remove_diagnostics = TRUE, return_samples = TRUE,
+    transformations = list(mu_x = list(fun = exp))
+  ))
+  component_priors <- attr(conditional, "prior_list")[c("mu_x[narrow]", "mu_x[wide]")]
+  expect_true(all(vapply(component_priors, is.prior, logical(1))))
+  expect_equal(component_priors[["mu_x[narrow]"]], mixture[[1L]], ignore_attr = TRUE)
+  expect_equal(component_priors[["mu_x[wide]"]], mixture[[2L]], ignore_attr = TRUE)
+  expect_identical(
+    vapply(component_priors, attr, character(1), which = "parameter"),
+    c("mu_x[narrow]" = "mu", "mu_x[wide]" = "mu")
+  )
+  expect_equal(
+    as.numeric(conditional[, "(mu) x[narrow]"]),
+    ifelse(indicator == 1L, exp(samples[, "mu_x"]), NA_real_)
+  )
+})
+
 test_that("indexed random-effect columns recover their declared prior", {
 
   p <- prior("mnormal", list(mean = 0, sd = 1, K = 2))

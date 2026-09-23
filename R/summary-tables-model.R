@@ -540,16 +540,29 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
           }else{
 
             # remove the join samples and replace with individual conditional samples
-            temp_position    <- min(which(colnames(model_samples) %in% par))
-            temp_all_samples <- model_samples[, colnames(model_samples) %in% par,drop=FALSE]
+            # (each component becomes the parameter 'par[component]'; factor
+            # coefficients keep their own indices within it)
+            is_factor_mixture <- inherits(prior_list[[par]], "prior.factor_mixture")
+            joint_columns    <- colnames(model_samples) %in% par_names
+            temp_position    <- min(which(joint_columns))
+            temp_all_samples <- model_samples[, par_names, drop = FALSE]
             temp_new_samples <- list()
-            model_samples    <- model_samples[,!colnames(model_samples) %in% par,drop=FALSE]
+            model_samples    <- model_samples[, !joint_columns, drop = FALSE]
 
              # component-by-component replacement
             for(component in unique(components[components != "null"])){
 
+              # the component prior carries the formula attachment of the mixture
+              component_par   <- paste0(par, "[", component, "]")
+              component_prior <- prior_list[[par]][[which(components == component)[1]]]
+              attr(component_prior, "parameter") <- attr(prior_list[[par]], "parameter")
+
               # create component specific samples
-              temp_par_names <- paste0(par_names, "[", component, "]")
+              temp_par_names <- if(is_factor_mixture){
+                .JAGS_prior_factor_names(component_par, component_prior)
+              }else{
+                component_par
+              }
               temp_new_samples[[component]]           <- temp_all_samples
               colnames(temp_new_samples[[component]]) <- temp_par_names
 
@@ -565,11 +578,14 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
               # add warnings about conditional summary
               warnings <- c(warnings, .runjags_conditional_warning(temp_par_names, n_conditional_samples))
 
-              # forward transformations to the conditional estimates
+              # forward transformations to the conditional estimates; factor
+              # components always replace the mixture so that their
+              # coefficients are labelled and transformed as factor levels
               if(!is.null(transformations[[par]])){
-                transformations[[temp_par_names]] <- transformations[[par]]
-                attr(prior_list[[par]][which(components == component)][1], "parameter") <- attr(prior_list[[par]], "parameter")
-                prior_list[[temp_par_names]]      <- prior_list[[par]][which(components == component)][1]
+                transformations[[component_par]] <- transformations[[par]]
+              }
+              if(is_factor_mixture || !is.null(transformations[[par]])){
+                prior_list[[component_par]] <- component_prior
               }
             }
 
@@ -583,6 +599,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
             # remove the original parameter transformations
             if(!is.null(transformations[[par]])){
               transformations[[par]] <- NULL
+              prior_list[[par]]      <- NULL
+            }else if(is_factor_mixture){
               prior_list[[par]]      <- NULL
             }
           }
