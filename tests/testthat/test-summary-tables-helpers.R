@@ -1720,6 +1720,9 @@ test_that("log-scale inclusion BF tables stay in log space beyond the double ran
   log_table <- ensemble_inference_table(inference, "theta", logBF = TRUE)
   expect_identical(as.numeric(log_table$inclusion_BF), log_BF)
   expect_identical(attr(log_table$inclusion_BF, "name"), "log(Inclusion BF)")
+  printed <- utils::capture.output(print(log_table))
+  expect_true(any(grepl("-800.690", printed, fixed = TRUE)))
+  expect_false(any(grepl("Inf", printed, fixed = TRUE)))
   log_BF01 <- ensemble_inference_table(inference, "theta", logBF = TRUE, BF01 = TRUE)
   expect_identical(as.numeric(log_BF01$inclusion_BF), -log_BF)
 
