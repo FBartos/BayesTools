@@ -333,13 +333,30 @@
     x <- seq(x_range[1], x_range[2], length.out = 3)
   }
 
-  source_x <- x / weight
-  if(identical(source_transform, "log")){
-    original_x <- exp(source_x)
-    y <- mpdf(prior, original_x) * original_x / abs(weight)
-  }else{
-    y <- mpdf(prior, source_x) / abs(weight)
+  source_density <- function(x){
+    source_x <- x / weight
+    if(identical(source_transform, "log")){
+      original_x <- exp(source_x)
+      mpdf(prior, original_x) * original_x / abs(weight)
+    }else{
+      mpdf(prior, source_x) / abs(weight)
+    }
   }
+
+  # 'seq(by = dx)' can stop one rounding error short of a range end that is a
+  # multiple of dx. When that end is a support bound with an infinite density,
+  # the knot belongs on the bound, where it carries its cell mass below;
+  # left inside, it would carry a finite but arbitrarily large ordinate.
+  last <- length(x)
+  if(x[last] < x_range[2] &&
+     x_range[2] - x[last] <= 64 * .Machine$double.eps * max(abs(x_range))){
+    bound_density <- as.numeric(source_density(x_range[2]))
+    if(isTRUE(is.infinite(bound_density) && bound_density > 0)){
+      x[last] <- x_range[2]
+    }
+  }
+
+  y <- source_density(x)
 
   # An integrable singularity at a support bound (e.g., gamma or beta shape
   # below one) has no finite ordinate; its knot carries the exact mass of the

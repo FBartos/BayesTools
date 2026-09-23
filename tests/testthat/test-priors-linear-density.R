@@ -387,6 +387,32 @@ test_that("boundary-singular prior densities keep exact edge-cell masses", {
   )
 })
 
+test_that("boundary-singular densities keep the bound knot when the grid ends one rounding error short", {
+
+  # seq(0, 1, by = 1 / (n - 1)) stops at 1 - 2^-53 for n = 500 and 3000. The
+  # knot next to the singular bound then kept a finite but huge ordinate
+  # (about 3e7 for beta(.5, .5)) that took almost all of the grid mass after
+  # normalisation (grid heights off by -96% to -100%); it now sits on the bound
+  # and carries its cell mass. Reference: the prior density; 3e-3 covers the
+  # grid renormalisation of the O(sqrt(dx)) neighbouring-cell error (observed
+  # at most 1.4e-3 at n = 500).
+  cases <- list(
+    list(prior = prior("beta", list(.5, .5)), n_grid = 500L),
+    list(prior = prior("beta", list(2, .7)),  n_grid = 3000L)
+  )
+  for(case in cases){
+    expect_lt(max(seq(0, 1, by = 1 / (case$n_grid - 1L))), 1)
+    density <- .prior_linear_combination_density(
+      list(p = case$prior), c(p = 1), n_grid = case$n_grid
+    )
+    expect_true(all(is.finite(density$density$y)))
+    for(value in c(.1, .5, .9)){
+      expect_equal(.prior_linear_density_grid_height(density, value),
+                   pdf(case$prior, value), tolerance = 3e-3)
+    }
+  }
+})
+
 test_that("exp_lin output transformations keep analytic limits at a zero source knot", {
 
   # y = 2 x^b: at the source knot x = 0 the density is f(0) / 2 for b = 1, zero
