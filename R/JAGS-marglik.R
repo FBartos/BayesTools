@@ -281,6 +281,15 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   if(!is.function(log_posterior)){
     stop("'log_posterior' must be a function.", call. = FALSE)
   }
+  if(inherits(fit, "error")){
+    # JAGS_fit() returns the backend condition when fitting fails.
+    fitting_error <- sub("[.[:space:]]+$", "", conditionMessage(fit))
+    stop(
+      "Bridge sampling is unavailable because the model fit failed: ",
+      fitting_error, ".",
+      call. = FALSE
+    )
+  }
   if(inherits(fit, "BayesTools_fit")){
     parameter_coordinates(fit)
   }

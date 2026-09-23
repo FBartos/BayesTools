@@ -581,6 +581,56 @@ test_that("global log-posterior callbacks survive a PSOCK round trip", {
   expect_identical(result[["diagnostics"]][["chains"]][["count"]], 1L)
 })
 
+test_that("JAGS_bridgesampling reports the original error of a failed fit", {
+
+  skip_if_not_installed("runjags")
+  testthat::local_mocked_bindings(
+    run.jags = function(...) stop("Compilation error on line 1: unknown variable tau"),
+    .package = "runjags"
+  )
+  testthat::local_mocked_bindings(
+    .JAGS_require_packages = function(...) invisible(NULL),
+    .JAGS_load_modules = function(...) invisible(NULL),
+    .package = "BayesTools"
+  )
+  failed <- JAGS_fit(
+    model_syntax = "model{ mu ~ dnorm(0, tau) }",
+    prior_list = list(mu = prior("normal", list(0, 1))),
+    chains = 1,
+    adapt = 50,
+    burnin = 50,
+    sample = 100,
+    autofit_control = list(
+      max_Rhat = NULL,
+      min_ESS = NULL,
+      max_error = NULL,
+      max_SD_error = NULL,
+      max_time = list(time = 60, unit = "secs"),
+      sample_extend = 1,
+      restarts = 1,
+      max_extend = 1,
+      check_indicators = FALSE
+    ),
+    silent = TRUE,
+    seed = 1
+  )
+  expect_s3_class(failed, "error")
+  expect_s3_class(failed, "BayesTools_fit")
+
+  expect_error(
+    JAGS_bridgesampling(
+      fit = failed,
+      log_posterior = function(parameters, data) 0,
+      data = list()
+    ),
+    paste0(
+      "Bridge sampling is unavailable because the model fit failed: ",
+      "Compilation error on line 1: unknown variable tau."
+    ),
+    fixed = TRUE
+  )
+})
+
 test_that("JAGS_bridgesampling rejects deterministic bridge coordinates", {
 
   # Review scenario: a row-shaped source tau[i] <- s * tau_data[i] supplied as
