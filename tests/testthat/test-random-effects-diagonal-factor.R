@@ -10,6 +10,12 @@ test_that("random group dependencies are structural and row aligned", {
   expect_identical(random_effects_dependency_matrix(terms, 4L), block_diagonal)
   expect_identical(random_effects_dependency_matrix(terms, 4L, "estimate"), diag(TRUE, 4L))
   expect_identical(random_effects_dependency_matrix(terms, 4L, character()), diag(TRUE, 4L))
+  # NULL means no compiled terms, as in random_effects_level_roles().
+  expect_identical(random_effects_dependency_matrix(NULL, 4L), diag(TRUE, 4L))
+  expect_identical(random_effects_dependency_matrix(list(), 4L), diag(TRUE, 4L))
+  expect_identical(random_effects_source_roles(NULL, 4L),
+                   random_effects_source_roles(list(), 4L))
+  expect_length(random_effects_source_roles(NULL, 4L), 0L)
   terms[[1L]]$group_covariance <- list(type = "known", kernel = matrix(c(1, .3, .3, 1), 2L))
   expect_identical(random_effects_dependency_matrix(terms, 4L), matrix(TRUE, 4L, 4L))
   terms[[1L]]$group_covariance$kernel <- diag(2L)

@@ -79,9 +79,6 @@ random_effects_dependency_matrix <- function(random_effects, n_rows,
 #' @export
 random_effects_level_roles <- function(random_effects, n_rows){
 
-  if(is.null(random_effects)){
-    random_effects <- list()
-  }
   random_effects <- .bt_random_effect_dependency_terms(random_effects, n_rows)
   roles <- vapply(random_effects, function(term){
     if(anyDuplicated(term$group_map)) "other" else "estimate"
@@ -180,6 +177,9 @@ random_effects_source_roles <- function(random_effects, n_rows){
                                                blocks = NULL){
 
   check_list(random_effects, "random_effects", allow_NULL = TRUE)
+  if(is.null(random_effects)){
+    random_effects <- list()
+  }
   check_int(n_rows, "n_rows", lower = 1L, check_length = 1L, allow_NA = FALSE)
   check_char(blocks, "blocks", check_length = 0, allow_NULL = TRUE,
              allow_NA = FALSE)
