@@ -335,7 +335,7 @@ old behaviour.
   - `random_variance_allocation()` accepts gate-only allocations with an
     unnamed single term (`terms = "study"`), and
     `random_effects_summary_posterior()` attaches analytic prior densities for
-    Dirichlet allocations whose complementary mass is below one (e.g.
+    Dirichlet allocations whose complementary concentration is below one (e.g.
     `alpha = c(0.5, 0.5)`) instead of stopping at the singular unit bound.
   - `random_effects_marginal_update_plan()` reports as `unsupported` the SD
     quantities without a single source coordinate (e.g. after formula
@@ -369,7 +369,9 @@ old behaviour.
     Dirichlet and weight-function helper nodes are internal; `var()` of a
     formula-scaled one-coordinate random SD is a one-to-one transform like
     `sd()`; and row labels shown by `JAGS_estimates_table()` are accepted by
-    `parameter_catalog_resolve()`.
+    `parameter_catalog_resolve()`, except coordinate labels of meandif and
+    orthonormal factors with numeric level names, which can collide with
+    level labels.
   - allocation-derived SDs and gated totals whose scalar SD source is not in
     the draws are `unavailable` instead of failing in tables,
     `parameter_draws()`, and `random_effects_summary_posterior()`;
