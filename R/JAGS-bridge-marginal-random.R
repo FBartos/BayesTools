@@ -323,7 +323,8 @@
       covariance = function(samples, prior_parameters,
                             formula_prior_parameters, formula_parameters,
                             factor_covariance = TRUE,
-                            factor_state = FALSE) list()
+                            factor_state = FALSE,
+                            sd_cache = NULL) list()
     ))
   }
 

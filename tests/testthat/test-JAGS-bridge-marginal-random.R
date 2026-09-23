@@ -548,6 +548,100 @@ test_that("bridge covariance exposes blocks already fitted as marginalized", {
   )
 })
 
+test_that("the marginal bridge context works without marginalized blocks", {
+
+  # The marginal context has nothing to marginalize and must match the node
+  # context exactly.
+  posterior <- coda::as.mcmc(matrix(
+    rep(0.25, 20L),
+    ncol = 1L,
+    dimnames = list(NULL, "mu")
+  ))
+  y <- c(-0.3, 0.1, 0.4)
+  call_bridge <- function(mode, seen){
+    JAGS_bridgesampling(
+      fit = posterior,
+      data = list(y = y),
+      prior_list = list(mu = prior("point", list(0.25))),
+      bridge_context = mode,
+      log_posterior = function(parameters, data, bridge_context){
+        seen$context <- bridge_context
+        sum(stats::dnorm(data$y, parameters$mu, 1, log = TRUE))
+      }
+    )
+  }
+  seen_nodes <- new.env(parent = emptyenv())
+  seen_marginal <- new.env(parent = emptyenv())
+  nodes <- call_bridge("nodes", seen_nodes)
+  marginal <- call_bridge("marginal", seen_marginal)
+  expect_s3_class(seen_marginal$context, "BayesTools_bridge_marginal_context")
+  expect_identical(seen_marginal$context$nodes, seen_nodes$context$nodes)
+  expect_identical(seen_marginal$context$marginalized_random, list())
+  expect_equal(
+    marginal$logml,
+    sum(stats::dnorm(y, 0.25, 1, log = TRUE)),
+    tolerance = 1e-12
+  )
+  expect_identical(marginal$logml, nodes$logml)
+})
+
+test_that("the marginal bridge context accepts fitted marginalized blocks without a request", {
+
+  data <- data.frame(study = factor(c("a", "a", "b")))
+  formula_result <- JAGS_formula(
+    formula   = ~ 1 + diag(1 | study),
+    parameter = "mu",
+    data      = data,
+    prior_list = list(intercept = prior("point", list(location = 0.1))),
+    prior_random = prior_random(
+      study = random_block(sd = prior("point", list(location = 0.4)))
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "study")
+  )
+  fit <- .bridge_marginal_random_fit(
+    formula_result,
+    c(mu_intercept = 0.1)
+  )
+  call_formula_bridge <- function(mode){
+    JAGS_bridgesampling(
+      fit = fit,
+      data = list(y = c(0.2, -0.1, 0.3)),
+      bridge_context = mode,
+      log_posterior = function(parameters, data, bridge_context){
+        sum(stats::dnorm(data$y, parameters$mu, 1, log = TRUE))
+      }
+    )
+  }
+  formula_marginal <- call_formula_bridge("marginal")
+  expect_identical(formula_marginal$aggregation$rule, "exact_zero_dimensional")
+  expect_equal(
+    formula_marginal$logml,
+    sum(stats::dnorm(c(0.2, -0.1, 0.3), 0.1, 1, log = TRUE)),
+    tolerance = 1e-12
+  )
+  expect_identical(formula_marginal$logml, call_formula_bridge("nodes")$logml)
+})
+
+test_that("the marginal context compiler stand-in accepts the shared SD cache", {
+
+  evaluator <- BayesTools:::.bt_JAGS_bridge_compile_context_evaluator(
+    mode = "marginal",
+    add_parameters = character(),
+    formula_design_list = list(),
+    formula_data_list = list(),
+    formula_prior_list = list(),
+    model_data = list()
+  )
+  context <- evaluator$context(
+    samples = c(mu = 0.25),
+    prior_parameters = list(mu = 0.25),
+    formula_prior_parameters = list(),
+    formula_parameters = list()
+  )
+  expect_s3_class(context, "BayesTools_bridge_marginal_context")
+  expect_identical(context$marginalized_random, list())
+})
+
 test_that("compiled bridge SD extraction safely reuses posterior positions", {
 
   data <- data.frame(
