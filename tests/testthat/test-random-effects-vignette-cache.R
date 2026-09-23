@@ -1519,6 +1519,44 @@ test_that("DESCRIPTION fingerprints ignore build fields and the version", {
   ))
 })
 
+test_that("DESCRIPTION fingerprints do not depend on the session locale", {
+  description_root <- withr::local_tempdir()
+  description <- file.path(description_root, "DESCRIPTION")
+  maintainer <- paste0(
+    "Maintainer: Ondřej Vývojář ",
+    "<developer@example.org>"
+  )
+  writeBin(charToRaw(enc2utf8(paste0(
+    "Package: BayesTools\n", maintainer, "\nEncoding: UTF-8\n"
+  ))), description)
+  # The fingerprint of the declared UTF-8 text, sorted by field name.
+  expected <- .random_effects_vignette_md5_raw(charToRaw(enc2utf8(paste0(
+    "Encoding: UTF-8\n", maintainer, "\nPackage: BayesTools\n"
+  ))))
+
+  expect_identical(
+    .random_effects_vignette_description_md5(description),
+    expected
+  )
+  withr::local_locale(c(LC_CTYPE = "C"))
+  expect_identical(
+    .random_effects_vignette_description_md5(description),
+    expected
+  )
+
+  invalid <- file.path(description_root, "invalid")
+  writeBin(c(
+    charToRaw("Package: BayesTools\nMaintainer: Ren"),
+    as.raw(0xe9),
+    charToRaw(" <developer@example.org>\nEncoding: UTF-8\n")
+  ), invalid)
+  expect_error(
+    .random_effects_vignette_description_md5(invalid),
+    "DESCRIPTION is not valid text in its declared encoding.",
+    fixed = TRUE
+  )
+})
+
 test_that("vignette statically uses guarded regeneration and exact seeds", {
   rmd_file <- testthat::test_path("..", "..", "vignettes", "RandomEffects.Rmd")
   lines <- readLines(rmd_file, warn = FALSE, encoding = "UTF-8")

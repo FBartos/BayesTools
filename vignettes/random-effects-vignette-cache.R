@@ -175,6 +175,20 @@ random_effects_vignette_cache_names <- function(){
 
 .random_effects_vignette_description_md5 <- function(path){
   description <- read.dcf(path, all = TRUE)
+  # read.dcf() marks the file's bytes as native text. Convert them from the
+  # declared DESCRIPTION encoding so the fingerprint does not depend on the
+  # session locale.
+  encoding <- description[["Encoding"]]
+  if(is.null(encoding)){
+    encoding <- "UTF-8"
+  }
+  description[] <- lapply(description, iconv, from = encoding, to = "UTF-8")
+  if(anyNA(unlist(description, use.names = FALSE))){
+    stop(
+      "DESCRIPTION is not valid text in its declared encoding.",
+      call. = FALSE
+    )
+  }
   # Build fields and the package version are not source content: versions are
   # producer provenance, reported by validation but never a staleness reason.
   description[c("Author", "Built", "Packaged", "Version")] <- NULL
