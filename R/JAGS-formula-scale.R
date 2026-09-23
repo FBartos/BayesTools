@@ -553,13 +553,21 @@
   names(factor_ordered) <- factors
   contrast_matrices <- design$contrast_matrices[factors]
   names(contrast_matrices) <- factors
+  # Logical predictors are coded as indicators (e.g., column 'dTRUE') unless
+  # they were standardized before the design was built.
+  continuous <- predictors[predictor_types == "continuous"]
+  continuous_logical <- vapply(continuous, function(predictor){
+    is.logical(design$model_frame[[predictor]])
+  }, logical(1))
+  names(continuous_logical) <- continuous
   formula <- design$formula
   environment(formula) <- emptyenv()
 
   list(
     schema_version    = .bt_formula_unscale_design_spec_version,
     formula           = formula,
-    continuous        = predictors[predictor_types == "continuous"],
+    continuous        = continuous,
+    continuous_logical = continuous_logical,
     factor_levels     = factor_levels,
     factor_ordered    = factor_ordered,
     contrast_matrices = contrast_matrices,
@@ -576,6 +584,10 @@
     identical(spec$schema_version, .bt_formula_unscale_design_spec_version) &&
     inherits(spec$formula, "formula") &&
     is.character(spec$continuous) && !anyNA(spec$continuous) &&
+    is.logical(spec$continuous_logical) && !anyNA(spec$continuous_logical) &&
+    length(spec$continuous_logical) == length(spec$continuous) &&
+    (length(spec$continuous) == 0L ||
+       identical(names(spec$continuous_logical), spec$continuous)) &&
     is.list(spec$factor_levels) &&
     (length(spec$factor_levels) == 0L || (
       !is.null(factor_names) && !anyNA(factor_names) &&
@@ -657,7 +669,8 @@
 # rows exactly when its columns are linearly independent functions.
 #
 # Scaled predictors take the levels m and m + s (standardized values 0 and 1);
-# unscaled continuous predictors take the levels 0 and 1.
+# unscaled continuous predictors take the levels 0 and 1 (FALSE and TRUE for
+# logical predictors).
 .bt_formula_unscale_design_data <- function(spec, formula_scale, prefix){
 
   continuous <- spec$continuous
@@ -732,6 +745,10 @@
     if(is_scaled[j]){
       scale_info <- formula_scale[[scaled_names[j]]]
       original[[continuous[j]]] <- scale_info[["mean"]] + scale_info[["sd"]] * level
+    }else if(isTRUE(spec$continuous_logical[[continuous[j]]])){
+      # unstandardized logical predictors keep their indicator coding
+      standardized[[continuous[j]]] <- raised
+      original[[continuous[j]]] <- raised
     }else{
       original[[continuous[j]]] <- level
     }

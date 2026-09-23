@@ -249,6 +249,51 @@ test_that("JAGS_formula formula-scale metadata carry the fitted design", {
   )
 })
 
+test_that("design-derived unscaling keeps the coding of logical predictors", {
+
+  # Unstandardized logical predictors are indicator-coded ('lgTRUE'); the
+  # synthetic verification design must reproduce that coding. Standardized
+  # logical predictors are numeric in the fitted design.
+  data <- data.frame(
+    x = c(1, 3, 7, 2, 6, 11, 4, 5, 9, 8),
+    lg = rep(c(TRUE, FALSE), 5L)
+  )
+  normal <- prior("normal", list(0, 1))
+  prior_list <- list(intercept = normal, x = normal, lg = normal, "x:lg" = normal)
+  coefficients <- rbind(
+    c(0.3, -0.7, 1.1, 0.25),
+    c(-1.2, 0.5, 0.2, -0.6)
+  )
+
+  for(formula_scale in list(list(x = TRUE), TRUE)){
+    scaled <- JAGS_formula(~ x * lg, "mu", data, prior_list,
+                           formula_scale = formula_scale)
+    original <- JAGS_formula(~ x * lg, "mu", data, prior_list)
+    source_names <- .formula_coefficient_source_names(scaled)
+    colnames(coefficients) <- source_names
+    transformed <- transform_scale_samples(
+      coefficients,
+      formula_scale = list(mu = scaled$formula_scale)
+    )
+    expect_equal(
+      .formula_coefficient_design_matrix(original) %*% t(transformed[, source_names]),
+      .formula_coefficient_design_matrix(scaled) %*% t(coefficients),
+      tolerance = 1e-12
+    )
+    transform <- JAGS_formula_coefficient_transform(
+      .formula_coefficient_density_fit(scaled, source_names),
+      "mu"
+    )
+    expect_equal(
+      transform$matrix,
+      .build_unscale_matrix_by_names(
+        source_names, scaled$formula_scale, "mu", require_closure = FALSE
+      ),
+      tolerance = 1e-14
+    )
+  }
+})
+
 test_that("formula coefficient transforms refuse terms whose centering is not representable", {
 
   data <- data.frame(
