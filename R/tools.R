@@ -335,24 +335,30 @@ check_list   <- function(x, name = deparse(substitute(x)), check_length = 0, che
   if(!inherits(fit, what = "stanfit"))
     stop("'fit' must be an rstan fit")
 
-  # order permutations to correspond to the other
-  # (otherwise, models with same seed produce different posterior draws, like wtf stan???)
-  for(i in seq_along(fit@sim$permutation)){
-    fit@sim$permutation[[i]] <- seq_along(fit@sim$permutation[[i]])
-  }
-
-  model_samples <- rstan::extract(fit)
-  par_names     <- names(model_samples)
-  par_dims      <- sapply(model_samples, function(s)if(is.matrix(s)) ncol(s) else if(drop) 1 else 0)
-  par_names     <- unlist(sapply(seq_along(par_names), function(p){
-    if(par_dims[p] == {if(drop) 1 else 0}){
-      return(par_names[p])
-    }else{
-      return(paste0(par_names[p], "[", 1:par_dims[p],"]"))
-    }
+  # Stack the retained draws chain by chain in iteration order, so that fits
+  # with the same seed give the same draws, with one column per flattened
+  # parameter element (matrix-valued parameters included).
+  draws <- rstan::extract(fit, permuted = FALSE, inc_warmup = FALSE)
+  n_iterations <- dim(draws)[[1L]]
+  n_chains     <- dim(draws)[[2L]]
+  par_names    <- dimnames(draws)[[3L]]
+  model_samples <- do.call(rbind, lapply(seq_len(n_chains), function(chain){
+    matrix(draws[, chain, ], nrow = n_iterations, ncol = length(par_names))
   }))
-  model_samples <- do.call(cbind, model_samples)
   colnames(model_samples) <- par_names
+
+  # Single-element array parameters are reported under the parameter name.
+  if(drop){
+    for(p in seq_along(fit@sim$pars_oi)){
+      dims <- fit@sim$dims_oi[[p]]
+      if(length(dims) > 0L && prod(dims) == 1L){
+        element <- paste0(
+          fit@sim$pars_oi[[p]], "[", paste(rep("1", length(dims)), collapse = ","), "]"
+        )
+        colnames(model_samples)[colnames(model_samples) == element] <- fit@sim$pars_oi[[p]]
+      }
+    }
+  }
 
   return(model_samples)
 }
