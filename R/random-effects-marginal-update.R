@@ -32,7 +32,9 @@
 #' single-column blocks. On correlated multi-column structures they are
 #' factor `column_scale` updates of the selected quantity, not
 #' `A + h(sigma) B`. Their `coefficient_scale_transform` converts a selected
-#' variance to its square root and leaves a selected SD unchanged.
+#' variance to its square root and leaves a selected SD unchanged. These
+#' quantity-scale plans require the public SD to be on the fitted coefficient
+#' scale; after formula scaling that changes it, the plan is unsupported.
 #' Unsupported plans carry a structural reason. The accessor
 #' never estimates affineness from evaluated covariance matrices.
 #'
@@ -665,6 +667,24 @@ random_effects_marginal_update_grid <- function(
         )
       ))
     }
+    if(!.bt_parameter_catalog_random_sd_is_direct(
+      random_term = random_term,
+      parameter = key$formula_parameter,
+      formula_scale = attr(fit, "formula_scale", exact = TRUE)
+    )){
+      # Quantity-scale plans (affine and factor) place candidate values on the
+      # fitted coefficient scale, which differs from the public SD after
+      # formula scaling.
+      return(.bt_random_effect_marginal_update_unavailable(
+        quantity = quantity,
+        reason = "scaled_component_sd",
+        message = paste0(
+          "The selected allocation-derived SD is reported on the original ",
+          "predictor scale, not the fitted coefficient scale, so it has no ",
+          "exact quantity-scale covariance update."
+        )
+      ))
+    }
     n_columns <- random_term$n_columns
     affine <- n_columns == 1L || structure %in% c("id", "diag")
     if(isTRUE(affine)){
@@ -683,23 +703,6 @@ random_effects_marginal_update_grid <- function(
         coefficient_input = "quantity",
         component_index = key$index,
         structure = structure
-      ))
-    }
-    if(!.bt_parameter_catalog_random_sd_is_direct(
-      random_term = random_term,
-      parameter = key$formula_parameter,
-      formula_scale = attr(fit, "formula_scale", exact = TRUE)
-    )){
-      # The factor grid places candidate values on the fitted coefficient
-      # scale, which differs from the public SD after formula scaling.
-      return(.bt_random_effect_marginal_update_unavailable(
-        quantity = quantity,
-        reason = "scaled_component_sd",
-        message = paste0(
-          "The selected allocation-derived SD is reported on the original ",
-          "predictor scale, not the fitted coefficient scale, so it has no ",
-          "exact quantity-scale covariance update."
-        )
       ))
     }
     if(structure %in% c("us", "hcs", "har") ||

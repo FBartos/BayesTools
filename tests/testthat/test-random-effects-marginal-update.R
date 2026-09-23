@@ -314,6 +314,69 @@ test_that("scaled allocation-derived SDs have no quantity-scale factor grid", {
 })
 
 
+test_that("scaled allocation-derived SDs have no quantity-scale affine plan", {
+
+  data <- data.frame(
+    id = factor(rep(c("a", "b", "c"), each = 4L)),
+    x = c(1.2, 3.5, 4.1, 2.2, 5.3, 0.4, 3.3, 2.9, 6.1, 1.7, 4.4, 2.6),
+    z = c(0.2, -0.5, 0.1, 0.4, -0.3, 0.6, -0.1, 0.3, -0.2, 0.5, 0.0, -0.4)
+  )
+  fixed <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1)),
+    z = prior("normal", list(0, 1))
+  )
+  allocation <- prior_random(
+    allocation = random_variance_allocation(
+      name = "allocation",
+      terms = "study",
+      target = "sd_component",
+      scale = "total_variance",
+      sd_source = random_sd_source("tau"),
+      weights = prior("dirichlet", list(alpha = c(1, 1)))
+    )
+  )
+  fit <- function(formula, formula_scale = NULL){
+    .random_update_test_generic_fit(
+      formula, data, allocation, fixed,
+      formula_scale = formula_scale, extra_columns = "tau"
+    )
+  }
+  scaled_slope <- ~ 1 + x + z + random(1 + x | id, name = "study", covariance = "diag")
+  unscaled_slope <- ~ 1 + x + z + random(1 + z | id, name = "study", covariance = "diag")
+  cases <- list(
+    unscaled = list(fit = fit(scaled_slope), component = "x"),
+    scale_free = list(
+      fit = fit(unscaled_slope, formula_scale = list(x = TRUE)),
+      component = "z"
+    ),
+    scaled = list(
+      fit = fit(scaled_slope, formula_scale = list(x = TRUE)),
+      component = "x"
+    )
+  )
+
+  for(case in names(cases)){
+    for(component in c("intercept", cases[[case]]$component)){
+      for(role in c("random_sd", "random_var")){
+        plan <- .random_update_test_plan(cases[[case]]$fit, role, component)
+        info <- paste(case, role, component)
+        if(identical(case, "scaled")){
+          # The public SDs are on the original predictor scale: the intercept
+          # SD mixes both fitted SDs and the slope SD is divided by sd(x).
+          expect_identical(plan$family, "unsupported", info = info)
+          expect_identical(plan$reason, "scaled_component_sd", info = info)
+        }else{
+          expect_identical(plan$family, "affine", info = info)
+          expect_identical(plan$update, "scale", info = info)
+          expect_identical(plan$coefficient_input, "quantity", info = info)
+        }
+      }
+    }
+  }
+})
+
+
 test_that("allocation plans report Dirichlet weight coordinates", {
 
   fit <- .random_update_test_allocation_fit()

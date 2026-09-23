@@ -41,7 +41,9 @@ state. Allocation-derived component SDs stay affine on \code{id}/\code{diag} and
 single-column blocks. On correlated multi-column structures they are
 factor \code{column_scale} updates of the selected quantity, not
 \verb{A + h(sigma) B}. Their \code{coefficient_scale_transform} converts a selected
-variance to its square root and leaves a selected SD unchanged.
+variance to its square root and leaves a selected SD unchanged. These
+quantity-scale plans require the public SD to be on the fitted coefficient
+scale; after formula scaling that changes it, the plan is unsupported.
 Unsupported plans carry a structural reason. The accessor
 never estimates affineness from evaluated covariance matrices.
 }
