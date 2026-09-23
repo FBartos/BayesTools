@@ -257,6 +257,57 @@ test_that("formula coefficient transforms refuse terms whose centering is not re
   }
 })
 
+test_that("design-derived unscaling applies only to fitted coefficient coordinates", {
+
+  data <- data.frame(
+    x = c(1, 3, 7, 2, 6, 11, 4, 5, 9),
+    f = factor(rep(c("a", "b", "c"), 3L), levels = c("a", "b", "c"))
+  )
+  formula_result <- JAGS_formula(
+    ~ x * f, "mu", data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)),
+      f = prior_factor("normal", list(0, 1), contrast = "treatment"),
+      "x:f" = prior_factor("normal", list(0, 1), contrast = "treatment")
+    ),
+    formula_scale = list(x = TRUE)
+  )
+  with_design <- list(mu = .bt_formula_scale_with_unscale_design(
+    formula_result$formula_scale,
+    formula_result$formula_design
+  ))
+  without_design <- list(mu = formula_result$formula_scale)
+
+  # Level-wise summaries (one column per level, or level-labelled columns)
+  # are not the fitted coefficient vector and keep the name-paired map.
+  level_columns <- list(
+    matrix(c(0, 0.4, -0.2, 0, 0.1, 0.3), nrow = 2, byrow = TRUE,
+           dimnames = list(NULL, paste0("mu_x__xXx__f[", 1:3, "]"))),
+    cbind(`mu_f[b]` = c(0.5, 1), `mu_f[c]` = c(-1, 0.2),
+          `mu_x__xXx__f[b]` = c(0.3, 0.1), `mu_x__xXx__f[c]` = c(-0.4, 0.2))
+  )
+  for(samples in level_columns){
+    expect_identical(
+      transform_scale_samples(samples, formula_scale = with_design),
+      transform_scale_samples(samples, formula_scale = without_design)
+    )
+  }
+
+  # The fitted coefficient coordinates use the verified design map, which
+  # equals the name-paired map for this crossed formula.
+  coefficients <- matrix(
+    c(1, 0.5, 0.2, -0.3, 0.4, -0.1),
+    nrow = 1,
+    dimnames = list(NULL, .formula_coefficient_source_names(formula_result))
+  )
+  expect_equal(
+    transform_scale_samples(coefficients, formula_scale = with_design),
+    transform_scale_samples(coefficients, formula_scale = without_design),
+    tolerance = 1e-14
+  )
+})
+
 test_that("formula prior densities of raw coefficients ignore their multiply_by", {
 
   # As in fixture fit_complex_mixed: the monitored mu_x node is the raw

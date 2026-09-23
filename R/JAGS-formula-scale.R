@@ -396,7 +396,8 @@
                                   require_closure = TRUE) {
 
   design_spec <- attr(formula_scale, "unscale_design", exact = TRUE)
-  if(is.null(design_spec) || !isTRUE(require_closure)){
+  if(is.null(design_spec) || !isTRUE(require_closure) ||
+     !.bt_formula_unscale_design_columns(design_spec, term_names, prefix)){
     return(.build_unscale_matrix_by_names(
       term_names = term_names,
       formula_scale = formula_scale,
@@ -796,6 +797,22 @@
   }
 
   out
+}
+
+# Helper: Whether the requested columns are in the fitted coefficient
+# coordinates of the design. Columns that belong to a design term but carry
+# other names (factor-level labels, or more levels than fitted coefficients, as
+# in level-wise marginal summaries) are not the fitted coefficient vector; such
+# inputs keep the name-paired map.
+.bt_formula_unscale_design_columns <- function(spec, term_names, prefix){
+
+  .bt_formula_unscale_design_spec_check(spec, prefix)
+  design_names <- .bt_formula_unscale_coefficient_names(spec, prefix)
+  strip_index <- function(x) sub("\\[[^]]+\\]$", "", x)
+  foreign <- strip_index(term_names) %in% strip_index(design_names) &
+    !term_names %in% design_names
+
+  !any(foreign)
 }
 
 .bt_formula_unscale_term_labels <- function(spec, columns){
