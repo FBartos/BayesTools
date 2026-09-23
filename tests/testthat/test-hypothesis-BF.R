@@ -758,6 +758,64 @@ test_that("hypothesis_BF uses prior-posterior odds for region hypotheses", {
 })
 
 
+test_that("hypothesis_BF region error omits variance of exact prior masses", {
+
+  set.seed(1)
+  posterior   <- stats::rnorm(20000, mean = 0.3, sd = 0.1)
+  prior_draws <- stats::rnorm(20000)
+  theta_prior <- prior("normal", list(mean = 0, sd = 1))
+
+  # The prior masses of 'theta > .2' and its complement come from the prior
+  # object's distribution function, so only posterior indicators vary.
+  out <- hypothesis_BF(
+    posterior  = posterior,
+    prior      = theta_prior,
+    hypothesis = "theta > 0.2",
+    parameter  = "theta",
+    seed       = 1
+  )
+  expect_equal(
+    as.numeric(out[["BF_error"]]),
+    100 * sqrt(.hypothesis_log_odds_var_for_test(posterior > 0.2,
+                                                 posterior <= 0.2)),
+    tolerance = 1e-12
+  )
+
+  quantity <- BayesTools:::.hypothesis_quantity_from_draws(
+    posterior    = data.frame(theta = posterior),
+    prior        = data.frame(theta = prior_draws),
+    label        = "theta",
+    parameter    = "theta",
+    prior_object = theta_prior
+  )
+  statement <- hypothesis_parse("theta > 0.2 vs abs(theta) < 1")$statements[[1L]]
+  # Only the compound side's prior mass is estimated from prior draws.
+  expect_equal(
+    BayesTools:::.hypothesis_region_odds_BF_error_percent(
+      quantity, statement$left, statement$right
+    ),
+    100 * sqrt(
+      .hypothesis_log_odds_var_for_test(posterior > 0.2, abs(posterior) < 1) +
+        .hypothesis_log_prob_var_for_test(abs(prior_draws) < 1)
+    ),
+    tolerance = 1e-12
+  )
+  expect_identical(
+    BayesTools:::.hypothesis_region_log_mass_mc_var(
+      quantity, statement$left, prior = TRUE
+    ),
+    0
+  )
+  expect_equal(
+    BayesTools:::.hypothesis_region_log_mass_mc_var(
+      quantity, statement$right, prior = TRUE
+    ),
+    .hypothesis_log_prob_var_for_test(abs(prior_draws) < 1),
+    tolerance = 1e-12
+  )
+})
+
+
 test_that("hypothesis_BF respects inclusive and exclusive boundaries", {
 
   prior     <- data.frame(theta = c(-1, 0, 1, 2))

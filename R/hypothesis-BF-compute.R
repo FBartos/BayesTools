@@ -361,6 +361,21 @@
   }else{
     quantity[["posterior_draws"]]
   }
+  if(prior){
+    # Prior masses computed from the prior object's distribution function are
+    # exact and contribute no Monte Carlo variance.
+    left_exact  <- .hypothesis_region_prior_mass_exact(quantity, left)
+    right_exact <- .hypothesis_region_prior_mass_exact(quantity, right)
+    if(left_exact && right_exact){
+      return(0)
+    }
+    if(left_exact || right_exact){
+      estimated <- if(left_exact) right else left
+      return(.hypothesis_log_prob_indicator_mc_var(
+        .hypothesis_draw_region_indicator(estimated, draws)
+      ))
+    }
+  }
   left_values  <- .hypothesis_draw_region_indicator(left, draws)
   right_values <- .hypothesis_draw_region_indicator(right, draws)
 
@@ -368,9 +383,20 @@
 }
 
 
+.hypothesis_region_prior_mass_exact <- function(quantity, side) {
+
+  # Mirrors .hypothesis_region_mass(): the prior object's distribution
+  # function is used whenever it defines the region mass.
+  !is.null(.hypothesis_prior_object_region_mass(quantity, side))
+}
+
+
 .hypothesis_region_log_mass_mc_var <- function(quantity, side, prior) {
 
   if(prior && is.null(quantity[["prior_draws"]])){
+    return(0)
+  }
+  if(prior && .hypothesis_region_prior_mass_exact(quantity, side)){
     return(0)
   }
 
