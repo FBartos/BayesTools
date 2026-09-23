@@ -103,9 +103,11 @@
   x <- x[order_x]
   y <- y[order_x]
   if(anyDuplicated(x)){
-    y_by_x <- split(y, x)
-    x      <- as.numeric(names(y_by_x))
-    y      <- vapply(y_by_x, mean, numeric(1))
+    # group by exact value (character keys would round to 15 digits)
+    unique_x <- unique(x)
+    index    <- match(x, unique_x)
+    y        <- as.numeric(rowsum(y, index, reorder = TRUE)) / tabulate(index)
+    x        <- unique_x
 
     order_x <- order(x)
     x <- x[order_x]
@@ -196,10 +198,13 @@
   }
 
   if(nrow(out) > 0L && anyDuplicated(out[["x"]])){
-    mass_by_x <- tapply(out[["mass"]], out[["x"]], sum)
+    # merge atoms at exactly equal locations (character keys would round
+    # distinct locations to 15 digits)
+    unique_x <- unique(out[["x"]])
+    index    <- match(out[["x"]], unique_x)
     out <- data.frame(
-      x    = as.numeric(names(mass_by_x)),
-      mass = as.numeric(mass_by_x)
+      x    = unique_x,
+      mass = as.numeric(rowsum(out[["mass"]], index, reorder = TRUE))
     )
     out <- out[order(out[["x"]]), , drop = FALSE]
   }

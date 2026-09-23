@@ -3368,6 +3368,36 @@ test_that("transform_scaled factor atoms are rescaled for level-labelled columns
   }
 })
 
+test_that("point-mass metadata merge atoms by exact location", {
+
+  location <- 0.1 + 0.2
+  expect_false(location == 0.3)
+  atoms <- posterior_atom_attribute(data.frame(x = c(location, location, 0.3), mass = c(.2, .2, .1)))
+  expect_identical(atoms$locations[, 1], c(0.3, location))
+  expect_equal(atoms$mass, c(.1, .4), tolerance = 1e-15)
+
+  # Savage-Dickey removes the draws of the merged atom from the continuous part
+  set.seed(9)
+  posterior <- c(rep(location, 400), rnorm(600, 1, .3))
+  class(posterior) <- c("marginal_posterior.simple", "marginal_posterior", class(posterior))
+  attr(posterior, "prior_density") <- prior("normal", list(0, 1))
+  attr(posterior, "posterior_atoms") <- posterior_atom_attribute(
+    data.frame(x = c(location, location), mass = c(.2, .2))
+  )
+  continuous <- BayesTools:::.Savage_Dickey_BF.continuous_posterior(
+    posterior, BayesTools:::.posterior_atoms_get(posterior)
+  )
+  expect_length(continuous$samples, 600L)
+  expect_equal(continuous$continuous_mass, .6, tolerance = 1e-12)
+
+  density <- BayesTools:::.posterior_density_from_attribute(list(
+    x = c(0, location, 0.3, location, 1),
+    y = c(1, 2, 3, 4, 5)
+  ))
+  expect_identical(density$x, c(0, 0.3, location, 1))
+  expect_equal(density$y, c(1, 3, 3, 5))
+})
+
 test_that("factor terms omitted by a mixed model are zero on every coefficient column", {
 
   data <- data.frame(t = factor(c("lo", "mid", "hi"), levels = c("lo", "mid", "hi")))
