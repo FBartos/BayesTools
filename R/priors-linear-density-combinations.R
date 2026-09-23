@@ -515,9 +515,10 @@
   range(products)
 }
 
-.prior_ordered_linear_multiplier <- function(ordered_prior, weights, indices,
-                                             dx, n_grid, tail_prob){
+.prior_ordered_linear_share <- function(ordered_prior, weights, indices){
 
+  # Allocation share multiplying the ordered total in a level combination:
+  # a fixed point or 'scale' times a Beta(alpha[1], alpha[2]) variable.
   ordered_prior <- .prior_ordered_default_bound(ordered_prior)
   metadata <- .prior_ordered_metadata(ordered_prior)
   if(length(metadata$ordered_terms) != 1L ||
@@ -546,7 +547,7 @@
 
   if(identical(record$spec$type, "fixed")){
     scale <- sum(allocation_weights * record$spec$weights)
-    return(.prior_linear_density_point(scale))
+    return(list(type = "point", scale = scale))
   }
   if(!identical(record$spec$type, "dirichlet")){
     stop("Unsupported ordered allocation specification.", call. = FALSE)
@@ -554,7 +555,7 @@
 
   unique_weights <- unique(allocation_weights)
   if(length(unique_weights) == 1L){
-    return(.prior_linear_density_point(unique_weights[[1L]]))
+    return(list(type = "point", scale = unique_weights[[1L]]))
   }
 
   nonzero <- allocation_weights != 0
@@ -572,19 +573,30 @@
   alpha_selected <- sum(record$spec$alpha[nonzero])
   alpha_remaining <- sum(record$spec$alpha[!nonzero])
   if(alpha_selected == 0){
-    return(.prior_linear_density_point(0))
+    return(list(type = "point", scale = 0))
   }
   if(alpha_remaining == 0){
-    return(.prior_linear_density_point(scale))
+    return(list(type = "point", scale = scale))
+  }
+
+  list(type = "beta", scale = scale, alpha = c(alpha_selected, alpha_remaining))
+}
+
+.prior_ordered_linear_multiplier <- function(ordered_prior, weights, indices,
+                                             dx, n_grid, tail_prob){
+
+  share <- .prior_ordered_linear_share(ordered_prior, weights, indices)
+  if(identical(share$type, "point")){
+    return(.prior_linear_density_point(share$scale))
   }
 
   beta_prior <- prior(
     "beta",
-    list(alpha = alpha_selected, beta = alpha_remaining)
+    list(alpha = share$alpha[[1L]], beta = share$alpha[[2L]])
   )
   beta_group <- list(
     prior = beta_prior,
-    weights = c(.ordered_allocation = scale),
+    weights = c(.ordered_allocation = share$scale),
     indices = 1L
   )
   .prior_linear_group_distribution(

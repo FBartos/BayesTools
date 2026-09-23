@@ -985,6 +985,43 @@ test_that("ordered totals with boundary-infinite densities keep direct densities
   expect_equal(attr(mixed_densities[[3]]$continuous, "mass"), .5)
 })
 
+test_that("sampled ordered level densities reflect at the exact level support", {
+
+  gamma_total <- prior_ordered(prior("gamma", list(2, 2)))
+  attr(gamma_total, "levels") <- 3
+  expect_equal(
+    BayesTools:::.density.prior.ordered_level_bounds(gamma_total, 3L),
+    list(c(0, 0), c(0, Inf), c(0, Inf))
+  )
+  fixed_normal <- prior_ordered(prior("normal", list(0, 1)), allocation = c(.25, .75))
+  attr(fixed_normal, "levels") <- 3
+  expect_equal(
+    BayesTools:::.density.prior.ordered_level_bounds(fixed_normal, 3L),
+    list(c(0, 0), c(-Inf, Inf), c(-Inf, Inf))
+  )
+  bounded <- prior_ordered(prior("uniform", list(-1, 2)), contrast = "cumulative_levels")
+  attr(bounded, "levels") <- 3
+  expect_equal(
+    BayesTools:::.density.prior.ordered_level_bounds(bounded, 3L),
+    rep(list(c(-1, 2)), 3)
+  )
+
+  # Level 2 of exp(total * share) near its support bound exp(0) = 1. Before
+  # reflection the KDE lost 38% of this bin; the remaining boundary bias of
+  # the reflected KDE is about 4% here (the level density has a nonzero slope
+  # at 0), and the Monte Carlo SE of the reference bin is about 0.7%.
+  set.seed(4104)
+  transformed <- density(gamma_total, transformation = "exp", n_samples = 1e5,
+                         n_points = 2001)
+  set.seed(4105)
+  reference <- exp(rng(gamma_total, 2e5, transform_factor_samples = TRUE))
+  level <- transformed[[2]]
+  expect_true(isTRUE(attr(level, "boundary_reflection")))
+  keep <- level$x >= 1 & level$x <= 1.05
+  bin <- sum(diff(level$x[keep]) * (utils::head(level$y[keep], -1) + utils::tail(level$y[keep], -1)) / 2)
+  expect_equal(bin, mean(reference[, 2] > 1 & reference[, 2] <= 1.05), tolerance = .1)
+})
+
 test_that("ordered ranges cover zero and scaled total densities", {
   p_positive <- prior_ordered(
     prior("normal", list(10, 1)),

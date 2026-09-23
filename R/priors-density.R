@@ -293,6 +293,7 @@ density.prior <- function(x,
   if(!is.matrix(samples)){
     samples <- matrix(samples, ncol = 1L)
   }
+  level_bounds <- .density.prior.ordered_level_bounds(x, ncol(samples))
 
   out <- vector("list", ncol(samples))
   names(out) <- colnames(samples)
@@ -313,10 +314,11 @@ density.prior <- function(x,
       )
     }else{
       x_density <- .density_kde_boundary(
-        x    = component_samples,
-        n    = n_points,
-        from = x_range[1],
-        to   = x_range[2]
+        x      = component_samples,
+        n      = n_points,
+        from   = x_range[1],
+        to     = x_range[2],
+        bounds = level_bounds[[i]]
       )
       x_values <- x_density$x
       y_values <- x_density$y
@@ -339,6 +341,9 @@ density.prior <- function(x,
       class(out[[i]]) <- c("density", "density.prior", "density.prior.simple")
       attr(out[[i]], "x_range") <- range(x_values)
       attr(out[[i]], "y_range") <- range(y_values)
+      if(isTRUE(attr(x_density, "boundary_reflection"))){
+        attr(out[[i]], "boundary_reflection") <- TRUE
+      }
     }
 
     if(inherits(out[[i]], "density.prior.point")){
@@ -355,6 +360,40 @@ density.prior <- function(x,
   class(out) <- c("density.prior.ordered", "list")
 
   out
+}
+
+.density.prior.ordered_level_bounds <- function(x, n_levels){
+
+  # Exact support of each ordered level (total times its allocation share),
+  # used as KDE reflection bounds; c(-Inf, Inf) when it is not known exactly.
+  unbounded <- rep(list(c(-Inf, Inf)), n_levels)
+  bounds <- tryCatch({
+    x <- .prior_ordered_default_bound(x)
+    total_hull <- .prior_linear_group_support_hull(list(
+      prior = x$total, weights = c(.ordered_total = 1)
+    ))
+    design <- .factor_term_design_from_metadata(x)$design
+    if(is.null(total_hull) || nrow(design) != n_levels){
+      unbounded
+    }else{
+      lapply(seq_len(nrow(design)), function(i){
+        share <- .prior_ordered_linear_share(
+          ordered_prior = x,
+          weights       = design[i, ],
+          indices       = seq_len(ncol(design))
+        )
+        # A scaled Beta share lies in [0, scale].
+        shares <- if(identical(share$type, "point")) share$scale else c(0, share$scale)
+        # A zero share gives an exact zero level whatever the total.
+        products <- as.vector(outer(total_hull, shares, function(total, share){
+          ifelse(share == 0, 0, total * share)
+        }))
+        range(products)
+      })
+    }
+  }, error = function(e) unbounded)
+
+  bounds
 }
 
 .density.prior.ordered_mixed <- function(x, x_seq, x_range, n_points,
