@@ -694,3 +694,52 @@ test_that("scaled predictors are centred in terms without a free intercept", {
   )
   expect_equal(unname(drop(offsets)), -u * m / s, tolerance = 1e-12)
 })
+
+test_that("independent scaled random slopes imply the documented original-scale correlation", {
+
+  # `(1 + x || id)` is independent on the centred scale. The original-scale
+  # intercept u0 - u1 m / s and slope u1 / s have correlation
+  # -(t1 m / s) / sqrt(t0^2 + (t1 m / s)^2). Reference: the package's marginal
+  # covariance Z G Z' for one group at x = 0 and x = 1, which gives
+  # Var(a) = c00, Cov(a, b) = c01 - c00, and Var(b) = c11 - 2 c01 + c00.
+  df <- data.frame(
+    x = c(4, 6, 5, 7, 3, 5),
+    id = factor(c("a", "a", "b", "b", "c", "c"))
+  )
+  m <- mean(df$x)
+  s <- stats::sd(df$x)
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + (1 + x || id),
+    parameter = "mu",
+    data = df,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(
+      id = random_block(sd = prior("gamma", list(2, 2)))
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1]]
+  sd_draws <- rbind(c(1, 1), c(0.5, 2), c(2, 0.3))
+  posterior <- cbind(0, sd_draws)
+  colnames(posterior) <- c("mu_intercept", random_term$sd_parameter_names)
+  fit <- coda::mcmc(posterior)
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+
+  vcov <- random_effects_marginal_vcov(
+    fit = fit,
+    parameter = "mu",
+    data = data.frame(x = c(0, 1), id = factor(c("a", "a"), levels = c("a", "b", "c"))),
+    posterior_samples = posterior,
+    prior_list = formula_result$prior_list
+  )$samples
+  c00 <- vcov[, 1L, 1L]
+  c01 <- vcov[, 1L, 2L]
+  c11 <- vcov[, 2L, 2L]
+  implied <- (c01 - c00) / sqrt(c00 * (c11 - 2 * c01 + c00))
+  documented <- -(sd_draws[, 2L] * m / s) /
+    sqrt(sd_draws[, 1L]^2 + (sd_draws[, 2L] * m / s)^2)
+  expect_equal(unname(implied), documented, tolerance = 1e-12)
+  # The worked magnitude in the documentation: equal SDs and m / s = 2.5.
+  expect_equal(-2.5 / sqrt(1 + 2.5^2), -0.9284767, tolerance = 1e-7)
+})

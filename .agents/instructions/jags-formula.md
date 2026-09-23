@@ -64,6 +64,12 @@ random intercept, such as `(0 + x | g)`, likewise implies an original-scale
 random intercept `-u m / s`, perfectly correlated with the slope `u / s`; its
 summaries report only the block's own coefficients.
 
+Independence is also specified on the centred scale. `(1 + x || g)`, `diag()`,
+or `id()` with scaled `x` has independent `u0`, `u1` (SDs `t0`, `t1`); the
+original-scale intercept `u0 - u1 m / s` and slope `u1 / s` then have
+correlation `-(t1 m / s) / sqrt(t0^2 + (t1 m / s)^2)` (about -0.93 for equal
+SDs and `m / s = 2.5`), which such blocks do not report.
+
 The implementation is split across `R/JAGS-formula-scale.R`,
 `R/JAGS-formula-scale-random-sd.R`, `R/JAGS-formula-scale-transform.R`, and
 the related design and prediction files. Reuse those maps rather than creating
