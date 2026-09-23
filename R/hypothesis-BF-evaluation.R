@@ -193,8 +193,7 @@
      length(rhs_symbols) == 0L && is.name(lhs)){
     return(list(
       operator = op,
-      value    = .hypothesis_parse_number(paste(deparse(rhs, width.cutoff = 500L),
-                                                collapse = ""))
+      value    = .hypothesis_parse_number(rhs)
     ))
   }
 
@@ -202,8 +201,7 @@
      length(lhs_symbols) == 0L && is.name(rhs)){
     return(list(
       operator = switch(op, "<" = ">", "<=" = ">=", ">" = "<", ">=" = "<="),
-      value    = .hypothesis_parse_number(paste(deparse(lhs, width.cutoff = 500L),
-                                                collapse = ""))
+      value    = .hypothesis_parse_number(lhs)
     ))
   }
 

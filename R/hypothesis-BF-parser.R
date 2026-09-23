@@ -361,7 +361,7 @@ hypothesis_normalize_level_references <- function(text){
       expr      = lhs,
       expression = lhs_expr,
       value     = if(length(rhs_symbols) == 0L){
-        .hypothesis_parse_number(rhs)
+        .hypothesis_parse_number(rhs_expr)
       }else{
         NULL
       },
@@ -491,9 +491,52 @@ hypothesis_normalize_level_references <- function(text){
     return(name)
   }
   expr <- .hypothesis_restore_escaped_constants(expr)
-  paste(deparse(expr, width.cutoff = 500L,
-               control = c("keepNA", "keepInteger", "niceNames", "digits17")),
-        collapse = "")
+  # Numeric literals are rendered with their shortest round-trip label so
+  # labels read as written (0.2, not 0.20000000000000001) while re-parsing
+  # the text still reproduces the exact parsed values.
+  placeholders <- .hypothesis_literal_placeholders(expr)
+  text <- paste(deparse(placeholders$expression, width.cutoff = 500L,
+                        control = c("keepNA", "keepInteger", "niceNames",
+                                    "digits17")),
+                collapse = "")
+  for(i in rev(seq_along(placeholders$labels))){
+    text <- gsub(names(placeholders$labels)[[i]], placeholders$labels[[i]],
+                 text, fixed = TRUE)
+  }
+  text
+}
+
+.hypothesis_literal_placeholders <- function(expr){
+
+  labels <- character()
+  replace <- function(node){
+    if(is.double(node) && length(node) == 1L && is.null(attributes(node)) &&
+       is.finite(node) && node >= 0){
+      placeholder <- paste0(".BayesToolsHypothesisLiteral",
+                            length(labels) + 1L, ".")
+      labels[[placeholder]] <<- .hypothesis_literal_label(node)
+      return(as.name(placeholder))
+    }
+    if(is.call(node)){
+      return(as.call(lapply(as.list(node), replace)))
+    }
+    node
+  }
+
+  list(expression = replace(expr), labels = labels)
+}
+
+.hypothesis_literal_label <- function(x){
+
+  # 15 significant digits is R's default deparse precision; more digits are
+  # used only when needed to reproduce the exact double.
+  for(digits in 15:17){
+    label <- sprintf(paste0("%.", digits, "g"), x)
+    if(identical(as.numeric(label), x)){
+      return(label)
+    }
+  }
+  label
 }
 
 .hypothesis_restore_escaped_constants <- function(expr){

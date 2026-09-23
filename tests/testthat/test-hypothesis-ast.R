@@ -53,6 +53,54 @@ test_that("hypothesis rendering preserves numeric values exactly", {
   expect_identical(hypothesis_parse(hypothesis_render(ast)), ast)
 })
 
+test_that("hypothesis labels render literals with shortest round-trip text", {
+
+  hypothesis <- c(
+    "theta > 0.2",
+    "theta - 0.1 > 0.3 vs theta - 0.1 = 0.2",
+    "exp(theta) > 1.1",
+    "-theta^2 > -0.04",
+    "theta > 1e-20",
+    "theta > 0.30000000000000004"
+  )
+  ast <- hypothesis_parse(hypothesis)
+  expect_identical(hypothesis_render(ast), hypothesis)
+  expect_identical(
+    vapply(ast$statements, function(statement) statement$right$label, ""),
+    c("theta <= 0.2", "theta - 0.1 = 0.2", "exp(theta) <= 1.1",
+      "-theta^2 <= -0.04", "theta <= 1e-20", "theta <= 0.30000000000000004")
+  )
+  expect_identical(hypothesis_parse(hypothesis_render(ast)), ast)
+
+  # Exact values are retained where labels are shortened or not.
+  precise <- hypothesis_parse("theta > 0.30000000000000004")$statements[[1L]]
+  expect_identical(precise$left$expression$right$value, 0.1 + 0.2)
+  expect_identical(
+    .hypothesis_simple_parameter_comparison(precise$left, "theta")$value,
+    0.1 + 0.2
+  )
+
+  rewritten <- hypothesis_rewrite(
+    hypothesis_parse(c("theta > 0.2", "theta = 0.1 vs theta > 0.3")),
+    c(theta = "phi")
+  )
+  expect_identical(
+    lapply(rewritten$statements, function(statement){
+      c(statement$left$label, statement$right$label)
+    }),
+    list(c("phi > 0.2", "phi <= 0.2"), c("phi = 0.1", "phi > 0.3"))
+  )
+
+  set.seed(1)
+  out <- hypothesis_BF(
+    stats::rnorm(2000, 0.3, 0.1),
+    prior("normal", list(0, 1)),
+    hypothesis = "theta > 0.2",
+    parameter  = "theta"
+  )
+  expect_identical(out[["Null"]], "theta <= 0.2")
+})
+
 test_that("hypothesis parsing recognizes exact non-syntactic catalog aliases", {
 
   coordinates <- .bt_build_parameter_coordinates(columns = "theta")
