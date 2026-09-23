@@ -1541,3 +1541,52 @@ test_that("scaled ensemble tables unscale contrast coefficients like fitted coor
   expect_equal(model_table[names(expected), "Mean"], unname(expected),
                tolerance = 1e-12)
 })
+
+test_that("scaled mixed contrast coefficients keep joint spike atoms", {
+
+  indicator_g <- rep(c(0, 0, 1, 1), 5)
+  indicator_xg <- rep(c(0, 1, 0, 1), 5)
+  set.seed(1)
+  slab <- matrix(stats::rnorm(20L * 4L), nrow = 20L)
+  spike_slab_columns <- function(parameter, variable, indicator){
+    out <- cbind(indicator, 0.5, variable * indicator, variable)
+    colnames(out) <- c(
+      paste0(parameter, c("_indicator", "_inclusion")),
+      paste0(parameter, "[", 1:2, "]"),
+      paste0(parameter, "_variable[", 1:2, "]")
+    )
+    out
+  }
+  samples <- cbind(
+    mu_intercept = stats::rnorm(20L),
+    mu_x = stats::rnorm(20L),
+    spike_slab_columns("mu_g", slab[, 1:2], indicator_g),
+    spike_slab_columns("mu_x__xXx__g", slab[, 3:4], indicator_xg)
+  )
+  fit <- .scaled_contrast_fit(
+    prior_spike_and_slab(
+      prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      prior_inclusion = prior("point", list(0.5))
+    ),
+    samples
+  )$fit
+  parameters <- names(attr(fit, "prior_list"))
+  fitted <- as_mixed_posteriors(fit, parameters = parameters)
+  expect_equal(
+    sum(BayesTools:::.posterior_atoms_get(fitted$mu_g)$mass),
+    mean(indicator_g == 0)
+  )
+
+  mixed <- as_mixed_posteriors(fit, parameters = parameters,
+                               transform_scaled = TRUE)
+  g_atoms <- BayesTools:::.posterior_atoms_get(mixed$mu_g)
+  xg_atoms <- BayesTools:::.posterior_atoms_get(mixed$mu_x__xXx__g)
+  # Unscaled, the factor coefficient is exactly zero only when both the factor
+  # and its interaction are in their spikes; the interaction needs only its own.
+  expect_equal(sum(g_atoms$mass), mean(indicator_g == 0 & indicator_xg == 0))
+  expect_equal(sum(g_atoms$mass),
+               mean(rowSums(unclass(mixed$mu_g) == 0) == 2))
+  expect_equal(sum(xg_atoms$mass), mean(indicator_xg == 0))
+  expect_true(all(g_atoms$locations == 0))
+  expect_identical(colnames(g_atoms$locations), c("mu_g{1}", "mu_g{2}"))
+})

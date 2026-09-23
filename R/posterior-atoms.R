@@ -909,15 +909,16 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
   samples
 }
 
-# Coefficient (index) names of mixed posterior columns. Treatment and
-# independent factor samples are labelled by factor level, while formula-scale
+# Coefficient (index) names of mixed posterior columns. Factor samples are
+# labelled by factor level or contrast coefficient `{j}`, while formula-scale
 # transformations name coefficients by index.
 .posterior_atoms_coefficient_columns <- function(parameter_samples, parameter){
 
   if(!is.matrix(parameter_samples)){
     return(parameter)
   }
-  if(isTRUE(attr(parameter_samples, "treatment", exact = TRUE)) ||
+  if(inherits(parameter_samples, "mixed_posteriors.factor") ||
+     isTRUE(attr(parameter_samples, "treatment", exact = TRUE)) ||
      isTRUE(attr(parameter_samples, "independent", exact = TRUE))){
     n_columns <- ncol(parameter_samples)
     if(n_columns == 1L){
