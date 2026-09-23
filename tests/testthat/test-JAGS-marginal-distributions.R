@@ -3180,6 +3180,63 @@ test_that("use_formula = FALSE prior densities ignore the coefficient's own mult
   expect_equal(.prior_height_for_test(conditional_marginal, 1), stats::dnorm(1), tolerance = 1e-8)
 })
 
+test_that("transform_scaled raw-coefficient prior densities ignore multiply_by", {
+
+  set.seed(1)
+  data <- data.frame(x = rnorm(50, 3, 2))
+  x_prior <- prior_spike_and_slab(prior("normal", list(0, 1)))
+  attr(x_prior, "multiply_by") <- "sigma"
+  formula_result <- JAGS_formula(
+    ~ x, parameter = "mu", data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1)), x = x_prior),
+    formula_scale = list(x = TRUE)
+  )
+  scale <- formula_result$formula_scale[["mu_x"]]
+  n <- 400
+  indicator <- rep(c(0, 1), length.out = n)
+  posterior <- cbind(
+    mu_intercept = rnorm(n), mu_x = indicator * rnorm(n),
+    mu_x_indicator = indicator, sigma = rlnorm(n)
+  )
+  fit <- list(
+    mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+    summary.pars = list(mutate = NULL),
+    monitor = colnames(posterior),
+    sample = n
+  )
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- c(formula_result$prior_list, list(sigma = prior("lognormal", list(0, 1))))
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+
+  samples <- as_mixed_posteriors(
+    fit, c("mu_intercept", "mu_x", "sigma"), transform_scaled = TRUE, n_prior_samples = 2000
+  )
+  prior_densities <- attr(samples, "prior_densities")
+  ratio <- scale$mean / scale$sd
+  # original-scale raw slope b / s: 1/2 point at 0 + 1/2 N(0, 1 / s)
+  expect_equal(BayesTools:::.prior_linear_density_point_mass(prior_densities$mu_x, 0), .5, tolerance = 1e-12)
+  for(value in c(.2, 1)){
+    .expect_prior_height_for_test(
+      structure(0, prior_density = prior_densities$mu_x),
+      value, .5 * stats::dnorm(value, 0, 1 / scale$sd)
+    )
+  }
+  # original-scale raw intercept b0 - (m / s) b: N(0, 1) or N(0, sqrt(1 + (m / s)^2))
+  for(value in c(.5, -1)){
+    .expect_prior_height_for_test(
+      structure(0, prior_density = prior_densities$mu_intercept),
+      value, .5 * stats::dnorm(value) + .5 * stats::dnorm(value, 0, sqrt(1 + ratio^2))
+    )
+  }
+  # linear-predictor targets keep the formula prior's multiply_by
+  expect_identical(
+    attr(attr(samples, "prior_density_context")$prior_list$mu_x, "multiply_by"),
+    "sigma"
+  )
+})
+
 test_that("marginal_posterior uses log(intercept) for log-intercept formulas", {
 
   log_formula <- ~ x
@@ -4944,3 +5001,24 @@ test_that("Marginal distributions with independent factor model work", {
 
 })
 
+
+test_that("transform_scaled raw coefficients of fit_complex_mixed use their own prior", {
+
+  skip_if_not_installed("rjags")
+
+  # mu_x_cont1 ~ N(0, 1) x spike(0.5) with multiply_by = "sigma"; the monitored
+  # coefficient is the raw node, so its prior is 1/2 at 0 + 1/2 N(0, 1)
+  # (the fit has no formula scaling, so transform_scaled leaves it unchanged)
+  fit <- readRDS(file.path(temp_fits_dir, "fit_complex_mixed.RDS"))
+  expect_identical(attr(attr(fit, "prior_list")$mu_x_cont1, "multiply_by"), "sigma")
+
+  samples <- as_mixed_posteriors(
+    fit, parameters = c("mu_intercept", "mu_x_cont1", "sigma"), transform_scaled = TRUE
+  )
+  marginal <- marginal_posterior(samples, "mu_x_cont1", use_formula = FALSE, prior_samples = TRUE)
+  prior_density <- attr(marginal, "prior_density")
+  expect_equal(prior_density_ordinate(prior_density, 0)$point_mass, .5, tolerance = 1e-12)
+  for(value in c(0, .5)){
+    .expect_prior_height_for_test(marginal, value, .5 * stats::dnorm(value))
+  }
+})

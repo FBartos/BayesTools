@@ -196,8 +196,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   # generate and store transformed prior densities if requested
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+    # The stored densities describe the unscaled monitored coefficients, which
+    # are raw JAGS nodes: a formula prior's 'multiply_by' scales only the linear
+    # predictor. The stored context keeps it for linear-predictor targets.
     prior_densities <- .generate_transformed_prior_densities(
-      prior_list       = prior_density_priors,
+      prior_list       = .marginal_posterior_strip_multiply_by(prior_density_priors),
       column_names     = colnames(model_samples),
       n_grid           = n_prior_samples,
       formula_scale    = formula_scale,
@@ -206,7 +209,15 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       condition_event  = condition_event
     )
     attr(out, "prior_densities")       <- prior_densities
-    attr(out, "prior_density_context") <- attr(prior_densities, "context")
+    attr(out, "prior_density_context") <- .prior_density_build_context(
+      prior_list       = prior_density_priors,
+      column_names     = colnames(model_samples),
+      formula_scale    = formula_scale,
+      n_grid           = n_prior_samples,
+      conditional      = condition_event[["conditional"]],
+      conditional_rule = conditional_rule,
+      condition_event  = condition_event
+    )
     attr(out, "transform_scaled")      <- TRUE
   }else{
     attr(out, "prior_density_context") <- .prior_density_build_context(
