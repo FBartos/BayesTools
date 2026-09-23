@@ -4,6 +4,11 @@
                                                   n_grid = .prior_linear_density_default_grid(),
                                                   tail_prob = .prior_linear_density_tail_prob()){
 
+  # The densities describe monitored coefficient columns, which are the raw
+  # JAGS nodes: a formula prior's 'multiply_by' scales only the linear
+  # predictor, never the coefficient itself.
+  prior_list <- .marginal_posterior_strip_multiply_by(prior_list)
+
   context <- .prior_density_build_context(
     prior_list       = prior_list,
     column_names     = column_names,
@@ -81,7 +86,9 @@
 #'
 #' @description Plots a prior density after applying the same deterministic
 #' coefficient transformation used for formula-scale back-transforms. The helper
-#' supports continuous densities and point-mass priors in the same plot.
+#' supports continuous densities and point-mass priors in the same plot. The
+#' density is that of the monitored coefficient: a prior's \code{multiply_by}
+#' scaling applies only to the linear predictor and is not applied here.
 #'
 #' @param prior_list named list of prior distributions.
 #' @param column_names character vector of coefficient column names defining the

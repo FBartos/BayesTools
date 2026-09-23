@@ -1299,3 +1299,43 @@ test_that("plot_transformed_prior returns NULL only for untransformed identity p
     fixed = TRUE
   )
 })
+
+test_that("plot_transformed_prior draws raw coefficients without multiply_by", {
+
+  # the monitored slope is its own N(0, 1) prior; multiply_by = "sigma" scales
+  # only the linear predictor
+  x_prior <- prior("normal", list(0, 1))
+  attr(x_prior, "multiply_by") <- "sigma"
+  prior_list <- list(
+    mu_intercept = prior("normal", list(0, 1)),
+    mu_x         = x_prior,
+    sigma        = prior("lognormal", list(0, .5))
+  )
+  formula_scale <- list(mu = list(mu_x = list(mean = 3, sd = 2)))
+  attr(formula_scale$mu, "log_intercept") <- FALSE
+  columns <- c("mu_intercept", "mu_x", "sigma")
+
+  # original-scale raw slope b / s ~ N(0, 1 / s); raw intercept
+  # b0 - (m / s) b ~ N(0, sqrt(1 + (m / s)^2))
+  expected <- list(
+    mu_x         = function(x) stats::dnorm(x, 0, 1 / 2),
+    mu_intercept = function(x) stats::dnorm(x, 0, sqrt(1 + (3 / 2)^2))
+  )
+  densities <- .generate_transformed_prior_densities(prior_list, columns, formula_scale)
+  for(parameter in names(expected)){
+    for(value in c(0, .3, 1)){
+      expect_equal(
+        as.numeric(.prior_linear_density_height(densities[[parameter]], value)),
+        expected[[parameter]](value),
+        tolerance = 1e-6
+      )
+    }
+    # plotted grid values; 1e-3 covers the display interpolation (~1e-4)
+    plot <- plot_transformed_prior(
+      prior_list, columns, formula_scale, parameter,
+      n_points = 101, plot_type = "ggplot"
+    )
+    line <- ggplot2::ggplot_build(plot)$data[[1]]
+    expect_lt(max(abs(line$y - expected[[parameter]](line$x))), 1e-3)
+  }
+})

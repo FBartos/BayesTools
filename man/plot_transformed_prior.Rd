@@ -57,7 +57,9 @@ output transformation was requested.
 \description{
 Plots a prior density after applying the same deterministic
 coefficient transformation used for formula-scale back-transforms. The helper
-supports continuous densities and point-mass priors in the same plot.
+supports continuous densities and point-mass priors in the same plot. The
+density is that of the monitored coefficient: a prior's \code{multiply_by}
+scaling applies only to the linear predictor and is not applied here.
 }
 \seealso{
 \code{\link[=plot_prior_list]{plot_prior_list()}} \code{\link[=transform_scale_samples]{transform_scale_samples()}}
