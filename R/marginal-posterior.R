@@ -1265,7 +1265,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         if(!is.prior(entry[[i]])){
           next
         }
-        if(K > 1L && is.prior.point(entry[[i]]) && !is.prior.vector(entry[[i]])){
+        location <- entry[[i]]$parameters[["location"]]
+        if(K > 1L && is.prior.point(entry[[i]]) && !is.prior.vector(entry[[i]]) &&
+           is.numeric(location) && length(location) == 1L){
           # a scalar point prior (e.g. the spike(0) filled in for a model that
           # omits the term) fixes every coefficient column of the term
           entry[[i]] <- .marginal_posterior_zero_vector_prior(

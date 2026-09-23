@@ -595,6 +595,10 @@
   }
   if(is.prior.point(prior) && !is.prior.vector(prior)){
     location <- prior$parameters[["location"]]
+    if(!is.numeric(location) || length(location) != 1L || !is.finite(location)){
+      # an expression location is a derived value with unknown support
+      return(NULL)
+    }
     return(.posterior_support_new(
       c(location, location),
       points = location,

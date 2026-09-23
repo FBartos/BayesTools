@@ -1106,6 +1106,29 @@ test_that(".filter_parameters removes spike at 0 priors", {
   expect_equal(length(result), 0)
 })
 
+test_that(".filter_parameters keeps point priors with expression locations", {
+
+  prior_list <- list(
+    a = prior("normal", list(0, 1)),
+    b = prior("point", list(location = expression(a))),
+    c = prior("point", list(0))
+  )
+
+  # the derived point b is not a structural spike at zero (no coercion error)
+  result <- BayesTools:::.filter_parameters(prior_list, remove_spike_0 = TRUE)
+  expect_identical(result, "c")
+
+  # mixed posteriors treat the derived point as having unknown support
+  set.seed(10)
+  a <- rnorm(50)
+  fit <- coda::mcmc(cbind(a = a, b = a))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- prior_list[c("a", "b")]
+  samples <- as_mixed_posteriors(fit, c("a", "b"))
+  expect_null(attr(samples$b, "posterior_support"))
+  expect_equal(as.numeric(marginal_posterior(samples, "b")), a)
+})
+
 
 test_that(".filter_parameters removes character specified parameters", {
   skip_on_cran()

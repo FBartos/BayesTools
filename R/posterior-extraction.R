@@ -371,7 +371,9 @@ NULL
   # handle remove_spike_0
   if (remove_spike_0) {
     spike_0_params <- names(prior_list)[sapply(seq_along(prior_list), function(i) {
+      # expression locations are derived values, never a structural zero
       is.prior.point(prior_list[[i]]) &&
+        is.numeric(prior_list[[i]][["parameters"]][["location"]]) &&
         isTRUE(all(prior_list[[i]][["parameters"]][["location"]] == 0))
     })]
     params_to_remove <- c(params_to_remove, spike_0_params)
