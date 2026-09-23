@@ -2442,6 +2442,39 @@ test_that("PET-PEESE prior plot data transforms ordered CDF quantiles", {
   expect_equal(lin_plot$y_uCI, 2 - 3 * stats::qnorm(.025) * x_seq, tolerance = 1e-4)
 })
 
+test_that("PET-PEESE prior plot data keeps the standard-error axis untransformed", {
+
+  prior_list    <- list(prior_PET("normal", list(0, 1)))
+  prior_list_mu <- list(prior("normal", list(0, 1)))
+
+  # independent reference: median of mu + se * PET, PET ~ N(0, 1)[0, Inf)
+  reference_median <- function(se){
+    cdf <- function(q){
+      stats::integrate(function(b) stats::pnorm(q - se * b) * 2 * stats::dnorm(b),
+                       lower = 0, upper = Inf, rel.tol = 1e-10)$value
+    }
+    stats::uniroot(function(q) cdf(q) - .5, c(-5, 5), tol = 1e-12)$root
+  }
+
+  plot_data <- BayesTools:::.plot_data_prior_list.PETPEESE(
+    prior_list, x_seq = NULL, x_range = c(0, 1), x_range_quant = NULL,
+    n_points = 3, n_samples = 1000,
+    transformation = "exp", transformation_arguments = NULL, transformation_settings = TRUE,
+    prior_list_mu = prior_list_mu
+  )
+  expect_equal(plot_data$x, c(0, .5, 1))
+  expect_equal(attr(plot_data, "x_range"), c(0, 1))
+  expect_equal(plot_data$y, exp(c(0, reference_median(.5), reference_median(1))), tolerance = 1e-6)
+
+  # the public prior plot and its posterior overlay share the [0, 1] axis
+  plot <- plot_prior_list(
+    prior_list, plot_type = "ggplot", n_points = 3, prior_list_mu = prior_list_mu,
+    transformation = "exp", transformation_settings = TRUE
+  )
+  layers <- ggplot2::ggplot_build(plot)$data
+  expect_equal(range(unlist(lapply(layers, `[[`, "x"))), c(0, 1))
+})
+
 test_that("PET-PEESE prior plot data falls back to samples for custom transformations", {
 
   set.seed(1)

@@ -2,14 +2,11 @@
                                                  transformation, transformation_arguments, transformation_settings, prior_list_mu,
                                                  effect_direction = "positive"){
 
+  # The x-axis is the standard error; the effect-size transformation applies
+  # only to the regression line (y-axis), so 'transformation_settings' does
+  # not rescale x.
   if(is.null(x_seq)){
     x_seq <- seq(x_range[1], x_range[2], length.out = n_points)
-  }
-
-  # specify it on the transformed range if requested
-  if(transformation_settings & !is.null(transformation)){
-    x_seq   <- .density.prior_transformation_x(x_seq,   transformation, transformation_arguments)
-    x_range <- .density.prior_transformation_x(x_range, transformation, transformation_arguments)
   }
 
   deterministic <- tryCatch(
