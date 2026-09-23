@@ -104,6 +104,11 @@ jobs:
       - name: Install JAGS (macOS)
         if: runner.os == 'macOS'
         run: |
+          # Remove a Homebrew jags first: on Intel runners Homebrew also links
+          # into /usr/local, where the package installs JAGS 4.3.2.
+          if brew list --formula jags > /dev/null 2>&1; then
+            brew uninstall --ignore-dependencies jags
+          fi
           mkdir -p ~/jags-installer
           if [ ! -f ~/jags-installer/JAGS-4.3.2.pkg ]; then
             echo "JAGS installer not found in cache, downloading..."
@@ -111,9 +116,6 @@ jobs:
               https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Mac%20OS%20X/JAGS-4.3.2.pkg/download
           fi
           sudo installer -pkg ~/jags-installer/JAGS-4.3.2.pkg -target /
-          if brew list --formula jags > /dev/null 2>&1; then
-            brew uninstall --ignore-dependencies jags
-          fi
 
       # Point pkg-config at the JAGS 4.3.2 installation; configure rejects any
       # JAGS major version other than 4 with a clear message

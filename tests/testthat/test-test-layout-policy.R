@@ -557,6 +557,15 @@ test_that("macOS CI builds against a cached JAGS 4 installer, never Homebrew's j
     install_run <- paste(install[[1L]]$run, collapse = "\n")
     expect_match(install_run, "~/jags-installer/JAGS-4\\.3\\.[0-9]+\\.pkg", info = basename(path))
     expect_match(install_run, "sudo installer -pkg", fixed = TRUE, info = basename(path))
+    # Homebrew links into /usr/local on Intel runners, so a Homebrew jags is
+    # removed before the package installs JAGS 4 there, never afterwards.
+    brew_removal <- regexpr("brew uninstall", install_run, fixed = TRUE)
+    if(brew_removal > 0L){
+      expect_true(
+        brew_removal < regexpr("sudo installer -pkg", install_run, fixed = TRUE),
+        info = basename(path)
+      )
+    }
   }
 })
 
