@@ -98,10 +98,8 @@
 
   prior_list_fallback
 }
-.simplify_as_mixed_posterior_bias <- function(samples, parameter) {
+.bias_samples_condition_event <- function(samples){
 
-  ### replace all remaining priors by null prior
-  prior_list <- attr(samples[["bias"]], "prior_list")
   condition_event <- attr(samples[["bias"]], "resolved_condition_event", exact = TRUE)
   if(is.null(condition_event)){
     condition_event <- attr(samples[["bias"]], "condition_event", exact = TRUE)
@@ -112,7 +110,24 @@
   if(is.null(condition_event)){
     condition_event <- attr(samples, "condition_event", exact = TRUE)
   }
-  prior_list <- .bias_prior_list_for_condition(prior_list, condition_event)
+
+  condition_event
+}
+.bias_samples_prior_list <- function(samples){
+
+  # bias branches with the prior weights implied by the samples' condition
+  prior_list <- .bias_prior_list_for_condition(
+    attr(samples[["bias"]], "prior_list"),
+    .bias_samples_condition_event(samples)
+  )
+  attr(prior_list, "omega_context") <- attr(samples[["bias"]], "omega_context")
+
+  prior_list
+}
+.simplify_as_mixed_posterior_bias <- function(samples, parameter) {
+
+  ### replace all remaining priors by null prior
+  prior_list <- .bias_samples_prior_list(samples)
 
   if (parameter == "PET") {
     prior_ind <- which(sapply(prior_list, \(x) !is.prior.PET(x)))

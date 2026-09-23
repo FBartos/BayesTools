@@ -252,12 +252,15 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         if(!is.null(samples[[parameter]])){
           prior_list <- attr(samples[[parameter]], "prior_list")
         }else if(!is.null(samples[["bias"]])){
-          prior_list <- attr(samples[["bias"]], "prior_list")
+          # bias branches weighted as in the (possibly conditioned) posterior
+          prior_list <- .bias_samples_prior_list(samples)
         }else{
           stop("No 'omega' or 'bias' samples found.")
         }
 
+        omega_context   <- attr(prior_list, "omega_context")
         prior_list      <- .simplify_prior_list(prior_list)
+        attr(prior_list, "omega_context") <- omega_context
         plot_data_prior <- .plot_data_prior_list.weightfunction(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
                                                                 n_points = n_points, n_samples = n_samples)
 
@@ -347,8 +350,18 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
           prior_list <- list(prior_list)
         }
       } else {
-        prior_list <- attr(samples[["bias"]], "prior_list")
-        prior_list <- prior_list[sapply(prior_list, \(x) is.prior.PET(x) || is.prior.PEESE(x) || is.prior.none(x) || is.prior.point(x))]
+        # bias branches weighted as in the (possibly conditioned) posterior;
+        # branches without PET or PEESE terms (no bias, weightfunctions, ...)
+        # imply PET = PEESE = 0
+        prior_list <- lapply(.bias_samples_prior_list(samples), function(bias_prior){
+          if(is.prior.PET(bias_prior) || is.prior.PEESE(bias_prior)){
+            return(bias_prior)
+          }
+          .set_prior_model_weight(
+            prior("point", parameters = list(location = 0)),
+            .prior_model_weight(bias_prior)
+          )
+        })
 
         # make cross product of the mixture priors
         priors_grid <- expand.grid(

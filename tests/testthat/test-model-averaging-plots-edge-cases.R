@@ -1111,6 +1111,70 @@ test_that("conditional PET/PEESE prior overlays do not reintroduce excluded bias
   )
 })
 
+test_that("full PET-PEESE and weightfunction prior overlays follow the bias condition", {
+
+  prior_list <- list(
+    mu   = prior("normal", list(mean = 0, sd = 1)),
+    bias = prior_mixture(
+      list(
+        prior_none(prior_weights = 1),
+        prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)), prior_weights = 1),
+        prior_PET("normal", list(mean = 0, sd = 1), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE, FALSE)
+    )
+  )
+  indicator <- rep(1:3, each = 20)
+  posterior <- cbind(
+    mu             = seq(-1, 1, length.out = 60),
+    bias_indicator = indicator,
+    "omega[1]"     = 1,
+    "omega[2]"     = ifelse(indicator == 2, seq(.1, .9, length.out = 60), 1),
+    PET            = ifelse(indicator == 3, seq(.1, 1.5, length.out = 60), 0)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+
+  # independent reference: mu ~ N(0, 1) plus a PET ~ N(0, 1)[0, Inf) branch
+  # with probability p_PET (other branches have PET = PEESE = 0)
+  mixture_quantile <- function(p, se, p_PET){
+    pet_cdf <- function(q){
+      stats::integrate(function(b) stats::pnorm(q - se * b) * 2 * stats::dnorm(b),
+                       lower = 0, upper = Inf, rel.tol = 1e-10)$value
+    }
+    cdf <- function(q) (1 - p_PET) * stats::pnorm(q) + p_PET * pet_cdf(q)
+    stats::uniroot(function(q) cdf(q) - p, c(-10, 10), tol = 1e-12)$root
+  }
+  prior_band <- function(samples){
+    plot <- plot_posterior(samples, "PETPEESE", plot_type = "ggplot", prior = TRUE, n_points = 3)
+    ggplot2::ggplot_build(plot)$data[[2]]
+  }
+
+  # conditional on PET-PEESE: only the PET branch remains
+  samples_con <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = "PETPEESE", force_plots = TRUE)
+  band_con <- prior_band(samples_con)
+  expect_equal(band_con$x, c(0, .5, 1))
+  expect_equal(band_con$y[2:3], c(mixture_quantile(.5, .5, 1), mixture_quantile(.5, 1, 1)), tolerance = 1e-6)
+  expect_gt(band_con$y[3], .5)
+
+  # unconditional: the weightfunction branch keeps its weight with PET = 0,
+  # so P(PET) = 1/3 rather than 1/2
+  samples <- as_mixed_posteriors(fit, parameters = c("mu", "bias"))
+  prior_data <- ggplot2::ggplot_build(
+    plot_posterior(samples, "PETPEESE", plot_type = "ggplot", prior = TRUE, n_points = 3)
+  )$data[[1]]
+  upper <- prior_data$y[prior_data$x == 1]
+  expect_equal(max(upper), mixture_quantile(.975, 1, 1 / 3), tolerance = 1e-6)
+
+  # conditional on omega: the weightfunction prior alone, omega[0.05,1] ~ Beta(1, 1)
+  samples_omega <- as_mixed_posteriors(fit, parameters = "bias", conditional = "omega", force_plots = TRUE)
+  wf_prior <- ggplot2::ggplot_build(
+    plot_posterior(samples_omega, "weightfunction", plot_type = "ggplot", prior = TRUE)
+  )$data[[2]]
+  expect_equal(unique(wf_prior$y), c(1, .5), tolerance = 1e-8)
+})
+
 test_that("omega posterior KDE does not infer spikes from exact sample values", {
   continuous_samples <- seq(.005, .995, length.out = 75)
   omega_samples <- cbind(
