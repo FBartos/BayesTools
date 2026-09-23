@@ -196,8 +196,11 @@ exact scalar covariance update from the parameter map and compiled random
 design; downstream optimizations must use this metadata rather than infer an
 update form from posterior samples or evaluated covariance matrices.
 Allocation-derived component SDs remain affine on `id`/`diag` and
-single-column blocks. On correlated multi-column structures they are factor
+single-column blocks when their public SD is on the fitted coefficient scale.
+On correlated multi-column structures they are factor
 `column_scale` updates of the selected quantity, not `A + h(sigma) B`.
+Formula-scaled allocation-derived SDs, and SDs that depend on several fitted
+coordinates, have no exact single-coordinate update and are `unsupported`.
 Do not make a downstream package reconstruct these quantities from raw JAGS
 columns.
 

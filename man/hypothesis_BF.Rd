@@ -152,4 +152,9 @@ rejected.
 \code{theta > 0 && phi < 1} \tab rejected \tab scalar boolean operator \cr
 \code{sin(theta) > 0} \tab rejected \tab function outside the whitelist
 }
+
+Prior region masses computed from a deterministic prior-density grid resolve
+the region boundaries on that grid: a boundary is located by bisection
+within each grid cell where the condition changes, but region features
+narrower than the grid spacing may be missed.
 }
