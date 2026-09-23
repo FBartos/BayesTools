@@ -34,7 +34,7 @@
   if(identical(left[["type"]], "region") &&
      identical(right[["type"]], "region")){
     return(.hypothesis_BF_result_labels(
-      .hypothesis_region_odds_BF(quantity, left, right),
+      .hypothesis_region_odds_BF(quantity, left, right, explicit = explicit),
       alternative = left,
       null        = right
     ))
@@ -47,7 +47,8 @@
       point_side     = left,
       region_side    = right,
       density_method = density_method,
-      inverse        = FALSE
+      inverse        = FALSE,
+      explicit       = explicit
     ), alternative = left, null = right))
   }
   if(identical(left[["type"]], "region") &&
@@ -57,7 +58,8 @@
       point_side     = right,
       region_side    = left,
       density_method = density_method,
-      inverse        = TRUE
+      inverse        = TRUE,
+      explicit       = explicit
     ), alternative = left, null = right))
   }
 
@@ -221,15 +223,18 @@
 }
 
 
-.hypothesis_region_odds_BF <- function(quantity, left, right) {
+.hypothesis_region_odds_BF <- function(quantity, left, right,
+                                       explicit = FALSE) {
 
   prior_left      <- .hypothesis_region_mass(quantity, left, prior = TRUE)
   prior_right     <- .hypothesis_region_mass(quantity, right, prior = TRUE)
   posterior_left  <- .hypothesis_region_mass(quantity, left, prior = FALSE)
   posterior_right <- .hypothesis_region_mass(quantity, right, prior = FALSE)
 
-  .hypothesis_check_prior_mass(prior_left, left[["label"]])
-  .hypothesis_check_prior_mass(prior_right, right[["label"]])
+  .hypothesis_check_prior_mass(prior_left, left[["label"]],
+                               allow_one = explicit)
+  .hypothesis_check_prior_mass(prior_right, right[["label"]],
+                               allow_one = explicit)
 
   if(posterior_left == 0 && posterior_right == 0){
     return(list(
@@ -261,7 +266,8 @@
 
 
 .hypothesis_transitive_BF <- function(quantity, point_side, region_side,
-                                      density_method, inverse) {
+                                      density_method, inverse,
+                                      explicit = TRUE) {
 
   if(!.hypothesis_point_region_compatible(point_side, region_side)){
     stop("Point-vs-region hypotheses must use the same scalar expression.",
@@ -276,7 +282,8 @@
   )
   region_prior     <- .hypothesis_region_mass(quantity, region_side, prior = TRUE)
   region_posterior <- .hypothesis_region_mass(quantity, region_side, prior = FALSE)
-  .hypothesis_check_prior_mass(region_prior, region_side[["label"]])
+  .hypothesis_check_prior_mass(region_prior, region_side[["label"]],
+                               allow_one = explicit)
 
   region_BF       <- region_posterior / region_prior
   region_BF_error <- .hypothesis_region_BF_error_percent(quantity, region_side)

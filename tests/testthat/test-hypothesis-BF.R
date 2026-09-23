@@ -903,6 +903,70 @@ test_that("hypothesis_BF rejects zero or one prior region mass", {
 })
 
 
+test_that("explicit region comparisons accept an encompassing prior region", {
+
+  set.seed(1)
+  half_normal <- prior("normal", list(mean = 0, sd = 1), list(0, Inf))
+  posterior   <- abs(stats::rnorm(20000, mean = 0.3, sd = 0.1))
+
+  # Prior masses are analytic: P(theta > 0) = 1, P(theta > .5) = 2 pnorm(-.5).
+  expected <- mean(posterior > 0.5) / (2 * stats::pnorm(-0.5))
+  nested <- hypothesis_BF(
+    posterior  = posterior,
+    prior      = half_normal,
+    hypothesis = "theta > 0.5 vs theta > 0",
+    seed       = 1
+  )
+  expect_equal(attr(nested, "raw_BF"), expected, tolerance = 1e-12)
+
+  point <- hypothesis_BF(
+    posterior  = posterior,
+    prior      = half_normal,
+    hypothesis = "theta = 0.2",
+    seed       = 1
+  )
+  transitive <- hypothesis_BF(
+    posterior  = posterior,
+    prior      = half_normal,
+    hypothesis = "theta = 0.2 vs theta > 0",
+    seed       = 1
+  )
+  expect_equal(attr(transitive, "raw_BF"), 1 / attr(point, "raw_BF"),
+               tolerance = 1e-12)
+
+  # Implicit statements keep the complement guard; zero mass stays invalid.
+  expect_error(
+    hypothesis_BF(posterior, half_normal, hypothesis = "theta > 0"),
+    "complement has zero prior mass"
+  )
+  expect_error(
+    hypothesis_BF(posterior, half_normal,
+                  hypothesis = "theta > 0.5 vs theta < 0"),
+    "is zero or non-finite"
+  )
+
+  # The same comparisons on a deterministic grid density (L16 makes the
+  # encompassing grid mass exactly one).
+  marginal <- .hypothesis_marginal_posterior_for_test(
+    posterior,
+    BayesTools:::.prior_linear_combination_density(
+      prior_list = list(theta = half_normal),
+      weights    = c(theta = 1)
+    )
+  )
+  grid_nested <- hypothesis_BF(
+    posterior  = marginal,
+    hypothesis = "theta > 0.5 vs theta > 0",
+    parameter  = "theta"
+  )
+  expect_equal(attr(grid_nested, "raw_BF"), expected, tolerance = 1e-4)
+  expect_error(
+    hypothesis_BF(marginal, hypothesis = "theta > 0", parameter = "theta"),
+    "complement has zero prior mass"
+  )
+})
+
+
 test_that("hypothesis_BF evaluates transformed and non-syntactic quantities", {
 
   posterior <- data.frame(

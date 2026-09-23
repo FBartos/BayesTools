@@ -627,11 +627,18 @@
 }
 
 
-.hypothesis_check_prior_mass <- function(mass, label) {
+.hypothesis_check_prior_mass <- function(mass, label, allow_one = FALSE) {
 
-  if(!is.finite(mass) || mass <= 0 || mass >= 1){
+  # A region with prior mass one is a valid encompassing hypothesis in an
+  # explicit comparison. An implicit statement compares a region with its
+  # complement, which then has zero prior mass.
+  if(!is.finite(mass) || mass <= 0){
     stop("Prior region mass for hypothesis '", label,
-         "' is zero, one, or non-finite.", call. = FALSE)
+         "' is zero or non-finite.", call. = FALSE)
+  }
+  if(!isTRUE(allow_one) && mass >= 1){
+    stop("Prior region mass for hypothesis '", label,
+         "' is one, so its complement has zero prior mass.", call. = FALSE)
   }
 
   return(invisible(TRUE))
