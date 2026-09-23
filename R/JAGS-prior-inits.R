@@ -75,16 +75,22 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 # the first L'Ecuyer-CMRG substream after 'set.seed(seed, kind = "L'Ecuyer-CMRG")'.
 # Sampling without replacement keeps restart i's seed independent of the number
 # of restarts. Unlike 'seed + i', restart i of seed s does not reproduce the
-# first attempt of seed s + i. The caller's RNG kind and state are restored.
+# first attempt of seed s + i. The caller's RNG kind and state are restored;
+# without a caller '.Random.seed', the kind is reset explicitly, because R keeps
+# the kind set by 'set.seed()' when '.Random.seed' is removed.
 .JAGS_restart_seeds        <- function(seed, restarts){
 
   had_state <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
   old_state <- if(had_state) get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  old_kind  <- RNGkind()[[1L]]
   on.exit({
     if(had_state){
       assign(".Random.seed", old_state, envir = .GlobalEnv)
-    }else if(exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)){
-      rm(".Random.seed", envir = .GlobalEnv)
+    }else{
+      RNGkind(kind = old_kind)
+      if(exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)){
+        rm(".Random.seed", envir = .GlobalEnv)
+      }
     }
   }, add = TRUE)
 

@@ -314,6 +314,16 @@ test_that("JAGS restart seeds come from their own stream of the seed", {
   restart_seeds(3, 5)
   expect_identical(get(".Random.seed", envir = globalenv()), state)
   expect_identical(RNGkind(), kind)
+
+  # Without a caller '.Random.seed', none is left behind and the kind is kept
+  # (removing '.Random.seed' alone would keep the L'Ecuyer-CMRG kind).
+  withr::with_preserve_seed({
+    RNGkind("Mersenne-Twister")
+    rm(".Random.seed", envir = globalenv())
+    restart_seeds(3, 5)
+    expect_false(exists(".Random.seed", envir = globalenv(), inherits = FALSE))
+    expect_identical(RNGkind()[[1]], "Mersenne-Twister")
+  })
 })
 
 test_that("JAGS_fit restarts use the restart-seed stream", {
