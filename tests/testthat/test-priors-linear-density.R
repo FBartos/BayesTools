@@ -214,7 +214,8 @@ test_that("conditional-normal mixtures preflight expansion before numerical eval
   expect_identical(calls, 0L)
 
   # Nested stored metadata are counted recursively even though constructors
-  # currently reject nesting. Three positive leaves cannot fit 42 evaluations.
+  # currently reject nesting. Three positive leaves exceed the leaf cap of
+  # 42 / 21 = 2 initial quadrature rules.
   nested <- prior_mixture(list(prior("point", list(0)), prior("normal", list(0, 1))))
   nested[[2L]] <- prior_mixture(list(prior("normal", list(0, 1)), prior("normal", list(0, 2))))
   attr(nested, "multiply_by") <- "s"
@@ -224,7 +225,7 @@ test_that("conditional-normal mixtures preflight expansion before numerical eval
   expect_identical(calls, 0L)
 })
 
-test_that("feasible conditional-normal leaves share one evaluation budget", {
+test_that("feasible conditional-normal leaves each receive the full evaluation budget", {
 
   budget <- .prior_linear_density_default_grid()
   slab <- prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5)))
@@ -250,9 +251,136 @@ test_that("feasible conditional-normal leaves share one evaluation budget", {
   }, numeric(1)))
   expect_equal(exp(result$log_density), expected, tolerance = 1e-7)
   expect_length(budgets, 7L)
-  expect_lte(sum(budgets), budget)
-  expect_lte(sum(evaluations), budget)
-  expect_lte(.prior_density_ordinate_integration(result$provenance)$budget, budget)
+  expect_true(all(budgets == budget))
+  expect_true(all(evaluations <= budget))
+  integration <- .prior_density_ordinate_integration(result$provenance)
+  expect_identical(integration$budget, 7 * budget)
+  expect_identical(integration$evaluations, sum(evaluations))
+  expect_true(integration$converged)
+})
+
+test_that("conditional-normal quadrature accepts a result converged at the budget", {
+
+  # b * s with s ~ half-normal: at 0 the ordinate is exp(z) K0(z) / (2 pi)
+  # with z = 1 / 4 (s = sinh(t) gives the K0 integral,
+  # https://dlmf.nist.gov/10.32.E9). The one-sided 15-point rule converges
+  # after three intervals, i.e. 15 * (2 * 3 - 1) = 75 evaluations.
+  priors <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1)),
+                 s = prior("normal", list(0, 1), list(0, Inf)))
+  attr(priors$b, "multiply_by") <- "s"
+  spec <- .prior_conditional_normal_spec(
+    priors, .prior_linear_split_multiply_groups(priors, c(a = 1, b = 1)),
+    c(a = NA_character_, b = NA_character_)
+  )
+  expected <- besselK(.25, 0, expon.scaled = TRUE) / (2 * pi)
+
+  exact_budget <- .prior_conditional_normal_ordinate(spec, 0, n_grid = 75)
+  integration <- exact_budget$provenance$integration
+  expect_true(integration$converged)
+  expect_identical(integration$message, "OK")
+  expect_identical(integration$evaluations, 75L)
+  expect_equal(exp(exact_budget$log_density), expected, tolerance = 1e-8)
+
+  # one evaluation short of the third interval: the budget, not QUADPACK's
+  # interval limit, stops the quadrature
+  short_budget <- .prior_conditional_normal_ordinate(spec, 0, n_grid = 74)
+  integration <- short_budget$provenance$integration
+  expect_false(integration$converged)
+  expect_true(is.na(short_budget$log_density))
+  expect_identical(integration$message, "the integration evaluation budget was exhausted")
+  expect_lte(integration$evaluations, 74L)
+})
+
+test_that("row and leaf conditional-normal ordinates each receive the full evaluation budget", {
+
+  # Normal intercept + x * slope * sigma with sigma ~ half-normal. At 0 row r
+  # has the closed-form ordinate exp(z) K0(z) / (2 pi |x_r|), z = 1 / (4 x_r^2)
+  # (s = sinh(t) gives the K0 integral, https://dlmf.nist.gov/10.32.E9), and
+  # the pooled rows are their average. The Gauss-Kronrod rules resolve these
+  # smooth integrands to about 1e-10 relative; the 1e-4 acceptance gate is
+  # QUADPACK's conservative error estimate.
+  sigma <- prior("normal", list(0, 1), list(0, Inf))
+  slope <- prior("normal", list(0, 1))
+  attr(slope, "multiply_by") <- "sigma"
+  priors <- list(mu_intercept = prior("normal", list(0, 1)), mu_x = slope, sigma = sigma)
+  row_ordinate <- function(x){
+    besselK(1 / (4 * x^2), 0, expon.scaled = TRUE) / (2 * pi * abs(x))
+  }
+  # a change-of-variable reference away from 0 (sigma = tan(angle))
+  row_reference <- function(x, value){
+    stats::integrate(function(angle){
+      s <- tan(angle)
+      stats::dnorm(value, sd = sqrt(1 + x^2 * s^2)) * 2 * stats::dnorm(s) / cos(angle)^2
+    }, 0, pi / 2, rel.tol = 1e-12)$value
+  }
+  row_ordinate_record <- function(context, rows, value){
+    .prior_density_ordinate_from_adaptive(
+      list(kind = "density_context_rows",
+           arguments = list(context = context, weights = rows)),
+      value
+    )
+  }
+  original <- .prior_conditional_normal_ordinate
+  budgets <- evaluations <- numeric()
+  testthat::local_mocked_bindings(
+    .prior_conditional_normal_ordinate = function(spec, value, n_grid){
+      result <- original(spec, value, n_grid)
+      budgets <<- c(budgets, n_grid)
+      evaluations <<- c(evaluations, result$provenance$integration$evaluations)
+      result
+    }
+  )
+
+  # 150 distinct covariate rows with the default marginal_posterior() budget
+  budget <- 10000L
+  x <- stats::qnorm(seq(.005, .995, length.out = 150L))
+  rows <- cbind(mu_intercept = 1, mu_x = x, sigma = 0)
+  context <- .prior_density_build_context(priors, names(priors), n_grid = budget)
+  result <- row_ordinate_record(context, rows, 0)
+  expect_identical(result$provenance$unique_rows, 150L)
+  expect_equal(exp(result$log_density), mean(row_ordinate(x)), tolerance = 1e-8)
+  expect_length(budgets, 150L)
+  expect_true(all(budgets == budget))
+  expect_true(all(evaluations <= budget))
+  row_integration <- lapply(result$provenance$row_classifications, `[[`, "integration")
+  expect_true(all(vapply(row_integration, `[[`, logical(1), "converged")))
+  expect_true(all(vapply(row_integration, `[[`, numeric(1), "budget") == budget))
+  integration <- .prior_density_ordinate_integration(result$provenance)
+  expect_true(integration$converged)
+  expect_identical(integration$budget, 150 * budget)
+  expect_identical(integration$evaluations, sum(evaluations))
+
+  shifted <- row_ordinate_record(context, rows, .3)
+  expect_equal(exp(shifted$log_density),
+               mean(vapply(x, row_reference, numeric(1), value = .3)),
+               tolerance = 1e-8)
+
+  # a spike-and-slab slope: each of the 60 rows has an exact spike leaf and a
+  # slab leaf whose quadrature gets the full budget
+  spike_slope <- prior_spike_and_slab(prior("normal", list(0, 1)))
+  attr(spike_slope, "multiply_by") <- "sigma"
+  spike_priors <- priors
+  spike_priors$mu_x <- spike_slope
+  x_60 <- stats::qnorm(seq(.01, .99, length.out = 60L))
+  rows_60 <- cbind(mu_intercept = 1, mu_x = x_60, sigma = 0)
+  spike_context <- .prior_density_build_context(spike_priors, names(spike_priors), n_grid = budget)
+  budgets <- evaluations <- numeric()
+  spike_result <- row_ordinate_record(spike_context, rows_60, 0)
+  expect_equal(exp(spike_result$log_density),
+               mean(.5 * row_ordinate(x_60) + .5 * stats::dnorm(0)),
+               tolerance = 1e-8)
+  expect_length(budgets, 60L)
+  expect_true(all(budgets == budget))
+  expect_true(.prior_density_ordinate_integration(spike_result$provenance)$converged)
+
+  # the public density height no longer rejects the pooled rows
+  density <- .prior_density_from_context_rows(
+    .prior_density_build_context(priors, names(priors), n_grid = 512L),
+    rows
+  )
+  height <- .prior_linear_density_height(density, 0)
+  expect_equal(as.numeric(height), mean(row_ordinate(x)), tolerance = 1e-8)
+  expect_true(attr(height, "numerical_diagnostics")$converged)
 })
 
 test_that("FFT removed-mass diagnostics have probability units", {

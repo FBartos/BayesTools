@@ -34,7 +34,12 @@
 #' Supported conditional-normal mixtures are structurally regular because they
 #' include an independent positive-variance Gaussian term. Their ordinates use
 #' quadrature over the multiplier's declared support and retain integration
-#' errors and evaluation budgets in `provenance`. Their structural
+#' errors and evaluation budgets in `provenance`. Every independent quadrature
+#' (each distinct design row, model or conditional mixture component, and
+#' spike-and-slab or mixture leaf) receives the full evaluation budget of the
+#' density (its grid size) and its own convergence check; `provenance` reports
+#' the summed evaluations and budgets of all of them, and row mixtures also
+#' keep each row's diagnostics. Their structural
 #' classification has `exact = TRUE`, while
 #' `provenance$integration$exact = FALSE` describes the numerical ordinate.
 #' Failed quadrature retains that classification with `log_density = NA` and
@@ -1313,7 +1318,7 @@ prior_density_ordinate <- function(x, value){
             component_priors <- prior_list
             component_priors[[parameter]] <- .prior_density_copy_parent_attributes(parent[[i]], parent)
             .prior_density_ordinate_linear_base(
-              component_priors, weights, source_transforms, value, expansion$budgets[j]
+              component_priors, weights, source_transforms, value, n_grid
             )
           })
           combined <- .prior_density_ordinate_combine(
@@ -2208,10 +2213,11 @@ prior_density_ordinate <- function(x, value){
     return(result)
   }
 
+  # Each model or conditional component is an independent ordinate and gets
+  # the full evaluation budget with its own convergence diagnostics.
   if(inherits(context, "prior_density_model_mixture_context")){
     component_classifier <- function(source_value){
       component_indices <- which(context$model_weights > 0)
-      component_budget <- floor(context$n_grid / length(component_indices))
       results <- lapply(component_indices, function(model_i){
         model_prior_list <- lapply(context$prior_list, function(parameter_priors){
           if(is.prior(parameter_priors)) parameter_priors else parameter_priors[[model_i]]
@@ -2226,7 +2232,7 @@ prior_density_ordinate <- function(x, value){
           weights,
           source_transforms,
           source_value,
-          n_grid = component_budget
+          n_grid = context$n_grid
         )
       })
       .prior_density_ordinate_combine(
@@ -2252,7 +2258,6 @@ prior_density_ordinate <- function(x, value){
   if(inherits(context, "prior_density_conditional_context")){
     component_classifier <- function(source_value){
       component_indices <- which(context$model_weights > 0)
-      component_budget <- floor(context$n_grid / length(component_indices))
       results <- lapply(context$prior_lists[component_indices], function(prior_list){
         if(!is.null(context$formula_scale) && length(context$formula_scale) > 0L){
           component_context <- .prior_density_context(
@@ -2262,7 +2267,6 @@ prior_density_ordinate <- function(x, value){
             context$n_grid,
             context$tail_prob
           )
-          component_context$n_grid <- component_budget
           return(.prior_density_ordinate_context_classifier(
             component_context,
             weights,
@@ -2277,7 +2281,7 @@ prior_density_ordinate <- function(x, value){
           weights,
           source_transforms,
           source_value,
-          n_grid = component_budget
+          n_grid = context$n_grid
         )
       })
       .prior_density_ordinate_combine(
@@ -2362,11 +2366,11 @@ prior_density_ordinate <- function(x, value){
     unique_keys <- unique(row_keys)
     row_counts <- tabulate(match(row_keys, unique_keys), nbins = length(unique_keys))
     row_indices <- match(unique_keys, row_keys)
-    row_context <- arguments$context
-    row_context$n_grid <- floor(row_context$n_grid / length(row_indices))
+    # Each distinct row is an independent ordinate and gets the full
+    # evaluation budget with its own convergence diagnostics.
     results <- lapply(row_indices, function(row_i){
       .prior_density_ordinate_context_classifier(
-        row_context,
+        arguments$context,
         weights[row_i, ],
         arguments$source_transforms,
         arguments$output_transformation,
@@ -2390,7 +2394,7 @@ prior_density_ordinate <- function(x, value){
       total_rows        = nrow(weights),
       weights_hash      = .prior_density_ordinate_numeric_hash(weights),
       row_classifications = Map(function(result, count){
-        list(
+        row <- list(
           count               = unname(count),
           behavior            = result$behavior,
           continuous_behavior =
@@ -2399,6 +2403,9 @@ prior_density_ordinate <- function(x, value){
           method               = result$method,
           source_kind          = result$provenance$kind
         )
+        row_integration <- .prior_density_ordinate_integration(result$provenance)
+        if(!is.null(row_integration)) row$integration <- row_integration
+        row
       }, results, row_counts)
     )
     if(!is.null(integration)) combined$provenance$integration <- integration

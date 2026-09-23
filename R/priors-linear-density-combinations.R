@@ -1183,6 +1183,10 @@
        additive = additive_groups, multiplied = product_groups)
 }
 
+# Each leaf of the expansion is an independent quadrature with the full
+# evaluation budget. The number of leaves is capped at the number of initial
+# quadrature rules the budget admits, which bounds the combinatorial expansion
+# before any numerical evaluation.
 .prior_conditional_normal_expansion <- function(prior_list, split, source_transforms, n_grid){
 
   groups <- .prior_conditional_normal_groups(prior_list, split)
@@ -1198,7 +1202,6 @@
       count <- 0
       always_normal <- TRUE
       zero_points <- TRUE
-      branch_counts <- numeric(length(indices))
       for(j in seq_along(indices)){
         child <- group
         child$prior <- .prior_density_copy_parent_attributes(prior[[indices[j]]], prior)
@@ -1207,13 +1210,11 @@
         info <- inspect_group(child, limit - count)
         if(is.null(info)) return(NULL)
         count <- count + info$count
-        branch_counts[j] <- info$count
         always_normal <- always_normal && info$always_normal
         zero_points <- zero_points && info$zero_points
       }
       return(list(count = count, always_normal = always_normal,
-                  zero_points = zero_points, indices = indices,
-                  branch_counts = branch_counts))
+                  zero_points = zero_points, indices = indices))
     }
     if(limit < 1) return(NULL)
     normal <- .prior_density_ordinate_linear_normal(
@@ -1244,9 +1245,7 @@
   mixture_names <- names(counts)[vapply(counts, function(x) !is.null(x$indices), logical(1))]
   if(length(mixture_names) == 0L) return(NULL)
   parameter <- mixture_names[[1L]]
-  first <- counts[[parameter]]
-  list(parameter = parameter, indices = first$indices,
-       budgets = floor(n_grid / total) * (total / first$count) * first$branch_counts)
+  list(parameter = parameter, indices = counts[[parameter]]$indices)
 }
 
 .prior_conditional_normal_spec <- function(prior_list, split, source_transforms){
@@ -1283,9 +1282,14 @@
 .prior_conditional_normal_ordinate <- function(spec, value, n_grid){
 
   # Finite bounds use 21-point rules; infinite bounds use 15-point rules,
-  # with paired evaluations for two-sided infinite intervals.
+  # with paired evaluations for two-sided infinite intervals. With k
+  # evaluations per interval, m intervals use k * (2 * m - 1) evaluations;
+  # 'max_intervals' is the largest m within the budget. QUADPACK reports
+  # "maximum number of subdivisions reached" whenever the interval count
+  # equals 'subdivisions', even for a converged result, so it gets one more
+  # interval and the evaluation cap below enforces the budget.
   initial_evaluations <- .prior_conditional_normal_initial_evaluations(spec$bounds)
-  subdivisions <- floor((n_grid + initial_evaluations) / (2 * initial_evaluations))
+  max_intervals <- floor((n_grid + initial_evaluations) / (2 * initial_evaluations))
   tolerance <- .prior_linear_density_refinement_tolerance()
   evaluations <- 0L
   integrand <- function(multiplier){
@@ -1300,13 +1304,13 @@
     exp(stats::dnorm(value, conditional_mean, conditional_sd, log = TRUE) +
           lpdf(spec$multiplier, multiplier))
   }
-  integral <- if(!is.finite(subdivisions) || subdivisions < 1){
+  integral <- if(!is.finite(max_intervals) || max_intervals < 1){
     list(value = NA_real_, abs.error = NA_real_, subdivisions = 0L,
          message = paste0("fewer than ", initial_evaluations,
                           " integration evaluations are available"))
   }else tryCatch(
     stats::integrate(integrand, spec$bounds[1L], spec$bounds[2L],
-                     subdivisions = subdivisions, rel.tol = tolerance$relative,
+                     subdivisions = max_intervals + 1L, rel.tol = tolerance$relative,
                      abs.tol = tolerance$absolute, stop.on.error = FALSE),
     error = function(e){
       list(value = NA_real_, abs.error = NA_real_, subdivisions = 0L,

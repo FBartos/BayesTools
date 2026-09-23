@@ -37,7 +37,12 @@ mass or singular-point metadata establishes the requested behavior.
 Supported conditional-normal mixtures are structurally regular because they
 include an independent positive-variance Gaussian term. Their ordinates use
 quadrature over the multiplier's declared support and retain integration
-errors and evaluation budgets in \code{provenance}. Their structural
+errors and evaluation budgets in \code{provenance}. Every independent quadrature
+(each distinct design row, model or conditional mixture component, and
+spike-and-slab or mixture leaf) receives the full evaluation budget of the
+density (its grid size) and its own convergence check; \code{provenance} reports
+the summed evaluations and budgets of all of them, and row mixtures also
+keep each row's diagnostics. Their structural
 classification has \code{exact = TRUE}, while
 \code{provenance$integration$exact = FALSE} describes the numerical ordinate.
 Failed quadrature retains that classification with \code{log_density = NA} and

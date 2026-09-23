@@ -81,6 +81,12 @@ The density-provenance implementation is shared across
 density algebra. Provenance must remain deterministic and compact: do not store
 draws, large grids, fitted objects, environments, or closures capturing them.
 
+Conditional-normal quadratures are independent 1-D integrals: each distinct
+design row, model or conditional mixture component, and mixture leaf receives
+the full evaluation budget (`n_grid`) and its own convergence check. Budgets
+are never divided among them; the budget only caps how many mixture leaves are
+expanded.
+
 For scalar prior-region probabilities, integrate the continuous grid's
 piecewise-linear interpolant up to the exact region boundaries (the comparison
 value, or boundaries located by bisection within the cells where a composite
