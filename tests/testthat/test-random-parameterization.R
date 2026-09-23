@@ -149,6 +149,130 @@ test_that("block SD overrides replace SDs inherited through the other slot", {
   )
 })
 
+test_that("top-level correlation priors apply only to correlated blocks", {
+
+  sd_prior <- .parameterization_sd_prior()
+  lkj <- prior_lkj(eta = 2)
+  rho <- prior("normal", list(0, 0.5))
+
+  inherited <- .bt_random_prior_for_block(
+    prior_random(sd = sd_prior, cor = lkj),
+    "g1"
+  )
+  expect_true(.bt_random_block_has_inherited_correlation(inherited))
+  for(case in list(list("us", 1L), list("diag", 3L), list("id", 2L))){
+    resolved <- .bt_random_block_resolve_correlation(
+      inherited, case[[1L]], case[[2L]]
+    )
+    expect_null(resolved$covariance$cor, info = case[[1L]])
+    expect_false(.bt_random_block_has_inherited_correlation(resolved))
+    expect_silent(.bt_validate_random_block_for_structure(
+      resolved, case[[1L]], "g1"
+    ))
+  }
+  resolved <- .bt_random_block_resolve_correlation(inherited, "us", 2L)
+  expect_identical(resolved$covariance$cor, lkj)
+  expect_false(.bt_random_block_has_inherited_correlation(resolved))
+  expect_error(
+    .bt_random_block_resolve_correlation(inherited, "cs", 3L, "g2"),
+    "random-effect block 'g2' supplies an LKJ correlation prior, but structure 'cs' uses a scalar correlation prior",
+    fixed = TRUE
+  )
+
+  scalar <- .bt_random_prior_for_block(
+    prior_random(sd = sd_prior, cor = rho),
+    "g1"
+  )
+  expect_silent(.bt_validate_random_block_for_structure(scalar, "us", "g1"))
+  expect_null(.bt_random_block_resolve_correlation(scalar, "us", 1L)$covariance$cor)
+  expect_null(.bt_random_block_resolve_correlation(scalar, "cs", 1L)$covariance$cor)
+  expect_identical(
+    .bt_random_block_resolve_correlation(scalar, "cs", 3L)$covariance$cor,
+    rho
+  )
+  expect_error(
+    .bt_random_block_resolve_correlation(scalar, "us", 2L, "g1"),
+    "random-effect block 'g1' supplies a scalar correlation prior, but structure 'us' uses an LKJ correlation prior",
+    fixed = TRUE
+  )
+
+  # A block-explicit correlation prior is not a default and is kept, so it is
+  # still rejected where the block has no correlation parameter.
+  explicit <- .bt_random_prior_for_block(
+    prior_random(sd = sd_prior, g1 = random_block(cor = lkj)),
+    "g1"
+  )
+  expect_false(.bt_random_block_has_inherited_correlation(explicit))
+  expect_identical(
+    .bt_random_block_resolve_correlation(explicit, "us", 1L)$covariance$cor,
+    lkj
+  )
+  expect_error(
+    .bt_validate_random_block_for_structure(explicit, "diag", "g1"),
+    "structure 'diag' has no correlation parameter",
+    fixed = TRUE
+  )
+})
+
+test_that("block overrides can remove an inherited correlation prior", {
+
+  set.seed(1)
+  data <- data.frame(
+    g1 = factor(rep(1:5, each = 6L)),
+    g2 = factor(rep(1:6, 5L)),
+    t  = factor(rep(1:3, 10L)),
+    x  = stats::rnorm(30L)
+  )
+  sd_prior <- .parameterization_sd_prior()
+  compile <- function(formula, specification){
+    JAGS_formula(
+      formula = formula,
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = specification
+    )
+  }
+  cleared <- prior_random(
+    sd = sd_prior,
+    cor = prior_lkj(eta = 2),
+    g1 = random_block(covariance = random_covariance(cor = NULL))
+  )
+  expect_null(.bt_random_prior_for_block(cleared, "g1")$covariance$cor)
+  result <- compile(~ 1 + (1 | g1) + (1 + x | g2), cleared)
+  terms <- result$formula_design$random_effects
+  names(terms) <- vapply(terms, `[[`, character(1), "block_name")
+  expect_null(terms$g1$correlation)
+  expect_identical(terms$g2$correlation$eta, 2)
+
+  # A top-level cor is not applied to a diag() block.
+  result <- compile(
+    ~ 1 + diag(1 | g1) + (1 + x | g2),
+    prior_random(sd = sd_prior, cor = prior_lkj(eta = 2))
+  )
+  terms <- result$formula_design$random_effects
+  names(terms) <- vapply(terms, `[[`, character(1), "block_name")
+  expect_null(terms$g1$correlation)
+  expect_identical(terms$g2$correlation$eta, 2)
+
+  # Removing the inherited scalar prior also removes its inherited scale, so
+  # the structure default (uniform on the raw correlation) applies.
+  result <- compile(
+    ~ 1 + cs(t | g2),
+    prior_random(
+      sd = sd_prior,
+      covariance = random_covariance(
+        cor = prior("normal", list(0, 0.5)),
+        cor_scale = "logit"
+      ),
+      g2 = random_block(covariance = random_covariance(cor = NULL))
+    )
+  )
+  rho_priors <- result$prior_list[grepl("_rho", names(result$prior_list))]
+  expect_identical(names(rho_priors), "mu__xREx__g2_rho")
+  expect_identical(rho_priors[[1L]]$distribution, "uniform")
+})
+
 test_that("mutated random parameterization metadata are rejected", {
 
   malformed <- prior_random(study = random_block())

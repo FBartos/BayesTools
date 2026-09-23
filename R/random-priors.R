@@ -13,7 +13,13 @@
 #' Formula random effects in [JAGS_formula()] and [JAGS_fit()] require an
 #' explicit `prior_random()` object. The top-level arguments are defaults used
 #' by every random-effect block unless a named `random_block()` override is
-#' supplied in `...`.
+#' supplied in `...`. A top-level `cor` prior applies only to blocks whose
+#' resolved structure and dimension have a correlation parameter; it is not
+#' applied to `id()`, `diag()`, or single-column blocks. A block override
+#' `random_covariance(cor = NULL)` removes the inherited `cor` prior so that
+#' the structure default applies. A block SD supplied through either `sd` or
+#' `covariance = random_covariance(sd = ...)` replaces the top-level SD
+#' supplied through either argument.
 #'
 #' Each override name must match a stable random-effect block label generated
 #' from the formula parser or supplied by the user through named random terms.
@@ -1476,9 +1482,16 @@ is.prior_random <- function(x){
     contrasts  = NULL,
     sd_source  = NULL
   )
+  # A top-level correlation prior is a default: it is resolved against the
+  # block's structure and dimension by .bt_random_block_resolve_correlation().
+  inherited_cor <- !is.null(block$covariance$cor)
 
   if(block_name %in% names(prior_random$blocks)){
     override <- prior_random$blocks[[block_name]]
+    if(!is.null(override$covariance) &&
+       "cor" %in% .bt_random_covariance_explicit_fields(override$covariance)){
+      inherited_cor <- FALSE
+    }
     for(field in names(override)){
       if(!is.null(override[[field]])){
         if(identical(field, "covariance")){
@@ -1511,8 +1524,54 @@ is.prior_random <- function(x){
       block["sd"] <- list(NULL)
     }
   }
+  if(inherited_cor && !is.null(block$covariance$cor)){
+    attr(block$covariance, "inherited_cor") <- TRUE
+  }
 
   class(block) <- c("random_block", "list")
+  block
+}
+
+.bt_random_block_has_inherited_correlation <- function(block){
+
+  !is.null(block$covariance) && !is.null(block$covariance$cor) &&
+    isTRUE(attr(block$covariance, "inherited_cor", exact = TRUE))
+}
+
+# Applies an inherited top-level correlation prior only to a block whose
+# resolved structure and dimension have a correlation parameter. Blocks
+# without one drop the inherited default; a block-explicit correlation prior
+# is kept and rejected where it does not apply.
+.bt_random_block_resolve_correlation <- function(block, structure, n_columns,
+                                                 block_name = NULL){
+
+  if(!inherits(block, "random_block")){
+    stop("'block' must be a random_block object.", call. = FALSE)
+  }
+  check_char(structure, "structure", allow_NA = FALSE)
+  check_int(n_columns, "n_columns", lower = 1L, allow_NA = FALSE)
+  if(!.bt_random_block_has_inherited_correlation(block)){
+    return(block)
+  }
+
+  structure <- tolower(.bt_random_covariance_normalize(structure))
+  covariance <- block$covariance
+  attr(covariance, "inherited_cor") <- NULL
+  if(.bt_random_structure_uses_no_correlation(structure) || n_columns == 1L){
+    covariance["cor"] <- list(NULL)
+  }else{
+    label <- "random-effect block"
+    if(!is.null(block_name) && nzchar(block_name)){
+      label <- paste0("random-effect block '", block_name, "'")
+    }
+    .bt_validate_random_covariance_for_structure(
+      covariance,
+      structure = structure,
+      label = label
+    )
+  }
+  block$covariance <- covariance
+
   block
 }
 
@@ -1540,10 +1599,18 @@ is.prior_random <- function(x){
 
   out <- base
   override_fields <- .bt_random_covariance_explicit_fields(override)
+  base_fields <- .bt_random_covariance_explicit_fields(base)
   for(field in c("structure", "sd", "cor")){
     if(!is.null(override[[field]])){
       out[[field]] <- override[[field]]
     }
+  }
+  if("cor" %in% override_fields && is.null(override$cor)){
+    # An explicit `cor = NULL` removes the inherited correlation prior and the
+    # scale that belonged to it, so the structure default applies.
+    out["cor"] <- list(NULL)
+    out$cor_scale <- override$cor_scale
+    base_fields <- setdiff(base_fields, "cor_scale")
   }
   if("cor_scale" %in% override_fields){
     out$cor_scale <- override$cor_scale
@@ -1561,10 +1628,7 @@ is.prior_random <- function(x){
   }
 
   class(out) <- c("random_covariance", "list")
-  attr(out, "explicit_fields") <- unique(c(
-    .bt_random_covariance_explicit_fields(base),
-    override_fields
-  ))
+  attr(out, "explicit_fields") <- unique(c(base_fields, override_fields))
   out
 }
 
@@ -1680,8 +1744,14 @@ is.prior_random <- function(x){
     label <- paste0("random-effect block '", block_name, "'")
   }
 
+  covariance <- block$covariance
+  if(.bt_random_block_has_inherited_correlation(block)){
+    # Whether an inherited top-level correlation prior applies depends on the
+    # block dimension; .bt_random_block_resolve_correlation() validates it.
+    covariance["cor"] <- list(NULL)
+  }
   .bt_validate_random_covariance_for_structure(
-    block$covariance,
+    covariance,
     structure = structure,
     label = label
   )

@@ -228,7 +228,13 @@ materialized as columns in \code{data} before they are referenced by a formula.
 Formula random effects in \code{\link[=JAGS_formula]{JAGS_formula()}} and \code{\link[=JAGS_fit]{JAGS_fit()}} require an
 explicit \code{prior_random()} object. The top-level arguments are defaults used
 by every random-effect block unless a named \code{random_block()} override is
-supplied in \code{...}.
+supplied in \code{...}. A top-level \code{cor} prior applies only to blocks whose
+resolved structure and dimension have a correlation parameter; it is not
+applied to \code{id()}, \code{diag()}, or single-column blocks. A block override
+\code{random_covariance(cor = NULL)} removes the inherited \code{cor} prior so that
+the structure default applies. A block SD supplied through either \code{sd} or
+\code{covariance = random_covariance(sd = ...)} replaces the top-level SD
+supplied through either argument.
 
 Each override name must match a stable random-effect block label generated
 from the formula parser or supplied by the user through named random terms.
