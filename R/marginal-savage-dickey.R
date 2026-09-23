@@ -70,10 +70,9 @@
 #' extrapolation from Gaussian kernel tails. The finite Bayes factor is then
 #' returned with a warning that it is not reliable evidence; for a model
 #' mixture, only the draws of models whose support contains the null count.
-#' Diagnostic
-#' messages are stored in the \code{"warnings"} attribute of each Bayes factor
-#' and, unless \code{silent = TRUE}, emitted once per parameter or level,
-#' prefixed with its label (for example \code{mu[A]}).
+#' Diagnostic messages are stored in the \code{"warnings"} attribute of each
+#' Bayes factor and, unless \code{silent = TRUE}, emitted once per parameter
+#' or level, prefixed with its label (for example \code{mu[A]}).
 #'
 #' @return \code{Savage_Dickey_BF} returns a Bayes factor.
 #'
