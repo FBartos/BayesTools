@@ -702,9 +702,11 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
       source_names = columns, formula_scale = formula_scale[[prefix]],
       parameter = prefix
     )
-    requested_columns <- unique(unlist(lapply(names(samples), function(parameter){
-      if(is.matrix(samples[[parameter]])) colnames(samples[[parameter]]) else parameter
-    }), use.names = FALSE))
+    coefficient_columns <- lapply(names(samples), function(parameter){
+      .posterior_atoms_coefficient_columns(samples[[parameter]], parameter)
+    })
+    names(coefficient_columns) <- names(samples)
+    requested_columns <- unique(unlist(coefficient_columns, use.names = FALSE))
     requested_columns <- intersect(requested_columns, transform$target_names)
     if(length(requested_columns) == 0L) next
     requested_design <- transform$matrix[requested_columns, , drop = FALSE]
@@ -734,22 +736,40 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
            prefix, "'.", call. = FALSE)
     }
     for(parameter in names(samples)){
-      target_columns <- if(is.matrix(samples[[parameter]])){
-        colnames(samples[[parameter]])
-      }else{
-        parameter
-      }
+      target_columns <- coefficient_columns[[parameter]]
       if(!all(target_columns %in% transform$target_names)) next
       design <- transform$matrix[target_columns, , drop = FALSE]
-      samples[[parameter]] <- .posterior_atoms_set(
-        samples[[parameter]],
-        .posterior_atoms_joint_linear(
-          prior_list, plan, design,
-          source_transforms = transform$source_transforms,
-          output_transforms = transform$output_transforms
-        )
+      atoms <- .posterior_atoms_joint_linear(
+        prior_list, plan, design,
+        source_transforms = transform$source_transforms,
+        output_transforms = transform$output_transforms
       )
+      if(is.matrix(samples[[parameter]])){
+        # report the atoms under the sample column labels (e.g. factor levels)
+        colnames(atoms$locations) <- colnames(samples[[parameter]])
+      }
+      samples[[parameter]] <- .posterior_atoms_set(samples[[parameter]], atoms)
     }
   }
   samples
+}
+
+# Coefficient (index) names of mixed posterior columns. Treatment and
+# independent factor samples are labelled by factor level, while formula-scale
+# transformations name coefficients by index.
+.posterior_atoms_coefficient_columns <- function(parameter_samples, parameter){
+
+  if(!is.matrix(parameter_samples)){
+    return(parameter)
+  }
+  if(isTRUE(attr(parameter_samples, "treatment", exact = TRUE)) ||
+     isTRUE(attr(parameter_samples, "independent", exact = TRUE))){
+    n_columns <- ncol(parameter_samples)
+    if(n_columns == 1L){
+      return(parameter)
+    }
+    return(paste0(parameter, "[", seq_len(n_columns), "]"))
+  }
+
+  colnames(parameter_samples)
 }

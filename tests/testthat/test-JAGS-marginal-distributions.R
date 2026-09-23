@@ -3312,6 +3312,62 @@ test_that("marginal_posterior without prior samples tolerates unavailable scaled
   )$prior_list$mu_f
 }
 
+test_that("transform_scaled factor atoms are rescaled for level-labelled columns", {
+
+  set.seed(6)
+  data <- data.frame(
+    x = rnorm(40, 5, 2),
+    f = factor(rep(c("a", "b", "c"), length.out = 40), levels = c("a", "b", "c"))
+  )
+  formula_result <- JAGS_formula(
+    ~ x * f, "mu", data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 5)),
+      x         = prior("normal", list(0, 1)),
+      f         = prior_spike_and_slab(prior_factor("normal", list(0, 1), contrast = "treatment")),
+      "x:f"     = prior_factor("normal", list(0, 1), contrast = "treatment")
+    ),
+    formula_scale = list(x = TRUE)
+  )
+  n <- 200
+  indicator <- rep(c(0, 1), length.out = n)
+  posterior <- cbind(
+    mu_intercept = rnorm(n), mu_x = rnorm(n),
+    "mu_f[1]" = indicator * rnorm(n), "mu_f[2]" = indicator * rnorm(n),
+    mu_f_indicator = indicator,
+    "mu_x__xXx__f[1]" = rnorm(n), "mu_x__xXx__f[2]" = rnorm(n)
+  )
+  fit <- list(
+    mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+    summary.pars = list(mutate = NULL),
+    monitor = colnames(posterior),
+    sample = n
+  )
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+
+  samples <- as_mixed_posteriors(
+    fit, c("mu_intercept", "mu_x", "mu_f", "mu_x__xXx__f"), transform_scaled = TRUE
+  )
+  # original-scale f = f* - (m / s) (x:f)* is continuous even in spike draws
+  expect_equal(colnames(samples$mu_f), c("mu_f[b]", "mu_f[c]"))
+  expect_true(all(unclass(samples$mu_f) != 0))
+  atoms <- attr(samples$mu_f, "posterior_atoms")
+  expect_true(atoms$declared)
+  expect_length(atoms$mass, 0L)
+  expect_equal(colnames(atoms$locations), c("mu_f[b]", "mu_f[c]"))
+
+  marginal <- marginal_posterior(samples, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+  for(level in c("b", "c")){
+    level_posterior <- marginal[[level]]
+    class(level_posterior) <- c(class(level_posterior), "marginal_posterior")
+    expect_true(is.finite(Savage_Dickey_BF(level_posterior, silent = TRUE)))
+  }
+})
+
 test_that("terms with unknown support leave level support unknown", {
 
   data <- data.frame(f = ordered(c("low", "mid", "high"), levels = c("low", "mid", "high")))
