@@ -101,7 +101,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
     }else if(is.prior.mixture(temp_prior)){
       # mixture priors
-      out[[temp_parameter]] <- .as_mixed_posteriors.mixture(model_samples, temp_prior, temp_parameter, condition_event[["conditional"]])
+      out[[temp_parameter]] <- .as_mixed_posteriors.mixture(
+        model_samples, temp_prior, temp_parameter,
+        condition_event[["conditional"]],
+        conditional_rule = condition_event[["conditional_rule"]]
+      )
 
     }else if(is_prior_phacking(temp_prior)){
       # p-hacking priors
@@ -667,7 +671,8 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   return(samples)
 }
-.as_mixed_posteriors.mixture        <- function(model_samples, prior, parameter, conditional){
+.as_mixed_posteriors.mixture        <- function(model_samples, prior, parameter, conditional,
+                                                conditional_rule = "AND"){
 
   # check input
   check_char(parameter, "parameter", check_length = FALSE)
@@ -729,6 +734,29 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       if("PEESE" %in% conditional && any(is_PEESE)){
         out_names <- c(out_names, "PEESE")
         par_names <- c(par_names, "PEESE")
+      }
+
+      if(identical(conditional_rule, "OR") && length(conditional) > 1L){
+        # an OR event also contains draws of branches outside the labels:
+        # keep the columns of every branch present in the conditioned draws
+        present <- unique(as.integer(model_samples[, paste0(parameter, "_indicator")]))
+        present <- seq_along(prior) %in% present
+        if(any(present & has_selection)){
+          out_names <- c(out_names, omega_names)
+          par_names <- c(par_names, omega_par)
+        }
+        if(any(present & has_phacking)){
+          out_names <- c(out_names, phacking_names)
+          par_names <- c(par_names, phacking_par)
+        }
+        if(any(present & is_PET)){
+          out_names <- c(out_names, "PET")
+          par_names <- c(par_names, "PET")
+        }
+        if(any(present & is_PEESE)){
+          out_names <- c(out_names, "PEESE")
+          par_names <- c(par_names, "PEESE")
+        }
       }
 
     }else{

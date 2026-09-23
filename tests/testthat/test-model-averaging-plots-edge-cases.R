@@ -1439,6 +1439,106 @@ test_that("weightfunction and individual bias prior overlays follow OR condition
   )
 })
 
+test_that("OR conditions keep the bias columns of every branch in the event", {
+
+  prior_list <- list(
+    mu   = prior_mixture(
+      list(
+        prior("spike",  list(0),       prior_weights = 2),
+        prior("normal", list(-1, 0.5), prior_weights = 1),
+        prior("normal", list( 1, 0.5), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE, FALSE)
+    ),
+    bias = prior_mixture(
+      list(
+        prior_none(prior_weights = 1),
+        prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)), prior_weights = 1),
+        prior_PET("normal", list(mean = 0, sd = 1), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE, FALSE)
+    )
+  )
+  mu_indicator   <- rep(1:3, length.out = 180)
+  bias_indicator <- rep(1:3, each = 60)
+  posterior <- cbind(
+    mu             = ifelse(mu_indicator == 1, 0, seq(-1.5, 1.5, length.out = 180)),
+    mu_indicator   = mu_indicator,
+    bias_indicator = bias_indicator,
+    "omega[1]"     = 1,
+    "omega[2]"     = ifelse(bias_indicator == 2, seq(.05, .95, length.out = 180), 1),
+    PET            = ifelse(bias_indicator == 3, seq(.1, 1.5, length.out = 180), 0)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  omega_columns <- c("omega[0,0.05]", "omega[0.05,1]")
+
+  # 'mu OR omega' contains draws of every bias branch with mu included, so the
+  # PET column stays; AND and a single label keep the labelled columns only
+  samples_or <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = c("mu", "omega"),
+                                    conditional_rule = "OR", force_plots = TRUE)
+  in_event <- mu_indicator != 1 | bias_indicator == 2
+  expect_equal(nrow(samples_or$bias), sum(in_event))
+  expect_equal(colnames(samples_or$bias), c(omega_columns, "PET"))
+  expect_equal(unname(samples_or$bias[, "PET"]), unname(posterior[in_event, "PET"]))
+  samples_and <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = c("mu", "omega"),
+                                     force_plots = TRUE)
+  expect_equal(colnames(samples_and$bias), omega_columns)
+  samples_single <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = "omega",
+                                        conditional_rule = "OR", force_plots = TRUE)
+  expect_equal(colnames(samples_single$bias), omega_columns)
+
+  # the PET-PEESE plot under 'mu OR omega' runs: posterior quantiles of
+  # mu + se * PET over the conditioned draws, and the prior overlay against a
+  # quadrature reference over the (mu component, bias branch) pairs in the
+  # event: (spike, wf) 1/4, (N(-1 or 1, .5), none or wf) 1/4 each and
+  # (N(-1 or 1, .5), PET) 1/8 each, with PET ~ N(0, 1)[0, Inf)
+  plot <- plot_posterior(samples_or, "PETPEESE", plot_type = "ggplot", prior = TRUE, n_points = 3)
+  layers <- ggplot2::ggplot_build(plot)$data
+  se_grid <- c(0, .5, 1)
+  band <- function(layer){
+    rbind(
+      lower = vapply(se_grid, function(se) min(layer$y[abs(layer$x - se) < 1e-12]), numeric(1)),
+      upper = vapply(se_grid, function(se) max(layer$y[abs(layer$x - se) < 1e-12]), numeric(1))
+    )
+  }
+  posterior_line <- vapply(se_grid, function(se){
+    stats::quantile(posterior[in_event, "mu"] + se * posterior[in_event, "PET"], c(.025, .5, .975), names = FALSE)
+  }, numeric(3))
+  expect_equal(layers[[4]]$y, posterior_line[2, ], tolerance = 1e-12)
+  expect_equal(band(layers[[3]]), posterior_line[c(1, 3), ], tolerance = 1e-12, ignore_attr = TRUE)
+
+  pairs <- data.frame(
+    mu     = c(NA, -1, -1, 1, 1),
+    pet    = c(FALSE, FALSE, TRUE, FALSE, TRUE),
+    weight = c(2, 2, 1, 2, 1) / 8
+  )
+  pair_cdf <- function(q, se, mu_mean, pet){
+    if(is.na(mu_mean)){
+      return(as.numeric(q >= 0))
+    }
+    if(!pet){
+      return(stats::pnorm(q, mu_mean, .5))
+    }
+    stats::integrate(function(b) stats::pnorm(q - se * b, mu_mean, .5) * 2 * stats::dnorm(b),
+                     lower = 0, upper = Inf, rel.tol = 1e-10)$value
+  }
+  reference_quantile <- function(p, se){
+    cdf <- function(q) sum(vapply(seq_len(nrow(pairs)), function(i){
+      pairs$weight[i] * pair_cdf(q, se, pairs$mu[i], pairs$pet[i])
+    }, numeric(1)))
+    stats::uniroot(function(q) cdf(q) - p, c(-10, 10), tol = 1e-12)$root
+  }
+  reference_band <- rbind(
+    lower = vapply(se_grid, function(se) reference_quantile(.025, se), numeric(1)),
+    upper = vapply(se_grid, function(se) reference_quantile(.975, se), numeric(1))
+  )
+  expect_equal(band(layers[[1]]), reference_band, tolerance = 1e-6)
+  # the spike of mu at zero carries the prior median (P(< 0) < .5 < P(<= 0))
+  expect_lt(max(abs(layers[[2]]$y)), 1e-6)
+})
+
 test_that("omega posterior KDE does not infer spikes from exact sample values", {
   continuous_samples <- seq(.005, .995, length.out = 75)
   omega_samples <- cbind(
