@@ -191,7 +191,9 @@ var.default <- function(x, ...){
 #' in double precision is at most 1e-6; otherwise the function stops with an
 #' error. For a one-sided truncation, the error is raised beyond about 33
 #' prior standard deviations from the mean. The same applies to \code{sd()}
-#' and to spike-and-slab priors with such a slab.
+#' and to spike-and-slab priors with such a slab. The variance can then be
+#' estimated from \code{rng()} draws of the prior, which sample the truncated
+#' distribution exactly, subject to Monte Carlo error.
 #'
 #' @param x a prior
 #' @param ... unused arguments
@@ -424,8 +426,9 @@ sd.prior     <- function(x, ...){
     stop(
       "The variance of the truncated normal prior is unavailable in double-precision ",
       "arithmetic: ", error, " for a truncation from ", bounds[1], " to ", bounds[2],
-      " prior standard deviations from the mean. Use a truncation closer to the ",
-      "prior mean or a wider truncation interval.",
+      " prior standard deviations from the mean. Estimate the variance from ",
+      "rng() draws of the prior, which sample the truncated distribution exactly, ",
+      "or use a truncation closer to the prior mean or a wider truncation interval.",
       call. = FALSE
     )
   }

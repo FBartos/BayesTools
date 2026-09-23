@@ -25,7 +25,9 @@ so the variance is returned only when its estimated relative rounding error
 in double precision is at most 1e-6; otherwise the function stops with an
 error. For a one-sided truncation, the error is raised beyond about 33
 prior standard deviations from the mean. The same applies to \code{sd()}
-and to spike-and-slab priors with such a slab.
+and to spike-and-slab priors with such a slab. The variance can then be
+estimated from \code{rng()} draws of the prior, which sample the truncated
+distribution exactly, subject to Monte Carlo error.
 }
 \examples{
 # create a standard normal prior distribution

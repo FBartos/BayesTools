@@ -1205,8 +1205,10 @@ test_that("truncated normal variances stop when their rounding error may exceed 
     paste0(
       "The variance of the truncated normal prior is unavailable in double-precision ",
       "arithmetic: its estimated rounding error exceeds the computed variance for a ",
-      "truncation from 1000 to Inf prior standard deviations from the mean. Use a ",
-      "truncation closer to the prior mean or a wider truncation interval."
+      "truncation from 1000 to Inf prior standard deviations from the mean. Estimate ",
+      "the variance from rng() draws of the prior, which sample the truncated ",
+      "distribution exactly, or use a truncation closer to the prior mean or a wider ",
+      "truncation interval."
     ),
     fixed = TRUE
   )
@@ -1220,11 +1222,21 @@ test_that("truncated normal variances stop when their rounding error may exceed 
     paste0(
       "The variance of the truncated normal prior is unavailable in double-precision ",
       "arithmetic: its estimated relative rounding error is 1.2e-05 for a ",
-      "truncation from 50 to Inf prior standard deviations from the mean. Use a ",
-      "truncation closer to the prior mean or a wider truncation interval."
+      "truncation from 50 to Inf prior standard deviations from the mean. Estimate ",
+      "the variance from rng() draws of the prior, which sample the truncated ",
+      "distribution exactly, or use a truncation closer to the prior mean or a wider ",
+      "truncation interval."
     ),
     fixed = TRUE
   )
+  # The suggested alternative: the variance of rng() draws matches the mpmath
+  # reference 9.99994000049999482e-07 at 1000 SD within Monte Carlo error
+  # (far-tail draws are exponential-like, kurtosis 9: relative SE sqrt(8 / n),
+  # 0.9% for n = 1e5; tolerance 5 SE).
+  set.seed(1)
+  far_tail_draws <- rng(prior("normal", list(0, 1), list(1000, Inf)), 1e5)
+  expect_true(all(far_tail_draws >= 1000))
+  expect_equal(stats::var(far_tail_draws), 9.99994000049999482e-07, tolerance = 5 * sqrt(8 / 1e5))
   # A 1e-4 SD wide interval: the value is 1e-3 relative off (mpmath reference
   # 8.333333330387e-10).
   expect_error(
