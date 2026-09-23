@@ -346,11 +346,12 @@
   TRUE
 }
 
+# A union or sum involving a component with unknown support (NULL) has unknown
+# support; dropping the component would report the known part as exact.
 .posterior_support_union <- function(supports, source = NULL){
 
   supports <- lapply(supports, .posterior_support_from_attribute)
-  supports <- supports[!vapply(supports, is.null, logical(1))]
-  if(length(supports) == 0L){
+  if(length(supports) == 0L || any(vapply(supports, is.null, logical(1)))){
     return(NULL)
   }
 
@@ -383,8 +384,7 @@
 .posterior_support_sum <- function(supports, source = NULL){
 
   supports <- lapply(supports, .posterior_support_from_attribute)
-  supports <- supports[!vapply(supports, is.null, logical(1))]
-  if(length(supports) == 0L){
+  if(length(supports) == 0L || any(vapply(supports, is.null, logical(1)))){
     return(NULL)
   }
 

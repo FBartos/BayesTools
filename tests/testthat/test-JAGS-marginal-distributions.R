@@ -3312,6 +3312,37 @@ test_that("marginal_posterior without prior samples tolerates unavailable scaled
   )$prior_list$mu_f
 }
 
+test_that("terms with unknown support leave level support unknown", {
+
+  data <- data.frame(f = ordered(c("low", "mid", "high"), levels = c("low", "mid", "high")))
+  formula_result <- JAGS_formula(
+    ~ f, "mu", data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1), list(0, Inf)),
+      f         = prior_ordered(prior("normal", list(0, 1)), allocation = c(.4, .6))
+    )
+  )
+  posterior <- cbind(mu_intercept = seq(.1, 2, length.out = 20),
+                     "mu_f[1]" = seq(-1, 1, length.out = 20),
+                     "mu_f[2]" = seq(-2, 1, length.out = 20))
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- formula_result$prior_list
+  samples <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_f"))
+
+  levels <- marginal_posterior(samples, "mu_f", formula = ~ f)
+  # the reference level is the truncated intercept alone; the other levels add
+  # an ordered term whose support is not derived, so their support is unknown
+  expect_equal(BayesTools:::.posterior_support_bounds(levels[["low"]]), c(0, Inf))
+  expect_null(attr(levels[["mid"]], "posterior_support"))
+  expect_null(attr(levels[["high"]], "posterior_support"))
+
+  known <- BayesTools:::.posterior_support_new(c(0, Inf))
+  expect_null(BayesTools:::.posterior_support_sum(list(known, NULL)))
+  expect_null(BayesTools:::.posterior_support_union(list(known, NULL)))
+  expect_equal(BayesTools:::.posterior_support_sum(list(known, known))$bounds, c(0, Inf))
+})
+
 test_that("mixed ordered spike-and-slab totals declare their within-model spike", {
 
   ordered_prior <- .ordered_prior_for_test(prior_spike_and_slab(prior("normal", list(0, 1))))
