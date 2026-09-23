@@ -1033,14 +1033,16 @@ interpret_tables <- function(sources, spec, ...){
   }
 
   if(is.null(lower) || is.null(upper)){
+    # Fall back to the widest probability columns, labelled with their own
+    # probabilities rather than with requested ones that are not available.
     probability_columns <- .interpret_probability_columns(data)
     probability_columns <- setdiff(probability_columns, central_column)
     if(length(probability_columns) >= 2L){
       probs <- as.numeric(probability_columns)
       lower <- probability_columns[which.min(probs)]
       upper <- probability_columns[which.max(probs)]
-      lower_prob <- .interpret_or(lower_prob, as.numeric(lower))
-      upper_prob <- .interpret_or(upper_prob, as.numeric(upper))
+      lower_prob <- as.numeric(lower)
+      upper_prob <- as.numeric(upper)
     }
   }
 

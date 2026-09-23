@@ -649,6 +649,36 @@ test_that("interpret_records matches explicitly requested padded probability col
 })
 
 
+test_that("interpret_records labels fallback intervals with their own probabilities", {
+
+  estimates <- data.frame(
+    Mean = 0.3,
+    "0.025" = 0.1,
+    "0.5" = 0.3,
+    "0.975" = 0.5,
+    check.names = FALSE
+  )
+  rownames(estimates) <- "mu"
+  source <- list(
+    type = "table",
+    data = estimates,
+    schema = list(lower_prob = 0.05, upper_prob = 0.95)
+  )
+  plan <- list(list(kind = "estimate", source = "est", row = "mu"))
+
+  out <- interpret_records(sources = list(est = source), plan = plan)
+  expect_equal(out$lower_value, 0.1)
+  expect_equal(out$upper_value, 0.5)
+  expect_equal(out$lower_prob, 0.025)
+  expect_equal(out$upper_prob, 0.975)
+  expect_equal(out$interval_level, 0.95)
+
+  text <- interpret_records(sources = list(est = source), plan = plan, output = "text")
+  expect_match(text, "95%", fixed = TRUE)
+  expect_false(grepl("90%", text, fixed = TRUE))
+})
+
+
 test_that("interpret_records supports central-only estimate tables", {
 
   estimates <- ensemble_estimates_table(
