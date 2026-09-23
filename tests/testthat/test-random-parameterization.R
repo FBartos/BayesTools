@@ -498,24 +498,41 @@ test_that("centered eligibility includes structure-specific compiler contracts",
       group_covariance = group_covariance
     )
   }
-  car_reason <- paste0(
-    "centered CAR requires one SD prior whose support is bounded away ",
-    "from zero and infinity"
+  # The reasons mirror the centered CAR compiler checks of the SD support.
+  zero_reason <- paste0(
+    "centered CAR SD prior has an unrepresentable initial JAGS precision ",
+    "at the lower centered SD support 0e+00; its support must be bounded ",
+    "away from zero and infinity"
   )
   unbounded <- list(
     half_normal = list(sd = .parameterization_sd_prior()),
     gamma = list(sd = prior("gamma", list(2, 2))),
+    tiny_point = list(sd = prior("point", list(location = 1e-200))),
     allocation = list()
+  )
+  car_reasons <- list(
+    half_normal = zero_reason,
+    gamma = zero_reason,
+    tiny_point = paste0(
+      "centered CAR SD prior has an unrepresentable initial JAGS precision ",
+      "at the lower centered SD support ",
+      format(1e-200, digits = 17, scientific = TRUE),
+      "; its support must be bounded away from zero and infinity"
+    ),
+    allocation = paste0(
+      "centered CAR requires one prior-owned block SD prior, which a ",
+      "variance allocation does not provide"
+    )
   )
   for(case in names(unbounded)){
     auto <- resolve("auto", unbounded[[case]], "car")
     expect_identical(auto$resolved, "noncentered", info = case)
-    expect_identical(auto$reason, car_reason, info = case)
+    expect_identical(auto$reason, car_reasons[[case]], info = case)
     expect_error(
       resolve("centered", unbounded[[case]], "car"),
       paste0(
         "Centered parameterization is not available for random-effect ",
-        "block 'id': ", car_reason, "."
+        "block 'id': ", car_reasons[[case]], "."
       ),
       fixed = TRUE
     )

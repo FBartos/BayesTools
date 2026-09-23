@@ -112,37 +112,49 @@
       )
     ))
   }
-  if(identical(structure, "car") &&
-     !.bt_random_effect_centered_car_sd_supported(prior_list)){
-    return(list(
-      ok = FALSE,
-      reason = paste0(
-        "centered CAR requires one SD prior whose support is bounded away ",
-        "from zero and infinity"
-      )
-    ))
+  if(identical(structure, "car")){
+    car_reason <- .bt_random_effect_centered_car_sd_reason(prior_list)
+    if(!is.null(car_reason)){
+      return(list(ok = FALSE, reason = car_reason))
+    }
   }
 
   list(ok = TRUE, reason = "structure supports centered parameterization")
 }
 
-.bt_random_effect_centered_car_sd_supported <- function(prior_list){
+# Mirrors the centered CAR compiler checks of the SD support; returns NULL
+# when both support endpoints give a finite positive initial JAGS precision.
+.bt_random_effect_centered_car_sd_reason <- function(prior_list){
 
   if(length(prior_list) != 1L){
-    return(FALSE)
+    return(paste0(
+      "centered CAR requires one prior-owned block SD prior, which a ",
+      "variance allocation does not provide"
+    ))
   }
   support <- .posterior_support_from_prior(prior_list[[1L]])
   if(is.null(support) || !is.numeric(support$bounds) ||
      length(support$bounds) != 2L || anyNA(support$bounds)){
-    return(FALSE)
+    return("centered CAR SD prior does not expose support bounds")
   }
-  bounds <- support$bounds
-  if(bounds[[1L]] < 0 || bounds[[2L]] <= 0 || bounds[[1L]] > bounds[[2L]]){
-    return(FALSE)
+  bounds <- c(lower = support$bounds[[1L]], upper = support$bounds[[2L]])
+  if(bounds[["lower"]] < 0 || bounds[["upper"]] <= 0 ||
+     bounds[["lower"]] > bounds[["upper"]]){
+    return("centered CAR SD prior does not have valid non-negative SD support")
   }
   initial_precision <- bounds^-2
+  invalid <- !is.finite(initial_precision) | initial_precision <= 0
+  if(any(invalid)){
+    endpoint <- which(invalid)[1L]
+    return(paste0(
+      "centered CAR SD prior has an unrepresentable initial JAGS precision ",
+      "at the ", names(bounds)[endpoint], " centered SD support ",
+      format(bounds[[endpoint]], digits = 17, scientific = TRUE),
+      "; its support must be bounded away from zero and infinity"
+    ))
+  }
 
-  all(is.finite(initial_precision) & initial_precision > 0)
+  NULL
 }
 
 .bt_random_effect_auto_centered_design <- function(model_matrix, group_map,
