@@ -2038,6 +2038,32 @@ parameter_transform_jacobian <- function(values, transform){
   list(status = "structural", fixed_value = as.numeric(fixed_value))
 }
 
+# A one-to-one random summary (identity or square of one source coordinate) is
+# structural exactly when that coordinate is structural, whatever the status
+# of the other coordinates its block evaluator reads.
+.bt_parameter_catalog_random_source_status <- function(source, coordinates,
+                                                       source_transform){
+
+  row <- match(source, coordinates$coordinate_name)
+  if(length(source) != 1L || is.na(row) ||
+     !source_transform %in% c("identity", "square")){
+    stop(
+      "Parameter catalog one-to-one random-summary source metadata are malformed. Refit the model with this version of BayesTools.",
+      call. = FALSE
+    )
+  }
+  status <- coordinates$monitor_status[row]
+  if(!identical(status, "structural")){
+    return(list(status = status, fixed_value = NA_real_))
+  }
+  value <- coordinates$fixed_value[row]
+  if(identical(source_transform, "square")){
+    value <- value^2
+  }
+
+  list(status = "structural", fixed_value = as.numeric(value))
+}
+
 .bt_parameter_catalog_random_sd_is_direct <- function(
     random_term, parameter, formula_scale){
 
@@ -2136,7 +2162,8 @@ parameter_transform_jacobian <- function(values, transform){
                               source_prior = "",
                               source_transform = "identity",
                               source_scale = NA_real_,
-                              allocation_derived = FALSE){
+                              allocation_derived = FALSE,
+                              status_source = NULL){
     canonical_name <- .bt_random_effect_semantic_name(
       parameter = parameter,
       owner = public_owner,
@@ -2191,6 +2218,13 @@ parameter_transform_jacobian <- function(values, transform){
       formula_design = formula_design,
       formula_scale = formula_scale
     )
+    if(!is.null(status_source) && !identical(state$status, "unavailable")){
+      state <- .bt_parameter_catalog_random_source_status(
+        source = status_source,
+        coordinates = coordinates,
+        source_transform = source_transform
+      )
+    }
     rows[[length(rows) + 1L]] <<- .bt_parameter_catalog_quantity(
       canonical_name = canonical_name,
       namespace = namespace,
@@ -2592,6 +2626,12 @@ parameter_transform_jacobian <- function(values, transform){
             ""
           }
           source_transform <- if(direct_source) "identity" else "random_sd"
+          status_source <- if(direct_source &&
+                              length(source_coordinate) == 1L){
+            source_coordinate
+          }else{
+            NULL
+          }
           source_scale <- if(identical(source_type, "one_to_one_transform") &&
                              nzchar(source_parameter)){
             .bt_parameter_catalog_random_sd_source_scale(
@@ -2627,7 +2667,8 @@ parameter_transform_jacobian <- function(values, transform){
             source_prior = source_prior,
             source_transform = source_transform,
             source_scale = source_scale,
-            allocation_derived = allocation_derived
+            allocation_derived = allocation_derived,
+            status_source = status_source
           )
           var_name <- .bt_random_effect_summary_name(
             parameter = parameter,
@@ -2659,7 +2700,8 @@ parameter_transform_jacobian <- function(values, transform){
             source_parameter = if(direct_source) source_parameter else "",
             source_prior = source_prior,
             source_transform = "square",
-            allocation_derived = allocation_derived
+            allocation_derived = allocation_derived,
+            status_source = status_source
           )
         }
       }

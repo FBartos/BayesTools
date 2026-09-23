@@ -1411,6 +1411,82 @@ test_that("identity random summaries preserve structural provenance", {
   )
 })
 
+test_that("one-to-one random summaries take status from their own source", {
+
+  set.seed(1)
+  data <- data.frame(id = factor(rep(c("a", "b", "c"), each = 4)),
+                     x = stats::rnorm(12))
+  formula_result <- JAGS_formula(
+    ~ 1 + x + random(1 + x | id, name = "id", covariance = "diag"),
+    "mu",
+    data,
+    list(intercept = prior("normal", list(0, 1)),
+         x = prior("normal", list(0, 1))),
+    prior_random = prior_random(id = random_block(
+      sd = prior("normal", list(0, 1), list(0, Inf)),
+      terms = list(intercept = prior("point", list(location = 0.5)))
+    ))
+  )
+  formula_design <- list(mu = formula_result$formula_design)
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  sd_names <- unique(random_term$sd_parameter_names)
+  coordinates <- .bt_build_parameter_coordinates(
+    columns = c("mu_intercept", "mu_x", "mu__xREx__id_x"),
+    prior_list = formula_result$prior_list,
+    formula_design = formula_design
+  )
+  catalog <- .bt_build_parameter_catalog(
+    coordinates,
+    formula_result$prior_list,
+    formula_design
+  )
+  quantity <- function(label){
+    parameter_catalog_resolve(catalog, label, namespace = "mu")$quantities
+  }
+
+  fixed_sd <- quantity("(mu) sd(intercept)")
+  expect_identical(fixed_sd$status, "structural")
+  expect_identical(fixed_sd$fixed_value, 0.5)
+  expect_identical(fixed_sd$source_type, "identity")
+  fixed_var <- quantity("(mu) var(intercept)")
+  expect_identical(fixed_var$status, "structural")
+  expect_identical(fixed_var$fixed_value, 0.25)
+  expect_identical(fixed_var$source_type, "one_to_one_transform")
+  for(label in c("(mu) sd(x)", "(mu) var(x)")){
+    expect_identical(quantity(label)$status, "sampled", info = label)
+    expect_identical(quantity(label)$fixed_value, NA_real_, info = label)
+  }
+  # The block evaluator still declares every SD coordinate of the block.
+  for(label in c("(mu) sd(intercept)", "(mu) var(intercept)",
+                 "(mu) sd(x)", "(mu) var(x)")){
+    expect_setequal(
+      quantity(label)$extraction_key[[1L]]$dependencies,
+      sd_names
+    )
+  }
+
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(cbind(
+      mu_intercept = c(0.1, 0.2),
+      mu_x = c(0.3, 0.4),
+      mu__xREx__id_x = c(1.5, 2)
+    ))),
+    prior_list = formula_result$prior_list,
+    formula_design = formula_design
+  )
+  fit_catalog <- parameter_catalog(fit)
+  draws <- function(label){
+    as.numeric(parameter_draws(
+      fit,
+      parameter_catalog_resolve(fit_catalog, label, namespace = "mu")
+    )[[1L]][, 1L])
+  }
+  expect_identical(draws("(mu) sd(intercept)"), c(0.5, 0.5))
+  expect_identical(draws("(mu) var(intercept)"), c(0.25, 0.25))
+  expect_identical(draws("(mu) sd(x)"), c(1.5, 2))
+  expect_identical(draws("(mu) var(x)"), c(2.25, 4))
+})
+
 test_that("declared variance allocations have metadata-only catalog rows", {
 
   data <- data.frame(
