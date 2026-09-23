@@ -745,6 +745,102 @@ test_that("composed bias priors keep every constant omega bin structural", {
   )
 })
 
+test_that("declared p-hacking kinds are structural convergence constants", {
+
+  # Columns and constants of prior-only JAGS fits: the reported pi_null is
+  # sampled, alpha is dropped as unreported, and omega and phack_kind are
+  # fixed by the declared p-hacking form.
+  set.seed(34)
+  n <- 200
+  mu_prior <- prior("normal", list(0, 1))
+  check <- function(bias, make){
+    JAGS_check_convergence(
+      .mock_convergence_fit(make(), make()),
+      prior_list = list(mu = mu_prior, bias = bias),
+      max_Rhat = 1.2,
+      min_ESS = 1,
+      max_error = 1,
+      max_SD_error = 1
+    )
+  }
+  single_draws <- function(){
+    alpha <- stats::rbeta(n, 1, 1)
+    cbind(
+      mu = stats::rnorm(n),
+      omega = 1,
+      alpha = alpha,
+      phack_kind = 1,
+      pi_null = 0.1 * alpha
+    )
+  }
+
+  for(bias in list(prior_phacking(), prior_bias(phacking = prior_phacking()))){
+    single <- check(bias, single_draws)
+    expect_true(single)
+    expect_null(attr(single, "errors"))
+    expect_equal(
+      .convergence_states(single),
+      c(
+        mu = "assessable",
+        omega = "structural_constant",
+        phack_kind = "structural_constant",
+        pi_null = "assessable"
+      )
+    )
+  }
+
+  # Mixture branches that declare the same form share the constant kind.
+  same_kind <- prior_mixture(list(
+    prior_phacking(source = .25, prior_weights = 1),
+    prior_phacking(source = .5, prior_weights = 1)
+  ))
+  same <- check(same_kind, function(){
+    cbind(
+      mu = stats::rnorm(n),
+      bias_indicator = rep(1:2, length.out = n),
+      omega = 1,
+      alpha = stats::rbeta(n, 1, 1),
+      phack_kind = 1,
+      pi_null = stats::rbeta(n, 1, 9)
+    )
+  })
+  expect_true(same)
+  expect_identical(
+    unname(.convergence_states(same)["phack_kind"]),
+    "structural_constant"
+  )
+
+  # Kinds that vary across branches (including branches without p-hacking,
+  # which declare 0) follow the mixture indicator and stay assessable.
+  varying_forms <- prior_mixture(list(
+    prior_phacking(form = "linear", prior_weights = 1),
+    prior_phacking(form = "quadratic", prior_weights = 1)
+  ))
+  with_none <- prior_mixture(list(
+    prior_none(prior_weights = 1),
+    prior_phacking(prior_weights = 1)
+  ), is_null = c(TRUE, FALSE))
+  expect_identical(
+    BayesTools:::.bt_convergence_structural_phacking_columns(
+      list(a = varying_forms, b = with_none)
+    ),
+    character()
+  )
+  varying <- check(varying_forms, function(){
+    indicator <- sample(1:2, n, replace = TRUE)
+    cbind(
+      mu = stats::rnorm(n),
+      bias_indicator = indicator,
+      omega = 1,
+      alpha = stats::rbeta(n, 1, 1),
+      phack_kind = indicator,
+      pi_null = stats::rbeta(n, 1, 9)
+    )
+  })
+  expect_true(varying)
+  expect_identical(unname(.convergence_states(varying)["phack_kind"]), "assessable")
+})
+
 test_that("ordered priors with point totals keep their constants structural", {
 
   set.seed(32)

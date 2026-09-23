@@ -60,7 +60,8 @@ undefined diagnostics may be ignored. Defaults to \code{FALSE}. A sampled
 column that never changes, including a constant model indicator, is not
 evidence of convergence and remains not assessable. Only constants declared
 by the prior are structural, such as point priors, reference and fixed
-publication-weight bins, and the point total of an ordered prior.}
+publication-weight bins, a p-hacking kind shared by every mixture branch,
+and the point total of an ordered prior.}
 }
 \value{
 \code{JAGS_check_convergence} returns a boolean indicating whether

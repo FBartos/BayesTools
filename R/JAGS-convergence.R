@@ -33,7 +33,8 @@
 #' column that never changes, including a constant model indicator, is not
 #' evidence of convergence and remains not assessable. Only constants declared
 #' by the prior are structural, such as point priors, reference and fixed
-#' publication-weight bins, and the point total of an ordered prior.
+#' publication-weight bins, a p-hacking kind shared by every mixture branch,
+#' and the point total of an ordered prior.
 #'
 #' @examples \dontrun{
 #' # simulate data
@@ -334,6 +335,7 @@ JAGS_check_convergence <- function(
   supports <- .bt_convergence_indicator_supports(prior_list)
   structural_columns <- c(
     .bt_convergence_structural_omega_bins(prior_list),
+    .bt_convergence_structural_phacking_columns(prior_list),
     .bt_convergence_structural_ordered_columns(prior_list)
   )
   samples  <- list()
@@ -526,6 +528,38 @@ JAGS_check_convergence <- function(
   }
 
   ifelse(local_bins == 1L, 1, NA_real_)
+}
+
+# The monitored p-hacking kind is a declared constant of each mixture branch:
+# the form code of a p-hacking branch and 0 for branches without p-hacking.
+# It is structural when every branch declares the same code, and remains
+# assessable when the kind varies with the mixture indicator.
+.bt_convergence_structural_phacking_columns <- function(prior_list){
+
+  if(length(prior_list) == 0L){
+    return(character())
+  }
+
+  structural <- character()
+  for(prior in prior_list){
+    if(!(is_prior_bias(prior) || is_prior_phacking(prior) ||
+         inherits(prior, "prior.bias_mixture"))){
+      next
+    }
+    branch_info <- lapply(.selection_normalize_priors(prior), .selection_branch_info)
+    has_phacking <- vapply(branch_info, function(x) !is.null(x$phacking), logical(1))
+    if(!any(has_phacking)){
+      next
+    }
+    kinds <- vapply(branch_info, function(x){
+      if(is.null(x$phacking)) 0 else as.numeric(.phack_kind(x$phacking$form))
+    }, numeric(1))
+    if(all(kinds == kinds[[1L]])){
+      structural <- c(structural, "phack_kind")
+    }
+  }
+
+  unique(structural)
 }
 
 # Ordered priors with a point total monitor a constant total. Their level
