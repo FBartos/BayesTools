@@ -202,7 +202,10 @@
 #' override the top-level default. Explicit `"centered"` compilation requires
 #' strictly positive backend-owned SD coordinates and therefore rejects
 #' point-mass-at-zero scales, inclusion-gated variance allocations, and external
-#' or row-indexed SD sources. `"auto"` falls back to `"noncentered"` when those
+#' or row-indexed SD sources. A centered CAR block additionally requires one
+#' block-owned SD prior whose support is bounded away from zero and infinity,
+#' and a known between-group covariance with several random-effect columns is
+#' compiled only noncentered. `"auto"` falls back to `"noncentered"` when those
 #' contracts or its design-information checks do not support centering.
 #'
 #' An explicitly named `random_block()` may request `"mean_centered"` for a

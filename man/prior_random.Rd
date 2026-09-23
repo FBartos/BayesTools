@@ -430,7 +430,10 @@ SD, allocation, or correlation priors. Block-specific values supplied through \c
 override the top-level default. Explicit \code{"centered"} compilation requires
 strictly positive backend-owned SD coordinates and therefore rejects
 point-mass-at-zero scales, inclusion-gated variance allocations, and external
-or row-indexed SD sources. \code{"auto"} falls back to \code{"noncentered"} when those
+or row-indexed SD sources. A centered CAR block additionally requires one
+block-owned SD prior whose support is bounded away from zero and infinity,
+and a known between-group covariance with several random-effect columns is
+compiled only noncentered. \code{"auto"} falls back to \code{"noncentered"} when those
 contracts or its design-information checks do not support centering.
 
 An explicitly named \code{random_block()} may request \code{"mean_centered"} for a
