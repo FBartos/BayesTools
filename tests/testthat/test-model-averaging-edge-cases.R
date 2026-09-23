@@ -537,6 +537,40 @@ test_that("model averaging distinguishes failures from zero evidence", {
   expect_null(attr(zero_evidence, "marglik_failure"))
 })
 
+test_that("inclusion log Bayes factors are computed in log space", {
+
+  # log BF = log(sum over alternatives of exp(logml) / 2) - 0 = -800 + log(1 / 2)
+  margliks <- c(0, -800, -1600)
+  expected_log_BF <- -800 + log(.5)
+
+  inference <- compute_inference(c(1, 1, 1), margliks, is_null = c(TRUE, FALSE, FALSE))
+  expect_identical(inference$BF, 0)
+  expect_equal(attr(inference, "log_BF"), expected_log_BF, tolerance = 1e-12)
+  overflow <- compute_inference(c(1, 1, 1), -margliks, is_null = c(TRUE, FALSE, FALSE))
+  expect_identical(overflow$BF, Inf)
+  # log(exp(1600) / 2 * (1 + exp(-800))) - 0
+  expect_equal(attr(overflow, "log_BF"), 1600 + log(.5), tolerance = 1e-12)
+
+  models <- models_inference(lapply(margliks, function(logml){
+    list(marglik = bridgesampling_object(logml), prior_weights = 1)
+  }))
+  # model 2 against models 1 and 3 (prior odds 1:2)
+  expect_equal(
+    attr(models[[2]]$inference, "inclusion_log_BF"),
+    -800 - (log(.5) + 0 + log1p(exp(-1600))),
+    tolerance = 1e-12
+  )
+  expect_identical(models[[2]]$inference$inclusion_BF, 0)
+
+  expect_equal(
+    BayesTools:::.inclusion_log_BF.probs(c(.5, .5), c(1e-320, 1 - 1e-320), c(FALSE, TRUE)),
+    log(1e-320),
+    tolerance = 1e-12
+  )
+  expect_identical(BayesTools:::.inclusion_log_BF.probs(c(.5, .5), c(0, 1), c(FALSE, TRUE)), -Inf)
+  expect_identical(BayesTools:::.inclusion_log_BF.probs(c(1, 0), c(1, 0), c(FALSE, TRUE)), NA_real_)
+})
+
 test_that("failed marginal-likelihood results reach the on_failure policy of model lists", {
 
   failed <- bridgesampling_object(NA)

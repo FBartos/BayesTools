@@ -73,6 +73,12 @@ inclusion_BF <- function(prior_probs, post_probs, margliks, is_null,
 
 .inclusion_BF.probs    <- function(prior_probs, post_probs, is_null){
 
+  exp(.inclusion_log_BF.probs(prior_probs, post_probs, is_null))
+}
+# Natural-log inclusion Bayes factors computed in log space, so log outputs do
+# not under/overflow through exp() (NA when undefined, -Inf/Inf at bounds).
+.inclusion_log_BF.probs <- function(prior_probs, post_probs, is_null){
+
   .inclusion_BF_check_probs(prior_probs, "prior_probs")
   .inclusion_BF_check_probs(post_probs, "post_probs", check_length = length(prior_probs))
 
@@ -86,7 +92,7 @@ inclusion_BF <- function(prior_probs, post_probs, margliks, is_null,
   }
 
   if(post_alt == 0){
-    return(0)
+    return(-Inf)
   }
   if(post_null == 0){
     return(Inf)
@@ -95,9 +101,21 @@ inclusion_BF <- function(prior_probs, post_probs, margliks, is_null,
   log_BF <- (log(post_alt) - log(post_null)) -
     (log(prior_alt) - log(prior_null))
 
-  return(exp(log_BF))
+  return(log_BF)
 }
 .inclusion_BF.margliks <- function(
+    prior_probs, margliks, is_null,
+    on_failure = c("error", "drop", "zero")){
+
+  on_failure <- match.arg(on_failure)
+  exp(.inclusion_log_BF.margliks(
+    prior_probs = prior_probs,
+    margliks    = margliks,
+    is_null     = is_null,
+    on_failure  = on_failure
+  ))
+}
+.inclusion_log_BF.margliks <- function(
     prior_probs, margliks, is_null,
     on_failure = c("error", "drop", "zero")){
 
@@ -121,7 +139,7 @@ inclusion_BF <- function(prior_probs, post_probs, margliks, is_null,
 
   active <- prior_probs > 0 & is.finite(margliks)
   if(!any(active & !is_null)){
-    return(0)
+    return(-Inf)
   }
   if(!any(active & is_null)){
     return(Inf)
@@ -141,7 +159,7 @@ inclusion_BF <- function(prior_probs, post_probs, margliks, is_null,
     prior_null
   )
 
-  return(exp(alt_log_marginal - null_log_marginal))
+  return(alt_log_marginal - null_log_marginal)
 }
 
 .inclusion_BF_check_probs <- function(probs, name, check_length = 0){

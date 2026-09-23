@@ -78,12 +78,13 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
   margliks    <- prepared$margliks
   prior_probs <- prepared$prior_probs
   post_probs  <- .model_averaging_post_probs(margliks, prior_probs)
-  BF          <- .inclusion_BF.margliks(
+  log_BF      <- .inclusion_log_BF.margliks(
     prior_probs = prior_probs,
     margliks     = margliks,
     is_null      = is_null,
     on_failure  = "error"
   )
+  BF          <- exp(log_BF)
 
   # Renormalize probabilities among non-null models. Keep the unconditional
   # inclusion BF; a BF recomputed after conditioning would be Inf.
@@ -104,6 +105,8 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
   attr(output, "is_null")     <- is_null
   attr(output, "conditional") <- conditional
   attr(output, "marglik_failure") <- prepared$audit
+  # natural-log inclusion BF computed in log space for log-scale outputs
+  attr(output, "log_BF")      <- log_BF
   class(output) <- c(class(output), "inference")
 
   return(output)
@@ -317,11 +320,12 @@ models_inference <- function(model_list,
   margliks    <- prepared$margliks
   prior_probs <- prepared$prior_probs
   post_probs  <- .model_averaging_post_probs(margliks, prior_probs)
-  incl_BF     <- sapply(seq_along(model_list), function(i){
+  incl_log_BF <- vapply(seq_along(model_list), function(i){
     is_null <- rep(TRUE, length(model_list))
     is_null[i] <- FALSE
-    return(inclusion_BF(prior_probs = prior_probs, margliks = margliks, is_null = is_null))
-  })
+    .inclusion_log_BF.margliks(prior_probs = prior_probs, margliks = margliks, is_null = is_null)
+  }, numeric(1))
+  incl_BF     <- exp(incl_log_BF)
 
   for(i in seq_along(model_list)){
     model_list[[i]][["inference"]] <- list(
@@ -331,6 +335,8 @@ models_inference <- function(model_list,
       "post_prob"    = post_probs[i],
       "inclusion_BF" = incl_BF[i]
     )
+    # natural-log inclusion BF computed in log space for log-scale outputs
+    attr(model_list[[i]][["inference"]], "inclusion_log_BF") <- incl_log_BF[i]
   }
 
   attr(model_list, "marglik_failure") <- prepared$audit
