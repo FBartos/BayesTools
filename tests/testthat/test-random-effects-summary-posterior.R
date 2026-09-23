@@ -700,3 +700,40 @@ test_that("raw random-slope SD rows keep their own level labels", {
   expect_equal(raw["(mu) g: sd(f[3])", "Mean"], standard["(mu) sd(f[3])", "Mean"])
   expect_identical(sum(grepl("sd(", rownames(raw), fixed = TRUE)), 2L)
 })
+
+test_that("raw group rows require their group level labels", {
+
+  raw_names <- c("mu__xREx__g_xRE_Zx[2,1]", "mu__xREx__g_xRE_COEFx[1,1]")
+  label <- function(group_levels){
+    BayesTools:::.bt_random_effect_summary_raw_effect_matrix_names(
+      names = raw_names,
+      raw_names = raw_names,
+      stem = "mu__xREx__g",
+      matrix = "_xRE_Zx",
+      label = "z",
+      components = "intercept",
+      group = "g",
+      group_levels = group_levels,
+      prefix = "(mu) "
+    )
+  }
+
+  # Numeric group labels: row 2 is the group labelled "20", never "2".
+  expect_identical(
+    label(c("10", "20")),
+    c("(mu) z(g[20], intercept)", "mu__xREx__g_xRE_COEFx[1,1]")
+  )
+  expect_error(
+    label(NULL),
+    paste0(
+      "Random-effect summary metadata do not identify group 2 of grouping ",
+      "factor 'g'. Refit the model with the current BayesTools version."
+    ),
+    fixed = TRUE
+  )
+  expect_error(
+    label("10"),
+    "do not identify group 2 of grouping factor 'g'",
+    fixed = TRUE
+  )
+})

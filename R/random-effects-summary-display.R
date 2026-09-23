@@ -733,11 +733,18 @@
     if(anyNA(index) || index[2L] < 1L || index[2L] > length(components)){
       next
     }
-    group_level <- as.character(index[1L])
-    if(!is.null(group_levels) && index[1L] >= 1L &&
-       index[1L] <= length(group_levels)){
-      group_level <- as.character(group_levels[index[1L]])
+    # A group row is labelled by its group level; a positional index would
+    # read as the level with that label.
+    if(is.null(group_levels) || index[1L] < 1L ||
+       index[1L] > length(group_levels)){
+      stop(
+        "Random-effect summary metadata do not identify group ", index[1L],
+        " of grouping factor '", group, "'. ",
+        "Refit the model with the current BayesTools version.",
+        call. = FALSE
+      )
     }
+    group_level <- as.character(group_levels[index[1L]])
     names[i] <- paste0(
       prefix,
       label,
