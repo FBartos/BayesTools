@@ -178,6 +178,91 @@ test_that("structured index levels are identified by exact tuple and numeric key
   )
 })
 
+test_that("numeric index prediction falls back to unambiguous fitted labels", {
+  compile <- function(formula, data){
+    JAGS_formula(formula, "mu", data,
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(sd = prior("point", list(location = 1)))
+    )$formula_design$random_effects[[1]]
+  }
+  indicator <- function(block, data){
+    .bt_random_effect_prediction_data(block, data)$model_matrix
+  }
+  unit_row <- function(column, n_columns){
+    matrix(replace(numeric(n_columns), column, 1), nrow = 1L)
+  }
+
+  # seq() yields 0.30000000000000004, displayed as "0.3".
+  times <- seq(0, 0.5, by = 0.1)
+  data <- data.frame(g = factor(rep(c("s1", "s2"), each = 6)), t = rep(times, 2))
+  for(structure in c("cs", "ar1")){
+    block <- compile(
+      stats::as.formula(paste0("~ 1 + ", structure, "(t | g)")),
+      data
+    )
+    expect_identical(block$column_names[4L], "t0.3", info = structure)
+    # Exact key.
+    expect_equal(
+      indicator(block, data.frame(g = factor("s1"), t = times[4L])),
+      unit_row(4L, 6L),
+      ignore_attr = TRUE,
+      info = structure
+    )
+    # A different double with the unique fitted label "0.3".
+    expect_false(identical(0.3, times[4L]))
+    expect_equal(
+      indicator(block, data.frame(g = factor("s1"), t = c(0.3, 0.5))),
+      rbind(unit_row(4L, 6L), unit_row(6L, 6L)),
+      ignore_attr = TRUE,
+      info = structure
+    )
+    expect_equal(
+      indicator(block, data.frame(g = factor("s1"), t = "0.3")),
+      unit_row(4L, 6L),
+      ignore_attr = TRUE,
+      info = structure
+    )
+    # A value whose label matches no fitted level is a new index level.
+    expect_error(
+      indicator(block, data.frame(g = factor("s1"), t = 0.35)),
+      "do not match the levels used for model specification",
+      info = structure
+    )
+  }
+
+  # When the label identifies two fitted levels, it identifies neither.
+  ambiguous <- compile(
+    ~ 1 + cs(t | g),
+    data.frame(g = factor(rep(c("s1", "s2"), each = 2)),
+               t = c(0.3, 0.1 + 0.2, 0.3, 0.1 + 0.2))
+  )
+  near <- 0.3 + 2e-16
+  expect_identical(as.character(near), "0.3")
+  expect_false(near %in% c(0.3, 0.1 + 0.2))
+  expect_error(
+    indicator(ambiguous, data.frame(g = factor("s1"), t = near)),
+    "do not match the levels used for model specification"
+  )
+  expect_equal(
+    indicator(ambiguous, data.frame(g = factor("s1"), t = 0.1 + 0.2)),
+    unit_row(2L, 2L),
+    ignore_attr = TRUE
+  )
+
+  # Multi-variable cells resolve each numeric component the same way.
+  cells <- compile(
+    ~ 1 + cs(a + b | g),
+    data.frame(g = factor(rep(c("s1", "s2"), each = 2)),
+               a = rep(c(0.1 * 3, 1), 2), b = rep(c(2, 2), 2))
+  )
+  expect_identical(cells$column_names, c("a_b0.3.2", "a_b1.2"))
+  expect_equal(
+    indicator(cells, data.frame(g = factor("s1"), a = 0.3, b = 2)),
+    unit_row(1L, 2L),
+    ignore_attr = TRUE
+  )
+})
+
 test_that("expression-only subtraction preserves structural zero intercept", {
   expect_equal(.remove_expressions(~ expression(x) - 1), ~ 1 - 1,
     ignore_formula_env = TRUE)

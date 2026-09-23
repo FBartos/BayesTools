@@ -109,7 +109,8 @@
     label = paste(index_variables, collapse = ":"),
     structure = structure,
     levels = index_levels$labels,
-    level_keys = index_levels$level_keys
+    level_keys = index_levels$level_keys,
+    component_levels = index_levels$components
   )
 
   out
@@ -227,24 +228,35 @@
 .bt_random_effect_structured_index_values <- function(data, variables,
                                                       index = NULL){
 
-  resolved <- .bt_random_effect_structured_index_resolve(data, variables)
-  if(is.null(index) || is.null(index$level_keys) || is.null(index$levels)){
-    return(.bt_random_effect_structured_index_factor(resolved))
+  if(is.null(index) || is.null(index$level_keys) || is.null(index$levels) ||
+     is.null(index$component_levels)){
+    # Fits without stored index keys replay the index by its display labels.
+    return(.bt_random_effect_structured_index_factor(
+      .bt_random_effect_structured_index_resolve(data, variables)
+    ))
   }
 
   level_keys <- index$level_keys
   levels <- index$levels
+  component_levels <- index$component_levels
   if(!is.character(level_keys) || !is.character(levels) ||
      length(level_keys) != length(levels) || anyNA(level_keys) ||
-     anyNA(levels) || anyDuplicated(level_keys) || anyDuplicated(levels)){
+     anyNA(levels) || anyDuplicated(level_keys) || anyDuplicated(levels) ||
+     !is.list(component_levels) ||
+     length(component_levels) != length(variables)){
     stop(
       "Structured random-effect index metadata for '", index$name,
       "' are malformed. Refit the model with this version of BayesTools.",
       call. = FALSE
     )
   }
-  level_index <- match(resolved$row_keys, level_keys)
-  if(anyNA(level_index[!is.na(resolved$row_keys)])){
+  row_keys <- .bt_random_effect_structured_index_prediction_keys(
+    data = data,
+    variables = variables,
+    component_levels = component_levels
+  )
+  level_index <- match(row_keys, level_keys)
+  if(anyNA(level_index[!is.na(row_keys)])){
     stop(
       "Levels specified in the '", index$name,
       "' factor variable do not match the levels used for model specification.",
@@ -252,6 +264,57 @@
     )
   }
   factor(levels[level_index], levels = levels)
+}
+
+# Prediction keys of index values: the exact key when it is a fitted level;
+# otherwise the fitted level whose display label (or, for a numeric fitted
+# level, its 15-significant-digit label) equals the value's label, when that
+# label identifies exactly one fitted level. Anything else keeps its own key
+# and is a new index level.
+.bt_random_effect_structured_index_prediction_keys <- function(
+    data, variables, component_levels){
+
+  component_keys <- lapply(seq_along(variables), function(i){
+    x <- data[[variables[[i]]]]
+    fitted <- component_levels[[i]]
+    keys <- .bt_random_effect_structured_index_component(
+      x,
+      variables[[i]]
+    )$row_keys
+    unmatched <- which(!is.na(keys) & !keys %in% fitted$level_keys)
+    if(length(unmatched) == 0L){
+      return(keys)
+    }
+    fitted_short_labels <- if(isTRUE(fitted$numeric)){
+      as.character(as.numeric(fitted$level_keys))
+    }else{
+      fitted$labels
+    }
+    value_labels <- as.character(x)[unmatched]
+    for(j in seq_along(unmatched)){
+      candidates <- which(
+        fitted$labels == value_labels[[j]] |
+          fitted_short_labels == value_labels[[j]]
+      )
+      if(length(candidates) == 1L){
+        keys[[unmatched[[j]]]] <- fitted$level_keys[[candidates]]
+      }
+    }
+    keys
+  })
+  if(length(component_keys) == 1L){
+    return(component_keys[[1L]])
+  }
+
+  key_matrix <- do.call(cbind, component_keys)
+  missing_rows <- apply(is.na(key_matrix), 1L, any)
+  row_keys <- rep(NA_character_, nrow(key_matrix))
+  row_keys[!missing_rows] <- apply(
+    key_matrix[!missing_rows, , drop = FALSE],
+    1L,
+    .bt_random_group_tuple_key
+  )
+  row_keys
 }
 
 .bt_random_effect_structured_index_factor <- function(resolved){
@@ -267,8 +330,13 @@
   components <- lapply(variables, function(variable){
     .bt_random_effect_structured_index_component(data[[variable]], variable)
   })
+  component_levels <- lapply(components, `[`,
+                             c("level_keys", "labels", "numeric"))
   if(length(components) == 1L){
-    return(components[[1L]][c("row_keys", "level_keys", "labels")])
+    return(c(
+      components[[1L]][c("row_keys", "level_keys", "labels")],
+      list(components = component_levels)
+    ))
   }
 
   row_key_matrix <- do.call(cbind, lapply(components, `[[`, "row_keys"))
@@ -302,7 +370,8 @@
   list(
     row_keys = row_keys,
     level_keys = row_keys[first_rows],
-    labels = labels
+    labels = labels,
+    components = component_levels
   )
 }
 
@@ -343,7 +412,8 @@
     return(list(
       row_keys = as.character(x),
       level_keys = labels,
-      labels = labels
+      labels = labels,
+      numeric = FALSE
     ))
   }
   if(is.numeric(x)){
@@ -365,7 +435,8 @@
     return(list(
       row_keys = level_keys[match(x, values)],
       level_keys = level_keys,
-      labels = labels
+      labels = labels,
+      numeric = TRUE
     ))
   }
 
@@ -376,7 +447,8 @@
   list(
     row_keys = row_keys,
     level_keys = labels,
-    labels = labels
+    labels = labels,
+    numeric = FALSE
   )
 }
 
