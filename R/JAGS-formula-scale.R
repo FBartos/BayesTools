@@ -821,14 +821,15 @@
 
 # Helper: Whether the requested columns are in the fitted coefficient
 # coordinates of the design. Columns that belong to a design term but carry
-# other names (factor-level labels, or more levels than fitted coefficients, as
-# in level-wise marginal summaries) are not the fitted coefficient vector; such
-# inputs keep the name-paired map.
+# other names (factor-level labels, contrast coefficients `{j}` of mixed
+# posteriors, or more levels than fitted coefficients, as in level-wise
+# marginal summaries) are not the fitted coefficient vector; such inputs keep
+# the name-paired map.
 .bt_formula_unscale_design_columns <- function(spec, term_names, prefix){
 
   .bt_formula_unscale_design_spec_check(spec, prefix)
   design_names <- .bt_formula_unscale_coefficient_names(spec, prefix)
-  strip_index <- function(x) sub("\\[[^]]+\\]$", "", x)
+  strip_index <- function(x) sub("(\\[[^]]+\\]|\\{[^}]+\\})$", "", x)
   foreign <- strip_index(term_names) %in% strip_index(design_names) &
     !term_names %in% design_names
 

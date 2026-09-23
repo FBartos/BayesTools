@@ -1474,3 +1474,70 @@ test_that("mixed contrast coefficients are never bracketed positions", {
   )
   expect_false(any(grepl("[", rownames(table), fixed = TRUE)))
 })
+
+# A formula fit of `~ x * g` with standardized `x` and synthetic draws.
+.scaled_contrast_fit <- function(factor_prior, samples){
+
+  data <- data.frame(
+    x = c(1, 4, 2, 8, 5, 3, 9, 6, 7),
+    g = factor(rep(c(5, 10, 20), 3), levels = c(5, 10, 20))
+  )
+  formula_result <- JAGS_formula(~ x * g, "mu", data, list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1)),
+    g = factor_prior,
+    "x:g" = factor_prior
+  ), formula_scale = list(x = TRUE))
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  list(
+    fit = attach_test_parameter_map(fit),
+    scale = formula_result$formula_scale$mu_x
+  )
+}
+
+test_that("scaled ensemble tables unscale contrast coefficients like fitted coordinates", {
+
+  columns <- c("mu_intercept", "mu_x", "mu_g[1]", "mu_g[2]",
+               "mu_x__xXx__g[1]", "mu_x__xXx__g[2]")
+  set.seed(1)
+  samples <- matrix(stats::rnorm(20L * length(columns)), nrow = 20L,
+                    dimnames = list(NULL, columns))
+  scaled <- .scaled_contrast_fit(
+    prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+    samples
+  )
+  fit <- scaled$fit
+  parameters <- names(attr(fit, "prior_list"))
+  mixed <- as_mixed_posteriors(fit, parameters = parameters)
+  expect_identical(colnames(mixed$mu_g), c("mu_g{1}", "mu_g{2}"))
+  table <- ensemble_estimates_table(
+    mixed,
+    parameters = parameters,
+    transform_scaled = TRUE,
+    formula_scale = attr(fit, "formula_scale")
+  )
+
+  # Analytic unscaling of `x * g` with x standardized by (m, s): factor
+  # coefficient j loses m / s times interaction coefficient j, and the
+  # interaction coefficient is divided by s. Exact linear algebra on the same
+  # draws: equality up to rounding.
+  ratio <- scaled$scale$mean / scaled$scale$sd
+  expected <- c(
+    "(mu) g{1}" = mean(samples[, "mu_g[1]"] - ratio * samples[, "mu_x__xXx__g[1]"]),
+    "(mu) g{2}" = mean(samples[, "mu_g[2]"] - ratio * samples[, "mu_x__xXx__g[2]"]),
+    "(mu) x:g{1}" = mean(samples[, "mu_x__xXx__g[1]"] / scaled$scale$sd),
+    "(mu) x:g{2}" = mean(samples[, "mu_x__xXx__g[2]"] / scaled$scale$sd)
+  )
+  expect_equal(table[names(expected), "Mean"], unname(expected),
+               tolerance = 1e-12)
+  # The model table unscales the fitted coordinates themselves.
+  model_table <- JAGS_estimates_table(fit, transform_scaled = TRUE)
+  expect_equal(model_table[names(expected), "Mean"], unname(expected),
+               tolerance = 1e-12)
+})
