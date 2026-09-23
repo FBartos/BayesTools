@@ -90,6 +90,65 @@ test_that("block parameterization inherits and overrides top-level policy", {
   expect_null(specification$blocks$site$parameterization)
 })
 
+test_that("block SD overrides replace SDs inherited through the other slot", {
+
+  data <- data.frame(
+    g = factor(rep(1:5, each = 4L)),
+    h = factor(rep(1:4, 5L))
+  )
+  top_sd   <- .parameterization_sd_prior()
+  block_sd <- prior("gamma", list(2, 2))
+  sd_distributions <- function(specification){
+    result <- JAGS_formula(
+      formula = ~ 1 + (1 | g) + (1 | h),
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = specification
+    )
+    terms <- result$formula_design$random_effects
+    stats::setNames(
+      vapply(terms, function(term){
+        result$prior_list[[term$sd_parameter_names[[1L]]]]$distribution
+      }, character(1)),
+      vapply(terms, `[[`, character(1), "block_name")
+    )
+  }
+
+  covariance_override <- prior_random(
+    sd = top_sd,
+    g = random_block(covariance = random_covariance(sd = block_sd))
+  )
+  resolved <- .bt_random_prior_for_block(covariance_override, "g")
+  expect_null(resolved$sd)
+  expect_identical(resolved$covariance$sd, block_sd)
+  expect_identical(
+    sd_distributions(covariance_override),
+    c(g = "gamma", h = "normal")
+  )
+
+  sd_override <- prior_random(
+    covariance = random_covariance(sd = block_sd),
+    g = random_block(sd = top_sd)
+  )
+  resolved <- .bt_random_prior_for_block(sd_override, "g")
+  expect_identical(resolved$sd, top_sd)
+  expect_null(resolved$covariance$sd)
+  expect_identical(
+    sd_distributions(sd_override),
+    c(g = "normal", h = "gamma")
+  )
+
+  expect_error(
+    sd_distributions(prior_random(
+      sd = top_sd,
+      g = random_block(sd = top_sd, covariance = random_covariance(sd = block_sd))
+    )),
+    "SD prior was supplied both",
+    fixed = TRUE
+  )
+})
+
 test_that("mutated random parameterization metadata are rejected", {
 
   malformed <- prior_random(study = random_block())

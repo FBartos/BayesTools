@@ -1495,6 +1495,20 @@ is.prior_random <- function(x){
         }
       }
     }
+    # A block SD supplied through either documented slot replaces the SD
+    # inherited through the other slot; only a block supplying both conflicts.
+    override_covariance_sd <- if(!is.null(override$covariance)){
+      override$covariance$sd
+    }else{
+      NULL
+    }
+    if(!is.null(override$sd) && is.null(override_covariance_sd) &&
+       !is.null(block$covariance)){
+      block$covariance["sd"] <- list(NULL)
+    }
+    if(is.null(override$sd) && !is.null(override_covariance_sd)){
+      block["sd"] <- list(NULL)
+    }
   }
 
   class(block) <- c("random_block", "list")
