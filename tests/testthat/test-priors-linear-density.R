@@ -543,6 +543,61 @@ test_that("mixture prior ordinates evaluate every component exactly at a density
   expect_height(plain, f_sum)
 })
 
+test_that("mixture components without exact ordinates are refined on their own grids", {
+
+  # Single-fit level intercept + t[mid] with an intercept mixture
+  # (N(0, 1) | N(0.5, 1)T(0, Inf)) and a treatment mixture (0 | the same
+  # truncated normal): components N, N + T (quadrature), T (jumps at 0) and
+  # T + T. T + T has no exact ordinate and is evaluated on its own grid; the
+  # grids are refined in lockstep with the documented criterion on the mixture
+  # height. Reference: the four component densities, T + T by a 1-D
+  # convolution integral.
+  truncated <- prior("normal", list(.5, 1), list(0, Inf))
+  f_truncated <- function(v) ifelse(v >= 0, stats::dnorm(v, .5) / stats::pnorm(.5), 0)
+  f_sum <- function(v){
+    stats::dnorm(v, .5, sqrt(2)) * stats::pnorm((v + .5) / sqrt(2)) / stats::pnorm(.5)
+  }
+  f_double <- function(v){
+    if(v <= 0) return(0)
+    stats::integrate(function(u) f_truncated(u) * f_truncated(v - u), 0, v, rel.tol = 1e-10)$value
+  }
+  reference <- function(v){
+    .25 * (stats::dnorm(v) + f_sum(v) + f_truncated(v) + f_double(v))
+  }
+  data <- data.frame(t = factor(c("lo", "mid", "hi"), levels = c("lo", "mid", "hi")))
+  priors <- JAGS_formula(~ 1 + t, "mu", data = data, prior_list = list(
+    intercept = prior_mixture(list(prior("normal", list(0, 1)), truncated),
+                              is_null = c(FALSE, FALSE)),
+    t = prior_mixture(list(prior_factor("point", list(location = 0), contrast = "treatment"),
+                           prior_factor("normal", list(.5, 1), list(0, Inf), contrast = "treatment")),
+                      is_null = c(TRUE, FALSE))
+  ))$prior_list
+  context <- .prior_density_build_context(priors, c("mu_intercept", "mu_t[1]", "mu_t[2]"),
+                                          n_grid = 10000)
+  density <- .prior_density_from_context(context, c(mu_intercept = 1, "mu_t[1]" = 1, "mu_t[2]" = 0))
+
+  # left of every jump the components are exact
+  for(value in c(-.05, -.01)){
+    height <- .prior_linear_density_height(density, value)
+    expect_null(attr(height, "adaptive_evaluation"))
+    expect_equal(as.numeric(height), reference(value), tolerance = 1e-10)
+  }
+  # at the jump and next to the T + T kink, only T + T uses a grid
+  for(value in c(0, .05)){
+    height <- .prior_linear_density_height(density, value)
+    evaluation <- attr(height, "adaptive_evaluation")
+    expect_true(evaluation$converged)
+    expect_identical(evaluation$components, 1L)
+    # (N | N + T) is one exact finite mixture with a quadrature component;
+    # the truncated intercept expands into T (exact) and T + T (grid)
+    components <- attr(height, "component_heights")
+    expect_identical(vapply(components, `[[`, character(1), "method"),
+                     c("quadrature", "exact", "grid"))
+    expect_equal(vapply(components, `[[`, numeric(1), "weight"), c(.5, .25, .25))
+    expect_lte(abs(as.numeric(height) - reference(value)), evaluation$error_bound)
+  }
+})
+
 test_that("FFT removed-mass diagnostics have probability units", {
 
   set.seed(135)

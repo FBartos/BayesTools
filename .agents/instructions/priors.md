@@ -92,7 +92,11 @@ one linear combination) are weighted sums of per-component ordinates, each from
 its own exact or regular method, so a numerical grid never spans a density jump
 between components. A Gaussian term plus one other continuous scalar term uses
 the conditional-normal quadrature wherever it occurs, so the same combination
-is never exact in one context and a grid approximation in another.
+is never exact in one context and a grid approximation in another. A mixture
+height sums its components' exact or regular heights with those of components
+that have none; each of the latter uses its own grid (never spanning another
+component's jump), all such grids are refined in lockstep, and the documented
+refinement criterion applies to the weighted mixture height.
 
 For scalar prior-region probabilities, integrate the continuous grid's
 piecewise-linear interpolant up to the exact region boundaries (the comparison

@@ -1938,6 +1938,347 @@
   range(mapped)
 }
 
+# Height from an exact or regular structural ordinate, or NULL. Quadrature
+# ordinates must have converged; exact ordinates (including exact finite
+# mixtures) are used directly, since grid refinement cannot converge across a
+# density jump.
+.prior_linear_density_exact_height <- function(ordinate){
+
+  if(is.null(ordinate)){
+    return(NULL)
+  }
+  continuous <- .prior_density_ordinate_continuous_behavior(ordinate)
+  if(identical(continuous, "regular") &&
+     .prior_density_ordinate_has_quadrature(ordinate$provenance)){
+    integration <- .prior_density_ordinate_integration(ordinate$provenance)
+    if(is.na(ordinate$log_density) || !isTRUE(integration$converged)){
+      stop("Conditional-normal prior density was rejected by diagnostics: integration reported '",
+           integration$message, "' with absolute error ", format(integration$absolute_error),
+           ". Inspect the prior specification and increase 'n_samples' for marginal inference.",
+           call. = FALSE)
+    }
+    height <- exp(ordinate$log_density)
+    attr(height, "numerical_diagnostics") <- integration
+    return(height)
+  }
+  if(isTRUE(ordinate$exact)){
+    if(identical(continuous, "infinite")){
+      return(Inf)
+    }
+    if(identical(continuous, "zero")){
+      return(0)
+    }
+    if(identical(continuous, "regular") && !is.na(ordinate$log_density)){
+      return(exp(ordinate$log_density))
+    }
+  }
+  NULL
+}
+
+# Height of a finite mixture whose ordinate is not exact (a model or
+# conditional mixture, or mixture and spike-and-slab terms of one linear
+# combination). Components with an exact or regular ordinate contribute it
+# directly; every other component gets its own adaptive grid, so no grid spans
+# a density jump between components. The component grids are refined in
+# lockstep and the documented criterion is applied to the weighted mixture
+# height, so a component whose own density is about zero at the value does not
+# block convergence. Component grids start at the mixture grid's source
+# spacing ('grid_spacing'), so they are never coarser than the grid they
+# replace. NULL when the density is not such a mixture, is a row mixture, or
+# carries an output transformation.
+.prior_linear_density_component_height <- function(adaptive, value,
+                                                   grid_spacing = NULL){
+
+  if(!is.list(adaptive) || !is.list(adaptive$arguments) ||
+     !is.null(adaptive$arguments$output_transformation)){
+    return(NULL)
+  }
+  if(!is.numeric(grid_spacing) || length(grid_spacing) != 1L ||
+     !is.finite(grid_spacing) || grid_spacing <= 0){
+    grid_spacing <- NULL
+  }
+  arguments <- adaptive$arguments
+  if(identical(adaptive$kind, "linear_combination")){
+    if(!is.list(arguments$prior_list) || !is.numeric(arguments$weights) ||
+       is.null(names(arguments$weights))){
+      return(NULL)
+    }
+    terms <- .prior_linear_mixture_terms(
+      prior_list        = arguments$prior_list,
+      weights           = arguments$weights,
+      source_transforms = arguments$source_transforms,
+      value             = value,
+      n_grid            = if(is.null(arguments$n_grid)) .prior_linear_density_default_grid() else arguments$n_grid,
+      tail_prob         = if(is.null(arguments$tail_prob)) .prior_linear_density_tail_prob() else arguments$tail_prob,
+      grid_spacing      = grid_spacing,
+      top_level         = TRUE
+    )
+    return(.prior_linear_mixture_lockstep_height(terms, value))
+  }
+  if(!identical(adaptive$kind, "density_context")){
+    return(NULL)
+  }
+  context <- arguments$context
+  weights <- arguments$weights
+  source_transforms <- arguments$source_transforms
+
+  context_terms <- function(component_context, top_level){
+    standardized <- tryCatch(
+      .prior_density_context_standardized_weights(component_context, weights),
+      error = function(e) NULL
+    )
+    if(is.null(standardized)){
+      return(NULL)
+    }
+    .prior_linear_mixture_terms(
+      prior_list        = component_context$prior_list,
+      weights           = standardized,
+      source_transforms = if(is.null(source_transforms)) NULL else source_transforms[names(standardized)],
+      value             = value,
+      n_grid            = component_context$n_grid,
+      tail_prob         = component_context$tail_prob,
+      grid_spacing      = grid_spacing,
+      top_level         = top_level
+    )
+  }
+  if(inherits(context, "prior_density_context")){
+    return(.prior_linear_mixture_lockstep_height(context_terms(context, TRUE), value))
+  }
+
+  # with a single positive-weight component, that component is the density
+  indices <- which(context$model_weights > 0)
+  single <- length(indices) < 2L
+  if(inherits(context, "prior_density_model_mixture_context")){
+    components <- lapply(indices, function(model_i){
+      model_prior_list <- lapply(context$prior_list, function(parameter_priors){
+        if(is.prior(parameter_priors)) parameter_priors else parameter_priors[[model_i]]
+      })
+      names(model_prior_list) <- names(context$prior_list)
+      for(parameter in names(model_prior_list)){
+        if(is.null(model_prior_list[[parameter]])){
+          model_prior_list[[parameter]] <- prior("point", list(location = 0))
+        }
+      }
+      .prior_linear_mixture_terms(
+        model_prior_list, weights, source_transforms, value,
+        context$n_grid, context$tail_prob, grid_spacing, single
+      )
+    })
+  }else if(inherits(context, "prior_density_conditional_context")){
+    components <- lapply(context$prior_lists[indices], function(prior_list){
+      if(!is.null(context$formula_scale) && length(context$formula_scale) > 0L){
+        component_context <- .prior_density_context(
+          prior_list, context$column_names, context$formula_scale,
+          context$n_grid, context$tail_prob
+        )
+        component_context$grid_spacing <- context$grid_spacing
+        return(context_terms(component_context, single))
+      }
+      .prior_linear_mixture_terms(
+        prior_list, weights, source_transforms, value,
+        context$n_grid, context$tail_prob, grid_spacing, single
+      )
+    })
+  }else{
+    return(NULL)
+  }
+  .prior_linear_mixture_lockstep_height(
+    .prior_linear_weight_mixture_terms(components, context$model_weights[indices]),
+    value
+  )
+}
+
+# Mixture terms of one linear combination: a list of components, each with its
+# mixture weight and either its exact/regular height ('exact', 'quadrature')
+# or its own density for grid evaluation ('grid'). NULL for a top-level
+# combination that is not a mixture (its own grid applies).
+.prior_linear_mixture_terms <- function(prior_list, weights, source_transforms,
+                                        value, n_grid, tail_prob, grid_spacing,
+                                        top_level){
+
+  weights <- weights[weights != 0]
+  ordinate <- .prior_density_ordinate_linear_base(
+    prior_list, weights, source_transforms, value, n_grid
+  )
+  exact <- .prior_linear_density_exact_height(ordinate)
+  if(!is.null(exact)){
+    quadrature <- .prior_density_ordinate_has_quadrature(ordinate$provenance)
+    return(list(list(
+      weight = 1,
+      method = if(quadrature) "quadrature" else "exact",
+      height = as.numeric(exact)
+    )))
+  }
+
+  active <- .prior_linear_active_parameters(prior_list, weights)
+  multipliers <- unlist(lapply(prior_list[active], function(prior){
+    multiply_by <- attr(prior, "multiply_by", exact = TRUE)
+    if(is.character(multiply_by) && length(multiply_by) == 1L) multiply_by else NULL
+  }))
+  plan <- .prior_density_ordinate_mixture_plan(prior_list, c(active, multipliers), n_grid)
+  if(!is.null(plan)){
+    components <- lapply(plan$prior_lists, function(component_priors){
+      .prior_linear_mixture_terms(
+        component_priors, weights, source_transforms, value,
+        n_grid, tail_prob, grid_spacing, FALSE
+      )
+    })
+    return(.prior_linear_weight_mixture_terms(components, plan$probabilities))
+  }
+  if(isTRUE(top_level)){
+    return(NULL)
+  }
+
+  # the mixture spacing may need more knots than this component's own grid
+  # admits; the component then starts at its own spacing
+  build <- function(spacing){
+    .prior_linear_combination_density(
+      prior_list        = prior_list,
+      weights           = weights,
+      n_grid            = n_grid,
+      tail_prob         = tail_prob,
+      source_transforms = source_transforms,
+      grid_spacing      = spacing
+    )
+  }
+  density <- tryCatch(build(grid_spacing), BayesTools_prior_grid_limit = function(e) NULL)
+  if(is.null(density)){
+    density <- build(NULL)
+  }
+  list(list(weight = 1, method = "grid", density = density))
+}
+
+.prior_linear_weight_mixture_terms <- function(components, weights){
+
+  if(length(components) == 0L || any(vapply(components, is.null, logical(1)))){
+    return(NULL)
+  }
+  weights <- weights / sum(weights)
+  unlist(lapply(seq_along(components), function(i){
+    lapply(components[[i]], function(term){
+      term$weight <- term$weight * weights[[i]]
+      term
+    })
+  }), recursive = FALSE)
+}
+
+.prior_linear_mixture_lockstep_height <- function(terms, value){
+
+  if(is.null(terms) || length(terms) == 0L){
+    return(NULL)
+  }
+  # grid components outside their support hull contribute exactly zero, and
+  # scalar components carry an analytic density evaluator
+  for(i in seq_along(terms)){
+    if(!identical(terms[[i]]$method, "grid")){
+      next
+    }
+    density <- terms[[i]]$density
+    support <- .prior_linear_density_support_hull(
+      attr(density, "adaptive_evaluation", exact = TRUE)
+    )
+    if(!is.null(support) && (value < support[1L] || value > support[2L])){
+      terms[[i]] <- list(weight = terms[[i]]$weight, method = "exact", height = 0)
+      next
+    }
+    if(value %in% attr(density, "singular_density_points", exact = TRUE)){
+      stop("The prior density at the flagged product ordinate is unavailable from supported deterministic provenance. Inspect the prior specification or use a supported prior-density evaluator.",
+           call. = FALSE)
+    }
+    evaluator <- attr(density, "density_evaluator", exact = TRUE)
+    if(is.function(evaluator)){
+      terms[[i]] <- list(weight = terms[[i]]$weight, method = "exact",
+                         height = as.numeric(evaluator(value)))
+    }
+  }
+
+  weights <- vapply(terms, `[[`, numeric(1), "weight")
+  grid <- vapply(terms, function(term) identical(term$method, "grid"), logical(1))
+  fixed_heights <- vapply(terms[!grid], `[[`, numeric(1), "height")
+  if(any(is.infinite(fixed_heights) & weights[!grid] > 0)){
+    return(Inf)
+  }
+  fixed <- sum(weights[!grid] * fixed_heights)
+  diagnostics <- function(grid_heights){
+    heights <- numeric(length(terms))
+    heights[!grid] <- fixed_heights
+    heights[grid] <- grid_heights
+    lapply(seq_along(terms), function(i){
+      list(weight = unname(weights[i]), method = terms[[i]]$method,
+           height = unname(heights[i]))
+    })
+  }
+  if(!any(grid)){
+    height <- fixed
+    attr(height, "component_heights") <- diagnostics(numeric())
+    return(height)
+  }
+
+  densities <- lapply(terms[grid], `[[`, "density")
+  grid_heights <- function(densities){
+    vapply(densities, .prior_linear_density_grid_height, numeric(1), value = value)
+  }
+  mixture_height <- function(heights) fixed + sum(weights[grid] * heights)
+
+  tolerance <- .prior_linear_density_refinement_tolerance()
+  previous <- mixture_height(grid_heights(densities))
+  refined <- lapply(densities, .prior_linear_density_refinement)
+  if(any(vapply(refined, is.null, logical(1)))){
+    stop(
+      "Adaptive prior-density evaluation did not converge within the documented ",
+      "grid-refinement error criterion.",
+      call. = FALSE
+    )
+  }
+  for(i in seq_len(4L)){
+    current_heights <- grid_heights(refined)
+    current <- mixture_height(current_heights)
+    change <- abs(current - previous)
+    bound <- tolerance$absolute +
+      tolerance$relative * max(abs(current), abs(previous))
+    inside <- all(vapply(refined, function(density){
+      !is.null(density$density) &&
+        value >= min(density$density$x) && value <= max(density$density$x)
+    }, logical(1)))
+    if(isTRUE(inside) && is.finite(current) && change <= bound){
+      attr(current, "adaptive_evaluation") <- list(
+        components      = sum(grid),
+        refinements     = i,
+        absolute_change = change,
+        error_bound     = bound,
+        converged       = TRUE
+      )
+      attr(current, "component_heights") <- diagnostics(current_heights)
+      return(current)
+    }
+    previous <- current
+    if(i < 4L){
+      next_refined <- lapply(refined, .prior_linear_density_refinement)
+      if(any(vapply(next_refined, is.null, logical(1)))){
+        break
+      }
+      refined <- next_refined
+    }
+  }
+
+  outside <- vapply(refined, function(density){
+    final_range <- .prior_linear_density_range(density)
+    value < final_range[1L] || value > final_range[2L]
+  }, logical(1))
+  if(any(outside)){
+    stop(
+      "The requested ordinate remains outside the numerical approximation ",
+      "range after adaptive extension.",
+      call. = FALSE
+    )
+  }
+  stop(
+    "Adaptive prior-density evaluation did not converge within the documented ",
+    "grid-refinement error criterion.",
+    call. = FALSE
+  )
+}
+
 .prior_linear_density_height <- function(x, value){
 
   if(!inherits(x, "prior_linear_density")){
@@ -1949,36 +2290,16 @@
     ordinate <- .prior_density_ordinate_from_adaptive(
       attr(x, "adaptive_evaluation", exact = TRUE), value
     )
-    continuous <- if(is.null(ordinate)){
-      NULL
-    }else{
-      .prior_density_ordinate_continuous_behavior(ordinate)
+    exact <- .prior_linear_density_exact_height(ordinate)
+    if(!is.null(exact)){
+      return(exact)
     }
-    if(identical(continuous, "regular") &&
-       .prior_density_ordinate_has_quadrature(ordinate$provenance)){
-      integration <- .prior_density_ordinate_integration(ordinate$provenance)
-      if(is.na(ordinate$log_density) || !isTRUE(integration$converged)){
-        stop("Conditional-normal prior density was rejected by diagnostics: integration reported '",
-             integration$message, "' with absolute error ", format(integration$absolute_error),
-             ". Inspect the prior specification and increase 'n_samples' for marginal inference.",
-             call. = FALSE)
-      }
-      height <- exp(ordinate$log_density)
-      attr(height, "numerical_diagnostics") <- integration
-      return(height)
-    }
-    # Exact structural ordinates (including exact finite mixtures) are used
-    # directly; grid refinement cannot converge across a density jump.
-    if(!is.null(ordinate) && isTRUE(ordinate$exact)){
-      if(identical(continuous, "infinite")){
-        return(Inf)
-      }
-      if(identical(continuous, "zero")){
-        return(0)
-      }
-      if(identical(continuous, "regular") && !is.na(ordinate$log_density)){
-        return(exp(ordinate$log_density))
-      }
+    components <- .prior_linear_density_component_height(
+      attr(x, "adaptive_evaluation", exact = TRUE), value,
+      grid_spacing = attr(x, "grid_resolution", exact = TRUE)[["spacing"]]
+    )
+    if(!is.null(components)){
+      return(components)
     }
   }
 
