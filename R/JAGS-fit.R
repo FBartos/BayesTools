@@ -901,7 +901,11 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       break
     }
 
-    fit <- extension
+    # The backend returns a new object; carry the fit's warning history.
+    fit <- .bt_append_fit_warnings(
+      extension,
+      attr(last_valid_fit, "warnings", exact = TRUE)
+    )
     last_valid_fit <- fit
     last_valid_runtime_state <- .JAGS_run_runtime_cache(
       runtime_cache, "capture", chains, if(parallel) cl else NULL)

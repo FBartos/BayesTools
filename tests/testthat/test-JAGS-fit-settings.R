@@ -492,6 +492,41 @@ test_that("JAGS_extend forwards explicit convergence monitor policy", {
   expect_true(convergence_arguments$allow_not_assessable)
 })
 
+test_that("JAGS_extend keeps the fit's warnings after successful extensions", {
+
+  skip_if_not_installed("runjags")
+  fit <- .jags_extend_test_fit()
+  previous <- "JAGS fitting attempt 1 failed and was restarted: backend exploded."
+  attr(fit, "warnings") <- previous
+  # The backend returns a new runjags object without BayesTools attributes.
+  testthat::local_mocked_bindings(
+    extend.jags = function(runjags.object, ...){
+      structure(list(), class = "runjags")
+    },
+    .package = "runjags"
+  )
+  converged <- TRUE
+  testthat::local_mocked_bindings(
+    JAGS_check_convergence = function(...) converged,
+    .package = "BayesTools"
+  )
+
+  extended <- JAGS_extend(fit, autofit_control = .jags_extend_test_control())
+  expect_identical(attr(extended, "warnings"), previous)
+
+  converged <- FALSE
+  control <- .jags_extend_test_control()
+  control$max_extend <- 2
+  stopped <- JAGS_extend(fit, autofit_control = control)
+  expect_identical(
+    attr(stopped, "warnings"),
+    c(
+      previous,
+      "The automatic model fitting was terminated due to the 'max_extend' constraint."
+    )
+  )
+})
+
 test_that("JAGS_extend resolves explicit convergence monitors before extending", {
 
   skip_if_not_installed("runjags")
