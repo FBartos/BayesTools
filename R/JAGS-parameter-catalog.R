@@ -382,7 +382,7 @@ parameter_draws.BayesTools_fit <- function(object, selection,
     stop(
       "The parameter quantity '", quantities$canonical_name[unavailable][[1L]],
       "' is unavailable in this fit: its source coordinates are not part of ",
-      "the posterior draws.",
+      "the posterior draws. Refit the model with those coordinates monitored.",
       call. = FALSE
     )
   }

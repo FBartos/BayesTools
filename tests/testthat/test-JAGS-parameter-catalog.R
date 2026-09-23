@@ -2778,7 +2778,11 @@ test_that("block SDs scaled by an unmonitored allocation source are unavailable"
         fit,
         parameter_catalog_resolve(catalog, block_sds[1L], "mu")
       ),
-      "is unavailable in this fit",
+      paste0(
+        "The parameter quantity '(mu) study: sd(intercept)' is unavailable ",
+        "in this fit: its source coordinates are not part of the posterior ",
+        "draws. Refit the model with those coordinates monitored."
+      ),
       fixed = TRUE,
       info = info
     )
