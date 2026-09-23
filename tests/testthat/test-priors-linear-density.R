@@ -387,6 +387,65 @@ test_that("boundary-singular prior densities keep exact edge-cell masses", {
   )
 })
 
+test_that("exp_lin output transformations keep analytic limits at a zero source knot", {
+
+  # y = 2 x^b: at the source knot x = 0 the density is f(0) / 2 for b = 1, zero
+  # for 0 < b < 1, and the knot is dropped for b > 1 (singular) and b < 0
+  # (image at infinity). Grid heights are compared with the analytic density
+  # of the transformed half-normal / lognormal; 1e-3 covers the source-grid
+  # normalisation (captured mass and Riemann versus trapezoid rule).
+  half_normal <- prior("normal", list(0, 1), truncation = list(0, Inf))
+  lognormal   <- prior("lognormal", list(0, 1))
+  transformed <- function(source, b){
+    .prior_linear_combination_density(
+      list(mu = source), c(mu = 1), output_transformation = "exp_lin",
+      output_transformation_arguments = list(a = log(2), b = b)
+    )
+  }
+  height <- function(density, value){
+    .prior_linear_density_grid_height(density, value)
+  }
+  exact <- function(density_x, value, b){
+    source <- (value / 2)^(1 / b)
+    density_x(source) / abs(2 * b * source^(b - 1))
+  }
+  half_normal_pdf <- function(x) 2 * stats::dnorm(x)
+
+  identity_map <- transformed(half_normal, 1)
+  expect_equal(identity_map$density$x[1], 0)
+  expect_equal(height(identity_map, 0), stats::dnorm(0), tolerance = 1e-3)
+  expect_equal(height(identity_map, 1), exact(half_normal_pdf, 1, 1), tolerance = 1e-3)
+
+  root_map <- transformed(half_normal, .5)
+  expect_equal(root_map$density$x[1], 0)
+  expect_identical(root_map$density$y[1], 0)
+  expect_equal(height(root_map, 1), exact(half_normal_pdf, 1, .5), tolerance = 1e-3)
+
+  square_map <- transformed(half_normal, 2)
+  expect_gt(square_map$density$x[1], 0)
+  expect_equal(height(square_map, 1), exact(half_normal_pdf, 1, 2), tolerance = 1e-3)
+
+  inverse_map <- transformed(half_normal, -1)
+  expect_true(all(is.finite(inverse_map$density$x)))
+  expect_equal(height(inverse_map, 1), exact(half_normal_pdf, 1, -1), tolerance = 1e-3)
+
+  lognormal_map <- transformed(lognormal, 1)
+  expect_identical(lognormal_map$density$y[1], 0)
+  expect_equal(height(lognormal_map, 1), stats::dlnorm(.5) / 2, tolerance = 1e-3)
+
+  # Saturating transformations of heavy-tailed priors omit the knots whose
+  # transformed ordinate is not representable instead of failing.
+  cauchy <- list(mu = prior("cauchy", list(0, .707)))
+  tanh_map <- .prior_linear_combination_density(cauchy, c(mu = 1),
+                                               output_transformation = "tanh")
+  expect_true(all(abs(tanh_map$density$x) <= 1))
+  expect_true(all(is.finite(tanh_map$density$y)))
+  exp_map <- .prior_linear_combination_density(cauchy, c(mu = 1),
+                                              output_transformation = "exp")
+  expect_true(all(is.finite(exp_map$density$x) & exp_map$density$x >= 0))
+  expect_true(all(is.finite(exp_map$density$y)))
+})
+
 test_that("linear group ranges accept omitted source transformations", {
 
   group <- list(prior = prior("normal", list(0, 1)), weights = c(mu = 1), indices = 1L)

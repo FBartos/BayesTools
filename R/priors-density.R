@@ -230,12 +230,13 @@ density.prior <- function(x,
 
   # transform the output, if requested
   if(!is.null(transformation)){
-    x_seq   <- .density.prior_transformation_x(x_seq,   transformation, transformation_arguments)
+    transformed <- .density.prior_transformation_grid(x_seq, x_den, transformation, transformation_arguments)
+    x_seq   <- transformed$x[!transformed$drop]
+    x_den   <- transformed$y[!transformed$drop]
     x_range <- .density.prior_transformation_x(x_range, transformation, transformation_arguments)
     if(!is.null(x_sam)){
       x_sam <- .density.prior_transformation_x(x_sam,   transformation, transformation_arguments)
     }
-    x_den   <- .density.prior_transformation_y(x_seq, x_den, transformation, transformation_arguments)
   }
 
 
@@ -316,9 +317,10 @@ density.prior <- function(x,
       y_values <- x_density$y
 
       if(!is.null(transformation)){
-        x_values         <- .density.prior_transformation_x(x_values, transformation, transformation_arguments)
+        transformed       <- .density.prior_transformation_grid(x_values, y_values, transformation, transformation_arguments)
+        x_values          <- transformed$x[!transformed$drop]
+        y_values          <- transformed$y[!transformed$drop]
         component_samples <- .density.prior_transformation_x(component_samples, transformation, transformation_arguments)
-        y_values         <- .density.prior_transformation_y(x_values, y_values, transformation, transformation_arguments)
       }
 
       out[[i]] <- list(
@@ -1175,12 +1177,13 @@ density.prior <- function(x,
   # transform the output, if requested
   if(!is.null(transformation)){
     message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the orthonormal/meandif contrasts to the differences from the mean.")
-    x_seq   <- .density.prior_transformation_x(x_seq,   transformation, transformation_arguments)
+    transformed <- .density.prior_transformation_grid(x_seq, x_den, transformation, transformation_arguments)
+    x_seq   <- transformed$x[!transformed$drop]
+    x_den   <- transformed$y[!transformed$drop]
     x_range <- .density.prior_transformation_x(x_range, transformation, transformation_arguments)
     if(!is.null(x_sam)){
       x_sam <- .density.prior_transformation_x(x_sam,   transformation, transformation_arguments)
     }
-    x_den   <- .density.prior_transformation_y(x_seq, x_den, transformation, transformation_arguments)
   }
 
 
@@ -1535,6 +1538,45 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     )
   }
   out
+}
+.density.prior_transformation_grid      <- function(x, y, transformation, transformation_arguments = NULL){
+
+  # Transforms an increasing continuous density grid. 'drop' flags knots
+  # without a representable transformed ordinate: exp_lin sources at zero
+  # whose image or limit is singular, and the outer knots of a transformation
+  # with a declared output support where it saturates numerically (e.g., tanh
+  # at +/-1, exp underflowing towards zero or overflowing to infinity).
+  x_new <- .density.prior_transformation_x(x, transformation, transformation_arguments)
+  y_new <- .density.prior_transformation_y(x_new, y, transformation, transformation_arguments)
+  drop  <- rep(FALSE, length(x))
+
+  if(is.character(transformation) && identical(transformation, "exp_lin")){
+    a <- if(is.null(transformation_arguments[["a"]])) 0 else transformation_arguments[["a"]]
+    b <- if(is.null(transformation_arguments[["b"]])) 1 else transformation_arguments[["b"]]
+    at_zero <- !is.na(x) & x == 0
+    if(any(at_zero) && is.numeric(a) && is.numeric(b) &&
+       length(a) == 1L && length(b) == 1L && is.finite(a) && is.finite(b)){
+      # y = exp(a) x^b has Jacobian b exp(a) x^(b - 1) at the source zero.
+      if(b == 1){
+        y_new[at_zero] <- y[at_zero] / exp(a)
+      }else if(b > 0 && b < 1){
+        y_new[at_zero & is.finite(y)] <- 0
+      }else if(b > 1 || b < 0){
+        drop[at_zero] <- TRUE
+      }
+    }
+  }
+
+  support <- .density.prior_transformation_functions(transformation)[["output_support"]]
+  if(!is.null(support) && length(x_new) > 0L){
+    # Saturation affects only the leading and trailing runs of the grid;
+    # non-finite values between finite knots are not a saturation artifact.
+    invalid <- !drop & (!is.finite(x_new) | !is.finite(y_new))
+    edge    <- cumprod(invalid | drop) == 1 | rev(cumprod(rev(invalid | drop))) == 1
+    drop    <- drop | (invalid & edge)
+  }
+
+  list(x = x_new, y = y_new, drop = drop)
 }
 .density.prior_transformation_y         <- function(x, y, transformation, transformation_arguments = NULL){
 

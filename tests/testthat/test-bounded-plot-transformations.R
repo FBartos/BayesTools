@@ -115,6 +115,40 @@ test_that("bounded transformations preserve display limits in base and ggplot", 
   expect_true(all(built$data[[1]]$x >= -1 & built$data[[1]]$x <= 1))
 })
 
+test_that("density transformations use analytic exp_lin limits and omit saturated knots", {
+
+  half_normal <- prior("normal", list(0, 1), truncation = list(0, Inf))
+  identity_map <- density(half_normal, transformation = "exp_lin",
+                          transformation_arguments = list(a = 1, b = 1))
+  expect_true(all(is.finite(identity_map$y)))
+  expect_true(all(is.finite(attr(identity_map, "y_range"))))
+  # The source knot at zero maps to the density f(0) / exp(a) of exp(a) x.
+  expect_equal(max(identity_map$y[identity_map$x == 0]),
+               2 * stats::dnorm(0) / exp(1))
+  root_map <- density(half_normal, transformation = "exp_lin",
+                      transformation_arguments = list(a = 1, b = .5))
+  expect_true(all(is.finite(root_map$y)))
+  expect_true(all(root_map$y[root_map$x == 0] == 0))
+
+  cauchy <- prior("cauchy", list(0, .707))
+  tanh_map <- density(cauchy, transformation = "tanh")
+  expect_true(all(is.finite(tanh_map$y)))
+  expect_true(all(abs(tanh_map$x) <= 1))
+  interior <- abs(tanh_map$x) < .99
+  expect_equal(
+    tanh_map$y[interior],
+    stats::dcauchy(atanh(tanh_map$x[interior]), 0, .707) / (1 - tanh_map$x[interior]^2),
+    tolerance = 1e-10
+  )
+
+  path <- tempfile(fileext = ".pdf")
+  grDevices::pdf(path)
+  on.exit({grDevices::dev.off(); unlink(path)}, add = TRUE)
+  expect_no_error(plot(cauchy, transformation = "tanh"))
+  skip_if_not_installed("ggplot2")
+  expect_s3_class(plot(cauchy, transformation = "tanh", plot_type = "ggplot"), "ggplot")
+})
+
 test_that("transformation output support metadata is validated", {
 
   transformation <- .strict_bounded_plot_transform()
