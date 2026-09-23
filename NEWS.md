@@ -1,7 +1,8 @@
 # version 0.3.1
 ### Breaking changes
-These changes affect code and saved objects written for BayesTools 0.3.0
-(released together with RoBMA 4.1.0; RoBMA 4.0.0 relies on the old behaviour).
+These changes affect code and saved objects written for BayesTools 0.3.0.
+This version is released together with RoBMA 4.1.0; RoBMA 4.0.0 relies on the
+old behaviour.
 - requires JAGS 4.x (>= 4.3.0, < 5.0.0). The compiled BayesTools JAGS module
   implements the JAGS 4 module interface and does not compile against JAGS 5.
   Installation now stops with a message naming the reported version when
@@ -11,10 +12,11 @@ These changes affect code and saved objects written for BayesTools 0.3.0
   headers. On Windows the build selects the newest installed `JAGS-4.*`,
   ignores other major versions, and rejects a `JAGS_ROOT` or `JAGS_VERSION`
   that points to another one.
-- removes the `seed` argument of `JAGS_extend()`. Extension continues the
-  backend random-number state of the existing chains instead of reseeding
-  them, so calls that pass `seed` (including `update(fit, sample_extend = )`
-  in RoBMA 4.0.0) stop with "unused argument"; drop the argument. The new
+- removes the `seed` argument of `JAGS_extend()`. It only set R's random seed:
+  the extended chains always continue their own backend random-number state
+  and cannot be reseeded. Calls that pass `seed` (including
+  `update(fit, sample_extend = )` in RoBMA 4.0.0) stop with "unused
+  argument"; drop the argument. The new
   `runtime_setup`, `runtime_cache`, and `worker_output` arguments follow
   `silent`, so positional calls must name them.
 - fits created by BayesTools 0.3.0 or earlier must be refitted: they lack the
