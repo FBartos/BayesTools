@@ -1821,47 +1821,51 @@ parameter_transform_jacobian <- function(values, transform){
       NA_character_
     }
   }, character(1))
-  rows <- list()
-  for(i in seq_len(nrow(table_labels))){
-    quantity_row <- which(coordinate_rows == table_labels$coordinate_name[i])
-    if(length(quantity_row) != 1L){
-      next
-    }
-    quantity <- public[quantity_row, , drop = FALSE]
-    alias <- table_labels$alias[i]
-    namespace <- quantity$namespace
-    taken <- c(
-      aliases$alias[
-        aliases$namespace == namespace &
-          aliases$quantity_id != quantity$quantity_id
-      ],
-      public$canonical_name[
-        public$namespace == namespace &
-          public$quantity_id != quantity$quantity_id
-      ]
-    )
-    if(alias %in% taken){
-      next
-    }
-    rows[[length(rows) + 1L]] <- data.frame(
-      alias = alias,
-      quantity_id = quantity$quantity_id,
-      namespace = namespace,
-      component = quantity$component,
-      simplified = FALSE,
-      stringsAsFactors = FALSE
-    )
-  }
-  if(length(rows) == 0L){
+  quantity_rows <- match(table_labels$coordinate_name, coordinate_rows)
+  keep <- !is.na(quantity_rows)
+  if(!any(keep)){
     return(aliases)
   }
-  added <- unique(do.call(rbind, rows))
+  quantity_rows <- quantity_rows[keep]
+  added <- unique(data.frame(
+    alias = table_labels$alias[keep],
+    quantity_id = public$quantity_id[quantity_rows],
+    namespace = public$namespace[quantity_rows],
+    component = public$component[quantity_rows],
+    simplified = FALSE,
+    stringsAsFactors = FALSE
+  ))
+
+  label_key <- function(alias, namespace){
+    paste(alias, namespace, sep = "\r")
+  }
   # A label shown for several coordinates identifies none of them.
-  label_key <- paste(added$alias, added$namespace, sep = "\r")
-  n_owners <- tapply(added$quantity_id, label_key, function(x){
+  added_key <- label_key(added$alias, added$namespace)
+  added_owners <- tapply(added$quantity_id, added_key, function(x){
     length(unique(x))
   })
-  added <- added[n_owners[label_key] == 1L, , drop = FALSE]
+  added <- added[added_owners[added_key] == 1L, , drop = FALSE]
+
+  # Existing selectors of another quantity in the namespace take precedence.
+  existing <- unique(data.frame(
+    key = c(
+      label_key(aliases$alias, aliases$namespace),
+      label_key(public$canonical_name, public$namespace)
+    ),
+    quantity_id = c(aliases$quantity_id, public$quantity_id),
+    stringsAsFactors = FALSE
+  ))
+  added_key <- label_key(added$alias, added$namespace)
+  existing_owners <- table(existing$key)
+  first_owner <- existing$quantity_id[match(added_key, existing$key)]
+  free <- is.na(first_owner) |
+    (as.integer(existing_owners[added_key]) == 1L &
+       first_owner == added$quantity_id)
+  added <- added[free, , drop = FALSE]
+  if(nrow(added) == 0L){
+    return(aliases)
+  }
+
   out <- unique(rbind(aliases, added))
   rownames(out) <- NULL
   out

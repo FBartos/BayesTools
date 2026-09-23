@@ -701,6 +701,35 @@ test_that("estimates-table row labels resolve to their catalog quantities", {
     c("(mu) exp(intercept)" = "mu_intercept", "(mu) x" = "mu_x"),
     transform_scaled = TRUE
   )
+
+  # Table labels never take over a selector of another quantity: with
+  # index-like level names, '(mu) g[2]' keeps naming its level cell.
+  data$g <- factor(rep(1:4, 6))
+  fit <- table_fit(~ g, list(
+    intercept = normal,
+    g = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  ))
+  catalog <- parameter_catalog(fit)
+  base_aliases <- .bt_parameter_catalog_aliases(
+    catalog$quantities,
+    attr(fit, "formula_design")
+  )
+  owners <- function(aliases, keys){
+    lapply(keys, function(key){
+      sort(unique(aliases$quantity_id[
+        paste(aliases$alias, aliases$namespace) == key
+      ]))
+    })
+  }
+  base_keys <- unique(paste(base_aliases$alias, base_aliases$namespace))
+  expect_identical(
+    owners(catalog$aliases, base_keys),
+    owners(base_aliases, base_keys)
+  )
+  expect_identical(
+    parameter_catalog_resolve(catalog, "(mu) g[2]")$quantities$component,
+    "2"
+  )
 })
 
 test_that("catalog extensions preserve ambiguity until filtered", {
