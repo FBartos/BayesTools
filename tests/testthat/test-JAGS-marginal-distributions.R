@@ -3081,6 +3081,94 @@ test_that("marginal_estimates_table reports exact level summaries and Bayes fact
   expect_equal(attr(log_table$inclusion_BF, "name"), "log(Exclusion BF)")
 })
 
+# ============================================================================ #
+# SECTION: Marginal posterior regressions (review round 3)
+# ============================================================================ #
+
+.mock_mixing_fit_for_marginal <- function(samples, prior_list){
+  samples <- coda::mcmc(as.matrix(samples))
+  fit <- structure(
+    list(
+      mcmc = coda::mcmc.list(samples),
+      sample = nrow(samples),
+      summary.pars = list(mutate = NULL),
+      monitor = colnames(samples)
+    ),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- prior_list
+  fit
+}
+
+.prior_height_for_test <- function(x, value){
+  ordinate <- prior_density_ordinate(attr(x, "prior_density"), value)
+  exp(ordinate$log_density)
+}
+
+test_that("use_formula = FALSE prior densities ignore the coefficient's own multiply_by", {
+
+  # JAGS monitors the raw coefficient; 'multiply_by' only scales the linear
+  # predictor, so the coefficient prior is its declared prior (exact normal
+  # ordinates; the product sigma * beta would be singular at zero).
+  set.seed(1)
+  n <- 200
+  sigma_prior <- prior("normal", list(0, 1), list(0, Inf))
+  beta_prior_1 <- prior("normal", list(0, 1))
+  beta_prior_2 <- prior("normal", list(0, 2))
+  attr(beta_prior_1, "multiply_by") <- "sigma"
+  attr(beta_prior_2, "multiply_by") <- "sigma"
+  models <- lapply(list(beta_prior_1, beta_prior_2), function(beta_prior){
+    list(
+      fit = .mock_mixing_fit_for_marginal(
+        cbind(mu_x = rnorm(n), sigma = abs(rnorm(n, 2, .1))),
+        list(mu_x = beta_prior, sigma = sigma_prior)
+      ),
+      marglik = bridgesampling_object(0),
+      prior_weights = 1
+    )
+  })
+  mixed <- mix_posteriors(
+    models,
+    parameters   = c("mu_x", "sigma"),
+    is_null_list = list(mu_x = c(FALSE, FALSE), sigma = c(FALSE, FALSE)),
+    seed         = 1,
+    n_samples    = n
+  )
+  marginal <- marginal_posterior(mixed, "mu_x", use_formula = FALSE, prior_samples = TRUE)
+
+  for(value in c(0, 1)){
+    expect_equal(
+      .prior_height_for_test(marginal, value),
+      .5 * stats::dnorm(value) + .5 * stats::dnorm(value, 0, 2),
+      tolerance = 1e-8
+    )
+  }
+  expect_true(is.finite(Savage_Dickey_BF(marginal, silent = TRUE)))
+
+  # Conditional single-model context: included component only.
+  spike_slab <- prior_spike_and_slab(prior("normal", list(0, 1)))
+  attr(spike_slab, "multiply_by") <- "sigma"
+  indicator <- rep(c(0, 1), length.out = n)
+  fit <- coda::mcmc(cbind(
+    mu_x = indicator * rnorm(n),
+    mu_x_indicator = indicator,
+    sigma = abs(rnorm(n, 2, .1))
+  ))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- list(mu_x = spike_slab, sigma = sigma_prior)
+  conditional <- as_mixed_posteriors(
+    fit,
+    parameters = c("mu_x", "sigma"),
+    conditional = "mu_x",
+    n_prior_samples = 1000
+  )
+  conditional_marginal <- marginal_posterior(
+    conditional, "mu_x", use_formula = FALSE, prior_samples = TRUE
+  )
+  expect_equal(.prior_height_for_test(conditional_marginal, 0), stats::dnorm(0), tolerance = 1e-8)
+  expect_equal(.prior_height_for_test(conditional_marginal, 1), stats::dnorm(1), tolerance = 1e-8)
+})
+
 # File-level skips: All remaining tests in this file require pre-fitted models
 skip_if_not_visual_fixture_tests()
 skip_if_no_fits()

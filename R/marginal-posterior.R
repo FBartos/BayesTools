@@ -683,7 +683,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           prior_list = prior_list,
           n_samples  = n_samples,
           allow_failure = TRUE,
-          condition_source = parameter_samples
+          condition_source = parameter_samples,
+          raw_coefficients = TRUE
         )
       }
 
@@ -815,7 +816,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           prior_list = prior_list,
           n_samples  = n_samples,
           allow_failure = TRUE,
-          condition_source = samples[[parameter]]
+          condition_source = samples[[parameter]],
+          raw_coefficients = TRUE
         )
         if(!is.null(prior_density_context)){
           weights <- rep(0, length(prior_density_context$column_names))
@@ -907,7 +909,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           samples    = samples,
           prior_list = prior_list,
           n_samples  = n_samples,
-          condition_source = samples[[parameter]]
+          condition_source = samples[[parameter]],
+          raw_coefficients = TRUE
         )
       }
 
@@ -1003,7 +1006,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
                                                        column_names = NULL,
                                                        n_samples = 10000,
                                                        allow_failure = FALSE,
-                                                       condition_source = NULL){
+                                                       condition_source = NULL,
+                                                       raw_coefficients = FALSE){
 
   condition_metadata <- .marginal_posterior_condition_metadata(
     samples,
@@ -1012,7 +1016,14 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   prior_density_context <- attr(samples, "prior_density_context")
   if(!is.null(prior_density_context) &&
      .marginal_posterior_context_matches_condition(prior_density_context, condition_metadata)){
+    if(isTRUE(raw_coefficients)){
+      prior_density_context <- .marginal_posterior_raw_coefficient_context(prior_density_context)
+    }
     return(prior_density_context)
+  }
+
+  if(isTRUE(raw_coefficients)){
+    prior_list <- .marginal_posterior_strip_multiply_by(prior_list)
   }
 
   tryCatch(
@@ -1044,6 +1055,46 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       stop(conditionMessage(e), call. = FALSE)
     }
   )
+}
+
+# Monitored coefficient columns are the raw JAGS nodes: a formula prior's
+# 'multiply_by' scales only the linear predictor, never the coefficient itself.
+.marginal_posterior_raw_coefficient_context <- function(context){
+
+  if(is.null(context)){
+    return(context)
+  }
+
+  if(!is.null(context$prior_list)){
+    context$prior_list <- .marginal_posterior_strip_multiply_by(context$prior_list)
+  }
+  if(!is.null(context$prior_lists)){
+    context$prior_lists <- lapply(
+      context$prior_lists,
+      .marginal_posterior_strip_multiply_by
+    )
+  }
+
+  context
+}
+
+.marginal_posterior_strip_multiply_by <- function(x){
+
+  if(!is.list(x)){
+    return(x)
+  }
+
+  attr(x, "multiply_by") <- NULL
+  x_is_prior <- is.prior(x)
+  for(i in seq_along(x)){
+    # Recurse into prior components (mixtures, ordered totals) and into
+    # containers of priors, never into prior parameter lists.
+    if(is.list(x[[i]]) && (is.prior(x[[i]]) || !x_is_prior)){
+      x[[i]] <- .marginal_posterior_strip_multiply_by(x[[i]])
+    }
+  }
+
+  x
 }
 
 .marginal_posterior_context_condition_metadata <- function(context){
