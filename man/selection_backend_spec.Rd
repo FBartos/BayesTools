@@ -18,7 +18,13 @@ selection_backend_spec(
 
 \item{backend}{backend target. Currently only \code{"jags"} is supported.}
 
-\item{names}{list of backend parameter names.}
+\item{names}{named list of backend parameter names for the public nodes
+(\code{omega}, \code{alpha}, \code{pi_null}, \code{beta_null},
+\code{phack_kind}, \code{phack_z_source}, \code{phack_z_dest}); omitted
+entries keep their default names. The names are used in the generated JAGS
+code, monitors, and initial values of single-branch and mixture
+specifications alike, so they must be distinct valid JAGS node names that
+do not coincide with internal selection nodes.}
 
 \item{global_breaks}{optional global p-value break grid.}
 

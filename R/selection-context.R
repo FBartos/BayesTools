@@ -445,7 +445,16 @@ selection_row_arg <- function(x, n, name){
 .selection_native_integer_arg <- function(x, n, name, upper){
 
   .selection_native_row_length(x, n, name)
-  if(!is.numeric(x) && !is.integer(x)){
+  x <- .selection_native_integer_values(x, name, upper)
+
+  return(selection_row_arg(x, n, name))
+}
+
+# The integer and range checks of a native integer argument, without the row
+# expansion.
+.selection_native_integer_values <- function(x, name, upper){
+
+  if(length(x) == 0L || (!is.numeric(x) && !is.integer(x))){
     stop("Invalid selection native argument '", name, "'.", call. = FALSE)
   }
   if(is.integer(x)){
@@ -465,7 +474,7 @@ selection_row_arg <- function(x, n, name){
     stop("Invalid selection native argument '", name, "'.", call. = FALSE)
   }
 
-  return(selection_row_arg(x, n, name))
+  return(x)
 }
 
 
@@ -828,7 +837,10 @@ selection_row_arg <- function(x, n, name){
     return(.selection_spec_kernel_mode(selection_spec))
   }
 
-  kernel_mode <- as.integer(round(kernel_mode))
+  # An explicit route is validated before use: a non-integer mode is rejected,
+  # never rounded onto another kernel.
+  .selection_native_row_length(kernel_mode, S, "kernel_mode")
+  kernel_mode <- .selection_native_integer_values(kernel_mode, "kernel_mode", 3L)
   if(length(kernel_mode) == 1L &&
      ambiguous &&
      identical(kernel_mode, as.integer(union_mode))){
@@ -975,7 +987,8 @@ selection_row_arg <- function(x, n, name){
       # Experimental p-hacking: mixed source cuts cannot be expressed through
       # `segments`. Reject rather than inventing a third geometry path.
       stop(
-        "Selection specification requires explicit 'segments' for mixed p-hacking geometry.",
+        "Selection branches with different p-hacking source or destination cut points are not supported ",
+        "by the native selection kernels; 'segments' cannot express this geometry.",
         call. = FALSE
       )
     }
@@ -1000,7 +1013,8 @@ selection_row_arg <- function(x, n, name){
       # Experimental p-hacking: mixed destination cuts cannot be expressed
       # through `segments`. Reject rather than inventing a third geometry path.
       stop(
-        "Selection specification requires explicit 'segments' for mixed p-hacking geometry.",
+        "Selection branches with different p-hacking source or destination cut points are not supported ",
+        "by the native selection kernels; 'segments' cannot express this geometry.",
         call. = FALSE
       )
     }

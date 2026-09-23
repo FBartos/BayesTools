@@ -1281,3 +1281,176 @@ test_that("row kernel_mode routes on the single active branch kernel", {
     "Row kernel_mode is required"
   )
 })
+
+
+test_that("selection_backend_spec writes custom names in single-branch syntax", {
+
+  # Nodes defined on the left-hand side of `<-` or `~` in generated syntax.
+  defined_nodes <- function(code){
+    lines <- trimws(unlist(strsplit(code, "\n", fixed = TRUE)))
+    lines <- lines[grepl("(<-|~)", lines) & !grepl("^for\\s*\\(", lines)]
+    unique(sub("\\[.*$", "", trimws(sub("\\s*(<-|~).*$", "", lines))))
+  }
+  public <- c("omega", "alpha", "pi_null", "beta_null", "phack_kind", "phack_z_source", "phack_z_dest")
+  custom <- list(
+    omega = "w", alpha = "a", pi_null = "pn", beta_null = "bn",
+    phack_kind = "pk", phack_z_source = "zs", phack_z_dest = "zd"
+  )
+  priors <- list(
+    cumulative_two   = prior_weightfunction("one-sided", .025, wf_cumulative()),
+    cumulative_three = prior_weightfunction("one-sided", c(.025, .05), wf_cumulative()),
+    independent      = prior_weightfunction("one-sided", .025, wf_independent(prior("beta", list(1, 1)))),
+    mapped           = prior_weightfunction("two-sided", .05, wf_fixed(c(1, .5))),
+    phacking         = prior_phacking(),
+    combined         = prior_bias(
+      prior_weightfunction("one-sided", .025, wf_cumulative()),
+      prior_phacking()
+    )
+  )
+
+  for(label in names(priors)){
+    set.seed(1)
+    default_spec <- selection_backend_spec(priors[[label]])
+    set.seed(1)
+    spec <- selection_backend_spec(priors[[label]], names = custom)
+    code <- paste(spec$prior_code, spec$transform_code, sep = "\n")
+    nodes <- defined_nodes(code)
+
+    # every public node is written under its custom name and never under
+    # the default one, and everything monitored or indexed exists
+    expect_false(any(public %in% nodes), info = label)
+    expect_true(all(spec$monitor %in% nodes), info = label)
+    expect_true(all(sub("\\[.*$", "", spec$step$coefficient_ids) %in% nodes), info = label)
+    expect_true(all(names(spec$init) %in% nodes), info = label)
+    expect_identical(spec$jags_omega, "w")
+
+    # the syntax is the default syntax with the public nodes renamed
+    renamed <- paste(default_spec$prior_code, default_spec$transform_code, sep = "\n")
+    for(field in public){
+      renamed <- gsub(paste0("(?<![A-Za-z0-9._])", field, "(?![A-Za-z0-9._])"), custom[[field]], renamed, perl = TRUE)
+    }
+    expect_identical(code, renamed, info = label)
+  }
+
+  independent_init <- selection_backend_spec(priors$independent, names = custom)$init
+  expect_identical(names(independent_init), "w")
+  phacking_spec <- selection_backend_spec(priors$phacking, names = custom)
+  expect_true(all(c("w", "a", "pk", "pn") %in% phacking_spec$monitor))
+  expect_identical(names(phacking_spec$init), "a")
+
+  # default names still produce the default syntax
+  expect_identical(
+    selection_backend_spec(priors$combined, include_init = FALSE)$prior_code,
+    selection_backend_spec(priors$combined, names = list(omega = "omega"), include_init = FALSE)$prior_code
+  )
+
+  expect_error(
+    selection_backend_spec(priors$phacking, names = list(omega = "a", alpha = "a")),
+    "must be distinct", fixed = TRUE
+  )
+  expect_error(
+    selection_backend_spec(priors$phacking, names = list(omega = "1w")),
+    "valid JAGS node names", fixed = TRUE
+  )
+  expect_error(
+    selection_backend_spec(priors$cumulative_three, names = list(alpha = "eta")),
+    "internal selection node names", fixed = TRUE
+  )
+})
+
+test_that("selection QMC designs accept a single point per scramble", {
+
+  single <- selection_qmc_design(dimensions = 3L, points = 1L, scrambles = 2L, seed = 5L)
+  several <- selection_qmc_design(dimensions = 3L, points = 4L, scrambles = 2L, seed = 5L)
+
+  expect_identical(dim(single), c(2L, 1L, 3L))
+  expect_true(all(single > 0 & single < 1))
+  # the Halton sequence and its shifts do not depend on the number of points
+  expect_identical(single[, 1L, , drop = FALSE], several[, 1L, , drop = FALSE])
+  expect_identical(dim(selection_qmc_design(1L, 1L, 2L)), c(2L, 1L, 1L))
+})
+
+test_that("explicit kernel_mode routes are validated before any rounding", {
+
+  spec <- selection_backend_spec(
+    prior_weightfunction("one-sided", .025, wf_cumulative()),
+    include_init = FALSE
+  )
+
+  for(bad_mode in list(1.4, 2.6, -0.2, NA_real_, TRUE, c(1, 1.5))){
+    expect_error(
+      selection_native_kernel_args(spec, S = 2, kernel_mode = bad_mode),
+      "Invalid selection native argument 'kernel_mode'.",
+      fixed = TRUE,
+      info = deparse(bad_mode)
+    )
+  }
+  expect_identical(selection_native_kernel_args(spec, S = 2, kernel_mode = 1)$kernel_mode, c(1L, 1L))
+  expect_identical(selection_native_kernel_args(spec, S = 2, kernel_mode = c(0L, 1L))$kernel_mode, c(0L, 1L))
+  expect_error(
+    selection_native_kernel_args(spec, S = 2, kernel_mode = c(1L, 1L, 1L)),
+    "must have length 1 or 2", fixed = TRUE
+  )
+})
+
+test_that("mixed p-hacking geometry is reported as unsupported, not fixable by segments", {
+
+  spec <- selection_backend_spec(
+    list(prior_phacking(source = .25), prior_phacking(source = .1)),
+    include_init = FALSE
+  )
+  message <- "Selection branches with different p-hacking source or destination cut points are not supported"
+
+  expect_error(selection_native_static_args(spec), message, fixed = TRUE)
+  spec$segments <- list(bounds = c(-Inf, 0, Inf), step_bin = c(1L, 1L), phack_region = c(0L, 1L))
+  expect_error(selection_native_static_args(spec), message, fixed = TRUE)
+  expect_error(selection_native_static_args(spec), "'segments' cannot express this geometry", fixed = TRUE)
+})
+
+test_that("p-hacking null masses stay accurate for far-tail cut points", {
+
+  # References: closed forms of the source and destination power moments
+  # evaluated at 60 significant digits with mpmath (upper-tail normal
+  # quantiles solved on the log scale; adaptive quadrature agrees to 1e-56).
+  # The previous lower-tail differences returned negative masses here.
+  reference <- data.frame(
+    form        = c("linear", "quadratic", "linear", "quadratic", "linear", "quadratic"),
+    source      = c(1e-8, 1e-8, .5, .5, .5, .5),
+    target      = c(1e-10, 1e-10, 1e-20, 1e-20, 1e-100, 1e-100),
+    destination = c(1e-12, 1e-12, 1e-22, 1e-22, 1e-102, 1e-102),
+    source_mass = c(
+      2.1264999289709166477e-9, 8.3614046466234177338e-10, 0.043071435137739101627,
+      0.0058281209769064862591, 0.018753056679685152951, 0.0011048263032220971141
+    ),
+    dest_mass   = c(
+      7.7883165205602929522e-11, 6.5038727496869643792e-11, 7.8188227009315198218e-21,
+      6.5466059198374077002e-21, 7.8439264887471783882e-101, 6.5818177538791552431e-101
+    )
+  )
+  for(i in seq_len(nrow(reference))){
+    constants <- phack_backend_constants(
+      reference$form[i],
+      source      = reference$source[i],
+      destination = reference$destination[i],
+      target      = reference$target[i]
+    )
+    # Relative errors (the masses are far below any absolute tolerance): the
+    # double-precision closed form keeps them within a few thousand ulps,
+    # from the remaining cancellation in the power moments.
+    expect_lt(abs(constants$source_null_mass / reference$source_mass[i] - 1), 1e-10)
+    expect_lt(abs(constants$destination_null_mass / reference$dest_mass[i] - 1), 1e-10)
+    expect_true(constants$beta_null_per_alpha > 0, info = i)
+  }
+
+  # subnormal region probabilities carry no precision and are rejected
+  expect_error(
+    phack_backend_constants("linear", source = .5, target = 1e-310, destination = 1e-312),
+    "null masses of the source and destination regions must be positive",
+    fixed = TRUE
+  )
+  expect_error(
+    prior_phacking(target = 1e-310, source = .5, destination = 1e-312),
+    "cut points are too extreme",
+    fixed = TRUE
+  )
+})

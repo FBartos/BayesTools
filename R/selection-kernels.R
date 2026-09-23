@@ -257,6 +257,16 @@ phack_backend_constants <- function(form, source, destination, target = .025){
 
   source_mass <- .phack_power_null_moment(z_source_lower, z_target, q, anchor = z_source_lower, reverse = FALSE)
   dest_mass   <- .phack_power_null_moment(z_target, z_dest_upper, q, anchor = z_dest_upper, reverse = TRUE)
+  # A mass that is not a positive normal double (cut points so far in the tail
+  # that the region probability is subnormal or cancels) carries no precision.
+  masses <- c(source_mass, dest_mass)
+  if(any(!is.finite(masses) | masses < .Machine$double.xmin)){
+    stop(
+      "The p-hacking null masses of the source and destination regions must be positive; ",
+      "the cut points are too extreme to be represented in double precision.",
+      call. = FALSE
+    )
+  }
 
   return(list(
     form                    = form,
@@ -285,7 +295,13 @@ phack_backend_constants <- function(form, source, destination, target = .025){
 #' @param priors a selection prior, p-hacking prior, composed bias prior,
 #' \code{prior_none()}, \code{prior_mixture()}, or a list of those priors.
 #' @param backend backend target. Currently only \code{"jags"} is supported.
-#' @param names list of backend parameter names.
+#' @param names named list of backend parameter names for the public nodes
+#' (\code{omega}, \code{alpha}, \code{pi_null}, \code{beta_null},
+#' \code{phack_kind}, \code{phack_z_source}, \code{phack_z_dest}); omitted
+#' entries keep their default names. The names are used in the generated JAGS
+#' code, monitors, and initial values of single-branch and mixture
+#' specifications alike, so they must be distinct valid JAGS node names that
+#' do not coincide with internal selection nodes.
 #' @param global_breaks optional global p-value break grid.
 #' @param include_init whether to generate JAGS initial values. Defaults to
 #' \code{TRUE}; when \code{FALSE}, the returned \code{init} field is \code{NULL}
@@ -377,8 +393,13 @@ selection_backend_spec <- function(priors,
     }else{
       character()
     }
+    if(!uses_indicator){
+      # A single branch writes the public omega node directly; mixtures map
+      # their component nodes onto `names` in the transform code below.
+      step_code <- .selection_rename_jags_node(step_code, "omega", names$omega)
+    }
     phacking_code <- if(uses_indicator || !is.null(branch_info[[i]]$phacking)){
-      .JAGS_phacking_component_syntax(branch_info[[i]]$phacking, component_id = component_id)
+      .JAGS_phacking_component_syntax(branch_info[[i]]$phacking, component_id = component_id, names = names)
     }else{
       character()
     }
@@ -442,7 +463,7 @@ selection_backend_spec <- function(priors,
   phacking <- .selection_backend_phacking_info(phacking_priors, names)
 
   init <- if(include_init){
-    .selection_backend_init(branch_info, prior_weights, uses_indicator, global_cuts = breaks)
+    .selection_backend_init(branch_info, prior_weights, uses_indicator, global_cuts = breaks, names = names)
   }else{
     NULL
   }

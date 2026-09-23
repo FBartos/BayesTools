@@ -39,10 +39,27 @@
   )
 }
 
+# Standard-normal probability of (lower, upper). pnorm(upper) - pnorm(lower)
+# cancels to 0 (or a negative value) once both cut points lie far in the upper
+# tail, which is where small p-value cuts put them; an interval in the upper
+# half is therefore a difference of upper-tail probabilities, and one in the
+# lower half a difference of lower-tail probabilities.
+.phack_normal_interval_mass <- function(lower, upper){
+
+  if(lower >= 0){
+    return(stats::pnorm(lower, lower.tail = FALSE) - stats::pnorm(upper, lower.tail = FALSE))
+  }
+  if(upper <= 0){
+    return(stats::pnorm(upper) - stats::pnorm(lower))
+  }
+
+  1 - stats::pnorm(lower) - stats::pnorm(upper, lower.tail = FALSE)
+}
+
 .phack_power_null_moment <- function(lower, upper, q, anchor, reverse){
 
   width <- upper - lower
-  m0 <- stats::pnorm(upper) - stats::pnorm(lower)
+  m0 <- .phack_normal_interval_mass(lower, upper)
   m1 <- stats::dnorm(lower) - stats::dnorm(upper)
 
   if(q == 1L){
@@ -85,7 +102,37 @@
     check_char(defaults[[i]], paste0("names$", names(defaults)[i]))
   }
 
+  # The names become JAGS nodes written by the generated code, so they must be
+  # distinct JAGS identifiers that no generated internal node uses.
+  node_names <- unlist(defaults, use.names = FALSE)
+  if(!all(grepl("^[A-Za-z][A-Za-z0-9._]*$", node_names))){
+    stop("All entries in the 'names' argument must be valid JAGS node names.", call. = FALSE)
+  }
+  if(anyDuplicated(node_names)){
+    stop("All entries in the 'names' argument must be distinct.", call. = FALSE)
+  }
+  reserved <- c("bias_indicator", "sel_vector_rule", "omega_local", "omega_ratio", "log_omega", "eta", "std_eta")
+  if(any(node_names %in% reserved | grepl("_component_[0-9]+$", node_names))){
+    stop(
+      "The 'names' argument must not use the internal selection node names: ",
+      paste0("'", reserved, "'", collapse = ", "), " or '*_component_<k>'.",
+      call. = FALSE
+    )
+  }
+
   return(defaults)
+}
+
+# Renames the indexed JAGS node `from` to `to` in generated syntax. A single
+# selection branch writes its public nodes directly, and the weight-function
+# syntax names that node by its default name.
+.selection_rename_jags_node <- function(code, from, to){
+
+  if(identical(from, to) || length(code) == 0L){
+    return(code)
+  }
+
+  gsub(paste0("(?<![A-Za-z0-9._])", from, "(?=\\[)"), to, code, perl = TRUE)
 }
 
 .selection_normalize_priors <- function(priors){
@@ -274,7 +321,7 @@
   ))
 }
 
-.selection_backend_init <- function(branch_info, prior_weights, uses_indicator, global_cuts = NULL){
+.selection_backend_init <- function(branch_info, prior_weights, uses_indicator, global_cuts = NULL, names = NULL){
 
   active_branch <- which.max(prior_weights)
 
@@ -282,10 +329,16 @@
   for(i in seq_along(branch_info)){
     component_id <- if(uses_indicator) i else NULL
     if(!is.null(branch_info[[i]]$selection)){
-      init <- c(init, .selection_JAGS_init_weightfunction_component(branch_info[[i]]$selection, component_id = component_id, global_cuts = global_cuts))
+      selection_init <- .selection_JAGS_init_weightfunction_component(branch_info[[i]]$selection, component_id = component_id, global_cuts = global_cuts)
+      if(is.null(component_id) && !is.null(names) && "omega" %in% base::names(selection_init)){
+        # A single unmapped independent weight function samples the public
+        # omega node itself, which the syntax writes under names$omega.
+        base::names(selection_init)[base::names(selection_init) == "omega"] <- names$omega
+      }
+      init <- c(init, selection_init)
     }
     if(!is.null(branch_info[[i]]$phacking)){
-      init <- c(init, .selection_JAGS_init_phacking_component(branch_info[[i]]$phacking, component_id = component_id))
+      init <- c(init, .selection_JAGS_init_phacking_component(branch_info[[i]]$phacking, component_id = component_id, names = names))
     }
   }
   if(uses_indicator){
@@ -350,10 +403,23 @@
   return(init)
 }
 
-.selection_JAGS_init_phacking_component <- function(prior, component_id = NULL){
+.selection_JAGS_init_phacking_component <- function(prior, component_id = NULL, names = NULL){
 
-  alpha_name <- if(is.null(component_id)) "alpha" else paste0("alpha_component_", component_id)
-  .JAGS_init.simple(prior$alpha, alpha_name)
+  .JAGS_init.simple(prior$alpha, .selection_phacking_node_name("alpha", component_id, names))
+}
+
+# JAGS node of a p-hacking field: `<field>_component_<k>` inside a mixture,
+# otherwise the public name from `names` (default: the field name).
+.selection_phacking_node_name <- function(field, component_id = NULL, names = NULL){
+
+  if(!is.null(component_id)){
+    return(paste0(field, "_component_", component_id))
+  }
+  if(!is.null(names[[field]])){
+    return(names[[field]])
+  }
+
+  field
 }
 
 .selection_prior_branch_info <- function(prior){
@@ -453,14 +519,14 @@
   format(x, scientific = FALSE, digits = 16, trim = TRUE)
 }
 
-.JAGS_phacking_component_syntax <- function(prior, component_id = NULL){
+.JAGS_phacking_component_syntax <- function(prior, component_id = NULL, names = NULL){
 
-  alpha_name <- if(is.null(component_id)) "alpha" else paste0("alpha_component_", component_id)
-  kind_name <- if(is.null(component_id)) "phack_kind" else paste0("phack_kind_component_", component_id)
-  pi_null_name <- if(is.null(component_id)) "pi_null" else paste0("pi_null_component_", component_id)
-  beta_null_name <- if(is.null(component_id)) "beta_null" else paste0("beta_null_component_", component_id)
-  z_source_name <- if(is.null(component_id)) "phack_z_source" else paste0("phack_z_source_component_", component_id)
-  z_destination_name <- if(is.null(component_id)) "phack_z_dest" else paste0("phack_z_dest_component_", component_id)
+  alpha_name         <- .selection_phacking_node_name("alpha", component_id, names)
+  kind_name          <- .selection_phacking_node_name("phack_kind", component_id, names)
+  pi_null_name       <- .selection_phacking_node_name("pi_null", component_id, names)
+  beta_null_name     <- .selection_phacking_node_name("beta_null", component_id, names)
+  z_source_name      <- .selection_phacking_node_name("phack_z_source", component_id, names)
+  z_destination_name <- .selection_phacking_node_name("phack_z_dest", component_id, names)
 
   if(is.null(prior)){
     return(paste0(

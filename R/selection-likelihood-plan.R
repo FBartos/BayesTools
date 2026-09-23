@@ -42,9 +42,9 @@ selection_qmc_design <- function(dimensions, points, scrambles, seed = 1L){
   base_design <- vapply(bases, function(base){
     .bt_selection_radical_inverse(seq_len(points), base)
   }, numeric(points))
-  if(dimensions == 1L){
-    base_design <- matrix(base_design, ncol = 1L)
-  }
+  # vapply() drops to a vector when either extent is 1 (one point or one
+  # dimension); the design is always points x dimensions.
+  base_design <- matrix(base_design, nrow = points, ncol = dimensions)
 
   shifts <- .bt_selection_local_uniforms(
     n = scrambles * dimensions,
