@@ -2905,6 +2905,75 @@ test_that("density_method is named-only on exported plot APIs", {
   )
 })
 
+test_that("factor posterior plot data uses declared point masses per column", {
+
+  prior <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  point_prior <- prior_factor("point", list(location = 0), contrast = "treatment")
+  attr(prior, "levels") <- 3
+  attr(prior, "level_names") <- c("a", "b", "c")
+  attr(point_prior, "levels") <- 3
+  attr(point_prior, "level_names") <- c("a", "b", "c")
+
+  factor_samples <- function(values, atoms){
+    colnames(values) <- c("theta[b]", "theta[c]")
+    attr(values, "prior_list") <- list(point_prior, prior)
+    attr(values, "models_ind") <- c(rep(1, 40), rep(2, 60))
+    attr(values, "posterior_atoms") <- atoms
+    class(values) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+    list(theta = values)
+  }
+  density_mass <- function(density){
+    sum(diff(density$x) * (head(density$y, -1) + tail(density$y, -1)) / 2)
+  }
+  continuous <- cbind(seq(-1.5, -.1, length.out = 60), seq(.1, 1.5, length.out = 60))
+
+  # declared model probabilities (.25 / .75) differ from the draw frequencies
+  # (40 / 60); the declared masses are authoritative
+  values <- rbind(matrix(0, nrow = 40, ncol = 2), continuous)
+  atoms <- BayesTools:::.posterior_atoms_from_priors(
+    list(point_prior, prior), c(.25, .75),
+    n_columns = 2L, column_names = c("theta[b]", "theta[c]")
+  )
+  plot_data <- BayesTools:::.plot_data_samples.factor(
+    factor_samples(values, atoms), "theta", n_points = 512,
+    transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE
+  )
+  expect_equal(plot_data$points1$x, 0)
+  expect_equal(plot_data$points1$y, .25)
+  expect_equal(density_mass(plot_data$density1), .75, tolerance = .02)
+  expect_equal(density_mass(plot_data$density2), .75, tolerance = .02)
+  expect_equal(plot_data$density1$samples, continuous[, 1])
+
+  # column-specific atoms: level b has one atom, level c two
+  values_joint <- rbind(
+    matrix(0, nrow = 20, ncol = 2),
+    cbind(rep(0, 20), rep(1, 20)),
+    continuous
+  )
+  atoms_joint <- BayesTools:::.posterior_atoms_new(
+    locations = rbind(c(0, 0), c(0, 1)),
+    mass = c(.2, .2),
+    column_names = c("theta[b]", "theta[c]"),
+    source = "test"
+  )
+  plot_data_joint <- BayesTools:::.plot_data_samples.factor(
+    factor_samples(values_joint, atoms_joint), "theta", n_points = 512,
+    transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE
+  )
+  point_entries <- plot_data_joint[vapply(plot_data_joint, inherits, logical(1), "density.prior.point")]
+  point_summary <- data.frame(
+    level = vapply(point_entries, function(point) attr(point, "level"), numeric(1)),
+    x     = vapply(point_entries, function(point) point$x, numeric(1)),
+    y     = vapply(point_entries, function(point) point$y, numeric(1))
+  )
+  point_summary <- point_summary[order(point_summary$level, point_summary$x), ]
+  expect_equal(point_summary$level, c(1, 2, 2))
+  expect_equal(point_summary$x, c(0, 0, 1))
+  expect_equal(point_summary$y, c(.4, .2, .2))
+  expect_equal(density_mass(plot_data_joint$density1), .6, tolerance = .02)
+  expect_equal(plot_data_joint$density2$samples, continuous[, 2])
+})
+
 test_that("factor posterior plot data aggregates duplicate point-mass models", {
 
   samples_matrix <- matrix(

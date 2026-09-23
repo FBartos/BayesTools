@@ -259,11 +259,30 @@
 
   samples    <- samples[[parameter]]
 
+  # Declared posterior atoms are authoritative (as for simple parameters):
+  # each level uses the point masses and continuous mass of its own column.
+  column_atoms     <- .plot_data_factor_column_atoms(samples)
+  level_point_data <- NULL
+
   # create the output object
   out <- list()
 
   # deal with spikes
-  if(any(sapply(prior_list, is.prior.point))){
+  if(!is.null(column_atoms)){
+
+    column_points <- lapply(column_atoms, function(atoms){
+      list(x = as.numeric(atoms$locations[, 1L]), y = atoms$mass)
+    })
+    if(all(vapply(column_points, identical, logical(1), y = column_points[[1L]]))){
+      x_points <- column_points[[1L]]$x
+      y_points <- column_points[[1L]]$y
+    }else{
+      level_point_data <- lapply(column_points, function(points){
+        .plot_data_factor_points(points$x, points$y, n_points, transformation, transformation_arguments)
+      })
+    }
+
+  }else if(any(sapply(prior_list, is.prior.point))){
 
     # aggregate samples across spikes
     spikes_simplified <- .simplify_spike_samples(samples, prior_list)
@@ -275,38 +294,35 @@
       x_points <- NULL
       y_points <- NULL
     }
-
-    # apply transformations
-    if(!is.null(transformation)){
-      x_points <- .density.prior_transformation_x(x_points, transformation, transformation_arguments)
-    }
-
-    for(i in seq_along(y_points)){
-      temp_points <- list(
-        call    = call("density", paste0("point", i)),
-        bw      = NULL,
-        n       = n_points,
-        x       = x_points[i],
-        y       = y_points[i],
-        samples = NULL
-      )
-
-      class(temp_points) <- c("density", "density.prior", "density.prior.point")
-      attr(temp_points, "x_range") <- range(x_points[i])
-      attr(temp_points, "y_range") <- c(0, max(y_points[i]))
-
-      sample_point_data[[paste0("points",i)]] <- temp_points
-    }
+  }
+  if(length(y_points) > 0L){
+    sample_point_data <- .plot_data_factor_points(x_points, y_points, n_points, transformation, transformation_arguments)
   }
 
   # deal with the densities
-  if(any(!sapply(prior_list, is.prior.point))){
+  if(!is.null(column_atoms) || any(!sapply(prior_list, is.prior.point))){
 
-    samples_density <- samples[attr(samples, "models_ind") %in% which(!sapply(prior_list, is.prior.point)),,drop=FALSE]
+    samples_density <- if(is.null(column_atoms)){
+      samples[attr(samples, "models_ind") %in% which(!sapply(prior_list, is.prior.point)),,drop=FALSE]
+    }else{
+      samples
+    }
     sample_points_suppressed_by_level <- rep(FALSE, ncol(samples_density))
 
     if(nrow(samples_density) > 0){
       for(i in 1:ncol(samples_density)){
+
+        if(is.null(column_atoms)){
+          level_samples <- samples_density[,i]
+          level_mass    <- nrow(samples_density) / nrow(samples)
+        }else{
+          continuous    <- .Savage_Dickey_BF.continuous_posterior(samples[,i], column_atoms[[i]])
+          level_samples <- as.numeric(continuous$samples)
+          level_mass    <- continuous$continuous_mass
+          if(level_mass <= .Machine$double.eps * max(8, length(column_atoms[[i]]$mass))){
+            next
+          }
+        }
 
         boundary_reflection <- FALSE
         density_aliases <- .plot_data_factor_density_aliases(
@@ -355,7 +371,7 @@
 
               out[[paste0("density", i, "_points", point_i)]] <- temp_points
             }
-          }else if(length(sample_point_data) > 0L){
+          }else if(length(sample_point_data) > 0L || length(level_point_data[[i]]) > 0L){
             sample_points_suppressed_by_level[i] <- TRUE
             if(!missing_stored_point_masses_warning){
               .plot_data_warn_missing_stored_point_masses()
@@ -368,9 +384,16 @@
           if(!is.null(transformation)){
             x_den <- .density.prior_transformation_x(x_den, transformation, transformation_arguments)
             y_den <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
-            samples_density[,i] <- .density.prior_transformation_x(samples_density[,i], transformation, transformation_arguments)
+            level_samples <- .density.prior_transformation_x(level_samples, transformation, transformation_arguments)
           }
 
+        }else if(!is.null(column_atoms) &&
+                 (length(level_samples) < 2L || diff(range(level_samples)) == 0)){
+          stop(
+            "Posterior density is unavailable for declared continuous samples with fewer than two distinct values. ",
+            "Provide a valid 'posterior_density' attribute and set 'density_method' to 'precomputed'.",
+            call. = FALSE
+          )
         }else{
 
           # Factor contrasts may be transformed before plotting; in that case
@@ -387,21 +410,21 @@
 
           # get the density estimate
           density_continuous <- .density_kde_boundary(
-            x      = samples_density[,i],
+            x      = level_samples,
             n      = n_points,
             from   = density_range[["from"]],
             to     = density_range[["to"]],
             bounds = density_bounds
           )
           x_den <- density_continuous$x
-          y_den <- density_continuous$y * (nrow(samples_density) / nrow(samples))
+          y_den <- density_continuous$y * level_mass
           boundary_reflection <- isTRUE(attr(density_continuous, "boundary_reflection"))
 
           # apply transformations
           if(!is.null(transformation)){
             x_den   <- .density.prior_transformation_x(x_den,   transformation, transformation_arguments)
             y_den   <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
-            samples_density[,i] <- .density.prior_transformation_x(samples_density[,i],   transformation, transformation_arguments)
+            level_samples <- .density.prior_transformation_x(level_samples, transformation, transformation_arguments)
           }
 
           if(boundary_reflection){
@@ -415,13 +438,17 @@
           }
         }
 
+        if(is.null(column_atoms)){
+          samples_density[,i] <- level_samples
+        }
+
         out_den    <- list(
           call    = call("density", "mixed samples"),
           bw      = NULL,
           n       = n_points,
           x       = x_den,
           y       = y_den,
-          samples = samples_density
+          samples = if(is.null(column_atoms)) samples_density else level_samples
         )
 
         class(out_den) <- c("density", "density.prior", "density.prior.factor", "density.prior.simple")
@@ -458,10 +485,75 @@
       )
     }
   }
-
-
+  if(!is.null(level_point_data)){
+    levels <- if(length(sample_points_suppressed_by_level) == 0L){
+      seq_along(level_point_data)
+    }else{
+      which(!sample_points_suppressed_by_level)
+    }
+    level_points <- list()
+    for(level in levels){
+      for(point_i in seq_along(level_point_data[[level]])){
+        point_data <- level_point_data[[level]][[point_i]]
+        attr(point_data, "level")      <- level
+        attr(point_data, "level_name") <- colnames(samples)[level]
+        level_points[[paste0("points", level, "_", point_i)]] <- point_data
+      }
+    }
+    out <- c(level_points, out)
+  }
 
   return(out)
+}
+.plot_data_factor_column_atoms <- function(samples){
+
+  posterior_atoms <- .posterior_atoms_get(samples)
+  if(is.null(posterior_atoms)){
+    return(NULL)
+  }
+
+  n_atom_columns <- ncol(posterior_atoms$locations)
+  if(!n_atom_columns %in% c(1L, ncol(samples))){
+    stop("Factor posterior plotting is unavailable because atom metadata do not match the factor columns.", call. = FALSE)
+  }
+
+  lapply(seq_len(ncol(samples)), function(i){
+    column_atoms <- .posterior_atoms_for_column(
+      posterior_atoms,
+      if(n_atom_columns == 1L) 1L else i
+    )
+    if(is.null(column_atoms)){
+      stop("Factor posterior plotting is unavailable because atom metadata do not identify the factor columns.", call. = FALSE)
+    }
+    column_atoms
+  })
+}
+.plot_data_factor_points <- function(x_points, y_points, n_points, transformation = NULL,
+                                     transformation_arguments = NULL){
+
+  if(!is.null(transformation) && length(x_points) > 0L){
+    x_points <- .density.prior_transformation_x(x_points, transformation, transformation_arguments)
+  }
+
+  out <- list()
+  for(i in seq_along(y_points)){
+    temp_points <- list(
+      call    = call("density", paste0("point", i)),
+      bw      = NULL,
+      n       = n_points,
+      x       = x_points[i],
+      y       = y_points[i],
+      samples = NULL
+    )
+
+    class(temp_points) <- c("density", "density.prior", "density.prior.point")
+    attr(temp_points, "x_range") <- range(x_points[i])
+    attr(temp_points, "y_range") <- c(0, max(y_points[i]))
+
+    out[[paste0("points",i)]] <- temp_points
+  }
+
+  out
 }
 
 .plot_data_factor_density_aliases <- function(parameter, samples, sample_name, level_i){
