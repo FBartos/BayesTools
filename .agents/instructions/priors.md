@@ -83,7 +83,13 @@ draws, large grids, fitted objects, environments, or closures capturing them.
 
 Conditional-normal quadratures are independent 1-D integrals: each distinct
 design row, model or conditional mixture component, and mixture leaf receives
-the full evaluation budget (`n_grid`) and its own convergence check. Budgets
+the full evaluation budget (`n_grid`) and its own convergence check. Each such
+integral is split at the multiplier's (other term's) support bounds, at its
+declared-prior quantiles (1e-6, 1e-3, .02, .25, .5, .75, .98, and their
+complements; the extreme one is skipped next to a bound with infinite
+density), and for Gaussian convolutions at the Gaussian peak and +-1, 3, 10
+scaled SDs around it; every piece gets the full budget, and the acceptance
+criterion applies to the summed value and error. Budgets
 are never divided among them; the budget only caps how many mixture leaves are
 expanded.
 

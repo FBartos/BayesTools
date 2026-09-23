@@ -36,10 +36,13 @@ arbitrary user transformations are reported as \code{unknown} unless exact point
 mass or singular-point metadata establishes the requested behavior.
 Supported conditional-normal mixtures are structurally regular because they
 include an independent positive-variance Gaussian term. Their ordinates use
-quadrature over the multiplier's declared support and retain integration
-errors and evaluation budgets in \code{provenance}. Every independent quadrature
-(each distinct design row, model or conditional mixture component, and
-spike-and-slab or mixture leaf) receives the full evaluation budget of the
+quadrature over the multiplier's declared support, split at its bounds, at
+quantiles of its declared prior and, for a Gaussian convolution, around the
+Gaussian peak, and retain integration errors and evaluation budgets in
+\code{provenance}. Every independent quadrature
+(each piece of a split integral, each distinct design row, model or
+conditional mixture component, and spike-and-slab or mixture leaf) receives
+the full evaluation budget of the
 density (its grid size) and its own convergence check; \code{provenance} reports
 the summed evaluations and budgets of all of them, and row mixtures also
 keep each row's diagnostics. Their structural

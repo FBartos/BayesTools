@@ -80,8 +80,11 @@ test_that("unbounded conditional-normal ordinates retain exact support and count
     expect_identical(ordinate$behavior, "regular")
     expect_true(ordinate$exact)
     expect_equal(exp(ordinate$log_density), expected[[i]], tolerance = 1e-7)
-    expect_identical(ordinate$provenance$integration$evaluations, counted)
-    expect_lte(counted, 512)
+    # each piece of the split integral has the full budget
+    integration <- ordinate$provenance$integration
+    expect_identical(integration$evaluations, counted)
+    expect_identical(sum(integration$piece_evaluations), counted)
+    expect_true(all(integration$piece_evaluations <= 512))
     expect_equal(as.numeric(.prior_linear_density_height(density, 0)), expected[[i]], tolerance = 1e-7)
   }
 })
@@ -261,34 +264,116 @@ test_that("feasible conditional-normal leaves each receive the full evaluation b
 
 test_that("conditional-normal quadrature accepts a result converged at the budget", {
 
-  # b * s with s ~ half-normal: at 0 the ordinate is exp(z) K0(z) / (2 pi)
+  # One QUADPACK piece of the split integral: b * s with s ~ half-normal over
+  # the whole support (0, Inf). At 0 the integral is exp(z) K0(z) / (2 pi)
   # with z = 1 / 4 (s = sinh(t) gives the K0 integral,
   # https://dlmf.nist.gov/10.32.E9). The one-sided 15-point rule converges
   # after three intervals, i.e. 15 * (2 * 3 - 1) = 75 evaluations.
+  multiplier <- prior("normal", list(0, 1), list(0, Inf))
+  integrand <- function(s){
+    exp(stats::dnorm(0, 0, sqrt(1 + s^2), log = TRUE) + lpdf(multiplier, s))
+  }
+  expected <- besselK(.25, 0, expon.scaled = TRUE) / (2 * pi)
+  tolerance <- .prior_linear_density_refinement_tolerance()
+
+  exact_budget <- .prior_conditional_normal_piece(
+    integrand, 0, Inf, n_grid = 75,
+    relative = tolerance$relative, absolute = tolerance$absolute
+  )
+  expect_identical(exact_budget$message, "OK")
+  expect_identical(exact_budget$evaluations, 75L)
+  expect_equal(exact_budget$value, expected, tolerance = 1e-8)
+
+  # one evaluation short of the third interval: the budget, not QUADPACK's
+  # interval limit, stops the quadrature
+  short_budget <- .prior_conditional_normal_piece(
+    integrand, 0, Inf, n_grid = 74,
+    relative = tolerance$relative, absolute = tolerance$absolute
+  )
+  expect_identical(short_budget$message, "the integration evaluation budget was exhausted")
+  expect_lte(short_budget$evaluations, 74L)
+
+  # the ordinate splits the same integral into pieces, each with the budget
   priors <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1)),
-                 s = prior("normal", list(0, 1), list(0, Inf)))
+                 s = multiplier)
   attr(priors$b, "multiply_by") <- "s"
   spec <- .prior_conditional_normal_spec(
     priors, .prior_linear_split_multiply_groups(priors, c(a = 1, b = 1)),
     c(a = NA_character_, b = NA_character_)
   )
-  expected <- besselK(.25, 0, expon.scaled = TRUE) / (2 * pi)
-
-  exact_budget <- .prior_conditional_normal_ordinate(spec, 0, n_grid = 75)
-  integration <- exact_budget$provenance$integration
+  ordinate <- .prior_conditional_normal_ordinate(spec, 0, n_grid = 75)
+  integration <- ordinate$provenance$integration
   expect_true(integration$converged)
-  expect_identical(integration$message, "OK")
-  expect_identical(integration$evaluations, 75L)
-  expect_equal(exp(exact_budget$log_density), expected, tolerance = 1e-8)
+  expect_true(all(integration$piece_evaluations <= 75L))
+  expect_identical(length(integration$piece_evaluations), length(integration$breakpoints) - 1L)
+  expect_equal(exp(ordinate$log_density), expected, tolerance = 1e-8)
+})
 
-  # one evaluation short of the third interval: the budget, not QUADPACK's
-  # interval limit, stops the quadrature
-  short_budget <- .prior_conditional_normal_ordinate(spec, 0, n_grid = 74)
-  integration <- short_budget$provenance$integration
-  expect_false(integration$converged)
-  expect_true(is.na(short_budget$log_density))
-  expect_identical(integration$message, "the integration evaluation budget was exhausted")
-  expect_lte(integration$evaluations, 74L)
+test_that("conditional-normal quadratures split scale-disparate integrals at breakpoints", {
+
+  # Split-integral references: integrate() at rel.tol 1e-12 over hand-chosen
+  # pieces around the Gaussian peak and the other term's mass (beta(.5, .5):
+  # u = sin(t)^2 removes the bound singularities; normal x half-normal
+  # multiplier at 0: exp(z) K0(z) / (2 pi sigma) with z = 1 / (4 sigma^2),
+  # https://dlmf.nist.gov/10.32.E9). One QUADPACK call over the whole support
+  # missed the mass of all but the beta cases.
+  split_reference <- function(f, points){
+    sum(vapply(seq_len(length(points) - 1L), function(i){
+      stats::integrate(f, points[i], points[i + 1L], rel.tol = 1e-12,
+                       subdivisions = 5000L)$value
+    }, numeric(1)))
+  }
+  height <- function(priors, value){
+    density <- .prior_linear_combination_density(priors, c(a = 1, b = 1), n_grid = 4096)
+    ordinate <- prior_density_ordinate(density, value)
+    expect_identical(ordinate$method, "conditional_normal_mixture")
+    expect_true(ordinate$provenance$integration$converged)
+    as.numeric(.prior_linear_density_height(density, value))
+  }
+  cases <- list(
+    list(priors = list(a = prior("normal", list(0, .001)), b = prior("gamma", list(3, 2))), value = 1,
+         reference = split_reference(function(u) stats::dnorm(1 - u, 0, .001) * stats::dgamma(u, 3, 2),
+                                     c(0, .98, 1, 1.02, Inf))),
+    list(priors = list(a = prior("normal", list(0, .1)), b = prior("cauchy", list(0, 1))), value = 5,
+         reference = split_reference(function(u) stats::dnorm(5 - u, 0, .1) * stats::dcauchy(u),
+                                     c(-Inf, 0, 3, 5, 7, Inf))),
+    list(priors = list(a = prior("normal", list(0, 1)), b = prior("lognormal", list(3, .01))), value = 20,
+         reference = split_reference(function(u) stats::dnorm(20 - u) * stats::dlnorm(u, 3, .01),
+                                     c(0, exp(3) - 1, exp(3), exp(3) + 1, Inf))),
+    list(priors = list(a = prior("normal", list(0, .3)), b = prior("beta", list(.5, .5))), value = 0,
+         reference = 2 / pi * split_reference(function(t) stats::dnorm(0 - sin(t)^2, 0, .3),
+                                              c(0, pi / 4, pi / 2))),
+    list(priors = list(a = prior("normal", list(0, .01)), b = prior("beta", list(.5, .5))), value = .999,
+         reference = 2 / pi * split_reference(function(t) stats::dnorm(.999 - sin(t)^2, 0, .01),
+                                              c(0, asin(sqrt(.9)), asin(sqrt(.999)), pi / 2))),
+    list(priors = list(a = prior("normal", list(0, 10)), b = prior("gamma", list(1e4, 1e4))), value = 1,
+         reference = split_reference(function(u) stats::dnorm(1 - u, 0, 10) * stats::dgamma(u, 1e4, 1e4),
+                                     c(0, .9, 1, 1.1, Inf)))
+  )
+  for(case in cases){
+    expect_equal(height(case$priors, case$value), case$reference, tolerance = 1e-8)
+  }
+  # the references agree with the review's values (5 significant digits)
+  expect_equal(cases[[1L]]$reference, .54134, tolerance = 1e-4)
+  expect_equal(cases[[2L]]$reference, .012256, tolerance = 1e-4)
+  expect_equal(cases[[3L]]$reference, .38973, tolerance = 1e-4)
+
+  # normal x half-normal multiplier with a very narrow and a very wide scale
+  for(sigma in c(1e-3, 1e3)){
+    slope <- prior("normal", list(0, 1))
+    attr(slope, "multiply_by") <- "s"
+    priors <- list(a = prior("normal", list(0, 1)), b = slope,
+                   s = prior("normal", list(0, sigma), list(0, Inf)))
+    z <- 1 / (4 * sigma^2)
+    expect_equal(height(priors, 0), besselK(z, 0, expon.scaled = TRUE) / (2 * pi * sigma),
+                 tolerance = 1e-8)
+    expect_equal(
+      height(priors, 1.5),
+      split_reference(function(m) stats::dnorm(1.5, 0, sqrt(1 + m^2)) * 2 * stats::dnorm(m, 0, sigma),
+                      c(0, sigma * c(.1, 1, 3, 10), Inf)),
+      tolerance = 1e-8
+    )
+  }
 })
 
 test_that("row and leaf conditional-normal ordinates each receive the full evaluation budget", {

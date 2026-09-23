@@ -1281,22 +1281,14 @@
 
 .prior_conditional_normal_ordinate <- function(spec, value, n_grid){
 
-  # Finite bounds use 21-point rules; infinite bounds use 15-point rules,
-  # with paired evaluations for two-sided infinite intervals. With k
-  # evaluations per interval, m intervals use k * (2 * m - 1) evaluations;
-  # 'max_intervals' is the largest m within the budget. QUADPACK reports
-  # "maximum number of subdivisions reached" whenever the interval count
-  # equals 'subdivisions', even for a converged result, so it gets one more
-  # interval and the evaluation cap below enforces the budget.
-  initial_evaluations <- .prior_conditional_normal_initial_evaluations(spec$bounds)
-  max_intervals <- floor((n_grid + initial_evaluations) / (2 * initial_evaluations))
+  # The integral runs over the other term's (the multiplier's) declared
+  # support, split at breakpoints so that no piece is dominated by mass that
+  # its initial quadrature rule cannot see (a narrow Gaussian peak, or a
+  # concentrated other term far from zero). Each piece is an independent
+  # integral with the full evaluation budget and its own diagnostics; the
+  # ordinate is their sum, and the acceptance criterion applies to the total.
   tolerance <- .prior_linear_density_refinement_tolerance()
-  evaluations <- 0L
   integrand <- function(multiplier){
-    if(evaluations + length(multiplier) > n_grid){
-      stop("the integration evaluation budget was exhausted", call. = FALSE)
-    }
-    evaluations <<- evaluations + length(multiplier)
     product_sd <- abs(multiplier) * spec$product_sd
     scale <- pmax(spec$additive_sd, product_sd)
     conditional_sd <- scale * sqrt((spec$additive_sd / scale)^2 + (product_sd / scale)^2)
@@ -1304,17 +1296,24 @@
     exp(stats::dnorm(value, conditional_mean, conditional_sd, log = TRUE) +
           lpdf(spec$multiplier, multiplier))
   }
-  integral <- if(!is.finite(max_intervals) || max_intervals < 1){
-    list(value = NA_real_, abs.error = NA_real_, subdivisions = 0L,
-         message = paste0("fewer than ", initial_evaluations,
-                          " integration evaluations are available"))
-  }else tryCatch(
-    stats::integrate(integrand, spec$bounds[1L], spec$bounds[2L],
-                     subdivisions = max_intervals + 1L, rel.tol = tolerance$relative,
-                     abs.tol = tolerance$absolute, stop.on.error = FALSE),
-    error = function(e){
-      list(value = NA_real_, abs.error = NA_real_, subdivisions = 0L,
-           message = conditionMessage(e))
+  points <- .prior_conditional_normal_breakpoints(spec, value)
+  n_pieces <- length(points) - 1L
+  pieces <- lapply(seq_len(n_pieces), function(i){
+    .prior_conditional_normal_piece(
+      integrand, points[i], points[i + 1L], n_grid,
+      relative = tolerance$relative, absolute = tolerance$absolute / n_pieces
+    )
+  })
+  piece_values <- vapply(pieces, `[[`, numeric(1), "value")
+  piece_errors <- vapply(pieces, `[[`, numeric(1), "abs.error")
+  piece_messages <- vapply(pieces, `[[`, character(1), "message")
+  integral <- list(
+    value     = sum(piece_values),
+    abs.error = sum(piece_errors),
+    message   = if(all(piece_messages == "OK")){
+      "OK"
+    }else{
+      paste(unique(piece_messages[piece_messages != "OK"]), collapse = "; ")
     }
   )
   if(identical(integral$message, "OK") && isTRUE(integral$value == 0)){
@@ -1340,10 +1339,104 @@
       integration = list(
         kind = "conditional_normal_mixture", exact = FALSE,
         absolute_error = integral$abs.error, error_bound = bound,
-        evaluations = evaluations,
-        budget = n_grid, converged = isTRUE(accepted), message = integral$message
+        evaluations = sum(vapply(pieces, `[[`, integer(1), "evaluations")),
+        budget = n_grid, converged = isTRUE(accepted), message = integral$message,
+        breakpoints = points,
+        piece_evaluations = vapply(pieces, `[[`, integer(1), "evaluations"),
+        piece_absolute_errors = piece_errors
       )
     )
+  )
+}
+
+# Breakpoints of the conditional-normal integral: the support bounds of the
+# multiplier (or other term), its declared-prior quantiles, and for a Gaussian
+# convolution (product_sd == 0) the Gaussian peak u* = (value - m) / w and
+# u* +- k s / |w| (k = 1, 3, 10). Only points strictly inside the open support
+# with a finite density are kept; pieces narrower than
+# 16 * eps * max(1, |endpoints|) are merged.
+.prior_conditional_normal_breakpoints <- function(spec, value){
+
+  lower <- spec$bounds[1L]
+  upper <- spec$bounds[2L]
+  inner <- numeric()
+  if(isTRUE(spec$product_sd == 0) && isTRUE(spec$product_mean != 0)){
+    centre <- (value - spec$additive_mean) / spec$product_mean
+    width <- spec$additive_sd / abs(spec$product_mean)
+    inner <- c(inner, centre, centre + as.vector(outer(c(-1, 1), c(1, 3, 10))) * width)
+  }
+  # next to a finite bound where the density is infinite, the extreme
+  # quantile would leave a piece too narrow for the floating-point resolution
+  # at that bound; that quantile is not used
+  singular <- vapply(c(lower, upper), function(bound){
+    is.finite(bound) && isTRUE(is.infinite(suppressWarnings(exp(lpdf(spec$multiplier, bound)))))
+  }, logical(1))
+  probabilities <- c(if(!singular[1L]) 1e-6, 1e-3, .02, .25, .5, .75, .98, 1 - 1e-3,
+                     if(!singular[2L]) 1 - 1e-6)
+  quantiles <- tryCatch(
+    suppressWarnings(quant(spec$multiplier, probabilities)),
+    error = function(e) numeric()
+  )
+  inner <- c(inner, as.numeric(quantiles))
+  inner <- inner[is.finite(inner) & inner > lower & inner < upper]
+  if(length(inner) > 0L){
+    density <- suppressWarnings(exp(lpdf(spec$multiplier, inner)))
+    inner <- inner[is.finite(density)]
+  }
+  inner <- sort(unique(inner))
+
+  minimum_width <- function(a, b){
+    16 * .Machine$double.eps * max(1, abs(c(a, b))[is.finite(c(a, b))])
+  }
+  points <- lower
+  for(point in inner){
+    if(point - points[length(points)] >= minimum_width(points[length(points)], point)){
+      points <- c(points, point)
+    }
+  }
+  if(length(points) > 1L && upper - points[length(points)] < minimum_width(points[length(points)], upper)){
+    points <- points[-length(points)]
+  }
+  c(points, upper)
+}
+
+# One budgeted QUADPACK piece. Finite pieces use 21-point rules; infinite ends
+# use 15-point rules, paired for two-sided infinite pieces. With k evaluations
+# per interval, m intervals use k * (2 * m - 1) evaluations; 'max_intervals'
+# is the largest m within the budget. QUADPACK reports "maximum number of
+# subdivisions reached" whenever the interval count equals 'subdivisions', even
+# for a converged result, so it gets one more interval and the evaluation cap
+# enforces the budget.
+.prior_conditional_normal_piece <- function(integrand, lower, upper, n_grid,
+                                            relative, absolute){
+
+  initial_evaluations <- .prior_conditional_normal_initial_evaluations(c(lower, upper))
+  max_intervals <- floor((n_grid + initial_evaluations) / (2 * initial_evaluations))
+  evaluations <- 0L
+  budgeted <- function(x){
+    if(evaluations + length(x) > n_grid){
+      stop("the integration evaluation budget was exhausted", call. = FALSE)
+    }
+    evaluations <<- evaluations + length(x)
+    integrand(x)
+  }
+  integral <- if(!is.finite(max_intervals) || max_intervals < 1){
+    list(value = NA_real_, abs.error = NA_real_,
+         message = paste0("fewer than ", initial_evaluations,
+                          " integration evaluations are available"))
+  }else tryCatch(
+    stats::integrate(budgeted, lower, upper,
+                     subdivisions = max_intervals + 1L,
+                     rel.tol = relative, abs.tol = absolute, stop.on.error = FALSE),
+    error = function(e){
+      list(value = NA_real_, abs.error = NA_real_, message = conditionMessage(e))
+    }
+  )
+  list(
+    value       = as.numeric(integral$value),
+    abs.error   = as.numeric(integral$abs.error),
+    message     = as.character(integral$message),
+    evaluations = evaluations
   )
 }
 
