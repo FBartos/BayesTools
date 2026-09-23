@@ -1274,7 +1274,7 @@
         paste(unobserved_new, collapse = ", "),
         " have no rows in the fitting data and are predicted as new levels."
       ),
-      " Use a \"zero\" or \"sample\" 'new_levels' policy to predict them.",
+      " Use 'new_levels = \"zero\"' or 'new_levels = \"sample\"' to predict them.",
       call. = FALSE
     )
   }

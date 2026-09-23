@@ -1374,8 +1374,8 @@ test_that("declared but unobserved grouping levels are predicted as new levels",
   unobserved_message <- paste0(
     "New random-effect level(s) for block 'g' are not supported by ",
     "JAGS_evaluate_formula(): c. Declared grouping level(s) c have no rows ",
-    "in the fitting data and are predicted as new levels. Use a \"zero\" or ",
-    "\"sample\" 'new_levels' policy to predict them."
+    "in the fitting data and are predicted as new levels. Use ",
+    "'new_levels = \"zero\"' or 'new_levels = \"sample\"' to predict them."
   )
   expect_error(evaluate("error"), unobserved_message, fixed = TRUE)
   expect_error(evaluate(NULL), unobserved_message, fixed = TRUE)

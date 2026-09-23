@@ -9603,7 +9603,8 @@ test_that("random-effect grouping factors preserve unused training levels", {
       "New random-effect level(s) for block 'id' are not supported by ",
       "JAGS_evaluate_formula(): unused. Declared grouping level(s) unused ",
       "have no rows in the fitting data and are predicted as new levels. ",
-      "Use a \"zero\" or \"sample\" 'new_levels' policy to predict them."
+      "Use 'new_levels = \"zero\"' or 'new_levels = \"sample\"' to predict ",
+      "them."
     ),
     fixed = TRUE
   )
