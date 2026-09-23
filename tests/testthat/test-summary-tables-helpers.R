@@ -40,13 +40,33 @@ test_that("semantic inclusion rows retain probability-only summaries", {
     model_samples = samples,
     n_samples     = 4L,
     n_chains      = 1L,
-    conditional   = TRUE
+    conditional   = TRUE,
+    inclusion     = c(TRUE, TRUE, FALSE)
   )
 
   inclusion <- c("(mu) id: inclusion(sd(x))", "beta (inclusion)")
   expect_equal(as.numeric(actual[inclusion, "Mean"]), c(0.5, 0.5))
   expect_true(all(is.na(actual[inclusion, c("SD", "0.025", "0.975")])))
   expect_true(all(is.finite(as.numeric(actual["theta", ]))))
+
+  # Inclusion rows come from metadata; labels alone do not blank a row.
+  unflagged <- .runjags_summary_fast(
+    model_samples = samples,
+    n_samples     = 4L,
+    n_chains      = 1L,
+    conditional   = TRUE
+  )
+  expect_true(all(is.finite(as.matrix(unflagged[inclusion, c("SD", "0.025", "0.975")]))))
+  expect_error(
+    .runjags_summary_fast(
+      model_samples = samples,
+      n_samples     = 4L,
+      n_chains      = 1L,
+      conditional   = TRUE,
+      inclusion     = TRUE
+    ),
+    "'inclusion' argument must have length '3'"
+  )
 })
 
 
@@ -801,6 +821,266 @@ test_that("spike-at-zero coefficients non-zero on the original scale are reporte
     unname(original[c("(mu) f[b]", "(mu) f[c]"), "SD"]),
     unname(apply(expected, 2L, stats::sd)),
     tolerance = 1e-12
+  )
+})
+
+# Synthetic fit whose inclusion indicators hold 0/1 draws (spike-and-slab and
+# allocation gates) or component indices (two-component mixtures); `simplex`
+# columns are normalised to sum to one.
+.inclusion_rows_fit_for_test <- function(columns, prior_list, formula_design = NULL,
+                                         simplex = character(), n = 60L){
+
+  draws <- vapply(columns, function(column){
+    values <- stats::runif(n)
+    if(!endsWith(column, "_indicator")){
+      return(values)
+    }
+    owner <- prior_list[[sub("_indicator$", "", column)]]
+    if(is.prior.mixture(owner) && !is.prior.spike_and_slab(owner)){
+      return(1 + as.numeric(values > 0.4))
+    }
+    as.numeric(values > 0.6)
+  }, numeric(n))
+  colnames(draws) <- columns
+  if(length(simplex) > 0L){
+    draws[, simplex] <- draws[, simplex] / rowSums(draws[, simplex])
+  }
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(draws)), sample = n),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_design") <- formula_design
+  attach_test_parameter_map(fit)
+}
+
+test_that("estimates tables blank inclusion rows identified from metadata", {
+
+  skip_if_not_installed("runjags")
+  set.seed(64)
+  blank_columns <- c("SD", "0.025", "0.5", "0.975")
+  expect_inclusion_rows <- function(table, rows){
+    expect_true(all(rows %in% rownames(table)))
+    expect_true(all(is.na(as.matrix(table[rows, blank_columns]))))
+    expect_true(all(is.finite(as.numeric(table[rows, "Mean"]))))
+    expect_true(all(is.finite(as.numeric(table[rows, "MCMC_error"]))))
+    expect_true(all(is.finite(as.numeric(table[rows, "ESS"]))))
+  }
+  expect_summary_rows <- function(table, rows){
+    expect_true(all(rows %in% rownames(table)))
+    expect_true(all(is.finite(as.matrix(table[rows, blank_columns]))))
+  }
+
+  # Non-formula spike-and-slab and mixture indicators. An ordinary parameter
+  # whose name contains "inclusion" keeps its summary.
+  simple_priors <- list(
+    beta = prior_spike_and_slab(
+      prior("normal", list(0, 1)),
+      prior_inclusion = prior("beta", list(1, 1))
+    ),
+    par = prior_mixture(
+      list(prior("normal", list(0, 1)), prior("normal", list(3, 1))),
+      components = c("comp", "other")
+    ),
+    inclusion_rate = prior("beta", list(2, 2))
+  )
+  simple_fit <- .inclusion_rows_fit_for_test(
+    JAGS_to_monitor(simple_priors),
+    simple_priors
+  )
+  simple_table <- runjags_estimates_table(simple_fit)
+  expect_inclusion_rows(
+    simple_table,
+    c("beta (inclusion)", "par (inclusion: comp)", "par (inclusion: other)")
+  )
+  expect_summary_rows(simple_table, c("beta", "par", "inclusion_rate"))
+  simple_draws <- as.matrix(simple_fit$mcmc[[1L]])
+  expect_equal(
+    as.numeric(simple_table["beta (inclusion)", "Mean"]),
+    mean(simple_draws[, "beta_indicator"])
+  )
+  expect_equal(
+    as.numeric(simple_table["par (inclusion: comp)", "Mean"]),
+    mean(simple_draws[, "par_indicator"] == 1)
+  )
+
+  # Random-effect inclusion gates (spike-and-slab and mixture SDs, with and
+  # without owner prefixes) and variance-allocation gates, in the default and
+  # the raw random-effect summaries. A factor level whose label contains
+  # " (inclusion" is not an inclusion row.
+  data <- data.frame(
+    x = c(-1.2, -0.4, 0.3, 1.1, -0.7, 0.9, 0.2, -1.5, 1.4, 0.6, -0.1, 0.8),
+    f = factor(
+      rep(c("pre", "post (inclusion)"), 6L),
+      levels = c("pre", "post (inclusion)")
+    ),
+    id = factor(rep(c("a", "b", "c", "d"), 3L)),
+    grp = factor(rep(c("g1", "g2", "g3"), each = 4L))
+  )
+  fixed_priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1)),
+    f = prior_factor("normal", list(0, 1), contrast = "treatment")
+  )
+  spike_sd <- prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)))
+  mixture_sd <- prior_mixture(
+    list(prior("spike", list(0)), prior("normal", list(0, 1), list(0, Inf))),
+    components = c("a", "b")
+  )
+  formula_fit <- function(formula, prior_list, prior_random, columns = NULL){
+    result <- JAGS_formula(
+      formula,
+      "mu",
+      data = data,
+      prior_list = prior_list,
+      prior_random = prior_random
+    )
+    simplex <- character()
+    if(is.null(columns)){
+      columns <- JAGS_to_monitor(result$prior_list)
+    }else{
+      columns <- columns(result$formula_design)
+      simplex <- attr(columns, "simplex")
+    }
+    .inclusion_rows_fit_for_test(
+      columns,
+      result$prior_list,
+      list(mu = result$formula_design),
+      simplex = simplex
+    )
+  }
+  allocation_columns <- function(design){
+    allocation <- design$random_effects[[1L]]$sd_binding$allocations[[1L]]
+    weights <- paste0(allocation$weight_name, "[", 1:2, "]")
+    structure(
+      c(
+        "mu_intercept",
+        allocation$source_node,
+        weights,
+        vapply(allocation$inclusion, `[[`, character(1), "prob_name"),
+        vapply(allocation$inclusion, `[[`, character(1), "indicator_name")
+      ),
+      simplex = weights
+    )
+  }
+
+  random_fits <- list(
+    unnamed = list(
+      fit = formula_fit(
+        ~ 1 + x + f + (x - 1 || id),
+        fixed_priors,
+        prior_random(id = random_block(sd = spike_sd))
+      ),
+      inclusion = "(mu) inclusion(sd(x))",
+      summary = c("(mu) x", "(mu) f[post (inclusion)]", "(mu) sd(x)")
+    ),
+    mixture = list(
+      fit = formula_fit(
+        ~ 1 + x + (x - 1 || id),
+        fixed_priors[c("intercept", "x")],
+        prior_random(id = random_block(sd = mixture_sd))
+      ),
+      inclusion = c("(mu) inclusion(sd(x)[a])", "(mu) inclusion(sd(x)[b])"),
+      summary = c("(mu) x", "(mu) sd(x)")
+    ),
+    named = list(
+      fit = formula_fit(
+        ~ 1 + x +
+          random(x - 1 | id, name = "id", covariance = "diag") +
+          random(1 | grp, name = "grp", covariance = "diag"),
+        fixed_priors[c("intercept", "x")],
+        prior_random(
+          id = random_block(sd = spike_sd),
+          grp = random_block(sd = spike_sd)
+        )
+      ),
+      inclusion = c(
+        "(mu) id: inclusion(sd(x))",
+        "(mu) grp: inclusion(sd(intercept))"
+      ),
+      summary = c("(mu) id: sd(x)", "(mu) grp: sd(intercept)")
+    ),
+    allocation = list(
+      fit = formula_fit(
+        ~ 1 +
+          random(1 | id, name = "study", covariance = "diag") +
+          random(1 | grp, name = "drug", covariance = "diag"),
+        fixed_priors["intercept"],
+        prior_random(allocation = random_variance_allocation(
+          name = "total",
+          terms = c(study = "study", drug = "drug"),
+          sd = prior("gamma", list(2, 2)),
+          weights = prior("dirichlet", list(alpha = c(1, 1))),
+          inclusion = list(
+            study = prior("spike", list(location = 0.3)),
+            drug  = prior("spike", list(location = 0.7))
+          )
+        )),
+        columns = allocation_columns
+      ),
+      inclusion = c("(mu) total: inclusion(study)", "(mu) total: inclusion(drug)"),
+      summary = c("(mu) total: sd_total", "(mu) total: var_prop(study)")
+    )
+  )
+
+  for(case in random_fits){
+    standard <- runjags_estimates_table(case$fit)
+    raw <- runjags_estimates_table(case$fit, random_effects_summary = "raw")
+    expect_inclusion_rows(standard, case$inclusion)
+    expect_summary_rows(standard, case$summary)
+    expect_setequal(rownames(standard)[is.na(standard[["SD"]])], case$inclusion)
+
+    # the raw summary blanks the same indicators under its backend labels
+    raw_inclusion <- rownames(raw)[is.na(raw[["SD"]])]
+    expect_inclusion_rows(raw, raw_inclusion)
+    expect_equal(
+      sort(as.numeric(raw[raw_inclusion, "Mean"])),
+      sort(as.numeric(standard[case$inclusion, "Mean"]))
+    )
+    expect_true(all(is.finite(as.numeric(raw[
+      setdiff(rownames(raw), raw_inclusion), "SD"
+    ]))))
+  }
+  expect_true("(mu) f[post (inclusion)]" %in% rownames(runjags_estimates_table(
+    random_fits$unnamed$fit,
+    random_effects_summary = "raw"
+  )))
+
+  # The indicator of a spike-and-slab total of an ordered factor is its only
+  # inclusion row.
+  ordered_data <- data.frame(
+    f = factor(rep(c("lo", "mid", "hi"), 4L), levels = c("lo", "mid", "hi"))
+  )
+  ordered_result <- JAGS_formula(
+    ~ 1 + f,
+    "mu",
+    data = ordered_data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_ordered(prior_spike_and_slab(
+        prior("normal", list(0, 1), list(0, Inf))
+      ))
+    )
+  )
+  eta_name <- .JAGS_prior_dirichlet_eta_name(
+    .prior_ordered_dirichlet_records(ordered_result$prior_list$mu_f)[[1L]]$node
+  )
+  ordered_fit <- .inclusion_rows_fit_for_test(
+    c(
+      "mu_intercept", "mu_f[1]", "mu_f[2]",
+      paste0("mu_f_ordered_total", c("_indicator", "_inclusion", "", "_variable")),
+      paste0(eta_name, "[", 1:2, "]")
+    ),
+    ordered_result$prior_list,
+    list(mu = ordered_result$formula_design)
+  )
+  ordered_table <- runjags_estimates_table(ordered_fit)
+  ordered_inclusion <- rownames(ordered_table)[is.na(ordered_table[["SD"]])]
+  expect_length(ordered_inclusion, 1L)
+  expect_inclusion_rows(ordered_table, ordered_inclusion)
+  expect_equal(
+    as.numeric(ordered_table[ordered_inclusion, "Mean"]),
+    mean(as.matrix(ordered_fit$mcmc[[1L]])[, "mu_f_ordered_total_indicator"])
   )
 })
 

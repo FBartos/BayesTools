@@ -1100,14 +1100,25 @@ test_that("runjags_estimates_table preserves point-factor and random-SD inclusio
     fit_random_factor,
     inclusion_selection
   ))[, 1L])
+  # inclusion rows report the inclusion probability and MCMC diagnostics only,
+  # in the default and the raw random-effect summaries alike
   expect_equal(
-    as.numeric(random_table[random_inclusion, "SD"]),
-    stats::sd(inclusion_draws)
+    as.numeric(random_table[random_inclusion, "Mean"]),
+    mean(inclusion_draws)
   )
+  expect_true(all(is.na(as.matrix(
+    random_table[random_inclusion, c("SD", "0.025", "0.5", "0.975")]
+  ))))
+  expect_true(all(is.na(as.matrix(
+    raw_random_table[raw_inclusion, c("SD", "0.025", "0.5", "0.975")]
+  ))))
   expect_equal(
-    as.numeric(random_table[random_inclusion, c("0.025", "0.5", "0.975")]),
-    as.numeric(stats::quantile(inclusion_draws, c(0.025, 0.5, 0.975)))
+    as.numeric(random_table[random_inclusion, c("MCMC_error", "MCMC_SD_error", "ESS", "R_hat")]),
+    as.numeric(raw_random_table[raw_inclusion, c("MCMC_error", "MCMC_SD_error", "ESS", "R_hat")])
   )
+  expect_true(all(is.finite(as.numeric(
+    random_table[random_inclusion, c("MCMC_error", "MCMC_SD_error", "ESS", "R_hat")]
+  ))))
 
   no_inclusion_table <- runjags_estimates_table(
     fit_random_factor,

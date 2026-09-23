@@ -162,13 +162,64 @@
   return(unique(columns))
 }
 
+# Inclusion rows summarise 0/1 inclusion-indicator draws. Their Mean is the
+# posterior inclusion probability; the SD and quantiles of the draws are
+# deterministic functions of that probability (not its uncertainty, which the
+# MCMC error reports), so they are left blank. The rows are identified from
+# metadata, never from their labels:
+# - spike-and-slab and mixture indicators renamed by the estimates table
+#   (`inclusion_columns`, recorded where the table creates them),
+# - semantic random-effect inclusion quantities (summary priors with
+#   `random_summary = "inclusion"`; random-SD spike-and-slab and mixture
+#   components and variance-allocation gates),
+# - raw variance-allocation gate indicators of the formula design, and
+# - indicators of spike-and-slab totals of ordered-factor priors.
+# `parameter_names` are the table's columns before formula renaming.
+.runjags_summary_inclusion_rows <- function(parameter_names, prior_list,
+                                            formula_design = NULL,
+                                            inclusion_columns = character()){
+
+  if(length(parameter_names) == 0L){
+    return(logical())
+  }
+
+  random_inclusion <- vapply(
+    prior_list[match(parameter_names, names(prior_list))],
+    function(prior) !is.null(prior) &&
+      identical(attr(prior, "random_summary", exact = TRUE), "inclusion"),
+    logical(1)
+  )
+
+  ordered_total_indicators <- character()
+  for(parameter in names(prior_list)){
+    prior <- prior_list[[parameter]]
+    if(is.prior.ordered(prior) && is.prior.spike_and_slab(prior$total)){
+      ordered_total_indicators <- c(
+        ordered_total_indicators,
+        paste0(.prior_ordered_total_name(parameter), "_indicator")
+      )
+    }
+  }
+
+  indicator_columns <- c(
+    inclusion_columns,
+    .bt_random_variance_allocation_inclusion_indicator_names(formula_design),
+    ordered_total_indicators
+  )
+
+  unname(random_inclusion | parameter_names %in% indicator_columns)
+}
+
 .runjags_summary_fast   <- function(model_samples, n_samples, n_chains, conditional, probs = c(0.025, 0.975), remove_diagnostics = FALSE,
-                                    diagnostic_columns = .JAGS_estimates_diagnostic_columns()){
+                                    diagnostic_columns = .JAGS_estimates_diagnostic_columns(),
+                                    inclusion = rep(FALSE, ncol(model_samples))){
 
   diagnostic_columns <- .normalize_diagnostic_columns(diagnostic_columns, .JAGS_estimates_diagnostic_columns(), "diagnostic_columns")
   if(remove_diagnostics){
     diagnostic_columns <- character()
   }
+  check_bool(inclusion, "inclusion", check_length = ncol(model_samples),
+             allow_NULL = ncol(model_samples) == 0L)
 
   # compute quantiles dynamically
   quantile_cols <- lapply(probs, function(p) apply(model_samples, 2, stats::quantile, probs = p, na.rm = TRUE))
@@ -181,12 +232,9 @@
     as.data.frame(quantile_cols, check.names = FALSE)
   )
 
-  # remove all but Mean for inclusions
+  # inclusion rows keep only the Mean (and the MCMC diagnostics)
   quantile_col_names <- as.character(probs)
-  inclusion_rows <-
-    grepl(" (inclusion", rownames(runjags_summary), fixed = TRUE) |
-    grepl(": inclusion(", rownames(runjags_summary), fixed = TRUE)
-  runjags_summary[inclusion_rows, c("SD", quantile_col_names)] <- NA
+  runjags_summary[inclusion, c("SD", quantile_col_names)] <- NA
 
   # don't produce fit diagnostics for conditional samples (different chain lengths etc...) or if remove_diagnostics is TRUE
   if(conditional || length(diagnostic_columns) == 0){

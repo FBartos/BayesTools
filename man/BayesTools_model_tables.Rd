@@ -241,7 +241,11 @@ with orthonormal prior distributions should be transformed to
 differences from the grand mean}
 
 \item{remove_inclusion}{whether estimates of the inclusion probabilities
-should be excluded from the summary table. Defaults to \code{FALSE}.}
+should be excluded from the summary table. Defaults to \code{FALSE}.
+Retained inclusion rows (spike-and-slab and mixture indicators, random-effect
+and variance-allocation inclusion gates) report the posterior inclusion
+probability as \code{Mean} together with the MCMC diagnostics; their SD and
+quantile cells are empty.}
 
 \item{remove_formulas}{character vector of formula names whose parameters
 should be removed from the summary. Defaults to \code{NULL}.}

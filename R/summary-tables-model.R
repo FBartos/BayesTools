@@ -18,6 +18,10 @@
 #' to be added to the table
 #' @param remove_inclusion whether estimates of the inclusion probabilities
 #' should be excluded from the summary table. Defaults to \code{FALSE}.
+#' Retained inclusion rows (spike-and-slab and mixture indicators, random-effect
+#' and variance-allocation inclusion gates) report the posterior inclusion
+#' probability as \code{Mean} together with the MCMC diagnostics; their SD and
+#' quantile cells are empty.
 #' @param remove_parameters parameters to be removed from the summary.
 #' Can be \code{NULL} (default, no removal), a character vector of parameter
 #' names to remove, or \code{TRUE} to remove all parameters that are not
@@ -405,11 +409,18 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   # simplify mixture and spike and slab priors to simple priors
   # the samples and summary can be dealt with as any other prior (i.e., transformations later)
+  # (the created inclusion-indicator columns are recorded for the summary)
+  inclusion_columns <- character()
   for(par in names(prior_list)){
     if(is.prior.spike_and_slab(prior_list[[par]])){
 
-      # process spike and slab using helper function
+      # process spike and slab using helper function; its only new column is
+      # the renamed inclusion indicator
       processed     <- .process_spike_and_slab(model_samples, prior_list, par, conditional, remove_inclusion, warnings)
+      inclusion_columns <- c(inclusion_columns, setdiff(
+        colnames(processed$model_samples),
+        colnames(model_samples)
+      ))
       model_samples <- processed$model_samples
       prior_list    <- processed$prior_list
       warnings      <- processed$warnings
@@ -639,6 +650,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
           model_samples[,colnames(model_samples) == paste0(par, "_indicator")] <- ifelse(
             model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(components == "alternative"), 1, 0)
           colnames(model_samples)[colnames(model_samples) == paste0(par, "_indicator")] <- paste0(par, " (inclusion)")
+          inclusion_columns <- c(inclusion_columns, paste0(par, " (inclusion)"))
         }else{
           # extract
           temp_position <- min(which(colnames(model_samples) %in% paste0(par, "_indicator")))
@@ -649,6 +661,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
           temp_new_samples <- lapply(unique(components), function(component) ifelse(temp_samples %in% which(components == component), 1, 0))
           temp_new_samples <- do.call(cbind, temp_new_samples)
           colnames(temp_new_samples) <- paste0(par, " (inclusion: ", unique(components),")")
+          inclusion_columns <- c(inclusion_columns, colnames(temp_new_samples))
 
           # place the transformed samples back
           model_samples <- cbind(
@@ -729,7 +742,13 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       conditional         = conditional,
       probs               = probs,
       remove_diagnostics  = remove_diagnostics,
-      diagnostic_columns  = diagnostic_columns
+      diagnostic_columns  = diagnostic_columns,
+      inclusion           = .runjags_summary_inclusion_rows(
+        parameter_names   = parameter_names,
+        prior_list        = prior_list,
+        formula_design    = attr(fit, "formula_design"),
+        inclusion_columns = inclusion_columns
+      )
     )
     footnotes <- c(footnotes, .bt_random_effect_summary_correlation_footnotes(
       model_samples   = model_samples,
