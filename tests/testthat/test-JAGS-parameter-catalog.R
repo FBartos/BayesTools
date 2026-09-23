@@ -1678,6 +1678,94 @@ test_that("declared variance allocations have metadata-only catalog rows", {
   )
 })
 
+test_that("allocation parent links are scoped by formula parameter", {
+
+  data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2")),
+    drug = factor(c("a", "b", "a", "b"))
+  )
+  build <- function(parameter, sd = NULL, sd_source = NULL){
+    JAGS_formula(
+      formula = ~ 1 +
+        random(1 | study, name = "study", covariance = "diag") +
+        random(1 | drug, name = "drug", covariance = "diag"),
+      parameter = parameter,
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        allocation = random_variance_allocation(
+          name = "allocation",
+          sd = sd,
+          sd_source = sd_source,
+          weights = prior("dirichlet", list(alpha = c(2, 3)))
+        )
+      )
+    )
+  }
+  columns <- function(parameter, scale = TRUE){
+    c(
+      paste0(parameter, "_intercept"),
+      if(scale) paste0(parameter, "__xRE_ALLOCx_allocation__allocation_sd"),
+      paste0(parameter, "__xRE_ALLOCx_allocation__weight[", 1:2, "]")
+    )
+  }
+  catalog_for <- function(mu, sigma, sigma_scale){
+    prior_list <- c(mu$prior_list, sigma$prior_list)
+    formula_design <- list(
+      mu = mu$formula_design,
+      sigma = sigma$formula_design
+    )
+    coordinates <- .bt_build_parameter_coordinates(
+      columns = c(columns("mu"), columns("sigma", sigma_scale)),
+      prior_list = prior_list,
+      formula_design = formula_design
+    )
+    .bt_build_parameter_catalog(coordinates, prior_list, formula_design)
+  }
+  parent_of <- function(catalog, label, namespace){
+    parameter_catalog_resolve(catalog, label, namespace)$quantities$parent_quantity_id
+  }
+  id_of <- function(catalog, label, namespace){
+    parameter_catalog_resolve(catalog, label, namespace)$quantity_id
+  }
+  children <- c(
+    "allocation: var_total",
+    "allocation: var_prop(study)",
+    "allocation: var_prop(drug)"
+  )
+
+  # Same allocation label in both formulas: each links to its own total.
+  catalog <- catalog_for(
+    build("mu", sd = prior("gamma", list(2, 2))),
+    build("sigma", sd = prior("gamma", list(3, 3))),
+    sigma_scale = TRUE
+  )
+  for(namespace in c("mu", "sigma")){
+    for(label in children){
+      expect_identical(
+        parent_of(catalog, label, namespace),
+        id_of(catalog, "allocation: sd_total", namespace),
+        info = paste(namespace, label)
+      )
+    }
+  }
+
+  # A formula without an allocation total never links to another formula's.
+  catalog <- catalog_for(
+    build("mu", sd = prior("gamma", list(2, 2))),
+    build("sigma", sd_source = random_sd_source("tau", shape = "row")),
+    sigma_scale = FALSE
+  )
+  for(label in children[-1L]){
+    expect_identical(parent_of(catalog, label, "sigma"), "", info = label)
+    expect_identical(
+      parent_of(catalog, label, "mu"),
+      id_of(catalog, "allocation: sd_total", "mu"),
+      info = label
+    )
+  }
+})
+
 test_that("allocation quantities expose deterministic induced prior densities", {
 
   data <- data.frame(

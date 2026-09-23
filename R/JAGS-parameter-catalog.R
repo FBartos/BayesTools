@@ -2990,12 +2990,23 @@ parameter_transform_jacobian <- function(values, transform){
       }
       key$allocation_label
     }, character(1))
-    allocation_owners <- unique(allocation_labels)
+    # Allocation labels are unique only within one formula parameter.
+    allocation_parameters <- out$derived$formula_parameter[allocation_rows]
+    allocation_owner_key <- function(parameter, label){
+      .bt_random_group_tuple_key(c(parameter, label))
+    }
+    allocation_keys <- vapply(seq_along(allocation_rows), function(row_i){
+      allocation_owner_key(
+        allocation_parameters[row_i],
+        allocation_labels[row_i]
+      )
+    }, character(1))
+    allocation_owners <- unique(allocation_keys)
     allocation_sd_ids <- stats::setNames(rep("", length(allocation_owners)),
                                           allocation_owners)
     for(owner in allocation_owners){
       candidates <- allocation_rows[
-        allocation_labels == owner &
+        allocation_keys == owner &
           out$derived$quantity[allocation_rows] %in% c("sd_total", "sd_common")
       ]
       if(length(candidates) == 1L){
@@ -3004,16 +3015,18 @@ parameter_transform_jacobian <- function(values, transform){
     }
     for(row_i in seq_along(allocation_rows)){
       i <- allocation_rows[row_i]
-      owner <- allocation_labels[row_i]
+      owner <- allocation_keys[row_i]
       if(!out$derived$quantity[i] %in% c("sd_total", "sd_common")){
         out$derived$parent_quantity_id[i] <- allocation_sd_ids[[owner]]
         next
       }
       key <- out$derived$extraction_key[[i]]
       parent <- key$parent_allocation
-      if(is.character(parent) && length(parent) == 1L && nzchar(parent) &&
-         parent %in% names(allocation_sd_ids)){
-        out$derived$parent_quantity_id[i] <- allocation_sd_ids[[parent]]
+      if(is.character(parent) && length(parent) == 1L && nzchar(parent)){
+        parent_owner <- allocation_owner_key(allocation_parameters[row_i], parent)
+        if(parent_owner %in% names(allocation_sd_ids)){
+          out$derived$parent_quantity_id[i] <- allocation_sd_ids[[parent_owner]]
+        }
       }
     }
   }
