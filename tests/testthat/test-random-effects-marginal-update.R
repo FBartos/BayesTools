@@ -254,6 +254,66 @@ test_that("composite random SD sources have no single-coordinate update", {
 })
 
 
+test_that("scaled allocation-derived SDs have no quantity-scale factor grid", {
+
+  data <- data.frame(
+    id = factor(rep(c("a", "b", "c"), each = 4L)),
+    x = c(1.2, 3.5, 4.1, 2.2, 5.3, 0.4, 3.3, 2.9, 6.1, 1.7, 4.4, 2.6)
+  )
+  fixed <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1))
+  )
+  allocation <- prior_random(
+    allocation = random_variance_allocation(
+      name = "allocation",
+      terms = "study",
+      target = "sd_component",
+      scale = "total_variance",
+      sd_source = random_sd_source("tau"),
+      weights = prior("dirichlet", list(alpha = c(1, 1)))
+    )
+  )
+  formula <- ~ 1 + x + random(1 + x | id, name = "study")
+  unscaled <- .random_update_test_generic_fit(
+    formula, data, allocation, fixed, extra_columns = "tau"
+  )
+  scaled <- .random_update_test_generic_fit(
+    formula, data, allocation, fixed,
+    formula_scale = list(x = TRUE), extra_columns = "tau"
+  )
+
+  for(component in c("intercept", "x")){
+    for(role in c("random_sd", "random_var")){
+      plan <- .random_update_test_plan(unscaled, role, component)
+      expect_identical(plan$family, "factor")
+      expect_identical(plan$coefficient_input, "quantity")
+      plan <- .random_update_test_plan(scaled, role, component)
+      expect_identical(plan$family, "unsupported")
+      expect_identical(plan$reason, "scaled_component_sd")
+    }
+  }
+
+  # Without formula scaling the public SD is the fitted coefficient scale
+  # that a quantity-scale grid replaces.
+  plan <- .random_update_test_plan(unscaled, "random_sd", "x")
+  grid <- random_effects_marginal_update_grid(unscaled, plan, values = 1)
+  public <- parameter_draws(
+    unscaled,
+    parameter_catalog_resolve(
+      parameter_catalog(unscaled),
+      plan$canonical_name,
+      "mu"
+    )
+  )
+  expect_equal(
+    grid$coefficient_scale[, plan$component_index],
+    unname(as.numeric(as.matrix(public)[, 1L])),
+    tolerance = 1e-12
+  )
+})
+
+
 test_that("random covariance updates are classified from formula metadata", {
 
   data <- data.frame(
