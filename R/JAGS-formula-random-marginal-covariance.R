@@ -39,6 +39,18 @@ JAGS_formula_random_marginal_covariance <- function(
   if(is.null(random_effects)){
     random_effects <- list()
   }
+  if(length(random_effects) > 0L &&
+     !identical(
+       formula_design$schema_version,
+       .bt_formula_design_schema_version()
+     )){
+    stop(
+      "'formula_design' was created by an earlier BayesTools version and ",
+      "lacks the current random-effect metadata. Refit the model with this ",
+      "version of BayesTools.",
+      call. = FALSE
+    )
+  }
   n_rows <- nrow(formula_design$model_matrix)
   if(length(random_effects) > 0L){
     n_rows <- nrow(random_effects[[1L]]$model_matrix)

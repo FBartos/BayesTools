@@ -220,6 +220,28 @@ test_that("unstructured marginal covariance does not require a monitored correla
     }
   }
 
+  # Designs from earlier versions stop with a refit message instead of
+  # failing inside the compiler (0.3.0 stored random terms as strings).
+  stale <- monitored
+  stale$schema_version <- NULL
+  stale$random_effects <- "(1 || g)"
+  expect_error(
+    JAGS_formula_random_marginal_covariance(
+      formula_design = stale,
+      row_blocks     = list(seq_len(nrow(data)))
+    ),
+    "created by an earlier BayesTools version",
+    fixed = TRUE
+  )
+  stale$random_effects <- NULL
+  expect_identical(
+    JAGS_formula_random_marginal_covariance(
+      formula_design = stale,
+      row_blocks     = list(seq_len(nrow(data)))
+    )$term_names,
+    character()
+  )
+
   # A monitored correlation-matrix node is still used when it exists.
   compiled <- JAGS_formula_random_marginal_covariance(
     formula_design = monitored,
