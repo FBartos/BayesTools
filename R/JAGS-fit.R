@@ -80,6 +80,11 @@
 #'   \code{\link{JAGS_get_inits}}). A chain's JAGS seed therefore does not
 #'   depend on the number of chains, and the chains of adjacent seeds (e.g.,
 #'   \code{seed} and \code{seed + 1}) do not share random-number streams.
+#'   Automatic restarts after a failed initialization (see \code{restarts} in
+#'   \code{autofit_control}) draw their seeds from a separate stream of the
+#'   same seed (the first L'Ecuyer-CMRG substream), so the i-th restart does
+#'   not repeat the fit with \code{seed + i}; the caller's random-number
+#'   generator kind is kept.
 #' @param worker_output optional file path for parallel worker stdout and stderr.
 #'   The parent directory must exist. Workers append to the same file, so messages
 #'   can interleave. \code{NULL} retains the backend default of discarding worker
@@ -476,8 +481,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
               immediate. = TRUE
             )
           }
-          # restart with different inits
-          model_call$inits <- JAGS_get_inits(prior_list, chains = chains, seed = if(!is.null(seed)) seed + i)
+          # restart with different inits, seeded from the restart-seed stream
+          restart_seed <- if(!is.null(seed)) .JAGS_restart_seeds(seed, i)[[i]]
+          model_call$inits <- JAGS_get_inits(prior_list, chains = chains, seed = restart_seed)
         }
       }
     }

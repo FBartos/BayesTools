@@ -147,7 +147,12 @@ random-number seed is drawn from the same seed with
 \code{sample.int(.Machine$integer.max, chains)} (see
 \code{\link{JAGS_get_inits}}). A chain's JAGS seed therefore does not
 depend on the number of chains, and the chains of adjacent seeds (e.g.,
-\code{seed} and \code{seed + 1}) do not share random-number streams.}
+\code{seed} and \code{seed + 1}) do not share random-number streams.
+Automatic restarts after a failed initialization (see \code{restarts} in
+\code{autofit_control}) draw their seeds from a separate stream of the
+same seed (the first L'Ecuyer-CMRG substream), so the i-th restart does
+not repeat the fit with \code{seed + i}; the caller's random-number
+generator kind is kept.}
 
 \item{add_parameters}{vector of additional parameter names that should be used
 monitored but were not specified in the \code{prior_list}}

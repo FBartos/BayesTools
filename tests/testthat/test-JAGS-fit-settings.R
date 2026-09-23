@@ -235,6 +235,114 @@ test_that("prior-only JAGS draws differ between chains of adjacent seeds", {
   }
 })
 
+test_that("JAGS restart seeds come from their own stream of the seed", {
+
+  restart_seeds <- function(seed, restarts){
+    as.numeric(.JAGS_restart_seeds(seed, restarts))
+  }
+
+  # The documented derivation: the first L'Ecuyer-CMRG substream of the seed.
+  expected_seeds <- withr::with_preserve_seed({
+    set.seed(7, kind = "L'Ecuyer-CMRG")
+    assign(
+      ".Random.seed",
+      parallel::nextRNGStream(get(".Random.seed", envir = globalenv())),
+      envir = globalenv()
+    )
+    sample.int(.Machine$integer.max, 4)
+  })
+  expect_identical(restart_seeds(7, 4), as.numeric(expected_seeds))
+
+  # 'seed + i' made restart i of seed s the first attempt of seed s + i.
+  for(seed in c(1:50, 665, 666666)){
+    seeds <- restart_seeds(seed, 10)
+    expect_false(any(seeds == seed + seq_len(10)), info = paste("seed", seed))
+    expect_length(intersect(seeds, restart_seeds(seed + 1, 10)), 0)
+    expect_length(intersect(seeds, .JAGS_chain_seeds(seed, 10)), 0)
+    expect_length(unique(seeds), 10)
+  }
+
+  # A restart's seed does not depend on the number of restarts.
+  for(seed in c(1, 42, 666)){
+    all_seeds <- restart_seeds(seed, 10)
+    for(restarts in 1:9){
+      expect_identical(restart_seeds(seed, restarts), all_seeds[seq_len(restarts)])
+    }
+  }
+
+  # The caller's RNG kind and state are restored.
+  set.seed(3)
+  state <- get(".Random.seed", envir = globalenv())
+  kind  <- RNGkind()
+  restart_seeds(3, 5)
+  expect_identical(get(".Random.seed", envir = globalenv()), state)
+  expect_identical(RNGkind(), kind)
+})
+
+test_that("JAGS_fit restarts use the restart-seed stream", {
+
+  skip_if_not_installed("runjags")
+  recorded_inits <- list()
+  recovered_fit <- structure(
+    list(mcmc = list(matrix(0, nrow = 2, ncol = 1,
+                            dimnames = list(NULL, "mu")))),
+    class = "runjags"
+  )
+  testthat::local_mocked_bindings(
+    run.jags = function(...){
+      recorded_inits[[length(recorded_inits) + 1L]] <<- list(...)[["inits"]]
+      if(length(recorded_inits) < 3L){
+        stop("backend exploded")
+      }
+      recovered_fit
+    },
+    .package = "runjags"
+  )
+  testthat::local_mocked_bindings(
+    .JAGS_require_packages = function(...) invisible(NULL),
+    .JAGS_load_modules = function(...) invisible(NULL),
+    .bt_attach_parameter_map = function(fit, ...) fit,
+    .bt_attach_draw_geometry = function(fit, ...) fit,
+    .package = "BayesTools"
+  )
+  prior_list <- list(mu = prior("normal", list(0, 1)))
+
+  JAGS_fit(
+    model_syntax = "model{}",
+    prior_list = prior_list,
+    chains = 2,
+    adapt = 50,
+    burnin = 50,
+    sample = 100,
+    autofit_control = list(
+      max_Rhat = NULL,
+      min_ESS = NULL,
+      max_error = NULL,
+      max_SD_error = NULL,
+      max_time = list(time = 60, unit = "secs"),
+      sample_extend = 1,
+      restarts = 3,
+      max_extend = 1,
+      check_indicators = FALSE
+    ),
+    seed = 5
+  )
+
+  restart_seeds <- .JAGS_restart_seeds(5, 2)
+  expect_length(recorded_inits, 3)
+  expect_identical(recorded_inits[[1]], JAGS_get_inits(prior_list, chains = 2, seed = 5))
+  for(i in 1:2){
+    expect_identical(
+      recorded_inits[[i + 1]],
+      JAGS_get_inits(prior_list, chains = 2, seed = restart_seeds[[i]])
+    )
+    expect_false(identical(
+      recorded_inits[[i + 1]],
+      JAGS_get_inits(prior_list, chains = 2, seed = 5 + i)
+    ))
+  }
+})
+
 test_that("JAGS_extend validates runtime controls before extension", {
   fit <- structure(list(), class = "BayesTools_fit")
   invalid <- list(
