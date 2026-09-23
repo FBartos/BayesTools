@@ -3745,7 +3745,7 @@ test_that("mixed formula levels declare within-model ordered-total spikes", {
     expect_equal(unname(atoms$locations[, 1]), .3)
     expect_equal(atoms$mass, expected_mass, tolerance = 1e-12)
     # the observed share of draws at .3 differs only through the multinomial
-    # model counts (|difference| ~ 1e-4 here)
+    # model counts (|difference| ~ 4e-4 here)
     expect_lt(abs(atoms$mass - mean(level_posterior == .3)), 2e-3)
     expect_equal(prior_density_ordinate(attr(level_posterior, "prior_density"), .3)$point_mass, 2 / 3,
                  tolerance = 1e-12)
