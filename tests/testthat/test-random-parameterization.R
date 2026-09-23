@@ -473,6 +473,95 @@ test_that("centered parameterization rejects degenerate scale contracts", {
   )
 })
 
+test_that("centered eligibility includes structure-specific compiler contracts", {
+
+  # Five groups with six replicates of four time indicators: the design
+  # diagnostics alone favor centering.
+  n_groups <- 5L
+  car_matrix <- do.call(rbind, rep(list(diag(4L)[rep(1:4, times = 6L), ]), n_groups))
+  car_groups <- rep(seq_len(n_groups), each = 24L)
+  slope_matrix <- cbind(1, rep(c(-1, 1), length.out = 24L))
+  slope_groups <- rep(1:3, each = 8L)
+  resolve <- function(parameterization, prior_list, structure,
+                      group_covariance = NULL, model_matrix = car_matrix,
+                      group_map = car_groups){
+    .bt_random_effect_resolve_parameterization(
+      block_prior = random_block(parameterization = parameterization),
+      prior_list = prior_list,
+      sd_binding = NULL,
+      row_indexed_external_sd = FALSE,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      compile_mode = "sampled",
+      block_name = "id",
+      structure = structure,
+      group_covariance = group_covariance
+    )
+  }
+  car_reason <- paste0(
+    "centered CAR requires one SD prior whose support is bounded away ",
+    "from zero and infinity"
+  )
+  unbounded <- list(
+    half_normal = list(sd = .parameterization_sd_prior()),
+    gamma = list(sd = prior("gamma", list(2, 2))),
+    allocation = list()
+  )
+  for(case in names(unbounded)){
+    auto <- resolve("auto", unbounded[[case]], "car")
+    expect_identical(auto$resolved, "noncentered", info = case)
+    expect_identical(auto$reason, car_reason, info = case)
+    expect_error(
+      resolve("centered", unbounded[[case]], "car"),
+      paste0(
+        "Centered parameterization is not available for random-effect ",
+        "block 'id': ", car_reason, "."
+      ),
+      fixed = TRUE
+    )
+  }
+  bounded <- list(sd = prior("uniform", list(0.1, 2)))
+  expect_identical(resolve("auto", bounded, "car")$resolved, "centered")
+  expect_identical(resolve("centered", bounded, "car")$resolved, "centered")
+  expect_identical(
+    resolve("centered", list(sd = prior("point", list(location = 1))), "car")$resolved,
+    "centered"
+  )
+  expect_identical(
+    resolve("auto", unbounded$half_normal, "cs")$resolved,
+    "centered"
+  )
+
+  kernel <- random_group_covariance(
+    matrix(c(1, .2, .1, .2, 1, .15, .1, .15, 1), 3L, 3L,
+           dimnames = rep(list(c("s1", "s2", "s3")), 2L))
+  )
+  covariance_reason <- paste0(
+    "known group covariance with multiple random-effect columns requires ",
+    "the exact noncentered parameterization"
+  )
+  auto <- resolve("auto", unbounded$half_normal, "us", kernel,
+                  slope_matrix, slope_groups)
+  expect_identical(auto$resolved, "noncentered")
+  expect_identical(auto$reason, covariance_reason)
+  expect_error(
+    resolve("centered", unbounded$half_normal, "us", kernel,
+            slope_matrix, slope_groups),
+    covariance_reason,
+    fixed = TRUE
+  )
+  expect_identical(
+    resolve("auto", unbounded$half_normal, "us", NULL,
+            slope_matrix, slope_groups)$resolved,
+    "centered"
+  )
+  expect_identical(
+    resolve("auto", unbounded$half_normal, "us", kernel,
+            slope_matrix[, 1L, drop = FALSE], slope_groups)$resolved,
+    "centered"
+  )
+})
+
 test_that("centered scalar structures materialize covariance only internally", {
 
   data <- data.frame(

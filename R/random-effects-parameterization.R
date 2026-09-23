@@ -94,6 +94,57 @@
   list(ok = TRUE, reason = "strictly nondegenerate random-effect scales")
 }
 
+# Structure-specific contracts of the centered compilers: a centered CAR block
+# needs one SD prior whose support endpoints give a finite positive JAGS
+# precision, and a known group covariance with several random-effect columns
+# is compiled only noncentered.
+.bt_random_effect_centered_structure_eligibility <- function(structure,
+                                                             prior_list,
+                                                             n_columns,
+                                                             group_covariance = NULL){
+
+  if(!is.null(group_covariance) && n_columns > 1L){
+    return(list(
+      ok = FALSE,
+      reason = paste0(
+        "known group covariance with multiple random-effect columns ",
+        "requires the exact noncentered parameterization"
+      )
+    ))
+  }
+  if(identical(structure, "car") &&
+     !.bt_random_effect_centered_car_sd_supported(prior_list)){
+    return(list(
+      ok = FALSE,
+      reason = paste0(
+        "centered CAR requires one SD prior whose support is bounded away ",
+        "from zero and infinity"
+      )
+    ))
+  }
+
+  list(ok = TRUE, reason = "structure supports centered parameterization")
+}
+
+.bt_random_effect_centered_car_sd_supported <- function(prior_list){
+
+  if(length(prior_list) != 1L){
+    return(FALSE)
+  }
+  support <- .posterior_support_from_prior(prior_list[[1L]])
+  if(is.null(support) || !is.numeric(support$bounds) ||
+     length(support$bounds) != 2L || anyNA(support$bounds)){
+    return(FALSE)
+  }
+  bounds <- support$bounds
+  if(bounds[[1L]] < 0 || bounds[[2L]] <= 0 || bounds[[1L]] > bounds[[2L]]){
+    return(FALSE)
+  }
+  initial_precision <- bounds^-2
+
+  all(is.finite(initial_precision) & initial_precision > 0)
+}
+
 .bt_random_effect_auto_centered_design <- function(model_matrix, group_map,
                                                    n_groups = max(group_map),
                                                    max_columns = .bt_random_effect_auto_parameterization_policy()$max_columns,
@@ -141,7 +192,9 @@
                                                        model_matrix, group_map,
                                                        n_groups = max(group_map),
                                                        compile_mode,
-                                                       block_name = NULL){
+                                                       block_name = NULL,
+                                                       structure = NULL,
+                                                       group_covariance = NULL){
 
   requested <- .bt_random_effect_parameterization_requested(block_prior)
   policy <- .bt_random_effect_auto_parameterization_policy()
@@ -171,6 +224,15 @@
     }
     return(list(requested = requested, resolved = "mean_centered",
       reason = "explicit translation of a scalar random intercept", policy = policy))
+  }
+  if(isTRUE(eligibility$ok) && !is.null(structure) &&
+     requested %in% c("centered", "auto")){
+    eligibility <- .bt_random_effect_centered_structure_eligibility(
+      structure = structure,
+      prior_list = prior_list,
+      n_columns = ncol(model_matrix),
+      group_covariance = group_covariance
+    )
   }
   if(identical(requested, "centered") && !isTRUE(eligibility$ok)){
     block_label <- if(is.null(block_name)) "unknown" else block_name
