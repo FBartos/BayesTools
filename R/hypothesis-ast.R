@@ -180,8 +180,19 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
       }
     }
     if(!is.null(matched)){
-      out <- c(out, encodeString(matched, quote = "`"))
-      i <- i + nchar(matched, type = "chars")
+      end <- i + nchar(matched, type = "chars") - 1L
+      # An alias followed by `[` is the root of a level reference such as
+      # `f:g[f=b, g=v]`; quoting only the root would split it from its level.
+      level_follows <- grepl(
+        "^[[:space:]]*\\[",
+        substr(statement, end + 1L, n)
+      )
+      out <- c(out, if(level_follows){
+        matched
+      }else{
+        encodeString(matched, quote = "`")
+      })
+      i <- end + 1L
       next
     }
     out <- c(out, current)
@@ -404,25 +415,44 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
   }
   resolved <- vector("list", nrow(occurrences))
   for(i in seq_len(nrow(occurrences))){
-    occurrence_component <- component
+    selection <- NULL
     if(!is.na(occurrences$level[i])){
-      if(!is.null(component) && !identical(component, occurrences$level[i])){
-        stop(
-          "The level in hypothesis symbol '", occurrences$symbol[i],
-          "' does not match the requested catalog component '", component,
-          "'.",
-          call. = FALSE
-        )
-      }
-      occurrence_component <- occurrences$level[i]
+      # Exact aliases such as `mu_f[1]` or `(mu) f[b]` contain brackets but
+      # are single catalog names; try the whole symbol before splitting it
+      # into a parameter and a level component.
+      selection <- tryCatch(
+        parameter_catalog_resolve(
+          catalog,
+          alias = occurrences$symbol[i],
+          namespace = namespace,
+          component = component,
+          simplify_names = simplify_names
+        ),
+        BayesTools_parameter_not_found = function(e) NULL
+      )
     }
-    selection <- parameter_catalog_resolve(
-      catalog,
-      alias = occurrences$parameter[i],
-      namespace = namespace,
-      component = occurrence_component,
-      simplify_names = simplify_names
-    )
+    if(is.null(selection)){
+      occurrence_component <- component
+      if(!is.na(occurrences$level[i])){
+        if(!is.null(component) &&
+           !identical(component, occurrences$level[i])){
+          stop(
+            "The level in hypothesis symbol '", occurrences$symbol[i],
+            "' does not match the requested catalog component '", component,
+            "'.",
+            call. = FALSE
+          )
+        }
+        occurrence_component <- occurrences$level[i]
+      }
+      selection <- parameter_catalog_resolve(
+        catalog,
+        alias = occurrences$parameter[i],
+        namespace = namespace,
+        component = occurrence_component,
+        simplify_names = simplify_names
+      )
+    }
     quantity <- selection$quantities
     resolved[[i]] <- data.frame(
       statement = occurrences$statement[i],

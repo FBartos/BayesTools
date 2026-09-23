@@ -129,6 +129,71 @@ test_that("hypothesis parsing recognizes exact non-syntactic catalog aliases", {
   )
 })
 
+test_that("catalog aliases containing brackets resolve as whole symbols", {
+
+  data <- data.frame(
+    f = factor(c("a", "b", "c", "a", "b", "c")),
+    g = factor(c("u", "v", "u", "v", "u", "v")),
+    x = c(1, 2, 3, 4, 5, 6)
+  )
+  formula_result <- JAGS_formula(~ f * g + x, "mu", data, list(
+    intercept = prior("normal", list(0, 1)),
+    f = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    g = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    x = prior("normal", list(0, 1)),
+    "f:g" = prior_factor("normal", list(0, 1), contrast = "treatment")
+  ))
+  coordinates <- unlist(lapply(names(formula_result$prior_list), function(name){
+    prior <- formula_result$prior_list[[name]]
+    if(is.prior.factor(prior)){
+      .JAGS_prior_factor_names(name, prior)
+    }else{
+      name
+    }
+  }), use.names = FALSE)
+  coordinates <- .bt_build_parameter_coordinates(
+    columns = coordinates,
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  catalog <- .bt_build_parameter_catalog(
+    coordinates,
+    formula_result$prior_list,
+    list(mu = formula_result$formula_design)
+  )
+  resolved_names <- function(hypothesis, ...){
+    ast <- hypothesis_parse(hypothesis, catalog = catalog, namespace = "mu")
+    unique(hypothesis_resolve(ast, catalog, namespace = "mu", ...)$
+             occurrences$canonical_name)
+  }
+
+  # Exact aliases with brackets (canonical names and display labels).
+  expect_identical(resolved_names("mu_f[1] > 0"), "mu_f[1]")
+  expect_identical(resolved_names("(mu) f[b] > 0"), "mu_f[1]")
+  expect_identical(resolved_names("mu_f[1] > mu_f[2]"),
+                   c("mu_f[1]", "mu_f[2]"))
+  expect_identical(resolved_names("(mu) f[b] - (mu) f[c] = 0"),
+                   c("mu_f[1]", "mu_f[2]"))
+  expect_identical(resolved_names("mu_f[1] > 0", component = "b"), "mu_f[1]")
+  # Parameter-level splitting remains available.
+  expect_identical(resolved_names("f[c] > 0"), "mu_f[2]")
+
+  # A non-syntactic alias followed by a level is not quoted on its own.
+  for(hypothesis in c("f:g[f=b, g=v] > 0", "f:g[ f=b, g=v ] > 0")){
+    ast <- hypothesis_parse(hypothesis, catalog = catalog, namespace = "mu")
+    expect_identical(hypothesis_render(ast), "`f:g[f=b, g=v]` > 0",
+                     info = hypothesis)
+    expect_identical(resolved_names(hypothesis), "mu_f__xXx__g[1]",
+                     info = hypothesis)
+  }
+  expect_identical(
+    hypothesis_render(hypothesis_parse(
+      "f:g[f=b,g=v] > 0", catalog = catalog, namespace = "mu"
+    )),
+    hypothesis_render(hypothesis_parse("f:g[f=b,g=v] > 0"))
+  )
+})
+
 test_that("hypothesis rewriting edits exact symbol roots only", {
 
   ast <- hypothesis_parse(
