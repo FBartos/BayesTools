@@ -72,9 +72,13 @@ be standardized. Defaults to stored fit metadata when available and to
 
 \item{add_parameters}{character vector of additional monitored posterior
 parameter names to include in the bridge-sampling state and in the
-\code{parameters} object passed to \code{log_posterior}. These are for JAGS nodes that
-are not owned by \code{prior_list}, including special likelihood parameters and
-row-shaped external sources. The \code{parameters} object is a named superset of
+\code{parameters} object passed to \code{log_posterior}. These are for free stochastic
+JAGS nodes that are not owned by \code{prior_list}, such as special likelihood
+parameters, and \code{log_posterior} must add their prior density. Deterministic
+nodes computed from other parameters are not valid bridge coordinates;
+reconstruct them inside \code{log_posterior} or, for row-shaped external SD
+sources, with a \code{parameter_source(values = ...)} callback. Linearly
+dependent bridge coordinate draws are rejected. The \code{parameters} object is a named superset of
 prior-owned and additional values; user code should index it by name, for
 example \code{parameters[["tau"]]}. Parameters already covered by \code{prior_list}
 must not be listed here. For Dirichlet priors generated through BayesTools,
@@ -186,14 +190,19 @@ additional arguments, and returns the log likelihood of the model part.
 \details{
 Row-shaped external random-effect SD sources, such as
 \code{random_sd_source("tau", shape = "row")}, must be reconstructable during
-bridge sampling. Supply them either as posterior columns named
-\code{tau[1]}, ..., \code{tau[n]} with non-negative lower bounds in \code{add_bounds}, or
-as \code{parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) ...)}. The \code{values} function is evaluated from the named
+bridge sampling. A source computed from other parameters, for example
+\code{tau[i] <- s * tau_data[i]}, is deterministic and must be supplied as
+\code{parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) ...)}. The \code{values} function is evaluated from the named
 \code{parameters} object and the original-scale formula data stored at fit time;
 it must return finite, non-negative row values on the support of the model.
 Any callback data must therefore be included in \code{formula_data_list} when
 fitting. Data supplied only to \code{JAGS_bridgesampling()} do not extend or
-replace the fitted source snapshot.
+replace the fitted source snapshot. Posterior columns named \code{tau[1]}, ...,
+\code{tau[n]} with non-negative lower bounds in \code{add_bounds} are valid only when
+every \code{tau[i]} is a free stochastic node whose prior density \code{log_posterior}
+adds. Supplying deterministic nodes as bridge coordinates makes the target
+improper; such rank-deficient bridge coordinate draws are rejected with an
+error.
 
 If every bridge coordinate is fixed by a point prior,
 \code{JAGS_bridgesampling()} evaluates \code{log_posterior} once at the reconstructed

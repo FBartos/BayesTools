@@ -581,6 +581,61 @@ test_that("global log-posterior callbacks survive a PSOCK round trip", {
   expect_identical(result[["diagnostics"]][["chains"]][["count"]], 1L)
 })
 
+test_that("JAGS_bridgesampling rejects deterministic bridge coordinates", {
+
+  # Review scenario: a row-shaped source tau[i] <- s * tau_data[i] supplied as
+  # tau[1..n] bridge coordinates. The draws span only the direction of s,
+  # so the bridge target is improper and must not produce an estimate.
+  sampler_calls <- 0L
+  testthat::local_mocked_bindings(
+    bridge_sampler = function(...){
+      sampler_calls <<- sampler_calls + 1L
+      .mock_bridge_sampler(...)
+    },
+    .package = "bridgesampling"
+  )
+  set.seed(81)
+  n_draws <- 400L
+  s <- stats::rgamma(n_draws, 2, 2)
+  tau_data <- c(0.6, 1.1, 1.4, 0.9)
+  tau_names <- paste0("tau[", seq_along(tau_data), "]")
+  deterministic <- cbind(s = s, outer(s, tau_data))
+  colnames(deterministic) <- c("s", tau_names)
+  call_bridge <- function(posterior){
+    JAGS_bridgesampling(
+      fit = coda::as.mcmc(posterior),
+      log_posterior = function(parameters, data) 0,
+      data = list(),
+      prior_list = list(s = prior("gamma", list(2, 2))),
+      add_parameters = tau_names,
+      add_bounds = list(
+        lb = stats::setNames(rep(0, length(tau_names)), tau_names),
+        ub = stats::setNames(rep(Inf, length(tau_names)), tau_names)
+      )
+    )
+  }
+
+  expect_error(
+    call_bridge(deterministic),
+    paste0(
+      "The bridge-sampling target was rejected by diagnostics: the posterior ",
+      "draws of the bridge coordinates are rank-deficient (rank 1 of 5 varying ",
+      "coordinates; linearly dependent coordinate(s): "
+    ),
+    fixed = TRUE
+  )
+  expect_identical(sampler_calls, 0L)
+
+  # Free stochastic nodes span the full coordinate space.
+  stochastic <- deterministic
+  stochastic[, tau_names] <- matrix(
+    stats::rgamma(n_draws * length(tau_names), 2, 2),
+    ncol = length(tau_names)
+  )
+  expect_s3_class(call_bridge(stochastic), "BayesTools_marglik")
+  expect_identical(sampler_calls, 1L)
+})
+
 test_that("JAGS_bridgesampling aborts on non-finite repetitions by default", {
 
   testthat::local_mocked_bindings(

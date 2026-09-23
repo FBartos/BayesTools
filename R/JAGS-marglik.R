@@ -40,9 +40,13 @@
 #' \code{NULL} (no standardization) otherwise.
 #' @param add_parameters character vector of additional monitored posterior
 #' parameter names to include in the bridge-sampling state and in the
-#' `parameters` object passed to `log_posterior`. These are for JAGS nodes that
-#' are not owned by `prior_list`, including special likelihood parameters and
-#' row-shaped external sources. The `parameters` object is a named superset of
+#' `parameters` object passed to `log_posterior`. These are for free stochastic
+#' JAGS nodes that are not owned by `prior_list`, such as special likelihood
+#' parameters, and `log_posterior` must add their prior density. Deterministic
+#' nodes computed from other parameters are not valid bridge coordinates;
+#' reconstruct them inside `log_posterior` or, for row-shaped external SD
+#' sources, with a `parameter_source(values = ...)` callback. Linearly
+#' dependent bridge coordinate draws are rejected. The `parameters` object is a named superset of
 #' prior-owned and additional values; user code should index it by name, for
 #' example `parameters[["tau"]]`. Parameters already covered by `prior_list`
 #' must not be listed here. For Dirichlet priors generated through BayesTools,
@@ -124,15 +128,20 @@
 #'
 #' @details Row-shaped external random-effect SD sources, such as
 #' `random_sd_source("tau", shape = "row")`, must be reconstructable during
-#' bridge sampling. Supply them either as posterior columns named
-#' `tau[1]`, ..., `tau[n]` with non-negative lower bounds in `add_bounds`, or
-#' as `parameter_source("tau", shape = "row", values = function(parameters,
+#' bridge sampling. A source computed from other parameters, for example
+#' `tau[i] <- s * tau_data[i]`, is deterministic and must be supplied as
+#' `parameter_source("tau", shape = "row", values = function(parameters,
 #' data, n_rows) ...)`. The `values` function is evaluated from the named
 #' `parameters` object and the original-scale formula data stored at fit time;
 #' it must return finite, non-negative row values on the support of the model.
 #' Any callback data must therefore be included in `formula_data_list` when
 #' fitting. Data supplied only to `JAGS_bridgesampling()` do not extend or
-#' replace the fitted source snapshot.
+#' replace the fitted source snapshot. Posterior columns named `tau[1]`, ...,
+#' `tau[n]` with non-negative lower bounds in `add_bounds` are valid only when
+#' every `tau[i]` is a free stochastic node whose prior density `log_posterior`
+#' adds. Supplying deterministic nodes as bridge coordinates makes the target
+#' improper; such rank-deficient bridge coordinate draws are rejected with an
+#' error.
 #'
 #' If every bridge coordinate is fixed by a point prior,
 #' `JAGS_bridgesampling()` evaluates `log_posterior` once at the reconstructed
@@ -537,6 +546,8 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   }
 
 
+  .bt_JAGS_bridge_check_coordinate_rank(bridgesampling_posterior)
+
   ### perform bridgesampling
   if(!is.null(seed)){
     set.seed(seed)
@@ -597,4 +608,70 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   }
 
   return(result)
+}
+
+# Bridge sampling places a proposal on the unconstrained bridge coordinates
+# (log for one-sided and probit for two-sided bounds, as in bridgesampling).
+# A deterministic node supplied as a coordinate makes these draws linearly
+# dependent: the target is then improper, and the estimate is meaningless.
+# Coordinates with constant draws carry no dependence information and are
+# left to the sampler's own checks.
+.bt_JAGS_bridge_check_coordinate_rank <- function(bridgesampling_posterior){
+
+  if(!is.matrix(bridgesampling_posterior) ||
+     ncol(bridgesampling_posterior) < 2L ||
+     nrow(bridgesampling_posterior) < 2L){
+    return(invisible(TRUE))
+  }
+
+  lb <- attr(bridgesampling_posterior, "lb")
+  ub <- attr(bridgesampling_posterior, "ub")
+  coordinates <- colnames(bridgesampling_posterior)
+  transformed <- vapply(seq_along(coordinates), function(i){
+    x <- as.numeric(bridgesampling_posterior[, i])
+    lower <- if(is.null(lb)) -Inf else unname(lb[[coordinates[[i]]]])
+    upper <- if(is.null(ub)) Inf else unname(ub[[coordinates[[i]]]])
+    if(is.finite(lower) && is.finite(upper)){
+      stats::qnorm((x - lower) / (upper - lower))
+    }else if(is.finite(lower)){
+      log(x - lower)
+    }else if(is.finite(upper)){
+      log(upper - x)
+    }else{
+      x
+    }
+  }, numeric(nrow(bridgesampling_posterior)))
+  transformed <- matrix(transformed, nrow = nrow(bridgesampling_posterior))
+  colnames(transformed) <- coordinates
+
+  informative <- apply(transformed, 2L, function(x){
+    all(is.finite(x)) && stats::sd(x) > 0
+  })
+  transformed <- transformed[, informative, drop = FALSE]
+  if(ncol(transformed) < 2L){
+    return(invisible(TRUE))
+  }
+
+  standardized <- scale(transformed)
+  decomposition <- qr(standardized, tol = 1e-7)
+  if(decomposition$rank == ncol(standardized)){
+    return(invisible(TRUE))
+  }
+
+  dependent <- colnames(standardized)[
+    decomposition$pivot[seq.int(decomposition$rank + 1L, ncol(standardized))]
+  ]
+  stop(
+    "The bridge-sampling target was rejected by diagnostics: the posterior ",
+    "draws of the bridge coordinates are rank-deficient (rank ",
+    decomposition$rank, " of ", ncol(standardized),
+    " varying coordinates; linearly dependent coordinate(s): ",
+    paste0("'", utils::head(dependent, 3L), "'", collapse = ", "),
+    if(length(dependent) > 3L) ", ..." else "",
+    "). Only free stochastic nodes whose prior density 'log_posterior' adds ",
+    "can be supplied through 'add_parameters'; reconstruct deterministic ",
+    "nodes, such as row-shaped SD sources computed from other parameters, ",
+    "with parameter_source(values = ...) or inside 'log_posterior'.",
+    call. = FALSE
+  )
 }
