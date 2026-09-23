@@ -533,6 +533,73 @@ test_that(".rename_factor_levels writes contrast coefficients with braces", {
 })
 
 
+test_that("treatment interactions with ordered factors label increments as coefficients", {
+
+  levels <- c("5", "10", "20")
+  data <- data.frame(
+    f = factor(rep(c("a", "b"), 6)),
+    o = ordered(rep(levels, each = 4), levels = levels)
+  )
+  formula_result <- JAGS_formula(~ f * o, "mu", data, list(
+    intercept = prior("normal", list(0, 1)),
+    f = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    o = prior_ordered(prior("normal", list(0, 1))),
+    "f:o" = prior_factor("normal", list(0, 1), contrast = "treatment")
+  ))
+  columns <- unlist(lapply(names(formula_result$prior_list), function(name){
+    prior <- formula_result$prior_list[[name]]
+    if(BayesTools:::.bt_prior_is_factor_family(prior)){
+      BayesTools:::.JAGS_prior_factor_names(name, prior)
+    }else{
+      name
+    }
+  }), use.names = FALSE)
+  set.seed(1)
+  samples <- matrix(stats::rnorm(20L * length(columns)), nrow = 20L,
+                    dimnames = list(NULL, columns))
+
+  # The interaction design is treatment by cumulative ordered coding:
+  # coordinate 1 is the cell (b, 10) and coordinate 2 is the increment from
+  # (b, 10) to (b, 20), so it is coefficient 2, never the cell "[20]".
+  renamed <- BayesTools:::.rename_factor_levels(
+    samples[, c("mu_f__xXx__o[1]", "mu_f__xXx__o[2]")],
+    formula_result$prior_list
+  )
+  expect_identical(colnames(renamed),
+                   c("mu_f[b]__xXx__o[10]", "mu_f__xXx__o{2}"))
+
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = 20L),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  fit <- attach_test_parameter_map(fit)
+  mixed <- as_mixed_posteriors(fit, parameters = "mu_f__xXx__o")
+  expect_identical(colnames(mixed$mu_f__xXx__o),
+                   c("mu_f[b]__xXx__o[10]", "mu_f__xXx__o{2}"))
+
+  # Every displayed interaction row selects the quantity that produced it
+  # (the table summarizes the same draws: agreement up to rounding).
+  catalog <- parameter_catalog(fit)
+  table <- JAGS_estimates_table(fit)
+  rows <- grep("f[^ ]*:o", rownames(table), value = TRUE)
+  expect_identical(rows, c("(mu) f[b]:o[10]", "(mu) f:o{2}"))
+  for(row in rows){
+    selection <- parameter_catalog_resolve(catalog, row)
+    expect_equal(mean(as.matrix(parameter_draws(fit, selection))),
+                 table[row, "Mean"], tolerance = 1e-10, info = row)
+  }
+  # The cell (b, 20) itself is the sum of both coordinates.
+  cell <- parameter_catalog_resolve(catalog, "mu_f__xXx__o[f=b, o=20]")
+  expect_equal(
+    as.numeric(as.matrix(parameter_draws(fit, cell))),
+    unname(samples[, "mu_f__xXx__o[1]"] + samples[, "mu_f__xXx__o[2]"]),
+    tolerance = 1e-14
+  )
+})
+
+
 test_that(".rename_factor_levels keeps interaction level on the factor term", {
 
   model_samples <- matrix(rnorm(400), ncol = 4)

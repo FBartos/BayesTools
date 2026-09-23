@@ -703,9 +703,14 @@ NULL
 #' @return updated model_samples matrix with renamed columns
 .rename_factor_levels <- function(model_samples, prior_list) {
 
+  coefficient_names <- .rename_factor_coefficient_names(prior_list)
+
   # rename treatment factor levels
   if (any(sapply(prior_list, is.prior.treatment))) {
     for (par in names(prior_list)[sapply(prior_list, is.prior.treatment)]) {
+      if (par %in% names(coefficient_names)) {
+        next
+      }
       if (!.is_prior_interaction(prior_list[[par]])) {
         renamed_levels <- .format_factor_level_parameter_names(
           par,
@@ -770,15 +775,8 @@ NULL
   # ordered coordinate) takes that cell's level labels, and every other
   # coordinate is contrast coefficient `{j}`; a square bracket after a factor
   # term always holds a level label
-  for (par in names(prior_list)) {
-    prior <- prior_list[[par]]
-    if (!(is.prior.orthonormal(prior) || is.prior.meandif(prior) || is.prior.ordered(prior))) {
-      next
-    }
-    display_names <- .bt_factor_coordinate_display_names(par, prior)
-    if (is.null(display_names)) {
-      next
-    }
+  for (par in names(coefficient_names)) {
+    display_names <- coefficient_names[[par]]
     coordinate_names <- paste0(par, "[", seq_along(display_names), "]")
     if (length(display_names) == 1L) {
       # a sole coefficient is unindexed for main effects, indexed otherwise
@@ -791,4 +789,29 @@ NULL
   }
 
   return(model_samples)
+}
+
+# Coordinate display names of the factor terms whose fitted coordinates are not
+# all level cells, named by parameter: mean-difference, orthonormal and
+# ordered priors, and treatment priors of an interaction with an ordered
+# factor, whose later cumulative coordinates are increments rather than cells.
+.rename_factor_coefficient_names <- function(prior_list) {
+
+  out <- list()
+  for (par in names(prior_list)) {
+    prior <- prior_list[[par]]
+    contrast_coded <- is.prior.orthonormal(prior) || is.prior.meandif(prior) ||
+      is.prior.ordered(prior)
+    if (!contrast_coded && !is.prior.treatment(prior)) {
+      next
+    }
+    display_names <- .bt_factor_coordinate_display_names(par, prior)
+    if (is.null(display_names) ||
+        (!contrast_coded && !any(grepl("\\{[0-9]+\\}$", display_names)))) {
+      next
+    }
+    out[[par]] <- display_names
+  }
+
+  out
 }

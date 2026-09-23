@@ -438,7 +438,16 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
 
     rownames(samples) <- NULL
-    colnames(samples) <- .format_factor_level_parameter_names(parameter, level_names, ncol(samples))
+    # An interaction with an ordered factor has cumulative increments that are
+    # not level cells; they are contrast coefficients `{j}`.
+    coefficient_names <- .rename_factor_coefficient_names(
+      stats::setNames(list(prior), parameter)
+    )[[parameter]]
+    colnames(samples) <- if(length(coefficient_names) == ncol(samples)){
+      coefficient_names
+    }else{
+      .format_factor_level_parameter_names(parameter, level_names, ncol(samples))
+    }
     attr(samples, "sample_ind") <- FALSE
     attr(samples, "models_ind") <- rep(1, nrow(samples))
     attr(samples, "parameter")  <- parameter
