@@ -13,7 +13,11 @@
 #' expressions, for example \code{"theta = 0"}, \code{"theta > 0"}, or
 #' \code{"theta = 0 vs theta > 0"}. Factor/posterior-list levels can be
 #' referenced as \code{"mu_alloc[alternate] > mu_alloc[random]"} when the
-#' marginal posterior carries joint prior information. Point-null hypotheses use
+#' marginal posterior carries joint prior information. Level names that
+#' contain brackets, such as the \code{cut()} level \code{(0,1]}, are
+#' referenced by quoting the whole reference in backticks,
+#' \code{"`mu[(0,1]]` > `mu[(1,2]]`"}, or with the parameter catalog's escaped
+#' level form \code{mu["(0,1\%5D"]}. Point-null hypotheses use
 #' \code{\link{Savage_Dickey_BF}} when a \code{marginal_posterior} object is
 #' supplied, including precomputed qCMDE/IWMDE posterior ordinates when
 #' \code{density_method = "precomputed"}. Level-specific
@@ -26,9 +30,11 @@
 #' @param posterior posterior draws, a \code{marginal_posterior}, a
 #' \code{marginal_inference} object, or a data frame/matrix of posterior draws.
 #' Posterior draws must be finite and quantity names must be unique.
-#' @param prior prior draws for numeric/data-frame inputs. Quantity names in
-#' draw tables must be unique. Ignored when \code{posterior} already contains
-#' deterministic prior density information.
+#' @param prior prior draws for numeric/data-frame inputs, or for numeric
+#' draws a scalar BayesTools prior object (including mixture and
+#' spike-and-slab priors). Quantity names in draw tables must be unique.
+#' Ignored when \code{posterior} already contains deterministic prior density
+#' information.
 #' @param hypothesis character vector with scalar hypothesis statements written
 #' in the restricted grammar described in Details, or a validated object from
 #' [hypothesis_parse()].
@@ -113,9 +119,18 @@
 #' percentage when available. Region odds errors are computed on
 #' \code{log(BF)} from prior/posterior region indicators using an iid
 #' delta-method approximation on the flattened draws; they do not adjust for
-#' MCMC autocorrelation. Point-vs-region errors combine the available
+#' MCMC autocorrelation. Prior region masses computed exactly from a prior
+#' object's distribution function contribute no Monte Carlo error.
+#' Point-vs-region errors combine the available
 #' point-density and region-mass errors on the \code{log(BF)} scale.
 #' Point-null tests require a positive finite prior density at the null value.
+#' Region tests require positive prior mass for every compared region. An
+#' implicit region statement is compared with its complement, which therefore
+#' also needs positive prior mass; explicit comparisons such as
+#' \code{"theta > 0.5 vs theta > 0"} accept an encompassing region with prior
+#' mass one. Rows are labelled by quantity; when several statements refer to
+#' the same quantity, the statement number is appended, e.g.
+#' \code{theta (2)}.
 #'
 #' @export
 hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,

@@ -72,5 +72,8 @@ random-effect aliases. Defaults to \code{FALSE}.}
 \code{hypothesis_rewrite()} replaces only exact symbol roots. Function names,
 literals, level labels, and longer identifiers are never edited.
 \code{hypothesis_resolve()} resolves every occurrence through
-\code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}} without accessing posterior draws.
+\code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}} without accessing posterior draws. A
+bracketed symbol such as \code{mu_f[1]} or \verb{(mu) f[b]} is first resolved as an
+exact catalog alias; otherwise its bracketed level is used as the catalog
+component of the parameter before the bracket.
 }

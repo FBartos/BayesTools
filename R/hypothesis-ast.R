@@ -14,7 +14,10 @@
 #' `hypothesis_rewrite()` replaces only exact symbol roots. Function names,
 #' literals, level labels, and longer identifiers are never edited.
 #' `hypothesis_resolve()` resolves every occurrence through
-#' [parameter_catalog_resolve()] without accessing posterior draws.
+#' [parameter_catalog_resolve()] without accessing posterior draws. A
+#' bracketed symbol such as `mu_f[1]` or `(mu) f[b]` is first resolved as an
+#' exact catalog alias; otherwise its bracketed level is used as the catalog
+#' component of the parameter before the bracket.
 #'
 #' @param hypothesis character vector of hypothesis statements.
 #' @param ast a `BayesTools_hypothesis_ast` object.
