@@ -213,6 +213,11 @@
     include_structure = FALSE,
     include_sd = is.null(x$sd) && is.null(x$sd_source)
   ))
+  if(!is.null(x$covariance) && is.null(x$covariance$cor) &&
+     "cor" %in% .bt_random_covariance_explicit_fields(x$covariance)){
+    # A block `random_covariance(cor = NULL)` removes an inherited cor prior.
+    lines <- c(lines, "cor: structure default")
+  }
 
   if(!is.null(x$terms)){
     for(term in names(x$terms)){

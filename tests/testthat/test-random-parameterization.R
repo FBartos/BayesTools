@@ -239,6 +239,15 @@ test_that("block overrides can remove an inherited correlation prior", {
     g1 = random_block(covariance = random_covariance(cor = NULL))
   )
   expect_null(.bt_random_prior_for_block(cleared, "g1")$covariance$cor)
+  # The printed specification shows the removal instead of "inherits defaults".
+  expect_identical(
+    utils::tail(utils::capture.output(print(cleared)), 2L),
+    c("block: g1", "  cor: structure default")
+  )
+  expect_identical(
+    utils::capture.output(print(random_block(covariance = random_covariance(cor = NULL)))),
+    c("block", "  cor: structure default")
+  )
   result <- compile(~ 1 + (1 | g1) + (1 + x | g2), cleared)
   terms <- result$formula_design$random_effects
   names(terms) <- vapply(terms, `[[`, character(1), "block_name")
