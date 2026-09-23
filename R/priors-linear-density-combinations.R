@@ -1349,6 +1349,117 @@
   height
 }
 
+.prior_linear_density_recipe_width <- function(context, tail_prob){
+
+  # Width of the source-grid range that a recorded prior density would span
+  # with 'tail_prob' omitted per source, from the prior ranges alone; NULL when
+  # it cannot be determined.
+  combination_range <- function(prior_list, weights, source_transforms){
+    weights <- weights[is.finite(weights) & weights != 0]
+    if(length(weights) == 0L){
+      return(c(0, 0))
+    }
+    groups <- .prior_linear_weight_groups(prior_list, weights)
+    if(is.null(source_transforms)){
+      source_transforms <- stats::setNames(rep(NA_character_, length(weights)), names(weights))
+    }
+    ranges <- lapply(groups, .prior_linear_group_range, tail_prob = tail_prob,
+                     source_transforms = source_transforms)
+    # A 'multiply_by' scale widens the range of the coefficients it scales.
+    multipliers <- unique(unlist(lapply(groups, function(group){
+      multiply_by <- attr(group$prior, "multiply_by", exact = TRUE)
+      if(is.character(multiply_by) && length(multiply_by) == 1L) multiply_by else NULL
+    })))
+    for(multiplier in setdiff(multipliers, names(groups))){
+      ranges[[length(ranges) + 1L]] <- .prior_linear_group_range(
+        list(prior = prior_list[[multiplier]], weights = stats::setNames(1, multiplier), indices = 1L),
+        tail_prob = tail_prob
+      )
+    }
+    c(sum(vapply(ranges, `[`, numeric(1), 1L)), sum(vapply(ranges, `[`, numeric(1), 2L)))
+  }
+  context_range <- function(density_context, weights, source_transforms){
+    if(inherits(density_context, "prior_density_context")){
+      standardized <- .prior_density_context_standardized_weights(density_context, weights)
+      return(combination_range(
+        density_context$prior_list,
+        standardized,
+        if(is.null(source_transforms)) NULL else source_transforms[names(standardized)]
+      ))
+    }
+    if(inherits(density_context, "prior_density_model_mixture_context")){
+      models <- which(density_context$model_weights > 0)
+      return(range(unlist(lapply(models, function(model_i){
+        model_prior_list <- lapply(density_context$prior_list, function(parameter_priors){
+          if(is.prior(parameter_priors)) parameter_priors else parameter_priors[[model_i]]
+        })
+        names(model_prior_list) <- names(density_context$prior_list)
+        for(parameter in names(model_prior_list)){
+          if(is.null(model_prior_list[[parameter]])){
+            model_prior_list[[parameter]] <- prior("point", list(location = 0))
+          }
+        }
+        combination_range(model_prior_list, weights, source_transforms)
+      }))))
+    }
+    if(inherits(density_context, "prior_density_conditional_context")){
+      models <- which(density_context$model_weights > 0)
+      return(range(unlist(lapply(density_context$prior_lists[models], function(prior_list){
+        if(!is.null(density_context$formula_scale) && length(density_context$formula_scale) > 0L){
+          return(context_range(
+            .prior_density_context(prior_list, density_context$column_names,
+                                   density_context$formula_scale),
+            weights, source_transforms
+          ))
+        }
+        combination_range(prior_list, weights, source_transforms)
+      }))))
+    }
+    NULL
+  }
+
+  arguments <- context$arguments
+  out <- tryCatch({
+    bounds <- if(identical(context$kind, "linear_combination")){
+      combination_range(arguments$prior_list, arguments$weights, arguments$source_transforms)
+    }else if(identical(context$kind, "density_context_rows") && !is.null(dim(arguments$weights))){
+      range(unlist(lapply(seq_len(nrow(arguments$weights)), function(row_i){
+        context_range(arguments$context, arguments$weights[row_i, ], arguments$source_transforms)
+      })))
+    }else{
+      context_range(arguments$context, arguments$weights, arguments$source_transforms)
+    }
+    diff(bounds)
+  }, error = function(e) NULL)
+  if(length(out) != 1L || !is.finite(out) || out <= 0){
+    return(NULL)
+  }
+  out
+}
+
+.prior_linear_density_refined_tail <- function(context, tail_prob){
+
+  # The omitted tail mass always shrinks, so its truncation bias stays visible
+  # to the convergence check; the largest reduction whose range at most
+  # doubles is preferred, otherwise the smallest one.
+  fallback <- max(tail_prob / 10, 1e-12)
+  width <- .prior_linear_density_recipe_width(context, tail_prob)
+  if(is.null(width)){
+    return(fallback)
+  }
+  for(factor in c(1000, 100)){
+    candidate <- max(tail_prob / factor, 1e-12)
+    if(candidate >= fallback){
+      break
+    }
+    candidate_width <- .prior_linear_density_recipe_width(context, candidate)
+    if(!is.null(candidate_width) && candidate_width <= 2 * width){
+      return(candidate)
+    }
+  }
+  fallback
+}
+
 .prior_linear_density_refinement <- function(x){
 
   context <- attr(x, "adaptive_evaluation", exact = TRUE)
@@ -1358,10 +1469,11 @@
     return(NULL)
   }
 
-  # Each refinement omits a thousand times less tail probability and strictly
-  # halves the spacing of the source grid. When the halved spacing needs more
-  # knots than the grid limit (polynomial tails widen the range quickly), no
-  # refinement is available and callers report non-convergence.
+  # Each refinement strictly halves the spacing of the source grid and omits
+  # less tail probability by the largest factor (1000, 100, 10) whose range at
+  # most doubles, and by 10 when none does. When the halved spacing needs more
+  # knots than the grid limit, no refinement is available and callers report
+  # non-convergence.
   spacing <- attr(x, "grid_resolution", exact = TRUE)[["spacing"]]
   if(is.null(spacing) || !is.finite(spacing) || spacing <= 0){
     spacing <- .prior_linear_density_dx(x)
@@ -1370,11 +1482,17 @@
     return(NULL)
   }
   arguments <- context$arguments
+  tail_prob <- if(identical(context$kind, "linear_combination")){
+    arguments$tail_prob
+  }else{
+    arguments$context$tail_prob
+  }
+  tail_prob <- .prior_linear_density_refined_tail(context, tail_prob)
   if(identical(context$kind, "linear_combination")){
-    arguments$tail_prob    <- max(arguments$tail_prob / 1000, 1e-12)
+    arguments$tail_prob    <- tail_prob
     arguments$grid_spacing <- spacing / 2
   }else{
-    arguments$context$tail_prob    <- max(arguments$context$tail_prob / 1000, 1e-12)
+    arguments$context$tail_prob    <- tail_prob
     arguments$context$grid_spacing <- spacing / 2
   }
   refined_arguments <- arguments

@@ -498,19 +498,27 @@ test_that("heavy-tailed combinations resolve their narrowest source and mixtures
   expect_lte(diff(heavy$density$x[1:2]), .2 / 64)
   expect_equal(.prior_linear_density_grid_height(heavy, 0), reference, tolerance = 1e-3)
 
-  # Refinement halves the source spacing and omits 1000 times less tail
-  # probability. Polynomial tails then widen the range faster than the grid
-  # limit allows, so t3 + N(0, .1) and Cauchy combinations stop loudly
-  # instead of reporting a height biased by their omitted tail mass.
+  # Refinement halves the source spacing and omits less tail probability, by
+  # 10 when polynomial tails would more than double the range. t3 + N(0, .1)
+  # converges to its quadrature reference; Cauchy combinations exceed the grid
+  # limit before converging and stop loudly instead of reporting a height
+  # biased by their omitted tail mass.
   student <- .prior_linear_combination_density(
     list(a = prior("t", list(0, 1, 3)), b = prior("normal", list(0, .1))), c(a = 1, b = 1)
   )
+  student_height <- .prior_linear_density_height(student, 0)
+  expect_true(isTRUE(attr(student_height, "adaptive_evaluation")$converged))
+  expect_equal(
+    as.numeric(student_height),
+    stats::integrate(function(t) stats::dt(t, 3) * stats::dnorm(-t, 0, .1),
+                     -Inf, Inf, rel.tol = 1e-12)$value,
+    tolerance = 1e-4
+  )
   expect_error(
-    .prior_linear_density_height(student, 0),
+    .prior_linear_density_height(heavy, 0),
     "Adaptive prior-density evaluation did not converge within the documented grid-refinement error criterion.",
     fixed = TRUE
   )
-  expect_error(.prior_linear_density_height(heavy, 0), "did not converge", fixed = TRUE)
 
   # Density jumps (half-normal, truncated normal and uniform components)
   # converge once the spacing strictly halves; references by quadrature.
