@@ -3257,6 +3257,50 @@ test_that("marginal_posterior uses log(intercept) for log-intercept formulas", {
   )
 })
 
+test_that("marginal_posterior without prior samples tolerates unavailable scaled log-intercept metadata", {
+
+  log_formula <- ~ x
+  attr(log_formula, "log(intercept)") <- TRUE
+  set.seed(5)
+  formula_result <- JAGS_formula(
+    log_formula, "ls", data = data.frame(x = rnorm(50, 3, 1.5)),
+    prior_list = list(intercept = prior("lognormal", list(0, .5)), x = prior("normal", list(0, .5))),
+    formula_scale = list(x = TRUE)
+  )
+  n <- 100
+  posterior <- cbind(ls_intercept = stats::rlnorm(n, -1, .2), ls_x = stats::rnorm(n, -.2, .1))
+  fit <- list(
+    mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+    summary.pars = list(mutate = NULL),
+    monitor = colnames(posterior),
+    sample = n
+  )
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(ls = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(ls = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+
+  samples <- as_mixed_posteriors(
+    fit, parameters = c("ls_intercept", "ls_x"),
+    transform_scaled = TRUE, n_prior_samples = 500
+  )
+  original <- transform_scale_samples(posterior, list(ls = formula_result$formula_scale))
+
+  levels <- marginal_posterior(samples, "ls_x", formula = ~ x, prior_samples = FALSE)
+  expect_equal(
+    unname(lapply(levels, as.numeric)),
+    lapply(c(-1, 0, 1), function(x) log(original[, "ls_intercept"]) + x * original[, "ls_x"]),
+    tolerance = 1e-12
+  )
+  # joint scaled log-intercept metadata are unavailable, not an error
+  expect_null(attr(levels[["0SD"]], "posterior_atoms"))
+  expect_null(attr(levels[["0SD"]], "posterior_support"))
+
+  intercept <- marginal_posterior(samples, "ls_intercept", formula = ~ x, prior_samples = FALSE)
+  expect_equal(as.numeric(intercept[["intercept"]]), log(original[, "ls_intercept"]), tolerance = 1e-12)
+})
+
 .ordered_prior_for_test <- function(total, allocation = c(.4, .6)){
   data <- data.frame(f = ordered(c("low", "mid", "high"), levels = c("low", "mid", "high")))
   JAGS_formula(

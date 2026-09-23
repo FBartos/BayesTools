@@ -553,7 +553,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           column_name              = "intercept",
           source_transforms        = log_source_transforms,
           transformation           = transformation,
-          transformation_arguments = transformation_arguments
+          transformation_arguments = transformation_arguments,
+          required                 = prior_samples
         )
 
       }else{
@@ -572,7 +573,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             column_name              = level_names[lvl],
             source_transforms        = log_source_transforms,
             transformation           = transformation,
-            transformation_arguments = transformation_arguments
+            transformation_arguments = transformation_arguments,
+            required                 = prior_samples
           )
         }
       }
@@ -718,11 +720,14 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           weights <- rep(0, length(prior_density_context$column_names))
           names(weights) <- prior_density_context$column_names
           weights[colnames(factor_weights)] <- factor_weights[lvl_i, ]
-          temp_support <- .posterior_support_from_prior_context_weights(
-            prior_density_context,
-            weights,
-            output_transformation           = transformation,
-            output_transformation_arguments = transformation_arguments
+          temp_support <- .marginal_posterior_optional_metadata(
+            .posterior_support_from_prior_context_weights(
+              prior_density_context,
+              weights,
+              output_transformation           = transformation,
+              output_transformation_arguments = transformation_arguments
+            ),
+            required = prior_samples
           )
         }else if(!is.null(temp_support) && !is.null(transformation)){
           temp_support <- .posterior_support_transform(
@@ -824,9 +829,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           names(weights) <- prior_density_context$column_names
           if(parameter %in% names(weights)){
             weights[[parameter]] <- 1
-            marginal_support <- .posterior_support_from_prior_context_weights(
-              prior_density_context,
-              weights
+            marginal_support <- .marginal_posterior_optional_metadata(
+              .posterior_support_from_prior_context_weights(
+                prior_density_context,
+                weights
+              ),
+              required = prior_samples
             )
           }
         }
@@ -1104,13 +1112,16 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   length(declared) == 1L && isTRUE(declared)
 }
 
-# Support and posterior-atom metadata for one formula level.
+# Support and posterior-atom metadata for one formula level. Without
+# requested prior samples the metadata are optional: failures leave them
+# unavailable instead of aborting the posterior samples.
 .marginal_posterior_formula_level_metadata <- function(marginal, samples, prior_list,
                                                        prior_density_context, weights,
                                                        column_name,
                                                        source_transforms = NULL,
                                                        transformation = NULL,
-                                                       transformation_arguments = NULL){
+                                                       transformation_arguments = NULL,
+                                                       required = TRUE){
 
   log_columns <- intersect(names(source_transforms)[source_transforms == "log"], colnames(weights))
   if(length(log_columns) > 0L && any(weights[, log_columns] != 0)){
@@ -1119,29 +1130,44 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     support <- NULL
     attr(marginal, "joint_prior_transformation") <- "log_intercept"
   }else{
-    support <- .posterior_support_from_prior_context_weights(
-      prior_density_context,
-      weights,
-      output_transformation           = transformation,
-      output_transformation_arguments = transformation_arguments
+    support <- .marginal_posterior_optional_metadata(
+      .posterior_support_from_prior_context_weights(
+        prior_density_context,
+        weights,
+        output_transformation           = transformation,
+        output_transformation_arguments = transformation_arguments
+      ),
+      required = required
     )
   }
   marginal <- .posterior_support_set(marginal, support)
 
-  atoms <- .posterior_atoms_formula(
-    samples,
-    prior_list,
-    weights,
-    transformation           = transformation,
-    transformation_arguments = transformation_arguments,
-    column_name              = column_name,
-    source_transforms        = source_transforms
+  atoms <- .marginal_posterior_optional_metadata(
+    .posterior_atoms_formula(
+      samples,
+      prior_list,
+      weights,
+      transformation           = transformation,
+      transformation_arguments = transformation_arguments,
+      column_name              = column_name,
+      source_transforms        = source_transforms
+    ),
+    required = required
   )
   if(!is.null(atoms)){
     marginal <- .posterior_atoms_set(marginal, atoms)
   }
 
   marginal
+}
+
+.marginal_posterior_optional_metadata <- function(expr, required = TRUE){
+
+  if(isTRUE(required)){
+    return(expr)
+  }
+
+  tryCatch(expr, error = function(e) NULL)
 }
 
 # Prior lists used by marginal prior-density contexts. Structural zeros are
