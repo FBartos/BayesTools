@@ -88,7 +88,8 @@
   }
 
   index_name <- .bt_random_effect_structured_index_name(index_variables)
-  data[[index_name]] <- .bt_random_effect_structured_index_values(data, index_variables)
+  index_levels <- .bt_random_effect_structured_index_resolve(data, index_variables)
+  data[[index_name]] <- .bt_random_effect_structured_index_factor(index_levels)
   if(structure %in% c("ar1", "har")){
     .bt_random_effect_warn_index_order(
       x = out$data[[index_variables]],
@@ -106,7 +107,9 @@
     variables = index_variables,
     name = index_name,
     label = paste(index_variables, collapse = ":"),
-    structure = structure
+    structure = structure,
+    levels = index_levels$labels,
+    level_keys = index_levels$level_keys
   )
 
   out
@@ -216,25 +219,165 @@
   .bt_random_effect_sanitize_name(paste(variables, collapse = "_"))
 }
 
-.bt_random_effect_structured_index_values <- function(data, variables){
+# Structured index levels are identified by exact keys: factor, character, and
+# logical values by their labels, numeric values by their exact double value,
+# and multi-variable cells by the length-prefixed tuple of component keys.
+# Display labels follow the factor()/interaction(lex.order = TRUE) labels and
+# are changed only where distinct keys would otherwise share a label.
+.bt_random_effect_structured_index_values <- function(data, variables,
+                                                      index = NULL){
 
-  values <- lapply(variables, function(variable){
-    .bt_random_effect_structured_index_component(data[[variable]])
-  })
-
-  if(length(values) == 1L){
-    return(values[[1L]])
+  resolved <- .bt_random_effect_structured_index_resolve(data, variables)
+  if(is.null(index) || is.null(index$level_keys) || is.null(index$levels)){
+    return(.bt_random_effect_structured_index_factor(resolved))
   }
 
-  do.call(interaction, c(values, list(drop = TRUE, lex.order = TRUE)))
+  level_keys <- index$level_keys
+  levels <- index$levels
+  if(!is.character(level_keys) || !is.character(levels) ||
+     length(level_keys) != length(levels) || anyNA(level_keys) ||
+     anyNA(levels) || anyDuplicated(level_keys) || anyDuplicated(levels)){
+    stop(
+      "Structured random-effect index metadata for '", index$name,
+      "' are malformed. Refit the model with this version of BayesTools.",
+      call. = FALSE
+    )
+  }
+  level_index <- match(resolved$row_keys, level_keys)
+  if(anyNA(level_index[!is.na(resolved$row_keys)])){
+    stop(
+      "Levels specified in the '", index$name,
+      "' factor variable do not match the levels used for model specification.",
+      call. = FALSE
+    )
+  }
+  factor(levels[level_index], levels = levels)
 }
 
-.bt_random_effect_structured_index_component <- function(x){
+.bt_random_effect_structured_index_factor <- function(resolved){
+
+  factor(
+    resolved$labels[match(resolved$row_keys, resolved$level_keys)],
+    levels = resolved$labels
+  )
+}
+
+.bt_random_effect_structured_index_resolve <- function(data, variables){
+
+  components <- lapply(variables, function(variable){
+    .bt_random_effect_structured_index_component(data[[variable]], variable)
+  })
+  if(length(components) == 1L){
+    return(components[[1L]][c("row_keys", "level_keys", "labels")])
+  }
+
+  row_key_matrix <- do.call(cbind, lapply(components, `[[`, "row_keys"))
+  codes <- do.call(cbind, lapply(components, function(component){
+    match(component$row_keys, component$level_keys)
+  }))
+  missing_rows <- apply(is.na(row_key_matrix), 1L, any)
+  row_keys <- rep(NA_character_, nrow(row_key_matrix))
+  row_keys[!missing_rows] <- apply(
+    row_key_matrix[!missing_rows, , drop = FALSE],
+    1L,
+    .bt_random_group_tuple_key
+  )
+
+  # Observed cells only, ordered with the first index variable varying
+  # slowest, as interaction(drop = TRUE, lex.order = TRUE).
+  first_rows <- which(!duplicated(row_keys) & !missing_rows)
+  first_rows <- first_rows[do.call(
+    order,
+    unname(as.data.frame(codes[first_rows, , drop = FALSE]))
+  )]
+  label_parts <- do.call(cbind, lapply(seq_along(components), function(i){
+    components[[i]]$labels[codes[first_rows, i]]
+  }))
+  labels <- .bt_random_effect_structured_index_tuple_labels(
+    label_parts = label_parts,
+    component_labels = lapply(components, `[[`, "labels"),
+    variables = variables
+  )
+
+  list(
+    row_keys = row_keys,
+    level_keys = row_keys[first_rows],
+    labels = labels
+  )
+}
+
+.bt_random_effect_structured_index_tuple_labels <- function(label_parts,
+                                                            component_labels,
+                                                            variables){
+
+  if(nrow(label_parts) == 0L){
+    return(character())
+  }
+  labels <- apply(label_parts, 1L, paste, collapse = ".")
+  if(!anyDuplicated(labels)){
+    return(labels)
+  }
+
+  # A separator absent from every component label keeps the cell labels
+  # injective. It excludes characters reserved by coefficient names and
+  # semantic parameter labels.
+  used_labels <- unlist(component_labels, use.names = FALSE)
+  for(separator in c("_", "-", "~", "/", "&", "#", "@")){
+    if(!any(grepl(separator, used_labels, fixed = TRUE))){
+      return(apply(label_parts, 1L, paste, collapse = separator))
+    }
+  }
+
+  stop(
+    "The structured random-effect index levels of ",
+    paste0("'", variables, "'", collapse = ", "),
+    " cannot be represented by unique labels. Recode the index levels.",
+    call. = FALSE
+  )
+}
+
+.bt_random_effect_structured_index_component <- function(x, variable = ""){
 
   if(is.factor(x)){
-    return(x)
+    labels <- levels(x)
+    return(list(
+      row_keys = as.character(x),
+      level_keys = labels,
+      labels = labels
+    ))
   }
-  factor(x, levels = sort(unique(x)))
+  if(is.numeric(x)){
+    x <- as.numeric(x)
+    values <- sort(unique(x))
+    # The exact double identifies the level; signed zeros are one value.
+    values[values == 0] <- 0
+    level_keys <- sprintf("%.17g", values)
+    labels <- as.character(values)
+    ambiguous <- duplicated(labels) | duplicated(labels, fromLast = TRUE)
+    labels[ambiguous] <- level_keys[ambiguous]
+    if(anyDuplicated(labels) || anyDuplicated(level_keys)){
+      stop(
+        "The structured random-effect index variable '", variable,
+        "' cannot be represented by unique level labels.",
+        call. = FALSE
+      )
+    }
+    return(list(
+      row_keys = level_keys[match(x, values)],
+      level_keys = level_keys,
+      labels = labels
+    ))
+  }
+
+  values <- sort(unique(x))
+  labels <- as.character(values)
+  row_keys <- as.character(x)
+  row_keys[is.na(x)] <- NA_character_
+  list(
+    row_keys = row_keys,
+    level_keys = labels,
+    labels = labels
+  )
 }
 
 .bt_random_effect_warn_index_order <- function(x, resolved_levels, variable,

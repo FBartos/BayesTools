@@ -1289,7 +1289,8 @@
 
   data[[index$name]] <- .bt_random_effect_structured_index_values(
     data,
-    index$variables
+    index$variables,
+    index = index
   )
   data
 }

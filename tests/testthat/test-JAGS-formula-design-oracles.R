@@ -66,6 +66,105 @@ test_that("CAR single-coordinate covariance and observed factor basis replay", {
   expect_equal(replay$model_matrix, block$model_matrix)
 })
 
+test_that("structured index levels are identified by exact tuple and numeric keys", {
+  compile <- function(formula, data){
+    JAGS_formula(formula, "mu", data,
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(sd = prior("point", list(location = 1)))
+    )$formula_design$random_effects[[1]]
+  }
+
+  # Character cells whose '.'-pasted labels coincide stay distinct.
+  character_data <- data.frame(
+    g = factor(rep(c("s1", "s2", "s3"), each = 2)),
+    a = rep(c("x.y", "x"), 3),
+    b = rep(c("z", "y.z"), 3)
+  )
+  block <- compile(~ 1 + cs(a + b | g), character_data)
+  expect_identical(block$n_columns, 2L)
+  expect_identical(block$column_names, c("a_bx_y.z", "a_bx.y_z"))
+  expect_equal(
+    block$model_matrix,
+    cbind(rep(c(0, 1), 3), rep(c(1, 0), 3)),
+    ignore_attr = TRUE
+  )
+
+  # Numeric cells (1.5, 2) and (1, 5.2) share the label "1.5.2".
+  numeric_data <- data.frame(
+    g = factor(rep(c("s1", "s2"), each = 3)),
+    a = rep(c(1.5, 1, 2), 2),
+    b = rep(c(2, 5.2, 2), 2)
+  )
+  block <- compile(~ 1 + cs(a + b | g), numeric_data)
+  expect_identical(block$n_columns, 3L)
+  expect_identical(block$column_names, c("a_b1_5.2", "a_b1.5_2", "a_b2_2"))
+  expected <- cbind(
+    numeric_data$a == 1,
+    numeric_data$a == 1.5,
+    numeric_data$a == 2
+  ) * 1
+  expect_equal(block$model_matrix, expected, ignore_attr = TRUE)
+  replay <- .bt_random_effect_prediction_data(block, numeric_data)
+  expect_equal(replay$model_matrix, block$model_matrix, ignore_attr = TRUE)
+  new_cell <- .bt_random_effect_prediction_data(
+    block,
+    data.frame(g = factor("s1"), a = 1, b = 5.2)
+  )
+  expect_equal(
+    new_cell$model_matrix,
+    matrix(c(1, 0, 0), nrow = 1L),
+    ignore_attr = TRUE
+  )
+  expect_error(
+    .bt_random_effect_prediction_data(
+      block,
+      data.frame(g = factor("s1"), a = 5, b = 5)
+    ),
+    "do not match the levels used for model specification"
+  )
+
+  # Distinct doubles with equal 15-digit labels never merge or crash.
+  float_data <- data.frame(
+    g = factor(rep(c("s1", "s2"), each = 2)),
+    t = c(0.3, 0.1 + 0.2, 0.3, 0.1 + 0.2)
+  )
+  for(structure in c("cs", "ar1")){
+    block <- compile(
+      stats::as.formula(paste0("~ 1 + ", structure, "(t | g)")),
+      float_data
+    )
+    expect_identical(
+      block$column_names,
+      c("t0.29999999999999999", "t0.30000000000000004"),
+      info = structure
+    )
+    expect_equal(
+      block$model_matrix,
+      cbind(c(1, 0, 1, 0), c(0, 1, 0, 1)),
+      ignore_attr = TRUE,
+      info = structure
+    )
+  }
+  expect_error(
+    .bt_random_effect_prediction_data(
+      block,
+      data.frame(g = factor("s1"), t = 0.3 + 1e-12)
+    ),
+    "do not match the levels used for model specification"
+  )
+
+  # Unambiguous labels are unchanged.
+  block <- compile(
+    ~ 1 + cs(a + b | g),
+    data.frame(g = factor(rep(c("s1", "s2"), each = 2)), a = c(1, 2, 1, 2),
+               b = c(0.5, 0.5, 3, 3))
+  )
+  expect_identical(
+    block$column_names,
+    c("a_b1.0.5", "a_b1.3", "a_b2.0.5", "a_b2.3")
+  )
+})
+
 test_that("expression-only subtraction preserves structural zero intercept", {
   expect_equal(.remove_expressions(~ expression(x) - 1), ~ 1 - 1,
     ignore_formula_env = TRUE)
