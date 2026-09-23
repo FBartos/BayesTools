@@ -722,12 +722,15 @@
   complete <- length(active_names) == length(z_names)
   structure <- .bt_JAGS_bridge_random_term_structure(random_term)
   known_group <- .bt_random_effect_has_known_group_covariance(random_term)
-  if(!complete && (!structure %in% c("diag", "id") || known_group)){
+  omission_error <- function(){
     stop(
       "Bridge sampling can omit only a complete correlated random-effect ",
       "latent block or independent fixed-zero latent components.",
       call. = FALSE
     )
+  }
+  if(!complete && !structure %in% c("diag", "id")){
+    omission_error()
   }
   group_covariance <- if(known_group){
     .bt_random_effect_known_group_covariance(
@@ -739,6 +742,28 @@
   }
   n_groups <- random_term$n_groups
   n_columns <- random_term$n_columns
+
+  # With a known group covariance, every latent column of an independent
+  # (diag/id) block is a separate MVN(0, K) vector. A fixed-zero column can be
+  # omitted exactly only as a whole; the remaining columns keep their joint
+  # group density.
+  group_column_names <- NULL
+  if(!is.null(group_covariance)){
+    group_column_names <- matrix(z_names, nrow = n_groups, ncol = n_columns)
+    column_active <- colSums(matrix(
+      group_column_names %in% active_names,
+      nrow = n_groups,
+      ncol = n_columns
+    ))
+    if(any(column_active > 0L & column_active < n_groups)){
+      omission_error()
+    }
+    group_column_names <- group_column_names[
+      ,
+      column_active == n_groups,
+      drop = FALSE
+    ]
+  }
 
   function(samples){
     if(!all(active_names %in% names(samples))){
@@ -754,15 +779,10 @@
       return(-Inf)
     }
     if(!is.null(group_covariance)){
-      z_values <- matrix(
-        as.numeric(z_values),
-        nrow = n_groups,
-        ncol = n_columns
-      )
       out <- 0
-      for(column in seq_len(n_columns)){
+      for(column in seq_len(ncol(group_column_names))){
         out <- out + .bt_mvn_zero_log_density(
-          z = z_values[, column],
+          z = as.numeric(samples[group_column_names[, column]]),
           precision = group_covariance$precision,
           log_det = group_covariance$log_det
         )

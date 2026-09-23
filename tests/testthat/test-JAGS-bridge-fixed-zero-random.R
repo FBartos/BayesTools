@@ -176,3 +176,106 @@ test_that("independent fixed-zero components prune only their latent columns", {
   expect_identical(names(bridge$fixed_latent), as.vector(z_names[, 1L]))
   expect_identical(bridge$parameters, as.vector(z_names[, 2L]))
 })
+
+test_that("known group covariance blocks prune fixed-zero columns exactly", {
+
+  data <- data.frame(
+    id = factor(c("b", "a", "c", "b", "a", "c")),
+    x = c(-1, 0, 1, 2, -0.5, 0.3)
+  )
+  K <- matrix(
+    c(4, 1, 0.5, 1, 9, 2, 0.5, 2, 16),
+    nrow = 3L,
+    byrow = TRUE,
+    dimnames = list(c("a", "b", "c"), c("a", "b", "c"))
+  )
+  result <- JAGS_formula(
+    formula = random_effects_formula(
+      ~ diag(1 + x | id),
+      group_covariance = random_group_covariance(K, scale = "none")
+    ),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("normal", list(0, 1), list(0, Inf)),
+        terms = list(x = prior("point", list(location = 0)))
+      )
+    )
+  )
+  design <- list(mu = result$formula_design)
+  random_term <- result$formula_design$random_effects[[1L]]
+  z_names <- .bt_random_effect_latent_names(
+    random_term,
+    random_term$n_groups,
+    random_term$n_columns
+  )
+  bridge <- .bt_JAGS_formula_random_bridge_parameters(design)
+  expect_identical(names(bridge$fixed_latent), as.vector(z_names[, 2L]))
+
+  # The remaining intercept column keeps its exact MVN(0, K) group density;
+  # the omitted slope column integrates to one.
+  evaluator <- .bt_JAGS_bridge_compile_formula_random_prior_evaluator(
+    design,
+    omitted_latent = bridge$omitted_latent
+  )
+  z_intercept <- c(0.4, -1.2, 0.7)
+  samples <- stats::setNames(z_intercept, z_names[, 1L])
+  precision <- solve(K)
+  expected <- -0.5 * (
+    3 * log(2 * pi) +
+      as.numeric(determinant(K, logarithm = TRUE)$modulus) +
+      as.numeric(crossprod(z_intercept, precision %*% z_intercept))
+  )
+  expect_equal(evaluator$log_prior(samples), expected, tolerance = 1e-12)
+
+  # Partial omission inside a column is still not representable.
+  expect_error(
+    .bt_JAGS_bridge_compile_formula_random_prior_evaluator(
+      design,
+      omitted_latent = z_names[1L, 2L]
+    ),
+    "Bridge sampling can omit only a complete correlated random-effect",
+    fixed = TRUE
+  )
+
+  # The public bridge reaches the likelihood with the pruned coordinates.
+  set.seed(82)
+  sd_name <- random_term$sd_parameter_names[[1L]]
+  posterior <- cbind(
+    mu_intercept = stats::rnorm(40L),
+    stats::setNames(
+      as.data.frame(matrix(abs(stats::rnorm(40L)) + 0.1, ncol = 1L)),
+      sd_name
+    ),
+    as.data.frame(matrix(
+      stats::rnorm(40L * length(z_names)),
+      ncol = length(z_names),
+      dimnames = list(NULL, as.vector(z_names))
+    ))
+  )
+  fit <- coda::mcmc(as.matrix(posterior))
+  attr(fit, "prior_list") <- result$prior_list
+  attr(fit, "formula_design") <- design
+  bridge_names <- NULL
+  testthat::local_mocked_bindings(
+    bridge_sampler = function(...){
+      arguments <- list(...)
+      bridge_names <<- colnames(arguments$samples)
+      structure(
+        list(logml = -1, niter = 1L, mcse_logml = 0, method = "normal"),
+        class = "bridge"
+      )
+    },
+    .package = "bridgesampling"
+  )
+  bridged <- JAGS_bridgesampling(
+    fit = fit,
+    log_posterior = function(parameters, data) 0,
+    data = list()
+  )
+  expect_s3_class(bridged, "BayesTools_marglik")
+  expect_false(any(as.vector(z_names[, 2L]) %in% bridge_names))
+  expect_true(all(as.vector(z_names[, 1L]) %in% bridge_names))
+})
