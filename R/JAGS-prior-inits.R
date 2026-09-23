@@ -11,24 +11,27 @@
 #'
 #' @inheritParams JAGS_add_priors
 #'
-#' @return \code{JAGS_add_priors} returns a list of JAGS
-#' initial values.
+#' @return \code{JAGS_get_inits} returns a list with one element per chain,
+#' containing the chain's JAGS initial values and its \code{.RNG.name} and
+#' \code{.RNG.seed}. With an empty \code{prior_list}, each element contains
+#' only \code{.RNG.name} and \code{.RNG.seed}, so that fits of models whose
+#' priors are specified only in the model syntax remain reproducible.
 #'
 #' @export
 JAGS_get_inits            <- function(prior_list, chains, seed){
 
-  # return empty list in case that no prior was specified
-  if(length(prior_list) == 0){
-    return(list())
-  }
-
   check_int(chains, "chains", lower = 1)
   check_real(seed, "seed", allow_NULL = TRUE)
-  check_list(prior_list, "prior_list")
-  if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
-    stop("'prior_list' must be a list of priors.")
-  .check_prior_list_unique_names(prior_list)
-  .bt_validate_ordered_shared_allocations(prior_list)
+
+  # without priors, only the random-number generator is initialized
+  has_priors <- length(prior_list) > 0
+  if(has_priors){
+    check_list(prior_list, "prior_list")
+    if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
+      stop("'prior_list' must be a list of priors.")
+    .check_prior_list_unique_names(prior_list)
+    .bt_validate_ordered_shared_allocations(prior_list)
+  }
 
 
   # select seed at random if none was specified
@@ -45,7 +48,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   inits <- vector("list", chains)
   for(j in 1:chains){
 
-    temp_inits <- .JAGS_get_inits.fun(prior_list)
+    temp_inits <- if(has_priors) .JAGS_get_inits.fun(prior_list) else list()
 
     temp_inits[[".RNG.seed"]] <- chain_seeds[[j]]
     temp_inits[[".RNG.name"]] <- if(chains > 4) "lecuyer::RngStream" else "base::Super-Duper"

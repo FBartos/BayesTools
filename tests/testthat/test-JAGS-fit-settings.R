@@ -235,6 +235,43 @@ test_that("prior-only JAGS draws differ between chains of adjacent seeds", {
   }
 })
 
+test_that("JAGS fits with priors only in the model syntax are reproducible for a seed", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+
+  fit_syntax_prior <- function(seed){
+    withCallingHandlers(
+      JAGS_fit(
+        model_syntax   = "model{ mu ~ dnorm(0, 1) }",
+        prior_list     = NULL,
+        add_parameters = "mu",
+        chains         = 2,
+        adapt          = 50,
+        burnin         = 50,
+        sample         = 100,
+        seed           = seed
+      ),
+      warning = function(w){
+        if(grepl("No data was specified", conditionMessage(w), fixed = TRUE)){
+          invokeRestart("muffleWarning")
+        }
+      }
+    )
+  }
+  chain_draws <- function(fit, chain) as.numeric(fit$mcmc[[chain]][, "mu"])
+
+  fit_1       <- fit_syntax_prior(1)
+  fit_1_again <- fit_syntax_prior(1)
+  fit_2       <- fit_syntax_prior(2)
+
+  # Without '.RNG.seed' entries, the backend seeded these chains itself.
+  for(chain in 1:2){
+    expect_identical(chain_draws(fit_1, chain), chain_draws(fit_1_again, chain))
+    expect_false(identical(chain_draws(fit_1, chain), chain_draws(fit_2, chain)))
+  }
+})
+
 test_that("JAGS restart seeds come from their own stream of the seed", {
 
   restart_seeds <- function(seed, restarts){

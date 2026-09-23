@@ -18,8 +18,11 @@ same seed with \code{sample.int(.Machine$integer.max, chains)}, so the seed
 of a chain does not depend on the number of chains.}
 }
 \value{
-\code{JAGS_add_priors} returns a list of JAGS
-initial values.
+\code{JAGS_get_inits} returns a list with one element per chain,
+containing the chain's JAGS initial values and its \code{.RNG.name} and
+\code{.RNG.seed}. With an empty \code{prior_list}, each element contains
+only \code{.RNG.name} and \code{.RNG.seed}, so that fits of models whose
+priors are specified only in the model syntax remain reproducible.
 }
 \description{
 Creates initial values for priors in

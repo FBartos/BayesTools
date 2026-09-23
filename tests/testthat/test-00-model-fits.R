@@ -2308,8 +2308,16 @@ test_that("JAGS_add_priors input validation works", {
 
 test_that("JAGS_get_inits input validation works", {
 
-  # Empty prior_list returns empty list
-  expect_equal(JAGS_get_inits(list(), chains = 2, seed = 1), list())
+  # Empty prior_list returns only each chain's random-number generator entries
+  expected_seeds <- local({
+    set.seed(1)
+    sample.int(.Machine$integer.max, 2)
+  })
+  expected_empty_inits <- lapply(expected_seeds, function(chain_seed){
+    list(.RNG.seed = chain_seed, .RNG.name = "base::Super-Duper")
+  })
+  expect_identical(JAGS_get_inits(list(), chains = 2, seed = 1), expected_empty_inits)
+  expect_identical(JAGS_get_inits(NULL, chains = 2, seed = 1), expected_empty_inits)
 
   # Input validation
   expect_error(JAGS_get_inits(list(x = 1), chains = 2, seed = 1), "'prior_list' must be a list of priors.")
