@@ -999,6 +999,62 @@ test_that("row-wise prior densities preserve bitwise-distinct design rows", {
   expect_equal(density$points$p, c(.5, .5))
 })
 
+test_that("conditional log-intercept prior densities mix the conditioned models", {
+
+  formula_scale <- list(mu = list(mu_x = list(mean = 5, sd = 2)))
+  attr(formula_scale$mu, "log_intercept") <- TRUE
+  slab <- prior("normal", list(0, 1))
+  prior_list <- list(
+    mu_intercept = prior("lognormal", list(0, .5)),
+    mu_x = prior_spike_and_slab(slab, prior_inclusion = prior("point", list(.5)))
+  )
+  columns <- c("mu_intercept", "mu_x")
+
+  conditional <- .generate_transformed_prior_densities(
+    prior_list, columns, formula_scale, conditional = "mu_x"
+  )
+  # Reference: the unconditional density of the prior list filtered to the
+  # alternative (slab) component, computed through the unconditional bypass.
+  filtered <- .generate_transformed_prior_densities(
+    list(mu_intercept = prior_list$mu_intercept, mu_x = slab), columns, formula_scale
+  )
+  unconditional <- .generate_transformed_prior_densities(prior_list, columns, formula_scale)
+  for(value in c(.5, 1, 1.5, 3)){
+    expect_equal(
+      .prior_linear_density_grid_height(conditional$mu_intercept, value),
+      .prior_linear_density_grid_height(filtered$mu_intercept, value),
+      tolerance = 1e-8
+    )
+    expect_equal(
+      as.numeric(.prior_linear_density_height(conditional$mu_intercept, value)),
+      as.numeric(.prior_linear_density_height(filtered$mu_intercept, value)),
+      tolerance = 1e-8
+    )
+  }
+  expect_false(isTRUE(all.equal(
+    .prior_linear_density_grid_height(conditional$mu_intercept, 1),
+    .prior_linear_density_grid_height(unconditional$mu_intercept, 1)
+  )))
+
+  # Public route: conditional unscaling of a log(intercept) fit.
+  posterior <- cbind(
+    mu_intercept   = stats::qlnorm(stats::ppoints(20), 0, .5),
+    mu_x           = c(rep(0, 8), seq(.1, 1, length.out = 12)),
+    mu_x_indicator = c(rep(0L, 8), rep(1L, 12))
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_scale") <- formula_scale
+  fit <- .bt_attach_parameter_map(fit, monitor_names = colnames(posterior))
+  mixed <- as_mixed_posteriors(fit, columns, conditional = "mu_x", transform_scaled = TRUE)
+  expect_equal(
+    as.numeric(.prior_linear_density_height(attr(mixed, "prior_densities")$mu_intercept, 1)),
+    as.numeric(.prior_linear_density_height(filtered$mu_intercept, 1)),
+    tolerance = 1e-8
+  )
+})
+
 test_that("plot_transformed_prior exposes transformed prior plotting as a public wrapper", {
 
   prior_list <- list(

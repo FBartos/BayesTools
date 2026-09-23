@@ -40,7 +40,20 @@
       }
     }
 
-    if(!is.null(output_transformation)){
+    if(!is.null(output_transformation) &&
+       inherits(context, "prior_density_conditional_context")){
+      # The log-intercept weights are already on the fitted coefficient scale;
+      # mix the conditioned models without re-applying the formula scaling.
+      coefficient_context <- context
+      coefficient_context$formula_scale <- NULL
+      coefficient_context$transforms    <- list()
+      out[[parameter]] <- .prior_density_from_context(
+        context               = coefficient_context,
+        weights               = weights,
+        source_transforms     = source_transforms,
+        output_transformation = output_transformation
+      )
+    }else if(!is.null(output_transformation)){
       out[[parameter]] <- .prior_linear_combination_density(
         prior_list             = prior_list,
         weights                = weights,

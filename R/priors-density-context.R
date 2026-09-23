@@ -244,10 +244,19 @@
     return(.prior_density_context(prior_list, column_names, formula_scale, n_grid, tail_prob))
   }
 
+  # The coefficient transformations depend only on the formula scaling, not on
+  # the conditioning event.
+  transforms <- if(!is.null(formula_scale) && length(formula_scale) > 0){
+    .prior_density_context(prior_list, column_names, formula_scale, n_grid, tail_prob)$transforms
+  }else{
+    list()
+  }
+
   out <- list(
     prior_list      = prior_list,
     column_names    = column_names,
     formula_scale   = formula_scale,
+    transforms      = transforms,
     conditional     = condition_event[["conditional"]],
     conditional_rule = condition_event[["conditional_rule"]],
     condition_event = condition_event,
