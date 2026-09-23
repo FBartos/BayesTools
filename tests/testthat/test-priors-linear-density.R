@@ -383,6 +383,169 @@ test_that("row and leaf conditional-normal ordinates each receive the full evalu
   expect_true(attr(height, "numerical_diagnostics")$converged)
 })
 
+test_that("mixture prior ordinates evaluate every component exactly at a density jump", {
+
+  # N(0.5, 1)T(0, Inf) jumps at 0; its ordinate there is the one-sided limit
+  # inside the support. N(0, 1) + N(0.5, 1)T(0, Inf) has the closed form below
+  # (complete the square in the convolution integral).
+  truncated <- prior("normal", list(.5, 1), list(0, Inf))
+  f_truncated <- function(v) ifelse(v >= 0, stats::dnorm(v, .5) / stats::pnorm(.5), 0)
+  f_sum <- function(v){
+    stats::dnorm(v, .5, sqrt(2)) * stats::pnorm((v + .5) / sqrt(2)) / stats::pnorm(.5)
+  }
+  expect_height <- function(density, reference){
+    for(value in c(0, -.5, .05)){
+      ordinate <- prior_density_ordinate(density, value)
+      expect_identical(ordinate$behavior, "regular")
+      expect_true(ordinate$exact)
+      expect_equal(as.numeric(.prior_linear_density_height(density, value)),
+                   reference(value), tolerance = 1e-10)
+    }
+  }
+  mock_fit <- function(samples, prior_list){
+    fit <- structure(
+      list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples),
+           summary.pars = list(mutate = NULL), monitor = colnames(samples)),
+      class = c("runjags", "BayesTools_fit", "list")
+    )
+    attr(fit, "prior_list") <- prior_list
+    fit
+  }
+  set.seed(71)
+  n <- 200L
+  data <- data.frame(t = factor(c("lo", "mid", "hi"), levels = c("lo", "mid", "hi")))
+
+  # Model mixture (mix_posteriors): the reference level is N(0, 1) or the
+  # truncated intercept; the 'mid' level adds a treatment level that is
+  # truncated in the first model and fixed at 0 in the second.
+  first <- JAGS_formula(~ 1 + t, "mu", data = data, prior_list = list(
+    intercept = prior("normal", list(0, 1)),
+    t = prior_factor("normal", list(.5, 1), list(0, Inf), contrast = "treatment")
+  ))$prior_list
+  second <- JAGS_formula(~ 1 + t, "mu", data = data, prior_list = list(
+    intercept = truncated,
+    t = prior_factor("point", list(location = 0), contrast = "treatment")
+  ))$prior_list
+  models <- list(
+    list(fit = mock_fit(cbind(mu_intercept = stats::rnorm(n), "mu_t[1]" = rng(truncated, n),
+                              "mu_t[2]" = rng(truncated, n)), first),
+         marglik = bridgesampling_object(0), prior_weights = 1),
+    list(fit = mock_fit(cbind(mu_intercept = rng(truncated, n), "mu_t[1]" = 0,
+                              "mu_t[2]" = 0), second),
+         marglik = bridgesampling_object(0), prior_weights = 1)
+  )
+  mixed <- mix_posteriors(models, parameters = c("mu_intercept", "mu_t"),
+                          is_null_list = list(mu_intercept = c(FALSE, FALSE),
+                                              mu_t = c(FALSE, FALSE)),
+                          seed = 1, n_samples = n)
+  levels <- marginal_posterior(mixed, "mu_t", formula = ~ 1 + t, prior_samples = TRUE)
+  reference_level <- attr(levels[["lo"]], "prior_density")
+  expect_equal(as.numeric(.prior_linear_density_height(reference_level, 0)),
+               .5 * stats::dnorm(0) + .5 * stats::dnorm(0, .5) / stats::pnorm(.5),
+               tolerance = 1e-10)
+  expect_height(reference_level, function(v) .5 * stats::dnorm(v) + .5 * f_truncated(v))
+  # the already exact per-model ordinates are unchanged
+  expect_identical(
+    vapply(prior_density_ordinate(reference_level, 0)$provenance$components,
+           function(component) component$provenance$kind, character(1)),
+    c("scalar_affine", "scalar_affine")
+  )
+  two_term <- attr(levels[["mid"]], "prior_density")
+  expect_height(two_term, function(v) .5 * f_sum(v) + .5 * f_truncated(v))
+  quadrature <- prior_density_ordinate(two_term, 0)$provenance$components[[1L]]$provenance
+  expect_identical(quadrature$kind, "conditional_normal_mixture")
+  expect_true(quadrature$integration$converged)
+
+  # Single fit (as_mixed_posteriors): mixture intercept and a spike-or-normal
+  # slope; each indicator combination is its own component.
+  single <- JAGS_formula(~ x, "mu", data = data.frame(x = c(-1, 0, 1)), prior_list = list(
+    intercept = prior_mixture(list(prior("normal", list(0, 1)), truncated),
+                              is_null = c(FALSE, FALSE)),
+    x = prior_mixture(list(prior("spike", list(0)), prior("normal", list(0, 1))),
+                      is_null = c(TRUE, FALSE))
+  ))
+  intercept_indicator <- sample(1:2, n, TRUE)
+  slope_indicator <- sample(1:2, n, TRUE)
+  fit <- coda::mcmc(cbind(
+    mu_intercept = ifelse(intercept_indicator == 1L, stats::rnorm(n), rng(truncated, n)),
+    mu_x = ifelse(slope_indicator == 1L, 0, stats::rnorm(n)),
+    mu_intercept_indicator = intercept_indicator,
+    mu_x_indicator = slope_indicator
+  ))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- single$prior_list
+  single_mixed <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x"))
+  single_levels <- marginal_posterior(single_mixed, "mu_x", formula = ~ x, prior_samples = TRUE)
+  expect_height(attr(single_levels[["1SD"]], "prior_density"), function(v){
+    .25 * (stats::dnorm(v) + stats::dnorm(v, sd = sqrt(2)) + f_truncated(v) + f_sum(v))
+  })
+  expect_height(attr(single_levels[["0SD"]], "prior_density"), function(v){
+    .5 * stats::dnorm(v) + .5 * f_truncated(v)
+  })
+  expect_identical(
+    prior_density_ordinate(attr(single_levels[["0SD"]], "prior_density"), 0)$method,
+    "scalar_affine"
+  )
+
+  # Conditional mixture: conditioning on the slope's alternative leaves the
+  # N(0, 1) + N(0, 1) and truncated + N(0, 1) components.
+  context <- .prior_density_build_context(single$prior_list, c("mu_intercept", "mu_x"),
+                                          conditional = "mu_x", n_grid = 4096)
+  expect_s3_class(context, "prior_density_conditional_context")
+  expect_height(.prior_density_from_context(context, c(mu_intercept = 1, mu_x = 1)),
+                function(v) .5 * stats::dnorm(v, sd = sqrt(2)) + .5 * f_sum(v))
+
+  # Original-scale intercept under transform_scaled: b0 - (m / s) * b1 with the
+  # intercept mixture above and a spike-and-slab standardized slope. Reference:
+  # the four component densities, the bounded + normal one by a 1-D
+  # convolution integral at rel.tol 1e-10.
+  scaled <- JAGS_formula(~ x, "mu", data = data.frame(x = c(1, 2, 3.5, 4, 6, 8.5)), prior_list = list(
+    intercept = prior_mixture(list(prior("normal", list(0, 1)), truncated),
+                              is_null = c(FALSE, FALSE)),
+    x = prior_spike_and_slab(prior("normal", list(0, 1)))
+  ), formula_scale = list(x = TRUE))
+  ratio <- scaled$formula_scale[["mu_x"]]$mean / scaled$formula_scale[["mu_x"]]$sd
+  scaled_indicator <- sample(1:2, n, TRUE)
+  slope_inclusion <- stats::rbinom(n, 1, .5)
+  posterior <- cbind(
+    mu_intercept = ifelse(scaled_indicator == 1L, stats::rnorm(n), rng(truncated, n)),
+    mu_x = slope_inclusion * stats::rnorm(n),
+    mu_intercept_indicator = scaled_indicator,
+    mu_x_indicator = slope_inclusion
+  )
+  scaled_fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(posterior)), summary.pars = list(mutate = NULL),
+         monitor = colnames(posterior), sample = n),
+    class = c("runjags", "BayesTools_fit")
+  )
+  attr(scaled_fit, "prior_list") <- scaled$prior_list
+  attr(scaled_fit, "formula_design") <- list(mu = scaled$formula_design)
+  attr(scaled_fit, "formula_scale") <- list(mu = scaled$formula_scale)
+  scaled_fit <- .bt_attach_fit_contract(.bt_attach_draw_geometry(.bt_attach_parameter_map(scaled_fit)))
+  scaled_mixed <- as_mixed_posteriors(scaled_fit, c("mu_intercept", "mu_x"),
+                                      transform_scaled = TRUE, n_prior_samples = 2000)
+  original_intercept <- marginal_posterior(scaled_mixed, "mu_intercept", use_formula = FALSE,
+                                           prior_samples = TRUE)
+  expect_equal(as.numeric(original_intercept),
+               posterior[, "mu_intercept"] - ratio * posterior[, "mu_x"])
+  expect_height(attr(original_intercept, "prior_density"), function(v){
+    .25 * stats::dnorm(v) + .25 * stats::dnorm(v, sd = sqrt(1 + ratio^2)) +
+      .25 * f_truncated(v) + .25 * stats::integrate(function(t){
+        f_truncated(t) * stats::dnorm(v - t, sd = ratio)
+      }, 0, Inf, rel.tol = 1e-10)$value
+  })
+
+  # Outside mixtures the same convolution keeps its previous classification
+  # and adaptive grid height.
+  plain <- .prior_linear_combination_density(
+    list(a = prior("normal", list(0, 1)), b = truncated), c(a = 1, b = 1)
+  )
+  expect_identical(prior_density_ordinate(plain, .05)$method, "unsupported_provenance")
+  plain_height <- .prior_linear_density_height(plain, .05)
+  expect_true(isTRUE(attr(plain_height, "adaptive_evaluation")$converged))
+  expect_equal(as.numeric(plain_height), f_sum(.05), tolerance = 1e-4)
+})
+
 test_that("FFT removed-mass diagnostics have probability units", {
 
   set.seed(135)
@@ -656,7 +819,9 @@ test_that("heavy-tailed combinations resolve their narrowest source and mixtures
   # 10 when polynomial tails would more than double the range. t3 + N(0, .1)
   # converges to its quadrature reference; Cauchy combinations exceed the grid
   # limit before converging and stop loudly instead of reporting a height
-  # biased by their omitted tail mass.
+  # biased by their omitted tail mass. A spike-and-slab mixture is instead
+  # evaluated per component (the slab component is a Gaussian convolution by
+  # quadrature), so it matches the reference above.
   student <- .prior_linear_combination_density(
     list(a = prior("t", list(0, 1, 3)), b = prior("normal", list(0, .1))), c(a = 1, b = 1)
   )
@@ -668,11 +833,15 @@ test_that("heavy-tailed combinations resolve their narrowest source and mixtures
                      -Inf, Inf, rel.tol = 1e-12)$value,
     tolerance = 1e-4
   )
+  cauchy_sum <- .prior_linear_combination_density(
+    list(a = prior("normal", list(0, .2)), b = prior("cauchy", list(0, .707))), c(a = 1, b = 1)
+  )
   expect_error(
-    .prior_linear_density_height(heavy, 0),
+    .prior_linear_density_height(cauchy_sum, 0),
     "Adaptive prior-density evaluation did not converge within the documented grid-refinement error criterion.",
     fixed = TRUE
   )
+  expect_equal(as.numeric(.prior_linear_density_height(heavy, 0)), reference, tolerance = 1e-8)
 
   # Density jumps (half-normal, truncated normal and uniform components)
   # converge once the spacing strictly halves; references by quadrature.
@@ -726,9 +895,11 @@ test_that("mixture grids beyond the limit end adaptive refinement as non-converg
   # the spacing each model stays below the limit, but their union at the finest
   # model spacing needs about 3.3e6 knots: refinement ends and the height is
   # reported as not converged, instead of failing with the mixing error meant
-  # for incompatible scales in the requested density itself.
+  # for incompatible scales in the requested density itself. The narrow model
+  # (t30 + gamma) has no exact or regular per-component ordinate, so the
+  # mixture height uses the grid.
   context <- .prior_density_build_context(
-    list(a = list(prior("normal", list(0, .01), prior_weights = 1),
+    list(a = list(prior("t", list(0, .01, 30), prior_weights = 1),
                   prior("t", list(0, 1, 3), prior_weights = 1)),
          b = list(prior("gamma", list(3, 2), prior_weights = 1),
                   prior("normal", list(0, 1), prior_weights = 1))),

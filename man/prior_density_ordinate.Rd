@@ -47,6 +47,15 @@ classification has \code{exact = TRUE}, while
 \code{provenance$integration$exact = FALSE} describes the numerical ordinate.
 Failed quadrature retains that classification with \code{log_density = NA} and
 failure diagnostics; requesting a density height then rejects the result.
+
+Mixture ordinates (model-averaged and conditional mixtures, and linear
+combinations of mixture or spike-and-slab priors) are the probability-
+weighted sums of their component ordinates, each classified by its own
+method; a component with a truncated prior at its support bound uses the
+one-sided limit inside the support. Within such a component, a Gaussian
+term plus one other continuous scalar term is a Gaussian convolution
+evaluated by the same quadrature. If any component remains \code{unknown}, the
+whole mixture is \code{unknown}.
 }
 \description{
 \code{prior_density_ordinate()} classifies the mathematical behavior of a prior at

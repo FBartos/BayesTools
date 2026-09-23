@@ -45,6 +45,15 @@
 #' Failed quadrature retains that classification with `log_density = NA` and
 #' failure diagnostics; requesting a density height then rejects the result.
 #'
+#' Mixture ordinates (model-averaged and conditional mixtures, and linear
+#' combinations of mixture or spike-and-slab priors) are the probability-
+#' weighted sums of their component ordinates, each classified by its own
+#' method; a component with a truncated prior at its support bound uses the
+#' one-sided limit inside the support. Within such a component, a Gaussian
+#' term plus one other continuous scalar term is a Gaussian convolution
+#' evaluated by the same quadrature. If any component remains `unknown`, the
+#' whole mixture is `unknown`.
+#'
 #' @examples
 #' normal_prior <- prior("normal", list(mean = 0, sd = 1))
 #' prior_density_ordinate(normal_prior, 0)
@@ -1182,6 +1191,165 @@ prior_density_ordinate <- function(x, value){
   )
 }
 
+# Product-free combinations that neither the scalar nor the normal classifier
+# resolves. Mixture and spike-and-slab terms are expanded into their component
+# combinations, each classified by its own exact or regular method and combined
+# with the component probabilities, so a density jump of one component (e.g. a
+# truncated prior at its bound, using the one-sided limit inside its support)
+# never reaches a numerical grid. Within a mixture component
+# ('mixture_component'), a Gaussian term plus one other continuous scalar term
+# is a positive-variance Gaussian convolution, evaluated by quadrature over
+# that term's declared support; outside mixtures such combinations keep the
+# adaptive grid.
+.prior_density_ordinate_additive_components <- function(prior_list, weights,
+                                                        source_transforms,
+                                                        value, n_grid,
+                                                        mixture_component = FALSE){
+
+  weights <- weights[weights != 0]
+  if(length(weights) == 0L){
+    return(NULL)
+  }
+  mixture <- .prior_density_ordinate_additive_mixture(
+    prior_list, weights, source_transforms, value, n_grid
+  )
+  if(!is.null(mixture)){
+    return(mixture)
+  }
+  if(!isTRUE(mixture_component)){
+    return(NULL)
+  }
+  .prior_density_ordinate_gaussian_convolution(
+    prior_list, weights, source_transforms, value, n_grid
+  )
+}
+
+.prior_density_ordinate_additive_mixture <- function(prior_list, weights,
+                                                     source_transforms,
+                                                     value, n_grid){
+
+  groups <- tryCatch(
+    .prior_linear_weight_groups(prior_list, weights),
+    error = function(e) NULL
+  )
+  if(is.null(groups)){
+    return(NULL)
+  }
+  mixture_groups <- groups[vapply(groups, function(group){
+    is.prior.mixture(group$prior) || is.prior.spike_and_slab(group$prior)
+  }, logical(1))]
+  if(length(mixture_groups) == 0L){
+    return(NULL)
+  }
+  probabilities <- lapply(mixture_groups, function(group){
+    .prior_density_ordinate_mixture_weights(group$prior)
+  })
+  if(any(vapply(probabilities, is.null, logical(1)))){
+    return(NULL)
+  }
+  # As for conditional-normal leaves, the number of component combinations
+  # is capped by the number of initial quadrature rules the budget admits.
+  n_leaves <- prod(vapply(probabilities, function(p) sum(p > 0), numeric(1)))
+  if(n_leaves > floor(n_grid / 15)){
+    return(NULL)
+  }
+
+  parameter <- mixture_groups[[1L]]$parameter
+  parent <- prior_list[[parameter]]
+  indices <- which(probabilities[[1L]] > 0)
+  components <- lapply(indices, function(i){
+    component_priors <- prior_list
+    component_priors[[parameter]] <- .prior_density_copy_parent_attributes(parent[[i]], parent)
+    .prior_density_ordinate_linear_base(
+      component_priors, weights, source_transforms, value, n_grid,
+      mixture_component = TRUE
+    )
+  })
+  combined <- .prior_density_ordinate_combine(
+    components, probabilities[[1L]][indices], value
+  )
+  if(identical(combined$behavior, "unknown")){
+    return(NULL)
+  }
+  combined
+}
+
+.prior_density_ordinate_gaussian_convolution <- function(prior_list, weights,
+                                                         source_transforms,
+                                                         value, n_grid){
+
+  groups <- tryCatch(
+    .prior_linear_weight_groups(prior_list, weights),
+    error = function(e) NULL
+  )
+  if(is.null(groups) || length(groups) < 2L){
+    return(NULL)
+  }
+  if(is.null(source_transforms)){
+    source_transforms <- stats::setNames(rep(NA_character_, length(weights)), names(weights))
+  }
+  gaussian <- vapply(groups, function(group){
+    point <- .prior_density_ordinate_point_group_location(group, source_transforms)
+    if(length(point) == 1L){
+      return(!is.na(point))
+    }
+    normal <- .prior_density_ordinate_linear_normal(
+      stats::setNames(list(group$prior), group$parameter),
+      group$weights, source_transforms, 0
+    )
+    !is.null(normal) && isTRUE(normal$exact) &&
+      identical(normal$method, "linear_normal")
+  }, logical(1))
+  if(sum(!gaussian) != 1L){
+    return(NULL)
+  }
+
+  other <- groups[[which(!gaussian)]]
+  prior <- other$prior
+  if(length(other$weights) != 1L || !is.finite(other$weights) ||
+     !is.na(source_transforms[names(other$weights)]) ||
+     !is.prior.simple(prior) || is.prior.point(prior) ||
+     is.prior.discrete(prior) || is.prior.mixture(prior) ||
+     is.prior.spike_and_slab(prior) || is.prior.vector(prior) ||
+     is.prior.ordered(prior) || .is_prior_expression(prior) ||
+     !is.null(attr(prior, "multiply_by", exact = TRUE))){
+    return(NULL)
+  }
+  bounds <- unlist(prior$truncation[c("lower", "upper")], use.names = FALSE)
+  if(!is.numeric(bounds) || length(bounds) != 2L || anyNA(bounds) ||
+     bounds[1L] >= bounds[2L]){
+    return(NULL)
+  }
+
+  gaussian_weights <- do.call(c, unname(lapply(groups[gaussian], `[[`, "weights")))
+  normal <- .prior_density_ordinate_linear_normal(
+    prior_list, gaussian_weights, source_transforms, 0
+  )
+  if(is.null(normal) || !isTRUE(normal$exact) ||
+     !identical(normal$method, "linear_normal") ||
+     !is.finite(normal$provenance$sd) || normal$provenance$sd <= 0){
+    return(NULL)
+  }
+
+  .prior_conditional_normal_ordinate(
+    list(
+      additive_mean = normal$provenance$mean,
+      additive_sd   = normal$provenance$sd,
+      product_mean  = unname(other$weights[[1L]]),
+      product_sd    = 0,
+      multiplier    = prior,
+      bounds        = bounds,
+      sources       = list(
+        additive   = names(groups)[gaussian],
+        multiplied = character(),
+        multiplier = other$parameter
+      )
+    ),
+    value,
+    n_grid
+  )
+}
+
 .prior_density_ordinate_product_singularity <- function(prior_list, split,
                                                         source_transforms,
                                                         value){
@@ -1248,7 +1416,8 @@ prior_density_ordinate <- function(x, value){
 
 .prior_density_ordinate_linear_base <- function(prior_list, weights,
                                                 source_transforms, value,
-                                                n_grid = .prior_linear_density_default_grid()){
+                                                n_grid = .prior_linear_density_default_grid(),
+                                                mixture_component = FALSE){
 
   weights <- weights[weights != 0]
   if(length(weights) == 0L){
@@ -1318,7 +1487,8 @@ prior_density_ordinate <- function(x, value){
             component_priors <- prior_list
             component_priors[[parameter]] <- .prior_density_copy_parent_attributes(parent[[i]], parent)
             .prior_density_ordinate_linear_base(
-              component_priors, weights, source_transforms, value, n_grid
+              component_priors, weights, source_transforms, value, n_grid,
+              mixture_component = TRUE
             )
           })
           combined <- .prior_density_ordinate_combine(
@@ -1336,6 +1506,12 @@ prior_density_ordinate <- function(x, value){
         additive <- .prior_density_ordinate_additive_factor(
           prior_list, split$additive_weights, source_transforms, value
         )
+        if(is.null(additive)){
+          additive <- .prior_density_ordinate_additive_components(
+            prior_list, split$additive_weights, source_transforms, value, n_grid,
+            mixture_component
+          )
+        }
         if(!is.null(additive)) return(additive)
       }
     }
@@ -1390,6 +1566,18 @@ prior_density_ordinate <- function(x, value){
   )
   if(!is.null(normal)){
     return(normal)
+  }
+
+  components <- .prior_density_ordinate_additive_components(
+    prior_list,
+    weights,
+    source_transforms,
+    value,
+    n_grid,
+    mixture_component
+  )
+  if(!is.null(components)){
+    return(components)
   }
 
   .prior_density_ordinate_result(
@@ -2157,7 +2345,8 @@ prior_density_ordinate <- function(x, value){
       weights,
       source_transforms,
       source_value,
-      n_grid = if(is.null(arguments$n_grid)) .prior_linear_density_default_grid() else arguments$n_grid
+      n_grid = if(is.null(arguments$n_grid)) .prior_linear_density_default_grid() else arguments$n_grid,
+      mixture_component = isTRUE(arguments$mixture_component)
     )
   }
   if(is.null(transformation)){
@@ -2177,7 +2366,8 @@ prior_density_ordinate <- function(x, value){
                                                        source_transforms,
                                                        transformation,
                                                        transformation_arguments,
-                                                       value){
+                                                       value,
+                                                       mixture_component = FALSE){
 
   if(inherits(context, "prior_density_context")){
     standardized <- tryCatch(
@@ -2203,7 +2393,8 @@ prior_density_ordinate <- function(x, value){
       weights                         = standardized,
       source_transforms               = source_transforms,
       output_transformation           = transformation,
-      output_transformation_arguments = transformation_arguments
+      output_transformation_arguments = transformation_arguments,
+      mixture_component               = mixture_component
     ), value)
     result$provenance$context <- list(
       kind                 = "prior_density_context",
@@ -2232,7 +2423,8 @@ prior_density_ordinate <- function(x, value){
           weights,
           source_transforms,
           source_value,
-          n_grid = context$n_grid
+          n_grid = context$n_grid,
+          mixture_component = length(component_indices) > 1L
         )
       })
       .prior_density_ordinate_combine(
@@ -2273,7 +2465,8 @@ prior_density_ordinate <- function(x, value){
             source_transforms,
             NULL,
             NULL,
-            source_value
+            source_value,
+            mixture_component = length(component_indices) > 1L
           ))
         }
         .prior_density_ordinate_linear_base(
@@ -2281,7 +2474,8 @@ prior_density_ordinate <- function(x, value){
           weights,
           source_transforms,
           source_value,
-          n_grid = context$n_grid
+          n_grid = context$n_grid,
+          mixture_component = length(component_indices) > 1L
         )
       })
       .prior_density_ordinate_combine(
