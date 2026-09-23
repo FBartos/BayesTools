@@ -377,6 +377,15 @@ parameter_draws.BayesTools_fit <- function(object, selection,
       call. = FALSE
     )
   }
+  unavailable <- quantities$status == "unavailable"
+  if(any(unavailable)){
+    stop(
+      "The parameter quantity '", quantities$canonical_name[unavailable][[1L]],
+      "' is unavailable in this fit: its source coordinates are not part of ",
+      "the posterior draws.",
+      call. = FALSE
+    )
+  }
 
   ordinary <- vapply(
     quantities$extraction_key,
@@ -2081,6 +2090,20 @@ parameter_transform_jacobian <- function(values, transform){
   ))
 }
 
+# A scalar allocation source that is absent from the parameter map (for
+# example, a source node that was not monitored) leaves every quantity scaled
+# by it unevaluable.
+.bt_parameter_catalog_allocation_source_missing <- function(allocation,
+                                                             coordinates){
+
+  source <- allocation$source
+  is.list(source) && identical(source$shape, "scalar") &&
+    length(.bt_parameter_catalog_coordinates(
+      coordinates,
+      .bt_random_sd_binding_source_name(source)
+    )) == 0L
+}
+
 .bt_parameter_catalog_random_status <- function(
     key, coordinates, prior_list, formula_design, formula_scale){
 
@@ -2249,7 +2272,8 @@ parameter_transform_jacobian <- function(values, transform){
                               source_transform = "identity",
                               source_scale = NA_real_,
                               allocation_derived = FALSE,
-                              status_source = NULL){
+                              status_source = NULL,
+                              unavailable = FALSE){
     canonical_name <- .bt_random_effect_semantic_name(
       parameter = parameter,
       owner = public_owner,
@@ -2297,13 +2321,17 @@ parameter_transform_jacobian <- function(values, transform){
       arguments = display_arguments,
       formula_prefix = TRUE
     )
-    state <- .bt_parameter_catalog_random_status(
-      key = key,
-      coordinates = coordinates,
-      prior_list = prior_list,
-      formula_design = formula_design,
-      formula_scale = formula_scale
-    )
+    state <- if(isTRUE(unavailable)){
+      list(status = "unavailable", fixed_value = NA_real_)
+    }else{
+      .bt_parameter_catalog_random_status(
+        key = key,
+        coordinates = coordinates,
+        prior_list = prior_list,
+        formula_design = formula_design,
+        formula_scale = formula_scale
+      )
+    }
     if(!is.null(status_source) && !identical(state$status, "unavailable")){
       state <- .bt_parameter_catalog_random_source_status(
         source = status_source,
@@ -2381,14 +2409,8 @@ parameter_transform_jacobian <- function(values, transform){
     # coordinate; without it (a row-shaped or unmonitored source) the
     # sd/var totals are unavailable, and gate or weight coordinates must not
     # stand in as their dependencies.
-    source_dependencies <- if(length(scale_names) > 0L){
-      .bt_parameter_catalog_coordinates(
-        coordinates,
-        .bt_random_sd_binding_source_name(allocation$source)
-      )
-    }else{
-      character()
-    }
+    source_available <- length(scale_names) > 0L &&
+      !.bt_parameter_catalog_allocation_source_missing(allocation, coordinates)
     allocation_gate_names <-
       .bt_random_effect_summary_allocation_gate_names(allocation)
     component_gate_names <-
@@ -2398,7 +2420,7 @@ parameter_transform_jacobian <- function(values, transform){
       )
     realized_total <- identical(scale_role, "total") &&
       length(component_gate_names) > 0L
-    if(realized_total && length(source_dependencies) > 0L){
+    if(realized_total && source_available){
       scale_names <- unique(c(
         scale_names,
         allocation$weight_name,
@@ -2409,7 +2431,7 @@ parameter_transform_jacobian <- function(values, transform){
       coordinates,
       scale_names
     )
-    if(length(source_dependencies) > 0L && !gate_only){
+    if(source_available && !gate_only){
       source_name <- .bt_random_sd_binding_source_name(allocation$source)
       parent_factors <- allocation$parent_factors
       if(is.null(parent_factors)){
@@ -2648,6 +2670,14 @@ parameter_transform_jacobian <- function(values, transform){
           logical(1)
         ))
         direct_source <- direct_sd && !allocation_sd
+        # SD rows scaled by an allocation source missing from the map cannot
+        # be evaluated; they are unavailable, as are the allocation totals.
+        allocation_source_missing <- allocation_sd && any(vapply(
+          random_term$sd_binding$allocations,
+          .bt_parameter_catalog_allocation_source_missing,
+          logical(1),
+          coordinates = coordinates
+        ))
         allocation_dependencies <- .bt_parameter_catalog_coordinates(
           coordinates,
           unlist(lapply(
@@ -2765,7 +2795,8 @@ parameter_transform_jacobian <- function(values, transform){
             source_transform = source_transform,
             source_scale = source_scale,
             allocation_derived = allocation_derived,
-            status_source = status_source
+            status_source = status_source,
+            unavailable = allocation_source_missing
           )
           var_name <- .bt_random_effect_summary_name(
             parameter = parameter,
@@ -2798,7 +2829,8 @@ parameter_transform_jacobian <- function(values, transform){
             source_prior = source_prior,
             source_transform = "square",
             allocation_derived = allocation_derived,
-            status_source = status_source
+            status_source = status_source,
+            unavailable = allocation_source_missing
           )
         }
       }

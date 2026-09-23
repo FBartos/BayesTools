@@ -2610,6 +2610,105 @@ test_that("gated totals without a source coordinate are unavailable", {
   expect_equal(draws(fit, totals[2L]), 4 * c(0.6, 1), tolerance = 1e-12)
 })
 
+test_that("block SDs scaled by an unmonitored allocation source are unavailable", {
+
+  data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2")),
+    drug = factor(c("a", "b", "a", "b"))
+  )
+  build_fit <- function(monitor_source, inclusion){
+    formula_result <- JAGS_formula(
+      formula = ~ 1 +
+        random(1 | study, name = "study", covariance = "diag") +
+        random(1 | drug, name = "drug", covariance = "diag"),
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        allocation = random_variance_allocation(
+          name = "total_re",
+          terms = c(study = "study", drug = "drug"),
+          sd_source = random_sd_source("tau"),
+          weights = prior("dirichlet", list(alpha = c(2, 2))),
+          inclusion = inclusion
+        )
+      )
+    )
+    allocation <- formula_result$formula_design$random_allocations[[1L]]
+    gates <- .bt_random_effect_summary_allocation_gate_names(allocation)
+    samples <- cbind(
+      mu_intercept = c(0, 0),
+      tau = c(2, 2),
+      matrix(c(0.4, 0.6, 0.4, 0.6), nrow = 2L, byrow = TRUE,
+             dimnames = list(NULL, paste0(allocation$weight_name, "[", 1:2, "]")))
+    )
+    if(length(gates) > 0L){
+      samples <- cbind(
+        samples,
+        matrix(c(0, 1), ncol = 1L, dimnames = list(NULL, gates))
+      )
+    }
+    if(!monitor_source){
+      samples <- samples[, colnames(samples) != "tau", drop = FALSE]
+    }
+    fit <- structure(
+      list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
+      class = c("runjags", "BayesTools_fit", "list")
+    )
+    attr(fit, "prior_list") <- formula_result$prior_list
+    attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+    attach_test_parameter_map(fit)
+  }
+  block_sds <- c(
+    "(mu) study: sd(intercept)", "(mu) study: var(intercept)",
+    "(mu) drug: sd(intercept)", "(mu) drug: var(intercept)"
+  )
+  gated <- list(study = prior("beta", list(2, 2)))
+
+  for(inclusion in list(NULL, gated)){
+    info <- if(is.null(inclusion)) "ungated" else "gated"
+    fit <- build_fit(monitor_source = FALSE, inclusion = inclusion)
+    catalog <- parameter_catalog(fit)
+    quantities <- catalog$quantities[
+      catalog$quantities$canonical_name %in% block_sds, ,
+      drop = FALSE
+    ]
+    expect_setequal(quantities$canonical_name, block_sds)
+    expect_true(all(quantities$status == "unavailable"), info = info)
+    expect_true(all(is.na(quantities$fixed_value)), info = info)
+    estimates <- JAGS_estimates_table(
+      fit,
+      random_effects_summary = "full",
+      return_samples = TRUE
+    )
+    expect_false(any(block_sds %in% colnames(estimates)), info = info)
+    expect_true(
+      "(mu) total_re: var_prop(study)" %in% colnames(estimates),
+      info = info
+    )
+    expect_error(
+      parameter_draws(
+        fit,
+        parameter_catalog_resolve(catalog, block_sds[1L], "mu")
+      ),
+      "is unavailable in this fit",
+      fixed = TRUE,
+      info = info
+    )
+  }
+
+  # A monitored source keeps the realized component SDs tau * sqrt(I * w).
+  fit <- build_fit(monitor_source = TRUE, inclusion = gated)
+  catalog <- parameter_catalog(fit)
+  draws <- function(label){
+    selection <- parameter_catalog_resolve(catalog, label, "mu")
+    expect_identical(selection$quantities$status, "sampled")
+    as.numeric(parameter_draws(fit, selection)[[1L]][, 1L])
+  }
+  expect_equal(draws(block_sds[1L]), 2 * sqrt(0.4) * c(0, 1), tolerance = 1e-12)
+  expect_equal(draws(block_sds[3L]), 2 * sqrt(c(0.6, 0.6)), tolerance = 1e-12)
+})
+
 test_that("known group-covariance scale remains sd/var rather than sd_mult", {
 
   data <- data.frame(
