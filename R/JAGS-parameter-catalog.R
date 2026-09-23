@@ -31,8 +31,10 @@
 #' persisted term-only design matrix. A coordinate that is not a level cell (a
 #' mean-difference or orthonormal coefficient, or a later ordered increment) is
 #' coefficient `j` of the contrast coding, named `<parameter>{j}` and displayed
-#' as `term{j}`. The level names of transformed summaries, such as
-#' `<parameter>[dif: level]`, are aliases of the level quantity. JAGS
+#' as `term{j}`. The level names of transformed summaries,
+#' `<parameter>[dif: level]`, and the row labels those summaries display,
+#' `(formula) term[dif: level]` and `term[dif: level]`, are aliases of the
+#' level quantity. JAGS
 #' coordinate names such as `mu_g[1]` remain backend columns, used by
 #' [JAGS_materialize_draws()], and do not select factor quantities. Ordinary
 #' level labels remain unchanged; syntax-sensitive characters (including curly
@@ -1764,9 +1766,21 @@ parameter_transform_jacobian <- function(values, transform){
         )
       }
       quantity_rows[[length(quantity_rows) + 1L]] <- quantity
-      # The level name of transformed summaries, `<parameter>[dif: <level>]`.
+      # The level name of transformed summaries, `<parameter>[dif: <level>]`,
+      # and the row labels those summaries display with and without the
+      # formula prefix, `(mu) term[dif: <level>]` and `term[dif: <level>]`.
+      dif_labels <- dif_names[cell]
+      if(nzchar(formula_parameter)){
+        dif_labels <- c(dif_labels, vapply(c(TRUE, FALSE), function(prefix){
+          format_parameter_names(
+            dif_names[cell],
+            formula_parameters = formula_parameter,
+            formula_prefix = prefix
+          )
+        }, character(1)))
+      }
       alias_rows[[length(alias_rows) + 1L]] <- data.frame(
-        alias = dif_names[cell],
+        alias = unique(dif_labels),
         quantity_id = quantity$quantity_id,
         stringsAsFactors = FALSE
       )

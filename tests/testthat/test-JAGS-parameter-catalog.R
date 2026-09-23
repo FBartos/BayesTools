@@ -559,7 +559,9 @@ test_that("factor selectors name level labels, never coordinate positions", {
           paste0("g[", level, "]"),
           paste0("mu_g[", level, "]"),
           paste0("(mu) g[", level, "]"),
-          paste0("mu_g[dif: ", level, "]")
+          paste0("mu_g[dif: ", level, "]"),
+          paste0("g[dif: ", level, "]"),
+          paste0("(mu) g[dif: ", level, "]")
         )
         selections <- lapply(selectors, function(selector){
           parameter_catalog_resolve(catalog, selector)
@@ -602,6 +604,62 @@ test_that("factor selectors name level labels, never coordinate positions", {
       aliases <- setdiff(unique(catalog$aliases$alias), "g")
       for(alias in aliases){
         expect_no_error(parameter_catalog_resolve(catalog, alias))
+      }
+    }
+  }
+})
+
+# Every displayed row of the factor term resolves to the catalog quantity
+# whose draws produced it: the row mean is the mean of the selected draws.
+.expect_factor_rows_resolve <- function(table, fit, catalog, info){
+
+  rows <- setdiff(rownames(table), c("(mu) intercept", "intercept"))
+  expect_true(length(rows) > 0L, info = info)
+  for(row in rows){
+    selection <- parameter_catalog_resolve(catalog, row)
+    expect_identical(selection$quantities$term, "g", info = paste(info, row))
+    # The table summarizes the same draws: agreement up to rounding.
+    expect_equal(
+      mean(as.matrix(parameter_draws(fit, selection))),
+      table[row, "Mean"],
+      tolerance = 1e-10,
+      info = paste(info, row)
+    )
+  }
+}
+
+test_that("transformed factor rows resolve to their level quantities", {
+
+  contrasts <- c("treatment", "independent", "meandif", "orthonormal",
+                 "ordered")
+  for(contrast in contrasts){
+    for(level_set in names(.label_contract_level_sets())){
+      levels <- as.character(.label_contract_level_sets()[[level_set]])
+      info <- paste(contrast, level_set)
+      fit <- .label_contract_fit(levels, contrast)
+      catalog <- parameter_catalog(fit)
+      mixed <- as_mixed_posteriors(
+        fit,
+        parameters = names(attr(fit, "prior_list"))
+      )
+      for(prefix in c(TRUE, FALSE)){
+        .expect_factor_rows_resolve(
+          JAGS_estimates_table(
+            fit,
+            transform_factors = TRUE,
+            formula_prefix = prefix
+          ),
+          fit, catalog, paste(info, "model", prefix)
+        )
+        .expect_factor_rows_resolve(
+          ensemble_estimates_table(
+            mixed,
+            parameters = "mu_g",
+            transform_factors = TRUE,
+            formula_prefix = prefix
+          ),
+          fit, catalog, paste(info, "ensemble", prefix)
+        )
       }
     }
   }
@@ -672,6 +730,15 @@ test_that("factor interaction cells use only their persisted term design", {
     namespace = "mu"
   )
   expect_identical(unique(resolved$occurrences$component), "f=b, g=v")
+  # Transformed summaries name the same cell per factor.
+  for(label in c("mu_f[dif: b]__xXx__g[dif: v]", "(mu) f[dif: b]:g[dif: v]",
+                 "f[dif: b]:g[dif: v]")){
+    expect_identical(
+      parameter_catalog_resolve(catalog, label)$quantity_id,
+      derived$quantity_id,
+      info = label
+    )
+  }
 })
 
 test_that("factor interaction components quote ambiguous level delimiters", {

@@ -121,8 +121,10 @@ structural zeroes; and the remaining cells are reconstructed from the
 persisted term-only design matrix. A coordinate that is not a level cell (a
 mean-difference or orthonormal coefficient, or a later ordered increment) is
 coefficient \code{j} of the contrast coding, named \verb{<parameter>\{j\}} and displayed
-as \verb{term\{j\}}. The level names of transformed summaries, such as
-\verb{<parameter>[dif: level]}, are aliases of the level quantity. JAGS
+as \verb{term\{j\}}. The level names of transformed summaries,
+\verb{<parameter>[dif: level]}, and the row labels those summaries display,
+\verb{(formula) term[dif: level]} and \code{term[dif: level]}, are aliases of the
+level quantity. JAGS
 coordinate names such as \code{mu_g[1]} remain backend columns, used by
 \code{\link[=JAGS_materialize_draws]{JAGS_materialize_draws()}}, and do not select factor quantities. Ordinary
 level labels remain unchanged; syntax-sensitive characters (including curly
