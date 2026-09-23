@@ -155,8 +155,14 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   if(use_formula && inherits(samples[[parameter]], "mixed_posteriors.formula")){
 
       # remove the specified response (would crash the model.frame if not included)
+      formula_log_intercept <- attr(formula, "log(intercept)", exact = TRUE)
       formula <- .remove_response(formula)
       formula_parameter <- attr(samples[[parameter]], "formula_parameter")
+      log_intercept <- .marginal_posterior_log_intercept(
+        samples               = samples,
+        formula_log_intercept = formula_log_intercept,
+        formula_parameter     = formula_parameter
+      )
 
       ### extract the terms information from the formula
       formula_terms          <- stats::terms(formula)
@@ -359,7 +365,19 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         )
 
 
-        marginal_posterior_samples <- temp_multiply_by * matrix(posterior_samples_matrix[,JAGS_parameter_names("intercept", formula_parameter = formula_parameter)],
+        # the fitted linear predictor uses log(intercept) when declared (as JAGS_evaluate_formula)
+        intercept_values <- posterior_samples_matrix[,JAGS_parameter_names("intercept", formula_parameter = formula_parameter)]
+        if(log_intercept){
+          if(any(!(intercept_values > 0))){
+            stop(
+              "The formula for '", formula_parameter, "' uses log(intercept), ",
+              "but some intercept samples are not positive.",
+              call. = FALSE
+            )
+          }
+          intercept_values <- log(intercept_values)
+        }
+        marginal_posterior_samples <- temp_multiply_by * matrix(intercept_values,
                                                        nrow = nrow(data), ncol = nrow(posterior_samples_matrix), byrow = TRUE)
 
       }else{
@@ -518,32 +536,25 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         linear_weights[, temp_columns] <- linear_weights[, temp_columns, drop = FALSE] + temp_data[, seq_along(temp_columns), drop = FALSE]
       }
 
+      log_source_transforms <- NULL
+      if(has_intercept && log_intercept){
+        log_source_transforms <- stats::setNames("log", intercept_name)
+      }
+
       if(length(at_manipulated) == 1 && format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) == "intercept"){
 
         prior_weights <- linear_weights
-        marginal_posterior_samples[["intercept"]] <- .posterior_support_set(
-          marginal_posterior_samples[["intercept"]],
-          .posterior_support_from_prior_context_weights(
-            prior_density_context,
-            prior_weights,
-            output_transformation           = transformation,
-            output_transformation_arguments = transformation_arguments
-          )
+        marginal_posterior_samples[["intercept"]] <- .marginal_posterior_formula_level_metadata(
+          marginal                 = marginal_posterior_samples[["intercept"]],
+          samples                  = samples,
+          prior_list               = prior_list,
+          prior_density_context    = prior_density_context,
+          weights                  = prior_weights,
+          column_name              = "intercept",
+          source_transforms        = log_source_transforms,
+          transformation           = transformation,
+          transformation_arguments = transformation_arguments
         )
-        intercept_atoms <- .posterior_atoms_formula(
-          samples,
-          prior_list,
-          prior_weights,
-          transformation = transformation,
-          transformation_arguments = transformation_arguments,
-          column_name = "intercept"
-        )
-        if(!is.null(intercept_atoms)){
-          marginal_posterior_samples[["intercept"]] <- .posterior_atoms_set(
-            marginal_posterior_samples[["intercept"]],
-            intercept_atoms
-          )
-        }
 
       }else{
 
@@ -552,30 +563,17 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         for(lvl in seq_along(level_names)){
           prior_weights <- linear_weights[data_split[[lvl]], , drop = FALSE]
           level_prior_weights[[level_names[lvl]]] <- prior_weights
-          marginal_posterior_samples[[level_names[lvl]]] <- .posterior_support_set(
-            marginal_posterior_samples[[level_names[lvl]]],
-            .posterior_support_from_prior_context_weights(
-              prior_density_context,
-              prior_weights,
-              output_transformation           = transformation,
-              output_transformation_arguments = transformation_arguments
-            )
+          marginal_posterior_samples[[level_names[lvl]]] <- .marginal_posterior_formula_level_metadata(
+            marginal                 = marginal_posterior_samples[[level_names[lvl]]],
+            samples                  = samples,
+            prior_list               = prior_list,
+            prior_density_context    = prior_density_context,
+            weights                  = prior_weights,
+            column_name              = level_names[lvl],
+            source_transforms        = log_source_transforms,
+            transformation           = transformation,
+            transformation_arguments = transformation_arguments
           )
-          level_atoms <- .posterior_atoms_formula(
-            samples,
-            prior_list,
-            prior_weights,
-            transformation = transformation,
-            transformation_arguments = transformation_arguments,
-            column_name = level_names[lvl]
-          )
-          if(!is.null(level_atoms)){
-            marginal_posterior_samples[[level_names[lvl]]] <-
-              .posterior_atoms_set(
-                marginal_posterior_samples[[level_names[lvl]]],
-                level_atoms
-              )
-          }
         }
       }
 
@@ -595,6 +593,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           prior_density <- .prior_density_from_context_rows(
             prior_density_context,
             prior_weights,
+            source_transforms               = log_source_transforms,
             output_transformation           = transformation,
             output_transformation_arguments = transformation_arguments
           )
@@ -609,6 +608,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             prior_density <- .prior_density_from_context_rows(
               prior_density_context,
               prior_weights,
+              source_transforms               = log_source_transforms,
               output_transformation           = transformation,
               output_transformation_arguments = transformation_arguments
             )
@@ -1055,6 +1055,92 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       stop(conditionMessage(e), call. = FALSE)
     }
   )
+}
+
+# Whether the formula's linear predictor uses log(intercept). Persisted fit
+# metadata (formula design, formula-scale information) is authoritative; an
+# explicit "log(intercept)" attribute on 'formula' must agree with it.
+.marginal_posterior_log_intercept <- function(samples, formula_log_intercept,
+                                              formula_parameter){
+
+  declared <- unlist(lapply(samples, function(parameter_samples){
+    if(!identical(attr(parameter_samples, "formula_parameter", exact = TRUE), formula_parameter)){
+      return(NULL)
+    }
+    attr(parameter_samples, "formula_log_intercept", exact = TRUE)
+  }), use.names = FALSE)
+
+  formula_scale <- attr(samples, "formula_scale", exact = TRUE)
+  if(is.list(formula_scale) && length(formula_parameter) == 1L &&
+     !is.null(formula_scale[[formula_parameter]])){
+    scale_log_intercept <- attr(formula_scale[[formula_parameter]], "log_intercept", exact = TRUE)
+    if(!is.null(scale_log_intercept)){
+      declared <- c(declared, isTRUE(scale_log_intercept))
+    }
+  }
+
+  declared <- unique(declared)
+  if(anyNA(declared) || length(declared) > 1L){
+    stop(
+      "The mixed models disagree on whether the formula for '",
+      formula_parameter, "' uses log(intercept).",
+      call. = FALSE
+    )
+  }
+
+  if(!is.null(formula_log_intercept)){
+    formula_log_intercept <- isTRUE(formula_log_intercept)
+    if(length(declared) == 1L && !identical(declared, formula_log_intercept)){
+      stop(
+        "The 'log(intercept)' attribute of 'formula' does not match the fitted ",
+        "formula for '", formula_parameter, "'.",
+        call. = FALSE
+      )
+    }
+    return(formula_log_intercept)
+  }
+
+  length(declared) == 1L && isTRUE(declared)
+}
+
+# Support and posterior-atom metadata for one formula level.
+.marginal_posterior_formula_level_metadata <- function(marginal, samples, prior_list,
+                                                       prior_density_context, weights,
+                                                       column_name,
+                                                       source_transforms = NULL,
+                                                       transformation = NULL,
+                                                       transformation_arguments = NULL){
+
+  log_columns <- intersect(names(source_transforms)[source_transforms == "log"], colnames(weights))
+  if(length(log_columns) > 0L && any(weights[, log_columns] != 0)){
+    # Support algebra is linear in the coefficients; a log(intercept) term
+    # leaves the exact support unavailable.
+    support <- NULL
+    attr(marginal, "joint_prior_transformation") <- "log_intercept"
+  }else{
+    support <- .posterior_support_from_prior_context_weights(
+      prior_density_context,
+      weights,
+      output_transformation           = transformation,
+      output_transformation_arguments = transformation_arguments
+    )
+  }
+  marginal <- .posterior_support_set(marginal, support)
+
+  atoms <- .posterior_atoms_formula(
+    samples,
+    prior_list,
+    weights,
+    transformation           = transformation,
+    transformation_arguments = transformation_arguments,
+    column_name              = column_name,
+    source_transforms        = source_transforms
+  )
+  if(!is.null(atoms)){
+    marginal <- .posterior_atoms_set(marginal, atoms)
+  }
+
+  marginal
 }
 
 # Monitored coefficient columns are the raw JAGS nodes: a formula prior's

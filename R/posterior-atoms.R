@@ -499,9 +499,11 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
 .posterior_atoms_formula <- function(samples, prior_list, weights,
                                      transformation = NULL,
                                      transformation_arguments = NULL,
-                                     column_name = "value"){
+                                     column_name = "value",
+                                     source_transforms = NULL){
 
   weights <- as.matrix(weights)
+  log_columns <- names(source_transforms)[source_transforms %in% "log"]
   if(nrow(weights) == 0L || is.null(colnames(weights))){
     return(NULL)
   }
@@ -550,6 +552,16 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
       if(!is.null(location)){
         coefficient_locations[parameter_columns] <- location
       }
+    }
+    # log(intercept) formulas enter the linear predictor through log(location)
+    logged <- intersect(log_columns, names(coefficient_locations))
+    logged <- logged[!is.na(coefficient_locations[logged])]
+    if(length(logged) > 0L){
+      if(any(coefficient_locations[logged] <= 0)){
+        stop("A log(intercept) formula has a non-positive point-prior intercept.",
+             call. = FALSE)
+      }
+      coefficient_locations[logged] <- log(coefficient_locations[logged])
     }
 
     for(weight_i in seq_len(nrow(weights))){

@@ -3169,6 +3169,83 @@ test_that("use_formula = FALSE prior densities ignore the coefficient's own mult
   expect_equal(.prior_height_for_test(conditional_marginal, 1), stats::dnorm(1), tolerance = 1e-8)
 })
 
+test_that("marginal_posterior uses log(intercept) for log-intercept formulas", {
+
+  log_formula <- ~ x
+  attr(log_formula, "log(intercept)") <- TRUE
+  formula_result <- JAGS_formula(
+    formula = log_formula,
+    parameter = "ls",
+    data = data.frame(x = c(-1, 0, 1)),
+    prior_list = list(
+      intercept = prior("lognormal", list(0, .5)),
+      x         = prior("normal", list(0, .5))
+    )
+  )
+  set.seed(2)
+  n <- 100
+  posterior <- cbind(ls_intercept = stats::rlnorm(n, -1, .2), ls_x = stats::rnorm(n, -.2, .1))
+  make_fit <- function(design){
+    fit <- coda::mcmc(posterior)
+    class(fit) <- c("BayesTools_fit", class(fit))
+    attr(fit, "prior_list") <- formula_result$prior_list
+    attr(fit, "formula_design") <- design
+    fit
+  }
+  expected <- lapply(c(-1, 0, 1), function(x){
+    log(posterior[, "ls_intercept"]) + x * posterior[, "ls_x"]
+  })
+
+  # persisted fitted-design metadata marks the formula as log(intercept)
+  samples <- as_mixed_posteriors(
+    make_fit(list(ls = list(log_intercept = TRUE))),
+    parameters = c("ls_intercept", "ls_x"),
+    n_prior_samples = 1000
+  )
+  marginal <- marginal_posterior(samples, "ls_x", formula = ~ x, prior_samples = TRUE)
+  expect_equal(unname(lapply(marginal, as.numeric)), expected, tolerance = 1e-12)
+  # log(intercept) ~ N(0, .5) and x ~ N(0, .5): the level at x is N(0, .5 * sqrt(1 + x^2))
+  expect_equal(.prior_height_for_test(marginal[["1SD"]], -1), stats::dnorm(-1, 0, .5 * sqrt(2)), tolerance = 1e-4)
+  expect_equal(.prior_height_for_test(marginal[["0SD"]], -1), stats::dnorm(-1, 0, .5), tolerance = 1e-4)
+
+  # an explicit formula attribute without persisted metadata
+  attributed <- marginal_posterior(
+    as_mixed_posteriors(make_fit(NULL), parameters = c("ls_intercept", "ls_x")),
+    "ls_x",
+    formula = log_formula
+  )
+  expect_equal(unname(lapply(attributed, as.numeric)), expected, tolerance = 1e-12)
+
+  linear_formula <- ~ x
+  attr(linear_formula, "log(intercept)") <- FALSE
+  expect_error(
+    marginal_posterior(samples, "ls_x", formula = linear_formula),
+    "does not match the fitted formula",
+    fixed = TRUE
+  )
+
+  # model-averaged draws carry the fitted-design flag from every model
+  models <- lapply(1:2, function(i){
+    fit <- .mock_mixing_fit_for_marginal(posterior, formula_result$prior_list)
+    attr(fit, "formula_design") <- list(ls = list(log_intercept = TRUE))
+    list(fit = fit, marglik = bridgesampling_object(0), prior_weights = 1)
+  })
+  mixed <- mix_posteriors(
+    models,
+    parameters   = c("ls_intercept", "ls_x"),
+    is_null_list = list(ls_intercept = c(FALSE, FALSE), ls_x = c(FALSE, FALSE)),
+    seed         = 1,
+    n_samples    = 50
+  )
+  mixed_marginal <- marginal_posterior(mixed, "ls_x", formula = ~ x)
+  rows <- attr(mixed$ls_x, "sample_ind")
+  expect_equal(
+    as.numeric(mixed_marginal[["1SD"]]),
+    log(posterior[rows, "ls_intercept"]) + posterior[rows, "ls_x"],
+    tolerance = 1e-12
+  )
+})
+
 # File-level skips: All remaining tests in this file require pre-fitted models
 skip_if_not_visual_fixture_tests()
 skip_if_no_fits()

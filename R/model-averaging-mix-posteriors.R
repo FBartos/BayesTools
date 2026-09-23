@@ -176,12 +176,42 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     if(!is.null(unique(unlist(lapply(temp_priors, attr, which = "parameter"))))){
       class(out[[temp_parameter]]) <- c(class(out[[temp_parameter]]), "mixed_posteriors.formula")
       attr(out[[temp_parameter]], "formula_parameter")  <- unique(unlist(lapply(temp_priors, attr, which = "parameter")))
+      attr(out[[temp_parameter]], "formula_log_intercept") <- .mixed_posteriors_formula_log_intercept(
+        fits,
+        attr(out[[temp_parameter]], "formula_parameter")
+      )
     }
 
   }
 
   class(out) <- c(class(out), "mixed_posteriors")
   return(out)
+}
+
+# Persisted log(intercept) flag of the fitted formula; NULL when no fit stores
+# a formula design and NA when the fitted designs disagree.
+.mixed_posteriors_formula_log_intercept <- function(fits, formula_parameter){
+
+  if(length(formula_parameter) != 1L){
+    return(NULL)
+  }
+
+  flags <- unlist(lapply(fits, function(fit){
+    design <- attr(fit, "formula_design", exact = TRUE)
+    if(!is.list(design) || !is.list(design[[formula_parameter]])){
+      return(NULL)
+    }
+    isTRUE(design[[formula_parameter]][["log_intercept"]])
+  }), use.names = FALSE)
+
+  if(length(flags) == 0L){
+    return(NULL)
+  }
+  if(length(unique(flags)) != 1L){
+    return(NA)
+  }
+
+  flags[[1L]]
 }
 
 .mix_posteriors_assert_aligned_post_probs <- function(inference, parameters){

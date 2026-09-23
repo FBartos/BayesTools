@@ -135,6 +135,10 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     if(!is.null(attr(temp_prior, which = "parameter"))){
       class(out[[temp_parameter]]) <- c(class(out[[temp_parameter]]), "mixed_posteriors.formula")
       attr(out[[temp_parameter]], "formula_parameter")  <- attr(temp_prior, which = "parameter")
+      attr(out[[temp_parameter]], "formula_log_intercept") <- .mixed_posteriors_formula_log_intercept(
+        list(model),
+        attr(temp_prior, which = "parameter")
+      )
     }
     if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
       out[[temp_parameter]] <- .posterior_support_drop(
