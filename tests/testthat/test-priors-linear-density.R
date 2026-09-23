@@ -593,6 +593,22 @@ test_that("linear prior ordinates adapt across center and omitted tails", {
     tail_prob = 1e-3
   )
 
+  # A normal sum has an exact structural ordinate, which is returned directly
+  # instead of refining the grid.
+  skewed <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(
+      x = prior("normal", list(0, 1)),
+      y = prior("gamma", list(3, 2))
+    ),
+    weights   = c(x = 1, y = 1),
+    n_grid    = 512,
+    tail_prob = 1e-3
+  )
+  skewed_reference <- function(value){
+    stats::integrate(function(t) stats::dnorm(value - t) * stats::dgamma(t, 3, 2),
+                     0, Inf, rel.tol = 1e-12)$value
+  }
+
   evaluate_density <- BayesTools:::.prior_linear_combination_density
   refinement_calls <- 0L
   testthat::local_mocked_bindings(
@@ -604,21 +620,30 @@ test_that("linear prior ordinates adapt across center and omitted tails", {
     .package = "BayesTools"
   )
 
-  center <- BayesTools:::.prior_linear_density_height(density, 0)
+  exact_center <- BayesTools:::.prior_linear_density_height(density, 0)
+  exact_tail   <- BayesTools:::.prior_linear_density_height(density, 8)
+  expect_identical(refinement_calls, 0L)
+  expect_equal(exact_center, stats::dnorm(0, sd = sqrt(2)), tolerance = 1e-12)
+  expect_equal(exact_tail, stats::dnorm(8, sd = sqrt(2)), tolerance = 1e-12)
+
+  # A normal plus gamma sum has no structural ordinate and is refined; the
+  # reference is the convolution integral.
+  center <- BayesTools:::.prior_linear_density_height(skewed, 0)
   expect_identical(refinement_calls, 2L)
   expect_equal(
     attr(center, "adaptive_evaluation")[c("n_grid", "tail_prob", "refinements")],
     list(n_grid = 8192L, tail_prob = 1e-9, refinements = 2L)
   )
   refinement_calls <- 0L
-  tail <- BayesTools:::.prior_linear_density_height(density, 8)
-  expect_identical(refinement_calls, 4L)
+  tail <- BayesTools:::.prior_linear_density_height(skewed, 9)
+  expect_gt(9, max(skewed$density$x))
+  expect_identical(refinement_calls, 3L)
   expect_lt(
-    abs(as.numeric(center) / stats::dnorm(0, sd = sqrt(2)) - 1),
+    abs(as.numeric(center) / skewed_reference(0) - 1),
     1e-4
   )
   expect_lt(
-    abs(as.numeric(tail) / stats::dnorm(8, sd = sqrt(2)) - 1),
+    abs(as.numeric(tail) / skewed_reference(9) - 1),
     1e-4
   )
   expect_true(isTRUE(attr(center, "adaptive_evaluation")$converged))
@@ -641,6 +666,66 @@ test_that("linear prior ordinates adapt across center and omitted tails", {
   )
   expect_true(is.list(diagnostics$grid_normalization))
   expect_true(is.list(diagnostics$fft_clipping))
+})
+
+test_that("prior heights use exact ordinates at density jumps and zero outside support", {
+
+  # Model-averaged prior with a component truncated at the null: the grid
+  # cannot converge across the jump, the exact mixture ordinate is the
+  # right-limit 0.5 phi(0) + 0.5 phi(0; .5, 1) / (1 - Phi(0; .5, 1)).
+  prior_list <- list(mu = list(
+    prior("normal", list(0, 1), prior_weights = 1),
+    prior("normal", list(.5, 1), truncation = list(0, Inf), prior_weights = 1)
+  ))
+  context <- .prior_density_build_context(prior_list, "mu")
+  mixture <- .prior_density_from_context(context, c(mu = 1))
+  jump <- .5 * stats::dnorm(0) + .5 * stats::dnorm(0, .5, 1) / stats::pnorm(0, .5, 1, lower.tail = FALSE)
+  expect_equal(.prior_linear_density_height(mixture, 0), jump, tolerance = 1e-12)
+  expect_equal(exp(prior_density_ordinate(mixture, 0)$log_density), jump, tolerance = 1e-12)
+  expect_equal(.prior_linear_density_height(mixture, -.3), .5 * stats::dnorm(-.3),
+               tolerance = 1e-12)
+
+  fit <- coda::mcmc(cbind(mu = stats::qnorm(stats::ppoints(64), .2, .5)))
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)))
+  fit <- .bt_attach_parameter_map(fit, monitor_names = "mu")
+  posterior <- marginal_posterior(as_mixed_posteriors(fit, "mu"), "mu",
+                                  use_formula = FALSE, prior_samples = TRUE,
+                                  n_samples = 64)
+  attr(posterior, "prior_density") <- mixture
+  bf <- Savage_Dickey_BF(posterior, null_hypothesis = 0, silent = TRUE)
+  expect_true(is.finite(bf) && bf > 0)
+
+  # Outside the exactly known support the continuous height is zero, with or
+  # without an exact structural ordinate.
+  half_normal <- prior("normal", list(0, 1), truncation = list(0, Inf))
+  shifted <- .prior_linear_combination_density(
+    list(p = prior("point", list(.5)), a = half_normal), c(p = 1, a = 1)
+  )
+  expect_identical(.prior_linear_density_height(shifted, .4), 0)
+  convolved <- .prior_linear_combination_density(
+    list(a = half_normal, b = half_normal), c(a = 1, b = 1)
+  )
+  expect_identical(prior_density_ordinate(convolved, -1)$behavior, "unknown")
+  expect_identical(.prior_linear_density_height(convolved, -1), 0)
+  transformed <- .prior_linear_combination_density(
+    list(a = half_normal, b = half_normal), c(a = 1, b = 1),
+    output_transformation = "exp"
+  )
+  expect_identical(.prior_linear_density_height(transformed, .5), 0)
+  expect_identical(
+    .prior_linear_density_support_hull(attr(transformed, "adaptive_evaluation")),
+    c(1, Inf)
+  )
+
+  # An ordered term has no exactly known support here, so no zero is implied.
+  ordered <- prior_ordered(prior("normal", list(0, 1)))
+  attr(ordered, "levels") <- 3
+  ordered <- .prior_ordered_default_bound(ordered, "mu_f")
+  expect_null(.prior_linear_combination_support_hull(
+    list(mu_intercept = half_normal, mu_f = ordered),
+    c(mu_intercept = 1, "mu_f[1]" = 1)
+  ))
 })
 
 test_that("linear prior density handles multiply_by products and point mass", {

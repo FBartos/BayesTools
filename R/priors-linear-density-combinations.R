@@ -1438,6 +1438,255 @@
   return(out)
 }
 
+.prior_linear_group_support_hull <- function(group, source_transforms = NULL){
+
+  # Closed interval containing the support of one weighted prior group, or
+  # NULL when that support is not known exactly from the prior definition.
+  prior   <- group$prior
+  weights <- group$weights
+  transforms <- if(is.null(source_transforms)){
+    rep(NA_character_, length(weights))
+  }else{
+    unname(source_transforms[names(weights)])
+  }
+
+  if(is.prior.none(prior)){
+    return(c(0, 0))
+  }
+  if(is.prior.ordered(prior) || is.prior.weightfunction(prior) ||
+     is_prior_phacking(prior) || is_prior_bias(prior)){
+    return(NULL)
+  }
+  if(is.prior.spike_and_slab(prior) || is.prior.mixture(prior)){
+    components <- if(is.prior.spike_and_slab(prior)){
+      list(.get_spike_and_slab_variable(prior), prior("point", list(location = 0)))
+    }else{
+      probabilities <- .prior_density_ordinate_mixture_weights(prior)
+      if(is.null(probabilities)) prior else prior[probabilities > 0]
+    }
+    hulls <- lapply(components, function(component){
+      component_group <- group
+      component_group$prior <- component
+      .prior_linear_group_support_hull(component_group, source_transforms)
+    })
+    if(length(hulls) == 0L || any(vapply(hulls, is.null, logical(1)))){
+      return(NULL)
+    }
+    return(range(unlist(hulls)))
+  }
+  if(is.prior.vector(prior) && !is.prior.treatment(prior) && !is.prior.independent(prior)){
+    if(any(!is.na(transforms))){
+      return(NULL)
+    }
+    if(identical(prior$distribution, "mpoint")){
+      location <- prior$parameters[["location"]]
+      if(!is.numeric(location) || length(location) != 1L || !is.finite(location)){
+        return(NULL)
+      }
+      return(rep(sum(weights) * location, 2L))
+    }
+    if(prior$distribution %in% c("mnormal", "mt")){
+      return(c(-Inf, Inf))
+    }
+    return(NULL)
+  }
+  if(!is.prior.simple(prior)){
+    return(NULL)
+  }
+
+  bounds <- if(is.prior.point(prior)){
+    rep(prior$parameters[["location"]], 2L)
+  }else if(is.prior.discrete(prior)){
+    range(.prior_simple_truncated_discrete(prior)$support)
+  }else{
+    c(prior$truncation[["lower"]], prior$truncation[["upper"]])
+  }
+  if(!is.numeric(bounds) || length(bounds) != 2L || anyNA(bounds)){
+    return(NULL)
+  }
+
+  hull <- c(0, 0)
+  for(i in seq_along(weights)){
+    source_bounds <- bounds
+    if(!is.na(transforms[i])){
+      if(!identical(transforms[i], "log") || source_bounds[1L] < 0){
+        return(NULL)
+      }
+      source_bounds <- c(
+        if(source_bounds[1L] == 0) -Inf else log(source_bounds[1L]),
+        log(source_bounds[2L])
+      )
+    }
+    hull <- hull + range(weights[[i]] * source_bounds)
+  }
+  hull
+}
+
+.prior_linear_combination_support_hull <- function(prior_list, weights,
+                                                   source_transforms = NULL){
+
+  weights <- weights[is.finite(weights) & weights != 0]
+  if(length(weights) == 0L){
+    return(c(0, 0))
+  }
+  split <- tryCatch(
+    .prior_linear_split_multiply_groups(prior_list, weights),
+    error = function(e) NULL
+  )
+  if(is.null(split) || length(split$product_groups) > 0L){
+    return(NULL)
+  }
+  additive <- split$additive_weights[split$additive_weights != 0]
+  groups <- tryCatch(
+    .prior_linear_weight_groups(prior_list, additive),
+    error = function(e) NULL
+  )
+  if(is.null(groups)){
+    return(NULL)
+  }
+  hull <- c(0, 0)
+  for(group in groups){
+    group_hull <- .prior_linear_group_support_hull(group, source_transforms)
+    if(is.null(group_hull)){
+      return(NULL)
+    }
+    hull <- hull + group_hull
+  }
+  hull
+}
+
+.prior_linear_context_support_hull <- function(context, weights,
+                                               source_transforms = NULL){
+
+  union_hull <- function(hulls){
+    if(length(hulls) == 0L || any(vapply(hulls, is.null, logical(1)))){
+      return(NULL)
+    }
+    range(unlist(hulls))
+  }
+
+  if(inherits(context, "prior_density_context")){
+    standardized <- tryCatch(
+      .prior_density_context_standardized_weights(context, weights),
+      error = function(e) NULL
+    )
+    if(is.null(standardized)){
+      return(NULL)
+    }
+    return(.prior_linear_combination_support_hull(
+      context$prior_list,
+      standardized,
+      if(is.null(source_transforms)) NULL else source_transforms[names(standardized)]
+    ))
+  }
+  if(inherits(context, "prior_density_model_mixture_context")){
+    models <- which(is.finite(context$model_weights) & context$model_weights > 0)
+    return(union_hull(lapply(models, function(model_i){
+      model_prior_list <- lapply(context$prior_list, function(parameter_priors){
+        if(is.prior(parameter_priors)) parameter_priors else parameter_priors[[model_i]]
+      })
+      names(model_prior_list) <- names(context$prior_list)
+      for(parameter in names(model_prior_list)){
+        if(is.null(model_prior_list[[parameter]])){
+          model_prior_list[[parameter]] <- prior("point", list(location = 0))
+        }
+      }
+      .prior_linear_combination_support_hull(model_prior_list, weights, source_transforms)
+    })))
+  }
+  if(inherits(context, "prior_density_conditional_context")){
+    models <- which(is.finite(context$model_weights) & context$model_weights > 0)
+    return(union_hull(lapply(models, function(model_i){
+      prior_list <- context$prior_lists[[model_i]]
+      if(!is.null(context$formula_scale) && length(context$formula_scale) > 0L){
+        component_context <- .prior_density_context(
+          prior_list    = prior_list,
+          column_names  = context$column_names,
+          formula_scale = context$formula_scale,
+          n_grid        = context$n_grid,
+          tail_prob     = context$tail_prob
+        )
+        return(.prior_linear_context_support_hull(component_context, weights, source_transforms))
+      }
+      .prior_linear_combination_support_hull(prior_list, weights, source_transforms)
+    })))
+  }
+  NULL
+}
+
+.prior_linear_density_support_hull <- function(adaptive){
+
+  # Closed interval containing the support of a recorded prior density, from
+  # the prior definitions and weights only; NULL when it is not known exactly.
+  if(!is.list(adaptive) || !is.character(adaptive$kind) ||
+     length(adaptive$kind) != 1L || !is.list(adaptive$arguments)){
+    return(NULL)
+  }
+  arguments <- adaptive$arguments
+  hull <- switch(
+    adaptive$kind,
+    "linear_combination" = .prior_linear_combination_support_hull(
+      arguments$prior_list,
+      arguments$weights,
+      arguments$source_transforms
+    ),
+    "density_context" = .prior_linear_context_support_hull(
+      arguments$context,
+      arguments$weights,
+      arguments$source_transforms
+    ),
+    "density_context_rows" = {
+      weights <- arguments$weights
+      if(is.null(dim(weights))){
+        .prior_linear_context_support_hull(
+          arguments$context, weights, arguments$source_transforms
+        )
+      }else{
+        hulls <- lapply(seq_len(nrow(weights)), function(row_i){
+          .prior_linear_context_support_hull(
+            arguments$context, weights[row_i, ], arguments$source_transforms
+          )
+        })
+        if(length(hulls) == 0L || any(vapply(hulls, is.null, logical(1)))){
+          NULL
+        }else{
+          range(unlist(hulls))
+        }
+      }
+    },
+    NULL
+  )
+  if(is.null(hull) || anyNA(hull)){
+    return(NULL)
+  }
+
+  transformation <- arguments$output_transformation
+  if(is.null(transformation)){
+    return(hull)
+  }
+  if(!is.character(transformation) || length(transformation) != 1L ||
+     !transformation %in% c("lin", "exp", "exp_lin", "tanh")){
+    return(NULL)
+  }
+  transformation_arguments <- arguments$output_transformation_arguments
+  if(transformation %in% c("lin", "exp_lin")){
+    b <- transformation_arguments[["b"]]
+    if(!is.null(b) && (!is.numeric(b) || length(b) != 1L || !is.finite(b) || b == 0)){
+      return(NULL)
+    }
+  }
+  if(identical(transformation, "exp_lin") && hull[1L] < 0){
+    return(NULL)
+  }
+  mapped <- suppressWarnings(.density.prior_transformation_x(
+    hull, transformation, transformation_arguments
+  ))
+  if(anyNA(mapped)){
+    return(NULL)
+  }
+  range(mapped)
+}
+
 .prior_linear_density_height <- function(x, value){
 
   if(!inherits(x, "prior_linear_density")){
@@ -1449,7 +1698,12 @@
     ordinate <- .prior_density_ordinate_from_adaptive(
       attr(x, "adaptive_evaluation", exact = TRUE), value
     )
-    if(!is.null(ordinate) && identical(ordinate$behavior, "regular") &&
+    continuous <- if(is.null(ordinate)){
+      NULL
+    }else{
+      .prior_density_ordinate_continuous_behavior(ordinate)
+    }
+    if(identical(continuous, "regular") &&
        .prior_density_ordinate_has_quadrature(ordinate$provenance)){
       integration <- .prior_density_ordinate_integration(ordinate$provenance)
       if(is.na(ordinate$log_density) || !isTRUE(integration$converged)){
@@ -1462,9 +1716,18 @@
       attr(height, "numerical_diagnostics") <- integration
       return(height)
     }
-    if(!is.null(ordinate) && isTRUE(ordinate$exact) &&
-       identical(.prior_density_ordinate_continuous_behavior(ordinate), "infinite")){
-      return(Inf)
+    # Exact structural ordinates (including exact finite mixtures) are used
+    # directly; grid refinement cannot converge across a density jump.
+    if(!is.null(ordinate) && isTRUE(ordinate$exact)){
+      if(identical(continuous, "infinite")){
+        return(Inf)
+      }
+      if(identical(continuous, "zero")){
+        return(0)
+      }
+      if(identical(continuous, "regular") && !is.na(ordinate$log_density)){
+        return(exp(ordinate$log_density))
+      }
     }
   }
 
@@ -1491,6 +1754,13 @@
   if(length(value) != 1L || !is.finite(value)){
     stop("Adaptive prior-density evaluation requires one finite ordinate.",
          call. = FALSE)
+  }
+
+  support <- .prior_linear_density_support_hull(
+    attr(x, "adaptive_evaluation", exact = TRUE)
+  )
+  if(!is.null(support) && (value < support[1L] || value > support[2L])){
+    return(0)
   }
 
   height <- .prior_linear_density_grid_height(x, value)
