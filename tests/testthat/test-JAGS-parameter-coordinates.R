@@ -200,6 +200,84 @@ test_that("Dirichlet auxiliary coordinates remain coordinate-only", {
   )
 })
 
+test_that("ordered-allocation and weight-function helpers remain coordinate-only", {
+
+  data <- data.frame(
+    f = ordered(rep(c("low", "mid", "high"), 4), levels = c("low", "mid", "high"))
+  )
+  formula_result <- JAGS_formula(
+    ~ f, "mu", data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_ordered(prior("normal", list(0, 1)))
+    )
+  )
+  ordered_prior_list <- formula_result$prior_list
+  eta_name <- .JAGS_prior_dirichlet_eta_name(
+    .prior_ordered_dirichlet_records(ordered_prior_list$mu_f)[[1L]]$node
+  )
+  expect_true(eta_name %in% JAGS_to_monitor(ordered_prior_list))
+  ordered_columns <- c(
+    "mu_intercept", "mu_f[1]", "mu_f[2]", "mu_f_ordered_total",
+    paste0(eta_name, "[", 1:2, "]")
+  )
+  ordered_samples <- matrix(
+    c(0.1, 0.2, 0.3, 0.5, 1.5, 2.5),
+    nrow = 1L,
+    dimnames = list(NULL, ordered_columns)
+  )
+
+  weightfunction_prior_list <- list(
+    mu = prior("normal", list(0, 1)),
+    omega = prior_weightfunction(steps = c(0.025, 0.05))
+  )
+  expect_true("eta" %in% JAGS_to_monitor(weightfunction_prior_list))
+  weightfunction_columns <- c(
+    "mu", paste0("omega[", 1:3, "]"), paste0("eta[", 1:3, "]")
+  )
+  weightfunction_samples <- matrix(
+    c(0.1, 1, 0.6, 0.3, 0.4, 0.3, 0.3),
+    nrow = 1L,
+    dimnames = list(NULL, weightfunction_columns)
+  )
+
+  cases <- list(
+    ordered = list(
+      samples = ordered_samples,
+      prior_list = ordered_prior_list,
+      formula_design = list(mu = formula_result$formula_design),
+      private = paste0(eta_name, "[", 1:2, "]")
+    ),
+    weightfunction = list(
+      samples = weightfunction_samples,
+      prior_list = weightfunction_prior_list,
+      formula_design = NULL,
+      private = paste0("eta[", 1:3, "]")
+    )
+  )
+  for(case in names(cases)){
+    input <- cases[[case]]
+    fit <- .parameter_catalog_test_fit(
+      coda::mcmc.list(coda::mcmc(input$samples)),
+      prior_list = input$prior_list,
+      formula_design = input$formula_design
+    )
+    coordinates <- parameter_coordinates(fit)
+    private <- coordinates$coordinate_name %in% input$private
+    expect_identical(sum(private), length(input$private), info = case)
+    expect_true(all(coordinates$internal[private]), info = case)
+    expect_false(any(coordinates$internal[!private]), info = case)
+    expect_false(
+      any(input$private %in% parameter_catalog(fit)$quantities$canonical_name),
+      info = case
+    )
+    expect_false(
+      any(input$private %in% colnames(JAGS_materialize_draws(fit)[[1L]])),
+      info = case
+    )
+  }
+})
+
 test_that("formula metadata exposes exact LKJ primitive coordinate priors", {
 
   data <- data.frame(

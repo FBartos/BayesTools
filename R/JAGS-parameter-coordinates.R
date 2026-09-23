@@ -277,6 +277,33 @@
   owners
 }
 
+# Private implementation nodes of ordered-prior Dirichlet allocations and of
+# weight functions, matching the nodes posterior extraction treats as
+# auxiliary. They remain coordinate-only dependencies.
+.bt_parameter_coordinates_private_auxiliaries <- function(prior_list){
+
+  if(length(prior_list) == 0L){
+    return(character())
+  }
+  unique(unlist(lapply(prior_list, function(prior){
+    if(is.prior.ordered(prior)){
+      return(vapply(
+        .prior_ordered_dirichlet_records(prior),
+        function(record) .JAGS_prior_dirichlet_eta_name(record$node),
+        character(1)
+      ))
+    }
+    if(is.prior.weightfunction(prior)){
+      private <- .JAGS_monitor_private.weightfunction(prior)
+      if(identical(prior$weights$type, "cumulative")){
+        private <- c(private, "eta", "omega_ratio")
+      }
+      return(private)
+    }
+    character()
+  }), use.names = FALSE))
+}
+
 # A point prior whose location is an expression is a deterministic function
 # of other nodes, so its coordinate is derived rather than a structural
 # constant and has no fixed value.
@@ -606,10 +633,13 @@
   random_prior_auxiliaries <- names(
     .bt_parameter_coordinates_random_prior_auxiliary_owners(prior_list)
   )
-  dirichlet_auxiliaries <- vapply(
-    names(prior_list)[vapply(prior_list, is.prior.simplex, logical(1))],
-    .JAGS_prior_dirichlet_eta_name,
-    character(1)
+  dirichlet_auxiliaries <- c(
+    vapply(
+      names(prior_list)[vapply(prior_list, is.prior.simplex, logical(1))],
+      .JAGS_prior_dirichlet_eta_name,
+      character(1)
+    ),
+    .bt_parameter_coordinates_private_auxiliaries(prior_list)
   )
   bases <- .bt_parameter_coordinates_base(coordinate_names)
   column_groups <- split(columns, bases[seq_along(columns)])
