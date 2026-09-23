@@ -215,23 +215,27 @@ test_that("catalog aliases containing brackets resolve as whole symbols", {
              occurrences$canonical_name)
   }
 
-  # Exact aliases with brackets (canonical names and display labels).
-  expect_identical(resolved_names("mu_f[1] > 0"), "mu_f[1]")
-  expect_identical(resolved_names("(mu) f[b] > 0"), "mu_f[1]")
-  expect_identical(resolved_names("mu_f[1] > mu_f[2]"),
-                   c("mu_f[1]", "mu_f[2]"))
+  # Exact aliases with brackets (canonical names and display labels). The
+  # bracket holds the level label: `mu_f[b]` is level "b", and the backend
+  # coordinate `mu_f[1]` (the same level cell) is not a public selector.
+  expect_identical(resolved_names("mu_f[b] > 0"), "mu_f[b]")
+  expect_error(resolved_names("mu_f[1] > 0"),
+               class = "BayesTools_parameter_not_found")
+  expect_identical(resolved_names("(mu) f[b] > 0"), "mu_f[b]")
+  expect_identical(resolved_names("mu_f[b] > mu_f[c]"),
+                   c("mu_f[b]", "mu_f[c]"))
   expect_identical(resolved_names("(mu) f[b] - (mu) f[c] = 0"),
-                   c("mu_f[1]", "mu_f[2]"))
-  expect_identical(resolved_names("mu_f[1] > 0", component = "b"), "mu_f[1]")
+                   c("mu_f[b]", "mu_f[c]"))
+  expect_identical(resolved_names("mu_f[b] > 0", component = "b"), "mu_f[b]")
   # Parameter-level splitting remains available.
-  expect_identical(resolved_names("f[c] > 0"), "mu_f[2]")
+  expect_identical(resolved_names("f[c] > 0"), "mu_f[c]")
 
   # A non-syntactic alias followed by a level is not quoted on its own.
   for(hypothesis in c("f:g[f=b, g=v] > 0", "f:g[ f=b, g=v ] > 0")){
     ast <- hypothesis_parse(hypothesis, catalog = catalog, namespace = "mu")
     expect_identical(hypothesis_render(ast), "`f:g[f=b, g=v]` > 0",
                      info = hypothesis)
-    expect_identical(resolved_names(hypothesis), "mu_f__xXx__g[1]",
+    expect_identical(resolved_names(hypothesis), "mu_f__xXx__g[f=b, g=v]",
                      info = hypothesis)
   }
   expect_identical(

@@ -15,9 +15,11 @@
 #' literals, level labels, and longer identifiers are never edited.
 #' `hypothesis_resolve()` resolves every occurrence through
 #' [parameter_catalog_resolve()] without accessing posterior draws. A
-#' bracketed symbol such as `mu_f[1]` or `(mu) f[b]` is first resolved as an
-#' exact catalog alias; otherwise its bracketed level is used as the catalog
-#' component of the parameter before the bracket.
+#' bracketed symbol such as `mu_f[b]` or `(mu) f[b]` is first resolved as an
+#' exact catalog name or alias; otherwise its bracketed level is used as the
+#' catalog component of the parameter before the bracket. The bracket always
+#' holds a level label: `mu_f[2]` selects the level labelled `"2"`, never the
+#' second fitted coordinate.
 #'
 #' @param hypothesis character vector of hypothesis statements.
 #' @param ast a `BayesTools_hypothesis_ast` object.
@@ -420,9 +422,9 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
   for(i in seq_len(nrow(occurrences))){
     selection <- NULL
     if(!is.na(occurrences$level[i])){
-      # Exact aliases such as `mu_f[1]` or `(mu) f[b]` contain brackets but
-      # are single catalog names; try the whole symbol before splitting it
-      # into a parameter and a level component.
+      # Level-labelled names such as `mu_f[b]` or `(mu) f[b]` contain
+      # brackets but are single catalog names; try the whole symbol before
+      # splitting it into a parameter and a level component.
       selection <- tryCatch(
         parameter_catalog_resolve(
           catalog,

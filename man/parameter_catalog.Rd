@@ -110,16 +110,26 @@ descriptions. \code{parameter_catalog_resolve()} returns a
 \code{parameter_catalog()} returns the semantic quantities and aliases from the
 fitted object's versioned \code{\link[=parameter_map]{parameter_map()}}. The catalog contains only
 metadata: selectable quantities, exact aliases, and serializable extraction
-keys. Fixed factor terms expose
-every fitted level or interaction cell as a catalog component, so both
-\code{term[level]} and \code{term} plus \code{component = "level"} resolve without parsing
-backend coordinate names. Direct coordinates are reused; reference cells are
-structural zeroes; and contrast-coded cells are reconstructed from the
-persisted term-only design matrix. Ordinary level labels remain unchanged;
-syntax-sensitive characters are percent-escaped and ambiguous interaction
-tokens are quoted so that every component remains hypothesis-safe and
-injective. These are coefficient-level quantities, distinct from estimated
-marginal means based on full predictions.
+keys. Square brackets after a factor term always hold a level label, never a
+coordinate position. Fixed factor terms, including ordinary factor priors
+whose levels are labelled \verb{1, ..., K}, expose every level or interaction cell
+as a quantity named \verb{<parameter>[<level>]}, so \code{term[level]},
+\verb{<parameter>[level]}, and \code{term} plus \code{component = "level"} all select the
+level with that label. Treatment and independent cells and the first ordered
+coordinate are structurally the fitted coordinate; reference cells are
+structural zeroes; and the remaining cells are reconstructed from the
+persisted term-only design matrix. A coordinate that is not a level cell (a
+mean-difference or orthonormal coefficient, or a later ordered increment) is
+coefficient \code{j} of the contrast coding, named \verb{<parameter>\{j\}} and displayed
+as \verb{term\{j\}}. The level names of transformed summaries, such as
+\verb{<parameter>[dif: level]}, are aliases of the level quantity. JAGS
+coordinate names such as \code{mu_g[1]} remain backend columns, used by
+\code{\link[=JAGS_materialize_draws]{JAGS_materialize_draws()}}, and do not select factor quantities. Ordinary
+level labels remain unchanged; syntax-sensitive characters (including curly
+braces) are percent-escaped and ambiguous interaction tokens are quoted so
+that every component remains hypothesis-safe and injective. These are
+coefficient-level quantities, distinct from estimated marginal means based
+on full predictions.
 \code{\link[=parameter_coordinates]{parameter_coordinates()}} is the linked concrete posterior-coordinate view;
 the catalog is the semantic view of the same fitted map. Random-effect
 canonical names follow \verb{(formula) owner: quantity(arguments)}, with \verb{owner: }

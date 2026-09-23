@@ -73,7 +73,9 @@ random-effect aliases. Defaults to \code{FALSE}.}
 literals, level labels, and longer identifiers are never edited.
 \code{hypothesis_resolve()} resolves every occurrence through
 \code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}} without accessing posterior draws. A
-bracketed symbol such as \code{mu_f[1]} or \verb{(mu) f[b]} is first resolved as an
-exact catalog alias; otherwise its bracketed level is used as the catalog
-component of the parameter before the bracket.
+bracketed symbol such as \code{mu_f[b]} or \verb{(mu) f[b]} is first resolved as an
+exact catalog name or alias; otherwise its bracketed level is used as the
+catalog component of the parameter before the bracket. The bracket always
+holds a level label: \code{mu_f[2]} selects the level labelled \code{"2"}, never the
+second fitted coordinate.
 }

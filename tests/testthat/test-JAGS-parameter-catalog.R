@@ -22,7 +22,7 @@ test_that("parameter catalog construction is metadata-only and versioned", {
     prior_list = prior_list
   ))
   expect_s3_class(catalog, "BayesTools_parameter_catalog")
-  expect_identical(catalog$schema_version, 4L)
+  expect_identical(catalog$schema_version, 5L)
   expect_identical(
     names(catalog$quantities),
     .bt_parameter_catalog_quantity_columns
@@ -57,12 +57,16 @@ test_that("factor catalog components preserve fitted level identities", {
   )
 
   factor_rows <- catalog$quantities[
-    catalog$quantities$canonical_name %in% c("mu_f[1]", "mu_f[2]"),
+    catalog$quantities$canonical_name %in% c("mu_f[b]", "mu_f[c]"),
     ,
     drop = FALSE
   ]
   expect_identical(factor_rows$component, c("b", "c"))
   expect_identical(factor_rows$display_label, c("(mu) f[b]", "(mu) f[c]"))
+  expect_identical(
+    lapply(factor_rows$extraction_key, `[[`, "dependencies"),
+    list("mu_f[1]", "mu_f[2]")
+  )
   expect_identical(
     parameter_catalog_resolve(
       catalog,
@@ -70,7 +74,7 @@ test_that("factor catalog components preserve fitted level identities", {
       namespace = "mu",
       component = "b"
     )$quantities$canonical_name,
-    "mu_f[1]"
+    "mu_f[b]"
   )
   expect_identical(
     parameter_catalog_resolve(
@@ -78,8 +82,15 @@ test_that("factor catalog components preserve fitted level identities", {
       alias = "f[c]",
       namespace = "mu"
     )$quantities$canonical_name,
-    "mu_f[2]"
+    "mu_f[c]"
   )
+  # Backend coordinate names are not selectors of factor levels.
+  for(coordinate in c("mu_f[1]", "mu_f[2]")){
+    expect_error(
+      parameter_catalog_resolve(catalog, alias = coordinate),
+      class = "BayesTools_parameter_not_found"
+    )
+  }
 
   resolved <- hypothesis_resolve(
     hypothesis_parse("f[b] > f[c]"),
@@ -91,7 +102,7 @@ test_that("factor catalog components preserve fitted level identities", {
   ])
   expect_identical(
     occurrence_map$canonical_name,
-    c("mu_f[1]", "mu_f[2]")
+    c("mu_f[b]", "mu_f[c]")
   )
   expect_identical(occurrence_map$component, c("b", "c"))
   reference <- parameter_catalog_resolve(
@@ -124,8 +135,10 @@ test_that("factor catalog components preserve fitted level identities", {
   )
 })
 
-test_that("factor cell mapping is limited to fixed formula terms", {
+test_that("factor cell mapping covers fixed factor priors, not random-effect priors", {
 
+  # Ordinary factor priors label their levels 1..K by construction, so
+  # `p1[k]` is level k and never the k-th backend coordinate.
   ordinary <- prior_factor(
     "mnormal",
     list(0, 1),
@@ -140,11 +153,56 @@ test_that("factor cell mapping is limited to fixed formula terms", {
     ordinary_coordinates,
     prior_list = list(p1 = ordinary)
   )
-  expect_false(any(vapply(
+  expect_true(all(vapply(
     ordinary_catalog$quantities$extraction_key,
     function(key) identical(key$type, "factor_level"),
     logical(1)
   )))
+  expect_setequal(
+    ordinary_catalog$quantities$canonical_name,
+    c("p1[1]", "p1[2]", "p1[3]", "p1{1}", "p1{2}")
+  )
+  ordinary_design <- .factor_term_design_from_metadata(
+    .complete_factor_metadata(ordinary, "p1")
+  )$design
+  for(level in 1:3){
+    level_key <- parameter_catalog_resolve(
+      ordinary_catalog,
+      paste0("p1[", level, "]")
+    )$quantities$extraction_key[[1L]]
+    expected_weights <- ordinary_design[level, ]
+    expect_identical(level_key$dependencies,
+                     c("p1[1]", "p1[2]")[expected_weights != 0])
+    expect_identical(level_key$weights,
+                     expected_weights[expected_weights != 0])
+  }
+  treatment <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  attr(treatment, "levels") <- 3L
+  treatment_catalog <- .bt_build_parameter_catalog(
+    .bt_build_parameter_coordinates(
+      .JAGS_prior_factor_names("p1", treatment),
+      prior_list = list(p1 = treatment)
+    ),
+    prior_list = list(p1 = treatment)
+  )
+  expect_identical(
+    parameter_catalog_resolve(treatment_catalog, "p1[1]")$quantities$source_type,
+    "structural_zero"
+  )
+  expect_identical(
+    parameter_catalog_resolve(
+      treatment_catalog,
+      "p1[2]"
+    )$quantities$extraction_key[[1L]]$dependencies,
+    "p1[1]"
+  )
+  expect_identical(
+    parameter_catalog_resolve(
+      treatment_catalog,
+      "p1[3]"
+    )$quantities$extraction_key[[1L]]$dependencies,
+    "p1[2]"
+  )
 
   data <- data.frame(
     f = factor(c("a", "b", "c")),
@@ -224,8 +282,10 @@ test_that("factor catalog quantities reconstruct fitted term-level cells", {
     "f[b]",
     namespace = "mu"
   )
-  expect_identical(direct$quantities$canonical_name, "mu_f[1]")
+  expect_identical(direct$quantities$canonical_name, "mu_f[b]")
   expect_identical(direct$quantities$source_type, "identity")
+  expect_identical(direct$quantities$status, "sampled")
+  expect_identical(direct$quantities$extraction_key[[1L]]$dependencies, "mu_f[1]")
   expect_identical(
     as.numeric(parameter_draws(treatment$fit, direct)[[1L]][, 1L]),
     c(1, 2)
@@ -244,6 +304,10 @@ test_that("factor catalog quantities reconstruct fitted term-level cells", {
     )
     expect_identical(
       selection$quantities$canonical_name,
+      paste0("mu_f[", levels(data$f)[level_i], "]")
+    )
+    expect_identical(
+      selection$quantities$extraction_key[[1L]]$dependencies,
       paste0("mu_f[", level_i, "]")
     )
   }
@@ -270,6 +334,23 @@ test_that("factor catalog quantities reconstruct fitted term-level cells", {
           design[level_i, ]
       )
       expect_equal(observed, expected, info = contrast)
+    }
+    # Contrast coefficients are `f{j}`, never a bracketed level selector.
+    coefficient_values <- matrix(c(1, 10, 2, 20), ncol = 2L, byrow = TRUE)
+    for(coefficient in 1:2){
+      selection <- parameter_catalog_resolve(
+        catalog,
+        paste0("f{", coefficient, "}"),
+        namespace = "mu"
+      )
+      expect_identical(selection$quantities$canonical_name,
+                       paste0("mu_f{", coefficient, "}"), info = contrast)
+      expect_identical(selection$quantities$status, "sampled", info = contrast)
+      expect_identical(
+        as.numeric(parameter_draws(transformed$fit, selection)[[1L]][, 1L]),
+        coefficient_values[, coefficient],
+        info = contrast
+      )
     }
   }
 
@@ -319,7 +400,16 @@ test_that("factor catalog quantities reconstruct fitted term-level cells", {
       "f[b]",
       namespace = "mu"
     )$quantities$canonical_name,
-    "mu_f[1]"
+    "mu_f[b]"
+  )
+  # Later ordered coordinates are increments, not levels: coefficient 2.
+  expect_identical(
+    parameter_catalog_resolve(
+      ordered_catalog,
+      "f{2}",
+      namespace = "mu"
+    )$quantities$extraction_key[[1L]]$dependencies,
+    "mu_f[2]"
   )
   ordered_c <- parameter_catalog_resolve(
     ordered_catalog,
@@ -362,6 +452,159 @@ test_that("factor catalog quantities reconstruct fitted term-level cells", {
     ),
     c(111, 222)
   )
+  # The first cumulative-levels coordinate is structurally level "a"; the
+  # later coordinates are increments, coefficients 2 and 3.
+  ordered_levels_a <- parameter_catalog_resolve(
+    ordered_levels_catalog,
+    "f[a]",
+    namespace = "mu"
+  )$quantities
+  expect_identical(ordered_levels_a$status, "sampled")
+  expect_identical(ordered_levels_a$extraction_key[[1L]]$dependencies, "mu_f[1]")
+  expect_setequal(
+    ordered_levels_catalog$quantities$canonical_name[
+      ordered_levels_catalog$quantities$term == "f"
+    ],
+    c("mu_f[a]", "mu_f[b]", "mu_f[c]", "mu_f{2}", "mu_f{3}")
+  )
+})
+
+# A formula factor fit with deterministic synthetic draws for the label
+# contract: level selectors, coefficient selectors, and table rows.
+.label_contract_fit <- function(levels, contrast, seed = 1L){
+
+  factor_prior <- switch(
+    contrast,
+    treatment   = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    independent = prior_factor("normal", list(0, 1), contrast = "independent"),
+    meandif     = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+    orthonormal = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+    ordered     = prior_ordered(prior("normal", list(0, 1)))
+  )
+  g <- factor(rep(levels, 3L), levels = levels)
+  if(identical(contrast, "ordered")){
+    g <- ordered(g, levels = levels)
+  }
+  data <- data.frame(g = g)
+  formula <- if(identical(contrast, "independent")) ~ 0 + g else ~ 1 + g
+  priors <- list(g = factor_prior)
+  if(!identical(contrast, "independent")){
+    priors <- c(list(intercept = prior("normal", list(0, 1))), priors)
+  }
+  result <- JAGS_formula(formula, "mu", data, priors)
+  columns <- unlist(lapply(names(result$prior_list), function(name){
+    prior <- result$prior_list[[name]]
+    if(.bt_prior_is_factor_family(prior)){
+      .JAGS_prior_factor_names(name, prior)
+    }else{
+      name
+    }
+  }), use.names = FALSE)
+  set.seed(seed)
+  samples <- matrix(
+    stats::rnorm(20L * length(columns)),
+    nrow = 20L,
+    dimnames = list(NULL, columns)
+  )
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = 20L),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- result$prior_list
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  attach_test_parameter_map(fit)
+}
+
+.label_contract_level_sets <- function(){
+  list(
+    numeric = c(5, 10, 20),
+    index = 1:4,
+    character = c("a", "b", "c")
+  )
+}
+
+test_that("factor selectors name level labels, never coordinate positions", {
+
+  contrasts <- c("treatment", "independent", "meandif", "orthonormal",
+                 "ordered")
+  for(contrast in contrasts){
+    for(level_set in names(.label_contract_level_sets())){
+      levels <- as.character(.label_contract_level_sets()[[level_set]])
+      info <- paste(contrast, level_set)
+      fit <- .label_contract_fit(levels, contrast)
+      catalog <- parameter_catalog(fit)
+      samples <- as.matrix(fit$mcmc)
+
+      # Independent reference: marginal_posterior() evaluates each level
+      # through the fitted model matrix; without the intercept it is the
+      # level-L term value.
+      mixed <- as_mixed_posteriors(
+        fit,
+        parameters = names(attr(fit, "prior_list"))
+      )
+      marginal <- marginal_posterior(
+        mixed,
+        parameter = "mu_g",
+        formula = ~ g
+      )
+      expect_identical(names(marginal), levels, info = info)
+      intercept <- if("mu_intercept" %in% colnames(samples)){
+        samples[, "mu_intercept"]
+      }else{
+        0
+      }
+
+      for(level in levels){
+        selectors <- c(
+          paste0("g[", level, "]"),
+          paste0("mu_g[", level, "]"),
+          paste0("(mu) g[", level, "]"),
+          paste0("mu_g[dif: ", level, "]")
+        )
+        selections <- lapply(selectors, function(selector){
+          parameter_catalog_resolve(catalog, selector)
+        })
+        ids <- vapply(selections, `[[`, character(1), "quantity_id")
+        expect_identical(unique(ids), ids[[1L]], info = paste(info, level))
+        quantity <- selections[[1L]]$quantities
+        expect_identical(quantity$canonical_name, paste0("mu_g[", level, "]"),
+                         info = paste(info, level))
+        expect_identical(quantity$component, level, info = paste(info, level))
+        # Exact linear algebra on the same draws: equality up to rounding.
+        expect_equal(
+          as.numeric(as.matrix(parameter_draws(fit, selections[[1L]]))),
+          as.numeric(marginal[[level]]) - intercept,
+          tolerance = 1e-12,
+          info = paste(info, level)
+        )
+        hypothesis <- hypothesis_resolve(
+          hypothesis_parse(paste0("mu_g[", level, "] > g[", level, "]")),
+          catalog
+        )
+        expect_identical(unique(hypothesis$occurrences$quantity_id), ids[[1L]],
+                         info = paste(info, level))
+      }
+
+      # Positions that are not level labels select nothing.
+      positions <- setdiff(as.character(1:5), levels)
+      for(position in positions){
+        for(selector in c(paste0("mu_g[", position, "]"),
+                          paste0("g[", position, "]"))){
+          expect_error(
+            parameter_catalog_resolve(catalog, selector),
+            class = "BayesTools_parameter_not_found",
+            info = paste(info, selector)
+          )
+        }
+      }
+
+      # No alias other than the shared term name is ambiguous.
+      aliases <- setdiff(unique(catalog$aliases$alias), "g")
+      for(alias in aliases){
+        expect_no_error(parameter_catalog_resolve(catalog, alias))
+      }
+    }
+  }
 })
 
 test_that("factor interaction cells use only their persisted term design", {
@@ -661,20 +904,33 @@ test_that("estimates-table row labels resolve to their catalog quantities", {
       h = prior_factor("normal", list(0, 1), contrast = "treatment"),
       "x:h" = prior_factor("normal", list(0, 1), contrast = "treatment")
     )),
-    c("(mu) x:h" = "mu_x__xXx__h", "(mu) h[hi]" = "mu_h")
+    c("(mu) x:h" = "mu_x__xXx__h[hi]", "(mu) h[hi]" = "mu_h[hi]")
   )
-  # Mean-difference coefficients whose contrast row is a unit vector.
-  expect_rows_resolve(
-    table_fit(~ x * g, list(
-      intercept = normal, x = normal,
-      g = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
-      "x:g" = prior_factor("mnormal", list(0, 1), contrast = "meandif")
-    )),
-    stats::setNames(
-      c(paste0("mu_g[", 1:3, "]"), paste0("mu_x__xXx__g[", 1:3, "]")),
-      c(paste0("(mu) g[", 1:3, "]"), paste0("(mu) x:g[", 1:3, "]"))
-    )
-  )
+  # Mean-difference coefficients whose contrast row is a unit vector are
+  # contrast coefficients `{j}`, not level cells; positional `[j]` rows never
+  # resolve.
+  meandif_fit <- table_fit(~ x * g, list(
+    intercept = normal, x = normal,
+    g = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+    "x:g" = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  ))
+  meandif_catalog <- parameter_catalog(meandif_fit)
+  for(j in 1:3){
+    for(term in c("g", "x:g")){
+      expect_error(
+        parameter_catalog_resolve(meandif_catalog, paste0("(mu) ", term, "[", j, "]")),
+        class = "BayesTools_parameter_not_found"
+      )
+      coefficient <- parameter_catalog_resolve(
+        meandif_catalog,
+        paste0("(mu) ", term, "{", j, "}")
+      )$quantities
+      expect_identical(
+        coefficient$extraction_key[[1L]]$dependencies,
+        paste0("mu_", sub(":", "__xXx__", term, fixed = TRUE), "[", j, "]")
+      )
+    }
+  }
   # Treatment-by-treatment interaction cells.
   expect_rows_resolve(
     table_fit(~ f * g, list(
@@ -684,9 +940,9 @@ test_that("estimates-table row labels resolve to their catalog quantities", {
       "f:g" = prior_factor("normal", list(0, 1), contrast = "treatment")
     )),
     c(
-      "(mu) f[b]:g[v]" = "mu_f__xXx__g[1]",
-      "(mu) f[c]:g[v]" = "mu_f__xXx__g[2]",
-      "(mu) f[c]:g[q]" = "mu_f__xXx__g[6]"
+      "(mu) f[b]:g[v]" = "mu_f__xXx__g[f=b, g=v]",
+      "(mu) f[c]:g[v]" = "mu_f__xXx__g[f=c, g=v]",
+      "(mu) f[c]:g[q]" = "mu_f__xXx__g[f=c, g=q]"
     )
   )
   # Log-intercept label of transformed tables.
