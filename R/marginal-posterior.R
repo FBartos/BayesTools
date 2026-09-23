@@ -1016,15 +1016,16 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   prior_density_context <- attr(samples, "prior_density_context")
   if(!is.null(prior_density_context) &&
      .marginal_posterior_context_matches_condition(prior_density_context, condition_metadata)){
-    if(isTRUE(raw_coefficients)){
-      prior_density_context <- .marginal_posterior_raw_coefficient_context(prior_density_context)
-    }
-    return(prior_density_context)
+    return(.marginal_posterior_canonical_context(
+      prior_density_context,
+      raw_coefficients = raw_coefficients
+    ))
   }
 
-  if(isTRUE(raw_coefficients)){
-    prior_list <- .marginal_posterior_strip_multiply_by(prior_list)
-  }
+  prior_list <- .marginal_posterior_canonical_prior_list(
+    prior_list,
+    raw_coefficients = raw_coefficients
+  )
 
   tryCatch(
     {
@@ -1143,25 +1144,86 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   marginal
 }
 
-# Monitored coefficient columns are the raw JAGS nodes: a formula prior's
-# 'multiply_by' scales only the linear predictor, never the coefficient itself.
-.marginal_posterior_raw_coefficient_context <- function(context){
+# Prior lists used by marginal prior-density contexts. Structural zeros are
+# expressed on every coefficient column, and monitored coefficient columns
+# (raw_coefficients) are the raw JAGS nodes: a formula prior's 'multiply_by'
+# scales only the linear predictor, never the coefficient itself.
+.marginal_posterior_canonical_context <- function(context, raw_coefficients = FALSE){
 
   if(is.null(context)){
     return(context)
   }
 
   if(!is.null(context$prior_list)){
-    context$prior_list <- .marginal_posterior_strip_multiply_by(context$prior_list)
+    context$prior_list <- .marginal_posterior_canonical_prior_list(
+      context$prior_list,
+      raw_coefficients = raw_coefficients
+    )
   }
   if(!is.null(context$prior_lists)){
     context$prior_lists <- lapply(
       context$prior_lists,
-      .marginal_posterior_strip_multiply_by
+      .marginal_posterior_canonical_prior_list,
+      raw_coefficients = raw_coefficients
     )
   }
 
   context
+}
+
+.marginal_posterior_canonical_prior_list <- function(prior_list, raw_coefficients = FALSE){
+
+  if(!is.list(prior_list)){
+    return(prior_list)
+  }
+
+  for(parameter in names(prior_list)){
+    entry <- prior_list[[parameter]]
+    if(is.null(entry)){
+      next
+    }
+    if(is.prior(entry)){
+      prior_list[[parameter]] <- .marginal_posterior_structural_zero_prior(entry)
+    }else if(is.list(entry)){
+      for(i in seq_along(entry)){
+        if(is.prior(entry[[i]])){
+          entry[[i]] <- .marginal_posterior_structural_zero_prior(entry[[i]])
+        }
+      }
+      prior_list[[parameter]] <- entry
+    }
+  }
+
+  if(isTRUE(raw_coefficients)){
+    prior_list <- .marginal_posterior_strip_multiply_by(prior_list)
+  }
+
+  prior_list
+}
+
+# A structurally zero coefficient vector (e.g., an ordered prior with a point
+# total at zero) as a point at zero on every coefficient column.
+.marginal_posterior_structural_zero_prior <- function(prior){
+
+  if(!.posterior_atoms_is_ordered_zero_total(prior)){
+    return(prior)
+  }
+
+  .marginal_posterior_zero_vector_prior(prior, .prior_linear_prior_dimension(prior))
+}
+
+.marginal_posterior_zero_vector_prior <- function(prior, K){
+
+  zero_prior <- prior("mpoint", list(location = 0, K = K))
+  model_weight <- .prior_model_weight(prior)
+  if(!is.null(model_weight)){
+    zero_prior <- .set_prior_model_weight(zero_prior, model_weight)
+  }
+  for(attribute in c("parameter", "multiply_by")){
+    attr(zero_prior, attribute) <- attr(prior, attribute, exact = TRUE)
+  }
+
+  zero_prior
 }
 
 .marginal_posterior_strip_multiply_by <- function(x){

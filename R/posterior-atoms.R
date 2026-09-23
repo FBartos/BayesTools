@@ -110,6 +110,10 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
 
 .posterior_atoms_point_location <- function(prior, n_columns){
 
+  if(.posterior_atoms_is_ordered_zero_total(prior)){
+    # every ordered coefficient is total x allocation share = 0
+    return(rep(0, n_columns))
+  }
   if(!is.prior.point(prior)){
     return(NULL)
   }
@@ -127,10 +131,20 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
   NULL
 }
 
+.posterior_atoms_is_ordered_zero_total <- function(prior){
+
+  if(!is.prior.ordered(prior) || !is.prior.point(prior$total)){
+    return(FALSE)
+  }
+  location <- prior$total$parameters[["location"]]
+  is.numeric(location) && length(location) == 1L && isTRUE(location == 0)
+}
+
 .posterior_atoms_from_priors <- function(priors, probabilities, n_columns = 1L,
                                          column_names = NULL,
                                          source = "model_probabilities",
-                                         null_location = NULL){
+                                         null_location = NULL,
+                                         exclusion_probabilities = NULL){
 
   if(is.prior(priors) && length(probabilities) == 1L){
     priors <- list(priors)
@@ -142,6 +156,11 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
     stop("Prior components and atom probabilities must have the same length.",
          call. = FALSE)
   }
+  if(!is.null(exclusion_probabilities) &&
+     length(exclusion_probabilities) != length(priors)){
+    stop("Within-model exclusion probabilities must match the prior components.",
+         call. = FALSE)
+  }
 
   locations <- matrix(numeric(), nrow = 0L, ncol = n_columns)
   masses <- numeric()
@@ -150,13 +169,20 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
       next
     }
     location <- .posterior_atoms_point_location(priors[[i]], n_columns)
+    mass <- probabilities[i]
     if(is.null(location) && !is.null(null_location) &&
        .is_prior_weightfunction_null(priors[[i]])){
       location <- rep(null_location, n_columns)
     }
+    if(is.null(location) && !is.null(exclusion_probabilities) &&
+       exclusion_probabilities[i] > 0){
+      # within-model spike at zero (e.g., a spike-and-slab ordered total)
+      location <- rep(0, n_columns)
+      mass <- probabilities[i] * exclusion_probabilities[i]
+    }
     if(!is.null(location)){
       locations <- rbind(locations, location)
-      masses <- c(masses, probabilities[i])
+      masses <- c(masses, mass)
     }
   }
 
@@ -382,6 +408,9 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
                                              model_mixture){
 
   if(is.prior.ordered(prior_entry)){
+    if(.posterior_atoms_is_ordered_zero_total(prior_entry)){
+      return(prior("point", list(location = 0)))
+    }
     if(is.prior.spike_and_slab(prior_entry$total)){
       excluded_component <- if(model_mixture) 1L else 0L
       if(component == excluded_component){

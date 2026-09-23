@@ -773,11 +773,40 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       priors,
       post_probs,
       n_columns = ncol(samples),
-      column_names = colnames(samples)
+      column_names = colnames(samples),
+      exclusion_probabilities = if(isTRUE(priors_info[["ordered"]])){
+        .mix_posteriors_ordered_exclusion_probabilities(fits, priors, parameter, post_probs)
+      }
     )
   )
 
   return(samples)
+}
+# Posterior probability that an ordered spike-and-slab total is excluded
+# within each model, from the fitted total-prior indicator.
+.mix_posteriors_ordered_exclusion_probabilities <- function(fits, priors, parameter, post_probs){
+
+  indicator_name <- paste0(.prior_ordered_total_name(parameter), "_indicator")
+  vapply(seq_along(priors), function(i){
+    if(post_probs[i] <= 0 || !is.prior.ordered(priors[[i]]) ||
+       !is.prior.spike_and_slab(priors[[i]]$total)){
+      return(0)
+    }
+    model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
+    if(!is.matrix(model_samples)){
+      model_samples <- matrix(model_samples, ncol = 1)
+      colnames(model_samples) <- fits[[i]]$monitor
+    }
+    if(!indicator_name %in% colnames(model_samples)){
+      stop(
+        "The fitted samples for ordered factor '", parameter,
+        "' do not contain the required total-prior indicator '",
+        indicator_name, "'. Refit the model with this package version.",
+        call. = FALSE
+      )
+    }
+    mean(model_samples[, indicator_name] == 0)
+  }, numeric(1))
 }
 .mix_posteriors.weightfunction <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
 

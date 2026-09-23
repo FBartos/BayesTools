@@ -3105,6 +3105,17 @@ test_that("marginal_estimates_table reports exact level summaries and Bayes fact
   exp(ordinate$log_density)
 }
 
+# Grid-based prior heights are checked against the adaptive evaluation's own
+# documented error bound; exact ordinates must match to rounding error.
+.expect_prior_height_for_test <- function(x, value, expected){
+  height <- BayesTools:::.prior_linear_density_height(attr(x, "prior_density"), value)
+  error_bound <- attr(height, "adaptive_evaluation")$error_bound
+  if(is.null(error_bound)){
+    error_bound <- 1e-8 * max(1, abs(expected))
+  }
+  expect_lte(abs(as.numeric(height) - expected), error_bound)
+}
+
 test_that("use_formula = FALSE prior densities ignore the coefficient's own multiply_by", {
 
   # JAGS monitors the raw coefficient; 'multiply_by' only scales the linear
@@ -3205,8 +3216,8 @@ test_that("marginal_posterior uses log(intercept) for log-intercept formulas", {
   marginal <- marginal_posterior(samples, "ls_x", formula = ~ x, prior_samples = TRUE)
   expect_equal(unname(lapply(marginal, as.numeric)), expected, tolerance = 1e-12)
   # log(intercept) ~ N(0, .5) and x ~ N(0, .5): the level at x is N(0, .5 * sqrt(1 + x^2))
-  expect_equal(.prior_height_for_test(marginal[["1SD"]], -1), stats::dnorm(-1, 0, .5 * sqrt(2)), tolerance = 1e-4)
-  expect_equal(.prior_height_for_test(marginal[["0SD"]], -1), stats::dnorm(-1, 0, .5), tolerance = 1e-4)
+  .expect_prior_height_for_test(marginal[["1SD"]], -1, stats::dnorm(-1, 0, .5 * sqrt(2)))
+  .expect_prior_height_for_test(marginal[["0SD"]], -1, stats::dnorm(-1, 0, .5))
 
   # an explicit formula attribute without persisted metadata
   attributed <- marginal_posterior(
@@ -3243,6 +3254,117 @@ test_that("marginal_posterior uses log(intercept) for log-intercept formulas", {
     as.numeric(mixed_marginal[["1SD"]]),
     log(posterior[rows, "ls_intercept"]) + posterior[rows, "ls_x"],
     tolerance = 1e-12
+  )
+})
+
+.ordered_prior_for_test <- function(total, allocation = c(.4, .6)){
+  data <- data.frame(f = ordered(c("low", "mid", "high"), levels = c("low", "mid", "high")))
+  JAGS_formula(
+    ~ f, "mu", data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f         = prior_ordered(total, allocation = allocation)
+    )
+  )$prior_list$mu_f
+}
+
+test_that("mixed ordered spike-and-slab totals declare their within-model spike", {
+
+  ordered_prior <- .ordered_prior_for_test(prior_spike_and_slab(prior("normal", list(0, 1))))
+  set.seed(3)
+  n <- 400
+  indicators <- list(rbinom(n, 1, .3), rbinom(n, 1, .6))
+  models <- lapply(indicators, function(indicator){
+    total <- indicator * rnorm(n, .3, .1)
+    posterior <- cbind(
+      "mu_f[1]" = .4 * total,
+      "mu_f[2]" = .6 * total,
+      "mu_f_ordered_total_indicator" = indicator
+    )
+    list(
+      fit = .mock_mixing_fit_for_marginal(posterior, list(mu_f = ordered_prior)),
+      marglik = bridgesampling_object(0),
+      prior_weights = 1
+    )
+  })
+  mixed <- mix_posteriors(
+    models, parameters = "mu_f", is_null_list = list(mu_f = c(FALSE, FALSE)),
+    seed = 1, n_samples = n
+  )
+
+  # posterior model probabilities are 1/2; each spike carries the model's
+  # posterior exclusion probability
+  atoms <- attr(mixed$mu_f, "posterior_atoms")
+  expect_equal(unname(atoms$locations), matrix(0, 2, 2))
+  expect_equal(atoms$mass, .5 * vapply(indicators, function(x) mean(x == 0), numeric(1)), tolerance = 1e-12)
+
+  marginal <- marginal_posterior(mixed, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+  for(level in c("mid", "high")){
+    level_atoms <- attr(marginal[[level]], "posterior_atoms")
+    expect_equal(unname(level_atoms$locations[, 1]), 0)
+    expect_equal(level_atoms$mass, sum(atoms$mass), tolerance = 1e-12)
+    # the spike-and-slab total excludes the effect with prior probability 1/2
+    ordinate <- prior_density_ordinate(attr(marginal[[level]], "prior_density"), 0)
+    expect_equal(ordinate$point_mass, .5, tolerance = 1e-12)
+  }
+
+  unmonitored <- models[[1]]
+  unmonitored$fit <- .mock_mixing_fit_for_marginal(
+    as.matrix(unmonitored$fit$mcmc[[1]])[, c("mu_f[1]", "mu_f[2]")],
+    list(mu_f = ordered_prior)
+  )
+  expect_error(
+    mix_posteriors(
+      list(unmonitored, models[[2]]), parameters = "mu_f",
+      is_null_list = list(mu_f = c(FALSE, FALSE)), seed = 1, n_samples = n
+    ),
+    "required total-prior indicator",
+    fixed = TRUE
+  )
+})
+
+test_that("ordered point(0) totals are structural zero coefficients", {
+
+  alternative_prior <- .ordered_prior_for_test(prior("normal", list(0, 1)))
+  null_prior <- .ordered_prior_for_test(prior("point", list(0)))
+  set.seed(4)
+  n <- 400
+  total <- rnorm(n, .3, .1)
+  alternative <- cbind("mu_f[1]" = .4 * total, "mu_f[2]" = .6 * total)
+  null <- cbind("mu_f[1]" = rep(0, n), "mu_f[2]" = rep(0, n))
+  mixed <- mix_posteriors(
+    list(
+      list(fit = .mock_mixing_fit_for_marginal(alternative, list(mu_f = alternative_prior)),
+           marglik = bridgesampling_object(0), prior_weights = 1),
+      list(fit = .mock_mixing_fit_for_marginal(null, list(mu_f = null_prior)),
+           marglik = bridgesampling_object(log(3)), prior_weights = 1)
+    ),
+    parameters = "mu_f", is_null_list = list(mu_f = c(FALSE, TRUE)),
+    seed = 1, n_samples = n
+  )
+  atoms <- attr(mixed$mu_f, "posterior_atoms")
+  expect_equal(unname(atoms$locations), matrix(0, 1, 2))
+  expect_equal(atoms$mass, .75, tolerance = 1e-12)
+
+  marginal <- marginal_posterior(mixed, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+  # level mid = .4 * total and level high = total, each with prior null mass 1/2
+  for(level in c("mid", "high")){
+    scale <- if(level == "mid") .4 else 1
+    prior_density <- attr(marginal[[level]], "prior_density")
+    expect_equal(prior_density_ordinate(prior_density, 0)$point_mass, .5, tolerance = 1e-12)
+    .expect_prior_height_for_test(marginal[[level]], .2, .5 * stats::dnorm(.2, 0, scale))
+    expect_equal(attr(marginal[[level]], "posterior_atoms")$mass, .75, tolerance = 1e-12)
+  }
+
+  fit <- coda::mcmc(null)
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- list(mu_f = null_prior)
+  single <- as_mixed_posteriors(fit, parameters = "mu_f")
+  expect_equal(attr(single$mu_f, "posterior_atoms")$mass, 1)
+  single_marginal <- marginal_posterior(single, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+  expect_equal(
+    prior_density_ordinate(attr(single_marginal[["high"]], "prior_density"), 0)$point_mass,
+    1
   )
 })
 
