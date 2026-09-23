@@ -8,6 +8,13 @@
 
   point_terms <- point_terms[startsWith(names(point_terms), paste0(prefix, "_"))]
   point_terms <- point_terms[!names(point_terms) %in% colnames(posterior)]
+  # Fits created before factor point terms were stored per coefficient carry
+  # one unindexed name for a factor term; its indexed coefficients are present.
+  indexed_present <- vapply(names(point_terms), function(name){
+    !grepl("\\]$", name) &&
+      any(startsWith(colnames(posterior), paste0(name, "[")))
+  }, logical(1))
+  point_terms <- point_terms[!indexed_present]
   if(length(point_terms) == 0L){
     return(posterior)
   }

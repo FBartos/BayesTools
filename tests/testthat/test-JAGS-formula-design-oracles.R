@@ -10098,6 +10098,94 @@ test_that("transform_scale_samples clears invalid transformed random-effect corr
 
 })
 
+test_that("factor point priors do not add unindexed columns when unscaling", {
+
+  testthat::skip_if_not_installed("runjags")
+
+  df <- data.frame(
+    x = c(1, 4, 6, 2, 8, 5, 3, 7, 9),
+    f = factor(rep(c("a", "b", "c"), 3L), levels = c("a", "b", "c"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ x * f,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 5)),
+      x = prior("normal", list(0, 1)),
+      f = prior_factor("spike", list(0.3), contrast = "treatment"),
+      "x:f" = prior_factor("normal", list(0, 1), contrast = "treatment")
+    ),
+    formula_scale = list(x = TRUE)
+  )
+  expect_identical(
+    attr(formula_result$formula_scale, "point_terms"),
+    c(`mu_f[1]` = 0.3, `mu_f[2]` = 0.3)
+  )
+
+  # The spiked factor coefficients are monitored as indexed JAGS nodes.
+  posterior <- cbind(
+    mu_intercept = c(1, 2),
+    mu_x = c(0.5, -0.25),
+    `mu_f[1]` = 0.3,
+    `mu_f[2]` = 0.3,
+    `mu_x__xXx__f[1]` = c(0.2, 0.4),
+    `mu_x__xXx__f[2]` = c(-0.6, 0.1)
+  )
+  scale_info <- formula_result$formula_scale$mu_x
+  expected_f <- 0.3 - scale_info$mean / scale_info$sd *
+    posterior[, c("mu_x__xXx__f[1]", "mu_x__xXx__f[2]")]
+
+  transformed <- transform_scale_samples(
+    posterior,
+    formula_scale = list(mu = formula_result$formula_scale)
+  )
+  expect_identical(colnames(transformed), colnames(posterior))
+  expect_equal(
+    unname(transformed[, c("mu_f[1]", "mu_f[2]")]),
+    unname(expected_f),
+    tolerance = 1e-12
+  )
+
+  # Fits created before point terms were stored per coefficient carry one
+  # unindexed factor point term.
+  legacy_scale <- formula_result$formula_scale
+  attr(legacy_scale, "point_terms") <- c(mu_f = 0.3)
+  expect_identical(
+    colnames(transform_scale_samples(posterior, formula_scale = list(mu = legacy_scale))),
+    colnames(posterior)
+  )
+
+  fit <- list(
+    mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+    summary.pars = list(mutate = NULL),
+    monitor = colnames(posterior),
+    sample = nrow(posterior)
+  )
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+
+  table <- JAGS_estimates_table(
+    fit,
+    transform_scaled = TRUE,
+    remove_spike_0 = FALSE,
+    remove_diagnostics = TRUE
+  )
+  expect_false("(mu) f" %in% rownames(table))
+  expect_equal(
+    unname(table[c("(mu) f[b]", "(mu) f[c]"), "Mean"]),
+    unname(colMeans(expected_f)),
+    tolerance = 1e-12
+  )
+
+  prior_samples <- transform_prior_samples(fit, n_samples = 16, seed = 3)
+  expect_false("mu_f" %in% colnames(prior_samples))
+  expect_true(all(c("mu_f[1]", "mu_f[2]") %in% colnames(prior_samples)))
+})
+
 test_that("transform_scale_samples keeps indexed random-effect correlations in one block", {
 
   df <- data.frame(

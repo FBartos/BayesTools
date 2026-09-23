@@ -17,7 +17,14 @@
        is.na(location) || !is.finite(location)){
       next
     }
-    point_terms[[fixed_name]] <- location
+    # A factor point prior fixes every coefficient of the term; store them
+    # under their fitted (indexed) coordinate names.
+    point_names <- if(is.prior.factor(this_prior)){
+      .JAGS_prior_factor_names(fixed_name, this_prior)
+    }else{
+      fixed_name
+    }
+    point_terms[point_names] <- location
   }
 
   point_terms
