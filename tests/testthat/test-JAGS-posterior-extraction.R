@@ -468,6 +468,71 @@ test_that(".rename_factor_levels renames treatment factors", {
 })
 
 
+test_that(".rename_factor_levels writes contrast coefficients with braces", {
+
+  # With numeric level labels, `[j]` would read as the level labelled j.
+  data <- data.frame(
+    m = factor(rep(c(5, 10, 20), 2), levels = c(5, 10, 20)),
+    o = ordered(rep(c(5, 10, 20), 2), levels = c(5, 10, 20))
+  )
+  formula_result <- JAGS_formula(~ m + o, "mu", data, list(
+    intercept = prior("normal", list(0, 1)),
+    m = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+    o = prior_ordered(prior("normal", list(0, 1)))
+  ))
+  columns <- c("mu_intercept", "mu_m[1]", "mu_m[2]", "mu_o[1]", "mu_o[2]")
+  model_samples <- matrix(
+    seq_len(2L * length(columns)),
+    nrow = 2L,
+    dimnames = list(NULL, columns)
+  )
+
+  renamed <- BayesTools:::.rename_factor_levels(
+    model_samples,
+    formula_result$prior_list
+  )
+
+  # Mean-difference coordinates are coefficients; the first cumulative
+  # ordered coordinate is level "10" and the second is an increment.
+  expect_identical(
+    colnames(renamed),
+    c("mu_intercept", "mu_m{1}", "mu_m{2}", "mu_o[10]", "mu_o{2}")
+  )
+  expect_identical(
+    format_parameter_names(colnames(renamed), formula_parameters = "mu"),
+    c("(mu) intercept", "(mu) m{1}", "(mu) m{2}", "(mu) o[10]", "(mu) o{2}")
+  )
+  expect_identical(unname(renamed), unname(model_samples))
+
+  # Ordinary factor priors label their levels 1..K by construction.
+  ordinary <- prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  attr(ordinary, "levels") <- 3L
+  ordinary_samples <- matrix(
+    1:4,
+    nrow = 2L,
+    dimnames = list(NULL, c("p1[1]", "p1[2]"))
+  )
+  expect_identical(
+    colnames(BayesTools:::.rename_factor_levels(
+      ordinary_samples,
+      list(p1 = ordinary)
+    )),
+    c("p1{1}", "p1{2}")
+  )
+  # A two-level contrast has one unindexed coefficient.
+  two_level <- prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+  attr(two_level, "levels") <- 2L
+  two_level_samples <- matrix(1:2, ncol = 1L, dimnames = list(NULL, "p2"))
+  expect_identical(
+    colnames(BayesTools:::.rename_factor_levels(
+      two_level_samples,
+      list(p2 = two_level)
+    )),
+    "p2{1}"
+  )
+})
+
+
 test_that(".rename_factor_levels keeps interaction level on the factor term", {
 
   model_samples <- matrix(rnorm(400), ncol = 4)

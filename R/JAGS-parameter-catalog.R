@@ -1545,6 +1545,84 @@ parameter_transform_jacobian <- function(values, transform){
   .complete_factor_metadata(prior, parameter)
 }
 
+# For each fitted coordinate (design column) of a factor term, the design row
+# (level cell) that the coordinate structurally is, or NA.
+.bt_factor_direct_cells <- function(prior, design){
+
+  .bt_factor_direct_cells_design(
+    design,
+    attr(prior, "factor_contrasts", exact = TRUE)
+  )
+}
+
+.bt_factor_direct_cells_design <- function(design, contrasts){
+
+  direct <- rep.int(NA_integer_, ncol(design))
+  if(length(contrasts) == 0L ||
+     !all(as.character(contrasts) %in%
+            .bt_parameter_catalog_structural_contrasts())){
+    return(direct)
+  }
+  # A unit row: exactly one nonzero entry, equal to one.
+  nonzero <- design != 0
+  unit_rows <- which(rowSums(nonzero) == 1L)
+  if(length(unit_rows) == 0L){
+    return(direct)
+  }
+  unit_columns <- max.col(nonzero[unit_rows, , drop = FALSE], ties.method = "first")
+  unit <- design[cbind(unit_rows, unit_columns)] == 1
+  unit_rows <- unit_rows[unit]
+  unit_columns <- unit_columns[unit]
+  for(coordinate in seq_len(ncol(design))){
+    matches <- unit_rows[unit_columns == coordinate]
+    if(length(matches) == 1L){
+      direct[coordinate] <- matches
+    }
+  }
+  direct
+}
+
+# Display names of a fixed factor prior's fitted coordinates, in coordinate
+# order: a coordinate that is structurally one level cell is named by that
+# cell's level labels, as summary tables name level cells (`mu_g[10]`,
+# `mu_f[b]__xXx__g[v]`); any other coordinate is coefficient `j` of the
+# contrast coding, `<parameter>{j}`. NULL when `prior` is not a fixed factor
+# prior with design metadata.
+.bt_factor_coordinate_display_names <- function(parameter, prior){
+
+  prior <- .bt_parameter_catalog_factor_prior(parameter, prior)
+  if(is.null(prior)){
+    return(NULL)
+  }
+  design_info <- tryCatch(
+    .factor_term_design_from_metadata(prior),
+    error = function(error) NULL
+  )
+  if(is.null(design_info) || is.null(design_info$level_names)){
+    return(NULL)
+  }
+  design <- as.matrix(design_info$design)
+  out <- paste0(
+    parameter,
+    .bt_parameter_catalog_factor_coefficient_component(seq_len(ncol(design)))
+  )
+  direct <- .bt_factor_direct_cells(prior, design)
+  if(any(!is.na(direct))){
+    cell_names <- tryCatch(
+      .format_factor_level_parameter_names(
+        parameter,
+        design_info$level_names,
+        nrow(design)
+      ),
+      error = function(error){
+        paste0(parameter, "[", design_info$cell_names, "]")
+      }
+    )
+    out[!is.na(direct)] <- cell_names[direct[!is.na(direct)]]
+  }
+  out
+}
+
 # Maps every fixed factor term (formula terms of all contrasts and ordinary
 # factor priors, whose level labels are 1..K by construction) to label-keyed
 # quantities: one `<parameter>[<level token>]` quantity per level or cell, and
@@ -1691,23 +1769,7 @@ parameter_transform_jacobian <- function(values, transform){
       )
     }
 
-    structural_contrasts <- attr(prior, "factor_contrasts", exact = TRUE)
-    structural_design <- length(structural_contrasts) > 0L &&
-      all(as.character(structural_contrasts) %in%
-            .bt_parameter_catalog_structural_contrasts())
-    direct_cells <- rep.int(NA_integer_, length(coordinate_names))
-    if(structural_design){
-      for(coordinate in seq_along(coordinate_names)){
-        identity_row <- rep.int(0, ncol(design))
-        identity_row[coordinate] <- 1
-        matches <- which(vapply(seq_len(nrow(design)), function(cell){
-          identical(unname(as.numeric(design[cell, ])), identity_row)
-        }, logical(1)))
-        if(length(matches) == 1L){
-          direct_cells[coordinate] <- matches
-        }
-      }
-    }
+    direct_cells <- .bt_factor_direct_cells(prior, design)
 
     for(cell in seq_len(nrow(design))){
       component <- cell_names[cell]

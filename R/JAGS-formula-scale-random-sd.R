@@ -652,7 +652,7 @@
     return(FALSE)
   }
 
-  term <- sub("\\[[^]]+\\]$", "", term)
+  term <- sub("(\\[[^]]+\\]|\\{[^}]+\\})$", "", term)
   components <- .bt_random_effect_term_components(term)
   any(components %in% scaled_vars)
 }
@@ -662,7 +662,7 @@
   base_col <- sub("\\[[^]]+\\]$", "", col)
   rest <- .formula_scale_strip_prefix(base_col, prefix, "__xREx__")
   term <- unname(term_map[[col]])
-  term_core <- gsub("\\[[^]]+\\]", "", term)
+  term_core <- gsub("\\[[^]]+\\]|\\{[^}]+\\}", "", term)
   .random_sd_strip_term_suffix(rest, term_core)
 }
 

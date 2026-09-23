@@ -765,5 +765,30 @@ NULL
     }
   }
 
+  # rename untransformed contrast coordinates (mean-difference, orthonormal,
+  # ordered): a coordinate that is structurally a level cell (the first
+  # ordered coordinate) takes that cell's level labels, and every other
+  # coordinate is contrast coefficient `{j}`; a square bracket after a factor
+  # term always holds a level label
+  for (par in names(prior_list)) {
+    prior <- prior_list[[par]]
+    if (!(is.prior.orthonormal(prior) || is.prior.meandif(prior) || is.prior.ordered(prior))) {
+      next
+    }
+    display_names <- .bt_factor_coordinate_display_names(par, prior)
+    if (is.null(display_names)) {
+      next
+    }
+    coordinate_names <- paste0(par, "[", seq_along(display_names), "]")
+    if (length(display_names) == 1L) {
+      # a sole coefficient is unindexed for main effects, indexed otherwise
+      coordinate_names <- c(coordinate_names, par)
+      display_names    <- rep(display_names, 2L)
+    }
+    coordinate_match <- match(colnames(model_samples), coordinate_names)
+    renamed <- !is.na(coordinate_match)
+    colnames(model_samples)[renamed] <- display_names[coordinate_match[renamed]]
+  }
+
   return(model_samples)
 }

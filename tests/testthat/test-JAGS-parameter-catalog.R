@@ -628,7 +628,7 @@ test_that("factor selectors name level labels, never coordinate positions", {
   }
 }
 
-test_that("transformed factor rows resolve to their level quantities", {
+test_that("displayed factor rows resolve to the quantities that produced them", {
 
   contrasts <- c("treatment", "independent", "meandif", "orthonormal",
                  "ordered")
@@ -642,25 +642,55 @@ test_that("transformed factor rows resolve to their level quantities", {
         fit,
         parameters = names(attr(fit, "prior_list"))
       )
-      for(prefix in c(TRUE, FALSE)){
-        .expect_factor_rows_resolve(
-          JAGS_estimates_table(
+      for(transform in c(FALSE, TRUE)){
+        for(prefix in c(TRUE, FALSE)){
+          model_table <- JAGS_estimates_table(
             fit,
-            transform_factors = TRUE,
+            transform_factors = transform,
             formula_prefix = prefix
-          ),
-          fit, catalog, paste(info, "model", prefix)
-        )
-        .expect_factor_rows_resolve(
-          ensemble_estimates_table(
+          )
+          ensemble_table <- ensemble_estimates_table(
             mixed,
             parameters = "mu_g",
-            transform_factors = TRUE,
+            transform_factors = transform,
             formula_prefix = prefix
-          ),
-          fit, catalog, paste(info, "ensemble", prefix)
-        )
+          )
+          # A bracketed row always names a level label.
+          rows <- c(rownames(model_table), rownames(ensemble_table))
+          bracket_content <- sub("^[^[]*\\[(dif: )?(.*)\\]$", "\\2",
+                                 grep("\\[", rows, value = TRUE))
+          expect_true(all(bracket_content %in% levels),
+                      info = paste(info, transform, prefix))
+          .expect_factor_rows_resolve(
+            model_table, fit, catalog,
+            paste(info, "model", transform, prefix)
+          )
+          .expect_factor_rows_resolve(
+            ensemble_table, fit, catalog,
+            paste(info, "ensemble", transform, prefix)
+          )
+        }
       }
+
+      # Coordinate display labels and mixed columns name the quantity that
+      # is exactly that coordinate: its level cell or contrast coefficient.
+      coordinates <- parameter_coordinates(fit)
+      coordinates <- coordinates[coordinates$term == "g", , drop = FALSE]
+      for(i in seq_len(nrow(coordinates))){
+        key <- parameter_catalog_resolve(
+          catalog,
+          coordinates$display_label[[i]]
+        )$quantities$extraction_key[[1L]]
+        expect_identical(key$dependencies, coordinates$coordinate_name[[i]],
+                         info = paste(info, coordinates$display_label[[i]]))
+        expect_identical(key$weights, 1, info = info)
+      }
+      mixed_columns <- colnames(mixed[["mu_g"]])
+      expect_identical(
+        format_parameter_names(mixed_columns, formula_parameters = "mu"),
+        coordinates$display_label,
+        info = info
+      )
     }
   }
 })
@@ -974,13 +1004,20 @@ test_that("estimates-table row labels resolve to their catalog quantities", {
     c("(mu) x:h" = "mu_x__xXx__h[hi]", "(mu) h[hi]" = "mu_h[hi]")
   )
   # Mean-difference coefficients whose contrast row is a unit vector are
-  # contrast coefficients `{j}`, not level cells; positional `[j]` rows never
-  # resolve.
+  # contrast coefficients: their rows are `{j}`, and positional `[j]` labels
+  # never resolve.
   meandif_fit <- table_fit(~ x * g, list(
     intercept = normal, x = normal,
     g = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
     "x:g" = prior_factor("mnormal", list(0, 1), contrast = "meandif")
   ))
+  expect_rows_resolve(
+    meandif_fit,
+    stats::setNames(
+      c(paste0("mu_g{", 1:3, "}"), paste0("mu_x__xXx__g{", 1:3, "}")),
+      c(paste0("(mu) g{", 1:3, "}"), paste0("(mu) x:g{", 1:3, "}"))
+    )
+  )
   meandif_catalog <- parameter_catalog(meandif_fit)
   for(j in 1:3){
     for(term in c("g", "x:g")){

@@ -285,6 +285,82 @@ test_that("JAGS_estimates_table unscales diagonal random intercept-slope blocks 
   )
 })
 
+test_that("contrast-coefficient random slopes `{j}` unscale with their scaled interactions", {
+
+  skip_if_not_installed("runjags")
+
+  df <- data.frame(
+    x = c(1, 2, 3, 4, 5, 6),
+    g = factor(c("u", "v", "w", "u", "v", "w")),
+    id = factor(c("a", "a", "a", "b", "b", "b"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + diag(1 + g * x | id),
+    parameter = "mu",
+    data = df,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        contrasts = c(g = "meandif"),
+        monitor = random_monitor(
+          latent = FALSE,
+          coefficients = FALSE,
+          correlation = FALSE
+        )
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1]]
+  # The factor comes first in the interaction term, so its coefficient index
+  # `{j}` trails the scaled covariate: `g__xXx__x{j}`.
+  expect_identical(
+    unname(random_term$sd_leaves$leaf_terms),
+    c("intercept", "g{1}", "g{2}", "x", "g__xXx__x{1}", "g__xXx__x{2}")
+  )
+  fitted_sd <- c(1, 2, 3, 4, 5, 6)
+  posterior <- matrix(
+    rep(c(0, fitted_sd), 3),
+    nrow = 3,
+    byrow = TRUE,
+    dimnames = list(
+      NULL,
+      c("mu_intercept", random_term$sd_parameter_names)
+    )
+  )
+  fit <- make_random_scale_table_fit(formula_result, posterior)
+
+  samples <- expect_silent(JAGS_estimates_table(
+    fit,
+    transform_scaled = TRUE,
+    random_effects_summary = "standard",
+    remove_diagnostics = TRUE,
+    return_samples = TRUE
+  ))
+
+  # Diagonal block: original-scale SDs combine each coefficient with its
+  # scaled interaction through the unscaling coefficients -m/s and 1/s.
+  scale_info <- formula_result$formula_scale$mu_x
+  ratio <- scale_info$mean / scale_info$sd
+  expected <- c(
+    "(mu) sd(intercept)" = sqrt(1^2 + ratio^2 * 4^2),
+    "(mu) sd(g{1})"      = sqrt(2^2 + ratio^2 * 5^2),
+    "(mu) sd(g{2})"      = sqrt(3^2 + ratio^2 * 6^2),
+    "(mu) sd(x)"         = 4 / scale_info$sd,
+    "(mu) sd(g:x{1})"    = 5 / scale_info$sd,
+    "(mu) sd(g:x{2})"    = 6 / scale_info$sd
+  )
+  for(row in names(expected)){
+    expect_equal(
+      unname(samples[, row]),
+      rep(expected[[row]], nrow(samples)),
+      tolerance = 1e-12,
+      info = row
+    )
+  }
+})
+
 test_that("JAGS_estimates_table keeps fixed and random scaled slope transforms together", {
 
   skip_if_not_installed("runjags")

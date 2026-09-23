@@ -1420,3 +1420,57 @@ test_that("selection step bins use exact (lower, upper] boundaries", {
   expect_equal(bins, expected)
   expect_equal(bins[c(1L, 3L)], c(1L, 2L))
 })
+
+test_that("mixed contrast coefficients are never bracketed positions", {
+
+  data <- data.frame(g = factor(rep(c(5, 10, 20), 2), levels = c(5, 10, 20)))
+  meandif_prior <- JAGS_formula(~ 1 + g, "mu", data, list(
+    intercept = prior("normal", list(0, 1)),
+    g = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  ))$prior_list$mu_g
+  make_model <- function(samples){
+    samples <- coda::mcmc(samples)
+    model_fit <- structure(
+      list(
+        mcmc = coda::mcmc.list(samples),
+        sample = nrow(samples),
+        summary.pars = list(mutate = NULL),
+        monitor = colnames(samples)
+      ),
+      class = c("runjags", "BayesTools_fit", "list")
+    )
+    attr(model_fit, "prior_list") <- list(mu_g = meandif_prior)
+    list(
+      fit = model_fit,
+      marglik = bridgesampling_object(0),
+      prior_weights = 1
+    )
+  }
+  posterior <- matrix(
+    c(1, 10, 2, 20, 3, 30),
+    nrow = 3,
+    byrow = TRUE,
+    dimnames = list(NULL, c("mu_g[1]", "mu_g[2]"))
+  )
+
+  mixed <- mix_posteriors(
+    list(make_model(posterior), make_model(posterior)),
+    parameters = "mu_g",
+    is_null_list = list(mu_g = c(FALSE, FALSE)),
+    seed = 1,
+    n_samples = 6
+  )
+  # With level labels 5, 10, 20, "[1]" would read as a level; coefficient j
+  # of the mean-difference coding is `{j}`.
+  expect_identical(colnames(mixed$mu_g), c("mu_g{1}", "mu_g{2}"))
+  expect_identical(
+    colnames(attr(mixed$mu_g, "posterior_atoms")$locations),
+    c("mu_g{1}", "mu_g{2}")
+  )
+  table <- ensemble_estimates_table(
+    mixed,
+    parameters = "mu_g",
+    transform_factors = FALSE
+  )
+  expect_false(any(grepl("[", rownames(table), fixed = TRUE)))
+})

@@ -432,7 +432,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   return(samples)
 }
-.mix_posteriors.vector         <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
+.mix_posteriors.vector         <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000,
+                                           column_names = NULL){
 
   # check input
   check_list(fits, "fits")
@@ -506,7 +507,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   }
 
   rownames(samples) <- NULL
-  colnames(samples) <- paste0(parameter,"[",1:K,"]")
+  colnames(samples) <- if(is.null(column_names)) paste0(parameter,"[",1:K,"]") else column_names
   attr(samples, "sample_ind") <- sample_ind
   attr(samples, "models_ind") <- models_ind
   attr(samples, "parameter")  <- parameter
@@ -646,7 +647,13 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     }
 
     rownames(samples) <- NULL
-    colnames(samples) <- coefficient_names
+    # the first ordered coordinate is a level cell; later ones are contrast
+    # coefficients `{j}`, never bracketed positions
+    colnames(samples) <- .as_mixed_posteriors_factor_column_names(
+      parameter,
+      ordered_prior,
+      coefficient_names
+    )
     attr(samples, "sample_ind") <- sample_ind
     attr(samples, "models_ind") <- models_ind
     attr(samples, "parameter")  <- parameter
@@ -749,7 +756,15 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       }
     }
 
-    samples <- .mix_posteriors.vector(fits, priors, parameter, post_probs, seed, n_samples)
+    factor_prior <- priors[vapply(priors, is.prior.factor, logical(1))][[1]]
+    samples <- .mix_posteriors.vector(
+      fits, priors, parameter, post_probs, seed, n_samples,
+      column_names = .as_mixed_posteriors_factor_column_names(
+        parameter,
+        factor_prior,
+        paste0(parameter, "[", seq_len(levels), "]")
+      )
+    )
     class(samples) <- c(class(samples), "mixed_posteriors.factor")
 
   }

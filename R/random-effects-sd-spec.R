@@ -681,20 +681,32 @@
         }else if(.prior_ordered_is_contrast_name(contrast) && isTRUE(ordered_sd_prior)){
           # A sole generated coefficient uses the unindexed node emitted by
           # one-dimensional ordered-prior JAGS syntax; multiple coefficients
-          # keep [j] indexes.
+          # keep [j] node indexes.
           if(length(columns) == 1L){
             leaf_terms[columns] <- model_term
             leaf_names[columns] <- paste0(parameter, "_", model_term)
           }else{
+            leaf_terms[columns] <- .bt_random_effect_factor_coefficient_terms(
+              model_term = model_term,
+              columns = columns,
+              predictors_type = predictors_type,
+              data = data,
+              contrast = contrast
+            )
             for(j in seq_along(columns)){
-              leaf_terms[columns[j]] <- paste0(model_term, "[", j, "]")
               leaf_names[columns[j]] <- paste0(parameter, "_", model_term, "[", j, "]")
             }
           }
         }else if(contrast %in% c("contr.orthonormal", "contr.meandif") ||
                  .prior_ordered_is_contrast_name(contrast)){
+          leaf_terms[columns] <- .bt_random_effect_factor_coefficient_terms(
+            model_term = model_term,
+            columns = columns,
+            predictors_type = predictors_type,
+            data = data,
+            contrast = contrast
+          )
           for(j in seq_along(columns)){
-            leaf_terms[columns[j]] <- paste0(model_term, "[", j, "]")
             leaf_names[columns[j]] <- paste0(
               parameter, "_", model_term, "[", j, "]"
             )
@@ -760,12 +772,84 @@
   levels(data[, factor_components[1L]])
 }
 
+# SD component labels of a contrast-coded random factor term (mean-difference,
+# orthonormal, ordered): a column that is structurally one level cell (the
+# first ordered column) is labelled by that cell's levels, and every other
+# column is coefficient `j` of the contrast coding, `term{j}`. A square bracket
+# in a component label always holds a level label.
+.bt_random_effect_factor_coefficient_terms <- function(model_term, columns,
+                                                       predictors_type, data,
+                                                       contrast){
+
+  n_parameters <- length(columns)
+  out <- paste0(
+    model_term,
+    .bt_parameter_catalog_factor_coefficient_component(seq_len(n_parameters))
+  )
+  if(!.prior_ordered_is_contrast_name(contrast)){
+    return(out)
+  }
+  level_names <- .bt_random_effect_factor_prior_level_names(
+    model_term = model_term,
+    predictors_type = predictors_type,
+    data = data
+  )
+  if(is.null(level_names)){
+    return(out)
+  }
+  if(!is.list(level_names)){
+    components <- .bt_random_effect_term_components(model_term)
+    factor_name <- components[
+      components %in% names(predictors_type) &
+        predictors_type[components] == "factor"
+    ]
+    if(length(factor_name) != 1L){
+      return(out)
+    }
+    level_names <- stats::setNames(list(level_names), factor_name)
+  }
+  metadata <- structure(
+    list(),
+    level_names = level_names,
+    factor_terms = names(level_names),
+    factor_contrasts = stats::setNames(
+      rep(contrast, length(level_names)),
+      names(level_names)
+    )
+  )
+  design <- tryCatch(
+    .factor_term_design_from_metadata(metadata)$design,
+    error = function(error) NULL
+  )
+  if(is.null(design) || ncol(design) != n_parameters){
+    return(out)
+  }
+  direct <- .bt_factor_direct_cells_design(design, contrast)
+  if(all(is.na(direct))){
+    return(out)
+  }
+  cell_names <- tryCatch(
+    .format_factor_level_parameter_names(model_term, level_names, nrow(design)),
+    error = function(error) NULL
+  )
+  if(is.null(cell_names)){
+    return(out)
+  }
+  out[!is.na(direct)] <- cell_names[direct[!is.na(direct)]]
+  out
+}
+
 .bt_random_effect_factor_sd_leaf_terms <- function(model_term, columns,
                                                    predictors_type, data,
                                                    contrast,
                                                    random_structure){
 
   n_parameters <- length(columns)
+  # Without identifiable level cells, a column is a contrast coefficient.
+  coefficient_terms <- paste0(
+    model_term,
+    .bt_parameter_catalog_factor_coefficient_component(seq_len(n_parameters))
+  )
   level_names <- .bt_random_effect_factor_prior_level_names(
     model_term = model_term,
     predictors_type = predictors_type,
@@ -773,7 +857,7 @@
   )
 
   if(is.null(level_names)){
-    return(paste0(model_term, "[", seq_len(n_parameters), "]"))
+    return(coefficient_terms)
   }
 
   if(is.list(level_names)){
@@ -800,7 +884,7 @@
       ))
     }
 
-    return(paste0(model_term, "[", seq_len(n_parameters), "]"))
+    return(coefficient_terms)
   }
 
   level_names <- as.character(level_names)
@@ -809,7 +893,7 @@
   }else if(length(level_names) - 1L == n_parameters){
     parameter_levels <- level_names[-1L]
   }else{
-    parameter_levels <- seq_len(n_parameters)
+    return(coefficient_terms)
   }
 
   paste0(model_term, "[", parameter_levels, "]")

@@ -741,3 +741,48 @@ test_that("JAGS_extend preserves marginalized random-effect metadata", {
     "estimate"
   )
 })
+
+test_that("contrast-coded random slope components name levels or coefficients", {
+
+  data <- data.frame(
+    m = factor(rep(c(5, 10, 20), 4), levels = c(5, 10, 20)),
+    o = ordered(rep(c(5, 10, 20), 4), levels = c(5, 10, 20)),
+    id = factor(rep(1:4, each = 3))
+  )
+  leaf_terms <- function(formula, term, factor_prior){
+    priors <- list(intercept = prior("normal", list(0, 1)))
+    priors[[term]] <- factor_prior
+    result <- JAGS_formula(
+      formula, "mu", data, priors,
+      prior_random = prior_random(
+        id = random_block(sd = prior("gamma", list(2, 2)))
+      )
+    )
+    unname(result$formula_design$random_effects[[1L]]$sd_leaves$leaf_terms)
+  }
+
+  # Mean-difference columns are contrast coefficients, never `[j]`.
+  expect_identical(
+    leaf_terms(
+      ~ 1 + m + (1 + m || id), "m",
+      prior_factor("mnormal", list(0, 1), contrast = "meandif")
+    ),
+    c("intercept", "m{1}", "m{2}")
+  )
+  # The first cumulative column is level "10"; the next is an increment.
+  expect_identical(
+    leaf_terms(
+      ~ 1 + o + (1 + o || id), "o",
+      prior_ordered(prior("normal", list(0, 1)))
+    ),
+    c("intercept", "o[10]", "o{2}")
+  )
+  # The first cumulative-levels column is level "5".
+  expect_identical(
+    leaf_terms(
+      ~ 1 + o + (1 + o || id), "o",
+      prior_ordered(prior("normal", list(0, 1)), contrast = "cumulative_levels")
+    ),
+    c("intercept", "o[5]", "o{2}", "o{3}")
+  )
+})

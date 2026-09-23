@@ -31,9 +31,10 @@
   }
 
   # Indexed factor terms attach the index to the full term name. Strip the
-  # trailing index so scaled continuous components inside interactions are
-  # still detected correctly (e.g., alloc__xXx__year[1] -> alloc, year).
-  term_part <- sub("\\[[^]]+\\]$", "", term_part)
+  # trailing index, a level `[..]` or a contrast coefficient `{j}`, so scaled
+  # continuous components inside interactions are still detected correctly
+  # (e.g., alloc__xXx__year[1] -> alloc, year).
+  term_part <- sub("(\\[[^]]+\\]|\\{[^}]+\\})$", "", term_part)
 
   # Split by interaction separator
   components <- strsplit(term_part, "__xXx__", fixed = TRUE)[[1]]
@@ -56,10 +57,11 @@
     ))
   }
 
+  # A trailing level `[..]` or contrast coefficient `{j}` index.
   term_index <- ""
-  if (grepl("\\[[^]]+\\]$", term_part)) {
-    term_index <- sub("^.*(\\[[^]]+\\])$", "\\1", term_part)
-    term_core  <- sub("\\[[^]]+\\]$", "", term_part)
+  if (grepl("(\\[[^]]+\\]|\\{[^}]+\\})$", term_part)) {
+    term_index <- sub("^.*(\\[[^]]+\\]|\\{[^}]+\\})$", "\\1", term_part)
+    term_core  <- sub("(\\[[^]]+\\]|\\{[^}]+\\})$", "", term_part)
   } else {
     term_core <- term_part
   }
@@ -94,7 +96,8 @@
 .unscale_ids_match <- function(target_id, source_id) {
 
   identical(target_id, source_id) ||
-    (nzchar(target_id) && !grepl("\\[[^]]+\\]$", target_id) && identical(paste0(target_id, "[1]"), source_id))
+    (nzchar(target_id) && !grepl("(\\[[^]]+\\]|\\{[^}]+\\})$", target_id) &&
+       source_id %in% paste0(target_id, c("[1]", "{1}")))
 }
 
 

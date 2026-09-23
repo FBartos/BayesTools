@@ -768,6 +768,9 @@ test_that("public posterior mixing preserves ordered coefficient rows and metada
   }
   expect_true(isTRUE(attr(mixed$mu_f, "ordered")))
   expect_false(is.null(attr(mixed$mu_f, "ordered_metadata")))
+  # The first cumulative coordinate is level "mid"; the second is an
+  # increment, contrast coefficient 2, never the position "[2]".
+  expect_identical(colnames(mixed$mu_f), c("mu_f[mid]", "mu_f{2}"))
 })
 
 test_that("marginal posterior uses the stored full-rank ordered design", {
@@ -1374,11 +1377,13 @@ test_that("ordered mixed measures propagate through marginal inference", {
 
   samples <- as_mixed_posteriors(fit, parameters = "mu_f")
   coefficient_atoms <- BayesTools:::.posterior_atoms_get(samples$mu_f)
+  # The first cumulative coordinate is level "mid"; the second is the
+  # increment, contrast coefficient 2.
   expect_equal(coefficient_atoms$locations, matrix(
     0,
     nrow = 1,
     ncol = 2,
-    dimnames = list(NULL, c("mu_f[1]", "mu_f[2]"))
+    dimnames = list(NULL, c("mu_f[mid]", "mu_f{2}"))
   ))
   expect_equal(coefficient_atoms$mass, .5)
   expect_equal(

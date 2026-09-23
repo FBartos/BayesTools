@@ -11494,9 +11494,10 @@ test_that("fixed and random blocks own independent concrete factor bases", {
     meandif_term$sd_parameter_names,
     paste0("mu__xREx__id_meandif_f[", 1:2, "]")
   )
+  # Mean-difference columns are contrast coefficients `{j}`, not levels.
   expect_identical(
     meandif_term$sd_leaves$leaf_terms_by_column,
-    paste0("f[", 1:2, "]")
+    paste0("f{", 1:2, "}")
   )
 
   treatment_prediction <- .bt_random_effect_prediction_data(

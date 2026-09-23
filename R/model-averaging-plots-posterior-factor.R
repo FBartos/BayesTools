@@ -255,6 +255,13 @@
     if(!is.null(transformation)){
       message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the meandif/orthonormal contrasts to the differences from the mean.")
     }
+  }else if(any(sapply(prior_list, is.prior.ordered))){
+    # Ordered increments are not levels: plot the level effects instead, as
+    # for mean-difference contrasts, omitting the structurally zero level.
+    samples <- transform_factor_samples(samples)
+    samples[[parameter]] <- .plot_data_factor_drop_structural_levels(
+      samples[[parameter]]
+    )
   }
 
   samples    <- samples[[parameter]]
@@ -504,6 +511,49 @@
   }
 
   return(out)
+}
+# Drops the transformed level columns that the persisted contrast design fixes
+# at zero (the reference level of a cumulative ordered contrast); they carry
+# no posterior density. Identified from the design, never from the draws.
+.plot_data_factor_drop_structural_levels <- function(samples){
+
+  design <- tryCatch(
+    .factor_term_design_from_metadata(samples)$design,
+    error = function(error) NULL
+  )
+  if(is.null(design) || nrow(as.matrix(design)) != ncol(samples)){
+    return(samples)
+  }
+  keep <- rowSums(as.matrix(design) != 0) > 0
+  if(all(keep)){
+    return(samples)
+  }
+
+  out <- samples[, keep, drop = FALSE]
+  attributes_kept <- attributes(samples)
+  attributes_kept <- attributes_kept[!names(attributes_kept) %in% c(
+    "dim", "dimnames", "names", "level_names", "factor_cell_names",
+    "posterior_atoms"
+  )]
+  attributes(out) <- c(attributes(out), attributes_kept)
+  for(name in c("level_names", "factor_cell_names")){
+    value <- attr(samples, name, exact = TRUE)
+    if(!is.null(value) && !is.list(value) && length(value) == length(keep)){
+      attr(out, name) <- value[keep]
+    }
+  }
+  posterior_atoms <- .posterior_atoms_get(samples)
+  if(!is.null(posterior_atoms)){
+    out <- .posterior_atoms_set(
+      out,
+      .posterior_atoms_linear_transform(
+        posterior_atoms,
+        diag(length(keep))[keep, , drop = FALSE],
+        column_names = colnames(out)
+      )
+    )
+  }
+  out
 }
 .plot_data_factor_column_atoms <- function(samples){
 

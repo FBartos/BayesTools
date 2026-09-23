@@ -291,7 +291,26 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   return(samples)
 }
-.as_mixed_posteriors.vector         <- function(model_samples, prior, parameter){
+# Mixed columns of untransformed contrast coordinates follow the coordinate
+# display names: a structural level cell keeps its level labels, and every
+# other coordinate is contrast coefficient `<parameter>{j}`, never `[j]`.
+.as_mixed_posteriors_factor_column_names <- function(parameter, prior,
+                                                     coordinate_names){
+
+  display_names <- .bt_factor_coordinate_display_names(parameter, prior)
+  if(is.null(display_names) ||
+     length(display_names) != length(coordinate_names)){
+    display_names <- paste0(
+      parameter,
+      .bt_parameter_catalog_factor_coefficient_component(
+        seq_along(coordinate_names)
+      )
+    )
+  }
+  display_names
+}
+.as_mixed_posteriors.vector         <- function(model_samples, prior, parameter,
+                                                column_names = NULL){
 
   # check input
   check_char(parameter, "parameter", check_length = FALSE)
@@ -309,7 +328,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   }
 
   rownames(samples) <- NULL
-  colnames(samples) <- paste0(parameter,"[",1:K,"]")
+  colnames(samples) <- if(is.null(column_names)){
+    paste0(parameter,"[",1:K,"]")
+  }else{
+    column_names
+  }
   attr(samples, "sample_ind") <- FALSE
   attr(samples, "models_ind") <- rep(1, nrow(samples))
   attr(samples, "parameter")  <- parameter
@@ -376,7 +399,13 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
 
     rownames(samples) <- NULL
-    colnames(samples) <- coefficient_names
+    # The first ordered coordinate is a level cell; later ones are increments,
+    # contrast coefficients `{j}`, never bracketed positions.
+    colnames(samples) <- .as_mixed_posteriors_factor_column_names(
+      parameter,
+      prior,
+      coefficient_names
+    )
     attr(samples, "sample_ind") <- FALSE
     attr(samples, "models_ind") <- rep(1, nrow(samples))
     attr(samples, "parameter")  <- parameter
@@ -441,7 +470,16 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   }else if(prior_info[["orthonormal"]] | prior_info[["meandif"]]){
 
     prior$parameters[["K"]] <- prior_info[["levels"]]
-    samples <- .as_mixed_posteriors.vector(model_samples, prior, parameter)
+    samples <- .as_mixed_posteriors.vector(
+      model_samples,
+      prior,
+      parameter,
+      column_names = .as_mixed_posteriors_factor_column_names(
+        parameter,
+        prior,
+        paste0(parameter, "[", seq_len(prior_info[["levels"]]), "]")
+      )
+    )
     class(samples) <- c(class(samples), "mixed_posteriors.factor")
 
   }

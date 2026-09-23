@@ -529,8 +529,43 @@
   "fitted_original"
 }
 
+# Display name of one fixed factor coordinate: its level cell when the
+# coordinate structurally is one, otherwise contrast coefficient `{j}`. The
+# per-prior names are computed once per coordinate table through `cache`.
+.bt_parameter_coordinates_factor_display_name <- function(coordinate_name,
+                                                          prior, cache){
+
+  if(is.null(prior)){
+    return(coordinate_name)
+  }
+  base_name <- .bt_parameter_coordinates_base(coordinate_name)
+  if(!exists(base_name, envir = cache, inherits = FALSE)){
+    assign(
+      base_name,
+      .bt_factor_coordinate_display_names(base_name, prior),
+      envir = cache
+    )
+  }
+  display_names <- get(base_name, envir = cache, inherits = FALSE)
+  if(is.null(display_names)){
+    return(coordinate_name)
+  }
+  index <- .bt_parameter_coordinates_index(coordinate_name)
+  coefficient <- if(nzchar(index)){
+    suppressWarnings(as.integer(index))
+  }else{
+    1L
+  }
+  if(is.na(coefficient) || coefficient < 1L ||
+     coefficient > length(display_names)){
+    return(coordinate_name)
+  }
+  display_names[[coefficient]]
+}
+
 .bt_parameter_coordinates_display <- function(coordinate_name, prior, random_term,
-                                           role, formula_parameter){
+                                           role, formula_parameter,
+                                           factor_cache = new.env(parent = emptyenv())){
 
   if(!is.null(prior)){
     label <- attr(prior, "random_summary_label", exact = TRUE)
@@ -543,6 +578,13 @@
     }
   }
   if(is.null(random_term)){
+    if(role %in% c("fixed_coefficient", "parameter")){
+      coordinate_name <- .bt_parameter_coordinates_factor_display_name(
+        coordinate_name,
+        prior,
+        factor_cache
+      )
+    }
     return(format_parameter_names(
       coordinate_name,
       formula_parameters = if(nzchar(formula_parameter)){
@@ -650,6 +692,7 @@
   dimensions[is.na(dimensions)] <- ""
   coordinates <- .bt_parameter_coordinates_empty()
   coordinates <- coordinates[rep(NA_integer_, length(coordinate_names)), , drop = FALSE]
+  factor_cache <- new.env(parent = emptyenv())
 
   for(i in seq_along(coordinate_names)){
     coordinate_name <- coordinate_names[i]
@@ -771,7 +814,8 @@
         prior,
         random_term,
         role,
-        formula_parameter
+        formula_parameter,
+        factor_cache
       ),
       grouping,
       structure,

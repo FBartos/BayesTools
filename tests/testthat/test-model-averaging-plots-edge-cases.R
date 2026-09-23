@@ -3619,3 +3619,64 @@ test_that("ggplot overlays reuse mixed-plot clipping bounds", {
   overlay <- plot + geom_prior_list(make_priors(.75))
   expect_identical(overlay$bt_scale_y2_state, plot$bt_scale_y2_state)
 })
+
+test_that("ordered factor posterior plots show level effects by level label", {
+
+  levels <- c("5", "10", "20")
+  data <- data.frame(g = ordered(rep(levels, 2), levels = levels))
+  ordered_plot_data <- function(contrast){
+    result <- JAGS_formula(~ 1 + g, "mu", data, list(
+      intercept = prior("normal", list(0, 1)),
+      g = prior_ordered(prior("normal", list(0, 1)), contrast = contrast)
+    ))
+    columns <- c(
+      "mu_intercept",
+      BayesTools:::.JAGS_prior_factor_names("mu_g", result$prior_list$mu_g)
+    )
+    set.seed(1)
+    samples <- matrix(
+      abs(stats::rnorm(200L * length(columns))),
+      nrow = 200L,
+      dimnames = list(NULL, columns)
+    )
+    fit <- structure(
+      list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = 200L),
+      class = c("runjags", "BayesTools_fit", "list")
+    )
+    attr(fit, "prior_list") <- result$prior_list
+    attr(fit, "formula_design") <- list(mu = result$formula_design)
+    fit <- attach_test_parameter_map(fit)
+    mixed <- as_mixed_posteriors(fit, parameters = "mu_g")
+    plot_data <- BayesTools:::.plot_data_samples.factor(
+      mixed,
+      parameter = "mu_g",
+      n_points = 64,
+      transformation = NULL,
+      transformation_arguments = NULL,
+      transformation_settings = FALSE
+    )
+    list(
+      samples = samples,
+      level_names = vapply(plot_data, attr, character(1), "level_name"),
+      level_samples = lapply(plot_data, function(x) as.numeric(x$samples))
+    )
+  }
+
+  # Cumulative: level "5" is structurally zero; the plotted levels are the
+  # level effects, not the increments labelled "1" and "2".
+  cumulative <- ordered_plot_data("cumulative")
+  expect_identical(
+    unname(cumulative$level_names),
+    c("mu_g[dif: 10]", "mu_g[dif: 20]")
+  )
+  expect_equal(
+    cumulative$level_samples[[2L]],
+    as.numeric(cumulative$samples[, "mu_g[1]"] + cumulative$samples[, "mu_g[2]"]),
+    tolerance = 1e-14
+  )
+  cumulative_levels <- ordered_plot_data("cumulative_levels")
+  expect_identical(
+    unname(cumulative_levels$level_names),
+    paste0("mu_g[dif: ", levels, "]")
+  )
+})
