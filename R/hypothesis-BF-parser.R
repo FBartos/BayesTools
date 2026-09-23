@@ -157,6 +157,12 @@ hypothesis_normalize_level_references <- function(text){
   if(length(match) != 3L){
     return(empty)
   }
+  # A `]` followed later by `[` closes one bracket group and opens another:
+  # interaction names such as `mu_f[dif: a]__xXx__g[dif: u]` are single
+  # symbols, not a level reference of `mu_f`.
+  if(grepl("\\].*\\[", match[[3L]])){
+    return(empty)
+  }
 
   return(list(
     parameter = match[[2L]],

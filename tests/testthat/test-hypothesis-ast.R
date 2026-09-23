@@ -242,6 +242,34 @@ test_that("catalog aliases containing brackets resolve as whole symbols", {
   )
 })
 
+test_that("bracketed level names parse without splitting interaction symbols", {
+
+  # Level names containing brackets (cut() intervals) are level references.
+  levels <- hypothesis_parse_level_reference(
+    c("`mu[(0,1]]`", "`mu[[0,1)]`", "`mu[[0,1]]`")
+  )
+  expect_identical(levels$parameter, rep("mu", 3L))
+  expect_identical(levels$level, c("(0,1]", "[0,1)", "[0,1]"))
+  expect_true(all(levels$direct))
+
+  # Interaction names with several bracket groups remain single symbols.
+  interactions <- c("mu_f[dif: a]__xXx__g[dif: u]",
+                    "mu_a[a1]__xXx__year__xXx__b[b1]")
+  ast <- hypothesis_parse(paste0("`", interactions[1L], "` > `",
+                                 interactions[2L], "`"))
+  expect_identical(hypothesis_symbols(ast), interactions)
+  occurrences <- hypothesis_symbols(ast, occurrences = TRUE)
+  expect_true(all(is.na(occurrences$level)))
+  expect_identical(unique(occurrences$parameter), interactions)
+  expect_identical(
+    hypothesis_render(hypothesis_rewrite(ast, setNames("z", interactions[1L]))),
+    paste0("z > `", interactions[2L], "`")
+  )
+  expect_false(any(hypothesis_parse_level_reference(
+    paste0("`", interactions, "`")
+  )$direct))
+})
+
 test_that("hypothesis rewriting edits exact symbol roots only", {
 
   ast <- hypothesis_parse(
