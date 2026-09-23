@@ -18,6 +18,19 @@
 }
 
 
+.hypothesis_BF_row_names <- function(labels, statements) {
+
+  # Rows of several statements on one quantity carry the statement number
+  # ("mu (1)", "mu (2)"); rbind()'s "mu1" reads like another parameter, and
+  # "mu.1" would collide with the names `[.data.frame` gives duplicated rows,
+  # which row-name based subsetting of the table relies on.
+  repeated <- labels %in% labels[duplicated(labels)]
+  labels[repeated] <- paste0(labels[repeated], " (", statements[repeated], ")")
+
+  make.unique(labels, sep = " ")
+}
+
+
 .hypothesis_BF_output_columns <- function(columns) {
 
   default <- c("Alternative", "Null", "BF", "BF_error")

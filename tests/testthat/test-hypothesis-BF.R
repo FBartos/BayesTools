@@ -634,6 +634,47 @@ test_that("hypothesis_BF returns compact BayesTools table by default", {
 })
 
 
+test_that("hypothesis_BF row names identify repeated statements on one quantity", {
+
+  set.seed(1)
+  posterior <- stats::rnorm(4000, mean = 0.3, sd = 0.1)
+  out <- hypothesis_BF(
+    posterior  = posterior,
+    prior      = prior("normal", list(mean = 0, sd = 1)),
+    hypothesis = c("theta > 0", "theta = 0.3", "theta < -1"),
+    parameter  = "theta",
+    seed       = 1
+  )
+  expect_identical(rownames(out), c("theta (1)", "theta (2)", "theta (3)"))
+  expect_identical(
+    out[["Alternative"]],
+    c("theta > 0", "theta != 0.3", "theta < -1")
+  )
+  # Warnings and row subsets are keyed by the same row names.
+  expect_identical(names(attr(out, "warnings")), "theta (3)")
+  expect_equal(attr(out["theta (2)", , drop = FALSE], "raw_BF"),
+               attr(out, "raw_BF")[2])
+  expect_null(attr(out[c(1, 1), , drop = FALSE], "raw_BF"))
+
+  single <- hypothesis_BF(
+    posterior  = posterior,
+    prior      = prior("normal", list(mean = 0, sd = 1)),
+    hypothesis = "theta > 0",
+    parameter  = "theta"
+  )
+  expect_identical(rownames(single), "theta")
+
+  draws <- data.frame(mu = posterior, phi = stats::rnorm(4000, 0.1, 0.1))
+  prior_draws <- data.frame(mu = stats::rnorm(4000), phi = stats::rnorm(4000))
+  table <- hypothesis_BF(
+    posterior  = draws,
+    prior      = prior_draws,
+    hypothesis = c("mu > phi", "mu - phi > 0.5")
+  )
+  expect_identical(rownames(table), c("draws (1)", "draws (2)"))
+})
+
+
 test_that("hypothesis_BF accepts scalar BayesTools prior objects", {
 
   set.seed(2)

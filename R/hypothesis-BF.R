@@ -155,6 +155,8 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
   )
 
   rows <- list()
+  row_labels <- character()
+  row_statements <- integer()
   row_i <- 1L
   for(hyp_i in seq_along(statements)){
     for(quantity_i in seq_along(quantities)){
@@ -167,11 +169,14 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
         quantity = quantities[[quantity_i]],
         result   = result
       )
+      row_labels[[row_i]]     <- quantities[[quantity_i]][["label"]]
+      row_statements[[row_i]] <- hyp_i
       row_i <- row_i + 1L
     }
   }
 
   out <- do.call(rbind, rows)
+  rownames(out) <- .hypothesis_BF_row_names(row_labels, row_statements)
   raw_BF <- out[["BF"]]
   out[["BF"]] <- format_BF(raw_BF, logBF = logBF, BF01 = BF01)
   attr(out[["BF_error"]], "name") <- "error%(BF)"
