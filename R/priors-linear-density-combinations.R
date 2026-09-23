@@ -693,7 +693,10 @@
       x_new <- x_new[ord]
       y_new <- y_new[ord]
 
-      keep <- c(TRUE, diff(x_new) > .prior_linear_density_grid_tol() * pmax(1, abs(x_new[-length(x_new)])))
+      # Keep every distinct image knot. A tolerance on the spacing would drop
+      # the dense knots near a saturating boundary (exp near zero, tanh near
+      # +/-1), where the transformed density is largest.
+      keep <- c(TRUE, diff(x_new) > 0)
       x_new <- x_new[keep]
       y_new <- y_new[keep]
 

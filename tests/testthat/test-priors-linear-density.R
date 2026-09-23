@@ -446,6 +446,29 @@ test_that("exp_lin output transformations keep analytic limits at a zero source 
   expect_true(all(is.finite(exp_map$density$y)))
 })
 
+test_that("nonlinear output transformations keep dense knots of wide priors", {
+
+  # Heights against the analytic lognormal / tanh-normal densities. The
+  # source grid omits 1e-4 per tail and is renormalised, a relative bias of
+  # about 2e-4; 1e-3 bounds it with margin.
+  exp_map <- .prior_linear_combination_density(
+    list(mu = prior("normal", list(0, 8))), c(mu = 1), output_transformation = "exp"
+  )
+  expect_equal(.prior_linear_density_grid_height(exp_map, 1),
+               stats::dlnorm(1, 0, 8), tolerance = 1e-3)
+  expect_equal(.prior_linear_density_grid_height(exp_map, 3),
+               stats::dlnorm(3, 0, 8), tolerance = 1e-3)
+
+  tanh_map <- .prior_linear_combination_density(
+    list(mu = prior("normal", list(0, 4))), c(mu = 1), output_transformation = "tanh"
+  )
+  expect_equal(.prior_linear_density_grid_height(tanh_map, 0),
+               stats::dnorm(0, 0, 4), tolerance = 1e-3)
+  expect_equal(.prior_linear_density_grid_height(tanh_map, .5),
+               stats::dnorm(atanh(.5), 0, 4) / (1 - .5^2), tolerance = 1e-3)
+  expect_true(all(diff(tanh_map$density$x) > 0))
+})
+
 test_that("linear group ranges accept omitted source transformations", {
 
   group <- list(prior = prior("normal", list(0, 1)), weights = c(mu = 1), indices = 1L)
