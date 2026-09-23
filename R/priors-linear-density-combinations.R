@@ -813,6 +813,62 @@
   )
 }
 
+.prior_linear_group_robust_scale <- function(group, source_transforms = NULL){
+
+  # Smallest robust scale (IQR / 1.349 in output units) of the continuous
+  # sources of one weighted prior group; Inf when the group has none. Ordered
+  # groups are resolved by their own product grid and are not included.
+  prior   <- group$prior
+  weights <- group$weights
+  transforms <- if(is.null(source_transforms)){
+    rep(NA_character_, length(weights))
+  }else{
+    unname(source_transforms[names(weights)])
+  }
+
+  if(is.prior.none(prior) || is.prior.ordered(prior) ||
+     is.prior.point(prior) || is.prior.discrete(prior)){
+    return(Inf)
+  }
+  if(is.prior.spike_and_slab(prior) || is.prior.mixture(prior)){
+    components <- if(is.prior.spike_and_slab(prior)){
+      list(.get_spike_and_slab_variable(prior))
+    }else{
+      probabilities <- .prior_density_ordinate_mixture_weights(prior)
+      if(is.null(probabilities)) prior else prior[probabilities > 0]
+    }
+    scales <- vapply(components, function(component){
+      component_group <- group
+      component_group$prior <- component
+      .prior_linear_group_robust_scale(component_group, source_transforms)
+    }, numeric(1))
+    return(min(c(Inf, scales)))
+  }
+  if(is.prior.vector(prior) && !is.prior.treatment(prior) && !is.prior.independent(prior)){
+    scalar_prior <- tryCatch(
+      .prior_linear_vector_scalar_prior(prior, weights),
+      error = function(e) NULL
+    )
+    if(is.null(scalar_prior)){
+      return(Inf)
+    }
+    return(.prior_linear_group_robust_scale(
+      list(prior = scalar_prior, weights = c(.vector = 1))
+    ))
+  }
+  if(!is.prior.simple(prior)){
+    return(Inf)
+  }
+
+  quartiles <- mquant(prior, c(.25, .75))
+  scales <- vapply(seq_along(weights), function(i){
+    source_quartiles <- if(identical(transforms[i], "log")) log(quartiles) else quartiles
+    abs(weights[[i]]) * (source_quartiles[2] - source_quartiles[1]) / 1.349
+  }, numeric(1))
+  scales <- scales[is.finite(scales) & scales > 0]
+  if(length(scales) == 0L) Inf else min(scales)
+}
+
 .prior_linear_additive_combination_density <- function(prior_list, weights,
                                                        n_grid = .prior_linear_density_default_grid(),
                                                        tail_prob = .prior_linear_density_tail_prob(),
@@ -843,6 +899,11 @@
                                         source_transforms = source_transforms))
   target_range <- c(sum(group_ranges[, 1]), sum(group_ranges[, 2]))
   target_width <- diff(target_range)
+  # A heavy-tailed source sets the range; resolve the narrowest continuous
+  # source on it.
+  robust_scale <- min(c(Inf, vapply(groups, .prior_linear_group_robust_scale,
+                                    numeric(1), source_transforms = source_transforms)))
+  n_grid <- .prior_linear_density_resolution(target_width, n_grid, robust_scale)
   dx <- target_width / max(1, n_grid - 1)
   if(!is.finite(dx) || dx <= 0){
     dx <- 1

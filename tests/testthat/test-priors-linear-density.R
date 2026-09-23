@@ -469,6 +469,60 @@ test_that("nonlinear output transformations keep dense knots of wide priors", {
   expect_true(all(diff(tanh_map$density$x) > 0))
 })
 
+test_that("heavy-tailed combinations resolve their narrowest source and mixtures stay bounded", {
+
+  # Normal-type combinations keep the default grid (the narrowest source
+  # spans more than 64 of its knots per robust SD).
+  normal_sum <- .prior_linear_combination_density(
+    list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1))),
+    c(a = 1, b = 1)
+  )
+  expect_equal(diff(normal_sum$density$x[1:2]),
+               diff(range(normal_sum$density$x)) / (length(normal_sum$density$x) - 1))
+  expect_equal(diff(normal_sum$density$x[1:2]),
+               2 * 2 * stats::qnorm(1 - 1e-4) / (4096 - 1), tolerance = 1e-10)
+
+  # A Cauchy slab sets a range of about +/-2250; the N(0, .2) source is
+  # resolved with at least 64 knots per SD (previously dx was about 1.1 and
+  # the height 0.315). Reference: 0.5 phi(0; .2) + 0.5 (N(0, .2) * Cauchy)(0)
+  # by quadrature; 1e-3 covers the omitted 1e-4 tails.
+  slab <- prior_spike_and_slab(prior("cauchy", list(0, .707)),
+                               prior_inclusion = prior("spike", list(.5)))
+  reference <- .5 * stats::dnorm(0, 0, .2) + .5 * stats::integrate(
+    function(t) stats::dnorm(t, 0, .2) * stats::dcauchy(t, 0, .707),
+    -Inf, Inf, rel.tol = 1e-12
+  )$value
+  heavy <- .prior_linear_combination_density(
+    list(a = prior("normal", list(0, .2)), b = slab), c(a = 1, b = 1)
+  )
+  expect_lte(diff(heavy$density$x[1:2]), .2 / 64)
+  expect_equal(.prior_linear_density_grid_height(heavy, 0), reference, tolerance = 1e-3)
+
+  # t3 + N(0, .1): the adaptive height converges (reference by quadrature).
+  student <- .prior_linear_combination_density(
+    list(a = prior("t", list(0, 1, 3)), b = prior("normal", list(0, .1))), c(a = 1, b = 1)
+  )
+  expect_equal(
+    as.numeric(.prior_linear_density_height(student, 0)),
+    stats::integrate(function(t) stats::dt(t, 3) * stats::dnorm(-t, 0, .1),
+                     -Inf, Inf, rel.tol = 1e-12)$value,
+    tolerance = 1e-4
+  )
+
+  # Mixing a narrow and a Cauchy model needs about 5e7 knots at the finest
+  # spacing (previously 2.4 GB); it now stops before allocating.
+  context <- .prior_density_build_context(
+    list(mu = list(prior("normal", list(0, .05), prior_weights = 1),
+                   prior("cauchy", list(0, .707), prior_weights = 1))),
+    "mu"
+  )
+  expect_error(
+    .prior_density_from_context(context, c(mu = 1)),
+    "Mixed prior density is unavailable because its components have incompatible scales",
+    fixed = TRUE
+  )
+})
+
 test_that("linear group ranges accept omitted source transformations", {
 
   group <- list(prior = prior("normal", list(0, 1)), weights = c(mu = 1), indices = 1L)

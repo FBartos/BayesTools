@@ -13,6 +13,21 @@
 .prior_linear_density_grid_tol <- function(){
   sqrt(.Machine$double.eps)
 }
+
+.prior_linear_density_max_grid <- function(){
+  2097152L
+}
+
+.prior_linear_density_resolution <- function(width, n_grid, scale = Inf){
+
+  # Knots across a combination range: at least 'n_grid' and at least 64 per
+  # robust scale of the narrowest continuous source, capped at the grid limit.
+  if(!is.finite(width) || width <= 0 || !is.finite(scale) || scale <= 0){
+    return(as.integer(n_grid))
+  }
+  required <- 2^ceiling(log2(width / (scale / 64) + 1))
+  as.integer(max(n_grid, min(required, .prior_linear_density_max_grid())))
+}
 .prior_linear_source_transform <- function(source_transform){
 
   if(is.null(source_transform) || length(source_transform) == 0 || is.na(source_transform)){
@@ -306,6 +321,25 @@
       temp_points <- dist$points
       temp_points$p <- temp_points$p * w
       points <- rbind(points, temp_points)
+    }
+  }
+
+  # Components are mixed on their finest spacing over their union range; a
+  # narrow and a heavy-tailed component can make that grid unrepresentable.
+  if(length(densities) > 0L && is.finite(dx) && dx > 0){
+    width <- max(vapply(densities, function(d) max(d$x), numeric(1))) -
+      min(vapply(densities, function(d) min(d$x), numeric(1)))
+    size  <- width / dx + 1
+    if(size > .prior_linear_density_max_grid()){
+      stop(
+        "Mixed prior density is unavailable because its components have incompatible ",
+        "scales: the finest component spacing ", format(dx, digits = 4),
+        " over the combined range ", format(width, digits = 4), " needs ",
+        format(ceiling(size), big.mark = ","), " grid points, more than the limit of ",
+        format(.prior_linear_density_max_grid(), big.mark = ","),
+        ". Evaluate the components separately or use priors on comparable scales.",
+        call. = FALSE
+      )
     }
   }
 
