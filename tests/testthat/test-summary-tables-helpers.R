@@ -1697,3 +1697,71 @@ test_that("ensemble_diagnostics_empty_table works correctly", {
   test_reference_table(empty_table, "ensemble_diagnostics_empty.txt")
 
 })
+
+test_that("log-scale inclusion BF tables stay in log space beyond the double range", {
+
+  # Review scenario: log BF -800.69, which exp() turns into 0.
+  log_BF <- -800.69
+  theta <- structure(
+    list(
+      prior_probs = c(null = 0.5, alt = 0.5),
+      post_probs = c(null = 1, alt = 0),
+      BF = exp(log_BF)
+    ),
+    is_null = c(TRUE, FALSE),
+    parameter_name = "theta",
+    log_BF = log_BF
+  )
+  inference <- list(theta = theta)
+  attr(inference, "conditional") <- FALSE
+
+  linear <- ensemble_inference_table(inference, "theta")
+  expect_identical(as.numeric(linear$inclusion_BF), 0)
+  log_table <- ensemble_inference_table(inference, "theta", logBF = TRUE)
+  expect_identical(as.numeric(log_table$inclusion_BF), log_BF)
+  expect_identical(attr(log_table$inclusion_BF, "name"), "log(Inclusion BF)")
+  log_BF01 <- ensemble_inference_table(inference, "theta", logBF = TRUE, BF01 = TRUE)
+  expect_identical(as.numeric(log_BF01$inclusion_BF), -log_BF)
+
+  # Re-formatting a log-scale table keeps the log values.
+  expect_identical(
+    as.numeric(update(log_table, logBF = TRUE, BF01 = TRUE)$inclusion_BF),
+    -log_BF
+  )
+  expect_identical(as.numeric(update(log_BF01, logBF = TRUE)$inclusion_BF), log_BF)
+  expect_identical(as.numeric(update(log_table)$inclusion_BF), 0)
+
+  models <- list(
+    .mock_ensemble_table_model(
+      model_number = 1L,
+      prior_list = list(theta = prior("point", list(0))),
+      prior_prob = 0.5,
+      post_prob = 1,
+      marglik = 0,
+      inclusion_BF = exp(-log_BF),
+      fit_summary = NULL
+    ),
+    .mock_ensemble_table_model(
+      model_number = 2L,
+      prior_list = list(theta = prior("normal", list(0, 1))),
+      prior_prob = 0.5,
+      post_prob = 0,
+      marglik = log_BF,
+      inclusion_BF = exp(log_BF),
+      fit_summary = NULL
+    )
+  )
+  attr(models[[1L]]$inference, "inclusion_log_BF") <- -log_BF
+  attr(models[[2L]]$inference, "inclusion_log_BF") <- log_BF
+  summary <- ensemble_summary_table(models, "theta", logBF = TRUE)
+  expect_identical(as.numeric(summary$inclusion_BF), c(-log_BF, log_BF))
+
+  # Inference objects without the log-space attribute keep log(BF).
+  attr(inference$theta, "log_BF") <- NULL
+  inference$theta$BF <- 3
+  expect_equal(
+    as.numeric(ensemble_inference_table(inference, "theta", logBF = TRUE)$inclusion_BF),
+    log(3),
+    tolerance = 1e-15
+  )
+})

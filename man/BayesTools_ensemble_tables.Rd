@@ -133,7 +133,10 @@ the fit object's \code{formula_scale} attribute.}
 
 \item{inference}{model inference created by \link{ensemble_inference}}
 
-\item{logBF}{whether the Bayes factor should be on log scale}
+\item{logBF}{whether the Bayes factor should be on log scale. When model
+inference objects store log-space inclusion Bayes factors, log-scale
+values are taken from them, so they remain finite beyond the range of
+natural-scale Bayes factors.}
 
 \item{BF01}{whether the Bayes factor should be inverted}
 

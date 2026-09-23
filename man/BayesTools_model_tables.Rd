@@ -321,7 +321,10 @@ estimates tables. Can be \code{"all"}, \code{"none"}, \code{TRUE},
 \code{BayesTools.JAGS_estimates_diagnostic_columns} option, or all
 diagnostics unless \code{remove_diagnostics = TRUE}.}
 
-\item{logBF}{whether the Bayes factor should be on log scale}
+\item{logBF}{whether the Bayes factor should be on log scale. When model
+inference objects store log-space inclusion Bayes factors, log-scale
+values are taken from them, so they remain finite beyond the range of
+natural-scale Bayes factors.}
 
 \item{BF01}{whether the Bayes factor should be inverted}
 

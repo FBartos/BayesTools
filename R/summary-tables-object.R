@@ -96,6 +96,27 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   return(BF)
 }
 
+# Format Bayes factors supplied as natural-log BF values in the BF10
+# orientation. Log-scale outputs are computed in log space, so Bayes factors
+# beyond the double range keep finite log values instead of passing through
+# exp() to 0 or Inf. Natural-scale outputs use 'BF' when it is supplied.
+.format_BF_from_log <- function(log_BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE,
+                                bound_operator = NULL, BF = NULL){
+
+  BF_names <- names(log_BF)
+  log_BF   <- as.numeric(log_BF)
+  BF       <- if(is.null(BF)) exp(log_BF) else as.numeric(BF)
+  names(BF) <- BF_names
+  attr(BF, "bound_operator") <- bound_operator
+
+  out <- format_BF(BF, logBF = logBF, BF01 = BF01, inclusion = inclusion)
+  if(logBF){
+    out[] <- if(BF01) -log_BF else log_BF
+  }
+
+  out
+}
+
 #' @export
 `[.BayesTools_BF` <- function(x, i, ...){
 
@@ -576,8 +597,21 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
       BF_values <- object[[BF_col]]
       raw_BF    <- as.numeric(BF_values)
       bound_operator <- .standardize_BF_bound_operator(attr(BF_values, "bound_operator"), length(BF_values))
+      inclusion <- identical(attr(object, "type")[BF_col], "inclusion_BF")
       if(isTRUE(attr(BF_values, "logBF"))){
-        raw_BF <- exp(raw_BF)
+        # stay in log space so that log-scale values survive re-formatting
+        if(isTRUE(attr(BF_values, "BF01"))){
+          raw_BF <- -raw_BF
+          bound_operator <- .invert_BF_bound_operator(bound_operator)
+        }
+        object[[BF_col]] <- .format_BF_from_log(
+          raw_BF,
+          logBF          = logBF,
+          BF01           = BF01,
+          inclusion      = inclusion,
+          bound_operator = bound_operator
+        )
+        next
       }
       if(isTRUE(attr(BF_values, "BF01"))){
         raw_BF <- 1 / raw_BF
@@ -588,7 +622,7 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
         raw_BF,
         logBF     = logBF,
         BF01      = BF01,
-        inclusion = identical(attr(object, "type")[BF_col], "inclusion_BF")
+        inclusion = inclusion
       )
     }
   }
