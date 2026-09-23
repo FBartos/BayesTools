@@ -28,13 +28,16 @@
   if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
     prior_list <- list(prior_list)
 
-  context <- .weightfunction_prior_list_context(prior_list)
+  # One component per original prior entry: the model indicators and the
+  # recorded component probabilities index the unmerged prior list.
+  context <- .weightfunction_prior_list_context(prior_list, merge = FALSE)
   parameter_ind <- match(parameter, context$omega_names)
   components <- NULL
+  component_index <- NULL
   continuous_component_mass <- NULL
 
   if(!is.na(parameter_ind)){
-    components <- .weightfunction_prior_marginal_components(
+    components <- .weightfunction_prior_entry_components(
       context,
       parameter_ind
     )
@@ -44,24 +47,27 @@
     }else{
       NULL
     }
-    if(!is.null(component_probabilities) &&
-       length(component_probabilities) == length(components)){
+    if(!is.null(component_probabilities)){
+      if(length(component_probabilities) != length(components)){
+        stop("Recorded weightfunction component probabilities do not match the weightfunction prior list.", call. = FALSE)
+      }
       component_probabilities <- component_probabilities /
         sum(component_probabilities)
-      for(i in seq_along(components)){
-        components[[i]]$weight <- component_probabilities[i]
+    }else{
+      if(length(models_ind) != n_samples_total ||
+         !all(models_ind %in% seq_along(components))){
+        stop("Weightfunction model indicators do not match the weightfunction prior list.", call. = FALSE)
       }
-    }else if(length(models_ind) == n_samples_total &&
-             length(components) > 0L &&
-             all(models_ind %in% seq_along(components))){
       component_probabilities <- tabulate(
         models_ind,
         nbins = length(components)
       ) / n_samples_total
-      for(i in seq_along(components)){
-        components[[i]]$weight <- component_probabilities[i]
-      }
     }
+    for(i in seq_along(components)){
+      components[[i]]$weight <- component_probabilities[i]
+    }
+    component_index <- which(component_probabilities > 0)
+    components      <- components[component_index]
 
     point_components <- vapply(
       components,
@@ -121,11 +127,12 @@
     if(is.null(components)){
       continuous_components <- which(!sapply(prior_list, is.prior.point))
     }else{
-      continuous_components <- which(vapply(
+      continuous_active <- vapply(
         components,
         function(component) !identical(component$type, "point"),
         logical(1)
-      ))
+      )
+      continuous_components <- component_index[continuous_active]
     }
     samples_density <- samples[models_ind %in% continuous_components]
 
@@ -136,7 +143,7 @@
         density_bounds <- c(-Inf, Inf)
         density_range <- range(c(0, 1, samples_density), finite = TRUE)
       }else{
-        density_components <- components[continuous_components]
+        density_components <- components[continuous_active]
         density_bounds <- .density.prior_weightfunction_components_bounds(
           density_components
         )

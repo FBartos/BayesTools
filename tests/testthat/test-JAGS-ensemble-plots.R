@@ -1316,6 +1316,20 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
     plot_posterior(mixed_posteriors_conditional6c, parameter = "PET", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)), individual = TRUE)
   })
 
+  # Individual omega panels take masses and draws from the original bias
+  # branches (none, two-sided, one-sided, PET -> none).
+  omega_5a <- BayesTools:::.simplify_as_mixed_posterior_bias(mixed_posteriors_conditional5a, "omega")
+  models_ind_5a <- attr(omega_5a$omega, "models_ind")
+  plot_data_5a <- BayesTools:::.plot_data_samples.weightparameter(omega_5a, "omega[0.025,0.05]", n_points = 256)
+  expect_equal(plot_data_5a$points1$y, mean(models_ind_5a %in% c(1, 4)), tolerance = 1e-12)
+  expect_equal(plot_data_5a$points1$y, mean(omega_5a$omega[, "omega[0.025,0.05]"] == 1), tolerance = 1e-12)
+
+  omega_6c <- BayesTools:::.simplify_as_mixed_posterior_bias(mixed_posteriors_conditional6c, "omega")
+  models_ind_6c <- attr(omega_6c$omega, "models_ind")
+  plot_data_6c <- BayesTools:::.plot_data_samples.weightparameter(omega_6c, "omega[0.975,1]", n_points = 256)
+  expect_equal(plot_data_6c$points1$y, mean(models_ind_6c == 2), tolerance = 1e-12)
+  expect_equal(sort(plot_data_6c$density$samples), sort(omega_6c$omega[models_ind_6c == 3, "omega[0.975,1]"]))
+
   vdiffr::expect_doppelganger("ss-posterior-omega-con", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)

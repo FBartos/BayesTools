@@ -135,6 +135,165 @@ test_that("posterior omega parameters use recorded component probabilities", {
   expect_lt(density_mass, .45)
 })
 
+test_that("individual omega posteriors keep masses and draws aligned with duplicate priors", {
+
+  # Ensemble-shaped mix: duplicate 'none' and weightfunction priors across
+  # models; the recorded model probabilities index the unmerged prior list.
+  weight_prior <- prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)))
+  prior_list <- list(prior_none(), weight_prior, prior_none(), weight_prior)
+  post_probs <- c(.05, .05, .05, .85)
+  models_ind <- rep(1:4, c(100, 100, 100, 1700))
+  continuous <- (models_ind %% 2L) == 0L
+
+  samples <- cbind(
+    "omega[0,0.05]" = 1,
+    "omega[0.05,1]" = 1
+  )[rep(1, length(models_ind)), ]
+  samples[continuous, "omega[0.05,1]"] <- seq(.01, .99, length.out = sum(continuous))
+  attr(samples, "prior_list") <- prior_list
+  attr(samples, "models_ind") <- models_ind
+  attr(samples, "posterior_atoms") <- .posterior_atoms_from_priors(
+    prior_list,
+    post_probs,
+    n_columns = ncol(samples),
+    column_names = colnames(samples),
+    null_location = 1
+  )
+
+  plot_data <- .plot_data_samples.weightparameter(
+    list(omega = samples),
+    parameter = "omega[0.05,1]",
+    n_points = 512
+  )
+  density_mass <- sum(diff(plot_data$density$x) * (head(plot_data$density$y, -1) + tail(plot_data$density$y, -1)) / 2)
+
+  # Declared mass at one: P(model 1) + P(model 3); the density uses the draws
+  # of both selection models (2 and 4), not only those of model 2.
+  expect_equal(plot_data$points1$x, 1)
+  expect_equal(plot_data$points1$y, .10, tolerance = 1e-12)
+  expect_equal(plot_data$density$samples, samples[continuous, "omega[0.05,1]"])
+  expect_equal(density_mass, .90, tolerance = 5e-3)
+})
+
+test_that("individual omega posteriors of conditioned bias mixtures use the right models", {
+
+  bias_prior <- prior_mixture(
+    list(
+      prior_none(prior_weights = 1),
+      prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1)), prior_weights = 1/3),
+      prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 1, 1)), prior_weights = 1/3),
+      prior_PET("normal", list(0, 1), prior_weights = 1/3)
+    ),
+    is_null = c(TRUE, FALSE, FALSE, FALSE)
+  )
+
+  # joint one-sided bins: [0,.025], [.025,.05], [.05,.975], [.975,1]
+  indicator <- rep(1:4, c(40, 20, 10, 30))
+  two_sided <- seq(.2, .8, length.out = 20)
+  one_sided <- seq(.1, .9, length.out = 10)
+  omega <- matrix(1, nrow = length(indicator), ncol = 4)
+  omega[indicator == 2, 2:3] <- two_sided
+  omega[indicator == 3, 2]   <- one_sided
+  omega[indicator == 3, 3:4] <- one_sided / 2
+  model <- cbind(
+    bias_indicator = indicator,
+    omega,
+    PET = ifelse(indicator == 4, .5, 0)
+  )
+  colnames(model) <- c("bias_indicator", paste0("omega[", 1:4, "]"), "PET")
+  class(model) <- c("matrix", "BayesTools_fit")
+  attr(model, "prior_list") <- list(bias = bias_prior)
+
+  point_mass <- function(plot_data){
+    sum(vapply(plot_data, function(component){
+      if(inherits(component, "density.prior.point")) component$y else 0
+    }, numeric(1)))
+  }
+
+  # unconditional: the PET branch (replaced by 'none') must not merge with the
+  # null branch, so the mass at one is P(none) + P(PET)
+  mixed <- as_mixed_posteriors(model, parameters = "bias")
+  simplified <- .simplify_as_mixed_posterior_bias(mixed, "omega")
+  plot_data <- .plot_data_samples.weightparameter(simplified, "omega[0.025,0.05]", n_points = 256)
+  expect_equal(point_mass(plot_data), .40 + .30, tolerance = 1e-12)
+  expect_equal(sort(plot_data$density$samples), sort(c(two_sided, one_sided)))
+
+  # conditional on omega: the dropped null branches must not shift indices;
+  # omega[0.975,1] is one in the two-sided model and continuous in the
+  # one-sided model
+  mixed_con <- as_mixed_posteriors(model, parameters = "bias", conditional = "omega")
+  simplified_con <- .simplify_as_mixed_posterior_bias(mixed_con, "omega")
+  plot_data_con <- .plot_data_samples.weightparameter(simplified_con, "omega[0.975,1]", n_points = 256)
+  density_mass <- sum(diff(plot_data_con$density$x) * (head(plot_data_con$density$y, -1) + tail(plot_data_con$density$y, -1)) / 2)
+
+  expect_equal(plot_data_con$points1$x, 1)
+  expect_equal(point_mass(plot_data_con), 20 / 30, tolerance = 1e-12)
+  expect_equal(sort(plot_data_con$density$samples), sort(one_sided / 2))
+  expect_equal(density_mass, 10 / 30, tolerance = 5e-3)
+})
+
+test_that("weightfunction posterior bins follow the mixed columns when a model has zero prior weight", {
+
+  # mix_posteriors() maps every prior, including the zero-weight one-sided
+  # model, which forces one-sided bins for the two-sided model.
+  priors <- list(
+    prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1))),
+    .set_prior_model_weight(prior_weightfunction("one-sided", c(.01), wf_cumulative(c(1, 1))), 0),
+    prior_none()
+  )
+  omega_cuts <- weightfunctions_mapping(priors, cuts_only = TRUE)
+  expect_equal(omega_cuts, c(0, .01, .025, .975, 1))
+
+  models_ind <- rep(c(1, 3), c(60, 40))
+  omega <- matrix(1, nrow = length(models_ind), ncol = 4)
+  omega[models_ind == 1, 3] <- seq(.2, .9, length.out = 60)
+  colnames(omega) <- .weightfunction_omega_names(omega_cuts)
+  attr(omega, "models_ind") <- models_ind
+  attr(omega, "prior_list") <- priors
+  attr(omega, "posterior_atoms") <- .posterior_atoms_from_priors(
+    priors,
+    c(.6, 0, .4),
+    n_columns = ncol(omega),
+    column_names = colnames(omega),
+    null_location = 1
+  )
+  class(omega) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
+  samples <- list(omega = omega)
+  class(samples) <- c("mixed_posteriors", "list")
+
+  plot_data <- .plot_data_samples.weightfunction(
+    samples,
+    x_seq = NULL,
+    x_range = c(0, 1),
+    x_range_quant = NULL,
+    n_points = 16
+  )
+  expect_equal(unique(plot_data$x), omega_cuts)
+  expect_equal(unname(plot_data$y), unname(rep(colMeans(omega), each = 2)))
+
+  prior_data <- .plot_data_prior_list.weightfunction(
+    priors,
+    x_seq = NULL,
+    x_range = c(0, 1),
+    x_range_quant = NULL,
+    n_points = 16,
+    n_samples = 1
+  )
+  expect_equal(unique(prior_data$x), omega_cuts)
+  expect_equal(prior_data$y, c(1, 1, 1, 1, .75, .75, 1, 1), tolerance = 1e-8)
+
+  prior_parameter <- .plot_data_prior_list.weightparameter(
+    priors,
+    parameter = "omega[0.025,0.975]",
+    n_points = 16,
+    n_samples = 1
+  )
+  expect_equal(prior_parameter$points1$y, .5, tolerance = 1e-12)
+
+  expect_s3_class(plot_posterior(samples, "omega", prior = TRUE, plot_type = "ggplot"), "ggplot")
+  expect_length(plot_posterior(samples, "omega", prior = TRUE, plot_type = "ggplot", individual = TRUE), 4L)
+})
+
 test_that("structurally fixed omega coordinates remain declared point masses", {
 
   weight_prior <- prior_weightfunction(

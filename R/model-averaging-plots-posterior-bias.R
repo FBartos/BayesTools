@@ -124,12 +124,20 @@
     x_seq   <- seq(x_range[1], x_range[2], length.out = n_points)
   }
 
-  context    <- .weightfunction_prior_list_context(prior_list)
-  omega_cuts <- context$omega_cuts
-
   omega_columns <- grepl("^omega\\[", colnames(samples))
   if(any(omega_columns)){
     samples <- samples[, omega_columns, drop = FALSE]
+  }
+
+  # The mixed samples define their own bins (mix_posteriors() maps all priors,
+  # including those with zero prior weight); the prior context is a fallback
+  # for nonstandard column names.
+  omega_cuts <- .weightfunction_omega_column_cuts(colnames(samples))
+  if(is.null(omega_cuts)){
+    omega_cuts <- .weightfunction_prior_list_context(prior_list)$omega_cuts
+  }
+  if(length(omega_cuts) - 1L != ncol(samples)){
+    stop("The weightfunction posterior columns do not match the weightfunction bins.", call. = FALSE)
   }
 
   x_lCI  <- apply(samples, 2, stats::quantile, probs = .025)
@@ -159,6 +167,23 @@
   attr(out, "y_range") <- c(0, max(1, x_mean, x_lCI, x_uCI, na.rm = TRUE))
 
   return(out)
+}
+.weightfunction_omega_column_cuts <- function(column_names){
+
+  pattern <- "^omega\\[([^],]+),([^],]+)\\]$"
+  if(length(column_names) == 0L || !all(grepl(pattern, column_names))){
+    return(NULL)
+  }
+
+  lower <- suppressWarnings(as.numeric(sub(pattern, "\\1", column_names)))
+  upper <- suppressWarnings(as.numeric(sub(pattern, "\\2", column_names)))
+  n     <- length(column_names)
+  if(anyNA(lower) || anyNA(upper) || any(upper <= lower) ||
+     lower[1L] != 0 || upper[n] != 1 || any(lower[-1L] != upper[-n])){
+    return(NULL)
+  }
+
+  c(lower, upper[n])
 }
 
 .weightfunction_plot_data_pvalues <- function(data, show_data){

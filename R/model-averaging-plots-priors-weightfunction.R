@@ -53,7 +53,7 @@
 
   return(out)
 }
-.weightfunction_prior_list_context <- function(prior_list, one_sided = NULL){
+.weightfunction_prior_list_context <- function(prior_list, one_sided = NULL, merge = TRUE){
 
   omega_context <- attr(prior_list, "omega_context")
   if(is.null(one_sided)){
@@ -65,17 +65,20 @@
   }else{
     check_bool(one_sided, "one_sided")
   }
+  check_bool(merge, "merge")
 
+  # Posterior plots keep one entry per original prior so that model indicators
+  # and recorded component probabilities stay aligned with their priors.
   prior_list <- .weightfunction_expand_bias_mixture_priors(prior_list)
-  prior_list <- .simplify_prior_list(prior_list)
-  prior_list <- .weightfunction_expand_bias_mixture_priors(prior_list)
+  if(merge){
+    prior_list <- .simplify_prior_list(prior_list)
+    prior_list <- .weightfunction_expand_bias_mixture_priors(prior_list)
+  }
 
   prior_weights <- sapply(prior_list, .prior_model_weight)
-  keep          <- is.finite(prior_weights) & prior_weights > 0
-  prior_list    <- prior_list[keep]
-  prior_weights <- prior_weights[keep]
+  prior_weights[!(is.finite(prior_weights) & prior_weights > 0)] <- 0
 
-  if(length(prior_list) == 0){
+  if(!any(prior_weights > 0)){
     stop("At least one weightfunction prior must have positive prior weight.", call. = FALSE)
   }
 
@@ -88,23 +91,31 @@
       selection_prior$prior_weights <- prior_weights[i]
       prior_list[[i]] <- selection_prior
     }else if(!(is.prior.weightfunction(prior_list[[i]]) | is.prior.none(prior_list[[i]]))){
-      prior_list[[i]] <- prior_none(prior_weights = prior_weights[i])
+      prior_list[[i]] <- .set_prior_model_weight(prior_none(), prior_weights[i])
     }
   }
 
-  prior_weights <- sapply(prior_list, .prior_model_weight)
-  model_weights <- prior_weights / sum(prior_weights)
+  # Priors with zero weight still define the joint omega bins of mixed
+  # posterior samples, so the mapping is built before they are dropped.
   omega_info    <- .weightfunction_mapping_info(prior_list, one_sided = one_sided)
-  omega_mapping <- omega_info$mapping
-  omega_cuts    <- omega_info$cuts
-  omega_names   <- omega_info$names
+  omega_mapping <- lapply(seq_along(prior_list), function(i){
+    if(i <= length(omega_info$mapping)) omega_info$mapping[[i]] else NULL
+  })
+
+  if(merge){
+    keep          <- prior_weights > 0
+    prior_list    <- prior_list[keep]
+    prior_weights <- prior_weights[keep]
+    omega_mapping <- omega_mapping[keep]
+  }
+  model_weights <- prior_weights / sum(prior_weights)
 
   list(
     prior_list    = prior_list,
     model_weights = model_weights,
     omega_mapping = omega_mapping,
-    omega_cuts    = omega_cuts,
-    omega_names   = omega_names
+    omega_cuts    = omega_info$cuts,
+    omega_names   = omega_info$names
   )
 }
 .weightfunction_prior_context_uses_selection_mapping <- function(prior_list){
@@ -154,30 +165,29 @@
 
   FALSE
 }
-.weightfunction_prior_marginal_components <- function(context, parameter_ind){
+.weightfunction_prior_entry_components <- function(context, parameter_ind){
 
-  components <- list()
-
-  for(i in seq_along(context$prior_list)){
+  lapply(seq_along(context$prior_list), function(i){
     prior <- context$prior_list[[i]]
 
     if(is.prior.weightfunction(prior)){
-      component <- .weightfunction_prior_component(
+      .weightfunction_prior_component(
         prior  = prior,
         index  = context$omega_mapping[[i]][parameter_ind],
         weight = context$model_weights[i]
       )
     }else{
-      component <- list(
+      list(
         type     = "point",
         weight   = context$model_weights[i],
         location = 1
       )
     }
+  })
+}
+.weightfunction_prior_marginal_components <- function(context, parameter_ind){
 
-    components[[length(components) + 1L]] <- component
-  }
-
+  components <- .weightfunction_prior_entry_components(context, parameter_ind)
   components <- components[vapply(components, function(component){
     is.finite(component$weight) && component$weight > 0
   }, logical(1))]
