@@ -1232,6 +1232,102 @@ test_that("full PET-PEESE prior overlays keep the mu mixture weights", {
   expect_equal(min(band$y[band$x == 1]), reference_quantile(.025, 1), tolerance = 1e-6)
 })
 
+test_that("full PET-PEESE prior overlays follow a condition on mu", {
+
+  prior_list <- list(
+    mu   = prior_mixture(
+      list(
+        prior("spike",  list(0),       prior_weights = 2),
+        prior("normal", list(-1, 0.5), prior_weights = 1),
+        prior("normal", list( 1, 0.5), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE, FALSE)
+    ),
+    bias = prior_mixture(
+      list(
+        prior_none(prior_weights = 1),
+        prior_PET("normal", list(mean = 0, sd = 1), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE)
+    )
+  )
+  mu_indicator   <- rep(1:3, length.out = 120)
+  bias_indicator <- rep(1:2, each = 60)
+  posterior <- cbind(
+    mu             = ifelse(mu_indicator == 1, 0, seq(-1.5, 1.5, length.out = 120)),
+    mu_indicator   = mu_indicator,
+    bias_indicator = bias_indicator,
+    PET            = ifelse(bias_indicator == 2, seq(.1, 1.5, length.out = 120), 0)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+
+  # independent reference: mixture over (mu component, bias branch) pairs of
+  # mu + se * PET with PET ~ N(0, 1)[0, Inf) and mu ~ spike(0) / N(-1 or 1, .5)
+  pair_cdf <- function(q, se, mu_mean, pet){
+    if(is.na(mu_mean)){
+      return(max(0, 2 * stats::pnorm(q / se) - 1))
+    }
+    if(!pet){
+      return(stats::pnorm(q, mu_mean, .5))
+    }
+    stats::integrate(function(b) stats::pnorm(q - se * b, mu_mean, .5) * 2 * stats::dnorm(b),
+                     lower = 0, upper = Inf, rel.tol = 1e-10)$value
+  }
+  reference_quantile <- function(p, se, pairs){
+    cdf <- function(q) sum(vapply(seq_len(nrow(pairs)), function(i){
+      pairs$weight[i] * pair_cdf(q, se, pairs$mu[i], pairs$pet[i])
+    }, numeric(1)))
+    stats::uniroot(function(q) cdf(q) - p, c(-10, 10), tol = 1e-12)$root
+  }
+  prior_line <- function(samples, plot_type){
+    if(plot_type == "ggplot"){
+      plot <- plot_posterior(samples, "PETPEESE", plot_type = "ggplot", prior = TRUE, n_points = 3)
+      return(ggplot2::ggplot_build(plot)$data[[2]]$y)
+    }
+    drawn <- list()
+    testthat::local_mocked_bindings(
+      .lines.prior.PETPEESE = function(plot_data, ...){
+        drawn[[length(drawn) + 1L]] <<- plot_data$y
+        invisible(NULL)
+      },
+      .package = "BayesTools"
+    )
+    device_file <- tempfile(fileext = ".pdf")
+    grDevices::pdf(device_file)
+    on.exit(grDevices::dev.off(), add = TRUE)
+    plot_posterior(samples, "PETPEESE", plot_type = "base", prior = TRUE, n_points = 3)
+    drawn[[1L]]
+  }
+
+  # mu AND PET-PEESE: slab components of mu with the PET branch
+  pairs_and <- data.frame(mu = c(-1, 1), pet = c(TRUE, TRUE), weight = c(.5, .5))
+  samples_and <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = c("mu", "PETPEESE"), force_plots = TRUE)
+  expect_false(any(samples_and$mu == 0))
+  line_and <- prior_line(samples_and, "ggplot")
+  expect_equal(line_and[2:3], c(reference_quantile(.5, .5, pairs_and), reference_quantile(.5, 1, pairs_and)), tolerance = 1e-6)
+  expect_equal(prior_line(samples_and, "base"), line_and, tolerance = 1e-12)
+
+  # mu OR PET-PEESE: mu and bias are dependent under the condition
+  pairs_or <- data.frame(
+    mu     = c(NA, -1, -1, 1, 1),
+    pet    = c(TRUE, FALSE, TRUE, FALSE, TRUE),
+    weight = c(2, 1, 1, 1, 1) / 6
+  )
+  samples_or <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = c("mu", "PETPEESE"),
+                                    conditional_rule = "OR", force_plots = TRUE)
+  line_or <- prior_line(samples_or, "ggplot")
+  expect_equal(line_or[2:3], c(reference_quantile(.5, .5, pairs_or), reference_quantile(.5, 1, pairs_or)), tolerance = 1e-6)
+  expect_equal(prior_line(samples_or, "base"), line_or, tolerance = 1e-12)
+
+  # mu only: the unconditioned bias mixture with the slab components of mu
+  pairs_mu <- data.frame(mu = c(-1, -1, 1, 1), pet = c(FALSE, TRUE, FALSE, TRUE), weight = rep(.25, 4))
+  samples_mu <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = "mu", force_plots = TRUE)
+  line_mu <- prior_line(samples_mu, "ggplot")
+  expect_equal(line_mu[2:3], c(reference_quantile(.5, .5, pairs_mu), reference_quantile(.5, 1, pairs_mu)), tolerance = 1e-6)
+})
+
 test_that("omega posterior KDE does not infer spikes from exact sample values", {
   continuous_samples <- seq(.005, .995, length.out = 75)
   omega_samples <- cbind(

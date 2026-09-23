@@ -124,6 +124,93 @@
 
   prior_list
 }
+.petpeese_samples_prior_pairs <- function(samples, mu_name){
+
+  # Joint prior of the effect and the bias branch under the samples'
+  # condition. A condition may involve mu, the bias event, other parameters,
+  # or combine them with OR, so mu and bias are paired within each model
+  # option of the condition event rather than conditioned separately.
+  prior_list <- attr(samples, "prior_list", exact = TRUE)
+  if(!is.list(prior_list) || is.prior(prior_list) ||
+     !is.prior(prior_list[[mu_name]]) || !is.prior(prior_list[["bias"]])){
+    return(NULL)
+  }
+
+  condition_event <- .bias_samples_condition_event(samples)
+  models <- NULL
+  if(!is.null(condition_event) &&
+     length(.posterior_density_normalize_condition(condition_event[["conditional"]])) > 0L){
+    models <- .condition_event_model_options(prior_list, condition_event)
+  }
+  if(is.null(models)){
+    models <- list(prior_lists = list(prior_list), weights = 1)
+  }
+  if(length(models[["prior_lists"]]) == 0L){
+    stop("The condition of the samples has zero prior probability.", call. = FALSE)
+  }
+
+  mu_priors   <- list()
+  bias_priors <- list()
+  weights     <- numeric()
+  for(i in seq_along(models[["prior_lists"]])){
+    model_prior_list <- models[["prior_lists"]][[i]]
+    bias_prior       <- model_prior_list[["bias"]]
+    if(is.prior.mixture(bias_prior)){
+      branch_weights <- attr(bias_prior, "prior_weights")
+      if(is.null(branch_weights)){
+        branch_weights <- vapply(bias_prior, .prior_model_weight, numeric(1))
+      }
+      branches <- lapply(seq_along(bias_prior), function(k) bias_prior[[k]])
+    }else{
+      branch_weights <- 1
+      branches       <- list(bias_prior)
+    }
+    branch_weights <- branch_weights / sum(branch_weights)
+
+    for(k in seq_along(branches)){
+      mu_priors[[length(mu_priors) + 1L]]     <- model_prior_list[[mu_name]]
+      bias_priors[[length(bias_priors) + 1L]] <- .petpeese_bias_branch(branches[[k]])
+      weights <- c(weights, models[["weights"]][i] * branch_weights[k])
+    }
+  }
+
+  # merge repeated (mu, bias) pairs
+  keep <- rep(TRUE, length(weights))
+  for(i in seq_along(weights)){
+    if(!keep[i]){
+      next
+    }
+    for(j in seq_along(weights)[-seq_len(i)]){
+      if(keep[j] && identical(mu_priors[[i]], mu_priors[[j]]) &&
+         identical(bias_priors[[i]], bias_priors[[j]])){
+        weights[i] <- weights[i] + weights[j]
+        keep[j]    <- FALSE
+      }
+    }
+  }
+  keep <- keep & weights > 0
+
+  bias_priors <- lapply(which(keep), function(i){
+    .set_prior_model_weight(bias_priors[[i]], weights[i])
+  })
+
+  list(
+    prior_list    = bias_priors,
+    prior_list_mu = mu_priors[keep]
+  )
+}
+.petpeese_bias_branch <- function(branch){
+
+  # branches without PET or PEESE terms (no bias, weightfunctions, ...)
+  # imply PET = PEESE = 0
+  if(!(is.prior.PET(branch) || is.prior.PEESE(branch))){
+    return(prior("point", parameters = list(location = 0)))
+  }
+
+  # weights of the plotted pairs are set explicitly
+  attr(branch, "model_prior_weights") <- NULL
+  branch
+}
 .simplify_as_mixed_posterior_bias <- function(samples, parameter) {
 
   ### replace all remaining priors by null prior

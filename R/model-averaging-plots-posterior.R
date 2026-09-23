@@ -321,14 +321,13 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       if(is.null(samples[["mu"]]) && is.null(samples[["mu_intercept"]]))
         stop("'mu' or 'mu_intercept' samples are required for plotting PET-PEESE.")
 
-      if(!is.null(samples[["mu"]])){
-        prior_list_mu <- attr(samples[["mu"]], "prior_list")
-      }else if(!is.null(samples[["mu_intercept"]])){
-        prior_list_mu <- attr(samples[["mu_intercept"]], "prior_list")
-      }
+      mu_name       <- if(!is.null(samples[["mu"]])) "mu" else "mu_intercept"
+      prior_list_mu <- attr(samples[[mu_name]], "prior_list")
       if(is.prior.simple(prior_list_mu)){
         prior_list_mu <- list(prior_list_mu)
       }
+
+      prior_pairs <- if(!is.null(samples[["bias"]])) .petpeese_samples_prior_pairs(samples, mu_name) else NULL
 
       if (is.null(samples[["bias"]])){
         # TODO: a bit of a hack - removing priors that were added as a fill for sampling
@@ -349,10 +348,15 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         if(is.prior.simple(prior_list)){
           prior_list <- list(prior_list)
         }
+      } else if(!is.null(prior_pairs)){
+        # (mu, bias branch) pairs of the model prior under the samples'
+        # condition, which may involve mu as well as the bias event
+        prior_list    <- prior_pairs[["prior_list"]]
+        prior_list_mu <- prior_pairs[["prior_list_mu"]]
       } else {
-        # bias branches weighted as in the (possibly conditioned) posterior;
-        # branches without PET or PEESE terms (no bias, weightfunctions, ...)
-        # imply PET = PEESE = 0
+        # without the model prior list: bias branches weighted as in the
+        # (possibly conditioned) posterior; branches without PET or PEESE
+        # terms (no bias, weightfunctions, ...) imply PET = PEESE = 0
         prior_list <- lapply(.bias_samples_prior_list(samples), function(bias_prior){
           if(is.prior.PET(bias_prior) || is.prior.PEESE(bias_prior)){
             return(bias_prior)
