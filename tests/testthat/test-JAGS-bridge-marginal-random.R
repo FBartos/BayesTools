@@ -161,6 +161,81 @@ test_that("marginalized random formulas compile certified factor nodes", {
   expect_false(grepl("target_cov_block_1_lower", compiled$syntax, fixed = TRUE))
 })
 
+test_that("unstructured marginal covariance does not require a monitored correlation node", {
+
+  set.seed(1)
+  data <- data.frame(
+    g = factor(rep(letters[1:5], each = 4)),
+    x = stats::rnorm(20)
+  )
+  compile_design <- function(prior_random_input){
+    JAGS_formula(
+      formula    = ~ 1 + x + (1 + x | g),
+      parameter  = "mu",
+      data       = data,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x         = prior("normal", list(0, 1))
+      ),
+      prior_random = prior_random_input
+    )$formula_design
+  }
+  sd_prior <- prior("normal", list(0, 1), list(0, Inf))
+  designs <- list(
+    monitor_off = compile_design(prior_random(
+      sd = sd_prior,
+      monitor = random_monitor(correlation = FALSE)
+    )),
+    lkj_off = compile_design(prior_random(
+      sd = sd_prior,
+      cor = prior_lkj(include_correlation = FALSE)
+    ))
+  )
+  monitored <- compile_design(prior_random(sd = sd_prior))
+
+  for(case in names(designs)){
+    correlation <- designs[[case]]$random_effects[[1L]]$correlation
+    expect_null(correlation$correlation_name, info = case)
+    cholesky <- correlation$cholesky_name
+    for(representation in c("dense", "auto")){
+      compiled <- JAGS_formula_random_marginal_covariance(
+        formula_design = designs[[case]],
+        row_blocks     = list(seq_len(nrow(data))),
+        prefix         = "target_cov",
+        representation = representation
+      )
+      expect_match(
+        compiled$syntax,
+        paste0(
+          "target_cov_term_1_cor[a,c] = inprod(", cholesky, "[a,1:2], ",
+          cholesky, "[c,1:2])"
+        ),
+        fixed = TRUE,
+        info = paste(case, representation)
+      )
+      expect_false(
+        grepl("_xRE_CORx_R", compiled$syntax, fixed = TRUE),
+        info = paste(case, representation)
+      )
+    }
+  }
+
+  # A monitored correlation-matrix node is still used when it exists.
+  compiled <- JAGS_formula_random_marginal_covariance(
+    formula_design = monitored,
+    row_blocks     = list(seq_len(nrow(data))),
+    prefix         = "target_cov"
+  )
+  expect_match(
+    compiled$syntax,
+    paste0(
+      "target_cov_term_1_cor[a,c] = ",
+      monitored$random_effects[[1L]]$correlation$correlation_name, "[a,c]"
+    ),
+    fixed = TRUE
+  )
+})
+
 .bridge_structured_cholesky_reference <- function(
     random_term, n_columns, posterior, structure){
 

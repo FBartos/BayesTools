@@ -585,10 +585,25 @@ JAGS_formula_random_marginal_covariance <- function(
         correlation$correlation_name, "[a,c] }\n",
         "}\n"
       )
+    }else if(is.list(correlation) &&
+             is.character(correlation$cholesky_name) &&
+             length(correlation$cholesky_name) == 1L &&
+             !is.na(correlation$cholesky_name) &&
+             nzchar(correlation$cholesky_name)){
+      # The correlation-matrix node exists only when correlation monitoring is
+      # requested; the Cholesky factor is always generated, and R = L L'.
+      cholesky_name <- correlation$cholesky_name
+      syntax <- paste0(
+        "for(a in 1:", n_columns, "){\n",
+        "  for(c in 1:", n_columns, "){ ", prefix, "_cor[a,c] = inprod(",
+        cholesky_name, "[a,1:", n_columns, "], ",
+        cholesky_name, "[c,1:", n_columns, "]) }\n",
+        "}\n"
+      )
     }else{
       stop(
         "Unstructured random-effect block '", random_term$block_name,
-        "' is missing correlation-matrix node metadata.",
+        "' is missing correlation-matrix and Cholesky-factor node metadata.",
         call. = FALSE
       )
     }
