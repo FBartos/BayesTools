@@ -36,6 +36,14 @@ BayesTools implementation. Use fixed seeds in all regeneration code and record
 enough provenance to reject stale or substituted fits. Cheap prior-only
 examples should not acquire a fitted-model cache.
 
+Cache validity depends only on source fingerprints: the vignette source, its
+cache helper, `DESCRIPTION` without build fields and `Version`, `NAMESPACE`,
+package data, and the `R/` and `src/` sources. Changing any of them makes the
+cache stale until it is regenerated. R and package versions are producer
+provenance: manifests record them, and validation reports differences in its
+status and with a message when the cache is loaded, but they never make a
+cache stale. Caches therefore build on newer R versions and after version bumps.
+
 The repository tests reject evaluated calls to `JAGS_fit()`,
 `JAGS_bridgesampling()`, and `rstanarm::stan_lmer()` during ordinary rendering.
 They also enforce BayesTools' marginal-likelihood contract; do not replace it

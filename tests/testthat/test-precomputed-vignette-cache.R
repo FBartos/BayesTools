@@ -343,15 +343,24 @@ test_that("validation rejects unsupported manifests and payload classes", {
   )
 })
 
-test_that("validation distinguishes source, R, and package staleness", {
+test_that("only source fingerprints make a cache stale", {
   cache_file <- file.path(withr::local_tempdir(), "SpikeAndSlab.RDS")
   state <- .precomputed_test_state()
+  objects <- .precomputed_test_objects("SpikeAndSlab")
   write_precomputed_vignette_cache(
-    .precomputed_test_objects("SpikeAndSlab"),
+    objects,
     "SpikeAndSlab",
     cache_file,
     state = state
   )
+
+  unchanged <- validate_precomputed_vignette_cache(
+    "SpikeAndSlab",
+    cache_file,
+    state = state
+  )
+  expect_true(unchanged$valid)
+  expect_identical(nrow(unchanged$version_differences), 0L)
 
   changed_source <- state
   changed_source$source_hashes[[1L]] <- .precomputed_test_hash("a")
@@ -360,21 +369,75 @@ test_that("validation distinguishes source, R, and package staleness", {
     cache_file,
     state = changed_source
   )
+  expect_false(source_status$valid)
   expect_identical(source_status$reason, "stale")
   expect_identical(source_status$stale, "source files")
+  expect_identical(
+    source_status$error,
+    paste0(
+      "Precomputed SpikeAndSlab vignette cache is stale; changed ",
+      "dependencies: source files."
+    )
+  )
 
+  # A CI runner with a newer R and a development version bump of BayesTools
+  # (and of any other recorded producer package) must reuse the cache.
   changed_runtime <- state
   changed_runtime$r_version <- "4.6.1"
+  changed_runtime$package_versions[["BayesTools"]] <- "0.3.1.7"
   changed_runtime$package_versions[["coda"]] <- "0.20-0"
   runtime_status <- validate_precomputed_vignette_cache(
     "SpikeAndSlab",
     cache_file,
     state = changed_runtime
   )
-  expect_identical(runtime_status$reason, "stale")
+  expect_true(runtime_status$valid)
+  expect_null(runtime_status$reason)
+  expect_null(runtime_status$error)
+  expect_length(runtime_status$stale, 0L)
   expect_identical(
-    runtime_status$stale,
-    c("R version", "package versions")
+    runtime_status$version_differences,
+    data.frame(
+      component = c("R", "BayesTools", "coda"),
+      cache = c("4.6.0", "0.3.1.6", "0.19-4.1"),
+      current = c("4.6.1", "0.3.1.7", "0.20-0"),
+      stringsAsFactors = FALSE
+    )
+  )
+  version_message <- paste0(
+    "Precomputed SpikeAndSlab vignette cache was generated with other ",
+    "versions: R 4.6.0 (current 4.6.1), BayesTools 0.3.1.6 (current ",
+    "0.3.1.7), coda 0.19-4.1 (current 0.20-0). Its source fingerprints ",
+    "match, so the cache is used."
+  )
+  expect_message(
+    loaded <- load_precomputed_vignette_cache(
+      "SpikeAndSlab",
+      cache_file,
+      state = changed_runtime
+    ),
+    version_message,
+    fixed = TRUE
+  )
+  expect_identical(loaded, objects)
+  expect_silent(load_precomputed_vignette_cache(
+    "SpikeAndSlab",
+    cache_file,
+    state = state
+  ))
+
+  changed_both <- changed_runtime
+  changed_both$source_hashes[[1L]] <- .precomputed_test_hash("a")
+  both_status <- validate_precomputed_vignette_cache(
+    "SpikeAndSlab",
+    cache_file,
+    state = changed_both
+  )
+  expect_false(both_status$valid)
+  expect_identical(both_status$stale, "source files")
+  expect_identical(
+    both_status$version_differences,
+    runtime_status$version_differences
   )
 })
 
@@ -410,7 +473,7 @@ test_that("source hashes are relative, complete, and line-ending stable", {
   expect_true(all(grepl("^[[:xdigit:]]{32}$", lf_hashes)))
 })
 
-test_that("DESCRIPTION fingerprints ignore only build-time normalization", {
+test_that("DESCRIPTION fingerprints ignore build fields and the version", {
   description_root <- withr::local_tempdir()
   source_description <- file.path(description_root, "source")
   staged_description <- file.path(description_root, "staged")
@@ -436,8 +499,17 @@ test_that("DESCRIPTION fingerprints ignore only build-time normalization", {
     .precomputed_vignette_description_md5(staged_description)
   )
 
+  # A development version bump is provenance, not a source change.
   staged <- readLines(staged_description, warn = FALSE)
   staged[staged == "Version: 0.3.1.7"] <- "Version: 0.3.1.8"
+  writeLines(staged, staged_description, useBytes = TRUE)
+  expect_identical(
+    .precomputed_vignette_description_md5(source_description),
+    .precomputed_vignette_description_md5(staged_description)
+  )
+
+  staged[staged == "Depends: R (>= 4.3.0), stats"] <-
+    "Depends: R (>= 4.4.0), stats"
   writeLines(staged, staged_description, useBytes = TRUE)
   expect_false(identical(
     .precomputed_vignette_description_md5(source_description),

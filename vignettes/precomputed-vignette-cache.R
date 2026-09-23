@@ -64,7 +64,9 @@ precomputed_vignette_cache_names <- function(vignette){
 
 .precomputed_vignette_description_md5 <- function(path){
   description <- read.dcf(path, all = TRUE)
-  description[c("Author", "Built", "Packaged")] <- NULL
+  # Build fields and the package version are not source content: versions are
+  # producer provenance, reported by validation but never a staleness reason.
+  description[c("Author", "Built", "Packaged", "Version")] <- NULL
   description <- description[order(names(description), method = "radix")]
   values <- vapply(description, function(value){
     gsub("[[:space:]]+", " ", trimws(value))
@@ -454,8 +456,55 @@ precomputed_vignette_cache_state <- function(
     reason = NULL,
     error = NULL,
     stale = character(),
+    version_differences = .precomputed_vignette_version_differences(),
     manifest = NULL,
     objects = NULL
+  )
+}
+
+.precomputed_vignette_version_differences <- function(
+    producer = NULL, state = NULL){
+  differences <- data.frame(
+    component = character(),
+    cache = character(),
+    current = character(),
+    stringsAsFactors = FALSE
+  )
+  if(is.null(producer) || is.null(state)){
+    return(differences)
+  }
+  cache_versions <- c(R = producer$r_version, producer$package_versions)
+  current_versions <- c(R = state$r_version, state$package_versions)
+  components <- union(names(cache_versions), names(current_versions))
+  cache <- unname(cache_versions[components])
+  current <- unname(current_versions[components])
+  differs <- is.na(cache) | is.na(current) | cache != current
+  cache <- cache[differs]
+  current <- current[differs]
+  cache[is.na(cache)] <- "unrecorded"
+  current[is.na(current)] <- "unavailable"
+  data.frame(
+    component = components[differs],
+    cache = cache,
+    current = current,
+    stringsAsFactors = FALSE
+  )
+}
+
+.precomputed_vignette_version_message <- function(status){
+  differences <- status$version_differences
+  if(is.null(differences) || nrow(differences) == 0L){
+    return(NULL)
+  }
+  paste0(
+    "Precomputed ", status$vignette,
+    " vignette cache was generated with other versions: ",
+    paste0(
+      differences$component, " ", differences$cache,
+      " (current ", differences$current, ")",
+      collapse = ", "
+    ),
+    ". Its source fingerprints match, so the cache is used."
   )
 }
 
@@ -579,19 +628,14 @@ validate_precomputed_vignette_cache <- function(
     return(status)
   }
 
+  # Only the source fingerprints decide validity. R and package versions are
+  # producer provenance: they are reported when they differ, never stale.
+  status$version_differences <- .precomputed_vignette_version_differences(
+    envelope$manifest$producer,
+    state
+  )
   if(!identical(state$source_hashes, envelope$manifest$source_hashes)){
-    status$stale <- c(status$stale, "source files")
-  }
-  if(!identical(state$r_version, envelope$manifest$producer$r_version)){
-    status$stale <- c(status$stale, "R version")
-  }
-  if(!identical(
-    state$package_versions,
-    envelope$manifest$producer$package_versions
-  )){
-    status$stale <- c(status$stale, "package versions")
-  }
-  if(length(status$stale) > 0L){
+    status$stale <- "source files"
     status$reason <- "stale"
     status$error <- paste0(
       "Precomputed ", vignette,
@@ -604,6 +648,10 @@ validate_precomputed_vignette_cache <- function(
   status$valid <- TRUE
   if(isTRUE(load)){
     status$objects <- objects
+    version_message <- .precomputed_vignette_version_message(status)
+    if(!is.null(version_message)){
+      message(version_message)
+    }
   }
   status
 }
