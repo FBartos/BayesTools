@@ -978,6 +978,83 @@ test_that("explicit convergence monitors reach additional monitored parameters",
   )
 })
 
+test_that("automatic fitting excludes only generated deterministic monitors", {
+
+  set.seed(34)
+  data <- data.frame(
+    g = factor(rep(paste0("g", 1:4), each = 4)),
+    x = stats::rnorm(16)
+  )
+  us_formula <- function(parameterization){
+    JAGS_formula(
+      ~ 1 + x + random(1 + x | g, name = "g", covariance = "us"),
+      "mu",
+      data,
+      list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1))
+      ),
+      prior_random = prior_random(g = random_block(
+        sd = prior("normal", list(0, 1), list(0, Inf)),
+        parameterization = parameterization,
+        monitor = random_monitor(coefficients = TRUE, lkj_primitives = TRUE)
+      ))
+    )
+  }
+  # 'theta' is a user-defined deterministic node and 'mu' the formula output;
+  # both were requested by the user and stay checked.
+  excluded <- function(formula){
+    BayesTools:::.bt_convergence_generated_deterministic(
+      add_parameters = c("theta", "mu", formula$add_parameters),
+      formula_design = list(mu = formula$formula_design),
+      model_syntax = paste0(
+        "model{\n", formula$formula_syntax,
+        "theta <- 2 * mu_intercept # not ~ stochastic\n}"
+      )
+    )
+  }
+  stem <- "mu__xREx__g_xRE_"
+
+  # Non-centered: latent effects and LKJ primitives are sampled; correlation
+  # matrices, their Cholesky factor, CPCs, and coefficients are derived.
+  noncentered <- us_formula("noncentered")
+  expect_setequal(
+    noncentered$add_parameters,
+    paste0(stem, c("CORx_L", "CORx_R", "CORx_lkj_u[1]", "CORx_lkj_cpc[1]",
+                   "Zx", "COEFx"))
+  )
+  expect_setequal(
+    excluded(noncentered),
+    paste0(stem, c("CORx_L", "CORx_R", "CORx_lkj_cpc[1]", "COEFx"))
+  )
+
+  # Centered: coefficients are sampled and the latent effects derived.
+  centered <- us_formula("centered")
+  expect_setequal(
+    excluded(centered),
+    paste0(stem, c("CORx_L", "CORx_R", "CORx_lkj_cpc[1]", "Zx"))
+  )
+
+  expect_identical(
+    BayesTools:::.bt_convergence_generated_deterministic(
+      "theta", NULL, "model{ theta <- 1 }"
+    ),
+    character()
+  )
+  expect_setequal(
+    BayesTools:::.bt_jags_stochastic_node_names(paste(
+      "model{",
+      "  for(i in 1:N){ y[i] ~ dnorm(m[i], 1); m[i] <- a + b * x[i] }",
+      "  u[1:2] ~ ddirch(alpha) # d ~ dnorm(0, 1)",
+      "  c.d ~ dgamma(1, 1) T(0.1,)",
+      "  e = 2 * c.d",
+      "}",
+      sep = "\n"
+    )),
+    c("y", "u", "c.d")
+  )
+})
+
 test_that("one chain warns and retains its other convergence criteria", {
 
   set.seed(44)

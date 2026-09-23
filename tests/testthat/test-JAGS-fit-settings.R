@@ -886,6 +886,131 @@ test_that("JAGS_fit rejects unknown convergence monitors before sampling", {
   expect_null(attr(fit, "warnings"))
 })
 
+test_that("autofit checks user and sampled generated monitors but not derived ones", {
+
+  skip_if_not_installed("runjags")
+  stem <- "mu__xREx__g_xRE_"
+  columns <- c(
+    "mu_intercept", "theta",
+    paste0(stem, "CORx_L[", c("1,1", "1,2", "2,1", "2,2"), "]"),
+    paste0(stem, "CORx_R[", c("1,1", "1,2", "2,1", "2,2"), "]"),
+    paste0(stem, "CORx_lkj_u[1]"),
+    paste0(stem, "Zx[1,", 1:2, "]")
+  )
+  # Two chains; 'stuck' columns differ by 10 SD between chains (R-hat >> 1.2).
+  # Correlation diagonals and the upper Cholesky entry are exact constants.
+  sampled_fit <- function(stuck){
+    set.seed(74)
+    chain <- function(shift){
+      draws <- matrix(
+        stats::rnorm(200 * length(columns)), ncol = length(columns),
+        dimnames = list(NULL, columns)
+      )
+      draws[, grepl("_L\\[1,1\\]|_R\\[(1,1|2,2)\\]", columns)] <- 1
+      draws[, grepl("_L\\[1,2\\]", columns)] <- 0
+      draws[, paste0(stem, "CORx_lkj_u[1]")] <- stats::pnorm(
+        draws[, paste0(stem, "CORx_lkj_u[1]")]
+      )
+      draws[, stuck] <- draws[, stuck] + shift
+      coda::mcmc(draws)
+    }
+    structure(
+      list(
+        mcmc = coda::mcmc.list(chain(0), chain(10)),
+        summary.pars = list(mutate = NULL)
+      ),
+      class = "runjags"
+    )
+  }
+  control <- list(
+    max_Rhat = 1.2, min_ESS = NULL, max_error = NULL, max_SD_error = NULL,
+    max_time = list(time = 60, unit = "secs"), sample_extend = 1,
+    restarts = 1, max_extend = 1, check_indicators = FALSE
+  )
+  set.seed(75)
+  formula_data <- data.frame(
+    g = factor(rep(paste0("g", 1:3), each = 4)),
+    x = stats::rnorm(12)
+  )
+  max_extend_warning <-
+    "The automatic model fitting was terminated due to the 'max_extend' constraint."
+  extension_calls <- 0L
+
+  fit_autofit <- function(stuck){
+    sampled <- sampled_fit(stuck)
+    testthat::local_mocked_bindings(
+      run.jags = function(...) sampled,
+      extend.jags = function(...){
+        extension_calls <<- extension_calls + 1L
+        sampled
+      },
+      add.summary = function(x, ...) x,
+      .package = "runjags"
+    )
+    testthat::local_mocked_bindings(
+      .JAGS_require_packages = function(...) invisible(NULL),
+      .JAGS_load_modules = function(...) invisible(NULL),
+      .bt_attach_parameter_map = function(fit, ...) fit,
+      .bt_attach_draw_geometry = function(fit, ...) fit,
+      .package = "BayesTools"
+    )
+    extension_calls <<- 0L
+    JAGS_fit(
+      model_syntax = "model{\n theta <- 2 * mu_intercept\n}",
+      formula_list = list(
+        mu = ~ 1 + random(1 + x | g, name = "g", covariance = "us")
+      ),
+      formula_data_list = list(mu = formula_data),
+      formula_prior_list = list(mu = list(
+        intercept = prior("normal", list(0, 1))
+      )),
+      formula_random_prior_list = list(mu = prior_random(g = random_block(
+        sd = prior("normal", list(0, 1), list(0, Inf))
+      ))),
+      add_parameters = "theta",
+      chains = 2, adapt = 50, burnin = 50, sample = 100,
+      autofit = TRUE, autofit_control = control, silent = TRUE, seed = 1
+    )
+  }
+
+  # A stuck derived Cholesky entry does not block convergence.
+  fit <- fit_autofit(paste0(stem, "CORx_L[2,1]"))
+  expect_identical(extension_calls, 0L)
+  expect_null(attr(fit, "warnings"))
+
+  # A stuck user node, LKJ primitive, or latent effect is checked, as the
+  # user's add_parameters were on BayesTools 0.3.0.
+  for(stuck in c("theta", paste0(stem, "CORx_lkj_u[1]"), paste0(stem, "Zx[1,2]"))){
+    fit <- fit_autofit(stuck)
+    expect_identical(extension_calls, 1L, info = stuck)
+    expect_identical(attr(fit, "warnings"), max_extend_warning, info = stuck)
+  }
+
+  # JAGS_extend applies the same selection to the stored fit.
+  extend_autofit <- function(fit, stuck){
+    sampled <- sampled_fit(stuck)
+    attr(fit, "fit_contract") <- NULL
+    attr(fit, "parameter_map") <- .bt_build_parameter_map(character())
+    testthat::local_mocked_bindings(
+      extend.jags = function(...) sampled,
+      .package = "runjags"
+    )
+    testthat::local_mocked_bindings(
+      .JAGS_require_packages = function(...) invisible(NULL),
+      .JAGS_load_modules = function(...) invisible(NULL),
+      .package = "BayesTools"
+    )
+    attr(JAGS_extend(fit, autofit_control = control), "warnings")
+  }
+  fit <- fit_autofit(paste0(stem, "CORx_L[2,1]"))
+  expect_null(extend_autofit(fit, paste0(stem, "CORx_L[2,1]")))
+  for(stuck in c("theta", paste0(stem, "CORx_lkj_u[1]"), paste0(stem, "Zx[1,2]"))){
+    expect_identical(
+      extend_autofit(fit, stuck), max_extend_warning, info = stuck
+    )
+  }
+})
+
 
 test_that("loaded numerical constants and immutable attributes enter build parity", {
 

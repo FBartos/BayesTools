@@ -58,10 +58,14 @@
 #'   unless requested explicitly. Defaults to \code{FALSE}.}
 #'   \item{monitor}{optional character vector selecting parameters for
 #'   convergence checks. Base names select all indexed elements. Requests are
-#'   resolved against all monitored nodes, including \code{add_parameters} and
-#'   generated formula monitors, which the default selection excludes. Names
-#'   that are not monitored are rejected before sampling. Defaults to
-#'   \code{NULL}, which checks every eligible parameter.}
+#'   resolved against all monitored nodes, including the deterministic formula
+#'   monitors that the default selection excludes. Names that are not
+#'   monitored are rejected before sampling. Defaults to \code{NULL}, which
+#'   checks every eligible parameter: the priors' parameters,
+#'   \code{add_parameters}, and the stochastic nodes that formulas monitor
+#'   (such as latent random effects and LKJ primitives). Deterministic nodes
+#'   that formulas monitor (such as random-effect correlation matrices and
+#'   their Cholesky factors) are not checked by default.}
 #'   \item{allow_not_assessable}{whether undefined diagnostics for requested
 #'   sampled parameters may be ignored. Defaults to \code{FALSE}.}
 #' }
@@ -92,8 +96,9 @@
 #'   output. This setting is call-specific and is not retained with the fit;
 #'   supply it again to \code{JAGS_extend()} when needed. Connection failures stop
 #'   automatic fitting retries and preserve the original backend error.
-#' @param add_parameters vector of additional parameter names that should be used
-#' monitored but were not specified in the \code{prior_list}
+#' @param add_parameters vector of additional parameter names that should be
+#' monitored but were not specified in the \code{prior_list}. Automatic fitting
+#' checks their convergence like that of the other parameters.
 #' @param required_packages character vector specifying list of packages containing
 #' JAGS models required for sampling (in case that the function is run in parallel or in
 #' detached R session). Defaults to \code{NULL}. Parallel workers must load
@@ -510,6 +515,12 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     last_valid_capture_warnings <- captured$warnings
     captured_after_success <- TRUE
 
+    # User monitors are checked; only generated deterministic monitors are not.
+    convergence_excluded <- .bt_convergence_generated_deterministic(
+      add_parameters = add_parameters,
+      formula_design = formula_design_info,
+      model_syntax = model_syntax
+    )
     converged <- JAGS_check_convergence(
       fit = fit,
       prior_list = prior_list,
@@ -517,7 +528,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       min_ESS = autofit_control[["min_ESS"]],
       max_error = autofit_control[["max_error"]],
       max_SD_error = autofit_control[["max_SD_error"]],
-      add_parameters = add_parameters,
+      add_parameters = convergence_excluded,
       fail_fast = TRUE,
       check_indicators = autofit_control[["check_indicators"]],
       monitor = autofit_control[["monitor"]],
@@ -586,7 +597,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         min_ESS = autofit_control[["min_ESS"]],
         max_error = autofit_control[["max_error"]],
         max_SD_error = autofit_control[["max_SD_error"]],
-        add_parameters = add_parameters,
+        add_parameters = convergence_excluded,
         fail_fast = TRUE,
         check_indicators = autofit_control[["check_indicators"]],
         monitor = autofit_control[["monitor"]],
@@ -831,10 +842,16 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   }
   .bt_validate_jags_add_parameters(add_parameters, prior_list)
   autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
+  # User monitors are checked; only generated deterministic monitors are not.
+  convergence_excluded <- .bt_convergence_generated_deterministic(
+    add_parameters = add_parameters,
+    formula_design = formula_design,
+    model_syntax = model_syntax
+  )
   .bt_convergence_validate_monitor(
     fit = fit,
     prior_list = prior_list,
-    add_parameters = add_parameters,
+    add_parameters = convergence_excluded,
     monitor = autofit_control[["monitor"]]
   )
 
@@ -951,7 +968,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       min_ESS = autofit_control[["min_ESS"]],
       max_error = autofit_control[["max_error"]],
       max_SD_error = autofit_control[["max_SD_error"]],
-      add_parameters = add_parameters,
+      add_parameters = convergence_excluded,
       fail_fast = TRUE,
       check_indicators = autofit_control[["check_indicators"]],
       monitor = autofit_control[["monitor"]],

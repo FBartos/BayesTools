@@ -122,10 +122,14 @@ parameter set. Auxiliary inclusion-probability coordinates remain excluded
 unless requested explicitly. Defaults to \code{FALSE}.}
 \item{monitor}{optional character vector selecting parameters for
 convergence checks. Base names select all indexed elements. Requests are
-resolved against all monitored nodes, including \code{add_parameters} and
-generated formula monitors, which the default selection excludes. Names
-that are not monitored are rejected before sampling. Defaults to
-\code{NULL}, which checks every eligible parameter.}
+resolved against all monitored nodes, including the deterministic formula
+monitors that the default selection excludes. Names that are not
+monitored are rejected before sampling. Defaults to \code{NULL}, which
+checks every eligible parameter: the priors' parameters,
+\code{add_parameters}, and the stochastic nodes that formulas monitor
+(such as latent random effects and LKJ primitives). Deterministic nodes
+that formulas monitor (such as random-effect correlation matrices and
+their Cholesky factors) are not checked by default.}
 \item{allow_not_assessable}{whether undefined diagnostics for requested
 sampled parameters may be ignored. Defaults to \code{FALSE}.}
 }}
@@ -155,8 +159,9 @@ same seed (the first L'Ecuyer-CMRG substream), so the i-th restart does
 not repeat the fit with \code{seed + i}; the caller's random-number
 generator kind is kept.}
 
-\item{add_parameters}{vector of additional parameter names that should be used
-monitored but were not specified in the \code{prior_list}}
+\item{add_parameters}{vector of additional parameter names that should be
+monitored but were not specified in the \code{prior_list}. Automatic fitting
+checks their convergence like that of the other parameters.}
 
 \item{required_packages}{character vector specifying list of packages containing
 JAGS models required for sampling (in case that the function is run in parallel or in

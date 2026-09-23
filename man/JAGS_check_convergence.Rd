@@ -38,7 +38,10 @@ deviation of the parameters. Defaults to \code{0.05}.}
 \item{add_parameters}{vector of additional parameter names that are excluded
 from the default selection (only allows removing last, fixed, omega element
 if omega is tracked manually). Parameters named in \code{monitor} are
-checked even when they are listed here.}
+checked even when they are listed here. Automatic fitting in
+\code{JAGS_fit()} and \code{JAGS_extend()} lists only the deterministic
+nodes that formulas monitor here, so the user's \code{add_parameters} are
+checked there.}
 
 \item{fail_fast}{whether the function should stop after the first failed convergence check.}
 

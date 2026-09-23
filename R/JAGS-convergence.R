@@ -15,7 +15,10 @@
 #' @param add_parameters vector of additional parameter names that are excluded
 #' from the default selection (only allows removing last, fixed, omega element
 #' if omega is tracked manually). Parameters named in \code{monitor} are
-#' checked even when they are listed here.
+#' checked even when they are listed here. Automatic fitting in
+#' \code{JAGS_fit()} and \code{JAGS_extend()} lists only the deterministic
+#' nodes that formulas monitor here, so the user's \code{add_parameters} are
+#' checked there.
 #' @param fail_fast whether the function should stop after the first failed convergence check.
 #' @param check_indicators whether model indicator variables should be included
 #' in convergence checks. Binary indicators are checked as Bernoulli
@@ -276,6 +279,50 @@ JAGS_check_convergence <- function(
 
   requested <- .bt_convergence_monitor_base(monitor)
   add_parameters[!.bt_convergence_monitor_base(add_parameters) %in% requested]
+}
+
+# Monitors that automatic fitting leaves out of its convergence checks: nodes
+# that BayesTools generated for a formula and that the model defines only
+# deterministically, such as random-effect correlation matrices, Cholesky
+# factors, bound SDs, and derived latent effects. Their constant or derived
+# elements are not evidence of convergence. User-supplied 'add_parameters',
+# formula outputs, and generated stochastic nodes (e.g. LKJ primitives or
+# sampled latent effects) remain checked. Generated monitors are identified by
+# the persisted formula name maps, so fitting and extension agree.
+.bt_convergence_generated_deterministic <- function(add_parameters,
+                                                    formula_design,
+                                                    model_syntax){
+
+  if(length(add_parameters) == 0L || length(formula_design) == 0L){
+    return(character())
+  }
+
+  name_map  <- .bt_parameter_coordinates_name_map(formula_design)
+  generated <- name_map$jags_name[name_map$kind != "formula_output"]
+  base      <- .bt_convergence_monitor_base(add_parameters)
+  # Generated monitors never overlap prior-list nodes, so the model syntax
+  # without the prior block defines all of them.
+  stochastic <- .bt_jags_stochastic_node_names(model_syntax)
+
+  add_parameters[base %in% generated & !base %in% stochastic]
+}
+
+# Base names of the nodes that a JAGS model defines through a stochastic
+# relation ('~'). A node with any stochastic element counts as stochastic.
+.bt_jags_stochastic_node_names <- function(model_syntax){
+
+  if(length(model_syntax) == 0L){
+    return(character())
+  }
+
+  lines      <- unlist(strsplit(model_syntax, "\n", fixed = TRUE), use.names = FALSE)
+  lines      <- sub("#.*$", "", lines)
+  statements <- unlist(strsplit(lines, "[;{}]"), use.names = FALSE)
+  relations  <- statements[grepl("~", statements, fixed = TRUE)]
+  lhs        <- trimws(sub("~.*$", "", relations))
+  node_names <- regmatches(lhs, regexpr("^[A-Za-z][A-Za-z0-9._]*", lhs))
+
+  unique(node_names)
 }
 
 # Resolve an explicit convergence monitor against the fitted columns before
