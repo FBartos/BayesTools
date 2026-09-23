@@ -158,7 +158,10 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     stop(
       "Posterior atom status is unknown. Savage-Dickey evaluation requires an ",
       "explicit atom/no-atom declaration; attach posterior_atom_attribute() ",
-      "metadata or use a BayesTools posterior producer that records it.",
+      "metadata or use a BayesTools posterior producer that records it. ",
+      "Marginal posteriors created by BayesTools 0.3.0 do not record it: ",
+      "recompute them with marginal_posterior() from mixed posteriors created ",
+      "by the current version (refitting models fitted with 0.3.0).",
       call. = FALSE
     )
   }

@@ -277,13 +277,16 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           }
 
           # set the contrast
-          if(priors_info[[JAGS_predictors[i]]][["orthonormal"]]){
+          factor_flag <- function(field){
+            .marginal_posterior_factor_flag(priors_info[[JAGS_predictors[i]]], field, JAGS_predictors[i])
+          }
+          if(factor_flag("orthonormal")){
             stats::contrasts(data[,predictors[i]]) <- "contr.orthonormal"
-          }else if(priors_info[[JAGS_predictors[i]]][["meandif"]]){
+          }else if(factor_flag("meandif")){
             stats::contrasts(data[,predictors[i]]) <- "contr.meandif"
-          }else if(priors_info[[JAGS_predictors[i]]][["independent"]]){
+          }else if(factor_flag("independent")){
             stats::contrasts(data[,predictors[i]]) <- "contr.independent"
-          }else if(priors_info[[JAGS_predictors[i]]][["ordered"]]){
+          }else if(factor_flag("ordered")){
             factor_contrasts <- unlist(
               priors_info[[JAGS_predictors[i]]][["factor_contrasts"]],
               use.names = FALSE
@@ -299,7 +302,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
               )
             }
             stats::contrasts(data[,predictors[i]]) <- ordered_contrasts
-          }else if(priors_info[[JAGS_predictors[i]]][["treatment"]]){
+          }else if(factor_flag("treatment")){
             stats::contrasts(data[,predictors[i]]) <- "contr.treatment"
             if(anyNA(data[,predictors[i]]))
               stop("Unspecified levels in the '", predictors[i], "' factor (NAs not allowed for 'treatment' factors).")
@@ -1168,6 +1171,25 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   marginal
+}
+
+# Contrast flag of a mixed factor posterior. Objects created before ordered
+# factors were supported (BayesTools 0.3.0) lack part of this metadata.
+.marginal_posterior_factor_flag <- function(prior_info, field, parameter){
+
+  value <- prior_info[[field]]
+  if(!is.logical(value) || length(value) != 1L || is.na(value)){
+    stop(
+      "The mixed posterior samples of '", parameter, "' lack the factor ",
+      "metadata recorded by the current BayesTools version (missing: '", field,
+      "'); they were likely created by BayesTools 0.3.0. Recreate them with ",
+      "mix_posteriors() or as_mixed_posteriors() from models fitted with the ",
+      "current version.",
+      call. = FALSE
+    )
+  }
+
+  value
 }
 
 .marginal_posterior_samples_type <- function(parameter_samples){

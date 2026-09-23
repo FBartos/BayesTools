@@ -3368,6 +3368,29 @@ test_that("transform_scaled factor atoms are rescaled for level-labelled columns
   }
 })
 
+test_that("marginal posteriors of 0.3.0 objects ask for recomputation", {
+
+  fixture <- .marginal_semantic_fixture_for_test()
+  samples <- fixture$samples
+  # BayesTools 0.3.0 mixed factor posteriors did not record the ordered flag
+  attr(samples$mu_x_fac2t, "ordered") <- NULL
+
+  expect_error(
+    marginal_posterior(samples, "mu_x_fac2t", formula = ~ x_cont1 + x_fac2t + x_cont1 * x_fac3md),
+    "lack the factor metadata recorded by the current BayesTools version (missing: 'ordered')",
+    fixed = TRUE
+  )
+
+  # 0.3.0 marginal posteriors carry no atom declaration
+  legacy <- marginal_posterior(fixture$samples, "mu_x_cont1", use_formula = FALSE, prior_samples = TRUE)
+  attr(legacy, "posterior_atoms") <- NULL
+  expect_error(
+    Savage_Dickey_BF(legacy, silent = TRUE),
+    "Marginal posteriors created by BayesTools 0.3.0 do not record it",
+    fixed = TRUE
+  )
+})
+
 test_that("point-mass metadata merge atoms by exact location", {
 
   location <- 0.1 + 0.2
