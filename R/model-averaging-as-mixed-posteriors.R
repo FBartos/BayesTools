@@ -344,7 +344,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     coefficient_names <- .JAGS_prior_factor_names(parameter, prior)
     samples <- model_samples[, coefficient_names, drop = FALSE]
     ordered_total_indicator <- NULL
-    if(is.prior.spike_and_slab(prior$total)){
+    if(.posterior_atoms_ordered_total_has_spike(prior$total)){
       indicator_name <- paste0(
         .prior_ordered_total_name(parameter),
         "_indicator"

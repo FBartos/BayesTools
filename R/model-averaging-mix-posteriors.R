@@ -782,14 +782,16 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   return(samples)
 }
-# Posterior probability that an ordered spike-and-slab total is excluded
-# within each model, from the fitted total-prior indicator.
+# Posterior probability that an ordered total (spike-and-slab, or a mixture
+# with point(0) components) is excluded within each model, from the fitted
+# total-prior indicator.
 .mix_posteriors_ordered_exclusion_probabilities <- function(fits, priors, parameter, post_probs){
 
   indicator_name <- paste0(.prior_ordered_total_name(parameter), "_indicator")
   vapply(seq_along(priors), function(i){
     if(post_probs[i] <= 0 || !is.prior.ordered(priors[[i]]) ||
-       !is.prior.spike_and_slab(priors[[i]]$total)){
+       .posterior_atoms_is_ordered_zero_total(priors[[i]]) ||
+       !.posterior_atoms_ordered_total_has_spike(priors[[i]]$total)){
       return(0)
     }
     model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
@@ -805,7 +807,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
         call. = FALSE
       )
     }
-    mean(model_samples[, indicator_name] == 0)
+    .posterior_atoms_ordered_exclusion(priors[[i]]$total, model_samples[, indicator_name])
   }, numeric(1))
 }
 .mix_posteriors.weightfunction <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){

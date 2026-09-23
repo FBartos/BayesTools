@@ -131,13 +131,88 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
   NULL
 }
 
-.posterior_atoms_is_ordered_zero_total <- function(prior){
+.posterior_atoms_is_zero_point <- function(prior){
 
-  if(!is.prior.ordered(prior) || !is.prior.point(prior$total)){
+  if(!is.prior(prior) || !is.prior.point(prior)){
     return(FALSE)
   }
-  location <- prior$total$parameters[["location"]]
+  location <- prior$parameters[["location"]]
   is.numeric(location) && length(location) == 1L && isTRUE(location == 0)
+}
+
+.posterior_atoms_is_ordered_zero_total <- function(prior){
+
+  if(!is.prior.ordered(prior)){
+    return(FALSE)
+  }
+  total <- prior$total
+  if(.posterior_atoms_is_zero_point(total)){
+    return(TRUE)
+  }
+  zero_components <- .posterior_atoms_ordered_total_zero_components(total)
+  length(zero_components) > 0L && length(zero_components) == length(total)
+}
+
+# Mixture components of an ordered total that are a point at zero (the JAGS
+# total indicator selects components by their index).
+.posterior_atoms_ordered_total_zero_components <- function(total){
+
+  if(!is.prior.mixture(total) || is.prior.spike_and_slab(total)){
+    return(integer())
+  }
+
+  which(vapply(seq_along(total), function(i){
+    .posterior_atoms_is_zero_point(total[[i]])
+  }, logical(1)))
+}
+
+# Whether an ordered total has a spike at zero whose posterior mass is read
+# from the fitted total-prior indicator.
+.posterior_atoms_ordered_total_has_spike <- function(total){
+
+  is.prior.spike_and_slab(total) ||
+    length(.posterior_atoms_ordered_total_zero_components(total)) > 0L
+}
+
+# Probability that an ordered total is exactly zero: the spike of a
+# spike-and-slab total (indicator 0), or the point(0) components of a mixture
+# total (indicator = component index). Without an indicator, the prior
+# probability of the spike.
+.posterior_atoms_ordered_exclusion <- function(total, indicator = NULL){
+
+  if(is.prior.spike_and_slab(total)){
+    if(is.null(indicator)){
+      return(1 - mean(.get_spike_and_slab_inclusion(total)))
+    }
+    indicator <- as.integer(indicator)
+    if(length(indicator) == 0L || anyNA(indicator) ||
+       any(!indicator %in% c(0L, 1L))){
+      stop(
+        "Ordered-total posterior indicators must contain only zero and one.",
+        call. = FALSE
+      )
+    }
+    return(mean(indicator == 0L))
+  }
+
+  zero_components <- .posterior_atoms_ordered_total_zero_components(total)
+  if(length(zero_components) == 0L){
+    return(0)
+  }
+  if(is.null(indicator)){
+    prior_weights <- attr(total, "prior_weights", exact = TRUE)
+    return(sum(prior_weights[zero_components]) / sum(prior_weights))
+  }
+  indicator <- as.integer(indicator)
+  if(length(indicator) == 0L || anyNA(indicator) ||
+     any(!indicator %in% seq_along(total))){
+    stop(
+      "Ordered-total posterior indicators must index the components of the ",
+      "total prior mixture.",
+      call. = FALSE
+    )
+  }
+  mean(indicator %in% zero_components)
 }
 
 .posterior_atoms_from_priors <- function(priors, probabilities, n_columns = 1L,
@@ -361,7 +436,8 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
     prior, n_columns, column_names = NULL, indicator = NULL,
     source = "ordered_total_structure"){
 
-  if(!is.prior.ordered(prior) || !is.prior.spike_and_slab(prior$total)){
+  if(!is.prior.ordered(prior) ||
+     !.posterior_atoms_ordered_total_has_spike(prior$total)){
     return(NULL)
   }
   prior <- .prior_ordered_default_bound(prior)
@@ -370,20 +446,8 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
     return(NULL)
   }
 
-  if(is.null(indicator)){
-    inclusion_mass <- mean(.get_spike_and_slab_inclusion(prior$total))
-  }else{
-    indicator <- as.integer(indicator)
-    if(length(indicator) == 0L || anyNA(indicator) ||
-       any(!indicator %in% c(0L, 1L))){
-      stop(
-        "Ordered-total posterior indicators must contain only zero and one.",
-        call. = FALSE
-      )
-    }
-    inclusion_mass <- mean(indicator == 1L)
-  }
-  exclusion_mass <- 1 - inclusion_mass
+  exclusion_mass <- .posterior_atoms_ordered_exclusion(prior$total, indicator)
+  inclusion_mass <- 1 - exclusion_mass
   locations <- if(exclusion_mass > 0){
     matrix(0, nrow = 1L, ncol = n_columns)
   }else{
@@ -416,6 +480,10 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
       if(component == excluded_component){
         return(prior("point", list(location = 0)))
       }
+    }else if(!model_mixture &&
+             component %in% .posterior_atoms_ordered_total_zero_components(prior_entry$total)){
+      # the total indicator selected a point(0) mixture component
+      return(prior("point", list(location = 0)))
     }
     return(NULL)
   }

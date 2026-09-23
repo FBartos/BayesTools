@@ -3553,6 +3553,75 @@ test_that("mixed ordered spike-and-slab totals declare their within-model spike"
   )
 })
 
+test_that("ordered mixture totals with a spike(0) component declare their point mass", {
+
+  total <- prior_mixture(
+    list(prior("spike", list(0)), prior("normal", list(0, 1))),
+    is_null = c(TRUE, FALSE)
+  )
+  ordered_prior <- .ordered_prior_for_test(total)
+  mixture_posterior <- function(indicator){
+    total_draws <- ifelse(indicator == 1L, 0, rnorm(length(indicator)))
+    cbind(
+      "mu_f[1]" = .4 * total_draws,
+      "mu_f[2]" = .6 * total_draws,
+      "mu_f_ordered_total_indicator" = indicator
+    )
+  }
+
+  # model averaging: model probability 1/2 times the posterior spike fraction
+  set.seed(11)
+  n <- 400
+  indicators <- list(sample(1:2, n, TRUE, c(.3, .7)), sample(1:2, n, TRUE, c(.6, .4)))
+  models <- lapply(indicators, function(indicator){
+    list(
+      fit = .mock_mixing_fit_for_marginal(mixture_posterior(indicator), list(mu_f = ordered_prior)),
+      marglik = bridgesampling_object(0),
+      prior_weights = 1
+    )
+  })
+  mixed <- mix_posteriors(
+    models, parameters = "mu_f", is_null_list = list(mu_f = c(FALSE, FALSE)),
+    seed = 1, n_samples = n
+  )
+  atoms <- attr(mixed$mu_f, "posterior_atoms")
+  expect_equal(unname(atoms$locations), matrix(0, 2, 2))
+  expect_equal(atoms$mass, .5 * vapply(indicators, function(x) mean(x == 1L), numeric(1)), tolerance = 1e-12)
+
+  # prior-only single model: the declared mass is the observed zero fraction
+  # and the Savage-Dickey ratio of prior draws is 1 up to KDE error
+  # (relative sd ~2%, bias ~1% for 10,000 continuous draws; |log BF| < 0.1)
+  set.seed(12)
+  n <- 20000
+  prior_draws <- mixture_posterior(sample(1:2, n, TRUE))
+  fit <- coda::mcmc(prior_draws)
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- list(mu_f = ordered_prior)
+  samples <- as_mixed_posteriors(fit, parameters = "mu_f", n_prior_samples = 1000)
+  expect_equal(
+    attr(samples$mu_f, "posterior_atoms")$mass,
+    mean(prior_draws[, "mu_f[1]"] == 0),
+    tolerance = 1e-12
+  )
+
+  marginal <- marginal_posterior(samples, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+  for(level in c("mid", "high")){
+    level_posterior <- marginal[[level]]
+    expect_equal(
+      attr(level_posterior, "posterior_atoms")$mass,
+      mean(level_posterior == 0),
+      tolerance = 1e-12
+    )
+    expect_equal(prior_density_ordinate(attr(level_posterior, "prior_density"), 0)$point_mass, .5,
+                 tolerance = 1e-12)
+    class(level_posterior) <- c(class(level_posterior), "marginal_posterior")
+    for(null_hypothesis in c(.05, -.3)){
+      BF <- Savage_Dickey_BF(level_posterior, null_hypothesis = null_hypothesis, silent = TRUE)
+      expect_lt(abs(log(as.numeric(BF))), .1)
+    }
+  }
+})
+
 test_that("ordered point(0) totals are structural zero coefficients", {
 
   alternative_prior <- .ordered_prior_for_test(prior("normal", list(0, 1)))
