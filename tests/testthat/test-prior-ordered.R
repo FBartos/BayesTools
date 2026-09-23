@@ -824,6 +824,61 @@ test_that("marginal posterior uses the stored full-rank ordered design", {
   }
 })
 
+test_that("ordered levels combined with an intercept convolve on the common grid", {
+
+  df <- data.frame(
+    y = seq_len(6),
+    f = ordered(rep(c("low", "mid", "high"), 2), levels = c("low", "mid", "high"))
+  )
+  set.seed(8801)
+  posterior <- cbind(
+    mu_intercept = stats::rnorm(200, .2, .1),
+    "mu_f[1]"    = stats::rnorm(200, .1, .05),
+    "mu_f[2]"    = stats::rnorm(200, .15, .05)
+  )
+  level_densities <- function(allocation){
+    formula_info <- JAGS_formula(
+      y ~ f, "mu", data = df,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        f = prior_ordered(prior("normal", list(0, 1)), allocation = allocation)
+      )
+    )
+    fit <- coda::mcmc(posterior)
+    class(fit) <- c("mcmc", "BayesTools_fit")
+    attr(fit, "prior_list") <- formula_info$prior_list
+    mixed <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_f"))
+    marginal <- marginal_posterior(mixed, parameter = "mu_f", formula = ~ f,
+                                   prior_samples = TRUE, n_samples = 200)
+    bf <- unlist(Savage_Dickey_BF(marginal, null_hypothesis = 0, silent = TRUE))
+    expect_true(all(is.finite(bf) & bf > 0))
+    lapply(marginal, attr, which = "prior_density")
+  }
+
+  # Each level is intercept + share * total. Heights are compared with the
+  # analytic normal (fixed shares) or the one-dimensional mixture integral
+  # over the Beta(1, 1) share; 1e-3 covers the omitted 1e-4 tails of both
+  # sources and the product-grid quadrature (observed <= 4.2e-4).
+  fixed <- level_densities(c(.4, .6))
+  dirichlet <- level_densities(NULL)
+  share_mixture <- function(value){
+    stats::integrate(function(c) stats::dnorm(value, 0, sqrt(1 + c^2)),
+                     0, 1, rel.tol = 1e-12)$value
+  }
+  for(value in c(0, 1)){
+    expect_equal(.prior_linear_density_grid_height(fixed$mid, value),
+                 stats::dnorm(value, 0, sqrt(1.16)), tolerance = 1e-3)
+    expect_equal(.prior_linear_density_grid_height(fixed$high, value),
+                 stats::dnorm(value, 0, sqrt(2)), tolerance = 1e-3)
+    expect_equal(.prior_linear_density_grid_height(dirichlet$mid, value),
+                 share_mixture(value), tolerance = 1e-3)
+    expect_equal(.prior_linear_density_grid_height(dirichlet$high, value),
+                 stats::dnorm(value, 0, sqrt(2)), tolerance = 1e-3)
+    expect_equal(as.numeric(.prior_linear_density_height(dirichlet$high, value)),
+                 stats::dnorm(value, 0, sqrt(2)), tolerance = 1e-3)
+  }
+})
+
 test_that("ordered densities are direct when supported and bridge sampling stops for complex totals", {
   p <- prior_ordered(prior("normal", list(0, 1)), allocation = c(.25, .75))
   attr(p, "levels") <- 3

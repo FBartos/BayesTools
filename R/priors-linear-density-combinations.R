@@ -845,11 +845,28 @@
       source_transforms = source_transforms,
       n_grid            = n_grid
     )
-    dist <- .prior_linear_density_convolve(dist, group_dist, dx)
+    dist <- .prior_linear_density_convolve(
+      dist,
+      .prior_linear_density_on_spacing(group_dist, dx, n_grid),
+      dx
+    )
   }
 
   attr(dist, "weights") <- weights
   return(dist)
+}
+
+.prior_linear_density_on_spacing <- function(dist, dx, n_grid = NULL){
+
+  # The FFT convolution assumes both continuous parts share the spacing 'dx'.
+  # Groups built by the product quadrature (ordered totals times allocation
+  # shares) carry their own grid and are resampled, preserving their mass.
+  group_dx <- .prior_linear_density_dx(dist)
+  if(!is.finite(group_dx) || !is.finite(dx) ||
+     abs(group_dx - dx) <= .prior_linear_density_grid_tol() * dx){
+    return(dist)
+  }
+  .prior_linear_density_regrid(dist, dx, n_grid)
 }
 
 .prior_linear_combination_density <- function(prior_list, weights,
