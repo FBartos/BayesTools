@@ -173,6 +173,11 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   for(attribute in c("title", "footnotes", "rownames")){
     attr(out, attribute) <- attr(x, attribute)
   }
+  attr(out, "footnotes") <- .subset_table_row_footnotes(
+    attr(x, "footnotes"),
+    table_rows = rownames(x),
+    selected_rows = rownames(out)
+  )
 
   selected_parameters <- .subset_table_parameters(x, out)
   if(!is.null(selected_parameters)){
@@ -406,6 +411,31 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 
   keep <- !nzchar(warning_names) | warning_names %in% selected
   warnings[keep]
+}
+
+# Footnotes named after a table row (such as the share of draws in which an
+# original-scale correlation is defined) describe that row and are dropped
+# with it. Unnamed footnotes and footnotes named otherwise are kept.
+.subset_table_row_footnotes <- function(footnotes, table_rows, selected_rows){
+
+  footnote_names <- names(footnotes)
+  if(length(footnotes) == 0L || is.null(footnote_names)){
+    return(footnotes)
+  }
+
+  dropped <- footnote_names %in% setdiff(table_rows, selected_rows)
+  if(!any(dropped)){
+    return(footnotes)
+  }
+  footnotes <- footnotes[!dropped]
+  if(length(footnotes) == 0L){
+    return(NULL)
+  }
+  if(!any(nzchar(names(footnotes)))){
+    footnotes <- unname(footnotes)
+  }
+
+  footnotes
 }
 
 .subset_table_hypothesis_attributes <- function(table, output){

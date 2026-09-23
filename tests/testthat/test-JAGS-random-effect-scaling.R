@@ -532,6 +532,22 @@ test_that("estimates tables report the share of draws with a defined original-sc
     "summarised over 3 of 5 draws where the correlation is defined.",
     fixed = TRUE
   )
+  # The row footnote follows its row when the table is subset.
+  expect_identical(
+    attr(
+      update(table, remove_parameters = "(mu) cor(intercept,x)"),
+      "footnotes"
+    ),
+    "User note."
+  )
+  expect_identical(
+    attr(table[c("(mu) sd(x)", "(mu) cor(intercept,x)"), ], "footnotes"),
+    c("User note.", expected_footnote)
+  )
+  expect_null(attr(
+    JAGS_estimates_table(fit)[c("(mu) sd(intercept)", "(mu) sd(x)"), ],
+    "footnotes"
+  ))
   simplified <- JAGS_estimates_table(
     fit,
     formula_prefix = FALSE,

@@ -447,6 +447,32 @@ test_that("BayesTools table row and column subsets retain print metadata", {
   expect_true(any(grepl("Posterior summaries.", output, fixed = TRUE)))
 })
 
+test_that("BayesTools table row subsets drop footnotes named after removed rows", {
+
+  table <- data.frame(Mean = c(1, 2), row.names = c("theta", "beta"))
+  class(table) <- c("BayesTools_table", class(table))
+  attr(table, "type")      <- "estimate"
+  attr(table, "footnotes") <- c(
+    "General note.",
+    beta = "beta: row note.",
+    other = "Named note."
+  )
+  attr(table, "rownames")  <- TRUE
+
+  expect_identical(
+    attr(table["theta", , drop = FALSE], "footnotes"),
+    c("General note.", other = "Named note.")
+  )
+  expect_identical(
+    attr(table[c("beta", "theta"), , drop = FALSE], "footnotes"),
+    attr(table, "footnotes")
+  )
+  expect_identical(
+    attr(table[, "Mean", drop = FALSE], "footnotes"),
+    attr(table, "footnotes")
+  )
+})
+
 
 test_that("BayesTools table row subsets keep per-row n_models denominators", {
 
