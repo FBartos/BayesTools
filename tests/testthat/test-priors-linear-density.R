@@ -376,6 +376,33 @@ test_that("conditional-normal quadratures split scale-disparate integrals at bre
   }
 })
 
+test_that("lockstep mixture grids add the components' absolute changes", {
+
+  # Two grid components whose refinements change in opposite directions: the
+  # signed change of the mixture height is 0 at every refinement, the
+  # weighted absolute changes are .01, .0099, .000099.
+  sequences <- list(
+    a = c(1, 1.01, 1.0001, 1.000001, 1.00000001),
+    b = c(1, .99, .9999, .999999, .99999999)
+  )
+  grid <- function(name, level){
+    structure(list(name = name, level = level, density = list(x = c(-10, 10))),
+              class = "prior_linear_density")
+  }
+  testthat::local_mocked_bindings(
+    .prior_linear_density_grid_height = function(x, value) sequences[[x$name]][x$level + 1L],
+    .prior_linear_density_refinement = function(x) grid(x$name, x$level + 1L)
+  )
+  height <- .prior_linear_mixture_lockstep_height(list(
+    list(weight = .5, method = "grid", density = grid("a", 0L)),
+    list(weight = .5, method = "grid", density = grid("b", 0L))
+  ), 0)
+  evaluation <- attr(height, "adaptive_evaluation")
+  expect_identical(evaluation$refinements, 3L)
+  expect_equal(evaluation$absolute_change, .5 * (1.0001 - 1.000001) + .5 * (.999999 - .9999))
+  expect_equal(as.numeric(height), 1)
+})
+
 test_that("row and leaf conditional-normal ordinates each receive the full evaluation budget", {
 
   # Normal intercept + x * slope * sigma with sigma ~ half-normal. At 0 row r

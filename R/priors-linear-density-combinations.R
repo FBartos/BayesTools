@@ -2073,9 +2073,13 @@
 # combination). Components with an exact or regular ordinate contribute it
 # directly; every other component gets its own adaptive grid, so no grid spans
 # a density jump between components. The component grids are refined in
-# lockstep and the documented criterion is applied to the weighted mixture
-# height, so a component whose own density is about zero at the value does not
-# block convergence. Component grids start at the mixture grid's source
+# lockstep and the documented criterion is applied to the mixture height with
+# the weighted absolute changes of the components, sum_k w_k |dH_k| <=
+# 1e-12 + 1e-4 * H, so changes cannot cancel between components and a
+# component whose own density is about zero at the value does not block
+# convergence. As for single grids, the criterion is a refinement-change
+# criterion: grid-based heights of components with singular source densities
+# remain approximate within it. Component grids start at the mixture grid's source
 # spacing ('grid_spacing'), so they are never coarser than the grid they
 # replace. NULL when the density is not such a mixture, is a row mixture, or
 # carries an output transformation.
@@ -2314,7 +2318,8 @@
   mixture_height <- function(heights) fixed + sum(weights[grid] * heights)
 
   tolerance <- .prior_linear_density_refinement_tolerance()
-  previous <- mixture_height(grid_heights(densities))
+  previous_heights <- grid_heights(densities)
+  previous <- mixture_height(previous_heights)
   refined <- lapply(densities, .prior_linear_density_refinement)
   if(any(vapply(refined, is.null, logical(1)))){
     stop(
@@ -2326,7 +2331,7 @@
   for(i in seq_len(4L)){
     current_heights <- grid_heights(refined)
     current <- mixture_height(current_heights)
-    change <- abs(current - previous)
+    change <- sum(weights[grid] * abs(current_heights - previous_heights))
     bound <- tolerance$absolute +
       tolerance$relative * max(abs(current), abs(previous))
     inside <- all(vapply(refined, function(density){
@@ -2345,6 +2350,7 @@
       return(current)
     }
     previous <- current
+    previous_heights <- current_heights
     if(i < 4L){
       next_refined <- lapply(refined, .prior_linear_density_refinement)
       if(any(vapply(next_refined, is.null, logical(1)))){

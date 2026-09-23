@@ -102,7 +102,10 @@ is never exact in one context and a grid approximation in another. A mixture
 height sums its components' exact or regular heights with those of components
 that have none; each of the latter uses its own grid (never spanning another
 component's jump), all such grids are refined in lockstep, and the documented
-refinement criterion applies to the weighted mixture height.
+refinement criterion applies to the mixture height with the components'
+weighted absolute changes (no cancellation between components). A refinement-
+change criterion is not an error bound: grid-based heights of components with
+singular source densities (e.g. gamma shape < 1) remain approximate within it.
 
 For scalar prior-region probabilities, integrate the continuous grid's
 piecewise-linear interpolant up to the exact region boundaries (the comparison
