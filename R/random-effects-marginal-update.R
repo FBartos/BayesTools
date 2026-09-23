@@ -545,6 +545,13 @@ random_effects_marginal_update_grid <- function(
         ))
       }
     }
+    # The catalog indexes sd_mult entries after the n_targets var_prop or
+    # var_mult entries; the plan reports the Dirichlet weight coordinate.
+    index <- key$index
+    if(identical(quantity$quantity, "sd_mult") &&
+       index > allocation$n_targets){
+      index <- index - allocation$n_targets
+    }
     return(.bt_random_effect_marginal_update_affine(
       update = "allocation",
       blocks = .bt_random_effect_marginal_update_allocation_blocks(
@@ -556,7 +563,7 @@ random_effects_marginal_update_grid <- function(
       coefficient_input = "source",
       allocation = list(
         weight_name = allocation$weight_name,
-        index = key$index,
+        index = index,
         n_targets = allocation$n_targets
       )
     ))
@@ -598,7 +605,8 @@ random_effects_marginal_update_grid <- function(
         family = "markov",
         update = "correlation",
         blocks = random_term$block_name,
-        structure = structure
+        structure = structure,
+        coefficient_input = "source"
       ))
     }
   }
@@ -753,7 +761,8 @@ random_effects_marginal_update_grid <- function(
       update = "column_scale",
       blocks = random_term$block_name,
       component_index = key$index,
-      structure = structure
+      structure = structure,
+      coefficient_input = "source"
     ))
   }
 

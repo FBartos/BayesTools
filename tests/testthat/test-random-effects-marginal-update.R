@@ -314,6 +314,63 @@ test_that("scaled allocation-derived SDs have no quantity-scale factor grid", {
 })
 
 
+test_that("allocation plans report Dirichlet weight coordinates", {
+
+  fit <- .random_update_test_allocation_fit()
+  weight <- "mu__xRE_ALLOCx_allocation__weight"
+  for(index in 1:2){
+    component <- c("intercept", "x")[[index]]
+    for(role in c("random_var_prop", "random_sd_mult")){
+      plan <- .random_update_test_plan(fit, role, component)
+      info <- paste(role, component)
+      expect_identical(plan$family, "affine", info = info)
+      expect_identical(plan$update, "allocation", info = info)
+      expect_identical(plan$source_parameter, weight, info = info)
+      expect_identical(plan$allocation$weight_name, weight, info = info)
+      expect_equal(plan$allocation$index, index, info = info)
+      expect_identical(plan$allocation$n_targets, 2L, info = info)
+    }
+  }
+})
+
+
+test_that("source-coordinate factor and Markov plans declare their input", {
+
+  data <- data.frame(
+    id = factor(rep(c("a", "b"), each = 3L)),
+    f = factor(rep(c("x", "y", "z"), 2L)),
+    time = rep(c(0, 1, 3), 2L)
+  )
+  hcs_sd <- .random_update_test_plan(
+    .random_update_test_fit(~ 1 + hcs(f | id), data),
+    "random_sd",
+    "f[x]"
+  )
+  us_sd <- .random_update_test_plan(
+    .random_update_test_fit(~ 1 + us(1 + f | id), data),
+    "random_sd",
+    "intercept"
+  )
+  ar1_cor <- .random_update_test_plan(
+    .random_update_test_fit(~ 1 + ar1(f | id), data),
+    "random_correlation"
+  )
+  car_cor <- .random_update_test_plan(
+    .random_update_test_fit(~ 1 + car(time | id), data),
+    "random_correlation"
+  )
+
+  for(plan in list(hcs_sd, us_sd)){
+    expect_identical(plan$family, "factor")
+    expect_identical(plan$coefficient_input, "source")
+  }
+  for(plan in list(ar1_cor, car_cor)){
+    expect_identical(plan$family, "markov")
+    expect_identical(plan$coefficient_input, "source")
+  }
+})
+
+
 test_that("random covariance updates are classified from formula metadata", {
 
   data <- data.frame(
