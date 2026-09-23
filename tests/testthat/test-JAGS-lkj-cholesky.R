@@ -165,6 +165,27 @@ test_that("LKJ primitives round-trip through the Cholesky factor", {
   }
 })
 
+test_that("LKJ primitives round-trip through the Cholesky factor near boundaries", {
+
+  # Partial correlations close to +/-1 make 1 - sum_{k < j} L_ik^2 cancel
+  # catastrophically for K >= 4 (round-trip errors up to 0.5 in u and NA rows);
+  # the inverse must stay accurate to rounding error.
+  set.seed(20260923)
+  edges <- c(1e-12, 1e-10, 1e-8, 1e-6, 1 - 1e-6, 1 - 1e-8, 1 - 1e-10, 1 - 1e-12)
+  for(K in 2:5){
+    n_pairs <- K * (K - 1L) / 2L
+    u <- rbind(
+      matrix(rep(edges, each = n_pairs), ncol = n_pairs, byrow = TRUE),
+      matrix(sample(c(edges, 0.2, 0.5, 0.9), 50L * n_pairs, replace = TRUE),
+             ncol = n_pairs)
+    )
+    L <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(u, K = K)
+    u_back <- BayesTools:::.bt_lkj_cholesky_L_to_cpc_u(L, K = K)
+    expect_false(anyNA(u_back))
+    expect_lt(max(abs(u_back - u)), 1e-12)
+  }
+})
+
 test_that("LKJ CPC construction remains stable near primitive boundaries", {
   settings <- list(
     list(K = 2L, u = c(1e-8)),

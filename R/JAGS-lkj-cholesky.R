@@ -229,7 +229,7 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
 # Exact inverse of .bt_lkj_cholesky_cpc_u_to_L(): recover the LKJ primitive
 # coordinates from lower Cholesky factors of correlation matrices. For row i
 # and column j < i, the canonical partial correlation is
-#   z_ij = L_ij / sqrt(1 - sum_{k < j} L_ik^2)
+#   z_ij = L_ij / sqrt(1 - sum_{k < j} L_ik^2) = L_ij / sqrt(sum_{k >= j} L_ik^2)
 # and u_ij = (z_ij + 1) / 2, ordered like the native map (column-major over the
 # upper-triangular pairs). `L` is a K x K matrix or an n x K x K array; the
 # result is a vector or an n x K(K - 1)/2 matrix. Factors that are not valid
@@ -267,13 +267,20 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
   }
 
   for(row in seq_len(K)[-1L]){
-    remaining <- rep(1, n_draws)
+    # For unit rows, 1 - sum_{k < j} L_ik^2 equals the tail sum
+    # sum_{k >= j} L_ik^2; the tail sum avoids catastrophic cancellation when
+    # earlier partial correlations are close to +/-1.
+    remaining <- matrix(0, nrow = n_draws, ncol = row)
+    tail_sum <- rep(0, n_draws)
+    for(column in rev(seq_len(row))){
+      tail_sum <- tail_sum + L[, row, column]^2
+      remaining[, column] <- tail_sum
+    }
     for(column in seq_len(row - 1L)){
       pair <- (row - 1L) * (row - 2L) / 2L + column
-      cpc <- L[, row, column] / sqrt(pmax(remaining, 0))
+      cpc <- L[, row, column] / sqrt(remaining[, column])
       valid <- valid & is.finite(cpc) & abs(cpc) < 1
       u[, pair] <- (cpc + 1) / 2
-      remaining <- remaining - L[, row, column]^2
     }
   }
   u[!valid, ] <- NA_real_
