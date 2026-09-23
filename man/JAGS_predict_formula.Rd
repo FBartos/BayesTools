@@ -26,7 +26,10 @@ JAGS_predict_formula(
 \item{parameter}{formula parameter name.}
 
 \item{formula}{optional formula. If \code{NULL}, the fitted formula for
-\code{parameter} is used.}
+\code{parameter} is used. For \code{formula_target = "marginal"}, random-effect
+terms in \code{formula} must match fitted blocks and select the blocks whose
+marginal covariance or draws are included; without such terms, all fitted
+blocks are included.}
 
 \item{data}{optional prediction data. If \code{NULL}, fitted source data are used.}
 
@@ -36,7 +39,10 @@ used.}
 \item{formula_target}{prediction target: \code{"conditional"}, \code{"fixed"}, or
 \code{"marginal"}. The default includes fitted random-effect contributions.}
 
-\item{blocks}{optional random-effect block names.}
+\item{blocks}{optional random-effect block names. For
+\code{formula_target = "marginal"} with random-effect terms in \code{formula}, the
+default is the blocks of those terms, and supplied \code{blocks} must name the
+same blocks.}
 
 \item{new_levels}{new-level policy for conditional or marginal random-effect
 prediction. Use a \code{random_new_levels()} object or one of \code{"error"}, \code{"zero"},

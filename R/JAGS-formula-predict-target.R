@@ -10,7 +10,10 @@
 #' `formula_design` metadata.
 #' @param parameter formula parameter name.
 #' @param formula optional formula. If `NULL`, the fitted formula for
-#' `parameter` is used.
+#' `parameter` is used. For `formula_target = "marginal"`, random-effect
+#' terms in `formula` must match fitted blocks and select the blocks whose
+#' marginal covariance or draws are included; without such terms, all fitted
+#' blocks are included.
 #' @param data optional prediction data. If `NULL`, fitted source data are used.
 #' @param fitted_rows optional integer vector mapping supplied prediction rows
 #' to fitted observation indices. It is required for selected
@@ -20,7 +23,10 @@
 #' used.
 #' @param formula_target prediction target: `"conditional"`, `"fixed"`, or
 #' `"marginal"`. The default includes fitted random-effect contributions.
-#' @param blocks optional random-effect block names.
+#' @param blocks optional random-effect block names. For
+#' `formula_target = "marginal"` with random-effect terms in `formula`, the
+#' default is the blocks of those terms, and supplied `blocks` must name the
+#' same blocks.
 #' @param new_levels new-level policy for conditional or marginal random-effect
 #' prediction. Use a `random_new_levels()` object or one of `"error"`, `"zero"`,
 #' or `"sample"`.
@@ -170,6 +176,12 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
     fit = fit,
     parameter = parameter
   )
+  blocks <- .bt_formula_prediction_marginal_blocks(
+    formula = formula,
+    blocks = blocks,
+    design = design,
+    parameter = parameter
+  )
   resolved_inputs <- .bt_JAGS_evaluate_formula_resolve_inputs(
     fit = fit,
     formula = formula,
@@ -233,6 +245,42 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
       new_levels = new_levels
     )
   )
+}
+
+# Random-effect terms in a marginal-target formula select the blocks whose
+# covariance is added to the fixed part, as the conditional target does. They
+# must match fitted blocks, and explicit 'blocks' must agree with them.
+.bt_formula_prediction_marginal_blocks <- function(formula, blocks, design,
+                                                   parameter){
+
+  if(is.null(formula) || !.has_random_effects(formula)){
+    return(blocks)
+  }
+  random_terms <- .bt_parse_random_effects(formula)$terms
+  if(length(random_terms) == 0L){
+    return(blocks)
+  }
+  .bt_validate_random_effect_prediction_terms(
+    requested = random_terms,
+    fitted = .bt_formula_design_random_effects(design),
+    parameter = parameter
+  )
+  requested_blocks <- vapply(random_terms, `[[`, character(1), "block_name")
+  if(is.null(blocks)){
+    return(requested_blocks)
+  }
+  if(!setequal(blocks, requested_blocks)){
+    stop(
+      "'blocks' (", paste(blocks, collapse = ", "),
+      ") do not match the random-effect terms in 'formula' (",
+      paste(requested_blocks, collapse = ", "),
+      "). Omit 'blocks' to use the terms in 'formula', or supply matching ",
+      "blocks.",
+      call. = FALSE
+    )
+  }
+
+  blocks
 }
 
 .bt_formula_prediction_object <- function(value, mean, random, vcov,

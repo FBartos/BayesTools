@@ -1426,6 +1426,109 @@ test_that("marginal target includes marginalized random-effect blocks", {
   expect_equal(prediction$vcov$metadata$blocks$id$compile_mode, "marginalized")
 })
 
+test_that("marginal target honours and validates random terms in the formula", {
+
+  data <- data.frame(
+    x = c(-1, 0, 1, 2),
+    g = factor(c("a", "a", "b", "b")),
+    h = factor(c("u", "v", "u", "v"))
+  )
+  result <- JAGS_formula(
+    formula = ~ 1 + x + (1 | g) + (1 | h),
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    prior_random = prior_random(
+      sd = .formula_prediction_sd_prior(),
+      monitor = random_monitor(latent = FALSE, coefficients = TRUE)
+    )
+  )
+  sd_names <- vapply(
+    result$formula_design$random_effects,
+    `[[`,
+    character(1),
+    "sd_parameter_names"
+  )
+  posterior <- matrix(
+    c(10, 1, 1, 100, 1, 2, 300, 400),
+    nrow = 1,
+    dimnames = list(NULL, c(
+      "mu_intercept", "mu_x", sd_names,
+      "mu__xREx__g_xRE_COEFx[1,1]", "mu__xREx__g_xRE_COEFx[2,1]",
+      "mu__xREx__h_xRE_COEFx[1,1]", "mu__xREx__h_xRE_COEFx[2,1]"
+    ))
+  )
+  fit <- coda::mcmc(posterior)
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  g_formula <- ~ 1 + x + (1 | g)
+
+  # Covariance: only the g block (sd 1) enters; h (sd 100) is not requested.
+  covariance <- JAGS_predict_formula(
+    fit, "mu", formula = g_formula, formula_target = "marginal"
+  )
+  expect_identical(covariance$vcov$metadata$included_blocks, "g")
+  expect_identical(covariance$metadata$blocks, "g")
+  expect_equal(
+    covariance$vcov$samples[1L, , ],
+    outer(data$g, data$g, "==") * 1,
+    ignore_attr = TRUE
+  )
+  expect_equal(unname(drop(covariance$value)), 10 + data$x)
+  expect_identical(
+    JAGS_predict_formula(
+      fit, "mu", formula = ~ 1 + x, formula_target = "marginal"
+    )$vcov$metadata$included_blocks,
+    c("g", "h")
+  )
+  expect_identical(
+    JAGS_predict_formula(
+      fit, "mu", formula = g_formula, formula_target = "marginal",
+      blocks = "g"
+    )$vcov$metadata$included_blocks,
+    "g"
+  )
+
+  # Sampling: identical to an explicit g-only block selection.
+  sampled <- JAGS_predict_formula(
+    fit, "mu", formula = g_formula, formula_target = "marginal",
+    marginal_method = "sample", seed = 1
+  )
+  explicit <- JAGS_predict_formula(
+    fit, "mu", formula = ~ 1 + x, formula_target = "marginal",
+    marginal_method = "sample", blocks = "g", seed = 1
+  )
+  expect_equal(sampled$random, explicit$random)
+  expect_equal(sampled$random[1L, 1L], sampled$random[2L, 1L])
+  expect_equal(sampled$random[3L, 1L], sampled$random[4L, 1L])
+
+  expect_error(
+    JAGS_predict_formula(
+      fit, "mu", formula = ~ 1 + x + (1 | zz), formula_target = "marginal"
+    ),
+    "block(s) were not found in the fitted formula: zz",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_predict_formula(
+      fit, "mu", formula = g_formula, formula_target = "marginal",
+      blocks = "h"
+    ),
+    "do not match the random-effect terms in 'formula'",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_predict_formula(
+      fit, "mu", formula = g_formula, formula_target = "marginal",
+      marginal_method = "sample", blocks = c("g", "h")
+    ),
+    "do not match the random-effect terms in 'formula'",
+    fixed = TRUE
+  )
+})
+
 test_that("marginal sampling draws fitted levels jointly under known covariance", {
 
   df <- data.frame(
