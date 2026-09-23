@@ -516,13 +516,16 @@
   row_counts <- tabulate(match(row_keys, unique_keys), nbins = length(unique_keys))
   row_indices <- match(unique_keys, row_keys)
 
+  # Mix the rows on the linear-predictor scale and transform the mixture once;
+  # for one monotone map this equals the mixture of transformed rows, while
+  # mixing transformed grids would inherit their smallest image spacing.
   dists <- lapply(row_indices, function(row_i){
     .prior_density_from_context(
       context                         = context,
       weights                         = weights[row_i, ],
       source_transforms               = source_transforms,
-      output_transformation           = output_transformation,
-      output_transformation_arguments = output_transformation_arguments,
+      output_transformation           = NULL,
+      output_transformation_arguments = NULL,
       .record_evaluation              = FALSE
     )
   })
@@ -542,6 +545,12 @@
     weights = row_counts,
     dx      = dx,
     n_grid  = if(!is.null(context$n_grid)) context$n_grid else NULL
+  )
+  out <- .prior_linear_density_transform(
+    out,
+    output_transformation,
+    output_transformation_arguments,
+    n_grid = context$n_grid
   )
   if(isTRUE(.record_evaluation)){
     attr(out, "adaptive_evaluation") <- list(

@@ -854,6 +854,45 @@ test_that("row-wise prior densities mix row predictions, not averaged weights", 
   expect_equal(density_second_moment(averaged_density), 1.5^2, tolerance = .08)
 })
 
+test_that("row-wise prior densities transform the row mixture once", {
+
+  context <- BayesTools:::.prior_density_context(
+    prior_list   = list(mu_intercept = prior("normal", list(0, 1)),
+                        mu_x         = prior("normal", list(0, 1))),
+    column_names = c("mu_intercept", "mu_x"),
+    n_grid       = 4096
+  )
+  weights <- rbind(c(mu_intercept = 1, mu_x = .5), c(mu_intercept = 1, mu_x = 2))
+  sds <- sqrt(1 + weights[, "mu_x"]^2)
+
+  # Rows are N(0, 1 + w^2) on the linear-predictor scale, so the transformed
+  # mixture is an equal mixture of lognormal (exp) or tanh-normal densities.
+  # The grid keeps the size of an untransformed row mixture (previously 25.7M
+  # knots for two rows); 1e-3 covers the omitted 1e-4 source tails.
+  exp_density <- BayesTools:::.prior_density_from_context_rows(
+    context, weights, output_transformation = "exp"
+  )
+  expect_lte(length(exp_density$density$x), 2 * 4096)
+  for(value in c(.5, 1, 2)){
+    expect_equal(BayesTools:::.prior_linear_density_grid_height(exp_density, value),
+                 mean(stats::dlnorm(value, 0, sds)), tolerance = 1e-3)
+  }
+  tanh_density <- BayesTools:::.prior_density_from_context_rows(
+    context, weights, output_transformation = "tanh"
+  )
+  for(value in c(-.5, 0, .5)){
+    expect_equal(BayesTools:::.prior_linear_density_grid_height(tanh_density, value),
+                 mean(stats::dnorm(atanh(value), 0, sds)) / (1 - value^2),
+                 tolerance = 1e-3)
+  }
+
+  symmetric <- rbind(c(mu_intercept = 1, mu_x = .5), c(mu_intercept = 1, mu_x = -.5))
+  symmetric_density <- BayesTools:::.prior_density_from_context_rows(
+    context, symmetric, output_transformation = "exp"
+  )
+  expect_lte(length(symmetric_density$density$x), 2 * 4096)
+})
+
 test_that("row-wise prior densities preserve bitwise-distinct design rows", {
 
   context <- BayesTools:::.prior_density_context(
