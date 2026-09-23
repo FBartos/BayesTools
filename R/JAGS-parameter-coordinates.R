@@ -603,10 +603,6 @@
     names <- .bt_random_effect_summary_raw_sd_display_names(
       names = names,
       raw_names = raw_names,
-      prior_list = if(is.null(prior)) list() else stats::setNames(
-        list(prior),
-        .bt_parameter_coordinates_base(coordinate_name)
-      ),
       random_term = random_term,
       prefix = prefix
     )

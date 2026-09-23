@@ -296,7 +296,10 @@
   }
   if(is.null(coordinates)){
     coordinates <- .bt_build_parameter_coordinates(
-      columns = raw_names,
+      columns = .bt_random_effect_summary_coordinate_names(
+        raw_names,
+        prior_list
+      ),
       prior_list = prior_list,
       formula_design = formula_design
     )
@@ -319,7 +322,15 @@
   }
 
   .bt_validate_parameter_coordinates(coordinates)
-  coordinate_rows <- match(raw_names, coordinates$coordinate_name)
+  # `raw_names` are the summary's column names, where level-coded coordinates
+  # were renamed by level; match each to its coordinate through the same
+  # renaming, one to one. Matching them to coordinate names directly would
+  # label the level-2 column `sd[2]` with the coordinate `sd[2]` of level 3.
+  summary_names <- .bt_random_effect_summary_renamed_parameter_names(
+    coordinates$coordinate_name,
+    prior_list
+  )
+  coordinate_rows <- match(raw_names, summary_names)
   registered <- !is.na(coordinate_rows)
   registered[registered] <- nzchar(
     coordinates$random_block[coordinate_rows[registered]]
@@ -509,8 +520,45 @@
   colnames(.rename_factor_levels(dummy, prior_list))
 }
 
+# Coordinate names of summary columns: the inverse of the level renaming that
+# summaries apply to level-coded factor coordinates (a column that was not
+# renamed is its own coordinate name).
+.bt_random_effect_summary_coordinate_names <- function(summary_names,
+                                                       prior_list){
+
+  if(length(summary_names) == 0L || length(prior_list) == 0L){
+    return(summary_names)
+  }
+  candidates <- unlist(lapply(names(prior_list), function(parameter){
+    prior <- prior_list[[parameter]]
+    if(!.bt_prior_is_factor_family(prior)){
+      return(character())
+    }
+    n_parameters <- tryCatch(
+      .get_prior_factor_levels(prior),
+      error = function(error) NULL
+    )
+    if(!is.numeric(n_parameters) || length(n_parameters) != 1L ||
+       is.na(n_parameters) || n_parameters < 1L){
+      return(character())
+    }
+    c(parameter, paste0(parameter, "[", seq_len(n_parameters), "]"))
+  }), use.names = FALSE)
+  if(length(candidates) == 0L){
+    return(summary_names)
+  }
+  renamed <- .bt_random_effect_summary_renamed_parameter_names(
+    candidates,
+    prior_list
+  )
+  changed <- renamed != candidates
+  inverse <- match(summary_names, renamed[changed])
+  out <- summary_names
+  out[!is.na(inverse)] <- candidates[changed][inverse[!is.na(inverse)]]
+  out
+}
+
 .bt_random_effect_summary_raw_sd_display_names <- function(names, raw_names,
-                                                           prior_list,
                                                            random_term,
                                                            prefix){
 
@@ -526,10 +574,6 @@
     return(names)
   }
 
-  display_sd_names <- .bt_random_effect_summary_renamed_parameter_names(
-    parameter_names = sd_names,
-    prior_list = prior_list
-  )
   components <- .bt_random_effect_summary_sd_components(random_term, sd_names)
   labels <- paste0(prefix, vapply(
     components,
@@ -538,10 +582,12 @@
     random_term = random_term
   ))
 
-  for(i in seq_along(sd_names)){
-    matches <- raw_names %in% c(sd_names[i], display_sd_names[i])
-    names[matches] <- labels[i]
-  }
+  # `raw_names` are coordinate names: each SD coordinate takes the label of
+  # its own component, one to one. Level-renamed SD names are never matched
+  # here; with index-like levels the renamed `sd[2]` (level 2) equals the
+  # coordinate `sd[2]` of level 3.
+  matches <- match(raw_names, sd_names)
+  names[!is.na(matches)] <- labels[matches[!is.na(matches)]]
 
   names
 }

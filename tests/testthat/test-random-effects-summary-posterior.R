@@ -635,3 +635,68 @@ test_that("scaled-Beta analytic evaluators preserve square-root endpoint limits"
     0
   )
 })
+
+test_that("raw random-slope SD rows keep their own level labels", {
+
+  # Index-like levels: the level-renamed SD column `f[2]` (level 2) has the
+  # same name as the backend coordinate `f[2]` (level 3).
+  data <- data.frame(
+    f = factor(rep(1:3, 4)),
+    g = factor(rep(c("A", "B", "C", "D"), each = 3))
+  )
+  formula_result <- JAGS_formula(
+    ~ 1 + diag(0 + f | g), "mu", data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      g = random_block(
+        sd = prior("normal", list(0, 1), list(0, Inf)),
+        monitor = random_monitor(
+          latent = FALSE,
+          coefficients = FALSE,
+          correlation = FALSE
+        )
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  expect_identical(
+    unname(random_term$sd_leaves$leaf_terms),
+    c("f[2]", "f[3]")
+  )
+  # Distinct constant draws identify each SD: level 2 = 0.5, level 3 = 1.5.
+  posterior <- matrix(
+    rep(c(0, 0.5, 1.5), 4),
+    nrow = 4,
+    byrow = TRUE,
+    dimnames = list(NULL, c("mu_intercept", random_term$sd_parameter_names))
+  )
+  fit <- structure(
+    list(
+      mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+      sample = nrow(posterior),
+      summary.pars = list(mutate = NULL),
+      monitor = colnames(posterior)
+    ),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  fit <- attach_test_parameter_map(fit)
+
+  standard <- JAGS_estimates_table(
+    fit,
+    random_effects_summary = "standard",
+    remove_diagnostics = TRUE
+  )
+  raw <- JAGS_estimates_table(
+    fit,
+    random_effects_summary = "raw",
+    remove_diagnostics = TRUE
+  )
+  # Reference: the standard table of the same fit.
+  expect_equal(standard["(mu) sd(f[2])", "Mean"], 0.5)
+  expect_equal(standard["(mu) sd(f[3])", "Mean"], 1.5)
+  expect_equal(raw["(mu) g: sd(f[2])", "Mean"], standard["(mu) sd(f[2])", "Mean"])
+  expect_equal(raw["(mu) g: sd(f[3])", "Mean"], standard["(mu) sd(f[3])", "Mean"])
+  expect_identical(sum(grepl("sd(", rownames(raw), fixed = TRUE)), 2L)
+})
