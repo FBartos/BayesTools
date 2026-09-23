@@ -118,26 +118,30 @@ jobs:
           # Use forward-slash paths on Windows; covr injects these paths into
           # instrumented R code, where backslashes can become invalid escapes.
           repo_path <- normalizePath(".", winslash = "/", mustWork = TRUE)
-          on.exit(unlink(file.path(repo_path, "tests/testthat/_snaps"), recursive = TRUE, force = TRUE), add = TRUE)
           install_path <- normalizePath(file.path(Sys.getenv("RUNNER_TEMP"), "R_LIBS"), winslash = "/", mustWork = FALSE)
           unlink(install_path, recursive = TRUE, force = TRUE)
-          
-          coverage <- covr::package_coverage(
-            path = repo_path,
-            type = "none",
-            quiet = FALSE,
-            clean = FALSE,
-            install_path = install_path,
-            code = c(
-              "repo_path <- normalizePath('.', winslash = '/', mustWork = TRUE)",
-              "setwd(repo_path)",
-              "test_files_dir <- Sys.getenv('BAYESTOOLS_TEST_FILES_DIR')",
-              "if (test_files_dir == '') test_files_dir <- file.path(tempdir(), 'BayesTools_test_files')",
-              "dir.create(test_files_dir, showWarnings = FALSE, recursive = TRUE)",
-              "Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = normalizePath(test_files_dir, winslash = '/', mustWork = TRUE))",
-              "reporter <- if (identical(Sys.getenv('AGENT'), '1') && exists('LlmReporter', envir = asNamespace('testthat'), inherits = FALSE)) testthat::LlmReporter$new() else NULL",
-              "testthat::test_dir(file.path(repo_path, 'tests', 'testthat'), reporter = reporter, package = 'BayesTools', load_package = 'installed', stop_on_failure = TRUE)"
-            )
+
+          # Rscript runs this block at top level, where on.exit() never fires;
+          # the snapshot cleanup runs in `finally` whether coverage succeeds or not.
+          coverage <- tryCatch(
+            covr::package_coverage(
+              path = repo_path,
+              type = "none",
+              quiet = FALSE,
+              clean = FALSE,
+              install_path = install_path,
+              code = c(
+                "repo_path <- normalizePath('.', winslash = '/', mustWork = TRUE)",
+                "setwd(repo_path)",
+                "test_files_dir <- Sys.getenv('BAYESTOOLS_TEST_FILES_DIR')",
+                "if (test_files_dir == '') test_files_dir <- file.path(tempdir(), 'BayesTools_test_files')",
+                "dir.create(test_files_dir, showWarnings = FALSE, recursive = TRUE)",
+                "Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = normalizePath(test_files_dir, winslash = '/', mustWork = TRUE))",
+                "reporter <- if (identical(Sys.getenv('AGENT'), '1') && exists('LlmReporter', envir = asNamespace('testthat'), inherits = FALSE)) testthat::LlmReporter$new() else NULL",
+                "testthat::test_dir(file.path(repo_path, 'tests', 'testthat'), reporter = reporter, package = 'BayesTools', load_package = 'installed', stop_on_failure = TRUE)"
+              )
+            ),
+            finally = unlink(file.path(repo_path, "tests/testthat/_snaps"), recursive = TRUE, force = TRUE)
           )
           if (covr::percent_coverage(coverage) == 0) {
             stop("Coverage trace is empty; refusing to upload 0% coverage.", call. = FALSE)

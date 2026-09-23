@@ -508,6 +508,70 @@ test_that("CI installs BayesTools in a process that has loaded no packages", {
   expect_gt(install_steps, 0L)
 })
 
+# Whether `expr` calls `name` outside every function definition, i.e. where a
+# script evaluates it at top level.
+.layout_calls_outside_functions <- function(expr, name){
+
+  if(!is.call(expr)){
+    return(FALSE)
+  }
+  if(identical(expr[[1L]], as.name("function"))){
+    return(FALSE)
+  }
+  if(identical(expr[[1L]], as.name(name))){
+    return(TRUE)
+  }
+  for(i in seq_along(expr)[-1L]){
+    if(identical(expr[[i]], quote(expr = ))){
+      next
+    }
+    if(.layout_calls_outside_functions(expr[[i]], name)){
+      return(TRUE)
+    }
+  }
+
+  FALSE
+}
+
+test_that("workflow R scripts never rely on top-level on.exit()", {
+
+  # `Rscript {0}` evaluates a run block at top level, where on.exit() never
+  # fires, so a cleanup registered that way is silently skipped.
+  scripts <- 0L
+  for(path in .layout_workflow_files()){
+    for(step in .layout_workflow_steps(path)){
+      if(!identical(step$shell, "Rscript {0}")){
+        next
+      }
+      scripts <- scripts + 1L
+      expressions <- parse(text = step$run, keep.source = FALSE)
+      top_level_exit <- vapply(expressions, .layout_calls_outside_functions, logical(1), name = "on.exit")
+      expect_false(any(top_level_exit), info = paste0(basename(path), ": ", step$name))
+    }
+  }
+
+  expect_gt(scripts, 0L)
+})
+
+test_that("tools/test.R points the test helpers at the cache directory it creates", {
+
+  script <- .layout_repository_file("tools", "test.R")
+  skip_if_not(
+    file.exists(script),
+    "Repository tools are not available in this installed-package context."
+  )
+
+  expressions <- as.list(parse(script, keep.source = FALSE))
+  set_env <- Filter(function(expression){
+    is.call(expression) && identical(expression[[1L]], as.name("Sys.setenv"))
+  }, expressions)
+  expect_length(set_env, 1L)
+
+  files_dir <- as.list(set_env[[1L]])[["BAYESTOOLS_TEST_FILES_DIR"]]
+  expect_false(is.null(files_dir))
+  expect_true("cache_dir" %in% all.names(files_dir))
+})
+
 test_that("DESCRIPTION declares the supported JAGS range", {
 
   description_file <- .layout_repository_file("DESCRIPTION")
