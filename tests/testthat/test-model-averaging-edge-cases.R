@@ -630,6 +630,23 @@ test_that("failed marginal-likelihood results reach the on_failure policy of mod
   expect_error(bridgesampling_object(NaN), "one numeric", fixed = TRUE)
 })
 
+test_that("exact zero-dimensional marginal likelihoods never store a silent failure", {
+
+  # Only bridgesampling_object(NA) flags a failed computation; an exact
+  # evaluation whose log-posterior callback returns NA must stop.
+  posterior <- coda::as.mcmc(matrix(0.25, nrow = 20, dimnames = list(NULL, "mu")))
+  expect_error(
+    JAGS_bridgesampling(
+      fit           = posterior,
+      log_posterior = function(parameters, data) data[["y"]] + parameters[["mu"]],
+      data          = list(y = NA_real_),
+      prior_list    = list(mu = prior("point", list(0.25)))
+    ),
+    "The exact zero-dimensional log marginal likelihood evaluated to NA",
+    fixed = TRUE
+  )
+})
+
 test_that("model averaging rejects malformed prior weights at each public entry point", {
 
   expect_error(compute_inference(c(0, 0), c(0, 1)), "At least one prior model weight")

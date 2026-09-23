@@ -69,6 +69,16 @@
 
 .bt_marglik_exact_result <- function(logml, chain_metadata){
 
+  # Only bridgesampling_object(NA) supplies a failed result; an exact
+  # evaluation that returns NA is a computation error, not a stored failure.
+  if(.bt_marglik_is_failure_value(logml)){
+    stop(
+      "The exact zero-dimensional log marginal likelihood evaluated to NA. ",
+      "Check that the log-posterior callback returns a numeric value.",
+      call. = FALSE
+    )
+  }
+
   out <- .bt_marglik_manual_result(logml)
   out[["aggregation"]] <- list(
     rule = "exact_zero_dimensional",
