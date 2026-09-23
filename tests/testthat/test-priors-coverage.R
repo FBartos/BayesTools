@@ -793,6 +793,26 @@ test_that("rng() orthonormal prior with transform_factor_samples", {
   expect_equal(ncol(samples), 3)  # K+1 columns
 })
 
+test_that("rng() factor spike-and-slab honours transform_factor_samples", {
+
+  slab <- prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  attr(slab, "levels") <- 3
+  p <- prior_spike_and_slab(slab, prior_inclusion = prior("spike", list(.5)))
+  attr(p, "levels") <- 3
+
+  set.seed(4103)
+  raw <- rng(p, 50, transform_factor_samples = FALSE)
+  set.seed(4103)
+  levels <- rng(p, 50, transform_factor_samples = TRUE)
+
+  expect_equal(dim(raw), c(50L, 2L))
+  expect_equal(dim(levels), c(50L, 3L))
+  expect_identical(attr(raw, "inclusion"), attr(levels, "inclusion"))
+  expect_equal(as.vector(levels),
+               as.vector(unclass(raw) %*% t(contr.meandif(1:3))))
+  expect_true(all(raw[attr(raw, "inclusion") == 0, ] == 0))
+})
+
 
 # ============================================================================ #
 # SECTION: cdf() function edge cases

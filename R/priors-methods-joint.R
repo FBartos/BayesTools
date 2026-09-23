@@ -110,7 +110,8 @@ rng.prior   <- function(x, n, ...){
     if(sample_components)
       return(inclusion)
 
-    x         <- rng(.get_spike_and_slab_variable(prior), n) * inclusion
+    x         <- rng(.get_spike_and_slab_variable(prior), n,
+                     transform_factor_samples = transform_factor_samples) * inclusion
     attr(x, "inclusion") <- inclusion
 
   }else if(is.prior.mixture(prior)){
@@ -276,6 +277,12 @@ rng.prior   <- function(x, n, ...){
 
     if(prior[["distribution"]] == "dirichlet"){
       return(.prior_dirichlet_rng(prior, n))
+    }
+
+    # Raw factor coefficients (transform_factor_samples = FALSE) take their
+    # dimension from the bound factor levels, as the transformed draws do.
+    if(is.prior.factor(prior) && is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
+      prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
     }
 
     par1 <- switch(
