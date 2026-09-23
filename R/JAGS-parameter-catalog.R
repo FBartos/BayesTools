@@ -561,12 +561,16 @@ parameter_prior_density.BayesTools_fit <- function(
     if(!is.numeric(lower) || length(lower) != 1L || is.na(lower) || lower < 0){
       return(NULL)
     }
+    # (s x)^2 = exp(2 log(s)) x^2.
     return(.bt_parameter_prior_density_scalar(
       source_prior,
       n_grid = n_grid,
       tail_prob = tail_prob,
       output_transformation = "exp_lin",
-      output_transformation_arguments = list(a = 0, b = 2)
+      output_transformation_arguments = list(
+        a = 2 * log(.bt_parameter_transform_square_scale(transform)),
+        b = 2
+      )
     ))
   }
   dist <- .bt_parameter_prior_density_scalar(
@@ -1022,10 +1026,11 @@ parameter_prior_density.BayesTools_fit <- function(
     if(.prior_linear_density_range(dist)[1L] < 0){
       return(NULL)
     }
+    scale <- .bt_parameter_transform_square_scale(transform)
     list(
-      fun = function(x) x^2,
-      inv = function(x) sqrt(x),
-      jac = function(x) 2 * x
+      fun = function(x) (scale * x)^2,
+      inv = function(x) sqrt(x) / scale,
+      jac = function(x) 2 * scale^2 * x
     )
   }else{
     return(NULL)
@@ -1088,6 +1093,17 @@ parameter_transform <- function(object, selection){
     )
   }else if(identical(source_transform, "square")){
     list(type = "square")
+  }else if(identical(source_transform, "random_var")){
+    formula_scale <- attr(object, "formula_scale", exact = TRUE)
+    if(is.null(formula_scale) || length(formula_scale) == 0L){
+      list(type = "square")
+    }else if(is.numeric(key$source_scale) &&
+             length(key$source_scale) == 1L &&
+             is.finite(key$source_scale) && key$source_scale > 0){
+      list(type = "square", scale = key$source_scale)
+    }else{
+      NULL
+    }
   }else if(identical(source_transform, "random_sd")){
     formula_scale <- attr(object, "formula_scale", exact = TRUE)
     if(is.null(formula_scale) || length(formula_scale) == 0L){
@@ -1163,7 +1179,7 @@ parameter_transform_forward <- function(values, transform){
     return(out)
   }
   if(identical(transform$type, "square")){
-    return(values^2)
+    return((.bt_parameter_transform_square_scale(transform) * values)^2)
   }
 
   stop("Unsupported semantic parameter transform.", call. = FALSE)
@@ -1191,7 +1207,7 @@ parameter_transform_inverse <- function(values, transform){
     return(values^2 / transform$scale)
   }
   if(identical(transform$type, "square")){
-    return(sqrt(values))
+    return(sqrt(values) / .bt_parameter_transform_square_scale(transform))
   }
 
   stop("Unsupported semantic parameter transform.", call. = FALSE)
@@ -1223,7 +1239,7 @@ parameter_transform_jacobian <- function(values, transform){
     return(out)
   }
   if(identical(transform$type, "square")){
-    return(2 * abs(values))
+    return(2 * .bt_parameter_transform_square_scale(transform)^2 * abs(values))
   }
 
   stop("Unsupported semantic parameter transform.", call. = FALSE)
@@ -1252,11 +1268,20 @@ parameter_transform_jacobian <- function(values, transform){
   if(valid && identical(transform$type, "sqrt_scale")){
     valid <- scalar_number(transform$scale) && transform$scale > 0
   }
+  if(valid && identical(transform$type, "square") && !is.null(transform$scale)){
+    valid <- scalar_number(transform$scale) && transform$scale > 0
+  }
   if(!valid){
     stop("Unsupported semantic parameter transform.", call. = FALSE)
   }
 
   invisible(TRUE)
+}
+
+# The optional 'scale' of a square transform: (scale * x)^2.
+.bt_parameter_transform_square_scale <- function(transform){
+
+  if(is.null(transform$scale)) 1 else transform$scale
 }
 
 .bt_parameter_catalog_empty_quantities <- function(){
@@ -2820,14 +2845,33 @@ parameter_transform_jacobian <- function(values, transform){
             quantity = "var",
             arguments = sd_arguments,
             display_arguments = sd_display_arguments,
-            source_type = if(direct_source){
+            # var = sd^2 is one-to-one exactly when sd is; a scaled SD
+            # (sd = s * source) gives var = (s * source)^2.
+            source_type = if(direct_source ||
+                             identical(source_type, "one_to_one_transform")){
               "one_to_one_transform"
             }else{
               "composite"
             },
-            source_parameter = if(direct_source) source_parameter else "",
+            source_parameter = if(direct_source ||
+                                  identical(source_type, "one_to_one_transform")){
+              source_parameter
+            }else{
+              ""
+            },
             source_prior = source_prior,
-            source_transform = "square",
+            source_transform = if(!direct_source &&
+                                  identical(source_type, "one_to_one_transform")){
+              "random_var"
+            }else{
+              "square"
+            },
+            source_scale = if(!direct_source &&
+                              identical(source_type, "one_to_one_transform")){
+              source_scale
+            }else{
+              NA_real_
+            },
             allocation_derived = allocation_derived,
             status_source = status_source,
             unavailable = allocation_source_missing

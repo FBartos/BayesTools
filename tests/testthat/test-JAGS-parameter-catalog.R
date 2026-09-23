@@ -1427,6 +1427,93 @@ test_that("transformed random summaries hide fitted-scale implementation rows", 
   )
 })
 
+test_that("variances of one-to-one scaled SDs are one-to-one transforms", {
+
+  data <- data.frame(
+    x = c(1, 2, 4, 7),
+    id = factor(c("a", "a", "b", "b"))
+  )
+  formula_result <- JAGS_formula(
+    ~ 1 + (0 + x | id),
+    "mu",
+    data,
+    list(intercept = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(
+      id = random_block(sd = prior("normal", list(0, 1), list(0, Inf)))
+    )
+  )
+  sd_name <- formula_result$formula_design$random_effects[[1L]]$sd_parameter_names
+  source_values <- c(0.5, 1.5)
+  values <- cbind(mu_intercept = 0, source_values)
+  colnames(values)[2L] <- sd_name
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(values)),
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design),
+    formula_scale = list(mu = formula_result$formula_scale)
+  )
+  catalog <- parameter_catalog(fit)
+  scale <- 1 / stats::sd(data$x)
+  sd_selection <- parameter_catalog_resolve(catalog, "(mu) sd(x)", "mu")
+  var_selection <- parameter_catalog_resolve(catalog, "(mu) var(x)", "mu")
+  sd_key <- sd_selection$quantities$extraction_key[[1L]]
+  var_key <- var_selection$quantities$extraction_key[[1L]]
+
+  expect_identical(var_selection$quantities$source_type, "one_to_one_transform")
+  expect_identical(var_key$source_type, "one_to_one_transform")
+  expect_identical(var_key$source_parameter, sd_name)
+  expect_identical(var_key$source_parameter, sd_key$source_parameter)
+  expect_identical(var_key$source_transform, "random_var")
+  expect_equal(var_key$source_scale, scale)
+  expect_identical(var_key$source_scale, sd_key$source_scale)
+
+  var_draws <- as.numeric(parameter_draws(fit, var_selection)[[1L]][, 1L])
+  expect_equal(var_draws, (scale * source_values)^2, tolerance = 1e-12)
+  transform <- parameter_transform(fit, var_selection)
+  expect_identical(transform$type, "square")
+  expect_equal(transform$scale, scale)
+  expect_equal(
+    parameter_transform_forward(source_values, transform),
+    var_draws,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    parameter_transform_inverse(var_draws, transform),
+    source_values,
+    tolerance = 1e-12
+  )
+  step <- 1e-6
+  expect_equal(
+    parameter_transform_jacobian(source_values, transform),
+    (parameter_transform_forward(source_values + step, transform) -
+       parameter_transform_forward(source_values - step, transform)) /
+      (2 * step),
+    tolerance = 1e-8
+  )
+  # An unscaled square keeps its meaning.
+  expect_identical(
+    parameter_transform_forward(3, list(type = "square")),
+    9
+  )
+  expect_error(
+    parameter_transform_forward(3, list(type = "square", scale = -1)),
+    "Unsupported semantic parameter transform."
+  )
+
+  # Prior of (s * sd)^2 for sd ~ Normal+(0, 1): dnorm(sqrt(v), 0, s) / sqrt(v).
+  # Linear interpolation on the default 4096-knot grid is accurate to about
+  # 1e-3 (relative) at these ordinates, as for the unscaled variance.
+  density <- parameter_prior_density(fit, var_selection)
+  expect_s3_class(density, "prior_linear_density")
+  ordinates <- c(0.05, 0.2, 0.5)
+  expect_equal(
+    stats::approx(density$density$x, density$density$y, ordinates)$y,
+    stats::dnorm(sqrt(ordinates), 0, scale) / sqrt(ordinates),
+    tolerance = 5e-3
+  )
+})
+
 test_that("transformed correlations declare SD and Cholesky inputs", {
 
   data <- data.frame(
