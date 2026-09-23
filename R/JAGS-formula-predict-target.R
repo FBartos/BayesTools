@@ -25,8 +25,8 @@
 #' `"marginal"`. The default includes fitted random-effect contributions.
 #' @param blocks optional random-effect block names. For
 #' `formula_target = "marginal"` with random-effect terms in `formula`, the
-#' default is the blocks of those terms, and supplied `blocks` must name the
-#' same blocks.
+#' default is the blocks of those terms, and supplied `blocks` must be among
+#' those blocks.
 #' @param new_levels new-level policy for conditional or marginal random-effect
 #' prediction. Use a `random_new_levels()` object or one of `"error"`, `"zero"`,
 #' or `"sample"`.
@@ -249,7 +249,9 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
 
 # Random-effect terms in a marginal-target formula select the blocks whose
 # covariance is added to the fixed part, as the conditional target does. They
-# must match fitted blocks, and explicit 'blocks' must agree with them.
+# must match fitted blocks. Explicit 'blocks' select among them (callers such
+# as RoBMA pass the fitted formula with one block at a time); a block outside
+# the formula's terms is an error.
 .bt_formula_prediction_marginal_blocks <- function(formula, blocks, design,
                                                    parameter){
 
@@ -269,13 +271,13 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
   if(is.null(blocks)){
     return(requested_blocks)
   }
-  if(!setequal(blocks, requested_blocks)){
+  if(!all(blocks %in% requested_blocks)){
     stop(
       "'blocks' (", paste(blocks, collapse = ", "),
       ") do not match the random-effect terms in 'formula' (",
       paste(requested_blocks, collapse = ", "),
-      "). Omit 'blocks' to use the terms in 'formula', or supply matching ",
-      "blocks.",
+      "). Omit 'blocks' to use the terms in 'formula', or supply blocks ",
+      "among them.",
       call. = FALSE
     )
   }

@@ -1504,6 +1504,30 @@ test_that("marginal target honours and validates random terms in the formula", {
   expect_equal(sampled$random[1L, 1L], sampled$random[2L, 1L])
   expect_equal(sampled$random[3L, 1L], sampled$random[4L, 1L])
 
+  # Callers such as RoBMA pass the fitted formula (every random term) and
+  # select one block at a time: 'blocks' selects among the formula's terms.
+  full_formula <- ~ 1 + x + (1 | g) + (1 | h)
+  expect_identical(
+    JAGS_predict_formula(
+      fit, "mu", formula = full_formula, formula_target = "marginal"
+    )$vcov$metadata$included_blocks,
+    c("g", "h")
+  )
+  subset_covariance <- JAGS_predict_formula(
+    fit, "mu", formula = full_formula, formula_target = "marginal",
+    blocks = "g"
+  )
+  expect_identical(subset_covariance$vcov$metadata$included_blocks, "g")
+  expect_identical(subset_covariance$metadata$blocks, "g")
+  expect_equal(subset_covariance$vcov$samples, covariance$vcov$samples)
+  expect_equal(
+    JAGS_predict_formula(
+      fit, "mu", formula = full_formula, formula_target = "marginal",
+      marginal_method = "sample", blocks = "g", seed = 1
+    )$random,
+    explicit$random
+  )
+
   expect_error(
     JAGS_predict_formula(
       fit, "mu", formula = ~ 1 + x + (1 | zz), formula_target = "marginal"
