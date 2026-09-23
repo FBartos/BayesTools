@@ -684,6 +684,20 @@ test_that("JAGS_bridgesampling rejects deterministic bridge coordinates", {
   )
   expect_s3_class(call_bridge(stochastic), "BayesTools_marglik")
   expect_identical(sampler_calls, 1L)
+
+  # Fewer draws than coordinates cannot span the coordinate space; the remedy
+  # is more draws, not a different source route.
+  expect_error(
+    call_bridge(stochastic[1:4, , drop = FALSE]),
+    paste0(
+      "The bridge-sampling target was rejected by diagnostics: 4 posterior ",
+      "draws span only rank 3 of 5 varying bridge coordinates. Increase the ",
+      "number of posterior draws, for example with a larger 'sample' in ",
+      "JAGS_fit() or with JAGS_extend()."
+    ),
+    fixed = TRUE
+  )
+  expect_identical(sampler_calls, 1L)
 })
 
 test_that("JAGS_bridgesampling aborts on non-finite repetitions by default", {

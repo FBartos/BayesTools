@@ -667,6 +667,20 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     return(invisible(TRUE))
   }
 
+  # Centered draws span at most one dimension fewer than their number, so
+  # too few draws are rank-deficient whether or not coordinates are dependent.
+  if(nrow(standardized) <= ncol(standardized)){
+    stop(
+      "The bridge-sampling target was rejected by diagnostics: ",
+      nrow(standardized), " posterior draws span only rank ",
+      decomposition$rank, " of ", ncol(standardized),
+      " varying bridge coordinates. Increase the number of posterior ",
+      "draws, for example with a larger 'sample' in JAGS_fit() or with ",
+      "JAGS_extend().",
+      call. = FALSE
+    )
+  }
+
   dependent <- colnames(standardized)[
     decomposition$pivot[seq.int(decomposition$rank + 1L, ncol(standardized))]
   ]
