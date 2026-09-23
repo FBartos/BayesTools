@@ -581,6 +581,40 @@ test_that("heavy-tailed combinations resolve their narrowest source and mixtures
   )
 })
 
+test_that("mixture grids beyond the limit end adaptive refinement as non-convergence", {
+
+  # The mixing guard is a grid-limit condition.
+  empty <- data.frame(x = numeric(), p = numeric())
+  narrow <- list(density = list(x = seq(-1e-3, 1e-3, length.out = 101), y = rep(500, 101), mass = 1),
+                 points = empty, n_grid = 101L)
+  wide <- list(density = list(x = seq(-50, 50, length.out = 101), y = rep(.01, 101), mass = 1),
+               points = empty, n_grid = 101L)
+  expect_error(
+    .prior_linear_density_mix(list(narrow, wide), c(.5, .5), dx = 2e-5),
+    class = "BayesTools_prior_grid_limit"
+  )
+
+  # The initial model mixture fits the grid (about 4.8e5 knots). After halving
+  # the spacing each model stays below the limit, but their union at the finest
+  # model spacing needs about 3.3e6 knots: refinement ends and the height is
+  # reported as not converged, instead of failing with the mixing error meant
+  # for incompatible scales in the requested density itself.
+  context <- .prior_density_build_context(
+    list(a = list(prior("normal", list(0, .01), prior_weights = 1),
+                  prior("t", list(0, 1, 3), prior_weights = 1)),
+         b = list(prior("gamma", list(3, 2), prior_weights = 1),
+                  prior("normal", list(0, 1), prior_weights = 1))),
+    c("a", "b")
+  )
+  density <- .prior_density_from_context(context, c(a = 1, b = 1))
+  expect_lt(length(density$density$x), .prior_linear_density_max_grid())
+  expect_error(
+    .prior_linear_density_height(density, .3),
+    "Adaptive prior-density evaluation did not converge within the documented grid-refinement error criterion.",
+    fixed = TRUE
+  )
+})
+
 test_that("linear group ranges accept omitted source transformations", {
 
   group <- list(prior = prior("normal", list(0, 1)), weights = c(mu = 1), indices = 1L)

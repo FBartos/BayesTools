@@ -363,20 +363,27 @@
 
   # Components are mixed on their finest spacing over their union range; a
   # narrow and a heavy-tailed component can make that grid unrepresentable.
+  # The condition is a grid-limit error, so adaptive refinement that reaches
+  # it stops refining (non-convergence) instead of failing as a mixing error.
   if(length(densities) > 0L && is.finite(dx) && dx > 0){
     width <- max(vapply(densities, function(d) max(d$x), numeric(1))) -
       min(vapply(densities, function(d) min(d$x), numeric(1)))
     size  <- width / dx + 1
     if(size > .prior_linear_density_max_grid()){
-      stop(
-        "Mixed prior density is unavailable because its components have incompatible ",
-        "scales: the finest component spacing ", format(dx, digits = 4),
-        " over the combined range ", format(width, digits = 4), " needs ",
-        format(ceiling(size), big.mark = ","), " grid points, more than the limit of ",
-        format(.prior_linear_density_max_grid(), big.mark = ","),
-        ". Evaluate the components separately or use priors on comparable scales.",
-        call. = FALSE
-      )
+      stop(structure(
+        class = c("BayesTools_prior_grid_limit", "error", "condition"),
+        list(
+          message = paste0(
+            "Mixed prior density is unavailable because its components have incompatible ",
+            "scales: the finest component spacing ", format(dx, digits = 4),
+            " over the combined range ", format(width, digits = 4), " needs ",
+            format(ceiling(size), big.mark = ","), " grid points, more than the limit of ",
+            format(.prior_linear_density_max_grid(), big.mark = ","),
+            ". Evaluate the components separately or use priors on comparable scales."
+          ),
+          call = NULL
+        )
+      ))
     }
   }
 
