@@ -86,6 +86,9 @@ density.prior <- function(x,
   check_bool(individual, "individual")
   .check_transformation_input(transformation, transformation_arguments, transformation_settings)
   check_bool(truncate_end, "truncate_end")
+  if(is.prior.none(x) || (is.prior.mixture(x) && !is.prior.spike_and_slab(x))){
+    .prior_stop_unsupported_method("density", x)
+  }
 
 
   ### setting the range
@@ -162,6 +165,8 @@ density.prior <- function(x,
     out <- .density.prior.simplex(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.simple(x)){
     out <- .density.prior.simple(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
+  }else{
+    .prior_stop_unsupported_method("density", x)
   }
 
   if(!is.null(transformation)){
@@ -1258,6 +1263,9 @@ density.prior <- function(x,
 range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 
   .check_prior(x)
+  if(is.prior.none(x) || is.prior.mixture(x)){
+    .prior_stop_unsupported_method("range", x)
+  }
   if(!is.null(quantiles)){
     check_real(quantiles, "quantiles", upper = 0.5, allow_bound = FALSE)
   }else{

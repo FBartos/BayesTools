@@ -10,6 +10,74 @@ test_that("factor joint quantiles fail clearly instead of returning a function",
   )
 })
 
+test_that("unsupported prior classes stop explicitly in every distribution method", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
+  phacking  <- prior_phacking(form = "linear")
+  priors <- list(
+    ordered  = prior_ordered(prior("normal", list(0, 1))),
+    none     = prior_none(),
+    phacking = phacking,
+    bias     = prior_bias(selection, phacking)
+  )
+  kinds <- c(ordered = "ordered priors", none = "'prior_none()' priors")
+  methods <- list(
+    "random generation"          = function(p) rng(p, 3),
+    "cdf"                        = function(p) cdf(p, .5),
+    "ccdf"                       = function(p) ccdf(p, .5),
+    "lpdf"                       = function(p) lpdf(p, .5),
+    "lpdf"                       = function(p) pdf(p, .5),
+    "quantile function"          = function(p) quant(p, .5),
+    "mcdf"                       = function(p) mcdf(p, .5),
+    "mccdf"                      = function(p) mccdf(p, .5),
+    "mlpdf"                      = function(p) mlpdf(p, .5),
+    "mlpdf"                      = function(p) mpdf(p, .5),
+    "marginal quantile function" = function(p) mquant(p, .5),
+    "mean"                       = function(p) mean(p),
+    "variance"                   = function(p) var(p),
+    "variance"                   = function(p) sd(p),
+    "range"                      = function(p) range(p),
+    "density"                    = function(p) density(p)
+  )
+  supported <- list(
+    ordered  = c("random generation", "range", "density"),
+    phacking = "random generation",
+    bias     = "random generation"
+  )
+
+  for(prior_name in names(priors)){
+    for(i in seq_along(methods)){
+      method <- names(methods)[i]
+      if(method %in% supported[[prior_name]]){
+        next
+      }
+      message <- if(prior_name %in% names(kinds)){
+        paste0("No ", method, " is implemented for ", kinds[[prior_name]], ".")
+      }else if(identical(prior_name, "phacking")){
+        paste0("No ", if(identical(method, "quantile function")) "quantile functions" else method,
+               " is implemented for p-hacking priors")
+      }else{
+        paste0("No ", if(identical(method, "quantile function")) "quantile functions" else method,
+               " is implemented for composed bias priors")
+      }
+      expect_error(methods[[i]](priors[[prior_name]]), message, fixed = TRUE)
+    }
+  }
+
+  mixtures <- list(
+    spike_and_slab = prior_spike_and_slab(prior("normal", list(0, 1))),
+    mixture        = prior_mixture(list(prior("point", list(0)), prior("normal", list(0, 1))))
+  )
+  expect_error(range(mixtures$spike_and_slab),
+               "No range is implemented for spike and slab priors.", fixed = TRUE)
+  expect_error(range(mixtures$mixture),
+               "No range is implemented for prior mixtures.", fixed = TRUE)
+  expect_error(density(mixtures$mixture),
+               "No density is implemented for prior mixtures.", fixed = TRUE)
+  expect_error(density(prior("mnormal", list(mean = 0, sd = 1, K = 2))),
+               "No density is implemented for this prior distribution.", fixed = TRUE)
+})
+
 # ============================================================================ #
 # TEST FILE: Prior Distribution Coverage Tests
 # ============================================================================ #

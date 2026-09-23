@@ -75,6 +75,10 @@ mcdf.prior   <- function(x, q, ...){
       "mpoint"  = ppoint(q, location = 0)
     )
 
+  }else{
+
+    .prior_stop_unsupported_method("mcdf", prior)
+
   }
 
   return(p)
@@ -152,6 +156,10 @@ mccdf.prior  <- function(x, q, ...){
       "mt"      = extraDistr::plst(q, df = prior$parameters[["df"]], mu = 0, sigma = par2, lower.tail = FALSE),
       "mpoint"  = ppoint(q, location = 0, lower.tail = FALSE),
     )
+
+  }else{
+
+    .prior_stop_unsupported_method("mccdf", prior)
 
   }
 
@@ -231,6 +239,10 @@ mlpdf.prior  <- function(x, y, ...){
       "mt"      = extraDistr::dlst(x, df = prior$parameters[["df"]], mu = 0, sigma = par2, log = TRUE),
       "mpoint"  = dpoint(x, location = 0, log = TRUE),
     )
+
+  }else{
+
+    .prior_stop_unsupported_method("mlpdf", prior)
 
   }
 
@@ -327,6 +339,10 @@ mquant.prior <- function(x, p, ...){
       "mt"      = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = 0, sigma = par2),
       "mpoint"  = qpoint(p, location = 0)
     )
+
+  }else{
+
+    .prior_stop_unsupported_method("marginal quantile function", prior)
 
   }
 

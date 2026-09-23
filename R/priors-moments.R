@@ -125,6 +125,10 @@ mean.prior   <- function(x, ...){
       m <- 0
     }
 
+  }else{
+
+    .prior_stop_unsupported_method("mean", x)
+
   }
 
   return(m)
@@ -334,6 +338,10 @@ var.prior   <- function(x, ...){
         "mnormal" = var.prior(prior("normal", parameters = list(mean = 0, sd = par2))),
         "mt"      = var.prior(prior("t",      parameters = list(location = 0, scale = par2, df = x$parameters[["df"]]))))
     }
+
+  }else{
+
+    .prior_stop_unsupported_method("variance", x)
 
   }
 

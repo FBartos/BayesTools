@@ -54,6 +54,26 @@
 NULL
 
 
+.prior_stop_unsupported_method <- function(method, prior){
+
+  if(is_prior_phacking(prior) || is_prior_bias(prior)){
+    .selection_prior_stop_unsupported_generic(method, prior)
+  }
+  kind <- if(is.prior.ordered(prior)){
+    "ordered priors"
+  }else if(is.prior.none(prior)){
+    "'prior_none()' priors"
+  }else if(is.prior.spike_and_slab(prior)){
+    "spike and slab priors"
+  }else if(is.prior.mixture(prior)){
+    "prior mixtures"
+  }else{
+    "this prior distribution"
+  }
+  stop(sprintf("No %s is implemented for %s.", method, kind), call. = FALSE)
+}
+
+
 #### joint distribution functions ####
 #' @rdname prior_functions
 rng.prior   <- function(x, n, ...){
@@ -311,6 +331,10 @@ rng.prior   <- function(x, n, ...){
       x <- cbind(x, rng(prior$phacking, n))
     }
 
+  }else{
+
+    .prior_stop_unsupported_method("random generation", prior)
+
   }
 
   return(x)
@@ -347,6 +371,10 @@ cdf.prior   <- function(x, q, ...){
 
     .selection_prior_stop_unsupported_generic("cdf", prior)
 
+  }else{
+
+    .prior_stop_unsupported_method("cdf", prior)
+
   }
 
   return(p)
@@ -382,6 +410,10 @@ ccdf.prior  <- function(x, q, ...){
   }else if(is_prior_phacking(prior) || is_prior_bias(prior)){
 
     .selection_prior_stop_unsupported_generic("ccdf", prior)
+
+  }else{
+
+    .prior_stop_unsupported_method("ccdf", prior)
 
   }
 
@@ -450,6 +482,10 @@ lpdf.prior  <- function(x, y, ...){
 
     .selection_prior_stop_unsupported_generic("lpdf", prior)
 
+  }else{
+
+    .prior_stop_unsupported_method("lpdf", prior)
+
   }
 
   return(log_lik)
@@ -496,6 +532,10 @@ quant.prior <- function(x, p, ...){
 
     q <- mquant(prior, p)
 
+  }else if(is.prior.ordered(prior)){
+
+    .prior_stop_unsupported_method("quantile function", prior)
+
   }else if(is.prior.factor(prior)){
 
     stop("Joint quantiles are unavailable for factor priors. Use 'mquant()' for marginal quantiles.", call. = FALSE)
@@ -507,6 +547,10 @@ quant.prior <- function(x, p, ...){
   }else if(is_prior_phacking(prior) || is_prior_bias(prior)){
 
     .selection_prior_stop_unsupported_generic("quantile functions", prior)
+
+  }else{
+
+    .prior_stop_unsupported_method("quantile function", prior)
 
   }
 
