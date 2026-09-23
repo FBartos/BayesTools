@@ -528,6 +528,14 @@
   if(n_par < 1L){
     stop("Random-effect term '", random_term$block_name, "' does not generate any design columns.", call. = FALSE)
   }
+  # A top-level correlation prior applies only when this block has a
+  # correlation parameter, which depends on the resolved design dimension.
+  block_prior <- .bt_random_block_resolve_correlation(
+    block_prior,
+    structure = random_structure,
+    n_columns = n_par,
+    block_name = random_term$block_name
+  )
 
   # Resolve the canonical SD leaves and bindings before choosing a sampled
   # parameterization. Centered eligibility depends on their zero/external
@@ -566,7 +574,9 @@
     group_map = grouping_mapping,
     n_groups = n_id,
     compile_mode = compile_mode,
-    block_name = random_term$block_name
+    block_name = random_term$block_name,
+    structure = random_structure,
+    group_covariance = .bt_random_effect_group_covariance_input(random_term)
   )
   dense_status <- .bt_random_effect_dense_complexity_status(
     structure = random_structure,

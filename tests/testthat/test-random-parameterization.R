@@ -774,3 +774,156 @@ test_that("term-specific SD overrides are validated at construction", {
     "random_block"
   )
 })
+
+test_that("compiled blocks apply inherited correlation priors by dimension", {
+
+  set.seed(1)
+  data <- data.frame(
+    g1 = factor(rep(1:5, each = 6L)),
+    g2 = factor(rep(1:6, 5L)),
+    t  = factor(rep(1:3, 10L)),
+    x  = stats::rnorm(30L)
+  )
+  sd_prior <- .parameterization_sd_prior()
+  compile <- function(formula, specification){
+    JAGS_formula(
+      formula = formula,
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = specification
+    )
+  }
+  block_terms <- function(result){
+    terms <- result$formula_design$random_effects
+    names(terms) <- vapply(terms, `[[`, character(1), "block_name")
+    terms
+  }
+
+  lkj <- compile(
+    ~ 1 + (1 | g1) + (1 + x | g2),
+    prior_random(sd = sd_prior, cor = prior_lkj(eta = 2))
+  )
+  expect_null(block_terms(lkj)$g1$correlation)
+  expect_identical(block_terms(lkj)$g2$correlation$eta, 2)
+
+  scalar <- compile(
+    ~ 1 + (1 | g1) + cs(t | g2),
+    prior_random(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
+  )
+  expect_null(block_terms(scalar)$g1$correlation)
+  expect_true("mu__xREx__g2_rho_z" %in% names(scalar$prior_list))
+
+  expect_error(
+    compile(
+      ~ 1 + (1 | g1) + (1 + x | g2),
+      prior_random(sd = sd_prior, g1 = random_block(cor = prior_lkj(eta = 2)))
+    ),
+    "Single-column random-effect structure 'us' has no correlation parameter",
+    fixed = TRUE
+  )
+  expect_error(
+    compile(
+      ~ 1 + (1 + x | g1),
+      prior_random(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
+    ),
+    "random-effect block 'g1' supplies a scalar correlation prior, but structure 'us' uses an LKJ correlation prior",
+    fixed = TRUE
+  )
+  expect_error(
+    compile(
+      ~ 1 + cs(t | g2),
+      prior_random(sd = sd_prior, cor = prior_lkj(eta = 2))
+    ),
+    "random-effect block 'g2' supplies an LKJ correlation prior, but structure 'cs' uses a scalar correlation prior",
+    fixed = TRUE
+  )
+})
+
+test_that("compiled auto parameterization falls back for structure contracts", {
+
+  data <- expand.grid(rep = 1:6, lev = 1:4, g = 1:5)
+  data$id   <- factor(paste0("g", data$g))
+  data$t    <- c(0, 0.5, 2, 3.7)[data$lev]
+  data$site <- factor(paste0("s", data$rep %% 2L))
+  compile <- function(formula, specification, data){
+    term <- JAGS_formula(
+      formula = formula,
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = specification
+    )$formula_design$random_effects[[1L]]
+    c(resolved = term$parameterization_resolved,
+      reason = term$parameterization_reason)
+  }
+  car_reason <- paste0(
+    "centered CAR SD prior has an unrepresentable initial JAGS precision ",
+    "at the lower centered SD support 0e+00; its support must be bounded ",
+    "away from zero and infinity"
+  )
+  allocation_reason <- paste0(
+    "centered CAR requires one prior-owned block SD prior, which a ",
+    "variance allocation does not provide"
+  )
+  car_block <- function(sd, parameterization){
+    prior_random(id = random_block(sd = sd, parameterization = parameterization))
+  }
+
+  expect_identical(
+    compile(~ 1 + car(t | id), car_block(.parameterization_sd_prior(), "auto"), data),
+    c(resolved = "noncentered", reason = car_reason)
+  )
+  expect_error(
+    compile(~ 1 + car(t | id), car_block(prior("gamma", list(2, 2)), "centered"), data),
+    paste0("Centered parameterization is not available for random-effect block 'id': ",
+           car_reason, "."),
+    fixed = TRUE
+  )
+  expect_identical(
+    compile(~ 1 + car(t | id), car_block(prior("uniform", list(0.1, 2)), "auto"), data)[["resolved"]],
+    "centered"
+  )
+  allocation <- prior_random(
+    allocation = random_variance_allocation(
+      name = "a",
+      terms = c(id = "id", site = "site"),
+      sd = prior("uniform", list(0.1, 2))
+    ),
+    parameterization = "auto"
+  )
+  expect_identical(
+    compile(~ 1 + car(t | id) + diag(1 | site), allocation, data),
+    c(resolved = "noncentered", reason = allocation_reason)
+  )
+
+  levels <- c("s1", "s2", "s3")
+  kernel <- matrix(c(1, .2, .1, .2, 1.5, .15, .1, .15, 2), 3L, 3L,
+                   dimnames = list(levels, levels))
+  known <- expand.grid(rep = 1:8, study = levels)
+  known$study <- factor(known$study, levels = levels)
+  known$x <- rep(c(-1, 1), length.out = nrow(known))
+  formula <- random_effects_formula(
+    ~ x | study,
+    group_covariance = random_group_covariance(kernel, scale = "none")
+  )
+  study_block <- function(parameterization){
+    prior_random(study = random_block(
+      sd = .parameterization_sd_prior(),
+      parameterization = parameterization
+    ))
+  }
+  covariance_reason <- paste0(
+    "known group covariance with multiple random-effect columns requires ",
+    "the exact noncentered parameterization"
+  )
+  expect_identical(
+    compile(formula, study_block("auto"), known),
+    c(resolved = "noncentered", reason = covariance_reason)
+  )
+  expect_error(
+    compile(formula, study_block("centered"), known),
+    covariance_reason,
+    fixed = TRUE
+  )
+})
