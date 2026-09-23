@@ -931,6 +931,56 @@ test_that("conditional posterior prior overlay uses conditioned spike-and-slab s
   )
 })
 
+test_that("conditional posterior prior overlays do not scale raw coefficients by multiply_by", {
+
+  # The monitored column is the coefficient node itself; 'multiply_by' only
+  # scales its contribution to the linear predictor (mu = ... + sigma * theta * x).
+  theta_prior <- prior_spike_and_slab(
+    prior("normal", list(mean = 0, sd = 1)),
+    prior_inclusion = prior("point", list(location = 0.5))
+  )
+  attr(theta_prior, "multiply_by") <- "sigma"
+  prior_list <- list(
+    theta = theta_prior,
+    gamma = prior_spike_and_slab(
+      prior("normal", list(mean = 0, sd = 1)),
+      prior_inclusion = prior("point", list(location = 0.5))
+    ),
+    sigma = prior("lognormal", list(meanlog = 0, sdlog = 1))
+  )
+
+  theta_included <- rep(c(1, 1, 0, 0), each = 25)
+  gamma_included <- rep(c(1, 0, 1, 0), each = 25)
+  posterior <- cbind(
+    theta           = theta_included * seq(-1.5, 1.5, length.out = 100),
+    theta_indicator = theta_included,
+    gamma           = gamma_included * seq(-1, 1, length.out = 100),
+    gamma_indicator = gamma_included,
+    sigma           = seq(.5, 2, length.out = 100)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+
+  prior_layer <- function(samples, parameter){
+    plot <- plot_posterior(samples, parameter, plot_type = "ggplot", prior = TRUE, n_points = 512)
+    ggplot2::ggplot_build(plot)$data[[1]]
+  }
+
+  # conditional on its own inclusion: the N(0, 1) slab, peak dnorm(0), not the
+  # N(0, 1) x sigma product (peak exp(1/2) * dnorm(0), heavy tails)
+  samples_self <- as_mixed_posteriors(fit, parameters = "theta", conditional = "theta")
+  layer_self <- prior_layer(samples_self, "theta")
+  expect_equal(max(layer_self$y), stats::dnorm(0), tolerance = 1e-3)
+  expect_lt(max(abs(layer_self$x)), 10)
+
+  # conditional on another parameter: 0.5 * N(0, 1) slab plus the spike
+  samples_other <- as_mixed_posteriors(fit, parameters = c("theta", "gamma"), conditional = "gamma")
+  layer_other <- prior_layer(samples_other, "theta")
+  expect_equal(max(layer_other$y), .5 * stats::dnorm(0), tolerance = 1e-3)
+  expect_lt(max(abs(layer_other$x)), 10)
+})
+
 test_that("plot_posterior handles attached point priors outside xlim", {
 
   theta <- structure(

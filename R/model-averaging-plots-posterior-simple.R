@@ -65,12 +65,16 @@
     condition_source = samples[[parameter]]
   )
 
-  if(!is.null(prior_density_context) &&
+  # Plotted posterior samples are monitored coefficient columns (the JAGS
+  # nodes); 'multiply_by' scales only their linear-predictor contribution.
+  prior_list <- attr(samples, "prior_list", exact = TRUE)
+  raw_priors <- .plot_data_prior_list_without_multiply_by(prior_list)
+
+  if(!raw_priors$changed && !is.null(prior_density_context) &&
      .marginal_posterior_context_matches_condition(prior_density_context, condition_metadata)){
     return(prior_density_context)
   }
 
-  prior_list <- attr(samples, "prior_list", exact = TRUE)
   if(is.null(prior_list)){
     return(NULL)
   }
@@ -80,14 +84,80 @@
     column_names <- prior_density_context[["column_names"]]
   }
 
-  .marginal_posterior_prior_density_context(
-    samples          = samples,
-    prior_list       = prior_list,
-    column_names     = column_names,
-    n_samples        = max(16L, n_points),
-    allow_failure    = TRUE,
-    condition_source = samples[[parameter]]
+  if(!raw_priors$changed){
+    return(.marginal_posterior_prior_density_context(
+      samples          = samples,
+      prior_list       = prior_list,
+      column_names     = column_names,
+      n_samples        = max(16L, n_points),
+      allow_failure    = TRUE,
+      condition_source = samples[[parameter]]
+    ))
+  }
+
+  if(is.null(column_names)){
+    column_names <- unique(unlist(lapply(names(prior_list), function(parameter_name){
+      parameter_prior <- prior_list[[parameter_name]]
+      if(!is.prior(parameter_prior)){
+        parameter_prior <- parameter_prior[[1]]
+      }
+      .prior_linear_prior_columns(parameter_name, parameter_prior)
+    }), use.names = FALSE))
+  }
+  n_grid <- if(!is.null(prior_density_context[["n_grid"]])){
+    prior_density_context[["n_grid"]]
+  }else{
+    max(16L, n_points)
+  }
+  formula_scale <- if(isTRUE(attr(samples, "transform_scaled"))){
+    attr(samples, "formula_scale", exact = TRUE)
+  }else{
+    NULL
+  }
+
+  tryCatch(
+    .prior_density_build_context(
+      prior_list       = raw_priors$prior_list,
+      column_names     = column_names,
+      formula_scale    = formula_scale,
+      n_grid           = n_grid,
+      conditional      = condition_metadata[["conditional"]],
+      conditional_rule = condition_metadata[["conditional_rule"]],
+      condition_event  = condition_metadata[["condition_event"]]
+    ),
+    error = function(e) NULL
   )
+}
+
+.plot_data_prior_list_without_multiply_by <- function(prior_list){
+
+  changed <- FALSE
+  drop_multiply_by <- function(prior){
+    if(!is.null(attr(prior, "multiply_by", exact = TRUE))){
+      attr(prior, "multiply_by") <- NULL
+      changed <<- TRUE
+    }
+    prior
+  }
+
+  if(is.list(prior_list) && !is.prior(prior_list)){
+    for(i in seq_along(prior_list)){
+      if(!is.prior(prior_list[[i]])){
+        next
+      }
+      prior <- drop_multiply_by(prior_list[[i]])
+      if(is.prior.mixture(prior)){
+        for(k in seq_along(prior)){
+          if(!is.null(attr(prior[[k]], "multiply_by", exact = TRUE))){
+            prior[[k]] <- drop_multiply_by(prior[[k]])
+          }
+        }
+      }
+      prior_list[[i]] <- prior
+    }
+  }
+
+  list(prior_list = prior_list, changed = changed)
 }
 
 .plot_data_prior_density_context <- function(prior_density_context, samples, parameter, prior_list, n_points, x_range = NULL,
