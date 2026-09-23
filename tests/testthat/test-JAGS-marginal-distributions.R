@@ -4058,6 +4058,49 @@ test_that("marginal_posterior without prior samples tolerates unavailable scaled
   expect_equal(as.numeric(intercept[["intercept"]]), log(original[, "ls_intercept"]), tolerance = 1e-12)
 })
 
+test_that("intercept-only formulas give the intercept level", {
+
+  set.seed(3)
+  n <- 100L
+  truncated <- prior("normal", list(.5, 1), list(0, Inf))
+  data <- data.frame(y = 1:3)
+  intercept_only <- function(intercept){
+    JAGS_formula(~ 1, "mu", data = data, prior_list = list(intercept = intercept))$prior_list
+  }
+  # N(0, 1) and N(0.5, 1)T(0, Inf) mixed with equal weights; the truncated
+  # component's ordinate at its bound is the one-sided limit.
+  height_0 <- .5 * stats::dnorm(0) + .5 * stats::dnorm(0, .5) / stats::pnorm(.5)
+
+  models <- list(
+    list(fit = .mock_mixing_fit_for_marginal(cbind(mu_intercept = stats::rnorm(n)),
+                                             intercept_only(prior("normal", list(0, 1)))),
+         marglik = bridgesampling_object(0), prior_weights = 1),
+    list(fit = .mock_mixing_fit_for_marginal(cbind(mu_intercept = rng(truncated, n)),
+                                             intercept_only(truncated)),
+         marglik = bridgesampling_object(0), prior_weights = 1)
+  )
+  mixed <- mix_posteriors(models, parameters = "mu_intercept",
+                          is_null_list = list(mu_intercept = c(FALSE, FALSE)),
+                          seed = 1, n_samples = n)
+  levels <- marginal_posterior(mixed, "mu_intercept", formula = ~ 1, prior_samples = TRUE)
+  expect_identical(names(levels), "intercept")
+  expect_equal(as.numeric(levels[["intercept"]]), as.numeric(mixed$mu_intercept))
+  expect_equal(.prior_height_for_test(levels[["intercept"]], 0), height_0, tolerance = 1e-10)
+
+  indicator <- sample(1:2, n, TRUE)
+  draws <- ifelse(indicator == 1L, stats::rnorm(n), rng(truncated, n))
+  fit <- coda::mcmc(cbind(mu_intercept = draws, mu_intercept_indicator = indicator))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- intercept_only(prior_mixture(
+    list(prior("normal", list(0, 1)), truncated), is_null = c(FALSE, FALSE)
+  ))
+  single <- marginal_posterior(as_mixed_posteriors(fit, parameters = "mu_intercept"),
+                               "mu_intercept", formula = ~ 1, prior_samples = TRUE)
+  expect_identical(names(single), "intercept")
+  expect_equal(as.numeric(single[["intercept"]]), draws)
+  expect_equal(.prior_height_for_test(single[["intercept"]], 0), height_0, tolerance = 1e-10)
+})
+
 .ordered_prior_for_test <- function(total, allocation = c(.4, .6)){
   data <- data.frame(f = ordered(c("low", "mid", "high"), levels = c("low", "mid", "high")))
   JAGS_formula(

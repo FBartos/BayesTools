@@ -177,7 +177,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       model_terms            <- c(if(has_intercept) "intercept", attr(formula_terms, "term.labels"))
 
       JAGS_model_terms <- JAGS_parameter_names(parameters = model_terms, formula_parameter = formula_parameter)
-      JAGS_predictors  <- JAGS_parameter_names(parameters = predictors, formula_parameter = formula_parameter)
+      # an intercept-only formula has no predictors
+      JAGS_predictors  <- if(length(predictors) > 0L){
+        JAGS_parameter_names(parameters = predictors, formula_parameter = formula_parameter)
+      }else{
+        character()
+      }
 
 
       ### obtain posterior samples and check that all are present
@@ -216,7 +221,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           return("continuous")
         }
       })
-      predictors_type  <- model_terms_type[JAGS_parameter_names(parameters = predictors, formula_parameter = formula_parameter)]
+      predictors_type  <- model_terms_type[JAGS_predictors]
 
 
       ### prepare at specification
@@ -256,8 +261,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         }
       }
 
-      # transform to a data.frame
-      data <- as.data.frame(expand.grid(at))
+      # transform to a data.frame (one row without predictors)
+      data <- if(length(at) > 0L){
+        as.data.frame(expand.grid(at))
+      }else{
+        data.frame(row.names = 1L)
+      }
 
       # check the specified data
       if(any(predictors_type == "factor")){
