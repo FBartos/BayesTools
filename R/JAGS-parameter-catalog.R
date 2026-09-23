@@ -1644,9 +1644,25 @@ parameter_transform_jacobian <- function(values, transform){
   out
 }
 
+# Coordinates owned by a point prior with an expression location are
+# deterministic functions of other nodes: derived, never structural.
+.bt_parameter_catalog_derived_coordinates <- function(coordinates, prior_list){
+
+  if(length(prior_list) == 0L || is.null(names(prior_list))){
+    return(character())
+  }
+  expression_points <- names(prior_list)[vapply(prior_list, function(prior){
+    is.prior.point(prior) && .is_prior_expression(prior)
+  }, logical(1))]
+  bases <- .bt_parameter_coordinates_base(coordinates$coordinate_name)
+  coordinates$coordinate_name[
+    bases %in% expression_points & coordinates$monitor_status == "sampled"
+  ]
+}
+
 .bt_parameter_catalog_coordinate_quantities <- function(
     coordinates, overrides = .bt_parameter_catalog_empty_overrides(),
-    suppress = character()){
+    suppress = character(), derived = character()){
 
   out <- .bt_parameter_catalog_empty_quantities()
   if(anyDuplicated(overrides$canonical_name)){
@@ -1692,7 +1708,11 @@ parameter_transform_jacobian <- function(values, transform){
       display_label = display_label,
       fitted_scale = row$fitted_scale,
       display_scale = display_scale,
-      status = row$monitor_status,
+      status = if(row$coordinate_name %in% derived){
+        "derived"
+      }else{
+        row$monitor_status
+      },
       fixed_value = row$fixed_value,
       internal = FALSE,
       source_type = "identity",
@@ -3007,7 +3027,11 @@ parameter_transform_jacobian <- function(values, transform){
   base <- .bt_parameter_catalog_coordinate_quantities(
     coordinates = coordinates,
     overrides = factor_map$direct,
-    suppress = random_map$suppress
+    suppress = random_map$suppress,
+    derived = .bt_parameter_catalog_derived_coordinates(
+      coordinates = coordinates,
+      prior_list = prior_list
+    )
   )
   quantities <- rbind(base, factor_map$derived, random_map$derived)
   rownames(quantities) <- NULL

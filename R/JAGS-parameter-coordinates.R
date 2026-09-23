@@ -277,9 +277,17 @@
   owners
 }
 
+# A point prior whose location is an expression is a deterministic function
+# of other nodes, so its coordinate is derived rather than a structural
+# constant and has no fixed value.
+.bt_parameter_coordinates_structural_point <- function(prior){
+
+  !is.null(prior) && is.prior.point(prior) && !.is_prior_expression(prior)
+}
+
 .bt_parameter_coordinates_point_values <- function(parameter, prior){
 
-  if(is.null(prior) || !is.prior.point(prior)){
+  if(!.bt_parameter_coordinates_structural_point(prior)){
     return(stats::setNames(numeric(), character()))
   }
   parameter_names <- if(is.prior.vector(prior) || is.prior.factor(prior)){
@@ -574,7 +582,7 @@
   if(length(prior_list) > 0L){
     for(parameter in names(prior_list)){
       prior <- prior_list[[parameter]]
-      if(is.prior.point(prior)){
+      if(.bt_parameter_coordinates_structural_point(prior)){
         structural <- c(
           structural,
           if(is.prior.factor(prior) || is.prior.vector(prior)){
@@ -675,7 +683,7 @@
         monitor_names == base_name
     ]
     monitor_name <- if(length(requested) > 0L) requested[1L] else base_name
-    monitor_status <- if(!is.null(prior) && is.prior.point(prior)){
+    monitor_status <- if(.bt_parameter_coordinates_structural_point(prior)){
       "structural"
     }else if(coordinate_name %in% columns){
       "sampled"

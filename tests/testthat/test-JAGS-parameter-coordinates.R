@@ -481,6 +481,42 @@ test_that("structural point parameters are registered when JAGS omits them", {
   expect_identical(fixed_monitored$fixed_value, 0)
 })
 
+test_that("point priors with expression locations are derived coordinates", {
+
+  prior_list <- list(
+    a = prior("normal", list(0, 1)),
+    b = prior("point", list(location = expression(a)))
+  )
+  expect_identical(JAGS_to_monitor(prior_list), c("a", "b"))
+
+  map <- .bt_build_parameter_map(
+    columns = c("a", "b"),
+    prior_list = prior_list
+  )
+  derived <- map$coordinates[map$coordinates$coordinate_name == "b", ]
+  expect_identical(derived$monitor_status, "sampled")
+  expect_identical(derived$fixed_value, NA_real_)
+  quantity <- map$quantities[map$quantities$canonical_name == "b", ]
+  expect_identical(quantity$status, "derived")
+  expect_identical(quantity$fixed_value, NA_real_)
+
+  # An unmonitored deterministic node is not a structural constant.
+  unmonitored <- .bt_build_parameter_map(columns = "a", prior_list = prior_list)
+  expect_false("b" %in% unmonitored$coordinates$coordinate_name)
+
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(cbind(a = c(-1, 0.5), b = c(-1, 0.5)))),
+    prior_list = prior_list
+  )
+  expect_identical(
+    as.numeric(parameter_draws(
+      fit,
+      parameter_catalog_resolve(parameter_catalog(fit), "b")
+    )[[1L]][, 1L]),
+    c(-1, 0.5)
+  )
+})
+
 test_that("structural coordinates retain exact scalar and vector values", {
 
   factor_prior <- prior_factor(
