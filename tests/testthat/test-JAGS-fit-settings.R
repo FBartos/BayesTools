@@ -453,10 +453,22 @@ test_that("JAGS_extend resets its time budget for every call", {
   expect_equal(clock_calls, 4L)
 })
 
+.jags_extend_test_fit_with_draws <- function(){
+
+  fit <- .jags_extend_test_fit()
+  set.seed(71)
+  draws <- cbind(mu = stats::rnorm(50), theta = stats::rnorm(50))
+  fit$mcmc <- coda::mcmc.list(coda::mcmc(draws), coda::mcmc(draws + 0.1))
+  fit$summary.pars <- list(mutate = NULL)
+  attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)))
+  attr(fit, "add_parameters") <- "theta"
+  fit
+}
+
 test_that("JAGS_extend forwards explicit convergence monitor policy", {
 
   skip_if_not_installed("runjags")
-  fit <- .jags_extend_test_fit()
+  fit <- .jags_extend_test_fit_with_draws()
   convergence_arguments <- NULL
   testthat::local_mocked_bindings(
     extend.jags = function(runjags.object, ...){
@@ -478,6 +490,103 @@ test_that("JAGS_extend forwards explicit convergence monitor policy", {
   expect_silent(JAGS_extend(fit, autofit_control = control))
   expect_identical(convergence_arguments$monitor, "mu")
   expect_true(convergence_arguments$allow_not_assessable)
+})
+
+test_that("JAGS_extend resolves explicit convergence monitors before extending", {
+
+  skip_if_not_installed("runjags")
+  fit <- .jags_extend_test_fit_with_draws()
+  extension_calls <- 0L
+  testthat::local_mocked_bindings(
+    extend.jags = function(runjags.object, ...){
+      extension_calls <<- extension_calls + 1L
+      runjags.object
+    },
+    .package = "runjags"
+  )
+
+  control <- .jags_extend_test_control()
+  control$monitor <- "theta[2]"
+  expect_error(
+    JAGS_extend(fit, autofit_control = control),
+    "The requested convergence monitor 'theta[2]' is not available in the fitted model.",
+    fixed = TRUE
+  )
+  expect_identical(extension_calls, 0L)
+
+  # An additional monitor named explicitly is checked after the extension.
+  control$monitor <- "theta"
+  control$min_ESS <- 1
+  extended <- JAGS_extend(fit, autofit_control = control)
+  expect_identical(extension_calls, 1L)
+  expect_s3_class(extended, "BayesTools_fit")
+})
+
+test_that("JAGS_fit rejects unknown convergence monitors before sampling", {
+
+  skip_if_not_installed("runjags")
+  backend_calls <- 0L
+  set.seed(72)
+  draws <- cbind(mu = stats::rnorm(50), theta = stats::rnorm(50))
+  sampled_fit <- structure(
+    list(
+      mcmc = coda::mcmc.list(coda::mcmc(draws), coda::mcmc(draws + 0.1)),
+      summary.pars = list(mutate = NULL)
+    ),
+    class = "runjags"
+  )
+  testthat::local_mocked_bindings(
+    run.jags = function(...){
+      backend_calls <<- backend_calls + 1L
+      sampled_fit
+    },
+    .package = "runjags"
+  )
+  testthat::local_mocked_bindings(
+    .JAGS_require_packages = function(...) invisible(NULL),
+    .JAGS_load_modules = function(...) invisible(NULL),
+    .bt_attach_parameter_map = function(fit, ...) fit,
+    .bt_attach_draw_geometry = function(fit, ...) fit,
+    .package = "BayesTools"
+  )
+  fit_with_monitor <- function(monitor){
+    JAGS_fit(
+      model_syntax = "model{ mu ~ dnorm(0, 1)\n theta ~ dnorm(0, 1) }",
+      prior_list = list(mu = prior("normal", list(0, 1))),
+      add_parameters = "theta",
+      chains = 2,
+      adapt = 50,
+      burnin = 50,
+      sample = 100,
+      autofit = TRUE,
+      autofit_control = list(
+        max_Rhat = NULL,
+        min_ESS = 1,
+        max_error = NULL,
+        max_SD_error = NULL,
+        max_time = list(time = 60, unit = "secs"),
+        sample_extend = 1,
+        restarts = 1,
+        max_extend = 1,
+        check_indicators = FALSE,
+        monitor = monitor
+      ),
+      silent = TRUE,
+      seed = 1
+    )
+  }
+
+  expect_error(
+    fit_with_monitor("thetaa"),
+    "The requested convergence monitor 'thetaa' is not monitored by the model.",
+    fixed = TRUE
+  )
+  expect_identical(backend_calls, 0L)
+
+  fit <- fit_with_monitor("theta")
+  expect_identical(backend_calls, 1L)
+  expect_s3_class(fit, "BayesTools_fit")
+  expect_null(attr(fit, "warnings"))
 })
 
 

@@ -607,6 +607,281 @@ test_that("fixed weightfunction omega bins are structural constants", {
   )
 })
 
+.convergence_states <- function(result){
+
+  diagnostics <- attr(result, "diagnostics")
+  stats::setNames(diagnostics$state, diagnostics$parameter)
+}
+
+.convergence_weight_draws <- function(n){
+  pmin(pmax(stats::rbeta(n, 4, 2), 1e-3), 1 - 1e-3)
+}
+
+test_that("composed bias priors keep every constant omega bin structural", {
+
+  # Column names and constants are those of prior-only JAGS fits of the same
+  # priors: a composed bias prior expands its selection onto the one-sided
+  # grid and is summarized under renamed bins, a bias mixture keeps raw bins.
+  set.seed(31)
+  n <- 200
+  mu_prior <- prior("normal", list(0, 1))
+  check <- function(bias, make, ...){
+    JAGS_check_convergence(
+      .mock_convergence_fit(make(), make()),
+      prior_list = list(mu = mu_prior, bias = bias),
+      max_Rhat = 1.2,
+      min_ESS = 1,
+      max_error = 1,
+      max_SD_error = 1,
+      ...
+    )
+  }
+
+  two_sided <- check(
+    prior_bias(selection = prior_weightfunction(
+      "two-sided", .05, wf_cumulative(c(1, 1))
+    )),
+    function() cbind(
+      mu = stats::rnorm(n),
+      "omega[1]" = 1,
+      "omega[2]" = .convergence_weight_draws(n),
+      "omega[3]" = 1
+    )
+  )
+  expect_true(two_sided)
+  expect_equal(
+    .convergence_states(two_sided),
+    c(
+      mu = "assessable",
+      "omega[0,0.025]" = "structural_constant",
+      "omega[0.025,0.975]" = "assessable",
+      "omega[0.975,1]" = "structural_constant"
+    )
+  )
+
+  fixed <- check(
+    prior_bias(selection = prior_weightfunction(
+      "one-sided", c(.025, .05), wf_fixed(c(1, .7, .4))
+    )),
+    function() cbind(
+      mu = stats::rnorm(n),
+      "omega[1]" = 1,
+      "omega[2]" = .7,
+      "omega[3]" = .4
+    )
+  )
+  expect_true(fixed)
+  expect_equal(
+    .convergence_states(fixed),
+    c(
+      mu = "assessable",
+      "omega[0,0.025]" = "structural_constant",
+      "omega[0.025,0.05]" = "structural_constant",
+      "omega[0.05,1]" = "structural_constant"
+    )
+  )
+
+  mixture_prior <- prior_mixture(list(
+    prior_none(prior_weights = 1),
+    prior_weightfunction("two-sided", .05, wf_cumulative(c(1, 1)), prior_weights = 1),
+    prior_weightfunction("two-sided", c(.05, .10), wf_cumulative(c(1, 1, 1)), prior_weights = 1)
+  ), is_null = c(TRUE, FALSE, FALSE))
+  mixture <- check(
+    mixture_prior,
+    function() cbind(
+      mu = stats::rnorm(n),
+      bias_indicator = rep(1:3, length.out = n),
+      "omega[1]" = 1,
+      "omega[2]" = .convergence_weight_draws(n),
+      "omega[3]" = .convergence_weight_draws(n),
+      "omega[4]" = .convergence_weight_draws(n),
+      "omega[5]" = 1
+    )
+  )
+  expect_true(mixture)
+  expect_equal(
+    .convergence_states(mixture)[paste0("omega[", 1:5, "]")],
+    stats::setNames(
+      c("structural_constant", "assessable", "assessable",
+        "assessable", "structural_constant"),
+      paste0("omega[", 1:5, "]")
+    )
+  )
+
+  # A shared constant across fixed and reference bins is structural; a bin
+  # that differs between branches is sampled through the indicator.
+  shared_prior <- prior_mixture(list(
+    prior_none(prior_weights = 1),
+    prior_weightfunction("one-sided", .025, wf_fixed(c(1, 1)), prior_weights = 1),
+    prior_weightfunction("two-sided", .05, wf_cumulative(c(1, 1)), prior_weights = 1)
+  ), is_null = c(TRUE, FALSE, FALSE))
+  expect_identical(
+    BayesTools:::.bt_convergence_structural_omega_bins(list(bias = shared_prior)),
+    c("omega[1]", "omega[3]")
+  )
+  differing_prior <- prior_mixture(list(
+    prior_none(prior_weights = 1),
+    prior_weightfunction("one-sided", .025, wf_fixed(c(1, .5)), prior_weights = 1)
+  ), is_null = c(TRUE, FALSE))
+  expect_identical(
+    BayesTools:::.bt_convergence_structural_omega_bins(list(bias = differing_prior)),
+    "omega[1]"
+  )
+
+  # Without a step selection, the single omega coordinate is constant.
+  phacking <- check(
+    prior_bias(phacking = prior_phacking()),
+    function() cbind(
+      mu = stats::rnorm(n),
+      omega = 1,
+      pi_null = .convergence_weight_draws(n)
+    ),
+    monitor = c("mu", "omega", "pi_null")
+  )
+  expect_true(phacking)
+  expect_equal(
+    .convergence_states(phacking),
+    c(mu = "assessable", omega = "structural_constant", pi_null = "assessable")
+  )
+})
+
+test_that("ordered priors with point totals keep their constants structural", {
+
+  set.seed(32)
+  n <- 200
+  data <- data.frame(f = ordered(
+    rep(c("low", "mid", "high"), each = 2),
+    levels = c("low", "mid", "high")
+  ))
+  ordered_prior_list <- function(f_prior){
+    JAGS_formula(
+      ~ 1 + f,
+      parameter = "mu",
+      data = data,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        f = f_prior
+      )
+    )$prior_list
+  }
+  eta_names <- paste0("prior_par_eta_mu_f_ordered_alloc_f_1[", 1:2, "]")
+  check <- function(prior_list, coefficients, total, allocation = TRUE){
+    make <- function(){
+      chain <- cbind(
+        mu_intercept = stats::rnorm(n),
+        "mu_f[1]" = coefficients[[1L]](),
+        "mu_f[2]" = coefficients[[2L]](),
+        mu_f_ordered_total = total
+      )
+      if(allocation){
+        chain <- cbind(
+          chain,
+          matrix(stats::rgamma(2L * n, 1), ncol = 2L, dimnames = list(NULL, eta_names))
+        )
+      }
+      chain
+    }
+    JAGS_check_convergence(
+      .mock_convergence_fit(make(), make()),
+      prior_list = prior_list,
+      max_Rhat = 1.2,
+      min_ESS = 1,
+      max_error = 1,
+      max_SD_error = 1
+    )
+  }
+  constant <- function(value) function() rep(value, n)
+  sampled  <- function() stats::rnorm(n)
+
+  zero_total <- check(
+    ordered_prior_list(prior_ordered(prior("point", list(0)))),
+    list(constant(0), constant(0)),
+    total = 0
+  )
+  expect_true(zero_total)
+  expect_equal(
+    .convergence_states(zero_total)[c("mu_f[1]", "mu_f[2]", "mu_f_ordered_total", eta_names)],
+    stats::setNames(
+      c(rep("structural_constant", 3L), rep("assessable", 2L)),
+      c("mu_f[1]", "mu_f[2]", "mu_f_ordered_total", eta_names)
+    )
+  )
+
+  nonzero_total <- check(
+    ordered_prior_list(prior_ordered(prior("point", list(0.5)))),
+    list(sampled, sampled),
+    total = 0.5
+  )
+  expect_true(nonzero_total)
+  expect_equal(
+    .convergence_states(nonzero_total)[c("mu_f[1]", "mu_f[2]", "mu_f_ordered_total")],
+    c("mu_f[1]" = "assessable", "mu_f[2]" = "assessable",
+      mu_f_ordered_total = "structural_constant")
+  )
+
+  fixed_split <- check(
+    ordered_prior_list(prior_ordered(prior("point", list(0.5)), allocation = c(0.3, 0.7))),
+    list(constant(0.15), constant(0.35)),
+    total = 0.5,
+    allocation = FALSE
+  )
+  expect_true(fixed_split)
+  expect_equal(
+    unname(.convergence_states(fixed_split)[c("mu_f[1]", "mu_f[2]", "mu_f_ordered_total")]),
+    rep("structural_constant", 3L)
+  )
+
+  # A sampled total keeps all its coordinates assessable.
+  sampled_total <- ordered_prior_list(prior_ordered(prior("normal", list(0, 1))))
+  expect_identical(
+    BayesTools:::.bt_convergence_structural_ordered_columns(sampled_total),
+    character()
+  )
+})
+
+test_that("explicit convergence monitors reach additional monitored parameters", {
+
+  set.seed(33)
+  make <- function() cbind(mu = stats::rnorm(200), theta = stats::rnorm(200))
+  fit <- .mock_convergence_fit(make(), make())
+  priors <- list(mu = prior("normal", list(0, 1)))
+
+  # Additional monitors stay excluded from the default selection.
+  default <- JAGS_check_convergence(
+    fit, priors, add_parameters = "theta",
+    max_Rhat = 1.2, min_ESS = 1, max_error = 1, max_SD_error = 1
+  )
+  expect_true(default)
+  expect_equal(.convergence_states(default), c(mu = "assessable"))
+
+  requested <- JAGS_check_convergence(
+    fit, priors, add_parameters = "theta", monitor = "theta",
+    max_Rhat = 1.2, min_ESS = 1, max_error = 1, max_SD_error = 1
+  )
+  expect_true(requested)
+  expect_equal(
+    .convergence_states(requested),
+    c(mu = "not_requested", theta = "assessable")
+  )
+  expect_error(
+    JAGS_check_convergence(
+      fit, priors, add_parameters = "theta", monitor = "theta[2]"
+    ),
+    "The requested convergence monitor 'theta[2]' is not available in the fitted model.",
+    fixed = TRUE
+  )
+
+  expect_silent(BayesTools:::.bt_convergence_validate_monitor_names(
+    c("theta", "mu", "bias_indicator (state 2)", "omega[0,0.05]"),
+    c("mu", "theta", "bias_indicator", "omega")
+  ))
+  expect_error(
+    BayesTools:::.bt_convergence_validate_monitor_names("thetaa", c("mu", "theta")),
+    "The requested convergence monitor 'thetaa' is not monitored by the model.",
+    fixed = TRUE
+  )
+})
+
 test_that("one chain warns and retains its other convergence criteria", {
 
   set.seed(44)

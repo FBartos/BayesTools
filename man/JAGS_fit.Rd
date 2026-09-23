@@ -121,7 +121,10 @@ in convergence checks, including when \code{monitor} selects a narrower
 parameter set. Auxiliary inclusion-probability coordinates remain excluded
 unless requested explicitly. Defaults to \code{FALSE}.}
 \item{monitor}{optional character vector selecting parameters for
-convergence checks. Base names select all indexed elements. Defaults to
+convergence checks. Base names select all indexed elements. Requests are
+resolved against all monitored nodes, including \code{add_parameters} and
+generated formula monitors, which the default selection excludes. Names
+that are not monitored are rejected before sampling. Defaults to
 \code{NULL}, which checks every eligible parameter.}
 \item{allow_not_assessable}{whether undefined diagnostics for requested
 sampled parameters may be ignored. Defaults to \code{FALSE}.}

@@ -12,8 +12,10 @@
 #' @param max_error maximum MCMC error. Defaults to \code{0.01}.
 #' @param max_SD_error maximum MCMC error as the proportion of standard
 #'   deviation of the parameters. Defaults to \code{0.05}.
-#' @param add_parameters vector of additional parameter names that should be used
-#' (only allows removing last, fixed, omega element if omega is tracked manually).
+#' @param add_parameters vector of additional parameter names that are excluded
+#' from the default selection (only allows removing last, fixed, omega element
+#' if omega is tracked manually). Parameters named in \code{monitor} are
+#' checked even when they are listed here.
 #' @param fail_fast whether the function should stop after the first failed convergence check.
 #' @param check_indicators whether model indicator variables should be included
 #' in convergence checks. Binary indicators are checked as Bernoulli
@@ -22,13 +24,16 @@
 #' added to that selection. Auxiliary inclusion-probability coordinates remain
 #' excluded unless named explicitly in \code{monitor}. Defaults to \code{FALSE}.
 #' @param monitor optional character vector selecting parameters for convergence
-#' checks. A base name selects all of its indexed elements. \code{NULL} selects
-#' every eligible parameter; \code{character()} requests no parameters.
+#' checks. A base name selects all of its indexed elements. Requests are
+#' resolved against all monitored columns, including \code{add_parameters}.
+#' \code{NULL} selects every eligible parameter; \code{character()} requests no
+#' parameters.
 #' @param allow_not_assessable whether requested sampled parameters with
 #' undefined diagnostics may be ignored. Defaults to \code{FALSE}. A sampled
 #' column that never changes, including a constant model indicator, is not
 #' evidence of convergence and remains not assessable. Only constants declared
-#' by the prior are structural.
+#' by the prior are structural, such as point priors, reference and fixed
+#' publication-weight bins, and the point total of an ordered prior.
 #'
 #' @examples \dontrun{
 #' # simulate data
@@ -99,32 +104,17 @@ JAGS_check_convergence <- function(
              allow_NA = FALSE)
   check_bool(allow_not_assessable, "allow_not_assessable", allow_NA = FALSE)
 
-  # extract samples and parameter information
-  mcmc_samples_list <- .extract_posterior_samples(fit, as_list = TRUE)
-  mcmc_samples      <- do.call(rbind, mcmc_samples_list)
-
-  # Remove parameters that are intentionally excluded from automatic checks.
-  # Structural point parameters are added back below from prior metadata.
-  remove_params <- c(
-    names(prior_list)[vapply(
-      prior_list,
-      .bt_convergence_is_structural_prior,
-      logical(1)
-    )],
-    add_parameters
+  prepared <- .bt_convergence_prepare(
+    fit = fit,
+    prior_list = prior_list,
+    add_parameters = add_parameters,
+    monitor = monitor
   )
-
-  cleaned <- .remove_auxiliary_parameters(mcmc_samples, prior_list, remove_params)
-  mcmc_samples <- cleaned$model_samples
-
-  targets <- .bt_convergence_sample_targets(mcmc_samples, prior_list)
-  sample_parameters <- targets$metadata$parameter
-  structural_parameters <- .bt_convergence_structural_parameters(prior_list)
-  available_parameters <- unique(c(sample_parameters, structural_parameters))
-  available_sources <- c(
-    targets$metadata$source,
-    structural_parameters[!structural_parameters %in% sample_parameters]
-  )
+  mcmc_samples_list     <- prepared$mcmc_samples_list
+  targets               <- prepared$targets
+  structural_parameters <- prepared$structural_parameters
+  available_parameters  <- prepared$available_parameters
+  available_sources     <- prepared$available_sources
 
   explicitly_empty <- !is.null(monitor) && length(monitor) == 0L
   if(explicitly_empty){
@@ -235,6 +225,106 @@ JAGS_check_convergence <- function(
   .bt_convergence_result(length(fails) == 0L, diagnostics, fails)
 }
 
+.bt_convergence_prepare <- function(fit, prior_list, add_parameters, monitor){
+
+  # extract samples and parameter information
+  mcmc_samples_list <- .extract_posterior_samples(fit, as_list = TRUE)
+  mcmc_samples      <- do.call(rbind, mcmc_samples_list)
+
+  # Remove parameters that are intentionally excluded from automatic checks.
+  # Structural point parameters are added back below from prior metadata.
+  # Additional monitors stay excluded unless 'monitor' requests them.
+  remove_params <- c(
+    names(prior_list)[vapply(
+      prior_list,
+      .bt_convergence_is_structural_prior,
+      logical(1)
+    )],
+    .bt_convergence_excluded_add_parameters(add_parameters, monitor)
+  )
+
+  cleaned <- .remove_auxiliary_parameters(mcmc_samples, prior_list, remove_params)
+  mcmc_samples <- cleaned$model_samples
+
+  targets <- .bt_convergence_sample_targets(mcmc_samples, prior_list)
+  sample_parameters <- targets$metadata$parameter
+  structural_parameters <- .bt_convergence_structural_parameters(prior_list)
+
+  list(
+    mcmc_samples_list = mcmc_samples_list,
+    targets = targets,
+    structural_parameters = structural_parameters,
+    available_parameters = unique(c(sample_parameters, structural_parameters)),
+    available_sources = c(
+      targets$metadata$source,
+      structural_parameters[!structural_parameters %in% sample_parameters]
+    )
+  )
+}
+
+.bt_convergence_monitor_base <- function(parameters){
+
+  sub("\\[.*$", "", sub(" \\(state [^)]*\\)$", "", parameters))
+}
+
+.bt_convergence_excluded_add_parameters <- function(add_parameters, monitor){
+
+  if(length(add_parameters) == 0L || length(monitor) == 0L){
+    return(add_parameters)
+  }
+
+  requested <- .bt_convergence_monitor_base(monitor)
+  add_parameters[!.bt_convergence_monitor_base(add_parameters) %in% requested]
+}
+
+# Resolve an explicit convergence monitor against the fitted columns before
+# further sampling, so that an unknown request fails without discarding work.
+.bt_convergence_validate_monitor <- function(fit, prior_list, add_parameters,
+                                             monitor){
+
+  if(length(monitor) == 0L){
+    return(invisible(TRUE))
+  }
+
+  prepared <- .bt_convergence_prepare(
+    fit = fit,
+    prior_list = prior_list,
+    add_parameters = add_parameters,
+    monitor = monitor
+  )
+  .bt_convergence_resolve_monitor(
+    monitor,
+    prepared$available_parameters,
+    prepared$available_sources
+  )
+
+  invisible(TRUE)
+}
+
+# Before the first sampling run only the monitored node names are known.
+# Validate the requested base names against them; indexed elements are
+# resolved against the fitted columns by JAGS_check_convergence().
+.bt_convergence_validate_monitor_names <- function(monitor, monitored_names){
+
+  if(length(monitor) == 0L){
+    return(invisible(TRUE))
+  }
+
+  monitored_names <- monitored_names[!is.na(monitored_names) & nzchar(monitored_names)]
+  available <- unique(.bt_convergence_monitor_base(monitored_names))
+  for(parameter in unique(monitor)){
+    if(!.bt_convergence_monitor_base(parameter) %in% available){
+      stop(
+        "The requested convergence monitor '", parameter,
+        "' is not monitored by the model.",
+        call. = FALSE
+      )
+    }
+  }
+
+  invisible(TRUE)
+}
+
 .bt_convergence_sample_targets <- function(mcmc_samples, prior_list){
 
   columns <- colnames(mcmc_samples)
@@ -242,7 +332,10 @@ JAGS_check_convergence <- function(
     columns <- character()
   }
   supports <- .bt_convergence_indicator_supports(prior_list)
-  structural_omega <- .bt_convergence_structural_omega_bins(prior_list)
+  structural_columns <- c(
+    .bt_convergence_structural_omega_bins(prior_list),
+    .bt_convergence_structural_ordered_columns(prior_list)
+  )
   samples  <- list()
   metadata <- list()
 
@@ -270,7 +363,7 @@ JAGS_check_convergence <- function(
         values,
         FALSE,
         is_inclusion,
-        structural = column %in% structural_omega
+        structural = column %in% structural_columns
       )
       next
     }
@@ -358,27 +451,149 @@ JAGS_check_convergence <- function(
       }else if(length(names) > 0L){
         structural <- c(structural, names[[1L]])
       }
-    }else if((is_prior_bias(prior) || inherits(prior, "prior.bias_mixture")) &&
-             .selection_prior_has_selection(prior)){
-      selection_priors <- .selection_prior_selection_priors(prior)
-      cuts <- weightfunctions_mapping(
-        selection_priors,
-        cuts_only = TRUE,
-        one_sided = TRUE
+    }else if(is_prior_bias(prior) || is_prior_phacking(prior) ||
+             inherits(prior, "prior.bias_mixture")){
+      structural <- c(
+        structural,
+        .bt_convergence_structural_selection_bins(prior)
       )
-      names <- if(length(cuts) >= 2L){
-        paste0("omega[", cuts[-length(cuts)], ",", cuts[-1], "]")
-      }else{
-        character()
-      }
-      structural <- c(structural, "omega[1]")
-      if(length(names) > 0L){
-        structural <- c(structural, names[[1L]])
-      }
     }
   }
 
   unique(structural)
+}
+
+# Composed bias priors, p-hacking priors, and publication-bias mixtures share
+# one omega vector on the global one-sided cut grid of the selection backend.
+# A global bin is constant by construction when every mixture branch fixes it
+# to the same value: branches without a step selection contribute 1, the
+# reference bin (local bin 1) of a selection is 1, and every bin of fixed
+# weights is its declared weight. Mirrored two-sided bins map to their local
+# bin through the component expansion. Single composed priors with a selection
+# are summarized under their renamed global bins; other priors keep the raw
+# monitored omega coordinates.
+.bt_convergence_structural_selection_bins <- function(prior){
+
+  branches <- .selection_normalize_priors(prior)
+  branch_info <- lapply(branches, .selection_branch_info)
+  has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+  has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking), logical(1))
+  if(!any(has_selection) && !any(has_phacking)){
+    return(character())
+  }
+
+  cuts <- if(any(has_selection)){
+    weightfunctions_mapping(
+      lapply(branch_info[has_selection], function(x) x$selection),
+      cuts_only = TRUE,
+      one_sided = TRUE
+    )
+  }else{
+    c(0, 1)
+  }
+  n_bins <- length(cuts) - 1L
+
+  branch_values <- vapply(branch_info, function(x){
+    .bt_convergence_selection_bin_values(x$selection, cuts)
+  }, numeric(n_bins))
+  branch_values <- matrix(branch_values, nrow = n_bins)
+  constant <- apply(branch_values, 1L, function(values){
+    all(!is.na(values)) && all(values == values[[1L]])
+  })
+
+  bin_names <- if(n_bins == 1L){
+    "omega"
+  }else if(is_prior_bias(prior) && any(has_selection)){
+    .weightfunction_omega_names(cuts)
+  }else{
+    paste0("omega[", seq_len(n_bins), "]")
+  }
+
+  bin_names[constant]
+}
+
+.bt_convergence_selection_bin_values <- function(selection, cuts){
+
+  n_bins <- length(cuts) - 1L
+  if(is.null(selection)){
+    return(rep(1, n_bins))
+  }
+
+  expansion <- .weightfunction_mapping_expansion(selection, force_one_sided = TRUE)
+  local_bins <- expansion$index[.weightfunction_global_bin_indices(cuts, expansion)]
+  if(identical(selection$weights$type, "fixed")){
+    return(as.numeric(selection$weights$omega[local_bins]))
+  }
+
+  ifelse(local_bins == 1L, 1, NA_real_)
+}
+
+# Ordered priors with a point total monitor a constant total. Their level
+# coefficients are constant as well when the total is zero or when every
+# allocation is fixed.
+.bt_convergence_structural_ordered_columns <- function(prior_list){
+
+  prior_names <- names(prior_list)
+  if(length(prior_list) == 0L || is.null(prior_names)){
+    return(character())
+  }
+
+  structural <- character()
+  for(i in seq_along(prior_list)){
+    prior     <- prior_list[[i]]
+    parameter <- prior_names[[i]]
+    if(is.na(parameter) || !nzchar(parameter) || !is.prior.ordered(prior)){
+      next
+    }
+    total_value <- .bt_convergence_point_value(prior$total)
+    metadata <- attr(prior, "ordered_metadata", exact = TRUE)
+    if(is.null(total_value) || is.null(metadata)){
+      next
+    }
+
+    total_name <- .prior_ordered_total_name(parameter)
+    structural <- c(
+      structural,
+      if(metadata$theta_dim == 1L){
+        total_name
+      }else{
+        paste0(total_name, "[", seq_len(metadata$theta_dim), "]")
+      }
+    )
+
+    fixed_allocation <- all(vapply(metadata$allocations, function(record){
+      identical(record$spec$type, "fixed")
+    }, logical(1)))
+    if(total_value == 0 || fixed_allocation){
+      structural <- c(
+        structural,
+        if(metadata$coefficient_dim == 1L){
+          parameter
+        }else{
+          paste0(parameter, "[", seq_len(metadata$coefficient_dim), "]")
+        }
+      )
+    }
+  }
+
+  structural
+}
+
+.bt_convergence_point_value <- function(prior){
+
+  if(is.prior.mixture(prior) && length(prior) == 1L){
+    return(.bt_convergence_point_value(prior[[1L]]))
+  }
+  if(!is.prior.point(prior) || .is_prior_expression(prior)){
+    return(NULL)
+  }
+
+  location <- prior$parameters[["location"]]
+  if(!is.numeric(location) || length(location) != 1L || !is.finite(location)){
+    return(NULL)
+  }
+
+  location
 }
 
 .bt_convergence_indicator_supports <- function(prior_list){

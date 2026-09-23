@@ -35,8 +35,10 @@ a warning; the remaining enabled criteria are still assessed.}
 \item{max_SD_error}{maximum MCMC error as the proportion of standard
 deviation of the parameters. Defaults to \code{0.05}.}
 
-\item{add_parameters}{vector of additional parameter names that should be used
-(only allows removing last, fixed, omega element if omega is tracked manually).}
+\item{add_parameters}{vector of additional parameter names that are excluded
+from the default selection (only allows removing last, fixed, omega element
+if omega is tracked manually). Parameters named in \code{monitor} are
+checked even when they are listed here.}
 
 \item{fail_fast}{whether the function should stop after the first failed convergence check.}
 
@@ -48,14 +50,17 @@ added to that selection. Auxiliary inclusion-probability coordinates remain
 excluded unless named explicitly in \code{monitor}. Defaults to \code{FALSE}.}
 
 \item{monitor}{optional character vector selecting parameters for convergence
-checks. A base name selects all of its indexed elements. \code{NULL} selects
-every eligible parameter; \code{character()} requests no parameters.}
+checks. A base name selects all of its indexed elements. Requests are
+resolved against all monitored columns, including \code{add_parameters}.
+\code{NULL} selects every eligible parameter; \code{character()} requests no
+parameters.}
 
 \item{allow_not_assessable}{whether requested sampled parameters with
 undefined diagnostics may be ignored. Defaults to \code{FALSE}. A sampled
 column that never changes, including a constant model indicator, is not
 evidence of convergence and remains not assessable. Only constants declared
-by the prior are structural.}
+by the prior are structural, such as point priors, reference and fixed
+publication-weight bins, and the point total of an ordered prior.}
 }
 \value{
 \code{JAGS_check_convergence} returns a boolean indicating whether

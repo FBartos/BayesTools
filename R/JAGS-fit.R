@@ -57,7 +57,10 @@
 #'   parameter set. Auxiliary inclusion-probability coordinates remain excluded
 #'   unless requested explicitly. Defaults to \code{FALSE}.}
 #'   \item{monitor}{optional character vector selecting parameters for
-#'   convergence checks. Base names select all indexed elements. Defaults to
+#'   convergence checks. Base names select all indexed elements. Requests are
+#'   resolved against all monitored nodes, including \code{add_parameters} and
+#'   generated formula monitors, which the default selection excludes. Names
+#'   that are not monitored are rejected before sampling. Defaults to
 #'   \code{NULL}, which checks every eligible parameter.}
 #'   \item{allow_not_assessable}{whether undefined diagnostics for requested
 #'   sampled parameters may be ignored. Defaults to \code{FALSE}.}
@@ -340,6 +343,12 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   )
   model_syntax <- backend_monitor$model_syntax
   backend_anchor <- backend_monitor$backend_anchor
+  if(autofit){
+    .bt_convergence_validate_monitor_names(
+      monitor = autofit_control[["monitor"]],
+      monitored_names = backend_monitor$monitor
+    )
+  }
 
   ### create the model call
   model_call <- list(
@@ -791,6 +800,12 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   }
   .bt_validate_jags_add_parameters(add_parameters, prior_list)
   autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
+  .bt_convergence_validate_monitor(
+    fit = fit,
+    prior_list = prior_list,
+    add_parameters = add_parameters,
+    monitor = autofit_control[["monitor"]]
+  )
 
   # The backend uses end.state to determine the chains being extended.
   chains <- length(fit[["end.state"]])
