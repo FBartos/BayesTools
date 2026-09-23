@@ -161,7 +161,11 @@ generator kind is kept.}
 
 \item{add_parameters}{vector of additional parameter names that should be
 monitored but were not specified in the \code{prior_list}. Automatic fitting
-checks their convergence like that of the other parameters.}
+checks their convergence like that of the other parameters. A node that the
+model syntax defines deterministically (\code{<-} or \code{=}) and whose
+draws are identical in every chain is a structural constant and does not
+block convergence; a stochastic node (\code{~}) with constant draws is not
+assessable (see \code{autofit_control$allow_not_assessable}).}
 
 \item{required_packages}{character vector specifying list of packages containing
 JAGS models required for sampling (in case that the function is run in parallel or in

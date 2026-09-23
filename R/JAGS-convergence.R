@@ -18,7 +18,9 @@
 #' checked even when they are listed here. Automatic fitting in
 #' \code{JAGS_fit()} and \code{JAGS_extend()} lists only the deterministic
 #' nodes that formulas monitor here, so the user's \code{add_parameters} are
-#' checked there.
+#' checked there. The fit's own \code{add_parameters} attribute (set by
+#' \code{JAGS_fit()}) identifies monitored nodes that may be structural
+#' constants; see \code{allow_not_assessable}.
 #' @param fail_fast whether the function should stop after the first failed convergence check.
 #' @param check_indicators whether model indicator variables should be included
 #' in convergence checks. Binary indicators are checked as Bernoulli
@@ -35,9 +37,14 @@
 #' undefined diagnostics may be ignored. Defaults to \code{FALSE}. A sampled
 #' column that never changes, including a constant model indicator, is not
 #' evidence of convergence and remains not assessable. Only constants declared
-#' by the prior are structural, such as point priors, reference and fixed
-#' publication-weight bins, a p-hacking kind shared by every mixture branch,
-#' and the point total of an ordered prior.
+#' by the model are structural: those of the prior, such as point priors,
+#' reference and fixed publication-weight bins, a p-hacking kind shared by
+#' every mixture branch, and the point total of an ordered prior; and, for fits
+#' created by \code{JAGS_fit()}, monitored \code{add_parameters} nodes (user
+#' supplied or generated for formulas) that the model syntax defines
+#' deterministically (\code{<-} or \code{=}) and whose draws are identical in
+#' every chain. Such a node with constant draws but a stochastic definition
+#' (\code{~}) remains not assessable.
 #'
 #' @examples \dontrun{
 #' # simulate data
@@ -250,7 +257,11 @@ JAGS_check_convergence <- function(
   cleaned <- .remove_auxiliary_parameters(mcmc_samples, prior_list, remove_params)
   mcmc_samples <- cleaned$model_samples
 
-  targets <- .bt_convergence_sample_targets(mcmc_samples, prior_list)
+  targets <- .bt_convergence_sample_targets(
+    mcmc_samples,
+    prior_list,
+    deterministic_nodes = .bt_convergence_deterministic_monitors(fit)
+  )
   sample_parameters <- targets$metadata$parameter
   structural_parameters <- .bt_convergence_structural_parameters(prior_list)
 
@@ -325,6 +336,41 @@ JAGS_check_convergence <- function(
   unique(node_names)
 }
 
+# Base names of the monitored 'add_parameters' nodes (user-supplied or
+# generated) that the fit's model syntax defines only deterministically ('<-'
+# or '='). Fits without this metadata (plain runjags objects) have none.
+.bt_convergence_deterministic_monitors <- function(fit){
+
+  add_parameters <- attr(fit, "add_parameters", exact = TRUE)
+  model_syntax   <- attr(fit, "model_syntax", exact = TRUE)
+  if(length(add_parameters) == 0L || length(model_syntax) == 0L){
+    return(character())
+  }
+
+  base <- unique(.bt_convergence_monitor_base(add_parameters))
+  setdiff(base, .bt_jags_stochastic_node_names(model_syntax))
+}
+
+# A deterministic node whose draws are identical in every chain is a constant
+# of the model, not a stuck sampler: it is structural. A stochastic node with
+# constant draws stays not assessable.
+.bt_convergence_deterministic_constant <- function(column, values,
+                                                   deterministic_nodes){
+
+  length(deterministic_nodes) > 0L && length(values) > 0L &&
+    .bt_convergence_monitor_base(column) %in% deterministic_nodes &&
+    is.finite(values[[1L]]) && isTRUE(all(values == values[[1L]]))
+}
+
+# Attach the monitored-node metadata that JAGS_check_convergence() reads from
+# a finished fit to an intermediate autofit or extension result.
+.bt_convergence_fit <- function(fit, add_parameters, model_syntax){
+
+  attr(fit, "add_parameters") <- add_parameters
+  attr(fit, "model_syntax")   <- model_syntax
+  fit
+}
+
 # Resolve an explicit convergence monitor against the fitted columns before
 # further sampling, so that an unknown request fails without discarding work.
 .bt_convergence_validate_monitor <- function(fit, prior_list, add_parameters,
@@ -373,7 +419,8 @@ JAGS_check_convergence <- function(
   invisible(TRUE)
 }
 
-.bt_convergence_sample_targets <- function(mcmc_samples, prior_list){
+.bt_convergence_sample_targets <- function(mcmc_samples, prior_list,
+                                           deterministic_nodes = character()){
 
   columns <- colnames(mcmc_samples)
   if(is.null(columns)){
@@ -412,7 +459,8 @@ JAGS_check_convergence <- function(
         values,
         FALSE,
         is_inclusion,
-        structural = column %in% structural_columns
+        structural = column %in% structural_columns ||
+          .bt_convergence_deterministic_constant(column, values, deterministic_nodes)
       )
       next
     }

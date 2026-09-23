@@ -886,6 +886,101 @@ test_that("JAGS_fit rejects unknown convergence monitors before sampling", {
   expect_null(attr(fit, "warnings"))
 })
 
+test_that("autofit treats constant deterministic user monitors as structural", {
+
+  skip_if_not_installed("runjags")
+  # 'theta' is a deterministic model constant; 'eta' is sampled. Both are
+  # user monitors, as in BayesTools 0.3.0.
+  sampled_fit <- function(eta_constant){
+    set.seed(76)
+    chain <- function(){
+      draws <- cbind(mu = stats::rnorm(200), theta = 2, eta = stats::rnorm(200))
+      if(eta_constant){
+        draws[, "eta"] <- .5
+      }
+      coda::mcmc(draws)
+    }
+    structure(
+      list(mcmc = coda::mcmc.list(chain(), chain()), summary.pars = list(mutate = NULL)),
+      class = "runjags"
+    )
+  }
+  control <- list(
+    max_Rhat = 1.2, min_ESS = NULL, max_error = NULL, max_SD_error = NULL,
+    max_time = list(time = 60, unit = "secs"), sample_extend = 1,
+    restarts = 1, max_extend = 1, check_indicators = FALSE
+  )
+  prior_list <- list(mu = prior("normal", list(0, 1)))
+  max_extend_warning <-
+    "The automatic model fitting was terminated due to the 'max_extend' constraint."
+  extension_calls <- 0L
+
+  fit_autofit <- function(eta_constant){
+    sampled <- sampled_fit(eta_constant)
+    testthat::local_mocked_bindings(
+      run.jags = function(...) sampled,
+      extend.jags = function(...){
+        extension_calls <<- extension_calls + 1L
+        sampled
+      },
+      add.summary = function(x, ...) x,
+      .package = "runjags"
+    )
+    testthat::local_mocked_bindings(
+      .JAGS_require_packages = function(...) invisible(NULL),
+      .JAGS_load_modules = function(...) invisible(NULL),
+      .bt_attach_parameter_map = function(fit, ...) fit,
+      .bt_attach_draw_geometry = function(fit, ...) fit,
+      .package = "BayesTools"
+    )
+    extension_calls <<- 0L
+    JAGS_fit(
+      model_syntax = "model{\n theta <- 2\n eta ~ dnorm(0, 1)\n}",
+      prior_list = prior_list,
+      add_parameters = c("theta", "eta"),
+      chains = 2, adapt = 50, burnin = 50, sample = 100,
+      autofit = TRUE, autofit_control = control, silent = TRUE, seed = 1
+    )
+  }
+  extend_autofit <- function(fit, eta_constant){
+    sampled <- sampled_fit(eta_constant)
+    attr(fit, "fit_contract") <- NULL
+    attr(fit, "parameter_map") <- .bt_build_parameter_map(character())
+    testthat::local_mocked_bindings(
+      extend.jags = function(...) sampled,
+      .package = "runjags"
+    )
+    testthat::local_mocked_bindings(
+      .JAGS_require_packages = function(...) invisible(NULL),
+      .JAGS_load_modules = function(...) invisible(NULL),
+      .package = "BayesTools"
+    )
+    attr(JAGS_extend(fit, autofit_control = control), "warnings")
+  }
+
+  # The constant deterministic 'theta' does not block convergence and is
+  # reported as structural by the post-fit check.
+  fit <- fit_autofit(eta_constant = FALSE)
+  expect_identical(extension_calls, 0L)
+  expect_null(attr(fit, "warnings"))
+  check <- JAGS_check_convergence(
+    fit, prior_list, max_Rhat = 1.2, min_ESS = NULL, max_error = NULL,
+    max_SD_error = NULL
+  )
+  expect_true(check)
+  expect_equal(
+    stats::setNames(attr(check, "diagnostics")$state, attr(check, "diagnostics")$parameter),
+    c(mu = "assessable", theta = "structural_constant", eta = "assessable")
+  )
+  expect_null(extend_autofit(fit, eta_constant = FALSE))
+
+  # A constant sampled 'eta' is a stuck sampler and keeps autofit running.
+  fit <- fit_autofit(eta_constant = TRUE)
+  expect_identical(extension_calls, 1L)
+  expect_identical(attr(fit, "warnings"), max_extend_warning)
+  expect_identical(extend_autofit(fit, eta_constant = TRUE), max_extend_warning)
+})
+
 test_that("autofit checks user and sampled generated monitors but not derived ones", {
 
   skip_if_not_installed("runjags")

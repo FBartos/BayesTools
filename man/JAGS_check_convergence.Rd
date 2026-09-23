@@ -41,7 +41,9 @@ if omega is tracked manually). Parameters named in \code{monitor} are
 checked even when they are listed here. Automatic fitting in
 \code{JAGS_fit()} and \code{JAGS_extend()} lists only the deterministic
 nodes that formulas monitor here, so the user's \code{add_parameters} are
-checked there.}
+checked there. The fit's own \code{add_parameters} attribute (set by
+\code{JAGS_fit()}) identifies monitored nodes that may be structural
+constants; see \code{allow_not_assessable}.}
 
 \item{fail_fast}{whether the function should stop after the first failed convergence check.}
 
@@ -62,9 +64,14 @@ parameters.}
 undefined diagnostics may be ignored. Defaults to \code{FALSE}. A sampled
 column that never changes, including a constant model indicator, is not
 evidence of convergence and remains not assessable. Only constants declared
-by the prior are structural, such as point priors, reference and fixed
-publication-weight bins, a p-hacking kind shared by every mixture branch,
-and the point total of an ordered prior.}
+by the model are structural: those of the prior, such as point priors,
+reference and fixed publication-weight bins, a p-hacking kind shared by
+every mixture branch, and the point total of an ordered prior; and, for fits
+created by \code{JAGS_fit()}, monitored \code{add_parameters} nodes (user
+supplied or generated for formulas) that the model syntax defines
+deterministically (\code{<-} or \code{=}) and whose draws are identical in
+every chain. Such a node with constant draws but a stochastic definition
+(\code{~}) remains not assessable.}
 }
 \value{
 \code{JAGS_check_convergence} returns a boolean indicating whether

@@ -98,7 +98,11 @@
 #'   automatic fitting retries and preserve the original backend error.
 #' @param add_parameters vector of additional parameter names that should be
 #' monitored but were not specified in the \code{prior_list}. Automatic fitting
-#' checks their convergence like that of the other parameters.
+#' checks their convergence like that of the other parameters. A node that the
+#' model syntax defines deterministically (\code{<-} or \code{=}) and whose
+#' draws are identical in every chain is a structural constant and does not
+#' block convergence; a stochastic node (\code{~}) with constant draws is not
+#' assessable (see \code{autofit_control$allow_not_assessable}).
 #' @param required_packages character vector specifying list of packages containing
 #' JAGS models required for sampling (in case that the function is run in parallel or in
 #' detached R session). Defaults to \code{NULL}. Parallel workers must load
@@ -522,7 +526,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       model_syntax = model_syntax
     )
     converged <- JAGS_check_convergence(
-      fit = fit,
+      fit = .bt_convergence_fit(fit, add_parameters, model_syntax),
       prior_list = prior_list,
       max_Rhat = autofit_control[["max_Rhat"]],
       min_ESS = autofit_control[["min_ESS"]],
@@ -591,7 +595,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       captured_after_success <- TRUE
 
       converged <- JAGS_check_convergence(
-        fit = fit,
+        fit = .bt_convergence_fit(fit, add_parameters, model_syntax),
         prior_list = prior_list,
         max_Rhat = autofit_control[["max_Rhat"]],
         min_ESS = autofit_control[["min_ESS"]],
@@ -962,7 +966,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     last_valid_capture_warnings <- captured$warnings
     captured_after_success <- TRUE
     converged <- JAGS_check_convergence(
-      fit = fit,
+      fit = .bt_convergence_fit(fit, add_parameters, model_syntax),
       prior_list = prior_list,
       max_Rhat = autofit_control[["max_Rhat"]],
       min_ESS = autofit_control[["min_ESS"]],

@@ -978,6 +978,65 @@ test_that("explicit convergence monitors reach additional monitored parameters",
   )
 })
 
+test_that("constant deterministic monitors are structural but constant sampled ones are not", {
+
+  set.seed(36)
+  make <- function(theta = 2){
+    draws <- cbind(
+      mu = stats::rnorm(200), theta = theta, eta = .5,
+      L11 = 1, L21 = stats::rnorm(200)
+    )
+    colnames(draws)[4:5] <- c("L[1,1]", "L[2,1]")
+    draws
+  }
+  priors <- list(mu = prior("normal", list(0, 1)))
+  check <- function(fit, ...){
+    JAGS_check_convergence(
+      fit, priors, max_Rhat = 1.2, min_ESS = 1, max_error = NULL,
+      max_SD_error = NULL, ...
+    )
+  }
+
+  # A plain runjags object carries no model syntax: constants stay not
+  # assessable.
+  fit <- .mock_convergence_fit(make(), make())
+  plain <- check(fit)
+  expect_false(plain)
+  expect_equal(
+    .convergence_states(plain)[c("theta", "eta", "L[1,1]")],
+    c(theta = "not_assessable", eta = "not_assessable", "L[1,1]" = "not_assessable")
+  )
+
+  # With the monitored-node metadata of a JAGS_fit() result, the constant
+  # deterministic user node and generated Cholesky entry are structural; the
+  # constant stochastic node is a stuck sampler.
+  attr(fit, "add_parameters") <- c("theta", "eta", "L")
+  attr(fit, "model_syntax") <- paste(
+    "model{",
+    "  mu ~ dnorm(0, 1)",
+    "  theta <- 2 * one",
+    "  eta ~ dnorm(0, 1)",
+    "  for(i in 1:2){ L[i, 1] = pow(-1, i) * i }",
+    "}",
+    sep = "\n"
+  )
+  informed <- check(fit)
+  expect_false(informed)
+  expect_equal(
+    .convergence_states(informed),
+    c(mu = "assessable", theta = "structural_constant", eta = "not_assessable",
+      "L[1,1]" = "structural_constant", "L[2,1]" = "assessable")
+  )
+  expect_match(attr(informed, "errors"), "not assessable for 'eta'", fixed = TRUE)
+  expect_true(check(fit, allow_not_assessable = TRUE))
+
+  # The same node that differs between chains is not a constant.
+  varying <- .mock_convergence_fit(make(theta = 2), make(theta = 3))
+  attributes(varying)[c("add_parameters", "model_syntax")] <-
+    attributes(fit)[c("add_parameters", "model_syntax")]
+  expect_equal(.convergence_states(check(varying))[["theta"]], "not_assessable")
+})
+
 test_that("automatic fitting excludes only generated deterministic monitors", {
 
   set.seed(34)
