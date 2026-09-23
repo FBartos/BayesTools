@@ -137,7 +137,11 @@ defaults to \code{chains}}
 
 \item{silent}{whether the function should proceed silently, defaults to \code{TRUE}}
 
-\item{seed}{seed for random number generation by \code{JAGS_fit()}.}
+\item{seed}{seed for random number generation by \code{JAGS_fit()}.
+Draws are reproducible for the same \code{seed}, \code{chains}, and, with
+\code{parallel = TRUE}, the same \code{cores}. Parallel draws need not equal
+serial draws with the same seed, because the backend passes each chain's
+initial state to its worker in a serialized text form.}
 
 \item{add_parameters}{vector of additional parameter names that should be used
 monitored but were not specified in the \code{prior_list}}
@@ -188,7 +192,10 @@ separately from its small \code{runtime_cache} callback. Backend extension
 calls receive neither attribute. \code{JAGS_extend()} restores old state
 independently of whether its callback elects to capture fresh state.
 Callback warnings and errors are reported without discarding valid draws;
-failed captures leave a \code{NULL} shard. Error and interrupt cleanup does
+a failed capture callback leaves a \code{NULL} shard for its process. If a
+worker connection fails during capture, no shard is retained from any
+process for that fit. Capture warnings, including such failures, are also
+recorded in the fit's \code{warnings} attribute. Error and interrupt cleanup does
 not attempt capture; ordinary runtime cleanup still runs. Retained R snapshots,
 serialization buffers, and the caller's old fitted object consume memory in
 addition to active cache storage. Callback packages must be listed in

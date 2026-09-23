@@ -200,3 +200,77 @@ test_that("saved fit caches restore without entering backend extension payloads"
   expect_identical(attr(failed_first, "runtime_state", exact = TRUE),
     list(list(process = 1L, identity = "fixture")))
 })
+
+test_that("runtime cache capture warnings are recorded in the fit warnings", {
+
+  skip_if_not_installed("runjags")
+  basic_fit <- structure(list(end.state = rep("", 2L)), class = c("runjags", "BayesTools_fit"))
+  attr(basic_fit, "parameter_map") <- .bt_build_parameter_map(character())
+  worker_alive <- TRUE
+  testthat::local_mocked_bindings(
+    .JAGS_require_packages = function(...) invisible(NULL),
+    .JAGS_load_modules = function(...) invisible(NULL),
+    .bt_attach_parameter_map = function(fit, ...) fit,
+    .bt_attach_draw_geometry = function(fit, ...) fit,
+    .bt_attach_fit_contract = function(fit, ...) fit,
+    JAGS_check_convergence = function(...) TRUE,
+    .package = "BayesTools"
+  )
+  testthat::local_mocked_bindings(
+    run.jags = function(...) basic_fit,
+    extend.jags = function(runjags.object, ...) runjags.object,
+    add.summary = function(fit, ...) fit,
+    .package = "runjags"
+  )
+  testthat::local_mocked_bindings(
+    makePSOCKcluster = function(cores) as.list(seq_len(cores)),
+    stopCluster = function(cl) invisible(NULL),
+    clusterApply = function(cl, x, fun, ...){
+      if(!worker_alive && identical(x[[1L]]$context$phase, "capture")){
+        stop("error reading from connection", call. = FALSE)
+      }
+      lapply(x, fun, ...)
+    },
+    .package = "parallel"
+  )
+  failing <- function(context, state = NULL){
+    if(context$phase == "capture") stop("Snapshot export failed.", call. = FALSE)
+    NULL
+  }
+  environment(failing) <- baseenv()
+  control <- list(max_Rhat = NULL, min_ESS = NULL, max_error = NULL,
+    max_SD_error = NULL, max_time = NULL, sample_extend = 1,
+    restarts = 1, max_extend = 1, check_indicators = FALSE)
+
+  local_message <- "Runtime cache capture in the local process: Snapshot export failed."
+  expect_warning(
+    fit <- JAGS_fit("model{ x ~ dnorm(mu, 1) }", data = list(x = 0),
+      prior_list = list(mu = prior("normal", list(0, 1))), chains = 2,
+      adapt = 50, burnin = 50, sample = 100, seed = 1, silent = TRUE,
+      runtime_cache = failing),
+    local_message, fixed = TRUE
+  )
+  expect_null(attr(fit, "runtime_state", exact = TRUE))
+  expect_identical(attr(fit, "warnings"), local_message)
+
+  expect_warning(
+    extended <- JAGS_extend(fit, autofit_control = control, runtime_cache = failing),
+    local_message, fixed = TRUE
+  )
+  expect_identical(attr(extended, "warnings"), local_message)
+
+  # A dead worker drops the whole capture; the warning stays with the fit.
+  keeping <- function(context, state = NULL){
+    if(context$phase == "capture") list(process = context$process_id) else NULL
+  }
+  environment(keeping) <- baseenv()
+  worker_alive <- FALSE
+  dead_message <- "Runtime cache capture could not be completed: error reading from connection"
+  expect_warning(
+    parallel_fit <- JAGS_extend(fit, autofit_control = control,
+      parallel = TRUE, cores = 2L, runtime_cache = keeping),
+    dead_message, fixed = TRUE
+  )
+  expect_null(attr(parallel_fit, "runtime_state", exact = TRUE))
+  expect_identical(attr(parallel_fit, "warnings"), c(local_message, dead_message))
+})

@@ -126,6 +126,21 @@
   if(all(vapply(captured, is.null, logical(1L)))) NULL else captured
 }
 
+# Capture cache shards and keep the capture warnings, which are signalled as
+# usual, so that the fit that retains the state can also record them.
+.JAGS_capture_runtime_cache <- function(runtime_cache, chains, cl = NULL){
+
+  messages <- character()
+  state <- withCallingHandlers(
+    .JAGS_run_runtime_cache(runtime_cache, "capture", chains, cl),
+    warning = function(condition){
+      messages <<- c(messages, conditionMessage(condition))
+    }
+  )
+
+  list(state = state, warnings = messages)
+}
+
 .JAGS_runtime_context <- function(chains, processes = 1L, parallel = FALSE,
                                   process_id = 1L, phase = "start"){
 

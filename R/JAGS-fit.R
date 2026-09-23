@@ -70,6 +70,10 @@
 #'  defaults to \code{chains}
 #' @param silent whether the function should proceed silently, defaults to \code{TRUE}
 #' @param seed seed for random number generation by \code{JAGS_fit()}.
+#'   Draws are reproducible for the same \code{seed}, \code{chains}, and, with
+#'   \code{parallel = TRUE}, the same \code{cores}. Parallel draws need not equal
+#'   serial draws with the same seed, because the backend passes each chain's
+#'   initial state to its worker in a serialized text form.
 #' @param worker_output optional file path for parallel worker stdout and stderr.
 #'   The parent directory must exist. Workers append to the same file, so messages
 #'   can interleave. \code{NULL} retains the backend default of discarding worker
@@ -121,7 +125,10 @@
 #' calls receive neither attribute. \code{JAGS_extend()} restores old state
 #' independently of whether its callback elects to capture fresh state.
 #' Callback warnings and errors are reported without discarding valid draws;
-#' failed captures leave a \code{NULL} shard. Error and interrupt cleanup does
+#' a failed capture callback leaves a \code{NULL} shard for its process. If a
+#' worker connection fails during capture, no shard is retained from any
+#' process for that fit. Capture warnings, including such failures, are also
+#' recorded in the fit's \code{warnings} attribute. Error and interrupt cleanup does
 #' not attempt capture; ordinary runtime cleanup still runs. Retained R snapshots,
 #' serialization buffers, and the caller's old fitted object consume memory in
 #' addition to active cache storage. Callback packages must be listed in
@@ -169,6 +176,9 @@ NULL
 
 .bt_append_fit_warnings <- function(fit, messages){
 
+  if(length(messages) == 0L){
+    return(fit)
+  }
   attr(fit, "warnings") <- unique(c(
     attr(fit, "warnings", exact = TRUE),
     messages
@@ -474,14 +484,17 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
   extension_failed <- FALSE
   last_valid_runtime_state <- NULL
+  last_valid_capture_warnings <- character()
   captured_after_success <- FALSE
 
   if(autofit && !inherits(fit, "error")){
 
     # An unsuccessful first extension must retain the cache belonging to the
     # initial valid fit, before the backend has a chance to mutate it.
-    last_valid_runtime_state <- .JAGS_run_runtime_cache(
-      runtime_cache, "capture", chains, if(parallel) cl else NULL)
+    captured <- .JAGS_capture_runtime_cache(
+      runtime_cache, chains, if(parallel) cl else NULL)
+    last_valid_runtime_state <- captured$state
+    last_valid_capture_warnings <- captured$warnings
     captured_after_success <- TRUE
 
     converged <- JAGS_check_convergence(
@@ -547,8 +560,10 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
       fit <- runjags::add.summary(extension)
       last_valid_fit <- fit
-      last_valid_runtime_state <- .JAGS_run_runtime_cache(
-        runtime_cache, "capture", chains, if(parallel) cl else NULL)
+      captured <- .JAGS_capture_runtime_cache(
+        runtime_cache, chains, if(parallel) cl else NULL)
+      last_valid_runtime_state <- captured$state
+      last_valid_capture_warnings <- captured$warnings
       captured_after_success <- TRUE
 
       converged <- JAGS_check_convergence(
@@ -603,9 +618,12 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   if(!inherits(fit, "error")){
     if(isTRUE(extension_failed) || isTRUE(captured_after_success)){
       attr(fit, "runtime_state") <- last_valid_runtime_state
+      fit <- .bt_append_fit_warnings(fit, last_valid_capture_warnings)
     }else{
-      attr(fit, "runtime_state") <- .JAGS_run_runtime_cache(
-        runtime_cache, "capture", chains, if(parallel) cl else NULL)
+      captured <- .JAGS_capture_runtime_cache(
+        runtime_cache, chains, if(parallel) cl else NULL)
+      attr(fit, "runtime_state") <- captured$state
+      fit <- .bt_append_fit_warnings(fit, captured$warnings)
     }
   }
   return(fit)
@@ -862,6 +880,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   converged  <- FALSE
   last_valid_fit <- fit
   extension_failed <- FALSE
+  last_valid_capture_warnings <- character()
   captured_after_success <- FALSE
 
   while(!converged){
@@ -907,8 +926,10 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       attr(last_valid_fit, "warnings", exact = TRUE)
     )
     last_valid_fit <- fit
-    last_valid_runtime_state <- .JAGS_run_runtime_cache(
-      runtime_cache, "capture", chains, if(parallel) cl else NULL)
+    captured <- .JAGS_capture_runtime_cache(
+      runtime_cache, chains, if(parallel) cl else NULL)
+    last_valid_runtime_state <- captured$state
+    last_valid_capture_warnings <- captured$warnings
     captured_after_success <- TRUE
     converged <- JAGS_check_convergence(
       fit = fit,
@@ -958,9 +979,12 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   attr(fit, "runtime_cache") <- runtime_cache
   if(isTRUE(extension_failed) || isTRUE(captured_after_success)){
     attr(fit, "runtime_state") <- last_valid_runtime_state
+    fit <- .bt_append_fit_warnings(fit, last_valid_capture_warnings)
   }else{
-    attr(fit, "runtime_state") <- .JAGS_run_runtime_cache(
-      runtime_cache, "capture", chains, if(parallel) cl else NULL)
+    captured <- .JAGS_capture_runtime_cache(
+      runtime_cache, chains, if(parallel) cl else NULL)
+    attr(fit, "runtime_state") <- captured$state
+    fit <- .bt_append_fit_warnings(fit, captured$warnings)
   }
   return(fit)
 }
