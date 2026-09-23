@@ -321,10 +321,11 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     variable <- .get_spike_and_slab_variable(total)
     inclusion <- .get_spike_and_slab_inclusion(total)
     init <- list()
-    if(!is.prior.point(variable)){
+    # no initialization for expression priors: require higher-level input
+    if(!is.prior.point(variable) && !.is_prior_expression(variable)){
       init[[paste0(total_name, "_variable")]] <- rng(variable, theta_dim)
     }
-    if(!is.prior.point(inclusion)){
+    if(!is.prior.point(inclusion) && !.is_prior_expression(inclusion)){
       init[[paste0(total_name, "_inclusion")]] <- rng(inclusion, 1)
     }
     return(init)

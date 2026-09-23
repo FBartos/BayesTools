@@ -407,6 +407,50 @@ test_that("multi-slice ordered expression totals omit initialization", {
   )))
 })
 
+test_that("multi-slice spike-and-slab ordered totals skip expression inits", {
+  df <- expand.grid(
+    f = ordered(
+      c("low", "mid", "high"),
+      levels = c("low", "mid", "high")
+    ),
+    g = factor(c("a", "b", "c"), levels = c("a", "b", "c"))
+  )
+  formula_info <- JAGS_formula(
+    ~ f * g,
+    "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_ordered(prior("normal", list(0, 1))),
+      g = prior_factor("normal", list(0, 1), contrast = "treatment"),
+      "f:g" = prior_ordered(prior_spike_and_slab(
+        prior("normal", list(0, expression(sigma))),
+        prior_inclusion = prior("beta", list(1, 1))
+      ))
+    )
+  )
+  prior_list <- c(
+    formula_info$prior_list,
+    list(sigma = prior("gamma", list(2, 2)))
+  )
+
+  expect_equal(
+    attr(prior_list$mu_f__xXx__g, "ordered_metadata")$theta_dim,
+    2L
+  )
+  expect_match(
+    JAGS_add_priors("model{}", prior_list),
+    "mu_f__xXx__g_ordered_total_variable[2]",
+    fixed = TRUE
+  )
+  inits <- JAGS_get_inits(prior_list, chains = 1, seed = 1)[[1L]]
+  # The expression slab is initialized by JAGS from its parent 'sigma'; the
+  # sampled inclusion probability keeps its own initial value.
+  expect_false("mu_f__xXx__g_ordered_total_variable" %in% names(inits))
+  expect_true("mu_f__xXx__g_ordered_total_inclusion" %in% names(inits))
+  expect_true("sigma" %in% names(inits))
+})
+
 test_that("ordered random slope contrasts are specified independently", {
   df <- data.frame(
     y = seq_len(12),
