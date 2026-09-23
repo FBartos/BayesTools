@@ -322,10 +322,75 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
       )
       colnames(samples)[ncol(samples)] <- primitive_names[[i]]
     }
+
+    # Monitored Cholesky and correlation matrices are deterministic functions
+    # of the primitives; derive them so the prior draws carry the same
+    # coordinates as the posterior (and the correlation needed for unscaling).
+    samples <- .bt_add_lkj_matrix_prior_samples(
+      samples = samples,
+      correlation = correlation,
+      primitive_names = primitive_names,
+      K = K,
+      column_names = column_names
+    )
   }
 
   ordered <- intersect(column_names, colnames(samples))
   samples[, ordered, drop = FALSE]
+}
+
+.bt_add_lkj_matrix_prior_samples <- function(samples, correlation,
+                                             primitive_names, K,
+                                             column_names){
+
+  if(length(primitive_names) == 0L ||
+     !all(primitive_names %in% colnames(samples))){
+    return(samples)
+  }
+
+  matrix_names <- function(name){
+    if(!is.character(name) || length(name) != 1L || is.na(name) ||
+       !nzchar(name)){
+      return(NULL)
+    }
+    as.vector(outer(
+      seq_len(K),
+      seq_len(K),
+      Vectorize(function(row, column){
+        paste0(name, "[", row, ",", column, "]")
+      })
+    ))
+  }
+  L_names <- matrix_names(correlation$cholesky_name)
+  R_names <- matrix_names(correlation$correlation_name)
+  add_L <- !is.null(L_names) && all(L_names %in% column_names) &&
+    !any(L_names %in% colnames(samples))
+  add_R <- !is.null(R_names) && all(R_names %in% column_names) &&
+    !any(R_names %in% colnames(samples))
+  if(!add_L && !add_R){
+    return(samples)
+  }
+
+  L <- .bt_lkj_cholesky_cpc_u_to_L(
+    samples[, primitive_names, drop = FALSE],
+    K = K
+  )
+  if(add_L){
+    L_values <- matrix(L, nrow = nrow(samples), ncol = K * K)
+    colnames(L_values) <- L_names
+    samples <- cbind(samples, L_values)
+  }
+  if(add_R){
+    R <- array(NA_real_, dim = dim(L))
+    for(draw_i in seq_len(nrow(samples))){
+      R[draw_i, , ] <- tcrossprod(L[draw_i, , ])
+    }
+    R_values <- matrix(R, nrow = nrow(samples), ncol = K * K)
+    colnames(R_values) <- R_names
+    samples <- cbind(samples, R_values)
+  }
+
+  samples
 }
 
 .generate_factor_prior_sample_matrix <- function(prior, parameter, n_samples){

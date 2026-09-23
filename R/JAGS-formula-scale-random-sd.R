@@ -278,9 +278,18 @@
     n_terms = n_terms
   )
 
+  u_names <- .random_sd_lkj_primitive_names(
+    prefix = prefix,
+    group_key = group_key,
+    n_terms = n_terms
+  )
+
   has_R <- all(as.vector(R_names) %in% colnames(posterior))
   has_L <- all(as.vector(L_names) %in% colnames(posterior))
-  if(!has_R && !has_L){
+  # Monitored LKJ primitives define the Cholesky factor preferred by the
+  # reconstruction evaluators; they are rewritten from the transformed factor.
+  has_u <- length(u_names) > 0L && all(u_names %in% colnames(posterior))
+  if(!has_R && !has_L && !has_u){
     return(posterior)
   }
 
@@ -290,12 +299,15 @@
   if(has_L){
     posterior[, as.vector(L_names)] <- NA_real_
   }
+  if(has_u){
+    posterior[, u_names] <- NA_real_
+  }
   if(!any(valid_draw)){
     return(posterior)
   }
 
   L <- NULL
-  if(has_L){
+  if(has_L || has_u){
     L <- array(NA_real_, dim = dim(correlation))
     for(draw_i in which(valid_draw)){
       this_L <- try(t(chol(correlation[draw_i, , ])), silent = TRUE)
@@ -326,8 +338,25 @@
       }
     }
   }
+  if(has_u){
+    u <- .bt_lkj_cholesky_L_to_cpc_u(
+      L[valid_draw, , , drop = FALSE],
+      K = n_terms
+    )
+    posterior[valid_draw, u_names] <- u
+  }
 
   posterior
+}
+
+.random_sd_lkj_primitive_names <- function(prefix, group_key, n_terms){
+
+  n_pairs <- n_terms * (n_terms - 1L) / 2L
+  if(n_pairs < 1L){
+    return(character())
+  }
+
+  paste0(prefix, "__xREx__", group_key, "_xRE_CORx_lkj_u[", seq_len(n_pairs), "]")
 }
 
 .random_sd_correlation_matrix_names <- function(prefix, group_key, suffix,
@@ -676,6 +705,26 @@
       for(column in seq_len(n_terms)){
         out[, row, column] <- posterior[, R_names[row, column]]
       }
+    }
+    return(out)
+  }
+
+  u_names <- .random_sd_lkj_primitive_names(
+    prefix = prefix,
+    group_key = group_key,
+    n_terms = n_terms
+  )
+  u_present <- u_names %in% colnames(posterior)
+  if(!any(L_present) && all(u_present)){
+    # Only the LKJ primitives are available (e.g., prior draws or fits without
+    # monitored correlation matrices): build the Cholesky factor from them.
+    L <- .bt_lkj_cholesky_cpc_u_to_L(
+      posterior[, u_names, drop = FALSE],
+      K = n_terms
+    )
+    out <- array(NA_real_, dim = c(nrow(posterior), n_terms, n_terms))
+    for(draw_i in seq_len(nrow(posterior))){
+      out[draw_i, , ] <- tcrossprod(L[draw_i, , ])
     }
     return(out)
   }

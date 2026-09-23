@@ -9798,6 +9798,213 @@ test_that("JAGS_estimates_table backtransforms random-effect correlations", {
   expect_lt(expected_cor, 0)
 })
 
+test_that("backtransformed random-effect correlations use the transformed LKJ primitives", {
+
+  testthat::skip_if_not_installed("runjags")
+
+  # Real fits always monitor the LKJ primitives, which the Cholesky evaluator
+  # prefers over the monitored L; they must follow the original-scale L.
+  df <- data.frame(
+    x = c(4, 5, 6, 8),
+    id = factor(c("a", "a", "b", "b"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + x + random(1 + x | id, name = "id", covariance = "us"),
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("normal", list(0, 1), truncation = list(0, Inf)),
+        cor = prior_lkj(eta = 1),
+        monitor = random_monitor(
+          latent = FALSE,
+          coefficients = FALSE,
+          correlation = TRUE
+        )
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1]]
+  sd_names <- random_term$sd_parameter_names
+  R_names <- outer(
+    seq_len(2),
+    seq_len(2),
+    Vectorize(function(row, column) {
+      paste0(random_term$parameter_stem, "_xRE_CORx_R[", row, ",", column, "]")
+    })
+  )
+  L_names <- BayesTools:::.bt_random_effect_cholesky_names(random_term, 2L)
+  u_names <- random_term$correlation$primitive_names
+  expect_identical(u_names, "mu__xREx__id_xRE_CORx_lkj_u[1]")
+
+  source_sd <- rbind(c(1, 2), c(0.5, 1.5))
+  source_rho <- c(0.8, -0.3)
+  rows <- lapply(seq_len(2), function(draw) {
+    source_cor <- matrix(c(1, source_rho[draw], source_rho[draw], 1), 2, 2)
+    source_L <- t(chol(source_cor))
+    c(0, 0, source_sd[draw, ], as.vector(source_cor), as.vector(source_L),
+      (source_rho[draw] + 1) / 2)
+  })
+  posterior <- do.call(rbind, rows)
+  colnames(posterior) <- c(
+    "mu_intercept", "mu_x", sd_names, as.vector(R_names),
+    as.vector(L_names), u_names
+  )
+
+  fit <- list(
+    mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+    summary.pars = list(mutate = NULL),
+    monitor = colnames(posterior),
+    sample = nrow(posterior)
+  )
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+
+  scale_info <- formula_result$formula_scale$mu_x
+  M <- matrix(
+    c(1, -scale_info$mean / scale_info$sd, 0, 1 / scale_info$sd),
+    nrow = 2,
+    byrow = TRUE
+  )
+  expected_cor <- vapply(seq_len(2), function(draw) {
+    source_cor <- matrix(c(1, source_rho[draw], source_rho[draw], 1), 2, 2)
+    source_cov <- diag(source_sd[draw, ]) %*% source_cor %*% diag(source_sd[draw, ])
+    expected_cov <- M %*% source_cov %*% t(M)
+    expected_cov[1, 2] / sqrt(prod(diag(expected_cov)))
+  }, numeric(1))
+
+  original_samples <- JAGS_estimates_table(
+    fit,
+    transform_scaled = TRUE,
+    random_effects_summary = "standard",
+    remove_diagnostics = TRUE,
+    return_samples = TRUE
+  )
+  expect_equal(
+    unname(original_samples[, "(mu) cor(intercept,x)"]),
+    expected_cor,
+    tolerance = 1e-12
+  )
+  draws <- parameter_draws(
+    fit,
+    parameter_catalog_resolve(parameter_catalog(fit), "(mu) cor(intercept,x)")
+  )
+  expect_equal(
+    as.numeric(as.matrix(draws[[1]])),
+    expected_cor,
+    tolerance = 1e-12
+  )
+  expect_true(all(abs(expected_cor - source_rho) > 0.1))
+
+  transformed <- transform_scale_samples(fit)
+  expect_equal(
+    unname(transformed[, u_names]),
+    (expected_cor + 1) / 2,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    unname(transformed[, "mu__xREx__id_xRE_CORx_L[2,1]"]),
+    expected_cor,
+    tolerance = 1e-12
+  )
+})
+
+test_that("transform_prior_samples unscales correlated random slopes from LKJ primitives", {
+
+  testthat::skip_if_not_installed("runjags")
+
+  df <- data.frame(
+    x = c(4, 5, 6, 8),
+    id = factor(c("a", "a", "b", "b"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + x + random(1 + x | id, name = "id", covariance = "us"),
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("normal", list(0, 1), truncation = list(0, Inf)),
+        cor = prior_lkj(eta = 2),
+        monitor = random_monitor(
+          latent = FALSE,
+          coefficients = FALSE,
+          correlation = TRUE
+        )
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1]]
+  sd_names <- random_term$sd_parameter_names
+  R_names <- as.vector(outer(
+    seq_len(2),
+    seq_len(2),
+    Vectorize(function(row, column) {
+      paste0(random_term$parameter_stem, "_xRE_CORx_R[", row, ",", column, "]")
+    })
+  ))
+  L_names <- as.vector(BayesTools:::.bt_random_effect_cholesky_names(random_term, 2L))
+  u_names <- random_term$correlation$primitive_names
+  posterior <- matrix(
+    0.5,
+    nrow = 2,
+    ncol = 2 + length(sd_names) + 4 + 4 + 1,
+    dimnames = list(NULL, c("mu_intercept", "mu_x", sd_names, R_names, L_names, u_names))
+  )
+  fit <- list(
+    mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+    summary.pars = list(mutate = NULL),
+    monitor = colnames(posterior),
+    sample = nrow(posterior)
+  )
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+
+  raw <- transform_prior_samples(fit, n_samples = 200, seed = 7, formula_scale = list())
+  transformed <- transform_prior_samples(fit, n_samples = 200, seed = 7)
+  expect_true(all(c(sd_names, R_names, L_names, u_names) %in% colnames(raw)))
+  expect_true(all(c(sd_names, R_names, L_names, u_names) %in% colnames(transformed)))
+
+  # Raw prior draws: the monitored L and R follow the sampled primitives.
+  raw_L <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(raw[, u_names, drop = FALSE], K = 2L)
+  expect_equal(unname(raw[, L_names[2]]), raw_L[, 2, 1], tolerance = 1e-12)
+  expect_equal(unname(raw[, R_names[2]]), raw_L[, 2, 1], tolerance = 1e-12)
+
+  # Original-scale draws: covariance M Sigma M' from the same raw draws.
+  scale_info <- formula_result$formula_scale$mu_x
+  M <- matrix(
+    c(1, -scale_info$mean / scale_info$sd, 0, 1 / scale_info$sd),
+    nrow = 2,
+    byrow = TRUE
+  )
+  expected <- t(vapply(seq_len(nrow(raw)), function(draw) {
+    rho <- raw[draw, R_names[2]]
+    sds <- raw[draw, sd_names]
+    source_cov <- diag(sds) %*% matrix(c(1, rho, rho, 1), 2, 2) %*% diag(sds)
+    expected_cov <- M %*% source_cov %*% t(M)
+    expected_sd <- sqrt(diag(expected_cov))
+    c(expected_sd, expected_cov[1, 2] / prod(expected_sd))
+  }, numeric(3)))
+  expect_equal(unname(transformed[, sd_names]), expected[, 1:2], tolerance = 1e-10)
+  expect_equal(unname(transformed[, R_names[2]]), expected[, 3], tolerance = 1e-10)
+  expect_equal(unname(transformed[, L_names[2]]), expected[, 3], tolerance = 1e-10)
+  expect_equal(unname(transformed[, u_names]), (expected[, 3] + 1) / 2, tolerance = 1e-10)
+})
+
 test_that("transform_scale_samples updates valid random-effect correlations draw-wise", {
 
   posterior <- matrix(

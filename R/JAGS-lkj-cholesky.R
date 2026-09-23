@@ -226,6 +226,64 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
   .Call("BayesTools_lkj_cholesky_from_u", u, as.integer(K), PACKAGE = "BayesTools")
 }
 
+# Exact inverse of .bt_lkj_cholesky_cpc_u_to_L(): recover the LKJ primitive
+# coordinates from lower Cholesky factors of correlation matrices. For row i
+# and column j < i, the canonical partial correlation is
+#   z_ij = L_ij / sqrt(1 - sum_{k < j} L_ik^2)
+# and u_ij = (z_ij + 1) / 2, ordered like the native map (column-major over the
+# upper-triangular pairs). `L` is a K x K matrix or an n x K x K array; the
+# result is a vector or an n x K(K - 1)/2 matrix. Factors that are not valid
+# lower Cholesky factors of a correlation matrix with an interior primitive
+# (unit row norms, positive diagonal, |z| < 1) give NA rows.
+.bt_lkj_cholesky_L_to_cpc_u <- function(L, K){
+
+  K <- .bt_lkj_cholesky_check_K(K)
+  n_pairs <- .bt_lkj_cholesky_n_pairs(K)
+  single <- is.matrix(L)
+  if(single){
+    L <- array(L, dim = c(1L, dim(L)))
+  }
+  if(!is.array(L) || length(dim(L)) != 3L ||
+     dim(L)[2L] != K || dim(L)[3L] != K){
+    stop("'L' must be a K x K matrix or an n x K x K array.", call. = FALSE)
+  }
+
+  n_draws <- dim(L)[1L]
+  u <- matrix(NA_real_, nrow = n_draws, ncol = n_pairs)
+  if(n_pairs == 0L){
+    return(if(single) numeric(0) else u)
+  }
+
+  valid <- rep(TRUE, n_draws)
+  tolerance <- 1e-10
+  for(row in seq_len(K)){
+    row_values <- matrix(L[, row, , drop = FALSE], nrow = n_draws)
+    valid <- valid & apply(is.finite(row_values), 1L, all) &
+      abs(rowSums(row_values^2) - 1) <= tolerance &
+      row_values[, row] > 0
+    if(row < K){
+      valid <- valid & rowSums(abs(row_values[, (row + 1L):K, drop = FALSE])) == 0
+    }
+  }
+
+  for(row in seq_len(K)[-1L]){
+    remaining <- rep(1, n_draws)
+    for(column in seq_len(row - 1L)){
+      pair <- (row - 1L) * (row - 2L) / 2L + column
+      cpc <- L[, row, column] / sqrt(pmax(remaining, 0))
+      valid <- valid & is.finite(cpc) & abs(cpc) < 1
+      u[, pair] <- (cpc + 1) / 2
+      remaining <- remaining - L[, row, column]^2
+    }
+  }
+  u[!valid, ] <- NA_real_
+
+  if(single){
+    return(as.numeric(u[1L, ]))
+  }
+  u
+}
+
 .bt_lkj_cholesky_check_u_shape <- function(u, n_pairs){
 
   if(is.matrix(u)){

@@ -139,6 +139,32 @@ test_that("LKJ CPC construction returns valid lower Cholesky factors", {
   expect_true(all(eigen(R, symmetric = TRUE, only.values = TRUE)$values > 0))
 })
 
+test_that("LKJ primitives round-trip through the Cholesky factor", {
+
+  set.seed(20260923)
+  for(K in 2:5){
+    n_pairs <- K * (K - 1L) / 2L
+    alpha <- BayesTools:::.bt_lkj_cholesky_alpha(K = K, eta = 1.5)
+    u <- sapply(alpha, function(a) stats::rbeta(25L, a, a))
+    u <- matrix(u, nrow = 25L, ncol = n_pairs)
+    L <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(u, K = K)
+    expect_equal(
+      BayesTools:::.bt_lkj_cholesky_L_to_cpc_u(L, K = K),
+      u,
+      tolerance = 1e-12
+    )
+    expect_equal(
+      BayesTools:::.bt_lkj_cholesky_L_to_cpc_u(L[1L, , ], K = K),
+      u[1L, ],
+      tolerance = 1e-12
+    )
+    # A factor of an unscaled covariance is not a correlation Cholesky factor.
+    expect_true(all(is.na(
+      BayesTools:::.bt_lkj_cholesky_L_to_cpc_u(2 * L[1:2, , , drop = FALSE], K = K)
+    )))
+  }
+})
+
 test_that("LKJ CPC construction remains stable near primitive boundaries", {
   settings <- list(
     list(K = 2L, u = c(1e-8)),
