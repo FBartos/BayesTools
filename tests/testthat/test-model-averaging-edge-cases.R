@@ -883,6 +883,37 @@ test_that("mix_posteriors rejects implicit and scalar simplex nulls", {
   )
 })
 
+test_that("marginal_posterior rejects simplex and weightfunction posteriors clearly", {
+
+  mixed <- mix_posteriors(
+    list(
+      .mock_simplex_mixing_model(list(w = prior("dirichlet", list(alpha = c(1, 1))))),
+      .mock_simplex_mixing_model(list(w = prior("dirichlet", list(alpha = c(2, 3)))))
+    ),
+    parameters   = "w",
+    is_null_list = list(w = c(FALSE, FALSE)),
+    seed         = 1,
+    n_samples    = 12
+  )
+  expect_error(
+    marginal_posterior(mixed, "w"),
+    "'marginal_posterior()' is not supported for vector (e.g., Dirichlet simplex) posterior samples ('w')",
+    fixed = TRUE
+  )
+
+  weightfunction <- prior_weightfunction(steps = .05)
+  omega <- seq(.1, .9, length.out = 20)
+  fit <- coda::mcmc(cbind("omega[1]" = rep(1, 20), "omega[2]" = omega))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- list(omega = weightfunction)
+  samples <- as_mixed_posteriors(fit, parameters = "omega")
+  expect_error(
+    marginal_posterior(samples, "omega"),
+    "'marginal_posterior()' is not supported for weightfunction posterior samples ('omega')",
+    fixed = TRUE
+  )
+})
+
 test_that("mix_posteriors preserves simplex draws for compatible explicit priors", {
 
   simplex_model_1 <- .mock_simplex_mixing_model(

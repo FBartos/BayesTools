@@ -906,6 +906,15 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       )
       class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior.simple")
 
+    }else{
+
+      stop(
+        "'marginal_posterior()' is not supported for ",
+        .marginal_posterior_samples_type(samples[[parameter]]),
+        " posterior samples ('", parameter, "'). Marginal posterior ",
+        "distributions are available for simple, factor, and formula parameters.",
+        call. = FALSE
+      )
     }
 
 
@@ -1159,6 +1168,24 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   marginal
+}
+
+.marginal_posterior_samples_type <- function(parameter_samples){
+
+  if(inherits(parameter_samples, "mixed_posteriors.weightfunction")){
+    return("weightfunction")
+  }
+  if(inherits(parameter_samples, "mixed_posteriors.bias")){
+    return("publication-bias")
+  }
+  if(inherits(parameter_samples, "mixed_posteriors.phacking")){
+    return("p-hacking")
+  }
+  if(inherits(parameter_samples, "mixed_posteriors.vector")){
+    return("vector (e.g., Dirichlet simplex)")
+  }
+
+  "these"
 }
 
 .marginal_posterior_optional_metadata <- function(expr, required = TRUE){
