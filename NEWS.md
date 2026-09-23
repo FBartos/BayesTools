@@ -1,4 +1,71 @@
 # version 0.3.1
+### Breaking changes
+These changes affect code and saved objects written for BayesTools 0.3.0
+(released together with RoBMA 4.1.0; RoBMA 4.0.0 relies on the old behaviour).
+- requires JAGS 4.x (>= 4.3.0, < 5.0.0). The compiled BayesTools JAGS module
+  implements the JAGS 4 module interface and does not compile against JAGS 5.
+  Installation now stops with a message naming the reported version when
+  `configure` finds another major version through `JAGS_VERSION`,
+  `--with-jags-version`, pkg-config, a versioned JAGS prefix, the
+  `jags_version()` probe, or the `JAGS_MAJOR` declared by the selected
+  headers. On Windows the build selects the newest installed `JAGS-4.*`,
+  ignores other major versions, and rejects a `JAGS_ROOT` or `JAGS_VERSION`
+  that points to another one.
+- removes the `seed` argument of `JAGS_extend()`. Extension continues the
+  backend random-number state of the existing chains instead of reseeding
+  them, so calls that pass `seed` (including `update(fit, sample_extend = )`
+  in RoBMA 4.0.0) stop with "unused argument"; drop the argument. The new
+  `runtime_setup`, `runtime_cache`, and `worker_output` arguments follow
+  `silent`, so positional calls must name them.
+- fits created by BayesTools 0.3.0 or earlier must be refitted: they lack the
+  parameter map and fitted-object contract that post-fit functions now
+  require. `runjags_estimates_table()` / `JAGS_estimates_table()` (also for
+  models without formulas), `JAGS_extend()`, `JAGS_bridgesampling()`,
+  `transform_scale_samples()`, and `JAGS_evaluate_formula()` stop with
+  "Refit the model with the current BayesTools version". Mixed posteriors
+  saved from 0.3.0 cannot be passed to `marginal_posterior()`, nor marginal
+  posteriors saved from 0.3.0 to `Savage_Dickey_BF()`; rebuild them from
+  refitted models. This includes models stored by RoBMA 4.0.0.
+- conditioning on a parameter without an inclusion indicator (a prior that is
+  neither spike-and-slab nor a null/alternative mixture) stops with "The
+  parameter '...' is not a conditional parameter." instead of warning and
+  using all draws. This applies to `as_mixed_posteriors(conditional = )`,
+  `as_marginal_inference(conditional_list = )`, and the conditional
+  summaries and plots built on them; remove such parameters from the
+  conditioning set.
+- marginal likelihoods are `BayesTools_marglik` objects. `JAGS_bridgesampling()`
+  and `bridgesampling_object()` return them instead of bridgesampling
+  `"bridge"` objects, and `models_inference()`, `ensemble_inference()`, and
+  `mix_posteriors()` accept only them as `marglik`: saved 0.3.0 results and
+  `bridgesampling::bridge_sampler()` output are rejected, and bridgesampling
+  methods such as `bf()` do not apply to the new objects. Recompute marginal
+  likelihoods with `JAGS_bridgesampling()` or wrap a known natural-log value
+  with `bridgesampling_object(logml)`.
+- inverse-gamma priors use the BayesTools JAGS module distribution
+  `dbt_invgamma` instead of a gamma prior on `inv_<parameter>`. Syntax from
+  `JAGS_add_priors()` therefore needs the BayesTools module (loaded
+  automatically by `JAGS_fit()` and in sessions with BayesTools; plain JAGS
+  runs fail with "Unknown distribution"), `JAGS_get_inits()` initializes the
+  parameter itself instead of `inv_<parameter>`, `inv_<parameter>` is no
+  longer monitored, and `rng()` draws from inverse-gamma priors differ from
+  0.3.0 under the same seed (the distribution is unchanged).
+- inserts new arguments before existing ones, which changes positional calls:
+  `JAGS_fit()` takes `formula_random_prior_list` and
+  `formula_random_effects_compile_list` before `chains`;
+  `JAGS_bridgesampling()` takes `formula_random_prior_list`,
+  `formula_random_effects_compile_list`,
+  `formula_random_effects_marginalize_list`, `bridge_context`,
+  `bridge_context_node_names`, `repetitions`, and `method` before `maxiter`;
+  and `runjags_estimates_table()` / `JAGS_estimates_table()` take
+  `random_effects_summary`, `simplify_names`, `random_effects_metadata`,
+  `remove_random_effects`, `keep_random_effects`,
+  `remove_random_structures`, and `keep_random_structures` before
+  `remove_diagnostics`. Pass these and later arguments by name.
+- weight-function priors saved from 0.3.0 (alone or inside prior lists,
+  mixtures, and bias priors) lack the selection-model specification and are
+  rejected by `print()`, `rng()`, `mcdf()`, `mean()`, and `prior_mixture()`;
+  recreate them with `prior_weightfunction()`.
+
 ### Features
 - supports declared output intervals for density transformations. Wider display
   limits remain available while inverse/Jacobian evaluations and continuous
