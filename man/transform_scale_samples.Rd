@@ -44,6 +44,14 @@ where \eqn{extra = S_{scaled} \setminus T_{scaled}}.
 The posterior must contain every lower-order coefficient with a nonzero
 contribution from this expansion. If it does not, the function stops rather
 than returning an incomplete transformation.
+
+For a fitted object, the fixed-coefficient transformation is derived from the
+stored fixed-effect design (persisted factor levels and contrasts) and
+verified to reproduce the fitted linear predictor exactly, which also covers
+nested terms such as \code{~ f/x}. Formulas whose centered terms induce
+lower-order effects that the fitted formula does not contain (e.g.,
+\code{~ x + x:f} with \code{x} standardized) have no original-scale
+representation, and the function stops.
 }
 \seealso{
 \code{\link[=JAGS_formula]{JAGS_formula()}} \code{\link[=JAGS_fit]{JAGS_fit()}}

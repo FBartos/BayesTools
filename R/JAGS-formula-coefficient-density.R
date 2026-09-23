@@ -153,7 +153,10 @@ JAGS_formula_coefficient_transform <- function(
 
   .bt_formula_coefficient_transform(
     source_names = sources$source,
-    formula_scale = design$formula_scale,
+    formula_scale = .bt_formula_scale_with_unscale_design(
+      design$formula_scale,
+      design
+    ),
     log_intercept = design$log_intercept,
     parameter = parameter,
     target_scale = target_scale,

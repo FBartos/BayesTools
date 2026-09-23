@@ -377,10 +377,48 @@
 }
 
 
-# Helper: Build the transformation matrix for unscaling coefficients
+# Helper: Build the transformation matrix for unscaling fixed coefficients
 #
-# For each target term T and source term S, computes the coefficient M[T,S] such that:
+# For each target term T and source term S, computes M[T,S] such that:
 #   coef_orig[T] = sum over S of M[T,S] * coef_z[S]
+#
+# When the formula-scale metadata carry the fitted fixed-effect design
+# (attribute "unscale_design"), the matrix is derived from that design and
+# verified exactly (see .bt_formula_unscale_design_transform()). Otherwise, the
+# matrix is paired by coefficient names (.build_unscale_matrix_by_names()).
+#
+# @param term_names Character vector of all term names in the posterior
+# @param formula_scale Named list with scaling info (mean, sd) for scaled predictors
+# @param prefix The parameter prefix (e.g., "mu")
+# @param require_closure Whether missing induced coefficient terms should fail.
+# @return A square transformation matrix
+.build_unscale_matrix <- function(term_names, formula_scale, prefix,
+                                  require_closure = TRUE) {
+
+  design_spec <- attr(formula_scale, "unscale_design", exact = TRUE)
+  if(is.null(design_spec) || !isTRUE(require_closure)){
+    return(.build_unscale_matrix_by_names(
+      term_names = term_names,
+      formula_scale = formula_scale,
+      prefix = prefix,
+      require_closure = require_closure
+    ))
+  }
+
+  design_transform <- .bt_formula_unscale_design_transform(
+    spec = design_spec,
+    formula_scale = formula_scale,
+    prefix = prefix
+  )
+  .bt_formula_unscale_design_submatrix(
+    design_transform = design_transform,
+    term_names = term_names,
+    prefix = prefix
+  )
+}
+
+
+# Helper: Build the unscaling matrix by pairing coefficient names
 #
 # The formula is based on expanding products of (x_i - mu_i)/sigma_i terms.
 # For S to contribute to T:
@@ -390,14 +428,16 @@
 # The contribution is: (-1)^|extra| * prod(mu_extra) / prod(sigma_S_scaled)
 # where extra = S_scaled \ T_scaled
 #
-# @param term_names Character vector of all term names in the posterior
-# @param formula_scale Named list with scaling info (mean, sd) for scaled predictors
-# @param prefix The parameter prefix (e.g., "mu")
+# The pairing assumes that column k of an interaction with a factor is coded
+# like column k of the lower-order factor term. Fixed-effect transforms of
+# fitted formulas are verified against the fitted design instead; this
+# name-based map is used directly only for covariance-space random-effect SD
+# transforms and for formula-scale metadata without a stored design.
+#
 # @param require_closure Whether missing induced coefficient terms should fail.
 #   Random-effect SD transforms operate in covariance space and set this to FALSE.
-# @return A square transformation matrix
-.build_unscale_matrix <- function(term_names, formula_scale, prefix,
-                                  require_closure = TRUE) {
+.build_unscale_matrix_by_names <- function(term_names, formula_scale, prefix,
+                                           require_closure = TRUE) {
 
   n_terms <- length(term_names)
   M <- diag(n_terms)  # Start with identity matrix
@@ -485,6 +525,419 @@
   }
 
   return(M)
+}
+
+
+.bt_formula_unscale_design_spec_version <- 1L
+
+# Helper: Minimal fitted-design metadata for exact fixed-effect unscaling: the
+# fixed-effect formula, persisted factor levels and concrete contrasts, and the
+# fitted column layout that defines the coefficient names.
+.bt_formula_unscale_design_spec <- function(design){
+
+  if(!inherits(design, "BayesTools_formula_design")){
+    return(NULL)
+  }
+
+  predictors <- as.character(design$predictors)
+  predictor_types <- design$predictor_types[predictors]
+  factors <- predictors[predictor_types == "factor"]
+  factor_levels <- lapply(factors, function(factor_name){
+    as.character(design$xlevels[[factor_name]])
+  })
+  names(factor_levels) <- factors
+  factor_ordered <- vapply(factors, function(factor_name){
+    is.ordered(design$model_frame[[factor_name]])
+  }, logical(1))
+  names(factor_ordered) <- factors
+  contrast_matrices <- design$contrast_matrices[factors]
+  names(contrast_matrices) <- factors
+  formula <- design$formula
+  environment(formula) <- emptyenv()
+
+  list(
+    schema_version    = .bt_formula_unscale_design_spec_version,
+    formula           = formula,
+    continuous        = predictors[predictor_types == "continuous"],
+    factor_levels     = factor_levels,
+    factor_ordered    = factor_ordered,
+    contrast_matrices = contrast_matrices,
+    model_terms       = as.character(design$model_terms),
+    assign            = as.integer(design$assign),
+    raw_column_names  = as.character(design$raw_column_names)
+  )
+}
+
+.bt_formula_unscale_design_spec_check <- function(spec, prefix){
+
+  factor_names <- names(spec$factor_levels)
+  valid <- is.list(spec) &&
+    identical(spec$schema_version, .bt_formula_unscale_design_spec_version) &&
+    inherits(spec$formula, "formula") &&
+    is.character(spec$continuous) && !anyNA(spec$continuous) &&
+    is.list(spec$factor_levels) &&
+    (length(spec$factor_levels) == 0L || (
+      !is.null(factor_names) && !anyNA(factor_names) &&
+        all(nzchar(factor_names)) && !anyDuplicated(factor_names))) &&
+    is.logical(spec$factor_ordered) &&
+    identical(names(spec$factor_ordered), factor_names) &&
+    is.list(spec$contrast_matrices) &&
+    identical(names(spec$contrast_matrices), factor_names) &&
+    all(vapply(factor_names, function(factor_name){
+      levels <- spec$factor_levels[[factor_name]]
+      contrast <- spec$contrast_matrices[[factor_name]]
+      is.character(levels) && length(levels) > 0L && !anyNA(levels) &&
+        is.matrix(contrast) && is.numeric(contrast) &&
+        nrow(contrast) == length(levels) && all(is.finite(contrast))
+    }, logical(1))) &&
+    is.character(spec$model_terms) && !anyNA(spec$model_terms) &&
+    is.integer(spec$assign) && !anyNA(spec$assign) &&
+    is.character(spec$raw_column_names) &&
+    length(spec$raw_column_names) == length(spec$assign) &&
+    length(spec$assign) > 0L
+  if(!isTRUE(valid)){
+    stop(
+      "Formula-scale design metadata for parameter '", prefix,
+      "' are malformed. Refit the model with this version of BayesTools.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+# Helper: Attach the fitted fixed-effect design to formula-scale metadata so
+# that fixed-coefficient unscaling can be derived from the design rather than
+# from coefficient names.
+.bt_formula_scale_with_unscale_design <- function(formula_scale, design){
+
+  if(is.null(formula_scale) || length(formula_scale) == 0L ||
+     !is.null(attr(formula_scale, "unscale_design", exact = TRUE))){
+    return(formula_scale)
+  }
+
+  spec <- .bt_formula_unscale_design_spec(design)
+  if(!is.null(spec)){
+    attr(formula_scale, "unscale_design") <- spec
+  }
+
+  formula_scale
+}
+
+.bt_formula_scale_list_with_unscale_designs <- function(formula_scale, designs){
+
+  if(is.null(formula_scale) || length(formula_scale) == 0L ||
+     !is.list(designs) || length(designs) == 0L){
+    return(formula_scale)
+  }
+
+  for(parameter in intersect(names(formula_scale), names(designs))){
+    formula_scale[[parameter]] <- .bt_formula_scale_with_unscale_design(
+      formula_scale[[parameter]],
+      designs[[parameter]]
+    )
+  }
+
+  formula_scale
+}
+
+# Helper: Synthetic standardized and original-scale data for the fitted
+# fixed-effect design.
+#
+# Rows cross every combination of the persisted factor levels with one point
+# per product set of continuous predictors: every subset of the continuous
+# predictors of each formula term. Within one factor cell, all columns of both
+# designs are multilinear polynomials spanned by these products (centering a
+# product only adds its subsets). Evaluating that span at two levels per
+# predictor, raising exactly the predictors of one product set per row, is
+# unisolvent (the evaluation matrix is triangular under set inclusion). A
+# linear identity between the designs on these rows therefore holds for all
+# predictor values, and the original-scale design has full column rank on these
+# rows exactly when its columns are linearly independent functions.
+#
+# Scaled predictors take the levels m and m + s (standardized values 0 and 1);
+# unscaled continuous predictors take the levels 0 and 1.
+.bt_formula_unscale_design_data <- function(spec, formula_scale, prefix){
+
+  continuous <- spec$continuous
+  scaled_names <- paste0(prefix, "_", continuous)
+  is_scaled <- scaled_names %in% names(formula_scale)
+
+  factor_table <- attr(stats::terms(spec$formula), "factors")
+  product_sets <- list(character())
+  if(length(factor_table) > 0L && length(continuous) > 0L){
+    for(term_i in seq_len(ncol(factor_table))){
+      term_variables <- rownames(factor_table)[factor_table[, term_i] > 0]
+      term_continuous <- intersect(term_variables, continuous)
+      for(size in seq_along(term_continuous)){
+        product_sets <- c(
+          product_sets,
+          utils::combn(term_continuous, size, simplify = FALSE)
+        )
+      }
+    }
+  }
+  set_keys <- vapply(
+    product_sets,
+    function(set) paste(sort(set), collapse = "\r"),
+    character(1)
+  )
+  product_sets <- product_sets[!duplicated(set_keys)]
+
+  if(length(spec$factor_levels) > 0L){
+    cells <- expand.grid(
+      spec$factor_levels,
+      KEEP.OUT.ATTRS = FALSE,
+      stringsAsFactors = FALSE
+    )
+  }else{
+    cells <- data.frame(row.names = 1L)
+  }
+  n_cells <- nrow(cells)
+  n_rows <- n_cells * length(product_sets)
+  n_columns <- length(spec$assign)
+  if(n_rows * n_columns > 5e7){
+    stop(
+      "Cannot verify the original-scale coefficient transformation for formula parameter '",
+      prefix, "' because its design has too many factor-level combinations.",
+      call. = FALSE
+    )
+  }
+  cell_index <- rep(seq_len(n_cells), times = length(product_sets))
+  set_index <- rep(seq_along(product_sets), each = n_cells)
+
+  standardized <- data.frame(row.names = seq_len(n_rows))
+  original <- data.frame(row.names = seq_len(n_rows))
+  for(factor_name in names(spec$factor_levels)){
+    levels <- spec$factor_levels[[factor_name]]
+    values <- cells[[factor_name]][cell_index]
+    column <- if(isTRUE(spec$factor_ordered[[factor_name]])){
+      ordered(values, levels = levels)
+    }else{
+      factor(values, levels = levels)
+    }
+    attr(column, "contrasts") <- spec$contrast_matrices[[factor_name]]
+    standardized[[factor_name]] <- column
+    original[[factor_name]] <- column
+  }
+  for(j in seq_along(continuous)){
+    raised <- vapply(
+      product_sets[set_index],
+      function(set) continuous[j] %in% set,
+      logical(1)
+    )
+    level <- as.numeric(raised)
+    standardized[[continuous[j]]] <- level
+    if(is_scaled[j]){
+      scale_info <- formula_scale[[scaled_names[j]]]
+      original[[continuous[j]]] <- scale_info[["mean"]] + scale_info[["sd"]] * level
+    }else{
+      original[[continuous[j]]] <- level
+    }
+  }
+
+  list(standardized = standardized, original = original)
+}
+
+.bt_formula_unscale_model_matrix <- function(spec, data, prefix){
+
+  # Stored formulas drop their environment; fixed formulas contain only
+  # data-column names, so base functions suffice for model-frame evaluation.
+  formula <- spec$formula
+  environment(formula) <- baseenv()
+  model_frame <- stats::model.frame(
+    formula,
+    data = data,
+    na.action = stats::na.fail
+  )
+  model_matrix <- .bt_model_matrix(model_frame, formula = formula, data = data)
+  if(!identical(colnames(model_matrix), spec$raw_column_names) ||
+     !identical(as.integer(attr(model_matrix, "assign")), spec$assign)){
+    stop(
+      "Formula-scale design metadata for parameter '", prefix,
+      "' do not reproduce the fitted design. Refit the model with this version of BayesTools.",
+      call. = FALSE
+    )
+  }
+
+  matrix(
+    as.numeric(model_matrix),
+    nrow = nrow(model_matrix),
+    ncol = ncol(model_matrix)
+  )
+}
+
+# Helper: Fitted coefficient names of the fixed-effect design columns. Every
+# formula term is fitted as one coefficient vector (inprod over its design
+# columns), indexed unless the term has a single column.
+.bt_formula_unscale_coefficient_names <- function(spec, prefix){
+
+  assign <- spec$assign
+  has_intercept <- any(assign == 0L)
+  term_index <- assign + if(has_intercept) 1L else 0L
+  if(any(term_index < 1L) || any(term_index > length(spec$model_terms)) ||
+     (has_intercept && !identical(spec$model_terms[1L], "intercept"))){
+    stop(
+      "Formula-scale design metadata for parameter '", prefix,
+      "' do not match the fitted formula terms. Refit the model with this version of BayesTools.",
+      call. = FALSE
+    )
+  }
+
+  out <- character(length(assign))
+  for(term in unique(assign)){
+    columns <- which(assign == term)
+    base <- paste0(prefix, "_", spec$model_terms[term_index[columns[1L]]])
+    out[columns] <- if(length(columns) == 1L){
+      base
+    }else{
+      paste0(base, "[", seq_along(columns), "]")
+    }
+  }
+
+  out
+}
+
+.bt_formula_unscale_term_labels <- function(spec, columns){
+
+  assign <- spec$assign[columns]
+  has_intercept <- any(spec$assign == 0L)
+  terms <- spec$model_terms[assign + if(has_intercept) 1L else 0L]
+  unique(gsub("__xXx__", ":", terms, fixed = TRUE))
+}
+
+# Helper: Exact fixed-effect unscaling matrix derived from the fitted design.
+#
+# The standardized design X_s (as fitted) and the original-scale design X_o
+# (same terms and contrasts, scaling disabled) are evaluated on the synthetic
+# rows of .bt_formula_unscale_design_data(). The linear predictor is preserved,
+# X_s b_s = X_o b_o, exactly when X_s = X_o A and b_o = A b_s. The name-paired
+# matrix is used when it satisfies this identity (it is then the unique
+# solution for full-rank designs and keeps its exact structural zeros);
+# otherwise the least-squares solution is used when it is exact. A formula whose
+# centered terms induce effects outside the fitted design has no exact
+# solution and is rejected.
+.bt_formula_unscale_design_transform <- function(spec, formula_scale, prefix){
+
+  .bt_formula_unscale_design_spec_check(spec, prefix)
+  data <- .bt_formula_unscale_design_data(spec, formula_scale, prefix)
+  X_s <- .bt_formula_unscale_model_matrix(spec, data$standardized, prefix)
+  X_o <- .bt_formula_unscale_model_matrix(spec, data$original, prefix)
+  coefficient_names <- .bt_formula_unscale_coefficient_names(spec, prefix)
+
+  tolerance <- 1e-8 * max(1, max(abs(X_s)))
+  residual <- function(A){
+    abs(X_o %*% A - X_s)
+  }
+
+  name_paired <- .build_unscale_matrix_by_names(
+    term_names = coefficient_names,
+    formula_scale = formula_scale,
+    prefix = prefix,
+    require_closure = FALSE
+  )
+  if(max(residual(name_paired)) <= tolerance){
+    return(list(
+      matrix = name_paired,
+      method = "name_paired",
+      coefficient_names = coefficient_names
+    ))
+  }
+
+  qr_original <- qr(X_o)
+  if(qr_original$rank < ncol(X_o)){
+    .bt_formula_transform_stop(
+      paste0(
+        "Cannot transform the coefficients of formula parameter '", prefix,
+        "' to the original predictor scale: the fitted formula terms are linearly ",
+        "dependent, so the original-scale coefficients are not uniquely determined."
+      ),
+      parameter = prefix,
+      reason = "original_scale_not_identified"
+    )
+  }
+  least_squares <- qr.coef(qr_original, X_s)
+  column_scale <- pmax(1, apply(abs(least_squares), 2L, max))
+  zapped <- least_squares
+  zapped[abs(zapped) <= 1e-10 * rep(column_scale, each = nrow(zapped))] <- 0
+  if(max(residual(zapped)) <= tolerance){
+    least_squares <- zapped
+  }
+  column_residual <- apply(residual(least_squares), 2L, max)
+  if(any(column_residual > tolerance)){
+    terms <- .bt_formula_unscale_term_labels(
+      spec,
+      which(column_residual > tolerance)
+    )
+    .bt_formula_transform_stop(
+      paste0(
+        "Cannot transform the coefficients of formula parameter '", prefix,
+        "' to the original predictor scale: centering the standardized predictors in term",
+        if(length(terms) > 1L) "s " else " ",
+        paste0("'", terms, "'", collapse = ", "),
+        " induces lower-order effects that the formula does not contain. ",
+        "Include the corresponding lower-order terms or keep the coefficients on ",
+        "the fitted, standardized scale."
+      ),
+      parameter = prefix,
+      reason = "original_scale_not_representable",
+      terms = terms
+    )
+  }
+  dimnames(least_squares) <- list(coefficient_names, coefficient_names)
+
+  list(
+    matrix = least_squares,
+    method = "least_squares",
+    coefficient_names = coefficient_names
+  )
+}
+
+# Helper: Restrict an exact design-level unscaling matrix to the requested
+# posterior columns. Columns that are not fixed-design coefficients keep the
+# identity transformation.
+.bt_formula_unscale_design_submatrix <- function(design_transform, term_names,
+                                                 prefix){
+
+  A <- design_transform$matrix
+  design_names <- rownames(A)
+  out <- diag(length(term_names))
+  dimnames(out) <- list(term_names, term_names)
+  present <- term_names[term_names %in% design_names]
+  if(length(present) == 0L){
+    return(out)
+  }
+
+  missing <- setdiff(design_names, term_names)
+  if(length(missing) > 0L){
+    for(target in present){
+      absent <- intersect(design_names[A[target, ] != 0], missing)
+      if(length(absent) > 0L){
+        stop(
+          "Cannot unscale posterior term '", target,
+          "' because its original-scale value depends on the missing fitted ",
+          "coefficient(s) ", paste0("'", absent, "'", collapse = ", "),
+          ". Include the corresponding posterior columns.",
+          call. = FALSE
+        )
+      }
+    }
+    for(source in present){
+      induced <- setdiff(design_names[A[, source] != 0], source)
+      if(any(induced %in% present) && any(induced %in% missing)){
+        stop(
+          "Cannot unscale posterior term '", source,
+          "' because centering induces missing lower-order coefficient(s) ",
+          paste0("'", intersect(induced, missing), "'", collapse = ", "),
+          ". Include the corresponding lower-order posterior columns.",
+          call. = FALSE
+        )
+      }
+    }
+  }
+
+  out[present, present] <- A[present, present]
+  out
 }
 
 

@@ -31,6 +31,14 @@
 #' contribution from this expansion. If it does not, the function stops rather
 #' than returning an incomplete transformation.
 #'
+#' For a fitted object, the fixed-coefficient transformation is derived from the
+#' stored fixed-effect design (persisted factor levels and contrasts) and
+#' verified to reproduce the fitted linear predictor exactly, which also covers
+#' nested terms such as \code{~ f/x}. Formulas whose centered terms induce
+#' lower-order effects that the fitted formula does not contain (e.g.,
+#' \code{~ x + x:f} with \code{x} standardized) have no original-scale
+#' representation, and the function stops.
+#'
 #' @return \code{transform_scale_samples} returns posterior samples transformed
 #' back to the original predictor scale.
 #'
@@ -55,6 +63,10 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
   }
 
   .check_formula_scale_info(formula_scale)
+  formula_scale <- .bt_formula_scale_list_with_unscale_designs(
+    formula_scale,
+    attr(fit, "formula_design", exact = TRUE)
+  )
 
   # extract posterior samples
   if(inherits(fit, "runjags") || inherits(fit, "BayesTools_fit")){
@@ -170,6 +182,10 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   if(is.null(formula_scale)){
     formula_scale <- attr(fit, "formula_scale")
   }
+  formula_scale <- .bt_formula_scale_list_with_unscale_designs(
+    formula_scale,
+    attr(fit, "formula_design", exact = TRUE)
+  )
 
   # Get posterior column names for structure matching
   if(inherits(fit, "runjags") || inherits(fit, "BayesTools_fit")){

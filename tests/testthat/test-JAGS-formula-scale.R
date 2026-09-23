@@ -732,6 +732,53 @@ test_that("transform_prior_samples handles scaled multi-factor interactions", {
   expect_equal(ncol(prior_samples[, scaled_interaction_columns, drop = FALSE]), 2L)
 })
 
+test_that("design-derived unscaling equals the name-paired map on scaled fixtures", {
+
+  skip_if_no_fits()
+
+  for(model_name in c("fit_formula_auto_scaled", "fit_dual_param_regression")){
+    fit <- readRDS(file.path(temp_fits_dir, paste0(model_name, ".RDS")))
+    formula_scale <- attr(fit, "formula_scale")
+    expect_false(is.null(formula_scale))
+
+    for(parameter in names(formula_scale)){
+      spec <- BayesTools:::.bt_formula_unscale_design_spec(
+        JAGS_formula_design(fit, parameter)
+      )
+      data <- BayesTools:::.bt_formula_unscale_design_data(
+        spec, formula_scale[[parameter]], parameter
+      )
+      X_s <- BayesTools:::.bt_formula_unscale_model_matrix(
+        spec, data$standardized, parameter
+      )
+      X_o <- BayesTools:::.bt_formula_unscale_model_matrix(
+        spec, data$original, parameter
+      )
+      coefficient_names <- BayesTools:::.bt_formula_unscale_coefficient_names(
+        spec, parameter
+      )
+      name_paired <- BayesTools:::.build_unscale_matrix_by_names(
+        coefficient_names, formula_scale[[parameter]], parameter,
+        require_closure = FALSE
+      )
+      least_squares <- qr.solve(X_o, X_s)
+      expect_equal(unname(least_squares), unname(name_paired), tolerance = 1e-10,
+                   info = paste(model_name, parameter))
+
+      transform <- BayesTools:::.bt_formula_unscale_design_transform(
+        spec, formula_scale[[parameter]], parameter
+      )
+      expect_identical(transform$method, "name_paired")
+    }
+
+    posterior <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+    expect_identical(
+      transform_scale_samples(fit),
+      transform_scale_samples(posterior, formula_scale)
+    )
+  }
+})
+
 test_that("Manual and automatic scaling produce equivalent results", {
 
   skip_if_no_fits()

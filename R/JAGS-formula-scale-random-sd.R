@@ -75,7 +75,7 @@
 
     pseudo_terms <- paste0(prefix, "_", group_terms)
     names(pseudo_terms) <- group_cols
-    M <- .build_unscale_matrix(
+    M <- .build_unscale_matrix_by_names(
       unname(pseudo_terms),
       formula_scale,
       prefix,
@@ -147,7 +147,7 @@
   for(group in column_groups){
     group_key <- group$group_key
     pseudo_terms <- paste0(prefix, "_", group$column_terms)
-    M <- .build_unscale_matrix(
+    M <- .build_unscale_matrix_by_names(
       pseudo_terms,
       formula_scale,
       prefix,

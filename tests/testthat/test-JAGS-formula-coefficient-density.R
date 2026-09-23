@@ -105,6 +105,158 @@ test_that("formula coefficient transforms expose the sample transformation", {
   )
 })
 
+.formula_coefficient_sample_fit <- function(formula_result, samples){
+
+  design <- formula_result$formula_design
+  parameter <- design$parameter
+  formula_design <- stats::setNames(list(design), parameter)
+  formula_scale <- stats::setNames(
+    list(formula_result$formula_scale),
+    parameter
+  )
+  fit <- coda::mcmc(samples)
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_scale") <- formula_scale
+  attr(fit, "formula_design") <- formula_design
+  attr(fit, "parameter_map") <- .bt_build_parameter_map(
+    columns = colnames(samples),
+    prior_list = formula_result$prior_list,
+    formula_design = formula_design,
+    formula_scale = formula_scale
+  )
+  .bt_attach_fit_contract(fit)
+}
+
+.formula_coefficient_design_matrix <- function(formula_result){
+
+  data_names <- names(formula_result$data)[
+    startsWith(names(formula_result$data), "mu_data_")
+  ]
+  cbind(1, do.call(cbind, lapply(formula_result$data[data_names], as.matrix)))
+}
+
+test_that("formula coefficient transforms follow the fitted design for nested slopes", {
+
+  # ~ f/x fits one slope per level (full indicator coding of f:x) next to a
+  # treatment-coded f, so f:x column k is not coded like f column k.
+  data <- data.frame(
+    x = c(1, 3, 7, 2, 6, 11, 4, 5, 9),
+    f = factor(rep(c("A", "B", "C"), each = 3L), levels = c("A", "B", "C"))
+  )
+  prior_list <- list(
+    intercept = prior("normal", list(0, 1)),
+    f = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    "f:x" = prior_factor("normal", list(0, 1), contrast = "treatment")
+  )
+  scaled <- JAGS_formula(~ f/x, "mu", data, prior_list,
+                         formula_scale = list(x = TRUE))
+  original <- JAGS_formula(~ f/x, "mu", data, prior_list)
+  source_names <- .formula_coefficient_source_names(scaled)
+  expect_identical(
+    source_names,
+    c("mu_intercept", "mu_f[1]", "mu_f[2]",
+      "mu_f__xXx__x[1]", "mu_f__xXx__x[2]", "mu_f__xXx__x[3]")
+  )
+  fit <- .formula_coefficient_density_fit(scaled, source_names)
+  transform <- JAGS_formula_coefficient_transform(fit, "mu")
+
+  # Analytic map: a_A = b0 - g_A m / s, (f=B) = b_B - (g_B - g_A) m / s,
+  # (f=C) = b_C - (g_C - g_A) m / s, slopes g_k / s.
+  m <- mean(data$x)
+  s <- stats::sd(data$x)
+  expected <- matrix(0, 6L, 6L, dimnames = list(source_names, source_names))
+  expected["mu_intercept", c("mu_intercept", "mu_f__xXx__x[1]")] <- c(1, -m / s)
+  expected["mu_f[1]", c("mu_f[1]", "mu_f__xXx__x[1]", "mu_f__xXx__x[2]")] <-
+    c(1, m / s, -m / s)
+  expected["mu_f[2]", c("mu_f[2]", "mu_f__xXx__x[1]", "mu_f__xXx__x[3]")] <-
+    c(1, m / s, -m / s)
+  for(k in 1:3){
+    slope <- paste0("mu_f__xXx__x[", k, "]")
+    expected[slope, slope] <- 1 / s
+  }
+  expect_equal(transform$matrix, expected, tolerance = 1e-12)
+  expect_identical(transform$matrix != 0, expected != 0)
+
+  # The fitted linear predictor is reproduced on the original scale; the
+  # name-paired map of the review scenario missed it by more than 2.
+  coefficients <- rbind(
+    c(0.3, -0.7, 1.1, 0.25, -0.4, 0.9),
+    c(-1.2, 0.5, 0.2, -0.6, 0.35, 0.15)
+  )
+  colnames(coefficients) <- source_names
+  expect_equal(
+    .formula_coefficient_design_matrix(original) %*%
+      (transform$matrix %*% t(coefficients)),
+    .formula_coefficient_design_matrix(scaled) %*% t(coefficients),
+    tolerance = 1e-12
+  )
+
+  # Posterior transformation of a fitted object uses the same design map.
+  sample_fit <- .formula_coefficient_sample_fit(scaled, coefficients)
+  expect_equal(
+    transform_scale_samples(sample_fit)[, source_names],
+    coefficients %*% t(transform$matrix),
+    tolerance = 1e-12
+  )
+})
+
+test_that("formula coefficient transforms refuse terms whose centering is not representable", {
+
+  data <- data.frame(
+    x = c(1, 3, 7, 2, 6, 11, 4, 5, 9),
+    f = factor(rep(c("A", "B", "C"), each = 3L), levels = c("A", "B", "C")),
+    d = c(0, 1, 0, 1, 1, 0, 0, 1, 1)
+  )
+  cases <- list(
+    list(
+      formula = ~ x + x:f,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1)),
+        "x:f" = prior_factor("normal", list(0, 1), contrast = "treatment")
+      ),
+      term = "x:f"
+    ),
+    list(
+      formula = ~ x + x:d,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1)),
+        "x:d" = prior("normal", list(0, 1))
+      ),
+      term = "x:d"
+    )
+  )
+
+  for(case in cases){
+    formula_result <- JAGS_formula(
+      case$formula, "mu", data, case$prior_list,
+      formula_scale = list(x = TRUE)
+    )
+    source_names <- .formula_coefficient_source_names(formula_result)
+    fit <- .formula_coefficient_density_fit(formula_result, source_names)
+    error <- tryCatch(JAGS_formula_coefficient_transform(fit, "mu"),
+                      error = identity)
+    expect_s3_class(error, "BayesTools_formula_transform_unavailable")
+    expect_identical(error$reason, "original_scale_not_representable")
+    expect_identical(error$terms, case$term)
+    expect_match(conditionMessage(error), case$term, fixed = TRUE)
+    expect_match(conditionMessage(error), "does not contain", fixed = TRUE)
+
+    samples <- matrix(
+      c(0.5, 0.2, -0.3, 0.4, 1, -0.2, 0.1, 0.3)[seq_len(2L * length(source_names))],
+      nrow = 2L,
+      dimnames = list(NULL, source_names)
+    )
+    sample_fit <- .formula_coefficient_sample_fit(formula_result, samples)
+    expect_error(
+      transform_scale_samples(sample_fit),
+      "does not contain"
+    )
+  }
+})
+
 test_that("formula coefficient transforms require current linked schemas", {
 
   formula_result <- JAGS_formula(
