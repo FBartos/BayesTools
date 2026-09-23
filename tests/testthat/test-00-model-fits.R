@@ -4341,6 +4341,15 @@ test_that("JAGS model functions work (vector)", {
   )
   log_posterior <- STANDARD_LOG_POSTERIOR
 
+  # Absolute tolerances around the analytic logml = 0. The mcauchy (p2)
+  # estimate has a larger Monte Carlo spread: with this setup (2 chains x 10000
+  # draws) over JAGS_get_inits() seeds 1-40, its logml had SD 0.044 and mean
+  # -0.030 with the current chain seeds, and SD 0.053 and mean -0.020 with the
+  # earlier 'seed + chain' seeds (pooled n = 80: mean -0.025, SE 0.0055; max
+  # |logml| 0.149). 0.2 ~ 0.025 + 4 * 0.044. BayesToolsVerse logs:
+  # .work/logs/rscript-20260923-213448-62692632 (current seeds) and
+  # .work/logs/rscript-20260923-214540-245cd69b (earlier seeds).
+  logml_tolerance <- c(p1 = 5e-2, p2 = 0.2, p3 = 5e-2)
 
   for(i in seq_along(all_priors)){
     prior_list   <- all_priors[i]
@@ -4352,7 +4361,11 @@ test_that("JAGS model functions work (vector)", {
     model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
     samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 10000, quiet = TRUE, progress.bar = "none")
     marglik <- JAGS_bridgesampling(samples, prior_list = prior_list, data = list(), log_posterior = log_posterior)
-    expect_equal(marglik$logml, 0, tolerance = 5*1e-2) # the mCauchy is a bit more variable
+    expect_equal(
+      marglik$logml, 0,
+      tolerance = logml_tolerance[[names(prior_list)]],
+      info = names(prior_list)
+    )
   }
 
 })
