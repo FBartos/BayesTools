@@ -123,7 +123,8 @@
         posterior = posterior,
         prefix = prefix,
         group_key = group_key,
-        correlation = transformed_cor
+        correlation = transformed_cor,
+        nonzero_source_sd = .random_sd_nonzero_source_sd(source_sd)
       )
     }
 
@@ -195,7 +196,8 @@
         posterior = posterior,
         prefix = prefix,
         group_key = group_key,
-        correlation = transformed_cor
+        correlation = transformed_cor,
+        nonzero_source_sd = .random_sd_nonzero_source_sd(source_sd)
       )
     }
 
@@ -282,9 +284,18 @@
   correlation
 }
 
+# A zero source SD makes the original-scale covariance M S M' singular. The
+# transformed correlation cannot decide this reliably: a perfect correlation
+# can round to just inside +-1, where chol() succeeds.
+.random_sd_nonzero_source_sd <- function(source_sd){
+
+  rowSums(!is.finite(source_sd) | source_sd == 0) == 0L
+}
+
 .random_sd_assign_transformed_correlation <- function(posterior, prefix,
                                                       group_key,
-                                                      correlation){
+                                                      correlation,
+                                                      nonzero_source_sd){
 
   n_terms <- dim(correlation)[2L]
 
@@ -333,8 +344,8 @@
   }
 
   # The Cholesky factor and the LKJ primitives parameterize positive-definite
-  # correlation matrices. Draws with a zero SD or a singular (perfect)
-  # correlation leave them missing.
+  # correlation matrices. Draws with a zero SD, or with a singular (perfect)
+  # correlation from a zero source SD, leave them missing.
   if(has_L){
     posterior[, as.vector(L_names)] <- NA_real_
   }
@@ -347,7 +358,8 @@
   valid_draw <- rep(FALSE, dim(correlation)[1L])
   L <- array(NA_real_, dim = dim(correlation))
   for(draw_i in seq_len(dim(correlation)[1L])){
-    if(!all(is.finite(correlation[draw_i, , ]))){
+    if(!nonzero_source_sd[draw_i] ||
+       !all(is.finite(correlation[draw_i, , ]))){
       next
     }
     this_L <- try(t(chol(correlation[draw_i, , ])), silent = TRUE)

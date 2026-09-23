@@ -675,6 +675,19 @@ test_that("original-scale correlations of singular draws with positive SDs are +
   expect_equal(unname(transformed[, R_11]), c(1, 1, 1, 1, NA))
   expect_equal(which(is.na(transformed[, L_21])), 2:5)
   expect_equal(which(is.na(transformed[, u_1])), 2:5)
+
+  # Depending on the slope SD, the perfect correlation rounds to exactly -1 or
+  # to just inside it, where chol() succeeds. Singularity is decided from the
+  # zero scaled SD, so the Cholesky and LKJ coordinates are missing in every
+  # singular draw.
+  slope_sd <- exp(seq(log(0.01), log(100), length.out = 100))
+  singular <- transform_scale_samples(.undefined_correlation_table_fit(
+    source_sd = cbind(0, slope_sd),
+    source_rho = rep(0.37, length(slope_sd))
+  ))
+  expect_lte(max(abs(singular[, R_21] + 1)), 1e-12)
+  expect_true(all(is.na(singular[, L_21])))
+  expect_true(all(is.na(singular[, u_1])))
 })
 
 test_that("larger blocks define correlations entrywise in singular draws", {
