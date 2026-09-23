@@ -561,8 +561,11 @@ NULL
     if (!is.prior.factor(prior_list[[par]])) {
       # non-factor priors
       model_samples[, par] <- do.call(transformations[[par]][["fun"]], c(list(model_samples[, par]), transformations[[par]][["arg"]]))
-    } else if ((!transform_factors && (is.prior.orthonormal(prior_list[[par]]) || is.prior.meandif(prior_list[[par]]))) || is.prior.treatment(prior_list[[par]])) {
-      # treatment priors, or orthonormal/meandif that won't be transformed to differences
+    } else if ((!transform_factors && (is.prior.orthonormal(prior_list[[par]]) || is.prior.meandif(prior_list[[par]]) || is.prior.ordered(prior_list[[par]]))) ||
+               is.prior.treatment(prior_list[[par]]) || is.prior.independent(prior_list[[par]])) {
+      # treatment and independent priors, or orthonormal/meandif/ordered
+      # coefficients that won't be transformed to levels (those are
+      # transformed after the contrast transformation)
       par_names <- .JAGS_prior_factor_names(par, prior_list[[par]])
 
       for (i in seq_along(par_names)) {

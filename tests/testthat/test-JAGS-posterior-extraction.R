@@ -400,6 +400,49 @@ test_that(".apply_parameter_transformations applies transformations", {
   expect_equal(ncol(result), 1)
 })
 
+test_that("requested transformations reach independent and ordered factor coefficients", {
+
+  data <- data.frame(
+    g = factor(c("A", "B", "C"), levels = c("A", "B", "C")),
+    o = ordered(c("lo", "mid", "hi"), levels = c("lo", "mid", "hi"))
+  )
+  prior_list <- JAGS_formula(
+    ~ g + o, "mu", data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      g         = prior_factor("normal", list(0, 1), contrast = "independent"),
+      o         = prior_ordered(prior("normal", list(0, 1)), allocation = c(.4, .6))
+    )
+  )$prior_list
+  set.seed(8)
+  model_samples <- matrix(rnorm(5 * 20), ncol = 5)
+  colnames(model_samples) <- c("mu_g[1]", "mu_g[2]", "mu_g[3]", "mu_o[1]", "mu_o[2]")
+  transformations <- list(
+    mu_g = list(fun = exp, arg = list()),
+    mu_o = list(fun = exp, arg = list())
+  )
+
+  coefficients <- BayesTools:::.apply_parameter_transformations(
+    model_samples, transformations, prior_list, transform_factors = FALSE
+  )
+  expect_equal(coefficients, exp(model_samples))
+
+  # with transform_factors = TRUE, ordered coefficients are transformed only
+  # after the contrast transformation to level effects
+  levels <- BayesTools:::.apply_parameter_transformations(
+    model_samples, transformations, prior_list, transform_factors = TRUE
+  )
+  expect_equal(levels[, 1:3], exp(model_samples[, 1:3]))
+  expect_equal(levels[, 4:5], model_samples[, 4:5])
+  level_effects <- BayesTools:::.transform_factor_contrasts(
+    levels, prior_list, transform_factors = TRUE, transformations = transformations
+  )
+  expect_equal(
+    unname(level_effects[, ncol(level_effects)]),
+    exp(model_samples[, "mu_o[1]"] + model_samples[, "mu_o[2]"])
+  )
+})
+
 
 test_that(".rename_factor_levels renames treatment factors", {
   skip_on_cran()
