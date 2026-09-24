@@ -222,6 +222,15 @@ only continuous part is the scale prior itself is exact. Fitted coordinates
 and factor levels use the prior-density context of the priors owning their
 coordinates (`multiply_by` stripped).
 
+A product component of a combination (a `multiply_by` product, or an ordered
+level as its total times its Beta allocation share) with a structural route
+is constructed from that route (`.prior_linear_density_route_product()`): its
+grid is the route's continuous density on at most 1024 values over the
+product range, with the product's exact atoms. The capped product grid of the
+factors' grids (`.prior_linear_density_product()`), which a heavy-tailed
+factor can leave without a finite positive mass, remains only for products
+without a structural route (plots only).
+
 Mixture ordinates (model, conditional, and mixture or spike-and-slab terms of
 one linear combination) are weighted sums of per-component ordinates, each from
 its own exact or regular method, so a numerical grid never spans a density jump

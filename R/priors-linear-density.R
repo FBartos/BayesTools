@@ -541,6 +541,71 @@
   range(products)
 }
 
+# Continuous mass of a density object (0 without a continuous part).
+.prior_linear_density_continuous_mass <- function(dist){
+
+  if(is.null(dist$density)) 0 else dist$density$mass
+}
+
+# Exact atoms of the product of two independent factors with atoms
+# 'lhs_points' and 'rhs_points' (data frames x, p) and continuous masses
+# 'lhs_mass' and 'rhs_mass': products of atoms, and a zero atom of one factor
+# times the other factor's continuous mass.
+.prior_linear_density_product_atoms <- function(lhs_points, lhs_mass, rhs_points, rhs_mass){
+
+  points <- .prior_linear_density_empty_points()
+  if(is.null(lhs_points)) lhs_points <- points
+  if(is.null(rhs_points)) rhs_points <- points
+  if(nrow(lhs_points) > 0L && nrow(rhs_points) > 0L){
+    point_grid <- merge(lhs_points, rhs_points, by = NULL)
+    points <- data.frame(x = point_grid$x.x * point_grid$x.y, p = point_grid$p.x * point_grid$p.y)
+  }
+  zero_atom <- lhs_mass * sum(rhs_points$p[rhs_points$x == 0]) +
+    rhs_mass * sum(lhs_points$p[lhs_points$x == 0])
+  if(zero_atom > 0){
+    points <- rbind(points, data.frame(x = 0, p = zero_atom))
+  }
+  points
+}
+
+# The product component of a linear combination (a 'multiply_by' product, or
+# an ordered level as its total times its Beta allocation share) constructed
+# from 'route', the product's structural route: its continuous density
+# evaluated on min(n_grid, .prior_linear_density_product_grid()) equally
+# spaced values over the product's numerical 'range' (values where it is
+# infinite, a singular offset, are left out), with the product's exact atoms
+# 'points'. No numerical grid of either factor is multiplied, which a
+# heavy-tailed factor can leave without a finite positive mass. NULL when the
+# route has a leaf without a structural representation (then the capped
+# product grid of the factors' grids applies).
+.prior_linear_density_route_product <- function(route, range, points, n_grid){
+
+  if(is.null(route) || .prior_density_route_has_leaf(route, "unknown")){
+    return(NULL)
+  }
+  n_grid <- min(max(16L, n_grid), .prior_linear_density_product_grid())
+  continuous_mass <- max(0, 1 - sum(points$p))
+
+  densities <- list()
+  dx <- NA_real_
+  if(continuous_mass > 0 && range[1L] < range[2L]){
+    z <- seq(range[1L], range[2L], length.out = n_grid)
+    dx <- z[2L] - z[1L]
+    y <- .prior_density_route_density(route, z)
+    finite <- is.finite(y)
+    if(!any(y[finite] > 0)){
+      return(NULL)
+    }
+    densities[[1L]] <- list(x = z[finite], y = y[finite], mass = continuous_mass)
+  }
+  .prior_linear_density_coalesce(
+    densities = densities,
+    points    = points,
+    dx        = dx,
+    n_grid    = n_grid
+  )
+}
+
 .prior_linear_density_product <- function(lhs, rhs, n_grid = NULL){
 
   if(is.null(n_grid)){

@@ -992,6 +992,47 @@ test_that("ordered totals with boundary-infinite densities keep direct densities
   expect_equal(attr(mixed_densities[[3]]$continuous, "mass"), .5)
 })
 
+test_that("ordered levels and products with a structural route are constructed from it", {
+
+  # The first level of an ordered Cauchy total with a Dirichlet(2, 3)
+  # allocation is C * S, S ~ Beta(2, 3), a scale mixture. Its capped product
+  # grid (the total's 1e-4 tail range is +-3183) had no finite positive mass,
+  # so the density could not be constructed; it is now built from its route.
+  # References: f(0) = dcauchy(0) E[1 / S] = 4 dcauchy(0) (closed form), and
+  # f(x) = int_0^1 dcauchy(x / s) dbeta(s, 2, 3) / s ds by integrate() at
+  # rel.tol 1e-12. The same product as a 'multiply_by' term is the same
+  # measure.
+  ordered <- prior_ordered(prior("cauchy", list(0, 1)),
+                           allocation = prior("dirichlet", list(alpha = c(2, 3))))
+  attr(ordered, "levels") <- 3L
+  ordered <- .prior_ordered_default_bound(ordered, "g")
+  level <- .prior_linear_combination_density(list(g = ordered), c("g[1]" = 1))
+  coefficient <- prior("cauchy", list(0, 1))
+  attr(coefficient, "multiply_by") <- "s"
+  product <- .prior_linear_combination_density(
+    list(b = coefficient, s = prior("beta", list(2, 3))), c(b = 1)
+  )
+  reference <- function(value){
+    stats::integrate(function(s) stats::dcauchy(value / s) * stats::dbeta(s, 2, 3) / s,
+                     0, 1, rel.tol = 1e-12)$value
+  }
+  for(density in list(level, product)){
+    expect_equal(density$density$mass, 1)
+    at_zero <- prior_density_ordinate(density, 0)
+    expect_identical(at_zero$behavior, "regular")
+    expect_true(at_zero$exact)
+    expect_identical(at_zero$method, "scale_mixture")
+    expect_equal(exp(at_zero$log_density), 4 * stats::dcauchy(0), tolerance = 1e-12)
+    for(value in c(-2, .4, 3)){
+      expect_equal(as.numeric(.prior_linear_density_height(density, value)), reference(value),
+                   tolerance = 1e-8)
+    }
+    curve <- .prior_linear_density_to_plot_data(density, x_range = c(-3, 3))$density
+    expect_equal(curve$y[c(1, 75, 150)], vapply(curve$x[c(1, 75, 150)], reference, numeric(1)),
+                 tolerance = 1e-8)
+  }
+})
+
 test_that("sampled ordered level densities reflect at the exact level support", {
 
   gamma_total <- prior_ordered(prior("gamma", list(2, 2)))

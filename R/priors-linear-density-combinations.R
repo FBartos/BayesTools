@@ -513,23 +513,31 @@
     tail_prob = tail_prob,
     source_transforms = c(.ordered_total = NA_character_)
   )
-  scale <- max(c(1, abs(weights), diff(total_range)), na.rm = TRUE)
-  n_grid <- .prior_linear_density_default_grid()
-  multiplier <- .prior_ordered_linear_multiplier(
-    ordered_prior = ordered_prior,
-    weights = weights,
-    indices = indices,
-    dx = scale / max(1, n_grid - 1L),
-    n_grid = n_grid,
-    tail_prob = tail_prob
+  share_range <- .prior_ordered_linear_share_range(
+    .prior_ordered_linear_share(ordered_prior, weights, indices),
+    tail_prob
   )
-  multiplier_range <- .prior_linear_density_range(multiplier)
-  products <- as.vector(outer(total_range, multiplier_range, `*`))
+  products <- as.vector(outer(total_range, share_range, `*`))
   products <- products[is.finite(products)]
   if(length(products) == 0L){
     return(c(0, 0))
   }
   range(products)
+}
+
+# Numerical range of an allocation share (.prior_ordered_linear_share()): its
+# scale for a fixed share, and the range of the scaled Beta term otherwise
+# (from the prior alone, without a grid of the share).
+.prior_ordered_linear_share_range <- function(share, tail_prob){
+
+  if(identical(share$type, "point")){
+    return(rep(share$scale, 2L))
+  }
+  .prior_linear_scalar_range(
+    prior("beta", list(alpha = share$alpha[[1L]], beta = share$alpha[[2L]])),
+    share$scale,
+    tail_prob
+  )
 }
 
 .prior_ordered_linear_share <- function(ordered_prior, weights, indices){
@@ -599,6 +607,24 @@
   list(type = "beta", scale = scale, alpha = c(alpha_selected, alpha_remaining))
 }
 
+# Prior terms of an ordered level (or allocation subset): the ordered total
+# with the share's scale as weight and, for a Beta(alpha_1, alpha_2) share,
+# the share as its 'multiply_by' scale (named 'share_name', listed before the
+# total 'total_name').
+.prior_ordered_share_terms <- function(total, share, total_name, share_name){
+
+  prior_list <- list()
+  if(identical(share$type, "beta")){
+    attr(total, "multiply_by") <- share_name
+    prior_list[[share_name]] <- prior(
+      "beta",
+      list(alpha = share$alpha[[1L]], beta = share$alpha[[2L]])
+    )
+  }
+  prior_list[[total_name]] <- total
+  list(prior_list = prior_list, total_name = total_name, weight = share$scale)
+}
+
 .prior_ordered_linear_multiplier <- function(ordered_prior, weights, indices,
                                              dx, n_grid, tail_prob){
 
@@ -625,6 +651,10 @@
   )
 }
 
+# Density of an ordered level (or allocation subset): the total times its
+# allocation share, constructed from the level's structural route when it
+# has one (.prior_linear_density_route_product()), and from the capped
+# product grid of the total and the share only otherwise.
 .prior_ordered_linear_distribution <- function(ordered_prior, weights, indices,
                                                dx = NA_real_, n_grid = NULL,
                                                tail_prob = .prior_linear_density_tail_prob()){
@@ -632,14 +662,6 @@
   if(is.null(n_grid)){
     n_grid <- .prior_linear_density_default_grid()
   }
-  multiplier <- .prior_ordered_linear_multiplier(
-    ordered_prior = ordered_prior,
-    weights = weights,
-    indices = indices,
-    dx = dx,
-    n_grid = n_grid,
-    tail_prob = tail_prob
-  )
   total <- .prior_ordered_total_linear_distribution(
     total = ordered_prior$total,
     dx = dx,
@@ -647,11 +669,48 @@
     tail_prob = tail_prob
   )
 
-  out <- .prior_linear_density_product(
-    total,
-    multiplier,
-    n_grid = n_grid
-  )
+  # a Beta share: the product from its structural route, over the product of
+  # the total's range and the share's range, with the total's zero atom
+  out <- NULL
+  share <- .prior_ordered_linear_share(ordered_prior, weights, indices)
+  if(identical(share$type, "beta")){
+    terms <- .prior_ordered_share_terms(
+      total      = ordered_prior$total,
+      share      = share,
+      total_name = ".ordered_total",
+      share_name = ".ordered_share"
+    )
+    route <- .prior_density_route_linear(
+      terms$prior_list, stats::setNames(terms$weight, terms$total_name), NULL, n_grid
+    )
+    out <- .prior_linear_density_route_product(
+      route  = route,
+      range  = range(outer(
+        .prior_linear_density_range(total),
+        .prior_ordered_linear_share_range(share, tail_prob)
+      )),
+      points = .prior_linear_density_product_atoms(
+        total$points, .prior_linear_density_continuous_mass(total),
+        .prior_linear_density_empty_points(), 1
+      ),
+      n_grid = n_grid
+    )
+  }
+  if(is.null(out)){
+    multiplier <- .prior_ordered_linear_multiplier(
+      ordered_prior = ordered_prior,
+      weights = weights,
+      indices = indices,
+      dx = dx,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
+    out <- .prior_linear_density_product(
+      total,
+      multiplier,
+      n_grid = n_grid
+    )
+  }
   attr(out, "ordered_measure") <- list(
     method = "analytic_components",
     total = ordered_prior$total,
@@ -1069,11 +1128,28 @@
         grid_spacing       = grid_spacing
       )
 
-      components[[length(components) + 1L]] <- .prior_linear_density_product(
-        linear_dist,
-        multiplier_dist,
+      # the product from its structural route; the capped product grid only
+      # where the product has none
+      product <- .prior_linear_density_route_product(
+        route  = .prior_density_route_linear(
+          prior_list, product_group$weights,
+          source_transforms[names(product_group$weights)], n_grid
+        ),
+        range  = .prior_linear_density_product_range(linear_dist, multiplier_dist),
+        points = .prior_linear_density_product_atoms(
+          linear_dist$points, .prior_linear_density_continuous_mass(linear_dist),
+          multiplier_dist$points, .prior_linear_density_continuous_mass(multiplier_dist)
+        ),
         n_grid = n_grid
       )
+      if(is.null(product)){
+        product <- .prior_linear_density_product(
+          linear_dist,
+          multiplier_dist,
+          n_grid = n_grid
+        )
+      }
+      components[[length(components) + 1L]] <- product
     }
   }
 

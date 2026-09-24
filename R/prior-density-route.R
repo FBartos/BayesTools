@@ -316,23 +316,18 @@
       return(list(reason = conditionMessage(share)))
     }
     weights <- weights[setdiff(names(weights), names(group$weights))]
-    total <- group$prior$total
-    total_name <- paste0(".ordered_total[", parameter, "]")
-    if(identical(share$type, "point")){
-      if(share$scale == 0){
-        next
-      }
-    }else{
-      share_name <- paste0(".ordered_share[", parameter, "]")
-      attr(total, "multiply_by") <- share_name
-      prior_list[[share_name]] <- prior(
-        "beta",
-        list(alpha = share$alpha[[1L]], beta = share$alpha[[2L]])
-      )
+    if(identical(share$type, "point") && share$scale == 0){
+      next
     }
-    prior_list[[total_name]] <- total
-    weights[[total_name]] <- share$scale
-    source_transforms[[total_name]] <- NA_character_
+    terms <- .prior_ordered_share_terms(
+      total      = group$prior$total,
+      share      = share,
+      total_name = paste0(".ordered_total[", parameter, "]"),
+      share_name = paste0(".ordered_share[", parameter, "]")
+    )
+    prior_list[names(terms$prior_list)] <- terms$prior_list
+    weights[[terms$total_name]] <- terms$weight
+    source_transforms[[terms$total_name]] <- NA_character_
   }
   list(prior_list = prior_list, weights = weights,
        source_transforms = source_transforms[names(weights)])
