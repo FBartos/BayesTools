@@ -194,7 +194,11 @@
     }
     .bt_dnode_linear_predictor_coefficient_names(term)
   }), use.names = FALSE)
-  random_dependencies <- unlist(lapply(random_terms, .bt_dnode_linear_predictor_random_dependencies), use.names = FALSE)
+  random_dependencies <- unlist(lapply(
+    random_terms,
+    .bt_dnode_linear_predictor_random_dependencies,
+    n_rows = n_rows
+  ), use.names = FALSE)
 
   .bt_deterministic_node(
     family = "linear_predictor",
@@ -219,7 +223,7 @@
 # evaluator (JAGS_evaluate_formula()), also for a mean-centered block, whose
 # JAGS syntax reads the group locations: the evaluator adds the latent
 # deviations to the fixed intercept.
-.bt_dnode_linear_predictor_random_dependencies <- function(random_term){
+.bt_dnode_linear_predictor_random_dependencies <- function(random_term, n_rows){
 
   latent <- as.vector(.bt_random_effect_latent_names(
     random_term = random_term,
@@ -238,7 +242,39 @@
     character()
   }
 
-  c(latent, sd_names[!is.na(sd_names)], correlation_names)
+  c(
+    latent,
+    sd_names[!is.na(sd_names)],
+    correlation_names,
+    .bt_dnode_linear_predictor_row_source_dependencies(random_term, n_rows)
+  )
+}
+
+# A block with a row-indexed external SD source ('random_sd_source(...,
+# shape = "row")') has no SD node: the evaluator scales each fitted row by
+# the source row, read from the posterior coordinates 'source[1..N]' (unless
+# the source's 'values' function reconstructs it; the inputs of that function
+# are not declared by the source), and by the allocation factors of the
+# block's SD binding (their Dirichlet weights and inclusion gates).
+.bt_dnode_linear_predictor_row_source_dependencies <- function(random_term, n_rows){
+
+  binding <- random_term$sd_binding
+  if(!.bt_random_sd_binding_has_row_external_source(binding)){
+    return(character())
+  }
+  source <- .bt_random_effect_row_indexed_source(random_term)
+  source_names <- if(.bt_parameter_source_has_values(source$source)){
+    character()
+  }else{
+    .bt_parameter_source_row_names(source$source, n_rows)
+  }
+  factors <- if(length(binding$factors_by_column) > 0L){
+    unlist(binding$factors_by_column, recursive = FALSE)
+  }else{
+    .bt_random_effect_allocation_factors_metadata(binding)
+  }
+
+  c(source_names, .bt_dnode_allocation_factor_dependencies(factors))
 }
 
 .bt_dnode_linear_predictor_emit <- function(node){

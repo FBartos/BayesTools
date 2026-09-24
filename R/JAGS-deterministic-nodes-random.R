@@ -128,13 +128,11 @@
   out
 }
 
-# 'node' = 'emit_source * <emit_factors>' in the model syntax; its value is the
-# source times the whole 'factors' chain from the root allocation.
-.bt_dnode_random_sd <- function(name, source_name, factors, emit_source,
-                                emit_factors, parameter = NA_character_,
-                                block = NA_character_){
+# The coordinates a chain of allocation factors reads: the Dirichlet weights
+# and the inclusion gates of every factor.
+.bt_dnode_allocation_factor_dependencies <- function(factors){
 
-  factor_dependencies <- unlist(lapply(factors, function(factor){
+  unlist(lapply(factors, function(factor){
     c(
       if(!is.null(factor$weight_name)){
         paste0(factor$weight_name, "[", seq_len(factor$n_targets), "]")
@@ -142,12 +140,19 @@
       factor$inclusion_name
     )
   }), use.names = FALSE)
+}
+
+# 'node' = 'emit_source * <emit_factors>' in the model syntax; its value is the
+# source times the whole 'factors' chain from the root allocation.
+.bt_dnode_random_sd <- function(name, source_name, factors, emit_source,
+                                emit_factors, parameter = NA_character_,
+                                block = NA_character_){
 
   .bt_deterministic_node(
     family = "random_sd",
     node = name,
     coordinates = name,
-    dependencies = c(source_name, factor_dependencies),
+    dependencies = c(source_name, .bt_dnode_allocation_factor_dependencies(factors)),
     parameter = parameter,
     block = block,
     spec = list(

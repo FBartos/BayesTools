@@ -84,7 +84,12 @@ continuous and factor terms with their \code{multiply_by} multipliers,
 the \code{expression()} terms, and the contributions of the sampled
 random-effect blocks, evaluated with \code{\link[=JAGS_evaluate_formula]{JAGS_evaluate_formula()}}. It is
 evaluated only by \code{JAGS_evaluate_deterministic()}, and only when the
-standardized latent effects of the sampled blocks are among the draws.}
+standardized latent effects of the sampled blocks are among the draws.
+A block whose SDs come from a row-shaped external source
+(\code{random_sd_source(..., shape = "row")}) depends on the source rows
+\code{source[1]}, ..., \code{source[N]} (unless the source's
+\code{values} function reconstructs them; its inputs are not declared)
+and on the Dirichlet weights and inclusion gates of its allocation.}
 }
 Nodes are evaluated with the arithmetic of the R evaluator, which reproduces
 the JAGS monitors exactly or to the last bits of floating-point rounding.

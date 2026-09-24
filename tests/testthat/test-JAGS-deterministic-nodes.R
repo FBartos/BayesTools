@@ -753,3 +753,99 @@ test_that("selection_backend_spec() emits the weights from the omega node", {
     fixed = TRUE
   ))
 })
+
+# A RoBMA-like model: the heterogeneity 'tau' is a row vector of the model
+# syntax, which a variance allocation splits over the random-effect blocks
+# (the first one gated) and the SD components of the second block.
+.dnode_row_source_fit <- function(sd_source){
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  data <- .dnode_data()
+  set.seed(4)
+  y <- stats::rnorm(nrow(data), 0.1 * data$x, 1)
+  suppressWarnings(JAGS_fit(
+    model_syntax = paste0(
+      "model{\n  for(i in 1:N_mu){\n",
+      "    tau[i] <- tau_scale * exp(0.3 * w[i])\n",
+      "    y[i] ~ dnorm(mu[i], 1)\n  }\n}"
+    ),
+    data = list(y = y, w = data$z),
+    prior_list = list(tau_scale = prior("normal", list(0, 0.5), list(0, Inf))),
+    formula_list = list(mu = ~ 1 + x + random(1 | g, name = "g", covariance = "diag") + diag(1 + x | s)),
+    formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    )),
+    formula_random_prior_list = list(mu = prior_random(
+      random_variance_allocation(
+        name = "tot", terms = c(g = "g", s = "s"),
+        sd_source = sd_source,
+        weights = prior("dirichlet", list(alpha = c(2, 3))),
+        inclusion = list(g = prior("beta", list(2, 2)))
+      ),
+      random_variance_allocation(
+        name = "sc", parent = allocation_ref("tot", "s"), terms = "s",
+        target = "sd_component", scale = "mean_variance",
+        weights = prior("dirichlet", list(alpha = c(1, 2)))
+      )
+    )),
+    add_parameters = c("tau", "mu"),
+    chains = 1, adapt = 50, burnin = 50, sample = 100, seed = 4, silent = TRUE
+  ))
+}
+
+test_that("linear predictor nodes of row-indexed external SD sources declare the source rows and allocation factors", {
+
+  fit <- .dnode_row_source_fit(random_sd_source("tau", shape = "row"))
+  posterior <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+  nodes <- JAGS_deterministic_nodes(fit)
+  node <- nodes[nodes$node == "mu", , drop = FALSE]
+  coordinates <- unlist(node$coordinates)
+  dependencies <- unlist(node$dependencies)
+  factor_dependencies <- c(
+    "mu__xRE_ALLOCx_tot__weight[1]", "mu__xRE_ALLOCx_tot__weight[2]",
+    "mu__xRE_ALLOCx_tot__include_g_indicator",
+    "mu__xRE_ALLOCx_sc__weight[1]", "mu__xRE_ALLOCx_sc__weight[2]"
+  )
+  expect_true(all(c(paste0("tau[", 1:24, "]"), factor_dependencies) %in% dependencies))
+  expect_true(all(dependencies %in% colnames(posterior)))
+
+  # Every declared dependency available: the default call rebuilds 'mu'.
+  reduced <- posterior[, setdiff(colnames(posterior), coordinates), drop = FALSE]
+  rebuilt <- JAGS_evaluate_deterministic(fit, draws = reduced)
+  expect_lte(max(abs(rebuilt[, coordinates] - posterior[, coordinates])), 1e-14)
+
+  # Without the source rows or an allocation weight, the node is unavailable:
+  # skipped by default, and an error when requested.
+  for(drop in c("^tau\\[", "^mu__xRE_ALLOCx_sc__weight\\[")){
+    partial <- reduced[, !grepl(drop, colnames(reduced)), drop = FALSE]
+    expect_false(any(coordinates %in% colnames(JAGS_evaluate_deterministic(fit, draws = partial))))
+    expect_error(
+      JAGS_evaluate_deterministic(fit, draws = partial, nodes = "mu"),
+      "Deterministic node 'mu' is unavailable from 'draws'",
+      fixed = TRUE
+    )
+  }
+
+  # The convergence roles read 'tau' as a parent of the linear predictor.
+  registry <- BayesTools:::.bt_deterministic_nodes_fit(fit)
+  expect_true("tau" %in% BayesTools:::.bt_deterministic_node_parent_bases(registry)[["mu"]])
+
+  # A source with a 'values' function is reconstructed by that function, so
+  # its rows are not dependencies; the allocation factors still are.
+  values_fit <- .dnode_row_source_fit(random_sd_source(parameter_source(
+    "tau", shape = "row",
+    values = function(parameters, data, n_rows) parameters[["tau_scale"]] * exp(0.3 * data$z)
+  )))
+  values_posterior <- as.matrix(BayesTools:::.fit_to_posterior(values_fit))
+  values_nodes <- JAGS_deterministic_nodes(values_fit)
+  values_dependencies <- unlist(values_nodes$dependencies[values_nodes$node == "mu"])
+  expect_false(any(grepl("^tau\\[", values_dependencies)))
+  expect_true(all(factor_dependencies %in% values_dependencies))
+  values_reduced <- values_posterior[, !grepl("^tau\\[", colnames(values_posterior)) &
+                                       !colnames(values_posterior) %in% coordinates, drop = FALSE]
+  values_rebuilt <- JAGS_evaluate_deterministic(values_fit, draws = values_reduced)
+  expect_lte(max(abs(values_rebuilt[, coordinates] - values_posterior[, coordinates])), 1e-14)
+})
