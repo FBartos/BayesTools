@@ -4787,6 +4787,30 @@ test_that("Savage-Dickey posterior ordinates are exact reflected kernel sums", {
   expect_identical(as.numeric(bf), Inf)
 })
 
+test_that("Savage-Dickey prior-support warnings use the exact support hull", {
+
+  # The warning concerns the exact support of the prior measure, not the
+  # range of its numerical grid: a normal prior's grid ends near +/-3.7 SD
+  # (tail probability 1e-4), but a null at 6 lies inside its support.
+  set.seed(14)
+  normal <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(0, 1))), weights = c(theta = 1)
+  )
+  expect_lt(max(normal$density$x), 6)
+  posterior <- .marginal_posterior_with_prior_density_for_test(stats::rnorm(2e4, 6, .5), normal)
+  bf <- Savage_Dickey_BF(posterior, null_hypothesis = 6, silent = TRUE)
+  expect_null(attr(bf, "warnings"))
+
+  # a null outside the support of a half-normal prior is flagged
+  half_normal <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(0, 1), list(0, Inf))), weights = c(theta = 1)
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(stats::rnorm(2e4, -1, .5), half_normal)
+  bf <- Savage_Dickey_BF(posterior, null_hypothesis = -1, silent = TRUE)
+  expect_true(any(grepl("Prior density does not span both sides of the null hypothesis",
+                        attr(bf, "warnings"), fixed = TRUE)))
+})
+
 # File-level skips: All remaining tests in this file require pre-fitted models
 skip_if_not_visual_fixture_tests()
 skip_if_no_fits()

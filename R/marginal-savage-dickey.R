@@ -338,11 +338,12 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     }
   }
 
-  prior_range <- range(c(
-    if(!is.null(prior$density)) prior$density$x else NULL,
-    if(!is.null(prior$points) && nrow(prior$points) > 0) prior$points$x else NULL
-  ))
-  if(null_hypothesis < prior_range[1] || null_hypothesis > prior_range[2]){
+  # the exact support hull of the prior measure, not the range of its grid
+  prior_support <- .prior_linear_density_support_hull(
+    attr(prior, "adaptive_evaluation", exact = TRUE)
+  )
+  if(!is.null(prior_support) &&
+     (null_hypothesis < prior_support[1L] || null_hypothesis > prior_support[2L])){
     warnings <- c(warnings, "Prior density does not span both sides of the null hypothesis. Check whether the prior distribution contains the null hypothesis in the first place. The Savage-Dickey density ratio is likely to be invalid.")
   }
   posterior_range <- if(length(continuous_samples) > 0L){

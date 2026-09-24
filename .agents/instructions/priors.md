@@ -267,7 +267,9 @@ interpolation or binning (a grid spanning a long-tailed draw range is coarser
 than the bandwidth). The raw-draw ordinates of `hypothesis_BF()` use the same
 kernel sum without reflection. A kernel sum below the double range (draws
 many bandwidths from the null) is 0, and the Bayes factor is then +Inf; no
-numerical floor is added. Everything around the ordinate comes
+numerical floor is added. The prior-support warning compares the null with
+the prior's exact support hull, never with the range of its grid.
+Everything around the ordinate comes
 from declared metadata: posterior atoms, exact support, and for mixtures each
 draw's component with the components' exact supports (`posterior_components`:
 the model of a `mix_posteriors()` ensemble, or the indicator tuple of the
