@@ -732,6 +732,28 @@
   "There is a point mass in the prior at the exact null hypothesis value. The Savage-Dickey density ratio is invalid."
 }
 
+# User-supplied prior draws (numeric or data-frame inputs without a prior
+# object) have no structural prior density: their kernel (or normal) estimate
+# of the prior ordinate is used with a classed warning of the same inexact
+# class.
+.hypothesis_warn_inexact_ordinate <- function(labels) {
+
+  warning(structure(
+    class = c("BayesTools_inexact_ordinate", "BayesTools_hypothesis_ordinate",
+              "warning", "condition"),
+    list(
+      message = paste0(
+        "Prior density at point hypothesis ",
+        paste0("'", labels, "'", collapse = ", "), " is estimated from ",
+        "the supplied prior draws: draw-only prior inputs have no structural ",
+        "prior density, so the ordinate is not classified exactly. Supply a ",
+        "BayesTools prior object for an exact prior density."
+      ),
+      call = NULL
+    )
+  ))
+}
+
 .hypothesis_stop_inexact_ordinate <- function(label, reason) {
 
   .hypothesis_stop_ordinate(

@@ -274,7 +274,8 @@ which callers match by class, never by message. Linear expressions of
 marginal posteriors use the joint-context density, affine expressions of a
 prior object its transformed density; nonlinear expressions of a
 deterministic prior are inexact. Only user-supplied prior draws keep a
-kernel estimate of the prior ordinate.
+kernel (or normal) estimate of the prior ordinate, signalled by a warning of
+the same inexact class (draw-only inputs have no structural prior density).
 
 The posterior ordinate of a Savage-Dickey ratio (`R/marginal-savage-dickey.R`)
 is a kernel estimate from the continuous draws: the exact Gaussian kernel sum

@@ -179,12 +179,12 @@ test_that("hypothesis_BF computes point-null Savage-Dickey from numeric draws", 
   prior     <- stats::rnorm(12000, mean = 0, sd = 1)
   posterior <- stats::rnorm(12000, mean = 0.4, sd = 1.2)
 
-  out <- hypothesis_BF(
+  expect_warning(out <- hypothesis_BF(
     posterior  = posterior,
     prior      = prior,
     hypothesis = "theta = 0",
     parameter  = "theta"
-  )
+  ), class = "BayesTools_inexact_ordinate")
 
   expected <- stats::dnorm(0, mean = 0, sd = 1) /
     stats::dnorm(0, mean = 0.4, sd = 1.2)
@@ -193,22 +193,22 @@ test_that("hypothesis_BF computes point-null Savage-Dickey from numeric draws", 
   expect_s3_class(attr(out, "hypothesis_ast"), "BayesTools_hypothesis_ast")
   expect_null(attr(out, "parsed", exact = TRUE))
 
-  equivalent <- hypothesis_BF(
+  expect_warning(equivalent <- hypothesis_BF(
     posterior  = posterior,
     prior      = prior,
     hypothesis = "theta != 0",
     parameter  = "theta"
-  )
+  ), class = "BayesTools_inexact_ordinate")
 
   expect_equal(attr(equivalent, "raw_BF"), attr(out, "raw_BF"),
                tolerance = 1e-12)
 
-  explicit_inverse <- hypothesis_BF(
+  expect_warning(explicit_inverse <- hypothesis_BF(
     posterior  = posterior,
     prior      = prior,
     hypothesis = "theta = 0 vs theta != 0",
     parameter  = "theta"
-  )
+  ), class = "BayesTools_inexact_ordinate")
 
   expect_equal(attr(explicit_inverse, "raw_BF"), 1 / attr(out, "raw_BF"),
                tolerance = 1e-12)
@@ -221,7 +221,7 @@ test_that("hypothesis_BF warns for exact point masses in raw point-null draws", 
   posterior_spike <- c(rep(0, 20), seq(-3, 3, length.out = 380))
   prior_spike <- c(rep(0, 20), seq(-3, 3, length.out = 380))
 
-  expect_warning(
+  expect_warning(expect_warning(
     hypothesis_BF(
       posterior  = posterior_spike,
       prior      = continuous_draws,
@@ -229,9 +229,9 @@ test_that("hypothesis_BF warns for exact point masses in raw point-null draws", 
       parameter  = "theta"
     ),
     "posterior draws exactly match"
-  )
+  ), class = "BayesTools_inexact_ordinate")
 
-  expect_warning(
+  expect_warning(expect_warning(
     hypothesis_BF(
       posterior  = continuous_draws,
       prior      = prior_spike,
@@ -239,7 +239,7 @@ test_that("hypothesis_BF warns for exact point masses in raw point-null draws", 
       parameter  = "theta"
     ),
     "prior draws exactly match"
-  )
+  ), class = "BayesTools_inexact_ordinate")
 })
 
 
@@ -494,14 +494,14 @@ test_that("hypothesis_BF normal compound point expressions do not use KDE", {
   prior     <- stats::rnorm(7000, mean = 0, sd = 1)
   posterior <- stats::rnorm(7000, mean = 0.3, sd = 1.2)
 
-  out <- hypothesis_BF(
+  expect_warning(out <- hypothesis_BF(
     posterior      = posterior,
     prior          = prior,
     hypothesis     = "theta + 0 = 0",
     parameter      = "theta",
     density_method = "normal",
     columns        = "all"
-  )
+  ), class = "BayesTools_inexact_ordinate")
 
   expected_prior <- stats::dnorm(0, mean = mean(prior), sd = stats::sd(prior))
   expected_posterior <- stats::dnorm(
@@ -562,12 +562,12 @@ test_that("hypothesis_BF returns compact BayesTools table by default", {
   prior     <- stats::rnorm(4000)
   posterior <- stats::rnorm(4000, mean = 0.2)
 
-  out <- hypothesis_BF(
+  expect_warning(out <- hypothesis_BF(
     posterior  = posterior,
     prior      = prior,
     hypothesis = "theta = 0",
     parameter  = "theta"
-  )
+  ), class = "BayesTools_inexact_ordinate")
 
   expect_s3_class(out, "BayesTools_table")
   expect_s3_class(out, "BayesTools_hypothesis_BF")
@@ -613,13 +613,13 @@ test_that("hypothesis_BF returns compact BayesTools table by default", {
   )
 
   # each column has one spelling: its column name
-  selected <- hypothesis_BF(
+  expect_warning(selected <- hypothesis_BF(
     posterior  = posterior,
     prior      = prior,
     hypothesis = "theta = 0",
     parameter  = "theta",
     columns    = c("method", "prior")
-  )
+  ), class = "BayesTools_inexact_ordinate")
   expect_equal(
     colnames(selected),
     c("Alternative", "Null", "BF", "BF_error", "method", "prior")
@@ -643,13 +643,13 @@ test_that("hypothesis_BF returns compact BayesTools table by default", {
     )
   }
 
-  detailed <- hypothesis_BF(
+  expect_warning(detailed <- hypothesis_BF(
     posterior  = posterior,
     prior      = prior,
     hypothesis = "theta = 0",
     parameter  = "theta",
     columns    = "all"
-  )
+  ), class = "BayesTools_inexact_ordinate")
 
   expect_equal(
     colnames(detailed),
@@ -662,12 +662,12 @@ test_that("hypothesis_BF returns compact BayesTools table by default", {
   printed_detailed <- utils::capture.output(print(detailed))
   expect_true(any(grepl("diagnostic values", printed_detailed, fixed = TRUE)))
 
-  multi <- hypothesis_BF(
+  expect_warning(multi <- hypothesis_BF(
     posterior  = posterior,
     prior      = prior,
     hypothesis = c("theta = 0", "theta > 0 vs theta < 0"),
     parameter  = "theta"
-  )
+  ), class = "BayesTools_inexact_ordinate")
   expect_equal(attr(multi[2, , drop = FALSE], "raw_BF"),
                attr(multi, "raw_BF")[2])
 
@@ -1023,18 +1023,18 @@ test_that("hypothesis_BF composes point-vs-region tests by transitivity", {
   prior     <- stats::rnorm(10000)
   posterior <- stats::rnorm(10000, mean = 0.25, sd = 1.1)
 
-  point <- hypothesis_BF(
+  expect_warning(point <- hypothesis_BF(
     posterior  = posterior,
     prior      = prior,
     hypothesis = "theta = 0",
     parameter  = "theta"
-  )
-  transitive <- hypothesis_BF(
+  ), class = "BayesTools_inexact_ordinate")
+  expect_warning(transitive <- hypothesis_BF(
     posterior  = posterior,
     prior      = prior,
     hypothesis = "theta = 0 vs theta > 0",
     parameter  = "theta"
-  )
+  ), class = "BayesTools_inexact_ordinate")
 
   region_unrestricted <- mean(posterior > 0) / mean(prior > 0)
   expect_equal(
@@ -2423,9 +2423,19 @@ test_that("point hypotheses need an exact regular prior ordinate on every route"
   expect_ordinate_class(hypothesis_BF(draws, prior("normal", list(0, 1)), "exp(theta) = 1"),
                         "BayesTools_inexact_ordinate")
 
-  # user-supplied prior draws keep the kernel estimate of the prior ordinate
+  # user-supplied prior draws keep the kernel estimate of the prior ordinate,
+  # with one classed warning per call (draw-only inputs have no structural
+  # prior density)
   prior_draws <- stats::rnorm(4000)
-  raw <- hypothesis_BF(draws, prior_draws, "theta = 0", columns = "all")
+  raw_warning <- tryCatch(
+    hypothesis_BF(draws, prior_draws, c("theta = 0", "theta = 0.5"), columns = "all"),
+    warning = function(w) w
+  )
+  expect_s3_class(raw_warning, "BayesTools_inexact_ordinate")
+  expect_s3_class(raw_warning, "BayesTools_hypothesis_ordinate")
+  expect_match(conditionMessage(raw_warning), "'theta = 0', 'theta = 0.5'", fixed = TRUE)
+  expect_warning(raw <- hypothesis_BF(draws, prior_draws, "theta = 0", columns = "all"),
+                 class = "BayesTools_inexact_ordinate")
   expect_identical(raw$method, "kernel Savage-Dickey")
   expect_equal(
     as.numeric(raw$prior),

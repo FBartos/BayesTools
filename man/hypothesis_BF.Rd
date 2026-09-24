@@ -58,7 +58,8 @@ exact support come from the joint prior context and the posterior ordinate
 uses boundary reflection at bounded supports (per mixture component, see
 \link{Savage_Dickey_BF}). An affine expression of a numeric quantity with a
 prior object uses the exact density of that transformed prior. Only
-user-supplied prior draws use the sample KDE of the prior expression draws.
+user-supplied prior draws use the sample KDE of the prior expression draws,
+with a classed warning (see Value).
 Finite sample and KDE evaluation ranges are not treated as exact support,
 so finite point hypotheses outside those ranges use kernel-tail density
 estimates.}
@@ -95,8 +96,11 @@ condition, which callers should match by class rather than by message:
 deterministic prior, a prior-density combination evaluated only on a
 numerical grid, or a density grid without recorded provenance). Each of
 these conditions also has class \code{BayesTools_hypothesis_ordinate}.
-Prior ordinates estimated from user-supplied prior draws are kernel
-estimates and are not classified.
+User-supplied prior draws (numeric or data-frame inputs without a prior
+object) have no structural prior density: their prior ordinate is the
+kernel (or normal) estimate of the prior expression draws, returned with a
+warning of classes \code{BayesTools_inexact_ordinate} and
+\code{BayesTools_hypothesis_ordinate}.
 Region tests require positive prior mass for every compared region. An
 implicit region statement is compared with its complement, which therefore
 also needs positive prior mass; explicit comparisons such as

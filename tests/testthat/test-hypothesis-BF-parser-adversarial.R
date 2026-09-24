@@ -147,20 +147,20 @@ test_that("constant-left relations use the canonical scalar target", {
   set.seed(10)
   prior     <- stats::rnorm(2000)
   posterior <- stats::rnorm(2000, mean = 0.3)
-  reversed_BF <- hypothesis_BF(
+  expect_warning(reversed_BF <- hypothesis_BF(
     posterior      = posterior,
     prior          = prior,
     hypothesis     = "0 > theta vs 0 = theta",
     parameter      = "theta",
     density_method = "normal"
-  )
-  canonical_BF <- hypothesis_BF(
+  ), class = "BayesTools_inexact_ordinate")
+  expect_warning(canonical_BF <- hypothesis_BF(
     posterior      = posterior,
     prior          = prior,
     hypothesis     = "theta < 0 vs theta = 0",
     parameter      = "theta",
     density_method = "normal"
-  )
+  ), class = "BayesTools_inexact_ordinate")
   expect_equal(
     attr(reversed_BF, "raw_BF"),
     attr(canonical_BF, "raw_BF")
@@ -276,7 +276,7 @@ test_that("parentheses do not change comparison compatibility", {
 
   posterior <- c(-2, -1, 1, 2)
   prior <- c(-3, -1, 1, 3)
-  expect_s3_class(
+  expect_warning(expect_s3_class(
     hypothesis_BF(
       posterior,
       prior,
@@ -284,7 +284,7 @@ test_that("parentheses do not change comparison compatibility", {
       parameter = "theta"
     ),
     "BayesTools_hypothesis_BF"
-  )
+  ), class = "BayesTools_inexact_ordinate")
 })
 
 

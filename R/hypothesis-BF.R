@@ -60,7 +60,8 @@
 #' uses boundary reflection at bounded supports (per mixture component, see
 #' [Savage_Dickey_BF]). An affine expression of a numeric quantity with a
 #' prior object uses the exact density of that transformed prior. Only
-#' user-supplied prior draws use the sample KDE of the prior expression draws.
+#' user-supplied prior draws use the sample KDE of the prior expression draws,
+#' with a classed warning (see Value).
 #' Finite sample and KDE evaluation ranges are not treated as exact support,
 #' so finite point hypotheses outside those ranges use kernel-tail density
 #' estimates.
@@ -160,8 +161,11 @@
 #' deterministic prior, a prior-density combination evaluated only on a
 #' numerical grid, or a density grid without recorded provenance). Each of
 #' these conditions also has class \code{BayesTools_hypothesis_ordinate}.
-#' Prior ordinates estimated from user-supplied prior draws are kernel
-#' estimates and are not classified.
+#' User-supplied prior draws (numeric or data-frame inputs without a prior
+#' object) have no structural prior density: their prior ordinate is the
+#' kernel (or normal) estimate of the prior expression draws, returned with a
+#' warning of classes \code{BayesTools_inexact_ordinate} and
+#' \code{BayesTools_hypothesis_ordinate}.
 #' Region tests require positive prior mass for every compared region. An
 #' implicit region statement is compared with its complement, which therefore
 #' also needs positive prior mass; explicit comparisons such as
@@ -210,6 +214,7 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
   rows <- list()
   row_labels <- character()
   row_statements <- integer()
+  inexact_priors <- character()
   row_i <- 1L
   for(hyp_i in seq_along(statements)){
     for(quantity_i in seq_along(quantities)){
@@ -222,6 +227,7 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
         quantity = quantities[[quantity_i]],
         result   = result
       )
+      inexact_priors <- c(inexact_priors, result[["inexact_prior"]])
       row_labels[[row_i]]     <- quantities[[quantity_i]][["label"]]
       row_statements[[row_i]] <- hyp_i
       row_i <- row_i + 1L
@@ -246,6 +252,10 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
   attr(out, "warnings")  <- warnings
   attr(out, "rownames")  <- TRUE
   class(out) <- c("BayesTools_table", "BayesTools_hypothesis_BF", "data.frame")
+
+  if(length(inexact_priors) > 0L){
+    .hypothesis_warn_inexact_ordinate(unique(inexact_priors))
+  }
 
   return(out)
 }

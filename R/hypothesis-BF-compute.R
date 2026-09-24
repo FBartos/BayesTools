@@ -94,6 +94,9 @@
 .hypothesis_point_BF <- function(quantity, side, density_method,
                                  inverse = FALSE) {
 
+  # the label of a point hypothesis whose prior ordinate is estimated from
+  # user-supplied prior draws (warned about once per hypothesis_BF() call)
+  inexact_prior <- NULL
   marginal <- .hypothesis_point_marginal(quantity, side)
   if(is.null(marginal) && identical(density_method, "KDE")){
     marginal <- .hypothesis_linear_point_marginal(quantity, side)
@@ -169,6 +172,7 @@
         "prior",
         density_method
       )
+      inexact_prior <- side[["label"]]
     }
     .hypothesis_check_prior_density(prior_value, side[["label"]])
     posterior_value <- .hypothesis_draw_density_height(
@@ -197,7 +201,8 @@
     posterior = posterior_value,
     method    = method,
     BF_error  = if(is.null(BF_error)) NA_real_ else as.numeric(BF_error),
-    warning   = .hypothesis_collapse_warning(bf_warnings)
+    warning   = .hypothesis_collapse_warning(bf_warnings),
+    inexact_prior = inexact_prior
   ))
 }
 
@@ -621,7 +626,8 @@
       point_BF[["BF_error"]],
       region_BF_error
     ),
-    warning   = warning
+    warning   = warning,
+    inexact_prior = point_BF[["inexact_prior"]]
   ))
 }
 

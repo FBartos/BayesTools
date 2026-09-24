@@ -438,8 +438,15 @@ test_that("hypothesis BF consumes validated ASTs without changing results", {
     columns = "all"
   )
 
-  from_text <- do.call(hypothesis_BF, c(arguments, list(hypothesis = text)))
-  from_ast <- do.call(hypothesis_BF, c(arguments, list(hypothesis = ast)))
+  # raw prior draws: the prior ordinate is an inexact normal estimate
+  expect_warning(
+    from_text <- do.call(hypothesis_BF, c(arguments, list(hypothesis = text))),
+    class = "BayesTools_inexact_ordinate"
+  )
+  expect_warning(
+    from_ast <- do.call(hypothesis_BF, c(arguments, list(hypothesis = ast))),
+    class = "BayesTools_inexact_ordinate"
+  )
   expect_identical(from_ast, from_text)
 
   expect_identical(unserialize(serialize(ast, NULL)), ast)
