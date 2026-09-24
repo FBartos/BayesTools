@@ -2664,6 +2664,74 @@ test_that("Savage_Dickey_BF diagnoses zero prior density at point null", {
   )
 })
 
+test_that("Savage_Dickey_BF applies the exactness rule of point hypotheses", {
+
+  # The prior ordinate at the null follows the rule of hypothesis_BF() point
+  # hypotheses with its condition classes (each also of class
+  # BayesTools_hypothesis_ordinate); exactly classified zero and infinite
+  # ordinates keep their Bayes factor (0 or Inf) with a warning.
+  set.seed(21)
+  draws <- stats::rnorm(4000, .3, .5)
+  bf_condition <- function(prior_density, null_hypothesis, samples = draws){
+    tryCatch(
+      Savage_Dickey_BF(.marginal_posterior_with_prior_density_for_test(samples, prior_density),
+                       null_hypothesis = null_hypothesis, silent = TRUE),
+      error = function(e) e
+    )
+  }
+  expect_ordinate_class <- function(condition, class){
+    expect_s3_class(condition, class)
+    expect_s3_class(condition, "BayesTools_hypothesis_ordinate")
+  }
+
+  # three t terms have no structural route (a numerical grid height before)
+  t3 <- prior("t", list(0, 1, 3))
+  three_t <- BayesTools:::.prior_linear_combination_density(
+    list(a = t3, b = t3, c = t3), c(a = 1, b = 1, c = 1)
+  )
+  expect_ordinate_class(bf_condition(three_t, 0), "BayesTools_inexact_ordinate")
+
+  # N(0, 1e-3) * Cauchy(0, 1): its quadrature at .3 is rejected by its
+  # diagnostics (an unclassed error before)
+  priors <- list(beta = prior("normal", list(0, 1e-3)), sigma = prior("cauchy", list(0, 1)))
+  attr(priors$beta, "multiply_by") <- "sigma"
+  rejected <- bf_condition(BayesTools:::.prior_linear_combination_density(priors, c(beta = 1)), .3)
+  expect_ordinate_class(rejected, "BayesTools_inexact_ordinate")
+  expect_match(conditionMessage(rejected), "rejected by its diagnostics", fixed = TRUE)
+
+  # a density grid without provenance (an unclassed error before)
+  grid <- structure(list(density = list(x = c(-3, 0, 3), y = c(0, 1 / 3, 0), mass = 1),
+                         points = data.frame(x = numeric(), p = numeric())),
+                    class = c("prior_linear_density", "prior_density"))
+  expect_ordinate_class(bf_condition(grid, 0), "BayesTools_inexact_ordinate")
+
+  # exp_lin of a source with an atom at 0 is undefined (a grid height before)
+  nonnegative_spike <- prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)),
+                                            prior_inclusion = prior("spike", list(.5)))
+  undefined <- BayesTools:::.prior_linear_combination_density(
+    list(x = nonnegative_spike), c(x = 1), output_transformation = "exp_lin",
+    output_transformation_arguments = list(a = 0, b = 2)
+  )
+  expect_ordinate_class(bf_condition(undefined, 1, abs(draws)), "BayesTools_undefined_ordinate")
+
+  # a prior point mass at the null, as before
+  spike <- prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("spike", list(.5)))
+  expect_ordinate_class(
+    bf_condition(BayesTools:::.prior_linear_combination_density(list(x = spike), c(x = 1)), 0),
+    "BayesTools_point_mass_at_null"
+  )
+
+  # the infinite gamma(1/2) density at 0 keeps its Bayes factor with a warning
+  infinite <- bf_condition(
+    BayesTools:::.prior_linear_combination_density(list(x = prior("gamma", list(.5, 1))), c(x = 1)),
+    0, abs(draws)
+  )
+  expect_identical(as.numeric(infinite), Inf)
+  expect_match(attr(infinite, "warnings"),
+               "Prior density at the null hypothesis value is zero or non-finite",
+               fixed = TRUE, all = FALSE)
+})
+
 test_that("plot_marginal uses stored posterior density when available", {
 
   prior_density <- BayesTools:::.prior_linear_combination_density(

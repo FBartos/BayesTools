@@ -765,7 +765,12 @@
   )
 }
 
-.hypothesis_check_prior_ordinate <- function(prior_density, value, label) {
+# The one exactness rule of point hypotheses, shared by hypothesis_BF() and
+# Savage_Dickey_BF(); returns the ordinate. With 'structural = FALSE'
+# (Savage_Dickey_BF()) an exactly classified zero or infinite ordinate is
+# returned instead of stopped: its Bayes factor is 0 or Inf with a warning.
+.hypothesis_check_prior_ordinate <- function(prior_density, value, label,
+                                             structural = TRUE) {
 
   if(is.null(prior_density)){
     stop("Prior density is required for point hypotheses.", call. = FALSE)
@@ -777,6 +782,10 @@
       "BayesTools_point_mass_at_null",
       .hypothesis_point_mass_message()
     )
+  }
+  if(!isTRUE(structural) && behavior %in% c("infinite", "zero") &&
+     isTRUE(ordinate$exact)){
+    return(invisible(ordinate))
   }
   if(behavior %in% c("infinite", "zero", "undefined")){
     .hypothesis_stop_ordinate(

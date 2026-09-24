@@ -299,6 +299,10 @@ prior object its transformed density; nonlinear expressions of a
 deterministic prior are inexact. Only user-supplied prior draws keep a
 kernel (or normal) estimate of the prior ordinate, signalled by a warning of
 the same inexact class (draw-only inputs have no structural prior density).
+`Savage_Dickey_BF()` (and so marginal inference) applies the same rule and
+classes to its prior ordinate through the same check, except that an exactly
+classified zero or infinite ordinate keeps its documented Bayes factor (0 or
+Inf) with a warning.
 
 The posterior ordinate of a Savage-Dickey ratio (`R/marginal-savage-dickey.R`)
 is a kernel estimate from the continuous draws: the exact Gaussian kernel sum

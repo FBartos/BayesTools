@@ -47,10 +47,18 @@ other locations are removed from the continuous posterior ordinate and the
 resulting density is scaled by the remaining continuous mass.}
 }
 \value{
-\code{Savage_Dickey_BF} returns a Bayes factor. A prior point mass
-at the null value stops with an error of class
-\code{BayesTools_point_mass_at_null} (see \code{\link[=hypothesis_BF]{hypothesis_BF()}} for the
-condition classes of point hypotheses).
+\code{Savage_Dickey_BF} returns a Bayes factor. The prior ordinate
+at the null follows the exactness rule of \code{\link[=hypothesis_BF]{hypothesis_BF()}} point
+hypotheses, with the same condition classes: a prior point mass at the null
+value stops with an error of class \code{BayesTools_point_mass_at_null}, an
+undefined ordinate with \code{BayesTools_undefined_ordinate}, and an
+ordinate without an exact structural value (a prior-density combination
+evaluated only on a numerical grid, a quadrature rejected by its
+diagnostics, or a density grid without recorded provenance) with
+\code{BayesTools_inexact_ordinate}; each also has class
+\code{BayesTools_hypothesis_ordinate}. An exactly classified zero or
+infinite prior ordinate gives a Bayes factor of 0 or \code{Inf} with a
+warning (see Details).
 }
 \description{
 Computes Savage-Dickey (density ratio) inclusion Bayes factors
@@ -78,9 +86,9 @@ metadata is either a numeric
 \code{type = "points"} support is not treated as a continuous interval for
 KDE boundary reflection. The same schema may be supplied as \code{support}
 in a \code{posterior_density} attribute. When the prior density at the null
-is zero or non-finite, the returned Bayes factor carries a warning because
-the point-null Savage-Dickey ratio is not a regular density ratio at that
-point.
+is exactly classified as zero or infinite, the returned Bayes factor (0 or
+\code{Inf}) carries a warning because the point-null Savage-Dickey ratio is
+not a regular density ratio at that point.
 
 Marginal posteriors created by \code{marginal_posterior()} record the
 mixture component of each draw and each component's exact support: the
