@@ -188,6 +188,12 @@ old behaviour.
   complete factor metadata that formula factor terms carry: the number and
   names of its levels, its contrast, and the design mapping its coefficients
   to the levels. `levels` is the number of levels or their names.
+- adds `prior_ordinate_status()`, the exactness rule of point hypotheses as
+  data: one row per value with `value`, `eligible`, the `condition` class and
+  `reason` message a point hypothesis at that value stops with (`NA` when
+  eligible), and the `continuous_behavior` of the prior without its point
+  masses. `hypothesis_BF()` and `Savage_Dickey_BF()` stop at the first
+  ineligible value with the same classes and messages as before.
 - gives three refusals classed conditions, so callers match the class instead
   of the message: a declared posterior point mass at the null of a scalar
   `Savage_Dickey_BF()` call stops with `BayesTools_posterior_point_mass_at_null`

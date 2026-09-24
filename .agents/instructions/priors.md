@@ -314,7 +314,10 @@ prior ordinate at the null must be `regular` and exactly classified by
 (`BayesTools_point_mass_at_null`, `BayesTools_infinite_ordinate`,
 `BayesTools_zero_ordinate`, `BayesTools_undefined_ordinate`,
 `BayesTools_inexact_ordinate`, all also `BayesTools_hypothesis_ordinate`),
-which callers match by class, never by message. Linear expressions of
+which callers match by class, never by message. `prior_ordinate_status()` is
+this rule as data (per value: eligibility, class, message, and the continuous
+behavior); the stopping check is its stop-at-first-ineligible wrapper, so the
+two cannot diverge. Linear expressions of
 marginal posteriors use the joint-context density, affine expressions of a
 prior object its transformed density; nonlinear expressions of a
 deterministic prior are inexact. Only user-supplied prior draws keep a

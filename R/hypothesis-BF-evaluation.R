@@ -756,45 +756,140 @@
 
 .hypothesis_stop_inexact_ordinate <- function(label, reason) {
 
-  .hypothesis_stop_ordinate(
-    "BayesTools_inexact_ordinate",
-    paste0(
+  refusal <- .hypothesis_inexact_ordinate_refusal(label, reason)
+  .hypothesis_stop_ordinate(refusal$condition, refusal$reason)
+}
+
+.hypothesis_inexact_ordinate_refusal <- function(label, reason) {
+
+  list(
+    condition = "BayesTools_inexact_ordinate",
+    reason    = paste0(
       "Prior density at point hypothesis '", label, "' is unavailable: ",
       reason, ". Test a region hypothesis instead."
     )
   )
 }
 
-# The one exactness rule of point hypotheses, shared by hypothesis_BF() and
-# Savage_Dickey_BF(); returns the (regular, exact) ordinate.
-.hypothesis_check_prior_ordinate <- function(prior_density, value, label) {
+#' Point-hypothesis eligibility of prior ordinates
+#'
+#' @description `prior_ordinate_status()` applies the exactness rule of point
+#' hypotheses ([hypothesis_BF()], [Savage_Dickey_BF()]) to a prior density at
+#' each requested value and reports the outcome instead of stopping. A value is
+#' eligible for a Savage-Dickey point hypothesis when its prior ordinate is
+#' `"regular"`, classified exactly by [prior_density_ordinate()], and has an
+#' available log density. Otherwise the row names the condition class and the
+#' message with which a point hypothesis at that value stops.
+#'
+#' @param prior_density a BayesTools prior or a `prior_linear_density`, as
+#'   accepted by [prior_density_ordinate()].
+#' @param values finite numeric values of the point hypotheses.
+#' @param labels optional labels of the point hypotheses used in the messages,
+#'   one per value; defaults to the values.
+#'
+#' @return A data frame with one row per value and the columns
+#' \describe{
+#'   \item{`value`}{the value.}
+#'   \item{`eligible`}{whether a point hypothesis at the value has an exact
+#'   regular prior ordinate.}
+#'   \item{`condition`}{the class of the error a point hypothesis at the value
+#'   stops with: `"BayesTools_point_mass_at_null"`,
+#'   `"BayesTools_infinite_ordinate"`, `"BayesTools_zero_ordinate"`,
+#'   `"BayesTools_undefined_ordinate"`, or `"BayesTools_inexact_ordinate"`
+#'   (all also of class `BayesTools_hypothesis_ordinate`); `NA` when
+#'   eligible.}
+#'   \item{`reason`}{the message of that error; `NA` when eligible.}
+#'   \item{`continuous_behavior`}{the behavior of the prior without its point
+#'   masses at the value (`"regular"`, `"zero"`, `"infinite"`,
+#'   `"undefined"`, or `"unknown"`): the ordinate's
+#'   `provenance$continuous_behavior` at a point mass and its `behavior`
+#'   otherwise.}
+#' }
+#'
+#' @examples
+#' spike_and_slab <- prior_mixture(
+#'   list(
+#'     prior("point", list(location = 0), prior_weights = 1),
+#'     prior("normal", list(mean = 0, sd = 1), prior_weights = 1)
+#'   ),
+#'   is_null = c(TRUE, FALSE)
+#' )
+#' prior_ordinate_status(spike_and_slab, c(0, 0.5))
+#'
+#' @seealso [prior_density_ordinate()], [hypothesis_BF()]
+#' @export
+prior_ordinate_status <- function(prior_density, values, labels = NULL){
 
-  if(is.null(prior_density)){
-    stop("Prior density is required for point hypotheses.", call. = FALSE)
+  check_real(values, "values", check_length = 0, allow_NA = FALSE)
+  if(any(!is.finite(values))){
+    stop("The 'values' argument must contain only finite values.", call. = FALSE)
   }
-  ordinate <- prior_density_ordinate(prior_density, value)
-  behavior <- ordinate$behavior
-  if(identical(behavior, "point_mass")){
-    .hypothesis_stop_ordinate(
-      "BayesTools_point_mass_at_null",
-      .hypothesis_point_mass_message()
+  if(is.null(labels)){
+    labels <- vapply(values, .hypothesis_number_label, character(1))
+  }
+  check_char(labels, "labels", check_length = length(values), allow_NA = FALSE)
+  if(!is.prior(prior_density) && !inherits(prior_density, "prior_linear_density")){
+    stop(
+      "The 'prior_density' argument must be a BayesTools prior or prior_linear_density object.",
+      call. = FALSE
     )
   }
+
+  .prior_ordinate_status(prior_density, as.numeric(values), labels)$status
+}
+
+# The exactness rule of point hypotheses as data: one row per value with its
+# eligibility, the class and message of its refusal, and the continuous
+# behavior; 'ordinates' keeps the classified ordinates.
+.prior_ordinate_status <- function(prior_density, values, labels){
+
+  ordinates <- lapply(values, function(value){
+    prior_density_ordinate(prior_density, value)
+  })
+  rows <- lapply(seq_along(values), function(i){
+    refusal <- .prior_ordinate_refusal(ordinates[[i]], labels[[i]])
+    data.frame(
+      value               = values[[i]],
+      eligible            = is.null(refusal),
+      condition           = if(is.null(refusal)) NA_character_ else refusal$condition,
+      reason              = if(is.null(refusal)) NA_character_ else refusal$reason,
+      continuous_behavior = .prior_density_ordinate_continuous_behavior(ordinates[[i]]),
+      stringsAsFactors    = FALSE
+    )
+  })
+  status <- do.call(rbind, rows)
+  rownames(status) <- NULL
+
+  list(status = status, ordinates = ordinates)
+}
+
+# The refusal of a point hypothesis at a classified prior ordinate: NULL for a
+# regular, exactly classified ordinate with an available log density, and
+# otherwise the class and message of the error it stops with.
+.prior_ordinate_refusal <- function(ordinate, label){
+
+  behavior <- ordinate$behavior
+  if(identical(behavior, "point_mass")){
+    return(list(
+      condition = "BayesTools_point_mass_at_null",
+      reason    = .hypothesis_point_mass_message()
+    ))
+  }
   if(behavior %in% c("infinite", "zero", "undefined")){
-    .hypothesis_stop_ordinate(
-      paste0("BayesTools_", behavior, "_ordinate"),
-      paste0(
+    return(list(
+      condition = paste0("BayesTools_", behavior, "_ordinate"),
+      reason    = paste0(
         "Prior density at point hypothesis '", label, "' is ", behavior,
         ", so the Savage-Dickey density ratio is undefined."
       )
-    )
+    ))
   }
   if(identical(behavior, "regular") && !is.finite(ordinate$log_density)){
     # a structurally regular ordinate whose value is unavailable (reported
     # with exact = FALSE): a quadrature rejected by its diagnostics, or a
     # boundary limit without a structural value
     integration <- .prior_density_ordinate_integration(ordinate$provenance)
-    .hypothesis_stop_inexact_ordinate(
+    return(.hypothesis_inexact_ordinate_refusal(
       label,
       if(is.list(integration) && isFALSE(integration$converged) &&
          is.character(integration$message) && length(integration$message) == 1L){
@@ -803,11 +898,11 @@
       }else{
         "its regular prior ordinate has no structural value"
       }
-    )
+    ))
   }
   if(!identical(behavior, "regular") || !isTRUE(ordinate$exact)){
     reason <- ordinate$reason
-    .hypothesis_stop_inexact_ordinate(
+    return(.hypothesis_inexact_ordinate_refusal(
       label,
       if(is.character(reason) && length(reason) == 1L && nzchar(reason)){
         paste0("its prior ordinate has no exact structural classification (",
@@ -815,10 +910,32 @@
       }else{
         "its prior ordinate has no exact structural classification"
       }
+    ))
+  }
+
+  NULL
+}
+
+# The one exactness rule of point hypotheses, shared by hypothesis_BF() and
+# Savage_Dickey_BF(): stops at the first value that is not eligible
+# (prior_ordinate_status()) with its class and message; returns the (regular,
+# exact) ordinate.
+.hypothesis_check_prior_ordinate <- function(prior_density, value, label) {
+
+  if(is.null(prior_density)){
+    stop("Prior density is required for point hypotheses.", call. = FALSE)
+  }
+  result <- .prior_ordinate_status(prior_density, value, label)
+  status <- result$status
+  ineligible <- which(!status$eligible)
+  if(length(ineligible) > 0L){
+    .hypothesis_stop_ordinate(
+      status$condition[[ineligible[[1L]]]],
+      status$reason[[ineligible[[1L]]]]
     )
   }
 
-  invisible(ordinate)
+  invisible(result$ordinates[[1L]])
 }
 
 

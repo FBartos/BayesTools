@@ -1680,6 +1680,98 @@ test_that("hypothesis_level_contrast compiles an exact atom-free contrast", {
   )
 })
 
+test_that("prior_ordinate_status reports the point-hypothesis exactness rule per value", {
+
+  columns <- c("value", "eligible", "condition", "reason", "continuous_behavior")
+  point_mass <- paste0(
+    "There is a point mass in the prior at the exact null hypothesis value. ",
+    "The Savage-Dickey density ratio is invalid."
+  )
+  spike <- prior_spike_and_slab(
+    prior("normal", list(0, 1)),
+    prior_inclusion = prior("spike", list(.5))
+  )
+  spike_density <- BayesTools:::.prior_linear_combination_density(
+    list(x = spike), c(x = 1)
+  )
+  status <- prior_ordinate_status(spike_density, c(0, .5, -1))
+  expect_s3_class(status, "data.frame")
+  expect_identical(names(status), columns)
+  expect_identical(status$value, c(0, .5, -1))
+  expect_identical(status$eligible, c(FALSE, TRUE, TRUE))
+  expect_identical(status$condition,
+                   c("BayesTools_point_mass_at_null", NA, NA))
+  expect_identical(status$reason, c(point_mass, NA, NA))
+  # the slab is regular at the atom
+  expect_identical(status$continuous_behavior, rep("regular", 3L))
+
+  gamma_half <- prior("gamma", list(.5, 1))
+  status <- prior_ordinate_status(gamma_half, c(0, -1, 1),
+                                  labels = c("s = 0", "s = -1", "s = 1"))
+  expect_identical(status$eligible, c(FALSE, FALSE, TRUE))
+  expect_identical(status$condition, c(
+    "BayesTools_infinite_ordinate", "BayesTools_zero_ordinate", NA
+  ))
+  expect_identical(status$reason, c(
+    "Prior density at point hypothesis 's = 0' is infinite, so the Savage-Dickey density ratio is undefined.",
+    "Prior density at point hypothesis 's = -1' is zero, so the Savage-Dickey density ratio is undefined.",
+    NA
+  ))
+  expect_identical(status$continuous_behavior, c("infinite", "zero", "regular"))
+  # default labels are the values
+  expect_match(prior_ordinate_status(gamma_half, 0)$reason,
+               "point hypothesis '0' is infinite", fixed = TRUE)
+
+  # the stopping rule of hypothesis_BF() and Savage_Dickey_BF() is the first
+  # ineligible row, with the same class and message
+  t3 <- prior("t", list(0, 1, 3))
+  three_t <- BayesTools:::.prior_linear_combination_density(
+    list(a = t3, b = t3, c = t3), c(a = 1, b = 1, c = 1)
+  )
+  nonnegative_spike <- prior_spike_and_slab(
+    prior("normal", list(0, 1), list(0, Inf)),
+    prior_inclusion = prior("spike", list(.5))
+  )
+  undefined <- BayesTools:::.prior_linear_combination_density(
+    list(x = nonnegative_spike), c(x = 1), output_transformation = "exp_lin",
+    output_transformation_arguments = list(a = 0, b = 2)
+  )
+  cases <- list(
+    list(spike_density, 0, "BayesTools_point_mass_at_null"),
+    list(gamma_half, 0, "BayesTools_infinite_ordinate"),
+    list(gamma_half, -1, "BayesTools_zero_ordinate"),
+    list(three_t, 0, "BayesTools_inexact_ordinate"),
+    list(undefined, 1, "BayesTools_undefined_ordinate")
+  )
+  for(case in cases){
+    status <- prior_ordinate_status(case[[1L]], case[[2L]], labels = "theta = v")
+    expect_identical(status$condition, case[[3L]])
+    expect_false(status$eligible)
+    condition <- tryCatch(
+      BayesTools:::.hypothesis_check_prior_ordinate(case[[1L]], case[[2L]], "theta = v"),
+      error = function(e) e
+    )
+    expect_identical(class(condition)[[1L]], status$condition)
+    expect_s3_class(condition, "BayesTools_hypothesis_ordinate")
+    expect_identical(conditionMessage(condition), status$reason)
+  }
+  expect_identical(prior_ordinate_status(three_t, 0)$continuous_behavior, "unknown")
+  # an eligible value returns its ordinate: the slab density times its weight
+  expect_equal(
+    BayesTools:::.hypothesis_check_prior_ordinate(spike_density, .5, "x = 0.5")$log_density,
+    stats::dnorm(.5, log = TRUE) + log(.5),
+    tolerance = 1e-12
+  )
+
+  expect_error(prior_ordinate_status(spike_density, Inf),
+               "The 'values' argument must contain only finite values.", fixed = TRUE)
+  expect_error(prior_ordinate_status(spike_density, c(0, 1), labels = "a"),
+               "The 'labels' argument must have length '2'.", fixed = TRUE)
+  expect_error(prior_ordinate_status(stats::rnorm(10), 0),
+               "The 'prior_density' argument must be a BayesTools prior or prior_linear_density object.",
+               fixed = TRUE)
+})
+
 test_that("level contrast refusals are classed with their reason", {
 
   normal_context <- BayesTools:::.prior_density_context(
