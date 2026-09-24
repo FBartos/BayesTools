@@ -11,12 +11,17 @@
 #' nonzero dependencies, and parameter-map structural metadata.
 #'
 #' `JAGS_formula_prior_density()` constructs the induced marginal prior measure
-#' for one target through BayesTools' deterministic prior-density context and
-#' linear-density algebra. The result can be passed directly to
-#' [prior_density_ordinate()]. Targets and sources are the raw fitted
-#' coefficients: a coefficient prior's `multiply_by` scales only its
-#' contribution to the linear predictor and does not enter the coefficient's
-#' prior density.
+#' for one target, or for a weighted combination of targets, through
+#' BayesTools' deterministic prior-density context and linear-density algebra.
+#' The result can be passed directly to [prior_density_ordinate()]. Targets
+#' and sources are the raw fitted coefficients: a coefficient prior's
+#' `multiply_by` scales only its contribution to the linear predictor and does
+#' not enter the coefficient's prior density. A weighted combination
+#' \eqn{\sum_t v_t T_t} (e.g. a mean-difference or orthonormal factor level
+#' on the original scale of a scaled formula) is available when every target
+#' with a nonzero weight has an `"identity"` or `"affine"` map; its density
+#' is that of the combined fitted-source weights \eqn{v^\top M}. Other maps
+#' stop with the classed error described below (reason `"nonlinear_map"`).
 #'
 #' `JAGS_formula_internal_coordinate_priors()` returns exact scalar priors for
 #' stochastic formula coordinates that are intentionally absent from the
@@ -28,9 +33,13 @@
 #' @param target_scale requested coefficient scale. The current schema supports
 #'   only `"original"`.
 #' @param target exact target coordinate from the transformation object.
+#'   Supply exactly one of `target` and `weights`.
 #' @param context optional BayesTools prior-density context. This is useful for
 #'   product-space or conditional prior mixtures; when `NULL`, the fitted
 #'   `prior_list` is used.
+#' @param weights named numeric vector of weights over `target_names` of the
+#'   transformation object; the density is that of the weighted combination
+#'   of those targets. Supply exactly one of `target` and `weights`.
 #'
 #' @return `JAGS_formula_coefficient_transform()` returns a
 #' `BayesTools_formula_coefficient_transform` list (schema version 2). Its
@@ -45,7 +54,12 @@
 #' prior support of a target can be narrower).
 #' `JAGS_formula_coefficient_transform_schema()` returns field descriptions.
 #' `JAGS_formula_prior_density()` returns a `prior_linear_density` accepted by
-#' [prior_density_ordinate()].
+#' [prior_density_ordinate()]. An unavailable density stops with an error of
+#' class `BayesTools_formula_prior_density_unavailable` (also
+#' `BayesTools_formula_transform_unavailable`) whose field `reason` names the
+#' cause, e.g. `"unknown_target"`, `"missing_source_coordinates"`, or
+#' `"nonlinear_map"` for a weighted combination with a target whose map is not
+#' linear in the fitted coefficients.
 #' `JAGS_formula_internal_coordinate_priors()` returns a uniquely named list of
 #' scalar [prior()] objects keyed by concrete fitted coordinate.
 #'
@@ -218,8 +232,21 @@ JAGS_formula_coefficient_transform_schema <- function(){
 
 #' @rdname JAGS_formula_coefficient_transform
 JAGS_formula_prior_density <- function(
-    fit, parameter, target, target_scale = "original", context = NULL){
+    fit, parameter, target = NULL, target_scale = "original", context = NULL,
+    weights = NULL){
 
+  if(is.null(target) == is.null(weights)){
+    stop("Supply exactly one of 'target' and 'weights'.", call. = FALSE)
+  }
+  if(!is.null(weights)){
+    return(.bt_formula_prior_density_weights(
+      fit          = fit,
+      parameter    = parameter,
+      weights      = weights,
+      target_scale = target_scale,
+      context      = context
+    ))
+  }
   check_char(target, "target", check_length = 1L, allow_NA = FALSE)
   transform <- JAGS_formula_coefficient_transform(
     fit,
@@ -305,6 +332,132 @@ JAGS_formula_prior_density <- function(
   )
   attr(density, "formula_coefficient_transform") <- transform
   attr(density, "formula_coefficient_target") <- target
+  density
+}
+
+# The original-scale prior density of the weighted combination sum_t v_t T_t
+# of targets whose maps are identity or affine in the fitted sources: the
+# joint prior-density context at the combined source weights v %*% M (a
+# log-transformed source with an exp output is its own target, so its weight
+# stays on the positive source). Other maps are not linear in the sources and
+# their combinations are unavailable.
+.bt_formula_prior_density_weights <- function(fit, parameter, weights,
+                                              target_scale, context){
+
+  if(!is.numeric(weights) || length(weights) == 0L || is.null(names(weights)) ||
+     anyNA(names(weights)) || any(!nzchar(names(weights))) ||
+     anyDuplicated(names(weights)) || any(!is.finite(weights))){
+    stop("'weights' must be a named numeric vector of finite target weights.",
+         call. = FALSE)
+  }
+  transform <- JAGS_formula_coefficient_transform(
+    fit,
+    parameter = parameter,
+    target_scale = target_scale
+  )
+  label <- paste0(
+    paste0(format(unname(weights)), " * ", names(weights)),
+    collapse = " + "
+  )
+  unknown <- setdiff(names(weights), transform$target_names)
+  if(length(unknown) > 0L){
+    .bt_formula_density_stop(
+      paste0(
+        "Target coefficient", if(length(unknown) > 1L) "s " else " ",
+        paste0("'", unknown, "'", collapse = ", "),
+        if(length(unknown) > 1L) " are" else " is",
+        " not available for formula parameter '", parameter, "'."
+      ),
+      parameter = parameter,
+      target = label,
+      reason = "unknown_target",
+      available = transform$target_names
+    )
+  }
+  weights <- weights[weights != 0]
+  if(length(weights) == 0L){
+    stop("'weights' must contain at least one nonzero target weight.",
+         call. = FALSE)
+  }
+  targets <- transform$targets[
+    match(names(weights), transform$target_names), , drop = FALSE
+  ]
+  unavailable <- targets$structural_status == "unavailable"
+  if(any(unavailable)){
+    .bt_formula_density_stop(
+      paste0("Prior density for target coefficient '",
+             targets$target[unavailable][[1L]],
+             "' is structurally unavailable."),
+      parameter = parameter,
+      target = label,
+      reason = targets$reason[unavailable][[1L]]
+    )
+  }
+  nonlinear <- !targets$map_type %in% c("identity", "affine")
+  if(any(nonlinear)){
+    .bt_formula_density_stop(
+      paste0(
+        "Prior density of a weighted combination of target coefficients is ",
+        "unavailable: the map of '", targets$target[nonlinear][[1L]],
+        "' from the fitted coefficients is ", targets$map_type[nonlinear][[1L]],
+        ", not linear."
+      ),
+      parameter = parameter,
+      target = label,
+      reason = "nonlinear_map"
+    )
+  }
+
+  source_weights <- drop(
+    matrix(weights, nrow = 1L) %*%
+      transform$matrix[names(weights), , drop = FALSE]
+  )
+  names(source_weights) <- colnames(transform$matrix)
+  source_weights <- source_weights[source_weights != 0]
+  if(length(source_weights) == 0L){
+    stop("The weighted combination has zero weight on every fitted coefficient.",
+         call. = FALSE)
+  }
+  density_context <- .bt_formula_prior_density_context(
+    fit,
+    context = context,
+    source_names = transform$source_names,
+    parameter = parameter,
+    target = label
+  )
+  missing <- setdiff(names(source_weights), density_context$column_names)
+  if(length(missing) > 0L){
+    .bt_formula_density_stop(
+      paste0(
+        "Prior-density context is missing fitted source coordinate",
+        if(length(missing) > 1L) "s " else " ",
+        paste0("'", missing, "'", collapse = ", "), "."
+      ),
+      parameter = parameter,
+      target = label,
+      reason = "missing_source_coordinates",
+      missing = missing
+    )
+  }
+
+  density <- tryCatch(
+    .prior_density_from_context(
+      context = density_context,
+      weights = source_weights
+    ),
+    error = function(e){
+      .bt_formula_density_stop(
+        paste0("Prior density of the weighted target combination is ",
+               "unavailable: ", conditionMessage(e)),
+        parameter = parameter,
+        target = label,
+        reason = "density_context_error",
+        parent = e
+      )
+    }
+  )
+  attr(density, "formula_coefficient_transform") <- transform
+  attr(density, "formula_coefficient_weights") <- weights
   density
 }
 

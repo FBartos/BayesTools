@@ -16,9 +16,10 @@ JAGS_formula_coefficient_transform_schema()
 JAGS_formula_prior_density(
   fit,
   parameter,
-  target,
+  target = NULL,
   target_scale = "original",
-  context = NULL
+  context = NULL,
+  weights = NULL
 )
 }
 \arguments{
@@ -29,11 +30,16 @@ JAGS_formula_prior_density(
 \item{target_scale}{requested coefficient scale. The current schema supports
 only \code{"original"}.}
 
-\item{target}{exact target coordinate from the transformation object.}
+\item{target}{exact target coordinate from the transformation object.
+Supply exactly one of \code{target} and \code{weights}.}
 
 \item{context}{optional BayesTools prior-density context. This is useful for
 product-space or conditional prior mixtures; when \code{NULL}, the fitted
 \code{prior_list} is used.}
+
+\item{weights}{named numeric vector of weights over \code{target_names} of the
+transformation object; the density is that of the weighted combination
+of those targets. Supply exactly one of \code{target} and \code{weights}.}
 }
 \value{
 \code{JAGS_formula_coefficient_transform()} returns a
@@ -49,7 +55,12 @@ and the \code{support} of the map (a list column of \code{c(lower, upper)}:
 prior support of a target can be narrower).
 \code{JAGS_formula_coefficient_transform_schema()} returns field descriptions.
 \code{JAGS_formula_prior_density()} returns a \code{prior_linear_density} accepted by
-\code{\link[=prior_density_ordinate]{prior_density_ordinate()}}.
+\code{\link[=prior_density_ordinate]{prior_density_ordinate()}}. An unavailable density stops with an error of
+class \code{BayesTools_formula_prior_density_unavailable} (also
+\code{BayesTools_formula_transform_unavailable}) whose field \code{reason} names the
+cause, e.g. \code{"unknown_target"}, \code{"missing_source_coordinates"}, or
+\code{"nonlinear_map"} for a weighted combination with a target whose map is not
+linear in the fitted coefficients.
 \code{JAGS_formula_internal_coordinate_priors()} returns a uniquely named list of
 scalar \code{\link[=prior]{prior()}} objects keyed by concrete fitted coordinate.
 }
@@ -60,12 +71,17 @@ sources, original-scale targets, named source/output transforms, exact
 nonzero dependencies, and parameter-map structural metadata.
 
 \code{JAGS_formula_prior_density()} constructs the induced marginal prior measure
-for one target through BayesTools' deterministic prior-density context and
-linear-density algebra. The result can be passed directly to
-\code{\link[=prior_density_ordinate]{prior_density_ordinate()}}. Targets and sources are the raw fitted
-coefficients: a coefficient prior's \code{multiply_by} scales only its
-contribution to the linear predictor and does not enter the coefficient's
-prior density.
+for one target, or for a weighted combination of targets, through
+BayesTools' deterministic prior-density context and linear-density algebra.
+The result can be passed directly to \code{\link[=prior_density_ordinate]{prior_density_ordinate()}}. Targets
+and sources are the raw fitted coefficients: a coefficient prior's
+\code{multiply_by} scales only its contribution to the linear predictor and does
+not enter the coefficient's prior density. A weighted combination
+\eqn{\sum_t v_t T_t} (e.g. a mean-difference or orthonormal factor level
+on the original scale of a scaled formula) is available when every target
+with a nonzero weight has an \code{"identity"} or \code{"affine"} map; its density
+is that of the combined fitted-source weights \eqn{v^\top M}. Other maps
+stop with the classed error described below (reason \code{"nonlinear_map"}).
 
 \code{JAGS_formula_internal_coordinate_priors()} returns exact scalar priors for
 stochastic formula coordinates that are intentionally absent from the

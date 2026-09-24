@@ -1,37 +1,54 @@
-#' Compile a two-level hypothesis contrast
+#' Compile a hypothesis linear in the levels of one parameter
 #'
 #' @description
-#' Compiles point and simple region statements that all refer to one ordered
-#' difference between two levels of the same parameter. The returned scalar
-#' marginal posterior retains the exact joint-prior density and structural
-#' conditioning metadata needed by downstream inference methods.
+#' Compiles point and simple region statements that all refer to one linear
+#' combination \eqn{t = \sum_l c_l L_l} of levels \eqn{L_l} of the same
+#' parameter of one marginal posterior, e.g. a difference of two levels, a
+#' scaled level, or a weighted average of several levels. The returned scalar
+#' marginal posterior of \eqn{t} retains the exact joint-prior density and the
+#' structural conditioning metadata needed by downstream inference methods
+#' (e.g. precomputed posterior-ordinate estimators that need the combined
+#' linear weights).
 #'
-#' This is a deliberately narrow cross-package interface. Both levels must
-#' have one fixed named linear-weight row, share a joint prior context and
-#' conditioning event, and carry complete posterior-atom declarations. The
-#' exact induced contrast prior must be atom-free; by absolute continuity, its
-#' posterior is then atom-free as well. Scaled, nonlinear, row-varying, and
-#' multiple-target hypotheses are rejected.
-#' Affine transformations already applied to the marginal levels retain their
-#' scale and offset; nonlinear transformed marginal levels are unsupported.
+#' Every referenced level must have one fixed named linear-weight row over the
+#' fitted coordinates and a declared posterior-atom status, and the levels
+#' must share a joint prior context and conditioning event. The prior density
+#' of \eqn{t} is the joint-context density at the combined weights
+#' \eqn{\sum_l c_l w_l} shifted by the combined level offsets: on the fitted
+#' scale it equals [parameter_prior_density()] at those coordinate weights,
+#' and on the original scale of scaled formula coefficients
+#' [JAGS_formula_prior_density()] with the corresponding `weights`. It must be
+#' atom-free; by absolute continuity the posterior of \eqn{t} is then
+#' atom-free as well. Affine transformations already applied to the marginal
+#' levels retain their scale and offset; nonlinear transformed marginal levels,
+#' nonlinear expressions, row-varying level weights, and statements about
+#' different combinations are rejected.
 #'
 #' @param posterior a factor-like marginal posterior containing the referenced
 #'   levels.
-#' @param hypothesis hypothesis text or a `BayesTools_hypothesis_ast`.
+#' @param hypothesis hypothesis text or a `BayesTools_hypothesis_ast`. Each
+#'   side is a point statement (`=`, `!=`) or a simple comparison (`<`, `<=`,
+#'   `>`, `>=`) whose expressions are linear in the level references: sums and
+#'   differences of level references and numbers, level references multiplied
+#'   or divided by numbers, and parentheses.
 #' @param parameter exact parameter root used by the level references.
 #'
 #' @return A list with `posterior`, `hypothesis`, `parameter`, and `weights`.
-#'   `posterior` is a scalar `marginal_posterior`; `hypothesis` is an equivalent
-#'   AST written against that scalar contrast. A contrast that cannot be
-#'   certified stops with an error of class
+#'   `posterior` is a scalar `marginal_posterior` of the linear combination
+#'   whose draw metadata ([posterior_metadata()]) hold the combined
+#'   `linear_weights` and `linear_offset`, its `prior_density` and
+#'   `prior_context`, declared (empty) `atoms`, and the `condition` of the
+#'   levels; `hypothesis` is an equivalent AST written against that scalar
+#'   target, `parameter` its name, and `weights` the combined linear weights.
+#'   A target that cannot be certified stops with an error of class
 #'   `BayesTools_linear_target_unavailable` (also
 #'   `BayesTools_hypothesis_target`) whose field `reason` is
-#'   `"posterior_atoms"` (the contrast prior is not structurally atom-free),
+#'   `"posterior_atoms"` (the target's prior is not structurally atom-free),
 #'   `"atom_declarations"` (a level lacks its posterior-atom declaration), or
 #'   `"prior_context"` (no valid joint prior context).
 #'
 #' @export
-hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
+hypothesis_linear_target <- function(posterior, hypothesis, parameter){
 
   if(!.hypothesis_inherits_marginal_posterior(posterior) ||
      !is.list(posterior)){
@@ -45,44 +62,35 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
     hypothesis_parse(hypothesis)
   }
 
-  target_name <- ".BayesTools_level_contrast"
+  target_name <- ".BayesTools_linear_target"
   sides <- unlist(lapply(ast$statements, function(statement){
     list(statement$left, statement$right)
   }), recursive = FALSE)
-  forms <- lapply(sides, .hypothesis_level_contrast_side)
+  forms <- lapply(sides, .hypothesis_linear_target_side, parameter = parameter)
   coefficients <- forms[[1L]]$coefficients
   same_target <- vapply(forms, function(form){
     identical(form$coefficients, coefficients)
   }, logical(1))
   if(!all(same_target)){
     stop(
-      "Hypothesis statements must all use the same ordered level contrast.",
+      "Hypothesis statements must all use the same linear combination of levels.",
       call. = FALSE
     )
   }
-  if(length(coefficients) != 2L ||
-     !identical(sort(unname(coefficients)), c(-1, 1))){
-    stop("A level contrast must be one unscaled difference between two levels.",
-         call. = FALSE)
+  if(length(coefficients) == 0L){
+    stop("A linear target must reference at least one level of '", parameter,
+         "' with a nonzero coefficient.", call. = FALSE)
   }
 
-  expected_prefix <- paste0(parameter, "[")
-  valid_symbols <- startsWith(names(coefficients), expected_prefix) &
-    endsWith(names(coefficients), "]")
-  if(!all(valid_symbols)){
-    stop("A level contrast may reference levels of only '", parameter, "'.",
-         call. = FALSE)
-  }
-  levels <- substring(
-    names(coefficients),
-    nchar(expected_prefix) + 1L,
-    nchar(names(coefficients)) - 1L
-  )
   levels <- .hypothesis_match_level_names(
-    levels    = levels,
+    levels    = names(coefficients),
     available = names(posterior),
     parameter = parameter
   )
+  if(anyDuplicated(levels)){
+    stop("A linear target must reference each level of '", parameter,
+         "' once.", call. = FALSE)
+  }
   names(coefficients) <- levels
 
   .hypothesis_validate_level_conditionals(posterior, parameter, levels)
@@ -102,11 +110,16 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
   }
 
   level_weights <- lapply(levels, function(level){
-    weights <- .hypothesis_prepare_level_weights(
-      .hypothesis_level_linear_weights(posterior[[level]])
-    )
+    weights <- .hypothesis_level_linear_weights(posterior[[level]])
+    if(is.null(weights)){
+      .hypothesis_linear_target_stop(
+        paste0("Linear prior weights are missing for level '", level, "'."),
+        "prior_context"
+      )
+    }
+    weights <- .hypothesis_prepare_level_weights(weights)
     if(nrow(weights) != 1L){
-      stop("Level contrasts require one fixed linear-weight row per level.",
+      stop("Linear targets require one fixed linear-weight row per level.",
            call. = FALSE)
     }
     weights[1L, ]
@@ -124,18 +137,18 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
   }
   if(is.null(context) || !.hypothesis_is_prior_density_context(context)){
     .hypothesis_linear_target_stop(
-      "A valid joint prior context is required for a level contrast.",
+      "A valid joint prior context is required for a linear target.",
       "prior_context"
     )
   }
   .hypothesis_validate_level_weights_context(level_weights, context)
 
-  weights <- .hypothesis_level_contrast_combine_weights(
+  weights <- .hypothesis_linear_target_combine_weights(
     level_weights,
     coefficients
   )
   if(length(weights) == 0L || all(weights == 0)){
-    stop("The level contrast has zero combined linear weight.", call. = FALSE)
+    stop("The linear target has zero combined linear weight.", call. = FALSE)
   }
   offset <- sum(coefficients * vapply(
     posterior[levels], .hypothesis_level_linear_offset, numeric(1)
@@ -145,21 +158,21 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
     output_transformation = if(offset != 0) "lin" else NULL,
     output_transformation_arguments = if(offset != 0) list(a = offset, b = 1) else NULL
   )
-  if(!.hypothesis_level_contrast_prior_atom_free(prior_density)){
+  if(!.hypothesis_linear_target_prior_atom_free(prior_density)){
     .hypothesis_linear_target_stop(
-      "The level contrast prior is not structurally atom-free.",
+      "The linear target prior is not structurally atom-free.",
       "posterior_atoms"
     )
   }
   declared_atoms <- vapply(
     posterior[levels],
-    .hypothesis_level_contrast_posterior_atoms_declared,
+    .hypothesis_linear_target_posterior_atoms_declared,
     logical(1)
   )
   if(!all(declared_atoms)){
     .hypothesis_linear_target_stop(
       paste0("Complete structural posterior-atom declarations are required for ",
-             "a level contrast."),
+             "a linear target."),
       "atom_declarations"
     )
   }
@@ -169,7 +182,7 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
     values <- values + coefficients[[level]] * level_draws[[level]]
   }
   class(values) <- c(
-    "numeric", "marginal_posterior.level_contrast", "marginal_posterior"
+    "numeric", "marginal_posterior.linear_target", "marginal_posterior"
   )
   attr(values, "parameter")             <- target_name
   values <- .bt_meta_set(values, "linear_weights", weights)
@@ -178,7 +191,7 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
   values <- .bt_meta_set(values, "prior_context", context)
   values <- .bt_meta_set(values, "atoms", .posterior_atoms_new(
     column_names = target_name,
-    source       = "level_contrast"
+    source       = "linear_target"
   ))
   condition <- .bt_meta_get(posterior[[levels[[1L]]]], "condition")
   condition <- condition[intersect(names(condition), c(
@@ -187,7 +200,7 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
   ))]
   values <- .bt_meta_set(values, "condition", if(length(condition) > 0L) condition)
 
-  rewritten <- .hypothesis_level_contrast_rewrite(
+  rewritten <- .hypothesis_linear_target_rewrite(
     ast         = ast,
     forms       = forms,
     target_name = target_name
@@ -219,10 +232,13 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
 }
 
 
-.hypothesis_level_contrast_side <- function(side){
+# One side of a statement as 'coefficients %*% levels  <operator>  value':
+# point sides move the expression's constant to the value, comparison sides
+# subtract the right expression from the left.
+.hypothesis_linear_target_side <- function(side, parameter){
 
   if(side$type %in% c("point", "not_point")){
-    form <- .hypothesis_level_contrast_form(side$expression)
+    form <- .hypothesis_linear_target_form(side$expression, parameter)
     return(list(
       operator     = if(side$type == "point") "=" else "!=",
       coefficients = form$coefficients,
@@ -232,13 +248,13 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
   if(!identical(side$type, "region") ||
      !identical(side$expression$type, "comparison") ||
      !side$expression$operator %in% c("<", "<=", ">", ">=")){
-    stop("Level contrasts support only point and simple region statements.",
+    stop("Linear targets support only point and simple region statements.",
          call. = FALSE)
   }
 
-  left  <- .hypothesis_level_contrast_form(side$expression$left)
-  right <- .hypothesis_level_contrast_form(side$expression$right)
-  form  <- .hypothesis_level_contrast_subtract(left, right)
+  left  <- .hypothesis_linear_target_form(side$expression$left, parameter)
+  right <- .hypothesis_linear_target_form(side$expression$right, parameter)
+  form  <- .hypothesis_linear_target_add(left, right, -1)
   list(
     operator     = side$expression$operator,
     coefficients = form$coefficients,
@@ -247,35 +263,75 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
 }
 
 
-.hypothesis_level_contrast_form <- function(node){
+# An expression linear in the levels of 'parameter' as a constant 'offset'
+# and level 'coefficients' (named by level, sorted, without zeros).
+.hypothesis_linear_target_form <- function(node, parameter){
+
+  not_linear <- function(){
+    stop(
+      "A linear target must be a linear combination of levels of '",
+      parameter, "' and numbers.",
+      call. = FALSE
+    )
+  }
+  constant <- function(form){
+    length(form$coefficients) == 0L
+  }
 
   if(identical(node$type, "literal")){
     return(list(offset = node$value, coefficients = numeric()))
   }
   if(identical(node$type, "level_reference")){
-    name <- paste0(node$parameter, "[", node$level, "]")
+    if(!identical(node$parameter, parameter)){
+      stop("A linear target may reference levels of only '", parameter, "'.",
+           call. = FALSE)
+    }
     return(list(
-      offset      = 0,
-      coefficients = stats::setNames(1, name)
+      offset       = 0,
+      coefficients = stats::setNames(1, node$level)
     ))
   }
   if(identical(node$type, "parentheses")){
-    return(.hypothesis_level_contrast_form(node$expression))
+    return(.hypothesis_linear_target_form(node$expression, parameter))
   }
-  if(identical(node$type, "arithmetic") &&
-     identical(node$operator, "-") &&
-     length(node$arguments) == 2L){
-    left  <- .hypothesis_level_contrast_form(node$arguments[[1L]])
-    right <- .hypothesis_level_contrast_form(node$arguments[[2L]])
-    return(.hypothesis_level_contrast_subtract(left, right))
+  if(!identical(node$type, "arithmetic")){
+    not_linear()
   }
 
-  stop("A level contrast must be one unscaled difference between two levels.",
-       call. = FALSE)
+  arguments <- lapply(node$arguments, .hypothesis_linear_target_form,
+                      parameter = parameter)
+  if(length(arguments) == 1L && node$operator %in% c("+", "-")){
+    return(.hypothesis_linear_target_scale(
+      arguments[[1L]], if(node$operator == "-") -1 else 1
+    ))
+  }
+  if(length(arguments) != 2L){
+    not_linear()
+  }
+  left  <- arguments[[1L]]
+  right <- arguments[[2L]]
+  switch(
+    node$operator,
+    "+" = .hypothesis_linear_target_add(left, right, 1),
+    "-" = .hypothesis_linear_target_add(left, right, -1),
+    "*" = if(constant(left)){
+      .hypothesis_linear_target_scale(right, left$offset)
+    }else if(constant(right)){
+      .hypothesis_linear_target_scale(left, right$offset)
+    }else{
+      not_linear()
+    },
+    "/" = if(constant(right) && right$offset != 0){
+      .hypothesis_linear_target_scale(left, 1 / right$offset)
+    }else{
+      not_linear()
+    },
+    not_linear()
+  )
 }
 
 
-.hypothesis_level_contrast_subtract <- function(left, right){
+.hypothesis_linear_target_add <- function(left, right, sign){
 
   names_all <- sort(unique(c(
     names(left$coefficients),
@@ -287,18 +343,28 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
   }
   if(length(right$coefficients) > 0L){
     coefficients[names(right$coefficients)] <-
-      coefficients[names(right$coefficients)] - right$coefficients
+      coefficients[names(right$coefficients)] + sign * right$coefficients
   }
-  coefficients <- coefficients[coefficients != 0]
   list(
-    offset       = left$offset - right$offset,
-    coefficients = coefficients
+    offset       = left$offset + sign * right$offset,
+    coefficients = coefficients[coefficients != 0]
   )
 }
 
 
-.hypothesis_level_contrast_combine_weights <- function(level_weights,
-                                                       coefficients){
+.hypothesis_linear_target_scale <- function(form, factor){
+
+  coefficients <- factor * form$coefficients
+  coefficients <- coefficients[coefficients != 0]
+  list(
+    offset       = factor * form$offset,
+    coefficients = coefficients[order(names(coefficients))]
+  )
+}
+
+
+.hypothesis_linear_target_combine_weights <- function(level_weights,
+                                                      coefficients){
 
   columns <- sort(unique(unlist(lapply(level_weights, names), use.names = FALSE)))
   out <- stats::setNames(numeric(length(columns)), columns)
@@ -311,7 +377,7 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
 }
 
 
-.hypothesis_level_contrast_prior_atom_free <- function(prior_density){
+.hypothesis_linear_target_prior_atom_free <- function(prior_density){
 
   points <- prior_density$points
   inherits(prior_density, "prior_density") &&
@@ -321,14 +387,14 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
 }
 
 
-.hypothesis_level_contrast_posterior_atoms_declared <- function(posterior){
+.hypothesis_linear_target_posterior_atoms_declared <- function(posterior){
 
   atoms <- .posterior_atoms_get(posterior)
   !is.null(atoms) && isTRUE(atoms$declared)
 }
 
 
-.hypothesis_level_contrast_rewrite <- function(ast, forms, target_name){
+.hypothesis_linear_target_rewrite <- function(ast, forms, target_name){
 
   form_i <- 0L
   statements <- vapply(ast$statements, function(statement){

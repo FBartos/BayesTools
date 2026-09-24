@@ -106,7 +106,7 @@ test_that("transformed factor levels preserve joint affine prior provenance", {
     mixed, "mu_fac", use_formula = FALSE, prior_samples = TRUE,
     transformation = "lin", transformation_arguments = list(a = 3, b = 2)
   )
-  target <- hypothesis_level_contrast(affine, "mu_fac[B] - mu_fac[A] = 0", "mu_fac")
+  target <- hypothesis_linear_target(affine, "mu_fac[B] - mu_fac[A] = 0", "mu_fac")
   ordinate <- prior_density_ordinate(.bt_meta_get(target$posterior, "prior_density"), 0)
   expect_equal(ordinate$log_density, stats::dnorm(0, sd = 2, log = TRUE), tolerance = 1e-12)
   expect_identical(.bt_meta_get(affine$B, "linear_offset"), 3)
@@ -122,7 +122,7 @@ test_that("transformed factor levels preserve joint affine prior provenance", {
     transformation = "exp"
   )
   message <- "Joint prior information is unavailable for nonlinear transformed level hypotheses. Use untransformed levels or a direct scalar hypothesis."
-  expect_error(hypothesis_level_contrast(nonlinear, "mu_fac[B] - mu_fac[A] = 0", "mu_fac"),
+  expect_error(hypothesis_linear_target(nonlinear, "mu_fac[B] - mu_fac[A] = 0", "mu_fac"),
                message, fixed = TRUE)
   expect_error(hypothesis_BF(nonlinear, hypothesis = "mu_fac[B] > mu_fac[A]", seed = 82),
                message, fixed = TRUE)
@@ -1416,10 +1416,10 @@ test_that("hypothesis_BF references level names that contain brackets", {
     fixed = TRUE
   )
 
-  contrast <- hypothesis_level_contrast(
+  contrast <- hypothesis_linear_target(
     posterior, "`mu[(0,1]]` - `mu[(1,2]]` = 0.1", "mu"
   )
-  reference_contrast <- hypothesis_level_contrast(
+  reference_contrast <- hypothesis_linear_target(
     make_posterior(c("A", "B")), "mu[A] - mu[B] = 0.1", "mu"
   )
   expect_identical(contrast$weights, reference_contrast$weights)
@@ -1548,7 +1548,7 @@ test_that("hypothesis_BF uses child precomputed density for explicit level point
 })
 
 
-test_that("hypothesis_level_contrast compiles an exact atom-free contrast", {
+test_that("hypothesis_linear_target compiles an exact atom-free linear target", {
 
   context <- BayesTools:::.prior_density_context(
     prior_list   = list(
@@ -1574,7 +1574,9 @@ test_that("hypothesis_level_contrast compiles an exact atom-free contrast", {
   attr(posterior, "parameter")             <- "mu_alloc"
   posterior <- .bt_meta_set(posterior, "prior_context", context)
 
-  target <- hypothesis_level_contrast(
+  # the two-level contrast (the former hypothesis_level_contrast()) keeps its
+  # numbers: weights (1, -1), the N(0, 2) prior ordinate at 0
+  target <- hypothesis_linear_target(
     posterior  = posterior,
     hypothesis = paste(
       "mu_alloc[alternate] > mu_alloc[random] vs",
@@ -1586,13 +1588,18 @@ test_that("hypothesis_level_contrast compiles an exact atom-free contrast", {
   expect_equal(as.numeric(target$posterior),
                as.numeric(posterior$alternate - posterior$random))
   expect_identical(target$weights, c(alt = 1, rand = -1))
+  expect_identical(target$parameter, ".BayesTools_linear_target")
   expect_identical(
     hypothesis_render(target$hypothesis),
     paste(
-      ".BayesTools_level_contrast > 0 vs",
-      ".BayesTools_level_contrast = 0"
+      ".BayesTools_linear_target > 0 vs",
+      ".BayesTools_linear_target = 0"
     )
   )
+  expect_identical(posterior_metadata(target$posterior, "linear_weights"), c(alt = 1, rand = -1))
+  expect_identical(.bt_meta_get(target$posterior, "linear_offset"), 0)
+  expect_identical(posterior_metadata(target$posterior, "prior_context"), context)
+  expect_true(posterior_atoms_free(target$posterior))
   ordinate <- prior_density_ordinate(
     .bt_meta_get(target$posterior, "prior_density"),
     0
@@ -1609,7 +1616,7 @@ test_that("hypothesis_level_contrast compiles an exact atom-free contrast", {
   expect_true(is.finite(attr(out, "raw_BF")))
   expect_identical(out$method, "transitive Savage-Dickey")
 
-  precise <- hypothesis_level_contrast(
+  precise <- hypothesis_linear_target(
     posterior = posterior,
     hypothesis = paste(
       "mu_alloc[alternate] - mu_alloc[random] > 123456789.123 vs",
@@ -1621,8 +1628,42 @@ test_that("hypothesis_level_contrast compiles an exact atom-free contrast", {
   expect_identical(precise_statement$left$expression$right$value, 123456789.123)
   expect_identical(precise_statement$right$value, 0.123456789)
 
+  # scaled levels: 2 alt - rand ~ N(0, 5)
+  scaled <- hypothesis_linear_target(
+    posterior  = posterior,
+    hypothesis = paste(
+      "2 * mu_alloc[alternate] - mu_alloc[random] > 0 vs",
+      "2 * mu_alloc[alternate] - mu_alloc[random] = 0.5"
+    ),
+    parameter  = "mu_alloc"
+  )
+  expect_identical(scaled$weights, c(alt = 2, rand = -1))
+  expect_equal(as.numeric(scaled$posterior),
+               2 * as.numeric(posterior$alternate) - as.numeric(posterior$random))
+  expect_identical(scaled$hypothesis$statements[[1L]]$right$value, 0.5)
+  expect_equal(
+    prior_density_ordinate(.bt_meta_get(scaled$posterior, "prior_density"), .5)$log_density,
+    stats::dnorm(.5, sd = sqrt(5), log = TRUE),
+    tolerance = 1e-8
+  )
+
+  # the average of two levels with a constant moved to the value:
+  # (alt + rand) / 2 + 1 = 1.25  <=>  (alt + rand) / 2 = 0.25, N(0, 1/2)
+  average <- hypothesis_linear_target(
+    posterior  = posterior,
+    hypothesis = "(mu_alloc[alternate] + mu_alloc[random]) / 2 + 1 = 1.25",
+    parameter  = "mu_alloc"
+  )
+  expect_identical(average$weights, c(alt = .5, rand = .5))
+  expect_identical(average$hypothesis$statements[[1L]]$left$value, 0.25)
+  expect_equal(
+    prior_density_ordinate(.bt_meta_get(average$posterior, "prior_density"), .25)$log_density,
+    stats::dnorm(.25, sd = sqrt(.5), log = TRUE),
+    tolerance = 1e-8
+  )
+
   expect_error(
-    hypothesis_level_contrast(
+    hypothesis_linear_target(
       posterior  = posterior,
       hypothesis = paste(
         "mu_alloc[alternate] > mu_alloc[random] vs",
@@ -1630,18 +1671,26 @@ test_that("hypothesis_level_contrast compiles an exact atom-free contrast", {
       ),
       parameter  = "mu_alloc"
     ),
-    "same ordered level contrast|unscaled difference"
+    "Hypothesis statements must all use the same linear combination of levels.",
+    fixed = TRUE
   )
   expect_error(
-    hypothesis_level_contrast(
+    hypothesis_linear_target(
       posterior  = posterior,
-      hypothesis = paste(
-        "2 * mu_alloc[alternate] - mu_alloc[random] > 0 vs",
-        "2 * mu_alloc[alternate] - mu_alloc[random] = 0"
-      ),
+      hypothesis = "mu_alloc[alternate] * mu_alloc[random] = 0",
       parameter  = "mu_alloc"
     ),
-    "unscaled difference"
+    "A linear target must be a linear combination of levels of 'mu_alloc' and numbers.",
+    fixed = TRUE
+  )
+  expect_error(
+    hypothesis_linear_target(
+      posterior  = posterior,
+      hypothesis = "mu_alloc[alternate] - mu[random] = 0",
+      parameter  = "mu_alloc"
+    ),
+    "A linear target may reference levels of only 'mu_alloc'.",
+    fixed = TRUE
   )
 
   posterior_with_baseline <- posterior
@@ -1652,7 +1701,7 @@ test_that("hypothesis_level_contrast compiles an exact atom-free contrast", {
       data.frame(x = 0, mass = 1)
     )
   )
-  baseline_target <- hypothesis_level_contrast(
+  baseline_target <- hypothesis_linear_target(
     posterior  = posterior_with_baseline,
     hypothesis = paste(
       "mu_alloc[random] > mu_alloc[baseline] vs",
@@ -1668,7 +1717,7 @@ test_that("hypothesis_level_contrast compiles an exact atom-free contrast", {
   posterior_without_declaration <- posterior
   posterior_without_declaration$alternate <- .bt_meta_set(posterior_without_declaration$alternate, "atoms", NULL)
   expect_error(
-    hypothesis_level_contrast(
+    hypothesis_linear_target(
       posterior  = posterior_without_declaration,
       hypothesis = paste(
         "mu_alloc[alternate] > mu_alloc[random] vs",
@@ -1772,7 +1821,7 @@ test_that("prior_ordinate_status reports the point-hypothesis exactness rule per
                fixed = TRUE)
 })
 
-test_that("level contrast refusals are classed with their reason", {
+test_that("linear target refusals are classed with their reason", {
 
   normal_context <- BayesTools:::.prior_density_context(
     prior_list   = list(
@@ -1812,7 +1861,7 @@ test_that("level contrast refusals are classed with their reason", {
   )
   expect_reason <- function(posterior, reason, message){
     condition <- tryCatch(
-      hypothesis_level_contrast(posterior, "mu[a] - mu[b] = 0", "mu"),
+      hypothesis_linear_target(posterior, "mu[a] - mu[b] = 0", "mu"),
       error = function(e) e
     )
     expect_s3_class(condition, "BayesTools_linear_target_unavailable")
@@ -1824,7 +1873,7 @@ test_that("level contrast refusals are classed with their reason", {
   expect_reason(
     factor_posterior(levels),
     "prior_context",
-    "A valid joint prior context is required for a level contrast."
+    "A valid joint prior context is required for a linear target."
   )
   partial <- levels
   partial$a <- .bt_meta_set(partial$a, "prior_context", normal_context)
@@ -1838,12 +1887,12 @@ test_that("level contrast refusals are classed with their reason", {
   expect_reason(
     factor_posterior(undeclared, normal_context),
     "atom_declarations",
-    "Complete structural posterior-atom declarations are required for a level contrast."
+    "Complete structural posterior-atom declarations are required for a linear target."
   )
   expect_reason(
     factor_posterior(levels, spike_context),
     "posterior_atoms",
-    "The level contrast prior is not structurally atom-free."
+    "The linear target prior is not structurally atom-free."
   )
 })
 

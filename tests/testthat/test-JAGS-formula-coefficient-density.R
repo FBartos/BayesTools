@@ -964,3 +964,171 @@ test_that("formula prior densities preserve model-mixture atoms and fail closed"
     "missing or unsupported"
   )
 })
+
+test_that("formula prior densities of weighted target combinations use the combined source weights", {
+
+  data <- data.frame(x = c(2, 4, 6, 9))
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + x,
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    formula_scale = TRUE
+  )
+  fit <- .formula_coefficient_density_fit(
+    formula_result,
+    .formula_coefficient_source_names(formula_result)
+  )
+  # the original intercept is b0 = beta0 - beta1 m / s and the slope
+  # b1 = beta1 / s, so b0 + 2 b1 = beta0 + beta1 (2 - m) / s is normal with
+  # variance 1 + ((2 - m) / s)^2
+  m <- mean(data$x)
+  s <- stats::sd(data$x)
+  weighted <- JAGS_formula_prior_density(
+    fit, "mu", weights = c(mu_intercept = 1, mu_x = 2)
+  )
+  ordinate <- prior_density_ordinate(weighted, .3)
+  expect_true(ordinate$exact)
+  expect_equal(
+    ordinate$log_density,
+    stats::dnorm(.3, sd = sqrt(1 + ((2 - m) / s)^2), log = TRUE),
+    tolerance = 1e-12
+  )
+  expect_identical(attr(weighted, "formula_coefficient_weights"),
+                   c(mu_intercept = 1, mu_x = 2))
+  # a unit weight is the target's own density
+  expect_equal(
+    prior_density_ordinate(JAGS_formula_prior_density(fit, "mu", weights = c(mu_x = 1)), .3)$log_density,
+    prior_density_ordinate(JAGS_formula_prior_density(fit, "mu", target = "mu_x"), .3)$log_density,
+    tolerance = 1e-12
+  )
+
+  expect_error(JAGS_formula_prior_density(fit, "mu"),
+               "Supply exactly one of 'target' and 'weights'.", fixed = TRUE)
+  expect_error(JAGS_formula_prior_density(fit, "mu", target = "mu_x", weights = c(mu_x = 1)),
+               "Supply exactly one of 'target' and 'weights'.", fixed = TRUE)
+  expect_error(JAGS_formula_prior_density(fit, "mu", weights = c(1, 2)),
+               "'weights' must be a named numeric vector of finite target weights.", fixed = TRUE)
+  unknown <- tryCatch(
+    JAGS_formula_prior_density(fit, "mu", weights = c(mu_z = 1)),
+    error = identity
+  )
+  expect_s3_class(unknown, "BayesTools_formula_prior_density_unavailable")
+  expect_identical(unknown$reason, "unknown_target")
+
+  # exp(affine) targets are not linear in the fitted coefficients
+  log_formula <- ~ 1 + x
+  attr(log_formula, "log(intercept)") <- TRUE
+  log_result <- JAGS_formula(
+    formula = log_formula,
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      intercept = prior("gamma", list(2, 2)),
+      x = prior("normal", list(0, 1))
+    ),
+    formula_scale = TRUE
+  )
+  log_fit <- .formula_coefficient_density_fit(
+    log_result,
+    .formula_coefficient_source_names(log_result)
+  )
+  nonlinear <- tryCatch(
+    JAGS_formula_prior_density(log_fit, "mu", weights = c(mu_intercept = 1, mu_x = 1)),
+    error = identity
+  )
+  expect_s3_class(nonlinear, "BayesTools_formula_prior_density_unavailable")
+  expect_s3_class(nonlinear, "BayesTools_formula_transform_unavailable")
+  expect_identical(nonlinear$reason, "nonlinear_map")
+  expect_identical(
+    conditionMessage(nonlinear),
+    paste0(
+      "Prior density of a weighted combination of target coefficients is ",
+      "unavailable: the map of 'mu_intercept' from the fitted coefficients is ",
+      "exp_affine, not linear."
+    )
+  )
+  # the affine slope of the same fit stays available: 2 b1 ~ N(0, 2 / s)
+  expect_equal(
+    prior_density_ordinate(JAGS_formula_prior_density(log_fit, "mu", weights = c(mu_x = 2)), .3)$log_density,
+    stats::dnorm(.3, sd = 2 / s, log = TRUE),
+    tolerance = 1e-12
+  )
+})
+
+test_that("linear targets of factor levels match the canonical prior densities", {
+
+  data <- data.frame(
+    f = factor(rep(c("A", "B", "C"), each = 2L)),
+    x = c(1, 3, 2, 6, 4, 5)
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + f,
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+    )
+  )
+  source_names <- .formula_coefficient_source_names(formula_result)
+  set.seed(1)
+  samples <- matrix(
+    stats::rnorm(200 * length(source_names), sd = .3),
+    ncol = length(source_names),
+    dimnames = list(NULL, source_names)
+  )
+  fit <- .formula_coefficient_sample_fit(formula_result, samples)
+  levels <- marginal_posterior(
+    as_mixed_posteriors(fit, "mu_f"), "mu_f",
+    use_formula = FALSE, prior_samples = TRUE
+  )
+
+  # one level: the catalog quantity with the same coordinate weights has the
+  # same prior density (fitted scale)
+  catalog <- parameter_catalog(fit)
+  level_rows <- which(vapply(catalog$quantities$extraction_key, function(key){
+    identical(key$type, "factor_level")
+  }, logical(1)))
+  for(level in names(levels)){
+    target <- hypothesis_linear_target(levels, paste0("mu_f[", level, "] = 0.3"), "mu_f")
+    weights <- target$weights[target$weights != 0]
+    row <- level_rows[vapply(level_rows, function(i){
+      key <- catalog$quantities$extraction_key[[i]]
+      setequal(key$dependencies, names(weights)) &&
+        isTRUE(all.equal(key$weights[match(names(weights), key$dependencies)],
+                         unname(weights), tolerance = 1e-14))
+    }, logical(1))]
+    expect_gte(length(row), 1L)
+    for(i in row){
+      selection <- parameter_catalog_resolve(
+        catalog, catalog$quantities$canonical_name[[i]],
+        namespace = catalog$quantities$namespace[[i]]
+      )
+      expect_equal(
+        prior_density_ordinate(.bt_meta_get(target$posterior, "prior_density"), .3)$log_density,
+        prior_density_ordinate(parameter_prior_density(fit, selection), .3)$log_density,
+        tolerance = 1e-12
+      )
+    }
+  }
+
+  # a combination of levels: the original-scale density of the same weighted
+  # targets (identity maps of an unscaled formula)
+  target <- hypothesis_linear_target(levels, "2 * mu_f[A] - mu_f[C] = 0.3", "mu_f")
+  formula_density <- JAGS_formula_prior_density(
+    fit, "mu", weights = target$weights[target$weights != 0]
+  )
+  expect_equal(
+    prior_density_ordinate(.bt_meta_get(target$posterior, "prior_density"), .3)$log_density,
+    prior_density_ordinate(formula_density, .3)$log_density,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    as.numeric(target$posterior),
+    2 * as.numeric(levels$A) - as.numeric(levels$C)
+  )
+})

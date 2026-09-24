@@ -188,6 +188,16 @@ old behaviour.
   complete factor metadata that formula factor terms carry: the number and
   names of its levels, its contrast, and the design mapping its coefficients
   to the levels. `levels` is the number of levels or their names.
+- `JAGS_formula_prior_density()` accepts `weights` over the transform's
+  targets instead of one `target`: the original-scale prior density of the
+  weighted combination (e.g. a mean-difference or orthonormal level of a
+  scaled formula) for targets with identity or affine maps, and an error of
+  class `BayesTools_formula_prior_density_unavailable` with reason
+  `"nonlinear_map"` otherwise. `hypothesis_linear_target()` replaces the
+  pairwise `hypothesis_level_contrast()` (new in this version and removed):
+  any point or simple region hypothesis linear in the levels of one
+  parameter compiles to a scalar target, and a two-level contrast gives the
+  same draws, weights and prior density as before.
 - `JAGS_formula_coefficient_transform()` (schema version 2) classifies the map
   of each original-scale target in `targets$map_type` (`"identity"`,
   `"affine"`, `"exp_affine"` or `"unsupported"`) and records the image of
@@ -210,11 +220,12 @@ old behaviour.
   lack monitored coordinates the priors read stop `JAGS_marglik_parameters()`,
   `JAGS_marglik_priors()` and their row and formula versions with
   `BayesTools_missing_monitored_columns` (also `BayesTools_marglik_input`);
-  and a level contrast that cannot be certified stops with
-  `BayesTools_linear_target_unavailable` (also `BayesTools_hypothesis_target`)
-  whose field `reason` is `"posterior_atoms"` (the contrast prior has a point
-  mass), `"atom_declarations"` (a level lacks its posterior-atom declaration)
-  or `"prior_context"` (no valid joint prior context). Messages are unchanged.
+  and a linear target of `hypothesis_linear_target()` that cannot be
+  certified stops with `BayesTools_linear_target_unavailable` (also
+  `BayesTools_hypothesis_target`) whose field `reason` is `"posterior_atoms"`
+  (the target's prior has a point mass), `"atom_declarations"` (a level lacks
+  its posterior-atom declaration) or `"prior_context"` (no valid joint prior
+  context). Messages are unchanged.
 - supports declared output intervals for density transformations. Wider display
   limits remain available while inverse/Jacobian evaluations and continuous
   curves stay inside the transformed support; boundary point masses are retained.
@@ -1157,8 +1168,10 @@ old behaviour.
   evaluation and reusable compiled evaluation. Supported scalar, independent
   or treatment factor, and Dirichlet prior lists use vectorized evaluators,
   while other prior families retain the compiled scalar route.
-- adds `hypothesis_level_contrast()` for certifying atom-free pairwise level
-  contrasts with an exact joint-prior ordinate, and normalizes symbolic
+- adds `hypothesis_linear_target()` for certifying atom-free linear
+  combinations of the levels of one parameter (level differences, scaled
+  levels, level averages) with an exact joint-prior ordinate, the combined
+  linear weights and offset, and the levels' conditioning, and normalizes symbolic
   point equalities such as `theta = phi` to a difference from zero; constant-
   left relations such as `0 > theta` and `0 = theta` are canonicalized to the
   equivalent parameter-left forms
