@@ -19,6 +19,19 @@ others rather than patched only at the first failing consumer.
   `R/JAGS-marglik*.R`.
 - Posterior extraction: `R/posterior-extraction.R` and
   `R/JAGS-bridge-posterior*.R`.
+- Generated deterministic nodes: `R/JAGS-deterministic-nodes*.R`.
+
+Every deterministic node BayesTools generates (allocation-derived SDs, scalar
+and LKJ correlations, publication weights, spike-and-slab and mixture
+parameters, formula linear predictors) belongs to one registered family: the
+family's builders emit its JAGS syntax, and its node specification carries the
+R evaluator and the declared dependencies; `JAGS_deterministic_nodes()` lists
+the nodes. Prior draws, catalog quantities, bridge and marginal-likelihood
+parameters, prediction, and convergence-role parents use the family
+evaluators. Declared dependencies are the coordinates the R evaluator reads. A
+new generated node gets a family and a parity test against the JAGS monitors,
+not another evaluator. Intercept priors cannot carry `multiply_by`; it scales
+only formula-term coefficients.
 
 Seeding belongs to the same contract. Initial values are drawn after
 `set.seed(seed)`; each chain's `.RNG.seed` comes from `.JAGS_chain_seeds()`
