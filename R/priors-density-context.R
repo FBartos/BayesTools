@@ -282,22 +282,8 @@
 
   dists <- vector("list", length(context$model_weights))
   for(model_i in seq_along(context$model_weights)){
-    model_prior_list <- lapply(context$prior_list, function(parameter_priors){
-      if(is.prior(parameter_priors)){
-        return(parameter_priors)
-      }
-      parameter_priors[[model_i]]
-    })
-    names(model_prior_list) <- names(context$prior_list)
-
-    for(parameter in names(model_prior_list)){
-      if(is.null(model_prior_list[[parameter]])){
-        model_prior_list[[parameter]] <- prior("point", list(location = 0))
-      }
-    }
-
     dists[[model_i]] <- .prior_linear_combination_density(
-      prior_list = model_prior_list,
+      prior_list = .prior_density_model_prior_list(context$prior_list, model_i),
       weights    = weights,
       n_grid     = context$n_grid,
       tail_prob  = context$tail_prob,
@@ -524,12 +510,9 @@
     ))
   }
 
-  row_keys <- apply(weights, 1, function(row){
-    paste(sprintf("%a", row), collapse = "\r")
-  })
-  unique_keys <- unique(row_keys)
-  row_counts <- tabulate(match(row_keys, unique_keys), nbins = length(unique_keys))
-  row_indices <- match(unique_keys, row_keys)
+  rows <- .prior_density_distinct_rows(weights)
+  row_counts <- rows$counts
+  row_indices <- rows$indices
 
   # Mix the rows on the linear-predictor scale and transform the mixture once;
   # for one monotone map this equals the mixture of transformed rows, while

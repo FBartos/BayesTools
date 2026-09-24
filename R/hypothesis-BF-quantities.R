@@ -725,7 +725,7 @@
 
   if(inherits(context, "prior_density_model_mixture_context")){
     for(model_i in seq_along(context[["model_weights"]])){
-      model_prior_list <- .hypothesis_model_mixture_prior_list(context, model_i)
+      model_prior_list <- .prior_density_model_prior_list(context[["prior_list"]], model_i)
       .prior_linear_weight_groups(model_prior_list, weights)
     }
     return(invisible(TRUE))
@@ -829,7 +829,7 @@
 
   for(i in unique(model_i)){
     rows <- which(model_i == i)
-    model_prior_list <- .hypothesis_model_mixture_prior_list(context, i)
+    model_prior_list <- .prior_density_model_prior_list(context[["prior_list"]], i)
     samples <- .generate_transformed_prior_samples(
       prior_list   = model_prior_list,
       column_names = context[["column_names"]],
@@ -843,26 +843,6 @@
   }
 
   return(out)
-}
-
-
-.hypothesis_model_mixture_prior_list <- function(context, model_i) {
-
-  model_prior_list <- lapply(context[["prior_list"]], function(parameter_priors) {
-    if(is.prior(parameter_priors)){
-      return(parameter_priors)
-    }
-    parameter_priors[[model_i]]
-  })
-  names(model_prior_list) <- names(context[["prior_list"]])
-
-  for(parameter in names(model_prior_list)){
-    if(is.null(model_prior_list[[parameter]])){
-      model_prior_list[[parameter]] <- prior("point", list(location = 0))
-    }
-  }
-
-  return(model_prior_list)
 }
 
 

@@ -4,8 +4,8 @@
 # two-column matrix, possibly with infinite bounds) together with an exact
 # 'indicator' of the region at given values, which decides point masses
 # (including strict and inclusive boundaries). Its prior probability is
-# evaluated with the structure that classifies prior-density ordinates
-# (R/prior-density-ordinate.R), mirroring its routes:
+# evaluated on the structural route that also classifies prior-density
+# ordinates (R/prior-density-route.R, R/prior-density-ordinate.R):
 # * point masses contribute their exact mass when the indicator includes them;
 # * scalar (affine, optionally log-source) priors use their exact distribution
 #   function, normal sums their normal distribution function;
@@ -13,12 +13,11 @@
 #   conditional-normal quadrature of the ordinate
 #   (.prior_conditional_normal_region());
 # * mixture, spike-and-slab, model and conditional mixture components, and
-#   distinct design rows are expanded as for the ordinate and summed with
-#   their probabilities;
+#   distinct design rows are summed with their probabilities;
 # * named monotone output transformations map the region to the source scale.
-# A combination for which the ordinate has no such representation (general
-# convolutions and products, unsupported families, transformations or
-# contexts) is unavailable here, and the caller keeps its grid evaluation.
+# A route without such a representation (general convolutions and products,
+# unsupported families, transformations or contexts) is unavailable here, and
+# the caller keeps its grid evaluation.
 
 .prior_region_result <- function(probability, integration = NULL){
 
@@ -239,51 +238,6 @@
     }, logical(1)))
 }
 
-# Mirrors .prior_density_ordinate_linear_scalar(): NULL when the combination
-# is not one scalar term plus point terms.
-.prior_region_linear_scalar <- function(prior_list, weights, source_transforms,
-                                        region){
-
-  groups <- tryCatch(
-    .prior_linear_weight_groups(prior_list, weights),
-    error = function(e) NULL
-  )
-  if(is.null(groups)){
-    return(NULL)
-  }
-  offset <- 0
-  random_group <- NULL
-  for(group in groups){
-    point_location <- .prior_density_ordinate_point_group_location(
-      group,
-      source_transforms
-    )
-    if(length(point_location) == 1L){
-      if(is.na(point_location)){
-        return(NULL)
-      }
-      offset <- offset + point_location
-      next
-    }
-    if(length(group$weights) != 1L || !is.null(random_group) ||
-       is.prior.vector(group$prior) || is.prior.ordered(group$prior)){
-      return(NULL)
-    }
-    random_group <- group
-  }
-  if(is.null(random_group)){
-    return(.prior_region_atoms(offset, 1, region))
-  }
-  parameter <- names(random_group$weights)[1L]
-  .prior_region_prior_affine(
-    prior            = random_group$prior,
-    region           = region,
-    offset           = offset,
-    scale            = unname(random_group$weights[[1L]]),
-    source_transform = .prior_linear_source_transform(source_transforms[parameter])
-  )
-}
-
 # Mirrors .prior_density_ordinate_linear_normal(): NULL when a term is not a
 # normal (or log-transformed lognormal) or point term.
 .prior_region_linear_normal <- function(prior_list, weights, source_transforms,
@@ -317,154 +271,6 @@
   }
   integral <- .prior_conditional_normal_region(spec, region$intervals, n_grid)
   .prior_region_result(integral$value, integral$integration)
-}
-
-# Mirrors .prior_density_ordinate_additive_factor().
-.prior_region_additive_factor <- function(prior_list, weights, source_transforms,
-                                          region){
-
-  weights <- weights[weights != 0]
-  scalar <- .prior_region_linear_scalar(prior_list, weights, source_transforms, region)
-  if(!is.null(scalar)){
-    return(scalar)
-  }
-  .prior_region_linear_normal(prior_list, weights, source_transforms, region)
-}
-
-# Mirrors .prior_density_ordinate_additive_components(): mixture expansion,
-# then a Gaussian convolution; NULL when neither applies.
-.prior_region_additive_components <- function(prior_list, weights,
-                                              source_transforms, region,
-                                              n_grid){
-
-  weights <- weights[weights != 0]
-  if(length(weights) == 0L){
-    return(NULL)
-  }
-  groups <- tryCatch(
-    .prior_linear_weight_groups(prior_list, weights),
-    error = function(e) NULL
-  )
-  if(!is.null(groups)){
-    plan <- .prior_density_ordinate_mixture_plan(prior_list, names(groups), n_grid)
-    if(!is.null(plan)){
-      components <- lapply(plan$prior_lists, function(component_priors){
-        .prior_region_linear_base(
-          component_priors, weights, source_transforms, region, n_grid
-        )
-      })
-      combined <- .prior_region_combine(components, plan$probabilities)
-      if(isTRUE(combined$available)){
-        return(combined)
-      }
-    }
-  }
-  spec <- .prior_density_ordinate_gaussian_convolution_spec(
-    prior_list, weights, source_transforms
-  )
-  if(is.null(spec)){
-    return(NULL)
-  }
-  .prior_region_conditional_normal(spec, region, n_grid)
-}
-
-# Mirrors .prior_density_ordinate_linear_base() on the linear-predictor scale.
-.prior_region_linear_base <- function(prior_list, weights, source_transforms,
-                                      region,
-                                      n_grid = .prior_linear_density_default_grid()){
-
-  weights <- weights[weights != 0]
-  if(length(weights) == 0L){
-    return(.prior_region_atoms(0, 1, region))
-  }
-  if(is.null(source_transforms)){
-    source_transforms <- rep(NA_character_, length(weights))
-    names(source_transforms) <- names(weights)
-  }else{
-    source_transforms <- source_transforms[names(weights)]
-  }
-  if(any(!is.na(source_transforms) & source_transforms != "log")){
-    return(.prior_region_unavailable())
-  }
-  split <- tryCatch(
-    .prior_linear_split_multiply_groups(prior_list, weights),
-    error = function(e) NULL
-  )
-  if(is.null(split)){
-    return(.prior_region_unavailable())
-  }
-
-  if(length(split$product_groups) > 0L){
-    if(length(split$product_groups) == 1L){
-      product <- split$product_groups[[1L]]
-      active <- unique(c(
-        .prior_linear_active_parameters(prior_list, split$additive_weights),
-        names(product$prior_list)
-      ))
-      mixtures <- active[vapply(prior_list[active], function(prior){
-        is.prior.mixture(prior) || is.prior.spike_and_slab(prior)
-      }, logical(1))]
-      if(length(mixtures) > 0L){
-        expansion <- .prior_conditional_normal_expansion(prior_list, split, source_transforms, n_grid)
-        if(!is.null(expansion)){
-          parameter <- expansion$parameter
-          parent <- prior_list[[parameter]]
-          probabilities <- .prior_density_ordinate_mixture_weights(parent)
-          components <- lapply(expansion$indices, function(i){
-            component_priors <- prior_list
-            component_priors[[parameter]] <- .prior_density_copy_parent_attributes(parent[[i]], parent)
-            .prior_region_linear_base(
-              component_priors, weights, source_transforms, region, n_grid
-            )
-          })
-          combined <- .prior_region_combine(components, probabilities[expansion$indices])
-          if(isTRUE(combined$available)){
-            return(combined)
-          }
-        }
-      }
-      product_constant <- .prior_density_ordinate_deterministic_offset(
-        product$prior_list, product$weights, source_transforms
-      )
-      if(identical(product_constant, 0)){
-        additive <- .prior_region_additive_factor(
-          prior_list, split$additive_weights, source_transforms, region
-        )
-        if(is.null(additive)){
-          additive <- .prior_region_additive_components(
-            prior_list, split$additive_weights, source_transforms, region, n_grid
-          )
-        }
-        if(!is.null(additive)){
-          return(additive)
-        }
-      }
-    }
-    spec <- .prior_conditional_normal_spec(prior_list, split, source_transforms)
-    if(!is.null(spec)){
-      return(.prior_region_conditional_normal(spec, region, n_grid))
-    }
-    # general products (including the product singularity of the ordinate)
-    return(.prior_region_unavailable())
-  }
-
-  weights <- split$additive_weights
-  weights <- weights[weights != 0]
-  scalar <- .prior_region_linear_scalar(prior_list, weights, source_transforms, region)
-  if(!is.null(scalar)){
-    return(scalar)
-  }
-  normal <- .prior_region_linear_normal(prior_list, weights, source_transforms, region)
-  if(!is.null(normal)){
-    return(normal)
-  }
-  components <- .prior_region_additive_components(
-    prior_list, weights, source_transforms, region, n_grid
-  )
-  if(!is.null(components)){
-    return(components)
-  }
-  .prior_region_unavailable()
 }
 
 # Maps an output-scale region through the inverse of a named monotone
@@ -551,170 +357,15 @@
   evaluate(source_region)
 }
 
-# Mirrors .prior_density_ordinate_linear_arguments().
-.prior_region_linear_arguments <- function(arguments, region){
-
-  prior_list <- arguments$prior_list
-  weights <- arguments$weights
-  source_transforms <- arguments$source_transforms
-  if(!is.list(prior_list) || !is.numeric(weights) || is.null(names(weights)) ||
-     anyNA(weights) || any(!is.finite(weights))){
-    return(.prior_region_unavailable())
-  }
-  n_grid <- if(is.null(arguments$n_grid)) .prior_linear_density_default_grid() else arguments$n_grid
-  .prior_region_transformed(
-    arguments$output_transformation,
-    arguments$output_transformation_arguments,
-    region,
-    evaluate = function(source_region){
-      .prior_region_linear_base(prior_list, weights, source_transforms,
-                                source_region, n_grid)
-    },
-    hull = function(){
-      .prior_linear_combination_support_hull(prior_list, weights, source_transforms)
-    }
-  )
-}
-
-# Mirrors .prior_density_ordinate_context_classifier(): each model or
-# conditional component is evaluated with the full budget and weighted by its
-# probability.
-.prior_region_context <- function(context, weights, source_transforms,
-                                  transformation, transformation_arguments,
-                                  region){
-
-  if(inherits(context, "prior_density_context")){
-    standardized <- tryCatch(
-      .prior_density_context_standardized_weights(context, weights),
-      error = function(e) NULL
-    )
-    if(is.null(standardized)){
-      return(.prior_region_unavailable())
-    }
-    if(!is.null(source_transforms)){
-      source_transforms <- source_transforms[names(standardized)]
-    }
-    return(.prior_region_linear_arguments(list(
-      prior_list                      = context$prior_list,
-      n_grid                          = context$n_grid,
-      weights                         = standardized,
-      source_transforms               = source_transforms,
-      output_transformation           = transformation,
-      output_transformation_arguments = transformation_arguments
-    ), region))
-  }
-
-  hull <- function(){
-    .prior_linear_context_support_hull(context, weights, source_transforms)
-  }
-  if(inherits(context, "prior_density_model_mixture_context")){
-    evaluate <- function(source_region){
-      component_indices <- which(context$model_weights > 0)
-      results <- lapply(component_indices, function(model_i){
-        model_prior_list <- lapply(context$prior_list, function(parameter_priors){
-          if(is.prior(parameter_priors)) parameter_priors else parameter_priors[[model_i]]
-        })
-        for(parameter in names(model_prior_list)){
-          if(is.null(model_prior_list[[parameter]])){
-            model_prior_list[[parameter]] <- prior("point", list(location = 0))
-          }
-        }
-        .prior_region_linear_base(
-          model_prior_list, weights, source_transforms, source_region,
-          n_grid = context$n_grid
-        )
-      })
-      .prior_region_combine(results, context$model_weights[component_indices])
-    }
-    return(.prior_region_transformed(transformation, transformation_arguments,
-                                     region, evaluate, hull))
-  }
-
-  if(inherits(context, "prior_density_conditional_context")){
-    evaluate <- function(source_region){
-      component_indices <- which(context$model_weights > 0)
-      results <- lapply(context$prior_lists[component_indices], function(prior_list){
-        if(!is.null(context$formula_scale) && length(context$formula_scale) > 0L){
-          component_context <- .prior_density_context(
-            prior_list,
-            context$column_names,
-            context$formula_scale,
-            context$n_grid,
-            context$tail_prob
-          )
-          return(.prior_region_context(
-            component_context, weights, source_transforms, NULL, NULL,
-            source_region
-          ))
-        }
-        .prior_region_linear_base(
-          prior_list, weights, source_transforms, source_region,
-          n_grid = context$n_grid
-        )
-      })
-      .prior_region_combine(results, context$model_weights[component_indices])
-    }
-    return(.prior_region_transformed(transformation, transformation_arguments,
-                                     region, evaluate, hull))
-  }
-
-  .prior_region_unavailable()
-}
-
-# Mirrors .prior_density_ordinate_from_adaptive(); NULL without recorded
-# provenance.
+# Region probability through the structural route of a recorded prior density
+# (R/prior-density-route.R); NULL without recorded provenance.
 .prior_region_from_adaptive <- function(adaptive, region){
 
-  if(!is.list(adaptive) || !is.character(adaptive$kind) ||
-     length(adaptive$kind) != 1L || !is.list(adaptive$arguments)){
+  route <- .prior_density_route_from_adaptive(adaptive)
+  if(is.null(route)){
     return(NULL)
   }
-  arguments <- adaptive$arguments
-  if(identical(adaptive$kind, "linear_combination")){
-    return(.prior_region_linear_arguments(arguments, region))
-  }
-  if(identical(adaptive$kind, "density_context")){
-    return(.prior_region_context(
-      arguments$context,
-      arguments$weights,
-      arguments$source_transforms,
-      arguments$output_transformation,
-      arguments$output_transformation_arguments,
-      region
-    ))
-  }
-  if(identical(adaptive$kind, "density_context_rows")){
-    weights <- arguments$weights
-    if(!is.numeric(weights) || anyNA(weights) || any(!is.finite(weights))){
-      return(.prior_region_unavailable())
-    }
-    if(is.null(dim(weights))){
-      weights <- matrix(weights, nrow = 1L, dimnames = list(NULL, names(weights)))
-    }
-    weights <- as.matrix(weights)
-    if(nrow(weights) == 0L){
-      return(.prior_region_atoms(0, 1, region))
-    }
-    row_keys <- apply(weights, 1L, function(row){
-      paste(sprintf("%a", row), collapse = "\r")
-    })
-    unique_keys <- unique(row_keys)
-    row_counts <- tabulate(match(row_keys, unique_keys), nbins = length(unique_keys))
-    row_indices <- match(unique_keys, row_keys)
-    # each distinct row is an independent probability with the full budget
-    results <- lapply(row_indices, function(row_i){
-      .prior_region_context(
-        arguments$context,
-        weights[row_i, ],
-        arguments$source_transforms,
-        arguments$output_transformation,
-        arguments$output_transformation_arguments,
-        region
-      )
-    })
-    return(.prior_region_combine(results, row_counts))
-  }
-  NULL
+  .prior_density_route_region(route, region)
 }
 
 # Prior probability of 'region' from the deterministic provenance of a

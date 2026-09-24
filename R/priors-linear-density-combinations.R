@@ -1184,14 +1184,14 @@
 }
 
 # Each leaf of the expansion is an independent quadrature with the full
-# evaluation budget. The number of leaves is capped at the number of initial
-# quadrature rules the budget admits, which bounds the combinatorial expansion
+# evaluation budget. The number of leaves is capped by the shared leaf cap
+# (.prior_density_route_leaf_cap()), which bounds the combinatorial expansion
 # before any numerical evaluation.
 .prior_conditional_normal_expansion <- function(prior_list, split, source_transforms, n_grid){
 
   groups <- .prior_conditional_normal_groups(prior_list, split)
   if(is.null(groups)) return(NULL)
-  max_leaves <- floor(n_grid / .prior_conditional_normal_initial_evaluations(groups$bounds))
+  max_leaves <- .prior_density_route_leaf_cap(n_grid)
   if(max_leaves < 1) return(NULL)
   inspect_group <- function(group, limit){
     prior <- group$prior
@@ -1737,16 +1737,10 @@
     if(inherits(density_context, "prior_density_model_mixture_context")){
       models <- which(density_context$model_weights > 0)
       return(range(unlist(lapply(models, function(model_i){
-        model_prior_list <- lapply(density_context$prior_list, function(parameter_priors){
-          if(is.prior(parameter_priors)) parameter_priors else parameter_priors[[model_i]]
-        })
-        names(model_prior_list) <- names(density_context$prior_list)
-        for(parameter in names(model_prior_list)){
-          if(is.null(model_prior_list[[parameter]])){
-            model_prior_list[[parameter]] <- prior("point", list(location = 0))
-          }
-        }
-        combination_range(model_prior_list, weights, source_transforms)
+        combination_range(
+          .prior_density_model_prior_list(density_context$prior_list, model_i),
+          weights, source_transforms
+        )
       }))))
     }
     if(inherits(density_context, "prior_density_conditional_context")){
@@ -2159,16 +2153,10 @@
   if(inherits(context, "prior_density_model_mixture_context")){
     models <- which(is.finite(context$model_weights) & context$model_weights > 0)
     return(union_hull(lapply(models, function(model_i){
-      model_prior_list <- lapply(context$prior_list, function(parameter_priors){
-        if(is.prior(parameter_priors)) parameter_priors else parameter_priors[[model_i]]
-      })
-      names(model_prior_list) <- names(context$prior_list)
-      for(parameter in names(model_prior_list)){
-        if(is.null(model_prior_list[[parameter]])){
-          model_prior_list[[parameter]] <- prior("point", list(location = 0))
-        }
-      }
-      .prior_linear_combination_support_hull(model_prior_list, weights, source_transforms)
+      .prior_linear_combination_support_hull(
+        .prior_density_model_prior_list(context$prior_list, model_i),
+        weights, source_transforms
+      )
     })))
   }
   if(inherits(context, "prior_density_conditional_context")){
@@ -2380,17 +2368,9 @@
   single <- length(indices) < 2L
   if(inherits(context, "prior_density_model_mixture_context")){
     components <- lapply(indices, function(model_i){
-      model_prior_list <- lapply(context$prior_list, function(parameter_priors){
-        if(is.prior(parameter_priors)) parameter_priors else parameter_priors[[model_i]]
-      })
-      names(model_prior_list) <- names(context$prior_list)
-      for(parameter in names(model_prior_list)){
-        if(is.null(model_prior_list[[parameter]])){
-          model_prior_list[[parameter]] <- prior("point", list(location = 0))
-        }
-      }
       .prior_linear_mixture_terms(
-        model_prior_list, weights, source_transforms, value,
+        .prior_density_model_prior_list(context$prior_list, model_i),
+        weights, source_transforms, value,
         context$n_grid, context$tail_prob, grid_spacing, single
       )
     })
@@ -2445,7 +2425,7 @@
     multiply_by <- attr(prior, "multiply_by", exact = TRUE)
     if(is.character(multiply_by) && length(multiply_by) == 1L) multiply_by else NULL
   }))
-  plan <- .prior_density_ordinate_mixture_plan(prior_list, c(active, multipliers), n_grid)
+  plan <- .prior_density_route_mixture_expansion(prior_list, c(active, multipliers), n_grid)
   if(!is.null(plan)){
     components <- lapply(plan$prior_lists, function(component_priors){
       .prior_linear_mixture_terms(

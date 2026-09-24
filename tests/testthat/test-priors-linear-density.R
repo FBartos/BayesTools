@@ -218,7 +218,7 @@ test_that("conditional-normal mixtures preflight expansion before numerical eval
 
   # Nested stored metadata are counted recursively even though constructors
   # currently reject nesting. Three positive leaves exceed the leaf cap of
-  # 42 / 21 = 2 initial quadrature rules.
+  # 42 / 15 = 2 initial quadrature rules.
   nested <- prior_mixture(list(prior("point", list(0)), prior("normal", list(0, 1))))
   nested[[2L]] <- prior_mixture(list(prior("normal", list(0, 1)), prior("normal", list(0, 2))))
   attr(nested, "multiply_by") <- "s"
