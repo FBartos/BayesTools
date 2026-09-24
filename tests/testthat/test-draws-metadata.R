@@ -396,6 +396,70 @@ test_that("producers store their draw metadata in the container only", {
   as_mixed_posteriors(fit, c("mu", "sigma"))
 }
 
+test_that("producers declare averaged draws and posterior_atoms_free() reads the declared atoms", {
+
+  set.seed(1)
+  posterior <- cbind(
+    mu           = c(rep(0, 100), stats::rnorm(300, .5, .2)),
+    mu_indicator = rep(c(0, 1), c(100, 300)),
+    sigma        = stats::rlnorm(400, 0, .2)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(
+    mu    = prior_spike_and_slab(prior("normal", list(0, 1))),
+    sigma = prior("lognormal", list(0, 1))
+  )
+  fit <- attach_test_parameter_map(fit)
+  fit <- BayesTools:::.bt_attach_parameter_map(fit, monitor_names = colnames(posterior))
+
+  averaged <- as_mixed_posteriors(fit, c("mu", "sigma"))
+  conditional <- as_mixed_posteriors(fit, c("mu", "sigma"), conditional = "mu")
+  expect_true(posterior_metadata(averaged, "condition")$averaged)
+  expect_true(posterior_metadata(averaged$sigma, "condition")$averaged)
+  expect_false(posterior_metadata(conditional, "condition")$averaged)
+  expect_false(posterior_metadata(conditional$sigma, "condition")$averaged)
+  expect_true(posterior_metadata(
+    marginal_posterior(averaged, "sigma", prior_samples = TRUE), "condition"
+  )$averaged)
+  expect_false(posterior_metadata(
+    marginal_posterior(conditional, "sigma", prior_samples = TRUE), "condition"
+  )$averaged)
+  expect_error(
+    .bt_meta_set(averaged$sigma, "condition", list(averaged = NA)),
+    "Draw metadata 'condition' is invalid: 'averaged' must be TRUE or FALSE.",
+    fixed = TRUE
+  )
+
+  # level comparisons read 'averaged', not the condition keys
+  level <- function(values, key){
+    .bt_meta_update(
+      structure(values, class = c("marginal_posterior.simple", "numeric")),
+      condition = list(condition_key = key, averaged = TRUE)
+    )
+  }
+  levels <- list(a = level(stats::rnorm(20), "first"), b = level(stats::rnorm(20), "second"))
+  expect_true(BayesTools:::.hypothesis_validate_level_conditionals(levels, "mu", c("a", "b")))
+  levels$b <- .bt_meta_set(levels$b, "condition", list(condition_key = "second", averaged = FALSE))
+  expect_error(
+    BayesTools:::.hypothesis_validate_level_conditionals(levels, "mu", c("a", "b")),
+    "different conditional posterior subsets", fixed = TRUE
+  )
+
+  # the spike of 'mu' is a declared atom; 'sigma' is declared atom-free
+  expect_false(posterior_atoms_free(averaged$mu))
+  expect_true(posterior_atoms_free(averaged$sigma))
+  expect_true(posterior_atoms_free(conditional$sigma))
+  undeclared <- structure(stats::rnorm(10), class = c("marginal_posterior.simple", "marginal_posterior"))
+  expect_false(posterior_atoms_free(undeclared))
+  posterior_metadata(undeclared, "atoms") <- posterior_atom_attribute()
+  expect_true(posterior_atoms_free(undeclared))
+  expect_error(posterior_atoms_free(as.numeric(averaged$sigma)),
+               "'posterior_atoms_free' requires BayesTools posterior draws, not plain numeric draws",
+               fixed = TRUE)
+  expect_error(posterior_atoms_free(averaged$sigma + 1), "plain numeric draws", fixed = TRUE)
+})
+
 test_that("arithmetic, math, and subsetting of draws return plain numerics", {
 
   mixed    <- .draws_metadata_mixed_for_test()

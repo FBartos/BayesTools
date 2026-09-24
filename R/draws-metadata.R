@@ -35,7 +35,7 @@
 .bt_meta_condition_names <- c(
   "conditional", "conditional_rule", "condition_key", "condition_event",
   "resolved_condition_event", "effective_conditional",
-  "effective_conditional_rule"
+  "effective_conditional_rule", "averaged"
 )
 
 # Validators of the draw-metadata fields: each returns NULL for a valid value
@@ -164,6 +164,10 @@
         if(!is.null(value[[name]]) && !is.list(value[[name]])){
           return(paste0("'", name, "' must be a condition event"))
         }
+      }
+      if(!is.null(value[["averaged"]]) &&
+         !(isTRUE(value[["averaged"]]) || isFALSE(value[["averaged"]]))){
+        return("'averaged' must be TRUE or FALSE")
       }
       NULL
     },
@@ -541,9 +545,13 @@
 #'   [posterior_ordinate_attribute()] or [posterior_ordinate_append()].}
 #'   \item{\code{"condition"}}{the conditioning of the draws: a list with
 #'   \code{conditional}, \code{conditional_rule}, \code{condition_key},
-#'   \code{condition_event}, \code{resolved_condition_event}, and, for
-#'   levels whose conditioning was resolved per level,
-#'   \code{effective_conditional} and \code{effective_conditional_rule}.}
+#'   \code{condition_event}, \code{resolved_condition_event},
+#'   \code{averaged} (\code{TRUE} when the draws are not conditioned on any
+#'   event, i.e., the unconditional model-averaged posterior; \code{FALSE}
+#'   otherwise), and, for levels whose conditioning was resolved per level,
+#'   \code{effective_conditional} and \code{effective_conditional_rule}.
+#'   Read \code{averaged} instead of comparing \code{condition_key} with a
+#'   literal key.}
 #'   \item{\code{"linear_weights"}}{the weights of the fitted coordinates
 #'   that form a level of a [marginal_posterior()] (a named numeric vector,
 #'   or a matrix with one row per draw).}

@@ -32,6 +32,39 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
   )
 }
 
+#' @title Whether posterior draws are declared atom-free
+#'
+#' @description Reads the declared posterior atoms of BayesTools posterior
+#' draws (the \code{atoms} metadata, see [posterior_metadata()]) and reports
+#' whether the draws are structurally atom-free.
+#'
+#' @param x BayesTools posterior draws, e.g. an element returned by
+#' [as_mixed_posteriors()] or [marginal_posterior()].
+#'
+#' @return \code{TRUE} when atoms are declared and none has positive mass;
+#' \code{FALSE} when the draws declare a point mass or do not declare their
+#' atom status. Plain numeric draws, which carry no metadata, are an error.
+#'
+#' @examples
+#' draws <- structure(stats::rnorm(10), class = c("marginal_posterior.simple", "marginal_posterior"))
+#' posterior_atoms_free(draws)
+#' posterior_metadata(draws, "atoms") <- posterior_atom_attribute()
+#' posterior_atoms_free(draws)
+#'
+#' @export
+posterior_atoms_free <- function(x){
+
+  if(is.null(.bt_meta_container(x)) &&
+     !inherits(x, c("mixed_posteriors", "marginal_posterior"))){
+    .bt_draws_stop_plain(
+      "'posterior_atoms_free' requires BayesTools posterior draws, not plain numeric draws"
+    )
+  }
+  atoms <- .posterior_atoms_get(x)
+
+  !is.null(atoms) && nrow(atoms$locations) == 0L
+}
+
 .posterior_atoms_new <- function(locations = NULL, mass = numeric(),
                                  column_names = NULL,
                                  source = "structural",

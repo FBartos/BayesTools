@@ -37,7 +37,16 @@ product-space or conditional prior mixtures; when \code{NULL}, the fitted
 }
 \value{
 \code{JAGS_formula_coefficient_transform()} returns a
-\code{BayesTools_formula_coefficient_transform} list.
+\code{BayesTools_formula_coefficient_transform} list (schema version 2). Its
+\code{targets} data frame has one row per original-scale target with the
+\code{structural_status}, \code{fixed_value} and \code{reason} of the target, its
+\code{map_type} (\code{"identity"}: the target is its own fitted source, including a
+log-transformed source with an exp output; \code{"affine"}: a linear
+combination of fitted sources; \code{"exp_affine"}: exp of a linear combination
+of identity and log-transformed sources; \code{"unsupported"}: any other map),
+and the \code{support} of the map (a list column of \code{c(lower, upper)}:
+\code{c(0, Inf)} for maps with an exp output and \code{c(-Inf, Inf)} otherwise; the
+prior support of a target can be narrower).
 \code{JAGS_formula_coefficient_transform_schema()} returns field descriptions.
 \code{JAGS_formula_prior_density()} returns a \code{prior_linear_density} accepted by
 \code{\link[=prior_density_ordinate]{prior_density_ordinate()}}.

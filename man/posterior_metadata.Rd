@@ -37,9 +37,13 @@ precomputed posterior ordinates created with
 \code{\link[=posterior_ordinate_attribute]{posterior_ordinate_attribute()}} or \code{\link[=posterior_ordinate_append]{posterior_ordinate_append()}}.}
 \item{\code{"condition"}}{the conditioning of the draws: a list with
 \code{conditional}, \code{conditional_rule}, \code{condition_key},
-\code{condition_event}, \code{resolved_condition_event}, and, for
-levels whose conditioning was resolved per level,
-\code{effective_conditional} and \code{effective_conditional_rule}.}
+\code{condition_event}, \code{resolved_condition_event},
+\code{averaged} (\code{TRUE} when the draws are not conditioned on any
+event, i.e., the unconditional model-averaged posterior; \code{FALSE}
+otherwise), and, for levels whose conditioning was resolved per level,
+\code{effective_conditional} and \code{effective_conditional_rule}.
+Read \code{averaged} instead of comparing \code{condition_key} with a
+literal key.}
 \item{\code{"linear_weights"}}{the weights of the fitted coordinates
 that form a level of a \code{\link[=marginal_posterior]{marginal_posterior()}} (a named numeric vector,
 or a matrix with one row per draw).}

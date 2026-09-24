@@ -515,13 +515,16 @@
 .hypothesis_validate_level_conditionals <- function(posterior, parameter,
                                                     levels) {
 
-  keys <- vapply(levels, function(level) {
-    .hypothesis_level_condition_key(posterior[[level]])
-  }, character(1))
-  if(all(keys == "<averaged>")){
+  averaged <- vapply(levels, function(level) {
+    .hypothesis_level_averaged(posterior[[level]])
+  }, logical(1))
+  if(all(averaged)){
     return(invisible(TRUE))
   }
 
+  keys <- vapply(levels, function(level) {
+    .hypothesis_level_condition_key(posterior[[level]])
+  }, character(1))
   if(length(unique(keys)) > 1L){
     stop(
       "Level comparison for parameter '", parameter,
@@ -532,6 +535,25 @@
   }
 
   return(invisible(TRUE))
+}
+
+
+# Whether a level holds the unconditional (model-averaged) posterior: the
+# 'averaged' element its producer stored in the 'condition' metadata; for
+# levels without it, no conditioning labels and no condition key.
+.hypothesis_level_averaged <- function(level) {
+
+  averaged <- .bt_meta_condition(level, "averaged")
+  if(!is.null(averaged)){
+    return(isTRUE(averaged))
+  }
+  conditional <- .bt_meta_condition(level, "effective_conditional")
+  if(is.null(conditional)){
+    conditional <- .bt_meta_condition(level, "conditional")
+  }
+
+  .condition_is_averaged(conditional) &&
+    is.null(.bt_meta_condition(level, "condition_key"))
 }
 
 

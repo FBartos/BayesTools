@@ -1839,6 +1839,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     condition[["conditional"]]      <- conditional
     condition[["conditional_rule"]] <- conditional_rule
     condition[["condition_key"]]    <- condition_key
+    condition[["averaged"]]         <- .condition_is_averaged(conditional)
     if(!is.null(condition_event)){
       condition[["condition_event"]]          <- condition_event
       condition[["resolved_condition_event"]] <- condition_event

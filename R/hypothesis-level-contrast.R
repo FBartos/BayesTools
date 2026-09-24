@@ -183,7 +183,7 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
   condition <- .bt_meta_get(posterior[[levels[[1L]]]], "condition")
   condition <- condition[intersect(names(condition), c(
     "conditional", "conditional_rule", "condition_key", "condition_event",
-    "resolved_condition_event"
+    "resolved_condition_event", "averaged"
   ))]
   values <- .bt_meta_set(values, "condition", if(length(condition) > 0L) condition)
 

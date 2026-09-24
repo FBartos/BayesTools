@@ -55,7 +55,7 @@ test_that("formula coefficient transforms expose the sample transformation", {
   transform <- JAGS_formula_coefficient_transform(fit, "mu")
 
   expect_s3_class(transform, "BayesTools_formula_coefficient_transform")
-  expect_identical(transform$schema_version, 1L)
+  expect_identical(transform$schema_version, 2L)
   expect_identical(transform$formula_design_version, 4L)
   expect_identical(transform$parameter_map_version, 7L)
   expect_identical(transform$source_names, source_names)
@@ -84,6 +84,9 @@ test_that("formula coefficient transforms expose the sample transformation", {
     transform$targets$structural_status,
     rep("dependent", 4L)
   )
+  # every scaled target is a linear combination of identity sources
+  expect_identical(transform$targets$map_type, rep("affine", 4L))
+  expect_identical(transform$targets$support, rep(list(c(-Inf, Inf)), 4L))
 
   samples <- matrix(
     c(0.2, -0.5, 0.75, -1, 2, 0.4),
@@ -573,6 +576,19 @@ test_that("formula coefficient transforms require current linked schemas", {
   source_names <- .formula_coefficient_source_names(formula_result)
   fit <- .formula_coefficient_density_fit(formula_result, source_names)
   transform <- JAGS_formula_coefficient_transform(fit, "mu")
+  # unscaled targets are their own sources
+  expect_identical(transform$targets$map_type, c("identity", "identity"))
+  expect_identical(transform$targets$support, list(c(-Inf, Inf), c(-Inf, Inf)))
+  schema <- JAGS_formula_coefficient_transform_schema()
+  expect_match(schema$description[schema$field == "targets"], "map type", fixed = TRUE)
+  # a log source without an exp output is not a supported map
+  expect_identical(
+    BayesTools:::.bt_formula_coefficient_map_type(
+      weights = c(mu_intercept = 1, mu_x = -2), target = "mu_intercept",
+      source_transforms = c("log", "identity"), output_transform = "identity"
+    ),
+    "unsupported"
+  )
 
   stale_design <- transform
   stale_design$formula_design_version <-
@@ -780,6 +796,9 @@ test_that("log-intercept formula densities apply source and output Jacobians", {
     transform$output_transforms,
     c(mu_intercept = "exp", mu_x = "identity")
   )
+  # exp(log intercept - slope * mean / sd) and slope / sd
+  expect_identical(transform$targets$map_type, c("exp_affine", "affine"))
+  expect_identical(transform$targets$support, list(c(0, Inf), c(-Inf, Inf)))
 
   density <- JAGS_formula_prior_density(
     fit,
@@ -835,6 +854,9 @@ test_that("unscaled log-intercepts retain their positive-scale transform", {
       dimnames = list("log_tau_intercept", "log_tau_intercept")
     )
   )
+  # exp(log(s)) is the positive source itself
+  expect_identical(transform$targets$map_type, "identity")
+  expect_identical(transform$targets$support, list(c(0, Inf)))
 
   positive_draws <- matrix(
     c(0.25, 1, 4),

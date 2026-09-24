@@ -188,6 +188,15 @@ old behaviour.
   complete factor metadata that formula factor terms carry: the number and
   names of its levels, its contrast, and the design mapping its coefficients
   to the levels. `levels` is the number of levels or their names.
+- `JAGS_formula_coefficient_transform()` (schema version 2) classifies the map
+  of each original-scale target in `targets$map_type` (`"identity"`,
+  `"affine"`, `"exp_affine"` or `"unsupported"`) and records the image of
+  the map in `targets$support` (`c(0, Inf)` for exp outputs); the `condition`
+  draw metadata carry a logical `averaged` field (unconditional draws), set
+  by `as_mixed_posteriors()`, `marginal_posterior()` and marginal inference
+  and read by level comparisons instead of a literal condition key; and the
+  new predicate `posterior_atoms_free()` reports whether posterior draws
+  declare their atoms and have none (plain numeric draws are an error).
 - adds `prior_ordinate_status()`, the exactness rule of point hypotheses as
   data: one row per value with `value`, `eligible`, the `condition` class and
   `reason` message a point hypothesis at that value stops with (`NA` when

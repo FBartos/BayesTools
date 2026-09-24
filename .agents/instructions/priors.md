@@ -354,6 +354,9 @@ flags, linear weights, conditioning) live in one validated attribute,
 `bayestools_meta` (`R/draws-metadata.R`). Read and write them only through
 `.bt_meta_get()`/`.bt_meta_set()` (the public `posterior_metadata()` for
 downstream packages), never as free attributes; a unit lint test enforces it.
+Producers of the `condition` field set its logical `averaged` element
+(unconditional draws), which consumers read instead of comparing condition
+keys with a literal.
 Posterior atoms come only from the `atoms` field, never from the point masses
 of a precomputed posterior density. The component of a draw has one encoding:
 `component` indexes the declared component list, with `component_source` the

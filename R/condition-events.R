@@ -18,6 +18,15 @@
   paste0(c(length(conditional), conditional), collapse = "\r")
 }
 
+# Whether draws conditioned on 'conditional' are the unconditional
+# (model-averaged) posterior: no conditioning labels. Producers store it as
+# the 'averaged' element of the 'condition' draw metadata, which consumers
+# read instead of comparing condition keys.
+.condition_is_averaged <- function(conditional){
+
+  length(.condition_normalize_labels(conditional)) == 0L
+}
+
 .condition_event_key <- function(conditional, conditional_rule = "AND"){
 
   if(is.null(conditional_rule)){
@@ -81,7 +90,8 @@
     conditional_rule         = condition_event[["conditional_rule"]],
     condition_key            = condition_event[["condition_key"]],
     condition_event          = condition_event,
-    resolved_condition_event = condition_event
+    resolved_condition_event = condition_event,
+    averaged                 = .condition_is_averaged(condition_event[["conditional"]])
   )
   if(effective){
     condition[["effective_conditional"]]      <- condition_event[["conditional"]]

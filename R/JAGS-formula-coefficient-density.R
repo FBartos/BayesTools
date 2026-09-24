@@ -1,6 +1,6 @@
 # Versioned fixed-coefficient transforms and induced prior densities.
 
-.bt_formula_coefficient_transform_version <- 1L
+.bt_formula_coefficient_transform_version <- 2L
 
 #' Formula coefficient transformations and induced prior densities
 #'
@@ -33,7 +33,16 @@
 #'   `prior_list` is used.
 #'
 #' @return `JAGS_formula_coefficient_transform()` returns a
-#' `BayesTools_formula_coefficient_transform` list.
+#' `BayesTools_formula_coefficient_transform` list (schema version 2). Its
+#' `targets` data frame has one row per original-scale target with the
+#' `structural_status`, `fixed_value` and `reason` of the target, its
+#' `map_type` (`"identity"`: the target is its own fitted source, including a
+#' log-transformed source with an exp output; `"affine"`: a linear
+#' combination of fitted sources; `"exp_affine"`: exp of a linear combination
+#' of identity and log-transformed sources; `"unsupported"`: any other map),
+#' and the `support` of the map (a list column of `c(lower, upper)`:
+#' `c(0, Inf)` for maps with an exp output and `c(-Inf, Inf)` otherwise; the
+#' prior support of a target can be narrower).
 #' `JAGS_formula_coefficient_transform_schema()` returns field descriptions.
 #' `JAGS_formula_prior_density()` returns a `prior_linear_density` accepted by
 #' [prior_density_ordinate()].
@@ -197,7 +206,11 @@ JAGS_formula_coefficient_transform_schema <- function(){
       "Named identity/exp transform for every target.",
       "One row per exact nonzero target/source coefficient.",
       "Registry-linked source monitor status and fixed value.",
-      "Target structural/dependent status and exact fixed value."
+      paste0(
+        "Target structural/dependent status, exact fixed value, map type ",
+        "(identity, affine, exp_affine, or unsupported), and the support of ",
+        "the map as a list column of c(lower, upper)."
+      )
     ),
     stringsAsFactors = FALSE
   )
@@ -493,12 +506,55 @@ JAGS_formula_prior_density <- function(
       structural_status = status,
       fixed_value = fixed_value,
       reason = reason,
+      map_type = .bt_formula_coefficient_map_type(
+        weights = stats::setNames(
+          matrix[target_i, dependencies],
+          colnames(matrix)[dependencies]
+        ),
+        target = rownames(matrix)[target_i],
+        source_transforms = sources$source_transform[dependencies],
+        output_transform = output_transforms[[target_i]]
+      ),
       stringsAsFactors = FALSE
     )
   }
   out <- do.call(rbind, rows)
   rownames(out) <- NULL
+  # the image of each target's map: exp outputs are positive
+  out$support <- unname(lapply(output_transforms, function(output_transform){
+    if(identical(output_transform, "exp")) c(0, Inf) else c(-Inf, Inf)
+  }))
   out
+}
+
+# The type of the map from the fitted sources to one original-scale target:
+# "identity" (the target is its own source: an identity source and output,
+# or a log source with an exp output), "affine" (a linear combination of
+# identity sources), "exp_affine" (exp of a linear combination of identity
+# and log sources), or "unsupported" (a log source without an exp output).
+.bt_formula_coefficient_map_type <- function(weights, target,
+                                             source_transforms,
+                                             output_transform){
+
+  sources <- names(weights)
+  unit <- length(weights) == 1L && identical(sources, target) &&
+    isTRUE(unname(weights) == 1)
+  if(unit && ((identical(unname(source_transforms), "identity") &&
+               identical(output_transform, "identity")) ||
+              (identical(unname(source_transforms), "log") &&
+               identical(output_transform, "exp")))){
+    return("identity")
+  }
+  if(identical(output_transform, "identity") &&
+     all(source_transforms == "identity")){
+    return("affine")
+  }
+  if(identical(output_transform, "exp") &&
+     all(source_transforms %in% c("identity", "log"))){
+    return("exp_affine")
+  }
+
+  "unsupported"
 }
 
 .bt_formula_coefficient_fixed_value <- function(weights, sources,
