@@ -1169,11 +1169,10 @@
   attr(random_term, "random_block") <- random_term$block_name
   attr(random_term, "compile_mode") <- compile_mode
 
+  # The block's term of the linear predictor is emitted by the registered
+  # 'linear_predictor' node from the compiled term.
   return(list(
     random_syntax  = random_syntax,
-    formula_term   = if(!is.null(mean_translation)) {
-      paste0(mean_translation$location_name, "[", mean_translation$group_map_name, "[i],1]")
-    }else if(isTRUE(sampled_random_effect)) paste0(parameter,"[i]") else character(),
     data           = JAGS_data,
     prior_list     = new_prior_list,
     random_scale_terms = random_scale_terms,

@@ -247,20 +247,6 @@
   return(global_breaks)
 }
 
-.selection_jags_step_component_code <- function(selection, component_id, n_bins, global_cuts){
-
-  if(is.null(selection)){
-    return(.bt_dnode_omega_none_component_syntax(component_id = component_id, n_bins = n_bins))
-  }
-
-  return(.bt_dnode_omega_component_syntax(
-    prior           = selection,
-    component_id    = component_id,
-    global_cuts     = global_cuts,
-    force_one_sided = TRUE
-  ))
-}
-
 .selection_jags_active_scalar <- function(prefix, target, indicator_terms, component_ids){
 
   paste0(

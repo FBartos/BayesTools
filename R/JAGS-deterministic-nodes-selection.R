@@ -17,6 +17,10 @@
 # which mirrors the bins of a two-sided weight function. A mixture defines
 #   omega[i] <- sum_k omega_component_k[i] * equals(bias_indicator, k)
 # with 'omega_component_k[i] <- 1' for branches without a selection.
+# selection_backend_spec() writes this syntax into the model from the node
+# specification (.bt_dnode_omega_spec(), .bt_dnode_omega_emit_branch(),
+# .bt_dnode_omega_emit_composition()), placing each branch's weights next to
+# its p-hacking syntax and the mixture composition among the transforms.
 #
 # The free coordinates of a single weight function are the ones bridge
 # sampling uses: 'eta[j]', the monitored 'omega[2]' of a binary cumulative
@@ -222,17 +226,33 @@
   omega
 }
 
-.bt_dnode_omega <- function(parameter, prior){
+# The definition of the weights of the selection priors 'priors' (a prior, a
+# prior mixture, or a list of priors; see .selection_normalize_priors()): the
+# branches, the global one-sided p-value grid (the union of the step-selection
+# cuts, or the validated 'global_breaks' that contain them; c(0, 1) without a
+# step selection), each branch's local bin of every global bin, and the name
+# of the weight node. selection_backend_spec() and the registered 'omega' node
+# are both built from it.
+.bt_dnode_omega_spec <- function(priors, global_breaks = NULL, name = "omega"){
 
-  branches <- lapply(.selection_normalize_priors(prior), .selection_branch_info)
+  branches <- lapply(.selection_normalize_priors(priors), .selection_branch_info)
   has_selection <- vapply(branches, function(branch) !is.null(branch$selection), logical(1))
-  if(!any(has_selection)){
-    return(NULL)
-  }
-  uses_indicator <- length(branches) > 1L
   selections <- lapply(branches[has_selection], function(branch) branch$selection)
-  global_cuts <- weightfunctions_mapping(selections, cuts_only = TRUE, one_sided = TRUE)
-  n_bins <- length(global_cuts) - 1L
+  if(is.null(global_breaks)){
+    global_cuts <- if(length(selections) > 0L){
+      weightfunctions_mapping(selections, cuts_only = TRUE, one_sided = TRUE)
+    }else{
+      c(0, 1)
+    }
+  }else{
+    global_cuts <- .selection_validate_global_breaks(global_breaks)
+    if(length(selections) > 0L){
+      required_cuts <- weightfunctions_mapping(selections, cuts_only = TRUE, one_sided = TRUE)
+      if(!all(vapply(required_cuts, function(x) any(abs(x - global_cuts) < sqrt(.Machine$double.eps)), logical(1)))){
+        stop("'global_breaks' must contain all step-selection p-value breaks.", call. = FALSE)
+      }
+    }
+  }
 
   global_index <- lapply(branches, function(branch){
     if(is.null(branch$selection)){
@@ -241,62 +261,109 @@
     expansion <- .weightfunction_mapping_expansion(branch$selection, force_one_sided = TRUE)
     expansion$index[.weightfunction_global_bin_indices(global_cuts, expansion)]
   })
+
+  list(
+    name = name,
+    branches = branches,
+    has_selection = has_selection,
+    uses_indicator = length(branches) > 1L,
+    global_cuts = global_cuts,
+    global_index = global_index,
+    n_bins = length(global_cuts) - 1L
+  )
+}
+
+# The registered 'omega' node of a prior with a step selection in some branch;
+# NULL otherwise (the unit weights of p-hacking-only priors are not a node).
+.bt_dnode_omega <- function(parameter, prior, spec = .bt_dnode_omega_spec(prior)){
+
+  if(!any(spec$has_selection)){
+    return(NULL)
+  }
+  branches <- spec$branches
   dependencies <- unlist(lapply(seq_along(branches), function(k){
     if(is.null(branches[[k]]$selection)){
       return(character())
     }
     .bt_dnode_omega_free_names(
       branches[[k]]$selection,
-      component_id = if(uses_indicator) k else NULL
+      component_id = if(spec$uses_indicator) k else NULL
     )
   }), use.names = FALSE)
 
   .bt_deterministic_node(
     family = "omega",
-    node = "omega",
-    coordinates = if(n_bins == 1L) "omega" else paste0("omega[", seq_len(n_bins), "]"),
-    dependencies = c(if(uses_indicator) "bias_indicator", dependencies),
+    node = spec$name,
+    coordinates = if(spec$n_bins == 1L){
+      spec$name
+    }else{
+      paste0(spec$name, "[", seq_len(spec$n_bins), "]")
+    },
+    dependencies = c(if(spec$uses_indicator) "bias_indicator", dependencies),
     parameter = parameter,
-    spec = list(
-      branches = branches,
-      uses_indicator = uses_indicator,
-      global_cuts = global_cuts,
-      global_index = global_index,
-      n_bins = n_bins
+    spec = spec
+  )
+}
+
+# JAGS syntax of branch k of the weights: the local weights of its step
+# selection mapped onto the global bins, or unit weights for a mixture branch
+# (or a p-hacking-only prior) without a selection. A single branch writes the
+# weight node directly.
+.bt_dnode_omega_emit_branch <- function(spec, k){
+
+  selection <- spec$branches[[k]]$selection
+  if(spec$uses_indicator){
+    if(is.null(selection)){
+      return(.bt_dnode_omega_none_component_syntax(component_id = k, n_bins = spec$n_bins))
+    }
+    return(.bt_dnode_omega_component_syntax(
+      prior           = selection,
+      component_id    = k,
+      global_cuts     = spec$global_cuts,
+      force_one_sided = TRUE
+    ))
+  }
+
+  syntax <- if(!is.null(selection)){
+    .bt_dnode_omega_component_syntax(
+      prior           = selection,
+      component_id    = NULL,
+      global_cuts     = spec$global_cuts,
+      force_one_sided = TRUE
     )
+  }else if(!is.null(spec$branches[[k]]$phacking)){
+    .bt_dnode_omega_none_component_syntax(component_id = NULL, n_bins = spec$n_bins)
+  }else{
+    character()
+  }
+
+  .selection_rename_jags_node(syntax, "omega", spec$name)
+}
+
+# JAGS syntax of the mixture composition of the weights (none for a single
+# branch).
+.bt_dnode_omega_emit_composition <- function(spec){
+
+  if(!spec$uses_indicator){
+    return(character())
+  }
+
+  .bt_dnode_omega_mixture_syntax(
+    target = spec$name,
+    n_bins = spec$n_bins,
+    indicator_terms = paste0("equals(bias_indicator, ", seq_along(spec$branches), ")")
   )
 }
 
 .bt_dnode_omega_emit <- function(node){
 
   spec <- node$spec
-  pieces <- character()
-  for(k in seq_along(spec$branches)){
-    component_id <- if(spec$uses_indicator) k else NULL
-    selection <- spec$branches[[k]]$selection
-    pieces <- c(pieces, if(is.null(selection)){
-      if(spec$uses_indicator){
-        .bt_dnode_omega_none_component_syntax(component_id, spec$n_bins)
-      }
-    }else{
-      .bt_dnode_omega_component_syntax(
-        prior           = selection,
-        component_id    = component_id,
-        global_cuts     = spec$global_cuts,
-        force_one_sided = TRUE
-      )
-    })
-  }
+  pieces <- unlist(lapply(seq_along(spec$branches), function(k){
+    .bt_dnode_omega_emit_branch(spec, k)
+  }), use.names = FALSE)
   pieces <- sub("[\r\n]+$", "", pieces[nzchar(pieces)])
-  if(spec$uses_indicator){
-    pieces <- c(pieces, .bt_dnode_omega_mixture_syntax(
-      target = "omega",
-      n_bins = spec$n_bins,
-      indicator_terms = paste0("equals(bias_indicator, ", seq_along(spec$branches), ")")
-    ))
-  }
 
-  pieces
+  c(pieces, .bt_dnode_omega_emit_composition(spec))
 }
 
 .bt_dnode_omega_evaluate <- function(node, lookup){

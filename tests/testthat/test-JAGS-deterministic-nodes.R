@@ -641,3 +641,115 @@ test_that("JAGS_evaluate_deterministic() validates its node selection", {
     fixed = TRUE
   )
 })
+
+test_that("JAGS_formula() emits the formula syntax from the linear predictor node", {
+
+  sd_prior <- prior("normal", list(0, 1), list(0, Inf))
+  x_prior <- prior("normal", list(0, 1))
+  attr(x_prior, "multiply_by") <- "b_scale"
+  formula_args <- list(
+    formula = ~ 1 + x + d + expression(0.25 * z[i]) + us(1 + x | g) + ar1(t | s),
+    parameter = "mu",
+    data = .dnode_data(),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = x_prior,
+      d = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+    ),
+    prior_random = prior_random(
+      g = random_block(sd = sd_prior, cor = prior_lkj(eta = 1)),
+      s = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
+    )
+  )
+  output <- do.call(JAGS_formula, formula_args)
+  node <- BayesTools:::.bt_dnode_linear_predictor(output$formula_design)
+  emitted <- BayesTools:::.bt_deterministic_node_emit(node)
+  expect_identical(
+    emitted,
+    paste0(
+      "for(i in 1:N_mu){\n",
+      "  mu[i] = mu_intercept + b_scale * mu_x * mu_data_x[i] + ",
+      "inprod(mu_d, mu_data_d[i,]) + 0.25 * z[i] + mu__xREx__g[i] + mu__xREx__s[i]\n",
+      "}\n"
+    )
+  )
+  expect_identical(substr(output$formula_syntax, 1L, nchar(emitted)), emitted)
+
+  # The node is the only definition of the formula syntax: a different node
+  # emitter gives a different model, with the random-effect syntax unchanged.
+  local_mocked_bindings(
+    .bt_dnode_linear_predictor_emit = function(node) paste0("<", node$node, " node>\n"),
+    .package = "BayesTools"
+  )
+  mocked <- do.call(JAGS_formula, formula_args)
+  expect_identical(
+    mocked$formula_syntax,
+    sub(emitted, "<mu node>\n", output$formula_syntax, fixed = TRUE)
+  )
+})
+
+test_that("selection_backend_spec() emits the weights from the omega node", {
+
+  priors <- list(
+    two_sided = prior_weightfunction("two-sided", c(0.05, 0.1), wf_cumulative(c(1, 2, 1))),
+    phacking_only = prior_bias(phacking = prior_phacking()),
+    mixture = prior_mixture(list(
+      prior_none(),
+      prior_bias(phacking = prior_phacking()),
+      prior_weightfunction("one-sided", c(0.025, 0.05), wf_cumulative(c(1, 1, 1))),
+      prior_weightfunction("two-sided", c(0.05), wf_independent(prior("normal", list(0, 1)), scale = "log_omega"))
+    ), is_null = c(TRUE, FALSE, FALSE, FALSE))
+  )
+  for(name in c("two_sided", "mixture")){
+    spec <- selection_backend_spec(priors[[name]], include_init = FALSE)
+    node <- BayesTools:::.bt_dnode_omega("omega", priors[[name]])
+    expect_identical(node$coordinates, spec$step$coefficient_ids)
+    code <- paste(spec$prior_code, spec$transform_code, sep = "\n")
+    for(piece in BayesTools:::.bt_deterministic_node_emit(node)){
+      expect_true(grepl(piece, code, fixed = TRUE))
+    }
+  }
+  # A p-hacking-only prior has unit weights and no registered node.
+  expect_null(BayesTools:::.bt_dnode_omega("omega", priors$phacking_only))
+  expect_true(grepl(
+    "omega[1] <- 1",
+    selection_backend_spec(priors$phacking_only, include_init = FALSE)$prior_code,
+    fixed = TRUE
+  ))
+
+  # Renamed weights on a finer global grid are the node of that specification.
+  one_sided <- prior_weightfunction("one-sided", c(0.025, 0.5), wf_cumulative(c(1, 1, 1)))
+  breaks <- c(0, 0.01, 0.025, 0.5, 1)
+  custom <- selection_backend_spec(
+    one_sided, names = list(omega = "w"), global_breaks = breaks, include_init = FALSE
+  )
+  custom_node <- BayesTools:::.bt_dnode_omega(
+    "w", one_sided,
+    spec = BayesTools:::.bt_dnode_omega_spec(one_sided, global_breaks = breaks, name = "w")
+  )
+  expect_identical(custom_node$coordinates, custom$step$coefficient_ids)
+  expect_identical(custom_node$coordinates, paste0("w[", 1:4, "]"))
+  for(piece in BayesTools:::.bt_deterministic_node_emit(custom_node)){
+    expect_true(grepl(piece, custom$prior_code, fixed = TRUE))
+  }
+
+  # The node specification is the only definition of the weight syntax.
+  local_mocked_bindings(
+    .bt_dnode_omega_emit_branch = function(spec, k) paste0("<", spec$name, " branch ", k, ">\n"),
+    .bt_dnode_omega_emit_composition = function(spec){
+      if(spec$uses_indicator) paste0("<", spec$name, " composition>") else character()
+    },
+    .package = "BayesTools"
+  )
+  mocked <- selection_backend_spec(priors$mixture, include_init = FALSE)
+  for(k in 1:4){
+    expect_true(grepl(paste0("<omega branch ", k, ">"), mocked$prior_code, fixed = TRUE))
+  }
+  expect_false(grepl("omega_component_", mocked$prior_code, fixed = TRUE))
+  expect_true(grepl("<omega composition>", mocked$transform_code, fixed = TRUE))
+  expect_true(grepl(
+    "<w branch 1>",
+    selection_backend_spec(one_sided, names = list(omega = "w"), include_init = FALSE)$prior_code,
+    fixed = TRUE
+  ))
+})

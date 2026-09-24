@@ -474,8 +474,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   names(model_terms_type) <- gsub(":", "__xXx__", names(model_terms_type))
   model_terms             <- gsub(":", "__xXx__", model_terms)
 
-  # prepare syntax & data based on the formula
-  formula_syntax <- NULL
+  # prepare the data based on the formula; the linear predictor syntax is
+  # emitted from the registered 'linear_predictor' node of the fitted design
+  # (see below)
   random_syntax  <- NULL
   JAGS_data      <- list()
   jags_data_names <- list()
@@ -486,14 +487,14 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     context = paste0("Formula expression for parameter '", parameter, "'")
   )
 
-  # add intercept and prepare the indexing vector; the terms are the registered
-  # 'linear_predictor' node's term syntax
+  # prepare the indexing vector; the intercept term (log(intercept) if the
+  # formula has the log(intercept) attribute) is the node's intercept term
+  intercept_syntax <- NULL
   if(has_intercept){
     terms_indexes    <- attr(model_matrix, "assign") + 1
     terms_indexes[1] <- 0
 
-    # use log(intercept) if the formula has the log(intercept) attribute
-    formula_syntax <- c(formula_syntax, .bt_dnode_linear_predictor_term_syntax(
+    intercept_syntax <- .bt_dnode_linear_predictor_term_syntax(
       .bt_dnode_linear_predictor_term(
         parameter = parameter,
         model_term = "intercept",
@@ -502,7 +503,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
         prior = prior_list[["intercept"]],
         log = log_intercept
       )
-    ))
+    )
   }else{
     terms_indexes    <- attr(model_matrix, "assign")
   }
@@ -533,19 +534,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
           call. = FALSE
         )
       }
-      data_name <- paste0(parameter, "_data_", model_terms[i])
+      data_name <- .bt_dnode_linear_predictor_data_name(parameter, model_terms[i])
       JAGS_data[[data_name]] <- model_matrix[, term_columns]
       jags_data_names[[model_terms[i]]] <- data_name
-
-      formula_syntax <- c(formula_syntax, .bt_dnode_linear_predictor_term_syntax(
-        .bt_dnode_linear_predictor_term(
-          parameter = parameter,
-          model_term = model_terms[i],
-          type = "continuous",
-          columns = term_columns,
-          prior = this_prior
-        )
-      ))
 
     }else if(model_terms_type[i] == "factor"){
 
@@ -610,18 +601,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
         this_prior <- .bt_bind_ordered_prior_metadata(this_prior, paste0(parameter, "_", model_terms[i]))
       }
 
-      data_name <- paste0(parameter, "_data_", model_terms[i])
+      data_name <- .bt_dnode_linear_predictor_data_name(parameter, model_terms[i])
       JAGS_data[[data_name]] <- model_matrix[,terms_indexes == i, drop = FALSE]
       jags_data_names[[model_terms[i]]] <- data_name
-      formula_syntax <- c(formula_syntax, .bt_dnode_linear_predictor_term_syntax(
-        .bt_dnode_linear_predictor_term(
-          parameter = parameter,
-          model_term = model_terms[i],
-          type = "factor",
-          columns = which(terms_indexes == i),
-          prior = this_prior
-        )
-      ))
 
     }else{
       stop("Unrecognized model term.")
@@ -650,12 +632,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 
   }
 
-  # add expressions input back to the formula
-  for(i in seq_along(expressions)){
-    formula_syntax <- c(formula_syntax, .clean_from_expression(expressions[[i]]))
-  }
-
-  # add random effects back to the formula
+  # compile the random effects
   random_scale_terms <- character()
   random_sd_leaves <- list()
   random_correlation_required <- character()
@@ -679,7 +656,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   compiled_random_effects <- parsed_random_effects
   mean_translation_owner <- NULL
   mean_intercept <- if(has_intercept) list(coordinate = paste0(parameter, "_intercept"),
-    expression = formula_syntax[[1L]]) else NULL
+    expression = intercept_syntax) else NULL
   for(random_i in seq_along(parsed_random_effects)){
     random_effect_data <- random_effect_scaled_data
     random_structure <- .bt_random_effect_structure(parsed_random_effects[[random_i]])
@@ -707,12 +684,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
              call. = FALSE)
       }
       mean_translation_owner <- temp_random[["random_effect"]]$block_name
+      # the group locations replace the node's fixed intercept term
       intercept_term <- temp_random[["random_effect"]]$mean_translation$fixed_intercept_expression
-      if(sum(formula_syntax == intercept_term) != 1L){
+      if(is.null(intercept_syntax) || !identical(intercept_term, intercept_syntax)){
         stop("Mean-centered parameterization is unavailable because the fixed-intercept contribution could not be resolved.",
              call. = FALSE)
       }
-      formula_syntax <- formula_syntax[formula_syntax != intercept_term]
     }
 
     for(data_i in seq_along(temp_random[["data"]])){
@@ -730,17 +707,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     }
 
     random_syntax  <- c(random_syntax,  temp_random[["random_syntax"]])
-    formula_syntax <- c(formula_syntax, temp_random[["formula_term"]])
     prior_list     <- c(prior_list, temp_random[["prior_list"]])
     random_scale_terms <- c(random_scale_terms, temp_random[["random_scale_terms"]])
     add_parameters <- c(add_parameters, temp_random[["add_parameters"]])
     jags_modules <- c(jags_modules, temp_random[["jags_modules"]])
     required_packages <- c(required_packages, temp_random[["required_packages"]])
   }
-
-  # finish the syntax
-  formula_syntax <- .bt_dnode_linear_predictor_syntax(parameter, formula_syntax)
-  formula_syntax <- paste0(formula_syntax, paste0(random_syntax, collapse = "\n"), collapse = "\n")
 
   # add the parameter name as a prefix and attribute to each prior in the list
   names(prior_list) <- paste0(parameter, "_", names(prior_list))
@@ -759,7 +731,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   }
 
   output <- list(
-    formula_syntax = formula_syntax,
+    formula_syntax = NULL, # emitted from the fitted design below
     data           = JAGS_data,
     prior_list     = prior_list,
     formula        = formula,
@@ -893,6 +865,13 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     name_map          = name_map,
     random_allocations = random_sd_binding_context$allocations,
     random_effects_interface = random_effects_interface
+  )
+  # The formula syntax is the registered 'linear_predictor' node of the fitted
+  # design, followed by the random-effect syntax.
+  output$formula_syntax <- paste0(
+    .bt_deterministic_node_emit(.bt_dnode_linear_predictor(output$formula_design)),
+    paste0(random_syntax, collapse = "\n"),
+    collapse = "\n"
   )
   # Carry the fitted fixed-effect design with the formula-scale metadata so
   # that every consumer derives original-scale coefficients from the design

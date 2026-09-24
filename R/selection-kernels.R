@@ -321,8 +321,11 @@ selection_backend_spec <- function(priors,
   check_list(names, "names", check_names = c("omega", "alpha", "pi_null", "beta_null", "phack_kind", "phack_z_source", "phack_z_dest"), allow_other = FALSE)
   names <- .selection_backend_names(names)
 
+  # The weights 'omega' are the registered 'omega' node: its specification
+  # defines the branches, the global break grid, and the weight syntax.
   branches <- .selection_normalize_priors(priors)
-  branch_info <- lapply(branches, .selection_branch_info)
+  omega_spec <- .bt_dnode_omega_spec(branches, global_breaks = global_breaks, name = names$omega)
+  branch_info <- omega_spec$branches
 
   has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
   has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
@@ -349,23 +352,8 @@ selection_backend_spec <- function(priors,
     integer(1)
   )
 
-  step_priors <- lapply(branch_info[has_selection], function(x) x$selection)
-  if(is.null(global_breaks)){
-    breaks <- if(length(step_priors) > 0L){
-      weightfunctions_mapping(step_priors, cuts_only = TRUE, one_sided = TRUE)
-    }else{
-      c(0, 1)
-    }
-  }else{
-    breaks <- .selection_validate_global_breaks(global_breaks)
-    if(length(step_priors) > 0L){
-      required_breaks <- weightfunctions_mapping(step_priors, cuts_only = TRUE, one_sided = TRUE)
-      if(!all(vapply(required_breaks, function(x) any(abs(x - breaks) < sqrt(.Machine$double.eps)), logical(1)))){
-        stop("'global_breaks' must contain all step-selection p-value breaks.", call. = FALSE)
-      }
-    }
-  }
-  n_bins <- length(breaks) - 1L
+  breaks <- omega_spec$global_cuts
+  n_bins <- omega_spec$n_bins
 
   prior_weights <- vapply(branches, function(x) x$prior_weights, numeric(1))
   uses_indicator <- length(branches) > 1L
@@ -388,16 +376,9 @@ selection_backend_spec <- function(priors,
 
   for(i in seq_along(branches)){
     component_id <- if(uses_indicator) i else NULL
-    step_code <- if(uses_indicator || !is.null(branch_info[[i]]$selection) || !is.null(branch_info[[i]]$phacking)){
-      .selection_jags_step_component_code(branch_info[[i]]$selection, component_id = component_id, n_bins = n_bins, global_cuts = breaks)
-    }else{
-      character()
-    }
-    if(!uses_indicator){
-      # A single branch writes the public omega node directly; mixtures map
-      # their component nodes onto `names` in the transform code below.
-      step_code <- .selection_rename_jags_node(step_code, "omega", names$omega)
-    }
+    # A single branch writes the public omega node directly; mixtures map
+    # their component nodes onto `names` in the transform code below.
+    step_code <- .bt_dnode_omega_emit_branch(omega_spec, i)
     phacking_code <- if(uses_indicator || !is.null(branch_info[[i]]$phacking)){
       .JAGS_phacking_component_syntax(branch_info[[i]]$phacking, component_id = component_id, names = names)
     }else{
@@ -413,7 +394,7 @@ selection_backend_spec <- function(priors,
   if(uses_indicator){
     transform_code <- c(
       transform_code,
-      .bt_dnode_omega_mixture_syntax(names$omega, n_bins, indicator_terms)
+      .bt_dnode_omega_emit_composition(omega_spec)
     )
 
     transform_code <- c(

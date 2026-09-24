@@ -16,10 +16,18 @@
 #                    'p__xREx__<block>_xRE_MEANx[...]' of a mean-centered block),
 # where m is the term prior's 'multiply_by' (a number or a parameter; the
 # intercept prior cannot carry one, see .bt_validate_formula_term_priors()).
-# The fixed terms are evaluated from one term specification per intercept or
-# model term, with the arithmetic of the JAGS terms: coefficient times
-# multiplier times data column, inner products of factor coefficients, and the
-# terms summed in model order.
+# JAGS_formula() writes this syntax from the node of the fitted design
+# (.bt_dnode_linear_predictor()), and the data columns under the node's data
+# names. The fixed terms are evaluated from one term specification per
+# intercept or model term, with the arithmetic of the JAGS terms: coefficient
+# times multiplier times data column, inner products of factor coefficients,
+# and the terms summed in model order.
+
+# JAGS data name of a model term's design columns.
+.bt_dnode_linear_predictor_data_name <- function(parameter, model_term){
+
+  paste0(parameter, "_data_", model_term)
+}
 
 .bt_dnode_linear_predictor_term <- function(parameter, model_term, type,
                                             columns, prior,
@@ -30,7 +38,7 @@
     model_term = model_term,
     type = type,
     name = paste0(parameter, "_", model_term),
-    data_name = paste0(parameter, "_data_", model_term),
+    data_name = .bt_dnode_linear_predictor_data_name(parameter, model_term),
     columns = columns,
     prior = prior,
     multiply_by = if(!identical(type, "intercept")) attr(prior, "multiply_by", exact = TRUE),
