@@ -52,11 +52,14 @@ allocation (\code{\link[=random_variance_allocation]{random_variance_allocation(
 sampled on the Fisher-z or logit scale, and LKJ Cholesky factors,
 correlation matrices, and partial correlations. Every parameter-catalog
 quantity that depends only on such nodes and on the priors can therefore be
-evaluated on the prior draws (see \code{\link[=parameter_draws]{parameter_draws()}}). Nodes that the model
-samples without a prior in \code{prior_list}, such as standardized latent
+evaluated on the prior draws (see \code{\link[=parameter_draws]{parameter_draws()}}). Standardized latent
 random effects, nodes derived from them, such as realized group
-coefficients, and auxiliary sampling nodes, such as mixture indicators and
-Dirichlet auxiliaries, are not included.
+coefficients, and the auxiliary nodes of mixture, spike-and-slab, and
+Dirichlet priors, such as component indicators, are not included, so
+catalog quantities that depend on them, such as the inclusion quantities of
+mixture priors, cannot be evaluated on the prior draws. Variance-allocation
+inclusion indicators are included, drawn from their inclusion
+probabilities.
 }
 \examples{
 # With a fitted model that used formula_scale:

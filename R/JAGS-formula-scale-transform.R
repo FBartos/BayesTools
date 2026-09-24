@@ -155,11 +155,14 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 #' sampled on the Fisher-z or logit scale, and LKJ Cholesky factors,
 #' correlation matrices, and partial correlations. Every parameter-catalog
 #' quantity that depends only on such nodes and on the priors can therefore be
-#' evaluated on the prior draws (see [parameter_draws()]). Nodes that the model
-#' samples without a prior in \code{prior_list}, such as standardized latent
+#' evaluated on the prior draws (see [parameter_draws()]). Standardized latent
 #' random effects, nodes derived from them, such as realized group
-#' coefficients, and auxiliary sampling nodes, such as mixture indicators and
-#' Dirichlet auxiliaries, are not included.
+#' coefficients, and the auxiliary nodes of mixture, spike-and-slab, and
+#' Dirichlet priors, such as component indicators, are not included, so
+#' catalog quantities that depend on them, such as the inclusion quantities of
+#' mixture priors, cannot be evaluated on the prior draws. Variance-allocation
+#' inclusion indicators are included, drawn from their inclusion
+#' probabilities.
 #'
 #' @return A matrix of prior samples on the original (unscaled) scale, with
 #' columns matching the structure of posterior samples.
