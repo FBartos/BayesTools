@@ -273,6 +273,8 @@ test_that("mix_posteriors handles factor priors", {
     prior_list[[factor_parameter]]
   ))
   factor_names <- paste0(factor_parameter, "{", seq_len(factor_levels), "}")
+  # the fitted JAGS columns keep their backend coordinate names
+  coordinate_names <- paste0(factor_parameter, "[", seq_len(factor_levels), "]")
 
   expect_s3_class(factor_samples, "mixed_posteriors.factor")
   expect_s3_class(factor_samples, "mixed_posteriors.vector")
@@ -305,7 +307,7 @@ test_that("mix_posteriors handles factor priors", {
         byrow = TRUE
       )
     } else {
-      expected <- fit_samples[sample_ind[rows], factor_names, drop = FALSE]
+      expected <- fit_samples[sample_ind[rows], coordinate_names, drop = FALSE]
     }
 
     expect_equal(
