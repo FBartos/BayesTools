@@ -22,7 +22,7 @@ test_that("parameter catalog construction is metadata-only and versioned", {
     prior_list = prior_list
   ))
   expect_s3_class(catalog, "BayesTools_parameter_catalog")
-  expect_identical(catalog$schema_version, 6L)
+  expect_identical(catalog$schema_version, 7L)
   expect_identical(
     names(catalog$quantities),
     .bt_parameter_catalog_quantity_columns
@@ -3357,6 +3357,37 @@ test_that("unnamed local allocations retain owners with multiple blocks", {
   )
 })
 
+test_that("coordinate quantities declare the support of their priors", {
+
+  prior_list <- list(
+    theta = prior("normal", list(0, 1), list(0, Inf)),
+    phi   = prior_spike_and_slab(prior("normal", list(0, 1)))
+  )
+  coordinates <- .bt_build_parameter_coordinates(
+    columns = c("theta", "phi", "extra"),
+    prior_list = prior_list
+  )
+  catalog <- .bt_build_parameter_catalog(coordinates, prior_list = prior_list)
+  quantities <- catalog$quantities
+  support <- stats::setNames(quantities$support, quantities$canonical_name)
+  expect_equal(support$theta$bounds, c(0, Inf))
+  expect_true(support$theta$exact)
+  # a spike-and-slab coefficient: the slab's interval and the spike's point
+  expect_equal(support$phi$bounds, c(-Inf, Inf))
+  expect_identical(support$phi$points, 0)
+  # a coordinate without an owning prior has no declared support
+  expect_null(support$extra)
+  expect_true(all(quantities$definedness == "always"))
+
+  # provider rows must declare both columns
+  provider_rows <- quantities[1L, , drop = FALSE]
+  provider_rows$definedness <- NA_character_
+  expect_error(
+    BayesTools:::.bt_validate_parameter_catalog_tables(provider_rows, catalog$aliases[0, ]),
+    "malformed field types or missing metadata"
+  )
+})
+
 test_that("malformed catalogs and stale selections fail closed", {
 
   coordinates <- .bt_build_parameter_coordinates(columns = "theta")
@@ -3364,7 +3395,7 @@ test_that("malformed catalogs and stale selections fail closed", {
   selection <- parameter_catalog_resolve(catalog, "theta")
 
   broken <- catalog
-  broken$schema_version <- 7L
+  broken$schema_version <- BayesTools:::.bt_parameter_map_version + 1L
   expect_error(
     .bt_validate_parameter_catalog(broken),
     "Refit or rebuild"

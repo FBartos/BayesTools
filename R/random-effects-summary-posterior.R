@@ -143,16 +143,9 @@ random_effects_summary_posterior <- function(
     )
     if(!is.null(prior_density)){
       values <- .bt_meta_set(values, "prior_density", prior_density)
-      values <- .posterior_support_set(
-        values,
-        .posterior_support_new(
-          bounds = attr(prior_density, "support", exact = TRUE),
-          exact = TRUE,
-          source = "prior",
-          type = "interval"
-        )
-      )
     }
+    # the exact support declared by the catalog
+    values <- .posterior_support_set(values, quantity$support[[1L]])
     if(!is.null(atoms)){
       values <- .posterior_atoms_set(values, atoms)
     }

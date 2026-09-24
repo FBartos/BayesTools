@@ -171,13 +171,19 @@ derived quantities. For gated total-variance allocations, realized
 \code{var_prop(...)} draws are normalized over active components and are \code{NA} on
 draws where the realized allocation total is zero. Original-scale
 random-effect correlations (\code{cor(...)} of LKJ blocks) are \code{NA} on draws
-where the correlation is undefined, i.e. where one of its SDs is zero; the
-returned \code{mcmc.list} then carries \code{undefined_draws} metadata
-(\code{\link[=posterior_metadata]{posterior_metadata()}}), a character vector named by the quantity's
-canonical name with value \code{"correlation"}. Summaries such as
-\code{\link[=ensemble_estimates_table]{ensemble_estimates_table()}} accept missing draws only for columns carrying
-this declaration: callers that extract a numeric vector keep it by copying
-the element with \verb{posterior_metadata(x, "undefined_draws") <- }.
+where the correlation is undefined, i.e. where one of its SDs is zero.
+Each catalog quantity declares its \code{definedness} (\code{"always"}, or the reason
+of possibly undefined draws: \code{"correlation"}, or \code{"allocation_active"} for
+the variance shares of gated total-variance allocations) and its exact
+\code{support} from the prior provenance of its source coordinates (\code{NULL} when
+it is not derivable). The \code{mcmc.list} returned by \code{parameter_draws()}
+carries these as draw metadata (\code{\link[=posterior_metadata]{posterior_metadata()}}): \code{support}, keyed by
+canonical name, and \code{undefined_draws}, a character vector named by the
+canonical names of the possibly undefined quantities with their reasons.
+Summaries such as \code{\link[=ensemble_estimates_table]{ensemble_estimates_table()}} accept missing draws only for
+columns carrying this declaration: callers that extract a numeric vector
+keep it by copying the element with
+\verb{posterior_metadata(x, "undefined_draws") <- }.
 
 \code{parameter_prior_density()} constructs a deterministic
 \code{prior_linear_density} for supported map-defined quantities: fitted

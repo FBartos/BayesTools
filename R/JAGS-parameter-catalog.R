@@ -8,7 +8,7 @@
   "parent_quantity_id", "arguments",
   "term", "component", "display_label",
   "fitted_scale", "display_scale", "status", "fixed_value", "internal",
-  "source_type", "extraction_key"
+  "source_type", "support", "definedness", "extraction_key"
 )
 .bt_parameter_catalog_alias_columns <- c(
   "alias", "quantity_id", "namespace", "component", "simplified"
@@ -81,13 +81,19 @@
 #' `var_prop(...)` draws are normalized over active components and are `NA` on
 #' draws where the realized allocation total is zero. Original-scale
 #' random-effect correlations (`cor(...)` of LKJ blocks) are `NA` on draws
-#' where the correlation is undefined, i.e. where one of its SDs is zero; the
-#' returned `mcmc.list` then carries `undefined_draws` metadata
-#' ([posterior_metadata()]), a character vector named by the quantity's
-#' canonical name with value `"correlation"`. Summaries such as
-#' [ensemble_estimates_table()] accept missing draws only for columns carrying
-#' this declaration: callers that extract a numeric vector keep it by copying
-#' the element with `posterior_metadata(x, "undefined_draws") <- `.
+#' where the correlation is undefined, i.e. where one of its SDs is zero.
+#' Each catalog quantity declares its `definedness` (`"always"`, or the reason
+#' of possibly undefined draws: `"correlation"`, or `"allocation_active"` for
+#' the variance shares of gated total-variance allocations) and its exact
+#' `support` from the prior provenance of its source coordinates (`NULL` when
+#' it is not derivable). The `mcmc.list` returned by `parameter_draws()`
+#' carries these as draw metadata ([posterior_metadata()]): `support`, keyed by
+#' canonical name, and `undefined_draws`, a character vector named by the
+#' canonical names of the possibly undefined quantities with their reasons.
+#' Summaries such as [ensemble_estimates_table()] accept missing draws only for
+#' columns carrying this declaration: callers that extract a numeric vector
+#' keep it by copying the element with
+#' `posterior_metadata(x, "undefined_draws") <- `.
 #'
 #' `parameter_prior_density()` constructs a deterministic
 #' `prior_linear_density` for supported map-defined quantities: fitted
@@ -191,7 +197,7 @@ parameter_catalog_schema <- function(){
     field = .bt_parameter_catalog_quantity_columns,
     type = c(
       rep("character", 11L), "list", rep("character", 6L),
-      "numeric", "logical", "character", "list"
+      "numeric", "logical", "character", "list", "character", "list"
     ),
     description = c(
       "Stable provider-namespaced quantity identifier.",
@@ -215,6 +221,8 @@ parameter_catalog_schema <- function(){
       "Exact structural value; otherwise NA.",
       "Whether the quantity is private implementation metadata.",
       "Relationship to concrete source coordinates: identity, one_to_one_transform, composite, or none.",
+      "Exact support of the quantity from the prior provenance of its source coordinates (a posterior_support_attribute() object), or NULL when it is not derivable.",
+      "Draws where the quantity is defined: 'always', or the reason of possibly undefined (NA) draws ('correlation': an SD is zero; 'allocation_active': no allocation component is active).",
       "Serializable plain-data extraction recipe."
     ),
     stringsAsFactors = FALSE
@@ -402,8 +410,29 @@ parameter_draws.BayesTools_fit <- function(object, selection,
   )
 }
 
+# Draws of catalog quantities with the catalog's draw metadata: the exact
+# supports of the quantities, keyed by canonical name, and the quantities
+# whose draws may be undefined (NA) with the reason of their definedness.
 .bt_parameter_draws_from_quantities <- function(
     object, quantities, model_samples = NULL){
+
+  draws <- .bt_parameter_draws_values(object, quantities, model_samples)
+  supports <- stats::setNames(quantities$support, quantities$canonical_name)
+  supports <- supports[!vapply(supports, is.null, logical(1))]
+  if(length(supports) > 0L){
+    draws <- .bt_meta_set(draws, "support", unclass(supports))
+  }
+  undefined <- quantities$definedness != "always"
+  if(any(undefined)){
+    draws <- .bt_meta_set(draws, "undefined_draws", stats::setNames(
+      quantities$definedness[undefined],
+      quantities$canonical_name[undefined]
+    ))
+  }
+  draws
+}
+
+.bt_parameter_draws_values <- function(object, quantities, model_samples = NULL){
 
   if(any(quantities$provider != "BayesTools")){
     stop(
@@ -500,16 +529,7 @@ parameter_draws.BayesTools_fit <- function(object, selection,
       thin = mcpar[3L]
     )
   }
-  out <- coda::mcmc.list(out)
-  # Original-scale random-effect correlations are undefined (NA) in draws with
-  # a zero SD; declare it so that summaries accept those missing draws.
-  if(identical(key$evaluator, "correlation")){
-    out <- .bt_meta_set(out, "undefined_draws", stats::setNames(
-      "correlation",
-      quantities$canonical_name
-    ))
-  }
-  out
+  coda::mcmc.list(out)
 }
 
 #' @rdname parameter_catalog
@@ -1694,9 +1714,11 @@ parameter_transform_jacobian <- function(values, transform){
     fixed_value = numeric(),
     internal = logical(),
     source_type = character(),
+    definedness = character(),
     stringsAsFactors = FALSE
   )
   out$arguments <- I(list())
+  out$support <- I(list())
   out <- out[, setdiff(.bt_parameter_catalog_quantity_columns, "extraction_key"),
              drop = FALSE]
   out$extraction_key <- I(list())
@@ -1749,7 +1771,7 @@ parameter_transform_jacobian <- function(values, transform){
     arguments = character(), source_type = "none", extraction_key){
 
   out <- .bt_parameter_catalog_empty_quantities()
-  scalar_columns <- setdiff(names(out), c("arguments", "extraction_key"))
+  scalar_columns <- setdiff(names(out), c("arguments", "support", "extraction_key"))
   out[1L, scalar_columns] <- list(
     .bt_parameter_catalog_quantity_id(canonical_name, namespace, role),
     canonical_name,
@@ -1770,9 +1792,12 @@ parameter_transform_jacobian <- function(values, transform){
     status,
     fixed_value,
     internal,
-    source_type
+    source_type,
+    "always"
   )
   out$arguments <- I(list(as.character(arguments)))
+  # declared by .bt_parameter_catalog_add_support() when the catalog is built
+  out$support <- I(list(NULL))
   out$extraction_key <- I(list(extraction_key))
   out
 }
@@ -3805,6 +3830,12 @@ parameter_transform_jacobian <- function(values, transform){
   )
   quantities <- rbind(base, factor_map$quantities, random_map$derived)
   rownames(quantities) <- NULL
+  quantities <- .bt_parameter_catalog_add_support(
+    quantities     = quantities,
+    prior_list     = prior_list,
+    formula_design = formula_design,
+    formula_scale  = formula_scale
+  )
   aliases <- .bt_parameter_catalog_aliases(
     quantities,
     formula_design,
@@ -3817,6 +3848,266 @@ parameter_transform_jacobian <- function(values, transform){
     secondary = factor_map$aliases
   )
   .bt_parameter_catalog_new(quantities, aliases)
+}
+
+# Exact support and definedness of the catalog quantities, declared when the
+# catalog is built from the prior provenance of the quantities' source
+# coordinates (never from draws). A support that is not derivable is NULL.
+.bt_parameter_catalog_add_support <- function(quantities, prior_list,
+                                              formula_design = NULL,
+                                              formula_scale = NULL){
+
+  if(nrow(quantities) == 0L){
+    return(quantities)
+  }
+  object <- structure(
+    list(),
+    prior_list     = prior_list,
+    formula_design = formula_design,
+    formula_scale  = formula_scale
+  )
+  quantities$support <- I(lapply(seq_len(nrow(quantities)), function(i){
+    .bt_parameter_catalog_quantity_support(
+      object   = object,
+      quantity = quantities[i, , drop = FALSE]
+    )
+  }))
+  quantities$definedness <- vapply(seq_len(nrow(quantities)), function(i){
+    .bt_parameter_catalog_quantity_definedness(
+      object   = object,
+      quantity = quantities[i, , drop = FALSE]
+    )
+  }, character(1))
+  quantities
+}
+
+.bt_parameter_catalog_quantity_support <- function(object, quantity){
+
+  if(identical(quantity$status, "unavailable")){
+    return(NULL)
+  }
+  if(identical(quantity$status, "structural")){
+    return(.posterior_support_point(quantity$fixed_value, source = "catalog"))
+  }
+  key <- quantity$extraction_key[[1L]]
+  if(key$type %in% c("coordinate", "factor_level")){
+    weights <- if(identical(key$type, "coordinate")){
+      rep(1, length(key$dependencies))
+    }else{
+      key$weights
+    }
+    return(.bt_parameter_catalog_linear_support(
+      prior_list = attr(object, "prior_list", exact = TRUE),
+      weights    = stats::setNames(as.numeric(weights), key$dependencies)
+    ))
+  }
+  if(!identical(key$type, "random_summary")){
+    return(NULL)
+  }
+
+  # one-to-one quantities: the source prior's support mapped by the transform
+  if(key$source_type %in% c("identity", "one_to_one_transform")){
+    source_support <- .bt_parameter_catalog_source_support(object, key)
+    transform <- .bt_parameter_transform_from_quantity(object, quantity)
+    if(!is.null(source_support) && !is.null(transform)){
+      return(.bt_parameter_catalog_transform_support(source_support, transform))
+    }
+  }
+
+  .bt_parameter_catalog_random_support(object, quantity, key)
+}
+
+# Support of a linear combination of fitted coordinates under their priors
+# (a coefficient's 'multiply_by' scales only its linear-predictor
+# contribution); NULL when a coordinate has no owning prior.
+.bt_parameter_catalog_linear_support <- function(prior_list, weights){
+
+  if(!is.list(prior_list) || length(prior_list) == 0L || length(weights) == 0L){
+    return(NULL)
+  }
+  prior_list <- .marginal_posterior_strip_multiply_by(prior_list)
+  owned <- unlist(lapply(names(prior_list), function(parameter){
+    if(!is.prior(prior_list[[parameter]])){
+      return(NULL)
+    }
+    .prior_linear_prior_columns(parameter, prior_list[[parameter]])
+  }), use.names = FALSE)
+  if(!all(names(weights) %in% owned)){
+    return(NULL)
+  }
+  .posterior_support_from_prior_list_weights(prior_list, weights, source = "catalog")
+}
+
+# Support of the source prior of a one-to-one random-effect quantity: the
+# named prior, or the Beta(eta, eta) of an LKJ pairwise correlation.
+.bt_parameter_catalog_source_support <- function(object, key){
+
+  prior_list <- attr(object, "prior_list", exact = TRUE)
+  if(nzchar(key$source_prior) && key$source_prior %in% names(prior_list)){
+    source_prior <- prior_list[[key$source_prior]]
+    if(is.prior.simplex(source_prior)){
+      # a Dirichlet weight lies in (0, 1)
+      return(.posterior_support_new(c(0, 1), source = "catalog", type = "interval"))
+    }
+    if(!is.prior(source_prior) || .prior_linear_prior_dimension(source_prior) != 1L){
+      return(NULL)
+    }
+    return(.posterior_support_from_prior(source_prior, source = "catalog"))
+  }
+  if(identical(key$source_transform, "lkj2")){
+    return(.posterior_support_new(c(0, 1), source = "catalog", type = "interval"))
+  }
+
+  NULL
+}
+
+# A support mapped by a monotone transform descriptor (parameter_transform()).
+.bt_parameter_catalog_transform_support <- function(support, transform){
+
+  map <- function(values){
+    if(length(values) == 0L){
+      return(values)
+    }
+    parameter_transform_forward(values, transform)
+  }
+  if(identical(transform$type, "square") && support$bounds[1L] < 0){
+    # a square is monotone only on a nonnegative source
+    return(NULL)
+  }
+  bounds <- map(support$bounds)
+  points <- map(support$points)
+  if(anyNA(bounds) || anyNA(points)){
+    return(NULL)
+  }
+
+  .posterior_support_new(
+    bounds = range(bounds),
+    points = points,
+    exact  = support$exact,
+    source = "catalog",
+    type   = support$type
+  )
+}
+
+# Supports of composite random-effect quantities: correlations lie in
+# [-1, 1], variance shares in [0, 1], multipliers between zero and the
+# allocation scale, and inclusion indicators at 0 and 1. Composite SDs and
+# variances are nonnegative; their hull [0, Inf) is exact only when the scale
+# prior is unbounded above.
+.bt_parameter_catalog_random_support <- function(object, quantity, key){
+
+  interval <- function(lower, upper, exact = TRUE){
+    .posterior_support_new(c(lower, upper), exact = exact, source = "catalog",
+                           type = "interval")
+  }
+  switch(
+    quantity$quantity,
+    "cor"       = interval(-1, 1),
+    "var_prop"  = interval(0, 1),
+    "inclusion" = .posterior_support_new(c(0, 1), points = c(0, 1), source = "catalog",
+                                         type = "points"),
+    "var_mult"  = ,
+    "sd_mult"   = {
+      scale <- .bt_parameter_catalog_allocation_variance_scale(object, key)
+      if(is.null(scale)){
+        NULL
+      }else if(identical(quantity$quantity, "var_mult")){
+        interval(0, scale)
+      }else{
+        interval(0, sqrt(scale))
+      }
+    },
+    "sd"        = ,
+    "var"       = ,
+    "sd_total"  = ,
+    "var_total" = ,
+    "sd_common" = ,
+    "var_common" = interval(
+      0, Inf,
+      exact = .bt_parameter_catalog_unbounded_scale(object, key)
+    ),
+    NULL
+  )
+}
+
+# The variance scale of an allocation's multipliers: the number of targets
+# for mean-variance allocations, 1 for total-variance allocations.
+.bt_parameter_catalog_allocation_variance_scale <- function(object, key){
+
+  random_term <- if(nzchar(key$random_block)){
+    .bt_parameter_catalog_find_random_term(object, key)
+  }else{
+    NULL
+  }
+  allocation <- .bt_parameter_catalog_find_allocation(object, key, random_term)
+  if(is.null(allocation)){
+    return(NULL)
+  }
+  scale <- .bt_random_effect_allocation_scale_metadata(
+    allocation,
+    context = "Parameter catalog support"
+  )
+  if(identical(scale, "mean_variance")){
+    return(as.numeric(.bt_random_effect_summary_allocation_n_targets(
+      allocation,
+      K = allocation$n_targets
+    )))
+  }
+  1
+}
+
+# Whether the scale priors of a composite random-effect SD or variance are
+# unbounded above (then a composite with shares or gates reaches every value
+# in [0, Inf)).
+.bt_parameter_catalog_unbounded_scale <- function(object, key){
+
+  prior_list <- attr(object, "prior_list", exact = TRUE)
+  scale_priors <- prior_list[intersect(key$dependencies, names(prior_list))]
+  scale_priors <- Filter(function(prior){
+    is.prior(prior) && !is.prior.simplex(prior) && !is.prior.discrete(prior) &&
+      .prior_linear_prior_dimension(prior) == 1L
+  }, scale_priors)
+  if(length(scale_priors) == 0L){
+    return(FALSE)
+  }
+  all(vapply(scale_priors, function(prior){
+    support <- .posterior_support_from_prior(prior, source = "catalog")
+    !is.null(support) && isTRUE(support$exact) && support$bounds[1L] >= 0 &&
+      is.infinite(support$bounds[2L])
+  }, logical(1)))
+}
+
+# Draws where a catalog quantity is defined: original-scale correlations are
+# undefined where an SD is zero, and variance shares of gated total-variance
+# allocations where no component is active.
+.bt_parameter_catalog_quantity_definedness <- function(object, quantity){
+
+  key <- quantity$extraction_key[[1L]]
+  if(!identical(key$type, "random_summary")){
+    return("always")
+  }
+  if(identical(key$evaluator, "correlation")){
+    return("correlation")
+  }
+  if(identical(key$evaluator, "allocation") &&
+     identical(quantity$quantity, "var_prop")){
+    random_term <- if(nzchar(key$random_block)){
+      .bt_parameter_catalog_find_random_term(object, key)
+    }else{
+      NULL
+    }
+    allocation <- .bt_parameter_catalog_find_allocation(object, key, random_term)
+    if(!is.null(allocation) &&
+       identical(.bt_random_effect_allocation_scale_metadata(
+         allocation,
+         context = "Parameter catalog definedness"
+       ), "total_variance") &&
+       length(.bt_random_effect_summary_allocation_gate_names(allocation)) > 0L){
+      return("allocation_active")
+    }
+  }
+
+  "always"
 }
 
 # Row labels that JAGS_estimates_table() and runjags_estimates_table() display
@@ -3955,7 +4246,7 @@ parameter_transform_jacobian <- function(values, transform){
   }
   character_columns <- setdiff(
     .bt_parameter_catalog_quantity_columns,
-    c("arguments", "fixed_value", "internal", "extraction_key")
+    c("arguments", "fixed_value", "internal", "support", "extraction_key")
   )
   if(!all(vapply(quantities[character_columns], is.character, logical(1))) ||
      !is.list(quantities$arguments) ||
@@ -3971,8 +4262,12 @@ parameter_transform_jacobian <- function(values, transform){
        logical(1)
      )) ||
      !is.logical(aliases$simplified) ||
+     !is.list(quantities$support) ||
+     !all(vapply(quantities$support, function(support){
+       is.null(support) || inherits(support, "BayesTools_posterior_support")
+     }, logical(1))) ||
      anyNA(quantities[setdiff(names(quantities),
-                             c("fixed_value", "extraction_key"))]) ||
+                             c("fixed_value", "support", "extraction_key"))]) ||
      anyNA(aliases)){
     stop("Parameter catalog tables contain malformed field types or missing metadata. Refit or rebuild the catalog with this version of BayesTools.",
          call. = FALSE)
@@ -3991,6 +4286,8 @@ parameter_transform_jacobian <- function(values, transform){
              "structural_zero", "none")) ||
      any(!quantities$status %in%
            c("sampled", "structural", "derived", "unavailable")) ||
+     any(!quantities$definedness %in%
+           c("always", names(.bt_undefined_draws_reasons))) ||
      any(!is.na(quantities$fixed_value[quantities$status != "structural"])) ||
      any(!is.finite(quantities$fixed_value[quantities$status == "structural"]))){
     stop("Parameter catalog tables contain invalid names, statuses, or structural values. Refit or rebuild the catalog with this version of BayesTools.",

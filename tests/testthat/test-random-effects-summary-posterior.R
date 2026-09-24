@@ -519,6 +519,69 @@ test_that("random-effect summary posteriors declare atoms from structure", {
   )
 })
 
+test_that("catalog quantities declare their exact support and definedness", {
+
+  skip_if_not_installed("runjags")
+
+  support_of <- function(fit, name){
+    quantities <- parameter_catalog(fit)$quantities
+    quantities$support[[match(name, quantities$canonical_name)]]
+  }
+  definedness_of <- function(fit, name){
+    quantities <- parameter_catalog(fit)$quantities
+    quantities$definedness[[match(name, quantities$canonical_name)]]
+  }
+
+  # mean-variance multipliers of K = 2 components: var_mult = K w in [0, K]
+  # and sd_mult = sqrt(K w) in [0, sqrt(K)]; the gamma scale prior is
+  # unbounded above, so composite SDs and variances span [0, Inf)
+  fit <- .random_effects_mean_variance_allocation_fit()
+  expect_equal(support_of(fit, "(mu) allocation: var_mult(x)")$bounds, c(0, 2))
+  expect_equal(support_of(fit, "(mu) allocation: sd_mult(x)")$bounds, c(0, sqrt(2)))
+  expect_equal(support_of(fit, "(mu) sd(x)")$bounds, c(0, Inf))
+  expect_true(support_of(fit, "(mu) sd(x)")$exact)
+  expect_identical(definedness_of(fit, "(mu) sd(x)"), "always")
+
+  # a truncated scale prior bounds the one-to-one quantities exactly and
+  # leaves the composite hull inexact (shares reach zero)
+  truncated <- .random_effects_mean_variance_allocation_fit(
+    sd = prior("normal", list(0, 1), list(.5, 3))
+  )
+  expect_equal(support_of(truncated, "(mu) allocation: sd_common")$bounds, c(.5, 3))
+  expect_equal(support_of(truncated, "(mu) allocation: var_common")$bounds, c(.25, 9))
+  expect_true(support_of(truncated, "(mu) allocation: var_common")$exact)
+  expect_false(support_of(truncated, "(mu) sd(x)")$exact)
+
+  # gated total-variance proportions lie in [0, 1] and are undefined where
+  # no component is active; the inclusion indicators take the values 0 and 1
+  gated <- .random_effects_gated_total_variance_allocation_fit()
+  proportion <- "(mu) allocation: var_prop(drug)"
+  expect_equal(support_of(gated, proportion)$bounds, c(0, 1))
+  expect_identical(definedness_of(gated, proportion), "allocation_active")
+  expect_identical(support_of(gated, "(mu) allocation: inclusion(drug)")$points, c(0, 1))
+
+  # parameter_draws() carries the catalog metadata of the selected quantity
+  draws <- parameter_draws(gated, parameter_catalog_resolve(parameter_catalog(gated), proportion))
+  expect_identical(
+    posterior_metadata(draws, "undefined_draws"),
+    stats::setNames("allocation_active", proportion)
+  )
+  expect_equal(posterior_metadata(draws, "support")[[proportion]]$bounds, c(0, 1))
+  values <- as.numeric(as.matrix(draws))
+  table <- ensemble_estimates_table(
+    list(p = BayesTools:::.bt_meta_set(values, "undefined_draws", "allocation_active")),
+    parameters = "p"
+  )
+  expect_equal(table["p", "Mean"], mean(values, na.rm = TRUE))
+
+  # random-effect summary posteriors use the catalog support
+  multipliers <- random_effects_summary_posterior(fit, summary = "sd_mult")
+  expect_identical(
+    posterior_metadata(multipliers[["(mu) allocation: sd_mult(x)"]], "support"),
+    support_of(fit, "(mu) allocation: sd_mult(x)")
+  )
+})
+
 test_that("inherited gates zero descendant realized allocations", {
 
   allocation <- list(

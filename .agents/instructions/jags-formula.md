@@ -189,10 +189,17 @@ names.
   coordinate names such as `mu_g[2]` remain backend column names, used by
   coordinate-based functions such as `JAGS_materialize_draws()`, but are not
   factor selectors.
+- Catalog quantities declare their exact `support` (from the prior
+  provenance of their source coordinates; `NULL` when not derivable, and a
+  composite SD's `[0, Inf)` hull is exact only for scale priors unbounded
+  above) and `definedness` when the map is built; downstream packages read
+  them instead of deriving supports.
 - Draws that can be undefined are declared, never inferred from names or
   values: `parameter_draws()` sets the `undefined_draws` draw metadata of its
-  `mcmc.list` (canonical name to reason, `"correlation"` for original-scale random-effect
-  correlations). Summaries such as `ensemble_estimates_table()` accept missing
+  `mcmc.list` from the catalog's `definedness` (canonical name to reason:
+  `"correlation"` for original-scale random-effect correlations,
+  `"allocation_active"` for variance shares of gated total-variance
+  allocations). Summaries such as `ensemble_estimates_table()` accept missing
   draws only for declared columns, summarize the defined draws, and footnote
   their share; any other missing draw is an error.
 - Prior draws from `transform_prior_samples()` carry every generated monitor

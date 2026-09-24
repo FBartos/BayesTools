@@ -302,14 +302,17 @@
 
   return(runjags_summary)
 }
-# Quantities whose draws can be undefined (NA) declare why through the
-# attribute 'undefined_draws' (see parameter_draws()): "correlation" for an
-# original-scale random-effect correlation (NA when an SD is zero), and
-# "positive_definite" for raw Cholesky and LKJ coordinates (NA unless the
-# correlation matrix is positive definite). Summaries of such quantities use
+# Quantities whose draws can be undefined (NA) declare why through their
+# 'undefined_draws' metadata (see parameter_draws() and the catalog's
+# 'definedness'): "correlation" for an original-scale random-effect
+# correlation (NA when an SD is zero), "allocation_active" for the variance
+# share of a gated total-variance allocation (NA when no component is
+# active), and "positive_definite" for raw Cholesky and LKJ coordinates (NA
+# unless the correlation matrix is positive definite). Summaries of such quantities use
 # the defined draws and report their share in a row footnote.
 .bt_undefined_draws_reasons <- c(
   correlation       = "where the correlation is defined, i.e. both SDs are positive",
+  allocation_active = "where the variance share is defined, i.e. an allocation component is active",
   positive_definite = "where the correlation matrix is positive definite"
 )
 
