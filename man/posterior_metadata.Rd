@@ -53,6 +53,16 @@ posterior draws: the elements and lists returned by \code{\link[=mix_posteriors]
 All metadata are stored in one attribute and validated when they are set;
 use this accessor instead of setting attributes.
 }
+\details{
+Arithmetic and mathematical functions of posterior draws
+(\code{Ops} and \code{Math} group generics), \code{c()},
+\code{as.numeric()}, and subsetting return plain numeric draws without
+metadata, because supports, atoms, and prior densities do not follow the
+transformed values. Functions that need the metadata (e.g.
+\code{\link[=Savage_Dickey_BF]{Savage_Dickey_BF()}}, \code{\link[=plot_posterior]{plot_posterior()}}, \code{\link[=marginal_posterior]{marginal_posterior()}}) stop on
+such draws; \code{\link[=marginal_posterior]{marginal_posterior()}} with \code{transformation} transforms
+the draws together with their metadata.
+}
 \examples{
 draws <- stats::rnorm(100)
 posterior_metadata(draws, "atoms") <- posterior_atom_attribute()

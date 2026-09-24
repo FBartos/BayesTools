@@ -329,6 +329,15 @@
 #' }
 #' @param value the new value of the field; \code{NULL} removes it.
 #'
+#' @details Arithmetic and mathematical functions of posterior draws
+#' (\code{Ops} and \code{Math} group generics), \code{c()},
+#' \code{as.numeric()}, and subsetting return plain numeric draws without
+#' metadata, because supports, atoms, and prior densities do not follow the
+#' transformed values. Functions that need the metadata (e.g.
+#' [Savage_Dickey_BF()], [plot_posterior()], [marginal_posterior()]) stop on
+#' such draws; [marginal_posterior()] with \code{transformation} transforms
+#' the draws together with their metadata.
+#'
 #' @return \code{posterior_metadata()} returns the value of the field or
 #' \code{NULL}; the replacement form returns \code{x} with the field set.
 #'
@@ -356,4 +365,72 @@ posterior_metadata <- function(x, field){
 
   check_char(field, "field", allow_values = .bt_meta_public_fields)
   invisible(field)
+}
+
+# Plain numeric draws: 'x' without its class and metadata (dimensions and
+# names are kept).
+.bt_draws_plain <- function(x){
+
+  keep <- intersect(names(attributes(x)), c("dim", "dimnames", "names"))
+  attributes(x) <- attributes(x)[keep]
+  x
+}
+
+# Arithmetic and mathematical functions of posterior draws return plain
+# numeric draws: supports, atoms, prior densities and the other draw metadata
+# do not follow the transformed values. marginal_posterior(transformation = )
+# transforms the draws together with their metadata.
+.bt_draws_ops <- function(e1, e2){
+
+  if(missing(e2)){
+    return(get(.Generic)(.bt_draws_plain(e1)))
+  }
+  get(.Generic)(.bt_draws_plain(e1), .bt_draws_plain(e2))
+}
+
+.bt_draws_math <- function(x, ...){
+
+  get(.Generic)(.bt_draws_plain(x), ...)
+}
+
+# One method object per group generic for every draw class, so that
+# operations combining draws of different classes dispatch to it (R uses the
+# internal method, which keeps attributes, when the two methods differ).
+#' @exportS3Method Ops mixed_posteriors
+Ops.mixed_posteriors <- .bt_draws_ops
+#' @exportS3Method Ops marginal_posterior
+Ops.marginal_posterior <- .bt_draws_ops
+#' @exportS3Method Ops marginal_posterior.simple
+Ops.marginal_posterior.simple <- .bt_draws_ops
+#' @exportS3Method Ops marginal_posterior.factor
+Ops.marginal_posterior.factor <- .bt_draws_ops
+#' @exportS3Method Math mixed_posteriors
+Math.mixed_posteriors <- .bt_draws_math
+#' @exportS3Method Math marginal_posterior
+Math.marginal_posterior <- .bt_draws_math
+#' @exportS3Method Math marginal_posterior.simple
+Math.marginal_posterior.simple <- .bt_draws_math
+#' @exportS3Method Math marginal_posterior.factor
+Math.marginal_posterior.factor <- .bt_draws_math
+
+# 'fun' applied to the values of draws 'x', keeping every attribute of 'x'
+# (for producers that transform the metadata explicitly).
+.bt_draws_transform_values <- function(x, fun){
+
+  out <- fun(.bt_draws_plain(x))
+  attributes(out) <- attributes(x)
+  out
+}
+
+# Error for plain numeric draws passed where BayesTools posterior draws with
+# their metadata are required.
+.bt_draws_stop_plain <- function(what){
+
+  stop(
+    what, ": arithmetic, mathematical functions, and subsetting of posterior ",
+    "draws return plain numeric draws without their supports, atoms, and ",
+    "prior densities. Use marginal_posterior(transformation = ) for ",
+    "transformed posterior distributions.",
+    call. = FALSE
+  )
 }

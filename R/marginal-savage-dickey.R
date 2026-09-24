@@ -117,8 +117,14 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 .Savage_Dickey_BF.checked <- function(posterior, null_hypothesis, normal_approximation,
                                       silent, density_method, null_mass_NA){
 
-  if(!inherits(posterior, "marginal_posterior"))
+  if(!inherits(posterior, "marginal_posterior")){
+    if(is.numeric(posterior)){
+      .bt_draws_stop_plain(
+        "'Savage_Dickey_BF' requires an object of class 'marginal_posterior', not plain numeric draws"
+      )
+    }
     stop("'Savage_Dickey_BF' requires an object of class 'marginal_posterior'.")
+  }
   check_real(null_hypothesis, "null_hypothesis", allow_NA = FALSE)
   if(!is.finite(null_hypothesis)){
     stop("The 'null_hypothesis' argument must be finite.", call. = FALSE)

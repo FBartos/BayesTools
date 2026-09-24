@@ -350,7 +350,11 @@ flags, linear weights, conditioning) live in one validated attribute,
 `.bt_meta_get()`/`.bt_meta_set()` (the public `posterior_metadata()` for
 downstream packages), never as free attributes; a unit lint test enforces it.
 Posterior atoms come only from the `atoms` field, never from the point masses
-of a precomputed posterior density.
+of a precomputed posterior density. `Ops`/`Math` group generics, `c()`,
+`as.numeric()` and subsetting of draws return plain numerics without
+metadata; consumers that need the metadata stop on plain draws, and
+producers that transform draws transform their metadata explicitly
+(`marginal_posterior(transformation = )`).
 
 - When continuous components have different supports, estimate the ordinate
   per component (boundary-reflected on its own support, zero when that

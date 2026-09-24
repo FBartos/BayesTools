@@ -252,3 +252,92 @@ test_that("producers store their draw metadata in the container only", {
   expect_s3_class(posterior_metadata(marginal, "prior_density"), "prior_density")
   expect_s3_class(posterior_metadata(marginal, "atoms"), "BayesTools_posterior_atoms")
 })
+
+.draws_metadata_mixed_for_test <- function(){
+
+  set.seed(1)
+  posterior <- cbind(
+    mu           = c(rep(0, 100), stats::rnorm(300, .5, .2)),
+    mu_indicator = rep(c(0, 1), c(100, 300)),
+    sigma        = stats::rlnorm(400, 0, .2)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(
+    mu    = prior_spike_and_slab(prior("normal", list(0, 1))),
+    sigma = prior("lognormal", list(0, 1))
+  )
+  fit <- attach_test_parameter_map(fit)
+  fit <- BayesTools:::.bt_attach_parameter_map(fit, monitor_names = colnames(posterior))
+  as_mixed_posteriors(fit, c("mu", "sigma"))
+}
+
+test_that("arithmetic, math, and subsetting of draws return plain numerics", {
+
+  mixed    <- .draws_metadata_mixed_for_test()
+  mp_x     <- marginal_posterior(mixed, "mu", prior_samples = TRUE)
+  mp_sigma <- marginal_posterior(mixed, "sigma", prior_samples = TRUE)
+
+  plain <- list(
+    mp_x * 2, 2 * mp_x, mp_x + 1, -mp_sigma, mp_sigma / 10, mp_x > 0,
+    log(mp_sigma), exp(mp_x), round(mp_x, 2), cumsum(mp_x),
+    mixed$mu * 2, log(mixed$sigma), c(mp_x, mp_x), as.numeric(mp_x),
+    mp_x[1:10], mixed$mu[1:10]
+  )
+  for(value in plain){
+    expect_null(attributes(value))
+  }
+  # draws of different classes combine without incompatible-method dispatch
+  expect_silent(combined <- mixed$mu - mp_sigma)
+  expect_null(attributes(combined))
+
+  # matrices keep their dimensions only
+  draws <- structure(
+    matrix(1:4, 2, dimnames = list(NULL, c("a", "b"))),
+    class = c("mixed_posteriors", "mixed_posteriors.vector")
+  )
+  draws <- BayesTools:::.bt_meta_set(draws, "atoms", posterior_atom_attribute())
+  expect_identical(names(attributes(draws * 2)), c("dim", "dimnames"))
+  expect_identical(names(attributes(sqrt(draws))), c("dim", "dimnames"))
+
+  # transformed inference goes through marginal_posterior(transformation = ):
+  # BF(2 mu = 0.5) equals BF(mu = 0.25) exactly (kernel bandwidths scale)
+  mp_2x <- marginal_posterior(
+    mixed, "mu", prior_samples = TRUE,
+    transformation = "lin", transformation_arguments = list(a = 0, b = 2)
+  )
+  expect_equal(
+    as.numeric(Savage_Dickey_BF(mp_2x, 0.5)),
+    as.numeric(Savage_Dickey_BF(mp_x, 0.25)),
+    tolerance = 1e-10
+  )
+
+  # consumers that need the metadata stop on plain numeric draws
+  for(value in list(mp_x * 2, mp_sigma / 10, mp_x + 1, log(mp_sigma), mp_sigma[1:100])){
+    expect_error(
+      Savage_Dickey_BF(value, .5),
+      "'Savage_Dickey_BF' requires an object of class 'marginal_posterior', not plain numeric draws",
+      fixed = TRUE
+    )
+  }
+  scaled <- mixed
+  scaled$mu <- scaled$mu * 2
+  expect_error(
+    plot_posterior(scaled, "mu", plot_type = "ggplot"),
+    "The posterior samples of 'mu' must be created by 'mix_posteriors' or 'as_mixed_posteriors', not plain numeric draws",
+    fixed = TRUE
+  )
+  expect_error(
+    marginal_posterior(scaled, "mu"),
+    "The posterior samples of 'mu' must be created by 'mix_posteriors' or 'as_mixed_posteriors', not plain numeric draws",
+    fixed = TRUE
+  )
+  # subset draws no longer produce an empty plot
+  expect_error(
+    BayesTools:::.plot_data_samples.simple(
+      list(mu = mixed$mu[1:100]), "mu", 64, NULL, NULL, FALSE
+    ),
+    "Posterior atom status is unknown",
+    fixed = TRUE
+  )
+})
