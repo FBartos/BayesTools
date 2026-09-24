@@ -153,6 +153,12 @@ term with a product, several multiplied non-normal terms) have no structural
 route; their capped product grid is never used for heights or probabilities,
 which are then unavailable.
 
+Plotted linear-combination prior densities (`.prior_linear_density_to_plot_data()`)
+evaluate the same route at every plotted value: closed forms vectorized over
+the plotting grid and quadrature routes by their ordinate at each value (about
+1-2 s per 1000-point curve). Only a combination without a structural route, or
+a density without recorded provenance, interpolates its numerical grid.
+
 Mixture ordinates (model, conditional, and mixture or spike-and-slab terms of
 one linear combination) are weighted sums of per-component ordinates, each from
 its own exact or regular method, so a numerical grid never spans a density jump

@@ -74,8 +74,16 @@
        provenance = provenance)
 }
 
-.prior_density_route_unknown <- function(reason, provenance){
-  list(type = "unknown", reason = reason, provenance = provenance)
+# 'recipe' (prior list, weights, source transformations, grid size) builds
+# the combination's numerical grid, the only grid use (plotted densities, and
+# grid heights and probabilities of combinations of simple terms).
+.prior_density_route_unknown <- function(reason, provenance, recipe = NULL){
+  list(type = "unknown", reason = reason, provenance = provenance, recipe = recipe)
+}
+
+.prior_density_route_recipe <- function(prior_list, weights, source_transforms, n_grid){
+  list(prior_list = prior_list, weights = weights,
+       source_transforms = source_transforms, n_grid = n_grid)
 }
 
 .prior_density_route_mixture <- function(components, weights,
@@ -352,7 +360,8 @@
         kind        = "general_product",
         weights     = .prior_density_ordinate_compact(weights),
         multipliers = names(split$product_groups)
-      )
+      ),
+      recipe     = .prior_density_route_recipe(prior_list, weights, source_transforms, n_grid)
     )
   }
   if(length(split$product_groups) != 1L){
@@ -492,7 +501,8 @@
     if(!is.null(ordered$reason)){
       return(.prior_density_route_unknown(
         reason     = ordered$reason,
-        provenance = list(kind = "unsupported_provenance", ordered = TRUE)
+        provenance = list(kind = "unsupported_provenance", ordered = TRUE),
+        recipe     = .prior_density_route_recipe(prior_list, weights, source_transforms, n_grid)
       ))
     }
     return(.prior_density_route_linear(
@@ -542,7 +552,8 @@
         if(is.prior(prior) && !is.null(prior$distribution)) prior$distribution else "unknown"
       }, character(1)),
       source_transforms = .prior_density_ordinate_compact(source_transforms)
-    )
+    ),
+    recipe     = .prior_density_route_recipe(prior_list, weights, source_transforms, n_grid)
   )
 }
 
@@ -916,6 +927,156 @@
       hull           = route$hull
     )
   )
+}
+
+# ---- plotted densities -------------------------------------------------------
+
+# Continuous density of a route at the values 'x' (point masses excluded):
+# closed forms vectorized over 'x', quadrature leaves at each value (the
+# ordinate's quadrature), and routes without a structural representation by
+# linear interpolation of their own numerical grid, the only grid use.
+# Non-finite and unavailable values are NA; a value where the density is
+# infinite is Inf.
+.prior_density_route_density <- function(route, x){
+
+  if(length(x) == 0L){
+    return(numeric())
+  }
+  switch(
+    route$type,
+    "atom" = rep(0, length(x)),
+    "scalar" = .prior_density_scalar_density(
+      route$prior, x, route$offset, route$scale, route$source_transform
+    ),
+    "normal" = {
+      normal <- .prior_density_ordinate_linear_normal(
+        route$prior_list, route$weights, route$source_transforms, 0
+      )
+      if(!identical(normal$method, "linear_normal")){
+        rep(NA_real_, length(x))
+      }else{
+        stats::dnorm(x, normal$provenance$mean, normal$provenance$sd)
+      }
+    },
+    "mixture" = {
+      positive <- route$weights > 0
+      weights <- route$weights[positive] / sum(route$weights[positive])
+      out <- numeric(length(x))
+      for(i in seq_along(weights)){
+        out <- out + weights[[i]] *
+          .prior_density_route_density(route$components[positive][[i]], x)
+      }
+      out
+    },
+    "transform" = .prior_density_route_transform_density(route, x),
+    "unknown" = .prior_density_route_grid_density(route, x),
+    # quadrature leaves: the ordinate at each value
+    vapply(x, function(value){
+      .prior_density_ordinate_height_value(.prior_density_route_ordinate(route, value))
+    }, numeric(1))
+  )
+}
+
+# The continuous density of an ordinate result: its height when structural
+# (Inf for an infinite density, 0 for a structural zero), NA otherwise.
+.prior_density_ordinate_height_value <- function(ordinate){
+
+  behavior <- .prior_density_ordinate_continuous_behavior(ordinate)
+  if(identical(behavior, "infinite")){
+    return(Inf)
+  }
+  if(identical(behavior, "zero")){
+    return(0)
+  }
+  if(identical(behavior, "regular") && !is.na(ordinate$log_density)){
+    return(exp(ordinate$log_density))
+  }
+  NA_real_
+}
+
+# Continuous density of offset + scale * S (S = log(T) for a log source) at
+# 'x' for a scalar prior, a finite mixture of them, or a point prior (no
+# continuous part).
+.prior_density_scalar_density <- function(prior, x, offset, scale, source_transform = NULL){
+
+  if(scale == 0 || is.prior.none(prior) || is.prior.point(prior) ||
+     is.prior.discrete(prior)){
+    return(rep(0, length(x)))
+  }
+  if(is.prior.mixture(prior) || is.prior.spike_and_slab(prior)){
+    weights <- .prior_density_ordinate_mixture_weights(prior)
+    if(is.null(weights)){
+      return(rep(NA_real_, length(x)))
+    }
+    out <- numeric(length(x))
+    for(i in which(weights > 0)){
+      out <- out + weights[[i]] *
+        .prior_density_scalar_density(prior[[i]], x, offset, scale, source_transform)
+    }
+    return(out)
+  }
+  if(!is.prior.simple(prior)){
+    return(rep(NA_real_, length(x)))
+  }
+  source <- (x - offset) / scale
+  if(identical(source_transform, "log")){
+    original <- exp(source)
+    out <- mpdf(prior, original) * original / abs(scale)
+    out[original == 0] <- 0
+    return(out)
+  }
+  mpdf(prior, source) / abs(scale)
+}
+
+# Density of a named monotone output transformation y = g(s) at 'x':
+# f_s(g^-1(y)) / |g'(g^-1(y))|, zero outside the transformation's image.
+.prior_density_route_transform_density <- function(route, x){
+
+  arguments <- .prior_density_ordinate_transform_arguments(
+    route$transformation, route$arguments
+  )
+  if(!is.character(route$transformation) || is.null(arguments)){
+    return(rep(NA_real_, length(x)))
+  }
+  if(route$transformation %in% c("lin", "exp_lin") && arguments$b == 0){
+    return(rep(0, length(x)))
+  }
+  source <- suppressWarnings(.density.prior_transformation_inv_grid(
+    x, route$transformation, arguments
+  ))
+  out <- rep(0, length(x))
+  inside <- is.finite(source)
+  if(any(inside)){
+    source_density <- .prior_density_route_density(route$source, source[inside])
+    out[inside] <- .density.prior_transformation_y(
+      x[inside], source_density, route$transformation, arguments
+    )
+  }
+  out
+}
+
+# A route without a structural representation: linear interpolation of its
+# own numerical grid (display only; no refinement).
+.prior_density_route_grid_density <- function(route, x){
+
+  recipe <- route$recipe
+  if(is.null(recipe)){
+    return(rep(NA_real_, length(x)))
+  }
+  grid <- tryCatch(
+    .prior_linear_combination_density(
+      prior_list        = recipe$prior_list,
+      weights           = recipe$weights,
+      n_grid            = recipe$n_grid,
+      source_transforms = recipe$source_transforms
+    ),
+    error = function(e) NULL
+  )
+  if(is.null(grid) || is.null(grid$density)){
+    return(rep(if(is.null(grid)) NA_real_ else 0, length(x)))
+  }
+  stats::approx(grid$density$x, grid$density$y, xout = x, yleft = 0, yright = 0)$y *
+    grid$density$mass
 }
 
 # ---- numerical grids ---------------------------------------------------------

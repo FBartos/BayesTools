@@ -1248,10 +1248,11 @@
   # concentrated other term far from zero). Each piece is an independent
   # integral with the full evaluation budget and its own diagnostics; the
   # ordinate is their sum, and the acceptance criterion applies to the total.
+  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
   integrand <- function(multiplier){
     conditional <- .prior_conditional_normal_moments(spec, multiplier)
     out <- exp(stats::dnorm(value, conditional$mean, conditional$sd, log = TRUE) +
-                 lpdf(spec$multiplier, multiplier))
+                 multiplier_lpdf(multiplier))
     # away from the offset, a pure scale mixture has no Gaussian mass at
     # the value where the multiplier is zero (the integrand's limit)
     if(spec$additive_sd == 0){
@@ -1374,9 +1375,10 @@
   spec <- list(additive_mean = 0, additive_sd = 1, product_mean = 0,
                product_sd = 0, multiplier = prior, bounds = c(lower, upper))
   points <- .prior_conditional_normal_breakpoints(spec, 0, extra = 0)
+  prior_lpdf <- .prior_simple_lpdf_evaluator(prior)
   integral <- .prior_conditional_normal_quadrature(
     function(s){
-      out <- exp(lpdf(prior, s) - log(abs(s)))
+      out <- exp(prior_lpdf(s) - log(abs(s)))
       out[s == 0] <- 0
       out
     },
@@ -1419,6 +1421,7 @@
 
   lower <- intervals[, 1L]
   upper <- intervals[, 2L]
+  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
   integrand <- function(multiplier){
     conditional <- .prior_conditional_normal_moments(spec, multiplier)
     probability <- 0
@@ -1427,7 +1430,7 @@
         lower[i], upper[i], conditional$mean, conditional$sd
       )
     }
-    log_density <- lpdf(spec$multiplier, multiplier)
+    log_density <- multiplier_lpdf(multiplier)
     out <- numeric(length(multiplier))
     positive <- probability > 0
     out[positive] <- exp(log(probability[positive]) + log_density[positive])
@@ -1570,9 +1573,11 @@
   }
 
   distance <- (value - spec$offset) / spec$scale
+  factor_lpdf <- .prior_simple_lpdf_evaluator(spec$factor)
+  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
   integrand <- function(multiplier){
-    out <- exp(lpdf(spec$factor, distance / multiplier) +
-                 lpdf(spec$multiplier, multiplier) - log(abs(spec$scale * multiplier)))
+    out <- exp(factor_lpdf(distance / multiplier) +
+                 multiplier_lpdf(multiplier) - log(abs(spec$scale * multiplier)))
     out[multiplier == 0] <- 0
     out
   }
@@ -1686,6 +1691,7 @@
   lower <- intervals[, 1L]
   upper <- intervals[, 2L]
   offset_inside <- as.numeric(any(spec$offset > lower & spec$offset < upper))
+  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
   integrand <- function(multiplier){
     probability <- numeric(length(multiplier))
     zero <- multiplier == 0
@@ -1701,7 +1707,7 @@
     probability[zero] <- offset_inside
     out <- numeric(length(multiplier))
     positive <- probability > 0
-    out[positive] <- exp(log(probability[positive]) + lpdf(spec$multiplier, multiplier[positive]))
+    out[positive] <- exp(log(probability[positive]) + multiplier_lpdf(multiplier[positive]))
     out
   }
   endpoints <- c(lower, upper)
@@ -2252,17 +2258,26 @@
       x_raw <- seq(x_range[1], x_range[2], length.out = n_points)
     }
 
+    # The continuous density is evaluated on its structural route (closed
+    # forms, and the ordinate's quadrature at each plotted value); only a
+    # combination without a structural route, or a density without recorded
+    # provenance, interpolates its numerical grid.
     finite_raw <- is.finite(x_raw)
     y_den      <- rep(NA_real_, length(x_raw))
+    route      <- .prior_density_route_from_adaptive(
+      attr(dist, "adaptive_evaluation", exact = TRUE)
+    )
     evaluator  <- attr(dist, "density_evaluator", exact = TRUE)
-    if(any(finite_raw) && is.function(evaluator)){
+    if(any(finite_raw) && !is.null(route) && !identical(route$type, "unknown")){
+      y_den[finite_raw] <- .prior_density_route_density(route, x_raw[finite_raw])
+    }else if(any(finite_raw) && is.null(route) && is.function(evaluator)){
       evaluated <- evaluator(x_raw[finite_raw])
       if(!is.numeric(evaluated) || length(evaluated) != sum(finite_raw) ||
          anyNA(evaluated)){
         stop("The analytic prior density evaluator returned invalid values.",
              call. = FALSE)
       }
-      y_den[finite_raw] <- evaluated
+      y_den[finite_raw] <- evaluated * dist$density$mass
     }else if(any(finite_raw)){
       y_den[finite_raw] <- stats::approx(
         dist$density$x,
@@ -2270,9 +2285,8 @@
         xout   = x_raw[finite_raw],
         yleft  = 0,
         yright = 0
-      )$y
+      )$y * dist$density$mass
     }
-    y_den <- y_den * dist$density$mass
 
     if(!is.null(transformation)){
       if(is.null(transformed_x_range)){
