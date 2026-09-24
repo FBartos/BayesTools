@@ -193,7 +193,10 @@
 #' \code{JAGS_extend} continues the backend random-number generator state of the
 #' existing chains; it does not reseed them.
 #' Stored parameter and RNG states initialize reconstruction; recompilation can
-#' reset sampler tuning and follows runjags' adaptation policy.
+#' reset sampler tuning and follows runjags' adaptation policy. The model is
+#' always recompiled from these stored states, never continued from a compiled
+#' model left in the session, so extending the same object twice, or a saved and
+#' reloaded copy of it, gives identical draws.
 #'
 #' @seealso [JAGS_check_convergence()]
 #'
@@ -817,6 +820,15 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   # never travel inside runjags.object to every extension worker.
   attr(fit, "runtime_state") <- NULL
   attr(fit, "runtime_cache") <- NULL
+  # The backend would continue a compiled model still alive in this session,
+  # so that an extension depended on earlier in-memory extensions of the same
+  # object. Extending from the stored chain states alone makes it depend only
+  # on the fitted object, as after saving and reloading it.
+  if(is.list(fit[["method.options"]])){
+    fit[["method.options"]] <- fit[["method.options"]][
+      names(fit[["method.options"]]) != "rjags"
+    ]
+  }
   fit_contract       <- attr(fit, "fit_contract", exact = TRUE)
   draw_geometry      <- attr(fit, "draw_geometry", exact = TRUE)
   fitted_parameter_map <- attr(fit, "parameter_map", exact = TRUE)

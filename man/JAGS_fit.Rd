@@ -246,7 +246,10 @@ extended}
 \code{JAGS_extend} continues the backend random-number generator state of the
 existing chains; it does not reseed them.
 Stored parameter and RNG states initialize reconstruction; recompilation can
-reset sampler tuning and follows runjags' adaptation policy.
+reset sampler tuning and follows runjags' adaptation policy. The model is
+always recompiled from these stored states, never continued from a compiled
+model left in the session, so extending the same object twice, or a saved and
+reloaded copy of it, gives identical draws.
 }
 \description{
 A wrapper around

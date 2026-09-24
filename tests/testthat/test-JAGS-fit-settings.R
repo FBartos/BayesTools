@@ -528,6 +528,39 @@ test_that("seeded public functions leave the caller's random-number state unchan
   expect_identical(after_mix, .Random.seed)
 })
 
+test_that("JAGS_extend draws depend only on the stored fit", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  withr::local_preserve_seed()
+
+  set.seed(3)
+  data <- list(x = stats::rnorm(20, 0.3), N = 20L)
+  fit <- JAGS_fit(
+    "model{ for(i in 1:N){ x[i] ~ dnorm(mu, pow(s, -2)) } }", data,
+    list(mu = prior("normal", list(0, 1)), s = prior("normal", list(0, 1), list(0, Inf))),
+    chains = 2, adapt = 1000, burnin = 50, sample = 100, seed = 1
+  )
+  control <- list(
+    max_Rhat = NULL, min_ESS = NULL, max_error = NULL, max_SD_error = NULL,
+    sample_extend = 50, max_extend = 1
+  )
+  draws <- function(extended) as.matrix(extended$mcmc)
+
+  # The session's compiled model is not continued: extending the same object
+  # twice, a saved and reloaded copy, or under another caller state gives the
+  # same draws.
+  first    <- JAGS_extend(fit, autofit_control = control)
+  second   <- JAGS_extend(fit, autofit_control = control)
+  reloaded <- JAGS_extend(unserialize(serialize(fit, NULL)), autofit_control = control)
+  set.seed(99)
+  other_caller <- JAGS_extend(fit, autofit_control = control)
+  expect_identical(draws(second), draws(first))
+  expect_identical(draws(reloaded), draws(first))
+  expect_identical(draws(other_caller), draws(first))
+  expect_false(identical(draws(first), as.matrix(fit$mcmc)))
+})
+
 test_that("JAGS_extend validates runtime controls before extension", {
   fit <- structure(list(), class = "BayesTools_fit")
   invalid <- list(
