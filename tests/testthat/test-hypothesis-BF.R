@@ -2398,8 +2398,10 @@ test_that("point hypotheses need an exact regular prior ordinate on every route"
     "bayestools_inexact_ordinate"
   )
   # exp_lin of a source with an atom at 0 is undefined
+  nonnegative_spike <- prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)),
+                                            prior_inclusion = prior("spike", list(.5)))
   undefined <- BayesTools:::.prior_linear_combination_density(
-    list(x = spike), c(x = 1), output_transformation = "exp_lin",
+    list(x = nonnegative_spike), c(x = 1), output_transformation = "exp_lin",
     output_transformation_arguments = list(a = 0, b = 2)
   )
   expect_ordinate_class(
