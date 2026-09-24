@@ -1036,6 +1036,50 @@ test_that("ordered levels and products with a structural route are constructed f
   }
 })
 
+test_that("mixed-measure ordered levels are evaluated on their structural route", {
+
+  # A spike-and-slab Cauchy total (inclusion 1/2) with a Dirichlet(2, 3)
+  # allocation: the first increment level is 1/2 point(0) + 1/2 C * S,
+  # S ~ Beta(2, 3), and the last level 1/2 point(0) + 1/2 C. The capped level
+  # grid cannot resolve the Cauchy scale (the plotted height at zero was
+  # 0.0157 instead of 0.637); the route gives the exact heights. References:
+  # integrate() of the scale mixture at rel.tol 1e-12 and dcauchy().
+  total <- prior_spike_and_slab(prior("cauchy", list(0, 1)),
+                                prior_inclusion = prior("spike", list(.5)))
+  ordered <- prior_ordered(total, allocation = prior("dirichlet", list(alpha = c(2, 3))))
+  attr(ordered, "levels") <- 3
+  scale_mixture <- function(value){
+    .5 * stats::integrate(function(s) stats::dcauchy(value / s) * stats::dbeta(s, 2, 3) / s,
+                          0, 1, rel.tol = 1e-12)$value
+  }
+
+  densities <- density(ordered, n_points = 201, x_range = c(-3, 3))
+  expect_equal(attr(densities, "method"), "analytic_mixed_measure")
+  shared <- densities[[2]]
+  expect_equal(shared$atoms, data.frame(location = 0, mass = .5))
+  expect_equal(attr(shared$continuous, "mass"), .5)
+  check <- c(1, 50, 101, 150, 201)
+  expect_equal(
+    shared$continuous$density[check],
+    vapply(shared$continuous$x[check], scale_mixture, numeric(1)),
+    tolerance = 1e-8
+  )
+  expect_identical(shared$diagnostics$grid$route, "mixture")
+  full <- densities[[3]]
+  expect_equal(full$continuous$density, .5 * stats::dcauchy(full$continuous$x), tolerance = 1e-12)
+
+  # a transformation maps the display values and the heights (Jacobian)
+  transformed <- density(ordered, n_points = 201, x_range = c(-3, 3), transformation = "exp")
+  level <- transformed[[2]]
+  expect_equal(level$atoms, data.frame(location = 1, mass = .5))
+  values <- level$continuous$x[c(20, 101, 180)]
+  expect_equal(
+    level$continuous$density[c(20, 101, 180)],
+    vapply(log(values), scale_mixture, numeric(1)) / values,
+    tolerance = 1e-8
+  )
+})
+
 test_that("prior curves without a structural route omit unresolved heavy-tailed product grids", {
 
   # A sum without a structural route is plotted from its numerical grid. The

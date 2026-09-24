@@ -450,28 +450,42 @@ density.prior <- function(x,
   densities <- vector("list", nrow(weights))
   names(densities) <- component_names
   for(i in seq_len(nrow(weights))){
-    dist <- .prior_ordered_linear_distribution(
-      ordered_prior = x,
-      weights = weights[i, ],
-      indices = seq_len(ncol(weights)),
-      dx = target_dx,
-      n_grid = n_points,
-      tail_prob = .prior_linear_density_tail_prob()
+    # A level with a structural route (e.g. a spike-and-slab total times a
+    # Beta allocation share) is evaluated on that route at the display
+    # values; only a level without one uses its numerical grid.
+    dist <- .density.prior.ordered_route_mixed(
+      ordered_prior            = x,
+      parameter                = metadata$parameter_name,
+      weights                  = weights[i, ],
+      x_seq                    = x_seq,
+      n_points                 = n_points,
+      transformation           = transformation,
+      transformation_arguments = transformation_arguments
     )
-    component_grid <- x_seq
-    if(!is.null(transformation)){
-      dist <- .prior_linear_density_transform(
-        dist,
-        transformation,
-        transformation_arguments,
-        n_grid = n_points
+    if(is.null(dist)){
+      dist <- .prior_ordered_linear_distribution(
+        ordered_prior = x,
+        weights = weights[i, ],
+        indices = seq_len(ncol(weights)),
+        dx = target_dx,
+        n_grid = n_points,
+        tail_prob = .prior_linear_density_tail_prob()
       )
-      component_grid <- sort(unique(.density.prior_transformation_x(
-        x_seq, transformation, transformation_arguments
-      )))
+      component_grid <- x_seq
+      if(!is.null(transformation)){
+        dist <- .prior_linear_density_transform(
+          dist,
+          transformation,
+          transformation_arguments,
+          n_grid = n_points
+        )
+        component_grid <- sort(unique(.density.prior_transformation_x(
+          x_seq, transformation, transformation_arguments
+        )))
+      }
+      # Transform the full distribution before clipping it to a display grid.
+      dist <- .density.prior.ordered_regrid_mixed(dist, component_grid)
     }
-    # Transform the full distribution before clipping it to a display grid.
-    dist <- .density.prior.ordered_regrid_mixed(dist, component_grid)
     component_samples <- if(is.null(samples)){
       NULL
     }else{
@@ -514,6 +528,65 @@ density.prior <- function(x,
   attr(densities, "measure_schema_version") <- 1L
   class(densities) <- c("density.prior.ordered", "list")
   densities
+}
+
+# The mixed measure of one ordered level from its structural route: the
+# level's linear density (atoms and continuous mass) with its continuous part
+# evaluated exactly at the display values 'x_seq' (and transformed with its
+# Jacobian). NULL when the level has no continuous part or no structural
+# route.
+.density.prior.ordered_route_mixed <- function(ordered_prior, parameter, weights,
+                                              x_seq, n_points,
+                                              transformation = NULL,
+                                              transformation_arguments = NULL){
+
+  weights <- weights[weights != 0]
+  if(length(weights) == 0L){
+    return(NULL)
+  }
+  dist <- .prior_linear_combination_density(
+    prior_list = stats::setNames(list(ordered_prior), parameter),
+    weights    = weights,
+    n_grid     = n_points,
+    tail_prob  = .prior_linear_density_tail_prob()
+  )
+  if(is.null(dist$density) || dist$density$mass <= 0){
+    return(NULL)
+  }
+  route <- .prior_density_route_from_adaptive(
+    attr(dist, "adaptive_evaluation", exact = TRUE)
+  )
+  if(is.null(route$type) || identical(route$type, "unknown") ||
+     .prior_density_route_has_leaf(route, "unknown")){
+    return(NULL)
+  }
+
+  x <- x_seq
+  y <- .prior_density_route_density(route, x)
+  if(!is.null(transformation)){
+    x <- .density.prior_transformation_x(x_seq, transformation, transformation_arguments)
+    y <- .density.prior_transformation_y(x, y, transformation, transformation_arguments)
+    if(nrow(dist$points) > 0L){
+      dist$points$x <- .density.prior_transformation_x(
+        dist$points$x, transformation, transformation_arguments
+      )
+    }
+  }
+  keep <- is.finite(x) & is.finite(y)
+  x <- x[keep]
+  y <- y[keep]
+  display_order <- order(x)
+  x <- x[display_order]
+  y <- y[display_order] / dist$density$mass
+
+  dist$density$x <- x
+  dist$density$y <- y
+  dist$n_grid <- length(x)
+  attr(dist, "ordered_grid_diagnostics") <- list(
+    captured_continuous_shape_integral = .density.prior.ordered_curve_integral(x, y),
+    route = route$type
+  )
+  dist
 }
 
 .density.prior.ordered_regrid_mixed <- function(dist, x_seq){
