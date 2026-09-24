@@ -87,8 +87,10 @@ test_that("as_mixed_posteriors applies AND and OR conditioning exactly", {
 
   expect_equal(as.numeric(and_samples$mu_a), c(30, 31))
   expect_equal(as.numeric(and_samples$mu_b), c(40, 41))
-  expect_equal(.bt_meta_get(and_samples$mu_a, "models_ind"), c(1, 1))
-  expect_equal(.bt_meta_get(and_samples$mu_b, "models_ind"), c(1, 1))
+  # the component of a spike-and-slab prior: its slab (1) or spike (2)
+  expect_equal(.bt_meta_get(and_samples$mu_a, "component"), c(1L, 1L))
+  expect_equal(.bt_meta_get(and_samples$mu_b, "component"), c(1L, 1L))
+  expect_identical(.bt_meta_get(and_samples$mu_a, "component_source"), "spike_and_slab")
 
   or_samples <- as_mixed_posteriors(
     fit,
@@ -99,8 +101,8 @@ test_that("as_mixed_posteriors applies AND and OR conditioning exactly", {
 
   expect_equal(as.numeric(or_samples$mu_a), c(10, 0, 30, 31))
   expect_equal(as.numeric(or_samples$mu_b), c(0, 20, 40, 41))
-  expect_equal(.bt_meta_get(or_samples$mu_a, "models_ind"), c(1, 0, 1, 1))
-  expect_equal(.bt_meta_get(or_samples$mu_b, "models_ind"), c(0, 1, 1, 1))
+  expect_equal(.bt_meta_get(or_samples$mu_a, "component"), c(1L, 2L, 1L, 1L))
+  expect_equal(.bt_meta_get(or_samples$mu_b, "component"), c(2L, 1L, 1L, 1L))
 })
 
 test_that("unknown and non-conditional labels fail closed", {

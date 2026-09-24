@@ -383,12 +383,22 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       posterior_samples_matrix <- do.call(cbind, samples)
 
 
-      # obtain samples information
-      models_ind <- do.call(cbind, lapply(model_terms, function(x) .bt_meta_get(samples[[JAGS_parameter_names(x, formula_parameter = formula_parameter)]], "models_ind")))
-      sample_ind <- do.call(cbind, lapply(model_terms, function(x) .bt_meta_get(samples[[JAGS_parameter_names(x, formula_parameter = formula_parameter)]], "sample_ind")))
-      if(!inherits(samples, "as_mixed_posteriors") && (!all(models_ind[,1] == models_ind) || !all(sample_ind[,1] == sample_ind)))
-        stop("the posterior samples are not alligned across models/draws")
-      models_ind <- models_ind[,1]
+      # the model of each draw of a model-averaged ensemble (the terms' draws
+      # must be aligned by model and draw); single fits have no model index
+      model_component <- NULL
+      if(!inherits(samples, "as_mixed_posteriors")){
+        term_metadata <- function(field){
+          do.call(cbind, lapply(model_terms, function(x){
+            .bt_meta_get(samples[[JAGS_parameter_names(x, formula_parameter = formula_parameter)]], field)
+          }))
+        }
+        model_component <- term_metadata("component")
+        draw_index <- term_metadata("draw_index")
+        if(is.null(model_component) || is.null(draw_index) ||
+           !all(model_component[,1] == model_component) || !all(draw_index[,1] == draw_index))
+          stop("the posterior samples are not alligned across models/draws")
+        model_component <- model_component[,1]
+      }
 
 
       ### evaluate the design matrix on the samples -> output[data, posterior]
@@ -455,7 +465,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             JAGS_model_terms[term$term_index],
             prior_list  = prior_list,
             posterior   = posterior_samples_matrix,
-            models_ind  = models_ind,
+            model_component = model_component,
             simple_list = inherits(samples, "as_mixed_posteriors")
           )
         },
@@ -593,7 +603,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         log_source_transforms <- stats::setNames("log", intercept_name)
       }
       # draws of model-averaged ensembles are aligned across terms by model
-      component_models_ind <- if(!inherits(samples, "as_mixed_posteriors")) models_ind
+      ensemble_model_component <- model_component
 
       if(length(at_manipulated) == 1 && format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) == "intercept"){
 
@@ -609,7 +619,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           transformation           = transformation,
           transformation_arguments = transformation_arguments,
           required                 = prior_samples,
-          models_ind               = component_models_ind
+          model_component          = ensemble_model_component
         )
 
       }else{
@@ -630,7 +640,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             transformation           = transformation,
             transformation_arguments = transformation_arguments,
             required                 = prior_samples,
-            models_ind               = component_models_ind
+            model_component          = ensemble_model_component
           )
         }
       }
@@ -1018,7 +1028,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           marginal_posterior_samples[[level_names[lvl_i]]] <- .bt_meta_set(marginal_posterior_samples[[level_names[lvl_i]]], "components", .marginal_posterior_components(
             context                  = prior_density_context,
             weights                  = weights,
-            models_ind               = .bt_meta_get(samples[[parameter]], "models_ind"),
+            model_component          = .bt_draws_model_component(samples[[parameter]]),
             n_values                 = length(marginal_posterior_samples[[level_names[lvl_i]]]),
             transformation           = transformation,
             transformation_arguments = transformation_arguments,
@@ -1046,7 +1056,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           .marginal_posterior_components(
             context                  = prior_density_context,
             weights                  = weights,
-            models_ind               = .bt_meta_get(samples[[parameter]], "models_ind"),
+            model_component          = .bt_draws_model_component(samples[[parameter]]),
             n_values                 = length(marginal_posterior_samples),
             transformation           = transformation,
             transformation_arguments = transformation_arguments,
@@ -1202,7 +1212,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
                                                        transformation = NULL,
                                                        transformation_arguments = NULL,
                                                        required = TRUE,
-                                                       models_ind = NULL){
+                                                       model_component = NULL){
 
   log_columns <- intersect(names(source_transforms)[source_transforms == "log"], colnames(weights))
   components <- NULL
@@ -1224,7 +1234,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     components <- .marginal_posterior_components(
       context                  = prior_density_context,
       weights                  = weights,
-      models_ind               = models_ind,
+      model_component          = model_component,
       n_values                 = length(marginal),
       transformation           = transformation,
       transformation_arguments = transformation_arguments,
@@ -1368,12 +1378,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 # marginal (Savage-Dickey mixes per-component posterior ordinates when the
 # components' supports differ). The component of a draw is its model in a
 # model-mixture ensemble (mix_posteriors()), or, for a single fit
-# (as_mixed_posteriors()), the combination of the component indicators of the
+# (as_mixed_posteriors()), the combination of the component indices of the
 # mixture and spike-and-slab priors entering the quantity. A marginal evaluated
 # at several design rows stores each draw's rows consecutively, so the index
 # repeats per row. The metadata are optional: without them the pooled posterior
 # ordinate is used.
-.marginal_posterior_components <- function(context, weights, models_ind, n_values,
+.marginal_posterior_components <- function(context, weights, model_component, n_values,
                                            transformation = NULL,
                                            transformation_arguments = NULL,
                                            samples = NULL){
@@ -1384,12 +1394,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   if(inherits(context, "prior_density_model_mixture_context")){
-    if(is.null(models_ind) || length(models_ind) * n_rows != n_values){
+    if(is.null(model_component) || length(model_component) * n_rows != n_values){
       return(NULL)
     }
     return(.marginal_posterior_optional_metadata(
       .posterior_components_new(
-        index    = rep(models_ind, each = n_rows),
+        index    = rep(model_component, each = n_rows),
         supports = .posterior_support_model_components(
           context,
           weights,
@@ -1437,12 +1447,13 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
   n_rows <- if(is.null(dim(weights))) 1L else nrow(weights)
   indicators <- lapply(parameters, function(parameter){
-    indicator <- .bt_meta_get(samples[[parameter]], "models_ind")
-    if(is.null(indicator) || anyNA(indicator) ||
-       length(indicator) * n_rows != n_values){
-      stop("Mixture component indicators are unavailable.", call. = FALSE)
+    component <- .bt_meta_get(samples[[parameter]], "component")
+    if(is.null(component) ||
+       !.bt_meta_get(samples[[parameter]], "component_source") %in% c("mixture", "spike_and_slab") ||
+       length(component) * n_rows != n_values){
+      stop("Mixture component indices are unavailable.", call. = FALSE)
     }
-    as.numeric(indicator)
+    as.numeric(component)
   })
   indicators <- do.call(cbind, indicators)
   colnames(indicators) <- parameters
@@ -1918,13 +1929,13 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
 # The per-draw multipliers of a formula term (the 'multiply_by' of the term's
 # prior in the model of each draw), or NULL when no draw scales the term.
-.marginal_posterior_term_multiplier <- function(term, prior_list, posterior, models_ind, simple_list = FALSE){
+.marginal_posterior_term_multiplier <- function(term, prior_list, posterior, model_component, simple_list = FALSE){
 
   multiplier <- .get_combined_parameter_scaling_factor_matrix(
     term,
     prior_list  = prior_list,
     posterior   = posterior,
-    models_ind  = models_ind,
+    model_component = model_component,
     nrow        = 1L,
     simple_list = simple_list
   )[1L, ]
@@ -1935,15 +1946,15 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   multiplier
 }
 
-.get_combined_parameter_scaling_factor_matrix <- function(term, prior_list, posterior, models_ind, nrow, simple_list = FALSE){
+.get_combined_parameter_scaling_factor_matrix <- function(term, prior_list, posterior, model_component, nrow, simple_list = FALSE){
 
   if(simple_list){
     temp_multiply_by <- .get_parameter_scaling_factor_matrix(term, prior_list, posterior, nrow = nrow, ncol = nrow(posterior))
   }else{
-    temp_multiply_by <- do.call(cbind, lapply(unique(models_ind), function(m){
+    temp_multiply_by <- do.call(cbind, lapply(unique(model_component), function(m){
       temp_prior_list <- lapply(prior_list, function(parameter_priors) parameter_priors[[m]])
-      temp_posterior  <- posterior[models_ind == m,,drop=FALSE]
-      return(.get_parameter_scaling_factor_matrix(term, temp_prior_list, temp_posterior, nrow = nrow, ncol = sum(models_ind == m)))
+      temp_posterior  <- posterior[model_component == m,,drop=FALSE]
+      return(.get_parameter_scaling_factor_matrix(term, temp_prior_list, temp_posterior, nrow = nrow, ncol = sum(model_component == m)))
     }))
   }
 

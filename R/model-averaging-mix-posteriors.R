@@ -391,8 +391,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   # prepare output objects
   samples <- NULL
-  sample_ind <- NULL
-  models_ind <- NULL
+  draw_index <- NULL
+  model_component <- NULL
 
   # mix samples
   sample_counts <- .posterior_mixture_sample_counts(post_probs, n_samples)
@@ -424,13 +424,13 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       samples <- c(samples, model_samples[temp_ind, parameter])
     }
 
-    sample_ind <- c(sample_ind, temp_ind)
-    models_ind <- c(models_ind, rep(i, length(temp_ind)))
+    draw_index <- c(draw_index, temp_ind)
+    model_component <- c(model_component, rep(i, length(temp_ind)))
   }
 
   samples <- unname(samples)
-  samples <- .bt_meta_set(samples, "sample_ind", sample_ind)
-  samples <- .bt_meta_set(samples, "models_ind", models_ind)
+  samples <- .bt_meta_set(samples, "draw_index", draw_index)
+  samples <- .bt_draws_set_component(samples, model_component, "model")
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
   attr(samples, "interaction")       <- if(length(priors_info) == 0) FALSE else priors_info[["interaction"]]
@@ -476,8 +476,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     stop("all vector priors must be of the same length")
 
   samples    <- matrix(nrow = 0, ncol = K)
-  sample_ind <- NULL
-  models_ind <- NULL
+  draw_index <- NULL
+  model_component <- NULL
 
   # mix samples
   sample_counts <- .posterior_mixture_sample_counts(post_probs, n_samples)
@@ -519,14 +519,14 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       samples <- rbind(samples, model_samples[temp_ind, paste0(parameter,"[",1:K,"]")])
     }
 
-    sample_ind <- c(sample_ind, temp_ind)
-    models_ind <- c(models_ind, rep(i, length(temp_ind)))
+    draw_index <- c(draw_index, temp_ind)
+    model_component <- c(model_component, rep(i, length(temp_ind)))
   }
 
   rownames(samples) <- NULL
   colnames(samples) <- if(is.null(column_names)) paste0(parameter,"[",1:K,"]") else column_names
-  samples <- .bt_meta_set(samples, "sample_ind", sample_ind)
-  samples <- .bt_meta_set(samples, "models_ind", models_ind)
+  samples <- .bt_meta_set(samples, "draw_index", draw_index)
+  samples <- .bt_draws_set_component(samples, model_component, "model")
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
   samples <- .posterior_support_set_columns_from_prior_list(samples, priors)
@@ -611,10 +611,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     coefficient_names <- .JAGS_prior_factor_names(parameter, ordered_prior)
     indicator_name    <- paste0(.prior_ordered_total_name(parameter), "_indicator")
     samples    <- matrix(nrow = 0, ncol = levels)
-    sample_ind <- NULL
-    models_ind <- NULL
-    # per-draw total indicator of models whose ordered total has a spike at
-    # zero (NA for the other models); formula-level atoms split by it
+    draw_index <- NULL
+    model_component <- NULL
+    # per-draw component of the ordered total of models whose total has a
+    # spike at zero (NA for the other models); formula-level atoms split by it
     total_indicator <- NULL
 
     sample_counts <- .posterior_mixture_sample_counts(post_probs, n_samples)
@@ -655,11 +655,14 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
         if(!indicator_name %in% colnames(model_samples)){
           .mix_posteriors_stop_missing_total_indicator(parameter, indicator_name)
         }
-        temp_total_indicator <- as.integer(model_samples[temp_ind, indicator_name])
+        temp_total_indicator <- .bt_component_from_indicator(
+          priors[[i]]$total,
+          model_samples[temp_ind, indicator_name]
+        )
       }
 
-      sample_ind <- c(sample_ind, temp_ind)
-      models_ind <- c(models_ind, rep(i, length(temp_ind)))
+      draw_index <- c(draw_index, temp_ind)
+      model_component <- c(model_component, rep(i, length(temp_ind)))
       total_indicator <- c(total_indicator, temp_total_indicator)
     }
 
@@ -671,12 +674,12 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       ordered_prior,
       coefficient_names
     )
-    samples <- .bt_meta_set(samples, "sample_ind", sample_ind)
-    samples <- .bt_meta_set(samples, "models_ind", models_ind)
+    samples <- .bt_meta_set(samples, "draw_index", draw_index)
+    samples <- .bt_draws_set_component(samples, model_component, "model")
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- priors
     if(any(!is.na(total_indicator))){
-      samples <- .bt_meta_set(samples, "ordered_total_indicator", total_indicator)
+      samples <- .bt_meta_set(samples, "ordered_total_component", total_indicator)
     }
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
 
@@ -686,8 +689,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
       samples <- .mix_posteriors.simple(fits, priors, parameter, post_probs, seed, n_samples)
 
-      sample_ind <- .bt_meta_get(samples, "sample_ind")
-      models_ind <- .bt_meta_get(samples, "models_ind")
+      draw_index <- .bt_meta_get(samples, "draw_index")
+      model_component <- .bt_meta_get(samples, "component")
 
       samples <- matrix(samples, ncol = 1)
 
@@ -700,8 +703,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
       samples <- lapply(1:levels, function(i) .mix_posteriors.simple(fits, priors, paste0(parameter, "[", i, "]"), post_probs, seed, n_samples))
 
-      sample_ind <- .bt_meta_get(samples[[1]], "sample_ind")
-      models_ind <- .bt_meta_get(samples[[1]], "models_ind")
+      draw_index <- .bt_meta_get(samples[[1]], "draw_index")
+      model_component <- .bt_meta_get(samples[[1]], "component")
 
       samples <- do.call(cbind, samples)
 
@@ -717,8 +720,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       factor_prior,
       ncol(samples)
     )
-    samples <- .bt_meta_set(samples, "sample_ind", sample_ind)
-    samples <- .bt_meta_set(samples, "models_ind", models_ind)
+    samples <- .bt_meta_set(samples, "draw_index", draw_index)
+    samples <- .bt_draws_set_component(samples, model_component, "model")
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- priors
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
@@ -729,8 +732,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
       samples <- .mix_posteriors.simple(fits, priors, parameter, post_probs, seed, n_samples)
 
-      sample_ind <- .bt_meta_get(samples, "sample_ind")
-      models_ind <- .bt_meta_get(samples, "models_ind")
+      draw_index <- .bt_meta_get(samples, "draw_index")
+      model_component <- .bt_meta_get(samples, "component")
 
       samples <- matrix(samples, ncol = 1)
 
@@ -743,8 +746,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
       samples <- lapply(1:levels, function(i) .mix_posteriors.simple(fits, priors, paste0(parameter, "[", i, "]"), post_probs, seed, n_samples))
 
-      sample_ind <- .bt_meta_get(samples[[1]], "sample_ind")
-      models_ind <- .bt_meta_get(samples[[1]], "models_ind")
+      draw_index <- .bt_meta_get(samples[[1]], "draw_index")
+      model_component <- .bt_meta_get(samples[[1]], "component")
 
       samples <- do.call(cbind, samples)
 
@@ -757,8 +760,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       factor_prior,
       ncol(samples)
     )
-    samples <- .bt_meta_set(samples, "sample_ind", sample_ind)
-    samples <- .bt_meta_set(samples, "models_ind", models_ind)
+    samples <- .bt_meta_set(samples, "draw_index", draw_index)
+    samples <- .bt_draws_set_component(samples, model_component, "model")
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- priors
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
@@ -846,7 +849,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     if(!indicator_name %in% colnames(model_samples)){
       .mix_posteriors_stop_missing_total_indicator(parameter, indicator_name)
     }
-    .posterior_atoms_ordered_exclusion(priors[[i]]$total, model_samples[, indicator_name])
+    .posterior_atoms_ordered_exclusion(
+      priors[[i]]$total,
+      .bt_component_from_indicator(priors[[i]]$total, model_samples[, indicator_name])
+    )
   }, numeric(1))
 }
 # Whether a model's ordered prior has a total with a within-model spike at zero
@@ -894,8 +900,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   # prepare output objects
   samples    <- matrix(nrow = 0, ncol = length(omega_cuts) - 1)
-  sample_ind <- NULL
-  models_ind <- NULL
+  draw_index <- NULL
+  model_component <- NULL
 
   # mix samples
   sample_counts <- .posterior_mixture_sample_counts(post_probs, n_samples)
@@ -926,14 +932,14 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       samples <- rbind(samples, model_samples[temp_ind, paste0("omega[",omega_mapping[[i]],"]")])
     }
 
-    sample_ind <- c(sample_ind, temp_ind)
-    models_ind <- c(models_ind, rep(i, length(temp_ind)))
+    draw_index <- c(draw_index, temp_ind)
+    model_component <- c(model_component, rep(i, length(temp_ind)))
   }
 
   rownames(samples) <- NULL
   colnames(samples) <- omega_names
-  samples <- .bt_meta_set(samples, "sample_ind", sample_ind)
-  samples <- .bt_meta_set(samples, "models_ind", models_ind)
+  samples <- .bt_meta_set(samples, "draw_index", draw_index)
+  samples <- .bt_draws_set_component(samples, model_component, "model")
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
   samples <- .posterior_support_set_weightfunction_columns(

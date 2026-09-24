@@ -1271,8 +1271,9 @@ test_that("ensemble_estimates_table transform_scaled works on mixed posterior sa
         interaction_terms = if(grepl("__xXx__", parameter_name)) c("x_cont1", "x_cont2") else NULL
       ),
       formula_parameter = "mu",
-      sample_ind = seq_along(values),
-      models_ind = rep(1L, length(values))
+      draw_index = seq_along(values),
+      component = rep(1L, length(values)),
+      component_source = "model"
     )
   }
 

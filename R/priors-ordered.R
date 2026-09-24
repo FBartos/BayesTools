@@ -630,26 +630,23 @@
     simplify = FALSE
   )
   theta <- do.call(cbind, lapply(theta_draws, as.numeric))
-  total_indicators <- lapply(theta_draws, function(draws){
-    attr(draws, "inclusion", exact = TRUE)
-  })
+  # the component of the total drawn for each draw (an index into the total
+  # prior's component list), from the spike-and-slab inclusion or the mixture
+  # component of the total's draws
   total_components <- lapply(theta_draws, function(draws){
+    inclusion <- attr(draws, "inclusion", exact = TRUE)
+    if(!is.null(inclusion)){
+      return(.bt_component_from_indicator(prior$total, inclusion))
+    }
     attr(draws, "components", exact = TRUE)
   })
   attach_total_component_metadata <- function(out){
-    if(all(vapply(total_indicators, function(x) !is.null(x), logical(1)))){
-      indicator <- do.call(cbind, total_indicators)
-      if(ncol(indicator) == 1L){
-        indicator <- as.integer(indicator[, 1L])
-      }
-      out <- .bt_meta_set(out, "ordered_total_indicator", indicator)
-    }
     if(all(vapply(total_components, function(x) !is.null(x), logical(1)))){
       component <- do.call(cbind, total_components)
       if(ncol(component) == 1L){
         component <- as.integer(component[, 1L])
       }
-      attr(out, "ordered_total_component") <- component
+      out <- .bt_meta_set(out, "ordered_total_component", component)
     }
     out
   }

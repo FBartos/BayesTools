@@ -245,7 +245,7 @@
   ### create new samples
   new_samples <- samples[["bias"]][, grepl(parameter, colnames(samples[["bias"]])),drop=FALSE]
   if(parameter %in% c("PET", "PEESE") && ncol(new_samples) == 0L){
-    indicator <- .bt_meta_get(samples[["bias"]], "models_ind")
+    indicator <- .bt_draws_component(samples[["bias"]])
     atoms <- .posterior_atoms_get(samples[["bias"]])
     probabilities <- if(is.null(atoms)) NULL else atoms$component_probabilities
     active <- unique(c(which(probabilities > 0), indicator))
@@ -289,8 +289,8 @@
     if(!is.null(atoms)){
       probabilities <- atoms$component_probabilities
       scalar_atoms <- if(is.null(probabilities)){
-        .posterior_atoms_from_indicator(
-          prior_list, .bt_meta_get(new_samples, "models_ind"),
+        .posterior_atoms_from_components(
+          prior_list, .bt_draws_component(new_samples),
           n_columns = 1L, column_names = parameter
         )
       }else{

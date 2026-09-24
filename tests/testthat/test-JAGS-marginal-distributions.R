@@ -1231,8 +1231,8 @@ test_that("marginal_posterior propagates exact scalar support from mixed samples
   theta_prior <- prior("beta", list(alpha = 1, beta = 1))
   theta <- seq(.001, .999, length.out = 101)
   class(theta) <- c("mixed_posteriors", "mixed_posteriors.simple", class(theta))
-  theta <- .bt_meta_set(theta, "sample_ind", seq_along(theta))
-  theta <- .bt_meta_set(theta, "models_ind", rep(1, length(theta)))
+  theta <- .bt_meta_set(theta, "draw_index", seq_along(theta))
+  theta <- .bt_draws_set_component(theta, source = "model", component = rep(1, length(theta)))
   attr(theta, "parameter") <- "theta"
   attr(theta, "prior_list") <- theta_prior
   theta <- BayesTools:::.posterior_support_set_from_prior_list(theta, theta_prior)
@@ -1307,8 +1307,8 @@ test_that("marginal_posterior preserves an attached simple prior density", {
 
   theta <- seq(.1, .9, length.out = 101)
   class(theta) <- c("mixed_posteriors", "mixed_posteriors.simple", class(theta))
-  theta <- .bt_meta_set(theta, "sample_ind", seq_along(theta))
-  theta <- .bt_meta_set(theta, "models_ind", rep(1, length(theta)))
+  theta <- .bt_meta_set(theta, "draw_index", seq_along(theta))
+  theta <- .bt_draws_set_component(theta, source = "model", component = rep(1, length(theta)))
   attr(theta, "parameter")  <- "theta"
   attr(theta, "prior_list") <- prior_none()
   stored_prior <- prior("uniform", list(a = 0, b = 1))
@@ -1346,8 +1346,8 @@ test_that("marginal_posterior infers support from the current prior context", {
   transformed_prior <- prior("uniform", list(10, 20))
   theta <- seq(11, 19, length.out = 51)
   class(theta) <- c("mixed_posteriors", "mixed_posteriors.simple", class(theta))
-  theta <- .bt_meta_set(theta, "sample_ind", seq_along(theta))
-  theta <- .bt_meta_set(theta, "models_ind", rep(1, length(theta)))
+  theta <- .bt_meta_set(theta, "draw_index", seq_along(theta))
+  theta <- .bt_draws_set_component(theta, source = "model", component = rep(1, length(theta)))
   attr(theta, "parameter") <- "theta"
   attr(theta, "prior_list") <- raw_prior
 
@@ -1383,8 +1383,8 @@ test_that("marginal_posterior rebuilds conditional context for support", {
   )
   theta <- seq(11, 19, length.out = 51)
   class(theta) <- c("mixed_posteriors", "mixed_posteriors.simple", class(theta))
-  theta <- .bt_meta_set(theta, "sample_ind", seq_along(theta))
-  theta <- .bt_meta_set(theta, "models_ind", rep(1, length(theta)))
+  theta <- .bt_meta_set(theta, "draw_index", seq_along(theta))
+  theta <- .bt_draws_set_component(theta, source = "model", component = rep(1, length(theta)))
   attr(theta, "parameter") <- "theta"
   attr(theta, "prior_list") <- theta_prior
   theta <- BayesTools:::.posterior_support_set_from_prior_list(theta, theta_prior)
@@ -1509,8 +1509,8 @@ test_that("formula marginal support is propagated without prior densities", {
     "mixed_posteriors.formula",
     class(theta)
   )
-  theta <- .bt_meta_set(theta, "sample_ind", seq_along(theta))
-  theta <- .bt_meta_set(theta, "models_ind", rep(1, length(theta)))
+  theta <- .bt_meta_set(theta, "draw_index", seq_along(theta))
+  theta <- .bt_draws_set_component(theta, source = "model", component = rep(1, length(theta)))
   attr(theta, "parameter") <- "mu_x"
   theta <- .bt_meta_set(theta, "formula_parameter", "mu")
   attr(theta, "prior_list") <- theta_prior
@@ -1557,8 +1557,8 @@ test_that("formula marginal_posterior attaches matched top-level precomputed met
     "mixed_posteriors.formula",
     class(mu_intercept)
   )
-  mu_intercept <- .bt_meta_set(mu_intercept, "sample_ind", seq_along(mu_intercept))
-  mu_intercept <- .bt_meta_set(mu_intercept, "models_ind", rep(1, length(mu_intercept)))
+  mu_intercept <- .bt_meta_set(mu_intercept, "draw_index", seq_along(mu_intercept))
+  mu_intercept <- .bt_draws_set_component(mu_intercept, source = "model", component = rep(1, length(mu_intercept)))
   attr(mu_intercept, "parameter") <- "mu_intercept"
   mu_intercept <- .bt_meta_set(mu_intercept, "formula_parameter", "mu")
   attr(mu_intercept, "prior_list") <- prior("normal", list(0, 1))
@@ -1570,8 +1570,8 @@ test_that("formula marginal_posterior attaches matched top-level precomputed met
     "mixed_posteriors.formula",
     class(mu_x)
   )
-  mu_x <- .bt_meta_set(mu_x, "sample_ind", seq_along(mu_x))
-  mu_x <- .bt_meta_set(mu_x, "models_ind", rep(1, length(mu_x)))
+  mu_x <- .bt_meta_set(mu_x, "draw_index", seq_along(mu_x))
+  mu_x <- .bt_draws_set_component(mu_x, source = "model", component = rep(1, length(mu_x)))
   attr(mu_x, "parameter") <- "mu_x"
   mu_x <- .bt_meta_set(mu_x, "formula_parameter", "mu")
   attr(mu_x, "prior_list") <- prior("normal", list(0, 1))
@@ -3517,7 +3517,7 @@ test_that("Savage-Dickey mixes per-model ordinates when model supports differ", 
     class(level) <- c(class(level), "marginal_posterior")
     level
   })
-  models_ind <- .bt_meta_get(mixed$mu_intercept, "models_ind")
+  models_ind <- .bt_meta_get(mixed$mu_intercept, "component")
   intercept <- as.numeric(mixed$mu_intercept)
 
   # model 1: N(0, 1) on the real line; model 2: N(0.5, 1) truncated to [0, Inf)
@@ -3639,7 +3639,7 @@ test_that("Savage-Dickey extrapolation warnings use the components supporting th
   )
   marginal <- marginal_posterior(mixed, "mu", prior_samples = TRUE)
   draws <- as.numeric(marginal)
-  models_ind <- .bt_meta_get(mixed$mu, "models_ind")
+  models_ind <- .bt_meta_get(mixed$mu, "component")
   expect_gt(min(draws[models_ind == 2]), 5)
 
   # 4.5 lies within the pooled draws, but only model 1 supports it and its
@@ -4350,7 +4350,7 @@ test_that("marginal_posterior uses log(intercept) for log-intercept formulas", {
     n_samples    = 50
   )
   mixed_marginal <- marginal_posterior(mixed, "ls_x", formula = ~ x)
-  rows <- .bt_meta_get(mixed$ls_x, "sample_ind")
+  rows <- .bt_meta_get(mixed$ls_x, "draw_index")
   expect_equal(
     as.numeric(mixed_marginal[["1SD"]]),
     log(posterior[rows, "ls_intercept"]) + posterior[rows, "ls_x"],
@@ -4819,12 +4819,14 @@ test_that("mixed formula levels declare within-model ordered-total spikes", {
     seed = 1, n_samples = n
   )
 
-  # per-draw total indicators follow the mixture draws (NA without a spiked total)
-  models_ind <- .bt_meta_get(mixed$mu_f, "models_ind")
-  total_indicator <- .bt_meta_get(mixed$mu_f, "ordered_total_indicator")
+  # per-draw total components follow the mixture draws (NA without a spiked
+  # total): the spike is component 2 of the spike-and-slab total and
+  # component 1 of the mixture total
+  models_ind <- .bt_meta_get(mixed$mu_f, "component")
+  total_indicator <- .bt_meta_get(mixed$mu_f, "ordered_total_component")
   expect_length(total_indicator, n)
   expect_true(all(is.na(total_indicator[models_ind == 3L])))
-  excluded <- ifelse(models_ind == 1L, total_indicator == 0L, total_indicator == 1L)
+  excluded <- ifelse(models_ind == 1L, total_indicator == 2L, total_indicator == 1L)
   # posterior model probability 1/3 times the within-model zero frequency
   expected_mass <- (mean(excluded[models_ind == 1L]) + mean(excluded[models_ind == 2L]) + 1) / 3
 

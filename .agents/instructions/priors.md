@@ -350,7 +350,13 @@ flags, linear weights, conditioning) live in one validated attribute,
 `.bt_meta_get()`/`.bt_meta_set()` (the public `posterior_metadata()` for
 downstream packages), never as free attributes; a unit lint test enforces it.
 Posterior atoms come only from the `atoms` field, never from the point masses
-of a precomputed posterior density. `Ops`/`Math` group generics, `c()`,
+of a precomputed posterior density. The component of a draw has one encoding:
+`component` indexes the declared component list, with `component_source` the
+list it indexes (`"model"`: the models of a `mix_posteriors()` ensemble,
+`"mixture"` or `"spike_and_slab"`: the components of the prior, whose slab and
+spike positions come from its `components` attribute); an ordered total's
+component is `ordered_total_component`. Draws without a mixture carry no
+component and form one component. `Ops`/`Math` group generics, `c()`,
 `as.numeric()` and subsetting of draws return plain numerics without
 metadata; consumers that need the metadata stop on plain draws, and
 producers that transform draws transform their metadata explicitly

@@ -268,8 +268,8 @@ test_that("Summary table advanced features work correctly", {
   )
   estimates_conditional <- ensemble_estimates_table(mixed_posteriors_conditional, parameters = "omega", probs = c(.025, 0.95))
   expect_equal(rownames(estimates_conditional), rownames(estimates_table)[grepl("^omega\\[", rownames(estimates_table))])
-  expect_false(any(.bt_meta_get(mixed_posteriors_conditional$omega, "models_ind") == 1))
-  expect_true(any(.bt_meta_get(mixed_posteriors$omega, "models_ind") == 1))
+  expect_false(any(.bt_meta_get(mixed_posteriors_conditional$omega, "component") == 1))
+  expect_true(any(.bt_meta_get(mixed_posteriors$omega, "component") == 1))
 
   malformed_model <- models[[1]]
   malformed_model$fit_summary <- data.frame(MCMC_error = 0)

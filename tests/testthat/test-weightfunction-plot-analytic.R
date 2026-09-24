@@ -111,7 +111,7 @@ test_that("posterior omega parameters use recorded component probabilities", {
   )
   colnames(samples) <- "omega[0.05,1]"
   attr(samples, "prior_list") <- prior_list
-  samples <- .bt_meta_set(samples, "models_ind", c(rep(1, 3000), rep(2, 1000)))
+  samples <- .bt_draws_set_component(samples, source = "model", component = c(rep(1, 3000), rep(2, 1000)))
   samples <- .bt_meta_set(samples, "atoms", BayesTools:::.posterior_atoms_from_priors(
       prior_list,
       probabilities = c(.6, .4),
@@ -150,7 +150,7 @@ test_that("individual omega posteriors keep masses and draws aligned with duplic
   )[rep(1, length(models_ind)), ]
   samples[continuous, "omega[0.05,1]"] <- seq(.01, .99, length.out = sum(continuous))
   attr(samples, "prior_list") <- prior_list
-  samples <- .bt_meta_set(samples, "models_ind", models_ind)
+  samples <- .bt_draws_set_component(samples, source = "model", component = models_ind)
   samples <- .bt_meta_set(samples, "atoms", .posterior_atoms_from_priors(
     prior_list,
     post_probs,
@@ -249,7 +249,7 @@ test_that("weightfunction posterior bins follow the mixed columns when a model h
   omega <- matrix(1, nrow = length(models_ind), ncol = 4)
   omega[models_ind == 1, 3] <- seq(.2, .9, length.out = 60)
   colnames(omega) <- .weightfunction_omega_names(omega_cuts)
-  omega <- .bt_meta_set(omega, "models_ind", models_ind)
+  omega <- .bt_draws_set_component(omega, source = "model", component = models_ind)
   attr(omega, "prior_list") <- priors
   omega <- .bt_meta_set(omega, "atoms", .posterior_atoms_from_priors(
     priors,
@@ -307,7 +307,7 @@ test_that("structurally fixed omega coordinates remain declared point masses", {
     "omega[0.05,1]" = seq(.005, .995, length.out = 100)
   )
   attr(samples, "prior_list") <- weight_prior
-  samples <- .bt_meta_set(samples, "models_ind", rep(1, nrow(samples)))
+  samples <- .bt_draws_set_component(samples, source = "model", component = rep(1, nrow(samples)))
   samples <- .bt_meta_set(samples, "atoms", BayesTools:::.posterior_atoms_from_priors(
       weight_prior,
       probabilities = 1,
@@ -360,7 +360,7 @@ test_that("conditional bias posteriors zero null bias prior weights", {
   expect_equal(length(conditioned_context$prior_lists), 2L)
   expect_equal(conditioned_context$model_weights, c(1 / 2, 1 / 2))
   expect_equal(conditioned_context$condition_key, BayesTools:::.condition_event_key("bias", "AND"))
-  expect_equal(.bt_meta_get(mixed$bias, "models_ind"), c(2, 3))
+  expect_equal(.bt_meta_get(mixed$bias, "component"), c(2, 3))
 
   mixed_or <- as_mixed_posteriors(
     model,
@@ -368,7 +368,7 @@ test_that("conditional bias posteriors zero null bias prior weights", {
     conditional      = c("PETPEESE", "omega"),
     conditional_rule = "OR"
   )
-  expect_equal(.bt_meta_get(mixed_or$bias, "models_ind"), c(2, 3))
+  expect_equal(.bt_meta_get(mixed_or$bias, "component"), c(2, 3))
 
   expect_warning(
     mixed_and <- as_mixed_posteriors(
@@ -564,7 +564,7 @@ test_that("posterior weightfunction plotting ranges include omega samples above 
   )
   colnames(omega_samples) <- c("omega[0,0.05]", "omega[0.05,1]")
   attr(omega_samples, "prior_list") <- list(log_prior)
-  omega_samples <- .bt_meta_set(omega_samples, "models_ind", rep(1, nrow(omega_samples)))
+  omega_samples <- .bt_draws_set_component(omega_samples, source = "model", component = rep(1, nrow(omega_samples)))
   omega_samples <- .bt_meta_set(omega_samples, "atoms", .posterior_atoms_from_priors(
     list(log_prior),
     probabilities = 1,
@@ -693,7 +693,7 @@ test_that("analytical plotting handles heterogeneous weightfunction mixtures", {
     n_points = 100
   )
 
-  expect_true(all(.bt_meta_get(mixed$bias, "models_ind") %in% 2:5))
+  expect_true(all(.bt_meta_get(mixed$bias, "component") %in% 2:5))
   expect_gt(max(posterior_plot_data$density$x), 1)
   expect_s3_class(plot_posterior(mixed, "omega", prior = TRUE, plot_type = "ggplot"), "ggplot")
 })
@@ -724,7 +724,7 @@ test_that("two-cut weightfunction plot data keeps matching x and y steps", {
   omega_samples <- matrix(rep(1, 20), ncol = 1)
   colnames(omega_samples) <- "omega[0,1]"
   attr(omega_samples, "prior_list") <- list(prior_none())
-  omega_samples <- .bt_meta_set(omega_samples, "models_ind", rep(1, nrow(omega_samples)))
+  omega_samples <- .bt_draws_set_component(omega_samples, source = "model", component = rep(1, nrow(omega_samples)))
 
   sample_data <- .plot_data_samples.weightfunction(
     list(omega = omega_samples),

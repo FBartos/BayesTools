@@ -127,8 +127,6 @@ random_effects_summary_posterior <- function(
       quantity = quantity,
       defined  = defined
     )
-    values <- .bt_meta_set(values, "sample_ind", FALSE)
-    values <- .bt_meta_set(values, "models_ind", rep(1, length(values)))
     attr(values, "parameter") <- display_names[i]
     attr(values, "summary_name") <- key$summary_name
     attr(values, "random_summary") <- summary$summary

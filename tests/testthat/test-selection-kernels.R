@@ -973,11 +973,11 @@ test_that("bias posterior extraction recognizes composed selection and phacking 
 
   mixed_omega <- as_mixed_posteriors(model, parameters = "bias", conditional = "omega")
   expect_equal(colnames(mixed_omega$bias), c("omega[0,0.025]", "omega[0.025,1]"))
-  expect_equal(.bt_meta_get(mixed_omega$bias, "models_ind"), c(2, 4))
+  expect_equal(.bt_meta_get(mixed_omega$bias, "component"), c(2, 4))
 
   mixed_phacking <- as_mixed_posteriors(model, parameters = "bias", conditional = "phacking")
   expect_equal(colnames(mixed_phacking$bias), "pi_null")
-  expect_equal(.bt_meta_get(mixed_phacking$bias, "models_ind"), c(3, 4))
+  expect_equal(.bt_meta_get(mixed_phacking$bias, "component"), c(3, 4))
 
   mixed_combined <- as_mixed_posteriors(
     model,
@@ -985,7 +985,7 @@ test_that("bias posterior extraction recognizes composed selection and phacking 
     conditional      = c("omega", "phacking"),
     conditional_rule = "AND"
   )
-  expect_equal(.bt_meta_get(mixed_combined$bias, "models_ind"), 4)
+  expect_equal(.bt_meta_get(mixed_combined$bias, "component"), 4)
   expect_equal(length(.bt_meta_get(mixed_combined, "prior_context")$prior_lists), 1L)
 
   mixed_bias <- as_mixed_posteriors(model, parameters = "bias", conditional = "bias")

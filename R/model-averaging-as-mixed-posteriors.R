@@ -273,8 +273,6 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   # format the output
   samples <- unname(samples)
-  samples <- .bt_meta_set(samples, "sample_ind", FALSE)
-  samples <- .bt_meta_set(samples, "models_ind", rep(1, length(samples)))
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
   attr(samples, "interaction")       <- if(length(prior_info) == 0) FALSE else prior_info[["interaction"]]
@@ -336,8 +334,6 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   }else{
     column_names
   }
-  samples <- .bt_meta_set(samples, "sample_ind", FALSE)
-  samples <- .bt_meta_set(samples, "models_ind", rep(1, nrow(samples)))
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
   samples <- .posterior_support_set_columns_from_prior_list(samples, prior)
@@ -384,7 +380,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
     coefficient_names <- .JAGS_prior_factor_names(parameter, prior)
     samples <- model_samples[, coefficient_names, drop = FALSE]
-    ordered_total_indicator <- NULL
+    ordered_total_component <- NULL
     if(.posterior_atoms_ordered_total_has_spike(prior$total)){
       indicator_name <- paste0(
         .prior_ordered_total_name(parameter),
@@ -398,7 +394,10 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
           call. = FALSE
         )
       }
-      ordered_total_indicator <- model_samples[, indicator_name]
+      ordered_total_component <- .bt_component_from_indicator(
+        prior$total,
+        model_samples[, indicator_name]
+      )
     }
 
     rownames(samples) <- NULL
@@ -409,12 +408,10 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       prior,
       coefficient_names
     )
-    samples <- .bt_meta_set(samples, "sample_ind", FALSE)
-    samples <- .bt_meta_set(samples, "models_ind", rep(1, nrow(samples)))
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- prior
-    if(!is.null(ordered_total_indicator)){
-      samples <- .bt_meta_set(samples, "ordered_total_indicator", as.integer(ordered_total_indicator))
+    if(!is.null(ordered_total_component)){
+      samples <- .bt_meta_set(samples, "ordered_total_component", ordered_total_component)
     }
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
 
@@ -437,8 +434,6 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     # `~ g + g:x` includes the first level); cumulative increments of an
     # interaction with an ordered factor are contrast coefficients `{j}`.
     colnames(samples) <- .factor_level_coordinate_names(parameter, prior, ncol(samples))
-    samples <- .bt_meta_set(samples, "sample_ind", FALSE)
-    samples <- .bt_meta_set(samples, "models_ind", rep(1, nrow(samples)))
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- prior
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
@@ -459,8 +454,6 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
     rownames(samples) <- NULL
     colnames(samples) <- .factor_level_coordinate_names(parameter, prior, ncol(samples))
-    samples <- .bt_meta_set(samples, "sample_ind", FALSE)
-    samples <- .bt_meta_set(samples, "models_ind", rep(1, nrow(samples)))
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- prior
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
@@ -512,8 +505,8 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     prior,
     n_columns = ncol(samples),
     column_names = colnames(samples),
-    indicator = if(prior_info[["ordered"]]){
-      .bt_meta_get(samples, "ordered_total_indicator")
+    component = if(prior_info[["ordered"]]){
+      .bt_meta_get(samples, "ordered_total_component")
     }else{
       NULL
     },
@@ -552,8 +545,6 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   rownames(samples) <- NULL
   colnames(samples) <- omega_names
-  samples <- .bt_meta_set(samples, "sample_ind", FALSE)
-  samples <- .bt_meta_set(samples, "models_ind", rep(1, nrow(samples)))
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
   samples <- .weightfunction_set_omega_context(samples, omega_info)
@@ -582,8 +573,6 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   samples   <- model_samples[, par_names, drop = FALSE]
 
   rownames(samples) <- NULL
-  samples <- .bt_meta_set(samples, "sample_ind", FALSE)
-  samples <- .bt_meta_set(samples, "models_ind", rep(1, nrow(samples)))
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.phacking")
@@ -656,8 +645,6 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   rownames(samples) <- NULL
   colnames(samples) <- out_names
-  samples <- .bt_meta_set(samples, "sample_ind", FALSE)
-  samples <- .bt_meta_set(samples, "models_ind", rep(1, nrow(samples)))
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
   if(any(has_selection)){
@@ -678,14 +665,17 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   if(is.prior.factor(prior_variable)){
 
     samples <- .as_mixed_posteriors.factor(model_samples, prior_variable, parameter)
-    samples <- .bt_meta_set(samples, "models_ind", as.vector(model_samples[,paste0(parameter, "_indicator")]))
 
   }else if(is.prior.simple(prior_variable)){
 
     samples <- .as_mixed_posteriors.simple(model_samples, prior_variable, parameter)
-    samples <- .bt_meta_set(samples, "models_ind", as.vector(model_samples[,paste0(parameter, "_indicator")]))
 
   }
+  samples <- .bt_draws_set_component(
+    samples,
+    .bt_component_from_indicator(prior, model_samples[, paste0(parameter, "_indicator")]),
+    "spike_and_slab"
+  )
 
   class(samples) <- c("mixed_posteriors.spike_and_slab", class(samples))
   attr(samples, "prior_list") <- prior
@@ -696,12 +686,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   }
   samples <- .posterior_atoms_set(
     samples,
-    .posterior_atoms_from_indicator(
-      prior = prior,
-      indicator = .bt_meta_get(samples, "models_ind"),
-      n_columns = if(is.null(dim(samples))) 1L else ncol(samples),
-      column_names = if(is.null(dim(samples))) parameter else colnames(samples),
-      spike_and_slab = TRUE
+    .posterior_atoms_from_components(
+      prior        = prior,
+      component    = .bt_meta_get(samples, "component"),
+      n_columns    = if(is.null(dim(samples))) 1L else ncol(samples),
+      column_names = if(is.null(dim(samples))) parameter else colnames(samples)
     )
   )
 
@@ -834,8 +823,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
     rownames(samples) <- NULL
     colnames(samples) <- out_names
-    samples <- .bt_meta_set(samples, "sample_ind", FALSE)
-    samples <- .bt_meta_set(samples, "models_ind", as.vector(indicator))
+    samples <- .bt_draws_set_component(
+      samples,
+      .bt_component_from_indicator(prior, indicator),
+      "mixture"
+    )
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- prior
     if(any(has_selection)){
@@ -850,7 +842,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }else if(inherits(prior, "prior.factor_mixture")){
       samples <- .as_mixed_posteriors.factor(model_samples, prior, parameter)
     }
-    samples <- .bt_meta_set(samples, "models_ind", as.vector(model_samples[,paste0(parameter, "_indicator")]))
+    samples <- .bt_draws_set_component(
+      samples,
+      .bt_component_from_indicator(prior, model_samples[, paste0(parameter, "_indicator")]),
+      "mixture"
+    )
 
   }
 
@@ -858,10 +854,10 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(samples, "prior_list") <- prior
   samples <- .posterior_atoms_set(
     samples,
-    .posterior_atoms_from_indicator(
-      prior = prior,
-      indicator = .bt_meta_get(samples, "models_ind"),
-      n_columns = if(is.null(dim(samples))) 1L else ncol(samples),
+    .posterior_atoms_from_components(
+      prior        = prior,
+      component    = .bt_meta_get(samples, "component"),
+      n_columns    = if(is.null(dim(samples))) 1L else ncol(samples),
       column_names = if(is.null(dim(samples))) parameter else colnames(samples)
     )
   )

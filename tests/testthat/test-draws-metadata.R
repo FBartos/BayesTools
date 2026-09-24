@@ -341,3 +341,72 @@ test_that("arithmetic, math, and subsetting of draws return plain numerics", {
     fixed = TRUE
   )
 })
+
+test_that("draw components index the declared component list", {
+
+  # spike-and-slab: the slab is component 1 and the spike component 2 of the
+  # prior (the fitted inclusion indicator is 1 for the slab)
+  mixed <- .draws_metadata_mixed_for_test()
+  expect_identical(BayesTools:::.bt_meta_get(mixed$mu, "component"), rep(2:1, c(100L, 300L)))
+  expect_identical(BayesTools:::.bt_meta_get(mixed$mu, "component_source"), "spike_and_slab")
+  expect_identical(
+    attr(attr(mixed$mu, "prior_list"), "components")[c(2L, 1L)],
+    c("null", "alternative")
+  )
+  # parameters without a mixture prior have one component by explicit rule
+  expect_null(BayesTools:::.bt_meta_get(mixed$sigma, "component"))
+  expect_identical(BayesTools:::.bt_draws_component(mixed$sigma), rep(1L, 400L))
+  expect_null(BayesTools:::.bt_meta_get(mixed$mu, "draw_index"))
+
+  # the per-component Savage-Dickey keys use the same component indices
+  marginal <- marginal_posterior(mixed, "mu", prior_samples = TRUE)
+  components <- BayesTools:::.bt_meta_get(marginal, "components")
+  expect_setequal(components$keys[, "mu"], c(1, 2))
+  expect_identical(
+    as.integer(components$keys[components$index, "mu"]),
+    BayesTools:::.bt_meta_get(mixed$mu, "component")
+  )
+
+  # mixtures keep the fitted component index
+  set.seed(2)
+  posterior <- cbind(
+    theta           = c(rep(0, 20), stats::rnorm(40)),
+    theta_indicator = rep(c(1, 2), c(20L, 40L))
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(theta = prior_mixture(
+    list(prior("spike", list(0)), prior("normal", list(0, 1))),
+    is_null = c(TRUE, FALSE)
+  ))
+  fit <- attach_test_parameter_map(fit)
+  fit <- BayesTools:::.bt_attach_parameter_map(fit, monitor_names = colnames(posterior))
+  theta <- as_mixed_posteriors(fit, "theta")$theta
+  expect_identical(BayesTools:::.bt_meta_get(theta, "component"), rep(1:2, c(20L, 40L)))
+  expect_identical(BayesTools:::.bt_meta_get(theta, "component_source"), "mixture")
+  atoms <- posterior_metadata(theta, "atoms")
+  expect_equal(as.numeric(atoms$locations[, 1L]), 0)
+  expect_equal(atoms$mass, 1 / 3)
+
+  # the component helpers translate fitted indicators and reject others
+  spike_and_slab <- prior_spike_and_slab(prior("normal", list(0, 1)))
+  expect_identical(
+    BayesTools:::.bt_component_from_indicator(spike_and_slab, c(0, 1, 1)),
+    c(2L, 1L, 1L)
+  )
+  expect_error(
+    BayesTools:::.bt_component_from_indicator(spike_and_slab, c(0, 2)),
+    "Spike-and-slab indicator draws must be 0 or 1.",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_meta_set(1:3, "component", c(0, 1, 1)),
+    "Draw metadata 'component' is invalid",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_meta_set(1:3, "component_source", "models"),
+    "Draw metadata 'component_source' is invalid",
+    fixed = TRUE
+  )
+})

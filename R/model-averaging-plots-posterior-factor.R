@@ -17,7 +17,9 @@
 
   # extract the relevant data
   prior_list <- attr(samples, "prior_list")
-  models_ind <- .bt_meta_get(samples, "models_ind")
+  # the component of each draw: its model in an ensemble, or its component of
+  # the weightfunction prior list
+  draw_component <- .bt_draws_component(samples)
   posterior_atom_metadata <- .posterior_atoms_get(samples)
   if(is.null(posterior_atom_metadata)){
     .plot_data_stop_unknown_atoms()
@@ -51,12 +53,12 @@
     component_probabilities <- component_probabilities /
       sum(component_probabilities)
   }else{
-    if(length(models_ind) != n_samples_total ||
-       !all(models_ind %in% seq_along(components))){
+    if(length(draw_component) != n_samples_total ||
+       !all(draw_component %in% seq_along(components))){
       stop("Weightfunction model indicators do not match the weightfunction prior list.", call. = FALSE)
     }
     component_probabilities <- tabulate(
-      models_ind,
+      draw_component,
       nbins = length(components)
     ) / n_samples_total
   }
@@ -107,7 +109,7 @@
   if(any(!point_components)){
 
     continuous_components <- component_index[!point_components]
-    samples_density <- samples[models_ind %in% continuous_components]
+    samples_density <- samples[draw_component %in% continuous_components]
 
     if(length(samples_density) > 0){
 

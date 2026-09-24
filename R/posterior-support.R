@@ -1036,8 +1036,8 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
 # Components of a mixture marginal posterior. A component is identified by a
 # key: the model of a model-mixture context (column '.model'), or, for a single
 # fit, the selected component of each mixture or spike-and-slab prior entering
-# the quantity (one column per parameter holding its posterior indicator: the
-# 1-based mixture component, or 0 = spike and 1 = slab).
+# the quantity (one column per parameter holding the index of the component
+# in the prior's component list).
 
 .posterior_components_is_mixture <- function(x){
 
@@ -1045,22 +1045,13 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
     !is_prior_bias(x)
 }
 
-.posterior_components_component_prior <- function(mixture, indicator){
+.posterior_components_component_prior <- function(mixture, component){
 
-  indicator <- as.numeric(indicator)
-  if(is.prior.spike_and_slab(mixture)){
-    if(!indicator %in% c(0, 1)){
-      stop("Spike-and-slab component indicators must be 0 or 1.", call. = FALSE)
-    }
-    component_i <- which(attr(mixture, "components") ==
-                           if(indicator == 0) "null" else "alternative")
-  }else{
-    component_i <- indicator
-  }
+  component_i <- as.numeric(component)
   if(length(component_i) != 1L || !is.finite(component_i) ||
      component_i != round(component_i) || component_i < 1 ||
      component_i > length(mixture)){
-    stop("Mixture component indicators must identify one mixture component.",
+    stop("Mixture component indices must identify one mixture component.",
          call. = FALSE)
   }
 

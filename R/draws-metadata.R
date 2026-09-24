@@ -20,7 +20,8 @@
 # be used on draws (see the unit lint test).
 .bt_meta_legacy_names <- c(
   "posterior_support", "posterior_atoms", "posterior_components",
-  "models_ind", "sample_ind", "ordered_total_indicator", "undefined_draws",
+  "models_ind", "sample_ind", "ordered_total_indicator",
+  "ordered_total_component", "undefined_draws",
   "prior_density", "prior_density_context", "prior_densities",
   "posterior_density", "posterior_densities", "posterior_ordinate",
   "posterior_ordinates", "formula_parameter", "formula_log_intercept",
@@ -64,17 +65,24 @@
       if(inherits(value, "BayesTools_posterior_components")) NULL else
         "it must be a posterior component table"
     },
-    models_ind = function(value){
-      if(is.numeric(value) && !anyNA(value)) NULL else
-        "it must be a numeric vector without missing values"
+    component = function(value){
+      if(.bt_meta_is_index(value)) NULL else
+        "it must be a vector of positive integer component indices"
     },
-    sample_ind = function(value){
-      if(is.numeric(value) || identical(value, FALSE)) NULL else
-        "it must be a numeric vector"
+    component_source = function(value){
+      if(is.character(value) && length(value) == 1L &&
+         value %in% .bt_meta_component_sources){
+        return(NULL)
+      }
+      "it must be 'model', 'mixture', or 'spike_and_slab'"
     },
-    ordered_total_indicator = function(value){
-      if(is.numeric(value) || (is.logical(value) && all(is.na(value)))) NULL else
-        "it must be a numeric vector"
+    draw_index = function(value){
+      if(.bt_meta_is_index(value)) NULL else
+        "it must be a vector of positive integer draw indices"
+    },
+    ordered_total_component = function(value){
+      if(.bt_meta_is_index(value, allow_NA = TRUE)) NULL else
+        "it must hold positive integer component indices (NA for models without a total spike)"
     },
     undefined_draws = function(value){
       if(is.character(value) && !anyNA(value)) NULL else
@@ -176,6 +184,23 @@
   )
 }
 
+# Sources of the per-draw component index: the model of a model-averaged
+# ensemble (mix_posteriors()), or the component of a mixture or spike-and-slab
+# prior of a single fit (as_mixed_posteriors()).
+.bt_meta_component_sources <- c("model", "mixture", "spike_and_slab")
+
+.bt_meta_is_index <- function(x, allow_NA = FALSE){
+
+  if(is.logical(x) && allow_NA && all(is.na(x))){
+    return(TRUE)
+  }
+  if(!is.numeric(x) || (!allow_NA && anyNA(x))){
+    return(FALSE)
+  }
+  x <- x[!is.na(x)]
+  all(x >= 1 & x == round(x))
+}
+
 .bt_meta_is_prior_context <- function(x){
 
   inherits(x, "prior_density_context") ||
@@ -184,8 +209,8 @@
 }
 
 .bt_meta_field_names <- c(
-  "support", "atoms", "components", "models_ind", "sample_ind",
-  "ordered_total_indicator", "undefined_draws", "prior_density",
+  "support", "atoms", "components", "component", "component_source",
+  "draw_index", "ordered_total_component", "undefined_draws", "prior_density",
   "prior_context", "prior_densities", "posterior_density",
   "posterior_densities", "posterior_ordinate", "posterior_ordinates",
   "formula_parameter", "log_intercept", "formula_scale", "transform_scaled",
@@ -433,4 +458,68 @@ Math.marginal_posterior.factor <- .bt_draws_math
     "transformed posterior distributions.",
     call. = FALSE
   )
+}
+
+# Component indices (into the declared component list of a mixture or
+# spike-and-slab prior) of fitted indicator draws: the 'dcat' index of a
+# mixture, and for a spike-and-slab prior the 'dbern' inclusion indicator
+# (1 = slab) mapped to the positions of its slab and spike components.
+.bt_component_from_indicator <- function(prior, indicator){
+
+  indicator <- as.numeric(indicator)
+  if(anyNA(indicator)){
+    stop("Mixture component indicator draws must not be missing.", call. = FALSE)
+  }
+  if(is.prior.spike_and_slab(prior)){
+    if(any(!indicator %in% c(0, 1))){
+      stop("Spike-and-slab indicator draws must be 0 or 1.", call. = FALSE)
+    }
+    components <- attr(prior, "components", exact = TRUE)
+    slab  <- which(components == "alternative")
+    spike <- which(components == "null")
+    return(ifelse(indicator == 1, slab, spike))
+  }
+  if(is.prior.mixture(prior)){
+    if(any(!indicator %in% seq_along(prior))){
+      stop("Mixture indicator draws must index the mixture components.", call. = FALSE)
+    }
+    return(as.integer(indicator))
+  }
+
+  stop("Component indicators require a mixture or spike-and-slab prior.", call. = FALSE)
+}
+
+# Whether 'component' indexes the spike (the 'null' component) of a
+# spike-and-slab prior.
+.bt_component_is_spike <- function(prior, component){
+
+  identical(attr(prior, "components", exact = TRUE)[component], "null")
+}
+
+# 'x' with its per-draw component index and the source of that index.
+.bt_draws_set_component <- function(x, component, source){
+
+  .bt_meta_update(x, component = as.integer(component), component_source = source)
+}
+
+# The per-draw component index of draws. By explicit rule, draws without a
+# mixture (parameters of a single fit without mixture priors) form one
+# component.
+.bt_draws_component <- function(x, n = NROW(x)){
+
+  component <- .bt_meta_get(x, "component")
+  if(is.null(component)){
+    return(rep(1L, n))
+  }
+  component
+}
+
+# The model of each draw of a model-averaged ensemble (mix_posteriors()), or
+# NULL for draws of a single fit.
+.bt_draws_model_component <- function(x){
+
+  if(!identical(.bt_meta_get(x, "component_source"), "model")){
+    return(NULL)
+  }
+  .bt_meta_get(x, "component")
 }

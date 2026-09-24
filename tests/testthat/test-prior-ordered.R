@@ -761,8 +761,8 @@ test_that("public posterior mixing preserves ordered coefficient rows and metada
 
   source_samples <- list(posterior_1, posterior_2)
   for(row_i in seq_len(nrow(mixed$mu_f))){
-    model_i <- .bt_meta_get(mixed$mu_f, "models_ind")[[row_i]]
-    sample_i <- .bt_meta_get(mixed$mu_f, "sample_ind")[[row_i]]
+    model_i <- .bt_meta_get(mixed$mu_f, "component")[[row_i]]
+    sample_i <- .bt_meta_get(mixed$mu_f, "draw_index")[[row_i]]
     expect_equal(
       unname(mixed$mu_f[row_i, ]),
       unname(source_samples[[model_i]][sample_i, ])
@@ -1517,9 +1517,10 @@ test_that("ordered mixed measures propagate through marginal inference", {
     dimnames = list(NULL, c("mu_f[mid]", "mu_f{2}"))
   ))
   expect_equal(coefficient_atoms$mass, .5)
+  # the component of the spike-and-slab total: its slab (1) or spike (2)
   expect_equal(
-    .bt_meta_get(samples$mu_f, "ordered_total_indicator"),
-    c(0L, 1L, 1L, 0L)
+    .bt_meta_get(samples$mu_f, "ordered_total_component"),
+    c(2L, 1L, 1L, 2L)
   )
 
   for(use_formula in c(FALSE, TRUE)){
