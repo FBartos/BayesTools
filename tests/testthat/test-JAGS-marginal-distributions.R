@@ -3853,14 +3853,14 @@ test_that("linear level hypotheses use the exact support of the combination", {
   # ordinate: a kernel estimate from sampled prior draws is refused
   expect_error(
     hypothesis_BF(levels, hypothesis = "exp(mu_f[B]) - exp(mu_f[C]) = 0", seed = 1),
-    class = "bayestools_inexact_ordinate"
+    class = "BayesTools_inexact_ordinate"
   )
   # abs(B - A - 2) equals the linear 2 - (B - A) at every probe point, but its
   # value 0.5 is also reached at B - A = 2.5 (prior density 2 phi(1.5) +
   # 2 phi(2.5), not 2 phi(1.5) alone): it is not linear
   expect_error(
     hypothesis_BF(levels, hypothesis = "abs(mu_f[B] - mu_f[A] - 2) = 0.5", seed = 1),
-    class = "bayestools_inexact_ordinate"
+    class = "BayesTools_inexact_ordinate"
   )
   expect_null(BayesTools:::.hypothesis_linear_coefficients(
     str2lang("abs(`mu_f[B]` - `mu_f[A]` - 2)"), c("mu_f[B]", "mu_f[A]"), draws

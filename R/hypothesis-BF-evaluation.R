@@ -703,7 +703,7 @@
 
   if(.prior_linear_density_point_mass(prior_density, value) > 0){
     .hypothesis_stop_ordinate(
-      "bayestools_point_mass_at_null",
+      "BayesTools_point_mass_at_null",
       .hypothesis_point_mass_message()
     )
   }
@@ -715,14 +715,14 @@
 # Point hypotheses need a regular prior ordinate at the null that is
 # classified exactly from the prior's structure (one rule on every route of
 # hypothesis_BF()). Other ordinates stop with a classed error that callers
-# match by class, never by message: bayestools_point_mass_at_null,
-# bayestools_infinite_ordinate, bayestools_zero_ordinate,
-# bayestools_undefined_ordinate and bayestools_inexact_ordinate, each also of
-# class bayestools_hypothesis_ordinate.
+# match by class, never by message: BayesTools_point_mass_at_null,
+# BayesTools_infinite_ordinate, BayesTools_zero_ordinate,
+# BayesTools_undefined_ordinate and BayesTools_inexact_ordinate, each also of
+# class BayesTools_hypothesis_ordinate.
 .hypothesis_stop_ordinate <- function(class, message) {
 
   stop(structure(
-    class = c(class, "bayestools_hypothesis_ordinate", "error", "condition"),
+    class = c(class, "BayesTools_hypothesis_ordinate", "error", "condition"),
     list(message = message, call = NULL)
   ))
 }
@@ -735,7 +735,7 @@
 .hypothesis_stop_inexact_ordinate <- function(label, reason) {
 
   .hypothesis_stop_ordinate(
-    "bayestools_inexact_ordinate",
+    "BayesTools_inexact_ordinate",
     paste0(
       "Prior density at point hypothesis '", label, "' is unavailable: ",
       reason, ". Test a region hypothesis instead."
@@ -752,13 +752,13 @@
   behavior <- ordinate$behavior
   if(identical(behavior, "point_mass")){
     .hypothesis_stop_ordinate(
-      "bayestools_point_mass_at_null",
+      "BayesTools_point_mass_at_null",
       .hypothesis_point_mass_message()
     )
   }
   if(behavior %in% c("infinite", "zero", "undefined")){
     .hypothesis_stop_ordinate(
-      paste0("bayestools_", behavior, "_ordinate"),
+      paste0("BayesTools_", behavior, "_ordinate"),
       paste0(
         "Prior density at point hypothesis '", label, "' is ", behavior,
         ", so the Savage-Dickey density ratio is undefined."
@@ -871,7 +871,7 @@
     behavior <- if(isTRUE(density == 0)) "zero" else
       if(isTRUE(is.infinite(density))) "infinite" else "undefined"
     .hypothesis_stop_ordinate(
-      paste0("bayestools_", behavior, "_ordinate"),
+      paste0("BayesTools_", behavior, "_ordinate"),
       paste0("Prior density at point hypothesis '", label,
              "' is zero or non-finite.")
     )

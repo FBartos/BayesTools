@@ -49,7 +49,7 @@ resulting density is scaled by the remaining continuous mass.}
 \value{
 \code{Savage_Dickey_BF} returns a Bayes factor. A prior point mass
 at the null value stops with an error of class
-\code{bayestools_point_mass_at_null} (see \code{\link[=hypothesis_BF]{hypothesis_BF()}} for the
+\code{BayesTools_point_mass_at_null} (see \code{\link[=hypothesis_BF]{hypothesis_BF()}} for the
 condition classes of point hypotheses).
 }
 \description{

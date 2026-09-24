@@ -83,7 +83,7 @@
 #'
 #' @return \code{Savage_Dickey_BF} returns a Bayes factor. A prior point mass
 #' at the null value stops with an error of class
-#' \code{bayestools_point_mass_at_null} (see [hypothesis_BF()] for the
+#' \code{BayesTools_point_mass_at_null} (see [hypothesis_BF()] for the
 #' condition classes of point hypotheses).
 #'
 #' @export
@@ -313,7 +313,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   }
   if(.prior_linear_density_point_mass(prior, null_hypothesis) > 0){
     .hypothesis_stop_ordinate(
-      "bayestools_point_mass_at_null",
+      "BayesTools_point_mass_at_null",
       .hypothesis_point_mass_message()
     )
   }

@@ -267,9 +267,9 @@ gate.
 `hypothesis_BF()` applies one exactness rule to every point hypothesis: the
 prior ordinate at the null must be `regular` and exactly classified by
 `prior_density_ordinate()`; otherwise it stops with a classed error
-(`bayestools_point_mass_at_null`, `bayestools_infinite_ordinate`,
-`bayestools_zero_ordinate`, `bayestools_undefined_ordinate`,
-`bayestools_inexact_ordinate`, all also `bayestools_hypothesis_ordinate`),
+(`BayesTools_point_mass_at_null`, `BayesTools_infinite_ordinate`,
+`BayesTools_zero_ordinate`, `BayesTools_undefined_ordinate`,
+`BayesTools_inexact_ordinate`, all also `BayesTools_hypothesis_ordinate`),
 which callers match by class, never by message. Linear expressions of
 marginal posteriors use the joint-context density, affine expressions of a
 prior object its transformed density; nonlinear expressions of a

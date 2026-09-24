@@ -153,13 +153,13 @@
 #' the null value that [prior_density_ordinate()] classifies exactly from the
 #' prior's structure, on every route. Otherwise they stop with a classed error
 #' condition, which callers should match by class rather than by message:
-#' \code{bayestools_point_mass_at_null} (a prior point mass at the null),
-#' \code{bayestools_infinite_ordinate}, \code{bayestools_zero_ordinate},
-#' \code{bayestools_undefined_ordinate}, or \code{bayestools_inexact_ordinate}
+#' \code{BayesTools_point_mass_at_null} (a prior point mass at the null),
+#' \code{BayesTools_infinite_ordinate}, \code{BayesTools_zero_ordinate},
+#' \code{BayesTools_undefined_ordinate}, or \code{BayesTools_inexact_ordinate}
 #' (no exact structural ordinate, e.g., a nonlinear expression of a
 #' deterministic prior, a prior-density combination evaluated only on a
 #' numerical grid, or a density grid without recorded provenance). Each of
-#' these conditions also has class \code{bayestools_hypothesis_ordinate}.
+#' these conditions also has class \code{BayesTools_hypothesis_ordinate}.
 #' Prior ordinates estimated from user-supplied prior draws are kernel
 #' estimates and are not classified.
 #' Region tests require positive prior mass for every compared region. An

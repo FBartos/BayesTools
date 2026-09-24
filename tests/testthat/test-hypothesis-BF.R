@@ -2358,13 +2358,13 @@ test_that("hypothesis_BF precomputed point null rejects density grid missing sup
 test_that("point hypotheses need an exact regular prior ordinate on every route", {
 
   # Non-regular or inexact prior ordinates stop with classed conditions
-  # (each also of class bayestools_hypothesis_ordinate).
+  # (each also of class BayesTools_hypothesis_ordinate).
   set.seed(21)
   draws <- stats::rnorm(4000, .3, .5)
   expect_ordinate_class <- function(expr, class){
     condition <- tryCatch(expr, error = function(e) e)
     expect_s3_class(condition, class)
-    expect_s3_class(condition, "bayestools_hypothesis_ordinate")
+    expect_s3_class(condition, "BayesTools_hypothesis_ordinate")
   }
 
   # prior objects of numeric draws: the atom of a spike-and-slab prior, the
@@ -2372,11 +2372,11 @@ test_that("point hypotheses need an exact regular prior ordinate on every route"
   spike <- prior_spike_and_slab(prior("normal", list(0, 1)),
                                 prior_inclusion = prior("spike", list(.5)))
   expect_ordinate_class(hypothesis_BF(draws, spike, "theta = 0"),
-                        "bayestools_point_mass_at_null")
+                        "BayesTools_point_mass_at_null")
   expect_ordinate_class(hypothesis_BF(abs(draws), prior("gamma", list(.5, 1)), "theta = 0"),
-                        "bayestools_infinite_ordinate")
+                        "BayesTools_infinite_ordinate")
   expect_ordinate_class(hypothesis_BF(draws, prior("normal", list(0, 1), list(0, Inf)), "theta = -0.5"),
-                        "bayestools_zero_ordinate")
+                        "BayesTools_zero_ordinate")
 
   # prior densities of marginal posteriors: three t terms have no structural
   # ordinate (a grid) and a density grid without provenance none at all
@@ -2387,7 +2387,7 @@ test_that("point hypotheses need an exact regular prior ordinate on every route"
   expect_ordinate_class(
     hypothesis_BF(.hypothesis_marginal_posterior_for_test(draws, three_t), hypothesis = "theta = 0",
                   parameter = "theta"),
-    "bayestools_inexact_ordinate"
+    "BayesTools_inexact_ordinate"
   )
   grid <- structure(list(density = list(x = c(-3, 0, 3), y = c(0, 1 / 3, 0), mass = 1),
                          points = data.frame(x = numeric(), p = numeric())),
@@ -2395,7 +2395,7 @@ test_that("point hypotheses need an exact regular prior ordinate on every route"
   expect_ordinate_class(
     hypothesis_BF(.hypothesis_marginal_posterior_for_test(draws, grid), hypothesis = "theta = 0",
                   parameter = "theta"),
-    "bayestools_inexact_ordinate"
+    "BayesTools_inexact_ordinate"
   )
   # exp_lin of a source with an atom at 0 is undefined
   nonnegative_spike <- prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)),
@@ -2407,12 +2407,12 @@ test_that("point hypotheses need an exact regular prior ordinate on every route"
   expect_ordinate_class(
     hypothesis_BF(.hypothesis_marginal_posterior_for_test(abs(draws), undefined), hypothesis = "theta = 1",
                   parameter = "theta"),
-    "bayestools_undefined_ordinate"
+    "BayesTools_undefined_ordinate"
   )
   expect_ordinate_class(
     Savage_Dickey_BF(.hypothesis_marginal_posterior_for_test(draws, BayesTools:::.prior_linear_combination_density(
       list(x = spike), c(x = 1))), null_hypothesis = 0, silent = TRUE),
-    "bayestools_point_mass_at_null"
+    "BayesTools_point_mass_at_null"
   )
 
   # an affine expression of a prior object has its exact density (2 theta ~
@@ -2421,7 +2421,7 @@ test_that("point hypotheses need an exact regular prior ordinate on every route"
   expect_identical(affine$method, "kernel Savage-Dickey")
   expect_equal(as.numeric(affine$prior), stats::dnorm(.5) / 2, tolerance = 1e-14)
   expect_ordinate_class(hypothesis_BF(draws, prior("normal", list(0, 1)), "exp(theta) = 1"),
-                        "bayestools_inexact_ordinate")
+                        "BayesTools_inexact_ordinate")
 
   # user-supplied prior draws keep the kernel estimate of the prior ordinate
   prior_draws <- stats::rnorm(4000)
