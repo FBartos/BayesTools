@@ -189,7 +189,13 @@ that conditional law, leaving the Dirichlet marginal
 over the realized active set: atoms at 0 and 1, and a Beta mixture over
 nonempty sets of other active components. It returns
 \code{NULL} when the fitted map does
-not declare a supported deterministic prior composition.
+not declare a supported deterministic prior composition. The density records
+the source prior and transform it was built from, so its heights and region
+probabilities are evaluated on that prior's structural route (bounded-logit
+correlations on the refined numerical grid). Allocation-derived component
+SDs are products of density grids without such provenance: they are
+returned for plotting, and their heights and region probabilities are
+unavailable.
 
 \code{parameter_transform()} returns the one-to-one map from the selected source
 coordinate to its public semantic quantity when that map exists. Composite

@@ -181,6 +181,19 @@ the plotting grid and quadrature routes by their ordinate at each value (about
 1-2 s per 1000-point curve). Only a combination without a structural route, or
 a density without recorded provenance, interpolates its numerical grid.
 
+Heights and region probabilities require recorded provenance (the
+`adaptive_evaluation` attribute naming the prior measure): a density grid
+without it has no error control and cannot be refined, so it is used for
+plots only and heights and probabilities stop; without a continuous part a
+density is its exact point masses. Producers therefore build densities
+through `.prior_linear_combination_density()` or the context builders:
+`parameter_prior_density()` passes a semantic transform as the output
+transformation (affine as `lin`, `tanh`, square root and square of a
+nonnegative source as `exp_lin`, a bounded logit as a recorded custom map on
+the refined grid) and a gated variance proportion as one mixture prior of its
+atoms and Beta components. Allocation-derived component SDs (products of
+density grids) have no provenance and are plotting densities.
+
 Mixture ordinates (model, conditional, and mixture or spike-and-slab terms of
 one linear combination) are weighted sums of per-component ordinates, each from
 its own exact or regular method, so a numerical grid never spans a density jump

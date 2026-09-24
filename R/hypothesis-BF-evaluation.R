@@ -279,52 +279,69 @@
 }
 
 
-# Region probability from the prior-density grid: the linear interpolant of
-# the grid ordinates, refined until the documented criterion is met.
+# Region probability of one density grid: the continuous part is the linear
+# interpolant of the grid ordinates, and point masses use the exact condition.
+.hypothesis_prior_grid_probability <- function(density_object, comparison,
+                                               condition, parameter) {
+
+  prob <- 0
+  if(!is.null(density_object[["density"]])){
+    density <- density_object[["density"]]
+    x <- density[["x"]]
+    y <- density[["y"]]
+    # Region and total masses both integrate the interpolant exactly
+    # (trapezoid rule), so their ratio is independent of the grid's
+    # Riemann-sum normalization.
+    total <- .hypothesis_trapz(x, y)
+    if(length(x) < 2L || !is.finite(total) || total <= 0){
+      stop("The continuous prior density grid has no positive integrable ",
+           "mass; the prior region probability is unavailable.",
+           call. = FALSE)
+    }
+    inside <- if(!is.null(comparison)){
+      .hypothesis_comparison_grid_integral(x, y, comparison)
+    }else{
+      .hypothesis_condition_grid_integral(x, y, condition, parameter)
+    }
+    prob <- prob + density[["mass"]] * inside / total
+  }
+
+  points <- density_object[["points"]]
+  if(!is.null(points) && nrow(points) > 0L){
+    inside <- .hypothesis_condition_indicator(
+      condition, parameter, points[["x"]]
+    )
+    prob <- prob + sum(points[["p"]][inside])
+  }
+  prob
+}
+
+# Region probability from the prior-density grid of a density with
+# provenance, refined until the documented criterion is met.
 .hypothesis_prior_density_grid_prob <- function(prior_density, comparison,
                                                 condition, parameter) {
 
   evaluate_probability <- function(density_object){
-    prob <- 0
-    if(!is.null(density_object[["density"]])){
-      density <- density_object[["density"]]
-      x <- density[["x"]]
-      y <- density[["y"]]
-      # The continuous part is the linear interpolant of the grid ordinates.
-      # Region and total masses both integrate that interpolant exactly
-      # (trapezoid rule), so their ratio is independent of the grid's
-      # Riemann-sum normalization.
-      total <- .hypothesis_trapz(x, y)
-      if(length(x) < 2L || !is.finite(total) || total <= 0){
-        stop("The continuous prior density grid has no positive integrable ",
-             "mass; the prior region probability is unavailable.",
-             call. = FALSE)
-      }
-      inside <- if(!is.null(comparison)){
-        .hypothesis_comparison_grid_integral(x, y, comparison)
-      }else{
-        .hypothesis_condition_grid_integral(x, y, condition, parameter)
-      }
-      prob <- prob + density[["mass"]] * inside / total
-    }
-
-    points <- density_object[["points"]]
-    if(!is.null(points) && nrow(points) > 0L){
-      inside <- .hypothesis_condition_indicator(
-        condition, parameter, points[["x"]]
-      )
-      prob <- prob + sum(points[["p"]][inside])
-    }
-    prob
+    .hypothesis_prior_grid_probability(
+      density_object, comparison, condition, parameter
+    )
   }
 
+  # Point masses alone are exact; a continuous grid needs the provenance
+  # that refines it.
+  if(is.null(attr(prior_density, "adaptive_evaluation", exact = TRUE))){
+    if(is.null(prior_density[["density"]]) ||
+       !isTRUE(prior_density[["density"]][["mass"]] > 0)){
+      return(evaluate_probability(prior_density))
+    }
+    .prior_linear_density_stop_no_provenance("region probability")
+  }
   .prior_linear_density_check_grid(.prior_density_route_from_adaptive(
     attr(prior_density, "adaptive_evaluation", exact = TRUE)
   ))
   prob <- evaluate_probability(prior_density)
   refined <- .prior_linear_density_refinement(prior_density)
-  if(is.null(refined) &&
-     !is.null(attr(prior_density, "adaptive_evaluation", exact = TRUE))){
+  if(is.null(refined)){
     stop(
       "Adaptive prior-probability evaluation did not converge within the ",
       "documented grid-refinement error criterion.",

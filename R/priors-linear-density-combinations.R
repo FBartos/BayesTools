@@ -3214,6 +3214,16 @@
          call. = FALSE)
   }
 
+  # A numerical grid without deterministic provenance (the prior measure it
+  # approximates) has no error control and cannot be refined: it is used for
+  # plots only. Without a continuous part the continuous height is zero.
+  if(is.null(attr(x, "adaptive_evaluation", exact = TRUE))){
+    if(is.null(x$density) || !isTRUE(x$density$mass > 0)){
+      return(0)
+    }
+    .prior_linear_density_stop_no_provenance("height")
+  }
+
   support <- .prior_linear_density_support_hull(
     attr(x, "adaptive_evaluation", exact = TRUE)
   )
@@ -3224,22 +3234,11 @@
   height <- .prior_linear_density_grid_height(x, value)
   refined <- .prior_linear_density_refinement(x)
   if(is.null(refined)){
-    if(!is.null(attr(x, "adaptive_evaluation", exact = TRUE))){
-      stop(
-        "Adaptive prior-density evaluation did not converge within the documented ",
-        "grid-refinement error criterion.",
-        call. = FALSE
-      )
-    }
-    if(!is.null(x$density) &&
-       (value < min(x$density$x) || value > max(x$density$x))){
-      stop(
-        "The requested ordinate is outside the numerical approximation range, ",
-        "and the density has no provenance for adaptive extension.",
-        call. = FALSE
-      )
-    }
-    return(height)
+    stop(
+      "Adaptive prior-density evaluation did not converge within the ",
+      "documented grid-refinement error criterion.",
+      call. = FALSE
+    )
   }
 
   tolerance <- .prior_linear_density_refinement_tolerance()
@@ -3287,6 +3286,17 @@
   stop(
     "Adaptive prior-density evaluation did not converge within the documented ",
     "grid-refinement error criterion.",
+    call. = FALSE
+  )
+}
+
+.prior_linear_density_stop_no_provenance <- function(quantity){
+
+  stop(
+    "The prior density has no deterministic provenance, so its ", quantity,
+    " is unavailable: a numerical density grid without provenance is used ",
+    "only for plotting. Construct the density with the BayesTools ",
+    "prior-density builders.",
     call. = FALSE
   )
 }

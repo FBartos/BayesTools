@@ -1,5 +1,39 @@
 skip_if_not_test_profile("unit")
 
+# The probability of a region under one density grid (its interpolant and
+# exact point masses). Hand-made grids have no deterministic provenance, so
+# prior region probabilities refuse them; the grid mechanics are tested here.
+interpolant_probability <- function(density, side, parameter = "theta"){
+  .hypothesis_prior_grid_probability(
+    density, .hypothesis_simple_parameter_comparison(side, parameter),
+    .hypothesis_side_expression(side), parameter
+  )
+}
+
+test_that("prior region probabilities refuse densities without provenance", {
+
+  grid <- structure(list(
+    density = list(x = c(-1, 0, 2), y = c(0, 2 / 3, 0), mass = .7),
+    points = data.frame(x = .2, p = .3)
+  ), class = c("prior_linear_density", "prior_density"))
+  side <- hypothesis_parse("theta < .2")$statements[[1L]]$left
+  expect_error(
+    .hypothesis_prior_density_prob(grid, side, "theta"),
+    "The prior density has no deterministic provenance, so its region probability is unavailable",
+    fixed = TRUE
+  )
+  expect_error(
+    .prior_linear_density_height(grid, .1),
+    "The prior density has no deterministic provenance, so its height is unavailable",
+    fixed = TRUE
+  )
+  # without a continuous part, point masses are exact
+  points <- structure(list(density = NULL, points = data.frame(x = c(0, 1), p = c(.4, .6))),
+                      class = c("prior_linear_density", "prior_density"))
+  expect_equal(.hypothesis_prior_density_prob(points, side, "theta"), .4)
+  expect_identical(.prior_linear_density_height(points, .1), 0)
+})
+
 test_that("direct prior regions split the continuous interpolant at the threshold", {
 
   density <- structure(list(
@@ -29,7 +63,7 @@ test_that("direct prior regions split the continuous interpolant at the threshol
   for(hypothesis in names(cases)){
     side <- hypothesis_parse(hypothesis)$statements[[1L]]$left
     expect_equal(
-      .hypothesis_prior_density_prob(density, side, "theta"),
+      interpolant_probability(density, side),
       unname(cases[[hypothesis]]), tolerance = 1e-14, info = hypothesis
     )
   }
@@ -110,7 +144,7 @@ test_that("compound prior regions insert exact boundary knots on the interpolant
   for(hypothesis in names(cases)){
     side <- hypothesis_parse(hypothesis)$statements[[1L]]$left
     expect_equal(
-      .hypothesis_prior_density_prob(density, side, "theta"),
+      interpolant_probability(density, side),
       unname(cases[[hypothesis]]), tolerance = 1e-10, info = hypothesis
     )
   }
@@ -133,7 +167,7 @@ test_that("region probabilities normalise the grid by its own trapezoid mass", {
   for(hypothesis in names(cases)){
     side <- hypothesis_parse(hypothesis)$statements[[1L]]$left
     expect_equal(
-      .hypothesis_prior_density_prob(density, side, "theta"),
+      interpolant_probability(density, side),
       unname(cases[[hypothesis]]), tolerance = 1e-10, info = hypothesis
     )
   }

@@ -99,7 +99,13 @@
 #' over the realized active set: atoms at 0 and 1, and a Beta mixture over
 #' nonempty sets of other active components. It returns
 #' `NULL` when the fitted map does
-#' not declare a supported deterministic prior composition.
+#' not declare a supported deterministic prior composition. The density records
+#' the source prior and transform it was built from, so its heights and region
+#' probabilities are evaluated on that prior's structural route (bounded-logit
+#' correlations on the refined numerical grid). Allocation-derived component
+#' SDs are products of density grids without such provenance: they are
+#' returned for plotting, and their heights and region probabilities are
+#' unavailable.
 #'
 #' `parameter_transform()` returns the one-to-one map from the selected source
 #' coordinate to its public semantic quantity when that map exists. Composite
@@ -585,29 +591,12 @@ parameter_prior_density.BayesTools_fit <- function(
     object,
     selection$quantities[1L, , drop = FALSE]
   )
-  if(identical(transform$type, "square")){
-    lower <- source_prior$truncation$lower
-    if(!is.numeric(lower) || length(lower) != 1L || is.na(lower) || lower < 0){
-      return(NULL)
-    }
-    # (s x)^2 = exp(2 log(s)) x^2.
-    return(.bt_parameter_prior_density_scalar(
-      source_prior,
-      n_grid = n_grid,
-      tail_prob = tail_prob,
-      output_transformation = "exp_lin",
-      output_transformation_arguments = list(
-        a = 2 * log(.bt_parameter_transform_square_scale(transform)),
-        b = 2
-      )
-    ))
-  }
-  dist <- .bt_parameter_prior_density_scalar(
+  .bt_parameter_prior_density_transformed(
     source_prior,
+    transform,
     n_grid = n_grid,
     tail_prob = tail_prob
   )
-  .bt_parameter_prior_density_transform(dist, transform, n_grid)
 }
 
 .bt_parameter_prior_density_allocation_quantity <- function(
@@ -655,12 +644,12 @@ parameter_prior_density.BayesTools_fit <- function(
   if(is.null(beta_prior)){
     return(NULL)
   }
-  dist <- .bt_parameter_prior_density_scalar(
+  .bt_parameter_prior_density_transformed(
     beta_prior,
+    transform,
     n_grid = n_grid,
     tail_prob = tail_prob
   )
-  .bt_parameter_prior_density_transform(dist, transform, n_grid)
 }
 
 .bt_parameter_prior_density_gated_var_prop_free_gate_limit <- function(){
@@ -848,48 +837,43 @@ parameter_prior_density.BayesTools_fit <- function(
     grouped_weight <- numeric()
   }
 
-  dists <- list()
-  weights <- numeric()
+  # The measure is one mixture prior (atoms at 0 and 1 and Beta components),
+  # so its density carries the deterministic provenance of that prior.
+  components <- list()
   if(p_atom0 > 0){
-    dists[[length(dists) + 1L]] <- .prior_linear_density_point(0)
-    weights <- c(weights, p_atom0)
+    components[[length(components) + 1L]] <- prior(
+      "point", list(location = 0), prior_weights = p_atom0
+    )
   }
   if(p_atom1 > 0){
-    dists[[length(dists) + 1L]] <- .prior_linear_density_point(1)
-    weights <- c(weights, p_atom1)
+    components[[length(components) + 1L]] <- prior(
+      "point", list(location = 1), prior_weights = p_atom1
+    )
   }
   for(j in seq_along(grouped_beta)){
-    beta_prior <- prior(
-      "beta",
-      list(alpha = alpha_i, beta = grouped_beta[[j]])
-    )
-    dists[[length(dists) + 1L]] <- .bt_parameter_prior_density_scalar(
-      beta_prior,
-      n_grid = n_grid,
-      tail_prob = tail_prob
-    )
-    weights <- c(weights, grouped_weight[[j]])
+    if(grouped_weight[[j]] > 0){
+      components[[length(components) + 1L]] <- prior(
+        "beta",
+        list(alpha = alpha_i, beta = grouped_beta[[j]]),
+        prior_weights = grouped_weight[[j]]
+      )
+    }
   }
-  keep <- weights > 0
-  dists <- dists[keep]
-  weights <- weights[keep]
-  if(length(dists) == 0L){
+  if(length(components) == 0L){
     return(NULL)
   }
-  if(length(dists) == 1L){
-    return(.prior_linear_density_normalize(dists[[1L]], warn = TRUE))
-  }
-
-  dx_values <- vapply(dists, .prior_linear_density_dx, numeric(1))
-  dx_values <- dx_values[is.finite(dx_values) & dx_values > 0]
-  dx <- if(length(dx_values) > 0L){
-    min(dx_values)
+  measure <- if(length(components) == 1L){
+    components[[1L]]
   }else{
-    1 / max(n_grid - 1L, 1L)
+    prior_mixture(
+      components,
+      is_null = vapply(components, is.prior.point, logical(1))
+    )
   }
-  .prior_linear_density_normalize(
-    .prior_linear_density_mix(dists, weights, dx = dx, n_grid = n_grid),
-    warn = TRUE
+  .bt_parameter_prior_density_scalar(
+    measure,
+    n_grid = n_grid,
+    tail_prob = tail_prob
   )
 }
 
@@ -957,11 +941,6 @@ parameter_prior_density.BayesTools_fit <- function(
     if(is.null(beta_prior)){
       return(NULL)
     }
-    factor_dist <- .bt_parameter_prior_density_scalar(
-      beta_prior,
-      n_grid = n_grid,
-      tail_prob = tail_prob
-    )
     scale <- if(identical(factor$scale, "mean_variance")){
       factor$n_targets
     }else if(identical(factor$scale, "total_variance")){
@@ -969,10 +948,11 @@ parameter_prior_density.BayesTools_fit <- function(
     }else{
       return(NULL)
     }
-    factor_dist <- .bt_parameter_prior_density_transform(
-      factor_dist,
+    factor_dist <- .bt_parameter_prior_density_transformed(
+      beta_prior,
       list(type = "sqrt_scale", scale = as.numeric(scale)),
-      n_grid
+      n_grid = n_grid,
+      tail_prob = tail_prob
     )
     dist <- .prior_linear_density_product(
       dist,
@@ -1018,56 +998,63 @@ parameter_prior_density.BayesTools_fit <- function(
   )
 }
 
-.bt_parameter_prior_density_transform <- function(dist, transform, n_grid){
+# Density of the semantic transform of a scalar source prior, built with the
+# transform as the output transformation so that the density records its
+# deterministic provenance: affine maps are 'lin', 'tanh' is named, and the
+# square-root and square maps of a nonnegative source are 'exp_lin'
+# (sqrt(s x) = exp(log(s) / 2) x^(1/2), (s x)^2 = exp(2 log(s)) x^2).
+# Bounded-logit maps have no named equivalent: their provenance records the
+# map itself, and heights use the refined numerical grid.
+.bt_parameter_prior_density_transformed <- function(prior_object, transform,
+                                                    n_grid, tail_prob){
 
   if(is.null(transform)){
     return(NULL)
   }
-  if(identical(transform$type, "identity")){
-    return(dist)
-  }
-  if(identical(transform$type, "affine")){
-    return(.prior_linear_density_transform(
-      dist,
-      "lin",
-      list(a = transform$offset, b = transform$scale),
-      n_grid
-    ))
-  }
-  if(identical(transform$type, "tanh")){
-    return(.prior_linear_density_transform(dist, "tanh", n_grid = n_grid))
-  }
-  transformation <- if(identical(transform$type, "bounded_logit")){
-    width <- transform$upper - transform$lower
-    list(
-      fun = function(x) transform$lower + width * stats::plogis(x),
-      inv = function(x) stats::qlogis((x - transform$lower) / width),
-      jac = function(x) width * stats::plogis(x) * (1 - stats::plogis(x))
+  scalar <- function(output_transformation = NULL, arguments = NULL){
+    .bt_parameter_prior_density_scalar(
+      prior_object,
+      n_grid = n_grid,
+      tail_prob = tail_prob,
+      output_transformation = output_transformation,
+      output_transformation_arguments = arguments
     )
-  }else if(identical(transform$type, "sqrt_scale")){
-    list(
-      fun = function(x) sqrt(transform$scale * x),
-      inv = function(x) x^2 / transform$scale,
-      jac = function(x) transform$scale /
-        (2 * sqrt(transform$scale * x))
-    )
-  }else if(identical(transform$type, "square")){
-    if(.prior_linear_density_range(dist)[1L] < 0){
-      return(NULL)
-    }
-    scale <- .bt_parameter_transform_square_scale(transform)
-    list(
-      fun = function(x) (scale * x)^2,
-      inv = function(x) sqrt(x) / scale,
-      jac = function(x) 2 * scale^2 * x
-    )
-  }else{
-    return(NULL)
   }
-  .prior_linear_density_transform(
-    dist,
-    transformation,
-    n_grid = n_grid
+  nonnegative <- function(){
+    lower <- prior_object$truncation$lower
+    is.numeric(lower) && length(lower) == 1L && !is.na(lower) && lower >= 0
+  }
+  switch(
+    transform$type,
+    "identity" = scalar(),
+    "affine" = scalar("lin", list(a = transform$offset, b = transform$scale)),
+    "tanh" = scalar("tanh"),
+    "sqrt_scale" = if(nonnegative()){
+      scalar("exp_lin", list(a = log(transform$scale) / 2, b = 1 / 2))
+    },
+    "square" = if(nonnegative()){
+      scalar("exp_lin", list(
+        a = 2 * log(.bt_parameter_transform_square_scale(transform)),
+        b = 2
+      ))
+    },
+    "bounded_logit" = scalar(.bt_parameter_prior_density_bounded_logit(
+      transform$lower, transform$upper
+    )),
+    NULL
+  )
+}
+
+# lower + (upper - lower) * plogis(x) as a transformation list whose closures
+# capture only the two bounds.
+.bt_parameter_prior_density_bounded_logit <- function(lower, upper){
+
+  force(lower)
+  width <- upper - lower
+  list(
+    fun = function(x) lower + width * stats::plogis(x),
+    inv = function(x) stats::qlogis((x - lower) / width),
+    jac = function(x) width * stats::plogis(x) * (1 - stats::plogis(x))
   )
 }
 

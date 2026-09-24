@@ -2787,6 +2787,22 @@ test_that("allocation quantities expose deterministic induced prior densities", 
     stats::dbeta(.5, 2, 3),
     tolerance = .02
   )
+  # The transformed densities record their deterministic provenance, so
+  # heights are exact: var_mult = 2 w (affine) and sd_mult = sqrt(2 w)
+  # (exp_lin) with w ~ Beta(2, 3).
+  for(density in list(multiplier_density, sd_mult_density, common_variance_density)){
+    expect_false(is.null(attr(density, "adaptive_evaluation", exact = TRUE)))
+  }
+  expect_equal(
+    .prior_linear_density_height(multiplier_density, .5),
+    stats::dbeta(.25, 2, 3) / 2,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    .prior_linear_density_height(sd_mult_density, 1),
+    stats::dbeta(.5, 2, 3),
+    tolerance = 1e-12
+  )
   common_variance_interior <- prior_density_ordinate(
     common_variance_density,
     .5
@@ -3081,6 +3097,17 @@ test_that("shared-gate proportions use their declared conditional Dirichlet prio
       log((1 / 3) * stats::dbeta(independent_points, alpha_i, beta_i)),
       tolerance = 1e-3
     )
+    # the mixture of atoms and Beta components has an exact ordinate
+    expect_true(all(vapply(independent_points, function(value){
+      prior_density_ordinate(density, value)$exact
+    }, logical(1))))
+    expect_equal(
+      vapply(independent_points, function(value){
+        .prior_linear_density_height(density, value)
+      }, numeric(1)),
+      (1 / 3) * stats::dbeta(independent_points, alpha_i, beta_i),
+      tolerance = 1e-12
+    )
   }
 
   independent_fixed <- make_fit(independent = TRUE, probability = 1)
@@ -3121,6 +3148,11 @@ test_that("independently gated proportion mixtures fold fixed inclusion gates", 
     prior_density_ordinate(density, 0.4)$log_density,
     log(0.5 * stats::dbeta(0.4, 2, 3)),
     tolerance = 1e-3
+  )
+  expect_equal(
+    .prior_linear_density_height(density, 0.4),
+    0.5 * stats::dbeta(0.4, 2, 3),
+    tolerance = 1e-12
   )
 
   too_many <- rep(0.5, 22L)
