@@ -265,33 +265,33 @@ test_that("prior_weightfunction stores canonical geometry and weight priors", {
   expect_true(all(samples[,1] == 1))
 })
 
-test_that("legacy monotone weightfunction helpers use the canonical reference-first orientation", {
+test_that("the weightfunction distribution functions are removed", {
+
+  # mpdf(), mcdf(), mquant(), and rng() on prior_weightfunction() replace them
+  exports <- getNamespaceExports("BayesTools")
+  removed <- paste0(
+    c("md", "mp", "mq", "r"),
+    rep(c("one.sided", "two.sided", "one.sided_fixed", "two.sided_fixed"), each = 4L)
+  )
+  expect_length(removed, 16L)
+  expect_false(any(removed %in% exports))
+})
+
+test_that("monotone weightfunction prior marginals use the canonical reference-first orientation", {
 
   alpha <- c(2, 4)
   q <- .5
-
-  expect_equal(
-    mdone.sided(q, alpha = alpha),
-    matrix(c(0, stats::dbeta(q, 4, 2)), nrow = 1)
-  )
-  expect_equal(
-    mpone.sided(q, alpha = alpha),
-    matrix(c(0, stats::pbeta(q, 4, 2)), nrow = 1)
-  )
-  expect_equal(
-    mqone.sided(q, alpha = alpha),
-    matrix(c(1, stats::qbeta(q, 4, 2)), nrow = 1)
-  )
-
-  set.seed(11)
-  helper_samples <- rone.sided(5000, alpha = alpha)
-  expect_true(all(helper_samples[,1] == 1))
-  expect_equal(mean(helper_samples[,2]), 4 / 6, tolerance = .02)
-
   prior <- prior_weightfunction("one-sided", c(.05), wf_cumulative(alpha))
+
+  # omega[2] ~ Beta(4, 2) under the cumulative Dirichlet(2, 4) weights
+  expect_equal(unname(mpdf(prior, q)), matrix(c(0, stats::dbeta(q, 4, 2)), nrow = 1))
+  expect_equal(unname(mcdf(prior, q)), matrix(c(0, stats::pbeta(q, 4, 2)), nrow = 1))
+  expect_equal(unname(mquant(prior, q)), matrix(c(1, stats::qbeta(q, 4, 2)), nrow = 1))
+
   set.seed(11)
   prior_samples <- rng(prior, 5000)
-  expect_equal(unname(helper_samples), unname(prior_samples), tolerance = 1e-12)
+  expect_true(all(prior_samples[,1] == 1))
+  expect_equal(mean(prior_samples[,2]), 4 / 6, tolerance = .02)
 })
 
 test_that("weightfunction constructors validate independent scales", {
@@ -319,7 +319,6 @@ test_that("weightfunction constructors validate independent scales", {
   fixed_above_one <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, 1.5)))
   expect_equal(range(fixed_above_one), c(0, 1.5))
   expect_equal(unname(rng(fixed_above_one, 2)), matrix(c(1, 1, 1.5, 1.5), nrow = 2))
-  expect_equal(rone.sided_fixed(2, omega = c(1, 1.5)), matrix(c(1, 1, 1.5, 1.5), nrow = 2))
 })
 
 test_that("weightfunctions_mapping expands two-sided priors onto one-sided cuts", {
@@ -799,7 +798,7 @@ test_that("omega diagnostics reject bias mixtures without weightfunctions", {
   )
 
   expect_error(
-    JAGS_diagnostics_density(fit, parameter = "omega"),
+    JAGS_diagnostics(type = "density", fit, parameter = "omega"),
     "at least one weightfunction component"
   )
 })

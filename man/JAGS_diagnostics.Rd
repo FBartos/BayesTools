@@ -2,9 +2,6 @@
 % Please edit documentation in R/JAGS-diagnostics.R
 \name{JAGS_diagnostics}
 \alias{JAGS_diagnostics}
-\alias{JAGS_diagnostics_density}
-\alias{JAGS_diagnostics_autocorrelation}
-\alias{JAGS_diagnostics_trace}
 \title{Plot diagnostics of a 'JAGS' model}
 \usage{
 JAGS_diagnostics(
@@ -18,50 +15,6 @@ JAGS_diagnostics(
   n_points = 1000,
   transformations = NULL,
   transform_factors = FALSE,
-  transform_orthonormal = FALSE,
-  short_name = FALSE,
-  parameter_names = FALSE,
-  formula_prefix = TRUE,
-  ...
-)
-
-JAGS_diagnostics_density(
-  fit,
-  parameter,
-  plot_type = "base",
-  xlim = NULL,
-  n_points = 1000,
-  transformations = NULL,
-  transform_factors = FALSE,
-  transform_orthonormal = FALSE,
-  short_name = FALSE,
-  parameter_names = FALSE,
-  formula_prefix = TRUE,
-  ...
-)
-
-JAGS_diagnostics_trace(
-  fit,
-  parameter,
-  plot_type = "base",
-  ylim = NULL,
-  transformations = NULL,
-  transform_factors = FALSE,
-  transform_orthonormal = FALSE,
-  short_name = FALSE,
-  parameter_names = FALSE,
-  formula_prefix = TRUE,
-  ...
-)
-
-JAGS_diagnostics_autocorrelation(
-  fit,
-  parameter,
-  plot_type = "base",
-  lags = 30,
-  transformations = NULL,
-  transform_factors = FALSE,
-  transform_orthonormal = FALSE,
   short_name = FALSE,
   parameter_names = FALSE,
   formula_prefix = TRUE,
@@ -95,10 +48,6 @@ to specific parameters}
 \item{transform_factors}{whether factors with orthonormal/meandif
 prior distribution should be transformed to differences from the
 grand mean}
-
-\item{transform_orthonormal}{(to be depreciated) whether factors
-with orthonormal prior distributions should be transformed to
-differences from the grand mean}
 
 \item{short_name}{whether prior distribution names should be
 shorted}

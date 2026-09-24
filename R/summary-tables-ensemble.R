@@ -44,9 +44,6 @@
 #' @param transform_factors whether factors with orthonormal/meandif
 #' prior distribution should be transformed to differences from the
 #' grand mean
-#' @param transform_orthonormal (to be depreciated) whether factors
-#' with orthonormal prior distributions should be transformed to
-#' differences from the grand mean
 #' @param transform_scaled whether coefficients from standardized
 #' continuous predictors should be transformed back to the original
 #' scale. For \code{runjags_estimates_table()}, random-effect summaries are
@@ -89,7 +86,7 @@
 NULL
 
 #' @rdname BayesTools_ensemble_tables
-ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975), title = NULL, footnotes = NULL, warnings = NULL, transform_factors = FALSE, transform_orthonormal = FALSE, formula_prefix = TRUE, transform_scaled = FALSE, formula_scale = NULL){
+ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975), title = NULL, footnotes = NULL, warnings = NULL, transform_factors = FALSE, formula_prefix = TRUE, transform_scaled = FALSE, formula_scale = NULL){
 
   # check input
   check_char(parameters, "parameters", check_length = 0)
@@ -99,13 +96,9 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
   check_bool(transform_factors, "transform_factors")
-  check_bool(transform_orthonormal, "transform_orthonormal")
   check_bool(formula_prefix, "formula_prefix")
   check_bool(transform_scaled, "transform_scaled")
   check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
-
-  # depreciate
-  transform_factors <- .depreciate.transform_orthonormal(transform_orthonormal, transform_factors)
 
   # declared possibly undefined draws (attribute 'undefined_draws'), captured
   # before transformations that may rebuild the sample objects

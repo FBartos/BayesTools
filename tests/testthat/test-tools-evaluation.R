@@ -162,7 +162,28 @@ test_that("stan extraction keeps matrix-valued parameters and draw counts", {
 })
 
 
-test_that("depreciation warnings work", {
-  expect_warning(.depreciate.transform_orthonormal(TRUE, FALSE),
-                 "'transform_orthonormal' argument will be depreciated in favor of 'transform_factors' argument.")
+test_that("the removed transform_orthonormal argument is rejected", {
+
+  # 'transform_factors = TRUE' replaces the argument deprecated since 2023
+  expect_error(
+    ensemble_estimates_table(list(), "mu", transform_orthonormal = TRUE),
+    "unused argument (transform_orthonormal = TRUE)",
+    fixed = TRUE
+  )
+  expect_error(
+    runjags_estimates_table(NULL, transform_orthonormal = TRUE),
+    "unused argument (transform_orthonormal = TRUE)",
+    fixed = TRUE
+  )
+  # JAGS_diagnostics() passes '...' to the plotting functions
+  expect_error(
+    JAGS_diagnostics(NULL, "mu", "density", transform_orthonormal = TRUE),
+    "The 'transform_orthonormal' argument was removed; use 'transform_factors = TRUE'.",
+    fixed = TRUE
+  )
+  expect_false(exists(
+    ".depreciate.transform_orthonormal",
+    envir = asNamespace("BayesTools"),
+    inherits = FALSE
+  ))
 })

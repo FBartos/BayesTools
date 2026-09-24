@@ -246,7 +246,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
 
 #' @rdname BayesTools_model_tables
 runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, conditional = FALSE,
-                                     probs = c(0.025, 0.5, 0.975), remove_spike_0 = TRUE, transform_factors = FALSE, transform_orthonormal = FALSE,
+                                     probs = c(0.025, 0.5, 0.975), remove_spike_0 = TRUE, transform_factors = FALSE,
                                      formula_prefix = TRUE, remove_inclusion = FALSE, remove_parameters = NULL, remove_formulas = NULL,
                                      keep_parameters = NULL, keep_formulas = NULL, return_samples = FALSE, transform_scaled = FALSE,
                                      random_effects_summary = c("standard", "full", "raw", "none"),
@@ -280,7 +280,6 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   check_bool(remove_spike_0, "remove_spike_0", allow_NA = FALSE)
   check_bool(conditional, "conditional", allow_NA = FALSE)
   check_bool(transform_factors, "transform_factors")
-  check_bool(transform_orthonormal, "transform_orthonormal")
   check_bool(formula_prefix, "formula_prefix")
   check_bool(transform_scaled, "transform_scaled")
   random_effects_summary <- match.arg(random_effects_summary)
@@ -303,9 +302,6 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   check_char(keep_random_effects, "keep_random_effects", allow_NULL = TRUE, check_length = 0)
   check_char(remove_random_structures, "remove_random_structures", allow_NULL = TRUE, check_length = 0)
   check_char(keep_random_structures, "keep_random_structures", allow_NULL = TRUE, check_length = 0)
-
-  # depreciate
-  transform_factors <- .depreciate.transform_orthonormal(transform_orthonormal, transform_factors)
 
   # get model samples
   model_samples <- .extract_posterior_samples(fit, as_list = FALSE)

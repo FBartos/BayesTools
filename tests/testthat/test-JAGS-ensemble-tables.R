@@ -326,15 +326,13 @@ test_that("Summary table advanced features work correctly", {
 
   expect_identical(
     interpretation,
-    interpret2(list(list(
-      inference_name       = "effect",
-      inference_BF_name    = "BF_10",
-      inference_BF         = inference_for_interpret$m$BF,
-      estimate_name        = "y",
-      estimate_samples     = interpretation_samples$m,
-      estimate_units       = NULL,
-      estimate_conditional = FALSE
-    )), "Test")
+    paste0(
+      "Test found ",
+      BayesTools:::.interpret.BF(inference_for_interpret$m$BF, "effect", "BF_10"),
+      ", ",
+      BayesTools:::.interpret.par(interpretation_samples$m, "y", NULL, FALSE),
+      "."
+    )
   )
 
   # Test interpret 2 (modified inference)
@@ -364,22 +362,15 @@ test_that("Summary table advanced features work correctly", {
 
   expect_identical(
     interpretation2,
-    interpret2(list(
-      list(
-        inference_name       = "effect",
-        inference_BF_name    = "BF_10",
-        inference_BF         = inference$m$BF,
-        estimate_name        = "y",
-        estimate_samples     = interpretation_samples$m,
-        estimate_units       = "mm",
-        estimate_conditional = TRUE
-      ),
-      list(
-        inference_name    = "bias",
-        inference_BF_name = "BF_pb",
-        inference_BF      = inference$omega$BF
-      )
-    ), "Test2")
+    paste0(
+      "Test2 found ",
+      BayesTools:::.interpret.BF(inference$m$BF, "effect", "BF_10"),
+      ", ",
+      BayesTools:::.interpret.par(interpretation_samples$m, "y", "mm", TRUE),
+      ". Test2 found ",
+      BayesTools:::.interpret.BF(inference$omega$BF, "bias", "BF_pb"),
+      "."
+    )
   )
 
 
@@ -586,29 +577,6 @@ test_that("Summary table advanced features work correctly", {
 
 })
 
-
-test_that("Simplified interpret2 function", {
-
-  probability_grid <- (seq_len(1001L) - 0.5) / 1001
-  estimate_samples <- 0.3 + 0.15 * stats::qnorm(probability_grid)
-  information <- list(
-    list(
-      inference_name        = "Effect",
-      inference_BF_name     = "BF10",
-      inference_BF          = 3.5,
-      estimate_name         = "mu",
-      estimate_samples      = estimate_samples,
-      estimate_units        = "kg",
-      estimate_conditional  = FALSE
-    )
-  )
-
-  expect_equal(
-    interpret2(information, "RoBMA"),
-    "RoBMA found moderate evidence in favor of the Effect, BF10 = 3.50, with mean model-averaged estimate mu = 0.300 kg, 95% CI [0.007, 0.593]."
-  )
-
-})
 
 test_that("as_mixed_posteriors works with ensemble tables", {
 

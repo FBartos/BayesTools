@@ -5,8 +5,8 @@ skip_if_not_test_profile("unit")
 # ============================================================================ #
 #
 # PURPOSE:
-#   Tests for interpret and interpret2 functions that generate human-readable
-#   summaries of Bayesian inference results.
+#   Tests for interpret and interpret_records functions that generate
+#   human-readable summaries of Bayesian inference results.
 #
 # DEPENDENCIES:
 #   - common-functions.R: test_reference_text, REFERENCE_DIR
@@ -19,138 +19,6 @@ skip_if_not_test_profile("unit")
 
 REFERENCE_DIR <<- testthat::test_path("..", "results", "interpret")
 source(testthat::test_path("common-functions.R"))
-
-
-test_that("interpret2 function works", {
-
-  set.seed(1)
-
-  # Test basic interpret2 with all fields
-  info1 <- list(
-    list(
-      inference_name        = "Effect",
-      inference_BF_name     = "BF10",
-      inference_BF          = 3.5,
-      estimate_name         = "mu",
-      estimate_samples      = rnorm(1000, 0.3, 0.15),
-      estimate_units        = "kg",
-      estimate_conditional  = FALSE
-    )
-  )
-
-  result1 <- interpret2(info1, "RoBMA")
-  test_reference_text(result1, "interpret2_basic.txt")
-  expect_match(result1, "RoBMA found moderate evidence in favor of the Effect")
-  expect_match(result1, "BF10 = 3.50")
-  expect_match(result1, "model-averaged")
-  expect_match(result1, "kg")
-
-  # Test with conditional = TRUE
-  info2 <- list(
-    list(
-      inference_name        = "Effect",
-      inference_BF_name     = "BF10",
-      inference_BF          = 15,
-      estimate_name         = "mu",
-      estimate_samples      = rnorm(1000, 0.5, 0.1),
-      estimate_units        = NULL,
-      estimate_conditional  = TRUE
-    )
-  )
-
-  result2 <- interpret2(info2, "Test")
-  test_reference_text(result2, "interpret2_conditional.txt")
-  expect_match(result2, "strong evidence in favor")
-  expect_match(result2, "conditional")
-  expect_false(grepl("model-averaged", result2))
-
-  # Test evidence against (BF < 1)
-  info3 <- list(
-    list(
-      inference_name        = "Effect",
-      inference_BF_name     = "BF01",
-      inference_BF          = 0.1,
-      estimate_name         = "mu",
-      estimate_samples      = rnorm(1000, 0, 0.05),
-      estimate_units        = NULL,
-      estimate_conditional  = NULL
-    )
-  )
-
-  result3 <- interpret2(info3, "Method")
-  test_reference_text(result3, "interpret2_evidence_against.txt")
-  expect_match(result3, "moderate evidence against the Effect")
-  expect_match(result3, "BF01 = 0.100")
-
-  # Test weak evidence
-  info4 <- list(
-    list(
-      inference_name        = "Effect",
-      inference_BF_name     = "BF",
-      inference_BF          = 1.5,
-      estimate_name         = "delta",
-      estimate_samples      = rnorm(1000, 0.1, 0.1),
-      estimate_units        = NULL,
-      estimate_conditional  = FALSE
-    )
-  )
-
-  result4 <- interpret2(info4, "Test")
-  test_reference_text(result4, "interpret2_weak_evidence.txt")
-  expect_match(result4, "weak evidence in favor")
-
-  # Test without estimate samples (inference only)
-  info5 <- list(
-    list(
-      inference_name        = "Bias",
-      inference_BF_name     = "BF_pb",
-      inference_BF          = 5
-    )
-  )
-
-  result5 <- interpret2(info5, "RoBMA")
-  test_reference_text(result5, "interpret2_inference_only.txt")
-  expect_match(result5, "RoBMA found moderate evidence in favor of the Bias")
-  expect_match(result5, "BF_pb = 5.00")
-  expect_false(grepl("estimate", result5))
-
-  # Test multiple specifications
-  info6 <- list(
-    list(
-      inference_name        = "Effect",
-      inference_BF_name     = "BF10",
-      inference_BF          = 10,
-      estimate_name         = "mu",
-      estimate_samples      = rnorm(1000, 0.3, 0.1),
-      estimate_units        = NULL,
-      estimate_conditional  = FALSE
-    ),
-    list(
-      inference_name        = "Bias",
-      inference_BF_name     = "BF_pb",
-      inference_BF          = 0.5
-    )
-  )
-
-  result6 <- interpret2(info6, "Test")
-  test_reference_text(result6, "interpret2_multiple.txt")
-  expect_match(result6, "Effect")
-  expect_match(result6, "Bias")
-
-  # Test without method
-  info7 <- list(
-    list(
-      inference_name        = "Effect",
-      inference_BF_name     = "BF",
-      inference_BF          = 2
-    )
-  )
-
-  result7 <- interpret2(info7, NULL)
-  test_reference_text(result7, "interpret2_no_method.txt")
-  expect_match(result7, "found weak evidence")
-
-})
 
 
 test_that(".interpret.BF helper function works", {
@@ -244,19 +112,6 @@ test_that(".interpret.BF reports finite-sample BF bounds", {
   )
 
   expect_identical(
-    interpret2(
-      list(list(
-        inference_name = "effect",
-        inference_BF = 9,
-        inference_BF_name = "Inclusion BF",
-        inference_BF_bound_operator = ">"
-      )),
-      "Method"
-    ),
-    "Method found at least moderate evidence in favor of the effect, Inclusion BF > 9.00."
-  )
-
-  expect_identical(
     interpret(
       list(effect = list(BF = 9, BF_bound_operator = ">")),
       list(dummy = 1),
@@ -282,10 +137,6 @@ test_that(".interpret.BF rejects invalid Bayes factors before formatting", {
 
   expect_error(
     BayesTools:::.interpret.BF("2", "effect", NULL),
-    "numeric vector"
-  )
-  expect_error(
-    interpret2(list(list(inference_name = "effect", inference_BF = "2")), "Method"),
     "numeric vector"
   )
   expect_error(
@@ -355,47 +206,6 @@ test_that(".interpret.par rejects empty and malformed estimate samples", {
   )
   expect_error(
     BayesTools:::.interpret.par(c(1, 2), NULL, NULL, FALSE),
-    "estimate_name"
-  )
-
-})
-
-
-test_that("interpret2 maps wrappers to core helpers and validates missing fields", {
-
-  info <- list(
-    list(
-      inference_name        = "Effect",
-      inference_BF_name     = "BF10",
-      inference_BF          = 3,
-      estimate_name         = "mu",
-      estimate_samples      = c(1, 2, 3),
-      estimate_units        = "kg",
-      estimate_conditional  = TRUE
-    )
-  )
-
-  expected <- paste0(
-    "Method found ",
-    BayesTools:::.interpret.BF(3, "Effect", "BF10"),
-    ", ",
-    BayesTools:::.interpret.par(c(1, 2, 3), "mu", "kg", TRUE),
-    "."
-  )
-  expect_identical(interpret2(info, "Method"), expected)
-
-  inference_only <- list(list(inference_name = "Effect", inference_BF = 2))
-  expect_identical(
-    interpret2(inference_only, NULL),
-    paste0(" found ", BayesTools:::.interpret.BF(2, "Effect", NULL), ".")
-  )
-
-  expect_error(
-    interpret2(list(list(inference_name = "Effect")), "Method"),
-    "inference_BF"
-  )
-  expect_error(
-    interpret2(list(list(inference_name = "Effect", inference_BF = 2, estimate_samples = c(1, 2))), "Method"),
     "estimate_name"
   )
 
@@ -822,7 +632,7 @@ test_that("interpret_records derives interval levels from endpoint probabilities
 })
 
 
-test_that("interpret_tables aliases interpret_records and supports optional missing entries", {
+test_that("interpret_records supports optional missing entries", {
 
   table <- data.frame(
     BF = 4,
@@ -843,12 +653,21 @@ test_that("interpret_tables aliases interpret_records and supports optional miss
     list(kind = "evidence", source = "missing_joint", optional = TRUE, section = "moderators", item_id = "optional")
   )
 
-  records <- interpret_tables(sources, spec)
+  records <- interpret_records(sources, spec)
 
   expect_equal(nrow(records), 1)
   expect_equal(records$record_id, "moderators.joint.evidence")
   expect_equal(records$BF_canonical_value, 4)
 
+})
+
+
+test_that("the removed interpret2 and interpret_tables are not exported", {
+
+  exports <- getNamespaceExports("BayesTools")
+  expect_true("interpret" %in% exports)
+  expect_true("interpret_records" %in% exports)
+  expect_false(any(c("interpret2", "interpret_tables") %in% exports))
 })
 
 

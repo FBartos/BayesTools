@@ -2,7 +2,6 @@
 % Please edit documentation in R/interpret.R
 \name{interpret_records}
 \alias{interpret_records}
-\alias{interpret_tables}
 \title{Normalize structured interpretation sources}
 \usage{
 interpret_records(
@@ -13,8 +12,6 @@ interpret_records(
   method = NULL,
   digits = 3
 )
-
-interpret_tables(sources, spec, ...)
 }
 \arguments{
 \item{sources}{named list of interpretation sources. Each source can be a
@@ -46,17 +43,11 @@ generic \code{"text"} rendering. Downstream packages should usually request
 \item{method}{optional method name used only by the generic text renderer.}
 
 \item{digits}{number of digits used only by the generic text renderer.}
-
-\item{spec}{alias for \code{plan} used by \code{interpret_tables}.}
-
-\item{...}{additional arguments passed from \code{interpret_tables} to
-\code{interpret_records}.}
 }
 \value{
 \code{interpret_records} returns a data frame with class
 \code{"BayesTools_interpret_records"} when \code{output = "records"}, or a
-character vector when \code{output = "text"}. \code{interpret_tables} is a
-convenience wrapper around \code{interpret_records}.
+character vector when \code{output = "text"}.
 }
 \description{
 \code{interpret_records} normalizes interpretation inputs from

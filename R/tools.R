@@ -398,16 +398,3 @@ check_list   <- function(x, name = deparse(substitute(x)), check_length = 0, che
   return(invisible())
 }
 
-# depreciate orthonormal
-.depreciate.transform_orthonormal <- function(transform_orthonormal, transform_factors){
-
-  if(isTRUE(transform_orthonormal)){
-    warning("'transform_orthonormal' argument will be depreciated in favor of 'transform_factors' argument.", immediate. = TRUE)
-
-    if(isFALSE(transform_factors)){
-      transform_factors <- transform_orthonormal
-    }
-  }
-
-  return(transform_factors)
-}

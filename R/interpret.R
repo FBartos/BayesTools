@@ -25,7 +25,6 @@
 #' @return \code{interpret} returns character.
 #'
 #' @export interpret
-#' @export interpret2
 #' @name interpret
 #'
 #' @seealso [ensemble_inference] [mix_posteriors] [BayesTools_model_tables] [BayesTools_ensemble_tables]
@@ -60,35 +59,6 @@ interpret <- function(inference, samples, specification, method){
   return(output)
 }
 
-#' @rdname interpret
-interpret2                <- function(specification, method = NULL){
-
-  # check input
-  check_list(specification, "specification", check_length = 0)
-  sapply(specification, function(s){
-    check_char(s$inference_name,       "inference_name",        allow_NULL = TRUE)
-    check_char(s$inference_BF_name,    "inference_BF_name",     allow_NULL = TRUE)
-    if(!is.null(s$inference_BF) && !is.numeric(s$inference_BF))
-      stop("The 'inference_BF' argument must be a numeric vector.", call. = FALSE)
-    check_real(if(is.null(s$inference_BF)) NULL else as.numeric(s$inference_BF), "inference_BF", allow_NULL = TRUE)
-    check_char(s$inference_BF_bound_operator, "inference_BF_bound_operator", allow_values = c("<", ">"), allow_NULL = TRUE)
-    check_char(s$estimate_name,        "estimate_name",         allow_NULL = TRUE)
-    check_real(s$estimate_samples,     "estimate_samples",      allow_NULL = TRUE, check_length = 0)
-    check_char(s$estimate_units,       "estimate_units",        allow_NULL = TRUE)
-    check_bool(s$estimate_conditional, "estimate_conditional",  allow_NULL = TRUE)
-  })
-  check_char(method, allow_NULL = TRUE)
-
-
-  output <- ""
-
-  for(i in seq_along(specification)){
-    output <- paste0(output, .interpret.specification2(specification[[i]], method), if(i != length(specification)) " ")
-  }
-
-  return(output)
-}
-
 .interpret.specification  <- function(inference, samples, specification, method){
 
   temp_inference <- inference[[specification[["inference"]]]]
@@ -110,19 +80,6 @@ interpret2                <- function(specification, method = NULL){
   temp_par <- samples[[specification[["samples"]]]]
   text_par <- .interpret.par(temp_par, if(!is.null(specification[["samples_name"]])) specification[["samples_name"]] else specification[["samples"]],
                              specification[["samples_units"]], specification[["samples_conditional"]])
-
-  return(paste0(method, " found ", text_BF, ", ", text_par, "."))
-}
-.interpret.specification2 <- function(specification, method){
-
-  text_BF <- .interpret.BF(specification[["inference_BF"]], specification[["inference_name"]], specification[["inference_BF_name"]],
-                           specification[["inference_BF_bound_operator"]])
-
-  if(is.null(specification[["estimate_samples"]])){
-    return(paste0(method, " found ", text_BF, "."))
-  }
-
-  text_par <- .interpret.par(specification[["estimate_samples"]], specification[["estimate_name"]], specification[["estimate_units"]], specification[["estimate_conditional"]])
 
   return(paste0(method, " found ", text_BF, ", ", text_par, "."))
 }
@@ -242,14 +199,10 @@ interpret2                <- function(specification, method = NULL){
 #' @param missing how missing optional sources or rows should be handled.
 #' @param method optional method name used only by the generic text renderer.
 #' @param digits number of digits used only by the generic text renderer.
-#' @param spec alias for \code{plan} used by \code{interpret_tables}.
-#' @param ... additional arguments passed from \code{interpret_tables} to
-#' \code{interpret_records}.
 #'
 #' @return \code{interpret_records} returns a data frame with class
 #' \code{"BayesTools_interpret_records"} when \code{output = "records"}, or a
-#' character vector when \code{output = "text"}. \code{interpret_tables} is a
-#' convenience wrapper around \code{interpret_records}.
+#' character vector when \code{output = "text"}.
 #'
 #' @export
 interpret_records <- function(sources, plan, output = c("records", "text"),
@@ -296,12 +249,6 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
   }
 
   return(records)
-}
-
-#' @rdname interpret_records
-#' @export
-interpret_tables <- function(sources, spec, ...){
-  interpret_records(sources = sources, plan = spec, ...)
 }
 
 .interpret_reject_interval_level_input <- function(x, path){

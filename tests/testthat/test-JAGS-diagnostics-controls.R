@@ -21,6 +21,18 @@ skip_if_not_test_profile("unit")
 }
 
 
+test_that("JAGS diagnostics are selected by 'type' only", {
+
+  exports <- getNamespaceExports("BayesTools")
+  expect_true("JAGS_diagnostics" %in% exports)
+  expect_false(any(c(
+    "JAGS_diagnostics_density",
+    "JAGS_diagnostics_trace",
+    "JAGS_diagnostics_autocorrelation"
+  ) %in% exports))
+})
+
+
 test_that("JAGS autocorrelation diagnostics validate lags", {
 
   fit <- .mock_public_diagnostics_fit()
@@ -36,7 +48,7 @@ test_that("JAGS autocorrelation diagnostics validate lags", {
 
   for(lags in invalid_lags){
     expect_error(
-      JAGS_diagnostics_autocorrelation(
+      JAGS_diagnostics(type = "autocorrelation", 
         fit,
         parameter = "theta",
         plot_type = "ggplot",
@@ -54,7 +66,7 @@ test_that("JAGS autocorrelation diagnostics display negative correlations", {
   fit <- .mock_public_diagnostics_fit(theta = theta)
   expected_min <- min(stats::acf(theta, lag.max = 4, plot = FALSE)$acf)
 
-  plot <- JAGS_diagnostics_autocorrelation(
+  plot <- JAGS_diagnostics(type = "autocorrelation", 
     fit,
     parameter = "theta",
     plot_type = "ggplot",
@@ -66,7 +78,7 @@ test_that("JAGS autocorrelation diagnostics display negative correlations", {
 
   grDevices::pdf(NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
-  JAGS_diagnostics_autocorrelation(
+  JAGS_diagnostics(type = "autocorrelation", 
     fit,
     parameter = "theta",
     plot_type = "base",
@@ -80,7 +92,7 @@ test_that("JAGS autocorrelation diagnostics preserve valid scalar lag limits", {
 
   fit <- .mock_public_diagnostics_fit()
 
-  plot <- JAGS_diagnostics_autocorrelation(
+  plot <- JAGS_diagnostics(type = "autocorrelation", 
     fit,
     parameter = "theta",
     plot_type = "ggplot",
@@ -91,7 +103,7 @@ test_that("JAGS autocorrelation diagnostics preserve valid scalar lag limits", {
     expect_equal(layer$x, 0:3)
   }
 
-  zero_lag_plot <- JAGS_diagnostics_autocorrelation(
+  zero_lag_plot <- JAGS_diagnostics(type = "autocorrelation", 
     fit,
     parameter = "theta",
     plot_type = "ggplot",
@@ -107,7 +119,7 @@ test_that("JAGS autocorrelation diagnostics preserve valid scalar lag limits", {
 test_that("JAGS autocorrelation diagnostics cap output at available lags", {
 
   fit <- .mock_public_diagnostics_fit(n = 6)
-  plot <- JAGS_diagnostics_autocorrelation(
+  plot <- JAGS_diagnostics(type = "autocorrelation", 
     fit,
     parameter = "theta",
     plot_type = "ggplot",

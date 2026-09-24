@@ -21,7 +21,6 @@ ensemble_estimates_table(
   footnotes = NULL,
   warnings = NULL,
   transform_factors = FALSE,
-  transform_orthonormal = FALSE,
   formula_prefix = TRUE,
   transform_scaled = FALSE,
   formula_scale = NULL
@@ -118,10 +117,6 @@ diagnostics tables) specifying the parameters
 \item{transform_factors}{whether factors with orthonormal/meandif
 prior distribution should be transformed to differences from the
 grand mean}
-
-\item{transform_orthonormal}{(to be depreciated) whether factors
-with orthonormal prior distributions should be transformed to
-differences from the grand mean}
 
 \item{formula_prefix}{whether the parameter prefix from formula should
 be printed. Defaults to \code{TRUE}.}
