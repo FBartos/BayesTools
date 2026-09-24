@@ -777,21 +777,10 @@
     )
     prior_name <- paste0(prior_prefix, "_rho_z")
     sample_name <- paste0(node_prefix, "_rho_z")
-    syntax <- c(syntax, paste0(
-      rho_name, " <- tanh(", sample_name, ")"
-    ))
     monitor <- rho_name
   }else if(identical(rho_scale, "logit")){
     prior_name <- paste0(prior_prefix, "_rho_logit")
     sample_name <- paste0(node_prefix, "_rho_logit")
-    syntax <- c(syntax, paste0(
-      rho_name, " <- ",
-      .bt_JAGS_numeric_literal(bounds[["lower"]]), " + ",
-      .bt_JAGS_numeric_literal(
-        bounds[["upper"]] - bounds[["lower"]]
-      ),
-      " * ilogit(", sample_name, ")"
-    ))
     monitor <- rho_name
   }else{
     rho_prior <- .bt_random_effect_bound_scalar_prior(
@@ -807,15 +796,7 @@
   }
   if(is.prior.point(rho_prior)){
     sample_fixed <- rho_prior$parameters[["location"]]
-    fixed_rho <- if(identical(rho_scale, "fisher_z")){
-      tanh(sample_fixed)
-    }else if(identical(rho_scale, "logit")){
-      bounds[["lower"]] +
-        (bounds[["upper"]] - bounds[["lower"]]) *
-        stats::plogis(sample_fixed)
-    }else{
-      sample_fixed
-    }
+    fixed_rho <- .bt_dnode_rho_transform(sample_fixed, rho_scale, bounds)
     if(.bt_random_effect_rho_outside_support(
       fixed_rho,
       bounds = bounds,
@@ -832,6 +813,15 @@
         call. = FALSE
       )
     }
+  }
+  if(rho_scale %in% c("fisher_z", "logit")){
+    syntax <- .bt_deterministic_node_emit(.bt_dnode_rho(
+      rho_name = rho_name,
+      sample_name = sample_name,
+      rho_scale = rho_scale,
+      bounds = bounds,
+      sample_fixed = sample_fixed
+    ))
   }
 
   prior_list <- stats::setNames(list(rho_prior), prior_name)

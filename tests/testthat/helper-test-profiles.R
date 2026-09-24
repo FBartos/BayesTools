@@ -46,6 +46,7 @@ bayestools_test_profile_contexts <- list(
     "JAGS-bridge-marginal-random",
     "JAGS-bridgesampling-wrapper",
     "JAGS-convergence",
+    "JAGS-deterministic-nodes",
     "JAGS-diagnostic-plot-data",
     "JAGS-diagnostics-controls",
     "JAGS-draw-geometry",

@@ -352,15 +352,50 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
       prior_list   = prior_list,
       column_names = column_names
     )
-    samples <- .bt_add_random_rho_prior_samples(
-      samples      = samples,
-      random_term  = random_term,
-      column_names = column_names
-    )
   }
+  samples <- .bt_add_deterministic_prior_samples(
+    samples        = samples,
+    prior_list     = prior_list,
+    formula_design = formula_design,
+    column_names   = column_names
+  )
 
   ordered <- intersect(column_names, colnames(samples))
   samples[, ordered, drop = FALSE]
+}
+
+# Monitored generated deterministic nodes missing from the prior draws are
+# computed from the prior draws of their dependencies with the registered node
+# evaluators. A node whose dependencies have no prior draws (for example an
+# external SD source defined in the model syntax) stays unavailable, as it is
+# in fitted draws without it; like the monitored JAGS node, the values are not
+# validated here (the catalog evaluators check supports).
+.bt_add_deterministic_prior_samples <- function(samples, prior_list,
+                                                formula_design, column_names){
+
+  nodes <- .bt_deterministic_nodes(
+    prior_list = prior_list,
+    formula_design = formula_design
+  )
+  for(node in nodes){
+    targets <- node$coordinates[
+      node$coordinates %in% column_names &
+        !node$coordinates %in% colnames(samples)
+    ]
+    if(length(targets) == 0L){
+      next
+    }
+    values <- .bt_deterministic_node_evaluate(
+      node,
+      .bt_deterministic_lookup(samples, prior_list)
+    )
+    if(is.null(values)){
+      next
+    }
+    samples <- cbind(samples, values[, targets, drop = FALSE])
+  }
+
+  samples
 }
 
 .bt_add_random_sd_prior_samples <- function(samples, random_term, prior_list,
@@ -391,48 +426,6 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
 
   cbind(samples, values)
 }
-
-.bt_add_random_rho_prior_samples <- function(samples, random_term,
-                                             column_names){
-
-  correlation <- random_term$correlation
-  if(!is.list(correlation) || !identical(correlation$type, "rho")){
-    return(samples)
-  }
-  rho_name <- correlation$rho_name
-  if(!rho_name %in% column_names || rho_name %in% colnames(samples)){
-    return(samples)
-  }
-  plan <- .bt_random_effect_compile_rho_draw_plan(
-    random_term = random_term,
-    context     = "Random-effect prior sample metadata"
-  )
-  if(identical(plan$rho_scale, "rho")){
-    return(samples)
-  }
-  sample_value <- if(correlation$sample_name %in% colnames(samples)){
-    samples[, correlation$sample_name]
-  }else if(!is.null(plan$sample_fixed)){
-    rep(plan$sample_fixed, nrow(samples))
-  }else{
-    return(samples)
-  }
-
-  # The model's own 'rho <- tanh(z)' or logit map; like the monitored node, the
-  # draws are not validated here (consumers check the correlation support).
-  rho <- .bt_random_effect_transform_rho(
-    sample_value,
-    correlation = correlation,
-    random_term = random_term,
-    context     = "Random-effect prior sample metadata",
-    plan        = plan
-  )
-  samples <- cbind(samples, rho)
-  colnames(samples)[ncol(samples)] <- rho_name
-
-  samples
-}
-
 
 .bt_add_lkj_prior_samples <- function(samples, formula_design, column_names,
                                       n_samples){
