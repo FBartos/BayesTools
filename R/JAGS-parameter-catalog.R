@@ -108,7 +108,12 @@
 #' correlations on the refined numerical grid). Allocation-derived component
 #' SDs are products of density grids without such provenance: they are
 #' returned for plotting, and their heights and region probabilities are
-#' unavailable.
+#' unavailable. Allocation totals (`sd_total`, `var_total`) and component SDs
+#' and variances of gated allocations carry the exact gate atom at zero (no
+#' active component, or the component's gate off); the continuous part of a
+#' total is the scale prior itself when every component is active and a
+#' product of density grids otherwise. Totals of nested allocations and
+#' inclusion indicators return `NULL`.
 #'
 #' `parameter_transform()` returns the one-to-one map from the selected source
 #' coordinate to its public semantic quantity when that map exists. Composite
@@ -556,10 +561,28 @@ parameter_prior_density.BayesTools_fit <- function(
       n_grid = n_grid,
       tail_prob = tail_prob
     )
+  }else if(identical(key$evaluator, "sd_variance") &&
+           isTRUE(key$allocation_derived)){
+    .bt_parameter_prior_density_square(
+      .bt_parameter_prior_density_random_component_sd(
+        object = object,
+        key = key,
+        n_grid = n_grid,
+        tail_prob = tail_prob
+      )
+    )
   }else if(identical(key$evaluator, "allocation")){
     .bt_parameter_prior_density_allocation_quantity(
       object = object,
       selection = selection,
+      key = key,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
+  }else if(key$evaluator %in% c("allocation_sd", "allocation_var") &&
+           identical(key$source_type, "composite")){
+    .bt_parameter_prior_density_allocation_total(
+      object = object,
       key = key,
       n_grid = n_grid,
       tail_prob = tail_prob
@@ -739,6 +762,48 @@ parameter_prior_density.BayesTools_fit <- function(
   20L
 }
 
+# Prior probability that a scalar scale prior, or a finite mixture of such
+# priors (e.g. a model-averaged scale), is positive.
+.bt_parameter_prior_density_positive_probability <- function(prior_object){
+
+  if(is.null(prior_object) || !is.prior(prior_object)){
+    return(NA_real_)
+  }
+  if(is.prior.mixture(prior_object) || is.prior.spike_and_slab(prior_object)){
+    weights <- .prior_density_ordinate_mixture_weights(prior_object)
+    if(is.null(weights)){
+      return(NA_real_)
+    }
+    components <- vapply(seq_along(weights), function(i){
+      .bt_parameter_prior_density_positive_probability(prior_object[[i]])
+    }, numeric(1))
+    return(sum(weights * components))
+  }
+  if(!is.prior.simple(prior_object)){
+    return(NA_real_)
+  }
+  probability <- tryCatch(ccdf(prior_object, 0), error = function(e) NA_real_)
+  if(!is.numeric(probability) || length(probability) != 1L ||
+     !is.finite(probability)){
+    return(NA_real_)
+  }
+  as.numeric(probability)
+}
+
+# Prior inclusion probability of the allocation gate 'indicator_name'.
+.bt_parameter_prior_density_gate_probability <- function(prior_list,
+                                                         indicator_name){
+
+  gate_priors <- Filter(function(prior){
+    identical(attr(prior, "random_allocation_indicator", exact = TRUE),
+              indicator_name)
+  }, prior_list)
+  if(length(gate_priors) != 1L){
+    return(NA_real_)
+  }
+  .bt_parameter_prior_density_inclusion_probability(gate_priors[[1L]])
+}
+
 .bt_parameter_prior_density_inclusion_probability <- function(prior_object){
 
   if(is.null(prior_object) || !is.prior(prior_object)){
@@ -812,13 +877,10 @@ parameter_prior_density.BayesTools_fit <- function(
 .bt_parameter_prior_density_gated_var_prop <- function(
     allocation, source_prior, prior_list, index, n_grid, tail_prob){
 
-  scale_prior <- allocation$source$prior
-  if(!is.prior.simple(scale_prior)){
-    return(NULL)
-  }
-  positive_scale <- ccdf(scale_prior, 0)
-  if(!is.numeric(positive_scale) || length(positive_scale) != 1L ||
-     !is.finite(positive_scale) || positive_scale <= 0){
+  positive_scale <- .bt_parameter_prior_density_positive_probability(
+    allocation$source$prior
+  )
+  if(!is.finite(positive_scale) || positive_scale <= 0){
     return(NULL)
   }
 
@@ -1009,12 +1071,22 @@ parameter_prior_density.BayesTools_fit <- function(
     n_grid = n_grid,
     tail_prob = tail_prob
   )
+  # the component SD is the gated product sd * prod_f sqrt(scale_f w_f) *
+  # gate_f: the gates, independent of the rest, add an atom at zero
+  active_probability <- 1
   for(factor in factors){
     if(!is.null(factor$inclusion_name) &&
        is.character(factor$inclusion_name) &&
        length(factor$inclusion_name) == 1L &&
        !is.na(factor$inclusion_name) && nzchar(factor$inclusion_name)){
-      return(NULL)
+      gate_probability <- .bt_parameter_prior_density_gate_probability(
+        prior_list,
+        factor$inclusion_name
+      )
+      if(!is.finite(gate_probability)){
+        return(NULL)
+      }
+      active_probability <- active_probability * gate_probability
     }
     factor_prior <- prior_list[[factor$weight_name]]
     beta_prior <- .bt_parameter_prior_density_simplex_marginal(
@@ -1043,7 +1115,223 @@ parameter_prior_density.BayesTools_fit <- function(
       n_grid = n_grid
     )
   }
-  dist
+  .bt_parameter_prior_density_with_zero_atom(dist, 1 - active_probability,
+                                             n_grid, tail_prob)
+}
+
+# 'dist' with an additional atom at zero of probability 'zero' (the rest of
+# the mass is scaled by 1 - zero): one mixture prior with provenance when
+# 'dist' is the density of a single (mixture) prior, otherwise the mixed
+# grid. Returns NULL for an unusable probability.
+.bt_parameter_prior_density_with_zero_atom <- function(dist, zero, n_grid,
+                                                       tail_prob){
+
+  if(is.null(dist) || !is.numeric(zero) || length(zero) != 1L ||
+     !is.finite(zero) || zero < 0 || zero > 1){
+    return(NULL)
+  }
+  if(zero == 0){
+    return(dist)
+  }
+  if(zero == 1){
+    return(.bt_parameter_prior_density_scalar(
+      prior("point", list(location = 0)), n_grid = n_grid, tail_prob = tail_prob
+    ))
+  }
+  adaptive <- attr(dist, "adaptive_evaluation", exact = TRUE)
+  arguments <- adaptive$arguments
+  if(identical(adaptive$kind, "linear_combination") &&
+     is.null(arguments$output_transformation) &&
+     length(arguments$weights) == 1L && isTRUE(unname(arguments$weights) == 1) &&
+     is.prior(arguments$prior_list[[names(arguments$weights)]])){
+    source <- arguments$prior_list[[names(arguments$weights)]]
+    if(is.prior.mixture(source) || is.prior.spike_and_slab(source)){
+      source_weights <- .prior_density_ordinate_mixture_weights(source)
+      components <- if(is.null(source_weights)) NULL else lapply(seq_along(source), function(i) source[[i]])
+    }else if(is.prior.simple(source)){
+      source_weights <- 1
+      components <- list(source)
+    }else{
+      components <- NULL
+    }
+    if(!is.null(components) &&
+       all(vapply(components, is.prior.simple, logical(1)))){
+      components <- lapply(seq_along(components), function(i){
+        component <- components[[i]]
+        attr(component, "model_prior_weights") <- NULL
+        component[["prior_weights"]] <- (1 - zero) * source_weights[[i]]
+        component
+      })
+      components <- c(
+        list(prior("point", list(location = 0), prior_weights = zero)),
+        components
+      )
+      return(.bt_parameter_prior_density_scalar(
+        prior_mixture(components, is_null = vapply(components, is.prior.point, logical(1))),
+        n_grid = n_grid,
+        tail_prob = tail_prob
+      ))
+    }
+  }
+  dx <- .prior_linear_density_dx(dist)
+  if(!is.finite(dx) || dx <= 0){
+    dx <- 1 / max(n_grid - 1L, 1L)
+  }
+  .prior_linear_density_normalize(
+    .prior_linear_density_mix(
+      list(.prior_linear_density_point(0), dist),
+      c(zero, 1 - zero),
+      dx = dx,
+      n_grid = n_grid
+    ),
+    warn = TRUE
+  )
+}
+
+# The square of a nonnegative density (a variance from an SD): exact through
+# 'exp_lin' when the density records a transformation-free linear
+# combination without point masses, otherwise its transformed grid (atoms at
+# zero stay at zero).
+.bt_parameter_prior_density_square <- function(dist){
+
+  if(is.null(dist)){
+    return(NULL)
+  }
+  adaptive <- attr(dist, "adaptive_evaluation", exact = TRUE)
+  if(identical(adaptive$kind, "linear_combination") &&
+     is.null(adaptive$arguments$output_transformation) &&
+     (is.null(dist$points) || nrow(dist$points) == 0L)){
+    hull <- .prior_linear_combination_support_hull(
+      adaptive$arguments$prior_list,
+      adaptive$arguments$weights,
+      adaptive$arguments$source_transforms
+    )
+    if(!is.null(hull) && hull[1L] >= 0){
+      arguments <- adaptive$arguments
+      return(.prior_linear_combination_density(
+        prior_list        = arguments$prior_list,
+        weights           = arguments$weights,
+        n_grid            = arguments$n_grid,
+        tail_prob         = arguments$tail_prob,
+        source_transforms = arguments$source_transforms,
+        output_transformation = "exp_lin",
+        output_transformation_arguments = list(a = 0, b = 2)
+      ))
+    }
+  }
+  .prior_linear_density_transform(dist, "exp_lin", list(a = 0, b = 2))
+}
+
+# Total SD (or variance) of an allocation with component inclusion gates and
+# no nested parent shares: sd * sqrt(T), where T sums the Dirichlet weights of
+# the active components (T = 1 without component gates or for other
+# allocation scales). With no active component the total is exactly zero.
+# The active sets S mix: sd itself when every component is active, and
+# sd * sqrt(W_S), W_S ~ Beta(alpha_S, alpha_{-S}), otherwise. Only a total
+# whose continuous part is the scale prior itself is exact; the products
+# are plotting densities (grids without provenance), and the atom at zero is
+# exact in both cases. A total variance is the square of the total SD.
+.bt_parameter_prior_density_allocation_total <- function(object, key,
+                                                         n_grid, tail_prob){
+
+  random_term <- if(nzchar(key$random_block)){
+    .bt_parameter_catalog_find_random_term(object, key)
+  }else{
+    NULL
+  }
+  allocation <- .bt_parameter_catalog_find_allocation(object, key, random_term)
+  source <- allocation$source
+  if(!is.list(source) || !identical(source$shape, "scalar") ||
+     !is.prior(source$prior) ||
+     .prior_linear_prior_dimension(source$prior) != 1L ||
+     length(allocation$parent_factors) > 0L){
+    return(NULL)
+  }
+  K <- allocation$n_targets
+  probability <- if(identical(allocation$scale, "total_variance")){
+    .bt_parameter_prior_density_allocation_component_probabilities(allocation, K)
+  }else{
+    rep(1, K)
+  }
+  prior_list <- attr(object, "prior_list", exact = TRUE)
+  weight_prior <- prior_list[[allocation$weight_name]]
+  if(is.null(probability) || !is.prior.simplex(weight_prior) ||
+     !identical(weight_prior$distribution, "dirichlet") ||
+     length(weight_prior$parameters$alpha) != K){
+    return(NULL)
+  }
+  alpha <- weight_prior$parameters$alpha
+  # the total SD; a total variance is its square (squaring the SD products
+  # keeps them on uniform source grids)
+  finish <- if(identical(key$evaluator, "allocation_var")){
+    .bt_parameter_prior_density_square
+  }else{
+    identity
+  }
+  scale_density <- .bt_parameter_prior_density_scalar(
+    source$prior,
+    n_grid = n_grid,
+    tail_prob = tail_prob
+  )
+
+  free <- which(probability > 0 & probability < 1)
+  if(length(free) > .bt_parameter_prior_density_gated_var_prop_free_gate_limit()){
+    stop(
+      "Independently gated allocation-total prior density is unavailable for more than 20 free inclusion gates.",
+      call. = FALSE
+    )
+  }
+  # active sets: always-on components plus every subset of the free gates
+  active <- matrix(probability >= 1, nrow = 1L)
+  set_probability <- 1
+  for(k in free){
+    off <- active
+    on <- active
+    on[, k] <- TRUE
+    active <- rbind(off, on)
+    set_probability <- c(set_probability * (1 - probability[[k]]),
+                         set_probability * probability[[k]])
+  }
+  zero <- sum(set_probability[rowSums(active) == 0L])
+  full <- rowSums(active) == K
+  partial <- !full & rowSums(active) > 0L & set_probability > 0
+
+  if(!any(partial)){
+    return(finish(.bt_parameter_prior_density_with_zero_atom(
+      scale_density, zero, n_grid, tail_prob
+    )))
+  }
+
+  dists <- list()
+  weights <- numeric()
+  if(any(full & set_probability > 0)){
+    dists[[1L]] <- scale_density
+    weights <- sum(set_probability[full])
+  }
+  for(i in which(partial)){
+    share <- prior("beta", list(alpha = sum(alpha[active[i, ]]),
+                                beta  = sum(alpha[!active[i, ]])))
+    share_density <- .bt_parameter_prior_density_transformed(
+      share,
+      list(type = "sqrt_scale", scale = 1),
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
+    dists[[length(dists) + 1L]] <- .prior_linear_density_product(
+      scale_density,
+      share_density,
+      n_grid = n_grid
+    )
+    weights <- c(weights, set_probability[[i]])
+  }
+  dx_values <- vapply(dists, .prior_linear_density_dx, numeric(1))
+  dx_values <- dx_values[is.finite(dx_values) & dx_values > 0]
+  dx <- if(length(dx_values) > 0L) min(dx_values) else 1 / max(n_grid - 1L, 1L)
+  continuous <- .prior_linear_density_normalize(
+    .prior_linear_density_mix(dists, weights, dx = dx, n_grid = n_grid),
+    warn = TRUE
+  )
+  finish(.bt_parameter_prior_density_with_zero_atom(continuous, zero, n_grid, tail_prob))
 }
 
 .bt_parameter_prior_density_simplex_marginal <- function(prior_object,

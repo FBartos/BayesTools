@@ -3160,6 +3160,66 @@ test_that("shared-gate proportions use their declared conditional Dirichlet prio
     )
   }
 
+  # Independently gated totals and component SDs: the realized total SD is
+  # sd * sqrt(g1 w + g2 (1 - w)) and the study SD sd * sqrt(w) * g1, with
+  # sd ~ gamma(2, 2), w ~ Beta(2, 3) and gates g ~ Bernoulli(1/2). The atoms
+  # at 0 (all gates off: 1/4; study gate off: 1/2) are exact; the continuous
+  # parts are product grids (plotting densities without provenance), checked
+  # against the Monte Carlo distribution function within 4 MC SD plus 1e-3
+  # for the product grids (observed below 8e-4).
+  set.seed(2)
+  n <- 2e5
+  scale_draws <- stats::rgamma(n, 2, 2)
+  share_draws <- stats::rbeta(n, 2, 3)
+  gate_1 <- stats::rbinom(n, 1, .5)
+  gate_2 <- stats::rbinom(n, 1, .5)
+  total_sd <- scale_draws * sqrt(gate_1 * share_draws + gate_2 * (1 - share_draws))
+  study_sd <- scale_draws * sqrt(share_draws) * gate_1
+  references <- list(
+    "split: sd_total" = list(draws = total_sd, zero = .25),
+    "split: var_total" = list(draws = total_sd^2, zero = .25),
+    "study: sd(intercept)" = list(draws = study_sd, zero = .5),
+    "study: var(intercept)" = list(draws = study_sd^2, zero = .5)
+  )
+  grid_cdf <- function(density, value){
+    x <- density$density$x
+    y <- density$density$y
+    inside <- x <= value
+    x_value <- c(x[inside], value)
+    y_value <- c(y[inside], stats::approx(x, y, value)$y)
+    trapezoid <- function(x, y) sum(diff(x) * (utils::head(y, -1L) + utils::tail(y, -1L)) / 2)
+    sum(density$points$p[density$points$x <= value]) +
+      density$density$mass * trapezoid(x_value, y_value) / trapezoid(x, y)
+  }
+  for(name in names(references)){
+    density <- parameter_prior_density(
+      independent, parameter_catalog_resolve(parameter_catalog(independent), name, "mu")
+    )
+    expect_s3_class(density, "prior_linear_density")
+    expect_equal(.prior_linear_density_point_mass(density, 0), references[[name]]$zero,
+                 tolerance = 1e-12, info = name)
+    expect_null(attr(density, "adaptive_evaluation", exact = TRUE))
+    for(value in c(.1, .3, .6, 1, 2)){
+      reference <- mean(references[[name]]$draws <= value)
+      expect_lte(abs(grid_cdf(density, value) - reference),
+                 4 * sqrt(reference * (1 - reference) / n) + 1e-3)
+    }
+  }
+
+  # a model-averaged (mixture) scale prior keeps the gated proportion density
+  mixture_scale <- make_fit(independent = TRUE, scale_prior = prior_mixture(list(
+    prior("gamma", list(2, 2), prior_weights = 3),
+    prior("gamma", list(3, 1), prior_weights = 2)
+  ), is_null = c(FALSE, FALSE)))
+  selection <- parameter_catalog_resolve(
+    parameter_catalog(mixture_scale), "split: var_prop(study)", "mu"
+  )
+  density <- parameter_prior_density(mixture_scale, selection)
+  expect_equal(.prior_linear_density_point_mass(density, 0), 1 / 3, tolerance = 1e-12)
+  expect_equal(.prior_linear_density_point_mass(density, 1), 1 / 3, tolerance = 1e-12)
+  expect_equal(.prior_linear_density_height(density, .4), stats::dbeta(.4, 2, 3) / 3,
+               tolerance = 1e-12)
+
   independent_fixed <- make_fit(independent = TRUE, probability = 1)
   selection <- parameter_catalog_resolve(
     parameter_catalog(independent_fixed), "split: var_prop(study)", "mu"

@@ -191,8 +191,13 @@ through `.prior_linear_combination_density()` or the context builders:
 transformation (affine as `lin`, `tanh`, square root and square of a
 nonnegative source as `exp_lin`, a bounded logit as a recorded custom map on
 the refined grid) and a gated variance proportion as one mixture prior of its
-atoms and Beta components. Allocation-derived component SDs (products of
-density grids) have no provenance and are plotting densities.
+atoms and Beta components (with a model-averaged, mixture scale prior as
+well). Allocation-derived component SDs and variances, and the totals of
+gated allocations, are products of density grids without provenance
+(plotting densities) that carry their exact gate atom at zero; a total whose
+only continuous part is the scale prior itself is exact. Fitted coordinates
+and factor levels use the prior-density context of the priors owning their
+coordinates (`multiply_by` stripped).
 
 Mixture ordinates (model, conditional, and mixture or spike-and-slab terms of
 one linear combination) are weighted sums of per-component ordinates, each from

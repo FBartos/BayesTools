@@ -198,7 +198,12 @@ probabilities are evaluated on that prior's structural route (bounded-logit
 correlations on the refined numerical grid). Allocation-derived component
 SDs are products of density grids without such provenance: they are
 returned for plotting, and their heights and region probabilities are
-unavailable.
+unavailable. Allocation totals (\code{sd_total}, \code{var_total}) and component SDs
+and variances of gated allocations carry the exact gate atom at zero (no
+active component, or the component's gate off); the continuous part of a
+total is the scale prior itself when every component is active and a
+product of density grids otherwise. Totals of nested allocations and
+inclusion indicators return \code{NULL}.
 
 \code{parameter_transform()} returns the one-to-one map from the selected source
 coordinate to its public semantic quantity when that map exists. Composite
