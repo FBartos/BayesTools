@@ -308,10 +308,12 @@ prior object its transformed density; nonlinear expressions of a
 deterministic prior are inexact. Only user-supplied prior draws keep a
 kernel (or normal) estimate of the prior ordinate, signalled by a warning of
 the same inexact class (draw-only inputs have no structural prior density).
-`Savage_Dickey_BF()` (and so marginal inference) applies the same rule and
-classes to its prior ordinate through the same check, except that an exactly
-classified zero or infinite ordinate keeps its documented Bayes factor (0 or
-Inf) with a warning.
+`Savage_Dickey_BF()` applies the same rule and classes to its prior ordinate
+through the same check: a zero or infinite prior ordinate makes the density
+ratio a 0/0 or singular limit that a posterior kernel estimate cannot
+estimate, so a scalar call stops, and a level of a list posterior (marginal
+inference and its tables) gets an NA Bayes factor with the reason, as a level
+fixed at the null.
 
 The posterior ordinate of a Savage-Dickey ratio (`R/marginal-savage-dickey.R`)
 is a kernel estimate from the continuous draws: the exact Gaussian kernel sum
@@ -321,8 +323,9 @@ interpolation or binning (a grid spanning a long-tailed draw range is coarser
 than the bandwidth). The raw-draw ordinates of `hypothesis_BF()` use the same
 kernel sum without reflection. A kernel sum below the double range (draws
 many bandwidths from the null) is 0, and the Bayes factor is then +Inf; no
-numerical floor is added. The prior-support warning compares the null with
-the prior's exact support hull, never with the range of its grid.
+numerical floor is added. A null outside the prior's exact support has a
+zero prior ordinate (classified structurally, never from the range of a
+grid) and follows the zero-ordinate rule above.
 Everything around the ordinate comes
 from declared metadata: posterior atoms, exact support, and for mixtures each
 draw's component with the components' exact supports (`posterior_components`:

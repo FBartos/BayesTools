@@ -52,10 +52,14 @@
 #' \code{bounds = c(lower, upper)} and \code{exact = TRUE}; optional
 #' \code{type = "points"} support is not treated as a continuous interval for
 #' KDE boundary reflection. The same schema may be supplied as \code{support}
-#' in a \code{posterior_density} attribute. When the prior density at the null
-#' is exactly classified as zero or infinite, the returned Bayes factor (0 or
-#' \code{Inf}) carries a warning because the point-null Savage-Dickey ratio is
-#' not a regular density ratio at that point.
+#' in a \code{posterior_density} attribute. A prior density that is zero or
+#' infinite at the null makes the density ratio a 0/0 or singular limit that a
+#' kernel estimate of the posterior ordinate cannot estimate (e.g., with a
+#' log-singular prior the posterior carries the same singularity and the true
+#' ratio is a finite limit): a scalar call stops (see Value), and for a list of
+#' marginal posteriors (levels) such a level returns \code{NA} with the reason
+#' in its \code{"warnings"} attribute ("The prior density at the null
+#' hypothesis value is zero" or "infinite") and the other levels are computed.
 #'
 #' Marginal posteriors created by \code{marginal_posterior()} record the
 #' mixture component of each draw and each component's exact support: the
@@ -84,15 +88,16 @@
 #' @return \code{Savage_Dickey_BF} returns a Bayes factor. The prior ordinate
 #' at the null follows the exactness rule of [hypothesis_BF()] point
 #' hypotheses, with the same condition classes: a prior point mass at the null
-#' value stops with an error of class \code{BayesTools_point_mass_at_null}, an
-#' undefined ordinate with \code{BayesTools_undefined_ordinate}, and an
-#' ordinate without an exact structural value (a prior-density combination
-#' evaluated only on a numerical grid, a quadrature rejected by its
-#' diagnostics, or a density grid without recorded provenance) with
+#' value stops with an error of class \code{BayesTools_point_mass_at_null}, a
+#' zero, infinite or undefined ordinate with \code{BayesTools_zero_ordinate},
+#' \code{BayesTools_infinite_ordinate} or \code{BayesTools_undefined_ordinate},
+#' and an ordinate without an exact structural value (a prior-density
+#' combination evaluated only on a numerical grid, a quadrature rejected by
+#' its diagnostics, or a density grid without recorded provenance) with
 #' \code{BayesTools_inexact_ordinate}; each also has class
-#' \code{BayesTools_hypothesis_ordinate}. An exactly classified zero or
-#' infinite prior ordinate gives a Bayes factor of 0 or \code{Inf} with a
-#' warning (see Details).
+#' \code{BayesTools_hypothesis_ordinate}. For a list of marginal posteriors
+#' (and in marginal inference), a zero or infinite prior ordinate gives the
+#' level an \code{NA} Bayes factor with its reason instead (see Details).
 #'
 #' @export
 Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximation = FALSE, silent = FALSE,
@@ -108,9 +113,10 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   )
 }
 
-# 'null_mass_NA': a level with a declared posterior point mass at the null gets
-# an NA Bayes factor with its reason instead of stopping the whole evaluation
-# (list posteriors and marginal inference; a scalar call keeps the error).
+# 'null_mass_NA': a level with a declared posterior point mass at the null, or
+# with a zero or infinite prior ordinate there, gets an NA Bayes factor with
+# its reason instead of stopping the whole evaluation (list posteriors and
+# marginal inference; a scalar call keeps the error).
 .Savage_Dickey_BF.checked <- function(posterior, null_hypothesis, normal_approximation,
                                       silent, density_method, null_mass_NA){
 
@@ -320,16 +326,38 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     return(BF)
   }
   # the one exactness rule of point hypotheses (hypothesis_BF()): a prior
-  # point mass at the null, an undefined prior ordinate, and a prior ordinate
-  # without an exact structural value (an unknown route, a quadrature
-  # rejected by its diagnostics, a density without provenance) stop with
-  # their classed conditions; an exact zero or infinite ordinate gives the
-  # Bayes factor with a warning
-  prior_ordinate <- .hypothesis_check_prior_ordinate(
-    prior, null_hypothesis,
-    label      = paste0(if(is.null(label)) "parameter" else label, " = ", null_hypothesis),
-    structural = FALSE
+  # point mass at the null, a zero, infinite or undefined prior ordinate, and
+  # a prior ordinate without an exact structural value (an unknown route, a
+  # quadrature rejected by its diagnostics, a density without provenance)
+  # stop with their classed conditions. A zero or infinite ordinate makes the
+  # density ratio a 0/0 or singular limit that a posterior kernel estimate
+  # cannot estimate; a level of a list posterior (marginal inference) then
+  # gets an NA Bayes factor with the reason, as a level fixed at the null.
+  prior_ordinate <- tryCatch(
+    .hypothesis_check_prior_ordinate(
+      prior, null_hypothesis,
+      label = paste0(if(is.null(label)) "parameter" else label, " = ", null_hypothesis)
+    ),
+    BayesTools_zero_ordinate     = function(condition) condition,
+    BayesTools_infinite_ordinate = function(condition) condition
   )
+  if(inherits(prior_ordinate, "condition")){
+    if(!isTRUE(null_mass_NA)){
+      stop(prior_ordinate)
+    }
+    behavior <- if(inherits(prior_ordinate, "BayesTools_zero_ordinate")) "zero" else "infinite"
+    reason <- paste0(
+      "The prior density at the null hypothesis value is ", behavior, ". The ",
+      "Savage-Dickey Bayes factor is undefined."
+    )
+    BF <- NA_real_
+    attr(BF, "warnings") <- reason
+    attr(BF, "posterior_density_source") <- paste0(behavior, "_prior_ordinate")
+    if(!silent){
+      .Savage_Dickey_BF.emit_warnings(reason, label)
+    }
+    return(BF)
+  }
   continuous_posterior <- .Savage_Dickey_BF.continuous_posterior(
     posterior = posterior,
     posterior_atoms = posterior_atoms
@@ -354,14 +382,8 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     }
   }
 
-  # the exact support hull of the prior measure, not the range of its grid
-  prior_support <- .prior_linear_density_support_hull(
-    attr(prior, "adaptive_evaluation", exact = TRUE)
-  )
-  if(!is.null(prior_support) &&
-     (null_hypothesis < prior_support[1L] || null_hypothesis > prior_support[2L])){
-    warnings <- c(warnings, "Prior density does not span both sides of the null hypothesis. Check whether the prior distribution contains the null hypothesis in the first place. The Savage-Dickey density ratio is likely to be invalid.")
-  }
+  # (a null outside the exact support of the prior has a zero prior ordinate
+  # and has stopped above)
   posterior_range <- if(length(continuous_samples) > 0L){
     range(continuous_samples)
   }else{
@@ -525,19 +547,13 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     # an exact zero posterior density is not a kernel-tail extrapolation
     warnings <- warnings[warnings != .Savage_Dickey_BF_extrapolation_warning]
   }
-  prior_height <- .prior_linear_density_exact_height(prior_ordinate)
-  if(!is.finite(prior_height) || prior_height <= 0){
-    warnings <- c(
-      warnings,
-      "Prior density at the null hypothesis value is zero or non-finite. The Savage-Dickey density ratio is invalid."
-    )
-  }
-
   warnings <- unique(warnings)
   if(!silent){
     .Savage_Dickey_BF.emit_warnings(warnings, label)
   }
 
+  # the checked prior ordinate is regular with a finite log density
+  prior_height <- .prior_linear_density_exact_height(prior_ordinate)
   BF <- exp(log(prior_height) - log(posterior_height))
 
   if(!is.null(warnings)){

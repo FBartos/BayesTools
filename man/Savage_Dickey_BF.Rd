@@ -50,15 +50,16 @@ resulting density is scaled by the remaining continuous mass.}
 \code{Savage_Dickey_BF} returns a Bayes factor. The prior ordinate
 at the null follows the exactness rule of \code{\link[=hypothesis_BF]{hypothesis_BF()}} point
 hypotheses, with the same condition classes: a prior point mass at the null
-value stops with an error of class \code{BayesTools_point_mass_at_null}, an
-undefined ordinate with \code{BayesTools_undefined_ordinate}, and an
-ordinate without an exact structural value (a prior-density combination
-evaluated only on a numerical grid, a quadrature rejected by its
-diagnostics, or a density grid without recorded provenance) with
+value stops with an error of class \code{BayesTools_point_mass_at_null}, a
+zero, infinite or undefined ordinate with \code{BayesTools_zero_ordinate},
+\code{BayesTools_infinite_ordinate} or \code{BayesTools_undefined_ordinate},
+and an ordinate without an exact structural value (a prior-density
+combination evaluated only on a numerical grid, a quadrature rejected by
+its diagnostics, or a density grid without recorded provenance) with
 \code{BayesTools_inexact_ordinate}; each also has class
-\code{BayesTools_hypothesis_ordinate}. An exactly classified zero or
-infinite prior ordinate gives a Bayes factor of 0 or \code{Inf} with a
-warning (see Details).
+\code{BayesTools_hypothesis_ordinate}. For a list of marginal posteriors
+(and in marginal inference), a zero or infinite prior ordinate gives the
+level an \code{NA} Bayes factor with its reason instead (see Details).
 }
 \description{
 Computes Savage-Dickey (density ratio) inclusion Bayes factors
@@ -85,10 +86,14 @@ metadata is either a numeric
 \code{bounds = c(lower, upper)} and \code{exact = TRUE}; optional
 \code{type = "points"} support is not treated as a continuous interval for
 KDE boundary reflection. The same schema may be supplied as \code{support}
-in a \code{posterior_density} attribute. When the prior density at the null
-is exactly classified as zero or infinite, the returned Bayes factor (0 or
-\code{Inf}) carries a warning because the point-null Savage-Dickey ratio is
-not a regular density ratio at that point.
+in a \code{posterior_density} attribute. A prior density that is zero or
+infinite at the null makes the density ratio a 0/0 or singular limit that a
+kernel estimate of the posterior ordinate cannot estimate (e.g., with a
+log-singular prior the posterior carries the same singularity and the true
+ratio is a finite limit): a scalar call stops (see Value), and for a list of
+marginal posteriors (levels) such a level returns \code{NA} with the reason
+in its \code{"warnings"} attribute ("The prior density at the null
+hypothesis value is zero" or "infinite") and the other levels are computed.
 
 Marginal posteriors created by \code{marginal_posterior()} record the
 mixture component of each draw and each component's exact support: the

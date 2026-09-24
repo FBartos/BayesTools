@@ -2643,6 +2643,10 @@ test_that("Savage_Dickey_BF excludes off-null atoms from the continuous ordinate
 
 test_that("Savage_Dickey_BF diagnoses zero prior density at point null", {
 
+  # A zero prior density at the null (Beta(2, 2) at 0) makes the density
+  # ratio a 0/0 limit that the posterior kernel estimate cannot estimate: a
+  # scalar call stops with the classed condition of hypothesis_BF(), and a
+  # level of a list posterior gets an NA Bayes factor with the reason.
   prior_density <- BayesTools:::.prior_linear_combination_density(
     prior_list = list(theta = prior("beta", list(alpha = 2, beta = 2))),
     weights    = c(theta = 1),
@@ -2655,21 +2659,31 @@ test_that("Savage_Dickey_BF diagnoses zero prior density at point null", {
   attr(posterior, "posterior_support") <-
     BayesTools:::.posterior_support_new(c(0, 1), source = "test")
 
-  out <- Savage_Dickey_BF(posterior, null_hypothesis = 0, silent = TRUE)
-  expect_equal(as.numeric(out), 0)
-  expect_match(
-    attr(out, "warnings"),
-    "Prior density at the null hypothesis value is zero or non-finite",
-    fixed = TRUE
+  condition <- tryCatch(Savage_Dickey_BF(posterior, null_hypothesis = 0, silent = TRUE),
+                        error = function(e) e)
+  expect_s3_class(condition, "BayesTools_zero_ordinate")
+  expect_s3_class(condition, "BayesTools_hypothesis_ordinate")
+  expect_identical(
+    conditionMessage(condition),
+    "Prior density at point hypothesis 'parameter = 0' is zero, so the Savage-Dickey density ratio is undefined."
   )
+
+  levels <- list(A = posterior, B = posterior)
+  class(levels) <- c("marginal_posterior", "list")
+  out <- Savage_Dickey_BF(levels, null_hypothesis = 0, silent = TRUE)
+  expect_true(is.na(out[["A"]]))
+  expect_identical(
+    attr(out[["A"]], "warnings"),
+    "The prior density at the null hypothesis value is zero. The Savage-Dickey Bayes factor is undefined."
+  )
+  expect_identical(attr(out[["A"]], "posterior_density_source"), "zero_prior_ordinate")
 })
 
 test_that("Savage_Dickey_BF applies the exactness rule of point hypotheses", {
 
   # The prior ordinate at the null follows the rule of hypothesis_BF() point
   # hypotheses with its condition classes (each also of class
-  # BayesTools_hypothesis_ordinate); exactly classified zero and infinite
-  # ordinates keep their Bayes factor (0 or Inf) with a warning.
+  # BayesTools_hypothesis_ordinate).
   set.seed(21)
   draws <- stats::rnorm(4000, .3, .5)
   bf_condition <- function(prior_density, null_hypothesis, samples = draws){
@@ -2721,15 +2735,14 @@ test_that("Savage_Dickey_BF applies the exactness rule of point hypotheses", {
     "BayesTools_point_mass_at_null"
   )
 
-  # the infinite gamma(1/2) density at 0 keeps its Bayes factor with a warning
-  infinite <- bf_condition(
-    BayesTools:::.prior_linear_combination_density(list(x = prior("gamma", list(.5, 1))), c(x = 1)),
-    0, abs(draws)
+  # the infinite gamma(1/2) density at 0 (Inf with a warning before)
+  expect_ordinate_class(
+    bf_condition(
+      BayesTools:::.prior_linear_combination_density(list(x = prior("gamma", list(.5, 1))), c(x = 1)),
+      0, abs(draws)
+    ),
+    "BayesTools_infinite_ordinate"
   )
-  expect_identical(as.numeric(infinite), Inf)
-  expect_match(attr(infinite, "warnings"),
-               "Prior density at the null hypothesis value is zero or non-finite",
-               fixed = TRUE, all = FALSE)
 })
 
 test_that("plot_marginal uses stored posterior density when available", {
@@ -4085,6 +4098,73 @@ test_that("marginal inference gives levels fixed at the null an NA Bayes factor 
   expect_true(all(is.finite(unlist(single_BF[c("B", "C")]))))
 })
 
+test_that("marginal inference gives levels with a zero or infinite prior ordinate an NA Bayes factor", {
+
+  # An ordered factor with the default flat Dirichlet allocation on the
+  # coefficient scale (no intercept), averaged over two models whose totals
+  # are N(0, 1) and N(0, .5): the first level is fixed at 0, the second is
+  # total * S with S ~ Beta(1, 1), whose prior density at 0 is infinite in
+  # both models (E[1 / S] diverges), and the third is the total, with the
+  # regular prior density (dnorm(0) + dnorm(0, 0, .5)) / 2 at 0. The second
+  # level gets an NA Bayes factor with the prior-ordinate reason, the first
+  # the fixed-level reason, and the third its ordinary Savage-Dickey Bayes
+  # factor.
+  infinite <- paste0(
+    "The prior density at the null hypothesis value is infinite. The ",
+    "Savage-Dickey Bayes factor is undefined."
+  )
+  fixed <- paste0(
+    "The posterior is fixed at the null hypothesis value. The ",
+    "Savage-Dickey Bayes factor is undefined."
+  )
+  ordered_prior <- function(sd){
+    total <- prior_ordered(prior("normal", list(0, sd)))
+    attr(total, "levels") <- 3
+    attr(total, "level_names") <- c("low", "mid", "high")
+    BayesTools:::.complete_factor_metadata_prior_list(list(mu_f = total))$mu_f
+  }
+  set.seed(5)
+  n <- 2000
+  models <- lapply(c(1, .5), function(sd) list(
+    fit = .mock_mixing_fit_for_marginal(
+      cbind("mu_f[1]" = stats::rnorm(n, .05, .1), "mu_f[2]" = stats::rnorm(n, .1, .1)),
+      list(mu_f = ordered_prior(sd))
+    ),
+    marglik = bridgesampling_object(0), prior_weights = 1
+  ))
+  inference <- .collect_warnings_for_test(marginal_inference(
+    models, marginal_parameters = "mu_f", parameters = "mu_f",
+    is_null_list = list(mu_f = c(FALSE, FALSE)), formula = NULL, n_samples = n, seed = 1
+  ))
+  bf <- inference$value$inference$mu_f
+  expect_identical(names(bf), c("low", "mid", "high"))
+  expect_true(is.na(bf[["low"]]))
+  expect_identical(attr(bf[["low"]], "warnings"), fixed)
+  expect_true(is.na(bf[["mid"]]))
+  expect_identical(attr(bf[["mid"]], "warnings"), infinite)
+  expect_identical(attr(bf[["mid"]], "posterior_density_source"), "infinite_prior_ordinate")
+  expect_identical(inference$warnings, paste0("mu_f[", c("low", "mid"), "]: ", c(fixed, infinite)))
+
+  high <- inference$value$conditional$mu_f[["high"]]
+  class(high) <- c(class(high), "marginal_posterior")
+  expect_equal(exp(prior_density_ordinate(attr(high, "prior_density"), 0)$log_density),
+               (stats::dnorm(0) + stats::dnorm(0, 0, .5)) / 2, tolerance = 1e-14)
+  expect_true(is.finite(bf[["high"]]))
+  expect_identical(bf[["high"]], Savage_Dickey_BF(high))
+  # a scalar call on the level with the infinite prior ordinate stops
+  mid <- inference$value$conditional$mu_f[["mid"]]
+  class(mid) <- c(class(mid), "marginal_posterior")
+  condition <- tryCatch(Savage_Dickey_BF(mid, silent = TRUE), error = function(e) e)
+  expect_s3_class(condition, "BayesTools_infinite_ordinate")
+
+  table <- marginal_estimates_table(
+    inference$value$conditional, inference$value$inference, "mu_f"
+  )
+  expect_true(all(is.na(table$inclusion_BF[1:2])))
+  expect_equal(as.numeric(table$inclusion_BF[3]), as.numeric(bf[["high"]]))
+  expect_identical(attr(table, "warnings"), paste0("mu_f[", c("low", "mid"), "]: ", c(fixed, infinite)))
+})
+
 test_that("use_formula = FALSE prior densities ignore the coefficient's own multiply_by", {
 
   # JAGS monitors the raw coefficient; 'multiply_by' only scales the linear
@@ -4890,11 +4970,11 @@ test_that("Savage-Dickey posterior ordinates are exact reflected kernel sums", {
   expect_identical(as.numeric(bf), Inf)
 })
 
-test_that("Savage-Dickey prior-support warnings use the exact support hull", {
+test_that("Savage-Dickey prior support is the exact support, not the grid range", {
 
-  # The warning concerns the exact support of the prior measure, not the
-  # range of its numerical grid: a normal prior's grid ends near +/-3.7 SD
-  # (tail probability 1e-4), but a null at 6 lies inside its support.
+  # The support of the prior measure is exact, not the range of its
+  # numerical grid: a normal prior's grid ends near +/-3.7 SD (tail
+  # probability 1e-4), but a null at 6 lies inside its support.
   set.seed(14)
   normal <- BayesTools:::.prior_linear_combination_density(
     prior_list = list(theta = prior("normal", list(0, 1))), weights = c(theta = 1)
@@ -4904,14 +4984,16 @@ test_that("Savage-Dickey prior-support warnings use the exact support hull", {
   bf <- Savage_Dickey_BF(posterior, null_hypothesis = 6, silent = TRUE)
   expect_null(attr(bf, "warnings"))
 
-  # a null outside the support of a half-normal prior is flagged
+  # a null outside the support of a half-normal prior has a zero prior
+  # ordinate: the density ratio is undefined and the call stops (the former
+  # "does not span both sides" warning came with a Bayes factor of 0)
   half_normal <- BayesTools:::.prior_linear_combination_density(
     prior_list = list(theta = prior("normal", list(0, 1), list(0, Inf))), weights = c(theta = 1)
   )
   posterior <- .marginal_posterior_with_prior_density_for_test(stats::rnorm(2e4, -1, .5), half_normal)
-  bf <- Savage_Dickey_BF(posterior, null_hypothesis = -1, silent = TRUE)
-  expect_true(any(grepl("Prior density does not span both sides of the null hypothesis",
-                        attr(bf, "warnings"), fixed = TRUE)))
+  condition <- tryCatch(Savage_Dickey_BF(posterior, null_hypothesis = -1, silent = TRUE),
+                        error = function(e) e)
+  expect_s3_class(condition, "BayesTools_zero_ordinate")
 })
 
 # File-level skips: All remaining tests in this file require pre-fitted models
