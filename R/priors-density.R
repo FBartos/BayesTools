@@ -191,7 +191,7 @@ density.prior <- function(x,
   boundary_reflection <- FALSE
 
   # get the samples to estimate density / obtain the density directly
-  if(force_samples | .density.prior_need_samples(x)){
+  if(force_samples){
     x_sam <- rng(x, n_samples)
     if(is.prior.discrete(x)){
       x_seq <- unique(round(x_seq))
@@ -975,7 +975,7 @@ density.prior <- function(x,
     component_bounds <- lapply(components, .density.prior_weightfunction_component_bounds)
     density_boundary_reflection <- rep(FALSE, length(components))
 
-    if(force_samples | .density.prior_need_samples(x)){
+    if(force_samples){
       x_sam <- rng(x, n_samples)
       density_ind <- which(out_types != "point")
       densities <- lapply(density_ind, function(i){
@@ -1066,7 +1066,7 @@ density.prior <- function(x,
     step_idx  <- .weightfunction_step_indices(length(x_seq))
     x_seq_rep <- step_idx$x
     x_val_rep <- step_idx$y
-    if(force_samples | .density.prior_need_samples(x)){
+    if(force_samples){
       x_sam  <- rng(x, n_samples)
       x_lCI  <- apply(x_sam, 2, stats::quantile, probs = .025)
       x_uCI  <- apply(x_sam, 2, stats::quantile, probs = .975)
@@ -1111,7 +1111,7 @@ density.prior <- function(x,
   }else{
 
     # get the samples to estimate density / obtain the density directly
-    if(force_samples | .density.prior_need_samples(x)){
+    if(force_samples){
       x_sam  <- rng(x, n_samples)
       x_med  <- stats::quantile(x_sam, .500)
       x_lCI  <- stats::quantile(x_sam, .025)
@@ -1177,7 +1177,7 @@ density.prior <- function(x,
   boundary_reflection <- FALSE
 
   # get the samples to estimate density / obtain the density directly
-  if(force_samples | .density.prior_need_samples(x)){
+  if(force_samples){
 
     if(is.na(x$parameters[["K"]]) && !is.null(attr(x, "levels"))){
       x$parameters[["K"]] <- .get_prior_factor_levels(x)
@@ -1505,10 +1505,6 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 
   bounds <- do.call(rbind, lapply(components, .density.prior_weightfunction_component_bounds))
   c(min(bounds[,1], na.rm = TRUE), max(bounds[,2], na.rm = TRUE))
-}
-.density.prior_need_samples   <- function(prior){
-
-  return(FALSE)
 }
 .density.prior_type           <- function(prior){
   if(is.prior.point(prior)){
