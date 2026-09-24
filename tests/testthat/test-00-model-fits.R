@@ -4350,13 +4350,18 @@ test_that("JAGS model functions work (vector)", {
   log_posterior <- STANDARD_LOG_POSTERIOR
 
   # Absolute tolerances around the analytic logml = 0. The mcauchy (p2)
-  # estimate has a larger Monte Carlo spread: with this setup (2 chains x 10000
-  # draws) over JAGS_get_inits() seeds 1-40, its logml had SD 0.044 and mean
-  # -0.030 with the current chain seeds, and SD 0.053 and mean -0.020 with the
-  # earlier 'seed + chain' seeds (pooled n = 80: mean -0.025, SE 0.0055; max
-  # |logml| 0.149). 0.2 ~ 0.025 + 4 * 0.044. BayesToolsVerse logs:
-  # .work/logs/rscript-20260923-213448-62692632 (current seeds) and
-  # .work/logs/rscript-20260923-214540-245cd69b (earlier seeds).
+  # estimate shows no bias but a larger Monte Carlo spread, because the fitted
+  # normal bridge proposal takes the sample covariance of Cauchy draws. With
+  # 2 chains x 10000 draws its logml had SD 0.043 over independent proposal
+  # streams on fixed JAGS draws (mean -0.004, SE 0.004, n = 120) and SD 0.050
+  # over iid draws (mean -0.001, SE 0.004, n = 200), so 0.2 is ~4 SD. Bridge
+  # sampling is seeded per prior: JAGS does not draw from R's stream, so an
+  # unseeded bridge after 'set.seed(1)' used the same proposal variates in every
+  # run, and the runs shared one realization of the proposal error (mean
+  # -0.026 over the same 120 JAGS draws) that an earlier review had read as a
+  # bias. BayesToolsVerse logs: .work/logs/rscript-20260924-075719-9bf9f112
+  # (fixed JAGS draws) and .work/logs/rscript-20260924-080645-95104665 (iid
+  # draws; BayesTools and upstream bridgesampling agree to 3.6e-15).
   logml_tolerance <- c(p1 = 5e-2, p2 = 0.2, p3 = 5e-2)
 
   for(i in seq_along(all_priors)){
@@ -4365,10 +4370,9 @@ test_that("JAGS model functions work (vector)", {
     monitor      <- JAGS_to_monitor(prior_list)
     inits        <- JAGS_get_inits(prior_list, chains = 2, seed = 1)
 
-    set.seed(1)
     model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
     samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 10000, quiet = TRUE, progress.bar = "none")
-    marglik <- JAGS_bridgesampling(samples, prior_list = prior_list, data = list(), log_posterior = log_posterior)
+    marglik <- JAGS_bridgesampling(samples, prior_list = prior_list, data = list(), log_posterior = log_posterior, seed = i)
     expect_equal(
       marglik$logml, 0,
       tolerance = logml_tolerance[[names(prior_list)]],
