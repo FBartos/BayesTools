@@ -434,41 +434,21 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
                                              missing_message,
                                              signal = FALSE){
 
-  direct <- parameter_names %in% names(samples)
-  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma support.
-  legacy_names <- if(any(!direct)) paste0("inv_", parameter_names[!direct]) else character()
-  if(!all(legacy_names %in% names(samples))){
+  if(!all(parameter_names %in% names(samples))){
     stop(missing_message, call. = FALSE)
   }
 
-  values <- numeric(length(parameter_names))
-  if(any(direct)){
-    direct_values <- unname(unlist(samples[parameter_names[direct]], use.names = FALSE))
-    invalid <- !is.finite(direct_values) | direct_values <= 0
-    if(any(invalid)){
-      if(isTRUE(signal)){
-        .bt_JAGS_marglik_out_of_support(
-          "Bridge samples contain out-of-support inverse-gamma coordinate '",
-          parameter_names[direct][which(invalid)[1L]],
-          "'."
-        )
-      }
-      return(NULL)
+  values <- unname(unlist(samples[parameter_names], use.names = FALSE))
+  invalid <- !is.finite(values) | values <= 0
+  if(any(invalid)){
+    if(isTRUE(signal)){
+      .bt_JAGS_marglik_out_of_support(
+        "Bridge samples contain out-of-support inverse-gamma coordinate '",
+        parameter_names[which(invalid)[1L]],
+        "'."
+      )
     }
-    values[direct] <- direct_values
-  }
-
-  if(any(!direct)){
-    legacy_values <- .bt_JAGS_marglik_positive_auxiliary_values(
-      samples = samples,
-      parameter_names = legacy_names,
-      missing_message = missing_message,
-      signal = signal
-    )
-    if(is.null(legacy_values)){
-      return(NULL)
-    }
-    values[!direct] <- legacy_values^-1
+    return(NULL)
   }
 
   values

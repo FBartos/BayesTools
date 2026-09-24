@@ -46,14 +46,14 @@ test_that("row prior fallback preserves named numeric data-frame rows", {
   )
 })
 
-test_that("mixed inverse-gamma coordinates retain scalar precedence in compiled rows", {
+test_that("inverse-gamma coordinates are read only from the prior's own columns", {
 
   factor_prior <- prior_factor("invgamma", list(2, 1), contrast = "independent")
   attr(factor_prior, "levels") <- 2L
   prior_list <- list(g = factor_prior, v = prior("mnormal", list(0, 1, 2)))
-  samples <- cbind("g[1]" = c(.4, .6), "inv_g[2]" = c(1, 2),
+  samples <- cbind("g[1]" = c(.4, .6), "g[2]" = c(1, .5),
                    "v[1]" = c(.1, .2), "v[2]" = c(.3, .4))
-  factor_values <- cbind(samples[, "g[1]"], 1 / samples[, "inv_g[2]"])
+  factor_values <- samples[, c("g[1]", "g[2]")]
   expected <- rowSums(stats::dgamma(1 / factor_values, 2, 1, log = TRUE) -
     2 * log(factor_values)) + rowSums(stats::dnorm(samples[, c("v[1]", "v[2]")], log = TRUE))
   scalar <- vapply(seq_len(nrow(samples)), function(i){
@@ -63,21 +63,26 @@ test_that("mixed inverse-gamma coordinates retain scalar precedence in compiled 
   evaluator <- JAGS_marglik_priors_rows_evaluator(prior_list)
   expect_equal(evaluator(samples), expected, tolerance = 1e-12)
   expect_equal(evaluator(as.data.frame(samples)), expected, tolerance = 1e-12)
-  samples <- cbind(samples, "inv_g[1]" = c(100, 200))
-  expect_equal(evaluator(samples), expected, tolerance = 1e-12)
   compiled <- BayesTools:::.bt_JAGS_bridge_compile_prior_list_evaluator(prior_list)
   expect_equal(compiled$parameters(samples[1L, ])$g, c(.4, 1))
   expect_equal(JAGS_marglik_parameters(samples[1L, ], prior_list)$g, c(.4, 1))
+
+  # BayesTools 0.3.0 'inv_' precision coordinates are not read
+  legacy <- samples
+  colnames(legacy)[colnames(legacy) == "g[2]"] <- "inv_g[2]"
+  legacy[, "inv_g[2]"] <- 1 / legacy[, "inv_g[2]"]
+  missing_message <- "'samples' does not contain all monitored"
+  expect_error(evaluator(legacy), missing_message, fixed = TRUE)
+  expect_error(JAGS_marglik_priors(legacy[1L, ], prior_list), missing_message, fixed = TRUE)
+  expect_error(compiled$parameters(legacy[1L, ]), missing_message, fixed = TRUE)
+  expect_error(JAGS_marglik_parameters(legacy[1L, ], prior_list), missing_message, fixed = TRUE)
+
   samples[1L, "g[1]"] <- 0
-  samples[2L, "inv_g[2]"] <- 0
+  samples[2L, "g[2]"] <- 0
   expect_equal(evaluator(samples), rep(-Inf, 2L))
-  expect_error(
-    evaluator(samples[, colnames(samples) != "inv_g[2]", drop = FALSE]),
-    "'samples' does not contain all monitored inverse-gamma prior parameters.", fixed = TRUE
-  )
 })
 
-test_that("inverse-gamma factor rows accept legacy coordinates and preserve support", {
+test_that("inverse-gamma factor rows preserve support", {
 
   for(contrast in c("treatment", "independent")){
     for(n_coefficients in c(1L, 2L)){
@@ -89,20 +94,19 @@ test_that("inverse-gamma factor rows accept legacy coordinates and preserve supp
         nrow = 3L,
         dimnames = list(NULL, parameter_names)
       )
-      legacy <- 1 / samples
-      colnames(legacy) <- paste0("inv_", parameter_names)
       prior_list <- list(g = factor_prior)
       expected <- vapply(seq_len(nrow(samples)), function(i){
         JAGS_marglik_priors(samples[i, ], prior_list)
       }, numeric(1))
       evaluator <- JAGS_marglik_priors_rows_evaluator(prior_list)
       expect_equal(evaluator(samples), expected, tolerance = 1e-12)
-      expect_equal(evaluator(legacy), expected, tolerance = 1e-12)
-      expect_equal(evaluator(as.data.frame(legacy)), expected, tolerance = 1e-12)
-      expect_equal(evaluator(legacy[1L, ]), expected[1L], tolerance = 1e-12)
+      expect_equal(evaluator(as.data.frame(samples)), expected, tolerance = 1e-12)
+      expect_equal(evaluator(samples[1L, ]), expected[1L], tolerance = 1e-12)
       expect_equal(expected[3L], -Inf)
+      legacy <- 1 / samples
+      colnames(legacy) <- paste0("inv_", parameter_names)
       expect_error(
-        evaluator(legacy[, -1L, drop = FALSE]),
+        evaluator(legacy),
         "'samples' does not contain all monitored inverse-gamma prior parameters.",
         fixed = TRUE
       )
@@ -338,7 +342,7 @@ test_that("compiled bridge prior evaluators match public marglik helpers", {
     tolerance = 1e-12
   )
 
-  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
+  # BayesTools 0.3.0 'inv_' precision coordinates are not read
   legacy_samples <- samples[!names(samples) %in% c("sigma", "theta[1]", "theta[2]")]
   legacy_samples <- c(
     legacy_samples,
@@ -346,10 +350,10 @@ test_that("compiled bridge prior evaluators match public marglik helpers", {
     "inv_theta[1]" = 2,
     "inv_theta[2]" = 3
   )
-  expect_equal(
+  expect_error(
     compiled$parameters(legacy_samples),
-    compiled$parameters(samples),
-    tolerance = 1e-12
+    "'samples' does not contain all monitored",
+    fixed = TRUE
   )
 })
 
@@ -384,13 +388,13 @@ test_that("compiled bridge prior evaluators preserve positive support behavior",
   )
   expect_s3_class(dirichlet_error, "BayesTools_marglik_out_of_support")
 
-  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
+  # BayesTools 0.3.0 'inv_' precision coordinates are not read
   legacy_invgamma <- samples[!names(samples) %in% "sigma"]
   legacy_invgamma[["inv_sigma"]] <- .5
-  expect_equal(
+  expect_error(
     compiled$parameters(legacy_invgamma),
-    compiled$parameters(samples),
-    tolerance = 1e-12
+    "'samples' does not contain all monitored inverse-gamma prior parameters.",
+    fixed = TRUE
   )
 })
 

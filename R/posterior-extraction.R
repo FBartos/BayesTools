@@ -43,14 +43,22 @@ NULL
 
     par_name <- names(prior_list)[i]
 
-    # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma cleanup.
+    # BayesTools 0.3.0 fits monitored inverse-gamma priors as 'inv_' precisions
     if (is.prior.simple(prior_list[[i]]) && prior_list[[i]][["distribution"]] == "invgamma") {
-      aux_names <- if(is.prior.factor(prior_list[[i]])){
+      legacy_names <- if(is.prior.factor(prior_list[[i]])){
         paste0("inv_", .JAGS_prior_factor_names(par_name, prior_list[[i]]))
       }else{
         paste0("inv_", par_name)
       }
-      model_samples <- model_samples[, !colnames(model_samples) %in% aux_names, drop = FALSE]
+      legacy_names <- setdiff(legacy_names, names(prior_list))
+      if(any(legacy_names %in% colnames(model_samples))){
+        stop(
+          "The fit monitors the inverse-gamma prior of '", par_name, "' by the ",
+          "precision coordinates of BayesTools 0.3.0. Refit the model with this ",
+          "version of BayesTools.",
+          call. = FALSE
+        )
+      }
     }
 
     if (is.prior.simplex(prior_list[[i]])) {

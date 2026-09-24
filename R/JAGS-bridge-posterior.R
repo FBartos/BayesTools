@@ -321,12 +321,6 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   # get information about the specified parameters
   parameters_names <- .JAGS_bridgesampling_posterior_info(prior_list)
   owned_parameter_names <- .bt_JAGS_bridge_owned_parameter_names(prior_list)
-  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma support.
-  posterior <- .bt_JAGS_bridge_materialize_legacy_invgamma_posterior(
-    posterior = posterior,
-    prior_list = prior_list
-  )
-
   # add the user defined parameters
   if(!is.null(add_parameters)){
     overlapping_parameters <- intersect(
@@ -366,91 +360,6 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   attr(posterior, "ub") <- attr(parameters_names, "ub")
 
   return(posterior)
-}
-
-# TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma support.
-.bt_JAGS_bridge_materialize_legacy_invgamma_posterior <- function(posterior,
-                                                                  prior_list){
-
-  if(length(prior_list) == 0L){
-    return(posterior)
-  }
-
-  for(i in seq_along(prior_list)){
-    posterior <- .bt_JAGS_bridge_materialize_legacy_invgamma_prior(
-      posterior = posterior,
-      prior = prior_list[[i]],
-      parameter_name = names(prior_list)[i]
-    )
-  }
-
-  posterior
-}
-
-.bt_JAGS_bridge_materialize_legacy_invgamma_prior <- function(posterior,
-                                                              prior,
-                                                              parameter_name){
-
-  if(is_prior_bias(prior)){
-    if(!is.null(prior$phacking)){
-      posterior <- .bt_JAGS_bridge_materialize_legacy_invgamma_prior(
-        posterior = posterior,
-        prior = prior$phacking,
-        parameter_name = "alpha"
-      )
-    }
-    return(posterior)
-  }
-
-  if(is_prior_phacking(prior)){
-    return(.bt_JAGS_bridge_materialize_legacy_invgamma_prior(
-      posterior = posterior,
-      prior = prior$alpha,
-      parameter_name = "alpha"
-    ))
-  }
-
-  if(is.prior.PET(prior)){
-    parameter_name <- "PET"
-  }
-
-  if(is.prior.PEESE(prior)){
-    parameter_name <- "PEESE"
-  }
-
-  if(!is.prior.simple(prior) || !identical(prior[["distribution"]], "invgamma")){
-    return(posterior)
-  }
-
-  parameter_names <- if(is.prior.factor(prior)){
-    .JAGS_prior_factor_names(parameter_name, prior)
-  }else{
-    parameter_name
-  }
-
-  .bt_JAGS_bridge_materialize_legacy_invgamma_columns(
-    posterior = posterior,
-    parameter_names = parameter_names
-  )
-}
-
-.bt_JAGS_bridge_materialize_legacy_invgamma_columns <- function(posterior,
-                                                                parameter_names){
-
-  missing <- !parameter_names %in% colnames(posterior)
-  if(!any(missing)){
-    return(posterior)
-  }
-
-  missing_parameter_names <- parameter_names[missing]
-  legacy_names <- paste0("inv_", missing_parameter_names)
-  if(!all(legacy_names %in% colnames(posterior))){
-    return(posterior)
-  }
-
-  values <- 1 / posterior[, legacy_names, drop = FALSE]
-  colnames(values) <- missing_parameter_names
-  cbind(posterior, values)
 }
 
 .bt_JAGS_bridge_validate_add_parameters_not_prior_dirichlet <- function(

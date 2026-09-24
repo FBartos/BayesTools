@@ -295,14 +295,9 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
   function(samples){
     marglik <- numeric(nrow(samples))
     for(parameter_name in parameter_names){
-      if(parameter_name %in% colnames(samples)){
-        values <- samples[, parameter_name]
-      }else{
-        legacy_name <- paste0("inv_", parameter_name)
-        if(!legacy_name %in% colnames(samples))
-          stop("'samples' does not contain all monitored inverse-gamma prior parameters.", call. = FALSE)
-        values <- samples[, legacy_name]^-1
-      }
+      if(!parameter_name %in% colnames(samples))
+        stop("'samples' does not contain all monitored inverse-gamma prior parameters.", call. = FALSE)
+      values <- samples[, parameter_name]
 
       supported <- is.finite(values) & values > 0
       contribution <- rep(-Inf, nrow(samples))

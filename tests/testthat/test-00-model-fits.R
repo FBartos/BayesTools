@@ -4260,13 +4260,15 @@ test_that("p-hacking bridge helpers support point and inverse-gamma alpha priors
     tolerance = 1e-12
   )
 
-  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
+  # BayesTools 0.3.0 'inv_' precision coordinates are not read
   legacy_invgamma_posterior <- invgamma_posterior
   colnames(legacy_invgamma_posterior)[2] <- "inv_alpha"
   legacy_invgamma_posterior[, "inv_alpha"] <- 1 / legacy_invgamma_posterior[, "inv_alpha"]
-  legacy_prepared <- JAGS_bridgesampling_posterior(legacy_invgamma_posterior, list(bias = invgamma_bias))
-  expect_equal(colnames(legacy_prepared), c("omega[2]", "alpha"))
-  expect_equal(legacy_prepared[, "alpha"], invgamma_posterior[, "alpha"])
+  expect_error(
+    JAGS_bridgesampling_posterior(legacy_invgamma_posterior, list(bias = invgamma_bias)),
+    "'posterior' does not contain all of the parameters",
+    fixed = TRUE
+  )
 })
 
 test_that("bias mixtures fail explicitly in bridge-sampling helpers", {
@@ -5818,20 +5820,22 @@ test_that("JAGS formula marglik reconstructs inverse-gamma terms on natural scal
 
   expect_equal(parameters_log$mu, c(log(0.5) + 0.25 * 10, log(0.5) + 0.25 * 20))
 
-  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
+  # BayesTools 0.3.0 'inv_' precision coordinates are not read
   legacy_samples <- c(
     "inv_mu_intercept" = 2,
     "inv_mu_x"         = 4
   )
-  legacy_parameters <- JAGS_marglik_parameters_formula(
-    samples            = legacy_samples,
-    formula_list       = list(mu = ~ 1 + x),
-    formula_data_list  = formula_data_list,
-    formula_prior_list = formula_prior_list,
-    prior_list_parameters = list()
+  expect_error(
+    JAGS_marglik_parameters_formula(
+      samples            = legacy_samples,
+      formula_list       = list(mu = ~ 1 + x),
+      formula_data_list  = formula_data_list,
+      formula_prior_list = formula_prior_list,
+      prior_list_parameters = list()
+    ),
+    "'samples' does not contain all monitored formula prior parameters.",
+    fixed = TRUE
   )
-
-  expect_equal(legacy_parameters$mu, parameters$mu)
 })
 
 
@@ -5847,14 +5851,16 @@ test_that("JAGS marglik reconstructs indexed factor inverse-gamma parameters", {
 
   expect_equal(parameters$theta, c(0.5, 0.25))
 
-  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
-  legacy_parameters <- BayesTools:::.JAGS_marglik_parameters.factor(
-    samples = c("inv_theta[1]" = 2, "inv_theta[2]" = 4),
-    prior = theta_prior,
-    parameter_name = "theta"
+  # BayesTools 0.3.0 'inv_' precision coordinates are not read
+  expect_error(
+    BayesTools:::.JAGS_marglik_parameters.factor(
+      samples = c("inv_theta[1]" = 2, "inv_theta[2]" = 4),
+      prior = theta_prior,
+      parameter_name = "theta"
+    ),
+    "'samples' does not contain all monitored",
+    fixed = TRUE
   )
-
-  expect_equal(legacy_parameters$theta, parameters$theta)
 })
 
 

@@ -226,38 +226,42 @@ test_that(".fit_to_posterior rejects misaligned mcarray draws", {
 })
 
 
-# TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
-test_that(".remove_auxiliary_parameters removes legacy invgamma support", {
-  skip_on_cran()
-  skip_if_not_installed("rjags")
+test_that(".remove_auxiliary_parameters rejects BayesTools 0.3.0 inverse-gamma precisions", {
 
-  # Create mock samples with invgamma support parameter
-  model_samples <- matrix(rnorm(100), ncol = 2)
-  colnames(model_samples) <- c("sigma", "inv_sigma")
-
-  prior_list <- list(
-    sigma = prior("invgamma", list(1, 1))
+  message <- paste0(
+    "The fit monitors the inverse-gamma prior of '%s' by the precision ",
+    "coordinates of BayesTools 0.3.0. Refit the model with this version of ",
+    "BayesTools."
   )
 
-  result <- BayesTools:::.remove_auxiliary_parameters(model_samples, prior_list, NULL)
+  model_samples <- matrix(rnorm(100), ncol = 2)
+  colnames(model_samples) <- c("sigma", "inv_sigma")
+  prior_list <- list(sigma = prior("invgamma", list(1, 1)))
+  expect_error(
+    BayesTools:::.remove_auxiliary_parameters(model_samples, prior_list, NULL),
+    sprintf(message, "sigma"),
+    fixed = TRUE
+  )
 
-  expect_false("inv_sigma" %in% colnames(result$model_samples))
-  expect_true("sigma" %in% colnames(result$model_samples))
-})
-
-
-# TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
-test_that(".remove_auxiliary_parameters removes legacy indexed factor invgamma support", {
   model_samples <- matrix(rnorm(400), ncol = 4)
   colnames(model_samples) <- c("theta[1]", "theta[2]", "inv_theta[1]", "inv_theta[2]")
-
   theta_prior <- prior_factor("invgamma", list(2, 1), contrast = "independent")
   theta_prior$parameters$K <- 2
-  prior_list <- list(theta = theta_prior)
+  expect_error(
+    BayesTools:::.remove_auxiliary_parameters(model_samples, list(theta = theta_prior), NULL),
+    sprintf(message, "theta"),
+    fixed = TRUE
+  )
 
+  # a parameter of the prior list named 'inv_<name>' is not a legacy column
+  model_samples <- matrix(rnorm(100), ncol = 2)
+  colnames(model_samples) <- c("sigma", "inv_sigma")
+  prior_list <- list(
+    sigma     = prior("invgamma", list(1, 1)),
+    inv_sigma = prior("normal", list(0, 1))
+  )
   result <- BayesTools:::.remove_auxiliary_parameters(model_samples, prior_list, NULL)
-
-  expect_equal(colnames(result$model_samples), c("theta[1]", "theta[2]"))
+  expect_equal(colnames(result$model_samples), c("sigma", "inv_sigma"))
 })
 
 test_that(".remove_auxiliary_parameters removes vector prior columns by base name", {
@@ -1533,27 +1537,3 @@ test_that(".filter_parameters removes bias-related parameters when bias is not i
 })
 
 
-test_that("helper functions work with runjags estimates extraction", {
-  skip_on_cran()
-  skip_if_not_installed("rjags")
-
-  # Test the helper functions with mock data (not full integration)
-  # This tests that our refactored code correctly uses the helpers
-  
-  # Create mock posterior samples
-  set.seed(123)
-  model_samples <- matrix(rnorm(200), ncol = 2, dimnames = list(NULL, c("mu", "inv_sigma")))
-  
-  prior_list <- list(
-    mu = prior("normal", list(0, 1)),
-    sigma = prior("invgamma", list(1, 1))
-  )
-  
-  # Test that remove_auxiliary_parameters helper works
-  cleaned <- BayesTools:::.remove_auxiliary_parameters(model_samples, prior_list, NULL)
-  
-  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
-  expect_false("inv_sigma" %in% colnames(cleaned$model_samples))
-  expect_true("mu" %in% colnames(cleaned$model_samples))
-  expect_equal(ncol(cleaned$model_samples), 1)
-})

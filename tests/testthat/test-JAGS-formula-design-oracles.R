@@ -5359,13 +5359,14 @@ test_that("bridge positive support is enforced before reconstruction", {
     "out-of-support inverse-gamma coordinate"
   )
 
-  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
+  # BayesTools 0.3.0 'inv_' precision coordinates are not read
   expect_error(
     JAGS_marglik_parameters(
       c("inv_sigma" = 0),
       list(sigma = invgamma_prior)
     ),
-    "out-of-support positive auxiliary coordinate"
+    "'samples' does not contain all monitored inverse-gamma prior parameters.",
+    fixed = TRUE
   )
 })
 
