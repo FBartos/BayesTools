@@ -967,7 +967,11 @@ prior_density_ordinate <- function(x, value){
   if(any(unsupported) || (any(use_log) && location <= 0)){
     return(NA_real_)
   }
-  transformed[use_log] <- log(location)
+  # only log-transformed terms take the log (a negative location of an
+  # untransformed point term would otherwise warn about a discarded NaN)
+  if(any(use_log)){
+    transformed[use_log] <- log(location)
+  }
   sum(group$weights * transformed)
 }
 

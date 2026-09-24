@@ -761,3 +761,27 @@ test_that("quadrature region probabilities may exceed one only within their abso
     fixed = TRUE
   )
 })
+
+test_that("point terms at negative locations do not warn in region probabilities", {
+
+  # The structural route reads point-term offsets; a point term at a negative
+  # location without a log source transformation must not evaluate its log
+  # (which warned "NaNs produced" in every region test and ordinate).
+  normal <- .prior_linear_combination_density(
+    list(b = prior("normal", list(0, 1)), c = prior("point", list(-1))), c(b = 2, c = 1)
+  )
+  side <- hypothesis_parse("theta > 0")$statements[[1L]]$left
+  expect_no_warning(probability <- .hypothesis_prior_density_prob(normal, side, "theta"))
+  expect_equal(probability, stats::pnorm(.5, lower.tail = FALSE), tolerance = 1e-14)
+  expect_no_warning(prior_density_ordinate(normal, .5))
+
+  # Gaussian convolution shifted by the point term: P(b0 - .5 b1 - 1 > -.5)
+  shifted <- .prior_linear_combination_density(
+    list(b0 = prior("normal", list(0, 1)), b1 = prior("cauchy", list(0, .5)),
+         c = prior("point", list(-1))),
+    c(b0 = 1, b1 = -.5, c = 1)
+  )
+  side <- hypothesis_parse("theta > -0.5")$statements[[1L]]$left
+  expect_no_warning(probability <- .hypothesis_prior_density_prob(shifted, side, "theta"))
+  expect_lt(abs(probability - region_references$normal_cauchy[["theta > 0.5"]]), 1e-8)
+})
