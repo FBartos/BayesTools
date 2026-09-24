@@ -68,8 +68,12 @@ by level indicators, as `stats::model.matrix()` does (value 2 in the terms
 use the factor's contrast: it records the independent (identity) coding for
 that factor in its `factor_contrasts`, and its prior does not take part in the
 agreement of contrast priors across the factor's terms (so `g` mean-difference
-with `g:x` independent is valid). Treatment and independent priors apply to
-those level coefficients and name them from the term design; mean-difference,
+with `g:x` independent is valid). When no term codes the factor by its
+contrast (no main effect and no contrast-coded interaction, e.g.
+`~ g:x + g:z`), the agreement check applies among its indicator-coded terms
+instead: they must agree on one contrast. Treatment and independent priors
+apply to those level coefficients and name them from the term design;
+mean-difference,
 orthonormal, and ordered priors are defined on contrast coefficients and are
 rejected for such a term. The one exception is a mean-difference or
 orthonormal point mass at zero; an ordered prior is rejected even when its
