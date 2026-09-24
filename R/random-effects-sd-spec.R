@@ -500,7 +500,7 @@
     for(p in seq_along(prior)){
       attr(prior[[p]], "levels") <- attr(prior, "levels")
       attr(prior[[p]], "level_names") <- attr(prior, "level_names")
-      attr(prior[[p]], "interaction") <- attr(prior, "interaction")
+      attr(prior[[p]], "interaction") <- attr(prior, "interaction", exact = TRUE)
       attr(prior[[p]], "interaction_terms") <- attr(prior, "interaction_terms")
     }
   }

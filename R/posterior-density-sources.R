@@ -99,8 +99,8 @@
       next
     }
     object_sources <- list(
-      attr(object, "posterior_density", exact = TRUE),
-      attr(object, "posterior_densities", exact = TRUE)
+      .bt_meta_get(object, "posterior_density"),
+      .bt_meta_get(object, "posterior_densities")
     )
     object_sources <- object_sources[!vapply(object_sources, is.null, logical(1))]
     sources <- c(sources, object_sources)
@@ -117,7 +117,7 @@
   }
 
   if(is.matrix(samples) || is.data.frame(samples)){
-    density_list <- attr(samples, "posterior_density", exact = TRUE)
+    density_list <- .bt_meta_get(samples, "posterior_density")
     if(!identical(.posterior_density_kind(density_list), "container")){
       density_list <- list()
     }
@@ -162,7 +162,7 @@
     }
 
     if(length(density_list) > 0L){
-      attr(samples, "posterior_density") <- density_list
+      samples <- .bt_meta_set(samples, "posterior_density", density_list)
     }
 
     return(samples)
@@ -177,7 +177,7 @@
     allow_unlabeled    = allow_unlabeled
   )
   if(!is.null(density)){
-    attr(samples, "posterior_density") <- density
+    samples <- .bt_meta_set(samples, "posterior_density", density)
   }
 
   return(samples)
@@ -192,8 +192,8 @@
       next
     }
     object_sources <- list(
-      attr(object, "posterior_ordinate", exact = TRUE),
-      attr(object, "posterior_ordinates", exact = TRUE)
+      .bt_meta_get(object, "posterior_ordinate"),
+      .bt_meta_get(object, "posterior_ordinates")
     )
     object_sources <- object_sources[!vapply(object_sources, is.null, logical(1))]
     sources <- c(sources, object_sources)
@@ -451,7 +451,7 @@
   }
 
   if(is.matrix(samples) || is.data.frame(samples)){
-    ordinate_list <- attr(samples, "posterior_ordinate", exact = TRUE)
+    ordinate_list <- .bt_meta_get(samples, "posterior_ordinate")
     if(!identical(.posterior_ordinate_kind(ordinate_list), "container")){
       ordinate_list <- list()
     }
@@ -496,7 +496,7 @@
     }
 
     if(length(ordinate_list) > 0L){
-      attr(samples, "posterior_ordinate") <- ordinate_list
+      samples <- .bt_meta_set(samples, "posterior_ordinate", ordinate_list)
     }
 
     return(samples)
@@ -511,7 +511,7 @@
     allow_unlabeled    = allow_unlabeled
   )
   if(!is.null(ordinate)){
-    attr(samples, "posterior_ordinate") <- ordinate
+    samples <- .bt_meta_set(samples, "posterior_ordinate", ordinate)
   }
 
   return(samples)

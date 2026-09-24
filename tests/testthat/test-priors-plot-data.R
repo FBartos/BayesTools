@@ -6,9 +6,9 @@ test_that("spike plotting preserves distinct nearby atoms and exact duplicates",
     priors <- lapply(locations, function(location) prior("spike", list(location)))
     samples <- rep(locations, each = 2)
     attr(samples, "prior_list") <- priors
-    attr(samples, "posterior_atoms") <- posterior_atom_attribute(
+    samples <- .bt_meta_set(samples, "atoms", posterior_atom_attribute(
       data.frame(x = locations, mass = c(.5, .5))
-    )
+    ))
     plot_data <- BayesTools:::.plot_data_samples.simple(
       list(theta = samples), "theta", 64, NULL, NULL, FALSE
     )
@@ -423,15 +423,15 @@ test_that("individual posterior omega figures follow the summary-table columns",
   omega <- matrix(1, nrow = length(models_ind), ncol = 4)
   omega[models_ind == 1, 3] <- seq(.2, .9, length.out = 60)
   colnames(omega) <- .weightfunction_omega_names(omega_cuts)
-  attr(omega, "models_ind") <- models_ind
+  omega <- .bt_meta_set(omega, "models_ind", models_ind)
   attr(omega, "prior_list") <- priors
-  attr(omega, "posterior_atoms") <- .posterior_atoms_from_priors(
+  omega <- .bt_meta_set(omega, "atoms", .posterior_atoms_from_priors(
     priors,
     c(.6, 0, .4),
     n_columns = ncol(omega),
     column_names = colnames(omega),
     null_location = 1
-  )
+  ))
   class(omega) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
   samples <- list(omega = omega)
   class(samples) <- c("mixed_posteriors", "list")

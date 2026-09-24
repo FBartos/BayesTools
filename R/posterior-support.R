@@ -243,17 +243,17 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
 .posterior_support_set <- function(x, support){
 
   if(is.null(support)){
-    attr(x, "posterior_support") <- NULL
+    x <- .bt_meta_set(x, "support", NULL)
     return(x)
   }
 
-  attr(x, "posterior_support") <- support
+  x <- .bt_meta_set(x, "support", support)
   x
 }
 
 .posterior_support_drop <- function(x, recursive = FALSE){
 
-  attr(x, "posterior_support") <- NULL
+  x <- .bt_meta_set(x, "support", NULL)
 
   if(isTRUE(recursive) && is.list(x)){
     x_attributes <- attributes(x)
@@ -261,7 +261,7 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
       x[[i]] <- .posterior_support_drop(x[[i]], recursive = TRUE)
     }
     attributes(x) <- x_attributes
-    attr(x, "posterior_support") <- NULL
+    x <- .bt_meta_set(x, "support", NULL)
   }
 
   x
@@ -269,7 +269,7 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
 
 .posterior_support_get <- function(x, name = NULL){
 
-  support <- attr(x, "posterior_support", exact = TRUE)
+  support <- .bt_meta_get(x, "support")
   if(is.null(support)){
     return(NULL)
   }
@@ -726,10 +726,10 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
     return(.posterior_support_set(samples, support))
   }
 
-  attr(samples, "posterior_support") <- stats::setNames(
+  samples <- .bt_meta_set(samples, "support", stats::setNames(
     rep(list(support), length(column_names)),
     column_names
-  )
+  ))
   samples
 }
 
@@ -1197,7 +1197,7 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
 
 .posterior_components_get <- function(x){
 
-  components <- attr(x, "posterior_components", exact = TRUE)
+  components <- .bt_meta_get(x, "components")
   if(!inherits(components, "BayesTools_posterior_components")){
     return(NULL)
   }
@@ -1207,7 +1207,7 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
 
 .posterior_components_set <- function(x, components){
 
-  attr(x, "posterior_components") <- components
+  x <- .bt_meta_set(x, "components", components)
   x
 }
 
@@ -1247,7 +1247,7 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
     if(length(support) == 0L){
       return(samples)
     }
-    existing_support <- attr(samples, "posterior_support", exact = TRUE)
+    existing_support <- .bt_meta_get(samples, "support")
     if(is.list(existing_support) &&
        !inherits(existing_support, "BayesTools_posterior_support") &&
        !is.null(names(existing_support))){
@@ -1259,7 +1259,7 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
       ]
       support <- c(existing_support, support)
     }
-    attr(samples, "posterior_support") <- support
+    samples <- .bt_meta_set(samples, "support", support)
     return(samples)
   }
 

@@ -642,7 +642,7 @@
       if(ncol(indicator) == 1L){
         indicator <- as.integer(indicator[, 1L])
       }
-      attr(out, "ordered_total_indicator") <- indicator
+      out <- .bt_meta_set(out, "ordered_total_indicator", indicator)
     }
     if(all(vapply(total_components, function(x) !is.null(x), logical(1)))){
       component <- do.call(cbind, total_components)

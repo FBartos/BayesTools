@@ -242,10 +242,10 @@
   ))
 }
 .is_prior_interaction          <- function(prior){
-  if(is.null(attr(prior, "interaction"))){
+  if(is.null(attr(prior, "interaction", exact = TRUE))){
     return(FALSE)
   }else{
-    return(attr(prior, "interaction"))
+    return(attr(prior, "interaction", exact = TRUE))
   }
 }
 .is_prior_expression           <- function(prior){

@@ -992,7 +992,7 @@ test_that("mixture prior ordinates evaluate every component exactly at a density
                                               mu_t = c(FALSE, FALSE)),
                           seed = 1, n_samples = n)
   levels <- marginal_posterior(mixed, "mu_t", formula = ~ 1 + t, prior_samples = TRUE)
-  reference_level <- attr(levels[["lo"]], "prior_density")
+  reference_level <- .bt_meta_get(levels[["lo"]], "prior_density")
   expect_equal(as.numeric(.prior_linear_density_height(reference_level, 0)),
                .5 * stats::dnorm(0) + .5 * stats::dnorm(0, .5) / stats::pnorm(.5),
                tolerance = 1e-10)
@@ -1003,7 +1003,7 @@ test_that("mixture prior ordinates evaluate every component exactly at a density
            function(component) component$provenance$kind, character(1)),
     c("scalar_affine", "scalar_affine")
   )
-  two_term <- attr(levels[["mid"]], "prior_density")
+  two_term <- .bt_meta_get(levels[["mid"]], "prior_density")
   expect_height(two_term, function(v) .5 * f_sum(v) + .5 * f_truncated(v))
   quadrature <- prior_density_ordinate(two_term, 0)$provenance$components[[1L]]$provenance
   expect_identical(quadrature$kind, "conditional_normal_mixture")
@@ -1030,14 +1030,14 @@ test_that("mixture prior ordinates evaluate every component exactly at a density
   fit <- attach_test_parameter_map(fit)
   single_mixed <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x"))
   single_levels <- marginal_posterior(single_mixed, "mu_x", formula = ~ x, prior_samples = TRUE)
-  expect_height(attr(single_levels[["1SD"]], "prior_density"), function(v){
+  expect_height(.bt_meta_get(single_levels[["1SD"]], "prior_density"), function(v){
     .25 * (stats::dnorm(v) + stats::dnorm(v, sd = sqrt(2)) + f_truncated(v) + f_sum(v))
   })
-  expect_height(attr(single_levels[["0SD"]], "prior_density"), function(v){
+  expect_height(.bt_meta_get(single_levels[["0SD"]], "prior_density"), function(v){
     .5 * stats::dnorm(v) + .5 * f_truncated(v)
   })
   expect_identical(
-    prior_density_ordinate(attr(single_levels[["0SD"]], "prior_density"), 0)$method,
+    prior_density_ordinate(.bt_meta_get(single_levels[["0SD"]], "prior_density"), 0)$method,
     "scalar_affine"
   )
 
@@ -1083,7 +1083,7 @@ test_that("mixture prior ordinates evaluate every component exactly at a density
                                            prior_samples = TRUE)
   expect_equal(as.numeric(original_intercept),
                posterior[, "mu_intercept"] - ratio * posterior[, "mu_x"])
-  expect_height(attr(original_intercept, "prior_density"), function(v){
+  expect_height(.bt_meta_get(original_intercept, "prior_density"), function(v){
     .25 * stats::dnorm(v) + .25 * stats::dnorm(v, sd = sqrt(1 + ratio^2)) +
       .25 * f_truncated(v) + .25 * stats::integrate(function(t){
         f_truncated(t) * stats::dnorm(v - t, sd = ratio)
@@ -1294,7 +1294,7 @@ test_that("boundary-singular prior densities keep exact edge-cell masses", {
     prior_samples = TRUE, n_samples = 128
   )
   expect_equal(
-    .prior_linear_density_height(attr(marginal, "prior_density"), .5),
+    .prior_linear_density_height(.bt_meta_get(marginal, "prior_density"), .5),
     stats::dgamma(.5, .5, 1)
   )
 })
@@ -1806,7 +1806,7 @@ test_that("prior heights use exact ordinates at density jumps and zero outside s
   posterior <- marginal_posterior(as_mixed_posteriors(fit, "mu"), "mu",
                                   use_formula = FALSE, prior_samples = TRUE,
                                   n_samples = 64)
-  attr(posterior, "prior_density") <- mixture
+  posterior <- .bt_meta_set(posterior, "prior_density", mixture)
   bf <- Savage_Dickey_BF(posterior, null_hypothesis = 0, silent = TRUE)
   expect_true(is.finite(bf) && bf > 0)
 
@@ -2194,7 +2194,7 @@ test_that("conditional log-intercept prior densities mix the conditioned models"
   fit <- .bt_attach_parameter_map(fit, monitor_names = colnames(posterior))
   mixed <- as_mixed_posteriors(fit, columns, conditional = "mu_x", transform_scaled = TRUE)
   expect_equal(
-    as.numeric(.prior_linear_density_height(attr(mixed, "prior_densities")$mu_intercept, 1)),
+    as.numeric(.prior_linear_density_height(.bt_meta_get(mixed, "prior_densities")$mu_intercept, 1)),
     as.numeric(.prior_linear_density_height(filtered$mu_intercept, 1)),
     tolerance = 1e-8
   )

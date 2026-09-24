@@ -190,13 +190,13 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     }
 
     # add formula relevant information
-    if(!is.null(unique(unlist(lapply(temp_priors, attr, which = "parameter"))))){
+    if(!is.null(unique(unlist(lapply(temp_priors, attr, which = "parameter", exact = TRUE))))){
       class(out[[temp_parameter]]) <- c(class(out[[temp_parameter]]), "mixed_posteriors.formula")
-      attr(out[[temp_parameter]], "formula_parameter")  <- unique(unlist(lapply(temp_priors, attr, which = "parameter")))
-      attr(out[[temp_parameter]], "formula_log_intercept") <- .mixed_posteriors_formula_log_intercept(
+      out[[temp_parameter]] <- .bt_meta_set(out[[temp_parameter]], "formula_parameter", unique(unlist(lapply(temp_priors, attr, which = "parameter", exact = TRUE))))
+      out[[temp_parameter]] <- .bt_meta_set(out[[temp_parameter]], "log_intercept", .mixed_posteriors_formula_log_intercept(
         fits,
-        attr(out[[temp_parameter]], "formula_parameter")
-      )
+        .bt_meta_get(out[[temp_parameter]], "formula_parameter")
+      ))
     }
 
   }
@@ -429,8 +429,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   }
 
   samples <- unname(samples)
-  attr(samples, "sample_ind") <- sample_ind
-  attr(samples, "models_ind") <- models_ind
+  samples <- .bt_meta_set(samples, "sample_ind", sample_ind)
+  samples <- .bt_meta_set(samples, "models_ind", models_ind)
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
   attr(samples, "interaction")       <- if(length(priors_info) == 0) FALSE else priors_info[["interaction"]]
@@ -525,8 +525,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   rownames(samples) <- NULL
   colnames(samples) <- if(is.null(column_names)) paste0(parameter,"[",1:K,"]") else column_names
-  attr(samples, "sample_ind") <- sample_ind
-  attr(samples, "models_ind") <- models_ind
+  samples <- .bt_meta_set(samples, "sample_ind", sample_ind)
+  samples <- .bt_meta_set(samples, "models_ind", models_ind)
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
   samples <- .posterior_support_set_columns_from_prior_list(samples, priors)
@@ -671,12 +671,12 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       ordered_prior,
       coefficient_names
     )
-    attr(samples, "sample_ind") <- sample_ind
-    attr(samples, "models_ind") <- models_ind
+    samples <- .bt_meta_set(samples, "sample_ind", sample_ind)
+    samples <- .bt_meta_set(samples, "models_ind", models_ind)
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- priors
     if(any(!is.na(total_indicator))){
-      attr(samples, "ordered_total_indicator") <- total_indicator
+      samples <- .bt_meta_set(samples, "ordered_total_indicator", total_indicator)
     }
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
 
@@ -686,8 +686,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
       samples <- .mix_posteriors.simple(fits, priors, parameter, post_probs, seed, n_samples)
 
-      sample_ind <- attr(samples, "sample_ind")
-      models_ind <- attr(samples, "models_ind")
+      sample_ind <- .bt_meta_get(samples, "sample_ind")
+      models_ind <- .bt_meta_get(samples, "models_ind")
 
       samples <- matrix(samples, ncol = 1)
 
@@ -700,8 +700,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
       samples <- lapply(1:levels, function(i) .mix_posteriors.simple(fits, priors, paste0(parameter, "[", i, "]"), post_probs, seed, n_samples))
 
-      sample_ind <- attr(samples[[1]], "sample_ind")
-      models_ind <- attr(samples[[1]], "models_ind")
+      sample_ind <- .bt_meta_get(samples[[1]], "sample_ind")
+      models_ind <- .bt_meta_get(samples[[1]], "models_ind")
 
       samples <- do.call(cbind, samples)
 
@@ -717,8 +717,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       factor_prior,
       ncol(samples)
     )
-    attr(samples, "sample_ind") <- sample_ind
-    attr(samples, "models_ind") <- models_ind
+    samples <- .bt_meta_set(samples, "sample_ind", sample_ind)
+    samples <- .bt_meta_set(samples, "models_ind", models_ind)
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- priors
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
@@ -729,8 +729,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
       samples <- .mix_posteriors.simple(fits, priors, parameter, post_probs, seed, n_samples)
 
-      sample_ind <- attr(samples, "sample_ind")
-      models_ind <- attr(samples, "models_ind")
+      sample_ind <- .bt_meta_get(samples, "sample_ind")
+      models_ind <- .bt_meta_get(samples, "models_ind")
 
       samples <- matrix(samples, ncol = 1)
 
@@ -743,8 +743,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
       samples <- lapply(1:levels, function(i) .mix_posteriors.simple(fits, priors, paste0(parameter, "[", i, "]"), post_probs, seed, n_samples))
 
-      sample_ind <- attr(samples[[1]], "sample_ind")
-      models_ind <- attr(samples[[1]], "models_ind")
+      sample_ind <- .bt_meta_get(samples[[1]], "sample_ind")
+      models_ind <- .bt_meta_get(samples[[1]], "models_ind")
 
       samples <- do.call(cbind, samples)
 
@@ -757,8 +757,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       factor_prior,
       ncol(samples)
     )
-    attr(samples, "sample_ind") <- sample_ind
-    attr(samples, "models_ind") <- models_ind
+    samples <- .bt_meta_set(samples, "sample_ind", sample_ind)
+    samples <- .bt_meta_set(samples, "models_ind", models_ind)
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- priors
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
@@ -806,10 +806,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   if(isTRUE(priors_info[["treatment"]]) || isTRUE(priors_info[["independent"]])){
     factor_support <- .posterior_support_from_prior_list(priors)
     if(!is.null(factor_support) && !is.null(colnames(samples))){
-      attr(samples, "posterior_support") <- stats::setNames(
+      samples <- .bt_meta_set(samples, "support", stats::setNames(
         rep(list(factor_support), ncol(samples)),
         colnames(samples)
-      )
+      ))
     }
   }
 
@@ -932,8 +932,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   rownames(samples) <- NULL
   colnames(samples) <- omega_names
-  attr(samples, "sample_ind") <- sample_ind
-  attr(samples, "models_ind") <- models_ind
+  samples <- .bt_meta_set(samples, "sample_ind", sample_ind)
+  samples <- .bt_meta_set(samples, "models_ind", models_ind)
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
   samples <- .posterior_support_set_weightfunction_columns(

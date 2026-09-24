@@ -355,7 +355,7 @@ density.prior <- function(x,
   }
 
   attr(out, "x_range")        <- range(unlist(lapply(out, attr, which = "x_range")), na.rm = TRUE)
-  attr(out, "y_range")        <- range(unlist(lapply(out, attr, which = "y_range")), na.rm = TRUE)
+  attr(out, "y_range")        <- range(unlist(lapply(out, attr, which = "y_range", exact = TRUE)), na.rm = TRUE)
   attr(out, "parameter_name") <- names(out)
   class(out) <- c("density.prior.ordered", "list")
 
@@ -506,7 +506,8 @@ density.prior <- function(x,
   attr(densities, "y_range") <- range(unlist(lapply(
     densities,
     attr,
-    which = "y_range"
+    which = "y_range",
+    exact = TRUE
   )), na.rm = TRUE)
   attr(densities, "parameter_name") <- names(densities)
   attr(densities, "method") <- "analytic_mixed_measure"
@@ -730,7 +731,7 @@ density.prior <- function(x,
   }
 
   attr(densities, "x_range")        <- range(unlist(lapply(densities, attr, which = "x_range")), na.rm = TRUE)
-  attr(densities, "y_range")        <- range(unlist(lapply(densities, attr, which = "y_range")), na.rm = TRUE)
+  attr(densities, "y_range")        <- range(unlist(lapply(densities, attr, which = "y_range", exact = TRUE)), na.rm = TRUE)
   attr(densities, "parameter_name") <- names(densities)
   attr(densities, "method")         <- "direct"
   class(densities) <- c("density.prior.ordered", "list")
@@ -918,7 +919,7 @@ density.prior <- function(x,
   }
 
   attr(out, "x_range")        <- range(unlist(lapply(out, attr, which = "x_range")), na.rm = TRUE)
-  attr(out, "y_range")        <- range(unlist(lapply(out, attr, which = "y_range")), na.rm = TRUE)
+  attr(out, "y_range")        <- range(unlist(lapply(out, attr, which = "y_range", exact = TRUE)), na.rm = TRUE)
   attr(out, "parameter_name") <- names(out)
   class(out) <- c("density.prior.simplex", "list")
 
@@ -1260,8 +1261,8 @@ density.prior <- function(x,
   density_variable$y  <- density_variable[["y"]]  * inclusion_prob
   density_inclusion$y <- density_inclusion[["y"]] * (1 - inclusion_prob)
 
-  attr(density_variable,  "y_range") <- attr(density_variable, "y_range")  * inclusion_prob
-  attr(density_inclusion, "y_range") <- attr(density_inclusion, "y_range") * (1 - inclusion_prob)
+  attr(density_variable,  "y_range") <- attr(density_variable, "y_range", exact = TRUE)  * inclusion_prob
+  attr(density_inclusion, "y_range") <- attr(density_inclusion, "y_range", exact = TRUE) * (1 - inclusion_prob)
 
   # create the output object
   out <- list(
@@ -1273,8 +1274,8 @@ density.prior <- function(x,
 
   class(out) <- c("density", "density.prior.spike_and_slab")
   attr(out, "x_range") <- range(c(attr(density_variable, "x_range"), attr(density_inclusion, "x_range")))
-  attr(out, "y_range_variable")  <- attr(density_variable,  "y_range")
-  attr(out, "y_range_inclusion") <- attr(density_inclusion, "y_range")
+  attr(out, "y_range_variable")  <- attr(density_variable,  "y_range", exact = TRUE)
+  attr(out, "y_range_inclusion") <- attr(density_inclusion, "y_range", exact = TRUE)
 
   return(out)
 }

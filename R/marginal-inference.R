@@ -275,7 +275,7 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
   levels <- if(scalar_marginal) ".scalar" else names(marginal)
   conditionals <- lapply(levels, function(level){
     level_marginal <- if(scalar_marginal) marginal else marginal[[level]]
-    weights <- attr(level_marginal, "linear_weights")
+    weights <- .bt_meta_get(level_marginal, "linear_weights")
     if(is.null(weights)){
       return(conditional)
     }

@@ -615,7 +615,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       for(p in seq_along(this_prior)){
         attr(this_prior, "levels")            -> attr(this_prior[[p]], "levels")
         attr(this_prior, "level_names")       -> attr(this_prior[[p]], "level_names")
-        attr(this_prior, "interaction")       -> attr(this_prior[[p]], "interaction")
+        attr(this_prior, "interaction", exact = TRUE)       -> attr(this_prior[[p]], "interaction")
         attr(this_prior, "interaction_terms") -> attr(this_prior[[p]], "interaction_terms")
         attr(this_prior, "term_components")   -> attr(this_prior[[p]], "term_components")
         attr(this_prior, "factor_terms")      -> attr(this_prior[[p]], "factor_terms")

@@ -881,8 +881,8 @@
   )
   any(vapply(marginals, function(marginal){
     !is.null(marginal) && (
-      !is.null(attr(marginal, "prior_density", exact = TRUE)) ||
-        !is.null(attr(marginal, "prior_density_context", exact = TRUE))
+      !is.null(.bt_meta_get(marginal, "prior_density")) ||
+        !is.null(.bt_meta_get(marginal, "prior_context"))
     )
   }, logical(1)))
 }

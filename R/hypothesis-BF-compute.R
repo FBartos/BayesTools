@@ -287,15 +287,15 @@
       offset <- offset + linear[["coefficients"]][[symbol]] * fixed
       next
     }
-    level_context <- attr(level, "prior_density_context", exact = TRUE)
+    level_context <- .bt_meta_get(level, "prior_context")
     if(!.hypothesis_is_prior_density_context(level_context) ||
        (!is.null(context) && !identical(level_context, context))){
       return(NULL)
     }
     context <- level_context
-    level_weights <- attr(level, "linear_weights", exact = TRUE)
+    level_weights <- .bt_meta_get(level, "linear_weights")
     if(is.null(level_weights) ||
-       !is.null(attr(level, "joint_prior_transformation", exact = TRUE))){
+       !is.null(.bt_meta_get(level, "joint_prior_transformation"))){
       return(NULL)
     }
     if(!is.null(dim(level_weights))){
@@ -345,7 +345,7 @@
   )
   posterior <- .hypothesis_eval_expression(expr, quantity[["posterior_draws"]])
   class(posterior) <- c("marginal_posterior.simple", "marginal_posterior")
-  attr(posterior, "prior_density") <- prior_density
+  posterior <- .bt_meta_set(posterior, "prior_density", prior_density)
   posterior <- .posterior_support_set(posterior, support)
   posterior <- .posterior_atoms_set(posterior, .posterior_atoms_new(
     column_names = "value",
@@ -373,7 +373,7 @@
     return(NULL)
   }
   location <- atoms$locations[1L, 1L]
-  prior_density <- attr(level, "prior_density", exact = TRUE)
+  prior_density <- .bt_meta_get(level, "prior_density")
   if(!inherits(prior_density, "prior_linear_density") ||
      abs(.prior_linear_density_point_mass(prior_density, location) - 1) >
        8 * .Machine$double.eps){

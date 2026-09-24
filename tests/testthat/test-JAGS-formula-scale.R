@@ -1219,7 +1219,7 @@ test_that("as_mixed_posteriors transform_scaled matches direct posterior and pri
     transform_scaled = TRUE,
     n_prior_samples = 512
   )
-  expect_true(isTRUE(attr(samples_scaled, "transform_scaled")))
+  expect_true(isTRUE(.bt_meta_get(samples_scaled, "transform_scaled")))
   expect_s3_class(samples_scaled$mu_intercept, "mixed_posteriors.formula")
   expect_equal(as.numeric(samples_scaled$mu_intercept), as.numeric(posterior_expected[, "mu_intercept"]), tolerance = 1e-10)
   expect_equal(as.numeric(samples_scaled$mu_x_cont1), as.numeric(posterior_expected[, "mu_x_cont1"]), tolerance = 1e-10)
@@ -1229,7 +1229,7 @@ test_that("as_mixed_posteriors transform_scaled matches direct posterior and pri
     as.numeric(posterior_expected[, "mu_x_cont1__xXx__x_cont2"]),
     tolerance = 1e-10
   )
-  prior_densities <- attr(samples_scaled, "prior_densities")
+  prior_densities <- .bt_meta_get(samples_scaled, "prior_densities")
   expect_s3_class(prior_densities, "prior_density_list")
   expect_true(all(parameters %in% names(prior_densities)))
   expect_null(attr(samples_scaled, "prior_samples"))
@@ -1261,16 +1261,18 @@ test_that("ensemble_estimates_table transform_scaled works on mixed posterior sa
   )
 
   make_formula_samples <- function(values, parameter_name) {
-    structure(
-      unname(values),
-      class = c("mixed_posteriors.formula", "mixed_posteriors.simple", "mixed_posteriors"),
+    .bt_meta_update(
+      structure(
+        unname(values),
+        class = c("mixed_posteriors.formula", "mixed_posteriors.simple", "mixed_posteriors"),
+        parameter = parameter_name,
+        prior_list = prior("normal", list(0, 1)),
+        interaction = grepl("__xXx__", parameter_name),
+        interaction_terms = if(grepl("__xXx__", parameter_name)) c("x_cont1", "x_cont2") else NULL
+      ),
       formula_parameter = "mu",
       sample_ind = seq_along(values),
-      models_ind = rep(1L, length(values)),
-      parameter = parameter_name,
-      prior_list = prior("normal", list(0, 1)),
-      interaction = grepl("__xXx__", parameter_name),
-      interaction_terms = if(grepl("__xXx__", parameter_name)) c("x_cont1", "x_cont2") else NULL
+      models_ind = rep(1L, length(values))
     )
   }
 
@@ -1428,7 +1430,7 @@ test_that("as_mixed_posteriors transform_scaled works for dual parameter models"
     n_prior_samples = 256
   )
 
-  expect_true(isTRUE(attr(samples_scaled, "transform_scaled")))
+  expect_true(isTRUE(.bt_meta_get(samples_scaled, "transform_scaled")))
   expect_equal(
     as.numeric(samples_scaled$log_sigma_intercept),
     as.numeric(posterior_expected[, "log_sigma_intercept"]),

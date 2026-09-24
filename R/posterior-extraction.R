@@ -340,7 +340,7 @@ NULL
 
   # get formula parameter for each prior
   prior_formulas <- sapply(prior_list, function(p) {
-    form <- attr(p, "parameter")
+    form <- attr(p, "parameter", exact = TRUE)
     if (is.null(form)) "__none" else form
 
   })
@@ -532,7 +532,7 @@ NULL
 
   # modify the parameter list (forward the parameter attribute)
   variable_component <- .get_spike_and_slab_variable(prior_list[[par]])
-  attr(variable_component, "parameter") <- attr(prior_list[[par]], "parameter")
+  attr(variable_component, "parameter") <- attr(prior_list[[par]], "parameter", exact = TRUE)
   prior_list[[par]] <- variable_component
 
   return(list(model_samples = model_samples, prior_list = prior_list, warnings = warnings))

@@ -208,7 +208,7 @@ test_that("random-effect summary posterior extracts mean-variance multipliers", 
     tolerance = 1e-12
   )
 
-  prior_density <- attr(multipliers[[multiplier_name]], "prior_density", exact = TRUE)
+  prior_density <- .bt_meta_get(multipliers[[multiplier_name]], "prior_density")
   expect_s3_class(prior_density, "prior_linear_density")
   expect_equal(attr(prior_density, "support", exact = TRUE), c(0, 2))
   expect_equal(
@@ -250,7 +250,7 @@ test_that("random-effect summary posterior extracts SD multipliers", {
     tolerance = 1e-12
   )
 
-  prior_density <- attr(multipliers[[multiplier_name]], "prior_density", exact = TRUE)
+  prior_density <- .bt_meta_get(multipliers[[multiplier_name]], "prior_density")
   expect_s3_class(prior_density, "prior_linear_density")
   expect_equal(attr(prior_density, "support", exact = TRUE), c(0, sqrt(2)))
   expect_equal(
@@ -370,7 +370,7 @@ test_that("random-effect summary posterior extracts total-variance proportions",
     tolerance = 1e-12
   )
 
-  prior_density <- attr(proportions[[proportion_name]], "prior_density", exact = TRUE)
+  prior_density <- .bt_meta_get(proportions[[proportion_name]], "prior_density")
   expect_s3_class(prior_density, "prior_linear_density")
   expect_equal(attr(prior_density, "support", exact = TRUE), c(0, 1))
   expect_equal(
@@ -429,11 +429,7 @@ test_that("gated total-variance summaries use realized totals and proportions", 
     ]])),
     c(0, 1, .75)
   )
-  expect_null(attr(
-    proportions[["(mu) allocation: var_prop(drug)"]],
-    "prior_density",
-    exact = TRUE
-  ))
+  expect_null(.bt_meta_get(proportions[["(mu) allocation: var_prop(drug)"]], "prior_density"))
 
   estimates <- JAGS_estimates_table(
     fit,
@@ -559,7 +555,7 @@ test_that("random-effect summary posterior handles singular Dirichlet boundaries
     component = "intercept",
     n_prior_points = 64
   )
-  prior_density <- attr(multipliers[[1]], "prior_density", exact = TRUE)
+  prior_density <- .bt_meta_get(multipliers[[1]], "prior_density")
 
   expect_equal(attr(prior_density, "support", exact = TRUE), c(0, 2))
   expect_true(all(is.finite(prior_density$density$x)))
@@ -601,11 +597,7 @@ test_that("unit-scale Dirichlet summaries keep singular upper bounds off the gri
     )
     for(index in 1:2){
       component <- c("study", "drug")[index]
-      prior_density <- attr(
-        proportions[[paste0("(mu) allocation: var_prop(", component, ")")]],
-        "prior_density",
-        exact = TRUE
-      )
+      prior_density <- .bt_meta_get(proportions[[paste0("(mu) allocation: var_prop(", component, ")")]], "prior_density")
       alpha_i <- alpha[index]
       beta_i  <- sum(alpha) - alpha_i
       info <- paste0("alpha = c(", toString(alpha), "), ", component)
@@ -644,7 +636,7 @@ test_that("unit-scale Dirichlet summaries keep singular upper bounds off the gri
     component = "x",
     n_prior_points = 64
   )
-  prior_density <- attr(multipliers[[1L]], "prior_density", exact = TRUE)
+  prior_density <- .bt_meta_get(multipliers[[1L]], "prior_density")
   expect_equal(attr(prior_density, "support", exact = TRUE), c(0, 1))
   expect_true(all(is.finite(prior_density$density$y)))
   expect_true(max(prior_density$density$x) < 1)
@@ -661,7 +653,7 @@ test_that("unit-scale Dirichlet summaries keep singular upper bounds off the gri
   )
   expect_length(proportions, 2L)
   expect_true(all(vapply(proportions, function(x){
-    all(is.finite(attr(x, "prior_density", exact = TRUE)$density$y))
+    all(is.finite(.bt_meta_get(x, "prior_density")$density$y))
   }, logical(1))))
 })
 

@@ -286,7 +286,7 @@ ensemble_inference <- function(model_list, parameters, is_null_list,
 
     # add parameter names
     parameter_name    <- parameters[p]
-    formula_parameter <- unique(unlist(lapply(model_list, function(m) attr(attr(m[["fit"]], "prior_list")[[parameters[p]]], "parameter"))))
+    formula_parameter <- unique(unlist(lapply(model_list, function(m) attr(attr(m[["fit"]], "prior_list")[[parameters[p]]], "parameter", exact = TRUE))))
 
     if(!is.null(unlist(formula_parameter))){
       parameter_name <- format_parameter_names(parameter_name, formula_parameters = formula_parameter, formula_prefix = TRUE)

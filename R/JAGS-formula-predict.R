@@ -214,7 +214,7 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   }
 
   # select priors corresponding to the prior distribution
-  prior_parameter <- sapply(prior_list, function(p) if(is.null(attr(p, "parameter"))) "__none" else attr(p, "parameter"))
+  prior_parameter <- sapply(prior_list, function(p) if(is.null(attr(p, "parameter", exact = TRUE))) "__none" else attr(p, "parameter", exact = TRUE))
   if(!any(parameter %in% unique(prior_parameter)))
     stop("The specified parameter '", parameter, "' was not used in any of the prior distributions.")
   prior_list_formula <- prior_list[prior_parameter == parameter]

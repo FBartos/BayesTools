@@ -286,13 +286,12 @@ test_that("interval, union, and negated regions converge on deterministic prior 
   )
 
   set.seed(3)
-  posterior <- structure(
-    stats::rnorm(20000, .05, .1),
-    class = c("marginal_posterior.simple", "marginal_posterior", "numeric"),
+  posterior <- .bt_meta_update(
+    structure(stats::rnorm(20000, .05, .1), class = c("marginal_posterior.simple", "marginal_posterior", "numeric")),
     prior_density = .prior_linear_combination_density(
       list(theta = prior("normal", list(0, 1))), c(theta = 1)
     ),
-    posterior_atoms = posterior_atom_attribute()
+    atoms = posterior_atom_attribute()
   )
   out <- hypothesis_BF(posterior, hypothesis = "abs(theta) < 0.1",
                        parameter = "theta", columns = "all")
@@ -403,13 +402,12 @@ test_that("Gaussian-convolution region probabilities use the conditional-normal 
 
   # region odds end to end
   set.seed(1)
-  posterior <- structure(
-    stats::rnorm(20000, .3, .2),
-    class = c("marginal_posterior.simple", "marginal_posterior", "numeric"),
+  posterior <- .bt_meta_update(
+    structure(stats::rnorm(20000, .3, .2), class = c("marginal_posterior.simple", "marginal_posterior", "numeric")),
     prior_density = .prior_linear_combination_density(
       list(b0 = intercept, b1 = slopes$normal_cauchy), c(b0 = 1, b1 = -.5)
     ),
-    posterior_atoms = posterior_atom_attribute()
+    atoms = posterior_atom_attribute()
   )
   out <- hypothesis_BF(posterior, hypothesis = "theta > 0.5",
                        parameter = "theta", columns = "all")

@@ -277,21 +277,21 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
   if(is.null(atoms)){
     stop("Cannot attach invalid posterior atom metadata.", call. = FALSE)
   }
-  attr(samples, "posterior_atoms") <- atoms
+  samples <- .bt_meta_set(samples, "atoms", atoms)
   samples
 }
 
 .posterior_atoms_get <- function(samples){
 
   atoms <- .posterior_atoms_from_attribute(
-    attr(samples, "posterior_atoms", exact = TRUE)
+    .bt_meta_get(samples, "atoms")
   )
   if(!is.null(atoms)){
     return(atoms)
   }
 
   density <- .posterior_density_from_attribute(
-    attr(samples, "posterior_density", exact = TRUE)
+    .bt_meta_get(samples, "posterior_density")
   )
   if(!is.null(density) &&
      .posterior_density_point_masses_declared(density)){
@@ -534,15 +534,11 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
 
   if(inherits(samples, "as_mixed_posteriors")){
     indicators <- lapply(parameter_names, function(parameter){
-      ordered_indicator <- attr(
-        samples[[parameter]],
-        "ordered_total_indicator",
-        exact = TRUE
-      )
+      ordered_indicator <- .bt_meta_get(samples[[parameter]], "ordered_total_indicator")
       if(!is.null(ordered_indicator)){
         return(as.integer(ordered_indicator))
       }
-      indicator <- attr(samples[[parameter]], "models_ind", exact = TRUE)
+      indicator <- .bt_meta_get(samples[[parameter]], "models_ind")
       if(is.null(indicator)){
         return(rep(1L, NROW(samples[[parameter]])))
       }
@@ -612,7 +608,7 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
 .posterior_atoms_split_model_ordered_totals <- function(plan, samples, parameter_names){
 
   indicators <- lapply(parameter_names, function(parameter){
-    attr(samples[[parameter]], "ordered_total_indicator", exact = TRUE)
+    .bt_meta_get(samples[[parameter]], "ordered_total_indicator")
   })
   names(indicators) <- parameter_names
   carrying <- parameter_names[!vapply(indicators, is.null, logical(1))]
@@ -621,9 +617,9 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
   }
 
   # the indicators must describe the same mixture draws
-  models_ind <- as.integer(attr(samples[[carrying[1L]]], "models_ind", exact = TRUE))
+  models_ind <- as.integer(.bt_meta_get(samples[[carrying[1L]]], "models_ind"))
   aligned <- vapply(carrying, function(parameter){
-    parameter_models <- as.integer(attr(samples[[parameter]], "models_ind", exact = TRUE))
+    parameter_models <- as.integer(.bt_meta_get(samples[[parameter]], "models_ind"))
     identical(parameter_models, models_ind) &&
       length(indicators[[parameter]]) == length(models_ind)
   }, logical(1))
@@ -689,10 +685,10 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
   if(nrow(weights) == 0L || is.null(colnames(weights))){
     return(NULL)
   }
-  if(isTRUE(attr(samples, "transform_scaled", exact = TRUE))){
+  if(isTRUE(.bt_meta_get(samples, "transform_scaled"))){
     context <- .prior_density_context(
       prior_list, colnames(weights),
-      formula_scale = attr(samples, "formula_scale", exact = TRUE)
+      formula_scale = .bt_meta_get(samples, "formula_scale")
     )
     standardized <- matrix(0, nrow(weights), ncol(weights), dimnames = dimnames(weights))
     for(i in seq_len(nrow(weights))){

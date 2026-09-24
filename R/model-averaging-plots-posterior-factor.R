@@ -17,7 +17,7 @@
 
   # extract the relevant data
   prior_list <- attr(samples, "prior_list")
-  models_ind <- attr(samples, "models_ind")
+  models_ind <- .bt_meta_get(samples, "models_ind")
   posterior_atom_metadata <- .posterior_atoms_get(samples)
   if(is.null(posterior_atom_metadata)){
     .plot_data_stop_unknown_atoms()
@@ -207,9 +207,9 @@
   # transform & extract the relevant data
   prior_list <- attr(samples[[parameter]], "prior_list")
   posterior_density_sources <- .posterior_density_sources(samples, samples[[parameter]])
-  posterior_density_conditional <- attr(samples[[parameter]], "conditional", exact = TRUE)
-  posterior_density_conditional_rule <- attr(samples[[parameter]], "conditional_rule", exact = TRUE)
-  posterior_density_condition_key <- attr(samples[[parameter]], "condition_key", exact = TRUE)
+  posterior_density_conditional <- .bt_meta_condition(samples[[parameter]], "conditional")
+  posterior_density_conditional_rule <- .bt_meta_condition(samples[[parameter]], "conditional_rule")
+  posterior_density_condition_key <- .bt_meta_condition(samples[[parameter]], "condition_key")
   if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
     prior_list <- list(prior_list)
 
@@ -462,10 +462,10 @@
   out <- samples[, keep, drop = FALSE]
   attributes_kept <- attributes(samples)
   attributes_kept <- attributes_kept[!names(attributes_kept) %in% c(
-    "dim", "dimnames", "names", "level_names", "factor_cell_names",
-    "posterior_atoms"
+    "dim", "dimnames", "names", "level_names", "factor_cell_names"
   )]
   attributes(out) <- c(attributes(out), attributes_kept)
+  out <- .bt_meta_set(out, "atoms", NULL)
   for(name in c("level_names", "factor_cell_names")){
     value <- attr(samples, name, exact = TRUE)
     if(!is.null(value) && !is.list(value) && length(value) == length(keep)){

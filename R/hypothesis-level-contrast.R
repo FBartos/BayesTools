@@ -109,7 +109,7 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
 
   context <- .hypothesis_child_prior_context(posterior, levels)
   if(is.null(context)){
-    context <- attr(posterior, "prior_density_context", exact = TRUE)
+    context <- .bt_meta_get(posterior, "prior_context")
   }
   if(is.null(context) || !.hypothesis_is_prior_density_context(context)){
     stop("A valid joint prior context is required for a level contrast.",
@@ -154,24 +154,20 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
     "numeric", "marginal_posterior.level_contrast", "marginal_posterior"
   )
   attr(values, "parameter")             <- target_name
-  attr(values, "linear_weights")        <- weights
-  attr(values, "linear_offset")         <- offset
-  attr(values, "prior_density")         <- prior_density
-  attr(values, "prior_density_context") <- context
-  attr(values, "posterior_atoms") <- .posterior_atoms_new(
+  values <- .bt_meta_set(values, "linear_weights", weights)
+  values <- .bt_meta_set(values, "linear_offset", offset)
+  values <- .bt_meta_set(values, "prior_density", prior_density)
+  values <- .bt_meta_set(values, "prior_context", context)
+  values <- .bt_meta_set(values, "atoms", .posterior_atoms_new(
     column_names = target_name,
     source       = "level_contrast"
-  )
-  for(attribute in c(
+  ))
+  condition <- .bt_meta_get(posterior[[levels[[1L]]]], "condition")
+  condition <- condition[intersect(names(condition), c(
     "conditional", "conditional_rule", "condition_key", "condition_event",
     "resolved_condition_event"
-  )){
-    attr(values, attribute) <- attr(
-      posterior[[levels[[1L]]]],
-      attribute,
-      exact = TRUE
-    )
-  }
+  ))]
+  values <- .bt_meta_set(values, "condition", if(length(condition) > 0L) condition)
 
   rewritten <- .hypothesis_level_contrast_rewrite(
     ast         = ast,

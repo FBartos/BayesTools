@@ -53,15 +53,15 @@
 }
 .bias_samples_condition_event <- function(samples){
 
-  condition_event <- attr(samples[["bias"]], "resolved_condition_event", exact = TRUE)
+  condition_event <- .bt_meta_condition(samples[["bias"]], "resolved_condition_event")
   if(is.null(condition_event)){
-    condition_event <- attr(samples[["bias"]], "condition_event", exact = TRUE)
+    condition_event <- .bt_meta_condition(samples[["bias"]], "condition_event")
   }
   if(is.null(condition_event)){
-    condition_event <- attr(samples, "resolved_condition_event", exact = TRUE)
+    condition_event <- .bt_meta_condition(samples, "resolved_condition_event")
   }
   if(is.null(condition_event)){
-    condition_event <- attr(samples, "condition_event", exact = TRUE)
+    condition_event <- .bt_meta_condition(samples, "condition_event")
   }
 
   condition_event
@@ -245,7 +245,7 @@
   ### create new samples
   new_samples <- samples[["bias"]][, grepl(parameter, colnames(samples[["bias"]])),drop=FALSE]
   if(parameter %in% c("PET", "PEESE") && ncol(new_samples) == 0L){
-    indicator <- attr(samples[["bias"]], "models_ind", exact = TRUE)
+    indicator <- .bt_meta_get(samples[["bias"]], "models_ind")
     atoms <- .posterior_atoms_get(samples[["bias"]])
     probabilities <- if(is.null(atoms)) NULL else atoms$component_probabilities
     active <- unique(c(which(probabilities > 0), indicator))
@@ -290,7 +290,7 @@
       probabilities <- atoms$component_probabilities
       scalar_atoms <- if(is.null(probabilities)){
         .posterior_atoms_from_indicator(
-          prior_list, attr(new_samples, "models_ind"),
+          prior_list, .bt_meta_get(new_samples, "models_ind"),
           n_columns = 1L, column_names = parameter
         )
       }else{

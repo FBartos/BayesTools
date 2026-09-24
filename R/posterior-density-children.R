@@ -10,8 +10,8 @@
     )
   })
   top_sources <- list(
-    attr(samples, "posterior_density", exact = TRUE),
-    attr(samples, "posterior_densities", exact = TRUE)
+    .bt_meta_get(samples, "posterior_density"),
+    .bt_meta_get(samples, "posterior_densities")
   )
   top_sources <- top_sources[!vapply(top_sources, is.null, logical(1))]
   if(length(top_sources) > 0L){
@@ -19,9 +19,9 @@
     for(i in seq_along(samples)){
       sample_name <- if(!is.null(sample_names)) sample_names[[i]] else NULL
       aliases <- .posterior_density_child_aliases(samples, samples[[i]], sample_name)
-      conditional      <- attr(samples[[i]], "conditional", exact = TRUE)
-      conditional_rule <- attr(samples[[i]], "conditional_rule", exact = TRUE)
-      condition_key    <- attr(samples[[i]], "condition_key", exact = TRUE)
+      conditional      <- .bt_meta_condition(samples[[i]], "conditional")
+      conditional_rule <- .bt_meta_condition(samples[[i]], "conditional_rule")
+      condition_key    <- .bt_meta_condition(samples[[i]], "condition_key")
       density <- .posterior_density_from_sources(
         sources          = top_sources,
         aliases          = aliases,
@@ -49,9 +49,9 @@
             samples[[i]],
             if(!is.null(sample_names)) sample_names[[i]] else NULL
           )
-          conditional      <- attr(samples[[i]], "conditional", exact = TRUE)
-          conditional_rule <- attr(samples[[i]], "conditional_rule", exact = TRUE)
-          condition_key    <- attr(samples[[i]], "condition_key", exact = TRUE)
+          conditional      <- .bt_meta_condition(samples[[i]], "conditional")
+          conditional_rule <- .bt_meta_condition(samples[[i]], "conditional_rule")
+          condition_key    <- .bt_meta_condition(samples[[i]], "condition_key")
           if(.posterior_density_candidate_matches(
             top_level[[i]],
             aliases          = aliases,
@@ -101,8 +101,8 @@
     )
   })
   top_sources <- list(
-    attr(samples, "posterior_ordinate", exact = TRUE),
-    attr(samples, "posterior_ordinates", exact = TRUE)
+    .bt_meta_get(samples, "posterior_ordinate"),
+    .bt_meta_get(samples, "posterior_ordinates")
   )
   top_sources <- top_sources[!vapply(top_sources, is.null, logical(1))]
   if(length(top_sources) > 0L){
@@ -110,9 +110,9 @@
     for(i in seq_along(samples)){
       sample_name <- if(!is.null(sample_names)) sample_names[[i]] else NULL
       aliases <- .posterior_density_child_aliases(samples, samples[[i]], sample_name)
-      conditional      <- attr(samples[[i]], "conditional", exact = TRUE)
-      conditional_rule <- attr(samples[[i]], "conditional_rule", exact = TRUE)
-      condition_key    <- attr(samples[[i]], "condition_key", exact = TRUE)
+      conditional      <- .bt_meta_condition(samples[[i]], "conditional")
+      conditional_rule <- .bt_meta_condition(samples[[i]], "conditional_rule")
+      condition_key    <- .bt_meta_condition(samples[[i]], "condition_key")
       ordinate <- .posterior_ordinate_from_sources(
         sources          = top_sources,
         aliases          = aliases,
@@ -138,9 +138,9 @@
             samples[[i]],
             if(!is.null(sample_names)) sample_names[[i]] else NULL
           )
-          conditional      <- attr(samples[[i]], "conditional", exact = TRUE)
-          conditional_rule <- attr(samples[[i]], "conditional_rule", exact = TRUE)
-          condition_key    <- attr(samples[[i]], "condition_key", exact = TRUE)
+          conditional      <- .bt_meta_condition(samples[[i]], "conditional")
+          conditional_rule <- .bt_meta_condition(samples[[i]], "conditional_rule")
+          condition_key    <- .bt_meta_condition(samples[[i]], "condition_key")
           if(.posterior_ordinate_candidate_matches(
             top_level[[i]],
             aliases          = aliases,
@@ -201,7 +201,7 @@
     )
     if(length(parent_densities) >= child_index &&
        !is.null(parent_densities[[child_index]])){
-      attr(child, "posterior_density") <- parent_densities[[child_index]]
+      child <- .bt_meta_set(child, "posterior_density", parent_densities[[child_index]])
     }
   }
 
@@ -221,7 +221,7 @@
     )
     if(length(parent_ordinates) >= child_index &&
        !is.null(parent_ordinates[[child_index]])){
-      attr(child, "posterior_ordinate") <- parent_ordinates[[child_index]]
+      child <- .bt_meta_set(child, "posterior_ordinate", parent_ordinates[[child_index]])
     }
   }
 

@@ -315,7 +315,7 @@
       if(is.null(label)){
         next
       }
-      parameter <- attr(prior, "parameter")
+      parameter <- attr(prior, "parameter", exact = TRUE)
       prefix <- .bt_random_effect_summary_formula_prefix(parameter, formula_prefix)
       names[i] <- paste0(prefix, label)
     }

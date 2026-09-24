@@ -2,7 +2,7 @@
 
 .bt_random_effect_metadata <- function(prior){
 
-  summary_type <- attr(prior, "random_summary")
+  summary_type <- attr(prior, "random_summary", exact = TRUE)
   if(is.null(summary_type)){
     summary_type <- ""
   }
@@ -10,7 +10,7 @@
   raw_sd <- isTRUE(attr(prior, "random_sd"))
   raw_allocation_sd <- isTRUE(attr(prior, "random_allocation_sd"))
   raw_correlation <- isTRUE(attr(prior, "random_correlation"))
-  allocation <- !is.null(attr(prior, "random_allocation"))
+  allocation <- !is.null(attr(prior, "random_allocation", exact = TRUE))
   raw <- identical(summary_type, "") &&
     (raw_sd || raw_allocation_sd || raw_correlation || allocation)
 

@@ -937,12 +937,12 @@ test_that("parameter_draws declares undefined correlation draws for ensemble tab
   )
   draws <- parameter_draws(fit, selection, model_samples = posterior_samples)
   expect_identical(
-    attr(draws, "undefined_draws"),
+    .bt_meta_get(draws, "undefined_draws"),
     c("(mu) cor(intercept,x)" = "correlation")
   )
   expect_identical(
-    attr(parameter_draws(fit, selection), "undefined_draws"),
-    attr(draws, "undefined_draws")
+    .bt_meta_get(parameter_draws(fit, selection), "undefined_draws"),
+    .bt_meta_get(draws, "undefined_draws")
   )
   sd_samples <- JAGS_estimates_table(fit, return_samples = TRUE)[
     , c("(mu) sd(intercept)", "(mu) sd(x)")
@@ -965,7 +965,7 @@ test_that("parameter_draws declares undefined correlation draws for ensemble tab
   # Keeping the declaration on the extracted vector summarizes the defined
   # draws and footnotes their share.
   declared <- as.numeric(draws[[1L]][, 1L])
-  attr(declared, "undefined_draws") <- attr(draws, "undefined_draws")[[1L]]
+  declared <- .bt_meta_set(declared, "undefined_draws", .bt_meta_get(draws, "undefined_draws")[[1L]])
   samples_list <- list(tau = sqrt(var_samples), tau2 = var_samples,
                        "cor(intercept,x)" = declared)
   estimates <- ensemble_estimates_table(

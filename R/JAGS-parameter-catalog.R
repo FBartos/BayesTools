@@ -504,10 +504,10 @@ parameter_draws.BayesTools_fit <- function(object, selection,
   # Original-scale random-effect correlations are undefined (NA) in draws with
   # a zero SD; declare it so that summaries accept those missing draws.
   if(identical(key$evaluator, "correlation")){
-    attr(out, "undefined_draws") <- stats::setNames(
+    out <- .bt_meta_set(out, "undefined_draws", stats::setNames(
       "correlation",
       quantities$canonical_name
-    )
+    ))
   }
   out
 }
@@ -3848,7 +3848,7 @@ parameter_transform_jacobian <- function(values, transform){
     return(empty)
   }
   formula_parameters <- unique(unlist(
-    lapply(prior_list, attr, which = "parameter"),
+    lapply(prior_list, attr, which = "parameter", exact = TRUE),
     use.names = FALSE
   ))
   formula_random <- unique(unlist(

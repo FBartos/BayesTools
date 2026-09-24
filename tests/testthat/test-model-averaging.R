@@ -113,8 +113,8 @@ test_that("mix_posteriors handles various prior types correctly", {
   expect_s3_class(mixed$s, "mixed_posteriors.simple")
   expect_equal(length(mixed$m), 1000)
   expect_equal(length(mixed$s), 1000)
-  expect_equal(attr(mixed$m, "models_ind"), attr(mixed$s, "models_ind"))
-  expect_equal(attr(mixed$m, "sample_ind"), attr(mixed$s, "sample_ind"))
+  expect_equal(.bt_meta_get(mixed$m, "models_ind"), .bt_meta_get(mixed$s, "models_ind"))
+  expect_equal(.bt_meta_get(mixed$m, "sample_ind"), .bt_meta_get(mixed$s, "sample_ind"))
 
   probabilities_simple <- .current_model_probabilities(models_simple)
   expect_equal(
@@ -123,7 +123,7 @@ test_that("mix_posteriors handles various prior types correctly", {
     tolerance = 1e-12
   )
   expect_equal(
-    sum(tabulate(attr(mixed$m, "models_ind"), nbins = length(models_simple))),
+    sum(tabulate(.bt_meta_get(mixed$m, "models_ind"), nbins = length(models_simple))),
     1000
   )
 
@@ -140,7 +140,7 @@ test_that("mix_posteriors handles various prior types correctly", {
   expect_true(inherits(mixed_conditional, "mixed_posteriors"))
   expect_named(mixed_conditional, "m")
   expect_equal(length(mixed_conditional$m), 1000)
-  expect_true(all(attr(mixed_conditional$m, "models_ind") == 1))
+  expect_true(all(.bt_meta_get(mixed_conditional$m, "models_ind") == 1))
   expect_equal(
     vapply(attr(mixed_conditional$m, "prior_list"), function(x) x$prior_weights, numeric(1)),
     c(1, 0),
@@ -200,8 +200,8 @@ test_that("mix_posteriors handles weightfunction priors", {
   expect_identical(dim(omega_samples), c(1000L, length(omega_names)))
   expect_identical(colnames(omega_samples), omega_names)
 
-  models_ind <- attr(omega_samples, "models_ind")
-  sample_ind <- attr(omega_samples, "sample_ind")
+  models_ind <- .bt_meta_get(omega_samples, "models_ind")
+  sample_ind <- .bt_meta_get(omega_samples, "sample_ind")
   expect_length(models_ind, nrow(omega_samples))
   expect_length(sample_ind, nrow(omega_samples))
   expect_true(all(models_ind %in% seq_along(models_wf)))
@@ -282,8 +282,8 @@ test_that("mix_posteriors handles factor priors", {
   expect_identical(dim(factor_samples), c(1000L, factor_levels))
   expect_identical(colnames(factor_samples), factor_names)
 
-  models_ind <- attr(factor_samples, "models_ind")
-  sample_ind <- attr(factor_samples, "sample_ind")
+  models_ind <- .bt_meta_get(factor_samples, "models_ind")
+  sample_ind <- .bt_meta_get(factor_samples, "sample_ind")
   effective_priors <- attr(factor_samples, "prior_list")
   expect_length(models_ind, nrow(factor_samples))
   expect_length(sample_ind, nrow(factor_samples))
@@ -361,8 +361,8 @@ test_that("mix_posteriors handles vector priors", {
   expect_identical(dim(vector_samples), c(1000L, vector_length))
   expect_identical(colnames(vector_samples), vector_names)
 
-  models_ind <- attr(vector_samples, "models_ind")
-  sample_ind <- attr(vector_samples, "sample_ind")
+  models_ind <- .bt_meta_get(vector_samples, "models_ind")
+  sample_ind <- .bt_meta_get(vector_samples, "sample_ind")
   expect_length(models_ind, nrow(vector_samples))
   expect_length(sample_ind, nrow(vector_samples))
   expect_true(all(models_ind %in% seq_along(models_vector)))
@@ -397,12 +397,12 @@ test_that("mix_posteriors respects seed across prior types", {
     diff_seed   <- draw_factory(12L)
 
     expect_equal(
-      attr(same_seed_a[[parameter]], "sample_ind"),
-      attr(same_seed_b[[parameter]], "sample_ind")
+      .bt_meta_get(same_seed_a[[parameter]], "sample_ind"),
+      .bt_meta_get(same_seed_b[[parameter]], "sample_ind")
     )
     expect_false(identical(
-      attr(same_seed_a[[parameter]], "sample_ind"),
-      attr(diff_seed[[parameter]], "sample_ind")
+      .bt_meta_get(same_seed_a[[parameter]], "sample_ind"),
+      .bt_meta_get(diff_seed[[parameter]], "sample_ind")
     ))
   }
 
@@ -691,7 +691,7 @@ test_that("as_mixed_posteriors works correctly with BayesTools_fit objects", {
 
   expect_equal(as.numeric(mixed$m), as.numeric(current_samples[, "m"]))
   expect_equal(as.numeric(mixed$s), as.numeric(current_samples[, "s"]))
-  expect_equal(attr(mixed$m, "models_ind"), rep(1, nrow(current_samples)))
-  expect_equal(attr(mixed$s, "models_ind"), rep(1, nrow(current_samples)))
+  expect_equal(.bt_meta_get(mixed$m, "models_ind"), rep(1, nrow(current_samples)))
+  expect_equal(.bt_meta_get(mixed$s, "models_ind"), rep(1, nrow(current_samples)))
   expect_identical(attr(mixed, "prior_list"), attr(fit_simple_normal, "prior_list"))
 })

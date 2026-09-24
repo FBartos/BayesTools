@@ -1319,13 +1319,13 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
   # Individual omega panels take masses and draws from the original bias
   # branches (none, two-sided, one-sided, PET -> none).
   omega_5a <- BayesTools:::.simplify_as_mixed_posterior_bias(mixed_posteriors_conditional5a, "omega")
-  models_ind_5a <- attr(omega_5a$omega, "models_ind")
+  models_ind_5a <- .bt_meta_get(omega_5a$omega, "models_ind")
   plot_data_5a <- BayesTools:::.plot_data_samples.weightparameter(omega_5a, "omega[0.025,0.05]", n_points = 256)
   expect_equal(plot_data_5a$points1$y, mean(models_ind_5a %in% c(1, 4)), tolerance = 1e-12)
   expect_equal(plot_data_5a$points1$y, mean(omega_5a$omega[, "omega[0.025,0.05]"] == 1), tolerance = 1e-12)
 
   omega_6c <- BayesTools:::.simplify_as_mixed_posterior_bias(mixed_posteriors_conditional6c, "omega")
-  models_ind_6c <- attr(omega_6c$omega, "models_ind")
+  models_ind_6c <- .bt_meta_get(omega_6c$omega, "models_ind")
   plot_data_6c <- BayesTools:::.plot_data_samples.weightparameter(omega_6c, "omega[0.975,1]", n_points = 256)
   expect_equal(plot_data_6c$points1$y, mean(models_ind_6c == 2), tolerance = 1e-12)
   expect_equal(sort(plot_data_6c$density$samples), sort(omega_6c$omega[models_ind_6c == 3, "omega[0.975,1]"]))

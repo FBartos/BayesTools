@@ -206,10 +206,10 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
       temp_prior <- paste0(names(prior_list)[i], " = " , print(prior_list[[i]], silent = TRUE, short_name = short_name))
     }
     # change the formula formatting
-    if(!is.null(attr(prior_list[[i]], "parameter"))){
+    if(!is.null(attr(prior_list[[i]], "parameter", exact = TRUE))){
       temp_prior <- gsub(
-        paste0(attr(prior_list[[i]], "parameter"), "_"),
-        if(formula_prefix) paste0("(", attr(prior_list[[i]], "parameter"), ") ") else "",
+        paste0(attr(prior_list[[i]], "parameter", exact = TRUE), "_"),
+        if(formula_prefix) paste0("(", attr(prior_list[[i]], "parameter", exact = TRUE), ") ") else "",
         temp_prior)
       temp_prior <- gsub("__xXx__", ":", temp_prior)
     }
@@ -585,7 +585,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
               # the component prior carries the formula attachment of the mixture
               component_par   <- paste0(par, "[", component, "]")
               component_prior <- prior_list[[par]][[which(components == component)[1]]]
-              attr(component_prior, "parameter") <- attr(prior_list[[par]], "parameter")
+              attr(component_prior, "parameter") <- attr(prior_list[[par]], "parameter", exact = TRUE)
 
               # create component specific samples
               temp_par_names <- if(is_factor_mixture){
@@ -688,11 +688,11 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   parameter_names <- colnames(model_samples)
 
   # rename formula parameters
-  if(any(!sapply(lapply(prior_list, attr, which = "parameter"), is.null))){
+  if(any(!sapply(lapply(prior_list, attr, which = "parameter", exact = TRUE), is.null))){
     raw_parameter_names <- colnames(model_samples)
     colnames(model_samples) <- format_parameter_names(
       parameters         = colnames(model_samples),
-      formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter"))),
+      formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter", exact = TRUE))),
       formula_random     = unique(unlist(lapply(prior_list, attr, which = "random_factor"))),
       formula_prefix     = formula_prefix,
       formula_scale      = if(transform_scaled) formula_scale else NULL)
@@ -1202,10 +1202,10 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   }
 
   # rename formula parameters
-  if(any(!sapply(lapply(prior_list, attr, which = "parameter"), is.null))){
+  if(any(!sapply(lapply(prior_list, attr, which = "parameter", exact = TRUE), is.null))){
     rownames(runjags_summary) <- format_parameter_names(
       parameters         = rownames(runjags_summary),
-      formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter"))),
+      formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter", exact = TRUE))),
       formula_random     = unique(unlist(lapply(prior_list, attr, which = "random_factor"))),
       formula_prefix     = formula_prefix,
       formula_scale      = NULL)

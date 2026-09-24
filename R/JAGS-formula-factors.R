@@ -555,11 +555,13 @@
   old_class <- class(coefficient_samples)
   old_attributes <- old_attributes[
     !names(old_attributes) %in% c(
-      "dim", "dimnames", "names", "class", "level_names",
-      "posterior_support", "posterior_atoms"
+      "dim", "dimnames", "names", "class", "level_names"
     )
   ]
   attributes(transformed_samples) <- c(attributes(transformed_samples), old_attributes)
+  # the coefficient supports and atoms do not describe the transformed levels
+  transformed_samples <- .bt_meta_set(transformed_samples, "support", NULL)
+  transformed_samples <- .bt_meta_set(transformed_samples, "atoms", NULL)
   attr(transformed_samples, "level_names")       <- design_info[["cell_names"]]
   attr(transformed_samples, "factor_cell_names") <- design_info[["cell_names"]]
   if(!is.null(posterior_atoms)){
@@ -698,7 +700,7 @@ transform_ordered_samples <- function(samples){
   for(i in seq_along(samples)){
     if(!inherits(samples[[i]],"mixed_posteriors.ordered_transformed") &&
        inherits(samples[[i]], "mixed_posteriors.factor") &&
-       isTRUE(attr(samples[[i]], "ordered"))){
+       isTRUE(attr(samples[[i]], "ordered", exact = TRUE))){
 
       ordered_samples <- .add_factor_metadata_from_named_objects(samples[[i]], names(samples)[i], samples)
       samples[[i]] <- .transform_factor_contrast_samples(

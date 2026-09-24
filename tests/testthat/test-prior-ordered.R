@@ -761,8 +761,8 @@ test_that("public posterior mixing preserves ordered coefficient rows and metada
 
   source_samples <- list(posterior_1, posterior_2)
   for(row_i in seq_len(nrow(mixed$mu_f))){
-    model_i <- attr(mixed$mu_f, "models_ind")[[row_i]]
-    sample_i <- attr(mixed$mu_f, "sample_ind")[[row_i]]
+    model_i <- .bt_meta_get(mixed$mu_f, "models_ind")[[row_i]]
+    sample_i <- .bt_meta_get(mixed$mu_f, "sample_ind")[[row_i]]
     expect_equal(
       unname(mixed$mu_f[row_i, ]),
       unname(source_samples[[model_i]][sample_i, ])
@@ -1518,7 +1518,7 @@ test_that("ordered mixed measures propagate through marginal inference", {
   ))
   expect_equal(coefficient_atoms$mass, .5)
   expect_equal(
-    attr(samples$mu_f, "ordered_total_indicator"),
+    .bt_meta_get(samples$mu_f, "ordered_total_indicator"),
     c(0L, 1L, 1L, 0L)
   )
 
@@ -1533,7 +1533,7 @@ test_that("ordered mixed measures propagate through marginal inference", {
     )
     expected_mass <- c(low = 1, mid = .5, high = .5)
     for(level in names(expected_mass)){
-      prior_density <- attr(marginal[[level]], "prior_density")
+      prior_density <- .bt_meta_get(marginal[[level]], "prior_density")
       expect_equal(
         BayesTools:::.prior_linear_density_point_mass(prior_density, 0),
         expected_mass[[level]],
@@ -1667,9 +1667,11 @@ test_that("ordered levels are exact products of the total and its allocation sha
   flat_t <- .prior_linear_combination_density(
     list(t = bound(prior("t", list(0, 1, 3)), c(1, 1), "t")), c("t[1]" = 1)
   )
-  draws <- structure(stats::qnorm(seq(.001, .999, length.out = 500), .2, .3),
-                     class = c("marginal_posterior.simple", "marginal_posterior", "numeric"),
-                     prior_density = flat_t, posterior_atoms = posterior_atom_attribute())
+  draws <- .bt_meta_update(
+    structure(stats::qnorm(seq(.001, .999, length.out = 500), .2, .3), class = c("marginal_posterior.simple", "marginal_posterior", "numeric")),
+    prior_density = flat_t,
+    atoms = posterior_atom_attribute()
+  )
   expect_error(hypothesis_BF(draws, hypothesis = "theta = 0", parameter = "theta"),
                class = "BayesTools_infinite_ordinate")
 

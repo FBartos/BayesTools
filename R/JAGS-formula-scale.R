@@ -303,7 +303,7 @@
 .formula_scale_random_scaled_vars <- function(formula_scale, scaled_vars = NULL){
 
   if(is.null(scaled_vars)){
-    prefix <- attr(formula_scale, "parameter")
+    prefix <- attr(formula_scale, "parameter", exact = TRUE)
     if(!is.null(prefix) && length(prefix) == 1L && !is.na(prefix) && nzchar(prefix)){
       scaled_vars <- .formula_scale_strip_prefix(names(formula_scale), prefix)
     }else{

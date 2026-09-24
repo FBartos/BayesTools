@@ -231,16 +231,16 @@
 
   return(.posterior_density_condition_matches(
     posterior_density,
-    conditional      = attr(samples, "conditional", exact = TRUE),
-    conditional_rule = attr(samples, "conditional_rule", exact = TRUE),
-    condition_key    = attr(samples, "condition_key", exact = TRUE)
+    conditional      = .bt_meta_condition(samples, "conditional"),
+    conditional_rule = .bt_meta_condition(samples, "conditional_rule"),
+    condition_key    = .bt_meta_condition(samples, "condition_key")
   ))
 }
 
 .posterior_density_direct_attribute <- function(samples, aliases = NULL,
                                                 null_hypothesis = NULL){
 
-  posterior_density <- attr(samples, "posterior_density", exact = TRUE)
+  posterior_density <- .bt_meta_get(samples, "posterior_density")
   if(.posterior_density_direct_candidate_matches(
     posterior_density,
     samples         = samples,
@@ -256,7 +256,7 @@
 .posterior_density_direct_status <- function(samples, aliases = NULL,
                                              allow_unlabeled = TRUE){
 
-  posterior_density <- attr(samples, "posterior_density", exact = TRUE)
+  posterior_density <- .bt_meta_get(samples, "posterior_density")
   if(identical(.posterior_density_kind(posterior_density), "null")){
     return(list(present = FALSE, relevant = FALSE, valid = FALSE, value = NULL))
   }
@@ -274,9 +274,9 @@
   if(isTRUE(relevant)){
     relevant <- .posterior_density_condition_matches(
       posterior_density,
-      conditional      = attr(samples, "conditional", exact = TRUE),
-      conditional_rule = attr(samples, "conditional_rule", exact = TRUE),
-      condition_key    = attr(samples, "condition_key", exact = TRUE)
+      conditional      = .bt_meta_condition(samples, "conditional"),
+      conditional_rule = .bt_meta_condition(samples, "conditional_rule"),
+      condition_key    = .bt_meta_condition(samples, "condition_key")
     )
   }
 
@@ -377,16 +377,16 @@
 
   return(.posterior_density_condition_matches(
     posterior_ordinate,
-    conditional      = attr(samples, "conditional", exact = TRUE),
-    conditional_rule = attr(samples, "conditional_rule", exact = TRUE),
-    condition_key    = attr(samples, "condition_key", exact = TRUE)
+    conditional      = .bt_meta_condition(samples, "conditional"),
+    conditional_rule = .bt_meta_condition(samples, "conditional_rule"),
+    condition_key    = .bt_meta_condition(samples, "condition_key")
   ))
 }
 
 .posterior_ordinate_direct_attribute <- function(samples, aliases = NULL,
                                                  null_hypothesis = NULL){
 
-  posterior_ordinate <- attr(samples, "posterior_ordinate", exact = TRUE)
+  posterior_ordinate <- .bt_meta_get(samples, "posterior_ordinate")
   if(.posterior_ordinate_direct_candidate_matches(
     posterior_ordinate,
     samples         = samples,
@@ -403,7 +403,7 @@
                                               null_hypothesis = NULL,
                                               allow_unlabeled = TRUE){
 
-  posterior_ordinate <- attr(samples, "posterior_ordinate", exact = TRUE)
+  posterior_ordinate <- .bt_meta_get(samples, "posterior_ordinate")
   if(identical(.posterior_ordinate_kind(posterior_ordinate), "null")){
     return(list(present = FALSE, relevant = FALSE, valid = FALSE, value = NULL))
   }
@@ -421,9 +421,9 @@
   if(isTRUE(relevant)){
     relevant <- .posterior_density_condition_matches(
       posterior_ordinate,
-      conditional      = attr(samples, "conditional", exact = TRUE),
-      conditional_rule = attr(samples, "conditional_rule", exact = TRUE),
-      condition_key    = attr(samples, "condition_key", exact = TRUE)
+      conditional      = .bt_meta_condition(samples, "conditional"),
+      conditional_rule = .bt_meta_condition(samples, "conditional_rule"),
+      condition_key    = .bt_meta_condition(samples, "condition_key")
     )
   }
 

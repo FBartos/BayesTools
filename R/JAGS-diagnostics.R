@@ -90,8 +90,8 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   }else{
     prior_list[[parameter]]
   }
-  if(!is.null(attr(display_prior, "parameter"))){
-    parameter_name <- format_parameter_names(attr(plot_data, "parameter_name"), attr(display_prior, "parameter"), formula_prefix = formula_prefix)
+  if(!is.null(attr(display_prior, "parameter", exact = TRUE))){
+    parameter_name <- format_parameter_names(attr(plot_data, "parameter_name"), attr(display_prior, "parameter", exact = TRUE), formula_prefix = formula_prefix)
   }else{
     parameter_name <- attr(plot_data, "parameter_name")
   }
@@ -139,7 +139,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     temp_dots[["ylab"]] <- if(length(temp_dots[["ylab"]]) > 1) temp_dots[["ylab"]][i] else temp_dots[["ylab"]]
 
     if(is.null(temp_dots[["xlim"]])) temp_dots$xlim <-  attr(plot_data[[i]], "x_range")
-    if(is.null(temp_dots[["ylim"]])) temp_dots$ylim <-  attr(plot_data[[i]], "y_range")
+    if(is.null(temp_dots[["ylim"]])) temp_dots$ylim <-  attr(plot_data[[i]], "y_range", exact = TRUE)
 
 
     if(plot_type == "ggplot"){
@@ -325,8 +325,8 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 }
 .diagnostics_plot_data_density         <- function(plot_data, n_points, xlim){
 
-  chain <- attr(plot_data, "chain")
-  prior <- attr(plot_data, "prior")
+  chain <- attr(plot_data, "chain", exact = TRUE)
+  prior <- attr(plot_data, "prior", exact = TRUE)
   .bt_diagnostics_validate_plot_data(
     plot_data,
     chain,
@@ -339,7 +339,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
     bounds <- .diagnostics_density_bounds(
       prior          = prior,
-      parameter      = attr(plot_data, "parameter"),
+      parameter      = attr(plot_data, "parameter", exact = TRUE),
       parameter_name = colnames(plot_data)[i]
     )
     bounds <- c(bounds[["lower"]], bounds[["upper"]])
@@ -380,7 +380,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
       attr(temp_density, "x_range")        <- range(x_den)
       attr(temp_density, "y_range")        <- c(0, max(y_den))
       attr(temp_density, "chain")          <- j
-      attr(temp_density, "parameter")      <- attr(plot_data, "parameter")
+      attr(temp_density, "parameter")      <- attr(plot_data, "parameter", exact = TRUE)
       attr(temp_density, "parameter_name") <- colnames(plot_data)[i]
       if(boundary_reflection){
         attr(temp_density, "boundary_reflection") <- TRUE
@@ -390,14 +390,14 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     }
 
     attr(out[[colnames(plot_data)[[i]]]], "x_range")        <- x_range
-    attr(out[[colnames(plot_data)[[i]]]], "y_range")        <- c(0, max(sapply(out[[i]], function(x) attr(x, "y_range"))))
+    attr(out[[colnames(plot_data)[[i]]]], "y_range")        <- c(0, max(sapply(out[[i]], function(x) attr(x, "y_range", exact = TRUE))))
     attr(out[[colnames(plot_data)[[i]]]], "chains")         <- length(unique(chain))
-    attr(out[[colnames(plot_data)[[i]]]], "parameter")      <- attr(plot_data, "parameter")
+    attr(out[[colnames(plot_data)[[i]]]], "parameter")      <- attr(plot_data, "parameter", exact = TRUE)
     attr(out[[colnames(plot_data)[[i]]]], "parameter_name") <- colnames(plot_data)[i]
   }
 
   attr(out, "chains")         <- length(unique(chain))
-  attr(out, "parameter")      <- attr(plot_data, "parameter")
+  attr(out, "parameter")      <- attr(plot_data, "parameter", exact = TRUE)
   attr(out, "parameter_name") <- colnames(plot_data)
 
   return(out)
@@ -500,8 +500,8 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 }
 .diagnostics_plot_data_trace           <- function(plot_data, n_points, ylim){
 
-  chain <- attr(plot_data, "chain")
-  iter  <- attr(plot_data, "iter")
+  chain <- attr(plot_data, "chain", exact = TRUE)
+  iter  <- attr(plot_data, "iter", exact = TRUE)
 
   out   <- list()
 
@@ -528,7 +528,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
       attr(temp_chain, "x_range")        <- x_range
       attr(temp_chain, "y_range")        <- y_range
       attr(temp_chain, "chain")          <- j
-      attr(temp_chain, "parameter")      <- attr(plot_data, "parameter")
+      attr(temp_chain, "parameter")      <- attr(plot_data, "parameter", exact = TRUE)
       attr(temp_chain, "parameter_name") <- colnames(plot_data)[i]
 
       out[[colnames(plot_data)[[i]]]][[j]] <- temp_chain
@@ -537,19 +537,19 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     attr(out[[colnames(plot_data)[[i]]]], "x_range")        <- x_range
     attr(out[[colnames(plot_data)[[i]]]], "y_range")        <- y_range
     attr(out[[colnames(plot_data)[[i]]]], "chains")         <- length(unique(chain))
-    attr(out[[colnames(plot_data)[[i]]]], "parameter")      <- attr(plot_data, "parameter")
+    attr(out[[colnames(plot_data)[[i]]]], "parameter")      <- attr(plot_data, "parameter", exact = TRUE)
     attr(out[[colnames(plot_data)[[i]]]], "parameter_name") <- colnames(plot_data)[i]
   }
 
   attr(out, "chains")         <- length(unique(chain))
-  attr(out, "parameter")      <- attr(plot_data, "parameter")
+  attr(out, "parameter")      <- attr(plot_data, "parameter", exact = TRUE)
   attr(out, "parameter_name") <- colnames(plot_data)
 
   return(out)
 }
 .diagnostics_plot_data_autocorrelation <- function(plot_data, n_points, lags){
 
-  chain <- attr(plot_data, "chain")
+  chain <- attr(plot_data, "chain", exact = TRUE)
   .bt_diagnostics_validate_plot_data(
     plot_data,
     chain,
@@ -575,21 +575,21 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
       attr(temp_autocor, "x_range")        <- range(temp_x)
       attr(temp_autocor, "y_range")        <- range(c(0, temp_y))
       attr(temp_autocor, "chain")          <- j
-      attr(temp_autocor, "parameter")      <- attr(plot_data, "parameter")
+      attr(temp_autocor, "parameter")      <- attr(plot_data, "parameter", exact = TRUE)
       attr(temp_autocor, "parameter_name") <- colnames(plot_data)[i]
 
       out[[colnames(plot_data)[[i]]]][[j]] <- temp_autocor
     }
 
     attr(out[[colnames(plot_data)[[i]]]], "x_range")        <- range(unlist(lapply(out[[i]], function(x) attr(x, "x_range"))))
-    attr(out[[colnames(plot_data)[[i]]]], "y_range")        <- range(unlist(lapply(out[[i]], function(x) attr(x, "y_range"))))
+    attr(out[[colnames(plot_data)[[i]]]], "y_range")        <- range(unlist(lapply(out[[i]], function(x) attr(x, "y_range", exact = TRUE))))
     attr(out[[colnames(plot_data)[[i]]]], "chains")         <- length(unique(chain))
-    attr(out[[colnames(plot_data)[[i]]]], "parameter")      <- attr(plot_data, "parameter")
+    attr(out[[colnames(plot_data)[[i]]]], "parameter")      <- attr(plot_data, "parameter", exact = TRUE)
     attr(out[[colnames(plot_data)[[i]]]], "parameter_name") <- colnames(plot_data)[i]
   }
 
   attr(out, "chains")         <- length(unique(chain))
-  attr(out, "parameter")      <- attr(plot_data, "parameter")
+  attr(out, "parameter")      <- attr(plot_data, "parameter", exact = TRUE)
   attr(out, "parameter_name") <- colnames(plot_data)
 
   return(out)

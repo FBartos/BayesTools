@@ -114,13 +114,13 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   data_p <- .weightfunction_plot_data_pvalues(data, show_data)
 
   # auto-detect transform_scaled from samples attribute
-  transform_scaled <- isTRUE(attr(samples, "transform_scaled"))
+  transform_scaled <- isTRUE(.bt_meta_get(samples, "transform_scaled"))
 
   # handle transform_scaled: check for pre-computed prior densities
   prior_densities_transformed <- NULL
-  prior_density_context <- attr(samples, "prior_density_context")
+  prior_density_context <- .bt_meta_get(samples, "prior_context")
   if(transform_scaled && prior){
-    prior_densities_transformed <- attr(samples, "prior_densities")
+    prior_densities_transformed <- .bt_meta_get(samples, "prior_densities")
     if(is.null(prior_densities_transformed)){
       stop("Samples were prepared with 'transform_scaled = TRUE' but no prior densities found. ",
            "This should not happen - please report this as a bug.")
@@ -182,15 +182,15 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
           attr(plot_data_prior[[1]], "x_range") <- xlim
 
           if(any(sapply(plot_data_prior, inherits, what = "density.prior.simple")) & any(sapply(plot_data_prior, inherits, what = "density.prior.point"))){
-            ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.simple")], attr, which = "y_range")))
-            ylim2 <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.point")],  attr, which = "y_range")))
+            ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.simple")], attr, which = "y_range", exact = TRUE)))
+            ylim2 <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.point")],  attr, which = "y_range", exact = TRUE)))
             attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.simple"))]], "y_range") <- ylim
             attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.point"))]],  "y_range") <- ylim2
           }else if(any(sapply(plot_data_prior, inherits, what = "density.prior.simple"))){
-            ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.simple")], attr, which = "y_range")))
+            ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.simple")], attr, which = "y_range", exact = TRUE)))
             attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.simple"))]], "y_range") <- ylim
           }else if(any(sapply(plot_data_prior, inherits, what = "density.prior.point"))){
-            ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.point")],  attr, which = "y_range")))
+            ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.point")],  attr, which = "y_range", exact = TRUE)))
             attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.point"))]], "y_range") <- ylim
           }
 
@@ -276,7 +276,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         plot_data_joined <- list(plot_data_prior, plot_data)
 
         xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "x_range")))
-        ylim <- range(as.vector(sapply(plot_data_joined, attr, which = "y_range")))
+        ylim <- range(as.vector(sapply(plot_data_joined, attr, which = "y_range", exact = TRUE)))
         attr(plot_data_prior, "x_range") <- xlim
         attr(plot_data_prior, "y_range") <- ylim
         dots_prior <- .transfer_dots(dots_prior, ...)
@@ -402,7 +402,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       plot_data_joined <- list(plot_data_prior, plot_data)
 
       xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "x_range")))
-      ylim <- range(as.vector(sapply(plot_data_joined, attr, which = "y_range")))
+      ylim <- range(as.vector(sapply(plot_data_joined, attr, which = "y_range", exact = TRUE)))
       # make sure y-range does not collapse
       if(all(ylim < .01)){
         ylim <- c(0, 1)
@@ -515,15 +515,15 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       attr(plot_data_prior[[1]], "x_range") <- xlim
 
       if(any(sapply(plot_data_prior, inherits, what = "density.prior.simple")) & any(sapply(plot_data_prior, inherits, what = "density.prior.point"))){
-        ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.simple")], attr, which = "y_range")))
-        ylim2 <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.point")],  attr, which = "y_range")))
+        ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.simple")], attr, which = "y_range", exact = TRUE)))
+        ylim2 <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.point")],  attr, which = "y_range", exact = TRUE)))
         attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.simple"))]], "y_range") <- ylim
         attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.point"))]],  "y_range") <- ylim2
       }else if(any(sapply(plot_data_prior, inherits, what = "density.prior.simple"))){
-        ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.simple")], attr, which = "y_range")))
+        ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.simple")], attr, which = "y_range", exact = TRUE)))
         attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.simple"))]], "y_range") <- ylim
       }else if(any(sapply(plot_data_prior, inherits, what = "density.prior.point"))){
-        ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.point")],  attr, which = "y_range")))
+        ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.point")],  attr, which = "y_range", exact = TRUE)))
         attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.point"))]], "y_range") <- ylim
       }
 

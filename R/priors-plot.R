@@ -309,7 +309,7 @@ plot.prior <- function(x, plot_type = "base",
 
   dots <- list(...)
   xlim <- attr(plot_data, "x_range")
-  ylim <- attr(plot_data, "y_range")
+  ylim <- attr(plot_data, "y_range", exact = TRUE)
 
   short_name <- if(is.null(dots[["short_name"]])) FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
@@ -392,7 +392,7 @@ plot.prior <- function(x, plot_type = "base",
   dots      <- list(...)
 
   xlim      <- attr(plot_data, "x_range")
-  ylim      <- attr(plot_data, "y_range")
+  ylim      <- attr(plot_data, "y_range", exact = TRUE)
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
@@ -436,7 +436,7 @@ plot.prior <- function(x, plot_type = "base",
   dots      <- list(...)
 
   xlim      <- attr(plot_data, "x_range")
-  ylim      <- attr(plot_data, "y_range")
+  ylim      <- attr(plot_data, "y_range", exact = TRUE)
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
@@ -488,7 +488,7 @@ plot.prior <- function(x, plot_type = "base",
   ylab      <- if(!is.null(dots[["ylab"]])) dots[["ylab"]] else "Probability"
 
   xlim      <- attr(plot_data, "x_range")
-  ylim      <- if(!is.null(dots[["ylim"]])) dots[["ylim"]] else attr(plot_data, "y_range")
+  ylim      <- if(!is.null(dots[["ylim"]])) dots[["ylim"]] else attr(plot_data, "y_range", exact = TRUE)
 
   # weightfunction specific stuff (required for axes)
   x_cuts <- plot_data$x
@@ -539,7 +539,7 @@ plot.prior <- function(x, plot_type = "base",
   ylab      <- if(!is.null(dots[["ylab"]])) dots[["ylab"]] else "Effect size"
 
   xlim      <- attr(plot_data, "x_range")
-  ylim      <- if(!is.null(dots[["ylim"]])) dots[["ylim"]] else attr(plot_data, "y_range")
+  ylim      <- if(!is.null(dots[["ylim"]])) dots[["ylim"]] else attr(plot_data, "y_range", exact = TRUE)
 
   # add it to the user input if desired
   if(is.null(dots[["main"]])) dots$main <-  main
@@ -577,7 +577,7 @@ plot.prior <- function(x, plot_type = "base",
   dots      <- list(...)
 
   xlim      <- attr(plot_data, "x_range")
-  ylim      <- attr(plot_data, "y_range")
+  ylim      <- attr(plot_data, "y_range", exact = TRUE)
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
@@ -621,7 +621,7 @@ plot.prior <- function(x, plot_type = "base",
   dots      <- list(...)
 
   xlim      <- attr(plot_data, "x_range")
-  ylim      <- attr(plot_data, "y_range")
+  ylim      <- attr(plot_data, "y_range", exact = TRUE)
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
@@ -918,12 +918,12 @@ plot.prior <- function(x, plot_type = "base",
     ylim <- if(!is.null(dots[["ylim"]])){
       dots[["ylim"]]
     }else{
-      range(as.vector(sapply(plot_data[is_simple], attr, which = "y_range")))
+      range(as.vector(sapply(plot_data[is_simple], attr, which = "y_range", exact = TRUE)))
     }
     ylim2 <- if(!is.null(dots[["ylim2"]])){
       dots[["ylim2"]]
     }else{
-      range(as.vector(sapply(plot_data[is_point], attr, which = "y_range")))
+      range(as.vector(sapply(plot_data[is_point], attr, which = "y_range", exact = TRUE)))
     }
     return(.plot_scale_y2_from_limits(ylim, ylim2, dots[["scale_y2"]]))
   }

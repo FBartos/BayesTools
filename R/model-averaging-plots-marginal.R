@@ -58,7 +58,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   # add priors, if requested
   if(prior){
 
-    plot_data_prior <- unlist(lapply(plot_data, attr, which = "prior"), recursive = FALSE)
+    plot_data_prior <- unlist(lapply(plot_data, attr, which = "prior", exact = TRUE), recursive = FALSE)
 
     # Resolve one plotting range for the jointly displayed prior and posterior.
     plot_data_joined <- c(plot_data, plot_data_prior)
@@ -72,14 +72,14 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     is_point  <- sapply(plot_data_joined, inherits, what = "density.prior.point")
     if(any(is_simple) && any(is_point)){
       if(is.null(dots_prior[["ylim"]])){
-        dots_prior$ylim <- range(as.vector(sapply(plot_data_joined[is_simple], attr, which = "y_range")))
+        dots_prior$ylim <- range(as.vector(sapply(plot_data_joined[is_simple], attr, which = "y_range", exact = TRUE)))
       }
       if(is.null(dots_prior[["ylim2"]])){
-        dots_prior$ylim2 <- range(as.vector(sapply(plot_data_joined[is_point], attr, which = "y_range")))
+        dots_prior$ylim2 <- range(as.vector(sapply(plot_data_joined[is_point], attr, which = "y_range", exact = TRUE)))
       }
     }else{
       if(is.null(dots_prior[["ylim"]])){
-        dots_prior$ylim <- range(as.vector(sapply(plot_data_joined, attr, which = "y_range")))
+        dots_prior$ylim <- range(as.vector(sapply(plot_data_joined, attr, which = "y_range", exact = TRUE)))
       }
     }
     if(!is.null(dots[["scale_y2"]])){

@@ -127,15 +127,15 @@ random_effects_summary_posterior <- function(
       quantity = quantity,
       defined  = defined
     )
-    attr(values, "sample_ind") <- FALSE
-    attr(values, "models_ind") <- rep(1, length(values))
+    values <- .bt_meta_set(values, "sample_ind", FALSE)
+    values <- .bt_meta_set(values, "models_ind", rep(1, length(values)))
     attr(values, "parameter") <- display_names[i]
     attr(values, "summary_name") <- key$summary_name
     attr(values, "random_summary") <- summary$summary
     attr(values, "random_summary_label") <- display_names[i]
     attr(values, "random_allocation") <- key$allocation_label
     attr(values, "random_component") <- quantity$component
-    attr(values, "formula_parameter") <- quantity$formula_parameter
+    values <- .bt_meta_set(values, "formula_parameter", quantity$formula_parameter)
     attr(values, "prior_list") <- prior_none()
 
     prior_density <- .bt_random_effect_summary_posterior_prior_density(
@@ -144,7 +144,7 @@ random_effects_summary_posterior <- function(
       n_grid   = n_prior_points
     )
     if(!is.null(prior_density)){
-      attr(values, "prior_density") <- prior_density
+      values <- .bt_meta_set(values, "prior_density", prior_density)
       values <- .posterior_support_set(
         values,
         .posterior_support_new(

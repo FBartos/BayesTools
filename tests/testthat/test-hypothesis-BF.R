@@ -7,8 +7,8 @@ skip_if_not_test_profile("unit")
 .hypothesis_marginal_posterior_for_test <- function(samples, prior_density){
 
   class(samples) <- c("marginal_posterior.simple", "marginal_posterior", class(samples))
-  attr(samples, "prior_density") <- prior_density
-  attr(samples, "posterior_atoms") <- posterior_atom_attribute()
+  samples <- .bt_meta_set(samples, "prior_density", prior_density)
+  samples <- .bt_meta_set(samples, "atoms", posterior_atom_attribute())
 
   samples
 }
@@ -107,10 +107,10 @@ test_that("transformed factor levels preserve joint affine prior provenance", {
     transformation = "lin", transformation_arguments = list(a = 3, b = 2)
   )
   target <- hypothesis_level_contrast(affine, "mu_fac[B] - mu_fac[A] = 0", "mu_fac")
-  ordinate <- prior_density_ordinate(attr(target$posterior, "prior_density"), 0)
+  ordinate <- prior_density_ordinate(.bt_meta_get(target$posterior, "prior_density"), 0)
   expect_equal(ordinate$log_density, stats::dnorm(0, sd = 2, log = TRUE), tolerance = 1e-12)
-  expect_identical(attr(affine$B, "linear_offset"), 3)
-  expect_equal(attr(affine$B, "linear_weights")[["mu_fac"]], 2)
+  expect_identical(.bt_meta_get(affine$B, "linear_offset"), 3)
+  expect_equal(.bt_meta_get(affine$B, "linear_weights")[["mu_fac"]], 2)
 
   raw_region <- hypothesis_BF(raw, hypothesis = "mu_fac[B] > 0", seed = 82, columns = "all")
   affine_region <- hypothesis_BF(affine, hypothesis = "mu_fac[B] > 3", seed = 82, columns = "all")
@@ -421,7 +421,7 @@ test_that("hypothesis_BF uses boundary-reflected KDE for marginal point nulls", 
     seq(.001, .999, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_support") <- posterior_support_attribute(c(0, 1))
+  posterior <- .bt_meta_set(posterior, "support", posterior_support_attribute(c(0, 1)))
 
   expected <- Savage_Dickey_BF(
     posterior,
@@ -1324,21 +1324,19 @@ test_that("hypothesis_BF evaluates explicit marginal posterior level comparisons
     n_grid       = 128
   )
   posterior <- list(
-    alternate = structure(
-      c(rep(1, 80), rep(-1, 20)),
-      class          = c("marginal_posterior.simple", "numeric"),
+    alternate = .bt_meta_update(
+      structure(c(rep(1, 80), rep(-1, 20)), class = c("marginal_posterior.simple", "numeric")),
       linear_weights = matrix(c(1, 0), nrow = 1,
                               dimnames = list(NULL, c("alt", "rand")))
     ),
-    random = structure(
-      rep(0, 100),
-      class          = c("marginal_posterior.simple", "numeric"),
+    random = .bt_meta_update(
+      structure(rep(0, 100), class = c("marginal_posterior.simple", "numeric")),
       linear_weights = c(alt = 0, rand = 1)
     )
   )
   class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
   attr(posterior, "parameter")             <- "mu_alloc"
-  attr(posterior, "prior_density_context") <- context
+  posterior <- .bt_meta_set(posterior, "prior_context", context)
 
   out <- hypothesis_BF(
     posterior  = posterior,
@@ -1369,24 +1367,22 @@ test_that("hypothesis_BF references level names that contain brackets", {
   make_posterior <- function(level_names){
     set.seed(2)
     posterior <- list(
-      structure(
-        stats::rnorm(4000, 0.5, 0.2),
-        class           = c("marginal_posterior.simple", "numeric"),
-        linear_weights  = c(a = 1, b = 0),
-        posterior_atoms = posterior_atom_attribute()
+      .bt_meta_update(
+        structure(stats::rnorm(4000, 0.5, 0.2), class = c("marginal_posterior.simple", "numeric")),
+        linear_weights = c(a = 1, b = 0),
+        atoms = posterior_atom_attribute()
       ),
-      structure(
-        stats::rnorm(4000, 0, 0.2),
-        class           = c("marginal_posterior.simple", "numeric"),
-        linear_weights  = c(a = 0, b = 1),
-        posterior_atoms = posterior_atom_attribute()
+      .bt_meta_update(
+        structure(stats::rnorm(4000, 0, 0.2), class = c("marginal_posterior.simple", "numeric")),
+        linear_weights = c(a = 0, b = 1),
+        atoms = posterior_atom_attribute()
       )
     )
     names(posterior) <- level_names
     class(posterior) <- c("list", "marginal_posterior.factor",
                           "marginal_posterior")
     attr(posterior, "parameter")             <- "mu"
-    attr(posterior, "prior_density_context") <- context
+    posterior <- .bt_meta_set(posterior, "prior_context", context)
     posterior
   }
 
@@ -1443,22 +1439,20 @@ test_that("hypothesis_BF rejects conditional level comparisons with different co
     n_grid       = 128
   )
   posterior <- list(
-    alternate = structure(
-      c(rep(1, 80), rep(-1, 20)),
-      class                 = c("marginal_posterior.simple", "numeric"),
-      linear_weights        = c(alt = 1, rand = 0),
-      effective_conditional = "mu_intercept"
+    alternate = .bt_meta_update(
+      structure(c(rep(1, 80), rep(-1, 20)), class = c("marginal_posterior.simple", "numeric")),
+      linear_weights = c(alt = 1, rand = 0),
+      condition = list(effective_conditional = "mu_intercept")
     ),
-    random = structure(
-      rep(0, 100),
-      class                 = c("marginal_posterior.simple", "numeric"),
-      linear_weights        = c(alt = 0, rand = 1),
-      effective_conditional = c("mu_intercept", "mu_alloc")
+    random = .bt_meta_update(
+      structure(rep(0, 100), class = c("marginal_posterior.simple", "numeric")),
+      linear_weights = c(alt = 0, rand = 1),
+      condition = list(effective_conditional = c("mu_intercept", "mu_alloc"))
     )
   )
   class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
   attr(posterior, "parameter")             <- "mu_alloc"
-  attr(posterior, "prior_density_context") <- context
+  posterior <- .bt_meta_set(posterior, "prior_context", context)
 
   expect_error(
     hypothesis_BF(
@@ -1493,31 +1487,23 @@ test_that("hypothesis_BF treats same conditional labels with AND and OR as diffe
     conditional_rule = "OR"
   )
   posterior <- list(
-    and = structure(
-      c(rep(1, 80), rep(-1, 20)),
-      class                    = c("marginal_posterior.simple", "numeric"),
-      linear_weights           = c(theta = 1, phi = 0),
-      effective_conditional    = c("theta", "phi"),
-      effective_conditional_rule = "AND",
-      condition_key            = and_event[["condition_key"]],
-      resolved_condition_event = and_event
+    and = .bt_meta_update(
+      structure(c(rep(1, 80), rep(-1, 20)), class = c("marginal_posterior.simple", "numeric")),
+      linear_weights = c(theta = 1, phi = 0),
+      condition = list(effective_conditional = c("theta", "phi"), effective_conditional_rule = "AND", condition_key = and_event[["condition_key"]], resolved_condition_event = and_event)
     ),
-    or = structure(
-      rep(0, 100),
-      class                    = c("marginal_posterior.simple", "numeric"),
-      linear_weights           = c(theta = 0, phi = 1),
-      effective_conditional    = c("theta", "phi"),
-      effective_conditional_rule = "OR",
-      condition_key            = or_event[["condition_key"]],
-      resolved_condition_event = or_event
+    or = .bt_meta_update(
+      structure(rep(0, 100), class = c("marginal_posterior.simple", "numeric")),
+      linear_weights = c(theta = 0, phi = 1),
+      condition = list(effective_conditional = c("theta", "phi"), effective_conditional_rule = "OR", condition_key = or_event[["condition_key"]], resolved_condition_event = or_event)
     )
   )
   class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
   attr(posterior, "parameter") <- "mu_alloc"
 
   expect_false(identical(
-    attr(posterior[["and"]], "resolved_condition_event"),
-    attr(posterior[["or"]], "resolved_condition_event")
+    .bt_meta_condition(posterior[["and"]], "resolved_condition_event"),
+    .bt_meta_condition(posterior[["or"]], "resolved_condition_event")
   ))
   expect_error(
     hypothesis_BF(
@@ -1536,12 +1522,12 @@ test_that("hypothesis_BF uses child precomputed density for explicit level point
     seq(-3, 3, length.out = 301),
     prior_density
   )
-  attr(alternate, "posterior_ordinate") <- .posterior_ordinate_for_test(
+  alternate <- .bt_meta_set(alternate, "posterior_ordinate", .posterior_ordinate_for_test(
     value       = 0,
     ordinate    = 0.50,
     method      = "IWMDE",
     diagnostics = list(relative_mcse = 0.03)
-  )
+  ))
   posterior <- list(alternate = alternate)
   class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
   attr(posterior, "parameter") <- "mu_alloc"
@@ -1573,22 +1559,20 @@ test_that("hypothesis_level_contrast compiles an exact atom-free contrast", {
     n_grid       = 128
   )
   posterior <- list(
-    alternate = structure(
-      c(rep(1, 80), rep(-1, 20)),
-      class          = c("marginal_posterior.simple", "numeric"),
+    alternate = .bt_meta_update(
+      structure(c(rep(1, 80), rep(-1, 20)), class = c("marginal_posterior.simple", "numeric")),
       linear_weights = c(alt = 1, rand = 0),
-      posterior_atoms = posterior_atom_attribute()
+      atoms = posterior_atom_attribute()
     ),
-    random = structure(
-      rep(0, 100),
-      class          = c("marginal_posterior.simple", "numeric"),
+    random = .bt_meta_update(
+      structure(rep(0, 100), class = c("marginal_posterior.simple", "numeric")),
       linear_weights = c(alt = 0, rand = 1),
-      posterior_atoms = posterior_atom_attribute()
+      atoms = posterior_atom_attribute()
     )
   )
   class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
   attr(posterior, "parameter")             <- "mu_alloc"
-  attr(posterior, "prior_density_context") <- context
+  posterior <- .bt_meta_set(posterior, "prior_context", context)
 
   target <- hypothesis_level_contrast(
     posterior  = posterior,
@@ -1610,7 +1594,7 @@ test_that("hypothesis_level_contrast compiles an exact atom-free contrast", {
     )
   )
   ordinate <- prior_density_ordinate(
-    attr(target$posterior, "prior_density", exact = TRUE),
+    .bt_meta_get(target$posterior, "prior_density"),
     0
   )
   expect_true(ordinate$exact)
@@ -1661,12 +1645,10 @@ test_that("hypothesis_level_contrast compiles an exact atom-free contrast", {
   )
 
   posterior_with_baseline <- posterior
-  posterior_with_baseline$baseline <- structure(
-    rep(0, 100),
-    class           = c("marginal_posterior.simple", "numeric"),
-    linear_weights  = c(alt = 0, rand = 0),
-    posterior_atoms =
-    posterior_atom_attribute(
+  posterior_with_baseline$baseline <- .bt_meta_update(
+    structure(rep(0, 100), class = c("marginal_posterior.simple", "numeric")),
+    linear_weights = c(alt = 0, rand = 0),
+    atoms = posterior_atom_attribute(
       data.frame(x = 0, mass = 1)
     )
   )
@@ -1684,7 +1666,7 @@ test_that("hypothesis_level_contrast compiles an exact atom-free contrast", {
   )
 
   posterior_without_declaration <- posterior
-  attr(posterior_without_declaration$alternate, "posterior_atoms") <- NULL
+  posterior_without_declaration$alternate <- .bt_meta_set(posterior_without_declaration$alternate, "atoms", NULL)
   expect_error(
     hypothesis_level_contrast(
       posterior  = posterior_without_declaration,
@@ -1709,15 +1691,15 @@ test_that("hypothesis_BF uses parent precomputed metadata for level point nulls"
     seq(-2, 2, length.out = 301),
     prior_density
   )
-  attr(alternate, "posterior_ordinate") <- .posterior_ordinate_for_test(
+  alternate <- .bt_meta_set(alternate, "posterior_ordinate", .posterior_ordinate_for_test(
     value    = 1,
     ordinate = 100,
     method   = "wrong-null"
-  )
+  ))
   posterior <- list(alternate = alternate, random = random)
   class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
   attr(posterior, "parameter") <- "mu_alloc"
-  attr(posterior, "posterior_ordinate") <- list(
+  posterior <- .bt_meta_set(posterior, "posterior_ordinate", list(
     .posterior_ordinate_for_test(
       parameter   = "mu_alloc[alternate]",
       value       = 0,
@@ -1732,7 +1714,7 @@ test_that("hypothesis_BF uses parent precomputed metadata for level point nulls"
       method      = "IWMDE",
       diagnostics = list(relative_mcse = 0.04)
     )
-  )
+  ))
 
   explicit <- hypothesis_BF(
     posterior      = posterior,
@@ -1774,7 +1756,7 @@ test_that("hypothesis_BF uses parent posterior_densities for explicit level poin
   posterior <- list(alternate = alternate, random = random)
   class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
   attr(posterior, "parameter") <- "mu_alloc"
-  attr(posterior, "posterior_densities") <- list(list(
+  posterior <- .bt_meta_set(posterior, "posterior_densities", list(list(
     .posterior_density_for_test(
       parameter = "mu_alloc[alternate]",
       x         = seq(-1, 1, length.out = 101),
@@ -1787,7 +1769,7 @@ test_that("hypothesis_BF uses parent posterior_densities for explicit level poin
       y         = rep(0.25, 101),
       method    = "qCMDE"
     )
-  ))
+  )))
 
   out <- hypothesis_BF(
     posterior      = posterior,
@@ -1815,20 +1797,18 @@ test_that("hypothesis_BF infers marginal_inference parameter from bracket syntax
     n_grid       = 128
   )
   posterior <- list(
-    alternate = structure(
-      c(rep(1, 75), rep(-1, 25)),
-      class          = c("marginal_posterior.simple", "numeric"),
+    alternate = .bt_meta_update(
+      structure(c(rep(1, 75), rep(-1, 25)), class = c("marginal_posterior.simple", "numeric")),
       linear_weights = c(alt = 1, rand = 0)
     ),
-    random = structure(
-      rep(0, 100),
-      class          = c("marginal_posterior.simple", "numeric"),
+    random = .bt_meta_update(
+      structure(rep(0, 100), class = c("marginal_posterior.simple", "numeric")),
       linear_weights = c(alt = 0, rand = 1)
     )
   )
   class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
   attr(posterior, "parameter")             <- "mu_alloc"
-  attr(posterior, "prior_density_context") <- context
+  posterior <- .bt_meta_set(posterior, "prior_context", context)
   inference <- list(
     averaged    = list(mu_alloc = posterior),
     conditional = list(mu_alloc = posterior),
@@ -1872,20 +1852,18 @@ test_that("hypothesis_BF samples level priors from mixture and conditional conte
 
   for(context in list(mixture_context, conditional_context)){
     posterior <- list(
-      alternate = structure(
-        c(rep(1, 75), rep(-1, 25)),
-        class          = c("marginal_posterior.simple", "numeric"),
+      alternate = .bt_meta_update(
+        structure(c(rep(1, 75), rep(-1, 25)), class = c("marginal_posterior.simple", "numeric")),
         linear_weights = c(alt = 1, rand = 0)
       ),
-      random = structure(
-        rep(0, 100),
-        class          = c("marginal_posterior.simple", "numeric"),
+      random = .bt_meta_update(
+        structure(rep(0, 100), class = c("marginal_posterior.simple", "numeric")),
         linear_weights = c(alt = 0, rand = 1)
       )
     )
     class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
     attr(posterior, "parameter")             <- "mu_alloc"
-    attr(posterior, "prior_density_context") <- context
+    posterior <- .bt_meta_set(posterior, "prior_context", context)
 
     out <- hypothesis_BF(
       posterior  = posterior,
@@ -1908,20 +1886,18 @@ test_that("hypothesis_BF rejects missing nonzero level weight columns", {
     n_grid       = 128
   )
   posterior <- list(
-    alternate = structure(
-      c(rep(1, 75), rep(-1, 25)),
-      class          = c("marginal_posterior.simple", "numeric"),
+    alternate = .bt_meta_update(
+      structure(c(rep(1, 75), rep(-1, 25)), class = c("marginal_posterior.simple", "numeric")),
       linear_weights = c(alt = 1)
     ),
-    random = structure(
-      rep(0, 100),
-      class          = c("marginal_posterior.simple", "numeric"),
+    random = .bt_meta_update(
+      structure(rep(0, 100), class = c("marginal_posterior.simple", "numeric")),
       linear_weights = c(rand = 1)
     )
   )
   class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
   attr(posterior, "parameter")             <- "mu_alloc"
-  attr(posterior, "prior_density_context") <- context
+  posterior <- .bt_meta_set(posterior, "prior_context", context)
 
   expect_error(
     hypothesis_BF(
@@ -1937,7 +1913,7 @@ test_that("hypothesis_BF rejects missing nonzero level weight columns", {
     column_names = c("alt", "rand"),
     n_grid       = 128
   )
-  attr(posterior, "prior_density_context") <- unsupported_context
+  posterior <- .bt_meta_set(posterior, "prior_context", unsupported_context)
 
   expect_error(
     hypothesis_BF(
@@ -1948,7 +1924,7 @@ test_that("hypothesis_BF rejects missing nonzero level weight columns", {
     "No prior distribution"
   )
 
-  attr(posterior[["random"]], "linear_weights") <- c(alt = 0, rand = 0)
+  posterior[["random"]] <- .bt_meta_set(posterior[["random"]], "linear_weights", c(alt = 0, rand = 0))
   out <- hypothesis_BF(
     posterior  = posterior,
     hypothesis = "mu_alloc[alternate] > mu_alloc[random]",
@@ -1956,7 +1932,7 @@ test_that("hypothesis_BF rejects missing nonzero level weight columns", {
   )
   expect_true(is.finite(attr(out, "raw_BF")))
 
-  attr(posterior[["random"]], "linear_weights") <- c(alt = 1, rand = 0)
+  posterior[["random"]] <- .bt_meta_set(posterior[["random"]], "linear_weights", c(alt = 1, rand = 0))
   testthat::local_mocked_bindings(
     .generate_transformed_prior_samples = function(..., n_samples) {
       matrix(numeric(), nrow = n_samples, ncol = 0L)
@@ -2103,12 +2079,12 @@ test_that("hypothesis_BF reuses stored IWMDE ordinates and BF error", {
     seq(-3, 3, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_ordinate") <- .posterior_ordinate_for_test(
+  posterior <- .bt_meta_set(posterior, "posterior_ordinate", .posterior_ordinate_for_test(
     value       = c(0, 0.5),
     ordinate    = c(0.50, 0.25),
     method      = "IWMDE",
     diagnostics = list(relative_mcse = c(0.03, 0.07))
-  )
+  ))
 
   out <- hypothesis_BF(
     posterior      = posterior,
@@ -2132,12 +2108,12 @@ test_that("hypothesis_BF propagates point and region error for point-vs-region t
   prior_density <- .hypothesis_prior_density_for_test()
   samples       <- seq(-3, 3, length.out = 301)
   posterior     <- .hypothesis_marginal_posterior_for_test(samples, prior_density)
-  attr(posterior, "posterior_ordinate") <- .posterior_ordinate_for_test(
+  posterior <- .bt_meta_set(posterior, "posterior_ordinate", .posterior_ordinate_for_test(
     value       = 0,
     ordinate    = 0.50,
     method      = "IWMDE",
     diagnostics = list(relative_mcse = 0.03)
-  )
+  ))
 
   out <- hypothesis_BF(
     posterior      = posterior,
@@ -2166,12 +2142,12 @@ test_that("hypothesis_BF accepts marginal posterior subclasses without base clas
     prior_density
   )
   class(posterior) <- setdiff(class(posterior), "marginal_posterior")
-  attr(posterior, "posterior_ordinate") <- .posterior_ordinate_for_test(
+  posterior <- .bt_meta_set(posterior, "posterior_ordinate", .posterior_ordinate_for_test(
     value       = 0,
     ordinate    = 0.50,
     method      = "IWMDE",
     diagnostics = list(relative_mcse = 0.02)
-  )
+  ))
 
   out <- hypothesis_BF(
     posterior      = posterior,
@@ -2196,7 +2172,7 @@ test_that("hypothesis_BF reuses stored qCMDE density and BF error", {
   )
   stored_x <- seq(-4, 4, length.out = 401)
   stored_y <- stats::dnorm(stored_x, mean = 0.25, sd = 1.1)
-  attr(posterior, "posterior_density") <- .posterior_density_for_test(
+  posterior <- .bt_meta_set(posterior, "posterior_density", .posterior_density_for_test(
     x           = stored_x,
     y           = stored_y,
     method      = "qCMDE",
@@ -2204,7 +2180,7 @@ test_that("hypothesis_BF reuses stored qCMDE density and BF error", {
       bf_value          = 0.25,
       bf_relative_mcse = 0.04
     )
-  )
+  ))
 
   out <- hypothesis_BF(
     posterior      = posterior,
@@ -2236,7 +2212,7 @@ test_that("hypothesis_BF rejects malformed precomputed point masses", {
     method = "invalid-point-mass"
   )
   invalid_point_mass$point_masses <- data.frame(x = 0, mass = 1.2)
-  attr(posterior, "posterior_density") <- invalid_point_mass
+  posterior <- .bt_meta_set(posterior, "posterior_density", invalid_point_mass)
 
   expect_error(
     hypothesis_BF(
@@ -2250,12 +2226,12 @@ test_that("hypothesis_BF rejects malformed precomputed point masses", {
     fixed = TRUE
   )
 
-  attr(posterior, "posterior_density") <- list(
+  posterior <- .bt_meta_set(posterior, "posterior_density", list(
     x            = seq(-1, 1, length.out = 101),
     y            = rep(1, 101),
     method       = "raw-list",
     point_masses = list(x = 0, mass = .2)
-  )
+  ))
   expect_error(
     hypothesis_BF(
       posterior      = posterior,
@@ -2277,11 +2253,11 @@ test_that("hypothesis_BF rejects precomputed point density missing the null", {
     seq(-3, 3, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_density") <- .posterior_density_for_test(
+  posterior <- .bt_meta_set(posterior, "posterior_density", .posterior_density_for_test(
     x      = seq(2, 3, length.out = 101),
     y      = rep(1, 101),
     method = "qCMDE"
-  )
+  ))
 
   expect_error(
     hypothesis_BF(
@@ -2308,8 +2284,7 @@ test_that("hypothesis_BF rejects zero prior density at point null", {
     seq(.001, .999, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_support") <-
-    BayesTools:::.posterior_support_new(c(0, 1), source = "test")
+  posterior <- .bt_meta_set(posterior, "support", BayesTools:::.posterior_support_new(c(0, 1), source = "test"))
 
   expect_error(
     hypothesis_BF(
@@ -2333,13 +2308,12 @@ test_that("hypothesis_BF precomputed point null rejects density grid missing sup
     seq(.001, .999, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_support") <-
-    BayesTools:::.posterior_support_new(c(0, 1), source = "test")
-  attr(posterior, "posterior_density") <- .posterior_density_for_test(
+  posterior <- .bt_meta_set(posterior, "support", BayesTools:::.posterior_support_new(c(0, 1), source = "test"))
+  posterior <- .bt_meta_set(posterior, "posterior_density", .posterior_density_for_test(
     x      = seq(.25, .75, length.out = 101),
     y      = rep(1, 101),
     method = "qCMDE"
-  )
+  ))
 
   expect_error(
     hypothesis_BF(

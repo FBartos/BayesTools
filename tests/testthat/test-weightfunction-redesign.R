@@ -693,9 +693,9 @@ test_that("JAGS fits heterogeneous bias mixtures with omega and log-omega weight
 
   mixed <- as_mixed_posteriors(fit, parameters = "bias", conditional = "omega")
   expect_equal(colnames(mixed$bias), c("omega[0,0.025]", "omega[0.025,0.05]", "omega[0.05,0.1]", "omega[0.1,0.975]", "omega[0.975,1]"))
-  expect_true(all(attr(mixed$bias, "models_ind") %in% 2:5))
-  expect_gt(mean(mixed$bias[attr(mixed$bias, "models_ind") == 3, "omega[0.05,0.1]"] > 1), .90)
-  expect_gt(mean(mixed$bias[attr(mixed$bias, "models_ind") == 4, "omega[0.025,0.05]"] > 1), .95)
+  expect_true(all(.bt_meta_get(mixed$bias, "models_ind") %in% 2:5))
+  expect_gt(mean(mixed$bias[.bt_meta_get(mixed$bias, "models_ind") == 3, "omega[0.05,0.1]"] > 1), .90)
+  expect_gt(mean(mixed$bias[.bt_meta_get(mixed$bias, "models_ind") == 4, "omega[0.025,0.05]"] > 1), .95)
 })
 
 test_that("JAGS fits full bias mixtures with PET, PEESE, and heterogeneous weightfunctions", {
@@ -748,29 +748,29 @@ test_that("JAGS fits full bias mixtures with PET, PEESE, and heterogeneous weigh
 
   mixed_all <- as_mixed_posteriors(fit, parameters = "bias")
   expect_equal(colnames(mixed_all$bias), c(omega_names, "PET", "PEESE"))
-  expect_true(all(1:7 %in% attr(mixed_all$bias, "models_ind")))
+  expect_true(all(1:7 %in% .bt_meta_get(mixed_all$bias, "models_ind")))
 
   mixed_omega <- as_mixed_posteriors(fit, parameters = "bias", conditional = "omega")
   expect_equal(colnames(mixed_omega$bias), omega_names)
-  expect_true(all(attr(mixed_omega$bias, "models_ind") %in% c(3, 4, 6, 7)))
-  expect_gt(mean(mixed_omega$bias[attr(mixed_omega$bias, "models_ind") == 4, "omega[0.05,0.1]"] > 1), .90)
-  expect_gt(mean(mixed_omega$bias[attr(mixed_omega$bias, "models_ind") == 6, "omega[0.025,0.05]"] > 1), .95)
+  expect_true(all(.bt_meta_get(mixed_omega$bias, "models_ind") %in% c(3, 4, 6, 7)))
+  expect_gt(mean(mixed_omega$bias[.bt_meta_get(mixed_omega$bias, "models_ind") == 4, "omega[0.05,0.1]"] > 1), .90)
+  expect_gt(mean(mixed_omega$bias[.bt_meta_get(mixed_omega$bias, "models_ind") == 6, "omega[0.025,0.05]"] > 1), .95)
 
   mixed_pet <- as_mixed_posteriors(fit, parameters = "bias", conditional = "PET")
   expect_equal(colnames(mixed_pet$bias), "PET")
-  expect_true(all(attr(mixed_pet$bias, "models_ind") == 2))
+  expect_true(all(.bt_meta_get(mixed_pet$bias, "models_ind") == 2))
   expect_true(all(mixed_pet$bias[, "PET"] > 0))
 
   mixed_peese <- as_mixed_posteriors(fit, parameters = "bias", conditional = "PEESE")
   expect_equal(colnames(mixed_peese$bias), "PEESE")
-  expect_true(all(attr(mixed_peese$bias, "models_ind") == 5))
+  expect_true(all(.bt_meta_get(mixed_peese$bias, "models_ind") == 5))
   expect_true(all(mixed_peese$bias[, "PEESE"] > 0))
 
   mixed_petpeese <- as_mixed_posteriors(fit, parameters = "bias", conditional = "PETPEESE")
   expect_equal(colnames(mixed_petpeese$bias), c("PET", "PEESE"))
-  expect_true(all(attr(mixed_petpeese$bias, "models_ind") %in% c(2, 5)))
-  expect_true(all(mixed_petpeese$bias[attr(mixed_petpeese$bias, "models_ind") == 2, "PEESE"] == 0))
-  expect_true(all(mixed_petpeese$bias[attr(mixed_petpeese$bias, "models_ind") == 5, "PET"] == 0))
+  expect_true(all(.bt_meta_get(mixed_petpeese$bias, "models_ind") %in% c(2, 5)))
+  expect_true(all(mixed_petpeese$bias[.bt_meta_get(mixed_petpeese$bias, "models_ind") == 2, "PEESE"] == 0))
+  expect_true(all(mixed_petpeese$bias[.bt_meta_get(mixed_petpeese$bias, "models_ind") == 5, "PET"] == 0))
 
   table_samples <- suppressWarnings(runjags_estimates_table(
     fit,

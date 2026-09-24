@@ -32,6 +32,7 @@ bayestools_test_profile_contexts <- list(
     "distributions-mpoint",
     "distributions-point",
     "distributions-tools",
+    "draws-metadata",
     "factor-interaction-coefficients",
     "fixture-catalog-static",
     "hypothesis-ast",

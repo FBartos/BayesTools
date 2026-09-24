@@ -654,15 +654,15 @@ test_that("transform_scaled is auto-detected from samples attribute", {
 
   # Verify the attribute is set
 
-  expect_true(isTRUE(attr(samples_scaled, "transform_scaled")))
-  expect_false(is.null(attr(samples_scaled, "prior_densities")))
+  expect_true(isTRUE(.bt_meta_get(samples_scaled, "transform_scaled")))
+  expect_false(is.null(.bt_meta_get(samples_scaled, "prior_densities")))
   expect_null(attr(samples_scaled, "prior_samples"))
 
   # Extract without transform_scaled
   samples_unscaled <- as_mixed_posteriors(fit, parameters = "mu_intercept", transform_scaled = FALSE)
 
   # Verify the attribute is NOT set
-  expect_null(attr(samples_unscaled, "transform_scaled"))
+  expect_null(.bt_meta_get(samples_unscaled, "transform_scaled"))
 })
 
 
@@ -737,15 +737,12 @@ test_that("transform_scaled helper preserves total mass under user transformatio
 
 test_that("plot_posterior errors when transformed prior densities are missing", {
   skip_if_not_visual_tests()
-  sample_entry <- structure(
-    rnorm(64),
-    class = c("mixed_posteriors.formula", "mixed_posteriors.simple", "mixed_posteriors"),
-    formula_parameter = "mu",
-    prior_list = list(prior("normal", list(0, 1)))
+  sample_entry <- .bt_meta_update(
+    structure(rnorm(64), class = c("mixed_posteriors.formula", "mixed_posteriors.simple", "mixed_posteriors"), prior_list = list(prior("normal", list(0, 1)))),
+    formula_parameter = "mu"
   )
-  samples <- structure(
-    list(mu_x1 = sample_entry),
-    class = c("as_mixed_posteriors", "mixed_posteriors"),
+  samples <- .bt_meta_update(
+    structure(list(mu_x1 = sample_entry), class = c("as_mixed_posteriors", "mixed_posteriors")),
     transform_scaled = TRUE
   )
 
@@ -787,7 +784,7 @@ test_that("transform_scaled visual: spike prior remains atomic", {
   )
 
   expect_equal(
-    BayesTools:::.prior_linear_density_point_mass(attr(samples_scaled, "prior_densities")$mu_x1, 0),
+    BayesTools:::.prior_linear_density_point_mass(.bt_meta_get(samples_scaled, "prior_densities")$mu_x1, 0),
     1
   )
 
@@ -850,11 +847,11 @@ test_that("transform_scaled visual: conditional mixture prior removes spike", {
   )
 
   expect_gt(
-    BayesTools:::.prior_linear_density_point_mass(attr(samples_unconditional, "prior_densities")$mu_x1, 0),
+    BayesTools:::.prior_linear_density_point_mass(.bt_meta_get(samples_unconditional, "prior_densities")$mu_x1, 0),
     0
   )
   expect_equal(
-    BayesTools:::.prior_linear_density_point_mass(attr(samples_conditional, "prior_densities")$mu_x1, 0),
+    BayesTools:::.prior_linear_density_point_mass(.bt_meta_get(samples_conditional, "prior_densities")$mu_x1, 0),
     0
   )
 

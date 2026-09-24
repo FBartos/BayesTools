@@ -616,7 +616,7 @@ test_that("failed marginal-likelihood results reach the on_failure policy of mod
     ),
     "Dropped model"
   )
-  expect_true(all(attr(mixed$theta, "models_ind") == 2L))
+  expect_true(all(.bt_meta_get(mixed$theta, "models_ind") == 2L))
 
   # NA is accepted only with the failure flag, and the flag only with NA
   unflagged <- bridgesampling_object(0)
@@ -765,9 +765,9 @@ test_that("mixed posterior atom metadata retains unsampled rare components", {
     seed = 20260726,
     n_samples = 1000
   )
-  atoms <- attr(mixed$theta, "posterior_atoms", exact = TRUE)
+  atoms <- .bt_meta_get(mixed$theta, "atoms")
 
-  expect_false(any(attr(mixed$theta, "models_ind") == 2L))
+  expect_false(any(.bt_meta_get(mixed$theta, "models_ind") == 2L))
   expect_equal(atoms$locations[, 1L], 0)
   expect_gt(atoms$mass, 0)
   expect_equal(atoms$mass, atoms$component_probabilities[2L])
@@ -793,14 +793,14 @@ test_that("mix_posteriors preserves model and sample alignment across parameters
     n_samples    = 12
   )
 
-  expect_equal(attr(mixed$theta, "models_ind"), attr(mixed$beta, "models_ind"))
-  expect_equal(attr(mixed$theta, "sample_ind"), attr(mixed$beta, "sample_ind"))
+  expect_equal(.bt_meta_get(mixed$theta, "models_ind"), .bt_meta_get(mixed$beta, "models_ind"))
+  expect_equal(.bt_meta_get(mixed$theta, "sample_ind"), .bt_meta_get(mixed$beta, "sample_ind"))
   expect_equal(as.numeric(mixed$beta - mixed$theta), rep(100, 12))
-  expect_equal(length(attr(mixed$theta, "models_ind")), 12)
+  expect_equal(length(.bt_meta_get(mixed$theta, "models_ind")), 12)
 
-  sample_ind <- attr(mixed$theta, "sample_ind")
+  sample_ind <- .bt_meta_get(mixed$theta, "sample_ind")
   for(model_i in seq_along(model_list)){
-    model_rows <- attr(mixed$theta, "models_ind") == model_i
+    model_rows <- .bt_meta_get(mixed$theta, "models_ind") == model_i
     expect_true(all(sample_ind[model_rows] >= 1L & sample_ind[model_rows] <= 20L))
     expect_equal(
       unname(mixed$theta[model_rows]),
@@ -826,9 +826,9 @@ test_that("conditional mix_posteriors excludes null models from samples and prio
     n_samples    = 8
   )
 
-  expect_equal(length(attr(mixed$theta, "models_ind")), 8)
-  expect_false(any(attr(mixed$theta, "models_ind") == 1L))
-  expect_equal(attr(mixed$theta, "sample_ind"), attr(mixed$theta, "sample_ind")[attr(mixed$theta, "models_ind") != 1L])
+  expect_equal(length(.bt_meta_get(mixed$theta, "models_ind")), 8)
+  expect_false(any(.bt_meta_get(mixed$theta, "models_ind") == 1L))
+  expect_equal(.bt_meta_get(mixed$theta, "sample_ind"), .bt_meta_get(mixed$theta, "sample_ind")[.bt_meta_get(mixed$theta, "models_ind") != 1L])
 
   mixed_priors <- attr(mixed$theta, "prior_list")
   expect_equal(
@@ -972,7 +972,7 @@ test_that("mix_posteriors preserves simplex draws for compatible explicit priors
   )
 
   expect_equal(rowSums(mixed_point$w), rep(1, 12), tolerance = 1e-12)
-  point_rows <- attr(mixed_point$w, "models_ind") == 2L
+  point_rows <- .bt_meta_get(mixed_point$w, "models_ind") == 2L
   expect_true(any(point_rows))
   expect_equal(
     unname(mixed_point$w[point_rows, , drop = FALSE]),
@@ -1061,14 +1061,14 @@ test_that("mix_posteriors preserves factor-by-factor interaction coefficients", 
     expect_identical(colnames(mixed), spec$names)
     expect_equal(nrow(mixed), 12)
 
-    null_rows <- attr(mixed, "models_ind") == 1L
-    alternative_rows <- attr(mixed, "models_ind") == 2L
+    null_rows <- .bt_meta_get(mixed, "models_ind") == 1L
+    alternative_rows <- .bt_meta_get(mixed, "models_ind") == 2L
     expect_true(any(null_rows))
     expect_true(any(alternative_rows))
     expect_equal(unname(mixed[null_rows, , drop = FALSE]), matrix(0, sum(null_rows), K))
     expect_equal(
       unname(mixed[alternative_rows, , drop = FALSE]),
-      outer(attr(mixed, "sample_ind")[alternative_rows], 100 * seq_len(K), `+`)
+      outer(.bt_meta_get(mixed, "sample_ind")[alternative_rows], 100 * seq_len(K), `+`)
     )
   }
 })
@@ -1471,7 +1471,7 @@ test_that("mixed contrast coefficients are never bracketed positions", {
   # of the mean-difference coding is `{j}`.
   expect_identical(colnames(mixed$mu_g), c("mu_g{1}", "mu_g{2}"))
   expect_identical(
-    colnames(attr(mixed$mu_g, "posterior_atoms")$locations),
+    colnames(.bt_meta_get(mixed$mu_g, "atoms")$locations),
     c("mu_g{1}", "mu_g{2}")
   )
   table <- ensemble_estimates_table(

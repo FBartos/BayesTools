@@ -103,7 +103,7 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
   # declared possibly undefined draws (attribute 'undefined_draws'), captured
   # before transformations that may rebuild the sample objects
   undefined_draws <- lapply(parameters, function(parameter){
-    attr(samples[[parameter]], "undefined_draws", exact = TRUE)
+    .bt_meta_get(samples[[parameter]], "undefined_draws")
   })
   names(undefined_draws) <- parameters
 
@@ -127,7 +127,7 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
     if(is.matrix(samples[[parameter]])){
 
       if(inherits(samples[[parameter]], "mixed_posteriors.formula")){
-        parameter_name <- format_parameter_names(colnames(samples[[parameter]]), formula_parameters = attr(samples[[parameter]], "formula_parameter"), formula_prefix = formula_prefix, formula_scale = formula_scale)
+        parameter_name <- format_parameter_names(colnames(samples[[parameter]]), formula_parameters = .bt_meta_get(samples[[parameter]], "formula_parameter"), formula_prefix = formula_prefix, formula_scale = formula_scale)
       }else{
         parameter_name <- colnames(samples[[parameter]])
       }
@@ -169,8 +169,8 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
 
       if(inherits(samples[[parameter]], "mixed_posteriors.formula")){
         parameter_name <- gsub(
-          paste0(attr(samples[[parameter]], "formula_parameter"), "_"),
-          if(formula_prefix) paste0("(", attr(samples[[parameter]], "formula_parameter"), ") ") else "",
+          paste0(.bt_meta_get(samples[[parameter]], "formula_parameter"), "_"),
+          if(formula_prefix) paste0("(", .bt_meta_get(samples[[parameter]], "formula_parameter"), ") ") else "",
           parameter)
         parameter_name <- gsub("__xXx__", ":", parameter_name)
       }else{
@@ -646,7 +646,7 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
       }else{
         parameter_name <- paste0(parameter, "[", names(samples[[parameter]]), "]")
       }
-      parameter_name <- format_parameter_names(parameter_name, formula_parameters = attr(samples[[parameter]], "formula_parameter"), formula_prefix = formula_prefix, formula_scale = formula_scale)
+      parameter_name <- format_parameter_names(parameter_name, formula_parameters = .bt_meta_get(samples[[parameter]], "formula_parameter"), formula_prefix = formula_prefix, formula_scale = formula_scale)
     }else{
       parameter_name <- paste0(parameter, "[", names(samples[[parameter]]), "]")
     }
@@ -776,7 +776,7 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
   for(p in seq_along(parameters)){
 
     parameter_name    <- parameters[p]
-    formula_parameter <- unique(unlist(lapply(models, function(m) attr(attr(m[["fit"]], "prior_list")[[parameter_name]], "parameter"))))
+    formula_parameter <- unique(unlist(lapply(models, function(m) attr(attr(m[["fit"]], "prior_list")[[parameter_name]], "parameter", exact = TRUE))))
 
     if(!is.null(unlist(formula_parameter))){
       parameter_name <- gsub(paste0(formula_parameter, "_"), paste0("(", formula_parameter, ") "), parameter_name)

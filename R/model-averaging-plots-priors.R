@@ -152,22 +152,22 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     type  <- "both"
     ylab  <- "Density"
     ylab2 <- "Probability"
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range")))
+    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range", exact = TRUE)))
     ylim2 <- if(has_point){
-      range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")], attr, which = "y_range")))
+      range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")], attr, which = "y_range", exact = TRUE)))
     }else{
       dots[["ylim2"]]
     }
   }else if(has_simple){
     type  <- "simple"
     ylab  <- "Density"
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range")))
+    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range", exact = TRUE)))
     ylab2 <- NULL
     ylim2 <- NULL
   }else if(has_point){
     type  <- "point"
     ylab  <- "Probability"
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")],  attr, which = "y_range")))
+    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")],  attr, which = "y_range", exact = TRUE)))
     ylab2 <- NULL
     ylim2 <- NULL
   }
@@ -262,13 +262,13 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 }
 .plot_prior_factor_component_level_name <- function(component){
 
-  level_name <- attr(component, "level_name")
+  level_name <- attr(component, "level_name", exact = TRUE)
   if(!is.null(level_name) && length(level_name) == 1L && !is.na(level_name)){
     return(as.character(level_name))
   }
 
   if(inherits(component, "density.prior.factor")){
-    level <- attr(component, "level")
+    level <- attr(component, "level", exact = TRUE)
     if(!is.null(level) && length(level) == 1L && !is.na(level)){
       return(as.character(level))
     }
@@ -408,22 +408,22 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     type  <- "both"
     ylab  <- "Density"
     ylab2 <- "Probability"
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range")))
+    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range", exact = TRUE)))
     ylim2 <- if(has_point){
-      range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")], attr, which = "y_range")))
+      range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")], attr, which = "y_range", exact = TRUE)))
     }else{
       dots[["ylim2"]]
     }
   }else if(has_simple){
     type  <- "simple"
     ylab  <- "Density"
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range")))
+    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range", exact = TRUE)))
     ylab2 <- NULL
     ylim2 <- NULL
   }else if(has_point){
     type  <- "point"
     ylab  <- "Probability"
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")],  attr, which = "y_range")))
+    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")],  attr, which = "y_range", exact = TRUE)))
     ylab2 <- NULL
     ylim2 <- NULL
   }

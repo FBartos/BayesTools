@@ -31,7 +31,7 @@ source(testthat::test_path("common-functions.R"))
     if (inherits(samples[[parameter]], "mixed_posteriors.formula")) {
       return(format_parameter_names(
         colnames(samples[[parameter]]),
-        formula_parameters = attr(samples[[parameter]], "formula_parameter"),
+        formula_parameters = .bt_meta_get(samples[[parameter]], "formula_parameter"),
         formula_prefix = formula_prefix
       ))
     }
@@ -40,8 +40,8 @@ source(testthat::test_path("common-functions.R"))
 
   if (inherits(samples[[parameter]], "mixed_posteriors.formula")) {
     parameter_name <- gsub(
-      paste0(attr(samples[[parameter]], "formula_parameter"), "_"),
-      if (formula_prefix) paste0("(", attr(samples[[parameter]], "formula_parameter"), ") ") else "",
+      paste0(.bt_meta_get(samples[[parameter]], "formula_parameter"), "_"),
+      if (formula_prefix) paste0("(", .bt_meta_get(samples[[parameter]], "formula_parameter"), ") ") else "",
       parameter
     )
     return(gsub("__xXx__", ":", parameter_name))
@@ -268,8 +268,8 @@ test_that("Summary table advanced features work correctly", {
   )
   estimates_conditional <- ensemble_estimates_table(mixed_posteriors_conditional, parameters = "omega", probs = c(.025, 0.95))
   expect_equal(rownames(estimates_conditional), rownames(estimates_table)[grepl("^omega\\[", rownames(estimates_table))])
-  expect_false(any(attr(mixed_posteriors_conditional$omega, "models_ind") == 1))
-  expect_true(any(attr(mixed_posteriors$omega, "models_ind") == 1))
+  expect_false(any(.bt_meta_get(mixed_posteriors_conditional$omega, "models_ind") == 1))
+  expect_true(any(.bt_meta_get(mixed_posteriors$omega, "models_ind") == 1))
 
   malformed_model <- models[[1]]
   malformed_model$fit_summary <- data.frame(MCMC_error = 0)

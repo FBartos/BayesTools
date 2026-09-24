@@ -76,18 +76,19 @@
 
 .condition_event_set_attributes <- function(x, condition_event, effective = FALSE){
 
-  attr(x, "conditional")              <- condition_event[["conditional"]]
-  attr(x, "conditional_rule")         <- condition_event[["conditional_rule"]]
-  attr(x, "condition_key")            <- condition_event[["condition_key"]]
-  attr(x, "condition_event")          <- condition_event
-  attr(x, "resolved_condition_event") <- condition_event
-
+  condition <- list(
+    conditional              = condition_event[["conditional"]],
+    conditional_rule         = condition_event[["conditional_rule"]],
+    condition_key            = condition_event[["condition_key"]],
+    condition_event          = condition_event,
+    resolved_condition_event = condition_event
+  )
   if(effective){
-    attr(x, "effective_conditional")      <- condition_event[["conditional"]]
-    attr(x, "effective_conditional_rule") <- condition_event[["conditional_rule"]]
+    condition[["effective_conditional"]]      <- condition_event[["conditional"]]
+    condition[["effective_conditional_rule"]] <- condition_event[["conditional_rule"]]
   }
 
-  x
+  .bt_meta_set(x, "condition", condition[!vapply(condition, is.null, logical(1))])
 }
 
 .condition_event_families <- function(prior_list, conditional){

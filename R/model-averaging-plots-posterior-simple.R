@@ -108,8 +108,8 @@
   }else{
     max(16L, n_points)
   }
-  formula_scale <- if(isTRUE(attr(samples, "transform_scaled"))){
-    attr(samples, "formula_scale", exact = TRUE)
+  formula_scale <- if(isTRUE(.bt_meta_get(samples, "transform_scaled"))){
+    .bt_meta_get(samples, "formula_scale")
   }else{
     NULL
   }
@@ -213,7 +213,7 @@
   if(is.null(samples[[parameter]])){
     return(NULL)
   }
-  prior_density <- attr(samples[[parameter]], "prior_density", exact = TRUE)
+  prior_density <- .bt_meta_get(samples[[parameter]], "prior_density")
   if(!inherits(prior_density, "prior_linear_density")){
     return(NULL)
   }
@@ -364,7 +364,7 @@
   # extract the relevant data
   samples    <- samples[[parameter]]
   prior_list <- attr(samples, "prior_list")
-  posterior_density <- .posterior_density_for_method(attr(samples, "posterior_density"), density_method)
+  posterior_density <- .posterior_density_for_method(.bt_meta_get(samples, "posterior_density"), density_method)
   posterior_atoms <- .posterior_atoms_get(samples)
   if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
     prior_list <- list(prior_list)

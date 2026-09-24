@@ -410,7 +410,7 @@
   posterior_marginal_indices <- match(level_names, names(posterior))
   names(posterior_marginal_indices) <- names(posterior_df)
   prior_densities <- lapply(level_names, function(level) {
-    attr(posterior[[level]], "prior_density", exact = TRUE)
+    .bt_meta_get(posterior[[level]], "prior_density")
   })
   names(prior_densities) <- names(posterior_df)
 
@@ -537,18 +537,18 @@
 
 .hypothesis_level_condition_key <- function(level) {
 
-  key <- attr(level, "condition_key", exact = TRUE)
+  key <- .bt_meta_condition(level, "condition_key")
   if(!is.null(key)){
     return(as.character(key))
   }
 
-  conditional <- attr(level, "effective_conditional", exact = TRUE)
-  conditional_rule <- attr(level, "effective_conditional_rule", exact = TRUE)
+  conditional <- .bt_meta_condition(level, "effective_conditional")
+  conditional_rule <- .bt_meta_condition(level, "effective_conditional_rule")
   if(is.null(conditional)){
-    conditional <- attr(level, "conditional", exact = TRUE)
+    conditional <- .bt_meta_condition(level, "conditional")
   }
   if(is.null(conditional_rule)){
-    conditional_rule <- attr(level, "conditional_rule", exact = TRUE)
+    conditional_rule <- .bt_meta_condition(level, "conditional_rule")
   }
 
   .hypothesis_conditional_key(conditional, conditional_rule)
@@ -591,7 +591,7 @@
 .hypothesis_child_prior_context <- function(posterior, levels) {
 
   child_contexts <- lapply(levels, function(level) {
-    attr(posterior[[level]], "prior_density_context", exact = TRUE)
+    .bt_meta_get(posterior[[level]], "prior_context")
   })
   has_context <- !vapply(child_contexts, is.null, logical(1))
   if(!any(has_context)){
@@ -656,7 +656,7 @@
 
   context <- .hypothesis_child_prior_context(posterior, levels)
   if(is.null(context)){
-    context <- attr(posterior, "prior_density_context", exact = TRUE)
+    context <- .bt_meta_get(posterior, "prior_context")
   }
   if(is.null(context)){
     stop("Joint prior information is required for level-comparison hypotheses.",
@@ -999,7 +999,7 @@
     posterior_marginal_index = index,
     posterior_marginal_indices = NULL,
     prior_densities    = NULL,
-    prior_density      = attr(posterior, "prior_density", exact = TRUE),
+    prior_density      = .bt_meta_get(posterior, "prior_density"),
     prior_object       = NULL
   )
   class(out) <- "BayesTools_hypothesis_quantity"
@@ -1009,15 +1009,15 @@
 
 .hypothesis_level_linear_weights <- function(posterior){
 
-  if(!is.null(attr(posterior, "joint_prior_transformation", exact = TRUE))){
+  if(!is.null(.bt_meta_get(posterior, "joint_prior_transformation"))){
     stop("Joint prior information is unavailable for nonlinear transformed level hypotheses. Use untransformed levels or a direct scalar hypothesis.",
          call. = FALSE)
   }
-  attr(posterior, "linear_weights", exact = TRUE)
+  .bt_meta_get(posterior, "linear_weights")
 }
 
 .hypothesis_level_linear_offset <- function(posterior){
 
-  offset <- attr(posterior, "linear_offset", exact = TRUE)
+  offset <- .bt_meta_get(posterior, "linear_offset")
   if(is.null(offset)) 0 else offset
 }

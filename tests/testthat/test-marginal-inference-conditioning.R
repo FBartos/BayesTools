@@ -87,8 +87,8 @@ test_that("as_mixed_posteriors applies AND and OR conditioning exactly", {
 
   expect_equal(as.numeric(and_samples$mu_a), c(30, 31))
   expect_equal(as.numeric(and_samples$mu_b), c(40, 41))
-  expect_equal(attr(and_samples$mu_a, "models_ind"), c(1, 1))
-  expect_equal(attr(and_samples$mu_b, "models_ind"), c(1, 1))
+  expect_equal(.bt_meta_get(and_samples$mu_a, "models_ind"), c(1, 1))
+  expect_equal(.bt_meta_get(and_samples$mu_b, "models_ind"), c(1, 1))
 
   or_samples <- as_mixed_posteriors(
     fit,
@@ -99,8 +99,8 @@ test_that("as_mixed_posteriors applies AND and OR conditioning exactly", {
 
   expect_equal(as.numeric(or_samples$mu_a), c(10, 0, 30, 31))
   expect_equal(as.numeric(or_samples$mu_b), c(0, 20, 40, 41))
-  expect_equal(attr(or_samples$mu_a, "models_ind"), c(1, 0, 1, 1))
-  expect_equal(attr(or_samples$mu_b, "models_ind"), c(0, 1, 1, 1))
+  expect_equal(.bt_meta_get(or_samples$mu_a, "models_ind"), c(1, 0, 1, 1))
+  expect_equal(.bt_meta_get(or_samples$mu_b, "models_ind"), c(0, 1, 1, 1))
 })
 
 test_that("unknown and non-conditional labels fail closed", {
@@ -176,14 +176,14 @@ test_that("as_mixed_posteriors propagates named upstream posterior densities", {
 
   stored_x <- seq(-2, 2, length.out = 41)
   stored_y <- stats::dnorm(stored_x, mean = .25, sd = .8)
-  attr(fit, "posterior_density") <- list(
+  fit <- .bt_meta_set(fit, "posterior_density", list(
     theta = .posterior_density_for_test(
       parameter = "theta",
       x         = stored_x,
       y         = stored_y,
       method    = "iwmde"
     )
-  )
+  ))
 
   mixed <- as_mixed_posteriors(fit, parameters = "theta")
   marginal <- marginal_posterior(
@@ -203,8 +203,8 @@ test_that("as_mixed_posteriors propagates named upstream posterior densities", {
     density_method           = "precomputed"
   )
 
-  expect_equal(attr(mixed$theta, "posterior_density")$method, "iwmde")
-  expect_equal(attr(marginal, "posterior_density")$x, stored_x)
+  expect_equal(.bt_meta_get(mixed$theta, "posterior_density")$method, "iwmde")
+  expect_equal(.bt_meta_get(marginal, "posterior_density")$x, stored_x)
   expect_equal(plot_data$density$x, stored_x)
   expect_equal(plot_data$density$y, stored_y)
 })
@@ -234,7 +234,7 @@ test_that("as_mixed_posteriors does not reuse stale conditional densities", {
     method    = "iwmde"
   )
   fit <- .mock_marginal_fit(posterior, prior_list)
-  attr(fit, "posterior_density") <- list(theta = stored_density)
+  fit <- .bt_meta_set(fit, "posterior_density", list(theta = stored_density))
 
   stale <- as_mixed_posteriors(
     fit,
@@ -242,11 +242,11 @@ test_that("as_mixed_posteriors does not reuse stale conditional densities", {
     conditional      = c("theta", "phi"),
     conditional_rule = "OR"
   )
-  expect_null(attr(stale$theta, "posterior_density"))
+  expect_null(.bt_meta_get(stale$theta, "posterior_density"))
 
   stored_density$conditional <- c("phi", "theta")
   stored_density$conditional_rule <- "OR"
-  attr(fit, "posterior_density") <- list(theta = stored_density)
+  fit <- .bt_meta_set(fit, "posterior_density", list(theta = stored_density))
   matched <- as_mixed_posteriors(
     fit,
     parameters       = c("theta", "phi"),
@@ -260,8 +260,8 @@ test_that("as_mixed_posteriors does not reuse stale conditional densities", {
     conditional_rule = "AND"
   )
 
-  expect_equal(attr(matched$theta, "posterior_density")$method, "iwmde")
-  expect_null(attr(mismatched$theta, "posterior_density"))
+  expect_equal(.bt_meta_get(matched$theta, "posterior_density")$method, "iwmde")
+  expect_null(.bt_meta_get(mismatched$theta, "posterior_density"))
 })
 
 test_that("formula marginals do not inherit raw coefficient densities", {
@@ -280,14 +280,14 @@ test_that("formula marginals do not inherit raw coefficient densities", {
     ),
     prior_list
   )
-  attr(fit, "posterior_density") <- list(
+  fit <- .bt_meta_set(fit, "posterior_density", list(
     mu_x = .posterior_density_for_test(
       parameter = "mu_x",
       x         = seq(-2, 2, length.out = 41),
       y         = rep(1, 41),
       method    = "iwmde"
     )
-  )
+  ))
 
   samples <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x"))
   marginal <- marginal_posterior(
@@ -299,7 +299,7 @@ test_that("formula marginals do not inherit raw coefficient densities", {
   )
 
   expect_true(all(vapply(marginal, function(level) {
-    is.null(attr(level, "posterior_density"))
+    is.null(.bt_meta_get(level, "posterior_density"))
   }, logical(1))))
 })
 
@@ -322,7 +322,7 @@ test_that("factor marginals attach only level-matched densities", {
     formula_result[["prior_list"]]
   )
   stored_x <- seq(-3, 3, length.out = 31)
-  attr(fit, "posterior_density") <- list(
+  fit <- .bt_meta_set(fit, "posterior_density", list(
     "mu_fac[1]" = .posterior_density_for_test(
       parameter = "mu_fac[1]",
       x         = stored_x,
@@ -341,7 +341,7 @@ test_that("factor marginals attach only level-matched densities", {
       y         = stats::dnorm(stored_x, mean = 1.5, sd = .8),
       method    = "iwmde"
     )
-  )
+  ))
 
   samples <- as_mixed_posteriors(fit, parameters = "mu_fac")
   marginal <- marginal_posterior(
@@ -350,10 +350,10 @@ test_that("factor marginals attach only level-matched densities", {
     use_formula = FALSE
   )
 
-  expect_null(attr(marginal$A, "posterior_density"))
-  expect_equal(attr(marginal$B, "posterior_density")$method, "iwmde")
-  expect_equal(attr(marginal$C, "posterior_density")$method, "iwmde")
-  expect_false(identical(attr(marginal$B, "posterior_density")$method, "raw-coefficient"))
+  expect_null(.bt_meta_get(marginal$A, "posterior_density"))
+  expect_equal(.bt_meta_get(marginal$B, "posterior_density")$method, "iwmde")
+  expect_equal(.bt_meta_get(marginal$C, "posterior_density")$method, "iwmde")
+  expect_false(identical(.bt_meta_get(marginal$B, "posterior_density")$method, "raw-coefficient"))
 })
 
 test_that("as_marginal_inference rejects precomputed marginal-inference BFs", {
@@ -365,14 +365,14 @@ test_that("as_marginal_inference rejects precomputed marginal-inference BFs", {
   )
   stored_x <- seq(-4, 4, length.out = 401)
   stored_y <- stats::dnorm(stored_x, mean = .75, sd = .9)
-  attr(fit, "posterior_density") <- list(
+  fit <- .bt_meta_set(fit, "posterior_density", list(
     theta = .posterior_density_for_test(
       parameter = "theta",
       x         = stored_x,
       y         = stored_y,
       method    = "iwmde"
     )
-  )
+  ))
 
   expect_error(
     as_marginal_inference(
@@ -430,7 +430,7 @@ test_that("as_marginal_inference does not consume raw stored posterior ordinates
     cbind(theta = seq(-3, 3, length.out = 301)),
     prior_list
   )
-  attr(fit, "posterior_ordinate") <- list(
+  fit <- .bt_meta_set(fit, "posterior_ordinate", list(
     theta = .posterior_ordinate_for_test(
       parameter   = "theta",
       value       = .25,
@@ -438,7 +438,7 @@ test_that("as_marginal_inference does not consume raw stored posterior ordinates
       method      = "qCMDE",
       diagnostics = list(relative_mcse = .2)
     )
-  )
+  ))
 
   expect_error(
     as_marginal_inference(
@@ -515,7 +515,7 @@ test_that("conditional spike-and-slab prior densities use the slab", {
     n_samples     = 128
   )
 
-  expect_equal(.prior_linear_density_point_mass(attr(marginal, "prior_density"), 0), 0)
+  expect_equal(.prior_linear_density_point_mass(.bt_meta_get(marginal, "prior_density"), 0), 0)
 })
 
 test_that("as_marginal_inference conditions scalar spike-and-slab marginals", {
@@ -562,14 +562,14 @@ test_that("as_marginal_inference conditions scalar spike-and-slab marginals", {
   expect_equal(as.numeric(averaged), c(0, 10, 0, 20, 30))
   expect_equal(as.numeric(conditional), c(10, 20, 30))
   expect_equal(as.numeric(conditional), as.numeric(direct))
-  expect_equal(attr(conditional, "effective_conditional"), "theta")
-  expect_equal(attr(conditional, "effective_conditional_rule"), "AND")
+  expect_equal(.bt_meta_condition(conditional, "effective_conditional"), "theta")
+  expect_equal(.bt_meta_condition(conditional, "effective_conditional_rule"), "AND")
   expect_equal(
-    attr(conditional, "condition_key"),
+    .bt_meta_condition(conditional, "condition_key"),
     BayesTools:::.condition_event_key("theta", "AND")
   )
-  expect_gt(.prior_linear_density_point_mass(attr(averaged, "prior_density"), 0), 0)
-  expect_equal(.prior_linear_density_point_mass(attr(conditional, "prior_density"), 0), 0)
+  expect_gt(.prior_linear_density_point_mass(.bt_meta_get(averaged, "prior_density"), 0), 0)
+  expect_equal(.prior_linear_density_point_mass(.bt_meta_get(conditional, "prior_density"), 0), 0)
 })
 
 
@@ -586,8 +586,8 @@ test_that("marginal inference rejects row-varying active linear weights", {
     )
   )
   marginal <- list(
-    varying = structure(
-      1:2,
+    varying = .bt_meta_update(
+      structure(1:2),
       linear_weights = matrix(
         c(1, 0, 0, 1),
         nrow = 2,
@@ -664,15 +664,15 @@ test_that("marginal inference conditions formula levels by active weights", {
   zero_level <- inference[["conditional"]][["mu_x"]][["0SD"]]
   intercept <- inference[["conditional"]][["mu_intercept"]][["intercept"]]
 
-  expect_equal(attr(zero_level, "effective_conditional"), "mu_intercept")
-  expect_equal(attr(zero_level, "effective_conditional_rule"), "OR")
-  expect_equal(attr(zero_level, "condition_key"), BayesTools:::.condition_event_key("mu_intercept", "OR"))
+  expect_equal(.bt_meta_condition(zero_level, "effective_conditional"), "mu_intercept")
+  expect_equal(.bt_meta_condition(zero_level, "effective_conditional_rule"), "OR")
+  expect_equal(.bt_meta_condition(zero_level, "condition_key"), BayesTools:::.condition_event_key("mu_intercept", "OR"))
   expect_equal(mean(as.numeric(zero_level) == 0), 0)
-  expect_equal(.prior_linear_density_point_mass(attr(zero_level, "prior_density"), 0), 0)
-  expect_equal(attr(intercept, "effective_conditional"), "mu_intercept")
-  expect_equal(attr(intercept, "condition_key"), BayesTools:::.condition_event_key("mu_intercept", "OR"))
+  expect_equal(.prior_linear_density_point_mass(.bt_meta_get(zero_level, "prior_density"), 0), 0)
+  expect_equal(.bt_meta_condition(intercept, "effective_conditional"), "mu_intercept")
+  expect_equal(.bt_meta_condition(intercept, "condition_key"), BayesTools:::.condition_event_key("mu_intercept", "OR"))
   expect_equal(mean(as.numeric(intercept) == 0), 0)
-  expect_equal(.prior_linear_density_point_mass(attr(intercept, "prior_density"), 0), 0)
+  expect_equal(.prior_linear_density_point_mass(.bt_meta_get(intercept, "prior_density"), 0), 0)
 
   inference_mu_only <- as_marginal_inference(
     model                = fit,
@@ -688,7 +688,7 @@ test_that("marginal inference conditions formula levels by active weights", {
 
   zero_level_mu_only <- inference_mu_only[["conditional"]][["mu_x"]][["0SD"]]
 
-  expect_equal(attr(zero_level_mu_only, "effective_conditional"), character())
+  expect_equal(.bt_meta_condition(zero_level_mu_only, "effective_conditional"), character())
   expect_true(is.numeric(zero_level_mu_only))
   expect_gt(length(zero_level_mu_only), 0)
 })
@@ -757,26 +757,26 @@ test_that("marginal inference conditions treatment factor levels by active weigh
   factor_levels <- inference[["conditional"]][["mu_fac"]]
   averaged_levels <- inference[["averaged"]][["mu_fac"]]
 
-  expect_equal(attr(factor_levels[["A"]], "effective_conditional"), "mu_intercept")
-  expect_equal(attr(factor_levels[["B"]], "effective_conditional"), c("mu_intercept", "mu_fac"))
-  expect_equal(attr(factor_levels[["C"]], "effective_conditional"), c("mu_intercept", "mu_fac"))
-  expect_s3_class(attr(factor_levels[["A"]], "prior_density_context"), "prior_density_conditional_context")
-  expect_s3_class(attr(factor_levels[["B"]], "prior_density_context"), "prior_density_conditional_context")
-  expect_false(is.null(attr(factor_levels[["A"]], "resolved_condition_event")))
+  expect_equal(.bt_meta_condition(factor_levels[["A"]], "effective_conditional"), "mu_intercept")
+  expect_equal(.bt_meta_condition(factor_levels[["B"]], "effective_conditional"), c("mu_intercept", "mu_fac"))
+  expect_equal(.bt_meta_condition(factor_levels[["C"]], "effective_conditional"), c("mu_intercept", "mu_fac"))
+  expect_s3_class(.bt_meta_get(factor_levels[["A"]], "prior_context"), "prior_density_conditional_context")
+  expect_s3_class(.bt_meta_get(factor_levels[["B"]], "prior_context"), "prior_density_conditional_context")
+  expect_false(is.null(.bt_meta_condition(factor_levels[["A"]], "resolved_condition_event")))
   expect_false(identical(
-    attr(factor_levels[["A"]], "resolved_condition_event"),
-    attr(factor_levels[["B"]], "resolved_condition_event")
+    .bt_meta_condition(factor_levels[["A"]], "resolved_condition_event"),
+    .bt_meta_condition(factor_levels[["B"]], "resolved_condition_event")
   ))
   expect_identical(
-    attr(factor_levels[["B"]], "resolved_condition_event"),
-    attr(factor_levels[["C"]], "resolved_condition_event")
+    .bt_meta_condition(factor_levels[["B"]], "resolved_condition_event"),
+    .bt_meta_condition(factor_levels[["C"]], "resolved_condition_event")
   )
   expect_equal(mean(as.numeric(factor_levels[["A"]]) == 0), 0)
   expect_equal(mean(as.numeric(factor_levels[["B"]]) == 0), 0)
   expect_equal(mean(as.numeric(factor_levels[["C"]]) == 0), 0)
-  expect_equal(.prior_linear_density_point_mass(attr(factor_levels[["A"]], "prior_density"), 0), 0)
-  expect_equal(.prior_linear_density_point_mass(attr(factor_levels[["B"]], "prior_density"), 0), 0)
-  expect_equal(.prior_linear_density_point_mass(attr(factor_levels[["C"]], "prior_density"), 0), 0)
+  expect_equal(.prior_linear_density_point_mass(.bt_meta_get(factor_levels[["A"]], "prior_density"), 0), 0)
+  expect_equal(.prior_linear_density_point_mass(.bt_meta_get(factor_levels[["B"]], "prior_density"), 0), 0)
+  expect_equal(.prior_linear_density_point_mass(.bt_meta_get(factor_levels[["C"]], "prior_density"), 0), 0)
   expect_false(length(factor_levels[["A"]]) == length(factor_levels[["B"]]))
 
   averaged_plot_data <- .plot_data_marginal_samples(
@@ -839,7 +839,7 @@ test_that("marginal inference conditions treatment factor levels by active weigh
 
   factor_only_levels <- inference_factor_only[["conditional"]][["mu_fac"]]
 
-  expect_equal(attr(factor_only_levels[["A"]], "effective_conditional"), character())
-  expect_equal(attr(factor_only_levels[["B"]], "effective_conditional"), "mu_fac")
-  expect_equal(attr(factor_only_levels[["C"]], "effective_conditional"), "mu_fac")
+  expect_equal(.bt_meta_condition(factor_only_levels[["A"]], "effective_conditional"), character())
+  expect_equal(.bt_meta_condition(factor_only_levels[["B"]], "effective_conditional"), "mu_fac")
+  expect_equal(.bt_meta_condition(factor_only_levels[["C"]], "effective_conditional"), "mu_fac")
 })

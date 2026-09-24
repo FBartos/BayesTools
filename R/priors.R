@@ -580,7 +580,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
     for(i in seq_along(prior_list)){
       if(is.prior.point(prior_list[[i]])){
         # Save mixture metadata before recreating the factor-compatible prior.
-        component_attr <- attr(prior_list[[i]], "component")
+        component_attr <- attr(prior_list[[i]], "component", exact = TRUE)
         prior_weight   <- .prior_model_weight(prior_list[[i]])
         prior_list[[i]] <- prior_factor(
           distribution = "point",
@@ -591,7 +591,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
         attr(prior_list[[i]], "component") <- component_attr
       }else if(is.prior.none(prior_list[[i]])){
         # Save mixture metadata before recreating the factor-compatible prior.
-        component_attr <- attr(prior_list[[i]], "component")
+        component_attr <- attr(prior_list[[i]], "component", exact = TRUE)
         prior_weight   <- .prior_model_weight(prior_list[[i]])
         prior_list[[i]] <- prior_factor(
           distribution = "point",

@@ -1188,20 +1188,20 @@ test_that("as_mixed_posteriors propagates multi-factor contrast metadata", {
   expect_equal(attr(mixed$mu_a__xXx__b, "factor_contrasts"), attr(interaction_prior, "factor_contrasts"))
   expect_equal(attr(mixed$mu_a__xXx__b, "factor_design"), attr(interaction_prior, "factor_design"))
   expect_equal(attr(mixed$mu_a__xXx__b, "factor_cell_names"), attr(interaction_prior, "factor_cell_names"))
-  attr(mixed$mu_a__xXx__b, "posterior_support") <- stats::setNames(
+  mixed$mu_a__xXx__b <- .bt_meta_set(mixed$mu_a__xXx__b, "support", stats::setNames(
     rep(
       list(BayesTools:::.posterior_support_new(c(-1, 1), source = "test")),
       ncol(mixed$mu_a__xXx__b)
     ),
     colnames(mixed$mu_a__xXx__b)
-  )
+  ))
 
   transformed <- transform_factor_samples(mixed)$mu_a__xXx__b
   expect_equal(
     as.vector(transformed),
     as.vector(posterior %*% t(attr(interaction_prior, "factor_design")))
   )
-  expect_null(attr(transformed, "posterior_support", exact = TRUE))
+  expect_null(.bt_meta_get(transformed, "support"))
 })
 
 
@@ -1246,7 +1246,7 @@ test_that(".filter_parameters keeps point priors with expression locations", {
   attr(fit, "prior_list") <- prior_list[c("a", "b")]
   fit <- attach_test_parameter_map(fit)
   samples <- as_mixed_posteriors(fit, c("a", "b"))
-  expect_null(attr(samples$b, "posterior_support"))
+  expect_null(.bt_meta_get(samples$b, "support"))
   expect_equal(as.numeric(marginal_posterior(samples, "b")), a)
 })
 

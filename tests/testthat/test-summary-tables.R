@@ -168,7 +168,7 @@ test_that("ensemble estimates use equal-tailed 95 percent defaults", {
 test_that("ensemble estimates summarize declared undefined draws over defined draws", {
 
   correlation <- c(0.2, NA, -0.4, 0.6, NA, 0.1)
-  attr(correlation, "undefined_draws") <- "correlation"
+  correlation <- .bt_meta_set(correlation, "undefined_draws", "correlation")
   defined <- correlation[!is.na(correlation)]
   estimates <- ensemble_estimates_table(
     list(tau = c(1, 2, 3, 4, 5, 6), "cor(intercept,x)" = correlation),
@@ -199,7 +199,7 @@ test_that("ensemble estimates summarize declared undefined draws over defined dr
 
   # Fully defined declared draws add no footnote.
   complete <- c(0.2, 0.3)
-  attr(complete, "undefined_draws") <- "correlation"
+  complete <- .bt_meta_set(complete, "undefined_draws", "correlation")
   expect_null(attr(
     ensemble_estimates_table(list(r = complete), parameters = "r"),
     "footnotes"
@@ -207,7 +207,7 @@ test_that("ensemble estimates summarize declared undefined draws over defined dr
 
   # Matrix samples declare undefined columns by name.
   matrix_samples <- cbind(a = c(1, NA, 3), b = c(1, 2, 3))
-  attr(matrix_samples, "undefined_draws") <- c(a = "correlation")
+  matrix_samples <- .bt_meta_set(matrix_samples, "undefined_draws", c(a = "correlation"))
   matrix_estimates <- ensemble_estimates_table(
     list(m = matrix_samples),
     parameters = "m"
@@ -246,14 +246,14 @@ test_that("ensemble estimates reject undeclared missing draws", {
     fixed = TRUE
   )
   matrix_samples <- cbind(a = c(1, NA, 3), b = c(1, 2, NA))
-  attr(matrix_samples, "undefined_draws") <- c(a = "correlation")
+  matrix_samples <- .bt_meta_set(matrix_samples, "undefined_draws", c(a = "correlation"))
   expect_error(
     ensemble_estimates_table(list(m = matrix_samples), parameters = "m"),
     "The posterior draws of 'b' contain missing values.",
     fixed = TRUE
   )
   unknown <- c(1, NA, 3)
-  attr(unknown, "undefined_draws") <- "other"
+  unknown <- .bt_meta_set(unknown, "undefined_draws", "other")
   expect_error(
     ensemble_estimates_table(list(theta = unknown), parameters = "theta"),
     paste0(
@@ -350,7 +350,7 @@ test_that("ensemble_estimates_table handles transformed factor posteriors", {
     "mixed_posteriors.orthonormal_transformed",
     class(factor_samples)
   )
-  attr(factor_samples, "formula_parameter") <- "mu"
+  factor_samples <- .bt_meta_set(factor_samples, "formula_parameter", "mu")
   mixed_posteriors <- list(mu_x_fac3o = factor_samples)
   class(mixed_posteriors) <- "mixed_posteriors"
 
@@ -400,7 +400,7 @@ test_that("ensemble_estimates_table handles multi-factor transformed interaction
   attr(interaction_samples, "meandif")           <- FALSE
   attr(interaction_samples, "treatment")         <- FALSE
   attr(interaction_samples, "independent")       <- FALSE
-  attr(interaction_samples, "formula_parameter") <- "mu"
+  interaction_samples <- .bt_meta_set(interaction_samples, "formula_parameter", "mu")
 
   samples <- list(mu_a__xXx__b = interaction_samples)
   class(samples) <- "mixed_posteriors"
@@ -509,7 +509,7 @@ test_that("ensemble_estimates_table handles formula posteriors", {
     "mixed_posteriors.formula",
     class(intercept_samples)
   )
-  attr(intercept_samples, "formula_parameter") <- "mu"
+  intercept_samples <- .bt_meta_set(intercept_samples, "formula_parameter", "mu")
   sigma_samples <- .summary_table_fixed_samples(
     target_mean = 0.887,
     probabilities = probabilities,

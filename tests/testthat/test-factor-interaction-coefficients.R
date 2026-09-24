@@ -66,7 +66,7 @@ test_that("as_mixed_posteriors handles treatment factor-continuous interaction c
   )
 
   prior_plot_data <- BayesTools:::.plot_data_prior_factor_density_transformed(
-    prior_density_context = attr(samples, "prior_density_context"),
+    prior_density_context = .bt_meta_get(samples, "prior_context"),
     samples               = samples,
     parameter             = "mu_alloc__xXx__year",
     prior_list            = attr(samples$mu_alloc__xXx__year, "prior_list"),
@@ -202,11 +202,11 @@ test_that("marginal_posterior handles treatment factor-continuous interaction co
   expect_equal(as.numeric(marginal$random), as.numeric(expected[, 2]))
   expect_equal(as.numeric(marginal$systematic), as.numeric(expected[, 3]))
   expect_equal(
-    BayesTools:::.prior_linear_density_point_mass(attr(marginal$alternate, "prior_density"), 0),
+    BayesTools:::.prior_linear_density_point_mass(.bt_meta_get(marginal$alternate, "prior_density"), 0),
     1
   )
   expect_equal(
-    BayesTools:::.prior_linear_density_point_mass(attr(marginal$random, "prior_density"), 0),
+    BayesTools:::.prior_linear_density_point_mass(.bt_meta_get(marginal$random, "prior_density"), 0),
     0
   )
 })
