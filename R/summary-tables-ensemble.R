@@ -103,7 +103,7 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
   check_bool(transform_scaled, "transform_scaled")
   check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
 
-  # declared possibly undefined draws (attribute 'undefined_draws'), captured
+  # declared possibly undefined draws ('undefined_draws' metadata), captured
   # before transformations that may rebuild the sample objects
   undefined_draws <- lapply(parameters, function(parameter){
     .bt_meta_get(samples[[parameter]], "undefined_draws")
@@ -256,8 +256,8 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
     stop(
       "The posterior draws of '", label, "' contain missing values. Missing ",
       "draws are accepted only for quantities declared as possibly undefined ",
-      "(attribute 'undefined_draws', set by parameter_draws() for ",
-      "original-scale random-effect correlations).",
+      "(draw metadata 'undefined_draws', set by parameter_draws() or with ",
+      "posterior_metadata()).",
       call. = FALSE
     )
   }

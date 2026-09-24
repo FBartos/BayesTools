@@ -228,8 +228,8 @@ test_that("ensemble estimates reject undeclared missing draws", {
   message <- paste0(
     "The posterior draws of 'theta' contain missing values. Missing draws ",
     "are accepted only for quantities declared as possibly undefined ",
-    "(attribute 'undefined_draws', set by parameter_draws() for ",
-    "original-scale random-effect correlations)."
+    "(draw metadata 'undefined_draws', set by parameter_draws() or with ",
+    "posterior_metadata())."
   )
   expect_error(
     ensemble_estimates_table(list(theta = c(1, NA, 3)), parameters = "theta"),
