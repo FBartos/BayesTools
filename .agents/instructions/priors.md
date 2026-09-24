@@ -229,7 +229,17 @@ grid is the route's continuous density on at most 1024 values over the
 product range, with the product's exact atoms. The capped product grid of the
 factors' grids (`.prior_linear_density_product()`), which a heavy-tailed
 factor can leave without a finite positive mass, remains only for products
-without a structural route (plots only).
+without a structural route (plots only). The route-evaluated grid records
+whether it resolves the product (`product_grid_resolution`: the Riemann sum
+of the route density on the grid within 10% of the continuous mass). A
+heavy-tailed factor (a Cauchy total or multiplier, whose 1e-4 tail range spans
+thousands of scales on 1024 values) leaves it unresolved (about 80% low),
+while normal, t3, t2, gamma, lognormal and inverse-gamma factors stay within
+about 1%. A plotted sum without a structural route that relies on an
+unresolved product grid (a prior curve 129-456% off) is omitted with a
+`BayesTools_prior_curve_unavailable` warning (also
+`BayesTools_plot_condition`); the rest of the plot is drawn, and heights stay
+refused as for every product grid.
 
 Mixture ordinates (model, conditional, and mixture or spike-and-slab terms of
 one linear combination) are weighted sums of per-component ordinates, each from

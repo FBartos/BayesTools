@@ -998,6 +998,7 @@
   }
 
   dist <- .prior_linear_density_point(0)
+  group_dists <- list()
   for(group in groups){
     group_dist <- .prior_linear_group_distribution(
       group             = group,
@@ -1006,6 +1007,7 @@
       source_transforms = source_transforms,
       n_grid            = n_grid
     )
+    group_dists[[length(group_dists) + 1L]] <- group_dist
     dist <- .prior_linear_density_convolve(
       dist,
       .prior_linear_density_on_spacing(group_dist, dx, n_grid),
@@ -1015,6 +1017,7 @@
 
   attr(dist, "weights") <- weights
   attr(dist, "grid_resolution") <- c(spacing = dx, n_grid = n_grid)
+  attr(dist, "product_grid_resolution") <- .prior_linear_density_merge_resolution(group_dists)
   return(dist)
 }
 
@@ -1163,6 +1166,10 @@
   dist <- .prior_linear_density_transform(dist, output_transformation,
                                           output_transformation_arguments, n_grid)
   attr(dist, "weights") <- weights
+  # whether the grids of product components resolve their densities
+  # (.prior_linear_density_route_product()); plots of combinations without
+  # a structural route omit a curve built from an unresolved one
+  attr(dist, "product_grid_resolution") <- .prior_linear_density_merge_resolution(components)
   if(isTRUE(.record_evaluation)){
     attr(dist, "adaptive_evaluation") <- list(
       kind = "linear_combination",
@@ -2750,7 +2757,31 @@
 
   out <- list()
 
-  if(!is.null(dist$density) && dist$density$mass > 0){
+  # A curve without a structural route that relies on a numerical grid with an
+  # unresolved product component (a heavy-tailed factor; see
+  # .prior_linear_density_route_product()) is omitted with a classed warning;
+  # the atoms are still drawn.
+  draw_curve <- !is.null(dist$density) && dist$density$mass > 0
+  route <- NULL
+  if(draw_curve){
+    route <- .prior_density_route_from_adaptive(
+      attr(dist, "adaptive_evaluation", exact = TRUE)
+    )
+    if(!identical(route$type, "unknown") && .prior_density_route_has_leaf(route, "unknown")){
+      route <- .prior_density_route_with_grids(route)
+    }
+    unresolved <- if(identical(route$type, "unknown")){
+      isFALSE(attr(dist, "product_grid_resolution", exact = TRUE)$resolved)
+    }else{
+      .prior_density_route_unresolved_products(route)
+    }
+    if(unresolved){
+      .prior_linear_density_warn_curve_unavailable()
+      draw_curve <- FALSE
+    }
+  }
+
+  if(draw_curve){
     # The continuous density is evaluated on its structural route (closed
     # forms, and quadrature leaves by one batched quadrature over the plotted
     # values); only a combination without a structural route, or a density
@@ -2760,14 +2791,8 @@
     # values it must include (support bounds and jumps, with a point just
     # beyond each, offsets and other peaks, and atoms), and the vertex of a
     # parabola through each local maximum and its neighbours.
-    route <- .prior_density_route_from_adaptive(
-      attr(dist, "adaptive_evaluation", exact = TRUE)
-    )
     structural <- !is.null(route) && !identical(route$type, "unknown")
     display <- structural && .prior_density_route_has_quadrature(route)
-    if(display){
-      route <- .prior_density_route_with_grids(route)
-    }
     size <- if(display) min(n_points, .prior_linear_density_display_size()) else n_points
 
     grid <- function(size){
@@ -2896,6 +2921,25 @@
   }
 
   return(out)
+}
+
+# Warning of an omitted prior curve (.prior_linear_density_to_plot_data()).
+.prior_linear_density_warn_curve_unavailable <- function(){
+
+  warning(structure(
+    class = c("BayesTools_prior_curve_unavailable", "BayesTools_plot_condition",
+              "warning", "condition"),
+    list(
+      message = paste0(
+        "The prior density curve is unavailable: this prior-density ",
+        "combination has no exact route, and its numerical grid cannot ",
+        "resolve the scale of a heavy-tailed product term (e.g. a Cauchy ",
+        "ordered total or 'multiply_by' factor). The prior curve is omitted ",
+        "from the plot; plot the terms separately."
+      ),
+      call = NULL
+    )
+  ))
 }
 
 # Number of equally spaced values of a plotted density with quadrature leaves.

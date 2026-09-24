@@ -107,7 +107,9 @@ the support-reflected ordinate used by \code{\link{Savage_Dickey_BF}} when
 exact posterior-support metadata is available. If a stored density is used
 and sample-derived point masses are available, the plot layer uses only
 explicit \code{point_masses} from the stored density and warns when none are
-declared.
+declared. A prior curve without an exact route whose numerical grid cannot
+resolve a heavy-tailed product term is omitted with a warning of class
+\code{BayesTools_prior_curve_unavailable}, as in \code{\link[=plot_posterior]{plot_posterior()}}.
 }
 \seealso{
 \code{\link[=prior]{prior()}} \code{\link[=marginal_inference]{marginal_inference()}}  \code{\link[=plot_posterior]{plot_posterior()}}

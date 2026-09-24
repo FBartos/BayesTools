@@ -1033,6 +1033,91 @@ test_that("ordered levels and products with a structural route are constructed f
   }
 })
 
+test_that("prior curves without a structural route omit unresolved heavy-tailed product grids", {
+
+  # A sum without a structural route is plotted from its numerical grid. The
+  # grid of a product component with a heavy-tailed factor (a Cauchy ordered
+  # total or 'multiply_by' coefficient, whose 1e-4 tail range spans about
+  # 6000 scales on at most 1024 values) cannot resolve the product's scale:
+  # the Riemann sum of the product density on it is about 80% below its mass,
+  # and the plotted sums were 129-456% off. Such curves are omitted with a
+  # classed warning; heights stay refused, and curves with a structural
+  # route or a resolved product grid are drawn.
+  bound <- function(total, alpha){
+    p <- prior_ordered(total, allocation = prior("dirichlet", list(alpha = alpha)))
+    attr(p, "levels") <- length(alpha) + 1L
+    .prior_ordered_default_bound(p, "g")
+  }
+  plot_data <- function(density){
+    warnings <- list()
+    value <- withCallingHandlers(
+      .prior_linear_density_to_plot_data(density, x_range = c(-4, 4), n_points = 101),
+      warning = function(w){
+        warnings[[length(warnings) + 1L]] <<- w
+        invokeRestart("muffleWarning")
+      }
+    )
+    list(value = value, warnings = warnings)
+  }
+  coefficient <- prior("cauchy", list(0, 1))
+  attr(coefficient, "multiply_by") <- "s"
+  unresolved <- list(
+    .prior_linear_combination_density(
+      list(a = prior("normal", list(0, 1)), g = bound(prior("cauchy", list(0, 1)), c(2, 3))),
+      c(a = 1, "g[1]" = 1)
+    ),
+    .prior_linear_combination_density(
+      list(a = prior("t", list(0, 1, 3)), b = coefficient, s = prior("beta", list(2, 3))),
+      c(a = 1, b = 1)
+    )
+  )
+  for(density in unresolved){
+    expect_false(attr(density, "product_grid_resolution")$resolved)
+    data <- plot_data(density)
+    expect_null(data$value$density)
+    expect_length(data$warnings, 1L)
+    expect_s3_class(data$warnings[[1L]], "BayesTools_prior_curve_unavailable")
+    expect_s3_class(data$warnings[[1L]], "BayesTools_plot_condition")
+    expect_error(.prior_linear_density_height(density, 0), "numerical product grids are not used")
+  }
+
+  # a resolved product grid (t3 total) and a Cauchy level with its own route
+  resolved <- .prior_linear_combination_density(
+    list(a = prior("t", list(0, 1, 3)), g = bound(prior("t", list(0, 1, 3)), c(2, 3))),
+    c(a = 1, "g[1]" = 1)
+  )
+  expect_true(attr(resolved, "product_grid_resolution")$resolved)
+  level <- .prior_linear_combination_density(list(g = bound(prior("cauchy", list(0, 1)), c(2, 3))), c("g[1]" = 1))
+  expect_false(attr(level, "product_grid_resolution")$resolved)
+  for(density in list(resolved, level)){
+    data <- plot_data(density)
+    expect_length(data$warnings, 0L)
+    expect_false(is.null(data$value$density))
+  }
+
+  # plot_marginal of y ~ f with a Cauchy ordered total: the level with the
+  # unresolved product omits its prior curve, and the plot is drawn
+  df <- data.frame(y = seq_len(6), f = ordered(rep(c("low", "mid", "high"), 2), levels = c("low", "mid", "high")))
+  set.seed(8801)
+  posterior <- cbind(mu_intercept = stats::rnorm(500, .2, .1),
+                     "mu_f[1]" = stats::rnorm(500, .1, .05), "mu_f[2]" = stats::rnorm(500, .15, .05))
+  formula_info <- JAGS_formula(y ~ f, "mu", data = df, prior_list = list(
+    intercept = prior("normal", list(0, 1)), f = prior_ordered(prior("cauchy", list(0, 1)))))
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_info$prior_list
+  fit <- attach_test_parameter_map(fit)
+  mixed <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_f"))
+  marginal <- marginal_posterior(mixed, parameter = "mu_f", formula = ~ f, prior_samples = TRUE, n_samples = 500)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_warning(plot_marginal(list(mu_f = marginal), "mu_f", prior = TRUE),
+                 class = "BayesTools_prior_curve_unavailable")
+  expect_warning(plot <- plot_marginal(list(mu_f = marginal), "mu_f", prior = TRUE, plot_type = "ggplot"),
+                 class = "BayesTools_prior_curve_unavailable")
+  expect_s3_class(plot, "ggplot")
+})
+
 test_that("sampled ordered level densities reflect at the exact level support", {
 
   gamma_total <- prior_ordered(prior("gamma", list(2, 2)))

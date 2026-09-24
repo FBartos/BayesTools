@@ -1333,6 +1333,30 @@
     grid$density$mass
 }
 
+# Whether a leaf without a structural representation relies on a numerical
+# grid with an unresolved product component (the grid's
+# 'product_grid_resolution' record; .prior_linear_density_route_product()).
+# Grids that .prior_density_route_with_grids() did not store are built.
+.prior_density_route_unresolved_products <- function(route){
+
+  if(is.null(route)){
+    return(FALSE)
+  }
+  switch(
+    route$type,
+    "unknown" = {
+      if(is.null(route$recipe)){
+        return(FALSE)
+      }
+      grid <- if(is.null(route$grid)) .prior_density_route_recipe_grid(route$recipe) else route$grid
+      is.list(grid) && isFALSE(attr(grid, "product_grid_resolution", exact = TRUE)$resolved)
+    },
+    "mixture"   = any(vapply(route$components, .prior_density_route_unresolved_products, logical(1))),
+    "transform" = .prior_density_route_unresolved_products(route$source),
+    FALSE
+  )
+}
+
 # The numerical grid of a route recipe ("unavailable" when it cannot be built).
 .prior_density_route_recipe_grid <- function(recipe){
 

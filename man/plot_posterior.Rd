@@ -161,6 +161,14 @@ with \code{x} and \code{y} coordinates. These densities are used only when
 sample-derived point masses are available, the plot layer uses only explicit
 \code{point_masses} from the stored density and warns when none are declared.
 
+Prior-density curves are evaluated on their exact routes where they exist.
+A combination without an exact route is drawn from its numerical grid;
+when that grid cannot resolve the scale of a heavy-tailed product term
+(e.g., an intercept plus a level of an ordered factor with a Cauchy total),
+the prior curve is omitted with a warning of class
+\code{BayesTools_prior_curve_unavailable} (also
+\code{BayesTools_plot_condition}) and the rest of the plot is drawn.
+
 For base plots, the initial call establishes the density-to-probability
 mapping. Calls with \code{add = TRUE} reuse that mapping so point masses from
 separate prior or posterior objects remain comparable. Point masses outside

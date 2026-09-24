@@ -578,6 +578,15 @@
 # heavy-tailed factor can leave without a finite positive mass. NULL when the
 # route has a leaf without a structural representation (then the capped
 # product grid of the factors' grids applies).
+# The grid is a display representation (heights and probabilities use the
+# route). Its 'product_grid_resolution' attribute records whether the spacing
+# resolves the product's density: the Riemann sum of the route density on the
+# grid differs from the continuous mass by at most
+# .prior_linear_density_product_resolution() relative. A heavy-tailed factor
+# (e.g. a Cauchy total, whose 1e-4 tail range spans thousands of scales)
+# leaves the grid unresolved (Riemann mass 76-89% low), while grids of
+# light-tailed and moderately heavy-tailed factors (normal, t3, t2, gamma,
+# lognormal and inverse-gamma multipliers) differ by at most about 1%.
 .prior_linear_density_route_product <- function(route, range, points, n_grid){
 
   if(is.null(route) || .prior_density_route_has_leaf(route, "unknown")){
@@ -588,6 +597,7 @@
 
   densities <- list()
   dx <- NA_real_
+  resolution <- NULL
   if(continuous_mass > 0 && range[1L] < range[2L]){
     z <- seq(range[1L], range[2L], length.out = n_grid)
     dx <- z[2L] - z[1L]
@@ -597,12 +607,51 @@
       return(NULL)
     }
     densities[[1L]] <- list(x = z[finite], y = y[finite], mass = continuous_mass)
+    riemann_mass <- sum(y[finite]) * dx
+    resolution <- list(
+      spacing         = dx,
+      riemann_mass    = riemann_mass,
+      continuous_mass = continuous_mass,
+      resolved        = abs(riemann_mass / continuous_mass - 1) <=
+        .prior_linear_density_product_resolution()
+    )
   }
-  .prior_linear_density_coalesce(
+  out <- .prior_linear_density_coalesce(
     densities = densities,
     points    = points,
     dx        = dx,
     n_grid    = n_grid
+  )
+  attr(out, "product_grid_resolution") <- resolution
+  out
+}
+
+# Largest relative difference between the Riemann mass of a route-evaluated
+# product grid and its continuous mass for the grid to count as resolved.
+.prior_linear_density_product_resolution <- function(){
+
+  0.1
+}
+
+# The 'product_grid_resolution' records of the product components among
+# 'dists', merged: 'resolved' when every component grid is resolved; NULL
+# without product components.
+.prior_linear_density_merge_resolution <- function(dists){
+
+  records <- list()
+  for(dist in dists){
+    record <- attr(dist, "product_grid_resolution", exact = TRUE)
+    if(is.null(record)){
+      next
+    }
+    records <- c(records, if(is.null(record$components)) list(record) else record$components)
+  }
+  if(length(records) == 0L){
+    return(NULL)
+  }
+  list(
+    resolved   = all(vapply(records, function(record) isTRUE(record$resolved), logical(1))),
+    components = records
   )
 }
 
