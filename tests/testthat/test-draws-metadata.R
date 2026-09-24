@@ -77,6 +77,82 @@ test_that("draw metadata is read and written only through its accessors", {
   expect_identical(labels[outside], character())
 })
 
+# Attribute names set through structure(x, <name> = ) or accessed as
+# attributes(x)$<name> / attributes(x)[["<name>"]] in the package sources:
+# the file, line, and attribute name.
+.draws_metadata_named_sites <- function(files){
+
+  sites <- lapply(files, function(file){
+    pd <- utils::getParseData(parse(file, keep.source = TRUE), includeText = TRUE)
+    call_of <- function(function_name){
+      symbols <- pd$parent[pd$token == "SYMBOL_FUNCTION_CALL" & pd$text == function_name]
+      pd$parent[match(symbols, pd$id)]
+    }
+    rows <- list()
+    for(call_id in call_of("structure")){
+      arguments <- pd[pd$parent == call_id & pd$token == "SYMBOL_SUB", ]
+      if(nrow(arguments) > 0L){
+        rows[[length(rows) + 1L]] <- data.frame(
+          file = basename(file), line = arguments$line1,
+          name = gsub("`", "", arguments$text), stringsAsFactors = FALSE
+        )
+      }
+    }
+    for(call_id in call_of("attributes")){
+      outer <- pd[pd$parent == pd$parent[pd$id == call_id], ]
+      outer <- outer[order(outer$line1, outer$col1), ]
+      if(nrow(outer) < 3L || outer$id[1L] != call_id){
+        next
+      }
+      name <- if(identical(outer$token[2L], "'$'")){
+        outer$text[3L]
+      }else if(identical(outer$token[2L], "LBB")){
+        index <- pd[pd$parent == outer$id[3L], ]
+        if(nrow(index) == 1L && identical(index$token, "STR_CONST")) index$text else NA_character_
+      }else{
+        NA_character_
+      }
+      if(!is.na(name)){
+        rows[[length(rows) + 1L]] <- data.frame(
+          file = basename(file), line = outer$line1[1L],
+          name = gsub("^[\"'`]|[\"'`]$", "", name), stringsAsFactors = FALSE
+        )
+      }
+    }
+    do.call(rbind, rows)
+  })
+  do.call(rbind, sites)
+}
+
+test_that("draw metadata is never set by structure() or read from attributes()", {
+
+  metadata_names <- setdiff(c(
+    BayesTools:::.bt_meta_attribute,
+    BayesTools:::.bt_meta_legacy_names
+  ), "formula_scale")
+
+  # the scanners find every access form they check
+  planted <- tempfile(fileext = ".R")
+  on.exit(unlink(planted), add = TRUE)
+  writeLines(c(
+    'a <- attr(x, "prior_density")',
+    'b <- structure(x, posterior_atoms = atoms, class = "y")',
+    'd <- attributes(x)$undefined_draws',
+    'e <- attributes(x)[["models_ind"]]'
+  ), planted)
+  expect_identical(.draws_metadata_attr_sites(planted)$name, "prior_density")
+  planted_sites <- .draws_metadata_named_sites(planted)
+  expect_identical(
+    planted_sites$name[planted_sites$name %in% metadata_names],
+    c("posterior_atoms", "undefined_draws", "models_ind")
+  )
+
+  sites <- .draws_metadata_named_sites(.draws_metadata_source_files())
+  outside <- sites$name %in% metadata_names & sites$file != "draws-metadata.R"
+  labels <- paste0(sites$file, ":", sites$line, " ", sites$name)
+  expect_identical(labels[outside], character())
+})
+
 test_that("attributes are never read by partial name matching", {
 
   sites <- .draws_metadata_attr_sites(.draws_metadata_source_files())
