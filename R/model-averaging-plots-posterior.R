@@ -428,7 +428,9 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     # regular prior distributions (or individual plots for parameters PET-PEESE)
 
     # bias plot parameters require special extraction
-    if (is.element(parameter, c("PET", "PEESE", "PETPEESE")) && !is.null(samples[["bias"]]) && inherits(samples[["bias"]], "mixed_posteriors.bias")) {
+    bias_parameter <- is.element(parameter, c("PET", "PEESE", "PETPEESE")) &&
+      !is.null(samples[["bias"]]) && inherits(samples[["bias"]], "mixed_posteriors.bias")
+    if (bias_parameter) {
       samples <- .simplify_as_mixed_posterior_bias(samples, parameter)
     }
     prior_list  <- attr(samples[[parameter]], "prior_list")
@@ -450,9 +452,12 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     # add priors, if requested
     if(prior){
 
-      # use transformed or conditioned prior densities if available
+      # use transformed or conditioned prior densities if available; the
+      # prior list of a bias parameter already carries the branch weights
+      # implied by the condition
       plot_data_prior <- NULL
-      if(.plot_data_prior_should_use_context(samples, parameter, transform_scaled, prior_list)){
+      if(!bias_parameter &&
+         .plot_data_prior_should_use_context(samples, parameter, transform_scaled, prior_list)){
         plot_data_prior <- .plot_data_prior_density_context(
           prior_density_context      = prior_density_context,
           samples                   = samples,

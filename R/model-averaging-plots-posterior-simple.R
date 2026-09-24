@@ -90,7 +90,6 @@
       prior_list       = prior_list,
       column_names     = column_names,
       n_samples        = max(16L, n_points),
-      allow_failure    = TRUE,
       condition_source = samples[[parameter]]
     ))
   }
@@ -115,17 +114,14 @@
     NULL
   }
 
-  tryCatch(
-    .prior_density_build_context(
-      prior_list       = raw_priors$prior_list,
-      column_names     = column_names,
-      formula_scale    = formula_scale,
-      n_grid           = n_grid,
-      conditional      = condition_metadata[["conditional"]],
-      conditional_rule = condition_metadata[["conditional_rule"]],
-      condition_event  = condition_metadata[["condition_event"]]
-    ),
-    error = function(e) NULL
+  .prior_density_build_context(
+    prior_list       = raw_priors$prior_list,
+    column_names     = column_names,
+    formula_scale    = formula_scale,
+    n_grid           = n_grid,
+    conditional      = condition_metadata[["conditional"]],
+    conditional_rule = condition_metadata[["conditional_rule"]],
+    condition_event  = condition_metadata[["condition_event"]]
   )
 }
 
@@ -196,13 +192,7 @@
   names(weights) <- column_names
   weights[parameter] <- 1
 
-  prior_density <- tryCatch(
-    .prior_density_from_context(prior_density_context, weights),
-    error = function(e) NULL
-  )
-  if(is.null(prior_density)){
-    return(NULL)
-  }
+  prior_density <- .prior_density_from_context(prior_density_context, weights)
 
   .prior_linear_density_to_plot_data(
     prior_density,

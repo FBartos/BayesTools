@@ -1035,6 +1035,45 @@ test_that("conditional posterior prior overlays do not scale raw coefficients by
   expect_lt(max(abs(layer_other$x)), 10)
 })
 
+test_that("conditional posterior prior overlays propagate context failures", {
+
+  prior_list <- list(
+    theta = prior_spike_and_slab(
+      prior("normal", list(mean = 0, sd = 1)),
+      prior_inclusion = prior("point", list(location = 0.5))
+    ),
+    gamma = prior_spike_and_slab(
+      prior("normal", list(mean = 0, sd = 1)),
+      prior_inclusion = prior("point", list(location = 0.5))
+    )
+  )
+  theta_included <- rep(c(1, 1, 0, 0), each = 25)
+  gamma_included <- rep(c(1, 0, 1, 0), each = 25)
+  posterior <- cbind(
+    theta           = theta_included * seq(-1.5, 1.5, length.out = 100),
+    theta_indicator = theta_included,
+    gamma           = gamma_included * seq(-1, 1, length.out = 100),
+    gamma_indicator = gamma_included
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  samples <- as_mixed_posteriors(fit, parameters = c("theta", "gamma"), conditional = "gamma")
+
+  # the conditional prior overlay is built from the density context; a
+  # failure there is an error, not a silent switch to the unconditional prior
+  testthat::local_mocked_bindings(
+    .prior_density_build_context = function(...) stop("context failure", call. = FALSE),
+    .prior_density_from_context  = function(...) stop("context failure", call. = FALSE),
+    .package = "BayesTools"
+  )
+  expect_error(
+    plot_posterior(samples, "theta", plot_type = "ggplot", prior = TRUE, n_points = 64),
+    "context failure",
+    fixed = TRUE
+  )
+})
+
 test_that("plot_posterior handles attached point priors outside xlim", {
 
   theta <- structure(
