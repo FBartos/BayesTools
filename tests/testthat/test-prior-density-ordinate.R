@@ -958,3 +958,125 @@ test_that("ordinate provenance is compact and contains no closures", {
   expect_false(contains_matrix(row_out$provenance))
   expect_length(forbidden_names(row_out$provenance), 0)
 })
+
+test_that("original-scale intercepts with mixture sources are classified per component", {
+
+  # b0 - (m / s) b1 of a model-averaged meta-regression with a standardized
+  # moderator (m = 1, s = 2): a mixture intercept (spike at .2 with weight 1,
+  # N(0, s0) with weight 3) and a spike-and-slab slope (inclusion .3). The
+  # measure is the product of the terms' components: an atom of .25 * .7 at
+  # .2 and three normal components. References: the analytic normal mixture.
+  s0 <- sqrt(.5)
+  s1 <- sqrt(.125)
+  scaled <- .5 * s1
+  context <- .prior_density_context(
+    prior_list = list(
+      mu_intercept = prior_mixture(list(
+        prior("point", list(.2), prior_weights = 1),
+        prior("normal", list(0, s0), prior_weights = 3)
+      ), is_null = c(TRUE, FALSE)),
+      mu_x = prior_spike_and_slab(prior("normal", list(0, s1)),
+                                  prior_inclusion = prior("spike", list(.3)))
+    ),
+    column_names = c("mu_intercept", "mu_x"),
+    formula_scale = list(mu = list(mu_x = list(mean = 1, sd = 2)))
+  )
+  density <- .prior_density_from_context(context, c(mu_intercept = 1))
+  weights <- c(.25 * .3, .75 * .7, .75 * .3)
+  means <- c(.2, 0, 0)
+  sds <- c(scaled, s0, sqrt(s0^2 + scaled^2))
+  continuous <- function(value) sum(weights * stats::dnorm(value, means, sds))
+  above <- function(value) sum(weights * stats::pnorm(value, means, sds, lower.tail = FALSE))
+
+  for(value in c(-.5, 0, .1, .3, 1)){
+    ordinate <- prior_density_ordinate(density, value)
+    expect_identical(ordinate$behavior, "regular", label = format(value))
+    expect_identical(ordinate$method, "finite_mixture")
+    expect_true(ordinate$exact)
+    expect_equal(exp(ordinate$log_density), continuous(value), tolerance = 1e-12)
+    expect_equal(as.numeric(.prior_linear_density_height(density, value)),
+                 continuous(value), tolerance = 1e-12)
+  }
+  # the spike-spike component is an atom; the continuous part stays regular
+  atom <- prior_density_ordinate(density, .2)
+  expect_identical(atom$behavior, "point_mass")
+  expect_equal(atom$point_mass, .25 * .7, tolerance = 1e-15)
+  expect_identical(atom$provenance$continuous_behavior, "regular")
+  expect_equal(exp(atom$log_density), continuous(.2), tolerance = 1e-12)
+  expect_error(.hypothesis_prior_density_height(density, .2),
+               "There is a point mass in the prior at the exact null hypothesis value.",
+               fixed = TRUE)
+  support <- .posterior_support_from_prior_context_weights(context, c(mu_intercept = 1))
+  expect_identical(support$points, .2)
+  expect_identical(support$type, "mixed")
+
+  probability <- function(hypothesis){
+    side <- hypothesis_parse(hypothesis)$statements[[1L]]$left
+    .hypothesis_prior_density_prob(density, side, "theta")
+  }
+  expect_equal(probability("theta > 0.2"), above(.2), tolerance = 1e-14)
+  expect_equal(probability("theta >= 0.2"), above(.2) + .25 * .7, tolerance = 1e-14)
+  expect_equal(probability("theta < -0.3"), sum(weights * stats::pnorm(-.3, means, sds)),
+               tolerance = 1e-14)
+  expect_equal(probability("theta > 0 & theta < 0.5"),
+               above(0) - above(.5) + .25 * .7, tolerance = 1e-14)
+
+  # a Cauchy alternative gives a Gaussian-convolution component; reference by
+  # integrating over the normal intercept (the package integrates over the
+  # slope)
+  context <- .prior_density_context(
+    prior_list = list(
+      mu_intercept = prior_mixture(list(
+        prior("point", list(0), prior_weights = 1),
+        prior("normal", list(0, s0), prior_weights = 1)
+      ), is_null = c(TRUE, FALSE)),
+      mu_x = prior_mixture(list(
+        prior("point", list(0), prior_weights = 1),
+        prior("cauchy", list(0, .5), prior_weights = 1)
+      ), is_null = c(TRUE, FALSE))
+    ),
+    column_names = c("mu_intercept", "mu_x"),
+    formula_scale = list(mu = list(mu_x = list(mean = 1, sd = 2)))
+  )
+  density <- .prior_density_from_context(context, c(mu_intercept = 1))
+  convolution <- function(value){
+    pieces <- s0 * c(-40, -10, -3, -1, 0, 1, 3, 10, 40)
+    sum(vapply(seq_len(length(pieces) - 1L), function(i){
+      stats::integrate(function(g) stats::dnorm(g, 0, s0) * stats::dcauchy(value - g, 0, .25),
+                       pieces[i], pieces[i + 1L], rel.tol = 1e-12)$value
+    }, numeric(1)))
+  }
+  convolution_above <- function(value){
+    pieces <- s0 * c(-40, -10, -3, -1, 0, 1, 3, 10, 40)
+    sum(vapply(seq_len(length(pieces) - 1L), function(i){
+      stats::integrate(function(g) stats::dnorm(g, 0, s0) *
+                         stats::pcauchy(value - g, 0, .25, lower.tail = FALSE),
+                       pieces[i], pieces[i + 1L], rel.tol = 1e-12)$value
+    }, numeric(1)))
+  }
+  for(value in c(-1, .1, .4)){
+    reference <- .25 * stats::dnorm(value, 0, s0) + .25 * stats::dcauchy(value, 0, .25) +
+      .25 * convolution(value)
+    ordinate <- prior_density_ordinate(density, value)
+    expect_true(ordinate$exact)
+    expect_lt(abs(exp(ordinate$log_density) / reference - 1), 1e-8)
+  }
+  atom <- prior_density_ordinate(density, 0)
+  expect_identical(atom$behavior, "point_mass")
+  expect_equal(atom$point_mass, .25, tolerance = 1e-15)
+  expect_identical(atom$provenance$continuous_behavior, "regular")
+  side <- hypothesis_parse("theta > 0.4")$statements[[1L]]$left
+  expect_lt(abs(.hypothesis_prior_density_prob(density, side, "theta") -
+                  (.25 * stats::pnorm(.4, 0, s0, lower.tail = FALSE) +
+                     .25 * stats::pcauchy(.4, 0, .25, lower.tail = FALSE) +
+                     .25 * convolution_above(.4))), 1e-10)
+
+  # a leaf without a structural route (two Cauchy terms) leaves the mixture
+  # unknown, as for any combination
+  context$prior_list$mu_intercept <- prior_mixture(list(
+    prior("point", list(0), prior_weights = 1),
+    prior("cauchy", list(0, .5), prior_weights = 1)
+  ), is_null = c(TRUE, FALSE))
+  ordinate <- prior_density_ordinate(.prior_density_from_context(context, c(mu_intercept = 1)), .1)
+  expect_identical(ordinate$behavior, "unknown")
+})
