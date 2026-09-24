@@ -87,7 +87,8 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
                                       data = NULL, prior_list = NULL,
                                       formula_target = NULL, blocks = NULL,
                                       new_levels = NULL, fitted_rows = NULL,
-                                      return_components = FALSE){
+                                      return_components = FALSE,
+                                      posterior = NULL){
 
   check_char(parameter, "parameter", allow_NA = FALSE)
   .bt_check_jags_node_name(parameter, "parameter")
@@ -154,8 +155,10 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   if(any(!sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
 
-  # extract the posterior distribution
-  posterior <- as.matrix(.fit_to_posterior(fit))
+  # extract the posterior distribution (or evaluate supplied draws)
+  if(is.null(posterior)){
+    posterior <- as.matrix(.fit_to_posterior(fit))
+  }
   .bt_JAGS_evaluate_formula_validate_posterior_names(posterior)
 
   # remove the specified response (would crash the model.frame if not included)
@@ -329,61 +332,68 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   .bt_validate_model_matrix_finite(model_matrix, "Formula")
 
   ### evaluate the design matrix on the samples -> output[data, posterior]
+  # The fixed part is the registered 'linear_predictor' node's fixed part.
   if(has_intercept){
-
     terms_indexes    <- attr(model_matrix, "assign") + 1
     terms_indexes[1] <- 0
-
-    # check for scaling factors
-    temp_multiply_by <- .get_parameter_scaling_factor_matrix(term = "intercept", prior_list = prior_list_formula, posterior = posterior, nrow = nrow(data), ncol = nrow(posterior))
-
-    # get intercept values and apply log() transformation if log(intercept) attribute is set
-    if(is.prior.point(prior_list_formula[["intercept"]])){
-      intercept_values <- rep(
-        prior_list_formula[["intercept"]]$parameters[["location"]],
-        nrow(posterior)
-      )
-    }else{
-      intercept_values <- posterior[, JAGS_parameter_names("intercept", formula_parameter = parameter)]
-    }
-    if(log_intercept){
-      intercept_values <- log(intercept_values)
-    }
-    output           <- temp_multiply_by * matrix(intercept_values, nrow = nrow(data), ncol = nrow(posterior), byrow = TRUE)
-
   }else{
-
     terms_indexes    <- attr(model_matrix, "assign")
-    output           <- matrix(0, nrow = nrow(data), ncol = nrow(posterior))
-
   }
-
-  # add remaining terms (omitting the intercept indexed as NA)
+  terms <- list()
+  if(has_intercept){
+    terms[[1L]] <- .bt_dnode_linear_predictor_term(
+      parameter = parameter,
+      model_term = "intercept",
+      type = "intercept",
+      columns = 1L,
+      prior = prior_list_formula[["intercept"]],
+      log = log_intercept
+    )
+  }
   for(i in unique(terms_indexes[terms_indexes > 0])){
-
-    # subset the model matrix
-    temp_data <- model_matrix[,terms_indexes == i,drop = FALSE]
-
-    # get the posterior (unless point prior was used)
-    if(is.prior.point(prior_list_formula[[model_terms[i]]])){
-      temp_posterior <- matrix(
-        prior_list_formula[[model_terms[i]]]$parameters[["location"]],
-        nrow = nrow(posterior),
-        ncol = if(model_terms_type[i] == "factor") .get_prior_factor_levels(prior_list_formula[[model_terms[i]]]) else 1
-      )
-    }else{
-      temp_posterior <- posterior[,paste0(
-        JAGS_parameter_names(model_terms[i], formula_parameter = parameter),
-        if(model_terms_type[i] == "factor" && .get_prior_factor_levels(prior_list_formula[[model_terms[i]]]) > 1) paste0("[", 1:.get_prior_factor_levels(prior_list_formula[[model_terms[i]]]), "]"))
-        ,drop = FALSE]
-    }
-
-    # check for scaling factors
-    temp_multiply_by <- .get_parameter_scaling_factor_matrix(term = model_terms[i], prior_list = prior_list_formula, posterior = posterior, nrow = nrow(data), ncol = nrow(posterior))
-
-    output <- output + temp_multiply_by * (temp_data %*% t(temp_posterior))
-
+    term <- .bt_dnode_linear_predictor_term(
+      parameter = parameter,
+      model_term = model_terms[i],
+      type = if(model_terms_type[i] == "factor") "factor" else "continuous",
+      columns = which(terms_indexes == i),
+      prior = prior_list_formula[[model_terms[i]]]
+    )
+    term$coefficient_names <- paste0(
+      JAGS_parameter_names(model_terms[i], formula_parameter = parameter),
+      if(model_terms_type[i] == "factor" && .get_prior_factor_levels(term$prior) > 1){
+        paste0("[", 1:.get_prior_factor_levels(term$prior), "]")
+      }
+    )
+    terms[[length(terms) + 1L]] <- term
   }
+  output <- .bt_dnode_linear_predictor_fixed(
+    terms = terms,
+    model_matrix = model_matrix,
+    n_draws = nrow(posterior),
+    values_of = function(term){
+      if(is.prior.point(term$prior)){
+        return(matrix(
+          term$prior$parameters[["location"]],
+          nrow = nrow(posterior),
+          ncol = if(identical(term$type, "factor")) .get_prior_factor_levels(term$prior) else 1
+        ))
+      }
+      if(identical(term$type, "intercept")){
+        return(posterior[, JAGS_parameter_names("intercept", formula_parameter = parameter), drop = FALSE])
+      }
+      posterior[, term$coefficient_names, drop = FALSE]
+    },
+    multiplier_of = function(term){
+      multiply_by <- term$multiply_by
+      if(is.null(multiply_by)){
+        return(NULL)
+      }
+      if(is.numeric(multiply_by)){
+        return(rep(multiply_by, nrow(posterior)))
+      }
+      posterior[, JAGS_parameter_names(multiply_by)]
+    }
+  )
 
   if(length(expressions_to_eval) > 0L){
     expression_data <- .bt_formula_expression_merge_data(

@@ -52,6 +52,13 @@
 #'   (\code{PET <- PET_1 * equals(bias_indicator, k)}), per coefficient of
 #'   factor priors. Only the components that are active in some draw need to
 #'   be available; point components are constants.}
+#'   \item{\code{"linear_predictor"}}{the linear predictor of a formula
+#'   parameter on the fitted rows: the intercept (or its logarithm), the
+#'   continuous and factor terms with their \code{multiply_by} multipliers,
+#'   the \code{expression()} terms, and the contributions of the sampled
+#'   random-effect blocks, evaluated with [JAGS_evaluate_formula()]. It is
+#'   evaluated only by \code{JAGS_evaluate_deterministic()}, and only when the
+#'   standardized latent effects of the sampled blocks are among the draws.}
 #' }
 #' Nodes are evaluated with the arithmetic of the R evaluator, which reproduces
 #' the JAGS monitors exactly or to the last bits of floating-point rounding.
@@ -109,6 +116,7 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
   }
 
   lookup <- .bt_deterministic_lookup(draws, prior_list)
+  lookup$fit <- fit
   values <- list()
   for(node in all_nodes){
     node_values <- .bt_deterministic_node_evaluate(node, lookup)
@@ -154,7 +162,8 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
   "random_rho",
   "lkj",
   "omega",
-  "prior_mixture"
+  "prior_mixture",
+  "linear_predictor"
 )
 
 .bt_deterministic_node <- function(family, node, coordinates,
@@ -197,6 +206,7 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
     lkj = .bt_dnode_lkj_emit(node),
     omega = .bt_dnode_omega_emit(node),
     prior_mixture = .bt_dnode_prior_mixture_emit(node),
+    linear_predictor = .bt_dnode_linear_predictor_emit(node),
     stop("Unsupported deterministic node family '", node$family, "'.", call. = FALSE)
   )
 }
@@ -212,6 +222,7 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
     lkj = .bt_dnode_lkj_evaluate(node, lookup),
     omega = .bt_dnode_omega_evaluate(node, lookup),
     prior_mixture = .bt_dnode_prior_mixture_evaluate(node, lookup),
+    linear_predictor = .bt_dnode_linear_predictor_evaluate(node, lookup),
     stop("Unsupported deterministic node family '", node$family, "'.", call. = FALSE)
   )
   if(is.null(values)){
@@ -246,6 +257,9 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
         ))
       }
       nodes <- c(nodes, .bt_dnode_random_sd_components(design))
+      if(.bt_dnode_linear_predictor_is_defined(design)){
+        nodes[[length(nodes) + 1L]] <- .bt_dnode_linear_predictor(design)
+      }
     }
   }
 

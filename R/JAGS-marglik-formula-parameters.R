@@ -228,101 +228,16 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
                                                        prior_list_parameters,
                                                        log_intercept = FALSE){
 
-  parameter <- design$parameter
-  output <- rep(0, nrow(design$model_matrix))
-
-  intercept_name <- paste0(parameter, "_intercept")
-  if(intercept_name %in% names(formula_prior_list)){
-    intercept_prior <- formula_prior_list[[intercept_name]]
-    .bt_validate_formula_reconstruction_prior(
-      intercept_prior,
-      intercept_name
-    )
-    intercept_value <- .JAGS_marglik_parameter_values(
-      samples,
-      intercept_prior,
-      intercept_name
-    )
-    if(isTRUE(log_intercept) || isTRUE(design$log_intercept)){
-      intercept_value <- log(intercept_value)
-    }
-    output <- output + .bt_JAGS_marglik_prior_multiply_by(
-      intercept_prior,
-      prior_list_parameters
-    ) * intercept_value
-  }
-
-  remaining_terms <- setdiff(names(formula_prior_list), intercept_name)
-  for(term in remaining_terms){
-    term_prior <- formula_prior_list[[term]]
-    .bt_validate_formula_reconstruction_prior(term_prior, term)
-    model_term <- sub(paste0("^", JAGS_regex_escape(parameter), "_"), "", term)
-    columns <- .bt_JAGS_formula_design_term_columns(design, model_term)
-    term_data <- design$model_matrix[, columns, drop = FALSE]
-    multiply_by <- .bt_JAGS_marglik_prior_multiply_by(
-      term_prior,
-      prior_list_parameters
-    )
-
-    if(is.prior.point(term_prior) && !is.prior.factor(term_prior)){
-      output <- output + multiply_by * term_prior[["parameters"]][["location"]] * as.vector(term_data)
-
-    }else if(is.prior.point(term_prior) && is.prior.factor(term_prior)){
-      if(.get_prior_factor_levels(term_prior) == 1){
-        output <- output + multiply_by * term_prior[["parameters"]][["location"]] * as.vector(term_data)
-      }else{
-        output <- output + multiply_by * as.vector(term_data %*% rep(term_prior[["parameters"]][["location"]], .get_prior_factor_levels(term_prior)))
-      }
-
-    }else if(is.prior.factor(term_prior)){
-      if(.get_prior_factor_levels(term_prior) == 1){
-        term_value <- .JAGS_marglik_parameter_values(samples, term_prior, term)
-        output <- output + multiply_by * term_value * as.vector(term_data)
-      }else{
-        term_names <- paste0(term, "[", 1:.get_prior_factor_levels(term_prior), "]")
-        term_values <- .JAGS_marglik_parameter_values(samples, term_prior, term_names)
-        output <- output + multiply_by * as.vector(term_data %*% term_values)
-      }
-
-    }else if(is.prior.simple(term_prior)){
-      term_value <- .JAGS_marglik_parameter_values(samples, term_prior, term)
-      output <- output + multiply_by * term_value * as.vector(term_data)
-    }else{
-      stop(
-        "Internal formula reconstruction prior dispatch failed for '",
-        term, "'.",
-        call. = FALSE
-      )
-    }
-  }
-
-  expressions <- design$expression_specs
-  if(is.null(expressions)){
-    expressions <- design$transformed_terms
-  }
-  if(length(expressions) > 0L){
-    expression_data <- .bt_formula_expression_merge_data(
-      design$source_data,
-      design$expression_data,
-      context = paste0(
-        "Bridge/marginal-likelihood reconstruction for parameter '",
-        parameter, "'"
-      )
-    )
-    output <- output + .bt_formula_expression_row_values(
-      expressions = expressions,
-      data = expression_data,
-      n_rows = nrow(design$model_matrix),
-      context = paste0(
-        "Bridge/marginal-likelihood reconstruction for parameter '",
-        parameter, "'"
-      ),
-      samples = samples,
-      parameters = prior_list_parameters
-    )
-  }
-
-  as.vector(output)
+  # The registered 'linear_predictor' node's fixed part and expressions.
+  .bt_dnode_linear_predictor_fixed_plan(
+    design = design,
+    formula_prior_list = formula_prior_list,
+    log_intercept = log_intercept,
+    context = "Bridge/marginal-likelihood reconstruction"
+  )$value(
+    samples = samples,
+    prior_list_parameters = prior_list_parameters
+  )
 }
 
 .bt_JAGS_formula_design_term_columns <- function(design, model_term){
@@ -352,22 +267,6 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   }
 
   columns
-}
-
-.bt_JAGS_marglik_prior_multiply_by <- function(prior, prior_list_parameters){
-
-  multiply_by <- attr(prior, "multiply_by")
-  if(is.null(multiply_by)){
-    return(1)
-  }
-  if(is.numeric(multiply_by)){
-    return(multiply_by)
-  }
-
-  .bt_JAGS_marglik_resolve_named_multiply_by(
-    multiply_by = multiply_by,
-    prior_list_parameters = prior_list_parameters
-  )
 }
 
 .bt_JAGS_marglik_resolve_named_multiply_by <- function(multiply_by,

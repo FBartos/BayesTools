@@ -87,13 +87,14 @@
   )
 
   fixed_formula <- .remove_expressions(.remove_random_effects(formula))
-  output <- JAGS_evaluate_formula(
+  output <- .bt_JAGS_evaluate_formula(
     fit = fit,
     formula = fixed_formula,
     parameter = parameter,
     data = data,
     prior_list = prior_list,
-    formula_target = "fixed"
+    formula_target = "fixed",
+    posterior = posterior
   )
   fixed <- output
   random <- NULL

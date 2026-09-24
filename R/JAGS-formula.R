@@ -482,17 +482,23 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     context = paste0("Formula expression for parameter '", parameter, "'")
   )
 
-  # add intercept and prepare the indexing vector
+  # add intercept and prepare the indexing vector; the terms are the registered
+  # 'linear_predictor' node's term syntax
   if(has_intercept){
     terms_indexes    <- attr(model_matrix, "assign") + 1
     terms_indexes[1] <- 0
 
     # use log(intercept) if the formula has the log(intercept) attribute
-    if(log_intercept){
-      formula_syntax <- c(formula_syntax, paste0("log(", parameter, "_intercept)"))
-    }else{
-      formula_syntax <- c(formula_syntax, paste0(parameter, "_intercept"))
-    }
+    formula_syntax <- c(formula_syntax, .bt_dnode_linear_predictor_term_syntax(
+      .bt_dnode_linear_predictor_term(
+        parameter = parameter,
+        model_term = "intercept",
+        type = "intercept",
+        columns = 1L,
+        prior = prior_list[["intercept"]],
+        log = log_intercept
+      )
+    ))
   }else{
     terms_indexes    <- attr(model_matrix, "assign")
   }
@@ -527,11 +533,14 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       JAGS_data[[data_name]] <- model_matrix[, term_columns]
       jags_data_names[[model_terms[i]]] <- data_name
 
-      formula_syntax <- c(formula_syntax, paste0(
-        if(!is.null(attr(this_prior, "multiply_by"))) paste0(attr(this_prior, "multiply_by"), " * "),
-        parameter, "_", model_terms[i],
-        " * ",
-        parameter, "_data_", model_terms[i], "[i]"
+      formula_syntax <- c(formula_syntax, .bt_dnode_linear_predictor_term_syntax(
+        .bt_dnode_linear_predictor_term(
+          parameter = parameter,
+          model_term = model_terms[i],
+          type = "continuous",
+          columns = term_columns,
+          prior = this_prior
+        )
       ))
 
     }else if(model_terms_type[i] == "factor"){
@@ -600,12 +609,14 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       data_name <- paste0(parameter, "_data_", model_terms[i])
       JAGS_data[[data_name]] <- model_matrix[,terms_indexes == i, drop = FALSE]
       jags_data_names[[model_terms[i]]] <- data_name
-      formula_syntax <- c(formula_syntax, paste0(
-        if(!is.null(attr(this_prior, "multiply_by"))) paste0(attr(this_prior, "multiply_by"), " * "),
-        "inprod(",
-        parameter, "_", model_terms[i],
-        ", ",
-        parameter, "_data_", model_terms[i], "[i,])"
+      formula_syntax <- c(formula_syntax, .bt_dnode_linear_predictor_term_syntax(
+        .bt_dnode_linear_predictor_term(
+          parameter = parameter,
+          model_term = model_terms[i],
+          type = "factor",
+          columns = which(terms_indexes == i),
+          prior = this_prior
+        )
       ))
 
     }else{
@@ -724,10 +735,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   }
 
   # finish the syntax
-  formula_syntax <- paste0(
-    "for(i in 1:N_", parameter, "){\n",
-    "  ", parameter, "[i] = ", paste0(formula_syntax, collapse = " + "), "\n",
-    "}\n")
+  formula_syntax <- .bt_dnode_linear_predictor_syntax(parameter, formula_syntax)
   formula_syntax <- paste0(formula_syntax, paste0(random_syntax, collapse = "\n"), collapse = "\n")
 
   # add the parameter name as a prefix and attribute to each prior in the list

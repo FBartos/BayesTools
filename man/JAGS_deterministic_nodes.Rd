@@ -78,6 +78,13 @@ PEESE terms of publication-bias mixtures
 (\code{PET <- PET_1 * equals(bias_indicator, k)}), per coefficient of
 factor priors. Only the components that are active in some draw need to
 be available; point components are constants.}
+\item{\code{"linear_predictor"}}{the linear predictor of a formula
+parameter on the fitted rows: the intercept (or its logarithm), the
+continuous and factor terms with their \code{multiply_by} multipliers,
+the \code{expression()} terms, and the contributions of the sampled
+random-effect blocks, evaluated with \code{\link[=JAGS_evaluate_formula]{JAGS_evaluate_formula()}}. It is
+evaluated only by \code{JAGS_evaluate_deterministic()}, and only when the
+standardized latent effects of the sampled blocks are among the draws.}
 }
 Nodes are evaluated with the arithmetic of the R evaluator, which reproduces
 the JAGS monitors exactly or to the last bits of floating-point rounding.

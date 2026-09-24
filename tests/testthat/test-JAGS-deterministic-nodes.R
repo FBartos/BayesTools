@@ -489,6 +489,72 @@ test_that("spike-and-slab and mixture nodes reproduce the JAGS monitors and give
   expect_identical(unname(factor_rebuilt[, coordinates]), unname(factor_posterior[, coordinates]))
 })
 
+test_that("linear predictor nodes reproduce the monitored formula output", {
+
+  sd_prior <- prior("normal", list(0, 1), list(0, Inf))
+  x_prior <- prior("normal", list(0, 1))
+  attr(x_prior, "multiply_by") <- "b_scale"
+  formula <- ~ 1 + x + d + expression(0.25 * z[i]) + us(1 + x | g) + ar1(t | s)
+  fit <- .dnode_fit(
+    formula,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = x_prior,
+      d = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+    ),
+    prior_random = prior_random(
+      g = random_block(sd = sd_prior, cor = prior_lkj(eta = 1),
+                       monitor = random_monitor(latent = TRUE)),
+      s = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)),
+                       monitor = random_monitor(latent = TRUE))
+    ),
+    formula_scale = list(x = TRUE),
+    extra_prior = list(b_scale = prior("lognormal", list(0, 0.2))),
+    add_parameters = "mu"
+  )
+  nodes <- JAGS_deterministic_nodes(fit)
+  node <- nodes[nodes$family == "linear_predictor", , drop = FALSE]
+  expect_identical(node$node, "mu")
+  expect_true(node$monitored)
+  dependencies <- unlist(node$dependencies)
+  expect_true(all(c("mu_intercept", "mu_x", "mu_d[1]", "mu_d[2]", "b_scale",
+                    "mu__xREx__g_xRE_Zx[1,1]", "mu__xREx__g_intercept",
+                    "mu__xREx__g_xRE_CORx_L[2,1]", "mu__xREx__s_rho") %in% dependencies))
+
+  # The formula output of the model syntax is the emitted node.
+  registry <- BayesTools:::.bt_deterministic_nodes_fit(fit)
+  expect_true(grepl(
+    BayesTools:::.bt_deterministic_node_emit(registry$mu),
+    attr(fit, "model_syntax"),
+    fixed = TRUE
+  ))
+
+  # Rebuilt from the coefficients, the multiplier, the expression, and the
+  # latent random effects. The data JAGS reads are serialized with 15
+  # significant digits and the random-effect contributions are summed in
+  # another order, so the rebuilt predictor agrees to a few ulps.
+  posterior <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+  coordinates <- unlist(node$coordinates)
+  reduced <- posterior[, setdiff(colnames(posterior), coordinates), drop = FALSE]
+  rebuilt <- JAGS_evaluate_deterministic(fit, draws = reduced, nodes = "mu")
+  expect_lte(max(abs(rebuilt[, coordinates] - posterior[, coordinates])), 1e-14)
+
+  # Without the latent effects the node is unavailable.
+  latent <- grepl("_xRE_Zx", colnames(reduced), fixed = TRUE)
+  expect_error(
+    JAGS_evaluate_deterministic(fit, draws = reduced[, !latent, drop = FALSE], nodes = "mu"),
+    "Deterministic node 'mu' is unavailable from 'draws'",
+    fixed = TRUE
+  )
+
+  # A formula design without the priors of its terms defines no linear
+  # predictor node.
+  design <- attr(fit, "formula_design")
+  design$mu$prior_list <- NULL
+  attr(fit, "formula_design") <- design
+  expect_false("mu" %in% JAGS_deterministic_nodes(fit)$node)
+})
+
 test_that("JAGS_evaluate_deterministic() validates its node selection", {
 
   sd_prior <- prior("normal", list(0, 1), list(0, Inf))
@@ -504,9 +570,12 @@ test_that("JAGS_evaluate_deterministic() validates its node selection", {
     names(nodes),
     c("node", "family", "parameter", "block", "coordinates", "dependencies", "monitored")
   )
-  expect_identical(nodes$parameter, "mu")
-  expect_identical(nodes$block, "s")
-  expect_true(nodes$monitored)
+  # The scalar correlation of block s and the (unmonitored) linear predictor.
+  expect_identical(nodes$node, c("mu__xREx__s_rho", "mu"))
+  expect_identical(nodes$family, c("random_rho", "linear_predictor"))
+  expect_identical(nodes$parameter, c("mu", "mu"))
+  expect_identical(nodes$block, c("s", NA_character_))
+  expect_identical(nodes$monitored, c(TRUE, FALSE))
 
   posterior <- as.matrix(BayesTools:::.fit_to_posterior(fit))
   expect_error(
