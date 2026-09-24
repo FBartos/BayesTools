@@ -160,7 +160,8 @@
 #' \code{BayesTools_undefined_ordinate}, or \code{BayesTools_inexact_ordinate}
 #' (no exact structural ordinate, e.g., a nonlinear expression of a
 #' deterministic prior, a prior-density combination evaluated only on a
-#' numerical grid, or a density grid without recorded provenance). Each of
+#' numerical grid, a structural quadrature rejected by its diagnostics,
+#' or a density grid without recorded provenance). Each of
 #' these conditions also has class \code{BayesTools_hypothesis_ordinate}.
 #' User-supplied prior draws (numeric or data-frame inputs without a prior
 #' object) have no structural prior density: their prior ordinate is the

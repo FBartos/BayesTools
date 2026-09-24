@@ -787,6 +787,23 @@
       )
     )
   }
+  if(identical(behavior, "regular") && isTRUE(ordinate$exact) &&
+     !is.finite(ordinate$log_density)){
+    # a structurally regular ordinate whose value is unavailable: a
+    # quadrature rejected by its diagnostics, or a boundary limit without a
+    # structural value
+    integration <- .prior_density_ordinate_integration(ordinate$provenance)
+    .hypothesis_stop_inexact_ordinate(
+      label,
+      if(is.list(integration) && is.character(integration$message) &&
+         length(integration$message) == 1L){
+        paste0("its prior ordinate integral was rejected by its diagnostics ('",
+               integration$message, "')")
+      }else{
+        "its regular prior ordinate has no structural value"
+      }
+    )
+  }
   if(!identical(behavior, "regular") || !isTRUE(ordinate$exact)){
     reason <- ordinate$reason
     .hypothesis_stop_inexact_ordinate(

@@ -2486,3 +2486,24 @@ test_that("linear level expressions use the joint prior density for normal ordin
     "raw draws or compound expressions"
   )
 })
+
+
+test_that("rejected prior-ordinate quadratures stop with the inexact class", {
+
+  # N(0, 1e-3) * Cauchy(0, 1) is a pure scale mixture whose quadrature away
+  # from its offset is rejected by its diagnostics ('probably divergent')
+  priors <- list(beta = prior("normal", list(0, 1e-3)), sigma = prior("cauchy", list(0, 1)))
+  attr(priors$beta, "multiply_by") <- "sigma"
+  density <- .prior_linear_combination_density(priors, c(beta = 1))
+  ordinate <- prior_density_ordinate(density, .3)
+  expect_identical(ordinate$behavior, "regular")
+  expect_false(ordinate$provenance$integration$converged)
+  posterior <- .hypothesis_marginal_posterior_for_test(stats::rnorm(1000, .01, .05), density)
+  condition <- tryCatch(
+    hypothesis_BF(posterior, hypothesis = "theta = 0.3", parameter = "theta"),
+    error = function(e) e
+  )
+  expect_s3_class(condition, "BayesTools_inexact_ordinate")
+  expect_s3_class(condition, "BayesTools_hypothesis_ordinate")
+  expect_match(conditionMessage(condition), "rejected by its diagnostics", fixed = TRUE)
+})
