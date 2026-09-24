@@ -55,7 +55,8 @@ parameters or levels (sums, differences, and constant multiples, e.g.,
 \code{mu[B] - mu[A] = 0}; functions and powers only of constants) is tested
 as a Savage-Dickey ratio of that linear combination: the prior density and
 exact support come from the joint prior context and the posterior ordinate
-uses boundary reflection at bounded supports (per mixture component, see
+is the normal approximation (\code{"normal"}) or the KDE with boundary
+reflection at bounded supports (per mixture component, see
 \link{Savage_Dickey_BF}). An affine expression of a numeric quantity with a
 prior object uses the exact density of that transformed prior. Only
 user-supplied prior draws use the sample KDE of the prior expression draws,

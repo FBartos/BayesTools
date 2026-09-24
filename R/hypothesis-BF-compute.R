@@ -98,7 +98,9 @@
   # user-supplied prior draws (warned about once per hypothesis_BF() call)
   inexact_prior <- NULL
   marginal <- .hypothesis_point_marginal(quantity, side)
-  if(is.null(marginal) && identical(density_method, "KDE")){
+  if(is.null(marginal) && density_method %in% c("KDE", "normal")){
+    # the exact joint prior density of a linear expression serves both
+    # posterior-ordinate estimators
     marginal <- .hypothesis_linear_point_marginal(quantity, side)
   }
   if(!is.null(marginal)){
@@ -150,6 +152,11 @@
       .hypothesis_side_expression(side),
       quantity[["posterior_draws"]]
     )
+    if(identical(density_method, "precomputed")){
+      # expression draws have no precomputed posterior density
+      .hypothesis_draw_density_height(posterior, side[["value"]], "posterior",
+                                      density_method)
+    }
     prior_density <- .hypothesis_expression_prior_density(quantity, side)
     if(!is.null(prior_density)){
       .hypothesis_check_prior_ordinate(prior_density, side[["value"]], side[["label"]])
@@ -236,14 +243,14 @@
 
 
 # A linear expression of marginal posteriors (e.g., mu[b] - mu[a] or
-# 2 * mu[a] + mu[b]) whose exact support is bounded, or whose mixture
-# components have different exact supports, is evaluated as the marginal
-# posterior of the linear combination: the prior density and exact support of
-# the combination come from the joint prior context and the posterior ordinate
-# is the (per-component) boundary-reflected KDE of Savage_Dickey_BF(). NULL
-# keeps the kernel density of the expression draws: nonlinear expressions,
-# unbounded shared supports, point masses, row-varying level weights, or
-# missing joint metadata.
+# 2 * mu[a] + mu[b]) is evaluated as the marginal posterior of the linear
+# combination: the prior density and exact support of the combination come
+# from the joint prior context (structurally fixed levels add their value) and
+# the posterior ordinate is the (per-component) boundary-reflected KDE, or the
+# normal approximation, of Savage_Dickey_BF(). NULL for nonlinear
+# expressions, levels with other point masses, row-varying level weights,
+# nonlinear transformed levels, unusable exact supports, or missing joint
+# metadata; the point hypothesis then has no exact prior ordinate.
 .hypothesis_linear_point_marginal <- function(quantity, side) {
 
   expr <- .hypothesis_side_expression(side)

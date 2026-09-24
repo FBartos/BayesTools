@@ -2443,3 +2443,46 @@ test_that("point hypotheses need an exact regular prior ordinate on every route"
     tolerance = 1e-14
   )
 })
+
+
+test_that("linear level expressions use the joint prior density for normal ordinates", {
+
+  # treatment levels B and C have iid N(0, 1) coefficients, so B - C ~ N(0,
+  # sqrt(2)) and B - A = B (A is the structural reference level 0); the
+  # normal method approximates only the posterior ordinate
+  formula <- JAGS_formula(
+    ~ fac, "mu", data.frame(fac = factor(c("A", "B", "C"))),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      fac = prior_factor("normal", list(0, 1), contrast = "treatment")
+    )
+  )
+  set.seed(3)
+  fit <- coda::mcmc(cbind(mu_intercept = stats::rnorm(2000, .1, .3),
+                          "mu_fac[1]" = stats::rnorm(2000, .4, .3),
+                          "mu_fac[2]" = stats::rnorm(2000, -.2, .3)))
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula$prior_list
+  fit <- attach_test_parameter_map(fit)
+  posterior <- marginal_posterior(as_mixed_posteriors(fit, "mu_fac"), "mu_fac",
+                                  use_formula = FALSE, prior_samples = TRUE)
+  draws <- fit[, "mu_fac[1]"] - fit[, "mu_fac[2]"]
+  for(method in c("KDE", "normal")){
+    contrast <- hypothesis_BF(posterior, hypothesis = "mu_fac[B] - mu_fac[C] = 0",
+                              density_method = method, columns = "all")
+    expect_equal(as.numeric(contrast$prior), stats::dnorm(0, 0, sqrt(2)), tolerance = 1e-14)
+    reference <- hypothesis_BF(posterior, hypothesis = "mu_fac[B] - mu_fac[A] = 0.1",
+                               density_method = method, columns = "all")
+    expect_equal(as.numeric(reference$prior), stats::dnorm(.1), tolerance = 1e-14)
+  }
+  expect_equal(as.numeric(contrast$posterior),
+               stats::dnorm(0, mean(draws), stats::sd(draws)), tolerance = 1e-12)
+  expect_identical(contrast$method, "Savage-Dickey (normal)")
+
+  # precomputed ordinates do not exist for expression draws
+  expect_error(
+    hypothesis_BF(posterior, hypothesis = "mu_fac[B] - mu_fac[C] = 0",
+                  density_method = "precomputed"),
+    "raw draws or compound expressions"
+  )
+})
