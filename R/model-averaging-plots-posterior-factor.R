@@ -335,7 +335,7 @@
       }else if(length(level_samples) < 2L || diff(range(level_samples)) == 0){
         stop(
           "Posterior density is unavailable for declared continuous samples with fewer than two distinct values. ",
-          "Provide a valid 'posterior_density' attribute and set 'density_method' to 'precomputed'.",
+          "Provide valid 'posterior_density' metadata (posterior_metadata()) and set 'density_method' to 'precomputed'.",
           call. = FALSE
         )
       }else{

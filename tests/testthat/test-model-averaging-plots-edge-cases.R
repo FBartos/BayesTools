@@ -225,7 +225,7 @@ test_that("declared continuous constant draws cannot become plotting atoms", {
   samples <- .bt_meta_set(samples, "atoms", posterior_atom_attribute())
   expected_error <- paste0(
     "Posterior density is unavailable for declared continuous samples with fewer than two distinct values. ",
-    "Provide a valid 'posterior_density' attribute and set 'density_method' to 'precomputed'."
+    "Provide valid 'posterior_density' metadata (posterior_metadata()) and set 'density_method' to 'precomputed'."
   )
   expect_error(
     BayesTools:::.plot_data_samples.simple(list(theta = samples), "theta", 64, NULL, NULL, FALSE),
