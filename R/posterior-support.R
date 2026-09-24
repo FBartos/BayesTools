@@ -962,7 +962,7 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
     model_indices <- which(is.finite(context$model_weights) & context$model_weights > 0)
     supports <- lapply(model_indices, function(model_i){
       .posterior_support_from_prior_list_weights(
-        .posterior_support_model_prior_list(context, model_i),
+        .prior_density_model_prior_list(context$prior_list, model_i),
         weights
       )
     })
@@ -993,26 +993,6 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
     transformation          = output_transformation,
     transformation_arguments = output_transformation_arguments
   )
-}
-
-# Prior list of one model of a model-mixture prior-density context; parameters
-# the model omits are fixed at zero.
-.posterior_support_model_prior_list <- function(context, model_i){
-
-  model_prior_list <- lapply(context$prior_list, function(parameter_priors){
-    if(is.prior(parameter_priors)){
-      return(parameter_priors)
-    }
-    parameter_priors[[model_i]]
-  })
-  names(model_prior_list) <- names(context$prior_list)
-  for(parameter in names(model_prior_list)){
-    if(is.null(model_prior_list[[parameter]])){
-      model_prior_list[[parameter]] <- prior("point", list(location = 0))
-    }
-  }
-
-  model_prior_list
 }
 
 # Rows of a linear-weight vector or matrix as named numeric vectors.
@@ -1091,7 +1071,7 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
 .posterior_components_prior_list <- function(context, key){
 
   if(".model" %in% names(key)){
-    prior_list <- .posterior_support_model_prior_list(context, key[[".model"]])
+    prior_list <- .prior_density_model_prior_list(context$prior_list, key[[".model"]])
   }else{
     prior_list <- context$prior_list
   }
