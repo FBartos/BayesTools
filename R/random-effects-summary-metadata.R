@@ -498,7 +498,42 @@
     ))
   }
 
-  component_gates <- matrix(1, nrow = nrow(weights), ncol = K)
+  gates <- .bt_random_effect_summary_allocation_component_gates(
+    allocation    = allocation,
+    K             = K,
+    model_samples = model_samples
+  )
+  component_gates <- gates$component_gates
+  parent_active   <- gates$parent_active
+
+  gated_weights <- weights * component_gates
+  total_fraction <- rowSums(gated_weights) * as.numeric(parent_active)
+  defined <- parent_active & total_fraction > 0
+  proportions <- matrix(
+    NA_real_,
+    nrow = nrow(weights),
+    ncol = K,
+    dimnames = dimnames(weights)
+  )
+  if(any(defined)){
+    proportions[defined, ] <-
+      gated_weights[defined, , drop = FALSE] / total_fraction[defined]
+  }
+
+  list(
+    total_fraction = total_fraction,
+    proportions = proportions,
+    defined = defined
+  )
+}
+
+# Per-draw inclusion gates of an allocation's components (a draws x K 0/1
+# matrix; components without an inclusion prior are always included) and the
+# joint state of its parent-allocation gates.
+.bt_random_effect_summary_allocation_component_gates <- function(
+    allocation, K, model_samples){
+
+  component_gates <- matrix(1, nrow = nrow(model_samples), ncol = K)
   inclusion <- allocation$inclusion
   if(is.null(inclusion)){
     inclusion <- list()
@@ -527,7 +562,7 @@
     component_gates[, as.integer(index)] <- gate
   }
 
-  parent_active <- rep(TRUE, nrow(weights))
+  parent_active <- rep(TRUE, nrow(model_samples))
   parent_factors <- allocation$parent_factors
   if(is.null(parent_factors)){
     parent_factors <- list()
@@ -551,24 +586,9 @@
     parent_active <- parent_active & gate == 1
   }
 
-  gated_weights <- weights * component_gates
-  total_fraction <- rowSums(gated_weights) * as.numeric(parent_active)
-  defined <- parent_active & total_fraction > 0
-  proportions <- matrix(
-    NA_real_,
-    nrow = nrow(weights),
-    ncol = K,
-    dimnames = dimnames(weights)
-  )
-  if(any(defined)){
-    proportions[defined, ] <-
-      gated_weights[defined, , drop = FALSE] / total_fraction[defined]
-  }
-
   list(
-    total_fraction = total_fraction,
-    proportions = proportions,
-    defined = defined
+    component_gates = component_gates,
+    parent_active   = parent_active
   )
 }
 

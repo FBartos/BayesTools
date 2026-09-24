@@ -47,4 +47,12 @@ internal and exposes interpretable scalar summaries such as mean-variance
 SD-component variance multipliers. Gated total-variance proportions are
 normalized over active components and omit draws on which every component
 is excluded because a variance share is undefined there.
+
+The posterior atoms of each summary are declared from its structure: none
+when the quantity's prior density (\code{\link[=parameter_prior_density]{parameter_prior_density()}}) has no
+point mass; the inclusion-gate atoms of gated total-variance proportions (at
+0 and 1) and allocation totals (at 0), with masses from the posterior
+inclusion-indicator draws. Other point masses (e.g. a scale prior with its
+own spike) leave the atom status undeclared, and posterior plots of such
+summaries stop instead of inferring point masses from the draws.
 }

@@ -369,41 +369,22 @@
   if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
     prior_list <- list(prior_list)
 
-  if(!is.null(posterior_atoms)){
-    posterior_atoms <- .posterior_atoms_for_column(
-      posterior_atoms,
-      if(ncol(posterior_atoms$locations) == 1L) 1L else parameter
-    )
-    if(is.null(posterior_atoms)){
-      stop("Simple posterior plotting is unavailable because atom metadata do not identify the requested parameter.", call. = FALSE)
-    }
-    continuous <- .Savage_Dickey_BF.continuous_posterior(samples, posterior_atoms)
-    samples_density <- as.numeric(continuous$samples)
-    continuous_mass <- continuous$continuous_mass
-    if(nrow(posterior_atoms$locations) > 0L){
-      x_points <- as.numeric(posterior_atoms$locations[, 1L])
-      y_points <- posterior_atoms$mass
-    }
-  }else{
-    continuous_components <- which(!sapply(prior_list, is.prior.point))
-    samples_density <- samples[attr(samples, "models_ind") %in% continuous_components]
-    continuous_mass <- if(length(samples) > 0L) length(samples_density) / length(samples) else 0
+  if(is.null(posterior_atoms)){
+    .plot_data_stop_unknown_atoms()
   }
-
-  # Legacy samples without declared atoms retain their original prior mapping.
-  if(is.null(posterior_atoms) && any(sapply(prior_list, is.prior.point))){
-
-    # aggregate samples across spikes
-    spikes_simplified <- .simplify_spike_samples(samples, prior_list)
-
-    if(nrow(spikes_simplified) > 0){
-      x_points <- spikes_simplified[,"location"]
-      y_points <- spikes_simplified[,"probability"]
-    }else{
-      x_points <- NULL
-      y_points <- NULL
-    }
-
+  posterior_atoms <- .posterior_atoms_for_column(
+    posterior_atoms,
+    if(ncol(posterior_atoms$locations) == 1L) 1L else parameter
+  )
+  if(is.null(posterior_atoms)){
+    stop("Simple posterior plotting is unavailable because atom metadata do not identify the requested parameter.", call. = FALSE)
+  }
+  continuous <- .Savage_Dickey_BF.continuous_posterior(samples, posterior_atoms)
+  samples_density <- as.numeric(continuous$samples)
+  continuous_mass <- continuous$continuous_mass
+  if(nrow(posterior_atoms$locations) > 0L){
+    x_points <- as.numeric(posterior_atoms$locations[, 1L])
+    y_points <- posterior_atoms$mass
   }
   if(!is.null(x_points) && !is.null(transformation)){
     x_points <- .density.prior_transformation_x(x_points, transformation, transformation_arguments)
@@ -438,14 +419,13 @@
         samples_density <- .density.prior_transformation_x(samples_density, transformation, transformation_arguments)
       }
 
-    }else if(!is.null(posterior_atoms) &&
-             (length(samples_density) < 2L || diff(range(samples_density)) == 0)){
+    }else if(length(samples_density) < 2L || diff(range(samples_density)) == 0){
       stop(
         "Posterior density is unavailable for declared continuous samples with fewer than two distinct values. ",
         "Provide a valid 'posterior_density' attribute and set 'density_method' to 'precomputed'.",
         call. = FALSE
       )
-    }else if(length(samples_density) > 0){
+    }else{
 
       # Keep evaluation range separate from true support so bounded KDEs can
       # reflect at the support while avoiding transformation singularities.

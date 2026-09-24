@@ -23,6 +23,11 @@ where both backends exist. Preserve each public function's documented return
 value; ggplot paths return plot objects, while base paths may return invisible
 metadata or `NULL` according to the existing family.
 
+Posterior plots draw point masses only from declared posterior atoms (the
+producers' metadata or `posterior_atom_attribute()`); samples without an
+atom declaration stop with the atom-status message. Never infer point masses
+from prior lists, component indices, or draws matching prior spikes.
+
 Mixed continuous-and-point plots keep one probability-axis mapping. Base
 overlays reuse `par("usr")` and warn when a later point mass is off-scale.
 ggplot overlays reuse the mixed plot's stored secondary-axis mapping and issue

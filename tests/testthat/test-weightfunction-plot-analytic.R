@@ -567,6 +567,12 @@ test_that("posterior weightfunction plotting ranges include omega samples above 
   colnames(omega_samples) <- c("omega[0,0.05]", "omega[0.05,1]")
   attr(omega_samples, "prior_list") <- list(log_prior)
   attr(omega_samples, "models_ind") <- rep(1, nrow(omega_samples))
+  attr(omega_samples, "posterior_atoms") <- .posterior_atoms_from_priors(
+    list(log_prior),
+    probabilities = 1,
+    n_columns     = 2L,
+    column_names  = colnames(omega_samples)
+  )
 
   parameter_data <- .plot_data_samples.weightparameter(
     list(omega = omega_samples),

@@ -1,62 +1,15 @@
-.simplify_spike_samples           <- function(samples, prior_list){
+# Plots use declared posterior atoms; point masses are never inferred from the
+# prior list and the per-draw model indicators.
+.plot_data_stop_unknown_atoms <- function(){
 
-  # Check if we're dealing with spike_and_slab or mixture (which are single priors) vs list of priors
-  is_spike_and_slab <- is.prior.spike_and_slab(prior_list)
-  is_mixture <- is.prior.mixture(prior_list)
-
-  # If we have a spike_and_slab or mixture prior, we need to iterate over their components
-  # Otherwise, we have a list of individual priors
-  if(is_spike_and_slab || is_mixture) {
-    # For spike_and_slab and mixture, iterate over the components
-    components_to_iterate <- prior_list
-    component_indices <- seq_along(prior_list)
-  } else {
-    # For lists of priors, iterate over the list
-    components_to_iterate <- prior_list
-    component_indices <- seq_along(prior_list)
-  }
-
-  # aggregate for each spike
-  priors_point_map <- data.frame(do.call(rbind, lapply(component_indices, function(i) {
-    current_component <- components_to_iterate[[i]]
-    if(is.prior.point(current_component)){
-      if(is_spike_and_slab) {
-        # For spike_and_slab: dbern() generates 0 (null) and 1 (alternative)
-        # We need to determine which component this is
-        component_name <- attr(current_component, "component")
-        model_index <- if(component_name == "null") 0 else 1
-      } else {
-        # For mixture or list of priors: dcat() generates 1, 2, 3... so index i maps to JAGS index i
-        model_index <- i
-      }
-      c("location" = current_component$parameters[["location"]], "frequency" = sum(attr(samples, "models_ind") == model_index))
-    }
-  })))
-
-
-  # return the input with fewer than 2 inputs
-  if(nrow(priors_point_map) < 2){
-    spike_probability = data.frame(cbind(
-      "location"    = priors_point_map[, "location"],
-      "probability" = priors_point_map[, "frequency"] / if(!is.matrix(samples)) length(samples) else nrow(samples) ))
-    spike_probability <- spike_probability[priors_point_map[, "frequency"] != 0, ]
-    return(spike_probability)
-  }
-
-  # find unique spikes
-  unique_map <- cbind("location" = unique(priors_point_map[, "location"]), "frequency" = 0)
-
-  # collect them
-  for(i in 1:nrow(unique_map)){
-    unique_map[i, "frequency"] <- sum(priors_point_map[priors_point_map[, "location"] == unique_map[i, "location"], "frequency"])
-  }
-
-  spike_probability = data.frame(cbind(
-    "location"    = unique_map[, "location"],
-    "probability" = unique_map[, "frequency"] / if(!is.matrix(samples)) length(samples) else nrow(samples) ))
-  spike_probability <- spike_probability[unique_map[, "frequency"] != 0, ]
-
-  return(spike_probability)
+  stop(
+    "Posterior atom status is unknown. Plotting posterior samples requires an ",
+    "explicit atom/no-atom declaration; attach posterior_atom_attribute() ",
+    "metadata or use a BayesTools posterior producer that records it. ",
+    "Posteriors created by BayesTools 0.3.0 do not record it: recompute them ",
+    "with the current version (refitting models fitted with 0.3.0).",
+    call. = FALSE
+  )
 }
 .bias_prior_list_for_condition <- function(prior_list, condition_event){
 

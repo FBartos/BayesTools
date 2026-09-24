@@ -18,7 +18,8 @@ test_that("homogeneous diagonal random effects have a shared SD label", {
 })
 
 .random_effects_mean_variance_allocation_fit <- function(alpha = c(2, 3),
-                                                          scale = "mean_variance"){
+                                                          scale = "mean_variance",
+                                                          sd = prior("gamma", list(2, 2))){
 
   data <- data.frame(
     study = factor(c("s1", "s1", "s2", "s2")),
@@ -34,7 +35,7 @@ test_that("homogeneous diagonal random effects have a shared SD label", {
         terms = "study",
         target = "sd_component",
         scale = scale,
-        sd = prior("gamma", list(2, 2)),
+        sd = sd,
         weights = prior("dirichlet", list(alpha = alpha))
       )
     )
@@ -467,6 +468,60 @@ test_that("gated total-variance summaries use realized totals and proportions", 
   expect_false(any(component_names %in% rownames(conditional)))
 })
 
+
+test_that("random-effect summary posteriors declare atoms from structure", {
+
+  skip_if_not_installed("runjags")
+
+  # Summaries whose canonical prior density has no point mass declare no atoms.
+  multipliers <- random_effects_summary_posterior(
+    .random_effects_mean_variance_allocation_fit(),
+    summary = "var_mult"
+  )
+  for(multiplier in multipliers){
+    atoms <- BayesTools:::.posterior_atoms_get(multiplier)
+    expect_s3_class(atoms, "BayesTools_posterior_atoms")
+    expect_identical(nrow(atoms$locations), 0L)
+  }
+
+  # Gate atoms take their masses from the inclusion-indicator draws: the
+  # fixture's (study, drug) gates are (0, 0), (1, 0), (0, 1), (1, 1).
+  fit <- .random_effects_gated_total_variance_allocation_fit()
+  proportions <- random_effects_summary_posterior(fit, summary = "var_prop")
+  # draw 1 (no active component) is undefined; drug is 0 in draw 2 (only study
+  # active) and 1 in draw 3 (only drug active)
+  drug_atoms <- BayesTools:::.posterior_atoms_get(
+    proportions[["(mu) allocation: var_prop(drug)"]]
+  )
+  expect_equal(as.numeric(drug_atoms$locations[, 1L]), c(0, 1))
+  expect_equal(drug_atoms$mass, c(1, 1) / 3)
+  total <- random_effects_summary_posterior(fit, summary = "sd_total")
+  total_atoms <- BayesTools:::.posterior_atoms_get(
+    total[["(mu) allocation: sd_total"]]
+  )
+  expect_equal(as.numeric(total_atoms$locations[, 1L]), 0)
+  expect_equal(total_atoms$mass, 1 / 4)
+  expect_identical(
+    unname(as.numeric(total[["(mu) allocation: sd_total"]]))[1L],
+    0
+  )
+
+  # A scale prior with its own point mass is not a gate atom: the atom status
+  # stays undeclared and plots stop instead of inferring point masses.
+  spike_fit <- .random_effects_mean_variance_allocation_fit(
+    sd = prior_mixture(
+      list(prior("spike", list(0)), prior("gamma", list(2, 2))),
+      is_null = c(TRUE, FALSE)
+    )
+  )
+  common <- random_effects_summary_posterior(spike_fit, summary = "sd_common")
+  expect_null(BayesTools:::.posterior_atoms_get(common[[1L]]))
+  expect_error(
+    plot_posterior(common, names(common)[1L], plot_type = "ggplot"),
+    "Posterior atom status is unknown",
+    fixed = TRUE
+  )
+})
 
 test_that("inherited gates zero descendant realized allocations", {
 

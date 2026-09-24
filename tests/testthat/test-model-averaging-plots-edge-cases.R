@@ -230,10 +230,7 @@ test_that("declared continuous constant draws cannot become plotting atoms", {
     expected_error, fixed = TRUE
   )
   expect_error(
-    BayesTools:::.plot_data_marginal_samples.den(
-      samples, 64, NULL, NULL, FALSE,
-      prior_density = BayesTools:::.prior_linear_density_point(0)
-    ),
+    BayesTools:::.plot_data_marginal_samples.den(samples, 64, NULL, NULL, FALSE),
     expected_error, fixed = TRUE
   )
   stored <- .posterior_density_for_test(x = seq(-3, 3, length.out = 64), y = stats::dnorm(seq(-3, 3, length.out = 64)))
@@ -251,20 +248,27 @@ test_that("declared continuous constant draws cannot become plotting atoms", {
     stored$y
   )
 
+  # without an atom declaration, plotting stops instead of inferring atoms
+  # from the prior list, the model indicators, or constant draws
   attr(samples, "posterior_atoms") <- NULL
   attr(samples, "posterior_density") <- NULL
-  expect_true("density" %in% names(BayesTools:::.plot_data_samples.simple(
-    list(theta = samples), "theta", 64, NULL, NULL, FALSE
-  )))
-  legacy <- BayesTools:::.plot_data_marginal_samples.den(samples, 64, NULL, NULL, FALSE)
-  expect_equal(legacy$points1$x, 0)
-  expect_equal(legacy$points1$y, 1)
-  expect_length(BayesTools:::.plot_data_samples.simple(
-    list(theta = numeric()), "theta", 64, NULL, NULL, FALSE
-  ), 0L)
-  expect_length(BayesTools:::.plot_data_marginal_samples.den(
-    numeric(), 64, NULL, NULL, FALSE
-  ), 0L)
+  unknown_atoms <- "Posterior atom status is unknown. Plotting posterior samples requires an explicit atom/no-atom declaration"
+  expect_error(
+    BayesTools:::.plot_data_samples.simple(list(theta = samples), "theta", 64, NULL, NULL, FALSE),
+    unknown_atoms, fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.plot_data_marginal_samples.den(samples, 64, NULL, NULL, FALSE),
+    unknown_atoms, fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.plot_data_samples.simple(list(theta = numeric()), "theta", 64, NULL, NULL, FALSE),
+    unknown_atoms, fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.plot_data_marginal_samples.den(numeric(), 64, NULL, NULL, FALSE),
+    unknown_atoms, fixed = TRUE
+  )
 })
 
 # ============================================================================ #
@@ -644,6 +648,9 @@ test_that("posterior plot data separates spike mass from continuous samples", {
     prior("point", list(location = 0)),
     prior("normal", list(mean = 0, sd = 1))
   )
+  attr(theta, "posterior_atoms") <- posterior_atom_attribute(
+    data.frame(x = 0, mass = .3)
+  )
 
   plot_data <- BayesTools:::.plot_data_samples.simple(
     samples = list(theta = theta),
@@ -675,6 +682,9 @@ test_that("posterior base overlays reuse the active probability scale", {
     attr(theta, "prior_list") <- list(
       prior("point", list(location = 0)),
       prior("normal", list(mean = 0, sd = 1))
+    )
+    attr(theta, "posterior_atoms") <- posterior_atom_attribute(
+      data.frame(x = 0, mass = point_count / length(theta))
     )
     class(theta) <- c("mixed_posteriors.simple", "mixed_posteriors")
 
@@ -761,6 +771,9 @@ test_that("secondary-axis limits use one mapping for axes and point masses", {
 
   theta <- c(rep(0, 50), seq(-1, 1, length.out = 50))
   attr(theta, "models_ind") <- c(rep(1L, 50), rep(2L, 50))
+  attr(theta, "posterior_atoms") <- posterior_atom_attribute(
+    data.frame(x = 0, mass = .5)
+  )
   attr(theta, "prior_list") <- list(
     prior("point", list(location = 0)),
     prior("normal", list(mean = 0, sd = 1))
@@ -868,6 +881,9 @@ test_that("prior line overlays reuse the active probability scale", {
 test_that("bounded posterior KDE reflects support and keeps spike mass separate", {
   theta <- c(rep(0, 20), seq(.005, .995, length.out = 80))
   attr(theta, "models_ind") <- c(rep(1, 20), rep(2, 80))
+  attr(theta, "posterior_atoms") <- posterior_atom_attribute(
+    data.frame(x = 0, mass = .2)
+  )
   attr(theta, "prior_list") <- list(
     prior("point", list(location = 0)),
     prior("uniform", list(0, 1))
@@ -1082,7 +1098,8 @@ test_that("plot_posterior handles attached point priors outside xlim", {
     class = c("mixed_posteriors.simple", "mixed_posteriors"),
     prior_list = list(prior("spike", list(0))),
     models_ind = rep(1L, 64),
-    prior_density = BayesTools:::.prior_linear_density_point(0)
+    prior_density = BayesTools:::.prior_linear_density_point(0),
+    posterior_atoms = posterior_atom_attribute(data.frame(x = 0, mass = 1))
   )
   samples <- list(theta = theta)
 
@@ -1714,6 +1731,7 @@ test_that("posterior plot data uses stored posterior density when available", {
   stored_x <- seq(-3, 3, length.out = 61)
   stored_y <- stats::dnorm(stored_x, mean = .25, sd = .9)
   attr(theta, "models_ind") <- rep(1, length(theta))
+  attr(theta, "posterior_atoms") <- posterior_atom_attribute()
   attr(theta, "prior_list") <- list(prior("normal", list(mean = 0, sd = 1)))
   attr(theta, "posterior_density") <- .posterior_density_for_test(
     x      = stored_x,
@@ -1741,6 +1759,9 @@ test_that("posterior plot data does not add sample spikes to stored full density
   stored_x <- seq(-2, 2, length.out = 51)
   stored_y <- stats::dnorm(stored_x)
   attr(theta, "models_ind") <- c(rep(1, 25), rep(2, 75))
+  attr(theta, "posterior_atoms") <- posterior_atom_attribute(
+    data.frame(x = 0, mass = .25)
+  )
   attr(theta, "prior_list") <- list(
     prior("point", list(location = 0)),
     prior("normal", list(mean = 0, sd = 1))
@@ -1777,6 +1798,7 @@ test_that("posterior plot data ignores stored density by default", {
   stored_x <- seq(-3, 3, length.out = 61)
   stored_y <- stats::dnorm(stored_x, mean = .25, sd = .9)
   attr(theta, "models_ind") <- rep(1, length(theta))
+  attr(theta, "posterior_atoms") <- posterior_atom_attribute()
   attr(theta, "prior_list") <- list(prior("normal", list(mean = 0, sd = 1)))
   attr(theta, "posterior_density") <- .posterior_density_for_test(
     x      = stored_x,
@@ -2387,6 +2409,8 @@ test_that("factor plots map component-expanded prior styles back to levels", {
   level_2 <- stats::rnorm(80,  0.35, 0.4)
   attr(level_1, "prior_density") <- density
   attr(level_2, "prior_density") <- density
+  attr(level_1, "posterior_atoms") <- posterior_atom_attribute()
+  attr(level_2, "posterior_atoms") <- posterior_atom_attribute()
 
   theta <- list(A = level_1, B = level_2)
   class(theta) <- c("marginal_posterior.factor", "marginal_posterior")
@@ -3007,6 +3031,7 @@ test_that("factor posterior density curves keep continuous mass scale", {
 
   attr(samples, "prior_list") <- prior
   attr(samples, "models_ind") <- rep(1, nrow(samples))
+  attr(samples, "posterior_atoms") <- posterior_atom_attribute()
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
 
   plot_data <- BayesTools:::.plot_data_samples.factor(
@@ -3039,6 +3064,7 @@ test_that("bounded factor posterior KDE reflects each level support", {
 
   attr(samples, "prior_list") <- prior
   attr(samples, "models_ind") <- rep(1, nrow(samples))
+  attr(samples, "posterior_atoms") <- posterior_atom_attribute()
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector", "matrix")
 
   plot_data <- BayesTools:::.plot_data_samples.factor(
@@ -3077,6 +3103,7 @@ test_that("transformed bounded factor posterior KDE avoids singular endpoints", 
 
   attr(samples, "prior_list") <- prior
   attr(samples, "models_ind") <- rep(1, nrow(samples))
+  attr(samples, "posterior_atoms") <- posterior_atom_attribute()
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector", "matrix")
 
   plot_data <- BayesTools:::.plot_data_samples.factor(
@@ -3118,6 +3145,7 @@ test_that("factor posterior plot data uses level-matched stored densities", {
   stored_systematic_x <- seq(0, 3, length.out = 31)
   attr(samples, "prior_list") <- prior
   attr(samples, "models_ind") <- rep(1, nrow(samples))
+  attr(samples, "posterior_atoms") <- posterior_atom_attribute()
   attr(samples, "posterior_density") <- list(
     random = .posterior_density_for_test(
       parameter = "random",
@@ -3168,6 +3196,9 @@ test_that("factor posterior plot data uses stored point masses once", {
     prior
   )
   attr(samples, "models_ind") <- c(rep(1, 40), rep(2, 60))
+  attr(samples, "posterior_atoms") <- posterior_atom_attribute(
+    data.frame(x = 0, mass = .4)
+  )
   attr(samples, "posterior_density") <- list(
     random = .posterior_density_for_test(
       parameter    = "random",
@@ -3224,6 +3255,9 @@ test_that("factor posterior plot data keeps fallback spikes per level", {
   stored_x <- seq(-2, 2, length.out = 31)
   attr(samples, "prior_list") <- list(point_prior, prior)
   attr(samples, "models_ind") <- c(rep(1, 40), rep(2, 60))
+  attr(samples, "posterior_atoms") <- posterior_atom_attribute(
+    data.frame(x = 0, mass = .4)
+  )
   attr(samples, "posterior_density") <- list(
     random = .posterior_density_for_test(
       parameter    = "random",
@@ -3270,6 +3304,7 @@ test_that("factor posterior plot data matches interaction cell aliases", {
   stored_cd_x <- seq(0, 3, length.out = 31)
   attr(samples, "prior_list") <- prior
   attr(samples, "models_ind") <- rep(1, nrow(samples))
+  attr(samples, "posterior_atoms") <- posterior_atom_attribute()
   attr(samples, "level_names") <- attr(prior, "level_names")
   attr(samples, "factor_cell_names") <- attr(prior, "factor_cell_names")
   attr(samples, "posterior_density") <- list(
@@ -3385,7 +3420,7 @@ test_that("factor posterior plot data uses declared point masses per column", {
   expect_equal(plot_data_joint$density2$samples, continuous[, 2])
 })
 
-test_that("factor posterior plot data aggregates duplicate point-mass models", {
+test_that("factor posterior plot data aggregates duplicate declared point masses", {
 
   samples_matrix <- matrix(
     c(
@@ -3396,6 +3431,9 @@ test_that("factor posterior plot data aggregates duplicate point-mass models", {
     dimnames = list(NULL, c("theta[A]", "theta[B]"))
   )
   attr(samples_matrix, "models_ind") <- c(rep(1, 2), rep(2, 3), rep(3, 5))
+  attr(samples_matrix, "posterior_atoms") <- posterior_atom_attribute(
+    data.frame(x = c(0, 0, 2), mass = c(.2, .3, .5))
+  )
   attr(samples_matrix, "prior_list") <- list(
     prior_factor("point", list(location = 0), contrast = "treatment"),
     prior_factor("point", list(location = 0), contrast = "treatment"),

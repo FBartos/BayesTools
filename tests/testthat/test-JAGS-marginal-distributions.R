@@ -2786,6 +2786,9 @@ test_that("plot_marginal does not add sample spikes to stored full density", {
     c(rep(0, 25), seq(-2, 2, length.out = 75)),
     BayesTools:::.prior_linear_density_point(0, p = .25)
   )
+  attr(posterior, "posterior_atoms") <- posterior_atom_attribute(
+    data.frame(x = 0, mass = .25)
+  )
   stored_x <- seq(-2, 2, length.out = 51)
   stored_y <- stats::dnorm(stored_x)
   attr(posterior, "posterior_density") <- .posterior_density_for_test(

@@ -5,11 +5,21 @@ test_that("spike plotting preserves distinct nearby atoms and exact duplicates",
   for(locations in list(c(0, 1e-10), c(1e6, 1e6 + .005), c(1, 1))){
     priors <- lapply(locations, function(location) prior("spike", list(location)))
     samples <- rep(locations, each = 2)
-    attr(samples, "models_ind") <- rep(1:2, each = 2)
-    atoms <- BayesTools:::.simplify_spike_samples(samples, priors)
-    expect_equal(sum(atoms$probability), 1)
-    expect_equal(atoms$location, unique(locations))
-    expect_equal(atoms$probability, rep(1 / length(unique(locations)), length(unique(locations))))
+    attr(samples, "prior_list") <- priors
+    attr(samples, "posterior_atoms") <- posterior_atom_attribute(
+      data.frame(x = locations, mass = c(.5, .5))
+    )
+    plot_data <- BayesTools:::.plot_data_samples.simple(
+      list(theta = samples), "theta", 64, NULL, NULL, FALSE
+    )
+    points <- plot_data[vapply(plot_data, inherits, logical(1), "density.prior.point")]
+    expect_equal(sum(vapply(points, `[[`, numeric(1), "y")), 1)
+    expect_equal(vapply(points, `[[`, numeric(1), "x"), unique(locations), ignore_attr = TRUE)
+    expect_equal(
+      vapply(points, `[[`, numeric(1), "y"),
+      rep(1 / length(unique(locations)), length(unique(locations))),
+      ignore_attr = TRUE
+    )
   }
 
   plot_data <- list(x = c(0, 0, 1), y = c(.2, .3, .5))

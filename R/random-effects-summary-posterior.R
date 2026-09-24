@@ -8,6 +8,14 @@
 #' normalized over active components and omit draws on which every component
 #' is excluded because a variance share is undefined there.
 #'
+#' The posterior atoms of each summary are declared from its structure: none
+#' when the quantity's prior density ([parameter_prior_density()]) has no
+#' point mass; the inclusion-gate atoms of gated total-variance proportions (at
+#' 0 and 1) and allocation totals (at 0), with masses from the posterior
+#' inclusion-indicator draws. Other point masses (e.g. a scale prior with its
+#' own spike) leave the atom status undeclared, and posterior plots of such
+#' summaries stop instead of inferring point masses from the draws.
+#'
 #' @param fit model fit created by [JAGS_fit].
 #' @param summary semantic quantity to extract: `"var_mult"`, `"var_prop"`,
 #'   `"sd_mult"`, `"sd_total"`, `"var_total"`, `"sd_common"`, or
@@ -102,8 +110,10 @@ random_effects_summary_posterior <- function(
     key      <- quantity$extraction_key[[1L]]
     draws    <- .bt_parameter_draws_from_quantities(fit, quantity)
     values   <- unname(as.numeric(as.matrix(draws)[, 1L]))
+    defined  <- rep(TRUE, length(values))
     if(identical(quantity$quantity, "var_prop")){
-      values <- values[!is.na(values)]
+      defined <- !is.na(values)
+      values  <- values[defined]
       if(length(values) == 0L){
         stop(
           "The selected variance proportion is undefined because no posterior draw has positive realized allocation variance.",
@@ -111,6 +121,12 @@ random_effects_summary_posterior <- function(
         )
       }
     }
+    atoms <- .bt_random_effect_summary_posterior_atoms(
+      fit      = fit,
+      catalog  = catalog,
+      quantity = quantity,
+      defined  = defined
+    )
     attr(values, "sample_ind") <- FALSE
     attr(values, "models_ind") <- rep(1, length(values))
     attr(values, "parameter") <- display_names[i]
@@ -138,6 +154,9 @@ random_effects_summary_posterior <- function(
           type = "interval"
         )
       )
+    }
+    if(!is.null(atoms)){
+      values <- .posterior_atoms_set(values, atoms)
     }
 
     class(values) <- c(
@@ -210,6 +229,116 @@ random_effects_summary_posterior <- function(
     ". ",
     detail,
     call. = FALSE
+  )
+}
+
+# Posterior atoms of a random-effect summary, declared from the structure of
+# the quantity: no atoms when its canonical prior density
+# (parameter_prior_density()) has no point mass; the inclusion-gate atoms of
+# gated total-variance proportions and allocation totals, with masses from the
+# posterior inclusion-indicator draws; undeclared (NULL) otherwise, so plots
+# stop with the atom-status message. 'defined' marks the posterior draws kept
+# in the summary (variance proportions omit draws without active components).
+.bt_random_effect_summary_posterior_atoms <- function(fit, catalog, quantity,
+                                                      defined){
+
+  selection <- list(
+    schema_version        = .bt_parameter_selection_version,
+    parameter_map_version = catalog$schema_version,
+    quantity_id           = quantity$quantity_id,
+    quantities            = quantity
+  )
+  class(selection) <- c("BayesTools_parameter_selection", "list")
+  prior_density <- parameter_prior_density(fit, selection)
+  if(is.null(prior_density)){
+    return(NULL)
+  }
+  prior_points <- prior_density$points
+  if(is.null(prior_points) || !any(prior_points$p > 0)){
+    return(.posterior_atoms_new(source = "random_summary_structure"))
+  }
+
+  locations <- .bt_random_effect_summary_gate_atom_locations(fit, quantity)
+  if(is.null(locations)){
+    return(NULL)
+  }
+  locations <- locations[defined]
+  atom_locations <- sort(unique(locations[!is.na(locations)]))
+  if(any(!atom_locations %in% prior_points$x[prior_points$p > 0])){
+    stop(
+      "Random-effect summary gate atoms do not match the point masses of the ",
+      "prior density of '", quantity$canonical_name, "'.",
+      call. = FALSE
+    )
+  }
+  .posterior_atoms_new(
+    locations = matrix(atom_locations, ncol = 1L),
+    mass      = vapply(atom_locations, function(location){
+      mean(!is.na(locations) & locations == location)
+    }, numeric(1)),
+    source    = "random_summary_inclusion_indicators"
+  )
+}
+
+# Per-draw location of the inclusion-gate atom of a random-effect summary (NA
+# on draws on its continuous part), from the fitted inclusion indicators:
+# a total-variance proportion is 0 when its component is inactive while
+# another component is active and 1 when it is the only active component; an
+# allocation total without parent allocations is 0 when no component is
+# active. NULL when the quantity's point masses are not all gate atoms (e.g.
+# a scale prior with its own point mass, or nested allocations).
+.bt_random_effect_summary_gate_atom_locations <- function(fit, quantity){
+
+  key <- quantity$extraction_key[[1L]]
+  gated_proportion <- identical(key$evaluator, "allocation") &&
+    identical(quantity$quantity, "var_prop")
+  gated_total <- key$evaluator %in% c("allocation_sd", "allocation_var") &&
+    identical(key$source_type, "composite")
+  if(!gated_proportion && !gated_total){
+    return(NULL)
+  }
+
+  random_term <- if(nzchar(key$random_block)){
+    .bt_parameter_catalog_find_random_term(fit, key)
+  }else{
+    NULL
+  }
+  allocation <- .bt_parameter_catalog_find_allocation(fit, key, random_term)
+  if(!identical(.bt_random_effect_allocation_scale_metadata(
+    allocation,
+    context = "Random-effect summary atom metadata"
+  ), "total_variance")){
+    return(NULL)
+  }
+  if(gated_total){
+    source_prior <- allocation$source$prior
+    continuous_source <- is.prior(source_prior) && is.prior.simple(source_prior) &&
+      !is.prior.point(source_prior) && !is.prior.discrete(source_prior) &&
+      !is.prior.mixture(source_prior) && !is.prior.spike_and_slab(source_prior)
+    if(!continuous_source || length(allocation$parent_factors) > 0L){
+      return(NULL)
+    }
+  }
+
+  model_samples <- as.matrix(.bt_parameter_draw_dependencies(
+    fit,
+    .bt_random_effect_summary_allocation_gate_names(allocation)
+  ))
+  gates <- .bt_random_effect_summary_allocation_component_gates(
+    allocation    = allocation,
+    K             = allocation$n_targets,
+    model_samples = model_samples
+  )
+  active <- gates$component_gates == 1 & gates$parent_active
+
+  if(gated_total){
+    return(ifelse(rowSums(active) == 0L, 0, NA_real_))
+  }
+  index <- as.integer(key$index)
+  others_active <- rowSums(active[, -index, drop = FALSE]) > 0L
+  ifelse(
+    !active[, index] & others_active, 0,
+    ifelse(active[, index] & !others_active, 1, NA_real_)
   )
 }
 

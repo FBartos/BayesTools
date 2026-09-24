@@ -150,7 +150,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
   # extract the relevant information
   if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){
-    posterior_samples <- .marginal_posterior_parameter_samples(samples, parameter)
+    posterior_samples <- .plot_data_marginal_level_samples(samples, parameter)
     prior_densities   <- .marginal_posterior_parameter_prior_densities(samples, parameter)
     posterior_densities <- .marginal_posterior_parameter_posterior_densities(samples, parameter)
     if(prior){
@@ -158,7 +158,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
         stop("'samples' did not contain prior densities")
     }
   }else{
-    posterior_samples <- .marginal_posterior_parameter_samples(samples, parameter)
+    posterior_samples <- .plot_data_marginal_level_samples(samples, parameter)
     prior_densities   <- .marginal_posterior_parameter_prior_densities(samples, parameter)
     posterior_densities <- .marginal_posterior_parameter_posterior_densities(samples, parameter)
     if(prior){
@@ -181,7 +181,6 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
       transformation,
       transformation_arguments,
       transformation_settings,
-      prior_density     = prior_densities[[i]],
       posterior_density = posterior_densities[[i]],
       density_method    = density_method
     )
@@ -215,47 +214,46 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
   return(out)
 }
+# Numeric draws of each marginal posterior level with their declared atoms.
+.plot_data_marginal_level_samples <- function(samples, parameter){
+
+  levels <- samples[[parameter]]
+  if(!is.list(levels)){
+    levels <- stats::setNames(list(levels), parameter)
+  }
+
+  lapply(levels, function(level){
+    out <- as.numeric(level)
+    atoms <- .posterior_atoms_get(level)
+    if(!is.null(atoms)){
+      out <- .posterior_atoms_set(out, atoms)
+    }
+    out
+  })
+}
 .plot_data_marginal_samples.den <- function(x, n_points, transformation, transformation_arguments, transformation_settings,
-                                            prior_density = NULL, posterior_density = NULL,
+                                            posterior_density = NULL,
                                             density_method = c("KDE", "precomputed")){
 
-  point_locations <- .plot_data_marginal_samples_point_locations(prior_density)
-  point_samples   <- rep(FALSE, length(x))
   x_points        <- NULL
   y_points        <- NULL
   density_method <- .posterior_density_method(density_method)
   posterior_density <- .posterior_density_for_method(posterior_density, density_method)
   posterior_atoms <- .posterior_atoms_get(x)
 
-  if(!is.null(posterior_atoms)){
-    if(ncol(posterior_atoms$locations) != 1L){
-      stop("Marginal posterior plotting is unavailable for multivariate atom metadata.", call. = FALSE)
-    }
-    posterior_atoms <- .posterior_atoms_for_column(posterior_atoms, 1L)
-    continuous <- .Savage_Dickey_BF.continuous_posterior(x, posterior_atoms)
-    samples_density <- as.numeric(continuous$samples)
-    continuous_mass <- continuous$continuous_mass
-    if(nrow(posterior_atoms$locations) > 0L){
-      x_points <- as.numeric(posterior_atoms$locations[, 1L])
-      y_points <- posterior_atoms$mass
-    }
-  }else if(length(point_locations) > 0){
-    point_counts <- numeric(length(point_locations))
-    for(i in seq_along(point_locations)){
-      tol <- sqrt(.Machine$double.eps) * max(1, abs(point_locations[i]))
-      point_matches <- !point_samples & abs(x - point_locations[i]) <= tol
-      point_counts[i] <- sum(point_matches)
-      point_samples <- point_samples | point_matches
-    }
-
-    point_keep <- point_counts > 0
-    x_points <- point_locations[point_keep]
-    y_points <- point_counts[point_keep] / length(x)
-  }
-
   if(is.null(posterior_atoms)){
-    samples_density <- x[!point_samples]
-    continuous_mass <- if(length(x) > 0L) length(samples_density) / length(x) else 0
+    .plot_data_stop_unknown_atoms()
+  }
+  if(ncol(posterior_atoms$locations) != 1L){
+    stop("Marginal posterior plotting is unavailable for multivariate atom metadata.", call. = FALSE)
+  }
+  posterior_atoms <- .posterior_atoms_for_column(posterior_atoms, 1L)
+  continuous <- .Savage_Dickey_BF.continuous_posterior(x, posterior_atoms)
+  samples_density <- as.numeric(continuous$samples)
+  continuous_mass <- continuous$continuous_mass
+  if(nrow(posterior_atoms$locations) > 0L){
+    x_points <- as.numeric(posterior_atoms$locations[, 1L])
+    y_points <- posterior_atoms$mass
   }
 
   # create the output object
@@ -331,15 +329,12 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
     out[["density"]] <- out_den
 
-  }else if(continuous_mass > 0 && !is.null(posterior_atoms)){
+  }else if(continuous_mass > 0){
     stop(
       "Posterior density is unavailable for declared continuous samples with fewer than two distinct values. ",
       "Provide a valid 'posterior_density' attribute and set 'density_method' to 'precomputed'.",
       call. = FALSE
     )
-  }else if(length(samples_density) > 0 && is.null(posterior_atoms)){
-    x_points <- c(x_points, unique(samples_density))
-    y_points <- c(y_points, tabulate(match(samples_density, unique(samples_density))) / length(x))
   }
 
   if(!is.null(y_points)){
@@ -366,18 +361,4 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   }
 
   return(out)
-}
-.plot_data_marginal_samples_point_locations <- function(prior_density){
-
-  if(!inherits(prior_density, "prior_linear_density") || is.null(prior_density$points) || nrow(prior_density$points) == 0){
-    return(numeric())
-  }
-
-  points <- prior_density$points
-  points <- points[points$p > 0, , drop = FALSE]
-  if(nrow(points) == 0){
-    return(numeric())
-  }
-
-  points$x
 }
