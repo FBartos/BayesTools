@@ -28,6 +28,11 @@ overlays reuse `par("usr")` and warn when a later point mass is off-scale.
 ggplot overlays reuse the mixed plot's stored secondary-axis mapping and issue
 the same clipping warning. Do not invent a fake `usr` for ggplot.
 
+Individual weight-function omega plots index the k-th omega in the order the
+summary tables (and RoBMA's) print them: ascending p-value intervals,
+reference weight first. Every individual-omega selector (`show_figures`,
+`show_parameter`) follows that order.
+
 Prior plot dispatch and layers live in `R/priors-plot.R` and
 `R/priors-plot-layers.R`. Model-averaging plot families live in
 `R/model-averaging-plots*.R`. JAGS diagnostic data and rendering live in

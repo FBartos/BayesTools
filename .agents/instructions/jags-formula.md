@@ -20,6 +20,24 @@ others rather than patched only at the first failing consumer.
 - Posterior extraction: `R/posterior-extraction.R` and
   `R/JAGS-bridge-posterior*.R`.
 
+Seeding belongs to the same contract. Initial values are drawn after
+`set.seed(seed)`; each chain's `.RNG.seed` comes from `.JAGS_chain_seeds()`
+(`sample.int(.Machine$integer.max, chains)` after `set.seed(seed)`, so a
+chain's seed does not depend on the number of chains), and automatic restarts
+take their seeds from the separate stream of `.JAGS_restart_seeds()`. Every
+path that seeds JAGS chains uses these helpers; never derive seeds as
+`seed + chain` or `seed + attempt`, which makes adjacent seeds share streams.
+
+Autofit checks convergence of the priors' parameters, the user's
+`add_parameters`, and the stochastic nodes that formulas monitor. It leaves
+out only the deterministic helper nodes that BayesTools generates for
+formulas (correlation matrices, Cholesky factors, bound SDs, derived latent
+effects), identified from the persisted formula name maps, unless
+`autofit_control$monitor` requests them. A monitored node that the model
+syntax defines deterministically and whose draws are identical in every
+chain is a structural constant; a stochastic node with constant draws is not
+assessable.
+
 Worker connection failures stop fitting retries; new initial values cannot
 repair the existing cluster. Preserve the original backend condition. Classify
 parallel worker transport by connection/socket wording rather than a closed
@@ -76,7 +94,11 @@ covariance: defined whenever both SDs are positive, including singular draws
 of `|r| - 1 <= 1e-8` is set to `sign(r)`; a larger excess is an internal
 error. The Cholesky factor and LKJ primitives exist only for positive-definite
 correlation matrices, so semantic correlations are read from the unscaled
-correlation matrix, not reconstructed from those coordinates.
+correlation matrix, not reconstructed from those coordinates. Monitored and
+summarized LKJ correlation matrices (the module's `bt_lkj_corr()` and the R
+reconstructions through `.bt_lkj_cholesky_L_to_R()`) set their diagonal to
+exactly 1 rather than computing it from row products, so `R[k,k]` is a
+structural constant in convergence checks.
 
 The implementation is split across `R/JAGS-formula-scale.R`,
 `R/JAGS-formula-scale-random-sd.R`, `R/JAGS-formula-scale-transform.R`, and
@@ -120,6 +142,19 @@ names.
   distinction from posterior draws.
   Record dependencies in extraction keys instead of adding private inputs as
   public catalog rows.
+- Square brackets after a factor term always hold a level label, or a cell of
+  level labels, never a coordinate position. Every level or cell of a fixed
+  factor term (all contrasts, and ordinary factor priors, whose levels are
+  1..K) is the quantity `<parameter>[<level>]` with a `factor_level`
+  extraction key, and the transformed-summary labels `[dif: <level>]` are its
+  aliases. A coordinate is a direct level cell only where the contrast makes
+  it so structurally (treatment, independent, first ordered coordinate),
+  never by floating-point equality of design rows. Every other coordinate is
+  contrast coefficient `<parameter>{j}`, labelled so in tables, diagnostics,
+  mixed-posterior columns, and random-slope components (`sd(g{j})`). JAGS
+  coordinate names such as `mu_g[2]` remain backend column names, used by
+  coordinate-based functions such as `JAGS_materialize_draws()`, but are not
+  factor selectors.
 - Draws that can be undefined are declared, never inferred from names or
   values: `parameter_draws()` sets the `mcmc.list` attribute `undefined_draws`
   (canonical name to reason, `"correlation"` for original-scale random-effect
@@ -136,7 +171,8 @@ names.
   quantity, and alias tables are still the constructed objects. Replacing those
   tables re-runs validation. The fit contract stores one
   `parameter_map_version`; there are no separate registry/catalog versions or
-  fit attributes.
+  fit attributes. Bump `.bt_parameter_map_version` whenever selectors or map
+  semantics change; fits with another version must be refitted.
 - That cache is session-local: the map carries only a `runtime_cache_id`, and
   the entries live in a bounded package registry. Never attach a cache to the
   map itself - it would be serialized into every saved fit and replayed on load,
@@ -195,7 +231,8 @@ requires an SD prior, SD source, or variance allocation.
 
 Random-effect catalog names use `(formula) owner: quantity(arguments)`.
 Parentheses contain coefficient or parameter names; square brackets contain
-factor or index levels. Use public `cor`, while any compact backend `rho`
+factor or index levels, and curly braces contrast coefficients that are not a
+level (`sd(g{j})`). Use public `cor`, while any compact backend `rho`
 coordinate remains internal. Total-variance allocations expose `sd_total`,
 `var_total`, and `var_prop(...)`; mean-variance allocations expose `sd_common`,
 `var_common`, `var_mult(...)`, and `sd_mult(...)`.

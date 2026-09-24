@@ -19,7 +19,8 @@ Check [pending workspace decisions](../.agents/decisions.md) when present.
 Read the guide relevant to the change and maintain it with the implementation:
 
 - [Priors](.agents/instructions/priors.md): constructors, distribution methods,
-  transformations, provenance, and structural prior-density ordinates.
+  transformations, provenance, structural prior-density ordinates, and
+  Savage-Dickey ordinates.
 - [JAGS and formulas](.agents/instructions/jags-formula.md): fitting paths,
   scaling, contrasts, random effects, parameter maps, and marginal likelihoods.
 - [Testing](.agents/instructions/testing.md): profiles, fit catalogs, cached

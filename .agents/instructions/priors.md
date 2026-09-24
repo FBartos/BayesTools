@@ -1,7 +1,8 @@
 # Priors and Density Semantics
 
 Use this guide when changing prior constructors, distribution methods, density
-provenance, transformations, mixtures, or prior-density ordinates.
+provenance, transformations, mixtures, or prior-density and Savage-Dickey
+ordinates.
 
 ## Prior Contract
 
@@ -87,6 +88,28 @@ condition changes), normalize by the interpolant's total over the same grid,
 and evaluate point masses with the requested strict or inclusive operator. Do
 not move a region boundary to nearby grid knots. Keep the existing refinement
 gate.
+
+## Savage-Dickey Ordinates
+
+The posterior ordinate of a Savage-Dickey ratio (`R/marginal-savage-dickey.R`)
+is a kernel estimate from the continuous draws, but everything around it comes
+from declared metadata: posterior atoms, exact support, and for mixtures each
+draw's component with the components' exact supports (`posterior_components`:
+the model of a `mix_posteriors()` ensemble, or the indicator tuple of the
+mixture terms entering the quantity for `as_mixed_posteriors()`). Never infer
+atoms, supports, or components from the draws.
+
+- When continuous components have different supports, estimate the ordinate
+  per component (boundary-reflected on its own support, zero when that
+  support excludes the null, the one-sided limit on a bound) and mix by the
+  components' shares of the continuous draws. Shared or unavailable supports
+  keep the pooled estimate.
+- A null outside the continuous draws gives the finite kernel-tail value with
+  a warning that it is not reliable evidence, once per parameter or level;
+  never `Inf`.
+- A declared posterior point mass at the null leaves the ratio undefined:
+  level lists and marginal inference return `NA` with the reason in the
+  `"warnings"` attribute and compute the other levels; a scalar call stops.
 
 ## Numerical Evidence
 
