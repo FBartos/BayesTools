@@ -23,6 +23,13 @@
 #' its value (prior draws, parameter-catalog quantities, bridge sampling,
 #' marginal-likelihood parameters, prediction, and convergence roles):
 #' \describe{
+#'   \item{\code{"random_sd"}}{random-effect SDs derived from a variance
+#'   allocation ([random_variance_allocation()]): the source SD (the
+#'   allocation's own SD or an external scalar SD source) times the chain of
+#'   allocation factors from the root allocation, \code{sqrt(w[i])} (total
+#'   variance) or \code{sqrt(K * w[i])} (mean variance) of the Dirichlet
+#'   weights and the inclusion gates. The family also contains the parent
+#'   allocation components that a child allocation splits further.}
 #'   \item{\code{"random_rho"}}{scalar correlations of structured random-effect
 #'   blocks sampled on the Fisher-z (\code{rho = tanh(z)}) or logit scale
 #'   (\code{rho = lower + (upper - lower) * plogis(z)}).}
@@ -128,6 +135,7 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
 # drift apart.
 
 .bt_deterministic_node_families <- c(
+  "random_sd",
   "random_rho",
   "lkj"
 )
@@ -167,6 +175,7 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
 
   switch(
     node$family,
+    random_sd = .bt_dnode_random_sd_emit(node),
     random_rho = .bt_dnode_rho_emit(node),
     lkj = .bt_dnode_lkj_emit(node),
     stop("Unsupported deterministic node family '", node$family, "'.", call. = FALSE)
@@ -179,6 +188,7 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
 
   values <- switch(
     node$family,
+    random_sd = .bt_dnode_random_sd_evaluate(node, lookup),
     random_rho = .bt_dnode_rho_evaluate(node, lookup),
     lkj = .bt_dnode_lkj_evaluate(node, lookup),
     stop("Unsupported deterministic node family '", node$family, "'.", call. = FALSE)
@@ -214,6 +224,7 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
           parameter = design$parameter
         ))
       }
+      nodes <- c(nodes, .bt_dnode_random_sd_components(design))
     }
   }
 
@@ -232,7 +243,7 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
 .bt_deterministic_nodes_random_term <- function(random_term,
                                                 parameter = NA_character_){
 
-  nodes <- list()
+  nodes <- .bt_dnode_random_sd_from_random_term(random_term, parameter = parameter)
   for(node in list(
     .bt_dnode_rho_from_random_term(random_term, parameter = parameter),
     .bt_dnode_lkj_from_random_term(random_term, parameter = parameter)
@@ -314,6 +325,41 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
     posterior = lookup$draws,
     prior_list = lookup$prior_list
   )
+}
+
+# Draws of the Dirichlet weights of an allocation factor (a draws x K matrix,
+# from the weight columns or the normalized auxiliary gamma draws); NULL when
+# unavailable.
+.bt_deterministic_lookup_simplex <- function(lookup, factor){
+
+  weights <- .bt_random_effect_dirichlet_draws(
+    parameter_name = factor$weight_name,
+    posterior = lookup$draws,
+    prior_list = lookup$prior_list
+  )
+  if(is.null(weights)){
+    return(NULL)
+  }
+  if(ncol(weights) != factor$n_targets){
+    stop(
+      "Random-effect allocation factor metadata for '",
+      factor$weight_name,
+      "' expected ", factor$n_targets,
+      " Dirichlet coordinate(s), but found ", ncol(weights), ".",
+      call. = FALSE
+    )
+  }
+  if(factor$index > ncol(weights)){
+    stop(
+      "Random-effect allocation factor metadata for '",
+      factor$weight_name,
+      "' reference coordinate ", factor$index,
+      ", but only ", ncol(weights), " coordinate(s) are available.",
+      call. = FALSE
+    )
+  }
+
+  weights
 }
 
 # Draws of several coordinates as a matrix with one column per name; NULL when

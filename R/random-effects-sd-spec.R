@@ -598,13 +598,14 @@
     ))
   }
 
-  source_expression <- .bt_random_sd_binding_shared_source_expression(sd_binding)
-  factor_expression <- .bt_random_sd_binding_factors_expression(sd_binding$factors)
-  syntax <- paste0(
-    sd_parameter,
-    " = ",
-    paste(c(source_expression, if(!identical(factor_expression, "1")) factor_expression), collapse = " * ")
-  )
+  # The allocated block SD is a registered allocation SD node.
+  syntax <- .bt_deterministic_node_emit(.bt_dnode_random_sd(
+    name = sd_parameter,
+    source_name = .bt_random_sd_binding_source_name(sd_binding$source),
+    factors = sd_binding$factors,
+    emit_source = .bt_random_sd_binding_shared_source_expression(sd_binding),
+    emit_factors = sd_binding$factors
+  ))
   syntax <- c(
     syntax,
     .bt_random_effect_sd_assignment_syntax(parameter, sd_parameter_names)
@@ -988,16 +989,18 @@
     ))
   }
 
+  # Every SD component is a registered allocation SD node.
   syntax <- character()
   for(leaf_i in seq_len(K)){
-    expression <- .bt_random_variance_allocation_expression(
-      source_name = allocation_info$source_node,
-      weight_name = allocation_info$weight_name,
-      index = leaf_i,
-      scale = allocation_info$scale,
-      n_targets = K
-    )
-    syntax <- c(syntax, paste0(leaves$leaf_names[leaf_i], " = ", expression))
+    leaf_factor <- factor
+    leaf_factor$index <- leaf_i
+    syntax <- c(syntax, .bt_deterministic_node_emit(.bt_dnode_random_sd(
+      name = leaves$leaf_names[leaf_i],
+      source_name = .bt_random_sd_binding_source_name(allocation_info$source),
+      factors = c(allocation_info$parent_factors, list(leaf_factor)),
+      emit_source = allocation_info$source_node,
+      emit_factors = list(leaf_factor)
+    )))
   }
   syntax <- c(
     syntax,

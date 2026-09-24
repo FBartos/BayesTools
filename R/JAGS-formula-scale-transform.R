@@ -329,29 +329,17 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
 }
 
 
-# Random-effect monitors that the model defines deterministically from other
-# nodes: SDs derived from a variance allocation (source SD, Dirichlet weights,
-# and inclusion gates) and scalar correlations sampled on the Fisher-z or logit
-# scale. Their prior draws are computed from the prior draws of their parents
-# with the evaluators used for the posterior draws, so that every quantity
+# Generated deterministic monitors (allocation-derived SDs, Fisher-z and logit
+# scalar correlations, LKJ factors, matrices, and partial correlations) are
+# computed from the prior draws of their dependencies with the registered node
+# evaluators, which the posterior draws use as well, so that every quantity
 # available from the posterior draws is also available from the prior draws.
-# A monitor whose parents have no prior draws (an external SD source defined
-# in the model syntax) stays unavailable, as it is in fitted draws without it.
 .bt_add_random_deterministic_prior_samples <- function(samples, prior_list,
                                                        formula_design,
                                                        column_names){
 
   if(!is.list(formula_design)){
     return(samples)
-  }
-  terms <- unlist(lapply(formula_design, `[[`, "random_effects"), recursive = FALSE)
-  for(random_term in terms){
-    samples <- .bt_add_random_sd_prior_samples(
-      samples      = samples,
-      random_term  = random_term,
-      prior_list   = prior_list,
-      column_names = column_names
-    )
   }
   samples <- .bt_add_deterministic_prior_samples(
     samples        = samples,
@@ -398,34 +386,6 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   samples
 }
 
-.bt_add_random_sd_prior_samples <- function(samples, random_term, prior_list,
-                                            column_names){
-
-  binding <- random_term$sd_binding
-  if(is.null(binding) || !isTRUE(binding$true_allocation)){
-    return(samples)
-  }
-  sd_names <- random_term$sd_parameter_names
-  targets  <- unique(sd_names[!is.na(sd_names)])
-  targets  <- targets[targets %in% column_names & !targets %in% colnames(samples)]
-  if(length(targets) == 0L){
-    return(samples)
-  }
-
-  values <- .bt_random_effect_sd_draws(
-    random_term = random_term,
-    n_columns   = random_term$n_columns,
-    posterior   = samples,
-    prior_list  = prior_list
-  )
-  if(is.null(values)){
-    return(samples)
-  }
-  values <- values[, match(targets, sd_names), drop = FALSE]
-  colnames(values) <- targets
-
-  cbind(samples, values)
-}
 
 .bt_add_lkj_prior_samples <- function(samples, formula_design, column_names,
                                       n_samples){

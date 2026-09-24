@@ -347,7 +347,7 @@
       types <- c(types, "sd_mult")
       component_values <- c(component_values, components[i])
       component_indices <- c(component_indices, i)
-      values[[length(values) + 1L]] <- .bt_random_effect_allocation_multiplier(
+      values[[length(values) + 1L]] <- .bt_dnode_allocation_multiplier(
         weights = weights[, i],
         scale = allocation_scale,
         n_targets = .bt_random_effect_summary_allocation_n_targets(

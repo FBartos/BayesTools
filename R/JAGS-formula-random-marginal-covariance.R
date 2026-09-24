@@ -563,7 +563,7 @@ JAGS_formula_random_marginal_covariance <- function(
   }else{
     binding$factors
   }
-  factor_expression <- .bt_random_sd_binding_factors_expression(factors)
+  factor_expression <- .bt_dnode_allocation_factors_expression(factors)
   paste(
     c(source_expression,
       if(!identical(factor_expression, "1")) factor_expression),

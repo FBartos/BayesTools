@@ -1124,10 +1124,6 @@
         prior_list = prior_list,
         posterior_names = posterior_names
       )
-      multiplier <- .bt_JAGS_bridge_compile_allocation_multiplier(
-        scale = scale,
-        n_targets = n_targets
-      )
       chain_coordinates <- c(chain_coordinates, weight_name)
     }
 
@@ -1175,7 +1171,11 @@
         ncol = random_term$n_columns
       )
       for(column in seq_len(random_term$n_columns)){
-        out[, column] <- base * multiplier(weights[, leaf_index[column]])
+        out[, column] <- base * .bt_dnode_allocation_multiplier(
+          weights = weights[, leaf_index[column]],
+          scale = scale,
+          n_targets = n_targets
+        )
       }
       out
     }
@@ -1625,6 +1625,8 @@
     return(function(base, posterior, parameters = NULL,
                     prefer_weights = FALSE) base)
   }
+  # The allocation factors with their compiled weight and gate readers; the
+  # chain arithmetic is the registered allocation SD node's.
   plans <- lapply(factor_plan, function(factor){
     list(
       weight_evaluator = if(is.null(factor$weight_name)) NULL else
@@ -1633,12 +1635,8 @@
           prior_list = prior_list,
           posterior_names = posterior_names
         ),
-      multiplier = if(is.null(factor$weight_name)) NULL else
-        .bt_JAGS_bridge_compile_allocation_multiplier(
-          scale = factor$scale,
-          n_targets = factor$n_targets
-        ),
       index = factor$index,
+      scale = factor$scale,
       n_targets = factor$n_targets,
       weight_name = factor$weight_name,
       inclusion_name = factor$inclusion_name,
@@ -1651,19 +1649,17 @@
   force(plans)
 
   function(base, posterior, parameters = NULL, prefer_weights = FALSE){
-    out <- base
-    for(plan in plans){
-      multiplier <- 1
-      if(!is.null(plan$weight_evaluator)){
+    .bt_dnode_allocation_chain(
+      base = base,
+      factors = plans,
+      weights_of = function(plan){
         weights <- plan$weight_evaluator(
           posterior,
           parameters,
           prefer_weights = prefer_weights
         )
-        if(is.null(weights)){
-          return(NULL)
-        }
-        if(ncol(weights) != plan$n_targets || plan$index > ncol(weights)){
+        if(!is.null(weights) &&
+           (ncol(weights) != plan$n_targets || plan$index > ncol(weights))){
           stop(
             "Random-effect allocation factor metadata for '",
             plan$weight_name,
@@ -1671,20 +1667,12 @@
             call. = FALSE
           )
         }
-        multiplier <- plan$multiplier(weights[, plan$index])
+        weights
+      },
+      gate_of = function(plan){
+        plan$gate_evaluator(posterior)
       }
-      gate <- plan$gate_evaluator(posterior)
-      if(is.null(gate)){
-        stop(
-          "Random-effect allocation inclusion samples are missing Bernoulli indicator '",
-          plan$inclusion_name,
-          "'.",
-          call. = FALSE
-        )
-      }
-      out <- out * multiplier * gate
-    }
-    out
+    )
   }
 }
 
@@ -1725,28 +1713,6 @@
     }
     values
   }
-}
-
-.bt_JAGS_bridge_compile_allocation_multiplier <- function(scale, n_targets){
-
-  if(identical(scale, "mean_variance")){
-    if(!is.numeric(n_targets) || length(n_targets) != 1L ||
-       is.na(n_targets) || n_targets < 1L){
-      stop(
-        "Random-effect allocation metadata are missing canonical 'allocation$n_targets'.",
-        call. = FALSE
-      )
-    }
-    force(n_targets)
-    return(function(weights) sqrt(n_targets * weights))
-  }
-  if(identical(scale, "total_variance")){
-    return(function(weights) sqrt(weights))
-  }
-  stop(
-    "Random-effect allocation metadata are missing canonical 'allocation$scale'.",
-    call. = FALSE
-  )
 }
 
 .bt_JAGS_bridge_context_random_block <- function(samples, random_term,

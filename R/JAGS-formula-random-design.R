@@ -1039,7 +1039,7 @@
       if(!is.null(structured_layout)){
         column_scale_name <- paste0(parameter, "_xRE_ROW_COL_SCALEx")
         for(column in seq_len(n_par)){
-          factor_expression <- .bt_random_sd_binding_factors_expression(
+          factor_expression <- .bt_dnode_allocation_factors_expression(
             sd_binding$factors_by_column[[column]]
           )
           random_syntax <- c(random_syntax, paste0(
@@ -1052,7 +1052,7 @@
         )
       }else{
         column_terms <- vapply(seq_len(n_par), function(column){
-          factor_expression <- .bt_random_sd_binding_factors_expression(
+          factor_expression <- .bt_dnode_allocation_factors_expression(
             sd_binding$factors_by_column[[column]]
           )
           paste(
@@ -1070,7 +1070,7 @@
         )
       }
     }else{
-      factor_expression <- .bt_random_sd_binding_factors_expression(sd_binding$factors)
+      factor_expression <- .bt_dnode_allocation_factors_expression(sd_binding$factors)
       unit_contribution <- if(!is.null(structured_layout)){
         unit_expression
       }else{

@@ -296,67 +296,6 @@
   invisible(TRUE)
 }
 
-.bt_random_variance_allocation_multiplier_expression <- function(weight_name,
-                                                                 index, scale,
-                                                                 n_targets){
-
-  multiplier <- if(identical(scale, "mean_variance")){
-    paste0(n_targets, " * ", weight_name, "[", index, "]")
-  }else{
-    paste0(weight_name, "[", index, "]")
-  }
-
-  paste0("sqrt(", multiplier, ")")
-}
-
-.bt_random_variance_allocation_factor_expression <- function(factor){
-
-  if(is.null(factor$weight_name)){
-    return(factor$inclusion_name)
-  }
-  multiplier <- .bt_random_variance_allocation_multiplier_expression(
-    weight_name = factor$weight_name,
-    index = factor$index,
-    scale = factor$scale,
-    n_targets = factor$n_targets
-  )
-
-  if(!is.null(factor$inclusion_name)){
-    multiplier <- paste0(factor$inclusion_name, " * ", multiplier)
-  }
-
-  multiplier
-}
-
-.bt_random_variance_allocation_factors_expression <- function(factors){
-
-  if(length(factors) == 0L){
-    return("1")
-  }
-
-  paste(
-    vapply(factors, .bt_random_variance_allocation_factor_expression, character(1)),
-    collapse = " * "
-  )
-}
-
-.bt_random_variance_allocation_expression <- function(source_name, weight_name,
-                                                      index, scale, n_targets,
-                                                      inclusion_name = NULL){
-
-  multiplier <- .bt_random_variance_allocation_factor_expression(
-    .bt_random_variance_allocation_factor(
-      weight_name = weight_name,
-      index = index,
-      scale = scale,
-      n_targets = n_targets,
-      inclusion_name = inclusion_name
-    )
-  )
-
-  paste0(source_name, " * ", multiplier)
-}
-
 .bt_random_variance_allocation_root_source <- function(allocation,
                                                        allocation_names,
                                                        label,

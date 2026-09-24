@@ -184,14 +184,14 @@
         if(!is.null(component_inclusion)){
           inclusion_name <- component_inclusion$indicator_name
         }
-        expression <- .bt_random_variance_allocation_expression(
-          source_name = source_name,
+        factor <- .bt_random_variance_allocation_factor(
           weight_name = weight_name,
           index = if(gate_only) NA_integer_ else term_i,
           scale = scale,
           n_targets = length(terms),
           inclusion_name = inclusion_name
         )
+        expression <- .bt_dnode_allocation_expression(source_name, factor)
         node_name <- .bt_random_variance_allocation_component_name(
           parameter = parameter,
           label = label,
@@ -214,15 +214,16 @@
         }
         row_indexed_source <- .bt_random_variance_allocation_source_is_row(source)
         if(component_key %in% consumed_components && !row_indexed_source){
-          syntax <- c(syntax, paste0(node_name, " = ", expression))
+          # A consumed component is a registered allocation SD node.
+          syntax <- c(syntax, .bt_deterministic_node_emit(.bt_dnode_random_sd(
+            name = node_name,
+            source_name = .bt_random_sd_binding_source_name(source),
+            factors = c(source_factors, list(factor)),
+            emit_source = source_name,
+            emit_factors = list(factor),
+            parameter = parameter
+          )))
         }
-        factor <- .bt_random_variance_allocation_factor(
-          weight_name = weight_name,
-          index = if(gate_only) NA_integer_ else term_i,
-          scale = scale,
-          n_targets = length(terms),
-          inclusion_name = inclusion_name
-        )
         component_meta[[component_labels[term_i]]] <- list(
           label = component_labels[term_i],
           term = terms[term_i],

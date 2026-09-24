@@ -49,6 +49,13 @@ JAGS syntax of the node and the R evaluator used everywhere BayesTools needs
 its value (prior draws, parameter-catalog quantities, bridge sampling,
 marginal-likelihood parameters, prediction, and convergence roles):
 \describe{
+\item{\code{"random_sd"}}{random-effect SDs derived from a variance
+allocation (\code{\link[=random_variance_allocation]{random_variance_allocation()}}): the source SD (the
+allocation's own SD or an external scalar SD source) times the chain of
+allocation factors from the root allocation, \code{sqrt(w[i])} (total
+variance) or \code{sqrt(K * w[i])} (mean variance) of the Dirichlet
+weights and the inclusion gates. The family also contains the parent
+allocation components that a child allocation splits further.}
 \item{\code{"random_rho"}}{scalar correlations of structured random-effect
 blocks sampled on the Fisher-z (\code{rho = tanh(z)}) or logit scale
 (\code{rho = lower + (upper - lower) * plogis(z)}).}

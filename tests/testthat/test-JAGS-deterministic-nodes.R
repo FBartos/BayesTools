@@ -72,6 +72,106 @@ skip_if_not_test_profile("unit")
   )
 }
 
+test_that("allocation SD nodes reproduce the JAGS monitors of gated, nested, and external-source allocations", {
+
+  # A gated total-variance root allocation over the blocks g and d, with the
+  # correlated block g split into SD components by a mean-variance child.
+  fit <- .dnode_fit(
+    ~ 1 + x + us(1 + x | g) + random(1 | d, name = "d", covariance = "diag"),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    prior_random = prior_random(
+      random_variance_allocation(
+        name = "tot", terms = c(g = "g", d = "d"), scale = "total_variance",
+        sd = prior("gamma", list(2, 2)),
+        weights = prior("dirichlet", list(alpha = c(1.5, 2.5))),
+        inclusion = list(d = prior("beta", list(3, 2)))
+      ),
+      random_variance_allocation(
+        name = "gc", parent = allocation_ref("tot", "g"), terms = "g",
+        target = "sd_component", scale = "mean_variance",
+        weights = prior("dirichlet", list(alpha = c(1, 2)))
+      )
+    ),
+    formula_scale = list(x = TRUE)
+  )
+  syntax <- attr(fit, "model_syntax")
+
+  result <- .dnode_rebuild(fit, "random_sd")
+  expect_setequal(
+    result$nodes$node,
+    c("mu__xREx__g_intercept", "mu__xREx__g_x", "mu__xREx__d_intercept")
+  )
+  expect_identical(
+    unname(unlist(result$nodes$dependencies[match("mu__xREx__d_intercept", result$nodes$node)])),
+    c(
+      "mu__xRE_ALLOCx_tot__allocation_sd",
+      "mu__xRE_ALLOCx_tot__weight[1]", "mu__xRE_ALLOCx_tot__weight[2]",
+      "mu__xRE_ALLOCx_tot__include_d_indicator"
+    )
+  )
+  # The factors are multiplied in the order of the model syntax and the gates
+  # are 0/1, so the rebuilt SDs are bit-identical to the monitors.
+  expect_identical(unname(result$rebuilt), unname(result$monitored))
+
+  # The consumed parent component is a node of its own (not monitored), and
+  # every node is emitted into the model syntax from its specification.
+  nodes <- JAGS_deterministic_nodes(fit)
+  component <- nodes[nodes$node == "mu__xRE_ALLOCx_tot__component_g_sd", , drop = FALSE]
+  expect_identical(nrow(component), 1L)
+  expect_false(component$monitored)
+  registry <- BayesTools:::.bt_deterministic_nodes_fit(fit)
+  for(node in registry[nodes$node[nodes$family == "random_sd"]]){
+    expect_true(grepl(BayesTools:::.bt_deterministic_node_emit(node), syntax, fixed = TRUE))
+  }
+  expect_true(grepl(
+    "mu__xREx__g_x = mu__xRE_ALLOCx_tot__component_g_sd * sqrt(2 * mu__xRE_ALLOCx_gc__weight[2])",
+    syntax,
+    fixed = TRUE
+  ))
+
+  # Prior draws evaluate the same chain.
+  prior_draws <- transform_prior_samples(fit, n_samples = 300, seed = 5, formula_scale = list())
+  expect_identical(
+    unname(prior_draws[, "mu__xREx__g_x"]),
+    unname(
+      prior_draws[, "mu__xRE_ALLOCx_tot__allocation_sd"] *
+        sqrt(prior_draws[, "mu__xRE_ALLOCx_tot__weight[1]"]) *
+        sqrt(2 * prior_draws[, "mu__xRE_ALLOCx_gc__weight[2]"])
+    )
+  )
+  expect_identical(
+    unname(prior_draws[, "mu__xREx__d_intercept"]),
+    unname(
+      prior_draws[, "mu__xRE_ALLOCx_tot__allocation_sd"] *
+        sqrt(prior_draws[, "mu__xRE_ALLOCx_tot__weight[2]"]) *
+        prior_draws[, "mu__xRE_ALLOCx_tot__include_d_indicator"]
+    )
+  )
+
+  # An external scalar SD source is the root of the chain.
+  external <- .dnode_fit(
+    ~ 1 + random(1 | g, name = "g", covariance = "diag") +
+      random(1 | d, name = "d", covariance = "diag"),
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    extra_prior = list(tau = prior("normal", list(0, 1), list(0, Inf))),
+    prior_random = prior_random(random_variance_allocation(
+      name = "tot", terms = c(g = "g", d = "d"),
+      sd_source = random_sd_source("tau"),
+      weights = prior("dirichlet", list(alpha = c(2, 2)))
+    )),
+    seed = 2L
+  )
+  external_result <- .dnode_rebuild(external, "random_sd")
+  expect_identical(
+    unname(unlist(external_result$nodes$dependencies[1L])),
+    c("tau", "mu__xRE_ALLOCx_tot__weight[1]", "mu__xRE_ALLOCx_tot__weight[2]")
+  )
+  expect_identical(unname(external_result$rebuilt), unname(external_result$monitored))
+})
+
 test_that("scalar correlation nodes reproduce the JAGS monitors of every structure", {
 
   sd_prior <- prior("normal", list(0, 1), list(0, Inf))

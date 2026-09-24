@@ -602,11 +602,6 @@
   ))
 }
 
-.bt_random_sd_binding_factors_expression <- function(factors){
-
-  .bt_random_variance_allocation_factors_expression(factors)
-}
-
 .bt_random_sd_binding_shared_source_expression <- function(binding,
                                                            row_index = NULL){
 

@@ -200,6 +200,9 @@
   rep(location, nrow(posterior))
 }
 
+# Allocation-derived SDs of a block's columns from the registered allocation SD
+# nodes of the block (one block SD, or one SD per SD component); NULL when a
+# dependency is unavailable or the block has a row-indexed source.
 .bt_random_effect_allocated_sd_draws <- function(random_term, n_columns,
                                                  posterior, prior_list){
 
@@ -208,69 +211,33 @@
      length(binding$allocations) == 0L){
     return(NULL)
   }
+  nodes <- .bt_dnode_random_sd_from_random_term(random_term)
+  if(length(nodes) == 0L){
+    return(NULL)
+  }
   allocation <- binding$allocations[[1L]]
-  target <- .bt_random_effect_allocation_target_metadata(allocation)
-  scale <- .bt_random_effect_allocation_scale_metadata(allocation)
-  factors <- if(identical(target, "sd_component")){
-    .bt_random_effect_allocation_parent_factors_metadata(allocation)
+  node_index <- if(identical(.bt_random_effect_allocation_target_metadata(allocation), "sd_component")){
+    .bt_check_random_sd_component_allocation(
+      allocation = allocation,
+      n_columns = n_columns,
+      context = "Random-effect allocation metadata"
+    )$leaf_index_by_column
   }else{
-    .bt_random_effect_allocation_factors_metadata(allocation)
+    rep(1L, n_columns)
   }
 
-  base <- .bt_random_effect_parameter_draws(
-    parameter_name = .bt_random_sd_binding_source_name(allocation$source),
-    posterior = posterior,
-    prior_list = prior_list
-  )
-  if(is.null(base)){
-    return(NULL)
-  }
-
-  base <- .bt_random_effect_apply_allocation_factors(
-    base = base,
-    factors = factors,
-    posterior = posterior,
-    prior_list = prior_list
-  )
-  if(is.null(base)){
-    return(NULL)
-  }
-
-  if(!identical(target, "sd_component")){
-    return(matrix(base, nrow = nrow(posterior), ncol = n_columns))
-  }
-
-  sd_component_metadata <- .bt_check_random_sd_component_allocation(
-    allocation = allocation,
-    n_columns = n_columns,
-    context = "Random-effect allocation metadata"
-  )
-  weights <- .bt_random_effect_dirichlet_draws(
-    parameter_name = allocation$weight_name,
-    posterior = posterior,
-    prior_list = prior_list
-  )
-  if(is.null(weights)){
-    return(NULL)
-  }
-  leaf_index <- sd_component_metadata$leaf_index_by_column
-  K <- sd_component_metadata$n_targets
-  if(ncol(weights) != K){
-    stop(
-      "Random-effect allocation metadata for '",
-      allocation$weight_name,
-      "' expected ", K,
-      " Dirichlet coordinate(s), but found ", ncol(weights), ".",
-      call. = FALSE
-    )
+  lookup <- .bt_deterministic_lookup(posterior, prior_list)
+  node_values <- vector("list", length(nodes))
+  for(i in unique(node_index)){
+    values <- .bt_deterministic_node_evaluate(nodes[[i]], lookup)
+    if(is.null(values)){
+      return(NULL)
+    }
+    node_values[[i]] <- values
   }
   out <- matrix(NA_real_, nrow = nrow(posterior), ncol = n_columns)
   for(column in seq_len(n_columns)){
-    out[, column] <- base * .bt_random_effect_allocation_multiplier(
-      weights = weights[, leaf_index[column]],
-      scale = scale,
-      n_targets = K
-    )
+    out[, column] <- node_values[[node_index[column]]][, 1L]
   }
 
   out
@@ -342,66 +309,20 @@
                                                            posterior,
                                                            prior_list){
 
-  if(length(factor_plan) == 0L){
-    return(base)
-  }
-
-  out <- base
-  for(factor in factor_plan){
-    scale <- .bt_random_effect_allocation_scale_metadata(
-      factor,
-      context = "Random-effect allocation factor metadata"
-    )
-    multiplier <- 1
-    if(!is.null(factor$weight_name)){
-      weights <- .bt_random_effect_dirichlet_draws(
-        parameter_name = factor$weight_name,
-        posterior = posterior,
-        prior_list = prior_list
-      )
-      if(is.null(weights)){
-        return(NULL)
-      }
-      if(ncol(weights) != factor$n_targets){
-        stop(
-          "Random-effect allocation factor metadata for '",
-          factor$weight_name,
-          "' expected ", factor$n_targets,
-          " Dirichlet coordinate(s), but found ", ncol(weights), ".",
-          call. = FALSE
-        )
-      }
-      if(factor$index > ncol(weights)){
-        stop(
-          "Random-effect allocation factor metadata for '",
-          factor$weight_name,
-          "' reference coordinate ", factor$index,
-          ", but only ", ncol(weights), " coordinate(s) are available.",
-          call. = FALSE
-        )
-      }
-      multiplier <- .bt_random_effect_allocation_multiplier(
-        weights = weights[, factor$index],
-        scale = scale,
-        n_targets = factor$n_targets
+  lookup <- .bt_deterministic_lookup(posterior, prior_list)
+  .bt_dnode_allocation_chain(
+    base = base,
+    factors = factor_plan,
+    weights_of = function(factor){
+      .bt_deterministic_lookup_simplex(lookup, factor)
+    },
+    gate_of = function(factor){
+      .bt_random_effect_allocation_gate_draws(
+        parameter_name = factor$inclusion_name,
+        posterior = posterior
       )
     }
-    gate <- .bt_random_effect_allocation_gate_draws(
-      parameter_name = factor$inclusion_name,
-      posterior = posterior
-    )
-    if(is.null(gate)){
-      stop(
-        "Random-effect allocation inclusion samples are missing Bernoulli indicator '",
-        factor$inclusion_name,
-        "'.",
-        call. = FALSE
-      )
-    }
-    out <- out * multiplier * gate
-  }
-
-  out
+  )
 }
 
 .bt_random_effect_allocation_gate_draws <- function(parameter_name, posterior){
@@ -464,28 +385,6 @@
   }, character(1))
 
   paste0(" (", paste(labels, collapse = " -> "), ")")
-}
-
-.bt_random_effect_allocation_multiplier <- function(weights, scale, n_targets){
-
-  if(identical(scale, "mean_variance")){
-    if(!is.numeric(n_targets) || length(n_targets) != 1L ||
-       is.na(n_targets) || n_targets < 1L){
-      stop(
-        "Random-effect allocation metadata are missing canonical 'allocation$n_targets'.",
-        call. = FALSE
-      )
-    }
-    return(sqrt(n_targets * weights))
-  }
-  if(identical(scale, "total_variance")){
-    return(sqrt(weights))
-  }
-
-  stop(
-    "Random-effect allocation metadata are missing canonical 'allocation$scale'.",
-    call. = FALSE
-  )
 }
 
 .bt_random_effect_dirichlet_draws <- function(parameter_name, posterior,
