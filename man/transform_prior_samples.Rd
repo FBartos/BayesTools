@@ -44,6 +44,19 @@ multiple priors:
 This function generates samples from ALL priors simultaneously and applies
 the same matrix transformation used for posterior samples, which correctly
 handles the intercept and all other parameters.
+
+Monitored random-effect nodes that the model defines deterministically from
+other nodes are computed from the prior draws of those nodes with the
+model's own definitions: standard deviations derived from a variance
+allocation (\code{\link[=random_variance_allocation]{random_variance_allocation()}}), scalar correlations
+sampled on the Fisher-z or logit scale, and LKJ Cholesky factors,
+correlation matrices, and partial correlations. Every parameter-catalog
+quantity that depends only on such nodes and on the priors can therefore be
+evaluated on the prior draws (see \code{\link[=parameter_draws]{parameter_draws()}}). Nodes that the model
+samples without a prior in \code{prior_list}, such as standardized latent
+random effects, nodes derived from them, such as realized group
+coefficients, and auxiliary sampling nodes, such as mixture indicators and
+Dirichlet auxiliaries, are not included.
 }
 \examples{
 # With a fitted model that used formula_scale:

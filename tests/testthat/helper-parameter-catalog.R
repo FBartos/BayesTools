@@ -42,3 +42,47 @@
     mode = mode
   )
 }
+
+# Synthetic fitted object whose draws have the columns that a fit of
+# 'formula_result' monitors; the draws themselves are placeholders.
+.prior_monitor_test_fit <- function(formula_result, columns){
+
+  chains <- coda::mcmc.list(coda::mcmc(matrix(
+    0.5,
+    nrow = 2L,
+    ncol = length(columns),
+    dimnames = list(NULL, columns)
+  )))
+  formula_scale <- formula_result$formula_scale
+  .parameter_catalog_test_fit(
+    chains         = chains,
+    prior_list     = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design),
+    formula_scale  = if(length(formula_scale) > 0L) list(mu = formula_scale)
+  )
+}
+
+.prior_monitor_matrix_names <- function(name, K){
+
+  as.vector(outer(seq_len(K), seq_len(K), function(row, column){
+    paste0(name, "[", row, ",", column, "]")
+  }))
+}
+
+# Draws of every public catalog quantity, evaluated on 'samples'.
+.prior_monitor_catalog_draws <- function(fit, samples){
+
+  catalog <- parameter_catalog(fit)
+  public  <- catalog$quantities[!catalog$quantities$internal, , drop = FALSE]
+  draws <- lapply(seq_len(nrow(public)), function(i){
+    selection <- parameter_catalog_resolve(
+      catalog,
+      alias     = public$canonical_name[[i]],
+      namespace = public$namespace[[i]],
+      component = public$component[[i]]
+    )
+    parameter_draws(fit, selection, model_samples = samples)
+  })
+  names(draws) <- public$canonical_name
+  draws
+}

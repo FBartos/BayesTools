@@ -161,6 +161,13 @@ names.
   correlations). Summaries such as `ensemble_estimates_table()` accept missing
   draws only for declared columns, summarize the defined draws, and footnote
   their share; any other missing draw is an error.
+- Prior draws from `transform_prior_samples()` carry every generated monitor
+  that the model defines deterministically from nodes with prior draws
+  (allocation-derived SDs, Fisher-z/logit scalar correlations, LKJ factors,
+  matrices, and partial correlations), computed with the model's definitions
+  and the posterior evaluators, so that catalog quantities evaluate on prior
+  and posterior draws alike. Latent group effects and nodes derived only from
+  them have no prior draws.
 - Internal latent, realized, allocation, LKJ, spike-and-slab, and other
   implementation coordinates remain coordinate-only and must not be presented as
   original-scale public parameters.

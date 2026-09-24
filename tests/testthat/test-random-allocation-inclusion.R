@@ -137,6 +137,107 @@ test_that("variance-allocation gate priors sample independent indicators", {
   )
 })
 
+test_that("prior draws carry gated allocation SDs and variance proportions", {
+
+  data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2")),
+    drug  = factor(c("a", "b", "a", "b"))
+  )
+  alpha <- c(2, 3)
+  result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name      = "total",
+        terms     = c(study = "study", drug = "drug"),
+        sd        = prior("gamma", list(2, 2)),
+        weights   = prior("dirichlet", list(alpha = alpha)),
+        inclusion = list(
+          study = prior("beta", list(2, 2)),
+          drug  = prior("spike", list(location = 0.7))
+        )
+      )
+    )
+  )
+  terms <- result$formula_design$random_effects
+  names(terms) <- vapply(terms, `[[`, character(1), "block_name")
+  allocation <- terms$study$sd_binding$allocations[[1L]]
+  components <- c("study", "drug")
+  indicators <- vapply(components, function(component){
+    allocation$inclusion[[component]]$indicator_name
+  }, character(1))
+  weight_names <- paste0(allocation$weight_name, "[", 1:2, "]")
+  # The monitored block SDs are deterministic nodes sd * gate_j * sqrt(w_j).
+  sd_names <- vapply(components, function(component){
+    terms[[component]]$sd_parameter_names
+  }, character(1))
+  columns <- c(
+    "mu_intercept", allocation$source_node, weight_names,
+    paste0(.JAGS_prior_dirichlet_eta_name(allocation$weight_name), "[", 1:2, "]"),
+    vapply(components, function(component){
+      allocation$inclusion[[component]]$prob_name
+    }, character(1)),
+    indicators,
+    sd_names
+  )
+  fit <- .prior_monitor_test_fit(result, columns)
+
+  n <- 10000L
+  samples <- transform_prior_samples(fit, n_samples = n, seed = 915L)
+  expect_true(all(sd_names %in% colnames(samples)))
+  for(j in 1:2){
+    expect_identical(
+      unname(samples[, sd_names[[j]]]),
+      unname(samples[, allocation$source_node] * samples[, indicators[[j]]] *
+               sqrt(samples[, weight_names[[j]]]))
+    )
+  }
+
+  gated_weights <- samples[, indicators, drop = FALSE] *
+    samples[, weight_names, drop = FALSE]
+  realized <- rowSums(gated_weights)
+  draws <- .prior_monitor_catalog_draws(fit, samples)
+  for(name in names(draws)){
+    values <- as.numeric(as.matrix(draws[[name]]))
+    expect_length(values, n)
+    if(startsWith(name, "(mu) total: var_prop(")){
+      # Undefined exactly where every gate is off.
+      expect_identical(is.na(values), realized == 0, info = name)
+    }else{
+      expect_true(all(is.finite(values)), info = name)
+    }
+  }
+  for(j in 1:2){
+    expect_identical(
+      as.numeric(as.matrix(draws[[paste0("(mu) ", components[[j]], ": sd(intercept)")]])),
+      unname(samples[, sd_names[[j]]])
+    )
+  }
+
+  # var_prop(study) = I_1 w_1 / (I_1 w_1 + I_2 w_2) where defined. The gates
+  # are independent of the weights, so with both gates on it is the Dirichlet
+  # share w_1 ~ Beta(alpha_1, alpha_2); one-sample KS with a fixed seed at
+  # alpha = 0.01.
+  var_prop_study <- as.numeric(as.matrix(draws[["(mu) total: var_prop(study)"]]))
+  defined <- realized > 0
+  expect_equal(
+    var_prop_study[defined],
+    unname(gated_weights[defined, 1L] / realized[defined]),
+    tolerance = 1e-12
+  )
+  both_on <- rowSums(samples[, indicators, drop = FALSE]) == 2
+  expect_gt(sum(both_on), 1000L)
+  expect_gt(
+    stats::ks.test(var_prop_study[both_on], "pbeta", alpha[[1L]], alpha[[2L]])$p.value,
+    0.01
+  )
+})
+
 
 test_that("a consumed unary root gate retains canonical allocation size", {
 

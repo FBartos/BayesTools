@@ -148,6 +148,19 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 #' the same matrix transformation used for posterior samples, which correctly
 #' handles the intercept and all other parameters.
 #'
+#' Monitored random-effect nodes that the model defines deterministically from
+#' other nodes are computed from the prior draws of those nodes with the
+#' model's own definitions: standard deviations derived from a variance
+#' allocation ([random_variance_allocation()]), scalar correlations
+#' sampled on the Fisher-z or logit scale, and LKJ Cholesky factors,
+#' correlation matrices, and partial correlations. Every parameter-catalog
+#' quantity that depends only on such nodes and on the priors can therefore be
+#' evaluated on the prior draws (see [parameter_draws()]). Nodes that the model
+#' samples without a prior in \code{prior_list}, such as standardized latent
+#' random effects, nodes derived from them, such as realized group
+#' coefficients, and auxiliary sampling nodes, such as mixture indicators and
+#' Dirichlet auxiliaries, are not included.
+#'
 #' @return A matrix of prior samples on the original (unscaled) scale, with
 #' columns matching the structure of posterior samples.
 #'
@@ -243,6 +256,12 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
     column_names = column_names,
     n_samples    = n_samples
   )
+  prior_samples <- .bt_add_random_deterministic_prior_samples(
+    samples        = prior_samples,
+    prior_list     = prior_list,
+    formula_design = formula_design,
+    column_names   = column_names
+  )
 
   if(!is.null(formula_scale) && length(formula_scale) > 0){
     prior_samples <- .apply_unscale_transform(prior_samples, formula_scale)
@@ -292,6 +311,111 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
 }
 
 
+# Random-effect monitors that the model defines deterministically from other
+# nodes: SDs derived from a variance allocation (source SD, Dirichlet weights,
+# and inclusion gates) and scalar correlations sampled on the Fisher-z or logit
+# scale. Their prior draws are computed from the prior draws of their parents
+# with the evaluators used for the posterior draws, so that every quantity
+# available from the posterior draws is also available from the prior draws.
+# A monitor whose parents have no prior draws (an external SD source defined
+# in the model syntax) stays unavailable, as it is in fitted draws without it.
+.bt_add_random_deterministic_prior_samples <- function(samples, prior_list,
+                                                       formula_design,
+                                                       column_names){
+
+  if(!is.list(formula_design)){
+    return(samples)
+  }
+  terms <- unlist(lapply(formula_design, `[[`, "random_effects"), recursive = FALSE)
+  for(random_term in terms){
+    samples <- .bt_add_random_sd_prior_samples(
+      samples      = samples,
+      random_term  = random_term,
+      prior_list   = prior_list,
+      column_names = column_names
+    )
+    samples <- .bt_add_random_rho_prior_samples(
+      samples      = samples,
+      random_term  = random_term,
+      column_names = column_names
+    )
+  }
+
+  ordered <- intersect(column_names, colnames(samples))
+  samples[, ordered, drop = FALSE]
+}
+
+.bt_add_random_sd_prior_samples <- function(samples, random_term, prior_list,
+                                            column_names){
+
+  binding <- random_term$sd_binding
+  if(is.null(binding) || !isTRUE(binding$true_allocation)){
+    return(samples)
+  }
+  sd_names <- random_term$sd_parameter_names
+  targets  <- unique(sd_names[!is.na(sd_names)])
+  targets  <- targets[targets %in% column_names & !targets %in% colnames(samples)]
+  if(length(targets) == 0L){
+    return(samples)
+  }
+
+  values <- .bt_random_effect_sd_draws(
+    random_term = random_term,
+    n_columns   = random_term$n_columns,
+    posterior   = samples,
+    prior_list  = prior_list
+  )
+  if(is.null(values)){
+    return(samples)
+  }
+  values <- values[, match(targets, sd_names), drop = FALSE]
+  colnames(values) <- targets
+
+  cbind(samples, values)
+}
+
+.bt_add_random_rho_prior_samples <- function(samples, random_term,
+                                             column_names){
+
+  correlation <- random_term$correlation
+  if(!is.list(correlation) || !identical(correlation$type, "rho")){
+    return(samples)
+  }
+  rho_name <- correlation$rho_name
+  if(!rho_name %in% column_names || rho_name %in% colnames(samples)){
+    return(samples)
+  }
+  plan <- .bt_random_effect_compile_rho_draw_plan(
+    random_term = random_term,
+    context     = "Random-effect prior sample metadata"
+  )
+  if(identical(plan$rho_scale, "rho")){
+    return(samples)
+  }
+  sample_value <- if(correlation$sample_name %in% colnames(samples)){
+    samples[, correlation$sample_name]
+  }else if(!is.null(plan$sample_fixed)){
+    rep(plan$sample_fixed, nrow(samples))
+  }else{
+    return(samples)
+  }
+
+  # The model's own 'rho <- tanh(z)' or logit map; like the monitored node, the
+  # draws are not validated here (consumers check the correlation support).
+  rho <- .bt_random_effect_transform_rho(
+    sample_value,
+    correlation = correlation,
+    random_term = random_term,
+    context     = "Random-effect prior sample metadata",
+    plan        = plan
+  )
+  samples <- cbind(samples, rho)
+  colnames(samples)[ncol(samples)] <- rho_name
+
+  samples
+}
+
+
 .bt_add_lkj_prior_samples <- function(samples, formula_design, column_names,
                                       n_samples){
 
@@ -322,6 +446,25 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
         stats::rbeta(n_samples, shape1 = alpha[[i]], shape2 = alpha[[i]])
       )
       colnames(samples)[ncol(samples)] <- primitive_names[[i]]
+    }
+
+    # Monitored canonical partial correlations are the module's deterministic
+    # 'cpc[p] <- 2 * u[p] - 1' of the primitives.
+    cpc_names <- correlation$cpc_names
+    if(length(cpc_names) > 0L){
+      if(length(cpc_names) != length(primitive_names)){
+        stop(
+          "Stored LKJ partial-correlation metadata do not match the random-effect dimension.",
+          call. = FALSE
+        )
+      }
+      add_cpc <- cpc_names %in% column_names &
+        !cpc_names %in% colnames(samples) &
+        primitive_names %in% colnames(samples)
+      for(i in which(add_cpc)){
+        samples <- cbind(samples, 2 * samples[, primitive_names[[i]]] - 1)
+        colnames(samples)[ncol(samples)] <- cpc_names[[i]]
+      }
     }
 
     # Monitored Cholesky and correlation matrices are deterministic functions

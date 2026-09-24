@@ -1453,6 +1453,307 @@ test_that("prior sampling includes stored LKJ primitive coordinates", {
   expect_lt(abs(stats::var(samples[, primitive_name]) - 0.05), 0.005)
 })
 
+test_that("prior draws carry the allocation-derived SDs of correlated random slopes", {
+
+  data <- data.frame(
+    x = c(1, 4, 6, 2, 8, 5, 3, 7),
+    g = factor(rep(c("a", "b", "c", "d"), each = 2L))
+  )
+  eta <- 2
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + x + us(1 + x | g),
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name = "het",
+        terms = "g",
+        target = "sd_component",
+        scale = "mean_variance",
+        sd = prior("normal", list(0, 1), truncation = list(0, Inf)),
+        weights = prior("dirichlet", list(alpha = c(1, 1)))
+      ),
+      g = random_block(cor = prior_lkj(eta = eta))
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  allocation <- random_term$sd_binding$allocations[[1L]]
+  source_name <- allocation$source_node
+  weight_names <- paste0(allocation$weight_name, "[", 1:2, "]")
+  # The monitored SDs are deterministic nodes sd * sqrt(2 * w[k]).
+  sd_names <- random_term$sd_parameter_names
+  R_names <- .prior_monitor_matrix_names(random_term$correlation$correlation_name, 2L)
+  columns <- c(
+    "mu_intercept", "mu_x", source_name, weight_names,
+    paste0(.JAGS_prior_dirichlet_eta_name(allocation$weight_name), "[", 1:2, "]"),
+    sd_names,
+    .prior_monitor_matrix_names(random_term$correlation$cholesky_name, 2L),
+    R_names,
+    random_term$correlation$primitive_names,
+    as.vector(.bt_random_effect_latent_names(random_term, random_term$n_groups, 2L))
+  )
+  fit <- .prior_monitor_test_fit(formula_result, columns)
+
+  n <- 10000L
+  raw <- transform_prior_samples(fit, n_samples = n, seed = 58L,
+                                 formula_scale = list())
+  expect_true(all(sd_names %in% colnames(raw)))
+  for(k in 1:2){
+    expect_identical(
+      unname(raw[, sd_names[[k]]]),
+      unname(raw[, source_name] * sqrt(2 * raw[, weight_names[[k]]]))
+    )
+  }
+
+  # Every public quantity, including the original-scale correlation that
+  # depends on the SD monitors, is available from the prior draws.
+  draws <- .prior_monitor_catalog_draws(fit, raw)
+  expect_true("(mu) cor(intercept,x)" %in% names(draws))
+  for(name in names(draws)){
+    values <- as.numeric(as.matrix(draws[[name]]))
+    expect_length(values, n)
+    expect_true(all(is.finite(values)), info = name)
+  }
+
+  # Original-scale correlation of u0 - u1 m / s and u1 / s, from the fitted
+  # correlation and SDs.
+  scale_info <- formula_result$formula_scale$mu_x
+  ratio <- scale_info$mean / scale_info$sd
+  rho <- raw[, R_names[[2L]]]
+  t0 <- raw[, sd_names[[1L]]]
+  t1 <- raw[, sd_names[[2L]]]
+  expected_cor <- (rho * t0 * t1 - ratio * t1^2) /
+    sqrt((t0^2 - 2 * ratio * rho * t0 * t1 + ratio^2 * t1^2) * t1^2)
+  expect_equal(
+    unname(as.numeric(as.matrix(draws[["(mu) cor(intercept,x)"]]))),
+    unname(expected_cor),
+    tolerance = 1e-10
+  )
+
+  # The fitted-scale K = 2 correlation follows the LKJ(eta) marginal:
+  # (r + 1) / 2 ~ Beta(eta, eta). The prior is exact, so with a fixed seed the
+  # one-sample KS p-value is a single uniform draw; alpha = 0.01.
+  expect_gt(
+    stats::ks.test((rho + 1) / 2, "pbeta", eta, eta)$p.value,
+    0.01
+  )
+
+  # The original-scale prior draws unscale the SD monitors and the
+  # correlation together, matching the catalog quantities.
+  transformed <- transform_prior_samples(fit, n_samples = n, seed = 58L)
+  for(k in 1:2){
+    expect_equal(
+      unname(transformed[, sd_names[[k]]]),
+      as.numeric(as.matrix(draws[[paste0("(mu) sd(", c("intercept", "x")[[k]], ")")]])),
+      tolerance = 1e-12
+    )
+  }
+  expect_equal(
+    unname(transformed[, R_names[[2L]]]),
+    unname(expected_cor),
+    tolerance = 1e-10
+  )
+})
+
+test_that("prior draws carry SDs of child component allocations", {
+
+  data <- data.frame(
+    x = c(1, 4, 6, 2, 8, 5, 3, 7),
+    s = factor(rep(c("a", "b", "c", "d"), each = 2L)),
+    d = factor(rep(c("u", "v"), 4L))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + x + us(1 + x | s) +
+      random(1 | d, name = "d", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(
+      random_variance_allocation(
+        name = "total_re",
+        terms = c(s = "s", d = "d"),
+        sd = prior("normal", list(0, 1), truncation = list(0, Inf)),
+        weights = prior("dirichlet", list(alpha = c(2, 3)))
+      ),
+      random_variance_allocation(
+        name = "s_components",
+        parent = allocation_ref("total_re", "s"),
+        terms = "s",
+        target = "sd_component",
+        scale = "mean_variance",
+        weights = prior("dirichlet", list(alpha = c(1, 1)))
+      )
+    )
+  )
+  terms <- formula_result$formula_design$random_effects
+  s_term <- terms[[which(vapply(terms, `[[`, character(1), "block_name") == "s")]]
+  d_term <- terms[[which(vapply(terms, `[[`, character(1), "block_name") == "d")]]
+  source_name <- "mu__xRE_ALLOCx_total_re__allocation_sd"
+  total_weights <- paste0("mu__xRE_ALLOCx_total_re__weight[", 1:2, "]")
+  child_weights <- paste0("mu__xRE_ALLOCx_s_components__weight[", 1:2, "]")
+  columns <- c(
+    "mu_intercept", "mu_x", source_name, total_weights, child_weights,
+    s_term$sd_parameter_names,
+    .prior_monitor_matrix_names(s_term$correlation$cholesky_name, 2L),
+    .prior_monitor_matrix_names(s_term$correlation$correlation_name, 2L),
+    s_term$correlation$primitive_names,
+    d_term$sd_parameter_names
+  )
+  fit <- .prior_monitor_test_fit(formula_result, columns)
+
+  raw <- transform_prior_samples(fit, n_samples = 2000L, seed = 59L,
+                                 formula_scale = list())
+  # s: sd * sqrt(w_total[1]) * sqrt(2 * w_child[k]); d: sd * sqrt(w_total[2]).
+  s_source <- raw[, source_name] * sqrt(raw[, total_weights[[1L]]])
+  for(k in 1:2){
+    expect_identical(
+      unname(raw[, s_term$sd_parameter_names[[k]]]),
+      unname(s_source * sqrt(2 * raw[, child_weights[[k]]]))
+    )
+  }
+  expect_identical(
+    unname(raw[, d_term$sd_parameter_names]),
+    unname(raw[, source_name] * sqrt(raw[, total_weights[[2L]]]))
+  )
+
+  draws <- .prior_monitor_catalog_draws(fit, raw)
+  expect_true("(mu) s: cor(intercept,x)" %in% names(draws))
+  for(name in names(draws)){
+    expect_true(all(is.finite(as.numeric(as.matrix(draws[[name]])))),
+                info = name)
+  }
+})
+
+test_that("prior draws carry transformed scalar correlations and LKJ partial correlations", {
+
+  data <- data.frame(
+    x = c(1, 4, 6, 2, 8, 5, 3, 7, 2, 6),
+    t = factor(rep(c("t1", "t2", "t3", "t4", "t5"), 2L)),
+    g = factor(rep(c("a", "b"), each = 5L))
+  )
+  sd_prior <- prior("normal", list(0, 1), truncation = list(0, Inf))
+
+  # HCS with SD-component allocation (indexed SD monitors) and a Fisher-z
+  # correlation: rho <- tanh(rho_z).
+  hcs_result <- JAGS_formula(
+    formula = ~ 1 + hcs(t | g),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name = "comp",
+        terms = "g",
+        target = "sd_component",
+        scale = "mean_variance",
+        sd = sd_prior,
+        weights = prior("dirichlet", list(alpha = rep(1, 5L)))
+      ),
+      g = random_block(cor = prior("normal", list(0, 0.5)))
+    )
+  )
+  hcs_term <- hcs_result$formula_design$random_effects[[1L]]
+  hcs_rho <- hcs_term$correlation
+  expect_identical(hcs_rho$rho_scale, "fisher_z")
+  weight_names <- paste0("mu__xRE_ALLOCx_comp__weight[", 1:5, "]")
+  hcs_fit <- .prior_monitor_test_fit(hcs_result, c(
+    "mu_intercept", "mu__xRE_ALLOCx_comp__allocation_sd", weight_names,
+    hcs_rho$sample_name, hcs_term$sd_parameter_names, hcs_rho$rho_name
+  ))
+  hcs_raw <- transform_prior_samples(hcs_fit, n_samples = 2000L, seed = 60L)
+  for(k in 1:5){
+    expect_identical(
+      unname(hcs_raw[, hcs_term$sd_parameter_names[[k]]]),
+      unname(hcs_raw[, "mu__xRE_ALLOCx_comp__allocation_sd"] *
+               sqrt(5 * hcs_raw[, weight_names[[k]]]))
+    )
+  }
+  expect_identical(
+    unname(hcs_raw[, hcs_rho$rho_name]),
+    unname(tanh(hcs_raw[, hcs_rho$sample_name]))
+  )
+  hcs_draws <- .prior_monitor_catalog_draws(hcs_fit, hcs_raw)
+  expect_identical(
+    as.numeric(as.matrix(hcs_draws[["(mu) cor"]])),
+    unname(hcs_raw[, hcs_rho$rho_name])
+  )
+  for(name in names(hcs_draws)){
+    expect_true(all(is.finite(as.numeric(as.matrix(hcs_draws[[name]])))),
+                info = name)
+  }
+
+  # AR1 with a logit-scale correlation: rho <- -1 + 2 * ilogit(rho_logit).
+  ar1_result <- JAGS_formula(
+    formula = ~ 1 + ar1(t | g),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      g = random_block(
+        sd = sd_prior,
+        covariance = random_covariance(
+          cor = prior("normal", list(0, 1)),
+          cor_scale = "logit"
+        )
+      )
+    )
+  )
+  ar1_term <- ar1_result$formula_design$random_effects[[1L]]
+  ar1_rho <- ar1_term$correlation
+  ar1_fit <- .prior_monitor_test_fit(ar1_result, c(
+    "mu_intercept", unique(ar1_term$sd_parameter_names),
+    ar1_rho$sample_name, ar1_rho$rho_name
+  ))
+  ar1_raw <- transform_prior_samples(ar1_fit, n_samples = 2000L, seed = 61L)
+  expect_identical(
+    unname(ar1_raw[, ar1_rho$rho_name]),
+    unname(-1 + 2 * stats::plogis(ar1_raw[, ar1_rho$sample_name]))
+  )
+  ar1_draws <- .prior_monitor_catalog_draws(ar1_fit, ar1_raw)
+  expect_identical(
+    as.numeric(as.matrix(ar1_draws[["(mu) cor"]])),
+    unname(ar1_raw[, ar1_rho$rho_name])
+  )
+
+  # Monitored LKJ partial correlations: cpc[p] <- 2 * u[p] - 1.
+  lkj_result <- JAGS_formula(
+    formula = ~ 1 + us(1 + x | g),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      g = random_block(
+        sd = sd_prior,
+        cor = prior_lkj(eta = 2, include_primitives = TRUE)
+      )
+    )
+  )
+  lkj_correlation <- lkj_result$formula_design$random_effects[[1L]]$correlation
+  expect_length(lkj_correlation$cpc_names, 1L)
+  lkj_fit <- .prior_monitor_test_fit(lkj_result, c(
+    "mu_intercept",
+    lkj_result$formula_design$random_effects[[1L]]$sd_parameter_names,
+    .prior_monitor_matrix_names(lkj_correlation$cholesky_name, 2L),
+    .prior_monitor_matrix_names(lkj_correlation$correlation_name, 2L),
+    lkj_correlation$primitive_names,
+    lkj_correlation$cpc_names
+  ))
+  lkj_raw <- transform_prior_samples(lkj_fit, n_samples = 2000L, seed = 62L)
+  expect_identical(
+    unname(lkj_raw[, lkj_correlation$cpc_names]),
+    unname(2 * lkj_raw[, lkj_correlation$primitive_names] - 1)
+  )
+})
+
 test_that("structured correlation aliases expose shared and pairwise semantics", {
 
   data <- data.frame(
