@@ -54,7 +54,9 @@
   if(length(unknown) > 0L){
     stop("Unknown 'columns' value: ",
          paste0("'", unknown, "'", collapse = ", "),
-         ".", call. = FALSE)
+         ". Columns are selected by their names: ",
+         paste0("'", c(default, extra), "'", collapse = ", "),
+         ", or 'default' or 'all'.", call. = FALSE)
   }
 
   unique(c(default, columns))

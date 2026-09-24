@@ -634,7 +634,11 @@ test_that("hypothesis_BF returns compact BayesTools table by default", {
         parameter  = "theta",
         columns    = spelling
       ),
-      paste0("Unknown 'columns' value: '", spelling, "'."),
+      paste0(
+        "Unknown 'columns' value: '", spelling, "'. Columns are selected by ",
+        "their names: 'Alternative', 'Null', 'BF', 'BF_error', 'prior', ",
+        "'posterior', 'method', or 'default' or 'all'."
+      ),
       fixed = TRUE
     )
   }
