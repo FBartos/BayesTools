@@ -338,47 +338,8 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   if(!is.prior.weightfunction(prior))
     stop("improper prior provided")
 
-  parameter <- list()
-  J <- .weightfunction_n_bins(prior)
-
-  if(prior$weights$type == "cumulative"){
-
-    if(J == 2L){
-      omega <- c(
-        1,
-        .bt_JAGS_marglik_binary_cumulative_weight(samples, signal = TRUE)
-      )
-    }else{
-      eta     <- .bt_JAGS_marglik_positive_auxiliary_values(
-        samples = samples,
-        parameter_names = paste0("eta[", seq_len(J), "]"),
-        missing_message = "'samples' does not contain all monitored cumulative weightfunction parameters.",
-        signal = TRUE
-      )
-      std_eta <- eta / sum(eta)
-      omega <- unname(rev(cumsum(rev(std_eta))))
-    }
-
-  }else if(prior$weights$type == "independent"){
-
-    omega <- rep(1, J)
-    if(J > 1L){
-      if(prior$weights$scale == "omega"){
-        omega[2:J] <- samples[paste0("omega[", 2:J, "]")]
-      }else if(prior$weights$scale == "log_omega"){
-        omega[2:J] <- exp(samples[paste0("log_omega[", 2:J, "]")])
-      }
-    }
-  }else if(prior$weights$type == "fixed"){
-
-    omega <- unname(prior$weights$omega)
-
-  }
-
-  expansion <- .weightfunction_mapping_expansion(prior, force_one_sided = TRUE)
-  parameter[["omega"]] <- unname(omega[expansion$index])
-
-  return(parameter)
+  # The registered 'omega' node of the weight function.
+  list(omega = .bt_dnode_omega_prior_values(prior, samples))
 }
 
 .bt_JAGS_marglik_binary_cumulative_weight <- function(samples, signal = FALSE){

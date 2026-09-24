@@ -388,14 +388,19 @@
 
   force(prior_object)
 
-  J <- .weightfunction_n_bins(prior_object)
-  expansion <- .weightfunction_mapping_expansion(prior_object, force_one_sided = TRUE)
+  # The weights are the registered 'omega' node of the weight function; the
+  # log prior is the density of its free coordinates.
+  node <- .bt_dnode_omega("omega", prior_object)
+  parameters <- function(samples){
+    list(omega = .bt_dnode_omega_prior_values(prior_object, samples, node = node))
+  }
 
-  if(prior_object$weights$type == "fixed"){
-    omega_fixed <- unname(prior_object$weights$omega[expansion$index])
+  J <- .weightfunction_n_bins(prior_object)
+  if(prior_object$weights$type == "fixed" ||
+     (prior_object$weights$type == "independent" && J == 1L)){
     return(list(
       log_prior = function(samples) 0,
-      parameters = function(samples) list(omega = omega_fixed)
+      parameters = parameters
     ))
   }
 
@@ -418,17 +423,11 @@
             log = TRUE
           )
         },
-        parameters = function(samples){
-          omega <- c(
-            1,
-            .bt_JAGS_marglik_binary_cumulative_weight(samples, signal = TRUE)
-          )
-          list(omega = unname(omega[expansion$index]))
-        }
+        parameters = parameters
       ))
     }
 
-    eta_names <- paste0("eta[", seq_len(J), "]")
+    eta_names <- .bt_dnode_omega_free_names(prior_object)
     alpha <- prior_object$weights$alpha
     return(list(
       log_prior = function(samples){
@@ -442,64 +441,20 @@
         }
         sum(stats::dgamma(eta, shape = alpha, rate = 1, log = TRUE))
       },
-      parameters = function(samples){
-        eta <- .bt_JAGS_marglik_positive_auxiliary_values(
-          samples = samples,
-          parameter_names = eta_names,
-          missing_message = "'samples' does not contain all monitored cumulative weightfunction parameters.",
-          signal = TRUE
-        )
-        std_eta <- eta / sum(eta)
-        omega <- unname(rev(cumsum(rev(std_eta))))
-        list(omega = unname(omega[expansion$index]))
-      }
+      parameters = parameters
     ))
   }
 
-  omega <- rep(1, J)
-  if(J == 1L){
-    return(list(
-      log_prior = function(samples) 0,
-      parameters = function(samples) list(omega = unname(omega[expansion$index]))
-    ))
-  }
-
-  if(prior_object$weights$scale == "omega"){
-    omega_names <- paste0("omega[", 2:J, "]")
-    weight_prior <- prior_object$weights$prior
-    return(list(
-      log_prior = function(samples){
-        if(!all(omega_names %in% names(samples))){
-          stop("'samples' does not contain all monitored independent weightfunction parameters.", call. = FALSE)
-        }
-        sum(mlpdf(weight_prior, samples[omega_names]))
-      },
-      parameters = function(samples){
-        if(!all(omega_names %in% names(samples))){
-          stop("'samples' does not contain all monitored independent weightfunction parameters.", call. = FALSE)
-        }
-        omega[2:J] <- samples[omega_names]
-        list(omega = unname(omega[expansion$index]))
-      }
-    ))
-  }
-
-  log_omega_names <- paste0("log_omega[", 2:J, "]")
+  free_names <- .bt_dnode_omega_free_names(prior_object)
   weight_prior <- prior_object$weights$prior
   list(
     log_prior = function(samples){
-      if(!all(log_omega_names %in% names(samples))){
+      if(!all(free_names %in% names(samples))){
         stop("'samples' does not contain all monitored independent weightfunction parameters.", call. = FALSE)
       }
-      sum(mlpdf(weight_prior, samples[log_omega_names]))
+      sum(mlpdf(weight_prior, samples[free_names]))
     },
-    parameters = function(samples){
-      if(!all(log_omega_names %in% names(samples))){
-        stop("'samples' does not contain all monitored independent weightfunction parameters.", call. = FALSE)
-      }
-      omega[2:J] <- exp(samples[log_omega_names])
-      list(omega = unname(omega[expansion$index]))
-    }
+    parameters = parameters
   )
 }
 

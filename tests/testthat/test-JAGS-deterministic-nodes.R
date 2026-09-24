@@ -293,6 +293,97 @@ test_that("LKJ Cholesky, correlation, and partial-correlation nodes reproduce th
   expect_true(all(prior_draws[, "mu__xREx__s_xRE_CORx_R[2,2]"] == 1))
 })
 
+.dnode_prior_fit <- function(prior_list, add_parameters = NULL, seed = 1L){
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  set.seed(seed)
+  suppressWarnings(JAGS_fit(
+    model_syntax = "model{\n  for(i in 1:N){\n    x[i] ~ dnorm(m, 1)\n  }\n}",
+    data = list(x = stats::rnorm(10), N = 10L),
+    prior_list = c(list(m = prior("normal", list(0, 1))), prior_list),
+    add_parameters = add_parameters,
+    chains = 1, adapt = 50, burnin = 50, sample = 100, seed = seed, silent = TRUE
+  ))
+}
+
+test_that("publication-weight nodes reproduce the JAGS monitors of every weight function", {
+
+  fits <- list(
+    cumulative_two_sided = .dnode_prior_fit(list(omega = prior_weightfunction(
+      "two-sided", c(0.05, 0.1), wf_cumulative(c(1, 2, 1))))),
+    binary = .dnode_prior_fit(list(omega = prior_weightfunction(
+      "two-sided", c(0.05), wf_cumulative(c(1, 1))))),
+    log_independent = .dnode_prior_fit(list(omega = prior_weightfunction(
+      "one-sided", c(0.025, 0.5), wf_independent(prior("normal", list(0, 1)), scale = "log_omega")))),
+    fixed = .dnode_prior_fit(list(omega = prior_weightfunction(
+      "one-sided", c(0.025, 0.5), wf_fixed(c(1, 1/3, 0.2))))),
+    bias_mixture = .dnode_prior_fit(
+      list(bias = prior_mixture(list(
+        prior_PET("normal", list(0, 1)),
+        prior_weightfunction("one-sided", c(0.025, 0.05), wf_cumulative(c(1, 1, 1))),
+        prior_weightfunction("two-sided", c(0.05), wf_cumulative(c(1, 1))),
+        prior_weightfunction("two-sided", c(0.05, 0.1), wf_independent(prior("normal", list(0, 1)), scale = "log_omega"))
+      ), is_null = c(FALSE, FALSE, FALSE, FALSE))),
+      add_parameters = c("eta_component_2", "omega_ratio_component_3", "log_omega_component_4")
+    )
+  )
+
+  expect_identical(
+    unname(unlist(JAGS_deterministic_nodes(fits$cumulative_two_sided)$dependencies)),
+    paste0("eta[", 1:3, "]")
+  )
+  expect_identical(
+    unname(unlist(JAGS_deterministic_nodes(fits$binary)$dependencies)),
+    "omega[2]"
+  )
+  expect_identical(
+    unname(unlist(JAGS_deterministic_nodes(fits$bias_mixture)$dependencies)),
+    c("bias_indicator", paste0("eta_component_2[", 1:3, "]"), "omega_ratio_component_3",
+      paste0("log_omega_component_4[", 2:3, "]"))
+  )
+
+  for(name in names(fits)){
+    fit <- fits[[name]]
+    posterior <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+    node <- JAGS_deterministic_nodes(fit)
+    expect_identical(node$node, "omega")
+    coordinates <- unlist(node$coordinates)
+    # The sampled free weights stay; every other bin is rebuilt.
+    removed <- setdiff(coordinates, unlist(node$dependencies))
+    reduced <- posterior[, setdiff(colnames(posterior), removed), drop = FALSE]
+    rebuilt <- JAGS_evaluate_deterministic(fit, draws = reduced, nodes = "omega")
+    # Mapped, binary, and independent weights are copies of their free
+    # coordinates (bit-identical). The cumulative weights normalize and sum
+    # the gamma auxiliaries in a different order than JAGS, and fixed weights
+    # are emitted as 15-digit literals (1/3): both differ by a few ulps.
+    expect_equal(
+      unname(rebuilt[, coordinates]),
+      unname(posterior[, coordinates]),
+      tolerance = 1e-14
+    )
+    if(name %in% c("binary", "log_independent")){
+      expect_identical(unname(rebuilt[, coordinates]), unname(posterior[, coordinates]))
+    }
+
+    # The registered emitter is the syntax of the fitted JAGS model.
+    model <- JAGS_add_priors(attr(fit, "model_syntax"), attr(fit, "prior_list"))
+    registry <- BayesTools:::.bt_deterministic_nodes_fit(fit)
+    for(piece in BayesTools:::.bt_deterministic_node_emit(registry$omega)){
+      expect_true(grepl(piece, model, fixed = TRUE))
+    }
+
+    # The marginal-likelihood parameters of a draw are the node's values.
+    if(name != "bias_mixture"){
+      prior_list <- attr(fit, "prior_list")
+      expect_identical(
+        JAGS_marglik_parameters(posterior[7, ], prior_list["omega"])$omega,
+        unname(JAGS_evaluate_deterministic(fit, draws = posterior[7, ], nodes = "omega")[1, ])
+      )
+    }
+  }
+})
+
 test_that("JAGS_evaluate_deterministic() validates its node selection", {
 
   sd_prior <- prior("normal", list(0, 1), list(0, Inf))

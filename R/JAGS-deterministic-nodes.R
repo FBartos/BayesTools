@@ -37,6 +37,14 @@
 #'   \code{R = L L'} (with an exact unit diagonal), and the monitored partial
 #'   correlations \code{cpc = 2 u - 1} of an LKJ-Cholesky block, computed from
 #'   its primitives \code{u} with the kernel of the BayesTools JAGS module.}
+#'   \item{\code{"omega"}}{the publication weights of a weight-function prior
+#'   (alone, as the selection of [prior_bias()], or as branches of a
+#'   publication-bias mixture) on the one-sided global p-value bins, with the
+#'   bins of two-sided weight functions mirrored. The dependencies are the free
+#'   coordinates of the weights (\code{eta}, the monitored \code{omega[2]} of
+#'   a binary cumulative weight function, or the independent \code{omega} or
+#'   \code{log_omega}); mixture branches are read from their own component
+#'   nodes and the \code{bias_indicator}.}
 #' }
 #' Nodes are evaluated with the arithmetic of the R evaluator, which reproduces
 #' the JAGS monitors exactly or to the last bits of floating-point rounding.
@@ -137,7 +145,8 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
 .bt_deterministic_node_families <- c(
   "random_sd",
   "random_rho",
-  "lkj"
+  "lkj",
+  "omega"
 )
 
 .bt_deterministic_node <- function(family, node, coordinates,
@@ -178,6 +187,7 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
     random_sd = .bt_dnode_random_sd_emit(node),
     random_rho = .bt_dnode_rho_emit(node),
     lkj = .bt_dnode_lkj_emit(node),
+    omega = .bt_dnode_omega_emit(node),
     stop("Unsupported deterministic node family '", node$family, "'.", call. = FALSE)
   )
 }
@@ -191,6 +201,7 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
     random_sd = .bt_dnode_random_sd_evaluate(node, lookup),
     random_rho = .bt_dnode_rho_evaluate(node, lookup),
     lkj = .bt_dnode_lkj_evaluate(node, lookup),
+    omega = .bt_dnode_omega_evaluate(node, lookup),
     stop("Unsupported deterministic node family '", node$family, "'.", call. = FALSE)
   )
   if(is.null(values)){
@@ -212,7 +223,7 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
 
 .bt_deterministic_nodes <- function(prior_list = NULL, formula_design = NULL){
 
-  nodes <- list()
+  nodes <- .bt_deterministic_nodes_prior_list(prior_list)
   if(inherits(formula_design, "BayesTools_formula_design")){
     formula_design <- list(formula_design)
   }
@@ -237,6 +248,25 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
       call. = FALSE
     )
   }
+  nodes
+}
+
+# Nodes that the priors of a prior list define.
+.bt_deterministic_nodes_prior_list <- function(prior_list){
+
+  nodes <- list()
+  prior_names <- names(prior_list)
+  for(i in seq_along(prior_list)){
+    prior <- prior_list[[i]]
+    if(is.prior.weightfunction(prior) || is_prior_bias(prior) ||
+       inherits(prior, "prior.bias_mixture")){
+      node <- .bt_dnode_omega(prior_names[[i]], prior)
+      if(!is.null(node)){
+        nodes[[length(nodes) + 1L]] <- node
+      }
+    }
+  }
+
   nodes
 }
 
@@ -313,6 +343,19 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
     draws = draws,
     prior_list = prior_list,
     n = nrow(draws)
+  )
+}
+
+# A lookup of one draw of bridge sampling or the marginal-likelihood
+# parameters: a named numeric vector or list of coordinates.
+.bt_deterministic_row_lookup <- function(samples, prior_list = list()){
+
+  if(is.list(samples)){
+    samples <- unlist(samples)
+  }
+  .bt_deterministic_lookup(
+    .bt_JAGS_marglik_random_effect_posterior_row(samples),
+    prior_list
   )
 }
 

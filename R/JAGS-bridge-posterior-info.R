@@ -249,34 +249,26 @@
     stop("improper prior provided")
 
   J <- .weightfunction_n_bins(prior)
+  # The bridge coordinates are the free coordinates of the 'omega' node.
+  parameter <- .bt_dnode_omega_free_names(prior)
+  if(length(parameter) == 0L){
+    parameter <- NULL
+  }
 
   if(prior$weights$type == "cumulative"){
 
     if(J == 2L){
-      parameter <- "omega[2]"
       attr(parameter, "lb") <- 0
       attr(parameter, "ub") <- 1
     }else{
-      parameter <- paste0("eta[", seq_len(J), "]")
       attr(parameter, "lb") <- rep(0,   length(parameter))
       attr(parameter, "ub") <- rep(Inf, length(parameter))
     }
 
-  }else if(prior$weights$type == "independent" && prior$weights$scale == "omega"){
+  }else if(prior$weights$type == "independent"){
 
-    parameter <- if(J > 1L) paste0("omega[", 2:J, "]") else NULL
     attr(parameter, "lb") <- rep(prior$weights$prior$truncation[["lower"]], length(parameter))
     attr(parameter, "ub") <- rep(prior$weights$prior$truncation[["upper"]], length(parameter))
-
-  }else if(prior$weights$type == "independent" && prior$weights$scale == "log_omega"){
-
-    parameter <- if(J > 1L) paste0("log_omega[", 2:J, "]") else NULL
-    attr(parameter, "lb") <- rep(prior$weights$prior$truncation[["lower"]], length(parameter))
-    attr(parameter, "ub") <- rep(prior$weights$prior$truncation[["upper"]], length(parameter))
-
-  }else if(prior$weights$type == "fixed"){
-
-    parameter <- NULL
 
   }
 

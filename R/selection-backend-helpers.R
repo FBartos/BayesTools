@@ -250,10 +250,10 @@
 .selection_jags_step_component_code <- function(selection, component_id, n_bins, global_cuts){
 
   if(is.null(selection)){
-    return(.JAGS_weightfunction_none_component_syntax(component_id = component_id, n_bins = n_bins))
+    return(.bt_dnode_omega_none_component_syntax(component_id = component_id, n_bins = n_bins))
   }
 
-  return(.JAGS_weightfunction_component_syntax(
+  return(.bt_dnode_omega_component_syntax(
     prior           = selection,
     component_id    = component_id,
     global_cuts     = global_cuts,

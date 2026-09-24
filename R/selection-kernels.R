@@ -411,15 +411,10 @@ selection_backend_spec <- function(priors,
   }
 
   if(uses_indicator){
-    for(j in seq_len(n_bins)){
-      transform_code <- c(
-        transform_code,
-        paste0(
-          names$omega, "[", j, "] <- ",
-          paste0("omega_component_", seq_along(branches), "[", j, "] * ", indicator_terms, collapse = " + ")
-        )
-      )
-    }
+    transform_code <- c(
+      transform_code,
+      .bt_dnode_omega_mixture_syntax(names$omega, n_bins, indicator_terms)
+    )
 
     transform_code <- c(
       transform_code,

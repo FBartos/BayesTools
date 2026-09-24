@@ -63,6 +63,14 @@ blocks sampled on the Fisher-z (\code{rho = tanh(z)}) or logit scale
 \code{R = L L'} (with an exact unit diagonal), and the monitored partial
 correlations \code{cpc = 2 u - 1} of an LKJ-Cholesky block, computed from
 its primitives \code{u} with the kernel of the BayesTools JAGS module.}
+\item{\code{"omega"}}{the publication weights of a weight-function prior
+(alone, as the selection of \code{\link[=prior_bias]{prior_bias()}}, or as branches of a
+publication-bias mixture) on the one-sided global p-value bins, with the
+bins of two-sided weight functions mirrored. The dependencies are the free
+coordinates of the weights (\code{eta}, the monitored \code{omega[2]} of
+a binary cumulative weight function, or the independent \code{omega} or
+\code{log_omega}); mixture branches are read from their own component
+nodes and the \code{bias_indicator}.}
 }
 Nodes are evaluated with the arithmetic of the R evaluator, which reproduces
 the JAGS monitors exactly or to the last bits of floating-point rounding.
