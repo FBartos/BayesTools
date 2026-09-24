@@ -71,7 +71,9 @@ agreement of contrast priors across the factor's terms (so `g` mean-difference
 with `g:x` independent is valid). Treatment and independent priors apply to
 those level coefficients and name them from the term design; mean-difference,
 orthonormal, and ordered priors are defined on contrast coefficients and are
-rejected for such a term, except a point mass at zero.
+rejected for such a term. The one exception is a mean-difference or
+orthonormal point mass at zero; an ordered prior is rejected even when its
+total is zero.
 
 Formula design metadata is authoritative for fixed and random terms. Preserve
 the distinction between fitted standardized coordinates, original-scale
