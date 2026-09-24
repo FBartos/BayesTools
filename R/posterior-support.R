@@ -1202,6 +1202,47 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
   x
 }
 
+# Columns whose exact support the prior-density context defines: columns
+# owned by a prior of the context (not, e.g., the publication-bias columns of
+# a bias mixture) other than the intercepts of log-intercept formula scalings
+# (their unscaled values are not linear in the fitted coefficients).
+.posterior_support_context_columns <- function(context){
+
+  prior_lists <- if(inherits(context, "prior_density_conditional_context")){
+    context$prior_lists
+  }else if(inherits(context, "prior_density_model_mixture_context")){
+    lapply(seq_along(context$model_weights), function(model_i){
+      .prior_density_model_prior_list(context$prior_list, model_i)
+    })
+  }else{
+    list(context$prior_list)
+  }
+  owned <- unique(unlist(lapply(prior_lists, function(prior_list){
+    lapply(names(prior_list), function(parameter){
+      if(is.null(prior_list[[parameter]])){
+        return(NULL)
+      }
+      .prior_linear_prior_columns(parameter, prior_list[[parameter]])
+    })
+  }), use.names = FALSE))
+
+  log_intercepts <- character()
+  if(!is.null(context$formula_scale) && length(context$formula_scale) > 0L){
+    transforms <- .prior_density_context(
+      prior_list    = prior_lists[[1L]],
+      column_names  = context$column_names,
+      formula_scale = context$formula_scale
+    )$transforms
+    for(transform in transforms){
+      if(isTRUE(transform$log_intercept)){
+        log_intercepts <- c(log_intercepts, transform$intercept)
+      }
+    }
+  }
+
+  setdiff(intersect(context$column_names, owned), log_intercepts)
+}
+
 .posterior_support_set_from_prior_context <- function(samples, context,
                                                       parameter = attr(samples, "parameter", exact = TRUE)){
 
@@ -1212,13 +1253,14 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
   if(is.null(column_names)){
     return(samples)
   }
+  supported_columns <- .posterior_support_context_columns(context)
 
   if(!is.null(dim(samples))){
     sample_columns <- colnames(samples)
     if(is.null(sample_columns)){
       return(samples)
     }
-    matched_columns <- sample_columns[sample_columns %in% column_names]
+    matched_columns <- sample_columns[sample_columns %in% supported_columns]
     if(length(matched_columns) == 0L){
       return(samples)
     }
@@ -1229,10 +1271,7 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
       weights <- rep(0, length(column_names))
       names(weights) <- column_names
       weights[[column]] <- 1
-      support[[column]] <- tryCatch(
-        .posterior_support_from_prior_context_weights(context, weights),
-        error = function(e) NULL
-      )
+      support[[column]] <- .posterior_support_from_prior_context_weights(context, weights)
     }
     support <- support[!vapply(support, is.null, logical(1))]
     if(length(support) == 0L){
@@ -1254,17 +1293,14 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
     return(samples)
   }
 
-  if(is.null(parameter) || !parameter %in% column_names){
+  if(is.null(parameter) || !parameter %in% supported_columns){
     return(samples)
   }
 
   weights <- rep(0, length(column_names))
   names(weights) <- column_names
   weights[[parameter]] <- 1
-  support <- tryCatch(
-    .posterior_support_from_prior_context_weights(context, weights),
-    error = function(e) NULL
-  )
+  support <- .posterior_support_from_prior_context_weights(context, weights)
   if(is.null(support)){
     return(samples)
   }

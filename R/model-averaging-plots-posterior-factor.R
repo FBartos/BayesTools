@@ -449,12 +449,10 @@
 # no posterior density. Identified from the design, never from the draws.
 .plot_data_factor_drop_structural_levels <- function(samples){
 
-  design <- tryCatch(
-    .factor_term_design_from_metadata(samples)$design,
-    error = function(error) NULL
-  )
-  if(is.null(design) || nrow(as.matrix(design)) != ncol(samples)){
-    return(samples)
+  design <- .factor_term_design_from_metadata(samples)$design
+  if(nrow(as.matrix(design)) != ncol(samples)){
+    stop("The factor design metadata do not match the transformed factor levels.",
+         call. = FALSE)
   }
   keep <- rowSums(as.matrix(design) != 0) > 0
   if(all(keep)){

@@ -313,24 +313,18 @@
   }
 
   shift <- list(a = offset, b = 1)
-  support <- tryCatch(
-    .posterior_support_from_prior_context_weights(
-      context,
-      weights,
-      output_transformation           = "lin",
-      output_transformation_arguments = shift
-    ),
-    error = function(e) NULL
+  support <- .posterior_support_from_prior_context_weights(
+    context,
+    weights,
+    output_transformation           = "lin",
+    output_transformation_arguments = shift
   )
   if(!.hypothesis_linear_support_usable(support)){
     return(NULL)
   }
 
   n_draws <- nrow(quantity[["posterior_draws"]])
-  components <- tryCatch(
-    .hypothesis_linear_components(marginals[active], context, weights, shift, n_draws),
-    error = function(e) NULL
-  )
+  components <- .hypothesis_linear_components(marginals[active], context, weights, shift, n_draws)
   component_supports <- if(is.null(components)) list() else
     components$supports[!vapply(components$supports, is.null, logical(1))]
   if(!all(vapply(component_supports, .hypothesis_linear_support_usable, logical(1)))){
@@ -510,7 +504,8 @@
   draw_keys <- list()
   for(components in level_components){
     if(is.null(components$keys) || length(components$index) != n_draws){
-      return(NULL)
+      stop("The mixture components of the marginal posterior levels do not match their draws.",
+           call. = FALSE)
     }
     keys <- components$keys[components$index, , drop = FALSE]
     for(column in colnames(keys)){
@@ -520,10 +515,15 @@
   draw_keys <- do.call(cbind, draw_keys)
 
   if(!".model" %in% colnames(draw_keys)){
-    # every mixture prior entering the combination needs its indicator
+    # every mixture prior entering the combination needs its component;
+    # without one (the mixture terms cancel), the pooled ordinate applies
     parameters <- .posterior_components_mixture_parameters(context, weights)
-    if(length(parameters) == 0L || !all(parameters %in% colnames(draw_keys))){
+    if(length(parameters) == 0L){
       return(NULL)
+    }
+    if(!all(parameters %in% colnames(draw_keys))){
+      stop("The mixture components of the marginal posterior levels do not cover the mixture priors of the linear combination.",
+           call. = FALSE)
     }
     draw_keys <- draw_keys[, parameters, drop = FALSE]
   }

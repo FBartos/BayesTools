@@ -356,7 +356,10 @@ list it indexes (`"model"`: the models of a `mix_posteriors()` ensemble,
 `"mixture"` or `"spike_and_slab"`: the components of the prior, whose slab and
 spike positions come from its `components` attribute); an ordered total's
 component is `ordered_total_component`. Draws without a mixture carry no
-component and form one component. `Ops`/`Math` group generics, `c()`,
+component and form one component. Metadata build failures propagate (never
+caught into missing metadata and a silently different estimator); metadata
+are absent only by explicit rules (e.g. no linear support for a log-intercept
+term or for columns outside the prior-density context). `Ops`/`Math` group generics, `c()`,
 `as.numeric()` and subsetting of draws return plain numerics without
 metadata; consumers that need the metadata stop on plain draws, and
 producers that transform draws transform their metadata explicitly

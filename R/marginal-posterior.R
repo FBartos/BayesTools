@@ -552,7 +552,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         prior_list       = prior_list,
         column_names     = colnames(posterior_samples_matrix),
         n_samples        = n_samples,
-        allow_failure    = !prior_samples,
         condition_source = samples[[parameter]]
       )
 
@@ -618,7 +617,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           source_transforms        = log_source_transforms,
           transformation           = transformation,
           transformation_arguments = transformation_arguments,
-          required                 = prior_samples,
           model_component          = ensemble_model_component
         )
 
@@ -639,7 +637,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             source_transforms        = log_source_transforms,
             transformation           = transformation,
             transformation_arguments = transformation_arguments,
-            required                 = prior_samples,
             model_component          = ensemble_model_component
           )
         }
@@ -750,7 +747,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           samples    = samples,
           prior_list = prior_list,
           n_samples  = n_samples,
-          allow_failure = TRUE,
           condition_source = parameter_samples,
           raw_coefficients = TRUE
         )
@@ -786,14 +782,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           weights <- rep(0, length(prior_density_context$column_names))
           names(weights) <- prior_density_context$column_names
           weights[colnames(factor_weights)] <- factor_weights[lvl_i, ]
-          temp_support <- .marginal_posterior_optional_metadata(
-            .posterior_support_from_prior_context_weights(
-              prior_density_context,
-              weights,
-              output_transformation           = transformation,
-              output_transformation_arguments = transformation_arguments
-            ),
-            required = prior_samples
+          temp_support <- .posterior_support_from_prior_context_weights(
+            prior_density_context,
+            weights,
+            output_transformation           = transformation,
+            output_transformation_arguments = transformation_arguments
           )
         }else if(!is.null(temp_support) && !is.null(transformation)){
           temp_support <- .posterior_support_transform(
@@ -886,7 +879,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           samples    = samples,
           prior_list = prior_list,
           n_samples  = n_samples,
-          allow_failure = TRUE,
           condition_source = samples[[parameter]],
           raw_coefficients = TRUE
         )
@@ -895,12 +887,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           names(weights) <- prior_density_context$column_names
           if(parameter %in% names(weights)){
             weights[[parameter]] <- 1
-            marginal_support <- .marginal_posterior_optional_metadata(
-              .posterior_support_from_prior_context_weights(
-                prior_density_context,
-                weights
-              ),
-              required = prior_samples
+            marginal_support <- .posterior_support_from_prior_context_weights(
+              prior_density_context,
+              weights
             )
           }
         }
@@ -1103,7 +1092,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 .marginal_posterior_prior_density_context <- function(samples, prior_list,
                                                        column_names = NULL,
                                                        n_samples = 10000,
-                                                       allow_failure = FALSE,
                                                        condition_source = NULL,
                                                        raw_coefficients = FALSE){
 
@@ -1125,34 +1113,26 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     raw_coefficients = raw_coefficients
   )
 
-  tryCatch(
-    {
-      if(is.null(column_names)){
-        column_names <- unique(unlist(lapply(names(prior_list), function(parameter_name){
-          parameter_prior <- prior_list[[parameter_name]]
-          if(is.prior(parameter_prior)){
-            .prior_linear_prior_columns(parameter_name, parameter_prior)
-          }else{
-            .prior_linear_prior_columns(parameter_name, parameter_prior[[1]])
-          }
-        }), use.names = FALSE))
+  if(is.null(column_names)){
+    column_names <- unique(unlist(lapply(names(prior_list), function(parameter_name){
+      parameter_prior <- prior_list[[parameter_name]]
+      if(is.prior(parameter_prior)){
+        .prior_linear_prior_columns(parameter_name, parameter_prior)
+      }else{
+        .prior_linear_prior_columns(parameter_name, parameter_prior[[1]])
       }
+    }), use.names = FALSE))
+  }
 
-      .prior_density_build_context(
-        prior_list       = prior_list,
-        column_names     = column_names,
-        n_grid           = max(16L, n_samples),
-        conditional      = condition_metadata[["conditional"]],
-        conditional_rule = condition_metadata[["conditional_rule"]],
-        condition_event  = condition_metadata[["condition_event"]]
-      )
-    },
-    error = function(e){
-      if(isTRUE(allow_failure)){
-        return(NULL)
-      }
-      stop(conditionMessage(e), call. = FALSE)
-    }
+  # build failures propagate: the context carries the support, atoms and
+  # mixture components of the marginal posterior
+  .prior_density_build_context(
+    prior_list       = prior_list,
+    column_names     = column_names,
+    n_grid           = max(16L, n_samples),
+    conditional      = condition_metadata[["conditional"]],
+    conditional_rule = condition_metadata[["conditional_rule"]],
+    condition_event  = condition_metadata[["condition_event"]]
   )
 }
 
@@ -1202,34 +1182,28 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   length(declared) == 1L && isTRUE(declared)
 }
 
-# Support and posterior-atom metadata for one formula level. Without
-# requested prior samples the metadata are optional: failures leave them
-# unavailable instead of aborting the posterior samples.
+# Support, posterior-atom and component metadata for one formula level. Build
+# failures propagate; a log(intercept) term leaves the exact support
+# unavailable by rule (support algebra is linear in the coefficients).
 .marginal_posterior_formula_level_metadata <- function(marginal, samples, prior_list,
                                                        prior_density_context, weights,
                                                        column_name,
                                                        source_transforms = NULL,
                                                        transformation = NULL,
                                                        transformation_arguments = NULL,
-                                                       required = TRUE,
                                                        model_component = NULL){
 
   log_columns <- intersect(names(source_transforms)[source_transforms == "log"], colnames(weights))
   components <- NULL
   if(length(log_columns) > 0L && any(weights[, log_columns] != 0)){
-    # Support algebra is linear in the coefficients; a log(intercept) term
-    # leaves the exact support unavailable.
     support <- NULL
     marginal <- .bt_meta_set(marginal, "joint_prior_transformation", "log_intercept")
   }else{
-    support <- .marginal_posterior_optional_metadata(
-      .posterior_support_from_prior_context_weights(
-        prior_density_context,
-        weights,
-        output_transformation           = transformation,
-        output_transformation_arguments = transformation_arguments
-      ),
-      required = required
+    support <- .posterior_support_from_prior_context_weights(
+      prior_density_context,
+      weights,
+      output_transformation           = transformation,
+      output_transformation_arguments = transformation_arguments
     )
     components <- .marginal_posterior_components(
       context                  = prior_density_context,
@@ -1244,17 +1218,14 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   marginal <- .posterior_support_set(marginal, support)
   marginal <- .posterior_components_set(marginal, components)
 
-  atoms <- .marginal_posterior_optional_metadata(
-    .posterior_atoms_formula(
-      samples,
-      prior_list,
-      weights,
-      transformation           = transformation,
-      transformation_arguments = transformation_arguments,
-      column_name              = column_name,
-      source_transforms        = source_transforms
-    ),
-    required = required
+  atoms <- .posterior_atoms_formula(
+    samples,
+    prior_list,
+    weights,
+    transformation           = transformation,
+    transformation_arguments = transformation_arguments,
+    column_name              = column_name,
+    source_transforms        = source_transforms
   )
   if(!is.null(atoms)){
     marginal <- .posterior_atoms_set(marginal, atoms)
@@ -1365,15 +1336,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   "these"
 }
 
-.marginal_posterior_optional_metadata <- function(expr, required = TRUE){
-
-  if(isTRUE(required)){
-    return(expr)
-  }
-
-  tryCatch(expr, error = function(e) NULL)
-}
-
 # Per-draw component index and per-component exact supports of a mixture
 # marginal (Savage-Dickey mixes per-component posterior ordinates when the
 # components' supports differ). The component of a draw is its model in a
@@ -1381,8 +1343,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 # (as_mixed_posteriors()), the combination of the component indices of the
 # mixture and spike-and-slab priors entering the quantity. A marginal evaluated
 # at several design rows stores each draw's rows consecutively, so the index
-# repeats per row. The metadata are optional: without them the pooled posterior
-# ordinate is used.
+# repeats per row. Build failures propagate; marginals whose quantity involves
+# no mixture have no components (the pooled posterior ordinate is used).
 .marginal_posterior_components <- function(context, weights, model_component, n_values,
                                            transformation = NULL,
                                            transformation_arguments = NULL,
@@ -1397,22 +1359,19 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     if(is.null(model_component) || length(model_component) * n_rows != n_values){
       return(NULL)
     }
-    return(.marginal_posterior_optional_metadata(
-      .posterior_components_new(
-        index    = rep(model_component, each = n_rows),
-        supports = .posterior_support_model_components(
-          context,
-          weights,
-          output_transformation           = transformation,
-          output_transformation_arguments = transformation_arguments
-        ),
-        keys     = matrix(
-          seq_along(context$model_weights),
-          ncol = 1L,
-          dimnames = list(NULL, ".model")
-        )
+    return(.posterior_components_new(
+      index    = rep(model_component, each = n_rows),
+      supports = .posterior_support_model_components(
+        context,
+        weights,
+        output_transformation           = transformation,
+        output_transformation_arguments = transformation_arguments
       ),
-      required = FALSE
+      keys     = matrix(
+        seq_along(context$model_weights),
+        ncol = 1L,
+        dimnames = list(NULL, ".model")
+      )
     ))
   }
 
@@ -1422,16 +1381,13 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     return(NULL)
   }
 
-  .marginal_posterior_optional_metadata(
-    .marginal_posterior_indicator_components(
-      context                  = context,
-      weights                  = weights,
-      samples                  = samples,
-      n_values                 = n_values,
-      transformation           = transformation,
-      transformation_arguments = transformation_arguments
-    ),
-    required = FALSE
+  .marginal_posterior_indicator_components(
+    context                  = context,
+    weights                  = weights,
+    samples                  = samples,
+    n_values                 = n_values,
+    transformation           = transformation,
+    transformation_arguments = transformation_arguments
   )
 }
 

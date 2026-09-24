@@ -166,7 +166,7 @@ test_that("draw metadata is one validated container", {
   # values are validated when they are set
   expect_error(
     posterior_metadata(x, "atoms") <- list(declared = TRUE),
-    "Draw metadata 'atoms' is invalid: it must be created with 'posterior_atom_attribute()'.",
+    "Posterior atom metadata must be created with 'posterior_atom_attribute()'.",
     fixed = TRUE
   )
   expect_error(
@@ -409,4 +409,39 @@ test_that("draw components index the declared component list", {
     "Draw metadata 'component_source' is invalid",
     fixed = TRUE
   )
+})
+
+test_that("metadata build failures propagate instead of switching estimators", {
+
+  mixed <- .draws_metadata_mixed_for_test()
+  # the per-component Savage-Dickey estimator needs the component of every
+  # mixture term: without it the marginal stops instead of silently pooling
+  broken <- mixed
+  broken$mu <- BayesTools:::.bt_meta_set(broken$mu, "component", NULL)
+  expect_error(
+    marginal_posterior(broken, "mu", prior_samples = TRUE),
+    "Mixture component indices are unavailable.",
+    fixed = TRUE
+  )
+
+  # malformed atom declarations stop instead of reading as undeclared
+  atoms <- posterior_atom_attribute(data.frame(x = 0, mass = .25))
+  atoms$mass <- 2
+  expect_error(
+    BayesTools:::.posterior_atoms_from_attribute(atoms),
+    "Posterior atom masses cannot sum to more than one.",
+    fixed = TRUE
+  )
+  expect_null(BayesTools:::.posterior_atoms_from_attribute(NULL))
+
+  # columns outside the prior-density context have no support by rule
+  context <- BayesTools:::.prior_density_build_context(
+    prior_list   = list(mu = prior("normal", list(0, 1), list(0, Inf))),
+    column_names = c("mu", "PET")
+  )
+  draws <- matrix(abs(stats::rnorm(20)), ncol = 2, dimnames = list(NULL, c("mu", "PET")))
+  draws <- BayesTools:::.posterior_support_set_from_prior_context(draws, context)
+  support <- BayesTools:::.bt_meta_get(draws, "support")
+  expect_identical(names(support), "mu")
+  expect_equal(support$mu$bounds, c(0, Inf))
 })

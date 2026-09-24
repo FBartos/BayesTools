@@ -55,11 +55,8 @@
       NULL
     },
     atoms = function(value){
-      if(inherits(value, "BayesTools_posterior_atoms") &&
-         !is.null(.posterior_atoms_from_attribute(value))){
-        return(NULL)
-      }
-      "it must be created with 'posterior_atom_attribute()'"
+      .posterior_atoms_from_attribute(value)
+      NULL
     },
     components = function(value){
       if(inherits(value, "BayesTools_posterior_components")) NULL else

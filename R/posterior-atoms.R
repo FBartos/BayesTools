@@ -91,22 +91,25 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
   out
 }
 
+# Validated posterior atoms: NULL when absent (undeclared atom status); a
+# malformed declaration stops.
 .posterior_atoms_from_attribute <- function(atoms){
 
-  if(is.null(atoms) || !is.list(atoms) || !isTRUE(atoms$declared)){
+  if(is.null(atoms)){
     return(NULL)
   }
+  if(!inherits(atoms, "BayesTools_posterior_atoms") || !isTRUE(atoms$declared)){
+    stop("Posterior atom metadata must be created with 'posterior_atom_attribute()'.",
+         call. = FALSE)
+  }
 
-  tryCatch(
-    .posterior_atoms_new(
-      locations = atoms$locations,
-      mass = atoms$mass,
-      column_names = colnames(atoms$locations),
-      source = if(is.null(atoms$source)) "unknown" else atoms$source,
-      declared = TRUE,
-      component_probabilities = atoms$component_probabilities
-    ),
-    error = function(e) NULL
+  .posterior_atoms_new(
+    locations = atoms$locations,
+    mass = atoms$mass,
+    column_names = colnames(atoms$locations),
+    source = if(is.null(atoms$source)) "unknown" else atoms$source,
+    declared = TRUE,
+    component_probabilities = atoms$component_probabilities
   )
 }
 
@@ -671,6 +674,16 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
       prior_list, colnames(weights),
       formula_scale = .bt_meta_get(samples, "formula_scale")
     )
+    # the unscaled intercept of a log-intercept formula scaling is not linear
+    # in the fitted coefficients: atoms of combinations involving it are
+    # unavailable
+    for(transform in context$transforms){
+      if(isTRUE(transform$log_intercept) &&
+         transform$intercept %in% colnames(weights) &&
+         any(weights[, transform$intercept] != 0)){
+        return(NULL)
+      }
+    }
     standardized <- matrix(0, nrow(weights), ncol(weights), dimnames = dimnames(weights))
     for(i in seq_len(nrow(weights))){
       row <- .prior_density_context_standardized_weights(context, weights[i, ])
