@@ -849,3 +849,28 @@ test_that("linear predictor nodes of row-indexed external SD sources declare the
   values_rebuilt <- JAGS_evaluate_deterministic(values_fit, draws = values_reduced)
   expect_lte(max(abs(values_rebuilt[, coordinates] - values_posterior[, coordinates])), 1e-14)
 })
+
+test_that("marginal posteriors of formula parameters evaluate the linear predictor node's fixed part", {
+
+  x_prior <- prior("normal", list(0, 1))
+  attr(x_prior, "multiply_by") <- 0.5
+  z_prior <- prior("normal", list(0, 1))
+  attr(z_prior, "multiply_by") <- "b_scale"
+  fit <- .dnode_fit(
+    ~ 1 + x + z,
+    prior_list = list(intercept = prior("normal", list(0, 1)), x = x_prior, z = z_prior),
+    extra_prior = list(b_scale = prior("lognormal", list(0, 0.2)))
+  )
+  samples <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x", "mu_z", "b_scale"))
+  marginal <- marginal_posterior(samples, parameter = "mu_x", formula = ~ x + z, at = list(z = 0.3))
+  evaluated <- JAGS_evaluate_formula(
+    fit, parameter = "mu", data = data.frame(x = c(-1, 0, 1), z = 0.3)
+  )
+
+  # The same terms, multipliers, and floating-point operations as the formula
+  # evaluator: (multiplier * coefficient) * data, summed in model order.
+  expect_identical(names(marginal), c("-1SD", "0SD", "1SD"))
+  for(i in 1:3){
+    expect_identical(as.vector(marginal[[i]]), unname(evaluated[i, ]))
+  }
+})

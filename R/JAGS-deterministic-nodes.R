@@ -21,7 +21,8 @@
 #' @details Each generated node belongs to one family, which defines both the
 #' JAGS syntax of the node and the R evaluator used everywhere BayesTools needs
 #' its value (prior draws, parameter-catalog quantities, bridge sampling,
-#' marginal-likelihood parameters, prediction, and convergence roles):
+#' marginal-likelihood parameters, prediction, marginal posteriors of formula
+#' parameters, random-effect unscaling, and convergence roles):
 #' \describe{
 #'   \item{\code{"random_sd"}}{random-effect SDs derived from a variance
 #'   allocation ([random_variance_allocation()]): the source SD (the

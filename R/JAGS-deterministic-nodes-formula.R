@@ -312,10 +312,16 @@
 # The fixed part of a linear predictor: a rows x draws matrix. 'values_of(term)'
 # returns the term's coefficient draws (draws x coefficients) and
 # 'multiplier_of(term)' the multiplier draws of a model term (a vector, or NULL
-# without one); the intercept has no multiplier.
+# without one); the intercept has no multiplier. 'data_of(term)' returns the
+# term's design columns (rows x coefficients), by default its columns of
+# 'model_matrix'.
 .bt_dnode_linear_predictor_fixed <- function(terms, model_matrix, n_draws,
-                                             values_of, multiplier_of){
+                                             values_of, multiplier_of,
+                                             data_of = NULL){
 
+  if(is.null(data_of)){
+    data_of <- function(term) model_matrix[, term$columns, drop = FALSE]
+  }
   n_rows <- nrow(model_matrix)
   output <- matrix(0, nrow = n_rows, ncol = n_draws)
   for(term in terms){
@@ -333,11 +339,10 @@
       if(!is.null(multiplier)){
         coefficient <- multiplier * coefficient
       }
-      contribution <- model_matrix[, term$columns, drop = FALSE] %*%
-        matrix(coefficient, nrow = 1L)
+      contribution <- data_of(term) %*% matrix(coefficient, nrow = 1L)
     }else{
       multiplier <- multiplier_of(term)
-      contribution <- model_matrix[, term$columns, drop = FALSE] %*% t(values)
+      contribution <- data_of(term) %*% t(values)
       if(!is.null(multiplier)){
         contribution <- contribution * rep(multiplier, each = n_rows)
       }

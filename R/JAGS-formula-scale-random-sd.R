@@ -390,7 +390,7 @@
       posterior[valid_draw, u_names] <- u
     }
     if(has_cpc){
-      posterior[valid_draw, cpc_names] <- 2 * u - 1
+      posterior[valid_draw, cpc_names] <- .bt_dnode_lkj_cpc(u)
     }
   }
 
@@ -765,12 +765,11 @@
   u_present <- u_names %in% colnames(posterior)
   if(!any(L_present) && all(u_present)){
     # Only the LKJ primitives are available (e.g., prior draws or fits without
-    # monitored correlation matrices): build the Cholesky factor from them.
-    L <- .bt_lkj_cholesky_cpc_u_to_L(
+    # monitored correlation matrices): the correlation of the 'lkj' node.
+    return(.bt_dnode_lkj_correlation(
       posterior[, u_names, drop = FALSE],
       K = n_terms
-    )
-    return(.bt_lkj_cholesky_L_to_R(L))
+    ))
   }
 
   if(!all(L_present)){

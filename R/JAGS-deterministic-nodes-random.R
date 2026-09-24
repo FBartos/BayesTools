@@ -540,6 +540,19 @@
   syntax
 }
 
+# The monitored partial correlations of LKJ primitives u.
+.bt_dnode_lkj_cpc <- function(u){
+
+  2 * u - 1
+}
+
+# The correlation matrices (draws x K x K) of LKJ primitives u (draws x
+# K(K-1)/2): R = L L' of the module's Cholesky factor.
+.bt_dnode_lkj_correlation <- function(u, K){
+
+  .bt_lkj_cholesky_L_to_R(.bt_lkj_cholesky_cpc_u_to_L(u, K = K))
+}
+
 .bt_dnode_lkj_evaluate <- function(node, lookup){
 
   spec <- node$spec
@@ -568,7 +581,7 @@
     values <- cbind(values, cells(.bt_lkj_cholesky_L_to_R(L)))
   }
   if(length(spec$cpc_names) > 0L){
-    values <- cbind(values, 2 * u - 1)
+    values <- cbind(values, .bt_dnode_lkj_cpc(u))
   }
 
   values

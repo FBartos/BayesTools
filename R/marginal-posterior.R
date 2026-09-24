@@ -386,65 +386,84 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
 
       ### evaluate the design matrix on the samples -> output[data, posterior]
+      # The linear predictor is the fixed part of the registered
+      # 'linear_predictor' node: the intercept (log(intercept) when declared,
+      # never scaled) and the terms with their per-model multipliers.
+      terms <- list()
       if(has_intercept){
 
         terms_indexes    <- attr(model_matrix, "assign") + 1
         terms_indexes[1] <- 0
 
-        # the fitted linear predictor uses log(intercept) when declared (as
-        # JAGS_evaluate_formula) and never scales the intercept
         intercept_values <- posterior_samples_matrix[,JAGS_parameter_names("intercept", formula_parameter = formula_parameter)]
-        if(log_intercept){
-          if(any(!(intercept_values > 0))){
-            stop(
-              "The formula for '", formula_parameter, "' uses log(intercept), ",
-              "but some intercept samples are not positive.",
-              call. = FALSE
-            )
-          }
-          intercept_values <- log(intercept_values)
+        if(log_intercept && any(!(intercept_values > 0))){
+          stop(
+            "The formula for '", formula_parameter, "' uses log(intercept), ",
+            "but some intercept samples are not positive.",
+            call. = FALSE
+          )
         }
-        marginal_posterior_samples <- matrix(intercept_values,
-                                             nrow = nrow(data), ncol = nrow(posterior_samples_matrix), byrow = TRUE)
+        terms[[1L]] <- .bt_dnode_linear_predictor_term(
+          parameter  = formula_parameter,
+          model_term = "intercept",
+          type       = "intercept",
+          columns    = 1L,
+          prior      = NULL,
+          log        = log_intercept
+        )
+        terms[[1L]]$coefficient_names <- JAGS_parameter_names("intercept", formula_parameter = formula_parameter)
 
       }else{
 
         terms_indexes <- attr(model_matrix, "assign")
-        marginal_posterior_samples <- matrix(0, nrow = nrow(data), ncol = nrow(posterior_samples_matrix))
 
       }
 
-      # add remaining terms (omitting the intercept indexed as 0)
+      # the remaining terms (omitting the intercept indexed as 0)
       for(i in unique(terms_indexes[terms_indexes > 0])){
-
-        # subset the model matrix
-        temp_data <- .marginal_posterior_term_data(
-          model_matrix  = model_matrix,
-          terms_indexes = terms_indexes,
-          term_index    = i,
-          data          = data,
-          prior_info    = priors_info[[JAGS_model_terms[i]]],
-          term_name     = JAGS_model_terms[i]
+        term <- .bt_dnode_linear_predictor_term(
+          parameter  = formula_parameter,
+          model_term = model_terms[i],
+          type       = if(model_terms_type[i] == "factor") "factor" else "continuous",
+          columns    = which(terms_indexes == i),
+          prior      = NULL
         )
-
-        temp_posterior <- posterior_samples_matrix[,paste0(
+        term$term_index <- i
+        term$coefficient_names <- paste0(
           JAGS_model_terms[i],
-          if(model_terms_type[i] == "factor" && priors_info[[JAGS_model_terms[i]]][["levels"]] > 1) paste0("[", 1:priors_info[[JAGS_model_terms[i]]][["levels"]], "]"))
-          ,drop = FALSE]
-
-        # check for scaling factors
-        temp_multiply_by <- .get_combined_parameter_scaling_factor_matrix(
-          JAGS_model_terms[i],
-          prior_list  = prior_list,
-          posterior   = posterior_samples_matrix,
-          models_ind  = models_ind,
-          nrow        = nrow(data),
-          simple_list = inherits(samples, "as_mixed_posteriors")
+          if(model_terms_type[i] == "factor" && priors_info[[JAGS_model_terms[i]]][["levels"]] > 1) paste0("[", 1:priors_info[[JAGS_model_terms[i]]][["levels"]], "]")
         )
-
-        marginal_posterior_samples <- marginal_posterior_samples + temp_multiply_by * (temp_data %*% t(temp_posterior))
-
+        terms[[length(terms) + 1L]] <- term
       }
+
+      marginal_posterior_samples <- .bt_dnode_linear_predictor_fixed(
+        terms        = terms,
+        model_matrix = model_matrix,
+        n_draws      = nrow(posterior_samples_matrix),
+        values_of    = function(term){
+          posterior_samples_matrix[, term$coefficient_names, drop = FALSE]
+        },
+        multiplier_of = function(term){
+          # the multipliers of the term's prior in each model's draws
+          .marginal_posterior_term_multiplier(
+            JAGS_model_terms[term$term_index],
+            prior_list  = prior_list,
+            posterior   = posterior_samples_matrix,
+            models_ind  = models_ind,
+            simple_list = inherits(samples, "as_mixed_posteriors")
+          )
+        },
+        data_of = function(term){
+          .marginal_posterior_term_data(
+            model_matrix  = model_matrix,
+            terms_indexes = terms_indexes,
+            term_index    = term$term_index,
+            data          = data,
+            prior_info    = priors_info[[JAGS_model_terms[term$term_index]]],
+            term_name     = JAGS_model_terms[term$term_index]
+          )
+        }
+      )
 
 
       # apply transformations
@@ -1891,6 +1910,25 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   out
+}
+
+# The per-draw multipliers of a formula term (the 'multiply_by' of the term's
+# prior in the model of each draw), or NULL when no draw scales the term.
+.marginal_posterior_term_multiplier <- function(term, prior_list, posterior, models_ind, simple_list = FALSE){
+
+  multiplier <- .get_combined_parameter_scaling_factor_matrix(
+    term,
+    prior_list  = prior_list,
+    posterior   = posterior,
+    models_ind  = models_ind,
+    nrow        = 1L,
+    simple_list = simple_list
+  )[1L, ]
+  if(isTRUE(all(multiplier == 1))){
+    return(NULL)
+  }
+
+  multiplier
 }
 
 .get_combined_parameter_scaling_factor_matrix <- function(term, prior_list, posterior, models_ind, nrow, simple_list = FALSE){
