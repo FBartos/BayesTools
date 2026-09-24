@@ -191,8 +191,9 @@ names.
   factor selectors.
 - Catalog quantities declare their exact `support` (from the prior
   provenance of their source coordinates; `NULL` when not derivable, and a
-  composite SD's `[0, Inf)` hull is exact only for scale priors unbounded
-  above) and `definedness` when the map is built; downstream packages read
+  composite SD's `[0, Inf)` hull is exact only when every scale prior is
+  supported on `[0, Inf)`) and `definedness` when the map is built;
+  downstream packages read
   them instead of deriving supports.
 - Draws that can be undefined are declared, never inferred from names or
   values: `parameter_draws()` sets the `undefined_draws` draw metadata of its

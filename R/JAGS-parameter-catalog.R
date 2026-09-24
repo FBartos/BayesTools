@@ -4009,8 +4009,8 @@ parameter_transform_jacobian <- function(values, transform){
 # Supports of composite random-effect quantities: correlations lie in
 # [-1, 1], variance shares in [0, 1], multipliers between zero and the
 # allocation scale, and inclusion indicators at 0 and 1. Composite SDs and
-# variances are nonnegative; their hull [0, Inf) is exact only when the scale
-# prior is unbounded above.
+# variances are nonnegative; their hull [0, Inf) is exact only when every
+# scale prior is supported on [0, Inf).
 .bt_parameter_catalog_random_support <- function(object, quantity, key){
 
   interval <- function(lower, upper, exact = TRUE){
@@ -4073,9 +4073,13 @@ parameter_transform_jacobian <- function(values, transform){
   1
 }
 
-# Whether the scale priors of a composite random-effect SD or variance are
-# unbounded above (then a composite with shares or gates reaches every value
-# in [0, Inf)).
+# Whether the scale priors of a composite random-effect SD or variance are all
+# supported on [0, Inf): a composite SD is positively homogeneous in the
+# scales, so it then reaches every value in (0, Inf). A scale bounded away
+# from zero can bound the composite away from zero as well (e.g. the
+# original-scale intercept SD sqrt(sd_0^2 + c^2 sd_1^2) of a scaled
+# predictor), and a scale bounded above bounds it above, so the hull is then
+# not exact.
 .bt_parameter_catalog_unbounded_scale <- function(object, key){
 
   prior_list <- attr(object, "prior_list", exact = TRUE)
@@ -4089,7 +4093,7 @@ parameter_transform_jacobian <- function(values, transform){
   }
   all(vapply(scale_priors, function(prior){
     support <- .posterior_support_from_prior(prior, source = "catalog")
-    !is.null(support) && isTRUE(support$exact) && support$bounds[1L] >= 0 &&
+    !is.null(support) && isTRUE(support$exact) && support$bounds[1L] == 0 &&
       is.infinite(support$bounds[2L])
   }, logical(1)))
 }

@@ -552,6 +552,38 @@ test_that("catalog quantities declare their exact support and definedness", {
   expect_true(support_of(truncated, "(mu) allocation: var_common")$exact)
   expect_false(support_of(truncated, "(mu) sd(x)")$exact)
 
+  # original-scale SDs of a scaled random slope: with SD priors on [0.5, Inf)
+  # the intercept SD sqrt(sd_0^2 + (m / s)^2 sd_1^2) is at least
+  # 0.5 sqrt(1 + (m / s)^2) and the slope SD sd_1 / s at least 0.5 / s, so the
+  # hull [0, Inf) is not their exact support; half-normal SDs reach every
+  # value in (0, Inf)
+  scaled_slope_fit <- function(sd){
+    data <- data.frame(x = c(2, 4, 6, 8, 3, 7), g = factor(rep(c("a", "b", "c"), 2)))
+    formula_result <- JAGS_formula(
+      ~ x + random(1 + x | g, covariance = "diag"), "mu", data,
+      prior_list   = list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))),
+      prior_random = prior_random(sd = sd),
+      formula_scale = list(x = TRUE)
+    )
+    prior_list <- formula_result$prior_list
+    columns <- unlist(lapply(names(prior_list), function(parameter){
+      BayesTools:::.prior_linear_prior_columns(parameter, prior_list[[parameter]])
+    }))
+    .parameter_catalog_test_fit(
+      coda::mcmc.list(coda::mcmc(matrix(1, 4, length(columns), dimnames = list(NULL, columns)))),
+      prior_list,
+      formula_design = list(mu = formula_result$formula_design),
+      formula_scale  = list(mu = formula_result$formula_scale)
+    )
+  }
+  bounded_below <- scaled_slope_fit(prior("normal", list(0, 1), list(.5, Inf)))
+  half_normal   <- scaled_slope_fit(prior("normal", list(0, 1), list(0, Inf)))
+  for(name in c("(mu) sd(intercept)", "(mu) sd(x)", "(mu) var(intercept)")){
+    expect_equal(support_of(bounded_below, name)$bounds, c(0, Inf))
+    expect_false(support_of(bounded_below, name)$exact)
+    expect_true(support_of(half_normal, name)$exact)
+  }
+
   # gated total-variance proportions lie in [0, 1] and are undefined where
   # no component is active; the inclusion indicators take the values 0 and 1
   gated <- .random_effects_gated_total_variance_allocation_fit()
