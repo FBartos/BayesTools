@@ -750,3 +750,75 @@ test_that("formula marginal posteriors accept predictors that enter only interac
     tolerance = 1e-12
   )
 })
+
+
+test_that("JAGS_evaluate_formula without a stored design takes a factor's contrast from a contrast-coded term", {
+
+  # In `~ x + g:z + x:g`, `g:z` precedes `x:g` and codes `g` by level
+  # indicators, so it records the independent coding of `g`; `x:g` codes `g`
+  # by its fitted contrast. Without a stored design, the replay takes the
+  # contrast of `g` from `x:g`, not from the first term that contains `g`.
+  data <- data.frame(
+    x = c(-2, -1, 1, 2, 3, 4, 0.5, -0.5, 1.5),
+    z = c(0.3, -1, 2, 1, -0.5, 0.7, 1.1, -0.2, 0.4),
+    g = factor(rep(c("a", "b", "c"), 3), levels = c("a", "b", "c"))
+  )
+  normal <- prior("normal", list(0, 1))
+  term_priors <- list(
+    treatment = list(
+      "g:z" = prior_factor("normal", list(0, 1), contrast = "treatment"),
+      "x:g" = prior_factor("normal", list(0, 1), contrast = "treatment")
+    ),
+    meandif = list(
+      "g:z" = prior_factor("normal", list(0, 1), contrast = "independent"),
+      "x:g" = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+    )
+  )
+
+  for (contrast in names(term_priors)) {
+    formula_result <- JAGS_formula(
+      ~ x + g:z + x:g, "mu", data,
+      c(list(intercept = normal, x = normal), term_priors[[contrast]])
+    )
+    prior_list <- formula_result$prior_list
+    expect_identical(
+      attr(prior_list$mu_g__xXx__z, "factor_contrasts"),
+      c(g = "contr.independent"),
+      info = contrast
+    )
+    expect_identical(
+      attr(prior_list$mu_x__xXx__g, "factor_contrasts"),
+      c(g = paste0("contr.", contrast)),
+      info = contrast
+    )
+
+    # reference: the fitted JAGS data columns times the coefficients
+    coefficients <- list(
+      mu_intercept = 0.5,
+      mu_x         = -0.25,
+      mu_g__xXx__z = c(0.3, -0.6, 0.9),
+      mu_x__xXx__g = c(0.4, -0.8)
+    )
+    expected <- coefficients$mu_intercept +
+      coefficients$mu_x * formula_result$data$mu_data_x +
+      drop(formula_result$data$mu_data_g__xXx__z %*% coefficients$mu_g__xXx__z) +
+      drop(formula_result$data$mu_data_x__xXx__g %*% coefficients$mu_x__xXx__g)
+    posterior <- coda::mcmc(matrix(
+      unlist(coefficients, use.names = FALSE),
+      nrow = 1,
+      dimnames = list(NULL, c(
+        "mu_intercept", "mu_x",
+        paste0("mu_g__xXx__z[", 1:3, "]"),
+        paste0("mu_x__xXx__g[", 1:2, "]")
+      ))
+    ))
+
+    attr(posterior, "formula_design") <- list(mu = formula_result$formula_design)
+    prediction <- JAGS_evaluate_formula(posterior, ~ x + g:z + x:g, "mu", data, prior_list)
+    expect_equal(unname(drop(prediction)), unname(expected), tolerance = 1e-12, info = contrast)
+
+    attr(posterior, "formula_design") <- NULL
+    legacy_prediction <- JAGS_evaluate_formula(posterior, ~ x + g:z + x:g, "mu", data, prior_list)
+    expect_equal(unname(drop(legacy_prediction)), unname(expected), tolerance = 1e-12, info = contrast)
+  }
+})

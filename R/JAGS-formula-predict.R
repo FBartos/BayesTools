@@ -494,7 +494,26 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
     logical(1)
   )]
   candidate_priors <- prior_list[candidate_names]
-  this_prior <- if(length(candidate_priors) > 0L) candidate_priors[[1L]] else NULL
+  # A term that codes the predictor by level indicators (e.g., `g:z` in
+  # `~ x + g:z + x:g`) records the independent coding for it whatever the
+  # fitted contrast, while every other term records the fitted contrast; the
+  # contrast is therefore taken from the first term that records another one.
+  recorded_contrasts <- vapply(candidate_priors, function(candidate_prior){
+    factor_contrasts <- attr(candidate_prior, "factor_contrasts", exact = TRUE)
+    if(!is.null(factor_contrasts) && predictor %in% names(factor_contrasts)){
+      as.character(factor_contrasts[[predictor]])
+    }else{
+      NA_character_
+    }
+  }, character(1))
+  contrast_coded <- which(
+    !is.na(recorded_contrasts) & recorded_contrasts != "contr.independent"
+  )
+  this_prior <- if(length(contrast_coded) > 0L){
+    candidate_priors[[contrast_coded[[1L]]]]
+  }else if(length(candidate_priors) > 0L){
+    candidate_priors[[1L]]
+  }
 
   fitted_levels <- fitted_design$xlevels[[predictor]]
   if(is.null(fitted_levels)){
