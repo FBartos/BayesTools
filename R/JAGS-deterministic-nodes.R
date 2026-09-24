@@ -35,7 +35,7 @@
 #'   blocks sampled on the Fisher-z (\code{rho = tanh(z)}) or logit scale
 #'   (\code{rho = lower + (upper - lower) * plogis(z)}).}
 #'   \item{\code{"lkj"}}{the Cholesky factor \code{L}, the correlation matrix
-#'   \code{R = L L'} (with an exact unit diagonal), and the monitored partial
+#'   \eqn{R = L L^T} (with an exact unit diagonal), and the monitored partial
 #'   correlations \code{cpc = 2 u - 1} of an LKJ-Cholesky block, computed from
 #'   its primitives \code{u} with the kernel of the BayesTools JAGS module.}
 #'   \item{\code{"omega"}}{the publication weights of a weight-function prior
