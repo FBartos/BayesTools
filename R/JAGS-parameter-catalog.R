@@ -90,8 +90,11 @@
 #' `undefined_draws` attribute.
 #'
 #' `parameter_prior_density()` constructs a deterministic
-#' `prior_linear_density` for supported map-defined quantities, including
-#' one-to-one transformations, Dirichlet allocation marginals, and
+#' `prior_linear_density` for supported map-defined quantities: fitted
+#' coordinates and factor levels (the weighted sum of their fitted
+#' coordinates under the fitted prior, whose `multiply_by` scales enter only
+#' the linear predictor; structural levels are point masses at their fixed
+#' value), one-to-one transformations, Dirichlet allocation marginals, and
 #' allocation-derived component SDs. Variance proportions are conditional on
 #' positive allocation variance. A shared parent inclusion gate cancels from
 #' that conditional law, leaving the Dirichlet marginal
@@ -525,6 +528,22 @@ parameter_prior_density.BayesTools_fit <- function(
          call. = FALSE)
   }
   key <- quantity$extraction_key[[1L]]
+  if(key$type %in% c("coordinate", "factor_level")){
+    out <- .bt_parameter_prior_density_coordinates(
+      object = object,
+      quantity = quantity,
+      key = key,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
+    if(!is.null(out)){
+      attr(out, "parameter_prior_density") <- list(
+        quantity_id = quantity$quantity_id,
+        source = "fitted_parameter_map"
+      )
+    }
+    return(out)
+  }
   if(!identical(key$type, "random_summary")){
     return(NULL)
   }
@@ -561,6 +580,70 @@ parameter_prior_density.BayesTools_fit <- function(
     )
   }
   out
+}
+
+# Prior density of a fitted coordinate or a factor level, the weighted sum
+# sum_j w_j beta_j of its fitted coordinates: the prior-density context of
+# the priors owning those coordinates (a coefficient's 'multiply_by' scales
+# only its linear-predictor contribution, not the coefficient) evaluated at
+# the level's weights. Structural quantities are their fixed value. NULL when
+# no fitted prior owns the coordinates.
+.bt_parameter_prior_density_coordinates <- function(object, quantity, key,
+                                                    n_grid, tail_prob){
+
+  dependencies <- key$dependencies
+  if(length(dependencies) == 0L || identical(quantity$status, "structural")){
+    fixed <- quantity$fixed_value
+    if(!is.numeric(fixed) || length(fixed) != 1L || !is.finite(fixed)){
+      return(NULL)
+    }
+    return(.bt_parameter_prior_density_scalar(
+      prior("point", list(location = fixed)),
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    ))
+  }
+  weights <- if(identical(key$type, "coordinate")){
+    rep(1, length(dependencies))
+  }else{
+    key$weights
+  }
+
+  prior_list <- .marginal_posterior_strip_multiply_by(
+    attr(object, "prior_list", exact = TRUE)
+  )
+  if(!is.list(prior_list) || length(prior_list) == 0L){
+    return(NULL)
+  }
+  owner_columns <- lapply(names(prior_list), function(parameter){
+    columns <- tryCatch(
+      .prior_linear_prior_columns(parameter, prior_list[[parameter]]),
+      error = function(e) NULL
+    )
+    if(any(dependencies %in% columns)) columns else NULL
+  })
+  names(owner_columns) <- names(prior_list)
+  owners <- names(owner_columns)[!vapply(owner_columns, is.null, logical(1))]
+  columns <- unlist(owner_columns[owners], use.names = FALSE)
+  if(length(owners) == 0L || !all(dependencies %in% columns)){
+    return(NULL)
+  }
+
+  context <- tryCatch(
+    .prior_density_build_context(
+      prior_list   = prior_list[owners],
+      column_names = columns,
+      n_grid       = n_grid,
+      tail_prob    = tail_prob
+    ),
+    error = function(e) NULL
+  )
+  if(is.null(context)){
+    return(NULL)
+  }
+  full_weights <- stats::setNames(numeric(length(columns)), columns)
+  full_weights[dependencies] <- weights
+  .prior_density_from_context(context, full_weights)
 }
 
 .bt_parameter_prior_density_direct_quantity <- function(

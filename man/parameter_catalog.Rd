@@ -180,8 +180,11 @@ extract a numeric vector keep it by copying the element to the vector's
 \code{undefined_draws} attribute.
 
 \code{parameter_prior_density()} constructs a deterministic
-\code{prior_linear_density} for supported map-defined quantities, including
-one-to-one transformations, Dirichlet allocation marginals, and
+\code{prior_linear_density} for supported map-defined quantities: fitted
+coordinates and factor levels (the weighted sum of their fitted
+coordinates under the fitted prior, whose \code{multiply_by} scales enter only
+the linear predictor; structural levels are point masses at their fixed
+value), one-to-one transformations, Dirichlet allocation marginals, and
 allocation-derived component SDs. Variance proportions are conditional on
 positive allocation variance. A shared parent inclusion gate cancels from
 that conditional law, leaving the Dirichlet marginal

@@ -2651,6 +2651,56 @@ test_that("allocation parent links are scoped by formula parameter", {
   }
 })
 
+test_that("coordinates and factor levels expose their prior densities", {
+
+  # Treatment levels are their N(0, 1) coefficients (the reference level is
+  # structurally 0); mean-difference levels are sum_j w_j beta_j of iid
+  # N(0, 0.5) coordinates, i.e. N(0, 0.5 * sqrt(sum(w^2))). A coefficient's
+  # 'multiply_by' scale enters the linear predictor, not its prior density.
+  data <- data.frame(t = factor(c("a", "b", "c", "a")), m = factor(c("x", "y", "z", "z")),
+                     x = c(-1, 0, 1, .5))
+  formula_result <- JAGS_formula(~ t + m + x, "mu", data = data, prior_list = list(
+    intercept = prior("normal", list(0, 2)),
+    t = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    m = prior_factor("mnormal", list(0, .5), contrast = "meandif"),
+    x = prior("normal", list(0, .3))
+  ))
+  prior_list <- formula_result$prior_list
+  prior_list$sigma <- prior("normal", list(0, 1), list(0, Inf))
+  attr(prior_list$mu_x, "multiply_by") <- "sigma"
+  columns <- c("mu_intercept", "mu_t[1]", "mu_t[2]", "mu_m[1]", "mu_m[2]", "mu_x", "sigma")
+  values <- matrix(.5, nrow = 2L, ncol = length(columns), dimnames = list(NULL, columns))
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(values)),
+    prior_list = prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  catalog <- parameter_catalog(fit)
+  density_at <- function(name, value){
+    density <- parameter_prior_density(fit, parameter_catalog_resolve(catalog, name, "mu"))
+    expect_s3_class(density, "prior_linear_density")
+    ordinate <- prior_density_ordinate(density, value)
+    expect_true(ordinate$exact)
+    ordinate
+  }
+  for(value in c(-.4, .3)){
+    expect_equal(exp(density_at("mu_intercept", value)$log_density), stats::dnorm(value, 0, 2),
+                 tolerance = 1e-14)
+    expect_equal(exp(density_at("mu_x", value)$log_density), stats::dnorm(value, 0, .3),
+                 tolerance = 1e-14)
+    expect_equal(exp(density_at("mu_t[b]", value)$log_density), stats::dnorm(value),
+                 tolerance = 1e-14)
+    for(level in c("x", "y", "z")){
+      key <- parameter_catalog_resolve(catalog, paste0("mu_m[", level, "]"), "mu")$quantities$extraction_key[[1L]]
+      expect_equal(exp(density_at(paste0("mu_m[", level, "]"), value)$log_density),
+                   stats::dnorm(value, 0, .5 * sqrt(sum(key$weights^2))), tolerance = 1e-12)
+    }
+  }
+  reference <- density_at("mu_t[a]", 0)
+  expect_identical(reference$behavior, "point_mass")
+  expect_equal(reference$point_mass, 1)
+})
+
 test_that("allocation quantities expose deterministic induced prior densities", {
 
   data <- data.frame(
