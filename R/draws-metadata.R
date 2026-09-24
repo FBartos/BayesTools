@@ -308,9 +308,9 @@
 
 # Fields of the public accessor posterior_metadata().
 .bt_meta_public_fields <- c(
-  "support", "atoms", "undefined_draws", "prior_density", "prior_context",
-  "posterior_density", "posterior_densities", "posterior_ordinate",
-  "posterior_ordinates", "condition"
+  "support", "atoms", "undefined_draws", "prior_density", "prior_densities",
+  "prior_context", "posterior_density", "posterior_densities",
+  "posterior_ordinate", "posterior_ordinates", "condition", "linear_weights"
 )
 
 #' @title Metadata of BayesTools posterior draws
@@ -335,6 +335,9 @@
 #'   whose draws may be \code{NA} because the quantity is undefined in those
 #'   draws (e.g. \code{"correlation"}), as returned by [parameter_draws()].}
 #'   \item{\code{"prior_density"}}{the prior density of the quantity.}
+#'   \item{\code{"prior_densities"}}{a list of prior densities keyed by
+#'   parameter, attached to the list returned by [as_mixed_posteriors()]
+#'   with \code{transform_scaled = TRUE}.}
 #'   \item{\code{"prior_context"}}{the joint prior-density context of the
 #'   draws.}
 #'   \item{\code{"posterior_density"}, \code{"posterior_densities"}}{
@@ -348,6 +351,9 @@
 #'   \code{condition_event}, \code{resolved_condition_event}, and, for
 #'   levels whose conditioning was resolved per level,
 #'   \code{effective_conditional} and \code{effective_conditional_rule}.}
+#'   \item{\code{"linear_weights"}}{the weights of the fitted coordinates
+#'   that form a level of a [marginal_posterior()] (a named numeric vector,
+#'   or a matrix with one row per draw).}
 #' }
 #' @param value the new value of the field; \code{NULL} removes it.
 #'

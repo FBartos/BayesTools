@@ -186,6 +186,29 @@ test_that("draw metadata is one validated container", {
   )
   # the public accessor covers the fields that downstream packages attach
   expect_error(posterior_metadata(x, "models_ind"), "'field'")
+  expect_error(posterior_metadata(x, "component"), "'field'")
+
+  # level weights of marginal posteriors and the prior densities of
+  # as_mixed_posteriors() are read and set by downstream packages
+  weights <- c(mu_intercept = 1, mu_x = .5)
+  posterior_metadata(x, "linear_weights") <- weights
+  expect_identical(posterior_metadata(x, "linear_weights"), weights)
+  expect_error(
+    posterior_metadata(x, "linear_weights") <- "mu_x",
+    "Draw metadata 'linear_weights' is invalid: it must be a numeric vector or matrix.",
+    fixed = TRUE
+  )
+  densities <- list(mu = BayesTools:::.prior_linear_combination_density(
+    prior_list = list(mu = prior("normal", list(0, 1))),
+    weights    = c(mu = 1)
+  ))
+  posterior_metadata(x, "prior_densities") <- densities
+  expect_identical(posterior_metadata(x, "prior_densities"), densities)
+  expect_error(
+    posterior_metadata(x, "prior_densities") <- list(mu = 1),
+    "Draw metadata 'prior_densities' is invalid: it must be a list of prior densities.",
+    fixed = TRUE
+  )
 })
 
 test_that("free metadata attributes of development versions are not read", {
