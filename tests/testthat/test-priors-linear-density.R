@@ -2238,3 +2238,56 @@ test_that("plot_transformed_prior draws raw coefficients without multiply_by", {
     expect_lt(max(abs(line$y - expected[[parameter]](line$x))), 1e-3)
   }
 })
+
+test_that("plotted prior densities evaluate the exact route at every plotted value", {
+
+  # References: closed forms (normal sum, skew-normal sum of a normal and a
+  # half-normal, lognormal image) and integrate() at rel.tol 1e-12. The
+  # interpolated grid was 8% low at 5 in the normal-sum tail (its sources are
+  # truncated at 1e-4 per tail), 6.8% low at the peak of a conditional-normal
+  # curve, and 43% off next to a row-mixture jump.
+  plotted <- function(density, x_range, n_points = 101){
+    .prior_linear_density_to_plot_data(density, n_points = n_points, x_range = x_range)$density
+  }
+  normal_sum <- .prior_linear_combination_density(
+    list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1))), c(a = 1, b = 1)
+  )
+  curve <- plotted(normal_sum, c(-5, 5))
+  expect_equal(curve$y, stats::dnorm(curve$x, 0, sqrt(2)), tolerance = 1e-14)
+
+  half_normal <- prior("normal", list(0, 1), list(0, Inf))
+  skewed <- .prior_linear_combination_density(
+    list(a = prior("normal", list(0, .1)), b = half_normal), c(a = 1, b = 1)
+  )
+  curve <- plotted(skewed, c(-.5, 3))
+  expect_equal(curve$y, 2 * stats::dnorm(curve$x, 0, sqrt(1.01)) * stats::pnorm(10 * curve$x / sqrt(1.01)),
+               tolerance = 1e-10)
+
+  slope <- prior("normal", list(0, 1))
+  attr(slope, "multiply_by") <- "s"
+  mixture <- .prior_linear_combination_density(
+    list(a = prior("normal", list(0, 1)), b = slope, s = prior("lognormal", list(0, 1))), c(a = 1, b = 1)
+  )
+  curve <- plotted(mixture, c(-4, 4), n_points = 21)
+  reference <- vapply(curve$x, function(value){
+    sum(vapply(list(c(0, 1), c(1, Inf)), function(piece){
+      stats::integrate(function(s) stats::dnorm(value, 0, sqrt(1 + s^2)) * stats::dlnorm(s),
+                       piece[1L], piece[2L], rel.tol = 1e-12)$value
+    }, numeric(1)))
+  }, numeric(1))
+  expect_equal(curve$y, reference, tolerance = 1e-8)
+
+  context <- .prior_density_context(list(a = half_normal, b = prior("normal", list(0, 1))), c("a", "b"))
+  rows <- .prior_density_from_context_rows(context, rbind(c(a = 1, b = 0), c(a = 1, b = 1)))
+  curve <- plotted(rows, c(-2, 3))
+  expect_equal(curve$y, .5 * ifelse(curve$x >= 0, 2 * stats::dnorm(curve$x), 0) +
+                 .5 * stats::dnorm(curve$x, 0, sqrt(2)) * 2 * stats::pnorm(curve$x / sqrt(2)),
+               tolerance = 1e-12)
+
+  transformed <- .prior_linear_combination_density(
+    list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1))), c(a = 1, b = 1),
+    output_transformation = "exp"
+  )
+  curve <- plotted(transformed, c(.01, 5))
+  expect_equal(curve$y, stats::dlnorm(curve$x, 0, sqrt(2)), tolerance = 1e-12)
+})
