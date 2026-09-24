@@ -214,27 +214,33 @@ test_that("marginal_posterior handles treatment factor-continuous interaction co
 # `~ g + g:h`, or `~ x + g:x`. Without the main effect of its other component
 # (`x` or `h`), the interaction codes `g` by level indicators, so the term has
 # one coordinate per level of `g` (including the first); mean-difference and
-# orthonormal priors are unavailable for such a term. Every term except the
-# continuous `x` gets a factor prior with `contrast`. The draws are
-# deterministic normal quantiles; interaction coordinate j has mean
-# `slope_means[j]`.
+# orthonormal priors are unavailable for such a term. The main-effect factor
+# terms get a factor prior with `contrast` and the interaction (the last term)
+# one with `interaction_contrast`. The draws are deterministic normal
+# quantiles; interaction coordinate j has mean `slope_means[j]`.
 full_rank_interaction_fit <- function(levels, contrast, formula = ~ g + g:x,
-                                      slope_means = c(0.3, -0.2, 0.5)) {
+                                      slope_means = c(0.3, -0.2, 0.5),
+                                      interaction_contrast = contrast) {
 
   data <- data.frame(
     g = factor(rep(levels, each = 4), levels = levels),
     h = factor(rep(c("u", "v"), 6), levels = c("u", "v")),
     x = seq(-1, 1, length.out = 12)
   )
-  distribution <- if (contrast %in% c("meandif", "orthonormal")) "mnormal" else "normal"
-  term_labels  <- attr(stats::terms(formula), "term.labels")
-  prior_list   <- c(
+  factor_prior <- function(term_contrast) {
+    distribution <- if (term_contrast %in% c("meandif", "orthonormal")) "mnormal" else "normal"
+    prior_factor(distribution, list(0, 1), contrast = term_contrast)
+  }
+  term_labels <- attr(stats::terms(formula), "term.labels")
+  prior_list  <- c(
     list(intercept = prior("normal", list(0, 1))),
-    lapply(term_labels, function(term) {
-      if (identical(term, "x")) {
+    lapply(seq_along(term_labels), function(i) {
+      if (identical(term_labels[i], "x")) {
         prior("normal", list(0, 1))
+      } else if (i == length(term_labels)) {
+        factor_prior(interaction_contrast)
       } else {
-        prior_factor(distribution, list(0, 1), contrast = contrast)
+        factor_prior(contrast)
       }
     })
   )
@@ -290,21 +296,46 @@ full_rank_interaction_fit <- function(levels, contrast, formula = ~ g + g:x,
 }
 
 
+# Contrasts of the main effect of `g` and of the indicator-coded `g:x` term.
+# The term does not use the contrast of `g`, so an independent prior on it
+# combines with any contrast of the main effect.
+full_rank_interaction_designs <- list(
+  c(main = "treatment",   interaction = "treatment"),
+  c(main = "independent", interaction = "independent"),
+  c(main = "meandif",     interaction = "independent"),
+  c(main = "treatment",   interaction = "independent")
+)
+
+
 test_that("full-rank factor-by-continuous interaction slopes are one quantity per level", {
 
-  for (contrast in c("treatment", "independent")) {
+  for (design in full_rank_interaction_designs) {
     for (levels in list(c("a", "b", "c"), c("1", "2", "3"))) {
 
-      info      <- paste0(contrast, ": ", paste0(levels, collapse = ", "))
-      synthetic <- full_rank_interaction_fit(levels, contrast)
+      info      <- paste0(design[["main"]], " + ", design[["interaction"]], ": ", paste0(levels, collapse = ", "))
+      synthetic <- full_rank_interaction_fit(
+        levels, design[["main"]], interaction_contrast = design[["interaction"]]
+      )
       fit       <- synthetic$fit
       parameter <- synthetic$parameter
       slopes    <- unname(synthetic$posterior[, paste0(parameter, "[", 1:3, "]")])
 
-      # the fitted design gives every level of `g` its own slope coordinate
+      # the fitted design gives every level of `g` its own slope coordinate,
+      # recorded as the independent (indicator) coding of `g` in the term,
+      # while the main effect keeps the contrast of `g`
       expect_equal(
         attr(attr(fit, "prior_list")[[parameter]], "factor_design"),
         diag(3),
+        info = info
+      )
+      expect_identical(
+        attr(attr(fit, "prior_list")[[parameter]], "factor_contrasts"),
+        c(g = "contr.independent"),
+        info = info
+      )
+      expect_identical(
+        attr(attr(fit, "prior_list")$mu_g, "factor_contrasts"),
+        c(g = paste0("contr.", design[["main"]])),
         info = info
       )
 
@@ -361,13 +392,18 @@ test_that("full-rank factor-by-continuous interaction slopes are one quantity pe
         expect_equal(level_test$BF, column_test$BF, tolerance = 1e-10, info = level_info)
       }
 
-      main_effect_levels <- if (contrast == "treatment") levels[-1] else levels
+      main_effect_rows <- switch(
+        design[["main"]],
+        treatment   = paste0("(mu) g[", levels[-1], "]"),
+        independent = paste0("(mu) g[", levels, "]"),
+        meandif     = paste0("(mu) g{", 1:2, "}")
+      )
       summary_table <- runjags_estimates_table(fit)
       expect_identical(
         rownames(summary_table),
         c(
           "(mu) intercept",
-          paste0("(mu) g[", main_effect_levels, "]"),
+          main_effect_rows,
           paste0("(mu) g[", levels, "]:x")
         ),
         info = info
@@ -453,8 +489,7 @@ test_that("mean-difference and orthonormal priors are unavailable for indicator-
       "coefficients. Add '", missing_term, "' to the formula ",
       "to keep the '", contrast, "' contrast, or use ",
       "prior_factor(contrast = \"independent\") for one independent ",
-      "coefficient per level (the other terms of '", factor, "' must use ",
-      "the same contrast)."
+      "coefficient per level."
     )
   }
 
@@ -536,14 +571,55 @@ test_that("mean-difference and orthonormal priors are unavailable for indicator-
     expect_equal(BayesTools:::.get_prior_factor_levels(full_rank$prior_list$mu_g__xXx__x), 3, info = contrast)
     expect_equal(attr(full_rank$prior_list$mu_g__xXx__x, "factor_design"), diag(3), info = contrast)
   }
+
+  # an indicator-coded term does not use the contrast of `g`, so its
+  # independent prior combines with a mean-difference main effect; a
+  # reduced-rank interaction uses that contrast, so conflicting priors on it
+  # and on the main effect are still rejected
+  meandif_prior     <- prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  independent_prior <- prior_factor("normal", list(0, 1), contrast = "independent")
+  mixed <- JAGS_formula(~ g + g:x, "mu", data, list(
+    intercept = normal, g = meandif_prior, "g:x" = independent_prior
+  ))
+  expect_identical(attr(mixed$prior_list$mu_g, "factor_contrasts"), c(g = "contr.meandif"))
+  expect_identical(attr(mixed$prior_list$mu_g__xXx__x, "factor_contrasts"), c(g = "contr.independent"))
+  expect_equal(
+    unname(mixed$data$mu_data_g),
+    unname(contr.meandif(c("a", "b", "c"))[as.integer(data$g), ]),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    unname(mixed$data$mu_data_g__xXx__x),
+    unname(diag(3)[as.integer(data$g), ] * data$x),
+    tolerance = 1e-12
+  )
+  expect_error(
+    JAGS_formula(~ g * x, "mu", data, list(
+      intercept = normal, g = meandif_prior, x = normal, "g:x" = independent_prior
+    )),
+    "Factor predictor 'g' has conflicting contrast priors across formula terms.",
+    fixed = TRUE
+  )
+
+  # a mean-difference point mass at zero (the null-hypothesis prior of
+  # RoBMA's model-averaged terms) fixes every coefficient at zero in any basis
+  null_term <- JAGS_formula(~ g + g:x, "mu", data, list(
+    intercept = normal, g = meandif_prior,
+    "g:x" = prior_factor("spike", list(0), contrast = "meandif")
+  ))
+  expect_equal(attr(null_term$prior_list$mu_g__xXx__x, "factor_design"), diag(3))
+  expect_identical(attr(null_term$prior_list$mu_g__xXx__x, "factor_contrasts"), c(g = "contr.independent"))
 })
 
 
 test_that("formula marginal posteriors accept predictors that enter only interactions", {
 
-  for (contrast in c("treatment", "independent")) {
+  for (design in full_rank_interaction_designs) {
 
-    synthetic <- full_rank_interaction_fit(c("a", "b", "c"), contrast)
+    contrast  <- paste(design, collapse = " + ")
+    synthetic <- full_rank_interaction_fit(
+      c("a", "b", "c"), design[["main"]], interaction_contrast = design[["interaction"]]
+    )
     fit       <- synthetic$fit
     posterior <- synthetic$posterior
     parameter <- synthetic$parameter

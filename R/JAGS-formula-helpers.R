@@ -1036,7 +1036,9 @@
 # the `g:x` term of `~ g + g:x`. The term then has one coefficient per level
 # of that factor. Mean-difference and orthonormal priors are defined on
 # contrast coefficients, so on such a term they would be applied to the level
-# coefficients as independent priors; they are rejected instead.
+# coefficients as independent priors; they are rejected instead. A point mass
+# at zero (such as the null-hypothesis spike of a model-averaged term) fixes
+# every coefficient at zero in any basis and is accepted.
 .bt_validate_indicator_coded_factor_priors <- function(prior_list, model_terms,
                                                        model_terms_type,
                                                        predictors_type,
@@ -1050,7 +1052,12 @@
     }else if(is.prior.orthonormal(this_prior)){
       "orthonormal"
     }
-    if(is.null(contrast)){
+    zero_prior <- if(is.prior.mixture(this_prior)){
+      all(vapply(this_prior, .posterior_atoms_is_zero_point, logical(1)))
+    }else{
+      .posterior_atoms_is_zero_point(this_prior)
+    }
+    if(is.null(contrast) || zero_prior){
       next
     }
 
@@ -1077,9 +1084,7 @@
       paste0("'", missing_terms, "'", collapse = " and "),
       " to the formula to keep the '", contrast, "' contrast, or use ",
       "prior_factor(contrast = \"independent\") for one independent ",
-      "coefficient per level (the other terms of ",
-      paste0("'", indicator_factors, "'", collapse = " and "),
-      " must use the same contrast).",
+      "coefficient per level.",
       call. = FALSE
     )
   }

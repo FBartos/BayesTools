@@ -98,10 +98,13 @@
 #' An interaction without one of its lower-order terms, such as \code{g:x}
 #' in \code{~ g + g:x}, codes that factor by level indicators, as
 #' \code{stats::model.matrix()} does, and has one coefficient per level
-#' (e.g., one slope per level of \code{g}). Mean-difference and orthonormal
-#' priors are unavailable for such a term; use a treatment or independent
-#' prior for per-level coefficients, or add the lower-order term (here
-#' \code{~ g * x}) to keep the contrast.
+#' (e.g., one slope per level of \code{g}). Such a term does not use the
+#' contrast of that factor, so its prior may use a different contrast than the
+#' factor's other terms (e.g., a mean-difference \code{g} with an independent
+#' \code{g:x}). Mean-difference and orthonormal priors, other than a point
+#' mass at zero, are unavailable for such a term; use a treatment or
+#' independent prior for per-level coefficients, or add the lower-order term
+#' (here \code{~ g * x}) to keep the contrast.
 #'
 #' When using default priors (\code{"__default_continuous"} or \code{"__default_factor"}),
 #' explicitly specified priors for individual terms take precedence over the defaults.
@@ -400,7 +403,8 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     predictors_type = predictors_type,
     model_terms = model_terms,
     model_terms_type = model_terms_type,
-    prior_list = prior_list
+    prior_list = prior_list,
+    term_factors = attr(formula_terms, "factors")
   )
   scale_info <- list()
 
@@ -557,9 +561,17 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       } else {
         model_terms[i]
       }
+      # A factor that this term codes by level indicators (e.g., `g` in the
+      # `g:x` term of `~ g + g:x`) has the independent (identity) coding in
+      # the term, whatever the contrast of its other terms, so its coordinates
+      # are level cells. Ordered priors keep the data contrast, which their
+      # own design check needs to reject such a term.
+      term_factor_codes <- attr(formula_terms, "factors")[, gsub("__xXx__", ":", model_terms[i], fixed = TRUE), drop = FALSE]
       attr(this_prior, "factor_contrasts") <- vapply(attr(this_prior, "factor_terms"), function(factor_term) {
         factor_contrast <- attr(data[[factor_term]], "contrasts")
-        if(is.null(factor_contrast)){
+        if(!is.prior.ordered(this_prior) && term_factor_codes[factor_term, 1L] == 2){
+          "contr.independent"
+        }else if(is.null(factor_contrast)){
           "contr.treatment"
         }else if(is.character(factor_contrast)){
           factor_contrast[1]

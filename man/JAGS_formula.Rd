@@ -126,10 +126,13 @@ the same no-intercept expression preserves that selected basis.
 An interaction without one of its lower-order terms, such as \code{g:x}
 in \code{~ g + g:x}, codes that factor by level indicators, as
 \code{stats::model.matrix()} does, and has one coefficient per level
-(e.g., one slope per level of \code{g}). Mean-difference and orthonormal
-priors are unavailable for such a term; use a treatment or independent
-prior for per-level coefficients, or add the lower-order term (here
-\code{~ g * x}) to keep the contrast.
+(e.g., one slope per level of \code{g}). Such a term does not use the
+contrast of that factor, so its prior may use a different contrast than the
+factor's other terms (e.g., a mean-difference \code{g} with an independent
+\code{g:x}). Mean-difference and orthonormal priors, other than a point
+mass at zero, are unavailable for such a term; use a treatment or
+independent prior for per-level coefficients, or add the lower-order term
+(here \code{~ g * x}) to keep the contrast.
 
 When using default priors (\code{"__default_continuous"} or \code{"__default_factor"}),
 explicitly specified priors for individual terms take precedence over the defaults.

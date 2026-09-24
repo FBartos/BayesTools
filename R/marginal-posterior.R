@@ -1270,13 +1270,22 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     return(list(term = parameter, factor = FALSE))
   }
 
-  level_names      <- factor_info[[1L]][["level_names"]]
-  factor_contrasts <- factor_info[[1L]][["factor_contrasts"]]
+  level_names <- factor_info[[1L]][["level_names"]]
   if(is.list(level_names)){
     level_names <- level_names[[predictor]]
   }
-  contrast <- if(predictor %in% names(factor_contrasts)){
-    unname(factor_contrasts[[predictor]])
+  # A term that codes the predictor by level indicators records the
+  # independent coding for it; the fitted contrast of the predictor is the
+  # one recorded by a term that codes it by that contrast.
+  contrasts <- unlist(lapply(factor_info, function(term_info){
+    factor_contrasts <- term_info[["factor_contrasts"]]
+    if(predictor %in% names(factor_contrasts)){
+      unname(factor_contrasts[[predictor]])
+    }
+  }), use.names = FALSE)
+  contrast <- if(length(contrasts) > 0L){
+    coded <- contrasts[contrasts != "contr.independent"]
+    if(length(coded) > 0L) coded[[1L]] else contrasts[[1L]]
   }
   if(is.null(level_names) || is.null(contrast)){
     stop(

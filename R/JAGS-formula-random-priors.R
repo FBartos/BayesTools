@@ -5,7 +5,8 @@
                                              prior_list,
                                              context = "Factor predictor",
                                              validate_direct_factor_prior = TRUE,
-                                             contrast_overrides = NULL){
+                                             contrast_overrides = NULL,
+                                             term_factors = NULL){
 
   factor_predictors <- names(predictors_type)[predictors_type == "factor"]
   if(length(factor_predictors) == 0L){
@@ -69,10 +70,23 @@
         NA_character_
       }
     }, character(1))
+    # A term that codes the factor by level indicators (value 2 in the terms
+    # "factors" attribute, e.g., `g` in the `g:x` term of `~ g + g:x`) does
+    # not use the factor's contrast, so its prior does not compete with the
+    # contrast of the terms that do; it sets the contrast only when no other
+    # term or direct prior does.
+    indicator_coded <- vapply(factor_terms, function(term){
+      !is.null(term_factors) && term %in% colnames(term_factors) &&
+        factor_name %in% rownames(term_factors) &&
+        term_factors[factor_name, term] == 2
+    }, logical(1))
     contrast_names <- unique(c(
       direct_contrast,
-      factor_term_contrasts[!is.na(factor_term_contrasts)]
+      factor_term_contrasts[!is.na(factor_term_contrasts) & !indicator_coded]
     ))
+    if(length(contrast_names) == 0L){
+      contrast_names <- unique(factor_term_contrasts[!is.na(factor_term_contrasts)])
+    }
 
     if(length(contrast_names) > 1L){
       stop(
