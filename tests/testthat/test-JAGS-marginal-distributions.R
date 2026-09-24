@@ -141,6 +141,19 @@ source(testthat::test_path("common-functions.R"))
   invisible(plot_data)
 }
 
+.posterior_density_for_test <- function(x, y, method = "iwmde",
+                                        density_method = "precomputed", ...){
+  posterior_density_attribute(x = x, y = y, method = method,
+                              density_method = density_method, ...)
+}
+
+.posterior_ordinate_for_test <- function(value, ordinate, method = "qCMDE",
+                                         density_method = "precomputed", ...){
+  posterior_ordinate_attribute(value = value, ordinate = ordinate,
+                               method = method,
+                               density_method = density_method, ...)
+}
+
 .marginal_posterior_with_prior_density_for_test <- function(samples, prior_density) {
   class(samples) <- c("marginal_posterior.simple", "marginal_posterior", class(samples))
   attr(samples, "prior_density") <- prior_density
@@ -289,7 +302,7 @@ test_that("Savage_Dickey_BF uses stored posterior density when available", {
   )
   stored_x <- seq(-4, 4, length.out = 401)
   stored_y <- stats::dnorm(stored_x, mean = 0.4, sd = 1.2)
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x      = stored_x,
     y      = stored_y,
     method = "iwmde"
@@ -322,7 +335,7 @@ test_that("Savage_Dickey_BF rejects mismatched direct precomputed attributes", {
   )
   attr(posterior, "parameter") <- "theta"
 
-  attr(posterior, "posterior_ordinate") <- list(
+  attr(posterior, "posterior_ordinate") <- .posterior_ordinate_for_test(
     parameter = "phi",
     value     = 0,
     ordinate  = .5,
@@ -341,7 +354,7 @@ test_that("Savage_Dickey_BF rejects mismatched direct precomputed attributes", {
   )
 
   attr(posterior, "posterior_ordinate") <- NULL
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     parameter = "phi",
     x         = seq(-1, 1, length.out = 101),
     y         = rep(.5, 101),
@@ -456,7 +469,7 @@ test_that("posterior density and ordinate constructors create reusable attribute
     method         = "iwmde",
     density_method = "IWMDE",
     point_masses   = data.frame(x = 0, mass = .01),
-    support        = list(bounds = c(-Inf, Inf), points = 0),
+    support        = posterior_support_attribute(c(-Inf, Inf), points = 0),
     parameter      = "theta"
   )
   parsed_density <- BayesTools:::.posterior_density_from_attribute(density)
@@ -522,32 +535,66 @@ test_that("posterior density and ordinate constructors create reusable attribute
       y              = c(1, 1),
       method         = "iwmde",
       density_method = "IWMDE",
-      density        = list(x = 0:1, y = c(1, 1))
+      density        = .posterior_density_for_test(x = 0:1, y = c(1, 1))
     ),
     "reserved fields"
   )
-  expect_error(
-    posterior_density_attribute(
-      x              = 0:1,
-      y              = c(1, 1),
-      method         = "iwmde",
-      density_method = "IWMDE",
-      support        = c(1, 0)
-    ),
-    "support metadata"
-  )
-  expect_warning(
+  for(raw_support in list(c(0, 1), list(bounds = c(0, 1)), list(lower = 0, upper = 1))){
     expect_error(
       posterior_density_attribute(
         x              = 0:1,
         y              = c(1, 1),
         method         = "iwmde",
         density_method = "IWMDE",
-        support        = list(bounds = "bad")
+        support        = raw_support
       ),
-      "support metadata"
-    ),
-    NA
+      "'support' must be created with 'posterior_support_attribute()'.",
+      fixed = TRUE
+    )
+  }
+})
+
+test_that("posterior_support_attribute validates and classifies support", {
+
+  interval <- posterior_support_attribute(c(0, Inf), source = "test")
+  expect_s3_class(interval, "BayesTools_posterior_support")
+  expect_equal(interval$bounds, c(0, Inf))
+  expect_equal(interval$type, "interval")
+  expect_true(interval$exact)
+  expect_equal(interval$source, "test")
+
+  points <- posterior_support_attribute(c(0, 1), points = c(0, 1))
+  expect_equal(points$type, "points")
+  expect_false(BayesTools:::.posterior_support_contains_value(points, .5))
+
+  mixed <- posterior_support_attribute(c(0, 1), points = 0, type = "mixed",
+                                       exact = FALSE)
+  expect_equal(mixed$type, "mixed")
+  expect_false(mixed$exact)
+
+  expect_error(posterior_support_attribute(c(1, 0)),
+               "'bounds' must be ordered", fixed = TRUE)
+  expect_error(posterior_support_attribute(c(0, NA)),
+               "cannot contain NA/NaN", fixed = TRUE)
+  expect_error(posterior_support_attribute(0),
+               "must have length '2'", fixed = TRUE)
+  expect_error(posterior_support_attribute(c(0, 1), points = Inf),
+               "'points' must be finite.", fixed = TRUE)
+  expect_error(posterior_support_attribute(c(0, 1), type = "points"),
+               "requires 'points'", fixed = TRUE)
+  expect_error(posterior_support_attribute(c(0, 1), type = "ray"),
+               "not recognized", fixed = TRUE)
+
+  # an unclassed list of supports keyed by column carries no single support
+  expect_null(BayesTools:::.posterior_support_from_attribute(list(
+    theta = interval
+  )))
+  modified <- interval
+  modified$bounds <- c(2, 1)
+  expect_error(
+    BayesTools:::.posterior_support_from_attribute(modified),
+    "Posterior support metadata is invalid",
+    fixed = TRUE
   )
 })
 
@@ -584,7 +631,7 @@ test_that("Savage_Dickey_BF validates scalar options and rejects invalid precomp
     fixed = TRUE
   )
 
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x      = seq(2, 3, length.out = 101),
     y      = rep(1, 101),
     method = "qCMDE"
@@ -615,7 +662,7 @@ test_that("Savage_Dickey_BF reports stored density BF error only for matched nul
   )
   stored_x <- seq(-4, 4, length.out = 401)
   stored_y <- stats::dnorm(stored_x, mean = 0.4, sd = 1.2)
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x           = stored_x,
     y           = stored_y,
     method      = "iwmde",
@@ -658,12 +705,12 @@ test_that("Savage_Dickey_BF prefers matching stored ordinates", {
     seq(-3, 3, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x      = seq(2, 3, length.out = 101),
     y      = rep(100, 101),
     method = "plot-only"
   )
-  attr(posterior, "posterior_ordinate") <- list(
+  attr(posterior, "posterior_ordinate") <- .posterior_ordinate_for_test(
     value       = c(0, .5),
     ordinate    = c(.25, .5),
     method      = "qCMDE",
@@ -683,61 +730,86 @@ test_that("Savage_Dickey_BF prefers matching stored ordinates", {
   expect_equal(attr(out, "BF_error_percent"), 20)
 })
 
-test_that("stored posterior ordinate parser rejects ambiguous values", {
+test_that("stored posterior ordinate parser reads constructor attributes only", {
 
+  ordinate <- .posterior_ordinate_for_test(
+    value       = c(0, .5),
+    ordinate    = c(.25, .5),
+    diagnostics = list(relative_mcse = c(.1, .2))
+  )
   parsed <- BayesTools:::.posterior_ordinate_from_attribute(
-    list(
-      ordinates = data.frame(
-        value         = c(0, .5),
-        ordinate      = c(.25, .5),
-        relative_mcse = c(.1, .2)
-      ),
-      method = "qCMDE"
-    ),
+    ordinate,
     null_hypothesis = .5
   )
   expect_equal(parsed$x, .5)
   expect_equal(parsed$y, .5)
   expect_equal(parsed$diagnostics$relative_mcse, .2)
+  expect_null(BayesTools:::.posterior_ordinate_from_attribute(
+    ordinate,
+    null_hypothesis = 1
+  ))
 
-  parsed <- BayesTools:::.posterior_ordinate_from_attribute(
-    list(
-      ordinates = data.frame(
-        value            = c(0, .5),
-        ordinate         = c(.25, .5),
-        relative_mcse    = c(.1, .2),
-        BF_error_percent = c(10, 20)
-      ),
-      diagnostics = list(relative_mcse = .9, estimator = "q_grid_cmde"),
-      method      = "qCMDE"
-    ),
-    null_hypothesis = .5
+  # raw lists and data frames are not posterior ordinate metadata
+  raw_message <- paste0(
+    "Posterior ordinate metadata must be created with ",
+    "'posterior_ordinate_attribute()' or 'posterior_ordinate_append()'."
   )
-  expect_equal(parsed$diagnostics$relative_mcse, .2)
-  expect_equal(parsed$diagnostics$BF_error_percent, 20)
-  expect_equal(parsed$diagnostics$estimator, "q_grid_cmde")
+  expect_error(
+    BayesTools:::.posterior_ordinate_from_attribute(
+      list(value = 0, ordinate = .25, method = "qCMDE"),
+      null_hypothesis = 0
+    ),
+    raw_message,
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.posterior_ordinate_from_attribute(
+      list(
+        ordinates = data.frame(value = c(0, .5), ordinate = c(.25, .5)),
+        method    = "qCMDE"
+      ),
+      null_hypothesis = .5
+    ),
+    raw_message,
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.posterior_ordinate_from_attribute(
+      data.frame(x = 0, y = .25),
+      null_hypothesis = 0
+    ),
+    raw_message,
+    fixed = TRUE
+  )
 
-  expect_null(BayesTools:::.posterior_ordinate_from_attribute(
-    list(value = c(0, 0), ordinate = c(.25, .30)),
-    null_hypothesis = 0
-  ))
-  expect_null(BayesTools:::.posterior_ordinate_from_attribute(
-    list(value = 0, ordinate = 0),
-    null_hypothesis = 0
-  ))
-  expect_null(BayesTools:::.posterior_ordinate_from_attribute(
-    list(value = 1, ordinate = .25),
-    null_hypothesis = 0
-  ))
+  # ambiguous or non-positive ordinates cannot be constructed
+  expect_error(
+    .posterior_ordinate_for_test(value = c(0, 0), ordinate = c(.25, .30)),
+    "unique",
+    fixed = TRUE
+  )
+  expect_error(
+    .posterior_ordinate_for_test(value = 0, ordinate = 0),
+    "finite and positive",
+    fixed = TRUE
+  )
+
+  # a modified attribute that no longer satisfies the schema is rejected
+  modified <- .posterior_ordinate_for_test(value = 0, ordinate = .25)
+  modified$value <- c(0, 0)
+  expect_error(
+    BayesTools:::.posterior_ordinate_from_attribute(modified, 0),
+    "Posterior ordinate metadata is invalid",
+    fixed = TRUE
+  )
 })
 
 test_that("stored posterior ordinate parser keeps diagnostics aligned", {
 
   parsed <- BayesTools:::.posterior_ordinate_from_attribute(
-    list(
-      value       = c(NA, 0),
+    .posterior_ordinate_for_test(
+      value       = c(1, 0),
       ordinate    = c(.25, .50),
-      method      = "qCMDE",
       diagnostics = list(
         relative_mcse    = c(.9, .1),
         BF_error_percent = c(90, 10),
@@ -768,8 +840,8 @@ test_that("stored posterior ordinate attachment preserves multiple null values",
   posterior <- BayesTools:::.posterior_ordinate_attach(
     samples = posterior,
     sources = list(list(
-      list(parameter = "theta", value = 0,  ordinate = .25, method = "qCMDE"),
-      list(parameter = "theta", value = .5, ordinate = .50, method = "qCMDE")
+      .posterior_ordinate_for_test(parameter = "theta", value = 0,  ordinate = .25),
+      .posterior_ordinate_for_test(parameter = "theta", value = .5, ordinate = .50)
     )),
     parameter = "theta"
   )
@@ -797,7 +869,7 @@ test_that("Savage_Dickey_BF ignores stored posterior density by default", {
     seq(-3, 3, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x      = seq(-4, 4, length.out = 401),
     y      = rep(100, 401),
     method = "iwmde"
@@ -854,7 +926,7 @@ test_that("Savage_Dickey_BF uses exact posterior support for KDE fallback", {
     seq(.001, .999, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_support") <- c(0, 1)
+  attr(posterior, "posterior_support") <- posterior_support_attribute(c(0, 1))
 
   posterior_height <- BayesTools:::.Savage_Dickey_BF.kd(posterior, 0)
   expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) /
@@ -873,15 +945,21 @@ test_that("Savage_Dickey_BF uses exact posterior support for KDE fallback", {
   expect_true(attr(out, "posterior_density_boundary_reflection"))
   expect_equal(attr(out, "posterior_density_support"), c(0, 1))
 
-  attr(posterior, "posterior_support") <- list(lower = 0, upper = 1, exact = TRUE)
-  out <- Savage_Dickey_BF(
-    posterior,
-    null_hypothesis      = 0,
-    normal_approximation = FALSE,
-    silent               = TRUE
-  )
-  expect_true(attr(out, "posterior_density_boundary_reflection"))
-  expect_equal(attr(out, "posterior_density_support"), c(0, 1))
+  # support metadata must come from the constructor
+  for(raw_support in list(c(0, 1), list(lower = 0, upper = 1, exact = TRUE),
+                          list(bounds = c(0, 1)))){
+    attr(posterior, "posterior_support") <- raw_support
+    expect_error(
+      Savage_Dickey_BF(
+        posterior,
+        null_hypothesis      = 0,
+        normal_approximation = FALSE,
+        silent               = TRUE
+      ),
+      "Posterior support metadata must be created with 'posterior_support_attribute()'.",
+      fixed = TRUE
+    )
+  }
 })
 
 test_that("Savage_Dickey_BF rejects stored density support when grid misses the null", {
@@ -895,11 +973,11 @@ test_that("Savage_Dickey_BF rejects stored density support when grid misses the 
     seq(.001, .999, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x       = seq(.25, .75, length.out = 101),
     y       = rep(1, 101),
     method  = "iwmde",
-    support = list(bounds = c(0, 1), exact = TRUE)
+    support = posterior_support_attribute(c(0, 1))
   )
 
   expect_error(
@@ -925,8 +1003,8 @@ test_that("Savage_Dickey_BF lets exact support override stale precomputed height
     seq(0, 1, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_support") <- c(0, 1)
-  attr(posterior, "posterior_ordinate") <- list(
+  attr(posterior, "posterior_support") <- posterior_support_attribute(c(0, 1))
+  attr(posterior, "posterior_ordinate") <- .posterior_ordinate_for_test(
     value    = -.5,
     ordinate = .5,
     method   = "qCMDE"
@@ -948,11 +1026,11 @@ test_that("Savage_Dickey_BF lets exact support override stale precomputed height
   )
 
   attr(posterior, "posterior_ordinate") <- NULL
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x       = seq(-1, 1, length.out = 101),
     y       = rep(.5, 101),
     method  = "qCMDE",
-    support = list(lower = 0, upper = 1, exact = TRUE)
+    support = posterior_support_attribute(c(0, 1))
   )
   out <- Savage_Dickey_BF(
     posterior,
@@ -982,16 +1060,16 @@ test_that("Savage_Dickey_BF uses matched density support to reject stale ordinat
     seq(0, 1, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_ordinate") <- list(
+  attr(posterior, "posterior_ordinate") <- .posterior_ordinate_for_test(
     value    = -.5,
     ordinate = .5,
     method   = "stale-ordinate"
   )
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x       = seq(0, 1, length.out = 101),
     y       = rep(.5, 101),
     method  = "support-guard",
-    support = list(lower = 0, upper = 1, exact = TRUE)
+    support = posterior_support_attribute(c(0, 1))
   )
 
   out <- Savage_Dickey_BF(
@@ -1221,8 +1299,14 @@ test_that("marginal_posterior propagates exact scalar support from mixed samples
     list(a = 1, b = 0)
   ))
 
-  connected_support <- BayesTools:::.posterior_support_union(list(c(0, 1), c(1, 2)))
-  disjoint_support <- BayesTools:::.posterior_support_union(list(c(0, 1), c(2, 3)))
+  connected_support <- BayesTools:::.posterior_support_union(list(
+    posterior_support_attribute(c(0, 1)),
+    posterior_support_attribute(c(1, 2))
+  ))
+  disjoint_support <- BayesTools:::.posterior_support_union(list(
+    posterior_support_attribute(c(0, 1)),
+    posterior_support_attribute(c(2, 3))
+  ))
   expect_true(connected_support$exact)
   expect_false(disjoint_support$exact)
 })
@@ -1660,7 +1744,7 @@ test_that("Savage_Dickey_BF rejects stored density missing the null", {
     seq(-1, 1, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x      = seq(.5, 1, length.out = 101),
     y      = rep(1, 101),
     method = "iwmde"
@@ -1701,39 +1785,62 @@ test_that("Savage_Dickey_BF diagnoses invalid precomputed metadata", {
     fixed = TRUE
   )
 
-  attr(posterior, "posterior_density") <- list(
-    x      = 0,
-    y      = 1,
+  # attributes modified into an invalid state stop with the reason
+  invalid_density <- .posterior_density_for_test(
+    x      = c(-1, 1),
+    y      = c(1, 1),
     method = "invalid-density"
   )
+  invalid_density$x <- 0
+  invalid_density$y <- 1
+  attr(posterior, "posterior_density") <- invalid_density
   expect_error(
     Savage_Dickey_BF(
       posterior,
       null_hypothesis = 0,
       density_method  = "precomputed"
     ),
-    "Precomputed posterior density metadata is present but invalid",
+    "Posterior density metadata is invalid: the density grid needs at least two points",
     fixed = TRUE
   )
 
-  attr(posterior, "posterior_density") <- list(
-    x            = seq(-1, 1, length.out = 101),
-    y            = rep(1, 101),
-    method       = "invalid-point-mass",
-    point_masses = list(location = 0, p = 1.2)
+  invalid_point_mass <- .posterior_density_for_test(
+    x      = seq(-1, 1, length.out = 101),
+    y      = rep(1, 101),
+    method = "invalid-point-mass"
   )
+  invalid_point_mass$point_masses <- data.frame(x = 0, mass = 1.2)
+  attr(posterior, "posterior_density") <- invalid_point_mass
   expect_error(
     Savage_Dickey_BF(
       posterior,
       null_hypothesis = 0,
       density_method  = "precomputed"
     ),
-    "Precomputed posterior density metadata is present but invalid",
+    "Posterior density metadata is invalid: its 'point_masses' metadata are invalid.",
     fixed = TRUE
   )
+
+  # raw lists are rejected on every density method
+  attr(posterior, "posterior_density") <- list(
+    x      = seq(-1, 1, length.out = 101),
+    y      = rep(1, 101),
+    method = "raw-list"
+  )
+  for(density_method in c("precomputed", "KDE")){
+    expect_error(
+      Savage_Dickey_BF(
+        posterior,
+        null_hypothesis = 0,
+        density_method  = density_method
+      ),
+      "Posterior density metadata must be created with 'posterior_density_attribute()'.",
+      fixed = TRUE
+    )
+  }
 
   attr(posterior, "posterior_density") <- NULL
-  attr(posterior, "posterior_ordinate") <- list(
+  attr(posterior, "posterior_ordinate") <- .posterior_ordinate_for_test(
     value    = 1,
     ordinate = .5,
     method   = "wrong-null"
@@ -1762,7 +1869,7 @@ test_that("Savage_Dickey_BF rejects stored density with zero null height", {
   )
   stored_x <- seq(-1, 1, length.out = 101)
   stored_y <- abs(stored_x)
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x      = stored_x,
     y      = stored_y,
     method = "iwmde"
@@ -1781,7 +1888,7 @@ test_that("Savage_Dickey_BF rejects stored density with zero null height", {
 
 test_that("stored posterior density parser rejects degenerate grids", {
 
-  parsed <- BayesTools:::.posterior_density_from_attribute(list(
+  parsed <- BayesTools:::.posterior_density_from_attribute(.posterior_density_for_test(
     x      = c(0, 0, 1),
     y      = c(1, 3, 2),
     method = "iwmde"
@@ -1789,19 +1896,54 @@ test_that("stored posterior density parser rejects degenerate grids", {
   expect_equal(parsed$x, c(0, 1))
   expect_equal(unname(parsed$y), c(2, 2))
 
+  grid_message <- "Posterior density attribute must contain a valid positive density grid."
+  expect_error(
+    .posterior_density_for_test(x = c(0, 1), y = c(0, 0)),
+    grid_message,
+    fixed = TRUE
+  )
+  expect_error(
+    .posterior_density_for_test(x = c(1, 1), y = c(1, 2)),
+    grid_message,
+    fixed = TRUE
+  )
+
+  # a grid made degenerate after construction is rejected, not dropped
+  modified <- .posterior_density_for_test(x = c(0, 1), y = c(1, 2))
+  modified$y <- c(0, 0)
+  expect_error(
+    BayesTools:::.posterior_density_from_attribute(modified),
+    "Posterior density metadata is invalid",
+    fixed = TRUE
+  )
+
+  # raw lists are not posterior density metadata
+  expect_error(
+    BayesTools:::.posterior_density_from_attribute(list(
+      x = c(0, 1), y = c(1, 2), method = "iwmde"
+    )),
+    "Posterior density metadata must be created with 'posterior_density_attribute()'.",
+    fixed = TRUE
+  )
+  for(raw_density in list(
+    list(density = list(x = c(0, 1), y = c(1, 2)), estimator = "iwmde"),
+    data.frame(x = c(0, 1), y = c(1, 2))
+  )){
+    expect_error(
+      BayesTools:::.posterior_density_from_attribute(raw_density),
+      "must be created with 'posterior_density_attribute()'",
+      fixed = TRUE
+    )
+  }
+  # containers of attributes carry no single density
   expect_null(BayesTools:::.posterior_density_from_attribute(list(
-    x = c(0, 1),
-    y = c(0, 0)
-  )))
-  expect_null(BayesTools:::.posterior_density_from_attribute(list(
-    x = c(1, 1),
-    y = c(1, 2)
+    theta = .posterior_density_for_test(x = c(0, 1), y = c(1, 2))
   )))
 })
 
 test_that("stored posterior density selection validates names and conditionals", {
 
-  density <- list(
+  density <- .posterior_density_for_test(
     parameter        = "theta",
     conditional      = c("b", "a"),
     conditional_rule = "OR",
@@ -1869,13 +2011,13 @@ test_that("stored posterior density selection validates names and conditionals",
 
 test_that("stored posterior ordinate selection continues past empty alias branches", {
 
-  alias_branch <- list(
+  alias_branch <- .posterior_ordinate_for_test(
     parameter = "phi",
     value     = 0,
     ordinate  = 100,
     method    = "wrong-parameter"
   )
-  valid_branch <- list(
+  valid_branch <- .posterior_ordinate_for_test(
     parameter = "theta",
     value     = 0,
     ordinate  = .5,
@@ -1896,27 +2038,33 @@ test_that("stored posterior ordinate selection continues past empty alias branch
 
 test_that("stored posterior density parser validates and aggregates point masses", {
 
-  parsed <- BayesTools:::.posterior_density_from_attribute(list(
+  parsed <- BayesTools:::.posterior_density_from_attribute(.posterior_density_for_test(
     x = seq(-1, 1, length.out = 11),
     y = rep(1, 11),
     point_masses = list(
-      location = c(0, 0, 1),
-      p        = c(.2, .3, .4)
+      x    = c(0, 0, 1),
+      mass = c(.2, .3, .4)
     )
   ))
 
   expect_equal(parsed$point_masses$x, c(0, 1))
   expect_equal(parsed$point_masses$mass, c(.5, .4))
 
-  parsed_invalid <- BayesTools:::.posterior_density_from_attribute(list(
-    x = seq(-1, 1, length.out = 11),
-    y = rep(1, 11),
-    point_masses = list(
-      x    = c(0, 1, 2),
-      mass = c(.6, .5, 2)
+  for(point_masses in list(
+    list(x = c(0, 1, 2), mass = c(.6, .5, 2)),
+    list(location = c(0, 1), p = c(.2, .3)),
+    data.frame(location = 0, mass = .2)
+  )){
+    expect_error(
+      .posterior_density_for_test(
+        x = seq(-1, 1, length.out = 11),
+        y = rep(1, 11),
+        point_masses = point_masses
+      ),
+      "Posterior density 'point_masses' metadata is invalid.",
+      fixed = TRUE
     )
-  ))
-  expect_null(parsed_invalid)
+  }
 })
 
 test_that("Savage_Dickey_BF ignores stored density range for normal approximation", {
@@ -1930,7 +2078,7 @@ test_that("Savage_Dickey_BF ignores stored density range for normal approximatio
     seq(.5, 1, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x      = seq(-1, 1, length.out = 101),
     y      = rep(1, 101),
     method = "iwmde"
@@ -1963,7 +2111,7 @@ test_that("Savage_Dickey_BF uses top-level stored density for list posteriors", 
   posterior_list <- list(level = posterior)
   class(posterior_list) <- c("marginal_posterior", "list")
   attr(posterior_list, "posterior_density") <- list(
-    level = list(
+    level = .posterior_density_for_test(
       x      = stored_x,
       y      = stored_y,
       method = "iwmde"
@@ -1986,7 +2134,7 @@ test_that("Savage_Dickey_BF uses top-level stored density for list posteriors", 
   attr(posterior_list, "posterior_density") <- NULL
   attr(posterior_list, "posterior_densities") <- list(
     list(
-      level = list(
+      level = .posterior_density_for_test(
         x      = stored_x,
         y      = stored_y,
         method = "iwmde"
@@ -2021,12 +2169,12 @@ test_that("Savage_Dickey_BF respects child conditionals for top-level sources", 
   posterior_list <- list(level = posterior)
   class(posterior_list) <- c("marginal_posterior", "list")
   attr(posterior_list, "posterior_density") <- list(
-    level = list(
+    level = .posterior_density_for_test(
       x      = seq(-1, 1, length.out = 101),
       y      = rep(100, 101),
       method = "stale"
     ),
-    matching = list(
+    matching = .posterior_density_for_test(
       parameter   = "level",
       conditional = "theta",
       x           = seq(-1, 1, length.out = 101),
@@ -2048,12 +2196,12 @@ test_that("Savage_Dickey_BF respects child conditionals for top-level sources", 
 
   attr(posterior_list, "posterior_density") <- NULL
   attr(posterior_list, "posterior_ordinates") <- list(list(
-    level = list(
+    level = .posterior_ordinate_for_test(
       value    = 0,
       ordinate = 100,
       method   = "stale"
     ),
-    matching = list(
+    matching = .posterior_ordinate_for_test(
       parameter   = "level",
       conditional = "theta",
       value       = 0,
@@ -2089,7 +2237,7 @@ test_that("Savage_Dickey_BF revalidates positional top-level sources", {
   posterior_list <- list(level = posterior)
   class(posterior_list) <- c("marginal_posterior", "list")
 
-  mismatched_density <- list(
+  mismatched_density <- .posterior_density_for_test(
     parameter   = "level",
     conditional = "phi",
     x           = seq(-1, 1, length.out = 101),
@@ -2108,7 +2256,7 @@ test_that("Savage_Dickey_BF revalidates positional top-level sources", {
     "stale-density"
   )
 
-  mismatched_ordinate <- list(
+  mismatched_ordinate <- .posterior_ordinate_for_test(
     parameter   = "level",
     conditional = "phi",
     value       = 0,
@@ -2135,7 +2283,7 @@ test_that("Savage_Dickey_BF revalidates positional top-level sources", {
   )
 })
 
-test_that("Savage_Dickey_BF accepts list-of-record posterior ordinates", {
+test_that("Savage_Dickey_BF accepts multi-ordinate posterior attributes", {
 
   prior_density <- BayesTools:::.prior_linear_combination_density(
     prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
@@ -2146,13 +2294,18 @@ test_that("Savage_Dickey_BF accepts list-of-record posterior ordinates", {
     seq(-3, 3, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_ordinate") <- list(
-    parameter   = "theta",
-    method      = "qCMDE",
-    diagnostics = list(relative_mcse = c(.10, .20)),
-    ordinates   = list(
-      list(value = -.50, ordinate = 100),
-      list(value = 0, ordinate = .50)
+  attr(posterior, "posterior_ordinate") <- posterior_ordinate_append(
+    .posterior_ordinate_for_test(
+      value       = -.50,
+      ordinate    = 100,
+      parameter   = "theta",
+      diagnostics = list(relative_mcse = .10)
+    ),
+    .posterior_ordinate_for_test(
+      value       = 0,
+      ordinate    = .50,
+      parameter   = "theta",
+      diagnostics = list(relative_mcse = .20)
     )
   )
 
@@ -2194,12 +2347,12 @@ test_that("Savage_Dickey_BF gives valid child sources precedence over top-level 
     seq(-3, 3, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x      = seq(-1, 1, length.out = 101),
     y      = rep(.50, 101),
     method = "child-density"
   )
-  attr(posterior, "posterior_ordinate") <- list(
+  attr(posterior, "posterior_ordinate") <- .posterior_ordinate_for_test(
     value    = 0,
     ordinate = .50,
     method   = "child-ordinate"
@@ -2207,14 +2360,14 @@ test_that("Savage_Dickey_BF gives valid child sources precedence over top-level 
   posterior_list <- list(level = posterior)
   class(posterior_list) <- c("marginal_posterior", "list")
   attr(posterior_list, "posterior_density") <- list(
-    level = list(
+    level = .posterior_density_for_test(
       x      = seq(-1, 1, length.out = 101),
       y      = rep(100, 101),
       method = "top-density"
     )
   )
   attr(posterior_list, "posterior_ordinate") <- list(
-    level = list(
+    level = .posterior_ordinate_for_test(
       value    = 0,
       ordinate = 100,
       method   = "top-ordinate"
@@ -2240,7 +2393,7 @@ test_that("Savage_Dickey_BF gives valid child sources precedence over top-level 
   expect_equal(as.numeric(out[["level"]]), expected, tolerance = 1e-12)
 })
 
-test_that("Savage_Dickey_BF replaces invalid child sources with valid top-level sources", {
+test_that("Savage_Dickey_BF replaces null-unusable child sources and rejects invalid ones", {
 
   prior_density <- BayesTools:::.prior_linear_combination_density(
     prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
@@ -2251,7 +2404,7 @@ test_that("Savage_Dickey_BF replaces invalid child sources with valid top-level 
     seq(-3, 3, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_ordinate") <- list(
+  attr(posterior, "posterior_ordinate") <- .posterior_ordinate_for_test(
     value    = 1,
     ordinate = 100,
     method   = "wrong-null"
@@ -2259,7 +2412,7 @@ test_that("Savage_Dickey_BF replaces invalid child sources with valid top-level 
   posterior_list <- list(level = posterior)
   class(posterior_list) <- c("marginal_posterior", "list")
   attr(posterior_list, "posterior_ordinate") <- list(
-    level = list(
+    level = .posterior_ordinate_for_test(
       value    = 0,
       ordinate = .50,
       method   = "top-ordinate"
@@ -2277,31 +2430,37 @@ test_that("Savage_Dickey_BF replaces invalid child sources with valid top-level 
   expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) / .50
   expect_equal(as.numeric(out[["level"]]), expected, tolerance = 1e-12)
 
-  attr(posterior, "posterior_ordinate") <- NULL
-  attr(posterior, "posterior_density") <- list(
-    x      = 0,
-    y      = 100,
+  # an invalid child attribute is an error, not a reason to use another source
+  invalid_density <- .posterior_density_for_test(
+    x      = c(-1, 1),
+    y      = c(100, 100),
     method = "invalid-child-density"
   )
+  invalid_density$x <- 0
+  invalid_density$y <- 100
+  attr(posterior, "posterior_ordinate") <- NULL
+  attr(posterior, "posterior_density") <- invalid_density
   posterior_list <- list(level = posterior)
   class(posterior_list) <- c("marginal_posterior", "list")
   attr(posterior_list, "posterior_density") <- list(
-    level = list(
+    level = .posterior_density_for_test(
       x      = seq(-1, 1, length.out = 101),
       y      = rep(.50, 101),
       method = "top-density"
     )
   )
 
-  out <- Savage_Dickey_BF(
-    posterior_list,
-    null_hypothesis      = 0,
-    normal_approximation = FALSE,
-    silent               = TRUE,
-    density_method       = "precomputed"
+  expect_error(
+    Savage_Dickey_BF(
+      posterior_list,
+      null_hypothesis      = 0,
+      normal_approximation = FALSE,
+      silent               = TRUE,
+      density_method       = "precomputed"
+    ),
+    "Posterior density metadata is invalid",
+    fixed = TRUE
   )
-
-  expect_equal(as.numeric(out[["level"]]), expected, tolerance = 1e-12)
 })
 
 test_that("Savage_Dickey_BF replaces null-unusable child density with top-level density", {
@@ -2315,7 +2474,7 @@ test_that("Savage_Dickey_BF replaces null-unusable child density with top-level 
     seq(-3, 3, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x      = seq(1, 2, length.out = 101),
     y      = rep(100, 101),
     method = "child-misses-null"
@@ -2323,7 +2482,7 @@ test_that("Savage_Dickey_BF replaces null-unusable child density with top-level 
   posterior_list <- list(level = posterior)
   class(posterior_list) <- c("marginal_posterior", "list")
   attr(posterior_list, "posterior_density") <- list(
-    level = list(
+    level = .posterior_density_for_test(
       x      = seq(-1, 1, length.out = 101),
       y      = rep(.50, 101),
       method = "top-density"
@@ -2382,7 +2541,7 @@ test_that("Savage_Dickey_BF uses declarations rather than posterior-null cluster
   )
 
   attr(posterior_cluster, "posterior_atoms") <- posterior_atom_attribute(
-    list(location = 0, mass = .08)
+    list(x = 0, mass = .08)
   )
   expect_error(
     Savage_Dickey_BF(
@@ -2408,13 +2567,13 @@ test_that("Savage_Dickey_BF uses declarations rather than posterior-null cluster
     seq(-2, 2, length.out = 101),
     continuous_prior
   )
-  attr(posterior_with_stored_point, "posterior_density") <- list(
+  attr(posterior_with_stored_point, "posterior_density") <- .posterior_density_for_test(
     x            = seq(-2, 2, length.out = 101),
     y            = stats::dnorm(seq(-2, 2, length.out = 101)),
-    point_masses = list(location = 0, p = .2)
+    point_masses = list(x = 0, mass = .2)
   )
   attr(posterior_with_stored_point, "posterior_atoms") <-
-    posterior_atom_attribute(list(location = 0, mass = .2))
+    posterior_atom_attribute(list(x = 0, mass = .2))
 
   expect_error(
     Savage_Dickey_BF(
@@ -2440,7 +2599,7 @@ test_that("Savage_Dickey_BF excludes off-null atoms from the continuous ordinate
     continuous_prior
   )
   attr(posterior, "posterior_atoms") <- posterior_atom_attribute(
-    list(location = 2, mass = 0.2)
+    list(x = 2, mass = 0.2)
   )
 
   expect_error(
@@ -2517,7 +2676,7 @@ test_that("plot_marginal uses stored posterior density when available", {
   )
   stored_x <- seq(-2, 2, length.out = 51)
   stored_y <- stats::dnorm(stored_x, sd = .8)
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x      = stored_x,
     y      = stored_y,
     method = "iwmde"
@@ -2547,7 +2706,7 @@ test_that("plot_marginal does not add sample spikes to stored full density", {
   )
   stored_x <- seq(-2, 2, length.out = 51)
   stored_y <- stats::dnorm(stored_x)
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x      = stored_x,
     y      = stored_y,
     method = "iwmde"
@@ -2588,14 +2747,13 @@ test_that("plot_marginal accepts posterior density diagnostics", {
   )
   stored_x <- seq(-2, 2, length.out = 51)
   stored_y <- stats::dnorm(stored_x, sd = .8)
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     parameter    = "theta",
-    status       = "ok",
-    point_masses = list(location = 0, p = .2),
+    point_masses = list(x = 0, mass = .2),
     x            = stored_x,
     y            = stored_y,
     method       = "iwmde",
-    diagnostics = list(min_ess = 40)
+    diagnostics  = list(min_ess = 40)
   )
 
   plot_data <- BayesTools:::.plot_data_marginal_samples(
@@ -4224,7 +4382,7 @@ test_that("point-mass metadata merge atoms by exact location", {
   expect_length(continuous$samples, 600L)
   expect_equal(continuous$continuous_mass, .6, tolerance = 1e-12)
 
-  density <- BayesTools:::.posterior_density_from_attribute(list(
+  density <- BayesTools:::.posterior_density_from_attribute(.posterior_density_for_test(
     x = c(0, location, 0.3, location, 1),
     y = c(1, 2, 3, 4, 5)
   ))

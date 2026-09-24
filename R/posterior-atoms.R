@@ -4,8 +4,8 @@
 #' continuous posterior from one containing atoms. Supply \code{NULL} to
 #' explicitly declare that the posterior has no point masses.
 #'
-#' @param point_masses optional data frame or list with \code{x} (or
-#' \code{location}) and \code{mass} (or \code{p}) entries.
+#' @param point_masses optional data frame or list with \code{x} and
+#' \code{mass} entries.
 #' @param source short label describing the source of the declaration.
 #'
 #' @return A posterior atom metadata object suitable for the

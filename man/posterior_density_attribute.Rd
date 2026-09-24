@@ -46,17 +46,14 @@ posterior_ordinate_has_value(ordinate, value)
 \item{diagnostics}{optional estimator diagnostics.}
 
 \item{point_masses}{optional point-mass table/list with \code{x} and
-\code{mass} entries. Aliases \code{location} for \code{x} and \code{p} for
-\code{mass} are accepted. Locations and masses must be finite, masses must
-be positive, and the aggregated point mass cannot exceed one.}
+\code{mass} entries. Locations and masses must be finite, masses must be
+positive, and the aggregated point mass cannot exceed one.}
 
-\item{support}{optional exact support metadata for the density scale. Supply
-a trusted numeric \code{c(lower, upper)} vector, or a list with
-\code{bounds}, optional \code{points}, optional \code{type}, and optional
-\code{exact} entries. The \code{type} entry may be \code{"interval"},
-\code{"points"}, or \code{"mixed"}; KDE boundary reflection uses only
-interval-capable support. Set \code{exact = FALSE} when the values are
-plotting or integration limits rather than true support boundaries.}
+\item{support}{optional exact support metadata for the density scale,
+created with \code{\link{posterior_support_attribute}()}. KDE boundary
+reflection uses only interval-capable support; support with
+\code{exact = FALSE} (plotting or integration limits rather than true
+support boundaries) is not used to exclude a null hypothesis.}
 
 \item{...}{additional named metadata fields, for example \code{parameter},
 \code{conditional}, or \code{conditional_rule}.}
@@ -101,8 +98,14 @@ entries rather than to the multi-ordinate container as a whole. The
 requested point-null value and, when a kernel-density fallback must be
 computed from posterior samples, to supply boundary reflection. It must
 describe the true posterior support on the same scale as \code{x}, not the
-finite range of an estimator grid. The stable public metadata schema is the
-object returned by these constructors. Raw list and data-frame attributes
-with equivalent fields are parsed for backwards compatibility, but extension
-code should prefer the constructors.
+finite range of an estimator grid.
+
+The objects returned by these constructors are the only accepted posterior
+density and ordinate metadata: other objects stored in the
+\code{posterior_density} or \code{posterior_ordinate} attributes are
+rejected with an error. An unclassed list of such objects, named by
+parameter or level, can hold the metadata of several parameters or levels.
+The metadata fields used to match an attribute to posterior samples are
+\code{parameter}, \code{conditional}, \code{conditional_rule}, and
+\code{condition_key}.
 }

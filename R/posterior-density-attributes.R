@@ -1,102 +1,90 @@
-.posterior_density_from_attribute <- function(posterior_density){
+# Posterior density, ordinate, and support metadata are accepted only as the
+# classed objects created by posterior_density_attribute(),
+# posterior_ordinate_attribute() / posterior_ordinate_append(), and
+# posterior_support_attribute(). An unclassed list whose elements are lists
+# (such objects or nested lists of them) is a container keyed by parameter,
+# level, or position; any other object is rejected.
+.posterior_metadata_is_container <- function(x){
+
+  is.list(x) && !is.object(x) &&
+    all(vapply(x, function(element) is.null(element) || is.list(element), logical(1)))
+}
+
+.posterior_density_kind <- function(posterior_density){
 
   if(is.null(posterior_density)){
+    return("null")
+  }
+  if(inherits(posterior_density, "BayesTools_posterior_density")){
+    return("density")
+  }
+  if(.posterior_metadata_is_container(posterior_density)){
+    return("container")
+  }
+
+  stop(
+    "Posterior density metadata must be created with 'posterior_density_attribute()'.",
+    call. = FALSE
+  )
+}
+
+.posterior_ordinate_kind <- function(posterior_ordinate){
+
+  if(is.null(posterior_ordinate)){
+    return("null")
+  }
+  if(inherits(posterior_ordinate, "BayesTools_posterior_ordinate")){
+    return("ordinate")
+  }
+  if(inherits(posterior_ordinate, "BayesTools_posterior_ordinates")){
+    return("ordinates")
+  }
+  if(.posterior_metadata_is_container(posterior_ordinate)){
+    return("container")
+  }
+
+  stop(
+    "Posterior ordinate metadata must be created with ",
+    "'posterior_ordinate_attribute()' or 'posterior_ordinate_append()'.",
+    call. = FALSE
+  )
+}
+
+.posterior_density_from_attribute <- function(posterior_density){
+
+  if(!identical(.posterior_density_kind(posterior_density), "density")){
     return(NULL)
   }
 
-  if(is.list(posterior_density) &&
-     !is.null(posterior_density[["status"]]) &&
-     !identical(posterior_density[["status"]], "ok")){
-    return(NULL)
+  out <- .posterior_density_normalize(posterior_density)
+  if(is.character(out)){
+    stop("Posterior density metadata is invalid: ", out, ".", call. = FALSE)
   }
 
-  source       <- posterior_density
-  method       <- NULL
-  diagnostics  <- NULL
-  point_masses <- NULL
-  point_masses_declared <- NULL
-  support      <- NULL
+  return(out)
+}
 
-  if(is.list(posterior_density)){
-    if(!is.null(posterior_density[["method"]])){
-      method <- posterior_density[["method"]]
-    }
-    if(!is.null(posterior_density[["estimator"]])){
-      method <- posterior_density[["estimator"]]
-    }
-    if(!is.null(posterior_density[["diagnostics"]])){
-      diagnostics <- posterior_density[["diagnostics"]]
-    }
-    if(!is.null(posterior_density[["point_masses"]])){
-      point_masses <- posterior_density[["point_masses"]]
-    }
-    if(!is.null(posterior_density[["point_masses_declared"]])){
-      point_masses_declared <- isTRUE(posterior_density[["point_masses_declared"]])
-    }
-    if(!is.null(posterior_density[["support"]])){
-      support <- .posterior_support_from_attribute(
-        posterior_density[["support"]],
-        exact = posterior_density[["support_exact"]]
-      )
-    }else if(!is.null(posterior_density[["posterior_support"]])){
-      support <- .posterior_support_from_attribute(
-        posterior_density[["posterior_support"]],
-        exact = posterior_density[["support_exact"]]
-      )
-    }
-    if(!is.null(posterior_density[["density"]]) &&
-       (is.list(posterior_density[["density"]]) ||
-        is.data.frame(posterior_density[["density"]]))){
-      source <- posterior_density[["density"]]
-    }
+# Returns the density attribute with a sorted grid (heights at repeated
+# locations averaged), normalized point masses, and validated support, or a
+# character reason when the attribute is invalid.
+.posterior_density_normalize <- function(posterior_density){
+
+  if(!identical(posterior_density[["status"]], "ok")){
+    return("its status is not 'ok'")
   }
 
-  if(is.data.frame(source)){
-    if(!all(c("x", "y") %in% colnames(source))){
-      return(NULL)
-    }
-    x <- source[["x"]]
-    y <- source[["y"]]
-  }else if(is.list(source) && !is.null(source[["x"]]) && !is.null(source[["y"]])){
-    x <- source[["x"]]
-    y <- source[["y"]]
-    if(is.null(method) && !is.null(source[["method"]])){
-      method <- source[["method"]]
-    }
-    if(is.null(method) && !is.null(source[["estimator"]])){
-      method <- source[["estimator"]]
-    }
-    if(is.null(point_masses) && !is.null(source[["point_masses"]])){
-      point_masses <- source[["point_masses"]]
-    }
-    if(is.null(support)){
-      if(!is.null(source[["support"]])){
-        support <- .posterior_support_from_attribute(
-          source[["support"]],
-          exact = source[["support_exact"]]
-        )
-      }else if(!is.null(source[["posterior_support"]])){
-        support <- .posterior_support_from_attribute(
-          source[["posterior_support"]],
-          exact = source[["support_exact"]]
-        )
-      }
-    }
-  }else{
-    return(NULL)
+  x <- posterior_density[["x"]]
+  y <- posterior_density[["y"]]
+  if(!is.numeric(x) || !is.numeric(y) || length(x) != length(y)){
+    return("'x' and 'y' must be numeric vectors of the same length")
   }
-
+  if(any(!is.finite(x)) || any(!is.finite(y))){
+    return("density grid values must be finite")
+  }
   x <- as.numeric(x)
   y <- as.numeric(y)
-  if(length(x) != length(y)){
-    return(NULL)
-  }
-
-  keep <- is.finite(x) & is.finite(y)
-  x <- x[keep]
-  y <- y[keep]
   if(length(x) < 2L || any(y < 0) || !any(y > 0)){
-    return(NULL)
+    return("the density grid needs at least two points, non-negative heights, and a positive height")
   }
 
   order_x <- order(x)
@@ -114,26 +102,25 @@
     y <- y[order_x]
   }
   if(length(x) < 2L || diff(range(x)) <= 0){
-    return(NULL)
+    return("the density grid needs at least two distinct locations")
   }
 
-  if(is.null(point_masses_declared)){
-    point_masses_declared <- !is.null(point_masses)
-  }
-  point_masses <- .posterior_density_point_masses(point_masses)
+  point_masses <- .posterior_density_point_masses(posterior_density[["point_masses"]])
   if(is.null(point_masses)){
-    return(NULL)
+    return("its 'point_masses' metadata are invalid")
   }
 
-  return(list(
-    x                     = x,
-    y                     = y,
-    method                = method,
-    diagnostics           = diagnostics,
-    support               = support,
-    point_masses          = point_masses,
-    point_masses_declared = point_masses_declared
-  ))
+  posterior_density[["x"]]            <- x
+  posterior_density[["y"]]            <- y
+  posterior_density[["point_masses"]] <- point_masses
+  posterior_density["point_masses_declared"] <- list(
+    isTRUE(posterior_density[["point_masses_declared"]])
+  )
+  posterior_density["support"] <- list(
+    .posterior_support_from_attribute(posterior_density[["support"]])
+  )
+
+  return(posterior_density)
 }
 
 .posterior_density_point_masses <- function(point_masses){
@@ -144,41 +131,15 @@
   }
 
   if(is.data.frame(point_masses)){
-    x_name <- if("x" %in% colnames(point_masses)){
-      "x"
-    }else if("location" %in% colnames(point_masses)){
-      "location"
-    }else{
-      NULL
-    }
-    mass_name <- if("mass" %in% colnames(point_masses)){
-      "mass"
-    }else if("p" %in% colnames(point_masses)){
-      "p"
-    }else{
-      NULL
-    }
-    if(is.null(x_name) || is.null(mass_name)){
+    if(!all(c("x", "mass") %in% colnames(point_masses))){
       return(NULL)
     }
-    x <- point_masses[[x_name]]
-    mass <- point_masses[[mass_name]]
-  }else if(is.list(point_masses) &&
-            (!is.null(point_masses[["x"]]) || !is.null(point_masses[["location"]])) &&
-            (!is.null(point_masses[["mass"]]) || !is.null(point_masses[["p"]]))){
-    x <- if(!is.null(point_masses[["x"]])){
-      point_masses[["x"]]
-    }else{
-      point_masses[["location"]]
-    }
-    mass <- if(!is.null(point_masses[["mass"]])){
-      point_masses[["mass"]]
-    }else{
-      point_masses[["p"]]
-    }
-  }else{
+  }else if(!is.list(point_masses) ||
+           is.null(point_masses[["x"]]) || is.null(point_masses[["mass"]])){
     return(NULL)
   }
+  x    <- point_masses[["x"]]
+  mass <- point_masses[["mass"]]
 
   if(length(x) != length(mass)){
     return(NULL)

@@ -76,35 +76,18 @@
   ))
 }
 
-.posterior_density_metadata_values <- function(posterior_density, fields){
+# Metadata of a posterior density or ordinate attribute; containers carry none.
+.posterior_density_metadata_values <- function(posterior_density, field){
 
-  values <- NULL
-  if(is.list(posterior_density)){
-    for(field in fields){
-      if(!is.null(posterior_density[[field]])){
-        values <- c(values, unlist(posterior_density[[field]], use.names = FALSE))
-      }
-    }
-    for(container_name in c("density", "ordinate", "ordinates")){
-      if(!is.null(posterior_density[[container_name]]) &&
-         is.list(posterior_density[[container_name]])){
-        for(field in fields){
-          if(!is.null(posterior_density[[container_name]][[field]])){
-            values <- c(values, unlist(posterior_density[[container_name]][[field]], use.names = FALSE))
-          }
-        }
-      }
-    }
-  }
-  if(is.data.frame(posterior_density)){
-    for(field in fields){
-      if(field %in% colnames(posterior_density)){
-        values <- c(values, unique(posterior_density[[field]]))
-      }
-    }
+  if(!inherits(posterior_density, c(
+    "BayesTools_posterior_density",
+    "BayesTools_posterior_ordinate",
+    "BayesTools_posterior_ordinates"
+  ))){
+    return(character())
   }
 
-  values <- as.character(values)
+  values <- as.character(unlist(posterior_density[[field]], use.names = FALSE))
   values <- values[!is.na(values) & nzchar(values)]
 
   return(unique(values))
@@ -112,26 +95,17 @@
 
 .posterior_density_parameter_metadata <- function(posterior_density){
 
-  return(.posterior_density_metadata_values(
-    posterior_density,
-    c("parameter", "parameters", "parameter_name", "name")
-  ))
+  return(.posterior_density_metadata_values(posterior_density, "parameter"))
 }
 
 .posterior_density_conditional_metadata <- function(posterior_density){
 
-  return(.posterior_density_metadata_values(
-    posterior_density,
-    c("conditional", "condition", "conditioned_on", "conditioning")
-  ))
+  return(.posterior_density_metadata_values(posterior_density, "conditional"))
 }
 
 .posterior_density_conditional_rule_metadata <- function(posterior_density){
 
-  rule <- .posterior_density_metadata_values(
-    posterior_density,
-    c("conditional_rule", "condition_rule", "conditioning_rule")
-  )
+  rule <- .posterior_density_metadata_values(posterior_density, "conditional_rule")
   if(length(rule) == 0L){
     return(NULL)
   }
@@ -141,10 +115,7 @@
 
 .posterior_density_condition_key_metadata <- function(posterior_density){
 
-  key <- .posterior_density_metadata_values(
-    posterior_density,
-    c("condition_key", "conditional_key")
-  )
+  key <- .posterior_density_metadata_values(posterior_density, "condition_key")
   if(length(key) == 0L){
     return(NULL)
   }
@@ -286,7 +257,7 @@
                                              allow_unlabeled = TRUE){
 
   posterior_density <- attr(samples, "posterior_density", exact = TRUE)
-  if(is.null(posterior_density)){
+  if(identical(.posterior_density_kind(posterior_density), "null")){
     return(list(present = FALSE, relevant = FALSE, valid = FALSE, value = NULL))
   }
   if(is.null(aliases)){
@@ -433,7 +404,7 @@
                                               allow_unlabeled = TRUE){
 
   posterior_ordinate <- attr(samples, "posterior_ordinate", exact = TRUE)
-  if(is.null(posterior_ordinate)){
+  if(identical(.posterior_ordinate_kind(posterior_ordinate), "null")){
     return(list(present = FALSE, relevant = FALSE, valid = FALSE, value = NULL))
   }
   if(is.null(aliases)){
@@ -472,51 +443,19 @@
   )
 }
 
+# Whether the object is a valid posterior-ordinate attribute (containers are
+# not); invalid attributes and unclassed metadata stop with an error.
 .posterior_ordinate_has_data <- function(posterior_ordinate){
 
-  if(is.null(posterior_ordinate)){
-    return(FALSE)
-  }
-  if(is.data.frame(posterior_ordinate)){
-    return(
-      any(c("x", "value", "null_hypothesis") %in% colnames(posterior_ordinate)) &&
-        any(c("y", "ordinate", "height", "posterior_height") %in% colnames(posterior_ordinate))
-    )
-  }
-  if(!is.list(posterior_ordinate)){
-    return(FALSE)
-  }
-  if(!is.null(posterior_ordinate[["status"]]) &&
-     !identical(posterior_ordinate[["status"]], "ok")){
-    return(FALSE)
-  }
-  if((!is.null(posterior_ordinate[["x"]]) ||
-      !is.null(posterior_ordinate[["value"]]) ||
-      !is.null(posterior_ordinate[["null_hypothesis"]])) &&
-     (!is.null(posterior_ordinate[["y"]]) ||
-      !is.null(posterior_ordinate[["ordinate"]]) ||
-      !is.null(posterior_ordinate[["height"]]) ||
-      !is.null(posterior_ordinate[["posterior_height"]]))){
+  kind <- .posterior_ordinate_kind(posterior_ordinate)
+  if(identical(kind, "ordinate")){
+    .posterior_ordinate_values(posterior_ordinate)
     return(TRUE)
   }
-  if(!is.null(posterior_ordinate[["ordinate"]]) &&
-     (is.list(posterior_ordinate[["ordinate"]]) ||
-      is.data.frame(posterior_ordinate[["ordinate"]]))){
-    return(.posterior_ordinate_has_data(posterior_ordinate[["ordinate"]]))
-  }
-  if(!is.null(posterior_ordinate[["ordinates"]]) &&
-     (is.list(posterior_ordinate[["ordinates"]]) ||
-      is.data.frame(posterior_ordinate[["ordinates"]]))){
-    if(.posterior_ordinate_has_data(posterior_ordinate[["ordinates"]])){
-      return(TRUE)
-    }
-    if(is.list(posterior_ordinate[["ordinates"]])){
-      return(any(vapply(
-        posterior_ordinate[["ordinates"]],
-        .posterior_ordinate_has_data,
-        logical(1)
-      )))
-    }
+  if(identical(kind, "ordinates")){
+    entries <- .posterior_ordinate_entries(posterior_ordinate)
+    return(length(entries) > 0L &&
+             all(vapply(entries, .posterior_ordinate_has_data, logical(1))))
   }
 
   return(FALSE)

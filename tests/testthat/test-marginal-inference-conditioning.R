@@ -1,5 +1,18 @@
 skip_if_not_test_profile("unit")
 
+.posterior_density_for_test <- function(x, y, method = "iwmde",
+                                        density_method = "precomputed", ...){
+  posterior_density_attribute(x = x, y = y, method = method,
+                              density_method = density_method, ...)
+}
+
+.posterior_ordinate_for_test <- function(value, ordinate, method = "qCMDE",
+                                         density_method = "precomputed", ...){
+  posterior_ordinate_attribute(value = value, ordinate = ordinate,
+                               method = method,
+                               density_method = density_method, ...)
+}
+
 .mock_marginal_fit <- function(posterior, prior_list) {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
@@ -164,7 +177,7 @@ test_that("as_mixed_posteriors propagates named upstream posterior densities", {
   stored_x <- seq(-2, 2, length.out = 41)
   stored_y <- stats::dnorm(stored_x, mean = .25, sd = .8)
   attr(fit, "posterior_density") <- list(
-    theta = list(
+    theta = .posterior_density_for_test(
       parameter = "theta",
       x         = stored_x,
       y         = stored_y,
@@ -214,7 +227,7 @@ test_that("as_mixed_posteriors does not reuse stale conditional densities", {
     theta_indicator = c(0, 1, 0, 1, 1),
     phi_indicator   = c(0, 0, 1, 1, 1)
   )
-  stored_density <- list(
+  stored_density <- .posterior_density_for_test(
     parameter = "theta",
     x         = seq(-3, 3, length.out = 61),
     y         = rep(1, 61),
@@ -268,7 +281,7 @@ test_that("formula marginals do not inherit raw coefficient densities", {
     prior_list
   )
   attr(fit, "posterior_density") <- list(
-    mu_x = list(
+    mu_x = .posterior_density_for_test(
       parameter = "mu_x",
       x         = seq(-2, 2, length.out = 41),
       y         = rep(1, 41),
@@ -310,19 +323,19 @@ test_that("factor marginals attach only level-matched densities", {
   )
   stored_x <- seq(-3, 3, length.out = 31)
   attr(fit, "posterior_density") <- list(
-    "mu_fac[1]" = list(
+    "mu_fac[1]" = .posterior_density_for_test(
       parameter = "mu_fac[1]",
       x         = stored_x,
       y         = rep(100, length(stored_x)),
       method    = "raw-coefficient"
     ),
-    B = list(
+    B = .posterior_density_for_test(
       parameter = "B",
       x         = stored_x,
       y         = stats::dnorm(stored_x, mean = -0.5, sd = .8),
       method    = "iwmde"
     ),
-    C = list(
+    C = .posterior_density_for_test(
       parameter = "C",
       x         = stored_x,
       y         = stats::dnorm(stored_x, mean = 1.5, sd = .8),
@@ -353,7 +366,7 @@ test_that("as_marginal_inference rejects precomputed marginal-inference BFs", {
   stored_x <- seq(-4, 4, length.out = 401)
   stored_y <- stats::dnorm(stored_x, mean = .75, sd = .9)
   attr(fit, "posterior_density") <- list(
-    theta = list(
+    theta = .posterior_density_for_test(
       parameter = "theta",
       x         = stored_x,
       y         = stored_y,
@@ -418,7 +431,7 @@ test_that("as_marginal_inference does not consume raw stored posterior ordinates
     prior_list
   )
   attr(fit, "posterior_ordinate") <- list(
-    theta = list(
+    theta = .posterior_ordinate_for_test(
       parameter   = "theta",
       value       = .25,
       ordinate    = .5,

@@ -70,10 +70,16 @@ posterior_density_method_uses_precomputed <- function(method){
 #' requested point-null value and, when a kernel-density fallback must be
 #' computed from posterior samples, to supply boundary reflection. It must
 #' describe the true posterior support on the same scale as \code{x}, not the
-#' finite range of an estimator grid. The stable public metadata schema is the
-#' object returned by these constructors. Raw list and data-frame attributes
-#' with equivalent fields are parsed for backwards compatibility, but extension
-#' code should prefer the constructors.
+#' finite range of an estimator grid.
+#'
+#' The objects returned by these constructors are the only accepted posterior
+#' density and ordinate metadata: other objects stored in the
+#' \code{posterior_density} or \code{posterior_ordinate} attributes are
+#' rejected with an error. An unclassed list of such objects, named by
+#' parameter or level, can hold the metadata of several parameters or levels.
+#' The metadata fields used to match an attribute to posterior samples are
+#' \code{parameter}, \code{conditional}, \code{conditional_rule}, and
+#' \code{condition_key}.
 #'
 #' @param x numeric density grid locations.
 #' @param y numeric density grid heights.
@@ -81,16 +87,13 @@ posterior_density_method_uses_precomputed <- function(method){
 #' @param density_method public density method label stored in the attribute.
 #' @param diagnostics optional estimator diagnostics.
 #' @param point_masses optional point-mass table/list with \code{x} and
-#' \code{mass} entries. Aliases \code{location} for \code{x} and \code{p} for
-#' \code{mass} are accepted. Locations and masses must be finite, masses must
-#' be positive, and the aggregated point mass cannot exceed one.
-#' @param support optional exact support metadata for the density scale. Supply
-#' a trusted numeric \code{c(lower, upper)} vector, or a list with
-#' \code{bounds}, optional \code{points}, optional \code{type}, and optional
-#' \code{exact} entries. The \code{type} entry may be \code{"interval"},
-#' \code{"points"}, or \code{"mixed"}; KDE boundary reflection uses only
-#' interval-capable support. Set \code{exact = FALSE} when the values are
-#' plotting or integration limits rather than true support boundaries.
+#' \code{mass} entries. Locations and masses must be finite, masses must be
+#' positive, and the aggregated point mass cannot exceed one.
+#' @param support optional exact support metadata for the density scale,
+#' created with \code{\link{posterior_support_attribute}()}. KDE boundary
+#' reflection uses only interval-capable support; support with
+#' \code{exact = FALSE} (plotting or integration limits rather than true
+#' support boundaries) is not used to exclude a null hypothesis.
 #' @param ... additional named metadata fields, for example \code{parameter},
 #' \code{conditional}, or \code{conditional_rule}.
 #'
@@ -135,10 +138,11 @@ posterior_density_attribute <- function(x, y, method, density_method,
   }
 
   if(!is.null(support)){
-    support <- .posterior_support_from_attribute(support)
-    if(is.null(support)){
-      stop("Posterior density support metadata is invalid.", call. = FALSE)
+    if(!inherits(support, "BayesTools_posterior_support")){
+      stop("'support' must be created with 'posterior_support_attribute()'.",
+           call. = FALSE)
     }
+    support <- .posterior_support_from_attribute(support)
   }
 
   point_masses_declared <- !is.null(point_masses)
@@ -161,7 +165,7 @@ posterior_density_attribute <- function(x, y, method, density_method,
   ), metadata)
   class(out) <- c("BayesTools_posterior_density", "list")
 
-  if(is.null(.posterior_density_from_attribute(out))){
+  if(is.character(.posterior_density_normalize(out))){
     stop("Posterior density attribute must contain a valid positive density grid.",
          call. = FALSE)
   }
@@ -252,7 +256,7 @@ posterior_ordinate_append <- function(existing, ordinate){
     if(is.null(ordinate)){
       return(NULL)
     }
-    if(!.posterior_ordinate_has_data(ordinate)){
+    if(!.posterior_ordinate_is_attribute(ordinate)){
       stop("'ordinate' is not a valid posterior ordinate attribute.",
            call. = FALSE)
     }
@@ -265,7 +269,7 @@ posterior_ordinate_append <- function(existing, ordinate){
     return(ordinate)
   }
   if(is.null(ordinate)){
-    if(!.posterior_ordinate_has_data(existing)){
+    if(!.posterior_ordinate_is_attribute(existing)){
       stop("'existing' is not a valid posterior ordinate attribute.",
            call. = FALSE)
     }
@@ -277,11 +281,11 @@ posterior_ordinate_append <- function(existing, ordinate){
     }
     return(existing)
   }
-  if(!.posterior_ordinate_has_data(existing)){
+  if(!.posterior_ordinate_is_attribute(existing)){
     stop("'existing' is not a valid posterior ordinate attribute.",
          call. = FALSE)
   }
-  if(!.posterior_ordinate_has_data(ordinate)){
+  if(!.posterior_ordinate_is_attribute(ordinate)){
     stop("'ordinate' is not a valid posterior ordinate attribute.",
          call. = FALSE)
   }
@@ -366,70 +370,49 @@ posterior_ordinate_has_value <- function(ordinate, value){
 }
 
 
+# The single-ordinate attributes of a posterior-ordinate attribute.
 .posterior_ordinate_entries <- function(ordinate){
 
-  if(is.list(ordinate) &&
-     !is.data.frame(ordinate[["ordinates"]]) &&
-     is.list(ordinate[["ordinates"]]) &&
-     is.null(ordinate[["ordinates"]][["x"]]) &&
-     is.null(ordinate[["ordinates"]][["value"]]) &&
-     is.null(ordinate[["ordinates"]][["null_hypothesis"]])){
-    return(ordinate[["ordinates"]])
+  kind <- .posterior_ordinate_kind(ordinate)
+  if(identical(kind, "ordinate")){
+    return(list(ordinate))
+  }
+  if(!identical(kind, "ordinates")){
+    return(list())
   }
 
-  return(list(ordinate))
+  entries <- ordinate[["ordinates"]]
+  if(!identical(ordinate[["status"]], "ok") || !is.list(entries) ||
+     is.object(entries) ||
+     !all(vapply(entries, inherits, logical(1), what = "BayesTools_posterior_ordinate"))){
+    stop(
+      "Posterior ordinate metadata is invalid: a multi-ordinate attribute needs ",
+      "status 'ok' and 'ordinates' created with 'posterior_ordinate_attribute()'.",
+      call. = FALSE
+    )
+  }
+
+  return(entries)
+}
+
+
+.posterior_ordinate_is_attribute <- function(ordinate){
+
+  inherits(ordinate, c(
+    "BayesTools_posterior_ordinate",
+    "BayesTools_posterior_ordinates"
+  )) && .posterior_ordinate_has_data(ordinate)
 }
 
 
 .posterior_ordinate_value_candidates <- function(ordinate){
 
-  values <- numeric()
-  if(is.null(ordinate)){
-    return(values)
-  }
-  if(is.data.frame(ordinate)){
-    value_name <- intersect(c("x", "value", "null_hypothesis"),
-                            colnames(ordinate))[1L]
-    if(!is.na(value_name)){
-      values <- c(values, ordinate[[value_name]])
-    }
-    values <- suppressWarnings(as.numeric(values))
-    values <- values[is.finite(values)]
-    return(unique(values))
-  }
-  if(!is.list(ordinate)){
-    return(values)
-  }
-  for(value_name in c("x", "value", "null_hypothesis")){
-    if(!is.null(ordinate[[value_name]])){
-      values <- c(values, ordinate[[value_name]])
-    }
-  }
-  for(container_name in c("ordinate", "ordinates")){
-    if(!is.null(ordinate[[container_name]]) &&
-       (is.list(ordinate[[container_name]]) ||
-        is.data.frame(ordinate[[container_name]]))){
-      if(is.list(ordinate[[container_name]]) &&
-         !is.data.frame(ordinate[[container_name]]) &&
-         is.null(ordinate[[container_name]][["x"]]) &&
-         is.null(ordinate[[container_name]][["value"]]) &&
-         is.null(ordinate[[container_name]][["null_hypothesis"]])){
-        for(entry in ordinate[[container_name]]){
-          values <- c(values, .posterior_ordinate_value_candidates(entry))
-        }
-      }else{
-        values <- c(
-          values,
-          .posterior_ordinate_value_candidates(ordinate[[container_name]])
-        )
-      }
-    }
-  }
+  values <- unlist(lapply(
+    .posterior_ordinate_entries(ordinate),
+    function(entry) .posterior_ordinate_values(entry)[["value"]]
+  ), use.names = FALSE)
 
-  values <- suppressWarnings(as.numeric(values))
-  values <- values[is.finite(values)]
-
-  return(unique(values))
+  return(unique(as.numeric(values)))
 }
 
 .posterior_ordinate_duplicated_values <- function(values){

@@ -103,73 +103,103 @@
     support$type %in% c("interval", "mixed")
 }
 
-.posterior_support_from_attribute <- function(support, exact = NULL){
+#' @title Posterior support metadata
+#'
+#' @description Constructs exact support metadata of a scalar posterior
+#' distribution, for the \code{posterior_support} attribute of posterior
+#' samples and the \code{support} of
+#' \code{\link{posterior_density_attribute}()}.
+#'
+#' @param bounds numeric vector \code{c(lower, upper)} with
+#' \code{lower <= upper}; bounds may be infinite.
+#' @param points optional finite numeric vector of point-support locations.
+#' @param type support type: \code{"interval"}, \code{"points"}, or
+#' \code{"mixed"}. If \code{NULL}, \code{"points"} is used when the finite
+#' \code{bounds} equal the range of \code{points} and \code{"interval"}
+#' otherwise.
+#' @param exact whether \code{bounds} and \code{points} describe the true
+#' support. Set \code{exact = FALSE} for plotting or integration limits;
+#' non-exact support is not used to exclude a null hypothesis value or to
+#' reflect a kernel density estimate.
+#' @param source optional label of the source of the support metadata.
+#'
+#' @details Posterior support metadata must be created with this constructor
+#' or by a BayesTools posterior producer; other objects stored as support
+#' metadata are rejected with an error. An unclassed list of such objects,
+#' named by column, can hold the support of several columns.
+#'
+#' @return A \code{BayesTools_posterior_support} object.
+#'
+#' @seealso [posterior_density_attribute()]
+#'
+#' @examples
+#' posterior_support_attribute(c(0, Inf))
+#' posterior_support_attribute(c(0, 1), points = c(0, 1), type = "points")
+#'
+#' @export
+posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
+                                        exact = TRUE, source = NULL){
+
+  check_real(bounds, "bounds", check_length = 2, allow_NA = FALSE)
+  if(bounds[1] > bounds[2]){
+    stop("'bounds' must be ordered: the lower bound cannot exceed the upper bound.",
+         call. = FALSE)
+  }
+  check_real(points, "points", check_length = 0, allow_NULL = TRUE,
+             allow_NA = FALSE)
+  if(any(!is.finite(points))){
+    stop("'points' must be finite.", call. = FALSE)
+  }
+  check_char(type, "type", allow_values = c("interval", "points", "mixed"),
+             allow_NULL = TRUE, allow_NA = FALSE)
+  if(identical(type, "points") && length(points) == 0L){
+    stop("'type = \"points\"' requires 'points'.", call. = FALSE)
+  }
+  check_bool(exact, "exact")
+  check_char(source, "source", allow_NULL = TRUE, allow_NA = FALSE)
+
+  .posterior_support_new(
+    bounds = bounds,
+    points = if(is.null(points)) numeric() else points,
+    exact  = exact,
+    source = source,
+    type   = type
+  )
+}
+
+.posterior_support_from_attribute <- function(support){
 
   if(is.null(support)){
     return(NULL)
   }
 
   if(inherits(support, "BayesTools_posterior_support")){
-    if(!is.null(exact)){
-      support$exact <- isTRUE(exact)
+    bounds <- .posterior_support_parse_bounds(support$bounds)
+    points <- .posterior_support_parse_points(support$points)
+    type   <- if(is.null(bounds) || is.null(points)){
+      NULL
+    }else{
+      .posterior_support_parse_type(support$type, bounds, points)
     }
-    support$type <- .posterior_support_parse_type(
-      support$type,
-      support$bounds,
-      support$points
-    )
-    if(is.null(support$type)){
-      return(NULL)
+    if(is.null(type)){
+      stop(
+        "Posterior support metadata is invalid: it needs ordered numeric ",
+        "'bounds', numeric 'points', and a 'type' of 'interval', 'points', or 'mixed'.",
+        call. = FALSE
+      )
     }
+    support$type <- type
     return(support)
   }
 
-  support_exact <- if(is.null(exact)) TRUE else isTRUE(exact)
-  support_source <- NULL
-  support_points <- numeric()
-  support_type <- NULL
-
-  if(is.numeric(support) && length(support) == 2L){
-    bounds <- support
-  }else if(is.list(support)){
-    if(!is.null(support[["exact"]])){
-      support_exact <- isTRUE(support[["exact"]])
-    }
-    if(!is.null(support[["source"]])){
-      support_source <- support[["source"]]
-    }
-    if(!is.null(support[["points"]])){
-      support_points <- support[["points"]]
-    }
-    if(!is.null(support[["type"]])){
-      support_type <- support[["type"]]
-    }else if(!is.null(support[["support_type"]])){
-      support_type <- support[["support_type"]]
-    }
-
-    if(!is.null(support[["bounds"]])){
-      bounds <- support[["bounds"]]
-    }else if(!is.null(support[["lower"]]) && !is.null(support[["upper"]])){
-      bounds <- c(support[["lower"]], support[["upper"]])
-    }else{
-      return(NULL)
-    }
-  }else{
+  # an unclassed list of supports keyed by column carries no single support
+  if(.posterior_metadata_is_container(support)){
     return(NULL)
   }
 
-  bounds <- .posterior_support_parse_bounds(bounds)
-  support_points <- .posterior_support_parse_points(support_points)
-  if(is.null(bounds) || is.null(support_points)){
-    return(NULL)
-  }
-
-  .posterior_support_new(
-    bounds = bounds,
-    points = support_points,
-    exact  = support_exact,
-    source = support_source,
-    type   = support_type
+  stop(
+    "Posterior support metadata must be created with 'posterior_support_attribute()'.",
+    call. = FALSE
   )
 }
 
@@ -244,11 +274,8 @@
     return(NULL)
   }
 
-  if(!is.null(name) && !inherits(support, "BayesTools_posterior_support")){
-    if(!is.null(support[[name]])){
-      return(.posterior_support_from_attribute(support[[name]]))
-    }
-    return(NULL)
+  if(!is.null(name) && .posterior_metadata_is_container(support)){
+    return(.posterior_support_from_attribute(support[[name]]))
   }
 
   .posterior_support_from_attribute(support)
@@ -1281,6 +1308,9 @@
 
   if(is.null(support)){
     support <- .posterior_support_get(samples)
+  }else if(is.numeric(support)){
+    # internal callers pass exact interval bounds directly
+    support <- .posterior_support_new(support)
   }else{
     support <- .posterior_support_from_attribute(support)
   }

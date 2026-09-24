@@ -1,5 +1,18 @@
 skip_if_not_test_profile("unit")
 
+.posterior_density_for_test <- function(x, y, method = "iwmde",
+                                        density_method = "precomputed", ...){
+  posterior_density_attribute(x = x, y = y, method = method,
+                              density_method = density_method, ...)
+}
+
+.posterior_ordinate_for_test <- function(value, ordinate, method = "qCMDE",
+                                         density_method = "precomputed", ...){
+  posterior_ordinate_attribute(value = value, ordinate = ordinate,
+                               method = method,
+                               density_method = density_method, ...)
+}
+
 test_that("simple plots select the requested named atom coordinate", {
 
   theta <- rep(2, 20)
@@ -178,7 +191,7 @@ test_that("precomputed simple densities override declared sample atoms", {
   samples <- .scaled_atom_plot_samples_for_test(rep(1, 20), prior("point", list(1)))
   stored_x <- seq(-5, 5, length.out = 64)
   stored_y <- .75 * stats::dnorm(stored_x)
-  attr(samples$mu_intercept, "posterior_density") <- list(
+  attr(samples$mu_intercept, "posterior_density") <- .posterior_density_for_test(
     x = stored_x, y = stored_y, method = "user",
     point_masses = data.frame(x = 2, mass = .25)
   )
@@ -190,7 +203,9 @@ test_that("precomputed simple densities override declared sample atoms", {
   expect_equal(plotted$points1$x, 2)
   expect_equal(plotted$points1$y, .25)
 
-  attr(samples$mu_intercept, "posterior_density")$point_masses <- NULL
+  attr(samples$mu_intercept, "posterior_density") <- .posterior_density_for_test(
+    x = stored_x, y = stored_y, method = "user"
+  )
   expect_warning(
     plotted <- BayesTools:::.plot_data_samples.simple(
       samples, "mu_intercept", 64, NULL, NULL, FALSE, density_method = "precomputed"
@@ -221,7 +236,7 @@ test_that("declared continuous constant draws cannot become plotting atoms", {
     ),
     expected_error, fixed = TRUE
   )
-  stored <- list(x = seq(-3, 3, length.out = 64), y = stats::dnorm(seq(-3, 3, length.out = 64)))
+  stored <- .posterior_density_for_test(x = seq(-3, 3, length.out = 64), y = stats::dnorm(seq(-3, 3, length.out = 64)))
   attr(samples, "posterior_density") <- stored
   expect_equal(
     BayesTools:::.plot_data_samples.simple(
@@ -1660,7 +1675,7 @@ test_that("posterior plot data uses stored posterior density when available", {
   stored_y <- stats::dnorm(stored_x, mean = .25, sd = .9)
   attr(theta, "models_ind") <- rep(1, length(theta))
   attr(theta, "prior_list") <- list(prior("normal", list(mean = 0, sd = 1)))
-  attr(theta, "posterior_density") <- list(
+  attr(theta, "posterior_density") <- .posterior_density_for_test(
     x      = stored_x,
     y      = stored_y,
     method = "iwmde"
@@ -1690,7 +1705,7 @@ test_that("posterior plot data does not add sample spikes to stored full density
     prior("point", list(location = 0)),
     prior("normal", list(mean = 0, sd = 1))
   )
-  attr(theta, "posterior_density") <- list(
+  attr(theta, "posterior_density") <- .posterior_density_for_test(
     x      = stored_x,
     y      = stored_y,
     method = "iwmde"
@@ -1723,7 +1738,7 @@ test_that("posterior plot data ignores stored density by default", {
   stored_y <- stats::dnorm(stored_x, mean = .25, sd = .9)
   attr(theta, "models_ind") <- rep(1, length(theta))
   attr(theta, "prior_list") <- list(prior("normal", list(mean = 0, sd = 1)))
-  attr(theta, "posterior_density") <- list(
+  attr(theta, "posterior_density") <- .posterior_density_for_test(
     x      = stored_x,
     y      = stored_y,
     method = "iwmde"
@@ -2065,7 +2080,7 @@ test_that("marginal prior overlays include posterior point-mass limits", {
   )
   attr(posterior, "prior_density")   <- prior_density
   attr(posterior, "posterior_atoms") <- posterior_atom_attribute(
-    list(location = 0, mass = .8)
+    list(x = 0, mass = .8)
   )
 
   file <- tempfile(fileext = ".png")
@@ -3064,13 +3079,13 @@ test_that("factor posterior plot data uses level-matched stored densities", {
   attr(samples, "prior_list") <- prior
   attr(samples, "models_ind") <- rep(1, nrow(samples))
   attr(samples, "posterior_density") <- list(
-    random = list(
+    random = .posterior_density_for_test(
       parameter = "random",
       x         = stored_random_x,
       y         = stats::dnorm(stored_random_x, mean = -.5, sd = .5),
       method    = "iwmde"
     ),
-    systematic = list(
+    systematic = .posterior_density_for_test(
       parameter = "systematic",
       x         = stored_systematic_x,
       y         = stats::dnorm(stored_systematic_x, mean = 1.5, sd = .5),
@@ -3114,14 +3129,14 @@ test_that("factor posterior plot data uses stored point masses once", {
   )
   attr(samples, "models_ind") <- c(rep(1, 40), rep(2, 60))
   attr(samples, "posterior_density") <- list(
-    random = list(
+    random = .posterior_density_for_test(
       parameter    = "random",
       x            = stored_x,
       y            = stats::dnorm(stored_x),
       point_masses = data.frame(x = 0, mass = .25),
       method       = "iwmde"
     ),
-    systematic = list(
+    systematic = .posterior_density_for_test(
       parameter    = "systematic",
       x            = stored_x,
       y            = stats::dnorm(stored_x),
@@ -3170,7 +3185,7 @@ test_that("factor posterior plot data keeps fallback spikes per level", {
   attr(samples, "prior_list") <- list(point_prior, prior)
   attr(samples, "models_ind") <- c(rep(1, 40), rep(2, 60))
   attr(samples, "posterior_density") <- list(
-    random = list(
+    random = .posterior_density_for_test(
       parameter    = "random",
       x            = stored_x,
       y            = stats::dnorm(stored_x),
@@ -3218,13 +3233,13 @@ test_that("factor posterior plot data matches interaction cell aliases", {
   attr(samples, "level_names") <- attr(prior, "level_names")
   attr(samples, "factor_cell_names") <- attr(prior, "factor_cell_names")
   attr(samples, "posterior_density") <- list(
-    "A, B" = list(
+    "A, B" = .posterior_density_for_test(
       parameter = "A, B",
       x         = stored_ab_x,
       y         = stats::dnorm(stored_ab_x, mean = -.5, sd = .5),
       method    = "iwmde"
     ),
-    "C, D" = list(
+    "C, D" = .posterior_density_for_test(
       parameter = "C, D",
       x         = stored_cd_x,
       y         = stats::dnorm(stored_cd_x, mean = 1.5, sd = .5),

@@ -14,6 +14,21 @@ skip_if_not_test_profile("unit")
 }
 
 
+.posterior_density_for_test <- function(x, y, method = "iwmde",
+                                        density_method = "precomputed", ...){
+  posterior_density_attribute(x = x, y = y, method = method,
+                              density_method = density_method, ...)
+}
+
+
+.posterior_ordinate_for_test <- function(value, ordinate, method = "qCMDE",
+                                         density_method = "precomputed", ...){
+  posterior_ordinate_attribute(value = value, ordinate = ordinate,
+                               method = method,
+                               density_method = density_method, ...)
+}
+
+
 .hypothesis_prior_density_for_test <- function(){
 
   BayesTools:::.prior_linear_combination_density(
@@ -406,7 +421,7 @@ test_that("hypothesis_BF uses boundary-reflected KDE for marginal point nulls", 
     seq(.001, .999, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_support") <- c(0, 1)
+  attr(posterior, "posterior_support") <- posterior_support_attribute(c(0, 1))
 
   expected <- Savage_Dickey_BF(
     posterior,
@@ -1490,7 +1505,7 @@ test_that("hypothesis_BF uses child precomputed density for explicit level point
     seq(-3, 3, length.out = 301),
     prior_density
   )
-  attr(alternate, "posterior_ordinate") <- list(
+  attr(alternate, "posterior_ordinate") <- .posterior_ordinate_for_test(
     value       = 0,
     ordinate    = 0.50,
     method      = "IWMDE",
@@ -1663,7 +1678,7 @@ test_that("hypothesis_BF uses parent precomputed metadata for level point nulls"
     seq(-2, 2, length.out = 301),
     prior_density
   )
-  attr(alternate, "posterior_ordinate") <- list(
+  attr(alternate, "posterior_ordinate") <- .posterior_ordinate_for_test(
     value    = 1,
     ordinate = 100,
     method   = "wrong-null"
@@ -1672,14 +1687,14 @@ test_that("hypothesis_BF uses parent precomputed metadata for level point nulls"
   class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
   attr(posterior, "parameter") <- "mu_alloc"
   attr(posterior, "posterior_ordinate") <- list(
-    list(
+    .posterior_ordinate_for_test(
       parameter   = "mu_alloc[alternate]",
       value       = 0,
       ordinate    = 0.50,
       method      = "IWMDE",
       diagnostics = list(relative_mcse = 0.03)
     ),
-    list(
+    .posterior_ordinate_for_test(
       parameter   = "mu_alloc[random]",
       value       = 0,
       ordinate    = 0.25,
@@ -1729,13 +1744,13 @@ test_that("hypothesis_BF uses parent posterior_densities for explicit level poin
   class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
   attr(posterior, "parameter") <- "mu_alloc"
   attr(posterior, "posterior_densities") <- list(list(
-    list(
+    .posterior_density_for_test(
       parameter = "mu_alloc[alternate]",
       x         = seq(-1, 1, length.out = 101),
       y         = rep(0.50, 101),
       method    = "qCMDE"
     ),
-    list(
+    .posterior_density_for_test(
       parameter = "mu_alloc[random]",
       x         = seq(-1, 1, length.out = 101),
       y         = rep(0.25, 101),
@@ -2057,7 +2072,7 @@ test_that("hypothesis_BF reuses stored IWMDE ordinates and BF error", {
     seq(-3, 3, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_ordinate") <- list(
+  attr(posterior, "posterior_ordinate") <- .posterior_ordinate_for_test(
     value       = c(0, 0.5),
     ordinate    = c(0.50, 0.25),
     method      = "IWMDE",
@@ -2086,7 +2101,7 @@ test_that("hypothesis_BF propagates point and region error for point-vs-region t
   prior_density <- .hypothesis_prior_density_for_test()
   samples       <- seq(-3, 3, length.out = 301)
   posterior     <- .hypothesis_marginal_posterior_for_test(samples, prior_density)
-  attr(posterior, "posterior_ordinate") <- list(
+  attr(posterior, "posterior_ordinate") <- .posterior_ordinate_for_test(
     value       = 0,
     ordinate    = 0.50,
     method      = "IWMDE",
@@ -2120,7 +2135,7 @@ test_that("hypothesis_BF accepts marginal posterior subclasses without base clas
     prior_density
   )
   class(posterior) <- setdiff(class(posterior), "marginal_posterior")
-  attr(posterior, "posterior_ordinate") <- list(
+  attr(posterior, "posterior_ordinate") <- .posterior_ordinate_for_test(
     value       = 0,
     ordinate    = 0.50,
     method      = "IWMDE",
@@ -2150,7 +2165,7 @@ test_that("hypothesis_BF reuses stored qCMDE density and BF error", {
   )
   stored_x <- seq(-4, 4, length.out = 401)
   stored_y <- stats::dnorm(stored_x, mean = 0.25, sd = 1.1)
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x           = stored_x,
     y           = stored_y,
     method      = "qCMDE",
@@ -2184,12 +2199,13 @@ test_that("hypothesis_BF rejects malformed precomputed point masses", {
     seq(-3, 3, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_density") <- list(
-    x            = seq(-1, 1, length.out = 101),
-    y            = rep(1, 101),
-    method       = "invalid-point-mass",
-    point_masses = list(location = 0, p = 1.2)
+  invalid_point_mass <- .posterior_density_for_test(
+    x      = seq(-1, 1, length.out = 101),
+    y      = rep(1, 101),
+    method = "invalid-point-mass"
   )
+  invalid_point_mass$point_masses <- data.frame(x = 0, mass = 1.2)
+  attr(posterior, "posterior_density") <- invalid_point_mass
 
   expect_error(
     hypothesis_BF(
@@ -2199,7 +2215,25 @@ test_that("hypothesis_BF rejects malformed precomputed point masses", {
       columns        = "all",
       density_method = "precomputed"
     ),
-    "Precomputed posterior density metadata is present but invalid",
+    "Posterior density metadata is invalid: its 'point_masses' metadata are invalid.",
+    fixed = TRUE
+  )
+
+  attr(posterior, "posterior_density") <- list(
+    x            = seq(-1, 1, length.out = 101),
+    y            = rep(1, 101),
+    method       = "raw-list",
+    point_masses = list(x = 0, mass = .2)
+  )
+  expect_error(
+    hypothesis_BF(
+      posterior      = posterior,
+      hypothesis     = "theta = 0",
+      parameter      = "theta",
+      columns        = "all",
+      density_method = "precomputed"
+    ),
+    "Posterior density metadata must be created with 'posterior_density_attribute()'.",
     fixed = TRUE
   )
 })
@@ -2212,7 +2246,7 @@ test_that("hypothesis_BF rejects precomputed point density missing the null", {
     seq(-3, 3, length.out = 301),
     prior_density
   )
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x      = seq(2, 3, length.out = 101),
     y      = rep(1, 101),
     method = "qCMDE"
@@ -2270,7 +2304,7 @@ test_that("hypothesis_BF precomputed point null rejects density grid missing sup
   )
   attr(posterior, "posterior_support") <-
     BayesTools:::.posterior_support_new(c(0, 1), source = "test")
-  attr(posterior, "posterior_density") <- list(
+  attr(posterior, "posterior_density") <- .posterior_density_for_test(
     x      = seq(.25, .75, length.out = 101),
     y      = rep(1, 101),
     method = "qCMDE"

@@ -7,8 +7,8 @@
 posterior_atom_attribute(point_masses = NULL, source = "user")
 }
 \arguments{
-\item{point_masses}{optional data frame or list with \code{x} (or
-\code{location}) and \code{mass} (or \code{p}) entries.}
+\item{point_masses}{optional data frame or list with \code{x} and
+\code{mass} entries.}
 
 \item{source}{short label describing the source of the declaration.}
 }

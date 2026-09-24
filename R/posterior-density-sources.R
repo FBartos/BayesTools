@@ -35,38 +35,19 @@
     return(NULL)
   }
 
-  if(.posterior_density_candidate_matches(
-    source,
-    aliases          = aliases,
-    conditional      = conditional,
-    conditional_rule = conditional_rule,
-    condition_key    = condition_key,
-    allow_unlabeled  = allow_unlabeled || selected_by_name,
-    null_hypothesis  = null_hypothesis
-  )){
-    return(source)
-  }
-
-  if(!is.list(source)){
-    return(NULL)
-  }
-
-  container_names <- c("posterior_density", "posterior_densities", "densities")
-  for(container_name in container_names[container_names %in% names(source)]){
-    out <- .posterior_density_from_source(
-      source             = source[[container_name]],
-        aliases            = aliases,
-        conditional        = conditional,
-        conditional_rule   = conditional_rule,
-        condition_key      = condition_key,
-        allow_unlabeled    = allow_unlabeled,
-        selected_by_name   = selected_by_name,
-        depth              = depth + 1L,
-        null_hypothesis    = null_hypothesis
-    )
-    if(!is.null(out)){
-      return(out)
+  if(identical(.posterior_density_kind(source), "density")){
+    if(.posterior_density_candidate_matches(
+      source,
+      aliases          = aliases,
+      conditional      = conditional,
+      conditional_rule = conditional_rule,
+      condition_key    = condition_key,
+      allow_unlabeled  = allow_unlabeled || selected_by_name,
+      null_hypothesis  = null_hypothesis
+    )){
+      return(source)
     }
+    return(NULL)
   }
 
   source_names <- names(source)
@@ -137,7 +118,7 @@
 
   if(is.matrix(samples) || is.data.frame(samples)){
     density_list <- attr(samples, "posterior_density", exact = TRUE)
-    if(is.null(density_list) || !is.list(density_list)){
+    if(!identical(.posterior_density_kind(density_list), "container")){
       density_list <- list()
     }
 
@@ -252,7 +233,19 @@
       return(matches[[1]])
     }
 
-    return(list(ordinates = matches))
+    # several matched attributes form one multi-ordinate attribute; a matched
+    # multi-ordinate attribute and its matched entries hold the same entries
+    entries <- .posterior_ordinate_unique_sources(unlist(
+      lapply(matches, .posterior_ordinate_entries),
+      recursive = FALSE
+    ))
+    if(length(entries) == 1L){
+      return(entries[[1L]])
+    }
+    return(structure(
+      list(status = "ok", ordinates = entries),
+      class = c("BayesTools_posterior_ordinates", "list")
+    ))
   }
 
   for(source in sources){
@@ -283,36 +276,37 @@
     return(list())
   }
 
-  out <- list()
-  if(.posterior_ordinate_candidate_matches(
-    source,
-    aliases          = aliases,
-    conditional      = conditional,
-    conditional_rule = conditional_rule,
-    condition_key    = condition_key,
-    allow_unlabeled  = allow_unlabeled || selected_by_name
-  )){
-    out <- c(out, list(source))
-  }
-
-  if(!is.list(source)){
+  kind <- .posterior_ordinate_kind(source)
+  if(kind %in% c("ordinate", "ordinates")){
+    out <- list()
+    if(.posterior_ordinate_candidate_matches(
+      source,
+      aliases          = aliases,
+      conditional      = conditional,
+      conditional_rule = conditional_rule,
+      condition_key    = condition_key,
+      allow_unlabeled  = allow_unlabeled || selected_by_name
+    )){
+      out <- list(source)
+    }
+    if(identical(kind, "ordinates")){
+      for(entry in .posterior_ordinate_entries(source)){
+        out <- c(out, .posterior_ordinate_collect_from_source(
+          source             = entry,
+          aliases            = aliases,
+          conditional        = conditional,
+          conditional_rule   = conditional_rule,
+          condition_key      = condition_key,
+          allow_unlabeled    = allow_unlabeled,
+          selected_by_name   = selected_by_name,
+          depth              = depth + 1L
+        ))
+      }
+    }
     return(out)
   }
 
-  container_names <- c("posterior_ordinate", "posterior_ordinates", "ordinates")
-  for(container_name in container_names[container_names %in% names(source)]){
-    out <- c(out, .posterior_ordinate_collect_from_source(
-      source             = source[[container_name]],
-        aliases            = aliases,
-        conditional        = conditional,
-        conditional_rule   = conditional_rule,
-        condition_key      = condition_key,
-        allow_unlabeled    = allow_unlabeled,
-        selected_by_name   = selected_by_name,
-        depth              = depth + 1L
-    ))
-  }
-
+  out <- list()
   source_names <- names(source)
   if(!is.null(source_names)){
     matched_names <- aliases[aliases %in% source_names]
@@ -374,40 +368,39 @@
     return(NULL)
   }
 
-  has_ordinate <- !is.null(.posterior_ordinate_from_attribute(source, null_hypothesis))
-  if(has_ordinate &&
-     .posterior_ordinate_candidate_matches(
-       source,
-     aliases          = aliases,
-     conditional      = conditional,
-     conditional_rule = conditional_rule,
-     condition_key    = condition_key,
-     allow_unlabeled  = allow_unlabeled || selected_by_name,
-     null_hypothesis  = null_hypothesis
-     )){
-    return(source)
-  }
-
-  if(!is.list(source)){
-    return(NULL)
-  }
-
-  container_names <- c("posterior_ordinate", "posterior_ordinates", "ordinates")
-  for(container_name in container_names[container_names %in% names(source)]){
-    out <- .posterior_ordinate_from_source(
-      source             = source[[container_name]],
-        aliases            = aliases,
-        conditional        = conditional,
-        conditional_rule   = conditional_rule,
-        condition_key      = condition_key,
-        allow_unlabeled    = allow_unlabeled,
-        selected_by_name   = selected_by_name,
-        depth              = depth + 1L,
-      null_hypothesis    = null_hypothesis
-    )
-    if(!is.null(out)){
-      return(out)
+  kind <- .posterior_ordinate_kind(source)
+  if(kind %in% c("ordinate", "ordinates")){
+    if(!is.null(.posterior_ordinate_from_attribute(source, null_hypothesis)) &&
+       .posterior_ordinate_candidate_matches(
+         source,
+         aliases          = aliases,
+         conditional      = conditional,
+         conditional_rule = conditional_rule,
+         condition_key    = condition_key,
+         allow_unlabeled  = allow_unlabeled || selected_by_name,
+         null_hypothesis  = null_hypothesis
+       )){
+      return(source)
     }
+    if(identical(kind, "ordinates")){
+      for(entry in .posterior_ordinate_entries(source)){
+        out <- .posterior_ordinate_from_source(
+          source             = entry,
+          aliases            = aliases,
+          conditional        = conditional,
+          conditional_rule   = conditional_rule,
+          condition_key      = condition_key,
+          allow_unlabeled    = allow_unlabeled,
+          selected_by_name   = selected_by_name,
+          depth              = depth + 1L,
+          null_hypothesis    = null_hypothesis
+        )
+        if(!is.null(out)){
+          return(out)
+        }
+      }
+    }
+    return(NULL)
   }
 
   source_names <- names(source)
@@ -459,7 +452,7 @@
 
   if(is.matrix(samples) || is.data.frame(samples)){
     ordinate_list <- attr(samples, "posterior_ordinate", exact = TRUE)
-    if(is.null(ordinate_list) || !is.list(ordinate_list)){
+    if(!identical(.posterior_ordinate_kind(ordinate_list), "container")){
       ordinate_list <- list()
     }
 

@@ -231,23 +231,10 @@
 .posterior_ordinate_from_attribute <- function(posterior_ordinate,
                                                null_hypothesis){
 
-  if(is.null(posterior_ordinate)){
-    return(NULL)
-  }
-
-  if(is.list(posterior_ordinate) &&
-     !is.null(posterior_ordinate[["status"]]) &&
-     !identical(posterior_ordinate[["status"]], "ok")){
-    return(NULL)
-  }
-  if(is.list(posterior_ordinate) &&
-     !is.data.frame(posterior_ordinate[["ordinates"]]) &&
-     is.list(posterior_ordinate[["ordinates"]]) &&
-     is.null(posterior_ordinate[["ordinates"]][["x"]]) &&
-     is.null(posterior_ordinate[["ordinates"]][["value"]]) &&
-     is.null(posterior_ordinate[["ordinates"]][["null_hypothesis"]])){
+  kind <- .posterior_ordinate_kind(posterior_ordinate)
+  if(identical(kind, "ordinates")){
     candidates <- lapply(
-      posterior_ordinate[["ordinates"]],
+      .posterior_ordinate_entries(posterior_ordinate),
       .posterior_ordinate_from_attribute,
       null_hypothesis = null_hypothesis
     )
@@ -256,158 +243,47 @@
       return(NULL)
     }
 
-    out <- candidates[[which(matched)]]
-    if(is.null(out[["method"]])){
-      if(!is.null(posterior_ordinate[["method"]])){
-        out[["method"]] <- posterior_ordinate[["method"]]
-      }else if(!is.null(posterior_ordinate[["estimator"]])){
-        out[["method"]] <- posterior_ordinate[["estimator"]]
-      }
-    }
-    if(!is.null(posterior_ordinate[["diagnostics"]])){
-      diagnostics <- .posterior_ordinate_subset_diagnostics(
-        posterior_ordinate[["diagnostics"]],
-        which(matched)
-      )
-      out[["diagnostics"]] <- .posterior_ordinate_merge_diagnostics(
-        diagnostics,
-        out[["diagnostics"]]
-      )
-    }
-
-    return(out)
+    return(candidates[[which(matched)]])
   }
-
-  source      <- posterior_ordinate
-  method      <- NULL
-  diagnostics <- NULL
-
-  if(is.list(posterior_ordinate)){
-    if(!is.null(posterior_ordinate[["method"]])){
-      method <- posterior_ordinate[["method"]]
-    }
-    if(!is.null(posterior_ordinate[["estimator"]])){
-      method <- posterior_ordinate[["estimator"]]
-    }
-    if(!is.null(posterior_ordinate[["diagnostics"]])){
-      diagnostics <- posterior_ordinate[["diagnostics"]]
-    }
-    if(!is.null(posterior_ordinate[["ordinate"]]) &&
-       (is.list(posterior_ordinate[["ordinate"]]) ||
-        is.data.frame(posterior_ordinate[["ordinate"]]))){
-      source <- posterior_ordinate[["ordinate"]]
-    }
-    if(!is.null(posterior_ordinate[["ordinates"]]) &&
-       (is.list(posterior_ordinate[["ordinates"]]) ||
-        is.data.frame(posterior_ordinate[["ordinates"]]))){
-      source <- posterior_ordinate[["ordinates"]]
-    }
-  }
-
-  source_diagnostics <- NULL
-  if(is.data.frame(source)){
-    x_name <- intersect(c("x", "value", "null_hypothesis"), colnames(source))[1]
-    y_name <- intersect(c("y", "ordinate", "height", "posterior_height"), colnames(source))[1]
-    if(is.na(x_name) || is.na(y_name)){
-      return(NULL)
-    }
-    x <- source[[x_name]]
-    y <- source[[y_name]]
-    source_diagnostics <- source[, setdiff(colnames(source), c(x_name, y_name)), drop = FALSE]
-  }else if(is.list(source)){
-    if(is.null(method) && !is.null(source[["method"]])){
-      method <- source[["method"]]
-    }
-    if(is.null(method) && !is.null(source[["estimator"]])){
-      method <- source[["estimator"]]
-    }
-    if(!is.null(source[["x"]])){
-      x <- source[["x"]]
-    }else if(!is.null(source[["value"]])){
-      x <- source[["value"]]
-    }else if(!is.null(source[["null_hypothesis"]])){
-      x <- source[["null_hypothesis"]]
-    }else{
-      return(NULL)
-    }
-
-    if(!is.null(source[["y"]])){
-      y <- source[["y"]]
-    }else if(!is.null(source[["ordinate"]])){
-      y <- source[["ordinate"]]
-    }else if(!is.null(source[["height"]])){
-      y <- source[["height"]]
-    }else if(!is.null(source[["posterior_height"]])){
-      y <- source[["posterior_height"]]
-    }else{
-      return(NULL)
-    }
-    source_diagnostics <- source[setdiff(
-      names(source),
-      c("x", "value", "null_hypothesis", "y", "ordinate", "height",
-        "posterior_height", "method", "estimator", "parameter", "parameters",
-        "parameter_name", "name", "conditional", "condition", "conditioned_on",
-        "conditioning", "conditional_rule", "condition_rule",
-        "conditioning_rule", "condition_key", "conditional_key")
-    )]
-  }else{
+  if(!identical(kind, "ordinate")){
     return(NULL)
   }
 
-  x <- as.numeric(x)
-  y <- as.numeric(y)
-  if(length(x) != length(y)){
-    return(NULL)
-  }
-
-  keep <- is.finite(x) & is.finite(y) & y > 0
-  x <- x[keep]
-  y <- y[keep]
-  diagnostics <- .posterior_ordinate_subset_keep(diagnostics, keep)
-  source_diagnostics <- .posterior_ordinate_subset_keep(source_diagnostics, keep)
-  if(length(x) == 0L){
-    return(NULL)
-  }
-
-  index <- which(x == null_hypothesis)
+  values <- .posterior_ordinate_values(posterior_ordinate)
+  index  <- which(values[["value"]] == null_hypothesis)
   if(length(index) != 1L){
     return(NULL)
   }
-  if(is.null(diagnostics)){
-    diagnostics <- source_diagnostics
-  }
-  diagnostics        <- .posterior_ordinate_subset_diagnostics(diagnostics, index)
-  source_diagnostics <- .posterior_ordinate_subset_diagnostics(source_diagnostics, index)
-  diagnostics        <- .posterior_ordinate_merge_diagnostics(diagnostics, source_diagnostics)
 
   return(list(
-    x           = x[index],
-    y           = y[index],
-    method      = method,
-    diagnostics = diagnostics
+    x           = values[["value"]][index],
+    y           = values[["ordinate"]][index],
+    method      = posterior_ordinate[["method"]],
+    diagnostics = .posterior_ordinate_subset_diagnostics(
+      posterior_ordinate[["diagnostics"]],
+      index
+    )
   ))
 }
 
-.posterior_ordinate_subset_keep <- function(diagnostics, keep){
+# Validated value and ordinate vectors of one posterior-ordinate attribute.
+.posterior_ordinate_values <- function(posterior_ordinate){
 
-  if(is.null(diagnostics)){
-    return(NULL)
-  }
-  if(is.data.frame(diagnostics)){
-    return(diagnostics[keep, , drop = FALSE])
-  }
-  if(!is.list(diagnostics)){
-    return(diagnostics)
-  }
-
-  for(name in names(diagnostics)){
-    value <- diagnostics[[name]]
-    if(is.atomic(value) && length(value) == length(keep)){
-      diagnostics[[name]] <- value[keep]
-    }
+  value    <- posterior_ordinate[["value"]]
+  ordinate <- posterior_ordinate[["ordinate"]]
+  if(!identical(posterior_ordinate[["status"]], "ok") ||
+     !is.numeric(value) || !is.numeric(ordinate) ||
+     length(value) == 0L || length(value) != length(ordinate) ||
+     any(!is.finite(value)) || any(!is.finite(ordinate)) ||
+     any(ordinate <= 0) || anyDuplicated(value)){
+    stop(
+      "Posterior ordinate metadata is invalid: it needs status 'ok' and unique, ",
+      "finite 'value' entries with finite, positive 'ordinate' heights.",
+      call. = FALSE
+    )
   }
 
-  return(diagnostics)
+  list(value = as.numeric(value), ordinate = as.numeric(ordinate))
 }
 
 .posterior_ordinate_subset_diagnostics <- function(diagnostics, index){
@@ -425,28 +301,6 @@
     if(is.atomic(value) && length(value) > 1L && length(value) >= index){
       diagnostics[[name]] <- value[index]
     }
-  }
-
-  return(diagnostics)
-}
-
-.posterior_ordinate_merge_diagnostics <- function(diagnostics, source_diagnostics){
-
-  if(is.null(diagnostics)){
-    return(source_diagnostics)
-  }
-  if(is.null(source_diagnostics)){
-    return(diagnostics)
-  }
-  if(!is.list(diagnostics)){
-    return(source_diagnostics)
-  }
-  if(!is.list(source_diagnostics)){
-    return(diagnostics)
-  }
-
-  for(name in names(source_diagnostics)){
-    diagnostics[[name]] <- source_diagnostics[[name]]
   }
 
   return(diagnostics)
