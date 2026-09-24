@@ -1058,6 +1058,7 @@ test_that("conditional posterior prior overlays propagate context failures", {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
   samples <- as_mixed_posteriors(fit, parameters = c("theta", "gamma"), conditional = "gamma")
 
   # the conditional prior overlay is built from the density context; a
