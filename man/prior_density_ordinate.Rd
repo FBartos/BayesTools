@@ -84,7 +84,15 @@ one-sided limit inside the support. If any component remains \code{unknown}, the
 whole mixture is \code{unknown}. In any linear combination (inside or outside a
 mixture), a Gaussian term plus one other continuous scalar term is a
 Gaussian convolution evaluated by the same quadrature over that term's
-declared support.
+declared support. Sums of Cauchy terms are Cauchy (method
+\code{"scalar_affine"}), and two other continuous scalar terms without a
+Gaussian part are a \code{"convolution"} quadrature over one term's declared
+support; where finite support bounds of both terms meet at \code{value}, the
+ordinate is classified from the terms' declared behavior at those bounds
+(the positive finite limit at an end of the support where the density
+exponents sum to one, e.g. two arcsine terms, is \code{unknown}). Sums of three
+or more non-normal terms, or of a Gaussian part and two or more non-normal
+terms, are \code{unknown}.
 }
 \description{
 \code{prior_density_ordinate()} classifies the mathematical behavior of a prior at

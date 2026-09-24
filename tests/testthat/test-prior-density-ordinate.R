@@ -741,12 +741,14 @@ test_that("unsupported transformations, convolutions, and products stay unknown"
   expect_identical(custom_out$behavior, "unknown")
   expect_false(custom_out$exact)
 
+  # three non-normal terms have no structural convolution route
   convolution <- BayesTools:::.prior_linear_combination_density(
     prior_list = list(
       x = prior("gamma", list(2, 1)),
-      y = prior("gamma", list(2, 1))
+      y = prior("gamma", list(2, 1)),
+      z = prior("gamma", list(2, 1))
     ),
-    weights = c(x = 1, y = 1),
+    weights = c(x = 1, y = 1, z = 1),
     n_grid = 128
   )
   convolution_out <- prior_density_ordinate(convolution, 1)
@@ -768,6 +770,103 @@ test_that("unsupported transformations, convolutions, and products stay unknown"
   )
   expect_identical(prior_density_ordinate(general_product, 1)$behavior, "unknown")
   expect_false(prior_density_ordinate(general_product, 1)$exact)
+})
+
+test_that("two-term convolutions and Cauchy sums have structural ordinates", {
+
+  combination <- function(priors, ...){
+    weights <- c(...)
+    names(weights) <- names(priors)
+    .prior_linear_combination_density(priors, weights)
+  }
+  ordinate_height <- function(density, value){
+    exp(prior_density_ordinate(density, value)$log_density)
+  }
+  probability <- function(density, hypothesis){
+    side <- hypothesis_parse(hypothesis)$statements[[1L]]$left
+    .hypothesis_prior_density_prob(density, side, "theta")
+  }
+  split_integral <- function(f, points){
+    sum(vapply(seq_len(length(points) - 1L), function(i){
+      stats::integrate(f, points[i], points[i + 1L], rel.tol = 1e-12, abs.tol = 0,
+                       subdivisions = 1000L)$value
+    }, numeric(1)))
+  }
+
+  # Cauchy terms sum to a Cauchy term with the summed scales
+  cauchy <- combination(list(a = prior("cauchy", list(0, 1)), b = prior("cauchy", list(0, .01))), 1, -1)
+  for(value in c(0, .5, 3)){
+    ordinate <- prior_density_ordinate(cauchy, value)
+    expect_identical(ordinate$method, "scalar_affine")
+    expect_true(ordinate$exact)
+    expect_equal(exp(ordinate$log_density), stats::dcauchy(value, 0, 1.01), tolerance = 1e-14)
+  }
+  expect_equal(probability(cauchy, "theta > 1000"),
+               stats::pcauchy(1000, 0, 1.01, lower.tail = FALSE), tolerance = 1e-12)
+  transformed <- .prior_linear_combination_density(
+    list(a = prior("cauchy", list(0, 1)), b = prior("cauchy", list(0, 1))), c(a = 1, b = 1),
+    output_transformation = "exp"
+  )
+  expect_equal(ordinate_height(transformed, 5), stats::dcauchy(log(5), 0, 2) / 5, tolerance = 1e-14)
+
+  # two t3 terms: quadrature against hand-split integrals, also in the far tail
+  student <- combination(list(a = prior("t", list(0, 1, 3)), b = prior("t", list(0, 1, 3))), 1, 1)
+  for(value in c(0, 2, 20)){
+    ordinate <- prior_density_ordinate(student, value)
+    expect_identical(ordinate$method, "convolution")
+    expect_true(ordinate$exact)
+    expect_true(ordinate$provenance$integration$converged)
+    expect_equal(exp(ordinate$log_density), split_integral(
+      function(t) stats::dt(t, 3) * stats::dt(value - t, 3), c(-Inf, -10, 0, value, value + 10, Inf)
+    ), tolerance = 1e-10)
+  }
+  expect_equal(probability(student, "theta > 100"), split_integral(
+    function(t) stats::dt(t, 3) * stats::pt(100 - t, 3, lower.tail = FALSE), c(-Inf, -10, 0, 100, 110, Inf)
+  ), tolerance = 1e-10)
+
+  # gamma(1/2, 1) - gamma(1/2, 1) has the density K0(|v|) / pi, infinite at 0
+  # where the two singular bounds meet
+  gamma_difference <- combination(list(a = prior("gamma", list(.5, 1)), b = prior("gamma", list(.5, 1))), 1, -1)
+  expect_identical(prior_density_ordinate(gamma_difference, 0)$behavior, "infinite")
+  for(value in c(-1, .01, 1)){
+    expect_equal(ordinate_height(gamma_difference, value), besselK(abs(value), 0) / pi, tolerance = 1e-9)
+  }
+  expect_equal(probability(gamma_difference, "theta > 1"),
+               split_integral(function(z) besselK(z, 0) / pi, c(1, 10, Inf)), tolerance = 1e-9)
+
+  # meeting bounds: two arcsine (beta(1/2, 1/2)) terms are infinite where
+  # bounds meet inside the support; their positive limits at the ends of the
+  # support are not classified. Two uniform terms are triangular, zero at the
+  # ends; two gamma(2, 1) terms are gamma(4, 1).
+  arcsine <- combination(list(a = prior("beta", list(.5, .5)), b = prior("beta", list(.5, .5))), 1, 1)
+  expect_identical(prior_density_ordinate(arcsine, 1)$behavior, "infinite")
+  expect_identical(prior_density_ordinate(arcsine, 0)$behavior, "unknown")
+  expect_identical(prior_density_ordinate(arcsine, 2)$behavior, "unknown")
+  expect_equal(ordinate_height(arcsine, .5), stats::integrate(function(u){
+    t <- .5 * sin(u)^2
+    stats::dbeta(t, .5, .5) * stats::dbeta(.5 - t, .5, .5) * sin(u) * cos(u)
+  }, 0, pi / 2, rel.tol = 1e-12)$value, tolerance = 1e-8)
+  uniform <- combination(list(a = prior("uniform", list(0, 1)), b = prior("uniform", list(0, 1))), 1, 1)
+  expect_identical(prior_density_ordinate(uniform, 0)$behavior, "zero")
+  expect_identical(prior_density_ordinate(uniform, 2)$behavior, "zero")
+  for(value in c(.5, 1, 1.5)){
+    expect_equal(ordinate_height(uniform, value), 1 - abs(value - 1), tolerance = 1e-12)
+  }
+  expect_equal(probability(uniform, "theta > 1.9"), .005, tolerance = 1e-12)
+  gamma_sum <- combination(list(a = prior("gamma", list(2, 1)), b = prior("gamma", list(2, 1))), 1, 1)
+  expect_identical(prior_density_ordinate(gamma_sum, 0)$behavior, "zero")
+  for(value in c(1, 5)){
+    expect_equal(ordinate_height(gamma_sum, value), stats::dgamma(value, 4, 1), tolerance = 1e-12)
+  }
+
+  # the convolution is a component of mixtures: t3 + spike-and-slab(t3)
+  slab <- prior_spike_and_slab(prior("t", list(0, 1, 3)), prior_inclusion = prior("spike", list(.5)))
+  mixture <- combination(list(a = prior("t", list(0, 1, 3)), b = slab), 1, 1)
+  ordinate <- prior_density_ordinate(mixture, .5)
+  expect_true(ordinate$exact)
+  expect_equal(exp(ordinate$log_density), .5 * stats::dt(.5, 3) + .5 * split_integral(
+    function(t) stats::dt(t, 3) * stats::dt(.5 - t, 3), c(-Inf, -10, 0, .5, 10.5, Inf)
+  ), tolerance = 1e-10)
 })
 
 test_that("products of normal terms are classified on the scale-mixture route", {
@@ -1098,12 +1197,33 @@ test_that("original-scale intercepts with mixture sources are classified per com
                      .25 * stats::pcauchy(.4, 0, .25, lower.tail = FALSE) +
                      .25 * convolution_above(.4))), 1e-10)
 
-  # a leaf without a structural route (two Cauchy terms) leaves the mixture
-  # unknown, as for any combination
+  # two Cauchy terms sum to a Cauchy term, so a Cauchy intercept makes every
+  # component closed-form: 0, Cauchy(0, .5), -0.5 Cauchy(0, .5) and their sum
   context$prior_list$mu_intercept <- prior_mixture(list(
     prior("point", list(0), prior_weights = 1),
     prior("cauchy", list(0, .5), prior_weights = 1)
   ), is_null = c(TRUE, FALSE))
+  density <- .prior_density_from_context(context, c(mu_intercept = 1))
+  for(value in c(-1, .1)){
+    ordinate <- prior_density_ordinate(density, value)
+    expect_true(ordinate$exact)
+    expect_equal(exp(ordinate$log_density),
+                 .25 * (stats::dcauchy(value, 0, .5) + stats::dcauchy(value, 0, .25) +
+                          stats::dcauchy(value, 0, .75)),
+                 tolerance = 1e-14)
+  }
+
+  # a leaf without a structural route (three t terms) leaves the mixture
+  # unknown, as for any combination
+  slab <- function() prior_mixture(list(
+    prior("point", list(0), prior_weights = 1),
+    prior("t", list(0, .5, 3), prior_weights = 1)
+  ), is_null = c(TRUE, FALSE))
+  context <- .prior_density_context(
+    prior_list = list(mu_intercept = slab(), mu_x = slab(), mu_z = prior("t", list(0, .5, 3))),
+    column_names = c("mu_intercept", "mu_x", "mu_z"),
+    formula_scale = list(mu = list(mu_x = list(mean = 1, sd = 2), mu_z = list(mean = 1, sd = 2)))
+  )
   ordinate <- prior_density_ordinate(.prior_density_from_context(context, c(mu_intercept = 1)), .1)
   expect_identical(ordinate$behavior, "unknown")
 })
@@ -1118,15 +1238,16 @@ test_that("point-mass ordinates record the behavior of their continuous part", {
   regular <- prior_density_ordinate(prior("normal", list(0, 1)), .3)
   expect_null(regular$provenance$continuous_behavior)
 
-  # an atom next to a continuous part without a structural route
-  spike_cauchy <- prior_spike_and_slab(prior("cauchy", list(0, .5)),
-                                       prior_inclusion = prior("spike", list(.5)))
+  # an atom next to a continuous part without a structural route (the
+  # component with three t terms)
+  spike_t <- prior_spike_and_slab(prior("t", list(0, .5, 3)),
+                                  prior_inclusion = prior("spike", list(.5)))
   density <- .prior_linear_combination_density(
-    list(a = spike_cauchy, b = spike_cauchy), c(a = 1, b = -.5)
+    list(a = spike_t, b = spike_t, c = spike_t), c(a = 1, b = -.5, c = .25)
   )
   atom <- prior_density_ordinate(density, 0)
   expect_identical(atom$behavior, "point_mass")
-  expect_equal(atom$point_mass, .25, tolerance = 1e-15)
+  expect_equal(atom$point_mass, .125, tolerance = 1e-15)
   expect_identical(atom$provenance$continuous_behavior, "unknown")
   away <- prior_density_ordinate(density, .1)
   expect_identical(away$behavior, "unknown")

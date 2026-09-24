@@ -1721,6 +1721,205 @@
   )
 }
 
+# Two-term convolutions X = c + w_A A + w_B B of simple continuous scalar
+# terms without a Gaussian part (a Gaussian term plus one other term is the
+# conditional-normal Gaussian convolution): the density is the 1-D integral
+# f(x) = int f_A(a) f_B((x - c - w_A a) / w_B) / |w_B| da over A's support,
+# evaluated by the conditional-normal quadrature split at A's bounds and
+# quantiles and at the images a = (x - c - w_B q) / w_A of B's quantiles and
+# finite bounds q. Values where a finite bound of A meets a finite bound of B
+# are classified from the densities' exponents at those bounds (1 for a
+# positive finite density, > 1 for a vanishing one, and the shape parameter
+# of a gamma or beta density that is infinite there): with e = p_A + p_B - 1,
+# an end of the support has a zero density for e > 0 and an infinite one for
+# e < 0, and an inner meeting point has an infinite density for e <= 0.
+.prior_convolution_spec <- function(offset, terms, sources){
+
+  list(
+    offset  = offset,
+    first   = terms[[1L]]$prior,
+    weight  = terms[[1L]]$weight,
+    second  = terms[[2L]]$prior,
+    other   = terms[[2L]]$weight,
+    bounds  = unlist(terms[[1L]]$prior$truncation[c("lower", "upper")], use.names = FALSE),
+    sources = sources
+  )
+}
+
+.prior_convolution_provenance <- function(spec){
+
+  list(
+    kind                = "convolution",
+    offset              = spec$offset,
+    weights             = c(spec$weight, spec$other),
+    terms               = list(
+      .prior_density_ordinate_prior_provenance(spec$first),
+      .prior_density_ordinate_prior_provenance(spec$second)
+    ),
+    independent_sources = spec$sources
+  )
+}
+
+# Closed interval containing the support of c + w_A A + w_B B.
+.prior_convolution_hull <- function(spec){
+
+  second_bounds <- unlist(spec$second$truncation[c("lower", "upper")], use.names = FALSE)
+  spec$offset + range(spec$weight * spec$bounds) + range(spec$other * second_bounds)
+}
+
+# Exponent of a simple continuous prior's density at a finite support bound:
+# 1 when positive and finite, 2 (any value above 1 classifies alike) when it
+# vanishes, the shape of an infinite gamma or beta density, NA otherwise.
+.prior_density_bound_exponent <- function(prior, bound){
+
+  behavior <- .prior_density_ordinate_continuous_behavior(
+    .prior_density_ordinate_primitive(prior, bound)
+  )
+  if(identical(behavior, "regular")){
+    return(1)
+  }
+  if(identical(behavior, "zero")){
+    return(2)
+  }
+  if(!identical(behavior, "infinite")){
+    return(NA_real_)
+  }
+  parameters <- prior$parameters
+  if(identical(prior$distribution, "gamma") && bound == 0){
+    return(parameters$shape)
+  }
+  if(identical(prior$distribution, "beta") && bound == 0){
+    return(parameters$alpha)
+  }
+  if(identical(prior$distribution, "beta") && bound == 1){
+    return(parameters$beta)
+  }
+  NA_real_
+}
+
+.prior_convolution_breakpoints <- function(spec, distances){
+
+  second_bounds <- unlist(spec$second$truncation[c("lower", "upper")], use.names = FALSE)
+  quantiles <- tryCatch(
+    suppressWarnings(as.numeric(quant(
+      spec$second, c(1e-6, 1e-3, .02, .25, .5, .75, .98, 1 - 1e-3, 1 - 1e-6)
+    ))),
+    error = function(e) numeric()
+  )
+  targets <- c(quantiles, second_bounds)
+  targets <- targets[is.finite(targets)]
+  images <- as.vector(outer(distances, targets, function(d, q) (d - spec$other * q) / spec$weight))
+  .prior_conditional_normal_breakpoints(
+    list(additive_mean = 0, additive_sd = 1, product_mean = 0, product_sd = 0,
+         multiplier = spec$first, bounds = spec$bounds),
+    value = 0,
+    extra = images[is.finite(images)]
+  )
+}
+
+.prior_convolution_ordinate <- function(spec, value, n_grid){
+
+  provenance <- .prior_convolution_provenance(spec)
+  hull <- .prior_convolution_hull(spec)
+  result <- function(behavior, log_density, method = "convolution", reason = NULL,
+                     exact = TRUE){
+    .prior_density_ordinate_result(
+      value = value, behavior = behavior, log_density = log_density,
+      exact = exact, method = method, reason = reason, provenance = provenance
+    )
+  }
+  if(value < hull[1L] || value > hull[2L]){
+    return(result("zero", -Inf, reason = "The requested value is outside the prior support."))
+  }
+
+  # meeting points of finite bounds of both terms
+  second_bounds <- unlist(spec$second$truncation[c("lower", "upper")], use.names = FALSE)
+  first_bounds <- spec$bounds[is.finite(spec$bounds)]
+  second_bounds <- second_bounds[is.finite(second_bounds)]
+  exponent <- Inf
+  for(a in first_bounds){
+    for(b in second_bounds){
+      meeting <- spec$offset + spec$weight * a + spec$other * b
+      if(isTRUE(.prior_density_ordinate_endpoint_matches(meeting, value))){
+        exponent <- min(exponent, .prior_density_bound_exponent(spec$first, a) +
+                          .prior_density_bound_exponent(spec$second, b) - 1, na.rm = FALSE)
+      }
+    }
+  }
+  if(is.na(exponent)){
+    return(result("unknown", NA_real_, method = "unsupported_provenance", exact = FALSE,
+                  reason = "The density where two support bounds meet is not structurally classified."))
+  }
+  if(is.finite(exponent)){
+    at_end <- value == hull[1L] || value == hull[2L]
+    if(at_end && exponent > 0){
+      return(result("zero", -Inf))
+    }
+    if(exponent < 0 || (!at_end && exponent == 0)){
+      return(result("infinite", Inf, reason = paste0(
+        "The densities of the two terms are singular where their support ",
+        "bounds meet, which makes the density of the sum infinite at the ",
+        "requested value."
+      )))
+    }
+    if(at_end){
+      return(result("unknown", NA_real_, method = "unsupported_provenance", exact = FALSE,
+                    reason = "The positive limit at an end of the support is not structurally classified."))
+    }
+  }
+
+  distance <- value - spec$offset
+  first_lpdf <- .prior_simple_lpdf_evaluator(spec$first)
+  second_lpdf <- .prior_simple_lpdf_evaluator(spec$second)
+  integrand <- function(first){
+    exp(first_lpdf(first) +
+          second_lpdf((distance - spec$weight * first) / spec$other) -
+          log(abs(spec$other)))
+  }
+  integral <- .prior_conditional_normal_quadrature(
+    integrand, .prior_convolution_breakpoints(spec, distance), n_grid,
+    zero_message = "zero ordinate for a structurally positive density",
+    kind = "convolution"
+  )
+  provenance$integration <- integral$integration
+  result("regular", log(integral$value))
+}
+
+# Region probability of c + w_A A + w_B B: the 1-D integral over A of its
+# density times P(c + w_A a + w_B B in region), with the ordinate's
+# breakpoints at the images of every finite region endpoint.
+.prior_convolution_region <- function(spec, intervals, n_grid){
+
+  lower <- intervals[, 1L]
+  upper <- intervals[, 2L]
+  first_lpdf <- .prior_simple_lpdf_evaluator(spec$first)
+  integrand <- function(first){
+    probability <- numeric(length(first))
+    for(i in seq_along(lower)){
+      a <- (lower[i] - spec$offset - spec$weight * first) / spec$other
+      b <- (upper[i] - spec$offset - spec$weight * first) / spec$other
+      if(spec$other < 0){
+        probability <- probability + .prior_scalar_interval_probability(spec$second, b, a)
+      }else{
+        probability <- probability + .prior_scalar_interval_probability(spec$second, a, b)
+      }
+    }
+    out <- numeric(length(first))
+    positive <- probability > 0
+    out[positive] <- exp(log(probability[positive]) + first_lpdf(first[positive]))
+    out
+  }
+  endpoints <- c(lower, upper)
+  endpoints <- unique(endpoints[is.finite(endpoints)])
+  .prior_conditional_normal_quadrature(
+    integrand,
+    .prior_convolution_breakpoints(spec, endpoints - spec$offset),
+    n_grid,
+    zero_message = "zero probability for a structurally positive region",
+    kind = "convolution"
+  )
+}
+
 # Mean and SD of the conditional normal N(a_m + b_m s, sqrt(a_s^2 + b_s^2 s^2))
 # at multiplier values s, with the SD computed without overflow.
 .prior_conditional_normal_moments <- function(spec, multiplier){
@@ -2630,6 +2829,8 @@
     if(is.na(ordinate$log_density) || !isTRUE(integration$converged)){
       subject <- if(identical(integration$kind, "scale_mixture")){
         "Scale-mixture prior density"
+      }else if(identical(integration$kind, "convolution")){
+        "Convolution prior density"
       }else{
         "Conditional-normal prior density"
       }

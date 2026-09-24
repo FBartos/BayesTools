@@ -153,6 +153,28 @@ term with a product, several multiplied non-normal terms) have no structural
 route; their capped product grid is never used for heights or probabilities,
 which are then unavailable.
 
+Sums without a product term: untruncated Cauchy terms (Cauchy or t with one
+degree of freedom, no log source) first merge into one Cauchy term with the
+summed locations and the summed absolute scales, so Cauchy sums are scalar and
+exact. Two simple continuous terms (after merging) that are not both normal
+and have no Gaussian part are a two-term `convolution`: the 1-D integral over
+the first term (the one with an infinite density at a finite bound when only
+one has such a bound) of its density times the other term's density, split at
+the first term's bounds and quantiles and at the images of the other term's
+quantiles and finite bounds, with the conditional-normal budget and
+acceptance criterion; its region probability integrates the first term's
+density times the other term's exact region probability. Where finite bounds
+of both terms meet at the value, the ordinate is classified from their
+exponents p (1 for a positive finite density, above 1 for a vanishing one,
+the gamma or beta shape for an infinite one): with e = p_A + p_B - 1 an end of
+the support is zero for e > 0 and infinite for e < 0, and an inner meeting
+point is infinite for e <= 0; the positive finite limit at an end with e = 0
+(e.g. two arcsine terms at 0 and 2) is not classified. Combinations that keep
+the numerical grid (`unknown` ordinates): three or more non-normal terms
+after merging, a Gaussian part with two or more non-normal terms, log-source
+terms other than lognormal ones in a sum, the products listed above, custom output
+transformations and `bounded_logit`, and the unclassified meeting points.
+
 Plotted linear-combination prior densities (`.prior_linear_density_to_plot_data()`)
 evaluate the same route at every plotted value: closed forms vectorized over
 the plotting grid and quadrature routes by their ordinate at each value (about
@@ -162,9 +184,10 @@ a density without recorded provenance, interpolates its numerical grid.
 Mixture ordinates (model, conditional, and mixture or spike-and-slab terms of
 one linear combination) are weighted sums of per-component ordinates, each from
 its own exact or regular method, so a numerical grid never spans a density jump
-between components. A Gaussian term plus one other continuous scalar term uses
-the conditional-normal quadrature wherever it occurs, so the same combination
-is never exact in one context and a grid approximation in another. A mixture
+between components. A Gaussian term plus one other continuous scalar term
+(and two non-normal terms) uses its quadrature wherever it occurs, so the same
+combination is never exact in one context and a grid approximation in
+another. A mixture
 height sums its components' exact or regular heights with those of components
 that have none; each of the latter uses its own grid (never spanning another
 component's jump), all such grids are refined in lockstep, and the documented
@@ -179,7 +202,8 @@ whose relations are linear in the quantity (unions of intervals): point masses
 add their exact mass (the exact condition decides strict and inclusive
 bounds), scalar priors use their exact distribution function (through a log
 source and named monotone output transformations), normal sums their normal
-distribution function, and Gaussian convolutions and conditional-normal scale
+distribution function, two-term convolutions the 1-D integral described
+above, and Gaussian convolutions and conditional-normal scale
 mixtures the 1-D integral of the other term's density times the Gaussian
 probability of the region, with the ordinate's breakpoints (the Gaussian-peak
 window, under the same guard and so always for Gaussian convolutions, at every

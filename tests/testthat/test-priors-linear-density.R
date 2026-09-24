@@ -1060,24 +1060,25 @@ test_that("mixture prior ordinates evaluate every component exactly at a density
 
 test_that("mixture components without exact ordinates are refined on their own grids", {
 
-  # Single-fit level intercept + t[mid] with an intercept mixture
-  # (N(0, 1) | N(0.5, 1)T(0, Inf)) and a treatment mixture (0 | the same
-  # truncated normal): components N, N + T (quadrature), T (jumps at 0) and
-  # T + T. T + T has no exact ordinate and is evaluated on its own grid; the
-  # grids are refined in lockstep with the documented criterion on the mixture
-  # height. Reference: the four component densities, T + T by a 1-D
-  # convolution integral.
+  # An intercept mixture (N(0, 1) | T = N(0.5, 1)T(0, Inf)) and a treatment
+  # mixture (0 | T for both coefficients). The densities of T, of T + T,
+  # f2(v) = phi((v - 1) / sqrt(2)) (2 Phi(v / sqrt(2)) - 1) / (sqrt(2) Phi(0.5)^2),
+  # and of N + T are closed forms; three-term sums by quadrature over f2.
   truncated <- prior("normal", list(.5, 1), list(0, Inf))
   f_truncated <- function(v) ifelse(v >= 0, stats::dnorm(v, .5) / stats::pnorm(.5), 0)
   f_sum <- function(v){
     stats::dnorm(v, .5, sqrt(2)) * stats::pnorm((v + .5) / sqrt(2)) / stats::pnorm(.5)
   }
   f_double <- function(v){
-    if(v <= 0) return(0)
-    stats::integrate(function(u) f_truncated(u) * f_truncated(v - u), 0, v, rel.tol = 1e-10)$value
+    ifelse(v > 0, stats::dnorm(v, 1, sqrt(2)) * (2 * stats::pnorm(v / sqrt(2)) - 1) /
+             stats::pnorm(.5)^2, 0)
   }
-  reference <- function(v){
-    .25 * (stats::dnorm(v) + f_sum(v) + f_truncated(v) + f_double(v))
+  f_normal_double <- function(v){
+    stats::integrate(function(u) stats::dnorm(v - u) * f_double(u), 0, Inf, rel.tol = 1e-12)$value
+  }
+  f_triple <- function(v){
+    if(v <= 0) return(0)
+    stats::integrate(function(u) f_truncated(u) * f_double(v - u), 0, v, rel.tol = 1e-12)$value
   }
   data <- data.frame(t = factor(c("lo", "mid", "hi"), levels = c("lo", "mid", "hi")))
   priors <- JAGS_formula(~ 1 + t, "mu", data = data, prior_list = list(
@@ -1089,26 +1090,38 @@ test_that("mixture components without exact ordinates are refined on their own g
   ))$prior_list
   context <- .prior_density_build_context(priors, c("mu_intercept", "mu_t[1]", "mu_t[2]"),
                                           n_grid = 10000)
-  density <- .prior_density_from_context(context, c(mu_intercept = 1, "mu_t[1]" = 1, "mu_t[2]" = 0))
 
-  # left of every jump the components are exact
-  for(value in c(-.05, -.01)){
-    height <- .prior_linear_density_height(density, value)
+  # the level intercept + t[mid] has components N, N + T (Gaussian
+  # convolution), T (jump at 0) and T + T (two-term convolution): every
+  # component is structural, also at the jump and next to the T + T kink
+  level <- .prior_density_from_context(context, c(mu_intercept = 1, "mu_t[1]" = 1, "mu_t[2]" = 0))
+  for(value in c(-.05, -.01, 0, .05, 1)){
+    height <- .prior_linear_density_height(level, value)
     expect_null(attr(height, "adaptive_evaluation"))
-    expect_equal(as.numeric(height), reference(value), tolerance = 1e-10)
+    expect_equal(as.numeric(height),
+                 .25 * (stats::dnorm(value) + f_sum(value) + f_truncated(value) + f_double(value)),
+                 tolerance = 1e-10)
   }
-  # at the jump and next to the T + T kink, only T + T uses a grid
-  for(value in c(0, .05)){
+
+  # intercept + t[mid] + t[hi] has components N, N + T + T, T and T + T + T;
+  # the three-term sums have no structural ordinate and are evaluated on
+  # their own grids, refined in lockstep with the documented criterion on the
+  # mixture height
+  density <- .prior_density_from_context(context, c(mu_intercept = 1, "mu_t[1]" = 1, "mu_t[2]" = 1))
+  reference <- function(v){
+    .25 * (stats::dnorm(v) + f_normal_double(v) + f_truncated(v) + f_triple(v))
+  }
+  for(value in c(-.05, 0, .05, 1)){
     height <- .prior_linear_density_height(density, value)
     evaluation <- attr(height, "adaptive_evaluation")
     expect_true(evaluation$converged)
-    expect_identical(evaluation$components, 1L)
-    # (N | N + T) is one exact finite mixture with a quadrature component;
-    # the truncated intercept expands into T (exact) and T + T (grid)
+    # T + T + T is exactly zero below its support
+    grids <- if(value < 0) 1L else 2L
+    expect_identical(evaluation$components, grids)
     components <- attr(height, "component_heights")
     expect_identical(vapply(components, `[[`, character(1), "method"),
-                     c("quadrature", "exact", "grid"))
-    expect_equal(vapply(components, `[[`, numeric(1), "weight"), c(.5, .25, .25))
+                     c("exact", "grid", "exact", if(value < 0) "exact" else "grid"))
+    expect_equal(vapply(components, `[[`, numeric(1), "weight"), rep(.25, 4))
     expect_lte(abs(as.numeric(height) - reference(value)), evaluation$error_bound)
   }
 })
@@ -1384,27 +1397,37 @@ test_that("heavy-tailed combinations resolve their narrowest source and mixtures
   expect_equal(.prior_linear_density_grid_height(heavy, 0), reference, tolerance = 1e-3)
 
   # Refinement halves the source spacing and omits less tail probability, by
-  # 10 when polynomial tails would more than double the range. t3 + t30(0, .1)
-  # converges to its quadrature reference; Cauchy combinations exceed the grid
-  # limit before converging and stop loudly instead of reporting a height
-  # biased by their omitted tail mass. (A normal term plus one other term has
-  # an exact Gaussian-convolution ordinate and never reaches the grid, so these
-  # grid vehicles use a t30 term.) A spike-and-slab mixture is evaluated per
-  # component (the slab component is a Gaussian convolution by quadrature), so
-  # it matches the reference above.
+  # 10 when polynomial tails would more than double the range.
+  # t3 + t30(0, .1) + t30(0, .1) converges to its nested-quadrature reference;
+  # Cauchy combinations exceed the grid limit before converging and stop
+  # loudly instead of reporting a height biased by their omitted tail mass.
+  # (A normal term plus one other term is a Gaussian convolution and two
+  # non-normal terms a two-term convolution, both evaluated by quadrature, so
+  # these grid vehicles have three terms.) A spike-and-slab mixture is
+  # evaluated per component (the slab component is a Gaussian convolution by
+  # quadrature), so it matches the reference above.
   student <- .prior_linear_combination_density(
-    list(a = prior("t", list(0, 1, 3)), b = prior("t", list(0, .1, 30))), c(a = 1, b = 1)
+    list(a = prior("t", list(0, 1, 3)), b = prior("t", list(0, .1, 30)),
+         c = prior("t", list(0, .1, 30))),
+    c(a = 1, b = 1, c = 1)
   )
   student_height <- .prior_linear_density_height(student, 0)
   expect_true(isTRUE(attr(student_height, "adaptive_evaluation")$converged))
+  narrow <- function(v) stats::dt(v / .1, 30) / .1
+  narrow_sum <- function(u){
+    vapply(u, function(value){
+      stats::integrate(function(s) narrow(s) * narrow(value - s), -Inf, Inf, rel.tol = 1e-12)$value
+    }, numeric(1))
+  }
   expect_equal(
     as.numeric(student_height),
-    stats::integrate(function(t) stats::dt(t, 3) * stats::dt(-t / .1, 30) / .1,
-                     -Inf, Inf, rel.tol = 1e-12)$value,
+    stats::integrate(function(t) stats::dt(t, 3) * narrow_sum(-t), -Inf, Inf, rel.tol = 1e-10)$value,
     tolerance = 1e-4
   )
   cauchy_sum <- .prior_linear_combination_density(
-    list(a = prior("t", list(0, .2, 30)), b = prior("cauchy", list(0, .707))), c(a = 1, b = 1)
+    list(a = prior("t", list(0, .2, 30)), b = prior("cauchy", list(0, .707)),
+         c = prior("t", list(0, .2, 30))),
+    c(a = 1, b = 1, c = 1)
   )
   expect_error(
     .prior_linear_density_height(cauchy_sum, 0),
@@ -1413,22 +1436,30 @@ test_that("heavy-tailed combinations resolve their narrowest source and mixtures
   )
   expect_equal(as.numeric(.prior_linear_density_height(heavy, 0)), reference, tolerance = 1e-8)
 
-  # Density jumps (half-normal, truncated normal and uniform components)
-  # converge once the spacing strictly halves; references by quadrature.
+  # Density jumps and kinks (half-normal and uniform terms) converge once the
+  # spacing strictly halves; references by quadrature over the closed-form
+  # density of two half-normals, f2(x) = 4 phi(x / sqrt(2)) (2 Phi(x / sqrt(2))
+  # - 1) / sqrt(2) on x > 0, and of two uniforms (triangular).
   half_normal <- prior("normal", list(0, 1), truncation = list(0, Inf))
+  half_normal_sum <- function(x){
+    ifelse(x > 0, 4 * stats::dnorm(x / sqrt(2)) * (2 * stats::pnorm(x / sqrt(2)) - 1) / sqrt(2), 0)
+  }
+  triangular <- function(x) ifelse(x < 0 | x > 2, 0, ifelse(x < 1, x, 2 - x))
+  uniform_sum <- function(t) triangular(t) * stats::dt((-.2 - t) / .3, 30) / .3
   jumps <- list(
-    list(priors = list(a = half_normal, b = half_normal), value = .5,
-         reference = stats::integrate(function(t) 2 * stats::dnorm(t) * 2 * stats::dnorm(.5 - t),
-                                      0, .5, rel.tol = 1e-12)$value),
-    list(priors = list(a = half_normal, b = prior("t", list(0, 1, 30))), value = -1,
-         reference = stats::integrate(function(t) 2 * stats::dnorm(t) * stats::dt(-1 - t, 30),
+    list(priors = list(a = half_normal, b = half_normal, c = half_normal), value = 1.5,
+         reference = stats::integrate(function(t) 2 * stats::dnorm(t) * half_normal_sum(1.5 - t),
+                                      0, 1.5, rel.tol = 1e-12)$value),
+    list(priors = list(a = half_normal, b = half_normal, c = prior("t", list(0, 1, 30))), value = -1,
+         reference = stats::integrate(function(t) half_normal_sum(t) * stats::dt(-1 - t, 30),
                                       0, Inf, rel.tol = 1e-12)$value),
-    list(priors = list(a = prior("uniform", list(0, 1)), b = prior("t", list(0, .3, 30))), value = -.2,
-         reference = stats::integrate(function(t) stats::dt((-.2 - t) / .3, 30) / .3,
-                                      0, 1, rel.tol = 1e-12)$value)
+    list(priors = list(a = prior("uniform", list(0, 1)), b = prior("uniform", list(0, 1)),
+                       c = prior("t", list(0, .3, 30))), value = -.2,
+         reference = stats::integrate(uniform_sum, 0, 1, rel.tol = 1e-12)$value +
+           stats::integrate(uniform_sum, 1, 2, rel.tol = 1e-12)$value)
   )
   for(jump in jumps){
-    density <- .prior_linear_combination_density(jump$priors, c(a = 1, b = 1))
+    density <- .prior_linear_combination_density(jump$priors, c(a = 1, b = 1, c = 1))
     height  <- .prior_linear_density_height(density, jump$value)
     expect_true(isTRUE(attr(height, "adaptive_evaluation")$converged))
     expect_equal(as.numeric(height), jump$reference, tolerance = 1e-4)
@@ -1516,13 +1547,14 @@ test_that("adaptive ordinates stop when a halved grid spacing exceeds the grid l
     list(density = list(x = c(-1, 1), y = c(1, 1), mass = 1), points = NULL),
     class = "prior_linear_density"
   )
-  # (a t30 term: a normal plus uniform sum has an exact Gaussian-convolution
-  # ordinate and would not reach the grid)
+  # (three terms: a normal plus one other term and two non-normal terms have
+  # structural ordinates and would not reach the grid)
   attr(density, "adaptive_evaluation") <- list(
     kind = "linear_combination",
     arguments = list(prior_list = list(a = prior("t", list(0, 1, 30)),
-                                       b = prior("uniform", list(0, 1))),
-                     weights = c(a = 1, b = 1), n_grid = 4096, tail_prob = 1e-4)
+                                       b = prior("uniform", list(0, 1)),
+                                       c = prior("uniform", list(0, 1))),
+                     weights = c(a = 1, b = 1, c = 1), n_grid = 4096, tail_prob = 1e-4)
   )
   attr(density, "grid_resolution") <- c(spacing = 1e-6, n_grid = 2097152)
   requested <- NULL
@@ -1626,14 +1658,16 @@ test_that("linear prior ordinates adapt across center and omitted tails", {
   skewed <- BayesTools:::.prior_linear_combination_density(
     prior_list = list(
       x = prior("t", list(0, 1, 30)),
-      y = prior("gamma", list(3, 2))
+      y = prior("gamma", list(3, 2)),
+      z = prior("gamma", list(2, 2))
     ),
-    weights   = c(x = 1, y = 1),
+    weights   = c(x = 1, y = 1, z = 1),
     n_grid    = 512,
     tail_prob = 1e-3
   )
+  # the two gamma terms sum to gamma(5, 2)
   skewed_reference <- function(value){
-    stats::integrate(function(t) stats::dt(value - t, 30) * stats::dgamma(t, 3, 2),
+    stats::integrate(function(t) stats::dt(value - t, 30) * stats::dgamma(t, 5, 2),
                      0, Inf, rel.tol = 1e-12)$value
   }
 
@@ -1654,27 +1688,27 @@ test_that("linear prior ordinates adapt across center and omitted tails", {
   expect_equal(exact_center, stats::dnorm(0, sd = sqrt(2)), tolerance = 1e-12)
   expect_equal(exact_tail, stats::dnorm(8, sd = sqrt(2)), tolerance = 1e-12)
 
-  # A t30 plus gamma sum has no structural ordinate and is refined (a normal
-  # plus gamma sum would be an exact Gaussian convolution); the reference is
-  # the convolution integral.
+  # A t30 plus two gamma terms has no structural ordinate and is refined (a
+  # normal plus one other term would be a Gaussian convolution, two non-normal
+  # terms a two-term convolution); the reference is the convolution integral.
   center <- BayesTools:::.prior_linear_density_height(skewed, 0)
   expect_identical(refinement_calls, 2L)
-  # Each refinement halves the source spacing (1023 knots over [-3.39, 8.99]
+  # Each refinement halves the source spacing (2046 knots over [-3.39, 13.6]
   # initially) and omits 1000 times less tail probability.
   expect_equal(
     attr(center, "adaptive_evaluation")[c("n_grid", "tail_prob", "refinements")],
-    list(n_grid = 16384L, tail_prob = 1e-9, refinements = 2L)
+    list(n_grid = 32768L, tail_prob = 1e-9, refinements = 2L)
   )
   refinement_calls <- 0L
-  tail <- BayesTools:::.prior_linear_density_height(skewed, 9)
-  expect_gt(9, max(skewed$density$x))
-  expect_identical(refinement_calls, 3L)
+  tail <- BayesTools:::.prior_linear_density_height(skewed, 14)
+  expect_gt(14, max(skewed$density$x))
+  expect_identical(refinement_calls, 4L)
   expect_lt(
     abs(as.numeric(center) / skewed_reference(0) - 1),
     1e-4
   )
   expect_lt(
-    abs(as.numeric(tail) / skewed_reference(9) - 1),
+    abs(as.numeric(tail) / skewed_reference(14) - 1),
     1e-4
   )
   expect_true(isTRUE(attr(center, "adaptive_evaluation")$converged))
@@ -1745,6 +1779,11 @@ test_that("prior heights use exact ordinates at density jumps and zero outside s
   expect_identical(.prior_linear_density_height(shifted, .4), 0)
   convolved <- .prior_linear_combination_density(
     list(a = half_normal, b = half_normal), c(a = 1, b = 1)
+  )
+  expect_identical(prior_density_ordinate(convolved, -1)$behavior, "zero")
+  expect_identical(.prior_linear_density_height(convolved, -1), 0)
+  convolved <- .prior_linear_combination_density(
+    list(a = half_normal, b = half_normal, c = half_normal), c(a = 1, b = 1, c = 1)
   )
   expect_identical(prior_density_ordinate(convolved, -1)$behavior, "unknown")
   expect_identical(.prior_linear_density_height(convolved, -1), 0)

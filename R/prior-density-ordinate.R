@@ -81,7 +81,15 @@
 #' whole mixture is `unknown`. In any linear combination (inside or outside a
 #' mixture), a Gaussian term plus one other continuous scalar term is a
 #' Gaussian convolution evaluated by the same quadrature over that term's
-#' declared support.
+#' declared support. Sums of Cauchy terms are Cauchy (method
+#' `"scalar_affine"`), and two other continuous scalar terms without a
+#' Gaussian part are a `"convolution"` quadrature over one term's declared
+#' support; where finite support bounds of both terms meet at `value`, the
+#' ordinate is classified from the terms' declared behavior at those bounds
+#' (the positive finite limit at an end of the support where the density
+#' exponents sum to one, e.g. two arcsine terms, is `unknown`). Sums of three
+#' or more non-normal terms, or of a Gaussian part and two or more non-normal
+#' terms, are `unknown`.
 #'
 #' @examples
 #' normal_prior <- prior("normal", list(mean = 0, sd = 1))
@@ -129,7 +137,7 @@ prior_density_ordinate <- function(x, value){
   c(
     "primitive", "point", "finite_mixture", "scalar_affine",
     "linear_normal", "conditional_normal_mixture", "scale_mixture",
-    "named_transform", "unsupported_provenance"
+    "convolution", "named_transform", "unsupported_provenance"
   )
 }
 
@@ -703,15 +711,15 @@ prior_density_ordinate <- function(x, value){
 .prior_density_ordinate_has_quadrature <- function(provenance){
 
   if(!is.list(provenance)) return(FALSE)
-  if(is.list(provenance$integration) &&
-     identical(provenance$integration$exact, FALSE)) return(TRUE)
+  if(is.list(provenance[["integration"]]) &&
+     identical(provenance[["integration"]][["exact"]], FALSE)) return(TRUE)
   any(vapply(provenance, .prior_density_ordinate_has_quadrature, logical(1)))
 }
 
 .prior_density_ordinate_integration <- function(provenance){
 
   if(!is.list(provenance)) return(NULL)
-  if(!is.null(provenance$integration)) return(provenance$integration)
+  if(!is.null(provenance[["integration"]])) return(provenance[["integration"]])
   if(!is.null(provenance$components)){
     components <- lapply(provenance$components, function(component){
       .prior_density_ordinate_integration(component$provenance)

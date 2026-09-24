@@ -524,13 +524,27 @@ test_that("log-identity and transformed region probabilities are exact", {
 
 test_that("region probabilities keep the grid only without a structural representation", {
 
-  # a t30 plus gamma sum has no structural ordinate: the grid evaluation is
-  # used unchanged
-  skewed <- .prior_linear_combination_density(
+  # a t30 plus gamma sum is a two-term convolution: its region probability is
+  # the quadrature of the gamma density times the t30 distribution function
+  region <- .hypothesis_prior_region(quote(theta < 1), "theta")
+  convolution <- .prior_linear_combination_density(
     list(x = prior("t", list(0, 1, 30)), y = prior("gamma", list(3, 2))),
     c(x = 1, y = 1)
   )
-  region <- .hypothesis_prior_region(quote(theta < 1), "theta")
+  reference <- stats::integrate(function(y) stats::dgamma(y, 3, 2) * stats::pt(1 - y, 30),
+                                0, 1, rel.tol = 1e-12)$value +
+    stats::integrate(function(y) stats::dgamma(y, 3, 2) * stats::pt(1 - y, 30),
+                     1, Inf, rel.tol = 1e-12)$value
+  probability <- .prior_linear_density_region_probability(convolution, region)
+  expect_identical(attr(probability, "numerical_diagnostics")$quadratures, 1L)
+  expect_equal(as.numeric(probability), reference, tolerance = 1e-10)
+
+  # adding a t5 term leaves no structural ordinate: the grid evaluation is
+  # used unchanged
+  skewed <- .prior_linear_combination_density(
+    list(x = prior("t", list(0, 1, 30)), y = prior("gamma", list(3, 2)), z = prior("t", list(0, 1, 5))),
+    c(x = 1, y = 1, z = 1)
+  )
   expect_null(.prior_linear_density_region_probability(skewed, region))
   side <- hypothesis_parse("theta < 1")$statements[[1L]]$left
   expect_identical(
@@ -555,6 +569,7 @@ test_that("region probabilities keep the grid only without a structural represen
       list(a = prior("normal", list(0, 1)), b = multiplied, s = prior("gamma", list(3, 2))),
       c(a = 1, b = 1)),
     skewed,
+    convolution,
     .prior_linear_combination_density(
       list(a = prior("gamma", list(2, 1)), b = prior("gamma", list(3, 1))), c(a = 1, b = -1)),
     .prior_linear_combination_density(

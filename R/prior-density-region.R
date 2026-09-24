@@ -11,7 +11,9 @@
 #   function, normal sums their normal distribution function;
 # * Gaussian convolutions and conditional-normal scale mixtures use the
 #   conditional-normal quadrature of the ordinate
-#   (.prior_conditional_normal_region());
+#   (.prior_conditional_normal_region()), and scale products and two-term
+#   convolutions the analogous quadratures (.prior_scale_product_region(),
+#   .prior_convolution_region());
 # * mixture, spike-and-slab, model and conditional mixture components, and
 #   distinct design rows are summed with their probabilities;
 # * named monotone output transformations map the region to the source scale.
@@ -270,6 +272,18 @@
     return(.prior_region_result(1))
   }
   integral <- .prior_scale_product_region(spec, region$intervals, n_grid)
+  .prior_region_result(integral$value, integral$integration)
+}
+
+.prior_region_convolution <- function(spec, region, n_grid){
+
+  if(nrow(region$intervals) == 0L){
+    return(.prior_region_result(0))
+  }
+  if(.prior_region_whole(region)){
+    return(.prior_region_result(1))
+  }
+  integral <- .prior_convolution_region(spec, region$intervals, n_grid)
   .prior_region_result(integral$value, integral$integration)
 }
 

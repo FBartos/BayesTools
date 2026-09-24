@@ -22,6 +22,8 @@
 # * "scale_product": the product of a non-normal scalar term and a scalar
 #   multiplier (ordered levels with a non-normal total, 'multiply_by'
 #   products of non-normal terms);
+# * "convolution": the sum of two non-normal simple continuous scalar terms
+#   (Cauchy terms first sum to one Cauchy term);
 # * "unknown": a combination without a structural route.
 # Internal nodes:
 # * "mixture": a finite mixture of routes (mixture and spike-and-slab terms,
@@ -465,6 +467,99 @@
   )
 }
 
+# Cauchy terms (Cauchy or t with one degree of freedom, untruncated) of a
+# product-free combination sum to one Cauchy term: sum_j w_j C(l_j, s_j) =
+# C(sum_j w_j l_j, sum_j |w_j| s_j). NULL with fewer than two Cauchy terms.
+.prior_density_route_cauchy_terms <- function(prior_list, weights, source_transforms){
+
+  groups <- tryCatch(
+    .prior_linear_weight_groups(prior_list, weights),
+    error = function(e) NULL
+  )
+  if(is.null(groups)){
+    return(NULL)
+  }
+  is_cauchy <- function(group){
+    prior <- group$prior
+    .prior_density_simple_continuous(prior) &&
+      (identical(prior$distribution, "cauchy") ||
+         (identical(prior$distribution, "t") && identical(prior$parameters$df, 1))) &&
+      identical(prior$truncation$lower, -Inf) && identical(prior$truncation$upper, Inf) &&
+      all(is.na(source_transforms[names(group$weights)]))
+  }
+  cauchy <- names(groups)[vapply(groups, is_cauchy, logical(1))]
+  columns <- unlist(lapply(groups[cauchy], function(group) names(group$weights)), use.names = FALSE)
+  if(length(columns) < 2L){
+    return(NULL)
+  }
+  location <- 0
+  scale <- 0
+  for(parameter in cauchy){
+    group <- groups[[parameter]]
+    location <- location + sum(group$weights) * group$prior$parameters$location
+    scale <- scale + sum(abs(group$weights)) * group$prior$parameters$scale
+  }
+  prior_list[[".cauchy_sum"]] <- prior("cauchy", list(location = location, scale = scale))
+  weights <- weights[setdiff(names(weights), columns)]
+  weights[[".cauchy_sum"]] <- 1
+  source_transforms <- source_transforms[names(weights)]
+  names(source_transforms) <- names(weights)
+  list(prior_list = prior_list, weights = weights, source_transforms = source_transforms)
+}
+
+# Two simple continuous scalar terms (not both normal) plus points: the
+# two-term convolution quadrature over the first term, the one with an
+# infinite density at a finite bound when only one has such a bound. NULL for
+# other combinations.
+.prior_density_route_convolution <- function(prior_list, weights, source_transforms, n_grid){
+
+  groups <- tryCatch(
+    .prior_linear_weight_groups(prior_list, weights),
+    error = function(e) NULL
+  )
+  if(is.null(groups)){
+    return(NULL)
+  }
+  offset <- 0
+  terms <- list()
+  for(group in groups){
+    point <- .prior_density_ordinate_point_group_location(group, source_transforms)
+    if(length(point) == 1L){
+      if(is.na(point)){
+        return(NULL)
+      }
+      offset <- offset + point
+      next
+    }
+    if(!.prior_density_simple_continuous(group$prior) ||
+       any(!is.na(source_transforms[names(group$weights)]))){
+      return(NULL)
+    }
+    for(weight in group$weights){
+      terms[[length(terms) + 1L]] <- list(prior = group$prior, weight = unname(weight))
+    }
+  }
+  if(length(terms) != 2L){
+    return(NULL)
+  }
+  singular <- vapply(terms, function(term){
+    bounds <- unlist(term$prior$truncation[c("lower", "upper")], use.names = FALSE)
+    any(vapply(bounds[is.finite(bounds)], function(bound){
+      identical(.prior_density_ordinate_continuous_behavior(
+        .prior_density_ordinate_primitive(term$prior, bound)
+      ), "infinite")
+    }, logical(1)))
+  }, logical(1))
+  if(identical(singular, c(FALSE, TRUE))){
+    terms <- terms[2:1]
+  }
+  list(
+    type   = "convolution",
+    spec   = .prior_convolution_spec(offset, terms, sources = names(groups)),
+    n_grid = n_grid
+  )
+}
+
 # Route of the linear combination sum_j weights[j] * term_j of 'prior_list'
 # (terms entering through a 'multiply_by' scale are products).
 .prior_density_route_linear <- function(prior_list, weights, source_transforms,
@@ -541,6 +636,16 @@
   )
   if(!is.null(components)){
     return(components)
+  }
+  cauchy <- .prior_density_route_cauchy_terms(prior_list, weights, source_transforms)
+  if(!is.null(cauchy)){
+    return(.prior_density_route_linear(
+      cauchy$prior_list, cauchy$weights, cauchy$source_transforms, n_grid
+    ))
+  }
+  convolution <- .prior_density_route_convolution(prior_list, weights, source_transforms, n_grid)
+  if(!is.null(convolution)){
+    return(convolution)
   }
 
   .prior_density_route_unknown(
@@ -777,6 +882,7 @@
     ),
     "conditional_normal" = .prior_conditional_normal_ordinate(route$spec, value, route$n_grid),
     "scale_product" = .prior_scale_product_ordinate(route$spec, value, route$n_grid),
+    "convolution" = .prior_convolution_ordinate(route$spec, value, route$n_grid),
     "unknown" = .prior_density_ordinate_result(
       value       = value,
       behavior    = "unknown",
@@ -871,6 +977,7 @@
     )$provenance,
     "conditional_normal" = list(kind = "conditional_normal_mixture"),
     "scale_product" = list(kind = "scale_mixture"),
+    "convolution" = list(kind = "convolution"),
     "unknown" = route$provenance,
     "mixture" = {
       positive <- route$weights > 0
@@ -912,6 +1019,7 @@
     ),
     "conditional_normal" = .prior_region_conditional_normal(route$spec, region, route$n_grid),
     "scale_product" = .prior_region_scale_product(route$spec, region, route$n_grid),
+    "convolution" = .prior_region_convolution(route$spec, region, route$n_grid),
     "unknown" = .prior_region_unavailable(),
     "mixture" = .prior_region_combine(
       lapply(route$components, .prior_density_route_region, region = region),
