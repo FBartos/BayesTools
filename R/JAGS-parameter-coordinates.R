@@ -1311,7 +1311,10 @@
 # structural when none of its ancestors is stochastic; otherwise it is derived
 # when BayesTools generated it for a formula and sampled when the user
 # requested it. A node the syntax does not define is structural when it is
-# fully observed data and sampled otherwise.
+# fully observed data and sampled otherwise. The parents of a registered
+# generated deterministic node are its declared dependencies
+# (.bt_deterministic_nodes()); the parents of other nodes are read from the
+# syntax.
 .bt_convergence_role_monitored_nodes <- function(nodes, prior_list,
                                                  declarations, formula_design,
                                                  model_syntax, data_names){
@@ -1324,6 +1327,12 @@
     data_names,
     prior_bases$name[prior_bases$role == "structural"]
   ))
+  registered_parents <- .bt_deterministic_node_parent_bases(
+    .bt_deterministic_nodes(
+      prior_list = prior_list,
+      formula_design = formula_design
+    )
+  )
 
   roles <- vapply(nodes, function(node){
     if(node %in% graph$data){
@@ -1332,11 +1341,15 @@
     if(node %in% graph$stochastic){
       return(if(node %in% data_names) "structural" else "sampled")
     }
-    if(!node %in% names(graph$deterministic)){
+    parents <- if(node %in% names(registered_parents)){
+      registered_parents[[node]]
+    }else if(node %in% names(graph$deterministic)){
+      graph$deterministic[[node]]
+    }else{
       return(if(node %in% data_names) "structural" else "sampled")
     }
     stochastic_parent <- .bt_jags_stochastic_ancestry(
-      graph$deterministic[[node]],
+      parents,
       graph = graph,
       constants = constants
     )

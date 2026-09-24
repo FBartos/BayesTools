@@ -228,6 +228,17 @@ test_that("scalar correlation nodes reproduce the JAGS monitors of every structu
     rep(tanh(0.4), nrow(result$rebuilt))
   )
 
+  # Convergence roles read the declared parents of the generated nodes: the
+  # fixed correlation depends only on its point prior (structural), the others
+  # on sampled coordinates (derived).
+  parents <- BayesTools:::.bt_deterministic_node_parent_bases(registry)
+  expect_identical(parents[["mu__xREx__g_rho"]], "mu__xREx__g_rho_logit")
+  roles <- parameter_coordinates(fit)
+  role <- function(name) roles$convergence_role[roles$coordinate_name == name]
+  expect_identical(role("mu__xREx__p_rho"), "structural")
+  expect_identical(role("mu__xREx__g_rho"), "derived")
+  expect_identical(role("mu__xREx__s_rho"), "derived")
+
   # Prior draws carry the same node definition.
   prior_draws <- transform_prior_samples(fit, n_samples = 200, seed = 3, formula_scale = list())
   expect_identical(

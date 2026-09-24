@@ -307,6 +307,24 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
   nodes
 }
 
+# The parents of the generated nodes by JAGS node name (coordinate base): the
+# bases of their declared dependencies. The convergence roles read them.
+.bt_deterministic_node_parent_bases <- function(nodes){
+
+  parents <- list()
+  for(node in nodes){
+    dependency_bases <- unique(.bt_parameter_coordinates_base(node$dependencies))
+    for(base in unique(.bt_parameter_coordinates_base(node$coordinates))){
+      parents[[base]] <- setdiff(
+        unique(c(parents[[base]], dependency_bases)),
+        base
+      )
+    }
+  }
+
+  parents
+}
+
 .bt_deterministic_node_table <- function(nodes, monitored_columns = character()){
 
   nodes <- unname(nodes)
