@@ -4767,6 +4767,24 @@ test_that("Savage-Dickey posterior ordinates are exact reflected kernel sums", {
       tolerance = 1e-12
     )
   }
+
+  # Draws about 100 bandwidths above the support bound 0: the reflected
+  # kernel sum at the bound (log-sum-exp reference) is below the double range,
+  # so the ordinate is 0 and the Bayes factor +Inf.
+  set.seed(13)
+  draws <- stats::rnorm(1e4, .5, .02)
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(0, 1), list(0, Inf))), weights = c(theta = 1)
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(draws, prior_density)
+  attr(posterior, "posterior_support") <- c(0, Inf)
+  bandwidth <- stats::bw.nrd0(draws)
+  log_kernels <- stats::dnorm(draws / bandwidth, log = TRUE)
+  log_ordinate <- log(2) + max(log_kernels) + log(sum(exp(log_kernels - max(log_kernels)))) -
+    log(length(draws) * bandwidth)
+  expect_lt(log_ordinate, log(.Machine$double.xmin))
+  bf <- Savage_Dickey_BF(posterior, null_hypothesis = 0, silent = TRUE)
+  expect_identical(as.numeric(bf), Inf)
 })
 
 # File-level skips: All remaining tests in this file require pre-fitted models
@@ -5329,10 +5347,19 @@ test_that("Marginal distribution prior and posterior functions work", {
     parameter         = "sigma",
     prior_samples     = FALSE)), "there are no prior densities for the posterior distribution")
 
-  # simple restricted prior
+  # simple restricted prior: the posterior draws of sigma lie about 108
+  # bandwidths above the null (and support bound) 0, so the exact reflected
+  # kernel sum at 0, 2 sum_i phi(x_i / h) / (n h), is about exp(-5828) (the
+  # log-sum-exp reference below) and underflows: the Bayes factor exceeds the
+  # double range. (The earlier 512-point grid KDE reported 1.5e15.)
   BF.marg_post_sigma <- Savage_Dickey_BF(marg_post_sigma, silent = TRUE)
-  expect_true(is.finite(BF.marg_post_sigma))
-  expect_gt(BF.marg_post_sigma, 1e10)
+  sigma_draws <- as.numeric(marg_post_sigma)
+  bandwidth <- stats::bw.nrd0(sigma_draws)
+  log_kernels <- stats::dnorm(sigma_draws / bandwidth, log = TRUE)
+  log_ordinate <- log(2) + max(log_kernels) + log(sum(exp(log_kernels - max(log_kernels)))) -
+    log(length(sigma_draws) * bandwidth)
+  expect_lt(log_ordinate, log(.Machine$double.xmin))
+  expect_identical(as.numeric(BF.marg_post_sigma), Inf)
   expect_null(attr(BF.marg_post_sigma, "warnings"))
   expect_true(isTRUE(attr(BF.marg_post_sigma, "posterior_density_boundary_reflection")))
   expect_equal(attr(BF.marg_post_sigma, "posterior_density_support"), c(0, 5))
