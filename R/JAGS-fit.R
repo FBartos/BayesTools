@@ -91,8 +91,11 @@
 #'   Automatic restarts after a failed initialization (see \code{restarts} in
 #'   \code{autofit_control}) draw their seeds from a separate stream of the
 #'   same seed (the first L'Ecuyer-CMRG substream), so the i-th restart does
-#'   not repeat the fit with \code{seed + i}; the caller's random-number
-#'   generator kind is kept.
+#'   not repeat the fit with \code{seed + i}. A seeded fit restores the
+#'   caller's random-number state (\code{.Random.seed} and \code{RNGkind()})
+#'   when it returns. With \code{seed = NULL}, the initial values are drawn
+#'   from one seed taken from the caller's random-number stream (see
+#'   \code{\link{JAGS_get_inits}}), which the fit then continues to use.
 #' @param worker_output optional file path for parallel worker stdout and stderr.
 #'   The parent directory must exist. Workers append to the same file, so messages
 #'   can interleave. \code{NULL} retains the backend default of discarding worker
@@ -219,6 +222,11 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
                      add_parameters = NULL, required_packages = NULL, jags_modules = NULL, runtime_setup = NULL, runtime_cache = NULL, worker_output = NULL, ...){
 
   .check_runjags()
+  # A seeded fit leaves the caller's random-number state as it found it.
+  if(!is.null(seed)){
+    rng_state <- .bt_rng_state()
+    on.exit(.bt_rng_restore(rng_state), add = TRUE)
+  }
   dots <- list(...)
   worker_output <- .JAGS_validate_worker_output(worker_output)
 
@@ -392,7 +400,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   model_call <- list(
     model     = JAGS_add_priors(syntax = model_syntax, prior_list = prior_list),
     data      = data,
-    inits     = JAGS_get_inits(prior_list, chains = chains, seed = seed),
+    inits     = .JAGS_fit_inits(prior_list, chains = chains, seed = seed),
     monitor   = backend_monitor$monitor,
     n.chains  = chains,
     adapt     = adapt,
@@ -500,7 +508,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
           }
           # restart with different inits, seeded from the restart-seed stream
           restart_seed <- if(!is.null(seed)) .JAGS_restart_seeds(seed, i)[[i]]
-          model_call$inits <- JAGS_get_inits(prior_list, chains = chains, seed = restart_seed)
+          model_call$inits <- .JAGS_fit_inits(prior_list, chains = chains, seed = restart_seed)
         }
       }
     }

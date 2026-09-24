@@ -159,8 +159,11 @@ depend on the number of chains, and the chains of adjacent seeds (e.g.,
 Automatic restarts after a failed initialization (see \code{restarts} in
 \code{autofit_control}) draw their seeds from a separate stream of the
 same seed (the first L'Ecuyer-CMRG substream), so the i-th restart does
-not repeat the fit with \code{seed + i}; the caller's random-number
-generator kind is kept.}
+not repeat the fit with \code{seed + i}. A seeded fit restores the
+caller's random-number state (\code{.Random.seed} and \code{RNGkind()})
+when it returns. With \code{seed = NULL}, the initial values are drawn
+from one seed taken from the caller's random-number stream (see
+\code{\link{JAGS_get_inits}}), which the fit then continues to use.}
 
 \item{add_parameters}{vector of additional parameter names that should be
 monitored but were not specified in the \code{prior_list}. Automatic fitting

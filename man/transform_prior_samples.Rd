@@ -17,7 +17,9 @@ transform_prior_samples(
 
 \item{n_samples}{number of samples to generate (default: 10000)}
 
-\item{seed}{random seed for reproducibility (optional)}
+\item{seed}{random seed for reproducibility (optional). The caller's
+random-number state (\code{.Random.seed} and \code{RNGkind()}) is restored
+afterwards. With \code{NULL}, the caller's random-number stream is used.}
 
 \item{formula_scale}{optional nested list containing standardization information.
 If not provided, extracted from \code{fit} attribute.}

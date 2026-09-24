@@ -7,10 +7,11 @@
 #' @param seed seed for random number generation. The initial values are drawn
 #'   after \code{set.seed(seed)}; each chain's \code{.RNG.seed} is drawn from the
 #'   same seed with \code{sample.int(.Machine$integer.max, chains)}, so the seed
-#'   of a chain does not depend on the number of chains. The call resets R's
-#'   random-number state, also for an empty \code{prior_list}; with
-#'   \code{seed = NULL}, the seed is first drawn from that state with
-#'   \code{sample(666666, 1)}.
+#'   of a chain does not depend on the number of chains. The caller's
+#'   random-number state (\code{.Random.seed} and \code{RNGkind()}) is restored
+#'   afterwards. With \code{seed = NULL}, the seed is first drawn from the
+#'   caller's random-number stream with \code{sample(666666, 1)}, which
+#'   advances that stream by this one draw.
 #'
 #' @inheritParams JAGS_add_priors
 #'
@@ -23,12 +24,25 @@
 #' @export
 JAGS_get_inits            <- function(prior_list, chains, seed){
 
+  .JAGS_check_inits_input(prior_list, chains, seed)
+
+  # select seed at random if none was specified
+  if(is.null(seed)){
+    seed <- sample(666666, 1)
+  }
+  rng_state <- .bt_rng_state()
+  on.exit(.bt_rng_restore(rng_state), add = TRUE)
+
+  .JAGS_seeded_inits(prior_list, chains, seed)
+}
+
+.JAGS_check_inits_input    <- function(prior_list, chains, seed){
+
   check_int(chains, "chains", lower = 1)
   check_real(seed, "seed", allow_NULL = TRUE)
 
   # without priors, only the random-number generator is initialized
-  has_priors <- length(prior_list) > 0
-  if(has_priors){
+  if(length(prior_list) > 0){
     check_list(prior_list, "prior_list")
     if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
       stop("'prior_list' must be a list of priors.")
@@ -36,16 +50,32 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     .bt_validate_ordered_shared_allocations(prior_list)
   }
 
+  invisible(TRUE)
+}
 
-  # select seed at random if none was specified
+# Initial values of JAGS_fit(). A seeded fit draws them inside its own
+# random-number scope, so its state sequence is that of 'set.seed(seed)'; an
+# unseeded fit takes one seed from the caller's stream through
+# JAGS_get_inits().
+.JAGS_fit_inits            <- function(prior_list, chains, seed){
+
   if(is.null(seed)){
-    seed <- sample(666666, 1)
+    return(JAGS_get_inits(prior_list, chains = chains, seed = NULL))
   }
+  .JAGS_check_inits_input(prior_list, chains, seed)
+  .JAGS_seeded_inits(prior_list, chains, seed)
+}
+
+# Initial values and chain seeds of 'seed', drawn in the current random-number
+# stream: callers scope it (JAGS_get_inits() for itself, JAGS_fit() for the
+# whole fit), so that the caller's state is restored afterwards.
+.JAGS_seeded_inits         <- function(prior_list, chains, seed){
+
+  has_priors  <- length(prior_list) > 0
   chain_seeds <- .JAGS_chain_seeds(seed, chains)
 
   # reset the seed so that the initial values do not depend on the chain seeds
   set.seed(seed)
-
 
   # create the starting values
   inits <- vector("list", chains)
@@ -62,11 +92,52 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   return(inits)
 }
 
+# Caller random-number state -------------------------------------------------
+#
+# Seeded public functions leave the caller's random-number generator exactly
+# as they found it: '.Random.seed', or its absence, and all three RNGkind()
+# components. They seed under the caller's kind, so the values drawn inside
+# the scope do not change. Without a caller '.Random.seed', the kind is reset
+# explicitly, because R keeps the kind set inside the scope when
+# '.Random.seed' is removed.
+.bt_rng_state              <- function(){
+
+  has_seed <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+  list(
+    has_seed = has_seed,
+    seed = if(has_seed) get(".Random.seed", envir = globalenv(), inherits = FALSE),
+    kind = RNGkind()
+  )
+}
+
+.bt_rng_restore            <- function(state){
+
+  if(isTRUE(state$has_seed)){
+    assign(".Random.seed", state$seed, envir = globalenv())
+    return(invisible(NULL))
+  }
+  if(!identical(RNGkind(), state$kind)){
+    # Restoring the caller's own sample kind repeats R's warning about the
+    # 'Rounding' sampler, which the caller already received.
+    suppressWarnings(RNGkind(
+      kind = state$kind[[1L]],
+      normal.kind = state$kind[[2L]],
+      sample.kind = state$kind[[3L]]
+    ))
+  }
+  if(exists(".Random.seed", envir = globalenv(), inherits = FALSE)){
+    rm(".Random.seed", envir = globalenv())
+  }
+
+  invisible(NULL)
+}
+
 # Derives the per-chain JAGS '.RNG.seed' values from the user seed through R's
-# RNG (and leaves R's RNG state advanced from 'set.seed(seed)'). Sampling
-# without replacement keeps the chains' seeds distinct and prefix-stable: chain
-# k's seed does not depend on the number of chains. Unlike 'seed + chain', chain
-# k + 1 of seed s does not reuse the stream of chain k of seed s + 1.
+# RNG (and leaves R's RNG state advanced from 'set.seed(seed)', inside the
+# caller's scope). Sampling without replacement keeps the chains' seeds
+# distinct and prefix-stable: chain k's seed does not depend on the number of
+# chains. Unlike 'seed + chain', chain k + 1 of seed s does not reuse the
+# stream of chain k of seed s + 1.
 .JAGS_chain_seeds          <- function(seed, chains){
 
   set.seed(seed)
@@ -78,24 +149,11 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 # the first L'Ecuyer-CMRG substream after 'set.seed(seed, kind = "L'Ecuyer-CMRG")'.
 # Sampling without replacement keeps restart i's seed independent of the number
 # of restarts. Unlike 'seed + i', restart i of seed s does not reproduce the
-# first attempt of seed s + i. The caller's RNG kind and state are restored;
-# without a caller '.Random.seed', the kind is reset explicitly, because R keeps
-# the kind set by 'set.seed()' when '.Random.seed' is removed.
+# first attempt of seed s + i. The caller's RNG kind and state are restored.
 .JAGS_restart_seeds        <- function(seed, restarts){
 
-  had_state <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
-  old_state <- if(had_state) get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
-  old_kind  <- RNGkind()[[1L]]
-  on.exit({
-    if(had_state){
-      assign(".Random.seed", old_state, envir = .GlobalEnv)
-    }else{
-      RNGkind(kind = old_kind)
-      if(exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)){
-        rm(".Random.seed", envir = .GlobalEnv)
-      }
-    }
-  }, add = TRUE)
+  rng_state <- .bt_rng_state()
+  on.exit(.bt_rng_restore(rng_state), add = TRUE)
 
   set.seed(seed, kind = "L'Ecuyer-CMRG")
   assign(

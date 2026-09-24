@@ -131,7 +131,9 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 #' @param fit a fitted model object with \code{prior_list} and optionally
 #' \code{formula_scale} attributes
 #' @param n_samples number of samples to generate (default: 10000)
-#' @param seed random seed for reproducibility (optional)
+#' @param seed random seed for reproducibility (optional). The caller's
+#' random-number state (\code{.Random.seed} and \code{RNGkind()}) is restored
+#' afterwards. With \code{NULL}, the caller's random-number stream is used.
 #' @param formula_scale optional nested list containing standardization information.
 #' If not provided, extracted from \code{fit} attribute.
 #'
@@ -177,6 +179,11 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 #' @export
 transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula_scale = NULL){
 
+  # A seeded call leaves the caller's random-number state as it found it.
+  if(!is.null(seed)){
+    rng_state <- .bt_rng_state()
+    on.exit(.bt_rng_restore(rng_state), add = TRUE)
+  }
   check_int(n_samples, "n_samples", lower = 1, allow_NA = FALSE)
   check_int(
     seed,

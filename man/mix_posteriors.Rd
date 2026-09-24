@@ -35,7 +35,10 @@ conditioning, posterior inclusion is 1, so recomputing the Bayes factor
 from the renormalized probabilities would be \code{Inf}.}
 
 \item{seed}{integer specifying seed for sampling posteriors for
-model averaging. Defaults to \code{NULL}.}
+model averaging. The caller's random-number state (\code{.Random.seed} and
+\code{RNGkind()}) is restored afterwards. Defaults to \code{NULL}, which
+draws the shared sampling seed from the caller's random-number stream (one
+draw).}
 
 \item{n_samples}{number of samples to be drawn for the model-averaged
 posterior distribution}

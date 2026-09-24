@@ -115,7 +115,9 @@
 #' \code{log_posterior}; these can be supplied through the upstream
 #' \code{packages} argument in \code{...}.
 #' @param seed optional integer seed for the random bridge-sampling proposal
-#' draws. The default, `NULL`, uses the current R random-number-generator state.
+#' draws. The caller's random-number state (`.Random.seed` and `RNGkind()`) is
+#' restored afterwards. The default, `NULL`, draws from the caller's
+#' random-number stream, so the estimate depends on that stream.
 #' @param silent whether the progress should be printed, defaults to \code{TRUE}
 #' @param nonfinite handling of non-finite repetition-level log marginal
 #' likelihoods. The default, `"error"`, aborts. `"drop"` aggregates only the
@@ -253,6 +255,11 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
 
   # The bridge callback may capture this frame and be sent to workers.
   attr(fit, "runtime_state") <- NULL
+  # A seeded call leaves the caller's random-number state as it found it.
+  if(!is.null(seed)){
+    rng_state <- .bt_rng_state()
+    on.exit(.bt_rng_restore(rng_state), add = TRUE)
+  }
   ### check input
   bridge_context <- .bt_JAGS_bridge_context_mode(bridge_context)
   if(!is.null(bridge_context_node_names)){

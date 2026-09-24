@@ -21,7 +21,10 @@
 #' conditional parameter in a separate call instead.
 #'
 #' @param seed integer specifying seed for sampling posteriors for
-#' model averaging. Defaults to \code{NULL}.
+#' model averaging. The caller's random-number state (\code{.Random.seed} and
+#' \code{RNGkind()}) is restored afterwards. Defaults to \code{NULL}, which
+#' draws the shared sampling seed from the caller's random-number stream (one
+#' draw).
 #' @param n_samples number of samples to be drawn for the model-averaged
 #' posterior distribution
 #' @inheritParams ensemble_inference
@@ -37,6 +40,12 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
                            conditional = FALSE, seed = NULL,
                            n_samples = 10000,
                            on_failure = c("error", "drop", "zero")){
+
+  # A seeded call leaves the caller's random-number state as it found it.
+  if(!is.null(seed)){
+    rng_state <- .bt_rng_state()
+    on.exit(.bt_rng_restore(rng_state), add = TRUE)
+  }
 
   # check input
   check_list(model_list, "model_list")
@@ -71,7 +80,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     set.seed(seed)
     common_sample_seed <- seed
   }else{
+    # One draw from the caller's stream; the sampling below is scoped.
     common_sample_seed <- sample(.Machine$integer.max, 1)
+    rng_state <- .bt_rng_state()
+    on.exit(.bt_rng_restore(rng_state), add = TRUE)
   }
 
   .mix_posteriors_assert_aligned_post_probs(inference, parameters)

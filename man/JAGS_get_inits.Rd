@@ -15,10 +15,11 @@ JAGS_get_inits(prior_list, chains, seed)
 \item{seed}{seed for random number generation. The initial values are drawn
 after \code{set.seed(seed)}; each chain's \code{.RNG.seed} is drawn from the
 same seed with \code{sample.int(.Machine$integer.max, chains)}, so the seed
-of a chain does not depend on the number of chains. The call resets R's
-random-number state, also for an empty \code{prior_list}; with
-\code{seed = NULL}, the seed is first drawn from that state with
-\code{sample(666666, 1)}.}
+of a chain does not depend on the number of chains. The caller's
+random-number state (\code{.Random.seed} and \code{RNGkind()}) is restored
+afterwards. With \code{seed = NULL}, the seed is first drawn from the
+caller's random-number stream with \code{sample(666666, 1)}, which
+advances that stream by this one draw.}
 }
 \value{
 \code{JAGS_get_inits} returns a list with one element per chain,

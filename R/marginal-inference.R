@@ -12,7 +12,10 @@
 #' @param parameters all parameters included in the model_list that are
 #' relevant for the formula (all of which need to have specification of
 #' \code{is_null_list})
-#' @param seed seed for random number generation
+#' @param seed seed for random number generation. The caller's random-number
+#' state (\code{.Random.seed} and \code{RNGkind()}) is restored afterwards.
+#' With \code{NULL}, each model-averaging step draws its sampling seed from the
+#' caller's random-number stream.
 #' @param density_method posterior density method used for Savage-Dickey Bayes
 #' factors. Currently only \code{"KDE"} is supported by
 #' \code{marginal_inference()} and \code{as_marginal_inference()} because
@@ -37,6 +40,12 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
                                null_hypothesis = 0, normal_approximation = FALSE,
                                n_samples = 10000, seed = NULL, silent = FALSE,
                                density_method = "KDE"){
+
+  # A seeded call leaves the caller's random-number state as it found it.
+  if(!is.null(seed)){
+    rng_state <- .bt_rng_state()
+    on.exit(.bt_rng_restore(rng_state), add = TRUE)
+  }
 
   # check input (majority of the checks performed within mix_posteriors)
   check_list(model_list, "model_list")

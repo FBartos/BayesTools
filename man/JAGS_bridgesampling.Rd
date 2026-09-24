@@ -165,7 +165,9 @@ Defaults to one. Parallel workers must be able to load every package used by
 \code{packages} argument in \code{...}.}
 
 \item{seed}{optional integer seed for the random bridge-sampling proposal
-draws. The default, \code{NULL}, uses the current R random-number-generator state.}
+draws. The caller's random-number state (\code{.Random.seed} and \code{RNGkind()}) is
+restored afterwards. The default, \code{NULL}, draws from the caller's
+random-number stream, so the estimate depends on that stream.}
 
 \item{...}{additional argument to the \link[bridgesampling]{bridge_sampler}
 and \code{log_posterior} function. The upstream-only \code{packages} argument is
