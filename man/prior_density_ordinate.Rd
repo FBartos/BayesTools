@@ -43,9 +43,11 @@ Gaussian peak, and retain integration errors and evaluation budgets in
 (each piece of a split integral, each distinct design row, model or
 conditional mixture component, and spike-and-slab or mixture leaf) receives
 the full evaluation budget of the
-density (its grid size) and its own convergence check; \code{provenance} reports
-the summed evaluations and budgets of all of them, and row mixtures also
-keep each row's diagnostics. Their structural
+density (its grid size) and its own convergence check. \code{provenance} reports
+the evaluations summed over all of them; its \code{budget} is the grid size per
+split integral (the budget of each of its pieces), summed over rows,
+components and leaves. Split integrals also keep each piece's evaluations
+and absolute error, and row mixtures each row's diagnostics. Their structural
 classification has \code{exact = TRUE}, while
 \code{provenance$integration$exact = FALSE} describes the numerical ordinate.
 Failed quadrature retains that classification with \code{log_density = NA} and
