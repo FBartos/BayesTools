@@ -27,16 +27,17 @@ chain's seed does not depend on the number of chains), and automatic restarts
 take their seeds from the separate stream of `.JAGS_restart_seeds()`. Every
 path that seeds JAGS chains uses these helpers; never derive seeds as
 `seed + chain` or `seed + attempt`, which makes adjacent seeds share streams.
+Seeded functions restore the caller's `.Random.seed` and `RNGkind()`.
 
-Autofit checks convergence of the priors' parameters, the user's
-`add_parameters`, and the stochastic nodes that formulas monitor. It leaves
-out only the deterministic helper nodes that BayesTools generates for
-formulas (correlation matrices, Cholesky factors, bound SDs, derived latent
-effects), identified from the persisted formula name maps, unless
-`autofit_control$monitor` requests them. A monitored node that the model
-syntax defines deterministically and whose draws are identical in every
-chain is a structural constant; a stochastic node with constant draws is not
-assessable.
+Autofit, `JAGS_extend()` and the default `JAGS_check_convergence()` share one
+selection read from the fit's `convergence_role` column. The roles are set at
+fit time from the prior list, the parsed model syntax, the fully observed
+data names and the formula name maps, never from the draws. Generated
+deterministic formula monitors are derived and checked only on request. Unit
+correlation diagonals and Cholesky constants are structural. A user
+`add_parameters` node is structural only when its deterministic definition has
+no stochastic ancestor. Indicators and inclusion probabilities come from their
+priors, not their names. The backend anchor is auxiliary.
 
 Worker connection failures stop fitting retries; new initial values cannot
 repair the existing cluster. Preserve the original backend condition. Classify
