@@ -1680,6 +1680,81 @@ test_that("hypothesis_level_contrast compiles an exact atom-free contrast", {
   )
 })
 
+test_that("level contrast refusals are classed with their reason", {
+
+  normal_context <- BayesTools:::.prior_density_context(
+    prior_list   = list(
+      alt  = prior("normal", list(mean = 0, sd = 1)),
+      rand = prior("normal", list(mean = 0, sd = 1))
+    ),
+    column_names = c("alt", "rand"),
+    n_grid       = 128
+  )
+  spike_context <- BayesTools:::.prior_density_context(
+    prior_list   = list(
+      alt  = prior_spike_and_slab(
+        prior("normal", list(mean = 0, sd = 1)),
+        prior_inclusion = prior("point", list(location = 0.5))
+      ),
+      rand = prior("point", list(location = 0))
+    ),
+    column_names = c("alt", "rand"),
+    n_grid       = 128
+  )
+  level <- function(values, weights, context = NULL){
+    out <- .bt_meta_update(
+      structure(values, class = c("marginal_posterior.simple", "numeric")),
+      linear_weights = weights,
+      atoms = posterior_atom_attribute()
+    )
+    .bt_meta_set(out, "prior_context", context)
+  }
+  factor_posterior <- function(levels, context = NULL){
+    class(levels) <- c("list", "marginal_posterior.factor", "marginal_posterior")
+    attr(levels, "parameter") <- "mu"
+    .bt_meta_set(levels, "prior_context", context)
+  }
+  levels <- list(
+    a = level(c(rep(1, 80), rep(-1, 20)), c(alt = 1, rand = 0)),
+    b = level(rep(0, 100), c(alt = 0, rand = 1))
+  )
+  expect_reason <- function(posterior, reason, message){
+    condition <- tryCatch(
+      hypothesis_level_contrast(posterior, "mu[a] - mu[b] = 0", "mu"),
+      error = function(e) e
+    )
+    expect_s3_class(condition, "BayesTools_linear_target_unavailable")
+    expect_s3_class(condition, "BayesTools_hypothesis_target")
+    expect_identical(condition$reason, reason)
+    expect_identical(conditionMessage(condition), message)
+  }
+
+  expect_reason(
+    factor_posterior(levels),
+    "prior_context",
+    "A valid joint prior context is required for a level contrast."
+  )
+  partial <- levels
+  partial$a <- .bt_meta_set(partial$a, "prior_context", normal_context)
+  expect_reason(
+    factor_posterior(partial, normal_context),
+    "prior_context",
+    "Level comparisons require prior contexts for all conditional levels."
+  )
+  undeclared <- levels
+  undeclared$a <- .bt_meta_set(undeclared$a, "atoms", NULL)
+  expect_reason(
+    factor_posterior(undeclared, normal_context),
+    "atom_declarations",
+    "Complete structural posterior-atom declarations are required for a level contrast."
+  )
+  expect_reason(
+    factor_posterior(levels, spike_context),
+    "posterior_atoms",
+    "The level contrast prior is not structurally atom-free."
+  )
+})
+
 test_that("hypothesis_BF uses parent precomputed metadata for level point nulls", {
 
   prior_density <- .hypothesis_prior_density_for_test()

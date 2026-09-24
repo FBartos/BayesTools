@@ -17,7 +17,13 @@ levels.}
 \value{
 A list with \code{posterior}, \code{hypothesis}, \code{parameter}, and \code{weights}.
 \code{posterior} is a scalar \code{marginal_posterior}; \code{hypothesis} is an equivalent
-AST written against that scalar contrast.
+AST written against that scalar contrast. A contrast that cannot be
+certified stops with an error of class
+\code{BayesTools_linear_target_unavailable} (also
+\code{BayesTools_hypothesis_target}) whose field \code{reason} is
+\code{"posterior_atoms"} (the contrast prior is not structurally atom-free),
+\code{"atom_declarations"} (a level lacks its posterior-atom declaration), or
+\code{"prior_context"} (no valid joint prior context).
 }
 \description{
 Compiles point and simple region statements that all refer to one ordered

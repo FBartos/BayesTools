@@ -471,20 +471,17 @@
 
   J <- .weightfunction_n_bins(prior)
   if(identical(prior$weights$type, "cumulative") && J == 2L){
-    stop(
-      "'samples' does not contain the monitored binary cumulative weightfunction parameter.",
-      call. = FALSE
+    .bt_JAGS_marglik_missing_columns(
+      "'samples' does not contain the monitored binary cumulative weightfunction parameter."
     )
   }
   if(identical(prior$weights$type, "cumulative")){
-    stop(
-      "'samples' does not contain all monitored cumulative weightfunction parameters.",
-      call. = FALSE
+    .bt_JAGS_marglik_missing_columns(
+      "'samples' does not contain all monitored cumulative weightfunction parameters."
     )
   }
 
-  stop(
-    "'samples' does not contain all monitored independent weightfunction parameters.",
-    call. = FALSE
+  .bt_JAGS_marglik_missing_columns(
+    "'samples' does not contain all monitored independent weightfunction parameters."
   )
 }

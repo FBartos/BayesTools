@@ -62,7 +62,10 @@ components and weights) and is an error otherwise.}
 }
 \value{
 \code{JAGS_marglik_parameters} returns a named list
-of (transformed) posterior samples.
+of (transformed) posterior samples. Samples that lack monitored coordinates
+the priors require stop with an error of class
+\code{BayesTools_missing_monitored_columns} (also
+\code{BayesTools_marglik_input}); callers match the class, not the message.
 }
 \description{
 Extracts transformed parameters from the

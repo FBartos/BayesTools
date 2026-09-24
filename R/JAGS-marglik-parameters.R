@@ -17,7 +17,10 @@
 #' reconstruction functions during formula random-effect bridge sampling.
 #'
 #' @return \code{JAGS_marglik_parameters} returns a named list
-#' of (transformed) posterior samples.
+#' of (transformed) posterior samples. Samples that lack monitored coordinates
+#' the priors require stop with an error of class
+#' \code{BayesTools_missing_monitored_columns} (also
+#' \code{BayesTools_marglik_input}); callers match the class, not the message.
 #'
 #' @inheritParams JAGS_bridgesampling
 #' @export JAGS_marglik_parameters
@@ -146,7 +149,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
   sample_names <- parameter_names
   if(!all(sample_names %in% names(samples))){
-    stop("'samples' does not contain all monitored formula prior parameters.", call. = FALSE)
+    .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored formula prior parameters.")
   }
 
   values <- unname(unlist(samples[sample_names], use.names = FALSE))
@@ -353,9 +356,8 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
   parameter_name <- "omega[2]"
   if(!parameter_name %in% names(samples)){
-    stop(
-      "'samples' does not contain the monitored binary cumulative weightfunction parameter.",
-      call. = FALSE
+    .bt_JAGS_marglik_missing_columns(
+      "'samples' does not contain the monitored binary cumulative weightfunction parameter."
     )
   }
 
@@ -381,7 +383,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
                                                        signal = FALSE){
 
   if(!all(parameter_names %in% names(samples))){
-    stop(missing_message, call. = FALSE)
+    .bt_JAGS_marglik_missing_columns(missing_message)
   }
 
   values <- unname(unlist(samples[parameter_names], use.names = FALSE))
@@ -405,7 +407,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
                                              signal = FALSE){
 
   if(!all(parameter_names %in% names(samples))){
-    stop(missing_message, call. = FALSE)
+    .bt_JAGS_marglik_missing_columns(missing_message)
   }
 
   values <- unname(unlist(samples[parameter_names], use.names = FALSE))
@@ -444,11 +446,10 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 .JAGS_marglik_parameters.bias_mixture <- function(samples, prior, parameter_name){
 
   missing_stop <- function(){
-    stop(
+    .bt_JAGS_marglik_missing_columns(paste0(
       "'samples' does not contain all monitored bias-mixture parameters of '",
-      parameter_name, "'.",
-      call. = FALSE
-    )
+      parameter_name, "'."
+    ))
   }
   lookup <- .bt_deterministic_row_lookup(samples)
   parameters <- list()

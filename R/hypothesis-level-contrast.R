@@ -22,7 +22,13 @@
 #'
 #' @return A list with `posterior`, `hypothesis`, `parameter`, and `weights`.
 #'   `posterior` is a scalar `marginal_posterior`; `hypothesis` is an equivalent
-#'   AST written against that scalar contrast.
+#'   AST written against that scalar contrast. A contrast that cannot be
+#'   certified stops with an error of class
+#'   `BayesTools_linear_target_unavailable` (also
+#'   `BayesTools_hypothesis_target`) whose field `reason` is
+#'   `"posterior_atoms"` (the contrast prior is not structurally atom-free),
+#'   `"atom_declarations"` (a level lacks its posterior-atom declaration), or
+#'   `"prior_context"` (no valid joint prior context).
 #'
 #' @export
 hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
@@ -107,13 +113,20 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
   })
   names(level_weights) <- levels
 
-  context <- .hypothesis_child_prior_context(posterior, levels)
+  context <- tryCatch(
+    .hypothesis_child_prior_context(posterior, levels),
+    error = function(e){
+      .hypothesis_linear_target_stop(conditionMessage(e), "prior_context")
+    }
+  )
   if(is.null(context)){
     context <- .bt_meta_get(posterior, "prior_context")
   }
   if(is.null(context) || !.hypothesis_is_prior_density_context(context)){
-    stop("A valid joint prior context is required for a level contrast.",
-         call. = FALSE)
+    .hypothesis_linear_target_stop(
+      "A valid joint prior context is required for a level contrast.",
+      "prior_context"
+    )
   }
   .hypothesis_validate_level_weights_context(level_weights, context)
 
@@ -133,8 +146,10 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
     output_transformation_arguments = if(offset != 0) list(a = offset, b = 1) else NULL
   )
   if(!.hypothesis_level_contrast_prior_atom_free(prior_density)){
-    stop("The level contrast prior is not structurally atom-free.",
-         call. = FALSE)
+    .hypothesis_linear_target_stop(
+      "The level contrast prior is not structurally atom-free.",
+      "posterior_atoms"
+    )
   }
   declared_atoms <- vapply(
     posterior[levels],
@@ -142,8 +157,11 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
     logical(1)
   )
   if(!all(declared_atoms)){
-    stop("Complete structural posterior-atom declarations are required for ",
-         "a level contrast.", call. = FALSE)
+    .hypothesis_linear_target_stop(
+      paste0("Complete structural posterior-atom declarations are required for ",
+             "a level contrast."),
+      "atom_declarations"
+    )
   }
 
   values <- rep(0, draw_lengths[[1L]])
@@ -180,6 +198,23 @@ hypothesis_level_contrast <- function(posterior, hypothesis, parameter){
     hypothesis = rewritten,
     parameter  = target_name,
     weights    = weights
+  ))
+}
+
+
+# A linear target that cannot be certified: class
+# BayesTools_linear_target_unavailable (parent BayesTools_hypothesis_target)
+# with the condition field 'reason': "posterior_atoms" (the target's prior is
+# not structurally atom-free, so its posterior may have atoms),
+# "atom_declarations" (a referenced level lacks its posterior-atom
+# declaration), or "prior_context" (no valid joint prior context). Callers
+# match the class and reason, never the message.
+.hypothesis_linear_target_stop <- function(message, reason){
+
+  stop(structure(
+    class = c("BayesTools_linear_target_unavailable",
+              "BayesTools_hypothesis_target", "error", "condition"),
+    list(message = message, call = NULL, reason = reason)
   ))
 }
 

@@ -56,9 +56,13 @@ and an ordinate without an exact structural value (a prior-density
 combination evaluated only on a numerical grid, a quadrature rejected by
 its diagnostics, or a density grid without recorded provenance) with
 \code{BayesTools_inexact_ordinate}; each also has class
-\code{BayesTools_hypothesis_ordinate}. For a list of marginal posteriors
-(and in marginal inference), a zero or infinite prior ordinate gives the
-level an \code{NA} Bayes factor with its reason instead (see Details).
+\code{BayesTools_hypothesis_ordinate}. A declared posterior point mass at the
+null value of a scalar marginal posterior stops with an error of class
+\code{BayesTools_posterior_point_mass_at_null} (also
+\code{BayesTools_hypothesis_ordinate}). For a list of marginal posteriors
+(and in marginal inference), a zero or infinite prior ordinate or a
+posterior point mass at the null gives the level an \code{NA} Bayes factor
+with its reason instead (see Details).
 }
 \description{
 Computes Savage-Dickey (density ratio) inclusion Bayes factors

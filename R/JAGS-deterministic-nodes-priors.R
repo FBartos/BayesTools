@@ -202,12 +202,11 @@
     .bt_deterministic_row_lookup(samples)
   )
   if(is.null(values)){
-    stop(
+    .bt_JAGS_marglik_missing_columns(paste0(
       "'samples' does not contain all monitored ",
       if(is.prior.spike_and_slab(prior)) "spike-and-slab" else "prior mixture",
-      " parameters of '", parameter_name, "'.",
-      call. = FALSE
-    )
+      " parameters of '", parameter_name, "'."
+    ))
   }
 
   as.vector(values)

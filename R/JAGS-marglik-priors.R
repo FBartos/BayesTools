@@ -31,7 +31,10 @@
 #' \code{JAGS_marglik_priors_rows} returns one numeric value for every row of
 #' posterior samples. \code{JAGS_marglik_priors_rows_evaluator} returns a
 #' function that applies the same row-wise evaluation without recompiling the
-#' prior structure on each call.
+#' prior structure on each call. Samples that lack monitored coordinates the
+#' priors require stop with an error of class
+#' \code{BayesTools_missing_monitored_columns} (also
+#' \code{BayesTools_marglik_input}).
 #'
 #' @export JAGS_marglik_priors
 #' @export JAGS_marglik_priors_rows
@@ -225,7 +228,7 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
     log_density <- .prior_simple_lpdf_evaluator(prior_object)
     return(function(samples){
       if(!all(parameter_names %in% colnames(samples)))
-        stop("'samples' does not contain all monitored factor prior parameters.", call. = FALSE)
+        .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored factor prior parameters.")
 
       marglik <- numeric(nrow(samples))
       for(name in parameter_names){
@@ -251,7 +254,7 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
     log_density <- .prior_simple_lpdf_evaluator(prior_object)
     return(function(samples){
       if(!parameter_name %in% colnames(samples))
-        stop("'samples' does not contain all monitored prior parameters.", call. = FALSE)
+        .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored prior parameters.")
       return(log_density(samples[, parameter_name]))
     })
   }
@@ -265,7 +268,7 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
     )
     return(function(samples){
       if(!all(eta_names %in% colnames(samples)))
-        stop("'samples' does not contain all monitored Dirichlet prior parameters.", call. = FALSE)
+        .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored Dirichlet prior parameters.")
 
       marglik <- numeric(nrow(samples))
       invalid <- logical(nrow(samples))
@@ -296,7 +299,7 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
     marglik <- numeric(nrow(samples))
     for(parameter_name in parameter_names){
       if(!parameter_name %in% colnames(samples))
-        stop("'samples' does not contain all monitored inverse-gamma prior parameters.", call. = FALSE)
+        .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored inverse-gamma prior parameters.")
       values <- samples[, parameter_name]
 
       supported <- is.finite(values) & values > 0
@@ -317,7 +320,7 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
   marglik <- 0
   if(!is.prior.point(prior$total)){
     if(!all(total_names %in% names(samples))){
-      stop("'samples' does not contain all monitored ordered total prior parameters.", call. = FALSE)
+      .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored ordered total prior parameters.")
     }
     total_values <- unname(unlist(samples[total_names], use.names = FALSE))
     marglik <- marglik + sum(lpdf(prior$total, total_values))
@@ -370,7 +373,7 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
   }else{
 
     if(!parameter_name %in% names(samples)){
-      stop("'samples' does not contain all monitored prior parameters.", call. = FALSE)
+      .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored prior parameters.")
     }
     marglik <- lpdf(prior, samples[[ parameter_name ]])
 
@@ -413,7 +416,7 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
       paste0(parameter_name, "[", seq_len(prior$parameters[["K"]]), "]")
     }
     if(!all(parameter_names %in% names(samples))){
-      stop("'samples' does not contain all monitored vector prior parameters.", call. = FALSE)
+      .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored vector prior parameters.")
     }
     marglik <- lpdf(prior, unlist(samples[parameter_names], use.names = FALSE))
   }
@@ -511,12 +514,12 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
       marglik <- 0
     }else if(prior$weights$scale == "omega"){
       if(!all(paste0("omega[", 2:J, "]") %in% names(samples))){
-        stop("'samples' does not contain all monitored independent weightfunction parameters.", call. = FALSE)
+        .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored independent weightfunction parameters.")
       }
       marglik <- sum(mlpdf(prior$weights$prior, samples[paste0("omega[", 2:J, "]")]))
     }else if(prior$weights$scale == "log_omega"){
       if(!all(paste0("log_omega[", 2:J, "]") %in% names(samples))){
-        stop("'samples' does not contain all monitored independent weightfunction parameters.", call. = FALSE)
+        .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored independent weightfunction parameters.")
       }
       marglik <- sum(mlpdf(prior$weights$prior, samples[paste0("log_omega[", 2:J, "]")]))
     }

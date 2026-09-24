@@ -1009,7 +1009,7 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
       parameter_name = .bt_random_sd_binding_source_name(allocation$source),
       prior_list = prior_list
     )){
-      stop("'posterior' does not contain all monitored formula prior parameters.", call. = FALSE)
+      .bt_JAGS_marglik_missing_columns("'posterior' does not contain all monitored formula prior parameters.")
     }
     factors <- if(identical(allocation$target, "sd_component")){
       .bt_random_effect_allocation_parent_factors_metadata(allocation)
@@ -1024,12 +1024,11 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
       )
     }, logical(1))
     if(any(missing_factor)){
-      stop(
+      .bt_JAGS_marglik_missing_columns(paste0(
         "Bridge samples are missing Dirichlet allocation coordinates for parameter '",
         factors[[which(missing_factor)[1L]]]$weight_name,
-        "'.",
-        call. = FALSE
-      )
+        "'."
+      ))
     }
     if(identical(allocation$target, "sd_component") &&
        !.bt_JAGS_marglik_random_effect_dirichlet_available(
@@ -1037,12 +1036,11 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
          parameter_name = allocation$weight_name,
          prior_list = prior_list
        )){
-      stop(
+      .bt_JAGS_marglik_missing_columns(paste0(
         "Bridge samples are missing Dirichlet allocation coordinates for parameter '",
         allocation$weight_name,
-        "'.",
-        call. = FALSE
-      )
+        "'."
+      ))
     }
   }else{
     sd_names <- random_term$sd_parameter_names
@@ -1057,7 +1055,7 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
       )
     }, logical(1))
     if(any(missing_sd)){
-      stop("'posterior' does not contain all monitored formula prior parameters.", call. = FALSE)
+      .bt_JAGS_marglik_missing_columns("'posterior' does not contain all monitored formula prior parameters.")
     }
   }
 
@@ -1163,6 +1161,24 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   stop(structure(
     list(message = paste0(...), call = NULL),
     class = c("BayesTools_marglik_out_of_support", "error", "condition")
+  ))
+}
+
+# Marginal-likelihood inputs ('samples' of the bridge evaluators and of
+# JAGS_marglik_parameters(), JAGS_marglik_priors() and their formula
+# versions) that lack monitored coordinates the evaluators read. Callers match
+# the class BayesTools_missing_monitored_columns (parent
+# BayesTools_marglik_input), never the message.
+.bt_JAGS_marglik_missing_columns <- function(message){
+
+  stop(structure(
+    list(message = message, call = NULL),
+    class = c(
+      "BayesTools_missing_monitored_columns",
+      "BayesTools_marglik_input",
+      "error",
+      "condition"
+    )
   ))
 }
 

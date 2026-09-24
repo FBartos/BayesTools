@@ -325,6 +325,30 @@ test_that("posterior atoms come only from the atom metadata", {
   )
 })
 
+test_that("a posterior point mass at the null stops Savage-Dickey with its class", {
+
+  x <- c(rep(0, 20), stats::qnorm(stats::ppoints(80)))
+  posterior_metadata(x, "prior_density") <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(source = prior("normal", list(0, 1))),
+    weights    = c(source = 1)
+  )
+  posterior_metadata(x, "atoms") <- posterior_atom_attribute(data.frame(x = 0, mass = .2))
+  class(x) <- c("marginal_posterior.simple", "marginal_posterior")
+
+  condition <- tryCatch(Savage_Dickey_BF(x), error = function(e) e)
+  expect_s3_class(condition, "BayesTools_posterior_point_mass_at_null")
+  expect_s3_class(condition, "BayesTools_hypothesis_ordinate")
+  expect_identical(
+    conditionMessage(condition),
+    paste0(
+      "The posterior contains a declared point mass at the exact null ",
+      "hypothesis value. The ordinary Savage-Dickey density ratio is invalid."
+    )
+  )
+  # an atom elsewhere leaves the ratio at the null defined
+  expect_true(is.finite(Savage_Dickey_BF(x, null_hypothesis = .5)))
+})
+
 test_that("producers store their draw metadata in the container only", {
 
   set.seed(1)

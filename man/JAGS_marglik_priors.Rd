@@ -36,7 +36,10 @@ of likelihood evaluated at the current posterior sample.
 \code{JAGS_marglik_priors_rows} returns one numeric value for every row of
 posterior samples. \code{JAGS_marglik_priors_rows_evaluator} returns a
 function that applies the same row-wise evaluation without recompiling the
-prior structure on each call.
+prior structure on each call. Samples that lack monitored coordinates the
+priors require stop with an error of class
+\code{BayesTools_missing_monitored_columns} (also
+\code{BayesTools_marglik_input}).
 }
 \description{
 Computes marginal likelihood for the

@@ -188,6 +188,18 @@ old behaviour.
   complete factor metadata that formula factor terms carry: the number and
   names of its levels, its contrast, and the design mapping its coefficients
   to the levels. `levels` is the number of levels or their names.
+- gives three refusals classed conditions, so callers match the class instead
+  of the message: a declared posterior point mass at the null of a scalar
+  `Savage_Dickey_BF()` call stops with `BayesTools_posterior_point_mass_at_null`
+  (also `BayesTools_hypothesis_ordinate`); marginal-likelihood samples that
+  lack monitored coordinates the priors read stop `JAGS_marglik_parameters()`,
+  `JAGS_marglik_priors()` and their row and formula versions with
+  `BayesTools_missing_monitored_columns` (also `BayesTools_marglik_input`);
+  and a level contrast that cannot be certified stops with
+  `BayesTools_linear_target_unavailable` (also `BayesTools_hypothesis_target`)
+  whose field `reason` is `"posterior_atoms"` (the contrast prior has a point
+  mass), `"atom_declarations"` (a level lacks its posterior-atom declaration)
+  or `"prior_context"` (no valid joint prior context). Messages are unchanged.
 - supports declared output intervals for density transformations. Wider display
   limits remain available while inverse/Jacobian evaluations and continuous
   curves stay inside the transformed support; boundary point masses are retained.

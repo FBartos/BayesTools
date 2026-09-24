@@ -146,6 +146,48 @@ test_that("bridge priors reject missing vector and weightfunction coordinates", 
   }
 })
 
+test_that("missing monitored columns stop with the classed marginal-likelihood input condition", {
+
+  expect_missing_columns <- function(expr, message){
+    condition <- tryCatch(expr, error = function(e) e)
+    expect_s3_class(condition, "BayesTools_missing_monitored_columns")
+    expect_s3_class(condition, "BayesTools_marglik_input")
+    expect_identical(conditionMessage(condition), message)
+  }
+
+  invgamma <- list(s = prior("invgamma", list(2, 1)))
+  message <- "'samples' does not contain all monitored inverse-gamma prior parameters."
+  expect_missing_columns(JAGS_marglik_parameters(c(x = 1), invgamma), message)
+  expect_missing_columns(JAGS_marglik_priors(c(x = 1), invgamma), message)
+
+  dirichlet <- list(w = prior("dirichlet", list(alpha = c(1, 2))))
+  message <- "'samples' does not contain all monitored Dirichlet prior parameters."
+  expect_missing_columns(JAGS_marglik_parameters(c(x = 1), dirichlet), message)
+  expect_missing_columns(JAGS_marglik_priors(c(x = 1), dirichlet), message)
+
+  vector <- list(o = prior("mnormal", list(0, 1, 2)))
+  expect_missing_columns(
+    JAGS_marglik_priors(c("o[1]" = .3), vector),
+    "'samples' does not contain all monitored vector prior parameters."
+  )
+
+  independent <- list(selection = prior_weightfunction(
+    "one-sided", c(.025, .05), wf_independent(prior("gamma", list(2, 1)))
+  ))
+  message <- "'samples' does not contain all monitored independent weightfunction parameters."
+  expect_missing_columns(JAGS_marglik_parameters(c("omega[2]" = .3), independent), message)
+  expect_missing_columns(JAGS_marglik_priors(c("omega[2]" = .3), independent), message)
+
+  spike <- list(a = prior_spike_and_slab(
+    prior("normal", list(0, 1)),
+    prior_inclusion = prior("beta", list(1, 1))
+  ))
+  expect_missing_columns(
+    JAGS_marglik_parameters(c(a_indicator = 1), spike),
+    "'samples' does not contain all monitored spike-and-slab parameters of 'a'."
+  )
+})
+
 test_that("reference prior helpers reject unsupported prior classes", {
 
   prior_list <- list(theta = structure(list(), class = "prior"))

@@ -389,7 +389,9 @@ with the prior densities of the kept elements.
   never `Inf`.
 - A declared posterior point mass at the null leaves the ratio undefined:
   level lists and marginal inference return `NA` with the reason in the
-  `"warnings"` attribute and compute the other levels; a scalar call stops.
+  `"warnings"` attribute and compute the other levels; a scalar call stops
+  with `BayesTools_posterior_point_mass_at_null` (also
+  `BayesTools_hypothesis_ordinate`).
 
 ## Numerical Evidence
 
