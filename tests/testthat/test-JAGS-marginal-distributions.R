@@ -4781,7 +4781,7 @@ test_that("Savage-Dickey posterior ordinates are exact reflected kernel sums", {
       prior_list = list(theta = case$prior), weights = c(theta = 1)
     )
     posterior <- .marginal_posterior_with_prior_density_for_test(draws, prior_density)
-    attr(posterior, "posterior_support") <- c(0, Inf)
+    attr(posterior, "posterior_support") <- .posterior_support_new(c(0, Inf))
     bandwidth <- stats::bw.nrd0(draws)
     kernel_sum <- mean(stats::dnorm(case$null, draws, bandwidth)) +
       mean(stats::dnorm(case$null, -draws, bandwidth))
@@ -4812,7 +4812,7 @@ test_that("Savage-Dickey posterior ordinates are exact reflected kernel sums", {
     prior_list = list(theta = prior("normal", list(0, 1), list(0, Inf))), weights = c(theta = 1)
   )
   posterior <- .marginal_posterior_with_prior_density_for_test(draws, prior_density)
-  attr(posterior, "posterior_support") <- c(0, Inf)
+  attr(posterior, "posterior_support") <- .posterior_support_new(c(0, Inf))
   bandwidth <- stats::bw.nrd0(draws)
   log_kernels <- stats::dnorm(draws / bandwidth, log = TRUE)
   log_ordinate <- log(2) + max(log_kernels) + log(sum(exp(log_kernels - max(log_kernels)))) -
