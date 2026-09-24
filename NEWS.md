@@ -125,7 +125,26 @@ old behaviour.
   reference weight first). `plot()` previously counted from the least
   significant interval, and its default `show_figures = -1` now omits the
   reference weight fixed at 1 instead of the least significant weight.
-<!-- WP E bullets pending -->
+- `runjags_estimates_table()` / `JAGS_estimates_table()` identify inclusion
+  rows from the prior list and the formula metadata instead of the row label,
+  and every inclusion row reports only the posterior inclusion probability
+  (`Mean`) and the MCMC diagnostics, with `SD` and the quantiles left empty.
+  0.3.0 emptied these cells on every row whose label contained "inclusion", so
+  a parameter or factor level whose name merely contains that word now keeps
+  its summary. Inclusion rows are the spike-and-slab and mixture indicators,
+  random-effect inclusion quantities such as `(mu) inclusion(sd(x))`, raw
+  variance-allocation gate indicators, and the indicators of spike-and-slab
+  totals of ordered priors.
+- `JAGS_formula()` (and therefore `JAGS_fit()`) rejects mean-difference and
+  orthonormal factor priors, other than a point mass at zero, on a term that
+  codes a factor by level indicators because one of its lower-order terms is
+  missing, such as `g:x` in `~ g + g:x` or `~ g / x`. BayesTools 0.3.0 fitted
+  such a prior as independent priors on the per-level coefficients (iid
+  N(0, 1) for `prior_factor("mnormal", list(0, 1), contrast = "meandif")`) and
+  labelled them as differences from the mean (`g:x[dif: L]`). Use `~ g * x` to
+  keep the contrast, or a treatment or independent prior for one coefficient
+  per level; such a term uses its own contrast, whatever the contrast of the
+  factor's other terms.
 
 ### Features
 - supports declared output intervals for density transformations. Wider display
@@ -262,9 +281,9 @@ old behaviour.
   - linear combinations with heavy-tailed components start from a grid that
     resolves the narrowest component, and adaptive refinement halves the
     spacing at every step while shrinking the omitted tail. t-type tails now
-    converge; combinations whose grid would exceed 2^21 knots (e.g. Cauchy
-    components) and mixtures of incompatible scales stop with a clear error
-    instead of returning a biased height.
+    converge; combinations whose grid would exceed 2^21 knots (e.g. a Cauchy
+    term with another non-Gaussian term) and mixtures of incompatible scales
+    stop with a clear error instead of returning a biased height.
   - linear combinations in which a `multiply_by` scale also enters as its own
     term (e.g. `x * sigma + sigma`) stop instead of being convolved as
     independent components.
@@ -281,7 +300,53 @@ old behaviour.
     `rng()` of factor spike-and-slab priors honours
     `transform_factor_samples = FALSE`; and sampled ordered-prior level
     densities reflect at their exact support.
-<!-- WP E bullets pending -->
+  - conditional-normal prior-density ordinates give every distinct design
+    row, model or conditional mixture component, and mixture leaf the full
+    evaluation budget with its own convergence check instead of dividing one
+    budget among them, and accept a quadrature that converges with exactly the
+    budgeted number of intervals (it was reported as "maximum number of
+    subdivisions reached"). Savage-Dickey and point-hypothesis Bayes factors
+    of formula levels averaged over many distinct covariate rows (more than
+    about 95, or 47 with a spike-and-slab slope, at the default `n_samples`)
+    no longer fail with "Conditional-normal prior density was rejected by
+    diagnostics". Row mixtures keep each row's integration diagnostics.
+  - prior-density ordinates of mixtures (model-averaged and conditional
+    mixtures, and linear combinations with mixture or spike-and-slab terms,
+    such as formula levels and the original-scale intercepts of
+    `as_mixed_posteriors(transform_scaled = TRUE)`) are the weighted sums of
+    per-component ordinates. Savage-Dickey and point-hypothesis Bayes factors
+    at a null where one component's density jumps (e.g. 0 for
+    N(0.5, 1)T(0, Inf)) no longer stop with "Adaptive prior-density evaluation
+    did not converge" and use the one-sided limit inside that component's
+    support. Components without an exact ordinate get their own grids, refined
+    together until the weighted sum of their absolute changes meets the
+    refinement criterion, so no grid spans another component's jump.
+  - a Gaussian term plus one other continuous scalar term (e.g. a normal
+    intercept and a truncated, gamma, t, or Cauchy coefficient) has an exact
+    Gaussian-convolution ordinate in every context instead of a numerical
+    grid: heights move within the former grid tolerance (up to 3e-5
+    relative), and sums with a Cauchy term no longer fail to converge. These
+    quadratures and those of Gaussian-plus-scaled-Gaussian mixtures are split
+    at the other term's support bounds and quantiles and around the Gaussian
+    peak, so scale-disparate terms (a narrow normal with a wide gamma or Cauchy
+    term, a concentrated term far from zero, a multiplied normal whose SD is
+    at most half of the absolute value of its mean, or a narrow peak next to
+    a bound with infinite density) no longer give near-zero ordinates reported
+    as converged. Ordinates next to a bound with infinite density (e.g. a
+    gamma shape below 1) no longer count the mass next to the bound twice
+    (2-8% too high) or stop on non-finite function values, and a Gaussian peak
+    a rounding error from a support bound no longer stops the quadrature on
+    roundoff. Known limitations: scale mixtures with heavy-tailed multipliers
+    can stop as non-convergent; a component quadrature that evaluates to
+    exactly zero (e.g. a narrow component far from the value) stops the
+    ordinate, also of a mixture; very narrow Gaussian peaks can stop where the
+    quadrature reaches floating-point resolution; the scale peak of a value
+    far in a heavy-tailed multiplier's tail can be missed without a
+    convergence failure; and grid heights of components with singular source
+    densities (e.g. gamma shape below 1) remain approximate within the
+    refinement criterion, which is not an error bound.
+  - `prior_density_ordinate()` documents `provenance$continuous_behavior`, the
+    behavior of the continuous part of a prior at a point mass.
 - hypothesis Bayes factors:
   - `hypothesis_BF()` region hypotheses on deterministic prior densities
     (intervals, unions, negations, and transformed regions such as
@@ -290,6 +355,26 @@ old behaviour.
     evaluation did not converge". Region probabilities are normalized with the
     same trapezoid rule, which removes a small bias for bounded priors; region
     features narrower than the grid spacing may be missed.
+  - region hypotheses whose relations are linear in the quantity (unions of
+    intervals) on prior densities with a structural representation compute
+    their prior probabilities exactly or by the conditional-normal quadrature
+    of `prior_density_ordinate()`: point masses, scalar distribution
+    functions, normal sums, Gaussian convolutions, and Gaussian-plus-scaled-
+    Gaussian mixtures, summed over mixture, spike-and-slab, model,
+    conditional, and row components (e.g. original-scale intercepts of scaled
+    formulas with Cauchy or t slopes or with mixture and spike-and-slab
+    sources, and log-link intercepts). They refined a grid that could fail to
+    converge or, for scale mixtures, report convergence up to 3e-4 away from
+    the true probability. Pieces of a Gaussian convolution more than 10 local
+    SDs from every region bound are evaluated exactly from the other term's
+    distribution function, so heavy tails and distant bounds neither stop nor
+    lose accuracy. Other densities and regions (e.g. `abs()` conditions) keep
+    the grid. Known limitations: with a heavy-tailed multiplier (e.g.
+    half-Cauchy or inverse-gamma(1)) a region with an infinite bound stops, as
+    it did on the grid; a region whose probability underflows to zero stops;
+    and a combination with more mixture-component combinations than a
+    fifteenth of the evaluation budget (e.g. many spike-and-slab terms) keeps
+    the grid.
   - explicit comparisons accept a region with prior mass one (e.g.
     `"mu > 0.5 vs mu > 0"` under a half-normal prior); implicit statements
     still require a complement with positive prior mass.
@@ -344,6 +429,18 @@ old behaviour.
     quantities through the `undefined_draws` attribute, and other missing
     draws are an error in `ensemble_estimates_table()`.
     `transform_prior_samples()` works for such blocks.
+  - `transform_prior_samples()` includes the random-effect monitors that the
+    model defines deterministically from nodes with prior draws: SDs derived
+    from `random_variance_allocation()`, scalar correlations sampled on the
+    Fisher-z or logit scale, and LKJ Cholesky factors, correlation matrices,
+    and partial correlations, computed with the model's own definitions.
+    Catalog quantities that depend on them can therefore be evaluated on
+    prior draws, e.g. the original-scale `cor(intercept,x)` of a scaled
+    `us(1 + x | g)` block with allocation-derived SDs. For such blocks, the
+    original-scale prior draws of the correlation matrix, its Cholesky factor,
+    and the LKJ coordinates are unscaled; they were left on the standardized
+    scale. Latent effects and the auxiliaries of mixture, spike-and-slab, and
+    Dirichlet priors still have no prior draws.
   - documents that `formula_scale` centers scaled predictors also in terms
     without a free intercept: `~ 0 + x` fits a line through the predictor
     mean, with original-scale intercept `-b * mean(x) / sd(x)`. Independent
@@ -406,6 +503,19 @@ old behaviour.
     sharing one support keep the pooled estimate.
   - `marginal_estimates_table()` reports the Bayes factor warnings of scalar
     (non-formula) parameters, which it dropped.
+  - `marginal_posterior()` accepts intercept-only formulas (`formula = ~ 1`)
+    and returns the intercept level.
+  - `marginal_posterior()` with a formula, `marginal_inference()`, and
+    `as_marginal_inference()` accept predictors that enter the formula only
+    through interactions, such as `x` in `~ g + g:x`, using the type, levels,
+    and contrast recorded on those interaction terms.
+  - coefficients of a factor interaction whose other component has no main
+    effect, such as `g:x` in `~ g + g:x` (one slope per level of `g`) or `g:h`
+    in `~ g + g:h`, are named by their level cells from the term design in
+    `as_mixed_posteriors()`, `mix_posteriors()`, and summary tables.
+    `as_mixed_posteriors()` and hypothesis tests on these levels stopped with
+    "Factor level names cannot be formatted", and summary tables of
+    `~ g + g:h` failed.
 - plots:
   - `plot_posterior()` bias prior overlays (full PET-PEESE and weightfunction,
     and individual PET, PEESE, and omega) follow the samples' full condition,
@@ -495,6 +605,13 @@ old behaviour.
     the draws are `unavailable` instead of failing in tables,
     `parameter_draws()`, and `random_effects_summary_posterior()`;
     `parameter_draws()` names the remedy for unavailable quantities.
+  - a formula term that codes a factor by level indicators (e.g. `g:x` in
+    `~ g + g:x`) does not use that factor's contrast and records the
+    independent (identity) coding for it, so its prior may use a different
+    contrast than the factor's terms that code it by its contrast (e.g. a
+    mean-difference `g` with an independent `g:x`), as in BayesTools 0.3.0.
+    When no term codes the factor by its contrast (e.g. `~ g:x + g:z`), its
+    indicator-coded terms must agree on the contrast.
 - fitting, convergence, bridge sampling, and tables:
   - `JAGS_check_convergence()`, autofit, and `JAGS_extend()` treat declared
     constants as structural, so such models can converge: constant
@@ -568,9 +685,11 @@ old behaviour.
   checks portable snapshot paths only for files included in the package.
 - evaluates supported Gaussian-plus-scaled-Gaussian prior ordinates through
   conditional-normal quadrature over finite or infinite multiplier support
-  instead of a biased product-density grid. Model, conditional, and row mixture weights are preserved; numerical
-  integration shares the existing budget and tolerance. Structural regularity
-  remains exact even when the numerical ordinate is unavailable.
+  instead of a biased product-density grid. Model, conditional, and row
+  mixture weights are preserved; each quadrature uses the existing tolerance
+  with the full evaluation budget and its own convergence check (see the
+  prior-density fixes above). Structural regularity remains exact even when
+  the numerical ordinate is unavailable.
 - requires structural prior provenance before reporting an infinite density;
   a singularity in an intermediate product no longer overrides a finite
   Gaussian-convolved prior ordinate.
