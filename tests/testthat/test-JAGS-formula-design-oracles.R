@@ -7511,6 +7511,48 @@ test_that("formula prior duplicates are compared by their semantic fields", {
       fixed = TRUE
     )
   }
+
+  # mixture priors (components, mixing weights, null/alternative labels) and
+  # ordered priors (total, allocation, contrast, id)
+  mixture <- function(weight = 2, sd = 3, is_null = c(FALSE, FALSE, TRUE)){
+    prior_mixture(
+      list(
+        prior("normal", list(0, 1), prior_weights = weight),
+        prior("normal", list(0, sd)),
+        prior("point", list(0))
+      ),
+      is_null = is_null
+    )
+  }
+  ordered <- function(sd = 1, alpha = c(2, 2), contrast = "cumulative", id = NULL){
+    prior_ordered(
+      prior("normal", list(0, sd), truncation = list(0, Inf)),
+      allocation = prior("dirichlet", list(alpha = alpha)),
+      contrast   = contrast,
+      id         = id
+    )
+  }
+  df$o <- factor(c("l", "m", "h", "l", "m", "h"), levels = c("l", "m", "h"))
+  formula_result <- JAGS_formula(~ x + o, "mu", df, list(intercept = mixture(), x = slope_prior, o = ordered()))
+  design_list <- list(mu = formula_result$formula_design)
+  expect_length(compare(formula_result$prior_list), 0L)
+  expect_length(compare(list(mu_intercept = mixture(), mu_o = ordered())), 0L)
+  changed <- list(
+    mu_intercept = mixture(weight = 1),
+    mu_intercept = mixture(sd = 2),
+    mu_intercept = mixture(is_null = c(FALSE, TRUE, TRUE)),
+    mu_o         = ordered(sd = 2),
+    mu_o         = ordered(alpha = c(1, 1)),
+    mu_o         = ordered(contrast = "cumulative_levels"),
+    mu_o         = ordered(id = "shared")
+  )
+  for(i in seq_along(changed)){
+    expect_error(
+      compare(changed[i]),
+      paste0("differ from the fitted formula priors: ", names(changed)[i], "."),
+      fixed = TRUE
+    )
+  }
 })
 
 test_that("formula random effects require prior_random with no legacy fallback", {
