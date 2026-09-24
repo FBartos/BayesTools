@@ -67,6 +67,65 @@ old behaviour.
   mixtures, and bias priors) lack the selection-model specification and are
   rejected by `print()`, `rng()`, `mcdf()`, `mean()`, and `prior_mixture()`;
   recreate them with `prior_weightfunction()`.
+- derives each chain's JAGS random-number seed (`.RNG.seed`) in `JAGS_fit()`
+  and `JAGS_get_inits()` from `seed` through R's random-number generator,
+  `set.seed(seed)` followed by `sample.int(.Machine$integer.max, chains)`,
+  instead of `seed + chain`. Chain k + 1 of seed s no longer reuses the stream
+  of chain k of seed s + 1, which made prior-only draws of fits with adjacent
+  seeds identical, and a chain's seed does not depend on the number of chains.
+  The chain seeds therefore depend on R's `RNGkind()` settings. Automatic
+  restarts of `JAGS_fit()` after a failed initialization draw their seeds
+  from a separate stream of `seed` (the first L'Ecuyer-CMRG substream)
+  instead of using `seed + i`, so a restart no longer repeats the fit with
+  `seed + i`. Initial values and RNG names are unchanged, but every seeded
+  fit, and every result computed from its draws, differs from 0.3.0 under the
+  same seed. `JAGS_get_inits()` also
+  returns each chain's `.RNG.name` and `.RNG.seed` for an empty `prior_list`
+  (0.3.0 returned `list()`), so `JAGS_fit(seed = )` is reproducible for models
+  whose priors are only in the model syntax.
+- square brackets after a factor term always hold a level label. Contrast
+  coefficients that are not a level (mean-difference and orthonormal
+  coefficients) are labelled `term{j}`, coefficient j of the contrast coding,
+  instead of `term[j]` in `transform_factors = FALSE` summaries and
+  diagnostics, in `as_mixed_posteriors()` and `mix_posteriors()` columns and
+  the ensemble tables and `plot_models()` built from them; ordinary factor
+  priors label theirs `p1{j}`. The parameter catalog selects factor levels by
+  label: `mu_g[2]`, `g[2]`, and `(mu) g[2]` mean the level labelled "2", never
+  the second fitted coordinate. Every level of every contrast, and of ordinary
+  factor priors, is a catalog quantity, and the transformed-summary labels
+  `mu_g[dif: 2]`, `(mu) g[dif: 2]`, and `g[dif: 2]` are its aliases. The
+  parameter map is version 5: models fitted with earlier versions, including
+  earlier 0.3.1 development versions, must be refitted.
+- `Savage_Dickey_BF()`, `marginal_inference()`, `as_marginal_inference()`, and
+  `marginal_estimates_table()` return a finite Bayes factor when the null
+  hypothesis lies outside the posterior draws: the kernel density extrapolated
+  from Gaussian kernel tails, with a warning that it is not reliable evidence.
+  0.3.0 returned `Inf`. The warning is emitted once per parameter or level,
+  labelled `parameter[level]` as in the summary tables, and tables list it
+  among their warnings.
+- `marginal_inference()`, `as_marginal_inference()`, and `Savage_Dickey_BF()`
+  on a list of marginal posteriors return `NA` with the reason for a level
+  whose posterior has a declared point mass at the null hypothesis (e.g., the
+  reference level of treatment-coded coefficients, "fixed at the null
+  hypothesis value"), and compute the other levels; 0.3.0 returned the
+  invalid density ratio with a warning. Summary tables list the reason among
+  their warnings. A scalar `Savage_Dickey_BF()` call stops.
+- `var()` and `sd()` of a truncated normal prior (and of spike-and-slab priors
+  with such a slab) stop with an error when the closed-form variance may carry
+  a relative rounding error above 1e-6, e.g., one-sided truncations more than
+  about 33 prior standard deviations from the mean or very narrow truncation
+  intervals; 0.3.0 returned inaccurate values there (49 times too large at
+  1000 SD). The message suggests estimating the variance from `rng()` draws,
+  which sample such truncations exactly.
+- the index of an individual weight-function omega in
+  `plot(individual = TRUE, show_figures = )`,
+  `lines(individual = TRUE, show_parameter = )`, and
+  `geom_prior(individual = TRUE, show_parameter = )` is the k-th omega in the
+  order summary tables and RoBMA print them (ascending p-value intervals,
+  reference weight first). `plot()` previously counted from the least
+  significant interval, and its default `show_figures = -1` now omits the
+  reference weight fixed at 1 instead of the least significant weight.
+<!-- WP E bullets pending -->
 
 ### Features
 - supports declared output intervals for density transformations. Wider display
@@ -217,9 +276,12 @@ old behaviour.
     classes they do not support instead of returning a function or the prior
     object.
   - far-tail truncated normal, t, and Cauchy priors sample and invert exactly;
-    truncated normal moments are computed analytically; `rng()` of factor
-    spike-and-slab priors honours `transform_factor_samples = FALSE`; and
-    sampled ordered-prior level densities reflect at their exact support.
+    truncated normal moments are computed analytically (the variance stops
+    where its rounding error may exceed 1e-6, see Breaking changes);
+    `rng()` of factor spike-and-slab priors honours
+    `transform_factor_samples = FALSE`; and sampled ordered-prior level
+    densities reflect at their exact support.
+<!-- WP E bullets pending -->
 - hypothesis Bayes factors:
   - `hypothesis_BF()` region hypotheses on deterministic prior densities
     (intervals, unions, negations, and transformed regions such as
@@ -231,7 +293,7 @@ old behaviour.
   - explicit comparisons accept a region with prior mass one (e.g.
     `"mu > 0.5 vs mu > 0"` under a half-normal prior); implicit statements
     still require a complement with positive prior mass.
-  - bracketed catalog aliases such as `mu_f[1]` and `(mu) f[b]` resolve as
+  - bracketed catalog aliases such as `mu_f[a]` and `(mu) f[b]` resolve as
     whole symbols in `hypothesis_parse(catalog = )` and `hypothesis_resolve()`,
     interaction references with several brackets parse, and level names
     containing brackets (e.g. the `cut()` level `(0,1]`) can be referenced with
@@ -242,6 +304,14 @@ old behaviour.
     Monte Carlo variance when the prior mass is exact, and
     `hypothesis_BF(prior = )` accepts mixture and spike-and-slab prior objects
     for numeric draws.
+  - `hypothesis_BF()` tests a point hypothesis on a linear expression of
+    marginal-posterior levels (sums, differences, and constant multiples,
+    e.g. `mu[B] - mu[A] = 0`) whose exact support is bounded, or whose
+    mixture components have different supports, as a Savage-Dickey ratio of
+    the linear combination: its prior density and support come from the
+    joint prior context, and its posterior ordinate is boundary-reflected and
+    estimated per component. Both ordinates were unreflected kernel densities
+    of the expression draws. Other expressions are unchanged.
 - formula scaling and original-scale quantities:
   - the original-scale transformation of fixed coefficients is derived from
     the fitted formula design and verified to reproduce the linear predictor
@@ -262,9 +332,24 @@ old behaviour.
   - correlations of random slopes on standardized predictors are reported on
     the original scale in `JAGS_estimates_table(transform_scaled = TRUE)` and
     `parameter_draws()` (they stayed on the standardized scale), with the LKJ
-    coordinates recomputed from the unscaled Cholesky factor. Draws in which
-    the original-scale correlation is undefined (e.g. a zero random-effect SD)
-    are missing. `transform_prior_samples()` works for such blocks.
+    coordinates recomputed from the unscaled Cholesky factor. An
+    original-scale correlation is `cov / (sd_i * sd_j)` of the transformed
+    covariance: it is missing in draws where one of its SDs is zero, and it is
+    defined in singular draws whose SDs are positive (e.g. -1 or 1 for an
+    intercept and a slope when the fitted intercept SD is zero). The Cholesky
+    factor and LKJ coordinates are missing in singular draws (draws with a
+    zero fitted SD). `JAGS_estimates_table()` and `ensemble_estimates_table()`
+    summarize such correlations over their defined draws and footnote the
+    share of defined draws per row; `parameter_draws()` declares these
+    quantities through the `undefined_draws` attribute, and other missing
+    draws are an error in `ensemble_estimates_table()`.
+    `transform_prior_samples()` works for such blocks.
+  - documents that `formula_scale` centers scaled predictors also in terms
+    without a free intercept: `~ 0 + x` fits a line through the predictor
+    mean, with original-scale intercept `-b * mean(x) / sd(x)`. Independent
+    random slopes of scaled predictors, `(1 + x || g)`, are independent on the
+    centered scale and imply a non-zero original-scale intercept-slope
+    correlation.
   - factor point priors (e.g. `prior_factor("spike", ...)`) no longer add a
     spurious unindexed column to `transform_scale_samples()` and
     `transform_prior_samples()` output or a duplicate row to
@@ -305,6 +390,22 @@ old behaviour.
   - point masses and density-grid values are merged by exact location instead
     of their 15-digit labels, and inclusion Bayes factors keep a log-space
     value (`log_BF` and `inclusion_log_BF` attributes) for log-scale output.
+  - `Savage_Dickey_BF()`, `marginal_inference()`, and `as_marginal_inference()`
+    estimate the posterior ordinate per component when the continuous
+    components of a marginal posterior have different exact supports (e.g. a
+    prior truncated in only some models or mixture components): each
+    component's boundary-reflected kernel density on its own support, mixed by
+    the components' shares of the continuous draws, instead of one kernel
+    density smoothed across the support boundary. Marginal posteriors record
+    each draw's component and the components' supports
+    (`posterior_components`): the model for `mix_posteriors()` ensembles, and
+    the indicator tuple of the mixture or spike-and-slab terms entering the
+    parameter or level for `as_mixed_posteriors()`. In prior-only checks the
+    Bayes factor at a boundary null went from 1.37 (model mixture) and 1.41
+    (single-fit mixture) to 0.97 and 1.00; the true value is 1. Components
+    sharing one support keep the pooled estimate.
+  - `marginal_estimates_table()` reports the Bayes factor warnings of scalar
+    (non-formula) parameters, which it dropped.
 - plots:
   - `plot_posterior()` bias prior overlays (full PET-PEESE and weightfunction,
     and individual PET, PEESE, and omega) follow the samples' full condition,
@@ -324,6 +425,8 @@ old behaviour.
     level, and PET-PEESE prior plots no longer apply the effect-size
     transformation to the standard-error axis when
     `transformation_settings = TRUE`.
+  - posterior plots of ordered factors show the level effects labelled by
+    level, where they showed increments labelled by position.
 - random-effect priors, summaries, and update plans:
   - `prior_random()`: a top-level `cor` prior is no longer applied to
     `id()`/`diag()` or single-column blocks, and `random_covariance(cor =
@@ -348,6 +451,12 @@ old behaviour.
     and for known group covariance with several columns; an explicit
     `"centered"` stops with a clear message. `random_effects_dependency_matrix()`
     and `random_effects_source_roles()` accept `random_effects = NULL`.
+  - random slopes of mean-difference, orthonormal, and ordered factors label
+    their SD components `sd(g{j})` (by level for the first ordered column).
+    Raw random-effect summaries label the SD of each treatment-coded
+    random-slope level correctly for index-like level labels (the level-2 SD
+    was labelled level 3), and a missing or out-of-range group level in raw
+    coefficient rows is an error instead of a positional index.
 - formula random effects, prediction, and the parameter catalog:
   - `JAGS_formula_random_marginal_covariance()` builds unstructured block
     covariance from the Cholesky factor, so `random_monitor(correlation =
@@ -369,9 +478,19 @@ old behaviour.
     Dirichlet and weight-function helper nodes are internal; `var()` of a
     formula-scaled one-coordinate random SD is a one-to-one transform like
     `sd()`; and row labels shown by `JAGS_estimates_table()` are accepted by
-    `parameter_catalog_resolve()`, except coordinate labels of meandif and
-    orthonormal factors with numeric level names, which can collide with
-    level labels.
+    `parameter_catalog_resolve()`.
+  - prediction with `JAGS_evaluate_formula()`, `JAGS_predict_formula()`, and
+    `random_effects_marginal_vcov()` treats grouping levels that are declared
+    in a single grouping factor but have no rows in the fitting data as new
+    levels, governed by `new_levels`; they remain fitted groups. Blocks with a
+    known group covariance (`random_group_covariance()`) keep predicting
+    declared levels from their fitted coefficients.
+  - LKJ correlation matrices of unstructured (`us`) random-effect blocks have
+    an exactly unit diagonal (the JAGS module function `bt_lkj_corr()` and the
+    R-side reconstructions). Rounding left the monitored `R[k,k]` within
+    1 +/- 2.2e-16, so their effective sample size was undefined and
+    `JAGS_check_convergence()` reported every fit with a block of two or more
+    coefficients as not converged. Off-diagonal correlations are unchanged.
   - allocation-derived SDs and gated totals whose scalar SD source is not in
     the draws are `unavailable` instead of failing in tables,
     `parameter_draws()`, and `random_effects_summary_posterior()`;
@@ -383,9 +502,22 @@ old behaviour.
     bias mixtures (mirrored two-sided bins, fixed weights, raw mixture bins),
     the declared p-hacking kind when all branches share it, and point totals
     of ordered priors with their zero-total or fixed-split coefficients.
-  - an explicit `autofit_control$monitor` can request parameters listed in
-    `add_parameters` and generated formula monitors; unknown names are
+  - autofit in `JAGS_fit()` and `JAGS_extend()` checks the user's
+    `add_parameters` again, as in 0.3.0, and the stochastic nodes that
+    formulas monitor (latent random effects, LKJ primitives, sampled
+    coefficients of centered blocks); only deterministic formula monitors
+    (correlation matrices, Cholesky factors, CPCs, derived coefficients or
+    latent effects, bound SDs) are left out unless an explicit
+    `autofit_control$monitor` requests them. Unknown `monitor` names are
     rejected before sampling (`JAGS_fit()`) or extension (`JAGS_extend()`).
+    `JAGS_check_convergence(add_parameters = )` still lists names to exclude.
+  - a monitored node of a `JAGS_fit()` result (user `add_parameters` or a
+    formula monitor) that the model syntax defines deterministically (`<-` or
+    `=`) and whose draws are identical in every chain is a structural
+    constant in `JAGS_check_convergence()`, autofit, and `JAGS_extend()`, as
+    0.3.0 treated constant columns. A stochastic (`~`) node with constant
+    draws is not assessable and blocks convergence unless
+    `allow_not_assessable = TRUE` (0.3.0 counted it as converged).
   - `JAGS_bridgesampling()`: `bridge_context = "marginal"` works without
     marginalized blocks; rank-deficient draws of the bridge coordinates (e.g.
     a deterministic row-shaped SD source given through `add_parameters`) stop
@@ -697,6 +829,12 @@ old behaviour.
 - repairs visual regression tests that passed unprinted ggplot callbacks and
   therefore recorded empty SVG references; replacement references remain
   subject to human visual approval
+- makes the precomputed vignette caches valid whenever their source
+  fingerprints match. R and package versions are recorded as provenance and
+  reported when a cache is loaded, not required to match, so the vignettes
+  build on newer R releases and after version bumps; fingerprints no longer
+  depend on the session locale. The RandomEffects cache format changed, and a
+  cache in the retired format asks to be regenerated.
 
 ### Features
 - adds `JAGS_formula_random_marginal_covariance()` to compile the full
@@ -929,7 +1067,7 @@ old behaviour.
 - `JAGS_fit()` and `JAGS_extend()` now carry generated `add_parameters`, `required_packages`, and `jags_modules` metadata so formula-generated monitors and JAGS modules remain available during fitting, extension, convergence checks, and parallel execution
 - `JAGS_estimates_table(transform_scaled = TRUE)` now derives formula random-effect SD and correlation summaries on the transformed original scale when fitted formula-scale metadata are available
 - `JAGS_evaluate_formula()` can evaluate fitted random-effect formulas for existing grouping levels when latent random effects or group-level coefficients were monitored
-- `JAGS_check_convergence()` ignores model indicator variables by default and excludes generated auxiliary monitor parameters from convergence checks unless explicitly requested
+- `JAGS_check_convergence()` ignores model indicator variables by default; autofit in `JAGS_fit()` and `JAGS_extend()` leaves out only the deterministic monitors that formulas generate unless they are requested explicitly
 - `Savage_Dickey_BF()` and marginal-posterior `hypothesis_BF()` point-null tests now use boundary-reflected KDE ordinates when exact posterior-support metadata is available and validated against the samples; boundary-null Bayes factors for bounded parameters can therefore differ from version 0.3.0 standard-KDE results
 - `as_marginal_inference()` conditional marginal summaries use active-subset conditioning: each marginal level conditions only on requested parameters with nonzero weight in that level's linear combination, and levels with no active requested conditionals use the fully averaged context
 
