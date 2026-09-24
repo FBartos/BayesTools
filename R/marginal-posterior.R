@@ -105,7 +105,10 @@
 #' predictors, the baseline factor level is used for factors with \code{contrast = "treatment"} prior
 #' distributions, and the parameter is completely omitted for factors with
 #' \code{contrast = "meandif"}, \code{contrast = "orthonormal"},
-#' \code{contrast = "independent"}, and ordered-factor levels.
+#' \code{contrast = "independent"}, and ordered-factor levels. A predictor
+#' without its own main-effect term (e.g., \code{x} in \code{~ g + g:x}) is
+#' handled by the type, levels, and contrast recorded for it in the
+#' interaction terms that contain it.
 #' @param prior_samples whether marginal prior distributions should be generated
 #' @param use_formula whether the parameter should be evaluated as a part of supplied formula
 #' @param n_samples controls the numerical grid used for model-averaged
@@ -221,7 +224,23 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           return("continuous")
         }
       })
-      predictors_type  <- model_terms_type[JAGS_predictors]
+      # a predictor without its own main-effect term (e.g., `x` in
+      # `~ g + g:x`) takes its type, fitted levels, and contrast from the
+      # interaction terms that contain it
+      predictors_info <- lapply(seq_along(predictors), function(i){
+        if(JAGS_predictors[i] %in% JAGS_model_terms){
+          return(priors_info[[JAGS_predictors[i]]])
+        }
+        .marginal_posterior_interaction_predictor_info(
+          predictor   = predictors[i],
+          parameter   = JAGS_predictors[i],
+          priors_info = priors_info[JAGS_model_terms]
+        )
+      })
+      names(predictors_info) <- JAGS_predictors
+      predictors_type <- vapply(predictors_info, function(predictor_info){
+        if(isTRUE(predictor_info[["factor"]])) "factor" else "continuous"
+      }, character(1))
 
 
       ### prepare at specification
@@ -241,19 +260,19 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       for(i in seq_along(predictors)){
         if(JAGS_predictors[i] %in% at_manipulated){
           # specify levels for the parameter of interest
-          if(model_terms_type[[JAGS_predictors[i]]] == "continuous"){
+          if(predictors_type[[JAGS_predictors[i]]] == "continuous"){
             at[[predictors[i]]] <- c(-1, 0, 1)
           }else{
-            at[[predictors[i]]] <- priors_info[[JAGS_predictors[i]]][["level_names"]]
+            at[[predictors[i]]] <- predictors_info[[JAGS_predictors[i]]][["level_names"]]
           }
         }else if(is.null(at[[predictors[i]]])){
           # specify levels for the remaining parameters
-          if(model_terms_type[[JAGS_predictors[i]]] == "continuous"){
+          if(predictors_type[[JAGS_predictors[i]]] == "continuous"){
             # fill in zeroes for unspecified continuous predictors
             at[[predictors[i]]] <- 0
-          }else if(priors_info[[JAGS_predictors[i]]][["treatment"]]){
+          }else if(predictors_info[[JAGS_predictors[i]]][["treatment"]]){
             # fill in the default category for unspecified treatment factors
-            at[[predictors[i]]] <- priors_info[[JAGS_predictors[i]]][["level_names"]][1]
+            at[[predictors[i]]] <- predictors_info[[JAGS_predictors[i]]][["level_names"]][1]
           }else{
             # fill in NA for any other factor type
             at[[predictors[i]]] <- NA
@@ -275,17 +294,17 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         for(i in seq_along(predictors_type)[predictors_type == "factor"]){
 
           if(is.factor(data[,predictors[i]])){
-            if(all(levels(data[,predictors[i]]) %in% priors_info[[JAGS_predictors[i]]][["level_names"]])){
+            if(all(levels(data[,predictors[i]]) %in% predictors_info[[JAGS_predictors[i]]][["level_names"]])){
               # either the formatting is correct, or the supplied levels are a subset of the original levels
               # reformat to check ordering and etc...
-              data[,predictors[i]] <- factor(data[,predictors[i]], levels = priors_info[[JAGS_predictors[i]]][["level_names"]])
+              data[,predictors[i]] <- factor(data[,predictors[i]], levels = predictors_info[[JAGS_predictors[i]]][["level_names"]])
             }else{
               # there are some additional levels
               stop(paste0("Levels specified in the '", predictors[i], "' factor variable do not match the levels used for model specification."))
             }
-          }else if(all(stats::na.omit(unique(data[,predictors[i]])) %in% priors_info[[JAGS_predictors[i]]][["level_names"]])){
+          }else if(all(stats::na.omit(unique(data[,predictors[i]])) %in% predictors_info[[JAGS_predictors[i]]][["level_names"]])){
             # the variable was not passed as a factor but the values matches the factor levels
-            data[,predictors[i]] <- factor(data[,predictors[i]], levels = priors_info[[JAGS_predictors[i]]][["level_names"]])
+            data[,predictors[i]] <- factor(data[,predictors[i]], levels = predictors_info[[JAGS_predictors[i]]][["level_names"]])
           }else{
             # there are some additional mismatching values
             stop(paste0("Levels specified in the '", predictors[i], "' factor variable do not match the levels used for model specification."))
@@ -293,7 +312,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
           # set the contrast
           factor_flag <- function(field){
-            .marginal_posterior_factor_flag(priors_info[[JAGS_predictors[i]]], field, JAGS_predictors[i])
+            .marginal_posterior_factor_flag(predictors_info[[JAGS_predictors[i]]], field, JAGS_predictors[i])
           }
           if(factor_flag("orthonormal")){
             stats::contrasts(data[,predictors[i]]) <- "contr.orthonormal"
@@ -303,7 +322,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             stats::contrasts(data[,predictors[i]]) <- "contr.independent"
           }else if(factor_flag("ordered")){
             factor_contrasts <- unlist(
-              priors_info[[JAGS_predictors[i]]][["factor_contrasts"]],
+              predictors_info[[JAGS_predictors[i]]][["factor_contrasts"]],
               use.names = FALSE
             )
             ordered_contrasts <- factor_contrasts[
@@ -1223,6 +1242,62 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   marginal
+}
+
+# Information on a formula predictor that has no main-effect term and enters
+# the formula only through interactions (e.g., `x` and `h` in
+# `~ g + g:x + g:h`), in the shape of the term information of
+# `marginal_posterior()`: a factor component of a factor term takes the
+# fitted levels and contrast stored for it on that term, and any other
+# component is continuous.
+.marginal_posterior_interaction_predictor_info <- function(predictor, parameter,
+                                                           priors_info){
+
+  containing <- Filter(function(term_info){
+    predictor %in% c(term_info[["term_components"]], term_info[["interaction_terms"]])
+  }, priors_info)
+  if(length(containing) == 0L){
+    stop(
+      "The formula predictor '", predictor, "' is not part of any term of the ",
+      "mixed posterior samples.",
+      call. = FALSE
+    )
+  }
+  factor_info <- Filter(function(term_info){
+    predictor %in% term_info[["factor_terms"]]
+  }, containing)
+  if(length(factor_info) == 0L){
+    return(list(term = parameter, factor = FALSE))
+  }
+
+  level_names      <- factor_info[[1L]][["level_names"]]
+  factor_contrasts <- factor_info[[1L]][["factor_contrasts"]]
+  if(is.list(level_names)){
+    level_names <- level_names[[predictor]]
+  }
+  contrast <- if(predictor %in% names(factor_contrasts)){
+    unname(factor_contrasts[[predictor]])
+  }
+  if(is.null(level_names) || is.null(contrast)){
+    stop(
+      "The mixed posterior samples lack the fitted levels or contrast of the ",
+      "factor predictor '", predictor, "'. Recreate them with mix_posteriors() ",
+      "or as_mixed_posteriors() from models fitted with the current version.",
+      call. = FALSE
+    )
+  }
+
+  list(
+    term             = parameter,
+    factor           = TRUE,
+    level_names      = level_names,
+    factor_contrasts = stats::setNames(contrast, predictor),
+    treatment        = identical(contrast, "contr.treatment"),
+    independent      = identical(contrast, "contr.independent"),
+    orthonormal      = identical(contrast, "contr.orthonormal"),
+    meandif          = identical(contrast, "contr.meandif"),
+    ordered          = .prior_ordered_is_contrast_name(contrast)
+  )
 }
 
 # Contrast flag of a mixed factor posterior. Objects created before ordered

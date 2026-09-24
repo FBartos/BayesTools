@@ -30,7 +30,10 @@ should be performed. If a predictor level is missing, \code{0} is used for conti
 predictors, the baseline factor level is used for factors with \code{contrast = "treatment"} prior
 distributions, and the parameter is completely omitted for factors with
 \code{contrast = "meandif"}, \code{contrast = "orthonormal"},
-\code{contrast = "independent"}, and ordered-factor levels.}
+\code{contrast = "independent"}, and ordered-factor levels. A predictor
+without its own main-effect term (e.g., \code{x} in \code{~ g + g:x}) is
+handled by the type, levels, and contrast recorded for it in the
+interaction terms that contain it.}
 
 \item{prior_samples}{whether marginal prior distributions should be generated}
 

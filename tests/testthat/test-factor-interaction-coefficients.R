@@ -419,3 +419,99 @@ test_that("partially full-rank factor interactions are named by their level cell
     unname(synthetic$posterior[, paste0(parameter, "[1]")])
   )
 })
+
+
+test_that("formula marginal posteriors accept predictors that enter only interactions", {
+
+  for (contrast in c("treatment", "meandif")) {
+
+    synthetic <- full_rank_interaction_fit(c("a", "b", "c"), contrast)
+    fit       <- synthetic$fit
+    posterior <- synthetic$posterior
+    parameter <- synthetic$parameter
+    samples   <- as_mixed_posteriors(fit, c("mu_intercept", "mu_g", parameter))
+
+    # independent reference: the linear predictor from the fitted term designs
+    level_effects <- posterior[, c("mu_g[1]", "mu_g[2]")] %*%
+      t(attr(attr(fit, "prior_list")$mu_g, "factor_design"))
+    slopes <- posterior[, paste0(parameter, "[", 1:3, "]")]
+
+    # `x` has no main-effect term: it is continuous, varied over -1, 0, 1
+    # for the interaction and held at 0 for the main effect of `g`
+    marginal <- marginal_posterior(
+      samples       = samples,
+      parameter     = parameter,
+      formula       = ~ g + g:x,
+      prior_samples = TRUE,
+      n_samples     = 100
+    )
+    expect_identical(
+      names(marginal),
+      paste0(rep(c("a", "b", "c"), 3), ", ", rep(c("-1", "0", "1"), each = 3), "SD"),
+      info = contrast
+    )
+    for (level_i in 1:3) {
+      for (x_i in 1:3) {
+        x <- c(-1, 0, 1)[x_i]
+        expect_equal(
+          as.numeric(marginal[[(x_i - 1) * 3 + level_i]]),
+          unname(posterior[, "mu_intercept"] + level_effects[, level_i] + slopes[, level_i] * x),
+          tolerance = 1e-12,
+          info = paste(contrast, level_i, x)
+        )
+      }
+    }
+
+    main_effect <- marginal_posterior(
+      samples       = samples,
+      parameter     = "mu_g",
+      formula       = ~ g + g:x,
+      prior_samples = TRUE,
+      n_samples     = 100
+    )
+    expect_identical(names(main_effect), c("a", "b", "c"), info = contrast)
+    for (level_i in 1:3) {
+      expect_equal(
+        as.numeric(main_effect[[level_i]]),
+        unname(posterior[, "mu_intercept"] + level_effects[, level_i]),
+        tolerance = 1e-12,
+        info = paste(contrast, level_i)
+      )
+    }
+  }
+
+  # a treatment factor `h` without a main-effect term takes its fitted levels
+  # and contrast from `g:h`: it is held at its reference level `u`
+  synthetic <- full_rank_interaction_fit(c("a", "b", "c"), "treatment", ~ g + g:h)
+  posterior <- synthetic$posterior
+  samples   <- as_mixed_posteriors(synthetic$fit, c("mu_intercept", "mu_g", synthetic$parameter))
+  cells <- marginal_posterior(
+    samples       = samples,
+    parameter     = synthetic$parameter,
+    formula       = ~ g + g:h,
+    prior_samples = TRUE,
+    n_samples     = 100
+  )
+  expect_identical(names(cells), c("a, u", "b, u", "c, u", "a, v", "b, v", "c, v"))
+  expect_equal(
+    as.numeric(cells[["c, v"]]),
+    unname(posterior[, "mu_intercept"] + posterior[, "mu_g[2]"] + posterior[, "mu_g__xXx__h[3]"]),
+    tolerance = 1e-12
+  )
+  main_effect <- marginal_posterior(
+    samples       = samples,
+    parameter     = "mu_g",
+    formula       = ~ g + g:h,
+    prior_samples = TRUE,
+    n_samples     = 100
+  )
+  expect_identical(
+    as.character(attr(main_effect, "data")$h),
+    rep("u", 3)
+  )
+  expect_equal(
+    as.numeric(main_effect[["b"]]),
+    unname(posterior[, "mu_intercept"] + posterior[, "mu_g[1]"]),
+    tolerance = 1e-12
+  )
+})
