@@ -1368,6 +1368,11 @@
 # quartile on that side a point is kept only if its distance to the bound is
 # at least 1e-3 of the next kept point's distance. Pieces narrower than
 # 16 * eps * max(1, |endpoints|) are merged (the bounds are kept).
+# Known limitations: pure scale mixtures (b_m = 0) with heavy-tailed
+# multipliers and a small multiplied SD can stop as non-convergent; and the
+# scale peak s ~ |value - a_m| / b_s of a far value beyond the multiplier's
+# extreme quantile is not a breakpoint, so its mass can be missed, which
+# exceeds the absolute tolerance only at ordinates below about 1e-10.
 .prior_conditional_normal_breakpoints <- function(spec, value){
 
   lower <- spec$bounds[1L]
