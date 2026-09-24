@@ -207,10 +207,13 @@ names.
   (allocation-derived SDs, Fisher-z/logit scalar correlations, LKJ factors,
   matrices, and partial correlations), computed with the model's definitions
   and the posterior evaluators, so that catalog quantities built on them
-  evaluate on prior and posterior draws alike. Latent group effects, nodes
-  derived only from them, and the stochastic auxiliaries of mixture,
-  spike-and-slab, and Dirichlet priors have no prior draws; catalog quantities
-  that need them (e.g. mixture inclusion) are unavailable from prior draws.
+  evaluate on prior and posterior draws alike. The indicators of mixture and
+  spike-and-slab priors and the inclusion probability and slab draws of
+  spike-and-slab priors come from the components of their `rng()` draws (the
+  stream of the other columns is unchanged). Latent group effects, nodes
+  derived only from them, the component nodes of mixtures, and the
+  auxiliaries of Dirichlet priors and ordered-prior totals have no prior
+  draws; catalog quantities that need them are unavailable from prior draws.
 - Internal latent, realized, allocation, LKJ, spike-and-slab, and other
   implementation coordinates remain coordinate-only and must not be presented as
   original-scale public parameters.

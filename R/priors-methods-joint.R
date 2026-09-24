@@ -74,6 +74,35 @@ NULL
 }
 
 
+# The draws of a spike-and-slab prior with their components, in the order of
+# the random-number stream of rng(): the inclusion probabilities, the
+# inclusion indicators (1 = slab), and the slab ('variable') draws; the value
+# is the slab draw times the indicator.
+.rng_spike_and_slab_parts <- function(prior, n, transform_factor_samples = TRUE,
+                                      sample_components = FALSE){
+
+  inclusion_probability <- rng(.get_spike_and_slab_inclusion(prior), n)
+  if(!is.numeric(inclusion_probability) || !is.null(dim(inclusion_probability)) ||
+     length(inclusion_probability) != n ||
+     anyNA(inclusion_probability) || any(!is.finite(inclusion_probability)) ||
+     any(inclusion_probability < 0 | inclusion_probability > 1)){
+    stop("'prior_inclusion' must generate scalar probabilities within 0 and 1.", call. = FALSE)
+  }
+  inclusion <- stats::rbinom(n, size = 1, prob = inclusion_probability)
+  if(sample_components){
+    return(list(inclusion = inclusion))
+  }
+
+  variable <- rng(.get_spike_and_slab_variable(prior), n,
+                  transform_factor_samples = transform_factor_samples)
+  list(
+    value                 = variable * inclusion,
+    inclusion             = inclusion,
+    inclusion_probability = inclusion_probability,
+    variable              = variable
+  )
+}
+
 #### joint distribution functions ####
 #' @rdname prior_functions
 rng.prior   <- function(x, n, ...){
@@ -99,20 +128,16 @@ rng.prior   <- function(x, n, ...){
 
   if(is.prior.spike_and_slab(prior)){
 
-    inclusion_prob <- rng(.get_spike_and_slab_inclusion(prior), n)
-    if(!is.numeric(inclusion_prob) || !is.null(dim(inclusion_prob)) || length(inclusion_prob) != n ||
-       anyNA(inclusion_prob) || any(!is.finite(inclusion_prob)) ||
-       any(inclusion_prob < 0 | inclusion_prob > 1)){
-      stop("'prior_inclusion' must generate scalar probabilities within 0 and 1.", call. = FALSE)
-    }
-    inclusion <- stats::rbinom(n, size = 1, prob = inclusion_prob)
-
+    parts <- .rng_spike_and_slab_parts(
+      prior, n,
+      transform_factor_samples = transform_factor_samples,
+      sample_components        = sample_components
+    )
     if(sample_components)
-      return(inclusion)
+      return(parts$inclusion)
 
-    x         <- rng(.get_spike_and_slab_variable(prior), n,
-                     transform_factor_samples = transform_factor_samples) * inclusion
-    attr(x, "inclusion") <- inclusion
+    x <- parts$value
+    attr(x, "inclusion") <- parts$inclusion
 
   }else if(is.prior.mixture(prior)){
 

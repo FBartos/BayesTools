@@ -165,14 +165,18 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 #' sampled on the Fisher-z or logit scale, and LKJ Cholesky factors,
 #' correlation matrices, and partial correlations. Every parameter-catalog
 #' quantity that depends only on such nodes and on the priors can therefore be
-#' evaluated on the prior draws (see [parameter_draws()]). Standardized latent
+#' evaluated on the prior draws (see [parameter_draws()]). The auxiliary
+#' nodes of spike-and-slab and mixture priors are included from the components
+#' of their [rng()] draws: the component indicator (\code{<parameter>_indicator})
+#' of both, and the inclusion probability (\code{<parameter>_inclusion}) and
+#' slab draws (\code{<parameter>_variable}) of spike-and-slab priors; the
+#' random-number stream of the other columns is unchanged. Standardized latent
 #' random effects, nodes derived from them, such as realized group
-#' coefficients, and the auxiliary nodes of mixture, spike-and-slab, and
-#' Dirichlet priors, such as component indicators, are not included, so
-#' catalog quantities that depend on them, such as the inclusion quantities of
-#' mixture priors, cannot be evaluated on the prior draws. Variance-allocation
-#' inclusion indicators are included, drawn from their inclusion
-#' probabilities.
+#' coefficients, the component nodes of mixture priors, and the auxiliary
+#' nodes of Dirichlet priors and ordered-prior totals are not included, so
+#' catalog quantities that depend on them cannot be evaluated on the prior
+#' draws. Variance-allocation inclusion indicators are included, drawn from
+#' their inclusion probabilities.
 #'
 #' @return A matrix of prior samples on the original (unscaled) scale, with
 #' columns matching the structure of posterior samples.
@@ -427,19 +431,31 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   samples[, ordered, drop = FALSE]
 }
 
-.generate_factor_prior_sample_matrix <- function(prior, parameter, n_samples){
+# 'auxiliary': also return the columns of the fitted auxiliary nodes of a
+# spike-and-slab or mixture prior (its indicator, and the inclusion
+# probability and slab draws of a spike-and-slab prior).
+.generate_factor_prior_sample_matrix <- function(prior, parameter, n_samples,
+                                                 auxiliary = FALSE){
 
   K <- .get_prior_factor_levels(prior)
   if(is.null(K) || is.na(K)){
     stop("The number of factor coefficients for prior '", parameter, "' is unknown.", call. = FALSE)
   }
 
+  auxiliary_samples <- NULL
   if(is.prior.spike_and_slab(prior)){
     prior_variable  <- .get_spike_and_slab_variable(prior)
     prior_inclusion <- .get_spike_and_slab_inclusion(prior)
-    samples <- .generate_factor_prior_sample_matrix(prior_variable, parameter, n_samples)
-    inclusion <- stats::rbinom(n_samples, size = 1, prob = rng(prior_inclusion, n_samples))
-    samples <- samples * inclusion
+    variable <- .generate_factor_prior_sample_matrix(prior_variable, parameter, n_samples)
+    inclusion_probability <- rng(prior_inclusion, n_samples)
+    inclusion <- stats::rbinom(n_samples, size = 1, prob = inclusion_probability)
+    samples <- variable * inclusion
+    colnames(variable) <- .JAGS_prior_factor_names(paste0(parameter, "_variable"), prior_variable)
+    auxiliary_samples <- cbind(
+      matrix(inclusion, ncol = 1L, dimnames = list(NULL, paste0(parameter, "_indicator"))),
+      matrix(inclusion_probability, ncol = 1L, dimnames = list(NULL, paste0(parameter, "_inclusion"))),
+      variable
+    )
   }else if(is.prior.mixture(prior)){
     prior_weights <- attr(prior, "prior_weights")
     prior_weights <- prior_weights / sum(prior_weights)
@@ -453,6 +469,9 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
         n_samples  = sum(components == component)
       )
     }
+    auxiliary_samples <- matrix(
+      components, ncol = 1L, dimnames = list(NULL, paste0(parameter, "_indicator"))
+    )
   }else if(is.prior.point(prior)){
     location <- prior$parameters[["location"]]
     samples <- matrix(rep(location, length.out = K), nrow = n_samples, ncol = K, byrow = TRUE)
@@ -469,6 +488,9 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   }
 
   colnames(samples) <- .JAGS_prior_factor_names(parameter, prior)
+  if(isTRUE(auxiliary) && !is.null(auxiliary_samples)){
+    samples <- cbind(samples, auxiliary_samples)
+  }
   return(samples)
 }
 
@@ -510,7 +532,22 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
       colnames(samples_list[[param_name]]) <- param_name
 
     }else if(is.prior.factor(prior) || inherits(prior, "prior.factor_mixture") || inherits(prior, "prior.factor_spike_and_slab")){
-      samples_list[[param_name]] <- .generate_factor_prior_sample_matrix(prior, param_name, n_samples)
+      samples_list[[param_name]] <- .generate_factor_prior_sample_matrix(
+        prior, param_name, n_samples, auxiliary = TRUE
+      )
+
+    }else if(is.prior.spike_and_slab(prior)){
+      # the value and the fitted auxiliary nodes, from rng()'s components
+      parts <- .rng_spike_and_slab_parts(prior, n_samples)
+      samples_list[[param_name]] <- cbind(
+        as.numeric(parts$value),
+        parts$inclusion,
+        parts$inclusion_probability,
+        as.numeric(parts$variable)
+      )
+      colnames(samples_list[[param_name]]) <- paste0(
+        param_name, c("", "_indicator", "_inclusion", "_variable")
+      )
 
     }else if(is.prior.point(prior)){
       # Point prior - constant values
@@ -562,6 +599,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
         )
       }
 
+      components <- attr(temp_samples, "components", exact = TRUE)
       if(is.matrix(temp_samples)){
         n_cols <- ncol(temp_samples)
         col_names <- paste0(param_name, "[", 1:n_cols, "]")
@@ -570,6 +608,14 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
       }else{
         samples_list[[param_name]] <- matrix(temp_samples, nrow = n_samples, ncol = 1)
         colnames(samples_list[[param_name]]) <- param_name
+      }
+      # the component indicator of a mixture prior (a fitted auxiliary node)
+      if(is.prior.mixture(prior) && !is.null(components)){
+        samples_list[[param_name]] <- cbind(
+          samples_list[[param_name]],
+          matrix(components, ncol = 1L,
+                 dimnames = list(NULL, paste0(param_name, "_indicator")))
+        )
       }
     }
   }

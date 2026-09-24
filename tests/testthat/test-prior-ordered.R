@@ -626,12 +626,15 @@ test_that("prior sample generation uses stored ordered-mixture dimensions", {
     n_samples  = 32,
     seed       = 2
   )
-  row_values <- apply(mixed, 1L, paste, collapse = ",")
+  # the coefficients and the mixture's component indicator
+  expect_equal(colnames(mixed), c(paste0("mu_f[", 1:3, "]"), "mu_f_indicator"))
+  row_values <- apply(mixed[, paste0("mu_f[", 1:3, "]")], 1L, paste, collapse = ",")
   expect_setequal(
     unique(row_values),
     c("2,3,5", "4,6,10")
   )
-  expect_equal(colnames(mixed), paste0("mu_f[", 1:3, "]"))
+  expect_true(all(row_values[mixed[, "mu_f_indicator"] == 1] == "2,3,5"))
+  expect_true(all(row_values[mixed[, "mu_f_indicator"] == 2] == "4,6,10"))
 })
 
 test_that("fixed ordered allocations canonicalize only roundoff drift", {

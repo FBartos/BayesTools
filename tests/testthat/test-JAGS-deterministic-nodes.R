@@ -992,3 +992,67 @@ test_that("JAGS_marglik_parameters() builds the weight node of a prior once acro
   }
   expect_identical(built, 3L)
 })
+
+test_that("prior draws carry the auxiliary nodes of mixture and spike-and-slab priors", {
+
+  formula_result <- JAGS_formula(
+    ~ f, "mu", data.frame(f = factor(c("a", "b", "c", "a"))),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_spike_and_slab(prior_factor("mnormal", list(0, 1), contrast = "meandif"))
+    )
+  )
+  prior_list <- c(
+    formula_result$prior_list,
+    list(
+      m = prior_spike_and_slab(prior("normal", list(0, 1)),
+                               prior_inclusion = prior("beta", list(1, 1))),
+      t = prior_mixture(list(prior("spike", list(0)), prior("normal", list(0, 1))),
+                        is_null = c(TRUE, FALSE))
+    )
+  )
+  columns <- c("mu_intercept", "mu_f[1]", "mu_f[2]", "mu_f_indicator", "mu_f_inclusion",
+               "mu_f_variable[1]", "mu_f_variable[2]",
+               "m", "m_indicator", "m_inclusion", "m_variable", "t", "t_indicator")
+  posterior <- matrix(.5, nrow = 4, ncol = length(columns), dimnames = list(NULL, columns))
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  fit <- attach_test_parameter_map(fit)
+
+  draws <- transform_prior_samples(fit, n_samples = 2000, seed = 11)
+  expect_identical(colnames(draws), columns)
+  # the values follow the fitted node definitions
+  expect_identical(unname(draws[, "m"]), unname(draws[, "m_variable"] * draws[, "m_indicator"]))
+  expect_identical(
+    unname(draws[, c("mu_f[1]", "mu_f[2]")]),
+    unname(draws[, c("mu_f_variable[1]", "mu_f_variable[2]")] * draws[, "mu_f_indicator"])
+  )
+  expect_true(all(draws[, "t"][draws[, "t_indicator"] == 1] == 0))
+  expect_true(all(draws[, "t_indicator"] %in% 1:2))
+  expect_true(all(draws[, "mu_f_inclusion"] == .5))
+
+  # the value columns keep rng()'s random-number stream (as before the
+  # auxiliary columns were added)
+  generated <- BayesTools:::.generate_prior_sample_matrix(
+    prior_list[c("m", "t")], n_samples = 500, seed = 3
+  )
+  set.seed(3)
+  expected_m <- rng(prior_list$m, 500)
+  expected_t <- rng(prior_list$t, 500)
+  expect_identical(unname(generated[, "m"]), as.numeric(expected_m))
+  expect_identical(unname(generated[, "m_indicator"]), as.numeric(attr(expected_m, "inclusion")))
+  expect_identical(unname(generated[, "t"]), as.numeric(expected_t))
+  expect_identical(unname(generated[, "t_indicator"]), as.numeric(attr(expected_t, "components")))
+
+  # catalog quantities of the auxiliary nodes resolve on the prior draws
+  catalog <- parameter_catalog(fit)
+  indicator <- parameter_draws(
+    fit,
+    parameter_catalog_resolve(catalog, "m_indicator"),
+    model_samples = draws
+  )
+  expect_identical(as.numeric(as.matrix(indicator)), unname(draws[, "m_indicator"]))
+})
+
