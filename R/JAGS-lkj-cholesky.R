@@ -41,8 +41,6 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
 
   L_name <- paste0(name, "_L")
   R_name <- paste0(name, "_R")
-  L_flat_name <- paste0(name, "_L_flat")
-  R_flat_name <- paste0(name, "_R_flat")
   u_name <- paste0(name, "_lkj_u")
   cpc_name <- paste0(name, "_lkj_cpc")
   alpha_name <- paste0(name, "_lkj_alpha")
@@ -58,57 +56,27 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
     }
     syntax <- c(
       syntax,
-      paste0(u_name, "[1:", n_pairs, "] ~ dbt_lkj_cpc(", alpha_name, ")"),
-      paste0(L_flat_name, "[1:", K * K, "] <- bt_lkj_cholesky(", u_name, ", ", K, ")")
+      paste0(u_name, "[1:", n_pairs, "] ~ dbt_lkj_cpc(", alpha_name, ")")
     )
-    if(include_correlation){
-      syntax <- c(
-        syntax,
-        paste0(R_flat_name, "[1:", K * K, "] <- bt_lkj_corr(", u_name, ", ", K, ")")
-      )
-    }
   }
 
-  for(row in seq_len(K)){
-    for(column in seq_len(K)){
-      target <- paste0(L_name, "[", row, ",", column, "]")
-      if(K == 1L){
-        syntax <- c(syntax, paste0(target, " <- 1"))
-      }else{
-        flat_index <- .bt_lkj_cholesky_flat_index(row, column, K)
-        syntax <- c(syntax, paste0(target, " <- ", L_flat_name, "[", flat_index, "]"))
-      }
-    }
-  }
+  # The Cholesky factor, correlation matrix, and partial correlations are the
+  # registered 'lkj' deterministic nodes of the primitives.
+  node <- .bt_dnode_lkj(
+    name = name,
+    K = K,
+    include_correlation = include_correlation,
+    include_primitives = include_primitives
+  )
+  syntax <- c(syntax, .bt_deterministic_node_emit(node))
 
-  if(include_correlation){
-    for(row in seq_len(K)){
-      for(column in seq_len(K)){
-        target <- paste0(R_name, "[", row, ",", column, "]")
-        if(K == 1L){
-          syntax <- c(syntax, paste0(target, " <- 1"))
-        }else{
-          flat_index <- .bt_lkj_cholesky_flat_index(row, column, K)
-          syntax <- c(syntax, paste0(target, " <- ", R_flat_name, "[", flat_index, "]"))
-        }
-      }
-    }
-  }
-
-  primitive_names <- character(0)
-  cpc_names <- character(0)
+  primitive_names <- node$spec$primitive_names
+  cpc_names <- node$spec$cpc_names
   primitive_lb <- numeric(0)
   primitive_ub <- numeric(0)
   if(n_pairs > 0L){
-    primitive_names <- paste0(u_name, "[", seq_len(n_pairs), "]")
     primitive_lb <- stats::setNames(rep(0, n_pairs), primitive_names)
     primitive_ub <- stats::setNames(rep(1, n_pairs), primitive_names)
-    if(include_primitives){
-      cpc_names <- paste0(cpc_name, "[", seq_len(n_pairs), "]")
-      for(p in seq_len(n_pairs)){
-        syntax <- c(syntax, paste0(cpc_name, "[", p, "] <- 2 * ", u_name, "[", p, "] - 1"))
-      }
-    }
   }
 
   monitor <- L_name

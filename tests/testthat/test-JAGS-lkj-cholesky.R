@@ -296,14 +296,12 @@ test_that("R-side LKJ correlation reconstructions have an exactly unit diagonal"
   # The draws exercise the rounding: plain row sums of squares miss 1.
   expect_true(any(plain_R[, on_diagonal] != 1))
 
-  # Prior draws of the monitored correlation columns.
-  prior_samples <- BayesTools:::.bt_add_lkj_matrix_prior_samples(
-    samples = u,
-    correlation = correlation,
-    primitive_names = u_names,
-    K = K,
-    column_names = c(u_names, L_names, R_names)
-  )
+  # Prior draws of the monitored correlation columns: the registered LKJ
+  # deterministic node evaluated on the primitives.
+  prior_samples <- cbind(u, BayesTools:::.bt_deterministic_node_evaluate(
+    BayesTools:::.bt_dnode_lkj_from_random_term(random_term),
+    BayesTools:::.bt_deterministic_lookup(u)
+  ))
   expect_true(all(prior_samples[, R_names[on_diagonal]] == 1))
   expect_identical(
     unname(prior_samples[, R_names[!on_diagonal]]),

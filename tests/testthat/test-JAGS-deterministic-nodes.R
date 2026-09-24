@@ -21,6 +21,7 @@ skip_if_not_test_profile("unit")
   n <- 24L
   data.frame(
     x = stats::rnorm(n, 5, 3),
+    z = stats::rnorm(n, -2, 0.5),
     t = factor(rep(c("t1", "t2", "t3", "t4"), 6), levels = c("t1", "t2", "t3", "t4")),
     time = rep(c(0, 1, 2.5, 4), 6),
     g = factor(rep(sprintf("g%d", 1:6), each = 4)),
@@ -137,6 +138,59 @@ test_that("scalar correlation nodes reproduce the JAGS monitors of every structu
     unname(prior_draws[, "mu__xREx__d_rho"]),
     unname(0 + 1 * stats::plogis(prior_draws[, "mu__xREx__d_rho_logit"]))
   )
+})
+
+test_that("LKJ Cholesky, correlation, and partial-correlation nodes reproduce the JAGS monitors", {
+
+  sd_prior <- prior("normal", list(0, 1), list(0, Inf))
+  fit <- .dnode_fit(
+    ~ 1 + x + z + us(1 + x + z | g) + us(1 + x | s),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)),
+      z = prior("normal", list(0, 1))
+    ),
+    prior_random = prior_random(
+      g = random_block(sd = sd_prior, cor = prior_lkj(eta = 1.5, include_primitives = TRUE),
+                       monitor = random_monitor(lkj_primitives = TRUE)),
+      s = random_block(sd = sd_prior, cor = prior_lkj(eta = 2))
+    ),
+    formula_scale = list(x = TRUE)
+  )
+  syntax <- attr(fit, "model_syntax")
+
+  result <- .dnode_rebuild(fit, "lkj")
+  expect_setequal(result$nodes$node, c("mu__xREx__g_xRE_CORx", "mu__xREx__s_xRE_CORx"))
+  g <- match("mu__xREx__g_xRE_CORx", result$nodes$node)
+  expect_identical(
+    unname(unlist(result$nodes$dependencies[g])),
+    paste0("mu__xREx__g_xRE_CORx_lkj_u[", 1:3, "]")
+  )
+  # K = 3: 9 Cholesky cells, 9 correlation cells, and 3 partial correlations.
+  expect_length(unlist(result$nodes$coordinates[g]), 21L)
+  # The Cholesky factor comes from the module's own kernel, R = L L' sums the
+  # products in the module's order, and cpc = 2 u - 1: all bit-identical.
+  expect_identical(unname(result$rebuilt), unname(result$monitored))
+
+  registry <- BayesTools:::.bt_deterministic_nodes_fit(fit)
+  for(node in registry[result$nodes$node]){
+    expect_true(grepl(
+      paste(BayesTools:::.bt_deterministic_node_emit(node), collapse = "\n"),
+      syntax,
+      fixed = TRUE
+    ))
+  }
+
+  # Prior draws evaluate the same node on the drawn primitives.
+  prior_draws <- transform_prior_samples(fit, n_samples = 200, seed = 4, formula_scale = list())
+  u_names <- paste0("mu__xREx__g_xRE_CORx_lkj_u[", 1:3, "]")
+  L <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(prior_draws[, u_names], K = 3L)
+  expect_identical(unname(prior_draws[, "mu__xREx__g_xRE_CORx_L[3,2]"]), L[, 3, 2])
+  expect_identical(
+    unname(prior_draws[, "mu__xREx__g_xRE_CORx_lkj_cpc[2]"]),
+    unname(2 * prior_draws[, u_names[2]] - 1)
+  )
+  expect_true(all(prior_draws[, "mu__xREx__s_xRE_CORx_R[2,2]"] == 1))
 })
 
 test_that("JAGS_evaluate_deterministic() validates its node selection", {

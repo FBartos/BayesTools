@@ -52,6 +52,10 @@ marginal-likelihood parameters, prediction, and convergence roles):
 \item{\code{"random_rho"}}{scalar correlations of structured random-effect
 blocks sampled on the Fisher-z (\code{rho = tanh(z)}) or logit scale
 (\code{rho = lower + (upper - lower) * plogis(z)}).}
+\item{\code{"lkj"}}{the Cholesky factor \code{L}, the correlation matrix
+\code{R = L L'} (with an exact unit diagonal), and the monitored partial
+correlations \code{cpc = 2 u - 1} of an LKJ-Cholesky block, computed from
+its primitives \code{u} with the kernel of the BayesTools JAGS module.}
 }
 Nodes are evaluated with the arithmetic of the R evaluator, which reproduces
 the JAGS monitors exactly or to the last bits of floating-point rounding.

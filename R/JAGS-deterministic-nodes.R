@@ -26,6 +26,10 @@
 #'   \item{\code{"random_rho"}}{scalar correlations of structured random-effect
 #'   blocks sampled on the Fisher-z (\code{rho = tanh(z)}) or logit scale
 #'   (\code{rho = lower + (upper - lower) * plogis(z)}).}
+#'   \item{\code{"lkj"}}{the Cholesky factor \code{L}, the correlation matrix
+#'   \code{R = L L'} (with an exact unit diagonal), and the monitored partial
+#'   correlations \code{cpc = 2 u - 1} of an LKJ-Cholesky block, computed from
+#'   its primitives \code{u} with the kernel of the BayesTools JAGS module.}
 #' }
 #' Nodes are evaluated with the arithmetic of the R evaluator, which reproduces
 #' the JAGS monitors exactly or to the last bits of floating-point rounding.
@@ -124,7 +128,8 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
 # drift apart.
 
 .bt_deterministic_node_families <- c(
-  "random_rho"
+  "random_rho",
+  "lkj"
 )
 
 .bt_deterministic_node <- function(family, node, coordinates,
@@ -163,6 +168,7 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
   switch(
     node$family,
     random_rho = .bt_dnode_rho_emit(node),
+    lkj = .bt_dnode_lkj_emit(node),
     stop("Unsupported deterministic node family '", node$family, "'.", call. = FALSE)
   )
 }
@@ -174,6 +180,7 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
   values <- switch(
     node$family,
     random_rho = .bt_dnode_rho_evaluate(node, lookup),
+    lkj = .bt_dnode_lkj_evaluate(node, lookup),
     stop("Unsupported deterministic node family '", node$family, "'.", call. = FALSE)
   )
   if(is.null(values)){
@@ -226,9 +233,13 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
                                                 parameter = NA_character_){
 
   nodes <- list()
-  rho_node <- .bt_dnode_rho_from_random_term(random_term, parameter = parameter)
-  if(!is.null(rho_node)){
-    nodes[[length(nodes) + 1L]] <- rho_node
+  for(node in list(
+    .bt_dnode_rho_from_random_term(random_term, parameter = parameter),
+    .bt_dnode_lkj_from_random_term(random_term, parameter = parameter)
+  )){
+    if(!is.null(node)){
+      nodes[[length(nodes) + 1L]] <- node
+    }
   }
 
   nodes
@@ -303,4 +314,24 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
     posterior = lookup$draws,
     prior_list = lookup$prior_list
   )
+}
+
+# Draws of several coordinates as a matrix with one column per name; NULL when
+# any of them is unavailable.
+.bt_deterministic_lookup_values <- function(lookup, names){
+
+  indices <- match(names, colnames(lookup$draws))
+  if(!anyNA(indices)){
+    return(lookup$draws[, indices, drop = FALSE])
+  }
+  values <- matrix(NA_real_, nrow = lookup$n, ncol = length(names))
+  for(i in seq_along(names)){
+    value <- .bt_deterministic_lookup_value(lookup, names[[i]])
+    if(is.null(value)){
+      return(NULL)
+    }
+    values[, i] <- value
+  }
+  colnames(values) <- names
+  values
 }
