@@ -430,24 +430,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
     }
 
-    level_names <- prior_info[["level_names"]]
-    if(is.list(level_names)){
-      level_names <- lapply(level_names, function(x) x[-1])
-    }else{
-      level_names <- level_names[-1]
-    }
-
     rownames(samples) <- NULL
-    # An interaction with an ordered factor has cumulative increments that are
-    # not level cells; they are contrast coefficients `{j}`.
-    coefficient_names <- .rename_factor_coefficient_names(
-      stats::setNames(list(prior), parameter)
-    )[[parameter]]
-    colnames(samples) <- if(length(coefficient_names) == ncol(samples)){
-      coefficient_names
-    }else{
-      .format_factor_level_parameter_names(parameter, level_names, ncol(samples))
-    }
+    # Level cells from the term's design (a full-rank interaction such as
+    # `~ g + g:x` includes the first level); cumulative increments of an
+    # interaction with an ordered factor are contrast coefficients `{j}`.
+    colnames(samples) <- .factor_level_coordinate_names(parameter, prior, ncol(samples))
     attr(samples, "sample_ind") <- FALSE
     attr(samples, "models_ind") <- rep(1, nrow(samples))
     attr(samples, "parameter")  <- parameter
@@ -469,7 +456,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
 
     rownames(samples) <- NULL
-    colnames(samples) <- .format_factor_level_parameter_names(parameter, prior_info[["level_names"]], ncol(samples))
+    colnames(samples) <- .factor_level_coordinate_names(parameter, prior, ncol(samples))
     attr(samples, "sample_ind") <- FALSE
     attr(samples, "models_ind") <- rep(1, nrow(samples))
     attr(samples, "parameter")  <- parameter

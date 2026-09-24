@@ -698,6 +698,43 @@ NULL
   )
 }
 
+# Names of the fitted coordinates of a treatment or independent factor prior,
+# in coordinate order. A fixed formula term is named from its own design
+# metadata, i.e., from the level cell that each coordinate structurally is:
+# the slopes of the full-rank interaction in `~ g + g:x` are one coordinate per
+# level of `g`, including the first, whereas those of `~ g * x` omit the
+# reference level. Priors without a stored term design (ordinary factor priors
+# and random-effect SD priors) keep the level labels of their contrast: every
+# level for independent coding, and for treatment coding the levels after the
+# reference level, or the full cell grid of an interaction whose coordinate
+# count equals it.
+.factor_level_coordinate_names <- function(parameter, prior, n_parameters) {
+
+  display_names <- if (!is.null(attr(prior, "factor_design", exact = TRUE))) {
+    .bt_factor_coordinate_display_names(parameter, prior)
+  }
+  if (!is.null(display_names)) {
+    if (length(display_names) != n_parameters) {
+      stop(
+        "The factor design of '", parameter, "' has ", length(display_names),
+        " coefficient columns, but the samples contain ", n_parameters, ".",
+        call. = FALSE
+      )
+    }
+    return(display_names)
+  }
+
+  level_names <- .get_prior_factor_level_names(prior)
+  if (is.prior.treatment(prior)) {
+    if (!is.list(level_names)) {
+      level_names <- level_names[-1]
+    } else if (prod(lengths(level_names)) != n_parameters) {
+      level_names <- lapply(level_names, function(level_name) level_name[-1])
+    }
+  }
+  .format_factor_level_parameter_names(parameter, level_names, n_parameters)
+}
+
 
 #' @rdname posterior_extraction_helpers
 #' @return updated model_samples matrix with renamed columns
@@ -705,68 +742,31 @@ NULL
 
   coefficient_names <- .rename_factor_coefficient_names(prior_list)
 
-  # rename treatment factor levels
-  if (any(sapply(prior_list, is.prior.treatment))) {
-    for (par in names(prior_list)[sapply(prior_list, is.prior.treatment)]) {
-      if (par %in% names(coefficient_names)) {
-        next
-      }
-      if (!.is_prior_interaction(prior_list[[par]])) {
-        renamed_levels <- .format_factor_level_parameter_names(
-          par,
-          .get_prior_factor_level_names(prior_list[[par]])[-1],
-          .get_prior_factor_levels(prior_list[[par]])
-        )
-        if (.get_prior_factor_levels(prior_list[[par]]) == 1) {
-          colnames(model_samples)[colnames(model_samples) == par] <-
-            renamed_levels[1]
-        } else {
-          colnames(model_samples)[colnames(model_samples) %in% paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]]), "]")] <-
-            renamed_levels
-        }
-      } else if (length(attr(prior_list[[par]], "levels")) == 1) {
-        interaction_level_names <- .get_prior_factor_level_names(prior_list[[par]])
-        n_parameters <- .get_prior_factor_levels(prior_list[[par]])
-        # Interaction-only treatment designs use the full cell grid, whereas
-        # hierarchical interactions use the non-reference-level grid.
-        if(prod(lengths(interaction_level_names)) != n_parameters){
-          interaction_level_names <- lapply(
-            interaction_level_names,
-            function(level_name) level_name[-1]
-          )
-        }
-        parameter_columns <- colnames(model_samples) %in%
-          paste0(par, "[", seq_len(n_parameters), "]")
-        colnames(model_samples)[parameter_columns] <-
-          .format_factor_level_parameter_names(
-            par,
-            interaction_level_names,
-            n_parameters
-          )
-      }
+  # rename treatment and independent factor levels: a fitted coordinate takes
+  # the labels of the level cell that it is in the term's design (sole
+  # coordinates of interactions keep their unindexed name)
+  for (par in names(prior_list)) {
+    prior <- prior_list[[par]]
+    if (!(is.prior.treatment(prior) || is.prior.independent(prior)) ||
+        par %in% names(coefficient_names)) {
+      next
     }
-  }
-
-  # rename independent factor levels
-  if (any(sapply(prior_list, is.prior.independent))) {
-    for (par in names(prior_list)[sapply(prior_list, is.prior.independent)]) {
-      if (!.is_prior_interaction(prior_list[[par]])) {
-        renamed_levels <- .format_factor_level_parameter_names(
-          par,
-          .get_prior_factor_level_names(prior_list[[par]]),
-          .get_prior_factor_levels(prior_list[[par]])
-        )
-        if (.get_prior_factor_levels(prior_list[[par]]) == 1) {
-          colnames(model_samples)[colnames(model_samples) == par] <-
-            renamed_levels[1]
-        } else {
-          colnames(model_samples)[colnames(model_samples) %in% paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]]), "]")] <-
-            renamed_levels
-        }
-      } else if (length(attr(prior_list[[par]], "levels")) == 1) {
-        colnames(model_samples)[colnames(model_samples) %in% paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]]), "]")] <-
-          .format_factor_level_parameter_names(par, .get_prior_factor_level_names(prior_list[[par]]), .get_prior_factor_levels(prior_list[[par]]))
-      }
+    interaction <- .is_prior_interaction(prior)
+    if (interaction && length(attr(prior, "levels")) != 1) {
+      next
+    }
+    n_parameters   <- .get_prior_factor_levels(prior)
+    renamed_levels <- .factor_level_coordinate_names(par, prior, n_parameters)
+    if (!interaction && n_parameters == 1) {
+      colnames(model_samples)[colnames(model_samples) == par] <-
+        renamed_levels[1]
+    } else {
+      coordinate_match <- match(
+        colnames(model_samples),
+        paste0(par, "[", seq_len(n_parameters), "]")
+      )
+      renamed <- !is.na(coordinate_match)
+      colnames(model_samples)[renamed] <- renamed_levels[coordinate_match[renamed]]
     }
   }
 
