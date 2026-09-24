@@ -27,6 +27,16 @@ A named list of class \code{prior_density_ordinate} with fields:
 \item \code{reason}: \code{NULL} for an ordinary regular ordinate and a concise diagnostic
 otherwise;
 \item \code{provenance}: compact deterministic information used for classification.
+When \code{behavior} is \code{"point_mass"} (and only then), it contains
+\code{continuous_behavior}: the behavior of the continuous part of the prior at
+\code{value}, i.e., of the measure without its point masses, as one of
+\code{"regular"}, \code{"zero"}, \code{"infinite"}, \code{"undefined"}, or \code{"unknown"}, with
+the same meaning as \code{behavior}. It is \code{"zero"} when the prior has no
+continuous part there (e.g., a point prior) and \code{"unknown"} when the
+continuous part has no structural classification. \code{log_density} is then
+the log density of that continuous part (not renormalized by the
+continuous probability), which for an \code{"unknown"} continuous part may be a
+numerical grid value or \code{NA}.
 }
 
 A \code{regular} classification is structural. Consequently, \code{log_density} may

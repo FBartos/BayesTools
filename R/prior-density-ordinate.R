@@ -25,6 +25,16 @@
 #' * `reason`: `NULL` for an ordinary regular ordinate and a concise diagnostic
 #'   otherwise;
 #' * `provenance`: compact deterministic information used for classification.
+#'   When `behavior` is `"point_mass"` (and only then), it contains
+#'   `continuous_behavior`: the behavior of the continuous part of the prior at
+#'   `value`, i.e., of the measure without its point masses, as one of
+#'   `"regular"`, `"zero"`, `"infinite"`, `"undefined"`, or `"unknown"`, with
+#'   the same meaning as `behavior`. It is `"zero"` when the prior has no
+#'   continuous part there (e.g., a point prior) and `"unknown"` when the
+#'   continuous part has no structural classification. `log_density` is then
+#'   the log density of that continuous part (not renormalized by the
+#'   continuous probability), which for an `"unknown"` continuous part may be a
+#'   numerical grid value or `NA`.
 #'
 #' A `regular` classification is structural. Consequently, `log_density` may
 #' be `-Inf` when an otherwise positive finite density underflows in ordinary

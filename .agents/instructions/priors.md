@@ -71,8 +71,15 @@ provenance. Never infer `regular`, `zero`, `infinite`, `point_mass`, or
 
 A structurally regular ordinate remains regular if its representable density
 underflows. Exact point mass takes precedence at the requested value; the
-continuous behavior remains diagnostic provenance. Unsupported transformations
-or convolutions return `unknown` rather than a guessed structural class.
+continuous behavior remains diagnostic provenance: every `point_mass` result
+(and only such a result) carries `provenance$continuous_behavior`, the
+behavior (`regular`, `zero`, `infinite`, `undefined` or `unknown`) of the
+measure without its point masses at that value, with `log_density` the log
+density of that continuous part (not renormalized). It is documented in the
+roxygen `@return`, and consumers (RoBMA's point-test eligibility) read it, so
+keep it on every point-mass path, including stored atoms of linear densities.
+Unsupported transformations or convolutions return `unknown` rather than a
+guessed structural class.
 
 The density-provenance implementation is shared across
 `R/priors-density-context.R`, `R/priors-linear-density.R`,

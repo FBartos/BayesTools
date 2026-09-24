@@ -1080,3 +1080,28 @@ test_that("original-scale intercepts with mixture sources are classified per com
   ordinate <- prior_density_ordinate(.prior_density_from_context(context, c(mu_intercept = 1)), .1)
   expect_identical(ordinate$behavior, "unknown")
 })
+
+test_that("point-mass ordinates record the behavior of their continuous part", {
+
+  # provenance$continuous_behavior is present exactly for point-mass results
+  point <- prior_density_ordinate(prior("point", list(location = .3)), .3)
+  expect_identical(point$behavior, "point_mass")
+  expect_identical(point$provenance$continuous_behavior, "zero")
+  expect_identical(point$log_density, -Inf)
+  regular <- prior_density_ordinate(prior("normal", list(0, 1)), .3)
+  expect_null(regular$provenance$continuous_behavior)
+
+  # an atom next to a continuous part without a structural route
+  spike_cauchy <- prior_spike_and_slab(prior("cauchy", list(0, .5)),
+                                       prior_inclusion = prior("spike", list(.5)))
+  density <- .prior_linear_combination_density(
+    list(a = spike_cauchy, b = spike_cauchy), c(a = 1, b = -.5)
+  )
+  atom <- prior_density_ordinate(density, 0)
+  expect_identical(atom$behavior, "point_mass")
+  expect_equal(atom$point_mass, .25, tolerance = 1e-15)
+  expect_identical(atom$provenance$continuous_behavior, "unknown")
+  away <- prior_density_ordinate(density, .1)
+  expect_identical(away$behavior, "unknown")
+  expect_null(away$provenance$continuous_behavior)
+})
