@@ -365,3 +365,146 @@ test_that("fit retries and extensions use the actual current worker topology", {
   expect_identical(retained$end.state, fit$end.state)
   expect_s3_class(retained, "runjags")
 })
+
+test_that("runtime clusters start workers with the session's builds and stop once", {
+
+  events <- character()
+  contexts <- list()
+  cluster_arguments <- list()
+  worker_values <- list()
+  setup <- function(context){
+
+    contexts[[length(contexts) + 1L]] <<- context
+    events <<- c(events, paste(context$phase, context$role))
+    invisible(NULL)
+  }
+  package_failure <- FALSE
+  testthat::local_mocked_bindings(
+    makePSOCKcluster = function(cores, ...){
+      cluster_arguments[[length(cluster_arguments) + 1L]] <<- list(...)
+      events <<- c(events, "start")
+      structure(as.list(seq_len(cores)), class = c("SOCKcluster", "cluster"))
+    },
+    clusterCall = function(cl, fun, ...){
+      events <<- c(events, "initialize")
+      expect_identical(environment(fun), baseenv())
+      worker_values <<- list(...)
+      NULL
+    },
+    clusterApply = function(cl, x, fun, setup) lapply(x, fun, setup = setup),
+    stopCluster = function(cl) events <<- c(events, "stop"),
+    .package = "parallel"
+  )
+  testthat::local_mocked_bindings(
+    .JAGS_require_packages = function(required_packages, cl, operation){
+      events <<- c(events, paste("packages", paste(required_packages, collapse = "+"), operation))
+      if(package_failure) stop("Required packages are not available: 'RoBMA'.", call. = FALSE)
+      invisible(NULL)
+    },
+    .package = "BayesTools"
+  )
+  withr::local_options(list(
+    BayesTools.runtime_test_forwarded = 11,
+    BayesTools.runtime_test_overridden = "session"
+  ))
+
+  cl <- JAGS_runtime_cluster(3, packages = c("BayesTools", "RoBMA", "RoBMA"),
+    runtime_setup = setup,
+    options = list(RoBMA.runtime_test = TRUE, BayesTools.runtime_test_overridden = "given"),
+    operation = "Parallel zplot density computation")
+  expect_identical(cluster_arguments, list(list(rscript_args = "--vanilla")))
+  expect_identical(events, c("start", "initialize",
+    "packages BayesTools+RoBMA Parallel zplot density computation",
+    "start coordinator", rep("start worker", 3L)))
+  # workers receive the session's library paths and the options, the given
+  # entries taking precedence over the session's BayesTools options
+  expect_identical(worker_values[[1L]], .libPaths())
+  forwarded <- worker_values[[2L]]
+  expect_identical(forwarded[["RoBMA.runtime_test"]], TRUE)
+  expect_identical(forwarded[["BayesTools.runtime_test_overridden"]], "given")
+  expect_identical(forwarded[["BayesTools.runtime_test_forwarded"]], 11)
+  expect_identical(anyDuplicated(names(forwarded)), 0L)
+  expect_true(all(startsWith(names(forwarded), "BayesTools.") | names(forwarded) == "RoBMA.runtime_test"))
+  expect_identical(vapply(contexts, `[[`, integer(1), "chains"), rep(3L, 4L))
+  expect_identical(vapply(contexts[2:4], `[[`, integer(1), "process_chains"), rep(1L, 3L))
+
+  events <- character()
+  expect_null(JAGS_runtime_cluster_stop(cl))
+  expect_identical(events, c("stop", "finish coordinator"))
+  # stopping again has no effect
+  events <- character()
+  expect_invisible(JAGS_runtime_cluster_stop(cl))
+  expect_identical(events, character())
+
+  # a failed start stops the workers without running or finishing the setup
+  events <- character()
+  package_failure <- TRUE
+  expect_error(JAGS_runtime_cluster(2, packages = "RoBMA", runtime_setup = setup),
+    "Required packages are not available: 'RoBMA'.", fixed = TRUE)
+  expect_identical(events, c("start", "initialize", "packages RoBMA Parallel computation", "stop"))
+
+  # a runtime setup that fails on a worker is finished after the workers stop
+  events <- character()
+  package_failure <- FALSE
+  failing_setup <- function(context){
+
+    events <<- c(events, paste(context$phase, context$role))
+    if(context$role == "worker") stop("worker setup failed", call. = FALSE)
+    invisible(NULL)
+  }
+  expect_error(JAGS_runtime_cluster(2, runtime_setup = failing_setup),
+    "worker setup failed", fixed = TRUE)
+  expect_identical(events, c("start", "initialize",
+    "packages BayesTools Parallel computation", "start coordinator",
+    "start worker", "stop", "finish coordinator"))
+})
+
+test_that("runtime cluster inputs are validated", {
+
+  expect_error(JAGS_runtime_cluster(0), "The 'cores' must be equal or higher than 1.", fixed = TRUE)
+  expect_error(JAGS_runtime_cluster(2, packages = NA_character_),
+    "The 'packages' argument cannot contain NA/NaN values.", fixed = TRUE)
+  expect_error(JAGS_runtime_cluster(2, runtime_setup = list()),
+    "'runtime_setup' must be NULL or a function accepting one context argument.", fixed = TRUE)
+  for(options in list(list(1), list(a = 1, a = 2), c(a = 1), list(a = 1, 2))){
+    expect_error(JAGS_runtime_cluster(2, options = options),
+      "'options' must be a list of options with unique names.", fixed = TRUE)
+  }
+  expect_error(JAGS_runtime_cluster_stop(list()),
+    "'cl' must be a cluster created by 'JAGS_runtime_cluster()'.", fixed = TRUE)
+  expect_error(JAGS_package_builds(NULL), "The 'packages' argument cannot be NULL.", fixed = TRUE)
+  expect_identical(JAGS_package_builds("stats"), .JAGS_package_builds("stats"))
+  expect_null(JAGS_package_builds("BayesToolsMissingPackageForTest")[["BayesToolsMissingPackageForTest"]])
+})
+
+test_that("runtime cluster workers run without startup files and with the session's settings", {
+
+  withr::local_options(list(BayesTools.runtime_test_forwarded = "forwarded"))
+  cl <- tryCatch(
+    JAGS_runtime_cluster(2, packages = "stats",
+      options = list(BayesTools.runtime_test_given = 5)),
+    error = function(e) e
+  )
+  if(inherits(cl, "error")){
+    skip(paste("PSOCK workers could not be started:", conditionMessage(cl)))
+  }
+  on.exit(JAGS_runtime_cluster_stop(cl), add = TRUE)
+
+  worker <- parallel::clusterCall(cl, function(){
+    list(
+      paths = .libPaths(),
+      forwarded = getOption("BayesTools.runtime_test_forwarded"),
+      given = getOption("BayesTools.runtime_test_given"),
+      stats = "stats" %in% loadedNamespaces(),
+      vanilla = "--vanilla" %in% commandArgs()
+    )
+  })
+  for(values in worker){
+    expect_identical(values$paths, .libPaths())
+    expect_identical(values$forwarded, "forwarded")
+    expect_identical(values$given, 5)
+    expect_true(values$stats)
+    expect_true(values$vanilla)
+  }
+  expect_identical(parallel::clusterCall(cl, function() 1L), list(1L, 1L))
+})

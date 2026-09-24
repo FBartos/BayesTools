@@ -33,10 +33,163 @@
 }
 
 
-.JAGS_make_cluster <- function(cores, worker_output = NULL){
+.JAGS_make_cluster <- function(cores, worker_output = NULL, vanilla = FALSE){
 
-  if(is.null(worker_output)) return(parallel::makePSOCKcluster(cores))
-  parallel::makePSOCKcluster(cores, outfile = worker_output)
+  arguments <- c(
+    list(cores),
+    if(vanilla) list(rscript_args = "--vanilla"),
+    if(!is.null(worker_output)) list(outfile = worker_output)
+  )
+  do.call(parallel::makePSOCKcluster, arguments)
+}
+
+# Workers started without the user's startup files receive the calling
+# session's library paths and the given options.
+.JAGS_initialize_workers <- function(cl, values){
+
+  initialize <- function(paths, values){
+
+    .libPaths(paths)
+    options(values)
+    NULL
+  }
+  environment(initialize) <- baseenv()
+  parallel::clusterCall(cl, initialize, .libPaths(), values)
+  invisible(NULL)
+}
+
+# Starts a worker cluster with the running package builds and the runtime
+# setup: 'packages' must load with the calling session's builds on every
+# worker, 'jags_modules' are loaded, and the runtime setup runs in the calling
+# process and on every worker. With 'vanilla', workers start without startup
+# files, with the calling session's library paths and 'options'. The runtime
+# state travels with the cluster, so that .JAGS_runtime_cluster_stop() stops
+# the workers and finishes the runtime setup once; a start that fails stops
+# the workers (and finishes a started runtime setup) before the error.
+.JAGS_runtime_cluster_start <- function(cores, chains, packages = character(),
+                                        runtime_setup = NULL,
+                                        jags_modules = character(),
+                                        warn = TRUE, vanilla = FALSE,
+                                        options = list(), worker_output = NULL,
+                                        operation = "Parallel JAGS fitting"){
+
+  cl <- .JAGS_make_cluster(cores, worker_output, vanilla = vanilla)
+  runtime <- new.env(parent = emptyenv())
+  runtime$runtime_setup <- NULL
+  runtime$chains <- chains
+  runtime$operation <- operation
+  runtime$stopped <- FALSE
+  attr(cl, "BayesTools_runtime") <- runtime
+  started <- FALSE
+  on.exit(if(!started) .JAGS_runtime_cluster_stop(cl), add = TRUE)
+
+  if(vanilla){
+    .JAGS_initialize_workers(cl, options)
+  }
+  .JAGS_require_packages(packages, cl, operation = operation)
+  .JAGS_load_modules(jags_modules, cl, warn = warn)
+  runtime$runtime_setup <- runtime_setup
+  .JAGS_run_runtime_setup(runtime_setup, chains, cl)
+  started <- TRUE
+  cl
+}
+
+.JAGS_runtime_cluster_stop <- function(cl){
+
+  runtime <- attr(cl, "BayesTools_runtime", exact = TRUE)
+  if(runtime$stopped){
+    return(invisible(NULL))
+  }
+  runtime$stopped <- TRUE
+  .JAGS_finish_runtime_setup(runtime$runtime_setup, runtime$chains, cl,
+    operation = runtime$operation)
+}
+
+#' @title Worker clusters with the running package builds
+#'
+#' @description \code{JAGS_runtime_cluster()} starts a PSOCK cluster for
+#' parallel computation whose workers run the package builds of the calling
+#' session, as the workers of parallel [JAGS_fit()] do. Packages built on
+#' BayesTools use it for their own parallel computation.
+#' \code{JAGS_runtime_cluster_stop()} stops such a cluster.
+#'
+#' @param cores number of worker processes.
+#' @param packages packages that every worker loads. Each worker must load the
+#' same build (version, R code, and native libraries; see
+#' [JAGS_package_builds()]) as the calling session.
+#' @param runtime_setup \code{NULL} or a function of one context argument, as
+#' in [JAGS_fit()]. It runs in the calling process and on every worker when
+#' the cluster starts (\code{context$phase} \code{"start"}), and in the calling
+#' process after the workers stopped (\code{"finish"}). The context counts one
+#' chain per worker (\code{context$chains} equals \code{cores}).
+#' @param options named list of options set on every worker, in addition to
+#' all current \code{BayesTools.*} options of the calling session; an entry
+#' of \code{options} takes precedence over a current option of the same name.
+#' @param operation description of the computation used in error messages.
+#' @param cl cluster returned by \code{JAGS_runtime_cluster()}.
+#'
+#' @details Workers start with \code{Rscript --vanilla}, so no user or site
+#' startup file runs, and with the library paths of the calling session.
+#' Setting the options precedes loading the packages. If the start fails, the
+#' workers are stopped (and a started runtime setup finished) before the error
+#' is signalled. \code{JAGS_runtime_cluster_stop()} stops the workers first
+#' and then finishes the runtime setup in the calling process; further calls
+#' have no effect.
+#'
+#' @return \code{JAGS_runtime_cluster()} returns the cluster (as created by
+#' [parallel::makePSOCKcluster()]), for use with the functions of the
+#' \pkg{parallel} package. \code{JAGS_runtime_cluster_stop()} returns
+#' \code{NULL} invisibly.
+#'
+#' @seealso [JAGS_fit()] [JAGS_package_builds()]
+#'
+#' @examples
+#' \dontrun{
+#' cl <- JAGS_runtime_cluster(2, packages = "BayesTools")
+#' on.exit(JAGS_runtime_cluster_stop(cl), add = TRUE)
+#' parallel::parLapply(cl, 1:2, function(i) i^2)
+#' }
+#'
+#' @export
+JAGS_runtime_cluster <- function(cores, packages = "BayesTools",
+                                 runtime_setup = NULL, options = list(),
+                                 operation = "Parallel computation"){
+
+  check_int(cores, "cores", lower = 1, allow_NA = FALSE)
+  check_char(packages, "packages", check_length = 0, allow_NA = FALSE)
+  .JAGS_validate_runtime_setup(runtime_setup)
+  if(!is.list(options) || is.object(options) ||
+     (length(options) > 0L &&
+      (is.null(names(options)) || anyNA(names(options)) ||
+       any(!nzchar(names(options))) || anyDuplicated(names(options)) > 0L))){
+    stop("'options' must be a list of options with unique names.", call. = FALSE)
+  }
+  check_char(operation, "operation", allow_NA = FALSE)
+
+  current <- base::options()
+  current <- current[startsWith(names(current), "BayesTools.")]
+  options <- c(options, current[setdiff(names(current), names(options))])
+
+  .JAGS_runtime_cluster_start(
+    cores = as.integer(cores),
+    chains = as.integer(cores),
+    packages = unique(packages),
+    runtime_setup = runtime_setup,
+    vanilla = TRUE,
+    options = options,
+    operation = operation
+  )
+}
+
+#' @rdname JAGS_runtime_cluster
+#' @export
+JAGS_runtime_cluster_stop <- function(cl){
+
+  if(!inherits(cl, "cluster") ||
+     !is.environment(attr(cl, "BayesTools_runtime", exact = TRUE))){
+    stop("'cl' must be a cluster created by 'JAGS_runtime_cluster()'.", call. = FALSE)
+  }
+  .JAGS_runtime_cluster_stop(cl)
 }
 
 
@@ -287,6 +440,37 @@
   invisible(package_loaded)
 }
 
+#' @title Build fingerprints of loaded packages
+#'
+#' @description Identifies the builds of packages as loaded in the running
+#' session. Two processes run the same build of a package when its
+#' fingerprints are identical; parallel BayesTools computation (e.g.,
+#' [JAGS_fit()] and [JAGS_runtime_cluster()]) requires this of every worker,
+#' and packages can use it to key caches by build.
+#'
+#' @param packages character vector of package names.
+#'
+#' @return A list named by \code{packages}. An element is \code{NULL} when
+#' the package cannot be loaded, and otherwise a list with the package
+#' \code{version}, \code{r_code} (a hash of the functions and immutable
+#' constants defined in the loaded namespace, so an installed package and an
+#' equivalent development load agree), and \code{dll} (MD5 sums of the
+#' package's loaded native libraries).
+#'
+#' @seealso [JAGS_runtime_cluster()]
+#'
+#' @examples
+#' JAGS_package_builds("stats")$stats$version
+#'
+#' @export
+JAGS_package_builds <- function(packages){
+
+  check_char(packages, "packages", check_length = 0, allow_NA = FALSE)
+  .JAGS_package_builds(packages)
+}
+
+# Self-contained (only namespaced calls): workers evaluate it in the base
+# environment, since they may have another BayesTools build loaded.
 .JAGS_package_builds <- function(packages){
 
   out <- lapply(packages, function(package){

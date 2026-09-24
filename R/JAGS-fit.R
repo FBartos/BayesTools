@@ -419,13 +419,13 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   # Configure the actual backend topology, including automatic extensions.
   runtime_started <- FALSE
   if(parallel){
-    cl <- .JAGS_make_cluster(min(cores, chains), worker_output)
-    on.exit(.JAGS_finish_runtime_setup(
-      if(runtime_started) runtime_setup else NULL, chains, cl), add = TRUE)
-    .JAGS_require_packages(required_packages, cl)
-    .JAGS_load_modules(jags_modules, cl, warn = !silent)
-    runtime_started <- TRUE
-    .JAGS_run_runtime_setup(runtime_setup, chains, cl)
+    cl <- .JAGS_runtime_cluster_start(
+      cores = min(cores, chains), chains = chains,
+      packages = required_packages, runtime_setup = runtime_setup,
+      jags_modules = jags_modules, warn = !silent,
+      worker_output = worker_output
+    )
+    on.exit(.JAGS_runtime_cluster_stop(cl), add = TRUE)
     .JAGS_run_runtime_cache(runtime_cache, "restore", chains, cl)
     model_call <- c(
       model_call,
@@ -882,13 +882,13 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     if(is.null(cores)){
       cores <- chains
     }
-    cl <- .JAGS_make_cluster(min(cores, chains), worker_output)
-    on.exit(.JAGS_finish_runtime_setup(
-      if(runtime_started) runtime_setup else NULL, chains, cl), add = TRUE)
-    .JAGS_require_packages(required_packages, cl)
-    .JAGS_load_modules(jags_modules, cl, warn = !silent)
-    runtime_started <- TRUE
-    .JAGS_run_runtime_setup(runtime_setup, chains, cl)
+    cl <- .JAGS_runtime_cluster_start(
+      cores = min(cores, chains), chains = chains,
+      packages = required_packages, runtime_setup = runtime_setup,
+      jags_modules = jags_modules, warn = !silent,
+      worker_output = worker_output
+    )
+    on.exit(.JAGS_runtime_cluster_stop(cl), add = TRUE)
     .JAGS_run_runtime_cache(runtime_cache, "restore", chains, cl, runtime_state)
     runtime_state <- NULL
     refit_call <- list(

@@ -147,6 +147,17 @@ old behaviour.
   factor's other terms.
 
 ### Features
+- exports `JAGS_runtime_cluster()` and `JAGS_runtime_cluster_stop()` for
+  parallel computation in packages built on BayesTools. The cluster's workers
+  start with `Rscript --vanilla` and the calling session's library paths,
+  receive the given `options` and all current `BayesTools.*` options, must
+  load the calling session's builds of `packages`, and run `runtime_setup`
+  as in `JAGS_fit()`; a failed start stops the workers, and stopping (which
+  finishes the runtime setup after the workers exit) happens once however
+  often it is called. `JAGS_package_builds()` exports the build fingerprints
+  (version, R code hash, native library checksums) that these checks compare.
+  `JAGS_fit()` and `JAGS_extend()` start and stop their workers through the
+  same code.
 - supports declared output intervals for density transformations. Wider display
   limits remain available while inverse/Jacobian evaluations and continuous
   curves stay inside the transformed support; boundary point masses are retained.
