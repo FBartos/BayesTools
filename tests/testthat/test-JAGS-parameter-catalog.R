@@ -2701,6 +2701,52 @@ test_that("coordinates and factor levels expose their prior densities", {
   expect_equal(reference$point_mass, 1)
 })
 
+test_that("coordinate prior densities are NULL only without an owning prior", {
+
+  columns <- c("mu", "tau")
+  values <- matrix(.5, nrow = 2L, ncol = length(columns), dimnames = list(NULL, columns))
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(values)),
+    prior_list = list(
+      mu  = prior("normal", list(0, 1)),
+      tau = prior("normal", list(0, 1), list(0, Inf))
+    )
+  )
+  selection <- parameter_catalog_resolve(parameter_catalog(fit), "mu")
+  with_mu_prior <- function(value){
+    prior_list <- attr(fit, "prior_list", exact = TRUE)
+    prior_list["mu"] <- list(value)
+    attr(fit, "prior_list") <- prior_list
+    fit
+  }
+
+  # a coordinate that no fitted prior owns has no prior density by rule
+  unowned <- fit
+  attr(unowned, "prior_list") <- attr(fit, "prior_list", exact = TRUE)["tau"]
+  expect_null(parameter_prior_density(unowned, selection))
+
+  # an owning entry that is not a BayesTools prior stops (the failed context
+  # build was previously reported as an unavailable density)
+  for(unsupported in list(
+    structure(list(distribution = "normal"), class = "not_a_prior"),
+    "normal",
+    list(1, 2)
+  )){
+    expect_error(
+      parameter_prior_density(with_mu_prior(unsupported), selection),
+      "The prior density of 'mu' is unavailable: the prior distribution of 'mu' is not a BayesTools prior.",
+      fixed = TRUE
+    )
+  }
+
+  # model lists of BayesTools priors remain supported owners
+  density <- parameter_prior_density(
+    with_mu_prior(list(prior("normal", list(0, 1)), prior("normal", list(0, 2)))),
+    selection
+  )
+  expect_s3_class(density, "prior_linear_density")
+})
+
 test_that("allocation quantities expose deterministic induced prior densities", {
 
   data <- data.frame(

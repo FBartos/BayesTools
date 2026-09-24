@@ -108,7 +108,10 @@
 #' over the realized active set: atoms at 0 and 1, and a Beta mixture over
 #' nonempty sets of other active components. It returns
 #' `NULL` when the fitted map does
-#' not declare a supported deterministic prior composition. The density records
+#' not declare a supported deterministic prior composition; for fitted
+#' coordinates and factor levels, only when no fitted prior owns their
+#' coordinates (an owning prior-list entry that is not a BayesTools prior
+#' stops). The density records
 #' the source prior and transform it was built from, so its heights and region
 #' probabilities are evaluated on that prior's structural route (bounded-logit
 #' correlations on the refined numerical grid). Allocation-derived component
@@ -629,8 +632,10 @@ parameter_prior_density.BayesTools_fit <- function(
 # sum_j w_j beta_j of its fitted coordinates: the prior-density context of
 # the priors owning those coordinates (a coefficient's 'multiply_by' scales
 # only its linear-predictor contribution, not the coefficient) evaluated at
-# the level's weights. Structural quantities are their fixed value. NULL when
-# no fitted prior owns the coordinates.
+# the level's weights. Structural quantities are their fixed value. NULL only
+# when no fitted prior owns the coordinates; an owner that is not a BayesTools
+# prior (or a list of them) stops, and failures to build the prior-density
+# context propagate.
 .bt_parameter_prior_density_coordinates <- function(object, quantity, key,
                                                     n_grid, tail_prob){
 
@@ -659,10 +664,7 @@ parameter_prior_density.BayesTools_fit <- function(
     return(NULL)
   }
   owner_columns <- lapply(names(prior_list), function(parameter){
-    columns <- tryCatch(
-      .prior_linear_prior_columns(parameter, prior_list[[parameter]]),
-      error = function(e) NULL
-    )
+    columns <- .prior_linear_prior_columns(parameter, prior_list[[parameter]])
     if(any(dependencies %in% columns)) columns else NULL
   })
   names(owner_columns) <- names(prior_list)
@@ -671,22 +673,37 @@ parameter_prior_density.BayesTools_fit <- function(
   if(length(owners) == 0L || !all(dependencies %in% columns)){
     return(NULL)
   }
-
-  context <- tryCatch(
-    .prior_density_build_context(
-      prior_list   = prior_list[owners],
-      column_names = columns,
-      n_grid       = n_grid,
-      tail_prob    = tail_prob
-    ),
-    error = function(e) NULL
-  )
-  if(is.null(context)){
-    return(NULL)
+  unsupported <- owners[!vapply(
+    prior_list[owners], .bt_parameter_prior_density_is_prior, logical(1)
+  )]
+  if(length(unsupported) > 0L){
+    stop(
+      "The prior density of '", quantity$canonical_name, "' is unavailable: ",
+      "the prior distribution of '", unsupported[1L], "' is not a BayesTools prior.",
+      call. = FALSE
+    )
   }
+
+  context <- .prior_density_build_context(
+    prior_list   = prior_list[owners],
+    column_names = columns,
+    n_grid       = n_grid,
+    tail_prob    = tail_prob
+  )
   full_weights <- stats::setNames(numeric(length(columns)), columns)
   full_weights[dependencies] <- weights
   .prior_density_from_context(context, full_weights)
+}
+
+# Whether a prior-list entry is a BayesTools prior or a model list of them
+# (the prior-list entries a prior-density context accepts).
+.bt_parameter_prior_density_is_prior <- function(prior){
+
+  if(is.prior(prior)){
+    return(TRUE)
+  }
+  is.list(prior) && !is.object(prior) && length(prior) > 0L &&
+    all(vapply(prior, is.prior, logical(1)))
 }
 
 .bt_parameter_prior_density_direct_quantity <- function(

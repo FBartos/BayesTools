@@ -198,7 +198,10 @@ that conditional law, leaving the Dirichlet marginal
 over the realized active set: atoms at 0 and 1, and a Beta mixture over
 nonempty sets of other active components. It returns
 \code{NULL} when the fitted map does
-not declare a supported deterministic prior composition. The density records
+not declare a supported deterministic prior composition; for fitted
+coordinates and factor levels, only when no fitted prior owns their
+coordinates (an owning prior-list entry that is not a BayesTools prior
+stops). The density records
 the source prior and transform it was built from, so its heights and region
 probabilities are evaluated on that prior's structural route (bounded-logit
 correlations on the refined numerical grid). Allocation-derived component
