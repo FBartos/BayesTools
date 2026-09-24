@@ -5,10 +5,12 @@
 #' @param fit a 'BayesTools_fit' object created by [JAGS_fit()] with this
 #' version of BayesTools. Fits without its parameter map and fit contract
 #' (such as fits created by BayesTools 0.3.0) must be refitted.
-#' @param prior_list named list of prior distribution
-#' (names correspond to the parameter names). Retained for compatibility and
-#' validated when supplied; the classification of the fitted parameters comes
-#' from the parameter map stored with \code{fit} (see Details).
+#' @param prior_list optional named list of prior distributions (names
+#' correspond to the parameter names). When supplied, it must be the prior list
+#' stored with \code{fit} (\code{attr(fit, "prior_list")}); another list is an
+#' error. The classification of the fitted parameters always comes from the
+#' convergence roles of the fit's coordinates (see Details), not from this
+#' argument.
 #' @param max_Rhat maximum R-hat error for the autofit function.
 #'   Defaults to \code{1.05}. With one chain, this criterion is skipped with
 #'   a warning; the remaining enabled criteria are still assessed.
@@ -139,6 +141,15 @@ JAGS_check_convergence <- function(
              allow_NA = FALSE)
   check_bool(allow_not_assessable, "allow_not_assessable", allow_NA = FALSE)
   coordinates <- .bt_require_fit_contract(fit)
+  if(!is.null(prior_list) &&
+     !.bt_convergence_prior_list_matches(prior_list, attr(fit, "prior_list", exact = TRUE))){
+    stop(
+      "'prior_list' differs from the prior list stored with 'fit'. ",
+      "The convergence classification comes from the fit's coordinate roles; ",
+      "omit 'prior_list' or supply 'attr(fit, \"prior_list\")'.",
+      call. = FALSE
+    )
+  }
 
   .bt_check_convergence(
     fit = fit,
@@ -153,6 +164,17 @@ JAGS_check_convergence <- function(
     monitor = monitor,
     allow_not_assessable = allow_not_assessable
   )
+}
+
+# A supplied 'prior_list' must be the fit's own: the stored list itself, or
+# the list JAGS_fit() stored after completing its factor metadata.
+.bt_convergence_prior_list_matches <- function(prior_list, fitted_prior_list){
+
+  if(length(prior_list) == 0L || length(fitted_prior_list) == 0L){
+    return(length(prior_list) == 0L && length(fitted_prior_list) == 0L)
+  }
+  identical(prior_list, fitted_prior_list) ||
+    identical(.complete_factor_metadata_prior_list(prior_list), fitted_prior_list)
 }
 
 # Convergence check of a fit against its coordinate table. Automatic fitting

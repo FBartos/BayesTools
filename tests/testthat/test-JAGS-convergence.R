@@ -371,6 +371,42 @@ test_that("a point prior with an expression location is derived", {
   )
 })
 
+test_that("a supplied prior list must be the fit's own", {
+
+  set.seed(47)
+  chain <- function() cbind(mu = stats::rnorm(100), tau = abs(stats::rnorm(100)))
+  priors <- list(
+    mu = prior("normal", list(0, 1)),
+    tau = prior("normal", list(0, 1), list(0, Inf))
+  )
+  fit <- .mock_convergence_fit(chain(), chain(), priors)
+  check <- function(prior_list){
+    JAGS_check_convergence(
+      fit, prior_list = prior_list, max_Rhat = 1.2, min_ESS = 1,
+      max_error = NULL, max_SD_error = NULL
+    )
+  }
+
+  expected <- check(NULL)
+  expect_identical(check(attr(fit, "prior_list")), expected)
+  expect_identical(check(priors), expected)
+
+  mismatch <- paste0(
+    "'prior_list' differs from the prior list stored with 'fit'. ",
+    "The convergence classification comes from the fit's coordinate roles; ",
+    "omit 'prior_list' or supply 'attr(fit, \"prior_list\")'."
+  )
+  # A different prior, or a list that would have classified 'tau' as a
+  # structural constant, is not the fitted prior list.
+  expect_error(check(priors["mu"]), mismatch, fixed = TRUE)
+  expect_error(
+    check(list(mu = priors$mu, tau = prior("point", list(1)))),
+    mismatch,
+    fixed = TRUE
+  )
+  expect_error(check(list()), mismatch, fixed = TRUE)
+})
+
 test_that("explicit convergence monitors distinguish omitted parameters", {
 
   set.seed(42)

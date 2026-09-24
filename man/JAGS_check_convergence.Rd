@@ -23,10 +23,12 @@ JAGS_check_convergence(
 version of BayesTools. Fits without its parameter map and fit contract
 (such as fits created by BayesTools 0.3.0) must be refitted.}
 
-\item{prior_list}{named list of prior distribution
-(names correspond to the parameter names). Retained for compatibility and
-validated when supplied; the classification of the fitted parameters comes
-from the parameter map stored with \code{fit} (see Details).}
+\item{prior_list}{optional named list of prior distributions (names
+correspond to the parameter names). When supplied, it must be the prior list
+stored with \code{fit} (\code{attr(fit, "prior_list")}); another list is an
+error. The classification of the fitted parameters always comes from the
+convergence roles of the fit's coordinates (see Details), not from this
+argument.}
 
 \item{max_Rhat}{maximum R-hat error for the autofit function.
 Defaults to \code{1.05}. With one chain, this criterion is skipped with
