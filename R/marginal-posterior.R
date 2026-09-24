@@ -391,18 +391,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         terms_indexes    <- attr(model_matrix, "assign") + 1
         terms_indexes[1] <- 0
 
-        # get model/sample indices and check for scaling factors
-        temp_multiply_by <- .get_combined_parameter_scaling_factor_matrix(
-          JAGS_parameter_names("intercept", formula_parameter = formula_parameter),
-          prior_list  = prior_list,
-          posterior   = posterior_samples_matrix,
-          models_ind  = models_ind,
-          nrow        = nrow(data),
-          simple_list = inherits(samples, "as_mixed_posteriors")
-        )
-
-
-        # the fitted linear predictor uses log(intercept) when declared (as JAGS_evaluate_formula)
+        # the fitted linear predictor uses log(intercept) when declared (as
+        # JAGS_evaluate_formula) and never scales the intercept
         intercept_values <- posterior_samples_matrix[,JAGS_parameter_names("intercept", formula_parameter = formula_parameter)]
         if(log_intercept){
           if(any(!(intercept_values > 0))){
@@ -414,8 +404,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           }
           intercept_values <- log(intercept_values)
         }
-        marginal_posterior_samples <- temp_multiply_by * matrix(intercept_values,
-                                                       nrow = nrow(data), ncol = nrow(posterior_samples_matrix), byrow = TRUE)
+        marginal_posterior_samples <- matrix(intercept_values,
+                                             nrow = nrow(data), ncol = nrow(posterior_samples_matrix), byrow = TRUE)
 
       }else{
 

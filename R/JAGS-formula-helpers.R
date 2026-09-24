@@ -998,6 +998,18 @@
 .bt_validate_formula_term_priors <- function(prior_list, model_terms,
                                              model_terms_type){
 
+  # The linear predictor enters the intercept unscaled; a 'multiply_by'
+  # multiplier applies only to the coefficients of formula terms.
+  if(!is.null(attr(prior_list[["intercept"]], "multiply_by", exact = TRUE))){
+    stop(
+      "The intercept prior 'prior_list[[\"intercept\"]]' has a 'multiply_by' ",
+      "attribute, but intercept priors cannot be scaled. Remove 'multiply_by' ",
+      "from the intercept prior; it is supported only for the priors of ",
+      "formula terms.",
+      call. = FALSE
+    )
+  }
+
   for(model_term in model_terms){
     this_prior <- prior_list[[model_term]]
     term_type <- model_terms_type[[model_term]]

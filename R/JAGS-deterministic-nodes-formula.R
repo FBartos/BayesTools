@@ -14,11 +14,12 @@
 #   expression() terms,
 #   sampled random-effect blocks  p__xREx__<block>[i] (or the group location
 #                    'p__xREx__<block>_xRE_MEANx[...]' of a mean-centered block),
-# where m is the term prior's 'multiply_by' (a number or a parameter). The
-# fixed terms are evaluated from one term specification per intercept or model
-# term, with the arithmetic of the JAGS terms: coefficient times multiplier
-# times data column, inner products of factor coefficients, and the terms
-# summed in model order.
+# where m is the term prior's 'multiply_by' (a number or a parameter; the
+# intercept prior cannot carry one, see .bt_validate_formula_term_priors()).
+# The fixed terms are evaluated from one term specification per intercept or
+# model term, with the arithmetic of the JAGS terms: coefficient times
+# multiplier times data column, inner products of factor coefficients, and the
+# terms summed in model order.
 
 .bt_dnode_linear_predictor_term <- function(parameter, model_term, type,
                                             columns, prior,
@@ -32,7 +33,7 @@
     data_name = paste0(parameter, "_data_", model_term),
     columns = columns,
     prior = prior,
-    multiply_by = attr(prior, "multiply_by", exact = TRUE),
+    multiply_by = if(!identical(type, "intercept")) attr(prior, "multiply_by", exact = TRUE),
     log = isTRUE(log)
   )
 }
@@ -51,7 +52,6 @@
 .bt_dnode_linear_predictor_term_syntax <- function(term){
 
   if(identical(term$type, "intercept")){
-    # The intercept term does not emit its prior's 'multiply_by'.
     return(if(isTRUE(term$log)) paste0("log(", term$name, ")") else term$name)
   }
   multiplier <- if(!is.null(term$multiply_by)) paste0(term$multiply_by, " * ")
@@ -267,7 +267,8 @@
 
 # The fixed part of a linear predictor: a rows x draws matrix. 'values_of(term)'
 # returns the term's coefficient draws (draws x coefficients) and
-# 'multiplier_of(term)' its multiplier draws (a vector, or NULL without one).
+# 'multiplier_of(term)' the multiplier draws of a model term (a vector, or NULL
+# without one); the intercept has no multiplier.
 .bt_dnode_linear_predictor_fixed <- function(terms, model_matrix, n_draws,
                                              values_of, multiplier_of){
 
@@ -275,18 +276,15 @@
   output <- matrix(0, nrow = n_rows, ncol = n_draws)
   for(term in terms){
     values <- values_of(term)
-    multiplier <- multiplier_of(term)
     if(identical(term$type, "intercept")){
       value <- values[, 1L]
       if(isTRUE(term$log)){
         value <- log(value)
       }
-      if(!is.null(multiplier)){
-        value <- multiplier * value
-      }
       contribution <- matrix(value, nrow = n_rows, ncol = n_draws, byrow = TRUE)
     }else if(identical(term$type, "continuous")){
       # (multiplier * coefficient) * data, one exact product per cell.
+      multiplier <- multiplier_of(term)
       coefficient <- values[, 1L]
       if(!is.null(multiplier)){
         coefficient <- multiplier * coefficient
@@ -294,6 +292,7 @@
       contribution <- model_matrix[, term$columns, drop = FALSE] %*%
         matrix(coefficient, nrow = 1L)
     }else{
+      multiplier <- multiplier_of(term)
       contribution <- model_matrix[, term$columns, drop = FALSE] %*% t(values)
       if(!is.null(multiplier)){
         contribution <- contribution * rep(multiplier, each = n_rows)
@@ -351,6 +350,9 @@
     .bt_JAGS_bridge_compile_parameter_values(term$prior, names)
   })
   multiplier_evaluators <- lapply(terms, function(term){
+    if(is.null(term$multiply_by)){
+      return(NULL)
+    }
     .bt_JAGS_bridge_compile_prior_multiply_by(term$prior)
   })
   has_multiplier <- vapply(terms, function(term) !is.null(term$multiply_by), logical(1))

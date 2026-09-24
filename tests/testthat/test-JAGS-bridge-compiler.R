@@ -1164,7 +1164,7 @@ test_that("formula parameter evaluators reject missing named multiply_by paramet
   formula_design_list <- list(mu = formula_output$formula_design)
   samples <- c(mu_intercept = .2, mu_x = -.4)
 
-  for(prior_name in c("mu_intercept", "mu_x")){
+  for(prior_name in "mu_x"){
     formula_prior_list <- list(mu = formula_output$prior_list)
     multiplier_name <- paste0(prior_name, "_scale")
     attr(
@@ -1215,6 +1215,35 @@ test_that("formula parameter evaluators reject missing named multiply_by paramet
       fixed = TRUE
     )
   }
+
+  # The fitted model never scales the intercept (JAGS_formula() rejects an
+  # intercept 'multiply_by'), so a multiplier stored by an older fit is ignored.
+  evaluate <- function(formula_prior_list){
+    compiled <- BayesTools:::.bt_JAGS_bridge_compile_formula_parameter_evaluator(
+      formula_list = formula_list,
+      formula_data_list = formula_data_list,
+      formula_prior_list = formula_prior_list,
+      formula_design_list = formula_design_list,
+      model_data = list()
+    )
+    list(
+      bridge = compiled$parameters(samples, list()),
+      marglik = JAGS_marglik_parameters_formula(
+        samples = samples,
+        formula_list = formula_list,
+        formula_data_list = formula_data_list,
+        formula_prior_list = formula_prior_list,
+        prior_list_parameters = list(),
+        formula_design_list = formula_design_list,
+        model_data = list()
+      )
+    )
+  }
+  formula_prior_list <- list(mu = formula_output$prior_list)
+  expected <- evaluate(formula_prior_list)
+  attr(formula_prior_list$mu$mu_intercept, "multiply_by") <- "mu_intercept_scale"
+  expect_identical(evaluate(formula_prior_list), expected)
+  expect_identical(expected$bridge$mu, .2 - .4 * formula_data$x)
 })
 
 test_that("compiled formula parameter evaluator preserves log-intercept reconstruction", {

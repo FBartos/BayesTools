@@ -207,14 +207,12 @@ test_that("logged intercepts are affine in their own log coordinate", {
 
   log_formula <- ~ 1 + x
   attr(log_formula, "log(intercept)") <- TRUE
-  intercept_prior <- prior("gamma", list(shape = 2, rate = 1))
-  attr(intercept_prior, "multiply_by") <- 2
   result <- JAGS_formula(
     formula = log_formula,
     parameter = "log_tau",
     data = data.frame(x = c(-1, 0.5, 2)),
     prior_list = list(
-      intercept = intercept_prior,
+      intercept = prior("gamma", list(shape = 2, rate = 1)),
       x = prior("normal", list(mean = 0, sd = 1))
     )
   )
@@ -228,9 +226,9 @@ test_that("logged intercepts are affine in their own log coordinate", {
   fit <- .formula_predictor_basis_fit(result, samples)
   model_matrix <- result$formula_design$model_matrix
 
-  # log tau_k(alpha') = log tau_k(alpha) + m * (log alpha' - log alpha): the
-  # basis is the intercept's model column times the direction and the term
-  # multiplier, and the caller forms the update from the logarithms.
+  # log tau_k(alpha') = log tau_k(alpha) + (log alpha' - log alpha): the basis
+  # is the intercept's model column times the direction, and the caller forms
+  # the update from the logarithms.
   directions <- matrix(
     c(1, 0, 0.5, 0),
     nrow = 2L,
@@ -248,7 +246,7 @@ test_that("logged intercepts are affine in their own log coordinate", {
   expect_identical(intercept_basis$parameter, "log_tau")
   expect_identical(
     unname(intercept_basis$basis),
-    unname(outer(directions[, 1L] * 2, model_matrix[, "(Intercept)"]))
+    unname(outer(directions[, 1L], model_matrix[, "(Intercept)"]))
   )
 
   # An ordinary coefficient of the same design keeps the fitted coordinate.
@@ -275,6 +273,70 @@ test_that("logged intercepts are affine in their own log coordinate", {
   expect_identical(still_basis$status, "affine")
   expect_identical(still_basis$coordinate, "identity")
   expect_true(all(still_basis$basis == 0))
+})
+
+
+test_that("formula evaluators ignore intercept multipliers stored by older fits", {
+
+  data <- data.frame(x = c(-1, 0.5, 2))
+  result <- JAGS_formula(
+    ~ 1 + x, "mu", data,
+    list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)))
+  )
+  samples <- matrix(
+    c(0.5, -0.2, 1.5, 0.3),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, c("mu_intercept", "mu_x"))
+  )
+  fit <- .formula_predictor_basis_fit(result, samples)
+  fit_design <- attr(fit, "formula_design")$mu
+  fit_priors <- attr(fit, "prior_list")[c("mu_intercept", "mu_x")]
+
+  # JAGS_formula() once accepted an intercept 'multiply_by' that the JAGS
+  # model never applied; the evaluators follow the fitted model.
+  for(multiply_by in list(2, "mu_x")){
+    legacy <- fit
+    prior_list <- attr(legacy, "prior_list")
+    attr(prior_list$mu_intercept, "multiply_by") <- multiply_by
+    attr(legacy, "prior_list") <- prior_list
+    designs <- attr(legacy, "formula_design")
+    attr(designs$mu$prior_list$mu_intercept, "multiply_by") <- multiply_by
+    attr(legacy, "formula_design") <- designs
+    legacy_priors <- prior_list[c("mu_intercept", "mu_x")]
+
+    expect_identical(
+      JAGS_evaluate_formula(legacy, parameter = "mu"),
+      JAGS_evaluate_formula(fit, parameter = "mu")
+    )
+    for(i in seq_len(nrow(samples))){
+      expected <- BayesTools:::.bt_JAGS_marglik_parameters_formula_design(
+        samples[i, ], fit_design, fit_priors, list()
+      )
+      expect_identical(
+        BayesTools:::.bt_JAGS_marglik_parameters_formula_design(
+          samples[i, ], designs$mu, legacy_priors, list()
+        ),
+        expected
+      )
+      expect_identical(
+        BayesTools:::.bt_JAGS_bridge_compile_formula_design_plan(
+          designs$mu, legacy_priors, FALSE
+        )$value(samples[i, ], list()),
+        expected
+      )
+    }
+    expect_identical(
+      JAGS_formula_coordinate_dependencies(legacy, c("mu_intercept", "mu_x")),
+      JAGS_formula_coordinate_dependencies(fit, c("mu_intercept", "mu_x"))
+    )
+    expect_identical(
+      JAGS_formula_predictor_basis(legacy, directions = c(mu_intercept = 1, mu_x = 0.5),
+                                   posterior_samples = samples),
+      JAGS_formula_predictor_basis(fit, directions = c(mu_intercept = 1, mu_x = 0.5),
+                                   posterior_samples = samples)
+    )
+  }
 })
 
 

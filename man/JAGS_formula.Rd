@@ -49,7 +49,11 @@ default.}
 }
 These default priors allow for more concise specification when many predictors
 share the same prior distribution. For continuous formula terms,
-\code{prior_none()} is canonicalized to a point prior at zero.}
+\code{prior_none()} is canonicalized to a point prior at zero.
+The prior of a formula term can carry a \code{"multiply_by"} attribute (a
+number or the name of another parameter) that multiplies the term's
+contribution to the linear predictor; the intercept prior cannot be scaled
+and a \code{"multiply_by"} attribute on it is an error.}
 
 \item{formula_scale}{named list specifying whether to standardize continuous predictors.
 If \code{NULL} (default), no standardization is applied. If a named list is provided,

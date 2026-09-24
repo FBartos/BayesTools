@@ -389,7 +389,11 @@ JAGS_formula_predictor_basis <- function(fit, directions,
         call. = FALSE
       )
     }
-    multiply_by <- attr(prior, "multiply_by", exact = TRUE)
+    # The fitted predictor never scales the intercept (JAGS_formula() rejects
+    # an intercept 'multiply_by').
+    multiply_by <- if(!identical(map_row$term, "intercept")){
+      attr(prior, "multiply_by", exact = TRUE)
+    }
     multiplier <- NA_character_
     multiplier_value <- 1
     if(is.numeric(multiply_by)){
@@ -453,7 +457,10 @@ JAGS_formula_predictor_basis <- function(fit, directions,
 
 .bt_formula_predictor_multiplier_dependencies <- function(design){
 
-  dependencies <- lapply(design$prior_list, function(prior){
+  # The intercept is never scaled (JAGS_formula() rejects its 'multiply_by').
+  prior_list <- design$prior_list
+  prior_list[[paste0(design$parameter, "_intercept")]] <- NULL
+  dependencies <- lapply(prior_list, function(prior){
     multiply_by <- attr(prior, "multiply_by", exact = TRUE)
     if(is.character(multiply_by) && length(multiply_by) == 1L &&
        !is.na(multiply_by) && nzchar(multiply_by)){

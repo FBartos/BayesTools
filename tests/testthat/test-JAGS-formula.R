@@ -80,6 +80,48 @@ test_that("formula_add_intercept repairs only top-level no-intercept terms", {
   expect_error(formula_add_intercept("~ x - 1"), "'formula' must be a formula.", fixed = TRUE)
 })
 
+test_that("JAGS_formula rejects scaled intercept priors", {
+
+  data <- data.frame(x = c(-1, 0.5, 2))
+  message <- paste0(
+    "The intercept prior 'prior_list[[\"intercept\"]]' has a 'multiply_by' ",
+    "attribute, but intercept priors cannot be scaled. Remove 'multiply_by' ",
+    "from the intercept prior; it is supported only for the priors of ",
+    "formula terms."
+  )
+  log_formula <- ~ 1 + x
+  attr(log_formula, "log(intercept)") <- TRUE
+  for(multiply_by in list(2, "s")){
+    intercept_prior <- prior("gamma", list(shape = 2, rate = 1))
+    attr(intercept_prior, "multiply_by") <- multiply_by
+    for(formula in list(~ 1 + x, ~ 0 + x, log_formula)){
+      expect_error(
+        JAGS_formula(
+          formula, "mu", data,
+          list(intercept = intercept_prior, x = prior("normal", list(0, 1)))
+        ),
+        message,
+        fixed = TRUE
+      )
+    }
+    # A default continuous prior with a multiplier cannot fill the intercept.
+    expect_error(
+      JAGS_formula(~ 1 + x, "mu", data, list("__default_continuous" = intercept_prior)),
+      message,
+      fixed = TRUE
+    )
+  }
+
+  # Term priors keep their multiplier.
+  x_prior <- prior("normal", list(0, 1))
+  attr(x_prior, "multiply_by") <- 2
+  result <- JAGS_formula(
+    ~ 1 + x, "mu", data,
+    list(intercept = prior("normal", list(0, 1)), x = x_prior)
+  )
+  expect_match(result$formula_syntax, "mu_intercept + 2 * mu_x * mu_data_x[i]", fixed = TRUE)
+})
+
 test_that("JAGS_formula stores exact fitted formula design metadata", {
 
   df <- data.frame(
