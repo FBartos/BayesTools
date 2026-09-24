@@ -207,12 +207,12 @@
   )
 }
 
+# The coordinates a sampled block's contribution is reconstructed from by the
+# evaluator (JAGS_evaluate_formula()), also for a mean-centered block, whose
+# JAGS syntax reads the group locations: the evaluator adds the latent
+# deviations to the fixed intercept.
 .bt_dnode_linear_predictor_random_dependencies <- function(random_term){
 
-  translation <- random_term$mean_translation
-  if(!is.null(translation)){
-    return(paste0(translation$location_name, "[", seq_len(random_term$n_groups), ",1]"))
-  }
   latent <- as.vector(.bt_random_effect_latent_names(
     random_term = random_term,
     n_groups = random_term$n_groups,

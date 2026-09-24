@@ -555,6 +555,46 @@ test_that("linear predictor nodes reproduce the monitored formula output", {
   expect_false("mu" %in% JAGS_deterministic_nodes(fit)$node)
 })
 
+test_that("linear predictor nodes of mean-centered random intercepts are evaluated from the latent effects", {
+
+  fit <- .dnode_fit(
+    ~ 1 + x + id(1 | g),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    prior_random = prior_random(
+      g = random_block(sd = prior("normal", list(0, 1), list(0, Inf)),
+                       parameterization = "mean_centered",
+                       monitor = random_monitor(latent = TRUE))
+    ),
+    add_parameters = "mu"
+  )
+  posterior <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+  nodes <- JAGS_deterministic_nodes(fit)
+  node <- nodes[nodes$node == "mu", , drop = FALSE]
+
+  # The model syntax adds the group locations in place of the intercept; the
+  # evaluator adds the latent deviations to the intercept, so the declared
+  # dependencies are the monitored latent effects and SD, not the locations.
+  registry <- BayesTools:::.bt_deterministic_nodes_fit(fit)
+  expect_true(grepl(
+    BayesTools:::.bt_deterministic_node_emit(registry$mu),
+    attr(fit, "model_syntax"),
+    fixed = TRUE
+  ))
+  dependencies <- unlist(node$dependencies)
+  expect_true(all(dependencies %in% colnames(posterior)))
+  sd_name <- unique(attr(fit, "formula_design")$mu$random_effects[[1L]]$sd_parameter_names)
+  expect_true(all(c("mu_intercept", "mu_x", "mu__xREx__g_xRE_Zx[1,1]", sd_name) %in% dependencies))
+  expect_false(any(grepl("_xRE_MEANx", dependencies, fixed = TRUE)))
+
+  coordinates <- unlist(node$coordinates)
+  reduced <- posterior[, setdiff(colnames(posterior), coordinates), drop = FALSE]
+  rebuilt <- JAGS_evaluate_deterministic(fit, draws = reduced, nodes = "mu")
+  expect_lte(max(abs(rebuilt[, coordinates] - posterior[, coordinates])), 1e-14)
+})
+
 test_that("JAGS_evaluate_deterministic() validates its node selection", {
 
   sd_prior <- prior("normal", list(0, 1), list(0, Inf))
