@@ -226,42 +226,24 @@ test_that(".fit_to_posterior rejects misaligned mcarray draws", {
 })
 
 
-test_that(".remove_auxiliary_parameters rejects BayesTools 0.3.0 inverse-gamma precisions", {
+test_that(".remove_auxiliary_parameters keeps user 'inv_' columns of inverse-gamma priors", {
 
-  message <- paste0(
-    "The fit monitors the inverse-gamma prior of '%s' by the precision ",
-    "coordinates of BayesTools 0.3.0. Refit the model with this version of ",
-    "BayesTools."
-  )
-
+  # Inverse-gamma priors are monitored by the parameter itself, so an
+  # 'inv_<parameter>' column is a node of the user's model syntax (e.g. from
+  # add_parameters), neither removed nor treated as a BayesTools 0.3.0
+  # precision coordinate. Fits of 0.3.0 stop earlier at the fit-contract checks.
   model_samples <- matrix(rnorm(100), ncol = 2)
   colnames(model_samples) <- c("sigma", "inv_sigma")
   prior_list <- list(sigma = prior("invgamma", list(1, 1)))
-  expect_error(
-    BayesTools:::.remove_auxiliary_parameters(model_samples, prior_list, NULL),
-    sprintf(message, "sigma"),
-    fixed = TRUE
-  )
+  result <- BayesTools:::.remove_auxiliary_parameters(model_samples, prior_list, NULL)
+  expect_identical(result$model_samples, model_samples)
 
   model_samples <- matrix(rnorm(400), ncol = 4)
   colnames(model_samples) <- c("theta[1]", "theta[2]", "inv_theta[1]", "inv_theta[2]")
   theta_prior <- prior_factor("invgamma", list(2, 1), contrast = "independent")
   theta_prior$parameters$K <- 2
-  expect_error(
-    BayesTools:::.remove_auxiliary_parameters(model_samples, list(theta = theta_prior), NULL),
-    sprintf(message, "theta"),
-    fixed = TRUE
-  )
-
-  # a parameter of the prior list named 'inv_<name>' is not a legacy column
-  model_samples <- matrix(rnorm(100), ncol = 2)
-  colnames(model_samples) <- c("sigma", "inv_sigma")
-  prior_list <- list(
-    sigma     = prior("invgamma", list(1, 1)),
-    inv_sigma = prior("normal", list(0, 1))
-  )
-  result <- BayesTools:::.remove_auxiliary_parameters(model_samples, prior_list, NULL)
-  expect_equal(colnames(result$model_samples), c("sigma", "inv_sigma"))
+  result <- BayesTools:::.remove_auxiliary_parameters(model_samples, list(theta = theta_prior), NULL)
+  expect_identical(result$model_samples, model_samples)
 })
 
 test_that(".remove_auxiliary_parameters removes vector prior columns by base name", {

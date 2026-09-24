@@ -43,24 +43,6 @@ NULL
 
     par_name <- names(prior_list)[i]
 
-    # BayesTools 0.3.0 fits monitored inverse-gamma priors as 'inv_' precisions
-    if (is.prior.simple(prior_list[[i]]) && prior_list[[i]][["distribution"]] == "invgamma") {
-      legacy_names <- if(is.prior.factor(prior_list[[i]])){
-        paste0("inv_", .JAGS_prior_factor_names(par_name, prior_list[[i]]))
-      }else{
-        paste0("inv_", par_name)
-      }
-      legacy_names <- setdiff(legacy_names, names(prior_list))
-      if(any(legacy_names %in% colnames(model_samples))){
-        stop(
-          "The fit monitors the inverse-gamma prior of '", par_name, "' by the ",
-          "precision coordinates of BayesTools 0.3.0. Refit the model with this ",
-          "version of BayesTools.",
-          call. = FALSE
-        )
-      }
-    }
-
     if (is.prior.simplex(prior_list[[i]])) {
       aux_pattern <- paste0("^", .JAGS_prior_dirichlet_eta_name(par_name), "(\\[|$)")
       model_samples <- model_samples[, !grepl(aux_pattern, colnames(model_samples)), drop = FALSE]
