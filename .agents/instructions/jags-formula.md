@@ -29,8 +29,9 @@ declared dependencies: `JAGS_formula()` writes the linear predictor from the
 node of the fitted design, and `selection_backend_spec()` writes the weights
 from the `omega` node specification. `JAGS_deterministic_nodes()` lists the
 nodes. Prior draws, catalog quantities, bridge and marginal-likelihood
-parameters, prediction, marginal posteriors of formula parameters, random-effect
-unscaling, and convergence-role parents use the family evaluators. Declared dependencies are the coordinates the R evaluator reads. A
+parameters, prediction, marginal posteriors of formula parameters,
+random-effect unscaling, and convergence-role parents use the family
+evaluators. Declared dependencies are the coordinates the R evaluator reads. A
 new generated node gets a family and a parity test against the JAGS monitors,
 not another evaluator. Intercept priors cannot carry `multiply_by`; it scales
 only formula-term coefficients.
