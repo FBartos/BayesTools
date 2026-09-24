@@ -6,7 +6,7 @@
 \usage{
 JAGS_check_convergence(
   fit,
-  prior_list,
+  prior_list = NULL,
   max_Rhat = 1.05,
   min_ESS = 500,
   max_error = 0.01,
@@ -19,10 +19,12 @@ JAGS_check_convergence(
 )
 }
 \arguments{
-\item{fit}{a runjags model}
+\item{fit}{a 'BayesTools_fit' object created by \code{\link[=JAGS_fit]{JAGS_fit()}}}
 
 \item{prior_list}{named list of prior distribution
-(names correspond to the parameter names)}
+(names correspond to the parameter names). Retained for compatibility and
+validated when supplied; the classification of the fitted parameters comes
+from the parameter map stored with \code{fit} (see Details).}
 
 \item{max_Rhat}{maximum R-hat error for the autofit function.
 Defaults to \code{1.05}. With one chain, this criterion is skipped with
@@ -35,15 +37,11 @@ a warning; the remaining enabled criteria are still assessed.}
 \item{max_SD_error}{maximum MCMC error as the proportion of standard
 deviation of the parameters. Defaults to \code{0.05}.}
 
-\item{add_parameters}{vector of additional parameter names that are excluded
-from the default selection (only allows removing last, fixed, omega element
-if omega is tracked manually). Parameters named in \code{monitor} are
+\item{add_parameters}{vector of parameter names that are excluded
+from the default selection. Parameters named in \code{monitor} are
 checked even when they are listed here. Automatic fitting in
-\code{JAGS_fit()} and \code{JAGS_extend()} lists only the deterministic
-nodes that formulas monitor here, so the user's \code{add_parameters} are
-checked there. The fit's own \code{add_parameters} attribute (set by
-\code{JAGS_fit()}) identifies monitored nodes that may be structural
-constants; see \code{allow_not_assessable}.}
+\code{JAGS_fit()} and \code{JAGS_extend()} excludes nothing through this
+argument; it uses the default selection described in Details.}
 
 \item{fail_fast}{whether the function should stop after the first failed convergence check.}
 
@@ -51,37 +49,29 @@ constants; see \code{allow_not_assessable}.}
 in convergence checks. Binary indicators are checked as Bernoulli
 occupancies and categorical indicators are checked separately for every
 observed state. When \code{monitor} is supplied, eligible indicators are
-added to that selection. Auxiliary inclusion-probability coordinates remain
-excluded unless named explicitly in \code{monitor}. Defaults to \code{FALSE}.}
+added to that selection. Defaults to \code{FALSE}.}
 
 \item{monitor}{optional character vector selecting parameters for convergence
 checks. A base name selects all of its indexed elements. Requests are
-resolved against all monitored columns, including \code{add_parameters}.
-\code{NULL} selects every eligible parameter; \code{character()} requests no
+resolved against all monitored parameters, including derived and auxiliary
+ones that the default selection leaves out.
+\code{NULL} selects the default parameters; \code{character()} requests no
 parameters.}
 
 \item{allow_not_assessable}{whether requested sampled parameters with
 undefined diagnostics may be ignored. Defaults to \code{FALSE}. A sampled
 column that never changes, including a constant model indicator, is not
-evidence of convergence and remains not assessable. Only constants declared
-by the model are structural: those of the prior, such as point priors,
-reference and fixed publication-weight bins, a p-hacking kind shared by
-every mixture branch, and the point total of an ordered prior; and, for fits
-created by \code{JAGS_fit()}, monitored \code{add_parameters} nodes (user
-supplied or generated for formulas) that the model syntax defines
-deterministically (\code{<-} or \code{=}) and whose draws are identical in
-every chain. Such a node with constant draws but a stochastic definition
-(\code{~}) remains not assessable.}
+evidence of convergence and remains not assessable, whatever its draws.}
 }
 \value{
 \code{JAGS_check_convergence} returns a boolean indicating whether
 all requested, assessable parameters satisfy the enabled criteria. An
 explicitly empty \code{monitor} returns \code{logical(0)} rather than
-claiming convergence. When no parameters remain available after cleaning
-(empty sample columns and no structural priors), the function returns
-\code{TRUE}: there is nothing assessable, which is treated as vacuously
-satisfied rather than as an empty selection. The \code{diagnostics}
-attribute contains one row per available parameter and classifies it as
+claiming convergence. When no parameters remain available (empty sample
+columns and no structural parameters) or the selection is empty, the
+function returns \code{TRUE}: there is nothing assessable, which is
+treated as vacuously satisfied. The \code{diagnostics} attribute contains
+one row per available parameter and classifies it as
 \code{"assessable"}, \code{"structural_constant"}, \code{"not_assessable"},
 \code{"not_requested"}, or \code{"not_checked"} when \code{fail_fast = TRUE}
 stops before reaching that parameter. The \code{errors} attribute carries
@@ -90,6 +80,39 @@ failed checks.
 \description{
 Checks whether the supplied \link[runjags]{runjags-package} model
 satisfied convergence criteria.
+}
+\details{
+\code{JAGS_fit()} assigns every fitted coordinate one convergence
+role, stored in the \code{convergence_role} column of
+\code{\link[=parameter_coordinates]{parameter_coordinates()}} and derived from the declared model, never from
+the draws:
+\describe{
+\item{\code{"sampled"}}{stochastic parameters, including the user's
+\code{add_parameters} that depend on a stochastic node; checked by
+default.}
+\item{\code{"indicator"}}{declared model indicators of mixture,
+spike-and-slab, and variance-allocation priors; checked with
+\code{check_indicators = TRUE}.}
+\item{\code{"structural"}}{declared constants: point priors, one-state
+indicators, reference and fixed publication-weight bins, a p-hacking kind
+shared by every mixture branch, the point total of an ordered prior and
+the coefficients it fixes, unit correlation diagonals and Cholesky
+constants, and monitored deterministic nodes (\code{<-} or \code{=})
+whose ancestors in the model syntax are all data or constants. They are
+reported as \code{"structural_constant"}.}
+\item{\code{"derived"}}{deterministic functions of sampled nodes that
+BayesTools generates for formulas (such as random-effect correlation
+matrices, their Cholesky factors, and derived latent effects or SDs) and
+point priors whose location is an expression; checked only when named in
+\code{monitor}.}
+\item{\code{"auxiliary"}}{inclusion probabilities, the backend anchor of
+models without monitored parameters, and private implementation nodes;
+checked only when named in \code{monitor}.}
+}
+The default selection (\code{monitor = NULL}) consists of the sampled and
+structural parameters, and of the indicators when \code{check_indicators}
+is set. Automatic fitting in \code{JAGS_fit()} and \code{JAGS_extend()}
+uses the same selection.
 }
 \examples{
 \dontrun{
@@ -114,9 +137,9 @@ model_syntax <-
 
 # fit the models
 fit <- JAGS_fit(model_syntax, data, priors_list)
-JAGS_check_convergence(fit, priors_list)
+JAGS_check_convergence(fit)
 }
 }
 \seealso{
-\code{\link[=JAGS_fit]{JAGS_fit()}}
+\code{\link[=JAGS_fit]{JAGS_fit()}} \code{\link[=parameter_coordinates]{parameter_coordinates()}}
 }

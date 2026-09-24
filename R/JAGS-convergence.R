@@ -2,9 +2,11 @@
 #'
 #' @description Checks whether the supplied \link[runjags]{runjags-package} model
 #' satisfied convergence criteria.
-#' @param fit a runjags model
+#' @param fit a 'BayesTools_fit' object created by [JAGS_fit()]
 #' @param prior_list named list of prior distribution
-#' (names correspond to the parameter names)
+#' (names correspond to the parameter names). Retained for compatibility and
+#' validated when supplied; the classification of the fitted parameters comes
+#' from the parameter map stored with \code{fit} (see Details).
 #' @param max_Rhat maximum R-hat error for the autofit function.
 #'   Defaults to \code{1.05}. With one chain, this criterion is skipped with
 #'   a warning; the remaining enabled criteria are still assessed.
@@ -12,39 +14,59 @@
 #' @param max_error maximum MCMC error. Defaults to \code{0.01}.
 #' @param max_SD_error maximum MCMC error as the proportion of standard
 #'   deviation of the parameters. Defaults to \code{0.05}.
-#' @param add_parameters vector of additional parameter names that are excluded
-#' from the default selection (only allows removing last, fixed, omega element
-#' if omega is tracked manually). Parameters named in \code{monitor} are
+#' @param add_parameters vector of parameter names that are excluded
+#' from the default selection. Parameters named in \code{monitor} are
 #' checked even when they are listed here. Automatic fitting in
-#' \code{JAGS_fit()} and \code{JAGS_extend()} lists only the deterministic
-#' nodes that formulas monitor here, so the user's \code{add_parameters} are
-#' checked there. The fit's own \code{add_parameters} attribute (set by
-#' \code{JAGS_fit()}) identifies monitored nodes that may be structural
-#' constants; see \code{allow_not_assessable}.
+#' \code{JAGS_fit()} and \code{JAGS_extend()} excludes nothing through this
+#' argument; it uses the default selection described in Details.
 #' @param fail_fast whether the function should stop after the first failed convergence check.
 #' @param check_indicators whether model indicator variables should be included
 #' in convergence checks. Binary indicators are checked as Bernoulli
 #' occupancies and categorical indicators are checked separately for every
 #' observed state. When \code{monitor} is supplied, eligible indicators are
-#' added to that selection. Auxiliary inclusion-probability coordinates remain
-#' excluded unless named explicitly in \code{monitor}. Defaults to \code{FALSE}.
+#' added to that selection. Defaults to \code{FALSE}.
 #' @param monitor optional character vector selecting parameters for convergence
 #' checks. A base name selects all of its indexed elements. Requests are
-#' resolved against all monitored columns, including \code{add_parameters}.
-#' \code{NULL} selects every eligible parameter; \code{character()} requests no
+#' resolved against all monitored parameters, including derived and auxiliary
+#' ones that the default selection leaves out.
+#' \code{NULL} selects the default parameters; \code{character()} requests no
 #' parameters.
 #' @param allow_not_assessable whether requested sampled parameters with
 #' undefined diagnostics may be ignored. Defaults to \code{FALSE}. A sampled
 #' column that never changes, including a constant model indicator, is not
-#' evidence of convergence and remains not assessable. Only constants declared
-#' by the model are structural: those of the prior, such as point priors,
-#' reference and fixed publication-weight bins, a p-hacking kind shared by
-#' every mixture branch, and the point total of an ordered prior; and, for fits
-#' created by \code{JAGS_fit()}, monitored \code{add_parameters} nodes (user
-#' supplied or generated for formulas) that the model syntax defines
-#' deterministically (\code{<-} or \code{=}) and whose draws are identical in
-#' every chain. Such a node with constant draws but a stochastic definition
-#' (\code{~}) remains not assessable.
+#' evidence of convergence and remains not assessable, whatever its draws.
+#'
+#' @details \code{JAGS_fit()} assigns every fitted coordinate one convergence
+#' role, stored in the \code{convergence_role} column of
+#' [parameter_coordinates()] and derived from the declared model, never from
+#' the draws:
+#' \describe{
+#'   \item{\code{"sampled"}}{stochastic parameters, including the user's
+#'   \code{add_parameters} that depend on a stochastic node; checked by
+#'   default.}
+#'   \item{\code{"indicator"}}{declared model indicators of mixture,
+#'   spike-and-slab, and variance-allocation priors; checked with
+#'   \code{check_indicators = TRUE}.}
+#'   \item{\code{"structural"}}{declared constants: point priors, one-state
+#'   indicators, reference and fixed publication-weight bins, a p-hacking kind
+#'   shared by every mixture branch, the point total of an ordered prior and
+#'   the coefficients it fixes, unit correlation diagonals and Cholesky
+#'   constants, and monitored deterministic nodes (\code{<-} or \code{=})
+#'   whose ancestors in the model syntax are all data or constants. They are
+#'   reported as \code{"structural_constant"}.}
+#'   \item{\code{"derived"}}{deterministic functions of sampled nodes that
+#'   BayesTools generates for formulas (such as random-effect correlation
+#'   matrices, their Cholesky factors, and derived latent effects or SDs) and
+#'   point priors whose location is an expression; checked only when named in
+#'   \code{monitor}.}
+#'   \item{\code{"auxiliary"}}{inclusion probabilities, the backend anchor of
+#'   models without monitored parameters, and private implementation nodes;
+#'   checked only when named in \code{monitor}.}
+#' }
+#' The default selection (\code{monitor = NULL}) consists of the sampled and
+#' structural parameters, and of the indicators when \code{check_indicators}
+#' is set. Automatic fitting in \code{JAGS_fit()} and \code{JAGS_extend()}
+#' uses the same selection.
 #'
 #' @examples \dontrun{
 #' # simulate data
@@ -68,26 +90,26 @@
 #'
 #' # fit the models
 #' fit <- JAGS_fit(model_syntax, data, priors_list)
-#' JAGS_check_convergence(fit, priors_list)
+#' JAGS_check_convergence(fit)
 #' }
 #' @return \code{JAGS_check_convergence} returns a boolean indicating whether
 #' all requested, assessable parameters satisfy the enabled criteria. An
 #' explicitly empty \code{monitor} returns \code{logical(0)} rather than
-#' claiming convergence. When no parameters remain available after cleaning
-#' (empty sample columns and no structural priors), the function returns
-#' \code{TRUE}: there is nothing assessable, which is treated as vacuously
-#' satisfied rather than as an empty selection. The \code{diagnostics}
-#' attribute contains one row per available parameter and classifies it as
+#' claiming convergence. When no parameters remain available (empty sample
+#' columns and no structural parameters) or the selection is empty, the
+#' function returns \code{TRUE}: there is nothing assessable, which is
+#' treated as vacuously satisfied. The \code{diagnostics} attribute contains
+#' one row per available parameter and classifies it as
 #' \code{"assessable"}, \code{"structural_constant"}, \code{"not_assessable"},
 #' \code{"not_requested"}, or \code{"not_checked"} when \code{fail_fast = TRUE}
 #' stops before reaching that parameter. The \code{errors} attribute carries
 #' failed checks.
 #'
-#' @seealso [JAGS_fit()]
+#' @seealso [JAGS_fit()] [parameter_coordinates()]
 #' @export
 JAGS_check_convergence <- function(
     fit,
-    prior_list,
+    prior_list = NULL,
     max_Rhat = 1.05,
     min_ESS = 500,
     max_error = 0.01,
@@ -114,18 +136,53 @@ JAGS_check_convergence <- function(
   check_char(monitor, "monitor", check_length = 0, allow_NULL = TRUE,
              allow_NA = FALSE)
   check_bool(allow_not_assessable, "allow_not_assessable", allow_NA = FALSE)
+  if(!inherits(fit, "BayesTools_fit")){
+    stop(
+      "'fit' must be a 'BayesTools_fit' created by JAGS_fit(). Refit the model with this version of BayesTools.",
+      call. = FALSE
+    )
+  }
+
+  .bt_check_convergence(
+    fit = fit,
+    coordinates = parameter_coordinates(fit),
+    max_Rhat = max_Rhat,
+    min_ESS = min_ESS,
+    max_error = max_error,
+    max_SD_error = max_SD_error,
+    add_parameters = add_parameters,
+    fail_fast = fail_fast,
+    check_indicators = check_indicators,
+    monitor = monitor,
+    allow_not_assessable = allow_not_assessable
+  )
+}
+
+# Convergence check of a fit against its coordinate table. Automatic fitting
+# calls it with the coordinates it builds after the first sampling run, so
+# that fitting, extension, and the public check share one selection.
+.bt_check_convergence <- function(
+    fit,
+    coordinates,
+    max_Rhat,
+    min_ESS,
+    max_error,
+    max_SD_error,
+    add_parameters = NULL,
+    fail_fast = FALSE,
+    check_indicators = FALSE,
+    monitor = NULL,
+    allow_not_assessable = FALSE){
 
   prepared <- .bt_convergence_prepare(
     fit = fit,
-    prior_list = prior_list,
+    coordinates = coordinates,
     add_parameters = add_parameters,
     monitor = monitor
   )
-  mcmc_samples_list     <- prepared$mcmc_samples_list
-  targets               <- prepared$targets
-  structural_parameters <- prepared$structural_parameters
-  available_parameters  <- prepared$available_parameters
-  available_sources     <- prepared$available_sources
+  mcmc_samples_list <- prepared$mcmc_samples_list
+  targets           <- prepared$targets
+  metadata          <- targets$metadata
 
   explicitly_empty <- !is.null(monitor) && length(monitor) == 0L
   if(explicitly_empty){
@@ -135,44 +192,34 @@ JAGS_check_convergence <- function(
   }
 
   if(is.null(monitor)){
-    selected_parameters <- targets$metadata$parameter[
-      !(targets$metadata$is_inclusion |
-          (!check_indicators & targets$metadata$is_indicator))
+    selected_parameters <- metadata$parameter[
+      metadata$role %in% c("sampled", "structural") |
+        (check_indicators & metadata$role == "indicator")
     ]
-    selected_parameters <- unique(c(
-      selected_parameters,
-      structural_parameters
-    ))
   }else{
     selected_parameters <- .bt_convergence_resolve_monitor(
       monitor,
-      available_parameters,
-      available_sources
+      metadata$parameter,
+      metadata$source
     )
     if(check_indicators){
       selected_parameters <- unique(c(
         selected_parameters,
-        targets$metadata$parameter[
-          targets$metadata$is_indicator & !targets$metadata$is_inclusion
-        ]
+        metadata$parameter[metadata$role == "indicator"]
       ))
     }
   }
 
-  if(length(available_parameters) == 0L){
+  if(nrow(metadata) == 0L){
     diagnostics <- .bt_convergence_diagnostics(character())
     diagnostics[["assessable"]] <- NULL
     return(.bt_convergence_result(TRUE, diagnostics, NULL))
   }
 
-  diagnostics <- .bt_convergence_diagnostics(available_parameters)
+  diagnostics <- .bt_convergence_diagnostics(metadata$parameter)
   selected_rows <- match(selected_parameters, diagnostics[["parameter"]])
   diagnostics[["state"]][selected_rows] <- "assessable"
-  structural_rows <- diagnostics[["parameter"]] %in% structural_parameters &
-    diagnostics[["parameter"]] %in% selected_parameters
-  structural_rows <- structural_rows |
-    diagnostics[["parameter"]] %in%
-      targets$metadata$parameter[targets$metadata$structural] &
+  structural_rows <- metadata$role == "structural" &
     diagnostics[["parameter"]] %in% selected_parameters
   diagnostics[["state"]][structural_rows] <- "structural_constant"
 
@@ -192,11 +239,8 @@ JAGS_check_convergence <- function(
     chain_id <- rep.int(seq_along(chain_lengths), chain_lengths)
     for(row in sample_rows){
       diagnostics[["state"]][[row]] <- "assessable"
-      parameter <- diagnostics[["parameter"]][[row]]
-      target_row <- match(parameter, targets$metadata$parameter)
-      parameter_samples <- targets$samples[[target_row]]
       parameter_diagnostics <- .bt_convergence_parameter_diagnostics(
-        parameter_samples,
+        targets$samples[[row]],
         chain_id = chain_id,
         n_chains = length(mcmc_samples_list),
         assess_Rhat = !is.null(max_Rhat),
@@ -236,44 +280,104 @@ JAGS_check_convergence <- function(
   .bt_convergence_result(length(fails) == 0L, diagnostics, fails)
 }
 
-.bt_convergence_prepare <- function(fit, prior_list, add_parameters, monitor){
+# One convergence target per displayed parameter: the visible posterior
+# columns (labelled as in the summary tables) with the convergence role of
+# their coordinate, followed by the structural coordinates without draws.
+# Indicators are checked as state occupancies.
+.bt_convergence_prepare <- function(fit, coordinates, add_parameters, monitor){
 
-  # extract samples and parameter information
   mcmc_samples_list <- .extract_posterior_samples(fit, as_list = TRUE)
   mcmc_samples      <- do.call(rbind, mcmc_samples_list)
+  columns <- colnames(mcmc_samples)
+  if(is.null(columns)){
+    columns <- character()
+  }
 
-  # Remove parameters that are intentionally excluded from automatic checks.
-  # Structural point parameters are added back below from prior metadata.
-  # Additional monitors stay excluded unless 'monitor' requests them.
-  remove_params <- c(
-    names(prior_list)[vapply(
-      prior_list,
-      .bt_convergence_is_structural_prior,
-      logical(1)
-    )],
-    .bt_convergence_excluded_add_parameters(add_parameters, monitor)
+  visible <- .bt_convergence_visible_columns(
+    columns = columns,
+    prior_list = attr(fit, "prior_list", exact = TRUE),
+    remove_parameters = .bt_convergence_excluded_add_parameters(
+      add_parameters,
+      monitor
+    )
   )
+  roles <- coordinates$convergence_role[
+    match(visible$column, coordinates$coordinate_name)
+  ]
+  roles[is.na(roles)] <- "sampled"
+  unmonitored <- coordinates$coordinate_name[
+    coordinates$convergence_role == "structural" &
+      !coordinates$coordinate_name %in% columns
+  ]
 
-  cleaned <- .remove_auxiliary_parameters(mcmc_samples, prior_list, remove_params)
-  mcmc_samples <- cleaned$model_samples
+  samples  <- list()
+  metadata <- list()
+  add_target <- function(parameter, source, values, role){
+    samples[[length(samples) + 1L]] <<- values
+    metadata[[length(metadata) + 1L]] <<- data.frame(
+      parameter = parameter,
+      source = source,
+      role = role,
+      stringsAsFactors = FALSE
+    )
+  }
 
-  targets <- .bt_convergence_sample_targets(
-    mcmc_samples,
-    prior_list,
-    deterministic_nodes = .bt_convergence_deterministic_monitors(fit)
-  )
-  sample_parameters <- targets$metadata$parameter
-  structural_parameters <- .bt_convergence_structural_parameters(prior_list)
+  for(i in seq_len(nrow(visible))){
+    label  <- visible$label[[i]]
+    values <- mcmc_samples[, visible$column[[i]]]
+    if(!identical(roles[[i]], "indicator")){
+      add_target(label, label, values, roles[[i]])
+      next
+    }
+
+    if(any(!is.finite(values)) || any(values != round(values))){
+      stop(
+        "Model indicator '", label,
+        "' must contain finite integer states.",
+        call. = FALSE
+      )
+    }
+    observed <- sort(unique(values))
+    if(length(observed) <= 1L){
+      add_target(label, label, values, "indicator")
+    }else if(length(observed) == 2L){
+      add_target(label, label, as.numeric(values == observed[[2L]]), "indicator")
+    }else{
+      for(state in observed){
+        state_label <- format(
+          state,
+          digits = 17,
+          scientific = FALSE,
+          trim = TRUE
+        )
+        add_target(
+          paste0(label, " (state ", state_label, ")"),
+          label,
+          as.numeric(values == state),
+          "indicator"
+        )
+      }
+    }
+  }
+  for(parameter in setdiff(unmonitored, visible$label)){
+    add_target(parameter, parameter, NULL, "structural")
+  }
+
+  if(length(metadata) == 0L){
+    metadata <- data.frame(
+      parameter = character(),
+      source = character(),
+      role = character(),
+      stringsAsFactors = FALSE
+    )
+  }else{
+    metadata <- do.call(rbind, metadata)
+    rownames(metadata) <- NULL
+  }
 
   list(
     mcmc_samples_list = mcmc_samples_list,
-    targets = targets,
-    structural_parameters = structural_parameters,
-    available_parameters = unique(c(sample_parameters, structural_parameters)),
-    available_sources = c(
-      targets$metadata$source,
-      structural_parameters[!structural_parameters %in% sample_parameters]
-    )
+    targets = list(samples = samples, metadata = metadata)
   )
 }
 
@@ -292,104 +396,24 @@ JAGS_check_convergence <- function(
   add_parameters[!.bt_convergence_monitor_base(add_parameters) %in% requested]
 }
 
-# Monitors that automatic fitting leaves out of its convergence checks: nodes
-# that BayesTools generated for a formula and that the model defines only
-# deterministically, such as random-effect correlation matrices, Cholesky
-# factors, bound SDs, and derived latent effects. Their constant or derived
-# elements are not evidence of convergence. User-supplied 'add_parameters',
-# formula outputs, and generated stochastic nodes (e.g. LKJ primitives or
-# sampled latent effects) remain checked. Generated monitors are identified by
-# the persisted formula name maps, so fitting and extension agree.
-.bt_convergence_generated_deterministic <- function(add_parameters,
-                                                    formula_design,
-                                                    model_syntax){
-
-  if(length(add_parameters) == 0L || length(formula_design) == 0L){
-    return(character())
-  }
-
-  name_map  <- .bt_parameter_coordinates_name_map(formula_design)
-  generated <- name_map$jags_name[name_map$kind != "formula_output"]
-  base      <- .bt_convergence_monitor_base(add_parameters)
-  # Generated monitors never overlap prior-list nodes, so the model syntax
-  # without the prior block defines all of them.
-  stochastic <- .bt_jags_stochastic_node_names(model_syntax)
-
-  add_parameters[base %in% generated & !base %in% stochastic]
-}
-
-# Base names of the nodes that a JAGS model defines through a stochastic
-# relation ('~'). A node with any stochastic element counts as stochastic.
-.bt_jags_stochastic_node_names <- function(model_syntax){
-
-  if(length(model_syntax) == 0L){
-    return(character())
-  }
-
-  lines      <- unlist(strsplit(model_syntax, "\n", fixed = TRUE), use.names = FALSE)
-  lines      <- sub("#.*$", "", lines)
-  statements <- unlist(strsplit(lines, "[;{}]"), use.names = FALSE)
-  relations  <- statements[grepl("~", statements, fixed = TRUE)]
-  lhs        <- trimws(sub("~.*$", "", relations))
-  node_names <- regmatches(lhs, regexpr("^[A-Za-z][A-Za-z0-9._]*", lhs))
-
-  unique(node_names)
-}
-
-# Base names of the monitored 'add_parameters' nodes (user-supplied or
-# generated) that the fit's model syntax defines only deterministically ('<-'
-# or '='). Fits without this metadata (plain runjags objects) have none.
-.bt_convergence_deterministic_monitors <- function(fit){
-
-  add_parameters <- attr(fit, "add_parameters", exact = TRUE)
-  model_syntax   <- attr(fit, "model_syntax", exact = TRUE)
-  if(length(add_parameters) == 0L || length(model_syntax) == 0L){
-    return(character())
-  }
-
-  base <- unique(.bt_convergence_monitor_base(add_parameters))
-  setdiff(base, .bt_jags_stochastic_node_names(model_syntax))
-}
-
-# A deterministic node whose draws are identical in every chain is a constant
-# of the model, not a stuck sampler: it is structural. A stochastic node with
-# constant draws stays not assessable.
-.bt_convergence_deterministic_constant <- function(column, values,
-                                                   deterministic_nodes){
-
-  length(deterministic_nodes) > 0L && length(values) > 0L &&
-    .bt_convergence_monitor_base(column) %in% deterministic_nodes &&
-    is.finite(values[[1L]]) && isTRUE(all(values == values[[1L]]))
-}
-
-# Attach the monitored-node metadata that JAGS_check_convergence() reads from
-# a finished fit to an intermediate autofit or extension result.
-.bt_convergence_fit <- function(fit, add_parameters, model_syntax){
-
-  attr(fit, "add_parameters") <- add_parameters
-  attr(fit, "model_syntax")   <- model_syntax
-  fit
-}
-
 # Resolve an explicit convergence monitor against the fitted columns before
 # further sampling, so that an unknown request fails without discarding work.
-.bt_convergence_validate_monitor <- function(fit, prior_list, add_parameters,
-                                             monitor){
+.bt_convergence_validate_monitor <- function(fit, coordinates, monitor){
 
   if(length(monitor) == 0L){
     return(invisible(TRUE))
   }
 
-  prepared <- .bt_convergence_prepare(
+  metadata <- .bt_convergence_prepare(
     fit = fit,
-    prior_list = prior_list,
-    add_parameters = add_parameters,
+    coordinates = coordinates,
+    add_parameters = NULL,
     monitor = monitor
-  )
+  )$targets$metadata
   .bt_convergence_resolve_monitor(
     monitor,
-    prepared$available_parameters,
-    prepared$available_sources
+    metadata$parameter,
+    metadata$source
   )
 
   invisible(TRUE)
@@ -417,402 +441,6 @@ JAGS_check_convergence <- function(
   }
 
   invisible(TRUE)
-}
-
-.bt_convergence_sample_targets <- function(mcmc_samples, prior_list,
-                                           deterministic_nodes = character()){
-
-  columns <- colnames(mcmc_samples)
-  if(is.null(columns)){
-    columns <- character()
-  }
-  supports <- .bt_convergence_indicator_supports(prior_list)
-  structural_columns <- c(
-    .bt_convergence_structural_omega_bins(prior_list),
-    .bt_convergence_structural_phacking_columns(prior_list),
-    .bt_convergence_structural_ordered_columns(prior_list)
-  )
-  samples  <- list()
-  metadata <- list()
-
-  add_target <- function(parameter, source, values, is_indicator,
-                         is_inclusion, structural = FALSE){
-    samples[[length(samples) + 1L]] <<- values
-    metadata[[length(metadata) + 1L]] <<- data.frame(
-      parameter = parameter,
-      source = source,
-      is_indicator = is_indicator,
-      is_inclusion = is_inclusion,
-      structural = structural,
-      stringsAsFactors = FALSE
-    )
-  }
-
-  for(column in columns){
-    values       <- mcmc_samples[, column]
-    is_indicator <- grepl("_indicator(\\[[^]]+\\])?$", column)
-    is_inclusion <- grepl("_inclusion(\\[[^]]+\\])?$", column)
-    if(!is_indicator){
-      add_target(
-        column,
-        column,
-        values,
-        FALSE,
-        is_inclusion,
-        structural = column %in% structural_columns ||
-          .bt_convergence_deterministic_constant(column, values, deterministic_nodes)
-      )
-      next
-    }
-
-    if(any(!is.finite(values)) || any(values != round(values))){
-      stop(
-        "Model indicator '", column,
-        "' must contain finite integer states.",
-        call. = FALSE
-      )
-    }
-    support <- supports[[column]]
-    if(!is.null(support) && any(!values %in% support)){
-      stop(
-        "Model indicator '", column,
-        "' contains states outside its prior support.",
-        call. = FALSE
-      )
-    }
-    if(!is.null(support) && length(support) == 1L){
-      add_target(column, column, values, TRUE, FALSE, structural = TRUE)
-      next
-    }
-
-    observed <- sort(unique(values))
-    if(length(observed) <= 1L){
-      add_target(column, column, values, TRUE, FALSE)
-    }else if(length(observed) == 2L){
-      occupancy <- as.numeric(values == observed[[2L]])
-      add_target(column, column, occupancy, TRUE, FALSE)
-    }else{
-      for(state in observed){
-        state_label <- format(
-          state,
-          digits = 17,
-          scientific = FALSE,
-          trim = TRUE
-        )
-        parameter <- paste0(column, " (state ", state_label, ")")
-        occupancy <- as.numeric(values == state)
-        add_target(parameter, column, occupancy, TRUE, FALSE)
-      }
-    }
-  }
-
-  if(length(metadata) == 0L){
-    metadata <- data.frame(
-      parameter = character(),
-      source = character(),
-      is_indicator = logical(),
-      is_inclusion = logical(),
-      structural = logical(),
-      stringsAsFactors = FALSE
-    )
-  }else{
-    metadata <- do.call(rbind, metadata)
-    rownames(metadata) <- NULL
-  }
-
-  list(samples = samples, metadata = metadata)
-}
-
-.bt_convergence_structural_omega_bins <- function(prior_list){
-
-  if(length(prior_list) == 0L){
-    return(character())
-  }
-
-  structural <- character()
-  for(prior in prior_list){
-    if(is.prior.weightfunction(prior)){
-      cuts <- weightfunctions_mapping(list(prior), cuts_only = TRUE)
-      names <- if(length(cuts) >= 2L){
-        paste0("omega[", cuts[-length(cuts)], ",", cuts[-1], "]")
-      }else{
-        character()
-      }
-      structural <- c(structural, "omega[1]")
-      if(identical(prior$weights$type, "fixed")){
-        structural <- c(
-          structural,
-          names,
-          paste0("omega[", seq_len(max(length(cuts) - 1L, 0L)), "]")
-        )
-      }else if(length(names) > 0L){
-        structural <- c(structural, names[[1L]])
-      }
-    }else if(is_prior_bias(prior) || is_prior_phacking(prior) ||
-             inherits(prior, "prior.bias_mixture")){
-      structural <- c(
-        structural,
-        .bt_convergence_structural_selection_bins(prior)
-      )
-    }
-  }
-
-  unique(structural)
-}
-
-# Composed bias priors, p-hacking priors, and publication-bias mixtures share
-# one omega vector on the global one-sided cut grid of the selection backend.
-# A global bin is constant by construction when every mixture branch fixes it
-# to the same value: branches without a step selection contribute 1, the
-# reference bin (local bin 1) of a selection is 1, and every bin of fixed
-# weights is its declared weight. Mirrored two-sided bins map to their local
-# bin through the component expansion. Single composed priors with a selection
-# are summarized under their renamed global bins; other priors keep the raw
-# monitored omega coordinates.
-.bt_convergence_structural_selection_bins <- function(prior){
-
-  branches <- .selection_normalize_priors(prior)
-  branch_info <- lapply(branches, .selection_branch_info)
-  has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
-  has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking), logical(1))
-  if(!any(has_selection) && !any(has_phacking)){
-    return(character())
-  }
-
-  cuts <- if(any(has_selection)){
-    weightfunctions_mapping(
-      lapply(branch_info[has_selection], function(x) x$selection),
-      cuts_only = TRUE,
-      one_sided = TRUE
-    )
-  }else{
-    c(0, 1)
-  }
-  n_bins <- length(cuts) - 1L
-
-  branch_values <- vapply(branch_info, function(x){
-    .bt_convergence_selection_bin_values(x$selection, cuts)
-  }, numeric(n_bins))
-  branch_values <- matrix(branch_values, nrow = n_bins)
-  constant <- apply(branch_values, 1L, function(values){
-    all(!is.na(values)) && all(values == values[[1L]])
-  })
-
-  bin_names <- if(n_bins == 1L){
-    "omega"
-  }else if(is_prior_bias(prior) && any(has_selection)){
-    .weightfunction_omega_names(cuts)
-  }else{
-    paste0("omega[", seq_len(n_bins), "]")
-  }
-
-  bin_names[constant]
-}
-
-.bt_convergence_selection_bin_values <- function(selection, cuts){
-
-  n_bins <- length(cuts) - 1L
-  if(is.null(selection)){
-    return(rep(1, n_bins))
-  }
-
-  expansion <- .weightfunction_mapping_expansion(selection, force_one_sided = TRUE)
-  local_bins <- expansion$index[.weightfunction_global_bin_indices(cuts, expansion)]
-  if(identical(selection$weights$type, "fixed")){
-    return(as.numeric(selection$weights$omega[local_bins]))
-  }
-
-  ifelse(local_bins == 1L, 1, NA_real_)
-}
-
-# The monitored p-hacking kind is a declared constant of each mixture branch:
-# the form code of a p-hacking branch and 0 for branches without p-hacking.
-# It is structural when every branch declares the same code, and remains
-# assessable when the kind varies with the mixture indicator.
-.bt_convergence_structural_phacking_columns <- function(prior_list){
-
-  if(length(prior_list) == 0L){
-    return(character())
-  }
-
-  structural <- character()
-  for(prior in prior_list){
-    if(!(is_prior_bias(prior) || is_prior_phacking(prior) ||
-         inherits(prior, "prior.bias_mixture"))){
-      next
-    }
-    branch_info <- lapply(.selection_normalize_priors(prior), .selection_branch_info)
-    has_phacking <- vapply(branch_info, function(x) !is.null(x$phacking), logical(1))
-    if(!any(has_phacking)){
-      next
-    }
-    kinds <- vapply(branch_info, function(x){
-      if(is.null(x$phacking)) 0 else as.numeric(.phack_kind(x$phacking$form))
-    }, numeric(1))
-    if(all(kinds == kinds[[1L]])){
-      structural <- c(structural, "phack_kind")
-    }
-  }
-
-  unique(structural)
-}
-
-# Ordered priors with a point total monitor a constant total. Their level
-# coefficients are constant as well when the total is zero or when every
-# allocation is fixed.
-.bt_convergence_structural_ordered_columns <- function(prior_list){
-
-  prior_names <- names(prior_list)
-  if(length(prior_list) == 0L || is.null(prior_names)){
-    return(character())
-  }
-
-  structural <- character()
-  for(i in seq_along(prior_list)){
-    prior     <- prior_list[[i]]
-    parameter <- prior_names[[i]]
-    if(is.na(parameter) || !nzchar(parameter) || !is.prior.ordered(prior)){
-      next
-    }
-    total_value <- .bt_convergence_point_value(prior$total)
-    metadata <- attr(prior, "ordered_metadata", exact = TRUE)
-    if(is.null(total_value) || is.null(metadata)){
-      next
-    }
-
-    total_name <- .prior_ordered_total_name(parameter)
-    structural <- c(
-      structural,
-      if(metadata$theta_dim == 1L){
-        total_name
-      }else{
-        paste0(total_name, "[", seq_len(metadata$theta_dim), "]")
-      }
-    )
-
-    fixed_allocation <- all(vapply(metadata$allocations, function(record){
-      identical(record$spec$type, "fixed")
-    }, logical(1)))
-    if(total_value == 0 || fixed_allocation){
-      structural <- c(
-        structural,
-        if(metadata$coefficient_dim == 1L){
-          parameter
-        }else{
-          paste0(parameter, "[", seq_len(metadata$coefficient_dim), "]")
-        }
-      )
-    }
-  }
-
-  structural
-}
-
-.bt_convergence_point_value <- function(prior){
-
-  if(is.prior.mixture(prior) && length(prior) == 1L){
-    return(.bt_convergence_point_value(prior[[1L]]))
-  }
-  if(!is.prior.point(prior) || .is_prior_expression(prior)){
-    return(NULL)
-  }
-
-  location <- prior$parameters[["location"]]
-  if(!is.numeric(location) || length(location) != 1L || !is.finite(location)){
-    return(NULL)
-  }
-
-  location
-}
-
-.bt_convergence_indicator_supports <- function(prior_list){
-
-  supports <- list()
-  if(length(prior_list) == 0L){
-    return(supports)
-  }
-  prior_names <- names(prior_list)
-  if(is.null(prior_names)){
-    prior_names <- rep.int("", length(prior_list))
-  }
-
-  for(i in seq_along(prior_list)){
-    prior     <- prior_list[[i]]
-    parameter <- prior_names[[i]]
-    if(is.na(parameter) || !nzchar(parameter)){
-      next
-    }
-    if(is.prior.spike_and_slab(prior)){
-      inclusion <- .get_spike_and_slab_inclusion(prior)
-      supports[[paste0(parameter, "_indicator")]] <-
-        .bt_convergence_binary_indicator_support(inclusion)
-    }else if(is.prior.mixture(prior)){
-      indicator <- if(inherits(prior, "prior.bias_mixture")){
-        "bias_indicator"
-      }else{
-        paste0(parameter, "_indicator")
-      }
-      supports[[indicator]] <- seq_along(prior)
-    }else if(is.prior.factor(prior) && is.prior.ordered(prior)){
-      metadata <- .prior_ordered_metadata(prior)
-      if(is.prior.spike_and_slab(prior$total) && metadata$theta_dim > 1L){
-        inclusion <- .get_spike_and_slab_inclusion(prior$total)
-        total_name <- .prior_ordered_total_name(parameter)
-        supports[[paste0(total_name, "_indicator")]] <-
-          .bt_convergence_binary_indicator_support(inclusion)
-      }
-    }
-  }
-
-  supports
-}
-
-.bt_convergence_binary_indicator_support <- function(inclusion){
-
-  if(is.prior.point(inclusion)){
-    probability <- as.numeric(inclusion$parameters[["location"]])
-    if(probability %in% c(0, 1)){
-      return(probability)
-    }
-  }
-  c(0, 1)
-}
-
-.bt_convergence_is_structural_prior <- function(prior){
-
-  if(is.prior.point(prior)){
-    return(TRUE)
-  }
-  if(is.prior.mixture(prior) && length(prior) == 1L){
-    return(.bt_convergence_is_structural_prior(prior[[1L]]))
-  }
-  FALSE
-}
-
-.bt_convergence_structural_parameters <- function(prior_list){
-
-  if(length(prior_list) == 0L){
-    return(character())
-  }
-  structural <- names(prior_list)[vapply(
-    prior_list,
-    .bt_convergence_is_structural_prior,
-    logical(1)
-  )]
-  unlist(lapply(structural, function(parameter){
-    prior <- prior_list[[parameter]]
-    names <- tryCatch(
-      {
-        if(is.prior.vector(prior) || is.prior.factor(prior)){
-          .JAGS_prior_factor_names(parameter, prior)
-        }else{
-          parameter
-        }
-      },
-      error = function(e) parameter
-    )
-    as.character(names)
-  }), use.names = FALSE)
 }
 
 .bt_convergence_resolve_monitor <- function(monitor, available_parameters,

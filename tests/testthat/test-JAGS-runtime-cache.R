@@ -95,7 +95,7 @@ test_that("saved fit caches restore without entering backend extension payloads"
     .bt_attach_parameter_map = function(fit, ...) fit,
     .bt_attach_draw_geometry = function(fit, ...) fit,
     .bt_attach_fit_contract = function(fit, ...) fit,
-    JAGS_check_convergence = function(...){
+    .bt_check_convergence = function(...){
       if(check_failure) stop("Unexpected convergence failure.")
       TRUE
     },
@@ -182,7 +182,7 @@ test_that("saved fit caches restore without entering backend extension payloads"
   # fails; capturing afterward could save the failed backend's partial state.
   check_failure <- FALSE
   testthat::local_mocked_bindings(
-    JAGS_check_convergence = function(...) FALSE,
+    .bt_check_convergence = function(...) FALSE,
     .package = "BayesTools"
   )
   events <- character()
@@ -213,7 +213,7 @@ test_that("runtime cache capture warnings are recorded in the fit warnings", {
     .bt_attach_parameter_map = function(fit, ...) fit,
     .bt_attach_draw_geometry = function(fit, ...) fit,
     .bt_attach_fit_contract = function(fit, ...) fit,
-    JAGS_check_convergence = function(...) TRUE,
+    .bt_check_convergence = function(...) TRUE,
     .package = "BayesTools"
   )
   testthat::local_mocked_bindings(

@@ -525,7 +525,7 @@ test_that("JAGS_fit autofit preserves the last valid fit after a backend error",
     .package = "runjags"
   )
   testthat::local_mocked_bindings(
-    JAGS_check_convergence = function(...) FALSE,
+    .bt_check_convergence = function(...) FALSE,
     .JAGS_require_packages = function(...) invisible(NULL),
     .JAGS_load_modules = function(...) invisible(NULL),
     .bt_attach_parameter_map = function(fit, ...) fit,
@@ -702,7 +702,7 @@ test_that("JAGS_extend resets its time budget for every call", {
       clock_calls <<- clock_calls + 1L
       clock_values[[clock_calls]]
     },
-    JAGS_check_convergence = function(...) TRUE,
+    .bt_check_convergence = function(...) TRUE,
     .package = "BayesTools"
   )
 
@@ -739,7 +739,7 @@ test_that("JAGS_extend forwards explicit convergence monitor policy", {
     .package = "runjags"
   )
   testthat::local_mocked_bindings(
-    JAGS_check_convergence = function(...){
+    .bt_check_convergence = function(...){
       convergence_arguments <<- list(...)
       TRUE
     },
@@ -769,7 +769,7 @@ test_that("JAGS_extend keeps the fit's warnings after successful extensions", {
   )
   converged <- TRUE
   testthat::local_mocked_bindings(
-    JAGS_check_convergence = function(...) converged,
+    .bt_check_convergence = function(...) converged,
     .package = "BayesTools"
   )
 
@@ -886,11 +886,12 @@ test_that("JAGS_fit rejects unknown convergence monitors before sampling", {
   expect_null(attr(fit, "warnings"))
 })
 
-test_that("autofit treats constant deterministic user monitors as structural", {
+test_that("autofit treats deterministic user monitors of constants as structural", {
 
   skip_if_not_installed("runjags")
   # 'theta' is a deterministic model constant; 'eta' is sampled. Both are
-  # user monitors, as in BayesTools 0.3.0.
+  # user monitors, as in BayesTools 0.3.0. Their convergence roles come from
+  # the model syntax and are stored in the parameter map.
   sampled_fit <- function(eta_constant){
     set.seed(76)
     chain <- function(){
@@ -929,8 +930,6 @@ test_that("autofit treats constant deterministic user monitors as structural", {
     testthat::local_mocked_bindings(
       .JAGS_require_packages = function(...) invisible(NULL),
       .JAGS_load_modules = function(...) invisible(NULL),
-      .bt_attach_parameter_map = function(fit, ...) fit,
-      .bt_attach_draw_geometry = function(fit, ...) fit,
       .package = "BayesTools"
     )
     extension_calls <<- 0L
@@ -944,8 +943,6 @@ test_that("autofit treats constant deterministic user monitors as structural", {
   }
   extend_autofit <- function(fit, eta_constant){
     sampled <- sampled_fit(eta_constant)
-    attr(fit, "fit_contract") <- NULL
-    attr(fit, "parameter_map") <- .bt_build_parameter_map(character())
     testthat::local_mocked_bindings(
       extend.jags = function(...) sampled,
       .package = "runjags"
@@ -963,6 +960,10 @@ test_that("autofit treats constant deterministic user monitors as structural", {
   fit <- fit_autofit(eta_constant = FALSE)
   expect_identical(extension_calls, 0L)
   expect_null(attr(fit, "warnings"))
+  expect_identical(
+    parameter_coordinates(fit)$convergence_role,
+    c("sampled", "structural", "sampled")
+  )
   check <- JAGS_check_convergence(
     fit, prior_list, max_Rhat = 1.2, min_ESS = NULL, max_error = NULL,
     max_SD_error = NULL
@@ -981,12 +982,18 @@ test_that("autofit treats constant deterministic user monitors as structural", {
   expect_identical(extend_autofit(fit, eta_constant = TRUE), max_extend_warning)
 })
 
+.convergence_state_of <- function(result, parameter){
+
+  diagnostics <- attr(result, "diagnostics")
+  diagnostics$state[diagnostics$parameter == parameter]
+}
+
 test_that("autofit checks user and sampled generated monitors but not derived ones", {
 
   skip_if_not_installed("runjags")
   stem <- "mu__xREx__g_xRE_"
   columns <- c(
-    "mu_intercept", "theta",
+    "mu_intercept", "theta", "mu__xREx__g_intercept", "mu__xREx__g_x",
     paste0(stem, "CORx_L[", c("1,1", "1,2", "2,1", "2,2"), "]"),
     paste0(stem, "CORx_R[", c("1,1", "1,2", "2,1", "2,2"), "]"),
     paste0(stem, "CORx_lkj_u[1]"),
@@ -1003,6 +1010,8 @@ test_that("autofit checks user and sampled generated monitors but not derived on
       )
       draws[, grepl("_L\\[1,1\\]|_R\\[(1,1|2,2)\\]", columns)] <- 1
       draws[, grepl("_L\\[1,2\\]", columns)] <- 0
+      sd_columns <- c("mu__xREx__g_intercept", "mu__xREx__g_x")
+      draws[, sd_columns] <- abs(draws[, sd_columns])
       draws[, paste0(stem, "CORx_lkj_u[1]")] <- stats::pnorm(
         draws[, paste0(stem, "CORx_lkj_u[1]")]
       )
@@ -1045,8 +1054,6 @@ test_that("autofit checks user and sampled generated monitors but not derived on
     testthat::local_mocked_bindings(
       .JAGS_require_packages = function(...) invisible(NULL),
       .JAGS_load_modules = function(...) invisible(NULL),
-      .bt_attach_parameter_map = function(fit, ...) fit,
-      .bt_attach_draw_geometry = function(fit, ...) fit,
       .package = "BayesTools"
     )
     extension_calls <<- 0L
@@ -1068,10 +1075,25 @@ test_that("autofit checks user and sampled generated monitors but not derived on
     )
   }
 
-  # A stuck derived Cholesky entry does not block convergence.
+  # A stuck derived Cholesky entry does not block convergence, and the
+  # default post-fit check (as run by RoBMA) uses the same selection.
   fit <- fit_autofit(paste0(stem, "CORx_L[2,1]"))
   expect_identical(extension_calls, 0L)
   expect_null(attr(fit, "warnings"))
+  default_check <- JAGS_check_convergence(
+    fit, max_Rhat = 1.2, min_ESS = NULL, max_error = NULL, max_SD_error = NULL
+  )
+  expect_true(default_check)
+  expect_identical(
+    unname(.convergence_state_of(default_check, paste0(stem, "CORx_L[2,1]"))),
+    "not_requested"
+  )
+  requested <- JAGS_check_convergence(
+    fit, max_Rhat = 1.2, min_ESS = NULL, max_error = NULL, max_SD_error = NULL,
+    monitor = paste0(stem, "CORx_L")
+  )
+  expect_false(requested)
+  expect_match(attr(requested, "errors"), "CORx_L[2,1]", fixed = TRUE)
 
   # A stuck user node, LKJ primitive, or latent effect is checked, as the
   # user's add_parameters were on BayesTools 0.3.0.
@@ -1084,8 +1106,6 @@ test_that("autofit checks user and sampled generated monitors but not derived on
   # JAGS_extend applies the same selection to the stored fit.
   extend_autofit <- function(fit, stuck){
     sampled <- sampled_fit(stuck)
-    attr(fit, "fit_contract") <- NULL
-    attr(fit, "parameter_map") <- .bt_build_parameter_map(character())
     testthat::local_mocked_bindings(
       extend.jags = function(...) sampled,
       .package = "runjags"

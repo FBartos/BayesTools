@@ -26,17 +26,18 @@ test_that("parameter map and coordinate schemas are explicit and versioned", {
 
   map_schema <- parameter_map_schema()
   schema <- parameter_coordinates_schema()
-  expect_identical(map_schema$schema_version, 5L)
+  expect_identical(map_schema$schema_version, 6L)
   expect_identical(
     schema$field,
     c(
       "coordinate_name", "monitor_name", "formula_parameter", "role",
       "random_block", "random_name", "term", "column", "index", "dimensions",
       "fitted_scale", "monitor_status", "fixed_value", "display_label",
-      "random_grouping", "random_structure", "internal"
+      "random_grouping", "random_structure", "internal", "convergence_role"
     )
   )
-  expect_identical(schema$type[nrow(schema)], "logical")
+  expect_identical(schema$type[schema$field == "internal"], "logical")
+  expect_identical(schema$type[nrow(schema)], "character")
   expect_identical(anyDuplicated(schema$field), 0L)
 })
 

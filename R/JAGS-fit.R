@@ -58,14 +58,17 @@
 #'   unless requested explicitly. Defaults to \code{FALSE}.}
 #'   \item{monitor}{optional character vector selecting parameters for
 #'   convergence checks. Base names select all indexed elements. Requests are
-#'   resolved against all monitored nodes, including the deterministic formula
-#'   monitors that the default selection excludes. Names that are not
+#'   resolved against all monitored nodes, including the derived and auxiliary
+#'   ones that the default selection excludes. Names that are not
 #'   monitored are rejected before sampling. Defaults to \code{NULL}, which
-#'   checks every eligible parameter: the priors' parameters,
-#'   \code{add_parameters}, and the stochastic nodes that formulas monitor
-#'   (such as latent random effects and LKJ primitives). Deterministic nodes
-#'   that formulas monitor (such as random-effect correlation matrices and
-#'   their Cholesky factors) are not checked by default.}
+#'   checks the default selection of [JAGS_check_convergence()]: the sampled
+#'   parameters of the priors, \code{add_parameters} that depend on a
+#'   stochastic node, and the stochastic nodes that formulas monitor (such as
+#'   latent random effects and LKJ primitives). Deterministic nodes that
+#'   formulas monitor (such as random-effect correlation matrices and their
+#'   Cholesky factors) are derived and not checked by default. The role of
+#'   every fitted coordinate is stored in the \code{convergence_role} column
+#'   of [parameter_coordinates()].}
 #'   \item{allow_not_assessable}{whether undefined diagnostics for requested
 #'   sampled parameters may be ignored. Defaults to \code{FALSE}.}
 #' }
@@ -99,10 +102,11 @@
 #' @param add_parameters vector of additional parameter names that should be
 #' monitored but were not specified in the \code{prior_list}. Automatic fitting
 #' checks their convergence like that of the other parameters. A node that the
-#' model syntax defines deterministically (\code{<-} or \code{=}) and whose
-#' draws are identical in every chain is a structural constant and does not
-#' block convergence; a stochastic node (\code{~}) with constant draws is not
-#' assessable (see \code{autofit_control$allow_not_assessable}).
+#' model syntax defines deterministically (\code{<-} or \code{=}) from data and
+#' constants only is a structural constant and does not block convergence. A
+#' node that is stochastic (\code{~}) or depends on a stochastic node is
+#' checked, and its constant draws are not assessable (see
+#' \code{autofit_control$allow_not_assessable}).
 #' @param required_packages character vector specifying list of packages containing
 #' JAGS models required for sampling (in case that the function is run in parallel or in
 #' detached R session). Defaults to \code{NULL}. Parallel workers must load
@@ -355,6 +359,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   add_parameters <- unique(c(add_parameters, formula_add_parameters))
   jags_modules <- unique(c(jags_modules, formula_jags_modules))
   required_packages <- unique(c(required_packages, formula_required_packages))
+  # Fully observed data are constants of the model; the convergence roles of
+  # monitored deterministic nodes are derived from them.
+  data_names <- names(data)[vapply(data, function(x) !anyNA(x), logical(1))]
 
   if(.JAGS_prior_list_uses_BayesTools_module(prior_list)){
     jags_modules <- unique(c(jags_modules, "BayesTools"))
@@ -519,25 +526,43 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     last_valid_capture_warnings <- captured$warnings
     captured_after_success <- TRUE
 
-    # User monitors are checked; only generated deterministic monitors are not.
-    convergence_excluded <- .bt_convergence_generated_deterministic(
-      add_parameters = add_parameters,
-      formula_design = formula_design_info,
-      model_syntax = model_syntax
-    )
-    converged <- JAGS_check_convergence(
-      fit = .bt_convergence_fit(fit, add_parameters, model_syntax),
-      prior_list = prior_list,
-      max_Rhat = autofit_control[["max_Rhat"]],
-      min_ESS = autofit_control[["min_ESS"]],
-      max_error = autofit_control[["max_error"]],
-      max_SD_error = autofit_control[["max_SD_error"]],
-      add_parameters = convergence_excluded,
-      fail_fast = TRUE,
-      check_indicators = autofit_control[["check_indicators"]],
-      monitor = autofit_control[["monitor"]],
-      allow_not_assessable = autofit_control[["allow_not_assessable"]]
-    )
+    # The convergence roles of the fitted coordinates, as the parameter map
+    # stores them, give the selection of the public default check. The
+    # coordinates are built once, from the first fit's columns.
+    convergence_coordinates <- NULL
+    autofit_coordinates <- function(fit){
+      if(is.null(convergence_coordinates)){
+        convergence_coordinates <<- .bt_build_parameter_coordinates(
+          columns = colnames(.extract_posterior_samples(fit, as_list = FALSE)),
+          monitor_names = model_call$monitor,
+          prior_list = prior_list,
+          formula_design = formula_design_info,
+          formula_scale = formula_scale_info,
+          backend_anchor = backend_anchor,
+          add_parameters = add_parameters,
+          model_syntax = model_syntax,
+          data_names = data_names
+        )
+      }
+      convergence_coordinates
+    }
+    autofit_converged <- function(fit){
+      convergence_fit <- fit
+      attr(convergence_fit, "prior_list") <- prior_list
+      .bt_check_convergence(
+        fit = convergence_fit,
+        coordinates = autofit_coordinates(fit),
+        max_Rhat = autofit_control[["max_Rhat"]],
+        min_ESS = autofit_control[["min_ESS"]],
+        max_error = autofit_control[["max_error"]],
+        max_SD_error = autofit_control[["max_SD_error"]],
+        fail_fast = TRUE,
+        check_indicators = autofit_control[["check_indicators"]],
+        monitor = autofit_control[["monitor"]],
+        allow_not_assessable = autofit_control[["allow_not_assessable"]]
+      )
+    }
+    converged <- autofit_converged(fit)
     itteration <- 1
     last_valid_fit <- fit
 
@@ -594,19 +619,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       last_valid_capture_warnings <- captured$warnings
       captured_after_success <- TRUE
 
-      converged <- JAGS_check_convergence(
-        fit = .bt_convergence_fit(fit, add_parameters, model_syntax),
-        prior_list = prior_list,
-        max_Rhat = autofit_control[["max_Rhat"]],
-        min_ESS = autofit_control[["min_ESS"]],
-        max_error = autofit_control[["max_error"]],
-        max_SD_error = autofit_control[["max_SD_error"]],
-        add_parameters = convergence_excluded,
-        fail_fast = TRUE,
-        check_indicators = autofit_control[["check_indicators"]],
-        monitor = autofit_control[["monitor"]],
-        allow_not_assessable = autofit_control[["allow_not_assessable"]]
-      )
+      converged <- autofit_converged(fit)
       itteration <- itteration + 1
 
       if(isTRUE(dots[["is_JASP"]]))
@@ -637,7 +650,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   class(fit) <- c(class(fit), "BayesTools_fit")
   fit <- .bt_attach_parameter_map(
     fit,
-    monitor_names = model_call$monitor
+    monitor_names = model_call$monitor,
+    data_names = data_names
   )
   fit <- .bt_attach_draw_geometry(fit)
   fit <- .bt_attach_fit_contract(fit)
@@ -831,7 +845,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     }
     .bt_validate_parameter_map(fitted_parameter_map)
   }
-  parameter_coordinates(fit)
+  coordinates <- parameter_coordinates(fit)
 
   # extract fitting information
   prior_list        <- attr(fit, "prior_list")
@@ -846,16 +860,10 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   }
   .bt_validate_jags_add_parameters(add_parameters, prior_list)
   autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
-  # User monitors are checked; only generated deterministic monitors are not.
-  convergence_excluded <- .bt_convergence_generated_deterministic(
-    add_parameters = add_parameters,
-    formula_design = formula_design,
-    model_syntax = model_syntax
-  )
+  # The stored convergence roles give the selection of the public check.
   .bt_convergence_validate_monitor(
     fit = fit,
-    prior_list = prior_list,
-    add_parameters = convergence_excluded,
+    coordinates = coordinates,
     monitor = autofit_control[["monitor"]]
   )
 
@@ -965,14 +973,15 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     last_valid_runtime_state <- captured$state
     last_valid_capture_warnings <- captured$warnings
     captured_after_success <- TRUE
-    converged <- JAGS_check_convergence(
-      fit = .bt_convergence_fit(fit, add_parameters, model_syntax),
-      prior_list = prior_list,
+    convergence_fit <- fit
+    attr(convergence_fit, "prior_list") <- prior_list
+    converged <- .bt_check_convergence(
+      fit = convergence_fit,
+      coordinates = coordinates,
       max_Rhat = autofit_control[["max_Rhat"]],
       min_ESS = autofit_control[["min_ESS"]],
       max_error = autofit_control[["max_error"]],
       max_SD_error = autofit_control[["max_SD_error"]],
-      add_parameters = convergence_excluded,
       fail_fast = TRUE,
       check_indicators = autofit_control[["check_indicators"]],
       monitor = autofit_control[["monitor"]],

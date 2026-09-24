@@ -245,7 +245,7 @@ test_that("fit retries and extensions use the actual current worker topology", {
     .bt_attach_parameter_map = function(fit, ...) fit,
     .bt_attach_draw_geometry = function(fit, ...) fit,
     .bt_attach_fit_contract = function(fit, ...) fit,
-    JAGS_check_convergence = function(...){
+    .bt_check_convergence = function(...){
       convergence_calls <<- convergence_calls + 1L
       convergence_calls > 1L
     },

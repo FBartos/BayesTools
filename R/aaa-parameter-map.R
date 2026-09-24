@@ -1,6 +1,6 @@
 # Authoritative fitted parameter map.
 
-.bt_parameter_map_version <- 5L
+.bt_parameter_map_version <- 6L
 
 #' Fitted parameter map and coordinate view
 #'
@@ -83,7 +83,8 @@ parameter_coordinates_schema <- function(){
       rep("character", 12L),
       "numeric",
       rep("character", 3L),
-      "logical"
+      "logical",
+      "character"
     ),
     description = c(
       "Unique concrete posterior or structural parameter name.",
@@ -102,7 +103,11 @@ parameter_coordinates_schema <- function(){
       "Default coordinate display label.",
       "Random grouping-variable label.",
       "Random covariance structure.",
-      "Whether the coordinate is an implementation-level dependency."
+      "Whether the coordinate is an implementation-level dependency.",
+      paste(
+        "Convergence role set at fit time: sampled, indicator, structural,",
+        "derived, or auxiliary (see JAGS_check_convergence())."
+      )
     ),
     stringsAsFactors = FALSE
   )
@@ -358,7 +363,10 @@ parameter_map_cache <- function(map, provider, key, compute){
                                     prior_list = NULL,
                                     formula_design = NULL,
                                     formula_scale = NULL,
-                                    backend_anchor = NULL){
+                                    backend_anchor = NULL,
+                                    add_parameters = NULL,
+                                    model_syntax = NULL,
+                                    data_names = NULL){
 
   coordinates <- .bt_build_parameter_coordinates(
     columns = columns,
@@ -366,7 +374,10 @@ parameter_map_cache <- function(map, provider, key, compute){
     prior_list = prior_list,
     formula_design = formula_design,
     formula_scale = formula_scale,
-    backend_anchor = backend_anchor
+    backend_anchor = backend_anchor,
+    add_parameters = add_parameters,
+    model_syntax = model_syntax,
+    data_names = data_names
   )
   catalog <- .bt_build_parameter_catalog(
     coordinates = coordinates,
@@ -381,7 +392,10 @@ parameter_map_cache <- function(map, provider, key, compute){
   )
 }
 
-.bt_attach_parameter_map <- function(fit, monitor_names = NULL){
+# 'data_names' are the names of fully observed model data; they let the
+# convergence roles treat monitored functions of data as constants.
+.bt_attach_parameter_map <- function(fit, monitor_names = NULL,
+                                     data_names = NULL){
 
   if(inherits(fit, "error")){
     return(fit)
@@ -401,7 +415,10 @@ parameter_map_cache <- function(map, provider, key, compute){
     prior_list = attr(fit, "prior_list", exact = TRUE),
     formula_design = attr(fit, "formula_design", exact = TRUE),
     formula_scale = attr(fit, "formula_scale", exact = TRUE),
-    backend_anchor = attr(fit, "backend_anchor", exact = TRUE)
+    backend_anchor = attr(fit, "backend_anchor", exact = TRUE),
+    add_parameters = attr(fit, "add_parameters", exact = TRUE),
+    model_syntax = attr(fit, "model_syntax", exact = TRUE),
+    data_names = data_names
   )
   fit
 }

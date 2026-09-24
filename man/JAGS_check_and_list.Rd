@@ -101,14 +101,17 @@ parameter set. Auxiliary inclusion-probability coordinates remain excluded
 unless requested explicitly. Defaults to \code{FALSE}.}
 \item{monitor}{optional character vector selecting parameters for
 convergence checks. Base names select all indexed elements. Requests are
-resolved against all monitored nodes, including the deterministic formula
-monitors that the default selection excludes. Names that are not
+resolved against all monitored nodes, including the derived and auxiliary
+ones that the default selection excludes. Names that are not
 monitored are rejected before sampling. Defaults to \code{NULL}, which
-checks every eligible parameter: the priors' parameters,
-\code{add_parameters}, and the stochastic nodes that formulas monitor
-(such as latent random effects and LKJ primitives). Deterministic nodes
-that formulas monitor (such as random-effect correlation matrices and
-their Cholesky factors) are not checked by default.}
+checks the default selection of \code{\link[=JAGS_check_convergence]{JAGS_check_convergence()}}: the sampled
+parameters of the priors, \code{add_parameters} that depend on a
+stochastic node, and the stochastic nodes that formulas monitor (such as
+latent random effects and LKJ primitives). Deterministic nodes that
+formulas monitor (such as random-effect correlation matrices and their
+Cholesky factors) are derived and not checked by default. The role of
+every fitted coordinate is stored in the \code{convergence_role} column
+of \code{\link[=parameter_coordinates]{parameter_coordinates()}}.}
 \item{allow_not_assessable}{whether undefined diagnostics for requested
 sampled parameters may be ignored. Defaults to \code{FALSE}.}
 }}

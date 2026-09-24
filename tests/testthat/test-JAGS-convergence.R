@@ -1,17 +1,43 @@
 skip_if_not_test_profile("unit")
 
-.mock_convergence_fit <- function(chain_1, chain_2){
+# A fitted object with the metadata JAGS_fit() stores: the prior list, the
+# monitored 'add_parameters' and model syntax, and the parameter map whose
+# convergence roles the check reads.
+.mock_convergence_fit <- function(chain_1, chain_2 = NULL, prior_list = list(),
+                                  add_parameters = NULL, model_syntax = NULL,
+                                  data_names = NULL){
 
+  chains <- list(coda::mcmc(chain_1))
+  if(!is.null(chain_2)){
+    chains <- c(chains, list(coda::mcmc(chain_2)))
+  }
   fit <- list(
-    mcmc = coda::mcmc.list(
-      coda::mcmc(chain_1),
-      coda::mcmc(chain_2)
-    ),
+    mcmc = do.call(coda::mcmc.list, chains),
     summary.pars = list(mutate = NULL)
   )
-  class(fit) <- "runjags"
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  attr(fit, "add_parameters") <- add_parameters
+  attr(fit, "model_syntax") <- model_syntax
+  fit <- BayesTools:::.bt_attach_parameter_map(fit, data_names = data_names)
+  fit <- BayesTools:::.bt_attach_draw_geometry(fit)
+  BayesTools:::.bt_attach_fit_contract(fit)
+}
 
-  return(fit)
+.convergence_states <- function(result){
+
+  diagnostics <- attr(result, "diagnostics")
+  stats::setNames(diagnostics$state, diagnostics$parameter)
+}
+
+.convergence_roles <- function(fit){
+
+  coordinates <- parameter_coordinates(fit)
+  stats::setNames(coordinates$convergence_role, coordinates$coordinate_name)
+}
+
+.convergence_weight_draws <- function(n){
+  pmin(pmax(stats::rbeta(n, 4, 2), 1e-3), 1 - 1e-3)
 }
 
 
@@ -38,8 +64,7 @@ test_that("JAGS_check_convergence preserves internal indicator and inclusion sub
     names(prior_list) <- sub("\\[.*$", "", parameter)
 
     convergence <- JAGS_check_convergence(
-      .mock_convergence_fit(chain_1, chain_2),
-      prior_list = prior_list,
+      .mock_convergence_fit(chain_1, chain_2, prior_list),
       max_Rhat = 1.05,
       min_ESS = NULL,
       max_error = NULL,
@@ -51,49 +76,68 @@ test_that("JAGS_check_convergence preserves internal indicator and inclusion sub
   }
 })
 
-
-test_that("JAGS_check_convergence recognizes scalar and indexed auxiliary suffixes", {
+test_that("convergence roles come from declarations, not name suffixes", {
 
   set.seed(1)
-  chain_1 <- cbind(
-    mu = stats::rnorm(100),
-    mu_indicator = 0,
-    "mu_indicator[1]" = 0,
-    mu_inclusion = 0,
-    "mu_inclusion[1]" = 0
-  )
-  chain_2 <- cbind(
-    mu = stats::rnorm(100),
-    mu_indicator = 1,
-    "mu_indicator[1]" = 1,
-    mu_inclusion = 1,
-    "mu_inclusion[1]" = 1
-  )
-  fit <- .mock_convergence_fit(chain_1, chain_2)
-  prior_list <- list(mu = prior("normal", list(0, 1)))
-
-  expect_true(JAGS_check_convergence(
-    fit,
-    prior_list = prior_list,
-    max_Rhat = 1.05,
-    min_ESS = NULL,
-    max_error = NULL,
-    max_SD_error = NULL,
-    check_indicators = FALSE
+  n <- 200
+  # A spike-and-slab prior declares its indicator and inclusion probability.
+  priors <- list(mu = prior_spike_and_slab(
+    prior("normal", list(0, 1)),
+    prior_inclusion = prior("beta", list(1, 1))
   ))
-
-  convergence <- JAGS_check_convergence(
-    fit,
-    prior_list = prior_list,
-    max_Rhat = 1.05,
-    min_ESS = NULL,
-    max_error = NULL,
-    max_SD_error = NULL,
-    check_indicators = TRUE
+  chain <- function(state){
+    cbind(
+      mu_indicator = state,
+      mu_inclusion = stats::runif(n),
+      mu = stats::rnorm(n),
+      mu_variable = stats::rnorm(n)
+    )
+  }
+  fit <- .mock_convergence_fit(chain(0), chain(1), priors)
+  expect_identical(
+    .convergence_roles(fit),
+    c(mu_indicator = "indicator", mu_inclusion = "auxiliary",
+      mu = "sampled", mu_variable = "sampled")
   )
+  check <- function(fit, ...){
+    JAGS_check_convergence(
+      fit, max_Rhat = 1.05, min_ESS = NULL, max_error = NULL,
+      max_SD_error = NULL, ...
+    )
+  }
+  expect_true(check(fit, check_indicators = FALSE))
+  indicators <- check(fit, check_indicators = TRUE)
+  expect_false(indicators)
+  expect_match(attr(indicators, "errors"), "R-hat .* for 'mu_indicator'")
 
-  expect_false(convergence)
-  expect_match(attr(convergence, "errors"), "R-hat")
+  # Continuous priors whose names end in '_indicator' or '_inclusion' are
+  # ordinary sampled parameters: they are checked, never rejected as
+  # indicators and never skipped as inclusion probabilities.
+  named <- list(
+    dose_indicator = prior("normal", list(0, 1)),
+    p_inclusion = prior("beta", list(1, 1))
+  )
+  draws <- function(stuck){
+    cbind(
+      dose_indicator = stats::rnorm(n),
+      p_inclusion = if(stuck) rep(0.3, n) else stats::rbeta(n, 1, 1)
+    )
+  }
+  named_fit <- .mock_convergence_fit(draws(FALSE), draws(TRUE), named)
+  expect_identical(
+    .convergence_roles(named_fit),
+    c(dose_indicator = "sampled", p_inclusion = "sampled")
+  )
+  named_check <- JAGS_check_convergence(
+    named_fit, max_Rhat = 1.2, min_ESS = 50, max_error = NULL,
+    max_SD_error = NULL
+  )
+  expect_false(named_check)
+  expect_identical(
+    .convergence_states(named_check),
+    c(dose_indicator = "assessable", p_inclusion = "assessable")
+  )
+  expect_match(attr(named_check, "errors"), "for 'p_inclusion'", fixed = TRUE)
 })
 
 test_that("indicator diagnostics are invariant to categorical labels", {
@@ -106,16 +150,15 @@ test_that("indicator diagnostics are invariant to categorical labels", {
     prior("normal", list(1, 1)),
     prior("normal", list(2, 1))
   )))
-  prior_list <- list(theta = prior("normal", list(0, 1)))
 
-  check_states <- function(chain_1, chain_2, priors = prior_list){
+  check_states <- function(chain_1, chain_2){
     fit <- .mock_convergence_fit(
       cbind(theta = stats::rnorm(2000), theta_indicator = chain_1),
-      cbind(theta = stats::rnorm(2000), theta_indicator = chain_2)
+      cbind(theta = stats::rnorm(2000), theta_indicator = chain_2),
+      product_prior
     )
     JAGS_check_convergence(
       fit,
-      prior_list = priors,
       max_Rhat = 1.2,
       min_ESS = 1,
       max_error = 1,
@@ -152,13 +195,6 @@ test_that("indicator diagnostics are invariant to categorical labels", {
     tolerance = 1e-12,
     ignore_attr = TRUE
   )
-
-  product_space <- check_states(
-    chain_1_states,
-    chain_2_states,
-    priors = product_prior
-  )
-  expect_true(product_space)
 })
 
 test_that("binary indicator diagnostics are scale and label invariant", {
@@ -166,18 +202,17 @@ test_that("binary indicator diagnostics are scale and label invariant", {
   set.seed(14)
   states_1 <- stats::rbinom(2000, 1, .4)
   states_2 <- stats::rbinom(2000, 1, .4)
-  prior_list <- list(theta = prior("normal", list(0, 1)))
   product_prior <- list(theta = prior_spike_and_slab(
     prior("normal", list(0, 1))
   ))
-  check_states <- function(chain_1, chain_2, priors = prior_list){
+  check_states <- function(chain_1, chain_2){
     fit <- .mock_convergence_fit(
       cbind(theta = stats::rnorm(2000), theta_indicator = chain_1),
-      cbind(theta = stats::rnorm(2000), theta_indicator = chain_2)
+      cbind(theta = stats::rnorm(2000), theta_indicator = chain_2),
+      product_prior
     )
     JAGS_check_convergence(
       fit,
-      prior_list = priors,
       max_Rhat = 2,
       min_ESS = 1,
       max_error = 1,
@@ -199,7 +234,6 @@ test_that("binary indicator diagnostics are scale and label invariant", {
     tolerance = 1e-12,
     ignore_attr = TRUE
   )
-  expect_true(check_states(states_1, states_2, priors = product_prior))
 })
 
 test_that("only prior-supported one-state indicators are structural", {
@@ -211,8 +245,7 @@ test_that("only prior-supported one-state indicators are structural", {
     prior("normal", list(0, 1))
   )))
   structural <- JAGS_check_convergence(
-    .mock_convergence_fit(chain_1, chain_2),
-    prior_list = structural_prior,
+    .mock_convergence_fit(chain_1, chain_2, structural_prior),
     max_Rhat = 1.05,
     min_ESS = NULL,
     max_error = NULL,
@@ -231,8 +264,7 @@ test_that("only prior-supported one-state indicators are structural", {
     prior("normal", list(1, 1))
   )))
   sampled <- JAGS_check_convergence(
-    .mock_convergence_fit(chain_1, chain_2),
-    prior_list = sampled_prior,
+    .mock_convergence_fit(chain_1, chain_2, sampled_prior),
     max_Rhat = 1.05,
     min_ESS = NULL,
     max_error = NULL,
@@ -242,6 +274,22 @@ test_that("only prior-supported one-state indicators are structural", {
   )
   expect_false(sampled)
   expect_equal(attr(sampled, "diagnostics")$state[[2L]], "not_assessable")
+
+  # A spike-and-slab prior whose inclusion is a point at 0 or 1 fixes its
+  # indicator and inclusion probability.
+  point_inclusion <- list(mu = prior_spike_and_slab(
+    prior("normal", list(0, 1)),
+    prior_inclusion = prior("spike", list(1))
+  ))
+  draws <- function(){
+    cbind(mu_indicator = 1, mu_inclusion = 1, mu = stats::rnorm(100),
+          mu_variable = stats::rnorm(100))
+  }
+  fixed <- .mock_convergence_fit(draws(), draws(), point_inclusion)
+  expect_identical(
+    unname(.convergence_roles(fixed)[c("mu_indicator", "mu_inclusion")]),
+    c("structural", "structural")
+  )
 })
 
 test_that("sampled constants are not assessable but point priors are structural", {
@@ -252,8 +300,10 @@ test_that("sampled constants are not assessable but point priors are structural"
     dimnames = list(NULL, "mu")
   )
   sampled <- JAGS_check_convergence(
-    .mock_convergence_fit(constant_chain, constant_chain),
-    prior_list = list(mu = prior("normal", list(0, 1))),
+    .mock_convergence_fit(
+      constant_chain, constant_chain,
+      list(mu = prior("normal", list(0, 1)))
+    ),
     max_Rhat = 1.05,
     min_ESS = NULL,
     max_error = NULL,
@@ -269,8 +319,10 @@ test_that("sampled constants are not assessable but point priors are structural"
   expect_equal(sampled_diagnostics$state, "not_assessable")
 
   structural <- JAGS_check_convergence(
-    .mock_convergence_fit(constant_chain, constant_chain),
-    prior_list = list(mu = prior("point", list(1))),
+    .mock_convergence_fit(
+      constant_chain, constant_chain,
+      list(mu = prior("point", list(1)))
+    ),
     max_Rhat = 1.05,
     min_ESS = 10,
     max_error = 0.01,
@@ -283,20 +335,55 @@ test_that("sampled constants are not assessable but point priors are structural"
   )
 })
 
+test_that("a point prior with an expression location is derived", {
+
+  set.seed(15)
+  draws <- function(){
+    a <- stats::rnorm(200)
+    cbind(a = a, b = a)
+  }
+  priors <- list(
+    a = prior("normal", list(0, 1)),
+    b = prior("point", list(location = expression(a)))
+  )
+  fit <- .mock_convergence_fit(draws(), draws(), priors)
+  expect_identical(.convergence_roles(fit), c(a = "sampled", b = "derived"))
+  # The parameter map classifies it as a derived coordinate as well.
+  coordinates <- parameter_coordinates(fit)
+  expect_identical(coordinates$monitor_status[coordinates$coordinate_name == "b"], "sampled")
+  expect_true(is.na(coordinates$fixed_value[coordinates$coordinate_name == "b"]))
+
+  result <- JAGS_check_convergence(
+    fit, max_Rhat = 1.2, min_ESS = 1, max_error = NULL, max_SD_error = NULL
+  )
+  expect_true(result)
+  expect_identical(
+    .convergence_states(result),
+    c(a = "assessable", b = "not_requested")
+  )
+  requested <- JAGS_check_convergence(
+    fit, max_Rhat = 1.2, min_ESS = 1, max_error = NULL, max_SD_error = NULL,
+    monitor = "b"
+  )
+  expect_identical(
+    .convergence_states(requested),
+    c(a = "not_requested", b = "assessable")
+  )
+})
+
 test_that("explicit convergence monitors distinguish omitted parameters", {
 
   set.seed(42)
   chain_1 <- cbind(mu = rnorm(100), tau = rep(1, 100))
   chain_2 <- cbind(mu = rnorm(100), tau = rep(1, 100))
-  fit <- .mock_convergence_fit(chain_1, chain_2)
   priors <- list(
     mu = prior("normal", list(0, 1)),
     tau = prior("normal", list(0, 1))
   )
+  fit <- .mock_convergence_fit(chain_1, chain_2, priors)
 
   selected <- JAGS_check_convergence(
     fit,
-    prior_list = priors,
     max_Rhat = NULL,
     min_ESS = 1,
     max_error = NULL,
@@ -312,7 +399,6 @@ test_that("explicit convergence monitors distinguish omitted parameters", {
 
   all_parameters <- JAGS_check_convergence(
     fit,
-    prior_list = priors,
     max_Rhat = NULL,
     min_ESS = 1,
     max_error = NULL,
@@ -326,7 +412,6 @@ test_that("explicit convergence monitors distinguish omitted parameters", {
   expect_error(
     JAGS_check_convergence(
       fit,
-      prior_list = priors,
       monitor = "misspelled"
     ),
     "requested convergence monitor 'misspelled' is not available"
@@ -346,15 +431,14 @@ test_that("targeted convergence checks retain requested product-space indicators
     mu_indicator = 1,
     mu_inclusion = 1
   )
-  fit <- .mock_convergence_fit(chain_1, chain_2)
   priors <- list(mu = prior_spike_and_slab(
     prior("normal", list(0, 1)),
     prior_inclusion = prior("beta", list(1, 1))
   ))
+  fit <- .mock_convergence_fit(chain_1, chain_2, priors)
 
   targeted <- JAGS_check_convergence(
     fit,
-    prior_list = priors,
     max_Rhat = 1.05,
     min_ESS = NULL,
     max_error = NULL,
@@ -376,7 +460,6 @@ test_that("targeted convergence checks retain requested product-space indicators
 
   explicit_inclusion <- JAGS_check_convergence(
     fit,
-    prior_list = priors,
     max_Rhat = 1.05,
     min_ESS = NULL,
     max_error = NULL,
@@ -404,11 +487,10 @@ test_that("a base convergence monitor selects every indexed element", {
     "beta[2]" = 21:2
   )
   result <- JAGS_check_convergence(
-    .mock_convergence_fit(chain_1, chain_2),
-    prior_list = list(
+    .mock_convergence_fit(chain_1, chain_2, list(
       mu = prior("normal", list(0, 1)),
       beta = prior("mnormal", list(mean = 0, sd = 1, K = 2))
-    ),
+    )),
     max_Rhat = NULL,
     min_ESS = NULL,
     max_error = NULL,
@@ -434,8 +516,7 @@ test_that("empty convergence selections do not claim convergence", {
   chain_1 <- cbind(mu = rnorm(20))
   chain_2 <- cbind(mu = rnorm(20))
   result <- JAGS_check_convergence(
-    .mock_convergence_fit(chain_1, chain_2),
-    prior_list = list(mu = prior("normal", list(0, 1))),
+    .mock_convergence_fit(chain_1, chain_2, list(mu = prior("normal", list(0, 1)))),
     monitor = character()
   )
 
@@ -455,7 +536,6 @@ test_that("empty available convergence parameters are vacuously TRUE", {
   # Drop every sample column via add_parameters removal with no structural priors.
   result <- JAGS_check_convergence(
     .mock_convergence_fit(chain_1, chain_2),
-    prior_list = list(),
     add_parameters = "mu",
     max_Rhat = 1.05,
     min_ESS = NULL,
@@ -475,8 +555,10 @@ test_that("not-assessable diagnostics require an explicit opt-in to ignore", {
     dimnames = list(NULL, "mu")
   )
   result <- JAGS_check_convergence(
-    .mock_convergence_fit(constant_chain, constant_chain),
-    prior_list = list(mu = prior("normal", list(0, 1))),
+    .mock_convergence_fit(
+      constant_chain, constant_chain,
+      list(mu = prior("normal", list(0, 1)))
+    ),
     max_Rhat = 1.05,
     min_ESS = NULL,
     max_error = NULL,
@@ -511,10 +593,14 @@ test_that("weightfunction reference omega bins are structural constants", {
     mu = prior("normal", list(0, 1)),
     omega = cumulative
   )
+  fit <- .mock_convergence_fit(chain_1, chain_2, priors)
+  expect_identical(
+    .convergence_roles(fit),
+    c(mu = "sampled", "omega[1]" = "structural", "omega[2]" = "sampled")
+  )
 
   conv <- JAGS_check_convergence(
-    .mock_convergence_fit(chain_1, chain_2),
-    prior_list = priors,
+    fit,
     max_Rhat = 1.2,
     min_ESS = 1,
     max_error = 1,
@@ -532,8 +618,7 @@ test_that("weightfunction reference omega bins are structural constants", {
   )
 
   monitored <- JAGS_check_convergence(
-    .mock_convergence_fit(chain_1, chain_2),
-    prior_list = priors,
+    fit,
     max_Rhat = 1.2,
     min_ESS = 1,
     max_error = 1,
@@ -550,9 +635,9 @@ test_that("weightfunction reference omega bins are structural constants", {
   mixture <- JAGS_check_convergence(
     .mock_convergence_fit(
       cbind(mu = chain_1[, "mu"], "omega[1]" = 1, "omega[2]" = chain_1[, "omega[2]"]),
-      cbind(mu = chain_2[, "mu"], "omega[1]" = 1, "omega[2]" = chain_2[, "omega[2]"])
+      cbind(mu = chain_2[, "mu"], "omega[1]" = 1, "omega[2]" = chain_2[, "omega[2]"]),
+      list(mu = priors$mu, bias = mix)
     ),
-    prior_list = list(mu = priors$mu, bias = mix),
     max_Rhat = 1.2,
     min_ESS = 1,
     max_error = 1,
@@ -586,11 +671,10 @@ test_that("fixed weightfunction omega bins are structural constants", {
     "omega[2]" = .5
   )
   conv <- JAGS_check_convergence(
-    .mock_convergence_fit(chain_1, chain_2),
-    prior_list = list(
+    .mock_convergence_fit(chain_1, chain_2, list(
       mu = prior("normal", list(0, 1)),
       omega = fixed
-    ),
+    )),
     max_Rhat = NULL,
     min_ESS = NULL,
     max_error = NULL,
@@ -607,16 +691,6 @@ test_that("fixed weightfunction omega bins are structural constants", {
   )
 })
 
-.convergence_states <- function(result){
-
-  diagnostics <- attr(result, "diagnostics")
-  stats::setNames(diagnostics$state, diagnostics$parameter)
-}
-
-.convergence_weight_draws <- function(n){
-  pmin(pmax(stats::rbeta(n, 4, 2), 1e-3), 1 - 1e-3)
-}
-
 test_that("composed bias priors keep every constant omega bin structural", {
 
   # Column names and constants are those of prior-only JAGS fits of the same
@@ -627,8 +701,7 @@ test_that("composed bias priors keep every constant omega bin structural", {
   mu_prior <- prior("normal", list(0, 1))
   check <- function(bias, make, ...){
     JAGS_check_convergence(
-      .mock_convergence_fit(make(), make()),
-      prior_list = list(mu = mu_prior, bias = bias),
+      .mock_convergence_fit(make(), make(), list(mu = mu_prior, bias = bias)),
       max_Rhat = 1.2,
       min_ESS = 1,
       max_error = 1,
@@ -716,7 +789,7 @@ test_that("composed bias priors keep every constant omega bin structural", {
     prior_weightfunction("two-sided", .05, wf_cumulative(c(1, 1)), prior_weights = 1)
   ), is_null = c(TRUE, FALSE, FALSE))
   expect_identical(
-    BayesTools:::.bt_convergence_structural_omega_bins(list(bias = shared_prior)),
+    BayesTools:::.bt_convergence_role_constant_bins(shared_prior),
     c("omega[1]", "omega[3]")
   )
   differing_prior <- prior_mixture(list(
@@ -724,7 +797,7 @@ test_that("composed bias priors keep every constant omega bin structural", {
     prior_weightfunction("one-sided", .025, wf_fixed(c(1, .5)), prior_weights = 1)
   ), is_null = c(TRUE, FALSE))
   expect_identical(
-    BayesTools:::.bt_convergence_structural_omega_bins(list(bias = differing_prior)),
+    BayesTools:::.bt_convergence_role_constant_bins(differing_prior),
     "omega[1]"
   )
 
@@ -755,8 +828,7 @@ test_that("declared p-hacking kinds are structural convergence constants", {
   mu_prior <- prior("normal", list(0, 1))
   check <- function(bias, make){
     JAGS_check_convergence(
-      .mock_convergence_fit(make(), make()),
-      prior_list = list(mu = mu_prior, bias = bias),
+      .mock_convergence_fit(make(), make(), list(mu = mu_prior, bias = bias)),
       max_Rhat = 1.2,
       min_ESS = 1,
       max_error = 1,
@@ -820,12 +892,8 @@ test_that("declared p-hacking kinds are structural convergence constants", {
     prior_none(prior_weights = 1),
     prior_phacking(prior_weights = 1)
   ), is_null = c(TRUE, FALSE))
-  expect_identical(
-    BayesTools:::.bt_convergence_structural_phacking_columns(
-      list(a = varying_forms, b = with_none)
-    ),
-    character()
-  )
+  expect_false(BayesTools:::.bt_convergence_role_constant_phacking_kind(varying_forms))
+  expect_false(BayesTools:::.bt_convergence_role_constant_phacking_kind(with_none))
   varying <- check(varying_forms, function(){
     indicator <- sample(1:2, n, replace = TRUE)
     cbind(
@@ -878,8 +946,7 @@ test_that("ordered priors with point totals keep their constants structural", {
       chain
     }
     JAGS_check_convergence(
-      .mock_convergence_fit(make(), make()),
-      prior_list = prior_list,
+      .mock_convergence_fit(make(), make(), prior_list),
       max_Rhat = 1.2,
       min_ESS = 1,
       max_error = 1,
@@ -927,31 +994,34 @@ test_that("ordered priors with point totals keep their constants structural", {
     rep("structural_constant", 3L)
   )
 
-  # A sampled total keeps all its coordinates assessable.
+  # A sampled total keeps all its coordinates sampled.
   sampled_total <- ordered_prior_list(prior_ordered(prior("normal", list(0, 1))))
-  expect_identical(
-    BayesTools:::.bt_convergence_structural_ordered_columns(sampled_total),
-    character()
-  )
+  sampled_roles <- .convergence_roles(.mock_convergence_fit(
+    cbind(mu_intercept = sampled(), "mu_f[1]" = sampled(), "mu_f[2]" = sampled(),
+          mu_f_ordered_total = sampled()),
+    cbind(mu_intercept = sampled(), "mu_f[1]" = sampled(), "mu_f[2]" = sampled(),
+          mu_f_ordered_total = sampled()),
+    sampled_total
+  ))
+  expect_true(all(sampled_roles == "sampled"))
 })
 
 test_that("explicit convergence monitors reach additional monitored parameters", {
 
   set.seed(33)
   make <- function() cbind(mu = stats::rnorm(200), theta = stats::rnorm(200))
-  fit <- .mock_convergence_fit(make(), make())
-  priors <- list(mu = prior("normal", list(0, 1)))
+  fit <- .mock_convergence_fit(make(), make(), list(mu = prior("normal", list(0, 1))))
 
-  # Additional monitors stay excluded from the default selection.
+  # Parameters listed in 'add_parameters' are excluded from the default selection.
   default <- JAGS_check_convergence(
-    fit, priors, add_parameters = "theta",
+    fit, add_parameters = "theta",
     max_Rhat = 1.2, min_ESS = 1, max_error = 1, max_SD_error = 1
   )
   expect_true(default)
   expect_equal(.convergence_states(default), c(mu = "assessable"))
 
   requested <- JAGS_check_convergence(
-    fit, priors, add_parameters = "theta", monitor = "theta",
+    fit, add_parameters = "theta", monitor = "theta",
     max_Rhat = 1.2, min_ESS = 1, max_error = 1, max_SD_error = 1
   )
   expect_true(requested)
@@ -961,7 +1031,7 @@ test_that("explicit convergence monitors reach additional monitored parameters",
   )
   expect_error(
     JAGS_check_convergence(
-      fit, priors, add_parameters = "theta", monitor = "theta[2]"
+      fit, add_parameters = "theta", monitor = "theta[2]"
     ),
     "The requested convergence monitor 'theta[2]' is not available in the fitted model.",
     fixed = TRUE
@@ -978,66 +1048,113 @@ test_that("explicit convergence monitors reach additional monitored parameters",
   )
 })
 
-test_that("constant deterministic monitors are structural but constant sampled ones are not", {
+test_that("monitored deterministic nodes are structural only without stochastic ancestors", {
 
   set.seed(36)
-  make <- function(theta = 2){
+  make <- function(d = .731){
     draws <- cbind(
-      mu = stats::rnorm(200), theta = theta, eta = .5,
-      L11 = 1, L21 = stats::rnorm(200)
+      mu = stats::rnorm(200), theta = 2, eta = .5,
+      L11 = -1, L21 = 2, d = d
     )
     colnames(draws)[4:5] <- c("L[1,1]", "L[2,1]")
     draws
   }
   priors <- list(mu = prior("normal", list(0, 1)))
-  check <- function(fit, ...){
-    JAGS_check_convergence(
-      fit, priors, max_Rhat = 1.2, min_ESS = 1, max_error = NULL,
-      max_SD_error = NULL, ...
-    )
-  }
-
-  # A plain runjags object carries no model syntax: constants stay not
-  # assessable.
-  fit <- .mock_convergence_fit(make(), make())
-  plain <- check(fit)
-  expect_false(plain)
-  expect_equal(
-    .convergence_states(plain)[c("theta", "eta", "L[1,1]")],
-    c(theta = "not_assessable", eta = "not_assessable", "L[1,1]" = "not_assessable")
-  )
-
-  # With the monitored-node metadata of a JAGS_fit() result, the constant
-  # deterministic user node and generated Cholesky entry are structural; the
-  # constant stochastic node is a stuck sampler.
-  attr(fit, "add_parameters") <- c("theta", "eta", "L")
-  attr(fit, "model_syntax") <- paste(
+  syntax <- paste(
     "model{",
     "  mu ~ dnorm(0, 1)",
     "  theta <- 2 * one",
     "  eta ~ dnorm(0, 1)",
     "  for(i in 1:2){ L[i, 1] = pow(-1, i) * i }",
+    "  z ~ dnorm(0, 1)",
+    "  d <- z",
     "}",
     sep = "\n"
+  )
+  mock <- function(chain_1, chain_2){
+    .mock_convergence_fit(
+      chain_1, chain_2, priors,
+      add_parameters = c("theta", "eta", "L", "d"),
+      model_syntax = syntax,
+      data_names = "one"
+    )
+  }
+  check <- function(fit, ...){
+    JAGS_check_convergence(
+      fit, max_Rhat = 1.2, min_ESS = 1, max_error = NULL,
+      max_SD_error = NULL, ...
+    )
+  }
+
+  # 'theta' reads only data and 'L' only its loop index: both are constants
+  # of the model. 'eta' is stochastic, and 'd' copies the unmonitored
+  # stochastic 'z': identical draws in every chain are a stuck sampler, not a
+  # constant.
+  fit <- mock(make(), make())
+  expect_identical(
+    .convergence_roles(fit),
+    c(mu = "sampled", theta = "structural", eta = "sampled",
+      "L[1,1]" = "structural", "L[2,1]" = "structural", d = "sampled")
   )
   informed <- check(fit)
   expect_false(informed)
   expect_equal(
     .convergence_states(informed),
     c(mu = "assessable", theta = "structural_constant", eta = "not_assessable",
-      "L[1,1]" = "structural_constant", "L[2,1]" = "assessable")
+      "L[1,1]" = "structural_constant", "L[2,1]" = "structural_constant",
+      d = "not_assessable")
   )
-  expect_match(attr(informed, "errors"), "not assessable for 'eta'", fixed = TRUE)
+  expect_match(attr(informed, "errors"), "not assessable for 'eta'", fixed = TRUE, all = FALSE)
+  expect_match(attr(informed, "errors"), "not assessable for 'd'", fixed = TRUE, all = FALSE)
   expect_true(check(fit, allow_not_assessable = TRUE))
 
-  # The same node that differs between chains is not a constant.
-  varying <- .mock_convergence_fit(make(theta = 2), make(theta = 3))
-  attributes(varying)[c("add_parameters", "model_syntax")] <-
-    attributes(fit)[c("add_parameters", "model_syntax")]
-  expect_equal(.convergence_states(check(varying))[["theta"]], "not_assessable")
+  # Without the data names, an undeclared name is not known to be constant.
+  unknown <- .mock_convergence_fit(
+    make(), make(), priors,
+    add_parameters = c("theta", "eta", "L", "d"),
+    model_syntax = syntax
+  )
+  expect_identical(unname(.convergence_roles(unknown)["theta"]), "sampled")
 })
 
-test_that("automatic fitting excludes only generated deterministic monitors", {
+test_that("the JAGS syntax graph reads whole statements", {
+
+  graph <- BayesTools:::.bt_jags_syntax_graph(paste(
+    "data{ one <- 1; K <- length(v) }",
+    "model{",
+    "  for(i in 1:N){ y[i] ~ dnorm(m[i], 1); m[i] <- a + b * x[i] }",
+    "  u[1:2] ~ ddirch(alpha) # d ~ dnorm(0, 1)",
+    "  c.d ~ dgamma(1, 1) T(0.1,)",
+    "  e = 2 * c.d",
+    "  logit(p) <- q",
+    "  q ~ dnorm(0, 1)",
+    "  f <- h +",
+    "    g",
+    "  s[1,2] <- s0; s[2,1] <- 0",
+    "}",
+    sep = "\n"
+  ))
+  expect_setequal(graph$stochastic, c("y", "u", "c.d", "q"))
+  expect_setequal(graph$data, c("one", "K"))
+  expect_setequal(names(graph$deterministic), c("m", "e", "p", "f", "s"))
+  expect_setequal(graph$deterministic$m, c("a", "b", "x"))
+  expect_identical(graph$deterministic$e, "c.d")
+  expect_identical(graph$deterministic$p, "q")
+  expect_setequal(graph$deterministic$f, c("h", "g"))
+  expect_identical(graph$deterministic$s, "s0")
+
+  constants <- c("h", "g", "s0", "x")
+  expect_identical(
+    BayesTools:::.bt_jags_stochastic_ancestry(
+      c("f", "s", "e", "p", "m", "one", "y"),
+      graph = graph,
+      constants = constants
+    ),
+    c(FALSE, FALSE, TRUE, TRUE, TRUE, FALSE, TRUE)
+  )
+})
+
+test_that("formula monitors are sampled when stochastic and derived otherwise", {
 
   set.seed(34)
   data <- data.frame(
@@ -1060,72 +1177,66 @@ test_that("automatic fitting excludes only generated deterministic monitors", {
       ))
     )
   }
+  stem <- "mu__xREx__g_xRE_"
   # 'theta' is a user-defined deterministic node and 'mu' the formula output;
-  # both were requested by the user and stay checked.
-  excluded <- function(formula){
-    BayesTools:::.bt_convergence_generated_deterministic(
-      add_parameters = c("theta", "mu", formula$add_parameters),
+  # both depend on sampled nodes and stay checked.
+  roles <- function(formula){
+    columns <- c(
+      "mu_intercept", "mu_x", "mu__xREx__g_intercept", "mu__xREx__g_x",
+      "theta", "mu[1]",
+      paste0(stem, "CORx_L[", c("1,1", "2,1", "1,2", "2,2"), "]"),
+      paste0(stem, "CORx_R[", c("1,1", "2,1", "1,2", "2,2"), "]"),
+      paste0(stem, "CORx_lkj_u[1]"), paste0(stem, "CORx_lkj_cpc[1]"),
+      paste0(stem, "Zx[1,", 1:2, "]"), paste0(stem, "COEFx[1,", 1:2, "]")
+    )
+    coordinates <- BayesTools:::.bt_build_parameter_coordinates(
+      columns = columns,
+      prior_list = formula$prior_list,
       formula_design = list(mu = formula$formula_design),
+      add_parameters = c("theta", "mu", formula$add_parameters),
       model_syntax = paste0(
         "model{\n", formula$formula_syntax,
         "theta <- 2 * mu_intercept # not ~ stochastic\n}"
-      )
+      ),
+      data_names = names(formula$data)
+    )
+    stats::setNames(coordinates$convergence_role, coordinates$coordinate_name)
+  }
+  expected <- function(latent, coefficients){
+    c(
+      mu_intercept = "sampled", mu_x = "sampled",
+      mu__xREx__g_intercept = "sampled", mu__xREx__g_x = "sampled",
+      theta = "sampled", "mu[1]" = "sampled",
+      stats::setNames(
+        c("structural", "derived", "structural", "derived",
+          "structural", "derived", "derived", "structural"),
+        paste0(stem, c(
+          paste0("CORx_L[", c("1,1", "2,1", "1,2", "2,2"), "]"),
+          paste0("CORx_R[", c("1,1", "2,1", "1,2", "2,2"), "]")
+        ))
+      ),
+      stats::setNames(c("sampled", "derived"), paste0(stem, c("CORx_lkj_u[1]", "CORx_lkj_cpc[1]"))),
+      stats::setNames(rep(latent, 2L), paste0(stem, "Zx[1,", 1:2, "]")),
+      stats::setNames(rep(coefficients, 2L), paste0(stem, "COEFx[1,", 1:2, "]"))
     )
   }
-  stem <- "mu__xREx__g_xRE_"
 
   # Non-centered: latent effects and LKJ primitives are sampled; correlation
-  # matrices, their Cholesky factor, CPCs, and coefficients are derived.
-  noncentered <- us_formula("noncentered")
-  expect_setequal(
-    noncentered$add_parameters,
-    paste0(stem, c("CORx_L", "CORx_R", "CORx_lkj_u[1]", "CORx_lkj_cpc[1]",
-                   "Zx", "COEFx"))
-  )
-  expect_setequal(
-    excluded(noncentered),
-    paste0(stem, c("CORx_L", "CORx_R", "CORx_lkj_cpc[1]", "COEFx"))
-  )
+  # matrices, their Cholesky factor, CPCs, and coefficients are derived, with
+  # the unit diagonals and zero upper Cholesky entry structural.
+  expect_identical(roles(us_formula("noncentered")), expected("sampled", "derived"))
 
   # Centered: coefficients are sampled and the latent effects derived.
-  centered <- us_formula("centered")
-  expect_setequal(
-    excluded(centered),
-    paste0(stem, c("CORx_L", "CORx_R", "CORx_lkj_cpc[1]", "Zx"))
-  )
-
-  expect_identical(
-    BayesTools:::.bt_convergence_generated_deterministic(
-      "theta", NULL, "model{ theta <- 1 }"
-    ),
-    character()
-  )
-  expect_setequal(
-    BayesTools:::.bt_jags_stochastic_node_names(paste(
-      "model{",
-      "  for(i in 1:N){ y[i] ~ dnorm(m[i], 1); m[i] <- a + b * x[i] }",
-      "  u[1:2] ~ ddirch(alpha) # d ~ dnorm(0, 1)",
-      "  c.d ~ dgamma(1, 1) T(0.1,)",
-      "  e = 2 * c.d",
-      "}",
-      sep = "\n"
-    )),
-    c("y", "u", "c.d")
-  )
+  expect_identical(roles(us_formula("centered")), expected("derived", "sampled"))
 })
 
 test_that("one chain warns and retains its other convergence criteria", {
 
   set.seed(44)
   chain <- cbind(mu = rnorm(2000))
-  fit <- list(
-    mcmc = coda::mcmc.list(coda::mcmc(chain)),
-    summary.pars = list(mutate = NULL)
-  )
-  class(fit) <- "runjags"
+  fit <- .mock_convergence_fit(chain, prior_list = list(mu = prior("normal", list(0, 1))))
   expect_warning(result <- JAGS_check_convergence(
     fit,
-    prior_list = list(mu = prior("normal", list(0, 1))),
     max_Rhat = 1.05,
     min_ESS = 100,
     max_error = NULL,
@@ -1138,7 +1249,6 @@ test_that("one chain warns and retains its other convergence criteria", {
   expect_equal(attr(result, "diagnostics")$state, "assessable")
   expect_warning(failed <- JAGS_check_convergence(
     fit,
-    prior_list = list(mu = prior("normal", list(0, 1))),
     min_ESS = 1e6,
     max_error = NULL,
     max_SD_error = NULL
@@ -1151,9 +1261,10 @@ test_that("fail_fast stops computing after a failed parameter", {
 
   set.seed(46)
   chain <- cbind(mu = rnorm(100), tau = rnorm(100))
-  fit <- .mock_convergence_fit(chain, chain)
-  priors <- list(mu = prior("normal", list(0, 1)),
-                 tau = prior("normal", list(0, 1)))
+  fit <- .mock_convergence_fit(chain, chain, list(
+    mu = prior("normal", list(0, 1)),
+    tau = prior("normal", list(0, 1))
+  ))
   calls <- 0L
   original <- BayesTools:::.bt_convergence_parameter_diagnostics
   testthat::local_mocked_bindings(
@@ -1164,7 +1275,7 @@ test_that("fail_fast stops computing after a failed parameter", {
     .package = "BayesTools"
   )
   result <- JAGS_check_convergence(
-    fit, priors, min_ESS = 1e6, max_Rhat = NULL, max_error = NULL,
+    fit, min_ESS = 1e6, max_Rhat = NULL, max_error = NULL,
     max_SD_error = NULL, fail_fast = TRUE
   )
   expect_false(result)
@@ -1173,11 +1284,35 @@ test_that("fail_fast stops computing after a failed parameter", {
                c("assessable", "not_checked"))
   expect_length(attr(result, "errors"), 1L)
   complete <- JAGS_check_convergence(
-    fit, priors, min_ESS = 1e6, max_Rhat = NULL, max_error = NULL,
+    fit, min_ESS = 1e6, max_Rhat = NULL, max_error = NULL,
     max_SD_error = NULL, fail_fast = FALSE
   )
   expect_false(complete)
   expect_identical(calls, 3L)
   expect_equal(attr(complete, "diagnostics")$state,
                c("assessable", "assessable"))
+})
+
+test_that("the backend anchor of a model without monitors is auxiliary", {
+
+  skip_if_not_installed("rjags")
+  fit <- suppressWarnings(JAGS_fit(
+    "model{ x ~ dnorm(0, 1) }", prior_list = NULL,
+    chains = 2, adapt = 50, burnin = 50, sample = 100,
+    autofit = TRUE,
+    autofit_control = list(max_extend = 2, sample_extend = 50),
+    seed = 1
+  ))
+  # Autofit does not extend: the anchor is not assessable but not selected.
+  expect_null(attr(fit, "warnings"))
+  expect_identical(
+    .convergence_roles(fit),
+    c(BayesTools_backend_anchor = "auxiliary")
+  )
+  result <- JAGS_check_convergence(fit)
+  expect_true(result)
+  expect_identical(
+    .convergence_states(result),
+    c(BayesTools_backend_anchor = "not_requested")
+  )
 })
