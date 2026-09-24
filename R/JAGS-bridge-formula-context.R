@@ -243,8 +243,8 @@
 }
 
 # Formula priors come from the fitted formula design. A supplied 'prior_list'
-# entry of a formula prior is dropped when it is identical to the fitted
-# prior and rejected otherwise.
+# entry of a formula prior is dropped when it specifies the same prior as the
+# fitted one (see .bt_JAGS_bridge_prior_semantics()) and rejected otherwise.
 .bt_JAGS_bridge_non_formula_prior_list <- function(prior_list,
                                                    formula_design_list,
                                                    check_duplicates = FALSE){
@@ -268,7 +268,10 @@
         .bt_JAGS_bridge_formula_prior_list_from_design(formula_design_list)
       ))
       different <- overlap[!vapply(overlap, function(name){
-        identical(prior_list[[name]], fitted_priors[[name]])
+        identical(
+          .bt_JAGS_bridge_prior_semantics(prior_list[[name]]),
+          .bt_JAGS_bridge_prior_semantics(fitted_priors[[name]])
+        )
       }, logical(1))]
       if(length(different) > 0L){
         stop(
@@ -286,6 +289,35 @@
   }
 
   prior_list
+}
+
+# The part of a prior that defines its distribution: the class (prior type and
+# contrast), the fields (distribution, parameters, truncation, and the fields of
+# ordered priors), and the attributes 'multiply_by', 'components',
+# 'prior_weights' (mixing weights), and 'inclusion_prior', with nested priors
+# reduced the same way. Bookkeeping attributes that JAGS_formula() adds (formula
+# parameter, levels and level names, factor design, interaction terms, ...) and
+# the model prior weight are ignored.
+.bt_JAGS_bridge_prior_semantics <- function(prior){
+
+  if(!is.prior(prior)){
+    return(prior)
+  }
+
+  fields <- unclass(prior)
+  attributes(fields) <- list(names = names(fields))
+  fields <- lapply(fields, .bt_JAGS_bridge_prior_semantics)
+  fields[["prior_weights"]] <- NULL
+
+  semantic_attributes <- c("multiply_by", "components", "prior_weights", "inclusion_prior")
+  list(
+    class      = class(prior),
+    fields     = fields,
+    attributes = lapply(
+      stats::setNames(nm = semantic_attributes),
+      function(name) .bt_JAGS_bridge_prior_semantics(attr(prior, name, exact = TRUE))
+    )
+  )
 }
 
 .bt_JAGS_bridge_formula_prior_names <- function(formula_design_list){

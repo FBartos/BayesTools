@@ -18,7 +18,9 @@
 #' \code{formula_list}. For \code{BayesTools_fit} objects, stored non-formula
 #' priors are used when \code{prior_list = NULL}. Formula priors are taken from
 #' the stored formula metadata: a formula prior supplied here is ignored when
-#' it is identical to the fitted formula prior and an error otherwise.
+#' it specifies the same prior as the fitted formula prior (distribution,
+#' parameters, truncation, contrast, \code{multiply_by}, and mixture
+#' components and weights) and is an error otherwise.
 #' @param formula_list named list of formulas to be added to the model
 #' (names correspond to the parameter name created by each of the formula). For
 #' \code{BayesTools_fit} objects with stored formula-design metadata, formula

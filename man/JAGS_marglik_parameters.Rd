@@ -56,7 +56,9 @@ reconstruction functions during formula random-effect bridge sampling.}
 \code{formula_list}. For \code{BayesTools_fit} objects, stored non-formula
 priors are used when \code{prior_list = NULL}. Formula priors are taken from
 the stored formula metadata: a formula prior supplied here is ignored when
-it is identical to the fitted formula prior and an error otherwise.}
+it specifies the same prior as the fitted formula prior (distribution,
+parameters, truncation, contrast, \code{multiply_by}, and mixture
+components and weights) and is an error otherwise.}
 }
 \value{
 \code{JAGS_marglik_parameters} returns a named list

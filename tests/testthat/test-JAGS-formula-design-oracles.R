@@ -7413,19 +7413,26 @@ test_that("JAGS bridgesampling uses fitted formula metadata and errors on suppli
     fixed = TRUE
   )
 
-  # a prior_list entry identical to the fitted formula prior is dropped silently
-  expect_no_warning(
-    expect_error(
-      JAGS_bridgesampling(
-        fit = fit,
-        log_posterior = function(parameters, data) 0,
-        data = list(),
-        prior_list = formula_result$prior_list
-      ),
-      "posterior' does not contain",
-      fixed = TRUE
-    )
+  # the fitted formula priors and re-specified equal priors (without the
+  # bookkeeping attributes JAGS_formula() adds) are dropped silently
+  respecified_prior_list <- list(
+    mu_intercept = prior("normal", list(0, 1)),
+    mu_x         = prior("normal", list(0, 1))
   )
+  for(supplied in list(formula_result$prior_list, respecified_prior_list)){
+    expect_no_warning(
+      expect_error(
+        JAGS_bridgesampling(
+          fit = fit,
+          log_posterior = function(parameters, data) 0,
+          data = list(),
+          prior_list = supplied
+        ),
+        "posterior' does not contain",
+        fixed = TRUE
+      )
+    )
+  }
 
   # a different prior for a formula parameter is an error, not a silent override
   different_prior_list <- formula_result$prior_list
@@ -7445,6 +7452,65 @@ test_that("JAGS bridgesampling uses fitted formula metadata and errors on suppli
     ),
     fixed = TRUE
   )
+})
+
+test_that("formula prior duplicates are compared by their semantic fields", {
+
+  df <- data.frame(
+    x = c(1, 3, 7, 2, 5, 4),
+    f = factor(c("a", "b", "c", "a", "b", "c"))
+  )
+  slope_prior <- prior("normal", list(0, 1))
+  attr(slope_prior, "multiply_by") <- "sigma"
+  user_priors <- list(
+    intercept = prior_spike_and_slab(
+      prior("normal", list(0, 1)),
+      prior_inclusion = prior("beta", list(1, 1))
+    ),
+    x = slope_prior,
+    f = prior_factor("normal", list(0, 1), contrast = "treatment")
+  )
+  formula_result <- JAGS_formula(~ x + f, "mu", df, user_priors)
+  design_list <- list(mu = formula_result$formula_design)
+  compare <- function(prior_list){
+    BayesTools:::.bt_JAGS_bridge_non_formula_prior_list(
+      prior_list          = prior_list,
+      formula_design_list = design_list,
+      check_duplicates    = TRUE
+    )
+  }
+  respecified <- stats::setNames(user_priors, paste0("mu_", names(user_priors)))
+
+  # bookkeeping attributes of the fitted priors (formula parameter, levels,
+  # factor design, ...) and the model prior weight are ignored
+  expect_length(compare(formula_result$prior_list), 0L)
+  expect_length(compare(respecified), 0L)
+  reweighted <- respecified
+  reweighted$mu_x$prior_weights <- 3
+  expect_length(compare(c(reweighted, list(sigma = prior("gamma", list(2, 2))))), 1L)
+
+  # the distribution, parameters, truncation, contrast, multiply_by, and
+  # mixture components are compared
+  changed <- list(
+    mu_x = prior("normal", list(0, 1)),
+    mu_x = {p <- prior("normal", list(0, 1), truncation = list(0, Inf)); attr(p, "multiply_by") <- "sigma"; p},
+    mu_x = {p <- prior("normal", list(0, 2)); attr(p, "multiply_by") <- "sigma"; p},
+    mu_x = {p <- prior("normal", list(0, 1)); attr(p, "multiply_by") <- "tau"; p},
+    mu_f = prior_factor("normal", list(0, 1), contrast = "independent"),
+    mu_f = prior_factor("cauchy", list(0, 1), contrast = "treatment"),
+    mu_intercept = prior_spike_and_slab(
+      prior("normal", list(0, 1)),
+      prior_inclusion = prior("beta", list(2, 1))
+    ),
+    mu_intercept = prior("normal", list(0, 1))
+  )
+  for(i in seq_along(changed)){
+    expect_error(
+      compare(changed[i]),
+      paste0("differ from the fitted formula priors: ", names(changed)[i], "."),
+      fixed = TRUE
+    )
+  }
 })
 
 test_that("formula random effects require prior_random with no legacy fallback", {
