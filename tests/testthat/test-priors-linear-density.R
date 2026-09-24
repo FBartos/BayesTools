@@ -42,9 +42,11 @@ test_that("bounded conditional-normal prior ordinates retain their numerical err
   expect_equal(as.numeric(.prior_linear_density_height(shifted, 1.1)),
                shifted_reference, tolerance = 1e-7)
 
+  # without the additive normal term the product is a pure scale mixture; the
+  # half-Cauchy multiplier's positive density at zero makes it infinite there
   pure_product <- .prior_linear_combination_density(priors, c(b = 1), n_grid = 128)
   expect_identical(prior_density_ordinate(pure_product, 0)$behavior, "infinite")
-  expect_identical(prior_density_ordinate(pure_product, 0)$method, "unsupported_provenance")
+  expect_identical(prior_density_ordinate(pure_product, 0)$method, "conditional_normal_mixture")
   split <- .prior_linear_split_multiply_groups(priors, c(a = 1, b = 1))
   split$additive_weights <- c(b = 1)
   expect_null(.prior_conditional_normal_spec(priors, split, c(a = NA_character_, b = NA_character_)))
@@ -91,6 +93,8 @@ test_that("unbounded conditional-normal ordinates retain exact support and count
 
 test_that("legacy product flags cannot establish an infinite density", {
 
+  # A non-normal additive term with a product has no structural route; its
+  # capped product grid is not used for heights either.
   priors <- list(a = prior("uniform", list(-1, 1)), b = prior("normal", list(0, 1)),
                  s = prior("normal", list(0, 1)))
   attr(priors$b, "multiply_by") <- "s"
@@ -98,13 +102,161 @@ test_that("legacy product flags cannot establish an infinite density", {
   expect_true(0 %in% attr(unsupported, "singular_density_points"))
   expect_identical(prior_density_ordinate(unsupported, 0)$behavior, "unknown")
   expect_error(.prior_linear_density_height(unsupported, 0),
-               "The prior density at the flagged product ordinate is unavailable from supported deterministic provenance.",
+               paste0("The prior density of this linear combination is unavailable: its ",
+                      "'multiply_by' product has no structural density route"),
                fixed = TRUE)
   pure <- .prior_linear_combination_density(priors, c(b = 1), n_grid = 128)
   expect_identical(prior_density_ordinate(pure, 0)$behavior, "infinite")
   expect_identical(.prior_linear_density_height(pure, 0), Inf)
   attr(pure, "singular_density_points") <- NULL
   expect_identical(.prior_linear_density_height(pure, 0), Inf)
+})
+
+test_that("products without an additive normal term are pure scale mixtures", {
+
+  # b * s with b ~ N(0, 1): f(x) = int phi(x / s) / s f_s(s) ds, and at the
+  # offset 0 f(0) = phi(0) E[1 / s], finite exactly when f_s vanishes at zero
+  # (closed-form inverse moments: gamma rate / (shape - 1), lognormal
+  # exp(-mu + sigma^2 / 2), inverse gamma shape / scale). References:
+  # integrate() at rel.tol 1e-12 with stats:: densities, split around the
+  # scale peak |x|. The capped product grid gave -20.3% at 0 (gamma), +8.2% at
+  # .1 (half-normal) and stopped for the lognormal and inverse-gamma scales.
+  split_reference <- function(f, points){
+    sum(vapply(seq_len(length(points) - 1L), function(i){
+      stats::integrate(f, points[i], points[i + 1L], rel.tol = 1e-12,
+                       subdivisions = 5000L)$value
+    }, numeric(1)))
+  }
+  slope <- prior("normal", list(0, 1))
+  attr(slope, "multiply_by") <- "s"
+  cases <- list(
+    list(s = prior("gamma", list(2, 2)), f = function(s) stats::dgamma(s, 2, 2),
+         upper = Inf, at_zero = stats::dnorm(0) * 2),
+    list(s = prior("lognormal", list(0, 1)), f = function(s) stats::dlnorm(s),
+         upper = Inf, at_zero = stats::dnorm(0) * exp(.5)),
+    list(s = prior("invgamma", list(1, .15)), f = function(s) stats::dgamma(1 / s, 1, .15) / s^2,
+         upper = Inf, at_zero = stats::dnorm(0) / .15),
+    list(s = prior("normal", list(0, 1), list(0, Inf)), f = function(s) 2 * stats::dnorm(s),
+         upper = Inf, at_zero = Inf),
+    list(s = prior("uniform", list(0, 1)), f = function(s) stats::dunif(s),
+         upper = 1, at_zero = Inf)
+  )
+  for(case in cases){
+    density <- .prior_linear_combination_density(list(b = slope, s = case$s), c(b = 1))
+    zero <- prior_density_ordinate(density, 0)
+    expect_true(zero$exact)
+    expect_identical(zero$method, "conditional_normal_mixture")
+    expect_identical(zero$behavior, if(is.finite(case$at_zero)) "regular" else "infinite")
+    expect_equal(as.numeric(.prior_linear_density_height(density, 0)), case$at_zero, tolerance = 1e-12)
+    for(value in c(-.1, .05, 1, 3)){
+      points <- sort(unique(c(0, abs(value) * c(.1, 1, 10), 20)))
+      points <- c(points[points < case$upper], case$upper)
+      reference <- split_reference(function(s) stats::dnorm(value / s) / s * case$f(s), points)
+      ordinate <- prior_density_ordinate(density, value)
+      expect_identical(ordinate$behavior, "regular")
+      expect_true(ordinate$provenance$integration$converged)
+      expect_equal(as.numeric(.prior_linear_density_height(density, value)), reference,
+                   tolerance = 1e-8)
+    }
+  }
+
+  # regions: P(b s > c) = int P(b > c / s) f_s(s) ds; the grid gave +1.3%
+  # and -15.5% for the central interval
+  density <- .prior_linear_combination_density(list(b = slope, s = prior("gamma", list(2, 2))), c(b = 1))
+  upper_tail <- function(c0){
+    split_reference(function(s) stats::pnorm(c0 / s, lower.tail = FALSE) * stats::dgamma(s, 2, 2),
+                    c(0, .1, 1, 3, Inf))
+  }
+  probability <- function(hypothesis){
+    .hypothesis_prior_density_prob(density, hypothesis_parse(hypothesis)$statements[[1L]]$left, "theta")
+  }
+  for(c0 in c(.05, .5, 3)){
+    expect_equal(probability(paste("theta >", c0)), upper_tail(c0), tolerance = 1e-8)
+  }
+  expect_equal(probability("theta > -0.05 & theta < 0.05"), 1 - 2 * upper_tail(.05), tolerance = 1e-8)
+
+  # a deterministic additive part and a nonzero multiplied mean: at the offset
+  # .2, f = phi(b_m / b_s) / b_s E[1 / s]
+  shifted_slope <- prior("normal", list(.4, .3))
+  attr(shifted_slope, "multiply_by") <- "s"
+  shifted <- .prior_linear_combination_density(
+    list(p = prior("point", list(.2)), b = shifted_slope, s = prior("gamma", list(3, 2))),
+    c(p = 1, b = 1)
+  )
+  expect_equal(as.numeric(.prior_linear_density_height(shifted, .2)),
+               stats::dnorm(.4 / .3) / .3 * 2 / (3 - 1), tolerance = 1e-12)
+  for(value in c(.5, 1)){
+    expect_equal(
+      as.numeric(.prior_linear_density_height(shifted, value)),
+      split_reference(function(s) stats::dnorm(value, .2 + .4 * s, .3 * s) * stats::dgamma(s, 3, 2),
+                      c(0, .1, .5, 1, 3, Inf)),
+      tolerance = 1e-8
+    )
+  }
+
+  # a point multiplier or a deterministic multiplied part is an affine term
+  fixed_scale <- .prior_linear_combination_density(list(b = slope, s = prior("point", list(2))), c(b = 1))
+  expect_identical(prior_density_ordinate(fixed_scale, .5)$method, "scalar_affine")
+  expect_equal(as.numeric(.prior_linear_density_height(fixed_scale, .5)), stats::dnorm(.5, 0, 2),
+               tolerance = 1e-14)
+  fixed_slope <- prior("point", list(.5))
+  attr(fixed_slope, "multiply_by") <- "s"
+  scaled_multiplier <- .prior_linear_combination_density(
+    list(b = fixed_slope, s = prior("gamma", list(2, 2))), c(b = 1)
+  )
+  expect_identical(prior_density_ordinate(scaled_multiplier, .3)$method, "scalar_affine")
+  expect_equal(as.numeric(.prior_linear_density_height(scaled_multiplier, .3)),
+               2 * stats::dgamma(.6, 2, 2), tolerance = 1e-14)
+
+  # a non-normal additive term with a product has no structural route and no
+  # grid height or grid probability
+  general <- .prior_linear_combination_density(
+    list(a = prior("t", list(0, 1, 5)), b = slope, s = prior("lognormal", list(0, 1))),
+    c(a = 1, b = 1)
+  )
+  expect_identical(prior_density_ordinate(general, 1)$behavior, "unknown")
+  message <- paste0("The prior density of this linear combination is unavailable: its ",
+                    "'multiply_by' product has no structural density route")
+  expect_error(.prior_linear_density_height(general, 1), message, fixed = TRUE)
+  expect_error(
+    .hypothesis_prior_density_prob(general, hypothesis_parse("theta > 0")$statements[[1L]]$left, "theta"),
+    message, fixed = TRUE
+  )
+})
+
+test_that("products of a non-normal term and a scale are scale-mixture ordinates", {
+
+  # b * s with b ~ t(0, 1, 5) and s ~ gamma(3, 2): f(x) = int f_t(x / s) /
+  # s f_s(s) ds and f(0) = f_t(0) E[1 / s]. References: integrate() at
+  # rel.tol 1e-12 with stats:: densities.
+  slope <- prior("t", list(0, 1, 5))
+  attr(slope, "multiply_by") <- "s"
+  density <- .prior_linear_combination_density(list(b = slope, s = prior("gamma", list(3, 2))), c(b = 1))
+  zero <- prior_density_ordinate(density, 0)
+  expect_identical(zero$method, "scale_mixture")
+  expect_equal(exp(zero$log_density), stats::dt(0, 5) * 2 / (3 - 1), tolerance = 1e-12)
+  for(value in c(-.7, .2, 4)){
+    reference <- sum(vapply(list(c(0, .1), c(.1, 1), c(1, 5), c(5, Inf)), function(piece){
+      stats::integrate(function(s) stats::dt(value / s, 5) / s * stats::dgamma(s, 3, 2),
+                       piece[1L], piece[2L], rel.tol = 1e-12)$value
+    }, numeric(1)))
+    expect_equal(as.numeric(.prior_linear_density_height(density, value)), reference, tolerance = 1e-8)
+  }
+  side <- hypothesis_parse("theta > 0.5")$statements[[1L]]$left
+  expect_equal(
+    .hypothesis_prior_density_prob(density, side, "theta"),
+    stats::integrate(function(s) stats::pt(.5 / s, 5, lower.tail = FALSE) * stats::dgamma(s, 3, 2),
+                     0, Inf, rel.tol = 1e-12)$value,
+    tolerance = 1e-8
+  )
+
+  # a positive factor and a positive scale: zero density below the offset, and
+  # at the offset f_s(0) E[1 / b] when only the scale is positive at zero
+  positive <- prior("lognormal", list(0, .5))
+  attr(positive, "multiply_by") <- "s"
+  density <- .prior_linear_combination_density(list(b = positive, s = prior("exp", list(1))), c(b = 1))
+  expect_identical(prior_density_ordinate(density, -.1)$behavior, "zero")
+  expect_equal(as.numeric(.prior_linear_density_height(density, 0)), exp(.5^2 / 2), tolerance = 1e-12)
 })
 
 test_that("conditional-normal ordinates preserve model and inclusion mixture weights", {

@@ -43,9 +43,18 @@ A \code{regular} classification is structural. Consequently, \code{log_density} 
 be \code{-Inf} when an otherwise positive finite density underflows in ordinary
 floating-point evaluation. General numerical convolutions, products, and
 arbitrary user transformations are reported as \code{unknown} unless exact point
-mass or singular-point metadata establishes the requested behavior.
+mass establishes the requested behavior.
 Supported conditional-normal mixtures are structurally regular because they
-include an independent positive-variance Gaussian term. Their ordinates use
+include an independent positive-variance Gaussian term. A product term
+(\code{multiply_by}) without an additive normal term is a pure scale mixture:
+away from its deterministic offset it is regular, and at the offset its
+density is \eqn{\phi(b_m / b_s) E[1 / |s|] / b_s} for a multiplied
+\eqn{N(b_m, b_s)} term and multiplier \eqn{s}, finite exactly when the
+multiplier's declared density vanishes at zero and infinite otherwise.
+Levels of ordered priors are the ordered total times their Dirichlet
+allocation share and are classified in the same way; a non-normal total or
+multiplied term uses the analogous \code{"scale_mixture"} quadrature. Their
+ordinates use
 quadrature over the multiplier's declared support, split at its bounds, at
 quantiles of its declared prior (spaced out next to a bound with infinite
 density) and around the location peak of the conditional normal density

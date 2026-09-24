@@ -318,6 +318,9 @@
     prob
   }
 
+  .prior_linear_density_check_grid(.prior_density_route_from_adaptive(
+    attr(prior_density, "adaptive_evaluation", exact = TRUE)
+  ))
   prob <- evaluate_probability(prior_density)
   refined <- .prior_linear_density_refinement(prior_density)
   if(is.null(refined) &&

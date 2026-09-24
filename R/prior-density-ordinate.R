@@ -40,9 +40,18 @@
 #' be `-Inf` when an otherwise positive finite density underflows in ordinary
 #' floating-point evaluation. General numerical convolutions, products, and
 #' arbitrary user transformations are reported as `unknown` unless exact point
-#' mass or singular-point metadata establishes the requested behavior.
+#' mass establishes the requested behavior.
 #' Supported conditional-normal mixtures are structurally regular because they
-#' include an independent positive-variance Gaussian term. Their ordinates use
+#' include an independent positive-variance Gaussian term. A product term
+#' (`multiply_by`) without an additive normal term is a pure scale mixture:
+#' away from its deterministic offset it is regular, and at the offset its
+#' density is \eqn{\phi(b_m / b_s) E[1 / |s|] / b_s} for a multiplied
+#' \eqn{N(b_m, b_s)} term and multiplier \eqn{s}, finite exactly when the
+#' multiplier's declared density vanishes at zero and infinite otherwise.
+#' Levels of ordered priors are the ordered total times their Dirichlet
+#' allocation share and are classified in the same way; a non-normal total or
+#' multiplied term uses the analogous `"scale_mixture"` quadrature. Their
+#' ordinates use
 #' quadrature over the multiplier's declared support, split at its bounds, at
 #' quantiles of its declared prior (spaced out next to a bound with infinite
 #' density) and around the location peak of the conditional normal density
@@ -119,7 +128,8 @@ prior_density_ordinate <- function(x, value){
 .prior_density_ordinate_methods <- function(){
   c(
     "primitive", "point", "finite_mixture", "scalar_affine",
-    "linear_normal", "conditional_normal_mixture", "named_transform", "unsupported_provenance"
+    "linear_normal", "conditional_normal_mixture", "scale_mixture",
+    "named_transform", "unsupported_provenance"
   )
 }
 
@@ -688,11 +698,13 @@ prior_density_ordinate <- function(x, value){
   )
 }
 
+# Whether a provenance record contains a numerical quadrature (an
+# 'integration' record with a non-exact value).
 .prior_density_ordinate_has_quadrature <- function(provenance){
 
   if(!is.list(provenance)) return(FALSE)
-  if(identical(provenance$kind, "conditional_normal_mixture") ||
-     identical(provenance$source_kind, "conditional_normal_mixture")) return(TRUE)
+  if(is.list(provenance$integration) &&
+     identical(provenance$integration$exact, FALSE)) return(TRUE)
   any(vapply(provenance, .prior_density_ordinate_has_quadrature, logical(1)))
 }
 
@@ -975,63 +987,6 @@ prior_density_ordinate <- function(x, value){
   sum(group$weights * transformed)
 }
 
-.prior_density_ordinate_linear_scalar <- function(prior_list, weights,
-                                                  source_transforms, value){
-
-  groups <- tryCatch(
-    .prior_linear_weight_groups(prior_list, weights),
-    error = function(e) NULL
-  )
-  if(is.null(groups)){
-    return(NULL)
-  }
-
-  offset <- 0
-  random_group <- NULL
-  for(group in groups){
-    point_location <- .prior_density_ordinate_point_group_location(
-      group,
-      source_transforms
-    )
-    if(length(point_location) == 1L){
-      if(is.na(point_location)){
-        return(NULL)
-      }
-      offset <- offset + point_location
-      next
-    }
-    if(length(group$weights) != 1L || !is.null(random_group) ||
-       is.prior.vector(group$prior) || is.prior.ordered(group$prior)){
-      return(NULL)
-    }
-    random_group <- group
-  }
-
-  if(is.null(random_group)){
-    return(.prior_density_ordinate_atom_result(
-      value       = value,
-      locations   = offset,
-      probability = 1,
-      method       = "scalar_affine",
-      provenance   = list(
-        kind    = "scalar_affine",
-        offset  = offset,
-        scale   = 0,
-        weights = .prior_density_ordinate_compact(weights)
-      )
-    ))
-  }
-
-  parameter <- names(random_group$weights)[1L]
-  .prior_density_ordinate_prior_affine(
-    prior             = random_group$prior,
-    value             = value,
-    offset            = offset,
-    scale             = unname(random_group$weights[[1L]]),
-    source_transform  = .prior_linear_source_transform(source_transforms[parameter])
-  )
-}
-
 .prior_density_ordinate_stable_norm <- function(x){
 
   maximum <- max(abs(x))
@@ -1194,27 +1149,6 @@ prior_density_ordinate <- function(x, value){
   sum(locations)
 }
 
-.prior_density_ordinate_additive_factor <- function(prior_list, weights,
-                                                    source_transforms, value){
-
-  weights <- weights[weights != 0]
-  scalar <- .prior_density_ordinate_linear_scalar(
-    prior_list,
-    weights,
-    source_transforms,
-    value
-  )
-  if(!is.null(scalar)){
-    return(scalar)
-  }
-  .prior_density_ordinate_linear_normal(
-    prior_list,
-    weights,
-    source_transforms,
-    value
-  )
-}
-
 # Conditional-normal specification of a Gaussian convolution (Gaussian terms
 # plus one other continuous scalar term); NULL for other combinations.
 .prior_density_ordinate_gaussian_convolution_spec <- function(prior_list, weights,
@@ -1284,70 +1218,6 @@ prior_density_ordinate <- function(x, value){
       additive   = names(groups)[gaussian],
       multiplied = character(),
       multiplier = other$parameter
-    )
-  )
-}
-
-.prior_density_ordinate_product_singularity <- function(prior_list, split,
-                                                        source_transforms,
-                                                        value){
-
-  if(length(split$product_groups) != 1L){
-    return(NULL)
-  }
-  offset <- .prior_density_ordinate_deterministic_offset(
-    prior_list,
-    split$additive_weights,
-    source_transforms
-  )
-  if(is.null(offset) || !is.finite(offset) || value != offset){
-    return(NULL)
-  }
-
-  product_group <- split$product_groups[[1L]]
-  factor <- .prior_density_ordinate_additive_factor(
-    product_group$prior_list,
-    product_group$weights,
-    source_transforms,
-    0
-  )
-  multiplier <- product_group$multiplier
-  multiplier_prior <- prior_list[[multiplier]]
-  if(is.null(factor) || !is.prior(multiplier_prior)){
-    return(NULL)
-  }
-  multiplier_result <- .prior_density_ordinate_prior_affine(
-    multiplier_prior,
-    0,
-    0,
-    1,
-    .prior_linear_source_transform(source_transforms[multiplier])
-  )
-  factor_behavior <- .prior_density_ordinate_continuous_behavior(factor)
-  multiplier_behavior <-
-    .prior_density_ordinate_continuous_behavior(multiplier_result)
-  if(!identical(factor_behavior, "regular") ||
-     !identical(multiplier_behavior, "regular")){
-    return(NULL)
-  }
-
-  .prior_density_ordinate_result(
-    value       = value,
-    behavior    = "infinite",
-    log_density = Inf,
-    exact       = TRUE,
-    method      = "unsupported_provenance",
-    reason      = paste0(
-      "A product of two independent continuous factors with finite positive ",
-      "densities at zero has a structural density singularity at the ",
-      "requested value."
-    ),
-    provenance  = list(
-      kind             = "product_singularity",
-      singular_point   = offset,
-      factor           = factor$provenance,
-      multiplier       = multiplier_result$provenance,
-      multiplier_name  = multiplier
     )
   )
 }

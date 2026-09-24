@@ -17,9 +17,11 @@
 # * "normal": a sum of normal terms (normal, mnormal, log-lognormal) and
 #   points;
 # * "conditional_normal": a Gaussian convolution or a conditional-normal
-#   scale mixture (R/priors-linear-density-combinations.R);
-# * "product": a general product term without a structural route; its value
-#   at the deterministic offset is classified by the product singularity;
+#   scale mixture, including the pure scale mixture of a product without an
+#   additive normal term (R/priors-linear-density-combinations.R);
+# * "scale_product": the product of a non-normal scalar term and a scalar
+#   multiplier (ordered levels with a non-normal total, 'multiply_by'
+#   products of non-normal terms);
 # * "unknown": a combination without a structural route.
 # Internal nodes:
 # * "mixture": a finite mixture of routes (mixture and spike-and-slab terms,
@@ -268,6 +270,192 @@
   list(type = "conditional_normal", spec = spec, n_grid = n_grid)
 }
 
+# Ordered-prior levels (and allocation subsets) are the ordered total times an
+# allocation share (.prior_ordered_linear_share()): a fixed share scales the
+# total, and a Beta(alpha_1, alpha_2) share multiplies it. The ordered terms of
+# a combination are rewritten as these terms: the total with the share's
+# scale as weight and, for a Beta share, the share as its 'multiply_by' scale.
+# NULL without ordered terms; a 'reason' when the ordered term has no such
+# representation.
+.prior_density_route_ordered_terms <- function(prior_list, weights, source_transforms){
+
+  groups <- tryCatch(
+    .prior_linear_weight_groups(prior_list, weights),
+    error = function(e) NULL
+  )
+  if(is.null(groups)){
+    return(NULL)
+  }
+  ordered <- names(groups)[vapply(groups, function(group){
+    is.prior.ordered(group$prior)
+  }, logical(1))]
+  if(length(ordered) == 0L){
+    return(NULL)
+  }
+
+  for(parameter in ordered){
+    group <- groups[[parameter]]
+    if(!is.null(attr(group$prior, "multiply_by", exact = TRUE))){
+      return(list(reason = "Scaled ordered-prior terms are not structurally classified."))
+    }
+    share <- tryCatch(
+      .prior_ordered_linear_share(group$prior, group$weights, group$indices),
+      error = function(e) e
+    )
+    if(inherits(share, "error")){
+      return(list(reason = conditionMessage(share)))
+    }
+    weights <- weights[setdiff(names(weights), names(group$weights))]
+    total <- group$prior$total
+    total_name <- paste0(".ordered_total[", parameter, "]")
+    if(identical(share$type, "point")){
+      if(share$scale == 0){
+        next
+      }
+    }else{
+      share_name <- paste0(".ordered_share[", parameter, "]")
+      attr(total, "multiply_by") <- share_name
+      prior_list[[share_name]] <- prior(
+        "beta",
+        list(alpha = share$alpha[[1L]], beta = share$alpha[[2L]])
+      )
+    }
+    prior_list[[total_name]] <- total
+    weights[[total_name]] <- share$scale
+    source_transforms[[total_name]] <- NA_character_
+  }
+  list(prior_list = prior_list, weights = weights,
+       source_transforms = source_transforms[names(weights)])
+}
+
+# Route of a combination with 'multiply_by' products. One product term
+# X = a + b * s (additive part a, multiplied part b, multiplier s):
+# * mixture and spike-and-slab terms (also of the multiplier) are expanded
+#   into component combinations;
+# * a point multiplier k, or a deterministic multiplied part c, is folded
+#   into an additive term (k b, or c s; nothing when zero);
+# * a normal multiplied part with a normal or deterministic additive part is
+#   the conditional-normal route (a pure scale mixture when a is
+#   deterministic);
+# * a single non-normal scalar multiplied term with a deterministic additive
+#   part is a scale product (.prior_scale_product_ordinate()).
+# Other products (several products, a non-normal additive term, several
+# multiplied non-normal terms, a multiplier that also has its own weight) have
+# no structural route.
+.prior_density_route_product <- function(prior_list, weights, split,
+                                         source_transforms, n_grid){
+
+  general <- function(reason = "General products are not structurally classified."){
+    .prior_density_route_unknown(
+      reason     = reason,
+      provenance = list(
+        kind        = "general_product",
+        weights     = .prior_density_ordinate_compact(weights),
+        multipliers = names(split$product_groups)
+      )
+    )
+  }
+  if(length(split$product_groups) != 1L){
+    return(general())
+  }
+  product <- split$product_groups[[1L]]
+  multiplier <- product$multiplier
+  multiplier_prior <- prior_list[[multiplier]]
+  additive_weights <- split$additive_weights[split$additive_weights != 0]
+  if(!is.prior(multiplier_prior) || .prior_linear_prior_dimension(multiplier_prior) != 1L ||
+     multiplier %in% names(additive_weights) ||
+     !is.null(attr(multiplier_prior, "multiply_by", exact = TRUE))){
+    return(general())
+  }
+
+  active <- unique(c(
+    .prior_linear_active_parameters(prior_list, additive_weights),
+    names(product$prior_list),
+    multiplier
+  ))
+  mixtures <- active[vapply(prior_list[active], function(prior){
+    is.prior.mixture(prior) || is.prior.spike_and_slab(prior)
+  }, logical(1))]
+  if(length(mixtures) > 0L){
+    expansion <- .prior_density_route_mixture_expansion(prior_list, active, n_grid)
+    if(is.null(expansion)){
+      return(general("The mixture expansion of this product exceeds the leaf cap."))
+    }
+    return(.prior_density_route_expand(expansion, weights, source_transforms, n_grid))
+  }
+
+  # a point multiplier scales the multiplied terms
+  if(is.prior.none(multiplier_prior) || is.prior.point(multiplier_prior)){
+    k <- if(is.prior.none(multiplier_prior)) 0 else multiplier_prior$parameters$location
+    folded_priors <- prior_list
+    for(parameter in names(product$prior_list)){
+      attr(folded_priors[[parameter]], "multiply_by") <- NULL
+    }
+    folded_weights <- weights
+    folded_weights[names(product$weights)] <- product$weights * k
+    return(.prior_density_route_linear(folded_priors, folded_weights, source_transforms, n_grid))
+  }
+  if(!.prior_density_simple_continuous(multiplier_prior)){
+    return(general())
+  }
+
+  # a deterministic multiplied part c adds c * s
+  constant <- .prior_density_ordinate_deterministic_offset(
+    product$prior_list, product$weights, source_transforms
+  )
+  if(!is.null(constant)){
+    if(!is.finite(constant)){
+      return(general())
+    }
+    folded_weights <- additive_weights
+    if(constant != 0){
+      folded_weights[[multiplier]] <- constant
+    }
+    folded_transforms <- source_transforms[names(folded_weights)]
+    names(folded_transforms) <- names(folded_weights)
+    return(.prior_density_route_linear(prior_list, folded_weights, folded_transforms, n_grid))
+  }
+
+  spec <- .prior_conditional_normal_spec(prior_list, split, source_transforms)
+  if(!is.null(spec)){
+    return(list(type = "conditional_normal", spec = spec, n_grid = n_grid))
+  }
+
+  # a single non-normal scalar multiplied term with a deterministic additive part
+  offset <- .prior_density_ordinate_deterministic_offset(
+    prior_list, additive_weights, source_transforms
+  )
+  multiplied <- tryCatch(
+    .prior_linear_weight_groups(product$prior_list, product$weights),
+    error = function(e) NULL
+  )
+  if(is.null(offset) || !is.finite(offset) || length(multiplied) != 1L ||
+     length(multiplied[[1L]]$weights) != 1L ||
+     !is.na(source_transforms[names(multiplied[[1L]]$weights)])){
+    return(general())
+  }
+  factor <- multiplied[[1L]]$prior
+  attr(factor, "multiply_by") <- NULL
+  if(!.prior_density_simple_continuous(factor)){
+    return(general())
+  }
+  list(
+    type   = "scale_product",
+    spec   = .prior_scale_product_spec(
+      offset     = offset,
+      scale      = unname(multiplied[[1L]]$weights[[1L]]),
+      factor     = factor,
+      multiplier = multiplier_prior,
+      sources    = list(
+        additive   = names(additive_weights),
+        multiplied = names(multiplied),
+        multiplier = multiplier
+      )
+    ),
+    n_grid = n_grid
+  )
+}
+
 # Route of the linear combination sum_j weights[j] * term_j of 'prior_list'
 # (terms entering through a 'multiply_by' scale are products).
 .prior_density_route_linear <- function(prior_list, weights, source_transforms,
@@ -299,6 +487,19 @@
     ))
   }
 
+  ordered <- .prior_density_route_ordered_terms(prior_list, weights, source_transforms)
+  if(!is.null(ordered)){
+    if(!is.null(ordered$reason)){
+      return(.prior_density_route_unknown(
+        reason     = ordered$reason,
+        provenance = list(kind = "unsupported_provenance", ordered = TRUE)
+      ))
+    }
+    return(.prior_density_route_linear(
+      ordered$prior_list, ordered$weights, ordered$source_transforms, n_grid
+    ))
+  }
+
   split <- tryCatch(
     .prior_linear_split_multiply_groups(prior_list, weights),
     error = function(e) NULL
@@ -311,58 +512,8 @@
   }
 
   if(length(split$product_groups) > 0L){
-    if(length(split$product_groups) == 1L){
-      product <- split$product_groups[[1L]]
-      active <- unique(c(
-        .prior_linear_active_parameters(prior_list, split$additive_weights),
-        names(product$prior_list)
-      ))
-      mixtures <- active[vapply(prior_list[active], function(prior){
-        is.prior.mixture(prior) || is.prior.spike_and_slab(prior)
-      }, logical(1))]
-      if(length(mixtures) > 0L){
-        expansion <- .prior_conditional_normal_expansion(prior_list, split, source_transforms, n_grid)
-        if(!is.null(expansion)){
-          parent <- prior_list[[expansion$parameter]]
-          probabilities <- .prior_density_ordinate_mixture_weights(parent)
-          return(.prior_density_route_mixture(
-            components = lapply(expansion$indices, function(i){
-              component_priors <- prior_list
-              component_priors[[expansion$parameter]] <-
-                .prior_density_copy_parent_attributes(parent[[i]], parent)
-              .prior_density_route_linear(component_priors, weights, source_transforms, n_grid)
-            }),
-            weights = probabilities[expansion$indices]
-          ))
-        }
-      }
-      product_constant <- .prior_density_ordinate_deterministic_offset(
-        product$prior_list, product$weights, source_transforms
-      )
-      if(identical(product_constant, 0)){
-        additive <- .prior_density_route_additive_factor(
-          prior_list, split$additive_weights, source_transforms
-        )
-        if(is.null(additive)){
-          additive <- .prior_density_route_additive_components(
-            prior_list, split$additive_weights, source_transforms, n_grid
-          )
-        }
-        if(!is.null(additive)){
-          return(additive)
-        }
-      }
-    }
-    spec <- .prior_conditional_normal_spec(prior_list, split, source_transforms)
-    if(!is.null(spec)){
-      return(list(type = "conditional_normal", spec = spec, n_grid = n_grid))
-    }
-    return(list(
-      type              = "product",
-      prior_list        = prior_list,
-      split             = split,
-      source_transforms = source_transforms,
-      weights           = weights
+    return(.prior_density_route_product(
+      prior_list, weights, split, source_transforms, n_grid
     ))
   }
 
@@ -614,27 +765,7 @@
       route$prior_list, route$weights, route$source_transforms, value
     ),
     "conditional_normal" = .prior_conditional_normal_ordinate(route$spec, value, route$n_grid),
-    "product" = {
-      singularity <- .prior_density_ordinate_product_singularity(
-        route$prior_list, route$split, route$source_transforms, value
-      )
-      if(is.null(singularity)){
-        singularity <- .prior_density_ordinate_result(
-          value       = value,
-          behavior    = "unknown",
-          log_density = NA_real_,
-          exact       = FALSE,
-          method      = "unsupported_provenance",
-          reason      = "General products are not structurally classified.",
-          provenance  = list(
-            kind        = "general_product",
-            weights     = .prior_density_ordinate_compact(route$weights),
-            multipliers = names(route$split$product_groups)
-          )
-        )
-      }
-      singularity
-    },
+    "scale_product" = .prior_scale_product_ordinate(route$spec, value, route$n_grid),
     "unknown" = .prior_density_ordinate_result(
       value       = value,
       behavior    = "unknown",
@@ -728,7 +859,7 @@
       route$prior_list, route$weights, route$source_transforms, 0
     )$provenance,
     "conditional_normal" = list(kind = "conditional_normal_mixture"),
-    "product" = list(kind = "general_product"),
+    "scale_product" = list(kind = "scale_mixture"),
     "unknown" = route$provenance,
     "mixture" = {
       positive <- route$weights > 0
@@ -769,7 +900,7 @@
       route$prior_list, route$weights, route$source_transforms, region
     ),
     "conditional_normal" = .prior_region_conditional_normal(route$spec, region, route$n_grid),
-    "product" = .prior_region_unavailable(),
+    "scale_product" = .prior_region_scale_product(route$spec, region, route$n_grid),
     "unknown" = .prior_region_unavailable(),
     "mixture" = .prior_region_combine(
       lapply(route$components, .prior_density_route_region, region = region),
@@ -785,4 +916,40 @@
       hull           = route$hull
     )
   )
+}
+
+# ---- numerical grids ---------------------------------------------------------
+
+# Whether a route contains a product without a structural route.
+.prior_density_route_has_general_product <- function(route){
+
+  if(is.null(route)){
+    return(FALSE)
+  }
+  switch(
+    route$type,
+    "unknown"   = identical(route$provenance$kind, "general_product"),
+    "mixture"   = any(vapply(route$components, .prior_density_route_has_general_product, logical(1))),
+    "transform" = .prior_density_route_has_general_product(route$source),
+    FALSE
+  )
+}
+
+# Numerical grids stand in only for combinations of simple terms without a
+# structural route: a product grid is capped in size and cannot be refined
+# reliably, so a product without a structural route is unavailable for
+# inference.
+.prior_linear_density_check_grid <- function(route){
+
+  if(.prior_density_route_has_general_product(route)){
+    stop(
+      "The prior density of this linear combination is unavailable: its ",
+      "'multiply_by' product has no structural density route (a non-normal ",
+      "additive term, several products, or several non-normal multiplied ",
+      "terms), and numerical product grids are not used for inference. ",
+      "Evaluate the terms separately.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
 }

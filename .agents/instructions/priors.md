@@ -128,6 +128,31 @@ ordinates are small at ordinary scales, but the missed fraction does not
 depend on the units of the value, so the absolute tolerance does not bound
 it.
 
+Product terms (`multiply_by`) and ordered-prior levels share one route
+(R/prior-density-route.R). An ordered level (or allocation subset) is the
+ordered total times its allocation share (`.prior_ordered_linear_share()`):
+a fixed share scales the total, a Beta share multiplies it. A point
+multiplier or a deterministic multiplied part folds into an affine term. A
+normal multiplied part with a normal or deterministic additive part is the
+conditional-normal route; without an additive normal term it is a pure scale
+mixture (additive SD 0), split additionally at the multiplier's zero and at
+|value - a_m| / b_s (1/10, 1, 10) on both sides of it. At the deterministic
+offset a_m its density is phi(b_m / b_s) E[1 / |s|] / b_s: the multiplier's
+declared behavior at zero decides it (a vanishing density gives the finite
+value, closed-form inverse moments for the untruncated gamma, inverse-gamma,
+lognormal and beta families and a quadrature otherwise; a positive or
+infinite density an infinite ordinate). A single non-normal multiplied term
+(or a non-normal ordered total) with a deterministic additive part is a
+`scale_mixture` quadrature over the multiplier, split also at the images of
+the term's quantiles and bounds; its offset is classified from both declared
+behaviors at zero (infinite when either is infinite or both are positive;
+f_L(0) E[1 / |s|] or f_s(0) E[1 / |L|] when only one vanishes; zero when
+both vanish; a jump when a term bounded at zero meets a two-sided other term
+is not classified). Other products (several products, a non-normal additive
+term with a product, several multiplied non-normal terms) have no structural
+route; their capped product grid is never used for heights or probabilities,
+which are then unavailable.
+
 Mixture ordinates (model, conditional, and mixture or spike-and-slab terms of
 one linear combination) are weighted sums of per-component ordinates, each from
 its own exact or regular method, so a numerical grid never spans a density jump

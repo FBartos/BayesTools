@@ -1155,132 +1155,93 @@
   list(relative = 1e-4, absolute = 1e-12)
 }
 
-.prior_conditional_normal_groups <- function(prior_list, split){
+# A simple continuous scalar prior with a numeric interval support: the
+# multiplier of a scale mixture or a term of a two-term convolution.
+.prior_density_simple_continuous <- function(prior){
+
+  if(!is.prior(prior) || !is.prior.simple(prior) || is.prior.point(prior) ||
+     is.prior.discrete(prior) || is.prior.mixture(prior) ||
+     is.prior.spike_and_slab(prior) || is.prior.vector(prior) ||
+     .is_prior_expression(prior) ||
+     !is.null(attr(prior, "multiply_by", exact = TRUE)) ||
+     !.prior_density_ordinate_parameters_numeric(prior)){
+    return(FALSE)
+  }
+  bounds <- unlist(prior$truncation[c("lower", "upper")], use.names = FALSE)
+  is.numeric(bounds) && length(bounds) == 2L && !anyNA(bounds) && bounds[1L] < bounds[2L]
+}
+
+# Conditional-normal specification of a product term X = a + b * s: an
+# additive part a (normal terms and points; a_s = 0 when it is deterministic),
+# a multiplied normal part b ~ N(b_m, b_s) with b_s > 0 and a simple continuous
+# multiplier s. Given s, X is normal with mean a_m + b_m s and SD
+# sqrt(a_s^2 + b_s^2 s^2); with a_s = 0 it is a pure scale mixture. NULL for
+# other products.
+.prior_conditional_normal_spec <- function(prior_list, split, source_transforms){
 
   if(length(split$product_groups) != 1L){
     return(NULL)
   }
   product <- split$product_groups[[1L]]
   multiplier <- prior_list[[product$multiplier]]
-  if(!is.prior.simple(multiplier) || is.prior.point(multiplier) ||
-     is.prior.discrete(multiplier) || is.prior.mixture(multiplier) ||
-     is.prior.spike_and_slab(multiplier) ||
-     !is.null(attr(multiplier, "multiply_by", exact = TRUE)) ||
+  if(!.prior_density_simple_continuous(multiplier) ||
      .prior_linear_prior_dimension(multiplier) != 1L){
     return(NULL)
   }
   bounds <- unlist(multiplier$truncation[c("lower", "upper")], use.names = FALSE)
-  if(length(bounds) != 2L || anyNA(bounds) || bounds[1L] >= bounds[2L]){
-    return(NULL)
-  }
   additive_groups <- .prior_linear_weight_groups(prior_list, split$additive_weights)
   product_groups <- .prior_linear_weight_groups(product$prior_list, product$weights)
   if(length(intersect(names(additive_groups), names(product_groups))) > 0L ||
      product$multiplier %in% c(names(additive_groups), names(product_groups))){
     return(NULL)
   }
-  list(multiplier = multiplier, bounds = bounds,
-       additive = additive_groups, multiplied = product_groups)
-}
-
-# Each leaf of the expansion is an independent quadrature with the full
-# evaluation budget. The number of leaves is capped by the shared leaf cap
-# (.prior_density_route_leaf_cap()), which bounds the combinatorial expansion
-# before any numerical evaluation.
-.prior_conditional_normal_expansion <- function(prior_list, split, source_transforms, n_grid){
-
-  groups <- .prior_conditional_normal_groups(prior_list, split)
-  if(is.null(groups)) return(NULL)
-  max_leaves <- .prior_density_route_leaf_cap(n_grid)
-  if(max_leaves < 1) return(NULL)
-  inspect_group <- function(group, limit){
-    prior <- group$prior
-    if(is.prior.mixture(prior) || is.prior.spike_and_slab(prior)){
-      probabilities <- .prior_density_ordinate_mixture_weights(prior)
-      if(is.null(probabilities)) return(NULL)
-      indices <- which(probabilities > 0)
-      count <- 0
-      always_normal <- TRUE
-      zero_points <- TRUE
-      for(j in seq_along(indices)){
-        child <- group
-        child$prior <- .prior_density_copy_parent_attributes(prior[[indices[j]]], prior)
-        if(!identical(attr(child$prior, "multiply_by", exact = TRUE),
-                      attr(prior, "multiply_by", exact = TRUE))) return(NULL)
-        info <- inspect_group(child, limit - count)
-        if(is.null(info)) return(NULL)
-        count <- count + info$count
-        always_normal <- always_normal && info$always_normal
-        zero_points <- zero_points && info$zero_points
-      }
-      return(list(count = count, always_normal = always_normal,
-                  zero_points = zero_points, indices = indices))
-    }
-    if(limit < 1) return(NULL)
-    normal <- .prior_density_ordinate_linear_normal(
-      stats::setNames(list(prior), group$parameter), group$weights, source_transforms, 0
-    )
-    if(!is.null(normal) && isTRUE(normal$exact) && identical(normal$method, "linear_normal")){
-      return(list(count = 1, always_normal = TRUE, zero_points = TRUE))
-    }
-    point <- .prior_density_ordinate_point_group_location(group, source_transforms)
-    if(length(point) == 1L && is.finite(point)){
-      return(list(count = 1, always_normal = FALSE, zero_points = point == 0))
-    }
-    NULL
-  }
-  all_groups <- c(groups$additive, groups$multiplied)
-  counts <- list()
-  total <- 1
-  for(parameter in names(all_groups)){
-    info <- inspect_group(all_groups[[parameter]], floor(max_leaves / total))
-    if(is.null(info)) return(NULL)
-    total <- total * info$count
-    counts[[parameter]] <- info
-  }
-  additive_normal <- vapply(counts[names(groups$additive)], `[[`, logical(1), "always_normal")
-  product_normal <- vapply(counts[names(groups$multiplied)], `[[`, logical(1), "always_normal")
-  product_zero <- vapply(counts[names(groups$multiplied)], `[[`, logical(1), "zero_points")
-  if(!any(additive_normal) || (!any(product_normal) && !all(product_zero))) return(NULL)
-  mixture_names <- names(counts)[vapply(counts, function(x) !is.null(x$indices), logical(1))]
-  if(length(mixture_names) == 0L) return(NULL)
-  parameter <- mixture_names[[1L]]
-  list(parameter = parameter, indices = counts[[parameter]]$indices)
-}
-
-.prior_conditional_normal_spec <- function(prior_list, split, source_transforms){
-
-  groups <- .prior_conditional_normal_groups(prior_list, split)
-  if(is.null(groups)) return(NULL)
-  product <- split$product_groups[[1L]]
-  additive <- .prior_density_ordinate_linear_normal(
-    prior_list, split$additive_weights, source_transforms, 0
-  )
   multiplied <- .prior_density_ordinate_linear_normal(
     product$prior_list, product$weights, source_transforms, 0
   )
-  if(is.null(additive) || is.null(multiplied) ||
-     !identical(additive$method, "linear_normal") ||
-     !identical(multiplied$method, "linear_normal") ||
-     !isTRUE(additive$exact) || !isTRUE(multiplied$exact) ||
-     !is.finite(additive$provenance$sd) || additive$provenance$sd <= 0 ||
+  if(is.null(multiplied) || !identical(multiplied$method, "linear_normal") ||
+     !isTRUE(multiplied$exact) ||
      !is.finite(multiplied$provenance$sd) || multiplied$provenance$sd <= 0){
     return(NULL)
   }
+  additive <- .prior_density_ordinate_linear_normal(
+    prior_list, split$additive_weights, source_transforms, 0
+  )
+  if(is.null(additive)){
+    # a deterministic additive part (points only): a pure scale mixture
+    additive_mean <- .prior_density_ordinate_deterministic_offset(
+      prior_list, split$additive_weights, source_transforms
+    )
+    if(is.null(additive_mean) || !is.finite(additive_mean)){
+      return(NULL)
+    }
+    additive_sd <- 0
+  }else{
+    if(!identical(additive$method, "linear_normal") || !isTRUE(additive$exact) ||
+       !is.finite(additive$provenance$sd) || additive$provenance$sd <= 0){
+      return(NULL)
+    }
+    additive_mean <- additive$provenance$mean
+    additive_sd <- additive$provenance$sd
+  }
   list(
-    additive_mean = additive$provenance$mean,
-    additive_sd = additive$provenance$sd,
+    additive_mean = additive_mean,
+    additive_sd = additive_sd,
     product_mean = multiplied$provenance$mean,
     product_sd = multiplied$provenance$sd,
-    multiplier = groups$multiplier,
-    bounds = groups$bounds,
-    sources = list(additive = names(groups$additive),
-                   multiplied = names(groups$multiplied), multiplier = product$multiplier)
+    multiplier = multiplier,
+    bounds = bounds,
+    sources = list(additive = names(additive_groups),
+                   multiplied = names(product_groups), multiplier = product$multiplier)
   )
 }
 
 .prior_conditional_normal_ordinate <- function(spec, value, n_grid){
 
+  # A pure scale mixture (a_s = 0) at its offset a_m is classified from the
+  # multiplier's declared behavior at zero.
+  if(spec$additive_sd == 0 && value == spec$additive_mean){
+    return(.prior_conditional_normal_offset_ordinate(spec, value, n_grid))
+  }
   # The integral runs over the other term's (the multiplier's) declared
   # support, split at breakpoints so that no piece is dominated by mass that
   # its initial quadrature rule cannot see (a narrow Gaussian peak, or a
@@ -1289,8 +1250,14 @@
   # ordinate is their sum, and the acceptance criterion applies to the total.
   integrand <- function(multiplier){
     conditional <- .prior_conditional_normal_moments(spec, multiplier)
-    exp(stats::dnorm(value, conditional$mean, conditional$sd, log = TRUE) +
-          lpdf(spec$multiplier, multiplier))
+    out <- exp(stats::dnorm(value, conditional$mean, conditional$sd, log = TRUE) +
+                 lpdf(spec$multiplier, multiplier))
+    # away from the offset, a pure scale mixture has no Gaussian mass at
+    # the value where the multiplier is zero (the integrand's limit)
+    if(spec$additive_sd == 0){
+      out[conditional$sd == 0] <- 0
+    }
+    out
   }
   integral <- .prior_conditional_normal_quadrature(
     integrand, .prior_conditional_normal_breakpoints(spec, value), n_grid,
@@ -1306,10 +1273,117 @@
       multiplied = c(mean = spec$product_mean, sd = spec$product_sd),
       multiplier = .prior_density_ordinate_prior_provenance(spec$multiplier),
       independent_sources = spec$sources,
-      structural_regularity = "positive_variance_gaussian_convolution",
+      structural_regularity = if(spec$additive_sd > 0){
+        "positive_variance_gaussian_convolution"
+      }else{
+        "scale_mixture_away_from_offset"
+      },
       integration = integral$integration
     )
   )
+}
+
+# Ordinate of a pure scale mixture X = a_m + b * s (b ~ N(b_m, b_s)) at its
+# offset a_m. Given s, the normal density at a_m is phi(b_m / b_s) / (b_s |s|),
+# so f(a_m) = phi(b_m / b_s) / b_s * E[1 / |s|]. The expectation is finite
+# exactly when the multiplier's density vanishes at zero (a density that
+# vanishes like |s|^p, p > 0, at zero, or zero outside its support); a positive
+# or infinite multiplier density at zero makes it infinite.
+.prior_conditional_normal_offset_ordinate <- function(spec, value, n_grid){
+
+  multiplier_zero <- .prior_density_ordinate_primitive(spec$multiplier, 0)
+  multiplier_behavior <- .prior_density_ordinate_continuous_behavior(multiplier_zero)
+  provenance <- list(
+    kind = "conditional_normal_mixture",
+    additive = c(mean = spec$additive_mean, sd = spec$additive_sd),
+    multiplied = c(mean = spec$product_mean, sd = spec$product_sd),
+    multiplier = .prior_density_ordinate_prior_provenance(spec$multiplier),
+    independent_sources = spec$sources,
+    structural_regularity = "scale_mixture_offset",
+    multiplier_at_zero = multiplier_behavior
+  )
+  if(multiplier_behavior %in% c("regular", "infinite")){
+    provenance$kind <- "product_singularity"
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "infinite",
+      log_density = Inf,
+      exact       = TRUE,
+      method      = "conditional_normal_mixture",
+      reason      = paste0(
+        "A normal term multiplied by a scale whose density at zero is positive ",
+        "or infinite has an infinite density at the requested value."
+      ),
+      provenance  = provenance
+    ))
+  }
+  if(!identical(multiplier_behavior, "zero")){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "unknown",
+      log_density = NA_real_,
+      exact       = FALSE,
+      method      = "unsupported_provenance",
+      provenance  = provenance
+    ))
+  }
+  moment <- .prior_density_inverse_moment(spec$multiplier, n_grid)
+  provenance$inverse_moment <- moment[c("value", "method")]
+  if(!is.null(moment$integration)){
+    provenance$integration <- moment$integration
+  }
+  .prior_density_ordinate_result(
+    value       = value,
+    behavior    = "regular",
+    log_density = stats::dnorm(spec$product_mean / spec$product_sd, log = TRUE) -
+      log(spec$product_sd) + log(moment$value),
+    exact       = TRUE,
+    method      = "conditional_normal_mixture",
+    provenance  = provenance
+  )
+}
+
+# E[1 / |s|] of a simple continuous prior whose density vanishes at zero:
+# closed forms for the untruncated gamma (shape > 1), inverse-gamma, lognormal
+# and beta (alpha > 1) families, otherwise the quadrature of f(s) / |s| over
+# the support, split at zero and the prior's quantiles, with the acceptance
+# criterion of the conditional-normal quadrature (value NA when rejected).
+.prior_density_inverse_moment <- function(prior, n_grid){
+
+  family <- prior$distribution
+  parameters <- prior$parameters
+  lower <- prior$truncation$lower
+  upper <- prior$truncation$upper
+  closed <- if(identical(family, "gamma") && lower == 0 && upper == Inf &&
+               parameters$shape > 1){
+    parameters$rate / (parameters$shape - 1)
+  }else if(identical(family, "invgamma") && lower == 0 && upper == Inf){
+    parameters$shape / parameters$scale
+  }else if(identical(family, "lognormal") && lower == 0 && upper == Inf){
+    exp(-parameters$meanlog + parameters$sdlog^2 / 2)
+  }else if(identical(family, "beta") && lower == 0 && upper == 1 &&
+           parameters$alpha > 1){
+    (parameters$alpha + parameters$beta - 1) / (parameters$alpha - 1)
+  }else{
+    NULL
+  }
+  if(!is.null(closed)){
+    return(list(value = closed, method = "closed_form", integration = NULL))
+  }
+
+  spec <- list(additive_mean = 0, additive_sd = 1, product_mean = 0,
+               product_sd = 0, multiplier = prior, bounds = c(lower, upper))
+  points <- .prior_conditional_normal_breakpoints(spec, 0, extra = 0)
+  integral <- .prior_conditional_normal_quadrature(
+    function(s){
+      out <- exp(lpdf(prior, s) - log(abs(s)))
+      out[s == 0] <- 0
+      out
+    },
+    points, n_grid,
+    zero_message = "zero inverse moment of a structurally positive density"
+  )
+  list(value = integral$value, method = "quadrature", integration = integral$integration)
 }
 
 # Region probability P(X in region) of the same conditional-normal mixture:
@@ -1399,11 +1473,258 @@
   )
 }
 
+# Scale products X = c + w * L * s of a simple continuous term L (not a
+# full-support normal, which is the conditional-normal route) and a simple
+# continuous multiplier s: the ordered-level route with a non-normal total
+# (L = total, s = its Beta allocation share) and 'multiply_by' products of a
+# non-normal coefficient prior. Away from the offset c the density is the 1-D
+# integral f(x) = int f_s(s) f_L((x - c) / (w s)) / |w s| ds over the
+# multiplier's support, evaluated by the conditional-normal quadrature (split
+# at the multiplier's bounds and quantiles, at its zero, and at the images
+# s = (x - c) / (w q) of L's quantiles and finite bounds q); the offset is
+# classified from the declared behaviors of L and s at zero.
+.prior_scale_product_spec <- function(offset, scale, factor, multiplier, sources){
+
+  list(
+    offset     = offset,
+    scale      = scale,
+    factor     = factor,
+    multiplier = multiplier,
+    bounds     = unlist(multiplier$truncation[c("lower", "upper")], use.names = FALSE),
+    sources    = sources
+  )
+}
+
+# Quadrature settings of a scale product: the multiplier's breakpoints, no
+# Gaussian peak window.
+.prior_scale_product_breakpoints <- function(spec, distances){
+
+  factor_bounds <- unlist(spec$factor$truncation[c("lower", "upper")], use.names = FALSE)
+  quantiles <- tryCatch(
+    suppressWarnings(as.numeric(quant(
+      spec$factor, c(1e-6, 1e-3, .02, .25, .5, .75, .98, 1 - 1e-3, 1 - 1e-6)
+    ))),
+    error = function(e) numeric()
+  )
+  targets <- c(quantiles, factor_bounds)
+  targets <- targets[is.finite(targets) & targets != 0]
+  images <- as.vector(outer(distances, targets, `/`))
+  .prior_conditional_normal_breakpoints(
+    list(additive_mean = 0, additive_sd = 1, product_mean = 0, product_sd = 0,
+         multiplier = spec$multiplier, bounds = spec$bounds),
+    value = 0,
+    extra = c(0, images[is.finite(images)])
+  )
+}
+
+# Closed interval containing the support of c + w * L * s.
+.prior_scale_product_hull <- function(spec){
+
+  factor_bounds <- unlist(spec$factor$truncation[c("lower", "upper")], use.names = FALSE)
+  products <- as.vector(outer(factor_bounds, spec$bounds, function(a, b){
+    ifelse(a == 0 | b == 0, 0, a * b)
+  }))
+  spec$offset + sort(spec$scale * range(products))
+}
+
+.prior_scale_product_provenance <- function(spec){
+
+  list(
+    kind                = "scale_mixture",
+    offset              = spec$offset,
+    scale               = spec$scale,
+    factor              = .prior_density_ordinate_prior_provenance(spec$factor),
+    multiplier          = .prior_density_ordinate_prior_provenance(spec$multiplier),
+    independent_sources = spec$sources
+  )
+}
+
+.prior_scale_product_ordinate <- function(spec, value, n_grid){
+
+  provenance <- .prior_scale_product_provenance(spec)
+  hull <- .prior_scale_product_hull(spec)
+  if(value < hull[1L] || value > hull[2L]){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "zero",
+      log_density = -Inf,
+      exact       = TRUE,
+      method      = "scale_mixture",
+      reason      = "The requested value is outside the prior support.",
+      provenance  = provenance
+    ))
+  }
+  if(value == spec$offset){
+    return(.prior_scale_product_offset_ordinate(spec, value, n_grid, provenance))
+  }
+  if(value == hull[1L] || value == hull[2L]){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "unknown",
+      log_density = NA_real_,
+      exact       = FALSE,
+      method      = "unsupported_provenance",
+      reason      = "The limit at a finite bound of a product support is not structurally classified.",
+      provenance  = provenance
+    ))
+  }
+
+  distance <- (value - spec$offset) / spec$scale
+  integrand <- function(multiplier){
+    out <- exp(lpdf(spec$factor, distance / multiplier) +
+                 lpdf(spec$multiplier, multiplier) - log(abs(spec$scale * multiplier)))
+    out[multiplier == 0] <- 0
+    out
+  }
+  integral <- .prior_conditional_normal_quadrature(
+    integrand, .prior_scale_product_breakpoints(spec, distance), n_grid,
+    zero_message = "zero ordinate for a structurally positive density",
+    kind = "scale_mixture"
+  )
+  provenance$structural_regularity <- "scale_mixture_inside_support"
+  provenance$integration <- integral$integration
+  .prior_density_ordinate_result(
+    value = value, behavior = "regular",
+    log_density = log(integral$value), exact = TRUE,
+    method = "scale_mixture", provenance = provenance
+  )
+}
+
+# The offset c of c + w * L * s: with f_L and f_s the declared densities at
+# zero (one-sided limits at a support bound), the density at c is infinite
+# when either is infinite or both are positive, f_L(0) E[1 / |s|] / |w| when
+# only f_s vanishes there, f_s(0) E[1 / |L|] / |w| when only f_L vanishes
+# there, and zero when both vanish. A term bounded at zero combined with a
+# two-sided other term makes the offset a density jump, which is not
+# classified.
+.prior_scale_product_offset_ordinate <- function(spec, value, n_grid, provenance){
+
+  factor_zero <- .prior_density_ordinate_primitive(spec$factor, 0)
+  multiplier_zero <- .prior_density_ordinate_primitive(spec$multiplier, 0)
+  behaviors <- c(
+    factor     = .prior_density_ordinate_continuous_behavior(factor_zero),
+    multiplier = .prior_density_ordinate_continuous_behavior(multiplier_zero)
+  )
+  provenance$structural_regularity <- "scale_mixture_offset"
+  provenance$behaviors_at_zero <- behaviors
+  unknown <- function(reason){
+    .prior_density_ordinate_result(
+      value = value, behavior = "unknown", log_density = NA_real_,
+      exact = FALSE, method = "unsupported_provenance", reason = reason,
+      provenance = provenance
+    )
+  }
+  if(any(!behaviors %in% c("regular", "zero", "infinite"))){
+    return(unknown(NULL))
+  }
+  one_sided <- function(prior){
+    bounds <- unlist(prior$truncation[c("lower", "upper")], use.names = FALSE)
+    any(bounds == 0)
+  }
+  two_sided <- function(prior){
+    bounds <- unlist(prior$truncation[c("lower", "upper")], use.names = FALSE)
+    bounds[1L] < 0 && bounds[2L] > 0
+  }
+  if((one_sided(spec$factor) && two_sided(spec$multiplier) && behaviors[["factor"]] != "zero") ||
+     (one_sided(spec$multiplier) && two_sided(spec$factor) && behaviors[["multiplier"]] != "zero")){
+    return(unknown("The density of the product jumps at the requested value."))
+  }
+  if(any(behaviors == "infinite") || all(behaviors == "regular")){
+    return(.prior_density_ordinate_result(
+      value = value, behavior = "infinite", log_density = Inf, exact = TRUE,
+      method = "scale_mixture",
+      reason = paste0(
+        "A product of independent continuous terms whose densities at zero ",
+        "are both positive, or one of them infinite, has an infinite density ",
+        "at the requested value."
+      ),
+      provenance = provenance
+    ))
+  }
+  if(all(behaviors == "zero")){
+    return(.prior_density_ordinate_result(
+      value = value, behavior = "zero", log_density = -Inf, exact = TRUE,
+      method = "scale_mixture", provenance = provenance
+    ))
+  }
+  if(behaviors[["factor"]] == "regular"){
+    density_zero <- factor_zero$log_density
+    moment <- .prior_density_inverse_moment(spec$multiplier, n_grid)
+  }else{
+    density_zero <- multiplier_zero$log_density
+    moment <- .prior_density_inverse_moment(spec$factor, n_grid)
+  }
+  provenance$inverse_moment <- moment[c("value", "method")]
+  if(!is.null(moment$integration)){
+    provenance$integration <- moment$integration
+  }
+  .prior_density_ordinate_result(
+    value = value, behavior = "regular",
+    log_density = density_zero + log(moment$value) - log(abs(spec$scale)),
+    exact = TRUE, method = "scale_mixture", provenance = provenance
+  )
+}
+
+# P(lower < L < upper) for a simple continuous prior, vectorized over the
+# bounds; upper-tail probabilities are used above the median.
+.prior_scalar_interval_probability <- function(prior, lower, upper){
+
+  lower_cdf <- cdf(prior, lower)
+  out <- cdf(prior, upper) - lower_cdf
+  upper_tail <- !is.na(lower_cdf) & lower_cdf > .5
+  if(any(upper_tail)){
+    out[upper_tail] <- ccdf(prior, lower[upper_tail]) - ccdf(prior, upper[upper_tail])
+  }
+  pmax(out, 0)
+}
+
+# Region probability of c + w * L * s: the 1-D integral over s of its density
+# times P(c + w L s in region), with the ordinate's breakpoints at the images
+# of every finite region endpoint.
+.prior_scale_product_region <- function(spec, intervals, n_grid){
+
+  lower <- intervals[, 1L]
+  upper <- intervals[, 2L]
+  offset_inside <- as.numeric(any(spec$offset > lower & spec$offset < upper))
+  integrand <- function(multiplier){
+    probability <- numeric(length(multiplier))
+    zero <- multiplier == 0
+    s <- multiplier[!zero]
+    for(i in seq_along(lower)){
+      a <- (lower[i] - spec$offset) / (spec$scale * s)
+      b <- (upper[i] - spec$offset) / (spec$scale * s)
+      flip <- spec$scale * s < 0
+      probability[!zero] <- probability[!zero] + .prior_scalar_interval_probability(
+        spec$factor, ifelse(flip, b, a), ifelse(flip, a, b)
+      )
+    }
+    probability[zero] <- offset_inside
+    out <- numeric(length(multiplier))
+    positive <- probability > 0
+    out[positive] <- exp(log(probability[positive]) + lpdf(spec$multiplier, multiplier[positive]))
+    out
+  }
+  endpoints <- c(lower, upper)
+  endpoints <- unique(endpoints[is.finite(endpoints)])
+  .prior_conditional_normal_quadrature(
+    integrand,
+    .prior_scale_product_breakpoints(spec, (endpoints - spec$offset) / spec$scale),
+    n_grid,
+    zero_message = "zero probability for a structurally positive region",
+    kind = "scale_mixture"
+  )
+}
+
 # Mean and SD of the conditional normal N(a_m + b_m s, sqrt(a_s^2 + b_s^2 s^2))
 # at multiplier values s, with the SD computed without overflow.
 .prior_conditional_normal_moments <- function(spec, multiplier){
 
   product_sd <- abs(multiplier) * spec$product_sd
+  if(spec$additive_sd == 0){
+    # a pure scale mixture: the conditional SD is that of the multiplied term
+    return(list(mean = spec$additive_mean + multiplier * spec$product_mean,
+                sd   = product_sd))
+  }
   scale <- pmax(spec$additive_sd, product_sd)
   list(
     mean = spec$additive_mean + multiplier * spec$product_mean,
@@ -1413,7 +1734,8 @@
 
 # P(lower < Z < upper) for Z ~ N(mean, sd), vectorized over 'mean' and 'sd';
 # upper-tail probabilities are used when the interval lies above the mean, so
-# small probabilities in either tail keep their relative precision.
+# small probabilities in either tail keep their relative precision. A zero SD
+# (the multiplier's zero of a pure scale mixture) is the point mass at 'mean'.
 .prior_normal_interval_probability <- function(lower, upper, mean, sd){
 
   z_lower <- (lower - mean) / sd
@@ -1423,6 +1745,11 @@
   out[upper_tail] <-
     stats::pnorm(z_lower[upper_tail], lower.tail = FALSE) -
     stats::pnorm(z_upper[upper_tail], lower.tail = FALSE)
+  degenerate <- !is.na(sd) & sd == 0
+  if(any(degenerate)){
+    mean <- rep_len(mean, length(out))
+    out[degenerate] <- as.numeric(mean[degenerate] > lower & mean[degenerate] < upper)
+  }
   pmax(out, 0)
 }
 
@@ -1435,7 +1762,8 @@
 # (value, abs.error, message, evaluations) or NULL for a QUADPACK piece.
 .prior_conditional_normal_quadrature <- function(integrand, points, n_grid,
                                                  zero_message,
-                                                 exact_piece = NULL){
+                                                 exact_piece = NULL,
+                                                 kind = "conditional_normal_mixture"){
 
   tolerance <- .prior_linear_density_refinement_tolerance()
   n_pieces <- length(points) - 1L
@@ -1475,7 +1803,7 @@
     integral$value <- NA_real_
   }
   integration <- list(
-    kind = "conditional_normal_mixture", exact = FALSE,
+    kind = kind, exact = FALSE,
     absolute_error = integral$abs.error, error_bound = bound,
     evaluations = sum(vapply(pieces, `[[`, integer(1), "evaluations")),
     budget = n_grid, converged = isTRUE(accepted), message = integral$message,
@@ -1536,7 +1864,12 @@
 # gets its own peak window, each peak point keeps its own local SD for the
 # exemption next to a singular bound, and the merge width is capped by the
 # smallest local SD, so no peak point of any window is merged.
-.prior_conditional_normal_breakpoints <- function(spec, value){
+# A pure scale mixture (a_s = 0) also splits at the multiplier's zero and at
+# |value - a_m| / b_s * (1/10, 1, 10) on both sides of it: the integrand rises
+# from zero at s = 0 to the scale peak near |s| = |value - a_m| / b_s (exactly
+# there for b_m = 0) and then decays like f(s) / |s|. 'extra' points (e.g. the
+# images of another term's quantiles) are added like quantiles.
+.prior_conditional_normal_breakpoints <- function(spec, value, extra = numeric()){
 
   lower <- spec$bounds[1L]
   upper <- spec$bounds[2L]
@@ -1552,6 +1885,21 @@
       is_peak <- c(is_peak, rep(TRUE, 7L))
       widths <- c(widths, rep(if(is.finite(width)) width else Inf, 7L))
     }
+  }
+  if(isTRUE(spec$additive_sd == 0) && isTRUE(spec$product_sd > 0)){
+    scale_points <- unlist(lapply(value, function(peak_value){
+      distance <- abs(peak_value - spec$additive_mean) / spec$product_sd
+      if(!is.finite(distance) || distance <= 0){
+        return(numeric())
+      }
+      as.vector(outer(c(-1, 1), distance * c(.1, 1, 10)))
+    }))
+    extra <- c(extra, 0, scale_points)
+  }
+  if(length(extra) > 0L){
+    inner <- c(inner, extra)
+    is_peak <- c(is_peak, rep(FALSE, length(extra)))
+    widths <- c(widths, rep(Inf, length(extra)))
   }
   peak_width <- min(c(Inf, widths))
   singular <- vapply(c(lower, upper), function(bound){
@@ -2266,7 +2614,12 @@
      .prior_density_ordinate_has_quadrature(ordinate$provenance)){
     integration <- .prior_density_ordinate_integration(ordinate$provenance)
     if(is.na(ordinate$log_density) || !isTRUE(integration$converged)){
-      stop("Conditional-normal prior density was rejected by diagnostics: integration reported '",
+      subject <- if(identical(integration$kind, "scale_mixture")){
+        "Scale-mixture prior density"
+      }else{
+        "Conditional-normal prior density"
+      }
+      stop(subject, " was rejected by diagnostics: integration reported '",
            integration$message, "' with absolute error ", format(integration$absolute_error),
            ". Inspect the prior specification and increase 'n_samples' for marginal inference.",
            call. = FALSE)
@@ -2438,6 +2791,9 @@
   if(isTRUE(top_level)){
     return(NULL)
   }
+  .prior_linear_density_check_grid(.prior_density_route_linear(
+    prior_list, weights, source_transforms, n_grid
+  ))
 
   # the mixture spacing may need more knots than this component's own grid
   # admits; the component then starts at its own spacing
@@ -2613,6 +2969,9 @@
     if(!is.null(components)){
       return(components)
     }
+    .prior_linear_density_check_grid(.prior_density_route_from_adaptive(
+      attr(x, "adaptive_evaluation", exact = TRUE)
+    ))
   }
 
   singular_points <- attr(x, "singular_density_points", exact = TRUE)

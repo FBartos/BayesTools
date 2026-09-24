@@ -1461,3 +1461,87 @@ test_that("ordered Dirichlet marginals reject non-level combinations", {
     "not a level or a single allocation subset"
   )
 })
+
+test_that("ordered levels are exact products of the total and its allocation share", {
+
+  # A level (or allocation subset) is total * w with the allocation share
+  # w ~ Beta(a, b) (.prior_ordered_linear_share()): f(x) = int f_T(x / w) /
+  # w f_w(w) dw, and at 0 f(0) = f_T(0) E[1 / w] = f_T(0) (a + b - 1) /
+  # (a - 1) for a > 1, infinite for a <= 1. References: integrate() at
+  # rel.tol 1e-12 with stats:: densities; for the Beta(1, 1) share
+  # f(x) = int_|x|^Inf phi(t) / t dt. The capped product grid gave -2.5% at 0.
+  split_reference <- function(f, points){
+    sum(vapply(seq_len(length(points) - 1L), function(i){
+      stats::integrate(f, points[i], points[i + 1L], rel.tol = 1e-12,
+                       subdivisions = 5000L)$value
+    }, numeric(1)))
+  }
+  bound <- function(total, alpha, name){
+    p <- prior_ordered(total, allocation = prior("dirichlet", list(alpha = alpha)),
+                       contrast = "cumulative")
+    attr(p, "levels") <- length(alpha) + 1L
+    .prior_ordered_default_bound(p, name)
+  }
+  height <- function(density, value) as.numeric(.prior_linear_density_height(density, value))
+
+  normal_total <- bound(prior("normal", list(0, 1)), c(2, 3), "f")
+  for(level in c("f[1]", "f[2]")){
+    share <- .prior_ordered_linear_share(normal_total, stats::setNames(1, level),
+                                         match(level, c("f[1]", "f[2]")))
+    expect_identical(share$type, "beta")
+    a <- share$alpha
+    density <- .prior_linear_combination_density(list(f = normal_total), stats::setNames(1, level))
+    zero <- prior_density_ordinate(density, 0)
+    expect_identical(zero$behavior, "regular")
+    expect_true(zero$exact)
+    expect_equal(height(density, 0), stats::dnorm(0) * (a[1] + a[2] - 1) / (a[1] - 1), tolerance = 1e-12)
+    for(value in c(.1, 1)){
+      expect_equal(
+        height(density, value),
+        split_reference(function(w) stats::dnorm(value / w) / w * stats::dbeta(w, a[1], a[2]),
+                        c(0, 1e-3, .01, .1, .5, 1)),
+        tolerance = 1e-8
+      )
+    }
+  }
+
+  # Beta(1, 1) share of the first level: an infinite ordinate at 0
+  flat <- bound(prior("normal", list(0, 1)), c(1, 1), "g")
+  density <- .prior_linear_combination_density(list(g = flat), c("g[1]" = 1))
+  singular <- prior_density_ordinate(density, 0)
+  expect_identical(singular$behavior, "infinite")
+  expect_true(singular$exact)
+  expect_equal(height(density, .1), 0.94271965, tolerance = 1e-8)
+  expect_equal(height(density, .1),
+               split_reference(function(t) stats::dnorm(t) / t, c(.1, 1, 10, Inf)),
+               tolerance = 1e-8)
+
+  # a half-normal total is a scale product: zero below 0, and at 0
+  # f_T(0) E[1 / w] with f_T(0) = 2 phi(0)
+  positive_total <- bound(prior("normal", list(0, 1), list(0, Inf)), c(2, 3), "h")
+  density <- .prior_linear_combination_density(list(h = positive_total), c("h[1]" = 1))
+  expect_identical(prior_density_ordinate(density, -.1)$behavior, "zero")
+  expect_identical(prior_density_ordinate(density, .1)$method, "scale_mixture")
+  expect_equal(height(density, 0), 2 * stats::dnorm(0) * (2 + 3 - 1) / (2 - 1), tolerance = 1e-12)
+  expect_equal(height(density, .1),
+               split_reference(function(w) 2 * stats::dnorm(.1 / w) / w * stats::dbeta(w, 2, 3),
+                               c(0, 1e-3, .01, .1, .5, 1)),
+               tolerance = 1e-8)
+  side <- hypothesis_parse("theta < 0.5")$statements[[1L]]$left
+  expect_equal(.hypothesis_prior_density_prob(density, side, "theta"),
+               split_reference(function(w) (2 * stats::pnorm(.5 / w) - 1) * stats::dbeta(w, 2, 3),
+                               c(0, .1, .5, 1)),
+               tolerance = 1e-8)
+
+  # with an intercept the level is a conditional-normal scale mixture
+  density <- .prior_linear_combination_density(
+    list(mu = prior("normal", list(0, 1)), f = normal_total), c(mu = 1, "f[1]" = 1)
+  )
+  expect_identical(prior_density_ordinate(density, 0)$method, "conditional_normal_mixture")
+  for(value in c(0, .5)){
+    expect_equal(height(density, value),
+                 split_reference(function(w) stats::dnorm(value, 0, sqrt(1 + w^2)) * stats::dbeta(w, 2, 3),
+                                 c(0, .1, .5, 1)),
+                 tolerance = 1e-8)
+  }
+})

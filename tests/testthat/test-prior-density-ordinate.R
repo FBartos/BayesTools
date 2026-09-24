@@ -754,6 +754,27 @@ test_that("unsupported transformations, convolutions, and products stay unknown"
   expect_false(convolution_out$exact)
   expect_true(is.finite(convolution_out$log_density))
 
+  # a product with a non-normal additive term has no structural route
+  product_priors <- list(
+    alpha = prior("t", list(0, 1, 5)),
+    beta = prior("normal", list(0, 1)),
+    sigma = prior("normal", list(0, 1))
+  )
+  attr(product_priors$beta, "multiply_by") <- "sigma"
+  general_product <- BayesTools:::.prior_linear_combination_density(
+    prior_list = product_priors,
+    weights = c(alpha = 1, beta = 1),
+    n_grid = 128
+  )
+  expect_identical(prior_density_ordinate(general_product, 1)$behavior, "unknown")
+  expect_false(prior_density_ordinate(general_product, 1)$exact)
+})
+
+test_that("products of normal terms are classified on the scale-mixture route", {
+
+  # beta * sigma with beta, sigma ~ N(0, 1) has the density K0(|x|) / pi
+  # (the product of two standard normals), which is infinite at 0 because
+  # sigma's density is positive there.
   product_priors <- list(
     beta = prior("normal", list(0, 1)),
     sigma = prior("normal", list(0, 1))
@@ -764,10 +785,16 @@ test_that("unsupported transformations, convolutions, and products stay unknown"
     weights = c(beta = 1),
     n_grid = 128
   )
-  expect_identical(prior_density_ordinate(product, 1)$behavior, "unknown")
+  regular <- prior_density_ordinate(product, 1)
+  expect_identical(regular$behavior, "regular")
+  expect_identical(regular$method, "conditional_normal_mixture")
+  expect_true(regular$exact)
+  expect_equal(exp(regular$log_density), besselK(1, 0) / pi, tolerance = 1e-8)
   singular <- prior_density_ordinate(product, 0)
   expect_identical(singular$behavior, "infinite")
-  expect_identical(singular$method, "unsupported_provenance")
+  expect_true(singular$exact)
+  expect_identical(singular$method, "conditional_normal_mixture")
+  expect_identical(singular$provenance$kind, "product_singularity")
 
   transformed_product <- BayesTools:::.prior_linear_combination_density(
     prior_list = product_priors,
