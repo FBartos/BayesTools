@@ -22,7 +22,7 @@
 #' supplied, including precomputed qCMDE/IWMDE posterior ordinates when
 #' \code{density_method = "precomputed"}. Level-specific
 #' \code{marginal_posterior.*} subclass vectors with attached density
-#' attributes are accepted as marginal posterior inputs; parent-level
+#' metadata are accepted as marginal posterior inputs; parent-level
 #' \code{posterior_density}, \code{posterior_densities},
 #' \code{posterior_ordinate}, or \code{posterior_ordinates} metadata on a
 #' marginal-posterior list is reused for matching level hypotheses.
@@ -48,10 +48,11 @@
 #' \code{"KDE"} uses kernel density estimates. \code{"normal"} uses a normal
 #' approximation to the posterior density at the null. \code{"precomputed"}
 #' requires valid \code{posterior_ordinate} or \code{posterior_density}
-#' attributes and errors if no valid precomputed source is available. KDE
+#' metadata ([posterior_metadata()]) and errors if no valid precomputed
+#' source is available. KDE
 #' point-null tests use boundary reflection when exact support metadata is
-#' attached to the marginal posterior or to a matched \code{posterior_density}
-#' attribute; numeric and data-frame expression tests use standard Gaussian
+#' attached to the marginal posterior or to matched \code{posterior_density}
+#' metadata; numeric and data-frame expression tests use standard Gaussian
 #' sample KDE. A point hypothesis on a linear expression of marginal-posterior
 #' parameters or levels (sums, differences, and constant multiples, e.g.,
 #' \code{mu[B] - mu[A] = 0}; functions and powers only of constants) is tested

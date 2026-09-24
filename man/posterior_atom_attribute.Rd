@@ -13,8 +13,10 @@ posterior_atom_attribute(point_masses = NULL, source = "user")
 \item{source}{short label describing the source of the declaration.}
 }
 \value{
-A posterior atom metadata object suitable for the
-\code{posterior_atoms} attribute.
+A posterior atom metadata object for the \code{atoms} metadata
+of posterior draws (\code{posterior_metadata(x, "atoms") <- }). Posterior
+point masses are read only from these metadata, never from the point masses
+of precomputed posterior densities.
 }
 \description{
 Creates exact posterior measure metadata used to distinguish a

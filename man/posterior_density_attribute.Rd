@@ -101,11 +101,14 @@ describe the true posterior support on the same scale as \code{x}, not the
 finite range of an estimator grid.
 
 The objects returned by these constructors are the only accepted posterior
-density and ordinate metadata: other objects stored in the
-\code{posterior_density} or \code{posterior_ordinate} attributes are
-rejected with an error. An unclassed list of such objects, named by
-parameter or level, can hold the metadata of several parameters or levels.
-The metadata fields used to match an attribute to posterior samples are
-\code{parameter}, \code{conditional}, \code{conditional_rule}, and
-\code{condition_key}.
+density and ordinate metadata: other objects set as \code{posterior_density}
+or \code{posterior_ordinate} metadata of posterior draws
+(\code{\link[=posterior_metadata]{posterior_metadata()}}) are rejected with an error. An unclassed list of
+such objects, named by parameter or level, can hold the metadata of several
+parameters or levels. The fields used to match the metadata to posterior
+samples are \code{parameter}, \code{conditional}, \code{conditional_rule},
+and \code{condition_key}. The \code{point_masses} of a stored density
+describe its measure for plots with \code{density_method = "precomputed"};
+the posterior atoms of the draws are declared separately with
+\code{\link[=posterior_atom_attribute]{posterior_atom_attribute()}}.
 }

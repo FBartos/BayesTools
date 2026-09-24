@@ -85,7 +85,7 @@ parameter that needs to be transformed.}
 \item{density_method}{density source for continuous posterior curves.
 \code{"KDE"} computes a kernel density estimate. Plot methods with exact
 finite prior-support bounds apply boundary reflection.
-\code{"precomputed"} uses a valid \code{posterior_density} attribute when
+\code{"precomputed"} uses valid \code{posterior_density} metadata when
 present and falls back to KDE otherwise. A precomputed density is treated as
 authoritative for atomic mass layers: atoms are drawn only from explicit
 \code{point_masses} metadata.}
@@ -98,8 +98,8 @@ an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
 Plot samples from the marginal posterior distributions
 }
 \details{
-Marginal posterior vectors may carry a \code{posterior_density}
-attribute with \code{x} and \code{y} coordinates. These densities are used
+Marginal posterior vectors may carry \code{posterior_density}
+metadata (\code{\link[=posterior_metadata]{posterior_metadata()}}) with \code{x} and \code{y} coordinates. These densities are used
 only when \code{density_method = "precomputed"}. Marginal KDE fallbacks use
 a standard KDE because marginal prior-density grids are numerical density
 ranges rather than true support metadata; this can intentionally differ from

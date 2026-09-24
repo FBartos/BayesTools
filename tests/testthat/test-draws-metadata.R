@@ -61,11 +61,11 @@ test_that("draw metadata is read and written only through its accessors", {
 
   sites <- .draws_metadata_attr_sites(.draws_metadata_source_files())
 
-  # every storage name of the draw metadata and the conditioning fields;
+  # the metadata container and the former free metadata attributes;
   # 'formula_scale' also names the fit attribute of the formula scaling
   metadata_names <- setdiff(c(
-    unname(BayesTools:::.bt_meta_attribute_names),
-    BayesTools:::.bt_meta_condition_names
+    BayesTools:::.bt_meta_attribute,
+    BayesTools:::.bt_meta_legacy_names
   ), "formula_scale")
   # 'conditional' and 'formula_parameter' also name attributes of the
   # ensemble-inference objects of ensemble_inference(), read by its table
@@ -92,13 +92,14 @@ test_that("attributes are never read by partial name matching", {
 test_that("draw-metadata accessors are exact and validate the field", {
 
   x <- 1:3
-  x <- BayesTools:::.bt_meta_set(x, "prior_context", list(context = TRUE))
+  context <- BayesTools:::.prior_density_build_context(
+    prior_list   = list(mu = prior("normal", list(0, 1))),
+    column_names = "mu"
+  )
+  x <- BayesTools:::.bt_meta_set(x, "prior_context", context)
   # the prior-density context never answers for the prior density
   expect_null(BayesTools:::.bt_meta_get(x, "prior_density"))
-  expect_identical(
-    BayesTools:::.bt_meta_get(x, "prior_context"),
-    list(context = TRUE)
-  )
+  expect_identical(BayesTools:::.bt_meta_get(x, "prior_context"), context)
   x <- BayesTools:::.bt_meta_set(x, "prior_context", NULL)
   expect_null(BayesTools:::.bt_meta_get(x, "prior_context"))
 
@@ -120,7 +121,7 @@ test_that("draw-metadata accessors are exact and validate the field", {
   expect_null(BayesTools:::.bt_meta_condition(x, "condition_key"))
   expect_error(
     BayesTools:::.bt_meta_set(x, "condition", list(conditions = "mu")),
-    "Draw conditioning metadata must be a named list of condition fields.",
+    "Draw metadata 'condition' is invalid: it must be a named list of condition fields.",
     fixed = TRUE
   )
 })
@@ -144,4 +145,110 @@ test_that("Savage-Dickey reports missing prior densities, not their context", {
     "there are no prior densities for the posterior distribution",
     fixed = TRUE
   )
+})
+
+test_that("draw metadata is one validated container", {
+
+  x <- stats::rnorm(20)
+  posterior_metadata(x, "atoms") <- posterior_atom_attribute()
+  posterior_metadata(x, "support") <- posterior_support_attribute(c(-Inf, Inf))
+  expect_identical(names(attributes(x)), "bayestools_meta")
+  meta <- attr(x, "bayestools_meta", exact = TRUE)
+  expect_s3_class(meta, "BayesTools_draw_metadata")
+  expect_identical(names(meta), c("atoms", "support"))
+  expect_s3_class(posterior_metadata(x, "atoms"), "BayesTools_posterior_atoms")
+
+  # removing the last field removes the container
+  posterior_metadata(x, "atoms") <- NULL
+  posterior_metadata(x, "support") <- NULL
+  expect_null(attributes(x))
+
+  # values are validated when they are set
+  expect_error(
+    posterior_metadata(x, "atoms") <- list(declared = TRUE),
+    "Draw metadata 'atoms' is invalid: it must be created with 'posterior_atom_attribute()'.",
+    fixed = TRUE
+  )
+  expect_error(
+    posterior_metadata(x, "support") <- c(0, 1),
+    "Posterior support metadata must be created with 'posterior_support_attribute()'.",
+    fixed = TRUE
+  )
+  expect_error(
+    posterior_metadata(x, "posterior_density") <- list(x = 1:3, y = 1:3),
+    "Posterior density metadata must be created with 'posterior_density_attribute()'.",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_meta_set(x, "condition", list(conditional_rule = "XOR")),
+    "Draw metadata 'condition' is invalid: 'conditional_rule' must be 'AND' or 'OR'.",
+    fixed = TRUE
+  )
+  # the public accessor covers the fields that downstream packages attach
+  expect_error(posterior_metadata(x, "models_ind"), "'field'")
+})
+
+test_that("free metadata attributes of development versions are not read", {
+
+  x <- stats::qnorm(stats::ppoints(100))
+  attr(x, "posterior_atoms") <- posterior_atom_attribute()
+  attr(x, "posterior_support") <- posterior_support_attribute(c(-Inf, Inf))
+  expect_null(BayesTools:::.posterior_atoms_get(x))
+  expect_null(BayesTools:::.posterior_support_get(x))
+  expect_null(posterior_metadata(x, "atoms"))
+})
+
+test_that("posterior atoms come only from the atom metadata", {
+
+  x <- c(rep(0, 20), stats::qnorm(stats::ppoints(80)))
+  posterior_metadata(x, "prior_density") <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(source = prior("normal", list(0, 1))),
+    weights    = c(source = 1)
+  )
+  posterior_metadata(x, "posterior_density") <- posterior_density_attribute(
+    x            = seq(-3, 3, length.out = 61),
+    y            = stats::dnorm(seq(-3, 3, length.out = 61)) * .8,
+    method         = "test",
+    density_method = "precomputed",
+    point_masses   = data.frame(x = 0, mass = .2)
+  )
+  class(x) <- c("marginal_posterior.simple", "marginal_posterior")
+  # the stored density's point masses do not declare the posterior atoms
+  expect_null(BayesTools:::.posterior_atoms_get(x))
+  expect_error(Savage_Dickey_BF(x), "Posterior atom status is unknown", fixed = TRUE)
+
+  posterior_metadata(x, "atoms") <- posterior_atom_attribute(data.frame(x = 0, mass = .2))
+  expect_error(
+    Savage_Dickey_BF(x),
+    "declared point mass at the exact null",
+    fixed = TRUE
+  )
+})
+
+test_that("producers store their draw metadata in the container only", {
+
+  set.seed(1)
+  posterior <- cbind(mu = c(rep(0, 10), stats::rnorm(30)),
+                     mu_indicator = rep(c(0, 1), c(10, 30)))
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(
+    mu = prior_spike_and_slab(prior("normal", list(0, 1)))
+  )
+  fit <- attach_test_parameter_map(fit)
+  fit <- BayesTools:::.bt_attach_parameter_map(fit, monitor_names = colnames(posterior))
+  mixed <- as_mixed_posteriors(fit, "mu")
+
+  element_attributes <- names(attributes(mixed$mu))
+  expect_true("bayestools_meta" %in% element_attributes)
+  expect_length(intersect(element_attributes, BayesTools:::.bt_meta_legacy_names), 0L)
+  expect_length(intersect(names(attributes(mixed)), BayesTools:::.bt_meta_legacy_names), 0L)
+  atoms <- posterior_metadata(mixed$mu, "atoms")
+  expect_equal(as.numeric(atoms$locations[, 1L]), 0)
+  expect_equal(atoms$mass, 10 / 40)
+
+  marginal <- marginal_posterior(mixed, "mu", prior_samples = TRUE)
+  expect_length(intersect(names(attributes(marginal)), BayesTools:::.bt_meta_legacy_names), 0L)
+  expect_s3_class(posterior_metadata(marginal, "prior_density"), "prior_density")
+  expect_s3_class(posterior_metadata(marginal, "atoms"), "BayesTools_posterior_atoms")
 })

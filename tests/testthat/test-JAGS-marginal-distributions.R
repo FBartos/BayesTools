@@ -951,14 +951,8 @@ test_that("Savage_Dickey_BF uses exact posterior support for KDE fallback", {
   # support metadata must come from the constructor
   for(raw_support in list(c(0, 1), list(lower = 0, upper = 1, exact = TRUE),
                           list(bounds = c(0, 1)))){
-    posterior <- .bt_meta_set(posterior, "support", raw_support)
     expect_error(
-      Savage_Dickey_BF(
-        posterior,
-        null_hypothesis      = 0,
-        normal_approximation = FALSE,
-        silent               = TRUE
-      ),
+      .bt_meta_set(posterior, "support", raw_support),
       "Posterior support metadata must be created with 'posterior_support_attribute()'.",
       fixed = TRUE
     )
@@ -1818,23 +1812,16 @@ test_that("Savage_Dickey_BF diagnoses invalid precomputed metadata", {
     fixed = TRUE
   )
 
-  # raw lists are rejected on every density method
-  posterior <- .bt_meta_set(posterior, "posterior_density", list(
-    x      = seq(-1, 1, length.out = 101),
-    y      = rep(1, 101),
-    method = "raw-list"
-  ))
-  for(density_method in c("precomputed", "KDE")){
-    expect_error(
-      Savage_Dickey_BF(
-        posterior,
-        null_hypothesis = 0,
-        density_method  = density_method
-      ),
-      "Posterior density metadata must be created with 'posterior_density_attribute()'.",
-      fixed = TRUE
-    )
-  }
+  # raw lists are rejected when they are attached
+  expect_error(
+    .bt_meta_set(posterior, "posterior_density", list(
+      x      = seq(-1, 1, length.out = 101),
+      y      = rep(1, 101),
+      method = "raw-list"
+    )),
+    "Posterior density metadata must be created with 'posterior_density_attribute()'.",
+    fixed = TRUE
+  )
 
   posterior <- .bt_meta_set(posterior, "posterior_density", NULL)
   posterior <- .bt_meta_set(posterior, "posterior_ordinate", .posterior_ordinate_for_test(

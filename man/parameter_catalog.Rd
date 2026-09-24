@@ -172,12 +172,12 @@ derived quantities. For gated total-variance allocations, realized
 draws where the realized allocation total is zero. Original-scale
 random-effect correlations (\code{cor(...)} of LKJ blocks) are \code{NA} on draws
 where the correlation is undefined, i.e. where one of its SDs is zero; the
-returned \code{mcmc.list} then carries the attribute \code{undefined_draws}, a
-character vector named by the quantity's canonical name with value
-\code{"correlation"}. Summaries such as \code{\link[=ensemble_estimates_table]{ensemble_estimates_table()}} accept
-missing draws only for columns carrying this declaration: callers that
-extract a numeric vector keep it by copying the element to the vector's
-\code{undefined_draws} attribute.
+returned \code{mcmc.list} then carries \code{undefined_draws} metadata
+(\code{\link[=posterior_metadata]{posterior_metadata()}}), a character vector named by the quantity's
+canonical name with value \code{"correlation"}. Summaries such as
+\code{\link[=ensemble_estimates_table]{ensemble_estimates_table()}} accept missing draws only for columns carrying
+this declaration: callers that extract a numeric vector keep it by copying
+the element with \verb{posterior_metadata(x, "undefined_draws") <- }.
 
 \code{parameter_prior_density()} constructs a deterministic
 \code{prior_linear_density} for supported map-defined quantities: fitted

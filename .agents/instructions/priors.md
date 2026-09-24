@@ -338,10 +338,19 @@ zero prior ordinate (classified structurally, never from the range of a
 grid) and follows the zero-ordinate rule above.
 Everything around the ordinate comes
 from declared metadata: posterior atoms, exact support, and for mixtures each
-draw's component with the components' exact supports (`posterior_components`:
+draw's component with the components' exact supports (`components`:
 the model of a `mix_posteriors()` ensemble, or the indicator tuple of the
 mixture terms entering the quantity for `as_mixed_posteriors()`). Never infer
 atoms, supports, or components from the draws.
+
+Draw metadata (supports, atoms, components, undefined draws, prior densities
+and their context, precomputed posterior densities and ordinates, formula
+flags, linear weights, conditioning) live in one validated attribute,
+`bayestools_meta` (`R/draws-metadata.R`). Read and write them only through
+`.bt_meta_get()`/`.bt_meta_set()` (the public `posterior_metadata()` for
+downstream packages), never as free attributes; a unit lint test enforces it.
+Posterior atoms come only from the `atoms` field, never from the point masses
+of a precomputed posterior density.
 
 - When continuous components have different supports, estimate the ordinate
   per component (boundary-reflected on its own support, zero when that

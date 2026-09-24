@@ -28,7 +28,7 @@
 #' @param density_method density source for continuous posterior curves.
 #' \code{"KDE"} computes a kernel density estimate. Plot methods with exact
 #' finite prior-support bounds apply boundary reflection.
-#' \code{"precomputed"} uses a valid \code{posterior_density} attribute when
+#' \code{"precomputed"} uses valid \code{posterior_density} metadata when
 #' present and falls back to KDE otherwise. A precomputed density is treated as
 #' authoritative for atomic mass layers: atoms are drawn only from explicit
 #' \code{point_masses} metadata.
@@ -44,8 +44,8 @@
 #' \code{as_mixed_posteriors(..., transform_scaled = TRUE)}. The function automatically
 #' detects this and uses the pre-computed transformed prior samples when \code{prior = TRUE}.
 #'
-#' Posterior sample vectors may carry a \code{posterior_density} attribute
-#' with \code{x} and \code{y} coordinates. These densities are used only when
+#' Posterior sample vectors may carry \code{posterior_density} metadata
+#' ([posterior_metadata()]) with \code{x} and \code{y} coordinates. These densities are used only when
 #' \code{density_method = "precomputed"}. If a stored density is used and
 #' sample-derived point masses are available, the plot layer uses only explicit
 #' \code{point_masses} from the stored density and warns when none are declared.

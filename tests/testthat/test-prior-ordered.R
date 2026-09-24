@@ -859,7 +859,7 @@ test_that("ordered levels combined with an intercept convolve on the common grid
                                    prior_samples = TRUE, n_samples = 200)
     bf <- unlist(Savage_Dickey_BF(marginal, null_hypothesis = 0, silent = TRUE))
     expect_true(all(is.finite(bf) & bf > 0))
-    lapply(marginal, attr, which = "prior_density")
+    lapply(marginal, .bt_meta_get, field = "prior_density")
   }
 
   # Each level is intercept + share * total. Heights are compared with the

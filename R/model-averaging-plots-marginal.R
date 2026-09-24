@@ -11,8 +11,8 @@
 #' @return \code{plot_marginal} returns either \code{NULL} or
 #' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
 #'
-#' @details Marginal posterior vectors may carry a \code{posterior_density}
-#' attribute with \code{x} and \code{y} coordinates. These densities are used
+#' @details Marginal posterior vectors may carry \code{posterior_density}
+#' metadata ([posterior_metadata()]) with \code{x} and \code{y} coordinates. These densities are used
 #' only when \code{density_method = "precomputed"}. Marginal KDE fallbacks use
 #' a standard KDE because marginal prior-density grids are numerical density
 #' ranges rather than true support metadata; this can intentionally differ from

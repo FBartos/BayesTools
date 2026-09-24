@@ -80,8 +80,8 @@ parameter based on model-averaged posterior samples and parameter name
 }
 \details{
 When the mixed posterior samples carry deterministic
-\code{posterior_density}, \code{posterior_ordinate}, or
-\code{posterior_support} metadata, \code{marginal_posterior()} propagates
+\code{posterior_density}, \code{posterior_ordinate}, or \code{support}
+metadata (\code{\link[=posterior_metadata]{posterior_metadata()}}), \code{marginal_posterior()} propagates
 matching metadata to the returned marginal posterior. Matching uses the
 parameter name, list/level names such as \code{theta[A]}, and conditional
 metadata when present. Exact support metadata is propagated even when
@@ -95,7 +95,7 @@ samples are on the raw, unconditioned prior scale; otherwise the deterministic
 prior-density context is used so formula-scale transformations and
 conditional model restrictions are respected. Marginal posteriors with
 prior samples also record each draw's mixture component and each
-component's exact support (attribute \code{posterior_components}): the model
+component's exact support (\code{components} metadata): the model
 of \code{mix_posteriors()} ensembles, or the combination of the mixture and
 spike-and-slab component indicators of a single fit
 (\code{as_mixed_posteriors()}). \code{Savage_Dickey_BF()} uses them when the

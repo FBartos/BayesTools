@@ -2226,20 +2226,13 @@ test_that("hypothesis_BF rejects malformed precomputed point masses", {
     fixed = TRUE
   )
 
-  posterior <- .bt_meta_set(posterior, "posterior_density", list(
-    x            = seq(-1, 1, length.out = 101),
-    y            = rep(1, 101),
-    method       = "raw-list",
-    point_masses = list(x = 0, mass = .2)
-  ))
   expect_error(
-    hypothesis_BF(
-      posterior      = posterior,
-      hypothesis     = "theta = 0",
-      parameter      = "theta",
-      columns        = "all",
-      density_method = "precomputed"
-    ),
+    .bt_meta_set(posterior, "posterior_density", list(
+      x            = seq(-1, 1, length.out = 101),
+      y            = rep(1, 101),
+      method       = "raw-list",
+      point_masses = list(x = 0, mass = .2)
+    )),
     "Posterior density metadata must be created with 'posterior_density_attribute()'.",
     fixed = TRUE
   )

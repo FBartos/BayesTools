@@ -35,8 +35,8 @@ A \code{BayesTools_posterior_support} object.
 }
 \description{
 Constructs exact support metadata of a scalar posterior
-distribution, for the \code{posterior_support} attribute of posterior
-samples and the \code{support} of
+distribution, for the \code{support} metadata of posterior samples
+(\code{\link[=posterior_metadata]{posterior_metadata()}}) and the \code{support} of
 \code{\link{posterior_density_attribute}()}.
 }
 \details{

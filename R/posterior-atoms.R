@@ -8,8 +8,10 @@
 #' \code{mass} entries.
 #' @param source short label describing the source of the declaration.
 #'
-#' @return A posterior atom metadata object suitable for the
-#' \code{posterior_atoms} attribute.
+#' @return A posterior atom metadata object for the \code{atoms} metadata
+#' of posterior draws (\code{posterior_metadata(x, "atoms") <- }). Posterior
+#' point masses are read only from these metadata, never from the point masses
+#' of precomputed posterior densities.
 #'
 #' @export
 posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
@@ -281,30 +283,11 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
   samples
 }
 
+# The declared posterior atoms of 'samples' (their only source), or NULL when
+# the atom status is undeclared.
 .posterior_atoms_get <- function(samples){
 
-  atoms <- .posterior_atoms_from_attribute(
-    .bt_meta_get(samples, "atoms")
-  )
-  if(!is.null(atoms)){
-    return(atoms)
-  }
-
-  density <- .posterior_density_from_attribute(
-    .bt_meta_get(samples, "posterior_density")
-  )
-  if(!is.null(density) &&
-     .posterior_density_point_masses_declared(density)){
-    point_masses <- density$point_masses
-    return(.posterior_atoms_new(
-      locations = matrix(point_masses$x, ncol = 1L),
-      mass = point_masses$mass,
-      source = "posterior_density",
-      declared = TRUE
-    ))
-  }
-
-  NULL
+  .posterior_atoms_from_attribute(.bt_meta_get(samples, "atoms"))
 }
 
 .posterior_atoms_for_column <- function(atoms, column){

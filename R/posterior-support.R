@@ -106,8 +106,8 @@
 #' @title Posterior support metadata
 #'
 #' @description Constructs exact support metadata of a scalar posterior
-#' distribution, for the \code{posterior_support} attribute of posterior
-#' samples and the \code{support} of
+#' distribution, for the \code{support} metadata of posterior samples
+#' ([posterior_metadata()]) and the \code{support} of
 #' \code{\link{posterior_density_attribute}()}.
 #'
 #' @param bounds numeric vector \code{c(lower, upper)} with

@@ -190,8 +190,8 @@ names.
   coordinate-based functions such as `JAGS_materialize_draws()`, but are not
   factor selectors.
 - Draws that can be undefined are declared, never inferred from names or
-  values: `parameter_draws()` sets the `mcmc.list` attribute `undefined_draws`
-  (canonical name to reason, `"correlation"` for original-scale random-effect
+  values: `parameter_draws()` sets the `undefined_draws` draw metadata of its
+  `mcmc.list` (canonical name to reason, `"correlation"` for original-scale random-effect
   correlations). Summaries such as `ensemble_estimates_table()` accept missing
   draws only for declared columns, summarize the defined draws, and footnote
   their share; any other missing draw is an error.

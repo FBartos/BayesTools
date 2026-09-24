@@ -30,12 +30,11 @@ kernel sum over the continuous draws, with bandwidth
 interpolation), using boundary reflection when exact posterior-support
 metadata is available. Finite sample ranges are not treated as exact
 support; Gaussian kernel tails are evaluated at finite null values.
-\code{"precomputed"} requires a valid
-\code{posterior_ordinate} attribute when present, or otherwise a valid
-\code{posterior_density} attribute.
+\code{"precomputed"} requires valid \code{posterior_ordinate} metadata
+when present, or otherwise valid \code{posterior_density} metadata (see
+\code{\link[=posterior_metadata]{posterior_metadata()}}).
 Posterior atom status must be declared through package-generated
-\code{posterior_atoms} metadata, \code{posterior_atom_attribute()}, or a
-posterior-density attribute that explicitly declares point masses. An
+\code{atoms} metadata or \code{posterior_atom_attribute()}. An
 ordinary Savage-Dickey density ratio is rejected when atom status is unknown
 or when any positive atom is located exactly at the null. For a scalar
 marginal posterior, a positive atom at the null is an error; for a list of
@@ -66,8 +65,8 @@ Computes Savage-Dickey (density ratio) inclusion Bayes factors
 based the change of height from prior to posterior distribution at the test value.
 }
 \details{
-Marginal posterior vectors may carry a \code{posterior_ordinate}
-attribute with exact \code{value} and \code{ordinate} entries. When
+Marginal posterior vectors may carry \code{posterior_ordinate}
+metadata with exact \code{value} and \code{ordinate} entries. When
 \code{density_method = "precomputed"} and
 \code{normal_approximation = FALSE}, a matching ordinate is used for the
 Savage-Dickey ratio. If no matching ordinate is available, a valid
@@ -81,12 +80,10 @@ factors label this path as exact support exclusion rather than as a KDE
 estimate. Support is not inferred from prior-density grids,
 posterior-density grids, or plotting ranges, which may be finite numerical
 integration ranges rather than true support boundaries. Exact support
-metadata is either a numeric
-\code{c(lower, upper)} vector or a list with
-\code{bounds = c(lower, upper)} and \code{exact = TRUE}; optional
-\code{type = "points"} support is not treated as a continuous interval for
-KDE boundary reflection. The same schema may be supplied as \code{support}
-in a \code{posterior_density} attribute. A prior density that is zero or
+metadata is created with \code{\link[=posterior_support_attribute]{posterior_support_attribute()}} (\code{exact =
+TRUE}); \code{type = "points"} support is not treated as a continuous
+interval for KDE boundary reflection. The same object may be supplied as
+\code{support} of \code{posterior_density} metadata. A prior density that is zero or
 infinite at the null makes the density ratio a 0/0 or singular limit that a
 kernel estimate of the posterior ordinate cannot estimate (e.g., with a
 log-singular prior the posterior carries the same singularity and the true
