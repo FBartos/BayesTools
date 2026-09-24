@@ -378,7 +378,7 @@ test_that("conditional-normal quadratures split scale-disparate integrals at bre
 
 test_that("multiplier quadratures resolve the location peak of a narrow multiplied normal", {
 
-  # a + b * s with b ~ N(b_m, b_s) and b_s <= |b_m| / 10: in s the integrand
+  # a + b * s with b ~ N(b_m, b_s) and b_s <= |b_m| / 2: in s the integrand
   # peaks at s* = (v - a_m) / b_m with local SD sqrt(a_s^2 + b_s^2 s*^2) / |b_m|.
   # References: integrate() at rel.tol 1e-12 with stats:: densities over pieces
   # around that peak; they agree with the review's values to the digits given.
@@ -426,8 +426,9 @@ test_that("multiplier quadratures resolve the location peak of a narrow multipli
   expect_equal(reference, .29388, tolerance = 1e-4)
   expect_equal(height(priors, value), reference, tolerance = 1e-8)
 
-  # b_s > |b_m| / 10: the window around s* is not a peak, and breakpoints there
-  # made the pieces miss mass elsewhere (-0.7% at -1, -2.3e-4 at -.5)
+  # b_s much larger than |b_m| (33 times): the window around s* is not a peak,
+  # and breakpoints there made the pieces miss mass elsewhere (-0.7% at -1,
+  # -2.3e-4 at -.5)
   priors <- scale_mixture(prior("normal", list(.2, 1e-4)), prior("normal", list(3, 100)),
                           prior("normal", list(0, 1e-3), list(0, Inf)))
   for(value in c(-1, -.5)){
@@ -436,6 +437,23 @@ test_that("multiplier quadratures resolve the location peak of a narrow multipli
       c(0, 1e-3 * c(1e-3, .01, .1, .5, 1, 2, 3, 5, 10), Inf)
     )
     expect_equal(height(priors, value), reference, tolerance = 1e-8)
+  }
+
+  # just beyond the earlier guard b_s <= |b_m| / 10 the integrand is still a
+  # narrow peak at s* (the standardized distance grows to |b_m| / b_s ~ 8-10
+  # away from it); without peak breakpoints every piece missed it (1e-21 to
+  # 3e-18 instead of .036-.113, reported as converged). a ~ N(.2, 1e-4),
+  # b ~ N(3, b_s), value .2 (s* = 0). References: 30-digit mpmath tanh-sinh
+  # quadrature over dense breakpoints (densities written from their formulas),
+  # agreeing with an R QUADPACK reference to 1e-8.
+  cases <- list(
+    list(s = prior("t", list(1, .5, 3)), b_s = 3 * (.1 * (1 + 1e-12)), reference = .045470734073157164),
+    list(s = prior("normal", list(1, .5)), b_s = 3 * .11, reference = .036446362420311275),
+    list(s = prior("uniform", list(-1, 2)), b_s = 3 * .12, reference = .11278578719472659)
+  )
+  for(case in cases){
+    priors <- scale_mixture(prior("normal", list(.2, 1e-4)), prior("normal", list(3, case$b_s)), case$s)
+    expect_equal(height(priors, .2), case$reference, tolerance = 1e-8)
   }
 })
 

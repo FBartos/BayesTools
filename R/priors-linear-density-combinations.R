@@ -1355,9 +1355,13 @@
 # * the location peak of the conditional normal N(value; a_m + b_m s,
 #   sqrt(a_s^2 + b_s^2 s^2)) at s* = (value - a_m) / b_m and s* +- k w
 #   (k = 1, 3, 10), w = sqrt(a_s^2 + b_s^2 s*^2) / |b_m|, when the multiplied
-#   SD is at most a tenth of its mean (b_s <= |b_m| / 10). Only then do the
-#   standardized distances beyond the window stay large over the whole
-#   support; otherwise the window is not a peak, and no peak points are used.
+#   SD is at most half of the absolute value of its mean (b_s <= |b_m| / 2).
+#   The standardized distance |value - a_m - b_m s| / sqrt(a_s^2 + b_s^2 s^2)
+#   then still grows away from s* (to |b_m| / b_s >= 2 far from it), so the
+#   integrand is concentrated around s*; with a tighter guard (1/10), pieces
+#   missed such peaks just beyond it. For b_s much larger than |b_m| the
+#   window is not a peak (its points lie far outside the mass and made the
+#   pieces miss mass elsewhere), and no peak points are used.
 #   A Gaussian convolution (b_s = 0, b_m = w) always has its Gaussian peak
 #   u* = (value - m) / w with width s / |w|.
 # Only points strictly inside the open support with a finite density are
@@ -1389,7 +1393,7 @@
   inner <- numeric()
   peak_width <- Inf
   if(isTRUE(spec$product_mean != 0) &&
-     isTRUE(spec$product_sd <= abs(spec$product_mean) / 10)){
+     isTRUE(spec$product_sd <= abs(spec$product_mean) / 2)){
     centre <- (value - spec$additive_mean) / spec$product_mean
     width <- sqrt(spec$additive_sd^2 + (spec$product_sd * centre)^2) / abs(spec$product_mean)
     inner <- c(inner, centre, centre + as.vector(outer(c(-1, 1), c(1, 3, 10))) * width)

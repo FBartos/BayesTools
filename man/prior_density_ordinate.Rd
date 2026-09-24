@@ -39,7 +39,7 @@ include an independent positive-variance Gaussian term. Their ordinates use
 quadrature over the multiplier's declared support, split at its bounds, at
 quantiles of its declared prior (spaced out next to a bound with infinite
 density) and around the location peak of the conditional normal density
-when the multiplied standard deviation is at most a tenth of the absolute
+when the multiplied standard deviation is at most half of the absolute
 value of its mean (always for a Gaussian convolution), and retain
 integration errors and evaluation budgets in \code{provenance}. Every independent
 quadrature
