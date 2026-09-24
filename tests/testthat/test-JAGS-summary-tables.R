@@ -829,7 +829,7 @@ test_that("Summary table advanced features work correctly", {
   expect_summary_row_order(runjags_summary_factor, "p1[2]")
   expect_summary_matches_samples(runjags_summary_factor, runjags_samples_factor)
 
-  expect_summary_row_order(runjags_summary_spike, c("beta (inclusion)", "beta[1]", "beta[2]"))
+  expect_summary_row_order(runjags_summary_spike, c("beta (inclusion)", "beta{1}", "beta{2}"))
   expect_summary_matches_samples(runjags_summary_spike, runjags_samples_spike)
   expect_equal(rownames(runjags_inference_spike), "beta")
   spike_prior_prob <- as.numeric(runjags_inference_spike["beta", "prior_prob"])
@@ -905,8 +905,8 @@ test_that("Summary table advanced features work correctly", {
       runjags_summary_complex3,
       c("(mu) intercept (inclusion)", "(mu) intercept",
         "(mu) x_cont1 (inclusion)", "(mu) x_cont1",
-        "(mu) x_fac2t (inclusion)", "(mu) x_fac2t",
-        "(mu) x_fac3t (inclusion)", "(mu) x_fac3t[1]", "(mu) x_fac3t[2]",
+        "(mu) x_fac2t (inclusion)", "(mu) x_fac2t{1}",
+        "(mu) x_fac3t (inclusion)", "(mu) x_fac3t{1}", "(mu) x_fac3t{2}",
         "sigma (inclusion: normal)", "sigma (inclusion: lognormal)",
         "sigma[normal]", "sigma[lognormal]", "bias (inclusion)",
         "omega[0,0.025]", "omega[0.025,0.05]", "omega[0.05,0.975]",

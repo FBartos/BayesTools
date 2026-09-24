@@ -272,7 +272,7 @@ test_that("mix_posteriors handles factor priors", {
   factor_levels <- as.integer(BayesTools:::.get_prior_factor_levels(
     prior_list[[factor_parameter]]
   ))
-  factor_names <- paste0(factor_parameter, "[", seq_len(factor_levels), "]")
+  factor_names <- paste0(factor_parameter, "{", seq_len(factor_levels), "}")
 
   expect_s3_class(factor_samples, "mixed_posteriors.factor")
   expect_s3_class(factor_samples, "mixed_posteriors.vector")
