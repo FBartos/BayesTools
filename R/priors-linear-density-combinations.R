@@ -1366,23 +1366,34 @@
 # were at that end, counting the mass between the bound and the end twice:
 # there the extreme (1e-6) quantile is not used, and between the bound and the
 # quartile on that side a point is kept only if its distance to the bound is
-# at least 1e-3 of the next kept point's distance. Pieces narrower than
-# 16 * eps * max(1, |endpoints|) are merged (the bounds are kept).
-# Known limitations: pure scale mixtures (b_m = 0) with heavy-tailed
-# multipliers and a small multiplied SD can stop as non-convergent; and the
-# scale peak s ~ |value - a_m| / b_s of a far value beyond the multiplier's
-# extreme quantile is not a breakpoint, so its mass can be missed, which
-# exceeds the absolute tolerance only at ordinates below about 1e-10.
+# at least 1e-3 of the next kept point's distance. Points closer than
+# min(1e-9 * max(1, |endpoints|), w / 2), but at least
+# 16 * eps * max(1, |endpoints|), are merged (the bounds are kept): points of
+# different sources that nearly coincide (e.g. a peak point a rounding error
+# from a bound) would leave a piece only a few ulps wide, which QUADPACK
+# cannot resolve, while the peak points, at least w apart, are never merged.
+# Known limitations (non-convergence is reported, no wrong value is accepted):
+# pure scale mixtures (b_m = 0) with heavy-tailed multipliers and a small
+# multiplied SD can stop as non-convergent; a flagged piece stops the ordinate
+# even when its value is far below the absolute tolerance (e.g. a far tail
+# piece reported as "probably divergent"); and the scale peak
+# s ~ |value - a_m| / b_s of a far value beyond the multiplier's extreme
+# quantile is not a breakpoint, so its mass can be missed, which exceeds the
+# absolute tolerance only at ordinates below about 1e-10.
 .prior_conditional_normal_breakpoints <- function(spec, value){
 
   lower <- spec$bounds[1L]
   upper <- spec$bounds[2L]
   inner <- numeric()
+  peak_width <- Inf
   if(isTRUE(spec$product_mean != 0) &&
      isTRUE(spec$product_sd <= abs(spec$product_mean) / 10)){
     centre <- (value - spec$additive_mean) / spec$product_mean
     width <- sqrt(spec$additive_sd^2 + (spec$product_sd * centre)^2) / abs(spec$product_mean)
     inner <- c(inner, centre, centre + as.vector(outer(c(-1, 1), c(1, 3, 10))) * width)
+    if(is.finite(width)){
+      peak_width <- width
+    }
   }
   singular <- vapply(c(lower, upper), function(bound){
     is.finite(bound) && isTRUE(is.infinite(suppressWarnings(exp(lpdf(spec$multiplier, bound)))))
@@ -1430,7 +1441,8 @@
   }
 
   minimum_width <- function(a, b){
-    16 * .Machine$double.eps * max(1, abs(c(a, b))[is.finite(c(a, b))])
+    scale <- max(1, abs(c(a, b))[is.finite(c(a, b))])
+    max(16 * .Machine$double.eps * scale, min(1e-9 * scale, peak_width / 2))
   }
   points <- lower
   for(point in inner){

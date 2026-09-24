@@ -93,14 +93,19 @@ and is not used). Next to a finite bound with infinite density, a breakpoint
 much closer to the bound than the next one makes QUADPACK count the mass near
 the bound twice: there the extreme quantile is skipped, and up to the quartile
 on that side a breakpoint is kept only if its distance to the bound is at
-least 1e-3 of the next kept breakpoint's distance. Every piece gets the full
-budget, and the acceptance criterion applies to the summed value and error.
+least 1e-3 of the next kept breakpoint's distance. Breakpoints closer than
+1e-9 of their magnitude (at least 1) are merged, so no piece is only a few
+ulps wide, but the merge width never exceeds half the peak's local SD, so the
+peak breakpoints are never merged. Every piece gets the full budget, and the
+acceptance criterion applies to the summed value and error.
 Budgets are never divided among them; the budget only caps how many mixture
 leaves are expanded. Known limitations: pure scale mixtures with heavy-tailed
-multipliers and a small multiplied SD can stop as non-convergent, and the
-scale peak of a far value beyond the multiplier's extreme quantiles is not a
-breakpoint, which leaves errors above the absolute tolerance only at ordinates
-below about 1e-10.
+multipliers and a small multiplied SD can stop as non-convergent; a piece that
+QUADPACK flags stops the ordinate even when its value is far below the
+absolute tolerance (e.g. a far tail piece reported as "probably divergent");
+and the scale peak of a far value beyond the multiplier's extreme quantiles is
+not a breakpoint, which leaves errors above the absolute tolerance only at
+ordinates below about 1e-10.
 
 Mixture ordinates (model, conditional, and mixture or spike-and-slab terms of
 one linear combination) are weighted sums of per-component ordinates, each from

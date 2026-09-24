@@ -539,6 +539,48 @@ test_that("conditional-normal breakpoints keep their distance from bounds with i
   }
 })
 
+test_that("conditional-normal breakpoints merge near-coincident points but never a Gaussian peak", {
+
+  height <- function(priors, weights, value){
+    density <- .prior_linear_combination_density(priors, weights, n_grid = 4096)
+    ordinate <- prior_density_ordinate(density, value)
+    expect_identical(ordinate$method, "conditional_normal_mixture")
+    expect_true(ordinate$provenance$integration$converged)
+    as.numeric(.prior_linear_density_height(density, value))
+  }
+
+  # A Gaussian-peak point a rounding error from a support bound left a piece a
+  # few ulps wide, and QUADPACK stopped on roundoff. The value is the image of
+  # the bound plus one Gaussian SD, as in the review's grid; the references
+  # (integrate() at rel.tol 1e-12 with stats:: densities over the whole
+  # support) agree with the review's to 1e-12.
+  value <- .3 + .001 * 3 + 1
+  reference <- stats::integrate(function(u){
+    stats::dnorm(value - .3 - .001 * u) * stats::dgamma(u, 2, 1)
+  }, 1, 3, rel.tol = 1e-12)$value / diff(stats::pgamma(c(1, 3), 2, 1))
+  expect_equal(reference, .24169258799295, tolerance = 1e-12)
+  priors <- list(a = prior("normal", list(.3, 1)),
+                 b = prior("gamma", list(2, 1), list(lower = 1, upper = 3)))
+  expect_equal(height(priors, c(a = 1, b = .001), value), reference, tolerance = 1e-8)
+
+  value <- .3 + .001 * 1 - .01
+  reference <- stats::integrate(function(u){
+    stats::dnorm(value - .3 - .001 * u, 0, .01) * stats::dbeta(u, 2, 5)
+  }, 0, 1, rel.tol = 1e-12)$value
+  expect_equal(reference, 25.9220102711423, tolerance = 1e-12)
+  priors <- list(a = prior("normal", list(.3, .01)), b = prior("beta", list(2, 5)))
+  expect_equal(height(priors, c(a = 1, b = .001), value), reference, tolerance = 1e-8)
+
+  # A Gaussian peak narrower than the merge width 1e-9 * max(1, |u|) keeps its
+  # breakpoints: merging them left a peak shoulder at the end of a wide piece
+  # (-15.9%, reported as converged). With SD s / |w| = 1e-10 the ordinate is
+  # g(1) / |w| + O((s / w)^2) for the gamma(3, 2) density g.
+  priors <- list(a = prior("normal", list(0, 1e-10)), b = prior("gamma", list(3, 2)))
+  expect_equal(height(priors, c(a = 1, b = 1), 1), stats::dgamma(1, 3, 2), tolerance = 1e-6)
+  priors <- list(a = prior("normal", list(0, 1e-7)), b = prior("gamma", list(3, 2)))
+  expect_equal(height(priors, c(a = 1, b = 1e3), 1e3), stats::dgamma(1, 3, 2) / 1e3, tolerance = 1e-6)
+})
+
 test_that("lockstep mixture grids add the components' absolute changes", {
 
   # Two grid components whose refinements change in opposite directions: the
