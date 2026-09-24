@@ -87,10 +87,11 @@ the full evaluation budget (`n_grid`) and its own convergence check. Each such
 integral is split at the multiplier's (other term's) support bounds, at its
 declared-prior quantiles (1e-6, 1e-3, .02, .25, .5, .75, .98, and their
 complements), and at the location peak of the conditional normal and +-1, 3,
-10 local SDs around it when the multiplied SD is at most a tenth of its mean
-(always for Gaussian convolutions; beyond that guard the window is not a peak
-and is not used). Next to a finite bound with infinite density, a breakpoint
-much closer to the bound than the next one makes QUADPACK count the mass near
+10 local SDs around it when the multiplied SD is at most a tenth of the
+absolute value of its mean (always for Gaussian convolutions; beyond that
+guard the window is not a peak and is not used). Next to a finite bound with
+infinite density, a breakpoint much closer to the bound than the next one
+makes QUADPACK count the mass near
 the bound twice: there the extreme quantile is skipped, and up to the quartile
 on that side a breakpoint is kept only if its distance to the bound is at
 least 1e-3 of the next kept breakpoint's distance. Breakpoints closer than
@@ -100,12 +101,17 @@ peak breakpoints are never merged. Every piece gets the full budget, and the
 acceptance criterion applies to the summed value and error.
 Budgets are never divided among them; the budget only caps how many mixture
 leaves are expanded. Known limitations: pure scale mixtures with heavy-tailed
-multipliers and a small multiplied SD can stop as non-convergent; a piece that
-QUADPACK flags stops the ordinate even when its value is far below the
-absolute tolerance (e.g. a far tail piece reported as "probably divergent");
-and the scale peak of a far value beyond the multiplier's extreme quantiles is
-not a breakpoint, which leaves errors above the absolute tolerance only at
-ordinates below about 1e-10.
+multipliers can stop as non-convergent (mostly with a small multiplied SD); a
+piece that QUADPACK flags stops the ordinate even when its value is far below
+the absolute tolerance (e.g. a far tail piece reported as "probably
+divergent"); a quadrature that evaluates to exactly zero is rejected (it
+cannot be told apart from a missed peak), which also stops a mixture with
+such a component, e.g. a narrow component far from the value; and the scale
+peak of a value far in the multiplier's heavy tail (beyond its upper
+quantiles) is not a breakpoint, so its mass can be missed without a
+convergence failure. Such ordinates are small at ordinary scales, but the
+missed fraction does not depend on the units of the value, so the absolute
+tolerance does not bound it.
 
 Mixture ordinates (model, conditional, and mixture or spike-and-slab terms of
 one linear combination) are weighted sums of per-component ordinates, each from

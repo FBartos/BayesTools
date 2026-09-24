@@ -1372,14 +1372,16 @@
 # different sources that nearly coincide (e.g. a peak point a rounding error
 # from a bound) would leave a piece only a few ulps wide, which QUADPACK
 # cannot resolve, while the peak points, at least w apart, are never merged.
-# Known limitations (non-convergence is reported, no wrong value is accepted):
-# pure scale mixtures (b_m = 0) with heavy-tailed multipliers and a small
-# multiplied SD can stop as non-convergent; a flagged piece stops the ordinate
-# even when its value is far below the absolute tolerance (e.g. a far tail
-# piece reported as "probably divergent"); and the scale peak
-# s ~ |value - a_m| / b_s of a far value beyond the multiplier's extreme
-# quantile is not a breakpoint, so its mass can be missed, which exceeds the
-# absolute tolerance only at ordinates below about 1e-10.
+# Known limitations: pure scale mixtures (b_m = 0) with heavy-tailed
+# multipliers can stop as non-convergent (mostly with a small multiplied SD);
+# a flagged piece stops the ordinate even when its value is far below the
+# absolute tolerance (e.g. a far tail piece reported as "probably divergent");
+# an exactly zero integral is rejected (a missed peak looks the same), which
+# also stops a mixture with such a component; and the scale peak
+# s ~ |value - a_m| / b_s of a value far in the multiplier's heavy tail
+# (beyond its upper quantiles) is not a breakpoint, so its mass can be missed
+# without a convergence failure. Such ordinates are small at ordinary scales,
+# but the missed fraction does not depend on the units of the value.
 .prior_conditional_normal_breakpoints <- function(spec, value){
 
   lower <- spec$bounds[1L]
