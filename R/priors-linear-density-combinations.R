@@ -1370,8 +1370,11 @@
 # were at that end, counting the mass between the bound and the end twice:
 # there the extreme (1e-6) quantile is not used, and between the bound and the
 # quartile on that side a point is kept only if its distance to the bound is
-# at least 1e-3 of the next kept point's distance. Points closer than
-# min(1e-9 * max(1, |endpoints|), w / 2), but at least
+# at least 1e-3 of the next kept point's distance. Gaussian-peak points at
+# least one local SD w from the bound are exempt: they resolve a real peak,
+# which the piece from the bound would otherwise miss; peak points closer
+# than w to the bound (rounding residues of s* - k w) are still dropped.
+# Points closer than min(1e-9 * max(1, |endpoints|), w / 2), but at least
 # 16 * eps * max(1, |endpoints|), are merged (the bounds are kept): points of
 # different sources that nearly coincide (e.g. a peak point a rounding error
 # from a bound) would leave a piece only a few ulps wide, which QUADPACK
@@ -1381,9 +1384,12 @@
 # a flagged piece stops the ordinate even when its value is far below the
 # absolute tolerance (e.g. a far tail piece reported as "probably divergent");
 # an exactly zero integral is rejected (a missed peak looks the same), which
-# also stops a mixture with such a component; and the scale peak
-# s ~ |value - a_m| / b_s of a value far in the multiplier's heavy tail
-# (beyond its upper quantiles) is not a breakpoint, so its mass can be missed
+# also stops a mixture with such a component; very narrow Gaussian peaks can
+# stop as non-convergent where QUADPACK reaches the floating-point resolution
+# (w = 1e-10 next to a singular bound at 1, or w of a few hundred ulps); and
+# the scale peak s ~ |value - a_m| / b_s of a value far in the multiplier's
+# heavy tail (beyond its extreme quantiles) is not a breakpoint, also with
+# b_m != 0 when b_s is not small against |b_m|, so its mass can be missed
 # without a convergence failure. Such ordinates are small at ordinary scales,
 # but the missed fraction does not depend on the units of the value.
 .prior_conditional_normal_breakpoints <- function(spec, value){
@@ -1391,12 +1397,14 @@
   lower <- spec$bounds[1L]
   upper <- spec$bounds[2L]
   inner <- numeric()
+  is_peak <- logical()
   peak_width <- Inf
   if(isTRUE(spec$product_mean != 0) &&
      isTRUE(spec$product_sd <= abs(spec$product_mean) / 2)){
     centre <- (value - spec$additive_mean) / spec$product_mean
     width <- sqrt(spec$additive_sd^2 + (spec$product_sd * centre)^2) / abs(spec$product_mean)
     inner <- c(inner, centre, centre + as.vector(outer(c(-1, 1), c(1, 3, 10))) * width)
+    is_peak <- c(is_peak, rep(TRUE, 7L))
     if(is.finite(width)){
       peak_width <- width
     }
@@ -1411,12 +1419,22 @@
     error = function(e) numeric()
   )
   inner <- c(inner, as.numeric(quantiles))
-  inner <- inner[is.finite(inner) & inner > lower & inner < upper]
+  is_peak <- c(is_peak, rep(FALSE, length(quantiles)))
+  inside <- is.finite(inner) & inner > lower & inner < upper
+  inner <- inner[inside]
+  is_peak <- is_peak[inside]
   if(length(inner) > 0L){
     density <- suppressWarnings(exp(lpdf(spec$multiplier, inner)))
     inner <- inner[is.finite(density)]
+    is_peak <- is_peak[is.finite(density)]
   }
-  inner <- sort(unique(inner))
+  # sorted and unique; a peak point equal to a quantile stays a peak point
+  sorted <- order(inner)
+  inner <- inner[sorted]
+  is_peak <- is_peak[sorted]
+  first <- !duplicated(inner)
+  inner <- inner[first]
+  is_peak <- is_peak[first]
 
   if(any(singular)){
     quartiles <- tryCatch(
@@ -1436,13 +1454,15 @@
         if(distance[i] >= start){
           next
         }
-        if(distance[i] >= 1e-3 * last){
+        exempt <- is_peak[i] && distance[i] >= peak_width
+        if(exempt || distance[i] >= 1e-3 * last){
           last <- distance[i]
         }else{
           keep[i] <- FALSE
         }
       }
       inner <- inner[keep]
+      is_peak <- is_peak[keep]
     }
   }
 

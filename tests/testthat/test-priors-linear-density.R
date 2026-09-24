@@ -555,6 +555,31 @@ test_that("conditional-normal breakpoints keep their distance from bounds with i
       }
     }
   }
+
+  # A narrow Gaussian peak next to such a bound: its breakpoints (at least one
+  # local SD from the bound) are kept by the spacing rule. Dropping them left
+  # the peak inside the piece from the bound, which missed it: 6e-66 to 7e-45
+  # instead of 20-30 reported as converged, or a zero-ordinate stop.
+  # N(.3, sd) + gamma(shape, 1) at .3 + k * sd, as in the review's probe.
+  # References: 30-digit mpmath tanh-sinh quadrature over dense breakpoints
+  # (gamma density written from its formula); with sd = 1e-11 the value's
+  # rounding error is 5e-6 of sd, so that case is checked at the criterion.
+  cases <- list(
+    list(shape = .8, sd = 1e-8, k = 0, reference = 19.963935864753457),
+    list(shape = .8, sd = 1e-8, k = .3, reference = 23.795313625905310),
+    list(shape = .8, sd = 1e-8, k = 1, reference = 29.555247422099176),
+    list(shape = .8, sd = 1e-8, k = 3, reference = 27.884821065620117),
+    list(shape = .3, sd = 1e-8, k = 0, reference = 183208.23150700132)
+  )
+  for(case in cases){
+    convolution <- density(list(a = prior("normal", list(.3, case$sd)), b = prior("gamma", list(case$shape, 1))),
+                           c(a = 1, b = 1))
+    expect_equal(height(convolution, .3 + case$k * case$sd), case$reference, tolerance = 1e-8)
+  }
+  convolution <- density(list(a = prior("normal", list(.3, 1e-11)), b = prior("gamma", list(.5, 1))),
+                         c(a = 1, b = 1))
+  reference <- 153441.73487990270
+  expect_lt(abs(height(convolution, .3) - reference), tolerance$absolute + tolerance$relative * reference)
 })
 
 test_that("conditional-normal breakpoints merge near-coincident points but never a Gaussian peak", {

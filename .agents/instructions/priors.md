@@ -94,7 +94,10 @@ infinite density, a breakpoint much closer to the bound than the next one
 makes QUADPACK count the mass near
 the bound twice: there the extreme quantile is skipped, and up to the quartile
 on that side a breakpoint is kept only if its distance to the bound is at
-least 1e-3 of the next kept breakpoint's distance. Breakpoints closer than
+least 1e-3 of the next kept breakpoint's distance. Gaussian-peak breakpoints
+at least one local SD from the bound are exempt, so a narrow peak next to the
+bound keeps its breakpoints (closer peak points, i.e. rounding residues, are
+still dropped). Breakpoints closer than
 1e-9 of their magnitude (at least 1) are merged, so no piece is only a few
 ulps wide, but the merge width never exceeds half the peak's local SD, so the
 peak breakpoints are never merged. Every piece gets the full budget, and the
@@ -106,12 +109,17 @@ piece that QUADPACK flags stops the ordinate even when its value is far below
 the absolute tolerance (e.g. a far tail piece reported as "probably
 divergent"); a quadrature that evaluates to exactly zero is rejected (it
 cannot be told apart from a missed peak), which also stops a mixture with
-such a component, e.g. a narrow component far from the value; and the scale
-peak of a value far in the multiplier's heavy tail (beyond its upper
-quantiles) is not a breakpoint, so its mass can be missed without a
-convergence failure. Such ordinates are small at ordinary scales, but the
-missed fraction does not depend on the units of the value, so the absolute
-tolerance does not bound it.
+such a component, e.g. a narrow component far from the value; very narrow
+Gaussian peaks can stop as non-convergent where QUADPACK reaches the
+floating-point resolution: next to a bound with infinite density away from
+zero (e.g. an SD of 1e-10 at the upper bound of a beta), or when only a few
+hundred ulps wide; and the scale peak of a value far in the
+multiplier's heavy tail (beyond its extreme quantiles) is not a breakpoint,
+also with a nonzero multiplied mean when the multiplied SD is not small
+against it, so its mass can be missed without a convergence failure. Such
+ordinates are small at ordinary scales, but the missed fraction does not
+depend on the units of the value, so the absolute tolerance does not bound
+it.
 
 Mixture ordinates (model, conditional, and mixture or spike-and-slab terms of
 one linear combination) are weighted sums of per-component ordinates, each from
