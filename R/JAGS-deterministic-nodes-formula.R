@@ -252,10 +252,11 @@
 
 # A block with a row-indexed external SD source ('random_sd_source(...,
 # shape = "row")') has no SD node: the evaluator scales each fitted row by
-# the source row, read from the posterior coordinates 'source[1..N]' (unless
-# the source's 'values' function reconstructs it; the inputs of that function
-# are not declared by the source), and by the allocation factors of the
-# block's SD binding (their Dirichlet weights and inclusion gates).
+# the source row and by the allocation factors of the block's SD binding
+# (their Dirichlet weights and inclusion gates). The source row is read from
+# the posterior coordinates 'source[1..N]', or computed by the source's
+# 'values' function from the inputs it declares (parameter_source(inputs = ));
+# a function without declared inputs contributes no dependencies.
 .bt_dnode_linear_predictor_row_source_dependencies <- function(random_term, n_rows){
 
   binding <- random_term$sd_binding
@@ -264,7 +265,7 @@
   }
   source <- .bt_random_effect_row_indexed_source(random_term)
   source_names <- if(.bt_parameter_source_has_values(source$source)){
-    character()
+    as.character(.bt_parameter_source_inputs(source))
   }else{
     .bt_parameter_source_row_names(source$source, n_rows)
   }

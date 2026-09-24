@@ -833,21 +833,105 @@ test_that("linear predictor nodes of row-indexed external SD sources declare the
   registry <- BayesTools:::.bt_deterministic_nodes_fit(fit)
   expect_true("tau" %in% BayesTools:::.bt_deterministic_node_parent_bases(registry)[["mu"]])
 
-  # A source with a 'values' function is reconstructed by that function, so
-  # its rows are not dependencies; the allocation factors still are.
+  # A source with a 'values' function is reconstructed by that function from
+  # the inputs it declares: they replace the source rows as dependencies, and
+  # the allocation factors still are dependencies.
   values_fit <- .dnode_row_source_fit(random_sd_source(parameter_source(
     "tau", shape = "row",
-    values = function(parameters, data, n_rows) parameters[["tau_scale"]] * exp(0.3 * data$z)
+    values = function(parameters, data, n_rows) parameters[["tau_scale"]] * exp(0.3 * data$z),
+    inputs = "tau_scale"
   )))
   values_posterior <- as.matrix(BayesTools:::.fit_to_posterior(values_fit))
   values_nodes <- JAGS_deterministic_nodes(values_fit)
   values_dependencies <- unlist(values_nodes$dependencies[values_nodes$node == "mu"])
   expect_false(any(grepl("^tau\\[", values_dependencies)))
-  expect_true(all(factor_dependencies %in% values_dependencies))
+  expect_true(all(c("tau_scale", factor_dependencies) %in% values_dependencies))
   values_reduced <- values_posterior[, !grepl("^tau\\[", colnames(values_posterior)) &
                                        !colnames(values_posterior) %in% coordinates, drop = FALSE]
   values_rebuilt <- JAGS_evaluate_deterministic(values_fit, draws = values_reduced)
   expect_lte(max(abs(values_rebuilt[, coordinates] - values_posterior[, coordinates])), 1e-14)
+
+  # Without a declared input, the node is skipped by default and reported
+  # unavailable when requested, instead of failing inside the function.
+  no_input <- values_reduced[, colnames(values_reduced) != "tau_scale", drop = FALSE]
+  expect_false(any(coordinates %in% colnames(JAGS_evaluate_deterministic(values_fit, draws = no_input))))
+  expect_error(
+    JAGS_evaluate_deterministic(values_fit, draws = no_input, nodes = "mu"),
+    "Deterministic node 'mu' is unavailable from 'draws': its dependencies",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_evaluate_deterministic(values_fit, draws = no_input, nodes = "mu"),
+    "'tau_scale'",
+    fixed = TRUE
+  )
+  registry <- BayesTools:::.bt_deterministic_nodes_fit(values_fit)
+  expect_true("tau_scale" %in% BayesTools:::.bt_deterministic_node_parent_bases(registry)[["mu"]])
+})
+
+test_that("parameter_source() values functions declare and receive their inputs", {
+
+  values <- function(parameters, data, n_rows) rep(parameters[["a"]], n_rows)
+  declared <- parameter_source("tau", shape = "row", values = values, inputs = c("a", "b[2]"))
+  expect_identical(declared$inputs, c("a", "b[2]"))
+  undeclared <- parameter_source("tau", shape = "row", values = values)
+  expect_false("inputs" %in% names(undeclared))
+  expect_identical(parameter_source("tau", shape = "row", values = values, inputs = character())$inputs, character())
+  expect_error(
+    parameter_source("tau", shape = "row", inputs = "a"),
+    "'inputs' is supported only for parameter sources with a 'values' function.",
+    fixed = TRUE
+  )
+  expect_error(
+    parameter_source("tau", shape = "row", values = values, inputs = c("a", NA)),
+    "'inputs' must be a character vector of posterior coordinate names.",
+    fixed = TRUE
+  )
+  broken <- declared
+  broken$values <- NULL
+  expect_error(
+    BayesTools:::.bt_check_parameter_source(broken),
+    "'source$inputs' is supported only for parameter sources with a 'values' function.",
+    fixed = TRUE
+  )
+  expect_true(any(grepl("inputs: a, b[2]", capture.output(print(declared)), fixed = TRUE)))
+
+  # The function receives only its declared inputs; reading another parameter
+  # or a draw without a declared input stops.
+  posterior <- matrix(c(2, 3, 5, 7), nrow = 1, dimnames = list(NULL, c("a", "b[1]", "b[2]", "c")))
+  seen <- NULL
+  recorder <- parameter_source("tau", shape = "row", inputs = c("a", "b[2]"),
+    values = function(parameters, data, n_rows){
+      seen <<- names(parameters)
+      rep(parameters[["a"]] * parameters[["b[2]"]], n_rows)
+    })
+  expect_identical(
+    unname(BayesTools:::.bt_parameter_source_value_draws(recorder, n_rows = 2, posterior = posterior)[1, ]),
+    c(10, 10)
+  )
+  expect_identical(seen, c("a", "b[2]"))
+  reader <- parameter_source("tau", shape = "row", inputs = "a",
+    values = function(parameters, data, n_rows) rep(parameters$c, n_rows))
+  expect_error(
+    BayesTools:::.bt_parameter_source_value_draws(reader, n_rows = 2, posterior = posterior),
+    "reads 'c', which is not among its declared 'inputs'.",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_parameter_source_value_draws(recorder, n_rows = 2, posterior = posterior[, c("a", "c"), drop = FALSE]),
+    "Parameter source 'tau[row]' is missing its declared input(s) 'b[2]'.",
+    fixed = TRUE
+  )
+  # Without declared inputs the function receives every parameter.
+  seen <- NULL
+  BayesTools:::.bt_parameter_source_value_draws(
+    parameter_source("tau", shape = "row", values = function(parameters, data, n_rows){
+      seen <<- names(parameters)
+      rep(1, n_rows)
+    }),
+    n_rows = 2, posterior = posterior
+  )
+  expect_identical(seen, colnames(posterior))
 })
 
 test_that("marginal posteriors of formula parameters evaluate the linear predictor node's fixed part", {

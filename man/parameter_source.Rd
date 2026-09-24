@@ -5,7 +5,12 @@
 \alias{random_sd_source}
 \title{External JAGS parameter source}
 \usage{
-parameter_source(name, shape = c("scalar", "row"), values = NULL)
+parameter_source(
+  name,
+  shape = c("scalar", "row"),
+  values = NULL,
+  inputs = NULL
+)
 
 random_sd_source(source, shape = c("scalar", "row"))
 }
@@ -28,6 +33,15 @@ For formula bridge reconstruction, \code{data} contains raw row-aligned
 formula/model data rather than standardized design matrices. Scalar sources
 do not accept \code{values}.}
 
+\item{inputs}{optional character vector declaring the posterior coordinates
+(column names such as \code{"tau_scale"} or \code{"beta[2]"}) that \code{values} reads
+from \code{parameters}; \code{character()} for a function of \code{data} alone. Supported
+only with \code{values}. Declared inputs are the dependencies of the source in
+\code{\link[=JAGS_deterministic_nodes]{JAGS_deterministic_nodes()}}, and \code{values} then receives only these
+coordinates: reading any other parameter, or evaluating draws that lack a
+declared input, stops with an error. Without \code{inputs}, the function
+receives all parameters and its dependencies are not declared.}
+
 \item{source}{JAGS node name or \code{parameter_source()} object. When \code{source}
 is a \code{parameter_source()} object, \code{shape} must not be supplied separately;
 the shape is inherited from \code{source}.}
@@ -48,8 +62,9 @@ of creating a prior-owned total SD parameter.
 }
 \details{
 Access control for formula bridge/prediction callbacks only guards
-named lookup of forbidden formula parameters on the stamped \code{parameters}
-list (\code{$} / \code{[[} / \code{[}). It is not a sandbox: callbacks may still close over
-external state, and a raw node name without \code{values} remains valid whenever
-the corresponding posterior columns (or non-new-row fitted mapping) suffice.
+named lookup of forbidden formula parameters and undeclared inputs on the
+stamped \code{parameters} list (\code{$} / \code{[[} / \code{[}). It is not a sandbox: callbacks
+may still close over external state, and a raw node name without \code{values}
+remains valid whenever the corresponding posterior columns (or non-new-row
+fitted mapping) suffice.
 }

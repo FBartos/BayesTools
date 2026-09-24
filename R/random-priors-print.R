@@ -663,7 +663,10 @@ print.parameter_source <- function(x, silent = FALSE, ...){
     "parameter_source()",
     paste0("  name: ", x$name),
     paste0("  shape: ", x$shape),
-    paste0("  values: ", if(is.null(x$values)) "none" else "function")
+    paste0("  values: ", if(is.null(x$values)) "none" else "function"),
+    if(!is.null(x[["inputs"]])){
+      paste0("  inputs: ", if(length(x[["inputs"]]) == 0L) "none" else paste(x[["inputs"]], collapse = ", "))
+    }
   ), silent = silent)
 }
 
