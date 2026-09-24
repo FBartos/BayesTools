@@ -94,7 +94,7 @@ test_that("formula coefficient transforms expose the sample transformation", {
   source_samples <- cbind(mu_intercept = 3, samples)
   source_samples <- source_samples[, transform$source_names, drop = FALSE]
   expected <- source_samples %*% t(transform$matrix)
-  transformed <- transform_scale_samples(
+  transformed <- BayesTools:::.bt_transform_scale_posterior(
     samples,
     formula_scale = list(mu = formula_result$formula_scale)
   )
@@ -199,6 +199,21 @@ test_that("formula coefficient transforms follow the fitted design for nested sl
     coefficients %*% t(transform$matrix),
     tolerance = 1e-12
   )
+
+  # Matrices of posterior samples and fits without the BayesTools fit class
+  # are not transformed without the fitted design.
+  not_fit_message <- paste0(
+    "'fit' must be a model fitted with JAGS_fit(); matrices of posterior ",
+    "samples and other fit objects are not supported."
+  )
+  expect_error(
+    transform_scale_samples(coefficients, list(mu = scaled$formula_scale)),
+    not_fit_message,
+    fixed = TRUE
+  )
+  plain_fit <- coda::mcmc(coefficients)
+  attr(plain_fit, "formula_scale") <- list(mu = scaled$formula_scale)
+  expect_error(transform_scale_samples(plain_fit), not_fit_message, fixed = TRUE)
 })
 
 test_that("JAGS_formula formula-scale metadata carry the fitted design", {
@@ -227,7 +242,7 @@ test_that("JAGS_formula formula-scale metadata carry the fitted design", {
     c(-1.2, 0.5, 0.2, -0.6, 0.35, 0.15)
   )
   colnames(coefficients) <- source_names
-  transformed <- transform_scale_samples(
+  transformed <- BayesTools:::.bt_transform_scale_posterior(
     coefficients,
     formula_scale = list(mu = scaled$formula_scale)
   )
@@ -242,7 +257,7 @@ test_that("JAGS_formula formula-scale metadata carry the fitted design", {
   legacy_scale <- scaled$formula_scale
   attr(legacy_scale, "unscale_design") <- NULL
   expect_identical(
-    transform_scale_samples(coefficients, formula_scale = list(mu = legacy_scale)),
+    BayesTools:::.bt_transform_scale_posterior(coefficients, formula_scale = list(mu = legacy_scale)),
     coefficients %*% t(.build_unscale_matrix_by_names(
       source_names, legacy_scale, "mu", require_closure = FALSE
     ))
@@ -271,7 +286,7 @@ test_that("design-derived unscaling keeps the coding of logical predictors", {
     original <- JAGS_formula(~ x * lg, "mu", data, prior_list)
     source_names <- .formula_coefficient_source_names(scaled)
     colnames(coefficients) <- source_names
-    transformed <- transform_scale_samples(
+    transformed <- BayesTools:::.bt_transform_scale_posterior(
       coefficients,
       formula_scale = list(mu = scaled$formula_scale)
     )
@@ -470,8 +485,8 @@ test_that("design-derived unscaling applies only to fitted coefficient coordinat
   )
   for(samples in level_columns){
     expect_identical(
-      transform_scale_samples(samples, formula_scale = with_design),
-      transform_scale_samples(samples, formula_scale = without_design)
+      BayesTools:::.bt_transform_scale_posterior(samples, formula_scale = with_design),
+      BayesTools:::.bt_transform_scale_posterior(samples, formula_scale = without_design)
     )
   }
 
@@ -483,8 +498,8 @@ test_that("design-derived unscaling applies only to fitted coefficient coordinat
     dimnames = list(NULL, .formula_coefficient_source_names(formula_result))
   )
   expect_equal(
-    transform_scale_samples(coefficients, formula_scale = with_design),
-    transform_scale_samples(coefficients, formula_scale = without_design),
+    BayesTools:::.bt_transform_scale_posterior(coefficients, formula_scale = with_design),
+    BayesTools:::.bt_transform_scale_posterior(coefficients, formula_scale = without_design),
     tolerance = 1e-14
   )
 })

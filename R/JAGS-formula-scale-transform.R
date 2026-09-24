@@ -4,12 +4,14 @@
 #' predictors back to the original scale. This function is used when predictors
 #' were standardized during model fitting via the \code{formula_scale} parameter.
 #'
-#' @param fit a fitted model object with \code{formula_scale} attribute, or
-#' a matrix of posterior samples
-#' @param formula_scale nested list containing standardization information keyed by
-#' parameter name. Each parameter entry contains scaling info (mean and sd) for
-#' each standardized predictor, e.g., \code{list(mu = list(mu_x1 = list(mean = 0, sd = 1)))}.
-#' If \code{fit} is provided and has a \code{formula_scale} attribute, this will be used automatically.
+#' @param fit a model fitted with [JAGS_fit()]. Matrices of posterior samples
+#' and other fit objects are not supported.
+#' @param formula_scale optional nested list containing standardization
+#' information keyed by parameter name, replacing the \code{formula_scale}
+#' attribute of \code{fit}. Each parameter entry contains scaling info (mean and
+#' sd) for each standardized predictor, e.g.,
+#' \code{list(mu = list(mu_x1 = list(mean = 0, sd = 1)))}. The transformation is
+#' derived from the fitted fixed-effect design stored in \code{fit}.
 #'
 #' @details The function transforms regression coefficients and intercepts
 #' to account for predictor standardization using a combinatorial approach that
@@ -48,10 +50,14 @@
 #' @export
 transform_scale_samples <- function(fit, formula_scale = NULL){
 
-  coordinates <- NULL
-  if(inherits(fit, "BayesTools_fit")){
-    coordinates <- parameter_coordinates(fit)
+  if(!inherits(fit, "BayesTools_fit")){
+    stop(
+      "'fit' must be a model fitted with JAGS_fit(); matrices of posterior ",
+      "samples and other fit objects are not supported.",
+      call. = FALSE
+    )
   }
+  coordinates <- parameter_coordinates(fit)
 
   # extract formula_scale from fit if available
   if(is.null(formula_scale) && !is.null(attr(fit, "formula_scale"))){
@@ -63,29 +69,31 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
     return(fit)
   }
 
+  .bt_transform_scale_posterior(
+    posterior      = as.matrix(.fit_to_posterior(fit)),
+    formula_scale  = formula_scale,
+    formula_design = attr(fit, "formula_design", exact = TRUE),
+    coordinates    = coordinates
+  )
+}
+
+# Combinatorial unscaling of a posterior sample matrix with fitted
+# formula-scale information (which carries the fitted unscale designs).
+.bt_transform_scale_posterior <- function(posterior, formula_scale,
+                                          formula_design = NULL,
+                                          coordinates = NULL){
+
   .check_formula_scale_info(formula_scale)
   formula_scale <- .bt_formula_scale_list_with_unscale_designs(
     formula_scale,
-    attr(fit, "formula_design", exact = TRUE)
+    formula_design
   )
 
-  # extract posterior samples
-  if(inherits(fit, "runjags") || inherits(fit, "BayesTools_fit")){
-    posterior <- as.matrix(.fit_to_posterior(fit))
-  }else if(is.matrix(fit)){
-    posterior <- fit
-  }else{
-    stop("'fit' must be a fitted model object or a matrix of posterior samples.")
-  }
-
-  # Apply the combinatorial unscaling transformation
-  posterior <- .apply_unscale_transform(posterior, formula_scale)
-  posterior <- .bt_remove_internal_random_coordinates(
+  posterior <- .apply_unscale_transform(as.matrix(posterior), formula_scale)
+  .bt_remove_internal_random_coordinates(
     posterior = posterior,
     coordinates = coordinates
   )
-
-  return(posterior)
 }
 
 .bt_remove_internal_random_coordinates <- function(posterior,

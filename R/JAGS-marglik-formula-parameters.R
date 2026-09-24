@@ -45,17 +45,21 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     if(.bt_formula_design_has_sampled_random_effects(design)){
       random_parameters <- c(random_parameters, parameter)
     }
-    if(.bt_JAGS_formula_design_can_reconstruct(design)){
-      parameters[[parameter]] <- .bt_JAGS_marglik_parameters_formula_design(
-        samples = samples,
-        design = design,
-        formula_prior_list = parameter_prior_list,
-        prior_list_parameters = prior_list_parameters,
-        log_intercept = log_intercept
+    if(!.bt_JAGS_formula_design_can_reconstruct(design)){
+      stop(
+        "JAGS_marglik_parameters_formula() requires the formula design of ",
+        "parameter '", parameter, "' in 'formula_design_list' (the ",
+        "'formula_design' element returned by JAGS_formula()).",
+        call. = FALSE
       )
-    }else{
-      parameters[[parameter]] <- .JAGS_marglik_parameters_formula_get(samples, parameter, formula_data_list[[parameter]], parameter_prior_list, prior_list_parameters, log_intercept)
     }
+    parameters[[parameter]] <- .bt_JAGS_marglik_parameters_formula_design(
+      samples = samples,
+      design = design,
+      formula_prior_list = parameter_prior_list,
+      prior_list_parameters = prior_list_parameters,
+      log_intercept = log_intercept
+    )
   }
 
   formula_prior_parameters <- if(length(random_parameters) > 0L){
@@ -1294,90 +1298,4 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     nrow = 1L,
     dimnames = list(NULL, names(samples))
   )
-}
-
-.JAGS_marglik_parameters_formula_get <- function(samples, parameter, formula_data_list, formula_prior_list, prior_list_parameters, log_intercept = FALSE){
-
-  formula_terms            <- names(formula_prior_list)
-  names(formula_data_list) <- sub(paste0("^", JAGS_regex_escape(parameter), "_data_"), paste0(parameter, "_"), names(formula_data_list))
-
-  # start with intercept
-  if(sum(formula_terms == paste0(parameter, "_intercept")) == 1){
-
-    intercept_prior <- formula_prior_list[[paste0(parameter, "_intercept")]]
-    .bt_validate_formula_reconstruction_prior(
-      intercept_prior,
-      paste0(parameter, "_intercept")
-    )
-    multiply_by <- .bt_JAGS_marglik_prior_multiply_by(
-      intercept_prior,
-      prior_list_parameters
-    )
-    intercept_value <- .JAGS_marglik_parameter_values(samples, intercept_prior, paste0(parameter, "_intercept"))
-    # apply log transformation if log(intercept) attribute is set
-    if(log_intercept){
-      intercept_value <- log(intercept_value)
-    }
-    output <- multiply_by * rep(intercept_value, formula_data_list[[paste0("N_", parameter)]])
-
-  }else{
-    output <- rep(0, formula_data_list[[paste0("N_", parameter)]])
-  }
-
-  # add the remaining terms
-  remaining_terms <- formula_terms[formula_terms != paste0(parameter, "_intercept")]
-  if(length(remaining_terms) > 0){
-    for(term in remaining_terms){
-
-      .bt_validate_formula_reconstruction_prior(
-        formula_prior_list[[term]],
-        term
-      )
-      multiply_by <- .bt_JAGS_marglik_prior_multiply_by(
-        formula_prior_list[[term]],
-        prior_list_parameters
-      )
-
-      if(is.prior.point(formula_prior_list[[term]]) && !is.prior.factor(formula_prior_list[[term]])){
-
-        output <- output + multiply_by * formula_prior_list[[term]][["parameters"]][["location"]] * formula_data_list[[term]]
-
-      }else if(is.prior.point(formula_prior_list[[term]]) && is.prior.factor(formula_prior_list[[term]])){
-
-        if(.get_prior_factor_levels(formula_prior_list[[term]]) == 1){
-          output <- output + multiply_by * formula_prior_list[[term]][["parameters"]][["location"]] * formula_data_list[[term]]
-        }else{
-          output <- output + multiply_by * formula_data_list[[term]] %*% rep(formula_prior_list[[term]][["parameters"]][["location"]], .get_prior_factor_levels(formula_prior_list[[term]]))
-        }
-
-      }else if(is.prior.factor(formula_prior_list[[term]])){
-
-        if(.get_prior_factor_levels(formula_prior_list[[term]]) == 1){
-          term_value <- .JAGS_marglik_parameter_values(samples, formula_prior_list[[term]], term)
-          output     <- output + multiply_by * term_value * formula_data_list[[term]]
-        }else{
-          term_names  <- paste0(term,"[", 1:.get_prior_factor_levels(formula_prior_list[[term]]), "]")
-          term_values <- .JAGS_marglik_parameter_values(samples, formula_prior_list[[term]], term_names)
-          output      <- output + multiply_by * formula_data_list[[term]] %*% term_values
-        }
-
-
-      }else if(is.prior.simple(formula_prior_list[[term]])){
-
-        term_value <- .JAGS_marglik_parameter_values(samples, formula_prior_list[[term]], term)
-        output     <- output + multiply_by * term_value * formula_data_list[[term]]
-
-      }else{
-        stop(
-          "Internal formula reconstruction prior dispatch failed for '",
-          term, "'.",
-          call. = FALSE
-        )
-      }
-
-    }
-  }
-
-
-  return(as.vector(output))
 }

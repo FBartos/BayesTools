@@ -85,7 +85,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   # apply scale transformation to posterior samples if requested
   original_model_samples <- model_samples
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
-    model_samples <- transform_scale_samples(model_samples, formula_scale)
+    model_samples <- .bt_transform_scale_posterior(model_samples, formula_scale)
     posterior_density_sources <- list()
     posterior_ordinate_sources <- list()
   }

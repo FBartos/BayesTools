@@ -8,9 +8,11 @@
 #' function
 #' @param prior_list_parameters named list of prior distributions on model parameters
 #' (not specified within the formula but that might scale the formula parameters)
-#' @param formula_design_list optional formula-design metadata produced by
-#' \code{JAGS_formula()}, used internally to reconstruct formula random effects
-#' for bridge sampling.
+#' @param formula_design_list named list of the formula-design metadata
+#' (the \code{formula_design} element returned by \code{JAGS_formula()}) of
+#' each formula parameter. \code{JAGS_marglik_parameters_formula()} reconstructs
+#' the linear predictors, including formula random effects, from these fitted
+#' designs and stops when a design is missing.
 #' @param model_data optional data passed to row-wise external parameter source
 #' reconstruction functions during formula random-effect bridge sampling.
 #'

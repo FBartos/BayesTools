@@ -344,7 +344,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   # lets summaries reconstruct point-prior/allocation SDs before covariance
   # transformations, while fixed effects still retain all interaction columns.
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
-    model_samples <- transform_scale_samples(model_samples, formula_scale)
+    model_samples <- .bt_transform_scale_posterior(model_samples, formula_scale)
     model_samples <- .bt_remove_internal_random_coordinates(
       posterior = model_samples,
       coordinates = coordinates

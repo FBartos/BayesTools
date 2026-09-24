@@ -7,13 +7,15 @@
 transform_scale_samples(fit, formula_scale = NULL)
 }
 \arguments{
-\item{fit}{a fitted model object with \code{formula_scale} attribute, or
-a matrix of posterior samples}
+\item{fit}{a model fitted with \code{\link[=JAGS_fit]{JAGS_fit()}}. Matrices of posterior samples
+and other fit objects are not supported.}
 
-\item{formula_scale}{nested list containing standardization information keyed by
-parameter name. Each parameter entry contains scaling info (mean and sd) for
-each standardized predictor, e.g., \code{list(mu = list(mu_x1 = list(mean = 0, sd = 1)))}.
-If \code{fit} is provided and has a \code{formula_scale} attribute, this will be used automatically.}
+\item{formula_scale}{optional nested list containing standardization
+information keyed by parameter name, replacing the \code{formula_scale}
+attribute of \code{fit}. Each parameter entry contains scaling info (mean and
+sd) for each standardized predictor, e.g.,
+\code{list(mu = list(mu_x1 = list(mean = 0, sd = 1)))}. The transformation is
+derived from the fitted fixed-effect design stored in \code{fit}.}
 }
 \value{
 \code{transform_scale_samples} returns posterior samples transformed

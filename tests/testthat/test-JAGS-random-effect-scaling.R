@@ -477,7 +477,7 @@ test_that("original-scale accessors exclude internal random coordinates", {
   expect_false(any(internal_names %in% colnames(transformed_fit)))
   expect_true(all(c("mu_intercept", "mu_x") %in% colnames(transformed_fit)))
 
-  transformed_matrix <- transform_scale_samples(
+  transformed_matrix <- BayesTools:::.bt_transform_scale_posterior(
     posterior,
     list(mu = formula_result$formula_scale)
   )

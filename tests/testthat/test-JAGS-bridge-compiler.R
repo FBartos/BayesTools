@@ -1211,7 +1211,7 @@ test_that("formula parameter evaluators reject missing named multiply_by paramet
         formula_prior_list = formula_prior_list,
         prior_list_parameters = list()
       ),
-      expected_error,
+      "requires the formula design of parameter 'mu' in 'formula_design_list'",
       fixed = TRUE
     )
   }
@@ -1339,7 +1339,11 @@ test_that("formula reconstruction rejects unknown priors instead of returning ze
       formula_prior_list = formula_prior_list,
       prior_list_parameters = list()
     ),
-    "Unsupported formula reconstruction prior for 'mu_x'",
+    paste0(
+      "JAGS_marglik_parameters_formula() requires the formula design of ",
+      "parameter 'mu' in 'formula_design_list' (the 'formula_design' element ",
+      "returned by JAGS_formula())."
+    ),
     fixed = TRUE
   )
 })

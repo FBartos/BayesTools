@@ -3393,11 +3393,11 @@ test_that("Gaussian JAGS formula fit agrees with lm oracle after scaling", {
     tolerance = 0.05
   )
 
-  posterior_original <- transform_scale_samples(
+  posterior_original <- BayesTools:::.bt_transform_scale_posterior(
     posterior_auto[, scaled_parameters, drop = FALSE],
     attr(fit_auto, "formula_scale")
   )
-  posterior_manual_original <- transform_scale_samples(
+  posterior_manual_original <- BayesTools:::.bt_transform_scale_posterior(
     posterior_manual[, scaled_parameters, drop = FALSE],
     list(mu = manual_scale)
   )
@@ -5785,25 +5785,24 @@ test_that("JAGS formula marglik reconstructs inverse-gamma terms on natural scal
     "mu_intercept" = 0.5,
     "mu_x"         = 0.25
   )
-  formula_data_list <- list(
-    mu = list(
-      N_mu      = 2,
-      mu_data_x = c(10, 20)
+  formula_output <- JAGS_formula(
+    ~ 1 + x, "mu", data.frame(x = c(10, 20)),
+    list(
+      intercept = prior("invgamma", list(2, 1)),
+      x         = prior("invgamma", list(2, 1))
     )
   )
-  formula_prior_list <- list(
-    mu = list(
-      mu_intercept = prior("invgamma", list(2, 1)),
-      mu_x         = prior("invgamma", list(2, 1))
-    )
-  )
+  formula_data_list <- list(mu = formula_output$data)
+  formula_prior_list <- list(mu = formula_output$prior_list)
+  formula_design_list <- list(mu = formula_output$formula_design)
 
   parameters <- JAGS_marglik_parameters_formula(
     samples            = samples,
     formula_list       = list(mu = ~ 1 + x),
     formula_data_list  = formula_data_list,
     formula_prior_list = formula_prior_list,
-    prior_list_parameters = list()
+    prior_list_parameters = list(),
+    formula_design_list = formula_design_list
   )
 
   expect_equal(parameters$mu, c(0.5 + 0.25 * 10, 0.5 + 0.25 * 20))
@@ -5815,7 +5814,8 @@ test_that("JAGS formula marglik reconstructs inverse-gamma terms on natural scal
     formula_list       = list(mu = formula_log_intercept),
     formula_data_list  = formula_data_list,
     formula_prior_list = formula_prior_list,
-    prior_list_parameters = list()
+    prior_list_parameters = list(),
+    formula_design_list = formula_design_list
   )
 
   expect_equal(parameters_log$mu, c(log(0.5) + 0.25 * 10, log(0.5) + 0.25 * 20))
@@ -5831,9 +5831,23 @@ test_that("JAGS formula marglik reconstructs inverse-gamma terms on natural scal
       formula_list       = list(mu = ~ 1 + x),
       formula_data_list  = formula_data_list,
       formula_prior_list = formula_prior_list,
-      prior_list_parameters = list()
+      prior_list_parameters = list(),
+      formula_design_list = formula_design_list
     ),
     "'samples' does not contain all monitored formula prior parameters.",
+    fixed = TRUE
+  )
+
+  # the design-less reconstruction from formula data alone is removed
+  expect_error(
+    JAGS_marglik_parameters_formula(
+      samples            = samples,
+      formula_list       = list(mu = ~ 1 + x),
+      formula_data_list  = formula_data_list,
+      formula_prior_list = formula_prior_list,
+      prior_list_parameters = list()
+    ),
+    "requires the formula design of parameter 'mu' in 'formula_design_list'",
     fixed = TRUE
   )
 })
@@ -5869,25 +5883,21 @@ test_that("JAGS formula marglik preserves predictor names containing _data", {
     "mu_intercept" = 1,
     "mu_x_data"   = 2
   )
-  formula_data_list <- list(
-    mu = list(
-      N_mu           = 2,
-      mu_data_x_data = c(10, 20)
-    )
-  )
-  formula_prior_list <- list(
-    mu = list(
-      mu_intercept = prior("normal", list(0, 1)),
-      mu_x_data    = prior("normal", list(0, 1))
+  formula_output <- JAGS_formula(
+    ~ 1 + x_data, "mu", data.frame(x_data = c(10, 20)),
+    list(
+      intercept = prior("normal", list(0, 1)),
+      x_data    = prior("normal", list(0, 1))
     )
   )
 
   parameters <- JAGS_marglik_parameters_formula(
     samples            = samples,
     formula_list       = list(mu = ~ 1 + x_data),
-    formula_data_list  = formula_data_list,
-    formula_prior_list = formula_prior_list,
-    prior_list_parameters = list()
+    formula_data_list  = list(mu = formula_output$data),
+    formula_prior_list = list(mu = formula_output$prior_list),
+    prior_list_parameters = list(),
+    formula_design_list = list(mu = formula_output$formula_design)
   )
 
   expect_equal(parameters$mu, c(1 + 2 * 10, 1 + 2 * 20))

@@ -4210,7 +4210,7 @@ test_that("marginal_posterior without prior samples tolerates unavailable scaled
     fit, parameters = c("ls_intercept", "ls_x"),
     transform_scaled = TRUE, n_prior_samples = 500
   )
-  original <- transform_scale_samples(posterior, list(ls = formula_result$formula_scale))
+  original <- BayesTools:::.bt_transform_scale_posterior(posterior, list(ls = formula_result$formula_scale))
 
   levels <- marginal_posterior(samples, "ls_x", formula = ~ x, prior_samples = FALSE)
   expect_equal(

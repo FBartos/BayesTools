@@ -2492,7 +2492,7 @@ test_that("JAGS_evaluate_formula matches lm predictions for factors and no-inter
     nrow = 1,
     dimnames = list(NULL, "mu_x")
   )
-  original_posterior <- transform_scale_samples(
+  original_posterior <- BayesTools:::.bt_transform_scale_posterior(
     scaled_posterior,
     list(mu = scaled_no_intercept_result$formula_scale)
   )
@@ -5348,13 +5348,18 @@ test_that("bridge positive support is enforced before reconstruction", {
     ),
     -Inf
   )
+  intercept_design <- JAGS_formula(
+    ~ 1, "mu", data.frame(x = 1),
+    list(intercept = invgamma_prior)
+  )$formula_design
   expect_error(
     JAGS_marglik_parameters_formula(
       samples = c("mu_intercept" = 0),
       formula_list = list(mu = ~ 1),
       formula_data_list = list(mu = list(N_mu = 1)),
       formula_prior_list = formula_prior_list,
-      prior_list_parameters = list()
+      prior_list_parameters = list(),
+      formula_design_list = list(mu = intercept_design)
     ),
     "out-of-support inverse-gamma coordinate"
   )
@@ -9350,7 +9355,7 @@ test_that("transform_scale_samples leaves structured random-effect SDs on the fi
       nrow = 1,
       dimnames = list(NULL, sd_cols)
     )
-    transformed <- transform_scale_samples(
+    transformed <- BayesTools:::.bt_transform_scale_posterior(
       posterior,
       list(mu = formula_result$formula_scale)
     )
@@ -9788,7 +9793,7 @@ test_that("transform_scale_samples unscales correlated random-effect SDs with co
   attr(formula_scale$mu, "random_effect_sd_leaves") <-
     .canonical_us_sd_leaves()
 
-  transformed <- transform_scale_samples(posterior, formula_scale)
+  transformed <- BayesTools:::.bt_transform_scale_posterior(posterior, formula_scale)
 
   expect_equal(
     unname(transformed[1, "mu__xREx__id_intercept"]),
@@ -9849,7 +9854,7 @@ test_that("transform_scale_samples requires correlations for scaled correlated r
   )
 
   expect_error(
-    transform_scale_samples(posterior, list(mu = formula_result$formula_scale)),
+    BayesTools:::.bt_transform_scale_posterior(posterior, list(mu = formula_result$formula_scale)),
     "requires random-effect correlation samples",
     fixed = TRUE
   )
@@ -9864,7 +9869,7 @@ test_that("transform_scale_samples requires correlations for scaled correlated r
   partial_R_posterior <- cbind(posterior, 1)
   colnames(partial_R_posterior)[ncol(partial_R_posterior)] <- R_names[1, 1]
   expect_error(
-    transform_scale_samples(partial_R_posterior, list(mu = formula_result$formula_scale)),
+    BayesTools:::.bt_transform_scale_posterior(partial_R_posterior, list(mu = formula_result$formula_scale)),
     "correlation samples are incomplete",
     fixed = TRUE
   )
@@ -10370,7 +10375,7 @@ test_that("transform_scale_samples updates valid random-effect correlations draw
   attr(formula_scale$mu, "random_effect_sd_leaves") <-
     .canonical_us_sd_leaves()
 
-  transformed <- transform_scale_samples(posterior, formula_scale)
+  transformed <- BayesTools:::.bt_transform_scale_posterior(posterior, formula_scale)
 
   expected_cor <- (0.8 * 1 * 2 - 5 * 2^2) /
     (sqrt(1^2 + 5^2 * 2^2 - 2 * 5 * 0.8 * 1 * 2) * 2)
@@ -10420,13 +10425,13 @@ test_that("transform_scale_samples clears invalid transformed random-effect corr
   attr(formula_scale$mu, "random_effect_sd_leaves") <-
     .canonical_us_sd_leaves()
 
-  transformed <- transform_scale_samples(posterior, formula_scale)
+  transformed <- BayesTools:::.bt_transform_scale_posterior(posterior, formula_scale)
 
   expect_true(is.na(transformed[1, "mu__xREx__id_xRE_CORx_R[1,2]"]))
   expect_true(is.na(transformed[1, "mu__xREx__id_xRE_CORx_L[2,1]"]))
   expect_false(is.na(transformed[2, "mu__xREx__id_xRE_CORx_R[1,2]"]))
 
-  all_invalid <- transform_scale_samples(
+  all_invalid <- BayesTools:::.bt_transform_scale_posterior(
     posterior[1, , drop = FALSE],
     formula_scale
   )
@@ -10473,7 +10478,7 @@ test_that("factor point priors do not add unindexed columns when unscaling", {
   expected_f <- 0.3 - scale_info$mean / scale_info$sd *
     posterior[, c("mu_x__xXx__f[1]", "mu_x__xXx__f[2]")]
 
-  transformed <- transform_scale_samples(
+  transformed <- BayesTools:::.bt_transform_scale_posterior(
     posterior,
     formula_scale = list(mu = formula_result$formula_scale)
   )
@@ -10489,7 +10494,7 @@ test_that("factor point priors do not add unindexed columns when unscaling", {
   legacy_scale <- formula_result$formula_scale
   attr(legacy_scale, "point_terms") <- c(mu_f = 0.3)
   expect_identical(
-    colnames(transform_scale_samples(posterior, formula_scale = list(mu = legacy_scale))),
+    colnames(BayesTools:::.bt_transform_scale_posterior(posterior, formula_scale = list(mu = legacy_scale))),
     colnames(posterior)
   )
 
@@ -10567,7 +10572,7 @@ test_that("transform_scale_samples keeps indexed random-effect correlations in o
     dimnames = list(NULL, c(sd_cols, as.vector(cor_names)))
   )
 
-  transformed <- transform_scale_samples(
+  transformed <- BayesTools:::.bt_transform_scale_posterior(
     posterior,
     list(mu = formula_result$formula_scale)
   )
@@ -10654,7 +10659,7 @@ test_that("transform_scale_samples unscales random-factor correlations in column
     dimnames = list(NULL, c(sd_cols, as.vector(R_names), as.vector(L_names)))
   )
 
-  transformed <- transform_scale_samples(
+  transformed <- BayesTools:::.bt_transform_scale_posterior(
     posterior,
     list(mu = formula_result$formula_scale)
   )
@@ -10706,7 +10711,7 @@ test_that("transform_scale_samples guards homogeneous random-effect SD scaling",
     nrow = 1,
     dimnames = list(NULL, "mu__xREx__id_sd")
   )
-  slope_transformed <- transform_scale_samples(
+  slope_transformed <- BayesTools:::.bt_transform_scale_posterior(
     slope_posterior,
     list(mu = slope_result$formula_scale)
   )
@@ -10725,7 +10730,7 @@ test_that("transform_scale_samples guards homogeneous random-effect SD scaling",
     prior_random = prior_random(id = random_block(sd = prior("gamma", list(2, 2))))
   )
   expect_error(
-    transform_scale_samples(
+    BayesTools:::.bt_transform_scale_posterior(
       slope_posterior,
       list(mu = intercept_slope_result$formula_scale)
     ),
