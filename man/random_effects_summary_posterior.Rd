@@ -37,7 +37,8 @@ prior density.}
 \value{
 A named list of posterior vectors with class \code{mixed_posteriors} and
 \code{marginal_posterior}. The list can be passed to \link{plot_posterior}, and the
-individual vectors carry a \code{prior_density} attribute.
+individual vectors carry their \code{prior_density}, \code{support}, and declared
+\code{atoms} as draw metadata (see \code{\link[=posterior_metadata]{posterior_metadata()}}).
 }
 \description{
 Extracts posterior draws for derived random-effect summary

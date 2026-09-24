@@ -30,7 +30,8 @@
 #'
 #' @return A named list of posterior vectors with class `mixed_posteriors` and
 #'   `marginal_posterior`. The list can be passed to [plot_posterior], and the
-#'   individual vectors carry a `prior_density` attribute.
+#'   individual vectors carry their `prior_density`, `support`, and declared
+#'   `atoms` as draw metadata (see [posterior_metadata()]).
 #'
 #' @export
 random_effects_summary_posterior <- function(

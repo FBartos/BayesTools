@@ -94,9 +94,12 @@ marginal_estimates_table(
 \item{samples}{posterior samples created by \link{mix_posteriors}. For
 \code{ensemble_estimates_table()}, a sample vector or matrix may contain
 missing draws only if it declares them as undefined through its
-\code{undefined_draws} attribute (a single value for a vector, or values
-named by column for a matrix), as set by \code{\link[=parameter_draws]{parameter_draws()}} for
-original-scale random-effect correlations (\code{"correlation"}). Such a row
+\code{undefined_draws} metadata (\code{posterior_metadata(x,
+"undefined_draws") <- }; a single value for a vector, or values named by
+column for a matrix), as set by \code{\link[=parameter_draws]{parameter_draws()}} from the catalog's
+\code{definedness} (\code{"correlation"} for original-scale random-effect
+correlations, \code{"allocation_active"} for variance shares of gated
+total-variance allocations). Such a row
 is summarized over its defined draws and a table footnote reports their
 share, e.g., "summarized over k of n draws where the correlation is
 defined, i.e. both SDs are positive". Any other missing draw is an error.}

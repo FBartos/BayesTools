@@ -100,8 +100,9 @@ posterior_density_method_uses_precomputed <- function(method){
 #' @param ... additional named metadata fields, for example \code{parameter},
 #' \code{conditional}, or \code{conditional_rule}.
 #'
-#' @return \code{posterior_density_attribute()} returns a list suitable for a
-#' \code{posterior_density} attribute.
+#' @return \code{posterior_density_attribute()} returns a list suitable for the
+#' \code{posterior_density} metadata of posterior draws
+#' ([posterior_metadata()]).
 #'
 #' @export
 posterior_density_attribute <- function(x, y, method, density_method,
@@ -184,8 +185,9 @@ posterior_density_attribute <- function(x, y, method, density_method,
 #' \code{posterior_ordinate_append()}, a posterior-ordinate attribute to
 #' append.
 #'
-#' @return \code{posterior_ordinate_attribute()} returns a list suitable for a
-#' \code{posterior_ordinate} attribute.
+#' @return \code{posterior_ordinate_attribute()} returns a list suitable for the
+#' \code{posterior_ordinate} metadata of posterior draws
+#' ([posterior_metadata()]).
 #'
 #' @export
 posterior_ordinate_attribute <- function(value, ordinate, method,

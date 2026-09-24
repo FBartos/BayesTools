@@ -71,11 +71,13 @@ append.}
 checks. It is called only after the generic BayesTools schema is valid.}
 }
 \value{
-\code{posterior_density_attribute()} returns a list suitable for a
-\code{posterior_density} attribute.
+\code{posterior_density_attribute()} returns a list suitable for the
+\code{posterior_density} metadata of posterior draws
+(\code{\link[=posterior_metadata]{posterior_metadata()}}).
 
-\code{posterior_ordinate_attribute()} returns a list suitable for a
-\code{posterior_ordinate} attribute.
+\code{posterior_ordinate_attribute()} returns a list suitable for the
+\code{posterior_ordinate} metadata of posterior draws
+(\code{\link[=posterior_metadata]{posterior_metadata()}}).
 
 \code{posterior_ordinate_append()} returns a posterior-ordinate
 attribute container that may hold multiple ordinates.
