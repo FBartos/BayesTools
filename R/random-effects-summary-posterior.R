@@ -288,92 +288,27 @@ random_effects_summary_posterior <- function(
                                                                     transform,
                                                                     n_grid){
 
-  density_evaluator <- function(x){
-    out <- numeric(length(x))
-    outside <- !is.finite(x) | x < 0
-
-    if(identical(transform, "sqrt")){
-      upper_support <- sqrt(scale)
-      outside <- outside | x > upper_support
-      interior <- !outside & x > 0 & x < upper_support
-      out[interior] <- stats::dbeta(
-        x[interior]^2 / scale,
-        alpha,
-        beta
-      ) * (2 * x[interior] / scale)
-
-      at_lower <- !outside & x == 0
-      if(any(at_lower)){
-        lower_power <- 2 * alpha - 1
-        out[at_lower] <- if(lower_power < 0){
-          Inf
-        }else if(lower_power == 0){
-          2 * scale^(-alpha) / beta(alpha, beta)
-        }else{
-          0
-        }
-      }
-
-      at_upper <- !outside & x == upper_support
-      if(any(at_upper)){
-        out[at_upper] <- if(beta < 1){
-          Inf
-        }else if(beta == 1){
-          2 * alpha / upper_support
-        }else{
-          0
-        }
-      }
-    }else{
-      upper_support <- scale
-      outside <- outside | x > upper_support
-      interior <- !outside & x > 0 & x < upper_support
-      out[interior] <- stats::dbeta(
-        x[interior] / scale,
-        alpha,
-        beta
-      ) / scale
-
-      at_lower <- !outside & x == 0
-      if(any(at_lower)){
-        out[at_lower] <- if(alpha < 1){
-          Inf
-        }else if(alpha == 1){
-          beta / scale
-        }else{
-          0
-        }
-      }
-
-      at_upper <- !outside & x == upper_support
-      if(any(at_upper)){
-        out[at_upper] <- if(beta < 1){
-          Inf
-        }else if(beta == 1){
-          alpha / scale
-        }else{
-          0
-        }
-      }
-    }
-
-    out[outside] <- 0
-    out
-  }
-
-  cdf_evaluator <- function(x){
-    if(identical(transform, "sqrt")){
-      out <- stats::pbeta(x^2 / scale, alpha, beta)
-      out[x <= 0] <- 0
-      out[x >= sqrt(scale)] <- 1
-      out
-    }else{
-      stats::pbeta(x / scale, alpha, beta)
-    }
-  }
-
+  # scale * w (linear) or sqrt(scale * w) = exp(log(scale) / 2) w^(1/2)
+  # (exp_lin) of w ~ Beta(alpha, beta): the recorded provenance evaluates
+  # heights, probabilities and the plotting grid on the structural route.
+  root <- identical(transform, "sqrt")
   tail_prob <- .prior_linear_density_tail_prob()
-  if(identical(transform, "sqrt")){
+  provenance <- list(
+    kind = "linear_combination",
+    arguments = list(
+      prior_list = list(source = prior("beta", list(alpha = alpha, beta = beta))),
+      weights = c(source = if(root) 1 else scale),
+      n_grid = n_grid,
+      tail_prob = tail_prob,
+      source_transforms = NULL,
+      output_transformation = if(root) "exp_lin" else NULL,
+      output_transformation_arguments = if(root) list(a = log(scale) / 2, b = 1 / 2) else NULL,
+      grid_spacing = NULL
+    )
+  )
+  route <- .prior_density_route_from_adaptive(provenance)
+
+  if(root){
     support <- c(0, sqrt(scale))
     lower <- if(alpha < 0.5) sqrt(scale * stats::qbeta(tail_prob / 2, alpha, beta)) else support[1]
     upper <- if(beta < 1) sqrt(scale * stats::qbeta(1 - tail_prob / 2, alpha, beta)) else support[2]
@@ -397,7 +332,7 @@ random_effects_summary_posterior <- function(
     x <- sort(unique(c(x, 1)))
   }
 
-  y <- density_evaluator(x)
+  y <- .prior_density_route_density(route, x)
   if(anyNA(y) || any(!is.finite(y))){
     stop(
       "The scaled-Beta plotting grid includes a singular support boundary.",
@@ -416,10 +351,9 @@ random_effects_summary_posterior <- function(
   )
   class(out) <- c("prior_linear_density", "prior_density")
   attr(out, "support") <- support
-  attr(out, "density_evaluator") <- density_evaluator
-  attr(out, "cdf_evaluator") <- cdf_evaluator
-  attr(out, "singular_boundaries") <- support[
-    is.infinite(density_evaluator(support))
-  ]
+  attr(out, "adaptive_evaluation") <- provenance
+  attr(out, "singular_boundaries") <- support[vapply(support, function(bound){
+    identical(prior_density_ordinate(out, bound)$behavior, "infinite")
+  }, logical(1))]
   out
 }

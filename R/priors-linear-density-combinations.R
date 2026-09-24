@@ -1020,8 +1020,6 @@
       grid_spacing       = grid_spacing
     )
   )
-  singular_density_points <- numeric()
-
   if(length(split$product_groups) > 0){
     for(product_group in split$product_groups){
       multiplier <- product_group$multiplier
@@ -1070,10 +1068,6 @@
         source_transforms  = source_transforms,
         grid_spacing       = grid_spacing
       )
-      if(.prior_linear_density_grid_height(linear_dist, 0) > 0 &&
-         .prior_linear_density_grid_height(multiplier_dist, 0) > 0){
-        singular_density_points <- c(singular_density_points, 0)
-      }
 
       components[[length(components) + 1L]] <- .prior_linear_density_product(
         linear_dist,
@@ -1093,10 +1087,6 @@
   dist <- .prior_linear_density_transform(dist, output_transformation,
                                           output_transformation_arguments, n_grid)
   attr(dist, "weights") <- weights
-  if(length(singular_density_points) > 0L){
-    attr(dist, "singular_density_points") <-
-      sort(unique(singular_density_points))
-  }
   if(isTRUE(.record_evaluation)){
     attr(dist, "adaptive_evaluation") <- list(
       kind = "linear_combination",
@@ -1124,28 +1114,6 @@
         attr(dist, "fft_clipping", exact = TRUE),
       adaptive_evaluation = TRUE
     )
-  }
-
-  if(length(weights) == 1L && is.null(output_transformation)){
-    parameter <- names(weights)
-    scalar_prior <- if(length(parameter) == 1L) prior_list[[parameter]] else NULL
-    source_transform <- source_transforms[parameter]
-    if(is.prior.simple(scalar_prior) &&
-       !is.prior.mixture(scalar_prior) &&
-       !is.prior.spike_and_slab(scalar_prior) &&
-       !is.prior.point(scalar_prior) &&
-       !is.prior.discrete(scalar_prior) &&
-       is.null(attr(scalar_prior, "multiply_by", exact = TRUE)) &&
-       (length(source_transform) == 0L || is.na(source_transform))){
-      weight <- unname(weights[[1L]])
-      attr(dist, "density_evaluator") <- local({
-        prior_value <- scalar_prior
-        weight_value <- weight
-        function(value){
-          mpdf(prior_value, value / weight_value) / abs(weight_value)
-        }
-      })
-    }
   }
   return(.prior_linear_density_normalize(dist, warn = TRUE))
 }
@@ -2551,17 +2519,8 @@
     route      <- .prior_density_route_from_adaptive(
       attr(dist, "adaptive_evaluation", exact = TRUE)
     )
-    evaluator  <- attr(dist, "density_evaluator", exact = TRUE)
     if(any(finite_raw) && !is.null(route) && !identical(route$type, "unknown")){
       y_den[finite_raw] <- .prior_density_route_density(route, x_raw[finite_raw])
-    }else if(any(finite_raw) && is.null(route) && is.function(evaluator)){
-      evaluated <- evaluator(x_raw[finite_raw])
-      if(!is.numeric(evaluated) || length(evaluated) != sum(finite_raw) ||
-         anyNA(evaluated)){
-        stop("The analytic prior density evaluator returned invalid values.",
-             call. = FALSE)
-      }
-      y_den[finite_raw] <- evaluated * dist$density$mass
     }else if(any(finite_raw)){
       y_den[finite_raw] <- stats::approx(
         dist$density$x,
@@ -3133,28 +3092,16 @@
   if(is.null(terms) || length(terms) == 0L){
     return(NULL)
   }
-  # grid components outside their support hull contribute exactly zero, and
-  # scalar components carry an analytic density evaluator
+  # grid components outside their support hull contribute exactly zero
   for(i in seq_along(terms)){
     if(!identical(terms[[i]]$method, "grid")){
       next
     }
-    density <- terms[[i]]$density
     support <- .prior_linear_density_support_hull(
-      attr(density, "adaptive_evaluation", exact = TRUE)
+      attr(terms[[i]]$density, "adaptive_evaluation", exact = TRUE)
     )
     if(!is.null(support) && (value < support[1L] || value > support[2L])){
       terms[[i]] <- list(weight = terms[[i]]$weight, method = "exact", height = 0)
-      next
-    }
-    if(value %in% attr(density, "singular_density_points", exact = TRUE)){
-      stop("The prior density at the flagged product ordinate is unavailable from supported deterministic provenance. Inspect the prior specification or use a supported prior-density evaluator.",
-           call. = FALSE)
-    }
-    evaluator <- attr(density, "density_evaluator", exact = TRUE)
-    if(is.function(evaluator)){
-      terms[[i]] <- list(weight = terms[[i]]$weight, method = "exact",
-                         height = as.numeric(evaluator(value)))
     }
   }
 
@@ -3228,25 +3175,6 @@
     ))
   }
 
-  singular_points <- attr(x, "singular_density_points", exact = TRUE)
-  if(length(value) == 1L && value %in% singular_points){
-    if(!is.null(ordinate) && isTRUE(ordinate$exact) &&
-       .prior_density_ordinate_continuous_behavior(ordinate) %in% c("regular", "zero") &&
-       !is.na(ordinate$log_density)){
-      return(exp(ordinate$log_density))
-    }
-    stop("The prior density at the flagged product ordinate is unavailable from supported deterministic provenance. Inspect the prior specification or use a supported prior-density evaluator.",
-         call. = FALSE)
-  }
-
-  evaluator <- attr(x, "density_evaluator", exact = TRUE)
-  if(is.function(evaluator)){
-    height <- evaluator(value)
-    if(!is.numeric(height) || length(height) != length(value) || anyNA(height)){
-      stop("The analytic prior density evaluator returned invalid values.", call. = FALSE)
-    }
-    return(height)
-  }
 
   if(length(value) != 1L || !is.finite(value)){
     stop("Adaptive prior-density evaluation requires one finite ordinate.",

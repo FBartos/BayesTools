@@ -94,12 +94,14 @@ test_that("unbounded conditional-normal ordinates retain exact support and count
 test_that("legacy product flags cannot establish an infinite density", {
 
   # A non-normal additive term with a product has no structural route; its
-  # capped product grid is not used for heights either.
+  # capped product grid is not used for heights either. Products are not
+  # flagged from their grids, and stale flags are ignored: b * s with b, s ~
+  # N(0, 1) has the density K0(|x|) / pi, infinite only at 0.
   priors <- list(a = prior("uniform", list(-1, 1)), b = prior("normal", list(0, 1)),
                  s = prior("normal", list(0, 1)))
   attr(priors$b, "multiply_by") <- "s"
   unsupported <- .prior_linear_combination_density(priors, c(a = 1, b = 1), n_grid = 128)
-  expect_true(0 %in% attr(unsupported, "singular_density_points"))
+  expect_null(attr(unsupported, "singular_density_points"))
   expect_identical(prior_density_ordinate(unsupported, 0)$behavior, "unknown")
   expect_error(.prior_linear_density_height(unsupported, 0),
                paste0("The prior density of this linear combination is unavailable: its ",
@@ -108,8 +110,40 @@ test_that("legacy product flags cannot establish an infinite density", {
   pure <- .prior_linear_combination_density(priors, c(b = 1), n_grid = 128)
   expect_identical(prior_density_ordinate(pure, 0)$behavior, "infinite")
   expect_identical(.prior_linear_density_height(pure, 0), Inf)
-  attr(pure, "singular_density_points") <- NULL
+  attr(pure, "singular_density_points") <- c(0, 1)
   expect_identical(.prior_linear_density_height(pure, 0), Inf)
+  expect_equal(as.numeric(.prior_linear_density_height(pure, 1)), besselK(1, 0) / pi,
+               tolerance = 1e-8)
+})
+
+test_that("exp_lin images of a zero source have their structural boundary limit", {
+
+  # Y = exp(a) X^b with X's density ~ C x^(b - 1) at 0 has the density
+  # C / (b exp(a)) at 0: X ~ Beta(1/2, 1) (C = 1 / B(1/2, 1) = 1/2) with
+  # sqrt(4 X), and X ~ gamma(1/2, 2) (C = sqrt(2) / Gamma(1/2)) with
+  # 3 sqrt(X); references in closed form, also for the plotted curve.
+  cases <- list(
+    list(prior = prior("beta", list(.5, 1)), a = log(4) / 2, limit = .5 / (.5 * 2),
+         density = function(y) stats::dbeta(y^2 / 4, .5, 1) * y / 2),
+    list(prior = prior("gamma", list(.5, 2)), a = log(3),
+         limit = sqrt(2) / gamma(.5) / (.5 * 3),
+         density = function(y) stats::dgamma((y / 3)^2, .5, 2) * 2 * y / 9)
+  )
+  for(case in cases){
+    density <- .prior_linear_combination_density(
+      list(x = case$prior), c(x = 1),
+      output_transformation = "exp_lin",
+      output_transformation_arguments = list(a = case$a, b = .5)
+    )
+    ordinate <- prior_density_ordinate(density, 0)
+    expect_identical(ordinate$behavior, "regular")
+    expect_true(ordinate$exact)
+    expect_equal(exp(ordinate$log_density), case$limit, tolerance = 1e-14)
+    expect_equal(as.numeric(.prior_linear_density_height(density, 0)), case$limit,
+                 tolerance = 1e-14)
+    curve <- .prior_linear_density_to_plot_data(density, n_points = 11, x_range = c(0, 1))$density
+    expect_equal(curve$y, c(case$limit, case$density(curve$x[-1L])), tolerance = 1e-12)
+  }
 })
 
 test_that("products without an additive normal term are pure scale mixtures", {

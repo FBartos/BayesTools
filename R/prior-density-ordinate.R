@@ -1517,6 +1517,103 @@ prior_density_ordinate <- function(x, value){
   "unknown"
 }
 
+# Log density at 0 of exp(a) X^b (b > 0) where X's density behaves like
+# C x^(b - 1) at its lower bound 0 (a "regular" exp_lin boundary): the limit
+# of f_X(x) / (b exp(a) x^(b - 1)) is C / (b exp(a)). NA when C is not
+# structurally known.
+.prior_density_ordinate_exp_lin_zero_log_limit <- function(provenance, a, b){
+
+  .prior_density_ordinate_lower_log_coefficient(provenance, b) - log(b) - a
+}
+
+# Log of the coefficient C in f(x) ~ C x^(p - 1) as x -> 0+ for a source
+# supported on [0, ...): closed forms for primitive beta (exponent alpha)
+# and gamma (exponent shape) densities divided by their truncation mass, and
+# the density at the bound for exponent-one families; a positive scaling s
+# multiplies C by s^(-p), and finite mixtures sum the contributions of their
+# components (-Inf, i.e. 0, for a component whose exponent exceeds p). NA
+# when C is not structurally known.
+.prior_density_ordinate_lower_log_coefficient <- function(provenance, p){
+
+  kind <- provenance$kind
+  if(identical(kind, "finite_mixture")){
+    terms <- vapply(provenance$components, function(component){
+      weight <- component$weight
+      if(!is.numeric(weight) || length(weight) != 1L || !is.finite(weight) ||
+         weight <= 0){
+        return(-Inf)
+      }
+      log(weight) + .prior_density_ordinate_lower_log_coefficient(
+        component$provenance, p
+      )
+    }, numeric(1))
+    if(length(terms) == 0L || anyNA(terms)){
+      return(NA_real_)
+    }
+    top <- max(terms)
+    if(top == -Inf){
+      return(-Inf)
+    }
+    return(top + log(sum(exp(terms - top))))
+  }
+  if(identical(kind, "scalar_affine")){
+    offset <- provenance$offset
+    scale <- provenance$scale
+    if(!is.list(provenance$source) || !is.null(provenance$source_transform) ||
+       !is.numeric(offset) || length(offset) != 1L || !isTRUE(offset == 0) ||
+       !is.numeric(scale) || length(scale) != 1L || !isTRUE(scale > 0)){
+      return(NA_real_)
+    }
+    return(.prior_density_ordinate_lower_log_coefficient(provenance$source, p) -
+             p * log(scale))
+  }
+  if(!identical(kind, "primitive") || !is.list(provenance$truncation) ||
+     !isTRUE(provenance$truncation$lower == 0)){
+    return(NA_real_)
+  }
+  family <- provenance$family
+  parameters <- provenance$parameters
+  upper <- provenance$truncation$upper
+  exponent <- switch(
+    family,
+    "beta"    = parameters$alpha,
+    "gamma"   = parameters$shape,
+    "normal"  = 1,
+    "exp"     = 1,
+    "uniform" = 1,
+    NA_real_
+  )
+  if(!is.numeric(exponent) || length(exponent) != 1L || !is.finite(exponent)){
+    return(NA_real_)
+  }
+  if(exponent > p){
+    return(-Inf)
+  }
+  if(exponent < p){
+    return(NA_real_)
+  }
+  if(identical(family, "beta")){
+    mass <- stats::pbeta(upper, parameters$alpha, parameters$beta)
+    return(-lbeta(parameters$alpha, parameters$beta) - log(mass))
+  }
+  if(identical(family, "gamma")){
+    mass <- stats::pgamma(upper, shape = parameters$shape, rate = parameters$rate)
+    return(parameters$shape * log(parameters$rate) - lgamma(parameters$shape) -
+             log(mass))
+  }
+  bound <- tryCatch(
+    .prior_density_ordinate_primitive(
+      prior(family, parameters, provenance$truncation), 0
+    ),
+    error = function(e) NULL
+  )
+  if(is.null(bound) ||
+     !identical(.prior_density_ordinate_continuous_behavior(bound), "regular")){
+    return(NA_real_)
+  }
+  bound$log_density
+}
+
 .prior_density_ordinate_exp_lin_boundary <- function(provenance, b){
 
   support <- .prior_density_ordinate_provenance_support(provenance)
@@ -1925,7 +2022,11 @@ prior_density_ordinate <- function(x, value){
       value       = value,
       behavior    = behavior,
       log_density = if(behavior == "zero") -Inf else
-        if(behavior == "infinite") Inf else NA_real_,
+        if(behavior == "infinite") Inf else if(behavior == "regular"){
+          .prior_density_ordinate_exp_lin_zero_log_limit(
+            source_provenance, arguments$a, arguments$b
+          )
+        }else NA_real_,
       exact       = !identical(behavior, "unknown"),
       method      = if(behavior == "unknown") "unsupported_provenance" else "named_transform",
       provenance  = provenance

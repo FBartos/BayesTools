@@ -210,6 +210,10 @@ mixture component grids and grid region probabilities share this one
 refinement loop (`.prior_linear_density_refine_grids()`). A refinement-
 change criterion is not an error bound: grid-based heights of components with
 singular source densities (e.g. gamma shape < 1) remain approximate within it.
+Structural behavior is never flagged from grids or attached evaluators (the
+former product flags and scalar density evaluators are gone); an `exp_lin`
+image of a zero source has the structural boundary limit C / (b exp(a)) of a
+source density ~ C x^(b - 1) (beta, gamma, and exponent-one families).
 
 Scalar prior-region probabilities (`R/prior-density-region.R`) follow the
 ordinate's classification wherever it has a structural route, for regions

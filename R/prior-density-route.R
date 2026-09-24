@@ -1160,6 +1160,13 @@
       x[inside], source_density, route$transformation, arguments
     )
   }
+  # the image of a zero source under exp_lin is a boundary whose density is
+  # the ordinate's structural limit
+  if(identical(route$transformation, "exp_lin") && any(x == 0)){
+    out[x == 0] <- .prior_density_ordinate_height_value(
+      .prior_density_route_ordinate(route, 0)
+    )
+  }
   out
 }
 
