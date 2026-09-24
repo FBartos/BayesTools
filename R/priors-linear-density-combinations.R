@@ -1325,15 +1325,20 @@
 # total is rejected as for the ordinate (also when the probability underflows).
 # Unlike the ordinate, whose Gaussian factor vanishes away from its peak, the
 # integrand on a piece that the region covers entirely is the other term's
-# density itself. Known limitations: for heavy tails (a Cauchy scale of about
-# 0.9 or more, half-Cauchy or inverse-gamma(1) multipliers), QUADPACK flags
-# the infinite end piece beyond the extreme quantile of a region with an
-# infinite bound ("roundoff error", "probably divergent") and the probability
-# stops; and for a region bound far beyond the extreme quantiles, the long
-# piece between its peak window and the extreme quantile has its mass (up to
-# the 1e-6 beyond that quantile) at one end, which can be missed without a
-# convergence failure (within the relative criterion for probabilities near
-# one).
+# density itself, which QUADPACK integrates poorly in heavy tails. For a
+# Gaussian convolution X = G + w T, G ~ N(m, s), a piece [a, b] that lies
+# entirely outside every window t*_e +- 10 s / |w| of the finite region
+# endpoints e is therefore evaluated exactly as c * (F(b) - F(a)) with T's
+# declared distribution function F: the mean m + w t of G is then at least
+# 10 SDs from every region bound, so the Gaussian region probability is
+# c = 1 (mean inside the region) or c = 0 (outside) to within
+# P(|G - m| > 10 s) = 2 * Phi(-10) ~= 1.5e-23, and the piece's absolute error
+# is at most 1.5e-23 * (F(b) - F(a)). The window bounds are breakpoints, so
+# only pieces inside the windows use QUADPACK. Known limitation: conditional-
+# normal scale mixtures (b_s > 0) integrate every piece; for heavy-tailed
+# multipliers (e.g. half-Cauchy or inverse-gamma(1)), QUADPACK flags the
+# infinite end piece of a region with an infinite bound ("roundoff error",
+# "probably divergent") and the probability stops.
 .prior_conditional_normal_region <- function(spec, intervals, n_grid){
 
   lower <- intervals[, 1L]
@@ -1354,9 +1359,41 @@
   }
   endpoints <- c(lower, upper)
   endpoints <- unique(endpoints[is.finite(endpoints)])
+  exact_piece <- NULL
+  if(isTRUE(spec$product_sd == 0) && isTRUE(spec$product_mean != 0) &&
+     length(endpoints) > 0L){
+    # the same arithmetic as the peak windows of the breakpoints
+    centre <- (endpoints - spec$additive_mean) / spec$product_mean
+    width <- sqrt(spec$additive_sd^2 + (spec$product_sd * centre)^2) / abs(spec$product_mean)
+    window_lower <- centre + (-10) * width
+    window_upper <- centre + 10 * width
+    exact_piece <- function(a, b){
+      if(!all(b <= window_lower | a >= window_upper)){
+        return(NULL)
+      }
+      interior <- if(is.finite(a) && is.finite(b)){
+        a / 2 + b / 2
+      }else if(is.finite(b)){
+        b - 1 - abs(b)
+      }else if(is.finite(a)){
+        a + 1 + abs(a)
+      }else{
+        0
+      }
+      mean <- spec$additive_mean + interior * spec$product_mean
+      mass <- .prior_region_prior_mass(spec$multiplier, matrix(c(a, b), 1L))
+      list(
+        value       = if(any(mean > lower & mean < upper)) mass else 0,
+        abs.error   = 2 * stats::pnorm(-10) * mass,
+        message     = "OK",
+        evaluations = 0L
+      )
+    }
+  }
   .prior_conditional_normal_quadrature(
     integrand, .prior_conditional_normal_breakpoints(spec, endpoints), n_grid,
-    zero_message = "zero probability for a structurally positive region"
+    zero_message = "zero probability for a structurally positive region",
+    exact_piece = exact_piece
   )
 }
 
@@ -1391,13 +1428,24 @@
 # is an independent integral with the full budget 'n_grid' and its own
 # diagnostics; the value and absolute error are summed, and the acceptance
 # criterion (all pieces converged, abs. error <= 1e-12 + 1e-4 * value, value
-# positive) applies to the total. A rejected total has value NA.
+# positive) applies to the total. A rejected total has value NA. An optional
+# 'exact_piece(lower, upper)' returns a piece evaluated without quadrature
+# (value, abs.error, message, evaluations) or NULL for a QUADPACK piece.
 .prior_conditional_normal_quadrature <- function(integrand, points, n_grid,
-                                                 zero_message){
+                                                 zero_message,
+                                                 exact_piece = NULL){
 
   tolerance <- .prior_linear_density_refinement_tolerance()
   n_pieces <- length(points) - 1L
+  exact <- rep(FALSE, n_pieces)
   pieces <- lapply(seq_len(n_pieces), function(i){
+    if(!is.null(exact_piece)){
+      piece <- exact_piece(points[i], points[i + 1L])
+      if(!is.null(piece)){
+        exact[i] <<- TRUE
+        return(piece)
+      }
+    }
     .prior_conditional_normal_piece(
       integrand, points[i], points[i + 1L], n_grid,
       relative = tolerance$relative, absolute = tolerance$absolute / n_pieces
@@ -1424,18 +1472,19 @@
   if(!isTRUE(accepted)){
     integral$value <- NA_real_
   }
-  list(
-    value = integral$value,
-    integration = list(
-      kind = "conditional_normal_mixture", exact = FALSE,
-      absolute_error = integral$abs.error, error_bound = bound,
-      evaluations = sum(vapply(pieces, `[[`, integer(1), "evaluations")),
-      budget = n_grid, converged = isTRUE(accepted), message = integral$message,
-      breakpoints = points,
-      piece_evaluations = vapply(pieces, `[[`, integer(1), "evaluations"),
-      piece_absolute_errors = piece_errors
-    )
+  integration <- list(
+    kind = "conditional_normal_mixture", exact = FALSE,
+    absolute_error = integral$abs.error, error_bound = bound,
+    evaluations = sum(vapply(pieces, `[[`, integer(1), "evaluations")),
+    budget = n_grid, converged = isTRUE(accepted), message = integral$message,
+    breakpoints = points,
+    piece_evaluations = vapply(pieces, `[[`, integer(1), "evaluations"),
+    piece_absolute_errors = piece_errors
   )
+  if(!is.null(exact_piece)){
+    integration$exact_pieces <- exact
+  }
+  list(value = integral$value, integration = integration)
 }
 
 # Breakpoints of the conditional-normal integral over the multiplier (or the

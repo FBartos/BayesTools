@@ -619,11 +619,100 @@ test_that("region quadratures split at every region endpoint with the full budge
                   region_references$normal_cauchy[["theta > -0.1 & theta < 0.1"]]), 1e-8)
 })
 
+# A conditional-normal scale mixture integrates every piece by quadrature
+# (no piece is evaluated exactly), so mocked pieces determine the total.
+scale_mixture_priors <- function(){
+  multiplied <- prior("normal", list(0, 1))
+  attr(multiplied, "multiply_by") <- "s"
+  list(a = prior("normal", list(0, 1)), b = multiplied, s = prior("gamma", list(3, 2)))
+}
+
+test_that("Gaussian-convolution regions evaluate pieces outside the endpoint windows exactly", {
+
+  # References: 40-digit mpmath, integrating over the Gaussian variable with
+  # the other term's exact CDF (script
+  # .work/tmp/pr58-decisions/I/references_r2.py of the workspace). The heavy
+  # Cauchy tails (scale 1 and 5) previously stopped as "roundoff error" or
+  # "probably divergent"; bounds at 1e4 missed up to 2e-6.
+  normal <- prior("normal", list(0, 1))
+  references <- list(
+    "1" = c("theta > 0.5" = .364359843655328366816,
+            "theta < -0.2" = .4444604638053888513949,
+            "theta > 3" = .06148835450822882103696,
+            "theta < -10 | theta > 10" = .03213115939557752564382),
+    "5" = c("theta > 0.5" = .4440656746305845575946,
+            "theta < -0.2" = .4774757698971268778466,
+            "theta > 3" = .2315589935142253463258,
+            "theta < -10 | theta > 10" = .1574045832897135562589)
+  )
+  for(scale in names(references)){
+    density <- .prior_linear_combination_density(
+      list(a = normal, b = prior("cauchy", list(0, as.numeric(scale)))), c(a = 1, b = -.5)
+    )
+    expect_region_probabilities(density, references[[scale]], tolerance = 1e-10)
+  }
+
+  t30 <- .prior_linear_combination_density(
+    list(a = normal, b = prior("t", list(0, .5, 30))), c(a = 1, b = 1)
+  )
+  expect_region_probabilities(t30, c(
+    "theta < 10000" = 1,
+    "theta > -10000 & theta < 10000" = 1
+  ), tolerance = 1e-10)
+  expect_lt(abs(region_probability(t30, "theta > 10000") / 9.652759592340303478938e-109 - 1), 1e-6)
+  t3 <- .prior_linear_combination_density(
+    list(a = normal, b = prior("t", list(0, .5, 3))), c(a = 1, b = 1)
+  )
+  expect_region_probabilities(t3, c("theta < 10000" = .9999999999998621677691),
+                              tolerance = 1e-10)
+  expect_lt(abs(region_probability(t3, "theta > 10000") / 1.378322308848918731454e-13 - 1), 1e-8)
+  gamma <- .prior_linear_combination_density(
+    list(a = normal, b = prior("gamma", list(3, 2))), c(a = 1, b = 1)
+  )
+  expect_region_probabilities(gamma, c(
+    "theta < 10000" = 1,
+    "theta > -10000 & theta < 10000" = 1
+  ), tolerance = 1e-10)
+  expect_lt(abs(region_probability(gamma, "theta > 20") / 2.156584228136996354923e-14 - 1), 1e-8)
+  # the probability beyond 1e4 underflows: an exactly zero total stops
+  expect_error(
+    region_probability(gamma, "theta > 10000"),
+    "integration reported 'zero probability for a structurally positive region'",
+    fixed = TRUE
+  )
+
+  # only the pieces inside the windows t* +- 10 of the bound .5 (t* = -1,
+  # local SD 2) use quadrature; the others carry the 2 * Phi(-10) bound
+  spec <- .prior_density_ordinate_gaussian_convolution_spec(
+    list(a = normal, b = prior("cauchy", list(0, 5))), c(a = 1, b = -.5), NULL
+  )
+  integration <- .prior_conditional_normal_region(spec, matrix(c(.5, Inf), 1L), 4096L)$integration
+  pieces <- cbind(utils::head(integration$breakpoints, -1L), integration$breakpoints[-1L])
+  outside <- pieces[, 2L] <= -21 | pieces[, 1L] >= 19
+  expect_identical(integration$exact_pieces, outside)
+  expect_true(any(outside))
+  expect_true(all(integration$piece_evaluations[outside] == 0L))
+  masses <- stats::pcauchy(pieces[outside, 2L], scale = 5) - stats::pcauchy(pieces[outside, 1L], scale = 5)
+  expect_equal(integration$piece_absolute_errors[outside], 2 * stats::pnorm(-10) * masses,
+               tolerance = 1e-10)
+
+  # scale mixtures integrate every piece
+  expect_null(.prior_conditional_normal_region(
+    .prior_conditional_normal_spec(
+      scale_mixture_priors(),
+      .prior_linear_split_multiply_groups(scale_mixture_priors(), c(a = 1, b = 1)), NULL
+    ),
+    matrix(c(.5, Inf), 1L), 4096L
+  )$integration$exact_pieces)
+})
+
 test_that("rejected region quadratures stop instead of using the grid", {
 
-  priors <- list(b0 = prior("normal", list(0, 1)), b1 = prior("cauchy", list(0, .5)))
-  density <- .prior_linear_combination_density(priors, c(b0 = 1, b1 = -.5))
-  spec <- .prior_density_ordinate_gaussian_convolution_spec(priors, c(b0 = 1, b1 = -.5), NULL)
+  priors <- scale_mixture_priors()
+  density <- .prior_linear_combination_density(priors, c(a = 1, b = 1))
+  spec <- .prior_conditional_normal_spec(
+    priors, .prior_linear_split_multiply_groups(priors, c(a = 1, b = 1)), NULL
+  )
   n_pieces <- length(.prior_conditional_normal_breakpoints(spec, .5)) - 1L
   testthat::local_mocked_bindings(
     .prior_conditional_normal_piece = function(integrand, lower, upper, n_grid,
@@ -647,9 +736,11 @@ test_that("rejected region quadratures stop instead of using the grid", {
 
 test_that("quadrature region probabilities may exceed one only within their absolute error", {
 
-  priors <- list(b0 = prior("normal", list(0, 1)), b1 = prior("cauchy", list(0, .5)))
-  density <- .prior_linear_combination_density(priors, c(b0 = 1, b1 = -.5))
-  spec <- .prior_density_ordinate_gaussian_convolution_spec(priors, c(b0 = 1, b1 = -.5), NULL)
+  priors <- scale_mixture_priors()
+  density <- .prior_linear_combination_density(priors, c(a = 1, b = 1))
+  spec <- .prior_conditional_normal_spec(
+    priors, .prior_linear_split_multiply_groups(priors, c(a = 1, b = 1)), NULL
+  )
   n_pieces <- length(.prior_conditional_normal_breakpoints(spec, .5)) - 1L
   total <- 1 + 1e-12
   total_error <- 1e-11

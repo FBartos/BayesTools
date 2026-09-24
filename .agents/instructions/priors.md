@@ -152,17 +152,16 @@ combination is evaluated this way only when every component has such a route.
 Keep the two paths in step: a combination whose ordinate is structurally
 classified has a structural region probability, and one whose ordinate is
 `unknown` keeps the grid. A quadrature total may exceed [0, 1] by at most its
-absolute error. Known limitations, both from pieces that a region covers
-entirely, where the integrand is the other term's density itself: with a
-heavy-tailed other term (e.g. a Cauchy scale of about 0.9 or more, half-Cauchy
-or inverse-gamma(1) multipliers), QUADPACK flags the infinite end piece beyond
-the extreme quantile for a region with an infinite bound ("roundoff error",
-"probably divergent"), so such probabilities stop as they did on the grid; and
-a region bound far beyond the other term's extreme quantiles leaves a long
-piece between its peak window and the extreme quantile whose mass (up to the
-1e-6 beyond that quantile) sits at one end and can be missed without a
-convergence failure (seen as absolute errors of 1e-6 to 2e-6 on probabilities
-near one, within the relative criterion). A region whose probability
+absolute error. For a Gaussian convolution G + w T, a piece that lies
+entirely outside every window t* +- 10 s / |w| of the finite region bounds is
+evaluated exactly as 0 or 1 times its mass under T's declared distribution
+function (the Gaussian region probability is constant there to within
+2 * Phi(-10) ~= 1.5e-23), so heavy tails and region bounds far beyond T's
+quantiles need no quadrature. Known limitation: conditional-normal scale
+mixtures integrate every piece, and with a heavy-tailed multiplier (e.g.
+half-Cauchy or inverse-gamma(1)) QUADPACK flags the infinite end piece of a
+region with an infinite bound ("roundoff error", "probably divergent"), so
+such probabilities stop as they did on the grid. A region whose probability
 underflows to zero stops like a zero ordinate.
 
 For the other prior-region probabilities, integrate the continuous grid's
