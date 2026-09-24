@@ -24,10 +24,13 @@ approximated via a normal distribution (rather than kernel density). Defaults to
 \item{silent}{whether warnings should be returned silently. Defaults to \code{FALSE}}
 
 \item{density_method}{density source for the posterior ordinate. \code{"KDE"}
-computes a kernel density estimate, using boundary reflection when exact
-posterior-support metadata is available. Finite sample and KDE evaluation
-ranges are not treated as exact support; Gaussian kernel tails are evaluated
-at finite null values. \code{"precomputed"} requires a valid
+computes the Gaussian kernel density estimate at the null exactly (the
+kernel sum over the continuous draws, with bandwidth
+\code{stats::bw.nrd0()} of those draws; no evaluation grid or
+interpolation), using boundary reflection when exact posterior-support
+metadata is available. Finite sample ranges are not treated as exact
+support; Gaussian kernel tails are evaluated at finite null values.
+\code{"precomputed"} requires a valid
 \code{posterior_ordinate} attribute when present, or otherwise a valid
 \code{posterior_density} attribute.
 Posterior atom status must be declared through package-generated

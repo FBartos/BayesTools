@@ -10,10 +10,13 @@
 #' approximated via a normal distribution (rather than kernel density). Defaults to \code{FALSE}.
 #' @param silent whether warnings should be returned silently. Defaults to \code{FALSE}
 #' @param density_method density source for the posterior ordinate. \code{"KDE"}
-#' computes a kernel density estimate, using boundary reflection when exact
-#' posterior-support metadata is available. Finite sample and KDE evaluation
-#' ranges are not treated as exact support; Gaussian kernel tails are evaluated
-#' at finite null values. \code{"precomputed"} requires a valid
+#' computes the Gaussian kernel density estimate at the null exactly (the
+#' kernel sum over the continuous draws, with bandwidth
+#' \code{stats::bw.nrd0()} of those draws; no evaluation grid or
+#' interpolation), using boundary reflection when exact posterior-support
+#' metadata is available. Finite sample ranges are not treated as exact
+#' support; Gaussian kernel tails are evaluated at finite null values.
+#' \code{"precomputed"} requires a valid
 #' \code{posterior_ordinate} attribute when present, or otherwise a valid
 #' \code{posterior_density} attribute.
 #' Posterior atom status must be declared through package-generated
@@ -757,6 +760,11 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
        warnings = support_warnings)
 }
 
+# The posterior ordinate at the null: the exact Gaussian kernel sum of the
+# continuous draws at the null, with bandwidth bw.nrd0() of those draws,
+# reflected at finite exact support bounds (the one-sided limit on a bound);
+# no evaluation grid, interpolation or binning. A null outside the draws (and
+# not on a support bound) is a kernel-tail extrapolation.
 .Savage_Dickey_BF.kd     <- function(samples, null_hypothesis, support = NULL,
                                      warn_extrapolation = TRUE){
 
@@ -764,6 +772,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   sample_values <- sample_values[is.finite(sample_values)]
   support_info <- .posterior_support_for_kde(samples, support = support)
   support_bounds <- support_info[["bounds"]]
+  bounds <- c(-Inf, Inf)
 
   if(!is.null(support_bounds)){
     if(null_hypothesis < support_bounds[1] || null_hypothesis > support_bounds[2]){
@@ -772,61 +781,27 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       attr(height, "posterior_support_exclusion") <- TRUE
       return(height)
     }
-
-    if(any(is.finite(support_bounds))){
-      density_args <- list(
-        x      = sample_values,
-        n      = 512L,
-        bounds = support_bounds,
-        na.rm  = TRUE
-      )
-      if(is.finite(support_bounds[1])){
-        density_args[["from"]] <- support_bounds[1]
-      }
-      if(is.finite(support_bounds[2])){
-        density_args[["to"]] <- support_bounds[2]
-      }
-      density_posterior <- do.call(.density_kde_boundary, density_args)
-      height <- stats::approx(
-        density_posterior$x,
-        density_posterior$y,
-        xout = null_hypothesis
-      )[["y"]]
-      if(is.na(height)){
-        height <- .density_kde_gaussian_height(
-          x      = sample_values,
-          value  = null_hypothesis,
-          bw     = density_posterior$bw,
-          bounds = support_bounds
-        )
-        if(isTRUE(warn_extrapolation)){
-          warning(.Savage_Dickey_BF_extrapolation_warning, call. = FALSE)
-        }
-      }
-      attr(height, "boundary_reflection") <- isTRUE(attr(density_posterior, "boundary_reflection"))
-      attr(height, "posterior_support_bounds") <- support_bounds
-      return(height)
-    }
+    bounds <- support_bounds
   }
 
-  density_posterior <- stats::density(sample_values)
-  height <- stats::approx(
-    density_posterior$x,
-    density_posterior$y,
-    xout = null_hypothesis
-  )[["y"]]
-  if(is.na(height)){
-    height <- .density_kde_gaussian_height(
-      x     = sample_values,
-      value = null_hypothesis,
-      bw    = density_posterior$bw
-    )
-    if(isTRUE(warn_extrapolation)){
-      warning(.Savage_Dickey_BF_extrapolation_warning, call. = FALSE)
-    }
+  height <- .density_kde_gaussian_height(
+    x      = sample_values,
+    value  = null_hypothesis,
+    bw     = stats::bw.nrd0(sample_values),
+    bounds = bounds
+  )
+  if(any(is.finite(bounds) & null_hypothesis == bounds)){
+    attr(height, "kde_extrapolation") <- NULL
+  }
+  if(!is.null(attr(height, "kde_extrapolation", exact = TRUE)) &&
+     isTRUE(warn_extrapolation)){
+    warning(.Savage_Dickey_BF_extrapolation_warning, call. = FALSE)
   }
 
-  if(!is.null(support_info[["warning"]])){
+  if(any(is.finite(bounds))){
+    attr(height, "boundary_reflection") <- TRUE
+    attr(height, "posterior_support_bounds") <- support_bounds
+  }else if(!is.null(support_info[["warning"]])){
     attr(height, "posterior_support_warning") <- support_info[["warning"]]
   }
 

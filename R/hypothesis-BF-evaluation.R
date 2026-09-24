@@ -660,19 +660,13 @@
     )
   }
 
-  density <- stats::density(samples)
-  height <- stats::approx(
-    density[["x"]],
-    density[["y"]],
-    xout = value
-  )[["y"]]
-  if(is.na(height)){
-    height <- .density_kde_gaussian_height(
-      x     = samples,
-      value = value,
-      bw    = density[["bw"]]
-    )
-  }
+  # the exact Gaussian kernel sum at the value (bandwidth bw.nrd0 of the
+  # draws); no evaluation grid, interpolation or binning
+  height <- .density_kde_gaussian_height(
+    x     = samples,
+    value = value,
+    bw    = stats::bw.nrd0(samples)
+  )
 
   if(!is.finite(height) || height < 0){
     stop("Could not estimate ", label, " density at the point hypothesis.",

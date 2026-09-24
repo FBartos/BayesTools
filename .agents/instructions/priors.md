@@ -211,7 +211,12 @@ gate.
 ## Savage-Dickey Ordinates
 
 The posterior ordinate of a Savage-Dickey ratio (`R/marginal-savage-dickey.R`)
-is a kernel estimate from the continuous draws, but everything around it comes
+is a kernel estimate from the continuous draws: the exact Gaussian kernel sum
+at the null with bandwidth `bw.nrd0()` of the (per-component) continuous
+draws, reflected at finite exact support bounds, never an evaluation grid,
+interpolation or binning (a grid spanning a long-tailed draw range is coarser
+than the bandwidth). The raw-draw ordinates of `hypothesis_BF()` use the same
+kernel sum without reflection. Everything around the ordinate comes
 from declared metadata: posterior atoms, exact support, and for mixtures each
 draw's component with the components' exact supports (`posterior_components`:
 the model of a `mix_posteriors()` ensemble, or the indicator tuple of the

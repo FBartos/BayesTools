@@ -900,8 +900,9 @@ test_that("Savage_Dickey_BF does not infer exact support from bounded prior grid
     prior_density
   )
 
+  # the null 0 lies below the draws: an unreflected kernel-tail ordinate
   expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) /
-    BayesTools:::.Savage_Dickey_BF.kd(posterior, 0)
+    as.numeric(BayesTools:::.Savage_Dickey_BF.kd(posterior, 0, warn_extrapolation = FALSE))
 
   out <- Savage_Dickey_BF(
     posterior,
@@ -4717,6 +4718,55 @@ test_that("ordered point(0) totals are structural zero coefficients", {
     prior_density_ordinate(attr(single_marginal[["high"]], "prior_density"), 0)$point_mass,
     1
   )
+})
+
+test_that("Savage-Dickey posterior ordinates are exact reflected kernel sums", {
+
+  # The posterior ordinate at the null is the Gaussian kernel sum of the
+  # continuous draws with bandwidth bw.nrd0, reflected at exact support
+  # bounds. The 512-point binned (unbounded) or gridded (bounded) estimate it
+  # replaces spans the whole draw range; with long right tails its spacing
+  # exceeds the bandwidth, and it was +43% on average (up to +272%) for the
+  # lognormal posterior below at 1 with 1e4 draws, and +137% (up to +630%) for
+  # the inverse-gamma tail. References: the kernel sum written out, and the
+  # mean and variance of the reflected KDE under the true density by
+  # quadrature (.reflected_kde_moments_for_test()); the sums lie within 4 of
+  # their Monte Carlo SDs of that mean, and the mean itself is within 3% of
+  # the true density.
+  cases <- list(
+    list(prior = prior("lognormal", list(0, 1.5)), draw = function(n) exp(stats::rnorm(n, 0, 1.5)),
+         density = function(y) stats::dlnorm(y, 0, 1.5), null = 1, seed = 11),
+    list(prior = prior("invgamma", list(1.5, 1)), draw = function(n) 1 / stats::rgamma(n, 1.5, 1),
+         density = function(y) ifelse(y > 0, stats::dgamma(1 / y, 1.5, 1) / y^2, 0), null = .5, seed = 12)
+  )
+  for(case in cases){
+    set.seed(case$seed)
+    draws <- case$draw(6e4)
+    prior_density <- BayesTools:::.prior_linear_combination_density(
+      prior_list = list(theta = case$prior), weights = c(theta = 1)
+    )
+    posterior <- .marginal_posterior_with_prior_density_for_test(draws, prior_density)
+    attr(posterior, "posterior_support") <- c(0, Inf)
+    bandwidth <- stats::bw.nrd0(draws)
+    kernel_sum <- mean(stats::dnorm(case$null, draws, bandwidth)) +
+      mean(stats::dnorm(case$null, -draws, bandwidth))
+    bf <- Savage_Dickey_BF(posterior, null_hypothesis = case$null, silent = TRUE)
+    prior_height <- as.numeric(BayesTools:::.prior_linear_density_height(prior_density, case$null))
+    expect_equal(prior_height / as.numeric(bf), kernel_sum, tolerance = 1e-12)
+    expect_true(attr(bf, "posterior_density_boundary_reflection"))
+    moments <- .reflected_kde_moments_for_test(
+      case$null, h = bandwidth, density = case$density, lower = 0, n = length(draws), n_source = Inf
+    )
+    expect_lte(abs(kernel_sum - moments[["mean"]]), 4 * sqrt(moments[["variance"]]))
+    expect_lt(abs(moments[["mean"]] / case$density(case$null) - 1), .03)
+
+    # the raw-draw hypothesis height is the unreflected kernel sum
+    expect_equal(
+      as.numeric(BayesTools:::.hypothesis_sample_density_height(draws, case$null, "posterior")),
+      mean(stats::dnorm(case$null, draws, bandwidth)),
+      tolerance = 1e-12
+    )
+  }
 })
 
 # File-level skips: All remaining tests in this file require pre-fitted models
