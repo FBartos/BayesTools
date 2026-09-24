@@ -123,6 +123,13 @@ not inferred from whether an intercept is present. Thus \code{~ 0 + group} with
 an independent factor prior means a structural zero intercept plus one
 coefficient per group level. With treatment or mean-difference contrasts,
 the same no-intercept expression preserves that selected basis.
+An interaction without one of its lower-order terms, such as \code{g:x}
+in \code{~ g + g:x}, codes that factor by level indicators, as
+\code{stats::model.matrix()} does, and has one coefficient per level
+(e.g., one slope per level of \code{g}). Mean-difference and orthonormal
+priors are unavailable for such a term; use a treatment or independent
+prior for per-level coefficients, or add the lower-order term (here
+\code{~ g * x}) to keep the contrast.
 
 When using default priors (\code{"__default_continuous"} or \code{"__default_factor"}),
 explicitly specified priors for individual terms take precedence over the defaults.

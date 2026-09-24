@@ -1030,6 +1030,62 @@
 
   invisible(TRUE)
 }
+# A formula term codes a factor by level indicators instead of its contrast
+# when the term without that factor is not in the formula (the value 2 in the
+# terms "factors" attribute that stats::model.matrix() follows), e.g., `g` in
+# the `g:x` term of `~ g + g:x`. The term then has one coefficient per level
+# of that factor. Mean-difference and orthonormal priors are defined on
+# contrast coefficients, so on such a term they would be applied to the level
+# coefficients as independent priors; they are rejected instead.
+.bt_validate_indicator_coded_factor_priors <- function(prior_list, model_terms,
+                                                       model_terms_type,
+                                                       predictors_type,
+                                                       term_factors){
+
+  factor_predictors <- names(predictors_type)[predictors_type == "factor"]
+  for(model_term in model_terms[model_terms_type[model_terms] == "factor"]){
+    this_prior <- prior_list[[model_term]]
+    contrast <- if(is.prior.meandif(this_prior)){
+      "meandif"
+    }else if(is.prior.orthonormal(this_prior)){
+      "orthonormal"
+    }
+    if(is.null(contrast)){
+      next
+    }
+
+    components <- rownames(term_factors)[term_factors[, model_term] > 0]
+    indicator_factors <- components[
+      components %in% factor_predictors &
+        term_factors[components, model_term] == 2
+    ]
+    if(length(indicator_factors) == 0L){
+      next
+    }
+
+    missing_terms <- vapply(indicator_factors, function(indicator_factor){
+      paste0(setdiff(components, indicator_factor), collapse = ":")
+    }, character(1))
+    stop(
+      "The '", contrast, "' prior of the factor term '", model_term,
+      "' is unavailable: the formula has no term ",
+      paste0("'", missing_terms, "'", collapse = " or "),
+      ", so '", model_term, "' codes ",
+      paste0("'", indicator_factors, "'", collapse = " and "),
+      " by level indicators and has one coefficient per level instead of '",
+      contrast, "' contrast coefficients. Add ",
+      paste0("'", missing_terms, "'", collapse = " and "),
+      " to the formula to keep the '", contrast, "' contrast, or use ",
+      "prior_factor(contrast = \"independent\") for one independent ",
+      "coefficient per level (the other terms of ",
+      paste0("'", indicator_factors, "'", collapse = " and "),
+      " must use the same contrast).",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
 .bt_validate_formula_reconstruction_prior <- function(prior_object,
                                                        prior_name){
 

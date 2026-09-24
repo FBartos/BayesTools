@@ -210,11 +210,14 @@ test_that("marginal_posterior handles treatment factor-continuous interaction co
 })
 
 
-# A fitted object for a formula whose factor interaction has no main effect of
-# its other component, `~ g + g:x` or `~ g + g:h`: the interaction design then
-# codes `g` by level indicators, so the term has one coordinate per level of
-# `g` (including the first) whatever the contrast. The draws are deterministic
-# normal quantiles; interaction coordinate j has mean `slope_means[j]`.
+# A fitted object for a formula with a factor interaction, such as `~ g + g:x`,
+# `~ g + g:h`, or `~ x + g:x`. Without the main effect of its other component
+# (`x` or `h`), the interaction codes `g` by level indicators, so the term has
+# one coordinate per level of `g` (including the first); mean-difference and
+# orthonormal priors are unavailable for such a term. Every term except the
+# continuous `x` gets a factor prior with `contrast`. The draws are
+# deterministic normal quantiles; interaction coordinate j has mean
+# `slope_means[j]`.
 full_rank_interaction_fit <- function(levels, contrast, formula = ~ g + g:x,
                                       slope_means = c(0.3, -0.2, 0.5)) {
 
@@ -223,13 +226,19 @@ full_rank_interaction_fit <- function(levels, contrast, formula = ~ g + g:x,
     h = factor(rep(c("u", "v"), 6), levels = c("u", "v")),
     x = seq(-1, 1, length.out = 12)
   )
-  distribution <- if (contrast == "meandif") "mnormal" else "normal"
-  term <- attr(stats::terms(formula), "term.labels")[2]
-  prior_list <- list(
-    intercept = prior("normal", list(0, 1)),
-    g         = prior_factor(distribution, list(0, 1), contrast = contrast)
+  distribution <- if (contrast %in% c("meandif", "orthonormal")) "mnormal" else "normal"
+  term_labels  <- attr(stats::terms(formula), "term.labels")
+  prior_list   <- c(
+    list(intercept = prior("normal", list(0, 1))),
+    lapply(term_labels, function(term) {
+      if (identical(term, "x")) {
+        prior("normal", list(0, 1))
+      } else {
+        prior_factor(distribution, list(0, 1), contrast = contrast)
+      }
+    })
   )
-  prior_list[[term]] <- prior_factor(distribution, list(0, 1), contrast = contrast)
+  names(prior_list) <- c("intercept", term_labels)
   formula_result <- JAGS_formula(
     formula    = formula,
     parameter  = "mu",
@@ -237,20 +246,32 @@ full_rank_interaction_fit <- function(levels, contrast, formula = ~ g + g:x,
     prior_list = prior_list
   )
 
-  parameter <- paste0("mu_", gsub(":", "__xXx__", term, fixed = TRUE))
-  n_g       <- BayesTools:::.get_prior_factor_levels(formula_result$prior_list$mu_g)
-  n_term    <- BayesTools:::.get_prior_factor_levels(formula_result$prior_list[[parameter]])
-  draws     <- stats::qnorm(stats::ppoints(200))
-  posterior <- cbind(
-    draws,
-    matrix(rev(draws), nrow = length(draws), ncol = n_g),
-    vapply(seq_len(n_term), function(j) slope_means[j] + 0.3 * draws, numeric(length(draws)))
-  )
-  colnames(posterior) <- c(
-    "mu_intercept",
-    paste0("mu_g[", seq_len(n_g), "]"),
-    paste0(parameter, "[", seq_len(n_term), "]")
-  )
+  parameters <- paste0("mu_", gsub(":", "__xXx__", c("intercept", term_labels), fixed = TRUE))
+  parameter  <- parameters[length(parameters)]
+  draws      <- stats::qnorm(stats::ppoints(200))
+  columns    <- list()
+  for (term_parameter in parameters) {
+    term_prior <- formula_result$prior_list[[term_parameter]]
+    n_columns  <- if (is.prior.factor(term_prior)) {
+      BayesTools:::.get_prior_factor_levels(term_prior)
+    } else {
+      1L
+    }
+    column_draws <- if (identical(term_parameter, "mu_intercept")) {
+      matrix(draws, ncol = 1)
+    } else if (identical(term_parameter, parameter)) {
+      vapply(seq_len(n_columns), function(j) slope_means[j] + 0.3 * draws, numeric(length(draws)))
+    } else {
+      matrix(rev(draws), nrow = length(draws), ncol = n_columns)
+    }
+    colnames(column_draws) <- if (is.prior.factor(term_prior) && n_columns > 1L) {
+      paste0(term_parameter, "[", seq_len(n_columns), "]")
+    } else {
+      term_parameter
+    }
+    columns[[term_parameter]] <- column_draws
+  }
+  posterior <- do.call(cbind, unname(columns))
 
   fit <- structure(
     list(
@@ -265,13 +286,13 @@ full_rank_interaction_fit <- function(levels, contrast, formula = ~ g + g:x,
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   fit <- attach_test_parameter_map(fit)
 
-  list(fit = fit, posterior = posterior, parameter = parameter)
+  list(fit = fit, posterior = posterior, parameter = parameter, parameters = parameters)
 }
 
 
 test_that("full-rank factor-by-continuous interaction slopes are one quantity per level", {
 
-  for (contrast in c("treatment", "meandif")) {
+  for (contrast in c("treatment", "independent")) {
     for (levels in list(c("a", "b", "c"), c("1", "2", "3"))) {
 
       info      <- paste0(contrast, ": ", paste0(levels, collapse = ", "))
@@ -287,14 +308,10 @@ test_that("full-rank factor-by-continuous interaction slopes are one quantity pe
         info = info
       )
 
-      samples <- as_mixed_posteriors(fit, c("mu_intercept", "mu_g", parameter))
+      samples <- as_mixed_posteriors(fit, synthetic$parameters)
       expect_identical(
         colnames(samples[[parameter]]),
-        if (contrast == "treatment") {
-          paste0("mu_g[", levels, "]__xXx__x")
-        } else {
-          paste0(parameter, "{", 1:3, "}")
-        },
+        paste0("mu_g[", levels, "]__xXx__x"),
         info = info
       )
 
@@ -324,10 +341,9 @@ test_that("full-rank factor-by-continuous interaction slopes are one quantity pe
         expect_identical(as.numeric(marginal[[level]]), slopes[, i], info = level_info)
 
         # The level's point hypothesis is the scalar Savage-Dickey test of its
-        # column: each slope coordinate has a N(0, 1) prior (dnorm for a
-        # treatment coordinate, an identity-precision dmnorm for the
-        # mean-difference coefficients), and both routes estimate the
-        # posterior ordinate from the same draws.
+        # column: each treatment or independent slope coordinate has a
+        # N(0, 1) prior (one dnorm per coordinate), and both routes estimate
+        # the posterior ordinate from the same draws.
         level_test <- hypothesis_BF(
           marginal,
           hypothesis = paste0("`", parameter, "[", level, "]` = 0"),
@@ -345,24 +361,23 @@ test_that("full-rank factor-by-continuous interaction slopes are one quantity pe
         expect_equal(level_test$BF, column_test$BF, tolerance = 1e-10, info = level_info)
       }
 
-      if (contrast == "treatment") {
-        summary_table <- runjags_estimates_table(fit)
-        expect_identical(
-          rownames(summary_table),
-          c(
-            "(mu) intercept",
-            paste0("(mu) g[", levels[-1], "]"),
-            paste0("(mu) g[", levels, "]:x")
-          ),
-          info = info
-        )
-        expect_equal(
-          unname(summary_table[paste0("(mu) g[", levels, "]:x"), "Mean"]),
-          colMeans(slopes),
-          tolerance = 1e-12,
-          info = info
-        )
-      }
+      main_effect_levels <- if (contrast == "treatment") levels[-1] else levels
+      summary_table <- runjags_estimates_table(fit)
+      expect_identical(
+        rownames(summary_table),
+        c(
+          "(mu) intercept",
+          paste0("(mu) g[", main_effect_levels, "]"),
+          paste0("(mu) g[", levels, "]:x")
+        ),
+        info = info
+      )
+      expect_equal(
+        unname(summary_table[paste0("(mu) g[", levels, "]:x"), "Mean"]),
+        colMeans(slopes),
+        tolerance = 1e-12,
+        info = info
+      )
 
       model_list <- list(
         list(fit = fit, marglik = bridgesampling_object(0), prior_weights = 1),
@@ -421,18 +436,122 @@ test_that("partially full-rank factor interactions are named by their level cell
 })
 
 
+test_that("mean-difference and orthonormal priors are unavailable for indicator-coded factor terms", {
+
+  data <- data.frame(
+    g = factor(rep(c("a", "b", "c"), each = 4), levels = c("a", "b", "c")),
+    h = factor(rep(c("u", "v"), 6), levels = c("u", "v")),
+    x = seq(-1, 1, length.out = 12)
+  )
+  normal <- prior("normal", list(0, 1))
+  message_for <- function(contrast, term, factor, missing_term) {
+    paste0(
+      "The '", contrast, "' prior of the factor term '", term,
+      "' is unavailable: the formula has no term '", missing_term, "', so '",
+      term, "' codes '", factor, "' by level indicators and has one ",
+      "coefficient per level instead of '", contrast, "' contrast ",
+      "coefficients. Add '", missing_term, "' to the formula ",
+      "to keep the '", contrast, "' contrast, or use ",
+      "prior_factor(contrast = \"independent\") for one independent ",
+      "coefficient per level (the other terms of '", factor, "' must use ",
+      "the same contrast)."
+    )
+  }
+
+  for (contrast in c("meandif", "orthonormal")) {
+    factor_prior <- prior_factor("mnormal", list(0, 1), contrast = contrast)
+
+    expect_error(
+      JAGS_formula(~ g + g:x, "mu", data, list(
+        intercept = normal, g = factor_prior, "g:x" = factor_prior
+      )),
+      message_for(contrast, "g:x", "g", "x"),
+      fixed = TRUE
+    )
+    # default factor priors (as RoBMA's model-averaging constructors supply)
+    expect_error(
+      JAGS_formula(~ g + g:x, "mu", data, list(
+        intercept = normal, "__default_factor" = factor_prior
+      )),
+      message_for(contrast, "g:x", "g", "x"),
+      fixed = TRUE
+    )
+    expect_error(
+      JAGS_formula(~ g + g:x, "mu", data, list(
+        intercept = normal, g = factor_prior,
+        "g:x" = prior_spike_and_slab(factor_prior)
+      )),
+      message_for(contrast, "g:x", "g", "x"),
+      fixed = TRUE
+    )
+    expect_error(
+      JAGS_formula(~ g:x, "mu", data, list(
+        intercept = normal, "g:x" = factor_prior
+      )),
+      message_for(contrast, "g:x", "g", "x"),
+      fixed = TRUE
+    )
+    expect_error(
+      JAGS_formula(~ g + g:h, "mu", data, list(
+        intercept = normal, g = factor_prior, "g:h" = factor_prior
+      )),
+      message_for(contrast, "g:h", "g", "h"),
+      fixed = TRUE
+    )
+
+    # with the lower-order term, the interaction keeps the contrast basis
+    reduced <- JAGS_formula(~ g * x, "mu", data, list(
+      intercept = normal, g = factor_prior, x = normal, "g:x" = factor_prior
+    ))
+    reduced_prior <- reduced$prior_list$mu_g__xXx__x
+    contrast_matrix <- if (contrast == "meandif") {
+      contr.meandif(c("a", "b", "c"))
+    } else {
+      contr.orthonormal(c("a", "b", "c"))
+    }
+    expect_equal(BayesTools:::.get_prior_factor_levels(reduced_prior), 2)
+    expect_equal(attr(reduced_prior, "factor_design"), unname(contrast_matrix), tolerance = 1e-12)
+    expect_equal(
+      unname(reduced$data$mu_data_g__xXx__x),
+      unname(contrast_matrix[as.integer(data$g), ] * data$x),
+      tolerance = 1e-12
+    )
+    # so does a factor that enters only an interaction with a present margin
+    expect_equal(
+      BayesTools:::.get_prior_factor_levels(
+        JAGS_formula(~ x + g:x, "mu", data, list(
+          intercept = normal, x = normal, "x:g" = factor_prior
+        ))$prior_list$mu_x__xXx__g
+      ),
+      2
+    )
+  }
+
+  # treatment and independent priors keep one coefficient per level
+  for (contrast in c("treatment", "independent")) {
+    factor_prior <- prior_factor("normal", list(0, 1), contrast = contrast)
+    full_rank <- JAGS_formula(~ g + g:x, "mu", data, list(
+      intercept = normal, g = factor_prior, "g:x" = factor_prior
+    ))
+    expect_equal(BayesTools:::.get_prior_factor_levels(full_rank$prior_list$mu_g__xXx__x), 3, info = contrast)
+    expect_equal(attr(full_rank$prior_list$mu_g__xXx__x, "factor_design"), diag(3), info = contrast)
+  }
+})
+
+
 test_that("formula marginal posteriors accept predictors that enter only interactions", {
 
-  for (contrast in c("treatment", "meandif")) {
+  for (contrast in c("treatment", "independent")) {
 
     synthetic <- full_rank_interaction_fit(c("a", "b", "c"), contrast)
     fit       <- synthetic$fit
     posterior <- synthetic$posterior
     parameter <- synthetic$parameter
-    samples   <- as_mixed_posteriors(fit, c("mu_intercept", "mu_g", parameter))
+    samples   <- as_mixed_posteriors(fit, synthetic$parameters)
 
     # independent reference: the linear predictor from the fitted term designs
-    level_effects <- posterior[, c("mu_g[1]", "mu_g[2]")] %*%
+    g_columns     <- grep("^mu_g\\[", colnames(posterior), value = TRUE)
+    level_effects <- posterior[, g_columns, drop = FALSE] %*%
       t(attr(attr(fit, "prior_list")$mu_g, "factor_design"))
     slopes <- posterior[, paste0(parameter, "[", 1:3, "]")]
 
@@ -480,11 +599,51 @@ test_that("formula marginal posteriors accept predictors that enter only interac
     }
   }
 
+  # a mean-difference factor `g` without a main-effect term takes its fitted
+  # levels and contrast from `x:g` (coded by the contrast, since `x` is in
+  # the formula); it is omitted (coded as zero) for the main effect of `x`
+  synthetic <- full_rank_interaction_fit(c("a", "b", "c"), "meandif", ~ x + g:x)
+  posterior <- synthetic$posterior
+  parameter <- synthetic$parameter
+  samples   <- as_mixed_posteriors(synthetic$fit, synthetic$parameters)
+  design    <- attr(attr(synthetic$fit, "prior_list")[[parameter]], "factor_design")
+  expect_equal(design, unname(contr.meandif(c("a", "b", "c"))), tolerance = 1e-12)
+  level_slopes <- posterior[, paste0(parameter, "[", 1:2, "]")] %*% t(design)
+  slope_cells <- marginal_posterior(
+    samples       = samples,
+    parameter     = parameter,
+    formula       = ~ x + g:x,
+    prior_samples = TRUE,
+    n_samples     = 100
+  )
+  expect_identical(
+    names(slope_cells),
+    paste0(rep(c("-1", "0", "1"), 3), "SD, ", rep(c("a", "b", "c"), each = 3))
+  )
+  expect_equal(
+    as.numeric(slope_cells[["1SD, c"]]),
+    unname(posterior[, "mu_intercept"] + posterior[, "mu_x"] + level_slopes[, 3]),
+    tolerance = 1e-12
+  )
+  main_effect <- marginal_posterior(
+    samples       = samples,
+    parameter     = "mu_x",
+    formula       = ~ x + g:x,
+    prior_samples = TRUE,
+    n_samples     = 100
+  )
+  expect_identical(names(main_effect), c("-1SD", "0SD", "1SD"))
+  expect_equal(
+    as.numeric(main_effect[["1SD"]]),
+    unname(posterior[, "mu_intercept"] + posterior[, "mu_x"]),
+    tolerance = 1e-12
+  )
+
   # a treatment factor `h` without a main-effect term takes its fitted levels
   # and contrast from `g:h`: it is held at its reference level `u`
   synthetic <- full_rank_interaction_fit(c("a", "b", "c"), "treatment", ~ g + g:h)
   posterior <- synthetic$posterior
-  samples   <- as_mixed_posteriors(synthetic$fit, c("mu_intercept", "mu_g", synthetic$parameter))
+  samples   <- as_mixed_posteriors(synthetic$fit, synthetic$parameters)
   cells <- marginal_posterior(
     samples       = samples,
     parameter     = synthetic$parameter,

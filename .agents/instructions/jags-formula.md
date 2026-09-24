@@ -61,7 +61,13 @@ condition.
 Fixed-factor contrasts belong to `prior_factor()`, independently of the
 intercept. Removing the intercept specifies a structural zero intercept and
 preserves the prior-owned factor basis; it does not silently select indicator
-or treatment coding as ordinary `stats::model.matrix()` can do.
+or treatment coding as ordinary `stats::model.matrix()` can do. An interaction
+without one of its lower-order terms (`g:x` in `~ g + g:x`) codes that factor
+by level indicators, as `stats::model.matrix()` does (value 2 in the terms
+`factors` attribute), and has one coefficient per level. Treatment and
+independent priors apply to those level coefficients and name them from the
+term design; mean-difference, orthonormal, and ordered priors are defined on
+contrast coefficients and are rejected for such a term.
 
 Formula design metadata is authoritative for fixed and random terms. Preserve
 the distinction between fitted standardized coordinates, original-scale

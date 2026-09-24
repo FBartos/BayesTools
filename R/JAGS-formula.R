@@ -95,6 +95,13 @@
 #' an independent factor prior means a structural zero intercept plus one
 #' coefficient per group level. With treatment or mean-difference contrasts,
 #' the same no-intercept expression preserves that selected basis.
+#' An interaction without one of its lower-order terms, such as \code{g:x}
+#' in \code{~ g + g:x}, codes that factor by level indicators, as
+#' \code{stats::model.matrix()} does, and has one coefficient per level
+#' (e.g., one slope per level of \code{g}). Mean-difference and orthonormal
+#' priors are unavailable for such a term; use a treatment or independent
+#' prior for per-level coefficients, or add the lower-order term (here
+#' \code{~ g * x}) to keep the contrast.
 #'
 #' When using default priors (\code{"__default_continuous"} or \code{"__default_factor"}),
 #' explicitly specified priors for individual terms take precedence over the defaults.
@@ -372,6 +379,13 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     prior_list = prior_list,
     model_terms = model_terms,
     model_terms_type = model_terms_type
+  )
+  .bt_validate_indicator_coded_factor_priors(
+    prior_list       = prior_list,
+    model_terms      = model_terms,
+    model_terms_type = model_terms_type,
+    predictors_type  = predictors_type,
+    term_factors     = attr(formula_terms, "factors")
   )
 
   formula_source_data <- data
