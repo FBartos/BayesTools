@@ -1153,6 +1153,61 @@ test_that("monitored deterministic nodes are structural only without stochastic 
   expect_identical(unname(.convergence_roles(unknown)["theta"]), "sampled")
 })
 
+test_that("monitored fully observed data are structural constants", {
+
+  set.seed(50)
+  syntax <- "model{\n  for(i in 1:N){ y[i] ~ dnorm(mu + b * x[i], 1) }\n}"
+  priors <- list(
+    mu = prior("normal", list(0, 1)),
+    b = prior("normal", list(0, 1))
+  )
+  x <- stats::rnorm(10)
+  x_names <- paste0("x[", 1:10, "]")
+  make <- function(){
+    draws <- cbind(
+      mu = stats::rnorm(200), b = stats::rnorm(200), N = 10,
+      matrix(rep(x, each = 200), ncol = 10L)
+    )
+    colnames(draws)[4:13] <- x_names
+    draws
+  }
+  check <- function(fit){
+    JAGS_check_convergence(
+      fit, max_Rhat = 1.2, min_ESS = 1, max_error = NULL, max_SD_error = NULL
+    )
+  }
+
+  # 'N' and 'x' are data that the syntax reads but never defines.
+  fit <- .mock_convergence_fit(
+    make(), make(), priors, add_parameters = c("N", "x"),
+    model_syntax = syntax, data_names = c("y", "x", "N")
+  )
+  expect_true(all(.convergence_roles(fit)[c("N", x_names)] == "structural"))
+  result <- check(fit)
+  expect_true(result)
+  expect_true(all(.convergence_states(result)[c("N", x_names)] == "structural_constant"))
+
+  # Without the data names, such names are not known to be constant.
+  unknown <- .mock_convergence_fit(
+    make(), make(), priors, add_parameters = c("N", "x"),
+    model_syntax = syntax
+  )
+  expect_identical(unname(.convergence_roles(unknown)["N"]), "sampled")
+  expect_false(check(unknown))
+
+  # JAGS_fit() passes the fully observed data: partly observed 'y' stays
+  # sampled.
+  skip_if_not_installed("rjags")
+  real <- suppressWarnings(JAGS_fit(
+    syntax, data = list(y = c(NA, stats::rnorm(9)), x = x, N = 10L),
+    prior_list = priors, add_parameters = c("N", "x", "y"),
+    chains = 2, adapt = 50, burnin = 50, sample = 100, seed = 1
+  ))
+  real_roles <- .convergence_roles(real)
+  expect_true(all(real_roles[c("N", x_names)] == "structural"))
+  expect_true(all(real_roles[paste0("y[", 1:10, "]")] == "sampled"))
+})
+
 test_that("the JAGS syntax graph reads whole statements", {
 
   graph <- BayesTools:::.bt_jags_syntax_graph(paste(

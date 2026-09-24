@@ -105,9 +105,10 @@
 #'   automatic fitting retries and preserve the original backend error.
 #' @param add_parameters vector of additional parameter names that should be
 #' monitored but were not specified in the \code{prior_list}. Automatic fitting
-#' checks their convergence like that of the other parameters. A node that the
-#' model syntax defines deterministically (\code{<-} or \code{=}) from data and
-#' constants only is a structural constant and does not block convergence. A
+#' checks their convergence like that of the other parameters. Fully observed
+#' data and a node that the model syntax defines deterministically (\code{<-} or
+#' \code{=}) from data and constants only are structural constants and do not
+#' block convergence. A
 #' node that is stochastic (\code{~}) or depends on a stochastic node is
 #' checked, and its constant draws are not assessable (see
 #' \code{autofit_control$allow_not_assessable}).

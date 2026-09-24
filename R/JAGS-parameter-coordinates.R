@@ -1310,7 +1310,8 @@
 # node is sampled, unless it is fully observed data. A deterministic node is
 # structural when none of its ancestors is stochastic; otherwise it is derived
 # when BayesTools generated it for a formula and sampled when the user
-# requested it. A node the syntax does not define is sampled.
+# requested it. A node the syntax does not define is structural when it is
+# fully observed data and sampled otherwise.
 .bt_convergence_role_monitored_nodes <- function(nodes, prior_list,
                                                  declarations, formula_design,
                                                  model_syntax, data_names){
@@ -1332,7 +1333,7 @@
       return(if(node %in% data_names) "structural" else "sampled")
     }
     if(!node %in% names(graph$deterministic)){
-      return("sampled")
+      return(if(node %in% data_names) "structural" else "sampled")
     }
     stochastic_parent <- .bt_jags_stochastic_ancestry(
       graph$deterministic[[node]],

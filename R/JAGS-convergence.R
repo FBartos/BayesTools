@@ -57,9 +57,9 @@
 #'   indicators, reference and fixed publication-weight bins, a p-hacking kind
 #'   shared by every mixture branch, the point total of an ordered prior and
 #'   the coefficients it fixes, unit correlation diagonals and Cholesky
-#'   constants, and monitored deterministic nodes (\code{<-} or \code{=})
-#'   whose ancestors in the model syntax are all data or constants. They are
-#'   reported as \code{"structural_constant"}.}
+#'   constants, monitored fully observed data, and monitored deterministic
+#'   nodes (\code{<-} or \code{=}) whose ancestors in the model syntax are all
+#'   data or constants. They are reported as \code{"structural_constant"}.}
 #'   \item{\code{"derived"}}{deterministic functions of sampled nodes that
 #'   BayesTools generates for formulas (such as random-effect correlation
 #'   matrices, their Cholesky factors, and derived latent effects or SDs) and
