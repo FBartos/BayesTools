@@ -341,9 +341,13 @@ test_that("conditional-normal classification survives exhausted numerical budget
   )
   result <- .prior_conditional_normal_ordinate(spec, 0, n_grid = 21)
   expect_identical(result$behavior, "regular")
-  expect_true(result$exact)
+  # a rejected quadrature is not exact (exact = TRUE never comes with a
+  # missing regular log density)
+  expect_false(result$exact)
   expect_true(is.na(result$log_density))
   expect_false(result$provenance$integration$converged)
+  expect_match(result$reason, "The prior-density quadrature was rejected by its diagnostics: integration reported",
+               fixed = TRUE)
 })
 
 test_that("failed conditional-normal quadrature cannot fall back to grid heights", {
@@ -364,17 +368,19 @@ test_that("failed conditional-normal quadrature cannot fall back to grid heights
   )
   result <- prior_density_ordinate(density, 0)
   expect_identical(result$behavior, "regular")
-  expect_true(result$exact)
+  expect_false(result$exact)
   expect_true(is.na(result$log_density))
   expect_false(result$provenance$integration$converged)
+  expect_match(result$reason, "maximum number of subdivisions reached", fixed = TRUE)
   expect_error(.prior_linear_density_height(density, 0),
                "Conditional-normal prior density was rejected by diagnostics: integration reported",
                fixed = TRUE)
   integration_reply <- list(value = 0, abs.error = 0, subdivisions = 1L, message = "OK")
   zero <- prior_density_ordinate(density, 0)
   expect_identical(zero$behavior, "regular")
-  expect_true(zero$exact)
+  expect_false(zero$exact)
   expect_true(is.na(zero$log_density))
+  expect_match(zero$reason, "zero ordinate for a structurally positive density", fixed = TRUE)
   expect_error(.prior_linear_density_height(density, 0),
                "zero ordinate for a structurally positive density", fixed = TRUE)
 })

@@ -22,7 +22,13 @@ A named list of class \code{prior_density_ordinate} with fields:
 \code{"point_mass"}, \code{"undefined"}, or \code{"unknown"};
 \item \code{log_density}: the continuous log-density ordinate, when available;
 \item \code{point_mass}: discrete probability at exactly \code{value};
-\item \code{exact}: whether \code{behavior} follows from deterministic prior provenance;
+\item \code{exact}: whether \code{behavior} follows from deterministic prior provenance
+and, for a \code{"regular"} ordinate, \code{log_density} is available (in closed
+form or from a quadrature accepted by its diagnostics). A regular ordinate
+without a value (a quadrature rejected by its diagnostics, or a boundary
+limit without a structural value) has \code{exact = FALSE}, \code{log_density = NA}
+and the failure in \code{reason}; \code{exact = TRUE} never comes with a missing
+regular \code{log_density};
 \item \code{method}: a machine-readable classification method;
 \item \code{reason}: \code{NULL} for an ordinary regular ordinate and a concise diagnostic
 otherwise;
@@ -70,11 +76,13 @@ density (its grid size) and its own convergence check. \code{provenance} reports
 the evaluations summed over all of them; its \code{budget} is the grid size per
 split integral (the budget of each of its pieces), summed over rows,
 components and leaves. Split integrals also keep each piece's evaluations
-and absolute error, and row mixtures each row's diagnostics. Their structural
-classification has \code{exact = TRUE}, while
+and absolute error, and row mixtures each row's diagnostics. An accepted
+quadrature has \code{exact = TRUE} (the structural classification), while
 \code{provenance$integration$exact = FALSE} describes the numerical ordinate.
-Failed quadrature retains that classification with \code{log_density = NA} and
-failure diagnostics; requesting a density height then rejects the result.
+A quadrature rejected by its diagnostics keeps the behavior \code{"regular"}
+with \code{exact = FALSE}, \code{log_density = NA}, the rejection in \code{reason} and its
+diagnostics (\code{converged = FALSE}) in \code{provenance}; requesting a density
+height then rejects the result.
 
 Mixture ordinates (model-averaged and conditional mixtures, and linear
 combinations of mixture or spike-and-slab priors) are the probability-

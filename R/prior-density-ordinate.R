@@ -20,7 +20,13 @@
 #'   `"point_mass"`, `"undefined"`, or `"unknown"`;
 #' * `log_density`: the continuous log-density ordinate, when available;
 #' * `point_mass`: discrete probability at exactly `value`;
-#' * `exact`: whether `behavior` follows from deterministic prior provenance;
+#' * `exact`: whether `behavior` follows from deterministic prior provenance
+#'   and, for a `"regular"` ordinate, `log_density` is available (in closed
+#'   form or from a quadrature accepted by its diagnostics). A regular ordinate
+#'   without a value (a quadrature rejected by its diagnostics, or a boundary
+#'   limit without a structural value) has `exact = FALSE`, `log_density = NA`
+#'   and the failure in `reason`; `exact = TRUE` never comes with a missing
+#'   regular `log_density`;
 #' * `method`: a machine-readable classification method;
 #' * `reason`: `NULL` for an ordinary regular ordinate and a concise diagnostic
 #'   otherwise;
@@ -67,11 +73,13 @@
 #' the evaluations summed over all of them; its `budget` is the grid size per
 #' split integral (the budget of each of its pieces), summed over rows,
 #' components and leaves. Split integrals also keep each piece's evaluations
-#' and absolute error, and row mixtures each row's diagnostics. Their structural
-#' classification has `exact = TRUE`, while
+#' and absolute error, and row mixtures each row's diagnostics. An accepted
+#' quadrature has `exact = TRUE` (the structural classification), while
 #' `provenance$integration$exact = FALSE` describes the numerical ordinate.
-#' Failed quadrature retains that classification with `log_density = NA` and
-#' failure diagnostics; requesting a density height then rejects the result.
+#' A quadrature rejected by its diagnostics keeps the behavior `"regular"`
+#' with `exact = FALSE`, `log_density = NA`, the rejection in `reason` and its
+#' diagnostics (`converged = FALSE`) in `provenance`; requesting a density
+#' height then rejects the result.
 #'
 #' Mixture ordinates (model-averaged and conditional mixtures, and linear
 #' combinations of mixture or spike-and-slab priors) are the probability-
@@ -181,6 +189,15 @@ prior_density_ordinate <- function(x, value){
   if(is.null(reason) && !identical(behavior, "regular")){
     reason <- .prior_density_ordinate_reason(behavior)
   }
+  if(identical(behavior, "regular") && isTRUE(is.na(log_density))){
+    # a regular ordinate without a value (a quadrature rejected by its
+    # diagnostics, or a boundary limit without a structural value) is not
+    # exact: 'exact = TRUE' always comes with an available log density
+    exact <- FALSE
+    if(is.null(reason)){
+      reason <- .prior_density_ordinate_unavailable_reason(provenance)
+    }
+  }
   if(identical(behavior, "point_mass")){
     provenance$continuous_behavior <- continuous_behavior
   }
@@ -198,6 +215,21 @@ prior_density_ordinate <- function(x, value){
   )
   class(out) <- c("prior_density_ordinate", "list")
   out
+}
+
+# Reason of a regular ordinate without a value: the rejected quadrature's
+# diagnostics, or a structural limit that is not available.
+.prior_density_ordinate_unavailable_reason <- function(provenance){
+
+  integration <- .prior_density_ordinate_integration(provenance)
+  if(is.list(integration) && isFALSE(integration$converged)){
+    return(paste0(
+      "The prior-density quadrature was rejected by its diagnostics: ",
+      "integration reported '", integration$message, "' with absolute error ",
+      format(integration$absolute_error), "."
+    ))
+  }
+  "The regular prior-density ordinate has no structural value at the requested value."
 }
 
 .prior_density_ordinate_continuous_behavior <- function(x){
@@ -1520,9 +1552,12 @@ prior_density_ordinate <- function(x, value){
 # Log density at 0 of exp(a) X^b (b > 0) where X's density behaves like
 # C x^(b - 1) at its lower bound 0 (a "regular" exp_lin boundary): the limit
 # of f_X(x) / (b exp(a) x^(b - 1)) is C / (b exp(a)). NA when C is not
-# structurally known.
+# structurally known, and for b < 0 (the image of X's upper tail).
 .prior_density_ordinate_exp_lin_zero_log_limit <- function(provenance, a, b){
 
+  if(b <= 0){
+    return(NA_real_)
+  }
   .prior_density_ordinate_lower_log_coefficient(provenance, b) - log(b) - a
 }
 

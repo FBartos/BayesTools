@@ -2497,6 +2497,8 @@ test_that("rejected prior-ordinate quadratures stop with the inexact class", {
   density <- .prior_linear_combination_density(priors, c(beta = 1))
   ordinate <- prior_density_ordinate(density, .3)
   expect_identical(ordinate$behavior, "regular")
+  expect_false(ordinate$exact)
+  expect_true(is.na(ordinate$log_density))
   expect_false(ordinate$provenance$integration$converged)
   posterior <- .hypothesis_marginal_posterior_for_test(stats::rnorm(1000, .01, .05), density)
   condition <- tryCatch(

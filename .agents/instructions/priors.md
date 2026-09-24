@@ -70,7 +70,12 @@ provenance. Never infer `regular`, `zero`, `infinite`, `point_mass`, or
 - binary64 underflow or overflow alone.
 
 A structurally regular ordinate remains regular if its representable density
-underflows. Exact point mass takes precedence at the requested value; the
+underflows. A regular ordinate whose value is unavailable (a quadrature
+rejected by its diagnostics, or a boundary limit without a structural value)
+has `exact = FALSE`, `log_density = NA` and the failure as `reason`:
+`exact = TRUE` always comes with an available regular log density, and
+consumers (RoBMA's point-test eligibility) read `exact`. Exact point mass
+takes precedence at the requested value; the
 continuous behavior remains diagnostic provenance: every `point_mass` result
 (and only such a result) carries `provenance$continuous_behavior`, the
 behavior (`regular`, `zero`, `infinite`, `undefined` or `unknown`) of the

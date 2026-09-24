@@ -1253,3 +1253,44 @@ test_that("point-mass ordinates record the behavior of their continuous part", {
   expect_identical(away$behavior, "unknown")
   expect_null(away$provenance$continuous_behavior)
 })
+
+test_that("a regular ordinate without a value is never reported as exact", {
+
+  # exact = TRUE always comes with an available regular log density. The
+  # exp_lin image y = x^-2 of an inverse-gamma(2, 1) source has a positive
+  # finite limit at y = 0 (the source density ~ x^-3 at infinity over the
+  # Jacobian 2 x^-3), which is not available structurally for this family.
+  image <- .prior_linear_combination_density(
+    list(x = prior("invgamma", list(2, 1))), c(x = 1),
+    output_transformation = "exp_lin",
+    output_transformation_arguments = list(a = 0, b = -2)
+  )
+  limit <- prior_density_ordinate(image, 0)
+  expect_identical(limit$behavior, "regular")
+  expect_false(limit$exact)
+  expect_true(is.na(limit$log_density))
+  expect_identical(limit$reason,
+                   "The regular prior-density ordinate has no structural value at the requested value.")
+
+  # a pure scale mixture N(0, 1e-3) * Cauchy(0, 1) whose quadrature at .3 is
+  # rejected by its diagnostics, alone and inside a finite mixture
+  priors <- list(beta = prior("normal", list(0, 1e-3)), sigma = prior("cauchy", list(0, 1)))
+  attr(priors$beta, "multiply_by") <- "sigma"
+  rejected <- prior_density_ordinate(.prior_linear_combination_density(priors, c(beta = 1)), .3)
+  expect_identical(rejected$behavior, "regular")
+  expect_false(rejected$exact)
+  expect_true(is.na(rejected$log_density))
+  expect_false(rejected$provenance$integration$converged)
+  expect_match(rejected$reason, "The prior-density quadrature was rejected by its diagnostics",
+               fixed = TRUE)
+  beta_mixture <- prior_mixture(list(prior("normal", list(0, 1e-3), prior_weights = 1),
+                                     prior("normal", list(0, 1), prior_weights = 1)),
+                                is_null = c(FALSE, FALSE))
+  attr(beta_mixture, "multiply_by") <- "sigma"
+  mixture <- prior_density_ordinate(.prior_linear_combination_density(
+    list(beta = beta_mixture, sigma = priors$sigma), c(beta = 1)
+  ), .3)
+  expect_identical(mixture$behavior, "regular")
+  expect_false(mixture$exact)
+  expect_true(is.na(mixture$log_density))
+})
