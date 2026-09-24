@@ -439,6 +439,106 @@ test_that("multiplier quadratures resolve the location peak of a narrow multipli
   }
 })
 
+test_that("conditional-normal breakpoints keep their distance from bounds with infinite density", {
+
+  # A breakpoint much closer to such a bound than the next breakpoint made
+  # QUADPACK integrate its piece as if the singularity were at the breakpoint,
+  # counting the mass next to the bound twice (2-8% too high); strongly
+  # singular betas stopped with non-finite function values. References remove
+  # the singularities: for gamma(shape, rate), u = x^(1 / shape) gives
+  # g(u) du = rate^shape / Gamma(shape + 1) exp(-rate u) dx; for beta(a, b),
+  # u = x^(1 / a) below 1 / 2 and 1 - u = y^(1 / b) above it; integrate() at
+  # rel.tol 1e-12 with stats:: densities. They agree with the review's
+  # parabolic-cylinder and mpmath values to the digits given.
+  split_reference <- function(f, points){
+    sum(vapply(seq_len(length(points) - 1L), function(i){
+      stats::integrate(f, points[i], points[i + 1L], rel.tol = 1e-12,
+                       subdivisions = 5000L)$value
+    }, numeric(1)))
+  }
+  gamma_reference <- function(shape, rate, conditional, points){
+    rate^shape / gamma(shape + 1) * split_reference(function(x){
+      u <- x^(1 / shape)
+      conditional(u) * exp(-rate * u)
+    }, c(0, points^shape, Inf))
+  }
+  beta_reference <- function(a, b, conditional, points){
+    edge <- c(0, 1e-6, 1e-3, .01, .1, .3, 1) * .5
+    points <- points[points > 0 & points < 1]
+    lower <- sort(unique(c(edge, points[points < .5])))
+    upper <- sort(unique(c(edge, 1 - points[points > .5])))
+    lower <- split_reference(function(x){
+      u <- x^(1 / a)
+      conditional(u) * (1 - u)^(b - 1)
+    }, lower^a) / (a * beta(a, b))
+    upper <- split_reference(function(y){
+      distance <- y^(1 / b)
+      conditional(1 - distance) * (1 - distance)^(a - 1)
+    }, upper^b) / (b * beta(a, b))
+    lower + upper
+  }
+  density <- function(priors, weights){
+    .prior_linear_combination_density(priors, weights, n_grid = 4096)
+  }
+  height <- function(density, value){
+    ordinate <- prior_density_ordinate(density, value)
+    expect_identical(ordinate$method, "conditional_normal_mixture")
+    expect_true(ordinate$provenance$integration$converged)
+    as.numeric(.prior_linear_density_height(density, value))
+  }
+
+  # N(.3, 1) + gamma(.15, 1) at .3
+  reference <- gamma_reference(.15, 1, function(u) stats::dnorm(-u), c(1e-3, .1, 1, 3, 10))
+  expect_equal(reference, .3817084456, tolerance = 1e-9)
+  convolution <- density(list(a = prior("normal", list(.3, 1)), b = prior("gamma", list(.15, 1))),
+                         c(a = 1, b = 1))
+  expect_equal(height(convolution, .3), reference, tolerance = 1e-8)
+
+  # N(.3, .001) + gamma(.15, .1) at .3 - .001
+  reference <- gamma_reference(.15, .1, function(u) stats::dnorm(-.001 - u, 0, .001),
+                               c(1e-4, 1e-3, 3e-3, .01, .03, .1))
+  expect_equal(reference, 58.15411, tolerance = 1e-6)
+  convolution <- density(list(a = prior("normal", list(.3, .001)), b = prior("gamma", list(.15, .1))),
+                         c(a = 1, b = 1))
+  expect_equal(height(convolution, .299), reference, tolerance = 1e-8)
+
+  # N(.3, .01) + .001 gamma(.1, .1) at .31: the Gaussian-peak point
+  # (v - m) / w - s / w is a rounding residue of about 1e-14 above the bound
+  reference <- gamma_reference(.1, .1, function(u) stats::dnorm(.01 - .001 * u, 0, .01),
+                               c(1e-3, 1, 5, 10, 20, 40, 110, 300))
+  expect_equal(reference, 25.6337125, tolerance = 1e-8)
+  convolution <- density(list(a = prior("normal", list(.3, .01)), b = prior("gamma", list(.1, .1))),
+                         c(a = 1, b = .001))
+  expect_equal(height(convolution, .31), reference, tolerance = 1e-8)
+
+  # scale mixture N(0, 1) + N(0, 1) * s with s ~ gamma(.15, 1) at 0
+  reference <- gamma_reference(.15, 1, function(s) stats::dnorm(0, 0, sqrt(1 + s^2)),
+                               c(1e-3, .1, 1, 3, 10, 30))
+  expect_equal(reference, .3859880, tolerance = 1e-6)
+  slope <- prior("normal", list(0, 1))
+  attr(slope, "multiply_by") <- "s"
+  mixture <- density(list(a = prior("normal", list(0, 1)), b = slope, s = prior("gamma", list(.15, 1))),
+                     c(a = 1, b = 1))
+  expect_equal(height(mixture, 0), reference, tolerance = 1e-8)
+
+  # beta(.1, .1) and beta(.3, .3) plus N(.3, s), which stopped on non-finite
+  # function values; digits are lost in 1 - u next to the upper bound (errors
+  # up to about 1e-7), so the values are checked at the documented criterion
+  tolerance <- .prior_linear_density_refinement_tolerance()
+  for(shape in c(.1, .3)){
+    for(sd in c(.001, .1, 1)){
+      convolution <- density(list(a = prior("normal", list(.3, sd)), b = prior("beta", list(shape, shape))),
+                             c(a = 1, b = 1))
+      for(offset in c(0, .5, 1)){
+        reference <- beta_reference(shape, shape, function(u) stats::dnorm(offset - u, 0, sd),
+                                    offset + c(-10, -3, -1, 0, 1, 3, 10) * sd)
+        expect_lt(abs(height(convolution, .3 + offset) - reference),
+                  tolerance$absolute + tolerance$relative * reference)
+      }
+    }
+  }
+})
+
 test_that("lockstep mixture grids add the components' absolute changes", {
 
   # Two grid components whose refinements change in opposite directions: the

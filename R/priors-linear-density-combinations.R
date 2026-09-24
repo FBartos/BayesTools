@@ -1361,7 +1361,13 @@
 #   A Gaussian convolution (b_s = 0, b_m = w) always has its Gaussian peak
 #   u* = (value - m) / w with width s / |w|.
 # Only points strictly inside the open support with a finite density are
-# kept; pieces narrower than 16 * eps * max(1, |endpoints|) are merged.
+# kept. Next to a finite bound where the density is infinite, QUADPACK
+# integrates a piece ending very close to the bound as if the singularity
+# were at that end, counting the mass between the bound and the end twice:
+# there the extreme (1e-6) quantile is not used, and between the bound and the
+# quartile on that side a point is kept only if its distance to the bound is
+# at least 1e-3 of the next kept point's distance. Pieces narrower than
+# 16 * eps * max(1, |endpoints|) are merged (the bounds are kept).
 .prior_conditional_normal_breakpoints <- function(spec, value){
 
   lower <- spec$bounds[1L]
@@ -1373,9 +1379,6 @@
     width <- sqrt(spec$additive_sd^2 + (spec$product_sd * centre)^2) / abs(spec$product_mean)
     inner <- c(inner, centre, centre + as.vector(outer(c(-1, 1), c(1, 3, 10))) * width)
   }
-  # next to a finite bound where the density is infinite, the extreme
-  # quantile would leave a piece too narrow for the floating-point resolution
-  # at that bound; that quantile is not used
   singular <- vapply(c(lower, upper), function(bound){
     is.finite(bound) && isTRUE(is.infinite(suppressWarnings(exp(lpdf(spec$multiplier, bound)))))
   }, logical(1))
@@ -1392,6 +1395,34 @@
     inner <- inner[is.finite(density)]
   }
   inner <- sort(unique(inner))
+
+  if(any(singular)){
+    quartiles <- tryCatch(
+      suppressWarnings(as.numeric(quant(spec$multiplier, c(.25, .75)))),
+      error = function(e) c(NA_real_, NA_real_)
+    )
+    for(side in which(singular)){
+      bound <- c(lower, upper)[side]
+      start <- abs(quartiles[side] - bound)
+      if(!isTRUE(is.finite(start))){
+        next
+      }
+      distance <- abs(inner - bound)
+      keep <- rep(TRUE, length(inner))
+      last <- start
+      for(i in order(distance, decreasing = TRUE)){
+        if(distance[i] >= start){
+          next
+        }
+        if(distance[i] >= 1e-3 * last){
+          last <- distance[i]
+        }else{
+          keep[i] <- FALSE
+        }
+      }
+      inner <- inner[keep]
+    }
+  }
 
   minimum_width <- function(a, b){
     16 * .Machine$double.eps * max(1, abs(c(a, b))[is.finite(c(a, b))])

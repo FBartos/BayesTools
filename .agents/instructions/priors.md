@@ -86,12 +86,15 @@ design row, model or conditional mixture component, and mixture leaf receives
 the full evaluation budget (`n_grid`) and its own convergence check. Each such
 integral is split at the multiplier's (other term's) support bounds, at its
 declared-prior quantiles (1e-6, 1e-3, .02, .25, .5, .75, .98, and their
-complements; the extreme one is skipped next to a bound with infinite
-density), and at the location peak of the conditional normal and +-1, 3, 10
-local SDs around it when the multiplied SD is at most a tenth of its mean
+complements), and at the location peak of the conditional normal and +-1, 3,
+10 local SDs around it when the multiplied SD is at most a tenth of its mean
 (always for Gaussian convolutions; beyond that guard the window is not a peak
-and is not used). Every piece gets the full budget, and the acceptance
-criterion applies to the summed value and error.
+and is not used). Next to a finite bound with infinite density, a breakpoint
+much closer to the bound than the next one makes QUADPACK count the mass near
+the bound twice: there the extreme quantile is skipped, and up to the quartile
+on that side a breakpoint is kept only if its distance to the bound is at
+least 1e-3 of the next kept breakpoint's distance. Every piece gets the full
+budget, and the acceptance criterion applies to the summed value and error.
 Budgets are never divided among them; the budget only caps how many mixture
 leaves are expanded.
 
