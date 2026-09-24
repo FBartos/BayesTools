@@ -538,12 +538,39 @@ test_that("formula evaluation adds sampled random effects only", {
   fit <- coda::mcmc(posterior)
   attr(fit, "formula_design") <- list(mu = result$formula_design)
 
+  # the formula lists the marginalized 'estimate' block: an explicit target is
+  # needed, and conditioning requires selecting the sampled blocks
+  expect_error(
+    JAGS_evaluate_formula(
+      fit = fit,
+      formula = .re_compile_formula(),
+      parameter = "mu",
+      data = .re_compile_data(),
+      prior_list = result$prior_list
+    ),
+    "needs an explicit 'formula_target'",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_evaluate_formula(
+      fit = fit,
+      formula = .re_compile_formula(),
+      parameter = "mu",
+      data = .re_compile_data(),
+      prior_list = result$prior_list,
+      formula_target = "conditional"
+    ),
+    "cannot condition on random-effect block(s) compiled as marginalized: estimate",
+    fixed = TRUE
+  )
   prediction <- JAGS_evaluate_formula(
     fit = fit,
     formula = .re_compile_formula(),
     parameter = "mu",
     data = .re_compile_data(),
-    prior_list = result$prior_list
+    prior_list = result$prior_list,
+    formula_target = "conditional",
+    blocks = "study"
   )
 
   expect_equal(
@@ -557,7 +584,8 @@ test_that("formula evaluation adds sampled random effects only", {
       formula = ~ 1 + random(1 | missing, name = "missing", covariance = "diag"),
       parameter = "mu",
       data = transform(.re_compile_data(), missing = study),
-      prior_list = result$prior_list
+      prior_list = result$prior_list,
+      formula_target = "conditional"
     ),
     "were not found in the fitted formula",
     fixed = TRUE

@@ -7233,7 +7233,8 @@ test_that("random-effect formulas are guarded in fixed-only downstream evaluator
       formula = ~ 1 + diag(1 | id),
       parameter = "mu",
       data = df,
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional"
     ),
     "cannot be reconstructed",
     fixed = TRUE
@@ -7247,7 +7248,7 @@ test_that("random-effect formulas are guarded in fixed-only downstream evaluator
       data = df,
       prior_list = formula_result$prior_list
     ),
-    "cannot currently evaluate random-effect fits without silently dropping group-level contributions",
+    "includes random effects, so JAGS_evaluate_formula() needs an explicit 'formula_target'",
     fixed = TRUE
   )
 
@@ -8111,7 +8112,8 @@ test_that("JAGS_evaluate_formula evaluates monitored observed random effects", {
     formula = ~ 1 + x + diag(1 + x | id),
     parameter = "mu",
     data = df,
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
 
   expected <- cbind(
@@ -8126,7 +8128,8 @@ test_that("JAGS_evaluate_formula evaluates monitored observed random effects", {
       formula = ~ 1 + x + diag(1 + x | id),
       parameter = "mu",
       data = data.frame(x = 0, id = factor("c", levels = "c")),
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional"
     ),
     "New random-effect level",
     fixed = TRUE
@@ -8139,7 +8142,8 @@ test_that("JAGS_evaluate_formula evaluates monitored observed random effects", {
         random(1 | drug, name = "drug", covariance = "diag"),
       parameter = "mu",
       data = transform(df, drug = factor(c("d1", "d1", "d2", "d2"))),
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional"
     ),
     "do not match the fitted formula",
     fixed = TRUE
@@ -8150,7 +8154,8 @@ test_that("JAGS_evaluate_formula evaluates monitored observed random effects", {
       formula = ~ 1 + x + random(1 + x | drug, name = "id", covariance = "diag"),
       parameter = "mu",
       data = transform(df, drug = id),
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional"
     ),
     "does not match the fitted formula",
     fixed = TRUE
@@ -8161,7 +8166,8 @@ test_that("JAGS_evaluate_formula evaluates monitored observed random effects", {
       formula = ~ 1 + x + us(1 + x | id),
       parameter = "mu",
       data = df,
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional"
     ),
     "does not match the fitted formula",
     fixed = TRUE
@@ -8172,7 +8178,8 @@ test_that("JAGS_evaluate_formula evaluates monitored observed random effects", {
       formula = ~ 1 + x + diag(1 + x | id, hom = TRUE),
       parameter = "mu",
       data = df,
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional"
     ),
     "does not match the fitted formula",
     fixed = TRUE
@@ -8206,7 +8213,8 @@ test_that("JAGS_evaluate_formula evaluates monitored observed random effects", {
       formula = ~ 1 + diag(0 + x | id),
       parameter = "mu",
       data = transform(df, x = c(-1, NA, 1, 2)),
-      prior_list = slope_only_result$prior_list
+      prior_list = slope_only_result$prior_list,
+      formula_target = "conditional"
     ),
     "missing predictor values",
     fixed = TRUE
@@ -8264,7 +8272,8 @@ test_that("JAGS_evaluate_formula reconstructs observed random effects from laten
     formula = ~ 1 + x + diag(1 + x | id),
     parameter = "mu",
     data = df,
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
 
   expected <- cbind(
@@ -8281,7 +8290,8 @@ test_that("JAGS_evaluate_formula reconstructs observed random effects from laten
       formula = ~ 1 + x + diag(1 + x | id),
       parameter = "mu",
       data = df,
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional"
     ),
     "cannot be reconstructed from the posterior samples",
     fixed = TRUE
@@ -8336,7 +8346,8 @@ test_that("JAGS_evaluate_formula rejects new levels for known group covariance",
     formula = random_effects$formula,
     parameter = "mu",
     data = df,
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
   expect_equal(
     unname(drop(prediction)),
@@ -8365,7 +8376,8 @@ test_that("JAGS_evaluate_formula rejects new levels for known group covariance",
       formula = random_effects$formula,
       parameter = "mu",
       data = new_data,
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional"
     ),
     "known group covariance",
     fixed = TRUE
@@ -8435,7 +8447,8 @@ test_that("JAGS_evaluate_formula reconstructs allocated random effects from simp
       random(1 | drug, name = "drug", covariance = "diag"),
     parameter = "mu",
     data = df,
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
 
   first_draw <- 10 +
@@ -8473,7 +8486,8 @@ test_that("JAGS_evaluate_formula reconstructs allocated random effects from simp
       random(1 | drug, name = "drug", covariance = "diag"),
     parameter = "mu",
     data = df,
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
   expect_equal(
     unname(drop(public_prediction)),
@@ -8499,7 +8513,8 @@ test_that("JAGS_evaluate_formula reconstructs allocated random effects from simp
       random(1 | drug, name = "drug", covariance = "diag"),
     parameter = "mu",
     data = df,
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
   expect_equal(
     unname(drop(boundary_prediction)),
@@ -8563,7 +8578,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
     parameter = "mu",
     data = df,
     prior_list = formula_result$prior_list,
-    fitted_rows = seq_len(nrow(df))
+    fitted_rows = seq_len(nrow(df)),
+    formula_target = "conditional"
   )
   expect_equal(
     unname(drop(prediction)),
@@ -8604,7 +8620,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
     parameter = "mu",
     data = df,
     prior_list = formula_result$prior_list,
-    fitted_rows = seq_len(nrow(df))
+    fitted_rows = seq_len(nrow(df)),
+    formula_target = "conditional"
   )
   expect_equal(dim(multi_prediction), c(4L, 2L))
   expect_equal(
@@ -8653,7 +8670,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
     parameter = "mu",
     data = newdata,
     prior_list = formula_result$prior_list,
-    fitted_rows = c(4L, 1L)
+    fitted_rows = c(4L, 1L),
+    formula_target = "conditional"
   )
   expect_equal(
     unname(drop(new_prediction)),
@@ -8715,7 +8733,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
     parameter = "mu",
     data = sd_component_df,
     prior_list = sd_component_result$prior_list,
-    fitted_rows = seq_len(nrow(sd_component_df))
+    fitted_rows = seq_len(nrow(sd_component_df)),
+    formula_target = "conditional"
   )
   expect_equal(
     unname(drop(sd_component_prediction)),
@@ -8741,7 +8760,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
       parameter = "mu",
       data = df[1:2, , drop = FALSE],
       prior_list = formula_result$prior_list,
-      fitted_rows = 1:2
+      fitted_rows = 1:2,
+      formula_target = "conditional"
     ),
     "missing values for prediction row(s): 2",
     fixed = TRUE
@@ -8769,7 +8789,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
       parameter = "mu",
       data = df[1, , drop = FALSE],
       prior_list = formula_result$prior_list,
-      fitted_rows = 1L
+      fitted_rows = 1L,
+      formula_target = "conditional"
     ),
     "missing values for prediction row(s): 1",
     fixed = TRUE
@@ -8807,7 +8828,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
       parameter = "mu",
       data = df,
       prior_list = formula_result$prior_list,
-      fitted_rows = seq_len(nrow(df))
+      fitted_rows = seq_len(nrow(df)),
+      formula_target = "conditional"
     ),
     "cannot be reconstructed from the posterior samples",
     fixed = TRUE
@@ -8824,7 +8846,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
         study = factor("s3", levels = "s3"),
         drug = factor("a", levels = c("a", "b"))
       ),
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional"
     ),
     "New random-effect level",
     fixed = TRUE
@@ -8883,7 +8906,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
     parameter = "mu",
     data = nested_df,
     prior_list = nested_result$prior_list,
-    fitted_rows = seq_len(nrow(nested_df))
+    fitted_rows = seq_len(nrow(nested_df)),
+    formula_target = "conditional"
   )
   expect_equal(
     unname(drop(nested_prediction)),
@@ -8960,7 +8984,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
     parameter = "mu",
     data = slope_newdata,
     prior_list = slope_result$prior_list,
-    fitted_rows = c(2L, 4L)
+    fitted_rows = c(2L, 4L),
+    formula_target = "conditional"
   )
   scaled_x <- (slope_newdata$x - slope_result$formula_scale$mu_x$mean) /
     slope_result$formula_scale$mu_x$sd
@@ -9011,7 +9036,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
       random(1 | drug, name = "drug", covariance = "diag"),
     parameter = "mu",
     data = slope_newdata,
-    prior_list = slope_values_result$prior_list
+    prior_list = slope_values_result$prior_list,
+    formula_target = "conditional"
   )
   expect_equal(
     unname(drop(slope_values_prediction)),
@@ -9035,7 +9061,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
       random(1 | drug, name = "drug", covariance = "diag"),
     parameter = "mu",
     data = slope_newdata,
-    prior_list = slope_values_result$prior_list
+    prior_list = slope_values_result$prior_list,
+    formula_target = "conditional"
   )
   expect_equal(
     unname(drop(slope_values_stale_prediction)),
@@ -9099,7 +9126,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
     parameter = "mu",
     data = cs_df[1:2, , drop = FALSE],
     prior_list = cs_result$prior_list,
-    fitted_rows = 1:2
+    fitted_rows = 1:2,
+    formula_target = "conditional"
   )
   expect_equal(
     unname(drop(cs_prediction)),
@@ -9169,7 +9197,8 @@ test_that("JAGS_evaluate_formula reconstructs correlated latent random effects",
     formula = ~ 1 + x + random(1 + x | id, name = "study"),
     parameter = "mu",
     data = df,
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
 
   coef_a_x <- 3 * (0.5 * 1 + L22 * 2)
@@ -9213,7 +9242,8 @@ test_that("JAGS_evaluate_formula reconstructs point-SD latent random effects", {
     formula = ~ 1 + diag(1 | id),
     parameter = "mu",
     data = df,
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
 
   expect_equal(unname(drop(prediction)), c(1.5, 0))
@@ -9266,7 +9296,8 @@ test_that("JAGS_evaluate_formula scales random-slope prediction data", {
     formula = ~ 1 + x + diag(0 + x | id),
     parameter = "mu",
     data = newdata,
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
 
   expected_x <- (newdata$x - scale_info$mean) / scale_info$sd
@@ -9334,7 +9365,8 @@ test_that("structured random-effect prediction indexes raw data when fixed predi
       formula = structured_formula,
       parameter = "mu",
       data = data.frame(time = 2, id = factor("b", levels = c("a", "b"))),
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional"
     )
     expect_equal(unname(drop(prediction)), 42, info = structure)
   }
@@ -9410,7 +9442,8 @@ test_that("JAGS_evaluate_formula rejects duplicate requested random-effect block
       formula = ~ 1 + diag(1 | id) + random(1 | id, name = "id", covariance = "diag"),
       parameter = "mu",
       data = df,
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional"
     ),
     "Random-effect block names in the supplied formula must be unique.",
     fixed = TRUE
@@ -9446,7 +9479,8 @@ test_that("JAGS_evaluate_formula rejects malformed fitted random-effect metadata
       formula = ~ 1 + diag(1 | id),
       parameter = "mu",
       data = df,
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional"
     ),
     "missing canonical 'random_term\\$structure'"
   )
@@ -9461,7 +9495,8 @@ test_that("JAGS_evaluate_formula rejects malformed fitted random-effect metadata
       formula = ~ 1 + diag(1 | id),
       parameter = "mu",
       data = df,
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional"
     ),
     "missing canonical 'random_term\\$homogeneous_sd'"
   )
@@ -9520,7 +9555,8 @@ test_that("JAGS_formula scales predictors used only in random effects", {
     formula = ~ 1 + diag(0 + x | id),
     parameter = "mu",
     data = newdata,
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
 
   expected_x <- (newdata$x - scale_info$mean) / scale_info$sd
@@ -9573,7 +9609,8 @@ test_that("random-effect grouping variables use raw data when predictors are sca
     formula = ~ 1 + x + random(1 | xpos, name = "xpos", covariance = "diag"),
     parameter = "mu",
     data = data.frame(x = 0.1, xpos = TRUE),
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
   expect_equal(unname(drop(prediction)), 20)
 })
@@ -9624,7 +9661,8 @@ test_that("random-effect grouping factors preserve unused training levels", {
       formula = ~ 1 + diag(1 | id),
       parameter = "mu",
       data = unused_data,
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional"
     ),
     paste0(
       "New random-effect level(s) for block 'id' are not supported by ",
@@ -9688,7 +9726,8 @@ test_that("random effects evaluate on non-mu formula parameters", {
     formula = ~ 1 + diag(1 | id),
     parameter = "sigma",
     data = data.frame(id = factor(c("a", "b"))),
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
   expect_equal(unname(drop(prediction)), c(11, 21))
 })
@@ -9732,7 +9771,8 @@ test_that("character random-factor predictors keep fitted levels for prediction"
     formula = ~ 1 + diag(0 + f | id),
     parameter = "mu",
     data = data.frame(f = c("c", "a"), id = factor(c("g1", "g2"))),
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
 
   expected <- c(
@@ -9749,7 +9789,8 @@ test_that("character random-factor predictors keep fitted levels for prediction"
       f = factor(c("c", "a"), levels = c("a", "b", "c", "unused")),
       id = factor(c("g1", "g2"))
     ),
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
   expect_equal(unname(drop(prediction_extra_level)), unname(expected))
   expect_error(
@@ -9761,7 +9802,8 @@ test_that("character random-factor predictors keep fitted levels for prediction"
         f = factor(c("unused", "a"), levels = c("a", "b", "c", "unused")),
         id = factor(c("g1", "g2"))
       ),
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional"
     ),
     "do not match the levels",
     fixed = TRUE
@@ -10805,7 +10847,8 @@ test_that("JAGS_evaluate_formula sums multiple monitored random-effect blocks", 
       random(0 + x | drug, name = "drug_slope", covariance = "diag"),
     parameter = "mu",
     data = df,
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
 
   expect_equal(unname(drop(prediction)), c(1.5, 3.7, 4.7, 7.1))
@@ -10816,7 +10859,8 @@ test_that("JAGS_evaluate_formula sums multiple monitored random-effect blocks", 
       random(1 | id, name = "study", covariance = "diag"),
     parameter = "mu",
     data = df,
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
 
   expect_equal(unname(drop(study_prediction)), c(1.5, 3.5, 4.5, 6.5))
@@ -10864,7 +10908,8 @@ test_that("JAGS_evaluate_formula reconstructs factor random-slope designs", {
       f = c("c", "b"),
       id = factor(c("g1", "g2"), levels = c("g2", "g1"))
     ),
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    formula_target = "conditional"
   )
 
   expect_equal(unname(drop(prediction)), c(21, 31))
@@ -12521,7 +12566,8 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       formula = ~ 1 + time + car(0 + time | id),
       parameter = "mu",
       data = car_df,
-      prior_list = fixed_car_scale$prior_list
+      prior_list = fixed_car_scale$prior_list,
+      formula_target = "conditional"
     ))),
     1 + 0.25 * unname(as.numeric(scale(car_df$time))),
     tolerance = 1e-12

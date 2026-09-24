@@ -45,14 +45,11 @@
 #' @param prior_list named list of prior distribution of parameters specified
 #' within the \code{formula}. If `NULL`, fitted priors from `formula_design`
 #' metadata are used.
-#' @param formula_target optional formula prediction target. `"fixed"`
-#' evaluates only the fixed formula contribution. `"conditional"` evaluates
-#' fixed effects plus fitted or explicitly generated random-effect
-#' contributions. `NULL` evaluates the fixed formula contribution when the
-#' fitted formula has no sampled random effects. For a fit with sampled random
-#' effects, `NULL` stops with an error (random-effect contributions are never
-#' dropped silently), unless `formula` itself contains random-effect terms, in
-#' which case their sampled blocks are added as with `"conditional"`.
+#' @param formula_target formula prediction target. `"fixed"` evaluates only
+#' the fixed formula contribution. `"conditional"` evaluates fixed effects plus
+#' fitted or explicitly generated random-effect contributions. `NULL` (the
+#' default) evaluates the fixed formula of fits without random effects and
+#' stops for fits with random effects, which need an explicit target.
 #' @param blocks optional random-effect block names used with
 #' `formula_target = "conditional"`.
 #' @param new_levels optional new-level policy used only with
@@ -174,6 +171,16 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
       call. = FALSE
     )
   }
+  if(is.null(formula_target) && fitted_has_random){
+    stop(
+      "The fitted formula for parameter '", parameter, "' includes random ",
+      "effects, so JAGS_evaluate_formula() needs an explicit 'formula_target': ",
+      "'fixed' (fixed effects only) or 'conditional' (fixed effects plus ",
+      "random-effect contributions). Use JAGS_predict_formula() for ",
+      "formula_target = 'marginal'.",
+      call. = FALSE
+    )
+  }
   if(identical(formula_target, "fixed")){
     formula <- .remove_random_effects(formula)
   }else if(formula_has_random ||
@@ -190,20 +197,9 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
       new_levels = new_levels,
       fitted_rows = fitted_rows,
       data_supplied = data_supplied,
-      replay_fitted_formula = replay_fitted_formula,
       expressions_to_eval = expressions_to_eval,
       return_components = return_components
     ))
-  }
-  if(is.null(formula_target) &&
-     !inherits(fitted_design, "try-error") &&
-     .bt_formula_design_has_sampled_random_effects(fitted_design)){
-    stop(
-      "The fitted formula for parameter '", parameter,
-      "' includes random effects. JAGS_evaluate_formula() cannot currently evaluate ",
-      "random-effect fits without silently dropping group-level contributions.",
-      call. = FALSE
-    )
   }
   log_intercept <- isTRUE(attr(formula, "log(intercept)"))
   no_intercept_specified <- attr(stats::terms(formula), "intercept") == 0

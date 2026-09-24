@@ -48,7 +48,6 @@
                                                           new_levels = NULL,
                                                           fitted_rows = NULL,
                                                           data_supplied = FALSE,
-                                                          replay_fitted_formula = FALSE,
                                                           expressions_to_eval = list(),
                                                           return_components = FALSE){
 
@@ -84,8 +83,7 @@
     fitted_design = fitted_design,
     requested_terms = random_terms,
     formula_target = formula_target,
-    blocks = blocks,
-    replay_fitted_formula = replay_fitted_formula
+    blocks = blocks
   )
 
   fixed_formula <- .remove_expressions(.remove_random_effects(formula))
@@ -164,8 +162,7 @@
 .bt_JAGS_evaluate_formula_random_effect_terms <- function(fitted_design,
                                                           requested_terms,
                                                           formula_target,
-                                                          blocks,
-                                                          replay_fitted_formula = FALSE){
+                                                          blocks){
 
   fitted_terms <- .bt_formula_design_random_effects(fitted_design)
   fitted_names <- vapply(fitted_terms, `[[`, character(1), "block_name")
@@ -181,10 +178,6 @@
     }
   }
 
-  if(is.null(formula_target) && isTRUE(replay_fitted_formula)){
-    return(.bt_formula_design_sampled_random_effects(fitted_design))
-  }
-
   requested_names <- vapply(requested_terms, `[[`, character(1), "block_name")
   selected_names <- if(!is.null(blocks)){
     blocks
@@ -195,9 +188,6 @@
   }
   selected_terms <- fitted_terms[match(selected_names, fitted_names)]
   modes <- vapply(selected_terms, .bt_random_effect_term_compile_mode, character(1))
-  if(is.null(formula_target)){
-    return(selected_terms[modes == "sampled"])
-  }
 
   marginalized <- selected_names[modes == "marginalized"]
   if(length(marginalized) > 0L){

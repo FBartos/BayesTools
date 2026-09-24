@@ -2715,7 +2715,8 @@ test_that("JAGS_fit monitors random coefficients for observed-level prediction",
     formula = ~ 1 + diag(1 | id),
     parameter = "mu",
     data = df,
-    prior_list = attr(fit, "prior_list")
+    prior_list = attr(fit, "prior_list"),
+    formula_target = "conditional"
   )
 
   expect_equal(dim(prediction), c(nrow(df), nrow(posterior)))
@@ -2768,7 +2769,8 @@ test_that("JAGS_fit predicts observed random effects from latent monitors", {
     formula = ~ 1 + diag(1 | id),
     parameter = "mu",
     data = df,
-    prior_list = attr(fit, "prior_list")
+    prior_list = attr(fit, "prior_list"),
+    formula_target = "conditional"
   )
 
   expect_equal(dim(prediction), c(nrow(df), nrow(posterior)))
@@ -2902,7 +2904,8 @@ test_that("group-local structured fits monitor only active latent cells", {
     formula = ~ 1 + cs(index | id),
     parameter = "mu",
     data = df,
-    prior_list = attr(fit, "prior_list")
+    prior_list = attr(fit, "prior_list"),
+    formula_target = "conditional"
   )
   expect_equal(dim(prediction), c(K, nrow(posterior)))
   expect_true(all(is.finite(prediction)))
