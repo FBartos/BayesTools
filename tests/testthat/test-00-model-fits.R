@@ -3060,15 +3060,21 @@ test_that("autofit settings keep indicator checks off by default", {
 test_that("JAGS_check_convergence ignores indicator variables unless requested", {
 
   set.seed(1)
-  chain_1 <- cbind(mu = rnorm(100), mu_indicator = rep(0, 100))
-  chain_2 <- cbind(mu = rnorm(100), mu_indicator = rep(1, 100))
+  chain_1 <- cbind(mu = rnorm(100), mu_indicator = rep(1, 100))
+  chain_2 <- cbind(mu = rnorm(100), mu_indicator = rep(2, 100))
   fit <- list(
     mcmc         = coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2)),
     summary.pars = list(mutate = NULL)
   )
-  class(fit) <- "runjags"
+  class(fit) <- c("runjags", "BayesTools_fit")
 
-  prior_list <- list(mu = prior("normal", list(0, 1)))
+  # The mixture prior declares 'mu_indicator' as its component indicator.
+  prior_list <- list(mu = prior_mixture(list(
+    prior("normal", list(0, 1)),
+    prior("normal", list(1, 1))
+  )))
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
 
   expect_true(JAGS_check_convergence(
     fit,
@@ -3103,9 +3109,11 @@ test_that("JAGS_check_convergence ignores add_parameters without priors", {
     mcmc         = coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2)),
     summary.pars = list(mutate = NULL)
   )
-  class(fit) <- "runjags"
+  class(fit) <- c("runjags", "BayesTools_fit")
 
   prior_list <- list(mu = prior("normal", list(0, 1)))
+  attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
 
   without_aux <- JAGS_check_convergence(
     fit,
@@ -3135,20 +3143,14 @@ test_that("single-chain fits skip R-hat and retain the remaining criteria", {
   skip_on_cran()
 
   prior_list <- list(mu = prior("normal", list(0, 1)))
-  model_syntax <- JAGS_add_priors("model{}", prior_list)
-  old_silent.runjags <- runjags::runjags.getOption("silent.runjags")
-  on.exit(runjags::runjags.options(silent.runjags = old_silent.runjags), add = TRUE)
-  runjags::runjags.options(silent.runjags = TRUE)
 
-  set.seed(1)
-  fit <- suppressWarnings(runjags::run.jags(
-    model = model_syntax,
-    monitor = "mu",
-    n.chains = 1,  # Single chain - R-hat cannot be computed
+  fit <- suppressWarnings(JAGS_fit(
+    "model{}", prior_list = prior_list,
+    chains = 1,  # Single chain - R-hat cannot be computed
     adapt = 50,
     burnin = 50,
     sample = 100,
-    silent.jags = TRUE
+    seed = 1
   ))
 
   expect_warning(
@@ -3187,20 +3189,14 @@ test_that("JAGS_check_convergence handles ESS and error checks", {
   skip_on_cran()
 
   prior_list <- list(mu = prior("normal", list(0, 1)))
-  model_syntax <- JAGS_add_priors("model{}", prior_list)
-  old_silent.runjags <- runjags::runjags.getOption("silent.runjags")
-  on.exit(runjags::runjags.options(silent.runjags = old_silent.runjags), add = TRUE)
-  runjags::runjags.options(silent.runjags = TRUE)
 
-  set.seed(1)
-  fit <- suppressWarnings(runjags::run.jags(
-    model = model_syntax,
-    monitor = "mu",
-    n.chains = 2,
+  fit <- suppressWarnings(JAGS_fit(
+    "model{}", prior_list = prior_list,
+    chains = 2,
     adapt = 50,
     burnin = 50,
-    sample = 50,  # Small sample for testing convergence failures
-    silent.jags = TRUE
+    sample = 100,  # Small sample for testing convergence failures
+    seed = 1
   ))
 
   # Test with very strict ESS requirement (should fail)
@@ -4107,7 +4103,8 @@ expect_formula_random_prior_only_bridge <- function(formula, data, prior_list,
     formula_data_list = list(mu = data),
     formula_prior_list = list(mu = prior_list),
     formula_random_prior_list = list(mu = prior_random_list),
-    maxiter = maxiter
+    maxiter = maxiter,
+    seed = 1
   )
 
   expect_s3_class(marglik, "BayesTools_marglik")
@@ -4652,7 +4649,8 @@ test_that("JAGS formula expressions replay sampled indexed parameters", {
     fit,
     log_posterior = log_posterior,
     data = model_data,
-    maxiter = 1000
+    maxiter = 1000,
+    seed = 1
   )
   expect_true(is.finite(marglik$logml))
   changed_data <- model_data
@@ -4662,7 +4660,8 @@ test_that("JAGS formula expressions replay sampled indexed parameters", {
       fit,
       log_posterior = log_posterior,
       data = changed_data,
-      maxiter = 100
+      maxiter = 100,
+      seed = 1
     ),
     "conflict with the fitted source snapshot",
     fixed = TRUE
@@ -5108,7 +5107,8 @@ test_that("JAGS bridgesampling errors on fitted/rebuilt random design mismatches
       formula_data_list = list(mu = mismatch_data),
       formula_prior_list = list(mu = fixture$prior_list),
       formula_random_prior_list = list(mu = fixture$prior_random_list),
-      maxiter = 10
+      maxiter = 10,
+      seed = 1
     ),
     "original formula source data differ",
     fixed = TRUE
@@ -5183,7 +5183,8 @@ test_that("JAGS bridgesampling supports formula random effects through prior_ran
     formula_data_list = list(mu = df_test),
     formula_prior_list = list(mu = prior_list),
     formula_random_prior_list = list(mu = prior_random_list),
-    maxiter = 1000
+    maxiter = 1000,
+    seed = 1
   )
 
   expect_s3_class(marglik, "BayesTools_marglik")
@@ -5256,7 +5257,8 @@ test_that("JAGS bridgesampling supports continuous-time CAR formula random effec
     formula_data_list = list(mu = df_test),
     formula_prior_list = list(mu = prior_list),
     formula_random_prior_list = list(mu = prior_random_list),
-    maxiter = 1000
+    maxiter = 1000,
+    seed = 1
   )
 
   expect_s3_class(marglik, "BayesTools_marglik")
@@ -5425,7 +5427,8 @@ test_that("JAGS bridgesampling supports Dirichlet variance-allocation random eff
     formula_data_list = list(mu = df_test),
     formula_prior_list = list(mu = prior_list),
     formula_random_prior_list = list(mu = prior_random_list),
-    maxiter = 1000
+    maxiter = 1000,
+    seed = 1
   )
 
   expect_s3_class(marglik, "BayesTools_marglik")
@@ -5521,7 +5524,8 @@ test_that("JAGS bridgesampling reconstructs row-indexed external SD sources from
     log_posterior = STANDARD_LOG_POSTERIOR,
     data = list(tau_factor = df_test$tau_factor),
     prior_list = NULL,
-    maxiter = 1000
+    maxiter = 1000,
+    seed = 1
   )
 
   expect_s3_class(marglik, "BayesTools_marglik")
@@ -5539,7 +5543,8 @@ test_that("JAGS bridgesampling reconstructs row-indexed external SD sources from
       formula_data_list = list(mu = df_test),
       formula_prior_list = list(mu = prior_list),
       formula_random_prior_list = list(mu = prior_random_list),
-      maxiter = 1000
+      maxiter = 1000,
+      seed = 1
     ),
     "scale/allocation metadata differ",
     fixed = TRUE
@@ -6257,7 +6262,8 @@ test_that("BayesTools JAGS module samples nonlocal priors", {
       log_posterior = STANDARD_LOG_POSTERIOR,
       data = list(),
       prior_list = prior_list,
-      maxiter = 2000
+      maxiter = 2000,
+      seed = 1
     )
     expect_s3_class(marglik, "BayesTools_marglik")
     expect_equal(marglik$logml, 0, tolerance = .08)
