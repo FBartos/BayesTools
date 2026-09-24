@@ -486,6 +486,56 @@ test_that("mixture region probabilities sum their components and exact point mas
   ))
 })
 
+test_that("region probabilities outside a bounded structural support are exact", {
+
+  # Two half-normal terms (a two-term convolution) and a gamma term multiplied
+  # by a half-normal scale (a scale mixture) are supported on [0, Inf): a
+  # region outside that support has probability 0 and a region containing it
+  # probability 1, without a quadrature that could only integrate zeros.
+  # References by hand-split integrals.
+  half_normal <- prior("normal", list(0, 1), list(0, Inf))
+  convolution <- .prior_linear_combination_density(
+    list(a = half_normal, b = half_normal), c(a = 1, b = 1)
+  )
+  product_priors <- list(beta = prior("gamma", list(2, 2)), sigma = half_normal)
+  attr(product_priors$beta, "multiply_by") <- "sigma"
+  product <- .prior_linear_combination_density(product_priors, c(beta = 1))
+  for(density in list(convolution, product)){
+    expect_identical(as.numeric(region_probability(density, "theta < -0.5")), 0)
+    expect_identical(as.numeric(region_probability(density, "theta > -0.1")), 1)
+    expect_identical(as.numeric(region_probability(density, "theta < -1 | theta > -0.5")), 1)
+  }
+  expect_equal(
+    as.numeric(region_probability(convolution, "theta < 1")),
+    stats::integrate(function(a) 2 * stats::dnorm(a) * (2 * stats::pnorm(1 - a) - 1),
+                     0, 1, rel.tol = 1e-12)$value,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    as.numeric(region_probability(product, "theta < 1")),
+    stats::integrate(function(s) 2 * stats::dnorm(s) * stats::pgamma(1 / s, 2, 2), 0, 1, rel.tol = 1e-12)$value +
+      stats::integrate(function(s) 2 * stats::dnorm(s) * stats::pgamma(1 / s, 2, 2), 1, Inf, rel.tol = 1e-12)$value,
+    tolerance = 1e-10
+  )
+
+  # in a mixture, components supported on [0, Inf) contribute exactly 0 to a
+  # region below it: (N | T) + (0 | T) with T = N(0.5, 1)T(0, Inf)
+  truncated <- prior("normal", list(.5, 1), list(0, Inf))
+  mixture <- .prior_linear_combination_density(
+    list(a = prior_mixture(list(prior("normal", list(0, 1)), truncated), is_null = c(FALSE, FALSE)),
+         b = prior_mixture(list(prior("point", list(0)), truncated), is_null = c(TRUE, FALSE))),
+    c(a = 1, b = 1)
+  )
+  normal_plus_truncated <- stats::integrate(
+    function(t) stats::dnorm(t, .5) / stats::pnorm(.5) * stats::pnorm(-.5 - t), 0, Inf, rel.tol = 1e-12
+  )$value
+  expect_equal(
+    as.numeric(region_probability(mixture, "theta < -0.5")),
+    .25 * stats::pnorm(-.5) + .25 * normal_plus_truncated,
+    tolerance = 1e-10
+  )
+})
+
 test_that("log-identity and transformed region probabilities are exact", {
 
   # A log-intercept scale formula without scaled predictors reports

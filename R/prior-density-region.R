@@ -263,6 +263,23 @@
   .prior_region_result(probability)
 }
 
+# Probability of a region under a continuous measure with the closed support
+# hull 'hull': exactly 0 when no interval overlaps the hull, exactly 1 when
+# one interval covers it, NULL otherwise.
+.prior_region_hull_probability <- function(region, hull){
+
+  lower <- pmax(region$intervals[, 1L], hull[1L])
+  upper <- pmin(region$intervals[, 2L], hull[2L])
+  overlap <- lower < upper
+  if(!any(overlap)){
+    return(0)
+  }
+  if(any(region$intervals[, 1L] <= hull[1L] & region$intervals[, 2L] >= hull[2L])){
+    return(1)
+  }
+  NULL
+}
+
 .prior_region_scale_product <- function(spec, region, n_grid){
 
   if(nrow(region$intervals) == 0L){
@@ -270,6 +287,10 @@
   }
   if(.prior_region_whole(region)){
     return(.prior_region_result(1))
+  }
+  outside <- .prior_region_hull_probability(region, .prior_scale_product_hull(spec))
+  if(!is.null(outside)){
+    return(.prior_region_result(outside))
   }
   integral <- .prior_scale_product_region(spec, region$intervals, n_grid)
   .prior_region_result(integral$value, integral$integration)
@@ -282,6 +303,10 @@
   }
   if(.prior_region_whole(region)){
     return(.prior_region_result(1))
+  }
+  outside <- .prior_region_hull_probability(region, .prior_convolution_hull(spec))
+  if(!is.null(outside)){
+    return(.prior_region_result(outside))
   }
   integral <- .prior_convolution_region(spec, region$intervals, n_grid)
   .prior_region_result(integral$value, integral$integration)
