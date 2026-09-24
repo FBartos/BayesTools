@@ -1155,6 +1155,91 @@
   list(relative = 1e-4, absolute = 1e-12)
 }
 
+# The one grid-refinement loop of prior-density heights and region
+# probabilities. 'densities' are numerical grids with recorded provenance,
+# 'evaluate' the functional of one grid (a height at a value or a region
+# probability) and 'covers' whether a grid covers the evaluation. Each round
+# refines every grid (halving its source spacing and omitting less tail
+# probability) and applies the documented criterion to the combined value
+# fixed + sum_k w_k g_k with the weighted absolute changes of the grids,
+# sum_k w_k |g_k - g_k'| <= 1e-12 + 1e-4 * max(|current|, |previous|), so
+# changes cannot cancel between grids; at most four refinements follow the
+# initial grids. Returns the converged values, their combination, the refined
+# grids and the criterion; 'converged = FALSE' with the last grids; or NULL
+# when a grid cannot be refined at all.
+.prior_linear_density_refine_grids <- function(densities, weights, evaluate,
+                                               covers = function(density) TRUE,
+                                               fixed = 0){
+
+  combine <- function(values) fixed + sum(weights * values)
+  tolerance <- .prior_linear_density_refinement_tolerance()
+  previous <- vapply(densities, evaluate, numeric(1))
+  refined <- lapply(densities, .prior_linear_density_refinement)
+  if(any(vapply(refined, is.null, logical(1)))){
+    return(NULL)
+  }
+  for(i in seq_len(4L)){
+    current <- vapply(refined, evaluate, numeric(1))
+    total <- combine(current)
+    change <- sum(weights * abs(current - previous))
+    bound <- tolerance$absolute +
+      tolerance$relative * max(abs(total), abs(combine(previous)))
+    if(all(vapply(refined, covers, logical(1))) && is.finite(total) &&
+       change <= bound){
+      return(list(
+        converged       = TRUE,
+        values          = current,
+        total           = total,
+        densities       = refined,
+        refinements     = i,
+        absolute_change = change,
+        error_bound     = bound
+      ))
+    }
+    previous <- current
+    if(i < 4L){
+      next_refined <- lapply(refined, .prior_linear_density_refinement)
+      if(any(vapply(next_refined, is.null, logical(1)))){
+        break
+      }
+      refined <- next_refined
+    }
+  }
+  list(converged = FALSE, densities = refined)
+}
+
+# Whether a density grid covers 'value'.
+.prior_linear_density_covers <- function(density, value){
+
+  !is.null(density$density) &&
+    value >= min(density$density$x) && value <= max(density$density$x)
+}
+
+# Stops after an unconverged refinement: an ordinate outside the final grids'
+# range, or non-convergence of the 'quantity' ("density" or "probability").
+.prior_linear_density_stop_refinement <- function(refinement, value = NULL,
+                                                  quantity = "density"){
+
+  if(!is.null(refinement) && !is.null(value)){
+    outside <- vapply(refinement$densities, function(density){
+      final_range <- .prior_linear_density_range(density)
+      value < final_range[1L] || value > final_range[2L]
+    }, logical(1))
+    if(any(outside)){
+      stop(
+        "The requested ordinate remains outside the numerical approximation ",
+        "range after adaptive extension.",
+        call. = FALSE
+      )
+    }
+  }
+  stop(
+    "Adaptive prior-", quantity, " evaluation did not converge within the ",
+    "documented grid-refinement error criterion.",
+    call. = FALSE
+  )
+}
+
 # A simple continuous scalar prior with a numeric interval support: the
 # multiplier of a scale mixture or a term of a two-term convolution.
 .prior_density_simple_continuous <- function(prior){
@@ -3096,72 +3181,26 @@
   }
 
   densities <- lapply(terms[grid], `[[`, "density")
-  grid_heights <- function(densities){
-    vapply(densities, .prior_linear_density_grid_height, numeric(1), value = value)
-  }
-  mixture_height <- function(heights) fixed + sum(weights[grid] * heights)
-
-  tolerance <- .prior_linear_density_refinement_tolerance()
-  previous_heights <- grid_heights(densities)
-  previous <- mixture_height(previous_heights)
-  refined <- lapply(densities, .prior_linear_density_refinement)
-  if(any(vapply(refined, is.null, logical(1)))){
-    stop(
-      "Adaptive prior-density evaluation did not converge within the documented ",
-      "grid-refinement error criterion.",
-      call. = FALSE
-    )
-  }
-  for(i in seq_len(4L)){
-    current_heights <- grid_heights(refined)
-    current <- mixture_height(current_heights)
-    change <- sum(weights[grid] * abs(current_heights - previous_heights))
-    bound <- tolerance$absolute +
-      tolerance$relative * max(abs(current), abs(previous))
-    inside <- all(vapply(refined, function(density){
-      !is.null(density$density) &&
-        value >= min(density$density$x) && value <= max(density$density$x)
-    }, logical(1)))
-    if(isTRUE(inside) && is.finite(current) && change <= bound){
-      attr(current, "adaptive_evaluation") <- list(
-        components      = sum(grid),
-        refinements     = i,
-        absolute_change = change,
-        error_bound     = bound,
-        converged       = TRUE
-      )
-      attr(current, "component_heights") <- diagnostics(current_heights)
-      return(current)
-    }
-    previous <- current
-    previous_heights <- current_heights
-    if(i < 4L){
-      next_refined <- lapply(refined, .prior_linear_density_refinement)
-      if(any(vapply(next_refined, is.null, logical(1)))){
-        break
-      }
-      refined <- next_refined
-    }
-  }
-
-  outside <- vapply(refined, function(density){
-    final_range <- .prior_linear_density_range(density)
-    value < final_range[1L] || value > final_range[2L]
-  }, logical(1))
-  if(any(outside)){
-    stop(
-      "The requested ordinate remains outside the numerical approximation ",
-      "range after adaptive extension.",
-      call. = FALSE
-    )
-  }
-  stop(
-    "Adaptive prior-density evaluation did not converge within the documented ",
-    "grid-refinement error criterion.",
-    call. = FALSE
+  refinement <- .prior_linear_density_refine_grids(
+    densities, weights[grid],
+    evaluate = function(density) .prior_linear_density_grid_height(density, value),
+    covers   = function(density) .prior_linear_density_covers(density, value),
+    fixed    = fixed
   )
+  if(!isTRUE(refinement$converged)){
+    .prior_linear_density_stop_refinement(refinement, value)
+  }
+  height <- refinement$total
+  attr(height, "adaptive_evaluation") <- list(
+    components      = sum(grid),
+    refinements     = refinement$refinements,
+    absolute_change = refinement$absolute_change,
+    error_bound     = refinement$error_bound,
+    converged       = TRUE
+  )
+  attr(height, "component_heights") <- diagnostics(refinement$values)
+  height
 }
-
 .prior_linear_density_height <- function(x, value){
 
   if(!inherits(x, "prior_linear_density")){
@@ -3231,63 +3270,27 @@
     return(0)
   }
 
-  height <- .prior_linear_density_grid_height(x, value)
-  refined <- .prior_linear_density_refinement(x)
-  if(is.null(refined)){
-    stop(
-      "Adaptive prior-density evaluation did not converge within the ",
-      "documented grid-refinement error criterion.",
-      call. = FALSE
-    )
-  }
-
-  tolerance <- .prior_linear_density_refinement_tolerance()
-  previous <- height
-  for(i in seq_len(4L)){
-    current <- .prior_linear_density_grid_height(refined, value)
-    change <- abs(current - previous)
-    bound <- tolerance$absolute +
-      tolerance$relative * max(abs(current), abs(previous))
-    inside <- !is.null(refined$density) &&
-      value >= min(refined$density$x) &&
-      value <= max(refined$density$x)
-    if(isTRUE(inside) && is.finite(current) && change <= bound){
-      settings <- attr(refined, "refinement_settings", exact = TRUE)
-      attr(current, "adaptive_evaluation") <- c(
-        settings,
-        list(
-          refinements = i,
-          absolute_change = change,
-          error_bound = bound,
-          numerical_range = .prior_linear_density_range(refined),
-          converged = TRUE
-        )
-      )
-      return(current)
-    }
-    previous <- current
-    if(i < 4L){
-      next_refined <- .prior_linear_density_refinement(refined)
-      if(is.null(next_refined)){
-        break
-      }
-      refined <- next_refined
-    }
-  }
-
-  final_range <- .prior_linear_density_range(refined)
-  if(value < final_range[1L] || value > final_range[2L]){
-    stop(
-      "The requested ordinate remains outside the numerical approximation ",
-      "range after adaptive extension.",
-      call. = FALSE
-    )
-  }
-  stop(
-    "Adaptive prior-density evaluation did not converge within the documented ",
-    "grid-refinement error criterion.",
-    call. = FALSE
+  refinement <- .prior_linear_density_refine_grids(
+    list(x), 1,
+    evaluate = function(density) .prior_linear_density_grid_height(density, value),
+    covers   = function(density) .prior_linear_density_covers(density, value)
   )
+  if(!isTRUE(refinement$converged)){
+    .prior_linear_density_stop_refinement(refinement, value)
+  }
+  height <- refinement$total
+  refined <- refinement$densities[[1L]]
+  attr(height, "adaptive_evaluation") <- c(
+    attr(refined, "refinement_settings", exact = TRUE),
+    list(
+      refinements = refinement$refinements,
+      absolute_change = refinement$absolute_change,
+      error_bound = refinement$error_bound,
+      numerical_range = .prior_linear_density_range(refined),
+      converged = TRUE
+    )
+  )
+  height
 }
 
 .prior_linear_density_stop_no_provenance <- function(quantity){
