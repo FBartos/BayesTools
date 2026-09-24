@@ -169,17 +169,18 @@
 # Local weights (draws x J) of one weight-function component from its free
 # coordinates, with the arithmetic of the marginal-likelihood parameters; NULL
 # when a free coordinate is unavailable. Out-of-support auxiliaries signal the
-# classed marginal-likelihood support condition.
-.bt_dnode_omega_local_values <- function(prior, lookup, component_id = NULL){
+# classed marginal-likelihood support condition. A node passes the component's
+# free coordinates and number of bins it stores.
+.bt_dnode_omega_local_values <- function(prior, lookup, component_id = NULL,
+                                         free_names = .bt_dnode_omega_free_names(prior, component_id),
+                                         J = .weightfunction_n_bins(prior)){
 
-  J <- .weightfunction_n_bins(prior)
   n <- lookup$n
   type <- prior$weights$type
   if(identical(type, "fixed")){
     return(matrix(unname(prior$weights$omega), nrow = n, ncol = J, byrow = TRUE))
   }
 
-  free_names <- .bt_dnode_omega_free_names(prior, component_id)
   omega <- matrix(1, nrow = n, ncol = J)
   if(length(free_names) == 0L){
     return(omega)
@@ -281,7 +282,9 @@
     return(NULL)
   }
   branches <- spec$branches
-  dependencies <- unlist(lapply(seq_along(branches), function(k){
+  # The free coordinates and local bins of each branch, stored for the
+  # evaluator, which one caller may run on thousands of single draws.
+  spec$free_names <- lapply(seq_along(branches), function(k){
     if(is.null(branches[[k]]$selection)){
       return(character())
     }
@@ -289,7 +292,10 @@
       branches[[k]]$selection,
       component_id = if(spec$uses_indicator) k else NULL
     )
-  }), use.names = FALSE)
+  })
+  spec$local_bins <- vapply(branches, function(branch){
+    if(is.null(branch$selection)) 0L else .weightfunction_n_bins(branch$selection)
+  }, integer(1))
 
   .bt_deterministic_node(
     family = "omega",
@@ -299,7 +305,10 @@
     }else{
       paste0(spec$name, "[", seq_len(spec$n_bins), "]")
     },
-    dependencies = c(if(spec$uses_indicator) "bias_indicator", dependencies),
+    dependencies = c(
+      if(spec$uses_indicator) "bias_indicator",
+      unlist(spec$free_names, use.names = FALSE)
+    ),
     parameter = parameter,
     spec = spec
   )
@@ -377,7 +386,9 @@
     local <- .bt_dnode_omega_local_values(
       prior = selection,
       lookup = branch_lookup,
-      component_id = if(spec$uses_indicator) k else NULL
+      component_id = if(spec$uses_indicator) k else NULL,
+      free_names = spec$free_names[[k]],
+      J = spec$local_bins[[k]]
     )
     if(is.null(local)){
       return(NULL)
@@ -415,12 +426,35 @@
   out
 }
 
+# The 'omega' nodes of the priors most recently evaluated one draw at a time:
+# JAGS_marglik_parameters() is called once per draw with the same prior list
+# (bridge sampling rows, RoBMA's IWMDE rows), so each node is built once. A
+# node is a function of its parameter name and prior alone; entries are found
+# with identical(), which returns immediately for the same prior object.
+.bt_dnode_omega_cache <- new.env(parent = emptyenv())
+.bt_dnode_omega_cache_size <- 16L
+
+.bt_dnode_omega_cached <- function(parameter, prior){
+
+  entries <- .bt_dnode_omega_cache$entries
+  for(entry in entries){
+    if(identical(entry$prior, prior) && identical(entry$parameter, parameter)){
+      return(entry$node)
+    }
+  }
+  node <- .bt_dnode_omega(parameter, prior)
+  entries <- c(list(list(parameter = parameter, prior = prior, node = node)), entries)
+  .bt_dnode_omega_cache$entries <- entries[seq_len(min(length(entries), .bt_dnode_omega_cache_size))]
+
+  node
+}
+
 # The weights of a single weight-function prior on its own global bins (the
-# 'omega' node of 'node', compiled once by the caller), for one draw of the
-# marginal-likelihood parameters and bridge sampling; unavailable free
+# 'omega' node of 'node', compiled once by the caller or cached), for one draw
+# of the marginal-likelihood parameters and bridge sampling; unavailable free
 # coordinates stop with the bridge-sampling message.
 .bt_dnode_omega_prior_values <- function(prior, samples,
-                                         node = .bt_dnode_omega("omega", prior)){
+                                         node = .bt_dnode_omega_cached("omega", prior)){
 
   values <- .bt_deterministic_node_evaluate(
     node,

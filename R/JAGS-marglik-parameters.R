@@ -453,7 +453,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   lookup <- .bt_deterministic_row_lookup(samples)
   parameters <- list()
   nodes <- c(
-    list(.bt_dnode_omega(parameter_name, prior)),
+    list(.bt_dnode_omega_cached(parameter_name, prior)),
     lapply(c("PET", "PEESE"), function(term){
       .bt_dnode_prior_mixture_bias_term(parameter_name, prior, term)
     })

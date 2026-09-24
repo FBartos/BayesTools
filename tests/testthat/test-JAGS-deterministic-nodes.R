@@ -874,3 +874,37 @@ test_that("marginal posteriors of formula parameters evaluate the linear predict
     expect_identical(as.vector(marginal[[i]]), unname(evaluated[i, ]))
   }
 })
+
+test_that("JAGS_marglik_parameters() builds the weight node of a prior once across draws", {
+
+  cumulative <- list(omega = prior_weightfunction("one-sided", c(0.025, 0.5), wf_cumulative(c(1, 2, 3))))
+  fixed <- list(
+    a = list(omega = prior_weightfunction("one-sided", c(0.025, 0.5), wf_fixed(c(1, 0.5, 0.2)))),
+    b = list(omega = prior_weightfunction("one-sided", c(0.025, 0.5), wf_fixed(c(1, 0.4, 0.2))))
+  )
+  cache <- BayesTools:::.bt_dnode_omega_cache
+  cache$entries <- NULL
+  build <- BayesTools:::.bt_dnode_omega
+  built <- 0L
+  local_mocked_bindings(
+    .bt_dnode_omega = function(...){
+      built <<- built + 1L
+      build(...)
+    },
+    .package = "BayesTools"
+  )
+
+  # 20 draws of one prior list build its node once.
+  omega <- lapply(1:20, function(i){
+    JAGS_marglik_parameters(c("eta[1]" = i, "eta[2]" = 2, "eta[3]" = 3), cumulative)$omega
+  })
+  expect_identical(built, 1L)
+  expect_identical(omega[[5L]], c(1, 0.5, 0.3))
+
+  # Priors that differ in their weights are different nodes.
+  for(i in 1:3){
+    expect_identical(JAGS_marglik_parameters(numeric(), fixed$a)$omega, c(1, 0.5, 0.2))
+    expect_identical(JAGS_marglik_parameters(numeric(), fixed$b)$omega, c(1, 0.4, 0.2))
+  }
+  expect_identical(built, 3L)
+})
