@@ -58,8 +58,9 @@
 #'   unless requested explicitly. Defaults to \code{FALSE}.}
 #'   \item{monitor}{optional character vector selecting parameters for
 #'   convergence checks. Base names select all indexed elements. Requests are
-#'   resolved against all monitored nodes, including the derived and auxiliary
-#'   ones that the default selection excludes. Names that are not
+#'   resolved against the monitored nodes that the summary tables show,
+#'   including the derived and auxiliary ones that the default selection
+#'   excludes. Names that are not
 #'   monitored are rejected before sampling. Defaults to \code{NULL}, which
 #'   checks the default selection of [JAGS_check_convergence()]: the sampled
 #'   parameters of the priors, \code{add_parameters} that depend on a

@@ -891,6 +891,8 @@
 # - "auxiliary": implementation nodes and hyperparameters (inclusion
 #   probabilities, the backend anchor, private weight-function nodes, Dirichlet
 #   gamma draws, unreported p-hacking parameters); checked only on request.
+# Mirrored bins and private implementation nodes are hidden from the summary
+# tables and from the convergence targets, so they cannot be requested.
 .bt_parameter_coordinates_convergence_roles <- function(coordinates, columns,
                                                         prior_list,
                                                         formula_design,

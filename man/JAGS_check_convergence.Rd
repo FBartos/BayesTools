@@ -57,8 +57,10 @@ added to that selection. Defaults to \code{FALSE}.}
 
 \item{monitor}{optional character vector selecting parameters for convergence
 checks. A base name selects all of its indexed elements. Requests are
-resolved against all monitored parameters, including derived and auxiliary
-ones that the default selection leaves out.
+resolved against the monitored parameters that the summary tables show,
+including derived and auxiliary ones that the default selection leaves out.
+Private implementation nodes that the summary tables hide cannot be
+requested.
 \code{NULL} selects the default parameters; \code{character()} requests no
 parameters.}
 
@@ -109,10 +111,12 @@ BayesTools generates for formulas (such as random-effect correlation
 matrices, their Cholesky factors, and derived latent effects or SDs) and
 point priors whose location is an expression; checked only when named in
 \code{monitor}.}
-\item{\code{"auxiliary"}}{inclusion probabilities, the backend anchor of
-models without monitored parameters, and private implementation nodes;
-checked only when named in \code{monitor}.}
+\item{\code{"auxiliary"}}{inclusion probabilities and the backend anchor
+of models without monitored parameters, checked only when named in
+\code{monitor}, and private implementation nodes that the summary tables
+hide (such as Dirichlet gamma draws), which are never checked.}
 }
+Mirrored two-sided publication-weight bins are hidden in the same way.
 The default selection (\code{monitor = NULL}) consists of the sampled and
 structural parameters, and of the indicators when \code{check_indicators}
 is set. Automatic fitting in \code{JAGS_fit()} and \code{JAGS_extend()}
