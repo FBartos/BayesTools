@@ -35,6 +35,16 @@ test_that("direct prior regions split the continuous interpolant at the threshol
   }
 })
 
+# The grid evaluation alone, which region probabilities use when the prior
+# density has no structural region probability or the region is not a union
+# of intervals; densities with one are also checked through it.
+grid_region_probability <- function(density, side, parameter = "theta"){
+  .hypothesis_prior_density_grid_prob(
+    density, .hypothesis_simple_parameter_comparison(side, parameter),
+    .hypothesis_side_expression(side), parameter
+  )
+}
+
 test_that("normal and spike-and-slab region grids meet the unchanged refinement gate", {
 
   for(sd in c(1, .5)){
@@ -45,6 +55,10 @@ test_that("normal and spike-and-slab region grids meet the unchanged refinement 
     side <- hypothesis_parse(paste0("theta < ", -.5 * sd))$statements[[1L]]$left
     expect_equal(
       .hypothesis_prior_density_prob(density, side, "theta"),
+      stats::pnorm(-.5), tolerance = 2e-7
+    )
+    expect_equal(
+      grid_region_probability(density, side),
       stats::pnorm(-.5), tolerance = 2e-7
     )
   }
@@ -66,6 +80,10 @@ test_that("normal and spike-and-slab region grids meet the unchanged refinement 
       expect_equal(
         .hypothesis_prior_density_prob(density, side, "theta"),
         continuous + atom, tolerance = 2e-7, info = paste(op, cut)
+      )
+      expect_equal(
+        grid_region_probability(density, side),
+        continuous + atom, tolerance = 2e-7, info = paste("grid", op, cut)
       )
     }
   }
@@ -144,6 +162,10 @@ test_that("region probabilities normalise the grid by its own trapezoid mass", {
       .hypothesis_prior_density_prob(grid, side, "theta"),
       case$exact, tolerance = 1e-4, info = case$hypothesis
     )
+    expect_equal(
+      grid_region_probability(grid, side),
+      case$exact, tolerance = 1e-4, info = paste("grid", case$hypothesis)
+    )
   }
   grid <- .prior_linear_combination_density(
     list(theta = prior("normal", list(0, 1), list(0, Inf))), c(theta = 1)
@@ -151,6 +173,7 @@ test_that("region probabilities normalise the grid by its own trapezoid mass", {
   side <- hypothesis_parse("theta > 0")$statements[[1L]]$left
   expect_equal(.hypothesis_prior_density_prob(grid, side, "theta"), 1,
                tolerance = 1e-12)
+  expect_equal(grid_region_probability(grid, side), 1, tolerance = 1e-12)
 })
 
 test_that("interval, union, and negated regions converge on deterministic prior grids", {
@@ -179,6 +202,11 @@ test_that("interval, union, and negated regions converge on deterministic prior 
         .hypothesis_prior_density_prob(grid, side, "theta"),
         unname(cases[[hypothesis]]), tolerance = 1e-4,
         info = paste(hypothesis, if(is.null(n_grid)) "default" else n_grid)
+      )
+      expect_equal(
+        grid_region_probability(grid, side),
+        unname(cases[[hypothesis]]), tolerance = 1e-4,
+        info = paste("grid", hypothesis, if(is.null(n_grid)) "default" else n_grid)
       )
     }
   }
@@ -212,6 +240,14 @@ test_that("interval, union, and negated regions converge on deterministic prior 
   )
   expect_equal(
     .hypothesis_prior_density_prob(grid, union, "theta"),
+    stats::pnorm(-.2), tolerance = 1e-4
+  )
+  expect_equal(
+    grid_region_probability(grid, interval),
+    .5 + .5 * (stats::pnorm(.2) - stats::pnorm(-.2)), tolerance = 1e-4
+  )
+  expect_equal(
+    grid_region_probability(grid, union),
     stats::pnorm(-.2), tolerance = 1e-4
   )
 
