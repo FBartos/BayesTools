@@ -160,7 +160,7 @@ test_that("downstream cache consumer source scopes are separate from model fitti
   expect_true("package_R_random-effects-reconstruction" %in% names(fixture_sources))
   expect_true("package_R_random-effects-summary" %in% names(fixture_sources))
   expect_true("package_R_random-priors" %in% names(fixture_sources))
-  expect_true("package_R_summary-tables" %in% names(fixture_sources))
+  expect_true("package_R_summary-tables-model" %in% names(fixture_sources))
   expect_true("package_R_model-averaging" %in% names(fixture_sources))
   expect_false("test_00_model_fits" %in% names(fixture_sources))
 
@@ -168,14 +168,14 @@ test_that("downstream cache consumer source scopes are separate from model fitti
   expect_true("expected_fit_catalog" %in% names(visual_fixture_sources))
   expect_true("package_R_JAGS-formula-random" %in% names(visual_fixture_sources))
   expect_true("package_R_random-effects-summary" %in% names(visual_fixture_sources))
-  expect_true("package_R_model-averaging-plots" %in% names(visual_fixture_sources))
+  expect_true("package_R_model-averaging-plots-posterior" %in% names(visual_fixture_sources))
   expect_true("test_test_JAGS_diagnostic_plots" %in% names(visual_fixture_sources))
   expect_false("test_00_model_fits" %in% names(visual_fixture_sources))
 
   expect_false("common_functions" %in% names(model_fit_sources))
   expect_false("expected_fit_catalog" %in% names(model_fit_sources))
-  expect_false("package_R_summary-tables" %in% names(model_fit_sources))
-  expect_false("package_R_model-averaging-plots" %in% names(model_fit_sources))
+  expect_false("package_R_summary-tables-model" %in% names(model_fit_sources))
+  expect_false("package_R_model-averaging-plots-posterior" %in% names(model_fit_sources))
 
   expect_false(anyNA(.test_cache_source_hashes("fixture-consumer")))
   expect_false(anyNA(.test_cache_source_hashes("visual-fixture-consumer")))

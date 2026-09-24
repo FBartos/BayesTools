@@ -50,31 +50,14 @@
     }
   }
 
-  aliases <- c(
-    Alternative             = "Alternative",
-    alternative             = "Alternative",
-    Null                    = "Null",
-    null                    = "Null",
-    BF                      = "BF",
-    BF_error                = "BF_error",
-    `error%(BF)`            = "BF_error",
-    prior                   = "prior",
-    Prior                   = "prior",
-    posterior               = "posterior",
-    Posterior               = "posterior",
-    method                  = "method",
-    Method                  = "method",
-    computation_method      = "method",
-    `computation method`    = "method"
-  )
-  mapped <- aliases[columns]
-  if(any(is.na(mapped))){
+  unknown <- setdiff(columns, c(default, extra))
+  if(length(unknown) > 0L){
     stop("Unknown 'columns' value: ",
-         paste0("'", columns[is.na(mapped)], "'", collapse = ", "),
+         paste0("'", unknown, "'", collapse = ", "),
          ".", call. = FALSE)
   }
 
-  unique(c(default, unname(mapped)))
+  unique(c(default, columns))
 }
 
 

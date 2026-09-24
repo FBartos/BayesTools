@@ -169,6 +169,38 @@ test_that("expression-only design reconstruction retains its expression value", 
   expect_equal(compiled$value(samples, parameters), expected)
 })
 
+test_that("bridge formula plans require the fitted formula design", {
+
+  output <- JAGS_formula(
+    ~ x, "mu", data.frame(x = c(-1, 1)),
+    list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)))
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_compile_formula_fixed_plan(
+      parameter          = "mu",
+      formula_prior_list = output$prior_list,
+      design             = NULL,
+      log_intercept      = FALSE
+    ),
+    paste0(
+      "JAGS_bridgesampling() cannot reconstruct formula parameter 'mu' because ",
+      "its fitted formula-design metadata are missing. Refit the model with this ",
+      "version of BayesTools."
+    ),
+    fixed = TRUE
+  )
+  plan <- BayesTools:::.bt_JAGS_bridge_compile_formula_fixed_plan(
+    parameter          = "mu",
+    formula_prior_list = output$prior_list,
+    design             = output$formula_design,
+    log_intercept      = FALSE
+  )
+  expect_equal(
+    plan$value(c(mu_intercept = 1, mu_x = 2), list()),
+    c(-1, 3)
+  )
+})
+
 test_that("formula reconstruction treats parameter prefixes literally", {
 
   output <- JAGS_formula(
@@ -1338,12 +1370,8 @@ test_that("formula reconstruction rejects unsupported fixed-formula calls", {
   )
 })
 
-test_that("compiled formula parameter evaluator matches legacy fallback reconstruction", {
+test_that("compiled formula parameter evaluator requires fitted formula designs", {
 
-  samples <- c(
-    mu_intercept = 1,
-    mu_x_data = 2
-  )
   formula_data_list <- list(
     mu = list(
       N_mu = 2,
@@ -1356,26 +1384,17 @@ test_that("compiled formula parameter evaluator matches legacy fallback reconstr
       mu_x_data    = prior("normal", list(0, 1))
     )
   )
-  formula_list <- list(mu = ~ 1 + x_data)
 
-  compiled <- BayesTools:::.bt_JAGS_bridge_compile_formula_parameter_evaluator(
-    formula_list = formula_list,
-    formula_data_list = formula_data_list,
-    formula_prior_list = formula_prior_list,
-    formula_design_list = NULL,
-    model_data = list()
-  )
-
-  expect_equal(
-    compiled$parameters(samples, list()),
-    JAGS_marglik_parameters_formula(
-      samples = samples,
-      formula_list = formula_list,
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_compile_formula_parameter_evaluator(
+      formula_list = list(mu = ~ 1 + x_data),
       formula_data_list = formula_data_list,
       formula_prior_list = formula_prior_list,
-      prior_list_parameters = list()
+      formula_design_list = NULL,
+      model_data = list()
     ),
-    tolerance = 1e-12
+    "cannot reconstruct formula parameter 'mu' because its fitted formula-design metadata are missing",
+    fixed = TRUE
   )
 })
 

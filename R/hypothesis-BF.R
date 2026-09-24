@@ -69,7 +69,8 @@
 #' \code{prior} and \code{posterior} columns are diagnostics, not always
 #' probabilities: point tests report density heights, region tests report odds,
 #' and transitive point-vs-region tests report \code{NA}. The default
-#' \code{BF_error} column is printed as \code{error\%(BF)}.
+#' \code{BF_error} column is printed as \code{error\%(BF)}. Individual columns
+#' are selected by these column names; other spellings are rejected.
 #' @param ... unused.
 #'
 #' @details The hypothesis language deliberately accepts only a small,

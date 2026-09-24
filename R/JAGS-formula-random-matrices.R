@@ -226,14 +226,16 @@
 # Display labels follow the factor()/interaction(lex.order = TRUE) labels and
 # are changed only where distinct keys would otherwise share a label.
 .bt_random_effect_structured_index_values <- function(data, variables,
-                                                      index = NULL){
+                                                      index){
 
-  if(is.null(index) || is.null(index$level_keys) || is.null(index$levels) ||
+  if(is.null(index$level_keys) || is.null(index$levels) ||
      is.null(index$component_levels)){
-    # Fits without stored index keys replay the index by its display labels.
-    return(.bt_random_effect_structured_index_factor(
-      .bt_random_effect_structured_index_resolve(data, variables)
-    ))
+    stop(
+      "Structured random-effect index metadata for '", index$name,
+      "' are missing the fitted level keys. Refit the model with this version ",
+      "of BayesTools.",
+      call. = FALSE
+    )
   }
 
   level_keys <- index$level_keys

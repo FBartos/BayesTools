@@ -475,6 +475,52 @@ test_that("formula design metadata preserves scaling during prediction", {
   )
 })
 
+test_that("a NULL formula_target never drops sampled random effects", {
+
+  result <- .formula_prediction_result()
+  fit <- .formula_prediction_fit(result)
+  df <- .formula_prediction_data()
+  random_message <- paste0(
+    "The fitted formula for parameter 'mu' includes random effects. ",
+    "JAGS_evaluate_formula() cannot currently evaluate random-effect fits ",
+    "without silently dropping group-level contributions."
+  )
+
+  # the replayed fitted formula and fixed-only formulas stop
+  expect_error(
+    JAGS_evaluate_formula(fit = fit, parameter = "mu"),
+    random_message,
+    fixed = TRUE
+  )
+  # a formula listing random-effect terms adds their sampled blocks
+  expect_equal(
+    JAGS_evaluate_formula(
+      fit        = fit,
+      formula    = ~ 1 + x + diag(1 + x | id),
+      parameter  = "mu",
+      data       = df,
+      prior_list = result$prior_list
+    ),
+    JAGS_evaluate_formula(fit = fit, parameter = "mu", formula_target = "conditional")
+  )
+
+  # fits without random effects evaluate the fixed formula
+  fixed_result <- JAGS_formula(
+    ~ 1 + x, "mu", df,
+    prior_list = list(intercept = prior("normal", list(0, 1)),
+                      x = prior("normal", list(0, 1)))
+  )
+  fixed_fit <- coda::mcmc(matrix(
+    c(10, 1, 20, 2), nrow = 2, byrow = TRUE,
+    dimnames = list(NULL, c("mu_intercept", "mu_x"))
+  ))
+  attr(fixed_fit, "formula_design") <- list(mu = fixed_result$formula_design)
+  expect_equal(
+    JAGS_evaluate_formula(fit = fixed_fit, parameter = "mu"),
+    JAGS_evaluate_formula(fit = fixed_fit, parameter = "mu", formula_target = "fixed")
+  )
+})
+
 test_that("formula_target fixed and conditional preserve explicit semantics", {
 
   result <- .formula_prediction_result()

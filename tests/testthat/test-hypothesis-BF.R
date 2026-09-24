@@ -612,6 +612,33 @@ test_that("hypothesis_BF returns compact BayesTools table by default", {
     "Unknown 'columns' value"
   )
 
+  # each column has one spelling: its column name
+  selected <- hypothesis_BF(
+    posterior  = posterior,
+    prior      = prior,
+    hypothesis = "theta = 0",
+    parameter  = "theta",
+    columns    = c("method", "prior")
+  )
+  expect_equal(
+    colnames(selected),
+    c("Alternative", "Null", "BF", "BF_error", "method", "prior")
+  )
+  for(spelling in c("Method", "computation_method", "Prior", "error%(BF)",
+                    "alternative", "null")){
+    expect_error(
+      hypothesis_BF(
+        posterior  = posterior,
+        prior      = prior,
+        hypothesis = "theta = 0",
+        parameter  = "theta",
+        columns    = spelling
+      ),
+      paste0("Unknown 'columns' value: '", spelling, "'."),
+      fixed = TRUE
+    )
+  }
+
   detailed <- hypothesis_BF(
     posterior  = posterior,
     prior      = prior,

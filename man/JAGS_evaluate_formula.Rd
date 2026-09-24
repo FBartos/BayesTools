@@ -36,10 +36,14 @@ metadata are used. Fits without that metadata must be refitted.}
 within the \code{formula}. If \code{NULL}, fitted priors from \code{formula_design}
 metadata are used.}
 
-\item{formula_target}{optional formula prediction target. \code{NULL} preserves
-the historical safety behavior. \code{"fixed"} evaluates only the fixed formula
-contribution. \code{"conditional"} evaluates fixed effects plus fitted or
-explicitly generated random-effect contributions.}
+\item{formula_target}{optional formula prediction target. \code{"fixed"}
+evaluates only the fixed formula contribution. \code{"conditional"} evaluates
+fixed effects plus fitted or explicitly generated random-effect
+contributions. \code{NULL} evaluates the fixed formula contribution when the
+fitted formula has no sampled random effects. For a fit with sampled random
+effects, \code{NULL} stops with an error (random-effect contributions are never
+dropped silently), unless \code{formula} itself contains random-effect terms, in
+which case their sampled blocks are added as with \code{"conditional"}.}
 
 \item{blocks}{optional random-effect block names used with
 \code{formula_target = "conditional"}.}

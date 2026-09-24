@@ -69,7 +69,6 @@
 
     fixed_plans[[parameter]] <- .bt_JAGS_bridge_compile_formula_fixed_plan(
       parameter = parameter,
-      formula_data = formula_data,
       formula_prior_list = fixed_prior_list,
       design = design,
       log_intercept = log_intercept
@@ -219,35 +218,23 @@
 }
 
 .bt_JAGS_bridge_compile_formula_fixed_plan <- function(parameter,
-                                                       formula_data,
                                                        formula_prior_list,
                                                        design,
                                                        log_intercept){
 
-  force(parameter)
-  force(formula_data)
-  force(formula_prior_list)
-  force(log_intercept)
-
-  if(.bt_JAGS_formula_design_can_reconstruct(design)){
-    return(.bt_JAGS_bridge_compile_formula_design_plan(
-      design = design,
-      formula_prior_list = formula_prior_list,
-      log_intercept = log_intercept
-    ))
+  if(!.bt_JAGS_formula_design_can_reconstruct(design)){
+    stop(
+      "JAGS_bridgesampling() cannot reconstruct formula parameter '", parameter,
+      "' because its fitted formula-design metadata are missing. Refit the ",
+      "model with this version of BayesTools.",
+      call. = FALSE
+    )
   }
 
-  list(
-    value = function(samples, prior_list_parameters){
-      .JAGS_marglik_parameters_formula_get(
-        samples = samples,
-        parameter = parameter,
-        formula_data_list = formula_data,
-        formula_prior_list = formula_prior_list,
-        prior_list_parameters = prior_list_parameters,
-        log_intercept = log_intercept
-      )
-    }
+  .bt_JAGS_bridge_compile_formula_design_plan(
+    design = design,
+    formula_prior_list = formula_prior_list,
+    log_intercept = log_intercept
   )
 }
 

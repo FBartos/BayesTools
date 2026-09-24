@@ -163,18 +163,21 @@ test_that("structured index levels are identified by exact tuple and numeric key
     block$column_names,
     c("a_b1.0.5", "a_b1.3", "a_b2.0.5", "a_b2.3")
   )
-  # Index metadata without stored level keys replays by display labels.
+  # Index metadata without stored level keys ask for a refit.
   legacy <- block
   legacy$structured_index$level_keys <- NULL
   legacy$structured_index$levels <- NULL
-  replay <- .bt_random_effect_prediction_data(
-    legacy,
-    data.frame(g = factor("s2"), a = 2, b = 3)
-  )
-  expect_equal(
-    replay$model_matrix,
-    matrix(c(0, 0, 0, 1), nrow = 1L),
-    ignore_attr = TRUE
+  expect_error(
+    .bt_random_effect_prediction_data(
+      legacy,
+      data.frame(g = factor("s2"), a = 2, b = 3)
+    ),
+    paste0(
+      "Structured random-effect index metadata for '", block$structured_index$name,
+      "' are missing the fitted level keys. Refit the model with this version ",
+      "of BayesTools."
+    ),
+    fixed = TRUE
   )
 })
 

@@ -45,10 +45,14 @@
 #' @param prior_list named list of prior distribution of parameters specified
 #' within the \code{formula}. If `NULL`, fitted priors from `formula_design`
 #' metadata are used.
-#' @param formula_target optional formula prediction target. `NULL` preserves
-#' the historical safety behavior. `"fixed"` evaluates only the fixed formula
-#' contribution. `"conditional"` evaluates fixed effects plus fitted or
-#' explicitly generated random-effect contributions.
+#' @param formula_target optional formula prediction target. `"fixed"`
+#' evaluates only the fixed formula contribution. `"conditional"` evaluates
+#' fixed effects plus fitted or explicitly generated random-effect
+#' contributions. `NULL` evaluates the fixed formula contribution when the
+#' fitted formula has no sampled random effects. For a fit with sampled random
+#' effects, `NULL` stops with an error (random-effect contributions are never
+#' dropped silently), unless `formula` itself contains random-effect terms, in
+#' which case their sampled blocks are added as with `"conditional"`.
 #' @param blocks optional random-effect block names used with
 #' `formula_target = "conditional"`.
 #' @param new_levels optional new-level policy used only with

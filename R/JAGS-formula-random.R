@@ -311,31 +311,6 @@
   invisible(TRUE)
 }
 
-.bt_find_random_wrapper_calls <- function(x){
-
-  if(inherits(x, "formula")){
-    rhs_index <- if(length(x) == 3L) 3L else 2L
-    return(.bt_find_random_wrapper_calls(x[[rhs_index]]))
-  }
-
-  if(!is.call(x)){
-    return(list())
-  }
-
-  if(.bt_random_effect_is_wrapper_call(x)){
-    return(list(x))
-  }
-
-  out <- list()
-  if(length(x) >= 2L){
-    for(i in seq.int(2L, length(x))){
-      out <- c(out, .bt_find_random_wrapper_calls(x[[i]]))
-    }
-  }
-
-  out
-}
-
 .bt_random_effect_has_bar_arg <- function(x){
 
   args <- as.list(x)

@@ -496,6 +496,19 @@ test_that(".get_prior_factor_levels works correctly", {
 })
 
 
+test_that("spike-and-slab inclusion priors come from the inclusion attribute only", {
+
+  inclusion <- prior("beta", list(2, 3))
+  slab <- prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = inclusion)
+  expect_identical(BayesTools:::.get_spike_and_slab_inclusion(slab), inclusion)
+
+  # a list element named 'inclusion' (the pre-0.3.0 layout) is not consulted
+  stale <- slab
+  stale[["inclusion"]] <- prior("point", list(.5))
+  expect_identical(BayesTools:::.get_spike_and_slab_inclusion(stale), inclusion)
+})
+
+
 test_that(".prior_clean_input_name works correctly", {
 
   expect_equal(BayesTools:::.prior_clean_input_name("Normal"), "normal")

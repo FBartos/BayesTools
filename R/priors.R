@@ -533,14 +533,7 @@ prior_spike_and_slab <- function(prior_parameter,
     stop("This function only works with spike_and_slab priors")
   }
 
-  # For backward compatibility, use stored inclusion if available
-  if (!is.null(spike_and_slab_prior[["inclusion"]])) {
-    return(spike_and_slab_prior[["inclusion"]])
-  }
-
-  # Get inclusion prior from attribute
-  inclusion_prior <- attr(spike_and_slab_prior, "inclusion_prior")
-  return(inclusion_prior)
+  return(attr(spike_and_slab_prior, "inclusion_prior"))
 }
 
 #' @title Creates a mixture of prior distributions
