@@ -8,7 +8,7 @@
   "parent_quantity_id", "arguments",
   "term", "component", "display_label",
   "fitted_scale", "display_scale", "status", "fixed_value", "internal",
-  "source_type", "support", "definedness", "extraction_key"
+  "source_type", "support", "definedness", "label_parts", "extraction_key"
 )
 .bt_parameter_catalog_alias_columns <- c(
   "alias", "quantity_id", "namespace", "component", "simplified"
@@ -209,7 +209,7 @@ parameter_catalog_schema <- function(){
     field = .bt_parameter_catalog_quantity_columns,
     type = c(
       rep("character", 11L), "list", rep("character", 6L),
-      "numeric", "logical", "character", "list", "character", "list"
+      "numeric", "logical", "character", "list", "character", "list", "list"
     ),
     description = c(
       "Stable provider-namespaced quantity identifier.",
@@ -235,6 +235,7 @@ parameter_catalog_schema <- function(){
       "Relationship to concrete source coordinates: identity, one_to_one_transform, composite, or none.",
       "Exact support of the quantity from the prior provenance of its source coordinates (a posterior_support_attribute() object), or NULL when it is not derivable.",
       "Draws where the quantity is defined: 'always', or the reason of possibly undefined (NA) draws ('correlation': an SD is zero; 'allocation_active': no allocation component is active).",
+      "Structured label parts from which parameter_labels() renders the selector, table, plot, and warning labels of the quantity (NULL for extension quantities described by their display label only).",
       "Serializable plain-data extraction recipe."
     ),
     stringsAsFactors = FALSE
@@ -1838,8 +1839,10 @@ parameter_transform_jacobian <- function(values, transform){
   )
   out$arguments <- I(list())
   out$support <- I(list())
-  out <- out[, setdiff(.bt_parameter_catalog_quantity_columns, "extraction_key"),
+  out <- out[, setdiff(.bt_parameter_catalog_quantity_columns,
+                       c("label_parts", "extraction_key")),
              drop = FALSE]
+  out$label_parts <- I(list())
   out$extraction_key <- I(list())
   out
 }
@@ -1882,15 +1885,39 @@ parameter_transform_jacobian <- function(values, transform){
 
 .bt_parameter_catalog_quantity <- function(
     canonical_name, namespace, role, formula_parameter = "", term = "",
-    component = "", display_label = canonical_name,
+    component = "", label_parts = NULL,
     fitted_scale = "fitted_original", display_scale = fitted_scale,
     status = "derived", fixed_value = NA_real_, internal = FALSE,
     owner_type = "", owner_name = "", quantity = "",
     scale_role = "", parent_quantity_id = "",
     arguments = character(), source_type = "none", extraction_key){
 
+  # The canonical name is the selector of the label parts; the default display
+  # label is their table label. Quantities without label parts (extensions of
+  # other providers) are displayed by their canonical name.
+  if(is.null(label_parts)){
+    display_label <- canonical_name
+  }else{
+    selector <- .bt_label(label_parts, style = "selector")
+    if(!identical(selector, canonical_name)){
+      stop(
+        "Parameter catalog label parts do not render the canonical name '",
+        canonical_name, "' (they render '", selector, "').",
+        call. = FALSE
+      )
+    }
+    display_label <- .bt_label(
+      label_parts,
+      style          = "table",
+      formula_prefix = TRUE,
+      simplify       = TRUE
+    )
+  }
   out <- .bt_parameter_catalog_empty_quantities()
-  scalar_columns <- setdiff(names(out), c("arguments", "support", "extraction_key"))
+  scalar_columns <- setdiff(
+    names(out),
+    c("arguments", "support", "label_parts", "extraction_key")
+  )
   out[1L, scalar_columns] <- list(
     .bt_parameter_catalog_quantity_id(canonical_name, namespace, role),
     canonical_name,
@@ -1917,111 +1944,9 @@ parameter_transform_jacobian <- function(values, transform){
   out$arguments <- I(list(as.character(arguments)))
   # declared by .bt_parameter_catalog_add_support() when the catalog is built
   out$support <- I(list(NULL))
+  out$label_parts <- I(list(label_parts))
   out$extraction_key <- I(list(extraction_key))
   out
-}
-
-.bt_parameter_catalog_factor_component_token <- function(x){
-
-  replacements <- c(
-    "%" = "%25",
-    "[" = "%5B",
-    "]" = "%5D",
-    "`" = "%60",
-    "\\" = "%5C",
-    "\"" = "%22",
-    "{" = "%7B",
-    "}" = "%7D",
-    "\r" = "%0D",
-    "\n" = "%0A",
-    "\t" = "%09",
-    "\f" = "%0C",
-    "\b" = "%08",
-    "\a" = "%07",
-    "\v" = "%0B"
-  )
-  for(token in names(replacements)){
-    x <- gsub(token, replacements[[token]], x, fixed = TRUE)
-  }
-  reserved <- c(",", "=")
-  needs_quotes <- !nzchar(x) ||
-    grepl("^[[:space:]]|[[:space:]]$", x) ||
-    any(vapply(reserved, function(token){
-    grepl(token, x, fixed = TRUE)
-  }, logical(1)))
-  if(needs_quotes){
-    encodeString(x, quote = "\"")
-  }else{
-    x
-  }
-}
-
-.bt_parameter_catalog_factor_cell_names <- function(design_info){
-
-  level_names <- design_info$level_names
-  if(is.null(level_names)){
-    return(design_info$cell_names)
-  }
-  if(length(level_names) == 1L){
-    cell_names <- vapply(
-      design_info$cell_names,
-      .bt_parameter_catalog_factor_component_token,
-      character(1)
-    )
-    if(anyDuplicated(cell_names)){
-      stop(
-        "Parameter catalog factor metadata do not identify factor levels uniquely.",
-        call. = FALSE
-      )
-    }
-    return(cell_names)
-  }
-  level_grid <- .factor_cell_grid(level_names)
-  if(nrow(level_grid) != length(design_info$cell_names) ||
-     is.null(names(level_grid)) || any(!nzchar(names(level_grid)))){
-    stop(
-      "Parameter catalog factor metadata do not identify every interaction cell.",
-      call. = FALSE
-    )
-  }
-  cell_names <- vapply(seq_len(nrow(level_grid)), function(cell){
-    terms <- vapply(seq_along(level_grid), function(term){
-      paste0(
-        .bt_parameter_catalog_factor_component_token(names(level_grid)[term]),
-        "=",
-        .bt_parameter_catalog_factor_component_token(
-          as.character(level_grid[[term]][cell])
-        )
-      )
-    }, character(1))
-    paste0(terms, collapse = ", ")
-  }, character(1))
-  if(anyDuplicated(cell_names)){
-    stop(
-      "Parameter catalog factor metadata do not identify interaction cells uniquely.",
-      call. = FALSE
-    )
-  }
-  cell_names
-}
-
-# Square brackets after a factor term always hold a level (or cell) label. A
-# fitted coordinate that is not itself a level cell - a mean-difference or
-# orthonormal coefficient, or an ordered increment - is coefficient `j` of the
-# contrast coding and is written with curly braces, `term{j}`.
-.bt_parameter_catalog_factor_label <- function(formula_parameter, term,
-                                               component){
-
-  paste0(
-    .bt_random_effect_summary_formula_prefix(formula_parameter, TRUE),
-    term,
-    if(startsWith(component, "{")) component else paste0("[", component, "]")
-  )
-}
-
-.bt_parameter_catalog_factor_coefficient_component <- function(index){
-
-  paste0("{", index, "}")
 }
 
 # Contrasts whose term design rows are exact 0/1 structure. For these, a design
@@ -2084,45 +2009,14 @@ parameter_transform_jacobian <- function(values, transform){
   direct
 }
 
-# Display names of a fixed factor prior's fitted coordinates, in coordinate
-# order: a coordinate that is structurally one level cell is named by that
-# cell's level labels, as summary tables name level cells (`mu_g[10]`,
-# `mu_f[b]__xXx__g[v]`); any other coordinate is coefficient `j` of the
-# contrast coding, `<parameter>{j}`. NULL when `prior` is not a fixed factor
-# prior with design metadata.
-.bt_factor_coordinate_display_names <- function(parameter, prior){
+# The catalog component of factor label parts: the level token of a cell, or
+# `{j}` of a contrast coefficient.
+.bt_parameter_catalog_factor_component <- function(parts){
 
-  prior <- .bt_parameter_catalog_factor_prior(parameter, prior)
-  if(is.null(prior)){
-    return(NULL)
+  if(!is.na(parts$coefficient)){
+    return(paste0("{", parts$coefficient, "}"))
   }
-  design_info <- tryCatch(
-    .factor_term_design_from_metadata(prior),
-    error = function(error) NULL
-  )
-  if(is.null(design_info) || is.null(design_info$level_names)){
-    return(NULL)
-  }
-  design <- as.matrix(design_info$design)
-  out <- paste0(
-    parameter,
-    .bt_parameter_catalog_factor_coefficient_component(seq_len(ncol(design)))
-  )
-  direct <- .bt_factor_direct_cells(prior, design)
-  if(any(!is.na(direct))){
-    cell_names <- tryCatch(
-      .format_factor_level_parameter_names(
-        parameter,
-        design_info$level_names,
-        nrow(design)
-      ),
-      error = function(error){
-        paste0(parameter, "[", design_info$cell_names, "]")
-      }
-    )
-    out[!is.na(direct)] <- cell_names[direct[!is.na(direct)]]
-  }
-  out
+  .bt_label_cell_token(parts$levels)
 }
 
 # Maps every fixed factor term (formula terms of all contrasts and ordinary
@@ -2136,19 +2030,13 @@ parameter_transform_jacobian <- function(values, transform){
   out <- list(
     quantities = .bt_parameter_catalog_empty_quantities(),
     coordinates = character(),
-    # Displayed estimates-table rows of these coordinates are level cells.
-    representatives = stats::setNames(character(), character()),
-    aliases = data.frame(
-      alias = character(),
-      quantity_id = character(),
-      stringsAsFactors = FALSE
-    )
+    # the quantity each factor coordinate is: its level cell or coefficient
+    representatives = stats::setNames(character(), character())
   )
   if(length(prior_list) == 0L || is.null(names(prior_list))){
     return(out)
   }
   quantity_rows <- list()
-  alias_rows <- list()
   for(parameter in names(prior_list)){
     prior <- .bt_parameter_catalog_factor_prior(
       parameter,
@@ -2191,37 +2079,12 @@ parameter_transform_jacobian <- function(values, transform){
         call. = FALSE
       )
     }
-    cell_names <- .bt_parameter_catalog_factor_cell_names(design_info)
-    if(ncol(design) != length(coordinate_names) ||
-       nrow(design) != length(design_info$cell_names) ||
-       length(cell_names) != nrow(design) ||
-       any(!is.finite(design))){
-      stop(
-        "Parameter catalog factor metadata disagree with parameter coordinates for '",
-        parameter, "'. Refit the model with this version of BayesTools.",
-        call. = FALSE
-      )
-    }
     owner_fields <- c("formula_parameter", "term", "fitted_scale")
     if(any(vapply(owner_fields, function(field){
       length(unique(coordinate_metadata[[field]])) != 1L
     }, logical(1)))){
       stop(
         "Parameter catalog factor coordinates have inconsistent ownership for '",
-        parameter, "'. Refit the model with this version of BayesTools.",
-        call. = FALSE
-      )
-    }
-    dif_names <- .factor_contrast_parameter_names(
-      parameter,
-      design_info$level_names,
-      design_info$cell_names
-    )
-    if(length(dif_names) != nrow(design) ||
-       anyNA(dif_names) || any(!nzchar(dif_names)) ||
-       anyDuplicated(dif_names)){
-      stop(
-        "Parameter catalog factor semantic names are malformed for '",
         parameter, "'. Refit the model with this version of BayesTools.",
         call. = FALSE
       )
@@ -2236,27 +2099,46 @@ parameter_transform_jacobian <- function(values, transform){
     }else{
       parameter
     }
+    label_parts <- .bt_label_parts_factor(
+      parameter         = parameter,
+      prior             = prior,
+      formula_parameter = formula_parameter,
+      term              = term
+    )
+    if(ncol(design) != length(coordinate_names) ||
+       nrow(design) != length(label_parts$cells) ||
+       any(!is.finite(design))){
+      stop(
+        "Parameter catalog factor metadata disagree with parameter coordinates for '",
+        parameter, "'. Refit the model with this version of BayesTools.",
+        call. = FALSE
+      )
+    }
+    cell_selectors <- .bt_label(label_parts$cells, style = "selector")
+    if(anyDuplicated(cell_selectors) ||
+       !all(startsWith(cell_selectors, paste0(parameter, "[")))){
+      stop(
+        "Parameter catalog factor metadata do not identify the level cells of '",
+        parameter, "' uniquely. Refit the model with this version of BayesTools.",
+        call. = FALSE
+      )
+    }
     fitted_scale <- coordinate_metadata$fitted_scale[1L]
     coordinate_status <- ifelse(
       coordinate_names %in% derived,
       "derived",
       coordinate_metadata$monitor_status
     )
-    factor_quantity <- function(canonical_name, component, status,
-                                fixed_value, source_type, dependencies,
-                                weights){
+    factor_quantity <- function(parts, status, fixed_value, source_type,
+                                dependencies, weights){
       .bt_parameter_catalog_quantity(
-        canonical_name = canonical_name,
+        canonical_name = .bt_label(parts, style = "selector"),
         namespace = namespace,
         role = role,
         formula_parameter = formula_parameter,
         term = term,
-        component = component,
-        display_label = .bt_parameter_catalog_factor_label(
-          formula_parameter,
-          term,
-          component
-        ),
+        component = .bt_parameter_catalog_factor_component(parts),
+        label_parts = parts,
         fitted_scale = fitted_scale,
         display_scale = fitted_scale,
         status = status,
@@ -2271,16 +2153,15 @@ parameter_transform_jacobian <- function(values, transform){
       )
     }
 
-    direct_cells <- .bt_factor_direct_cells(prior, design)
+    direct_cells <- label_parts$direct
 
     for(cell in seq_len(nrow(design))){
-      component <- cell_names[cell]
+      parts <- label_parts$cells[[cell]]
       direct <- match(cell, direct_cells)
       if(!is.na(direct)){
         status <- coordinate_status[direct]
         quantity <- factor_quantity(
-          canonical_name = paste0(parameter, "[", component, "]"),
-          component = component,
+          parts = parts,
           status = status,
           fixed_value = if(identical(status, "structural")){
             coordinate_metadata$fixed_value[direct]
@@ -2302,8 +2183,7 @@ parameter_transform_jacobian <- function(values, transform){
         unavailable <- length(nonzero) > 0L &&
           any(dependency_status == "unavailable")
         quantity <- factor_quantity(
-          canonical_name = paste0(parameter, "[", component, "]"),
-          component = component,
+          parts = parts,
           status = if(structural){
             "structural"
           }else if(unavailable){
@@ -2330,34 +2210,12 @@ parameter_transform_jacobian <- function(values, transform){
         )
       }
       quantity_rows[[length(quantity_rows) + 1L]] <- quantity
-      # The level name of transformed summaries, `<parameter>[dif: <level>]`,
-      # and the row labels those summaries display with and without the
-      # formula prefix, `(mu) term[dif: <level>]` and `term[dif: <level>]`.
-      dif_labels <- dif_names[cell]
-      if(nzchar(formula_parameter)){
-        dif_labels <- c(dif_labels, vapply(c(TRUE, FALSE), function(prefix){
-          format_parameter_names(
-            dif_names[cell],
-            formula_parameters = formula_parameter,
-            formula_prefix = prefix
-          )
-        }, character(1)))
-      }
-      alias_rows[[length(alias_rows) + 1L]] <- data.frame(
-        alias = unique(dif_labels),
-        quantity_id = quantity$quantity_id,
-        stringsAsFactors = FALSE
-      )
     }
 
     for(coordinate in which(is.na(direct_cells))){
-      component <- .bt_parameter_catalog_factor_coefficient_component(
-        coordinate
-      )
       status <- coordinate_status[coordinate]
       quantity <- factor_quantity(
-        canonical_name = paste0(parameter, component),
-        component = component,
+        parts = label_parts$coordinates[[coordinate]],
         status = status,
         fixed_value = if(identical(status, "structural")){
           coordinate_metadata$fixed_value[coordinate]
@@ -2368,6 +2226,7 @@ parameter_transform_jacobian <- function(values, transform){
         dependencies = coordinate_names[coordinate],
         weights = 1
       )
+      out$representatives[[coordinate_names[coordinate]]] <- quantity$quantity_id
       quantity_rows[[length(quantity_rows) + 1L]] <- quantity
     }
     out$coordinates <- c(out$coordinates, coordinate_names)
@@ -2376,11 +2235,45 @@ parameter_transform_jacobian <- function(values, transform){
     out$quantities <- do.call(rbind, quantity_rows)
     rownames(out$quantities) <- NULL
   }
-  if(length(alias_rows) > 0L){
-    out$aliases <- do.call(rbind, alias_rows)
-    rownames(out$aliases) <- NULL
-  }
   out
+}
+
+.bt_parameter_catalog_factor_coefficient_component <- function(index){
+
+  paste0("{", index, "}")
+}
+
+# Backend-style names of a fixed factor prior's fitted coordinates, in
+# coordinate order, rendered from the coordinates' label parts: a coordinate
+# that is structurally one level cell names the level of every factor
+# component (`mu_g[10]`, `mu_f[b]__xXx__g[v]`); any other coordinate is
+# coefficient `j` of the contrast coding, `<parameter>{j}`. NULL when `prior`
+# is not a fixed factor prior.
+.bt_factor_coordinate_display_names <- function(parameter, prior){
+
+  prior <- .bt_parameter_catalog_factor_prior(parameter, prior)
+  if(is.null(prior) || is.null(attr(prior, "factor_design", exact = TRUE))){
+    return(NULL)
+  }
+  parts <- .bt_label_parts_factor(parameter, prior)$coordinates
+  vapply(parts, function(part){
+    if(!is.na(part$coefficient)){
+      return(paste0(parameter, "{", part$coefficient, "}"))
+    }
+    if(length(part$components) == 1L){
+      return(paste0(parameter, "[", part$levels[[1L]], "]"))
+    }
+    components <- vapply(part$components, function(component){
+      if(component %in% names(part$levels)){
+        paste0(component, "[", part$levels[[component]], "]")
+      }else{
+        component
+      }
+    }, character(1))
+    stem <- substr(parameter, 1L, nchar(parameter) -
+                     nchar(paste(part$components, collapse = "__xXx__")))
+    paste0(stem, paste(components, collapse = "__xXx__"))
+  }, character(1), USE.NAMES = FALSE)
 }
 
 # Coordinates owned by a point prior with an expression location are
@@ -2400,7 +2293,8 @@ parameter_transform_jacobian <- function(values, transform){
 }
 
 .bt_parameter_catalog_coordinate_quantities <- function(
-    coordinates, suppress = character(), derived = character()){
+    coordinates, suppress = character(), derived = character(),
+    prior_list = NULL, formula_design = NULL){
 
   out <- .bt_parameter_catalog_empty_quantities()
   keep <- coordinates$role != "backend_anchor" & !coordinates$internal &
@@ -2409,6 +2303,11 @@ parameter_transform_jacobian <- function(values, transform){
   if(nrow(coordinates) == 0L){
     return(out)
   }
+  label_parts <- .bt_parameter_coordinates_row_label_parts(
+    coordinates    = coordinates,
+    prior_list     = prior_list,
+    formula_design = formula_design
+  )
   rows <- vector("list", nrow(coordinates))
   for(i in seq_len(nrow(coordinates))){
     row <- coordinates[i, , drop = FALSE]
@@ -2424,7 +2323,10 @@ parameter_transform_jacobian <- function(values, transform){
       formula_parameter = row$formula_parameter,
       term = row$term,
       component = row$column,
-      display_label = row$display_label,
+      label_parts = .bt_label_parts_update(
+        label_parts[[i]],
+        selector = row$coordinate_name
+      )[[1L]],
       fitted_scale = row$fitted_scale,
       display_scale = row$fitted_scale,
       status = if(row$coordinate_name %in% derived){
@@ -2455,10 +2357,36 @@ parameter_transform_jacobian <- function(values, transform){
   }
 }
 
+# Labels a quantity is selected by besides its canonical name: its rendered
+# table labels with and without the formula prefix, and for factor level
+# cells the level names and table rows of transformed contrasts. Random-effect
+# quantities have their own semantic aliases.
+.bt_parameter_catalog_label_aliases <- function(quantity){
+
+  parts <- quantity$label_parts[[1L]]
+  if(is.null(parts)){
+    return(character())
+  }
+  labels <- c(
+    .bt_label(parts, style = "table", formula_prefix = TRUE),
+    .bt_label(parts, style = "table", formula_prefix = FALSE)
+  )
+  if(.bt_parameter_catalog_is_factor_quantity(quantity) &&
+     length(parts$levels) > 0L){
+    dif <- .bt_label_parts_update(parts, transformation = "dif")
+    labels <- c(
+      labels,
+      .bt_label(dif, style = "selector"),
+      .bt_label(dif, style = "table", formula_prefix = TRUE),
+      .bt_label(dif, style = "table", formula_prefix = FALSE)
+    )
+  }
+  unique(labels)
+}
+
 .bt_parameter_catalog_aliases <- function(quantities, formula_design = NULL,
                                           table_labels = NULL,
-                                          representatives = NULL,
-                                          secondary = NULL){
+                                          representatives = NULL){
 
   out <- .bt_parameter_catalog_empty_aliases()
   public <- quantities[!quantities$internal, , drop = FALSE]
@@ -2466,6 +2394,7 @@ parameter_transform_jacobian <- function(values, transform){
     return(out)
   }
   rows <- list()
+  secondary <- list()
   add_aliases <- function(quantity, values, simplified){
     values <- unique(values[!is.na(values) & nzchar(values)])
     if(length(values) == 0L){
@@ -2483,30 +2412,19 @@ parameter_transform_jacobian <- function(values, transform){
   }
   for(i in seq_len(nrow(public))){
     quantity <- public[i, , drop = FALSE]
-    semantic_label <- character()
-    if(startsWith(quantity$role, "random_") &&
-       !is.na(quantity$formula_parameter)){
-      prefix <- .bt_random_effect_summary_formula_prefix(
-        quantity$formula_parameter,
-        TRUE
-      )
-      if(nzchar(prefix) && startsWith(quantity$canonical_name, prefix)){
-        semantic_label <- substring(
-          quantity$canonical_name,
-          nchar(prefix) + 1L
-        )
-      }
-    }
-    values <- if(startsWith(quantity$role, "random_")){
-      unique(c(
-        semantic_label,
+    parts <- quantity$label_parts[[1L]]
+    if(startsWith(quantity$role, "random_")){
+      values <- unique(c(
+        if(!is.null(parts)){
+          .bt_label(parts, style = "table", formula_prefix = FALSE)
+        },
         .bt_parameter_catalog_random_correlation_aliases(
           quantity,
           formula_design
         )
       ))
     }else{
-      unique(c(
+      values <- unique(c(
         quantity$canonical_name,
         quantity$display_label,
         quantity$term,
@@ -2521,6 +2439,18 @@ parameter_transform_jacobian <- function(values, transform){
           character()
         }
       ))
+      # rendered labels that may coincide with another quantity's selector
+      label_aliases <- setdiff(
+        .bt_parameter_catalog_label_aliases(quantity),
+        values
+      )
+      if(length(label_aliases) > 0L){
+        secondary[[length(secondary) + 1L]] <- data.frame(
+          alias = label_aliases,
+          quantity_id = quantity$quantity_id,
+          stringsAsFactors = FALSE
+        )
+      }
     }
     add_aliases(quantity, values, simplified = FALSE)
     if(startsWith(quantity$role, "random_")){
@@ -2542,7 +2472,7 @@ parameter_transform_jacobian <- function(values, transform){
     public,
     table_labels,
     representatives = representatives,
-    secondary = secondary
+    secondary = if(length(secondary) > 0L) do.call(rbind, secondary)
   )
 }
 
@@ -2654,19 +2584,19 @@ parameter_transform_jacobian <- function(values, transform){
 
 .bt_parameter_catalog_random_simplified_aliases <- function(quantity){
 
-  label <- quantity$display_label
-  prefix <- .bt_random_effect_summary_formula_prefix(
-    quantity$formula_parameter,
-    TRUE
-  )
-  without_prefix <- if(nzchar(prefix) && startsWith(label, prefix)){
-    substring(label, nchar(prefix) + 1L)
-  }else{
-    label
+  parts <- quantity$label_parts[[1L]]
+  if(is.null(parts) || is.null(parts$random)){
+    return(character())
   }
-  without_owner <- sub("^.*: ", "", without_prefix)
+  without_owner <- parts
+  without_owner$random$owner <- ""
 
-  unique(c(label, without_prefix, without_owner))
+  unique(c(
+    .bt_label(parts, style = "table", formula_prefix = TRUE, simplify = TRUE),
+    .bt_label(parts, style = "table", formula_prefix = FALSE, simplify = TRUE),
+    .bt_label(without_owner, style = "table", formula_prefix = FALSE,
+              simplify = TRUE)
+  ))
 }
 
 .bt_parameter_catalog_random_correlation_aliases <- function(
@@ -2704,27 +2634,20 @@ parameter_transform_jacobian <- function(values, transform){
     return(character())
   }
   pairs <- utils::combn(components, 2L)
-  correlations <- unlist(lapply(owners, function(owner){
-    apply(pairs, 2L, function(pair){
-      .bt_random_effect_semantic_name(
-        parameter = quantity$formula_parameter,
-        owner = owner,
-        quantity = "cor",
-        arguments = pair,
-        formula_prefix = TRUE
-      )
+  correlations <- unlist(lapply(c(TRUE, FALSE), function(formula_prefix){
+    lapply(owners, function(owner){
+      apply(pairs, 2L, function(pair){
+        .bt_random_effect_semantic_name(
+          parameter = quantity$formula_parameter,
+          owner = owner,
+          quantity = "cor",
+          arguments = pair,
+          formula_prefix = formula_prefix
+        )
+      })
     })
   }), use.names = FALSE)
-  prefix <- .bt_random_effect_summary_formula_prefix(
-    quantity$formula_parameter,
-    TRUE
-  )
-  without_prefix <- if(nzchar(prefix)){
-    substring(correlations, nchar(prefix) + 1L)
-  }else{
-    correlations
-  }
-  unique(c(correlations, without_prefix))
+  unique(correlations)
 }
 
 .bt_parameter_catalog_random_public_block_owner <- function(
@@ -3086,12 +3009,15 @@ parameter_transform_jacobian <- function(values, transform){
         "prior_name", "allocation_label", "parent_allocation", "index"
       )]
     )
-    display_label <- .bt_random_effect_semantic_name(
-      parameter = parameter,
-      owner = public_owner,
-      quantity = quantity,
-      arguments = display_arguments,
-      formula_prefix = TRUE
+    label_parts <- .bt_label_parts(
+      components        = if(nzchar(term)) term else quantity,
+      formula_parameter = parameter,
+      random            = list(
+        owner             = public_owner,
+        quantity          = quantity,
+        arguments         = as.character(arguments),
+        display_arguments = as.character(display_arguments)
+      )
     )
     state <- if(isTRUE(unavailable)){
       list(status = "unavailable", fixed_value = NA_real_)
@@ -3118,7 +3044,7 @@ parameter_transform_jacobian <- function(values, transform){
       formula_parameter = parameter,
       term = term,
       component = component,
-      display_label = display_label,
+      label_parts = label_parts,
       fitted_scale = fitted_scale,
       display_scale = display_scale,
       status = state$status,
@@ -3945,7 +3871,9 @@ parameter_transform_jacobian <- function(values, transform){
   base <- .bt_parameter_catalog_coordinate_quantities(
     coordinates = coordinates,
     suppress = c(random_map$suppress, factor_map$coordinates),
-    derived = derived
+    derived = derived,
+    prior_list = prior_list,
+    formula_design = formula_design
   )
   quantities <- rbind(base, factor_map$quantities, random_map$derived)
   rownames(quantities) <- NULL
@@ -3963,8 +3891,7 @@ parameter_transform_jacobian <- function(values, transform){
       prior_list = prior_list,
       formula_scale = formula_scale
     ),
-    representatives = factor_map$representatives,
-    secondary = factor_map$aliases
+    representatives = factor_map$representatives
   )
   .bt_parameter_catalog_new(quantities, aliases)
 }
@@ -4369,7 +4296,8 @@ parameter_transform_jacobian <- function(values, transform){
   }
   character_columns <- setdiff(
     .bt_parameter_catalog_quantity_columns,
-    c("arguments", "fixed_value", "internal", "support", "extraction_key")
+    c("arguments", "fixed_value", "internal", "support", "label_parts",
+      "extraction_key")
   )
   if(!all(vapply(quantities[character_columns], is.character, logical(1))) ||
      !is.list(quantities$arguments) ||
@@ -4389,8 +4317,17 @@ parameter_transform_jacobian <- function(values, transform){
      !all(vapply(quantities$support, function(support){
        is.null(support) || inherits(support, "BayesTools_posterior_support")
      }, logical(1))) ||
+     !is.list(quantities$label_parts) ||
+     !all(vapply(seq_along(quantities$label_parts), function(i){
+       parts <- quantities$label_parts[[i]]
+       if(is.null(parts)){
+         return(!identical(quantities$provider[i], "BayesTools"))
+       }
+       inherits(parts, "BayesTools_label_parts")
+     }, logical(1))) ||
      anyNA(quantities[setdiff(names(quantities),
-                             c("fixed_value", "support", "extraction_key"))]) ||
+                             c("fixed_value", "support", "label_parts",
+                               "extraction_key"))]) ||
      anyNA(aliases)){
     stop("Parameter catalog tables contain malformed field types or missing metadata. Refit or rebuild the catalog with this version of BayesTools.",
          call. = FALSE)

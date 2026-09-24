@@ -395,6 +395,37 @@
   NULL
 }
 
+# The random-effect term owning a coordinate: the term whose generated family
+# or SD parameters contain it (with the family role), otherwise the term named
+# by the owning prior's random-effect block.
+.bt_parameter_coordinates_random_owner <- function(base_name, prior,
+                                                   random_terms){
+
+  owner <- .bt_parameter_coordinates_term_owner(base_name, random_terms)
+  if(!is.null(owner)){
+    return(owner)
+  }
+  out <- list(random_term = NULL, role = NULL)
+  if(is.null(prior)){
+    return(out)
+  }
+  block <- .bt_random_effect_prior_effect(prior)
+  if(nzchar(block)){
+    matches <- vapply(random_terms, function(term){
+      block %in% c(
+        term$block_name,
+        .bt_random_effect_public_name(term),
+        term$group_label
+      )
+    }, logical(1))
+    if(sum(matches) == 1L){
+      out$random_term <- random_terms[[which(matches)]]
+    }
+  }
+
+  out
+}
+
 .bt_parameter_coordinates_random_sd_names <- function(random_term){
 
   binding <- random_term$sd_binding
@@ -547,26 +578,37 @@
   "fitted_original"
 }
 
-# Display name of one fixed factor coordinate: its level cell when the
+# Label parts of one fixed factor coordinate: its level cell when the
 # coordinate structurally is one, otherwise contrast coefficient `{j}`. The
-# per-prior names are computed once per coordinate table through `cache`.
-.bt_parameter_coordinates_factor_display_name <- function(coordinate_name,
-                                                          prior, cache){
+# per-prior parts are computed once per coordinate table through `cache`.
+.bt_parameter_coordinates_factor_label_parts <- function(coordinate_name, prior,
+                                                         formula_parameter,
+                                                         term, cache){
 
   if(is.null(prior)){
-    return(coordinate_name)
+    return(NULL)
   }
   base_name <- .bt_parameter_coordinates_base(coordinate_name)
   if(!exists(base_name, envir = cache, inherits = FALSE)){
+    factor_prior <- .bt_parameter_catalog_factor_prior(base_name, prior)
     assign(
       base_name,
-      .bt_factor_coordinate_display_names(base_name, prior),
+      if(is.null(factor_prior)){
+        NULL
+      }else{
+        .bt_label_parts_factor(
+          parameter         = base_name,
+          prior             = factor_prior,
+          formula_parameter = formula_parameter,
+          term              = term
+        )$coordinates
+      },
       envir = cache
     )
   }
-  display_names <- get(base_name, envir = cache, inherits = FALSE)
-  if(is.null(display_names)){
-    return(coordinate_name)
+  coordinate_parts <- get(base_name, envir = cache, inherits = FALSE)
+  if(is.null(coordinate_parts)){
+    return(NULL)
   }
   index <- .bt_parameter_coordinates_index(coordinate_name)
   coefficient <- if(nzchar(index)){
@@ -575,77 +617,179 @@
     1L
   }
   if(is.na(coefficient) || coefficient < 1L ||
-     coefficient > length(display_names)){
-    return(coordinate_name)
+     coefficient > length(coordinate_parts)){
+    stop(
+      "Fitted factor coordinate '", coordinate_name, "' does not match its ",
+      "factor metadata. Refit the model with this version of BayesTools.",
+      call. = FALSE
+    )
   }
-  display_names[[coefficient]]
+  coordinate_parts[[coefficient]]
+}
+
+# Label parts of one fitted coordinate, from its owning prior, random-effect
+# term, and formula name-map row; never from the coordinate name's text.
+# Coordinates without semantic structure keep their backend name.
+.bt_parameter_coordinates_label_parts <- function(coordinate_name, prior,
+                                                  random_term, role,
+                                                  formula_parameter,
+                                                  name_map_row = NULL,
+                                                  factor_cache = new.env(parent = emptyenv())){
+
+  verbatim <- function(label, parameter = formula_parameter){
+    .bt_label_parts(
+      components        = label,
+      formula_parameter = parameter,
+      selector          = coordinate_name
+    )
+  }
+  if(!is.null(prior)){
+    label <- attr(prior, "random_summary_label", exact = TRUE)
+    if(!is.null(label) && length(label) == 1L && !is.na(label) && nzchar(label)){
+      return(verbatim(label))
+    }
+  }
+  map_row <- if(!is.null(name_map_row) && nrow(name_map_row) == 1L){
+    name_map_row
+  }else{
+    NULL
+  }
+  if(is.null(random_term)){
+    if(role %in% c("fixed_coefficient", "parameter")){
+      factor_parts <- .bt_parameter_coordinates_factor_label_parts(
+        coordinate_name   = coordinate_name,
+        prior             = prior,
+        formula_parameter = formula_parameter,
+        term              = if(is.null(map_row)) "" else map_row$term,
+        cache             = factor_cache
+      )
+      if(!is.null(factor_parts)){
+        return(factor_parts)
+      }
+    }
+    if(!is.null(map_row) && identical(map_row$kind, "fixed") &&
+       nzchar(map_row$term)){
+      components <- attr(prior, "interaction_terms", exact = TRUE)
+      if(is.null(components) || length(components) == 0L){
+        components <- map_row$term
+      }
+      return(.bt_label_parts(
+        components        = components,
+        formula_parameter = map_row$formula_parameter,
+        selector          = coordinate_name
+      ))
+    }
+    if(!is.null(map_row) && identical(map_row$kind, "fixed_auxiliary") &&
+       nzchar(map_row$term)){
+      return(verbatim(
+        paste0(map_row$term, map_row$role),
+        map_row$formula_parameter
+      ))
+    }
+    stem <- paste0(formula_parameter, "_")
+    if(nzchar(formula_parameter) && startsWith(coordinate_name, stem) &&
+       nchar(coordinate_name) > nchar(stem)){
+      # a node of this formula parameter named by JAGS_parameter_names():
+      # the formula parameter, then the term with interactions encoded
+      term <- substring(coordinate_name, nchar(stem) + 1L)
+      if(identical(role, "fixed_coefficient")){
+        return(.bt_label_parts(
+          components        = strsplit(term, "__xXx__", fixed = TRUE)[[1L]],
+          formula_parameter = formula_parameter,
+          selector          = coordinate_name
+        ))
+      }
+      return(verbatim(term))
+    }
+    return(verbatim(coordinate_name, ""))
+  }
+
+  label <- coordinate_name
+  if(identical(role, "random_sd")){
+    label <- .bt_random_effect_summary_raw_sd_display_names(
+      names = label,
+      raw_names = coordinate_name,
+      random_term = random_term,
+      prefix = ""
+    )
+  }else if(identical(role, "random_correlation")){
+    label <- .bt_random_effect_summary_raw_rho_display_names(
+      names = label,
+      raw_names = coordinate_name,
+      random_term = random_term,
+      prefix = ""
+    )
+    label <- .bt_random_effect_summary_raw_matrix_display_names(
+      names = label,
+      raw_names = coordinate_name,
+      random_term = random_term,
+      prefix = ""
+    )
+  }else if(role %in% c("random_latent", "random_group_coefficient")){
+    label <- .bt_random_effect_summary_raw_matrix_display_names(
+      names = label,
+      raw_names = coordinate_name,
+      random_term = random_term,
+      prefix = ""
+    )
+  }
+  if(identical(label, coordinate_name)){
+    # an implementation node without a semantic label keeps its backend name
+    return(verbatim(coordinate_name, ""))
+  }
+  verbatim(label)
+}
+
+# Label parts of fitted coordinate-table rows, derived from the fitted metadata
+# exactly as the coordinate builder derives their display labels.
+.bt_parameter_coordinates_row_label_parts <- function(coordinates,
+                                                      prior_list = NULL,
+                                                      formula_design = NULL){
+
+  if(is.null(prior_list)){
+    prior_list <- list()
+  }
+  random_terms <- .bt_parameter_coordinates_random_terms(formula_design)
+  name_map <- .bt_parameter_coordinates_name_map(formula_design)
+  factor_cache <- new.env(parent = emptyenv())
+  lapply(seq_len(nrow(coordinates)), function(i){
+    coordinate_name <- coordinates$coordinate_name[i]
+    base_name <- .bt_parameter_coordinates_base(coordinate_name)
+    prior <- .bt_parameter_coordinates_prior_owner(base_name, prior_list)
+    owner <- .bt_parameter_coordinates_random_owner(
+      base_name,
+      prior,
+      random_terms
+    )
+    .bt_parameter_coordinates_label_parts(
+      coordinate_name   = coordinate_name,
+      prior             = prior,
+      random_term       = owner$random_term,
+      role              = coordinates$role[i],
+      formula_parameter = coordinates$formula_parameter[i],
+      name_map_row      = name_map[name_map$jags_name == base_name, , drop = FALSE],
+      factor_cache      = factor_cache
+    )
+  })
 }
 
 .bt_parameter_coordinates_display <- function(coordinate_name, prior, random_term,
                                            role, formula_parameter,
+                                           name_map_row = NULL,
                                            factor_cache = new.env(parent = emptyenv())){
 
-  if(!is.null(prior)){
-    label <- attr(prior, "random_summary_label", exact = TRUE)
-    if(!is.null(label) && length(label) == 1L && !is.na(label) && nzchar(label)){
-      prefix <- .bt_random_effect_summary_formula_prefix(
-        formula_parameter,
-        TRUE
-      )
-      return(paste0(prefix, label))
-    }
-  }
-  if(is.null(random_term)){
-    if(role %in% c("fixed_coefficient", "parameter")){
-      coordinate_name <- .bt_parameter_coordinates_factor_display_name(
-        coordinate_name,
-        prior,
-        factor_cache
-      )
-    }
-    return(format_parameter_names(
-      coordinate_name,
-      formula_parameters = if(nzchar(formula_parameter)){
-        formula_parameter
-      }else{
-        NULL
-      },
-      formula_prefix = TRUE
-    ))
-  }
-
-  names <- coordinate_name
-  raw_names <- coordinate_name
-  prefix <- .bt_random_effect_summary_formula_prefix(formula_parameter, TRUE)
-  if(identical(role, "random_sd")){
-    names <- .bt_random_effect_summary_raw_sd_display_names(
-      names = names,
-      raw_names = raw_names,
-      random_term = random_term,
-      prefix = prefix
-    )
-  }else if(identical(role, "random_correlation")){
-    names <- .bt_random_effect_summary_raw_rho_display_names(
-      names = names,
-      raw_names = raw_names,
-      random_term = random_term,
-      prefix = prefix
-    )
-    names <- .bt_random_effect_summary_raw_matrix_display_names(
-      names = names,
-      raw_names = raw_names,
-      random_term = random_term,
-      prefix = prefix
-    )
-  }else if(role %in% c("random_latent", "random_group_coefficient")){
-    names <- .bt_random_effect_summary_raw_matrix_display_names(
-      names = names,
-      raw_names = raw_names,
-      random_term = random_term,
-      prefix = prefix
-    )
-  }
-  names
+  .bt_label(
+    .bt_parameter_coordinates_label_parts(
+      coordinate_name   = coordinate_name,
+      prior             = prior,
+      random_term       = random_term,
+      role              = role,
+      formula_parameter = formula_parameter,
+      name_map_row      = name_map_row,
+      factor_cache      = factor_cache
+    ),
+    style = "table"
+  )
 }
 
 .bt_build_parameter_coordinates <- function(columns, monitor_names = columns,
@@ -717,9 +861,13 @@
     name_map_row <- name_map[name_map$jags_name == base_name, , drop = FALSE]
     prior <- .bt_parameter_coordinates_prior_owner(base_name, prior_list)
     prior_metadata <- .bt_random_effect_metadata(prior)
-    owner <- .bt_parameter_coordinates_term_owner(base_name, random_terms)
-    random_term <- if(is.null(owner)) NULL else owner$random_term
-    role <- if(is.null(owner)){
+    owner <- .bt_parameter_coordinates_random_owner(
+      base_name,
+      prior,
+      random_terms
+    )
+    random_term <- owner$random_term
+    role <- if(is.null(owner$role)){
       .bt_parameter_coordinates_prior_role(prior)
     }else{
       owner$role
@@ -730,21 +878,6 @@
     random_prior_auxiliary <- base_name %in% random_prior_auxiliaries
     if(random_prior_auxiliary){
       role <- "allocation"
-    }
-    if(is.null(random_term) && !is.null(prior)){
-      block <- .bt_random_effect_prior_effect(prior)
-      if(nzchar(block)){
-        matches <- vapply(random_terms, function(term){
-          block %in% c(
-            term$block_name,
-            .bt_random_effect_public_name(term),
-            term$group_label
-          )
-        }, logical(1))
-        if(sum(matches) == 1L){
-          random_term <- random_terms[[which(matches)]]
-        }
-      }
     }
 
     formula_parameter <- .bt_parameter_coordinates_formula_parameter(
@@ -827,12 +960,13 @@
       monitor_status,
       fixed_value,
       .bt_parameter_coordinates_display(
-        coordinate_name,
-        prior,
-        random_term,
-        role,
-        formula_parameter,
-        factor_cache
+        coordinate_name   = coordinate_name,
+        prior             = prior,
+        random_term       = random_term,
+        role              = role,
+        formula_parameter = formula_parameter,
+        name_map_row      = name_map_row,
+        factor_cache      = factor_cache
       ),
       grouping,
       structure,
