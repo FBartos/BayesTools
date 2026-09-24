@@ -1287,16 +1287,115 @@
   # concentrated other term far from zero). Each piece is an independent
   # integral with the full evaluation budget and its own diagnostics; the
   # ordinate is their sum, and the acceptance criterion applies to the total.
-  tolerance <- .prior_linear_density_refinement_tolerance()
   integrand <- function(multiplier){
-    product_sd <- abs(multiplier) * spec$product_sd
-    scale <- pmax(spec$additive_sd, product_sd)
-    conditional_sd <- scale * sqrt((spec$additive_sd / scale)^2 + (product_sd / scale)^2)
-    conditional_mean <- spec$additive_mean + multiplier * spec$product_mean
-    exp(stats::dnorm(value, conditional_mean, conditional_sd, log = TRUE) +
+    conditional <- .prior_conditional_normal_moments(spec, multiplier)
+    exp(stats::dnorm(value, conditional$mean, conditional$sd, log = TRUE) +
           lpdf(spec$multiplier, multiplier))
   }
-  points <- .prior_conditional_normal_breakpoints(spec, value)
+  integral <- .prior_conditional_normal_quadrature(
+    integrand, .prior_conditional_normal_breakpoints(spec, value), n_grid,
+    zero_message = "zero ordinate for a structurally positive density"
+  )
+  .prior_density_ordinate_result(
+    value = value, behavior = "regular",
+    log_density = log(integral$value), exact = TRUE,
+    method = "conditional_normal_mixture",
+    provenance = list(
+      kind = "conditional_normal_mixture",
+      additive = c(mean = spec$additive_mean, sd = spec$additive_sd),
+      multiplied = c(mean = spec$product_mean, sd = spec$product_sd),
+      multiplier = .prior_density_ordinate_prior_provenance(spec$multiplier),
+      independent_sources = spec$sources,
+      structural_regularity = "positive_variance_gaussian_convolution",
+      integration = integral$integration
+    )
+  )
+}
+
+# Region probability P(X in region) of the same conditional-normal mixture:
+# the 1-D integral over the multiplier (the other term of a Gaussian
+# convolution) s of its density times the Gaussian probability of the region's
+# disjoint intervals, int f(s) sum_j [Phi((u_j - mu(s)) / sd(s)) -
+# Phi((l_j - mu(s)) / sd(s))] ds (infinite bounds allowed). It uses the
+# ordinate's quadrature: the same breakpoints, with a Gaussian-peak window
+# around the location s* of every finite interval endpoint (the Gaussian
+# interval probability changes over about one local SD there), the full budget
+# per piece, and the acceptance criterion on the total; a region with a
+# positive Gaussian variance never has zero probability, so an exactly zero
+# total is rejected as for the ordinate (also when the probability underflows).
+# Unlike the ordinate, whose Gaussian factor vanishes away from its peak, the
+# integrand on a piece that the region covers entirely is the other term's
+# density itself. Known limitations: for heavy tails (a Cauchy scale of about
+# 0.9 or more, half-Cauchy or inverse-gamma(1) multipliers), QUADPACK flags
+# the infinite end piece beyond the extreme quantile of a region with an
+# infinite bound ("roundoff error", "probably divergent") and the probability
+# stops; and for a region bound far beyond the extreme quantiles, the long
+# piece between its peak window and the extreme quantile has its mass (up to
+# the 1e-6 beyond that quantile) at one end, which can be missed without a
+# convergence failure (within the relative criterion for probabilities near
+# one).
+.prior_conditional_normal_region <- function(spec, intervals, n_grid){
+
+  lower <- intervals[, 1L]
+  upper <- intervals[, 2L]
+  integrand <- function(multiplier){
+    conditional <- .prior_conditional_normal_moments(spec, multiplier)
+    probability <- 0
+    for(i in seq_along(lower)){
+      probability <- probability + .prior_normal_interval_probability(
+        lower[i], upper[i], conditional$mean, conditional$sd
+      )
+    }
+    log_density <- lpdf(spec$multiplier, multiplier)
+    out <- numeric(length(multiplier))
+    positive <- probability > 0
+    out[positive] <- exp(log(probability[positive]) + log_density[positive])
+    out
+  }
+  endpoints <- c(lower, upper)
+  endpoints <- unique(endpoints[is.finite(endpoints)])
+  .prior_conditional_normal_quadrature(
+    integrand, .prior_conditional_normal_breakpoints(spec, endpoints), n_grid,
+    zero_message = "zero probability for a structurally positive region"
+  )
+}
+
+# Mean and SD of the conditional normal N(a_m + b_m s, sqrt(a_s^2 + b_s^2 s^2))
+# at multiplier values s, with the SD computed without overflow.
+.prior_conditional_normal_moments <- function(spec, multiplier){
+
+  product_sd <- abs(multiplier) * spec$product_sd
+  scale <- pmax(spec$additive_sd, product_sd)
+  list(
+    mean = spec$additive_mean + multiplier * spec$product_mean,
+    sd   = scale * sqrt((spec$additive_sd / scale)^2 + (product_sd / scale)^2)
+  )
+}
+
+# P(lower < Z < upper) for Z ~ N(mean, sd), vectorized over 'mean' and 'sd';
+# upper-tail probabilities are used when the interval lies above the mean, so
+# small probabilities in either tail keep their relative precision.
+.prior_normal_interval_probability <- function(lower, upper, mean, sd){
+
+  z_lower <- (lower - mean) / sd
+  z_upper <- (upper - mean) / sd
+  out <- stats::pnorm(z_upper) - stats::pnorm(z_lower)
+  upper_tail <- !is.na(z_lower) & z_lower > 0
+  out[upper_tail] <-
+    stats::pnorm(z_lower[upper_tail], lower.tail = FALSE) -
+    stats::pnorm(z_upper[upper_tail], lower.tail = FALSE)
+  pmax(out, 0)
+}
+
+# Sum of the budgeted QUADPACK pieces between consecutive 'points'. Each piece
+# is an independent integral with the full budget 'n_grid' and its own
+# diagnostics; the value and absolute error are summed, and the acceptance
+# criterion (all pieces converged, abs. error <= 1e-12 + 1e-4 * value, value
+# positive) applies to the total. A rejected total has value NA.
+.prior_conditional_normal_quadrature <- function(integrand, points, n_grid,
+                                                 zero_message){
+
+  tolerance <- .prior_linear_density_refinement_tolerance()
   n_pieces <- length(points) - 1L
   pieces <- lapply(seq_len(n_pieces), function(i){
     .prior_conditional_normal_piece(
@@ -1317,7 +1416,7 @@
     }
   )
   if(identical(integral$message, "OK") && isTRUE(integral$value == 0)){
-    integral$message <- "zero ordinate for a structurally positive density"
+    integral$message <- zero_message
   }
   bound <- tolerance$absolute + tolerance$relative * abs(integral$value)
   accepted <- identical(integral$message, "OK") && is.finite(integral$value) &&
@@ -1325,26 +1424,16 @@
   if(!isTRUE(accepted)){
     integral$value <- NA_real_
   }
-  .prior_density_ordinate_result(
-    value = value, behavior = "regular",
-    log_density = log(integral$value), exact = TRUE,
-    method = "conditional_normal_mixture",
-    provenance = list(
-      kind = "conditional_normal_mixture",
-      additive = c(mean = spec$additive_mean, sd = spec$additive_sd),
-      multiplied = c(mean = spec$product_mean, sd = spec$product_sd),
-      multiplier = .prior_density_ordinate_prior_provenance(spec$multiplier),
-      independent_sources = spec$sources,
-      structural_regularity = "positive_variance_gaussian_convolution",
-      integration = list(
-        kind = "conditional_normal_mixture", exact = FALSE,
-        absolute_error = integral$abs.error, error_bound = bound,
-        evaluations = sum(vapply(pieces, `[[`, integer(1), "evaluations")),
-        budget = n_grid, converged = isTRUE(accepted), message = integral$message,
-        breakpoints = points,
-        piece_evaluations = vapply(pieces, `[[`, integer(1), "evaluations"),
-        piece_absolute_errors = piece_errors
-      )
+  list(
+    value = integral$value,
+    integration = list(
+      kind = "conditional_normal_mixture", exact = FALSE,
+      absolute_error = integral$abs.error, error_bound = bound,
+      evaluations = sum(vapply(pieces, `[[`, integer(1), "evaluations")),
+      budget = n_grid, converged = isTRUE(accepted), message = integral$message,
+      breakpoints = points,
+      piece_evaluations = vapply(pieces, `[[`, integer(1), "evaluations"),
+      piece_absolute_errors = piece_errors
     )
   )
 }
@@ -1392,23 +1481,28 @@
 # b_m != 0 when b_s is not small against |b_m|, so its mass can be missed
 # without a convergence failure. Such ordinates are small at ordinary scales,
 # but the missed fraction does not depend on the units of the value.
+# Region probabilities pass several values (the finite region endpoints): each
+# gets its own peak window, each peak point keeps its own local SD for the
+# exemption next to a singular bound, and the merge width is capped by the
+# smallest local SD, so no peak point of any window is merged.
 .prior_conditional_normal_breakpoints <- function(spec, value){
 
   lower <- spec$bounds[1L]
   upper <- spec$bounds[2L]
   inner <- numeric()
   is_peak <- logical()
-  peak_width <- Inf
+  widths <- numeric()
   if(isTRUE(spec$product_mean != 0) &&
      isTRUE(spec$product_sd <= abs(spec$product_mean) / 2)){
-    centre <- (value - spec$additive_mean) / spec$product_mean
-    width <- sqrt(spec$additive_sd^2 + (spec$product_sd * centre)^2) / abs(spec$product_mean)
-    inner <- c(inner, centre, centre + as.vector(outer(c(-1, 1), c(1, 3, 10))) * width)
-    is_peak <- c(is_peak, rep(TRUE, 7L))
-    if(is.finite(width)){
-      peak_width <- width
+    for(peak_value in value){
+      centre <- (peak_value - spec$additive_mean) / spec$product_mean
+      width <- sqrt(spec$additive_sd^2 + (spec$product_sd * centre)^2) / abs(spec$product_mean)
+      inner <- c(inner, centre, centre + as.vector(outer(c(-1, 1), c(1, 3, 10))) * width)
+      is_peak <- c(is_peak, rep(TRUE, 7L))
+      widths <- c(widths, rep(if(is.finite(width)) width else Inf, 7L))
     }
   }
+  peak_width <- min(c(Inf, widths))
   singular <- vapply(c(lower, upper), function(bound){
     is.finite(bound) && isTRUE(is.infinite(suppressWarnings(exp(lpdf(spec$multiplier, bound)))))
   }, logical(1))
@@ -1420,21 +1514,26 @@
   )
   inner <- c(inner, as.numeric(quantiles))
   is_peak <- c(is_peak, rep(FALSE, length(quantiles)))
+  widths <- c(widths, rep(Inf, length(quantiles)))
   inside <- is.finite(inner) & inner > lower & inner < upper
   inner <- inner[inside]
   is_peak <- is_peak[inside]
+  widths <- widths[inside]
   if(length(inner) > 0L){
     density <- suppressWarnings(exp(lpdf(spec$multiplier, inner)))
     inner <- inner[is.finite(density)]
     is_peak <- is_peak[is.finite(density)]
+    widths <- widths[is.finite(density)]
   }
   # sorted and unique; a peak point equal to a quantile stays a peak point
   sorted <- order(inner)
   inner <- inner[sorted]
   is_peak <- is_peak[sorted]
+  widths <- widths[sorted]
   first <- !duplicated(inner)
   inner <- inner[first]
   is_peak <- is_peak[first]
+  widths <- widths[first]
 
   if(any(singular)){
     quartiles <- tryCatch(
@@ -1454,7 +1553,7 @@
         if(distance[i] >= start){
           next
         }
-        exempt <- is_peak[i] && distance[i] >= peak_width
+        exempt <- is_peak[i] && distance[i] >= widths[i]
         if(exempt || distance[i] >= 1e-3 * last){
           last <- distance[i]
         }else{
@@ -1463,6 +1562,7 @@
       }
       inner <- inner[keep]
       is_peak <- is_peak[keep]
+      widths <- widths[keep]
     }
   }
 

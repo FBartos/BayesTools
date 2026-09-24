@@ -122,10 +122,20 @@
 #' \code{sin(theta) > 0} \tab rejected \tab function outside the whitelist
 #' }
 #'
-#' Prior region masses computed from a deterministic prior-density grid resolve
-#' the region boundaries on that grid: a boundary is located by bisection
-#' within each grid cell where the condition changes, but region features
-#' narrower than the grid spacing may be missed.
+#' Prior region masses of deterministic prior densities use the structure that
+#' [prior_density_ordinate()] classifies, for regions whose relations are
+#' linear in the quantity (e.g., \code{theta > 0}, \code{2 * theta < 1}, and
+#' their combinations with \code{&}, \code{|}, and \code{!}): point masses
+#' contribute their exact probability, scalar and normal-sum priors their
+#' exact distribution functions, and Gaussian convolutions and
+#' conditional-normal scale mixtures the conditional-normal quadrature of the
+#' ordinate over the other term, split at the same breakpoints plus the
+#' Gaussian peak of every finite region bound; mixture, model, and design-row
+#' components are summed with their probabilities. A quadrature that fails its
+#' diagnostics stops with an error. Other prior densities and regions use the
+#' prior-density grid, which resolves the region boundaries on that grid: a
+#' boundary is located by bisection within each grid cell where the condition
+#' changes, but region features narrower than the grid spacing may be missed.
 #'
 #' @return A BayesTools table of class \code{BayesTools_hypothesis_BF}. The
 #' \code{BF_error} column reports approximate relative Monte Carlo error

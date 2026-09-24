@@ -135,7 +135,37 @@ weighted absolute changes (no cancellation between components). A refinement-
 change criterion is not an error bound: grid-based heights of components with
 singular source densities (e.g. gamma shape < 1) remain approximate within it.
 
-For scalar prior-region probabilities, integrate the continuous grid's
+Scalar prior-region probabilities (`R/prior-density-region.R`) follow the
+ordinate's classification wherever it has a structural route, for regions
+whose relations are linear in the quantity (unions of intervals): point masses
+add their exact mass (the exact condition decides strict and inclusive
+bounds), scalar priors use their exact distribution function (through a log
+source and named monotone output transformations), normal sums their normal
+distribution function, and Gaussian convolutions and conditional-normal scale
+mixtures the 1-D integral of the other term's density times the Gaussian
+probability of the region, with the ordinate's breakpoints plus a Gaussian-peak
+window at every finite region bound, the full budget per piece, and the same
+acceptance criterion on the total; a rejected quadrature stops. Mixture,
+spike-and-slab, model and conditional components and distinct design rows are
+expanded as for the ordinate and summed with their probabilities; a
+combination is evaluated this way only when every component has such a route.
+Keep the two paths in step: a combination whose ordinate is structurally
+classified has a structural region probability, and one whose ordinate is
+`unknown` keeps the grid. A quadrature total may exceed [0, 1] by at most its
+absolute error. Known limitations, both from pieces that a region covers
+entirely, where the integrand is the other term's density itself: with a
+heavy-tailed other term (e.g. a Cauchy scale of about 0.9 or more, half-Cauchy
+or inverse-gamma(1) multipliers), QUADPACK flags the infinite end piece beyond
+the extreme quantile for a region with an infinite bound ("roundoff error",
+"probably divergent"), so such probabilities stop as they did on the grid; and
+a region bound far beyond the other term's extreme quantiles leaves a long
+piece between its peak window and the extreme quantile whose mass (up to the
+1e-6 beyond that quantile) sits at one end and can be missed without a
+convergence failure (seen as absolute errors of 1e-6 to 2e-6 on probabilities
+near one, within the relative criterion). A region whose probability
+underflows to zero stops like a zero ordinate.
+
+For the other prior-region probabilities, integrate the continuous grid's
 piecewise-linear interpolant up to the exact region boundaries (the comparison
 value, or boundaries located by bisection within the cells where a composite
 condition changes), normalize by the interpolant's total over the same grid,

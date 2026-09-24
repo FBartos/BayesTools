@@ -1297,6 +1297,20 @@ prior_density_ordinate <- function(x, value){
                                                          source_transforms,
                                                          value, n_grid){
 
+  spec <- .prior_density_ordinate_gaussian_convolution_spec(
+    prior_list, weights, source_transforms
+  )
+  if(is.null(spec)){
+    return(NULL)
+  }
+  .prior_conditional_normal_ordinate(spec, value, n_grid)
+}
+
+# Conditional-normal specification of a Gaussian convolution (Gaussian terms
+# plus one other continuous scalar term); NULL for other combinations.
+.prior_density_ordinate_gaussian_convolution_spec <- function(prior_list, weights,
+                                                              source_transforms){
+
   groups <- tryCatch(
     .prior_linear_weight_groups(prior_list, weights),
     error = function(e) NULL
@@ -1350,22 +1364,18 @@ prior_density_ordinate <- function(x, value){
     return(NULL)
   }
 
-  .prior_conditional_normal_ordinate(
-    list(
-      additive_mean = normal$provenance$mean,
-      additive_sd   = normal$provenance$sd,
-      product_mean  = unname(other$weights[[1L]]),
-      product_sd    = 0,
-      multiplier    = prior,
-      bounds        = bounds,
-      sources       = list(
-        additive   = names(groups)[gaussian],
-        multiplied = character(),
-        multiplier = other$parameter
-      )
-    ),
-    value,
-    n_grid
+  list(
+    additive_mean = normal$provenance$mean,
+    additive_sd   = normal$provenance$sd,
+    product_mean  = unname(other$weights[[1L]]),
+    product_sd    = 0,
+    multiplier    = prior,
+    bounds        = bounds,
+    sources       = list(
+      additive   = names(groups)[gaussian],
+      multiplied = character(),
+      multiplier = other$parameter
+    )
   )
 }
 

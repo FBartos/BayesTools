@@ -1308,11 +1308,13 @@ test_that("mixture grids beyond the limit end adaptive refinement as non-converg
   # The initial model mixture fits the grid (about 4.8e5 knots). After halving
   # the spacing each model stays below the limit, but their union at the finest
   # model spacing needs about 3.3e6 knots: refinement of the mixture grid (used
-  # for prior probabilities) ends and is reported as not converged, instead of
-  # failing with the mixing error meant for incompatible scales in the
-  # requested density itself. The height is the weighted sum of the models'
-  # own ordinates (both Gaussian convolutions) and never refines the mixture
-  # grid; reference by quadrature.
+  # for prior probabilities without a structural representation) ends and is
+  # reported as not converged, instead of failing with the mixing error meant
+  # for incompatible scales in the requested density itself. The height is the
+  # weighted sum of the models' own ordinates (both Gaussian convolutions) and
+  # never refines the mixture grid; reference by quadrature. So is the region
+  # probability (reference: 30-digit mpmath, see
+  # test-hypothesis-prior-region-grid.R).
   context <- .prior_density_build_context(
     list(a = list(prior("normal", list(0, .01), prior_weights = 1),
                   prior("t", list(0, 1, 3), prior_weights = 1)),
@@ -1324,10 +1326,15 @@ test_that("mixture grids beyond the limit end adaptive refinement as non-converg
   expect_lt(length(density$density$x), .prior_linear_density_max_grid())
   side <- hypothesis_parse("theta < .3")$statements[[1L]]$left
   expect_error(
-    .hypothesis_prior_density_prob(density, side, "theta"),
+    .hypothesis_prior_density_grid_prob(
+      density, .hypothesis_simple_parameter_comparison(side, "theta"),
+      .hypothesis_side_expression(side), "theta"
+    ),
     "Adaptive prior-probability evaluation did not converge within the documented grid-refinement error criterion.",
     fixed = TRUE
   )
+  expect_lt(abs(.hypothesis_prior_density_prob(density, side, "theta") -
+                  .2993480255493350221), 1e-8)
   expect_equal(
     as.numeric(.prior_linear_density_height(density, .3)),
     .5 * stats::integrate(function(t) stats::dnorm(.3 - t, 0, .01) * stats::dgamma(t, 3, 2),
@@ -1518,10 +1525,18 @@ test_that("linear prior ordinates adapt across center and omitted tails", {
   expect_true(isTRUE(attr(tail, "adaptive_evaluation")$converged))
   expect_gt(attr(tail, "adaptive_evaluation")$refinements, 0)
 
+  # The normal sum also has an exact region probability; its grid evaluation
+  # (used for combinations without a structural representation) refines once.
   refinement_calls <- 0L
   side <- hypothesis_parse("theta < 0")$statements[[1L]]$left
   probability <- BayesTools:::.hypothesis_prior_density_prob(
     density, side, "theta"
+  )
+  expect_equal(probability, .5, tolerance = 1e-15)
+  expect_identical(refinement_calls, 0L)
+  probability <- BayesTools:::.hypothesis_prior_density_grid_prob(
+    density, BayesTools:::.hypothesis_simple_parameter_comparison(side, "theta"),
+    BayesTools:::.hypothesis_side_expression(side), "theta"
   )
   expect_lt(abs(probability / .5 - 1), 1e-4)
   expect_identical(refinement_calls, 1L)

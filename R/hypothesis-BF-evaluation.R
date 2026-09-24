@@ -241,6 +241,49 @@
 
   comparison <- .hypothesis_simple_parameter_comparison(side, parameter)
   condition  <- .hypothesis_side_expression(side)
+
+  # Densities with a structural representation (point masses, scalar and
+  # normal distribution functions, conditional-normal quadratures, and finite
+  # mixtures of them) give the region probability directly; the grid below
+  # is used only for the other combinations and for regions that are not
+  # unions of intervals.
+  region <- .hypothesis_prior_region(condition, parameter)
+  exact <- if(is.null(region)){
+    NULL
+  }else{
+    .prior_linear_density_region_probability(prior_density, region)
+  }
+  prob <- if(is.null(exact)){
+    .hypothesis_prior_density_grid_prob(prior_density, comparison, condition,
+                                        parameter)
+  }else{
+    as.numeric(exact)
+  }
+
+  # a quadrature total may exceed [0, 1] by at most its absolute error
+  numerical_error <- if(is.null(exact)){
+    0
+  }else{
+    attr(exact, "numerical_diagnostics", exact = TRUE)$absolute_error
+  }
+  probability_bound <- max(16 * .Machine$double.eps * max(1, abs(prob)),
+                           numerical_error)
+  if(!is.finite(prob) || prob < -probability_bound ||
+     prob > 1 + probability_bound){
+    stop("Computed prior probability lies materially outside [0, 1].",
+         call. = FALSE)
+  }
+  prob <- max(0, min(1, prob))
+
+  return(prob)
+}
+
+
+# Region probability from the prior-density grid: the linear interpolant of
+# the grid ordinates, refined until the documented criterion is met.
+.hypothesis_prior_density_grid_prob <- function(prior_density, comparison,
+                                                condition, parameter) {
+
   evaluate_probability <- function(density_object){
     prob <- 0
     if(!is.null(density_object[["density"]])){
@@ -317,15 +360,102 @@
     }
   }
 
-  probability_bound <- 16 * .Machine$double.eps * max(1, abs(prob))
-  if(!is.finite(prob) || prob < -probability_bound ||
-     prob > 1 + probability_bound){
-    stop("Computed prior probability lies materially outside [0, 1].",
-         call. = FALSE)
-  }
-  prob <- max(0, min(1, prob))
+  prob
+}
 
-  return(prob)
+
+# The region of a condition on 'parameter' whose relations are linear in it
+# (e.g. 'theta > 0', '2 * theta < 1', combined with '&', '|', '!'): its
+# continuous part as disjoint intervals, and the exact condition as the
+# indicator of point masses. NULL for other conditions.
+.hypothesis_prior_region <- function(condition, parameter) {
+
+  expr <- .hypothesis_parse_expression(condition)
+  template <- stats::setNames(data.frame(0), parameter)
+  intervals <- .hypothesis_region_intervals(expr, parameter, template)
+  if(is.null(intervals)){
+    return(NULL)
+  }
+
+  list(
+    intervals = intervals,
+    indicator = function(values){
+      .hypothesis_condition_indicator(condition, parameter, values)
+    }
+  )
+}
+
+
+.hypothesis_region_intervals <- function(expr, parameter, template) {
+
+  fun <- .hypothesis_call_name(expr)
+  if(is.null(fun)){
+    return(NULL)
+  }
+  if(fun == "("){
+    return(.hypothesis_region_intervals(expr[[2L]], parameter, template))
+  }
+  if(fun == "!"){
+    inner <- .hypothesis_region_intervals(expr[[2L]], parameter, template)
+    return(if(is.null(inner)) NULL else .prior_region_intervals_complement(inner))
+  }
+  if(fun %in% c("&", "|")){
+    left  <- .hypothesis_region_intervals(expr[[2L]], parameter, template)
+    right <- .hypothesis_region_intervals(expr[[3L]], parameter, template)
+    if(is.null(left) || is.null(right)){
+      return(NULL)
+    }
+    return(if(fun == "&"){
+      .prior_region_intervals_intersect(left, right)
+    }else{
+      .prior_region_intervals_union(left, right)
+    })
+  }
+  if(!fun %in% c("<", "<=", ">", ">=")){
+    return(NULL)
+  }
+
+  lhs <- .hypothesis_unwrap_parentheses(expr[[2L]])
+  rhs <- .hypothesis_unwrap_parentheses(expr[[3L]])
+  if(!all(.hypothesis_expression_symbols(expr) %in% parameter)){
+    return(NULL)
+  }
+  # lhs - rhs = constant + coefficient * parameter; the relation holds below
+  # or above its root. A bare parameter compared with a constant keeps the
+  # constant as the exact boundary.
+  if(is.name(lhs) && length(.hypothesis_expression_symbols(rhs)) == 0L){
+    constant <- -tryCatch(.hypothesis_parse_number(rhs), error = function(e) NA_real_)
+    coefficient <- 1
+  }else if(is.name(rhs) && length(.hypothesis_expression_symbols(lhs)) == 0L){
+    constant <- tryCatch(.hypothesis_parse_number(lhs), error = function(e) NA_real_)
+    coefficient <- -1
+  }else{
+    linear <- tryCatch(
+      .hypothesis_linear_coefficients(call("-", lhs, rhs), parameter, template),
+      error = function(e) NULL
+    )
+    if(is.null(linear)){
+      return(NULL)
+    }
+    constant <- linear[["constant"]]
+    coefficient <- unname(linear[["coefficients"]][[1L]])
+  }
+  if(!is.finite(constant) || !is.finite(coefficient)){
+    return(NULL)
+  }
+  below <- fun %in% c("<", "<=")
+  if(coefficient == 0){
+    holds <- if(below) constant < 0 || (fun == "<=" && constant == 0) else
+      constant > 0 || (fun == ">=" && constant == 0)
+    return(.prior_region_intervals(if(holds) -Inf else numeric(),
+                                   if(holds) Inf else numeric()))
+  }
+  boundary <- -constant / coefficient
+  if(below == (coefficient > 0)){
+    .prior_region_intervals(-Inf, boundary)
+  }else{
+    .prior_region_intervals(boundary, Inf)
+  }
 }
 
 
