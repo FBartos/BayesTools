@@ -1652,9 +1652,13 @@
 # zero (one-sided limits at a support bound), the density at c is infinite
 # when either is infinite or both are positive, f_L(0) E[1 / |s|] / |w| when
 # only f_s vanishes there, f_s(0) E[1 / |L|] / |w| when only f_L vanishes
-# there, and zero when both vanish. A term bounded at zero combined with a
-# two-sided other term makes the offset a density jump, which is not
-# classified.
+# there, and zero when both vanish. A term bounded at zero with a positive
+# finite limit there, combined with a two-sided other term whose density
+# vanishes at zero, makes the offset a density jump (the one-sided limits
+# weight E[1 / |s|] over the two signs of the other term separately), which
+# is not classified. With a two-sided other term whose density at zero is
+# positive or infinite both one-sided limits are infinite (e.g. an ordered
+# level of a t total with a Beta(1, b) share), so no jump occurs.
 .prior_scale_product_offset_ordinate <- function(spec, value, n_grid, provenance){
 
   factor_zero <- .prior_density_ordinate_primitive(spec$factor, 0)
@@ -1683,8 +1687,10 @@
     bounds <- unlist(prior$truncation[c("lower", "upper")], use.names = FALSE)
     bounds[1L] < 0 && bounds[2L] > 0
   }
-  if((one_sided(spec$factor) && two_sided(spec$multiplier) && behaviors[["factor"]] != "zero") ||
-     (one_sided(spec$multiplier) && two_sided(spec$factor) && behaviors[["multiplier"]] != "zero")){
+  if((one_sided(spec$factor) && two_sided(spec$multiplier) &&
+      behaviors[["factor"]] == "regular" && behaviors[["multiplier"]] == "zero") ||
+     (one_sided(spec$multiplier) && two_sided(spec$factor) &&
+      behaviors[["multiplier"]] == "regular" && behaviors[["factor"]] == "zero")){
     return(unknown("The density of the product jumps at the requested value."))
   }
   if(any(behaviors == "infinite") || all(behaviors == "regular")){

@@ -147,8 +147,11 @@ infinite density an infinite ordinate). A single non-normal multiplied term
 the term's quantiles and bounds; its offset is classified from both declared
 behaviors at zero (infinite when either is infinite or both are positive;
 f_L(0) E[1 / |s|] or f_s(0) E[1 / |L|] when only one vanishes; zero when
-both vanish; a jump when a term bounded at zero meets a two-sided other term
-is not classified). Other products (several products, a non-normal additive
+both vanish; a jump, where a term bounded at zero with a positive finite
+limit meets a two-sided other term whose density vanishes at zero, is not
+classified, while a two-sided other term with a positive density at zero
+makes both one-sided limits infinite, e.g. the level of a t total with a
+Beta(1, b) share). Other products (several products, a non-normal additive
 term with a product, several multiplied non-normal terms) have no structural
 route; their capped product grid is never used for heights or probabilities,
 which are then unavailable.

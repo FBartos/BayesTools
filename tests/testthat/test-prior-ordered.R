@@ -1516,6 +1516,37 @@ test_that("ordered levels are exact products of the total and its allocation sha
                split_reference(function(t) stats::dnorm(t) / t, c(.1, 1, 10, Inf)),
                tolerance = 1e-8)
 
+  # a non-normal two-sided total is a scale product; with a Beta(1, b) share
+  # (positive density at 0) its level density at 0 is infinite from both
+  # sides, f(x) = int_0^1 f_T(x / w) / w dw ~ -f_T(0) log|x| (no jump), and
+  # with a Beta(2, 3) share it is f_T(0) (2 + 3 - 1) / (2 - 1)
+  for(total in list(prior("t", list(0, 1, 3)), prior("cauchy", list(0, 1)))){
+    f_total <- function(x) mpdf(total, x)
+    for(alpha in list(c(1, 1), c(1, 4))){
+      density <- .prior_linear_combination_density(list(t = bound(total, alpha, "t")), c("t[1]" = 1))
+      singular <- prior_density_ordinate(density, 0)
+      expect_identical(singular$behavior, "infinite")
+      expect_true(singular$exact)
+      expect_identical(singular$method, "scale_mixture")
+      expect_equal(height(density, .4),
+                   split_reference(function(w) f_total(.4 / w) / w * stats::dbeta(w, alpha[1], alpha[2]),
+                                   c(0, 1e-3, .01, .1, .4, 1)),
+                   tolerance = 1e-8)
+    }
+  }
+  t_total <- bound(prior("t", list(0, 1, 3)), c(2, 3), "t")
+  density <- .prior_linear_combination_density(list(t = t_total), c("t[1]" = 1))
+  expect_equal(height(density, 0), stats::dt(0, 3) * (2 + 3 - 1) / (2 - 1), tolerance = 1e-12)
+  # the Savage-Dickey point hypothesis at the infinite ordinate is refused
+  flat_t <- .prior_linear_combination_density(
+    list(t = bound(prior("t", list(0, 1, 3)), c(1, 1), "t")), c("t[1]" = 1)
+  )
+  draws <- structure(stats::qnorm(seq(.001, .999, length.out = 500), .2, .3),
+                     class = c("marginal_posterior.simple", "marginal_posterior", "numeric"),
+                     prior_density = flat_t, posterior_atoms = posterior_atom_attribute())
+  expect_error(hypothesis_BF(draws, hypothesis = "theta = 0", parameter = "theta"),
+               class = "BayesTools_infinite_ordinate")
+
   # a half-normal total is a scale product: zero below 0, and at 0
   # f_T(0) E[1 / w] with f_T(0) = 2 phi(0)
   positive_total <- bound(prior("normal", list(0, 1), list(0, Inf)), c(2, 3), "h")
