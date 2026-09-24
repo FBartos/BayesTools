@@ -7412,7 +7412,8 @@ test_that("JAGS bridgesampling uses fitted formula metadata and errors on suppli
     fixed = TRUE
   )
 
-  expect_warning(
+  # a prior_list entry identical to the fitted formula prior is dropped silently
+  expect_no_warning(
     expect_error(
       JAGS_bridgesampling(
         fit = fit,
@@ -7422,8 +7423,25 @@ test_that("JAGS bridgesampling uses fitted formula metadata and errors on suppli
       ),
       "posterior' does not contain",
       fixed = TRUE
+    )
+  )
+
+  # a different prior for a formula parameter is an error, not a silent override
+  different_prior_list <- formula_result$prior_list
+  different_prior_list[["mu_intercept"]] <- prior("normal", list(0, 5))
+  expect_error(
+    JAGS_bridgesampling(
+      fit = fit,
+      log_posterior = function(parameters, data) 0,
+      data = list(),
+      prior_list = different_prior_list
     ),
-    "received formula priors in 'prior_list'",
+    paste0(
+      "JAGS_bridgesampling() received formula priors in 'prior_list' that ",
+      "differ from the fitted formula priors: mu_intercept. Formula priors are ",
+      "taken from the fitted formula design; remove them from 'prior_list' or ",
+      "refit the model with the intended priors."
+    ),
     fixed = TRUE
   )
 })

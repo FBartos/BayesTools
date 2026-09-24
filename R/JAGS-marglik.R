@@ -16,9 +16,9 @@
 #' @param prior_list named list of prior distributions
 #' (names correspond to the parameter names) of parameters not specified within the
 #' \code{formula_list}. For \code{BayesTools_fit} objects, stored non-formula
-#' priors are used when \code{prior_list = NULL}; if fitted formula priors are
-#' supplied here, they are ignored with a warning in favor of the stored formula
-#' metadata.
+#' priors are used when \code{prior_list = NULL}. Formula priors are taken from
+#' the stored formula metadata: a formula prior supplied here is ignored when
+#' it is identical to the fitted formula prior and an error otherwise.
 #' @param formula_list named list of formulas to be added to the model
 #' (names correspond to the parameter name created by each of the formula). For
 #' \code{BayesTools_fit} objects with stored formula-design metadata, formula
@@ -334,7 +334,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     prior_list <- .bt_JAGS_bridge_non_formula_prior_list(
       prior_list = prior_list,
       formula_design_list = formula_design_list,
-      warn = TRUE
+      check_duplicates = TRUE
     )
   }
   if(is.null(prior_list)){

@@ -238,13 +238,16 @@
   .bt_JAGS_bridge_non_formula_prior_list(
     prior_list = fit_prior_list,
     formula_design_list = formula_design_list,
-    warn = FALSE
+    check_duplicates = FALSE
   )
 }
 
+# Formula priors come from the fitted formula design. A supplied 'prior_list'
+# entry of a formula prior is dropped when it is identical to the fitted
+# prior and rejected otherwise.
 .bt_JAGS_bridge_non_formula_prior_list <- function(prior_list,
                                                    formula_design_list,
-                                                   warn = FALSE){
+                                                   check_duplicates = FALSE){
 
   if(is.null(prior_list)){
     return(list())
@@ -260,15 +263,24 @@
 
   overlap <- intersect(names(prior_list), formula_prior_names)
   if(length(overlap) > 0L){
-    if(isTRUE(warn)){
-      warning(
-        "JAGS_bridgesampling() received formula priors in 'prior_list'; using fitted formula metadata for these priors and ignoring duplicate 'prior_list' entries: ",
-        paste(utils::head(overlap, 8L), collapse = ", "),
-        if(length(overlap) > 8L) ", ..." else "",
-        ".",
-        call. = FALSE,
-        immediate. = TRUE
-      )
+    if(isTRUE(check_duplicates)){
+      fitted_priors <- do.call(c, unname(
+        .bt_JAGS_bridge_formula_prior_list_from_design(formula_design_list)
+      ))
+      different <- overlap[!vapply(overlap, function(name){
+        identical(prior_list[[name]], fitted_priors[[name]])
+      }, logical(1))]
+      if(length(different) > 0L){
+        stop(
+          "JAGS_bridgesampling() received formula priors in 'prior_list' that ",
+          "differ from the fitted formula priors: ",
+          paste(utils::head(different, 8L), collapse = ", "),
+          if(length(different) > 8L) ", ..." else "",
+          ". Formula priors are taken from the fitted formula design; remove ",
+          "them from 'prior_list' or refit the model with the intended priors.",
+          call. = FALSE
+        )
+      }
     }
     prior_list <- prior_list[setdiff(names(prior_list), overlap)]
   }
