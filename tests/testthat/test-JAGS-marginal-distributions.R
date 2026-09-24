@@ -3908,6 +3908,34 @@ test_that("linear level hypotheses mix per-component ordinates of mixture terms"
   expect_equal(as.numeric(out$posterior), sum(tabulate(indicator, 2) / n * heights), tolerance = 1e-12)
 })
 
+test_that("linear level hypotheses treat a structurally fixed level as a constant", {
+
+  # Treatment levels on the coefficient scale: the reference level A is
+  # structurally 0 (prior and posterior point mass), so B - A is B, with the
+  # prior density phi(0) at 0 and the same Bayes factor as B = 0.
+  set.seed(7)
+  n <- 4000
+  formula_result <- JAGS_formula(
+    ~ f, "mu", data = data.frame(f = factor(c("A", "B", "C"), levels = c("A", "B", "C"))),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f         = prior_factor("normal", list(0, 1), contrast = "treatment")
+    )
+  )
+  posterior <- cbind(mu_intercept = stats::rnorm(n), "mu_f[1]" = stats::rnorm(n, .4, .3),
+                     "mu_f[2]" = stats::rnorm(n, -.2, .3))
+  mixed <- as_mixed_posteriors(
+    .single_fit_for_test(posterior, formula_result$prior_list),
+    parameters = c("mu_intercept", "mu_f")
+  )
+  levels <- marginal_posterior(mixed, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+  contrast <- hypothesis_BF(levels, hypothesis = "mu_f[B] - mu_f[A] = 0", columns = "all", seed = 1)
+  direct <- hypothesis_BF(levels, hypothesis = "mu_f[B] = 0", columns = "all", seed = 1)
+  expect_identical(contrast$method, "Savage-Dickey")
+  expect_equal(as.numeric(contrast$prior), stats::dnorm(0), tolerance = 1e-12)
+  expect_equal(attr(contrast, "raw_BF"), attr(direct, "raw_BF"), tolerance = 1e-10)
+})
+
 .treatment_factor_prior_for_test <- function(sd){
 
   treatment <- prior_factor("normal", list(0, sd), contrast = "treatment")

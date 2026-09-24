@@ -262,8 +262,18 @@
   for(symbol in active){
     level <- marginals[[symbol]]
     atoms <- .posterior_atoms_get(level)
-    if(is.null(atoms) || any(atoms$mass > 0)){
+    if(is.null(atoms)){
       return(NULL)
+    }
+    if(any(atoms$mass > 0)){
+      # a structurally fixed level (a reference level: its prior and
+      # posterior are one point) adds a constant to the combination
+      fixed <- .hypothesis_fixed_level_value(level, atoms)
+      if(is.null(fixed)){
+        return(NULL)
+      }
+      offset <- offset + linear[["coefficients"]][[symbol]] * fixed
+      next
     }
     level_context <- attr(level, "prior_density_context", exact = TRUE)
     if(!.hypothesis_is_prior_density_context(level_context) ||
@@ -338,6 +348,26 @@
     posterior_index  = NULL,
     prior_density    = prior_density
   ))
+}
+
+
+# The value of a structurally fixed level: its posterior atom holds all of
+# the mass and its prior density is the point mass at the same location.
+# NULL otherwise.
+.hypothesis_fixed_level_value <- function(level, atoms) {
+
+  if(length(atoms$mass) != 1L || ncol(atoms$locations) != 1L ||
+     abs(atoms$mass - 1) > 8 * .Machine$double.eps){
+    return(NULL)
+  }
+  location <- atoms$locations[1L, 1L]
+  prior_density <- attr(level, "prior_density", exact = TRUE)
+  if(!inherits(prior_density, "prior_linear_density") ||
+     abs(.prior_linear_density_point_mass(prior_density, location) - 1) >
+       8 * .Machine$double.eps){
+    return(NULL)
+  }
+  location
 }
 
 
