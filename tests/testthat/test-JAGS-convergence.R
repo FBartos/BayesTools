@@ -1266,6 +1266,91 @@ test_that("formula monitors are sampled when stochastic and derived otherwise", 
   expect_identical(roles(us_formula("centered")), expected("derived", "sampled"))
 })
 
+test_that("random-effect SD spike-and-slab roles follow the declared inclusion", {
+
+  set.seed(49)
+  n <- 200
+  data <- data.frame(id = factor(rep(paste0("g", 1:4), each = 2)))
+  stem <- "mu__xREx__id_intercept"
+  mock <- function(inclusion, indicator){
+    formula <- JAGS_formula(
+      ~ 1 + (1 || id), "mu", data,
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(sd = prior_spike_and_slab(
+        prior("normal", list(0, 1), list(0, Inf)),
+        prior_inclusion = inclusion
+      )))
+    )
+    chain <- function(){
+      sd <- abs(stats::rnorm(n))
+      states <- indicator(n)
+      draws <- cbind(
+        mu_intercept = stats::rnorm(n),
+        states,
+        stats::runif(n),
+        sd * states,
+        sd,
+        matrix(stats::rnorm(4L * n), ncol = 4L)
+      )
+      colnames(draws) <- c(
+        "mu_intercept",
+        paste0(stem, c("_indicator", "_inclusion", "", "_variable")),
+        paste0("mu__xREx__id_xRE_Zx[", 1:4, ",1]")
+      )
+      draws
+    }
+    fit <- list(
+      mcmc = coda::mcmc.list(coda::mcmc(chain()), coda::mcmc(chain())),
+      summary.pars = list(mutate = NULL)
+    )
+    class(fit) <- c("runjags", "BayesTools_fit")
+    attr(fit, "prior_list") <- formula$prior_list
+    attr(fit, "formula_design") <- list(mu = formula$formula_design)
+    attr(fit, "add_parameters") <- formula$add_parameters
+    attr(fit, "model_syntax") <- paste0("model{\n", formula$formula_syntax, "\n}")
+    fit <- BayesTools:::.bt_attach_parameter_map(fit, data_names = names(formula$data))
+    fit <- BayesTools:::.bt_attach_draw_geometry(fit)
+    BayesTools:::.bt_attach_fit_contract(fit)
+  }
+  roles <- function(fit){
+    .convergence_roles(fit)[paste0(stem, c("_indicator", "_inclusion", "_variable"))]
+  }
+  check <- function(fit){
+    JAGS_check_convergence(
+      fit, max_Rhat = 1.2, min_ESS = 1, max_error = NULL, max_SD_error = NULL,
+      check_indicators = TRUE
+    )
+  }
+
+  # An inclusion probability declared as a point at 1 fixes the indicator in
+  # every draw: a structural constant, as for the fixed-effect spike and slab.
+  point <- mock(prior("spike", list(1)), function(n) rep(1, n))
+  expect_identical(
+    unname(roles(point)),
+    c("structural", "structural", "sampled")
+  )
+  point_check <- check(point)
+  expect_true(point_check)
+  expect_identical(
+    unname(.convergence_states(point_check)[paste0(stem, "_indicator")]),
+    "structural_constant"
+  )
+
+  # A random inclusion probability keeps the indicator checked and the
+  # probability auxiliary; a stuck indicator is not assessable.
+  beta <- mock(prior("beta", list(1, 1)), function(n) rep(1, n))
+  expect_identical(
+    unname(roles(beta)),
+    c("indicator", "auxiliary", "sampled")
+  )
+  beta_check <- check(beta)
+  expect_false(beta_check)
+  expect_identical(
+    unname(.convergence_states(beta_check)[paste0(stem, "_indicator")]),
+    "not_assessable"
+  )
+})
+
 test_that("one chain warns and retains its other convergence criteria", {
 
   set.seed(44)

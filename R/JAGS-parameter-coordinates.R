@@ -951,8 +951,7 @@
     "structural"
   )
 
-  # Variance-allocation inclusion indicators and the spike-and-slab
-  # auxiliaries of random-effect SDs.
+  # Variance-allocation inclusion indicators.
   allocation_indicators <- .bt_convergence_role_allocation_indicators(
     formula_design,
     prior_list
@@ -961,15 +960,19 @@
     coordinate_names %in% names(allocation_indicators),
     unname(allocation_indicators[coordinate_names])
   )
-  assign_roles(coordinates$role == "random_inclusion_indicator", "indicator")
-  assign_roles(coordinates$role == "random_inclusion_probability", "auxiliary")
-  assign_roles(coordinates$role == "random_sd_variable", "sampled")
 
+  # Base-name declarations, including the spike-and-slab prior of a
+  # random-effect SD, whose point inclusion at 0 or 1 fixes the indicator.
   base_declarations <- declarations[!declarations$exact, , drop = FALSE]
   assign_roles(
     bases %in% base_declarations$name,
     base_declarations$role[match(bases, base_declarations$name)]
   )
+
+  # Spike-and-slab auxiliaries of random-effect SDs that no prior declares.
+  assign_roles(coordinates$role == "random_inclusion_indicator", "indicator")
+  assign_roles(coordinates$role == "random_inclusion_probability", "auxiliary")
+  assign_roles(coordinates$role == "random_sd_variable", "sampled")
 
   # Nodes monitored through 'add_parameters' (user supplied or generated for
   # formulas) are classified from the model syntax.
