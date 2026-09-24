@@ -158,6 +158,11 @@ old behaviour.
   (version, R code hash, native library checksums) that these checks compare.
   `JAGS_fit()` and `JAGS_extend()` start and stop their workers through the
   same code.
+- adds `posterior_density_method_match()`, which matches a public
+  `density_method` argument, and `posterior_density_method_uses_precomputed()`,
+  which is `TRUE` only for `"precomputed"`: packages with their own posterior
+  density estimators (such as qCMDE or IWMDE in RoBMA) map their method names
+  to `"precomputed"` themselves.
 - supports declared output intervals for density transformations. Wider display
   limits remain available while inverse/Jacobian evaluations and continuous
   curves stay inside the transformed support; boundary point masses are retained.

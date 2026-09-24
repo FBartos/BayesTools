@@ -266,8 +266,12 @@ test_that("posterior density method helpers validate density sources", {
 
   expect_false(posterior_density_method_uses_precomputed("KDE"))
   expect_true(posterior_density_method_uses_precomputed("precomputed"))
-  expect_true(posterior_density_method_uses_precomputed("qCMDE"))
-  expect_true(posterior_density_method_uses_precomputed("IWMDE"))
+  # estimator names of other packages are not BayesTools density methods:
+  # those packages map them to "precomputed" themselves
+  expect_false(posterior_density_method_uses_precomputed("qCMDE"))
+  expect_false(posterior_density_method_uses_precomputed("IWMDE"))
+  expect_error(posterior_density_method_uses_precomputed(c("precomputed", "KDE")),
+    "The 'method' argument must have length '1'.", fixed = TRUE)
 })
 
 test_that("Savage_Dickey_BF uses prior density over normal posterior height", {

@@ -1,11 +1,10 @@
 #' @title Posterior density method helpers
 #'
 #' @description Helpers for normalizing public posterior-density method
-#' arguments and identifying methods that are expected to use precomputed
-#' posterior density or ordinate attributes. Estimator labels such as
-#' \code{"qCMDE"} and \code{"IWMDE"} are treated as precomputed metadata
-#' sources by \code{posterior_density_method_uses_precomputed()}, but they are
-#' not public \code{density_method} argument values.
+#' arguments and identifying the method that uses precomputed posterior
+#' density or ordinate metadata. Only \code{"precomputed"} does; packages
+#' with their own estimators (e.g., qCMDE or IWMDE) map their method names to
+#' \code{"precomputed"} themselves.
 #'
 #' @param method density method.
 #' @param allowed character vector of allowed density methods.
@@ -43,7 +42,7 @@ posterior_density_method_uses_precomputed <- function(method){
 
   check_char(method, "method", check_length = 1, allow_NA = FALSE)
 
-  return(tolower(method) %in% c("precomputed", "qcmde", "iwmde"))
+  return(identical(tolower(method), "precomputed"))
 }
 
 .posterior_density_method <- function(density_method){
