@@ -35,9 +35,10 @@ fit time from the prior list, the parsed model syntax, the fully observed
 data names and the formula name maps, never from the draws. Generated
 deterministic formula monitors are derived and checked only on request. Unit
 correlation diagonals and Cholesky constants are structural. A user
-`add_parameters` node is structural only when its deterministic definition has
-no stochastic ancestor. Indicators and inclusion probabilities come from their
-priors, not their names. The backend anchor is auxiliary.
+`add_parameters` node is structural only when it is fully observed data or its
+deterministic definition has no stochastic ancestor. Indicators and inclusion
+probabilities come from their priors, not their names. The backend anchor is
+auxiliary.
 
 Worker connection failures stop fitting retries; new initial values cannot
 repair the existing cluster. Preserve the original backend condition. Classify
