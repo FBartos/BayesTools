@@ -168,10 +168,11 @@ their combinations with \code{&}, \code{|}, and \code{!}): point masses
 contribute their exact probability, scalar and normal-sum priors their
 exact distribution functions, and Gaussian convolutions and
 conditional-normal scale mixtures the conditional-normal quadrature of the
-ordinate over the other term, split at the same breakpoints plus the
-Gaussian peak of every finite region bound; mixture, model, and design-row
-components are summed with their probabilities. A quadrature that fails its
-diagnostics stops with an error. Other prior densities and regions use the
+ordinate over the other term, split at the same breakpoints, with the
+Gaussian peak (where the ordinate uses one) at every finite region bound;
+mixture, model, and design-row components are summed with their
+probabilities. A quadrature that fails its diagnostics, or evaluates to
+exactly zero, stops with an error. Other prior densities and regions use the
 prior-density grid, which resolves the region boundaries on that grid: a
 boundary is located by bisection within each grid cell where the condition
 changes, but region features narrower than the grid spacing may be missed.

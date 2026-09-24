@@ -150,9 +150,10 @@ bounds), scalar priors use their exact distribution function (through a log
 source and named monotone output transformations), normal sums their normal
 distribution function, and Gaussian convolutions and conditional-normal scale
 mixtures the 1-D integral of the other term's density times the Gaussian
-probability of the region, with the ordinate's breakpoints plus a Gaussian-peak
-window at every finite region bound, the full budget per piece, and the same
-acceptance criterion on the total; a rejected quadrature stops. Mixture,
+probability of the region, with the ordinate's breakpoints (the Gaussian-peak
+window, under the same guard and so always for Gaussian convolutions, at every
+finite region bound), the full budget per piece, and the same acceptance
+criterion on the total; a rejected quadrature stops. Mixture,
 spike-and-slab, model and conditional components and distinct design rows are
 expanded as for the ordinate and summed with their probabilities; a
 combination is evaluated this way only when every component has such a route.
@@ -169,7 +170,10 @@ mixtures integrate every piece, and with a heavy-tailed multiplier (e.g.
 half-Cauchy or inverse-gamma(1)) QUADPACK flags the infinite end piece of a
 region with an infinite bound ("roundoff error", "probably divergent"), so
 such probabilities stop as they did on the grid. A region whose probability
-underflows to zero stops like a zero ordinate.
+underflows to zero stops like a zero ordinate, and so does a Gaussian
+convolution whose region probability comes only from pieces evaluated as 0
+(a representable probability below 2 * Phi(-10) of their mass under T, e.g. a
+region far below a bounded or nonnegative T).
 
 For the other prior-region probabilities, integrate the continuous grid's
 piecewise-linear interpolant up to the exact region boundaries (the comparison

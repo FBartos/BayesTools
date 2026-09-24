@@ -1318,11 +1318,13 @@
 # disjoint intervals, int f(s) sum_j [Phi((u_j - mu(s)) / sd(s)) -
 # Phi((l_j - mu(s)) / sd(s))] ds (infinite bounds allowed). It uses the
 # ordinate's quadrature: the same breakpoints, with a Gaussian-peak window
-# around the location s* of every finite interval endpoint (the Gaussian
+# around the location s* of every finite interval endpoint under the
+# ordinate's peak guard (so always for Gaussian convolutions; the Gaussian
 # interval probability changes over about one local SD there), the full budget
 # per piece, and the acceptance criterion on the total; a region with a
 # positive Gaussian variance never has zero probability, so an exactly zero
-# total is rejected as for the ordinate (also when the probability underflows).
+# total is rejected as for the ordinate (also when the probability underflows,
+# or when it comes only from the pieces evaluated as c = 0 below).
 # Unlike the ordinate, whose Gaussian factor vanishes away from its peak, the
 # integrand on a piece that the region covers entirely is the other term's
 # density itself, which QUADPACK integrates poorly in heavy tails. For a
