@@ -83,6 +83,7 @@ test_that("transformed factor levels preserve joint affine prior provenance", {
                           mu_fac = seq(-2, 2, length.out = 201)))
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- formula$prior_list
+  fit <- attach_test_parameter_map(fit)
   mixed <- as_mixed_posteriors(fit, "mu_fac")
   raw <- marginal_posterior(mixed, "mu_fac", use_formula = FALSE,
                              prior_samples = TRUE)

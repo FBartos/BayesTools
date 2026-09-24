@@ -963,8 +963,10 @@ test_that("bias posterior extraction recognizes composed selection and phacking 
     byrow = TRUE
   )
   colnames(model) <- c("bias_indicator", "omega[1]", "omega[2]", "alpha", "pi_null", "phack_kind")
-  class(model) <- c("matrix", "BayesTools_fit")
+  model <- coda::mcmc(model)
+  class(model) <- c("mcmc", "BayesTools_fit")
   attr(model, "prior_list") <- list(bias = bias)
+  model <- attach_test_parameter_map(model)
 
   mixed_all <- as_mixed_posteriors(model, parameters = "bias")
   expect_equal(colnames(mixed_all$bias), c("omega[0,0.025]", "omega[0.025,1]", "pi_null"))
@@ -1008,8 +1010,10 @@ test_that("direct p-hacking and bias priors unpack mixed posteriors", {
     byrow = TRUE
   )
   colnames(ph_model) <- c("omega[1]", "alpha", "pi_null", "phack_kind")
-  class(ph_model) <- c("matrix", "BayesTools_fit")
+  ph_model <- coda::mcmc(ph_model)
+  class(ph_model) <- c("mcmc", "BayesTools_fit")
   attr(ph_model, "prior_list") <- list(ph = phacking)
+  ph_model <- attach_test_parameter_map(ph_model)
 
   mixed_phacking <- as_mixed_posteriors(ph_model, parameters = "ph")
   expect_equal(colnames(mixed_phacking$ph), "pi_null")
@@ -1023,8 +1027,10 @@ test_that("direct p-hacking and bias priors unpack mixed posteriors", {
     byrow = TRUE
   )
   colnames(bias_model) <- c("omega[1]", "omega[2]", "alpha", "pi_null", "phack_kind")
-  class(bias_model) <- c("matrix", "BayesTools_fit")
+  bias_model <- coda::mcmc(bias_model)
+  class(bias_model) <- c("mcmc", "BayesTools_fit")
   attr(bias_model, "prior_list") <- list(pub_bias = bias)
+  bias_model <- attach_test_parameter_map(bias_model)
 
   mixed_bias <- as_mixed_posteriors(bias_model, parameters = "pub_bias")
   expect_equal(colnames(mixed_bias$pub_bias), c("omega[0,0.025]", "omega[0.025,1]", "pi_null"))
@@ -1050,7 +1056,9 @@ test_that("p-hacking report_scale controls public summary coordinates", {
     byrow = TRUE
   )
   colnames(model) <- c("alpha", "pi_null")
-  class(model) <- c("matrix", "BayesTools_fit")
+  model <- coda::mcmc(model)
+  class(model) <- c("mcmc", "BayesTools_fit")
+  model <- attach_test_parameter_map(model)
 
   attr(model, "prior_list") <- list(ph = ph_alpha)
   expect_equal(colnames(as_mixed_posteriors(model, parameters = "ph")$ph), "alpha")

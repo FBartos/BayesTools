@@ -704,7 +704,13 @@ test_that("JAGS_extend preserves marginalized random-effect metadata", {
   result <- .re_compile_result(
     random_effects_compile(marginalized = "estimate")
   )
-  fit <- structure(list(), class = "BayesTools_fit")
+  fit <- structure(
+    list(
+      mcmc = coda::mcmc.list(coda::mcmc(matrix(0, 2, 1, dimnames = list(NULL, "x")))),
+      summary.pars = list(mutate = NULL)
+    ),
+    class = c("runjags", "BayesTools_fit")
+  )
   attr(fit, "prior_list") <- list()
   attr(fit, "model_syntax") <- "model{}"
   attr(fit, "required_packages") <- character()
@@ -712,6 +718,8 @@ test_that("JAGS_extend preserves marginalized random-effect metadata", {
   attr(fit, "add_parameters") <- character()
   attr(fit, "formula_design") <- list(mu = result$formula_design)
   attr(fit, "parameter_map") <- .bt_build_parameter_map(character())
+  fit <- .bt_attach_draw_geometry(fit)
+  fit <- .bt_attach_fit_contract(fit)
 
   extended <- JAGS_extend(
     fit,

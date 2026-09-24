@@ -17,7 +17,7 @@ skip_if_not_test_profile("unit")
     theta = prior("normal", list(0, 1))
   )
 
-  return(fit)
+  return(attach_test_parameter_map(fit))
 }
 
 

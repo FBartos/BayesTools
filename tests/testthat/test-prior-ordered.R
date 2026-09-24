@@ -680,6 +680,7 @@ test_that("public posterior mixing preserves ordered coefficient rows and metada
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- formula_info$prior_list
+  fit <- attach_test_parameter_map(fit)
   single <- as_mixed_posteriors(fit, parameters = "mu_f")
 
   expect_equal(unname(single$mu_f[, , drop = FALSE]), unname(posterior))
@@ -717,6 +718,7 @@ test_that("public posterior mixing preserves ordered coefficient rows and metada
       class = c("runjags", "BayesTools_fit", "list")
     )
     attr(model_fit, "prior_list") <- list(mu_f = prior)
+    model_fit <- attach_test_parameter_map(model_fit)
     list(
       fit = model_fit,
       marglik = bridgesampling_object(0),
@@ -799,6 +801,7 @@ test_that("marginal posterior uses the stored full-rank ordered design", {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- formula_info$prior_list
+  fit <- attach_test_parameter_map(fit)
   mixed <- as_mixed_posteriors(fit, parameters = "mu_f")
 
   formula_marginal <- marginal_posterior(
@@ -850,6 +853,7 @@ test_that("ordered levels combined with an intercept convolve on the common grid
     fit <- coda::mcmc(posterior)
     class(fit) <- c("mcmc", "BayesTools_fit")
     attr(fit, "prior_list") <- formula_info$prior_list
+    fit <- attach_test_parameter_map(fit)
     mixed <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_f"))
     marginal <- marginal_posterior(mixed, parameter = "mu_f", formula = ~ f,
                                    prior_samples = TRUE, n_samples = 200)
@@ -1374,6 +1378,7 @@ test_that("ordered mixed measures propagate through marginal inference", {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- formula_info$prior_list
+  fit <- attach_test_parameter_map(fit)
 
   samples <- as_mixed_posteriors(fit, parameters = "mu_f")
   coefficient_atoms <- BayesTools:::.posterior_atoms_get(samples$mu_f)

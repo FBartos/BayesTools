@@ -162,7 +162,8 @@
 #' addition to active cache storage. Callback packages must be listed in
 #' \code{required_packages}. Passing \code{NULL} disables capture and restore.
 #' @param fit a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
-#' extended
+#' extended. Fits without the parameter map and fit contract of this version
+#' of BayesTools (such as fits created by BayesTools 0.3.0) must be refitted.
 #' @param ... additional hidden arguments
 #'
 #' @examples \dontrun{
@@ -829,43 +830,28 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       names(fit[["method.options"]]) != "rjags"
     ]
   }
-  fit_contract       <- attr(fit, "fit_contract", exact = TRUE)
-  draw_geometry      <- attr(fit, "draw_geometry", exact = TRUE)
   fitted_parameter_map <- attr(fit, "parameter_map", exact = TRUE)
   backend_anchor     <- attr(fit, "backend_anchor", exact = TRUE)
   formula_design     <- attr(fit, "formula_design", exact = TRUE)
 
-  if(!is.null(fit_contract)){
-    JAGS_validate_fit_contract(
-      fit,
-      requires = .bt_fit_contract_components
-    )
-    if(!is.null(formula_design)){
-      if(!is.list(formula_design) || is.null(names(formula_design)) ||
-         any(!nzchar(names(formula_design))) || anyDuplicated(names(formula_design))){
-        stop(
-          "JAGS_extend() cannot preserve malformed formula-design metadata. Refit the model with this version of BayesTools.",
-          call. = FALSE
-        )
-      }
-      JAGS_formula_name_map(fit)
-      for(parameter in names(formula_design)){
-        .bt_validate_formula_design_replay_schema(
-          formula_design[[parameter]],
-          context = paste0("JAGS_extend() formula '", parameter, "'")
-        )
-      }
-    }
-    JAGS_draw_geometry(fit)
-    if(is.null(fitted_parameter_map)){
+  coordinates <- .bt_require_fit_contract(fit)
+  if(!is.null(formula_design)){
+    if(!is.list(formula_design) || is.null(names(formula_design)) ||
+       any(!nzchar(names(formula_design))) || anyDuplicated(names(formula_design))){
       stop(
-        "The fitted object has missing parameter-map metadata. Refit the model with this version of BayesTools.",
+        "JAGS_extend() cannot preserve malformed formula-design metadata. Refit the model with this version of BayesTools.",
         call. = FALSE
       )
     }
-    .bt_validate_parameter_map(fitted_parameter_map)
+    JAGS_formula_name_map(fit)
+    for(parameter in names(formula_design)){
+      .bt_validate_formula_design_replay_schema(
+        formula_design[[parameter]],
+        context = paste0("JAGS_extend() formula '", parameter, "'")
+      )
+    }
   }
-  coordinates <- parameter_coordinates(fit)
+  JAGS_draw_geometry(fit)
 
   # extract fitting information
   prior_list        <- attr(fit, "prior_list")
@@ -1032,12 +1018,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 
   class(fit) <- unique(c(class(fit), "BayesTools_fit"))
   attr(fit, "parameter_map") <- fitted_parameter_map
-  if(!is.null(fit_contract)){
-    fit <- .bt_attach_draw_geometry(fit)
-    fit <- .bt_attach_fit_contract(fit)
-  }else if(!is.null(draw_geometry)){
-    attr(fit, "draw_geometry") <- draw_geometry
-  }
+  fit <- .bt_attach_draw_geometry(fit)
+  fit <- .bt_attach_fit_contract(fit)
 
   attr(fit, "runtime_cache") <- runtime_cache
   if(isTRUE(extension_failed) || isTRUE(captured_after_success)){

@@ -55,7 +55,7 @@ source(testthat::test_path("common-functions.R"))
     class = c("runjags", "BayesTools_fit", "list")
   )
   attr(fit, "prior_list") <- prior_list
-  fit
+  attach_test_parameter_map(fit)
 }
 
 .mock_mixing_model <- function(offset, logml, prior_weight = 1) {
@@ -873,9 +873,14 @@ test_that("mix_posteriors rejects implicit and scalar simplex nulls", {
     list(theta = prior("normal", list(0, 1))),
     logml = 0
   )
-  scalar_point_model <- .mock_simplex_mixing_model(
-    list(w = prior("spike", list(location = 0))),
-    logml = 0
+  # A scalar point prior monitors one constant 'w' column.
+  scalar_point_model <- list(
+    fit = .mock_runjags_fit_for_mixing(
+      cbind(w = rep(0, 20), theta = seq_len(20)),
+      list(w = prior("spike", list(location = 0)))
+    ),
+    marglik = .mock_bridge(0),
+    prior_weights = 1
   )
 
   expect_error(
@@ -923,6 +928,7 @@ test_that("marginal_posterior rejects simplex and weightfunction posteriors clea
   fit <- coda::mcmc(cbind("omega[1]" = rep(1, 20), "omega[2]" = omega))
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- list(omega = weightfunction)
+  fit <- attach_test_parameter_map(fit)
   samples <- as_mixed_posteriors(fit, parameters = "omega")
   expect_error(
     marginal_posterior(samples, "omega"),
@@ -1033,9 +1039,10 @@ test_that("mix_posteriors preserves factor-by-factor interaction coefficients", 
       numeric(20)
     )
     colnames(alternative_samples) <- paste0(parameter, "[", seq_len(K), "]")
+    # The mock monitors only the interaction coordinates.
     alternative_fit <- .mock_runjags_fit_for_mixing(
       alternative_samples,
-      formula_result$prior_list
+      formula_result$prior_list[parameter]
     )
 
     model_list <- list(
@@ -1441,7 +1448,7 @@ test_that("mixed contrast coefficients are never bracketed positions", {
     )
     attr(model_fit, "prior_list") <- list(mu_g = meandif_prior)
     list(
-      fit = model_fit,
+      fit = attach_test_parameter_map(model_fit),
       marglik = bridgesampling_object(0),
       prior_weights = 1
     )

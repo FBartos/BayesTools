@@ -57,6 +57,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit", "marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
   if(!all(sapply(model_list, function(m) inherits(m[["fit"]], what = "runjags")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "stanfit")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "null_model"))))
     stop("model_list:fit must contain 'runjags' or 'rstan' models")
+  for(m in model_list){
+    if(inherits(m[["fit"]], "runjags")){
+      .bt_require_fit_contract(m[["fit"]], "model_list:fit")
+    }
+  }
   if(!all(unlist(sapply(model_list, function(m) sapply(attr(m[["fit"]], "prior_list"), function(p) is.prior(p))))))
     stop("model_list:priors must contain 'BayesTools' priors")
   sapply(model_list, function(m) check_real(m[["prior_weights"]], "model_list:prior_weights", lower = 0))

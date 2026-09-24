@@ -201,8 +201,10 @@ test_that("individual omega posteriors of conditioned bias mixtures use the righ
     PET = ifelse(indicator == 4, .5, 0)
   )
   colnames(model) <- c("bias_indicator", paste0("omega[", 1:4, "]"), "PET")
-  class(model) <- c("matrix", "BayesTools_fit")
+  model <- coda::mcmc(model)
+  class(model) <- c("mcmc", "BayesTools_fit")
   attr(model, "prior_list") <- list(bias = bias_prior)
+  model <- attach_test_parameter_map(model)
 
   point_mass <- function(plot_data){
     sum(vapply(plot_data, function(component){
@@ -349,8 +351,10 @@ test_that("conditional bias posteriors zero null bias prior weights", {
     byrow = TRUE
   )
   colnames(model) <- c("bias_indicator", "omega[1]", "omega[2]", "PET")
-  class(model) <- c("matrix", "BayesTools_fit")
+  model <- coda::mcmc(model)
+  class(model) <- c("mcmc", "BayesTools_fit")
   attr(model, "prior_list") <- list(bias = bias_prior)
+  model <- attach_test_parameter_map(model)
 
   mixed <- as_mixed_posteriors(model, parameters = "bias", conditional = "bias")
   conditioned_context <- attr(mixed, "prior_density_context")
@@ -523,8 +527,10 @@ test_that("two-sided-only bias mixtures keep one-sided omega context for priors 
     byrow = TRUE
   )
   colnames(model) <- c("bias_indicator", "omega[1]", "omega[2]", "omega[3]")
-  class(model) <- c("matrix", "BayesTools_fit")
+  model <- coda::mcmc(model)
+  class(model) <- c("mcmc", "BayesTools_fit")
   attr(model, "prior_list") <- list(bias = bias_prior)
+  model <- attach_test_parameter_map(model)
 
   mixed <- as_mixed_posteriors(model, parameters = "bias", conditional = "omega")
   expect_equal(colnames(mixed$bias), omega_names)
@@ -671,8 +677,10 @@ test_that("analytical plotting handles heterogeneous weightfunction mixtures", {
     byrow = TRUE
   )
   colnames(model) <- c("bias_indicator", paste0("omega[", 1:5, "]"), "PET", "PEESE")
-  class(model) <- c("matrix", "BayesTools_fit")
+  model <- coda::mcmc(model)
+  class(model) <- c("mcmc", "BayesTools_fit")
   attr(model, "prior_list") <- list(bias = prior_mixture(prior_list))
+  model <- attach_test_parameter_map(model)
 
   mixed <- as_mixed_posteriors(model, parameters = "bias", conditional = "omega")
   posterior_plot_data <- .plot_data_samples.weightparameter(

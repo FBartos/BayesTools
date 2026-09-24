@@ -182,6 +182,7 @@ source(testthat::test_path("common-functions.R"))
   fit <- coda::mcmc(posterior)
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- formula_result$prior_list
+  fit <- attach_test_parameter_map(fit)
 
   samples <- as_mixed_posteriors(
     fit,
@@ -2699,6 +2700,7 @@ test_that("marginal_posterior uses transformed treatment metadata for simple fac
   fit <- coda::mcmc(posterior)
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- formula_result$prior_list
+  fit <- attach_test_parameter_map(fit)
 
   samples <- as_mixed_posteriors(
     fit,
@@ -2746,9 +2748,10 @@ test_that("marginal_posterior handles as_mixed_posteriors multi-factor interacti
 
   posterior <- matrix(seq_len(20), nrow = 10, ncol = 2)
   colnames(posterior) <- paste0("mu_a__xXx__b[", 1:2, "]")
-  fit <- coda::mcmc(posterior)
+  fit <- coda::mcmc(complete_test_posterior(posterior, formula_result$prior_list))
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- formula_result$prior_list
+  fit <- attach_test_parameter_map(fit)
 
   samples <- as_mixed_posteriors(fit, parameters = "mu_a__xXx__b")
   marginal <- marginal_posterior(
@@ -2789,9 +2792,10 @@ test_that("marginal_posterior handles one-coefficient as_mixed_posteriors intera
 
   posterior <- matrix(seq_len(10), nrow = 10, ncol = 1)
   colnames(posterior) <- "mu_a__xXx__b"
-  fit <- coda::mcmc(posterior)
+  fit <- coda::mcmc(complete_test_posterior(posterior, formula_result$prior_list))
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- formula_result$prior_list
+  fit <- attach_test_parameter_map(fit)
 
   samples <- as_mixed_posteriors(fit, parameters = "mu_a__xXx__b")
   marginal <- marginal_posterior(samples, "mu_a__xXx__b", use_formula = FALSE)
@@ -3119,7 +3123,7 @@ test_that("marginal_estimates_table keeps Bayes factor warnings of scalar parame
     class = c("runjags", "BayesTools_fit", "list")
   )
   attr(fit, "prior_list") <- prior_list
-  fit
+  attach_test_parameter_map(fit)
 }
 
 .prior_height_for_test <- function(x, value){
@@ -3198,6 +3202,7 @@ test_that("Savage-Dickey BFs with the null outside the posterior draws warn once
   fit <- coda::mcmc(posterior)
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- formula_result$prior_list
+  fit <- attach_test_parameter_map(fit)
   level_inference <- .collect_warnings_for_test(as_marginal_inference(
     fit, marginal_parameters = "mu_x", parameters = c("mu_intercept", "mu_x"),
     conditional_list = list(mu_x = NULL), conditional_rule = "AND",
@@ -3430,6 +3435,7 @@ test_that("Savage-Dickey extrapolation warnings use the components supporting th
   fit <- coda::mcmc(posterior)
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
   fit
 }
 
@@ -3805,6 +3811,7 @@ test_that("marginal inference gives levels fixed at the null an NA Bayes factor 
   fit <- coda::mcmc(factor_draws())
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- list(mu_f = .treatment_factor_prior_for_test(1))
+  fit <- attach_test_parameter_map(fit)
   single <- .collect_warnings_for_test(as_marginal_inference(
     fit, marginal_parameters = "mu_f", parameters = "mu_f",
     conditional_list = list(mu_f = NULL), conditional_rule = "AND",
@@ -3867,6 +3874,7 @@ test_that("use_formula = FALSE prior densities ignore the coefficient's own mult
   ))
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- list(mu_x = spike_slab, sigma = sigma_prior)
+  fit <- attach_test_parameter_map(fit)
   conditional <- as_mixed_posteriors(
     fit,
     parameters = c("mu_x", "sigma"),
@@ -3957,6 +3965,8 @@ test_that("marginal_posterior uses log(intercept) for log-intercept formulas", {
     fit <- coda::mcmc(posterior)
     class(fit) <- c("BayesTools_fit", class(fit))
     attr(fit, "prior_list") <- formula_result$prior_list
+    fit <- attach_test_parameter_map(fit)
+    # Only the persisted log(intercept) flag of the design is under test.
     attr(fit, "formula_design") <- design
     fit
   }
@@ -4094,6 +4104,7 @@ test_that("intercept-only formulas give the intercept level", {
   attr(fit, "prior_list") <- intercept_only(prior_mixture(
     list(prior("normal", list(0, 1)), truncated), is_null = c(FALSE, FALSE)
   ))
+  fit <- attach_test_parameter_map(fit)
   single <- marginal_posterior(as_mixed_posteriors(fit, parameters = "mu_intercept"),
                                "mu_intercept", formula = ~ 1, prior_samples = TRUE)
   expect_identical(names(single), "intercept")
@@ -4283,6 +4294,7 @@ test_that("terms with unknown support leave level support unknown", {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- formula_result$prior_list
+  fit <- attach_test_parameter_map(fit)
   samples <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_f"))
 
   levels <- marginal_posterior(samples, "mu_f", formula = ~ f)
@@ -4397,6 +4409,7 @@ test_that("ordered mixture totals with a spike(0) component declare their point 
   fit <- coda::mcmc(prior_draws)
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- list(mu_f = ordered_prior)
+  fit <- attach_test_parameter_map(fit)
   samples <- as_mixed_posteriors(fit, parameters = "mu_f", n_prior_samples = 1000)
   expect_equal(
     attr(samples$mu_f, "posterior_atoms")$mass,
@@ -4538,6 +4551,7 @@ test_that("ordered point(0) totals are structural zero coefficients", {
   fit <- coda::mcmc(null)
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- list(mu_f = null_prior)
+  fit <- attach_test_parameter_map(fit)
   single <- as_mixed_posteriors(fit, parameters = "mu_f")
   expect_equal(attr(single$mu_f, "posterior_atoms")$mass, 1)
   single_marginal <- marginal_posterior(single, "mu_f", use_formula = FALSE, prior_samples = TRUE)

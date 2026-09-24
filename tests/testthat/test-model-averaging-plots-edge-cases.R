@@ -29,6 +29,7 @@ test_that("PET and PEESE plots rebuild scalar atoms from bias branches", {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
   samples <- as_mixed_posteriors(fit, "bias")
   # Declared branch probabilities remain authoritative even after resampling.
   attr(samples$bias, "posterior_atoms")$component_probabilities <- c(.2, .3, .5)
@@ -72,6 +73,7 @@ test_that("conditional bias plots restore omitted structural scalar values", {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
   for(condition in list(NULL, "PETPEESE", "PET", "omega")){
     samples <- as_mixed_posteriors(fit, "bias", conditional = condition, force_plots = TRUE)
     for(parameter in c("PET", "PEESE")){
@@ -110,6 +112,7 @@ test_that("conditional bias plots restore omitted structural scalar values", {
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- list(mu_intercept = prior("point", list(0)), mu_x = slope_prior)
   attr(fit, "formula_scale") <- list(mu = list(mu_x = list(mean = 5, sd = 2)))
+  fit <- attach_test_parameter_map(fit)
   fit <- BayesTools:::.bt_attach_parameter_map(fit, monitor_names = colnames(posterior))
   as_mixed_posteriors(fit, c("mu_intercept", "mu_x"), transform_scaled = TRUE)
 }
@@ -894,6 +897,7 @@ test_that("conditional posterior prior overlay uses conditioned spike-and-slab s
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
 
   samples <- as_mixed_posteriors(
     model       = fit,
@@ -946,6 +950,7 @@ test_that("posterior prior overlays use the spike-and-slab inclusion probability
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
 
   samples <- as_mixed_posteriors(fit, parameters = "theta")
   prior_list_plot <- BayesTools:::.simplify_prior_list(attr(samples$theta, "prior_list"))
@@ -994,6 +999,7 @@ test_that("conditional posterior prior overlays do not scale raw coefficients by
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
 
   prior_layer <- function(samples, parameter){
     plot <- plot_posterior(samples, parameter, plot_type = "ggplot", prior = TRUE, n_points = 512)
@@ -1064,6 +1070,7 @@ test_that("conditional PET/PEESE prior overlays do not reintroduce excluded bias
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
 
   samples <- as_mixed_posteriors(
     model       = fit,
@@ -1135,6 +1142,7 @@ test_that("full PET-PEESE and weightfunction prior overlays follow the bias cond
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
 
   # independent reference: mu ~ N(0, 1) plus a PET ~ N(0, 1)[0, Inf) branch
   # with probability p_PET (other branches have PET = PEESE = 0)
@@ -1205,6 +1213,7 @@ test_that("full PET-PEESE prior overlays keep the mu mixture weights", {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
 
   # independent reference for mu + se * PET with PET ~ N(0, 1)[0, Inf) and
   # mu ~ .5 * spike(0) + .25 * N(-1, .5) + .25 * N(1, .5)
@@ -1262,6 +1271,7 @@ test_that("full PET-PEESE prior overlays follow a condition on mu", {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
 
   # independent reference: mixture over (mu component, bias branch) pairs of
   # mu + se * PET with PET ~ N(0, 1)[0, Inf) and mu ~ spike(0) / N(-1 or 1, .5)
@@ -1363,6 +1373,7 @@ test_that("weightfunction and individual bias prior overlays follow OR condition
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
 
   # P(mu included) = .5 and equal bias branch weights, so under
   # 'mu OR <bias label>' the labelled branch has P = .4 and every other
@@ -1472,6 +1483,7 @@ test_that("OR conditions keep the bias columns of every branch in the event", {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
   omega_columns <- c("omega[0,0.05]", "omega[0.05,1]")
 
   # 'mu OR omega' contains draws of every bias branch with mu included, so the
@@ -2439,8 +2451,10 @@ test_that("omega plot helpers use selection components from composed bias priors
     byrow = TRUE
   )
   colnames(model) <- c("omega[1]", "omega[2]", "alpha", "pi_null", "phack_kind")
-  class(model) <- c("matrix", "BayesTools_fit")
+  model <- coda::mcmc(model)
+  class(model) <- c("mcmc", "BayesTools_fit")
   attr(model, "prior_list") <- list(bias = bias)
+  model <- attach_test_parameter_map(model)
 
   mixed <- as_mixed_posteriors(model, parameters = "bias")
 
@@ -2483,8 +2497,10 @@ test_that("omega plot helpers preserve composed selection branches in bias mixtu
     byrow = TRUE
   )
   colnames(model) <- c("bias_indicator", "omega[1]", "omega[2]", "alpha", "pi_null", "phack_kind")
-  class(model) <- c("matrix", "BayesTools_fit")
+  model <- coda::mcmc(model)
+  class(model) <- c("mcmc", "BayesTools_fit")
   attr(model, "prior_list") <- list(bias = bias)
+  model <- attach_test_parameter_map(model)
 
   mixed <- as_mixed_posteriors(model, parameters = "bias")
   omega_samples <- BayesTools:::.simplify_as_mixed_posterior_bias(mixed, "omega")

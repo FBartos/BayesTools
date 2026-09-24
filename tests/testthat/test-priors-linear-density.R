@@ -769,6 +769,7 @@ test_that("mixture prior ordinates evaluate every component exactly at a density
       class = c("runjags", "BayesTools_fit", "list")
     )
     attr(fit, "prior_list") <- prior_list
+    fit <- attach_test_parameter_map(fit)
     fit
   }
   set.seed(71)
@@ -834,6 +835,7 @@ test_that("mixture prior ordinates evaluate every component exactly at a density
   ))
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- single$prior_list
+  fit <- attach_test_parameter_map(fit)
   single_mixed <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x"))
   single_levels <- marginal_posterior(single_mixed, "mu_x", formula = ~ x, prior_samples = TRUE)
   expect_height(attr(single_levels[["1SD"]], "prior_density"), function(v){
@@ -881,6 +883,7 @@ test_that("mixture prior ordinates evaluate every component exactly at a density
   attr(scaled_fit, "prior_list") <- scaled$prior_list
   attr(scaled_fit, "formula_design") <- list(mu = scaled$formula_design)
   attr(scaled_fit, "formula_scale") <- list(mu = scaled$formula_scale)
+  scaled_fit <- attach_test_parameter_map(scaled_fit)
   scaled_fit <- .bt_attach_fit_contract(.bt_attach_draw_geometry(.bt_attach_parameter_map(scaled_fit)))
   scaled_mixed <- as_mixed_posteriors(scaled_fit, c("mu_intercept", "mu_x"),
                                       transform_scaled = TRUE, n_prior_samples = 2000)
@@ -1079,6 +1082,7 @@ test_that("boundary-singular prior densities keep exact edge-cell masses", {
   fit <- coda::mcmc(cbind(p = stats::qgamma(stats::ppoints(64), .5, 1)))
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- list(p = prior("gamma", list(.5, 1)))
+  fit <- attach_test_parameter_map(fit)
   fit <- .bt_attach_parameter_map(fit, monitor_names = "p")
   marginal <- marginal_posterior(
     as_mixed_posteriors(fit, "p"), "p", use_formula = FALSE,
@@ -1571,6 +1575,7 @@ test_that("prior heights use exact ordinates at density jumps and zero outside s
   fit <- coda::mcmc(cbind(mu = stats::qnorm(stats::ppoints(64), .2, .5)))
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)))
+  fit <- attach_test_parameter_map(fit)
   fit <- .bt_attach_parameter_map(fit, monitor_names = "mu")
   posterior <- marginal_posterior(as_mixed_posteriors(fit, "mu"), "mu",
                                   use_formula = FALSE, prior_samples = TRUE,
@@ -1954,6 +1959,7 @@ test_that("conditional log-intercept prior densities mix the conditioned models"
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_scale") <- formula_scale
+  fit <- attach_test_parameter_map(fit)
   fit <- .bt_attach_parameter_map(fit, monitor_names = colnames(posterior))
   mixed <- as_mixed_posteriors(fit, columns, conditional = "mu_x", transform_scaled = TRUE)
   expect_equal(

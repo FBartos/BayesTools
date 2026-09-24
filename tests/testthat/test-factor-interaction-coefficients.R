@@ -107,11 +107,12 @@ test_that("marginal estimates unscale fixed-factor interaction summaries", {
   interaction_prior <- formula_result$prior_list[[parameter]]
   posterior <- matrix(seq_len(12), nrow = 6, ncol = 2)
   colnames(posterior) <- paste0(parameter, "[", 1:2, "]")
-  fit <- coda::mcmc(posterior)
+  fit <- coda::mcmc(complete_test_posterior(posterior, formula_result$prior_list))
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  fit <- attach_test_parameter_map(fit)
 
   scaled_samples <- as_mixed_posteriors(
     model = fit,
@@ -178,9 +179,10 @@ test_that("marginal_posterior handles treatment factor-continuous interaction co
 
   posterior <- matrix(seq_len(20), nrow = 10, ncol = 2)
   colnames(posterior) <- paste0("mu_alloc__xXx__year[", 1:2, "]")
-  fit <- coda::mcmc(posterior)
+  fit <- coda::mcmc(complete_test_posterior(posterior, formula_result$prior_list))
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- formula_result$prior_list
+  fit <- attach_test_parameter_map(fit)
 
   samples <- as_mixed_posteriors(
     model      = fit,

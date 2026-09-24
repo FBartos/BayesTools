@@ -15,7 +15,9 @@ as_mixed_posteriors(
 )
 }
 \arguments{
-\item{model}{model fit via the \link{JAGS_fit} function}
+\item{model}{model fit via the \link{JAGS_fit} function with this version of
+BayesTools. Fits without its parameter map and fit contract (such as fits
+created by BayesTools 0.3.0) must be refitted.}
 
 \item{parameters}{vector of parameters names for which inference should
 be drawn}

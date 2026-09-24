@@ -327,6 +327,25 @@ JAGS_fit_contract_schema <- function(){
   invisible(TRUE)
 }
 
+# Fits without the parameter map and fit contract of this version (such as
+# fits created by BayesTools 0.3.0) must be refitted: every function that
+# reads fitted metadata refuses them with the "Refit ..." message of the
+# summary tables. Returns the fitted coordinate table.
+.bt_require_fit_contract <- function(fit, argument = "fit"){
+
+  if(!inherits(fit, "BayesTools_fit")){
+    stop(
+      "'", argument, "' must be a 'BayesTools_fit' created by JAGS_fit(). ",
+      "Refit the model with this version of BayesTools.",
+      call. = FALSE
+    )
+  }
+  coordinates <- parameter_coordinates(fit)
+  JAGS_validate_fit_contract(fit, requires = .bt_fit_contract_components)
+
+  coordinates
+}
+
 .bt_supported_fit_contract <- function(){
 
   list(

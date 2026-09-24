@@ -106,3 +106,91 @@ test_that("formula designs persist a validated semantic name map", {
     "name-map metadata are missing"
   )
 })
+
+test_that("functions reading fitted metadata refuse fits without the current contract", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax = "model{}",
+    prior_list = list(
+      mu    = prior("normal", list(0, 1)),
+      sigma = prior("normal", list(0, 1), list(0, Inf))
+    ),
+    chains = 2, adapt = 50, burnin = 50, sample = 200, seed = 1
+  ))
+  models <- function(object){
+    list(list(fit = object, marglik = bridgesampling_object(0), prior_weights = 1))
+  }
+  calls <- list(
+    JAGS_check_convergence = function(object){
+      JAGS_check_convergence(object)
+    },
+    JAGS_diagnostics = function(object){
+      JAGS_diagnostics(object, "mu", type = "trace", plot_type = "ggplot")
+    },
+    as_mixed_posteriors = function(object){
+      as_mixed_posteriors(object, "mu")
+    },
+    mix_posteriors = function(object){
+      mix_posteriors(models(object), "mu", list(mu = FALSE))
+    },
+    JAGS_extend = function(object){
+      JAGS_extend(object, autofit_control = list(max_extend = 1, sample_extend = 10))
+    }
+  )
+
+  # The metadata state of a BayesTools 0.3.0 fit: no parameter map, contract,
+  # or draw geometry. The message is that of the summary tables.
+  stripped <- fit
+  for(name in c("parameter_map", "fit_contract", "draw_geometry")){
+    attr(stripped, name) <- NULL
+  }
+  missing_map <- paste0(
+    "The fitted object does not contain parameter-map metadata. ",
+    "Refit the model with the current BayesTools version."
+  )
+  expect_error(runjags_estimates_table(stripped), missing_map, fixed = TRUE)
+
+  without_contract <- fit
+  attr(without_contract, "fit_contract") <- NULL
+  missing_contract <- paste0(
+    "The fitted object does not contain a supported schema contract. ",
+    "Refit the model with this version of BayesTools."
+  )
+
+  previous_map <- fit
+  map <- attr(previous_map, "parameter_map", exact = TRUE)
+  map$schema_version <- map$schema_version - 1L
+  attr(previous_map, "parameter_map") <- map
+  unsupported_map <- paste0(
+    "Parameter-map metadata are missing, malformed, or unsupported. ",
+    "Refit the model with the current BayesTools version."
+  )
+
+  for(name in names(calls)){
+    expect_error(calls[[name]](stripped), missing_map, fixed = TRUE, info = name)
+    expect_error(calls[[name]](without_contract), missing_contract, fixed = TRUE, info = name)
+    expect_error(calls[[name]](previous_map), unsupported_map, fixed = TRUE, info = name)
+  }
+
+  # Plain runjags objects carry no fitted metadata at all.
+  plain <- fit
+  class(plain) <- "runjags"
+  expect_error(
+    JAGS_check_convergence(plain),
+    "'fit' must be a 'BayesTools_fit' created by JAGS_fit(). Refit the model with this version of BayesTools.",
+    fixed = TRUE
+  )
+  expect_error(
+    mix_posteriors(models(plain), "mu", list(mu = FALSE)),
+    "'model_list:fit' must be a 'BayesTools_fit' created by JAGS_fit(). Refit the model with this version of BayesTools.",
+    fixed = TRUE
+  )
+
+  # Fits of this version pass.
+  expect_true(JAGS_check_convergence(
+    fit, max_Rhat = 2, min_ESS = 1, max_error = NULL, max_SD_error = NULL
+  ))
+  expect_s3_class(as_mixed_posteriors(fit, "mu")$mu, "mixed_posteriors")
+})

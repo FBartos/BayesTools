@@ -1136,6 +1136,7 @@ test_that("plain factor priors are canonicalized before mixed posterior transfor
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- list(p1 = factor_prior)
+  fit <- attach_test_parameter_map(fit)
 
   mixed <- as_mixed_posteriors(fit, parameters = "p1")
   expect_equal(attr(mixed$p1, "factor_terms"), "p1")
@@ -1190,9 +1191,10 @@ test_that("as_mixed_posteriors propagates multi-factor contrast metadata", {
 
   posterior <- matrix(seq_len(20), nrow = 10, ncol = 2)
   colnames(posterior) <- paste0("mu_a__xXx__b[", 1:2, "]")
-  fit <- coda::mcmc(posterior)
+  fit <- coda::mcmc(complete_test_posterior(posterior, formula_result$prior_list))
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- formula_result$prior_list
+  fit <- attach_test_parameter_map(fit)
 
   mixed <- as_mixed_posteriors(fit, parameters = "mu_a__xXx__b")
 
@@ -1256,6 +1258,7 @@ test_that(".filter_parameters keeps point priors with expression locations", {
   fit <- coda::mcmc(cbind(a = a, b = a))
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- prior_list[c("a", "b")]
+  fit <- attach_test_parameter_map(fit)
   samples <- as_mixed_posteriors(fit, c("a", "b"))
   expect_null(attr(samples$b, "posterior_support"))
   expect_equal(as.numeric(marginal_posterior(samples, "b")), a)

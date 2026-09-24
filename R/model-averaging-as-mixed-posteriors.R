@@ -5,7 +5,9 @@
 #' is useful when the model-averaged ensemble is based on [prior_spike_and_slab]
 #' or [prior_mixture] priors - the model-averaging is done within the model.
 #'
-#' @param model model fit via the [JAGS_fit] function
+#' @param model model fit via the [JAGS_fit] function with this version of
+#' BayesTools. Fits without its parameter map and fit contract (such as fits
+#' created by BayesTools 0.3.0) must be refitted.
 #' @param conditional a character vector of parameters to be conditioned on
 #' @param conditional_rule a character string specifying the rule for conditioning.
 #' Either "AND" or "OR". Defaults to "AND".
@@ -34,6 +36,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   # check input
   if(!inherits(model, "BayesTools_fit"))
     stop("'model' must be a 'BayesTools_fit'")
+  .bt_require_fit_contract(model, "model")
   check_char(parameters, "parameters", check_length = FALSE)
   check_char(conditional, "conditional", check_length = FALSE, allow_values = c(parameters, "PET", "PEESE", "PETPEESE", "omega", "phacking", "alpha", "pi_null"), allow_NULL = TRUE)
   check_char(conditional_rule, "conditional_rule", allow_values = c("AND", "OR"))

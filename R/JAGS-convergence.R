@@ -2,7 +2,9 @@
 #'
 #' @description Checks whether the supplied \link[runjags]{runjags-package} model
 #' satisfied convergence criteria.
-#' @param fit a 'BayesTools_fit' object created by [JAGS_fit()]
+#' @param fit a 'BayesTools_fit' object created by [JAGS_fit()] with this
+#' version of BayesTools. Fits without its parameter map and fit contract
+#' (such as fits created by BayesTools 0.3.0) must be refitted.
 #' @param prior_list named list of prior distribution
 #' (names correspond to the parameter names). Retained for compatibility and
 #' validated when supplied; the classification of the fitted parameters comes
@@ -136,16 +138,11 @@ JAGS_check_convergence <- function(
   check_char(monitor, "monitor", check_length = 0, allow_NULL = TRUE,
              allow_NA = FALSE)
   check_bool(allow_not_assessable, "allow_not_assessable", allow_NA = FALSE)
-  if(!inherits(fit, "BayesTools_fit")){
-    stop(
-      "'fit' must be a 'BayesTools_fit' created by JAGS_fit(). Refit the model with this version of BayesTools.",
-      call. = FALSE
-    )
-  }
+  coordinates <- .bt_require_fit_contract(fit)
 
   .bt_check_convergence(
     fit = fit,
-    coordinates = parameter_coordinates(fit),
+    coordinates = coordinates,
     max_Rhat = max_Rhat,
     min_ESS = min_ESS,
     max_error = max_error,

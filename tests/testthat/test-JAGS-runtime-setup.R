@@ -205,7 +205,7 @@ test_that("fit retries and extensions use the actual current worker topology", {
   skip_if_not_installed("runjags")
   basic_fit <- structure(list(end.state = rep("", 4L)),
     class = c("runjags", "BayesTools_fit"))
-  attr(basic_fit, "parameter_map") <- .bt_build_parameter_map(character())
+  basic_fit <- contract_test_backend_fit(basic_fit)
   attr(basic_fit, "prior_list") <- list()
   attr(basic_fit, "model_syntax") <- "model{}"
   attr(basic_fit, "required_packages") <- character()

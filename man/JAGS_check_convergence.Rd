@@ -19,7 +19,9 @@ JAGS_check_convergence(
 )
 }
 \arguments{
-\item{fit}{a 'BayesTools_fit' object created by \code{\link[=JAGS_fit]{JAGS_fit()}}}
+\item{fit}{a 'BayesTools_fit' object created by \code{\link[=JAGS_fit]{JAGS_fit()}} with this
+version of BayesTools. Fits without its parameter map and fit contract
+(such as fits created by BayesTools 0.3.0) must be refitted.}
 
 \item{prior_list}{named list of prior distribution
 (names correspond to the parameter names). Retained for compatibility and

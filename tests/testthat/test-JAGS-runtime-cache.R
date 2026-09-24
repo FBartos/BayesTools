@@ -79,7 +79,7 @@ test_that("saved fit caches restore without entering backend extension payloads"
 
   skip_if_not_installed("runjags")
   basic_fit <- structure(list(end.state = rep("", 2L)), class = c("runjags", "BayesTools_fit"))
-  attr(basic_fit, "parameter_map") <- .bt_build_parameter_map(character())
+  basic_fit <- contract_test_backend_fit(basic_fit)
   callback <- function(context, state = NULL){
 
     if(context$phase == "capture") list(process = context$process_id, identity = "fixture") else NULL
@@ -205,7 +205,7 @@ test_that("runtime cache capture warnings are recorded in the fit warnings", {
 
   skip_if_not_installed("runjags")
   basic_fit <- structure(list(end.state = rep("", 2L)), class = c("runjags", "BayesTools_fit"))
-  attr(basic_fit, "parameter_map") <- .bt_build_parameter_map(character())
+  basic_fit <- contract_test_backend_fit(basic_fit)
   worker_alive <- TRUE
   testthat::local_mocked_bindings(
     .JAGS_require_packages = function(...) invisible(NULL),

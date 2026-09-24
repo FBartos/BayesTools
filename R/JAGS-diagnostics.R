@@ -66,6 +66,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     stop("'omega' diagnostics require at least one weightfunction component in the 'bias' prior.", call. = FALSE)
   if(parameter %in% c("alpha", "pi_null") && !is.null(prior_list[["bias"]]) && !.selection_prior_has_phacking(prior_list[["bias"]]))
     stop("'alpha' and 'pi_null' diagnostics require at least one p-hacking component in the 'bias' prior.", call. = FALSE)
+  .bt_require_fit_contract(fit)
 
   # do not produce diagnostics for a spike prior
   if(is.prior.point(prior_list[[parameter]])){

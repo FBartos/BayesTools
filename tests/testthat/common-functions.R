@@ -45,6 +45,39 @@ attach_test_parameter_map <- function(fit, monitor_names = NULL) {
   BayesTools:::.bt_attach_fit_contract(fit)
 }
 
+# A mock backend result with the fitted metadata that functions reading a fit
+# require: one draw column per chain of 'end.state', an empty parameter map,
+# draw geometry, and the fit contract.
+contract_test_backend_fit <- function(fit) {
+  chains <- max(length(fit[["end.state"]]), 1L)
+  fit[["mcmc"]] <- do.call(coda::mcmc.list, lapply(seq_len(chains), function(chain) {
+    coda::mcmc(matrix(0, nrow = 2L, ncol = 1L, dimnames = list(NULL, "x")))
+  }))
+  fit[["summary.pars"]] <- list(mutate = NULL)
+  attr(fit, "parameter_map") <- BayesTools:::.bt_build_parameter_map(character())
+  fit <- BayesTools:::.bt_attach_draw_geometry(fit)
+  BayesTools:::.bt_attach_fit_contract(fit)
+}
+
+# Zero draws for the prior-list coordinates that a mock posterior does not
+# monitor, so that the fitted object's parameter map is complete.
+complete_test_posterior <- function(posterior, prior_list) {
+  coordinates <- unlist(lapply(names(prior_list), function(parameter) {
+    prior <- prior_list[[parameter]]
+    if (is.prior.factor(prior) || is.prior.vector(prior)) {
+      BayesTools:::.JAGS_prior_factor_names(parameter, prior)
+    } else {
+      parameter
+    }
+  }), use.names = FALSE)
+  missing <- setdiff(coordinates, colnames(posterior))
+  cbind(
+    posterior,
+    matrix(0, nrow = nrow(posterior), ncol = length(missing),
+           dimnames = list(NULL, missing))
+  )
+}
+
 build_test_parameter_coordinates <- function(columns, monitor_names = columns,
                                           prior_list = NULL,
                                           formula_design = NULL,

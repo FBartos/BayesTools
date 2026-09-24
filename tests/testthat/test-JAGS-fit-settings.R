@@ -590,8 +590,7 @@ test_that("JAGS_extend validates runtime controls before extension", {
   attr(fit, "required_packages") <- character()
   attr(fit, "jags_modules") <- character()
   attr(fit, "add_parameters") <- character()
-  attr(fit, "parameter_map") <- .bt_build_parameter_map(character())
-  fit
+  contract_test_backend_fit(fit)
 }
 
 .jags_extend_test_control <- function(max_time = list(time = 60, unit = "secs")){
@@ -895,7 +894,7 @@ test_that("JAGS_extend resets its time budget for every call", {
   fit$summary.pars <- list(mutate = NULL)
   attr(fit, "prior_list") <- list(mu = prior("normal", list(0, 1)))
   attr(fit, "add_parameters") <- "theta"
-  fit
+  attach_test_parameter_map(fit)
 }
 
 test_that("JAGS_extend forwards explicit convergence monitor policy", {
@@ -934,7 +933,10 @@ test_that("JAGS_extend keeps the fit's warnings after successful extensions", {
   # The backend returns a new runjags object without BayesTools attributes.
   testthat::local_mocked_bindings(
     extend.jags = function(runjags.object, ...){
-      structure(list(), class = "runjags")
+      structure(
+        list(mcmc = runjags.object$mcmc, summary.pars = list(mutate = NULL)),
+        class = "runjags"
+      )
     },
     .package = "runjags"
   )

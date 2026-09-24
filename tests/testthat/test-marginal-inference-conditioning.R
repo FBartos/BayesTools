@@ -4,7 +4,7 @@ skip_if_not_test_profile("unit")
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
-  fit
+  attach_test_parameter_map(fit)
 }
 
 test_that("unscaled coefficient atoms follow joint structural contributors", {
@@ -487,6 +487,7 @@ test_that("conditional spike-and-slab prior densities use the slab", {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
 
   samples <- as_mixed_posteriors(
     model       = fit,
@@ -630,6 +631,7 @@ test_that("marginal inference conditions formula levels by active weights", {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  fit <- attach_test_parameter_map(fit)
 
   inference <- as_marginal_inference(
     model                = fit,
@@ -725,6 +727,7 @@ test_that("marginal inference conditions treatment factor levels by active weigh
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- formula_result[["prior_list"]]
+  fit <- attach_test_parameter_map(fit)
 
   inference <- as_marginal_inference(
     model                = fit,

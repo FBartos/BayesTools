@@ -14,6 +14,7 @@ skip_if_no_fits()
   model <- coda::as.mcmc(as.matrix(fit[["mcmc"]]))
   class(model) <- c("BayesTools_fit", class(model))
   attr(model, "prior_list") <- attr(fit, "prior_list", exact = TRUE)
+  model <- attach_test_parameter_map(model)
 
   mixed <- as_mixed_posteriors(
     model,
