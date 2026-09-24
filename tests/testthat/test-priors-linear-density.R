@@ -376,6 +376,69 @@ test_that("conditional-normal quadratures split scale-disparate integrals at bre
   }
 })
 
+test_that("multiplier quadratures resolve the location peak of a narrow multiplied normal", {
+
+  # a + b * s with b ~ N(b_m, b_s) and b_s <= |b_m| / 10: in s the integrand
+  # peaks at s* = (v - a_m) / b_m with local SD sqrt(a_s^2 + b_s^2 s*^2) / |b_m|.
+  # References: integrate() at rel.tol 1e-12 with stats:: densities over pieces
+  # around that peak; they agree with the review's values to the digits given.
+  split_reference <- function(f, points){
+    sum(vapply(seq_len(length(points) - 1L), function(i){
+      stats::integrate(f, points[i], points[i + 1L], rel.tol = 1e-12,
+                       subdivisions = 5000L)$value
+    }, numeric(1)))
+  }
+  height <- function(priors, value){
+    density <- .prior_linear_combination_density(priors, c(a = 1, b = 1), n_grid = 4096)
+    ordinate <- prior_density_ordinate(density, value)
+    expect_identical(ordinate$method, "conditional_normal_mixture")
+    expect_true(ordinate$provenance$integration$converged)
+    as.numeric(.prior_linear_density_height(density, value))
+  }
+  scale_mixture <- function(a, b, s){
+    attr(b, "multiply_by") <- "s"
+    list(a = a, b = b, s = s)
+  }
+
+  # gamma(3, 2) multiplier: without a breakpoint at the peak every piece missed
+  # it (4.9e-115 instead of .1226)
+  priors <- scale_mixture(prior("normal", list(0, .001)), prior("normal", list(3, .001)),
+                          prior("gamma", list(3, 2)))
+  width <- sqrt(.001^2 + (.001 * .5)^2) / 3
+  reference <- split_reference(
+    function(s) stats::dnorm(1.5, 3 * s, sqrt(.001^2 + (.001 * s)^2)) * stats::dgamma(s, 3, 2),
+    c(0, .5 + c(-30, -10, -3, -1, 0, 1, 3, 10, 30) * width, Inf)
+  )
+  expect_equal(reference, .1226265, tolerance = 1e-6)
+  expect_equal(height(priors, 1.5), reference, tolerance = 1e-8)
+
+  # inverse-gamma(3, 2) multiplier at the image of its median: the median
+  # breakpoint alone found half of the peak (.14695 instead of .29388)
+  priors <- scale_mixture(prior("normal", list(.2, 1e-4)), prior("normal", list(3, 1e-4)),
+                          prior("invgamma", list(shape = 3, scale = 2)))
+  median <- 2 / stats::qgamma(.5, 3)
+  value <- .2 + 3 * median
+  width <- sqrt(1e-8 + (1e-4 * median)^2) / 3
+  reference <- split_reference(
+    function(s) stats::dnorm(value, .2 + 3 * s, sqrt(1e-8 + (1e-4 * s)^2)) * stats::dgamma(1 / s, 3, 2) / s^2,
+    c(0, median + c(-30, -10, -3, -1, 0, 1, 3, 10, 30) * width, Inf)
+  )
+  expect_equal(reference, .29388, tolerance = 1e-4)
+  expect_equal(height(priors, value), reference, tolerance = 1e-8)
+
+  # b_s > |b_m| / 10: the window around s* is not a peak, and breakpoints there
+  # made the pieces miss mass elsewhere (-0.7% at -1, -2.3e-4 at -.5)
+  priors <- scale_mixture(prior("normal", list(.2, 1e-4)), prior("normal", list(3, 100)),
+                          prior("normal", list(0, 1e-3), list(0, Inf)))
+  for(value in c(-1, -.5)){
+    reference <- split_reference(
+      function(s) stats::dnorm(value, .2 + 3 * s, sqrt(1e-8 + (100 * s)^2)) * 2 * stats::dnorm(s, 0, 1e-3),
+      c(0, 1e-3 * c(1e-3, .01, .1, .5, 1, 2, 3, 5, 10), Inf)
+    )
+    expect_equal(height(priors, value), reference, tolerance = 1e-8)
+  }
+})
+
 test_that("lockstep mixture grids add the components' absolute changes", {
 
   # Two grid components whose refinements change in opposite directions: the

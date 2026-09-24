@@ -1349,20 +1349,28 @@
   )
 }
 
-# Breakpoints of the conditional-normal integral: the support bounds of the
-# multiplier (or other term), its declared-prior quantiles, and for a Gaussian
-# convolution (product_sd == 0) the Gaussian peak u* = (value - m) / w and
-# u* +- k s / |w| (k = 1, 3, 10). Only points strictly inside the open support
-# with a finite density are kept; pieces narrower than
-# 16 * eps * max(1, |endpoints|) are merged.
+# Breakpoints of the conditional-normal integral over the multiplier (or the
+# other term of a Gaussian convolution) s:
+# * the support bounds of s and quantiles of its declared prior;
+# * the location peak of the conditional normal N(value; a_m + b_m s,
+#   sqrt(a_s^2 + b_s^2 s^2)) at s* = (value - a_m) / b_m and s* +- k w
+#   (k = 1, 3, 10), w = sqrt(a_s^2 + b_s^2 s*^2) / |b_m|, when the multiplied
+#   SD is at most a tenth of its mean (b_s <= |b_m| / 10). Only then do the
+#   standardized distances beyond the window stay large over the whole
+#   support; otherwise the window is not a peak, and no peak points are used.
+#   A Gaussian convolution (b_s = 0, b_m = w) always has its Gaussian peak
+#   u* = (value - m) / w with width s / |w|.
+# Only points strictly inside the open support with a finite density are
+# kept; pieces narrower than 16 * eps * max(1, |endpoints|) are merged.
 .prior_conditional_normal_breakpoints <- function(spec, value){
 
   lower <- spec$bounds[1L]
   upper <- spec$bounds[2L]
   inner <- numeric()
-  if(isTRUE(spec$product_sd == 0) && isTRUE(spec$product_mean != 0)){
+  if(isTRUE(spec$product_mean != 0) &&
+     isTRUE(spec$product_sd <= abs(spec$product_mean) / 10)){
     centre <- (value - spec$additive_mean) / spec$product_mean
-    width <- spec$additive_sd / abs(spec$product_mean)
+    width <- sqrt(spec$additive_sd^2 + (spec$product_sd * centre)^2) / abs(spec$product_mean)
     inner <- c(inner, centre, centre + as.vector(outer(c(-1, 1), c(1, 3, 10))) * width)
   }
   # next to a finite bound where the density is infinite, the extreme
