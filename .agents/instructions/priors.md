@@ -259,6 +259,18 @@ gate.
 
 ## Savage-Dickey Ordinates
 
+`hypothesis_BF()` applies one exactness rule to every point hypothesis: the
+prior ordinate at the null must be `regular` and exactly classified by
+`prior_density_ordinate()`; otherwise it stops with a classed error
+(`bayestools_point_mass_at_null`, `bayestools_infinite_ordinate`,
+`bayestools_zero_ordinate`, `bayestools_undefined_ordinate`,
+`bayestools_inexact_ordinate`, all also `bayestools_hypothesis_ordinate`),
+which callers match by class, never by message. Linear expressions of
+marginal posteriors use the joint-context density, affine expressions of a
+prior object its transformed density; nonlinear expressions of a
+deterministic prior are inexact. Only user-supplied prior draws keep a
+kernel estimate of the prior ordinate.
+
 The posterior ordinate of a Savage-Dickey ratio (`R/marginal-savage-dickey.R`)
 is a kernel estimate from the continuous draws: the exact Gaussian kernel sum
 at the null with bandwidth `bw.nrd0()` of the (per-component) continuous

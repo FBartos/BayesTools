@@ -54,15 +54,16 @@
 #' attribute; numeric and data-frame expression tests use standard Gaussian
 #' sample KDE. A point hypothesis on a linear expression of marginal-posterior
 #' parameters or levels (sums, differences, and constant multiples, e.g.,
-#' \code{mu[B] - mu[A] = 0}; functions and powers only of constants) whose exact support
-#' is bounded, or whose mixture components have different exact supports, is
-#' tested as a Savage-Dickey ratio of that linear combination: the prior
-#' density and exact support come from the joint prior context and the
-#' posterior ordinate uses boundary reflection (per mixture component, see
-#' [Savage_Dickey_BF]); other expressions use the sample KDE of the expression
-#' draws. Finite sample and KDE evaluation ranges are not treated as exact
-#' support, so finite point hypotheses outside those ranges use kernel-tail
-#' density estimates.
+#' \code{mu[B] - mu[A] = 0}; functions and powers only of constants) is tested
+#' as a Savage-Dickey ratio of that linear combination: the prior density and
+#' exact support come from the joint prior context and the posterior ordinate
+#' uses boundary reflection at bounded supports (per mixture component, see
+#' [Savage_Dickey_BF]). An affine expression of a numeric quantity with a
+#' prior object uses the exact density of that transformed prior. Only
+#' user-supplied prior draws use the sample KDE of the prior expression draws.
+#' Finite sample and KDE evaluation ranges are not treated as exact support,
+#' so finite point hypotheses outside those ranges use kernel-tail density
+#' estimates.
 #' @param columns output columns. \code{"default"} returns \code{Alternative},
 #' \code{Null}, \code{BF}, and \code{BF_error}. \code{"all"} also returns
 #' \code{prior}, \code{posterior}, and \code{method} columns. The
@@ -148,7 +149,19 @@
 #' object's distribution function contribute no Monte Carlo error.
 #' Point-vs-region errors combine the available
 #' point-density and region-mass errors on the \code{log(BF)} scale.
-#' Point-null tests require a positive finite prior density at the null value.
+#' Point-null tests require a regular (positive and finite) prior density at
+#' the null value that [prior_density_ordinate()] classifies exactly from the
+#' prior's structure, on every route. Otherwise they stop with a classed error
+#' condition, which callers should match by class rather than by message:
+#' \code{bayestools_point_mass_at_null} (a prior point mass at the null),
+#' \code{bayestools_infinite_ordinate}, \code{bayestools_zero_ordinate},
+#' \code{bayestools_undefined_ordinate}, or \code{bayestools_inexact_ordinate}
+#' (no exact structural ordinate, e.g., a nonlinear expression of a
+#' deterministic prior, a prior-density combination evaluated only on a
+#' numerical grid, or a density grid without recorded provenance). Each of
+#' these conditions also has class \code{bayestools_hypothesis_ordinate}.
+#' Prior ordinates estimated from user-supplied prior draws are kernel
+#' estimates and are not classified.
 #' Region tests require positive prior mass for every compared region. An
 #' implicit region statement is compared with its complement, which therefore
 #' also needs positive prior mass; explicit comparisons such as

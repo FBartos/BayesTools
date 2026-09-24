@@ -99,6 +99,9 @@
     marginal <- .hypothesis_linear_point_marginal(quantity, side)
   }
   if(!is.null(marginal)){
+    .hypothesis_check_prior_ordinate(
+      marginal[["prior_density"]], side[["value"]], side[["label"]]
+    )
     normal_approximation <- identical(density_method, "normal")
     posterior <- .posterior_precomputed_child(
       parent          = marginal[["posterior_parent"]],
@@ -144,27 +147,28 @@
       .hypothesis_side_expression(side),
       quantity[["posterior_draws"]]
     )
-    prior_value <- .hypothesis_prior_object_density_height(quantity, side)
-    if(is.null(prior_value)){
-      if(!is.null(quantity[["prior_density"]]) &&
-         .hypothesis_expression_is_parameter(.hypothesis_side_expression(side),
-                                             quantity[["parameter"]])){
-        prior_value <- .hypothesis_prior_density_height(
-          quantity[["prior_density"]],
-          side[["value"]]
-        )
-      }else{
-        prior <- .hypothesis_eval_expression(
-          .hypothesis_side_expression(side),
-          .hypothesis_prior_draws(quantity)
-        )
-        prior_value <- .hypothesis_draw_density_height(
-          prior,
-          side[["value"]],
-          "prior",
-          density_method
-        )
-      }
+    prior_density <- .hypothesis_expression_prior_density(quantity, side)
+    if(!is.null(prior_density)){
+      .hypothesis_check_prior_ordinate(prior_density, side[["value"]], side[["label"]])
+      prior_value <- .hypothesis_prior_density_height(prior_density, side[["value"]])
+    }else if(.hypothesis_quantity_has_prior_structure(quantity)){
+      # a deterministic prior whose expression has no exact density: a
+      # kernel estimate from sampled prior draws would be an inexact ordinate
+      .hypothesis_stop_inexact_ordinate(
+        side[["label"]],
+        "the expression is not a linear combination with an exact prior density"
+      )
+    }else{
+      prior <- .hypothesis_eval_expression(
+        .hypothesis_side_expression(side),
+        .hypothesis_prior_draws(quantity)
+      )
+      prior_value <- .hypothesis_draw_density_height(
+        prior,
+        side[["value"]],
+        "prior",
+        density_method
+      )
     }
     .hypothesis_check_prior_density(prior_value, side[["label"]])
     posterior_value <- .hypothesis_draw_density_height(
@@ -308,10 +312,6 @@
   component_supports <- if(is.null(components)) list() else
     components$supports[!vapply(components$supports, is.null, logical(1))]
   if(!all(vapply(component_supports, .hypothesis_linear_support_usable, logical(1)))){
-    return(NULL)
-  }
-  component_bounds <- unique(lapply(component_supports, `[[`, "bounds"))
-  if(!any(is.finite(support$bounds)) && length(component_bounds) < 2L){
     return(NULL)
   }
 

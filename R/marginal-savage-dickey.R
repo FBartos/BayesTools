@@ -81,7 +81,10 @@
 #' Bayes factor and, unless \code{silent = TRUE}, emitted once per parameter
 #' or level, prefixed with its label (for example \code{mu[A]}).
 #'
-#' @return \code{Savage_Dickey_BF} returns a Bayes factor.
+#' @return \code{Savage_Dickey_BF} returns a Bayes factor. A prior point mass
+#' at the null value stops with an error of class
+#' \code{bayestools_point_mass_at_null} (see [hypothesis_BF()] for the
+#' condition classes of point hypotheses).
 #'
 #' @export
 Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximation = FALSE, silent = FALSE,
@@ -309,9 +312,9 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     return(BF)
   }
   if(.prior_linear_density_point_mass(prior, null_hypothesis) > 0){
-    stop(
-      "There is a point mass in the prior at the exact null hypothesis value. The Savage-Dickey density ratio is invalid.",
-      call. = FALSE
+    .hypothesis_stop_ordinate(
+      "bayestools_point_mass_at_null",
+      .hypothesis_point_mass_message()
     )
   }
   continuous_posterior <- .Savage_Dickey_BF.continuous_posterior(

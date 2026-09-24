@@ -3831,29 +3831,36 @@ test_that("linear level hypotheses use the exact support of the combination", {
   )$value
   expect_equal(as.numeric(combination$prior), convolution, tolerance = 1e-4)
 
-  # unbounded linear and nonlinear expressions keep the expression-draw KDE
+  # an unbounded linear expression also uses the exact joint-prior density:
+  # B - C = f1 - f2 is the difference of two half-normals, with density
+  # int 4 phi(a)^2 da over a > 0 = 1 / sqrt(pi) at 0; the posterior ordinate
+  # is the (unreflected) kernel sum of the expression draws
   draws <- data.frame(check.names = FALSE,
                       "mu_f[B]" = as.numeric(levels[["B"]]), "mu_f[C]" = as.numeric(levels[["C"]]),
                       "mu_f[A]" = as.numeric(levels[["A"]]))
   unbounded <- hypothesis_BF(levels, hypothesis = "mu_f[B] - mu_f[C] = 0", columns = "all", seed = 1)
-  expect_identical(unbounded$method, "kernel Savage-Dickey")
-  expect_identical(
-    unbounded$posterior,
-    BayesTools:::.hypothesis_sample_density_height(draws[["mu_f[B]"]] - draws[["mu_f[C]"]], 0, "posterior")
+  expect_identical(unbounded$method, "Savage-Dickey")
+  expect_equal(as.numeric(unbounded$prior), 1 / sqrt(pi), tolerance = 1e-8)
+  expect_equal(
+    as.numeric(unbounded$posterior),
+    as.numeric(BayesTools:::.hypothesis_sample_density_height(
+      draws[["mu_f[B]"]] - draws[["mu_f[C]"]], 0, "posterior"
+    )),
+    tolerance = 1e-12
   )
-  nonlinear <- hypothesis_BF(levels, hypothesis = "exp(mu_f[B]) - exp(mu_f[C]) = 0",
-                             columns = "all", seed = 1)
-  expect_identical(nonlinear$method, "kernel Savage-Dickey")
 
+  # nonlinear expressions of a deterministic prior have no exact prior
+  # ordinate: a kernel estimate from sampled prior draws is refused
+  expect_error(
+    hypothesis_BF(levels, hypothesis = "exp(mu_f[B]) - exp(mu_f[C]) = 0", seed = 1),
+    class = "bayestools_inexact_ordinate"
+  )
   # abs(B - A - 2) equals the linear 2 - (B - A) at every probe point, but its
   # value 0.5 is also reached at B - A = 2.5 (prior density 2 phi(1.5) +
-  # 2 phi(2.5), not 2 phi(1.5) alone): it keeps the expression-draw KDE
-  kinked <- hypothesis_BF(levels, hypothesis = "abs(mu_f[B] - mu_f[A] - 2) = 0.5",
-                          columns = "all", seed = 1)
-  expect_identical(kinked$method, "kernel Savage-Dickey")
-  expect_identical(
-    kinked$posterior,
-    BayesTools:::.hypothesis_sample_density_height(abs(draws[["mu_f[B]"]] - draws[["mu_f[A]"]] - 2), .5, "posterior")
+  # 2 phi(2.5), not 2 phi(1.5) alone): it is not linear
+  expect_error(
+    hypothesis_BF(levels, hypothesis = "abs(mu_f[B] - mu_f[A] - 2) = 0.5", seed = 1),
+    class = "bayestools_inexact_ordinate"
   )
   expect_null(BayesTools:::.hypothesis_linear_coefficients(
     str2lang("abs(`mu_f[B]` - `mu_f[A]` - 2)"), c("mu_f[B]", "mu_f[A]"), draws

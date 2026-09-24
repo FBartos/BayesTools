@@ -146,28 +146,6 @@
 }
 
 
-.hypothesis_prior_object_density_height <- function(quantity, side) {
-
-  prior_object <- quantity[["prior_object"]]
-  if(is.null(prior_object) || !is.prior.simple(prior_object) ||
-     is.prior.point(prior_object) || is.prior.discrete(prior_object) ||
-     !.hypothesis_expression_is_parameter(.hypothesis_side_expression(side),
-                                          quantity[["parameter"]])){
-    return(NULL)
-  }
-
-  height <- tryCatch(
-    pdf(prior_object, side[["value"]]),
-    error = function(e) NULL
-  )
-  if(is.null(height) || !is.numeric(height) || length(height) != 1L){
-    return(NULL)
-  }
-
-  as.numeric(height)
-}
-
-
 .hypothesis_simple_parameter_comparison <- function(side, parameter) {
 
   if(is.null(parameter)){
@@ -724,13 +702,149 @@
   }
 
   if(.prior_linear_density_point_mass(prior_density, value) > 0){
-    stop(
-      "There is a point mass in the prior at the exact null hypothesis value. The Savage-Dickey density ratio is invalid.",
-      call. = FALSE
+    .hypothesis_stop_ordinate(
+      "bayestools_point_mass_at_null",
+      .hypothesis_point_mass_message()
     )
   }
 
   .prior_linear_density_height(prior_density, value)
+}
+
+
+# Point hypotheses need a regular prior ordinate at the null that is
+# classified exactly from the prior's structure (one rule on every route of
+# hypothesis_BF()). Other ordinates stop with a classed error that callers
+# match by class, never by message: bayestools_point_mass_at_null,
+# bayestools_infinite_ordinate, bayestools_zero_ordinate,
+# bayestools_undefined_ordinate and bayestools_inexact_ordinate, each also of
+# class bayestools_hypothesis_ordinate.
+.hypothesis_stop_ordinate <- function(class, message) {
+
+  stop(structure(
+    class = c(class, "bayestools_hypothesis_ordinate", "error", "condition"),
+    list(message = message, call = NULL)
+  ))
+}
+
+.hypothesis_point_mass_message <- function() {
+
+  "There is a point mass in the prior at the exact null hypothesis value. The Savage-Dickey density ratio is invalid."
+}
+
+.hypothesis_stop_inexact_ordinate <- function(label, reason) {
+
+  .hypothesis_stop_ordinate(
+    "bayestools_inexact_ordinate",
+    paste0(
+      "Prior density at point hypothesis '", label, "' is unavailable: ",
+      reason, ". Test a region hypothesis instead."
+    )
+  )
+}
+
+.hypothesis_check_prior_ordinate <- function(prior_density, value, label) {
+
+  if(is.null(prior_density)){
+    stop("Prior density is required for point hypotheses.", call. = FALSE)
+  }
+  ordinate <- prior_density_ordinate(prior_density, value)
+  behavior <- ordinate$behavior
+  if(identical(behavior, "point_mass")){
+    .hypothesis_stop_ordinate(
+      "bayestools_point_mass_at_null",
+      .hypothesis_point_mass_message()
+    )
+  }
+  if(behavior %in% c("infinite", "zero", "undefined")){
+    .hypothesis_stop_ordinate(
+      paste0("bayestools_", behavior, "_ordinate"),
+      paste0(
+        "Prior density at point hypothesis '", label, "' is ", behavior,
+        ", so the Savage-Dickey density ratio is undefined."
+      )
+    )
+  }
+  if(!identical(behavior, "regular") || !isTRUE(ordinate$exact)){
+    reason <- ordinate$reason
+    .hypothesis_stop_inexact_ordinate(
+      label,
+      if(is.character(reason) && length(reason) == 1L && nzchar(reason)){
+        paste0("its prior ordinate has no exact structural classification (",
+               sub("\\.$", "", reason), ")")
+      }else{
+        "its prior ordinate has no exact structural classification"
+      }
+    )
+  }
+
+  invisible(ordinate)
+}
+
+
+# The prior density of a point-hypothesis expression of one quantity: the
+# quantity's own density for the parameter itself, and for an affine
+# expression c + w * parameter the same measure with scaled weights and a
+# 'lin' shift. NULL otherwise.
+.hypothesis_expression_prior_density <- function(quantity, side) {
+
+  prior_density <- quantity[["prior_density"]]
+  parameter <- quantity[["parameter"]]
+  if(is.null(prior_density) || is.null(parameter)){
+    return(NULL)
+  }
+  expr_text <- .hypothesis_side_expression(side)
+  if(.hypothesis_expression_is_parameter(expr_text, parameter)){
+    return(prior_density)
+  }
+
+  expr <- .hypothesis_parse_expression(expr_text)
+  symbols <- unique(.hypothesis_expression_symbols(expr))
+  if(!identical(symbols, parameter)){
+    return(NULL)
+  }
+  linear <- .hypothesis_linear_coefficients(expr, symbols, quantity[["posterior_draws"]])
+  adaptive <- attr(prior_density, "adaptive_evaluation", exact = TRUE)
+  if(is.null(linear) || linear$coefficients[[1L]] == 0 ||
+     !identical(adaptive$kind, "linear_combination") ||
+     !is.null(adaptive$arguments$output_transformation)){
+    return(NULL)
+  }
+  arguments <- adaptive$arguments
+  .prior_linear_combination_density(
+    prior_list        = arguments$prior_list,
+    weights           = linear$coefficients[[1L]] * arguments$weights,
+    n_grid            = arguments$n_grid,
+    tail_prob         = arguments$tail_prob,
+    source_transforms = arguments$source_transforms,
+    output_transformation = if(linear$constant != 0) "lin" else NULL,
+    output_transformation_arguments = if(linear$constant != 0){
+      list(a = linear$constant, b = 1)
+    }
+  )
+}
+
+
+# Whether a quantity carries deterministic prior information (a prior
+# object, prior densities, or a joint prior context), so that a prior
+# ordinate from sampled draws would be an inexact stand-in.
+.hypothesis_quantity_has_prior_structure <- function(quantity) {
+
+  if(!is.null(quantity[["prior_density"]]) ||
+     !is.null(quantity[["prior_object"]]) ||
+     length(quantity[["prior_densities"]]) > 0L){
+    return(TRUE)
+  }
+  marginals <- c(
+    list(quantity[["posterior_marginal"]]),
+    as.list(quantity[["posterior_marginals"]])
+  )
+  any(vapply(marginals, function(marginal){
+    !is.null(marginal) && (
+      !is.null(attr(marginal, "prior_density", exact = TRUE)) ||
+        !is.null(attr(marginal, "prior_density_context", exact = TRUE))
+    )
+  }, logical(1)))
 }
 
 
@@ -754,8 +868,13 @@
 .hypothesis_check_prior_density <- function(density, label) {
 
   if(!is.finite(density) || density <= 0){
-    stop("Prior density at point hypothesis '", label,
-         "' is zero or non-finite.", call. = FALSE)
+    behavior <- if(isTRUE(density == 0)) "zero" else
+      if(isTRUE(is.infinite(density))) "infinite" else "undefined"
+    .hypothesis_stop_ordinate(
+      paste0("bayestools_", behavior, "_ordinate"),
+      paste0("Prior density at point hypothesis '", label,
+             "' is zero or non-finite.")
+    )
   }
 
   return(invisible(TRUE))
