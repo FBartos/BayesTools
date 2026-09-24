@@ -180,9 +180,24 @@ transformations and `bounded_logit`, and the unclassified meeting points.
 
 Plotted linear-combination prior densities (`.prior_linear_density_to_plot_data()`)
 evaluate the same route at every plotted value: closed forms vectorized over
-the plotting grid and quadrature routes by their ordinate at each value (about
-1-2 s per 1000-point curve). Only a combination without a structural route, or
-a density without recorded provenance, interpolates its numerical grid.
+the plotting grid, and quadrature leaves by one batched quadrature over all
+plotted values (`R/prior-density-quadrature.R`): each value keeps its
+ordinate's integrand and breakpoints, all pending intervals of all values are
+evaluated in one vectorized call with QUADPACK's qk21 / qk15i rules and error
+estimates, and each value is accepted at a relative error of 1e-8. Special
+values (offsets, support bounds, meeting points), values that do not converge
+within the round cap, and all values of a leaf whose integrand has an
+integrable singularity (a term with an infinite density at a finite bound;
+bisection without extrapolation converges too slowly there) take their
+ordinate. A route with quadrature leaves is plotted on at most 200 equally
+spaced values plus the values it must include (atoms, offsets, normal means,
+meeting points, finite support bounds with a point 1e-6 of the plotted range
+to either side) and the parabola vertex at each interior local maximum.
+A batched value can exist where the per-value ordinate's quadrature is rejected
+by QUADPACK's flags (heavy-tailed pure scale mixtures): the plot shows it,
+while heights and point hypotheses at that value stop. Only a combination
+without a structural route, or a density without recorded provenance,
+interpolates its numerical grid.
 
 Heights and region probabilities require recorded provenance (the
 `adaptive_evaluation` attribute naming the prior measure): a density grid

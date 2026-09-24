@@ -96,7 +96,10 @@
 #' @param formula_scale optional nested formula-scale metadata, in the same shape
 #' as \code{attr(fit, "formula_scale")}.
 #' @param parameter coefficient name to plot.
-#' @param n_points number of plotting points.
+#' @param n_points number of plotting points. A prior density that needs
+#' numerical integration (a Gaussian convolution, a scale mixture, or a sum of
+#' two non-normal terms) is plotted at no more than 200 equally spaced points
+#' plus its support bounds, jumps, peaks and atoms.
 #' @param x_range optional plotting range on the untransformed scale.
 #' @param transformation optional output transformation passed to the prior
 #' plotting machinery.

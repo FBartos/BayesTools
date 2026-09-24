@@ -1040,11 +1040,11 @@
 # ---- plotted densities -------------------------------------------------------
 
 # Continuous density of a route at the values 'x' (point masses excluded):
-# closed forms vectorized over 'x', quadrature leaves at each value (the
-# ordinate's quadrature), and routes without a structural representation by
-# linear interpolation of their own numerical grid, the only grid use.
-# Non-finite and unavailable values are NA; a value where the density is
-# infinite is Inf.
+# closed forms vectorized over 'x', quadrature leaves by one batched
+# quadrature over all values (.prior_density_route_quadrature_density()), and
+# routes without a structural representation by linear interpolation of their
+# own numerical grid, the only grid use. Non-finite and unavailable values are
+# NA; a value where the density is infinite is Inf.
 .prior_density_route_density <- function(route, x){
 
   if(length(x) == 0L){
@@ -1078,10 +1078,159 @@
     },
     "transform" = .prior_density_route_transform_density(route, x),
     "unknown" = .prior_density_route_grid_density(route, x),
-    # quadrature leaves: the ordinate at each value
-    vapply(x, function(value){
-      .prior_density_ordinate_height_value(.prior_density_route_ordinate(route, value))
-    }, numeric(1))
+    .prior_density_route_quadrature_density(route, x)
+  )
+}
+
+# Density of a quadrature leaf (conditional-normal mixture, scale product or
+# two-term convolution) at the values 'x'. Values outside a bounded support hull
+# are zero; the leaf's special values (offsets, support bounds and meeting
+# points, which its ordinate classifies structurally), all values of a leaf
+# whose integrand has an integrable singularity, and values whose batched
+# integral does not meet the acceptance criterion take the ordinate's own
+# value; all other values share one batched quadrature of the ordinate's
+# integrand over the ordinate's breakpoints
+# (.prior_density_quadrature_batch()), within a relative error of 1e-8.
+.prior_density_route_quadrature_density <- function(route, x){
+
+  plan <- switch(
+    route$type,
+    "conditional_normal" = .prior_conditional_normal_density_plan(route$spec, x),
+    "scale_product"      = .prior_scale_product_density_plan(route$spec, x),
+    "convolution"        = .prior_convolution_density_plan(route$spec, x)
+  )
+  zero <- if(is.null(plan$zero)) rep(FALSE, length(x)) else plan$zero
+  out <- rep(NA_real_, length(x))
+  out[zero] <- 0
+  if(isTRUE(plan$batch)){
+    out[!zero & !plan$special] <- .prior_density_quadrature_batch(
+      plan$integrand, plan$breakpoints
+    )
+  }
+  ordinate <- which(!zero & (plan$special | is.na(out)))
+  out[ordinate] <- vapply(x[ordinate], function(value){
+    .prior_density_ordinate_height_value(.prior_density_route_ordinate(route, value))
+  }, numeric(1))
+  out
+}
+
+# Whether a route has a leaf of one of the 'types'.
+.prior_density_route_has_leaf <- function(route, types){
+
+  if(is.null(route)){
+    return(FALSE)
+  }
+  switch(
+    route$type,
+    "mixture"   = any(vapply(route$components, .prior_density_route_has_leaf,
+                             logical(1), types = types)),
+    "transform" = .prior_density_route_has_leaf(route$source, types),
+    route$type %in% types
+  )
+}
+
+.prior_density_route_has_quadrature <- function(route){
+
+  .prior_density_route_has_leaf(route, c("conditional_normal", "scale_product", "convolution"))
+}
+
+# Values a plotted density of the route must include: 'points' (atoms,
+# offsets of scale mixtures and products, where the density may peak or be
+# infinite, normal means, and meeting points of convolution bounds) and
+# 'jumps' (finite support bounds of scalar terms and of scale products and
+# convolutions, where the density may jump).
+.prior_density_route_display_points <- function(route){
+
+  empty <- list(points = numeric(), jumps = numeric())
+  combine <- function(parts){
+    list(points = unlist(lapply(parts, `[[`, "points"), use.names = FALSE),
+         jumps  = unlist(lapply(parts, `[[`, "jumps"), use.names = FALSE))
+  }
+  finite <- function(values) values[is.finite(values)]
+  switch(
+    route$type,
+    "atom" = list(points = finite(route$locations), jumps = numeric()),
+    "scalar" = {
+      bounds <- .prior_density_route_prior_bounds(route$prior)
+      if(identical(route$source_transform, "log")){
+        bounds <- log(bounds[bounds > 0])
+      }
+      list(points = numeric(), jumps = finite(route$offset + route$scale * bounds))
+    },
+    "normal" = {
+      normal <- .prior_density_ordinate_linear_normal(
+        route$prior_list, route$weights, route$source_transforms, 0
+      )
+      list(points = finite(normal$provenance$mean), jumps = numeric())
+    },
+    "conditional_normal" = list(points = finite(route$spec$additive_mean), jumps = numeric()),
+    "scale_product" = list(points = finite(route$spec$offset),
+                           jumps  = finite(.prior_scale_product_hull(route$spec))),
+    "convolution" = list(points = finite(.prior_convolution_meeting_points(route$spec)),
+                         jumps  = finite(.prior_convolution_hull(route$spec))),
+    "mixture" = combine(lapply(route$components[route$weights > 0],
+                               .prior_density_route_display_points)),
+    "transform" = {
+      source <- .prior_density_route_display_points(route$source)
+      arguments <- .prior_density_ordinate_transform_arguments(
+        route$transformation, route$arguments
+      )
+      if(!is.character(route$transformation) || is.null(arguments)){
+        empty
+      }else{
+        map <- function(values){
+          finite(suppressWarnings(.density.prior_transformation_x(
+            values, route$transformation, arguments
+          )))
+        }
+        list(points = map(source$points), jumps = map(source$jumps))
+      }
+    },
+    empty
+  )
+}
+
+# Finite truncation bounds of a simple prior or of the components of a
+# mixture or spike-and-slab prior (point components are atoms, not bounds).
+.prior_density_route_prior_bounds <- function(prior){
+
+  if(is.prior.spike_and_slab(prior) || is.prior.mixture(prior)){
+    return(unlist(lapply(prior, .prior_density_route_prior_bounds), use.names = FALSE))
+  }
+  if(!is.prior.simple(prior) || is.prior.point(prior) || is.prior.discrete(prior)){
+    return(numeric())
+  }
+  bounds <- unlist(prior$truncation[c("lower", "upper")], use.names = FALSE)
+  if(!is.numeric(bounds)){
+    return(numeric())
+  }
+  bounds[is.finite(bounds)]
+}
+
+# The route with the numerical grids of its leaves without a structural
+# representation built once (plotted densities evaluate a route repeatedly).
+.prior_density_route_with_grids <- function(route){
+
+  if(is.null(route)){
+    return(route)
+  }
+  switch(
+    route$type,
+    "unknown" = {
+      if(!is.null(route$recipe) && is.null(route$grid)){
+        route$grid <- .prior_density_route_recipe_grid(route$recipe)
+      }
+      route
+    },
+    "mixture" = {
+      route$components <- lapply(route$components, .prior_density_route_with_grids)
+      route
+    },
+    "transform" = {
+      route$source <- .prior_density_route_with_grids(route$source)
+      route
+    },
+    route
   )
 }
 
@@ -1171,27 +1320,36 @@
 }
 
 # A route without a structural representation: linear interpolation of its
-# own numerical grid (display only; no refinement).
+# own numerical grid (display only; no refinement), built from its recipe
+# unless .prior_density_route_with_grids() stored it.
 .prior_density_route_grid_density <- function(route, x){
 
-  recipe <- route$recipe
-  if(is.null(recipe)){
+  if(is.null(route$recipe)){
     return(rep(NA_real_, length(x)))
   }
-  grid <- tryCatch(
+  grid <- if(is.null(route$grid)) .prior_density_route_recipe_grid(route$recipe) else route$grid
+  if(identical(grid, "unavailable")){
+    return(rep(NA_real_, length(x)))
+  }
+  if(is.null(grid$density)){
+    return(rep(0, length(x)))
+  }
+  stats::approx(grid$density$x, grid$density$y, xout = x, yleft = 0, yright = 0)$y *
+    grid$density$mass
+}
+
+# The numerical grid of a route recipe ("unavailable" when it cannot be built).
+.prior_density_route_recipe_grid <- function(recipe){
+
+  tryCatch(
     .prior_linear_combination_density(
       prior_list        = recipe$prior_list,
       weights           = recipe$weights,
       n_grid            = recipe$n_grid,
       source_transforms = recipe$source_transforms
     ),
-    error = function(e) NULL
+    error = function(e) "unavailable"
   )
-  if(is.null(grid) || is.null(grid$density)){
-    return(rep(if(is.null(grid)) NA_real_ else 0, length(x)))
-  }
-  stats::approx(grid$density$x, grid$density$y, xout = x, yleft = 0, yright = 0)$y *
-    grid$density$mass
 }
 
 # ---- numerical grids ---------------------------------------------------------

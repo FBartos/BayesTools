@@ -1288,11 +1288,65 @@
   )
 }
 
+# Integrand of the conditional-normal ordinate over the multiplier s at the
+# values 'value' (vectorized over pairs): the conditional normal density of the
+# value given s times the multiplier's density. Away from the offset, a pure
+# scale mixture has no Gaussian mass at the value where the multiplier is zero
+# (the integrand's limit).
+.prior_conditional_normal_integrand <- function(spec){
+
+  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
+  function(multiplier, value){
+    conditional <- .prior_conditional_normal_moments(spec, multiplier)
+    out <- exp(stats::dnorm(value, conditional$mean, conditional$sd, log = TRUE) +
+                 multiplier_lpdf(multiplier))
+    if(spec$additive_sd == 0){
+      out[conditional$sd == 0] <- 0
+    }
+    out
+  }
+}
+
+# Values of 'x' where the conditional-normal density is not the regular
+# integral: the offset of a pure scale mixture.
+.prior_conditional_normal_special <- function(spec, x){
+
+  spec$additive_sd == 0 & x == spec$additive_mean
+}
+
+# Batched plan of the conditional-normal density at the values 'x'
+# (.prior_density_route_quadrature_density()): the values classified by the
+# ordinate itself ('special'), and for the others the ordinate's integrand and
+# breakpoints; 'batch' is FALSE when the integrand has an integrable
+# singularity, i.e. the multiplier's density is infinite at a finite bound
+# (except at zero for a pure scale mixture, where the Gaussian factor
+# vanishes faster than any power).
+.prior_conditional_normal_density_plan <- function(spec, x){
+
+  special <- .prior_conditional_normal_special(spec, x)
+  setup <- .prior_conditional_normal_breakpoint_setup(spec$multiplier, spec$bounds)
+  bounds <- c(setup$lower, setup$upper)
+  batch <- !any(setup$singular & !(spec$additive_sd == 0 & bounds == 0))
+  if(!batch){
+    return(list(batch = FALSE, special = special))
+  }
+  regular <- x[!special]
+  integrand <- .prior_conditional_normal_integrand(spec)
+  list(
+    batch       = TRUE,
+    special     = special,
+    integrand   = function(multiplier, index) integrand(multiplier, regular[index]),
+    breakpoints = lapply(regular, function(value){
+      .prior_conditional_normal_breakpoints(spec, value, setup = setup)
+    })
+  )
+}
+
 .prior_conditional_normal_ordinate <- function(spec, value, n_grid){
 
   # A pure scale mixture (a_s = 0) at its offset a_m is classified from the
   # multiplier's declared behavior at zero.
-  if(spec$additive_sd == 0 && value == spec$additive_mean){
+  if(.prior_conditional_normal_special(spec, value)){
     return(.prior_conditional_normal_offset_ordinate(spec, value, n_grid))
   }
   # The integral runs over the other term's (the multiplier's) declared
@@ -1301,20 +1355,10 @@
   # concentrated other term far from zero). Each piece is an independent
   # integral with the full evaluation budget and its own diagnostics; the
   # ordinate is their sum, and the acceptance criterion applies to the total.
-  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
-  integrand <- function(multiplier){
-    conditional <- .prior_conditional_normal_moments(spec, multiplier)
-    out <- exp(stats::dnorm(value, conditional$mean, conditional$sd, log = TRUE) +
-                 multiplier_lpdf(multiplier))
-    # away from the offset, a pure scale mixture has no Gaussian mass at
-    # the value where the multiplier is zero (the integrand's limit)
-    if(spec$additive_sd == 0){
-      out[conditional$sd == 0] <- 0
-    }
-    out
-  }
+  integrand <- .prior_conditional_normal_integrand(spec)
   integral <- .prior_conditional_normal_quadrature(
-    integrand, .prior_conditional_normal_breakpoints(spec, value), n_grid,
+    function(multiplier) integrand(multiplier, value),
+    .prior_conditional_normal_breakpoints(spec, value), n_grid,
     zero_message = "zero ordinate for a structurally positive density"
   )
   .prior_density_ordinate_result(
@@ -1552,8 +1596,8 @@
 }
 
 # Quadrature settings of a scale product: the multiplier's breakpoints, no
-# Gaussian peak window.
-.prior_scale_product_breakpoints <- function(spec, distances){
+# Gaussian peak window. 'setup' holds the value-independent parts.
+.prior_scale_product_breakpoint_setup <- function(spec){
 
   factor_bounds <- unlist(spec$factor$truncation[c("lower", "upper")], use.names = FALSE)
   quantiles <- tryCatch(
@@ -1563,13 +1607,66 @@
     error = function(e) numeric()
   )
   targets <- c(quantiles, factor_bounds)
-  targets <- targets[is.finite(targets) & targets != 0]
-  images <- as.vector(outer(distances, targets, `/`))
+  list(
+    targets    = targets[is.finite(targets) & targets != 0],
+    spec       = list(additive_mean = 0, additive_sd = 1, product_mean = 0, product_sd = 0,
+                      multiplier = spec$multiplier, bounds = spec$bounds),
+    multiplier = .prior_conditional_normal_breakpoint_setup(spec$multiplier, spec$bounds)
+  )
+}
+
+.prior_scale_product_breakpoints <- function(spec, distances,
+                                             setup = .prior_scale_product_breakpoint_setup(spec)){
+
+  images <- as.vector(outer(distances, setup$targets, `/`))
   .prior_conditional_normal_breakpoints(
-    list(additive_mean = 0, additive_sd = 1, product_mean = 0, product_sd = 0,
-         multiplier = spec$multiplier, bounds = spec$bounds),
+    setup$spec,
     value = 0,
-    extra = c(0, images[is.finite(images)])
+    extra = c(0, images[is.finite(images)]),
+    setup = setup$multiplier
+  )
+}
+
+# Integrand of the scale-product ordinate over the multiplier s at the
+# standardized distances (x - c) / w (vectorized over pairs).
+.prior_scale_product_integrand <- function(spec){
+
+  factor_lpdf <- .prior_simple_lpdf_evaluator(spec$factor)
+  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
+  function(multiplier, distance){
+    out <- exp(factor_lpdf(distance / multiplier) +
+                 multiplier_lpdf(multiplier) - log(abs(spec$scale * multiplier)))
+    out[multiplier == 0] <- 0
+    out
+  }
+}
+
+# Batched plan of the scale-product density at the values 'x' (as
+# .prior_conditional_normal_density_plan()): values outside the support hull
+# have a zero density ('zero'), and its bounds and the offset are classified
+# by the ordinate. The integrand is singular where the multiplier's density is
+# infinite at a nonzero finite bound, and at the image of a nonzero finite
+# bound where the factor's density is infinite.
+.prior_scale_product_density_plan <- function(spec, x){
+
+  hull <- .prior_scale_product_hull(spec)
+  zero <- x < hull[1L] | x > hull[2L]
+  special <- !zero & (x == hull[1L] | x == hull[2L] | x == spec$offset)
+  setup <- .prior_scale_product_breakpoint_setup(spec)
+  factor_bounds <- unlist(spec$factor$truncation[c("lower", "upper")], use.names = FALSE)
+  batch <- !any(setup$multiplier$singular & spec$bounds != 0) &&
+    !any(.prior_density_singular_bounds(spec$factor) & factor_bounds != 0)
+  if(!batch){
+    return(list(batch = FALSE, zero = zero, special = special))
+  }
+  distance <- (x[!zero & !special] - spec$offset) / spec$scale
+  integrand <- .prior_scale_product_integrand(spec)
+  list(
+    batch       = TRUE,
+    zero        = zero,
+    special     = special,
+    integrand   = function(multiplier, index) integrand(multiplier, distance[index]),
+    breakpoints = lapply(distance, .prior_scale_product_breakpoints, spec = spec, setup = setup)
   )
 }
 
@@ -1626,16 +1723,10 @@
   }
 
   distance <- (value - spec$offset) / spec$scale
-  factor_lpdf <- .prior_simple_lpdf_evaluator(spec$factor)
-  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
-  integrand <- function(multiplier){
-    out <- exp(factor_lpdf(distance / multiplier) +
-                 multiplier_lpdf(multiplier) - log(abs(spec$scale * multiplier)))
-    out[multiplier == 0] <- 0
-    out
-  }
+  integrand <- .prior_scale_product_integrand(spec)
   integral <- .prior_conditional_normal_quadrature(
-    integrand, .prior_scale_product_breakpoints(spec, distance), n_grid,
+    function(multiplier) integrand(multiplier, distance),
+    .prior_scale_product_breakpoints(spec, distance), n_grid,
     zero_message = "zero ordinate for a structurally positive density",
     kind = "scale_mixture"
   )
@@ -1856,7 +1947,10 @@
   NA_real_
 }
 
-.prior_convolution_breakpoints <- function(spec, distances){
+# Quadrature settings of a two-term convolution over the first term: its
+# breakpoints and the images of the second term's quantiles and bounds.
+# 'setup' holds the value-independent parts.
+.prior_convolution_breakpoint_setup <- function(spec){
 
   second_bounds <- unlist(spec$second$truncation[c("lower", "upper")], use.names = FALSE)
   quantiles <- tryCatch(
@@ -1866,13 +1960,79 @@
     error = function(e) numeric()
   )
   targets <- c(quantiles, second_bounds)
-  targets <- targets[is.finite(targets)]
-  images <- as.vector(outer(distances, targets, function(d, q) (d - spec$other * q) / spec$weight))
+  list(
+    targets = targets[is.finite(targets)],
+    spec    = list(additive_mean = 0, additive_sd = 1, product_mean = 0, product_sd = 0,
+                   multiplier = spec$first, bounds = spec$bounds),
+    first   = .prior_conditional_normal_breakpoint_setup(spec$first, spec$bounds)
+  )
+}
+
+.prior_convolution_breakpoints <- function(spec, distances,
+                                           setup = .prior_convolution_breakpoint_setup(spec)){
+
+  images <- as.vector(outer(distances, setup$targets, function(d, q) (d - spec$other * q) / spec$weight))
   .prior_conditional_normal_breakpoints(
-    list(additive_mean = 0, additive_sd = 1, product_mean = 0, product_sd = 0,
-         multiplier = spec$first, bounds = spec$bounds),
+    setup$spec,
     value = 0,
-    extra = images[is.finite(images)]
+    extra = images[is.finite(images)],
+    setup = setup$first
+  )
+}
+
+# Integrand of the convolution ordinate over the first term at the distances
+# x - c (vectorized over pairs).
+.prior_convolution_integrand <- function(spec){
+
+  first_lpdf <- .prior_simple_lpdf_evaluator(spec$first)
+  second_lpdf <- .prior_simple_lpdf_evaluator(spec$second)
+  function(first, distance){
+    exp(first_lpdf(first) +
+          second_lpdf((distance - spec$weight * first) / spec$other) -
+          log(abs(spec$other)))
+  }
+}
+
+# Meeting points c + w_A a + w_B b of finite support bounds of both terms.
+.prior_convolution_meeting_points <- function(spec){
+
+  second_bounds <- unlist(spec$second$truncation[c("lower", "upper")], use.names = FALSE)
+  first_bounds <- spec$bounds[is.finite(spec$bounds)]
+  second_bounds <- second_bounds[is.finite(second_bounds)]
+  as.vector(outer(first_bounds, second_bounds, function(a, b){
+    spec$offset + spec$weight * a + spec$other * b
+  }))
+}
+
+# Batched plan of the convolution density at the values 'x' (as
+# .prior_conditional_normal_density_plan()): values outside the support hull
+# have a zero density ('zero'), and meeting points of support bounds are
+# classified by the ordinate. The integrand is singular where either term's
+# density is infinite at a finite bound.
+.prior_convolution_density_plan <- function(spec, x){
+
+  hull <- .prior_convolution_hull(spec)
+  zero <- x < hull[1L] | x > hull[2L]
+  special <- rep(FALSE, length(x))
+  for(meeting in .prior_convolution_meeting_points(spec)){
+    special <- special | vapply(x, function(value){
+      isTRUE(.prior_density_ordinate_endpoint_matches(meeting, value))
+    }, logical(1))
+  }
+  special <- special & !zero
+  setup <- .prior_convolution_breakpoint_setup(spec)
+  batch <- !any(setup$first$singular) && !any(.prior_density_singular_bounds(spec$second))
+  if(!batch){
+    return(list(batch = FALSE, zero = zero, special = special))
+  }
+  distance <- x[!zero & !special] - spec$offset
+  integrand <- .prior_convolution_integrand(spec)
+  list(
+    batch       = TRUE,
+    zero        = zero,
+    special     = special,
+    integrand   = function(first, index) integrand(first, distance[index]),
+    breakpoints = lapply(distance, .prior_convolution_breakpoints, spec = spec, setup = setup)
   )
 }
 
@@ -1928,15 +2088,10 @@
   }
 
   distance <- value - spec$offset
-  first_lpdf <- .prior_simple_lpdf_evaluator(spec$first)
-  second_lpdf <- .prior_simple_lpdf_evaluator(spec$second)
-  integrand <- function(first){
-    exp(first_lpdf(first) +
-          second_lpdf((distance - spec$weight * first) / spec$other) -
-          log(abs(spec$other)))
-  }
+  integrand <- .prior_convolution_integrand(spec)
   integral <- .prior_conditional_normal_quadrature(
-    integrand, .prior_convolution_breakpoints(spec, distance), n_grid,
+    function(first) integrand(first, distance),
+    .prior_convolution_breakpoints(spec, distance), n_grid,
     zero_message = "zero ordinate for a structurally positive density",
     kind = "convolution"
   )
@@ -2132,11 +2287,39 @@
 # |value - a_m| / b_s * (1/10, 1, 10) on both sides of it: the integrand rises
 # from zero at s = 0 to the scale peak near |s| = |value - a_m| / b_s (exactly
 # there for b_m = 0) and then decays like f(s) / |s|. 'extra' points (e.g. the
-# images of another term's quantiles) are added like quantiles.
-.prior_conditional_normal_breakpoints <- function(spec, value, extra = numeric()){
+# images of another term's quantiles) are added like quantiles. 'setup' holds
+# the value-independent parts (support bounds, singular bounds and quantiles of
+# the multiplier), so that batched densities compute them once.
+.prior_conditional_normal_breakpoint_setup <- function(multiplier, bounds){
 
-  lower <- spec$bounds[1L]
-  upper <- spec$bounds[2L]
+  lower <- bounds[1L]
+  upper <- bounds[2L]
+  singular <- .prior_density_singular_bounds(multiplier, c(lower, upper))
+  probabilities <- c(if(!singular[1L]) 1e-6, 1e-3, .02, .25, .5, .75, .98, 1 - 1e-3,
+                     if(!singular[2L]) 1 - 1e-6)
+  quantiles <- tryCatch(
+    suppressWarnings(quant(multiplier, probabilities)),
+    error = function(e) numeric()
+  )
+  quartiles <- if(any(singular)){
+    tryCatch(
+      suppressWarnings(as.numeric(quant(multiplier, c(.25, .75)))),
+      error = function(e) c(NA_real_, NA_real_)
+    )
+  }
+  list(lower = lower, upper = upper, singular = singular,
+       quantiles = as.numeric(quantiles), quartiles = quartiles)
+}
+
+.prior_conditional_normal_breakpoints <- function(spec, value, extra = numeric(),
+                                                  setup = NULL){
+
+  if(is.null(setup)){
+    setup <- .prior_conditional_normal_breakpoint_setup(spec$multiplier, spec$bounds)
+  }
+  lower <- setup$lower
+  upper <- setup$upper
+  singular <- setup$singular
   inner <- numeric()
   is_peak <- logical()
   widths <- numeric()
@@ -2166,16 +2349,8 @@
     widths <- c(widths, rep(Inf, length(extra)))
   }
   peak_width <- min(c(Inf, widths))
-  singular <- vapply(c(lower, upper), function(bound){
-    is.finite(bound) && isTRUE(is.infinite(suppressWarnings(exp(lpdf(spec$multiplier, bound)))))
-  }, logical(1))
-  probabilities <- c(if(!singular[1L]) 1e-6, 1e-3, .02, .25, .5, .75, .98, 1 - 1e-3,
-                     if(!singular[2L]) 1 - 1e-6)
-  quantiles <- tryCatch(
-    suppressWarnings(quant(spec$multiplier, probabilities)),
-    error = function(e) numeric()
-  )
-  inner <- c(inner, as.numeric(quantiles))
+  quantiles <- setup$quantiles
+  inner <- c(inner, quantiles)
   is_peak <- c(is_peak, rep(FALSE, length(quantiles)))
   widths <- c(widths, rep(Inf, length(quantiles)))
   inside <- is.finite(inner) & inner > lower & inner < upper
@@ -2199,10 +2374,7 @@
   widths <- widths[first]
 
   if(any(singular)){
-    quartiles <- tryCatch(
-      suppressWarnings(as.numeric(quant(spec$multiplier, c(.25, .75)))),
-      error = function(e) c(NA_real_, NA_real_)
-    )
+    quartiles <- setup$quartiles
     for(side in which(singular)){
       bound <- c(lower, upper)[side]
       start <- abs(quartiles[side] - bound)
@@ -2503,59 +2675,89 @@
   out <- list()
 
   if(!is.null(dist$density) && dist$density$mass > 0){
-    if(!is.null(transformed_x_range)){
-      x_den <- seq(transformed_x_range[1], transformed_x_range[2], length.out = n_points)
-      x_raw <- suppressWarnings(.density.prior_transformation_inv_grid(
-        x_den,
-        transformation,
-        transformation_arguments
-      ))
-    }else if(is.null(x_range)){
-      x_raw <- seq(min(dist$density$x), max(dist$density$x), length.out = n_points)
-    }else{
-      x_raw <- seq(x_range[1], x_range[2], length.out = n_points)
-    }
-
     # The continuous density is evaluated on its structural route (closed
-    # forms, and the ordinate's quadrature at each plotted value); only a
-    # combination without a structural route, or a density without recorded
-    # provenance, interpolates its numerical grid.
-    finite_raw <- is.finite(x_raw)
-    y_den      <- rep(NA_real_, length(x_raw))
-    route      <- .prior_density_route_from_adaptive(
+    # forms, and quadrature leaves by one batched quadrature over the plotted
+    # values); only a combination without a structural route, or a density
+    # without recorded provenance, interpolates its numerical grid. A route
+    # with quadrature leaves is plotted on at most
+    # .prior_linear_density_display_size() equally spaced values plus the
+    # values it must include (support bounds and jumps, with a point just
+    # beyond each, offsets and other peaks, and atoms), and the vertex of a
+    # parabola through each local maximum and its neighbours.
+    route <- .prior_density_route_from_adaptive(
       attr(dist, "adaptive_evaluation", exact = TRUE)
     )
-    if(any(finite_raw) && !is.null(route) && !identical(route$type, "unknown")){
-      y_den[finite_raw] <- .prior_density_route_density(route, x_raw[finite_raw])
-    }else if(any(finite_raw)){
-      y_den[finite_raw] <- stats::approx(
-        dist$density$x,
-        dist$density$y,
-        xout   = x_raw[finite_raw],
-        yleft  = 0,
-        yright = 0
-      )$y * dist$density$mass
+    structural <- !is.null(route) && !identical(route$type, "unknown")
+    display <- structural && .prior_density_route_has_quadrature(route)
+    if(display){
+      route <- .prior_density_route_with_grids(route)
     }
+    size <- if(display) min(n_points, .prior_linear_density_display_size()) else n_points
 
-    if(!is.null(transformation)){
-      if(is.null(transformed_x_range)){
-        x_den <- .density.prior_transformation_x(
-          x_raw,
-          transformation,
-          transformation_arguments
+    grid <- function(size){
+      if(!is.null(transformed_x_range)){
+        den <- seq(transformed_x_range[1], transformed_x_range[2], length.out = size)
+        return(list(raw = suppressWarnings(.density.prior_transformation_inv_grid(
+          den, transformation, transformation_arguments
+        )), den = den))
+      }
+      limits <- if(is.null(x_range)) range(dist$density$x) else x_range
+      list(raw = seq(limits[1], limits[2], length.out = size), den = NULL)
+    }
+    # raw values in plotting order, with their plotted coordinates when the
+    # plotted range is on the transformed scale
+    points <- grid(size)
+    if(display){
+      extra <- .prior_linear_density_display_values(route, dist, points$raw)
+      if(length(extra) > 0L){
+        points <- grid(max(ceiling(size / 2), size - length(extra)))
+        points <- .prior_linear_density_add_display_values(
+          points, extra, transformation, transformation_arguments, transformed_x_range
         )
       }
-      y_transformed <- rep(NA_real_, length(y_den))
+    }
+
+    evaluate <- function(raw){
+      finite_raw <- is.finite(raw)
+      y <- rep(NA_real_, length(raw))
+      if(any(finite_raw) && structural){
+        y[finite_raw] <- .prior_density_route_density(route, raw[finite_raw])
+      }else if(any(finite_raw)){
+        y[finite_raw] <- stats::approx(
+          dist$density$x,
+          dist$density$y,
+          xout   = raw[finite_raw],
+          yleft  = 0,
+          yright = 0
+        )$y * dist$density$mass
+      }
+      y
+    }
+    plotted <- function(raw, den, y){
+      if(is.null(transformation)){
+        return(list(x = raw, y = y))
+      }
+      if(is.null(den)){
+        den <- .density.prior_transformation_x(raw, transformation, transformation_arguments)
+      }
+      finite_raw <- is.finite(raw)
+      y_transformed <- rep(NA_real_, length(y))
       y_transformed[finite_raw] <- .density.prior_transformation_y(
-        x_den[finite_raw],
-        y_den[finite_raw],
+        den[finite_raw],
+        y[finite_raw],
         transformation,
         transformation_arguments
       )
-      y_den <- y_transformed
-    }else{
-      x_den <- x_raw
+      list(x = den, y = y_transformed)
     }
+    curve <- plotted(points$raw, points$den, evaluate(points$raw))
+    if(display){
+      curve <- .prior_linear_density_refine_peaks(
+        curve, evaluate, plotted, transformation, transformation_arguments
+      )
+    }
+    x_den <- curve$x
+    y_den <- curve$y
 
     finite <- is.finite(x_den) & is.finite(y_den)
     x_den  <- x_den[finite]
@@ -2618,6 +2820,97 @@
   }
 
   return(out)
+}
+
+# Number of equally spaced values of a plotted density with quadrature leaves.
+.prior_linear_density_display_size <- function(){
+
+  200L
+}
+
+# Values within the range of the raw plotting values 'raw' that a plotted
+# density of 'route' must include: its display points and jumps (with a point
+# 1e-6 of the plotted range to either side of each jump) and the atoms of
+# 'dist'.
+.prior_linear_density_display_values <- function(route, dist, raw){
+
+  raw <- raw[is.finite(raw)]
+  if(length(raw) == 0L){
+    return(numeric())
+  }
+  limits <- range(raw)
+  special <- .prior_density_route_display_points(route)
+  atoms <- if(!is.null(dist$points) && nrow(dist$points) > 0L){
+    dist$points$x[dist$points$p > 0]
+  }
+  delta <- 1e-6 * diff(limits)
+  values <- c(special$points, atoms, special$jumps,
+              special$jumps - delta, special$jumps + delta)
+  unique(values[is.finite(values) & values >= limits[1L] & values <= limits[2L]])
+}
+
+# Plotting values 'points' (raw values and, for a range on the transformed
+# scale, their plotted coordinates) with the raw values 'extra' added, in
+# plotting order.
+.prior_linear_density_add_display_values <- function(points, extra, transformation,
+                                                     transformation_arguments,
+                                                     transformed_x_range){
+
+  if(is.null(points$den)){
+    return(list(raw = sort(unique(c(points$raw, extra))), den = NULL))
+  }
+  den_extra <- suppressWarnings(.density.prior_transformation_x(
+    extra, transformation, transformation_arguments
+  ))
+  keep <- is.finite(den_extra) &
+    den_extra >= min(transformed_x_range) & den_extra <= max(transformed_x_range)
+  den <- c(points$den, den_extra[keep])
+  raw <- c(points$raw, extra[keep])
+  ordered <- order(den)
+  unique_den <- !duplicated(den[ordered])
+  list(raw = raw[ordered][unique_den], den = den[ordered][unique_den])
+}
+
+# The plotted curve with the vertex of the parabola through each interior local
+# maximum and its two neighbours added (in plotted coordinates), evaluated by
+# 'evaluate' (raw values) and mapped by 'plotted'.
+.prior_linear_density_refine_peaks <- function(curve, evaluate, plotted,
+                                               transformation, transformation_arguments){
+
+  x <- curve$x
+  y <- curve$y
+  n <- length(x)
+  if(n < 3L){
+    return(curve)
+  }
+  i <- seq(2L, n - 1L)
+  peak <- i[is.finite(x[i - 1L]) & is.finite(x[i + 1L]) &
+              is.finite(y[i - 1L]) & is.finite(y[i]) & is.finite(y[i + 1L]) &
+              y[i] > y[i - 1L] & y[i] >= y[i + 1L]]
+  if(length(peak) == 0L){
+    return(curve)
+  }
+  x0 <- x[peak - 1L]
+  x1 <- x[peak]
+  x2 <- x[peak + 1L]
+  y0 <- y[peak - 1L]
+  y1 <- y[peak]
+  y2 <- y[peak + 1L]
+  numerator <- (x1 - x0)^2 * (y1 - y2) - (x1 - x2)^2 * (y1 - y0)
+  denominator <- (x1 - x0) * (y1 - y2) - (x1 - x2) * (y1 - y0)
+  vertex <- x1 - numerator / (2 * denominator)
+  vertex <- unique(vertex[is.finite(vertex) & vertex > x0 & vertex < x2 & vertex != x1])
+  if(length(vertex) == 0L){
+    return(curve)
+  }
+  raw <- if(is.null(transformation)) vertex else suppressWarnings(
+    .density.prior_transformation_inv_grid(vertex, transformation, transformation_arguments)
+  )
+  added <- plotted(raw, if(is.null(transformation)) NULL else vertex, evaluate(raw))
+  x <- c(x, added$x)
+  y <- c(y, added$y)
+  ordered <- order(x)
+  list(x = x[ordered], y = y[ordered])
 }
 
 .prior_linear_group_support_hull <- function(group, source_transforms = NULL){

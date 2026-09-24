@@ -2364,3 +2364,75 @@ test_that("plotted prior densities evaluate the exact route at every plotted val
   curve <- plotted(transformed, c(.01, 5))
   expect_equal(curve$y, stats::dlnorm(curve$x, 0, sqrt(2)), tolerance = 1e-12)
 })
+
+test_that("plotted quadrature routes share one batched quadrature on a bounded display grid", {
+
+  # A route with quadrature leaves is plotted on at most 200 equally spaced
+  # values plus the values it must include, and all regular values share one
+  # batched quadrature: no per-value QUADPACK piece is integrated (the
+  # per-value quadrature at each of 1000 values took 1-3.5 s per overlay).
+  # References: integrate() at rel.tol 1e-12 and closed forms; the batched
+  # quadrature's relative tolerance is 1e-8.
+  pieces <- 0L
+  piece <- .prior_conditional_normal_piece
+  local_mocked_bindings(.prior_conditional_normal_piece = function(...){
+    pieces <<- pieces + 1L
+    piece(...)
+  })
+
+  # the transform-scaled intercept of a t-slab coefficient: N(0, 1) + 2.5 T,
+  # T ~ t(0, .5, 3), a Gaussian convolution with its peak at the offset 0
+  convolution <- .prior_linear_combination_density(
+    list(a = prior("normal", list(0, 1)), b = prior("t", list(0, .5, 3))), c(a = 1, b = 2.5)
+  )
+  curve <- .prior_linear_density_to_plot_data(convolution, x_range = c(-8, 8))$density
+  expect_lte(length(curve$x), 200L)
+  expect_true(0 %in% curve$x)
+  expect_identical(curve$x[which.max(curve$y)], 0)
+  reference <- vapply(curve$x, function(value){
+    stats::integrate(function(u) stats::dnorm(value - 2.5 * u) * stats::dt(u / .5, 3) / .5,
+                     -Inf, Inf, rel.tol = 1e-12)$value
+  }, numeric(1))
+  expect_equal(curve$y, reference, tolerance = 1e-8)
+
+  # a mixture with an atom at 1, a jump at 1.5 (a t(0, .5, 3) term truncated
+  # to [.5, Inf) next to the spike) and a Gaussian convolution
+  a <- prior_mixture(list(prior("spike", list(1), prior_weights = 1),
+                          prior("normal", list(1, .3), prior_weights = 1)), is_null = c(TRUE, FALSE))
+  b <- prior_mixture(list(prior("spike", list(0), prior_weights = 1),
+                          prior("t", list(0, .5, 3), list(.5, Inf), prior_weights = 1)),
+                     is_null = c(TRUE, FALSE))
+  mixture <- .prior_linear_combination_density(list(a = a, b = b), c(a = 1, b = 1))
+  plot_data <- .prior_linear_density_to_plot_data(mixture, x_range = c(-1, 4))
+  curve <- plot_data$density
+  expect_lte(length(curve$x), 205L)
+  jump_delta <- 1e-6 * 5
+  expect_true(all(c(1, 1.5, 1.5 - jump_delta, 1.5 + jump_delta) %in% curve$x))
+  expect_equal(plot_data$points1$x, 1)
+  expect_equal(plot_data$points1$y, .25)
+  truncated_t <- function(u){
+    ifelse(u >= .5, stats::dt(u / .5, 3) / .5 / stats::pt(1, 3, lower.tail = FALSE), 0)
+  }
+  reference <- vapply(curve$x, function(value){
+    convolution <- stats::integrate(function(u) stats::dnorm(value - u, 1, .3) * truncated_t(u),
+                                    .5, Inf, rel.tol = 1e-12)$value
+    .25 * truncated_t(value - 1) + .25 * stats::dnorm(value, 1, .3) + .25 * convolution
+  }, numeric(1))
+  expect_equal(curve$y, reference, tolerance = 1e-8)
+
+  # a peak off every structural point: N(0, 1) + G, G ~ gamma(3, 1); the vertex
+  # of the parabola through the largest plotted value and its neighbours is
+  # plotted, so the plotted maximum is the density's maximum (optimize() at
+  # tol 1e-10 over the reference) to 1e-7
+  skewed <- .prior_linear_combination_density(
+    list(a = prior("normal", list(0, 1)), b = prior("gamma", list(3, 1))), c(a = 1, b = 1)
+  )
+  curve <- .prior_linear_density_to_plot_data(skewed, x_range = c(-5, 15))$density
+  skewed_reference <- function(value){
+    stats::integrate(function(u) stats::dnorm(value - u) * stats::dgamma(u, 3, 1),
+                     0, Inf, rel.tol = 1e-12)$value
+  }
+  maximum <- stats::optimize(skewed_reference, c(0, 5), maximum = TRUE, tol = 1e-10)
+  expect_equal(max(curve$y), maximum$objective, tolerance = 1e-7)
+  expect_identical(pieces, 0L)
+})
