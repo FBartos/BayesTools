@@ -140,6 +140,9 @@ test_that("bridge priors reject missing vector and weightfunction coordinates", 
     expect_error(compiled$log_prior(samples), expected, fixed = TRUE)
     expect_error(compiled$parameters(samples), expected, fixed = TRUE)
     expect_error(JAGS_marglik_priors(samples, prior_list), expected, fixed = TRUE)
+    # The marginal-likelihood parameters evaluate the same 'omega' node
+    # instead of returning NA weights.
+    expect_error(JAGS_marglik_parameters(samples, prior_list), expected, fixed = TRUE)
   }
 })
 
