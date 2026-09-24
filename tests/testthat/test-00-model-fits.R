@@ -2974,13 +2974,15 @@ test_that("JAGS_fit predicts row-indexed external SD random effects from latent 
     tolerance = 1e-12
   )
 
+  # The monitored mu includes the random-effect contributions.
   prediction <- JAGS_evaluate_formula(
     fit = fit,
     formula = formula,
     parameter = "mu",
     data = df,
     fitted_rows = seq_len(nrow(df)),
-    prior_list = attr(fit, "prior_list")
+    prior_list = attr(fit, "prior_list"),
+    formula_target = "conditional"
   )
 
   expect_equal(dim(prediction), c(nrow(df), nrow(posterior)))
@@ -4274,7 +4276,7 @@ test_that("p-hacking bridge helpers support point and inverse-gamma alpha priors
   )
 })
 
-test_that("bias mixtures fail explicitly in bridge-sampling helpers", {
+test_that("bias mixtures fail explicitly in bridge sampling and give the active branch's parameters", {
 
   bias <- prior_mixture(list(
     prior_none(),
@@ -4283,6 +4285,7 @@ test_that("bias mixtures fail explicitly in bridge-sampling helpers", {
   samples <- c("bias_indicator" = 1, "alpha" = .2)
   posterior <- matrix(samples, nrow = 1)
 
+  # Bridge sampling cannot sample the discrete bias indicator.
   expect_error(
     JAGS_bridgesampling_posterior(posterior, list(bias = bias)),
     "bias mixture priors"
@@ -4291,9 +4294,48 @@ test_that("bias mixtures fail explicitly in bridge-sampling helpers", {
     JAGS_marglik_priors(samples, list(bias = bias)),
     "bias mixture priors"
   )
+
+  # JAGS_marglik_parameters() returns the parameters of the branch that
+  # 'bias_indicator' selects: the weights on the global bins (unit weights
+  # outside the weight-function branch), the PET term (0 outside its branch),
+  # and the p-hacking parameters (0 outside the p-hacking branch). The
+  # expected values are computed by hand from the branch definitions.
+  phacking <- prior_phacking(form = "linear")
+  mixture <- prior_mixture(list(
+    prior_none(),
+    prior_PET("normal", list(0, 1)),
+    prior_weightfunction("one-sided", c(0.025, 0.05), wf_cumulative(c(1, 1, 1))),
+    prior_bias(phacking = phacking)
+  ))
+  constants <- phack_backend_constants(
+    phacking$form, phacking$source, phacking$destination,
+    target = phacking$target
+  )
+  draw <- c(
+    "PET_1" = .37,
+    "eta_component_3[1]" = 1, "eta_component_3[2]" = 2, "eta_component_3[3]" = 5,
+    "alpha_component_4" = .2
+  )
+  expected <- list(
+    list(omega = c(1, 1, 1), PET = 0, alpha = 0, pi_null = 0, beta_null = 0),
+    list(omega = c(1, 1, 1), PET = .37, alpha = 0, pi_null = 0, beta_null = 0),
+    # eta / sum(eta) = (1, 2, 5) / 8; omega[j] = sum of the shares j..3
+    list(omega = c(1, 7 / 8, 5 / 8), PET = 0, alpha = 0, pi_null = 0, beta_null = 0),
+    list(omega = c(1, 1, 1), PET = 0, alpha = .2,
+         pi_null = .2 * constants$pi_null_per_alpha,
+         beta_null = .2 * constants$beta_null_per_alpha)
+  )
+  for(branch in seq_along(expected)){
+    parameters <- JAGS_marglik_parameters(
+      c("bias_indicator" = branch, draw),
+      list(bias = mixture)
+    )
+    expect_equal(parameters[names(expected[[branch]])], expected[[branch]], tolerance = 1e-15)
+  }
   expect_error(
-    JAGS_marglik_parameters(samples, list(bias = bias)),
-    "bias mixture priors"
+    JAGS_marglik_parameters(draw, list(bias = mixture)),
+    "'samples' does not contain all monitored bias-mixture parameters of 'bias'.",
+    fixed = TRUE
   )
 })
 
