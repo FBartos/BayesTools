@@ -337,8 +337,9 @@ test_that("publication-weight nodes reproduce the JAGS monitors of every weight 
     unname(unlist(JAGS_deterministic_nodes(fits$binary)$dependencies)),
     "omega[2]"
   )
+  bias_nodes <- JAGS_deterministic_nodes(fits$bias_mixture)
   expect_identical(
-    unname(unlist(JAGS_deterministic_nodes(fits$bias_mixture)$dependencies)),
+    unname(unlist(bias_nodes$dependencies[bias_nodes$node == "omega"])),
     c("bias_indicator", paste0("eta_component_2[", 1:3, "]"), "omega_ratio_component_3",
       paste0("log_omega_component_4[", 2:3, "]"))
   )
@@ -347,6 +348,7 @@ test_that("publication-weight nodes reproduce the JAGS monitors of every weight 
     fit <- fits[[name]]
     posterior <- as.matrix(BayesTools:::.fit_to_posterior(fit))
     node <- JAGS_deterministic_nodes(fit)
+    node <- node[node$family == "omega", , drop = FALSE]
     expect_identical(node$node, "omega")
     coordinates <- unlist(node$coordinates)
     # The sampled free weights stay; every other bin is rebuilt.
@@ -382,6 +384,98 @@ test_that("publication-weight nodes reproduce the JAGS monitors of every weight 
       )
     }
   }
+})
+
+test_that("spike-and-slab and mixture nodes reproduce the JAGS monitors and give the marginal-likelihood parameters", {
+
+  fit <- .dnode_prior_fit(
+    list(
+      a = prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("beta", list(1, 1))),
+      b = prior_mixture(list(prior("normal", list(0, 1), list(0, Inf)), prior("spike", list(0)),
+                             prior("normal", list(2, 0.5))), is_null = c(FALSE, TRUE, FALSE)),
+      bias = prior_mixture(list(
+        prior_PET("normal", list(0, 1)),
+        prior_PEESE("normal", list(0, 1)),
+        prior_weightfunction("one-sided", c(0.025, 0.05), wf_cumulative(c(1, 1, 1)))
+      ), is_null = c(FALSE, FALSE, FALSE))
+    ),
+    add_parameters = c("b_component_1", "b_component_3", "PET_1", "PEESE_1", "eta_component_3"),
+    seed = 3L
+  )
+  posterior <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+  nodes <- JAGS_deterministic_nodes(fit)
+  expect_setequal(nodes$node, c("a", "b", "omega", "PET", "PEESE"))
+  expect_identical(unname(unlist(nodes$dependencies[nodes$node == "a"])), c("a_variable", "a_indicator"))
+  expect_identical(
+    unname(unlist(nodes$dependencies[nodes$node == "b"])),
+    c("b_indicator", "b_component_1", "b_component_3")
+  )
+
+  mixture_nodes <- nodes$node[nodes$family == "prior_mixture"]
+  reduced <- posterior[, setdiff(colnames(posterior), mixture_nodes), drop = FALSE]
+  rebuilt <- JAGS_evaluate_deterministic(fit, draws = reduced, nodes = mixture_nodes)
+  # Products with a 0/1 indicator and the active component: bit-identical.
+  expect_identical(unname(rebuilt[, mixture_nodes]), unname(posterior[, mixture_nodes]))
+  model <- JAGS_add_priors(attr(fit, "model_syntax"), attr(fit, "prior_list"))
+  registry <- BayesTools:::.bt_deterministic_nodes_fit(fit)
+  for(node in registry[mixture_nodes]){
+    expect_true(grepl(BayesTools:::.bt_deterministic_node_emit(node), model, fixed = TRUE))
+  }
+
+  # JAGS_marglik_parameters() evaluates the same nodes for one draw, including
+  # spike-and-slab, mixture, and publication-bias mixture priors.
+  prior_list <- attr(fit, "prior_list")
+  for(row in c(3L, 40L, 77L)){
+    parameters <- JAGS_marglik_parameters(posterior[row, ], prior_list)
+    expect_identical(parameters$a, unname(posterior[row, "a"]))
+    expect_identical(parameters$b, unname(posterior[row, "b"]))
+    expect_identical(parameters$PET, unname(posterior[row, "PET"]))
+    expect_identical(parameters$PEESE, unname(posterior[row, "PEESE"]))
+    expect_equal(parameters$omega, unname(posterior[row, paste0("omega[", 1:3, "]")]), tolerance = 1e-14)
+  }
+  row <- posterior[3L, setdiff(colnames(posterior), "a_variable")]
+  expect_error(
+    JAGS_marglik_parameters(row, prior_list["a"]),
+    "'samples' does not contain all monitored spike-and-slab parameters of 'a'.",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_marglik_parameters(posterior[3L, setdiff(colnames(posterior), "bias_indicator")], prior_list["bias"]),
+    "'samples' does not contain all monitored bias-mixture parameters of 'bias'.",
+    fixed = TRUE
+  )
+  # Bridge sampling still refuses the discrete mixture indicators.
+  expect_error(
+    JAGS_marglik_priors(posterior[3L, ], prior_list["a"]),
+    "prior mixture priors is not implemented"
+  )
+
+  # Factor spike-and-slab and mixture formula priors, per coefficient; the
+  # point component of the mixture is a constant.
+  factor_fit <- .dnode_fit(
+    ~ 1 + x + t,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("beta", list(1, 1))),
+      t = prior_mixture(list(prior_factor("spike", list(0), contrast = "treatment"),
+                             prior_factor("normal", list(0, 1), contrast = "treatment")),
+                        is_null = c(TRUE, FALSE))
+    ),
+    add_parameters = "mu_t_component_2"
+  )
+  factor_nodes <- JAGS_deterministic_nodes(factor_fit)
+  expect_identical(
+    unname(unlist(factor_nodes$coordinates[factor_nodes$node == "mu_t"])),
+    paste0("mu_t[", 1:3, "]")
+  )
+  factor_posterior <- as.matrix(BayesTools:::.fit_to_posterior(factor_fit))
+  coordinates <- c("mu_x", paste0("mu_t[", 1:3, "]"))
+  factor_rebuilt <- JAGS_evaluate_deterministic(
+    factor_fit,
+    draws = factor_posterior[, setdiff(colnames(factor_posterior), coordinates), drop = FALSE],
+    nodes = c("mu_x", "mu_t")
+  )
+  expect_identical(unname(factor_rebuilt[, coordinates]), unname(factor_posterior[, coordinates]))
 })
 
 test_that("JAGS_evaluate_deterministic() validates its node selection", {

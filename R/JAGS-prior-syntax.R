@@ -479,7 +479,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
     .JAGS_add_priors.fun(prior_variable_list),
     .JAGS_add_priors.fun(prior_inclusion_list),
     parameter_name, "_indicator ~ dbern(",   paste0(parameter_name, "_inclusion"), ")\n",
-    parameter_name, " = ",  parameter_name, "_variable * ", parameter_name, "_indicator\n"
+    .bt_deterministic_node_emit(.bt_dnode_prior_mixture(parameter_name, prior)), "\n"
   )
 
   return(syntax)
@@ -526,7 +526,9 @@ JAGS_add_priors           <- function(syntax, prior_list){
       syntax <- paste0(
         syntax,
         .JAGS_add_priors.fun(named_prior_PET),
-        " PET <- PET_1 * equals(bias_indicator, ", which(is_PET), ")\n"
+        " ", .bt_deterministic_node_emit(
+          .bt_dnode_prior_mixture_bias_term(parameter_name, prior_list, "PET")
+        ), "\n"
       )
     }
     if(any(is_PEESE)){
@@ -539,7 +541,9 @@ JAGS_add_priors           <- function(syntax, prior_list){
       syntax <- paste0(
         syntax,
         .JAGS_add_priors.fun(named_prior_PEESE),
-        " PEESE <- PEESE_1 * equals(bias_indicator, ", which(is_PEESE), ")\n"
+        " ", .bt_deterministic_node_emit(
+          .bt_dnode_prior_mixture_bias_term(parameter_name, prior_list, "PEESE")
+        ), "\n"
       )
     }
 
@@ -553,7 +557,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
     syntax <- paste0(
       " ", parameter_name, "_indicator ~ dcat(c(", paste0(prior_weights, collapse = ", "), "))\n",
       sapply(.JAGS_add_priors.fun(prior_components), paste, collapse = "\n"),
-      " ", parameter_name, " = ",  paste0(names(prior_components), " * ", paste0("(", parameter_name, "_indicator == ", seq_along(prior_components), ")"), collapse = " + "), "\n"
+      " ", .bt_deterministic_node_emit(.bt_dnode_prior_mixture(parameter_name, prior_list)), "\n"
     )
   }
 

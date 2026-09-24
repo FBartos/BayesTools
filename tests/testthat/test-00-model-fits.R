@@ -4440,9 +4440,12 @@ test_that("JAGS marginal-likelihood helpers reject spike-and-slab priors explici
     JAGS_marglik_priors(samples, prior_list),
     "prior mixture priors is not implemented"
   )
+  # JAGS_marglik_parameters() evaluates the spike-and-slab node itself (see
+  # test-JAGS-deterministic-nodes.R); these samples lack its components.
   expect_error(
     JAGS_marglik_parameters(samples, prior_list),
-    "prior mixture priors is not implemented"
+    "'samples' does not contain all monitored spike-and-slab parameters of 'theta'.",
+    fixed = TRUE
   )
 })
 

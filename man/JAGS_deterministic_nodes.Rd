@@ -71,6 +71,13 @@ coordinates of the weights (\code{eta}, the monitored \code{omega[2]} of
 a binary cumulative weight function, or the independent \code{omega} or
 \code{log_omega}); mixture branches are read from their own component
 nodes and the \code{bias_indicator}.}
+\item{\code{"prior_mixture"}}{parameters with spike-and-slab
+(\code{p = p_variable * p_indicator}) or mixture priors
+(\code{p = sum_k p_component_k * (p_indicator == k)}), and the PET and
+PEESE terms of publication-bias mixtures
+(\code{PET <- PET_1 * equals(bias_indicator, k)}), per coefficient of
+factor priors. Only the components that are active in some draw need to
+be available; point components are constants.}
 }
 Nodes are evaluated with the arithmetic of the R evaluator, which reproduces
 the JAGS monitors exactly or to the last bits of floating-point rounding.

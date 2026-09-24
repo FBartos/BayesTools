@@ -55,9 +55,16 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.bias(samples, prior_list[[i]]))
 
+    }else if(inherits(prior_list[[i]], "prior.bias_mixture")){
+
+      parameters <- c(parameters, .JAGS_marglik_parameters.bias_mixture(samples, prior_list[[i]], names(prior_list)[i]))
+
     }else if(is.prior.mixture(prior_list[[i]])){
 
-      .JAGS_marglik_stop_unsupported_mixture(prior_list[[i]])
+      # spike-and-slab and mixture parameters are registered deterministic nodes
+      parameter <- list(.bt_dnode_prior_mixture_parameter_values(samples, prior_list[[i]], names(prior_list)[i]))
+      names(parameter) <- names(prior_list)[i]
+      parameters <- c(parameters, parameter)
 
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
@@ -429,6 +436,68 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
     pi_null   = alpha * constants$pi_null_per_alpha,
     beta_null = alpha * constants$beta_null_per_alpha
   )
+}
+# The monitored parameters of a publication-bias mixture in one draw: the
+# weights ('omega' node), the PET and PEESE terms ('prior_mixture' nodes), and
+# the p-hacking parameters of the active branch (0 for branches without
+# p-hacking), all read from the branch components and the bias indicator.
+.JAGS_marglik_parameters.bias_mixture <- function(samples, prior, parameter_name){
+
+  missing_stop <- function(){
+    stop(
+      "'samples' does not contain all monitored bias-mixture parameters of '",
+      parameter_name, "'.",
+      call. = FALSE
+    )
+  }
+  lookup <- .bt_deterministic_row_lookup(samples)
+  parameters <- list()
+  nodes <- c(
+    list(.bt_dnode_omega(parameter_name, prior)),
+    lapply(c("PET", "PEESE"), function(term){
+      .bt_dnode_prior_mixture_bias_term(parameter_name, prior, term)
+    })
+  )
+  for(node in nodes){
+    if(is.null(node)){
+      next
+    }
+    values <- .bt_deterministic_node_evaluate(node, lookup)
+    if(is.null(values)){
+      missing_stop()
+    }
+    parameters[[node$node]] <- as.vector(values)
+  }
+
+  branches <- lapply(prior, .selection_branch_info)
+  has_phacking <- vapply(branches, function(branch) !is.null(branch$phacking), logical(1))
+  if(any(has_phacking)){
+    indicator <- .bt_deterministic_lookup_value(lookup, "bias_indicator")
+    if(is.null(indicator)){
+      missing_stop()
+    }
+    branch <- indicator[[1L]]
+    if(has_phacking[[branch]]){
+      alpha_name <- paste0("alpha_component_", branch)
+      alpha_prior <- branches[[branch]]$phacking$alpha
+      if(!is.prior.point(alpha_prior) && !alpha_name %in% colnames(lookup$draws)){
+        missing_stop()
+      }
+      alpha_samples <- if(alpha_name %in% colnames(lookup$draws)){
+        c(alpha = unname(lookup$draws[1L, alpha_name]))
+      }else{
+        numeric()
+      }
+      parameters <- c(parameters, .JAGS_marglik_parameters.phacking(
+        alpha_samples,
+        branches[[branch]]$phacking
+      ))
+    }else{
+      parameters <- c(parameters, list(alpha = 0, pi_null = 0, beta_null = 0))
+    }
+  }
+
+  parameters
 }
 .JAGS_marglik_parameters.bias <- function(samples, prior){
 

@@ -45,6 +45,13 @@
 #'   a binary cumulative weight function, or the independent \code{omega} or
 #'   \code{log_omega}); mixture branches are read from their own component
 #'   nodes and the \code{bias_indicator}.}
+#'   \item{\code{"prior_mixture"}}{parameters with spike-and-slab
+#'   (\code{p = p_variable * p_indicator}) or mixture priors
+#'   (\code{p = sum_k p_component_k * (p_indicator == k)}), and the PET and
+#'   PEESE terms of publication-bias mixtures
+#'   (\code{PET <- PET_1 * equals(bias_indicator, k)}), per coefficient of
+#'   factor priors. Only the components that are active in some draw need to
+#'   be available; point components are constants.}
 #' }
 #' Nodes are evaluated with the arithmetic of the R evaluator, which reproduces
 #' the JAGS monitors exactly or to the last bits of floating-point rounding.
@@ -146,7 +153,8 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
   "random_sd",
   "random_rho",
   "lkj",
-  "omega"
+  "omega",
+  "prior_mixture"
 )
 
 .bt_deterministic_node <- function(family, node, coordinates,
@@ -188,6 +196,7 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
     random_rho = .bt_dnode_rho_emit(node),
     lkj = .bt_dnode_lkj_emit(node),
     omega = .bt_dnode_omega_emit(node),
+    prior_mixture = .bt_dnode_prior_mixture_emit(node),
     stop("Unsupported deterministic node family '", node$family, "'.", call. = FALSE)
   )
 }
@@ -202,6 +211,7 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
     random_rho = .bt_dnode_rho_evaluate(node, lookup),
     lkj = .bt_dnode_lkj_evaluate(node, lookup),
     omega = .bt_dnode_omega_evaluate(node, lookup),
+    prior_mixture = .bt_dnode_prior_mixture_evaluate(node, lookup),
     stop("Unsupported deterministic node family '", node$family, "'.", call. = FALSE)
   )
   if(is.null(values)){
@@ -258,9 +268,20 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
   prior_names <- names(prior_list)
   for(i in seq_along(prior_list)){
     prior <- prior_list[[i]]
-    if(is.prior.weightfunction(prior) || is_prior_bias(prior) ||
-       inherits(prior, "prior.bias_mixture")){
-      node <- .bt_dnode_omega(prior_names[[i]], prior)
+    prior_nodes <- if(is.prior.weightfunction(prior) || is_prior_bias(prior)){
+      list(.bt_dnode_omega(prior_names[[i]], prior))
+    }else if(inherits(prior, "prior.bias_mixture")){
+      list(
+        .bt_dnode_omega(prior_names[[i]], prior),
+        .bt_dnode_prior_mixture_bias_term(prior_names[[i]], prior, "PET"),
+        .bt_dnode_prior_mixture_bias_term(prior_names[[i]], prior, "PEESE")
+      )
+    }else if(is.prior.mixture(prior)){
+      list(.bt_dnode_prior_mixture(prior_names[[i]], prior))
+    }else{
+      list()
+    }
+    for(node in prior_nodes){
       if(!is.null(node)){
         nodes[[length(nodes) + 1L]] <- node
       }
