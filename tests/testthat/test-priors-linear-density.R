@@ -2282,6 +2282,83 @@ test_that("conditional log-intercept prior densities mix the conditioned models"
   )
 })
 
+test_that("marginal posteriors of log-intercept unscaled intercepts use the log-scale combination", {
+
+  # log(intercept) scaling: the unscaled intercept is
+  # Y = exp(log(b0) - r b1) = b0 exp(-r b1), r = mean(x) / sd(x), with the
+  # positive fitted intercept b0 ~ N(0, .5)T(0, Inf) and the standardized
+  # slope b1 ~ N(0, 1). Its density is f(y) = int f_b0(y e^(r t)) e^(r t)
+  # phi(t) dt; its log is linear in (log(b0), b1), so the prior density is the
+  # exp of the log-scale combination, its support (0, Inf).
+  formula <- ~ x
+  attr(formula, "log(intercept)") <- TRUE
+  scaled <- JAGS_formula(formula, "mu", data = data.frame(x = c(1, 2, 3.5, 4, 6, 8.5)), prior_list = list(
+    intercept = prior("normal", list(0, .5), list(0, Inf)),
+    x = prior("normal", list(0, 1))
+  ), formula_scale = list(x = TRUE))
+  ratio <- scaled$formula_scale[["mu_x"]]$mean / scaled$formula_scale[["mu_x"]]$sd
+  set.seed(3)
+  n <- 50L
+  posterior <- cbind(mu_intercept = abs(stats::rnorm(n, .3, .1)), mu_x = stats::rnorm(n, .1, .2))
+  scaled_fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(posterior)), summary.pars = list(mutate = NULL),
+         monitor = colnames(posterior), sample = n),
+    class = c("runjags", "BayesTools_fit")
+  )
+  attr(scaled_fit, "prior_list") <- scaled$prior_list
+  attr(scaled_fit, "formula_design") <- list(mu = scaled$formula_design)
+  attr(scaled_fit, "formula_scale") <- list(mu = scaled$formula_scale)
+  scaled_fit <- attach_test_parameter_map(scaled_fit)
+  scaled_fit <- .bt_attach_fit_contract(.bt_attach_draw_geometry(.bt_attach_parameter_map(scaled_fit)))
+  scaled_mixed <- as_mixed_posteriors(scaled_fit, c("mu_intercept", "mu_x"), transform_scaled = TRUE)
+
+  reference <- function(y){
+    stats::integrate(function(t){
+      exp(log(2) + stats::dnorm(y * exp(ratio * t), 0, .5, log = TRUE) + ratio * t +
+            stats::dnorm(t, log = TRUE))
+    }, -Inf, Inf, rel.tol = 1e-12)$value
+  }
+  for(prior_samples in c(FALSE, TRUE)){
+    intercept <- marginal_posterior(scaled_mixed, "mu_intercept", use_formula = FALSE,
+                                    prior_samples = prior_samples)
+    expect_equal(as.numeric(intercept),
+                 posterior[, "mu_intercept"] * exp(-ratio * posterior[, "mu_x"]))
+    support <- .bt_meta_get(intercept, "support")
+    expect_identical(support$bounds, c(0, Inf))
+    expect_true(support$exact)
+  }
+  density <- .bt_meta_get(intercept, "prior_density")
+  expect_identical(
+    .bt_meta_get(intercept, "linear_weights")[c("mu_intercept", "mu_x")],
+    c(mu_intercept = 1, mu_x = 0)
+  )
+  # the log-scale combination has no structural route: grid heights within the
+  # refinement criterion (1e-4 relative change; observed 3e-8), an unknown
+  # ordinate (point hypotheses refused), and grid region probabilities
+  for(value in c(.05, .5, 2)){
+    expect_equal(as.numeric(.prior_linear_density_height(density, value)),
+                 reference(value), tolerance = 1e-6)
+  }
+  expect_identical(prior_ordinate_status(density, .5)$condition, "BayesTools_inexact_ordinate")
+  probability <- .hypothesis_prior_density_prob(
+    density, hypothesis_parse("theta > 0.5")$statements[[1L]]$left, "theta"
+  )
+  expect_equal(as.numeric(probability), stats::integrate(function(t){
+    2 * stats::pnorm(.5 * exp(ratio * t), 0, .5, lower.tail = FALSE) * stats::dnorm(t)
+  }, -Inf, Inf, rel.tol = 1e-12)$value, tolerance = 1e-6)
+
+  # the marginal of the linear predictor at x = 0 (log(Y)) on the original
+  # scale: the density of log(Y) is f(e^z) e^z
+  predictor <- marginal_posterior(scaled_mixed, "mu_intercept", formula = formula,
+                                  prior_samples = TRUE)
+  expect_equal(as.numeric(predictor[["intercept"]]), log(as.numeric(intercept)))
+  predictor_density <- .bt_meta_get(predictor[["intercept"]], "prior_density")
+  for(value in c(-3, -1, .5)){
+    expect_equal(as.numeric(.prior_linear_density_height(predictor_density, value)),
+                 reference(exp(value)) * exp(value), tolerance = 1e-6)
+  }
+})
+
 test_that("plot_transformed_prior exposes transformed prior plotting as a public wrapper", {
 
   prior_list <- list(

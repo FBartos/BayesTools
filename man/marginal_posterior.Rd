@@ -87,5 +87,11 @@ component's exact support (\code{components} metadata): the model
 of \code{mix_posteriors()} ensembles, or the combination of the mixture and
 spike-and-slab component indicators of a single fit
 (\code{as_mixed_posteriors()}). \code{Savage_Dickey_BF()} uses them when the
-components' supports differ.
+components' supports differ. With \code{log(intercept)} formula scaling, the
+unscaled intercept (\code{transform_scaled} samples) is the exp of a linear
+combination of the fitted coefficients with the log of the fitted
+intercept: its simple marginal posterior (\code{use_formula = FALSE}) takes
+its prior density and support from the exp of that combination, and the
+linear predictors of a formula marginal posterior are linear in the same
+coefficients.
 }

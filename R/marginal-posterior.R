@@ -143,7 +143,13 @@
 #' of \code{mix_posteriors()} ensembles, or the combination of the mixture and
 #' spike-and-slab component indicators of a single fit
 #' (\code{as_mixed_posteriors()}). \code{Savage_Dickey_BF()} uses them when the
-#' components' supports differ.
+#' components' supports differ. With \code{log(intercept)} formula scaling, the
+#' unscaled intercept (\code{transform_scaled} samples) is the exp of a linear
+#' combination of the fitted coefficients with the log of the fitted
+#' intercept: its simple marginal posterior (\code{use_formula = FALSE}) takes
+#' its prior density and support from the exp of that combination, and the
+#' linear predictors of a formula marginal posterior are linear in the same
+#' coefficients.
 #'
 #' @return \code{marginal_posterior} returns a named list of mixed marginal posterior
 #' distributions (either vectors or matrices).
@@ -902,9 +908,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           names(weights) <- prior_density_context$column_names
           if(parameter %in% names(weights)){
             weights[[parameter]] <- 1
+            target <- .marginal_posterior_simple_target(prior_density_context, parameter)
             marginal_support <- .posterior_support_from_prior_context_weights(
               prior_density_context,
-              weights
+              weights,
+              output_transformation = target$output_transformation,
+              source_transforms     = target$source_transforms
             )
           }
         }
@@ -1017,10 +1026,13 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         weights <- rep(0, length(prior_density_context$column_names))
         names(weights) <- prior_density_context$column_names
         weights[[parameter]] <- 1
+        target <- .marginal_posterior_simple_target(prior_density_context, parameter)
 
         prior_density <- .prior_density_from_context(
           prior_density_context,
-          weights
+          weights,
+          source_transforms     = target$source_transforms,
+          output_transformation = target$output_transformation
         )
         marginal_posterior_samples <- .bt_meta_update(
           marginal_posterior_samples,
@@ -1028,11 +1040,13 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           prior_density  = prior_density,
           prior_context  = prior_density_context,
           components     = .marginal_posterior_components(
-            context         = prior_density_context,
-            weights         = weights,
-            model_component = .bt_draws_model_component(samples[[parameter]]),
-            n_values        = length(marginal_posterior_samples),
-            samples         = samples
+            context               = prior_density_context,
+            weights               = weights,
+            model_component       = .bt_draws_model_component(samples[[parameter]]),
+            n_values              = length(marginal_posterior_samples),
+            samples               = samples,
+            source_transforms     = target$source_transforms,
+            output_transformation = target$output_transformation
           )
         )
       }
@@ -1386,7 +1400,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 # repeats per row. Build failures propagate; marginals whose quantity involves
 # no mixture have no components (the pooled posterior ordinate is used).
 .marginal_posterior_components <- function(context, weights, model_component, n_values,
-                                           samples = NULL){
+                                           samples = NULL, source_transforms = NULL,
+                                           output_transformation = NULL){
 
   n_rows <- if(is.null(dim(weights))) 1L else nrow(weights)
   if(n_rows < 1L){
@@ -1399,7 +1414,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     }
     return(.posterior_components_new(
       index    = rep(model_component, each = n_rows),
-      supports = .posterior_support_model_components(context, weights),
+      supports = .posterior_support_model_components(
+        context, weights,
+        output_transformation = output_transformation,
+        source_transforms     = source_transforms
+      ),
       keys     = matrix(
         seq_along(context$model_weights),
         ncol = 1L,
@@ -1415,17 +1434,20 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   .marginal_posterior_indicator_components(
-    context  = context,
-    weights  = weights,
-    samples  = samples,
-    n_values = n_values
+    context               = context,
+    weights               = weights,
+    samples               = samples,
+    n_values              = n_values,
+    source_transforms     = source_transforms,
+    output_transformation = output_transformation
   )
 }
 
 .marginal_posterior_indicator_components <- function(context, weights, samples,
-                                                     n_values){
+                                                     n_values, source_transforms = NULL,
+                                                     output_transformation = NULL){
 
-  parameters <- .posterior_components_mixture_parameters(context, weights)
+  parameters <- .posterior_components_mixture_parameters(context, weights, source_transforms)
   if(length(parameters) == 0L){
     return(NULL)
   }
@@ -1452,12 +1474,31 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   .posterior_components_new(
     index    = rep(index, each = n_rows),
     supports = .posterior_components_supports(
-      context = context,
-      keys    = keys,
-      weights = weights
+      context               = context,
+      keys                  = keys,
+      weights               = weights,
+      output_transformation = output_transformation,
+      source_transforms     = source_transforms
     ),
     keys     = keys
   )
+}
+
+# The prior-density target of the simple marginal posterior of 'parameter' in
+# 'context': the coefficient itself, or for the unscaled intercept of a
+# log-intercept formula scaling, which is not linear in the fitted
+# coefficients, the exp of its log, which is (a log source with an exp output
+# transformation).
+.marginal_posterior_simple_target <- function(context, parameter){
+
+  target <- list(source_transforms = NULL, output_transformation = NULL)
+  for(transform in context$transforms){
+    if(isTRUE(transform$log_intercept) && identical(transform$intercept, parameter)){
+      target$source_transforms     <- stats::setNames("log", parameter)
+      target$output_transformation <- "exp"
+    }
+  }
+  target
 }
 
 # Prior lists used by marginal prior-density contexts. Structural zeros are

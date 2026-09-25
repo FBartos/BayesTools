@@ -913,8 +913,31 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
   }), source = source)
 }
 
+# Support of log(X) from the support of X (the log source of a log-intercept
+# formula): the bounds are mapped (a zero lower bound to -Inf) and the points
+# as well; NULL when the support reaches below zero or has a point at zero.
+.posterior_support_log <- function(support){
+
+  support <- .posterior_support_from_attribute(support)
+  if(is.null(support) || support$bounds[1L] < 0 || any(support$points <= 0)){
+    return(NULL)
+  }
+
+  .posterior_support_new(
+    bounds = c(if(support$bounds[1L] == 0) -Inf else log(support$bounds[1L]),
+               log(support$bounds[2L])),
+    points = log(support$points),
+    exact  = support$exact,
+    source = support$source,
+    type   = support$type
+  )
+}
+
+# Support of the combination 'weights' of the terms of 'prior_list'; a term
+# whose 'source_transforms' entry is "log" enters through its log.
 .posterior_support_from_prior_list_weights <- function(prior_list, weights,
-                                                       source = "linear_prior"){
+                                                       source = "linear_prior",
+                                                       source_transforms = NULL){
 
   if(is.null(names(weights))){
     return(NULL)
@@ -928,14 +951,32 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
 
   groups <- .prior_linear_weight_groups(prior_list, weights)
   .posterior_support_sum(
-    lapply(groups, .posterior_support_group_linear, source = source),
+    lapply(groups, function(group){
+      transforms <- if(is.null(source_transforms)){
+        NA_character_
+      }else{
+        unname(source_transforms[names(group$weights)])
+      }
+      if(all(is.na(transforms))){
+        return(.posterior_support_group_linear(group, source = source))
+      }
+      if(length(group$weights) != 1L || !identical(transforms, "log")){
+        return(NULL)
+      }
+      .posterior_support_scale(
+        .posterior_support_log(.posterior_support_from_prior(group$prior, source = source)),
+        group$weights[[1L]],
+        source = source
+      )
+    }),
     source = source
   )
 }
 
 .posterior_support_from_prior_context_weights <- function(context, weights,
                                                           output_transformation = NULL,
-                                                          output_transformation_arguments = NULL){
+                                                          output_transformation_arguments = NULL,
+                                                          source_transforms = NULL){
 
   if(is.null(context)){
     return(NULL)
@@ -947,7 +988,8 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
         context                         = context,
         weights                         = weights[row_i, ],
         output_transformation           = output_transformation,
-        output_transformation_arguments = output_transformation_arguments
+        output_transformation_arguments = output_transformation_arguments,
+        source_transforms               = source_transforms
       )
     })
     return(.posterior_support_union(supports, source = "linear_prior_rows"))
@@ -956,14 +998,16 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
   if(inherits(context, "prior_density_context")){
     support <- .posterior_support_from_prior_list_weights(
       context$prior_list,
-      .prior_density_context_standardized_weights(context, weights)
+      .prior_density_context_standardized_weights(context, weights, source_transforms),
+      source_transforms = source_transforms
     )
   }else if(inherits(context, "prior_density_model_mixture_context")){
     model_indices <- which(is.finite(context$model_weights) & context$model_weights > 0)
     supports <- lapply(model_indices, function(model_i){
       .posterior_support_from_prior_list_weights(
         .prior_density_model_prior_list(context$prior_list, model_i),
-        weights
+        weights,
+        source_transforms = source_transforms
       )
     })
     support <- .posterior_support_union(supports, source = "linear_prior_models")
@@ -979,9 +1023,12 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
           n_grid        = context$n_grid,
           tail_prob     = context$tail_prob
         )
-        return(.posterior_support_from_prior_context_weights(component_context, weights))
+        return(.posterior_support_from_prior_context_weights(
+          component_context, weights, source_transforms = source_transforms
+        ))
       }
-      .posterior_support_from_prior_list_weights(prior_list, weights)
+      .posterior_support_from_prior_list_weights(prior_list, weights,
+                                                 source_transforms = source_transforms)
     })
     support <- .posterior_support_union(supports, source = "linear_prior_conditioned")
   }else{
@@ -1013,7 +1060,8 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
 # zero prior weight or unknown support is NULL.
 .posterior_support_model_components <- function(context, weights,
                                                 output_transformation = NULL,
-                                                output_transformation_arguments = NULL){
+                                                output_transformation_arguments = NULL,
+                                                source_transforms = NULL){
 
   if(!inherits(context, "prior_density_model_mixture_context")){
     return(NULL)
@@ -1029,7 +1077,8 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
     keys                            = keys,
     weights                         = weights,
     output_transformation           = output_transformation,
-    output_transformation_arguments = output_transformation_arguments
+    output_transformation_arguments = output_transformation_arguments,
+    source_transforms               = source_transforms
   )
 }
 
@@ -1082,10 +1131,11 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
 # Weights on the context's source coefficients: formula-scale transformations
 # map scaled-coefficient weights to the fitted coefficients. Model-mixture
 # contexts use the coefficient weights directly.
-.posterior_components_source_weights <- function(context, weights){
+.posterior_components_source_weights <- function(context, weights,
+                                                 source_transforms = NULL){
 
   if(inherits(context, "prior_density_context")){
-    return(.prior_density_context_standardized_weights(context, weights))
+    return(.prior_density_context_standardized_weights(context, weights, source_transforms))
   }
   if(inherits(context, "prior_density_conditional_context") &&
      !is.null(context$formula_scale) && length(context$formula_scale) > 0L){
@@ -1096,7 +1146,8 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
       n_grid        = context$n_grid,
       tail_prob     = context$tail_prob
     )
-    return(.prior_density_context_standardized_weights(scaled_context, weights))
+    return(.prior_density_context_standardized_weights(scaled_context, weights,
+                                                       source_transforms))
   }
 
   weights[weights != 0]
@@ -1107,13 +1158,14 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
 # models with zero prior weight or unknown support.
 .posterior_components_supports <- function(context, keys, weights,
                                            output_transformation = NULL,
-                                           output_transformation_arguments = NULL){
+                                           output_transformation_arguments = NULL,
+                                           source_transforms = NULL){
 
   weight_rows <- .posterior_support_weight_rows(weights)
   model_mixture <- inherits(context, "prior_density_model_mixture_context")
   if(!model_mixture){
     weight_rows <- lapply(weight_rows, .posterior_components_source_weights,
-                          context = context)
+                          context = context, source_transforms = source_transforms)
   }
 
   lapply(seq_len(nrow(keys)), function(key_i){
@@ -1127,7 +1179,8 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
     }
     prior_list <- .posterior_components_prior_list(context, key)
     supports <- lapply(weight_rows, function(row_weights){
-      .posterior_support_from_prior_list_weights(prior_list, row_weights)
+      .posterior_support_from_prior_list_weights(prior_list, row_weights,
+                                                 source_transforms = source_transforms)
     })
     support <- if(length(supports) == 1L){
       supports[[1L]]
@@ -1144,12 +1197,13 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
 
 # Mixture parameters of a single-fit context entering the linear combination
 # 'weights' (any row).
-.posterior_components_mixture_parameters <- function(context, weights){
+.posterior_components_mixture_parameters <- function(context, weights,
+                                                    source_transforms = NULL){
 
   parameters <- lapply(.posterior_support_weight_rows(weights), function(row_weights){
     groups <- .prior_linear_weight_groups(
       context$prior_list,
-      .posterior_components_source_weights(context, row_weights)
+      .posterior_components_source_weights(context, row_weights, source_transforms)
     )
     names(groups)[vapply(groups, function(group){
       .posterior_components_is_mixture(group$prior)

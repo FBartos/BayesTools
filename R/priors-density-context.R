@@ -45,7 +45,16 @@
   return(out)
 }
 
-.prior_density_context_standardized_weights <- function(context, weights){
+# Weights on the fitted coefficients of the combination 'weights' of the
+# context's columns (formula-scale transformations map scaled-coefficient
+# weights through the unscaling matrix M). With log-intercept scaling the
+# unscaled intercept is exp(M[intercept, ] %*% L), L the fitted coefficients
+# with the log of the fitted intercept, so only a combination with the log of
+# the unscaled intercept ('source_transforms' names "log" for it) is linear in
+# L: its weights are weights %*% M, with the log source on the fitted
+# intercept. A combination with the unscaled intercept itself stops.
+.prior_density_context_standardized_weights <- function(context, weights,
+                                                        source_transforms = NULL){
 
   if(!inherits(context, "prior_density_context")){
     stop("'context' must be a prior density context.", call. = FALSE)
@@ -69,10 +78,11 @@
 
     if(transform$log_intercept &&
        transform$intercept %in% cols &&
-       weights[[transform$intercept]] != 0){
+       weights[[transform$intercept]] != 0 &&
+       !identical(unname(source_transforms[transform$intercept]), "log")){
       stop(
         "Linear-combination prior densities with log-intercept scaling are only available ",
-        "for the transformed intercept coefficient itself.",
+        "for combinations with the log of the transformed intercept coefficient.",
         call. = FALSE
       )
     }
@@ -98,7 +108,9 @@
                                            output_transformation = NULL,
                                            output_transformation_arguments = NULL){
 
-  standardized_weights <- .prior_density_context_standardized_weights(context, weights)
+  standardized_weights <- .prior_density_context_standardized_weights(
+    context, weights, source_transforms
+  )
 
   if(!is.null(source_transforms)){
     source_transforms <- source_transforms[names(standardized_weights)]

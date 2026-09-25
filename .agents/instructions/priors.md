@@ -476,8 +476,16 @@ spike positions come from its `components` attribute); an ordered total's
 component is `ordered_total_component`. Draws without a mixture carry no
 component and form one component. Metadata build failures propagate (never
 caught into missing metadata and a silently different estimator); metadata
-are absent only by explicit rules (e.g. no linear support for a log-intercept
-term or for columns outside the prior-density context). `Ops`/`Math` group generics, `c()`,
+are absent only by explicit rules (e.g. no linear support for the draws or
+linear predictors of a log-intercept term, or for columns outside the
+prior-density context). With log-intercept formula scaling the unscaled
+intercept is exp(M[intercept, ] L), L the fitted coefficients with the log of
+the fitted intercept, so prior-density contexts accept a combination with the
+unscaled intercept only through its log (a `log` source transformation, whose
+weights M maps onto the fitted coefficients), and the simple marginal
+posterior of the unscaled intercept takes its prior density, support and
+component supports from the exp of that log (support algebra maps the log
+source's support). `Ops`/`Math` group generics, `c()`,
 `as.numeric()` and subsetting of draws return plain numerics without
 metadata; consumers that need the metadata stop on plain draws, and
 producers that transform draws transform their metadata explicitly

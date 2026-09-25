@@ -724,7 +724,7 @@
 
   if(inherits(context, "prior_density_context")){
     standardized <- tryCatch(
-      .prior_density_context_standardized_weights(context, weights),
+      .prior_density_context_standardized_weights(context, weights, source_transforms),
       error = function(e) NULL
     )
     if(is.null(standardized)){

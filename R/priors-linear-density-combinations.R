@@ -2779,7 +2779,8 @@
   }
   context_range <- function(density_context, weights, source_transforms){
     if(inherits(density_context, "prior_density_context")){
-      standardized <- .prior_density_context_standardized_weights(density_context, weights)
+      standardized <- .prior_density_context_standardized_weights(density_context, weights,
+                                                                  source_transforms)
       return(combination_range(
         density_context$prior_list,
         standardized,
@@ -3347,7 +3348,7 @@
 
   if(inherits(context, "prior_density_context")){
     standardized <- tryCatch(
-      .prior_density_context_standardized_weights(context, weights),
+      .prior_density_context_standardized_weights(context, weights, source_transforms),
       error = function(e) NULL
     )
     if(is.null(standardized)){
@@ -3561,7 +3562,7 @@
 
   context_terms <- function(component_context, top_level){
     standardized <- tryCatch(
-      .prior_density_context_standardized_weights(component_context, weights),
+      .prior_density_context_standardized_weights(component_context, weights, source_transforms),
       error = function(e) NULL
     )
     if(is.null(standardized)){
