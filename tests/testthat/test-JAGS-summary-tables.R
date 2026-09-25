@@ -1281,7 +1281,8 @@ test_that("runjags_inference_table with mixture priors", {
   expected_post <- sapply(unique(components), function(component){
     mean(samples[,"beta_indicator"] %in% which(components == component))
   })
-  names(expected_post) <- paste0("beta [", names(expected_post), "]")
+  # component rows are named after the term, as in estimates tables
+  names(expected_post) <- paste0("beta[", names(expected_post), "]")
   expect_equal(as.numeric(runjags_components_inference[names(expected_post), "post_prob"]), as.numeric(expected_post), tolerance = 1e-10)
   expect_true(all(is.finite(runjags_components_inference[,"MCMC_error"])))
   expect_true(all(is.finite(runjags_components_inference[,"BF_error_percent"])))
