@@ -1522,3 +1522,77 @@ test_that("inference rows and Bayes factor warnings are rendered labels", {
     )))
   }
 })
+
+test_that("random-effect SD mixed columns carry the catalog's random-effect labels", {
+
+  syntax <- "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 4)\n}\n}"
+  sd_prior <- prior("normal", list(0, 1), list(0, Inf))
+  set.seed(1)
+  data <- data.frame(
+    x = stats::rnorm(48, 3, 2),
+    f = factor(rep(c("a", "b", "c"), 16)),
+    g = factor(rep(1:4, each = 12))
+  )
+  data$y <- stats::rnorm(nrow(data))
+  fit_for <- function(formula, priors, formula_scale = NULL){
+    suppressWarnings(JAGS_fit(
+      model_syntax       = syntax,
+      data               = list(y = data$y, N = nrow(data)),
+      formula_list       = list(mu = formula),
+      formula_data_list  = list(mu = data),
+      formula_prior_list = list(mu = priors),
+      formula_scale_list = formula_scale,
+      formula_random_prior_list = list(mu = prior_random(g = random_block(sd = sd_prior))),
+      chains = 1, adapt = 100, burnin = 100, sample = 200, silent = TRUE, seed = 3
+    ))
+  }
+
+  # a random treatment slope: every SD coordinate is its catalog SD quantity
+  fit <- fit_for(~ 1 + f + (1 + f || g), list(
+    intercept = prior("normal", list(0, 1)),
+    f         = prior_factor("normal", list(0, 1), contrast = "treatment")
+  ))
+  parameters <- c("mu__xREx__g_intercept", "mu__xREx__g_f")
+  mixed <- as_mixed_posteriors(fit, parameters = parameters)
+  catalog <- parameter_catalog(fit)
+  quantities <- rbind(
+    posterior_metadata(mixed$mu__xREx__g_intercept, "quantities"),
+    posterior_metadata(mixed$mu__xREx__g_f, "quantities")
+  )
+  labels <- c("(mu) sd(intercept)", "(mu) sd(f[b])", "(mu) sd(f[c])")
+  expect_identical(parameter_labels(quantities, "table"), labels)
+  expect_identical(
+    quantities$quantity_id,
+    vapply(labels, function(label){
+      parameter_catalog_resolve(catalog, label)$quantities$quantity_id
+    }, character(1), USE.NAMES = FALSE)
+  )
+  # the mixed columns keep their names
+  expect_identical(colnames(mixed$mu__xREx__g_f), c("mu__xREx__g_f[b]", "mu__xREx__g_f[c]"))
+  ensemble <- ensemble_estimates_table(mixed, parameters = parameters)
+  expect_identical(rownames(ensemble), labels)
+  standard <- JAGS_estimates_table(fit, remove_diagnostics = TRUE)
+  expect_equal(ensemble[labels, "Mean"], standard[labels, "Mean"], tolerance = 1e-10)
+
+  # a random slope of a standardized predictor: the SD columns are transformed
+  # by the random-effect covariance transform, not the fixed-effect design
+  fit <- fit_for(~ 1 + x + (1 + x || g), list(
+    intercept = prior("normal", list(0, 1)),
+    x         = prior("normal", list(0, 1))
+  ), formula_scale = list(mu = list(x = TRUE)))
+  parameters <- c("mu_intercept", "mu_x", "mu__xREx__g_intercept", "mu__xREx__g_x")
+  mixed <- as_mixed_posteriors(fit, parameters = parameters)
+  labels <- c("(mu) sd(intercept)", "(mu) sd(x)")
+  ensemble <- ensemble_estimates_table(
+    mixed, parameters = parameters,
+    transform_scaled = TRUE, formula_scale = attr(fit, "formula_scale")
+  )
+  expect_identical(rownames(ensemble)[3:4], labels)
+  scaled_table <- JAGS_estimates_table(fit, transform_scaled = TRUE, remove_diagnostics = TRUE)
+  expect_equal(ensemble[labels, "Mean"], scaled_table[labels, "Mean"], tolerance = 1e-10)
+  expect_equal(
+    ensemble[c("(mu) intercept", "(mu) x"), "Mean"],
+    scaled_table[c("(mu) intercept", "(mu) x"), "Mean"],
+    tolerance = 1e-10
+  )
+})

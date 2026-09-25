@@ -613,6 +613,10 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
       )$coordinates
     ))
   }
+  random_parts <- .bt_label_parts_random_sd_coordinates(parameter, prior)
+  if(!is.null(random_parts)){
+    return(random_parts)
+  }
   if(.bt_prior_is_factor_family(prior) && .bt_is_random_effect_prior(prior)){
     random_parts <- .bt_label_parts_random_factor(parameter, prior)
     if(!is.null(random_parts)){
@@ -724,6 +728,75 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
     ),
     selector          = parameter
   )
+}
+
+# Label parts of the coordinates of a random-effect SD prior-list entry: the
+# SD of each term component of its block (`(mu) id: sd(x)`, and for a random
+# factor slope the SD of each level cell, `(mu) id: sd(g[b])`, or of contrast
+# coefficient j, `(mu) id: sd(g{j})`). The coordinates keep their names as
+# selectors. NULL for any other prior.
+.bt_label_parts_random_sd_coordinates <- function(parameter, prior){
+
+  formula_parameter <- .bt_label_formula_parameter(prior)
+  term_parts <- .bt_label_parts_random_term(parameter, prior, formula_parameter)
+  if(is.null(term_parts)){
+    return(NULL)
+  }
+  if(!.bt_prior_is_factor_family(prior)){
+    return(list(coordinates = parameter, parts = list(term_parts)))
+  }
+  cells <- .bt_label_parts_random_factor(parameter, prior)
+  if(is.null(cells)){
+    return(NULL)
+  }
+  term <- paste(term_parts$components, collapse = ":")
+  # the factors of the cells named as term components (a factor set without
+  # its term is named after the prior-list entry)
+  stem <- paste0(formula_parameter, "__xREx__", attr(prior, "random_factor", exact = TRUE), "_")
+  component_of <- function(factor_name){
+    if(factor_name %in% term_parts$components){
+      return(factor_name)
+    }
+    stripped <- if(startsWith(factor_name, stem)) substring(factor_name, nchar(stem) + 1L) else factor_name
+    if(stripped %in% term_parts$components) stripped else NA_character_
+  }
+  parts <- lapply(cells$parts, function(cell){
+    selector <- .bt_label(cell, style = "selector")
+    if(length(cell$levels) > 0L){
+      factor_names <- vapply(names(cell$levels), component_of, character(1))
+      if(anyNA(factor_names)){
+        return(NULL)
+      }
+      names(cell$levels) <- factor_names
+    }
+    argument <- if(!is.na(cell$coefficient)){
+      paste0(term, "{", cell$coefficient, "}")
+    }else{
+      paste(vapply(term_parts$components, function(component){
+        if(component %in% names(cell$levels)){
+          paste0(component, "[", cell$levels[[component]], "]")
+        }else{
+          component
+        }
+      }, character(1)), collapse = ":")
+    }
+    random <- term_parts$random
+    random$arguments <- argument
+    random$display_arguments <- argument
+    # the level cell stays in the parts for plot legends
+    .bt_label_parts_update(
+      term_parts,
+      random      = random,
+      levels      = cell$levels,
+      coefficient = cell$coefficient,
+      selector    = selector
+    )[[1L]]
+  })
+  if(any(vapply(parts, is.null, logical(1)))){
+    return(NULL)
+  }
+
+  list(coordinates = cells$coordinates, parts = parts)
 }
 
 # The formula parameter owning a prior (its 'parameter' attribute) or owning
@@ -995,13 +1068,74 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
       call. = FALSE
     )
   }
+  parts <- prior_parts$parts
+  quantity_ids <- .bt_draws_quantity_ids(parts, catalog)
+
+  # random-effect SD coordinates take the label of the catalog's SD quantity
+  # of that coordinate (its owner and argument), and its id when the quantity
+  # is the coordinate itself
+  random_sd <- vapply(parts, function(part) !is.null(part$random), logical(1))
+  if(any(random_sd) && !is.null(catalog)){
+    rows <- .bt_mixed_random_sd_rows(parameter, prior_parts$coordinates, catalog)
+    quantities <- catalog$quantities
+    for(i in which(random_sd & !is.na(rows))){
+      row <- rows[[i]]
+      if(is.null(quantities$label_parts[[row]])){
+        next
+      }
+      parts[[i]] <- .bt_label_parts_update(
+        quantities$label_parts[[row]],
+        components  = parts[[i]]$components,
+        levels      = parts[[i]]$levels,
+        coefficient = parts[[i]]$coefficient,
+        selector    = .bt_label(parts[[i]], style = "selector")
+      )[[1L]]
+      if(identical(quantities$source_type[[row]], "identity")){
+        quantity_ids[[i]] <- quantities$quantity_id[[row]]
+      }
+    }
+  }
+
   .bt_draws_quantity_table(
     columns      = columns,
-    quantity_ids = .bt_draws_quantity_ids(prior_parts$parts, catalog),
+    quantity_ids = quantity_ids,
     dependencies = as.list(prior_parts$coordinates),
     weights      = rep(list(1), length(columns)),
-    label_parts  = prior_parts$parts
+    label_parts  = parts
   )
+}
+
+# The catalog SD quantity of each coordinate of the random-effect SD prior
+# entry 'parameter' (row index into the catalog quantities, NA when none): the
+# quantity whose source is the coordinate itself, otherwise the SD quantities
+# declared from the entry's prior, in their order within the block.
+.bt_mixed_random_sd_rows <- function(parameter, coordinates, catalog){
+
+  quantities <- catalog$quantities
+  candidates <- which(
+    quantities$provider == "BayesTools" & quantities$role == "random_sd"
+  )
+  key_field <- function(field){
+    vapply(quantities$extraction_key[candidates], function(key){
+      value <- if(is.list(key)) key[[field]] else NULL
+      if(length(value) == 1L && !is.na(value)) as.character(value) else NA_character_
+    }, character(1))
+  }
+  rows <- candidates[match(coordinates, key_field("source_parameter"))]
+  if(!anyNA(rows)){
+    return(rows)
+  }
+  from_prior <- candidates[key_field("source_prior") %in% parameter]
+  if(length(from_prior) != length(coordinates)){
+    return(rows)
+  }
+  index <- vapply(quantities$extraction_key[from_prior], function(key){
+    if(is.numeric(key$index) && length(key$index) == 1L) key$index else NA_real_
+  }, numeric(1))
+  if(anyNA(index)){
+    return(rows)
+  }
+  from_prior[order(index)]
 }
 
 # The column table of draws whose columns have no label structure beyond
