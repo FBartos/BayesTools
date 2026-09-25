@@ -19,14 +19,19 @@ skip_if_not_test_profile("unit")
     if(is.prior.spike_and_slab(prior)){
       # the spike-and-slab nodes: indicator, inclusion, value, and variable
       variable <- .get_spike_and_slab_variable(prior)
+      names_of <- function(node){
+        if(.bt_prior_is_factor_family(variable)) .JAGS_prior_factor_names(node, variable) else node
+      }
       return(c(
         paste0(name, c("_indicator", "_inclusion")),
-        .JAGS_prior_factor_names(name, variable),
-        .JAGS_prior_factor_names(paste0(name, "_variable"), variable)
+        names_of(name),
+        names_of(paste0(name, "_variable"))
       ))
     }
     if(.bt_prior_is_factor_family(prior)){
       .JAGS_prior_factor_names(name, prior)
+    }else if(is.prior.mixture(prior)){
+      c(name, paste0(name, "_indicator"))
     }else{
       name
     }
@@ -37,8 +42,15 @@ skip_if_not_test_profile("unit")
     nrow = n,
     dimnames = list(NULL, columns)
   )
-  indicators <- endsWith(columns, "_indicator")
-  draws[, indicators] <- stats::rbinom(n * sum(indicators), 1L, 0.5)
+  # indicators: 0/1 for spike-and-slab priors, component indices of mixtures
+  for(column in columns[endsWith(columns, "_indicator")]){
+    owner <- formula_result$prior_list[[sub("_indicator$", "", column)]]
+    draws[, column] <- if(is.prior.spike_and_slab(owner)){
+      stats::rbinom(n, 1L, 0.5)
+    }else{
+      sample.int(length(owner), n, replace = TRUE)
+    }
+  }
   draws[, endsWith(columns, "_inclusion")] <- 0.5
   scale <- formula_result$formula_scale
   fit <- structure(
@@ -1475,4 +1487,38 @@ test_that("original-scale transforms require the fitted design of the formula", 
                              transform_scaled = TRUE, formula_scale = formula_scale),
     "BayesTools_table"
   )
+})
+
+test_that("inference rows and Bayes factor warnings are rendered labels", {
+
+  data <- data.frame(x = seq(-1, 1, length.out = 12), z = sin(seq_len(12)))
+  fit <- .label_test_fit(~ x + z, data, list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior_spike_and_slab(
+      prior("normal", list(0, 1)),
+      prior_inclusion = prior("point", list(.5))
+    ),
+    z = prior_mixture(
+      list(prior("normal", list(0, 1)), prior("normal", list(0, 2))),
+      components = c("narrow", "wide")
+    )
+  ), n = 20L)
+
+  for(formula_prefix in c(TRUE, FALSE)){
+    table <- runjags_inference_table(fit, BF_diagnostics = TRUE,
+                                     formula_prefix = formula_prefix)
+    rows <- c("(mu) x", "(mu) z[narrow]", "(mu) z[wide]")
+    if(!formula_prefix){
+      rows <- sub("(mu) ", "", rows, fixed = TRUE)
+    }
+    # a mixture component is named after the term, as in estimates tables
+    expect_identical(rownames(table), rows)
+    # the Bayes factor MC-error warnings name the rows they belong to
+    warnings <- attr(table, "warnings")
+    expect_identical(names(warnings), rows)
+    expect_true(all(startsWith(
+      warnings,
+      paste0("Bayes factor MC error for ", rows, " is based on")
+    )))
+  }
 })

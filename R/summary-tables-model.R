@@ -1091,12 +1091,10 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   row_labels <- character()
 
   for(par in names(prior_list)){
-    # the row label of the parameter, rendered from the prior
-    term_label <- .bt_label(
-      .bt_label_parts_term(par, prior_list[[par]]),
-      style          = "table",
-      formula_prefix = formula_prefix
-    )
+    # the row and warning labels of the parameter, rendered from the prior
+    term_parts <- .bt_label_parts_term(par, prior_list[[par]])
+    term_label <- .bt_label(term_parts, style = "table", formula_prefix = formula_prefix)
+    term_warning_label <- .bt_label(term_parts, style = "warning", formula_prefix = formula_prefix)
     if(is.prior.spike_and_slab(prior_list[[par]])){
 
       temp_prior_prob <- mean(.get_spike_and_slab_inclusion(prior_list[[par]]))
@@ -1118,7 +1116,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
         temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob, temp_BF)
         temp_row            <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics)[, BF_diagnostic_columns, drop = FALSE])
         if(BF_error_diagnostics){
-          warnings <- c(warnings, .indicator_BF_warnings(par, temp_diagnostics))
+          warnings <- c(warnings, .indicator_BF_warnings(term_warning_label, temp_diagnostics))
         }
       }
 
@@ -1166,7 +1164,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
           temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob[["alternative"]], temp_BF)
           temp_row            <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics)[, BF_diagnostic_columns, drop = FALSE])
           if(BF_error_diagnostics){
-            warnings <- c(warnings, .indicator_BF_warnings(par, temp_diagnostics))
+            warnings <- c(warnings, .indicator_BF_warnings(term_warning_label, temp_diagnostics))
           }
         }
 
@@ -1177,8 +1175,10 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
 
       }else{
 
-        # compute summary for each component
+        # compute summary for each component (rows and warnings name the
+        # component after the term, as the component rows of estimates tables)
         for(component in unique(components)){
+          component_parts <- .bt_label_parts_update(term_parts, component = component)
           temp_parameter <- paste0(par, " [", component, "]")
           temp_BF        <- inclusion_BF(prior_probs = temp_prior_prob, post_probs = temp_post_prob, is_null = names(temp_post_prob) != component)
           temp_BF_reporting <- .indicator_BF_reporting_value(temp_BF, temp_post_prob[[component]], temp_prior_prob[[component]], nrow(model_samples))
@@ -1193,14 +1193,21 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
             temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob[[component]], temp_BF)
             temp_row            <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics)[, BF_diagnostic_columns, drop = FALSE])
             if(BF_error_diagnostics){
-              warnings <- c(warnings, .indicator_BF_warnings(temp_parameter, temp_diagnostics))
+              warnings <- c(warnings, .indicator_BF_warnings(
+                .bt_label(component_parts, style = "warning", formula_prefix = formula_prefix),
+                temp_diagnostics
+              ))
             }
           }
 
           runjags_summary <- rbind(runjags_summary, temp_row)
           BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
           parameter_roles <- c(parameter_roles, mixture_role)
-          row_labels <- c(row_labels, paste0(term_label, " [", component, "]"))
+          row_labels <- c(row_labels, .bt_label(
+            component_parts,
+            style          = "table",
+            formula_prefix = formula_prefix
+          ))
         }
 
       }
@@ -1224,11 +1231,12 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
         temp_prior_prob,
         nrow(model_samples)
       )
-      temp_parameter <- .bt_random_allocation_inference_label(
+      allocation_parts <- .bt_random_allocation_inference_parts(
         fit = fit,
-        indicator_name = indicator_name,
-        formula_prefix = formula_prefix
+        indicator_name = indicator_name
       )
+      temp_parameter <- .bt_label(allocation_parts, style = "table",
+                                  formula_prefix = formula_prefix)
       temp_row <- data.frame(
         Parameter = temp_parameter,
         prior_prob = temp_prior_prob,
@@ -1255,7 +1263,10 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
         if(BF_error_diagnostics){
           warnings <- c(
             warnings,
-            .indicator_BF_warnings(temp_parameter, temp_diagnostics)
+            .indicator_BF_warnings(
+              .bt_label(allocation_parts, style = "warning", formula_prefix = formula_prefix),
+              temp_diagnostics
+            )
           )
         }
       }
@@ -1476,8 +1487,9 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     is.character(indicator) && length(indicator) == 1L && nzchar(indicator)
 }
 
-.bt_random_allocation_inference_label <- function(fit, indicator_name,
-                                                  formula_prefix){
+# Label parts of the random-effect inclusion quantity whose source is the
+# allocation indicator 'indicator_name'.
+.bt_random_allocation_inference_parts <- function(fit, indicator_name){
 
   quantities <- parameter_catalog(fit)$quantities
   matches <- quantities$role == "random_inclusion" & vapply(
@@ -1493,16 +1505,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
       call. = FALSE
     )
   }
-  quantity <- quantities[which(matches), , drop = FALSE]
-  label <- quantity$canonical_name
-  if(!formula_prefix){
-    prefix <- paste0("(", quantity$formula_parameter, ") ")
-    if(startsWith(label, prefix)){
-      label <- substring(label, nchar(prefix) + 1L)
-    }
-  }
-
-  label
+  quantities$label_parts[[which(matches)]]
 }
 
 #' @rdname BayesTools_model_tables
