@@ -508,6 +508,19 @@ test_that("arithmetic, math, and subsetting of draws return plain numerics", {
       fixed = TRUE
     )
   }
+  # the error names the route for transformed draws
+  expect_error(
+    Savage_Dickey_BF(mp_x * 2, .5),
+    paste0(
+      "'Savage_Dickey_BF' requires an object of class 'marginal_posterior', not ",
+      "plain numeric draws: arithmetic, mathematical functions, and subsetting ",
+      "of posterior draws return plain numeric draws without their supports, ",
+      "atoms, and prior densities. Use posterior_transform() (or ",
+      "marginal_posterior(transformation = )) for transformed posterior ",
+      "distributions."
+    ),
+    fixed = TRUE
+  )
   scaled <- mixed
   scaled$mu <- scaled$mu * 2
   expect_error(
@@ -774,8 +787,9 @@ test_that("metadata of draws whose values changed stop instead of describing the
     "The metadata of these posterior draws are unavailable: their values ",
     "changed after the metadata were attached (for example by 'x[] <- ', ",
     "'x[i] <- ', or 'pmin()'), so the supports, atoms, and prior densities ",
-    "no longer describe them. Use 'marginal_posterior(transformation = )' ",
-    "for transformed posterior distributions."
+    "no longer describe them. Use 'posterior_transform()' (or ",
+    "'marginal_posterior(transformation = )') for transformed posterior ",
+    "distributions."
   )
 
   # replacing values keeps the attributes; the review's probe returned the

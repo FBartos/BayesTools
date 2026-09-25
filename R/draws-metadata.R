@@ -494,8 +494,9 @@
         "The metadata of these posterior draws are unavailable: their values ",
         "changed after the metadata were attached (for example by 'x[] <- ', ",
         "'x[i] <- ', or 'pmin()'), so the supports, atoms, and prior densities ",
-        "no longer describe them. Use 'marginal_posterior(transformation = )' ",
-        "for transformed posterior distributions."
+        "no longer describe them. Use 'posterior_transform()' (or ",
+        "'marginal_posterior(transformation = )') for transformed posterior ",
+        "distributions."
       ),
       class = c("BayesTools_stale_metadata", "BayesTools_metadata"),
       call = NULL
@@ -784,8 +785,9 @@ Math.marginal_posterior.factor <- .bt_draws_math
   stop(
     what, ": arithmetic, mathematical functions, and subsetting of posterior ",
     "draws return plain numeric draws without their supports, atoms, and ",
-    "prior densities. Use marginal_posterior(transformation = ) for ",
-    "transformed posterior distributions.",
+    "prior densities. Use posterior_transform() (or ",
+    "marginal_posterior(transformation = )) for transformed posterior ",
+    "distributions.",
     call. = FALSE
   )
 }
