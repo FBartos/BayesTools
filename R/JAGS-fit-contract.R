@@ -12,39 +12,30 @@
   "draw_geometry"
 )
 
-#' JAGS formula parameter encoding and fitted-object contract
+#' JAGS formula name map and fitted-object contract
 #'
 #' @description
-#' `JAGS_parameter_encode()` creates an injective JAGS-safe semantic identifier
-#' from structured formula-coordinate fields. It does not replace the backend
-#' column name stored in a fit; the persisted formula name map links both names.
-#' `JAGS_parameter_decode()` reverses identifiers created by the current
-#' encoding.
-#'
 #' `JAGS_formula_name_map()` returns the persisted mapping between opaque JAGS
-#' base names and semantic formula coordinates. Downstream code should use this
-#' map or [parameter_coordinates()] rather than parsing a JAGS name.
+#' base names and semantic formula coordinates (kind, formula parameter, term
+#' and role), with an injective encoded identifier of those fields. The
+#' identifier does not replace the backend column name stored in a fit.
+#' Downstream code should use this map or [parameter_coordinates()] rather
+#' than parsing a JAGS name.
 #'
 #' `JAGS_fit_contract()` returns the schema contract attached to a fit.
 #' `JAGS_validate_fit_contract()` checks the components named in `requires` and
 #' requires unsupported objects to be refitted rather than adapted.
 #'
-#' @param fields named list with scalar character fields `kind`,
-#'   `formula_parameter`, `term`, and `role`.
-#' @param name encoded scalar name returned by `JAGS_parameter_encode()`.
 #' @param fit fitted object created by [JAGS_fit()].
 #' @param parameter optional formula parameter selecting one name map.
 #' @param requires character vector naming required contract components.
 #'
-#' @return The encoding helpers return a character scalar or decoded list. The
-#' schema helpers return data frames. `JAGS_formula_name_map()` returns a
-#' `BayesTools_formula_name_map` data frame (or a named list of them).
+#' @return `JAGS_fit_contract_schema()` returns a data frame.
+#' `JAGS_formula_name_map()` returns a `BayesTools_formula_name_map` data
+#' frame (or a named list of them).
 #' `JAGS_fit_contract()` returns a named list, and the validator returns it
 #' invisibly.
 #'
-#' @export JAGS_parameter_encode
-#' @export JAGS_parameter_decode
-#' @export JAGS_parameter_encoding_schema
 #' @export JAGS_formula_name_map
 #' @export JAGS_fit_contract
 #' @export JAGS_validate_fit_contract
@@ -52,16 +43,17 @@
 #' @name JAGS_fit_contract
 NULL
 
-#' @rdname JAGS_fit_contract
-JAGS_parameter_encode <- function(fields){
+# Injective JAGS-safe identifier of structured formula-coordinate fields
+# (named scalar character fields 'kind', 'formula_parameter', 'term' and
+# 'role'), and its inverse.
+.bt_parameter_encode <- function(fields){
 
   .bt_validate_parameter_encoding_fields(fields)
   encoded <- vapply(fields, .bt_utf8_hex_encode, character(1))
   paste0("BT1_", paste(encoded, collapse = "_"))
 }
 
-#' @rdname JAGS_fit_contract
-JAGS_parameter_decode <- function(name){
+.bt_parameter_decode <- function(name){
 
   check_char(name, "name", check_length = 1L, allow_NA = FALSE)
   if(!grepl("^BT[0-9]+_", name)){
@@ -93,8 +85,7 @@ JAGS_parameter_decode <- function(name){
   c(list(encoding_version = .bt_parameter_encoding_version), fields)
 }
 
-#' @rdname JAGS_fit_contract
-JAGS_parameter_encoding_schema <- function(){
+.bt_parameter_encoding_schema <- function(){
 
   data.frame(
     field = c("encoding_version", "kind", "formula_parameter", "term", "role"),
@@ -275,7 +266,7 @@ JAGS_fit_contract_schema <- function(){
       role = role_i
     )
   }, kind, formula_parameter, term, role)
-  encoded_name <- vapply(fields, JAGS_parameter_encode, character(1))
+  encoded_name <- vapply(fields, .bt_parameter_encode, character(1))
   out <- data.frame(
     encoded_name = encoded_name,
     jags_name = jags_name,
@@ -316,7 +307,7 @@ JAGS_fit_contract_schema <- function(){
   if(nrow(map) > 0L){
     for(i in seq_len(nrow(map))){
       .bt_check_jags_node_name(map$jags_name[i], "name_map$jags_name")
-      decoded <- JAGS_parameter_decode(map$encoded_name[i])
+      decoded <- .bt_parameter_decode(map$encoded_name[i])
       expected <- as.list(map[i, c("kind", "formula_parameter", "term", "role")])
       if(!identical(unname(decoded[names(expected)]), unname(expected))){
         stop("Formula name-map encoded and semantic fields disagree. Refit the model with this version of BayesTools.",

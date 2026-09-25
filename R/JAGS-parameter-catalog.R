@@ -1874,7 +1874,7 @@ parameter_transform_jacobian <- function(values, transform){
 .bt_parameter_catalog_quantity_id <- function(canonical_name, namespace,
                                                role){
 
-  encoded <- JAGS_parameter_encode(list(
+  encoded <- .bt_parameter_encode(list(
     kind = "catalog",
     formula_parameter = namespace,
     term = canonical_name,

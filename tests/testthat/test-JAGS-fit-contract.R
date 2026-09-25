@@ -10,27 +10,27 @@ test_that("structured JAGS parameter encoding is injective and reversible", {
     list(kind = "fixed", formula_parameter = "mu", term = intToUtf8(c(946L, 233L)), role = "coefficient")
   )
 
-  encoded <- vapply(cases, JAGS_parameter_encode, character(1))
+  encoded <- vapply(cases, .bt_parameter_encode, character(1))
   expect_length(unique(encoded), length(cases))
   expect_true(all(grepl("^[A-Za-z][A-Za-z0-9_.]*$", encoded)))
   for(i in seq_along(cases)){
-    decoded <- JAGS_parameter_decode(encoded[i])
+    decoded <- .bt_parameter_decode(encoded[i])
     expect_identical(decoded[names(cases[[i]])], cases[[i]])
     expect_identical(decoded$encoding_version, 1L)
   }
 
-  left <- JAGS_parameter_encode(list(
+  left <- .bt_parameter_encode(list(
     kind = "fixed", formula_parameter = "a_b", term = "c", role = "coefficient"
   ))
-  right <- JAGS_parameter_encode(list(
+  right <- .bt_parameter_encode(list(
     kind = "fixed", formula_parameter = "a", term = "b_c", role = "coefficient"
   ))
   expect_false(identical(left, right))
-  expect_error(JAGS_parameter_decode("BT2_00_00_00_00"), "unsupported")
-  expect_error(JAGS_parameter_decode("BT1_0_00_00_00"), "malformed")
+  expect_error(.bt_parameter_decode("BT2_00_00_00_00"), "unsupported")
+  expect_error(.bt_parameter_decode("BT1_0_00_00_00"), "malformed")
   for(invalid_utf8 in c("FF", "C0AF", "EDA080", "C3")){
     expect_error(
-      JAGS_parameter_decode(paste0("BT1_", invalid_utf8, "_6D75__636F6566")),
+      .bt_parameter_decode(paste0("BT1_", invalid_utf8, "_6D75__636F6566")),
       "invalid UTF-8",
       fixed = TRUE
     )

@@ -1056,3 +1056,13 @@ test_that("inclusion rows of names containing 'inclusion' are formatted from the
     c("sd(mu_xinclusion|id)", "mu_x|id (inclusion)")
   )
 })
+
+test_that("the formula-coordinate encoding is internal to the name map", {
+
+  exports <- getNamespaceExports("BayesTools")
+  expect_false(any(c(
+    "JAGS_parameter_encode", "JAGS_parameter_decode",
+    "JAGS_parameter_encoding_schema"
+  ) %in% exports))
+  expect_true("JAGS_formula_name_map" %in% exports)
+})
