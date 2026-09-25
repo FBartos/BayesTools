@@ -821,6 +821,20 @@ test_that("contrast-coefficient selectors of level coordinates name the level", 
   # Without a catalog the selector is not hypothesis syntax.
   error <- expect_error(hypothesis_parse("g{1} > 0"))
   expect_false(inherits(error, "BayesTools_selector_unavailable"))
+
+  # Every refused selector contains `{`: parsing and resolving text without
+  # one never builds the refused selectors (their cost grows with the level
+  # cells of the catalog).
+  local_mocked_bindings(
+    .bt_parameter_catalog_level_coefficient_selectors = function(catalog){
+      stop("the refused selectors were built", call. = FALSE)
+    }
+  )
+  expect_no_error(hypothesis_parse("(mu) g[10] > 0", catalog = catalog))
+  expect_error(
+    parameter_catalog_resolve(catalog, "g[99]"),
+    class = "BayesTools_parameter_not_found"
+  )
 })
 
 # Every displayed row of the factor term resolves to the catalog quantity

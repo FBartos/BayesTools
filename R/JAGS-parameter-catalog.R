@@ -382,7 +382,8 @@ parameter_catalog_resolve <- function(catalog, alias, namespace = NULL,
     drop = FALSE
   ]
 
-  if(nrow(candidates) == 0L){
+  # every refused contrast-coefficient selector contains `{`
+  if(nrow(candidates) == 0L && grepl("{", alias, fixed = TRUE)){
     refused <- .bt_parameter_catalog_level_coefficient_selectors(catalog)
     refused <- refused[
       refused$selector == alias &
@@ -393,6 +394,8 @@ parameter_catalog_resolve <- function(catalog, alias, namespace = NULL,
     if(nrow(refused) > 0L){
       .bt_parameter_catalog_selector_unavailable_stop(refused)
     }
+  }
+  if(nrow(candidates) == 0L){
     available <- sort(unique(c(
       quantities$canonical_name[public],
       catalog$aliases$alias[

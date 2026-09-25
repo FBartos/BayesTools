@@ -133,13 +133,17 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
   # contrast-coefficient selectors `<term>{j}` of level coordinates are
   # refused naming the level (they would otherwise fail to parse), unless
   # they name a quantity selectable under the filters (e.g. the coefficient of
-  # the same term in another namespace)
-  refused <- .bt_parameter_catalog_level_coefficient_selectors(catalog)
-  if(!is.null(namespace)){
-    refused <- refused[refused$namespace == namespace, , drop = FALSE]
+  # the same term in another namespace). Every such selector contains `{`, so
+  # the table is built only for statements that contain one.
+  refused <- NULL
+  if(any(grepl("{", hypothesis, fixed = TRUE))){
+    refused <- .bt_parameter_catalog_level_coefficient_selectors(catalog)
+    if(!is.null(namespace)){
+      refused <- refused[refused$namespace == namespace, , drop = FALSE]
+    }
+    refused <- refused[!refused$selector %in% names, , drop = FALSE]
+    names <- unique(c(names, refused$selector))
   }
-  refused <- refused[!refused$selector %in% names, , drop = FALSE]
-  names <- unique(c(names, refused$selector))
   names <- names[
     nzchar(names) &
       make.names(names) != names
