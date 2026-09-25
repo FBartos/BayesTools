@@ -1199,6 +1199,55 @@ test_that("mixture components without exact ordinates are refined on their own g
   }
 })
 
+test_that("model-averaged mean-difference coordinates are exact mixtures of their components", {
+
+  # A RoBMA-style product-space factor prior: the mean-difference slab
+  # mNormal(0, .35) and the spike at 0, each with probability 1/2. Every
+  # coordinate of the slab is N(0, .35), so the combination with weights d is
+  # N(0, .35 ||d||) in the slab and the atom at 0 in the spike: its continuous
+  # density is .5 * dnorm(x, 0, .35 ||d||), also for a single coordinate (a
+  # level whose mean-difference design row has one nonzero entry), which is
+  # not a scalar term.
+  data <- data.frame(g = factor(c("a", "b", "c"), levels = c("a", "b", "c")))
+  priors <- JAGS_formula(~ 1 + g, "mu", data = data, prior_list = list(
+    intercept = prior("normal", list(0, 1)),
+    g = prior_mixture(list(prior_factor("mnormal", list(0, .35), contrast = "meandif"),
+                           prior_factor("spike", list(0), contrast = "meandif")),
+                      is_null = c(FALSE, TRUE))
+  ))$prior_list
+  context <- .prior_density_build_context(priors, c("mu_intercept", "mu_g[1]", "mu_g[2]"))
+  design <- contr.meandif(3)
+  weight_sets <- c(
+    list(c("mu_g[1]" = 1), c("mu_g[2]" = 1), c("mu_g[2]" = -2)),
+    lapply(1:3, function(level) c("mu_g[1]" = design[level, 1], "mu_g[2]" = design[level, 2]))
+  )
+  for(weights in weight_sets){
+    density <- .prior_density_from_context(context, weights)
+    sd <- .35 * sqrt(sum(weights^2))
+    for(value in c(-.4, .1, 1)){
+      ordinate <- prior_density_ordinate(density, value)
+      expect_true(ordinate$exact)
+      expect_identical(ordinate$behavior, "regular")
+      expect_identical(ordinate$method, "finite_mixture")
+      expect_equal(exp(ordinate$log_density), .5 * stats::dnorm(value, 0, sd), tolerance = 1e-14)
+      expect_equal(as.numeric(.prior_linear_density_height(density, value)),
+                   .5 * stats::dnorm(value, 0, sd), tolerance = 1e-14)
+    }
+    zero <- prior_density_ordinate(density, 0)
+    expect_identical(zero$behavior, "point_mass")
+    expect_equal(zero$point_mass, .5)
+    expect_identical(zero$provenance$continuous_behavior, "regular")
+    status <- prior_ordinate_status(density, c(0, .1))
+    expect_identical(status$eligible, c(FALSE, TRUE))
+    expect_identical(status$condition[[1L]], "BayesTools_point_mass_at_null")
+    probability <- .hypothesis_prior_density_prob(
+      density, hypothesis_parse("theta > 0.1")$statements[[1L]]$left, "theta"
+    )
+    expect_equal(as.numeric(probability), .5 * stats::pnorm(.1, 0, sd, lower.tail = FALSE),
+                 tolerance = 1e-14)
+  }
+})
+
 test_that("FFT removed-mass diagnostics have probability units", {
 
   set.seed(135)

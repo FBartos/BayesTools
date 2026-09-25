@@ -190,12 +190,28 @@
       next
     }
     if(length(group$weights) != 1L || !is.null(random_group) ||
-       is.prior.vector(group$prior) || is.prior.ordered(group$prior)){
+       is.prior.vector(group$prior) || is.prior.ordered(group$prior) ||
+       .prior_density_route_vector_mixture(group$prior)){
       return(NULL)
     }
     random_group <- group
   }
   list(offset = offset, group = random_group)
+}
+
+# Whether a mixture or spike-and-slab prior has a vector component (e.g. the
+# mean-difference factor priors of a model-averaged factor term). A coordinate
+# of such a term is not a scalar term: the mixture is expanded into its
+# components, each routed as a vector prior (normal, or an atom for a point
+# component), and the ordinate is the weighted sum of theirs.
+.prior_density_route_vector_mixture <- function(prior){
+
+  if(!is.prior.mixture(prior) && !is.prior.spike_and_slab(prior)){
+    return(FALSE)
+  }
+  any(vapply(prior, function(component){
+    is.prior.vector(component) || .prior_density_route_vector_mixture(component)
+  }, logical(1)))
 }
 
 .prior_density_route_scalar <- function(parts, weights, source_transforms,

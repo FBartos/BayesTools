@@ -349,7 +349,11 @@ that route at the display values, never by interpolating its level grid.
 Mixture ordinates (model, conditional, and mixture or spike-and-slab terms of
 one linear combination) are weighted sums of per-component ordinates, each from
 its own exact or regular method, so a numerical grid never spans a density jump
-between components. A Gaussian term plus one other continuous scalar term
+between components. A coordinate of a mixture whose components are vector
+(factor) priors, e.g. a model-averaged mean-difference level of a single-fit
+product-space prior, is no scalar term: the mixture is expanded, and each
+component is routed as its vector prior (normal, or an atom for a point
+component). A Gaussian term plus one other continuous scalar term
 (and two non-normal terms) uses its quadrature (the closed form for a
 truncated normal term) wherever it occurs, so the same
 combination is never exact in one context and a grid approximation in
