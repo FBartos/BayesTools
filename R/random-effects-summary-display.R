@@ -475,18 +475,12 @@
     quantity$quantity,
     quantity$arguments[[1L]]
   )
-  summary_label <- if(simplify_names){
-    quantity$display_label
-  }else{
-    quantity$canonical_name
-  }
-  prefix <- .bt_random_effect_summary_formula_prefix(
-    quantity$formula_parameter,
-    TRUE
+  summary_label <- .bt_label(
+    quantity$label_parts[[1L]],
+    style          = "table",
+    formula_prefix = FALSE,
+    simplify       = simplify_names
   )
-  if(nzchar(prefix) && startsWith(summary_label, prefix)){
-    summary_label <- substring(summary_label, nchar(prefix) + 1L)
-  }
   block_quantity <- identical(quantity$owner_type, "random_block")
   .bt_random_effect_summary_prior(
     parameter = quantity$formula_parameter,

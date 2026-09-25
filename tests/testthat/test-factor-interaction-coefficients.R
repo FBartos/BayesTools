@@ -40,11 +40,12 @@ test_that("as_mixed_posteriors handles treatment factor-continuous interaction c
     n_prior_samples  = 64
   )
 
+  # mixed columns are the canonical selectors of the level cells
   expect_equal(
     colnames(samples$mu_alloc__xXx__year),
     c(
-      "mu_alloc[random]__xXx__year",
-      "mu_alloc[systematic]__xXx__year"
+      "mu_alloc__xXx__year[random]",
+      "mu_alloc__xXx__year[systematic]"
     )
   )
   expect_equal(attr(samples$mu_alloc__xXx__year, "factor_design"), attr(interaction_prior, "factor_design"))
@@ -344,7 +345,7 @@ test_that("full-rank factor-by-continuous interaction slopes are one quantity pe
       samples <- as_mixed_posteriors(fit, synthetic$parameters)
       expect_identical(
         colnames(samples[[parameter]]),
-        paste0("mu_g[", levels, "]__xXx__x"),
+        paste0("mu_g__xXx__x[", levels, "]"),
         info = info
       )
 
@@ -439,7 +440,7 @@ test_that("partially full-rank factor interactions are named by their level cell
   synthetic <- full_rank_interaction_fit(c("a", "b", "c"), "treatment", ~ g + g:h)
   fit       <- synthetic$fit
   parameter <- synthetic$parameter
-  cells     <- paste0("mu_g[", c("a", "b", "c"), "]__xXx__h[v]")
+  cells     <- paste0("mu_g__xXx__h[g=", c("a", "b", "c"), ", h=v]")
 
   # `g` is coded by level indicators and `h` by treatment contrasts: the three
   # coordinates are the cells (a, v), (b, v), and (c, v)
@@ -457,7 +458,8 @@ test_that("partially full-rank factor interactions are named by their level cell
   )
   expect_identical(
     colnames(renamed),
-    c("mu_intercept", "mu_g[b]", "mu_g[c]", cells)
+    c("mu_intercept", "mu_g[b]", "mu_g[c]",
+      paste0("mu_g[", c("a", "b", "c"), "]__xXx__h[v]"))
   )
   expect_identical(
     rownames(runjags_estimates_table(fit)),

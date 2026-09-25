@@ -567,11 +567,7 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
 # attribute; names are never matched against other formula parameters.
 .bt_label_parts_prior <- function(parameter, prior){
 
-  formula_parameter <- attr(prior, "parameter", exact = TRUE)
-  if(is.null(formula_parameter) || length(formula_parameter) != 1L ||
-     is.na(formula_parameter)){
-    formula_parameter <- ""
-  }
+  formula_parameter <- .bt_label_formula_parameter(prior)
   factor_prior <- .bt_parameter_catalog_factor_prior(parameter, prior)
   if(!is.null(factor_prior) &&
      !is.null(attr(factor_prior, "factor_design", exact = TRUE))){
@@ -594,21 +590,57 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
     ))
   }
 
-  stem <- paste0(formula_parameter, "_")
+  list(
+    coordinates = parameter,
+    parts       = list(.bt_label_parts_coefficient(
+      parameter         = parameter,
+      formula_parameter = formula_parameter,
+      interaction_terms = if(.is_prior_interaction(prior)){
+        attr(prior, "interaction_terms", exact = TRUE)
+      }
+    ))
+  )
+}
+
+# The formula parameter owning a prior (its 'parameter' attribute) or owning
+# mixed or marginal draws (their 'formula_parameter' draw metadata); "" for
+# any other object.
+.bt_label_formula_parameter <- function(x){
+
+  formula_parameter <- if(is.prior(x)){
+    attr(x, "parameter", exact = TRUE)
+  }else{
+    .bt_meta_get(x, "formula_parameter")
+  }
+  if(is.character(formula_parameter) && length(formula_parameter) == 1L &&
+     !is.na(formula_parameter)){
+    formula_parameter
+  }else{
+    ""
+  }
+}
+
+# Label parts of one fitted coefficient named by JAGS_parameter_names(): the
+# formula parameter, then the term with interactions encoded. The formula
+# parameter is the owner's own; names are never matched against other formula
+# parameters.
+.bt_label_parts_coefficient <- function(parameter, formula_parameter = "",
+                                        interaction_terms = NULL){
+
   components <- parameter
   if(nzchar(formula_parameter)){
-    if(!startsWith(parameter, stem)){
+    stem <- paste0(formula_parameter, "_")
+    if(!startsWith(parameter, stem) || nchar(parameter) <= nchar(stem)){
       stop(
-        "The formula prior '", parameter, "' is not named after its formula ",
-        "parameter '", formula_parameter, "'.",
+        "The formula coefficient '", parameter, "' is not named after its ",
+        "formula parameter '", formula_parameter, "'.",
         call. = FALSE
       )
     }
-    # JAGS_parameter_names(): the formula parameter, then the term with
-    # interactions encoded
-    components <- attr(prior, "interaction_terms", exact = TRUE)
-    if(!.is_prior_interaction(prior) || length(components) == 0L){
-      components <- strsplit(
+    components <- if(length(interaction_terms) > 0L){
+      as.character(interaction_terms)
+    }else{
+      strsplit(
         substring(parameter, nchar(stem) + 1L),
         "__xXx__",
         fixed = TRUE
@@ -616,14 +648,122 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
     }
   }
 
-  list(
-    coordinates = parameter,
-    parts       = list(.bt_label_parts(
+  .bt_label_parts(
+    components        = components,
+    formula_parameter = formula_parameter,
+    selector          = parameter
+  )
+}
+
+# Label parts of a prior-list entry as a whole term (no level or contrast
+# coefficient), such as its inclusion row or its column in prior summaries.
+.bt_label_parts_term <- function(parameter, prior){
+
+  formula_parameter <- .bt_label_formula_parameter(prior)
+  factor_prior <- .bt_parameter_catalog_factor_prior(parameter, prior)
+  if(!is.null(factor_prior)){
+    components <- .bt_label_factor_components(parameter, factor_prior)
+    if(!nzchar(formula_parameter)){
+      components <- parameter
+    }
+    return(.bt_label_parts(
       components        = components,
       formula_parameter = formula_parameter,
       selector          = parameter
     ))
+  }
+  if(!nzchar(formula_parameter) || is.prior.vector(prior)){
+    return(.bt_label_parts(parameter, selector = parameter))
+  }
+
+  .bt_label_parts_coefficient(
+    parameter         = parameter,
+    formula_parameter = formula_parameter,
+    interaction_terms = if(.is_prior_interaction(prior)){
+      attr(prior, "interaction_terms", exact = TRUE)
+    }
   )
+}
+
+# Column names of the fitted coordinates of a prior-list entry: their
+# selectors, i.e., the canonical catalog names of the level cells and
+# contrast coefficients of factor priors.
+.bt_label_prior_column_names <- function(parameter, prior){
+
+  .bt_label(.bt_label_parts_prior(parameter, prior)$parts, style = "selector")
+}
+
+# Label parts of every level cell of a factor term (a factor prior, or mixed
+# draws carrying the factor metadata), in design-row order, as transformed
+# contrast levels ("dif") or level effects ("none").
+.bt_label_factor_level_parts <- function(parameter, x, transformation = "dif",
+                                         formula_parameter = NULL){
+
+  if(is.null(formula_parameter)){
+    formula_parameter <- .bt_label_formula_parameter(x)
+  }
+  .bt_label_parts_update(
+    .bt_label_parts_factor(
+      parameter         = parameter,
+      prior             = x,
+      formula_parameter = formula_parameter
+    )$cells,
+    transformation = transformation
+  )
+}
+
+# Label parts of the columns of mixed draws 'x' of the element 'name': their
+# 'quantities' draw metadata, otherwise the element's own coefficient (vector
+# draws) or its column names (other draws).
+.bt_draws_label_parts <- function(x, name){
+
+  quantities <- .bt_draws_quantities(x)
+  if(!is.null(quantities)){
+    return(unclass(quantities$label_parts))
+  }
+  if(is.null(dim(x))){
+    formula_parameter <- .bt_label_formula_parameter(x)
+    if(nzchar(formula_parameter) &&
+       startsWith(name, paste0(formula_parameter, "_"))){
+      return(list(.bt_label_parts_coefficient(
+        parameter         = name,
+        formula_parameter = formula_parameter,
+        interaction_terms = attr(x, "interaction_terms", exact = TRUE)
+      )))
+    }
+    return(list(.bt_label_parts(name, selector = name)))
+  }
+  columns <- colnames(x)
+  if(is.null(columns)){
+    columns <- if(ncol(x) == 1L) name else paste0(name, "[", seq_len(ncol(x)), "]")
+  }
+  formula_parameter <- .bt_label_formula_parameter(x)
+
+  # columns named after the formula parameter keep their term text
+  lapply(columns, function(column){
+    if(nzchar(formula_parameter) &&
+       startsWith(column, paste0(formula_parameter, "_"))){
+      .bt_label_parts_coefficient(column, formula_parameter)
+    }else{
+      .bt_label_parts(column, selector = column)
+    }
+  })
+}
+
+# Label parts of the log intercept of a formula shown as the exponentiated
+# original-scale intercept: tables with transform_scaled = TRUE label the
+# intercept of a log(intercept) formula exp(intercept).
+.bt_label_parts_log_intercept <- function(parts, formula_scale){
+
+  lapply(.bt_label_parts_list(parts), function(part){
+    if(is.null(formula_scale) || !nzchar(part$formula_parameter) ||
+       !identical(part$components, "intercept") ||
+       length(part$levels) > 0L || !is.na(part$coefficient) ||
+       !isTRUE(attr(formula_scale[[part$formula_parameter]], "log_intercept"))){
+      return(part)
+    }
+    .bt_label_parts_update(part, transformation = "exp")[[1L]]
+  })
 }
 
 # Draw-metadata column tables ('quantities') -------------------------------

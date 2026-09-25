@@ -220,10 +220,17 @@ plot_transformed_prior <- function(prior_list, column_names, formula_scale = NUL
      inherits(metadata, "mixed_posteriors.ordered_transformed")){
     design_info <- .factor_term_design_from_metadata(metadata)
     weights <- design_info$design
-    rownames(weights) <- .factor_contrast_parameter_names(
-      parameter   = parameter,
-      level_names = design_info$level_names,
-      cell_names  = design_info$cell_names
+    rownames(weights) <- .bt_label(
+      .bt_label_factor_level_parts(
+        parameter      = parameter,
+        x              = metadata,
+        transformation = if(inherits(metadata, "mixed_posteriors.treatment_transformed")){
+          "none"
+        }else{
+          "dif"
+        }
+      ),
+      style = "selector"
     )
     prior <- attr(metadata, "prior_list")
     if(!is.null(prior) && !is.prior(prior)){

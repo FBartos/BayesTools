@@ -85,59 +85,6 @@
   })
 }
 
-.factor_contrast_parameter_names <- function(parameter, level_names, cell_names){
-
-  if(is.null(level_names)){
-    return(paste0(parameter, "[dif: ", cell_names, "]"))
-  }
-
-  level_grid <- .factor_cell_grid(level_names)
-  if(nrow(level_grid) != length(cell_names)){
-    return(paste0(parameter, "[dif: ", cell_names, "]"))
-  }
-
-  if(length(level_names) == 1){
-    return(paste0(parameter, "[dif: ", level_grid[[1]], "]"))
-  }
-
-  parameter_terms <- strsplit(parameter, "__xXx__", fixed = TRUE)[[1]]
-  factor_terms <- names(level_names)
-  factor_positions <- vapply(factor_terms, function(factor_term) {
-    factor_position <- which(
-      parameter_terms == factor_term |
-        endsWith(parameter_terms, paste0("_", factor_term))
-    )
-
-    if(length(factor_position) == 1){
-      return(factor_position)
-    }
-
-    return(NA_integer_)
-  }, integer(1))
-
-  if(!all(!is.na(factor_positions))){
-    return(paste0(parameter, "[dif: ", cell_names, "]"))
-  }
-
-  vapply(seq_len(nrow(level_grid)), function(level_i) {
-    formatted_terms <- parameter_terms
-
-    for(factor_term in factor_terms){
-      factor_position <- factor_positions[[factor_term]]
-      prefix_length <- nchar(formatted_terms[[factor_position]]) - nchar(factor_term)
-      formatted_terms[[factor_position]] <- paste0(
-        substr(formatted_terms[[factor_position]], 1, prefix_length),
-        factor_term,
-        "[dif: ",
-        level_grid[[factor_term]][level_i],
-        "]"
-      )
-    }
-
-    paste0(formatted_terms, collapse = "__xXx__")
-  }, character(1))
-}
-
 .factor_object_contrast_name <- function(x){
 
   if(is.prior.independent(x) || isTRUE(attr(x, "independent"))){
@@ -499,23 +446,28 @@
   }
 
   transformed_samples <- coefficient_samples %*% t(design)
-  colnames(transformed_samples) <- .factor_contrast_parameter_names(
-    parameter = parameter,
-    level_names = design_info[["level_names"]],
-    cell_names = design_info[["cell_names"]]
-  )
-
-  transformed_quantities <- .transformed_factor_quantities(
-    coefficient_samples = coefficient_samples,
-    metadata            = metadata,
-    parameter           = parameter,
-    design              = design,
-    columns             = colnames(transformed_samples),
-    transformation      = if(identical(transformed_class, "mixed_posteriors.treatment_transformed")){
+  # transformed contrast levels are named by their level cells (treatment
+  # levels are the level effects themselves)
+  level_parts <- .bt_label_factor_level_parts(
+    parameter         = parameter,
+    x                 = metadata,
+    transformation    = if(identical(transformed_class, "mixed_posteriors.treatment_transformed")){
       "none"
     }else{
       "dif"
-    }
+    },
+    formula_parameter = .transformed_factor_formula_parameter(
+      coefficient_samples,
+      metadata
+    )
+  )
+  colnames(transformed_samples) <- .bt_label(level_parts, style = "selector")
+
+  transformed_quantities <- .transformed_factor_quantities(
+    coefficient_samples = coefficient_samples,
+    level_parts         = level_parts,
+    design              = design,
+    columns             = colnames(transformed_samples)
   )
   posterior_atoms <- .posterior_atoms_get(coefficient_samples)
   old_attributes <- attributes(coefficient_samples)
@@ -531,7 +483,13 @@
   transformed_samples <- .bt_meta_set(transformed_samples, "support", NULL)
   transformed_samples <- .bt_meta_set(transformed_samples, "atoms", NULL)
   transformed_samples <- .bt_meta_set(transformed_samples, "quantities", transformed_quantities)
-  attr(transformed_samples, "level_names")       <- design_info[["cell_names"]]
+  # the level names of every factor of the term (one factor: its levels, the
+  # cell names of the transformed columns)
+  attr(transformed_samples, "level_names")       <- if(length(design_info[["level_names"]]) == 1L){
+    design_info[["cell_names"]]
+  }else{
+    design_info[["level_names"]]
+  }
   attr(transformed_samples, "factor_cell_names") <- design_info[["cell_names"]]
   if(!is.null(posterior_atoms)){
     transformed_samples <- .posterior_atoms_set(
@@ -548,35 +506,43 @@
   return(transformed_samples)
 }
 
-# The column table of transformed factor levels: each level cell is the
-# linear combination of the coefficient columns' fitted coordinates given by
-# its design row, labelled as a transformed contrast level (differences from
-# the mean) or as the level effect itself (treatment levels). NULL when the
-# coefficient columns do not identify their fitted coordinates.
-.transformed_factor_quantities <- function(coefficient_samples, metadata,
-                                           parameter, design, columns,
-                                           transformation = "dif"){
+# The formula parameter of transformed factor levels: that of the
+# coefficient columns' label parts, of the factor prior, or of the draws.
+.transformed_factor_formula_parameter <- function(coefficient_samples, metadata){
 
   coefficient_quantities <- .bt_meta_get(coefficient_samples, "quantities")
-  if(is.null(coefficient_quantities) ||
-     nrow(coefficient_quantities) != ncol(design)){
-    return(NULL)
+  if(!is.null(coefficient_quantities) && nrow(coefficient_quantities) > 0L){
+    return(coefficient_quantities$label_parts[[1L]]$formula_parameter)
   }
-  coordinates <- vapply(seq_len(nrow(coefficient_quantities)), function(i){
-    dependencies <- coefficient_quantities$dependencies[[i]]
-    weights <- coefficient_quantities$weights[[i]]
-    if(length(dependencies) == 1L && isTRUE(weights == 1)) dependencies else NA_character_
-  }, character(1))
-  if(anyNA(coordinates)){
-    return(NULL)
+  formula_parameter <- .bt_label_formula_parameter(metadata)
+  if(nzchar(formula_parameter)){
+    return(formula_parameter)
   }
-  formula_parameter <- coefficient_quantities$label_parts[[1L]]$formula_parameter
-  cells <- .bt_label_parts_factor(
-    parameter         = parameter,
-    prior             = metadata,
-    formula_parameter = formula_parameter
-  )$cells
-  if(length(cells) != nrow(design)){
+
+  .bt_label_formula_parameter(coefficient_samples)
+}
+
+# The column table of transformed factor levels: each level cell is the
+# linear combination of the coefficient columns' fitted coordinates given by
+# its design row. NULL when the coefficient columns do not identify their
+# fitted coordinates.
+.transformed_factor_quantities <- function(coefficient_samples, level_parts,
+                                           design, columns){
+
+  # the coefficient columns are the fitted coordinates of the term in
+  # coordinate order (their own names without column metadata)
+  coefficient_quantities <- .bt_meta_get(coefficient_samples, "quantities")
+  coordinates <- if(is.null(coefficient_quantities)){
+    colnames(coefficient_samples)
+  }else if(nrow(coefficient_quantities) == ncol(design)){
+    vapply(seq_len(nrow(coefficient_quantities)), function(i){
+      dependencies <- coefficient_quantities$dependencies[[i]]
+      weights <- coefficient_quantities$weights[[i]]
+      if(length(dependencies) == 1L && isTRUE(weights == 1)) dependencies else NA_character_
+    }, character(1))
+  }
+  if(length(coordinates) != ncol(design) || anyNA(coordinates) ||
+     length(level_parts) != nrow(design)){
     return(NULL)
   }
   .bt_draws_quantity_table(
@@ -588,7 +554,7 @@
     weights      = lapply(seq_len(nrow(design)), function(cell){
       unname(as.numeric(design[cell, design[cell, ] != 0]))
     }),
-    label_parts  = .bt_label_parts_update(cells, transformation = transformation)
+    label_parts  = level_parts
   )
 }
 

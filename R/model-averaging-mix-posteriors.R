@@ -711,11 +711,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     rownames(samples) <- NULL
     # the first ordered coordinate is a level cell; later ones are contrast
     # coefficients `{j}`, never bracketed positions
-    colnames(samples) <- .as_mixed_posteriors_factor_column_names(
-      parameter,
-      ordered_prior,
-      coefficient_names
-    )
+    colnames(samples) <- .bt_label_prior_column_names(parameter, ordered_prior)
     samples <- .bt_meta_set(samples, "draw_index", draw_index)
     samples <- .bt_draws_set_component(samples, model_component, "model")
     attr(samples, "parameter")  <- parameter
@@ -757,11 +753,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     # `~ g + g:x` includes the first level); cumulative increments of an
     # interaction with an ordered factor are contrast coefficients `{j}`
     factor_prior <- priors[vapply(priors, is.prior.factor, logical(1))][[1]]
-    colnames(samples) <- .factor_level_coordinate_names(
-      parameter,
-      factor_prior,
-      ncol(samples)
-    )
+    colnames(samples) <- .bt_label_prior_column_names(parameter, factor_prior)
     samples <- .bt_meta_set(samples, "draw_index", draw_index)
     samples <- .bt_draws_set_component(samples, model_component, "model")
     attr(samples, "parameter")  <- parameter
@@ -797,11 +789,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
     rownames(samples) <- NULL
     factor_prior <- priors[vapply(priors, is.prior.factor, logical(1))][[1]]
-    colnames(samples) <- .factor_level_coordinate_names(
-      parameter,
-      factor_prior,
-      ncol(samples)
-    )
+    colnames(samples) <- .bt_label_prior_column_names(parameter, factor_prior)
     samples <- .bt_meta_set(samples, "draw_index", draw_index)
     samples <- .bt_draws_set_component(samples, model_component, "model")
     attr(samples, "parameter")  <- parameter
@@ -819,11 +807,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     factor_prior <- priors[vapply(priors, is.prior.factor, logical(1))][[1]]
     samples <- .mix_posteriors.vector(
       fits, priors, parameter, post_probs, seed, n_samples,
-      column_names = .as_mixed_posteriors_factor_column_names(
-        parameter,
-        factor_prior,
-        paste0(parameter, "[", seq_len(levels), "]")
-      )
+      column_names = .bt_label_prior_column_names(parameter, factor_prior)
     )
     class(samples) <- c(class(samples), "mixed_posteriors.factor")
 

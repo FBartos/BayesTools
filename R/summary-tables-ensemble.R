@@ -118,13 +118,24 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
 
 
   # transform scaled coefficients back to original scale
-  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+  transformed_scale <- transform_scaled && !is.null(formula_scale) &&
+    length(formula_scale) > 0
+  if(transformed_scale){
     samples <- .transform_scale_samples_list(samples, formula_scale)
   }
 
   # transform meandif/orthonormal posterior
   if(transform_factors){
     samples <- transform_factor_samples(samples)
+  }
+
+  # row labels rendered from the label parts of every column
+  row_labels <- function(parameter){
+    parts <- .bt_draws_label_parts(samples[[parameter]], parameter)
+    if(transformed_scale){
+      parts <- .bt_label_parts_log_intercept(parts, formula_scale)
+    }
+    .bt_label(parts, style = "table", formula_prefix = formula_prefix)
   }
 
 
@@ -135,11 +146,7 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
 
     if(is.matrix(samples[[parameter]])){
 
-      if(inherits(samples[[parameter]], "mixed_posteriors.formula")){
-        parameter_name <- format_parameter_names(colnames(samples[[parameter]]), formula_parameters = .bt_meta_get(samples[[parameter]], "formula_parameter"), formula_prefix = formula_prefix, formula_scale = formula_scale)
-      }else{
-        parameter_name <- colnames(samples[[parameter]])
-      }
+      parameter_name <- row_labels(parameter)
 
       par_summary <- NULL
       for(column in seq_len(ncol(samples[[parameter]]))){
@@ -168,6 +175,8 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
 
     }else if(is.numeric(samples[[parameter]])){
 
+      parameter_name <- row_labels(parameter)
+
       defined <- .bt_ensemble_defined_draws(
         values = samples[[parameter]],
         label  = parameter,
@@ -175,16 +184,6 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
       )
       par_summary <- .bt_ensemble_draw_summary(defined$values, probs)
       estimates_table <- rbind(estimates_table, par_summary)
-
-      if(inherits(samples[[parameter]], "mixed_posteriors.formula")){
-        parameter_name <- gsub(
-          paste0(.bt_meta_get(samples[[parameter]], "formula_parameter"), "_"),
-          if(formula_prefix) paste0("(", .bt_meta_get(samples[[parameter]], "formula_parameter"), ") ") else "",
-          parameter)
-        parameter_name <- gsub("__xXx__", ":", parameter_name)
-      }else{
-        parameter_name <- parameter
-      }
 
       rownames(estimates_table)[nrow(estimates_table)] <- parameter_name
       if(defined$n_defined < defined$n_draws){
@@ -781,18 +780,19 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
 
   colnames(summary_table) <- c("Model", names(parameters))
 
+  # formula parameters are labelled by their term, rendered from the prior
   parameters <- unlist(parameters) # deal with potential matching of multiple parameters withing a name
   for(p in seq_along(parameters)){
 
-    parameter_name    <- parameters[p]
-    formula_parameter <- unique(unlist(lapply(models, function(m) attr(attr(m[["fit"]], "prior_list")[[parameter_name]], "parameter", exact = TRUE))))
-
-    if(!is.null(unlist(formula_parameter))){
-      parameter_name <- gsub(paste0(formula_parameter, "_"), paste0("(", formula_parameter, ") "), parameter_name)
-      parameter_name <- gsub("__xXx__", ":", parameter_name)
-
-      colnames(summary_table)[colnames(summary_table) == parameters[p]] <- parameter_name
+    priors <- lapply(models, function(m) attr(m[["fit"]], "prior_list")[[parameters[p]]])
+    priors <- priors[!vapply(priors, is.null, logical(1))]
+    if(length(priors) == 0L || !nzchar(.bt_label_formula_parameter(priors[[1L]]))){
+      next
     }
+    colnames(summary_table)[colnames(summary_table) == parameters[p]] <- .bt_label(
+      .bt_label_parts_term(parameters[p], priors[[1L]]),
+      style = "table"
+    )
   }
 
   return(summary_table)

@@ -514,3 +514,135 @@ test_that("original-scale marginal tables keep the marginal predictions", {
     tolerance = 1e-12
   )
 })
+
+test_that("mixed-posterior columns and ensemble rows are catalog labels of their quantities", {
+
+  for(contrast in c("treatment", "meandif", "ordered")){
+    data <- .label_test_data(c("a", "b", "c"), contrast, h_levels = c("u", "v"))
+    fit <- .label_test_fit(
+      ~ g * x + g * h,
+      data,
+      list(
+        intercept = prior("normal", list(0, 1)),
+        g         = .label_test_factor_prior(contrast),
+        x         = prior("normal", list(0, 1)),
+        h         = .label_test_factor_prior("treatment"),
+        "g:x"     = .label_test_factor_prior(contrast),
+        "g:h"     = .label_test_factor_prior(contrast)
+      )
+    )
+    catalog <- parameter_catalog(fit)
+    mixed <- as_mixed_posteriors(fit, parameters = names(attr(fit, "prior_list")))
+    for(parameter in names(mixed)){
+      quantities <- posterior_metadata(mixed[[parameter]], "quantities")
+      # every mixed column is the canonical name of its catalog quantity
+      for(i in seq_len(nrow(quantities))){
+        expect_identical(
+          parameter_catalog_resolve(catalog, quantities$column[[i]])$quantity_id,
+          quantities$quantity_id[[i]],
+          info = paste(contrast, quantities$column[[i]])
+        )
+      }
+    }
+    # every ensemble row, untransformed and transformed, selects its quantity
+    for(transform_factors in c(FALSE, TRUE)){
+      table <- ensemble_estimates_table(
+        mixed,
+        parameters        = names(mixed),
+        transform_factors = transform_factors
+      )
+      rows <- rownames(table)
+      rows <- rows[rows != "(mu) intercept"]
+      for(row in rows){
+        selection <- parameter_catalog_resolve(catalog, row)
+        expect_equal(
+          mean(as.matrix(parameter_draws(fit, selection))),
+          table[row, "Mean"],
+          tolerance = 1e-10,
+          info = paste(contrast, transform_factors, row)
+        )
+      }
+    }
+  }
+})
+
+test_that("formula prefixes come from the formula parameter, not from name prefixes", {
+
+  data <- data.frame(
+    x        = seq(-1, 1, length.out = 12),
+    z        = stats::rnorm(12),
+    mu_income = seq(0, 1, length.out = 12)
+  )
+  mu <- JAGS_formula(
+    ~ x + mu_income, "mu", data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      x         = prior("normal", list(0, 1)),
+      mu_income = prior("normal", list(0, 1))
+    )
+  )
+  mu_tau <- JAGS_formula(
+    ~ z, "mu_tau", data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      z         = prior("normal", list(0, 1))
+    )
+  )
+  prior_list <- c(mu$prior_list, mu_tau$prior_list)
+  set.seed(4)
+  draws <- matrix(
+    stats::rnorm(20 * length(prior_list)),
+    nrow = 20,
+    dimnames = list(NULL, names(prior_list))
+  )
+  fit <- structure(
+    list(
+      mcmc         = coda::mcmc.list(coda::mcmc(draws)),
+      sample       = 20L,
+      summary.pars = list(mutate = NULL),
+      monitor      = names(prior_list)
+    ),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_design") <- list(
+    mu     = mu$formula_design,
+    mu_tau = mu_tau$formula_design
+  )
+  fit <- .bt_attach_parameter_map(fit)
+  fit <- .bt_attach_draw_geometry(fit)
+  fit <- .bt_attach_fit_contract(fit)
+
+  expected <- c(
+    "(mu) intercept", "(mu) x", "(mu) mu_income",
+    "(mu_tau) intercept", "(mu_tau) z"
+  )
+  mixed <- as_mixed_posteriors(fit, parameters = names(prior_list))
+  expect_identical(
+    rownames(ensemble_estimates_table(mixed, parameters = names(prior_list))),
+    expected
+  )
+  expect_identical(
+    rownames(ensemble_estimates_table(
+      mixed,
+      parameters     = c("mu_x", "mu_mu_income", "mu_tau_z"),
+      formula_prefix = FALSE
+    )),
+    c("x", "mu_income", "z")
+  )
+  catalog <- parameter_catalog(fit)
+  expect_identical(
+    parameter_catalog_resolve(catalog, "(mu_tau) z")$quantities$canonical_name,
+    "mu_tau_z"
+  )
+
+  models <- list(list(
+    fit       = fit,
+    inference = list(m_number = 1, marglik = 0, prior_prob = 1,
+                     post_prob = 1, inclusion_BF = 1)
+  ))
+  expect_identical(
+    colnames(ensemble_summary_table(models, names(prior_list)))[2:6],
+    expected
+  )
+})

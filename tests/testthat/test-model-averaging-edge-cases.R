@@ -999,8 +999,8 @@ test_that("mix_posteriors preserves factor-by-factor interaction coefficients", 
         "a:b" = prior_factor("normal", list(0, 1), contrast = "treatment")
       ),
       names = c(
-        "mu_a[a2]__xXx__b[b2]",
-        "mu_a[a2]__xXx__b[b3]"
+        "mu_a__xXx__b[a=a2, b=b2]",
+        "mu_a__xXx__b[a=a2, b=b3]"
       )
     ),
     independent = list(
@@ -1009,12 +1009,12 @@ test_that("mix_posteriors preserves factor-by-factor interaction coefficients", 
         "a:b" = prior_factor("normal", list(0, 1), contrast = "independent")
       ),
       names = c(
-        "mu_a[a1]__xXx__b[b1]",
-        "mu_a[a2]__xXx__b[b1]",
-        "mu_a[a1]__xXx__b[b2]",
-        "mu_a[a2]__xXx__b[b2]",
-        "mu_a[a1]__xXx__b[b3]",
-        "mu_a[a2]__xXx__b[b3]"
+        "mu_a__xXx__b[a=a1, b=b1]",
+        "mu_a__xXx__b[a=a2, b=b1]",
+        "mu_a__xXx__b[a=a1, b=b2]",
+        "mu_a__xXx__b[a=a2, b=b2]",
+        "mu_a__xXx__b[a=a1, b=b3]",
+        "mu_a__xXx__b[a=a2, b=b3]"
       )
     )
   )

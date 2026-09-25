@@ -311,24 +311,6 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   return(samples)
 }
-# Mixed columns of untransformed contrast coordinates follow the coordinate
-# display names: a structural level cell keeps its level labels, and every
-# other coordinate is contrast coefficient `<parameter>{j}`, never `[j]`.
-.as_mixed_posteriors_factor_column_names <- function(parameter, prior,
-                                                     coordinate_names){
-
-  display_names <- .bt_factor_coordinate_display_names(parameter, prior)
-  if(is.null(display_names) ||
-     length(display_names) != length(coordinate_names)){
-    display_names <- paste0(
-      parameter,
-      .bt_parameter_catalog_factor_coefficient_component(
-        seq_along(coordinate_names)
-      )
-    )
-  }
-  display_names
-}
 .as_mixed_posteriors.vector         <- function(model_samples, prior, parameter,
                                                 column_names = NULL){
 
@@ -422,11 +404,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     rownames(samples) <- NULL
     # The first ordered coordinate is a level cell; later ones are increments,
     # contrast coefficients `{j}`, never bracketed positions.
-    colnames(samples) <- .as_mixed_posteriors_factor_column_names(
-      parameter,
-      prior,
-      coefficient_names
-    )
+    colnames(samples) <- .bt_label_prior_column_names(parameter, prior)
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- prior
     if(!is.null(ordered_total_component)){
@@ -452,7 +430,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     # Level cells from the term's design (a full-rank interaction such as
     # `~ g + g:x` includes the first level); cumulative increments of an
     # interaction with an ordered factor are contrast coefficients `{j}`.
-    colnames(samples) <- .factor_level_coordinate_names(parameter, prior, ncol(samples))
+    colnames(samples) <- .bt_label_prior_column_names(parameter, prior)
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- prior
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
@@ -472,7 +450,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
 
     rownames(samples) <- NULL
-    colnames(samples) <- .factor_level_coordinate_names(parameter, prior, ncol(samples))
+    colnames(samples) <- .bt_label_prior_column_names(parameter, prior)
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- prior
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
@@ -484,11 +462,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       model_samples,
       prior,
       parameter,
-      column_names = .as_mixed_posteriors_factor_column_names(
-        parameter,
-        prior,
-        paste0(parameter, "[", seq_len(prior_info[["levels"]]), "]")
-      )
+      column_names = .bt_label_prior_column_names(parameter, prior)
     )
     class(samples) <- c(class(samples), "mixed_posteriors.factor")
 

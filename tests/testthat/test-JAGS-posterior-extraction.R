@@ -566,7 +566,7 @@ test_that("treatment interactions with ordered factors label increments as coeff
   fit <- attach_test_parameter_map(fit)
   mixed <- as_mixed_posteriors(fit, parameters = "mu_f__xXx__o")
   expect_identical(colnames(mixed$mu_f__xXx__o),
-                   c("mu_f[b]__xXx__o[10]", "mu_f__xXx__o{2}"))
+                   c("mu_f__xXx__o[f=b, o=10]", "mu_f__xXx__o{2}"))
 
   # Every displayed interaction row selects the quantity that produced it
   # (the table summarizes the same draws: agreement up to rounding).

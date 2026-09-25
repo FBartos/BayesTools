@@ -430,11 +430,9 @@ density.prior <- function(x,
   }
 
   design_info <- .factor_term_design_from_metadata(x)
-  level_names <- design_info[["cell_names"]]
-  component_names <- .factor_contrast_parameter_names(
-    parameter = metadata$parameter_name,
-    level_names = .factor_level_list(x),
-    cell_names = level_names
+  component_names <- .bt_label(
+    .bt_label_factor_level_parts(metadata$parameter_name, x),
+    style = "selector"
   )
   weights <- design_info$design
   colnames(weights) <- .JAGS_prior_factor_names(metadata$parameter_name, x)
@@ -746,11 +744,9 @@ density.prior <- function(x,
     return(NULL)
   }
 
-  level_names <- .factor_term_design_from_metadata(x)[["cell_names"]]
-  component_names <- .factor_contrast_parameter_names(
-    parameter = metadata$parameter_name,
-    level_names = .factor_level_list(x),
-    cell_names = level_names
+  component_names <- .bt_label(
+    .bt_label_factor_level_parts(metadata$parameter_name, x),
+    style = "selector"
   )
 
   densities <- vector("list", length(component_names))

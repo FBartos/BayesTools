@@ -201,17 +201,25 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
              is_prior_phacking(prior_list[[i]]) | is_prior_bias(prior_list[[i]])){
       temp_prior <- print(prior_list[[i]], silent = TRUE, short_name = short_name)
     }else if(is.prior.simple(prior_list[[i]]) | is.prior.vector(prior_list[[i]]) | is.prior.factor(prior_list[[i]]) | is.prior.spike_and_slab(prior_list[[i]]) | is.prior.mixture(prior_list[[i]])){
-      temp_prior <- paste0(names(prior_list)[i], " ~ " , print(prior_list[[i]], silent = TRUE, short_name = short_name, inline = TRUE))
+      temp_prior <- paste0(
+        .bt_label(
+          .bt_label_parts_term(names(prior_list)[i], prior_list[[i]]),
+          style = "table",
+          formula_prefix = formula_prefix
+        ),
+        " ~ ",
+        print(prior_list[[i]], silent = TRUE, short_name = short_name, inline = TRUE)
+      )
     }else if(is.prior.point(prior_list[[i]])){
-      temp_prior <- paste0(names(prior_list)[i], " = " , print(prior_list[[i]], silent = TRUE, short_name = short_name))
-    }
-    # change the formula formatting
-    if(!is.null(attr(prior_list[[i]], "parameter", exact = TRUE))){
-      temp_prior <- gsub(
-        paste0(attr(prior_list[[i]], "parameter", exact = TRUE), "_"),
-        if(formula_prefix) paste0("(", attr(prior_list[[i]], "parameter", exact = TRUE), ") ") else "",
-        temp_prior)
-      temp_prior <- gsub("__xXx__", ":", temp_prior)
+      temp_prior <- paste0(
+        .bt_label(
+          .bt_label_parts_term(names(prior_list)[i], prior_list[[i]]),
+          style = "table",
+          formula_prefix = formula_prefix
+        ),
+        " = ",
+        print(prior_list[[i]], silent = TRUE, short_name = short_name)
+      )
     }
     summary_priors <- c(summary_priors, temp_prior)
   }
