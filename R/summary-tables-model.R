@@ -397,6 +397,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   cleaned       <- .remove_auxiliary_parameters(model_samples, prior_list, remove_params_vec)
   model_samples <- cleaned$model_samples
   prior_list    <- cleaned$prior_list
+  structural_columns <- cleaned$structural
   model_samples <- .bt_JAGS_estimates_filter_raw_random_columns(
     model_samples = model_samples,
     prior_list = prior_list,
@@ -782,7 +783,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
         prior_list        = prior_list,
         formula_design    = attr(fit, "formula_design"),
         inclusion_columns = inclusion_columns
-      )
+      ),
+      structural          = parameter_names %in% structural_columns
     )
     footnotes <- c(footnotes, .bt_random_effect_summary_correlation_footnotes(
       model_samples   = model_samples,

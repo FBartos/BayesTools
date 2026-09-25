@@ -119,7 +119,10 @@ are attached as the \code{"label_parts"} attribute}
 \value{
 matrix or mcmc.list of posterior samples
 
-list with cleaned model_samples and updated prior_list
+list with cleaned model_samples, updated prior_list, and the
+columns of the publication-weight bins that the selection priors declare as
+structural constants (structural: the reference bin, every bin of fixed
+weights), with the bins named by their p-value intervals
 
 updated model_samples matrix
 

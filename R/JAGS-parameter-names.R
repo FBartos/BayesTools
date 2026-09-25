@@ -79,7 +79,7 @@ format_parameter_names <- function(parameters, formula_parameters = NULL, formul
       parameters,
       fixed = TRUE
     )
-    temp_incl  <- grepl("(inclusion)", parameters)
+    temp_incl  <- grepl("(inclusion)", parameters, fixed = TRUE)
     parameters[temp_which] <- gsub(
       paste0("_xREx__", formula_random[i], "_"),
       "",

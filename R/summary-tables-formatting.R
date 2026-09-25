@@ -210,15 +210,21 @@
   unname(random_inclusion | parameter_names %in% indicator_columns)
 }
 
+# 'structural' marks rows of structural constants (declared by their priors,
+# such as the reference publication-weight bin): they have no MCMC
+# diagnostics.
 .runjags_summary_fast   <- function(model_samples, n_samples, n_chains, conditional, probs = c(0.025, 0.975), remove_diagnostics = FALSE,
                                     diagnostic_columns = .JAGS_estimates_diagnostic_columns(),
-                                    inclusion = rep(FALSE, ncol(model_samples))){
+                                    inclusion = rep(FALSE, ncol(model_samples)),
+                                    structural = rep(FALSE, ncol(model_samples))){
 
   diagnostic_columns <- .normalize_diagnostic_columns(diagnostic_columns, .JAGS_estimates_diagnostic_columns(), "diagnostic_columns")
   if(remove_diagnostics){
     diagnostic_columns <- character()
   }
   check_bool(inclusion, "inclusion", check_length = ncol(model_samples),
+             allow_NULL = ncol(model_samples) == 0L)
+  check_bool(structural, "structural", check_length = ncol(model_samples),
              allow_NULL = ncol(model_samples) == 0L)
 
   # compute quantiles dynamically
@@ -296,8 +302,8 @@
   runjags_diagnostics[zero_ess, "ESS"]                                               <- 0
   runjags_diagnostics[is.nan(runjags_diagnostics[,"R_hat"]),"R_hat"]                 <- NA
 
-  # first omega parameter is always constant
-  runjags_diagnostics[grepl("omega[0,", rownames(runjags_diagnostics), fixed = TRUE), ] <- NA
+  # structural constants have no MCMC diagnostics
+  runjags_diagnostics[structural, ] <- NA
   runjags_summary <- cbind.data.frame(runjags_summary, runjags_diagnostics[, diagnostic_columns, drop = FALSE])
 
   return(runjags_summary)

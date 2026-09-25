@@ -994,3 +994,65 @@ test_that("hypotheses reference levels in the catalog's escaped level form", {
                  tolerance = 1e-12, info = hypothesis)
   }
 })
+
+# A synthetic two-chain fit of the columns of 'chains' under 'prior_list'.
+.label_test_mock_fit <- function(chains, prior_list){
+
+  fit <- list(
+    mcmc         = do.call(coda::mcmc.list, lapply(chains, coda::mcmc)),
+    sample       = nrow(chains[[1L]]),
+    summary.pars = list(mutate = NULL)
+  )
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit <- .bt_attach_parameter_map(fit)
+  fit <- .bt_attach_draw_geometry(fit)
+  .bt_attach_fit_contract(fit)
+}
+
+test_that("estimates tables blank the diagnostics of declared structural weight bins", {
+
+  set.seed(22)
+  n <- 80
+  weight_chain <- function(omega_2){
+    cbind(mu = stats::rnorm(n), "omega[1]" = 1, "omega[2]" = omega_2)
+  }
+  diagnostics <- c("MCMC_error", "MCMC_SD_error", "ESS", "R_hat")
+
+  # estimated weights: the reference bin is the only structural constant
+  estimated <- .label_test_mock_fit(
+    list(weight_chain(stats::rbeta(n, 4, 2)), weight_chain(stats::rbeta(n, 4, 2))),
+    list(
+      mu    = prior("normal", list(0, 1)),
+      omega = prior_weightfunction("one-sided", .05, wf_cumulative(c(2, 4)))
+    )
+  )
+  table <- JAGS_estimates_table(estimated)
+  expect_identical(rownames(table), c("mu", "omega[0,0.05]", "omega[0.05,1]"))
+  expect_true(all(is.na(unlist(table["omega[0,0.05]", diagnostics]))))
+  expect_false(anyNA(unlist(table[c("mu", "omega[0.05,1]"), c("MCMC_error", "ESS", "R_hat")])))
+
+  # fixed weights: every bin is a declared constant
+  fixed <- .label_test_mock_fit(
+    list(weight_chain(.5), weight_chain(.5)),
+    list(
+      mu    = prior("normal", list(0, 1)),
+      omega = prior_weightfunction("one-sided", .05, wf_fixed(c(1, .5)))
+    )
+  )
+  table <- JAGS_estimates_table(fixed)
+  expect_equal(table[["Mean"]], c(mean(c(fixed$mcmc[[1]][, "mu"], fixed$mcmc[[2]][, "mu"])), 1, .5))
+  expect_true(all(is.na(unlist(table[c("omega[0,0.05]", "omega[0.05,1]"), diagnostics]))))
+  expect_false(anyNA(unlist(table["mu", diagnostics])))
+})
+
+test_that("inclusion rows of names containing 'inclusion' are formatted from the marker only", {
+
+  expect_identical(
+    format_parameter_names(
+      c("mu__xREx__id_xinclusion", "mu__xREx__id_x(inclusion)"),
+      formula_random = "id"
+    ),
+    c("sd(mu_xinclusion|id)", "mu_x|id (inclusion)")
+  )
+})

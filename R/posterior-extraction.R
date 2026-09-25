@@ -36,9 +36,13 @@ NULL
 #' @param model_samples matrix of posterior samples
 #' @param prior_list list of prior objects
 #' @param remove_parameters character vector of parameter names to remove
-#' @return list with cleaned model_samples and updated prior_list
+#' @return list with cleaned model_samples, updated prior_list, and the
+#' columns of the publication-weight bins that the selection priors declare as
+#' structural constants (structural: the reference bin, every bin of fixed
+#' weights), with the bins named by their p-value intervals
 .remove_auxiliary_parameters <- function(model_samples, prior_list, remove_parameters = NULL) {
 
+  structural <- character()
   for (i in rev(seq_along(prior_list))) {
 
     par_name <- names(prior_list)[i]
@@ -66,6 +70,9 @@ NULL
       omega_raw_names <- grep("^omega\\[[0-9]+\\]$", colnames(model_samples), value = TRUE)
 
       colnames(model_samples)[which(colnames(model_samples) %in% omega_names_old)] <- omega_names
+      structural <- c(structural, .structural_weight_columns(
+        par_name, prior_list[[i]], omega_names_old, omega_names
+      ))
 
       # Two-sided weightfunctions are expanded internally to mirrored one-sided
       # coefficients for JAGS. Only the public local bins belong in summaries.
@@ -83,6 +90,7 @@ NULL
     } else if (is_prior_phacking(prior_list[[i]])) {
       drop_phacking <- .phacking_unreported_parameters(prior_list[[i]])
       model_samples <- model_samples[, !colnames(model_samples) %in% drop_phacking, drop = FALSE]
+      structural <- c(structural, .structural_weight_columns(par_name, prior_list[[i]]))
 
       if ("omega" %in% remove_parameters) {
         omega_names <- colnames(model_samples)[grepl("^omega\\[", colnames(model_samples))]
@@ -103,8 +111,12 @@ NULL
         omega_names_old <- paste0("omega[", 1:(length(omega_cuts) - 1), "]")
         omega_names     <- sapply(1:(length(omega_cuts) - 1), function(j) paste0("omega[", omega_cuts[j], ",", omega_cuts[j + 1], "]"))
         colnames(model_samples)[which(colnames(model_samples) %in% omega_names_old)] <- omega_names
+        structural <- c(structural, .structural_weight_columns(
+          par_name, prior_list[[i]], omega_names_old, omega_names
+        ))
       } else {
         omega_names <- colnames(model_samples)[grepl("^omega\\[", colnames(model_samples))]
+        structural <- c(structural, .structural_weight_columns(par_name, prior_list[[i]]))
       }
 
       if ("omega" %in% remove_parameters) {
@@ -126,7 +138,8 @@ NULL
   if (is.character(remove_parameters) && length(remove_parameters) > 0L) {
     column_names <- colnames(model_samples)
     if (is.null(column_names) || length(column_names) == 0L) {
-      return(list(model_samples = model_samples, prior_list = prior_list))
+      return(list(model_samples = model_samples, prior_list = prior_list,
+                  structural = character()))
     }
     for (par_name in unique(remove_parameters)) {
       cols_to_remove <- column_names == par_name |
@@ -141,7 +154,25 @@ NULL
     }
   }
 
-  return(list(model_samples = model_samples, prior_list = prior_list))
+  return(list(
+    model_samples = model_samples,
+    prior_list    = prior_list,
+    structural    = intersect(structural, colnames(model_samples))
+  ))
+}
+
+# The columns of the publication-weight bins that a selection prior declares
+# as structural constants (its convergence-role declaration), under the
+# p-value interval names the summaries give the bins ('new_names' of
+# 'old_names').
+.structural_weight_columns <- function(parameter, prior, old_names = character(),
+                                       new_names = character()){
+
+  declared <- .bt_convergence_role_prior(parameter, prior)
+  declared <- declared$name[declared$exact & declared$role == "structural"]
+  renamed  <- match(declared, old_names)
+  declared[!is.na(renamed)] <- new_names[renamed[!is.na(renamed)]]
+  declared
 }
 
 
