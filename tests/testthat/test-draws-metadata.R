@@ -677,7 +677,19 @@ test_that("subsetting a list of mixed posteriors keeps the list's metadata", {
   expect_identical(samples[], samples)
 })
 
+# Forces the R evaluator of draw fingerprints (or, with 'r = FALSE', the
+# native pass) until the calling test ends.
+.local_r_fingerprint <- function(r = TRUE, envir = parent.frame()){
+  private <- BayesTools:::.BayesTools_private
+  old <- private$draw_fingerprint_r
+  private$draw_fingerprint_r <- r
+  withr::defer(private$draw_fingerprint_r <- old, envir = envir)
+  invisible(private)
+}
+
 test_that("draw fingerprints are computed in one native pass in a fixed order", {
+
+  .local_r_fingerprint(r = FALSE)
 
   fingerprint <- function(x) .Call("BayesTools_draw_fingerprint", x, PACKAGE = "BayesTools")
   set.seed(3)
@@ -714,6 +726,102 @@ test_that("draw fingerprints are computed in one native pass in a fixed order", 
   # the container records the first four
   x <- .bt_meta_set(values, "undefined_draws", "correlation")
   expect_identical(unname(attr(x, "bayestools_meta")$fingerprint), native[1:4])
+})
+
+test_that("the R evaluator of draw fingerprints agrees with the native pass", {
+
+  native_fingerprint <- function(x) .Call("BayesTools_draw_fingerprint", x, PACKAGE = "BayesTools")
+  as_fingerprint <- function(out) list(
+    value = c(length = out[[1L]], missing = out[[2L]], sum = out[[3L]], weighted_sum = out[[4L]]),
+    scale = c(sum = out[[5L]], weighted_sum = out[[6L]])
+  )
+  set.seed(1)
+  cases <- list(
+    normal_1e6    = stats::rnorm(1e6),
+    odd_length    = stats::rnorm(1e4 + 3),
+    n1            = 0.3,
+    n3            = c(1.5, -2, 3),
+    n5            = stats::rnorm(5),
+    with_na_nan   = c(stats::rnorm(100), NA, NaN, stats::rnorm(3)),
+    with_inf      = c(stats::rnorm(10), Inf),
+    inf_minus_inf = c(Inf, 1, -Inf),
+    cancel        = c(1e16, 1, -1e16, 3.5, 2^-40),
+    tiny          = stats::rnorm(1e4) * 1e-300,
+    huge          = stats::rnorm(1e4) * 1e300,
+    weighted_inf  = c(stats::rnorm(10), 1e308, 1e308 / 2),
+    integer       = sample.int(100L, 1e5, TRUE),
+    integer_na    = c(1L, NA, 3L),
+    logical       = c(TRUE, NA, FALSE, TRUE),
+    compact_int   = 1:100000,
+    compact_real  = as.numeric(1:100000),
+    matrix        = matrix(stats::rnorm(1e4), 100),
+    all_na        = rep(NA_real_, 7),
+    empty         = numeric()
+  )
+  # identical where the arithmetic is exact (integer-valued sums, lanes of at
+  # most one value, no observed values) or where R's long double is double
+  exact <- c("n1", "n3", "integer", "integer_na", "logical", "compact_int",
+             "compact_real", "all_na", "empty")
+  long_double_is_double <- is.null(.Machine$longdouble.digits) ||
+    .Machine$longdouble.digits <= .Machine$double.digits
+  for(name in names(cases)){
+    native <- native_fingerprint(cases[[name]])
+    r <- .bt_meta_fingerprint_r(cases[[name]])
+    expect_identical(r[1:2], native[1:2], info = name)
+    if(name %in% exact || long_double_is_double){
+      expect_identical(r, native, info = name)
+    }
+    # a fingerprint stored by either evaluator matches the other one's
+    expect_true(.bt_meta_fingerprint_matches(as_fingerprint(native)$value, as_fingerprint(r)), info = name)
+    expect_true(.bt_meta_fingerprint_matches(as_fingerprint(r)$value, as_fingerprint(native)), info = name)
+  }
+  expect_error(.bt_meta_fingerprint_r("a"), "Draw fingerprints require numeric or logical values.", fixed = TRUE)
+})
+
+test_that("draw metadata work with the R evaluator of the fingerprint", {
+
+  set.seed(2)
+  native_draws <- .bt_meta_set(stats::rnorm(1e4), "atoms", posterior_atom_attribute())
+  native_mixed <- .draws_metadata_mixed_for_test()
+  reference <- Savage_Dickey_BF(marginal_posterior(native_mixed, "sigma", prior_samples = TRUE), 1)
+
+  .local_r_fingerprint()
+  expect_false(.bt_meta_fingerprint_native())
+  draws <- stats::rnorm(100)
+  posterior_metadata(draws, "atoms") <- posterior_atom_attribute()
+  expect_s3_class(posterior_metadata(draws, "atoms"), "BayesTools_posterior_atoms")
+  expect_identical(unname(attr(draws, "bayestools_meta")$fingerprint), .bt_meta_fingerprint_r(draws)[1:4])
+
+  # metadata stored by the native pass are read with the R evaluator
+  expect_s3_class(posterior_metadata(native_draws, "atoms"), "BayesTools_posterior_atoms")
+  mixed <- .draws_metadata_mixed_for_test()
+  mp <- marginal_posterior(mixed, "sigma", prior_samples = TRUE)
+  expect_identical(Savage_Dickey_BF(mp, 1), reference)
+
+  # and changed values stop
+  replaced <- mp
+  replaced[] <- 2 * mp
+  element <- mp
+  element[3] <- 10
+  for(stale in list(replaced, element, pmin(mp, 1))){
+    expect_error(Savage_Dickey_BF(stale, 2), class = "BayesTools_stale_metadata")
+    expect_error(posterior_metadata(stale, "atoms") <- NULL, class = "BayesTools_stale_metadata")
+  }
+})
+
+test_that("draw fingerprints use the R evaluator when the native routines are not loaded", {
+
+  testthat::local_mocked_bindings(
+    .BayesTools_native_routines_loaded = function(pkgname = "BayesTools") FALSE,
+    .package = "BayesTools"
+  )
+  expect_false(.bt_meta_fingerprint_native())
+  set.seed(3)
+  draws <- stats::rnorm(100)
+  posterior_metadata(draws, "support") <- posterior_support_attribute(c(-Inf, Inf))
+  expect_identical(unname(attr(draws, "bayestools_meta")$fingerprint), .bt_meta_fingerprint_r(draws)[1:4])
+  draws[1] <- draws[1] + 1
+  expect_error(posterior_metadata(draws, "support"), class = "BayesTools_stale_metadata")
 })
 
 test_that("setting several draw-metadata fields checks the draws once", {

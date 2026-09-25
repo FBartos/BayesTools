@@ -325,7 +325,9 @@
 # fingerprint of the values it describes: their number, the number of missing
 # values, and the sums of the observed values and of the observed values
 # weighted by their positions. The fingerprint is computed in one native pass
-# (src/r-draw-fingerprint.c).
+# (src/r-draw-fingerprint.c) or, when the package's native routines are not
+# loaded (the package loads without its DLL when JAGS cannot be located), by
+# an R evaluator of the same definition (.bt_meta_fingerprint_r()).
 .bt_meta_fingerprint_field <- "fingerprint"
 
 .bt_meta_is_draws <- function(x){
@@ -337,10 +339,60 @@
 # container) with the scales of its rounding-error bound ('scale').
 .bt_meta_fingerprint <- function(x){
 
-  out <- .Call("BayesTools_draw_fingerprint", x, PACKAGE = "BayesTools")
+  out <- if(.bt_meta_fingerprint_native()){
+    .Call("BayesTools_draw_fingerprint", x, PACKAGE = "BayesTools")
+  }else{
+    .bt_meta_fingerprint_r(x)
+  }
   list(
     value = c(length = out[[1L]], missing = out[[2L]], sum = out[[3L]], weighted_sum = out[[4L]]),
     scale = c(sum = out[[5L]], weighted_sum = out[[6L]])
+  )
+}
+
+# Whether draw fingerprints are computed by the native pass: the native
+# routines are loaded and the R evaluator is not forced (the internal switch
+# .BayesTools_private$draw_fingerprint_r, used by the tests).
+.bt_meta_fingerprint_native <- function(){
+
+  !isTRUE(.BayesTools_private$draw_fingerprint_r) &&
+    isTRUE(.BayesTools_native_routines_loaded(pkgname = "BayesTools"))
+}
+
+# The R evaluator of the native fingerprint pass: the same six values, with
+# the same fixed summation order. Value i goes to lane i mod 4 (row of a
+# 4-row matrix, padded with zeros, which add nothing to a lane sum),
+# rowSums() adds the observed values of each lane in increasing i, and the
+# lanes are combined as (p0 + p1) + (p2 + p3). The lane sums accumulate in
+# long double where R has it, so they can differ from the native double lanes
+# in the last bits, within the rounding-error bound of
+# .bt_meta_fingerprint_matches(); they are identical where long double is
+# double, and for integer and logical draws (exact sums). A lane sum that
+# overflows double precision only transiently (draws near the largest
+# double) can be infinite in one evaluator and finite in the other.
+.bt_meta_fingerprint_r <- function(x){
+
+  if(!.bt_meta_is_draws(x)){
+    stop("Draw fingerprints require numeric or logical values.", call. = FALSE)
+  }
+  n <- length(x)
+  values <- as.double(x)
+  any_missing <- anyNA(values)
+  padded <- 4 * ceiling(n / 4)
+  lanes <- c(values, rep(0, padded - n))
+  dim(lanes) <- c(4L, padded / 4)
+  weighted <- lanes * seq_len(padded)
+  combine <- function(lane_values){
+    lane_sums <- rowSums(lane_values, na.rm = any_missing)
+    (lane_sums[[1L]] + lane_sums[[2L]]) + (lane_sums[[3L]] + lane_sums[[4L]])
+  }
+  c(
+    n,
+    if(any_missing) sum(is.na(values)) else 0,
+    combine(lanes),
+    combine(weighted),
+    combine(abs(lanes)),
+    combine(abs(weighted))
   )
 }
 

@@ -372,7 +372,10 @@ their attributes were kept (`x[] <- `, `x[i] <- `, `pmin()`) stops with class
 `BayesTools_stale_metadata`, so a producer that replaces values under an
 existing container rebuilds it (`.bt_meta_refresh()`) and then transforms
 or removes the fields that no longer apply. The fingerprint is computed in one
-native pass per read or update; the package retains no draws between calls.
+native pass per read or update, or by an R evaluator of the same definition
+when the native routines are not loaded (the package loads without its DLL
+when JAGS cannot be located, and metadata never need JAGS); the package
+retains no draws between calls.
 Subsetting a list of mixed posteriors with `[` keeps the list's container,
 with the prior densities of the kept elements.
 
