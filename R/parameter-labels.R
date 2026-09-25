@@ -986,15 +986,18 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
 }
 
 # The column table of draws 'x', aligned with its columns (one row for vector
-# draws), or NULL when the draws carry none.
+# draws), or NULL when the draws carry none. The draws of one estimated
+# marginal mean are one quantity whatever their storage (those of a formula
+# intercept are a one-row matrix of predictions by draws).
 .bt_draws_quantities <- function(x){
 
   quantities <- .bt_meta_get(x, "quantities")
   if(is.null(quantities)){
     return(NULL)
   }
-  columns <- if(is.null(dim(x))) NULL else colnames(x)
-  n_columns <- if(is.null(dim(x))) 1L else ncol(x)
+  single <- is.null(dim(x)) || inherits(x, "marginal_posterior.simple")
+  columns <- if(single) NULL else colnames(x)
+  n_columns <- if(single) 1L else ncol(x)
   if(nrow(quantities) != n_columns ||
      (!is.null(columns) && !identical(quantities$column, columns))){
     stop(

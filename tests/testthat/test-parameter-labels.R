@@ -910,6 +910,22 @@ test_that("marginal names, rows, and warnings are rendered labels of the margina
     attr(table, "warnings"),
     paste0("x:g[", expected_names, "]: check this level")
   )
+
+  # the intercept's marginal mean (its draws are a one-row matrix of
+  # predictions) is one quantity, labelled by its term
+  intercept <- marginal_posterior(mixed, "mu_intercept", formula = ~ x * g)
+  expect_identical(
+    parameter_labels(posterior_metadata(intercept$intercept, "quantities"), "table"),
+    "(mu) intercept"
+  )
+  table <- marginal_estimates_table(
+    list(mu_intercept = intercept),
+    list(mu_intercept = list(intercept = structure(1, warnings = "check the intercept"))),
+    parameters = "mu_intercept"
+  )
+  expect_identical(rownames(table), "(mu) intercept")
+  expect_equal(table[, "Mean"], mean(intercept$intercept), tolerance = 1e-12)
+  expect_identical(attr(table, "warnings"), "(mu) intercept: check the intercept")
 })
 
 # The labels of the discrete (legend) scales of a ggplot.
