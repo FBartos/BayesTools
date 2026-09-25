@@ -489,6 +489,77 @@ test_that("original-scale ensemble tables transform mixed columns through the fi
   )
 })
 
+test_that("original-scale mixtures are transformed only through a design containing their terms", {
+
+  # models whose formulas differ: g * x and g + x (no g:x); the g:x columns of
+  # the mixture are coefficients of the larger design only
+  set.seed(12)
+  data <- data.frame(
+    g = factor(rep(c("a", "b", "c"), 8), levels = c("a", "b", "c")),
+    x = stats::rnorm(24, 3, 2)
+  )
+  full <- .label_test_fit(~ g * x, data, list(
+    intercept = prior("normal", list(0, 1)),
+    g         = .label_test_factor_prior("treatment"),
+    x         = prior("normal", list(0, 1)),
+    "g:x"     = .label_test_factor_prior("treatment")
+  ), formula_scale = list(x = TRUE), n = 50L)
+  smaller <- .label_test_fit(~ g + x, data, list(
+    intercept = prior("normal", list(0, 1)),
+    g         = .label_test_factor_prior("treatment"),
+    x         = prior("normal", list(0, 1))
+  ), formula_scale = list(x = TRUE), seed = 2L, n = 50L)
+  parameters <- c("mu_intercept", "mu_g", "mu_x", "mu_g__xXx__x")
+  mixed <- mix_posteriors(
+    model_list = list(
+      list(fit = full,    marglik = bridgesampling_object(-10),   prior_weights = 1),
+      list(fit = smaller, marglik = bridgesampling_object(-10.2), prior_weights = 1)
+    ),
+    parameters   = parameters,
+    is_null_list = list(
+      mu_intercept = c(FALSE, FALSE), mu_g = c(FALSE, FALSE),
+      mu_x = c(FALSE, FALSE), mu_g__xXx__x = c(FALSE, TRUE)
+    ),
+    seed      = 1,
+    n_samples = 200
+  )
+
+  # through the larger design: at level k the standardized predictor
+  # b0 + g_k + (bx + c_k) (x - m) / s gives the intercept b0 - bx m / s, the
+  # levels g_k - c_k m / s, and the slopes bx / s and c_k / s
+  formula_scale <- attr(full, "formula_scale")
+  m <- formula_scale$mu$mu_x$mean
+  s <- formula_scale$mu$mu_x$sd
+  b0 <- as.numeric(mixed$mu_intercept)
+  bx <- as.numeric(mixed$mu_x)
+  g  <- matrix(as.numeric(mixed$mu_g), ncol = 2L)
+  gx <- matrix(as.numeric(mixed$mu_g__xXx__x), ncol = 2L)
+  table <- ensemble_estimates_table(
+    mixed, parameters = parameters, transform_scaled = TRUE,
+    formula_scale = formula_scale
+  )
+  expect_equal(
+    table[, "Mean"],
+    c(mean(b0 - bx * m / s), colMeans(g - gx * m / s), mean(bx / s), colMeans(gx / s)),
+    tolerance = 1e-10
+  )
+
+  # the smaller model's design does not contain g:x: no original-scale values
+  expect_error(
+    ensemble_estimates_table(
+      mixed, parameters = parameters, transform_scaled = TRUE,
+      formula_scale = attr(smaller, "formula_scale")
+    ),
+    paste0(
+      "Cannot transform 'mu_g__xXx__x[1]', 'mu_g__xXx__x[2]' to the original ",
+      "predictor scale: the fitted design in 'formula_scale' of formula ",
+      "parameter 'mu' does not contain these coefficients."
+    ),
+    fixed = TRUE,
+    class = "BayesTools_formula_transform_unavailable"
+  )
+})
+
 test_that("original-scale marginal tables keep the marginal predictions", {
 
   set.seed(3)

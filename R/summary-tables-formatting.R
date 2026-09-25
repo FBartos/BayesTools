@@ -400,6 +400,11 @@
     !duplicated(colnames(coordinate_values)),
     drop = FALSE
   ]
+  owners <- unlist(unname(lapply(elements, `[[`, "owners")))
+  .transform_scale_check_design_coordinates(
+    owners        = owners[!duplicated(names(owners))],
+    formula_scale = formula_scale
+  )
   transformed <- .apply_unscale_transform(coordinate_values, formula_scale)
 
   for(name in names(elements)){
@@ -426,9 +431,54 @@
   return(samples)
 }
 
+# The fitted fixed-effect coordinates transformed through the fitted design
+# that 'formula_scale' carries must be coefficients of that design: a column of
+# a term the design does not contain (e.g., a mixture of models whose formulas
+# differ, transformed with the 'formula_scale' of a smaller model) has no
+# original-scale value under it. 'owners' names the formula parameter of every
+# coordinate. Random-effect and allocation coordinates have transforms of
+# their own.
+.transform_scale_check_design_coordinates <- function(owners, formula_scale){
+
+  for(parameter in unique(owners)){
+    spec <- attr(formula_scale[[parameter]], "unscale_design", exact = TRUE)
+    if(is.null(spec)){
+      next
+    }
+    coordinates <- names(owners)[owners == parameter]
+    fixed <- !(
+      .formula_scale_matches_prefix(coordinates, parameter, "__xREx__") |
+        .formula_scale_matches_prefix(coordinates, parameter, "__xRE_ALLOCx") |
+        .formula_scale_matches_prefix(coordinates, parameter, "__xRE_SUMMARY__")
+    )
+    outside <- setdiff(
+      coordinates[fixed],
+      .bt_formula_unscale_coefficient_names(spec, parameter)
+    )
+    if(length(outside) > 0L){
+      .bt_formula_transform_stop(
+        paste0(
+          "Cannot transform ", paste0("'", outside, "'", collapse = ", "),
+          " to the original predictor scale: the fitted design in ",
+          "'formula_scale' of formula parameter '", parameter, "' does not ",
+          "contain ", if(length(outside) > 1L) "these coefficients" else "this coefficient",
+          ". Pass the 'formula_scale' of a fitted model whose formula contains ",
+          "every term of the samples."
+        ),
+        parameter    = parameter,
+        reason       = "coefficients_outside_design",
+        coefficients = outside
+      )
+    }
+  }
+
+  invisible(TRUE)
+}
+
 # The columns of one sample element as linear combinations of fitted
 # coordinates: a list with the draws of those coordinates, the weight matrix
-# (columns x coordinates), and the columns that belong to a scaled formula.
+# (columns x coordinates), the columns that belong to a scaled formula, and the
+# formula parameter owning each coordinate ('owners', named by coordinate).
 # NULL when no column belongs to a scaled formula.
 .transform_scale_element_columns <- function(x, name, scaled_parameters){
 
@@ -462,7 +512,8 @@
       return(list(
         coordinates = values,
         weights     = matrix(1, nrow = 1L, ncol = 1L, dimnames = list(NULL, name)),
-        columns     = TRUE
+        columns     = TRUE,
+        owners      = stats::setNames(formula_parameter[[1L]], name)
       ))
     }
     stop(
@@ -528,10 +579,17 @@
     coordinate_values <- t(qr.coef(decomposition, t(scaled_values)))
   }
   colnames(coordinate_values) <- coordinates
+  owners <- unlist(lapply(which(scaled), function(i){
+    stats::setNames(
+      rep(formula_parameters[[i]], length(quantities$dependencies[[i]])),
+      quantities$dependencies[[i]]
+    )
+  }))
 
   list(
     coordinates = coordinate_values,
     weights     = weights,
-    columns     = scaled
+    columns     = scaled,
+    owners      = owners[!duplicated(names(owners))]
   )
 }
