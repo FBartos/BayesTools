@@ -348,8 +348,14 @@ old behaviour.
   they are drawn without a prior curve (class
   `BayesTools_prior_curve_unavailable`), as they have no prior density.
   Before, their atom status was undeclared and plots stopped with "Posterior
-  atom status is unknown". Correlations of blocks whose allocated SDs have an
-  inclusion gate or a scale prior with a point component stay undeclared.
+  atom status is unknown". As correlations are scale-invariant, an inclusion
+  gate of the whole block or a scale prior with a point component that
+  multiplies every SD of the block puts no atom on them (where it is 0, the
+  correlation is undefined and the draw is omitted), so the correlations of
+  blocks allocated from a gated or spike-and-slab scale declare no atoms on
+  their defined draws either. Correlations of blocks whose SDs have their own
+  gates or spike-and-slab priors (which can be -1 or 1 where one SD is 0)
+  stay undeclared.
 - `parameter_mixed_posterior()` declares the atoms of the coordinates of
   weight-function, publication-bias, and publication-bias mixture priors
   (the weights `omega`, `PET`, `PEESE`, and the p-hacking `alpha`, `pi_null`,

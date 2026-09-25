@@ -57,13 +57,20 @@ deterministic node (\code{\link[=JAGS_deterministic_nodes]{JAGS_deterministic_no
 dependencies are such coordinates (e.g. the SDs of a variance allocation
 without inclusion gates whose scale prior has no point component, so the
 original-scale correlations of an allocated \code{us()} block declare no
-atoms). Atoms remain undeclared (and posterior plots and Savage-Dickey
+atoms). A random-effect correlation is scale-invariant, so a coordinate
+that enters its block only as a common factor of every SD (the scale
+source of the allocation that splits the block into its SDs, or an
+inclusion gate of the whole block, also with point masses) puts no atom
+on it: where the factor is 0, every SD is 0 and the correlation is
+undefined. The original-scale correlations of a block allocated from a
+gated or spike-and-slab scale therefore declare no atoms on their defined
+draws. Atoms remain undeclared (and posterior plots and Savage-Dickey
 ratios stop) when the point states are not in the draws (an unmonitored
 component indicator), when the quantity combines several coordinates of
 which some can take a point mass (e.g. original-scale random-effect SDs
-and correlations of a block with spike-and-slab SD priors, and
-original-scale correlations of a block whose allocated SDs depend on an
-inclusion gate or on a scale prior with a point component), and when the
+of a block with spike-and-slab SD priors, and original-scale
+correlations of a block whose SDs have their own spike-and-slab priors
+or inclusion gates, which can be -1 or 1 where one SD is 0), and when the
 point structure of a fitted coordinate is not classified: coordinates of
 priors that are neither continuous, point, mixture, spike-and-slab, nor
 selection priors, and coordinates without a prior other than LKJ

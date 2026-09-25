@@ -26,13 +26,20 @@
 #'   dependencies are such coordinates (e.g. the SDs of a variance allocation
 #'   without inclusion gates whose scale prior has no point component, so the
 #'   original-scale correlations of an allocated `us()` block declare no
-#'   atoms). Atoms remain undeclared (and posterior plots and Savage-Dickey
+#'   atoms). A random-effect correlation is scale-invariant, so a coordinate
+#'   that enters its block only as a common factor of every SD (the scale
+#'   source of the allocation that splits the block into its SDs, or an
+#'   inclusion gate of the whole block, also with point masses) puts no atom
+#'   on it: where the factor is 0, every SD is 0 and the correlation is
+#'   undefined. The original-scale correlations of a block allocated from a
+#'   gated or spike-and-slab scale therefore declare no atoms on their defined
+#'   draws. Atoms remain undeclared (and posterior plots and Savage-Dickey
 #'   ratios stop) when the point states are not in the draws (an unmonitored
 #'   component indicator), when the quantity combines several coordinates of
 #'   which some can take a point mass (e.g. original-scale random-effect SDs
-#'   and correlations of a block with spike-and-slab SD priors, and
-#'   original-scale correlations of a block whose allocated SDs depend on an
-#'   inclusion gate or on a scale prior with a point component), and when the
+#'   of a block with spike-and-slab SD priors, and original-scale
+#'   correlations of a block whose SDs have their own spike-and-slab priors
+#'   or inclusion gates, which can be -1 or 1 where one SD is 0), and when the
 #'   point structure of a fitted coordinate is not classified: coordinates of
 #'   priors that are neither continuous, point, mixture, spike-and-slab, nor
 #'   selection priors, and coordinates without a prior other than LKJ
@@ -352,10 +359,11 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 # - a quantity whose prior density has no point mass, or, without a prior
 #   density, none of whose fitted coordinates can take a point mass
 #   (.bt_parameter_point_free(), through the node registry for generated
-#   deterministic coordinates), has none;
+#   deterministic coordinates, and up to the common factors of every SD of
+#   the block of a correlation), has none;
 # - otherwise (the point states are not in the draws, or a composite of
 #   coordinates with point masses, e.g. an original-scale correlation of a
-#   block whose allocated SDs have inclusion gates) the atom status is
+#   block whose SDs have their own inclusion gates) the atom status is
 #   undeclared (NULL).
 .bt_parameter_mixed_posterior_atoms <- function(fit, quantity, prior_density,
                                                 plan, states, keep){
@@ -425,7 +433,9 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 
 # Whether none of the fitted coordinates a catalog quantity is computed from
 # (the dependencies of its extraction key) can take a point mass
-# (.bt_parameter_coordinate_point_free()).
+# (.bt_parameter_coordinate_point_free()). The common factors of every SD of
+# the block of a random-effect correlation put no point mass on it
+# (.bt_parameter_correlation_common_factors()) and count as point-free.
 .bt_parameter_point_free <- function(fit, quantity){
 
   dependencies <- quantity$extraction_key[[1L]]$dependencies
@@ -433,6 +443,9 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     return(FALSE)
   }
   context <- .bt_parameter_point_free_context(fit)
+  for(common in .bt_parameter_correlation_common_factors(context, quantity)){
+    context$status[[common]] <- TRUE
+  }
   for(dependency in dependencies){
     if(!.bt_parameter_coordinate_point_free(context, dependency)){
       return(FALSE)
@@ -440,6 +453,71 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   }
 
   TRUE
+}
+
+# The coordinates that enter the block of a random-effect correlation
+# quantity only as a common factor of every SD of the block. A correlation is
+# scale-invariant, cor(c S) = cor(S) for every c > 0 when c multiplies every
+# SD of the block: where such a factor is positive, the correlation equals
+# the correlation with the factor set to 1, and where it is 0, every SD of the
+# block is 0 and the correlation is undefined (the draw is dropped, catalog
+# definedness "correlation"). Such a factor therefore puts no point mass on
+# the correlation, also when it is an inclusion gate or has a point
+# component. From the registry structure of the block, when all its SDs are
+# allocated SD nodes ("random_sd": a source times a chain of allocation
+# factors): the source shared by every node, and the inclusion gates of the
+# factors shared by every chain (e.g. the gate of a gate-only allocation
+# whose component a child 'sd_component' allocation splits into the SDs of
+# the block), unless the gate also enters a factor not shared by every chain.
+# The Dirichlet weights of shared factors are point-free anyway. Gates and
+# point components that act on only some SDs of the block are not common
+# factors (original-scale correlations can then have atoms at -1 and 1).
+# Empty for other quantities and blocks.
+.bt_parameter_correlation_common_factors <- function(context, quantity){
+
+  key <- quantity$extraction_key[[1L]]
+  if(!identical(key$type, "random_summary") ||
+     !identical(key$evaluator, "correlation") ||
+     !is.character(key$random_block) || !nzchar(key$random_block)){
+    return(character())
+  }
+  random_term <- .bt_parameter_catalog_find_random_term(context$fit, key)
+  sd_names <- unique(as.character(random_term$sd_parameter_names))
+  if(length(sd_names) == 0L || anyNA(sd_names) || any(!nzchar(sd_names))){
+    return(character())
+  }
+  nodes <- lapply(sd_names, function(name){
+    .bt_parameter_coordinate_node(context, name)
+  })
+  if(!all(vapply(nodes, function(node){
+    !is.null(node) && identical(node$family, "random_sd")
+  }, logical(1)))){
+    return(character())
+  }
+  sources <- unique(vapply(nodes, function(node) node$spec$source_name, character(1)))
+  common <- if(length(sources) == 1L) sources else character()
+  factor_key <- function(factor){
+    paste(
+      if(is.null(factor$weight_name)) "" else factor$weight_name,
+      if(is.null(factor$index)) "" else factor$index,
+      if(is.null(factor$inclusion_name)) "" else factor$inclusion_name,
+      sep = "\r"
+    )
+  }
+  chain_keys <- lapply(nodes, function(node){
+    vapply(node$spec$factors, factor_key, character(1))
+  })
+  shared <- Reduce(intersect, chain_keys)
+  gates <- function(keep){
+    unique(unlist(lapply(nodes, function(node){
+      lapply(node$spec$factors, function(factor){
+        if(keep(factor_key(factor) %in% shared)) factor$inclusion_name
+      })
+    }), use.names = FALSE))
+  }
+  common_gates <- setdiff(gates(isTRUE), gates(isFALSE))
+
+  unique(c(common, common_gates))
 }
 
 # The structure .bt_parameter_coordinate_point_free() reads: the fit, its

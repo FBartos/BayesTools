@@ -286,9 +286,19 @@ deterministic node whose registry dependencies (`.bt_deterministic_nodes()`)
 all cannot: the SDs of an allocation without inclusion gates whose scale
 prior has no point component, so the original-scale correlations of an
 allocated `us()` block declare none; a gate, component indicator, or point
-component among the dependencies propagates. Atoms stay undeclared for
-unmonitored point states, composites of coordinates with point masses (e.g.
-original-scale correlations of a block with gated allocated SDs), and
+component among the dependencies propagates. Correlations are
+scale-invariant (cor(cS) = cor(S) for c > 0 multiplying every SD of the
+block), so for a correlation the coordinates that enter its block only as a
+common factor of every SD count as point-free
+(`.bt_parameter_correlation_common_factors()`, from the registry chains of
+the block's allocated SDs: the shared scale source and the gates of factors
+shared by every chain, e.g. a gate-only allocation split by an
+`sd_component` child); where the factor is 0 the draw is undefined and
+dropped. Gates and point components acting on only some SDs of the block
+still propagate (original-scale correlations can then be -1 or 1 where one
+SD is 0). Atoms stay undeclared for unmonitored point states, composites of
+coordinates with point masses (e.g. original-scale correlations of a block
+whose SDs have their own spike-and-slab priors), and
 coordinates whose point structure is not classified (coordinates without a
 prior other than LKJ primitives, standardized random effects, generated
 deterministic nodes, and selection coordinates, e.g. the `_indicator`,
