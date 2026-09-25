@@ -662,9 +662,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             output_transformation           = transformation,
             output_transformation_arguments = transformation_arguments
           )
-          marginal_posterior_samples[["intercept"]] <- .bt_meta_set(marginal_posterior_samples[["intercept"]], "linear_weights", prior_weights)
-          marginal_posterior_samples[["intercept"]] <- .bt_meta_set(marginal_posterior_samples[["intercept"]], "prior_density", prior_density)
-          marginal_posterior_samples[["intercept"]] <- .bt_meta_set(marginal_posterior_samples[["intercept"]], "prior_context", prior_density_context)
+          marginal_posterior_samples[["intercept"]] <- .bt_meta_update(
+            marginal_posterior_samples[["intercept"]],
+            linear_weights = prior_weights,
+            prior_density  = prior_density,
+            prior_context  = prior_density_context
+          )
 
         }else{
 
@@ -677,9 +680,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
               output_transformation           = transformation,
               output_transformation_arguments = transformation_arguments
             )
-            marginal_posterior_samples[[level_names[lvl]]] <- .bt_meta_set(marginal_posterior_samples[[level_names[lvl]]], "linear_weights", prior_weights)
-            marginal_posterior_samples[[level_names[lvl]]] <- .bt_meta_set(marginal_posterior_samples[[level_names[lvl]]], "prior_density", prior_density)
-            marginal_posterior_samples[[level_names[lvl]]] <- .bt_meta_set(marginal_posterior_samples[[level_names[lvl]]], "prior_context", prior_density_context)
+            marginal_posterior_samples[[level_names[lvl]]] <- .bt_meta_update(
+              marginal_posterior_samples[[level_names[lvl]]],
+              linear_weights = prior_weights,
+              prior_density  = prior_density,
+              prior_context  = prior_density_context
+            )
           }
         }
 
@@ -903,8 +909,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           marginal_posterior_samples,
           function(x) .density.prior_transformation_x(x, transformation, transformation_arguments)
         )
-        marginal_posterior_samples <- .bt_meta_set(marginal_posterior_samples, "posterior_density", NULL)
-        marginal_posterior_samples <- .bt_meta_set(marginal_posterior_samples, "posterior_ordinate", NULL)
+        marginal_posterior_samples <- .bt_meta_update(
+          marginal_posterior_samples,
+          posterior_density  = NULL,
+          posterior_ordinate = NULL
+        )
         if(!is.null(marginal_atoms)){
           marginal_posterior_samples <- .posterior_atoms_set(
             marginal_posterior_samples,
@@ -1011,18 +1020,21 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             output_transformation           = transformation,
             output_transformation_arguments = transformation_arguments
           )
-          marginal_posterior_samples[[level_names[lvl_i]]] <- .bt_meta_set(marginal_posterior_samples[[level_names[lvl_i]]], "linear_weights", weights)
-          marginal_posterior_samples[[level_names[lvl_i]]] <- .bt_meta_set(marginal_posterior_samples[[level_names[lvl_i]]], "prior_density", prior_density)
-          marginal_posterior_samples[[level_names[lvl_i]]] <- .bt_meta_set(marginal_posterior_samples[[level_names[lvl_i]]], "prior_context", prior_density_context)
-          marginal_posterior_samples[[level_names[lvl_i]]] <- .bt_meta_set(marginal_posterior_samples[[level_names[lvl_i]]], "components", .marginal_posterior_components(
-            context                  = prior_density_context,
-            weights                  = weights,
-            model_component          = .bt_draws_model_component(samples[[parameter]]),
-            n_values                 = length(marginal_posterior_samples[[level_names[lvl_i]]]),
-            transformation           = transformation,
-            transformation_arguments = transformation_arguments,
-            samples                  = samples
-          ))
+          marginal_posterior_samples[[level_names[lvl_i]]] <- .bt_meta_update(
+            marginal_posterior_samples[[level_names[lvl_i]]],
+            linear_weights = weights,
+            prior_density  = prior_density,
+            prior_context  = prior_density_context,
+            components     = .marginal_posterior_components(
+              context                  = prior_density_context,
+              weights                  = weights,
+              model_component          = .bt_draws_model_component(samples[[parameter]]),
+              n_values                 = length(marginal_posterior_samples[[level_names[lvl_i]]]),
+              transformation           = transformation,
+              transformation_arguments = transformation_arguments,
+              samples                  = samples
+            )
+          )
         }
 
       }else if(inherits(samples[[parameter]], "mixed_posteriors.simple")){
@@ -1037,12 +1049,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           output_transformation           = transformation,
           output_transformation_arguments = transformation_arguments
         )
-        marginal_posterior_samples <- .bt_meta_set(marginal_posterior_samples, "linear_weights", weights)
-        marginal_posterior_samples <- .bt_meta_set(marginal_posterior_samples, "prior_density", prior_density)
-        marginal_posterior_samples <- .bt_meta_set(marginal_posterior_samples, "prior_context", prior_density_context)
-        marginal_posterior_samples <- .posterior_components_set(
+        marginal_posterior_samples <- .bt_meta_update(
           marginal_posterior_samples,
-          .marginal_posterior_components(
+          linear_weights = weights,
+          prior_density  = prior_density,
+          prior_context  = prior_density_context,
+          components     = .marginal_posterior_components(
             context                  = prior_density_context,
             weights                  = weights,
             model_component          = .bt_draws_model_component(samples[[parameter]]),
@@ -1054,7 +1066,10 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         )
       }
 
-      marginal_posterior_samples <- .bt_meta_set(marginal_posterior_samples, "prior_context", prior_density_context)
+      if(inherits(samples[[parameter]], "mixed_posteriors.factor")){
+        # the list of levels (the draws of each level carry it already)
+        marginal_posterior_samples <- .bt_meta_set(marginal_posterior_samples, "prior_context", prior_density_context)
+      }
     }
   }
 
@@ -1656,15 +1671,17 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   source_metadata <- lapply(sources, function(source){
-    condition_event <- .bt_meta_condition(source, "resolved_condition_event")
+    # one read (and check) of the conditioning metadata of each source
+    condition <- .bt_meta_get(source, "condition")
+    condition_event <- condition[["resolved_condition_event"]]
     if(is.null(condition_event)){
-      condition_event <- .bt_meta_condition(source, "condition_event")
+      condition_event <- condition[["condition_event"]]
     }
 
     .marginal_posterior_normalize_condition_metadata(
-      conditional      = .bt_meta_condition(source, "conditional"),
-      conditional_rule = .bt_meta_condition(source, "conditional_rule"),
-      condition_key    = .bt_meta_condition(source, "condition_key"),
+      conditional      = condition[["conditional"]],
+      conditional_rule = condition[["conditional_rule"]],
+      condition_key    = condition[["condition_key"]],
       condition_event  = condition_event
     )
   })

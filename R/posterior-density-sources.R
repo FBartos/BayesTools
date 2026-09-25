@@ -98,10 +98,9 @@
     if(is.null(object)){
       next
     }
-    object_sources <- list(
-      .bt_meta_get(object, "posterior_density"),
-      .bt_meta_get(object, "posterior_densities")
-    )
+    object_sources <- unname(.bt_meta_get_fields(
+      object, c("posterior_density", "posterior_densities")
+    ))
     object_sources <- object_sources[!vapply(object_sources, is.null, logical(1))]
     sources <- c(sources, object_sources)
   }
@@ -191,10 +190,9 @@
     if(is.null(object)){
       next
     }
-    object_sources <- list(
-      .bt_meta_get(object, "posterior_ordinate"),
-      .bt_meta_get(object, "posterior_ordinates")
-    )
+    object_sources <- unname(.bt_meta_get_fields(
+      object, c("posterior_ordinate", "posterior_ordinates")
+    ))
     object_sources <- object_sources[!vapply(object_sources, is.null, logical(1))]
     sources <- c(sources, object_sources)
   }

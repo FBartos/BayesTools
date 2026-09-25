@@ -218,10 +218,9 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 .Savage_Dickey_BF.fun    <- function(posterior, null_hypothesis, normal_approximation, silent, density_method,
                                      label = NULL, null_mass_NA = FALSE){
 
-  if(is.null(.bt_meta_get(posterior, "prior_density")))
-    stop("there are no prior densities for the posterior distribution", call. = FALSE)
-
   prior <- .bt_meta_get(posterior, "prior_density")
+  if(is.null(prior))
+    stop("there are no prior densities for the posterior distribution", call. = FALSE)
 
   warnings <- NULL
   stored_posterior_density <- NULL
@@ -620,11 +619,13 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   }
   continuous_samples <- sample_values[keep]
   # Preserve support and density metadata used by KDE / boundary reflection.
-  for(field in c("support", "posterior_density", "posterior_ordinate", "prior_density")){
-    value <- .bt_meta_get(posterior, field)
-    if(!is.null(value)){
-      continuous_samples <- .bt_meta_set(continuous_samples, field, value)
-    }
+  kept_metadata <- .bt_meta_get_fields(
+    posterior,
+    c("support", "posterior_density", "posterior_ordinate", "prior_density")
+  )
+  kept_metadata <- kept_metadata[!vapply(kept_metadata, is.null, logical(1))]
+  if(length(kept_metadata) > 0L){
+    continuous_samples <- .bt_meta_assign(continuous_samples, kept_metadata)
   }
   prior_list <- attr(posterior, "prior_list", exact = TRUE)
   if(!is.null(prior_list)){

@@ -739,3 +739,55 @@ test_that("setting several draw-metadata fields checks the draws once", {
   expect_identical(names(attr(x, "bayestools_meta")), c("support", "undefined_draws", "fingerprint"))
   expect_identical(posterior_metadata(x, "undefined_draws"), "correlation")
 })
+
+test_that("reading several draw-metadata fields fingerprints the draws once", {
+
+  passes <- 0L
+  original <- BayesTools:::.bt_meta_fingerprint
+  testthat::local_mocked_bindings(
+    .bt_meta_fingerprint = function(x){
+      passes <<- passes + 1L
+      original(x)
+    },
+    .package = "BayesTools"
+  )
+  support <- posterior_support_attribute(c(-Inf, Inf))
+  condition <- list(conditional = "mu", conditional_rule = "AND", condition_key = "mu")
+  set.seed(4)
+  x <- .bt_meta_update(
+    stats::rnorm(100),
+    support       = support,
+    prior_density = prior("normal", list(0, 1)),
+    condition     = condition
+  )
+
+  passes <- 0L
+  fields <- .bt_meta_get_fields(x, c("support", "atoms", "prior_density"))
+  expect_identical(passes, 1L)
+  expect_identical(fields, list(support = support, atoms = NULL, prior_density = prior("normal", list(0, 1))))
+
+  # the continuous part of draws for Savage-Dickey Bayes factors carries their
+  # support and prior density: one read and one update (and the components)
+  passes <- 0L
+  continuous <- .Savage_Dickey_BF.continuous_posterior(x, posterior_atom_attribute())
+  expect_identical(passes, 3L)
+  expect_identical(.bt_meta_get(continuous$samples, "support"), support)
+  expect_identical(.bt_meta_get(continuous$samples, "prior_density"), prior("normal", list(0, 1)))
+
+  # the conditioning metadata of the draws of a marginal posterior are read once
+  passes <- 0L
+  metadata <- .marginal_posterior_condition_metadata(list(mu = x), condition_source = x)
+  expect_identical(passes, 1L)
+  expect_identical(metadata, c(condition, list(condition_event = NULL)))
+
+  # and so are the posterior density and ordinate sources of draws
+  passes <- 0L
+  expect_identical(.posterior_density_sources(x), list())
+  expect_identical(.posterior_ordinate_sources(x), list())
+  expect_identical(passes, 2L)
+
+  x[] <- 2 * x
+  expect_error(.bt_meta_get_fields(x, "support"), class = "BayesTools_stale_metadata")
+  expect_error(.marginal_posterior_condition_metadata(list(mu = x), condition_source = x),
+               class = "BayesTools_stale_metadata")
+})

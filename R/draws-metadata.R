@@ -262,6 +262,17 @@
   .bt_meta_current_container(x)[[field]]
 }
 
+# The values of several draw-metadata fields (a list named by 'fields', NULL
+# for absent fields), with one check that the metadata describe the draws.
+.bt_meta_get_fields <- function(x, fields){
+
+  for(field in fields){
+    .bt_meta_check_field(field)
+  }
+  meta <- .bt_meta_current_container(x)
+  stats::setNames(lapply(fields, function(field) meta[[field]]), fields)
+}
+
 # The container of 'x' (NULL when 'x' carries none), checked to describe the
 # current values of draws.
 .bt_meta_current_container <- function(x){
