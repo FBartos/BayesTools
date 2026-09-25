@@ -1311,6 +1311,24 @@ test_that("mixed columns of spike-and-slab and random-effect factor priors are n
     ),
     "id: sd(g) (inclusion)"
   )
+
+  # the variable coordinates of a spike-and-slab factor term keep their
+  # coordinate index, one label per coordinate
+  data <- .label_test_data(c("a", "b", "c"), "treatment")
+  fit <- .label_test_fit(~ x * g, data, list(
+    intercept = prior("normal", list(0, 1)),
+    x         = prior("normal", list(0, 1)),
+    g         = prior_spike_and_slab(
+      .label_test_factor_prior("treatment"),
+      prior_inclusion = prior("beta", list(1, 1))
+    ),
+    "x:g"     = .label_test_factor_prior("treatment")
+  ))
+  coordinates <- parameter_coordinates(fit)
+  variable <- coordinates$display_label[
+    startsWith(coordinates$coordinate_name, "mu_g_variable")
+  ]
+  expect_identical(variable, c("(mu) g_variable[1]", "(mu) g_variable[2]"))
 })
 
 test_that("raw rows of LKJ primitives are rendered backend coordinates", {

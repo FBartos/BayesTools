@@ -681,8 +681,11 @@
     }
     if(!is.null(map_row) && identical(map_row$kind, "fixed_auxiliary") &&
        nzchar(map_row$term)){
+      # an auxiliary node of a term (e.g., the variable of a spike-and-slab
+      # factor term) keeps the coordinate index of each of its coordinates
+      index <- .bt_parameter_coordinates_index(coordinate_name)
       return(verbatim(
-        paste0(map_row$term, map_row$role),
+        paste0(map_row$term, map_row$role, if(nzchar(index)) paste0("[", index, "]")),
         map_row$formula_parameter
       ))
     }
