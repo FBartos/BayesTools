@@ -133,6 +133,18 @@
   part$transformation[-1L]
 }
 
+# Label parts of values transformed by the output transformation 'name'
+# (vectorized over a list of parts): 'name' is appended to their
+# transformation; the rendered labels are unchanged.
+.bt_label_parts_add_output_transformation <- function(parts, name){
+
+  lapply(.bt_label_parts_list(parts), function(part){
+    part$transformation <- c(part$transformation, name)
+    .bt_validate_label_parts(part)
+    part
+  })
+}
+
 .bt_label_parts_list <- function(parts){
 
   if(inherits(parts, "BayesTools_label_parts")){
@@ -1080,7 +1092,11 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
        !isTRUE(attr(formula_scale[[part$formula_parameter]], "log_intercept"))){
       return(part)
     }
-    .bt_label_parts_update(part, transformation = "exp")[[1L]]
+    # the relation becomes "exp"; output transformations of the values stay
+    .bt_label_parts_update(
+      part,
+      transformation = c("exp", .bt_label_output_transformation(part))
+    )[[1L]]
   })
 }
 

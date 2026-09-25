@@ -120,8 +120,10 @@
 #' [parameter_catalog()] quantity id of the quantity the row's label names,
 #' its canonical name or an exact alias such as a transformed factor level
 #' \code{<parameter>[dif: level]}; \code{""} for rows that are not catalog
-#' quantities, such as inclusion rows, mixture components, and backend
-#' coordinates), and \code{label_parts} (the label parts the row label is
+#' quantities, such as inclusion rows, mixture components, backend
+#' coordinates, and rows whose values \code{transformations} changed, whose
+#' label parts record the transformation as \code{"custom"}), and
+#' \code{label_parts} (the label parts the row label is
 #' rendered from; [parameter_labels()] renders them, also with another formula
 #' parameter or random-effect quantity names). With
 #' \code{transform_scaled = TRUE}, the rows of standardized coefficients
@@ -746,6 +748,12 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   if(!is.null(transformations)){
     transformations <-  transformations[names(transformations) %in% names(prior_list)]
   }
+  # the columns whose values the transformations change (factor levels
+  # transformed after the contrast transformation are added below)
+  transformed_columns <- unlist(
+    .parameter_transformation_columns(transformations, prior_list, transform_factors),
+    use.names = FALSE
+  )
 
   # apply transformations (not orthornormal if they are to be returned transformed to diffs)
   model_samples <- .apply_parameter_transformations(model_samples, transformations, prior_list, transform_factors)
@@ -753,8 +761,14 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   # transform orthonormal factors to differences from mean
   model_samples <- .transform_factor_contrasts(model_samples, prior_list, transform_factors, transformations,
                                                components = component_priors, with_label_parts = TRUE)
-  created_parts <- c(created_parts, attr(model_samples, "label_parts", exact = TRUE))
+  contrast_parts <- attr(model_samples, "label_parts", exact = TRUE)
+  created_parts <- c(created_parts, contrast_parts)
   attr(model_samples, "label_parts") <- NULL
+  transformed_columns <- c(transformed_columns, names(contrast_parts)[vapply(
+    contrast_parts,
+    function(part) length(.bt_label_output_transformation(part)) > 0L,
+    logical(1)
+  )])
 
   # label every column from its label parts: the parameter names are the
   # columns' selectors, the row labels their table labels
@@ -764,6 +778,15 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     created     = created_parts,
     coordinates = coordinates
   )
+  # the transformed columns hold no catalog quantity: their label parts
+  # record the transformation (their labels are unchanged)
+  transformed <- colnames(model_samples) %in% transformed_columns
+  column_parts[transformed] <- lapply(column_parts[transformed], function(part){
+    if(length(.bt_label_output_transformation(part)) > 0L){
+      return(part)
+    }
+    .bt_label_parts_add_output_transformation(part, "custom")[[1L]]
+  })
   parameter_names <- .bt_label(column_parts, style = "selector")
   if(transform_scaled){
     column_parts <- .bt_label_parts_log_intercept(column_parts, formula_scale)

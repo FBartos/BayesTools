@@ -368,8 +368,10 @@ row and the columns \code{row} (the row label), \code{quantity_id} (the
 \code{\link[=parameter_catalog]{parameter_catalog()}} quantity id of the quantity the row's label names,
 its canonical name or an exact alias such as a transformed factor level
 \code{<parameter>[dif: level]}; \code{""} for rows that are not catalog
-quantities, such as inclusion rows, mixture components, and backend
-coordinates), and \code{label_parts} (the label parts the row label is
+quantities, such as inclusion rows, mixture components, backend
+coordinates, and rows whose values \code{transformations} changed, whose
+label parts record the transformation as \code{"custom"}), and
+\code{label_parts} (the label parts the row label is
 rendered from; \code{\link[=parameter_labels]{parameter_labels()}} renders them, also with another formula
 parameter or random-effect quantity names). With
 \code{transform_scaled = TRUE}, the rows of standardized coefficients

@@ -431,7 +431,9 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 # The catalog quantity ids of label parts: the quantity whose canonical name
 # is the rendered selector, otherwise the quantity of a unique exact alias
 # (e.g. a transformed factor level `<parameter>[dif: level]`), in the
-# namespace of the parts' formula parameter; "" when there is none.
+# namespace of the parts' formula parameter; "" when there is none, and for
+# parts that record an output transformation of the values (the values are
+# no catalog quantity).
 .bt_table_quantity_ids <- function(label_parts, catalog){
 
   out <- rep("", length(label_parts))
@@ -455,6 +457,10 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
     matched <- pairs$id[match(paste(selectors, namespaces, sep = "\r")[missing], pairs$key)]
     out[missing] <- ifelse(is.na(matched), "", matched)
   }
+  transformed <- vapply(label_parts, function(part){
+    length(.bt_label_output_transformation(part)) > 0L
+  }, logical(1))
+  out[transformed] <- ""
 
   out
 }

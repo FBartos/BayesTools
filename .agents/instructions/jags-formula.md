@@ -228,7 +228,9 @@ names.
   the original scale gives it the catalog quantity it keeps in the internal
   `original_scale_quantities` field. Estimates tables (model, ensemble, and
   marginal) carry the per-row `quantities` attribute (row, quantity id, label
-  parts). Consumers map
+  parts); values transformed after labelling (`posterior_transform()`, the
+  `transformations` of model tables) record the transformation in their parts
+  and have no quantity id. Consumers map
   columns to coordinates and render labels from these, never by parsing label
   text; original-scale transforms of mixed columns go through the fitted
   design by these coordinates and stop for columns that do not identify them

@@ -580,24 +580,36 @@ NULL
     return(model_samples)
   }
 
+  columns <- .parameter_transformation_columns(transformations, prior_list, transform_factors)
   for (par in names(transformations)) {
-    if (!is.prior.factor(prior_list[[par]])) {
-      # non-factor priors
-      model_samples[, par] <- do.call(transformations[[par]][["fun"]], c(list(model_samples[, par]), transformations[[par]][["arg"]]))
-    } else if ((!transform_factors && (is.prior.orthonormal(prior_list[[par]]) || is.prior.meandif(prior_list[[par]]) || is.prior.ordered(prior_list[[par]]))) ||
-               is.prior.treatment(prior_list[[par]]) || is.prior.independent(prior_list[[par]])) {
-      # treatment and independent priors, or orthonormal/meandif/ordered
-      # coefficients that won't be transformed to levels (those are
-      # transformed after the contrast transformation)
-      par_names <- .JAGS_prior_factor_names(par, prior_list[[par]])
-
-      for (i in seq_along(par_names)) {
-        model_samples[, par_names[i]] <- do.call(transformations[[par]][["fun"]], c(list(model_samples[, par_names[i]]), transformations[[par]][["arg"]]))
-      }
+    for (column in columns[[par]]) {
+      model_samples[, column] <- do.call(transformations[[par]][["fun"]], c(list(model_samples[, column]), transformations[[par]][["arg"]]))
     }
   }
 
   return(model_samples)
+}
+
+# The columns .apply_parameter_transformations() transforms, per transformed
+# parameter: the column of a non-factor prior, and the coefficient columns of
+# treatment and independent priors or of orthonormal/meandif/ordered priors
+# that won't be transformed to levels; NULL for the latter when they are
+# (.transform_factor_contrasts() transforms their levels).
+.parameter_transformation_columns <- function(transformations, prior_list, transform_factors = FALSE) {
+
+  columns <- lapply(names(transformations), function(par) {
+    if (!is.prior.factor(prior_list[[par]])) {
+      par
+    } else if ((!transform_factors && (is.prior.orthonormal(prior_list[[par]]) || is.prior.meandif(prior_list[[par]]) || is.prior.ordered(prior_list[[par]]))) ||
+               is.prior.treatment(prior_list[[par]]) || is.prior.independent(prior_list[[par]])) {
+      .JAGS_prior_factor_names(par, prior_list[[par]])
+    } else {
+      NULL
+    }
+  })
+  names(columns) <- names(transformations)
+
+  columns
 }
 
 
@@ -666,11 +678,16 @@ NULL
     }
     label_parts[colnames(transformed_samples)] <- transformed_parts
 
-    # apply transformation if specified
+    # apply transformation if specified (the label parts of the levels record
+    # it: the transformed values are no catalog quantities)
     if (!is.null(transformations[[par]])) {
       for (i in seq_len(ncol(transformed_samples))) {
         transformed_samples[, i] <- do.call(transformations[[par]][["fun"]], c(list(transformed_samples[, i]), transformations[[par]][["arg"]]))
       }
+      label_parts[colnames(transformed_samples)] <- .bt_label_parts_add_output_transformation(
+        label_parts[colnames(transformed_samples)],
+        "custom"
+      )
     }
 
     # place the transformed samples back

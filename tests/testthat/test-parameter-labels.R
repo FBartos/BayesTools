@@ -868,6 +868,49 @@ test_that("estimates tables carry the quantity and label parts of every row", {
     rownames(ensemble)
   )
 
+  # rows whose values 'transformations' changed hold no catalog quantity
+  # (as the draws of posterior_transform()): their label parts record the
+  # transformation, their labels are unchanged, and their quantity id is ""
+  expect_message(
+    transformed <- JAGS_estimates_table(fit, transform_factors = TRUE, transformations = list(
+      mu_intercept = list(fun = exp),
+      mu_g         = list(fun = function(x) 2 * x)
+    )),
+    "The transformation was applied to the differences from the mean"
+  )
+  transformed_quantities <- attr(transformed, "quantities")
+  expect_identical(rownames(transformed), rownames(table))
+  expect_identical(parameter_labels(transformed_quantities, style = "table"), rownames(transformed))
+  intercept_row <- match("(mu) intercept", rownames(transformed))
+  expect_equal(
+    transformed[intercept_row, "Mean"],
+    mean(exp(as.matrix(parameter_draws(fit, parameter_catalog_resolve(catalog, "mu_intercept"))))),
+    tolerance = 1e-12
+  )
+  expect_equal(transformed[row, "Mean"], 2 * table[row, "Mean"], tolerance = 1e-12)
+  expect_identical(transformed_quantities$quantity_id[c(intercept_row, row)], c("", ""))
+  expect_identical(transformed_quantities$label_parts[[intercept_row]]$transformation, c("none", "custom"))
+  expect_identical(transformed_quantities$label_parts[[row]]$transformation, c("dif", "custom"))
+  # coefficients transformed before the contrast transformation (a treatment
+  # factor: its coordinates are level quantities)
+  treatment_data <- .label_test_data(c("lo", "mid", "hi"), "treatment")
+  treatment_fit <- .label_test_fit(~ g, treatment_data, list(
+    intercept = prior("normal", list(0, 1)),
+    g         = .label_test_factor_prior("treatment")
+  ))
+  treatment_table <- JAGS_estimates_table(treatment_fit)
+  treatment_transformed <- JAGS_estimates_table(
+    treatment_fit, transformations = list(mu_g = list(fun = exp))
+  )
+  level_rows <- startsWith(rownames(treatment_table), "(mu) g[")
+  expect_true(any(level_rows))
+  expect_true(all(nzchar(attr(treatment_table, "quantities")$quantity_id[level_rows])))
+  expect_identical(
+    attr(treatment_transformed, "quantities")$quantity_id,
+    ifelse(level_rows, "", attr(treatment_table, "quantities")$quantity_id)
+  )
+  expect_identical(rownames(treatment_transformed), rownames(treatment_table))
+
   # the rows of a log-intercept (scale) formula on the original scale are
   # rendered from the table's parts, also under another formula parameter
   skip_if_not_installed("rjags")
@@ -906,6 +949,13 @@ test_that("estimates tables carry the quantity and label parts of every row", {
       style = "table"
     ),
     c("(log(tau)) exp(intercept)", "(log(tau)) x")
+  )
+  # the exponentiated log intercept keeps the output transformations of its
+  # values (e.g. of posterior_transform())
+  lin_part <- .bt_label_parts_update(quantities$label_parts[1L], transformation = c("none", "lin"))
+  expect_identical(
+    .bt_label_parts_log_intercept(lin_part, attr(fit, "formula_scale"))[[1L]]$transformation,
+    c("exp", "lin")
   )
 })
 
