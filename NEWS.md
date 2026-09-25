@@ -243,7 +243,8 @@ old behaviour.
   new predicate `posterior_atoms_free()` reports whether posterior draws
   declare their atoms and have none (plain numeric draws are an error).
 - adds `prior_ordinate_status()`, the exactness rule of point hypotheses as
-  data: one row per value with `value`, `eligible`, the `condition` class and
+  data: one row per value (at least one is required) with `value`,
+  `eligible`, the `condition` class and
   `reason` message a point hypothesis at that value stops with (`NA` when
   eligible), and the `continuous_behavior` of the prior without its point
   masses. `hypothesis_BF()` and `Savage_Dickey_BF()` stop at the first

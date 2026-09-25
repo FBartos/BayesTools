@@ -1814,6 +1814,10 @@ test_that("prior_ordinate_status reports the point-hypothesis exactness rule per
 
   expect_error(prior_ordinate_status(spike_density, Inf),
                "The 'values' argument must contain only finite values.", fixed = TRUE)
+  expect_error(prior_ordinate_status(spike_density, numeric()),
+               "The 'values' argument must contain at least one value.", fixed = TRUE)
+  expect_error(prior_ordinate_status(spike_density, NULL),
+               "The 'values' argument cannot be NULL.", fixed = TRUE)
   expect_error(prior_ordinate_status(spike_density, c(0, 1), labels = "a"),
                "The 'labels' argument must have length '2'.", fixed = TRUE)
   expect_error(prior_ordinate_status(stats::rnorm(10), 0),

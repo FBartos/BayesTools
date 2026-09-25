@@ -10,7 +10,8 @@ prior_ordinate_status(prior_density, values, labels = NULL)
 \item{prior_density}{a BayesTools prior or a \code{prior_linear_density}, as
 accepted by \code{\link[=prior_density_ordinate]{prior_density_ordinate()}}.}
 
-\item{values}{finite numeric values of the point hypotheses.}
+\item{values}{finite numeric values of the point hypotheses (at least
+one).}
 
 \item{labels}{optional labels of the point hypotheses used in the messages,
 one per value; defaults to the values.}

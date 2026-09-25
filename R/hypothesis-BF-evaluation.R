@@ -783,7 +783,8 @@
 #'
 #' @param prior_density a BayesTools prior or a `prior_linear_density`, as
 #'   accepted by [prior_density_ordinate()].
-#' @param values finite numeric values of the point hypotheses.
+#' @param values finite numeric values of the point hypotheses (at least
+#'   one).
 #' @param labels optional labels of the point hypotheses used in the messages,
 #'   one per value; defaults to the values.
 #'
@@ -820,6 +821,9 @@
 #' @export
 prior_ordinate_status <- function(prior_density, values, labels = NULL){
 
+  if(!is.null(values) && length(values) == 0L){
+    stop("The 'values' argument must contain at least one value.", call. = FALSE)
+  }
   check_real(values, "values", check_length = 0, allow_NA = FALSE)
   if(any(!is.finite(values))){
     stop("The 'values' argument must contain only finite values.", call. = FALSE)
