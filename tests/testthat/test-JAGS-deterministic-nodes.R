@@ -1184,8 +1184,10 @@ test_that("prior draws carry the fitted nodes of ordered-prior totals", {
   expect_true(any(excluded) && any(!excluded))
   expect_true(all(draws[excluded, coordinates] == 0))
   expect_true(all(draws[!excluded, coordinates] != 0))
+  # all six nodes are catalog quantities that resolve on the prior draws
   catalog <- parameter_catalog(spike)
-  for(node in intersect(slice_nodes, catalog$quantities$canonical_name)){
+  expect_true(all(slice_nodes %in% catalog$quantities$canonical_name))
+  for(node in slice_nodes){
     values <- parameter_draws(spike, parameter_catalog_resolve(catalog, node), model_samples = draws)
     expect_identical(as.numeric(as.matrix(values)), unname(draws[, node]), info = node)
   }
