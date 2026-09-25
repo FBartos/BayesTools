@@ -266,7 +266,13 @@ computed from the transformed covariance draws. Mixed posterior samples are
 transformed through the fitted design of \code{formula_scale}: every column
 is mapped to its fitted coefficient by its \code{quantities} draw metadata
 (see \code{\link[=posterior_metadata]{posterior_metadata()}}), and columns that are not fitted coefficients
-are refused. Estimated marginal means of \code{\link[=marginal_estimates_table]{marginal_estimates_table()}} are
+are refused, as are random-effect SDs that the random-effect structure of
+\code{formula_scale} does not cover (SDs it does not contain, blocks it
+contains only in part, or blocks it leaves unchanged while the samples'
+original-scale SDs differ from the fitted ones). The SD columns of a block
+with a standardized random slope are labelled by their fitted coordinates
+(\code{(mu) g: sd(x)}) until they are transformed to the catalog's
+original-scale SDs. Estimated marginal means of \code{\link[=marginal_estimates_table]{marginal_estimates_table()}} are
 predictions at the stated predictor values, which do not depend on the
 standardization, and are not changed. Defaults to \code{FALSE}.}
 

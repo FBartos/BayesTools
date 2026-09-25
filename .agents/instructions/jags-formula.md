@@ -216,7 +216,8 @@ names.
   columns to coordinates and render labels from these, never by parsing label
   text; original-scale transforms of mixed columns go through the fitted
   design by these coordinates and stop for columns that do not identify them
-  or that the design does not contain.
+  or that the design does not contain, and for random-effect SDs that the
+  random-effect structure of the passed scale does not cover.
 - Catalog quantities declare their exact `support` (from the prior
   provenance of their source coordinates; `NULL` when not derivable, and a
   composite SD's `[0, Inf)` hull is exact only when every scale prior is

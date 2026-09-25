@@ -1778,6 +1778,116 @@ test_that("random-effect SD columns describe the scale of the draws they hold", 
   )
 })
 
+# A variance-allocation model without random slopes: the total random-effect
+# variance of the intercepts of 'g' and 'd' split by allocation weights.
+.label_test_allocation_fit <- function(){
+
+  set.seed(11)
+  data <- data.frame(
+    x = stats::rnorm(40, 5, 3),
+    g = factor(rep(sprintf("g%d", 1:5), each = 8)),
+    d = factor(rep(c("a", "b", "c", "e"), 10))
+  )
+  y <- stats::rnorm(nrow(data), 0.1 * data$x, 1)
+  suppressWarnings(JAGS_fit(
+    model_syntax       = "model{\n  for(i in 1:N_mu){\n    y[i] ~ dnorm(mu[i], 1)\n  }\n}",
+    data               = list(y = y),
+    formula_list       = list(mu = ~ 1 + x + (1 | g) + random(1 | d, name = "d", covariance = "diag")),
+    formula_data_list  = list(mu = data),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1)),
+      x         = prior("normal", list(0, 1))
+    )),
+    formula_scale_list = list(mu = list(x = TRUE)),
+    formula_random_prior_list = list(mu = prior_random(random_variance_allocation(
+      name = "tot", terms = c(g = "g", d = "d"), scale = "total_variance",
+      sd = prior("gamma", list(2, 2)),
+      weights = prior("dirichlet", list(alpha = c(1.5, 2.5)))
+    ))),
+    chains = 1, adapt = 100, burnin = 100, sample = 200, silent = TRUE, seed = 2
+  ))
+}
+
+test_that("original-scale random-effect SDs require the random structure of the passed scale", {
+
+  transform_reason <- function(expr){
+    condition <- tryCatch(expr, BayesTools_formula_transform_unavailable = function(e) e)
+    expect_s3_class(condition, "BayesTools_formula_transform_unavailable")
+    condition$reason
+  }
+  fit_slope     <- .label_test_random_slope_fit()
+  fit_intercept <- .label_test_random_slope_fit(~ 1 + x + (1 | g))
+  scale_slope     <- attr(fit_slope, "formula_scale")
+  scale_intercept <- attr(fit_intercept, "formula_scale")
+  parameters <- c("mu_intercept", "mu_x", "mu__xREx__g_intercept", "mu__xREx__g_x")
+  mixed <- as_mixed_posteriors(fit_slope, parameters = parameters)
+
+  # the formula_scale of the model without the random slope does not contain
+  # its SD, which would stay standardized (0.615 for 0.792 and 0.204 for 0.121)
+  expect_identical(transform_reason(ensemble_estimates_table(
+    mixed, parameters = parameters, transform_scaled = TRUE,
+    formula_scale = scale_intercept
+  )), "random_effects_outside_structure")
+  # the intercept SD alone is an SD of that structure, but of a block it
+  # leaves unchanged, while the samples' original-scale SD differs
+  intercept_parameters <- c("mu_intercept", "mu_x", "mu__xREx__g_intercept")
+  mixed_intercept_sd <- as_mixed_posteriors(fit_slope, parameters = intercept_parameters)
+  expect_identical(transform_reason(ensemble_estimates_table(
+    mixed_intercept_sd, parameters = intercept_parameters, transform_scaled = TRUE,
+    formula_scale = scale_intercept
+  )), "random_effect_structure_differs")
+  # and the structure of the slope model needs the slope SD with it
+  expect_identical(transform_reason(ensemble_estimates_table(
+    mixed_intercept_sd, parameters = intercept_parameters, transform_scaled = TRUE,
+    formula_scale = scale_slope
+  )), "random_effect_block_incomplete")
+
+  # matching structures transform as the model tables do
+  ensemble <- ensemble_estimates_table(mixed, parameters = parameters,
+                                       transform_scaled = TRUE,
+                                       formula_scale = scale_slope)
+  scaled_table <- JAGS_estimates_table(fit_slope, transform_scaled = TRUE,
+                                       remove_diagnostics = TRUE)
+  expect_equal(ensemble[, "Mean"], scaled_table[rownames(ensemble), "Mean"],
+               tolerance = 1e-10)
+  mixed_intercept <- as_mixed_posteriors(fit_intercept, parameters = intercept_parameters)
+  ensemble <- ensemble_estimates_table(mixed_intercept, parameters = intercept_parameters,
+                                       transform_scaled = TRUE,
+                                       formula_scale = scale_intercept)
+  scaled_table <- JAGS_estimates_table(fit_intercept, transform_scaled = TRUE,
+                                       remove_diagnostics = TRUE)
+  expect_identical(rownames(ensemble)[3L], "(mu) sd(intercept)")
+  expect_equal(ensemble[, "Mean"], scaled_table[rownames(ensemble), "Mean"],
+               tolerance = 1e-10)
+
+  # a variance-allocation model: its intercept SDs are allocation-derived
+  # nodes, which its structure contains, but not the random slope
+  fit_allocation <- .label_test_allocation_fit()
+  scale_allocation <- attr(fit_allocation, "formula_scale")
+  expect_identical(transform_reason(ensemble_estimates_table(
+    mixed, parameters = parameters, transform_scaled = TRUE,
+    formula_scale = scale_allocation
+  )), "random_effects_outside_structure")
+  # its own samples (coefficients and allocation coordinates) transform with
+  # its own structure as before: the allocation coordinates are not
+  # standardized, the coefficients as in the model table
+  allocation_parameters <- names(attr(fit_allocation, "prior_list"))
+  mixed_allocation <- as_mixed_posteriors(fit_allocation, parameters = allocation_parameters)
+  untransformed <- ensemble_estimates_table(mixed_allocation, parameters = allocation_parameters)
+  ensemble <- ensemble_estimates_table(mixed_allocation, parameters = allocation_parameters,
+                                       transform_scaled = TRUE,
+                                       formula_scale = scale_allocation)
+  scaled_table <- JAGS_estimates_table(fit_allocation, transform_scaled = TRUE,
+                                       remove_diagnostics = TRUE)
+  coefficients <- c("(mu) intercept", "(mu) x")
+  expect_equal(ensemble[coefficients, "Mean"], scaled_table[coefficients, "Mean"],
+               tolerance = 1e-10)
+  allocation_rows <- setdiff(rownames(ensemble), coefficients)
+  expect_true(length(allocation_rows) > 0L)
+  expect_equal(ensemble[allocation_rows, "Mean"], untransformed[allocation_rows, "Mean"],
+               tolerance = 1e-12)
+})
+
 test_that("publication-weight bin rows are catalog selectors of their bins", {
 
   set.seed(31)

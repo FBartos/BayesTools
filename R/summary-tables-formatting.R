@@ -401,9 +401,15 @@
     drop = FALSE
   ]
   owners <- unlist(unname(lapply(elements, `[[`, "owners")))
+  owners <- owners[!duplicated(names(owners))]
   .transform_scale_check_design_coordinates(
-    owners        = owners[!duplicated(names(owners))],
+    owners        = owners,
     formula_scale = formula_scale
+  )
+  .transform_scale_check_random_coordinates(
+    owners        = owners,
+    formula_scale = formula_scale,
+    declared      = unique(unlist(lapply(elements, `[[`, "declared"), use.names = FALSE))
   )
   transformed <- .apply_unscale_transform(coordinate_values, formula_scale)
 
@@ -484,11 +490,86 @@
   invisible(TRUE)
 }
 
+# The random-effect SD coordinates of the samples are transformed with the
+# random-effect structure that 'formula_scale' carries (its SD leaves), so they
+# must be SDs of that structure, as fixed coordinates must be coefficients of
+# its design: a coordinate the structure does not contain (a random slope the
+# model of 'formula_scale' does not have) would stay on the fitted scale, and
+# so would a coordinate of a block the structure leaves unchanged while the
+# samples declare that its original-scale quantity is another one ('declared':
+# the intercept SD of a block whose standardized slope the model of
+# 'formula_scale' does not have). Both stop.
+.transform_scale_check_random_coordinates <- function(owners, formula_scale,
+                                                      declared = character()){
+
+  for(parameter in unique(owners)){
+    parameter_scale <- formula_scale[[parameter]]
+    if(is.null(attr(parameter_scale, "unscale_design", exact = TRUE))){
+      # standardization without the fitted design stops when transformed
+      next
+    }
+    coordinates <- names(owners)[owners == parameter]
+    random <- coordinates[
+      .formula_scale_matches_prefix(coordinates, parameter, "__xREx__")
+    ]
+    if(length(random) == 0L){
+      next
+    }
+    leaves <- attr(parameter_scale, "random_effect_sd_leaves", exact = TRUE)
+    leaf_names <- unique(unlist(lapply(leaves, function(block){
+      as.character(block$leaf_names)
+    }), use.names = FALSE))
+    outside <- setdiff(random, leaf_names)
+    if(length(outside) > 0L){
+      .bt_formula_transform_stop(
+        paste0(
+          "Cannot transform ", paste0("'", outside, "'", collapse = ", "),
+          " to the original predictor scale: the random-effect structure in ",
+          "'formula_scale' of formula parameter '", parameter, "' does not ",
+          "contain ", if(length(outside) > 1L) "these random-effect SDs" else "this random-effect SD",
+          ". Pass the 'formula_scale' of a fitted model whose random effects ",
+          "contain every random-effect SD of the samples."
+        ),
+        parameter   = parameter,
+        reason      = "random_effects_outside_structure",
+        coordinates = outside
+      )
+    }
+    groups <- .random_sd_column_unscale_groups(
+      random_sd_cols = random,
+      formula_scale  = parameter_scale,
+      prefix         = parameter
+    )
+    transformed <- unlist(lapply(groups, `[[`, "leaf_names"), use.names = FALSE)
+    unchanged <- setdiff(intersect(random, declared), transformed)
+    if(length(unchanged) > 0L){
+      .bt_formula_transform_stop(
+        paste0(
+          "Cannot transform ", paste0("'", unchanged, "'", collapse = ", "),
+          " to the original predictor scale: the random-effect structure in ",
+          "'formula_scale' of formula parameter '", parameter, "' leaves ",
+          if(length(unchanged) > 1L) "these random-effect SDs" else "this random-effect SD",
+          " unchanged, while the samples come from a model whose ",
+          "original-scale SD differs from the fitted one. Pass the ",
+          "'formula_scale' of the fitted model of the samples."
+        ),
+        parameter   = parameter,
+        reason      = "random_effect_structure_differs",
+        coordinates = unchanged
+      )
+    }
+  }
+
+  invisible(TRUE)
+}
+
 # The columns of one sample element as linear combinations of fitted
 # coordinates: a list with the draws of those coordinates, the weight matrix
-# (columns x coordinates), the columns that belong to a scaled formula, and the
-# formula parameter owning each coordinate ('owners', named by coordinate).
-# NULL when no column belongs to a scaled formula.
+# (columns x coordinates), the columns that belong to a scaled formula, the
+# formula parameter owning each coordinate ('owners', named by coordinate),
+# and the coordinates of columns that declare a different original-scale
+# quantity ('declared', from 'original_scale_quantities'). NULL when no column
+# belongs to a scaled formula.
 .transform_scale_element_columns <- function(x, name, scaled_parameters){
 
   levels <- is.list(x) && !is.numeric(x)
@@ -522,7 +603,8 @@
         coordinates = values,
         weights     = matrix(1, nrow = 1L, ncol = 1L, dimnames = list(NULL, name)),
         columns     = TRUE,
-        owners      = stats::setNames(formula_parameter[[1L]], name)
+        owners      = stats::setNames(formula_parameter[[1L]], name),
+        declared    = character()
       ))
     }
     stop(
@@ -595,10 +677,21 @@
     )
   }))
 
+  original <- if(!levels) .bt_meta_get(x, "original_scale_quantities")
+  declared <- if(is.null(original)){
+    character()
+  }else{
+    unlist(
+      quantities$dependencies[scaled & quantities$column %in% original$column],
+      use.names = FALSE
+    )
+  }
+
   list(
     coordinates = coordinate_values,
     weights     = weights,
     columns     = scaled,
-    owners      = owners[!duplicated(names(owners))]
+    owners      = owners[!duplicated(names(owners))],
+    declared    = declared
   )
 }

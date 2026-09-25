@@ -540,12 +540,16 @@
     prefix = prefix
   )
   if(length(missing_leaf_names) > 0L){
-    stop(
-      "Random-effect SD unscaling for block '", group_key,
-      "' requires all SD columns from the block. Missing: ",
-      paste0("'", missing_leaf_names, "'", collapse = ", "),
-      ".",
-      call. = FALSE
+    .bt_formula_transform_stop(
+      paste0(
+        "Random-effect SD unscaling for block '", group_key,
+        "' requires all SD columns from the block. Missing: ",
+        paste0("'", missing_leaf_names, "'", collapse = ", "),
+        "."
+      ),
+      parameter   = prefix,
+      reason      = "random_effect_block_incomplete",
+      coordinates = missing_leaf_names
     )
   }
 

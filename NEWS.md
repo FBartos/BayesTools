@@ -440,6 +440,12 @@ old behaviour.
     were left on the standardized scale, also in `mix_posteriors()`
     mixtures; columns that do not identify their fitted coordinates, or
     coefficients outside the design of the passed `formula_scale`, stop.
+    Random-effect SDs stop likewise when the random-effect structure of the
+    passed `formula_scale` does not contain them, does not contain the rest
+    of their block, or leaves their block unchanged while the samples'
+    original-scale SDs differ from the fitted ones: the `formula_scale` of a
+    model without a standardized random slope left the SDs of a model with
+    one on the standardized scale (0.615 for 0.792).
   - factor posterior and prior plots label an interaction cell by the levels
     of all its factors (a 3 x 3 treatment interaction showed 2 labels for 4
     curves), and `plot_posterior(prior = TRUE)` works for ordered factors
