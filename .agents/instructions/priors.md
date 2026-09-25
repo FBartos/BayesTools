@@ -266,10 +266,17 @@ nonzero entry each). Original-scale correlations that mix fitted
 coefficients (the intercept of centred predictors) combine the correlation
 with the SDs and have no density. `parameter_mixed_posterior()` (and
 `random_effects_summary_posterior()`, built on it) attaches this density,
-the catalog support, and atoms whose locations are the density's point
-masses and whose masses come from the per-draw gate states (and the
-indicator of a mixture scale prior with a point component), never from draw
-values; its `conditional = TRUE` keeps the draws of the quantity's inclusion
+the catalog support, and atoms declared from structure, never from draw
+values: the atoms on which the per-draw states of the quantity's gates and
+point components (`parameter_gate_states()`: allocation gates, the indicator
+of a mixture scale prior with a point component, and the component indicator
+of a mixture or spike-and-slab prior of its coordinates) put it, with their
+shares of the draws as masses (checked against the density's point masses
+when there is a density); none when the density has no point mass or, without
+a density, when no coordinate of the quantity can take a point mass (e.g. an
+original-scale LKJ correlation with continuous SD priors); undeclared for
+unmonitored point states and composites of coordinates with point masses;
+its `conditional = TRUE` keeps the draws of the quantity's inclusion
 event and uses the density restricted to that event (the gate atom drops
 out, atoms inside the event are renormalized).
 
@@ -428,7 +435,13 @@ term or for columns outside the prior-density context). `Ops`/`Math` group gener
 `as.numeric()` and subsetting of draws return plain numerics without
 metadata; consumers that need the metadata stop on plain draws, and
 producers that transform draws transform their metadata explicitly
-(`marginal_posterior(transformation = )`). The container of draws records a
+(`posterior_transform()`, which `marginal_posterior(transformation = )`
+applies to the untransformed marginal posterior: strictly monotone maps only;
+supports and atoms mapped, prior densities rebuilt with the transformation as
+output transformation or transformed on top of their recorded provenance,
+stored posterior densities and ordinates changed by the Jacobian, and the
+transformation appended to the label parts, whose relation to the term is
+their first `transformation` element). The container of draws records a
 fingerprint of the values it describes (length, missing count, and two
 sums); reading or setting the metadata of draws whose values changed while
 their attributes were kept (`x[] <- `, `x[i] <- `, `pmin()`) stops with class

@@ -28,7 +28,12 @@ node specification emits its JAGS syntax and carries the R evaluator and the
 declared dependencies: `JAGS_formula()` writes the linear predictor from the
 node of the fitted design, and `selection_backend_spec()` writes the weights
 from the `omega` node specification. `JAGS_deterministic_nodes()` lists the
-nodes. Prior draws, catalog quantities, bridge and marginal-likelihood
+nodes; `JAGS_deterministic_evaluator()` resolves them once into an evaluator
+of draws (repeated or one-draw evaluation), and `JAGS_evaluate_deterministic()`
+is that evaluator applied once. A prepared evaluator may locate a family's
+columns once per set of draw column names, but shares the family's lookup
+rules, arithmetic, and checks (values identical to the family evaluator).
+Prior draws, catalog quantities, bridge and marginal-likelihood
 parameters, prediction, marginal posteriors of formula parameters,
 random-effect unscaling, and convergence-role parents use the family
 evaluators. Declared dependencies are the coordinates the R evaluator reads. A
