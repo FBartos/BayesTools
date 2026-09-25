@@ -594,6 +594,12 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
       )$coordinates
     ))
   }
+  if(.bt_prior_is_factor_family(prior) && .bt_is_random_effect_prior(prior)){
+    random_parts <- .bt_label_parts_random_factor(parameter, prior)
+    if(!is.null(random_parts)){
+      return(random_parts)
+    }
+  }
   if(is.prior.vector(prior) || .bt_prior_is_factor_family(prior)){
     coordinates <- .JAGS_prior_factor_names(parameter, prior)
     return(list(
@@ -614,6 +620,54 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
       }
     ))
   )
+}
+
+# Label parts of the coordinates of a random-effect factor prior (the SD
+# coordinates of a random factor slope, which are not catalog factor terms),
+# named after the prior-list entry: a coordinate that is structurally one
+# level cell of the prior's factor design is `<parameter>[<level>]` (inside an
+# interaction, each level is placed on its factor component), any other
+# coordinate is contrast coefficient `<parameter>{j}`. NULL when the prior
+# carries no factor design.
+.bt_label_parts_random_factor <- function(parameter, prior){
+
+  prior <- .complete_factor_metadata(prior, parameter)
+  if(is.null(attr(prior, "factor_design", exact = TRUE))){
+    return(NULL)
+  }
+  design_info <- .factor_term_design_from_metadata(prior)
+  level_names <- design_info$level_names
+  design      <- as.matrix(design_info$design)
+  coordinates <- .JAGS_prior_factor_names(parameter, prior)
+  if(length(level_names) == 0L || length(coordinates) != ncol(design)){
+    return(NULL)
+  }
+  grid <- .factor_cell_grid(level_names)
+  if(nrow(grid) != nrow(design)){
+    return(NULL)
+  }
+  cell_names <- .format_factor_level_parameter_names(
+    parameter,
+    if(length(level_names) == 1L) level_names[[1L]] else level_names,
+    nrow(design)
+  )
+  direct <- .bt_factor_direct_cells(prior, design)
+  parts <- lapply(seq_len(ncol(design)), function(coordinate){
+    cell <- direct[[coordinate]]
+    if(is.na(cell)){
+      return(.bt_label_parts(parameter, coefficient = coordinate))
+    }
+    .bt_label_parts(
+      components = names(grid),
+      levels     = stats::setNames(
+        vapply(grid, function(column) as.character(column[[cell]]), character(1)),
+        names(grid)
+      ),
+      selector   = cell_names[[cell]]
+    )
+  })
+
+  list(coordinates = coordinates, parts = parts)
 }
 
 # The formula parameter owning a prior (its 'parameter' attribute) or owning

@@ -665,6 +665,10 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   check_char(parameter, "parameter", check_length = FALSE)
 
   prior_variable <- .get_spike_and_slab_variable(prior)
+  # the variable part is named after the formula parameter of the prior
+  if(is.null(attr(prior_variable, "parameter", exact = TRUE))){
+    attr(prior_variable, "parameter") <- attr(prior, "parameter", exact = TRUE)
+  }
 
   # prepare output objects
   if(is.prior.factor(prior_variable)){

@@ -3,17 +3,28 @@ skip_if_not_test_profile("unit")
 # Synthetic fitted object of a formula: seeded placeholder draws for every
 # fitted coordinate, with the parameter map of a real fit.
 .label_test_fit <- function(formula, data, prior_list, parameter = "mu",
-                            formula_scale = NULL, seed = 1L, n = 20L){
+                            formula_scale = NULL, seed = 1L, n = 20L,
+                            prior_random = NULL){
 
   formula_result <- JAGS_formula(
     formula       = formula,
     parameter     = parameter,
     data          = data,
     prior_list    = prior_list,
-    formula_scale = formula_scale
+    formula_scale = formula_scale,
+    prior_random  = prior_random
   )
   columns <- unlist(lapply(names(formula_result$prior_list), function(name){
     prior <- formula_result$prior_list[[name]]
+    if(is.prior.spike_and_slab(prior)){
+      # the spike-and-slab nodes: indicator, inclusion, value, and variable
+      variable <- .get_spike_and_slab_variable(prior)
+      return(c(
+        paste0(name, c("_indicator", "_inclusion")),
+        .JAGS_prior_factor_names(name, variable),
+        .JAGS_prior_factor_names(paste0(name, "_variable"), variable)
+      ))
+    }
     if(.bt_prior_is_factor_family(prior)){
       .JAGS_prior_factor_names(name, prior)
     }else{
@@ -26,6 +37,9 @@ skip_if_not_test_profile("unit")
     nrow = n,
     dimnames = list(NULL, columns)
   )
+  indicators <- endsWith(columns, "_indicator")
+  draws[, indicators] <- stats::rbinom(n * sum(indicators), 1L, 0.5)
+  draws[, endsWith(columns, "_inclusion")] <- 0.5
   scale <- formula_result$formula_scale
   fit <- structure(
     list(
@@ -1108,5 +1122,48 @@ test_that("formulas generating the same JAGS node name are reported by their ter
     ),
     "formula parameter 'a' (term 'x') and 'prior_list' define the same JAGS node 'a_x'.",
     fixed = TRUE
+  )
+})
+
+test_that("mixed columns of spike-and-slab and random-effect factor priors are named by their terms", {
+
+  # the variable part of a spike-and-slab formula term keeps the formula
+  # parameter of the term
+  data <- .label_test_data(c("a", "b", "c"), "meandif")
+  fit <- .label_test_fit(~ x * g, data, list(
+    intercept = prior("normal", list(0, 1)),
+    x         = prior("normal", list(0, 1)),
+    g         = .label_test_factor_prior("meandif"),
+    "x:g"     = prior_spike_and_slab(
+      .label_test_factor_prior("meandif"),
+      prior_inclusion = prior("beta", list(1, 1))
+    )
+  ))
+  mixed <- as_mixed_posteriors(fit, parameters = "mu_x__xXx__g")
+  expect_identical(colnames(mixed$mu_x__xXx__g), c("mu_x__xXx__g{1}", "mu_x__xXx__g{2}"))
+  expect_identical(
+    parameter_labels(posterior_metadata(mixed$mu_x__xXx__g, "quantities"), "table"),
+    c("(mu) x:g{1}", "(mu) x:g{2}")
+  )
+
+  # the SD coordinates of a random treatment slope are its level cells
+  data <- .label_test_data(c("a", "b", "c"), "treatment")
+  data$id <- factor(rep(c("s1", "s2", "s3", "s4"), each = 3L))
+  fit <- .label_test_fit(
+    ~ 1 + g + (1 + g || id),
+    data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      g         = .label_test_factor_prior("treatment")
+    ),
+    prior_random = prior_random(id = random_block(
+      sd = prior("normal", list(0, 1), list(0, Inf))
+    ))
+  )
+  mixed <- as_mixed_posteriors(fit, parameters = "mu__xREx__id_g")
+  expect_identical(colnames(mixed$mu__xREx__id_g), c("mu__xREx__id_g[b]", "mu__xREx__id_g[c]"))
+  expect_identical(
+    .label_test_legends(plot_posterior(mixed, "mu__xREx__id_g", plot_type = "ggplot")),
+    list(c("b", "c"))
   )
 })
