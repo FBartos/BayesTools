@@ -53,10 +53,17 @@ does a quantity without a prior density none of whose fitted coordinates
 can take a point mass (each owned by a continuous prior or a continuous
 generated primitive, e.g. the correlations of an LKJ block). Atoms remain
 undeclared (and posterior plots and Savage-Dickey ratios stop) when the
-point states are not in the draws (an unmonitored component indicator)
-or the quantity combines several coordinates of which some can take a
+point states are not in the draws (an unmonitored component indicator),
+when the quantity combines several coordinates of which some can take a
 point mass (e.g. original-scale random-effect SDs and correlations of a
-block with spike-and-slab SD priors).}
+block with spike-and-slab SD priors), and when the point structure of a
+fitted coordinate is not classified: coordinates of weight-function,
+publication-bias, and other priors that are neither continuous, point,
+mixture, nor spike-and-slab priors (e.g. \code{omega}, and \code{PET} and \code{PEESE}
+of publication-bias mixtures), and
+coordinates without a prior other than LKJ primitives and standardized
+random effects (e.g. \code{add_parameters} and the \verb{_indicator},
+\verb{_inclusion}, and \verb{_variable} coordinates of mixture priors).}
 \item{\code{undefined_draws}}{for quantities that are undefined on some
 fitted draws (the catalog \code{definedness}, e.g. variance proportions when
 no allocation component is active), the reason; those draws are omitted,

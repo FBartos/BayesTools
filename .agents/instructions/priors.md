@@ -275,7 +275,10 @@ shares of the draws as masses (checked against the density's point masses
 when there is a density); none when the density has no point mass or, without
 a density, when no coordinate of the quantity can take a point mass (e.g. an
 original-scale LKJ correlation with continuous SD priors); undeclared for
-unmonitored point states and composites of coordinates with point masses;
+unmonitored point states, composites of coordinates with point masses, and
+coordinates whose point structure is not classified (weight-function and
+publication-bias priors, and coordinates without a prior other than LKJ
+primitives and standardized random effects);
 its `conditional = TRUE` keeps the draws of the quantity's inclusion
 event and uses the density restricted to that event (the gate atom drops
 out, atoms inside the event are renormalized).
