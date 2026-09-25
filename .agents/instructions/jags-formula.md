@@ -97,7 +97,12 @@ rejected for such a term. The one exception is a mean-difference or
 orthonormal point mass at zero; an ordered prior is rejected even when its
 total is zero.
 
-Formula design metadata is authoritative for fixed and random terms. Preserve
+Formula design metadata is authoritative for fixed and random terms. Every
+factor prior carries complete factor metadata (levels, level names,
+contrasts, design, and cell names): formula terms and random-effect SD factor
+priors from their design, ordinary factor priors from
+`prior_factor_levels()`. Levels and coordinate names are never inferred from
+a coefficient count; fitting stops on incomplete factor metadata. Preserve
 the distinction between fitted standardized coordinates, original-scale
 display coordinates, unit latent variables, realized group coefficients, and
 covariance parameters.
@@ -179,7 +184,8 @@ names.
 - Square brackets after a factor term always hold a level label, or a cell of
   level labels, never a coordinate position. Every level or cell of a fixed
   factor term (all contrasts, and ordinary factor priors, whose levels are
-  1..K) is the quantity `<parameter>[<level>]` with a `factor_level`
+  set by `prior_factor_levels()`: the given names, or 1..K for a count) is
+  the quantity `<parameter>[<level>]` with a `factor_level`
   extraction key, and the transformed-summary labels `[dif: <level>]` are its
   aliases. A coordinate is a direct level cell only where the contrast makes
   it so structurally (treatment, independent, first ordered coordinate),
@@ -211,10 +217,12 @@ names.
   evaluate on prior and posterior draws alike. The indicators of mixture and
   spike-and-slab priors and the inclusion probability and slab draws of
   spike-and-slab priors come from the components of their `rng()` draws (the
-  stream of the other columns is unchanged). Latent group effects, nodes
-  derived only from them, the component nodes of mixtures, and the
-  auxiliaries of Dirichlet priors and ordered-prior totals have no prior
-  draws; catalog quantities that need them are unavailable from prior draws.
+  stream of the other columns is unchanged); so do ordered-prior totals with
+  these nodes of a spike-and-slab or mixture total, whose theta slices share
+  one inclusion probability and indicator, as in the fitted model. Latent
+  group effects, nodes derived only from them, the component nodes of
+  mixtures, and the auxiliaries of Dirichlet priors have no prior draws;
+  catalog quantities that need them are unavailable from prior draws.
 - Internal latent, realized, allocation, LKJ, spike-and-slab, and other
   implementation coordinates remain coordinate-only and must not be presented as
   original-scale public parameters.

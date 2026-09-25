@@ -365,7 +365,15 @@ term or for columns outside the prior-density context). `Ops`/`Math` group gener
 `as.numeric()` and subsetting of draws return plain numerics without
 metadata; consumers that need the metadata stop on plain draws, and
 producers that transform draws transform their metadata explicitly
-(`marginal_posterior(transformation = )`).
+(`marginal_posterior(transformation = )`). The container of draws records a
+fingerprint of the values it describes (length, missing count, and two
+sums); reading or setting the metadata of draws whose values changed while
+their attributes were kept (`x[] <- `, `x[i] <- `, `pmin()`) stops with class
+`BayesTools_stale_metadata`, so a producer that replaces values under an
+existing container rebuilds it (`.bt_meta_refresh()`) and then transforms
+or removes the fields that no longer apply. Subsetting a list of mixed
+posteriors with `[` keeps the list's container, with the prior densities of
+the kept elements.
 
 - When continuous components have different supports, estimate the ordinate
   per component (boundary-reflected on its own support, zero when that
