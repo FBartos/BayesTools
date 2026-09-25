@@ -94,15 +94,15 @@ old behaviour.
   the second fitted coordinate. Every level of every contrast, and of ordinary
   factor priors, is a catalog quantity, and the transformed-summary labels
   `mu_g[dif: 2]`, `(mu) g[dif: 2]`, and `g[dif: 2]` are its aliases. The
-  parameter map is version 5: models fitted with earlier versions, including
+  parameter map is version 8: models fitted with earlier versions, including
   earlier 0.3.1 development versions, must be refitted.
 - `Savage_Dickey_BF()`, `marginal_inference()`, `as_marginal_inference()`, and
   `marginal_estimates_table()` return a finite Bayes factor when the null
   hypothesis lies outside the posterior draws: the kernel density extrapolated
   from Gaussian kernel tails, with a warning that it is not reliable evidence.
   0.3.0 returned `Inf`. The warning is emitted once per parameter or level,
-  labelled `parameter[level]` as in the summary tables, and tables list it
-  among their warnings.
+  labelled by the row label of the summary tables (`(mu) x[-1SD]`,
+  `(mu) x:g[-1SD, a]`), and tables list it among their warnings.
 - `marginal_inference()`, `as_marginal_inference()`, and `Savage_Dickey_BF()`
   on a list of marginal posteriors return `NA` with the reason for a level
   whose posterior has a declared point mass at the null hypothesis (e.g., the
@@ -125,6 +125,48 @@ old behaviour.
   reference weight first). `plot()` previously counted from the least
   significant interval, and its default `show_figures = -1` now omits the
   reference weight fixed at 1 instead of the least significant weight.
+- every parameter label is rendered by one renderer from structured label
+  parts (see `parameter_labels()`), so a quantity has the same label on every
+  route, and labels that names were parsed into change:
+  - two-level treatment interactions name their level in every table
+    (`(mu) g[hi]:x`, was `(mu) g:x` in model tables);
+  - interaction-cell columns of `as_mixed_posteriors()` and `mix_posteriors()`
+    are catalog selectors (`mu_g__xXx__h[g=b, h=v]`, was
+    `mu_g[b]__xXx__h[v]`), and their ensemble rows are the model-table rows;
+  - formula prefixes come from the formula parameter of each prior, not from
+    name prefixes: with formula parameters `mu` and `mu_tau`, `mu_tau_z` is
+    `(mu_tau) z` (was `(mu) tau_z`), and a predictor `mu_income` of `mu` is
+    `(mu) mu_income` in ensemble tables (was `(mu) (mu) income`);
+  - marginal names and `marginal_estimates_table()` rows name the levels of
+    every factor (`(mu) x:g[-1SD, a]`), and the table's warnings start with
+    the row label (was the backend node, `mu_x__xXx__g[-1SD, a]:`); a
+    marginal of a parameter without levels is `mu` (was `mu[]`);
+  - inference-table rows of mixture components are `(mu) z[narrow]` (was
+    `(mu) z [narrow]`), a factor level of a mixture component is
+    `(mu) x[b][narrow]` (was `(mu) x[narrow][b]`), and the Bayes factor
+    MC-error warnings name the row label (was the backend node, e.g.
+    `mu_intercept`);
+  - random-effect SD prior entries are labelled as SDs of their block's terms
+    in inference tables, model summaries, and ensemble tables
+    (`(mu) id: sd(x)`, was `sd((mu) x|id)`), and the mixed columns of
+    random-effect SD entries as the catalog's SD quantities
+    (`(mu) sd(f[b])`);
+  - factor plot legends show the level text of each level cell (both levels
+    of an interaction cell, `b, v`; without the leading space of transformed
+    contrasts; level names with brackets whole);
+  - raw estimates tables label LKJ primitives by their component pair
+    (`(mu) lkj_u(intercept,x | g)`, was the backend node), and standard and
+    full tables omit the internal allocation shares of ordered-factor priors
+    (`prior_par_eta_*`).
+- original-scale transforms (`transform_scaled = TRUE` of ensemble and
+  marginal tables, `transform_scale_samples()`, `transform_prior_samples()`,
+  `plot_transformed_prior()`, and prior densities with `formula_scale`)
+  require the fitted design that the `formula_scale` attribute of a fitted
+  model carries. Standardization information without it (a `formula_scale`
+  list built by hand) stops with a `BayesTools_formula_transform_unavailable`
+  error instead of pairing coefficient names, which left the intercept and
+  the factor levels of terms such as the level slopes of `~ g + g:x` on the
+  standardized scale; pass `attr(fit, "formula_scale")`.
 - `runjags_estimates_table()` / `JAGS_estimates_table()` identify inclusion
   rows from the prior list and the formula metadata instead of the row label,
   and every inclusion row reports only the posterior inclusion probability
@@ -156,6 +198,13 @@ old behaviour.
   between all level cells and the cells after the reference levels.
 
 ### Features
+- adds `parameter_labels()`, the renderer of every parameter label (catalog
+  selectors, table rows, plot legends, and warnings), from the structured
+  label parts that catalog quantities (`label_parts`) and the columns of mixed
+  and marginal posteriors (the new `quantities` draw metadata, with the
+  fitted coordinates, weights, and catalog quantity of each column) carry.
+  Hypothesis level references decode the catalog's escaped level form,
+  including braces (`mu[w%7B1%7D]` is the level "w{1}").
 - exports `JAGS_runtime_cluster()` and `JAGS_runtime_cluster_stop()` for
   parallel computation in packages built on BayesTools. The cluster's workers
   start with `Rscript --vanilla` and the calling session's library paths,
@@ -375,6 +424,28 @@ old behaviour.
 - preserves independent coefficient supports in structural dependency graphs,
   including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- labels and original-scale summaries:
+  - `ensemble_estimates_table(transform_scaled = TRUE)` and
+    `marginal_estimates_table(transform_scaled = TRUE)` transform mixed
+    columns through the fitted design by their fitted coordinates. For
+    `~ g + g:x` with standardized `x`, the intercept and the levels of `g`
+    were left on the standardized scale, also in `mix_posteriors()`
+    mixtures; columns that do not identify their fitted coordinates, or
+    coefficients outside the design of the passed `formula_scale`, stop.
+  - factor posterior and prior plots label an interaction cell by the levels
+    of all its factors (a 3 x 3 treatment interaction showed 2 labels for 4
+    curves), and `plot_posterior(prior = TRUE)` works for ordered factors
+    ("subscript out of bounds").
+  - estimates tables blank the MCMC diagnostics of every publication-weight
+    bin that its prior declares constant (the reference bin, every fixed
+    weight, and constant bins of bias mixtures), identified from the prior
+    instead of rows whose label starts with `omega[0,`; the p-value interval
+    rows (`omega[0,0.05]`) are catalog selectors of their bins.
+  - formulas whose parameters and terms generate the same JAGS node name (for
+    example formula `a` with term `b_x` and formula `a_b` with term `x`) stop
+    with a message naming them instead of a duplicate `prior_list` name.
+  - `format_parameter_names()` treats only the literal "(inclusion)" marker as
+    an inclusion row.
 - prior draws (`rng()`, `transform_prior_samples()`, and the prior samples
   built from them) of an ordered prior whose spike-and-slab total has several
   slices (an ordered factor in an interaction with another factor) follow the
@@ -550,12 +621,8 @@ old behaviour.
     formulas whose centered terms have no original-scale representation (e.g.
     `~ x + x:f` with standardized `x`) stop with an informative error instead
     of returning wrong coefficients. `JAGS_formula()` and `JAGS_fit()` store
-    the fitted design with the formula-scale metadata. For fits created by
-    earlier development versions, estimates tables and `as_mixed_posteriors()`
-    keep the name-paired transformation until refitted, while
-    `transform_scale_samples(fit)`, `transform_prior_samples(fit)`, and
-    `JAGS_formula_coefficient_transform()` use the design stored in
-    `formula_design`.
+    the fitted design with the formula-scale metadata; there is no
+    name-paired transformation.
   - correlations of random slopes on standardized predictors are reported on
     the original scale in `JAGS_estimates_table(transform_scaled = TRUE)` and
     `parameter_draws()` (they stayed on the standardized scale), with the LKJ
@@ -1231,7 +1298,7 @@ old behaviour.
 - adds a versioned `hypothesis_parse()` syntax tree with stable rendering, exact symbol discovery and rewriting, parameter-catalog resolution including unquoted non-syntactic public aliases, and direct `hypothesis_BF()` consumption without reparsing expression text
 - adds a metadata-only `parameter_catalog()` view over the fitted parameter map, with classed exact resolution, validated provider extensions, and deferred `parameter_draws()` extraction for declared coordinates and random-effect summaries
 - adds versioned `JAGS_draw_geometry()` metadata and parameter-map-based `JAGS_materialize_draws()` reconstruction, including exact structural point-prior values, preserved chain timing, valid zero-column public draws, and a private deterministic backend anchor for models with no ordinary monitor
-- adds an injective UTF-8 `JAGS_parameter_encode()` / `JAGS_parameter_decode()` semantic identifier, a persisted formula name map, and a single strict `JAGS_fit_contract()` schema so downstream packages can consume formula and fitted metadata without parsing established JAGS column names
+- adds a persisted formula name map (`JAGS_formula_name_map()`) with an injective UTF-8 identifier of each coordinate's semantic fields, and a single strict `JAGS_fit_contract()` schema so downstream packages can consume formula and fitted metadata without parsing established JAGS column names
 - adds `prior_density_ordinate()` for exact-value structural classification of scalar prior and induced `prior_linear_density` ordinates, including continuous limits, point masses, deterministic mixtures, analytic normal combinations, and supported named transformations
 - adds the `prior_random()` interface for formula random effects, including `random_block()`, `random_covariance()`, `random_monitor()`, `random_new_levels()`, `random_variance_allocation()`, and `allocation_ref()` helpers for specifying random-effect standard deviation priors, covariance structures, monitoring policy, and total-variance allocation priors
 - adds lme4-like formula random-effect parsing through `reformulas`, including ordinary and independent random effects, named random-effect blocks, nested grouping expressions, factor random slopes, and structured covariance shortcuts for diagonal, shared-SD independent, unstructured, compound-symmetry, heterogeneous compound-symmetry, discrete AR(1), heterogeneous AR(1), and continuous-time AR(1) random effects
