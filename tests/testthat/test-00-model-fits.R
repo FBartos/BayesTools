@@ -3399,9 +3399,15 @@ test_that("Gaussian JAGS formula fit agrees with lm oracle after scaling", {
     posterior_auto[, scaled_parameters, drop = FALSE],
     attr(fit_auto, "formula_scale")
   )
+  # the manual standardization with the fitted design of ~ x1 * x2, which
+  # original-scale transforms require
   posterior_manual_original <- BayesTools:::.bt_transform_scale_posterior(
     posterior_manual[, scaled_parameters, drop = FALSE],
-    list(mu = manual_scale)
+    list(mu = formula_scale_for_test(
+      ~ x1 * x2,
+      list(x1 = manual_scale$mu_x1, x2 = manual_scale$mu_x2),
+      data = data[c("x1", "x2")]
+    ))
   )
 
   lm_fit <- stats::lm(y ~ x1 * x2, data = data)
