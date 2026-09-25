@@ -371,9 +371,10 @@ sums); reading or setting the metadata of draws whose values changed while
 their attributes were kept (`x[] <- `, `x[i] <- `, `pmin()`) stops with class
 `BayesTools_stale_metadata`, so a producer that replaces values under an
 existing container rebuilds it (`.bt_meta_refresh()`) and then transforms
-or removes the fields that no longer apply. Subsetting a list of mixed
-posteriors with `[` keeps the list's container, with the prior densities of
-the kept elements.
+or removes the fields that no longer apply. The fingerprint is computed in one
+native pass per read or update; the package retains no draws between calls.
+Subsetting a list of mixed posteriors with `[` keeps the list's container,
+with the prior densities of the kept elements.
 
 - When continuous components have different supports, estimate the ordinate
   per component (boundary-reflected on its own support, zero when that

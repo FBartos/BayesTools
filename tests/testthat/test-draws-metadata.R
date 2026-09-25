@@ -676,3 +676,66 @@ test_that("subsetting a list of mixed posteriors keeps the list's metadata", {
   # an empty index keeps every element
   expect_identical(samples[], samples)
 })
+
+test_that("draw fingerprints are computed in one native pass in a fixed order", {
+
+  fingerprint <- function(x) .Call("BayesTools_draw_fingerprint", x, PACKAGE = "BayesTools")
+  set.seed(3)
+  values <- c(stats::rnorm(1001), NA, NaN, stats::rnorm(6))
+  native <- fingerprint(values)
+  n <- length(values)
+  observed <- !is.na(values)
+  position <- which(observed)
+  expect_identical(native[1:2], c(n, 2))
+  # value i is added to partial sum i mod 4 in increasing i, in double
+  # precision, and the partial sums are combined pairwise
+  lane <- (seq_len(n) - 1L) %% 4L
+  partial <- vapply(0:3, function(l){
+    Reduce(`+`, values[observed & lane == l], accumulate = FALSE)
+  }, numeric(1))
+  expect_identical(native[[3L]], (partial[[1L]] + partial[[2L]]) + (partial[[3L]] + partial[[4L]]))
+  absolute <- vapply(0:3, function(l){
+    Reduce(`+`, abs(values[observed & lane == l]), accumulate = FALSE)
+  }, numeric(1))
+  expect_identical(native[[5L]], (absolute[[1L]] + absolute[[2L]]) + (absolute[[3L]] + absolute[[4L]]))
+  # the position-weighted sum within its rounding bound
+  k <- ceiling(n / 4) + 2
+  gamma <- k * .Machine$double.eps / 2
+  expect_lte(abs(native[[4L]] - sum(values[observed] * position)),
+             2 * gamma * sum(abs(values[observed] * position)))
+  expect_equal(native[[6L]], sum(abs(values[observed] * position)), tolerance = 1e-12)
+
+  # integer and logical draws, whose sums are exact
+  expect_identical(fingerprint(c(3L, NA, -2L, 7L, 1L)), c(5, 1, 9, 30, 13, 42))
+  expect_identical(fingerprint(c(TRUE, FALSE, NA, TRUE)), c(4, 1, 2, 5, 2, 5))
+  expect_identical(fingerprint(numeric()), c(0, 0, 0, 0, 0, 0))
+  expect_error(fingerprint("a"), "Draw fingerprints require numeric or logical values.", fixed = TRUE)
+
+  # the container records the first four
+  x <- .bt_meta_set(values, "undefined_draws", "correlation")
+  expect_identical(unname(attr(x, "bayestools_meta")$fingerprint), native[1:4])
+})
+
+test_that("setting several draw-metadata fields checks the draws once", {
+
+  checks <- 0L
+  original <- BayesTools:::.bt_meta_check_current
+  testthat::local_mocked_bindings(
+    .bt_meta_check_current = function(meta, current){
+      checks <<- checks + 1L
+      original(meta, current)
+    },
+    .package = "BayesTools"
+  )
+  x <- .bt_meta_set(stats::rnorm(100), "atoms", posterior_atom_attribute())
+  checks <- 0L
+  x <- .bt_meta_update(
+    x,
+    support = posterior_support_attribute(c(-Inf, Inf)),
+    undefined_draws = "correlation",
+    atoms = NULL
+  )
+  expect_identical(checks, 1L)
+  expect_identical(names(attr(x, "bayestools_meta")), c("support", "undefined_draws", "fingerprint"))
+  expect_identical(posterior_metadata(x, "undefined_draws"), "correlation")
+})

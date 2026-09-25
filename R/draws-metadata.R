@@ -255,18 +255,22 @@
 }
 
 # The value of a draw-metadata field, or NULL when it is absent. The metadata
-# of draws must describe their current values (.bt_meta_current()).
+# of draws must describe their current values (.bt_meta_check_current()).
 .bt_meta_get <- function(x, field){
 
   .bt_meta_check_field(field)
+  .bt_meta_current_container(x)[[field]]
+}
+
+# The container of 'x' (NULL when 'x' carries none), checked to describe the
+# current values of draws.
+.bt_meta_current_container <- function(x){
+
   meta <- .bt_meta_container(x)
-  if(is.null(meta)){
-    return(NULL)
-  }
-  if(.bt_meta_is_draws(x)){
+  if(!is.null(meta) && .bt_meta_is_draws(x)){
     .bt_meta_check_current(meta, .bt_meta_fingerprint(x))
   }
-  meta[[field]]
+  meta
 }
 
 # 'x' with the draw-metadata field set to 'value'; NULL removes the field.
@@ -275,13 +279,22 @@
 # container first (.bt_meta_refresh()).
 .bt_meta_set <- function(x, field, value){
 
-  .bt_meta_check_field(field)
-  meta <- .bt_meta_container(x)
-  if(is.null(value) && is.null(meta)){
-    return(x)
+  .bt_meta_assign(x, stats::setNames(list(value), field))
+}
+
+# 'x' with the fields of the named list 'fields' set (NULL removes a field),
+# with one check and one fingerprint of the draws.
+.bt_meta_assign <- function(x, fields){
+
+  for(field in names(fields)){
+    .bt_meta_check_field(field)
+    if(!is.null(fields[[field]])){
+      .bt_meta_validate(field, fields[[field]])
+    }
   }
-  if(!is.null(value)){
-    .bt_meta_validate(field, value)
+  meta <- .bt_meta_container(x)
+  if(is.null(meta) && all(vapply(fields, is.null, logical(1)))){
+    return(x)
   }
   fingerprint <- if(.bt_meta_is_draws(x)) .bt_meta_fingerprint(x)
   if(is.null(meta)){
@@ -289,7 +302,9 @@
   }else if(!is.null(fingerprint)){
     .bt_meta_check_current(meta, fingerprint)
   }
-  meta[[field]] <- value
+  for(field in names(fields)){
+    meta[[field]] <- fields[[field]]
+  }
   .bt_meta_write(x, meta, fingerprint)
 }
 
@@ -298,7 +313,8 @@
 # keep the attributes of 'x'). The container of draws therefore stores a
 # fingerprint of the values it describes: their number, the number of missing
 # values, and the sums of the observed values and of the observed values
-# weighted by their positions.
+# weighted by their positions. The fingerprint is computed in one native pass
+# (src/r-draw-fingerprint.c).
 .bt_meta_fingerprint_field <- "fingerprint"
 
 .bt_meta_is_draws <- function(x){
@@ -306,42 +322,48 @@
   is.atomic(x) && typeof(x) %in% c("double", "integer", "logical")
 }
 
+# The fingerprint of the values of draws 'x' ('value', stored in the
+# container) with the scales of its rounding-error bound ('scale').
 .bt_meta_fingerprint <- function(x){
 
-  values <- as.double(unclass(x))
-  observed <- !is.na(values)
-  position <- which(observed)
-  values <- values[observed]
-  weighted <- values * position
+  out <- .Call("BayesTools_draw_fingerprint", x, PACKAGE = "BayesTools")
   list(
-    value = c(
-      length       = length(observed),
-      missing      = length(observed) - length(values),
-      sum          = sum(values),
-      weighted_sum = sum(weighted)
-    ),
-    scale = c(sum = sum(abs(values)), weighted_sum = sum(abs(weighted)))
+    value = c(length = out[[1L]], missing = out[[2L]], sum = out[[3L]], weighted_sum = out[[4L]]),
+    scale = c(sum = out[[5L]], weighted_sum = out[[6L]])
   )
 }
 
 # Whether a stored fingerprint describes the values of the current one. The
-# sums agree up to twice the rounding bound of summing the values in double
-# precision, (n - 1) * eps * sum(|x|), which covers platforms that accumulate
-# sums with and without extended precision.
+# number of values and of missing values must be equal. The native pass sums
+# in double precision in a fixed order, four interleaved partial sums of at
+# most m = ceiling(n / 4) summands combined pairwise, so a computed sum is
+# within gamma_k * sum(|t|) of the exact one, with k = m + 2 (the weighted
+# sum's products are rounded too), gamma_k = k u / (1 - k u), u = 2^-53, and
+# t the summands. Two computations of the same values - on the same build
+# bit-identical, on other platforms possibly with fused multiply-adds - thus
+# agree within 2 gamma_k (1 + gamma_k) times the computed sum(|t|), the last
+# factor bounding the rounding of that scale. Differences within this bound
+# (for example changes of single draws far below their magnitude) are not
+# detected.
 .bt_meta_fingerprint_matches <- function(stored, current){
 
   if(!is.numeric(stored) || !identical(names(stored), names(current$value)) ||
      !identical(stored[c("length", "missing")], current$value[c("length", "missing")])){
     return(FALSE)
   }
-  n <- current$value[["length"]] - current$value[["missing"]]
+  if(identical(stored, current$value)){
+    return(TRUE)
+  }
+  k <- ceiling(current$value[["length"]] / 4) + 2
+  gamma <- k * .Machine$double.eps / 2
+  gamma <- gamma / (1 - gamma)
   all(vapply(c("sum", "weighted_sum"), function(name){
     stored_sum  <- stored[[name]]
     current_sum <- current$value[[name]]
     if(!is.finite(stored_sum) || !is.finite(current_sum)){
       return(identical(stored_sum, current_sum))
     }
-    abs(stored_sum - current_sum) <= 2 * max(n - 1, 0) * .Machine$double.eps * current$scale[[name]]
+    abs(stored_sum - current_sum) <= 2 * gamma * (1 + gamma) * current$scale[[name]]
   }, logical(1)))
 }
 
@@ -391,18 +413,18 @@
   .bt_meta_write(x, meta, if(.bt_meta_is_draws(x)) .bt_meta_fingerprint(x))
 }
 
-# 'x' with several draw-metadata fields set, given as named arguments.
+# 'x' with several draw-metadata fields set, given as named arguments (one
+# check and one fingerprint of the draws).
 .bt_meta_update <- function(x, ...){
 
   fields <- list(...)
-  if(length(fields) > 0L &&
-     (is.null(names(fields)) || any(!nzchar(names(fields))))){
+  if(length(fields) == 0L){
+    return(x)
+  }
+  if(is.null(names(fields)) || any(!nzchar(names(fields)))){
     stop("Draw-metadata fields must be named.", call. = FALSE)
   }
-  for(field in names(fields)){
-    x <- .bt_meta_set(x, field, fields[[field]])
-  }
-  x
+  .bt_meta_assign(x, fields)
 }
 
 # One element of the 'condition' field.
@@ -484,6 +506,14 @@
 #' (parent class \code{BayesTools_metadata}). Subsetting a list of mixed
 #' posteriors with \code{[} keeps the list's metadata, with the prior
 #' densities of the omitted parameters removed.
+#'
+#' The fingerprint cannot detect every change: the two sums are compared
+#' within their rounding-error bound, so changes that keep both sums (e.g.,
+#' adding d, -2d, and d to three consecutive draws), changes of single draws
+#' smaller than about \eqn{5.6 \cdot 10^{-17} n^2} times the draws' mean
+#' absolute value for \eqn{n} draws (about \eqn{6 \cdot 10^{-5}} for
+#' \eqn{10^6} draws), and reorderings that move draws by only a few positions
+#' keep the metadata.
 #'
 #' @return \code{posterior_metadata()} returns the value of the field or
 #' \code{NULL}; the replacement form returns \code{x} with the field set.

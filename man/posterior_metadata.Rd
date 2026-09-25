@@ -79,6 +79,14 @@ them, stops with an error of class \code{BayesTools_stale_metadata}
 (parent class \code{BayesTools_metadata}). Subsetting a list of mixed
 posteriors with \code{[} keeps the list's metadata, with the prior
 densities of the omitted parameters removed.
+
+The fingerprint cannot detect every change: the two sums are compared
+within their rounding-error bound, so changes that keep both sums (e.g.,
+adding d, -2d, and d to three consecutive draws), changes of single draws
+smaller than about \eqn{5.6 \cdot 10^{-17} n^2} times the draws' mean
+absolute value for \eqn{n} draws (about \eqn{6 \cdot 10^{-5}} for
+\eqn{10^6} draws), and reorderings that move draws by only a few positions
+keep the metadata.
 }
 \examples{
 draws <- stats::rnorm(100)
