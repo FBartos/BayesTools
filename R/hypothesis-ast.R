@@ -27,7 +27,11 @@
 #' @param mapping named character vector from exact old roots to new roots.
 #' @param catalog optional `BayesTools_parameter_catalog`. When supplied to
 #'   `hypothesis_parse()`, exact non-syntactic public aliases are recognized
-#'   without requiring the caller to add backticks.
+#'   without requiring the caller to add backticks, and a contrast-coefficient
+#'   selector `term{j}` whose coordinate is a level stops with the error of
+#'   class `BayesTools_selector_unavailable` (also
+#'   `BayesTools_hypothesis_target`) that names the level form, as in
+#'   [parameter_catalog_resolve()], instead of failing to parse.
 #' @param namespace optional exact catalog namespace filter.
 #' @param component optional exact catalog component filter for unqualified
 #'   symbols. A level-qualified symbol such as `term[level]` supplies its own
@@ -126,6 +130,13 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
     quantities$canonical_name[canonical],
     aliases$alias[alias_rows]
   ))
+  # contrast-coefficient selectors `<term>{j}` of level coordinates are
+  # refused naming the level (they would otherwise fail to parse)
+  refused <- .bt_parameter_catalog_level_coefficient_selectors(catalog)
+  if(!is.null(namespace)){
+    refused <- refused[refused$namespace == namespace, , drop = FALSE]
+  }
+  names <- unique(c(names, refused$selector))
   names <- names[
     nzchar(names) &
       make.names(names) != names
@@ -140,11 +151,13 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
     .bt_hypothesis_quote_statement_aliases,
     character(1),
     aliases = names,
+    refused = refused,
     USE.NAMES = FALSE
   )
 }
 
-.bt_hypothesis_quote_statement_aliases <- function(statement, aliases){
+.bt_hypothesis_quote_statement_aliases <- function(statement, aliases,
+                                                   refused = NULL){
 
   n <- nchar(statement, type = "chars")
   if(n == 0L){
@@ -183,6 +196,12 @@ hypothesis_parse <- function(hypothesis, catalog = NULL, namespace = NULL,
         matched <- alias
         break
       }
+    }
+    if(!is.null(matched) && !is.null(refused) &&
+       matched %in% refused$selector){
+      .bt_parameter_catalog_selector_unavailable_stop(
+        refused[refused$selector == matched, , drop = FALSE]
+      )
     }
     if(!is.null(matched)){
       end <- i + nchar(matched, type = "chars") - 1L

@@ -261,6 +261,14 @@ old behaviour.
   `plot_posterior(prior = TRUE)` of these correlations draws the prior.
   Original-scale correlations that mix fitted coefficients (the intercept and
   a slope of a centred predictor) still have no prior density.
+- `parameter_catalog_resolve()`, and `hypothesis_parse()` with a `catalog`,
+  refuse a contrast-coefficient selector `term{j}` of a factor coordinate
+  that is a level (the coordinates of treatment and independent contrasts and
+  the first ordered coordinate) with an error of class
+  `BayesTools_selector_unavailable` (also `BayesTools_hypothesis_target`)
+  that names the level in the same form, e.g. `g1[10]` for `g1{1}` of a
+  treatment factor with levels 5, 10, and 20. Before, the selector was not
+  found, and `hypothesis_parse()` failed to parse it.
 - `parameter_prior_density()` gives allocated random-effect SDs, variances
   and allocation totals (`sd_total`, `var_total`) exact prior densities: the
   scale prior times the multiplier of the fitted model (Dirichlet weights over

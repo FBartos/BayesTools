@@ -164,7 +164,16 @@ Constructing or resolving the catalog never accesses posterior draws.
 another provider; the \code{"BayesTools"} provider name is reserved for native
 quantities. \code{parameter_catalog_resolve()} applies optional namespace
 and component filters and returns a versioned selection only when the match
-is unique.
+is unique. Otherwise it stops with an error of class
+\code{BayesTools_parameter_not_found} or \code{BayesTools_parameter_ambiguous} (both
+also \code{BayesTools_parameter_resolution_error}). A contrast-coefficient
+selector \verb{term\{j\}} whose coordinate is a level (the coordinates of treatment
+and independent contrasts and the first ordered coordinate have no
+coefficient quantity) stops with class \code{BayesTools_selector_unavailable}
+(also \code{BayesTools_hypothesis_target} and
+\code{BayesTools_parameter_resolution_error}), whose message and field \code{level}
+name the level in the same form, e.g. \code{g[10]} for \verb{g\{1\}} of a treatment
+factor with levels 5, 10, and 20.
 
 \code{parameter_draws()} is the deferred extraction boundary. The BayesTools fit
 method reads only the coordinates declared by the selected

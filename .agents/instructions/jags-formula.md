@@ -197,7 +197,10 @@ names.
   it so structurally (treatment, independent, first ordered coordinate),
   never by floating-point equality of design rows. Every other coordinate is
   contrast coefficient `<parameter>{j}`, labelled so in tables, diagnostics,
-  mixed-posterior columns, and random-slope components (`sd(g{j})`). JAGS
+  mixed-posterior columns, and random-slope components (`sd(g{j})`). A
+  `{j}` selector of a direct level coordinate is refused (in catalog
+  resolution and in `hypothesis_parse()` with a catalog) with class
+  `BayesTools_selector_unavailable`, naming the level in the same form. JAGS
   coordinate names such as `mu_g[2]` remain backend column names, used by
   coordinate-based functions such as `JAGS_materialize_draws()`, but are not
   factor selectors.

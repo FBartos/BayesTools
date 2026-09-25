@@ -74,7 +74,16 @@
 #' another provider; the `"BayesTools"` provider name is reserved for native
 #' quantities. `parameter_catalog_resolve()` applies optional namespace
 #' and component filters and returns a versioned selection only when the match
-#' is unique.
+#' is unique. Otherwise it stops with an error of class
+#' `BayesTools_parameter_not_found` or `BayesTools_parameter_ambiguous` (both
+#' also `BayesTools_parameter_resolution_error`). A contrast-coefficient
+#' selector `term{j}` whose coordinate is a level (the coordinates of treatment
+#' and independent contrasts and the first ordered coordinate have no
+#' coefficient quantity) stops with class `BayesTools_selector_unavailable`
+#' (also `BayesTools_hypothesis_target` and
+#' `BayesTools_parameter_resolution_error`), whose message and field `level`
+#' name the level in the same form, e.g. `g[10]` for `g{1}` of a treatment
+#' factor with levels 5, 10, and 20.
 #'
 #' `parameter_draws()` is the deferred extraction boundary. The BayesTools fit
 #' method reads only the coordinates declared by the selected
@@ -374,6 +383,16 @@ parameter_catalog_resolve <- function(catalog, alias, namespace = NULL,
   ]
 
   if(nrow(candidates) == 0L){
+    refused <- .bt_parameter_catalog_level_coefficient_selectors(catalog)
+    refused <- refused[
+      refused$selector == alias &
+        (is.null(namespace) | refused$namespace %in% namespace),
+      ,
+      drop = FALSE
+    ]
+    if(nrow(refused) > 0L){
+      .bt_parameter_catalog_selector_unavailable_stop(refused)
+    }
     available <- sort(unique(c(
       quantities$canonical_name[public],
       catalog$aliases$alias[
@@ -4424,6 +4443,134 @@ parameter_transform_jacobian <- function(values, transform){
               "condition")
   )
   stop(condition)
+}
+
+# Contrast-coefficient selectors `<term>{j}` of the fitted factor coordinates
+# that are structurally a level cell (the coordinates of treatment and
+# independent contrasts, and the first ordered coordinate). The catalog has a
+# `{j}` quantity only for coordinates that are not a level cell, so a level
+# coordinate is the one-coordinate, unit-weight level cell of a coordinate
+# without a `{j}` quantity. One row per refused selector (the selector, table
+# labels, and term alias forms of `{j}`) with the level cell rendered in the
+# same form, its term, quantity id and namespace. Selectors that name a
+# catalog quantity are never refused.
+.bt_parameter_catalog_level_coefficient_selectors <- function(catalog){
+
+  out <- data.frame(
+    selector    = character(),
+    level       = character(),
+    term        = character(),
+    coefficient = integer(),
+    quantity_id = character(),
+    namespace   = character(),
+    stringsAsFactors = FALSE
+  )
+  quantities <- catalog$quantities
+  keys <- quantities$extraction_key
+  parts <- unclass(quantities$label_parts)
+  factor_rows <- !quantities$internal &
+    vapply(keys, function(key){
+      is.list(key) && identical(key$type, "factor_level")
+    }, logical(1)) &
+    !vapply(parts, is.null, logical(1))
+  if(!any(factor_rows)){
+    return(out)
+  }
+  dependency <- vapply(keys, function(key){
+    if(is.list(key) && length(key$dependencies) == 1L &&
+       identical(as.numeric(key$weights), 1)){
+      key$dependencies[[1L]]
+    }else{
+      NA_character_
+    }
+  }, character(1))
+  coefficient <- rep(NA_integer_, length(parts))
+  coefficient[factor_rows] <- vapply(parts[factor_rows], function(part){
+    part$coefficient
+  }, integer(1))
+  cell <- rep(FALSE, length(parts))
+  cell[factor_rows] <- vapply(parts[factor_rows], function(part){
+    length(part$levels) > 0L && !isTRUE(part$marginal) &&
+      identical(part$transformation, "none")
+  }, logical(1))
+  coefficient_coordinates <- dependency[factor_rows & !is.na(coefficient)]
+  cells <- which(factor_rows & cell & !is.na(dependency) &
+                   !dependency %in% coefficient_coordinates)
+  shared <- dependency[cells][duplicated(dependency[cells])]
+  cells <- cells[!dependency[cells] %in% shared]
+
+  rows <- lapply(cells, function(i){
+    index <- .bt_parameter_coordinates_index(dependency[[i]])
+    j <- if(nzchar(index)) suppressWarnings(as.integer(index)) else 1L
+    if(is.na(j) || j < 1L){
+      return(NULL)
+    }
+    level_parts <- parts[[i]]
+    coefficient_parts <- .bt_label_parts_update(
+      level_parts,
+      levels      = character(),
+      coefficient = j
+    )[[1L]]
+    data.frame(
+      selector = c(
+        .bt_label(coefficient_parts, style = "selector"),
+        .bt_label(coefficient_parts, style = "table", formula_prefix = TRUE),
+        .bt_label(coefficient_parts, style = "table", formula_prefix = FALSE),
+        .bt_parameter_catalog_level_alias(
+          quantities$term[[i]],
+          .bt_parameter_catalog_factor_coefficient_component(j)
+        )
+      ),
+      level = c(
+        .bt_label(level_parts, style = "selector"),
+        .bt_label(level_parts, style = "table", formula_prefix = TRUE),
+        .bt_label(level_parts, style = "table", formula_prefix = FALSE),
+        .bt_parameter_catalog_level_alias(
+          quantities$term[[i]],
+          quantities$component[[i]]
+        )
+      ),
+      term        = paste(level_parts$components, collapse = ":"),
+      coefficient = j,
+      quantity_id = quantities$quantity_id[[i]],
+      namespace   = quantities$namespace[[i]],
+      stringsAsFactors = FALSE
+    )
+  })
+  rows <- rows[!vapply(rows, is.null, logical(1))]
+  if(length(rows) == 0L){
+    return(out)
+  }
+  out <- do.call(rbind, rows)
+  # one level form per selector and level (the first, rendered in its style)
+  out <- out[!duplicated(out[, c("selector", "quantity_id")]), , drop = FALSE]
+  known <- c(quantities$canonical_name, catalog$aliases$alias)
+  out <- out[!out$selector %in% known, , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
+# Refuses a contrast-coefficient selector `<term>{j}` whose coordinate is a
+# level (rows of .bt_parameter_catalog_level_coefficient_selectors() for one
+# selector): class BayesTools_selector_unavailable (parents
+# BayesTools_hypothesis_target and BayesTools_parameter_resolution_error),
+# with the fields 'selector', 'level' (the level forms), and 'quantity_id'.
+.bt_parameter_catalog_selector_unavailable_stop <- function(refused){
+
+  selector <- refused$selector[[1L]]
+  levels <- unique(refused$level)
+  .bt_parameter_catalog_stop(
+    class = c("BayesTools_selector_unavailable", "BayesTools_hypothesis_target"),
+    message = paste0(
+      "Selector '", selector, "' is unavailable: coefficient ",
+      refused$coefficient[[1L]], " of factor term '", refused$term[[1L]],
+      "' is a level, not a contrast coefficient. Select it by its level ",
+      "label, ", paste0("'", levels, "'", collapse = " or "), "."
+    ),
+    selector    = selector,
+    level       = levels,
+    quantity_id = unique(refused$quantity_id)
+  )
 }
 
 .bt_validate_parameter_selection <- function(selection, catalog = NULL){

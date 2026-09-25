@@ -39,7 +39,11 @@ hypothesis_resolve(
 
 \item{catalog}{optional \code{BayesTools_parameter_catalog}. When supplied to
 \code{hypothesis_parse()}, exact non-syntactic public aliases are recognized
-without requiring the caller to add backticks.}
+without requiring the caller to add backticks, and a contrast-coefficient
+selector \verb{term\{j\}} whose coordinate is a level stops with the error of
+class \code{BayesTools_selector_unavailable} (also
+\code{BayesTools_hypothesis_target}) that names the level form, as in
+\code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}}, instead of failing to parse.}
 
 \item{namespace}{optional exact catalog namespace filter.}
 

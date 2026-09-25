@@ -609,6 +609,151 @@ test_that("factor selectors name level labels, never coordinate positions", {
   }
 })
 
+# The selector, parsing, and resolution refusals of a contrast-coefficient
+# selector `form` whose coordinate is the level `level_form`.
+.expect_level_coefficient_refused <- function(catalog, form, level_form,
+                                              coefficient, term, info){
+
+  message <- paste0(
+    "Selector '", form, "' is unavailable: coefficient ", coefficient,
+    " of factor term '", term, "' is a level, not a contrast coefficient. ",
+    "Select it by its level label, '", level_form, "'."
+  )
+  error <- expect_error(
+    parameter_catalog_resolve(catalog, form),
+    class = "BayesTools_selector_unavailable",
+    info = info
+  )
+  expect_s3_class(error, "BayesTools_hypothesis_target")
+  expect_s3_class(error, "BayesTools_parameter_resolution_error")
+  expect_identical(conditionMessage(error), message, info = info)
+  expect_identical(error$selector, form, info = info)
+  expect_identical(error$level, level_form, info = info)
+  expect_identical(
+    error$quantity_id,
+    parameter_catalog_resolve(catalog, level_form)$quantity_id,
+    info = info
+  )
+  # parsing against the catalog refuses it instead of failing to parse
+  expect_error(
+    hypothesis_parse(paste(form, "> 0"), catalog = catalog),
+    message,
+    fixed = TRUE,
+    class = "BayesTools_selector_unavailable",
+    info = info
+  )
+  # a quoted selector parses and is refused by catalog resolution
+  expect_error(
+    hypothesis_resolve(hypothesis_parse(paste0("`", form, "` > 0")), catalog),
+    message,
+    fixed = TRUE,
+    class = "BayesTools_selector_unavailable",
+    info = info
+  )
+}
+
+test_that("contrast-coefficient selectors of level coordinates name the level", {
+
+  # Treatment and independent coordinates, and the first ordered coordinate,
+  # are level cells: `g{j}` names the level of coordinate j.
+  levels <- c("5", "10", "20")
+  coordinate_levels <- list(
+    treatment   = c("10", "20"),
+    independent = c("5", "10", "20"),
+    ordered     = "10"
+  )
+  for(contrast in names(coordinate_levels)){
+    catalog <- parameter_catalog(.label_contract_fit(levels, contrast))
+    for(j in seq_along(coordinate_levels[[contrast]])){
+      level <- coordinate_levels[[contrast]][[j]]
+      forms <- c(
+        paste0("g{", j, "}"),
+        paste0("mu_g{", j, "}"),
+        paste0("(mu) g{", j, "}")
+      )
+      level_forms <- c(
+        paste0("g[", level, "]"),
+        paste0("mu_g[", level, "]"),
+        paste0("(mu) g[", level, "]")
+      )
+      for(k in seq_along(forms)){
+        .expect_level_coefficient_refused(
+          catalog, forms[[k]], level_forms[[k]], coefficient = j, term = "g",
+          info = paste(contrast, forms[[k]])
+        )
+      }
+    }
+    # a coefficient beyond the coordinates selects nothing
+    expect_error(
+      parameter_catalog_resolve(catalog, paste0("g{", length(levels) + 1L, "}")),
+      class = "BayesTools_parameter_not_found"
+    )
+  }
+
+  # Later ordered increments and mean-difference and orthonormal coordinates
+  # are contrast coefficients and stay selectable.
+  ordered <- parameter_catalog(.label_contract_fit(levels, "ordered"))
+  expect_identical(
+    parameter_catalog_resolve(ordered, "g{2}")$quantities$canonical_name,
+    "mu_g{2}"
+  )
+  for(contrast in c("meandif", "orthonormal")){
+    catalog <- parameter_catalog(.label_contract_fit(levels, contrast))
+    for(form in c("g{1}", "mu_g{2}", "(mu) g{1}")){
+      expect_no_error(parameter_catalog_resolve(catalog, form))
+      expect_no_error(hypothesis_parse(paste(form, "> 0"), catalog = catalog))
+    }
+  }
+
+  # Interaction cells and ordinary factor priors (levels 1..K).
+  data <- data.frame(
+    g1 = factor(rep(levels, 4L), levels = levels),
+    g2 = factor(rep(c("a", "b"), each = 6L))
+  )
+  treatment <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  formula_result <- JAGS_formula(~ 1 + g1 * g2, "mu", data, list(
+    intercept = prior("normal", list(0, 1)),
+    g1        = treatment,
+    g2        = treatment,
+    "g1:g2"   = treatment
+  ))
+  prior_list <- formula_result$prior_list
+  prior_list$p <- prior_factor_levels(treatment, 3L)
+  columns <- unlist(lapply(names(prior_list), function(name){
+    prior <- prior_list[[name]]
+    if(.bt_prior_is_factor_family(prior)){
+      .JAGS_prior_factor_names(name, prior)
+    }else{
+      name
+    }
+  }), use.names = FALSE)
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(matrix(
+      0.1, nrow = 2L, ncol = length(columns),
+      dimnames = list(NULL, columns)
+    ))),
+    prior_list = prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  catalog <- parameter_catalog(fit)
+  .expect_level_coefficient_refused(
+    catalog, "g1:g2{2}", "g1[20]:g2[b]", coefficient = 2L, term = "g1:g2",
+    info = "interaction"
+  )
+  .expect_level_coefficient_refused(
+    catalog, "(mu) g1:g2{1}", "(mu) g1[10]:g2[b]", coefficient = 1L,
+    term = "g1:g2", info = "prefixed interaction"
+  )
+  .expect_level_coefficient_refused(
+    catalog, "p{1}", "p[2]", coefficient = 1L, term = "p",
+    info = "ordinary factor prior"
+  )
+
+  # Without a catalog the selector is not hypothesis syntax.
+  error <- expect_error(hypothesis_parse("g{1} > 0"))
+  expect_false(inherits(error, "BayesTools_selector_unavailable"))
+})
+
 # Every displayed row of the factor term resolves to the catalog quantity
 # whose draws produced it: the row mean is the mean of the selected draws.
 .expect_factor_rows_resolve <- function(table, fit, catalog, info){
