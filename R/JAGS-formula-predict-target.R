@@ -6,8 +6,8 @@
 #' prediction output for marginal random-effect targets, including marginal
 #' random-effect covariance or simulated random-effect draws.
 #'
-#' @param fit model fitted with [JAGS_fit()] or posterior samples carrying
-#' `formula_design` metadata.
+#' @param fit model fitted with [JAGS_fit()], or posterior draws carrying the
+#' formula design of \code{parameter} ([JAGS_formula_draws()]).
 #' @param parameter formula parameter name.
 #' @param formula optional formula. If `NULL`, the fitted formula for
 #' `parameter` is used. For `formula_target = "marginal"`, random-effect

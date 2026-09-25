@@ -801,8 +801,9 @@ test_that("one-component random-effect gates do not create artificial weights", 
     posterior <- c(posterior, values)
   }
 
-  posterior <- matrix(posterior, nrow = 1, dimnames = list(NULL, names(posterior)))
-  coda::mcmc(posterior)
+  posterior <- coda::mcmc(matrix(posterior, nrow = 1, dimnames = list(NULL, names(posterior))))
+  attr(posterior, "formula_design") <- stats::setNames(list(design), design$parameter)
+  posterior
 }
 
 test_that("JAGS_formula design metadata matches stats::model.matrix for fixed effects", {
@@ -1004,6 +1005,7 @@ test_that("JAGS_formula rejects missing fixed-effect predictors before row dropp
   posterior <- coda::mcmc(
     matrix(c(mu_intercept = 0, mu_x = 1), nrow = 1, dimnames = list(NULL, c("mu_intercept", "mu_x")))
   )
+  attr(posterior, "formula_design") <- list(mu = formula_result$formula_design)
   expect_error(
     JAGS_evaluate_formula(posterior, ~ x, "mu", data, formula_result$prior_list),
     "Formula predictors contain missing values.",
@@ -1274,6 +1276,7 @@ test_that("formula interfaces reject reserved tokens in categorical levels", {
     nrow = 1L,
     dimnames = list(NULL, c("mu_intercept", "mu_f"))
   ))
+  attr(fixed_posterior, "formula_design") <- list(mu = valid_fixed$formula_design)
   expect_error(
     JAGS_evaluate_formula(
       fixed_posterior,
@@ -1377,6 +1380,9 @@ test_that("formula interfaces reject bare language objects", {
     nrow = 1,
     dimnames = list(NULL, c("mu_intercept", "mu_x"))
   ))
+  attr(posterior, "formula_design") <- list(
+    mu = JAGS_formula(~ x, "mu", data, prior_list)$formula_design
+  )
   expect_error(
     JAGS_evaluate_formula(
       posterior,
@@ -1590,6 +1596,7 @@ test_that("fixed formulas reject unsupported calls before data lookup", {
     nrow = 1,
     dimnames = list(NULL, c("mu_intercept", "mu_x"))
   ))
+  attr(fit, "formula_design") <- list(mu = valid_result$formula_design)
   expect_error(
     JAGS_evaluate_formula(
       fit,
@@ -1791,7 +1798,7 @@ test_that("log-intercept formulas require recursively positive prior support", {
     nrow = 1,
     dimnames = list(NULL, c("mu_intercept", "mu_x"))
   ))
-  invalid_replay_priors <- JAGS_formula(
+  replay_result <- JAGS_formula(
     log_formula,
     "mu",
     data,
@@ -1799,7 +1806,9 @@ test_that("log-intercept formulas require recursively positive prior support", {
       intercept = prior("point", list(1)),
       x = prior("normal", list(0, 1))
     )
-  )$prior_list
+  )
+  attr(fitted, "formula_design") <- list(mu = replay_result$formula_design)
+  invalid_replay_priors <- replay_result$prior_list
   invalid_replay_priors$mu_intercept <- prior("point", list(0))
   attr(invalid_replay_priors$mu_intercept, "parameter") <- "mu"
   expect_error(
@@ -1868,18 +1877,18 @@ test_that("JAGS_evaluate_formula resolves interaction-only continuous predictors
 
   expect_equal(unname(drop(prediction)), unname(expected), tolerance = 1e-12)
 
+  # draws without the fitted design are not evaluated from the priors
   attr(posterior, "formula_design") <- NULL
-  legacy_prediction <- JAGS_evaluate_formula(
-    posterior,
-    ~ x:z,
-    "mu",
-    newdata,
-    formula_result$prior_list
-  )
-  expect_equal(
-    unname(drop(legacy_prediction)),
-    unname(expected),
-    tolerance = 1e-12
+  expect_error(
+    JAGS_evaluate_formula(
+      posterior,
+      ~ x:z,
+      "mu",
+      newdata,
+      formula_result$prior_list
+    ),
+    "JAGS_evaluate_formula() needs the fitted formula design of parameter 'mu': pass a fit from JAGS_fit() with a formula for 'mu', or posterior draws with the design built by JAGS_formula_draws(). Refit the model with the current BayesTools version if it was fitted by BayesTools 0.3.0.",
+    fixed = TRUE
   )
 })
 
@@ -1936,18 +1945,127 @@ test_that("JAGS_evaluate_formula replays interaction-only factor metadata", {
 
   expect_equal(unname(drop(prediction)), unname(expected), tolerance = 1e-12)
 
+  # draws without the fitted design are not evaluated from the priors
   attr(posterior, "formula_design") <- NULL
-  legacy_prediction <- JAGS_evaluate_formula(
-    posterior,
-    ~ x:g,
-    "mu",
-    newdata,
-    formula_result$prior_list
+  expect_error(
+    JAGS_evaluate_formula(
+      posterior,
+      ~ x:g,
+      "mu",
+      newdata,
+      formula_result$prior_list
+    ),
+    "JAGS_evaluate_formula() needs the fitted formula design of parameter 'mu': pass a fit from JAGS_fit() with a formula for 'mu', or posterior draws with the design built by JAGS_formula_draws(). Refit the model with the current BayesTools version if it was fitted by BayesTools 0.3.0.",
+    fixed = TRUE
   )
+})
+
+test_that("JAGS_formula_draws() evaluates draws without a fit through the design of JAGS_fit()", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  set.seed(11)
+  data <- data.frame(
+    x = stats::rnorm(24, 5, 3),
+    d = factor(rep(c("a", "b", "c"), 8)),
+    g = factor(rep(sprintf("g%d", 1:6), each = 4))
+  )
+  prior_list <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1)),
+    d = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+    "x:d" = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  )
+  random_priors <- prior_random(g = random_block(
+    sd = prior("normal", list(0, 1), list(0, Inf)),
+    monitor = random_monitor(latent = TRUE)
+  ))
+  formula <- ~ 1 + x * d + diag(1 | g)
+  y <- stats::rnorm(nrow(data), 0.1 * data$x, 1)
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax = "model{\n  for(i in 1:N_mu){\n    y[i] ~ dnorm(mu[i], 1)\n  }\n}",
+    data = list(y = y),
+    formula_list = list(mu = formula),
+    formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = prior_list),
+    formula_scale_list = list(mu = list(x = TRUE)),
+    formula_random_prior_list = list(mu = random_priors),
+    chains = 1, adapt = 50, burnin = 50, sample = 100, seed = 1, silent = TRUE
+  ))
+  posterior <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+
+  # the draws of the fit, without the fit, with the design built from the
+  # formula, data, and priors of the fit
+  draws <- JAGS_formula_draws(
+    posterior, formula = formula, parameter = "mu", data = data,
+    prior_list = prior_list, formula_scale = list(x = TRUE),
+    prior_random = random_priors
+  )
+  expect_s3_class(draws, "mcmc")
+  expect_identical(JAGS_formula_design(draws, "mu"), JAGS_formula_design(fit, "mu"))
+  expect_identical(attr(draws, "formula_scale")$mu, attr(fit, "formula_scale")$mu)
+
+  # the evaluation equals the evaluation of the fit on its data and on new
+  # data (standardized and factor-coded as fitted), for every target
+  newdata <- data.frame(
+    x = c(-1, 4, 9),
+    d = factor(c("c", "a", "b")),
+    g = factor(c("g2", "g5", "g1"))
+  )
+  for(prediction_data in list(NULL, newdata)){
+    for(formula_target in c("fixed", "conditional")){
+      expect_equal(
+        JAGS_evaluate_formula(draws, parameter = "mu", data = prediction_data,
+                              formula_target = formula_target),
+        JAGS_evaluate_formula(fit, parameter = "mu", data = prediction_data,
+                              formula_target = formula_target),
+        tolerance = 1e-14
+      )
+    }
+  }
   expect_equal(
-    unname(drop(legacy_prediction)),
-    unname(expected),
-    tolerance = 1e-12
+    JAGS_predict_formula(draws, "mu", formula_target = "marginal")[c("value", "vcov")],
+    JAGS_predict_formula(fit, "mu", formula_target = "marginal")[c("value", "vcov")],
+    tolerance = 1e-14
+  )
+
+  # draws without the design are not evaluated from the priors
+  expect_error(
+    JAGS_evaluate_formula(coda::mcmc(posterior), formula, "mu", data, prior_list),
+    paste0(
+      "JAGS_evaluate_formula() needs the fitted formula design of parameter ",
+      "'mu': pass a fit from JAGS_fit() with a formula for 'mu', or posterior ",
+      "draws with the design built by JAGS_formula_draws(). Refit the model ",
+      "with the current BayesTools version if it was fitted by BayesTools 0.3.0."
+    ),
+    fixed = TRUE
+  )
+  # draws that lack a coefficient of the design
+  expect_error(
+    JAGS_evaluate_formula(
+      JAGS_formula_draws(
+        posterior[, colnames(posterior) != "mu_x", drop = FALSE],
+        formula = formula, parameter = "mu", data = data,
+        prior_list = prior_list, formula_scale = list(x = TRUE),
+        prior_random = random_priors
+      ),
+      parameter = "mu", formula_target = "fixed"
+    ),
+    paste0(
+      "JAGS_evaluate_formula() needs the posterior draws of the coefficient(s) ",
+      "'mu_x' of parameter 'mu', which the draws do not contain."
+    ),
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula_draws(fit, formula, "mu", data, prior_list),
+    "'draws' must be draws without a fit",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula_draws(posterior[, c(1L, 1L)], formula, "mu", data, prior_list),
+    "'draws' must have unique, non-empty column names",
+    fixed = TRUE
   )
 })
 
@@ -2367,14 +2485,18 @@ test_that("JAGS_evaluate_formula matches lm predictions with automatic scaling",
   scaled_coefficients <- stats::coef(lm_fit)
   names(scaled_coefficients) <- bayestools_lm_coef_to_jags_names(names(scaled_coefficients))
 
-  fit <- coda::mcmc(
+  fit <- JAGS_formula_draws(
     matrix(
       scaled_coefficients,
       nrow = 1,
       dimnames = list(NULL, names(scaled_coefficients))
-    )
+    ),
+    formula = ~ x1 * x2,
+    parameter = "mu",
+    data = formula_data,
+    prior_list = prior_list,
+    formula_scale = list(x1 = TRUE, x2 = TRUE)
   )
-  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
 
   fitted_values <- JAGS_evaluate_formula(
     fit = fit,
@@ -2464,6 +2586,7 @@ test_that("JAGS_evaluate_formula matches lm predictions for factors and no-inter
       dimnames = list(NULL, JAGS_parameter_names("x", formula_parameter = "mu"))
     )
   )
+  attr(no_intercept_fit, "formula_design") <- list(mu = no_intercept_result$formula_design)
   no_intercept_newdata <- data.frame(x = c(-3, 0, 3))
   no_intercept_prediction <- JAGS_evaluate_formula(
     fit = no_intercept_fit,
@@ -2565,6 +2688,7 @@ test_that("JAGS_evaluate_formula has stable semantics for aliased rank-deficient
   fit <- coda::mcmc(
     matrix(coefficients, nrow = 1, dimnames = list(NULL, names(coefficients)))
   )
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
 
   newdata <- data.frame(
     x = c(-2, 0, 3),
@@ -2663,6 +2787,7 @@ test_that("JAGS_evaluate_formula preserves factor metadata and validates edge ca
   zero_x_samples <- as.matrix(fit)
   zero_x_samples[, "mu_x"] <- 0
   zero_x_fit <- coda::mcmc(zero_x_samples)
+  attr(zero_x_fit, "formula_design") <- attr(fit, "formula_design")
 
   expect_equal(
     unname(JAGS_evaluate_formula(
@@ -7221,7 +7346,7 @@ test_that("random-effect formulas are guarded in fixed-only downstream evaluator
       data = df,
       prior_list = list(mu_intercept = fixed_prior)
     ),
-    "needs fitted formula design metadata",
+    "needs the fitted formula design of parameter 'mu'",
     fixed = TRUE
   )
 

@@ -1,7 +1,12 @@
 #' @title Evaluate JAGS formula using posterior samples
 #'
 #' @description Evaluates a JAGS formula on a posterior distribution obtained
-#' from a fitted model. Formula random effects can be evaluated for existing
+#' from a fitted model, through the formula design that [JAGS_fit()] stores
+#' for the formula parameter (the processed formula, factor levels and
+#' contrasts, and the standardization of predictors). Posterior or prior
+#' draws without a fit are evaluated through the same design, built by
+#' [JAGS_formula_draws()]. Fits created by BayesTools 0.3.0, which store no
+#' design, must be refitted. Formula random effects can be evaluated for existing
 #' grouping levels when either standardized latent random effects and covariance
 #' hyperparameters were monitored via \code{random_monitor(latent = TRUE)}, or
 #' the group-level coefficients were monitored via
@@ -26,8 +31,9 @@
 #' Inline transformations, offsets, dot expansion, and arbitrary calls are not
 #' supported. Create transformed predictors as explicit columns in \code{data}.
 #'
-#' @param fit model fitted with either \link[runjags]{runjags} posterior
-#' samples obtained with \link[rjags]{rjags-package}
+#' @param fit model fitted with [JAGS_fit()] with a formula for
+#' \code{parameter}, or posterior draws carrying its formula design
+#' ([JAGS_formula_draws()]).
 #' @param formula formula specifying the right hand side of the assignment (the
 #' left hand side is ignored). If `NULL`, the fitted formula stored in
 #' `formula_design` metadata is used. If the formula has a
@@ -36,7 +42,7 @@
 #' @param parameter name of the parameter created with the formula
 #' @param data data.frame containing predictors included in the formula. If
 #' `NULL`, versioned original-scale fitted source data from `formula_design`
-#' metadata are used. Fits without that metadata must be refitted.
+#' metadata are used.
 #' @param fitted_rows optional integer vector mapping supplied prediction rows
 #' to fitted observation indices. It is required whenever `data` is supplied
 #' and a selected random-effect block uses a posterior-indexed row source.
@@ -165,8 +171,7 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   formula <- .remove_response(formula)
   .bt_validate_formula_replay_grammar(formula)
   formula_has_random <- .has_random_effects(formula)
-  fitted_has_random <- !is.null(fitted_design) &&
-    .bt_formula_design_has_any_random_effects(fitted_design)
+  fitted_has_random <- .bt_formula_design_has_any_random_effects(fitted_design)
   if(!is.null(blocks) && !fitted_has_random){
     stop(
       "The fitted formula for parameter '", parameter,
@@ -262,9 +267,6 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   })
   predictors_type <- .bt_JAGS_evaluate_predictor_types(
     predictors = predictors,
-    model_terms = model_terms,
-    model_terms_type = model_terms_type,
-    prior_list = prior_list_formula,
     fitted_design = fitted_design
   )
 
@@ -276,7 +278,6 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
 
       factor_metadata <- .bt_JAGS_evaluate_factor_metadata(
         predictor = factor,
-        prior_list = prior_list_formula,
         fitted_design = fitted_design
       )
       .bt_validate_categorical_level_names(
@@ -317,8 +318,7 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
     }
 
     data <- .bt_apply_formula_scale_to_data(
-      fit = fit,
-      parameter = parameter,
+      fitted_design = fitted_design,
       data = data,
       predictors_type = predictors_type
     )
@@ -384,10 +384,21 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
           ncol = if(identical(term$type, "factor")) .get_prior_factor_levels(term$prior) else 1
         ))
       }
-      if(identical(term$type, "intercept")){
-        return(posterior[, JAGS_parameter_names("intercept", formula_parameter = parameter), drop = FALSE])
+      columns <- if(identical(term$type, "intercept")){
+        JAGS_parameter_names("intercept", formula_parameter = parameter)
+      }else{
+        term$coefficient_names
       }
-      posterior[, term$coefficient_names, drop = FALSE]
+      missing_columns <- setdiff(columns, colnames(posterior))
+      if(length(missing_columns) > 0L){
+        stop(
+          "JAGS_evaluate_formula() needs the posterior draws of the coefficient(s) ",
+          paste0("'", missing_columns, "'", collapse = ", "),
+          " of parameter '", parameter, "', which the draws do not contain.",
+          call. = FALSE
+        )
+      }
+      posterior[, columns, drop = FALSE]
     },
     multiplier_of = function(term){
       multiply_by <- term$multiply_by
@@ -429,58 +440,17 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   return(output)
 }
 
-.bt_JAGS_evaluate_predictor_types <- function(predictors, model_terms,
-                                              model_terms_type, prior_list,
-                                              fitted_design){
+.bt_JAGS_evaluate_predictor_types <- function(predictors, fitted_design){
 
   if(length(predictors) == 0L){
     return(stats::setNames(character(), character()))
   }
 
-  predictors_type <- stats::setNames(rep(NA_character_, length(predictors)), predictors)
   design_types <- fitted_design$predictor_types
-  if(is.character(design_types) && !is.null(names(design_types))){
-    matched <- intersect(predictors, names(design_types))
-    predictors_type[matched] <- design_types[matched]
-  }
-
-  unresolved <- names(predictors_type)[is.na(predictors_type)]
-  for(predictor in unresolved){
-    main_term <- which(model_terms == predictor)
-    if(length(main_term) == 1L){
-      predictors_type[[predictor]] <- model_terms_type[[main_term]]
-      next
-    }
-
-    containing_terms <- vapply(
-      model_terms,
-      function(model_term){
-        predictor %in% strsplit(model_term, ":", fixed = TRUE)[[1L]]
-      },
-      logical(1)
-    )
-    candidate_terms <- model_terms[containing_terms]
-    candidate_terms <- candidate_terms[candidate_terms != "intercept"]
-    if(length(candidate_terms) == 0L){
-      next
-    }
-
-    candidate_priors <- prior_list[candidate_terms]
-    factor_terms <- unique(unlist(lapply(
-      candidate_priors,
-      function(this_prior) attr(this_prior, "factor_terms", exact = TRUE)
-    ), use.names = FALSE))
-    candidate_types <- model_terms_type[match(candidate_terms, model_terms)]
-    if(any(candidate_types == "factor") && length(factor_terms) == 0L){
-      next
-    }
-    if(predictor %in% factor_terms){
-      predictors_type[[predictor]] <- "factor"
-    }else{
-      predictors_type[[predictor]] <- "continuous"
-    }
-  }
-
+  predictors_type <- stats::setNames(
+    as.character(design_types[match(predictors, names(design_types))]),
+    predictors
+  )
   if(anyNA(predictors_type) ||
      any(!predictors_type %in% c("continuous", "factor"))){
     invalid <- names(predictors_type)[
@@ -488,9 +458,10 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
         !predictors_type %in% c("continuous", "factor")
     ]
     stop(
-      "Could not determine the fitted type of predictor(s): ",
+      "The predictor(s) ",
       paste0("'", invalid, "'", collapse = ", "),
-      ". Supply fit metadata created by JAGS_formula().",
+      " are not predictors of the fitted formula of parameter '",
+      fitted_design$parameter, "'.",
       call. = FALSE
     )
   }
@@ -498,99 +469,25 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   predictors_type
 }
 
-.bt_JAGS_evaluate_factor_metadata <- function(predictor, prior_list,
-                                              fitted_design){
-
-  candidate_names <- names(prior_list)[vapply(
-    seq_along(prior_list),
-    function(i){
-      identical(names(prior_list)[[i]], predictor) ||
-        predictor %in% attr(prior_list[[i]], "factor_terms", exact = TRUE)
-    },
-    logical(1)
-  )]
-  candidate_priors <- prior_list[candidate_names]
-  # A term that codes the predictor by level indicators (e.g., `g:z` in
-  # `~ x + g:z + x:g`) records the independent coding for it whatever the
-  # fitted contrast, while every other term records the fitted contrast; the
-  # contrast is therefore taken from the first term that records another one.
-  recorded_contrasts <- vapply(candidate_priors, function(candidate_prior){
-    factor_contrasts <- attr(candidate_prior, "factor_contrasts", exact = TRUE)
-    if(!is.null(factor_contrasts) && predictor %in% names(factor_contrasts)){
-      as.character(factor_contrasts[[predictor]])
-    }else{
-      NA_character_
-    }
-  }, character(1))
-  contrast_coded <- which(
-    !is.na(recorded_contrasts) & recorded_contrasts != "contr.independent"
-  )
-  this_prior <- if(length(contrast_coded) > 0L){
-    candidate_priors[[contrast_coded[[1L]]]]
-  }else if(length(candidate_priors) > 0L){
-    candidate_priors[[1L]]
-  }
+# The fitted levels, ordering, and concrete contrast matrix of a factor
+# predictor, from the fitted formula design.
+.bt_JAGS_evaluate_factor_metadata <- function(predictor, fitted_design){
 
   fitted_levels <- fitted_design$xlevels[[predictor]]
-  if(is.null(fitted_levels)){
-    fitted_levels <- NULL
-    for(candidate_name in candidate_names){
-      level_names <- attr(prior_list[[candidate_name]], "level_names", exact = TRUE)
-      if(is.list(level_names)){
-        level_names <- level_names[[predictor]]
-      }else if(!identical(candidate_name, predictor)){
-        level_names <- NULL
-      }
-      if(!is.null(level_names)){
-        fitted_levels <- level_names
-        break
-      }
-    }
-  }
-  if(is.null(fitted_levels) || length(fitted_levels) == 0L){
-    stop(
-      "Could not recover fitted levels for factor predictor '", predictor,
-      "'. Supply fit metadata created by JAGS_formula().",
-      call. = FALSE
-    )
-  }
-
-  fitted_factor <- fitted_design$model_frame[[predictor]]
-  ordered_factor <- if(is.factor(fitted_factor)){
-    is.ordered(fitted_factor)
-  }else{
-    !is.null(this_prior) && is.prior.ordered(this_prior)
-  }
-
   fitted_contrast <- fitted_design$contrast_matrices[[predictor]]
-  if(is.null(fitted_contrast) && is.null(fitted_design) && !is.null(this_prior)){
-    factor_contrasts <- attr(this_prior, "factor_contrasts", exact = TRUE)
-    contrast_name <- if(
-      !is.null(factor_contrasts) &&
-      predictor %in% names(factor_contrasts)
-    ){
-      factor_contrasts[[predictor]]
-    }else{
-      .factor_object_contrast_name(this_prior)
-    }
-    if(!is.null(contrast_name)){
-      fitted_contrast <- .factor_contrast_matrix(
-        fitted_levels,
-        contrast_name
-      )
-    }
-  }
-  if(is.null(fitted_contrast)){
+  if(is.null(fitted_levels) || length(fitted_levels) == 0L ||
+     is.null(fitted_contrast)){
     stop(
-      "Could not recover the concrete fitted contrast matrix for factor predictor '",
-      predictor, "'. Supply fit metadata created by JAGS_formula().",
+      "The fitted formula design of parameter '", fitted_design$parameter,
+      "' has no levels or contrast matrix for factor predictor '", predictor,
+      "'. Refit the model with this version of BayesTools.",
       call. = FALSE
     )
   }
 
   list(
     levels = as.character(fitted_levels),
-    ordered = ordered_factor,
+    ordered = is.ordered(fitted_design$model_frame[[predictor]]),
     contrast = fitted_contrast
   )
 }
@@ -645,12 +542,22 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   invisible(NULL)
 }
 
-.bt_JAGS_evaluate_formula_design <- function(fit, parameter){
+.bt_JAGS_evaluate_formula_design <- function(fit, parameter,
+                                             context = "JAGS_evaluate_formula()"){
 
-  fitted_design <- try(JAGS_formula_design(fit, parameter), silent = TRUE)
-  if(inherits(fitted_design, "try-error")){
-    return(NULL)
+  formula_design <- attr(fit, "formula_design", exact = TRUE)
+  fitted_design <- if(is.list(formula_design)) formula_design[[parameter]]
+  if(is.null(fitted_design)){
+    stop(
+      context, " needs the fitted formula design of parameter '", parameter,
+      "': pass a fit from JAGS_fit() with a formula for '", parameter,
+      "', or posterior draws with the design built by JAGS_formula_draws(). ",
+      "Refit the model with the current BayesTools version if it was fitted by ",
+      "BayesTools 0.3.0.",
+      call. = FALSE
+    )
   }
+  .bt_validate_formula_design_replay_schema(fitted_design, context = context)
 
   fitted_design
 }
@@ -658,22 +565,14 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
 .bt_JAGS_evaluate_formula_resolve_inputs <- function(fit, formula,
                                                      parameter, data,
                                                      prior_list,
-                                                     fitted_design = NULL){
+                                                     fitted_design){
 
-  if(is.null(fitted_design)){
-    fitted_design <- .bt_JAGS_evaluate_formula_design(fit, parameter)
-  }
-  if(!is.null(fitted_design)){
-    .bt_validate_formula_design_replay_schema(
-      fitted_design,
-      context = "JAGS_evaluate_formula()"
-    )
-  }
+  .bt_validate_formula_design_replay_schema(
+    fitted_design,
+    context = "JAGS_evaluate_formula()"
+  )
 
   if(is.null(formula)){
-    if(is.null(fitted_design)){
-      stop("'formula' must be a formula.", call. = FALSE)
-    }
     formula <- fitted_design$formula
     # Stored design formulas intentionally drop their original environment.
     # Use the user workspace as a pragmatic evaluation environment for replay.
@@ -683,19 +582,14 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
     }
   }
   if(is.null(data)){
-    if(is.null(fitted_design)){
-      stop("'data' must be a data.frame.", call. = FALSE)
-    }
     data <- fitted_design$source_data
   }
   if(is.null(prior_list)){
     fit_prior_list <- attr(fit, "prior_list", exact = TRUE)
-    if(is.list(fit_prior_list) && length(fit_prior_list) > 0L){
-      prior_list <- fit_prior_list
-    }else if(!is.null(fitted_design) && is.list(fitted_design$prior_list)){
-      prior_list <- fitted_design$prior_list
+    prior_list <- if(is.list(fit_prior_list) && length(fit_prior_list) > 0L){
+      fit_prior_list
     }else{
-      stop("'prior_list' must be supplied.", call. = FALSE)
+      fitted_design$prior_list
     }
   }
 

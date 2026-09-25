@@ -17,8 +17,9 @@ JAGS_evaluate_formula(
 )
 }
 \arguments{
-\item{fit}{model fitted with either \link[runjags]{runjags} posterior
-samples obtained with \link[rjags]{rjags-package}}
+\item{fit}{model fitted with \code{\link[=JAGS_fit]{JAGS_fit()}} with a formula for
+\code{parameter}, or posterior draws carrying its formula design
+(\code{\link[=JAGS_formula_draws]{JAGS_formula_draws()}}).}
 
 \item{formula}{formula specifying the right hand side of the assignment (the
 left hand side is ignored). If \code{NULL}, the fitted formula stored in
@@ -30,7 +31,7 @@ will be log-transformed before computing the linear predictor.}
 
 \item{data}{data.frame containing predictors included in the formula. If
 \code{NULL}, versioned original-scale fitted source data from \code{formula_design}
-metadata are used. Fits without that metadata must be refitted.}
+metadata are used.}
 
 \item{prior_list}{named list of prior distribution of parameters specified
 within the \code{formula}. If \code{NULL}, fitted priors from \code{formula_design}
@@ -64,7 +65,12 @@ the supplied data.
 }
 \description{
 Evaluates a JAGS formula on a posterior distribution obtained
-from a fitted model. Formula random effects can be evaluated for existing
+from a fitted model, through the formula design that \code{\link[=JAGS_fit]{JAGS_fit()}} stores
+for the formula parameter (the processed formula, factor levels and
+contrasts, and the standardization of predictors). Posterior or prior
+draws without a fit are evaluated through the same design, built by
+\code{\link[=JAGS_formula_draws]{JAGS_formula_draws()}}. Fits created by BayesTools 0.3.0, which store no
+design, must be refitted. Formula random effects can be evaluated for existing
 grouping levels when either standardized latent random effects and covariance
 hyperparameters were monitored via \code{random_monitor(latent = TRUE)}, or
 the group-level coefficients were monitored via

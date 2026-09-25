@@ -468,6 +468,7 @@ test_that("-1 (no intercept) formula handling works correctly", {
   posterior <- matrix(c(1, 2), nrow = 2)
   colnames(posterior) <- "mu_x_cont"
   posterior <- coda::as.mcmc(posterior)
+  attr(posterior, "formula_design") <- list(mu = result_continuous$formula_design)
 
   expect_false("mu_intercept" %in% colnames(posterior))
   expect_equal(
@@ -568,6 +569,11 @@ test_that("JAGS_evaluate_formula works with log(intercept) attribute", {
   samples <- matrix(c(2, 0.5), nrow = 1)
   colnames(samples) <- c("mu_intercept", "mu_x_cont")
   samples <- coda::as.mcmc.list(coda::as.mcmc(samples))
+  formula_log <- ~ x_cont
+  attr(formula_log, "log(intercept)") <- TRUE
+  # the samples with the designs of the formulas without and with log(intercept)
+  samples_no_log <- JAGS_formula_draws(samples, ~ x_cont, "mu", df_test, prior_list)
+  samples_log <- JAGS_formula_draws(samples, formula_log, "mu", df_test, prior_list)
 
   # New data for prediction
   new_data <- data.frame(x_cont = c(0, 1, -1))
@@ -577,16 +583,14 @@ test_that("JAGS_evaluate_formula works with log(intercept) attribute", {
   # For x_cont =  1: result = 2 + 0.5 * 1 = 2.5
   # For x_cont = -1: result = 2 + 0.5 * (-1) = 1.5
   formula_no_log <- ~ x_cont
-  result_no_log <- JAGS_evaluate_formula(samples, formula_no_log, "mu", new_data, prior_list_processed)
+  result_no_log <- JAGS_evaluate_formula(samples_no_log, formula_no_log, "mu", new_data, prior_list_processed)
   expect_equal(as.vector(result_no_log[,1]), c(2, 2.5, 1.5), tolerance = 1e-10)
 
   # Test with log(intercept): result = log(intercept) + x_cont * data
   # For x_cont =  0: result = log(2) + 0.5 * 0 = log(2)
   # For x_cont =  1: result = log(2) + 0.5 * 1 = log(2) + 0.5
   # For x_cont = -1: result = log(2) + 0.5 * (-1) = log(2) - 0.5
-  formula_log <- ~ x_cont
-  attr(formula_log, "log(intercept)") <- TRUE
-  result_log <- JAGS_evaluate_formula(samples, formula_log, "mu", new_data, prior_list_processed)
+  result_log <- JAGS_evaluate_formula(samples_log, formula_log, "mu", new_data, prior_list_processed)
   expect_equal(as.vector(result_log[,1]), c(log(2), log(2) + 0.5, log(2) - 0.5), tolerance = 1e-10)
 })
 

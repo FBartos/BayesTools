@@ -747,12 +747,13 @@ test_that("formula marginal posteriors accept predictors that enter only interac
 })
 
 
-test_that("JAGS_evaluate_formula without a stored design takes a factor's contrast from a contrast-coded term", {
+test_that("JAGS_evaluate_formula codes indicator-coded terms as fitted, also for draws without a fit", {
 
   # In `~ x + g:z + x:g`, `g:z` precedes `x:g` and codes `g` by level
   # indicators, so it records the independent coding of `g`; `x:g` codes `g`
-  # by its fitted contrast. Without a stored design, the replay takes the
-  # contrast of `g` from `x:g`, not from the first term that contains `g`.
+  # by its fitted contrast. Evaluation through the fitted design (attached to
+  # the draws, or built by JAGS_formula_draws() for draws without a fit)
+  # reproduces the fitted JAGS data columns.
   data <- data.frame(
     x = c(-2, -1, 1, 2, 3, 4, 0.5, -0.5, 1.5),
     z = c(0.3, -1, 2, 1, -0.5, 0.7, 1.1, -0.2, 0.4),
@@ -812,8 +813,12 @@ test_that("JAGS_evaluate_formula without a stored design takes a factor's contra
     prediction <- JAGS_evaluate_formula(posterior, ~ x + g:z + x:g, "mu", data, prior_list)
     expect_equal(unname(drop(prediction)), unname(expected), tolerance = 1e-12, info = contrast)
 
-    attr(posterior, "formula_design") <- NULL
-    legacy_prediction <- JAGS_evaluate_formula(posterior, ~ x + g:z + x:g, "mu", data, prior_list)
-    expect_equal(unname(drop(legacy_prediction)), unname(expected), tolerance = 1e-12, info = contrast)
+    # draws without a fit evaluate through the design JAGS_formula_draws() builds
+    formula_draws <- JAGS_formula_draws(
+      as.matrix(posterior), ~ x + g:z + x:g, "mu", data,
+      c(list(intercept = normal, x = normal), term_priors[[contrast]])
+    )
+    draws_prediction <- JAGS_evaluate_formula(formula_draws, ~ x + g:z + x:g, "mu", data, prior_list)
+    expect_equal(unname(drop(draws_prediction)), unname(expected), tolerance = 1e-12, info = contrast)
   }
 })

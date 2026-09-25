@@ -28,6 +28,14 @@ old behaviour.
   saved from 0.3.0 cannot be passed to `marginal_posterior()`, nor marginal
   posteriors saved from 0.3.0 to `Savage_Dickey_BF()`; rebuild them from
   refitted models. This includes models stored by RoBMA 4.0.0.
+- `JAGS_evaluate_formula()` (and `JAGS_predict_formula()`) evaluates a
+  formula only through the formula design that `JAGS_fit()` stores for the
+  formula parameter. Posterior samples without it, such as a `coda` `mcmc`
+  object of draws, stop with a message naming `JAGS_formula_draws()`, which
+  attaches to draws the design that `JAGS_fit()` builds from the same
+  formula, data, and priors. 0.3.0 evaluated such samples from the factor
+  levels and contrasts of the `prior_list` metadata, and standardized the
+  predictors only when the samples carried a `formula_scale` attribute.
 - conditioning on a parameter without an inclusion indicator (a prior that is
   neither spike-and-slab nor a null/alternative mixture) stops with "The
   parameter '...' is not a conditional parameter." instead of warning and
@@ -347,6 +355,13 @@ old behaviour.
   only them. A `values` function without `inputs`, also in a source object
   built otherwise, stops with an error of class
   `BayesTools_missing_source_inputs` (also `BayesTools_parameter_source`).
+- adds `JAGS_formula_draws()`, which attaches to posterior or prior draws
+  without a fit (e.g. the prior draws of a model that was not fitted) the
+  formula design that `JAGS_fit()` builds from the same formula, data, priors,
+  and standardization, so that `JAGS_evaluate_formula()` and
+  `JAGS_predict_formula()` evaluate them exactly as the fit, on the fitting
+  data or on new data. Draws that lack a coefficient of the formula stop with
+  a message naming it (was "subscript out of bounds").
 - `parameter_mixed_posterior()` declares posterior atoms from the quantity's
   structure: the point components of mixture and spike-and-slab priors from
   their indicator, gate atoms without a prior density, and no atoms for

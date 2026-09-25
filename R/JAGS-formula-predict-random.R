@@ -1,24 +1,15 @@
-.bt_apply_formula_scale_to_data <- function(fit, parameter, data,
+# Standardizes the continuous predictors of 'data' as the fitted formula
+# design standardized them (its stored means and SDs).
+.bt_apply_formula_scale_to_data <- function(fitted_design, data,
                                             predictors_type){
 
-  continuous_predictors <- names(predictors_type[predictors_type == "continuous"])
-
-  formula_scale <- attr(fit, "formula_scale", exact = TRUE)
-  param_scale <- if(is.list(formula_scale)){
-    formula_scale[[parameter]]
-  }else{
-    NULL
-  }
-  if(is.null(param_scale)){
-    fitted_design <- .bt_JAGS_evaluate_formula_design(fit, parameter)
-    if(!is.null(fitted_design) && is.list(fitted_design$formula_scale)){
-      param_scale <- fitted_design$formula_scale
-    }
-  }
-  if(is.null(param_scale)){
+  parameter <- fitted_design$parameter
+  param_scale <- fitted_design$formula_scale
+  if(!is.list(param_scale) || length(param_scale) == 0L){
     return(data)
   }
 
+  continuous_predictors <- names(predictors_type[predictors_type == "continuous"])
   scaled_predictors <- .formula_scale_strip_prefix(names(param_scale), parameter)
   continuous_predictors <- unique(c(continuous_predictors, scaled_predictors))
   if(length(continuous_predictors) == 0L){
@@ -52,13 +43,6 @@
                                                           return_components = FALSE){
 
   fitted_design <- .bt_JAGS_evaluate_formula_design(fit, parameter)
-  if(is.null(fitted_design)){
-    stop(
-      "JAGS_evaluate_formula() needs fitted formula design metadata to evaluate random effects. ",
-      "Use a fit produced by JAGS_fit() with formula_list.",
-      call. = FALSE
-    )
-  }
   if(!.bt_formula_design_has_any_random_effects(fitted_design)){
     stop(
       "The supplied formula contains random effects, but the fitted formula for parameter '",
@@ -99,8 +83,7 @@
   fixed <- output
   random <- NULL
   random_data <- .bt_apply_formula_scale_to_data(
-    fit = fit,
-    parameter = parameter,
+    fitted_design = fitted_design,
     data = data,
     predictors_type = fitted_design$predictor_types
   )

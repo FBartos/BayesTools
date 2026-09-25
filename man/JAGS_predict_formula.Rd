@@ -20,8 +20,8 @@ JAGS_predict_formula(
 )
 }
 \arguments{
-\item{fit}{model fitted with \code{\link[=JAGS_fit]{JAGS_fit()}} or posterior samples carrying
-\code{formula_design} metadata.}
+\item{fit}{model fitted with \code{\link[=JAGS_fit]{JAGS_fit()}}, or posterior draws carrying the
+formula design of \code{parameter} (\code{\link[=JAGS_formula_draws]{JAGS_formula_draws()}}).}
 
 \item{parameter}{formula parameter name.}
 

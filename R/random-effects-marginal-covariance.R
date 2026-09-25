@@ -2025,19 +2025,8 @@ random_effects_marginal_variance_factors <- function(
 
 .bt_random_effect_marginal_covariance_scaled_data <- function(design, data){
 
-  if(is.null(design$formula_scale)){
-    return(data)
-  }
-
-  fit <- structure(list(), class = "BayesTools_fit")
-  attr(fit, "formula_scale") <- stats::setNames(
-    list(design$formula_scale),
-    design$parameter
-  )
-
   .bt_apply_formula_scale_to_data(
-    fit = fit,
-    parameter = design$parameter,
+    fitted_design = design,
     data = data,
     predictors_type = design$predictor_types
   )

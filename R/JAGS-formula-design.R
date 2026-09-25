@@ -384,3 +384,97 @@ JAGS_formula_design <- function(fit, parameter = NULL){
 
   return(formula_design[[parameter]])
 }
+
+#' @title Formula designs for draws without a fit
+#'
+#' @description Builds the formula design of a formula parameter exactly as
+#' [JAGS_fit()] builds it from its \code{formula_list},
+#' \code{formula_data_list}, \code{formula_prior_list}, and the related
+#' arguments (through [JAGS_formula()]), and attaches it to posterior or
+#' prior draws that do not come from such a fit, for example the prior draws
+#' of a model that was not fitted. [JAGS_evaluate_formula()] and
+#' [JAGS_predict_formula()] evaluate the returned draws through this design as
+#' they evaluate a fit: on \code{data} when their \code{data} is \code{NULL},
+#' and on new prediction data with the levels, contrasts, and
+#' standardization of \code{data}.
+#'
+#' @param draws posterior or prior draws of the model coordinates: a numeric
+#' matrix or data frame with one column per coordinate, named as the fitted
+#' coordinates (e.g. \code{mu_intercept}, \code{mu_x}, \code{mu_g[1]}), or an
+#' \code{mcmc} or \code{mcmc.list} object (chains are merged). Draws returned
+#' by \code{JAGS_formula_draws()} keep their designs, so that the designs of
+#' several formula parameters can be attached one after another.
+#' @param data data.frame the formula is fitted to: it determines the factor
+#' levels and the standardization of the design.
+#' @inheritParams JAGS_formula
+#'
+#' @return An \code{mcmc} object of the draws carrying the formula design of
+#' \code{parameter} (see [JAGS_formula_design()]) and, when predictors are
+#' standardized, its \code{formula_scale}, which [JAGS_evaluate_formula()] and
+#' [JAGS_predict_formula()] accept as \code{fit}.
+#'
+#' @seealso [JAGS_formula()] [JAGS_evaluate_formula()] [JAGS_formula_design()]
+#' @export
+JAGS_formula_draws <- function(draws, formula, parameter, data, prior_list,
+                               formula_scale = NULL, prior_random = NULL,
+                               random_effects_compile = NULL){
+
+  formula_design <- attr(draws, "formula_design", exact = TRUE)
+  formula_scale_info <- attr(draws, "formula_scale", exact = TRUE)
+  if(inherits(draws, c("runjags", "BayesTools_fit"))){
+    stop(
+      "'draws' must be draws without a fit: a fit from JAGS_fit() carries ",
+      "the formula designs of its formulas.",
+      call. = FALSE
+    )
+  }
+  if(is.data.frame(draws) || inherits(draws, c("mcmc", "mcmc.list"))){
+    draws <- as.matrix(draws)
+  }
+  if(!is.matrix(draws) || !is.numeric(draws)){
+    stop(
+      "'draws' must be a numeric matrix or data frame, or an 'mcmc' or ",
+      "'mcmc.list' object.",
+      call. = FALSE
+    )
+  }
+  draw_names <- colnames(draws)
+  if(is.null(draw_names) || anyNA(draw_names) || any(!nzchar(draw_names)) ||
+     anyDuplicated(draw_names)){
+    stop(
+      "'draws' must have unique, non-empty column names: the fitted ",
+      "coordinates, such as 'mu_intercept'.",
+      call. = FALSE
+    )
+  }
+
+  # the design of JAGS_fit(): JAGS_formula() and the finalized expressions
+  output <- JAGS_formula(
+    formula = formula,
+    parameter = parameter,
+    data = data,
+    prior_list = prior_list,
+    formula_scale = formula_scale,
+    prior_random = prior_random,
+    random_effects_compile = random_effects_compile
+  )
+  formula_design <- if(is.list(formula_design)) formula_design else list()
+  formula_design[[parameter]] <- .bt_formula_expression_finalize_design(
+    design = output$formula_design,
+    formula_data = data,
+    model_data = NULL,
+    parameter_names = draw_names,
+    forbidden_parameters = unique(c(names(formula_design), parameter)),
+    context = paste0("JAGS_formula_draws() expression for parameter '", parameter, "'")
+  )
+  formula_scale_info <- if(is.list(formula_scale_info)) formula_scale_info else list()
+  formula_scale_info[[parameter]] <- output$formula_scale
+
+  out <- coda::mcmc(draws)
+  attr(out, "formula_design") <- formula_design
+  if(length(formula_scale_info) > 0L){
+    attr(out, "formula_scale") <- formula_scale_info
+  }
+
+  out
+}

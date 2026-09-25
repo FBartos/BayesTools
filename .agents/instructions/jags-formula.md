@@ -107,7 +107,11 @@ factor prior carries complete factor metadata (levels, level names,
 contrasts, design, and cell names): formula terms and random-effect SD factor
 priors from their design, ordinary factor priors from
 `prior_factor_levels()`. Levels and coordinate names are never inferred from
-a coefficient count; fitting stops on incomplete factor metadata. Preserve
+a coefficient count; fitting stops on incomplete factor metadata. Formula
+evaluation and prediction (`JAGS_evaluate_formula()`,
+`JAGS_predict_formula()`) go only through the stored design: draws without a
+fit get it from `JAGS_formula_draws()`, which builds it as `JAGS_fit()` does;
+never evaluate from prior-list factor metadata. Preserve
 the distinction between fitted standardized coordinates, original-scale
 display coordinates, unit latent variables, realized group coefficients, and
 covariance parameters.
