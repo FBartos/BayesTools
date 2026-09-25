@@ -667,8 +667,8 @@ test_that("estimates tables report the share of draws with a defined original-sc
       "(mu) cor_chol(x,intercept | id)",
       "(mu) cor_chol(intercept,x | id)",
       "(mu) cor_chol(x,x | id)",
-      "mu__xREx__id_xRE_CORx_lkj_u[1]",
-      "mu__xREx__id_xRE_CORx_lkj_cpc[1]"
+      "(mu) lkj_u(intercept,x | id)",
+      "(mu) lkj_cpc(intercept,x | id)"
     )
   )
   expect_true(all(grepl(
