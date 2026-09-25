@@ -1294,3 +1294,205 @@ test_that("a regular ordinate without a value is never reported as exact", {
   expect_false(mixture$exact)
   expect_true(is.na(mixture$log_density))
 })
+
+test_that("square-root share scale products match 50-digit references", {
+
+  # Y = T sqrt(k S), S ~ Beta(alpha, beta): the component SDs and partial-set
+  # totals of variance allocations. References: mpmath (50 digits) of
+  # f(y) = int_0^1 Beta(s; alpha, beta) f_T(y / sqrt(k s)) / sqrt(k s) ds and
+  # P(l < Y < u) = int_0^1 Beta(s; alpha, beta) [F_T(u / sqrt(k s)) - F_T(l / sqrt(k s))] ds
+  # for T half-normal(0.5) and gamma(2, 2); K = 4 components with a common
+  # concentration a in {0.5, 1, 2}, a set of m in {1, 2, 3} components has
+  # the share Beta(m a, (4 - m) a), k in {1, 4}, and y in {1e-3, 0.06, the
+  # median, the 0.999 quantile} (6 digits). Two quadrature splits of every
+  # reference agree to 7e-28. The
+  # quadratures accept a relative error of 1e-4 by their QUADPACK estimate;
+  # every reference lies within that estimate and within 1e-8 relative.
+  densities <- utils::read.csv(text = "
+family,alpha,beta,kappa,y,density
+halfnormal,0.5,1.5,1.0,0.001,12.1211464118084787
+halfnormal,0.5,1.5,1.0,0.06,3.8305507780385271834
+halfnormal,0.5,1.5,1.0,0.106452,2.7130794107251911593
+halfnormal,0.5,1.5,1.0,1.18029,0.0070365258775834877193
+halfnormal,0.5,1.5,4.0,0.001,6.7647342683777474047
+halfnormal,0.5,1.5,4.0,0.06,2.6094674471018446359
+halfnormal,0.5,1.5,4.0,0.212904,1.3565397053625955796
+halfnormal,0.5,1.5,4.0,2.36058,0.0035182629387917438597
+halfnormal,1.0,1.0,1.0,0.001,3.1835446262858201551
+halfnormal,1.0,1.0,1.0,0.06,2.7344897833290089887
+halfnormal,1.0,1.0,1.0,0.202617,1.8291228411874105379
+halfnormal,1.0,1.0,1.0,1.37694,0.0071017626401189283671
+halfnormal,1.0,1.0,4.0,0.001,1.5937699194902250243
+halfnormal,1.0,1.0,4.0,0.06,1.4786406446194131923
+halfnormal,1.0,1.0,4.0,0.405234,0.91456142059370526896
+halfnormal,1.0,1.0,4.0,2.75388,0.0035508813200594641835
+halfnormal,1.5,0.5,1.0,0.001,2.0317660122608680356
+halfnormal,1.5,0.5,1.0,0.06,1.9825587475815563224
+halfnormal,1.5,0.5,1.0,0.276089,1.4784110380248839041
+halfnormal,1.5,0.5,1.0,1.52301,0.0071139412564858591465
+halfnormal,1.5,0.5,4.0,0.001,1.0158940306586918455
+halfnormal,1.5,0.5,4.0,0.06,1.0084688564968874622
+halfnormal,1.5,0.5,4.0,0.552178,0.73920551901244195203
+halfnormal,1.5,0.5,4.0,3.04602,0.0035569706282429295732
+halfnormal,1.0,3.0,1.0,0.001,5.0825121898012686797
+halfnormal,1.0,3.0,1.0,0.06,3.8371120003385229215
+halfnormal,1.0,3.0,1.0,0.132132,2.6937536314980462943
+halfnormal,1.0,3.0,1.0,1.08341,0.0077809242556820838564
+halfnormal,1.0,3.0,4.0,0.001,2.5472369736472509309
+halfnormal,1.0,3.0,4.0,0.06,2.215366042529688288
+halfnormal,1.0,3.0,4.0,0.264264,1.3468768157490231471
+halfnormal,1.0,3.0,4.0,2.16682,0.0038904621278410419282
+halfnormal,2.0,2.0,1.0,0.001,2.5532051261866777123
+halfnormal,2.0,2.0,1.0,0.06,2.4741846163583865645
+halfnormal,2.0,2.0,1.0,0.219144,1.847957469493536721
+halfnormal,2.0,2.0,1.0,1.3152,0.0075097290545527150945
+halfnormal,2.0,2.0,4.0,0.001,1.2766121097439485041
+halfnormal,2.0,2.0,4.0,0.06,1.2659593537335072535
+halfnormal,2.0,2.0,4.0,0.438287,0.92397989855525983118
+halfnormal,2.0,2.0,4.0,2.63039,0.0037549971960245362402
+halfnormal,3.0,1.0,1.0,0.001,1.9149165628695140734
+halfnormal,3.0,1.0,1.0,0.06,1.8921727332901174801
+halfnormal,3.0,1.0,1.0,0.283861,1.484332459165976421
+halfnormal,3.0,1.0,1.0,1.49361,0.0072920278190469234122
+halfnormal,3.0,1.0,4.0,0.001,0.95746067507947563771
+halfnormal,3.0,1.0,4.0,0.06,0.95459653759504403555
+halfnormal,3.0,1.0,4.0,0.567722,0.74216622958298821052
+halfnormal,3.0,1.0,4.0,2.98723,0.0036458899627828528681
+halfnormal,2.0,6.0,1.0,0.001,3.8089167517310002891
+halfnormal,2.0,6.0,1.0,0.06,3.5364384525362891962
+halfnormal,2.0,6.0,1.0,0.148864,2.6675656704451543217
+halfnormal,2.0,6.0,1.0,0.99669,0.0088525314931313670204
+halfnormal,2.0,6.0,4.0,0.001,1.9044953182748367045
+halfnormal,2.0,6.0,4.0,0.06,1.8655699924396668258
+halfnormal,2.0,6.0,4.0,0.297728,1.3337828352225771609
+halfnormal,2.0,6.0,4.0,1.99338,0.0044262657465656835102
+halfnormal,4.0,4.0,1.0,0.001,2.3806222077564183538
+halfnormal,4.0,4.0,1.0,0.06,2.3366464250896933922
+halfnormal,4.0,4.0,1.0,0.228707,1.834871124939731248
+halfnormal,4.0,4.0,1.0,1.26097,0.0080717576658517429955
+halfnormal,4.0,4.0,4.0,0.001,1.1903157460943770602
+halfnormal,4.0,4.0,4.0,0.06,1.1847648997235440524
+halfnormal,4.0,4.0,4.0,0.457415,0.91743455574186607092
+halfnormal,4.0,4.0,4.0,2.52193,0.0040360326218048408291
+halfnormal,6.0,2.0,1.0,0.001,1.8747443213358935575
+halfnormal,6.0,2.0,1.0,0.06,1.8553621650590443726
+halfnormal,6.0,2.0,1.0,0.288032,1.4786771888723587968
+halfnormal,6.0,2.0,1.0,1.46805,0.0075286982455601021565
+halfnormal,6.0,2.0,4.0,0.001,0.93737419164283940461
+halfnormal,6.0,2.0,4.0,0.06,0.93494113711967618907
+halfnormal,6.0,2.0,4.0,0.576065,0.73933799084857796352
+halfnormal,6.0,2.0,4.0,2.93611,0.0037642168147291586259
+gamma,1.0,3.0,1.0,0.001,0.11742473312962439688
+gamma,1.0,3.0,1.0,0.06,1.5386369814599611014
+gamma,1.0,3.0,1.0,0.340895,1.2310692321110704506
+gamma,1.0,3.0,1.0,2.88881,0.0023406901542596959513
+gamma,2.0,2.0,1.0,0.001,0.011936637317410546226
+gamma,2.0,2.0,1.0,0.06,0.54388844791819300311
+gamma,2.0,2.0,1.0,0.552177,0.88208849156700690014
+gamma,2.0,2.0,1.0,3.59397,0.002095261673286114544
+gamma,3.0,1.0,1.0,0.001,0.0059840239681235380112
+gamma,3.0,1.0,1.0,0.06,0.30721469363055722183
+gamma,3.0,1.0,1.0,0.709247,0.72300674910655449583
+gamma,3.0,1.0,1.0,4.14471,0.0019298905897387106128
+")
+  regions <- utils::read.csv(text = "
+family,alpha,beta,kappa,lower,upper,probability
+halfnormal,0.5,1.5,1.0,0.06,0.106452,0.14934213771794214658
+halfnormal,0.5,1.5,4.0,0.06,0.212904,0.2826389574003450586
+halfnormal,1.0,1.0,1.0,0.06,0.202617,0.32244863063755080775
+halfnormal,1.0,1.0,4.0,0.06,0.405234,0.40779659153179269564
+halfnormal,1.5,0.5,1.0,0.06,0.276089,0.37917479265006984894
+halfnormal,1.5,0.5,4.0,0.06,0.552178,0.43920661247627180811
+halfnormal,1.0,3.0,1.0,0.06,0.132132,0.23333470715250768631
+halfnormal,1.0,3.0,4.0,0.06,0.264264,0.35715871351605066342
+halfnormal,2.0,2.0,1.0,0.06,0.219144,0.34844956645837690886
+halfnormal,2.0,2.0,4.0,0.06,0.438287,0.42362027010833819594
+halfnormal,3.0,1.0,1.0,0.06,0.283861,0.3855616860044431745
+halfnormal,3.0,1.0,4.0,0.06,0.567722,0.44260993469434792294
+halfnormal,2.0,6.0,1.0,0.06,0.148864,0.27729422178891449124
+halfnormal,2.0,6.0,4.0,0.06,0.297728,0.38653508263892599338
+halfnormal,4.0,4.0,1.0,0.06,0.228707,0.35804536027558892689
+halfnormal,4.0,4.0,4.0,0.06,0.457415,0.42869216320545956428
+halfnormal,6.0,2.0,1.0,0.06,0.288032,0.38790290524704623139
+halfnormal,6.0,2.0,4.0,0.06,0.576065,0.44380621044460805701
+gamma,1.0,3.0,1.0,0.06,0.340895,0.4359609283926595674
+gamma,2.0,2.0,1.0,0.06,0.552177,0.48212037473443138236
+gamma,3.0,1.0,1.0,0.06,0.709247,0.49027885728844261084
+")
+  factor_of <- function(family){
+    if(family == "halfnormal") prior("normal", list(0, .5), list(0, Inf)) else prior("gamma", list(2, 2))
+  }
+  leaf <- function(row){
+    spec <- BayesTools:::.prior_scale_product_spec(
+      offset = 0, scale = 1, factor = factor_of(row$family),
+      multiplier = prior("beta", list(row$alpha, row$beta)), sources = list(),
+      map = list(type = "sqrt", scale = row$kappa)
+    )
+    list(type = "scale_product", spec = spec, n_grid = 1024L)
+  }
+
+  for(i in seq_len(nrow(densities))){
+    row <- densities[i, ]
+    info <- paste(row$family, row$alpha, row$beta, row$kappa, row$y)
+    ordinate <- BayesTools:::.prior_density_route_ordinate(leaf(row), row$y)
+    expect_identical(ordinate$behavior, "regular", info = info)
+    expect_true(ordinate$exact, info = info)
+    height <- exp(ordinate$log_density)
+    expect_lte(abs(height / row$density - 1), 1e-8)
+    expect_lte(abs(height - row$density), ordinate$provenance$integration$absolute_error)
+  }
+  # the batched quadrature of plotted densities (relative 1e-8 acceptance)
+  for(key in unique(paste(densities$family, densities$alpha, densities$beta, densities$kappa))){
+    rows <- densities[paste(densities$family, densities$alpha, densities$beta, densities$kappa) == key, ]
+    plotted <- BayesTools:::.prior_density_route_density(leaf(rows[1L, ]), rows$y)
+    expect_lte(max(abs(plotted / rows$density - 1)), 1e-8)
+  }
+  for(i in seq_len(nrow(regions))){
+    row <- regions[i, ]
+    region <- list(
+      intervals = matrix(c(row$lower, row$upper), 1L),
+      indicator = function(x) x > row$lower & x < row$upper
+    )
+    probability <- BayesTools:::.prior_density_route_region(leaf(row), region)
+    expect_true(probability$converged)
+    expect_lte(abs(probability$probability / row$probability - 1), 1e-8)
+  }
+
+  # the offset 0: f_T(0) E[(k S)^(-1/2)] = f_T(0) B(alpha - 1/2, beta) /
+  # (sqrt(k) B(alpha, beta)) for alpha > 1/2; infinite for alpha <= 1/2, where
+  # the mapped share has a positive or infinite density at 0
+  for(i in which(densities$family == "halfnormal" & densities$y == 1e-3)){
+    row <- densities[i, ]
+    ordinate <- BayesTools:::.prior_density_route_ordinate(leaf(row), 0)
+    if(row$alpha > 1 / 2){
+      expect_identical(ordinate$behavior, "regular")
+      expect_equal(
+        ordinate$log_density,
+        log(2 * stats::dnorm(0, sd = .5)) + lbeta(row$alpha - 1 / 2, row$beta) -
+          lbeta(row$alpha, row$beta) - log(row$kappa) / 2,
+        tolerance = 1e-12
+      )
+    }else{
+      expect_identical(ordinate$behavior, "infinite")
+    }
+  }
+  # outside the support
+  expect_identical(
+    BayesTools:::.prior_density_route_ordinate(leaf(densities[1L, ]), -.1)$behavior,
+    "zero"
+  )
+
+  # the square of the product (a variance) through an 'exp_lin' node: its
+  # density at v is f(sqrt(v)) / (2 sqrt(v)), and infinite at 0 where f(0+)
+  # is finite and positive
+  row <- densities[densities$family == "halfnormal" & densities$alpha == 2 &
+                     densities$beta == 2 & densities$kappa == 1 & densities$y == .06, ]
+  squared <- BayesTools:::.prior_density_route_transform(
+    leaf(row), "exp_lin", list(a = 0, b = 2),
+    function() BayesTools:::.prior_scale_product_hull(leaf(row)$spec)
+  )
+  ordinate <- BayesTools:::.prior_density_route_ordinate(squared, .06^2)
+  expect_true(ordinate$exact)
+  expect_equal(exp(ordinate$log_density), row$density / (2 * .06), tolerance = 1e-8)
+  expect_identical(BayesTools:::.prior_density_route_ordinate(squared, 0)$behavior, "infinite")
+})

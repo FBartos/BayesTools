@@ -971,7 +971,7 @@
       route$prior_list, route$weights, route$source_transforms, 0
     )$provenance,
     "conditional_normal" = list(kind = "conditional_normal_mixture"),
-    "scale_product" = list(kind = "scale_mixture"),
+    "scale_product" = .prior_scale_product_route_provenance(route$spec),
     "convolution" = list(kind = "convolution"),
     "unknown" = route$provenance,
     "mixture" = {

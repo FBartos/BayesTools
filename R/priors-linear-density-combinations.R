@@ -1656,26 +1656,62 @@
   )
 }
 
-# Scale products X = c + w * L * s of a simple continuous term L (not a
+# Scale products X = c + w * L * m(s) of a simple continuous term L (not a
 # full-support normal, which is the conditional-normal route) and a simple
-# continuous multiplier s: the ordered-level route with a non-normal total
-# (L = total, s = its Beta allocation share) and 'multiply_by' products of a
-# non-normal coefficient prior. Away from the offset c the density is the 1-D
-# integral f(x) = int f_s(s) f_L((x - c) / (w s)) / |w s| ds over the
+# continuous multiplier s mapped by m: the ordered-level route with a
+# non-normal total (L = total, s = its Beta allocation share, m the identity),
+# 'multiply_by' products of a non-normal coefficient prior (m the identity),
+# and allocation-derived random-effect SDs (L = the scale prior, s = a Beta
+# allocation share, m(s) = sqrt(k s), the 'sqrt' map with scale k). Away from
+# the offset c the density is the 1-D integral
+# f(x) = int f_s(s) f_L((x - c) / (w m(s))) / |w m(s)| ds over the
 # multiplier's support, evaluated by the conditional-normal quadrature (split
 # at the multiplier's bounds and quantiles, at its zero, and at the images
-# s = (x - c) / (w q) of L's quantiles and finite bounds q); the offset is
-# classified from the declared behaviors of L and s at zero.
-.prior_scale_product_spec <- function(offset, scale, factor, multiplier, sources){
+# s = m^-1((x - c) / (w q)) of L's quantiles and finite bounds q); the offset
+# is classified from the declared behaviors of L and m(s) at zero.
+.prior_scale_product_spec <- function(offset, scale, factor, multiplier, sources,
+                                      map = NULL){
 
+  if(!is.null(map)){
+    beta_share <- identical(multiplier$distribution, "beta") &&
+      isTRUE(multiplier$truncation$lower == 0) &&
+      isTRUE(multiplier$truncation$upper == 1)
+    if(!identical(map$type, "sqrt") || !is.numeric(map$scale) ||
+       length(map$scale) != 1L || !is.finite(map$scale) || map$scale <= 0 ||
+       !beta_share){
+      stop("Scale-product multiplier maps are square roots of scaled Beta shares.",
+           call. = FALSE)
+    }
+  }
   list(
     offset     = offset,
     scale      = scale,
     factor     = factor,
     multiplier = multiplier,
     bounds     = unlist(multiplier$truncation[c("lower", "upper")], use.names = FALSE),
-    sources    = sources
+    sources    = sources,
+    map        = map
   )
+}
+
+# The mapped multiplier m(s) of a scale product (the identity without a map)
+# and its inverse on the mapped values (NA where no share maps to them).
+.prior_scale_product_map <- function(spec, s){
+
+  if(is.null(spec$map)){
+    return(s)
+  }
+  sqrt(spec$map$scale * s)
+}
+
+.prior_scale_product_map_inverse <- function(spec, v){
+
+  if(is.null(spec$map)){
+    return(v)
+  }
+  out <- v^2 / spec$map$scale
+  out[!is.finite(v) | v < 0] <- NA_real_
+  out
 }
 
 # Quadrature settings of a scale product: the multiplier's breakpoints, no
@@ -1701,7 +1737,9 @@
 .prior_scale_product_breakpoints <- function(spec, distances,
                                              setup = .prior_scale_product_breakpoint_setup(spec)){
 
-  images <- as.vector(outer(distances, setup$targets, `/`))
+  images <- .prior_scale_product_map_inverse(
+    spec, as.vector(outer(distances, setup$targets, `/`))
+  )
   .prior_conditional_normal_breakpoints(
     setup$spec,
     value = 0,
@@ -1717,9 +1755,10 @@
   factor_lpdf <- .prior_simple_lpdf_evaluator(spec$factor)
   multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
   function(multiplier, distance){
-    out <- exp(factor_lpdf(distance / multiplier) +
-                 multiplier_lpdf(multiplier) - log(abs(spec$scale * multiplier)))
-    out[multiplier == 0] <- 0
+    mapped <- .prior_scale_product_map(spec, multiplier)
+    out <- exp(factor_lpdf(distance / mapped) +
+                 multiplier_lpdf(multiplier) - log(abs(spec$scale * mapped)))
+    out[mapped == 0] <- 0
     out
   }
 }
@@ -1737,7 +1776,9 @@
   special <- !zero & (x == hull[1L] | x == hull[2L] | x == spec$offset)
   setup <- .prior_scale_product_breakpoint_setup(spec)
   factor_bounds <- unlist(spec$factor$truncation[c("lower", "upper")], use.names = FALSE)
-  batch <- !any(setup$multiplier$singular & spec$bounds != 0) &&
+  # with a square-root map, a share density that is infinite at zero is not
+  # cancelled by the factor's tail (a heavy-tailed factor leaves s^(a - 1/2))
+  batch <- !any(setup$multiplier$singular & (spec$bounds != 0 | !is.null(spec$map))) &&
     !any(.prior_density_singular_bounds(spec$factor) & factor_bounds != 0)
   if(!batch){
     return(list(batch = FALSE, zero = zero, special = special))
@@ -1753,11 +1794,11 @@
   )
 }
 
-# Closed interval containing the support of c + w * L * s.
+# Closed interval containing the support of c + w * L * m(s).
 .prior_scale_product_hull <- function(spec){
 
   factor_bounds <- unlist(spec$factor$truncation[c("lower", "upper")], use.names = FALSE)
-  products <- as.vector(outer(factor_bounds, spec$bounds, function(a, b){
+  products <- as.vector(outer(factor_bounds, .prior_scale_product_map(spec, spec$bounds), function(a, b){
     ifelse(a == 0 | b == 0, 0, a * b)
   }))
   spec$offset + sort(spec$scale * range(products))
@@ -1765,13 +1806,69 @@
 
 .prior_scale_product_provenance <- function(spec){
 
-  list(
+  out <- list(
     kind                = "scale_mixture",
     offset              = spec$offset,
     scale               = spec$scale,
     factor              = .prior_density_ordinate_prior_provenance(spec$factor),
     multiplier          = .prior_density_ordinate_prior_provenance(spec$multiplier),
     independent_sources = spec$sources
+  )
+  if(!is.null(spec$map)){
+    out$multiplier_map <- spec$map
+  }
+  out
+}
+
+# Structural provenance of a scale-product route (named transformations of
+# the route read its support and its behavior at the offset).
+.prior_scale_product_route_provenance <- function(spec){
+
+  provenance <- .prior_scale_product_provenance(spec)
+  provenance$support <- .prior_scale_product_hull(spec)
+  provenance$offset_behavior <- .prior_scale_product_offset_behavior(spec)$behavior
+  provenance
+}
+
+# Behavior of the mapped multiplier m(s) at zero (the one-sided limit at a
+# bound): the share's own classification for the identity map, and for
+# m(s) = sqrt(k s) of a Beta(a, b) share, whose density near zero is
+# 2 v^(2a - 1) / (k^a B(a, b)), zero for a > 1/2, 2 / (sqrt(k) B(1/2, b)) for
+# a = 1/2 and infinite for a < 1/2.
+.prior_scale_product_multiplier_zero <- function(spec){
+
+  if(is.null(spec$map)){
+    return(.prior_density_ordinate_primitive(spec$multiplier, 0))
+  }
+  alpha <- spec$multiplier$parameters$alpha
+  beta <- spec$multiplier$parameters$beta
+  behavior <- if(alpha > 1 / 2) "zero" else if(alpha < 1 / 2) "infinite" else "regular"
+  list(
+    behavior    = behavior,
+    log_density = switch(
+      behavior,
+      "zero"     = -Inf,
+      "infinite" = Inf,
+      "regular"  = log(2) - log(spec$map$scale) / 2 - lbeta(1 / 2, beta)
+    )
+  )
+}
+
+# E[1 / |m(s)|] of the mapped multiplier when its density vanishes at zero:
+# E[(k s)^(-1/2)] = B(a - 1/2, b) / (sqrt(k) B(a, b)) for a Beta(a, b) share
+# (a > 1/2) and the multiplier's own inverse moment for the identity map.
+.prior_scale_product_inverse_moment <- function(spec, n_grid){
+
+  if(is.null(spec$map)){
+    return(.prior_density_inverse_moment(spec$multiplier, n_grid))
+  }
+  alpha <- spec$multiplier$parameters$alpha
+  beta <- spec$multiplier$parameters$beta
+  list(
+    value  = exp(lbeta(alpha - 1 / 2, beta) - lbeta(alpha, beta) -
+                   log(spec$map$scale) / 2),
+    method = "closed_form",
+    integration = NULL
   )
 }
 
@@ -1833,14 +1930,53 @@
 # is not classified. With a two-sided other term whose density at zero is
 # positive or infinite both one-sided limits are infinite (e.g. an ordered
 # level of a t total with a Beta(1, b) share), so no jump occurs.
-.prior_scale_product_offset_ordinate <- function(spec, value, n_grid, provenance){
+# Classification of the offset c of a scale product from the declared
+# behaviors of L and m(s) at zero (see .prior_scale_product_offset_ordinate()):
+# 'behavior' is "infinite", "zero", "regular", or "unknown" (with 'reason').
+.prior_scale_product_offset_behavior <- function(spec){
 
   factor_zero <- .prior_density_ordinate_primitive(spec$factor, 0)
-  multiplier_zero <- .prior_density_ordinate_primitive(spec$multiplier, 0)
+  multiplier_zero <- .prior_scale_product_multiplier_zero(spec)
   behaviors <- c(
     factor     = .prior_density_ordinate_continuous_behavior(factor_zero),
     multiplier = .prior_density_ordinate_continuous_behavior(multiplier_zero)
   )
+  out <- list(behaviors = behaviors, factor_zero = factor_zero,
+              multiplier_zero = multiplier_zero, reason = NULL)
+  if(any(!behaviors %in% c("regular", "zero", "infinite"))){
+    out$behavior <- "unknown"
+    return(out)
+  }
+  bounds_of <- function(prior, mapped){
+    bounds <- unlist(prior$truncation[c("lower", "upper")], use.names = FALSE)
+    if(mapped) .prior_scale_product_map(spec, bounds) else bounds
+  }
+  one_sided <- function(bounds) any(bounds == 0)
+  two_sided <- function(bounds) bounds[1L] < 0 && bounds[2L] > 0
+  factor_bounds <- bounds_of(spec$factor, FALSE)
+  multiplier_bounds <- bounds_of(spec$multiplier, TRUE)
+  if((one_sided(factor_bounds) && two_sided(multiplier_bounds) &&
+      behaviors[["factor"]] == "regular" && behaviors[["multiplier"]] == "zero") ||
+     (one_sided(multiplier_bounds) && two_sided(factor_bounds) &&
+      behaviors[["multiplier"]] == "regular" && behaviors[["factor"]] == "zero")){
+    out$behavior <- "unknown"
+    out$reason <- "The density of the product jumps at the requested value."
+    return(out)
+  }
+  out$behavior <- if(any(behaviors == "infinite") || all(behaviors == "regular")){
+    "infinite"
+  }else if(all(behaviors == "zero")){
+    "zero"
+  }else{
+    "regular"
+  }
+  out
+}
+
+.prior_scale_product_offset_ordinate <- function(spec, value, n_grid, provenance){
+
+  offset <- .prior_scale_product_offset_behavior(spec)
+  behaviors <- offset$behaviors
   provenance$structural_regularity <- "scale_mixture_offset"
   provenance$behaviors_at_zero <- behaviors
   unknown <- function(reason){
@@ -1850,24 +1986,10 @@
       provenance = provenance
     )
   }
-  if(any(!behaviors %in% c("regular", "zero", "infinite"))){
-    return(unknown(NULL))
+  if(identical(offset$behavior, "unknown")){
+    return(unknown(offset$reason))
   }
-  one_sided <- function(prior){
-    bounds <- unlist(prior$truncation[c("lower", "upper")], use.names = FALSE)
-    any(bounds == 0)
-  }
-  two_sided <- function(prior){
-    bounds <- unlist(prior$truncation[c("lower", "upper")], use.names = FALSE)
-    bounds[1L] < 0 && bounds[2L] > 0
-  }
-  if((one_sided(spec$factor) && two_sided(spec$multiplier) &&
-      behaviors[["factor"]] == "regular" && behaviors[["multiplier"]] == "zero") ||
-     (one_sided(spec$multiplier) && two_sided(spec$factor) &&
-      behaviors[["multiplier"]] == "regular" && behaviors[["factor"]] == "zero")){
-    return(unknown("The density of the product jumps at the requested value."))
-  }
-  if(any(behaviors == "infinite") || all(behaviors == "regular")){
+  if(identical(offset$behavior, "infinite")){
     return(.prior_density_ordinate_result(
       value = value, behavior = "infinite", log_density = Inf, exact = TRUE,
       method = "scale_mixture",
@@ -1879,17 +2001,17 @@
       provenance = provenance
     ))
   }
-  if(all(behaviors == "zero")){
+  if(identical(offset$behavior, "zero")){
     return(.prior_density_ordinate_result(
       value = value, behavior = "zero", log_density = -Inf, exact = TRUE,
       method = "scale_mixture", provenance = provenance
     ))
   }
   if(behaviors[["factor"]] == "regular"){
-    density_zero <- factor_zero$log_density
-    moment <- .prior_density_inverse_moment(spec$multiplier, n_grid)
+    density_zero <- offset$factor_zero$log_density
+    moment <- .prior_scale_product_inverse_moment(spec, n_grid)
   }else{
-    density_zero <- multiplier_zero$log_density
+    density_zero <- offset$multiplier_zero$log_density
     moment <- .prior_density_inverse_moment(spec$factor, n_grid)
   }
   provenance$inverse_moment <- moment[c("value", "method")]
@@ -1916,9 +2038,9 @@
   pmax(out, 0)
 }
 
-# Region probability of c + w * L * s: the 1-D integral over s of its density
-# times P(c + w L s in region), with the ordinate's breakpoints at the images
-# of every finite region endpoint.
+# Region probability of c + w * L * m(s): the 1-D integral over s of its
+# density times P(c + w L m(s) in region), with the ordinate's breakpoints at
+# the images of every finite region endpoint.
 .prior_scale_product_region <- function(spec, intervals, n_grid){
 
   lower <- intervals[, 1L]
@@ -1926,9 +2048,10 @@
   offset_inside <- as.numeric(any(spec$offset > lower & spec$offset < upper))
   multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
   integrand <- function(multiplier){
+    mapped <- .prior_scale_product_map(spec, multiplier)
     probability <- numeric(length(multiplier))
-    zero <- multiplier == 0
-    s <- multiplier[!zero]
+    zero <- mapped == 0
+    s <- mapped[!zero]
     for(i in seq_along(lower)){
       a <- (lower[i] - spec$offset) / (spec$scale * s)
       b <- (upper[i] - spec$offset) / (spec$scale * s)

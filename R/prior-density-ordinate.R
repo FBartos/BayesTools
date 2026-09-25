@@ -1328,6 +1328,11 @@ prior_density_ordinate <- function(x, value){
   if(identical(kind, "linear_normal")){
     return(c(lower = -Inf, upper = Inf))
   }
+  if(identical(kind, "scale_mixture") && is.numeric(provenance$support) &&
+     length(provenance$support) == 2L && !anyNA(provenance$support)){
+    # the support hull of the scale-product route
+    return(c(lower = provenance$support[[1L]], upper = provenance$support[[2L]]))
+  }
   if(identical(kind, "scalar_affine") && is.list(provenance$source)){
     support <- .prior_density_ordinate_provenance_support(provenance$source)
     if(is.null(support)){
@@ -1410,7 +1415,9 @@ prior_density_ordinate <- function(x, value){
     return(NULL)
   }
   kind <- provenance$kind
-  if(identical(kind, "linear_normal")){
+  if(identical(kind, "linear_normal") ||
+     (identical(kind, "scale_mixture") && !is.null(provenance$support))){
+    # a scale-product route multiplies two continuous terms
     return(numeric())
   }
   if(identical(kind, "primitive")){
@@ -1685,6 +1692,22 @@ prior_density_ordinate <- function(x, value){
      is.numeric(provenance$scale) && length(provenance$scale) == 1L &&
      is.finite(provenance$scale) && provenance$scale > 0){
     return(.prior_density_ordinate_exp_lin_boundary(provenance$source, b))
+  }
+  if(identical(provenance$kind, "scale_mixture") && b > 0 &&
+     isTRUE(provenance$offset == 0) && !is.null(support) &&
+     isTRUE(support[[1L]] == 0)){
+    # a scale product at its offset 0, the lower bound of its support: a
+    # finite positive limit is the exponent-one case x^0, and an infinite one
+    # stays infinite under a power b >= 1
+    offset_behavior <- provenance$offset_behavior
+    if(identical(offset_behavior, "regular")){
+      exponent <- 1 - b
+      return(if(exponent > 0) "zero" else if(exponent < 0) "infinite" else "regular")
+    }
+    if(identical(offset_behavior, "infinite") && b >= 1){
+      return("infinite")
+    }
+    return("unknown")
   }
   if(!identical(provenance$kind, "primitive")){
     return("unknown")
