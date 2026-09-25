@@ -1037,9 +1037,10 @@ test_that("mixture prior ordinates evaluate every component exactly at a density
   )
   two_term <- .bt_meta_get(levels[["mid"]], "prior_density")
   expect_height(two_term, function(v) .5 * f_sum(v) + .5 * f_truncated(v))
-  quadrature <- prior_density_ordinate(two_term, 0)$provenance$components[[1L]]$provenance
-  expect_identical(quadrature$kind, "conditional_normal_mixture")
-  expect_true(quadrature$integration$converged)
+  # the normal + truncated normal component is the closed-form convolution
+  closed_form <- prior_density_ordinate(two_term, 0)$provenance$components[[1L]]$provenance
+  expect_identical(closed_form$kind, "truncated_normal_convolution")
+  expect_null(closed_form$integration)
 
   # Single fit (as_mixed_posteriors): mixture intercept and a spike-or-normal
   # slope; each indicator combination is its own component.
@@ -1122,11 +1123,11 @@ test_that("mixture prior ordinates evaluate every component exactly at a density
       }, 0, Inf, rel.tol = 1e-10)$value
   })
 
-  # Outside mixtures the same convolution uses the same quadrature.
+  # Outside mixtures the same convolution uses the same closed form.
   plain <- .prior_linear_combination_density(
     list(a = prior("normal", list(0, 1)), b = truncated), c(a = 1, b = 1)
   )
-  expect_identical(prior_density_ordinate(plain, .05)$method, "conditional_normal_mixture")
+  expect_identical(prior_density_ordinate(plain, .05)$method, "truncated_normal_convolution")
   expect_height(plain, f_sum)
 })
 

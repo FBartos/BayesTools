@@ -869,6 +869,76 @@ test_that("two-term convolutions and Cauchy sums have structural ordinates", {
   ), tolerance = 1e-10)
 })
 
+test_that("a truncated normal term plus normal terms has a closed-form ordinate", {
+
+  # X = offset + w T + G with T a truncated normal and G the sum of the normal
+  # terms. References: 40-digit mpmath quadratures of f_T(t) phi(x - offset -
+  # w t; 0, sd(G)) over T's support, split into 200 pieces around the mass
+  # (reported relative error estimates below 1e-40), independent of the
+  # closed form; log densities agree within 1e-12 (a relative density error
+  # of 1e-12), also far in both tails.
+  half <- prior("normal", list(0.5, 0.35), list(0, Inf))
+  cases <- list(
+    list(priors = list(t = prior("normal", list(0, 1), list(0, Inf)), g = prior("normal", list(0, 1))),
+         weights = c(t = 1, g = 1), value = .3, log_reference = -1.13272268820496627806),
+    list(priors = list(t = half, g = prior("normal", list(.3, .3)), h = prior("normal", list(0, .4))),
+         weights = c(t = -2, g = 1, h = 1), value = -.7, log_reference = -0.6957464505949913255644),
+    list(priors = list(t = prior("normal", list(0, 1), list(-1, 2)), g = prior("normal", list(0, .1)),
+                       d = prior("point", list(1))),
+         weights = c(t = 1, g = 1, d = 1), value = 2.5, log_reference = -1.837608904894240190235),
+    list(priors = list(t = prior("normal", list(1, 2), list(-Inf, 0)), g = prior("normal", list(-1, 3))),
+         weights = c(t = 1, g = 1), value = -4, log_reference = -2.22940924376757506274),
+    list(priors = list(t = prior("normal", list(0, 1), list(0, Inf)), g = prior("normal", list(0, .5))),
+         weights = c(t = 1, g = 1), value = 12, log_reference = -57.93736312830183231025),
+    list(priors = list(t = half, g = prior("normal", list(.2, .4))),
+         weights = c(t = 1, g = 1), value = -9, log_reference = -269.2956623278153067464852)
+  )
+  for(case in cases){
+    density <- .prior_linear_combination_density(case$priors, case$weights)
+    ordinate <- prior_density_ordinate(density, case$value)
+    expect_identical(ordinate$behavior, "regular")
+    expect_true(ordinate$exact)
+    expect_identical(ordinate$method, "truncated_normal_convolution")
+    expect_identical(ordinate$provenance$kind, "truncated_normal_convolution")
+    expect_null(ordinate$provenance$integration)
+    expect_lt(abs(ordinate$log_density - case$log_reference), 1e-12)
+    height <- as.numeric(.prior_linear_density_height(density, case$value))
+    expect_lt(abs(log(height) - case$log_reference), 1e-12)
+  }
+
+  # the density integrates to one, the plotted density is the closed form, and
+  # region probabilities (the Gaussian-convolution quadrature) match an
+  # independent integral of T's density times the normal tail probability
+  priors <- list(t = half, g = prior("normal", list(.2, .4)))
+  density <- .prior_linear_combination_density(priors, c(t = 1, g = 1))
+  route <- .prior_density_route_from_adaptive(attr(density, "adaptive_evaluation"))
+  expect_identical(route$type, "truncated_normal_convolution")
+  closed <- function(x) .prior_density_route_density(route, x)
+  expect_equal(stats::integrate(closed, -Inf, Inf, rel.tol = 1e-12)$value, 1, tolerance = 1e-10)
+  values <- c(-2, -.3, 0, .7, 1.4, 3)
+  expect_equal(closed(values), vapply(values, function(value){
+    exp(prior_density_ordinate(density, value)$log_density)
+  }, numeric(1)), tolerance = 1e-14)
+  plotted <- .prior_linear_density_to_plot_data(density)$density
+  expect_equal(plotted$y, closed(plotted$x), tolerance = 1e-14)
+  probability <- .hypothesis_prior_density_prob(
+    density, hypothesis_parse("theta > 0.3")$statements[[1L]]$left, "theta"
+  )
+  expect_equal(as.numeric(probability), stats::integrate(function(t){
+    stats::dnorm(t, .5, .35) / stats::pnorm(.5 / .35) *
+      stats::pnorm(.3 - t, .2, .4, lower.tail = FALSE)
+  }, 0, Inf, rel.tol = 1e-12)$value, tolerance = 1e-9)
+
+  # a spike-and-slab truncated normal is a mixture of the closed form and the
+  # normal term alone
+  slab <- prior_spike_and_slab(half, prior_inclusion = prior("spike", list(.4)))
+  mixture <- .prior_linear_combination_density(list(t = slab, g = prior("normal", list(.2, .4))), c(t = 1, g = 1))
+  ordinate <- prior_density_ordinate(mixture, .6)
+  expect_true(ordinate$exact)
+  expect_equal(exp(ordinate$log_density),
+               .4 * closed(.6) + .6 * stats::dnorm(.6, .2, .4), tolerance = 1e-14)
+})
+
 test_that("products of normal terms are classified on the scale-mixture route", {
 
   # beta * sigma with beta, sigma ~ N(0, 1) has the density K0(|x|) / pi

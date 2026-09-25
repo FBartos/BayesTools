@@ -92,7 +92,14 @@ one-sided limit inside the support. If any component remains \code{unknown}, the
 whole mixture is \code{unknown}. In any linear combination (inside or outside a
 mixture), a Gaussian term plus one other continuous scalar term is a
 Gaussian convolution evaluated by the same quadrature over that term's
-declared support. Sums of Cauchy terms are Cauchy (method
+declared support. When that term is a truncated normal, the density is the
+closed form (method \code{"truncated_normal_convolution"})
+\eqn{\phi(x; m, s) [\Phi(\beta(x)) - \Phi(\alpha(x))] / [\Phi(B) - \Phi(A)]}:
+\eqn{m} and \eqn{s^2} are the sums of the means and variances of the
+untruncated terms, \eqn{A} and \eqn{B} the standardized truncation bounds,
+and \eqn{\alpha(x)} and \eqn{\beta(x)} the truncation bounds standardized
+by the normal distribution of the truncated term given the sum \eqn{x}.
+Sums of Cauchy terms are Cauchy (method
 \code{"scalar_affine"}), and two other continuous scalar terms without a
 Gaussian part are a \code{"convolution"} quadrature over one term's declared
 support; where finite support bounds of both terms meet at \code{value}, the

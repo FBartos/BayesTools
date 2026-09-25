@@ -181,7 +181,17 @@ heights or probabilities, which are then unavailable.
 Sums without a product term: untruncated Cauchy terms (Cauchy or t with one
 degree of freedom, no log source) first merge into one Cauchy term with the
 summed locations and the summed absolute scales, so Cauchy sums are scalar and
-exact. Two simple continuous terms (after merging) that are not both normal
+exact. A Gaussian part plus one truncated normal term (a normal with a finite
+bound, no log source) is closed form (`truncated_normal_convolution`,
+`R/prior-density-truncated-normal.R`): with w T' the weighted truncated term,
+N(m_1, s_1) before truncation to [l', u'], and the Gaussian part N(a_m, a_s),
+f(x) = phi(x; a_m + m_1, s) [Phi(beta(x)) - Phi(alpha(x))] / [Phi(B) - Phi(A)],
+s^2 = s_1^2 + a_s^2, alpha(x), beta(x) the bounds standardized by T' given
+the sum (mean m_1 + s_1^2 / s^2 (x - a_m - m_1), SD s_1 a_s / s), A and B by
+T' itself; both interval masses are evaluated in log space from lower- or
+upper-tail probabilities. Its region probabilities keep the Gaussian-
+convolution quadrature (they need the bivariate normal distribution
+function). Two simple continuous terms (after merging) that are not both normal
 and have no Gaussian part are a two-term `convolution`: the 1-D integral over
 the first term (the one with an infinite density at a finite bound when only
 one has such a bound) of its density times the other term's density, split at
@@ -340,7 +350,8 @@ Mixture ordinates (model, conditional, and mixture or spike-and-slab terms of
 one linear combination) are weighted sums of per-component ordinates, each from
 its own exact or regular method, so a numerical grid never spans a density jump
 between components. A Gaussian term plus one other continuous scalar term
-(and two non-normal terms) uses its quadrature wherever it occurs, so the same
+(and two non-normal terms) uses its quadrature (the closed form for a
+truncated normal term) wherever it occurs, so the same
 combination is never exact in one context and a grid approximation in
 another. A mixture
 height sums its components' exact or regular heights with those of components

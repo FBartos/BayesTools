@@ -19,6 +19,8 @@
 # * "conditional_normal": a Gaussian convolution or a conditional-normal
 #   scale mixture, including the pure scale mixture of a product without an
 #   additive normal term (R/priors-linear-density-combinations.R);
+# * "truncated_normal_convolution": a Gaussian convolution whose other term
+#   is a truncated normal, in closed form (R/prior-density-truncated-normal.R);
 # * "scale_product": the product of a non-normal scalar term and a scalar
 #   multiplier (ordered levels with a non-normal total, 'multiply_by'
 #   products of non-normal terms);
@@ -253,7 +255,8 @@
 # (e.g. a truncated prior at its bound, using the one-sided limit inside its
 # support) never reaches a numerical grid; a Gaussian term plus one other
 # continuous scalar term is a positive-variance Gaussian convolution,
-# evaluated by quadrature over that term's declared support. NULL otherwise.
+# evaluated by quadrature over that term's declared support (in closed form
+# when that term is a truncated normal). NULL otherwise.
 .prior_density_route_additive_components <- function(prior_list, weights,
                                                      source_transforms, n_grid){
 
@@ -276,6 +279,9 @@
   )
   if(is.null(spec)){
     return(NULL)
+  }
+  if(.prior_truncated_normal_convolution_eligible(spec)){
+    return(list(type = "truncated_normal_convolution", spec = spec, n_grid = n_grid))
   }
   list(type = "conditional_normal", spec = spec, n_grid = n_grid)
 }
@@ -897,6 +903,7 @@
       route$prior_list, route$weights, route$source_transforms, value
     ),
     "conditional_normal" = .prior_conditional_normal_ordinate(route$spec, value, route$n_grid),
+    "truncated_normal_convolution" = .prior_truncated_normal_convolution_ordinate(route$spec, value),
     "scale_product" = .prior_scale_product_ordinate(route$spec, value, route$n_grid),
     "convolution" = .prior_convolution_ordinate(route$spec, value, route$n_grid),
     "unknown" = .prior_density_ordinate_result(
@@ -992,6 +999,7 @@
       route$prior_list, route$weights, route$source_transforms, 0
     )$provenance,
     "conditional_normal" = list(kind = "conditional_normal_mixture"),
+    "truncated_normal_convolution" = .prior_truncated_normal_convolution_provenance(route$spec),
     "scale_product" = .prior_scale_product_route_provenance(route$spec),
     "convolution" = list(kind = "convolution"),
     "unknown" = route$provenance,
@@ -1034,6 +1042,7 @@
       route$prior_list, route$weights, route$source_transforms, region
     ),
     "conditional_normal" = .prior_region_conditional_normal(route$spec, region, route$n_grid),
+    "truncated_normal_convolution" = .prior_region_conditional_normal(route$spec, region, route$n_grid),
     "scale_product" = .prior_region_scale_product(route$spec, region, route$n_grid),
     "convolution" = .prior_region_convolution(route$spec, region, route$n_grid),
     "unknown" = .prior_region_unavailable(),
@@ -1082,6 +1091,7 @@
         stats::dnorm(x, normal$provenance$mean, normal$provenance$sd)
       }
     },
+    "truncated_normal_convolution" = .prior_truncated_normal_convolution_density(route$spec, x),
     "mixture" = {
       positive <- route$weights > 0
       weights <- route$weights[positive] / sum(route$weights[positive])

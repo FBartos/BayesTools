@@ -89,7 +89,14 @@
 #' whole mixture is `unknown`. In any linear combination (inside or outside a
 #' mixture), a Gaussian term plus one other continuous scalar term is a
 #' Gaussian convolution evaluated by the same quadrature over that term's
-#' declared support. Sums of Cauchy terms are Cauchy (method
+#' declared support. When that term is a truncated normal, the density is the
+#' closed form (method `"truncated_normal_convolution"`)
+#' \eqn{\phi(x; m, s) [\Phi(\beta(x)) - \Phi(\alpha(x))] / [\Phi(B) - \Phi(A)]}:
+#' \eqn{m} and \eqn{s^2} are the sums of the means and variances of the
+#' untruncated terms, \eqn{A} and \eqn{B} the standardized truncation bounds,
+#' and \eqn{\alpha(x)} and \eqn{\beta(x)} the truncation bounds standardized
+#' by the normal distribution of the truncated term given the sum \eqn{x}.
+#' Sums of Cauchy terms are Cauchy (method
 #' `"scalar_affine"`), and two other continuous scalar terms without a
 #' Gaussian part are a `"convolution"` quadrature over one term's declared
 #' support; where finite support bounds of both terms meet at `value`, the
@@ -144,8 +151,8 @@ prior_density_ordinate <- function(x, value){
 .prior_density_ordinate_methods <- function(){
   c(
     "primitive", "point", "finite_mixture", "scalar_affine",
-    "linear_normal", "conditional_normal_mixture", "scale_mixture",
-    "convolution", "named_transform", "unsupported_provenance"
+    "linear_normal", "conditional_normal_mixture", "truncated_normal_convolution",
+    "scale_mixture", "convolution", "named_transform", "unsupported_provenance"
   )
 }
 
