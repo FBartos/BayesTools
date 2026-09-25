@@ -2469,6 +2469,7 @@
       sum(vapply(pieces[quadrature], `[[`, integer(1), "evaluations"))
   }
   bound <- tolerance$relative * abs(integral$value)
+  relative_error <- integral$abs.error / abs(integral$value)
   accepted <- accept(integral)
   # a total that only misses the relative criterion is kept as a display
   # estimate (plotted curves); it is never an ordinate or a probability
@@ -2490,8 +2491,10 @@
     piece_absolute_errors = vapply(pieces, `[[`, numeric(1), "abs.error")
   )
   if(!accepted && identical(integral$message, "OK")){
+    # the observed metric, not the criterion (public-API message rules); the
+    # criterion stays in 'error_bound'
     integration$message <- paste0(
-      "the reported absolute error exceeds 1e-4 of the integral"
+      "relative error estimate ", format(signif(relative_error, 3))
     )
     integration$estimate <- estimate
   }

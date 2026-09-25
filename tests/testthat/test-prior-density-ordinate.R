@@ -1560,12 +1560,14 @@ test_that("quadrature ordinates are exact only within a relative error bound", {
   expect_true(is.na(rejected$value))
   expect_false(rejected$integration$converged)
   expect_true(rejected$integration$refined)
-  expect_identical(rejected$integration$message,
-                   "the reported absolute error exceeds 1e-4 of the integral")
+  # the message states the observed relative error (1e-6 / 1e-3), the
+  # criterion stays in the error bound
+  expect_identical(rejected$integration$message, "relative error estimate 0.001")
+  expect_equal(rejected$integration$error_bound, 1e-4 * 1e-3)
   expect_identical(rejected$integration$estimate, 1e-3)
   ordinate <- BayesTools:::.prior_density_route_ordinate(route, 1e3)
   expect_false(ordinate$exact)
-  expect_match(ordinate$reason, "exceeds 1e-4 of the integral", fixed = TRUE)
+  expect_match(ordinate$reason, "integration reported 'relative error estimate 0.001'", fixed = TRUE)
   # the mocked pieces sum to the estimate the plotted curve draws
   estimate <- ordinate$provenance$integration$estimate
   expect_equal(estimate, 1e-3 * (length(ordinate$provenance$integration$breakpoints) - 1L))
