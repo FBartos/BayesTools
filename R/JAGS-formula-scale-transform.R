@@ -11,7 +11,8 @@
 #' attribute of \code{fit}. Each parameter entry contains scaling info (mean and
 #' sd) for each standardized predictor, e.g.,
 #' \code{list(mu = list(mu_x1 = list(mean = 0, sd = 1)))}. The transformation is
-#' derived from the fitted fixed-effect design stored in \code{fit}.
+#' derived from the fitted structure stored in \code{fit}: the fixed-effect
+#' design, a log intercept, and the random-effect SD structure.
 #'
 #' @details The function transforms regression coefficients and intercepts
 #' to account for predictor standardization using a combinatorial approach that
@@ -68,6 +69,8 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
     # no scaling information, return as is
     return(fit)
   }
+  # the fitted structure is the model's, whatever standardization is passed
+  formula_scale <- .bt_formula_scale_list_complete(formula_scale, fit)
 
   .bt_transform_scale_posterior(
     posterior      = as.matrix(.fit_to_posterior(fit)),
@@ -143,7 +146,9 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 #' random-number state (\code{.Random.seed} and \code{RNGkind()}) is restored
 #' afterwards. With \code{NULL}, the caller's random-number stream is used.
 #' @param formula_scale optional nested list containing standardization information.
-#' If not provided, extracted from \code{fit} attribute.
+#' If not provided, extracted from \code{fit} attribute. The transformation is
+#' derived from the fitted structure stored in \code{fit}: the fixed-effect
+#' design, a log intercept, and the random-effect SD structure.
 #'
 #' @details When models use auto-scaling (standardizing predictors), the posterior
 #' samples are on the standardized scale. To correctly visualize priors on the
@@ -218,14 +223,12 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
     stop("'fit' must have 'prior_list' attribute.")
   }
 
-  # Extract formula_scale from fit if not provided
+  # Extract formula_scale from fit if not provided; the fitted structure is
+  # the model's, whatever standardization is passed
   if(is.null(formula_scale)){
     formula_scale <- attr(fit, "formula_scale")
   }
-  formula_scale <- .bt_formula_scale_list_with_unscale_designs(
-    formula_scale,
-    attr(fit, "formula_design", exact = TRUE)
-  )
+  formula_scale <- .bt_formula_scale_list_complete(formula_scale, fit)
 
   # Get posterior column names for structure matching
   if(inherits(fit, "runjags") || inherits(fit, "BayesTools_fit")){

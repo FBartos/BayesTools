@@ -1546,6 +1546,55 @@ test_that("original-scale random-effect SDs require the fitted design", {
                tolerance = 1e-10)
 })
 
+test_that("standardization passed for a fitted model takes its fitted structure", {
+
+  # the same means and SDs as the fitted formula_scale, built by hand: the
+  # fitted design, the random-effect SD structure, and the log intercept come
+  # from the fitted model
+  hand_built <- function(fit){
+    fitted_scale <- attr(fit, "formula_scale")
+    list(mu = list(mu_x = list(
+      mean = fitted_scale$mu$mu_x$mean,
+      sd   = fitted_scale$mu$mu_x$sd
+    )))
+  }
+  expect_same_transforms <- function(fit){
+    expect_identical(
+      transform_scale_samples(fit, formula_scale = hand_built(fit)),
+      transform_scale_samples(fit)
+    )
+    expect_identical(
+      transform_prior_samples(fit, n_samples = 200, seed = 1,
+                              formula_scale = hand_built(fit)),
+      transform_prior_samples(fit, n_samples = 200, seed = 1)
+    )
+  }
+
+  # a random slope of a standardized predictor
+  expect_same_transforms(.label_test_random_slope_fit())
+
+  # a log intercept
+  set.seed(2)
+  data <- data.frame(x = stats::rnorm(48, 3, 2))
+  data$y <- stats::rnorm(nrow(data), 2)
+  formula <- ~ 1 + x
+  attr(formula, "log(intercept)") <- TRUE
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax       = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 4)\n}\n}",
+    data               = list(y = data$y, N = nrow(data)),
+    formula_list       = list(mu = formula),
+    formula_data_list  = list(mu = data),
+    formula_prior_list = list(mu = list(
+      intercept = prior("gamma", list(2, 2)),
+      x         = prior("normal", list(0, 1))
+    )),
+    formula_scale_list = list(mu = list(x = TRUE)),
+    chains = 1, adapt = 100, burnin = 100, sample = 200, silent = TRUE, seed = 3
+  ))
+  expect_true(isTRUE(attr(attr(fit, "formula_scale")$mu, "log_intercept")))
+  expect_same_transforms(fit)
+})
+
 test_that("inference rows and Bayes factor warnings are rendered labels", {
 
   data <- data.frame(x = seq(-1, 1, length.out = 12), z = sin(seq_len(12)))

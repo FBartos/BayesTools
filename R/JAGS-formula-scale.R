@@ -448,6 +448,38 @@
   design_spec
 }
 
+# Helper: Standardization information passed for the fitted model 'fit',
+# completed with the fitted formula-scale metadata of the model that it does
+# not carry itself: the fitted design, the log-intercept flag, the point
+# terms, and the random-effect SD structure. A formula_scale list built by
+# hand carries only means and SDs; without the rest of the fitted structure,
+# random-effect SDs would stay standardized and a log intercept would be
+# transformed as a linear one.
+.bt_formula_scale_list_complete <- function(formula_scale, fit){
+
+  if(is.null(formula_scale) || length(formula_scale) == 0L){
+    return(formula_scale)
+  }
+  .check_formula_scale_info(formula_scale)
+
+  fitted_scale <- attr(fit, "formula_scale", exact = TRUE)
+  if(is.list(fitted_scale)){
+    for(parameter in intersect(names(formula_scale), names(fitted_scale))){
+      fitted_attributes <- attributes(fitted_scale[[parameter]])
+      for(name in setdiff(names(fitted_attributes), "names")){
+        if(is.null(attr(formula_scale[[parameter]], name, exact = TRUE))){
+          attr(formula_scale[[parameter]], name) <- fitted_attributes[[name]]
+        }
+      }
+    }
+  }
+
+  .bt_formula_scale_list_with_unscale_designs(
+    formula_scale,
+    attr(fit, "formula_design", exact = TRUE)
+  )
+}
+
 
 # Helper: Build the unscaling matrix by pairing coefficient names
 #
