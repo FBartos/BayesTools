@@ -770,3 +770,59 @@ test_that("model tables and the catalog take formula prefixes from the formula p
     class = "BayesTools_parameter_not_found"
   )
 })
+
+test_that("marginal names, rows, and warnings are rendered labels of the marginal means", {
+
+  data <- .label_test_data(c("a", "b"), "treatment")
+  fit <- .label_test_fit(
+    ~ x * g,
+    data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      x         = prior("normal", list(0, 1)),
+      g         = .label_test_factor_prior("treatment"),
+      "x:g"     = .label_test_factor_prior("treatment")
+    )
+  )
+  mixed <- as_mixed_posteriors(fit, parameters = names(attr(fit, "prior_list")))
+  marginal <- marginal_posterior(mixed, "mu_x__xXx__g", formula = ~ x * g)
+  expected_names <- paste0(rep(c("-1SD", "0SD", "1SD"), 2L), ", ",
+                           rep(c("a", "b"), each = 3L))
+  expect_identical(names(marginal), expected_names)
+  for(level in names(marginal)){
+    parts <- posterior_metadata(marginal[[level]], "quantities")$label_parts[[1L]]
+    expect_true(parts$marginal)
+    expect_identical(.bt_label(parts, "plot"), level)
+  }
+
+  inference <- list(mu_x__xXx__g = stats::setNames(
+    lapply(names(marginal), function(level){
+      structure(1, warnings = "check this level")
+    }),
+    names(marginal)
+  ))
+  table <- marginal_estimates_table(
+    list(mu_x__xXx__g = marginal),
+    inference,
+    parameters = "mu_x__xXx__g"
+  )
+  expect_identical(
+    rownames(table),
+    paste0("(mu) x:g[", expected_names, "]")
+  )
+  # the warnings name the rows they belong to
+  expect_identical(
+    attr(table, "warnings"),
+    paste0(rownames(table), ": check this level")
+  )
+  table <- marginal_estimates_table(
+    list(mu_x__xXx__g = marginal),
+    inference,
+    parameters     = "mu_x__xXx__g",
+    formula_prefix = FALSE
+  )
+  expect_identical(
+    attr(table, "warnings"),
+    paste0("x:g[", expected_names, "]: check this level")
+  )
+})

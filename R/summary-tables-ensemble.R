@@ -604,16 +604,28 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
   estimates_table <- NULL
   for(parameter in parameters){
 
+    # the label parts of every level: rows and warnings are rendered from them
+    level_parts  <- .bt_marginal_level_parts(samples[[parameter]], parameter)
+    level_labels <- .bt_label(level_parts, style = "table", formula_prefix = formula_prefix)
+    level_warning_labels <- .bt_label(level_parts, style = "warning", formula_prefix = formula_prefix)
+
     # extract the relevant information
     if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){
       temp_samples  <- .marginal_posterior_parameter_samples(samples, parameter)
       temp_BF       <- do.call(c, inference[[parameter]])
       temp_BF_error <- .marginal_inference_BF_error_percent(inference[[parameter]], temp_BF)
-      temp_warnings <- do.call(c, lapply(names(inference[[parameter]]), function(lvl) {
+      # the warnings of each level are keyed by that level
+      warning_levels <- if(!is.null(names(inference[[parameter]])) &&
+                           !is.null(names(samples[[parameter]]))){
+        match(names(inference[[parameter]]), names(samples[[parameter]]))
+      }else{
+        seq_along(inference[[parameter]])
+      }
+      temp_warnings <- do.call(c, lapply(seq_along(inference[[parameter]]), function(lvl) {
         if(is.null(attr(inference[[parameter]][[lvl]], "warnings"))){
           return()
         }else{
-          paste0("[", lvl, "]: ", attr(inference[[parameter]][[lvl]], "warnings"))
+          paste0(level_warning_labels[[warning_levels[[lvl]]]], ": ", attr(inference[[parameter]][[lvl]], "warnings"))
         }
       }))
     }else{
@@ -621,11 +633,10 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
       # a scalar Savage-Dickey BF keeps its attributes only when not subset
       temp_BF       <- if(is.list(inference[[parameter]])) inference[[parameter]][[1]] else inference[[parameter]]
       temp_BF_error <- .marginal_inference_BF_error_percent(inference[[parameter]], temp_BF)
-      temp_level    <- names(inference[[parameter]])
       if(is.null(attr(temp_BF, "warnings"))){
         temp_warnings <- NULL
       }else{
-        temp_warnings <- paste0(if(length(temp_level) == 1L && temp_level != "intercept") paste0("[", temp_level, "]: ") else ": ", attr(temp_BF, "warnings"))
+        temp_warnings <- paste0(level_warning_labels[[1L]], ": ", attr(temp_BF, "warnings"))
       }
     }
 
@@ -647,24 +658,12 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
     )
 
 
-    # format parameter names
-    if(inherits(samples[[parameter]], "marginal_posterior.formula")){
-      if(length(names(samples[[parameter]])) == 1 && names(samples[[parameter]]) == "intercept"){
-        parameter_name <- parameter
-      }else{
-        parameter_name <- paste0(parameter, "[", names(samples[[parameter]]), "]")
-      }
-      parameter_name <- format_parameter_names(parameter_name, formula_parameters = .bt_meta_get(samples[[parameter]], "formula_parameter"), formula_prefix = formula_prefix, formula_scale = formula_scale)
-    }else{
-      parameter_name <- paste0(parameter, "[", names(samples[[parameter]]), "]")
-    }
-
-    rownames(par_summary) <- parameter_name
+    rownames(par_summary) <- level_labels
     estimates_table       <- rbind(estimates_table, par_summary)
 
     # add warnings
     if(!is.null(temp_warnings)){
-      warnings <- c(warnings, paste0(parameter, temp_warnings))
+      warnings <- c(warnings, temp_warnings)
     }
   }
 

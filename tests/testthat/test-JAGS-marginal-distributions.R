@@ -3438,7 +3438,8 @@ test_that("Savage-Dickey BFs with the null outside the posterior draws warn once
     conditional_list = list(mu_x = NULL), conditional_rule = "AND",
     formula = ~ x, n_samples = n
   ))
-  level_warnings <- paste0("mu_x[", c("-1SD", "0SD", "1SD"), "]: ", extrapolation)
+  # warnings name the rendered level labels of the marginal means
+  level_warnings <- paste0("(mu) x[", c("-1SD", "0SD", "1SD"), "]: ", extrapolation)
   expect_identical(level_inference$warnings, level_warnings)
   level_BFs <- unlist(level_inference$value$inference$mu_x)
   expect_true(all(is.finite(level_BFs) & level_BFs > 1))
@@ -4135,7 +4136,8 @@ test_that("marginal inference gives levels with a zero or infinite prior ordinat
   expect_true(is.na(bf[["mid"]]))
   expect_identical(attr(bf[["mid"]], "warnings"), infinite)
   expect_identical(attr(bf[["mid"]], "posterior_density_source"), "infinite_prior_ordinate")
-  expect_identical(inference$warnings, paste0("mu_f[", c("low", "mid"), "]: ", c(fixed, infinite)))
+  # the levels of the transformed ordered contrast are labelled as such
+  expect_identical(inference$warnings, paste0("mu_f[dif: ", c("low", "mid"), "]: ", c(fixed, infinite)))
 
   high <- inference$value$conditional$mu_f[["high"]]
   class(high) <- c(class(high), "marginal_posterior")
@@ -4154,7 +4156,7 @@ test_that("marginal inference gives levels with a zero or infinite prior ordinat
   )
   expect_true(all(is.na(table$inclusion_BF[1:2])))
   expect_equal(as.numeric(table$inclusion_BF[3]), as.numeric(bf[["high"]]))
-  expect_identical(attr(table, "warnings"), paste0("mu_f[", c("low", "mid"), "]: ", c(fixed, infinite)))
+  expect_identical(attr(table, "warnings"), paste0("mu_f[dif: ", c("low", "mid"), "]: ", c(fixed, infinite)))
 })
 
 test_that("use_formula = FALSE prior densities ignore the coefficient's own multiply_by", {

@@ -916,6 +916,44 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   }, character(1))
 }
 
+# Label parts of the levels of a marginal posterior of 'parameter' (a list of
+# levels, or the draws themselves for a simple parameter): their 'quantities'
+# draw metadata, otherwise the parameter's term followed by the level name.
+.bt_marginal_level_parts <- function(x, parameter){
+
+  levels <- if(is.list(x) && !is.numeric(x)) x else list(x)
+  level_names <- names(levels)
+  if(is.null(level_names)){
+    level_names <- rep("", length(levels))
+  }
+  formula_parameter <- .bt_label_formula_parameter(x)
+  lapply(seq_along(levels), function(i){
+    quantities <- .bt_draws_quantities(levels[[i]])
+    if(!is.null(quantities)){
+      return(quantities$label_parts[[1L]])
+    }
+    term <- if(nzchar(formula_parameter) &&
+               startsWith(parameter, paste0(formula_parameter, "_"))){
+      paste(
+        .bt_label_parts_coefficient(parameter, formula_parameter)$components,
+        collapse = ":"
+      )
+    }else{
+      parameter
+    }
+    level <- if(nzchar(level_names[[i]]) && !identical(level_names[[i]], "intercept")){
+      paste0("[", level_names[[i]], "]")
+    }else{
+      ""
+    }
+    .bt_label_parts(
+      components        = paste0(term, level),
+      formula_parameter = formula_parameter,
+      selector          = paste0(parameter, level)
+    )
+  })
+}
+
 # Label parts of summary columns ------------------------------------------------
 
 # Label parts of the columns of a summary built from a fit: the columns the

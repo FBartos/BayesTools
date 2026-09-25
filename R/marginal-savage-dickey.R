@@ -195,6 +195,12 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 
 .Savage_Dickey_BF.level_label <- function(posterior, index){
 
+  # a level with label parts is named by its rendered warning label, as in
+  # marginal_estimates_table()
+  quantities <- .bt_draws_quantities(posterior[[index]])
+  if(!is.null(quantities)){
+    return(.bt_label(quantities$label_parts[[1L]], style = "warning"))
+  }
   parameter <- .Savage_Dickey_BF.parameter_label(posterior)
   if(is.null(parameter)){
     parameter <- .Savage_Dickey_BF.parameter_label(posterior[[index]])

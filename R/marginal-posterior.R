@@ -531,7 +531,13 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
         at_index_output_frame       <- expand.grid(at_index_output)
         at_index_output.names_frame <- expand.grid(at_index_output.names)
-        level_names                 <- apply(at_index_output.names_frame, 1, paste0, collapse = ", ")
+        # the level names are the rendered level labels of the marginal means
+        level_quantities <- .marginal_posterior_level_quantities(
+          formula_parameter = formula_parameter,
+          components        = manipulated_predictors,
+          level_frame       = at_index_output.names_frame
+        )
+        level_names <- level_quantities$column
 
         # split the output samples
         data_split <- lapply(1:nrow(at_index_output_frame), function(i){
@@ -539,11 +545,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             data[, pred] == at_index_output_frame[i, pred]
           })), 1, all)
         })
-        level_quantities <- .marginal_posterior_level_quantities(
-          formula_parameter = formula_parameter,
-          components        = manipulated_predictors,
-          level_frame       = at_index_output.names_frame
-        )
         marginal_posterior_samples <- lapply(seq_along(data_split), function(lvl){
           temp_marginal_posterior_samples <- marginal_posterior_samples[data_split[[lvl]],]
           temp_data                       <- data[data_split[[lvl]],]
