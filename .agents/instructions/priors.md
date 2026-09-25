@@ -156,10 +156,18 @@ both vanish; a jump, where a term bounded at zero with a positive finite
 limit meets a two-sided other term whose density vanishes at zero, is not
 classified, while a two-sided other term with a positive density at zero
 makes both one-sided limits infinite, e.g. the level of a t total with a
-Beta(1, b) share). Other products (several products, a non-normal additive
-term with a product, several multiplied non-normal terms) have no structural
-route; their capped product grid is never used for heights or probabilities,
-which are then unavailable.
+Beta(1, b) share). The same leaf with the multiplier map m(s) = sqrt(k s) of
+a Beta(a, b) share is the continuous part of allocated random-effect SDs
+(below): the integral over the share is split at its quantiles and at the
+images s = (d / q)^2 / k of the term's quantiles q, and the mapped share's
+density at zero behaves like v^(2a - 1) (zero for a > 1/2, 2 / (sqrt(k)
+B(1/2, b)) at a = 1/2, infinite below), with E[1 / sqrt(k S)] =
+B(a - 1/2, b) / (sqrt(k) B(a, b)). The route provenance of a scale product
+records its support hull and its offset behavior, so named transformations
+(the square of an SD) classify it. Other products (several products, a
+non-normal additive term with a product, several multiplied non-normal
+terms) have no structural route; their capped product grid is never used for
+heights or probabilities, which are then unavailable.
 
 Sums without a product term: untruncated Cauchy terms (Cauchy or t with one
 degree of freedom, no log source) first merge into one Cauchy term with the
@@ -181,7 +189,9 @@ point is infinite for e <= 0; the positive finite limit at an end with e = 0
 the numerical grid (`unknown` ordinates): three or more non-normal terms
 after merging, a Gaussian part with two or more non-normal terms, log-source
 terms other than lognormal ones in a sum, the products listed above, custom output
-transformations and `bounded_logit`, and the unclassified meeting points.
+transformations and `bounded_logit`, the unclassified meeting points, and SD
+components (and variances) of nested variance allocations (the scale prior
+times two or more independent allocation shares).
 
 Plotted linear-combination prior densities (`.prior_linear_density_to_plot_data()`)
 evaluate the same route at every plotted value: closed forms vectorized over
@@ -215,10 +225,26 @@ transformation (affine as `lin`, `tanh`, square root and square of a
 nonnegative source as `exp_lin`, a bounded logit as a recorded custom map on
 the refined grid) and a gated variance proportion as one mixture prior of its
 atoms and Beta components (with a model-averaged, mixture scale prior as
-well). Allocation-derived component SDs and variances, and the totals of
-gated allocations, are products of density grids without provenance
-(plotting densities) that carry their exact gate atom at zero; a total whose
-only continuous part is the scale prior itself is exact. Fitted coordinates
+well). An allocated random-effect SD is its scale prior T times an
+independent multiplier M of the fitted model (shares w ~ Dirichlet(a) over
+all K components of the allocation, not renormalized over active ones), and
+its density is the `allocation_product` measure
+(`R/prior-density-allocation.R`): M is a finite mixture of points (0 when a
+gate of the chain is off or no component of a total is active, 1 for a total
+with every component active or a gate-only chain) and mapped shares
+sqrt(k W) (a component SD: W = w_i ~ Beta(a_i, a_- - a_i), k = K for
+mean-variance and 1 for total-variance allocations; a total with the partial
+active set A: W ~ Beta(a_A, a_- - a_A)), with the gate-configuration
+probabilities. T's mixture and spike-and-slab components are expanded; each
+leaf is an atom, the scaled scale prior, or the square-root share scale
+product above, and a variance applies the square (`exp_lin`) to every
+continuous leaf and to the atoms, so ordinates, region probabilities and
+plotted densities are exact and share one route. SD components of nested
+allocations (the scale prior times two or more independent shares) keep a
+product of density grids without provenance: a plotting density whose
+ordinates are `unknown` with the reason recorded
+(`provenance_unavailable`), refused for heights and point hypotheses;
+totals of nested allocations have no density. Fitted coordinates
 and factor levels use the prior-density context of the priors owning their
 coordinates (`multiply_by` stripped). `parameter_mixed_posterior()` (and
 `random_effects_summary_posterior()`, built on it) attaches this density,

@@ -204,15 +204,22 @@ coordinates (an owning prior-list entry that is not a BayesTools prior
 stops). The density records
 the source prior and transform it was built from, so its heights and region
 probabilities are evaluated on that prior's structural route (bounded-logit
-correlations on the refined numerical grid). Allocation-derived component
-SDs are products of density grids without such provenance: they are
-returned for plotting, and their heights and region probabilities are
-unavailable. Allocation totals (\code{sd_total}, \code{var_total}) and component SDs
-and variances of gated allocations carry the exact gate atom at zero (no
-active component, or the component's gate off); the continuous part of a
-total is the scale prior itself when every component is active and a
-product of density grids otherwise. Totals of nested allocations and
-inclusion indicators return \code{NULL}.
+correlations on the refined numerical grid). Allocated SDs are the scale
+prior T times an independent multiplier of the fitted model, whose
+Dirichlet weights w span all components of the allocation: a component
+SD is T sqrt(k w_i) (k the number of components of a mean-variance
+allocation, 1 otherwise) while the gates of its allocation chain are on and
+0 otherwise, and an allocation total (\code{sd_total}, \code{var_total}) is
+T sqrt(sum of w over the active components), 0 without an active
+component and T with all of them. Their densities (and those of the
+variances) are exact: the atoms at zero, and the continuous parts as
+mixtures over the gate configurations of the scale prior and of the
+one-dimensional integrals over the Beta share margins. SD components of
+nested allocations (two or more allocation shares) are products of density
+grids without such provenance, returned for plotting only (heights, region
+probabilities and point hypotheses are unavailable, and their ordinates
+name the reason). Totals of nested allocations and inclusion indicators
+return \code{NULL}.
 
 \code{parameter_transform()} returns the one-to-one map from the selected source
 coordinate to its public semantic quantity when that map exists. Composite

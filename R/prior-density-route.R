@@ -792,6 +792,11 @@
   if(identical(adaptive$kind, "linear_combination")){
     return(.prior_density_route_linear_arguments(arguments))
   }
+  if(identical(adaptive$kind, "allocation_product")){
+    # a scale prior times a variance-allocation multiplier
+    # (R/prior-density-allocation.R)
+    return(.prior_density_route_allocation_product(arguments))
+  }
   if(identical(adaptive$kind, "density_context")){
     return(.prior_density_route_context(
       arguments$context,

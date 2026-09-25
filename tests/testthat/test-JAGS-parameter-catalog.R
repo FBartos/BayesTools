@@ -3071,17 +3071,20 @@ test_that("sparse allocation margins keep boundary-singular prior densities", {
   )
   expect_identical(prior_density_ordinate(proportion_density, 0)$behavior, "infinite")
 
-  # The component SD is total SD * sqrt(var_prop): E[sd^2] = 1 * .5 / 2.
-  # The square root of the x^(-1/2) singularity leaves an O(sqrt(dx)) error in
-  # the first cell (4.7%, 2.9%, 1.8% at 512, 1024, 4096 knots), so the default
-  # grid is used with a 3% tolerance.
+  # The component SD is total SD * sqrt(var_prop): E[sd^2] = 1 * .5 / 2. Its
+  # exact density (the scale prior times the square root of the Beta(0.5, 1.5)
+  # share) integrates to it: the second moment is P(sd^2 > t) integrated over
+  # t, from the exact region probabilities (the half-normal scale prior leaves
+  # less than 1e-11 beyond t = 50).
   component <- parameter_catalog_resolve(catalog, "study: sd(intercept)", "mu")
   component_density <- parameter_prior_density(fit, component)
-  x <- component_density$density$x
-  y <- component_density$density$y
-  second_moment <- sum(diff(x) *
-    (head(x^2 * y, -1L) + tail(x^2 * y, -1L)) / 2)
-  expect_equal(second_moment, .25, tolerance = .03)
+  expect_identical(attr(component_density, "adaptive_evaluation")$kind, "allocation_product")
+  expect_identical(prior_density_ordinate(component_density, 0)$behavior, "infinite")
+  second_moment <- stats::integrate(Vectorize(function(t){
+    region <- list(intervals = matrix(c(sqrt(t), Inf), 1L), indicator = function(x) x > sqrt(t))
+    as.numeric(.prior_linear_density_region_probability(component_density, region))
+  }), 0, 50, rel.tol = 1e-8)$value
+  expect_equal(second_moment, .25, tolerance = 1e-6)
 })
 
 
@@ -3209,10 +3212,10 @@ test_that("shared-gate proportions use their declared conditional Dirichlet prio
   # Independently gated totals and component SDs: the realized total SD is
   # sd * sqrt(g1 w + g2 (1 - w)) and the study SD sd * sqrt(w) * g1, with
   # sd ~ gamma(2, 2), w ~ Beta(2, 3) and gates g ~ Bernoulli(1/2). The atoms
-  # at 0 (all gates off: 1/4; study gate off: 1/2) are exact; the continuous
-  # parts are product grids (plotting densities without provenance), checked
-  # against the Monte Carlo distribution function within 4 MC SD plus 1e-3
-  # for the product grids (observed below 8e-4).
+  # at 0 (all gates off: 1/4; study gate off: 1/2) are exact, and so are the
+  # continuous parts (the allocation product measure): their distribution
+  # functions (exact region probabilities) are checked against the Monte
+  # Carlo distribution function within 4 MC SD.
   set.seed(2)
   n <- 2e5
   scale_draws <- stats::rgamma(n, 2, 2)
@@ -3227,16 +3230,6 @@ test_that("shared-gate proportions use their declared conditional Dirichlet prio
     "study: sd(intercept)" = list(draws = study_sd, zero = .5),
     "study: var(intercept)" = list(draws = study_sd^2, zero = .5)
   )
-  grid_cdf <- function(density, value){
-    x <- density$density$x
-    y <- density$density$y
-    inside <- x <= value
-    x_value <- c(x[inside], value)
-    y_value <- c(y[inside], stats::approx(x, y, value)$y)
-    trapezoid <- function(x, y) sum(diff(x) * (utils::head(y, -1L) + utils::tail(y, -1L)) / 2)
-    sum(density$points$p[density$points$x <= value]) +
-      density$density$mass * trapezoid(x_value, y_value) / trapezoid(x, y)
-  }
   for(name in names(references)){
     density <- parameter_prior_density(
       independent, parameter_catalog_resolve(parameter_catalog(independent), name, "mu")
@@ -3244,11 +3237,14 @@ test_that("shared-gate proportions use their declared conditional Dirichlet prio
     expect_s3_class(density, "prior_linear_density")
     expect_equal(.prior_linear_density_point_mass(density, 0), references[[name]]$zero,
                  tolerance = 1e-12, info = name)
-    expect_null(attr(density, "adaptive_evaluation", exact = TRUE))
+    expect_identical(attr(density, "adaptive_evaluation", exact = TRUE)$kind,
+                     "allocation_product")
     for(value in c(.1, .3, .6, 1, 2)){
       reference <- mean(references[[name]]$draws <= value)
-      expect_lte(abs(grid_cdf(density, value) - reference),
-                 4 * sqrt(reference * (1 - reference) / n) + 1e-3)
+      region <- list(intervals = matrix(c(-Inf, value), 1L), indicator = function(x) x <= value)
+      expect_lte(abs(as.numeric(.prior_linear_density_region_probability(density, region)) - reference),
+                 4 * sqrt(reference * (1 - reference) / n))
+      expect_true(prior_density_ordinate(density, value)$exact)
     }
   }
 

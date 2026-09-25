@@ -1057,3 +1057,315 @@ test_that("raw group rows require their group level labels", {
     fixed = TRUE
   )
 })
+
+# A fit of an allocation over random intercepts of 'study', 'drug' (and
+# 'site') with scale prior 'sd', Dirichlet 'alpha' and optional inclusion
+# gates; the draws only name the monitored coordinates.
+.allocation_prior_fit <- function(sd, alpha, inclusion = NULL){
+
+  terms <- c("study", "drug", "site")[seq_along(alpha)]
+  data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2")),
+    drug  = factor(c("a", "b", "a", "b")),
+    site  = factor(c("x", "y", "y", "x"))
+  )
+  formula <- stats::as.formula(paste(
+    "~ 1 +",
+    paste0("random(1 | ", terms, ", name = '", terms, "', covariance = 'diag')",
+           collapse = " + ")
+  ))
+  formula_result <- JAGS_formula(
+    formula = formula,
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name = "allocation",
+        terms = stats::setNames(terms, terms),
+        sd = sd,
+        weights = prior("dirichlet", list(alpha = alpha)),
+        inclusion = inclusion
+      )
+    )
+  )
+  allocation <- formula_result$formula_design$random_allocations[[1L]]
+  gates <- vapply(allocation$inclusion, `[[`, character(1), "indicator_name")
+  columns <- c(
+    allocation$source_node,
+    if(is.prior.mixture(sd)) paste0(allocation$source_node, "_indicator"),
+    paste0(allocation$weight_name, "[", seq_along(alpha), "]"),
+    gates
+  )
+  samples <- matrix(1 / length(alpha), nrow = 4L, ncol = length(columns),
+                    dimnames = list(NULL, columns))
+  samples[, allocation$source_node] <- 1
+  samples[, gates] <- 1
+  if(is.prior.mixture(sd)){
+    samples[, paste0(allocation$source_node, "_indicator")] <- 1
+  }
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attach_test_parameter_map(fit)
+}
+
+# The fitted model's generative process of the allocated SDs (component i:
+# T g_i sqrt(w_i); total: T sqrt(sum_j g_j w_j)) with w ~ Dirichlet(alpha)
+# over all components.
+.allocation_prior_draws <- function(n, draw_sd, alpha, gate_probability){
+
+  eta <- matrix(stats::rgamma(n * length(alpha), shape = rep(alpha, each = n)),
+                nrow = n)
+  w <- eta / rowSums(eta)
+  g <- matrix(stats::rbinom(n * length(alpha), 1, rep(gate_probability, each = n)),
+              nrow = n)
+  scale <- draw_sd(n)
+  list(
+    components = scale * g * sqrt(w),
+    total      = scale * sqrt(rowSums(g * w)),
+    gates      = g
+  )
+}
+
+# Bin probabilities of a prior density (its region route) against draws of the
+# generative process: each within 4 binomial standard errors; the atom at 0
+# as well.
+.expect_allocation_bins <- function(density, draws, edges, info){
+
+  n <- length(draws)
+  model_zero <- sum(density$points$p[density$points$x == 0])
+  zero_se <- sqrt(max(model_zero * (1 - model_zero), 1 / n) / n)
+  expect_lte(abs(mean(draws == 0) - model_zero), 4 * zero_se)
+  for(k in seq_len(length(edges) - 1L)){
+    lower <- edges[k]
+    upper <- edges[k + 1L]
+    region <- list(
+      intervals = matrix(c(lower, upper), 1L),
+      indicator = function(x) x > lower & x <= upper
+    )
+    probability <- as.numeric(BayesTools:::.prior_linear_density_region_probability(density, region))
+    se <- sqrt(probability * (1 - probability) / n)
+    expect_lte(abs(mean(draws > lower & draws <= upper) - probability), 4 * se)
+  }
+}
+
+test_that("allocation-derived SDs, variances and totals have exact prior densities", {
+
+  skip_if_not_installed("runjags")
+
+  # the structure of RoBMA's BMA.mv_random_components: a two-component
+  # allocation with Dirichlet(1, 1) weights, both components gated with
+  # probability 1/2, and the scale prior 0.6 HN(0.25) + 0.4 HN(0.75)
+  scale_prior <- prior_mixture(list(
+    prior("normal", list(0, .25), list(0, Inf), prior_weights = 3),
+    prior("normal", list(0, .75), list(0, Inf), prior_weights = 2)
+  ))
+  fit <- .allocation_prior_fit(
+    sd = scale_prior,
+    alpha = c(1, 1),
+    inclusion = list(study = prior("spike", list(.5)), drug = prior("spike", list(.5)))
+  )
+  catalog <- parameter_catalog(fit)
+  density_of <- function(name, conditional = FALSE){
+    BayesTools:::.bt_parameter_prior_density_quantity(
+      fit, parameter_catalog_resolve(catalog, name), n_grid = 1024L,
+      tail_prob = BayesTools:::.prior_linear_density_tail_prob(),
+      conditional = conditional
+    )
+  }
+  # model formulas with an independent quadrature: the component SD is
+  # (1/2) h(y) and the total (1/4) f_T(y) + (1/2) h(y), where
+  # h(y) = int_0^1 f_T(y / sqrt(s)) / sqrt(s) ds (the Beta(1, 1) share)
+  f_T <- function(y) .6 * 2 * stats::dnorm(y, 0, .25) + .4 * 2 * stats::dnorm(y, 0, .75)
+  h <- function(y){
+    stats::integrate(function(s) f_T(y / sqrt(s)) / sqrt(s), 0, 1, rel.tol = 1e-13)$value
+  }
+  for(name in c("(mu) study: sd(intercept)", "(mu) drug: sd(intercept)")){
+    density <- density_of(name)
+    expect_identical(attr(density, "adaptive_evaluation")$kind, "allocation_product")
+    expect_equal(density$points$p[density$points$x == 0], .5, tolerance = 1e-12)
+    for(y in c(1e-3, .06, .3, 1.5)){
+      ordinate <- prior_density_ordinate(density, y)
+      expect_true(ordinate$exact)
+      expect_equal(exp(ordinate$log_density), h(y) / 2, tolerance = 1e-8)
+    }
+  }
+  # RoBMA's fit gives 1.7780 and 2.3492 at 0.06 (MC 1.7746, se 0.0105)
+  expect_equal(exp(prior_density_ordinate(density_of("(mu) study: sd(intercept)"), .06)$log_density),
+               1.7780422878, tolerance = 1e-9)
+  total <- density_of("(mu) allocation: sd_total")
+  expect_equal(total$points$p[total$points$x == 0], .25, tolerance = 1e-12)
+  expect_equal(exp(prior_density_ordinate(total, .06)$log_density),
+               f_T(.06) / 4 + h(.06) / 2, tolerance = 1e-8)
+  expect_equal(exp(prior_density_ordinate(total, .06)$log_density), 2.3492269474, tolerance = 1e-9)
+  # variances by the Jacobian: f_V(v) = f(sqrt(v)) / (2 sqrt(v))
+  variance <- density_of("(mu) study: var(intercept)")
+  expect_equal(exp(prior_density_ordinate(variance, .0036)$log_density),
+               h(.06) / 2 / (2 * .06), tolerance = 1e-8)
+  expect_true(prior_density_ordinate(variance, .0036)$exact)
+  var_total <- density_of("(mu) allocation: var_total")
+  expect_equal(exp(prior_density_ordinate(var_total, .0036)$log_density),
+               (f_T(.06) / 4 + h(.06) / 2) / (2 * .06), tolerance = 1e-8)
+  # the atoms keep their class at 0 with the continuous part's behavior
+  at_zero <- prior_density_ordinate(variance, 0)
+  expect_identical(at_zero$behavior, "point_mass")
+  expect_identical(at_zero$provenance$continuous_behavior, "infinite")
+  expect_identical(prior_density_ordinate(total, 0)$provenance$continuous_behavior, "regular")
+  # conditional on the inclusion event the gate atoms drop out
+  included <- density_of("(mu) study: sd(intercept)", conditional = TRUE)
+  expect_identical(nrow(included$points), 0L)
+  expect_equal(exp(prior_density_ordinate(included, .06)$log_density), h(.06), tolerance = 1e-8)
+  total_included <- density_of("(mu) allocation: sd_total", conditional = TRUE)
+  expect_equal(exp(prior_density_ordinate(total_included, .06)$log_density),
+               (f_T(.06) / 4 + h(.06) / 2) / .75, tolerance = 1e-8)
+
+  # bin probabilities against 1e6 draws of the generative process
+  set.seed(20260925)
+  draw_T <- function(n){
+    abs(stats::rnorm(n, 0, ifelse(stats::runif(n) < .6, .25, .75)))
+  }
+  draws <- .allocation_prior_draws(1e6, draw_T, c(1, 1), c(.5, .5))
+  edges <- c(0, .01, .03, .06, .12, .25, .5, 1, Inf)
+  .expect_allocation_bins(density_of("(mu) study: sd(intercept)"), draws$components[, 1L], edges)
+  .expect_allocation_bins(density_of("(mu) drug: sd(intercept)"), draws$components[, 2L], edges)
+  .expect_allocation_bins(total, draws$total, edges)
+  .expect_allocation_bins(variance, draws$components[, 1L]^2, edges^2)
+  .expect_allocation_bins(var_total, draws$total^2, edges^2)
+  .expect_allocation_bins(included, draws$components[draws$gates[, 1L] == 1, 1L], edges)
+  .expect_allocation_bins(total_included, draws$total[rowSums(draws$gates) > 0], edges)
+})
+
+test_that("allocation prior densities cover partial sets, ungated components and mean-variance shares", {
+
+  skip_if_not_installed("runjags")
+
+  # three components with Dirichlet(1, 2, 3); study and drug gated (0.3,
+  # 0.6), site always active: the total mixes the sets {site}, {study, site},
+  # {drug, site} and the full set; T ~ gamma(2, 2)
+  fit <- .allocation_prior_fit(
+    sd = prior("gamma", list(2, 2)),
+    alpha = c(1, 2, 3),
+    inclusion = list(study = prior("spike", list(.3)), drug = prior("spike", list(.6)))
+  )
+  catalog <- parameter_catalog(fit)
+  density_of <- function(name, conditional = FALSE){
+    BayesTools:::.bt_parameter_prior_density_quantity(
+      fit, parameter_catalog_resolve(catalog, name), n_grid = 1024L,
+      tail_prob = BayesTools:::.prior_linear_density_tail_prob(),
+      conditional = conditional
+    )
+  }
+  names <- c("(mu) study: sd(intercept)", "(mu) drug: sd(intercept)",
+             "(mu) site: sd(intercept)", "(mu) allocation: sd_total")
+  densities <- lapply(names, density_of)
+  expect_equal(densities[[1L]]$points$p, .7, tolerance = 1e-12)
+  expect_equal(densities[[2L]]$points$p, .4, tolerance = 1e-12)
+  expect_identical(nrow(densities[[3L]]$points), 0L)
+  expect_identical(nrow(densities[[4L]]$points), 0L)
+  for(density in densities){
+    expect_true(prior_density_ordinate(density, .4)$exact)
+  }
+  # the total of the site-only set is T sqrt(W), W ~ Beta(3, 3) (probability
+  # 0.7 * 0.4); with the full set's T and the two other partial sets
+  f_T <- function(y) stats::dgamma(y, 2, 2)
+  h <- function(y, a, b){
+    stats::integrate(function(s) f_T(y / sqrt(s)) * stats::dbeta(s, a, b) / sqrt(s),
+                     0, 1, rel.tol = 1e-13)$value
+  }
+  expect_equal(
+    exp(prior_density_ordinate(densities[[4L]], .4)$log_density),
+    .3 * .6 * f_T(.4) + .7 * .4 * h(.4, 3, 3) + .3 * .4 * h(.4, 4, 2) +
+      .7 * .6 * h(.4, 5, 1),
+    tolerance = 1e-8
+  )
+
+  set.seed(20260926)
+  draws <- .allocation_prior_draws(1e6, function(n) stats::rgamma(n, 2, 2),
+                                   c(1, 2, 3), c(.3, .6, 1))
+  edges <- c(0, .05, .15, .3, .5, .8, 1.2, 2, Inf)
+  for(i in 1:3){
+    .expect_allocation_bins(densities[[i]], draws$components[, i], edges)
+  }
+  .expect_allocation_bins(densities[[4L]], draws$total, edges)
+  .expect_allocation_bins(density_of("(mu) allocation: var_total"), draws$total^2, edges^2)
+  .expect_allocation_bins(density_of("(mu) study: sd(intercept)", conditional = TRUE),
+                          draws$components[draws$gates[, 1L] == 1, 1L], edges)
+
+  # a mean-variance SD-component allocation: sd(x) = T sqrt(2 w_x), w_x ~
+  # Beta(3, 2) with k = K = 2
+  mean_variance <- .random_effects_mean_variance_allocation_fit()
+  selection <- parameter_catalog_resolve(parameter_catalog(mean_variance), "(mu) sd(x)", namespace = "mu")
+  density <- parameter_prior_density(mean_variance, selection)
+  expect_identical(attr(density, "adaptive_evaluation")$kind, "allocation_product")
+  expect_equal(
+    exp(prior_density_ordinate(density, .4)$log_density),
+    stats::integrate(function(s) f_T(.4 / sqrt(2 * s)) * stats::dbeta(s, 3, 2) / sqrt(2 * s),
+                     0, 1, rel.tol = 1e-13)$value,
+    tolerance = 1e-8
+  )
+  eta <- matrix(stats::rgamma(2e6, shape = rep(c(2, 3), each = 1e6)), ncol = 2L)
+  sd_x <- stats::rgamma(1e6, 2, 2) * sqrt(2 * eta[, 2L] / rowSums(eta))
+  .expect_allocation_bins(density, sd_x, edges)
+})
+
+test_that("SD components of nested allocations keep a plotting density refused for point tests", {
+
+  skip_if_not_installed("runjags")
+
+  data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2")),
+    drug  = factor(c("a", "b", "a", "b")),
+    x     = c(-1, 0, 1, 2)
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + random(1 + x | study, name = "study", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      root = random_variance_allocation(
+        name = "root", terms = c(study = "study", drug = "drug"),
+        sd = prior("gamma", list(2, 2))
+      ),
+      split = random_variance_allocation(
+        name = "split", terms = "study", target = "sd_component",
+        parent = allocation_ref("root", "study")
+      )
+    )
+  )
+  prior_list <- formula_result$prior_list
+  columns <- unique(unlist(lapply(names(prior_list), function(parameter){
+    BayesTools:::.prior_linear_prior_columns(parameter, prior_list[[parameter]])
+  })))
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(matrix(.5, 4L, length(columns),
+                                                  dimnames = list(NULL, columns)))),
+         sample = 4L),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  fit <- attach_test_parameter_map(fit)
+  catalog <- parameter_catalog(fit)
+  nested <- catalog$quantities$canonical_name[grepl("sd(x)", catalog$quantities$canonical_name, fixed = TRUE)]
+  expect_length(nested, 1L)
+  density <- parameter_prior_density(fit, parameter_catalog_resolve(catalog, nested))
+  expect_null(attr(density, "adaptive_evaluation"))
+  ordinate <- prior_density_ordinate(density, .4)
+  expect_identical(ordinate$behavior, "unknown")
+  expect_false(ordinate$exact)
+  expect_match(ordinate$reason, "nested variance allocation", fixed = TRUE)
+  status <- prior_ordinate_status(density, .4)
+  expect_identical(status$condition, "BayesTools_inexact_ordinate")
+  expect_match(status$reason, "SD component of a nested variance allocation", fixed = TRUE)
+  # the drug block, one Dirichlet share of the root, stays exact
+  drug <- parameter_prior_density(
+    fit, parameter_catalog_resolve(catalog, "(mu) drug: sd(intercept)")
+  )
+  expect_true(prior_density_ordinate(drug, .4)$exact)
+})

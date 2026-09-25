@@ -188,6 +188,19 @@ old behaviour.
   complete factor metadata that formula factor terms carry: the number and
   names of its levels, its contrast, and the design mapping its coefficients
   to the levels. `levels` is the number of levels or their names.
+- `parameter_prior_density()` gives allocated random-effect SDs, variances
+  and allocation totals (`sd_total`, `var_total`) exact prior densities: the
+  scale prior times the multiplier of the fitted model (Dirichlet weights over
+  all components of the allocation; a component SD T sqrt(k w_i) while its
+  gates are on, a total T sqrt(sum of the active w), with atoms at zero for
+  gates off or no active component), with continuous parts from the
+  one-dimensional integral of the scale prior over each Beta share margin.
+  Their ordinates are exact (point hypotheses at interior values, e.g. at a
+  component SD of 0.06, no longer stop with `BayesTools_inexact_ordinate`),
+  region probabilities integrate the same route, and plotted densities
+  evaluate it. Before, their continuous parts were numerical product grids
+  used only for plotting. SD components of nested allocations keep that grid
+  and their refusals name the reason.
 - adds `parameter_mixed_posterior(fit, selection, conditional = FALSE)`: the
   posterior draws of one catalog quantity as a mixed posterior with its
   catalog `support`, its `prior_density` from `parameter_prior_density()`,

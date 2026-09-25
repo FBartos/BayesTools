@@ -3347,6 +3347,7 @@
       arguments$weights,
       arguments$source_transforms
     ),
+    "allocation_product" = .prior_allocation_product_hull(arguments),
     "density_context_rows" = {
       weights <- arguments$weights
       if(is.null(dim(weights))){

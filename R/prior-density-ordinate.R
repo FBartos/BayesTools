@@ -2166,12 +2166,16 @@ prior_density_ordinate <- function(x, value){
   adaptive <- attr(x, "adaptive_evaluation", exact = TRUE)
   result <- .prior_density_ordinate_from_adaptive(adaptive, value)
   if(is.null(result)){
+    # a density grid without provenance; its builder may record why none
+    # exists (e.g. SD components of nested variance allocations)
+    reason <- attr(x, "provenance_unavailable", exact = TRUE)
     result <- .prior_density_ordinate_result(
       value       = value,
       behavior    = "unknown",
       log_density = .prior_density_ordinate_grid_log_density(x, value),
       exact       = FALSE,
       method      = "unsupported_provenance",
+      reason      = if(is.character(reason) && length(reason) == 1L) reason,
       provenance  = list(
         kind         = "unsupported_provenance",
         source_class = class(x)
