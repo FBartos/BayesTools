@@ -481,15 +481,21 @@ test_that("runtime cluster inputs are validated", {
 
 test_that("runtime cluster workers run without startup files and with the session's settings", {
 
-  withr::local_options(list(BayesTools.runtime_test_forwarded = "forwarded"))
-  cl <- tryCatch(
-    JAGS_runtime_cluster(2, packages = "stats",
-      options = list(BayesTools.runtime_test_given = 5)),
+  # skip only when this machine cannot start PSOCK workers at all; a failure
+  # of JAGS_runtime_cluster() itself must fail the test
+  probe <- tryCatch(
+    parallel::makePSOCKcluster(1L, rscript_args = "--vanilla",
+      setup_timeout = 10, timeout = 30),
     error = function(e) e
   )
-  if(inherits(cl, "error")){
-    skip(paste("PSOCK workers could not be started:", conditionMessage(cl)))
+  if(inherits(probe, "error")){
+    skip(paste("PSOCK workers could not be started:", conditionMessage(probe)))
   }
+  parallel::stopCluster(probe)
+
+  withr::local_options(list(BayesTools.runtime_test_forwarded = "forwarded"))
+  cl <- JAGS_runtime_cluster(2, packages = "stats",
+    options = list(BayesTools.runtime_test_given = 5))
   on.exit(JAGS_runtime_cluster_stop(cl), add = TRUE)
 
   worker <- parallel::clusterCall(cl, function(){
