@@ -356,16 +356,19 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
 .bt_label_table <- function(part, formula_prefix, simplify){
 
   if(!is.null(part$random)){
-    return(.bt_random_effect_semantic_name(
-      parameter      = part$formula_parameter,
-      owner          = part$random$owner,
-      quantity       = part$random$quantity,
-      arguments      = if(simplify){
-        part$random$display_arguments
-      }else{
-        part$random$arguments
-      },
-      formula_prefix = formula_prefix
+    return(paste0(
+      .bt_random_effect_semantic_name(
+        parameter      = part$formula_parameter,
+        owner          = part$random$owner,
+        quantity       = part$random$quantity,
+        arguments      = if(simplify){
+          part$random$display_arguments
+        }else{
+          part$random$arguments
+        },
+        formula_prefix = formula_prefix
+      ),
+      .bt_label_suffix(part)
     ))
   }
 
@@ -686,6 +689,43 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   list(coordinates = coordinates, parts = parts)
 }
 
+# Label parts of a random-effect SD prior-list entry as a whole term: the SD
+# of the random term it scales, owned by its random-effect block
+# (`(mu) id: sd(x)`). The entry is named after its formula parameter and block,
+# `<parameter>__xREx__<block>_<term>`, from the prior's own declared
+# attributes. NULL for any other prior.
+.bt_label_parts_random_term <- function(parameter, prior, formula_parameter){
+
+  block <- attr(prior, "random_factor", exact = TRUE)
+  if(!isTRUE(attr(prior, "random_sd", exact = TRUE)) ||
+     !nzchar(formula_parameter) || !is.character(block) ||
+     length(block) != 1L || is.na(block) || !nzchar(block)){
+    return(NULL)
+  }
+  stem <- paste0(formula_parameter, "__xREx__", block, "_")
+  if(!startsWith(parameter, stem) || nchar(parameter) <= nchar(stem)){
+    return(NULL)
+  }
+  owner <- attr(prior, "random_name", exact = TRUE)
+  if(!is.character(owner) || length(owner) != 1L || is.na(owner) || !nzchar(owner)){
+    owner <- block
+  }
+  components <- strsplit(substring(parameter, nchar(stem) + 1L), "__xXx__", fixed = TRUE)[[1L]]
+  term <- paste(components, collapse = ":")
+
+  .bt_label_parts(
+    components        = components,
+    formula_parameter = formula_parameter,
+    random            = list(
+      owner             = owner,
+      quantity          = "sd",
+      arguments         = term,
+      display_arguments = term
+    ),
+    selector          = parameter
+  )
+}
+
 # The formula parameter owning a prior (its 'parameter' attribute) or owning
 # mixed or marginal draws (their 'formula_parameter' draw metadata); "" for
 # any other object.
@@ -744,6 +784,10 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
 .bt_label_parts_term <- function(parameter, prior){
 
   formula_parameter <- .bt_label_formula_parameter(prior)
+  random_parts <- .bt_label_parts_random_term(parameter, prior, formula_parameter)
+  if(!is.null(random_parts)){
+    return(random_parts)
+  }
   factor_prior <- .bt_parameter_catalog_factor_prior(parameter, prior)
   if(!is.null(factor_prior)){
     components <- .bt_label_factor_components(

@@ -1287,6 +1287,30 @@ test_that("mixed columns of spike-and-slab and random-effect factor priors are n
     .label_test_legends(plot_posterior(mixed, "mu__xREx__id_g", plot_type = "ggplot")),
     list(c("b", "c"))
   )
+
+  # the random-effect SD priors are labelled as the SDs of their block's terms
+  # wherever a prior-list entry is labelled as a whole
+  sd_priors <- c("mu__xREx__id_intercept", "mu__xREx__id_g")
+  expect_true(all(sd_priors %in% names(attr(fit, "prior_list"))))
+  models <- list(list(
+    fit       = fit,
+    inference = list(m_number = 1, marglik = 0, prior_prob = 1,
+                     post_prob = 1, inclusion_BF = 1)
+  ))
+  expect_identical(
+    colnames(ensemble_summary_table(models, sd_priors))[2:3],
+    c("(mu) id: sd(intercept)", "(mu) id: sd(g)")
+  )
+  expect_identical(
+    .bt_label(
+      .bt_label_parts_update(
+        .bt_label_parts_term("mu__xREx__id_g", attr(fit, "prior_list")$mu__xREx__id_g),
+        inclusion = ""
+      ),
+      style = "table", formula_prefix = FALSE
+    ),
+    "id: sd(g) (inclusion)"
+  )
 })
 
 test_that("raw rows of LKJ primitives are rendered backend coordinates", {
