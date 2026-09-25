@@ -1105,7 +1105,7 @@ test_that("original-scale intercepts with mixture sources are classified per com
                                   prior_inclusion = prior("spike", list(.3)))
     ),
     column_names = c("mu_intercept", "mu_x"),
-    formula_scale = list(mu = list(mu_x = list(mean = 1, sd = 2)))
+    formula_scale = list(mu = formula_scale_for_test(~ x, list(x = list(mean = 1, sd = 2))))
   )
   density <- .prior_density_from_context(context, c(mu_intercept = 1))
   weights <- c(.25 * .3, .75 * .7, .75 * .3)
@@ -1162,7 +1162,7 @@ test_that("original-scale intercepts with mixture sources are classified per com
       ), is_null = c(TRUE, FALSE))
     ),
     column_names = c("mu_intercept", "mu_x"),
-    formula_scale = list(mu = list(mu_x = list(mean = 1, sd = 2)))
+    formula_scale = list(mu = formula_scale_for_test(~ x, list(x = list(mean = 1, sd = 2))))
   )
   density <- .prior_density_from_context(context, c(mu_intercept = 1))
   convolution <- function(value){
@@ -1222,7 +1222,7 @@ test_that("original-scale intercepts with mixture sources are classified per com
   context <- .prior_density_context(
     prior_list = list(mu_intercept = slab(), mu_x = slab(), mu_z = prior("t", list(0, .5, 3))),
     column_names = c("mu_intercept", "mu_x", "mu_z"),
-    formula_scale = list(mu = list(mu_x = list(mean = 1, sd = 2), mu_z = list(mean = 1, sd = 2)))
+    formula_scale = list(mu = formula_scale_for_test(~ x + z, list(x = list(mean = 1, sd = 2), z = list(mean = 1, sd = 2))))
   )
   ordinate <- prior_density_ordinate(.prior_density_from_context(context, c(mu_intercept = 1)), .1)
   expect_identical(ordinate$behavior, "unknown")

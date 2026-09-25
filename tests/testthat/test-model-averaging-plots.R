@@ -767,7 +767,7 @@ test_that("transform_scaled visual: spike prior remains atomic", {
     attr(prior_list[[i]], "parameter") <- "mu"
   }
 
-  formula_scale <- list(mu = list(mu_x1 = list(mean = 5, sd = 2)))
+  formula_scale <- list(mu = formula_scale_for_test(~ x1, list(x1 = list(mean = 5, sd = 2))))
   attr(formula_scale$mu, "log_intercept") <- FALSE
 
   posterior_samples <- cbind(
@@ -821,7 +821,7 @@ test_that("transform_scaled visual: conditional mixture prior removes spike", {
     attr(prior_list[[i]], "parameter") <- "mu"
   }
 
-  formula_scale <- list(mu = list(mu_x1 = list(mean = 5, sd = 2)))
+  formula_scale <- list(mu = formula_scale_for_test(~ x1, list(x1 = list(mean = 5, sd = 2))))
   attr(formula_scale$mu, "log_intercept") <- FALSE
 
   indicator <- sample(c(1L, 2L), size = 4000, replace = TRUE)

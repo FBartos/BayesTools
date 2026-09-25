@@ -385,29 +385,33 @@
 # For each target term T and source term S, computes M[T,S] such that:
 #   coef_orig[T] = sum over S of M[T,S] * coef_z[S]
 #
-# When the formula-scale metadata carry the fitted fixed-effect design
-# (attribute "unscale_design"), the matrix is derived from that design and
-# verified exactly (see .bt_formula_unscale_design_transform()); the columns
-# must then be fitted coefficient coordinates (callers map labelled columns to
-# their coordinates first). Formula-scale metadata without a stored design
-# pair fitted coefficient names (.build_unscale_matrix_by_names()).
+# The matrix is derived from the fitted fixed-effect design that the
+# formula-scale metadata carry (attribute "unscale_design") and verified
+# exactly (see .bt_formula_unscale_design_transform()); the columns must be
+# fitted coefficient coordinates (callers map labelled columns to their
+# coordinates first). Formula-scale metadata without the fitted design (built
+# by hand) cannot be transformed: pairing coefficient names misses the
+# contributions of terms whose coding differs from their names (for example,
+# the level slopes of `~ g + g:x` to the intercept and the levels).
 #
 # @param term_names Character vector of all term names in the posterior
 # @param formula_scale Named list with scaling info (mean, sd) for scaled predictors
 # @param prefix The parameter prefix (e.g., "mu")
-# @param require_closure Whether missing induced coefficient terms should fail.
 # @return A square transformation matrix
-.build_unscale_matrix <- function(term_names, formula_scale, prefix,
-                                  require_closure = TRUE) {
+.build_unscale_matrix <- function(term_names, formula_scale, prefix) {
 
   design_spec <- attr(formula_scale, "unscale_design", exact = TRUE)
-  if(is.null(design_spec) || !isTRUE(require_closure)){
-    return(.build_unscale_matrix_by_names(
-      term_names = term_names,
-      formula_scale = formula_scale,
-      prefix = prefix,
-      require_closure = require_closure
-    ))
+  if(is.null(design_spec)){
+    .bt_formula_transform_stop(
+      paste0(
+        "Cannot transform the coefficients of formula parameter '", prefix,
+        "' to the original predictor scale: 'formula_scale' does not carry ",
+        "the fitted design of the formula. Use the 'formula_scale' attribute ",
+        "of the fitted model (attr(fit, \"formula_scale\")), which carries it."
+      ),
+      parameter = prefix,
+      reason    = "missing_fitted_design"
+    )
   }
   if(!.bt_formula_unscale_design_columns(design_spec, term_names, prefix)){
     stop(
@@ -442,10 +446,10 @@
 # where extra = S_scaled \ T_scaled
 #
 # The pairing assumes that column k of an interaction with a factor is coded
-# like column k of the lower-order factor term. Fixed-effect transforms of
-# fitted formulas are verified against the fitted design instead; this
-# name-based map is used directly only for covariance-space random-effect SD
-# transforms and for formula-scale metadata without a stored design.
+# like column k of the lower-order factor term. Fixed-effect transforms are
+# derived from the fitted design (.build_unscale_matrix()); this name-based map
+# is used only for covariance-space random-effect SD transforms and as the
+# first candidate that the design verification accepts or rejects.
 #
 # @param require_closure Whether missing induced coefficient terms should fail.
 #   Random-effect SD transforms operate in covariance space and set this to FALSE.

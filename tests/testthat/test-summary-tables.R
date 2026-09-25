@@ -438,35 +438,27 @@ test_that("runjags_estimates_table unscales before parameter filtering", {
     nrow = 2,
     byrow = FALSE
   )
-  colnames(posterior) <- c("mu_intercept", "mu_x", "mu_a", "mu_x__xXx__a[1]")
+  colnames(posterior) <- c("mu_intercept", "mu_x", "mu_a", "mu_x__xXx__a")
 
-  factor_prior <- prior_factor_levels(
-    prior_factor("normal", list(0, 1), contrast = "treatment"),
-    c("A", "B")
+  # the priors and standardization of a fitted `~ x * a` formula, with x
+  # standardized by mean 10 and SD 2
+  formula_result <- JAGS_formula(
+    ~ x * a, "mu",
+    data.frame(
+      x = sin(seq_len(12)),
+      a = factor(rep(c("A", "B"), 6), levels = c("A", "B"))
+    ),
+    list(
+      intercept = prior("normal", list(0, 1)),
+      x         = prior("normal", list(0, 1)),
+      a         = prior_factor("normal", list(0, 1), contrast = "treatment"),
+      "x:a"     = prior_factor("normal", list(0, 1), contrast = "treatment")
+    ),
+    formula_scale = list(x = TRUE)
   )
-  attr(factor_prior, "parameter") <- "mu"
-
-  interaction_prior <- prior_factor("normal", list(0, 1), contrast = "treatment")
-  attr(interaction_prior, "levels") <- 2
-  attr(interaction_prior, "level_names") <- list(a = c("A", "B"))
-  attr(interaction_prior, "interaction") <- TRUE
-  attr(interaction_prior, "interaction_terms") <- c("x", "a")
-  attr(interaction_prior, "term_components") <- c("x", "a")
-  attr(interaction_prior, "factor_terms") <- "a"
-  attr(interaction_prior, "factor_contrasts") <- c(a = "contr.treatment")
-  attr(interaction_prior, "factor_design") <- stats::contr.treatment(c("A", "B"))
-  attr(interaction_prior, "factor_cell_names") <- c("A", "B")
-  attr(interaction_prior, "parameter") <- "mu"
-
-  prior_list <- list(
-    mu_intercept = prior("normal", list(0, 1)),
-    mu_x = prior("normal", list(0, 1)),
-    mu_a = factor_prior,
-    mu_x__xXx__a = interaction_prior
-  )
-  for(parameter in c("mu_intercept", "mu_x")){
-    attr(prior_list[[parameter]], "parameter") <- "mu"
-  }
+  prior_list <- formula_result$prior_list
+  formula_scale <- formula_result$formula_scale
+  formula_scale$mu_x <- list(mean = 10, sd = 2)
 
   fit <- list(
     mcmc = coda::mcmc.list(coda::mcmc(posterior)),
@@ -475,7 +467,7 @@ test_that("runjags_estimates_table unscales before parameter filtering", {
   )
   class(fit) <- c("runjags", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
-  attr(fit, "formula_scale") <- list(mu = list(mu_x = list(mean = 10, sd = 2)))
+  attr(fit, "formula_scale") <- list(mu = formula_scale)
   fit <- attach_test_parameter_map(
     fit,
     monitor_names = colnames(posterior)
@@ -488,7 +480,7 @@ test_that("runjags_estimates_table unscales before parameter filtering", {
     formula_prefix = FALSE,
     return_samples = TRUE
   ))
-  expected <- posterior[, "mu_a"] - (posterior[, "mu_x__xXx__a[1]"] / 2) * 10
+  expected <- posterior[, "mu_a"] - (posterior[, "mu_x__xXx__a"] / 2) * 10
 
   expect_equal(as.numeric(samples[, "a[B]"]), expected, tolerance = 1e-10)
   expect_false("x:a[B]" %in% colnames(samples))

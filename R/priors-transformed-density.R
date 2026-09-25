@@ -93,8 +93,11 @@
 #' @param prior_list named list of prior distributions.
 #' @param column_names character vector of coefficient column names defining the
 #' fitted parameter space.
-#' @param formula_scale optional nested formula-scale metadata, in the same shape
-#' as \code{attr(fit, "formula_scale")}.
+#' @param formula_scale optional nested formula-scale metadata: the
+#' \code{formula_scale} attribute of the fitted model
+#' (\code{attr(fit, "formula_scale")}), which carries the fitted design of each
+#' formula. Standardization information without the fitted design stops with a
+#' \code{BayesTools_formula_transform_unavailable} error.
 #' @param parameter coefficient name to plot.
 #' @param n_points number of plotting points. A prior density that needs
 #' numerical integration (a Gaussian convolution, a scale mixture, or a sum of

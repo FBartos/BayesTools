@@ -138,8 +138,11 @@ predictions at the stated predictor values, which do not depend on the
 standardization, and are not changed. Defaults to \code{FALSE}.}
 
 \item{formula_scale}{named list containing standardization information
-(mean and sd) for each standardized predictor. Required when
-\code{transform_scaled = TRUE} for ensemble/marginal tables. For
+(mean and sd) for each standardized predictor, together with the fitted
+design of each formula: the \code{formula_scale} attribute of the fitted
+model. Required when \code{transform_scaled = TRUE} for ensemble/marginal
+tables; standardization information without the fitted design stops with a
+\code{BayesTools_formula_transform_unavailable} error. For
 \code{runjags_estimates_table}, this is automatically extracted from
 the fit object's \code{formula_scale} attribute.}
 

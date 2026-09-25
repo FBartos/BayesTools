@@ -128,7 +128,7 @@ test_that("conditional bias plots restore omitted structural scalar values", {
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- list(mu_intercept = prior("point", list(0)), mu_x = slope_prior)
-  attr(fit, "formula_scale") <- list(mu = list(mu_x = list(mean = 5, sd = 2)))
+  attr(fit, "formula_scale") <- list(mu = formula_scale_for_test(~ x, list(x = list(mean = 5, sd = 2))))
   fit <- attach_test_parameter_map(fit)
   fit <- BayesTools:::.bt_attach_parameter_map(fit, monitor_names = colnames(posterior))
   as_mixed_posteriors(fit, c("mu_intercept", "mu_x"), transform_scaled = TRUE)

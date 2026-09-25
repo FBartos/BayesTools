@@ -108,9 +108,12 @@ display coordinates, unit latent variables, realized group coefficients, and
 covariance parameters.
 
 Scaling changes must update design metadata, posterior transformation, prior
-transformation, prediction, summaries, and tests together. Do not infer an
-unscaling map from sampled values or parameter-name coincidences when the
-structural formula metadata is available.
+transformation, prediction, summaries, and tests together. Fixed-coefficient
+unscaling is derived only from the fitted design that `formula_scale` carries
+(`unscale_design`); `formula_scale` without it stops with
+`BayesTools_formula_transform_unavailable`. Never infer an unscaling map from
+sampled values or parameter-name coincidences; tests build `formula_scale`
+through `JAGS_formula()` (see `formula_scale_for_test()`).
 
 `formula_scale` centers every scaled predictor, also in terms without a free
 intercept (maintainer decision): the model is specified on the standardized

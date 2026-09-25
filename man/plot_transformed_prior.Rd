@@ -25,8 +25,11 @@ plot_transformed_prior(
 \item{column_names}{character vector of coefficient column names defining the
 fitted parameter space.}
 
-\item{formula_scale}{optional nested formula-scale metadata, in the same shape
-as \code{attr(fit, "formula_scale")}.}
+\item{formula_scale}{optional nested formula-scale metadata: the
+\code{formula_scale} attribute of the fitted model
+(\code{attr(fit, "formula_scale")}), which carries the fitted design of each
+formula. Standardization information without the fitted design stops with a
+\code{BayesTools_formula_transform_unavailable} error.}
 
 \item{parameter}{coefficient name to plot.}
 

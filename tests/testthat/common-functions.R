@@ -59,6 +59,53 @@ contract_test_backend_fit <- function(fit) {
   BayesTools:::.bt_attach_fit_contract(fit)
 }
 
+# The formula_scale of one formula parameter as a fitted model stores it: the
+# standardization of each predictor in 'scale' (a named list of
+# list(mean, sd)) together with the fitted design of 'formula', which
+# original-scale transforms require. Formulas of continuous predictors get
+# placeholder data; priors default to normal coefficients and treatment-coded
+# factor terms ('data' and 'prior_list' as for JAGS_formula()).
+formula_scale_for_test <- function(formula, scale, data = NULL,
+                                   prior_list = NULL, parameter = "mu") {
+  if (is.null(data)) {
+    variables <- all.vars(formula)
+    data <- as.data.frame(stats::setNames(
+      lapply(seq_along(variables), function(i) sin(seq_len(24) * i) + i),
+      variables
+    ))
+  }
+  if (is.null(prior_list)) {
+    terms_object <- stats::terms(formula)
+    labels <- attr(terms_object, "term.labels")
+    factors <- names(data)[vapply(data, is.factor, logical(1))]
+    prior_list <- stats::setNames(lapply(labels, function(label) {
+      if (any(strsplit(label, ":", fixed = TRUE)[[1L]] %in% factors)) {
+        prior_factor("normal", list(0, 1), contrast = "treatment")
+      } else {
+        prior("normal", list(0, 1))
+      }
+    }), labels)
+    if (attr(terms_object, "intercept") == 1L) {
+      prior_list <- c(list(intercept = prior("normal", list(0, 1))), prior_list)
+    }
+  }
+  result <- JAGS_formula(
+    formula       = formula,
+    parameter     = parameter,
+    data          = data,
+    prior_list    = prior_list,
+    formula_scale = stats::setNames(rep(list(TRUE), length(scale)), names(scale))
+  )
+  out <- result$formula_scale
+  for (predictor in names(scale)) {
+    out[[paste0(parameter, "_", predictor)]] <- list(
+      mean = scale[[predictor]][["mean"]],
+      sd   = scale[[predictor]][["sd"]]
+    )
+  }
+  out
+}
+
 # Zero draws for the prior-list coordinates that a mock posterior does not
 # monitor, so that the fitted object's parameter map is complete.
 complete_test_posterior <- function(posterior, prior_list) {

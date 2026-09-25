@@ -2177,7 +2177,7 @@ test_that("row-wise prior densities preserve bitwise-distinct design rows", {
 
 test_that("conditional log-intercept prior densities mix the conditioned models", {
 
-  formula_scale <- list(mu = list(mu_x = list(mean = 5, sd = 2)))
+  formula_scale <- list(mu = formula_scale_for_test(~ x, list(x = list(mean = 5, sd = 2))))
   attr(formula_scale$mu, "log_intercept") <- TRUE
   slab <- prior("normal", list(0, 1))
   prior_list <- list(
@@ -2244,7 +2244,7 @@ test_that("plot_transformed_prior exposes transformed prior plotting as a public
       is_null = c(TRUE, FALSE)
     )
   )
-  formula_scale <- list(mu = list(mu_x = list(mean = 5, sd = 2)))
+  formula_scale <- list(mu = formula_scale_for_test(~ x, list(x = list(mean = 5, sd = 2))))
   attr(formula_scale$mu, "log_intercept") <- FALSE
 
   plot <- plot_transformed_prior(
@@ -2321,7 +2321,7 @@ test_that("plot_transformed_prior draws raw coefficients without multiply_by", {
     mu_x         = x_prior,
     sigma        = prior("lognormal", list(0, .5))
   )
-  formula_scale <- list(mu = list(mu_x = list(mean = 3, sd = 2)))
+  formula_scale <- list(mu = formula_scale_for_test(~ x, list(x = list(mean = 3, sd = 2))))
   attr(formula_scale$mu, "log_intercept") <- FALSE
   columns <- c("mu_intercept", "mu_x", "sigma")
 

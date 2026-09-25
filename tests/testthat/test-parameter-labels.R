@@ -1426,3 +1426,53 @@ test_that("semantic tables omit the allocation shares of ordered-factor priors",
     c(expected, shares)
   )
 })
+
+test_that("original-scale transforms require the fitted design of the formula", {
+
+  set.seed(11)
+  data <- data.frame(
+    g = factor(rep(c("1", "2", "3"), 8), levels = c("1", "2", "3")),
+    x = stats::rnorm(24, 3, 2)
+  )
+  fit <- .label_test_fit(~ g + g:x, data, list(
+    intercept = prior("normal", list(0, 1)),
+    g         = .label_test_factor_prior("treatment"),
+    "g:x"     = .label_test_factor_prior("independent")
+  ), formula_scale = list(x = TRUE))
+  mixed <- as_mixed_posteriors(fit, parameters = names(attr(fit, "prior_list")))
+
+  # the same standardization information, without the fitted design
+  formula_scale <- attr(fit, "formula_scale")
+  hand_built <- list(mu = list(mu_x = list(
+    mean = formula_scale$mu$mu_x$mean,
+    sd   = formula_scale$mu$mu_x$sd
+  )))
+  message <- paste0(
+    "Cannot transform the coefficients of formula parameter 'mu' to the ",
+    "original predictor scale: 'formula_scale' does not carry the fitted ",
+    "design of the formula. Use the 'formula_scale' attribute of the fitted ",
+    "model (attr(fit, \"formula_scale\")), which carries it."
+  )
+  expect_error(
+    ensemble_estimates_table(mixed, parameters = names(mixed),
+                             transform_scaled = TRUE, formula_scale = hand_built),
+    class = "BayesTools_formula_transform_unavailable"
+  )
+  expect_error(
+    ensemble_estimates_table(mixed, parameters = names(mixed),
+                             transform_scaled = TRUE, formula_scale = hand_built),
+    message,
+    fixed = TRUE
+  )
+  draws <- as.matrix(fit$mcmc)
+  expect_error(
+    .bt_transform_scale_posterior(draws, hand_built),
+    class = "BayesTools_formula_transform_unavailable"
+  )
+  # the fitted object's formula_scale carries the design
+  expect_s3_class(
+    ensemble_estimates_table(mixed, parameters = names(mixed),
+                             transform_scaled = TRUE, formula_scale = formula_scale),
+    "BayesTools_table"
+  )
+})

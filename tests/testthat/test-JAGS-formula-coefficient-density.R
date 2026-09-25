@@ -255,16 +255,16 @@ test_that("JAGS_formula formula-scale metadata carry the fitted design", {
     tolerance = 1e-12
   )
 
-  # Formula-scale metadata stored before the design was attached keep the
-  # name-paired map without error.
+  # Formula-scale metadata without the fitted design are refused: pairing
+  # coefficient names would miss the contributions of the level slopes.
   legacy_scale <- scaled$formula_scale
   attr(legacy_scale, "unscale_design") <- NULL
-  expect_identical(
+  error <- tryCatch(
     BayesTools:::.bt_transform_scale_posterior(coefficients, formula_scale = list(mu = legacy_scale)),
-    coefficients %*% t(.build_unscale_matrix_by_names(
-      source_names, legacy_scale, "mu", require_closure = FALSE
-    ))
+    error = identity
   )
+  expect_s3_class(error, "BayesTools_formula_transform_unavailable")
+  expect_identical(error$reason, "missing_fitted_design")
 })
 
 test_that("design-derived unscaling keeps the coding of logical predictors", {
@@ -495,16 +495,24 @@ test_that("design-derived unscaling applies only to fitted coefficient coordinat
   }
 
   # The fitted coefficient coordinates use the verified design map, which
-  # equals the name-paired map for this crossed formula.
+  # equals the name-paired map for this crossed formula; without the design
+  # the coefficients are not transformed.
+  source_names <- .formula_coefficient_source_names(formula_result)
   coefficients <- matrix(
     c(1, 0.5, 0.2, -0.3, 0.4, -0.1),
     nrow = 1,
-    dimnames = list(NULL, .formula_coefficient_source_names(formula_result))
+    dimnames = list(NULL, source_names)
   )
   expect_equal(
     BayesTools:::.bt_transform_scale_posterior(coefficients, formula_scale = with_design),
-    BayesTools:::.bt_transform_scale_posterior(coefficients, formula_scale = without_design),
+    coefficients %*% t(BayesTools:::.build_unscale_matrix_by_names(
+      source_names, without_design$mu, "mu"
+    )),
     tolerance = 1e-14
+  )
+  expect_error(
+    BayesTools:::.bt_transform_scale_posterior(coefficients, formula_scale = without_design),
+    class = "BayesTools_formula_transform_unavailable"
   )
 })
 

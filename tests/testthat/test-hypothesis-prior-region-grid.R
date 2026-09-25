@@ -363,7 +363,7 @@ test_that("Gaussian-convolution region probabilities use the conditional-normal 
   context <- .prior_density_context(
     prior_list = list(mu_intercept = intercept, mu_x = slopes$normal_cauchy),
     column_names = c("mu_intercept", "mu_x"),
-    formula_scale = list(mu = list(mu_x = list(mean = 1, sd = 2)))
+    formula_scale = list(mu = formula_scale_for_test(~ x, list(x = list(mean = 1, sd = 2))))
   )
   expect_region_probabilities(
     .prior_density_from_context(context, c(mu_intercept = 1)),
