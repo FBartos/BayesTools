@@ -348,7 +348,7 @@ test_that("Factor prior models fit correctly", {
   priors_orthonormal <- list(
     p1 = prior_factor("mnorm", list(mean = 0, sd = 1), contrast = "orthonormal")
   )
-  attr(priors_orthonormal[[1]], "levels") <- 3
+  priors_orthonormal[[1]] <- prior_factor_levels(priors_orthonormal[[1]], 3)
 
   model_syntax_orth <- "model{}"
 
@@ -364,7 +364,7 @@ test_that("Factor prior models fit correctly", {
   priors_treatment <- list(
     p1 = prior_factor("beta", list(alpha = 1, beta = 1), contrast = "treatment")
   )
-  attr(priors_treatment[[1]], "levels") <- 2
+  priors_treatment[[1]] <- prior_factor_levels(priors_treatment[[1]], 2)
 
   model_syntax_treat <- "model{}"
 
@@ -380,7 +380,7 @@ test_that("Factor prior models fit correctly", {
   priors_independent <- list(
     p1 = prior_factor("gamma", list(shape = 2, rate = 3), contrast = "independent")
   )
-  attr(priors_independent[[1]], "levels") <- 3
+  priors_independent[[1]] <- prior_factor_levels(priors_independent[[1]], 3)
 
   model_syntax_ind <- "model{}"
 
@@ -396,7 +396,7 @@ test_that("Factor prior models fit correctly", {
   priors_meandif <- list(
     p1 = prior_factor("mnorm", list(mean = 0, sd = 0.5), contrast = "meandif")
   )
-  attr(priors_meandif[[1]], "levels") <- 3
+  priors_meandif[[1]] <- prior_factor_levels(priors_meandif[[1]], 3)
 
   model_syntax_md <- "model{}"
 
@@ -637,12 +637,9 @@ test_that("Spike-and-slab prior models fit correctly", {
                                   prior_inclusion = prior("beta", list(1,1)))
   )
 
-  # Set levels attribute on the factor prior component within the spike_and_slab mixture
-  # The spike_and_slab prior contains multiple components; we need to set levels on the factor component
-  components <- attr(priors_spike_slab_factor$beta, "components")
-  alternative_idx <- which(components == "alternative")
-  # Set to 3 levels for a 3-level factor (A, B, C)
-  attr(priors_spike_slab_factor$beta[[alternative_idx]], "levels") <- 3
+  # Set 3 levels (a 3-level factor) on the factor components of the
+  # spike-and-slab prior
+  priors_spike_slab_factor$beta <- prior_factor_levels(priors_spike_slab_factor$beta, 3)
 
   model_syntax_ss2 <- "model{}"
 
@@ -4638,7 +4635,7 @@ test_that("JAGS formula expressions replay sampled indexed parameters", {
       contrast = "independent"
     )
   )
-  attr(prior_list$mu_id, "levels") <- 2L
+  prior_list$mu_id <- prior_factor_levels(prior_list$mu_id, 2L)
   formula <- ~ expression(mu_id[mapping_id[i]])
   fit <- JAGS_fit(
     model_syntax = paste0(

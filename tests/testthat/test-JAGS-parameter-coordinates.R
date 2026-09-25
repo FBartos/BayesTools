@@ -603,7 +603,7 @@ test_that("structural coordinates retain exact scalar and vector values", {
     list(location = -2),
     contrast = "treatment"
   )
-  attr(factor_prior, "levels") <- 3L
+  factor_prior <- prior_factor_levels(factor_prior, 3L)
   coordinates <- build_test_parameter_coordinates(
     columns = "theta",
     prior_list = list(

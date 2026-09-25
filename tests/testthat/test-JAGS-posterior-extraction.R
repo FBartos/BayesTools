@@ -438,11 +438,12 @@ test_that(".rename_factor_levels renames treatment factors", {
   model_samples <- matrix(rnorm(300), ncol = 3)
   colnames(model_samples) <- c("group[1]", "group[2]", "group[3]")
 
-  # Create a factor prior with levels attribute (as would be set by JAGS_formula)
-  prior_obj <- prior_factor("normal", list(0, 1), contrast = "treatment")
-  attr(prior_obj, "levels") <- 4  # 4 levels total (treatment has K-1 parameters for K levels)
-  attr(prior_obj, "level_names") <- c("A", "B", "C", "D")  # Should be a vector, not a list
-  
+  # A factor prior with its levels (treatment has K-1 parameters for K levels)
+  prior_obj <- prior_factor_levels(
+    prior_factor("normal", list(0, 1), contrast = "treatment"),
+    c("A", "B", "C", "D")
+  )
+
   prior_list <- list(group = prior_obj)
 
   result <- BayesTools:::.rename_factor_levels(model_samples, prior_list)
@@ -491,8 +492,9 @@ test_that(".rename_factor_levels writes contrast coefficients with braces", {
   expect_identical(unname(renamed), unname(model_samples))
 
   # Ordinary factor priors label their levels 1..K by construction.
-  ordinary <- prior_factor("mnormal", list(0, 1), contrast = "meandif")
-  attr(ordinary, "levels") <- 3L
+  ordinary <- prior_factor_levels(
+    prior_factor("mnormal", list(0, 1), contrast = "meandif"), 3L
+  )
   ordinary_samples <- matrix(
     1:4,
     nrow = 2L,
@@ -506,8 +508,9 @@ test_that(".rename_factor_levels writes contrast coefficients with braces", {
     c("p1{1}", "p1{2}")
   )
   # A two-level contrast has one unindexed coefficient.
-  two_level <- prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
-  attr(two_level, "levels") <- 2L
+  two_level <- prior_factor_levels(
+    prior_factor("mnormal", list(0, 1), contrast = "orthonormal"), 2L
+  )
   two_level_samples <- matrix(1:2, ncol = 1L, dimnames = list(NULL, "p2"))
   expect_identical(
     colnames(BayesTools:::.rename_factor_levels(
@@ -596,14 +599,21 @@ test_that(".rename_factor_levels keeps interaction level on the factor term", {
     "mu_alloc__xXx__year[2]"
   )
 
-  alloc_prior <- prior_factor("normal", list(0, 1), contrast = "independent")
-  attr(alloc_prior, "levels") <- 2
-  attr(alloc_prior, "level_names") <- c("random", "systematic")
+  alloc_prior <- prior_factor_levels(
+    prior_factor("normal", list(0, 1), contrast = "independent"),
+    c("random", "systematic")
+  )
 
+  # the factor of a factor-by-continuous term, coded by level indicators
   interaction_prior <- prior_factor("normal", list(0, 1), contrast = "independent")
   attr(interaction_prior, "levels") <- 2
-  attr(interaction_prior, "level_names") <- list(alloc = c("random", "systematic"))
   attr(interaction_prior, "interaction") <- TRUE
+  interaction_prior <- BayesTools:::.bt_factor_prior_set_design(
+    interaction_prior,
+    level_names = list(alloc = c("random", "systematic")),
+    factor_contrasts = c(alloc = "contr.independent"),
+    design = diag(2)
+  )
 
   prior_list <- list(
     mu_alloc = alloc_prior,
@@ -638,13 +648,16 @@ test_that(".rename_factor_levels handles multi-factor independent interactions",
   model_samples <- matrix(rnorm(600), ncol = 6)
   colnames(model_samples) <- paste0("mu_a__xXx__year__xXx__b[", 1:6, "]")
 
+  # one coordinate per cell of the two factors (the full cell grid)
   interaction_prior <- prior_factor("normal", list(0, 1), contrast = "independent")
   attr(interaction_prior, "levels") <- 6
-  attr(interaction_prior, "level_names") <- list(
-    a = c("a1", "a2"),
-    b = c("b1", "b2", "b3")
-  )
   attr(interaction_prior, "interaction") <- TRUE
+  interaction_prior <- BayesTools:::.bt_factor_prior_set_design(
+    interaction_prior,
+    level_names = list(a = c("a1", "a2"), b = c("b1", "b2", "b3")),
+    factor_contrasts = c(a = "contr.independent", b = "contr.independent"),
+    design = diag(6)
+  )
 
   renamed <- BayesTools:::.rename_factor_levels(
     model_samples,
@@ -681,13 +694,17 @@ test_that(".rename_factor_levels handles multi-factor treatment interactions", {
   model_samples <- matrix(rnorm(200), ncol = 2)
   colnames(model_samples) <- paste0("mu_a__xXx__year__xXx__b[", 1:2, "]")
 
+  # the treatment-by-treatment interaction: coordinates are the cells beyond
+  # both reference levels
   interaction_prior <- prior_factor("normal", list(0, 1), contrast = "treatment")
   attr(interaction_prior, "levels") <- 3
-  attr(interaction_prior, "level_names") <- list(
-    a = c("a1", "a2"),
-    b = c("b1", "b2", "b3")
-  )
   attr(interaction_prior, "interaction") <- TRUE
+  interaction_prior <- BayesTools:::.bt_factor_prior_set_design(
+    interaction_prior,
+    level_names = list(a = c("a1", "a2"), b = c("b1", "b2", "b3")),
+    factor_contrasts = c(a = "contr.treatment", b = "contr.treatment"),
+    design = kronecker(stats::contr.treatment(3), stats::contr.treatment(2))
+  )
 
   renamed <- BayesTools:::.rename_factor_levels(
     model_samples,
@@ -776,6 +793,173 @@ test_that(".rename_factor_levels distinguishes treatment random interaction desi
   )
 })
 
+
+test_that("prior_factor_levels() sets the factor metadata of formula factor terms", {
+
+  level_names <- c("low", "mid", "high")
+  data <- data.frame(f = factor(rep(level_names, 2), levels = level_names))
+  designs <- list(
+    treatment   = stats::contr.treatment(3),
+    independent = contr.independent(level_names),
+    meandif     = contr.meandif(level_names),
+    orthonormal = contr.orthonormal(level_names)
+  )
+  for(contrast in names(designs)){
+    distribution <- if(contrast %in% c("meandif", "orthonormal")) "mnormal" else "normal"
+    prior <- prior_factor(distribution, list(0, 1), contrast = contrast)
+
+    named <- prior_factor_levels(prior, level_names)
+    expect_identical(attr(named, "levels"), 3L, info = contrast)
+    expect_identical(attr(named, "level_names"), level_names, info = contrast)
+    expect_equal(attr(named, "factor_design"), unname(designs[[contrast]]),
+                 ignore_attr = TRUE, info = contrast)
+    expect_identical(attr(named, "factor_cell_names"), level_names, info = contrast)
+
+    # bound to its parameter, the prior has the design of the formula term
+    bound <- .complete_factor_metadata(named, "mu_f")
+    formula_prior <- JAGS_formula(
+      ~ f, "mu", data,
+      list(intercept = prior("normal", list(0, 1)), f = prior)
+    )$prior_list$mu_f
+    expect_equal(attr(bound, "factor_design"), attr(formula_prior, "factor_design"),
+                 ignore_attr = TRUE, info = contrast)
+    expect_identical(attr(bound, "factor_terms"), "mu_f", info = contrast)
+    expect_identical(unname(attr(bound, "factor_contrasts")),
+                     unname(attr(formula_prior, "factor_contrasts")), info = contrast)
+    expect_identical(names(attr(bound, "factor_contrasts")), "mu_f", info = contrast)
+
+    # levels given by their number are named 1..K
+    counted <- prior_factor_levels(prior, 3)
+    expect_identical(attr(counted, "level_names"), c("1", "2", "3"), info = contrast)
+    expect_identical(attr(counted, "factor_design"), attr(named, "factor_design"), info = contrast)
+  }
+
+  # the components of a spike-and-slab factor prior carry the same metadata
+  spike <- prior_factor_levels(
+    prior_spike_and_slab(prior_factor("mnormal", list(0, 1), contrast = "meandif")),
+    level_names
+  )
+  for(component in c(list(spike), as.list(spike))){
+    expect_equal(attr(component, "factor_design"), unname(designs$meandif), ignore_attr = TRUE)
+    expect_identical(attr(component, "level_names"), level_names)
+  }
+  expect_identical(
+    attr(.complete_factor_metadata(spike, "p1")[[1L]], "factor_terms"),
+    "p1"
+  )
+
+  # an ordered prior is bound to the fitted parameter's nodes
+  ordered <- prior_factor_levels(prior_ordered(prior("normal", list(0, 1))), level_names)
+  expect_no_warning(density(ordered, n_points = 11))
+  bound <- .complete_factor_metadata(ordered, "mu_o")
+  expect_identical(attr(bound, "ordered_metadata")$parameter_name, "mu_o")
+  expect_equal(attr(bound, "coefficient_dim"), 2)
+
+  expect_error(prior_factor_levels(prior("normal", list(0, 1)), 3),
+               "'prior' must be a factor prior distribution.", fixed = TRUE)
+  expect_error(prior_factor_levels(prior_factor("normal", list(0, 1), contrast = "treatment"), 1),
+               "A factor prior with 'contr.treatment' contrasts requires at least two levels.",
+               fixed = TRUE)
+  expect_identical(
+    attr(prior_factor_levels(prior_factor("normal", list(0, 1), contrast = "independent"), 1),
+         "factor_design"),
+    matrix(1)
+  )
+  expect_error(prior_factor_levels(prior_factor("normal", list(0, 1), contrast = "treatment"),
+                                   c("a", "a")),
+               "The 'levels' argument must contain unique, nonempty level names.", fixed = TRUE)
+  expect_error(prior_factor_levels(prior_factor("normal", list(0, 1), contrast = "treatment"), NA),
+               "The 'levels' argument cannot contain NA/NaN values.", fixed = TRUE)
+})
+
+test_that("factor priors without their factor levels stop instead of being counted", {
+
+  skip_if_not_installed("runjags")
+  message <- paste0(
+    "The factor prior of 'p1' has no complete factor-level metadata. Set its ",
+    "levels with 'prior_factor_levels()', or specify the factor in a formula."
+  )
+  counted <- prior_factor("mnormal", list(0, 1), contrast = "meandif")
+  attr(counted, "levels") <- 3
+  for(prior in list(counted, prior_spike_and_slab(counted))){
+    expect_error(
+      JAGS_fit("model{}", prior_list = list(p1 = prior), chains = 1,
+               adapt = 50, burnin = 50, sample = 100, seed = 1),
+      message, fixed = TRUE
+    )
+  }
+
+  # coordinate names come from the factor design, never from the number of
+  # coordinates (a treatment interaction with as many coordinates as cells was
+  # named by the full cell grid, otherwise by the grid beyond the references)
+  treatment <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  attr(treatment, "levels") <- 3
+  attr(treatment, "level_names") <- c("a", "b", "c")
+  samples <- matrix(1:4, nrow = 2, dimnames = list(NULL, c("p1[1]", "p1[2]")))
+  expect_error(.rename_factor_levels(samples, list(p1 = treatment)), message, fixed = TRUE)
+  expect_identical(
+    colnames(.rename_factor_levels(samples, list(p1 = prior_factor_levels(treatment, c("a", "b", "c"))))),
+    c("p1[b]", "p1[c]")
+  )
+})
+
+test_that("random-effect SD factor priors carry the design of their term", {
+
+  data <- data.frame(
+    g = factor(rep(c("a", "b", "c"), 4)),
+    h = factor(rep(c("u", "v"), each = 6)),
+    x = seq(-1, 1, length.out = 12),
+    id = factor(rep(1:4, each = 3))
+  )
+  sd_priors <- function(formula){
+    prior_list <- JAGS_formula(
+      formula, "mu", data, list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(
+        sd = prior("normal", list(0, 1), list(0, Inf))
+      ))
+    )$prior_list
+    prior_list <- .complete_factor_metadata_prior_list(prior_list)
+    prior_list[vapply(prior_list, is.prior.factor, logical(1))]
+  }
+  coordinate_names <- function(prior_list){
+    lapply(names(prior_list), function(parameter){
+      .factor_level_coordinate_names(
+        parameter, prior_list[[parameter]], .get_prior_factor_levels(prior_list[[parameter]])
+      )
+    })
+  }
+
+  # treatment slopes code the levels after the reference level
+  treatment <- sd_priors(~ 1 + (1 + g || id))
+  expect_equal(attr(treatment$mu__xREx__id_g, "factor_design"),
+               unname(stats::contr.treatment(3)), ignore_attr = TRUE)
+  expect_identical(coordinate_names(treatment),
+                   list(c("mu__xREx__id_g[b]", "mu__xREx__id_g[c]")))
+
+  # factor-by-continuous slopes code every level (the completion from the
+  # coordinate count failed with "invalid 'times' value" for this term)
+  by_level <- sd_priors(~ 1 + (1 + g:x || id))
+  expect_equal(attr(by_level$mu__xREx__id_g__xXx__x, "factor_design"), diag(3))
+  expect_identical(coordinate_names(by_level), list(c(
+    "mu__xREx__id_g[a]__xXx__x", "mu__xREx__id_g[b]__xXx__x", "mu__xREx__id_g[c]__xXx__x"
+  )))
+
+  # an interaction without its main effects codes every cell, one with them
+  # the cells beyond both reference levels
+  cells <- sd_priors(~ 1 + (0 + g:h || id))
+  expect_equal(attr(cells$mu__xREx__id_g__xXx__h, "factor_design"), diag(6))
+  hierarchical <- sd_priors(~ 1 + diag(0 + g * h | id))
+  expect_equal(
+    attr(hierarchical$mu__xREx__id_g__xXx__h, "factor_design"),
+    kronecker(stats::contr.treatment(2), stats::contr.treatment(3)),
+    ignore_attr = TRUE
+  )
+  expect_identical(coordinate_names(hierarchical)[[3L]],
+                   c("mu__xREx__id_g[b]__xXx__h[v]", "mu__xREx__id_g[c]__xXx__h[v]"))
+  for(prior in c(treatment, by_level, cells, hierarchical)){
+    expect_true(.bt_factor_metadata_complete(prior))
+  }
+})
 
 test_that(".format_factor_level_parameter_names rejects interaction metadata mismatch", {
 
@@ -1104,9 +1288,10 @@ test_that(".transform_factor_contrasts validates multi-factor metadata", {
 
 test_that("plain factor priors are canonicalized before mixed posterior transformation", {
 
-  factor_prior <- prior_factor("mnormal", list(0, 1), contrast = "meandif")
-  attr(factor_prior, "levels") <- 3
-  attr(factor_prior, "level_names") <- c("low", "mid", "high")
+  factor_prior <- prior_factor_levels(
+    prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+    c("low", "mid", "high")
+  )
 
   canonical_prior <- BayesTools:::.complete_factor_metadata(factor_prior, "p1")
   expect_equal(attr(canonical_prior, "factor_terms"), "p1")

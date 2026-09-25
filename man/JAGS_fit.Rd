@@ -59,7 +59,8 @@ JAGS_extend(
 
 \item{prior_list}{named list of prior distribution
 (names correspond to the parameter names) of parameters not specified within the
-\code{formula_list}}
+\code{formula_list}. Factor priors must carry their levels, set with
+\code{\link[=prior_factor_levels]{prior_factor_levels()}}.}
 
 \item{formula_list}{named list of formulas to be added to the model
 (names correspond to the parameter name created by each of the formula)}

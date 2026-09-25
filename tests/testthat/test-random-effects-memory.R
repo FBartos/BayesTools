@@ -107,10 +107,16 @@ test_that("formula design memory guard stops before the full dense allocation", 
   on.exit(.random_memory_restore_option(old_limit), add = TRUE)
   original_design <- BayesTools:::.bt_random_effect_design_matrix
   full_design_calls <- 0L
+  cell_design_calls <- 0L
   testthat::local_mocked_bindings(
     .bt_random_effect_design_matrix = function(formula, data, ...){
-      if(nrow(data) > 1L){
+      # the dense design of all 12 data rows; the SD factor prior of term 'f'
+      # evaluates its design once at the 6 level cells
+      if(nrow(data) == 12L){
         full_design_calls <<- full_design_calls + 1L
+      }else if(nrow(data) > 1L){
+        expect_identical(nrow(data), 6L)
+        cell_design_calls <<- cell_design_calls + 1L
       }
       original_design(formula = formula, data = data, ...)
     },
@@ -129,11 +135,13 @@ test_that("formula design memory guard stops before the full dense allocation", 
     fixed = TRUE
   )
   expect_equal(full_design_calls, 0L)
+  expect_equal(cell_design_calls, 0L)
 
   .random_memory_restore_option(Inf)
   expect_s3_class(.random_memory_formula()$result$formula_design,
                   "BayesTools_formula_design")
   expect_equal(full_design_calls, 1L)
+  expect_equal(cell_design_calls, 1L)
 })
 
 test_that("output guard reports the conservative peak and safer alternative", {

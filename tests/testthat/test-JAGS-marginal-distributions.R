@@ -4009,10 +4009,11 @@ test_that("linear level hypotheses treat a structurally fixed level as a constan
 
 .treatment_factor_prior_for_test <- function(sd){
 
-  treatment <- prior_factor("normal", list(0, sd), contrast = "treatment")
-  attr(treatment, "levels") <- 3
-  attr(treatment, "level_names") <- c("A", "B", "C")
-  # JAGS_fit() completes the factor metadata of fitted prior lists
+  treatment <- prior_factor_levels(
+    prior_factor("normal", list(0, sd), contrast = "treatment"),
+    c("A", "B", "C")
+  )
+  # JAGS_fit() binds the factor metadata of fitted prior lists to their names
   BayesTools:::.complete_factor_metadata_prior_list(list(mu_f = treatment))$mu_f
 }
 
@@ -4108,9 +4109,10 @@ test_that("marginal inference gives levels with a zero or infinite prior ordinat
     "Savage-Dickey Bayes factor is undefined."
   )
   ordered_prior <- function(sd){
-    total <- prior_ordered(prior("normal", list(0, sd)))
-    attr(total, "levels") <- 3
-    attr(total, "level_names") <- c("low", "mid", "high")
+    total <- prior_factor_levels(
+      prior_ordered(prior("normal", list(0, sd))),
+      c("low", "mid", "high")
+    )
     BayesTools:::.complete_factor_metadata_prior_list(list(mu_f = total))$mu_f
   }
   set.seed(5)

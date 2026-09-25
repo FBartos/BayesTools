@@ -8,7 +8,8 @@
 #' @param data list containing data to fit the model (not including data for the formulas)
 #' @param prior_list named list of prior distribution
 #' (names correspond to the parameter names) of parameters not specified within the
-#' \code{formula_list}
+#' \code{formula_list}. Factor priors must carry their levels, set with
+#' [prior_factor_levels()].
 #' @param formula_list named list of formulas to be added to the model
 #' (names correspond to the parameter name created by each of the formula)
 #' @param formula_data_list named list of data frames containing data for each formula

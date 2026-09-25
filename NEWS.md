@@ -145,6 +145,15 @@ old behaviour.
   keep the contrast, or a treatment or independent prior for one coefficient
   per level; such a term uses its own contrast, whatever the contrast of the
   factor's other terms.
+- factor priors used outside a formula, e.g., in the `prior_list` of
+  `JAGS_fit()`, must carry their factor levels, set with the new
+  `prior_factor_levels()`: replace `attr(prior, "levels") <- K` by
+  `prior <- prior_factor_levels(prior, K)` (or pass the level names).
+  `JAGS_fit()`, `as_mixed_posteriors()`, `mix_posteriors()`, and the parameter
+  catalog stop on a factor prior with only a `levels` attribute instead of
+  inferring its levels from the number of coefficients, and coefficient
+  names come from the factor design instead of choosing, by that number,
+  between all level cells and the cells after the reference levels.
 
 ### Features
 - exports `JAGS_runtime_cluster()` and `JAGS_runtime_cluster_stop()` for
@@ -163,6 +172,11 @@ old behaviour.
   which is `TRUE` only for `"precomputed"`: packages with their own posterior
   density estimators (such as qCMDE or IWMDE in RoBMA) map their method names
   to `"precomputed"` themselves.
+- adds `prior_factor_levels(prior, levels)`, which gives a factor prior
+  (including mixture and spike-and-slab factor priors and ordered priors) the
+  complete factor metadata that formula factor terms carry: the number and
+  names of its levels, its contrast, and the design mapping its coefficients
+  to the levels. `levels` is the number of levels or their names.
 - supports declared output intervals for density transformations. Wider display
   limits remain available while inverse/Jacobian evaluations and continuous
   curves stay inside the transformed support; boundary point masses are retained.
@@ -275,6 +289,11 @@ old behaviour.
 - preserves independent coefficient supports in structural dependency graphs,
   including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- random-effect SD factor priors carry the factor design of their term,
+  evaluated from the random-effect design at every level cell, and their
+  coordinates are named from it. Factor-by-continuous random slopes such as
+  `(1 + g:x || id)` now fit; completing their metadata from the coefficient
+  count stopped with "invalid 'times' value".
 - prior densities and distribution methods:
   - linear-combination prior densities, `marginal_posterior(prior_samples =
     TRUE)`, allocation margins, and `density()` of ordered priors accept priors

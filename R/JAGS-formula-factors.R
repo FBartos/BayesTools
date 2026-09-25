@@ -300,21 +300,7 @@
 
 .copy_missing_factor_metadata <- function(target, source){
 
-  metadata_names <- c(
-    "levels",
-    "coefficient_dim",
-    "level_names",
-    "interaction",
-    "interaction_terms",
-    "term_components",
-    "factor_terms",
-    "factor_contrasts",
-    "factor_design",
-    "factor_cell_names",
-    "ordered_metadata"
-  )
-
-  for(metadata_name in metadata_names){
+  for(metadata_name in .bt_factor_metadata_names){
     if(is.null(attr(target, metadata_name, exact = TRUE)) &&
        !is.null(attr(source, metadata_name, exact = TRUE))){
       attr(target, metadata_name) <- attr(source, metadata_name, exact = TRUE)
@@ -324,6 +310,12 @@
   return(target)
 }
 
+# Binds a factor prior to the parameter it is fitted as. Every factor prior
+# must carry its complete factor metadata (formula factor terms, random-effect
+# SD factor priors, and prior_factor_levels() set it); the levels of a factor
+# are never inferred from its coefficient count. A factor set outside a
+# formula is named after the parameter, and ordered priors are bound to the
+# parameter's nodes.
 .complete_factor_metadata <- function(x, parameter = NULL){
 
   if((is.prior.mixture(x) || is.prior.spike_and_slab(x)) && length(x) > 0){
@@ -335,6 +327,7 @@
     factor_components <- which(vapply(x, is.prior.factor, logical(1)))
     if(length(factor_components) > 0){
       x <- .copy_missing_factor_metadata(x, x[[factor_components[[1]]]])
+      x <- .bt_factor_prior_bind_term(x, parameter)
     }
   }
 
@@ -342,48 +335,10 @@
     return(x)
   }
 
-  level_names <- .factor_level_list(x)
-  if(is.null(level_names) || length(level_names) != 1L){
-    return(x)
+  if(!.bt_factor_metadata_complete(x)){
+    .bt_stop_incomplete_factor_metadata(parameter)
   }
-
-  factor_terms <- attr(x, "factor_terms", exact = TRUE)
-  if(is.null(factor_terms) || length(factor_terms) != 1L ||
-     anyNA(factor_terms) || !nzchar(factor_terms)){
-    factor_terms <- if(!is.null(parameter) && nzchar(parameter)){
-      parameter
-    }else{
-      ".factor"
-    }
-    attr(x, "factor_terms") <- factor_terms
-  }
-
-  contrast <- .factor_object_contrast_name(x)
-  if(is.null(contrast)){
-    return(x)
-  }
-
-  factor_contrasts <- attr(x, "factor_contrasts", exact = TRUE)
-  if(is.null(factor_contrasts)){
-    factor_contrasts <- stats::setNames(contrast, factor_terms)
-  }else{
-    factor_contrasts <- as.character(factor_contrasts)
-    if(is.null(names(factor_contrasts))){
-      names(factor_contrasts) <- factor_terms[seq_along(factor_contrasts)]
-    }
-    factor_contrasts <- factor_contrasts[factor_terms]
-    if(any(is.na(factor_contrasts))){
-      factor_contrasts[is.na(factor_contrasts)] <- contrast
-    }
-  }
-  attr(x, "factor_contrasts") <- factor_contrasts
-
-  if(is.null(attr(x, "factor_design", exact = TRUE)) ||
-     is.null(attr(x, "factor_cell_names", exact = TRUE))){
-    design_info <- .factor_term_design_from_metadata(x)
-    attr(x, "factor_design")     <- design_info[["design"]]
-    attr(x, "factor_cell_names") <- design_info[["cell_names"]]
-  }
+  x <- .bt_factor_prior_bind_term(x, parameter)
 
   if(is.prior.ordered(x)){
     x <- .bt_bind_ordered_prior_metadata(x, parameter)

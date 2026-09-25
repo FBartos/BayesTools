@@ -689,40 +689,55 @@ NULL
 }
 
 # Names of the fitted coordinates of a treatment or independent factor prior,
-# in coordinate order. A fixed formula term is named from its own design
-# metadata, i.e., from the level cell that each coordinate structurally is:
-# the slopes of the full-rank interaction in `~ g + g:x` are one coordinate per
-# level of `g`, including the first, whereas those of `~ g * x` omit the
-# reference level. Priors without a stored term design (ordinary factor priors
-# and random-effect SD priors) keep the level labels of their contrast: every
-# level for independent coding, and for treatment coding the levels after the
-# reference level, or the full cell grid of an interaction whose coordinate
-# count equals it.
+# in coordinate order, from the prior's factor design, i.e., from the level
+# cell that each coordinate structurally is: the slopes of the full-rank
+# interaction in `~ g + g:x` are one coordinate per level of `g`, including
+# the first, whereas those of `~ g * x` omit the reference level. Every factor
+# prior carries its design (formula terms, random-effect SD priors, and
+# prior_factor_levels()); the cells are never chosen by coordinate count.
 .factor_level_coordinate_names <- function(parameter, prior, n_parameters) {
 
-  display_names <- if (!is.null(attr(prior, "factor_design", exact = TRUE))) {
+  display_names <- if (.bt_is_random_effect_prior(prior)) {
+    .factor_design_coordinate_names(parameter, prior)
+  } else {
     .bt_factor_coordinate_display_names(parameter, prior)
   }
-  if (!is.null(display_names)) {
-    if (length(display_names) != n_parameters) {
-      stop(
-        "The factor design of '", parameter, "' has ", length(display_names),
-        " coefficient columns, but the samples contain ", n_parameters, ".",
-        call. = FALSE
-      )
-    }
-    return(display_names)
+  if (is.null(display_names)) {
+    .bt_stop_incomplete_factor_metadata(parameter)
   }
+  if (length(display_names) != n_parameters) {
+    stop(
+      "The factor design of '", parameter, "' has ", length(display_names),
+      " coefficient columns, but the samples contain ", n_parameters, ".",
+      call. = FALSE
+    )
+  }
+  display_names
+}
 
-  level_names <- .get_prior_factor_level_names(prior)
-  if (is.prior.treatment(prior)) {
-    if (!is.list(level_names)) {
-      level_names <- level_names[-1]
-    } else if (prod(lengths(level_names)) != n_parameters) {
-      level_names <- lapply(level_names, function(level_name) level_name[-1])
-    }
+# Coordinate names of a random-effect SD factor prior from its factor design:
+# a coordinate that is structurally one level cell is named by the cell's
+# level labels, any other one is coefficient `{j}` of the contrast coding.
+.factor_design_coordinate_names <- function(parameter, prior) {
+
+  if (!.bt_factor_metadata_complete(prior)) {
+    return(NULL)
   }
-  .format_factor_level_parameter_names(parameter, level_names, n_parameters)
+  design_info <- .factor_term_design_from_metadata(prior)
+  design <- as.matrix(design_info$design)
+  out <- paste0(
+    parameter,
+    .bt_parameter_catalog_factor_coefficient_component(seq_len(ncol(design)))
+  )
+  direct <- .bt_factor_direct_cells(prior, design)
+  if (any(!is.na(direct))) {
+    cell_names <- tryCatch(
+      .format_factor_level_parameter_names(parameter, design_info$level_names),
+      error = function(error) paste0(parameter, "[", design_info$cell_names, "]")
+    )
+    out[!is.na(direct)] <- cell_names[direct[!is.na(direct)]]
+  }
+  out
 }
 
 

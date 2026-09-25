@@ -440,9 +440,10 @@ test_that("runjags_estimates_table unscales before parameter filtering", {
   )
   colnames(posterior) <- c("mu_intercept", "mu_x", "mu_a", "mu_x__xXx__a[1]")
 
-  factor_prior <- prior_factor("normal", list(0, 1), contrast = "treatment")
-  attr(factor_prior, "levels") <- 2
-  attr(factor_prior, "level_names") <- c("A", "B")
+  factor_prior <- prior_factor_levels(
+    prior_factor("normal", list(0, 1), contrast = "treatment"),
+    c("A", "B")
+  )
   attr(factor_prior, "parameter") <- "mu"
 
   interaction_prior <- prior_factor("normal", list(0, 1), contrast = "treatment")

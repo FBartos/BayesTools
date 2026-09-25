@@ -144,7 +144,7 @@ test_that("factor cell mapping covers fixed factor priors, not random-effect pri
     list(0, 1),
     contrast = "orthonormal"
   )
-  attr(ordinary, "levels") <- 3L
+  ordinary <- prior_factor_levels(ordinary, 3L)
   ordinary_coordinates <- .bt_build_parameter_coordinates(
     .JAGS_prior_factor_names("p1", ordinary),
     prior_list = list(p1 = ordinary)
@@ -177,7 +177,7 @@ test_that("factor cell mapping covers fixed factor priors, not random-effect pri
                      expected_weights[expected_weights != 0])
   }
   treatment <- prior_factor("normal", list(0, 1), contrast = "treatment")
-  attr(treatment, "levels") <- 3L
+  treatment <- prior_factor_levels(treatment, 3L)
   treatment_catalog <- .bt_build_parameter_catalog(
     .bt_build_parameter_coordinates(
       .JAGS_prior_factor_names("p1", treatment),
