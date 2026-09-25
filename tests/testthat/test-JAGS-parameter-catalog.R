@@ -749,6 +749,75 @@ test_that("contrast-coefficient selectors of level coordinates name the level", 
     info = "ordinary factor prior"
   )
 
+  # The same factor term in two namespaces: a level coordinate in 'mu'
+  # (treatment) and a contrast coefficient in 'sigma' (meandif). Within 'mu',
+  # `g{1}` is refused although it names the 'sigma' coefficient elsewhere;
+  # without a namespace filter it keeps resolving to that coefficient.
+  data <- data.frame(g = factor(rep(levels, 4L), levels = levels))
+  formula_results <- list(
+    mu = JAGS_formula(~ 1 + g, "mu", data, list(
+      intercept = prior("normal", list(0, 1)),
+      g         = treatment
+    )),
+    sigma = JAGS_formula(~ 1 + g, "sigma", data, list(
+      intercept = prior("normal", list(0, 1)),
+      g         = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+    ))
+  )
+  prior_list <- do.call(c, unname(lapply(formula_results, `[[`, "prior_list")))
+  columns <- unlist(lapply(names(prior_list), function(name){
+    prior <- prior_list[[name]]
+    if(.bt_prior_is_factor_family(prior)){
+      .JAGS_prior_factor_names(name, prior)
+    }else{
+      name
+    }
+  }), use.names = FALSE)
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(matrix(
+      0.1, nrow = 2L, ncol = length(columns),
+      dimnames = list(NULL, columns)
+    ))),
+    prior_list = prior_list,
+    formula_design = lapply(formula_results, `[[`, "formula_design")
+  )
+  catalog <- parameter_catalog(fit)
+  message <- paste0(
+    "Selector 'g{1}' is unavailable: coefficient 1 of factor term 'g' is a ",
+    "level, not a contrast coefficient. Select it by its level label, ",
+    "'g[10]'."
+  )
+  error <- expect_error(
+    parameter_catalog_resolve(catalog, "g{1}", namespace = "mu"),
+    message,
+    fixed = TRUE,
+    class = "BayesTools_selector_unavailable"
+  )
+  expect_identical(
+    error$quantity_id,
+    parameter_catalog_resolve(catalog, "g[10]", namespace = "mu")$quantity_id
+  )
+  expect_error(
+    hypothesis_parse("g{1} > 0", catalog = catalog, namespace = "mu"),
+    message,
+    fixed = TRUE,
+    class = "BayesTools_selector_unavailable"
+  )
+  .expect_level_coefficient_refused(
+    catalog, "(mu) g{1}", "(mu) g[10]", coefficient = 1L, term = "g",
+    info = "prefixed selector beside another namespace"
+  )
+  for(namespace in list(NULL, "sigma")){
+    expect_identical(
+      parameter_catalog_resolve(catalog, "g{1}", namespace = namespace)$
+        quantities$canonical_name,
+      "sigma_g{1}"
+    )
+    expect_no_error(
+      hypothesis_parse("g{1} > 0", catalog = catalog, namespace = namespace)
+    )
+  }
+
   # Without a catalog the selector is not hypothesis syntax.
   error <- expect_error(hypothesis_parse("g{1} > 0"))
   expect_false(inherits(error, "BayesTools_selector_unavailable"))

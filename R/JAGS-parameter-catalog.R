@@ -4544,8 +4544,15 @@ parameter_transform_jacobian <- function(values, transform){
   out <- do.call(rbind, rows)
   # one level form per selector and level (the first, rendered in its style)
   out <- out[!duplicated(out[, c("selector", "quantity_id")]), , drop = FALSE]
-  known <- c(quantities$canonical_name, catalog$aliases$alias)
-  out <- out[!out$selector %in% known, , drop = FALSE]
+  # a selector naming a catalog quantity of the same namespace is never
+  # refused; one naming a quantity of another namespace is refused within this
+  # namespace (a namespace-filtered resolution does not see the other one)
+  known <- c(
+    paste(quantities$namespace, quantities$canonical_name, sep = "\r"),
+    paste(catalog$aliases$namespace, catalog$aliases$alias, sep = "\r")
+  )
+  out <- out[!paste(out$namespace, out$selector, sep = "\r") %in% known, ,
+             drop = FALSE]
   rownames(out) <- NULL
   out
 }
