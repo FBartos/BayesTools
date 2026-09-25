@@ -113,12 +113,22 @@ still dropped). Breakpoints closer than
 1e-9 of their magnitude (at least 1) are merged, so no piece is only a few
 ulps wide, but the merge width never exceeds half the peak's local SD, so the
 peak breakpoints are never merged. Every piece gets the full budget, and the
-acceptance criterion applies to the summed value and error.
+acceptance criterion applies to the summed value and error: every piece
+converged, a positive value, and a reported absolute error of at most 1e-4 of
+the value. The criterion is purely relative (Savage-Dickey uses log
+ordinates), so a far-tail value is never accepted on an absolute floor; the
+first QUADPACK pass stops at an absolute floor of 1e-12 in total, and a total
+that misses the relative criterion is refined once against its own value
+(every quadrature piece again with its full budget, and an exactly evaluated
+Gaussian-convolution piece of value 0 whose bound 2 * Phi(-10) of its mass is
+too large for the total by quadrature). A total that still misses it is
+rejected (`exact = FALSE`, refused at point hypotheses); plotted curves may
+draw its estimate, which never makes an ordinate exact.
 Budgets are never divided among them; the budget only caps how many mixture
 leaves are expanded. Known limitations: pure scale mixtures with heavy-tailed
 multipliers can stop as non-convergent (mostly with a small multiplied SD); a
-piece that QUADPACK flags stops the ordinate even when its value is far below
-the absolute tolerance (e.g. a far tail piece reported as "probably
+piece that QUADPACK flags stops the ordinate even when its value is negligible
+against the total (e.g. a far tail piece reported as "probably
 divergent"); a quadrature that evaluates to exactly zero is rejected (it
 cannot be told apart from a missed peak), which also stops a mixture with
 such a component, e.g. a narrow component far from the value; very narrow
@@ -130,8 +140,7 @@ multiplier's heavy tail (beyond its extreme quantiles) is not a breakpoint,
 also with a nonzero multiplied mean when the multiplied SD is not small
 against it, so its mass can be missed without a convergence failure. Such
 ordinates are small at ordinary scales, but the missed fraction does not
-depend on the units of the value, so the absolute tolerance does not bound
-it.
+depend on the units of the value, and the reported error does not bound it.
 
 Product terms (`multiply_by`) and ordered-prior levels share one route
 (R/prior-density-route.R). An ordered level (or allocation subset) is the
@@ -286,7 +295,8 @@ another. A mixture
 height sums its components' exact or regular heights with those of components
 that have none; each of the latter uses its own grid (never spanning another
 component's jump), all such grids are refined in lockstep, and the documented
-refinement criterion applies to the mixture height with the components'
+refinement criterion (a change of at most 1e-4 of the height, purely
+relative) applies to the mixture height with the components'
 weighted absolute changes (no cancellation between components). Single grids,
 mixture component grids and grid region probabilities share this one
 refinement loop (`.prior_linear_density_refine_grids()`). A refinement-

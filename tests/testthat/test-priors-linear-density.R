@@ -26,8 +26,7 @@ test_that("bounded conditional-normal prior ordinates retain their numerical err
     }, 0, atan(5), rel.tol = 1e-12)$value
     result <- prior_density_ordinate(density, value)
     expect_lt(abs(exp(result$log_density) - reference),
-              .prior_linear_density_refinement_tolerance()$absolute +
-                .prior_linear_density_refinement_tolerance()$relative * reference)
+              .prior_linear_density_refinement_tolerance()$relative * reference)
   }
 
   shifted_priors <- list(a = prior("normal", list(.7, .5)),
@@ -470,7 +469,7 @@ test_that("conditional-normal quadrature accepts a result converged at the budge
 
   exact_budget <- .prior_conditional_normal_piece(
     integrand, 0, Inf, n_grid = 75,
-    relative = tolerance$relative, absolute = tolerance$absolute
+    relative = tolerance$relative, absolute = tolerance$quadrature_floor
   )
   expect_identical(exact_budget$message, "OK")
   expect_identical(exact_budget$evaluations, 75L)
@@ -480,7 +479,7 @@ test_that("conditional-normal quadrature accepts a result converged at the budge
   # interval limit, stops the quadrature
   short_budget <- .prior_conditional_normal_piece(
     integrand, 0, Inf, n_grid = 74,
-    relative = tolerance$relative, absolute = tolerance$absolute
+    relative = tolerance$relative, absolute = tolerance$quadrature_floor
   )
   expect_identical(short_budget$message, "the integration evaluation budget was exhausted")
   expect_lte(short_budget$evaluations, 74L)
@@ -743,7 +742,7 @@ test_that("conditional-normal breakpoints keep their distance from bounds with i
         reference <- beta_reference(shape, shape, function(u) stats::dnorm(offset - u, 0, sd),
                                     offset + c(-10, -3, -1, 0, 1, 3, 10) * sd)
         expect_lt(abs(height(convolution, .3 + offset) - reference),
-                  tolerance$absolute + tolerance$relative * reference)
+                  tolerance$relative * reference)
       }
     }
   }
@@ -771,7 +770,7 @@ test_that("conditional-normal breakpoints keep their distance from bounds with i
   convolution <- density(list(a = prior("normal", list(.3, 1e-11)), b = prior("gamma", list(.5, 1))),
                          c(a = 1, b = 1))
   reference <- 153441.73487990270
-  expect_lt(abs(height(convolution, .3) - reference), tolerance$absolute + tolerance$relative * reference)
+  expect_lt(abs(height(convolution, .3) - reference), tolerance$relative * reference)
 })
 
 test_that("conditional-normal breakpoints merge near-coincident points but never a Gaussian peak", {
@@ -841,6 +840,39 @@ test_that("lockstep mixture grids add the components' absolute changes", {
   expect_identical(evaluation$refinements, 3L)
   expect_equal(evaluation$absolute_change, .5 * (1.0001 - 1.000001) + .5 * (.999999 - .9999))
   expect_equal(as.numeric(height), 1)
+})
+
+test_that("grid refinement accepts small heights only within the relative criterion", {
+
+  # Refinements of a far-tail height whose changes (1e-15) are far below an
+  # absolute floor but 10% of the height: never converged. Relative changes
+  # below 1e-4 converge, and an exactly zero height is kept.
+  grid <- function(name, level){
+    structure(list(name = name, level = level, density = list(x = c(-10, 10))),
+              class = "prior_linear_density")
+  }
+  sequences <- list(
+    tail     = 1e-14 * c(1, 1.1, 1.2, 1.3, 1.4),
+    relative = 1e-14 * c(1, 1 + 2e-5, 1 + 3e-5, 1 + 3e-5, 1 + 3e-5),
+    zero     = rep(0, 5)
+  )
+  testthat::local_mocked_bindings(
+    .prior_linear_density_refinement = function(x) grid(x$name, x$level + 1L)
+  )
+  refine <- function(name){
+    .prior_linear_density_refine_grids(
+      list(grid(name, 0L)), 1,
+      evaluate = function(density) sequences[[density$name]][density$level + 1L]
+    )
+  }
+  expect_false(refine("tail")$converged)
+  relative <- refine("relative")
+  expect_true(relative$converged)
+  expect_identical(relative$refinements, 1L)
+  expect_equal(relative$error_bound, 1e-4 * 1e-14 * (1 + 2e-5))
+  zero <- refine("zero")
+  expect_true(zero$converged)
+  expect_identical(zero$total, 0)
 })
 
 test_that("row and leaf conditional-normal ordinates each receive the full evaluation budget", {

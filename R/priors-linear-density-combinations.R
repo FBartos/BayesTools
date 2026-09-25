@@ -1201,9 +1201,13 @@
   return(.prior_linear_density_normalize(dist, warn = TRUE))
 }
 
+# Acceptance of numerical prior heights and region probabilities is purely
+# relative (at most 1e-4 of the value), so a small density (a far tail) is not
+# accepted on an absolute floor; 'quadrature_floor' is only the absolute
+# target of the first QUADPACK pass (see .prior_conditional_normal_quadrature).
 .prior_linear_density_refinement_tolerance <- function(){
 
-  list(relative = 1e-4, absolute = 1e-12)
+  list(relative = 1e-4, quadrature_floor = 1e-12)
 }
 
 # The one grid-refinement loop of prior-density heights and region
@@ -1213,11 +1217,11 @@
 # refines every grid (halving its source spacing and omitting less tail
 # probability) and applies the documented criterion to the combined value
 # fixed + sum_k w_k g_k with the weighted absolute changes of the grids,
-# sum_k w_k |g_k - g_k'| <= 1e-12 + 1e-4 * max(|current|, |previous|), so
-# changes cannot cancel between grids; at most four refinements follow the
-# initial grids. Returns the converged values, their combination, the refined
-# grids and the criterion; 'converged = FALSE' with the last grids; or NULL
-# when a grid cannot be refined at all.
+# sum_k w_k |g_k - g_k'| <= 1e-4 * max(|current|, |previous|) (purely
+# relative), so changes cannot cancel between grids; at most four refinements
+# follow the initial grids. Returns the converged values, their combination,
+# the refined grids and the criterion; 'converged = FALSE' with the last
+# grids; or NULL when a grid cannot be refined at all.
 .prior_linear_density_refine_grids <- function(densities, weights, evaluate,
                                                covers = function(density) TRUE,
                                                fixed = 0){
@@ -1233,8 +1237,7 @@
     current <- vapply(refined, evaluate, numeric(1))
     total <- combine(current)
     change <- sum(weights * abs(current - previous))
-    bound <- tolerance$absolute +
-      tolerance$relative * max(abs(total), abs(combine(previous)))
+    bound <- tolerance$relative * max(abs(total), abs(combine(previous)))
     if(all(vapply(refined, covers, logical(1))) && is.finite(total) &&
        change <= bound){
       return(list(
@@ -2381,10 +2384,17 @@
 # Sum of the budgeted QUADPACK pieces between consecutive 'points'. Each piece
 # is an independent integral with the full budget 'n_grid' and its own
 # diagnostics; the value and absolute error are summed, and the acceptance
-# criterion (all pieces converged, abs. error <= 1e-12 + 1e-4 * value, value
-# positive) applies to the total. A rejected total has value NA. An optional
-# 'exact_piece(lower, upper)' returns a piece evaluated without quadrature
-# (value, abs.error, message, evaluations) or NULL for a QUADPACK piece.
+# criterion (all pieces converged, value positive, and the purely relative
+# abs. error <= 1e-4 * value) applies to the total. The pieces first run with
+# QUADPACK's relative target 1e-4 and an absolute floor of 1e-12 in total; a
+# total that misses the relative criterion (a small density, e.g. a far tail,
+# where the floor stopped QUADPACK early) is refined once against its own
+# value, each piece with its full budget again. A rejected total has value NA
+# (a total that only misses the relative criterion keeps a display
+# 'estimate'). An optional 'exact_piece(lower, upper)' returns a piece
+# evaluated without quadrature (value, abs.error, message, evaluations) or
+# NULL for a QUADPACK piece; in the refinement an exact piece evaluated as 0
+# whose error bound is too large for the total is integrated instead.
 .prior_conditional_normal_quadrature <- function(integrand, points, n_grid,
                                                  zero_message,
                                                  exact_piece = NULL,
@@ -2403,39 +2413,88 @@
     }
     .prior_conditional_normal_piece(
       integrand, points[i], points[i + 1L], n_grid,
-      relative = tolerance$relative, absolute = tolerance$absolute / n_pieces
+      relative = tolerance$relative, absolute = tolerance$quadrature_floor / n_pieces
     )
   })
-  piece_values <- vapply(pieces, `[[`, numeric(1), "value")
-  piece_errors <- vapply(pieces, `[[`, numeric(1), "abs.error")
-  piece_messages <- vapply(pieces, `[[`, character(1), "message")
-  integral <- list(
-    value     = sum(piece_values),
-    abs.error = sum(piece_errors),
-    message   = if(all(piece_messages == "OK")){
-      "OK"
-    }else{
-      paste(unique(piece_messages[piece_messages != "OK"]), collapse = "; ")
+  total <- function(pieces){
+    piece_messages <- vapply(pieces, `[[`, character(1), "message")
+    integral <- list(
+      value     = sum(vapply(pieces, `[[`, numeric(1), "value")),
+      abs.error = sum(vapply(pieces, `[[`, numeric(1), "abs.error")),
+      message   = if(all(piece_messages == "OK")){
+        "OK"
+      }else{
+        paste(unique(piece_messages[piece_messages != "OK"]), collapse = "; ")
+      }
+    )
+    if(identical(integral$message, "OK") && isTRUE(integral$value == 0)){
+      integral$message <- zero_message
     }
-  )
-  if(identical(integral$message, "OK") && isTRUE(integral$value == 0)){
-    integral$message <- zero_message
+    integral
   }
-  bound <- tolerance$absolute + tolerance$relative * abs(integral$value)
-  accepted <- identical(integral$message, "OK") && is.finite(integral$value) &&
-    integral$value > 0 && is.finite(integral$abs.error) && integral$abs.error <= bound
+  # acceptance is purely relative: the reported error of the total at most
+  # 1e-4 of its value (the integrands are nonnegative, so the pieces add up)
+  accept <- function(integral){
+    identical(integral$message, "OK") && is.finite(integral$value) &&
+      integral$value > 0 && is.finite(integral$abs.error) &&
+      integral$abs.error <= tolerance$relative * integral$value
+  }
+  integral <- total(pieces)
+  evaluations <- sum(vapply(pieces, `[[`, integer(1), "evaluations"))
+  refined <- FALSE
+  if(!accept(integral) && identical(integral$message, "OK") &&
+     is.finite(integral$value) && integral$value > 0 &&
+     is.finite(integral$abs.error)){
+    # the absolute floor of the first pass stopped QUADPACK before the
+    # relative criterion (a small total): every quadrature piece is refined
+    # against the total (per piece max(rel / 2 * |piece|, rel * total /
+    # (2 n)) sums to at most rel * total), with its full budget again. An
+    # exact piece evaluated as 0 whose error bound (a fixed fraction of its
+    # mass) exceeds that share is integrated as well; exact pieces evaluated
+    # as their mass have a bound relative to their own value and are kept.
+    refined <- TRUE
+    target <- tolerance$relative * integral$value / (2 * n_pieces)
+    quadrature <- !exact | vapply(pieces, function(piece){
+      piece$value == 0 && piece$abs.error > target
+    }, logical(1))
+    pieces[quadrature] <- lapply(which(quadrature), function(i){
+      .prior_conditional_normal_piece(
+        integrand, points[i], points[i + 1L], n_grid,
+        relative = tolerance$relative / 2, absolute = target
+      )
+    })
+    exact <- exact & !quadrature
+    integral <- total(pieces)
+    evaluations <- evaluations +
+      sum(vapply(pieces[quadrature], `[[`, integer(1), "evaluations"))
+  }
+  bound <- tolerance$relative * abs(integral$value)
+  accepted <- accept(integral)
+  # a total that only misses the relative criterion is kept as a display
+  # estimate (plotted curves); it is never an ordinate or a probability
+  estimate <- if(!accepted && identical(integral$message, "OK") &&
+                 is.finite(integral$value) && integral$value > 0){
+    integral$value
+  }
   if(!isTRUE(accepted)){
     integral$value <- NA_real_
   }
   integration <- list(
     kind = kind, exact = FALSE,
     absolute_error = integral$abs.error, error_bound = bound,
-    evaluations = sum(vapply(pieces, `[[`, integer(1), "evaluations")),
+    evaluations = evaluations,
     budget = n_grid, converged = isTRUE(accepted), message = integral$message,
+    refined = refined,
     breakpoints = points,
     piece_evaluations = vapply(pieces, `[[`, integer(1), "evaluations"),
-    piece_absolute_errors = piece_errors
+    piece_absolute_errors = vapply(pieces, `[[`, numeric(1), "abs.error")
   )
+  if(!accepted && identical(integral$message, "OK")){
+    integration$message <- paste0(
+      "the reported absolute error exceeds 1e-4 of the integral"
+    )
+    integration$estimate <- estimate
+  }
   if(!is.null(exact_piece)){
     integration$exact_pieces <- exact
   }
@@ -3451,8 +3510,8 @@
 # a density jump between components. The component grids are refined in
 # lockstep and the documented criterion is applied to the mixture height with
 # the weighted absolute changes of the components, sum_k w_k |dH_k| <=
-# 1e-12 + 1e-4 * H, so changes cannot cancel between components and a
-# component whose own density is about zero at the value does not block
+# 1e-4 * H (purely relative), so changes cannot cancel between components
+# and a component whose own density is about zero at the value does not block
 # convergence. As for single grids, the criterion is a refinement-change
 # criterion: grid-based heights of components with singular source densities
 # remain approximate within it. Component grids start at the mixture grid's source

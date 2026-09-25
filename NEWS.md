@@ -477,6 +477,16 @@ old behaviour.
     refinement criterion, which is not an error bound.
   - `prior_density_ordinate()` documents `provenance$continuous_behavior`, the
     behavior of the continuous part of a prior at a point mass.
+  - numerical prior-density ordinates and region probabilities (quadratures
+    and refined grids) are accepted only when their reported error, or grid
+    refinement change, is at most 1e-4 of the value. The former absolute floor
+    of 1e-12 accepted far-tail values below about 1e-8 with larger relative
+    errors (e.g. 0.2% reported for a half-t allocation SD at 1e3), which
+    Savage-Dickey log ordinates do not tolerate. Such quadratures are now
+    refined against their own value and remain exact within the relative
+    bound; values that cannot meet it are inexact and point hypotheses there
+    stop with `BayesTools_inexact_ordinate` (grid heights and probabilities
+    stop as not converged). Plotted curves still draw these values.
 - hypothesis Bayes factors:
   - `hypothesis_BF()` region hypotheses on deterministic prior densities
     (intervals, unions, negations, and transformed regions such as

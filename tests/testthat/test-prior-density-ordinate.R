@@ -1496,3 +1496,60 @@ gamma,3.0,1.0,1.0,0.06,0.709247,0.49027885728844261084
   expect_equal(exp(ordinate$log_density), row$density / (2 * .06), tolerance = 1e-8)
   expect_identical(BayesTools:::.prior_density_route_ordinate(squared, 0)$behavior, "infinite")
 })
+
+test_that("quadrature ordinates are exact only within a relative error bound", {
+
+  # half-t3(0.5) times the square root of a Beta(2, 0.7) share at y = 1e3: a
+  # density of 5.5e-13, which the former absolute floor (1e-12 + 1e-4 x value)
+  # accepted with a reported error of 0.2 %; the quadrature is now refined
+  # against the value. Reference: mpmath at 50 digits
+  # (.work/tmp/pr58-decisions/P4-G1-review/mp_refs.csv).
+  spec <- BayesTools:::.prior_scale_product_spec(
+    offset = 0, scale = 1, factor = prior("t", list(0, .5, 3), list(0, Inf)),
+    multiplier = prior("beta", list(2, .7)), sources = list(),
+    map = list(type = "sqrt", scale = 1)
+  )
+  route <- list(type = "scale_product", spec = spec, n_grid = 1024L)
+  for(case in list(c(1e3, 5.47320150023372434679774351794e-13),
+                   c(1e5, 5.47320834105333987681610471592e-21))){
+    ordinate <- BayesTools:::.prior_density_route_ordinate(route, case[[1L]])
+    integration <- ordinate$provenance$integration
+    expect_true(ordinate$exact)
+    expect_true(integration$refined)
+    expect_lte(integration$absolute_error, 1e-4 * exp(ordinate$log_density))
+    expect_lte(integration$error_bound, 1e-4 * exp(ordinate$log_density) * (1 + 1e-12))
+    expect_lte(abs(exp(ordinate$log_density) / case[[2L]] - 1), 1e-6)
+  }
+  # ordinary values keep their first-pass quadrature (no refinement)
+  ordinary <- BayesTools:::.prior_density_route_ordinate(route, .5)$provenance$integration
+  expect_false(ordinary$refined)
+  expect_lte(ordinary$absolute_error, 1e-4 * exp(BayesTools:::.prior_density_route_ordinate(route, .5)$log_density))
+
+  # a total whose reported error misses the relative criterion is rejected
+  # with that reason, and only a plotted curve draws its estimate
+  quadrature <- BayesTools:::.prior_conditional_normal_quadrature(
+    function(x) rep(1e-3, length(x)), c(0, 1), 64L, zero_message = "zero"
+  )
+  expect_true(quadrature$integration$converged)
+  local_mocked_bindings(
+    .prior_conditional_normal_piece = function(integrand, lower, upper, n_grid, relative, absolute){
+      list(value = 1e-3, abs.error = 1e-6, message = "OK", evaluations = 21L)
+    }
+  )
+  rejected <- BayesTools:::.prior_conditional_normal_quadrature(
+    function(x) rep(1e-3, length(x)), c(0, 1), 64L, zero_message = "zero"
+  )
+  expect_true(is.na(rejected$value))
+  expect_false(rejected$integration$converged)
+  expect_true(rejected$integration$refined)
+  expect_identical(rejected$integration$message,
+                   "the reported absolute error exceeds 1e-4 of the integral")
+  expect_identical(rejected$integration$estimate, 1e-3)
+  ordinate <- BayesTools:::.prior_density_route_ordinate(route, 1e3)
+  expect_false(ordinate$exact)
+  expect_match(ordinate$reason, "exceeds 1e-4 of the integral", fixed = TRUE)
+  # the mocked pieces sum to the estimate the plotted curve draws
+  estimate <- ordinate$provenance$integration$estimate
+  expect_equal(estimate, 1e-3 * (length(ordinate$provenance$integration$breakpoints) - 1L))
+  expect_equal(BayesTools:::.prior_density_route_quadrature_density(route, 1e3), estimate)
+})

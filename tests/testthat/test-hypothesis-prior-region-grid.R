@@ -803,6 +803,28 @@ test_that("Gaussian-convolution regions evaluate pieces outside the endpoint win
   )$integration$exact_pieces)
 })
 
+test_that("far-tail Gaussian-convolution regions meet the relative criterion", {
+
+  # P(N(0, 1) + t30(0, .5) > 1e4) = 9.65e-109 (mpmath reference above). The
+  # pieces below the window 1e4 +- 10 evaluate as 0 with the bound
+  # 2 * Phi(-10) * mass ~= 1.5e-23, far above 1e-4 of the total: the
+  # refinement integrates them, and the reported error of the accepted total
+  # is at most 1e-4 of its value.
+  spec <- .prior_density_ordinate_gaussian_convolution_spec(
+    list(a = prior("normal", list(0, 1)), b = prior("t", list(0, .5, 30))),
+    c(a = 1, b = 1), NULL
+  )
+  region <- .prior_conditional_normal_region(spec, matrix(c(1e4, Inf), 1L), 4096L)
+  integration <- region$integration
+  expect_lt(abs(region$value / 9.652759592340303478938e-109 - 1), 1e-6)
+  expect_true(integration$converged)
+  expect_true(integration$refined)
+  expect_lte(integration$absolute_error, 1e-4 * region$value)
+  pieces <- cbind(utils::head(integration$breakpoints, -1L), integration$breakpoints[-1L])
+  expect_false(any(integration$exact_pieces[pieces[, 2L] <= 1e4 - 10]))
+  expect_true(all(integration$exact_pieces[pieces[, 1L] >= 1e4 + 10]))
+})
+
 test_that("rejected region quadratures stop instead of using the grid", {
 
   priors <- scale_mixture_priors()

@@ -1109,7 +1109,17 @@
   }
   ordinate <- which(!zero & (plan$special | is.na(out)))
   out[ordinate] <- vapply(x[ordinate], function(value){
-    .prior_density_ordinate_height_value(.prior_density_route_ordinate(route, value))
+    result <- .prior_density_route_ordinate(route, value)
+    height <- .prior_density_ordinate_height_value(result)
+    if(is.na(height)){
+      # display only: a quadrature that converged but misses the relative
+      # acceptance criterion of ordinates (a far-tail density) is drawn
+      estimate <- result$provenance$integration$estimate
+      if(is.numeric(estimate) && length(estimate) == 1L && is.finite(estimate)){
+        height <- estimate
+      }
+    }
+    height
   }, numeric(1))
   out
 }
