@@ -1531,6 +1531,24 @@ test_that("quadrature ordinates are exact only within a relative error bound", {
     function(x) rep(1e-3, length(x)), c(0, 1), 64L, zero_message = "zero"
   )
   expect_true(quadrature$integration$converged)
+  # a pure scale mixture b * s, b ~ N(1, .5), s ~ gamma(2, 1) on (0, 10), at
+  # its offset 0: the ordinate is dnorm(2) / .5 * E[1 / s], with E[1 / s] by
+  # quadrature (the truncated gamma has no closed form)
+  slope <- prior("normal", list(1, .5))
+  attr(slope, "multiply_by") <- "s"
+  scale_mixture <- BayesTools:::.prior_linear_combination_density(
+    list(b = slope, s = prior("gamma", list(2, 1), list(0, 10))), c(b = 1), n_grid = 1024
+  )
+  scale_route <- BayesTools:::.prior_density_route_from_adaptive(
+    attr(scale_mixture, "adaptive_evaluation", exact = TRUE)
+  )
+  offset <- BayesTools:::.prior_density_route_ordinate(scale_route, 0)
+  expect_true(offset$exact)
+  expect_identical(offset$provenance$inverse_moment$method, "quadrature")
+  expect_equal(exp(offset$log_density),
+               stats::dnorm(2) / .5 * offset$provenance$inverse_moment$value)
+  expect_equal(BayesTools:::.prior_density_route_quadrature_density(scale_route, 0),
+               exp(offset$log_density))
   local_mocked_bindings(
     .prior_conditional_normal_piece = function(integrand, lower, upper, n_grid, relative, absolute){
       list(value = 1e-3, abs.error = 1e-6, message = "OK", evaluations = 21L)
@@ -1552,4 +1570,10 @@ test_that("quadrature ordinates are exact only within a relative error bound", {
   estimate <- ordinate$provenance$integration$estimate
   expect_equal(estimate, 1e-3 * (length(ordinate$provenance$integration$breakpoints) - 1L))
   expect_equal(BayesTools:::.prior_density_route_quadrature_density(route, 1e3), estimate)
+  # the estimate of a rejected offset quadrature is the inverse moment, not
+  # the density, so the plotted curve omits the offset
+  offset <- BayesTools:::.prior_density_route_ordinate(scale_route, 0)
+  expect_false(offset$exact)
+  expect_true(is.numeric(offset$provenance$integration$estimate))
+  expect_true(is.na(BayesTools:::.prior_density_route_quadrature_density(scale_route, 0)))
 })

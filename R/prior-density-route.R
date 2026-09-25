@@ -1111,9 +1111,11 @@
   out[ordinate] <- vapply(x[ordinate], function(value){
     result <- .prior_density_route_ordinate(route, value)
     height <- .prior_density_ordinate_height_value(result)
-    if(is.na(height)){
+    if(is.na(height) && is.null(result$provenance$inverse_moment)){
       # display only: a quadrature that converged but misses the relative
-      # acceptance criterion of ordinates (a far-tail density) is drawn
+      # acceptance criterion of ordinates (a far-tail density) is drawn; the
+      # quadrature of an offset ordinate is its inverse moment E[1 / |s|],
+      # not the density, so such an offset is not drawn
       estimate <- result$provenance$integration$estimate
       if(is.numeric(estimate) && length(estimate) == 1L && is.finite(estimate)){
         height <- estimate
