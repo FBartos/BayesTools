@@ -168,6 +168,11 @@ when that grid cannot resolve the scale of a heavy-tailed product term
 the prior curve is omitted with a warning of class
 \code{BayesTools_prior_curve_unavailable} (also
 \code{BayesTools_plot_condition}) and the rest of the plot is drawn.
+Posterior draws that declare no prior (a \code{prior_list} of
+\code{\link[=prior_none]{prior_none()}}, as \code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}} draws of a quantity
+without a prior density) and carry no prior density have no prior curve:
+with \code{prior = TRUE}, the posterior is drawn alone with a warning of
+the same class.
 
 For base plots, the initial call establishes the density-to-probability
 mapping. Calls with \code{add = TRUE} reuse that mapping so point masses from

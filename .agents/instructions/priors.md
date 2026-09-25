@@ -290,7 +290,12 @@ about 1%. A plotted sum without a structural route that relies on an
 unresolved product grid (a prior curve 129-456% off) is omitted with a
 `BayesTools_prior_curve_unavailable` warning (also
 `BayesTools_plot_condition`); the rest of the plot is drawn, and heights stay
-refused as for every product grid. The mixed-measure `density()` of an ordered
+refused as for every product grid. Posterior plots (`plot_posterior()`,
+`plot_marginal()`) of draws that declare no prior (`prior_none()`, e.g.
+catalog mixed posteriors of quantities without a prior density) and carry no
+prior density warn with the same class and draw the posterior alone; draws
+with a prior list but without their prior density still stop. The
+mixed-measure `density()` of an ordered
 prior (a total with a spike) evaluates each level with a structural route on
 that route at the display values, never by interpolating its level grid.
 

@@ -22,7 +22,10 @@
 #' explicit \code{point_masses} from the stored density and warns when none are
 #' declared. A prior curve without an exact route whose numerical grid cannot
 #' resolve a heavy-tailed product term is omitted with a warning of class
-#' \code{BayesTools_prior_curve_unavailable}, as in [plot_posterior()].
+#' \code{BayesTools_prior_curve_unavailable}, as in [plot_posterior()], and so
+#' is the prior curve of draws that declare no prior (a \code{prior_list} of
+#' [prior_none()]) and carry no prior density. Other draws without a prior
+#' density (e.g. from [marginal_posterior()] without prior samples) stop.
 #'
 #' @seealso [prior()] [marginal_inference()]  [plot_posterior()]
 #' @export
@@ -55,10 +58,12 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
 
 
-  # add priors, if requested
-  if(prior){
-
-    plot_data_prior <- unlist(lapply(plot_data, attr, which = "prior", exact = TRUE), recursive = FALSE)
+  # add priors, if requested and available (draws without a prior density
+  # that declare no prior have none, with a warning)
+  plot_data_prior <- if(prior){
+    unlist(lapply(plot_data, attr, which = "prior", exact = TRUE), recursive = FALSE)
+  }
+  if(prior && length(plot_data_prior) > 0L){
 
     # Resolve one plotting range for the jointly displayed prior and posterior.
     plot_data_joined <- c(plot_data, plot_data_prior)
@@ -149,21 +154,22 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   density_method <- .posterior_density_method(density_method)
 
   # extract the relevant information
-  if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){
-    posterior_samples <- .plot_data_marginal_level_samples(samples, parameter)
-    prior_densities   <- .marginal_posterior_parameter_prior_densities(samples, parameter)
-    posterior_densities <- .marginal_posterior_parameter_posterior_densities(samples, parameter)
-    if(prior){
-      if(any(vapply(prior_densities, is.null, logical(1))))
-        stop("'samples' did not contain prior densities")
+  posterior_samples   <- .plot_data_marginal_level_samples(samples, parameter)
+  prior_densities     <- .marginal_posterior_parameter_prior_densities(samples, parameter)
+  posterior_densities <- .marginal_posterior_parameter_posterior_densities(samples, parameter)
+  if(prior){
+    missing <- vapply(prior_densities, is.null, logical(1))
+    levels  <- samples[[parameter]]
+    if(!is.list(levels)){
+      levels <- list(levels)
     }
-  }else{
-    posterior_samples <- .plot_data_marginal_level_samples(samples, parameter)
-    prior_densities   <- .marginal_posterior_parameter_prior_densities(samples, parameter)
-    posterior_densities <- .marginal_posterior_parameter_posterior_densities(samples, parameter)
-    if(prior){
-      if(is.null(prior_densities[[1]]))
-        stop("'samples' did not contain prior densities")
+    # levels that declare no prior (prior_none()) have no prior curve; any
+    # other level without a prior density was created without one
+    without_prior <- vapply(levels, .plot_data_samples_without_prior, logical(1))
+    if(any(missing & !without_prior))
+      stop("'samples' did not contain prior densities")
+    if(any(missing)){
+      .plot_data_warn_prior_curve_unavailable(parameter)
     }
   }
 
@@ -190,7 +196,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
       attr(out_level[[j]], "level_name") <- names(posterior_samples)[i]
     }
 
-    if(prior){
+    if(prior && !is.null(prior_densities[[i]])){
       out_den.prior <- .prior_linear_density_to_plot_data(
         prior_densities[[i]],
         n_points                  = n_points,

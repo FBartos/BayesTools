@@ -57,6 +57,11 @@
 #' the prior curve is omitted with a warning of class
 #' \code{BayesTools_prior_curve_unavailable} (also
 #' \code{BayesTools_plot_condition}) and the rest of the plot is drawn.
+#' Posterior draws that declare no prior (a \code{prior_list} of
+#' [prior_none()], as [parameter_mixed_posterior()] draws of a quantity
+#' without a prior density) and carry no prior density have no prior curve:
+#' with \code{prior = TRUE}, the posterior is drawn alone with a warning of
+#' the same class.
 #'
 #' For base plots, the initial call establishes the density-to-probability
 #' mapping. Calls with \code{add = TRUE} reuse that mapping so point masses from
@@ -510,12 +515,21 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         )
       }
 
-      if(is.null(plot_data_prior)){
+      if(is.null(plot_data_prior) &&
+         .plot_data_samples_without_prior(samples[[parameter]])){
+        # the draws declare no prior (prior_none()) and carry no prior
+        # density: the posterior is drawn alone
+        .plot_data_warn_prior_curve_unavailable(parameter)
+        prior <- FALSE
+      }else if(is.null(plot_data_prior)){
         plot_data_prior <- .plot_data_prior_list.simple(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
                                                   n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
                                                   transformation = transformation, transformation_arguments = transformation_arguments,
                                                   transformation_settings = transformation_settings)
       }
+    }
+
+    if(prior){
 
       # transplant common xlim and ylim
       plot_data_joined <- c(plot_data_prior, plot_data)

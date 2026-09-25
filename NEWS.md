@@ -261,6 +261,12 @@ old behaviour.
   `plot_posterior(prior = TRUE)` of these correlations draws the prior.
   Original-scale correlations that mix fitted coefficients (the intercept and
   a slope of a centred predictor) still have no prior density.
+- `plot_posterior(prior = TRUE)` and `plot_marginal(prior = TRUE)` of draws
+  without a prior density that declare no prior (`prior_none()`, such as the
+  `parameter_mixed_posterior()` draws of those correlations) warn with class
+  `BayesTools_prior_curve_unavailable` and draw the posterior alone, instead
+  of stopping with "No range is implemented for 'prior_none()' priors." and
+  "'samples' did not contain prior densities".
 - `parameter_catalog_resolve()`, and `hypothesis_parse()` with a `catalog`,
   refuse a contrast-coefficient selector `term{j}` of a factor coordinate
   that is a level (the coordinates of treatment and independent contrasts and

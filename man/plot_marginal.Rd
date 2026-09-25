@@ -109,7 +109,10 @@ and sample-derived point masses are available, the plot layer uses only
 explicit \code{point_masses} from the stored density and warns when none are
 declared. A prior curve without an exact route whose numerical grid cannot
 resolve a heavy-tailed product term is omitted with a warning of class
-\code{BayesTools_prior_curve_unavailable}, as in \code{\link[=plot_posterior]{plot_posterior()}}.
+\code{BayesTools_prior_curve_unavailable}, as in \code{\link[=plot_posterior]{plot_posterior()}}, and so
+is the prior curve of draws that declare no prior (a \code{prior_list} of
+\code{\link[=prior_none]{prior_none()}}) and carry no prior density. Other draws without a prior
+density (e.g. from \code{\link[=marginal_posterior]{marginal_posterior()}} without prior samples) stop.
 }
 \seealso{
 \code{\link[=prior]{prior()}} \code{\link[=marginal_inference]{marginal_inference()}}  \code{\link[=plot_posterior]{plot_posterior()}}

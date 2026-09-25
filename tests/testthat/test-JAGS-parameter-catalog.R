@@ -1758,6 +1758,74 @@ test_that("posterior plots draw the exact LKJ prior of us() correlations", {
   )
 })
 
+test_that("posterior plots draw the posterior alone when the draws have no prior density", {
+
+  skip_if_not(capabilities("png"))
+  # The original-scale cor(intercept,x1) of centred scaled predictors has no
+  # prior density: its draws declare prior_none(). A correlation has no point
+  # mass, so its atoms are declared none.
+  block <- .lkj_block_fit(3L, 2, formula_scale = list(x1 = TRUE, x2 = TRUE))
+  raw <- transform_prior_samples(block$fit, n_samples = 500L, seed = 5L,
+                                 formula_scale = list())
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(raw)),
+    prior_list     = block$formula_result$prior_list,
+    formula_design = list(mu = block$formula_result$formula_design),
+    formula_scale  = list(mu = block$formula_result$formula_scale)
+  )
+  name <- "(mu) cor(intercept,x1)"
+  posterior <- parameter_mixed_posterior(
+    fit,
+    parameter_catalog_resolve(parameter_catalog(fit), name)
+  )
+  expect_null(posterior_metadata(posterior, "prior_density"))
+  posterior_metadata(posterior, "atoms") <- posterior_atom_attribute()
+  samples <- stats::setNames(list(posterior), name)
+  message <- paste0(
+    "The prior density curve of '", name, "' is unavailable: its posterior ",
+    "draws carry no prior density, as the quantity has no deterministic ",
+    "prior-density route. The prior curve is omitted from the plot."
+  )
+
+  for(plot_function in c("plot_posterior", "plot_marginal")){
+    plot_fun <- get(plot_function)
+    # ggplot: the posterior layers of the plot without the prior
+    plot <- NULL
+    expect_warning(
+      plot <- plot_fun(samples, name, prior = TRUE, plot_type = "ggplot"),
+      message,
+      fixed = TRUE,
+      class = "BayesTools_prior_curve_unavailable"
+    )
+    posterior_only <- plot_fun(samples, name, prior = FALSE, plot_type = "ggplot")
+    expect_identical(
+      ggplot2::ggplot_build(plot)$data,
+      ggplot2::ggplot_build(posterior_only)$data,
+      info = plot_function
+    )
+
+    # base graphics: the same drawing as without the prior
+    draw <- function(prior){
+      file <- tempfile(fileext = ".png")
+      grDevices::png(file, width = 480, height = 360)
+      if(prior){
+        expect_warning(
+          plot_fun(samples, name, prior = TRUE),
+          message,
+          fixed = TRUE,
+          class = "BayesTools_prior_curve_unavailable"
+        )
+      }else{
+        plot_fun(samples, name, prior = FALSE)
+      }
+      grDevices::dev.off()
+      on.exit(unlink(file))
+      unname(tools::md5sum(file))
+    }
+    expect_identical(draw(TRUE), draw(FALSE), info = plot_function)
+  }
+})
+
 test_that("semantic parameter transforms own scalar transform algebra", {
 
   transforms <- list(

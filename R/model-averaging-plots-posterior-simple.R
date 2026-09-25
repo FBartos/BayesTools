@@ -260,6 +260,38 @@
   return(plot_data)
 }
 
+# Whether posterior draws declare that they have no prior: a prior list of
+# prior_none(), as for parameter_mixed_posterior() draws of a quantity
+# without a prior density. Their prior curve is unavailable, not missing.
+.plot_data_samples_without_prior <- function(x){
+
+  prior_list <- attr(x, "prior_list", exact = TRUE)
+  if(is.prior(prior_list)){
+    return(is.prior.none(prior_list))
+  }
+  is.list(prior_list) && length(prior_list) > 0L &&
+    all(vapply(prior_list, is.prior.none, logical(1)))
+}
+
+# Warning of an omitted prior curve of draws without a prior density (the
+# family of .prior_linear_density_warn_curve_unavailable()).
+.plot_data_warn_prior_curve_unavailable <- function(parameter){
+
+  warning(structure(
+    class = c("BayesTools_prior_curve_unavailable", "BayesTools_plot_condition",
+              "warning", "condition"),
+    list(
+      message = paste0(
+        "The prior density curve of '", parameter, "' is unavailable: its ",
+        "posterior draws carry no prior density, as the quantity has no ",
+        "deterministic prior-density route. The prior curve is omitted from ",
+        "the plot."
+      ),
+      call = NULL
+    )
+  ))
+}
+
 .plot_data_samples_prior_bounds <- function(prior_list, factor_contrasts = FALSE){
 
   prior_list_simple <- prior_list[!vapply(prior_list, is.prior.point, logical(1))]
