@@ -171,9 +171,10 @@
 #' column names of mixed posteriors, plot legends, and warning text, so a label
 #' shown by BayesTools is always a label of the same quantity everywhere.
 #'
-#' @param x a parameter catalog (or its `quantities` table), a parameter
-#' selection returned by [parameter_catalog_resolve()], a data frame with a
-#' `label_parts` column, or a list of label parts.
+#' @param x a parameter catalog (or its `quantities` or `aliases` table), a
+#' parameter selection returned by [parameter_catalog_resolve()], a data
+#' frame with a `label_parts` column (e.g. the `quantities` attribute of an
+#' estimates table), or a list of label parts.
 #' @param style one of `"selector"` (the exact selector, i.e., the canonical
 #' name of a catalog quantity), `"table"` (the summary-table row label),
 #' `"plot"` (the plot-legend label: the level text of a level cell), or
@@ -183,13 +184,21 @@
 #' @param simplify whether random-effect labels use their simplified display
 #' arguments (for example, `sd` for a sole random intercept). Defaults to
 #' `FALSE`.
+#' @param vocabulary optional named character vector renaming the
+#' random-effect quantities in the labels, e.g. `c(sd = "tau", cor = "rho")`
+#' renders `(mu) study: tau(intercept)` for `(mu) study: sd(intercept)`.
+#' Quantities without an entry keep their names. Defaults to `NULL`.
 #'
 #' @details Square brackets after a factor term hold a level label (`g[b]`);
 #' interaction cells name the level of every factor (`g[b]:h[v]`, `g[b]:x`);
 #' contrast coefficients that are not level cells are written with curly
 #' braces (`g{1}`). Selectors percent-escape syntax-sensitive level characters
 #' and quote interaction tokens as the catalog does; table, plot, and warning
-#' labels show the level labels as they are.
+#' labels show the level labels as they are. The label parts of catalog
+#' aliases render the aliases with `style = "table"`; under a `vocabulary`,
+#' they render the aliases of the renamed random-effect quantities (including
+#' the pairwise aliases of the shared correlation of `cs()` and `hcs()`
+#' blocks).
 #'
 #' @return a character vector of labels.
 #'
@@ -197,11 +206,24 @@
 #'
 #' @export
 parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"),
-                             formula_prefix = TRUE, simplify = FALSE){
+                             formula_prefix = TRUE, simplify = FALSE,
+                             vocabulary = NULL){
 
   style <- match.arg(style)
   check_bool(formula_prefix, "formula_prefix", allow_NA = FALSE)
   check_bool(simplify, "simplify", allow_NA = FALSE)
+  check_char(vocabulary, "vocabulary", check_length = 0, allow_NULL = TRUE,
+             allow_NA = FALSE)
+  if(!is.null(vocabulary) &&
+     (is.null(names(vocabulary)) || anyNA(names(vocabulary)) ||
+      any(!nzchar(names(vocabulary))) || anyDuplicated(names(vocabulary)) ||
+      any(!nzchar(vocabulary)))){
+    stop("'vocabulary' must be a named character vector of non-empty names ",
+         "with unique names.", call. = FALSE)
+  }
+  rename <- function(parts){
+    .bt_label_parts_vocabulary(parts, vocabulary)
+  }
 
   if(inherits(x, "BayesTools_parameter_catalog")){
     .bt_validate_parameter_catalog(x)
@@ -220,13 +242,16 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
     if(any(missing) && "display_label" %in% names(x)){
       # extension providers may describe their quantities by a label only
       out[missing] <- x$display_label[missing]
+    }else if(any(missing) && "alias" %in% names(x)){
+      # and their aliases by the alias text
+      out[missing] <- x$alias[missing]
     }else if(any(missing)){
       stop("The 'x' argument contains quantities without label parts.",
            call. = FALSE)
     }
     if(any(!missing)){
       out[!missing] <- .bt_label(
-        unclass(x$label_parts)[!missing],
+        rename(unclass(x$label_parts)[!missing]),
         style          = style,
         formula_prefix = formula_prefix,
         simplify       = simplify
@@ -236,11 +261,27 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   }
 
   .bt_label(
-    x,
+    rename(x),
     style          = style,
     formula_prefix = formula_prefix,
     simplify       = simplify
   )
+}
+
+# Label parts with their random-effect quantities renamed by 'vocabulary' (a
+# named character vector; NULL keeps the names).
+.bt_label_parts_vocabulary <- function(parts, vocabulary){
+
+  parts <- .bt_label_parts_list(parts)
+  if(is.null(vocabulary)){
+    return(parts)
+  }
+  lapply(parts, function(part){
+    if(!is.null(part$random) && part$random$quantity %in% names(vocabulary)){
+      part$random$quantity <- vocabulary[[part$random$quantity]]
+    }
+    part
+  })
 }
 
 # Render labels of label parts (one label per parts object).

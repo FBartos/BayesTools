@@ -8,13 +8,15 @@ parameter_labels(
   x,
   style = c("selector", "table", "plot", "warning"),
   formula_prefix = TRUE,
-  simplify = FALSE
+  simplify = FALSE,
+  vocabulary = NULL
 )
 }
 \arguments{
-\item{x}{a parameter catalog (or its \code{quantities} table), a parameter
-selection returned by \code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}}, a data frame with a
-\code{label_parts} column, or a list of label parts.}
+\item{x}{a parameter catalog (or its \code{quantities} or \code{aliases} table), a
+parameter selection returned by \code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}}, a data
+frame with a \code{label_parts} column (e.g. the \code{quantities} attribute of an
+estimates table), or a list of label parts.}
 
 \item{style}{one of \code{"selector"} (the exact selector, i.e., the canonical
 name of a catalog quantity), \code{"table"} (the summary-table row label),
@@ -27,6 +29,11 @@ parameter, as in \verb{(mu) x}. Defaults to \code{TRUE}.}
 \item{simplify}{whether random-effect labels use their simplified display
 arguments (for example, \code{sd} for a sole random intercept). Defaults to
 \code{FALSE}.}
+
+\item{vocabulary}{optional named character vector renaming the
+random-effect quantities in the labels, e.g. \code{c(sd = "tau", cor = "rho")}
+renders \verb{(mu) study: tau(intercept)} for \verb{(mu) study: sd(intercept)}.
+Quantities without an entry keep their names. Defaults to \code{NULL}.}
 }
 \value{
 a character vector of labels.
@@ -46,7 +53,11 @@ interaction cells name the level of every factor (\code{g[b]:h[v]}, \code{g[b]:x
 contrast coefficients that are not level cells are written with curly
 braces (\verb{g\{1\}}). Selectors percent-escape syntax-sensitive level characters
 and quote interaction tokens as the catalog does; table, plot, and warning
-labels show the level labels as they are.
+labels show the level labels as they are. The label parts of catalog
+aliases render the aliases with \code{style = "table"}; under a \code{vocabulary},
+they render the aliases of the renamed random-effect quantities (including
+the pairwise aliases of the shared correlation of \code{cs()} and \code{hcs()}
+blocks).
 }
 \seealso{
 \code{\link[=parameter_catalog]{parameter_catalog()}}

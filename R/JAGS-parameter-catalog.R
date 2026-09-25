@@ -11,7 +11,7 @@
   "source_type", "support", "definedness", "label_parts", "extraction_key"
 )
 .bt_parameter_catalog_alias_columns <- c(
-  "alias", "quantity_id", "namespace", "component", "simplified"
+  "alias", "quantity_id", "namespace", "component", "simplified", "label_parts"
 )
 
 #' Semantic parameter catalogs and deferred draw extraction
@@ -268,13 +268,18 @@ parameter_catalog_schema <- function(){
   )
   aliases <- data.frame(
     field = .bt_parameter_catalog_alias_columns,
-    type = c(rep("character", 4L), "logical"),
+    type = c(rep("character", 4L), "logical", "list"),
     description = c(
       "Exact accepted alias.",
       "Quantity identifier targeted by the alias.",
       "Exact resolver namespace.",
       "Optional component filter, or an empty string.",
-      "Whether the alias requires 'simplify_names = TRUE'."
+      "Whether the alias requires 'simplify_names = TRUE'.",
+      paste0(
+        "Label parts from which parameter_labels(style = \"table\") renders the ",
+        "alias (a random-effect alias under a caller 'vocabulary'); NULL for ",
+        "extension aliases without them."
+      )
     ),
     stringsAsFactors = FALSE
   )
@@ -291,6 +296,10 @@ parameter_catalog_extend <- function(catalog, quantities, aliases,
 
   .bt_validate_parameter_catalog(catalog)
   check_char(provider, "provider", check_length = 1L, allow_NA = FALSE)
+  if(is.data.frame(aliases) && !"label_parts" %in% names(aliases)){
+    # extension aliases without label parts
+    aliases$label_parts <- I(rep(list(NULL), nrow(aliases)))
+  }
   if(!grepl("^[A-Za-z][A-Za-z0-9.]*$", provider)){
     stop("'provider' must start with a letter and contain only letters, numbers, and dots.",
          call. = FALSE)
@@ -1982,7 +1991,7 @@ parameter_transform_jacobian <- function(values, transform){
 
 .bt_parameter_catalog_empty_aliases <- function(){
 
-  data.frame(
+  out <- data.frame(
     alias = character(),
     quantity_id = character(),
     namespace = character(),
@@ -1990,6 +1999,8 @@ parameter_transform_jacobian <- function(values, transform){
     simplified = logical(),
     stringsAsFactors = FALSE
   )
+  out$label_parts <- I(list())
+  out
 }
 
 .bt_parameter_catalog_new <- function(quantities, aliases){
@@ -2453,39 +2464,80 @@ parameter_transform_jacobian <- function(values, transform){
   }
 }
 
+# Label parts of an alias: the first candidate whose table label is the alias
+# text, otherwise the alias text itself as one component (an alias that is no
+# table label of structured parts, such as the canonical name of a fitted
+# coordinate or the selector of a transformed factor level).
+.bt_parameter_catalog_alias_parts <- function(alias, candidates = list()){
+
+  for(parts in candidates){
+    if(identical(.bt_label(parts, style = "table"), alias)){
+      return(parts)
+    }
+  }
+
+  .bt_label_parts(alias, selector = alias)
+}
+
+# Label parts whose table label is the table label of 'parts' without the
+# formula prefix ('formula_prefix = FALSE') and with the simplified
+# random-effect arguments ('simplify = TRUE').
+.bt_parameter_catalog_alias_rendering <- function(parts, formula_prefix = TRUE,
+                                                  simplify = FALSE){
+
+  if(!formula_prefix){
+    parts$formula_parameter <- ""
+  }
+  if(simplify && !is.null(parts$random)){
+    parts$random$arguments <- parts$random$display_arguments
+  }
+  .bt_validate_label_parts(parts)
+  parts
+}
+
+# The aliases of a quantity rendered from label parts: 'values' with the
+# label parts each one is rendered from.
+.bt_parameter_catalog_rendered_aliases <- function(parts_list){
+
+  parts_list <- Filter(Negate(is.null), parts_list)
+  values <- vapply(parts_list, .bt_label, character(1), style = "table")
+  keep <- !duplicated(values)
+  list(values = values[keep], parts = parts_list[keep])
+}
+
 # Labels a quantity is selected by besides its canonical name: every label
 # the summaries render for it - its table labels with and without the formula
 # prefix, the exp(intercept) label of the log intercept in original-scale
 # tables, and for factor level cells the level names and table rows of
-# transformed contrasts. Random-effect quantities have their own semantic
-# aliases.
+# transformed contrasts - with the label parts each is rendered from.
+# Random-effect quantities have their own semantic aliases.
 .bt_parameter_catalog_label_aliases <- function(quantity, formula_scale = NULL){
 
   parts <- quantity$label_parts[[1L]]
   if(is.null(parts)){
-    return(character())
+    return(list(values = character(), parts = list()))
   }
-  labels <- c(
-    .bt_label(parts, style = "table", formula_prefix = TRUE),
-    .bt_label(parts, style = "table", formula_prefix = FALSE)
-  )
-  original_scale <- .bt_label_parts_log_intercept(parts, formula_scale)
-  labels <- c(
-    labels,
-    .bt_label(original_scale, style = "table", formula_prefix = TRUE),
-    .bt_label(original_scale, style = "table", formula_prefix = FALSE)
+  original_scale <- .bt_label_parts_log_intercept(parts, formula_scale)[[1L]]
+  renderings <- list(
+    .bt_parameter_catalog_alias_rendering(parts, formula_prefix = TRUE),
+    .bt_parameter_catalog_alias_rendering(parts, formula_prefix = FALSE),
+    .bt_parameter_catalog_alias_rendering(original_scale, formula_prefix = TRUE),
+    .bt_parameter_catalog_alias_rendering(original_scale, formula_prefix = FALSE)
   )
   if(.bt_parameter_catalog_is_factor_quantity(quantity) &&
      length(parts$levels) > 0L){
-    dif <- .bt_label_parts_update(parts, transformation = "dif")
-    labels <- c(
-      labels,
-      .bt_label(dif, style = "selector"),
-      .bt_label(dif, style = "table", formula_prefix = TRUE),
-      .bt_label(dif, style = "table", formula_prefix = FALSE)
+    dif <- .bt_label_parts_update(parts, transformation = "dif")[[1L]]
+    selector <- .bt_label(dif, style = "selector")
+    renderings <- c(
+      renderings,
+      list(
+        .bt_parameter_catalog_alias_parts(selector),
+        .bt_parameter_catalog_alias_rendering(dif, formula_prefix = TRUE),
+        .bt_parameter_catalog_alias_rendering(dif, formula_prefix = FALSE)
+      )
     )
   }
-  unique(labels)
+  .bt_parameter_catalog_rendered_aliases(renderings)
 }
 
 .bt_parameter_catalog_aliases <- function(quantities, formula_design = NULL,
@@ -2498,12 +2550,15 @@ parameter_transform_jacobian <- function(values, transform){
   }
   rows <- list()
   secondary <- list()
-  add_aliases <- function(quantity, values, simplified){
-    values <- unique(values[!is.na(values) & nzchar(values)])
+  # 'aliases' holds the alias values and the label parts each is rendered from
+  add_aliases <- function(quantity, aliases, simplified){
+    keep <- !is.na(aliases$values) & nzchar(aliases$values) &
+      !duplicated(aliases$values)
+    values <- aliases$values[keep]
     if(length(values) == 0L){
       return(invisible(NULL))
     }
-    rows[[length(rows) + 1L]] <<- data.frame(
+    row <- data.frame(
       alias = values,
       quantity_id = rep(quantity$quantity_id, length(values)),
       namespace = rep(quantity$namespace, length(values)),
@@ -2511,15 +2566,17 @@ parameter_transform_jacobian <- function(values, transform){
       simplified = rep(simplified, length(values)),
       stringsAsFactors = FALSE
     )
+    row$label_parts <- I(unname(aliases$parts[keep]))
+    rows[[length(rows) + 1L]] <<- row
     invisible(NULL)
   }
   for(i in seq_len(nrow(public))){
     quantity <- public[i, , drop = FALSE]
     parts <- quantity$label_parts[[1L]]
     if(startsWith(quantity$role, "random_")){
-      values <- unique(c(
+      aliases <- .bt_parameter_catalog_rendered_aliases(c(
         if(!is.null(parts)){
-          .bt_label(parts, style = "table", formula_prefix = FALSE)
+          list(.bt_parameter_catalog_alias_rendering(parts, formula_prefix = FALSE))
         },
         .bt_parameter_catalog_random_correlation_aliases(
           quantity,
@@ -2527,6 +2584,14 @@ parameter_transform_jacobian <- function(values, transform){
         )
       ))
     }else{
+      structured <- if(!is.null(parts)){
+        list(
+          parts,
+          .bt_parameter_catalog_alias_rendering(parts, formula_prefix = FALSE)
+        )
+      }else{
+        list()
+      }
       values <- unique(c(
         quantity$canonical_name,
         quantity$display_label,
@@ -2542,20 +2607,26 @@ parameter_transform_jacobian <- function(values, transform){
           character()
         }
       ))
-      # rendered labels that may coincide with another quantity's selector
-      label_aliases <- setdiff(
-        .bt_parameter_catalog_label_aliases(quantity, formula_scale),
-        values
+      values <- values[!is.na(values) & nzchar(values)]
+      aliases <- list(
+        values = values,
+        parts  = lapply(values, .bt_parameter_catalog_alias_parts,
+                        candidates = structured)
       )
-      if(length(label_aliases) > 0L){
-        secondary[[length(secondary) + 1L]] <- data.frame(
-          alias = label_aliases,
+      # rendered labels that may coincide with another quantity's selector
+      label_aliases <- .bt_parameter_catalog_label_aliases(quantity, formula_scale)
+      new_labels <- !label_aliases$values %in% values
+      if(any(new_labels)){
+        secondary_rows <- data.frame(
+          alias = label_aliases$values[new_labels],
           quantity_id = quantity$quantity_id,
           stringsAsFactors = FALSE
         )
+        secondary_rows$label_parts <- I(unname(label_aliases$parts[new_labels]))
+        secondary[[length(secondary) + 1L]] <- secondary_rows
       }
     }
-    add_aliases(quantity, values, simplified = FALSE)
+    add_aliases(quantity, aliases, simplified = FALSE)
     if(startsWith(quantity$role, "random_")){
       add_aliases(
         quantity,
@@ -2568,7 +2639,7 @@ parameter_transform_jacobian <- function(values, transform){
     return(out)
   }
   out <- do.call(rbind, rows)
-  out <- unique(out)
+  out <- out[!duplicated(out[setdiff(names(out), "label_parts")]), , drop = FALSE]
   rownames(out) <- NULL
   .bt_parameter_catalog_secondary_aliases(
     out,
@@ -2584,33 +2655,31 @@ parameter_transform_jacobian <- function(values, transform){
 }
 
 # Adds the rendered labels of the quantities (secondary label-to-quantity
-# rows) as aliases unless a label is rendered for several quantities or
-# already names a different quantity in the same namespace.
+# rows, with their label parts) as aliases unless a label is rendered for
+# several quantities or already names a different quantity in the same
+# namespace.
 .bt_parameter_catalog_secondary_aliases <- function(aliases, public,
                                                     secondary = NULL){
 
-  added <- data.frame(
-    alias = character(),
-    quantity_id = character(),
-    stringsAsFactors = FALSE
-  )
-  if(!is.null(secondary) && nrow(secondary) > 0L){
-    added <- rbind(added, secondary[c("alias", "quantity_id")])
-  }
-  quantity_rows <- match(added$quantity_id, public$quantity_id)
-  added <- added[!is.na(quantity_rows), , drop = FALSE]
-  quantity_rows <- quantity_rows[!is.na(quantity_rows)]
-  if(nrow(added) == 0L){
+  if(is.null(secondary) || nrow(secondary) == 0L){
     return(aliases)
   }
-  added <- unique(data.frame(
-    alias = added$alias,
-    quantity_id = added$quantity_id,
+  quantity_rows <- match(secondary$quantity_id, public$quantity_id)
+  secondary <- secondary[!is.na(quantity_rows), , drop = FALSE]
+  quantity_rows <- quantity_rows[!is.na(quantity_rows)]
+  if(nrow(secondary) == 0L){
+    return(aliases)
+  }
+  added <- data.frame(
+    alias = secondary$alias,
+    quantity_id = secondary$quantity_id,
     namespace = public$namespace[quantity_rows],
     component = public$component[quantity_rows],
     simplified = FALSE,
     stringsAsFactors = FALSE
-  ))
+  )
+  added$label_parts <- I(unname(unclass(secondary$label_parts)))
+  added <- added[!duplicated(added[setdiff(names(added), "label_parts")]), , drop = FALSE]
   added <- added[!is.na(added$alias) & nzchar(added$alias), , drop = FALSE]
   if(nrow(added) == 0L){
     return(aliases)
@@ -2646,33 +2715,44 @@ parameter_transform_jacobian <- function(values, transform){
     return(aliases)
   }
 
-  out <- unique(rbind(aliases, added))
+  out <- rbind(aliases, added)
+  out <- out[!duplicated(out[setdiff(names(out), "label_parts")]), , drop = FALSE]
   rownames(out) <- NULL
   out
 }
 
+# The simplified aliases of a random-effect quantity (with its label parts):
+# its simplified table labels with and without the formula prefix, and
+# without its owner.
 .bt_parameter_catalog_random_simplified_aliases <- function(quantity){
 
   parts <- quantity$label_parts[[1L]]
   if(is.null(parts) || is.null(parts$random)){
-    return(character())
+    return(list(values = character(), parts = list()))
   }
   without_owner <- parts
   without_owner$random$owner <- ""
 
-  unique(c(
-    .bt_label(parts, style = "table", formula_prefix = TRUE, simplify = TRUE),
-    .bt_label(parts, style = "table", formula_prefix = FALSE, simplify = TRUE),
-    .bt_label(without_owner, style = "table", formula_prefix = FALSE,
-              simplify = TRUE)
+  .bt_parameter_catalog_rendered_aliases(list(
+    .bt_parameter_catalog_alias_rendering(parts, formula_prefix = TRUE, simplify = TRUE),
+    .bt_parameter_catalog_alias_rendering(parts, formula_prefix = FALSE, simplify = TRUE),
+    .bt_parameter_catalog_alias_rendering(without_owner, formula_prefix = FALSE,
+                                          simplify = TRUE)
   ))
 }
 
+# The label parts of the pairwise aliases of the shared correlation of a
+# compound-symmetry (cs, hcs) block: the correlation of every pair of its
+# components, with and without the formula prefix.
 .bt_parameter_catalog_random_correlation_aliases <- function(
     quantity, formula_design){
 
   if(!identical(quantity$role, "random_correlation")){
-    return(character())
+    return(list())
+  }
+  parts <- quantity$label_parts[[1L]]
+  if(is.null(parts) || is.null(parts$random)){
+    return(list())
   }
   key <- quantity$extraction_key[[1L]]
   random_term <- .bt_parameter_catalog_alias_random_term(
@@ -2680,7 +2760,7 @@ parameter_transform_jacobian <- function(values, transform){
     key
   )
   if(!is.list(random_term)){
-    return(character())
+    return(list())
   }
   owners <- .bt_parameter_catalog_random_public_block_owner(
     formula_design,
@@ -2688,35 +2768,40 @@ parameter_transform_jacobian <- function(values, transform){
     random_term
   )
   if(!is.character(owners) || anyNA(owners)){
-    return(character())
+    return(list())
   }
 
   if(!identical(key$evaluator, "rho")){
-    return(character())
+    return(list())
   }
   structure <- .bt_random_effect_summary_term_structure(random_term)
   if(!structure %in% c("cs", "hcs")){
-    return(character())
+    return(list())
   }
   components <- .bt_random_effect_summary_column_components(random_term)
   if(length(components) < 2L){
-    return(character())
+    return(list())
   }
   pairs <- utils::combn(components, 2L)
-  correlations <- unlist(lapply(c(TRUE, FALSE), function(formula_prefix){
-    lapply(owners, function(owner){
-      apply(pairs, 2L, function(pair){
-        .bt_random_effect_semantic_name(
-          parameter = quantity$formula_parameter,
-          owner = owner,
-          quantity = "cor",
-          arguments = pair,
+  out <- list()
+  for(formula_prefix in c(TRUE, FALSE)){
+    for(owner in owners){
+      for(pair in seq_len(ncol(pairs))){
+        pair_parts <- parts
+        pair_parts$random <- list(
+          owner             = owner,
+          quantity          = "cor",
+          arguments         = pairs[, pair],
+          display_arguments = pairs[, pair]
+        )
+        out[[length(out) + 1L]] <- .bt_parameter_catalog_alias_rendering(
+          pair_parts,
           formula_prefix = formula_prefix
         )
-      })
-    })
-  }), use.names = FALSE)
-  unique(correlations)
+      }
+    }
+  }
+  out
 }
 
 .bt_parameter_catalog_random_public_block_owner <- function(
@@ -4312,11 +4397,15 @@ parameter_transform_jacobian <- function(values, transform){
      !is.logical(quantities$internal) ||
      !is.list(quantities$extraction_key) ||
      !all(vapply(
-       aliases[setdiff(names(aliases), "simplified")],
+       aliases[setdiff(names(aliases), c("simplified", "label_parts"))],
        is.character,
        logical(1)
      )) ||
      !is.logical(aliases$simplified) ||
+     !is.list(aliases$label_parts) ||
+     !all(vapply(aliases$label_parts, function(parts){
+       is.null(parts) || inherits(parts, "BayesTools_label_parts")
+     }, logical(1))) ||
      !is.list(quantities$support) ||
      !all(vapply(quantities$support, function(support){
        is.null(support) || inherits(support, "BayesTools_posterior_support")
@@ -4332,7 +4421,7 @@ parameter_transform_jacobian <- function(values, transform){
      anyNA(quantities[setdiff(names(quantities),
                              c("fixed_value", "support", "label_parts",
                                "extraction_key"))]) ||
-     anyNA(aliases)){
+     anyNA(aliases[setdiff(names(aliases), "label_parts")])){
     stop("Parameter catalog tables contain malformed field types or missing metadata. Refit or rebuild the catalog with this version of BayesTools.",
          call. = FALSE)
   }

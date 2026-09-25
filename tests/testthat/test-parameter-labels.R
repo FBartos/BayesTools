@@ -249,6 +249,12 @@ test_that("every catalog quantity renders its canonical name and resolves by its
         quantities$display_label,
         info = info
       )
+      # every alias is the table label of its label parts
+      expect_identical(
+        parameter_labels(catalog$aliases, "table"),
+        catalog$aliases$alias,
+        info = info
+      )
       for(prefix in c(TRUE, FALSE)){
         labels <- parameter_labels(quantities, "table", formula_prefix = prefix)
         for(i in seq_along(labels)){
@@ -812,6 +818,95 @@ test_that("model tables, diagnostics, and ensembles label each quantity alike", 
       info = contrast
     )
   }
+})
+
+test_that("estimates tables carry the quantity and label parts of every row", {
+
+  # a mean-difference factor: its transformed levels are the [dif: ] rows
+  data <- .label_test_data(c("lo", "mid", "hi"), "meandif")
+  fit <- .label_test_fit(~ g, data, list(
+    intercept = prior("normal", list(0, 1)),
+    g         = .label_test_factor_prior("meandif")
+  ))
+  catalog <- parameter_catalog(fit)
+  table <- JAGS_estimates_table(fit, transform_factors = TRUE)
+  quantities <- attr(table, "quantities")
+  expect_identical(names(quantities), c("row", "quantity_id", "label_parts"))
+  expect_identical(quantities$row, rownames(table))
+  expect_identical(parameter_labels(quantities, style = "table"), rownames(table))
+  expect_identical(
+    rownames(table)[startsWith(rownames(table), "(mu) g[")],
+    c("(mu) g[dif: lo]", "(mu) g[dif: mid]", "(mu) g[dif: hi]")
+  )
+  row <- match("(mu) g[dif: mid]", rownames(table))
+  expect_identical(quantities$label_parts[[row]]$transformation, "dif")
+  expect_identical(quantities$label_parts[[row]]$levels, c(g = "mid"))
+  # the row is the level quantity, and renders without the formula prefix
+  expect_identical(
+    quantities$quantity_id[[row]],
+    parameter_catalog_resolve(catalog, "mu_g[mid]")$quantity_id
+  )
+  expect_identical(
+    parameter_labels(quantities[row, ], style = "table", formula_prefix = FALSE),
+    "g[dif: mid]"
+  )
+  expect_identical(
+    quantities$quantity_id[[match("(mu) intercept", rownames(table))]],
+    parameter_catalog_resolve(catalog, "mu_intercept")$quantity_id
+  )
+  # subsetting keeps the quantities of the kept rows
+  subset <- table[c(row, 1L), ]
+  expect_identical(attr(subset, "quantities")$row, rownames(subset))
+  expect_identical(attr(update(table, remove_parameters = "(mu) g[dif: lo]"), "quantities")$row,
+                   setdiff(rownames(table), "(mu) g[dif: lo]"))
+  # the ensemble route carries the parts of its rows
+  mixed <- as_mixed_posteriors(fit, parameters = names(attr(fit, "prior_list")))
+  ensemble <- ensemble_estimates_table(mixed, parameters = names(mixed),
+                                       transform_factors = TRUE)
+  expect_identical(
+    parameter_labels(attr(ensemble, "quantities"), style = "table"),
+    rownames(ensemble)
+  )
+
+  # the rows of a log-intercept (scale) formula on the original scale are
+  # rendered from the table's parts, also under another formula parameter
+  skip_if_not_installed("rjags")
+  set.seed(2)
+  data <- data.frame(x = stats::rnorm(48, 3, 2))
+  data$y <- stats::rnorm(nrow(data), 2)
+  formula <- ~ 1 + x
+  attr(formula, "log(intercept)") <- TRUE
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax       = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 4)\n}\n}",
+    data               = list(y = data$y, N = nrow(data)),
+    formula_list       = list(mu = formula),
+    formula_data_list  = list(mu = data),
+    formula_prior_list = list(mu = list(
+      intercept = prior("gamma", list(2, 2)),
+      x         = prior("normal", list(0, 1))
+    )),
+    formula_scale_list = list(mu = list(x = TRUE)),
+    chains = 1, adapt = 100, burnin = 100, sample = 100, silent = TRUE, seed = 3
+  ))
+  table <- JAGS_estimates_table(fit, transform_scaled = TRUE)
+  quantities <- attr(table, "quantities")
+  expect_identical(rownames(table), c("(mu) exp(intercept)", "(mu) x"))
+  expect_identical(parameter_labels(quantities, style = "table"), rownames(table))
+  expect_identical(quantities$label_parts[[1L]]$transformation, "exp")
+  # the exponentiated log intercept names the intercept (a catalog alias)
+  catalog <- parameter_catalog(fit)
+  expect_identical(
+    quantities$quantity_id,
+    c(parameter_catalog_resolve(catalog, "(mu) exp(intercept)")$quantity_id,
+      parameter_catalog_resolve(catalog, "mu_x")$quantity_id)
+  )
+  expect_identical(
+    parameter_labels(
+      .bt_label_parts_update(quantities$label_parts, formula_parameter = "log(tau)"),
+      style = "table"
+    ),
+    c("(log(tau)) exp(intercept)", "(log(tau)) x")
+  )
 })
 
 test_that("model tables and the catalog take formula prefixes from the formula parameter", {

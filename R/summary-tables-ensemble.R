@@ -87,7 +87,16 @@
 #' overview of the models included in the ensemble, and
 #' \code{ensemble_diagnostics_table} returns an overview of the MCMC
 #' diagnostics for the models included in the ensemble. All of the
-#' tables are objects of class 'BayesTools_table'.
+#' tables are objects of class 'BayesTools_table'. The estimates tables
+#' (\code{ensemble_estimates_table} and \code{marginal_estimates_table})
+#' carry the per-row quantity table \code{attr(table, "quantities")}: a data
+#' frame with one row per table row and the columns \code{row} (the row
+#' label), \code{quantity_id} (the [parameter_catalog()] quantity id the
+#' summarized draws declare in their \code{quantities} metadata, see
+#' [posterior_metadata()]; \code{""} when they declare none, e.g. for
+#' estimated marginal means), and \code{label_parts} (the label parts the row
+#' label is rendered from; see [parameter_labels()]). Subsetting the table
+#' subsets its quantity table.
 #'
 #' @export ensemble_estimates_table
 #' @export ensemble_inference_table
@@ -138,12 +147,21 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
     samples <- transform_factor_samples(samples)
   }
 
-  # row labels rendered from the label parts of every column
+  # row labels rendered from the label parts of every column (recorded with
+  # the columns' quantity ids for the table's 'quantities')
+  row_parts <- list()
+  row_quantity_ids <- character()
   row_labels <- function(parameter){
     parts <- .bt_draws_label_parts(samples[[parameter]], parameter)
     if(transformed_scale){
       parts <- .bt_label_parts_log_intercept(parts, formula_scale)
     }
+    quantities <- .bt_draws_quantities(samples[[parameter]])
+    row_parts <<- c(row_parts, parts)
+    row_quantity_ids <<- c(
+      row_quantity_ids,
+      if(is.null(quantities)) rep("", length(parts)) else quantities$quantity_id
+    )
     .bt_label(parts, style = "table", formula_prefix = formula_prefix)
   }
 
@@ -215,6 +233,11 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
   colnames(estimates_table)          <- gsub("X", "", colnames(estimates_table))
   class(estimates_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(estimates_table))
   attr(estimates_table, "type")      <- rep("estimate", ncol(estimates_table))
+  attr(estimates_table, "quantities") <- .bt_table_quantities(
+    rows         = rownames(estimates_table),
+    label_parts  = row_parts,
+    quantity_ids = row_quantity_ids
+  )
   attr(estimates_table, "rownames")  <- TRUE
   attr(estimates_table, "title")     <- title
   attr(estimates_table, "footnotes") <- c(footnotes, undefined_footnotes)
@@ -611,11 +634,15 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
 
   # extract values
   estimates_table <- NULL
+  row_parts <- list()
+  row_quantity_ids <- character()
   for(parameter in parameters){
 
     # the label parts of every level: rows and warnings are rendered from them
     level_parts  <- .bt_marginal_level_parts(samples[[parameter]], parameter)
     level_labels <- .bt_label(level_parts, style = "table", formula_prefix = formula_prefix)
+    row_parts <- c(row_parts, level_parts)
+    row_quantity_ids <- c(row_quantity_ids, .bt_marginal_level_quantity_ids(samples[[parameter]]))
     level_warning_labels <- .bt_label(level_parts, style = "warning", formula_prefix = formula_prefix)
 
     # extract the relevant information
@@ -692,12 +719,28 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
   table_type[colnames(estimates_table) == "inclusion_BF"] <- "inclusion_BF"
   table_type[colnames(estimates_table) == "BF_error_percent"] <- "BF_error"
   attr(estimates_table, "type")      <- table_type
+  attr(estimates_table, "quantities") <- .bt_table_quantities(
+    rows         = rownames(estimates_table),
+    label_parts  = row_parts,
+    quantity_ids = row_quantity_ids
+  )
   attr(estimates_table, "rownames")  <- TRUE
   attr(estimates_table, "title")     <- title
   attr(estimates_table, "footnotes") <- footnotes
   attr(estimates_table, "warnings")  <- warnings
 
   return(estimates_table)
+}
+
+# The quantity ids the levels of a marginal posterior declare ("" for levels
+# without a column table, and for estimated marginal means).
+.bt_marginal_level_quantity_ids <- function(x){
+
+  levels <- if(is.list(x) && !is.numeric(x)) x else list(x)
+  vapply(levels, function(level){
+    quantities <- .bt_draws_quantities(level)
+    if(is.null(quantities)) "" else quantities$quantity_id[[1L]]
+  }, character(1), USE.NAMES = FALSE)
 }
 
 .marginal_inference_BF_error_percent <- function(inference, BF){

@@ -183,6 +183,7 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   if(!is.null(selected_parameters)){
     attr(out, "parameters") <- selected_parameters
   }
+  attr(out, "quantities") <- .subset_table_quantities(x, out)
   attr(out, "warnings") <- .subset_table_warnings(attr(x, "warnings"), selected_parameters, rownames(out))
   out <- .subset_table_hypothesis_attributes(x, out)
 
@@ -387,6 +388,75 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   }
 
   parameters[row_indices]
+}
+
+# The per-row quantity table of the rows kept by subsetting (NULL when the
+# table has none or the rows cannot be matched).
+.subset_table_quantities <- function(table, output){
+
+  quantities <- attr(table, "quantities", exact = TRUE)
+  if(is.null(quantities) || nrow(quantities) != nrow(table)){
+    return(NULL)
+  }
+  row_indices <- match(rownames(output), rownames(table))
+  if(anyNA(row_indices)){
+    return(NULL)
+  }
+  out <- quantities[row_indices, , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
+# The per-row quantity table of an estimates table (its 'quantities'
+# attribute): the row labels, the parameter_catalog() quantity id of each row
+# ("" when the row is not a catalog quantity), and the label parts the row
+# label is rendered from.
+.bt_table_quantities <- function(rows, label_parts, quantity_ids = NULL){
+
+  if(is.null(quantity_ids)){
+    quantity_ids <- rep("", length(rows))
+  }
+  if(length(label_parts) != length(rows) || length(quantity_ids) != length(rows)){
+    stop("The label parts of the table rows do not match its rows.", call. = FALSE)
+  }
+  out <- data.frame(
+    row         = as.character(rows),
+    quantity_id = as.character(quantity_ids),
+    stringsAsFactors = FALSE
+  )
+  out$label_parts <- I(unname(label_parts))
+  out
+}
+
+# The catalog quantity ids of label parts: the quantity whose canonical name
+# is the rendered selector, otherwise the quantity of a unique exact alias
+# (e.g. a transformed factor level `<parameter>[dif: level]`), in the
+# namespace of the parts' formula parameter; "" when there is none.
+.bt_table_quantity_ids <- function(label_parts, catalog){
+
+  out <- rep("", length(label_parts))
+  if(is.null(catalog) || length(label_parts) == 0L){
+    return(out)
+  }
+  selectors <- .bt_label(label_parts, style = "selector")
+  namespaces <- vapply(label_parts, function(part){
+    if(nzchar(part$formula_parameter)) part$formula_parameter else "model"
+  }, character(1))
+  out <- .bt_draws_quantity_ids(label_parts, catalog)
+  missing <- !nzchar(out)
+  aliases <- catalog$aliases[!catalog$aliases$simplified, , drop = FALSE]
+  if(any(missing) && nrow(aliases) > 0L){
+    pairs <- unique(data.frame(
+      key = paste(aliases$alias, aliases$namespace, sep = "\r"),
+      id  = aliases$quantity_id,
+      stringsAsFactors = FALSE
+    ))
+    pairs <- pairs[!pairs$key %in% pairs$key[duplicated(pairs$key)], , drop = FALSE]
+    matched <- pairs$id[match(paste(selectors, namespaces, sep = "\r")[missing], pairs$key)]
+    out[missing] <- ifelse(is.na(matched), "", matched)
+  }
+
+  out
 }
 
 .subset_table_warnings <- function(warnings, selected_parameters = NULL, selected_rows = NULL){

@@ -638,6 +638,12 @@ test_that("catalog mixed posteriors carry the quantity and label of their catalo
 
   fit <- .random_effects_gated_total_variance_allocation_fit()
   catalog <- parameter_catalog(fit)
+  # every alias (with owners, simplified forms, and allocation quantities) is
+  # the table label of its label parts, also under a caller vocabulary
+  expect_identical(parameter_labels(catalog$aliases, "table"), catalog$aliases$alias)
+  sd_row <- catalog$aliases[catalog$aliases$alias == "study: sd(intercept)", , drop = FALSE]
+  expect_identical(parameter_labels(sd_row, "table", vocabulary = c(sd = "tau")),
+                   "study: tau(intercept)")
   names <- c(
     "(mu) study: sd(intercept)", "(mu) allocation: sd_total",
     "(mu) allocation: var_prop(drug)"

@@ -362,7 +362,20 @@ diagnostics when \code{BF_diagnostics = TRUE} and none otherwise.}
 overview of the fitted model, \code{runjags_estimates_table} returns
 a table with MCMC estimates, and \code{runjags_estimates_empty_table}
 returns an empty estimates table. All of the tables are objects of
-class 'BayesTools_table'.
+class 'BayesTools_table'. The estimates table carries the per-row quantity
+table \code{attr(table, "quantities")}: a data frame with one row per table
+row and the columns \code{row} (the row label), \code{quantity_id} (the
+\code{\link[=parameter_catalog]{parameter_catalog()}} quantity id of the quantity the row's label names,
+its canonical name or an exact alias such as a transformed factor level
+\code{<parameter>[dif: level]}; \code{""} for rows that are not catalog
+quantities, such as inclusion rows, mixture components, and backend
+coordinates), and \code{label_parts} (the label parts the row label is
+rendered from; \code{\link[=parameter_labels]{parameter_labels()}} renders them, also with another formula
+parameter or random-effect quantity names). With
+\code{transform_scaled = TRUE}, the rows of standardized coefficients
+(including the exponentiated log intercept, an alias of the intercept) show
+their catalog quantity on the original predictor scale. Subsetting the
+table subsets its quantity table.
 }
 \description{
 Creates model summary based on a model objects or

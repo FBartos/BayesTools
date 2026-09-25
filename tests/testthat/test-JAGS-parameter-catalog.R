@@ -22,7 +22,7 @@ test_that("parameter catalog construction is metadata-only and versioned", {
     prior_list = prior_list
   ))
   expect_s3_class(catalog, "BayesTools_parameter_catalog")
-  expect_identical(catalog$schema_version, 8L)
+  expect_identical(catalog$schema_version, 9L)
   expect_identical(
     names(catalog$quantities),
     .bt_parameter_catalog_quantity_columns
@@ -2383,6 +2383,46 @@ test_that("structured correlation aliases expose shared and pairwise semantics",
     parameter_catalog_resolve(catalog, "study: cor", "mu"),
     "No public parameter quantity matches"
   )
+
+  # every alias is the table label of its label parts
+  expect_identical(parameter_labels(catalog$aliases, style = "table"), catalog$aliases$alias)
+  # the pairwise alias renders under a caller vocabulary (cor -> rho), and its
+  # rendering under the catalog's names selects the shared correlation
+  pair <- catalog$aliases[
+    catalog$aliases$alias == "(mu) cor(outcome[sensitivity],outcome[specificity])", ,
+    drop = FALSE
+  ]
+  expect_identical(nrow(pair), 1L)
+  expect_identical(pair$quantity_id, rho$quantity_id)
+  expect_identical(pair$label_parts[[1L]]$random$arguments,
+                   c("outcome[sensitivity]", "outcome[specificity]"))
+  vocabulary <- c(sd = "tau", cor = "rho")
+  expect_identical(
+    parameter_labels(pair, style = "table", vocabulary = vocabulary),
+    "(mu) rho(outcome[sensitivity],outcome[specificity])"
+  )
+  expect_identical(
+    parameter_labels(pair$label_parts, style = "table", formula_prefix = FALSE,
+                     vocabulary = vocabulary),
+    "rho(outcome[sensitivity],outcome[specificity])"
+  )
+  expect_identical(
+    parameter_catalog_resolve(
+      catalog, parameter_labels(pair, style = "table"), "mu"
+    )$quantity_id,
+    rho$quantity_id
+  )
+  # the vocabulary renames random-effect quantities only
+  sd_aliases <- catalog$aliases[grepl("(^|\\) )sd\\(", catalog$aliases$alias), , drop = FALSE]
+  expect_true(nrow(sd_aliases) > 0L)
+  expect_identical(
+    parameter_labels(sd_aliases, style = "table", vocabulary = vocabulary),
+    sub("(^|\\) )sd\\(", "\\1tau(", sd_aliases$alias)
+  )
+  intercept <- catalog$aliases[catalog$aliases$alias == "mu_intercept", , drop = FALSE]
+  expect_identical(parameter_labels(intercept, style = "table", vocabulary = vocabulary),
+                   "mu_intercept")
+  expect_error(parameter_labels(pair, vocabulary = c("rho")), "'vocabulary' must be a named")
 })
 
 test_that("explicitly named one-entry random lists retain their public owner", {

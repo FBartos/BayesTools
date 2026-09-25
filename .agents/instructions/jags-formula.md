@@ -161,7 +161,13 @@ Fitted-parameter metadata has one authoritative, versioned
 - `quantities` declares selectable semantic quantities, keyed by
   `canonical_name`, together with structured ownership, source provenance, and
   deferred extraction keys.
-- `aliases` maps exact accepted selectors to quantity IDs.
+- `aliases` maps exact accepted selectors to quantity IDs, each with the label
+  parts whose table label is the alias (the alias text itself as one
+  component where the alias is no table label of structured parts, e.g. a
+  canonical name); `parameter_labels(aliases, "table", vocabulary = )`
+  renders random-effect aliases, including the pairwise aliases of `cs()`
+  and `hcs()` correlations, under a caller's quantity names. Extension
+  aliases may omit their parts.
 
 Build and attach all three atomically through `R/aaa-parameter-map.R`; the
 coordinate and semantic compilers remain pure stages in
@@ -215,7 +221,9 @@ names.
   whose original-scale quantity differs (the SDs of a block with a
   standardized random slope) is its fitted coordinate, and the transform to
   the original scale gives it the catalog quantity it keeps in the internal
-  `original_scale_quantities` field. Consumers map
+  `original_scale_quantities` field. Estimates tables (model, ensemble, and
+  marginal) carry the per-row `quantities` attribute (row, quantity id, label
+  parts). Consumers map
   columns to coordinates and render labels from these, never by parsing label
   text; original-scale transforms of mixed columns go through the fitted
   design by these coordinates and stop for columns that do not identify them

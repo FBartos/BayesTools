@@ -114,7 +114,20 @@
 #' overview of the fitted model, \code{runjags_estimates_table} returns
 #' a table with MCMC estimates, and \code{runjags_estimates_empty_table}
 #' returns an empty estimates table. All of the tables are objects of
-#' class 'BayesTools_table'.
+#' class 'BayesTools_table'. The estimates table carries the per-row quantity
+#' table \code{attr(table, "quantities")}: a data frame with one row per table
+#' row and the columns \code{row} (the row label), \code{quantity_id} (the
+#' [parameter_catalog()] quantity id of the quantity the row's label names,
+#' its canonical name or an exact alias such as a transformed factor level
+#' \code{<parameter>[dif: level]}; \code{""} for rows that are not catalog
+#' quantities, such as inclusion rows, mixture components, and backend
+#' coordinates), and \code{label_parts} (the label parts the row label is
+#' rendered from; [parameter_labels()] renders them, also with another formula
+#' parameter or random-effect quantity names). With
+#' \code{transform_scaled = TRUE}, the rows of standardized coefficients
+#' (including the exponentiated log intercept, an alias of the intercept) show
+#' their catalog quantity on the original predictor scale. Subsetting the
+#' table subsets its quantity table.
 #'
 #' @details For product-space JAGS inclusion Bayes factors, posterior
 #' inclusion probabilities of exactly 0 or 1 cannot produce a finite
@@ -778,6 +791,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       remove_diagnostics = remove_diagnostics,
       diagnostic_columns = summary_diagnostic_columns
     )
+    attr(empty_table, "quantities") <- .bt_table_quantities(character(), list())
     if(random_effects_metadata){
       empty_table <- .bt_random_effect_summary_add_metadata_columns(
         table = empty_table,
@@ -821,6 +835,11 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   class(runjags_summary)              <- c("BayesTools_table", "BayesTools_runjags_summary", class(runjags_summary))
   attr(runjags_summary, "type")       <- c(rep("estimate", n_estimate_cols), summary_diagnostic_columns)
   attr(runjags_summary, "parameters") <- parameter_names
+  attr(runjags_summary, "quantities") <- .bt_table_quantities(
+    rows         = rownames(runjags_summary),
+    label_parts  = column_parts,
+    quantity_ids = .bt_table_quantity_ids(column_parts, parameter_catalog(fit))
+  )
   attr(runjags_summary, "rownames")   <- TRUE
   attr(runjags_summary, "title")      <- title
   attr(runjags_summary, "footnotes")  <- footnotes

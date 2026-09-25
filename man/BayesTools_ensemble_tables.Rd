@@ -187,7 +187,16 @@ Bayes factors, \code{ensemble_summary_table} returns a table with
 overview of the models included in the ensemble, and
 \code{ensemble_diagnostics_table} returns an overview of the MCMC
 diagnostics for the models included in the ensemble. All of the
-tables are objects of class 'BayesTools_table'.
+tables are objects of class 'BayesTools_table'. The estimates tables
+(\code{ensemble_estimates_table} and \code{marginal_estimates_table})
+carry the per-row quantity table \code{attr(table, "quantities")}: a data
+frame with one row per table row and the columns \code{row} (the row
+label), \code{quantity_id} (the \code{\link[=parameter_catalog]{parameter_catalog()}} quantity id the
+summarized draws declare in their \code{quantities} metadata, see
+\code{\link[=posterior_metadata]{posterior_metadata()}}; \code{""} when they declare none, e.g. for
+estimated marginal means), and \code{label_parts} (the label parts the row
+label is rendered from; see \code{\link[=parameter_labels]{parameter_labels()}}). Subsetting the table
+subsets its quantity table.
 }
 \description{
 Creates estimate summaries based on posterior
