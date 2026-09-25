@@ -24,6 +24,9 @@
 #'   and the prior density and atom masses are conditional on definedness.}
 #'   \item{`condition`}{the conditioning of the draws: unconditional
 #'   (`averaged = TRUE`), or the inclusion event of the quantity.}
+#'   \item{`quantities`}{the catalog quantity of the draws: its id and label
+#'   parts, from which [parameter_labels()] and the summaries render its
+#'   labels.}
 #' }
 #'
 #' @param fit a model fitted with [JAGS_fit()].
@@ -71,7 +74,8 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
 
 .bt_parameter_mixed_posterior <- function(fit, selection, conditional = FALSE,
                                           n_grid = .prior_linear_density_default_grid(),
-                                          tail_prob = .prior_linear_density_tail_prob()){
+                                          tail_prob = .prior_linear_density_tail_prob(),
+                                          simplify_label = FALSE){
 
   quantity <- selection$quantities[1L, , drop = FALSE]
   name <- quantity$canonical_name
@@ -144,6 +148,15 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
   out <- .bt_meta_set(out, "condition", .bt_parameter_mixed_posterior_condition(
     plan, conditional
   ))
+  # the draws are the catalog quantity: its id and label parts
+  quantities <- .bt_catalog_quantity_table(
+    quantity,
+    column   = name,
+    simplify = simplify_label
+  )
+  if(!is.null(quantities)){
+    out <- .bt_meta_set(out, "quantities", quantities)
+  }
   class(out) <- c(
     "mixed_posteriors",
     "mixed_posteriors.simple",

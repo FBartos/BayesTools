@@ -55,6 +55,9 @@ no allocation component is active), the reason; those draws are omitted,
 and the prior density and atom masses are conditional on definedness.}
 \item{\code{condition}}{the conditioning of the draws: unconditional
 (\code{averaged = TRUE}), or the inclusion event of the quantity.}
+\item{\code{quantities}}{the catalog quantity of the draws: its id and label
+parts, from which \code{\link[=parameter_labels]{parameter_labels()}} and the summaries render its
+labels.}
 }
 }
 \seealso{

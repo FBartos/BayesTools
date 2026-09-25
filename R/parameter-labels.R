@@ -1034,6 +1034,53 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   out
 }
 
+# The column table of draws of one catalog quantity (a one-row catalog
+# quantities table; 'column' names the draws): its quantity id and label
+# parts, and the fitted coordinates it is a linear function of when its
+# extraction key declares them (a coordinate, the weighted coordinates of a
+# factor level, or the source coordinate of an identity random summary);
+# other derived quantities (random-effect summaries) declare none. With
+# 'simplify', the parts render the simplified display label of a random-effect
+# quantity in tables and keep its canonical name as their selector. NULL for
+# quantities without label parts (extensions of other providers).
+.bt_catalog_quantity_table <- function(quantity, column = quantity$canonical_name,
+                                       simplify = FALSE){
+
+  parts <- quantity$label_parts[[1L]]
+  if(is.null(parts)){
+    return(NULL)
+  }
+  if(simplify && !is.null(parts$random)){
+    random <- parts$random
+    random$arguments <- random$display_arguments
+    parts <- .bt_label_parts_update(
+      parts,
+      random   = random,
+      selector = quantity$canonical_name
+    )[[1L]]
+  }
+  key <- quantity$extraction_key[[1L]]
+  linear <- if(identical(key$type, "coordinate")){
+    list(key$dependencies[[1L]], 1)
+  }else if(identical(key$type, "factor_level")){
+    list(key$dependencies, key$weights)
+  }else if(identical(key$source_type, "identity") &&
+           is.character(key$source_parameter) &&
+           length(key$source_parameter) == 1L &&
+           nzchar(key$source_parameter)){
+    list(key$source_parameter, 1)
+  }else{
+    list(character(), numeric())
+  }
+  .bt_draws_quantity_table(
+    columns      = column,
+    quantity_ids = quantity$quantity_id,
+    dependencies = list(linear[[1L]]),
+    weights      = list(linear[[2L]]),
+    label_parts  = list(parts)
+  )
+}
+
 # The catalog quantity ids of label parts rendered to canonical names (""
 # when the catalog has no such quantity).
 .bt_draws_quantity_ids <- function(parts, catalog){

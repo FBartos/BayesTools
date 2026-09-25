@@ -632,6 +632,57 @@ test_that("parameter_mixed_posterior declares gate atoms and conditions on inclu
                "'fit' must be a 'BayesTools_fit' object.", fixed = TRUE)
 })
 
+test_that("catalog mixed posteriors carry the quantity and label of their catalog quantity", {
+
+  skip_if_not_installed("runjags")
+
+  fit <- .random_effects_gated_total_variance_allocation_fit()
+  catalog <- parameter_catalog(fit)
+  names <- c(
+    "(mu) study: sd(intercept)", "(mu) allocation: sd_total",
+    "(mu) allocation: var_prop(drug)"
+  )
+  for(name in names){
+    selection <- parameter_catalog_resolve(catalog, name)
+    quantities <- posterior_metadata(
+      parameter_mixed_posterior(fit, selection),
+      "quantities"
+    )
+    # the draws are the catalog quantity: its id, and labels rendered from its
+    # label parts (derived summaries are no fitted-coordinate combination)
+    expect_identical(quantities$quantity_id, selection$quantities$quantity_id, info = name)
+    expect_identical(parameter_labels(quantities, "selector"), name, info = name)
+    expect_identical(
+      parameter_labels(quantities, "table"),
+      parameter_labels(selection$quantities, "table"),
+      info = name
+    )
+    expect_identical(quantities$dependencies[[1L]], character(), info = name)
+  }
+
+  # summary posteriors render their rows through the catalog labels, with or
+  # without the formula prefix, and simplified when their names are
+  summaries <- random_effects_summary_posterior(fit, "var_prop")
+  catalog_labels <- vapply(names(summaries), function(name){
+    parameter_labels(parameter_catalog_resolve(catalog, name)$quantities,
+                     "table", formula_prefix = FALSE)
+  }, character(1), USE.NAMES = FALSE)
+  expect_identical(
+    rownames(ensemble_estimates_table(summaries, names(summaries), formula_prefix = FALSE)),
+    catalog_labels
+  )
+  expect_false(any(startsWith(catalog_labels, "(mu) ")))
+  simplified <- random_effects_summary_posterior(fit, "var_prop", simplify_names = TRUE)
+  expect_identical(
+    rownames(ensemble_estimates_table(simplified, names(simplified))),
+    names(simplified)
+  )
+  expect_identical(
+    parameter_labels(posterior_metadata(simplified[[1L]], "quantities"), "selector"),
+    names(summaries)[[1L]]
+  )
+})
+
 test_that("parameter_mixed_posterior reads source point masses from the mixture indicator", {
 
   skip_if_not_installed("runjags")

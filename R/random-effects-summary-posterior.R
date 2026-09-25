@@ -122,9 +122,10 @@ random_effects_summary_posterior <- function(
     # the catalog quantity's mixed posterior: defined draws, catalog support,
     # canonical prior density, and atoms declared from the gate states
     values <- .bt_parameter_mixed_posterior(
-      fit       = fit,
-      selection = selection,
-      n_grid    = n_prior_points
+      fit            = fit,
+      selection      = selection,
+      n_grid         = n_prior_points,
+      simplify_label = simplify_names
     )
     attr(values, "parameter") <- display_names[i]
     attr(values, "summary_name") <- key$summary_name

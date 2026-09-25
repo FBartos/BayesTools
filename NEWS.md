@@ -211,6 +211,10 @@ old behaviour.
   label parts that catalog quantities (`label_parts`) and the columns of mixed
   and marginal posteriors (the new `quantities` draw metadata, with the
   fitted coordinates, weights, and catalog quantity of each column) carry.
+  The draws of `parameter_mixed_posterior()` and
+  `random_effects_summary_posterior()` carry their catalog quantity, so
+  tables render their rows from the catalog labels (without the formula
+  prefix when `formula_prefix = FALSE`).
   Hypothesis level references decode the catalog's escaped level form,
   including braces (`mu[w%7B1%7D]` is the level "w{1}").
 - exports `JAGS_runtime_cluster()` and `JAGS_runtime_cluster_stop()` for
