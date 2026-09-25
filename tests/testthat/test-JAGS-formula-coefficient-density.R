@@ -1068,6 +1068,73 @@ test_that("formula prior densities of weighted target combinations use the combi
   )
 })
 
+test_that("linear targets carry the rendered label of their level combination", {
+
+  data <- data.frame(
+    f = factor(rep(c("A", "B", "C"), each = 2L)),
+    x = c(1, 3, 2, 6, 4, 5)
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + f,
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+    )
+  )
+  source_names <- .formula_coefficient_source_names(formula_result)
+  set.seed(1)
+  samples <- matrix(
+    stats::rnorm(200 * length(source_names), sd = .3),
+    ncol = length(source_names),
+    dimnames = list(NULL, source_names)
+  )
+  fit <- .formula_coefficient_sample_fit(formula_result, samples)
+  levels <- marginal_posterior(
+    as_mixed_posteriors(fit, "mu_f"), "mu_f",
+    use_formula = FALSE, prior_samples = TRUE
+  )
+  level_label <- function(level){
+    parameter_labels(posterior_metadata(levels[[level]], "quantities"),
+                     "table", formula_prefix = FALSE)
+  }
+  target_quantities <- function(hypothesis){
+    posterior_metadata(
+      hypothesis_linear_target(levels, hypothesis, "mu_f")$posterior,
+      "quantities"
+    )
+  }
+
+  # the target is no catalog quantity and no fitted-coordinate column; its
+  # label combines the rendered labels of its levels
+  quantities <- target_quantities("2 * mu_f[A] - mu_f[C] = 0.3")
+  expect_identical(quantities$column, ".BayesTools_linear_target")
+  expect_identical(quantities$quantity_id, "")
+  expect_identical(quantities$dependencies[[1L]], character())
+  expect_identical(parameter_labels(quantities, "selector"), ".BayesTools_linear_target")
+  expect_identical(
+    parameter_labels(quantities, "table", formula_prefix = FALSE),
+    paste0("2*", level_label("A"), " - ", level_label("C"))
+  )
+  expect_identical(
+    parameter_labels(quantities, "table"),
+    paste0("(mu) 2*", level_label("A"), " - ", level_label("C"))
+  )
+  expect_identical(
+    parameter_labels(target_quantities("mu_f[A] - mu_f[B] > 0"), "table", formula_prefix = FALSE),
+    paste0(level_label("A"), " - ", level_label("B"))
+  )
+  expect_identical(
+    parameter_labels(target_quantities("(mu_f[A] + mu_f[B]) / 2 = 0"), "table", formula_prefix = FALSE),
+    paste0("0.5*", level_label("A"), " + 0.5*", level_label("B"))
+  )
+  expect_identical(
+    parameter_labels(target_quantities("-mu_f[B] = 0"), "table", formula_prefix = FALSE),
+    paste0("-", level_label("B"))
+  )
+})
+
 test_that("linear targets of factor levels match the canonical prior densities", {
 
   data <- data.frame(

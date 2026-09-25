@@ -23,8 +23,10 @@ A list with \code{posterior}, \code{hypothesis}, \code{parameter}, and \code{wei
 \code{posterior} is a scalar \code{marginal_posterior} of the linear combination
 whose draw metadata (\code{\link[=posterior_metadata]{posterior_metadata()}}) hold the combined
 \code{linear_weights} and \code{linear_offset}, its \code{prior_density} and
-\code{prior_context}, declared (empty) \code{atoms}, and the \code{condition} of the
-levels; \code{hypothesis} is an equivalent AST written against that scalar
+\code{prior_context}, declared (empty) \code{atoms}, the \code{condition} of the
+levels, and, when the levels carry label parts, \code{quantities} labelling
+the target by the combination of the levels' labels (e.g.
+\verb{(mu) 2*f[A] - f[C]}, see \code{\link[=parameter_labels]{parameter_labels()}}); \code{hypothesis} is an equivalent AST written against that scalar
 target, \code{parameter} its name, and \code{weights} the combined linear weights.
 A target that cannot be certified stops with an error of class
 \code{BayesTools_linear_target_unavailable} (also

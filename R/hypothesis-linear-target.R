@@ -37,8 +37,10 @@
 #'   `posterior` is a scalar `marginal_posterior` of the linear combination
 #'   whose draw metadata ([posterior_metadata()]) hold the combined
 #'   `linear_weights` and `linear_offset`, its `prior_density` and
-#'   `prior_context`, declared (empty) `atoms`, and the `condition` of the
-#'   levels; `hypothesis` is an equivalent AST written against that scalar
+#'   `prior_context`, declared (empty) `atoms`, the `condition` of the
+#'   levels, and, when the levels carry label parts, `quantities` labelling
+#'   the target by the combination of the levels' labels (e.g.
+#'   `(mu) 2*f[A] - f[C]`, see [parameter_labels()]); `hypothesis` is an equivalent AST written against that scalar
 #'   target, `parameter` its name, and `weights` the combined linear weights.
 #'   A target that cannot be certified stops with an error of class
 #'   `BayesTools_linear_target_unavailable` (also
@@ -207,6 +209,12 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
     "resolved_condition_event", "averaged"
   ))]
   values <- .bt_meta_set(values, "condition", if(length(condition) > 0L) condition)
+  values <- .bt_meta_set(values, "quantities", .hypothesis_linear_target_quantities(
+    posterior    = posterior,
+    levels       = levels,
+    coefficients = coefficients,
+    target_name  = target_name
+  ))
 
   rewritten <- .hypothesis_linear_target_rewrite(
     ast         = ast,
@@ -220,6 +228,56 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
     parameter  = target_name,
     weights    = weights
   ))
+}
+
+
+# The column table of a linear target: no catalog quantity, and no fitted
+# coordinates declared (its levels may be estimated marginal means, which are
+# predictions), labelled by the combination of the rendered labels of its
+# levels (`2*f[A] - f[C]`) under their common formula parameter. NULL when a
+# level carries no label parts.
+.hypothesis_linear_target_quantities <- function(posterior, levels,
+                                                 coefficients, target_name){
+
+  parts <- lapply(levels, function(level){
+    quantities <- .bt_draws_quantities(posterior[[level]])
+    if(is.null(quantities) || nrow(quantities) != 1L){
+      return(NULL)
+    }
+    quantities$label_parts[[1L]]
+  })
+  if(length(parts) == 0L || any(vapply(parts, is.null, logical(1)))){
+    return(NULL)
+  }
+  formula_parameters <- unique(vapply(parts, `[[`, character(1), "formula_parameter"))
+  formula_parameter <- if(length(formula_parameters) == 1L) formula_parameters else ""
+  labels <- .bt_label(parts, style = "table", formula_prefix = !nzchar(formula_parameter))
+  terms <- vapply(seq_along(levels), function(i){
+    coefficient <- coefficients[[levels[[i]]]]
+    magnitude <- abs(coefficient)
+    term <- if(magnitude == 1){
+      labels[[i]]
+    }else{
+      paste0(format(magnitude, digits = 15), "*", labels[[i]])
+    }
+    if(i == 1L){
+      paste0(if(coefficient < 0) "-", term)
+    }else{
+      paste0(if(coefficient < 0) " - " else " + ", term)
+    }
+  }, character(1))
+
+  .bt_draws_quantity_table(
+    columns      = target_name,
+    quantity_ids = "",
+    dependencies = list(character()),
+    weights      = list(numeric()),
+    label_parts  = list(.bt_label_parts(
+      components        = paste(terms, collapse = ""),
+      formula_parameter = formula_parameter,
+      selector          = target_name
+    ))
+  )
 }
 
 
