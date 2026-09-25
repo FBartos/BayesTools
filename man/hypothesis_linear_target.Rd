@@ -31,7 +31,8 @@ A target that cannot be certified stops with an error of class
 \code{BayesTools_hypothesis_target}) whose field \code{reason} is
 \code{"posterior_atoms"} (the target's prior is not structurally atom-free),
 \code{"atom_declarations"} (a level lacks its posterior-atom declaration), or
-\code{"prior_context"} (no valid joint prior context).
+\code{"prior_context"} (no valid joint prior context, including level weights
+on columns the joint prior context does not contain).
 }
 \description{
 Compiles point and simple region statements that all refer to one linear

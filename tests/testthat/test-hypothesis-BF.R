@@ -1894,6 +1894,14 @@ test_that("linear target refusals are classed with their reason", {
     "posterior_atoms",
     "The linear target prior is not structurally atom-free."
   )
+  # level weights on a column the joint context does not contain
+  foreign <- levels
+  foreign$b <- level(rep(0, 100), c(alt = 0, rand = 0, other = 1))
+  expect_reason(
+    factor_posterior(foreign, normal_context),
+    "prior_context",
+    "Linear prior weights reference columns not available in the joint prior context: other."
+  )
 })
 
 test_that("hypothesis_BF uses parent precomputed metadata for level point nulls", {

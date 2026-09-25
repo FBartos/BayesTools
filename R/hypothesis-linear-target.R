@@ -45,7 +45,8 @@
 #'   `BayesTools_hypothesis_target`) whose field `reason` is
 #'   `"posterior_atoms"` (the target's prior is not structurally atom-free),
 #'   `"atom_declarations"` (a level lacks its posterior-atom declaration), or
-#'   `"prior_context"` (no valid joint prior context).
+#'   `"prior_context"` (no valid joint prior context, including level weights
+#'   on columns the joint prior context does not contain).
 #'
 #' @export
 hypothesis_linear_target <- function(posterior, hypothesis, parameter){
@@ -141,7 +142,14 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
       "prior_context"
     )
   }
-  .hypothesis_validate_level_weights_context(level_weights, context)
+  # level weights the joint context cannot evaluate (e.g. columns missing
+  # from it) leave no valid joint prior context for the target
+  tryCatch(
+    .hypothesis_validate_level_weights_context(level_weights, context),
+    error = function(e){
+      .hypothesis_linear_target_stop(conditionMessage(e), "prior_context")
+    }
+  )
 
   weights <- .hypothesis_linear_target_combine_weights(
     level_weights,

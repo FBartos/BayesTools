@@ -260,7 +260,8 @@ old behaviour.
   `BayesTools_hypothesis_target`) whose field `reason` is `"posterior_atoms"`
   (the target's prior has a point mass), `"atom_declarations"` (a level lacks
   its posterior-atom declaration) or `"prior_context"` (no valid joint prior
-  context). Messages are unchanged.
+  context, also for level weights on columns the context does not contain).
+  Messages are unchanged.
 - supports declared output intervals for density transformations. Wider display
   limits remain available while inverse/Jacobian evaluations and continuous
   curves stay inside the transformed support; boundary point masses are retained.
