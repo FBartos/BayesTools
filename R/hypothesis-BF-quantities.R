@@ -438,12 +438,12 @@
 
   # Level references match posterior level names exactly. A reference
   # written in the parameter catalog's escaped component form (for example
-  # "(0,1%5D" or "\"(0,1%5D\"" for the cut() level "(0,1]") is decoded
-  # before matching.
+  # "(0,1%5D" or "\"(0,1%5D\"" for the cut() level "(0,1]", "w%7B1%7D" for
+  # "w{1}") is decoded by the catalog's level-token codec before matching.
   matched <- levels
   unmatched <- which(!levels %in% available)
   for(i in unmatched){
-    decoded <- .hypothesis_decode_catalog_level(levels[[i]])
+    decoded <- .bt_label_token_decode(levels[[i]])
     if(decoded %in% available){
       matched[[i]] <- decoded
     }
@@ -457,47 +457,6 @@
   }
 
   matched
-}
-
-
-.hypothesis_decode_catalog_level <- function(level) {
-
-  # Inverse of the parameter catalog's factor-component token: optional
-  # double quotes (added for tokens with ',' '=' or edge whitespace) around
-  # a percent-escaped level name.
-  if(nchar(level) >= 2L && startsWith(level, "\"") && endsWith(level, "\"")){
-    parsed <- tryCatch(
-      parse(text = level, keep.source = FALSE),
-      error = function(e) NULL
-    )
-    if(length(parsed) == 1L && is.character(parsed[[1L]]) &&
-       length(parsed[[1L]]) == 1L){
-      level <- parsed[[1L]]
-    }
-  }
-
-  escapes <- c(
-    "%25" = "%",
-    "%5B" = "[",
-    "%5D" = "]",
-    "%60" = "`",
-    "%5C" = "\\",
-    "%22" = "\"",
-    "%0D" = "\r",
-    "%0A" = "\n",
-    "%09" = "\t",
-    "%0C" = "\f",
-    "%08" = "\b",
-    "%07" = "\a",
-    "%0B" = "\v"
-  )
-  tokens <- gregexpr(paste(names(escapes), collapse = "|"), level)
-  regmatches(level, tokens) <- lapply(
-    regmatches(level, tokens),
-    function(token) unname(escapes[token])
-  )
-
-  level
 }
 
 

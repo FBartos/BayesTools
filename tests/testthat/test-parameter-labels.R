@@ -937,3 +937,60 @@ test_that("ordered factors plot their level priors with the posterior", {
     list(c("mid", "hi"))
   )
 })
+
+test_that("hypotheses reference levels in the catalog's escaped level form", {
+
+  # every escaped character of the level-token codec decodes back
+  levels <- c("w{1}", "(0,1]", "a%b", "[z]", "q\"r", " edge ")
+  expect_identical(.bt_label_token_decode(.bt_label_token(levels)), levels)
+  expect_identical(
+    .hypothesis_match_level_names(.bt_label_token(levels), levels, "mu"),
+    levels
+  )
+
+  context <- .prior_density_context(
+    prior_list   = list(
+      a = prior("normal", list(mean = 0, sd = 1)),
+      b = prior("normal", list(mean = 0, sd = 1))
+    ),
+    column_names = c("a", "b"),
+    n_grid       = 128
+  )
+  make_posterior <- function(level_names){
+    set.seed(2)
+    posterior <- list(
+      .bt_meta_update(
+        structure(stats::rnorm(4000, 0.5, 0.2), class = c("marginal_posterior.simple", "numeric")),
+        linear_weights = c(a = 1, b = 0),
+        atoms = posterior_atom_attribute()
+      ),
+      .bt_meta_update(
+        structure(stats::rnorm(4000, 0, 0.2), class = c("marginal_posterior.simple", "numeric")),
+        linear_weights = c(a = 0, b = 1),
+        atoms = posterior_atom_attribute()
+      )
+    )
+    names(posterior) <- level_names
+    class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
+    attr(posterior, "parameter") <- "mu"
+    .bt_meta_set(posterior, "prior_context", context)
+  }
+
+  reference <- hypothesis_BF(
+    make_posterior(c("A", "B")),
+    hypothesis = "mu[A] > mu[B]",
+    seed       = 1,
+    columns    = "all"
+  )
+  posterior <- make_posterior(c("w{1}", "v}"))
+  for(hypothesis in c(
+    "`mu[w{1}]` > `mu[v}]`",
+    "mu[w%7B1%7D] > mu[v%7D]",
+    "mu[\"w%7B1%7D\"] > `mu[v}]`"
+  )){
+    out <- hypothesis_BF(posterior, hypothesis = hypothesis, seed = 1,
+                         columns = "all")
+    expect_equal(attr(out, "raw_BF"), attr(reference, "raw_BF"),
+                 tolerance = 1e-12, info = hypothesis)
+  }
+})
