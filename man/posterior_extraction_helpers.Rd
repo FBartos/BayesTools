@@ -55,7 +55,9 @@
   model_samples,
   prior_list,
   transform_factors = FALSE,
-  transformations = NULL
+  transformations = NULL,
+  components = list(),
+  with_label_parts = FALSE
 )
 
 .rename_factor_levels(model_samples, prior_list)
@@ -106,6 +108,13 @@ the corresponding parameters (PET, PEESE, omega) are also added to the keep list
 \item{transformations}{list of transformations to apply}
 
 \item{transform_factors}{whether to transform orthonormal/meandif to differences}
+
+\item{components}{mixture components summarized as parameters of their
+own: a list keyed by those parameters with the mixture's \code{parameter}
+and the \code{component}}
+
+\item{with_label_parts}{whether the label parts of the transformed columns
+are attached as the \code{"label_parts"} attribute}
 }
 \value{
 matrix or mcmc.list of posterior samples

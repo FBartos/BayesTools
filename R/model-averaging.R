@@ -284,12 +284,17 @@ ensemble_inference <- function(model_list, parameters, is_null_list,
       on_failure     = on_failure
     )
 
-    # add parameter names
+    # add parameter names (formula terms rendered from their prior)
     parameter_name    <- parameters[p]
-    formula_parameter <- unique(unlist(lapply(model_list, function(m) attr(attr(m[["fit"]], "prior_list")[[parameters[p]]], "parameter", exact = TRUE))))
+    parameter_priors  <- lapply(model_list, function(m) attr(m[["fit"]], "prior_list")[[parameters[p]]])
+    parameter_priors  <- parameter_priors[!vapply(parameter_priors, is.null, logical(1))]
+    formula_parameter <- unique(unlist(lapply(parameter_priors, attr, which = "parameter", exact = TRUE)))
 
     if(!is.null(unlist(formula_parameter))){
-      parameter_name <- format_parameter_names(parameter_name, formula_parameters = formula_parameter, formula_prefix = TRUE)
+      parameter_name <- .bt_label(
+        .bt_label_parts_term(parameters[p], parameter_priors[[1L]]),
+        style = "table"
+      )
       class(out[[parameters[p]]]) <- c(class(out[[parameters[p]]]), "inference.formula")
       attr(out[[parameters[p]]], "formula_parameter")  <- formula_parameter
     }

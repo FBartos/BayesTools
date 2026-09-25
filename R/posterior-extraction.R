@@ -572,8 +572,14 @@ NULL
 
 #' @rdname posterior_extraction_helpers
 #' @param transform_factors whether to transform orthonormal/meandif to differences
+#' @param components mixture components summarized as parameters of their
+#'   own: a list keyed by those parameters with the mixture's \code{parameter}
+#'   and the \code{component}
+#' @param with_label_parts whether the label parts of the transformed columns
+#'   are attached as the \code{"label_parts"} attribute
 #' @return updated model_samples matrix
-.transform_factor_contrasts <- function(model_samples, prior_list, transform_factors = FALSE, transformations = NULL) {
+.transform_factor_contrasts <- function(model_samples, prior_list, transform_factors = FALSE, transformations = NULL,
+                                        components = list(), with_label_parts = FALSE) {
 
   factor_parameters <- names(prior_list)[vapply(
     prior_list,
@@ -584,6 +590,7 @@ NULL
   if (!transform_factors || length(factor_parameters) == 0) {
     return(model_samples)
   }
+  label_parts <- list()
 
   transformed_centered <- factor_parameters[
     vapply(factor_parameters, function(parameter){
@@ -614,9 +621,19 @@ NULL
     transformed_samples <- .transform_factor_contrast_samples(
       coefficient_samples = temp_samples,
       metadata            = prior_list[[par]],
-      parameter           = par,
+      parameter           = if(is.null(components[[par]])) par else components[[par]]$parameter,
       transformed_class   = transformed_class
     )
+    transformed_parts <- .bt_draws_label_parts(transformed_samples, par)
+    if(!is.null(components[[par]])){
+      # levels of a mixture component summarized on its own
+      transformed_parts <- .bt_label_parts_update(
+        transformed_parts,
+        component = components[[par]]$component
+      )
+      colnames(transformed_samples) <- .bt_label(transformed_parts, style = "selector")
+    }
+    label_parts[colnames(transformed_samples)] <- transformed_parts
 
     # apply transformation if specified
     if (!is.null(transformations[[par]])) {
@@ -628,11 +645,14 @@ NULL
     # place the transformed samples back
     model_samples <- cbind(
       if (temp_position > 1) model_samples[, 1:(temp_position - 1), drop = FALSE],
-      transformed_samples,
+      unclass(transformed_samples)[, , drop = FALSE],
       if (temp_position <= ncol(model_samples)) model_samples[, temp_position:ncol(model_samples), drop = FALSE]
     )
   }
 
+  if (with_label_parts) {
+    attr(model_samples, "label_parts") <- label_parts
+  }
   return(model_samples)
 }
 

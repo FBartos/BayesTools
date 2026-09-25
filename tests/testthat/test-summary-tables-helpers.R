@@ -688,9 +688,11 @@ test_that("conditional estimates split factor mixtures with named components", {
   conditional <- suppressWarnings(runjags_estimates_table(
     fit, conditional = TRUE, remove_diagnostics = TRUE
   ))
+  # a level cell of a mixture component: the level after the factor, the
+  # component after the cell
   coefficient_rows <- c(
-    "(mu) x[narrow][b]", "(mu) x[narrow][c]",
-    "(mu) x[wide][b]", "(mu) x[wide][c]"
+    "(mu) x[b][narrow]", "(mu) x[c][narrow]",
+    "(mu) x[b][wide]", "(mu) x[c][wide]"
   )
   expect_identical(
     rownames(conditional),

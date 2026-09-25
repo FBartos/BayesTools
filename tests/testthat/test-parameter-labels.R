@@ -646,3 +646,127 @@ test_that("formula prefixes come from the formula parameter, not from name prefi
     expected
   )
 })
+
+test_that("model tables, diagnostics, and ensembles label each quantity alike", {
+
+  for(contrast in c("treatment", "meandif")){
+    data <- .label_test_data(c("lo", "hi"), contrast, h_levels = c("u", "v"))
+    fit <- .label_test_fit(
+      ~ g * x + g * h,
+      data,
+      list(
+        intercept = prior("normal", list(0, 1)),
+        g         = .label_test_factor_prior(contrast),
+        x         = prior("normal", list(0, 1)),
+        h         = .label_test_factor_prior("treatment"),
+        "g:x"     = .label_test_factor_prior(contrast),
+        "g:h"     = .label_test_factor_prior(contrast)
+      )
+    )
+    catalog <- parameter_catalog(fit)
+    mixed <- as_mixed_posteriors(fit, parameters = names(attr(fit, "prior_list")))
+    for(transform_factors in c(FALSE, TRUE)){
+      for(formula_prefix in c(TRUE, FALSE)){
+        info <- paste(contrast, transform_factors, formula_prefix)
+        table <- JAGS_estimates_table(
+          fit,
+          transform_factors = transform_factors,
+          formula_prefix    = formula_prefix
+        )
+        rows <- setdiff(rownames(table), c("(mu) intercept", "intercept"))
+        # every row selects the quantity whose draws it summarizes
+        for(row in rows){
+          selection <- parameter_catalog_resolve(catalog, row)
+          expect_equal(
+            mean(as.matrix(parameter_draws(fit, selection))),
+            table[row, "Mean"],
+            tolerance = 1e-10,
+            info = paste(info, row)
+          )
+        }
+        # one label per quantity on the model and ensemble routes
+        ensemble <- ensemble_estimates_table(
+          mixed,
+          parameters        = names(mixed),
+          transform_factors = transform_factors,
+          formula_prefix    = formula_prefix
+        )
+        expect_identical(rownames(ensemble), rownames(table), info = info)
+        expect_equal(ensemble[, "Mean"], table[, "Mean"], tolerance = 1e-10,
+                     info = info)
+      }
+    }
+    # the two-level interaction cells name their level
+    table <- JAGS_estimates_table(fit)
+    if(contrast == "treatment"){
+      expect_true(all(c("(mu) g[hi]:x", "(mu) g[hi]:h[v]") %in% rownames(table)))
+    }
+    # diagnostic titles are the same labels
+    plot_data <- .diagnostics_plot_data(
+      fit               = fit,
+      parameter         = "mu_g__xXx__x",
+      prior_list        = attr(fit, "prior_list"),
+      transformations   = NULL,
+      transform_factors = FALSE
+    )
+    expect_identical(
+      .bt_label(attr(plot_data, "label_parts"), style = "table"),
+      grep("^\\(mu\\) g.*:x", rownames(table), value = TRUE),
+      info = contrast
+    )
+  }
+})
+
+test_that("model tables and the catalog take formula prefixes from the formula parameter", {
+
+  data <- data.frame(
+    x = seq(-1, 1, length.out = 12),
+    z = stats::rnorm(12)
+  )
+  mu <- JAGS_formula(
+    ~ x, "mu", data,
+    list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1)))
+  )
+  mu_tau <- JAGS_formula(
+    ~ z, "mu_tau", data,
+    list(intercept = prior("normal", list(0, 1)), z = prior("normal", list(0, 1)))
+  )
+  prior_list <- c(mu$prior_list, mu_tau$prior_list)
+  set.seed(5)
+  draws <- matrix(
+    stats::rnorm(20 * length(prior_list)),
+    nrow = 20,
+    dimnames = list(NULL, names(prior_list))
+  )
+  fit <- structure(
+    list(
+      mcmc         = coda::mcmc.list(coda::mcmc(draws)),
+      sample       = 20L,
+      summary.pars = list(mutate = NULL),
+      monitor      = names(prior_list)
+    ),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_design") <- list(
+    mu     = mu$formula_design,
+    mu_tau = mu_tau$formula_design
+  )
+  fit <- .bt_attach_parameter_map(fit)
+  fit <- .bt_attach_draw_geometry(fit)
+  fit <- .bt_attach_fit_contract(fit)
+
+  expect_identical(
+    rownames(JAGS_estimates_table(fit)),
+    c("(mu) intercept", "(mu) x", "(mu_tau) intercept", "(mu_tau) z")
+  )
+  catalog <- parameter_catalog(fit)
+  expect_identical(
+    parameter_catalog_resolve(catalog, "(mu_tau) z")$quantities$canonical_name,
+    "mu_tau_z"
+  )
+  expect_error(
+    parameter_catalog_resolve(catalog, "(mu) tau_z"),
+    class = "BayesTools_parameter_not_found"
+  )
+})

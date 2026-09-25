@@ -413,23 +413,34 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   # simplify mixture and spike and slab priors to simple priors
   # the samples and summary can be dealt with as any other prior (i.e., transformations later)
-  # (the created inclusion-indicator columns are recorded for the summary)
+  # (the created inclusion-indicator columns are recorded for the summary,
+  # and the label parts of every column the summary creates)
   inclusion_columns <- character()
+  created_parts <- list()
+  component_priors <- list()
   for(par in names(prior_list)){
     if(is.prior.spike_and_slab(prior_list[[par]])){
 
       # process spike and slab using helper function; its only new column is
       # the renamed inclusion indicator
+      term_parts    <- .bt_label_parts_term(par, prior_list[[par]])
       processed     <- .process_spike_and_slab(model_samples, prior_list, par, conditional, remove_inclusion, warnings)
-      inclusion_columns <- c(inclusion_columns, setdiff(
+      new_columns   <- setdiff(
         colnames(processed$model_samples),
         colnames(model_samples)
-      ))
+      )
+      inclusion_columns <- c(inclusion_columns, new_columns)
+      for(column in new_columns){
+        created_parts[[column]] <- .bt_label_parts_update(term_parts, inclusion = "")[[1L]]
+      }
       model_samples <- processed$model_samples
       prior_list    <- processed$prior_list
       warnings      <- processed$warnings
 
     }else if(is.prior.mixture(prior_list[[par]])){
+
+      term_parts <- .bt_label_parts_term(par, prior_list[[par]])
+      mixture_coordinate_parts <- .bt_label_parts_prior(par, prior_list[[par]])$parts
 
       # check for publication bias component
       is_bias_mixture <- inherits(prior_list[[par]], "prior.bias_mixture")
@@ -603,6 +614,17 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
               }
               temp_new_samples[[component]]           <- temp_all_samples
               colnames(temp_new_samples[[component]]) <- temp_par_names
+              component_parts <- .bt_label_parts_update(
+                if(is_factor_mixture) mixture_coordinate_parts else list(term_parts),
+                component = component
+              )
+              for(i in seq_along(temp_par_names)){
+                created_parts[[temp_par_names[i]]] <- component_parts[[i]]
+              }
+              component_priors[[component_par]] <- list(
+                parameter = par,
+                component = component
+              )
 
               # select the corresponding indicators
               this_component_indicator <- which(components == component)
@@ -655,6 +677,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
             model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(components == "alternative"), 1, 0)
           colnames(model_samples)[colnames(model_samples) == paste0(par, "_indicator")] <- paste0(par, " (inclusion)")
           inclusion_columns <- c(inclusion_columns, paste0(par, " (inclusion)"))
+          created_parts[[paste0(par, " (inclusion)")]] <- .bt_label_parts_update(
+            term_parts,
+            inclusion = ""
+          )[[1L]]
         }else{
           # extract
           temp_position <- min(which(colnames(model_samples) %in% paste0(par, "_indicator")))
@@ -666,6 +692,12 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
           temp_new_samples <- do.call(cbind, temp_new_samples)
           colnames(temp_new_samples) <- paste0(par, " (inclusion: ", unique(components),")")
           inclusion_columns <- c(inclusion_columns, colnames(temp_new_samples))
+          for(component in unique(components)){
+            created_parts[[paste0(par, " (inclusion: ", component, ")")]] <- .bt_label_parts_update(
+              term_parts,
+              inclusion = component
+            )[[1L]]
+          }
 
           # place the transformed samples back
           model_samples <- cbind(
@@ -687,31 +719,29 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   model_samples <- .apply_parameter_transformations(model_samples, transformations, prior_list, transform_factors)
 
   # transform orthonormal factors to differences from mean
-  model_samples <- .transform_factor_contrasts(model_samples, prior_list, transform_factors, transformations)
+  model_samples <- .transform_factor_contrasts(model_samples, prior_list, transform_factors, transformations,
+                                               components = component_priors, with_label_parts = TRUE)
+  created_parts <- c(created_parts, attr(model_samples, "label_parts", exact = TRUE))
+  attr(model_samples, "label_parts") <- NULL
 
-  # rename factor levels
-  model_samples <- .rename_factor_levels(model_samples, prior_list)
-
-  # store parameter names before removing formula attachments
-  parameter_names <- colnames(model_samples)
-
-  # rename formula parameters
-  if(any(!sapply(lapply(prior_list, attr, which = "parameter", exact = TRUE), is.null))){
-    raw_parameter_names <- colnames(model_samples)
-    colnames(model_samples) <- format_parameter_names(
-      parameters         = colnames(model_samples),
-      formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter", exact = TRUE))),
-      formula_random     = unique(unlist(lapply(prior_list, attr, which = "random_factor"))),
-      formula_prefix     = formula_prefix,
-      formula_scale      = if(transform_scaled) formula_scale else NULL)
-    colnames(model_samples) <- .bt_random_effect_summary_display_names(
-      names = colnames(model_samples),
-      raw_names = raw_parameter_names,
-      prior_list = prior_list,
-      formula_prefix = formula_prefix,
-      coordinates = coordinates
-    )
+  # label every column from its label parts: the parameter names are the
+  # columns' selectors, the row labels their table labels
+  column_parts <- .bt_estimates_column_parts(
+    columns     = colnames(model_samples),
+    fit         = fit,
+    created     = created_parts,
+    coordinates = coordinates
+  )
+  parameter_names <- .bt_label(column_parts, style = "selector")
+  if(transform_scaled){
+    column_parts <- .bt_label_parts_log_intercept(column_parts, formula_scale)
   }
+  colnames(model_samples) <- .bt_label(
+    column_parts,
+    style          = "table",
+    formula_prefix = formula_prefix,
+    simplify       = simplify_names
+  )
 
   # return samples if requested
   if(return_samples){
@@ -1022,8 +1052,15 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   colnames(runjags_summary) <- c("Parameter", "prior_prob", "post_prob", "inclusion_BF", BF_diagnostic_columns)
   BF_bound_operators <- character()
   parameter_roles <- character()
+  row_labels <- character()
 
   for(par in names(prior_list)){
+    # the row label of the parameter, rendered from the prior
+    term_label <- .bt_label(
+      .bt_label_parts_term(par, prior_list[[par]]),
+      style          = "table",
+      formula_prefix = formula_prefix
+    )
     if(is.prior.spike_and_slab(prior_list[[par]])){
 
       temp_prior_prob <- mean(.get_spike_and_slab_inclusion(prior_list[[par]]))
@@ -1052,6 +1089,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
       runjags_summary <- rbind(runjags_summary, temp_row)
       BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
       parameter_roles <- c(parameter_roles, "model_inclusion")
+      row_labels <- c(row_labels, term_label)
     }else if(is.prior.mixture(prior_list[[par]])){
 
       # extract the components and prior probabilities
@@ -1099,6 +1137,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
         runjags_summary <- rbind(runjags_summary, temp_row)
         BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
         parameter_roles <- c(parameter_roles, mixture_role)
+        row_labels <- c(row_labels, term_label)
 
       }else{
 
@@ -1125,6 +1164,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
           runjags_summary <- rbind(runjags_summary, temp_row)
           BF_bound_operators <- c(BF_bound_operators, temp_BF_reporting$operator)
           parameter_roles <- c(parameter_roles, mixture_role)
+          row_labels <- c(row_labels, paste0(term_label, " [", component, "]"))
         }
 
       }
@@ -1190,6 +1230,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
         temp_BF_reporting$operator
       )
       parameter_roles <- c(parameter_roles, "random_inclusion")
+      row_labels <- c(row_labels, temp_parameter)
     }
   }
 
@@ -1209,15 +1250,8 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     attr(runjags_summary[["BF_error_percent"]], "name") <- .BF_error_column_name(BF01)
   }
 
-  # rename formula parameters
-  if(any(!sapply(lapply(prior_list, attr, which = "parameter", exact = TRUE), is.null))){
-    rownames(runjags_summary) <- format_parameter_names(
-      parameters         = rownames(runjags_summary),
-      formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter", exact = TRUE))),
-      formula_random     = unique(unlist(lapply(prior_list, attr, which = "random_factor"))),
-      formula_prefix     = formula_prefix,
-      formula_scale      = NULL)
-  }
+  # row labels rendered from the priors
+  rownames(runjags_summary) <- row_labels
 
   class(runjags_summary)               <- c("BayesTools_table", "BayesTools_runjags_inference", class(runjags_summary))
   attr(runjags_summary, "type")        <- c("prior_prob", "post_prob", "inclusion_BF", .JAGS_BF_diagnostic_column_types(BF_diagnostic_columns))

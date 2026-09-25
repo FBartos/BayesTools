@@ -994,14 +994,15 @@ test_that("estimates-table row labels resolve to their catalog quantities", {
   }
   normal <- prior("normal", list(0, 1))
 
-  # Two-level treatment interaction: one unindexed coefficient.
+  # Two-level treatment interaction: one unindexed coefficient, labelled by
+  # the level cell it is.
   expect_rows_resolve(
     table_fit(~ x * h, list(
       intercept = normal, x = normal,
       h = prior_factor("normal", list(0, 1), contrast = "treatment"),
       "x:h" = prior_factor("normal", list(0, 1), contrast = "treatment")
     )),
-    c("(mu) x:h" = "mu_x__xXx__h[hi]", "(mu) h[hi]" = "mu_h[hi]")
+    c("(mu) x:h[hi]" = "mu_x__xXx__h[hi]", "(mu) h[hi]" = "mu_h[hi]")
   )
   # Mean-difference coefficients whose contrast row is a unit vector are
   # contrast coefficients: their rows are `{j}`, and positional `[j]` labels

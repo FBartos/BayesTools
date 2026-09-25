@@ -251,15 +251,19 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
       ### prepare at specification
       # in case of an interaction, all levels need to be set
+      # (the manipulated predictors are the term's components)
       if(!is.null(priors_info[[parameter]][["interaction"]]) && priors_info[[parameter]][["interaction"]]){
-        at_manipulated <- JAGS_parameter_names(priors_info[[parameter]][["interaction_terms"]], formula_parameter = formula_parameter)
+        manipulated_predictors <- priors_info[[parameter]][["interaction_terms"]]
+        at_manipulated <- JAGS_parameter_names(manipulated_predictors, formula_parameter = formula_parameter)
       }else{
         at_manipulated <- parameter
+        manipulated_predictors <- .bt_label_parts_coefficient(parameter, formula_parameter)$components
       }
+      intercept_term <- identical(manipulated_predictors, "intercept")
 
       if(!all(names(at) %in% predictors))
         stop(paste0("The following values passed via the 'at' argument do not correspond to the specified model: ", paste0("'", names(at)[!names(at) %in% predictors], "'", collapse = ", ")))
-      if(any(format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) %in% names(at)))
+      if(any(manipulated_predictors %in% names(at)))
         stop("Values of the parameter of interested cannot be specified via the 'at' argument.")
 
       # fill in with default values if needed
@@ -490,7 +494,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
       ### split the output into lists based on specification
       # create indexing and names for the manipulated predictors
-      if(length(at_manipulated) == 1 && format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) == "intercept"){
+      if(intercept_term){
 
         class(marginal_posterior_samples)             <- c(class(marginal_posterior_samples), "marginal_posterior.simple")
         attr(marginal_posterior_samples, "parameter") <- parameter
@@ -515,7 +519,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
       }else{
 
-        manipulated_predictors <- format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE)
         at_index_output        <- at[manipulated_predictors]
         at_index_output.names  <- at_index_output
 
@@ -623,7 +626,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       # draws of model-averaged ensembles are aligned across terms by model
       ensemble_model_component <- model_component
 
-      if(length(at_manipulated) == 1 && format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) == "intercept"){
+      if(intercept_term){
 
         prior_weights <- linear_weights
         marginal_posterior_samples[["intercept"]] <- .marginal_posterior_formula_level_metadata(
@@ -671,7 +674,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           )
         }
 
-        if(length(at_manipulated) == 1 && format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) == "intercept"){
+        if(intercept_term){
 
           prior_weights <- linear_weights
           prior_density <- .prior_density_from_context_rows(

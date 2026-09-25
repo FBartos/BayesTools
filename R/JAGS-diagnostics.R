@@ -90,11 +90,11 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   }else{
     prior_list[[parameter]]
   }
-  if(!is.null(attr(display_prior, "parameter", exact = TRUE))){
-    parameter_name <- format_parameter_names(attr(plot_data, "parameter_name"), attr(display_prior, "parameter", exact = TRUE), formula_prefix = formula_prefix)
-  }else{
-    parameter_name <- attr(plot_data, "parameter_name")
-  }
+  parameter_name <- .bt_label(
+    attr(plot_data, "label_parts", exact = TRUE),
+    style          = "table",
+    formula_prefix = formula_prefix
+  )
 
   # get default plot settings
   dots      <- list(...)
@@ -279,12 +279,12 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   model_samples <- .apply_parameter_transformations(model_samples, transformations, prior_list, transform_factors)
 
   # transform meandif and orthonormal factors to differences
-  model_samples <- .transform_factor_contrasts(model_samples, prior_list, transform_factors, transformations)
+  model_samples <- .transform_factor_contrasts(model_samples, prior_list, transform_factors, transformations,
+                                               with_label_parts = TRUE)
+  created_parts <- attr(model_samples, "label_parts", exact = TRUE)
+  attr(model_samples, "label_parts") <- NULL
 
-  # rename factor levels (treatment, independent)
-  model_samples <- .rename_factor_levels(model_samples, prior_list)
-
-  # extract parameter names from column names after transformations and renaming
+  # extract parameter names from column names after transformations
   parameter_names <- colnames(model_samples)
 
   # rename weightfunctions factor levels (special case that overrides)
@@ -311,8 +311,18 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     }
   }
 
+  # label every column from its label parts; the columns are named by their
+  # selectors
+  column_parts <- .bt_estimates_column_parts(
+    columns = parameter_names,
+    fit     = fit,
+    created = if(is.null(created_parts)) list() else created_parts
+  )
+  parameter_names <- .bt_label(column_parts, style = "selector")
+
   # attach the relevant attributes
   colnames(model_samples)          <- parameter_names
+  attr(model_samples, "label_parts") <- column_parts
   attr(model_samples, "chain")     <- do.call(c, samples_chain)
   attr(model_samples, "iter")      <- do.call(c, samples_iter)
   attr(model_samples, "parameter") <- parameter
@@ -399,6 +409,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   attr(out, "chains")         <- length(unique(chain))
   attr(out, "parameter")      <- attr(plot_data, "parameter", exact = TRUE)
   attr(out, "parameter_name") <- colnames(plot_data)
+  attr(out, "label_parts")    <- attr(plot_data, "label_parts", exact = TRUE)
 
   return(out)
 }
@@ -544,6 +555,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   attr(out, "chains")         <- length(unique(chain))
   attr(out, "parameter")      <- attr(plot_data, "parameter", exact = TRUE)
   attr(out, "parameter_name") <- colnames(plot_data)
+  attr(out, "label_parts")    <- attr(plot_data, "label_parts", exact = TRUE)
 
   return(out)
 }
@@ -591,6 +603,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   attr(out, "chains")         <- length(unique(chain))
   attr(out, "parameter")      <- attr(plot_data, "parameter", exact = TRUE)
   attr(out, "parameter_name") <- colnames(plot_data)
+  attr(out, "label_parts")    <- attr(plot_data, "label_parts", exact = TRUE)
 
   return(out)
 }

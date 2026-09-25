@@ -218,7 +218,13 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   if(!any(parameter %in% unique(prior_parameter)))
     stop("The specified parameter '", parameter, "' was not used in any of the prior distributions.")
   prior_list_formula <- prior_list[prior_parameter == parameter]
-  names(prior_list_formula) <- format_parameter_names(names(prior_list_formula), formula_parameters = parameter, formula_prefix = FALSE)
+  names(prior_list_formula) <- vapply(names(prior_list_formula), function(prior_name){
+    .bt_label(
+      .bt_label_parts_term(prior_name, prior_list_formula[[prior_name]]),
+      style          = "table",
+      formula_prefix = FALSE
+    )
+  }, character(1), USE.NAMES = FALSE)
   if(no_intercept_specified){
     prior_list_formula[["intercept"]] <- prior(
       "spike", list(if(log_intercept) 1 else 0)

@@ -473,16 +473,25 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
 
 # Label parts of fixed factor terms ------------------------------------------
 
-# The term components of a factor prior: the formula term components, or the
-# prior name for an ordinary factor prior.
-.bt_label_factor_components <- function(parameter, prior, term = ""){
+# The term components of a factor prior: the formula term components (from
+# the prior's term metadata, or from its name when it has none), or the prior
+# name for an ordinary factor prior.
+.bt_label_factor_components <- function(parameter, prior, term = "",
+                                        formula_parameter = ""){
 
   components <- attr(prior, "term_components", exact = TRUE)
   if(is.null(components)){
     components <- attr(prior, "interaction_terms", exact = TRUE)
   }
   if(is.null(components) || length(components) == 0L){
-    components <- if(nzchar(term)) term else parameter
+    components <- if(nzchar(formula_parameter) &&
+                     startsWith(parameter, paste0(formula_parameter, "_"))){
+      .bt_label_parts_coefficient(parameter, formula_parameter)$components
+    }else if(nzchar(term)){
+      term
+    }else{
+      parameter
+    }
   }
 
   as.character(components)
@@ -504,7 +513,12 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
       call. = FALSE
     )
   }
-  components <- .bt_label_factor_components(parameter, prior, term)
+  components <- .bt_label_factor_components(
+    parameter,
+    prior,
+    term,
+    formula_parameter = formula_parameter
+  )
   if(!nzchar(formula_parameter) && length(components) == 1L &&
      !identical(components, parameter)){
     components <- parameter
@@ -662,7 +676,11 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   formula_parameter <- .bt_label_formula_parameter(prior)
   factor_prior <- .bt_parameter_catalog_factor_prior(parameter, prior)
   if(!is.null(factor_prior)){
-    components <- .bt_label_factor_components(parameter, factor_prior)
+    components <- .bt_label_factor_components(
+      parameter,
+      factor_prior,
+      formula_parameter = formula_parameter
+    )
     if(!nzchar(formula_parameter)){
       components <- parameter
     }
@@ -896,4 +914,60 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
       NA_character_
     }
   }, character(1))
+}
+
+# Label parts of summary columns ------------------------------------------------
+
+# Label parts of the columns of a summary built from a fit: the columns the
+# summary created ('created', keyed by column: inclusion rows, mixture
+# components, transformed factor levels), fitted coordinates (the coordinate
+# label parts of the parameter map; of the prior list for objects without
+# one), catalog quantities (random-effect summaries), and otherwise the column
+# name itself.
+.bt_estimates_column_parts <- function(columns, fit, created = list(),
+                                       coordinates = NULL){
+
+  out <- vector("list", length(columns))
+  from_created <- columns %in% names(created)
+  out[from_created] <- created[columns[from_created]]
+  has_map <- !is.null(attr(fit, "parameter_map", exact = TRUE))
+  prior_list <- attr(fit, "prior_list", exact = TRUE)
+
+  if(has_map){
+    if(is.null(coordinates)){
+      coordinates <- parameter_coordinates(fit)
+    }
+    coordinate_rows <- match(columns, coordinates$coordinate_name)
+    from_coordinates <- !from_created & !is.na(coordinate_rows)
+    if(any(from_coordinates)){
+      out[from_coordinates] <- .bt_parameter_coordinates_row_label_parts(
+        coordinates    = coordinates[coordinate_rows[from_coordinates], , drop = FALSE],
+        prior_list     = prior_list,
+        formula_design = attr(fit, "formula_design", exact = TRUE)
+      )
+    }
+  }else if(length(prior_list) > 0L){
+    for(parameter in names(prior_list)){
+      prior_parts <- .bt_label_parts_prior(parameter, prior_list[[parameter]])
+      rows <- match(prior_parts$coordinates, columns)
+      free <- !is.na(rows)
+      free[free] <- vapply(out[rows[free]], is.null, logical(1))
+      out[rows[free]] <- prior_parts$parts[free]
+    }
+  }
+
+  remaining <- vapply(out, is.null, logical(1))
+  if(any(remaining) && has_map){
+    quantities <- parameter_catalog(fit)$quantities
+    quantities <- quantities[quantities$provider == "BayesTools", , drop = FALSE]
+    catalog_rows <- match(columns, quantities$canonical_name)
+    from_catalog <- remaining & !is.na(catalog_rows)
+    out[from_catalog] <- unclass(quantities$label_parts)[catalog_rows[from_catalog]]
+    remaining <- remaining & !from_catalog
+  }
+  out[remaining] <- lapply(columns[remaining], function(column){
+    .bt_label_parts(column, selector = column)
+  })
+
+  out
 }

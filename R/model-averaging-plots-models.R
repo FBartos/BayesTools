@@ -83,7 +83,11 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 
   # prepare nice parameter names
   if(is.null(par_name)){
-    par_name  <- format_parameter_names(parameter, .bt_meta_get(total_samples, "formula_parameter"), formula_prefix = formula_prefix)
+    par_name  <- .bt_label(
+      .bt_draws_label_parts(total_samples, parameter[[1L]]),
+      style          = "table",
+      formula_prefix = formula_prefix
+    )
   }
 
   plot <- list()
