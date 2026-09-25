@@ -185,8 +185,7 @@ JAGS_runtime_cluster <- function(cores, packages = "BayesTools",
 #' @export
 JAGS_runtime_cluster_stop <- function(cl){
 
-  if(!inherits(cl, "cluster") ||
-     !is.environment(attr(cl, "BayesTools_runtime", exact = TRUE))){
+  if(!is.environment(attr(cl, "BayesTools_runtime", exact = TRUE))){
     stop("'cl' must be a cluster created by 'JAGS_runtime_cluster()'.", call. = FALSE)
   }
   .JAGS_runtime_cluster_stop(cl)

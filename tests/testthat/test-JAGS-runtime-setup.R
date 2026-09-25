@@ -383,7 +383,7 @@ test_that("runtime clusters start workers with the session's builds and stop onc
     makePSOCKcluster = function(cores, ...){
       cluster_arguments[[length(cluster_arguments) + 1L]] <<- list(...)
       events <<- c(events, "start")
-      structure(as.list(seq_len(cores)), class = c("SOCKcluster", "cluster"))
+      as.list(seq_len(cores))
     },
     clusterCall = function(cl, fun, ...){
       events <<- c(events, "initialize")
@@ -470,8 +470,10 @@ test_that("runtime cluster inputs are validated", {
     expect_error(JAGS_runtime_cluster(2, options = options),
       "'options' must be a list of options with unique names.", fixed = TRUE)
   }
-  expect_error(JAGS_runtime_cluster_stop(list()),
-    "'cl' must be a cluster created by 'JAGS_runtime_cluster()'.", fixed = TRUE)
+  for(cl in list(list(), structure(list(1L), class = c("SOCKcluster", "cluster")))){
+    expect_error(JAGS_runtime_cluster_stop(cl),
+      "'cl' must be a cluster created by 'JAGS_runtime_cluster()'.", fixed = TRUE)
+  }
   expect_error(JAGS_package_builds(NULL), "The 'packages' argument cannot be NULL.", fixed = TRUE)
   expect_identical(JAGS_package_builds("stats"), .JAGS_package_builds("stats"))
   expect_null(JAGS_package_builds("BayesToolsMissingPackageForTest")[["BayesToolsMissingPackageForTest"]])
