@@ -463,8 +463,9 @@ test_that("standard random summaries replace LKJ coordinates with semantic rows"
     random_effects_summary = "raw",
     return_samples = TRUE
   )
-  expect_true(any(grepl("_xRE_CORx_lkj_u", colnames(raw), fixed = TRUE)))
-  expect_true(any(grepl("_xRE_CORx_lkj_cpc", colnames(raw), fixed = TRUE)))
+  # raw rows of the LKJ primitives are labelled by their component pair
+  expect_true("(mu) lkj_u(group[sensitivity],group[specificity] | study)" %in% colnames(raw))
+  expect_true("(mu) lkj_cpc(group[sensitivity],group[specificity] | study)" %in% colnames(raw))
 
   location <- JAGS_estimates_table(
     fit,
@@ -1074,7 +1075,7 @@ test_that("runjags_estimates_table preserves point-factor and random-SD inclusio
     random_effects_summary = "raw"
   )
   random_inclusion <- "(mu) inclusion(sd(x_fac3))"
-  raw_inclusion <- "(mu) _xREx__id_x_fac3 (inclusion)"
+  raw_inclusion <- "(mu) id: sd(x_fac3) (inclusion)"
   expect_true(random_inclusion %in% rownames(random_table))
   expect_true(raw_inclusion %in% rownames(raw_random_table))
   expect_true(all(
