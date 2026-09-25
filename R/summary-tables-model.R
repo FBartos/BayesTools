@@ -54,7 +54,14 @@
 #' scale, and
 #' \code{"none"} removes random-effect parameters from the table. The
 #' \code{"standard"} and \code{"full"} modes always obtain public semantic
-#' quantities from the fitted parameter map on their declared display scale.
+#' quantities from the fitted parameter map on their declared display scale,
+#' and omit the internal allocation shares of ordered-factor priors.
+#' The \code{"raw"} rows of random-effect and allocation implementation
+#' coordinates (fitted-scale SDs, Cholesky factors and correlation matrices,
+#' LKJ primitives, standardized group effects, and allocation shares) are
+#' backend coordinates shown for inspection: their labels describe the
+#' coordinate, but they are not catalog quantities and do not select one in
+#' [parameter_catalog_resolve()], hypotheses, or plots.
 #' \code{transform_scaled = TRUE} additionally transforms remaining formula
 #' coefficients. Internal latent and realized group-coefficient coordinates
 #' are omitted when \code{transform_scaled = TRUE}, including in \code{"raw"}
@@ -398,6 +405,14 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   model_samples <- cleaned$model_samples
   prior_list    <- cleaned$prior_list
   structural_columns <- cleaned$structural
+  # semantic summaries omit the internal allocation shares the parameter map
+  # declares for ordered-factor priors; raw summaries show every coordinate
+  if(!identical(random_effects_summary, "raw")){
+    model_samples <- .bt_JAGS_estimates_remove_internal_allocations(
+      model_samples = model_samples,
+      coordinates   = coordinates
+    )
+  }
   model_samples <- .bt_JAGS_estimates_filter_raw_random_columns(
     model_samples = model_samples,
     prior_list = prior_list,
@@ -843,6 +858,22 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       startsWith(column_names, paste0(parameter, "["))
     isTRUE(all(model_samples[, columns, drop = FALSE] == 0))
   }, logical(1))]
+}
+
+# Columns of the internal allocation coordinates of fixed (non-random) priors
+# (the Dirichlet allocation shares of ordered-factor priors), as the fitted
+# parameter map declares them, removed from semantic summaries.
+.bt_JAGS_estimates_remove_internal_allocations <- function(model_samples,
+                                                           coordinates){
+
+  if(is.null(coordinates) || ncol(model_samples) == 0L){
+    return(model_samples)
+  }
+  internal <- coordinates$coordinate_name[
+    coordinates$internal & coordinates$role == "parameter" &
+      !nzchar(coordinates$random_block)
+  ]
+  model_samples[, !colnames(model_samples) %in% internal, drop = FALSE]
 }
 
 .bt_JAGS_estimates_filter_raw_random_columns <- function(model_samples,

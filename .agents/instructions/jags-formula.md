@@ -225,7 +225,9 @@ names.
   catalog quantities that need them are unavailable from prior draws.
 - Internal latent, realized, allocation, LKJ, spike-and-slab, and other
   implementation coordinates remain coordinate-only and must not be presented as
-  original-scale public parameters.
+  original-scale public parameters. Raw estimates tables show them as backend
+  coordinates with rendered labels that are not catalog aliases; semantic
+  tables omit them, including the allocation shares of ordered-factor priors.
 - Validate coordinate uniqueness, quantity uniqueness, aliases, extraction
   recipes, and coordinate dependencies atomically at map construction. Public
   accessors reuse that result through the map runtime cache rather than

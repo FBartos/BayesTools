@@ -1201,3 +1201,99 @@ test_that("mixed columns of spike-and-slab and random-effect factor priors are n
     list(c("b", "c"))
   )
 })
+
+test_that("raw rows of LKJ primitives are rendered backend coordinates", {
+
+  set.seed(1)
+  data <- data.frame(
+    x = rep(seq(-1, 1, length.out = 12), 4),
+    z = rep(c(-1, 1), 24),
+    g = factor(rep(c("A", "B", "C", "D"), each = 12))
+  )
+  data$y <- stats::rnorm(nrow(data))
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax       = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 4)\n}\n}",
+    data               = list(y = data$y, N = nrow(data)),
+    formula_list       = list(mu = ~ 1 + x + z + (1 + x + z | g)),
+    formula_data_list  = list(mu = data),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1)),
+      x         = prior("normal", list(0, 1)),
+      z         = prior("normal", list(0, 1))
+    )),
+    formula_random_prior_list = list(mu = prior_random(g = random_block(
+      sd = prior("normal", list(0, 1), list(0, Inf))
+    ))),
+    chains = 1, adapt = 100, burnin = 100, sample = 100, silent = TRUE, seed = 3
+  ))
+  raw <- JAGS_estimates_table(fit, random_effects_summary = "raw",
+                              remove_diagnostics = TRUE)
+  primitives <- c(
+    "(mu) lkj_u(intercept,x | g)",
+    "(mu) lkj_u(intercept,z | g)",
+    "(mu) lkj_u(x,z | g)"
+  )
+  # each primitive row summarizes its own backend coordinate
+  expect_true(all(primitives %in% rownames(raw)))
+  expect_false(any(grepl("lkj_u[", rownames(raw), fixed = TRUE)))
+  draws <- do.call(rbind, lapply(fit$mcmc, as.matrix))
+  expect_equal(
+    raw[primitives, "Mean"],
+    unname(colMeans(draws[, paste0("mu__xREx__g_xRE_CORx_lkj_u[", 1:3, "]")])),
+    tolerance = 1e-12
+  )
+  expect_identical(
+    rownames(JAGS_estimates_table(fit, random_effects_summary = "raw",
+                                  formula_prefix = FALSE,
+                                  remove_diagnostics = TRUE))[
+      match(primitives, rownames(raw))
+    ],
+    sub("(mu) ", "", primitives, fixed = TRUE)
+  )
+  # raw rows are backend coordinates, not catalog quantities
+  catalog <- parameter_catalog(fit)
+  for(row in primitives){
+    expect_error(
+      parameter_catalog_resolve(catalog, row),
+      class = "BayesTools_parameter_not_found"
+    )
+  }
+})
+
+test_that("semantic tables omit the allocation shares of ordered-factor priors", {
+
+  set.seed(1)
+  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 12), levels = c("lo", "mid", "hi")))
+  data$y <- stats::rnorm(nrow(data))
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax       = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 4)\n}\n}",
+    data               = list(y = data$y, N = nrow(data)),
+    formula_list       = list(mu = ~ 1 + f),
+    formula_data_list  = list(mu = data),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1)),
+      f         = prior_ordered(prior("normal", list(0, 1)))
+    )),
+    chains = 1, adapt = 100, burnin = 100, sample = 100, silent = TRUE, seed = 3
+  ))
+  coordinates <- parameter_coordinates(fit)
+  shares <- coordinates$coordinate_name[
+    coordinates$internal & coordinates$role == "parameter"
+  ]
+  expect_length(shares, 2L)
+  expected <- c("(mu) intercept", "(mu) f[mid]", "(mu) f{2}", "(mu) f_ordered_total")
+  for(mode in c("standard", "full")){
+    expect_identical(
+      rownames(JAGS_estimates_table(fit, random_effects_summary = mode,
+                                    remove_diagnostics = TRUE)),
+      expected,
+      info = mode
+    )
+  }
+  # raw tables show every backend coordinate
+  expect_identical(
+    rownames(JAGS_estimates_table(fit, random_effects_summary = "raw",
+                                  remove_diagnostics = TRUE)),
+    c(expected, shares)
+  )
+})

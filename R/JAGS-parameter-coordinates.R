@@ -732,6 +732,13 @@
       random_term = random_term,
       prefix = ""
     )
+  }else if(identical(role, "random_correlation_coordinate")){
+    label <- .bt_random_effect_summary_raw_lkj_display_names(
+      names = label,
+      raw_names = coordinate_name,
+      random_term = random_term,
+      prefix = ""
+    )
   }
   if(identical(label, coordinate_name)){
     # an implementation node without a semantic label keeps its backend name

@@ -152,7 +152,10 @@ Identity random-effect summaries reuse their sampled or structural
 coordinate. Summaries requiring a scale or covariance transformation expose
 only the transformed quantity; their fitted-scale inputs and all other
 private implementation coordinates remain dependencies rather than public
-catalog rows. Each random extraction key records whether its source mapping
+catalog rows. Raw estimates tables
+(\code{JAGS_estimates_table(random_effects_summary = "raw")}) show these backend
+coordinates for inspection; their row labels are not catalog aliases.
+Each random extraction key records whether its source mapping
 is an identity, one-to-one transform, or composite, together with the source
 coordinate, prior, and transform when those are defined.
 Constructing or resolving the catalog never accesses posterior draws.

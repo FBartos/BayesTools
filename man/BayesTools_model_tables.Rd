@@ -284,7 +284,14 @@ variance multipliers.
 scale, and
 \code{"none"} removes random-effect parameters from the table. The
 \code{"standard"} and \code{"full"} modes always obtain public semantic
-quantities from the fitted parameter map on their declared display scale.
+quantities from the fitted parameter map on their declared display scale,
+and omit the internal allocation shares of ordered-factor priors.
+The \code{"raw"} rows of random-effect and allocation implementation
+coordinates (fitted-scale SDs, Cholesky factors and correlation matrices,
+LKJ primitives, standardized group effects, and allocation shares) are
+backend coordinates shown for inspection: their labels describe the
+coordinate, but they are not catalog quantities and do not select one in
+\code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}}, hypotheses, or plots.
 \code{transform_scaled = TRUE} additionally transforms remaining formula
 coefficients. Internal latent and realized group-coefficient coordinates
 are omitted when \code{transform_scaled = TRUE}, including in \code{"raw"}

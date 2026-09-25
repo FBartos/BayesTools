@@ -564,6 +564,43 @@
   names
 }
 
+# Raw labels of the LKJ primitives of a correlated block: primitive `p` (and
+# its canonical partial correlation) belongs to the component pair (i, j) of
+# the LKJ-Cholesky construction, `lkj_u(<i>,<j> | <group>)` and
+# `lkj_cpc(<i>,<j> | <group>)`.
+.bt_random_effect_summary_raw_lkj_display_names <- function(names, raw_names,
+                                                            random_term,
+                                                            prefix){
+
+  correlation <- random_term$correlation
+  if(!is.list(correlation) || !identical(correlation$type, "lkj")){
+    return(names)
+  }
+  components <- .bt_random_effect_summary_column_components(random_term)
+  group <- .bt_random_effect_summary_group_label(random_term)
+  if(length(components) < 2L){
+    return(names)
+  }
+  pairs <- .bt_lkj_cholesky_cpc_pairs(K = length(components))
+  labels <- list(
+    lkj_u   = correlation$primitive_names,
+    lkj_cpc = correlation$cpc_names
+  )
+  for(label in names(labels)){
+    index <- match(raw_names, labels[[label]])
+    for(i in which(!is.na(index))){
+      pair <- pairs[index[[i]], , drop = FALSE]
+      names[i] <- paste0(
+        prefix, label, "(",
+        components[pair$i], ",", components[pair$j],
+        " | ", group, ")"
+      )
+    }
+  }
+
+  names
+}
+
 .bt_random_effect_summary_raw_correlation_matrix_names <- function(names,
                                                                    raw_names,
                                                                    stem,
