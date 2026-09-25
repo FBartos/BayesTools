@@ -551,7 +551,8 @@
       has_intercept = has_intercept,
       preserve_no_intercept_contrasts = preserve_no_intercept_contrasts,
       structure = random_structure,
-      block_name = random_term$block_name
+      block_name = random_term$block_name,
+      n_block_columns = n_par
     )
   }
 

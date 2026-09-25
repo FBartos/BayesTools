@@ -106,6 +106,36 @@
   )
 }
 
+# The block design evaluated at every level cell of a random factor term (the
+# factor design of the term's SD factor prior): the dense cells x block
+# columns design, with the working copies of design construction, and the
+# data frame of the cells.
+.bt_random_effect_factor_design_memory_estimate <- function(n_cells,
+                                                            n_columns,
+                                                            n_predictors){
+
+  design_payload <- .bt_random_effect_memory_product(8, n_cells, n_columns)
+  design_working <- 4 * design_payload
+  cell_data <- .bt_random_effect_memory_product(8, n_cells, max(n_predictors, 1))
+  peak <- sum(design_working, cell_data)
+  if(!is.finite(peak)){
+    peak <- Inf
+  }
+
+  list(
+    operation = "random-effect factor-level design construction",
+    dimensions = paste0(
+      format(n_cells, scientific = FALSE, trim = TRUE),
+      " level cells x ",
+      format(n_columns, scientific = FALSE, trim = TRUE),
+      " columns"
+    ),
+    payload_bytes = design_payload,
+    peak_bytes = peak,
+    components = c(design_working = design_working, cell_data = cell_data)
+  )
+}
+
 .bt_random_effect_output_memory_estimate <- function(
     operation,
     n_rows,

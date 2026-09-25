@@ -511,7 +511,8 @@
                                                  data, predictors,
                                                  predictors_type, has_intercept,
                                                  preserve_no_intercept_contrasts,
-                                                 structure, block_name){
+                                                 structure, block_name,
+                                                 n_block_columns){
 
   term_components <- .bt_random_effect_term_components(model_term)
   factor_terms <- term_components[
@@ -520,6 +521,22 @@
   ]
   level_names <- lapply(factor_terms, function(factor_term) levels(data[[factor_term]]))
   names(level_names) <- factor_terms
+  # the block design is evaluated at every level cell, under the same memory
+  # guard as the block design of the data rows
+  .bt_random_effect_check_memory(
+    estimate = .bt_random_effect_factor_design_memory_estimate(
+      n_cells = .bt_random_effect_memory_product(lengths(level_names)),
+      n_columns = n_block_columns,
+      n_predictors = length(predictors)
+    ),
+    block_name = block_name,
+    alternative = paste0(
+      "Reduce the number of levels of the factors in the random-effect term ",
+      "or the number of random-effect columns, or simplify the random-effect ",
+      "design. Raise the option (or set it to Inf) only after verifying the ",
+      "operation's memory budget."
+    )
+  )
   cell_grid <- .factor_cell_grid(level_names)
 
   grid_data <- data[rep(1L, nrow(cell_grid)), predictors, drop = FALSE]

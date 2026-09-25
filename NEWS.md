@@ -310,8 +310,10 @@ old behaviour.
   instead of 40% and none. The draws of the first slice, the slab draws of
   every slice, and the draws of all other priors keep their random numbers.
 - random-effect SD factor priors carry the factor design of their term,
-  evaluated from the random-effect design at every level cell, and their
-  coordinates are named from it. Factor-by-continuous random slopes such as
+  evaluated from the random-effect design at every level cell (under the
+  random-effect memory guard, option
+  'BayesTools.random_effects_memory_limit_bytes', on the level cells times
+  the block's columns), and their coordinates are named from it. Factor-by-continuous random slopes such as
   `(1 + g:x || id)` now fit; completing their metadata from the coefficient
   count stopped with "invalid 'times' value".
 - prior densities and distribution methods:

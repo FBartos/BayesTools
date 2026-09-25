@@ -144,6 +144,65 @@ test_that("formula design memory guard stops before the full dense allocation", 
   expect_equal(cell_design_calls, 1L)
 })
 
+test_that("factor-level design memory guard stops before the dense cell design", {
+
+  old_limit <- getOption(.random_memory_option)
+  on.exit(.random_memory_restore_option(old_limit), add = TRUE)
+  # 100 rows of a 20 x 20 factor interaction: the block has 400 columns, so
+  # the data design is 100 x 400 (0.3 MiB, 1.3 MiB peak with its working
+  # copies) and the design at every level cell 400 x 400 (1.2 MiB, 4.9 MiB)
+  set.seed(1)
+  data <- data.frame(
+    g  = factor(sample(sprintf("g%02d", 1:20), 100L, replace = TRUE), levels = sprintf("g%02d", 1:20)),
+    h  = factor(sample(sprintf("h%02d", 1:20), 100L, replace = TRUE), levels = sprintf("h%02d", 1:20)),
+    id = factor(rep(1:5, length.out = 100L))
+  )
+  compile <- function(){
+    JAGS_formula(
+      ~ 1 + (0 + g:h || id), "mu", data,
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(
+        sd = prior("normal", list(0, 1), list(0, Inf))
+      ))
+    )
+  }
+  original_design <- BayesTools:::.bt_random_effect_design_matrix
+  cell_design_calls <- 0L
+  testthat::local_mocked_bindings(
+    .bt_random_effect_design_matrix = function(formula, data, ...){
+      if(nrow(data) == 400L){
+        cell_design_calls <<- cell_design_calls + 1L
+      }
+      original_design(formula = formula, data = data, ...)
+    },
+    .package = "BayesTools"
+  )
+
+  .random_memory_restore_option(2 * 1024^2)
+  expect_error(
+    compile(),
+    paste0(
+      "Estimated peak memory for random-effect factor-level design construction ",
+      "for block 'id' exceeds option '", .random_memory_option, "'. ",
+      "Dimensions: 400 level cells x 400 columns; primary payload: ",
+      "1,280,000 bytes (1.22 MiB); conservative peak estimate: ",
+      "5,126,400 bytes (4.89 MiB); configured ceiling: ",
+      "2,097,152 bytes (2.00 MiB). This guard cannot promise that smaller ",
+      "allocations will succeed. Reduce the number of levels of the factors ",
+      "in the random-effect term or the number of random-effect columns, or ",
+      "simplify the random-effect design."
+    ),
+    fixed = TRUE
+  )
+  expect_identical(cell_design_calls, 0L)
+
+  .random_memory_restore_option(Inf)
+  result <- compile()
+  expect_identical(cell_design_calls, 1L)
+  sd_prior <- result$prior_list$mu__xREx__id_g__xXx__h
+  expect_identical(dim(attr(sd_prior, "factor_design")), c(400L, 400L))
+})
+
 test_that("output guard reports the conservative peak and safer alternative", {
 
   old_limit <- getOption(.random_memory_option)
