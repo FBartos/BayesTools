@@ -22,39 +22,41 @@
 #'   can take a point mass: each is owned by a continuous prior (including the
 #'   Dirichlet weights of a variance allocation), is a continuous generated
 #'   primitive (e.g. the correlations of an LKJ block), or is a generated
-#'   deterministic node ([JAGS_deterministic_nodes()]) all of whose
-#'   dependencies are such coordinates (e.g. the SDs of a variance allocation
-#'   without inclusion gates whose scale prior has no point component, so the
-#'   original-scale correlations of an allocated `us()` block declare no
-#'   atoms). A random-effect correlation is scale-invariant, so a coordinate
-#'   that enters its block only as a common factor of every SD (the scale
-#'   source of the allocation that splits the block into its SDs, or an
-#'   inclusion gate of the whole block, also with point masses) puts no atom
-#'   on it: where the factor is 0, every SD is 0 and the correlation is
-#'   undefined. The original-scale correlations of a block allocated from a
-#'   gated or spike-and-slab scale therefore declare no atoms on their defined
-#'   draws. Atoms remain undeclared (and posterior plots and Savage-Dickey
-#'   ratios stop) when the point states are not in the draws (an unmonitored
-#'   component indicator), when the quantity combines several coordinates of
-#'   which some can take a point mass (e.g. original-scale random-effect SDs
-#'   of a block with spike-and-slab SD priors, and original-scale
-#'   correlations of a block whose SDs have their own spike-and-slab priors
-#'   or inclusion gates, which can be -1 or 1 where one SD is 0), and when the
-#'   point structure of a fitted coordinate is not classified: coordinates of
-#'   priors that are neither continuous, point, mixture, spike-and-slab, nor
-#'   selection priors, and coordinates without a prior other than LKJ
-#'   primitives, standardized random effects, generated deterministic nodes,
-#'   and selection coordinates (e.g. `add_parameters` and the `_indicator`,
-#'   `_inclusion`, and `_variable` coordinates of mixture priors). The
-#'   coordinates of a weight-function, publication-bias, or publication-bias
-#'   mixture prior (the weights `omega`, `PET`, `PEESE`, and the p-hacking
-#'   `alpha`, `pi_null`, `beta_null`, and `phack_kind`) are declared from the
-#'   value each branch of the prior gives them: a constant weight (the
-#'   reference bin, fixed weights, or 1 in a branch without a selection), 0
-#'   for `PET` and `PEESE` in branches without them and for the p-hacking
-#'   parameters in branches without p-hacking, and the form code of
-#'   `phack_kind`, with masses the shares of the draws whose branch (the
-#'   `bias_indicator` of a mixture) gives the constant.}
+#'   random-effect SD or correlation node ([JAGS_deterministic_nodes()]) all
+#'   of whose dependencies are such coordinates (e.g. the SDs of a variance
+#'   allocation without inclusion gates whose scale prior has no point
+#'   component, so the original-scale correlations of an allocated `us()`
+#'   block declare no atoms). A random-effect correlation is scale-invariant,
+#'   so a coordinate that enters its block only as a common factor of every
+#'   SD (the scale source of the allocation that splits the block into its
+#'   SDs, or an inclusion gate of the whole block, also with point masses)
+#'   puts no atom on it: where the factor is 0, every SD is 0 and the
+#'   correlation is undefined. The original-scale correlations of a block
+#'   allocated from a gated or spike-and-slab scale therefore declare no atoms
+#'   on their defined draws. Atoms remain undeclared (and posterior plots and
+#'   Savage-Dickey ratios stop) when the point states are not in the draws (an
+#'   unmonitored component indicator), when the quantity combines several
+#'   coordinates of which some can take a point mass (e.g. original-scale
+#'   random-effect SDs of a block with spike-and-slab SD priors, and
+#'   original-scale correlations of a block whose SDs have their own
+#'   spike-and-slab priors or inclusion gates, which can be -1 or 1 where one
+#'   SD is 0), and when the point structure of a fitted coordinate is not
+#'   classified: coordinates of priors that are neither continuous, point,
+#'   mixture, spike-and-slab, nor selection priors, and coordinates without a
+#'   prior other than LKJ primitives, standardized random effects, generated
+#'   random-effect SD and correlation nodes, and selection coordinates (e.g.
+#'   `add_parameters`, such as a formula's linear predictor, which is constant
+#'   on rows whose design is zero, and the `_indicator`, `_inclusion`, and
+#'   `_variable` coordinates of mixture priors). The coordinates of a
+#'   weight-function, publication-bias, or publication-bias mixture prior (the
+#'   weights `omega`, `PET`, `PEESE`, and the p-hacking `alpha`, `pi_null`,
+#'   `beta_null`, and `phack_kind`) are declared from the value each branch of
+#'   the prior gives them: a constant weight (the reference bin, fixed
+#'   weights, or 1 in a branch without a selection), 0 for `PET` and `PEESE`
+#'   in branches without them and for the p-hacking parameters in branches
+#'   without p-hacking, and the form code of `phack_kind`, with masses the
+#'   shares of the draws whose branch (the `bias_indicator` of a mixture)
+#'   gives the constant.}
 #'   \item{`undefined_draws`}{for quantities that are undefined on some
 #'   fitted draws (the catalog `definedness`, e.g. variance proportions when
 #'   no allocation component is active), the reason; those draws are omitted,
@@ -540,13 +542,15 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 #   allocation);
 # - a coordinate of a generated deterministic node of the registry
 #   (.bt_deterministic_nodes(), e.g. the allocated SDs of a variance
-#   allocation) cannot when none of the node's dependencies can: an inclusion
-#   gate, a component indicator, or a scale source with a point component
-#   among them propagates its point states to the node;
+#   allocation) of a family in .bt_parameter_point_free_node_families cannot
+#   when none of the node's dependencies can: an inclusion gate, a component
+#   indicator, or a scale source with a point component among them propagates
+#   its point states to the node;
 # - a generated continuous primitive without a prior-list entry (the Beta
 #   primitives of an LKJ correlation and standardized random effects) cannot.
 # Indicator, structural, and auxiliary coordinates, coordinates missing from
-# the fitted coordinates, and coordinates with none of these structures can.
+# the fitted coordinates, nodes of other families, and coordinates with none
+# of these structures can.
 # 'context' is a .bt_parameter_point_free_context().
 .bt_parameter_coordinate_point_free <- function(context, coordinate){
 
@@ -576,6 +580,9 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   }
   node <- .bt_parameter_coordinate_node(context, coordinate)
   if(!is.null(node)){
+    if(!node$family %in% .bt_parameter_point_free_node_families){
+      return(FALSE)
+    }
     if(length(node$dependencies) == 0L){
       # a node without dependencies is a constant
       return(FALSE)
@@ -591,6 +598,16 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   coordinates$role[row] %in% c("random_correlation_coordinate", "random_latent") &&
     identical(coordinates$convergence_role[row], "sampled")
 }
+
+# Registry families whose coordinates cannot take a point mass when none of
+# their dependencies can: allocated SDs (a source times positive allocation
+# multipliers and 0/1 gates), Fisher-z and logit correlations (strictly
+# monotone maps), and LKJ Cholesky factors and correlation matrices (their
+# constant cells are structural coordinates). A formula's linear predictor is
+# not among them: it is constant on a row whose design is zero for every
+# coefficient without a point prior, and its expression() terms are arbitrary
+# functions of their parameters.
+.bt_parameter_point_free_node_families <- c("random_sd", "random_rho", "lkj")
 
 # The generated deterministic node of the fit that defines 'coordinate' (NULL
 # when none does).

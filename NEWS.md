@@ -338,9 +338,9 @@ old behaviour.
   quantities whose coordinates cannot take a point mass (e.g.
   original-scale `us()` correlations). The new `parameter_gate_states()`
   returns the per-draw gate and point states.
-- `parameter_mixed_posterior()` decides whether a generated deterministic
-  coordinate can take a point mass from its dependencies in the node registry
-  (`JAGS_deterministic_nodes()`): an allocated random-effect SD cannot when
+- `parameter_mixed_posterior()` decides whether a generated random-effect SD
+  or correlation coordinate can take a point mass from its dependencies in
+  the node registry (`JAGS_deterministic_nodes()`): an allocated SD cannot when
   its scale prior has no point component and its allocation chain has no
   inclusion gate. The original-scale correlations of `us()` blocks with such
   allocated SDs (e.g. an `sd_component` allocation of a continuous scale

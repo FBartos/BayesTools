@@ -282,7 +282,8 @@ quantity can take a point mass (e.g. an original-scale LKJ correlation with
 continuous SD priors). A coordinate cannot take one when its prior has no
 point component (continuous priors, Dirichlet weights), when it is an LKJ
 primitive or a standardized random effect, or when it is a generated
-deterministic node whose registry dependencies (`.bt_deterministic_nodes()`)
+random-effect SD or correlation node (registry families `random_sd`,
+`random_rho`, `lkj`) whose registry dependencies (`.bt_deterministic_nodes()`)
 all cannot: the SDs of an allocation without inclusion gates whose scale
 prior has no point component, so the original-scale correlations of an
 allocated `us()` block declare none; a gate, component indicator, or point
@@ -300,9 +301,11 @@ SD is 0). Atoms stay undeclared for unmonitored point states, composites of
 coordinates with point masses (e.g. original-scale correlations of a block
 whose SDs have their own spike-and-slab priors), and
 coordinates whose point structure is not classified (coordinates without a
-prior other than LKJ primitives, standardized random effects, generated
-deterministic nodes, and selection coordinates, e.g. the `_indicator`,
-`_inclusion`, and `_variable` coordinates of mixture priors).
+prior other than LKJ primitives, standardized random effects, and generated
+random-effect SD and correlation nodes, e.g. a formula's linear predictor,
+which is constant on rows whose design is zero; and selection coordinates,
+e.g. the `_indicator`, `_inclusion`, and `_variable` coordinates of mixture
+priors).
 `parameter_mixed_posterior(conditional = TRUE)` keeps the draws of the
 quantity's inclusion event and uses the density restricted to that event (the
 gate atom drops out, atoms inside the event are renormalized).

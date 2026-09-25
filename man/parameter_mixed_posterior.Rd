@@ -53,39 +53,41 @@ does a quantity without a prior density none of whose fitted coordinates
 can take a point mass: each is owned by a continuous prior (including the
 Dirichlet weights of a variance allocation), is a continuous generated
 primitive (e.g. the correlations of an LKJ block), or is a generated
-deterministic node (\code{\link[=JAGS_deterministic_nodes]{JAGS_deterministic_nodes()}}) all of whose
-dependencies are such coordinates (e.g. the SDs of a variance allocation
-without inclusion gates whose scale prior has no point component, so the
-original-scale correlations of an allocated \code{us()} block declare no
-atoms). A random-effect correlation is scale-invariant, so a coordinate
-that enters its block only as a common factor of every SD (the scale
-source of the allocation that splits the block into its SDs, or an
-inclusion gate of the whole block, also with point masses) puts no atom
-on it: where the factor is 0, every SD is 0 and the correlation is
-undefined. The original-scale correlations of a block allocated from a
-gated or spike-and-slab scale therefore declare no atoms on their defined
-draws. Atoms remain undeclared (and posterior plots and Savage-Dickey
-ratios stop) when the point states are not in the draws (an unmonitored
-component indicator), when the quantity combines several coordinates of
-which some can take a point mass (e.g. original-scale random-effect SDs
-of a block with spike-and-slab SD priors, and original-scale
-correlations of a block whose SDs have their own spike-and-slab priors
-or inclusion gates, which can be -1 or 1 where one SD is 0), and when the
-point structure of a fitted coordinate is not classified: coordinates of
-priors that are neither continuous, point, mixture, spike-and-slab, nor
-selection priors, and coordinates without a prior other than LKJ
-primitives, standardized random effects, generated deterministic nodes,
-and selection coordinates (e.g. \code{add_parameters} and the \verb{_indicator},
-\verb{_inclusion}, and \verb{_variable} coordinates of mixture priors). The
-coordinates of a weight-function, publication-bias, or publication-bias
-mixture prior (the weights \code{omega}, \code{PET}, \code{PEESE}, and the p-hacking
-\code{alpha}, \code{pi_null}, \code{beta_null}, and \code{phack_kind}) are declared from the
-value each branch of the prior gives them: a constant weight (the
-reference bin, fixed weights, or 1 in a branch without a selection), 0
-for \code{PET} and \code{PEESE} in branches without them and for the p-hacking
-parameters in branches without p-hacking, and the form code of
-\code{phack_kind}, with masses the shares of the draws whose branch (the
-\code{bias_indicator} of a mixture) gives the constant.}
+random-effect SD or correlation node (\code{\link[=JAGS_deterministic_nodes]{JAGS_deterministic_nodes()}}) all
+of whose dependencies are such coordinates (e.g. the SDs of a variance
+allocation without inclusion gates whose scale prior has no point
+component, so the original-scale correlations of an allocated \code{us()}
+block declare no atoms). A random-effect correlation is scale-invariant,
+so a coordinate that enters its block only as a common factor of every
+SD (the scale source of the allocation that splits the block into its
+SDs, or an inclusion gate of the whole block, also with point masses)
+puts no atom on it: where the factor is 0, every SD is 0 and the
+correlation is undefined. The original-scale correlations of a block
+allocated from a gated or spike-and-slab scale therefore declare no atoms
+on their defined draws. Atoms remain undeclared (and posterior plots and
+Savage-Dickey ratios stop) when the point states are not in the draws (an
+unmonitored component indicator), when the quantity combines several
+coordinates of which some can take a point mass (e.g. original-scale
+random-effect SDs of a block with spike-and-slab SD priors, and
+original-scale correlations of a block whose SDs have their own
+spike-and-slab priors or inclusion gates, which can be -1 or 1 where one
+SD is 0), and when the point structure of a fitted coordinate is not
+classified: coordinates of priors that are neither continuous, point,
+mixture, spike-and-slab, nor selection priors, and coordinates without a
+prior other than LKJ primitives, standardized random effects, generated
+random-effect SD and correlation nodes, and selection coordinates (e.g.
+\code{add_parameters}, such as a formula's linear predictor, which is constant
+on rows whose design is zero, and the \verb{_indicator}, \verb{_inclusion}, and
+\verb{_variable} coordinates of mixture priors). The coordinates of a
+weight-function, publication-bias, or publication-bias mixture prior (the
+weights \code{omega}, \code{PET}, \code{PEESE}, and the p-hacking \code{alpha}, \code{pi_null},
+\code{beta_null}, and \code{phack_kind}) are declared from the value each branch of
+the prior gives them: a constant weight (the reference bin, fixed
+weights, or 1 in a branch without a selection), 0 for \code{PET} and \code{PEESE}
+in branches without them and for the p-hacking parameters in branches
+without p-hacking, and the form code of \code{phack_kind}, with masses the
+shares of the draws whose branch (the \code{bias_indicator} of a mixture)
+gives the constant.}
 \item{\code{undefined_draws}}{for quantities that are undefined on some
 fitted draws (the catalog \code{definedness}, e.g. variance proportions when
 no allocation component is active), the reason; those draws are omitted,

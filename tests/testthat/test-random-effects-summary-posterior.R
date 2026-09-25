@@ -976,6 +976,42 @@ test_that("correlations of allocated blocks are point-free up to common factors 
   }
 })
 
+test_that("monitored linear predictors are not point-free through their registry dependencies", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+
+  # mu[i] = mu_x * x[i] + mu_z * z[i] is a registered node whose dependencies
+  # are continuous, yet it is 0 in every draw of the row with x = z = 0: its
+  # atom status stays undeclared rather than atom-free.
+  set.seed(1)
+  data <- data.frame(x = c(0, stats::rnorm(5)), z = c(0, stats::rnorm(5)))
+  fit <- JAGS_fit(
+    model_syntax       = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 1)\n}\n}",
+    data               = list(y = stats::rnorm(6), N = 6L),
+    formula_list       = list(mu = ~ 0 + x + z),
+    formula_data_list  = list(mu = data),
+    formula_prior_list = list(mu = list(
+      x = prior("normal", list(0, 1)),
+      z = prior("normal", list(0, 1))
+    )),
+    add_parameters     = "mu",
+    chains = 1, adapt = 50, burnin = 50, sample = 100, silent = TRUE, seed = 1
+  )
+  nodes <- JAGS_deterministic_nodes(fit)
+  expect_identical(nodes$family[match("mu", nodes$node)], "linear_predictor")
+  expect_identical(nodes$dependencies[[match("mu", nodes$node)]], c("mu_x", "mu_z"))
+  context <- BayesTools:::.bt_parameter_point_free_context(fit)
+  expect_true(BayesTools:::.bt_parameter_coordinate_point_free(context, "mu_x"))
+  expect_false(BayesTools:::.bt_parameter_coordinate_point_free(context, "mu[1]"))
+
+  catalog  <- parameter_catalog(fit)
+  constant <- parameter_mixed_posterior(fit, parameter_catalog_resolve(catalog, "mu[1]", "mu"))
+  expect_length(unique(as.numeric(constant)), 1L)
+  expect_null(posterior_metadata(constant, "atoms"))
+  expect_false(posterior_atoms_free(constant))
+})
+
 test_that("parameter_mixed_posterior declares the point components of mixture priors", {
 
   skip_if_not_installed("rjags")
