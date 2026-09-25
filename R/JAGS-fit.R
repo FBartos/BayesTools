@@ -463,6 +463,17 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
   }
 
+  # the JAGS executable resolved once per session (.JAGS_backend_path()): the
+  # backend's 'jags' argument, and the 'jagspath' option for its model setup
+  # until JAGS_fit() returns
+  jags_path <- .JAGS_backend_path()
+  if(!is.null(jags_path)){
+    model_call$jags <- jags_path
+    user_jagspath <- runjags::runjags.options()[["jagspath"]]
+    on.exit(runjags::runjags.options(jagspath = list(user_jagspath)), add = TRUE)
+    runjags::runjags.options(jagspath = jags_path)
+  }
+
   start_time <- Sys.time()
   restart_warnings <- character()
   # special fitting procedure for JASP

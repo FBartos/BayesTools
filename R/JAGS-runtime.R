@@ -33,6 +33,31 @@
 }
 
 
+# The JAGS executable passed to runjags::run.jags(). By default runjags
+# searches for it on every call, and twice per call (the 'jags' argument's
+# default and the method options of runjags' model setup both evaluate the
+# 'jagspath' option, whose default findjags() runs a system command). The path
+# is resolved once per session and reused while the 'jagspath' option is
+# unchanged: a path set with runjags::runjags.options(jagspath = ) is used as
+# given, and changing the option resolves the path again. A search that finds
+# no executable is not kept. runjags still tests the executable and its
+# version (runjags::testjags()) on every call.
+.JAGS_backend_path <- function(){
+
+  option <- runjags::runjags.options()[["jagspath"]]
+  cached <- .BayesTools_private$jags_path
+  if(!is.null(cached) && identical(cached[["option"]], option)){
+    return(cached[["path"]])
+  }
+  path <- runjags::runjags.getOption("jagspath")
+  if(!is.character(path) || length(path) != 1L || is.na(path) || !nzchar(path) ||
+     identical(path, "JAGS not found")){
+    return(NULL)
+  }
+  .BayesTools_private$jags_path <- list(option = option, path = path)
+  path
+}
+
 .JAGS_make_cluster <- function(cores, worker_output = NULL, vanilla = FALSE){
 
   arguments <- c(

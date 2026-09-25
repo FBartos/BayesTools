@@ -169,6 +169,104 @@ test_that("parallel transport failures stop initialization retries immediately",
   }
 })
 
+test_that("JAGS_fit resolves the JAGS executable once per session", {
+
+  skip_if_not_installed("runjags")
+  # runjags' default 'jagspath' option searches for JAGS on every evaluation
+  # (runjags::findjags()); a fresh session state starts without a stored path
+  runjags_default <- expression(findjags())
+  user_option <- runjags::runjags.options()[["jagspath"]]
+  user_cache <- .BayesTools_private$jags_path
+  withr::defer({
+    runjags::runjags.options(jagspath = list(user_option))
+    assign("jags_path", user_cache, envir = .BayesTools_private)
+  })
+  runjags::runjags.options(jagspath = list(runjags_default))
+  .BayesTools_private$jags_path <- NULL
+
+  searches <- 0L
+  backend <- list()
+  testthat::local_mocked_bindings(
+    findjags = function(...){
+      searches <<- searches + 1L
+      "C:/JAGS/x64/bin/jags-terminal.exe"
+    },
+    run.jags = function(...){
+      # runjags' model setup evaluates the 'jagspath' option again
+      backend[[length(backend) + 1L]] <<- list(
+        jags   = list(...)[["jags"]],
+        option = runjags::runjags.getOption("jagspath")
+      )
+      stop("backend probe")
+    },
+    .package = "runjags"
+  )
+  testthat::local_mocked_bindings(
+    .JAGS_require_packages = function(...) invisible(NULL),
+    .JAGS_load_modules = function(...) invisible(NULL),
+    .bt_attach_parameter_map = function(fit, ...) fit,
+    .bt_attach_draw_geometry = function(fit, ...) fit,
+    .bt_attach_fit_contract = function(fit, ...) fit,
+    .package = "BayesTools"
+  )
+  fit <- function(){
+    JAGS_fit(
+      model_syntax = "model{ x ~ dnorm(mu, 1) }", data = list(x = 0),
+      prior_list = list(mu = prior("normal", list(0, 1))),
+      chains = 2, adapt = 50, burnin = 50, sample = 100,
+      autofit_control = list(restarts = 2, sample_extend = 100), silent = TRUE, seed = 1
+    )
+  }
+
+  # two fits with two backend attempts each search once; every attempt gets
+  # the path as its argument and as the option its model setup reads, and
+  # the option is restored afterwards
+  expect_s3_class(fit(), "error")
+  expect_s3_class(fit(), "error")
+  expect_identical(searches, 1L)
+  expect_length(backend, 4L)
+  for(call in backend){
+    expect_identical(call$jags, "C:/JAGS/x64/bin/jags-terminal.exe")
+    expect_identical(call$option, "C:/JAGS/x64/bin/jags-terminal.exe")
+  }
+  expect_identical(runjags::runjags.options()[["jagspath"]], runjags_default)
+
+  # a path set by the user is used as given, without a search, and kept
+  backend <- list()
+  runjags::runjags.options(jagspath = "D:/user/jags-terminal.exe")
+  expect_s3_class(fit(), "error")
+  expect_identical(searches, 1L)
+  expect_identical(backend[[1L]]$jags, "D:/user/jags-terminal.exe")
+  expect_identical(backend[[1L]]$option, "D:/user/jags-terminal.exe")
+  expect_identical(runjags::runjags.options()[["jagspath"]], "D:/user/jags-terminal.exe")
+
+  # changing the option back resolves the path again, once
+  backend <- list()
+  runjags::runjags.options(jagspath = list(runjags_default))
+  expect_s3_class(fit(), "error")
+  expect_s3_class(fit(), "error")
+  expect_identical(searches, 2L)
+  expect_identical(backend[[1L]]$jags, "C:/JAGS/x64/bin/jags-terminal.exe")
+
+  # an unsuccessful search is not kept: the backend searches as before
+  .BayesTools_private$jags_path <- NULL
+  backend <- list()
+  testthat::local_mocked_bindings(
+    findjags = function(...){
+      searches <<- searches + 1L
+      "JAGS not found"
+    },
+    .package = "runjags"
+  )
+  expect_s3_class(fit(), "error")
+  expect_s3_class(fit(), "error")
+  # per fit: one search of the path resolution and one per backend attempt
+  expect_identical(searches, 2L + 2L * (1L + 2L))
+  expect_null(backend[[1L]]$jags)
+  expect_identical(backend[[1L]]$option, "JAGS not found")
+  expect_identical(runjags::runjags.options()[["jagspath"]], runjags_default)
+})
+
 test_that("cleanup reaches surviving nodes after the first worker disconnects", {
 
   broken <- rawConnection(raw(), "r+")
