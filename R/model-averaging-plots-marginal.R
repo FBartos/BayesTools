@@ -17,10 +17,10 @@
 #' a standard KDE because marginal prior-density grids are numerical density
 #' ranges rather than true support metadata; this can intentionally differ from
 #' the support-reflected ordinate used by \code{\link{Savage_Dickey_BF}} when
-#' exact posterior-support metadata is available. If a stored density is used
-#' and sample-derived point masses are available, the plot layer uses only
-#' explicit \code{point_masses} from the stored density and warns when none are
-#' declared. A prior curve without an exact route whose numerical grid cannot
+#' exact posterior-support metadata is available. A stored density describes
+#' the continuous part of the posterior; point masses are drawn from the
+#' declared posterior atoms (the \code{atoms} metadata, see
+#' [posterior_atom_attribute()]) with either density method. A prior curve without an exact route whose numerical grid cannot
 #' resolve a heavy-tailed product term is omitted with a warning of class
 #' \code{BayesTools_prior_curve_unavailable}, as in [plot_posterior()], and so
 #' is the prior curve of draws that declare no prior (a \code{prior_list} of
@@ -268,21 +268,9 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   # create the output object
   out <- list()
 
-  # get the density estimate
+  # get the density estimate (a stored density is the continuous part; the
+  # point masses are the declared posterior atoms)
   if(!is.null(posterior_density)){
-    sample_points_available <- !is.null(y_points)
-    x_points <- NULL
-    y_points <- NULL
-    if(.posterior_density_point_masses_declared(posterior_density)){
-      stored_points <- .plot_data_stored_point_masses(
-        posterior_density
-      )
-      x_points <- stored_points[["x"]]
-      y_points <- stored_points[["y"]]
-    }else if(sample_points_available){
-      .plot_data_warn_missing_stored_point_masses()
-    }
-
     x_den <- posterior_density[["x"]]
     y_den <- posterior_density[["y"]]
 

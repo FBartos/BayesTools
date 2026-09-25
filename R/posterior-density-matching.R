@@ -24,13 +24,6 @@
     return(TRUE)
   }
 
-  point_masses <- posterior_density[["point_masses"]]
-  if(!is.null(point_masses) && nrow(point_masses) > 0L){
-    if(any(point_masses[["x"]] == null_hypothesis)){
-      return(TRUE)
-    }
-  }
-
   height <- .posterior_density_height(posterior_density, null_hypothesis)
   is.finite(height) && height > 0
 }

@@ -65,8 +65,8 @@
 }
 
 # Returns the density attribute with a sorted grid (heights at repeated
-# locations averaged), normalized point masses, and validated support, or a
-# character reason when the attribute is invalid.
+# locations averaged) and validated support, or a character reason when the
+# attribute is invalid.
 .posterior_density_normalize <- function(posterior_density){
 
   if(!identical(posterior_density[["status"]], "ok")){
@@ -105,82 +105,13 @@
     return("the density grid needs at least two distinct locations")
   }
 
-  point_masses <- .posterior_density_point_masses(posterior_density[["point_masses"]])
-  if(is.null(point_masses)){
-    return("its 'point_masses' metadata are invalid")
-  }
-
-  posterior_density[["x"]]            <- x
-  posterior_density[["y"]]            <- y
-  posterior_density[["point_masses"]] <- point_masses
-  posterior_density["point_masses_declared"] <- list(
-    isTRUE(posterior_density[["point_masses_declared"]])
-  )
+  posterior_density[["x"]] <- x
+  posterior_density[["y"]] <- y
   posterior_density["support"] <- list(
     .posterior_support_from_attribute(posterior_density[["support"]])
   )
 
   return(posterior_density)
-}
-
-.posterior_density_point_masses <- function(point_masses){
-
-  empty <- data.frame(x = numeric(), mass = numeric())
-  if(is.null(point_masses)){
-    return(empty)
-  }
-
-  if(is.data.frame(point_masses)){
-    if(!all(c("x", "mass") %in% colnames(point_masses))){
-      return(NULL)
-    }
-  }else if(!is.list(point_masses) ||
-           is.null(point_masses[["x"]]) || is.null(point_masses[["mass"]])){
-    return(NULL)
-  }
-  x    <- point_masses[["x"]]
-  mass <- point_masses[["mass"]]
-
-  if(length(x) != length(mass)){
-    return(NULL)
-  }
-  if(length(x) == 0L){
-    return(empty)
-  }
-
-  out <- data.frame(
-    x    = suppressWarnings(as.numeric(x)),
-    mass = suppressWarnings(as.numeric(mass))
-  )
-  if(any(!is.finite(out[["x"]])) ||
-     any(!is.finite(out[["mass"]])) ||
-     any(out[["mass"]] <= 0)){
-    return(NULL)
-  }
-
-  if(nrow(out) > 0L && anyDuplicated(out[["x"]])){
-    # merge atoms at exactly equal locations (character keys would round
-    # distinct locations to 15 digits)
-    unique_x <- unique(out[["x"]])
-    index    <- match(out[["x"]], unique_x)
-    out <- data.frame(
-      x    = unique_x,
-      mass = as.numeric(rowsum(out[["mass"]], index, reorder = TRUE))
-    )
-    out <- out[order(out[["x"]]), , drop = FALSE]
-  }
-  mass_bound <- .Machine$double.eps * max(8, nrow(out))
-  if(nrow(out) > 0L && sum(out[["mass"]]) > 1 + mass_bound){
-    return(NULL)
-  }
-  rownames(out) <- NULL
-
-  return(out)
-}
-
-.posterior_density_point_masses_declared <- function(posterior_density){
-
-  isTRUE(posterior_density[["point_masses_declared"]])
 }
 
 .posterior_density_height <- function(posterior_density, null_hypothesis){

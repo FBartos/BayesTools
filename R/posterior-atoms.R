@@ -10,14 +10,15 @@
 #'
 #' @return A posterior atom metadata object for the \code{atoms} metadata
 #' of posterior draws (\code{posterior_metadata(x, "atoms") <- }). Posterior
-#' point masses are read only from these metadata, never from the point masses
-#' of precomputed posterior densities.
+#' point masses are read only from these metadata: precomputed posterior
+#' densities ([posterior_density_attribute()]) describe the continuous part
+#' and carry no point masses.
 #'
 #' @export
 posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
 
   check_char(source, "source", check_length = 1L, allow_NA = FALSE)
-  point_masses <- .posterior_density_point_masses(point_masses)
+  point_masses <- .posterior_atoms_point_mass_table(point_masses)
   if(is.null(point_masses)){
     stop("Posterior 'point_masses' metadata is invalid.", call. = FALSE)
   }
@@ -64,6 +65,64 @@ posterior_atoms_free <- function(x){
   atoms <- .posterior_atoms_get(x)
 
   !is.null(atoms) && nrow(atoms$locations) == 0L
+}
+
+# A validated point-mass table (data frame with 'x' and 'mass', masses at
+# exactly equal locations merged), an empty table for NULL, or NULL when
+# 'point_masses' is malformed.
+.posterior_atoms_point_mass_table <- function(point_masses){
+
+  empty <- data.frame(x = numeric(), mass = numeric())
+  if(is.null(point_masses)){
+    return(empty)
+  }
+
+  if(is.data.frame(point_masses)){
+    if(!all(c("x", "mass") %in% colnames(point_masses))){
+      return(NULL)
+    }
+  }else if(!is.list(point_masses) ||
+           is.null(point_masses[["x"]]) || is.null(point_masses[["mass"]])){
+    return(NULL)
+  }
+  x    <- point_masses[["x"]]
+  mass <- point_masses[["mass"]]
+
+  if(length(x) != length(mass)){
+    return(NULL)
+  }
+  if(length(x) == 0L){
+    return(empty)
+  }
+
+  out <- data.frame(
+    x    = suppressWarnings(as.numeric(x)),
+    mass = suppressWarnings(as.numeric(mass))
+  )
+  if(any(!is.finite(out[["x"]])) ||
+     any(!is.finite(out[["mass"]])) ||
+     any(out[["mass"]] <= 0)){
+    return(NULL)
+  }
+
+  if(nrow(out) > 0L && anyDuplicated(out[["x"]])){
+    # merge atoms at exactly equal locations (character keys would round
+    # distinct locations to 15 digits)
+    unique_x <- unique(out[["x"]])
+    index    <- match(out[["x"]], unique_x)
+    out <- data.frame(
+      x    = unique_x,
+      mass = as.numeric(rowsum(out[["mass"]], index, reorder = TRUE))
+    )
+    out <- out[order(out[["x"]]), , drop = FALSE]
+  }
+  mass_bound <- .Machine$double.eps * max(8, nrow(out))
+  if(nrow(out) > 0L && sum(out[["mass"]]) > 1 + mass_bound){
+    return(NULL)
+  }
+  rownames(out) <- NULL
+
+  return(out)
 }
 
 .posterior_atoms_new <- function(locations = NULL, mass = numeric(),
@@ -342,7 +401,7 @@ posterior_atoms_free <- function(x){
 
   x <- atoms$locations[, column]
   point_masses <- data.frame(x = x, mass = atoms$mass)
-  point_masses <- .posterior_density_point_masses(point_masses)
+  point_masses <- .posterior_atoms_point_mass_table(point_masses)
   if(is.null(point_masses)){
     return(NULL)
   }
@@ -785,7 +844,7 @@ posterior_atoms_free <- function(x){
     }
   }
 
-  point_masses <- .posterior_density_point_masses(
+  point_masses <- .posterior_atoms_point_mass_table(
     data.frame(x = atom_locations, mass = atom_masses)
   )
   if(is.null(point_masses)){

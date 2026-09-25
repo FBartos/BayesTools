@@ -451,10 +451,11 @@ downstream packages), never as free attributes; a unit lint test enforces it.
 Producers of the `condition` field set its logical `averaged` element
 (unconditional draws), which consumers read instead of comparing condition
 keys with a literal.
-Posterior atoms come only from the `atoms` field, never from the point masses
-of a precomputed posterior density. The component of a draw has one encoding:
-`component` indexes the declared component list, with `component_source` the
-list it indexes (`"model"`: the models of a `mix_posteriors()` ensemble,
+Posterior atoms come only from the `atoms` field; a precomputed posterior
+density describes only the continuous part and carries no point masses. The
+component of a draw has one encoding: `component` indexes the declared
+component list, with `component_source` the list it indexes (`"model"`: the
+models of a `mix_posteriors()` ensemble,
 `"mixture"` or `"spike_and_slab"`: the components of the prior, whose slab and
 spike positions come from its `components` attribute); an ordered total's
 component is `ordered_total_component`. Draws without a mixture carry no

@@ -24,8 +24,9 @@ value; ggplot paths return plot objects, while base paths may return invisible
 metadata or `NULL` according to the existing family.
 
 Posterior plots draw point masses only from declared posterior atoms (the
-producers' metadata or `posterior_atom_attribute()`); samples without an
-atom declaration stop with the atom-status message. Never infer point masses
+producers' metadata or `posterior_atom_attribute()`), also when a precomputed
+posterior density supplies the continuous curve; samples without an atom
+declaration stop with the atom-status message. Never infer point masses
 from prior lists, component indices, or draws matching prior spikes.
 
 Mixed continuous-and-point plots keep one probability-axis mapping. Base

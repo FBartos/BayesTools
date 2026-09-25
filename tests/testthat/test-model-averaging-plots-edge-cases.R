@@ -190,33 +190,36 @@ test_that("unscaled intercept plots use joint continuous and atomic contributors
   }
 })
 
-test_that("precomputed simple densities override declared sample atoms", {
+test_that("precomputed simple densities draw the declared atoms of the samples", {
 
   samples <- .scaled_atom_plot_samples_for_test(rep(1, 20), prior("point", list(1)))
   stored_x <- seq(-5, 5, length.out = 64)
   stored_y <- .75 * stats::dnorm(stored_x)
-  samples$mu_intercept <- .bt_meta_set(samples$mu_intercept, "posterior_density", .posterior_density_for_test(
-    x = stored_x, y = stored_y, method = "user",
-    point_masses = data.frame(x = 2, mass = .25)
-  ))
-  plotted <- BayesTools:::.plot_data_samples.simple(
-    samples, "mu_intercept", 64, NULL, NULL, FALSE, density_method = "precomputed"
+  # posterior densities describe the continuous part only: their point masses
+  # are the declared atoms of the draws
+  expect_error(
+    .posterior_density_for_test(
+      x = stored_x, y = stored_y, method = "user",
+      point_masses = data.frame(x = 2, mass = .25)
+    ),
+    paste0(
+      "Posterior densities do not carry 'point_masses': declare the point ",
+      "masses of the posterior as the 'atoms' metadata of its draws with ",
+      "'posterior_atom_attribute()'."
+    ),
+    fixed = TRUE
   )
-  expect_equal(plotted$density$x, stored_x)
-  expect_equal(plotted$density$y, stored_y)
-  expect_equal(plotted$points1$x, 2)
-  expect_equal(plotted$points1$y, .25)
-
   samples$mu_intercept <- .bt_meta_set(samples$mu_intercept, "posterior_density", .posterior_density_for_test(
     x = stored_x, y = stored_y, method = "user"
   ))
-  expect_warning(
-    plotted <- BayesTools:::.plot_data_samples.simple(
-      samples, "mu_intercept", 64, NULL, NULL, FALSE, density_method = "precomputed"
-    ),
-    "Stored posterior density does not declare 'point_masses'", fixed = TRUE
-  )
-  expect_equal(names(plotted), "density")
+  expect_no_warning(plotted <- BayesTools:::.plot_data_samples.simple(
+    samples, "mu_intercept", 64, NULL, NULL, FALSE, density_method = "precomputed"
+  ))
+  expect_equal(plotted$density$x, stored_x)
+  expect_equal(plotted$density$y, stored_y)
+  # the unscaled intercept -2.5 of the point priors (-slope * mean / sd)
+  expect_equal(plotted$points1$x, -2.5)
+  expect_equal(plotted$points1$y, 1)
 })
 
 test_that("declared continuous constant draws cannot become plotting atoms", {
@@ -1756,10 +1759,10 @@ test_that("posterior plot data uses stored posterior density when available", {
   expect_equal(attr(plot_data$density, "posterior_density_method"), "iwmde")
 })
 
-test_that("posterior plot data does not add sample spikes to stored full density", {
+test_that("posterior plot data draws declared atoms with a stored continuous density", {
   theta <- c(rep(0, 25), seq(-2, 2, length.out = 75))
   stored_x <- seq(-2, 2, length.out = 51)
-  stored_y <- stats::dnorm(stored_x)
+  stored_y <- .75 * stats::dnorm(stored_x)
   theta <- .bt_draws_set_component(theta, source = "model", component = c(rep(1, 25), rep(2, 75)))
   theta <- .bt_meta_set(theta, "atoms", posterior_atom_attribute(
     data.frame(x = 0, mass = .25)
@@ -1774,25 +1777,35 @@ test_that("posterior plot data does not add sample spikes to stored full density
     method = "iwmde"
   ))
 
-  expect_warning(
-    plot_data <- BayesTools:::.plot_data_samples.simple(
-      samples                  = list(theta = theta),
-      parameter                = "theta",
-      n_points                 = 16,
-      transformation           = NULL,
-      transformation_arguments = NULL,
-      transformation_settings  = FALSE,
-      density_method           = "precomputed"
-    ),
-    "does not declare 'point_masses'",
-    fixed = TRUE
-  )
+  # the stored density is the continuous part and the declared atom its
+  # point mass, as with a kernel density estimate
+  expect_no_warning(plot_data <- BayesTools:::.plot_data_samples.simple(
+    samples                  = list(theta = theta),
+    parameter                = "theta",
+    n_points                 = 16,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE,
+    density_method           = "precomputed"
+  ))
 
   expect_equal(plot_data$density$x, stored_x)
-  expect_equal(
-    length(plot_data[vapply(plot_data, inherits, logical(1), "density.prior.point")]),
-    0L
+  expect_equal(plot_data$density$y, stored_y)
+  point_entries <- plot_data[vapply(plot_data, inherits, logical(1), "density.prior.point")]
+  expect_equal(length(point_entries), 1L)
+  expect_equal(point_entries[[1L]]$x, 0)
+  expect_equal(point_entries[[1L]]$y, .25)
+
+  kde_data <- BayesTools:::.plot_data_samples.simple(
+    samples                  = list(theta = theta),
+    parameter                = "theta",
+    n_points                 = 16,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE,
+    density_method           = "KDE"
   )
+  expect_equal(kde_data$points1[c("x", "y")], point_entries[[1L]][c("x", "y")])
 })
 
 test_that("posterior plot data ignores stored density by default", {
@@ -3181,69 +3194,8 @@ test_that("factor posterior plot data uses level-matched stored densities", {
   expect_equal(attr(plot_data$density2, "posterior_density_method"), "iwmde")
 })
 
-test_that("factor posterior plot data uses stored point masses once", {
+test_that("factor posterior plot data draws declared atoms with stored densities", {
 
-  n_samples <- 100
-  samples <- cbind(
-    `mu_alloc[random]`     = c(rep(0, 40), seq(-1, 0, length.out = 60)),
-    `mu_alloc[systematic]` = c(rep(0, 40), seq(1, 2, length.out = 60))
-  )
-
-  prior <- prior_factor_levels(
-    prior_factor("normal", list(0, 1), contrast = "treatment"),
-    c("alternate", "random", "systematic")
-  )
-
-  stored_x <- seq(-2, 2, length.out = 31)
-  attr(samples, "prior_list") <- list(
-    prior_factor("point", list(location = 0), contrast = "treatment"),
-    prior
-  )
-  samples <- .bt_draws_set_component(samples, source = "model", component = c(rep(1, 40), rep(2, 60)))
-  samples <- .bt_meta_set(samples, "atoms", posterior_atom_attribute(
-    data.frame(x = 0, mass = .4)
-  ))
-  samples <- .bt_meta_set(samples, "posterior_density", list(
-    random = .posterior_density_for_test(
-      parameter    = "random",
-      x            = stored_x,
-      y            = stats::dnorm(stored_x),
-      point_masses = data.frame(x = 0, mass = .25),
-      method       = "iwmde"
-    ),
-    systematic = .posterior_density_for_test(
-      parameter    = "systematic",
-      x            = stored_x,
-      y            = stats::dnorm(stored_x),
-      point_masses = data.frame(x = 0, mass = .25),
-      method       = "iwmde"
-    )
-  ))
-  class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
-
-  plot_data <- BayesTools:::.plot_data_samples.factor(
-    samples                  = list(mu_alloc = samples),
-    parameter                = "mu_alloc",
-    n_points                 = 16,
-    transformation           = NULL,
-    transformation_arguments = NULL,
-    transformation_settings  = FALSE,
-    density_method           = "precomputed"
-  )
-
-  point_entries <- plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.point")]
-
-  expect_false(any(grepl("^points", names(plot_data))))
-  expect_equal(length(point_entries), 2L)
-  expect_equal(
-    unname(vapply(point_entries, function(point) point[["y"]], numeric(1))),
-    c(.25, .25)
-  )
-})
-
-test_that("factor posterior plot data keeps fallback spikes per level", {
-
-  n_samples <- 100
   samples <- cbind(
     `mu_alloc[random]`     = c(rep(0, 40), seq(-1, 0, length.out = 60)),
     `mu_alloc[systematic]` = c(rep(0, 40), seq(1, 2, length.out = 60))
@@ -3264,33 +3216,49 @@ test_that("factor posterior plot data keeps fallback spikes per level", {
   samples <- .bt_meta_set(samples, "atoms", posterior_atom_attribute(
     data.frame(x = 0, mass = .4)
   ))
-  samples <- .bt_meta_set(samples, "posterior_density", list(
-    random = .posterior_density_for_test(
-      parameter    = "random",
-      x            = stored_x,
-      y            = stats::dnorm(stored_x),
-      point_masses = data.frame(x = 0, mass = .25),
-      method       = "iwmde"
-    )
-  ))
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+  plot_data_for <- function(samples){
+    BayesTools:::.plot_data_samples.factor(
+      samples                  = list(mu_alloc = samples),
+      parameter                = "mu_alloc",
+      n_points                 = 16,
+      transformation           = NULL,
+      transformation_arguments = NULL,
+      transformation_settings  = FALSE,
+      density_method           = "precomputed"
+    )
+  }
+  point_entries_of <- function(plot_data){
+    plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.point")]
+  }
+  kde_points <- point_entries_of(plot_data_for(samples))
 
-  plot_data <- BayesTools:::.plot_data_samples.factor(
-    samples                  = list(mu_alloc = samples),
-    parameter                = "mu_alloc",
-    n_points                 = 16,
-    transformation           = NULL,
-    transformation_arguments = NULL,
-    transformation_settings  = FALSE,
-    density_method           = "precomputed"
+  # a stored density of one level, or of both, is the continuous part: the
+  # point masses stay the declared atoms, as without stored densities
+  stored_random <- .posterior_density_for_test(
+    parameter = "random",
+    x         = stored_x,
+    y         = .6 * stats::dnorm(stored_x),
+    method    = "iwmde"
   )
-
-  point_entries <- plot_data[vapply(plot_data, inherits, logical(1), "density.prior.point")]
-  point_levels <- vapply(point_entries, function(point) attr(point, "level"), numeric(1))
-
-  expect_setequal(unname(point_levels), c(1, 2))
-  expect_equal(point_entries[[which(point_levels == 1)]]$y, .25)
-  expect_equal(point_entries[[which(point_levels == 2)]]$y, .40)
+  stored_systematic <- .posterior_density_for_test(
+    parameter = "systematic",
+    x         = stored_x,
+    y         = .6 * stats::dnorm(stored_x),
+    method    = "iwmde"
+  )
+  for(stored in list(list(random = stored_random),
+                     list(random = stored_random, systematic = stored_systematic))){
+    samples <- .bt_meta_set(samples, "posterior_density", stored)
+    expect_no_warning(plot_data <- plot_data_for(samples))
+    point_entries <- point_entries_of(plot_data)
+    expect_equal(names(point_entries), names(kde_points))
+    expect_equal(length(point_entries), 1L)
+    expect_equal(point_entries[[1L]]$x, 0)
+    expect_equal(point_entries[[1L]]$y, .4)
+    expect_equal(plot_data$density1$x, stored_x)
+    expect_equal(attr(plot_data$density1, "posterior_density_method"), "iwmde")
+  }
 })
 
 test_that("factor posterior plot data matches interaction cell aliases", {

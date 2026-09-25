@@ -358,55 +358,6 @@
   list(x = x_den, y = y_den)
 }
 
-.plot_data_warn_missing_stored_point_masses <- function(){
-
-  warning(
-    "Stored posterior density does not declare 'point_masses'; sample-derived point masses are not added. Provide explicit 'point_masses' when atomic posterior mass should be shown.",
-    call. = FALSE
-  )
-}
-
-.plot_data_stored_point_masses <- function(posterior_density, transformation = NULL,
-                                           transformation_arguments = NULL){
-
-  point_masses <- posterior_density[["point_masses"]]
-  x_points <- point_masses[["x"]]
-  y_points <- point_masses[["mass"]]
-  if(length(y_points) == 0L){
-    return(list(x = NULL, y = NULL))
-  }
-  if(!is.null(transformation)){
-    x_points <- .density.prior_transformation_x(
-      x_points,
-      transformation,
-      transformation_arguments
-    )
-  }
-
-  list(x = x_points, y = y_points)
-}
-
-.plot_data_factor_sample_points_for_levels <- function(sample_point_data, levels,
-                                                       level_names){
-
-  out <- list()
-  if(length(sample_point_data) == 0L || length(levels) == 0L){
-    return(out)
-  }
-
-  for(level in levels){
-    for(point_i in seq_along(sample_point_data)){
-      point_data <- sample_point_data[[point_i]]
-      attr(point_data, "level") <- level
-      if(length(level_names) >= level){
-        attr(point_data, "level_name") <- level_names[[level]]
-      }
-      out[[paste0("points", level, "_", point_i)]] <- point_data
-    }
-  }
-
-  out
-}
 .plot_data_samples.simple         <- function(samples, parameter, n_points, transformation, transformation_arguments, transformation_settings,
                                              density_method = c("KDE", "precomputed")){
 
@@ -453,21 +404,8 @@
 
     if(!is.null(posterior_density)){
 
-      sample_points_available <- !is.null(y_points)
-      x_points <- NULL
-      y_points <- NULL
-      if(.posterior_density_point_masses_declared(posterior_density)){
-        stored_points <- .plot_data_stored_point_masses(
-          posterior_density,
-          transformation,
-          transformation_arguments
-        )
-        x_points <- stored_points[["x"]]
-        y_points <- stored_points[["y"]]
-      }else if(sample_points_available){
-        .plot_data_warn_missing_stored_point_masses()
-      }
-
+      # the stored density is the continuous part; the point masses are the
+      # declared posterior atoms
       x_den <- posterior_density[["x"]]
       y_den <- posterior_density[["y"]]
 

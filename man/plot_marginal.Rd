@@ -86,9 +86,9 @@ parameter that needs to be transformed.}
 \code{"KDE"} computes a kernel density estimate. Plot methods with exact
 finite prior-support bounds apply boundary reflection.
 \code{"precomputed"} uses valid \code{posterior_density} metadata when
-present and falls back to KDE otherwise. A precomputed density is treated as
-authoritative for atomic mass layers: atoms are drawn only from explicit
-\code{point_masses} metadata.}
+present and falls back to KDE otherwise. A precomputed density is the
+continuous part of the posterior; atoms are drawn from the declared
+posterior atoms with either method.}
 }
 \value{
 \code{plot_marginal} returns either \code{NULL} or
@@ -104,10 +104,10 @@ only when \code{density_method = "precomputed"}. Marginal KDE fallbacks use
 a standard KDE because marginal prior-density grids are numerical density
 ranges rather than true support metadata; this can intentionally differ from
 the support-reflected ordinate used by \code{\link{Savage_Dickey_BF}} when
-exact posterior-support metadata is available. If a stored density is used
-and sample-derived point masses are available, the plot layer uses only
-explicit \code{point_masses} from the stored density and warns when none are
-declared. A prior curve without an exact route whose numerical grid cannot
+exact posterior-support metadata is available. A stored density describes
+the continuous part of the posterior; point masses are drawn from the
+declared posterior atoms (the \code{atoms} metadata, see
+\code{\link[=posterior_atom_attribute]{posterior_atom_attribute()}}) with either density method. A prior curve without an exact route whose numerical grid cannot
 resolve a heavy-tailed product term is omitted with a warning of class
 \code{BayesTools_prior_curve_unavailable}, as in \code{\link[=plot_posterior]{plot_posterior()}}, and so
 is the prior curve of draws that declare no prior (a \code{prior_list} of

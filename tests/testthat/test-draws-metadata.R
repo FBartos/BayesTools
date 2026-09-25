@@ -309,11 +309,10 @@ test_that("posterior atoms come only from the atom metadata", {
     x            = seq(-3, 3, length.out = 61),
     y            = stats::dnorm(seq(-3, 3, length.out = 61)) * .8,
     method         = "test",
-    density_method = "precomputed",
-    point_masses   = data.frame(x = 0, mass = .2)
+    density_method = "precomputed"
   )
   class(x) <- c("marginal_posterior.simple", "marginal_posterior")
-  # the stored density's point masses do not declare the posterior atoms
+  # a stored density (the continuous part) does not declare the posterior atoms
   expect_null(BayesTools:::.posterior_atoms_get(x))
   expect_error(Savage_Dickey_BF(x), "Posterior atom status is unknown", fixed = TRUE)
 

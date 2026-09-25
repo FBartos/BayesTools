@@ -2427,30 +2427,21 @@ test_that("hypothesis_BF reuses stored qCMDE density and BF error", {
   expect_equal(as.numeric(out[["BF_error"]]), 4, tolerance = 1e-12)
 })
 
-test_that("hypothesis_BF rejects malformed precomputed point masses", {
+test_that("precomputed posterior densities carry no point masses", {
 
   prior_density <- .hypothesis_prior_density_for_test()
   posterior <- .hypothesis_marginal_posterior_for_test(
     seq(-3, 3, length.out = 301),
     prior_density
   )
-  invalid_point_mass <- .posterior_density_for_test(
-    x      = seq(-1, 1, length.out = 101),
-    y      = rep(1, 101),
-    method = "invalid-point-mass"
-  )
-  invalid_point_mass$point_masses <- data.frame(x = 0, mass = 1.2)
-  posterior <- .bt_meta_set(posterior, "posterior_density", invalid_point_mass)
-
   expect_error(
-    hypothesis_BF(
-      posterior      = posterior,
-      hypothesis     = "theta = 0",
-      parameter      = "theta",
-      columns        = "all",
-      density_method = "precomputed"
+    .posterior_density_for_test(
+      x            = seq(-1, 1, length.out = 101),
+      y            = rep(1, 101),
+      method       = "point-mass",
+      point_masses = data.frame(x = 0, mass = .2)
     ),
-    "Posterior density metadata is invalid: its 'point_masses' metadata are invalid.",
+    "Posterior densities do not carry 'point_masses'",
     fixed = TRUE
   )
 

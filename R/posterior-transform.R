@@ -419,7 +419,7 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
 
 # Precomputed posterior densities of transformed values: locations mapped and
 # heights divided by the absolute derivative; NULL when the transformed grid
-# or point masses are not finite (a vanishing or infinite derivative).
+# is not finite (a vanishing or infinite derivative).
 .posterior_density_output_transform <- function(density, map){
 
   kind <- .posterior_density_kind(density)
@@ -435,16 +435,12 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
   density <- .posterior_density_from_attribute(density)
   x <- suppressWarnings(map$fun(density$x))
   y <- density$y / abs(suppressWarnings(map$jac(density$x)))
-  point_masses <- density$point_masses
-  point_masses$x <- suppressWarnings(map$fun(point_masses$x))
-  if(any(!is.finite(x)) || any(!is.finite(y)) || any(!is.finite(point_masses$x))){
+  if(any(!is.finite(x)) || any(!is.finite(y))){
     return(NULL)
   }
   order_x <- order(x)
   density$x <- x[order_x]
   density$y <- y[order_x]
-  density$point_masses <- point_masses[order(point_masses$x), , drop = FALSE]
-  rownames(density$point_masses) <- NULL
   density["support"] <- list(.posterior_support_transform(
     density$support, map$transformation, map$arguments
   ))

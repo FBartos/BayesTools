@@ -14,7 +14,6 @@ posterior_density_attribute(
   method,
   density_method,
   diagnostics = NULL,
-  point_masses = NULL,
   support = NULL,
   ...
 )
@@ -44,10 +43,6 @@ posterior_ordinate_has_value(ordinate, value)
 \item{density_method}{public density method label stored in the attribute.}
 
 \item{diagnostics}{optional estimator diagnostics.}
-
-\item{point_masses}{optional point-mass table/list with \code{x} and
-\code{mass} entries. Locations and masses must be finite, masses must be
-positive, and the aggregated point mass cannot exceed one.}
 
 \item{support}{optional exact support metadata for the density scale,
 created with \code{\link{posterior_support_attribute}()}. KDE boundary
@@ -109,8 +104,11 @@ or \code{posterior_ordinate} metadata of posterior draws
 such objects, named by parameter or level, can hold the metadata of several
 parameters or levels. The fields used to match the metadata to posterior
 samples are \code{parameter}, \code{conditional}, \code{conditional_rule},
-and \code{condition_key}. The \code{point_masses} of a stored density
-describe its measure for plots with \code{density_method = "precomputed"};
-the posterior atoms of the draws are declared separately with
-\code{\link[=posterior_atom_attribute]{posterior_atom_attribute()}}.
+and \code{condition_key}.
+
+A stored density describes only the continuous part of the posterior: for
+a posterior with point masses, its heights integrate to the continuous
+mass. The point masses are the posterior atoms of the draws, which are
+declared only in their \code{atoms} metadata with
+\code{\link[=posterior_atom_attribute]{posterior_atom_attribute()}}; densities do not carry point masses.
 }

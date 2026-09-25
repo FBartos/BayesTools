@@ -244,6 +244,14 @@ old behaviour.
   posteriors with `[` keeps the list and its metadata (prior context,
   scaling, conditioning), with the transformed prior densities of the kept
   parameters.
+- precomputed posterior densities (`posterior_density_attribute()`) describe
+  only the continuous part of the posterior and no longer take
+  `point_masses`: the point masses of a posterior are the `atoms` metadata of
+  its draws (`posterior_atom_attribute()`). `plot_posterior()` and
+  `plot_marginal()` with `density_method = "precomputed"` draw these atoms
+  with the stored density, as with a kernel density estimate; they drew the
+  density's `point_masses` instead, and no point masses with a warning when
+  the density declared none.
 - adds `prior_factor_levels(prior, levels)`, which gives a factor prior
   (including mixture and spike-and-slab factor priors and ordered priors) the
   complete factor metadata that formula factor terms carry: the number and

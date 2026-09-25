@@ -15,8 +15,9 @@ posterior_atom_attribute(point_masses = NULL, source = "user")
 \value{
 A posterior atom metadata object for the \code{atoms} metadata
 of posterior draws (\code{posterior_metadata(x, "atoms") <- }). Posterior
-point masses are read only from these metadata, never from the point masses
-of precomputed posterior densities.
+point masses are read only from these metadata: precomputed posterior
+densities (\code{\link[=posterior_density_attribute]{posterior_density_attribute()}}) describe the continuous part
+and carry no point masses.
 }
 \description{
 Creates exact posterior measure metadata used to distinguish a

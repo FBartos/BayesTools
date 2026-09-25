@@ -469,28 +469,29 @@ test_that("posterior density and ordinate constructors create reusable attribute
 
   density <- posterior_density_attribute(
     x              = seq(-2, 2, length.out = 201),
-    y              = stats::dnorm(seq(-2, 2, length.out = 201)),
+    y              = .99 * stats::dnorm(seq(-2, 2, length.out = 201)),
     method         = "iwmde",
     density_method = "IWMDE",
-    point_masses   = data.frame(x = 0, mass = .01),
     support        = posterior_support_attribute(c(-Inf, Inf), points = 0),
     parameter      = "theta"
   )
   parsed_density <- BayesTools:::.posterior_density_from_attribute(density)
   expect_equal(parsed_density[["method"]], "iwmde")
-  expect_equal(parsed_density[["point_masses"]][["mass"]], .01)
-  expect_true(BayesTools:::.posterior_density_point_masses_declared(parsed_density))
   expect_equal(parsed_density[["support"]][["bounds"]], c(-Inf, Inf))
   expect_equal(parsed_density[["support"]][["points"]], 0)
-  density_without_points <- posterior_density_attribute(
-    x              = seq(-2, 2, length.out = 201),
-    y              = stats::dnorm(seq(-2, 2, length.out = 201)),
-    method         = "iwmde",
-    density_method = "IWMDE"
+  # the point masses of the posterior are declared as atoms of the draws
+  expect_false(any(c("point_masses", "point_masses_declared") %in% names(parsed_density)))
+  expect_error(
+    posterior_density_attribute(
+      x              = seq(-2, 2, length.out = 201),
+      y              = .99 * stats::dnorm(seq(-2, 2, length.out = 201)),
+      method         = "iwmde",
+      density_method = "IWMDE",
+      point_masses   = data.frame(x = 0, mass = .01)
+    ),
+    "Posterior densities do not carry 'point_masses'",
+    fixed = TRUE
   )
-  expect_false(BayesTools:::.posterior_density_point_masses_declared(
-    BayesTools:::.posterior_density_from_attribute(density_without_points)
-  ))
   expect_error(
     posterior_density_attribute(
       x              = c(0, 1, Inf),
@@ -512,26 +513,6 @@ test_that("posterior density and ordinate constructors create reusable attribute
     ),
     "unique, nonmissing names",
     fixed = TRUE
-  )
-  expect_error(
-    posterior_density_attribute(
-      x              = 0:1,
-      y              = c(1, 1),
-      method         = "iwmde",
-      density_method = "IWMDE",
-      point_masses   = data.frame(x = 0, mass = 1.2)
-    ),
-    "point_masses"
-  )
-  expect_error(
-    posterior_density_attribute(
-      x              = 0:1,
-      y              = c(1, 1),
-      method         = "iwmde",
-      density_method = "IWMDE",
-      point_masses   = data.frame(x = c(0, 1), mass = c(.6, .5))
-    ),
-    "point_masses"
   )
   expect_error(
     posterior_density_attribute(
@@ -1804,23 +1785,6 @@ test_that("Savage_Dickey_BF diagnoses invalid precomputed metadata", {
     fixed = TRUE
   )
 
-  invalid_point_mass <- .posterior_density_for_test(
-    x      = seq(-1, 1, length.out = 101),
-    y      = rep(1, 101),
-    method = "invalid-point-mass"
-  )
-  invalid_point_mass$point_masses <- data.frame(x = 0, mass = 1.2)
-  posterior <- .bt_meta_set(posterior, "posterior_density", invalid_point_mass)
-  expect_error(
-    Savage_Dickey_BF(
-      posterior,
-      null_hypothesis = 0,
-      density_method  = "precomputed"
-    ),
-    "Posterior density metadata is invalid: its 'point_masses' metadata are invalid.",
-    fixed = TRUE
-  )
-
   # raw lists are rejected when they are attached
   expect_error(
     .bt_meta_set(posterior, "posterior_density", list(
@@ -2029,19 +1993,15 @@ test_that("stored posterior ordinate selection continues past empty alias branch
   )
 })
 
-test_that("stored posterior density parser validates and aggregates point masses", {
+test_that("posterior atom declarations validate and aggregate point masses", {
 
-  parsed <- BayesTools:::.posterior_density_from_attribute(.posterior_density_for_test(
-    x = seq(-1, 1, length.out = 11),
-    y = rep(1, 11),
-    point_masses = list(
-      x    = c(0, 0, 1),
-      mass = c(.2, .3, .4)
-    )
+  atoms <- posterior_atom_attribute(list(
+    x    = c(0, 0, 1),
+    mass = c(.2, .3, .4)
   ))
 
-  expect_equal(parsed$point_masses$x, c(0, 1))
-  expect_equal(parsed$point_masses$mass, c(.5, .4))
+  expect_equal(as.numeric(atoms$locations[, 1L]), c(0, 1))
+  expect_equal(atoms$mass, c(.5, .4))
 
   for(point_masses in list(
     list(x = c(0, 1, 2), mass = c(.6, .5, 2)),
@@ -2049,12 +2009,8 @@ test_that("stored posterior density parser validates and aggregates point masses
     data.frame(location = 0, mass = .2)
   )){
     expect_error(
-      .posterior_density_for_test(
-        x = seq(-1, 1, length.out = 11),
-        y = rep(1, 11),
-        point_masses = point_masses
-      ),
-      "Posterior density 'point_masses' metadata is invalid.",
+      posterior_atom_attribute(point_masses),
+      "Posterior 'point_masses' metadata is invalid.",
       fixed = TRUE
     )
   }
@@ -2564,8 +2520,7 @@ test_that("Savage_Dickey_BF uses declarations rather than posterior-null cluster
   )
   posterior_with_stored_point <- .bt_meta_set(posterior_with_stored_point, "posterior_density", .posterior_density_for_test(
     x            = seq(-2, 2, length.out = 101),
-    y            = stats::dnorm(seq(-2, 2, length.out = 101)),
-    point_masses = list(x = 0, mass = .2)
+    y            = .8 * stats::dnorm(seq(-2, 2, length.out = 101))
   ))
   posterior_with_stored_point <- .bt_meta_set(posterior_with_stored_point, "atoms", posterior_atom_attribute(list(x = 0, mass = .2)))
 
@@ -2772,7 +2727,7 @@ test_that("plot_marginal uses stored posterior density when available", {
   expect_equal(attr(plot_data[["density1"]], "posterior_density_method"), "iwmde")
 })
 
-test_that("plot_marginal does not add sample spikes to stored full density", {
+test_that("plot_marginal draws declared atoms with a stored continuous density", {
 
   posterior <- .marginal_posterior_with_prior_density_for_test(
     c(rep(0, 25), seq(-2, 2, length.out = 75)),
@@ -2782,14 +2737,16 @@ test_that("plot_marginal does not add sample spikes to stored full density", {
     data.frame(x = 0, mass = .25)
   ))
   stored_x <- seq(-2, 2, length.out = 51)
-  stored_y <- stats::dnorm(stored_x)
+  stored_y <- .75 * stats::dnorm(stored_x)
   posterior <- .bt_meta_set(posterior, "posterior_density", .posterior_density_for_test(
     x      = stored_x,
     y      = stored_y,
     method = "iwmde"
   ))
 
-  expect_warning(
+  # the stored density is the continuous part and the declared atom its
+  # point mass
+  expect_no_warning(
     plot_data <- BayesTools:::.plot_data_marginal_samples(
       samples                  = list(theta = posterior),
       parameter                = "theta",
@@ -2799,16 +2756,15 @@ test_that("plot_marginal does not add sample spikes to stored full density", {
       transformation_arguments = NULL,
       transformation_settings  = FALSE,
       density_method           = "precomputed"
-    ),
-    "does not declare 'point_masses'",
-    fixed = TRUE
+    )
   )
 
   expect_equal(plot_data$density1$x, stored_x)
-  expect_equal(
-    length(plot_data[vapply(plot_data, inherits, logical(1), "density.prior.point")]),
-    0L
-  )
+  expect_equal(plot_data$density1$y, stored_y)
+  point_entries <- plot_data[vapply(plot_data, inherits, logical(1), "density.prior.point")]
+  expect_equal(length(point_entries), 1L)
+  expect_equal(point_entries[[1L]]$x, 0)
+  expect_equal(point_entries[[1L]]$y, .25)
 })
 
 test_that("plot_marginal accepts posterior density diagnostics", {
@@ -2819,14 +2775,14 @@ test_that("plot_marginal accepts posterior density diagnostics", {
     n_grid     = 512
   )
   posterior <- .marginal_posterior_with_prior_density_for_test(
-    stats::rnorm(100, 0, 1),
+    c(rep(0, 20), stats::rnorm(80, 0, 1)),
     prior_density
   )
+  posterior <- .bt_meta_set(posterior, "atoms", posterior_atom_attribute(list(x = 0, mass = .2)))
   stored_x <- seq(-2, 2, length.out = 51)
-  stored_y <- stats::dnorm(stored_x, sd = .8)
+  stored_y <- .8 * stats::dnorm(stored_x, sd = .8)
   posterior <- .bt_meta_set(posterior, "posterior_density", .posterior_density_for_test(
     parameter    = "theta",
-    point_masses = list(x = 0, mass = .2),
     x            = stored_x,
     y            = stored_y,
     method       = "iwmde",

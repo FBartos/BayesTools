@@ -138,9 +138,9 @@ the probability-mass axis, and \code{ylab2} controls its label.}
 \code{"KDE"} computes a kernel density estimate. Plot methods with exact
 finite prior-support bounds apply boundary reflection.
 \code{"precomputed"} uses valid \code{posterior_density} metadata when
-present and falls back to KDE otherwise. A precomputed density is treated as
-authoritative for atomic mass layers: atoms are drawn only from explicit
-\code{point_masses} metadata.}
+present and falls back to KDE otherwise. A precomputed density is the
+continuous part of the posterior; atoms are drawn from the declared
+posterior atoms with either method.}
 }
 \value{
 \code{plot_posterior} returns either \code{NULL} or
@@ -157,9 +157,10 @@ detects this and uses the pre-computed transformed prior samples when \code{prio
 
 Posterior sample vectors may carry \code{posterior_density} metadata
 (\code{\link[=posterior_metadata]{posterior_metadata()}}) with \code{x} and \code{y} coordinates. These densities are used only when
-\code{density_method = "precomputed"}. If a stored density is used and
-sample-derived point masses are available, the plot layer uses only explicit
-\code{point_masses} from the stored density and warns when none are declared.
+\code{density_method = "precomputed"}. A stored density describes the
+continuous part of the posterior; point masses are drawn from the declared
+posterior atoms (the \code{atoms} metadata, see \code{\link[=posterior_atom_attribute]{posterior_atom_attribute()}})
+with either density method.
 
 Prior-density curves are evaluated on their exact routes where they exist.
 A combination without an exact route is drawn from its numerical grid;

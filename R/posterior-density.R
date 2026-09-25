@@ -78,19 +78,19 @@ posterior_density_method_uses_precomputed <- function(method){
 #' such objects, named by parameter or level, can hold the metadata of several
 #' parameters or levels. The fields used to match the metadata to posterior
 #' samples are \code{parameter}, \code{conditional}, \code{conditional_rule},
-#' and \code{condition_key}. The \code{point_masses} of a stored density
-#' describe its measure for plots with \code{density_method = "precomputed"};
-#' the posterior atoms of the draws are declared separately with
-#' [posterior_atom_attribute()].
+#' and \code{condition_key}.
+#'
+#' A stored density describes only the continuous part of the posterior: for
+#' a posterior with point masses, its heights integrate to the continuous
+#' mass. The point masses are the posterior atoms of the draws, which are
+#' declared only in their \code{atoms} metadata with
+#' [posterior_atom_attribute()]; densities do not carry point masses.
 #'
 #' @param x numeric density grid locations.
 #' @param y numeric density grid heights.
 #' @param method estimator label stored in the attribute.
 #' @param density_method public density method label stored in the attribute.
 #' @param diagnostics optional estimator diagnostics.
-#' @param point_masses optional point-mass table/list with \code{x} and
-#' \code{mass} entries. Locations and masses must be finite, masses must be
-#' positive, and the aggregated point mass cannot exceed one.
 #' @param support optional exact support metadata for the density scale,
 #' created with \code{\link{posterior_support_attribute}()}. KDE boundary
 #' reflection uses only interval-capable support; support with
@@ -106,7 +106,6 @@ posterior_density_method_uses_precomputed <- function(method){
 #' @export
 posterior_density_attribute <- function(x, y, method, density_method,
                                         diagnostics = NULL,
-                                        point_masses = NULL,
                                         support = NULL, ...){
 
   check_real(x, "x", check_length = 0, allow_NA = FALSE)
@@ -129,10 +128,17 @@ posterior_density_attribute <- function(x, y, method, density_method,
     stop("Additional posterior density metadata must have unique, nonmissing names.",
          call. = FALSE)
   }
+  if(any(metadata_names %in% c("point_masses", "point_masses_declared"))){
+    stop(
+      "Posterior densities do not carry 'point_masses': declare the point ",
+      "masses of the posterior as the 'atoms' metadata of its draws with ",
+      "'posterior_atom_attribute()'.",
+      call. = FALSE
+    )
+  }
   reserved <- c(
     "status", "x", "y", "method", "density_method", "diagnostics",
-    "point_masses", "point_masses_declared", "support",
-    "posterior_support", "density",
+    "support", "posterior_support", "density",
     "posterior_density", "posterior_densities", "densities", "estimator"
   )
   if(any(metadata_names %in% reserved)){
@@ -148,13 +154,6 @@ posterior_density_attribute <- function(x, y, method, density_method,
     support <- .posterior_support_from_attribute(support)
   }
 
-  point_masses_declared <- !is.null(point_masses)
-  point_masses <- .posterior_density_point_masses(point_masses)
-  if(is.null(point_masses)){
-    stop("Posterior density 'point_masses' metadata is invalid.",
-         call. = FALSE)
-  }
-
   out <- c(list(
     status         = "ok",
     x              = x,
@@ -162,8 +161,6 @@ posterior_density_attribute <- function(x, y, method, density_method,
     method         = method,
     density_method = density_method,
     diagnostics    = diagnostics,
-    point_masses   = point_masses,
-    point_masses_declared = point_masses_declared,
     support        = support
   ), metadata)
   class(out) <- c("BayesTools_posterior_density", "list")

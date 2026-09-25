@@ -203,8 +203,6 @@
   x_den    <- NULL
   y_den    <- NULL
   sample_point_data <- list()
-  sample_points_suppressed_by_level <- logical()
-  missing_stored_point_masses_warning <- FALSE
 
   # transform & extract the relevant data
   prior_list <- attr(samples[[parameter]], "prior_list")
@@ -258,9 +256,9 @@
     sample_point_data <- .plot_data_factor_points(x_points, y_points, n_points, transformation, transformation_arguments)
   }
 
-  # deal with the densities
+  # deal with the densities; a stored density of a level is its continuous
+  # part, the level's point masses are its declared posterior atoms
   samples_density <- samples
-  sample_points_suppressed_by_level <- rep(FALSE, ncol(samples_density))
 
   if(nrow(samples_density) > 0){
     for(i in 1:ncol(samples_density)){
@@ -292,42 +290,6 @@
       )
 
       if(!is.null(posterior_density)){
-
-        if(.posterior_density_point_masses_declared(posterior_density)){
-          sample_points_suppressed_by_level[i] <- TRUE
-          stored_points <- .plot_data_stored_point_masses(
-            posterior_density,
-            transformation,
-            transformation_arguments
-          )
-          x_points_i <- stored_points[["x"]]
-          y_points_i <- stored_points[["y"]]
-          for(point_i in seq_along(y_points_i)){
-            temp_points <- list(
-              call    = call("density", paste0("point", point_i)),
-              bw      = NULL,
-              n       = n_points,
-              x       = x_points_i[point_i],
-              y       = y_points_i[point_i],
-              samples = NULL
-            )
-
-            class(temp_points) <- c("density", "density.prior", "density.prior.point")
-            attr(temp_points, "x_range")    <- range(x_points_i[point_i])
-            attr(temp_points, "y_range")    <- c(0, max(y_points_i[point_i]))
-            attr(temp_points, "level")      <- i
-            attr(temp_points, "level_name") <- colnames(samples_density)[i]
-            attr(temp_points, "level_legend") <- level_legends[i]
-
-            out[[paste0("density", i, "_points", point_i)]] <- temp_points
-          }
-        }else if(length(sample_point_data) > 0L || length(level_point_data[[i]]) > 0L){
-          sample_points_suppressed_by_level[i] <- TRUE
-          if(!missing_stored_point_masses_warning){
-            .plot_data_warn_missing_stored_point_masses()
-            missing_stored_point_masses_warning <- TRUE
-          }
-        }
 
         x_den <- posterior_density[["x"]]
         y_den <- posterior_density[["y"]]
@@ -416,28 +378,11 @@
   }
 
   if(length(sample_point_data) > 0L){
-    if(length(sample_points_suppressed_by_level) == 0L ||
-       !any(sample_points_suppressed_by_level)){
-      out <- c(sample_point_data, out)
-    }else{
-      out <- c(
-        .plot_data_factor_sample_points_for_levels(
-          sample_point_data,
-          which(!sample_points_suppressed_by_level),
-          colnames(samples_density)
-        ),
-        out
-      )
-    }
+    out <- c(sample_point_data, out)
   }
   if(!is.null(level_point_data)){
-    levels <- if(length(sample_points_suppressed_by_level) == 0L){
-      seq_along(level_point_data)
-    }else{
-      which(!sample_points_suppressed_by_level)
-    }
     level_points <- list()
-    for(level in levels){
+    for(level in seq_along(level_point_data)){
       for(point_i in seq_along(level_point_data[[level]])){
         point_data <- level_point_data[[level]][[point_i]]
         attr(point_data, "level")      <- level
