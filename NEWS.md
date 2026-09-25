@@ -215,10 +215,13 @@ old behaviour.
   gates on for a component SD or variance, its own gate for a variance
   proportion, any active component for an allocation total) and restricts
   the prior density to that event. `random_effects_summary_posterior()` is
-  built on it: gated variance proportions and allocation totals now carry
-  their canonical mixed prior measure (before: no prior density), the
-  point components of a monitored mixture scale prior are declared atoms,
-  and the separate Beta-margin prior path is removed.
+  built on it: allocation totals (`sd_total`, `var_total`), common SDs and
+  variances (`sd_common`, `var_common`) and gated variance proportions now
+  carry their canonical prior measure, including the inclusion-gate atoms of
+  gated allocations (before: no prior density); the gate atoms of allocation
+  totals are declared also with a mixture scale prior (before: undeclared),
+  and so are the point components of a monitored mixture scale prior; and
+  the separate Beta-margin prior path is removed.
 - `JAGS_formula_prior_density()` accepts `weights` over the transform's
   targets instead of one `target`: the original-scale prior density of the
   weighted combination (e.g. a mean-difference or orthonormal level of a
