@@ -135,9 +135,10 @@
 #' bridge sampling. A source computed from other parameters, for example
 #' `tau[i] <- s * tau_data[i]`, is deterministic and must be supplied as
 #' `parameter_source("tau", shape = "row", values = function(parameters,
-#' data, n_rows) ...)`. The `values` function is evaluated from the named
-#' `parameters` object and the original-scale formula data stored at fit time;
-#' it must return finite, non-negative row values on the support of the model.
+#' data, n_rows) ..., inputs = ...)`. The `values` function is evaluated from
+#' the parameters it declares in `inputs` and the original-scale formula data
+#' stored at fit time; it must return finite, non-negative row values on the
+#' support of the model.
 #' Any callback data must therefore be included in `formula_data_list` when
 #' fitting. Data supplied only to `JAGS_bridgesampling()` do not extend or
 #' replace the fitted source snapshot. Posterior columns named `tau[1]`, ...,
@@ -703,7 +704,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     "). Only free stochastic nodes whose prior density 'log_posterior' adds ",
     "can be supplied through 'add_parameters'; reconstruct deterministic ",
     "nodes, such as row-shaped SD sources computed from other parameters, ",
-    "with parameter_source(values = ...) or inside 'log_posterior'.",
+    "with parameter_source(values = ..., inputs = ...) or inside 'log_posterior'.",
     call. = FALSE
   )
 }

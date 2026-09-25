@@ -33,14 +33,13 @@ For formula bridge reconstruction, \code{data} contains raw row-aligned
 formula/model data rather than standardized design matrices. Scalar sources
 do not accept \code{values}.}
 
-\item{inputs}{optional character vector declaring the posterior coordinates
+\item{inputs}{character vector declaring the posterior coordinates
 (column names such as \code{"tau_scale"} or \code{"beta[2]"}) that \code{values} reads
-from \code{parameters}; \code{character()} for a function of \code{data} alone. Supported
-only with \code{values}. Declared inputs are the dependencies of the source in
-\code{\link[=JAGS_deterministic_nodes]{JAGS_deterministic_nodes()}}, and \code{values} then receives only these
-coordinates: reading any other parameter, or evaluating draws that lack a
-declared input, stops with an error. Without \code{inputs}, the function
-receives all parameters and its dependencies are not declared.}
+from \code{parameters}; \code{character()} for a function of \code{data} alone. Required
+with \code{values} and supported only with it. Declared inputs are the
+dependencies of the source in \code{\link[=JAGS_deterministic_nodes]{JAGS_deterministic_nodes()}}, and \code{values}
+receives only these coordinates: reading any other parameter, or
+evaluating draws that lack a declared input, stops with an error.}
 
 \item{source}{JAGS node name or \code{parameter_source()} object. When \code{source}
 is a \code{parameter_source()} object, \code{shape} must not be supplied separately;
@@ -67,4 +66,8 @@ stamped \code{parameters} list (\code{$} / \code{[[} / \code{[}). It is not a sa
 may still close over external state, and a raw node name without \code{values}
 remains valid whenever the corresponding posterior columns (or non-new-row
 fitted mapping) suffice.
+
+A \code{values} function without \code{inputs} stops with an error of class
+\code{BayesTools_missing_source_inputs} (also \code{BayesTools_parameter_source}),
+also when a source object without declared inputs is used.
 }

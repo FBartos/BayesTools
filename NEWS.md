@@ -340,6 +340,13 @@ old behaviour.
 - adds `JAGS_deterministic_evaluator()`, which returns an evaluator of a fit's
   generated deterministic nodes with the node registry resolved once.
   `JAGS_evaluate_deterministic()` is this evaluator applied once.
+- `parameter_source()` requires `inputs` with a `values` function: the
+  posterior coordinates that the function reads from `parameters`
+  (`character()` for a function of `data` alone). They are the dependencies
+  of the source in `JAGS_deterministic_nodes()`, and the function receives
+  only them. A `values` function without `inputs`, also in a source object
+  built otherwise, stops with an error of class
+  `BayesTools_missing_source_inputs` (also `BayesTools_parameter_source`).
 - `parameter_mixed_posterior()` declares posterior atoms from the quantity's
   structure: the point components of mixture and spike-and-slab priors from
   their indicator, gate atoms without a prior density, and no atoms for

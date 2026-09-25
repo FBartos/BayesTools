@@ -997,8 +997,21 @@ test_that("parameter_source() values functions declare and receive their inputs"
   values <- function(parameters, data, n_rows) rep(parameters[["a"]], n_rows)
   declared <- parameter_source("tau", shape = "row", values = values, inputs = c("a", "b[2]"))
   expect_identical(declared$inputs, c("a", "b[2]"))
-  undeclared <- parameter_source("tau", shape = "row", values = values)
-  expect_false("inputs" %in% names(undeclared))
+  # a values function must declare its inputs
+  undeclared <- tryCatch(
+    parameter_source("tau", shape = "row", values = values),
+    error = function(e) e
+  )
+  expect_s3_class(undeclared, c("BayesTools_missing_source_inputs", "BayesTools_parameter_source"))
+  expect_identical(
+    conditionMessage(undeclared),
+    paste0(
+      "'inputs' must declare the posterior coordinates that the 'values' ",
+      "function reads from 'parameters' (character() for a function of ",
+      "'data' alone)."
+    )
+  )
+  expect_false("inputs" %in% names(parameter_source("tau", shape = "row")))
   expect_identical(parameter_source("tau", shape = "row", values = values, inputs = character())$inputs, character())
   expect_error(
     parameter_source("tau", shape = "row", inputs = "a"),
@@ -1045,16 +1058,25 @@ test_that("parameter_source() values functions declare and receive their inputs"
     "Parameter source 'tau[row]' is missing its declared input(s) 'b[2]'.",
     fixed = TRUE
   )
-  # Without declared inputs the function receives every parameter.
+  # A function of the data alone receives no parameters, and a source object
+  # without declared inputs is refused where it is used.
   seen <- NULL
   BayesTools:::.bt_parameter_source_value_draws(
-    parameter_source("tau", shape = "row", values = function(parameters, data, n_rows){
+    parameter_source("tau", shape = "row", inputs = character(), values = function(parameters, data, n_rows){
       seen <<- names(parameters)
       rep(1, n_rows)
     }),
     n_rows = 2, posterior = posterior
   )
-  expect_identical(seen, colnames(posterior))
+  expect_identical(seen, character())
+  undeclared_object <- declared
+  undeclared_object$inputs <- NULL
+  expect_error(
+    BayesTools:::.bt_parameter_source_value_draws(undeclared_object, n_rows = 2, posterior = posterior),
+    "'source$inputs' must declare the posterior coordinates",
+    fixed = TRUE,
+    class = "BayesTools_missing_source_inputs"
+  )
 })
 
 test_that("marginal posteriors of formula parameters evaluate the linear predictor node's fixed part", {

@@ -274,7 +274,8 @@ test_that("bridge formula context treats fitted source semantics as authoritativ
     shape = "row",
     values = function(parameters, data, n_rows){
       data$tau_factor[seq_len(n_rows)]
-    }
+    },
+    inputs = character()
   )
   fitted_prior_random <- prior_random(
     id = random_block(sd_source = random_sd_source(fitted_source))
@@ -314,7 +315,8 @@ test_that("bridge formula context treats fitted source semantics as authoritativ
     shape = "row",
     values = function(parameters, data, n_rows){
       2 * data$tau_factor[seq_len(n_rows)]
-    }
+    },
+    inputs = character()
   )
   callback_args <- context_args
   callback_args$formula_random_prior_list <- list(mu = prior_random(

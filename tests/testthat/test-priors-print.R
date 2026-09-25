@@ -52,7 +52,8 @@ test_that("Random-effect specification print methods use prior notation", {
   source <- parameter_source(
     "tau",
     shape = "row",
-    values = function(parameters, data, n_rows) rep(1, n_rows)
+    values = function(parameters, data, n_rows) rep(1, n_rows),
+    inputs = character()
   )
   sd_source <- random_sd_source(source)
   allocation <- random_variance_allocation(
@@ -117,7 +118,8 @@ test_that("Random-effect specification print methods use prior notation", {
     "parameter_source()",
     "  name: tau",
     "  shape: row",
-    "  values: function"
+    "  values: function",
+    "  inputs: none"
   ))
   expect_equal(utils::capture.output(print(sd_source)), c(
     "random_sd_source()",

@@ -5509,7 +5509,8 @@ test_that("JAGS bridgesampling reconstructs row-indexed external SD sources from
     shape = "row",
     values = function(parameters, data, n_rows){
       data$tau_factor[seq_len(n_rows)]
-    }
+    },
+    inputs = character()
   )
   prior_random_list <- prior_random(
     allocation = random_variance_allocation(name = "allocation",

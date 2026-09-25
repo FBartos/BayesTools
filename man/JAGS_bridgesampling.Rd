@@ -196,9 +196,10 @@ Row-shaped external random-effect SD sources, such as
 \code{random_sd_source("tau", shape = "row")}, must be reconstructable during
 bridge sampling. A source computed from other parameters, for example
 \code{tau[i] <- s * tau_data[i]}, is deterministic and must be supplied as
-\code{parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) ...)}. The \code{values} function is evaluated from the named
-\code{parameters} object and the original-scale formula data stored at fit time;
-it must return finite, non-negative row values on the support of the model.
+\code{parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) ..., inputs = ...)}. The \code{values} function is evaluated from
+the parameters it declares in \code{inputs} and the original-scale formula data
+stored at fit time; it must return finite, non-negative row values on the
+support of the model.
 Any callback data must therefore be included in \code{formula_data_list} when
 fitting. Data supplied only to \code{JAGS_bridgesampling()} do not extend or
 replace the fitted source snapshot. Posterior columns named \code{tau[1]}, ...,

@@ -1703,7 +1703,8 @@ test_that("row-varying SD sources with values functions support supplied data", 
     shape = "row",
     values = function(parameters, data, n_rows){
       parameters$tau_total * data$tau_scale[seq_len(n_rows)]
-    }
+    },
+    inputs = "tau_total"
   )
   result <- .re_cov_formula(
     formula = ~ 1 + random(1 | id, name = "id", covariance = "diag"),

@@ -4434,7 +4434,8 @@ test_that("parameter and random SD sources validate simple external references",
     shape = "row",
     values = function(parameters, data, n_rows){
       parameters$tau * data$scale[seq_len(n_rows)]
-    }
+    },
+    inputs = "tau"
   )
   expect_true(is.function(source_values$values))
   ellipsis_values <- parameter_source(
@@ -4443,7 +4444,8 @@ test_that("parameter and random SD sources validate simple external references",
     values = function(...){
       args <- list(...)
       rep(args$parameters$tau, args$n_rows)
-    }
+    },
+    inputs = "tau"
   )
   expect_true(is.function(ellipsis_values$values))
   expect_error(
@@ -4509,7 +4511,8 @@ test_that("parameter and random SD sources validate simple external references",
     shape = "row",
     values = function(parameters, data, n_rows){
       rep(parameters$theta + parameters[["deterministic_formula"]], n_rows)
-    }
+    },
+    inputs = c("theta", "deterministic_formula")
   )
   expect_equal(
     BayesTools:::.bt_parameter_source_value_draws(
@@ -4529,7 +4532,8 @@ test_that("parameter and random SD sources validate simple external references",
     shape = "row",
     values = function(parameters, data, n_rows){
       rep(parameters$log_sigma, n_rows)
-    }
+    },
+    inputs = "log_sigma"
   )
   expect_error(
     BayesTools:::.bt_parameter_source_value_draws(
@@ -4546,7 +4550,8 @@ test_that("parameter and random SD sources validate simple external references",
     shape = "row",
     values = function(parameters, data, n_rows){
       rep(parameters[["log_sigma"]], n_rows)
-    }
+    },
+    inputs = "log_sigma"
   )
   expect_error(
     BayesTools:::.bt_parameter_source_value_draws(
@@ -4563,7 +4568,8 @@ test_that("parameter and random SD sources validate simple external references",
     shape = "row",
     values = function(parameters, data, n_rows){
       rep(parameters["log_sigma"][[1]], n_rows)
-    }
+    },
+    inputs = "log_sigma"
   )
   expect_error(
     BayesTools:::.bt_parameter_source_value_draws(
@@ -4577,7 +4583,7 @@ test_that("parameter and random SD sources validate simple external references",
   )
   expect_error(
     BayesTools:::.bt_parameter_source_value_draws(
-      source = parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) "bad"),
+      source = parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) "bad", inputs = character()),
       n_rows = 2,
       posterior = source_posterior,
       context = "Test source"
@@ -4587,7 +4593,7 @@ test_that("parameter and random SD sources validate simple external references",
   )
   expect_error(
     BayesTools:::.bt_parameter_source_value_draws(
-      source = parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) 1),
+      source = parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) 1, inputs = character()),
       n_rows = 2,
       posterior = source_posterior,
       context = "Test source"
@@ -4597,7 +4603,7 @@ test_that("parameter and random SD sources validate simple external references",
   )
   expect_error(
     BayesTools:::.bt_parameter_source_value_draws(
-      source = parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) c(1, NA_real_)),
+      source = parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) c(1, NA_real_), inputs = character()),
       n_rows = 2,
       posterior = source_posterior,
       context = "Test source"
@@ -4607,7 +4613,7 @@ test_that("parameter and random SD sources validate simple external references",
   )
   expect_error(
     BayesTools:::.bt_parameter_source_value_draws(
-      source = parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) stop("boom")),
+      source = parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) stop("boom"), inputs = character()),
       n_rows = 2,
       posterior = source_posterior,
       context = "Test source"
@@ -4670,7 +4676,8 @@ test_that("parameter and random SD sources validate simple external references",
           shape = "row",
           values = function(parameters, data, n_rows){
             data$x[seq_len(n_rows)]
-          }
+          },
+          inputs = character()
         ))
       )
     )
@@ -5804,7 +5811,8 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     shape = "row",
     values = function(parameters, data, n_rows){
       parameters$total_tau * data$tau_factor[seq_len(n_rows)]
-    }
+    },
+    inputs = "total_tau"
   )
   value_prior_random <- prior_random(
     allocation = random_variance_allocation(name = "allocation",
@@ -5954,7 +5962,8 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     shape = "row",
     values = function(parameters, data, n_rows){
       c(1, -1, 1, 1)[seq_len(n_rows)]
-    }
+    },
+    inputs = character()
   )
   bad_values_result <- JAGS_formula(
     formula = ~ 1 +
@@ -6001,7 +6010,8 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     shape = "row",
     values = function(parameters, data, n_rows){
       c(1, NaN, 1, 1)[seq_len(n_rows)]
-    }
+    },
+    inputs = character()
   )
   nan_values_result <- JAGS_formula(
     formula = ~ 1 +
@@ -6031,7 +6041,8 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     shape = "row",
     values = function(parameters, data, n_rows){
       1
-    }
+    },
+    inputs = character()
   )
   short_values_result <- JAGS_formula(
     formula = ~ 1 +
@@ -9110,7 +9121,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
     shape = "row",
     values = function(parameters, data, n_rows){
       parameters$base_tau * data$x[seq_len(n_rows)]
-    }
+    },
+    inputs = "base_tau"
   )
   slope_values_result <- JAGS_formula(
     formula = ~ 1 + x +

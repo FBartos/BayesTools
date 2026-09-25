@@ -19,14 +19,13 @@
 #'   For formula bridge reconstruction, `data` contains raw row-aligned
 #'   formula/model data rather than standardized design matrices. Scalar sources
 #'   do not accept `values`.
-#' @param inputs optional character vector declaring the posterior coordinates
+#' @param inputs character vector declaring the posterior coordinates
 #'   (column names such as `"tau_scale"` or `"beta[2]"`) that `values` reads
-#'   from `parameters`; `character()` for a function of `data` alone. Supported
-#'   only with `values`. Declared inputs are the dependencies of the source in
-#'   [JAGS_deterministic_nodes()], and `values` then receives only these
-#'   coordinates: reading any other parameter, or evaluating draws that lack a
-#'   declared input, stops with an error. Without `inputs`, the function
-#'   receives all parameters and its dependencies are not declared.
+#'   from `parameters`; `character()` for a function of `data` alone. Required
+#'   with `values` and supported only with it. Declared inputs are the
+#'   dependencies of the source in [JAGS_deterministic_nodes()], and `values`
+#'   receives only these coordinates: reading any other parameter, or
+#'   evaluating draws that lack a declared input, stops with an error.
 #'
 #' @details Access control for formula bridge/prediction callbacks only guards
 #' named lookup of forbidden formula parameters and undeclared inputs on the
@@ -34,6 +33,10 @@
 #' may still close over external state, and a raw node name without `values`
 #' remains valid whenever the corresponding posterior columns (or non-new-row
 #' fitted mapping) suffice.
+#'
+#' A `values` function without `inputs` stops with an error of class
+#' `BayesTools_missing_source_inputs` (also `BayesTools_parameter_source`),
+#' also when a source object without declared inputs is used.
 #'
 #' @return A list-like `parameter_source` object.
 #' @export
@@ -58,8 +61,8 @@ parameter_source <- function(name, shape = c("scalar", "row"),
     shape = shape,
     values = values
   )
-  # Sources without declared inputs keep their earlier structure.
-  if(!is.null(inputs)){
+  # the inputs of a values function (sources without one have none)
+  if(!is.null(values)){
     out$inputs <- unique(as.character(inputs))
   }
   class(out) <- c("parameter_source", "list")
@@ -70,6 +73,17 @@ parameter_source <- function(name, shape = c("scalar", "row"),
 .bt_check_parameter_source_inputs <- function(inputs, values, name){
 
   if(is.null(inputs)){
+    if(!is.null(values)){
+      stop(errorCondition(
+        paste0(
+          "'", name, "' must declare the posterior coordinates that the ",
+          "'values' function reads from 'parameters' (character() for a ",
+          "function of 'data' alone)."
+        ),
+        class = c("BayesTools_missing_source_inputs", "BayesTools_parameter_source"),
+        call  = NULL
+      ))
+    }
     return(invisible(TRUE))
   }
   if(is.null(values)){
@@ -88,8 +102,8 @@ parameter_source <- function(name, shape = c("scalar", "row"),
   invisible(TRUE)
 }
 
-# The declared inputs of a source's values function: a character vector, or
-# NULL when they are not declared.
+# The declared inputs of a source's values function: a character vector
+# (NULL for a source without a values function).
 .bt_parameter_source_inputs <- function(source){
 
   if(inherits(source, "random_sd_source")){
@@ -405,9 +419,9 @@ random_sd_source <- function(source, shape = c("scalar", "row")){
   parameters
 }
 
-# The parameters a source's values function receives for one draw: without
-# forbidden formula parameters, and restricted to the declared inputs when the
-# source declares them (a declared input missing from the draw stops here).
+# The parameters a source's values function receives for one draw: its
+# declared inputs, without forbidden formula parameters (a declared input
+# missing from the draw stops here).
 .bt_parameter_source_guard_parameters <- function(parameters, source){
 
   forbidden <- attr(
@@ -416,26 +430,20 @@ random_sd_source <- function(source, shape = c("scalar", "row")){
     exact = TRUE
   )
   inputs <- .bt_parameter_source_inputs(source)
-  if(length(forbidden) == 0L && is.null(inputs)){
-    return(parameters)
-  }
   parameter_names <- names(parameters)
   if(is.null(parameter_names)){
     parameter_names <- rep("", length(parameters))
   }
-  keep <- !parameter_names %in% forbidden
-  if(!is.null(inputs)){
-    missing <- setdiff(inputs, parameter_names)
-    if(length(missing) > 0L){
-      stop(
-        "Parameter source '", .bt_parameter_source_label(source),
-        "' is missing its declared input(s) ",
-        paste0("'", missing, "'", collapse = ", "), ".",
-        call. = FALSE
-      )
-    }
-    keep <- keep & parameter_names %in% inputs
+  missing <- setdiff(inputs, parameter_names)
+  if(length(missing) > 0L){
+    stop(
+      "Parameter source '", .bt_parameter_source_label(source),
+      "' is missing its declared input(s) ",
+      paste0("'", missing, "'", collapse = ", "), ".",
+      call. = FALSE
+    )
   }
+  keep <- !parameter_names %in% forbidden & parameter_names %in% inputs
   out <- parameters[keep]
   attr(out, "forbidden_formula_parameters") <- forbidden
   attr(out, "declared_inputs") <- inputs
@@ -461,7 +469,7 @@ random_sd_source <- function(source, shape = c("scalar", "row")){
     )
   }
   inputs <- attr(x, "declared_inputs", exact = TRUE)
-  if(!is.null(inputs) && !name %in% inputs){
+  if(!name %in% inputs){
     stop(
       "Parameter source callback for source '",
       attr(x, "parameter_source_label", exact = TRUE),

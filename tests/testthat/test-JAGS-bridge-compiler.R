@@ -1698,7 +1698,8 @@ test_that("compiled bridge allocation cache preserves row-indexed source reconst
     shape = "row",
     values = function(parameters, data, n_rows){
       data$tau_factor[seq_len(n_rows)]
-    }
+    },
+    inputs = character()
   )
   formula_output <- JAGS_formula(
     formula = ~ 1 +
@@ -1775,7 +1776,8 @@ test_that("compiled row sources receive natural formula-prior parameters", {
       parameters[[weight_name]][1] *
         parameters[[eta_name]] *
         data$tau_factor[seq_len(n_rows)]
-    }
+    },
+    inputs = c(weight_name, eta_name)
   )
   formula_output <- JAGS_formula(
     formula = ~ 1 +
@@ -1856,7 +1858,8 @@ test_that("row-source callbacks reject sampled random formula dependencies", {
     shape = "row",
     values = function(parameters, data, n_rows){
       exp(parameters$log_sigma)
-    }
+    },
+    inputs = "log_sigma"
   )
   mu_output <- JAGS_formula(
     formula = ~ 1 + random(1 | id, name = "id", covariance = "diag"),
@@ -2348,7 +2351,8 @@ test_that("compiled row sources retain per-draw validation", {
     values = function(parameters, data, n_rows){
 
       parameters$value
-    }
+    },
+    inputs = "value"
   )
   formula_output <- JAGS_formula(
     formula = ~ 1 + random(1 | study, name = "study", covariance = "diag"),
@@ -2399,7 +2403,8 @@ test_that("bridge context exposes row-indexed external SD source nodes", {
     shape = "row",
     values = function(parameters, data, n_rows){
       data$tau_factor[seq_len(n_rows)]
-    }
+    },
+    inputs = character()
   )
   formula_output <- JAGS_formula(
     formula = ~ 1 +

@@ -255,8 +255,7 @@
 # the source row and by the allocation factors of the block's SD binding
 # (their Dirichlet weights and inclusion gates). The source row is read from
 # the posterior coordinates 'source[1..N]', or computed by the source's
-# 'values' function from the inputs it declares (parameter_source(inputs = ));
-# a function without declared inputs contributes no dependencies.
+# 'values' function from the inputs it declares (parameter_source(inputs = )).
 .bt_dnode_linear_predictor_row_source_dependencies <- function(random_term, n_rows){
 
   binding <- random_term$sd_binding

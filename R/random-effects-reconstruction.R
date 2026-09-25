@@ -1042,7 +1042,7 @@
       .bt_random_effect_external_sd_source_label(random_term),
       "' for block '", random_term$block_name,
       "' cannot evaluate new observation rows. Supply a ",
-      "parameter_source(..., values = ...) callback to compute the source ",
+      "parameter_source(..., values = ..., inputs = ...) callback to compute the source ",
       "for arbitrary prediction rows.",
       call. = FALSE
     )

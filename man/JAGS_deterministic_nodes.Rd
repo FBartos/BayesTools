@@ -102,10 +102,8 @@ A block whose SDs come from a row-shaped external source
 (\code{random_sd_source(..., shape = "row")}) depends on the source rows
 \code{source[1]}, ..., \code{source[N]}, or, when the source's
 \code{values} function reconstructs them, on the inputs that function
-declares (\code{parameter_source(inputs = )}; a function without declared
-inputs adds no dependencies and is evaluated whenever the other
-dependencies are available), and on the Dirichlet weights and inclusion
-gates of its allocation.}
+declares (\code{parameter_source(inputs = )}), and on the Dirichlet
+weights and inclusion gates of its allocation.}
 }
 Nodes are evaluated with the arithmetic of the R evaluator, which reproduces
 the JAGS monitors exactly or to the last bits of floating-point rounding.

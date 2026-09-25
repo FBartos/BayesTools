@@ -60,7 +60,7 @@
             .bt_random_effect_external_sd_source_label(random_term),
             "' for random-effect block '",
             random_term$block_name,
-            "'. Provide a parameter_source(..., values = function(parameters, data, n_rows) ...), ",
+            "'. Provide a parameter_source(..., values = function(parameters, data, n_rows) ..., inputs = ...), ",
             "which is required when the source is computed from other parameters. ",
             "Only free stochastic row-wise source nodes can instead be bridge parameters, ",
             "with priors in 'prior_list' or through 'add_parameters' and 'add_bounds' ",
