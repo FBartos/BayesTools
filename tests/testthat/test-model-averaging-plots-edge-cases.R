@@ -3139,9 +3139,10 @@ test_that("factor posterior plot data uses level-matched stored densities", {
     `mu_alloc[systematic]` = seq(1, 2, length.out = n_samples)
   )
 
-  prior <- prior_factor("normal", list(0, 1), contrast = "treatment")
-  attr(prior, "levels") <- 3
-  attr(prior, "level_names") <- c("alternate", "random", "systematic")
+  prior <- prior_factor_levels(
+    prior_factor("normal", list(0, 1), contrast = "treatment"),
+    c("alternate", "random", "systematic")
+  )
 
   stored_random_x <- seq(-2, 1, length.out = 31)
   stored_systematic_x <- seq(0, 3, length.out = 31)
@@ -3188,9 +3189,10 @@ test_that("factor posterior plot data uses stored point masses once", {
     `mu_alloc[systematic]` = c(rep(0, 40), seq(1, 2, length.out = 60))
   )
 
-  prior <- prior_factor("normal", list(0, 1), contrast = "treatment")
-  attr(prior, "levels") <- 3
-  attr(prior, "level_names") <- c("alternate", "random", "systematic")
+  prior <- prior_factor_levels(
+    prior_factor("normal", list(0, 1), contrast = "treatment"),
+    c("alternate", "random", "systematic")
+  )
 
   stored_x <- seq(-2, 2, length.out = 31)
   attr(samples, "prior_list") <- list(
@@ -3247,12 +3249,14 @@ test_that("factor posterior plot data keeps fallback spikes per level", {
     `mu_alloc[systematic]` = c(rep(0, 40), seq(1, 2, length.out = 60))
   )
 
-  prior <- prior_factor("normal", list(0, 1), contrast = "treatment")
-  point_prior <- prior_factor("point", list(location = 0), contrast = "treatment")
-  attr(prior, "levels") <- 3
-  attr(prior, "level_names") <- c("alternate", "random", "systematic")
-  attr(point_prior, "levels") <- 3
-  attr(point_prior, "level_names") <- c("alternate", "random", "systematic")
+  prior <- prior_factor_levels(
+    prior_factor("normal", list(0, 1), contrast = "treatment"),
+    c("alternate", "random", "systematic")
+  )
+  point_prior <- prior_factor_levels(
+    prior_factor("point", list(location = 0), contrast = "treatment"),
+    c("alternate", "random", "systematic")
+  )
 
   stored_x <- seq(-2, 2, length.out = 31)
   attr(samples, "prior_list") <- list(point_prior, prior)
