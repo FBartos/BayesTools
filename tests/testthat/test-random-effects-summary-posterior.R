@@ -1441,3 +1441,59 @@ test_that("gate-only allocations and inclusion indicators have exact priors and 
   expect_equal(as.numeric(indicator_atoms$locations[, 1L]), c(0, 1))
   expect_equal(indicator_atoms$mass, c(.5, .5))
 })
+
+test_that("totals with an ungated component cannot be conditioned on inclusion", {
+
+  skip_if_not_installed("runjags")
+
+  # study and drug gated, site ungated: some component is always active, so
+  # the inclusion event of the total is certain; a declared condition on the
+  # study and drug gates would not describe the kept draws or the prior
+  fit <- .allocation_prior_fit(
+    sd = prior("gamma", list(2, 2)),
+    alpha = c(1, 2, 3),
+    inclusion = list(study = prior("spike", list(.5)), drug = prior("spike", list(.4)))
+  )
+  catalog <- parameter_catalog(fit)
+  for(name in c("(mu) allocation: sd_total", "(mu) allocation: var_total")){
+    expect_error(
+      parameter_mixed_posterior(fit, parameter_catalog_resolve(catalog, name), conditional = TRUE),
+      paste0(
+        "The inclusion event of '", name, "' is unavailable: the quantity has ",
+        "no inclusion gate. Use 'conditional = FALSE'."
+      ),
+      fixed = TRUE
+    )
+    total <- parameter_mixed_posterior(fit, parameter_catalog_resolve(catalog, name))
+    expect_true(posterior_metadata(total, "condition")$averaged)
+    expect_true(posterior_atoms_free(total))
+  }
+  # a gated component of the same allocation still conditions on its gate
+  study <- parameter_mixed_posterior(
+    fit, parameter_catalog_resolve(catalog, "(mu) study: sd(intercept)"), conditional = TRUE
+  )
+  expect_identical(
+    posterior_metadata(study, "condition")$conditional,
+    "mu__xRE_ALLOCx_allocation__include_study_indicator"
+  )
+
+  # with every component gated the event is the OR of the gates
+  gated <- .allocation_prior_fit(
+    sd = prior("gamma", list(2, 2)),
+    alpha = c(1, 2),
+    inclusion = list(study = prior("spike", list(.5)), drug = prior("spike", list(.4)))
+  )
+  total <- parameter_mixed_posterior(
+    gated, parameter_catalog_resolve(parameter_catalog(gated), "(mu) allocation: sd_total"),
+    conditional = TRUE
+  )
+  expect_identical(
+    posterior_metadata(total, "condition")[c("conditional", "conditional_rule", "averaged")],
+    list(
+      conditional = c("mu__xRE_ALLOCx_allocation__include_study_indicator",
+                      "mu__xRE_ALLOCx_allocation__include_drug_indicator"),
+      conditional_rule = "OR",
+      averaged = FALSE
+    )
+  )
+})

@@ -33,11 +33,13 @@
 #'   quantity: the gates of its allocation chain on for an allocation-derived
 #'   component SD or variance, its own inclusion gate on for a variance
 #'   proportion, and at least one component active for an allocation total
-#'   (`sd_total`, `var_total`). Only the draws in the event are kept, and the
-#'   prior density is restricted to the event and renormalized (point masses
-#'   inside the event, e.g. a variance proportion of one, keep their
-#'   renormalized masses). Quantities without an inclusion gate cannot be
-#'   conditioned.
+#'   (`sd_total`, `var_total`) whose components all have inclusion gates.
+#'   Only the draws in the event are kept, and the prior density is
+#'   restricted to the event and renormalized (point masses inside the event,
+#'   e.g. a variance proportion of one, keep their renormalized masses). The
+#'   declared `condition` names the gates of the event. Quantities without an
+#'   inclusion gate cannot be conditioned, nor can a total with an ungated
+#'   component, for which some component is always active.
 #'
 #' @return A numeric vector of class `mixed_posteriors`,
 #'   `mixed_posteriors.simple`, `marginal_posterior.simple`, and
@@ -331,6 +333,14 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
     ))
   }
 
+  # the event "some component active" is uncertain only when every
+  # component has an inclusion gate; with an ungated component it is certain
+  # and only the parent gates condition the total
+  gated_indices <- unlist(lapply(allocation$inclusion, `[[`, "index"), use.names = FALSE)
+  all_gated <- length(component_gates) > 0L && (
+    isTRUE(allocation$gate_only) ||
+      setequal(gated_indices, seq_len(allocation$n_targets))
+  )
   list(
     kind              = "total",
     square            = identical(key$evaluator, "allocation_var"),
@@ -339,11 +349,12 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
     total_variance    = total_variance,
     component_gates   = component_gates,
     parent_gates      = parent_gates,
+    all_gated         = all_gated,
     parent_degenerate = all(vapply(allocation$parent_factors, function(factor){
       is.null(factor$weight_name)
     }, logical(1))),
-    event_gates       = c(component_gates, parent_gates),
-    event_rule        = if(length(parent_gates) == 0L) "OR" else "AND"
+    event_gates       = c(if(all_gated) component_gates, parent_gates),
+    event_rule        = if(all_gated && length(parent_gates) == 0L) "OR" else "AND"
   )
 }
 
@@ -444,9 +455,13 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
     }
     on <- parent_active & any_on
     continuous_multiplier <- !(isTRUE(plan$parent_degenerate) & full)
-    event <- if(length(plan$parent_gates) == 0L ||
-                length(plan$component_gates) == 0L){
-      on
+    # the declared event: the component gates (OR) when every component is
+    # gated, the parent gates (AND) otherwise; both kinds together are not
+    # one conjunction or disjunction of gates
+    event <- if(!isTRUE(plan$all_gated)){
+      parent_active
+    }else if(length(plan$parent_gates) == 0L){
+      any_on
     }
   }
   atom <- if(is.null(point)){

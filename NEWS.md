@@ -213,8 +213,9 @@ old behaviour.
   `undefined_draws` (undefined draws are omitted), and its `condition`.
   `conditional = TRUE` keeps the draws of the quantity's inclusion event (its
   gates on for a component SD or variance, its own gate for a variance
-  proportion, any active component for an allocation total) and restricts
-  the prior density to that event. `random_effects_summary_posterior()` is
+  proportion, any active component for an allocation total whose components
+  are all gated; a total with an ungated component, whose event is certain,
+  cannot be conditioned) and restricts the prior density to that event. `random_effects_summary_posterior()` is
   built on it: allocation totals (`sd_total`, `var_total`), common SDs and
   variances (`sd_common`, `var_common`) and gated variance proportions now
   carry their canonical prior measure, including the inclusion-gate atoms of

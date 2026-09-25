@@ -16,11 +16,13 @@ parameter_mixed_posterior(fit, selection, conditional = FALSE)
 quantity: the gates of its allocation chain on for an allocation-derived
 component SD or variance, its own inclusion gate on for a variance
 proportion, and at least one component active for an allocation total
-(\code{sd_total}, \code{var_total}). Only the draws in the event are kept, and the
-prior density is restricted to the event and renormalized (point masses
-inside the event, e.g. a variance proportion of one, keep their
-renormalized masses). Quantities without an inclusion gate cannot be
-conditioned.}
+(\code{sd_total}, \code{var_total}) whose components all have inclusion gates.
+Only the draws in the event are kept, and the prior density is
+restricted to the event and renormalized (point masses inside the event,
+e.g. a variance proportion of one, keep their renormalized masses). The
+declared \code{condition} names the gates of the event. Quantities without an
+inclusion gate cannot be conditioned, nor can a total with an ungated
+component, for which some component is always active.}
 }
 \value{
 A numeric vector of class \code{mixed_posteriors},
