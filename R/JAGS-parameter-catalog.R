@@ -2239,39 +2239,6 @@ parameter_transform_jacobian <- function(values, transform){
   paste0("{", index, "}")
 }
 
-# Backend-style names of a fixed factor prior's fitted coordinates, in
-# coordinate order, rendered from the coordinates' label parts: a coordinate
-# that is structurally one level cell names the level of every factor
-# component (`mu_g[10]`, `mu_f[b]__xXx__g[v]`); any other coordinate is
-# coefficient `j` of the contrast coding, `<parameter>{j}`. NULL when `prior`
-# is not a fixed factor prior.
-.bt_factor_coordinate_display_names <- function(parameter, prior){
-
-  prior <- .bt_parameter_catalog_factor_prior(parameter, prior)
-  if(is.null(prior) || is.null(attr(prior, "factor_design", exact = TRUE))){
-    return(NULL)
-  }
-  parts <- .bt_label_parts_factor(parameter, prior)$coordinates
-  vapply(parts, function(part){
-    if(!is.na(part$coefficient)){
-      return(paste0(parameter, "{", part$coefficient, "}"))
-    }
-    if(length(part$components) == 1L){
-      return(paste0(parameter, "[", part$levels[[1L]], "]"))
-    }
-    components <- vapply(part$components, function(component){
-      if(component %in% names(part$levels)){
-        paste0(component, "[", part$levels[[component]], "]")
-      }else{
-        component
-      }
-    }, character(1))
-    stem <- substr(parameter, 1L, nchar(parameter) -
-                     nchar(paste(part$components, collapse = "__xXx__")))
-    paste0(stem, paste(components, collapse = "__xXx__"))
-  }, character(1), USE.NAMES = FALSE)
-}
-
 # Coordinates owned by a point prior with an expression location are
 # deterministic functions of other nodes: derived, never structural.
 .bt_parameter_catalog_derived_coordinates <- function(coordinates, prior_list){

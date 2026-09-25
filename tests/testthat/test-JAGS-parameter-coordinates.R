@@ -453,15 +453,21 @@ test_that("coordinate labels do not overwrite fixed scale formatting", {
     c("(mu) x:z", "(log_sigma) intercept")
   )
 
-  formatted_names <- c("(mu) x:z", "(log_sigma) exp(intercept)")
+  # original-scale tables show the exponentiated log intercept
+  parts <- BayesTools:::.bt_parameter_coordinates_row_label_parts(
+    coordinates = coordinates,
+    prior_list = prior_list,
+    formula_design = NULL
+  )
   expect_identical(
-    BayesTools:::.bt_random_effect_summary_display_names(
-      names = formatted_names,
-      raw_names = coordinate_names,
-      prior_list = prior_list,
-      coordinates = coordinates
+    BayesTools:::.bt_label(
+      BayesTools:::.bt_label_parts_log_intercept(
+        parts,
+        list(log_sigma = structure(list(), log_intercept = TRUE))
+      ),
+      "table"
     ),
-    formatted_names
+    c("(mu) x:z", "(log_sigma) exp(intercept)")
   )
 })
 

@@ -285,67 +285,6 @@
   out
 }
 
-.bt_random_effect_summary_display_names <- function(names, raw_names,
-                                                     prior_list,
-                                                     formula_prefix = TRUE,
-                                                     coordinates = NULL,
-                                                     formula_design = NULL){
-
-  if(length(raw_names) == 0L){
-    return(names)
-  }
-  if(is.null(coordinates)){
-    coordinates <- .bt_build_parameter_coordinates(
-      columns = .bt_random_effect_summary_coordinate_names(
-        raw_names,
-        prior_list
-      ),
-      prior_list = prior_list,
-      formula_design = formula_design
-    )
-  }
-
-  if(length(prior_list) > 0L){
-    for(i in seq_along(raw_names)){
-      prior <- prior_list[[raw_names[i]]]
-      if(is.null(prior)){
-        next
-      }
-      label <- attr(prior, "random_summary_label", exact = TRUE)
-      if(is.null(label)){
-        next
-      }
-      parameter <- attr(prior, "parameter", exact = TRUE)
-      prefix <- .bt_random_effect_summary_formula_prefix(parameter, formula_prefix)
-      names[i] <- paste0(prefix, label)
-    }
-  }
-
-  .bt_validate_parameter_coordinates(coordinates)
-  # `raw_names` are the summary's column names, where level-coded coordinates
-  # were renamed by level; match each to its coordinate through the same
-  # renaming, one to one. Matching them to coordinate names directly would
-  # label the level-2 column `sd[2]` with the coordinate `sd[2]` of level 3.
-  summary_names <- .bt_random_effect_summary_renamed_parameter_names(
-    coordinates$coordinate_name,
-    prior_list
-  )
-  coordinate_rows <- match(raw_names, summary_names)
-  registered <- !is.na(coordinate_rows)
-  registered[registered] <- nzchar(
-    coordinates$random_block[coordinate_rows[registered]]
-  )
-  if(any(registered)){
-    labels <- coordinates$display_label[coordinate_rows[registered]]
-    if(!isTRUE(formula_prefix)){
-      labels <- sub("^\\([^)]*\\) ", "", labels)
-    }
-    names[registered] <- labels
-  }
-
-  names
-}
-
 .bt_random_effect_summary_formula_prefix <- function(parameter, formula_prefix){
 
   if(isTRUE(formula_prefix) && !is.null(parameter) &&
@@ -497,59 +436,6 @@
     allocation_index = if(is.null(key$index)) NULL else key$index,
     component = if(nzchar(quantity$component)) quantity$component else NULL
   )
-}
-
-.bt_random_effect_summary_renamed_parameter_names <- function(parameter_names,
-                                                              prior_list){
-
-  if(length(parameter_names) == 0L || length(prior_list) == 0L){
-    return(parameter_names)
-  }
-
-  dummy <- matrix(
-    nrow = 0L,
-    ncol = length(parameter_names),
-    dimnames = list(NULL, parameter_names)
-  )
-  colnames(.rename_factor_levels(dummy, prior_list))
-}
-
-# Coordinate names of summary columns: the inverse of the level renaming that
-# summaries apply to level-coded factor coordinates (a column that was not
-# renamed is its own coordinate name).
-.bt_random_effect_summary_coordinate_names <- function(summary_names,
-                                                       prior_list){
-
-  if(length(summary_names) == 0L || length(prior_list) == 0L){
-    return(summary_names)
-  }
-  candidates <- unlist(lapply(names(prior_list), function(parameter){
-    prior <- prior_list[[parameter]]
-    if(!.bt_prior_is_factor_family(prior)){
-      return(character())
-    }
-    n_parameters <- tryCatch(
-      .get_prior_factor_levels(prior),
-      error = function(error) NULL
-    )
-    if(!is.numeric(n_parameters) || length(n_parameters) != 1L ||
-       is.na(n_parameters) || n_parameters < 1L){
-      return(character())
-    }
-    c(parameter, paste0(parameter, "[", seq_len(n_parameters), "]"))
-  }), use.names = FALSE)
-  if(length(candidates) == 0L){
-    return(summary_names)
-  }
-  renamed <- .bt_random_effect_summary_renamed_parameter_names(
-    candidates,
-    prior_list
-  )
-  changed <- renamed != candidates
-  inverse <- match(summary_names, renamed[changed])
-  out <- summary_names
-  out[!is.na(inverse)] <- candidates[changed][inverse[!is.na(inverse)]]
-  out
 }
 
 .bt_random_effect_summary_raw_sd_display_names <- function(names, raw_names,

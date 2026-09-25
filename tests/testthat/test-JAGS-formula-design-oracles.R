@@ -12026,23 +12026,12 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     formula_design = list(mu = hcs_composite$formula_design),
     mode = "raw"
   )
-  hcs_composite_raw_samples <- BayesTools:::.rename_factor_levels(
-    hcs_composite_raw$model_samples,
-    hcs_composite_raw$prior_list
-  )
-  hcs_composite_raw_names <- colnames(hcs_composite_raw_samples)
-  hcs_composite_raw_display <- BayesTools:::.bt_random_effect_summary_display_names(
-    names = format_parameter_names(
-      parameters = hcs_composite_raw_names,
-      formula_parameters = unique(unlist(lapply(hcs_composite_raw$prior_list, attr, which = "parameter"))),
-      formula_random = unique(unlist(lapply(hcs_composite_raw$prior_list, attr, which = "random_factor"))),
-      formula_prefix = TRUE
-    ),
-    raw_names = hcs_composite_raw_names,
+  hcs_composite_raw_coordinates <- build_test_parameter_coordinates(
+    columns = colnames(hcs_composite_raw$model_samples),
     prior_list = hcs_composite_raw$prior_list,
-    formula_prefix = TRUE,
     formula_design = list(mu = hcs_composite$formula_design)
   )
+  hcs_composite_raw_display <- hcs_composite_raw_coordinates$display_label
   expect_true("(mu) id: sd(f:g[a.u])" %in% hcs_composite_raw_display)
   expect_true("(mu) id: cor" %in% hcs_composite_raw_display)
   expect_false(any(grepl("f_g", hcs_composite_raw_display, fixed = TRUE)))

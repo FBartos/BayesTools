@@ -9,7 +9,6 @@
 \alias{.process_spike_and_slab}
 \alias{.apply_parameter_transformations}
 \alias{.transform_factor_contrasts}
-\alias{.rename_factor_levels}
 \title{Helper functions for extracting and formatting posterior distributions}
 \usage{
 .extract_posterior_samples(fit, as_list = FALSE)
@@ -59,8 +58,6 @@
   components = list(),
   with_label_parts = FALSE
 )
-
-.rename_factor_levels(model_samples, prior_list)
 }
 \arguments{
 \item{fit}{a JAGS model fit object}
@@ -133,8 +130,6 @@ list with updated model_samples, prior_list, and warnings
 updated model_samples matrix
 
 updated model_samples matrix
-
-updated model_samples matrix with renamed columns
 }
 \description{
 Internal helper functions to extract posterior samples from JAGS

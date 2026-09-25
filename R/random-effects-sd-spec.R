@@ -941,6 +941,58 @@
   levels(data[, factor_components[1L]])
 }
 
+# Component labels of the level cells of a random factor term: each factor
+# level is attached to its factor component inside an interaction term
+# (`f[a]__xXx__g[u]`), not appended to the full interaction string.
+.format_factor_level_parameter_names <- function(parameter, level_names, n_parameters = NULL) {
+
+  if (!is.list(level_names)) {
+    return(paste0(parameter, "[", level_names, "]"))
+  }
+
+  parameter_terms <- strsplit(parameter, "__xXx__", fixed = TRUE)[[1]]
+  factor_terms <- names(level_names)
+  factor_positions <- vapply(factor_terms, function(factor_term) {
+    factor_position <- which(
+      parameter_terms == factor_term |
+        endsWith(parameter_terms, paste0("_", factor_term))
+    )
+
+    if (length(factor_position) == 1) {
+      return(factor_position)
+    }
+
+    return(NA_integer_)
+  }, integer(1))
+
+  if (all(!is.na(factor_positions))) {
+    level_grid <- expand.grid(level_names, KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
+    formatted_names <- vapply(seq_len(nrow(level_grid)), function(i) {
+      formatted_terms <- parameter_terms
+
+      for (factor_term in factor_terms) {
+        formatted_terms[factor_positions[[factor_term]]] <- sub(
+          paste0(factor_term, "$"),
+          paste0(factor_term, "[", level_grid[[factor_term]][i], "]"),
+          formatted_terms[factor_positions[[factor_term]]]
+        )
+      }
+
+      paste0(formatted_terms, collapse = "__xXx__")
+    }, character(1))
+
+    if (is.null(n_parameters) || length(formatted_names) == n_parameters) {
+      return(formatted_names)
+    }
+  }
+
+  stop(
+    "Factor level names cannot be formatted for parameter '", parameter,
+    "' because the factor metadata do not match the parameter terms.",
+    call. = FALSE
+  )
+}
+
 # SD component labels of a contrast-coded random factor term (mean-difference,
 # orthonormal, ordered): a column that is structurally one level cell (the
 # first ordered column) is labelled by that cell's levels, and every other

@@ -452,15 +452,6 @@ test_that("partially full-rank factor interactions are named by their level cell
   samples <- as_mixed_posteriors(fit, parameter)
   expect_identical(colnames(samples[[parameter]]), cells)
 
-  renamed <- BayesTools:::.rename_factor_levels(
-    synthetic$posterior,
-    attr(fit, "prior_list")
-  )
-  expect_identical(
-    colnames(renamed),
-    c("mu_intercept", "mu_g[b]", "mu_g[c]",
-      paste0("mu_g[", c("a", "b", "c"), "]__xXx__h[v]"))
-  )
   expect_identical(
     rownames(runjags_estimates_table(fit)),
     c("(mu) intercept", "(mu) g[b]", "(mu) g[c]", paste0("(mu) g[", c("a", "b", "c"), "]:h[v]"))

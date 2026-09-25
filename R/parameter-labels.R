@@ -935,34 +935,6 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   quantities
 }
 
-# The fitted coordinate of every column of draws 'x' (NA for columns that are
-# not a single fitted coordinate), from its 'quantities' metadata. Vector
-# draws without that metadata are the parameter 'parameter' itself.
-.bt_draws_coordinate_columns <- function(x, parameter){
-
-  quantities <- .bt_draws_quantities(x)
-  if(is.null(quantities)){
-    if(is.null(dim(x))){
-      return(parameter)
-    }
-    stop(
-      "The posterior samples of '", parameter, "' do not identify their fitted ",
-      "coordinates (draw metadata 'quantities'). Create them with ",
-      "as_mixed_posteriors() or mix_posteriors().",
-      call. = FALSE
-    )
-  }
-  vapply(seq_len(nrow(quantities)), function(i){
-    dependencies <- quantities$dependencies[[i]]
-    weights <- quantities$weights[[i]]
-    if(length(dependencies) == 1L && isTRUE(weights == 1)){
-      dependencies
-    }else{
-      NA_character_
-    }
-  }, character(1))
-}
-
 # Label parts of the levels of a marginal posterior of 'parameter' (a list of
 # levels, or the draws themselves for a simple parameter): their 'quantities'
 # draw metadata, otherwise the parameter's term followed by the level name.

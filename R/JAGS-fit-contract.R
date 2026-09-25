@@ -85,22 +85,6 @@ NULL
   c(list(encoding_version = .bt_parameter_encoding_version), fields)
 }
 
-.bt_parameter_encoding_schema <- function(){
-
-  data.frame(
-    field = c("encoding_version", "kind", "formula_parameter", "term", "role"),
-    type = c("integer", rep("character", 4L)),
-    description = c(
-      "BayesTools parameter-encoding schema version.",
-      "Coordinate kind, such as fixed, random, or formula_output.",
-      "Formula output parameter owning the coordinate.",
-      "Exact formula term, design column, or random-effect block.",
-      "Generated semantic role within the coordinate kind."
-    ),
-    stringsAsFactors = FALSE
-  )
-}
-
 #' @rdname JAGS_fit_contract
 JAGS_formula_name_map <- function(fit, parameter = NULL){
 

@@ -1461,15 +1461,7 @@ test_that("backend logit-scale correlations use semantic correlation labels", {
     formula_design = list(mu = formula_design)
   )
 
-  display_name <- BayesTools:::.bt_random_effect_summary_display_names(
-    names = "sd((mu) rho_logit|id)",
-    raw_names = raw_name,
-    prior_list = list(),
-    formula_prefix = TRUE,
-    coordinates = coordinates
-  )
-
-  expect_identical(display_name, "(mu) id: cor (logit)")
+  expect_identical(coordinates$display_label, "(mu) id: cor (logit)")
 })
 
 
