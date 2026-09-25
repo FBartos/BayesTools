@@ -524,7 +524,10 @@
 #' smaller than about \eqn{5.6 \cdot 10^{-17} n^2} times the draws' mean
 #' absolute value for \eqn{n} draws (about \eqn{6 \cdot 10^{-5}} for
 #' \eqn{10^6} draws), and reorderings that move draws by only a few positions
-#' keep the metadata.
+#' can keep the metadata. The bound grows with the number of draws: such
+#' changes are detected at some positions or for fewer draws (e.g., swapping
+#' two adjacent standard-normal draws is typically detected for \eqn{10^5}
+#' draws but not for \eqn{10^6}).
 #'
 #' @return \code{posterior_metadata()} returns the value of the field or
 #' \code{NULL}; the replacement form returns \code{x} with the field set.
