@@ -59,6 +59,12 @@ parts rendered by \code{\link[=parameter_labels]{parameter_labels()}}). Set by \
 \code{\link[=marginal_posterior]{marginal_posterior()}} (whose estimated marginal means are predictions
 and declare no fitted coordinates); summaries map columns to fitted
 coordinates and render their labels from it.}
+\item{\code{"output_transformations"}}{the transformations applied to
+the values of the draws by \code{\link[=posterior_transform]{posterior_transform()}} (and
+\code{\link[=marginal_posterior]{marginal_posterior()}} with \code{transformation}), in the order they
+were applied: \code{"lin"}, \code{"exp_lin"}, \code{"tanh"},
+\code{"exp"}, or \code{"custom"} for a transformation given as
+functions; absent for untransformed draws.}
 }}
 
 \item{value}{the new value of the field; \code{NULL} removes it.}

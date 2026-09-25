@@ -75,7 +75,9 @@
 #'   are unchanged.}
 #' }
 #' The conditioning (\code{condition}), undefined draws, and the other
-#' metadata are kept, and the metadata record the fingerprint of the
+#' metadata are kept, the applied transformation is appended to the
+#' \code{output_transformations} metadata (whether or not the draws have a
+#' \code{quantities} table), and the metadata record the fingerprint of the
 #' transformed values. The \code{prior_list} attribute of mixed posteriors
 #' describes their untransformed values: [marginal_posterior()] refuses
 #' transformed mixed posteriors whose prior it would build from it; use its
@@ -248,9 +250,9 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
 
   out <- .bt_draws_transform_values(x, map$fun)
   updates <- .bt_posterior_transform_fields(fields, map)
-  if(length(updates) > 0L){
-    out <- .bt_meta_assign(out, updates)
-  }
+  # the draws record the transformations applied to their values
+  updates["output_transformations"] <- list(c(fields$output_transformations, map$name))
+  out <- .bt_meta_assign(out, updates)
   out
 }
 
@@ -518,16 +520,11 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
   diagnostics
 }
 
-# The output transformations recorded in the column table of draws (empty
-# for untransformed draws or draws without a column table).
+# The transformations applied to the values of draws by
+# posterior_transform() (their 'output_transformations' metadata; empty for
+# untransformed draws).
 .bt_draws_output_transformations <- function(x){
 
-  quantities <- .bt_meta_get(x, "quantities")
-  if(is.null(quantities)){
-    return(character())
-  }
-  unique(unlist(lapply(
-    unclass(quantities$label_parts),
-    .bt_label_output_transformation
-  ), use.names = FALSE))
+  transformations <- .bt_meta_get(x, "output_transformations")
+  if(is.null(transformations)) character() else transformations
 }

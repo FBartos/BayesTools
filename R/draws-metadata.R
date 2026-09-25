@@ -190,6 +190,16 @@
     },
     level_quantities = function(value){
       .bt_meta_quantities_reason(value)
+    },
+    output_transformations = function(value){
+      if(is.character(value) && length(value) > 0L && !anyNA(value) &&
+         all(value %in% .bt_label_output_transformations)){
+        return(NULL)
+      }
+      paste0(
+        "it must name the transformations applied to the draws (",
+        paste0("'", .bt_label_output_transformations, "'", collapse = ", "), ")"
+      )
     }
   )
 }
@@ -276,7 +286,8 @@
   "posterior_densities", "posterior_ordinate", "posterior_ordinates",
   "formula_parameter", "log_intercept", "formula_scale", "transform_scaled",
   "condition", "linear_weights", "linear_offset", "joint_prior_transformation",
-  "quantities", "original_scale_quantities", "level_quantities"
+  "quantities", "original_scale_quantities", "level_quantities",
+  "output_transformations"
 )
 
 .bt_meta_fields <- function(){
@@ -570,7 +581,7 @@
   "support", "atoms", "undefined_draws", "prior_density", "prior_densities",
   "prior_context", "posterior_density", "posterior_densities",
   "posterior_ordinate", "posterior_ordinates", "condition", "linear_weights",
-  "quantities"
+  "quantities", "output_transformations"
 )
 
 #' @title Metadata of BayesTools posterior draws
@@ -630,6 +641,12 @@
 #'   [marginal_posterior()] (whose estimated marginal means are predictions
 #'   and declare no fitted coordinates); summaries map columns to fitted
 #'   coordinates and render their labels from it.}
+#'   \item{\code{"output_transformations"}}{the transformations applied to
+#'   the values of the draws by [posterior_transform()] (and
+#'   [marginal_posterior()] with \code{transformation}), in the order they
+#'   were applied: \code{"lin"}, \code{"exp_lin"}, \code{"tanh"},
+#'   \code{"exp"}, or \code{"custom"} for a transformation given as
+#'   functions; absent for untransformed draws.}
 #' }
 #' @param value the new value of the field; \code{NULL} removes it.
 #'

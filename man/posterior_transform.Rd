@@ -76,7 +76,9 @@ is \code{""}) and declare fitted coordinates only for \code{"lin"} with
 are unchanged.}
 }
 The conditioning (\code{condition}), undefined draws, and the other
-metadata are kept, and the metadata record the fingerprint of the
+metadata are kept, the applied transformation is appended to the
+\code{output_transformations} metadata (whether or not the draws have a
+\code{quantities} table), and the metadata record the fingerprint of the
 transformed values. The \code{prior_list} attribute of mixed posteriors
 describes their untransformed values: \code{\link[=marginal_posterior]{marginal_posterior()}} refuses
 transformed mixed posteriors whose prior it would build from it; use its

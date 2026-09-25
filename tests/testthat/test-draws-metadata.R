@@ -672,6 +672,41 @@ test_that("posterior_transform() refuses transformations that are not monotone a
     "Pass the transformation to 'marginal_posterior(transformation = )' instead.",
     fixed = TRUE
   )
+
+  # the draws record the applied transformations in their own metadata, so
+  # mixed posteriors without a column table are refused as well
+  theta <- stats::rnorm(400, .3, .2)
+  class(theta) <- c("mixed_posteriors", "mixed_posteriors.simple", class(theta))
+  theta <- .bt_meta_set(theta, "draw_index", seq_along(theta))
+  theta <- .bt_draws_set_component(theta, source = "model", component = rep(1, length(theta)))
+  attr(theta, "parameter")  <- "theta"
+  attr(theta, "prior_list") <- prior("normal", list(0, 1))
+  hand_built <- list(theta = theta)
+  class(hand_built) <- c("mixed_posteriors", "list")
+  expect_null(posterior_metadata(hand_built$theta, "quantities"))
+  transformed <- posterior_transform(hand_built, "exp")
+  expect_identical(posterior_metadata(transformed$theta, "output_transformations"), "exp")
+  expect_identical(
+    posterior_metadata(posterior_transform(transformed, "lin", list(a = 0, b = 2))$theta,
+                       "output_transformations"),
+    c("exp", "lin")
+  )
+  expect_error(
+    marginal_posterior(transformed, "theta", prior_samples = TRUE),
+    "Pass the transformation to 'marginal_posterior(transformation = )' instead.",
+    fixed = TRUE
+  )
+  expect_null(posterior_metadata(marginal_posterior(hand_built, "theta"), "output_transformations"))
+  expect_identical(
+    posterior_metadata(marginal_posterior(hand_built, "theta", transformation = "exp"),
+                       "output_transformations"),
+    "exp"
+  )
+  expect_error(
+    posterior_metadata(theta, "output_transformations") <- "log",
+    "Draw metadata 'output_transformations' is invalid",
+    fixed = TRUE
+  )
 })
 
 test_that("draw components index the declared component list", {
