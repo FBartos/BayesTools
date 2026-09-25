@@ -159,14 +159,19 @@ old behaviour.
     full tables omit the internal allocation shares of ordered-factor priors
     (`prior_par_eta_*`).
 - original-scale transforms (`transform_scaled = TRUE` of ensemble and
-  marginal tables, `transform_scale_samples()`, `transform_prior_samples()`,
-  `plot_transformed_prior()`, and prior densities with `formula_scale`)
-  require the fitted design that the `formula_scale` attribute of a fitted
-  model carries. Standardization information without it (a `formula_scale`
-  list built by hand) stops with a `BayesTools_formula_transform_unavailable`
-  error instead of pairing coefficient names, which left the intercept and
-  the factor levels of terms such as the level slopes of `~ g + g:x` on the
-  standardized scale; pass `attr(fit, "formula_scale")`.
+  marginal tables, `plot_transformed_prior()`, and prior densities with
+  `formula_scale`) require the fitted design that the `formula_scale`
+  attribute of a fitted model carries. Standardization information without
+  it (a `formula_scale` list built by hand) stops with a
+  `BayesTools_formula_transform_unavailable` error instead of pairing
+  coefficient names, which left the intercept and the factor levels of terms
+  such as the level slopes of `~ g + g:x` on the standardized scale, and
+  random-effect SDs of standardized slopes unchanged; pass
+  `attr(fit, "formula_scale")`. `transform_scale_samples()` and
+  `transform_prior_samples()` take the fitted structure (design, log
+  intercept, random-effect SD structure) from `fit` also when
+  `formula_scale` is passed; a list built by hand left those random-effect
+  SDs standardized and transformed a log intercept as a linear one.
 - `runjags_estimates_table()` / `JAGS_estimates_table()` identify inclusion
   rows from the prior list and the formula metadata instead of the row label,
   and every inclusion row reports only the posterior inclusion probability
