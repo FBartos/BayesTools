@@ -168,9 +168,6 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     without_prior <- vapply(levels, .plot_data_samples_without_prior, logical(1))
     if(any(missing & !without_prior))
       stop("'samples' did not contain prior densities")
-    if(any(missing)){
-      .plot_data_warn_prior_curve_unavailable(parameter)
-    }
   }
 
 
@@ -216,6 +213,12 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
       out[[paste0(names(out_level)[j], i)]] <- out_level[[j]]
     }
 
+  }
+
+  # warn only once the posterior layers exist (draws without an atom
+  # declaration stop above, without a plot)
+  if(prior && any(vapply(prior_densities, is.null, logical(1)))){
+    .plot_data_warn_prior_curve_unavailable(parameter)
   }
 
   return(out)

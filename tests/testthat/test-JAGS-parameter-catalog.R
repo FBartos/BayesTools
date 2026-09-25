@@ -1862,6 +1862,23 @@ test_that("posterior plots draw the posterior alone when the draws have no prior
     parameter_catalog_resolve(parameter_catalog(fit), name)
   )
   expect_null(posterior_metadata(posterior, "prior_density"))
+
+  # Draws without an atom declaration stop before any plot is drawn, without
+  # announcing an omitted prior curve.
+  undeclared <- posterior
+  posterior_metadata(undeclared, "atoms") <- NULL
+  for(plot_fun in list(plot_posterior, plot_marginal)){
+    expect_no_warning(
+      expect_error(
+        plot_fun(stats::setNames(list(undeclared), name), name, prior = TRUE,
+                 plot_type = "ggplot"),
+        "Posterior atom status is unknown",
+        fixed = TRUE
+      ),
+      class = "BayesTools_prior_curve_unavailable"
+    )
+  }
+
   posterior_metadata(posterior, "atoms") <- posterior_atom_attribute()
   samples <- stats::setNames(list(posterior), name)
   message <- paste0(
