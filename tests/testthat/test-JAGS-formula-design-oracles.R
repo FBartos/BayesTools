@@ -9955,8 +9955,11 @@ test_that("transform_scale_samples unscales correlated random-effect SDs with co
       "mu__xREx__id_xRE_CORx_L[2,2]"
     ))
   )
+  # the standardization of x with the fitted design of ~ x (required by
+  # original-scale transforms); the random-effect SD structure under test is
+  # set by hand
   formula_scale <- list(
-    mu = list(mu_x = list(mean = 5, sd = 1))
+    mu = formula_scale_for_test(~ x, list(x = list(mean = 5, sd = 1)))
   )
   attr(formula_scale$mu, "random_effect_sd_leaves") <-
     .canonical_us_sd_leaves()
@@ -10537,8 +10540,11 @@ test_that("transform_scale_samples updates valid random-effect correlations draw
       "mu__xREx__id_xRE_CORx_L[2,2]"
     ))
   )
+  # the standardization of x with the fitted design of ~ x (required by
+  # original-scale transforms); the random-effect SD structure under test is
+  # set by hand
   formula_scale <- list(
-    mu = list(mu_x = list(mean = 5, sd = 1))
+    mu = formula_scale_for_test(~ x, list(x = list(mean = 5, sd = 1)))
   )
   attr(formula_scale$mu, "random_effect_sd_leaves") <-
     .canonical_us_sd_leaves()
@@ -10587,8 +10593,11 @@ test_that("transform_scale_samples clears invalid transformed random-effect corr
       "mu__xREx__id_xRE_CORx_L[2,2]"
     ))
   )
+  # the standardization of x with the fitted design of ~ x (required by
+  # original-scale transforms); the random-effect SD structure under test is
+  # set by hand
   formula_scale <- list(
-    mu = list(mu_x = list(mean = 5, sd = 1))
+    mu = formula_scale_for_test(~ x, list(x = list(mean = 5, sd = 1)))
   )
   attr(formula_scale$mu, "random_effect_sd_leaves") <-
     .canonical_us_sd_leaves()

@@ -400,19 +400,7 @@
 # @return A square transformation matrix
 .build_unscale_matrix <- function(term_names, formula_scale, prefix) {
 
-  design_spec <- attr(formula_scale, "unscale_design", exact = TRUE)
-  if(is.null(design_spec)){
-    .bt_formula_transform_stop(
-      paste0(
-        "Cannot transform the coefficients of formula parameter '", prefix,
-        "' to the original predictor scale: 'formula_scale' does not carry ",
-        "the fitted design of the formula. Use the 'formula_scale' attribute ",
-        "of the fitted model (attr(fit, \"formula_scale\")), which carries it."
-      ),
-      parameter = prefix,
-      reason    = "missing_fitted_design"
-    )
-  }
+  design_spec <- .bt_formula_scale_require_design(formula_scale, prefix)
   if(!.bt_formula_unscale_design_columns(design_spec, term_names, prefix)){
     stop(
       "Cannot transform the coefficients of formula parameter '", prefix,
@@ -432,6 +420,32 @@
     term_names = term_names,
     prefix = prefix
   )
+}
+
+# Helper: The fitted design that the formula-scale metadata of formula
+# parameter 'prefix' carry (attribute "unscale_design"). Every original-scale
+# transform of its coefficients and random-effect SDs requires it: the
+# formula_scale of a fitted model carries it together with the rest of the
+# fitted structure (log intercept, point terms, random-effect SD structure),
+# while standardization information built by hand carries none of it and
+# stops.
+.bt_formula_scale_require_design <- function(formula_scale, prefix){
+
+  design_spec <- attr(formula_scale, "unscale_design", exact = TRUE)
+  if(is.null(design_spec)){
+    .bt_formula_transform_stop(
+      paste0(
+        "Cannot transform the coefficients of formula parameter '", prefix,
+        "' to the original predictor scale: 'formula_scale' does not carry ",
+        "the fitted design of the formula. Use the 'formula_scale' attribute ",
+        "of the fitted model (attr(fit, \"formula_scale\")), which carries it."
+      ),
+      parameter = prefix,
+      reason    = "missing_fitted_design"
+    )
+  }
+
+  design_spec
 }
 
 
@@ -1095,6 +1109,11 @@
     )
   }
 
+  # random-effect SDs are transformed with the fitted random-effect structure,
+  # which standardization information without the fitted design lacks
+  if(length(random_sd_cols) > 0L){
+    .bt_formula_scale_require_design(formula_scale, prefix)
+  }
   posterior <- .apply_random_sd_unscale(posterior, random_sd_cols, formula_scale, prefix)
 
   return(posterior)

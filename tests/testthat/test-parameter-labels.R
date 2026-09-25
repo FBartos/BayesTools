@@ -1489,6 +1489,63 @@ test_that("original-scale transforms require the fitted design of the formula", 
   )
 })
 
+# A JAGS fit of `~ 1 + x + (1 + x || g)` with x standardized: random-effect SDs
+# of a random slope of a standardized predictor.
+.label_test_random_slope_fit <- function(){
+
+  syntax <- "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 4)\n}\n}"
+  set.seed(1)
+  data <- data.frame(
+    x = stats::rnorm(48, 3, 2),
+    g = factor(rep(1:4, each = 12))
+  )
+  data$y <- stats::rnorm(nrow(data))
+  suppressWarnings(JAGS_fit(
+    model_syntax       = syntax,
+    data               = list(y = data$y, N = nrow(data)),
+    formula_list       = list(mu = ~ 1 + x + (1 + x || g)),
+    formula_data_list  = list(mu = data),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1)),
+      x         = prior("normal", list(0, 1))
+    )),
+    formula_scale_list = list(mu = list(x = TRUE)),
+    formula_random_prior_list = list(mu = prior_random(
+      g = random_block(sd = prior("normal", list(0, 1), list(0, Inf)))
+    )),
+    chains = 1, adapt = 100, burnin = 100, sample = 200, silent = TRUE, seed = 3
+  ))
+}
+
+test_that("original-scale random-effect SDs require the fitted design", {
+
+  fit <- .label_test_random_slope_fit()
+  fitted_scale <- attr(fit, "formula_scale")
+  hand_built <- list(mu = list(mu_x = list(
+    mean = fitted_scale$mu$mu_x$mean,
+    sd   = fitted_scale$mu$mu_x$sd
+  )))
+  parameters <- c("mu__xREx__g_intercept", "mu__xREx__g_x")
+  mixed <- as_mixed_posteriors(fit, parameters = parameters)
+
+  # the SD columns alone: standardization information without the fitted
+  # design (and the random-effect structure it comes with) stops instead of
+  # leaving the SDs standardized
+  expect_error(
+    ensemble_estimates_table(mixed, parameters = parameters,
+                             transform_scaled = TRUE, formula_scale = hand_built),
+    class = "BayesTools_formula_transform_unavailable"
+  )
+  # the fitted object's formula_scale transforms them as the model table does
+  ensemble <- ensemble_estimates_table(mixed, parameters = parameters,
+                                       transform_scaled = TRUE,
+                                       formula_scale = fitted_scale)
+  scaled_table <- JAGS_estimates_table(fit, transform_scaled = TRUE,
+                                       remove_diagnostics = TRUE)
+  expect_equal(ensemble[, "Mean"], scaled_table[rownames(ensemble), "Mean"],
+               tolerance = 1e-10)
+})
+
 test_that("inference rows and Bayes factor warnings are rendered labels", {
 
   data <- data.frame(x = seq(-1, 1, length.out = 12), z = sin(seq_len(12)))
