@@ -807,6 +807,130 @@ test_that("parameter_mixed_posterior declares atoms from structure without a pri
   )
 })
 
+test_that("allocated SDs are point-free through their node dependencies unless gated", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+
+  # Three us() blocks with a scaled slope whose SDs are allocated: g splits a
+  # continuous scale prior (no inclusion gate), s splits the SD of a gate-only
+  # allocation with an inclusion gate, and t splits a scale prior with a
+  # point component (spike at 0).
+  set.seed(1)
+  data <- data.frame(
+    x = rep(seq(-1, 1, length.out = 12), 4) * 3 + 1,
+    g = factor(rep(c("A", "B", "C", "D"), each = 12)),
+    s = factor(rep(c("a", "b", "c", "d"), 12)),
+    t = factor(rep(rep(c("p", "q", "r", "u"), each = 3), 4))
+  )
+  data$y <- stats::rnorm(nrow(data))
+  sd_prior  <- prior("normal", list(0, 0.5), list(0, Inf))
+  dirichlet <- prior("dirichlet", list(alpha = c(1, 1)))
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax       = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 4)\n}\n}",
+    data               = list(y = data$y, N = nrow(data)),
+    formula_list       = list(mu = ~ 1 + x + us(1 + x | g) + us(1 + x | s) + us(1 + x | t)),
+    formula_data_list  = list(mu = data),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1)),
+      x         = prior("normal", list(0, 1))
+    )),
+    formula_random_prior_list = list(mu = prior_random(
+      random_variance_allocation(
+        name = "g_split", terms = "g", target = "sd_component", scale = "mean_variance",
+        sd = sd_prior, weights = dirichlet
+      ),
+      random_variance_allocation(
+        name = "s_gate", terms = c(s = "s"), sd = sd_prior,
+        inclusion = list(s = prior("beta", list(1, 1)))
+      ),
+      random_variance_allocation(
+        name = "s_split", parent = allocation_ref("s_gate", "s"), terms = "s",
+        target = "sd_component", scale = "mean_variance", weights = dirichlet
+      ),
+      random_variance_allocation(
+        name = "t_split", terms = "t", target = "sd_component", scale = "mean_variance",
+        sd = prior_mixture(list(prior("spike", list(0)), sd_prior), is_null = c(TRUE, FALSE)),
+        weights = dirichlet
+      )
+    )),
+    formula_scale = list(mu = list(x = TRUE)),
+    chains = 1, adapt = 100, burnin = 100, sample = 200, silent = TRUE, seed = 3
+  ))
+  catalog <- parameter_catalog(fit)
+  coordinates <- parameter_coordinates(fit)
+  nodes <- JAGS_deterministic_nodes(fit)
+
+  # The allocated SDs are derived coordinates of registered 'random_sd' nodes
+  # computed from the scale prior, the Dirichlet weights, and the gates.
+  sd_names <- paste0("mu__xREx__", c("g", "s", "t"), "_x")
+  expect_identical(
+    coordinates$convergence_role[match(sd_names, coordinates$coordinate_name)],
+    rep("derived", 3L)
+  )
+  expect_identical(nodes$family[match(sd_names, nodes$node)], rep("random_sd", 3L))
+  expect_identical(
+    nodes$dependencies[[match("mu__xREx__g_x", nodes$node)]],
+    c("mu__xRE_ALLOCx_g_split__allocation_sd",
+      "mu__xRE_ALLOCx_g_split__weight[1]", "mu__xRE_ALLOCx_g_split__weight[2]")
+  )
+  expect_true("mu__xRE_ALLOCx_s_gate__include_s_indicator" %in%
+                nodes$dependencies[[match("mu__xREx__s_x", nodes$node)]])
+  # a node is point-free when every dependency is: a continuous scale prior
+  # and Dirichlet weights are; an inclusion gate or a scale prior with a point
+  # component propagates
+  context <- BayesTools:::.bt_parameter_point_free_context(fit)
+  point_free <- vapply(sd_names, function(name){
+    BayesTools:::.bt_parameter_coordinate_point_free(context, name)
+  }, logical(1), USE.NAMES = FALSE)
+  expect_identical(point_free, c(TRUE, FALSE, FALSE))
+
+  # The original-scale correlation of each block mixes the LKJ primitive and
+  # both SDs: no prior density and no gate plan.
+  resolve <- function(block){
+    parameter_catalog_resolve(catalog, paste0("(mu) ", block, ": cor(intercept,x)"))
+  }
+  for(block in c("g", "s", "t")){
+    selection <- resolve(block)
+    expect_identical(selection$quantities$source_type, "composite", info = block)
+    expect_true(any(sd_names %in% selection$quantities$extraction_key[[1L]]$dependencies),
+                info = block)
+    expect_null(parameter_prior_density(fit, selection), info = block)
+    expect_null(parameter_gate_states(fit, selection), info = block)
+  }
+
+  # Ungated: declared atom-free, so it plots; without a prior density,
+  # prior = TRUE draws the posterior alone with the classed warning.
+  name <- "(mu) g: cor(intercept,x)"
+  mixed <- parameter_mixed_posterior(fit, resolve("g"))
+  expect_true(posterior_atoms_free(mixed))
+  expect_identical(posterior_metadata(mixed, "atoms")$source, "parameter_structure")
+  samples <- stats::setNames(list(mixed), name)
+  posterior_only <- plot_posterior(samples, name, prior = FALSE, plot_type = "ggplot")
+  expect_s3_class(posterior_only, "ggplot")
+  with_prior <- NULL
+  expect_warning(
+    with_prior <- plot_posterior(samples, name, prior = TRUE, plot_type = "ggplot"),
+    class = "BayesTools_prior_curve_unavailable"
+  )
+  expect_identical(ggplot2::ggplot_build(with_prior)$data,
+                   ggplot2::ggplot_build(posterior_only)$data)
+
+  # Gated SDs or a scale prior with a point component: the atom status stays
+  # undeclared and plots stop.
+  for(block in c("s", "t")){
+    mixed <- parameter_mixed_posterior(fit, resolve(block))
+    expect_null(posterior_metadata(mixed, "atoms"), info = block)
+    name <- paste0("(mu) ", block, ": cor(intercept,x)")
+    expect_error(
+      plot_posterior(stats::setNames(list(mixed), name), name, plot_type = "ggplot"),
+      "Posterior atom status is unknown",
+      fixed = TRUE,
+      info = block
+    )
+  }
+})
+
 test_that("parameter_mixed_posterior declares the point components of mixture priors", {
 
   skip_if_not_installed("rjags")

@@ -279,14 +279,23 @@ masses when there is a density; `parameter_gate_states()` also gives the
 prior masses of point components from the component weights); none when the
 density has no point mass or, without a density, when no coordinate of the
 quantity can take a point mass (e.g. an original-scale LKJ correlation with
-continuous SD priors); undeclared for unmonitored point states, composites
-of coordinates with point masses, and coordinates whose point structure is
-not classified (coordinates without a prior other than LKJ primitives,
-standardized random effects, and selection coordinates, e.g. the
-`_indicator`, `_inclusion`, and `_variable` coordinates of mixture priors);
-its `conditional = TRUE` keeps the draws of the quantity's inclusion
-event and uses the density restricted to that event (the gate atom drops
-out, atoms inside the event are renormalized).
+continuous SD priors). A coordinate cannot take one when its prior has no
+point component (continuous priors, Dirichlet weights), when it is an LKJ
+primitive or a standardized random effect, or when it is a generated
+deterministic node whose registry dependencies (`.bt_deterministic_nodes()`)
+all cannot: the SDs of an allocation without inclusion gates whose scale
+prior has no point component, so the original-scale correlations of an
+allocated `us()` block declare none; a gate, component indicator, or point
+component among the dependencies propagates. Atoms stay undeclared for
+unmonitored point states, composites of coordinates with point masses (e.g.
+original-scale correlations of a block with gated allocated SDs), and
+coordinates whose point structure is not classified (coordinates without a
+prior other than LKJ primitives, standardized random effects, generated
+deterministic nodes, and selection coordinates, e.g. the `_indicator`,
+`_inclusion`, and `_variable` coordinates of mixture priors).
+`parameter_mixed_posterior(conditional = TRUE)` keeps the draws of the
+quantity's inclusion event and uses the density restricted to that event (the
+gate atom drops out, atoms inside the event are renormalized).
 
 A product component of a combination (a `multiply_by` product, or an ordered
 level as its total times its Beta allocation share) with a structural route

@@ -338,6 +338,18 @@ old behaviour.
   quantities whose coordinates cannot take a point mass (e.g.
   original-scale `us()` correlations). The new `parameter_gate_states()`
   returns the per-draw gate and point states.
+- `parameter_mixed_posterior()` decides whether a generated deterministic
+  coordinate can take a point mass from its dependencies in the node registry
+  (`JAGS_deterministic_nodes()`): an allocated random-effect SD cannot when
+  its scale prior has no point component and its allocation chain has no
+  inclusion gate. The original-scale correlations of `us()` blocks with such
+  allocated SDs (e.g. an `sd_component` allocation of a continuous scale
+  prior) therefore declare no atoms and can be plotted; with `prior = TRUE`
+  they are drawn without a prior curve (class
+  `BayesTools_prior_curve_unavailable`), as they have no prior density.
+  Before, their atom status was undeclared and plots stopped with "Posterior
+  atom status is unknown". Correlations of blocks whose allocated SDs have an
+  inclusion gate or a scale prior with a point component stay undeclared.
 - `parameter_mixed_posterior()` declares the atoms of the coordinates of
   weight-function, publication-bias, and publication-bias mixture priors
   (the weights `omega`, `PET`, `PEESE`, and the p-hacking `alpha`, `pi_null`,

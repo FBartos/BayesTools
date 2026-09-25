@@ -50,28 +50,35 @@ coordinates), with masses the shares of those draws and locations that
 match the point masses of the prior density when it is available. A
 quantity whose prior density has no point mass declares no atoms, and so
 does a quantity without a prior density none of whose fitted coordinates
-can take a point mass (each owned by a continuous prior or a continuous
-generated primitive, e.g. the correlations of an LKJ block). Atoms remain
-undeclared (and posterior plots and Savage-Dickey ratios stop) when the
-point states are not in the draws (an unmonitored component indicator),
-when the quantity combines several coordinates of which some can take a
-point mass (e.g. original-scale random-effect SDs and correlations of a
-block with spike-and-slab SD priors), and when the point structure of a
-fitted coordinate is not classified: coordinates of priors that are
-neither continuous, point, mixture, spike-and-slab, nor selection
-priors, and coordinates without a prior other than LKJ primitives,
-standardized random effects, and selection coordinates (e.g.
-\code{add_parameters} and the \verb{_indicator}, \verb{_inclusion}, and \verb{_variable}
-coordinates of mixture priors). The coordinates of a weight-function,
-publication-bias, or publication-bias mixture prior (the weights
-\code{omega}, \code{PET}, \code{PEESE}, and the p-hacking \code{alpha}, \code{pi_null},
-\code{beta_null}, and \code{phack_kind}) are declared from the value each branch
-of the prior gives them: a constant weight (the reference bin, fixed
-weights, or 1 in a branch without a selection), 0 for \code{PET} and \code{PEESE}
-in branches without them and for the p-hacking parameters in branches
-without p-hacking, and the form code of \code{phack_kind}, with masses the
-shares of the draws whose branch (the \code{bias_indicator} of a mixture)
-gives the constant.}
+can take a point mass: each is owned by a continuous prior (including the
+Dirichlet weights of a variance allocation), is a continuous generated
+primitive (e.g. the correlations of an LKJ block), or is a generated
+deterministic node (\code{\link[=JAGS_deterministic_nodes]{JAGS_deterministic_nodes()}}) all of whose
+dependencies are such coordinates (e.g. the SDs of a variance allocation
+without inclusion gates whose scale prior has no point component, so the
+original-scale correlations of an allocated \code{us()} block declare no
+atoms). Atoms remain undeclared (and posterior plots and Savage-Dickey
+ratios stop) when the point states are not in the draws (an unmonitored
+component indicator), when the quantity combines several coordinates of
+which some can take a point mass (e.g. original-scale random-effect SDs
+and correlations of a block with spike-and-slab SD priors, and
+original-scale correlations of a block whose allocated SDs depend on an
+inclusion gate or on a scale prior with a point component), and when the
+point structure of a fitted coordinate is not classified: coordinates of
+priors that are neither continuous, point, mixture, spike-and-slab, nor
+selection priors, and coordinates without a prior other than LKJ
+primitives, standardized random effects, generated deterministic nodes,
+and selection coordinates (e.g. \code{add_parameters} and the \verb{_indicator},
+\verb{_inclusion}, and \verb{_variable} coordinates of mixture priors). The
+coordinates of a weight-function, publication-bias, or publication-bias
+mixture prior (the weights \code{omega}, \code{PET}, \code{PEESE}, and the p-hacking
+\code{alpha}, \code{pi_null}, \code{beta_null}, and \code{phack_kind}) are declared from the
+value each branch of the prior gives them: a constant weight (the
+reference bin, fixed weights, or 1 in a branch without a selection), 0
+for \code{PET} and \code{PEESE} in branches without them and for the p-hacking
+parameters in branches without p-hacking, and the form code of
+\code{phack_kind}, with masses the shares of the draws whose branch (the
+\code{bias_indicator} of a mixture) gives the constant.}
 \item{\code{undefined_draws}}{for quantities that are undefined on some
 fitted draws (the catalog \code{definedness}, e.g. variance proportions when
 no allocation component is active), the reason; those draws are omitted,

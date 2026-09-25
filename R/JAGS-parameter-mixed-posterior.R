@@ -19,28 +19,35 @@
 #'   match the point masses of the prior density when it is available. A
 #'   quantity whose prior density has no point mass declares no atoms, and so
 #'   does a quantity without a prior density none of whose fitted coordinates
-#'   can take a point mass (each owned by a continuous prior or a continuous
-#'   generated primitive, e.g. the correlations of an LKJ block). Atoms remain
-#'   undeclared (and posterior plots and Savage-Dickey ratios stop) when the
-#'   point states are not in the draws (an unmonitored component indicator),
-#'   when the quantity combines several coordinates of which some can take a
-#'   point mass (e.g. original-scale random-effect SDs and correlations of a
-#'   block with spike-and-slab SD priors), and when the point structure of a
-#'   fitted coordinate is not classified: coordinates of priors that are
-#'   neither continuous, point, mixture, spike-and-slab, nor selection
-#'   priors, and coordinates without a prior other than LKJ primitives,
-#'   standardized random effects, and selection coordinates (e.g.
-#'   `add_parameters` and the `_indicator`, `_inclusion`, and `_variable`
-#'   coordinates of mixture priors). The coordinates of a weight-function,
-#'   publication-bias, or publication-bias mixture prior (the weights
-#'   `omega`, `PET`, `PEESE`, and the p-hacking `alpha`, `pi_null`,
-#'   `beta_null`, and `phack_kind`) are declared from the value each branch
-#'   of the prior gives them: a constant weight (the reference bin, fixed
-#'   weights, or 1 in a branch without a selection), 0 for `PET` and `PEESE`
-#'   in branches without them and for the p-hacking parameters in branches
-#'   without p-hacking, and the form code of `phack_kind`, with masses the
-#'   shares of the draws whose branch (the `bias_indicator` of a mixture)
-#'   gives the constant.}
+#'   can take a point mass: each is owned by a continuous prior (including the
+#'   Dirichlet weights of a variance allocation), is a continuous generated
+#'   primitive (e.g. the correlations of an LKJ block), or is a generated
+#'   deterministic node ([JAGS_deterministic_nodes()]) all of whose
+#'   dependencies are such coordinates (e.g. the SDs of a variance allocation
+#'   without inclusion gates whose scale prior has no point component, so the
+#'   original-scale correlations of an allocated `us()` block declare no
+#'   atoms). Atoms remain undeclared (and posterior plots and Savage-Dickey
+#'   ratios stop) when the point states are not in the draws (an unmonitored
+#'   component indicator), when the quantity combines several coordinates of
+#'   which some can take a point mass (e.g. original-scale random-effect SDs
+#'   and correlations of a block with spike-and-slab SD priors, and
+#'   original-scale correlations of a block whose allocated SDs depend on an
+#'   inclusion gate or on a scale prior with a point component), and when the
+#'   point structure of a fitted coordinate is not classified: coordinates of
+#'   priors that are neither continuous, point, mixture, spike-and-slab, nor
+#'   selection priors, and coordinates without a prior other than LKJ
+#'   primitives, standardized random effects, generated deterministic nodes,
+#'   and selection coordinates (e.g. `add_parameters` and the `_indicator`,
+#'   `_inclusion`, and `_variable` coordinates of mixture priors). The
+#'   coordinates of a weight-function, publication-bias, or publication-bias
+#'   mixture prior (the weights `omega`, `PET`, `PEESE`, and the p-hacking
+#'   `alpha`, `pi_null`, `beta_null`, and `phack_kind`) are declared from the
+#'   value each branch of the prior gives them: a constant weight (the
+#'   reference bin, fixed weights, or 1 in a branch without a selection), 0
+#'   for `PET` and `PEESE` in branches without them and for the p-hacking
+#'   parameters in branches without p-hacking, and the form code of
+#'   `phack_kind`, with masses the shares of the draws whose branch (the
+#'   `bias_indicator` of a mixture) gives the constant.}
 #'   \item{`undefined_draws`}{for quantities that are undefined on some
 #'   fitted draws (the catalog `definedness`, e.g. variance proportions when
 #'   no allocation component is active), the reason; those draws are omitted,
@@ -343,9 +350,13 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 #   the shares of those draws (checked against the point masses of the prior
 #   density when it is available);
 # - a quantity whose prior density has no point mass, or, without a prior
-#   density, none of whose fitted coordinates can take a point mass, has none;
+#   density, none of whose fitted coordinates can take a point mass
+#   (.bt_parameter_point_free(), through the node registry for generated
+#   deterministic coordinates), has none;
 # - otherwise (the point states are not in the draws, or a composite of
-#   coordinates with point masses) the atom status is undeclared (NULL).
+#   coordinates with point masses, e.g. an original-scale correlation of a
+#   block whose allocated SDs have inclusion gates) the atom status is
+#   undeclared (NULL).
 .bt_parameter_mixed_posterior_atoms <- function(fit, quantity, prior_density,
                                                 plan, states, keep){
 
@@ -413,38 +424,116 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 }
 
 # Whether none of the fitted coordinates a catalog quantity is computed from
-# (the dependencies of its extraction key) can take a point mass: each is
-# owned by a prior-list entry without a point component, or is a generated
-# continuous primitive without a prior-list entry (the Beta primitives of an
-# LKJ correlation and standardized random effects). Structural and indicator
-# coordinates, and coordinates without either structure, can.
+# (the dependencies of its extraction key) can take a point mass
+# (.bt_parameter_coordinate_point_free()).
 .bt_parameter_point_free <- function(fit, quantity){
 
   dependencies <- quantity$extraction_key[[1L]]$dependencies
   if(length(dependencies) == 0L){
     return(FALSE)
   }
-  coordinates <- parameter_coordinates(fit)
-  rows <- match(dependencies, coordinates$coordinate_name)
-  if(anyNA(rows) ||
-     any(!coordinates$convergence_role[rows] %in% c("sampled", "derived"))){
-    return(FALSE)
-  }
-  prior_list <- attr(fit, "prior_list", exact = TRUE)
-  for(i in seq_along(dependencies)){
-    owner <- .bt_parameter_coordinate_owner(prior_list, dependencies[[i]])
-    if(!is.null(owner)){
-      if(!isFALSE(.bt_prior_has_point_component(prior_list[[owner]]))){
-        return(FALSE)
-      }
-    }else if(!coordinates$role[rows[i]] %in%
-             c("random_correlation_coordinate", "random_latent") ||
-             !identical(coordinates$convergence_role[rows[i]], "sampled")){
+  context <- .bt_parameter_point_free_context(fit)
+  for(dependency in dependencies){
+    if(!.bt_parameter_coordinate_point_free(context, dependency)){
       return(FALSE)
     }
   }
 
   TRUE
+}
+
+# The structure .bt_parameter_coordinate_point_free() reads: the fit, its
+# coordinates and prior list, and the statuses decided so far (the node
+# registry is resolved on first use).
+.bt_parameter_point_free_context <- function(fit){
+
+  context <- new.env(parent = emptyenv())
+  context$fit         <- fit
+  context$coordinates <- parameter_coordinates(fit)
+  context$prior_list  <- attr(fit, "prior_list", exact = TRUE)
+  context$status      <- list()
+  context
+}
+
+# Whether a fitted coordinate cannot take a point mass, from the structure of
+# the fit:
+# - a coordinate owned by a prior-list entry cannot when the prior has no
+#   point component (continuous priors, the Dirichlet weights of a variance
+#   allocation);
+# - a coordinate of a generated deterministic node of the registry
+#   (.bt_deterministic_nodes(), e.g. the allocated SDs of a variance
+#   allocation) cannot when none of the node's dependencies can: an inclusion
+#   gate, a component indicator, or a scale source with a point component
+#   among them propagates its point states to the node;
+# - a generated continuous primitive without a prior-list entry (the Beta
+#   primitives of an LKJ correlation and standardized random effects) cannot.
+# Indicator, structural, and auxiliary coordinates, coordinates missing from
+# the fitted coordinates, and coordinates with none of these structures can.
+# 'context' is a .bt_parameter_point_free_context().
+.bt_parameter_coordinate_point_free <- function(context, coordinate){
+
+  status <- context$status[[coordinate]]
+  if(!is.null(status)){
+    # NA: the coordinate is on the dependency path being decided (a cycle)
+    return(isTRUE(status))
+  }
+  context$status[[coordinate]] <- NA
+  status <- .bt_parameter_coordinate_point_free_structure(context, coordinate)
+  context$status[[coordinate]] <- status
+
+  status
+}
+
+.bt_parameter_coordinate_point_free_structure <- function(context, coordinate){
+
+  coordinates <- context$coordinates
+  row <- match(coordinate, coordinates$coordinate_name)
+  if(is.na(row) ||
+     !coordinates$convergence_role[row] %in% c("sampled", "derived")){
+    return(FALSE)
+  }
+  owner <- .bt_parameter_coordinate_owner(context$prior_list, coordinate)
+  if(!is.null(owner)){
+    return(isFALSE(.bt_prior_has_point_component(context$prior_list[[owner]])))
+  }
+  node <- .bt_parameter_coordinate_node(context, coordinate)
+  if(!is.null(node)){
+    if(length(node$dependencies) == 0L){
+      # a node without dependencies is a constant
+      return(FALSE)
+    }
+    for(dependency in node$dependencies){
+      if(!.bt_parameter_coordinate_point_free(context, dependency)){
+        return(FALSE)
+      }
+    }
+    return(TRUE)
+  }
+
+  coordinates$role[row] %in% c("random_correlation_coordinate", "random_latent") &&
+    identical(coordinates$convergence_role[row], "sampled")
+}
+
+# The generated deterministic node of the fit that defines 'coordinate' (NULL
+# when none does).
+.bt_parameter_coordinate_node <- function(context, coordinate){
+
+  if(is.null(context$nodes)){
+    nodes <- unname(.bt_deterministic_nodes_fit(context$fit))
+    context$nodes <- nodes
+    context$node_index <- stats::setNames(
+      rep(seq_along(nodes), vapply(nodes, function(node){
+        length(node$coordinates)
+      }, integer(1))),
+      unlist(lapply(nodes, function(node) node$coordinates), use.names = FALSE)
+    )
+  }
+  index <- context$node_index[coordinate]
+  if(is.na(index)){
+    return(NULL)
+  }
+
+  context$nodes[[index]]
 }
 
 # The prior-list entry whose fitted coordinates include 'coordinate' (NULL
