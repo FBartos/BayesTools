@@ -859,7 +859,9 @@ test_that("estimates tables carry the quantity and label parts of every row", {
   expect_identical(attr(subset, "quantities")$row, rownames(subset))
   expect_identical(attr(update(table, remove_parameters = "(mu) g[dif: lo]"), "quantities")$row,
                    setdiff(rownames(table), "(mu) g[dif: lo]"))
-  # the ensemble route carries the parts of its rows
+  # the ensemble route carries the parts of its rows, and the transformed
+  # levels name the catalog level quantities that hold their values, as the
+  # model table does
   mixed <- as_mixed_posteriors(fit, parameters = names(attr(fit, "prior_list")))
   ensemble <- ensemble_estimates_table(mixed, parameters = names(mixed),
                                        transform_factors = TRUE)
@@ -867,6 +869,12 @@ test_that("estimates tables carry the quantity and label parts of every row", {
     parameter_labels(attr(ensemble, "quantities"), style = "table"),
     rownames(ensemble)
   )
+  expect_identical(attr(ensemble, "quantities")$row, rownames(table))
+  expect_identical(attr(ensemble, "quantities")$quantity_id, quantities$quantity_id)
+  expect_true(all(nzchar(attr(ensemble, "quantities")$quantity_id)))
+  mid <- parameter_catalog_resolve(catalog, "mu_g[mid]")
+  expect_equal(ensemble["(mu) g[dif: mid]", "Mean"],
+               mean(as.matrix(parameter_draws(fit, mid))), tolerance = 1e-12)
 
   # rows whose values 'transformations' changed hold no catalog quantity
   # (as the draws of posterior_transform()): their label parts record the
@@ -2058,6 +2066,13 @@ test_that("publication-weight bin rows are catalog selectors of their bins", {
       expect_equal(mean(draws[, index_form]), table[row, "Mean"],
                    tolerance = 1e-10, info = row)
     }
+    # the mixed-posterior columns name the catalog bins holding their values
+    mixed <- as_mixed_posteriors(fit, parameters = names(attr(fit, "prior_list")))
+    ensemble <- ensemble_estimates_table(mixed, parameters = names(mixed))
+    model_ids <- attr(table, "quantities")$quantity_id[match(rows, rownames(table))]
+    ensemble_ids <- attr(ensemble, "quantities")$quantity_id[match(rows, rownames(ensemble))]
+    expect_identical(ensemble_ids, model_ids)
+    expect_true(all(nzchar(ensemble_ids)))
   }
 
   # a one-sided weight function

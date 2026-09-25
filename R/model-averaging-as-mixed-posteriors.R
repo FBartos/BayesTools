@@ -156,7 +156,16 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
 
     # the fitted coordinate and label parts of every column, describing the
-    # draws on the scale they hold
+    # draws on the scale they hold (columns that are a fitted coordinate name
+    # the catalog quantity of that coordinate)
+    verbatim <- .bt_meta_get(out[[temp_parameter]], "quantities")
+    if(!is.null(verbatim)){
+      out[[temp_parameter]] <- .bt_meta_set(
+        out[[temp_parameter]],
+        "quantities",
+        .bt_mixed_coordinate_quantity_ids(verbatim, catalog)
+      )
+    }
     if(is.null(.bt_meta_get(out[[temp_parameter]], "quantities"))){
       out[[temp_parameter]] <- .bt_mixed_set_quantities(
         out[[temp_parameter]],

@@ -483,6 +483,7 @@
   transformed_samples <- .bt_meta_set(transformed_samples, "support", NULL)
   transformed_samples <- .bt_meta_set(transformed_samples, "atoms", NULL)
   transformed_samples <- .bt_meta_set(transformed_samples, "quantities", transformed_quantities)
+  transformed_samples <- .bt_meta_set(transformed_samples, "level_quantities", NULL)
   # the level names of every factor of the term (one factor: its levels, the
   # cell names of the transformed columns)
   attr(transformed_samples, "level_names")       <- if(length(design_info[["level_names"]]) == 1L){
@@ -524,8 +525,9 @@
 
 # The column table of transformed factor levels: each level cell is the
 # linear combination of the coefficient columns' fitted coordinates given by
-# its design row. NULL when the coefficient columns do not identify their
-# fitted coordinates.
+# its design row, and the catalog quantity of that level cell (declared by the
+# producer of the draws in 'level_quantities') holds its values. NULL when the
+# coefficient columns do not identify their fitted coordinates.
 .transformed_factor_quantities <- function(coefficient_samples, level_parts,
                                            design, columns){
 
@@ -545,9 +547,19 @@
      length(level_parts) != nrow(design)){
     return(NULL)
   }
+  level_quantities <- .bt_meta_get(coefficient_samples, "level_quantities")
+  quantity_ids <- rep("", nrow(design))
+  if(!is.null(level_quantities)){
+    cells <- .bt_label(
+      .bt_label_parts_update(level_parts, transformation = "none"),
+      style = "selector"
+    )
+    rows <- match(cells, level_quantities$column)
+    quantity_ids[!is.na(rows)] <- level_quantities$quantity_id[rows[!is.na(rows)]]
+  }
   .bt_draws_quantity_table(
     columns      = columns,
-    quantity_ids = rep("", nrow(design)),
+    quantity_ids = quantity_ids,
     dependencies = lapply(seq_len(nrow(design)), function(cell){
       coordinates[design[cell, ] != 0]
     }),

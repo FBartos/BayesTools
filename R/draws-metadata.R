@@ -187,10 +187,19 @@
     },
     original_scale_quantities = function(value){
       .bt_meta_quantities_reason(value)
+    },
+    level_quantities = function(value){
+      .bt_meta_quantities_reason(value)
     }
   )
 }
 
+# The internal 'level_quantities' field of factor draws holds the catalog
+# quantities of the level cells of the term (a column table whose columns are
+# the cells' canonical names), declared by the producers of mixed posteriors
+# so that the transformed levels (transform_factor_samples()) name the catalog
+# quantity holding their values.
+#
 # The 'quantities' field: one row per draw column (the element itself for
 # vector draws) with the column name, the catalog quantity id ("" for columns
 # that are not catalog quantities), the fitted coordinates the column is a
@@ -267,7 +276,7 @@
   "posterior_densities", "posterior_ordinate", "posterior_ordinates",
   "formula_parameter", "log_intercept", "formula_scale", "transform_scaled",
   "condition", "linear_weights", "linear_offset", "joint_prior_transformation",
-  "quantities", "original_scale_quantities"
+  "quantities", "original_scale_quantities", "level_quantities"
 )
 
 .bt_meta_fields <- function(){

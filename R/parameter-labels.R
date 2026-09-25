@@ -1261,6 +1261,9 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
                                      catalog = NULL, original_scale = FALSE){
 
   tables <- .bt_mixed_quantity_tables(parameter, prior, columns, catalog)
+  x <- .bt_meta_set(x, "level_quantities", .bt_mixed_level_quantities(
+    parameter, prior, catalog
+  ))
   if(original_scale){
     return(.bt_meta_set(x, "quantities", tables$original))
   }
@@ -1275,6 +1278,75 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
     )
   }
   x
+}
+
+# The catalog quantities of the level cells of a fixed factor prior (NULL for
+# other priors, without a catalog, or when the catalog has no level quantity):
+# a column table named by the cells' canonical names, with the catalog ids
+# and extraction dependencies. The transformed levels of the draws take their
+# quantity ids from it (.transformed_factor_quantities()).
+.bt_mixed_level_quantities <- function(parameter, prior, catalog){
+
+  factor_prior <- .bt_parameter_catalog_factor_prior(parameter, prior)
+  if(is.null(catalog) || is.null(factor_prior) ||
+     is.null(attr(factor_prior, "factor_design", exact = TRUE))){
+    return(NULL)
+  }
+  cells <- .bt_label_parts_factor(
+    parameter         = parameter,
+    prior             = factor_prior,
+    formula_parameter = .bt_label_formula_parameter(prior)
+  )$cells
+  ids <- .bt_draws_quantity_ids(cells, catalog)
+  found <- nzchar(ids)
+  if(!any(found)){
+    return(NULL)
+  }
+  keys <- catalog$quantities$extraction_key[match(ids[found], catalog$quantities$quantity_id)]
+  .bt_draws_quantity_table(
+    columns      = .bt_label(cells[found], style = "selector"),
+    quantity_ids = ids[found],
+    dependencies = lapply(keys, function(key) as.character(key$dependencies)),
+    weights      = lapply(keys, function(key){
+      if(identical(key$type, "factor_level")) as.numeric(key$weights) else rep(1, length(key$dependencies))
+    }),
+    label_parts  = cells[found]
+  )
+}
+
+# The catalog quantity ids of columns declared without one that are a fitted
+# coordinate (one dependency with weight 1) of which the catalog has exactly
+# one quantity that is that coordinate (e.g. the weight-function bins and the
+# PET and PEESE terms): the quantity holds the same values.
+.bt_mixed_coordinate_quantity_ids <- function(quantities, catalog){
+
+  if(is.null(quantities) || is.null(catalog)){
+    return(quantities)
+  }
+  catalog_quantities <- catalog$quantities[
+    catalog$quantities$provider == "BayesTools" & !catalog$quantities$internal, ,
+    drop = FALSE
+  ]
+  coordinate <- vapply(catalog_quantities$extraction_key, function(key){
+    if(is.list(key) && identical(key$type, "coordinate") &&
+       length(key$dependencies) == 1L){
+      key$dependencies[[1L]]
+    }else{
+      NA_character_
+    }
+  }, character(1))
+  for(i in which(!nzchar(quantities$quantity_id))){
+    dependencies <- quantities$dependencies[[i]]
+    if(length(dependencies) != 1L || !isTRUE(quantities$weights[[i]] == 1)){
+      next
+    }
+    rows <- which(coordinate %in% dependencies)
+    if(length(rows) == 1L){
+      quantities$quantity_id[[i]] <- catalog_quantities$quantity_id[[rows]]
+    }
+  }
+
+  quantities
 }
 
 # Draws whose columns 'transformed' were transformed to the original
