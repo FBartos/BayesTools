@@ -276,38 +276,21 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   NA_character_
 }
-.plot_prior_factor_format_level_names <- function(level_names){
+# The legend label of each level: the rendered plot label its components
+# carry ('level_legend', the level text of the level cell), otherwise the
+# level name itself.
+.plot_prior_factor_level_legends <- function(plot_data, component_levels,
+                                             level_names_raw){
 
-  if(length(level_names) == 0L){
-    return(character())
-  }
-
-  level_labels <- level_names
-  dif_matches  <- gregexpr("[dif:", level_labels, fixed = TRUE)
-  has_dif       <- vapply(dif_matches, function(x) x[1] != -1L, logical(1))
-  multi_dif     <- vapply(dif_matches, function(x) x[1] != -1L && length(x) > 1, logical(1))
-  if(any(multi_dif)){
-    level_labels[multi_dif] <- gsub("__xXx__", ":", level_labels[multi_dif], fixed = TRUE)
-  }
-  if(any(has_dif & !multi_dif)){
-    single_dif <- has_dif & !multi_dif
-    level_labels[single_dif] <- substr(
-      level_labels[single_dif],
-      regexpr("[dif:", level_labels[single_dif], fixed = TRUE) + 5,
-      regexpr("]", level_labels[single_dif], fixed = TRUE) - 1
-    )
-  }
-  no_dif <- !has_dif
-  if(any(no_dif & grepl("[", level_labels, fixed = TRUE))){
-    bracket_names <- no_dif & grepl("[", level_labels, fixed = TRUE)
-    level_labels[bracket_names] <- substr(
-      level_labels[bracket_names],
-      regexpr("[", level_labels[bracket_names], fixed = TRUE) + 1,
-      regexpr("]", level_labels[bracket_names], fixed = TRUE) - 1
-    )
-  }
-
-  level_labels
+  legends <- vapply(plot_data, function(component){
+    legend <- attr(component, "level_legend", exact = TRUE)
+    if(is.character(legend) && length(legend) == 1L && !is.na(legend)) legend else NA_character_
+  }, character(1))
+  vapply(level_names_raw, function(level_name){
+    level_legends <- legends[!is.na(component_levels) & component_levels == level_name &
+                               !is.na(legends)]
+    if(length(level_legends) > 0L) level_legends[[1L]] else level_name
+  }, character(1), USE.NAMES = FALSE)
 }
 .plot_prior_factor_normalize_data <- function(plot_data){
 
@@ -316,7 +299,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   component_levels <- vapply(plot_data, .plot_prior_factor_component_level_name, character(1))
   level_names_raw  <- unique(component_levels[is_factor & !is.na(component_levels)])
-  level_names      <- .plot_prior_factor_format_level_names(level_names_raw)
+  level_names      <- .plot_prior_factor_level_legends(plot_data, component_levels, level_names_raw)
 
   plot_data <- lapply(seq_along(plot_data), function(i){
     component <- plot_data[[i]]

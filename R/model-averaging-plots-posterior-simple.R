@@ -6,11 +6,32 @@
     return(NULL)
   }
 
+  # The posterior of an ordered factor is plotted on its levels, without the
+  # level that the contrast design fixes at zero; its priors follow.
+  sample_metadata <- samples[[parameter]]
+  structural_levels <- NULL
+  if(isTRUE(attr(sample_metadata, "ordered", exact = TRUE)) &&
+     !inherits(sample_metadata, "mixed_posteriors.ordered_transformed")){
+    sample_metadata <- transform_factor_samples(samples)[[parameter]]
+    design <- as.matrix(.factor_term_design_from_metadata(sample_metadata)$design)
+    structural_levels <- rowSums(design != 0) == 0
+  }
   factor_weights <- .prior_factor_level_weight_matrix(
-    sample_metadata = samples[[parameter]],
+    sample_metadata = sample_metadata,
     parameter       = parameter,
     samples         = samples
   )
+  level_legends <- .bt_label(
+    .bt_draws_label_parts(sample_metadata, parameter),
+    style = "plot"
+  )
+  if(length(level_legends) != nrow(factor_weights)){
+    level_legends <- rownames(factor_weights)
+  }
+  if(!is.null(structural_levels) && length(structural_levels) == nrow(factor_weights)){
+    factor_weights <- factor_weights[!structural_levels, , drop = FALSE]
+    level_legends <- level_legends[!structural_levels]
+  }
 
   plot_data <- list()
   for(level_i in seq_len(nrow(factor_weights))){
@@ -32,6 +53,7 @@
     )
 
     for(data_i in seq_along(level_plot_data)){
+      attr(level_plot_data[[data_i]], "level_legend") <- level_legends[level_i]
       plot_data[[paste0("level", level_i, "_", names(level_plot_data)[data_i])]] <- level_plot_data[[data_i]]
     }
   }
@@ -52,6 +74,10 @@
 .plot_data_prior_should_use_context <- function(samples, parameter, transform_scaled, prior_list){
 
   if(.plot_data_prior_has_condition(samples, parameter)){
+    return(TRUE)
+  }
+  # the levels of an ordered factor have different priors
+  if(any(vapply(prior_list, is.prior.ordered, logical(1)))){
     return(TRUE)
   }
 

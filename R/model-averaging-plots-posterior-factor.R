@@ -230,6 +230,9 @@
   }
 
   samples    <- samples[[parameter]]
+  # the legend label of every level: the level text of its level cell
+  level_parts   <- .bt_draws_label_parts(samples, parameter)
+  level_legends <- .bt_label(level_parts, style = "plot")
 
   # Declared posterior atoms are authoritative (as for simple parameters):
   # each level uses the point masses and continuous mass of its own column.
@@ -274,7 +277,8 @@
         parameter   = parameter,
         samples     = samples,
         sample_name = colnames(samples_density)[i],
-        level_i     = i
+        level_i     = i,
+        level_parts = level_parts[[i]]
       )
       posterior_density <- .posterior_density_for_method(
         .posterior_density_from_sources(
@@ -313,6 +317,7 @@
             attr(temp_points, "y_range")    <- c(0, max(y_points_i[point_i]))
             attr(temp_points, "level")      <- i
             attr(temp_points, "level_name") <- colnames(samples_density)[i]
+            attr(temp_points, "level_legend") <- level_legends[i]
 
             out[[paste0("density", i, "_points", point_i)]] <- temp_points
           }
@@ -396,6 +401,7 @@
       attr(out_den, "y_range")    <- c(0, max(y_den))
       attr(out_den, "level")      <- i
       attr(out_den, "level_name") <- colnames(samples_density)[i]
+      attr(out_den, "level_legend") <- level_legends[i]
       if(!is.null(posterior_density)){
         attr(out_den, "posterior_density_method") <- posterior_density[["method"]]
         attr(out_den, "posterior_density_diagnostics") <- posterior_density[["diagnostics"]]
@@ -436,6 +442,7 @@
         point_data <- level_point_data[[level]][[point_i]]
         attr(point_data, "level")      <- level
         attr(point_data, "level_name") <- colnames(samples)[level]
+        attr(point_data, "level_legend") <- level_legends[level]
         level_points[[paste0("points", level, "_", point_i)]] <- point_data
       }
     }
@@ -467,6 +474,10 @@
   attributes(out) <- c(attributes(out), attributes_kept)
   out <- .bt_meta_refresh(out)
   out <- .bt_meta_set(out, "atoms", NULL)
+  quantities <- .bt_draws_quantities(samples)
+  if(!is.null(quantities)){
+    out <- .bt_meta_set(out, "quantities", quantities[keep, , drop = FALSE])
+  }
   for(name in c("level_names", "factor_cell_names")){
     value <- attr(samples, name, exact = TRUE)
     if(!is.null(value) && !is.list(value) && length(value) == length(keep)){
@@ -537,25 +548,27 @@
   out
 }
 
-.plot_data_factor_density_aliases <- function(parameter, samples, sample_name, level_i){
+# Names under which a precomputed posterior density of one factor level may be
+# stored: the column name, and the level text of its level cell (per factor
+# and joined over factors, as is and after 'dif: ' for transformed contrast
+# levels), bare and after the parameter, from the level's label parts.
+.plot_data_factor_density_aliases <- function(parameter, samples, sample_name, level_i,
+                                              level_parts = NULL){
 
-  bracket_matches <- regmatches(sample_name, gregexpr("\\[[^]]+\\]", sample_name))[[1]]
-  bracket_aliases <- gsub("^\\[|\\]$", "", bracket_matches)
   aliases <- .posterior_density_aliases(sample_name)
 
-  if(length(bracket_aliases) > 0L){
+  if(!is.null(level_parts) && length(level_parts$levels) > 0L){
+    level_text <- unname(level_parts$levels)
+    if(identical(level_parts$transformation, "dif")){
+      level_text <- c(level_text, paste0("dif: ", level_text))
+    }
+    cell_text <- paste0(unname(level_parts$levels), collapse = ", ")
     aliases <- .posterior_density_aliases(
       aliases,
-      bracket_aliases,
-      paste0(parameter, "[", bracket_aliases, "]")
-    )
-  }
-  if(length(bracket_aliases) > 1L){
-    cell_alias <- paste0(bracket_aliases, collapse = ", ")
-    aliases <- .posterior_density_aliases(
-      aliases,
-      cell_alias,
-      paste0(parameter, "[", cell_alias, "]")
+      level_text,
+      paste0(parameter, "[", level_text, "]"),
+      cell_text,
+      paste0(parameter, "[", cell_text, "]")
     )
   }
 

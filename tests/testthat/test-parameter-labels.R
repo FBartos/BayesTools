@@ -826,3 +826,114 @@ test_that("marginal names, rows, and warnings are rendered labels of the margina
     paste0("x:g[", expected_names, "]: check this level")
   )
 })
+
+# The labels of the discrete (legend) scales of a ggplot.
+.label_test_legends <- function(plot){
+
+  built  <- ggplot2::ggplot_build(plot)
+  scales <- Filter(function(scale) inherits(scale, "ScaleDiscrete"), built$plot$scales$scales)
+  unique(lapply(scales, function(scale) scale$get_labels()))
+}
+
+test_that("factor plot legends are the level text of each level cell", {
+
+  legends <- function(samples, parameter){
+    plot_data <- .plot_data_samples.factor(
+      samples,
+      parameter                = parameter,
+      n_points                 = 64,
+      transformation           = NULL,
+      transformation_arguments = NULL,
+      transformation_settings  = FALSE
+    )
+    .plot_prior_factor_normalize_data(plot_data)$level_names
+  }
+
+  # treatment x treatment: every cell names the levels of both factors
+  data <- .label_test_data(c("a", "b", "c"), "treatment")
+  data$g <- factor(rep(c("a", "b", "c"), length.out = nrow(data)))
+  data$h <- factor(rep(c("u", "v", "w"), each = 3L, length.out = nrow(data)))
+  fit <- .label_test_fit(
+    ~ g * h,
+    data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      g         = .label_test_factor_prior("treatment"),
+      h         = .label_test_factor_prior("treatment"),
+      "g:h"     = .label_test_factor_prior("treatment")
+    ),
+    n = 200L
+  )
+  mixed <- as_mixed_posteriors(fit, parameters = names(attr(fit, "prior_list")))
+  cells <- c("b, v", "c, v", "b, w", "c, w")
+  expect_identical(legends(mixed, "mu_g__xXx__h"), cells)
+  expect_identical(
+    .label_test_legends(plot_posterior(mixed, "mu_g__xXx__h", plot_type = "ggplot")),
+    list(cells)
+  )
+  expect_identical(
+    .label_test_legends(plot_posterior(mixed, "mu_g__xXx__h", plot_type = "ggplot", prior = TRUE)),
+    list(cells)
+  )
+
+  # mean-difference levels: the level text without the transformation
+  # marker or padding, with brackets and braces kept whole
+  data <- .label_test_data(c("x]y", "[z]", "w{1}"), "meandif", h_levels = c("u", "v"))
+  fit <- .label_test_fit(
+    ~ g * h,
+    data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      g         = .label_test_factor_prior("meandif"),
+      h         = .label_test_factor_prior("meandif"),
+      "g:h"     = .label_test_factor_prior("meandif")
+    ),
+    n = 200L
+  )
+  mixed <- as_mixed_posteriors(fit, parameters = names(attr(fit, "prior_list")))
+  transformed <- transform_factor_samples(mixed)
+  levels <- c("x]y", "[z]", "w{1}")
+  cells  <- c("x]y, u", "[z], u", "w{1}, u", "x]y, v", "[z], v", "w{1}, v")
+  expect_identical(legends(mixed, "mu_g"), levels)
+  expect_identical(legends(transformed, "mu_g"), levels)
+  expect_identical(legends(transformed, "mu_g__xXx__h"), cells)
+  expect_identical(
+    .label_test_legends(plot_posterior(
+      mixed, "mu_g__xXx__h", plot_type = "ggplot", transform_factors = TRUE
+    )),
+    list(cells)
+  )
+  expect_identical(
+    .label_test_legends(plot_posterior(
+      mixed, "mu_g", plot_type = "ggplot", transform_factors = TRUE, prior = TRUE
+    )),
+    list(levels)
+  )
+})
+
+test_that("ordered factors plot their level priors with the posterior", {
+
+  data <- .label_test_data(c("lo", "mid", "hi"), "ordered")
+  fit <- .label_test_fit(
+    ~ 1 + g,
+    data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      g         = .label_test_factor_prior("ordered")
+    ),
+    n = 200L
+  )
+  mixed <- as_mixed_posteriors(fit, parameters = names(attr(fit, "prior_list")))
+  # the first level is fixed at zero by the ordered contrast; the priors are
+  # drawn for the plotted levels
+  expect_identical(
+    .label_test_legends(plot_posterior(mixed, "mu_g", plot_type = "ggplot", prior = TRUE)),
+    list(c("mid", "hi"))
+  )
+  expect_identical(
+    .label_test_legends(plot_posterior(
+      mixed, "mu_g", plot_type = "ggplot", prior = TRUE, transform_factors = TRUE
+    )),
+    list(c("mid", "hi"))
+  )
+})

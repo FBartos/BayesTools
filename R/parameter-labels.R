@@ -757,6 +757,13 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   }
   formula_parameter <- .bt_label_formula_parameter(x)
 
+  # factor draws: the level cells and coefficients their factor metadata
+  # names (columns are matched to the rendered selectors, never parsed)
+  factor_parts <- .bt_draws_factor_column_parts(x, name, columns, formula_parameter)
+  if(!is.null(factor_parts)){
+    return(factor_parts)
+  }
+
   # columns named after the formula parameter keep their term text
   lapply(columns, function(column){
     if(nzchar(formula_parameter) &&
@@ -766,6 +773,46 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
       .bt_label_parts(column, selector = column)
     }
   })
+}
+
+# Label parts of the columns of factor draws without 'quantities' metadata
+# (draws assembled outside the BayesTools producers): the level cells
+# (as level effects or transformed contrast levels) and contrast coefficients
+# of the factor metadata the draws carry, or of a factor prior in their
+# 'prior_list', whose selectors are exactly the column names. NULL when no
+# factor metadata names every column.
+.bt_draws_factor_column_parts <- function(x, name, columns, formula_parameter){
+
+  prior_list <- attr(x, "prior_list", exact = TRUE)
+  if(is.prior(prior_list)){
+    prior_list <- list(prior_list)
+  }
+  candidates <- c(list(x), if(is.list(prior_list)) prior_list)
+  candidates <- Filter(function(candidate){
+    !is.null(attr(candidate, "level_names", exact = TRUE)) &&
+      (!is.prior(candidate) || is.prior.factor(candidate))
+  }, candidates)
+
+  for(candidate in candidates){
+    # metadata that does not describe the factor's level cells names nothing
+    parts <- tryCatch(
+      .bt_label_parts_factor(name, candidate, formula_parameter),
+      error = function(e) NULL
+    )
+    if(is.null(parts)){
+      next
+    }
+    lookup <- c(
+      parts$coordinates,
+      parts$cells,
+      .bt_label_parts_update(parts$cells, transformation = "dif")
+    )
+    rows <- match(columns, .bt_label(lookup, style = "selector"))
+    if(!anyNA(rows)){
+      return(lookup[rows])
+    }
+  }
+  NULL
 }
 
 # Label parts of the log intercept of a formula shown as the exponentiated
