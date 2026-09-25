@@ -451,6 +451,68 @@ test_that("multi-slice spike-and-slab ordered totals skip expression inits", {
   expect_true("sigma" %in% names(inits))
 })
 
+test_that("the slices of a spike-and-slab ordered total share one inclusion indicator", {
+
+  # The fitted model draws one inclusion probability and one indicator for a
+  # spike-and-slab total and multiplies the slab of every theta slice by it
+  # (all slices are included or all are excluded).
+  df <- expand.grid(
+    f = ordered(c("low", "mid", "high"), levels = c("low", "mid", "high")),
+    g = factor(c("a", "b", "c"), levels = c("a", "b", "c"))
+  )
+  formula_info <- JAGS_formula(
+    ~ f * g,
+    "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_ordered(prior("normal", list(0, 1))),
+      g = prior_factor("normal", list(0, 1), contrast = "treatment"),
+      "f:g" = prior_ordered(prior_spike_and_slab(
+        prior("normal", list(0, 1)),
+        prior_inclusion = prior("beta", list(2, 3))
+      ))
+    )
+  )
+  interaction <- formula_info$prior_list$mu_f__xXx__g
+  metadata <- attr(interaction, "ordered_metadata")
+  expect_identical(metadata$theta_dim, 2L)
+  expect_match(
+    JAGS_add_priors("model{}", formula_info$prior_list),
+    "mu_f__xXx__g_ordered_total[2] <- mu_f__xXx__g_ordered_total_variable[2] * mu_f__xXx__g_ordered_total_indicator",
+    fixed = TRUE
+  )
+
+  n <- 100000
+  set.seed(1)
+  totals <- rng(interaction, n, quantity = "total")
+  included <- totals != 0
+  # the marginal inclusion probability E[Beta(2, 3)] = 0.4 and its binomial
+  # standard error for n draws
+  p <- 2 / 5
+  se <- sqrt(p * (1 - p) / n)
+  expect_identical(unname(included[, 1L]), unname(included[, 2L]))
+  expect_lt(abs(mean(included[, 1L]) - p), 4 * se)
+  # jointly, all slices are in with probability p and out with probability
+  # 1 - p (independent slices would give p^2 = 0.16, 0.36, and a mixed
+  # pattern with probability 2 p (1 - p) = 0.48)
+  expect_lt(abs(mean(rowSums(included) == 2L) - p), 4 * se)
+  expect_lt(abs(mean(rowSums(included) == 0L) - (1 - p)), 4 * se)
+  expect_identical(sum(rowSums(included) == 1L), 0L)
+  # one total component per draw
+  component <- .bt_meta_get(totals, "ordered_total_component")
+  expect_identical(length(component), as.integer(n))
+  expect_identical(component == which(attr(interaction$total, "components") == "alternative"),
+                   unname(included[, 1L]))
+
+  # every coefficient of a draw is in or out with the shared indicator
+  set.seed(2)
+  coefficients <- rng(interaction, n, transform_factor_samples = FALSE)
+  coefficient_included <- rowSums(unclass(coefficients) != 0)
+  expect_true(all(coefficient_included %in% c(0L, metadata$coefficient_dim)))
+  expect_lt(abs(mean(coefficient_included > 0L) - p), 4 * se)
+})
+
 test_that("ordered random slope contrasts are specified independently", {
   df <- data.frame(
     y = seq_len(12),

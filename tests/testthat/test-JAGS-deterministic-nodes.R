@@ -1137,9 +1137,9 @@ test_that("prior draws carry the fitted nodes of ordered-prior totals", {
     }
   }
 
-  # an interaction with two slices: the simple total has one node per slice,
-  # while a spike-and-slab total, whose one fitted indicator rng() does not
-  # draw, has no prior draws of its nodes
+  # an interaction with two slices: the total has one node per slice, and a
+  # spike-and-slab total one indicator and inclusion probability shared by
+  # the slices, as in the fitted model
   simple <- prior_fit(~ g * f, list(
     intercept = prior("normal", list(0, 1)),
     g = prior_factor("normal", list(0, 1), contrast = "treatment"),
@@ -1165,9 +1165,29 @@ test_that("prior draws carry the fitted nodes of ordered-prior totals", {
     g = prior_factor("normal", list(0, 1), contrast = "treatment"),
     f = prior_ordered(prior("normal", list(0, 1))),
     "g:f" = prior_ordered(totals$spike)
-  ), c("mu_f_ordered_total", paste0("mu_g__xXx__f_ordered_total", c("_indicator", "_inclusion"))))
+  ), c("mu_f_ordered_total", paste0("mu_g__xXx__f_ordered_total",
+         c("_indicator", "_inclusion", "[1]", "[2]", "_variable[1]", "_variable[2]"))))
   draws <- transform_prior_samples(spike, n_samples = n, seed = 12)
-  expect_identical(colnames(draws)[startsWith(colnames(draws), "mu_g__xXx__f_ordered_total")], character())
-  expect_true("mu_f_ordered_total" %in% colnames(draws))
+  slice_nodes <- paste0("mu_g__xXx__f_ordered_total",
+                        c("_indicator", "_inclusion", "[1]", "[2]", "_variable[1]", "_variable[2]"))
+  expect_true(all(slice_nodes %in% colnames(draws)))
+  for(slice in 1:2){
+    expect_identical(
+      unname(draws[, paste0("mu_g__xXx__f_ordered_total[", slice, "]")]),
+      unname(draws[, paste0("mu_g__xXx__f_ordered_total_variable[", slice, "]")] *
+               draws[, "mu_g__xXx__f_ordered_total_indicator"])
+    )
+  }
+  interaction <- attr(spike, "prior_list")$mu_g__xXx__f
+  coordinates <- BayesTools:::.JAGS_prior_factor_names("mu_g__xXx__f", interaction)
+  excluded <- draws[, "mu_g__xXx__f_ordered_total_indicator"] == 0
+  expect_true(any(excluded) && any(!excluded))
+  expect_true(all(draws[excluded, coordinates] == 0))
+  expect_true(all(draws[!excluded, coordinates] != 0))
+  catalog <- parameter_catalog(spike)
+  for(node in intersect(slice_nodes, catalog$quantities$canonical_name)){
+    values <- parameter_draws(spike, parameter_catalog_resolve(catalog, node), model_samples = draws)
+    expect_identical(as.numeric(as.matrix(values)), unname(draws[, node]), info = node)
+  }
 })
 

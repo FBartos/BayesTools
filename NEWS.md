@@ -300,6 +300,15 @@ old behaviour.
 - preserves independent coefficient supports in structural dependency graphs,
   including known group covariance, for fitting and bridge row partitions
 ### Fixes
+- prior draws (`rng()`, `transform_prior_samples()`, and the prior samples
+  built from them) of an ordered prior whose spike-and-slab total has several
+  slices (an ordered factor in an interaction with another factor) follow the
+  fitted model: the slices share one inclusion probability and indicator per
+  draw, so all slices are included or all are excluded. `rng()` drew the
+  inclusion of every slice independently, e.g. with a Beta(2, 3) inclusion
+  prior both slices were included in 16% of the draws and only one in 48%,
+  instead of 40% and none. The draws of the first slice, the slab draws of
+  every slice, and the draws of all other priors keep their random numbers.
 - random-effect SD factor priors carry the factor design of their term,
   evaluated from the random-effect design at every level cell, and their
   coordinates are named from it. Factor-by-continuous random slopes such as
@@ -493,9 +502,7 @@ old behaviour.
     of a spike-and-slab or mixture total) have prior draws taken from the
     components of their `rng()` draws, so the other columns keep their
     random-number stream and the catalog quantities of these nodes can be
-    evaluated on prior draws. The nodes of a spike-and-slab total of an
-    ordered interaction with several slices, whose single fitted inclusion
-    indicator `rng()` does not draw, have none.
+    evaluated on prior draws.
   - documents that `formula_scale` centers scaled predictors also in terms
     without a free intercept: `~ 0 + x` fits a line through the predictor
     mean, with original-scale intercept `-b * mean(x) / sd(x)`. Independent

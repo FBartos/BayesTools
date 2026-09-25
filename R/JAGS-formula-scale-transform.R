@@ -172,13 +172,13 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 #' slab draws (\code{<parameter>_variable}) of spike-and-slab priors; the
 #' random-number stream of the other columns is unchanged. The totals of
 #' ordered priors (\code{<parameter>_ordered_total}) are included with the
-#' same auxiliary nodes of a spike-and-slab or mixture total, except for a
-#' spike-and-slab total of an interaction with several slices, which shares
-#' one inclusion indicator between the slices in the fitted model but not in
-#' [rng()]. Standardized latent random effects, nodes derived from them, such
-#' as realized group coefficients, the component nodes of mixture priors, and
-#' the auxiliary nodes of Dirichlet priors are not included, so catalog
-#' quantities that depend on them cannot be evaluated on the prior draws.
+#' same auxiliary nodes of a spike-and-slab or mixture total; the slices of a
+#' spike-and-slab total of an interaction share its inclusion probability and
+#' indicator, as in the fitted model. Standardized latent random effects,
+#' nodes derived from them, such as realized group coefficients, the
+#' component nodes of mixture priors, and the auxiliary nodes of Dirichlet
+#' priors are not included, so catalog quantities that depend on them cannot
+#' be evaluated on the prior draws.
 #' Variance-allocation inclusion indicators are included, drawn from their
 #' inclusion probabilities.
 #'

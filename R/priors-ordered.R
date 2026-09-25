@@ -618,17 +618,23 @@
   .bt_bind_ordered_prior_metadata(prior, parameter_name)
 }
 
-# Draws of an ordered prior in the random-number stream of rng(): the total of
-# every theta slice (one rng() stream of the total prior each, keeping the
-# parts that stream draws), then the allocations and the coefficients that
-# they give ('quantity' stops after the totals or the allocations).
+# Draws of an ordered prior in the random-number stream of rng(): the totals
+# of the theta slices (one rng() stream of the total prior per slice, keeping
+# the parts that stream draws), then the allocations and the coefficients
+# that they give ('quantity' stops after the totals or the allocations). The
+# slices of a spike-and-slab total share one inclusion probability and
+# indicator per draw, as in the fitted model.
 .prior_ordered_draws <- function(prior, n, quantity = "level"){
 
   prior <- .prior_ordered_default_bound(prior)
   metadata <- .prior_ordered_metadata(prior)
-  total <- lapply(seq_len(metadata$theta_dim), function(slice){
-    .prior_ordered_total_draw(prior$total, n)
-  })
+  total <- if(is.prior.spike_and_slab(prior$total)){
+    list(.prior_ordered_total_draw(prior$total, n, slices = metadata$theta_dim))
+  }else{
+    lapply(seq_len(metadata$theta_dim), function(slice){
+      .prior_ordered_total_draw(prior$total, n)
+    })
+  }
   theta <- do.call(cbind, lapply(total, `[[`, "value"))
   out <- list(prior = prior, metadata = metadata, total = total, theta = theta)
   if(quantity == "total"){
@@ -662,21 +668,34 @@
   out
 }
 
-# One rng() stream of an ordered prior's total with the parts it draws: the
-# value, the component of each draw (an index into the total's component
-# list), the fitted indicator of a spike-and-slab (1 = slab) or mixture total,
-# and the inclusion probabilities and slab draws of a spike-and-slab total.
-.prior_ordered_total_draw <- function(total, n){
+# One random-number stream of an ordered prior's total with the parts it
+# draws: the value, the component of each draw (an index into the total's
+# component list), the fitted indicator of a spike-and-slab (1 = slab) or
+# mixture total, and the inclusion probabilities and slab draws of a
+# spike-and-slab total. A spike-and-slab total of several 'slices' has one
+# inclusion probability and indicator per draw, shared by the slices as in
+# the fitted model, and one slab draw per slice (matrices with a column per
+# slice).
+.prior_ordered_total_draw <- function(total, n, slices = 1L){
 
   if(is.prior.spike_and_slab(total)){
-    # the parts rng() of the total draws, in its random-number stream
-    parts <- .rng_spike_and_slab_parts(total, n)
+    # every slice runs the rng() stream of the total, and the slices keep the
+    # inclusion probabilities and indicators of the first one; the slab draws
+    # of the slices and the draws that follow keep their random numbers
+    slice_parts <- lapply(seq_len(slices), function(slice){
+      .rng_spike_and_slab_parts(total, n)
+    })
+    parts <- slice_parts[[1L]]
+    variable <- matrix(
+      unlist(lapply(slice_parts, function(slice) as.numeric(slice$variable)), use.names = FALSE),
+      nrow = n, ncol = slices
+    )
     return(list(
-      value                 = as.numeric(parts$value),
+      value                 = variable * parts$inclusion,
       component             = .bt_component_from_indicator(total, parts$inclusion),
       indicator             = parts$inclusion,
       inclusion_probability = parts$inclusion_probability,
-      variable              = as.numeric(parts$variable)
+      variable              = variable
     ))
   }
   draws <- rng(total, n)
@@ -685,28 +704,34 @@
 }
 
 # The fitted nodes of an ordered prior's total in its prior draws, named as
-# their monitors: the total and, for a total of one theta slice, the component
-# indicator of a spike-and-slab or mixture total and the inclusion probability
-# and slab draws of a spike-and-slab total. The fitted model shares one
-# indicator and inclusion probability between the slices of a spike-and-slab
-# total, whereas rng() draws the slices independently, so such totals of
-# several slices have no prior draws.
+# their monitors: the total of every slice and, for a spike-and-slab total or
+# a mixture total of one slice, the component indicator, and for a
+# spike-and-slab total the inclusion probability (both shared by the slices)
+# and the slab draws of every slice.
 .prior_ordered_total_samples <- function(draws, parameter){
 
   total_name <- .prior_ordered_total_name(parameter)
   theta_dim <- draws$metadata$theta_dim
-  if(theta_dim > 1L){
-    if(is.prior.spike_and_slab(draws$prior$total)){
-      return(NULL)
-    }
+  slice_names <- function(name){
+    if(theta_dim == 1L) name else paste0(name, "[", seq_len(theta_dim), "]")
+  }
+  if(length(draws$total) > 1L){
+    # a total of several slices drawn slice by slice
     return(matrix(
       draws$theta, ncol = theta_dim,
-      dimnames = list(NULL, paste0(total_name, "[", seq_len(theta_dim), "]"))
+      dimnames = list(NULL, slice_names(total_name))
     ))
   }
   total <- draws$total[[1L]]
-  columns <- list(total$value, total$indicator, total$inclusion_probability, total$variable)
-  names(columns) <- paste0(total_name, c("", "_indicator", "_inclusion", "_variable"))
+  columns <- list(
+    matrix(total$value, ncol = theta_dim, dimnames = list(NULL, slice_names(total_name))),
+    if(!is.null(total$indicator)) matrix(total$indicator, ncol = 1L,
+      dimnames = list(NULL, paste0(total_name, "_indicator"))),
+    if(!is.null(total$inclusion_probability)) matrix(total$inclusion_probability, ncol = 1L,
+      dimnames = list(NULL, paste0(total_name, "_inclusion"))),
+    if(!is.null(total$variable)) matrix(total$variable, ncol = theta_dim,
+      dimnames = list(NULL, slice_names(paste0(total_name, "_variable"))))
+  )
   do.call(cbind, columns[!vapply(columns, is.null, logical(1))])
 }
 
