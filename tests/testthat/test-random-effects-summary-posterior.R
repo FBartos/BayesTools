@@ -1207,6 +1207,10 @@ test_that("allocation-derived SDs, variances and totals have exact prior densiti
   expect_equal(exp(prior_density_ordinate(variance, .0036)$log_density),
                h(.06) / 2 / (2 * .06), tolerance = 1e-8)
   expect_true(prior_density_ordinate(variance, .0036)$exact)
+  # its plotted curve starts at the infinite density next to zero
+  plotted <- BayesTools:::.prior_linear_density_to_plot_data(variance)$density
+  expect_lt(min(plotted$x), 1e-3)
+  expect_true(all(is.finite(plotted$y)))
   var_total <- density_of("(mu) allocation: var_total")
   expect_equal(exp(prior_density_ordinate(var_total, .0036)$log_density),
                (f_T(.06) / 4 + h(.06) / 2) / (2 * .06), tolerance = 1e-8)

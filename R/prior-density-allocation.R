@@ -313,6 +313,12 @@
     x <- seq(limits[1L], limits[2L], length.out = size)
     dx <- x[2L] - x[1L]
     y <- .prior_density_route_density(route, x)
+    if(!is.finite(y[1L])){
+      # an infinite density at the lower bound (e.g. a variance at zero):
+      # the grid starts just above it, so the plotted range keeps the bound
+      x[1L] <- x[1L] + dx * 1e-3
+      y[1L] <- .prior_density_route_density(route, x[1L])
+    }
     finite <- is.finite(y)
     densities[[1L]] <- list(x = x[finite], y = y[finite], mass = continuous_mass)
   }
