@@ -150,7 +150,10 @@ old behaviour.
     in inference tables, model summaries, and ensemble tables
     (`(mu) id: sd(x)`, was `sd((mu) x|id)`), and the mixed columns of
     random-effect SD entries as the catalog's SD quantities
-    (`(mu) sd(f[b])`);
+    (`(mu) sd(f[b])`). The SD columns of a block with a standardized random
+    slope hold its fitted coordinates, which are not these original-scale
+    quantities: they are labelled as in raw tables (`(mu) g: sd(x)`) until
+    they are transformed to the original scale (`transform_scaled = TRUE`);
   - factor plot legends show the level text of each level cell (both levels
     of an interaction cell, `b, v`; without the leading space of transformed
     contrasts; level names with brackets whole);

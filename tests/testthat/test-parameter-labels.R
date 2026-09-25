@@ -1491,7 +1491,7 @@ test_that("original-scale transforms require the fitted design of the formula", 
 
 # A JAGS fit of `~ 1 + x + (1 + x || g)` with x standardized: random-effect SDs
 # of a random slope of a standardized predictor.
-.label_test_random_slope_fit <- function(){
+.label_test_random_slope_fit <- function(formula = ~ 1 + x + (1 + x || g)){
 
   syntax <- "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 4)\n}\n}"
   set.seed(1)
@@ -1503,7 +1503,7 @@ test_that("original-scale transforms require the fitted design of the formula", 
   suppressWarnings(JAGS_fit(
     model_syntax       = syntax,
     data               = list(y = data$y, N = nrow(data)),
-    formula_list       = list(mu = ~ 1 + x + (1 + x || g)),
+    formula_list       = list(mu = formula),
     formula_data_list  = list(mu = data),
     formula_prior_list = list(mu = list(
       intercept = prior("normal", list(0, 1)),
@@ -1700,6 +1700,81 @@ test_that("random-effect SD mixed columns carry the catalog's random-effect labe
     ensemble[c("(mu) intercept", "(mu) x"), "Mean"],
     scaled_table[c("(mu) intercept", "(mu) x"), "Mean"],
     tolerance = 1e-10
+  )
+})
+
+test_that("random-effect SD columns describe the scale of the draws they hold", {
+
+  # a standardized random slope: the catalog SD quantities are original-scale
+  # functions of the block's fitted coordinates
+  fit <- .label_test_random_slope_fit()
+  formula_scale <- attr(fit, "formula_scale")
+  catalog <- parameter_catalog(fit)
+  parameters <- c("mu__xREx__g_intercept", "mu__xREx__g_x")
+  sd_quantities <- function(samples){
+    rbind(
+      posterior_metadata(samples$mu__xREx__g_intercept, "quantities"),
+      posterior_metadata(samples$mu__xREx__g_x, "quantities")
+    )
+  }
+  fitted_labels   <- c("(mu) g: sd(intercept)", "(mu) g: sd(x)")
+  original_labels <- c("(mu) sd(intercept)", "(mu) sd(x)")
+  original_ids <- vapply(original_labels, function(label){
+    parameter_catalog_resolve(catalog, label)$quantities$quantity_id
+  }, character(1), USE.NAMES = FALSE)
+  raw_table    <- JAGS_estimates_table(fit, random_effects_summary = "raw",
+                                       remove_diagnostics = TRUE)
+  scaled_table <- JAGS_estimates_table(fit, transform_scaled = TRUE,
+                                       remove_diagnostics = TRUE)
+
+  # on the fitted scale the columns are their fitted coordinates: labelled and
+  # valued as the raw table shows the same draws, and no catalog quantity
+  mixed <- as_mixed_posteriors(fit, parameters = parameters)
+  expect_identical(parameter_labels(sd_quantities(mixed), "table"), fitted_labels)
+  expect_identical(sd_quantities(mixed)$quantity_id, c("", ""))
+  ensemble <- ensemble_estimates_table(mixed, parameters = parameters)
+  expect_identical(rownames(ensemble), fitted_labels)
+  expect_equal(ensemble[fitted_labels, "Mean"], raw_table[fitted_labels, "Mean"],
+               tolerance = 1e-10)
+
+  # transformed to the original scale they are the catalog's SD quantities,
+  # labelled and valued as the model table shows them
+  transformed <- .transform_scale_samples_list(mixed, formula_scale)
+  expect_identical(parameter_labels(sd_quantities(transformed), "table"), original_labels)
+  expect_identical(sd_quantities(transformed)$quantity_id, original_ids)
+  ensemble <- ensemble_estimates_table(mixed, parameters = parameters,
+                                       transform_scaled = TRUE,
+                                       formula_scale = formula_scale)
+  expect_identical(rownames(ensemble), original_labels)
+  expect_equal(ensemble[original_labels, "Mean"], scaled_table[original_labels, "Mean"],
+               tolerance = 1e-10)
+
+  # draws created on the original scale carry the original-scale quantities
+  mixed_original <- as_mixed_posteriors(fit, parameters = parameters,
+                                        transform_scaled = TRUE)
+  expect_identical(parameter_labels(sd_quantities(mixed_original), "table"),
+                   original_labels)
+  expect_identical(sd_quantities(mixed_original)$quantity_id, original_ids)
+  expect_equal(
+    vapply(parameters, function(parameter) mean(mixed_original[[parameter]]),
+           numeric(1), USE.NAMES = FALSE),
+    scaled_table[original_labels, "Mean"],
+    tolerance = 1e-10
+  )
+
+  # a random slope without its intercept: the original-scale SD is a
+  # one-to-one transform of the coordinate, which is not that quantity either
+  fit <- .label_test_random_slope_fit(~ 1 + x + (0 + x || g))
+  mixed <- as_mixed_posteriors(fit, parameters = "mu__xREx__g_x")
+  expect_identical(
+    rownames(ensemble_estimates_table(mixed, parameters = "mu__xREx__g_x")),
+    "(mu) g: sd(x)"
+  )
+  expect_identical(
+    rownames(ensemble_estimates_table(mixed, parameters = "mu__xREx__g_x",
+                                      transform_scaled = TRUE,
+                                      formula_scale = attr(fit, "formula_scale"))),
+    "(mu) sd(x)"
   )
 })
 

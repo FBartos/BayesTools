@@ -422,9 +422,18 @@
       samples[[name]] <- .bt_draws_transform_values(x, function(level){
         values[, 1L]
       })
+      samples[[name]] <- .bt_draws_set_original_scale_quantities(
+        samples[[name]],
+        .bt_draws_quantities(samples[[name]])$column
+      )
     }else{
       samples[[name]][, element$columns] <- values[, element$columns, drop = FALSE]
       samples[[name]] <- .bt_meta_refresh(samples[[name]])
+      # the transformed columns are their original-scale quantities
+      samples[[name]] <- .bt_draws_set_original_scale_quantities(
+        samples[[name]],
+        colnames(x)[element$columns]
+      )
     }
   }
 

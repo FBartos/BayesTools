@@ -1056,9 +1056,17 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   out
 }
 
-# The column table of mixed-posterior draws of one prior-list entry whose
-# columns are the prior's fitted coordinates in coordinate order.
-.bt_mixed_quantities <- function(parameter, prior, columns, catalog = NULL){
+# The column tables of mixed-posterior draws of one prior-list entry whose
+# columns are the prior's fitted coordinates in coordinate order: 'fitted'
+# describes the draws on the fitted scale and 'original' the same columns
+# transformed to the original predictor scale. A column's quantity id and
+# label describe the values it holds, so the two differ for random-effect SD
+# coordinates whose catalog SD quantity is not the coordinate itself (the SDs
+# of a block with a standardized random slope are original-scale functions of
+# the block's coordinates): on the fitted scale such a column is its
+# coordinate, labelled as the raw tables label it (`(mu) g: sd(x)`, no catalog
+# quantity), and only once transformed is it the catalog's SD quantity.
+.bt_mixed_quantity_tables <- function(parameter, prior, columns, catalog = NULL){
 
   prior_parts <- .bt_label_parts_prior(parameter, prior)
   if(length(prior_parts$coordinates) != length(columns)){
@@ -1068,13 +1076,15 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
       call. = FALSE
     )
   }
-  parts <- prior_parts$parts
-  quantity_ids <- .bt_draws_quantity_ids(parts, catalog)
+  fitted_parts <- prior_parts$parts
+  fitted_ids   <- .bt_draws_quantity_ids(fitted_parts, catalog)
+  original_parts <- fitted_parts
+  original_ids   <- fitted_ids
 
-  # random-effect SD coordinates take the label of the catalog's SD quantity
-  # of that coordinate (its owner and argument), and its id when the quantity
-  # is the coordinate itself
-  random_sd <- vapply(parts, function(part) !is.null(part$random), logical(1))
+  # random-effect SD coordinates on the original scale are the catalog's SD
+  # quantity of that coordinate (its owner and argument); on the fitted scale
+  # only when that quantity is the coordinate itself
+  random_sd <- vapply(fitted_parts, function(part) !is.null(part$random), logical(1))
   if(any(random_sd) && !is.null(catalog)){
     rows <- .bt_mixed_random_sd_rows(parameter, prior_parts$coordinates, catalog)
     quantities <- catalog$quantities
@@ -1083,25 +1093,84 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
       if(is.null(quantities$label_parts[[row]])){
         next
       }
-      parts[[i]] <- .bt_label_parts_update(
+      original_parts[[i]] <- .bt_label_parts_update(
         quantities$label_parts[[row]],
-        components  = parts[[i]]$components,
-        levels      = parts[[i]]$levels,
-        coefficient = parts[[i]]$coefficient,
-        selector    = .bt_label(parts[[i]], style = "selector")
+        components  = fitted_parts[[i]]$components,
+        levels      = fitted_parts[[i]]$levels,
+        coefficient = fitted_parts[[i]]$coefficient,
+        selector    = .bt_label(fitted_parts[[i]], style = "selector")
       )[[1L]]
+      original_ids[[i]] <- quantities$quantity_id[[row]]
       if(identical(quantities$source_type[[row]], "identity")){
-        quantity_ids[[i]] <- quantities$quantity_id[[row]]
+        fitted_parts[[i]] <- original_parts[[i]]
+        fitted_ids[[i]]   <- original_ids[[i]]
       }
     }
   }
 
-  .bt_draws_quantity_table(
-    columns      = columns,
-    quantity_ids = quantity_ids,
-    dependencies = as.list(prior_parts$coordinates),
-    weights      = rep(list(1), length(columns)),
-    label_parts  = parts
+  column_table <- function(parts, quantity_ids){
+    .bt_draws_quantity_table(
+      columns      = columns,
+      quantity_ids = quantity_ids,
+      dependencies = as.list(prior_parts$coordinates),
+      weights      = rep(list(1), length(columns)),
+      label_parts  = parts
+    )
+  }
+  list(
+    fitted   = column_table(fitted_parts, fitted_ids),
+    original = column_table(original_parts, original_ids)
+  )
+}
+
+# 'x', mixed draws of one prior-list entry, with the quantities of its
+# columns: 'quantities' describes the values the draws hold (transformed to
+# the original predictor scale when 'original_scale'), and draws on the
+# fitted scale whose columns are other quantities once transformed keep those
+# quantities in 'original_scale_quantities' for the transform to apply.
+.bt_mixed_set_quantities <- function(x, parameter, prior, columns,
+                                     catalog = NULL, original_scale = FALSE){
+
+  tables <- .bt_mixed_quantity_tables(parameter, prior, columns, catalog)
+  if(original_scale){
+    return(.bt_meta_set(x, "quantities", tables$original))
+  }
+  x <- .bt_meta_set(x, "quantities", tables$fitted)
+  differs <- tables$fitted$quantity_id != tables$original$quantity_id |
+    !mapply(identical, tables$fitted$label_parts, tables$original$label_parts)
+  if(any(differs)){
+    x <- .bt_meta_set(
+      x,
+      "original_scale_quantities",
+      tables$original[differs, , drop = FALSE]
+    )
+  }
+  x
+}
+
+# Draws whose columns 'transformed' were transformed to the original
+# predictor scale: the quantities that 'original_scale_quantities' declares
+# for those columns replace their fitted-scale quantities.
+.bt_draws_set_original_scale_quantities <- function(x, transformed){
+
+  original <- .bt_meta_get(x, "original_scale_quantities")
+  quantities <- .bt_draws_quantities(x)
+  if(is.null(original) || is.null(quantities)){
+    return(x)
+  }
+  rows <- match(quantities$column, original$column)
+  replace <- !is.na(rows) & quantities$column %in% transformed
+  if(!any(replace)){
+    return(x)
+  }
+  quantities$quantity_id[replace] <- original$quantity_id[rows[replace]]
+  quantities$label_parts[replace] <- original$label_parts[rows[replace]]
+  remaining <- original[!original$column %in% quantities$column[replace], , drop = FALSE]
+  x <- .bt_meta_set(x, "quantities", quantities)
+  .bt_meta_set(
+    x,
+    "original_scale_quantities",
+    if(nrow(remaining) > 0L) remaining
   )
 }
 

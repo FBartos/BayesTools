@@ -191,15 +191,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
     # the fitted coordinate and label parts of every column
     if(is.null(.bt_meta_get(out[[temp_parameter]], "quantities"))){
-      out[[temp_parameter]] <- .bt_meta_set(
-        out[[temp_parameter]],
-        "quantities",
-        .mix_posteriors_quantities(
-          samples   = out[[temp_parameter]],
-          parameter = temp_parameter,
-          priors    = temp_priors,
-          fits      = fits
-        )
+      out[[temp_parameter]] <- .mix_posteriors_set_quantities(
+        samples   = out[[temp_parameter]],
+        parameter = temp_parameter,
+        priors    = temp_priors,
+        fits      = fits
       )
     }
 
@@ -219,10 +215,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   return(out)
 }
 
-# The column table of mixed draws of one parameter: its label parts and
-# fitted coordinates from a model prior that defines it, and its catalog
-# quantity from the first fit whose parameter map contains it.
-.mix_posteriors_quantities <- function(samples, parameter, priors, fits){
+# Mixed draws of one parameter with the quantities of their columns: label
+# parts and fitted coordinates from a model prior that defines it, and catalog
+# quantities from the first fit whose parameter map contains it.
+.mix_posteriors_set_quantities <- function(samples, parameter, priors, fits){
 
   defined <- vapply(priors, function(prior){
     !is.null(prior) && !is.prior.point(prior) && !is.prior.none(prior)
@@ -239,7 +235,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     }
   }
 
-  .bt_mixed_quantities(
+  .bt_mixed_set_quantities(
+    samples,
     parameter = parameter,
     prior     = prior,
     columns   = if(is.null(dim(samples))) parameter else colnames(samples),

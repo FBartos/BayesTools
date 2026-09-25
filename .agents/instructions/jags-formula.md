@@ -207,7 +207,12 @@ names.
   plot legends, diagnostics titles, and warnings. Catalog quantities store
   their parts in `label_parts`; mixed, transformed-factor, and marginal draws
   store per-column parts, catalog quantity ids, and fitted-coordinate
-  dependencies and weights in the `quantities` draw metadata. Consumers map
+  dependencies and weights in the `quantities` draw metadata. A column's
+  quantity id and parts describe the values it holds: a fitted-scale column
+  whose original-scale quantity differs (the SDs of a block with a
+  standardized random slope) is its fitted coordinate, and the transform to
+  the original scale gives it the catalog quantity it keeps in the internal
+  `original_scale_quantities` field. Consumers map
   columns to coordinates and render labels from these, never by parsing label
   text; original-scale transforms of mixed columns go through the fitted
   design by these coordinates and stop for columns that do not identify them

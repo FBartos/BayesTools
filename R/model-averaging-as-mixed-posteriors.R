@@ -155,21 +155,21 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       )
     }
 
-    # the fitted coordinate and label parts of every column
+    # the fitted coordinate and label parts of every column, describing the
+    # draws on the scale they hold
     if(is.null(.bt_meta_get(out[[temp_parameter]], "quantities"))){
-      out[[temp_parameter]] <- .bt_meta_set(
+      out[[temp_parameter]] <- .bt_mixed_set_quantities(
         out[[temp_parameter]],
-        "quantities",
-        .bt_mixed_quantities(
-          parameter = temp_parameter,
-          prior     = temp_prior,
-          columns   = if(is.null(dim(out[[temp_parameter]]))){
-            temp_parameter
-          }else{
-            colnames(out[[temp_parameter]])
-          },
-          catalog   = catalog
-        )
+        parameter      = temp_parameter,
+        prior          = temp_prior,
+        columns        = if(is.null(dim(out[[temp_parameter]]))){
+          temp_parameter
+        }else{
+          colnames(out[[temp_parameter]])
+        },
+        catalog        = catalog,
+        original_scale = transform_scaled && !is.null(formula_scale) &&
+          length(formula_scale) > 0
       )
     }
 

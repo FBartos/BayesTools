@@ -184,6 +184,9 @@
     },
     quantities = function(value){
       .bt_meta_quantities_reason(value)
+    },
+    original_scale_quantities = function(value){
+      .bt_meta_quantities_reason(value)
     }
   )
 }
@@ -193,7 +196,11 @@
 # that are not catalog quantities), the fitted coordinates the column is a
 # linear function of ('dependencies', with 'weights'), and the column's label
 # parts. Consumers map columns to fitted coordinates and render labels from
-# it, never from the column names.
+# it, never from the column names. The quantity id and label parts describe
+# the values the column holds; the internal 'original_scale_quantities' field
+# (the same table, for the columns of fitted-scale mixed draws that are other
+# quantities once transformed to the original predictor scale) replaces them
+# when the draws are transformed.
 .bt_meta_quantities_columns <- c(
   "column", "quantity_id", "dependencies", "weights", "label_parts"
 )
@@ -260,7 +267,7 @@
   "posterior_densities", "posterior_ordinate", "posterior_ordinates",
   "formula_parameter", "log_intercept", "formula_scale", "transform_scaled",
   "condition", "linear_weights", "linear_offset", "joint_prior_transformation",
-  "quantities"
+  "quantities", "original_scale_quantities"
 )
 
 .bt_meta_fields <- function(){
