@@ -172,6 +172,17 @@ old behaviour.
   which is `TRUE` only for `"precomputed"`: packages with their own posterior
   density estimators (such as qCMDE or IWMDE in RoBMA) map their method names
   to `"precomputed"` themselves.
+- the metadata of posterior draws (see `posterior_metadata()`) record a
+  fingerprint of the values they describe. Draws whose values were replaced
+  while their attributes were kept (`x[] <- `, `x[i] <- `, `pmin()`,
+  `pmax()`) stop with an error of class `BayesTools_stale_metadata` (parent
+  `BayesTools_metadata`) wherever their metadata are read or set, instead of
+  using the supports, atoms, and prior densities of the old values:
+  `Savage_Dickey_BF()` of draws doubled by `x[] <- 2 * x` returned the Bayes
+  factor of the untransformed support and prior. Subsetting a list of mixed
+  posteriors with `[` keeps the list and its metadata (prior context,
+  scaling, conditioning), with the transformed prior densities of the kept
+  parameters.
 - adds `prior_factor_levels(prior, levels)`, which gives a factor prior
   (including mixture and spike-and-slab factor priors and ordered priors) the
   complete factor metadata that formula factor terms carry: the number and
@@ -461,8 +472,9 @@ old behaviour.
     zero fitted SD). `JAGS_estimates_table()` and `ensemble_estimates_table()`
     summarize such correlations over their defined draws and footnote the
     share of defined draws per row; `parameter_draws()` declares these
-    quantities through the `undefined_draws` attribute, and other missing
-    draws are an error in `ensemble_estimates_table()`.
+    quantities in the `undefined_draws` field of the draws' metadata
+    (`posterior_metadata()`), and other missing draws are an error in
+    `ensemble_estimates_table()`.
     `transform_prior_samples()` works for such blocks.
   - `transform_prior_samples()` includes the random-effect monitors that the
     model defines deterministically from nodes with prior draws: SDs derived
@@ -529,8 +541,8 @@ old behaviour.
     component's boundary-reflected kernel density on its own support, mixed by
     the components' shares of the continuous draws, instead of one kernel
     density smoothed across the support boundary. Marginal posteriors record
-    each draw's component and the components' supports
-    (`posterior_components`): the model for `mix_posteriors()` ensembles, and
+    each draw's component and the components' supports in their draw
+    metadata: the model for `mix_posteriors()` ensembles, and
     the indicator tuple of the mixture or spike-and-slab terms entering the
     parameter or level for `as_mixed_posteriors()`. In prior-only checks the
     Bayes factor at a boundary null went from 1.37 (model mixture) and 1.41

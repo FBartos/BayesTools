@@ -465,6 +465,7 @@
     "dim", "dimnames", "names", "level_names", "factor_cell_names"
   )]
   attributes(out) <- c(attributes(out), attributes_kept)
+  out <- .bt_meta_refresh(out)
   out <- .bt_meta_set(out, "atoms", NULL)
   for(name in c("level_names", "factor_cell_names")){
     value <- attr(samples, name, exact = TRUE)

@@ -110,6 +110,8 @@ test_that("conditional bias plots restore omitted structural scalar values", {
   for(attribute in setdiff(names(attributes_to_restore), c("dim", "dimnames"))){
     attr(incomplete$bias, attribute) <- attributes_to_restore[[attribute]]
   }
+  # the restored metadata describe the draws without the PET column
+  incomplete$bias <- BayesTools:::.bt_meta_refresh(incomplete$bias)
   expect_error(
     BayesTools:::.simplify_as_mixed_posterior_bias(incomplete, "PET"),
     "Posterior samples for 'PET' are unavailable because an active bias branch is not a point prior.",

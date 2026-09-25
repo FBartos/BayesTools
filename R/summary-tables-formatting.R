@@ -415,23 +415,26 @@
         transformed_sample <- posterior_matrix[, column_names[i]]
         if(is.matrix(old_sample)){
           old_sample[] <- transformed_sample
-          samples[[name]][[i]] <- old_sample
+          samples[[name]][[i]] <- .bt_meta_refresh(old_sample)
         }else{
           old_attrs <- attributes(old_sample)
           samples[[name]][[i]] <- transformed_sample
           for(attr_name in setdiff(names(old_attrs), "names")){
             attr(samples[[name]][[i]], attr_name) <- old_attrs[[attr_name]]
           }
+          samples[[name]][[i]] <- .bt_meta_refresh(samples[[name]][[i]])
         }
       }
     }else if(is.matrix(samples[[name]])){
       samples[[name]][, seq_along(column_names)] <- posterior_matrix[, column_names, drop = FALSE]
+      samples[[name]] <- .bt_meta_refresh(samples[[name]])
     }else{
       old_attrs <- attributes(samples[[name]])
       samples[[name]] <- posterior_matrix[, column_names]
       for(attr_name in setdiff(names(old_attrs), "names")){
         attr(samples[[name]], attr_name) <- old_attrs[[attr_name]]
       }
+      samples[[name]] <- .bt_meta_refresh(samples[[name]])
     }
   }
 

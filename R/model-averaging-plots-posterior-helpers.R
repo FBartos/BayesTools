@@ -277,6 +277,7 @@
   for (a in to_restore) {
     attr(new_samples, a) <- all_attrs[[a]]
   }
+  new_samples <- .bt_meta_refresh(new_samples)
 
   # remove `mixed_posteriors.bias` class
   class(new_samples) <- class(new_samples)[!class(new_samples) %in% "mixed_posteriors.bias"]

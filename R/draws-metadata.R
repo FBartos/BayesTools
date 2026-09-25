@@ -247,13 +247,15 @@
     return(NULL)
   }
   if(!inherits(meta, "BayesTools_draw_metadata") || !is.list(meta) ||
-     is.null(names(meta)) || !all(names(meta) %in% .bt_meta_fields())){
+     is.null(names(meta)) ||
+     !all(names(meta) %in% c(.bt_meta_fields(), .bt_meta_fingerprint_field))){
     stop("The draw-metadata container is invalid.", call. = FALSE)
   }
   meta
 }
 
-# The value of a draw-metadata field, or NULL when it is absent.
+# The value of a draw-metadata field, or NULL when it is absent. The metadata
+# of draws must describe their current values (.bt_meta_current()).
 .bt_meta_get <- function(x, field){
 
   .bt_meta_check_field(field)
@@ -261,10 +263,16 @@
   if(is.null(meta)){
     return(NULL)
   }
+  if(.bt_meta_is_draws(x)){
+    .bt_meta_check_current(meta, .bt_meta_fingerprint(x))
+  }
   meta[[field]]
 }
 
 # 'x' with the draw-metadata field set to 'value'; NULL removes the field.
+# Setting a field of draws whose values changed after their metadata were
+# attached stops: producers that change the values of draws rebuild the
+# container first (.bt_meta_refresh()).
 .bt_meta_set <- function(x, field, value){
 
   .bt_meta_check_field(field)
@@ -275,12 +283,112 @@
   if(!is.null(value)){
     .bt_meta_validate(field, value)
   }
+  fingerprint <- if(.bt_meta_is_draws(x)) .bt_meta_fingerprint(x)
   if(is.null(meta)){
     meta <- structure(list(), names = character(), class = c("BayesTools_draw_metadata", "list"))
+  }else if(!is.null(fingerprint)){
+    .bt_meta_check_current(meta, fingerprint)
   }
   meta[[field]] <- value
-  attr(x, .bt_meta_attribute) <- if(length(meta) > 0L) meta
+  .bt_meta_write(x, meta, fingerprint)
+}
+
+# Draw metadata go stale when the values of the draws change after the
+# metadata were attached (e.g., by 'x[] <- ', 'x[i] <- ', or pmin(), which
+# keep the attributes of 'x'). The container of draws therefore stores a
+# fingerprint of the values it describes: their number, the number of missing
+# values, and the sums of the observed values and of the observed values
+# weighted by their positions.
+.bt_meta_fingerprint_field <- "fingerprint"
+
+.bt_meta_is_draws <- function(x){
+
+  is.atomic(x) && typeof(x) %in% c("double", "integer", "logical")
+}
+
+.bt_meta_fingerprint <- function(x){
+
+  values <- as.double(unclass(x))
+  observed <- !is.na(values)
+  position <- which(observed)
+  values <- values[observed]
+  weighted <- values * position
+  list(
+    value = c(
+      length       = length(observed),
+      missing      = length(observed) - length(values),
+      sum          = sum(values),
+      weighted_sum = sum(weighted)
+    ),
+    scale = c(sum = sum(abs(values)), weighted_sum = sum(abs(weighted)))
+  )
+}
+
+# Whether a stored fingerprint describes the values of the current one. The
+# sums agree up to twice the rounding bound of summing the values in double
+# precision, (n - 1) * eps * sum(|x|), which covers platforms that accumulate
+# sums with and without extended precision.
+.bt_meta_fingerprint_matches <- function(stored, current){
+
+  if(!is.numeric(stored) || !identical(names(stored), names(current$value)) ||
+     !identical(stored[c("length", "missing")], current$value[c("length", "missing")])){
+    return(FALSE)
+  }
+  n <- current$value[["length"]] - current$value[["missing"]]
+  all(vapply(c("sum", "weighted_sum"), function(name){
+    stored_sum  <- stored[[name]]
+    current_sum <- current$value[[name]]
+    if(!is.finite(stored_sum) || !is.finite(current_sum)){
+      return(identical(stored_sum, current_sum))
+    }
+    abs(stored_sum - current_sum) <= 2 * max(n - 1, 0) * .Machine$double.eps * current$scale[[name]]
+  }, logical(1)))
+}
+
+.bt_meta_check_current <- function(meta, current){
+
+  if(!.bt_meta_fingerprint_matches(meta[[.bt_meta_fingerprint_field]], current)){
+    stop(errorCondition(
+      paste0(
+        "The metadata of these posterior draws are unavailable: their values ",
+        "changed after the metadata were attached (for example by 'x[] <- ', ",
+        "'x[i] <- ', or 'pmin()'), so the supports, atoms, and prior densities ",
+        "no longer describe them. Use 'marginal_posterior(transformation = )' ",
+        "for transformed posterior distributions."
+      ),
+      class = c("BayesTools_stale_metadata", "BayesTools_metadata"),
+      call = NULL
+    ))
+  }
+  invisible(TRUE)
+}
+
+# 'x' with the container 'meta' (and, for draws, the fingerprint of their
+# values); a container without fields is removed.
+.bt_meta_write <- function(x, meta, fingerprint = NULL){
+
+  meta[[.bt_meta_fingerprint_field]] <- NULL
+  if(length(meta) == 0L){
+    attr(x, .bt_meta_attribute) <- NULL
+    return(x)
+  }
+  if(!is.null(fingerprint)){
+    meta[[.bt_meta_fingerprint_field]] <- fingerprint$value
+  }
+  attr(x, .bt_meta_attribute) <- meta
   x
+}
+
+# Rebuilds the container of draws whose values a producer changed together
+# with the metadata that describe them (the producer transforms, replaces, or
+# removes the affected fields).
+.bt_meta_refresh <- function(x){
+
+  meta <- .bt_meta_container(x)
+  if(is.null(meta)){
+    return(x)
+  }
+  .bt_meta_write(x, meta, if(.bt_meta_is_draws(x)) .bt_meta_fingerprint(x))
 }
 
 # 'x' with several draw-metadata fields set, given as named arguments.
@@ -366,6 +474,17 @@
 #' such draws; [marginal_posterior()] with \code{transformation} transforms
 #' the draws together with their metadata.
 #'
+#' Operations that replace values but keep the attributes of the draws
+#' (\code{x[] <- }, \code{x[i] <- }, \code{pmin()}, \code{pmax()}) leave
+#' metadata that no longer describe the draws. The metadata record a
+#' fingerprint of the values they describe (their number, the number of
+#' missing values, and two sums of the observed values), and reading or
+#' setting the metadata of such draws, here or in any function that uses
+#' them, stops with an error of class \code{BayesTools_stale_metadata}
+#' (parent class \code{BayesTools_metadata}). Subsetting a list of mixed
+#' posteriors with \code{[} keeps the list's metadata, with the prior
+#' densities of the omitted parameters removed.
+#'
 #' @return \code{posterior_metadata()} returns the value of the field or
 #' \code{NULL}; the replacement form returns \code{x} with the field set.
 #'
@@ -441,13 +560,52 @@ Math.marginal_posterior.simple <- .bt_draws_math
 #' @exportS3Method Math marginal_posterior.factor
 Math.marginal_posterior.factor <- .bt_draws_math
 
+# Subsetting a list of mixed posteriors keeps the list and its metadata: the
+# per-element prior densities are subset to the kept elements, and the joint
+# fields (prior context, scaling, conditioning, posterior density sources)
+# are kept. Subsetting draws returns plain numeric draws.
+#' @exportS3Method "[" mixed_posteriors
+`[.mixed_posteriors` <- function(x, ...){
+
+  out <- NextMethod()
+  if(!is.list(x)){
+    return(out)
+  }
+  kept <- names(out)
+  x_attributes <- attributes(x)
+  x_attributes <- x_attributes[setdiff(names(x_attributes), c("names", .bt_meta_attribute))]
+  x_attributes[["names"]] <- kept
+  attributes(out) <- x_attributes
+
+  meta <- .bt_meta_container(x)
+  if(is.null(meta)){
+    return(out)
+  }
+  prior_densities <- meta[["prior_densities"]]
+  if(!is.null(prior_densities)){
+    keep <- vapply(names(prior_densities), function(key){
+      any(key == kept | startsWith(key, paste0(kept, "[")))
+    }, logical(1))
+    subset <- unclass(prior_densities)[keep]
+    density_attributes <- attributes(prior_densities)
+    density_attributes[["names"]] <- names(subset)
+    attributes(subset) <- density_attributes
+    meta[["prior_densities"]] <- if(any(keep)) subset
+  }
+  .bt_meta_write(out, meta)
+}
+
 # 'fun' applied to the values of draws 'x', keeping every attribute of 'x'
 # (for producers that transform the metadata explicitly).
 .bt_draws_transform_values <- function(x, fun){
 
+  meta <- .bt_meta_container(x)
+  if(!is.null(meta) && .bt_meta_is_draws(x)){
+    .bt_meta_check_current(meta, .bt_meta_fingerprint(x))
+  }
   out <- fun(.bt_draws_plain(x))
   attributes(out) <- attributes(x)
-  out
+  .bt_meta_refresh(out)
 }
 
 # Error for plain numeric draws passed where BayesTools posterior draws with

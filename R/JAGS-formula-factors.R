@@ -514,6 +514,7 @@
     )
   ]
   attributes(transformed_samples) <- c(attributes(transformed_samples), old_attributes)
+  transformed_samples <- .bt_meta_refresh(transformed_samples)
   # the coefficient supports and atoms do not describe the transformed levels
   transformed_samples <- .bt_meta_set(transformed_samples, "support", NULL)
   transformed_samples <- .bt_meta_set(transformed_samples, "atoms", NULL)

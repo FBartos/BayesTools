@@ -68,6 +68,17 @@ transformed values. Functions that need the metadata (e.g.
 \code{\link[=Savage_Dickey_BF]{Savage_Dickey_BF()}}, \code{\link[=plot_posterior]{plot_posterior()}}, \code{\link[=marginal_posterior]{marginal_posterior()}}) stop on
 such draws; \code{\link[=marginal_posterior]{marginal_posterior()}} with \code{transformation} transforms
 the draws together with their metadata.
+
+Operations that replace values but keep the attributes of the draws
+(\code{x[] <- }, \code{x[i] <- }, \code{pmin()}, \code{pmax()}) leave
+metadata that no longer describe the draws. The metadata record a
+fingerprint of the values they describe (their number, the number of
+missing values, and two sums of the observed values), and reading or
+setting the metadata of such draws, here or in any function that uses
+them, stops with an error of class \code{BayesTools_stale_metadata}
+(parent class \code{BayesTools_metadata}). Subsetting a list of mixed
+posteriors with \code{[} keeps the list's metadata, with the prior
+densities of the omitted parameters removed.
 }
 \examples{
 draws <- stats::rnorm(100)

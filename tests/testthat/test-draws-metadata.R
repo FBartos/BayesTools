@@ -231,7 +231,8 @@ test_that("draw metadata is one validated container", {
   expect_identical(names(attributes(x)), "bayestools_meta")
   meta <- attr(x, "bayestools_meta", exact = TRUE)
   expect_s3_class(meta, "BayesTools_draw_metadata")
-  expect_identical(names(meta), c("atoms", "support"))
+  # the fields, and the fingerprint of the values that they describe
+  expect_identical(names(meta), c("atoms", "support", "fingerprint"))
   expect_s3_class(posterior_metadata(x, "atoms"), "BayesTools_posterior_atoms")
 
   # removing the last field removes the container
@@ -543,4 +544,135 @@ test_that("metadata build failures propagate instead of switching estimators", {
   support <- BayesTools:::.bt_meta_get(draws, "support")
   expect_identical(names(support), "mu")
   expect_equal(support$mu$bounds, c(0, Inf))
+})
+
+test_that("metadata of draws whose values changed stop instead of describing the old values", {
+
+  mixed <- .draws_metadata_mixed_for_test()
+  mp <- marginal_posterior(mixed, "sigma", prior_samples = TRUE)
+  reference <- Savage_Dickey_BF(mp, 1)
+  message <- paste0(
+    "The metadata of these posterior draws are unavailable: their values ",
+    "changed after the metadata were attached (for example by 'x[] <- ', ",
+    "'x[i] <- ', or 'pmin()'), so the supports, atoms, and prior densities ",
+    "no longer describe them. Use 'marginal_posterior(transformation = )' ",
+    "for transformed posterior distributions."
+  )
+
+  # replacing values keeps the attributes; the review's probe returned the
+  # Bayes factor of the untransformed support and prior (0.160)
+  replaced <- mp
+  replaced[] <- 2 * mp
+  element <- mp
+  element[3] <- 10
+  stale <- list(
+    replaced = replaced,
+    element  = element,
+    pmin     = pmin(mp, 1),
+    pmax     = pmax(mp, 1)
+  )
+  for(name in names(stale)){
+    expect_error(Savage_Dickey_BF(stale[[name]], 2), message, fixed = TRUE, info = name)
+    expect_error(Savage_Dickey_BF(stale[[name]], 2), class = "BayesTools_stale_metadata")
+    expect_error(posterior_metadata(stale[[name]], "support"), class = "BayesTools_metadata")
+    # the metadata cannot be updated without rebuilding the container
+    expect_error(posterior_metadata(stale[[name]], "atoms") <- NULL,
+                 class = "BayesTools_stale_metadata")
+    expect_error(BayesTools:::.bt_meta_set(stale[[name]], "support", NULL),
+                 class = "BayesTools_stale_metadata")
+  }
+  factor_draws <- BayesTools:::.bt_meta_set(
+    matrix(stats::rnorm(20), ncol = 2, dimnames = list(NULL, c("a", "b"))),
+    "atoms", posterior_atom_attribute()
+  )
+  factor_draws[, "b"] <- 0
+  expect_error(posterior_metadata(factor_draws, "atoms"), class = "BayesTools_stale_metadata")
+
+  # draws with their values pass, whatever kept or restored the attributes
+  restored <- mp
+  restored[] <- as.numeric(mp)
+  path <- tempfile(fileext = ".rds")
+  on.exit(unlink(path), add = TRUE)
+  saveRDS(mp, path)
+  unchanged <- list(mp, restored, pmin(mp, Inf), readRDS(path))
+  for(value in unchanged){
+    expect_identical(Savage_Dickey_BF(value, 1), reference)
+  }
+
+  # missing values count: defining an undefined draw changes the draws
+  undefined <- BayesTools:::.bt_meta_set(c(1, NA, 3), "undefined_draws", "correlation")
+  expect_identical(posterior_metadata(undefined, "undefined_draws"), "correlation")
+  undefined[2] <- 2
+  expect_error(posterior_metadata(undefined, "undefined_draws"), class = "BayesTools_stale_metadata")
+
+  # the sums agree up to the rounding bound of summing in double precision
+  values <- stats::rnorm(1000)
+  current <- BayesTools:::.bt_meta_fingerprint(values)
+  rounded <- current$value
+  rounded[["sum"]] <- rounded[["sum"]] + 8 * .Machine$double.eps * current$scale[["sum"]]
+  expect_true(BayesTools:::.bt_meta_fingerprint_matches(rounded, current))
+  shifted <- current$value
+  shifted[["weighted_sum"]] <- shifted[["weighted_sum"]] + 1e-9 * current$scale[["weighted_sum"]]
+  expect_false(BayesTools:::.bt_meta_fingerprint_matches(shifted, current))
+  # a permutation keeps the sum but not the position-weighted sum
+  expect_false(BayesTools:::.bt_meta_fingerprint_matches(
+    current$value, BayesTools:::.bt_meta_fingerprint(rev(values))
+  ))
+})
+
+test_that("subsetting a list of mixed posteriors keeps the list's metadata", {
+
+  set.seed(1)
+  data <- data.frame(x = stats::rnorm(50, 3, 2))
+  formula_result <- JAGS_formula(
+    ~ x, parameter = "mu", data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1)), x = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE)
+  )
+  n <- 400
+  posterior <- cbind(mu_intercept = stats::rnorm(n), mu_x = stats::rnorm(n),
+                     sigma = stats::rlnorm(n))
+  fit <- list(
+    mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+    summary.pars = list(mutate = NULL),
+    monitor = colnames(posterior),
+    sample = n
+  )
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- c(formula_result$prior_list, list(sigma = prior("lognormal", list(0, 1))))
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+  samples <- as_mixed_posteriors(
+    fit, c("mu_intercept", "mu_x", "sigma"), transform_scaled = TRUE, n_prior_samples = 500
+  )
+
+  subset <- samples[c("mu_x", "sigma")]
+  expect_identical(class(subset), class(samples))
+  expect_identical(names(subset), c("mu_x", "sigma"))
+  expect_identical(subset$mu_x, samples$mu_x)
+  for(field in c("prior_context", "formula_scale", "transform_scaled")){
+    expect_identical(BayesTools:::.bt_meta_get(subset, field),
+                     BayesTools:::.bt_meta_get(samples, field), info = field)
+  }
+  expect_true(isTRUE(BayesTools:::.bt_meta_get(subset, "transform_scaled")))
+  # the per-parameter prior densities follow the kept parameters
+  densities <- BayesTools:::.bt_meta_get(samples, "prior_densities")
+  expect_true("mu_intercept" %in% names(densities))
+  kept_densities <- BayesTools:::.bt_meta_get(subset, "prior_densities")
+  expect_identical(names(kept_densities), intersect(names(densities), c("mu_x", "sigma")))
+  expect_identical(class(kept_densities), class(densities))
+  for(key in names(kept_densities)){
+    expect_identical(kept_densities[[key]], densities[[key]], info = key)
+  }
+  expect_identical(attr(subset, "prior_list"), attr(samples, "prior_list"))
+  # the prior overlay of the subset uses the transformed prior of the full list
+  plot_layers <- function(samples){
+    set.seed(1)
+    plot <- plot_posterior(samples, "mu_x", plot_type = "ggplot", prior = TRUE)
+    lapply(seq_along(plot$layers), function(i) ggplot2::layer_data(plot, i))
+  }
+  expect_identical(plot_layers(subset), plot_layers(samples))
+  # an empty index keeps every element
+  expect_identical(samples[], samples)
 })
