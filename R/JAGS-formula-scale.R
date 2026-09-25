@@ -387,8 +387,10 @@
 #
 # When the formula-scale metadata carry the fitted fixed-effect design
 # (attribute "unscale_design"), the matrix is derived from that design and
-# verified exactly (see .bt_formula_unscale_design_transform()). Otherwise, the
-# matrix is paired by coefficient names (.build_unscale_matrix_by_names()).
+# verified exactly (see .bt_formula_unscale_design_transform()); the columns
+# must then be fitted coefficient coordinates (callers map labelled columns to
+# their coordinates first). Formula-scale metadata without a stored design
+# pair fitted coefficient names (.build_unscale_matrix_by_names()).
 #
 # @param term_names Character vector of all term names in the posterior
 # @param formula_scale Named list with scaling info (mean, sd) for scaled predictors
@@ -399,14 +401,21 @@
                                   require_closure = TRUE) {
 
   design_spec <- attr(formula_scale, "unscale_design", exact = TRUE)
-  if(is.null(design_spec) || !isTRUE(require_closure) ||
-     !.bt_formula_unscale_design_columns(design_spec, term_names, prefix)){
+  if(is.null(design_spec) || !isTRUE(require_closure)){
     return(.build_unscale_matrix_by_names(
       term_names = term_names,
       formula_scale = formula_scale,
       prefix = prefix,
       require_closure = require_closure
     ))
+  }
+  if(!.bt_formula_unscale_design_columns(design_spec, term_names, prefix)){
+    stop(
+      "Cannot transform the coefficients of formula parameter '", prefix,
+      "' to the original predictor scale: the posterior columns are not the ",
+      "fitted coefficient coordinates of its design.",
+      call. = FALSE
+    )
   }
 
   design_transform <- .bt_formula_unscale_design_transform(
@@ -822,9 +831,8 @@
 # Helper: Whether the requested columns are in the fitted coefficient
 # coordinates of the design. Columns that belong to a design term but carry
 # other names (factor-level labels, contrast coefficients `{j}` of mixed
-# posteriors, or more levels than fitted coefficients, as in level-wise
-# marginal summaries) are not the fitted coefficient vector; such inputs keep
-# the name-paired map.
+# posteriors, or more levels than fitted coefficients) are not the fitted
+# coefficient vector and cannot be transformed.
 .bt_formula_unscale_design_columns <- function(spec, term_names, prefix){
 
   .bt_formula_unscale_design_spec_check(spec, prefix)

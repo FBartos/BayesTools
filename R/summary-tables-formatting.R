@@ -347,96 +347,185 @@
   }
 }
 
-# Helper function to transform scaled samples in list format (for ensemble/marginal tables)
-# Uses the combinatorial unscaling algorithm via the helper in JAGS-formula.R
+# Transform mixed and marginal posterior samples (as used by the ensemble and
+# marginal tables) from the standardized to the original predictor scale.
+# Every column is mapped to the fitted coordinates it is a linear combination
+# of through its 'quantities' draw metadata (a vector element without that
+# metadata is the parameter it is named after); the coordinates are
+# transformed through the fitted design of 'formula_scale', and each column is
+# recombined from the transformed coordinates. The coordinates of combination
+# columns (transformed factor levels) are recovered from the levels of the same
+# element. Estimated marginal means of a formula are predictions at the stated
+# predictor values; they do not depend on the predictor standardization and
+# are returned unchanged.
 .transform_scale_samples_list <- function(samples, formula_scale){
 
   if(is.null(formula_scale) || length(formula_scale) == 0){
     return(samples)
   }
 
-  sample_names <- names(samples)
-  nested_transformable <- vapply(samples, function(x){
-    is.list(x) && length(x) > 0L &&
-      all(vapply(x, function(value) is.numeric(value) || is.matrix(value), logical(1)))
-  }, logical(1))
-  transformable <- vapply(
-    samples,
-    function(x) is.numeric(x) || is.matrix(x),
-    logical(1)
-  ) | nested_transformable
-  transformable_names <- sample_names[transformable]
-
-  if(length(transformable_names) == 0){
+  scaled_parameters <- names(formula_scale)
+  elements <- list()
+  for(name in names(samples)){
+    x <- samples[[name]]
+    if(inherits(x, "marginal_posterior.formula") ||
+       !(is.numeric(x) || (is.list(x) && length(x) > 0L &&
+                             all(vapply(x, is.numeric, logical(1)))))){
+      next
+    }
+    element <- .transform_scale_element_columns(x, name, scaled_parameters)
+    if(!is.null(element)){
+      elements[[name]] <- element
+    }
+  }
+  if(length(elements) == 0L){
     return(samples)
   }
-
-  first_name <- transformable_names[1]
-  n_samples <- if(nested_transformable[[first_name]]){
-    length(samples[[first_name]][[1]])
-  }else if(is.matrix(samples[[first_name]])){
-    nrow(samples[[first_name]])
-  }else{
-    length(samples[[first_name]])
-  }
-
-  sample_columns <- lapply(transformable_names, function(name){
-    if(nested_transformable[[name]]){
-      temp_samples <- do.call(cbind, lapply(samples[[name]], as.numeric))
-      colnames(temp_samples) <- paste0(name, "[", seq_along(samples[[name]]), "]")
-      return(temp_samples)
-    }else if(is.matrix(samples[[name]])){
-      temp_samples <- samples[[name]]
-      if(is.null(colnames(temp_samples))){
-        colnames(temp_samples) <- if(ncol(temp_samples) == 1) name else paste0(name, "[", seq_len(ncol(temp_samples)), "]")
-      }
-      return(temp_samples)
-    }else{
-      temp_samples <- matrix(samples[[name]], ncol = 1)
-      colnames(temp_samples) <- name
-      return(temp_samples)
-    }
-  })
-  names(sample_columns) <- transformable_names
-
-  posterior_matrix <- do.call(cbind, sample_columns)
-  if(nrow(posterior_matrix) != n_samples){
+  n_samples <- unique(vapply(elements, function(element){
+    nrow(element$coordinates)
+  }, integer(1)))
+  if(length(n_samples) != 1L){
     stop("All posterior sample elements must contain the same number of samples.", call. = FALSE)
   }
 
-  posterior_matrix <- .apply_unscale_transform(posterior_matrix, formula_scale)
+  coordinate_values <- do.call(cbind, unname(lapply(elements, `[[`, "coordinates")))
+  coordinate_values <- coordinate_values[
+    ,
+    !duplicated(colnames(coordinate_values)),
+    drop = FALSE
+  ]
+  transformed <- .apply_unscale_transform(coordinate_values, formula_scale)
 
-  for(name in transformable_names){
-    column_names <- colnames(sample_columns[[name]])
-
-    if(nested_transformable[[name]]){
-      for(i in seq_along(samples[[name]])){
-        old_sample <- samples[[name]][[i]]
-        transformed_sample <- posterior_matrix[, column_names[i]]
-        if(is.matrix(old_sample)){
-          old_sample[] <- transformed_sample
-          samples[[name]][[i]] <- .bt_meta_refresh(old_sample)
-        }else{
-          old_attrs <- attributes(old_sample)
-          samples[[name]][[i]] <- transformed_sample
-          for(attr_name in setdiff(names(old_attrs), "names")){
-            attr(samples[[name]][[i]], attr_name) <- old_attrs[[attr_name]]
-          }
-          samples[[name]][[i]] <- .bt_meta_refresh(samples[[name]][[i]])
-        }
+  for(name in names(elements)){
+    element <- elements[[name]]
+    values <- transformed[, colnames(element$weights), drop = FALSE] %*%
+      t(element$weights)
+    x <- samples[[name]]
+    if(is.list(x) && !is.numeric(x)){
+      for(i in which(element$columns)){
+        samples[[name]][[i]] <- .bt_draws_transform_values(x[[i]], function(level){
+          values[, i]
+        })
       }
-    }else if(is.matrix(samples[[name]])){
-      samples[[name]][, seq_along(column_names)] <- posterior_matrix[, column_names, drop = FALSE]
-      samples[[name]] <- .bt_meta_refresh(samples[[name]])
+    }else if(is.null(dim(x))){
+      samples[[name]] <- .bt_draws_transform_values(x, function(level){
+        values[, 1L]
+      })
     }else{
-      old_attrs <- attributes(samples[[name]])
-      samples[[name]] <- posterior_matrix[, column_names]
-      for(attr_name in setdiff(names(old_attrs), "names")){
-        attr(samples[[name]], attr_name) <- old_attrs[[attr_name]]
-      }
+      samples[[name]][, element$columns] <- values[, element$columns, drop = FALSE]
       samples[[name]] <- .bt_meta_refresh(samples[[name]])
     }
   }
 
   return(samples)
+}
+
+# The columns of one sample element as linear combinations of fitted
+# coordinates: a list with the draws of those coordinates, the weight matrix
+# (columns x coordinates), and the columns that belong to a scaled formula.
+# NULL when no column belongs to a scaled formula.
+.transform_scale_element_columns <- function(x, name, scaled_parameters){
+
+  levels <- is.list(x) && !is.numeric(x)
+  values <- if(levels){
+    do.call(cbind, lapply(x, as.numeric))
+  }else if(is.null(dim(x))){
+    matrix(as.numeric(x), ncol = 1L)
+  }else{
+    matrix(as.numeric(x), nrow = nrow(x))
+  }
+  quantities <- if(levels){
+    level_quantities <- lapply(x, .bt_draws_quantities)
+    if(any(vapply(level_quantities, is.null, logical(1)))){
+      NULL
+    }else{
+      do.call(rbind, level_quantities)
+    }
+  }else{
+    .bt_draws_quantities(x)
+  }
+
+  if(is.null(quantities)){
+    formula_parameter <- .bt_meta_get(x, "formula_parameter")
+    if(!any(formula_parameter %in% scaled_parameters)){
+      return(NULL)
+    }
+    if(!levels && is.null(dim(x))){
+      # a vector element without column metadata is its fitted coordinate
+      colnames(values) <- name
+      return(list(
+        coordinates = values,
+        weights     = matrix(1, nrow = 1L, ncol = 1L, dimnames = list(NULL, name)),
+        columns     = TRUE
+      ))
+    }
+    stop(
+      "The posterior samples of '", name, "' do not identify their fitted ",
+      "coordinates (draw metadata 'quantities'). Create them with ",
+      "as_mixed_posteriors() or mix_posteriors().",
+      call. = FALSE
+    )
+  }
+
+  formula_parameters <- vapply(
+    quantities$label_parts, `[[`, character(1), "formula_parameter"
+  )
+  scaled <- formula_parameters %in% scaled_parameters
+  if(!any(scaled)){
+    return(NULL)
+  }
+  # estimated marginal means are predictions, never coefficient combinations
+  undefined <- scaled & vapply(quantities$label_parts, `[[`, logical(1), "marginal")
+  if(any(undefined)){
+    stop(
+      "Cannot transform '",
+      .bt_label(quantities$label_parts[undefined][[1L]], style = "table"),
+      "' to the original predictor scale: it is not a combination of fitted ",
+      "coefficients.",
+      call. = FALSE
+    )
+  }
+  coordinates <- unique(unlist(quantities$dependencies[scaled], use.names = FALSE))
+  weights <- matrix(
+    0,
+    nrow = nrow(quantities),
+    ncol = length(coordinates),
+    dimnames = list(NULL, coordinates)
+  )
+  for(i in which(scaled)){
+    weights[i, quantities$dependencies[[i]]] <- quantities$weights[[i]]
+  }
+  scaled_weights <- weights[scaled, , drop = FALSE]
+  scaled_values <- values[, scaled, drop = FALSE]
+  identity_columns <- nrow(scaled_weights) == ncol(scaled_weights) &&
+    all(rowSums(scaled_weights != 0) == 1L) &&
+    all(colSums(scaled_weights != 0) == 1L) &&
+    all(scaled_weights[scaled_weights != 0] == 1)
+  if(identity_columns){
+    # every column is one fitted coordinate
+    coordinate_values <- scaled_values[
+      ,
+      apply(scaled_weights != 0, 2L, which),
+      drop = FALSE
+    ]
+  }else{
+    # the levels of one factor term determine its coordinates when their
+    # weights have full column rank
+    decomposition <- qr(scaled_weights)
+    if(decomposition$rank < ncol(scaled_weights)){
+      stop(
+        "Cannot transform '", name, "' to the original predictor scale: its ",
+        "columns do not determine the fitted coefficients they combine.",
+        call. = FALSE
+      )
+    }
+    coordinate_values <- t(qr.coef(decomposition, t(scaled_values)))
+  }
+  colnames(coordinate_values) <- coordinates
+
+  list(
+    coordinates = coordinate_values,
+    weights     = weights,
+    columns     = scaled
+  )
 }

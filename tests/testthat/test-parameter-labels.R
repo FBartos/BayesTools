@@ -27,12 +27,26 @@ skip_if_not_test_profile("unit")
     dimnames = list(NULL, columns)
   )
   scale <- formula_result$formula_scale
-  .parameter_catalog_test_fit(
-    coda::mcmc.list(coda::mcmc(draws)),
-    prior_list     = formula_result$prior_list,
-    formula_design = stats::setNames(list(formula_result$formula_design), parameter),
-    formula_scale  = if(length(scale) > 0L) stats::setNames(list(scale), parameter)
+  fit <- structure(
+    list(
+      mcmc         = coda::mcmc.list(coda::mcmc(draws)),
+      sample       = n,
+      summary.pars = list(mutate = NULL),
+      monitor      = columns
+    ),
+    class = c("runjags", "BayesTools_fit", "list")
   )
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- stats::setNames(
+    list(formula_result$formula_design),
+    parameter
+  )
+  if(length(scale) > 0L){
+    attr(fit, "formula_scale") <- stats::setNames(list(scale), parameter)
+  }
+  fit <- .bt_attach_parameter_map(fit)
+  fit <- .bt_attach_draw_geometry(fit)
+  .bt_attach_fit_contract(fit)
 }
 
 .label_test_factor_prior <- function(contrast){
@@ -160,7 +174,7 @@ test_that("catalog level tokens round trip through the one codec", {
   levels <- c(
     "a", "5", "-1", "1.5", "a b", "a,b", "a=b", " a", "b ", "",
     "x]y", "[z]", "w{1}", "}{", "100%", "%25", "back\\slash", "q\"uote",
-    "tick`", "tab\there", "line\nbreak", "été"
+    "tick`", "tab\there", "line\nbreak", "\u00e9t\u00e9"
   )
   tokens <- .bt_label_token(levels)
   expect_identical(.bt_label_token_decode(tokens), levels)
@@ -266,5 +280,237 @@ test_that("two-level interaction cells are labelled by their level", {
       parameter_coordinates(fit)$coordinate_name == "mu_g__xXx__x"
     ],
     "(mu) g[hi]:x"
+  )
+})
+
+test_that("mixed posteriors carry the fitted coordinate and catalog quantity of every column", {
+
+  data <- .label_test_data(c("a", "b", "c"), "meandif", h_levels = c("u", "v"))
+  fit <- .label_test_fit(
+    ~ g * x + h,
+    data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      g         = .label_test_factor_prior("meandif"),
+      x         = prior("normal", list(0, 1)),
+      h         = .label_test_factor_prior("treatment"),
+      "g:x"     = .label_test_factor_prior("meandif")
+    )
+  )
+  catalog <- parameter_catalog(fit)
+  draws <- as.matrix(fit$mcmc)
+  mixed <- as_mixed_posteriors(fit, parameters = names(attr(fit, "prior_list")))
+  for(parameter in names(mixed)){
+    samples <- mixed[[parameter]]
+    quantities <- posterior_metadata(samples, "quantities")
+    expect_identical(
+      quantities$column,
+      if(is.null(dim(samples))) parameter else colnames(samples),
+      info = parameter
+    )
+    # every column is exactly its fitted coordinate ...
+    expect_true(all(lengths(quantities$dependencies) == 1L), info = parameter)
+    expect_equal(
+      matrix(as.numeric(samples), nrow = NROW(samples)),
+      unname(draws[, unlist(quantities$dependencies), drop = FALSE]),
+      info = parameter
+    )
+    # ... and the catalog quantity that is that coordinate
+    rows <- match(quantities$quantity_id, catalog$quantities$quantity_id)
+    expect_false(anyNA(rows), info = parameter)
+    expect_identical(
+      lapply(catalog$quantities$extraction_key[rows], `[[`, "dependencies"),
+      unclass(quantities$dependencies),
+      info = parameter
+    )
+  }
+
+  # transformed levels are the design combinations of the fitted coordinates
+  transformed <- transform_factor_samples(mixed)
+  for(parameter in c("mu_g", "mu_g__xXx__x")){
+    quantities <- posterior_metadata(transformed[[parameter]], "quantities")
+    expect_identical(quantities$column, colnames(transformed[[parameter]]))
+    for(i in seq_len(nrow(quantities))){
+      expect_equal(
+        as.numeric(transformed[[parameter]][, i]),
+        as.numeric(
+          draws[, quantities$dependencies[[i]], drop = FALSE] %*%
+            quantities$weights[[i]]
+        ),
+        tolerance = 1e-12,
+        info = paste(parameter, i)
+      )
+    }
+  }
+})
+
+# Original-scale coefficients of the formula g + g:x (treatment g, level-wise
+# slopes, x standardized with mean m and sd s): at level k the standardized
+# linear predictor b0 + g_k + c_k (x - m) / s equals
+# (b0 + g_k - c_k m / s) + (c_k / s) x, so the intercept is b0 - c_1 m / s,
+# level k adds g_k - (c_k - c_1) m / s, and the slopes are c_k / s.
+.label_test_level_slope_original <- function(intercept, levels, slopes, m, s){
+
+  list(
+    intercept = intercept - slopes[, 1L] * m / s,
+    levels    = levels - (slopes[, -1L, drop = FALSE] - slopes[, 1L]) * m / s,
+    slopes    = slopes / s
+  )
+}
+
+test_that("original-scale ensemble tables transform mixed columns through the fitted design", {
+
+  set.seed(11)
+  data <- data.frame(
+    g = factor(rep(c("1", "2", "3"), 8), levels = c("1", "2", "3")),
+    x = stats::rnorm(24, 3, 2)
+  )
+  priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    g         = .label_test_factor_prior("treatment"),
+    "g:x"     = .label_test_factor_prior("independent")
+  )
+  fit <- .label_test_fit(~ g + g:x, data, priors, formula_scale = list(x = TRUE))
+  formula_scale <- attr(fit, "formula_scale")
+  m <- formula_scale$mu$mu_x$mean
+  s <- formula_scale$mu$mu_x$sd
+  draws <- as.matrix(fit$mcmc)
+  expected <- .label_test_level_slope_original(
+    intercept = draws[, "mu_intercept"],
+    levels    = draws[, c("mu_g[1]", "mu_g[2]"), drop = FALSE],
+    slopes    = draws[, paste0("mu_g__xXx__x[", 1:3, "]"), drop = FALSE],
+    m         = m,
+    s         = s
+  )
+
+  mixed <- as_mixed_posteriors(fit, parameters = names(attr(fit, "prior_list")))
+  table <- ensemble_estimates_table(
+    mixed,
+    parameters       = names(mixed),
+    transform_scaled = TRUE,
+    formula_scale    = formula_scale
+  )
+  expect_equal(table["(mu) intercept", "Mean"], mean(expected$intercept), tolerance = 1e-10)
+  expect_equal(
+    table[c("(mu) g[2]", "(mu) g[3]"), "Mean"],
+    unname(colMeans(expected$levels)),
+    tolerance = 1e-10
+  )
+  expect_equal(
+    table[c("(mu) g[1]:x", "(mu) g[2]:x", "(mu) g[3]:x"), "Mean"],
+    unname(colMeans(expected$slopes)),
+    tolerance = 1e-10
+  )
+  # the same numbers as the design-verified model table
+  reference <- JAGS_estimates_table(fit, transform_scaled = TRUE, remove_diagnostics = TRUE)
+  expect_equal(
+    table[rownames(reference), "Mean"],
+    reference[, "Mean"],
+    tolerance = 1e-10
+  )
+
+  # mixtures of models are transformed the same way, draw by draw
+  second <- .label_test_fit(~ g + g:x, data, priors, formula_scale = list(x = TRUE),
+                            seed = 2L)
+  mixed_models <- mix_posteriors(
+    model_list = list(
+      list(fit = fit,    marglik = bridgesampling_object(-10), prior_weights = 1),
+      list(fit = second, marglik = bridgesampling_object(-10.5), prior_weights = 1)
+    ),
+    parameters   = names(mixed),
+    is_null_list = stats::setNames(rep(list(c(FALSE, FALSE)), 3L), names(mixed)),
+    seed         = 1,
+    n_samples    = 200
+  )
+  mixed_draws <- function(parameter){
+    samples <- mixed_models[[parameter]]
+    quantities <- posterior_metadata(samples, "quantities")
+    out <- matrix(as.numeric(samples), nrow = NROW(samples))
+    colnames(out) <- unlist(quantities$dependencies)
+    out
+  }
+  expected_models <- .label_test_level_slope_original(
+    intercept = mixed_draws("mu_intercept")[, 1L],
+    levels    = mixed_draws("mu_g")[, c("mu_g[1]", "mu_g[2]"), drop = FALSE],
+    slopes    = mixed_draws("mu_g__xXx__x"),
+    m         = m,
+    s         = s
+  )
+  table_models <- ensemble_estimates_table(
+    mixed_models,
+    parameters       = names(mixed_models),
+    transform_scaled = TRUE,
+    formula_scale    = formula_scale
+  )
+  expect_equal(
+    table_models[c("(mu) intercept", "(mu) g[2]", "(mu) g[3]"), "Mean"],
+    c(mean(expected_models$intercept), unname(colMeans(expected_models$levels))),
+    tolerance = 1e-10
+  )
+  expect_equal(
+    table_models[c("(mu) g[1]:x", "(mu) g[2]:x", "(mu) g[3]:x"), "Mean"],
+    unname(colMeans(expected_models$slopes)),
+    tolerance = 1e-10
+  )
+
+  # columns that do not identify their fitted coordinates are refused
+  unlabelled <- mixed
+  unlabelled$mu_g <- .bt_meta_set(unlabelled$mu_g, "quantities", NULL)
+  expect_error(
+    ensemble_estimates_table(
+      unlabelled,
+      parameters       = names(unlabelled),
+      transform_scaled = TRUE,
+      formula_scale    = formula_scale
+    ),
+    "do not identify their fitted coordinates"
+  )
+  expect_error(
+    .build_unscale_matrix(
+      c("mu_intercept", "mu_g[2]", "mu_g[3]"),
+      formula_scale$mu,
+      prefix = "mu"
+    ),
+    "not the fitted coefficient coordinates"
+  )
+})
+
+test_that("original-scale marginal tables keep the marginal predictions", {
+
+  set.seed(3)
+  data <- data.frame(
+    x = stats::rnorm(30, 5, 2),
+    g = factor(rep(c("a", "b"), 15))
+  )
+  fit <- .label_test_fit(
+    ~ x + g,
+    data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      x         = prior("normal", list(0, 1)),
+      g         = .label_test_factor_prior("treatment")
+    ),
+    formula_scale = list(x = TRUE),
+    n = 50L
+  )
+  mixed <- as_mixed_posteriors(fit, parameters = names(attr(fit, "prior_list")))
+  marginal <- list(mu_x = marginal_posterior(mixed, "mu_x", formula = ~ x + g))
+  inference <- list(mu_x = stats::setNames(
+    as.list(rep(1, length(marginal$mu_x))),
+    names(marginal$mu_x)
+  ))
+  # the predictions at x = m + k s do not depend on the standardization
+  standardized <- marginal_estimates_table(marginal, inference, parameters = "mu_x")
+  original <- marginal_estimates_table(
+    marginal, inference,
+    parameters       = "mu_x",
+    transform_scaled = TRUE,
+    formula_scale    = attr(fit, "formula_scale")
+  )
+  expect_equal(original[, "Mean"], standardized[, "Mean"], tolerance = 1e-12)
+  expect_equal(
+    standardized[, "Mean"],
+    unname(vapply(marginal$mu_x, mean, numeric(1))),
+    tolerance = 1e-12
   )
 })

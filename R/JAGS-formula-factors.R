@@ -505,6 +505,18 @@
     cell_names = design_info[["cell_names"]]
   )
 
+  transformed_quantities <- .transformed_factor_quantities(
+    coefficient_samples = coefficient_samples,
+    metadata            = metadata,
+    parameter           = parameter,
+    design              = design,
+    columns             = colnames(transformed_samples),
+    transformation      = if(identical(transformed_class, "mixed_posteriors.treatment_transformed")){
+      "none"
+    }else{
+      "dif"
+    }
+  )
   posterior_atoms <- .posterior_atoms_get(coefficient_samples)
   old_attributes <- attributes(coefficient_samples)
   old_class <- class(coefficient_samples)
@@ -518,6 +530,7 @@
   # the coefficient supports and atoms do not describe the transformed levels
   transformed_samples <- .bt_meta_set(transformed_samples, "support", NULL)
   transformed_samples <- .bt_meta_set(transformed_samples, "atoms", NULL)
+  transformed_samples <- .bt_meta_set(transformed_samples, "quantities", transformed_quantities)
   attr(transformed_samples, "level_names")       <- design_info[["cell_names"]]
   attr(transformed_samples, "factor_cell_names") <- design_info[["cell_names"]]
   if(!is.null(posterior_atoms)){
@@ -533,6 +546,50 @@
   class(transformed_samples) <- unique(c(old_class, class(transformed_samples), transformed_class))
 
   return(transformed_samples)
+}
+
+# The column table of transformed factor levels: each level cell is the
+# linear combination of the coefficient columns' fitted coordinates given by
+# its design row, labelled as a transformed contrast level (differences from
+# the mean) or as the level effect itself (treatment levels). NULL when the
+# coefficient columns do not identify their fitted coordinates.
+.transformed_factor_quantities <- function(coefficient_samples, metadata,
+                                           parameter, design, columns,
+                                           transformation = "dif"){
+
+  coefficient_quantities <- .bt_meta_get(coefficient_samples, "quantities")
+  if(is.null(coefficient_quantities) ||
+     nrow(coefficient_quantities) != ncol(design)){
+    return(NULL)
+  }
+  coordinates <- vapply(seq_len(nrow(coefficient_quantities)), function(i){
+    dependencies <- coefficient_quantities$dependencies[[i]]
+    weights <- coefficient_quantities$weights[[i]]
+    if(length(dependencies) == 1L && isTRUE(weights == 1)) dependencies else NA_character_
+  }, character(1))
+  if(anyNA(coordinates)){
+    return(NULL)
+  }
+  formula_parameter <- coefficient_quantities$label_parts[[1L]]$formula_parameter
+  cells <- .bt_label_parts_factor(
+    parameter         = parameter,
+    prior             = metadata,
+    formula_parameter = formula_parameter
+  )$cells
+  if(length(cells) != nrow(design)){
+    return(NULL)
+  }
+  .bt_draws_quantity_table(
+    columns      = columns,
+    quantity_ids = rep("", nrow(design)),
+    dependencies = lapply(seq_len(nrow(design)), function(cell){
+      coordinates[design[cell, ] != 0]
+    }),
+    weights      = lapply(seq_len(nrow(design)), function(cell){
+      unname(as.numeric(design[cell, design[cell, ] != 0]))
+    }),
+    label_parts  = .bt_label_parts_update(cells, transformation = transformation)
+  )
 }
 
 #' @title Transform factor posterior samples into differences from the mean

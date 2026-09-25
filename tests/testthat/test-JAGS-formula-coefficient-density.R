@@ -479,7 +479,8 @@ test_that("design-derived unscaling applies only to fitted coefficient coordinat
   attr(without_design$mu, "unscale_design") <- NULL
 
   # Level-wise summaries (one column per level, or level-labelled columns)
-  # are not the fitted coefficient vector and keep the name-paired map.
+  # are not the fitted coefficient vector: their names are never paired with
+  # the design, and callers map such columns to their fitted coordinates.
   level_columns <- list(
     matrix(c(0, 0.4, -0.2, 0, 0.1, 0.3), nrow = 2, byrow = TRUE,
            dimnames = list(NULL, paste0("mu_x__xXx__f[", 1:3, "]"))),
@@ -487,9 +488,9 @@ test_that("design-derived unscaling applies only to fitted coefficient coordinat
           `mu_x__xXx__f[b]` = c(0.3, 0.1), `mu_x__xXx__f[c]` = c(-0.4, 0.2))
   )
   for(samples in level_columns){
-    expect_identical(
+    expect_error(
       BayesTools:::.bt_transform_scale_posterior(samples, formula_scale = with_design),
-      BayesTools:::.bt_transform_scale_posterior(samples, formula_scale = without_design)
+      "not the fitted coefficient coordinates"
     )
   }
 

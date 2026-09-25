@@ -496,6 +496,15 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         attr(marginal_posterior_samples, "parameter") <- parameter
         attr(marginal_posterior_samples, "level")     <- "intercept"
         attr(marginal_posterior_samples, "data")      <- data
+        marginal_posterior_samples <- .bt_meta_set(
+          marginal_posterior_samples,
+          "quantities",
+          .marginal_posterior_level_quantities(
+            formula_parameter = formula_parameter,
+            components        = "intercept",
+            level_frame       = NULL
+          )
+        )
 
         marginal_posterior_samples <- list("intercept" = marginal_posterior_samples)
 
@@ -527,6 +536,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             data[, pred] == at_index_output_frame[i, pred]
           })), 1, all)
         })
+        level_quantities <- .marginal_posterior_level_quantities(
+          formula_parameter = formula_parameter,
+          components        = manipulated_predictors,
+          level_frame       = at_index_output.names_frame
+        )
         marginal_posterior_samples <- lapply(seq_along(data_split), function(lvl){
           temp_marginal_posterior_samples <- marginal_posterior_samples[data_split[[lvl]],]
           temp_data                       <- data[data_split[[lvl]],]
@@ -534,6 +548,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           attr(temp_marginal_posterior_samples, "parameter") <- parameter
           attr(temp_marginal_posterior_samples, "level")     <- level_names[lvl]
           attr(temp_marginal_posterior_samples, "data")      <- temp_data
+          temp_marginal_posterior_samples <- .bt_meta_set(
+            temp_marginal_posterior_samples,
+            "quantities",
+            level_quantities[lvl, , drop = FALSE]
+          )
           return(temp_marginal_posterior_samples)
         })
         names(marginal_posterior_samples) <- level_names
@@ -758,6 +777,13 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         )
       }
 
+      # the fitted coefficient combination of each level (transformed levels
+      # are no linear combination of the coefficients)
+      level_quantities <- .bt_draws_quantities(marginal_posterior_samples)
+      if(!is.null(transformation)){
+        level_quantities <- NULL
+      }
+
       # apply transformations
       if(!is.null(transformation)){
         marginal_posterior_samples <- .density.prior_transformation_x(marginal_posterior_samples, transformation, transformation_arguments)
@@ -769,6 +795,15 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         class(temp_marginal_posterior_samples) <- c(class(temp_marginal_posterior_samples), "marginal_posterior.factor")
         attr(temp_marginal_posterior_samples, "parameter")  <- parameter
         attr(temp_marginal_posterior_samples, "level_name") <- level_names[lvl_i]
+        if(!is.null(level_quantities)){
+          temp_quantities <- level_quantities[lvl_i, , drop = FALSE]
+          temp_quantities$column <- level_names[lvl_i]
+          temp_marginal_posterior_samples <- .bt_meta_set(
+            temp_marginal_posterior_samples,
+            "quantities",
+            temp_quantities
+          )
+        }
         temp_support <- NULL
         if(!is.null(marginal_factor_support)){
           temp_support <- .posterior_support_get(
@@ -911,6 +946,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         )
         marginal_posterior_samples <- .bt_meta_update(
           marginal_posterior_samples,
+          quantities         = NULL,
           posterior_density  = NULL,
           posterior_ordinate = NULL
         )
@@ -1102,6 +1138,41 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   )
   class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior")
   return(marginal_posterior_samples)
+}
+
+# The column table of estimated marginal means: each level is a prediction at
+# the stated values of the manipulated predictors (factor levels, or
+# continuous values in standard deviations), not a combination of fitted
+# coefficients, so it declares no fitted coordinates.
+.marginal_posterior_level_quantities <- function(formula_parameter, components,
+                                                 level_frame){
+
+  if(is.null(level_frame)){
+    parts <- list(.bt_label_parts(
+      components        = components,
+      formula_parameter = formula_parameter,
+      marginal          = TRUE
+    ))
+  }else{
+    parts <- lapply(seq_len(nrow(level_frame)), function(level){
+      .bt_label_parts(
+        components        = components,
+        formula_parameter = formula_parameter,
+        levels            = stats::setNames(
+          vapply(level_frame, function(column) as.character(column[[level]]), character(1)),
+          names(level_frame)
+        ),
+        marginal          = TRUE
+      )
+    })
+  }
+  .bt_draws_quantity_table(
+    columns      = .bt_label(parts, style = "plot"),
+    quantity_ids = rep("", length(parts)),
+    dependencies = rep(list(character()), length(parts)),
+    weights      = rep(list(numeric()), length(parts)),
+    label_parts  = parts
+  )
 }
 
 .marginal_posterior_prior_density_context <- function(samples, prior_list,

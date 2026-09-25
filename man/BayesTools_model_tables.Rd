@@ -262,7 +262,13 @@ continuous predictors should be transformed back to the original
 scale. For \code{runjags_estimates_table()}, random-effect summaries are
 also derived on the transformed scale when the fit contains
 \code{formula_scale} metadata: random-effect SDs and correlations are
-computed from the transformed covariance draws. Defaults to \code{FALSE}.}
+computed from the transformed covariance draws. Mixed posterior samples are
+transformed through the fitted design of \code{formula_scale}: every column
+is mapped to its fitted coefficient by its \code{quantities} draw metadata
+(see \code{\link[=posterior_metadata]{posterior_metadata()}}), and columns that are not fitted coefficients
+are refused. Estimated marginal means of \code{\link[=marginal_estimates_table]{marginal_estimates_table()}} are
+predictions at the stated predictor values, which do not depend on the
+standardization, and are not changed. Defaults to \code{FALSE}.}
 
 \item{random_effects_summary}{random-effect reporting mode for JAGS estimates
 tables. \code{"standard"} replaces raw implementation parameters with the

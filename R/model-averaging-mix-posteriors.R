@@ -189,6 +189,20 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       stop("The posterior samples cannot be mixed: unsupported mixture of prior distributions.")
     }
 
+    # the fitted coordinate and label parts of every column
+    if(is.null(.bt_meta_get(out[[temp_parameter]], "quantities"))){
+      out[[temp_parameter]] <- .bt_meta_set(
+        out[[temp_parameter]],
+        "quantities",
+        .mix_posteriors_quantities(
+          samples   = out[[temp_parameter]],
+          parameter = temp_parameter,
+          priors    = temp_priors,
+          fits      = fits
+        )
+      )
+    }
+
     # add formula relevant information
     if(!is.null(unique(unlist(lapply(temp_priors, attr, which = "parameter", exact = TRUE))))){
       class(out[[temp_parameter]]) <- c(class(out[[temp_parameter]]), "mixed_posteriors.formula")
@@ -203,6 +217,34 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   class(out) <- c(class(out), "mixed_posteriors")
   return(out)
+}
+
+# The column table of mixed draws of one parameter: its label parts and
+# fitted coordinates from a model prior that defines it, and its catalog
+# quantity from the first fit whose parameter map contains it.
+.mix_posteriors_quantities <- function(samples, parameter, priors, fits){
+
+  defined <- vapply(priors, function(prior){
+    !is.null(prior) && !is.prior.point(prior) && !is.prior.none(prior)
+  }, logical(1))
+  if(!any(defined)){
+    defined <- !vapply(priors, is.null, logical(1))
+  }
+  prior <- priors[[which(defined)[1L]]]
+  catalog <- NULL
+  for(i in which(defined)){
+    if(inherits(fits[[i]], "BayesTools_fit")){
+      catalog <- parameter_catalog(fits[[i]])
+      break
+    }
+  }
+
+  .bt_mixed_quantities(
+    parameter = parameter,
+    prior     = prior,
+    columns   = if(is.null(dim(samples))) parameter else colnames(samples),
+    catalog   = catalog
+  )
 }
 
 # Persisted log(intercept) flag of the fitted formula; NULL when no fit stores
@@ -938,6 +980,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   rownames(samples) <- NULL
   colnames(samples) <- omega_names
+  # each weight mixes different fitted coordinates across the models
+  samples <- .bt_meta_set(samples, "quantities", .bt_verbatim_quantities(omega_names))
   samples <- .bt_meta_set(samples, "draw_index", draw_index)
   samples <- .bt_draws_set_component(samples, model_component, "model")
   attr(samples, "parameter")  <- parameter

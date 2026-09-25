@@ -557,3 +557,203 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
     direct      = direct
   )
 }
+
+# Label parts of prior-list entries ------------------------------------------
+
+# The fitted coordinate names of one prior-list entry and their label parts,
+# in coordinate order: the level cells and contrast coefficients of a fixed
+# factor prior, the term of a formula coefficient, and the parameter name of
+# any other parameter. The formula parameter is the prior's own 'parameter'
+# attribute; names are never matched against other formula parameters.
+.bt_label_parts_prior <- function(parameter, prior){
+
+  formula_parameter <- attr(prior, "parameter", exact = TRUE)
+  if(is.null(formula_parameter) || length(formula_parameter) != 1L ||
+     is.na(formula_parameter)){
+    formula_parameter <- ""
+  }
+  factor_prior <- .bt_parameter_catalog_factor_prior(parameter, prior)
+  if(!is.null(factor_prior) &&
+     !is.null(attr(factor_prior, "factor_design", exact = TRUE))){
+    return(list(
+      coordinates = .JAGS_prior_factor_names(parameter, factor_prior),
+      parts       = .bt_label_parts_factor(
+        parameter         = parameter,
+        prior             = factor_prior,
+        formula_parameter = formula_parameter
+      )$coordinates
+    ))
+  }
+  if(is.prior.vector(prior) || .bt_prior_is_factor_family(prior)){
+    coordinates <- .JAGS_prior_factor_names(parameter, prior)
+    return(list(
+      coordinates = coordinates,
+      parts       = lapply(coordinates, function(coordinate){
+        .bt_label_parts(coordinate, selector = coordinate)
+      })
+    ))
+  }
+
+  stem <- paste0(formula_parameter, "_")
+  components <- parameter
+  if(nzchar(formula_parameter)){
+    if(!startsWith(parameter, stem)){
+      stop(
+        "The formula prior '", parameter, "' is not named after its formula ",
+        "parameter '", formula_parameter, "'.",
+        call. = FALSE
+      )
+    }
+    # JAGS_parameter_names(): the formula parameter, then the term with
+    # interactions encoded
+    components <- attr(prior, "interaction_terms", exact = TRUE)
+    if(!.is_prior_interaction(prior) || length(components) == 0L){
+      components <- strsplit(
+        substring(parameter, nchar(stem) + 1L),
+        "__xXx__",
+        fixed = TRUE
+      )[[1L]]
+    }
+  }
+
+  list(
+    coordinates = parameter,
+    parts       = list(.bt_label_parts(
+      components        = components,
+      formula_parameter = formula_parameter,
+      selector          = parameter
+    ))
+  )
+}
+
+# Draw-metadata column tables ('quantities') -------------------------------
+
+.bt_draws_quantity_table <- function(columns, quantity_ids, dependencies,
+                                     weights, label_parts){
+
+  out <- data.frame(
+    column      = as.character(columns),
+    quantity_id = as.character(quantity_ids),
+    stringsAsFactors = FALSE
+  )
+  out$dependencies <- I(lapply(dependencies, as.character))
+  out$weights      <- I(lapply(weights, as.numeric))
+  out$label_parts  <- I(label_parts)
+  out
+}
+
+# The catalog quantity ids of label parts rendered to canonical names (""
+# when the catalog has no such quantity).
+.bt_draws_quantity_ids <- function(parts, catalog){
+
+  out <- rep("", length(parts))
+  if(is.null(catalog) || length(parts) == 0L){
+    return(out)
+  }
+  quantities <- catalog$quantities
+  quantities <- quantities[quantities$provider == "BayesTools", , drop = FALSE]
+  selectors <- .bt_label(parts, style = "selector")
+  namespaces <- vapply(parts, function(part){
+    if(nzchar(part$formula_parameter)) part$formula_parameter else "model"
+  }, character(1))
+  rows <- match(
+    paste(selectors, namespaces, sep = "\r"),
+    paste(quantities$canonical_name, quantities$namespace, sep = "\r")
+  )
+  out[!is.na(rows)] <- quantities$quantity_id[rows[!is.na(rows)]]
+  out
+}
+
+# The column table of mixed-posterior draws of one prior-list entry whose
+# columns are the prior's fitted coordinates in coordinate order.
+.bt_mixed_quantities <- function(parameter, prior, columns, catalog = NULL){
+
+  prior_parts <- .bt_label_parts_prior(parameter, prior)
+  if(length(prior_parts$coordinates) != length(columns)){
+    stop(
+      "The mixed posterior columns of '", parameter, "' do not match its ",
+      "fitted coordinates.",
+      call. = FALSE
+    )
+  }
+  .bt_draws_quantity_table(
+    columns      = columns,
+    quantity_ids = .bt_draws_quantity_ids(prior_parts$parts, catalog),
+    dependencies = as.list(prior_parts$coordinates),
+    weights      = rep(list(1), length(columns)),
+    label_parts  = prior_parts$parts
+  )
+}
+
+# The column table of draws whose columns have no label structure beyond
+# their names (weight-function and publication-bias columns): each column is
+# the given fitted coordinate, or no coordinate when the column is a mixture
+# of different coordinates across models.
+.bt_verbatim_quantities <- function(columns, coordinates = NULL){
+
+  .bt_draws_quantity_table(
+    columns      = columns,
+    quantity_ids = rep("", length(columns)),
+    dependencies = if(is.null(coordinates)){
+      rep(list(character()), length(columns))
+    }else{
+      as.list(coordinates)
+    },
+    weights      = if(is.null(coordinates)){
+      rep(list(numeric()), length(columns))
+    }else{
+      rep(list(1), length(columns))
+    },
+    label_parts  = lapply(columns, function(column){
+      .bt_label_parts(column, selector = column)
+    })
+  )
+}
+
+# The column table of draws 'x', aligned with its columns (one row for vector
+# draws), or NULL when the draws carry none.
+.bt_draws_quantities <- function(x){
+
+  quantities <- .bt_meta_get(x, "quantities")
+  if(is.null(quantities)){
+    return(NULL)
+  }
+  columns <- if(is.null(dim(x))) NULL else colnames(x)
+  n_columns <- if(is.null(dim(x))) 1L else ncol(x)
+  if(nrow(quantities) != n_columns ||
+     (!is.null(columns) && !identical(quantities$column, columns))){
+    stop(
+      "The draw metadata 'quantities' do not describe the columns of the draws.",
+      call. = FALSE
+    )
+  }
+  quantities
+}
+
+# The fitted coordinate of every column of draws 'x' (NA for columns that are
+# not a single fitted coordinate), from its 'quantities' metadata. Vector
+# draws without that metadata are the parameter 'parameter' itself.
+.bt_draws_coordinate_columns <- function(x, parameter){
+
+  quantities <- .bt_draws_quantities(x)
+  if(is.null(quantities)){
+    if(is.null(dim(x))){
+      return(parameter)
+    }
+    stop(
+      "The posterior samples of '", parameter, "' do not identify their fitted ",
+      "coordinates (draw metadata 'quantities'). Create them with ",
+      "as_mixed_posteriors() or mix_posteriors().",
+      call. = FALSE
+    )
+  }
+  vapply(seq_len(nrow(quantities)), function(i){
+    dependencies <- quantities$dependencies[[i]]
+    weights <- quantities$weights[[i]]
+    if(length(dependencies) == 1L && isTRUE(weights == 1)){
+      dependencies
+    }else{
+      NA_character_
+    }
+  }, character(1))
+}

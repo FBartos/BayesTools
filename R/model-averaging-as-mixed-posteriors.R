@@ -91,6 +91,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   }
 
   out    <- list()
+  catalog <- parameter_catalog(model)
 
   for(p in seq_along(parameters)){
 
@@ -151,6 +152,24 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       out[[temp_parameter]] <- .posterior_support_drop(
         out[[temp_parameter]],
         recursive = TRUE
+      )
+    }
+
+    # the fitted coordinate and label parts of every column
+    if(is.null(.bt_meta_get(out[[temp_parameter]], "quantities"))){
+      out[[temp_parameter]] <- .bt_meta_set(
+        out[[temp_parameter]],
+        "quantities",
+        .bt_mixed_quantities(
+          parameter = temp_parameter,
+          prior     = temp_prior,
+          columns   = if(is.null(dim(out[[temp_parameter]]))){
+            temp_parameter
+          }else{
+            colnames(out[[temp_parameter]])
+          },
+          catalog   = catalog
+        )
       )
     }
 
@@ -545,6 +564,10 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   rownames(samples) <- NULL
   colnames(samples) <- omega_names
+  samples <- .bt_meta_set(samples, "quantities", .bt_verbatim_quantities(
+    omega_names,
+    omega_par
+  ))
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
   samples <- .weightfunction_set_omega_context(samples, omega_info)
@@ -573,6 +596,10 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   samples   <- model_samples[, par_names, drop = FALSE]
 
   rownames(samples) <- NULL
+  samples <- .bt_meta_set(samples, "quantities", .bt_verbatim_quantities(
+    par_names,
+    par_names
+  ))
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.phacking")
@@ -645,6 +672,10 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   rownames(samples) <- NULL
   colnames(samples) <- out_names
+  samples <- .bt_meta_set(samples, "quantities", .bt_verbatim_quantities(
+    out_names,
+    par_names
+  ))
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
   if(any(has_selection)){
@@ -823,6 +854,10 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
     rownames(samples) <- NULL
     colnames(samples) <- out_names
+    samples <- .bt_meta_set(samples, "quantities", .bt_verbatim_quantities(
+      out_names,
+      par_names
+    ))
     samples <- .bt_draws_set_component(
       samples,
       .bt_component_from_indicator(prior, indicator),

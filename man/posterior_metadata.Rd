@@ -47,6 +47,18 @@ literal key.}
 \item{\code{"linear_weights"}}{the weights of the fitted coordinates
 that form a level of a \code{\link[=marginal_posterior]{marginal_posterior()}} (a named numeric vector,
 or a matrix with one row per draw).}
+\item{\code{"quantities"}}{the quantity of every column of mixed and
+marginal posterior draws: a data frame with one row per column (one row
+for vector draws) and the columns \code{column} (the column name),
+\code{quantity_id} (the \code{\link[=parameter_catalog]{parameter_catalog()}} quantity id, or
+\code{""} for columns that are not catalog quantities),
+\code{dependencies} and \code{weights} (the fitted coordinates the
+column is a linear function of), and \code{label_parts} (the label
+parts rendered by \code{\link[=parameter_labels]{parameter_labels()}}). Set by \code{\link[=as_mixed_posteriors]{as_mixed_posteriors()}},
+\code{\link[=mix_posteriors]{mix_posteriors()}}, \code{\link[=transform_factor_samples]{transform_factor_samples()}}, and
+\code{\link[=marginal_posterior]{marginal_posterior()}} (whose estimated marginal means are predictions
+and declare no fitted coordinates); summaries map columns to fitted
+coordinates and render their labels from it.}
 }}
 
 \item{value}{the new value of the field; \code{NULL} removes it.}

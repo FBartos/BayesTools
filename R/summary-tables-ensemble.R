@@ -52,7 +52,13 @@
 #' scale. For \code{runjags_estimates_table()}, random-effect summaries are
 #' also derived on the transformed scale when the fit contains
 #' \code{formula_scale} metadata: random-effect SDs and correlations are
-#' computed from the transformed covariance draws. Defaults to \code{FALSE}.
+#' computed from the transformed covariance draws. Mixed posterior samples are
+#' transformed through the fitted design of \code{formula_scale}: every column
+#' is mapped to its fitted coefficient by its \code{quantities} draw metadata
+#' (see [posterior_metadata()]), and columns that are not fitted coefficients
+#' are refused. Estimated marginal means of [marginal_estimates_table()] are
+#' predictions at the stated predictor values, which do not depend on the
+#' standardization, and are not changed. Defaults to \code{FALSE}.
 #' @param formula_scale named list containing standardization information
 #' (mean and sd) for each standardized predictor. Required when
 #' \code{transform_scaled = TRUE} for ensemble/marginal tables. For

@@ -181,8 +181,52 @@
     joint_prior_transformation = function(value){
       if(is.character(value) && length(value) == 1L) NULL else
         "it must be a character string"
+    },
+    quantities = function(value){
+      .bt_meta_quantities_reason(value)
     }
   )
+}
+
+# The 'quantities' field: one row per draw column (the element itself for
+# vector draws) with the column name, the catalog quantity id ("" for columns
+# that are not catalog quantities), the fitted coordinates the column is a
+# linear function of ('dependencies', with 'weights'), and the column's label
+# parts. Consumers map columns to fitted coordinates and render labels from
+# it, never from the column names.
+.bt_meta_quantities_columns <- c(
+  "column", "quantity_id", "dependencies", "weights", "label_parts"
+)
+
+.bt_meta_quantities_reason <- function(value){
+
+  if(!is.data.frame(value) ||
+     !identical(names(value), .bt_meta_quantities_columns)){
+    return(paste0(
+      "it must be a column table with the columns ",
+      paste0("'", .bt_meta_quantities_columns, "'", collapse = ", ")
+    ))
+  }
+  if(!is.character(value$column) || anyNA(value$column) ||
+     any(!nzchar(value$column)) || anyDuplicated(value$column) ||
+     !is.character(value$quantity_id) || anyNA(value$quantity_id)){
+    return("its 'column' and 'quantity_id' must be character (unique, non-missing column names)")
+  }
+  valid_rows <- is.list(value$dependencies) && is.list(value$weights) &&
+    is.list(value$label_parts) &&
+    all(vapply(seq_len(nrow(value)), function(i){
+      dependencies <- value$dependencies[[i]]
+      weights <- value$weights[[i]]
+      is.character(dependencies) && !anyNA(dependencies) &&
+        is.numeric(weights) && !anyNA(weights) &&
+        length(weights) == length(dependencies) &&
+        inherits(value$label_parts[[i]], "BayesTools_label_parts")
+    }, logical(1)))
+  if(!valid_rows){
+    return("its 'dependencies', 'weights', and 'label_parts' must describe every column")
+  }
+
+  NULL
 }
 
 # Sources of the per-draw component index: the model of a model-averaged
@@ -215,7 +259,8 @@
   "prior_context", "prior_densities", "posterior_density",
   "posterior_densities", "posterior_ordinate", "posterior_ordinates",
   "formula_parameter", "log_intercept", "formula_scale", "transform_scaled",
-  "condition", "linear_weights", "linear_offset", "joint_prior_transformation"
+  "condition", "linear_weights", "linear_offset", "joint_prior_transformation",
+  "quantities"
 )
 
 .bt_meta_fields <- function(){
@@ -507,7 +552,8 @@
 .bt_meta_public_fields <- c(
   "support", "atoms", "undefined_draws", "prior_density", "prior_densities",
   "prior_context", "posterior_density", "posterior_densities",
-  "posterior_ordinate", "posterior_ordinates", "condition", "linear_weights"
+  "posterior_ordinate", "posterior_ordinates", "condition", "linear_weights",
+  "quantities"
 )
 
 #' @title Metadata of BayesTools posterior draws
@@ -555,6 +601,18 @@
 #'   \item{\code{"linear_weights"}}{the weights of the fitted coordinates
 #'   that form a level of a [marginal_posterior()] (a named numeric vector,
 #'   or a matrix with one row per draw).}
+#'   \item{\code{"quantities"}}{the quantity of every column of mixed and
+#'   marginal posterior draws: a data frame with one row per column (one row
+#'   for vector draws) and the columns \code{column} (the column name),
+#'   \code{quantity_id} (the [parameter_catalog()] quantity id, or
+#'   \code{""} for columns that are not catalog quantities),
+#'   \code{dependencies} and \code{weights} (the fitted coordinates the
+#'   column is a linear function of), and \code{label_parts} (the label
+#'   parts rendered by [parameter_labels()]). Set by [as_mixed_posteriors()],
+#'   [mix_posteriors()], [transform_factor_samples()], and
+#'   [marginal_posterior()] (whose estimated marginal means are predictions
+#'   and declare no fitted coordinates); summaries map columns to fitted
+#'   coordinates and render their labels from it.}
 #' }
 #' @param value the new value of the field; \code{NULL} removes it.
 #'
