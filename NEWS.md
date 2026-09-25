@@ -249,6 +249,18 @@ old behaviour.
   complete factor metadata that formula factor terms carry: the number and
   names of its levels, its contrast, and the design mapping its coefficients
   to the levels. `levels` is the number of levels or their names.
+- `parameter_prior_density()` gives the pairwise correlations of
+  unstructured (`us`) random-effect blocks with an LKJ(eta) prior their exact
+  prior density, the LKJ marginal `2 B - 1` with
+  `B ~ Beta(eta - 1 + K/2, eta - 1 + K/2)` for a block with K columns: on the
+  fitted scale, also when the SDs of the block have inclusion gates or point
+  masses, and on the original scale of scaled predictors for pairs whose
+  coefficients are each one rescaled fitted coefficient (e.g. two scaled
+  slopes). Before, only two-column blocks without scaled predictors had one.
+  `parameter_mixed_posterior()` attaches it (declaring no atoms), so
+  `plot_posterior(prior = TRUE)` of these correlations draws the prior.
+  Original-scale correlations that mix fitted coefficients (the intercept and
+  a slope of a centred predictor) still have no prior density.
 - `parameter_prior_density()` gives allocated random-effect SDs, variances
   and allocation totals (`sd_total`, `var_total`) exact prior densities: the
   scale prior times the multiplier of the fitted model (Dirichlet weights over

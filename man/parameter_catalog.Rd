@@ -225,6 +225,17 @@ name the reason). The SD of a gate-only allocation (one term with an
 inclusion gate) is the scale prior times its gate, and an inclusion
 indicator has the Bernoulli prior of its marginal inclusion probability
 (points at 0 and 1). Totals of nested allocations return \code{NULL}.
+A pairwise correlation of an unstructured random-effect block with K
+columns and an LKJ(eta) prior has the exact LKJ marginal: \verb{2 B - 1} with
+\code{B ~ Beta(eta - 1 + K/2, eta - 1 + K/2)} \insertCite{lewandowski2009generating}{BayesTools}.
+This is its prior on the fitted scale, also when the SDs of the block have
+inclusion gates or point masses (the correlation matrix is a priori
+independent of them), and on the original scale of scaled predictors when
+each coefficient of the pair is one rescaled fitted coefficient (e.g. two
+scaled slopes; the correlation is then the fitted one wherever both SDs are
+positive). An original-scale correlation that mixes fitted coefficients,
+such as that of the intercept and a slope of a centred predictor, combines
+the correlation with the SDs and returns \code{NULL}.
 
 \code{parameter_transform()} returns the one-to-one map from the selected source
 coordinate to its public semantic quantity when that map exists. Composite
@@ -232,4 +243,7 @@ quantities return \code{NULL}. The forward, inverse, and Jacobian helpers are th
 authoritative evaluators for these serializable descriptors, so downstream
 consumers do not need to reproduce backend correlation, allocation, or
 formula-scale transformations.
+}
+\references{
+\insertAllCited{}
 }

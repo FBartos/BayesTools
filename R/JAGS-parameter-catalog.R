@@ -135,6 +135,17 @@
 #' inclusion gate) is the scale prior times its gate, and an inclusion
 #' indicator has the Bernoulli prior of its marginal inclusion probability
 #' (points at 0 and 1). Totals of nested allocations return `NULL`.
+#' A pairwise correlation of an unstructured random-effect block with K
+#' columns and an LKJ(eta) prior has the exact LKJ marginal: `2 B - 1` with
+#' `B ~ Beta(eta - 1 + K/2, eta - 1 + K/2)` \insertCite{lewandowski2009generating}{BayesTools}.
+#' This is its prior on the fitted scale, also when the SDs of the block have
+#' inclusion gates or point masses (the correlation matrix is a priori
+#' independent of them), and on the original scale of scaled predictors when
+#' each coefficient of the pair is one rescaled fitted coefficient (e.g. two
+#' scaled slopes; the correlation is then the fitted one wherever both SDs are
+#' positive). An original-scale correlation that mixes fitted coefficients,
+#' such as that of the intercept and a slope of a centred predictor, combines
+#' the correlation with the SDs and returns `NULL`.
 #'
 #' `parameter_transform()` returns the one-to-one map from the selected source
 #' coordinate to its public semantic quantity when that map exists. Composite
@@ -177,6 +188,9 @@
 #' `parameter_prior_density()` returns a `prior_linear_density` or `NULL`.
 #' `parameter_transform()` returns a serializable transform descriptor or
 #' `NULL`; the transform helpers return numeric values.
+#'
+#' @references
+#' \insertAllCited{}
 #'
 #' @export parameter_catalog
 #' @export parameter_catalog_schema
@@ -643,6 +657,13 @@ parameter_prior_density.BayesTools_fit <- function(
       tail_prob = tail_prob,
       conditional = conditional
     )
+  }else if(identical(key$evaluator, "correlation")){
+    .bt_parameter_prior_density_lkj_correlation(
+      object = object,
+      key = key,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
   }else{
     .bt_parameter_prior_density_direct_quantity(
       object = object,
@@ -755,13 +776,6 @@ parameter_prior_density.BayesTools_fit <- function(
   }else{
     NULL
   }
-  if(is.null(source_prior) && identical(key$source_transform, "lkj2")){
-    random_term <- .bt_parameter_catalog_find_random_term(object, key)
-    eta <- random_term$correlation$eta
-    if(is.numeric(eta) && length(eta) == 1L && is.finite(eta) && eta > 0){
-      source_prior <- prior("beta", list(alpha = eta, beta = eta))
-    }
-  }
   if(is.null(source_prior) || !is.prior(source_prior) ||
      .prior_linear_prior_dimension(source_prior) != 1L){
     return(NULL)
@@ -775,6 +789,100 @@ parameter_prior_density.BayesTools_fit <- function(
     transform,
     n_grid = n_grid,
     tail_prob = tail_prob
+  )
+}
+
+# Prior density of a pairwise correlation of an LKJ(eta) block with K columns.
+# Every off-diagonal correlation r of an LKJ(eta) correlation matrix has the
+# marginal (r + 1) / 2 ~ Beta(eta - 1 + K / 2, eta - 1 + K / 2)
+# (Lewandowski, Kurowicka, and Joe, 2009): the first-row correlations are the
+# canonical partial correlations of the emitted primitives, whose shape is
+# eta + (K - 2) / 2, and the LKJ density is invariant under permutations of
+# the columns. The primitives are a priori independent of every SD, gate, and
+# allocation node, so the marginal is also the prior of the correlation given
+# any SD or gate state, e.g. given the SDs that define it. The quantity has
+# this density when it is the fitted-scale correlation, or +-1 times it: on
+# the fitted scale and, in a scaled block, when the original-scale
+# coefficients of the pair are each one rescaled fitted coefficient (e.g. two
+# scaled slopes, whose original-scale correlation is the fitted one wherever
+# both SDs are positive). A pair mixing several fitted coefficients (the
+# intercept and a slope of a centred predictor) combines the correlation with
+# the SDs and returns NULL.
+.bt_parameter_prior_density_lkj_correlation <- function(object, key, n_grid,
+                                                         tail_prob){
+
+  random_term <- .bt_parameter_catalog_find_random_term(object, key)
+  correlation <- random_term$correlation
+  K <- random_term$n_columns
+  eta <- correlation$eta
+  if(!is.list(correlation) || !identical(correlation$type, "lkj") ||
+     !is.numeric(K) || length(K) != 1L || is.na(K) || K < 2L ||
+     !is.numeric(eta) || length(eta) != 1L || !is.finite(eta) || eta <= 0 ||
+     !is.numeric(key$index) || length(key$index) != 1L ||
+     key$index > K * (K - 1L) / 2L){
+    return(NULL)
+  }
+  pair <- utils::combn(seq_len(K), 2L)[, key$index]
+  unscale <- .bt_parameter_prior_density_random_unscale_matrix(
+    object      = object,
+    random_term = random_term,
+    parameter   = key$formula_parameter
+  )
+  if(is.null(unscale)){
+    return(NULL)
+  }
+  sources <- lapply(pair, function(row) which(unscale[row, ] != 0))
+  if(any(lengths(sources) != 1L) || sources[[1L]] == sources[[2L]]){
+    return(NULL)
+  }
+
+  # the Beta margin is symmetric, so a sign flip of the pair keeps it
+  shape <- eta - 1 + K / 2
+  .bt_parameter_prior_density_transformed(
+    prior("beta", list(alpha = shape, beta = shape)),
+    list(type = "affine", offset = -1, scale = 2),
+    n_grid = n_grid,
+    tail_prob = tail_prob
+  )
+}
+
+# The map from the fitted-scale coefficients of a random-effect block to the
+# coefficients its summaries report, rows and columns in block column order:
+# the identity on the fitted scale, and the unscale matrix that
+# .apply_random_sd_column_unscale() applies to the covariance of a scaled
+# block. NULL when a scaled block has no column-wise map (fits without SD-leaf
+# metadata).
+.bt_parameter_prior_density_random_unscale_matrix <- function(object,
+                                                               random_term,
+                                                               parameter){
+
+  K <- random_term$n_columns
+  formula_scale <- attr(object, "formula_scale", exact = TRUE)
+  if(.bt_parameter_catalog_random_sd_is_direct(
+    random_term   = random_term,
+    parameter     = parameter,
+    formula_scale = formula_scale
+  )){
+    return(diag(K))
+  }
+  sd_names <- unique(random_term$sd_parameter_names)
+  sd_names <- sd_names[!is.na(sd_names)]
+  parameter_scale <- formula_scale[[parameter]]
+  groups <- .random_sd_column_unscale_groups(
+    random_sd_cols = sd_names,
+    formula_scale  = parameter_scale,
+    prefix         = parameter
+  )
+  if(is.null(groups) || length(groups) != 1L ||
+     length(groups[[1L]]$column_terms) != K){
+    return(NULL)
+  }
+
+  .build_unscale_matrix_by_names(
+    paste0(parameter, "_", groups[[1L]]$column_terms),
+    parameter_scale,
+    parameter,
+    require_closure = FALSE
   )
 }
 

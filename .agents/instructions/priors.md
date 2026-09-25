@@ -255,7 +255,16 @@ ordinates are `unknown` with the reason recorded
 (`provenance_unavailable`), refused for heights and point hypotheses;
 totals of nested allocations have no density. Fitted coordinates
 and factor levels use the prior-density context of the priors owning their
-coordinates (`multiply_by` stripped). `parameter_mixed_posterior()` (and
+coordinates (`multiply_by` stripped). A pairwise correlation of a K-column
+LKJ(eta) block is the LKJ marginal, `2 B - 1` with
+B ~ Beta(eta - 1 + K / 2, eta - 1 + K / 2), passed as that Beta prior with
+the affine (`lin`) output transformation: on the fitted scale (gated blocks
+included, since the LKJ primitives are a priori independent of the SDs and
+their gates) and for an original-scale pair whose coefficients are each one
+rescaled fitted coefficient (the unscale-matrix rows of the pair have one
+nonzero entry each). Original-scale correlations that mix fitted
+coefficients (the intercept of centred predictors) combine the correlation
+with the SDs and have no density. `parameter_mixed_posterior()` (and
 `random_effects_summary_posterior()`, built on it) attaches this density,
 the catalog support, and atoms whose locations are the density's point
 masses and whose masses come from the per-draw gate states (and the

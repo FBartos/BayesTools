@@ -1356,6 +1356,263 @@ test_that("random summaries are cataloged and extracted from declared dependenci
   expect_equal(as.numeric(draws[[1L]][, 1L]), c(0, .2, .4))
 })
 
+# A synthetic fit of the block us(1 + x1 + ... + x[K - 1] | id) with an
+# LKJ(eta) correlation prior, monitoring the fitted priors and LKJ primitives.
+.lkj_block_fit <- function(K, eta,
+                           sd = prior("normal", list(0, 1), list(0, Inf)),
+                           formula_scale = NULL){
+
+  set.seed(K)
+  predictors <- paste0("x", seq_len(K - 1L))
+  data <- as.data.frame(stats::setNames(
+    lapply(predictors, function(predictor) stats::rnorm(8L, 1)),
+    predictors
+  ))
+  data$id <- factor(rep(c("a", "b", "c", "d"), each = 2L))
+  formula_result <- JAGS_formula(
+    formula = stats::as.formula(paste0(
+      "~ 1 + us(1 + ", paste(predictors, collapse = " + "), " | id)"
+    )),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    formula_scale = formula_scale,
+    prior_random = prior_random(
+      id = random_block(sd = sd, cor = prior_lkj(eta = eta))
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  list(
+    formula_result = formula_result,
+    random_term    = random_term,
+    fit            = .prior_monitor_test_fit(formula_result, unique(c(
+      JAGS_to_monitor(formula_result$prior_list),
+      random_term$correlation$primitive_names
+    )))
+  )
+}
+
+# The prior density is exactly the LKJ marginal: exact ordinates equal to
+# dbeta((r + 1) / 2, shape, shape) / 2 (tolerance: rounding of the Beta
+# density).
+.expect_lkj_marginal_density <- function(density, shape, info){
+
+  expect_s3_class(density, "prior_linear_density")
+  expect_identical(
+    attr(density, "parameter_prior_density")$source,
+    "fitted_parameter_map",
+    info = info
+  )
+  for(value in c(-0.95, -0.4, 0, 0.3, 0.9)){
+    ordinate <- prior_density_ordinate(density, value)
+    expect_true(ordinate$exact, info = paste(info, value))
+    expect_equal(
+      exp(ordinate$log_density),
+      stats::dbeta((value + 1) / 2, shape, shape) / 2,
+      tolerance = 1e-12,
+      info = paste(info, value)
+    )
+  }
+}
+
+test_that("LKJ correlations have the exact LKJ marginal prior density", {
+
+  skip_on_cran()
+  # Reference (Lewandowski, Kurowicka and Joe, 2009): every off-diagonal
+  # correlation r of an LKJ(eta) K x K correlation matrix has
+  # (r + 1) / 2 ~ Beta(eta - 1 + K / 2, eta - 1 + K / 2). The prior draws of
+  # the primitives (Beta draws with the shapes of the emitted JAGS syntax, as
+  # the JAGS module samples them) pass through the catalog's correlation
+  # evaluator, and each of 20 equal-width bins on (-1, 1) holds its exact Beta
+  # probability within 4 binomial standard errors (840 bins; a two-sided 4-SE
+  # excursion has probability 6e-5 per bin).
+  n <- 1e6
+  breaks <- seq(-1, 1, length.out = 21L)
+  for(K in c(2L, 3L, 5L)){
+    for(eta in c(0.5, 1, 2)){
+      info <- paste0("K = ", K, ", eta = ", eta)
+      shape <- eta - 1 + K / 2
+      block <- .lkj_block_fit(K, eta)
+      fit <- block$fit
+
+      # The emitted canonical partial correlations of the first row, which are
+      # the correlations r[1, j], have this Beta shape.
+      syntax <- block$formula_result$formula_syntax
+      emitted <- regmatches(
+        syntax,
+        gregexpr("lkj_alpha\\[[0-9]+\\] <- [0-9.]+", syntax)
+      )[[1L]]
+      alpha <- as.numeric(sub("^.* <- ", "", emitted))
+      expect_length(alpha, K * (K - 1L) / 2L)
+      first_row <- vapply(2:K, function(j) (j - 1L) * (j - 2L) / 2L + 1L,
+                          numeric(1))
+      expect_equal(alpha[first_row], rep(shape, K - 1L), info = info)
+
+      catalog <- parameter_catalog(fit)
+      correlations <- catalog$quantities[
+        catalog$quantities$role == "random_correlation", , drop = FALSE
+      ]
+      expect_identical(nrow(correlations), as.integer(K * (K - 1L) / 2L),
+                       info = info)
+      raw <- transform_prior_samples(fit, n_samples = n,
+                                     seed = as.integer(10L * K + 2 * eta))
+      all_pairs <- .bt_random_effect_summary_correlation_samples(
+        block$random_term,
+        raw
+      )$values
+      expected <- diff(stats::pbeta((breaks + 1) / 2, shape, shape))
+      for(i in seq_len(nrow(correlations))){
+        name <- correlations$canonical_name[[i]]
+        selection <- parameter_catalog_resolve(catalog, name)
+        index <- correlations$extraction_key[[i]]$index
+        # the evaluated pair is the catalog quantity's draws
+        expect_identical(
+          as.numeric(as.matrix(parameter_draws(
+            fit,
+            selection,
+            model_samples = raw[1:100, , drop = FALSE]
+          ))),
+          all_pairs[1:100, index],
+          info = paste(info, name)
+        )
+        .expect_lkj_marginal_density(
+          parameter_prior_density(fit, selection),
+          shape,
+          info = paste(info, name)
+        )
+        observed <- tabulate(
+          findInterval(all_pairs[, index], breaks, rightmost.closed = TRUE,
+                       all.inside = TRUE),
+          20L
+        ) / n
+        expect_lt(
+          max(abs(observed - expected) / sqrt(expected * (1 - expected) / n)),
+          4,
+          label = paste(info, name, "largest bin deviation in binomial SE")
+        )
+      }
+    }
+  }
+})
+
+test_that("LKJ correlation priors are exact where the correlation is an LKJ entry", {
+
+  eta <- 1.5
+  shape <- eta - 1 + 3 / 2
+  names <- c("(mu) cor(intercept,x1)", "(mu) cor(intercept,x2)",
+             "(mu) cor(x1,x2)")
+  density_of <- function(fit, name){
+    parameter_prior_density(
+      fit,
+      parameter_catalog_resolve(parameter_catalog(fit), name)
+    )
+  }
+
+  # Scaled predictors: the original-scale slopes are the fitted slopes divided
+  # by the predictor SDs, so cor(x1,x2) is the fitted correlation; the
+  # intercept of centred predictors mixes the fitted intercept and slopes, so
+  # its correlations combine the SDs and have no exact density.
+  scaled <- .lkj_block_fit(3L, eta, formula_scale = list(x1 = TRUE, x2 = TRUE))
+  .expect_lkj_marginal_density(density_of(scaled$fit, names[[3L]]), shape,
+                               info = "scaled")
+  expect_null(density_of(scaled$fit, names[[1L]]))
+  expect_null(density_of(scaled$fit, names[[2L]]))
+  # Standardized summaries drop the formula scale: every correlation is then
+  # the fitted-scale LKJ entry.
+  standardized <- scaled$fit
+  attr(standardized, "formula_scale") <- list()
+  for(name in names){
+    .expect_lkj_marginal_density(density_of(standardized, name), shape,
+                                 info = paste("standardized", name))
+  }
+
+  # Gated SDs (spike-and-slab priors with a point at zero): the primitives are
+  # a priori independent of the SDs and their gates.
+  gated_sd <- prior_spike_and_slab(
+    prior("gamma", list(2, 2)),
+    prior_inclusion = prior("spike", list(0.5))
+  )
+  gated <- .lkj_block_fit(3L, eta, sd = gated_sd)
+  for(name in names){
+    .expect_lkj_marginal_density(density_of(gated$fit, name), shape,
+                                 info = paste("gated", name))
+  }
+  gated_scaled <- .lkj_block_fit(3L, eta, sd = gated_sd,
+                                 formula_scale = list(x1 = TRUE, x2 = TRUE))
+  .expect_lkj_marginal_density(density_of(gated_scaled$fit, names[[3L]]),
+                               shape, info = "gated scaled")
+  expect_null(density_of(gated_scaled$fit, names[[1L]]))
+
+  # The original-scale cor(x1,x2) of the gated scaled block is the fitted
+  # correlation wherever both SDs are positive and undefined elsewhere, so its
+  # prior given definedness is the LKJ marginal: 10 bins within 4 binomial SE
+  # of the Beta probabilities.
+  n <- 20000L
+  raw <- transform_prior_samples(gated_scaled$fit, n_samples = n, seed = 71L,
+                                 formula_scale = list())
+  selection <- parameter_catalog_resolve(
+    parameter_catalog(gated_scaled$fit),
+    names[[3L]]
+  )
+  original <- as.numeric(as.matrix(parameter_draws(
+    gated_scaled$fit,
+    selection,
+    model_samples = raw
+  )))
+  fitted <- .bt_random_effect_summary_correlation_samples(
+    gated_scaled$random_term,
+    raw
+  )$values[, 3L]
+  sd_names <- gated_scaled$random_term$sd_parameter_names
+  defined <- raw[, sd_names[[2L]]] > 0 & raw[, sd_names[[3L]]] > 0
+  expect_true(any(!defined))
+  expect_identical(is.na(original), !defined)
+  # rounding of the covariance transform only
+  expect_equal(original[defined], fitted[defined], tolerance = 1e-12)
+  breaks <- seq(-1, 1, length.out = 11L)
+  expected <- diff(stats::pbeta((breaks + 1) / 2, shape, shape))
+  observed <- tabulate(
+    findInterval(original[defined], breaks, rightmost.closed = TRUE,
+                 all.inside = TRUE),
+    10L
+  ) / sum(defined)
+  expect_lt(
+    max(abs(observed - expected) /
+          sqrt(expected * (1 - expected) / sum(defined))),
+    4
+  )
+})
+
+test_that("posterior plots draw the exact LKJ prior of us() correlations", {
+
+  block <- .lkj_block_fit(3L, 2)
+  # prior draws stand in for posterior draws of the block
+  raw <- transform_prior_samples(block$fit, n_samples = 500L, seed = 5L)
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(raw)),
+    prior_list     = block$formula_result$prior_list,
+    formula_design = list(mu = block$formula_result$formula_design)
+  )
+  name <- "(mu) cor(intercept,x1)"
+  posterior <- parameter_mixed_posterior(
+    fit,
+    parameter_catalog_resolve(parameter_catalog(fit), name)
+  )
+  expect_s3_class(posterior_metadata(posterior, "prior_density"),
+                  "prior_linear_density")
+  samples <- stats::setNames(list(posterior), name)
+  plot <- plot_posterior(samples, name, prior = TRUE, plot_type = "ggplot")
+  prior_layer <- ggplot2::ggplot_build(plot)$data[[1L]]
+  interior <- prior_layer$x > -1 & prior_layer$x < 1
+  expect_gt(sum(interior), 100L)
+  # K = 3, eta = 2: (r + 1) / 2 ~ Beta(2.5, 2.5)
+  expect_equal(
+    prior_layer$y[interior],
+    stats::dbeta((prior_layer$x[interior] + 1) / 2, 2.5, 2.5) / 2,
+    tolerance = 1e-10
+  )
+})
+
 test_that("semantic parameter transforms own scalar transform algebra", {
 
   transforms <- list(
