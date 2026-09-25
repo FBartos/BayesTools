@@ -302,6 +302,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         random_effects_compile = if(!is.null(formula_random_effects_compile_list)) formula_random_effects_compile_list[[parameter]] else NULL)
     }
 
+    .bt_check_formula_node_clashes(formula_output, prior_list)
     formula_prior_output <- do.call(c, unname(lapply(
       formula_output,
       function(output) output[["prior_list"]]
@@ -765,6 +766,52 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   }
 
   invisible(TRUE)
+}
+
+# JAGS node names of the formula coefficients must be unique across the
+# formulas and the model's own 'prior_list'. Different formula parameters and
+# terms can generate the same node name (formula 'a' with term 'b_x' and
+# formula 'a_b' with term 'x' both define 'a_b_x'); the clash is reported by
+# the formula parameters and terms that generate it.
+.bt_check_formula_node_clashes <- function(formula_output, prior_list = NULL){
+
+  owners <- do.call(rbind, c(
+    lapply(names(formula_output), function(parameter){
+      nodes <- names(formula_output[[parameter]][["prior_list"]])
+      if(length(nodes) == 0L){
+        return(NULL)
+      }
+      name_map <- formula_output[[parameter]][["formula_design"]][["name_map"]]
+      terms <- name_map$term[match(nodes, name_map$jags_name)]
+      terms[is.na(terms)] <- nodes[is.na(terms)]
+      data.frame(
+        node  = nodes,
+        owner = paste0("formula parameter '", parameter, "' (term '", terms, "')"),
+        stringsAsFactors = FALSE
+      )
+    }),
+    list(data.frame(
+      node  = as.character(names(prior_list)),
+      owner = rep("'prior_list'", length(prior_list)),
+      stringsAsFactors = FALSE
+    ))
+  ))
+  clashes <- unique(owners$node[duplicated(owners$node)])
+  if(length(clashes) == 0L){
+    return(invisible(TRUE))
+  }
+  messages <- vapply(clashes, function(node){
+    node_owners <- owners$owner[owners$node == node]
+    paste0(
+      paste(node_owners, collapse = " and "),
+      " define the same JAGS node '", node, "'"
+    )
+  }, character(1))
+  stop(
+    paste(messages, collapse = "; "),
+    ". Rename a formula parameter or predictor so that the node names differ.",
+    call. = FALSE
+  )
 }
 
 .bt_validate_jags_add_parameters <- function(add_parameters, prior_list){

@@ -1066,3 +1066,47 @@ test_that("the formula-coordinate encoding is internal to the name map", {
   ) %in% exports))
   expect_true("JAGS_formula_name_map" %in% exports)
 })
+
+test_that("formulas generating the same JAGS node name are reported by their terms", {
+
+  syntax <- "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(a[i] + a_b[i], 4)\n}\n}"
+  data <- data.frame(b_x = seq(-1, 1, length.out = 10), x = seq(1, -1, length.out = 10))
+  fit <- function(prior_list = NULL){
+    JAGS_fit(
+      model_syntax       = syntax,
+      data               = list(y = rep(0, 10), N = 10),
+      prior_list         = prior_list,
+      formula_list       = list(a = ~ 0 + b_x, a_b = ~ 0 + x),
+      formula_data_list  = list(a = data, a_b = data),
+      formula_prior_list = list(
+        a   = list(b_x = prior("normal", list(0, 1))),
+        a_b = list(x = prior("normal", list(0, 1)))
+      ),
+      chains = 1, adapt = 100, burnin = 100, sample = 100, silent = TRUE
+    )
+  }
+  expect_error(
+    fit(),
+    paste0(
+      "formula parameter 'a' (term 'b_x') and formula parameter 'a_b' ",
+      "(term 'x') define the same JAGS node 'a_b_x'. Rename a formula ",
+      "parameter or predictor so that the node names differ."
+    ),
+    fixed = TRUE
+  )
+
+  # a formula node that is also a model parameter
+  expect_error(
+    JAGS_fit(
+      model_syntax       = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(a[i], a_x)\n}\n}",
+      data               = list(y = rep(0, 10), N = 10),
+      prior_list         = list(a_x = prior("gamma", list(1, 1))),
+      formula_list       = list(a = ~ 0 + x),
+      formula_data_list  = list(a = data),
+      formula_prior_list = list(a = list(x = prior("normal", list(0, 1)))),
+      chains = 1, adapt = 100, burnin = 100, sample = 100, silent = TRUE
+    ),
+    "formula parameter 'a' (term 'x') and 'prior_list' define the same JAGS node 'a_x'.",
+    fixed = TRUE
+  )
+})
