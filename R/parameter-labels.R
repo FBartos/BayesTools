@@ -497,13 +497,29 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   as.character(components)
 }
 
+# The factor metadata the labels of a factor prior are rendered from. A factor
+# prior that declares its level names, factor terms and contrasts has its
+# design derived from them; any other prior is completed (or refused) by
+# .complete_factor_metadata().
+.bt_label_factor_metadata <- function(prior, parameter){
+
+  declared <- is.prior.factor(prior) &&
+    !is.null(attr(prior, "level_names", exact = TRUE)) &&
+    !is.null(attr(prior, "factor_terms", exact = TRUE)) &&
+    !is.null(attr(prior, "factor_contrasts", exact = TRUE))
+  if(declared){
+    return(prior)
+  }
+  .complete_factor_metadata(prior, parameter)
+}
+
 # Label parts of every level cell of a fixed factor term, in design-row order,
 # and of its fitted coordinates (a structural level cell, or contrast
 # coefficient `j`), from the persisted factor metadata.
 .bt_label_parts_factor <- function(parameter, prior, formula_parameter = "",
                                    term = ""){
 
-  prior <- .complete_factor_metadata(prior, parameter)
+  prior <- .bt_label_factor_metadata(prior, parameter)
   design_info <- .factor_term_design_from_metadata(prior)
   level_names <- design_info$level_names
   if(is.null(level_names) || length(level_names) == 0L){
@@ -648,7 +664,7 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   }
   cell_names <- .format_factor_level_parameter_names(
     parameter,
-    if(length(level_names) == 1L) level_names[[1L]] else level_names,
+    level_names,
     nrow(design)
   )
   direct <- .bt_factor_direct_cells(prior, design)
