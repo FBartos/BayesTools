@@ -142,8 +142,12 @@
 #' probabilities and point hypotheses are unavailable, and their ordinates
 #' name the reason). The SD of a gate-only allocation (one term with an
 #' inclusion gate) is the scale prior times its gate, and an inclusion
-#' indicator has the Bernoulli prior of its marginal inclusion probability
-#' (points at 0 and 1). Totals of nested allocations return `NULL`.
+#' indicator (of an allocation gate, or `inclusion(...)` of a component of a
+#' spike-and-slab or mixture SD prior) has the Bernoulli prior of its
+#' marginal inclusion probability (points at 0 and 1; the prior weight of
+#' the component, or the expected inclusion probability of a spike-and-slab
+#' prior) and the exact support \{0, 1\}. Totals of nested allocations return
+#' `NULL`.
 #' A pairwise correlation of an unstructured random-effect block with K
 #' columns and an LKJ(eta) prior has the exact LKJ marginal: `2 B - 1` with
 #' `B ~ Beta(eta - 1 + K/2, eta - 1 + K/2)` \insertCite{lewandowski2009generating}{BayesTools}.
@@ -666,6 +670,14 @@ parameter_prior_density.BayesTools_fit <- function(
   }else if(identical(key$evaluator, "allocation_inclusion")){
     .bt_parameter_prior_density_inclusion(
       object = object,
+      key = key,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    )
+  }else if(identical(key$evaluator, "inclusion")){
+    .bt_parameter_prior_density_indicator(
+      object = object,
+      quantity = quantity,
       key = key,
       n_grid = n_grid,
       tail_prob = tail_prob
@@ -1380,11 +1392,68 @@ parameter_prior_density.BayesTools_fit <- function(
 .bt_parameter_prior_density_inclusion <- function(object, key, n_grid,
                                                   tail_prob){
 
-  probability <- .bt_parameter_prior_density_gate_probability(
-    attr(object, "prior_list", exact = TRUE),
-    key$source_parameter
+  .bt_parameter_prior_density_bernoulli(
+    probability = .bt_parameter_prior_density_gate_probability(
+      attr(object, "prior_list", exact = TRUE),
+      key$source_parameter
+    ),
+    n_grid      = n_grid,
+    tail_prob   = tail_prob
   )
-  if(!is.finite(probability)){
+}
+
+# Prior of the inclusion indicator of a component of a spike-and-slab or
+# mixture prior of a random-effect SD (the 'inclusion' random summary): the
+# Bernoulli on {0, 1} whose probability of 1 is the prior probability of the
+# component (the expected prior inclusion probability of a spike-and-slab
+# prior, whose inclusion probability may have its own prior).
+.bt_parameter_prior_density_indicator <- function(object, quantity, key,
+                                                  n_grid, tail_prob){
+
+  prior <- attr(object, "prior_list", exact = TRUE)[[key$source_prior]]
+  .bt_parameter_prior_density_bernoulli(
+    probability = .bt_prior_component_probability(prior, quantity$component),
+    n_grid      = n_grid,
+    tail_prob   = tail_prob
+  )
+}
+
+# The prior probability of the component 'component' (a label of the prior's
+# 'components' attribute) of a spike-and-slab or mixture prior; NA when it is
+# not defined.
+.bt_prior_component_probability <- function(prior, component){
+
+  if(!is.prior(prior) || !(is.prior.spike_and_slab(prior) || is.prior.mixture(prior))){
+    return(NA_real_)
+  }
+  components <- attr(prior, "components", exact = TRUE)
+  if(is.prior.spike_and_slab(prior)){
+    probability <- .bt_parameter_prior_density_inclusion_probability(
+      .get_spike_and_slab_inclusion(prior)
+    )
+    return(switch(
+      component,
+      "alternative" = probability,
+      "null"        = 1 - probability,
+      NA_real_
+    ))
+  }
+  weights <- attr(prior, "prior_weights", exact = TRUE)
+  if(!is.numeric(weights) || length(weights) != length(components) ||
+     any(!is.finite(weights)) || any(weights < 0) || sum(weights) <= 0 ||
+     !component %in% components){
+    return(NA_real_)
+  }
+  sum(weights[components == component]) / sum(weights)
+}
+
+# The Bernoulli prior density of an inclusion indicator with probability
+# 'probability' of 1 (points at 0 and 1); NULL when the probability is not
+# available.
+.bt_parameter_prior_density_bernoulli <- function(probability, n_grid, tail_prob){
+
+  if(!is.numeric(probability) || length(probability) != 1L ||
+     !is.finite(probability) || probability < 0 || probability > 1){
     return(NULL)
   }
   components <- list()
@@ -4101,7 +4170,9 @@ parameter_transform_jacobian <- function(values, transform){
   }
 
   # one-to-one quantities: the source prior's support mapped by the transform
-  if(key$source_type %in% c("identity", "one_to_one_transform")){
+  # (an inclusion indicator is 0 or 1, whatever prior its source names)
+  if(key$source_type %in% c("identity", "one_to_one_transform") &&
+     !identical(quantity$quantity, "inclusion")){
     source_support <- .bt_parameter_catalog_source_support(object, key)
     transform <- .bt_parameter_transform_from_quantity(object, quantity)
     if(!is.null(source_support) && !is.null(transform)){

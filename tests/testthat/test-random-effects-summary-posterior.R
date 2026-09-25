@@ -878,12 +878,66 @@ test_that("parameter_mixed_posterior declares the point components of mixture pr
     fixed = TRUE
   )
 
-  # remaining undeclared: auxiliary nodes of mixture priors, and the SD
-  # inclusion indicator whose catalog prior density is the SD's
+  # remaining undeclared: auxiliary nodes of mixture priors
   expect_null(posterior_metadata(parameter_mixed_posterior(fit, resolve("mu_x_variable")), "atoms"))
-  expect_null(posterior_metadata(
-    parameter_mixed_posterior(fit, resolve("(mu) inclusion(sd(intercept))")), "atoms"
+
+  # the inclusion indicator of the spike-and-slab SD prior is Bernoulli on
+  # {0, 1} with the prior inclusion probability 0.5 (the location of its
+  # spike(0.5) inclusion prior), not the SD's prior; its atoms are the shares
+  # of the indicator draws
+  inclusion <- resolve("(mu) inclusion(sd(intercept))")
+  support <- inclusion$quantities$support[[1L]]
+  expect_identical(support$bounds, c(0, 1))
+  expect_identical(support$points, c(0, 1))
+  expect_identical(support$type, "points")
+  expect_true(support$exact)
+  inclusion_prior <- parameter_prior_density(fit, inclusion)
+  expect_equal(inclusion_prior$points$x, c(0, 1))
+  expect_equal(inclusion_prior$points$p, c(.5, .5), tolerance = 1e-12)
+  expect_null(inclusion_prior$density)
+  indicator <- draws[, "mu__xREx__g_intercept_indicator"]
+  expect_identical(as.numeric(table(indicator)), c(158, 42))
+  expect_identical(atoms_of("(mu) inclusion(sd(intercept))"),
+                   list(x = c(0, 1), mass = c(158, 42) / 200))
+  inclusion_draws <- parameter_mixed_posterior(fit, inclusion)
+  expect_identical(as.numeric(inclusion_draws), as.numeric(indicator))
+  expect_identical(parameter_gate_states(fit, inclusion)$atom, as.numeric(indicator))
+
+  # the inclusion indicators of the components of a mixture SD prior are
+  # Bernoulli with the components' prior weights 1:2:1
+  mixture_fit <- suppressWarnings(JAGS_fit(
+    model_syntax       = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 4)\n}\n}",
+    data               = list(y = data$y, N = nrow(data)),
+    formula_list       = list(mu = ~ 1 + (1 | g)),
+    formula_data_list  = list(mu = data),
+    formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 1)))),
+    formula_random_prior_list = list(mu = prior_random(g = random_block(
+      sd = prior_mixture(
+        list(prior("spike", list(0), prior_weights = 1),
+             prior("normal", list(0, 1), list(0, Inf), prior_weights = 2),
+             prior("gamma", list(2, 2), prior_weights = 1)),
+        components = c("null", "narrow", "wide")
+      )
+    ))),
+    chains = 1, adapt = 100, burnin = 100, sample = 200, silent = TRUE, seed = 3
   ))
+  mixture_catalog <- parameter_catalog(mixture_fit)
+  mixture_draws <- as.matrix(BayesTools:::.fit_to_posterior(mixture_fit))
+  for(component in c("null", "narrow", "wide")){
+    name <- paste0("(mu) inclusion(sd(intercept)[", component, "])")
+    selection <- parameter_catalog_resolve(mixture_catalog, name)
+    expect_identical(selection$quantities$support[[1L]]$points, c(0, 1), info = name)
+    density <- parameter_prior_density(mixture_fit, selection)
+    probability <- c(null = .25, narrow = .5, wide = .25)[[component]]
+    expect_equal(density$points$p, c(1 - probability, probability), tolerance = 1e-12,
+                 info = name)
+    selected <- mixture_draws[, "mu__xREx__g_intercept_indicator"] ==
+      match(component, c("null", "narrow", "wide"))
+    atoms <- posterior_metadata(parameter_mixed_posterior(mixture_fit, selection), "atoms")
+    expect_equal(atoms$mass[as.numeric(atoms$locations[, 1L]) == 1], mean(selected),
+                 info = name)
+    expect_equal(sum(atoms$mass), 1, info = name)
+  }
 })
 
 test_that("parameter_gate_states() gives the allocation gate states of given draws", {

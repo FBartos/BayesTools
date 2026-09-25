@@ -450,7 +450,9 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 #   point: a quantity of the fitted coordinates of one mixture or
 #     spike-and-slab prior with point components (a coefficient, a factor
 #     level, or a random-effect SD or its variance), on the image of a point
-#     component in the draws whose component indicator selects it.
+#     component in the draws whose component indicator selects it; and the
+#     inclusion indicator of a component of such an SD prior, on 1 where
+#     the component indicator selects the component and on 0 otherwise.
 .bt_parameter_gate_plan <- function(fit, quantity){
 
   key <- quantity$extraction_key[[1L]]
@@ -463,6 +465,9 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     names[!is.na(names) & nzchar(names)]
   }
 
+  if(identical(key$evaluator, "inclusion")){
+    return(.bt_parameter_indicator_plan(fit, quantity))
+  }
   if(identical(key$evaluator, "allocation_inclusion")){
     # the indicator is its own gate state
     return(list(
@@ -707,6 +712,37 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   }
 
   list(atom = atom, defined = defined, event = event, known = !is.null(point))
+}
+
+# The point plan of the inclusion indicator of a component of a
+# spike-and-slab or mixture SD prior (the 'inclusion' random summary): every
+# draw is on the atom 1 when the prior's component indicator selects the
+# component and on 0 otherwise.
+.bt_parameter_indicator_plan <- function(fit, quantity){
+
+  key <- quantity$extraction_key[[1L]]
+  prior <- attr(fit, "prior_list", exact = TRUE)[[key$source_prior]]
+  if(!.posterior_components_is_mixture(prior)){
+    return(NULL)
+  }
+  components <- attr(prior, "components", exact = TRUE)
+  if(!quantity$component %in% components){
+    return(NULL)
+  }
+  coordinates <- parameter_coordinates(fit)
+  status <- coordinates$monitor_status[match(key$source_parameter, coordinates$coordinate_name)]
+  known <- !is.na(status) && status %in% c("sampled", "structural")
+
+  list(
+    kind        = "point",
+    prior       = prior,
+    locations   = as.numeric(components == quantity$component),
+    indicator   = if(known) key$source_parameter,
+    unknown     = !known,
+    chain_gates = character(),
+    event_gates = character(),
+    event_rule  = "AND"
+  )
 }
 
 # The point plan of a quantity of the fitted coordinates of one mixture or
