@@ -94,7 +94,7 @@ old behaviour.
   the second fitted coordinate. Every level of every contrast, and of ordinary
   factor priors, is a catalog quantity, and the transformed-summary labels
   `mu_g[dif: 2]`, `(mu) g[dif: 2]`, and `g[dif: 2]` are its aliases. The
-  parameter map is version 8: models fitted with earlier versions, including
+  parameter map is version 9: models fitted with earlier versions, including
   earlier 0.3.1 development versions, must be refitted.
 - `Savage_Dickey_BF()`, `marginal_inference()`, `as_marginal_inference()`, and
   `marginal_estimates_table()` return a finite Bayes factor when the null
@@ -310,6 +310,67 @@ old behaviour.
   totals are declared also with a mixture scale prior (before: undeclared),
   and so are the point components of a monitored mixture scale prior; and
   the separate Beta-margin prior path is removed.
+- adds `posterior_transform()`, which transforms BayesTools posterior draws
+  together with their metadata: supports, atoms, prior densities, stored
+  posterior densities and ordinates (by the Jacobian), component supports,
+  linear weights, and label parts. Transformations that are not strictly
+  monotone and invertible stop with class
+  `BayesTools_nonmonotone_transformation`, and draws outside the domain with
+  `BayesTools_transformation_domain` (both with parent class
+  `BayesTools_transformation`).
+- `posterior_transform()` records the applied transformations, in the order
+  they were applied, in the new `output_transformations` draw metadata (see
+  `posterior_metadata()`), independently of the `quantities` column table.
+  `marginal_posterior()` reads this field, so it also refuses transformed
+  mixed posteriors without a column table.
+- `marginal_posterior(transformation = )` applies `posterior_transform()` to
+  the untransformed marginal posterior. Stored posterior densities and
+  ordinates are transformed rather than dropped, an attached prior density is
+  transformed (it was rebuilt from `prior_list`), the quantities keep their
+  labels with the transformation recorded, and mixed posteriors already
+  transformed with `posterior_transform()` are refused.
+- adds `JAGS_deterministic_evaluator()`, which returns an evaluator of a fit's
+  generated deterministic nodes with the node registry resolved once.
+  `JAGS_evaluate_deterministic()` is this evaluator applied once.
+- `parameter_mixed_posterior()` declares posterior atoms from the quantity's
+  structure: the point components of mixture and spike-and-slab priors from
+  their indicator, gate atoms without a prior density, and no atoms for
+  quantities whose coordinates cannot take a point mass (e.g.
+  original-scale `us()` correlations). The new `parameter_gate_states()`
+  returns the per-draw gate and point states.
+- `parameter_mixed_posterior()` declares the atoms of the coordinates of
+  weight-function, publication-bias, and publication-bias mixture priors
+  (the weights `omega`, `PET`, `PEESE`, and the p-hacking `alpha`, `pi_null`,
+  `beta_null`, and `phack_kind`) from the value each branch of the prior
+  gives them: a weight fixed at a constant (the reference weight at 1, fixed
+  weights, and 1 in branches without a selection), 0 for `PET` and `PEESE` in
+  branches without them and for the p-hacking parameters in branches without
+  p-hacking, and the form code of `phack_kind`, with masses the shares of
+  the draws whose branch (the `bias_indicator` of a mixture) gives the
+  constant. Before, these coordinates had no atom declarations.
+  `parameter_gate_states()` also returns `prior_atoms`, the prior masses of
+  the atoms of mixture, spike-and-slab, and selection priors from their
+  component weights.
+- estimates tables carry the per-row `quantities` attribute (row, catalog
+  quantity id, label parts); rows whose values `transformations` changed have
+  no quantity id. Catalog aliases carry label parts, and `parameter_labels()`
+  gains `vocabulary` to render random-effect quantities under other names.
+  The parameter map moves to version 9, so fits of earlier development
+  versions must be refitted.
+- the rows of ensemble estimates tables carry the catalog quantity ids the
+  model table gives the same values: transformed factor levels
+  (`transform_factors = TRUE`, e.g. `(mu) x[dif: A]`), whose ids the mixed
+  posteriors of `as_mixed_posteriors()` now declare, and columns that hold
+  one fitted coordinate, such as the weight-function weights, `PET`, and
+  `PEESE`, which `as_mixed_posteriors()` now identifies with the catalog
+  quantity of that coordinate. Before, these rows had the id `""`.
+- the `inclusion(...)` random-effect quantities of spike-and-slab and mixture
+  SD priors have the Bernoulli prior of their prior inclusion probability,
+  the exact support {0, 1}, and posterior atoms at 0 and 1 from the indicator
+  draws. Before, their prior density and support were those of the SD.
+- the errors for draws whose values changed under their metadata, and for
+  plain numeric draws, name `posterior_transform()` as the route for
+  transformed posterior distributions.
 - `JAGS_formula_prior_density()` accepts `weights` over the transform's
   targets instead of one `target`: the original-scale prior density of the
   weighted combination (e.g. a mean-difference or orthonormal level of a
