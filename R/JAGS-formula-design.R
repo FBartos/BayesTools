@@ -390,7 +390,8 @@ JAGS_formula_design <- function(fit, parameter = NULL){
 #' @description Builds the formula design of a formula parameter exactly as
 #' [JAGS_fit()] builds it from its \code{formula_list},
 #' \code{formula_data_list}, \code{formula_prior_list}, and the related
-#' arguments (through [JAGS_formula()]), and attaches it to posterior or
+#' arguments (through [JAGS_formula()]), with its model \code{data} as
+#' \code{model_data}, and attaches it to posterior or
 #' prior draws that do not come from such a fit, for example the prior draws
 #' of a model that was not fitted. [JAGS_evaluate_formula()] and
 #' [JAGS_predict_formula()] evaluate the returned draws through this design as
@@ -406,6 +407,10 @@ JAGS_formula_design <- function(fit, parameter = NULL){
 #' several formula parameters can be attached one after another.
 #' @param data data.frame the formula is fitted to: it determines the factor
 #' levels and the standardization of the design.
+#' @param model_data optional named list of the JAGS model data of the fit,
+#' as the \code{data} argument of [JAGS_fit()]. \code{expression()} terms of
+#' \code{formula} may read these data besides \code{data}; the design keeps
+#' the data they read, as the fitted design does.
 #' @inheritParams JAGS_formula
 #'
 #' @return An \code{mcmc} object of the draws carrying the formula design of
@@ -417,7 +422,8 @@ JAGS_formula_design <- function(fit, parameter = NULL){
 #' @export
 JAGS_formula_draws <- function(draws, formula, parameter, data, prior_list,
                                formula_scale = NULL, prior_random = NULL,
-                               random_effects_compile = NULL){
+                               random_effects_compile = NULL,
+                               model_data = NULL){
 
   formula_design <- attr(draws, "formula_design", exact = TRUE)
   formula_scale_info <- attr(draws, "formula_scale", exact = TRUE)
@@ -462,7 +468,7 @@ JAGS_formula_draws <- function(draws, formula, parameter, data, prior_list,
   formula_design[[parameter]] <- .bt_formula_expression_finalize_design(
     design = output$formula_design,
     formula_data = data,
-    model_data = NULL,
+    model_data = model_data,
     parameter_names = draw_names,
     forbidden_parameters = unique(c(names(formula_design), parameter)),
     context = paste0("JAGS_formula_draws() expression for parameter '", parameter, "'")

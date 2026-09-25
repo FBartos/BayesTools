@@ -12,7 +12,8 @@ JAGS_formula_draws(
   prior_list,
   formula_scale = NULL,
   prior_random = NULL,
-  random_effects_compile = NULL
+  random_effects_compile = NULL,
+  model_data = NULL
 )
 }
 \arguments{
@@ -80,6 +81,11 @@ when \code{formula} contains random effects.}
 specifying which resolved random-effect blocks should be compiled as sampled
 random effects and which should be compiled as structural marginalized
 blocks.}
+
+\item{model_data}{optional named list of the JAGS model data of the fit,
+as the \code{data} argument of \code{\link[=JAGS_fit]{JAGS_fit()}}. \code{expression()} terms of
+\code{formula} may read these data besides \code{data}; the design keeps
+the data they read, as the fitted design does.}
 }
 \value{
 An \code{mcmc} object of the draws carrying the formula design of
@@ -91,7 +97,8 @@ standardized, its \code{formula_scale}, which \code{\link[=JAGS_evaluate_formula
 Builds the formula design of a formula parameter exactly as
 \code{\link[=JAGS_fit]{JAGS_fit()}} builds it from its \code{formula_list},
 \code{formula_data_list}, \code{formula_prior_list}, and the related
-arguments (through \code{\link[=JAGS_formula]{JAGS_formula()}}), and attaches it to posterior or
+arguments (through \code{\link[=JAGS_formula]{JAGS_formula()}}), with its model \code{data} as
+\code{model_data}, and attaches it to posterior or
 prior draws that do not come from such a fit, for example the prior draws
 of a model that was not fitted. \code{\link[=JAGS_evaluate_formula]{JAGS_evaluate_formula()}} and
 \code{\link[=JAGS_predict_formula]{JAGS_predict_formula()}} evaluate the returned draws through this design as

@@ -2069,6 +2069,55 @@ test_that("JAGS_formula_draws() evaluates draws without a fit through the design
   )
 })
 
+test_that("JAGS_formula_draws() rebuilds expression terms that read JAGS model data", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+  set.seed(3)
+  n <- 20
+  data <- data.frame(x = stats::rnorm(n))
+  v <- stats::runif(n, 1, 2)
+  y <- stats::rnorm(n, 0.5 * data$x + v, 1)
+  normal <- prior("normal", list(0, 1))
+  prior_list <- list(intercept = normal, x = normal)
+  formula <- ~ 1 + x + expression(v[i])
+  # 'v' is JAGS model data of the fit, not formula data
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax = "model{\n  for(i in 1:N_mu){\n    y[i] ~ dnorm(mu[i], 1)\n  }\n}",
+    data = list(y = y, v = v),
+    formula_list = list(mu = formula),
+    formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = prior_list),
+    chains = 1, adapt = 50, burnin = 50, sample = 100, seed = 7, silent = TRUE
+  ))
+  posterior <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+
+  # with the model data of the fit, the design is the fitted design
+  draws <- JAGS_formula_draws(
+    posterior, formula, "mu", data, prior_list,
+    model_data = list(y = y, v = v)
+  )
+  expect_identical(JAGS_formula_design(draws, "mu"), JAGS_formula_design(fit, "mu"))
+  expect_equal(
+    JAGS_evaluate_formula(draws, parameter = "mu"),
+    JAGS_evaluate_formula(fit, parameter = "mu"),
+    tolerance = 1e-14
+  )
+  newdata <- data.frame(x = c(0, 1), v = c(1, 3))
+  expect_equal(
+    JAGS_evaluate_formula(draws, parameter = "mu", data = newdata),
+    JAGS_evaluate_formula(fit, parameter = "mu", data = newdata),
+    tolerance = 1e-14
+  )
+
+  # without them the expression cannot be replayed
+  expect_error(
+    JAGS_formula_draws(posterior, formula, "mu", data, prior_list),
+    "expression() term 'v[i]' is not replayable: unknown replay dependency 'v'.",
+    fixed = TRUE
+  )
+})
+
 test_that("formula expression terms are parsed structurally", {
   expect_equal(.extract_expressions(~ expression(log(x))), list("log(x)"))
   expect_equal(.extract_expressions(y ~ z + expression(log(x)) + expression(exp(b))), list("log(x)", "exp(b)"))

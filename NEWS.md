@@ -358,10 +358,12 @@ old behaviour.
 - adds `JAGS_formula_draws()`, which attaches to posterior or prior draws
   without a fit (e.g. the prior draws of a model that was not fitted) the
   formula design that `JAGS_fit()` builds from the same formula, data, priors,
-  and standardization, so that `JAGS_evaluate_formula()` and
-  `JAGS_predict_formula()` evaluate them exactly as the fit, on the fitting
-  data or on new data. Draws that lack a coefficient of the formula stop with
-  a message naming it (was "subscript out of bounds").
+  and standardization, and from the model data (`model_data`, the `data` of
+  `JAGS_fit()`) that `expression()` terms read, so that
+  `JAGS_evaluate_formula()` and `JAGS_predict_formula()` evaluate them exactly
+  as the fit, on the fitting data or on new data. Draws that lack a
+  coefficient of the formula stop with a message naming it (was "subscript
+  out of bounds").
 - `parameter_mixed_posterior()` declares posterior atoms from the quantity's
   structure: the point components of mixture and spike-and-slab priors from
   their indicator, gate atoms without a prior density, and no atoms for
