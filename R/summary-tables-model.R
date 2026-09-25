@@ -533,6 +533,9 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
           omega_names     <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
           omega_columns <- which(colnames(model_samples) %in% omega_names_old)
           colnames(model_samples)[omega_columns] <- omega_names[match(colnames(model_samples)[omega_columns], omega_names_old)]
+          structural_columns <- c(structural_columns, .structural_weight_columns(
+            par, prior_list[[par]], omega_names_old, omega_names
+          ))
 
           # remove if requested
           if("omega" %in% remove_parameters){

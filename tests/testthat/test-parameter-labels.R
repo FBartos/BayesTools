@@ -1058,6 +1058,40 @@ test_that("estimates tables blank the diagnostics of declared structural weight 
   expect_equal(table[["Mean"]], c(mean(c(fixed$mcmc[[1]][, "mu"], fixed$mcmc[[2]][, "mu"])), 1, .5))
   expect_true(all(is.na(unlist(table[c("omega[0,0.05]", "omega[0.05,1]"), diagnostics]))))
   expect_false(anyNA(unlist(table["mu", diagnostics])))
+
+  # a publication-bias mixture: the bins every branch fixes (the reference
+  # bin and its two-sided mirror) are the structural constants
+  mixture_chain <- function(){
+    cbind(
+      mu             = stats::rnorm(n),
+      bias_indicator = rep(1:3, length.out = n),
+      "omega[1]"     = 1,
+      "omega[2]"     = stats::rbeta(n, 4, 2),
+      "omega[3]"     = stats::rbeta(n, 4, 2),
+      "omega[4]"     = stats::rbeta(n, 4, 2),
+      "omega[5]"     = 1
+    )
+  }
+  mixture <- .label_test_mock_fit(
+    list(mixture_chain(), mixture_chain()),
+    list(
+      mu   = prior("normal", list(0, 1)),
+      bias = prior_mixture(list(
+        prior_none(prior_weights = 1),
+        prior_weightfunction("two-sided", .05, wf_cumulative(c(1, 1)), prior_weights = 1),
+        prior_weightfunction("two-sided", c(.05, .10), wf_cumulative(c(1, 1, 1)), prior_weights = 1)
+      ), is_null = c(TRUE, FALSE, FALSE))
+    )
+  )
+  table <- JAGS_estimates_table(mixture)
+  bins <- grep("^omega", rownames(table), value = TRUE)
+  expect_identical(
+    bins,
+    c("omega[0,0.025]", "omega[0.025,0.05]", "omega[0.05,0.95]",
+      "omega[0.95,0.975]", "omega[0.975,1]")
+  )
+  expect_true(all(is.na(unlist(table[bins[c(1, 5)], diagnostics]))))
+  expect_false(anyNA(unlist(table[bins[2:4], c("MCMC_error", "ESS", "R_hat")])))
 })
 
 test_that("inclusion rows of names containing 'inclusion' are formatted from the marker only", {
