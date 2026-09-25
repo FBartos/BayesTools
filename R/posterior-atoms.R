@@ -39,7 +39,8 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
 #' whether the draws are structurally atom-free.
 #'
 #' @param x BayesTools posterior draws, e.g. an element returned by
-#' [as_mixed_posteriors()] or [marginal_posterior()].
+#' [as_mixed_posteriors()], [marginal_posterior()], or
+#' [parameter_mixed_posterior()].
 #'
 #' @return \code{TRUE} when atoms are declared and none has positive mass;
 #' \code{FALSE} when the draws declare a point mass or do not declare their

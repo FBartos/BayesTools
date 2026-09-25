@@ -188,6 +188,20 @@ old behaviour.
   complete factor metadata that formula factor terms carry: the number and
   names of its levels, its contrast, and the design mapping its coefficients
   to the levels. `levels` is the number of levels or their names.
+- adds `parameter_mixed_posterior(fit, selection, conditional = FALSE)`: the
+  posterior draws of one catalog quantity as a mixed posterior with its
+  catalog `support`, its `prior_density` from `parameter_prior_density()`,
+  declared `atoms` (the prior's point masses with masses from the per-draw
+  inclusion-gate states and mixture indicators, never from draw values),
+  `undefined_draws` (undefined draws are omitted), and its `condition`.
+  `conditional = TRUE` keeps the draws of the quantity's inclusion event (its
+  gates on for a component SD or variance, its own gate for a variance
+  proportion, any active component for an allocation total) and restricts
+  the prior density to that event. `random_effects_summary_posterior()` is
+  built on it: gated variance proportions and allocation totals now carry
+  their canonical mixed prior measure (before: no prior density), the
+  point components of a monitored mixture scale prior are declared atoms,
+  and the separate Beta-margin prior path is removed.
 - `JAGS_formula_prior_density()` accepts `weights` over the transform's
   targets instead of one `target`: the original-scale prior density of the
   weighted combination (e.g. a mean-difference or orthonormal level of a

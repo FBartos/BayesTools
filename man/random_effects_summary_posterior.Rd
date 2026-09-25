@@ -31,8 +31,8 @@ random_effects_summary_posterior(
 \item{simplify_names}{whether returned quantities should use centrally
 generated simplified display labels. Defaults to \code{FALSE}.}
 
-\item{n_prior_points}{number of grid points used for the attached analytic
-prior density.}
+\item{n_prior_points}{grid size (\code{n_grid} of \code{\link[=parameter_prior_density]{parameter_prior_density()}}) of
+the attached prior densities.}
 }
 \value{
 A named list of posterior vectors with class \code{mixed_posteriors} and
@@ -42,18 +42,21 @@ individual vectors carry their \code{prior_density}, \code{support}, and declare
 }
 \description{
 Extracts posterior draws for derived random-effect summary
-quantities and attaches analytic marginal prior densities where available.
-For allocation summaries, the helper keeps raw Dirichlet allocation weights
-internal and exposes interpretable scalar summaries such as mean-variance
-SD-component variance multipliers. Gated total-variance proportions are
-normalized over active components and omit draws on which every component
-is excluded because a variance share is undefined there.
+quantities with their canonical prior densities. For allocation summaries,
+the helper keeps raw Dirichlet allocation weights internal and exposes
+interpretable scalar summaries such as mean-variance SD-component variance
+multipliers. Gated total-variance proportions are normalized over active
+components and omit draws on which every component is excluded because a
+variance share is undefined there.
 
-The posterior atoms of each summary are declared from its structure: none
-when the quantity's prior density (\code{\link[=parameter_prior_density]{parameter_prior_density()}}) has no
-point mass; the inclusion-gate atoms of gated total-variance proportions (at
-0 and 1) and allocation totals (at 0), with masses from the posterior
-inclusion-indicator draws. Other point masses (e.g. a scale prior with its
-own spike) leave the atom status undeclared, and posterior plots of such
-summaries stop instead of inferring point masses from the draws.
+Each summary is the \code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}} of its catalog quantity:
+its prior density is \code{\link[=parameter_prior_density]{parameter_prior_density()}} (for gated allocations the
+mixed measure with its inclusion-gate atoms), and its posterior atoms are
+declared from its structure: none when the prior density has no point
+mass; the inclusion-gate atoms of gated total-variance proportions (at 0
+and 1) and allocation totals (at 0), and the point components of a mixture
+scale prior whose indicator is monitored, with masses from the posterior
+inclusion- and mixture-indicator draws. Point masses without such a source
+leave the atom status undeclared, and posterior plots of such summaries stop
+instead of inferring point masses from the draws.
 }

@@ -210,7 +210,7 @@ test_that("random-effect summary posterior extracts mean-variance multipliers", 
 
   prior_density <- .bt_meta_get(multipliers[[multiplier_name]], "prior_density")
   expect_s3_class(prior_density, "prior_linear_density")
-  expect_equal(attr(prior_density, "support", exact = TRUE), c(0, 2))
+  expect_equal(posterior_metadata(multipliers[[multiplier_name]], "support")$bounds, c(0, 2))
   expect_equal(
     BayesTools:::.prior_linear_density_height(prior_density, 1),
     stats::dbeta(0.5, 3, 2) / 2,
@@ -252,7 +252,7 @@ test_that("random-effect summary posterior extracts SD multipliers", {
 
   prior_density <- .bt_meta_get(multipliers[[multiplier_name]], "prior_density")
   expect_s3_class(prior_density, "prior_linear_density")
-  expect_equal(attr(prior_density, "support", exact = TRUE), c(0, sqrt(2)))
+  expect_equal(posterior_metadata(multipliers[[multiplier_name]], "support")$bounds, c(0, sqrt(2)))
   expect_equal(
     BayesTools:::.prior_linear_density_height(prior_density, 1),
     stats::dbeta(0.5, 3, 2),
@@ -372,7 +372,7 @@ test_that("random-effect summary posterior extracts total-variance proportions",
 
   prior_density <- .bt_meta_get(proportions[[proportion_name]], "prior_density")
   expect_s3_class(prior_density, "prior_linear_density")
-  expect_equal(attr(prior_density, "support", exact = TRUE), c(0, 1))
+  expect_equal(posterior_metadata(proportions[[proportion_name]], "support")$bounds, c(0, 1))
   expect_equal(
     BayesTools:::.prior_linear_density_height(prior_density, 0.5),
     stats::dbeta(0.5, 3, 2),
@@ -429,7 +429,18 @@ test_that("gated total-variance summaries use realized totals and proportions", 
     ]])),
     c(0, 1, .75)
   )
-  expect_null(.bt_meta_get(proportions[["(mu) allocation: var_prop(drug)"]], "prior_density"))
+  # the gated proportion's prior is the canonical mixed measure: with both
+  # gates at 0.5 and weights Dirichlet(2, 3), drug is 0 (study only active),
+  # 1 (drug only) or Beta(3, 2) (both), each with probability 1/3 given an
+  # active component
+  gated_prior <- .bt_meta_get(proportions[["(mu) allocation: var_prop(drug)"]], "prior_density")
+  expect_equal(gated_prior$points$x, c(0, 1))
+  expect_equal(gated_prior$points$p, c(1, 1) / 3, tolerance = 1e-12)
+  expect_equal(
+    prior_density_ordinate(gated_prior, .5)$log_density,
+    log(stats::dbeta(.5, 3, 2) / 3),
+    tolerance = 1e-12
+  )
 
   estimates <- JAGS_estimates_table(
     fit,
@@ -517,6 +528,167 @@ test_that("random-effect summary posteriors declare atoms from structure", {
     "Posterior atom status is unknown",
     fixed = TRUE
   )
+})
+
+test_that("parameter_mixed_posterior declares gate atoms and conditions on inclusion", {
+
+  skip_if_not_installed("runjags")
+
+  # (study, drug) gates are (0, 0), (1, 0), (0, 1), (1, 1) with the total SD 2
+  # and weights (1/4, 3/4); both gates have prior probability 1/2
+  fit <- .random_effects_gated_total_variance_allocation_fit()
+  catalog <- parameter_catalog(fit)
+  mixed <- function(name, conditional = FALSE){
+    parameter_mixed_posterior(fit, parameter_catalog_resolve(catalog, name),
+                              conditional = conditional)
+  }
+  atoms_of <- function(x){
+    atoms <- posterior_metadata(x, "atoms")
+    list(x = as.numeric(atoms$locations[, 1L]), mass = atoms$mass)
+  }
+  study_gate <- "mu__xRE_ALLOCx_allocation__include_study_indicator"
+  drug_gate  <- "mu__xRE_ALLOCx_allocation__include_drug_indicator"
+
+  # the component SD of study is 2 * gate * sqrt(1/4): its atom at 0 has the
+  # posterior mass of the off gate (draws 1 and 3)
+  study <- mixed("(mu) study: sd(intercept)")
+  expect_s3_class(study, c("mixed_posteriors", "mixed_posteriors.simple",
+                           "marginal_posterior.simple", "marginal_posterior"),
+                  exact = TRUE)
+  expect_identical(attr(study, "parameter"), "(mu) study: sd(intercept)")
+  expect_equal(as.numeric(study), c(0, 1, 0, 1))
+  expect_identical(atoms_of(study), list(x = 0, mass = .5))
+  expect_equal(posterior_metadata(study, "prior_density")$points$p, .5)
+  expect_identical(posterior_metadata(study, "support"), catalog$quantities$support[[
+    match("(mu) study: sd(intercept)", catalog$quantities$canonical_name)
+  ]])
+  expect_true(posterior_metadata(study, "condition")$averaged)
+  expect_false(posterior_atoms_free(study))
+  study_included <- mixed("(mu) study: sd(intercept)", conditional = TRUE)
+  expect_equal(as.numeric(study_included), c(1, 1))
+  expect_true(posterior_atoms_free(study_included))
+  expect_equal(nrow(posterior_metadata(study_included, "prior_density")$points), 0L)
+  expect_equal(posterior_metadata(study_included, "prior_density")$density$mass, 1)
+  expect_identical(
+    posterior_metadata(study_included, "condition")[c("conditional", "conditional_rule", "averaged")],
+    list(conditional = study_gate, conditional_rule = "AND", averaged = FALSE)
+  )
+  expect_identical(atoms_of(mixed("(mu) study: var(intercept)")), list(x = 0, mass = .5))
+
+  # the total SD is 0 without an active component (draw 1); conditioning on
+  # any active component keeps draws 2-4 and removes the atom
+  total <- mixed("(mu) allocation: sd_total")
+  expect_equal(as.numeric(total), c(0, 1, sqrt(3), 2))
+  expect_identical(atoms_of(total), list(x = 0, mass = .25))
+  total_included <- mixed("(mu) allocation: sd_total", conditional = TRUE)
+  expect_equal(as.numeric(total_included), c(1, sqrt(3), 2))
+  expect_true(posterior_atoms_free(total_included))
+  expect_equal(posterior_metadata(total_included, "prior_density")$density$mass, 1)
+  expect_identical(
+    posterior_metadata(total_included, "condition")[c("conditional", "conditional_rule")],
+    list(conditional = c(study_gate, drug_gate), conditional_rule = "OR")
+  )
+
+  # the proportion of drug is undefined in draw 1, 0 in draw 2 and 1 in draw
+  # 3: atoms 1/3 each over the defined draws; conditional on its own gate
+  # (draws 3 and 4) the atom at 1 keeps its renormalized mass, prior 1/2 at 1
+  # and 1/2 Beta(3, 2)
+  proportion <- mixed("(mu) allocation: var_prop(drug)")
+  expect_equal(as.numeric(proportion), c(0, 1, .75))
+  expect_identical(atoms_of(proportion), list(x = c(0, 1), mass = c(1, 1) / 3))
+  expect_identical(
+    posterior_metadata(proportion, "undefined_draws"),
+    c("(mu) allocation: var_prop(drug)" = "allocation_active")
+  )
+  proportion_included <- mixed("(mu) allocation: var_prop(drug)", conditional = TRUE)
+  expect_equal(as.numeric(proportion_included), c(1, .75))
+  expect_identical(atoms_of(proportion_included), list(x = 1, mass = .5))
+  prior_included <- posterior_metadata(proportion_included, "prior_density")
+  expect_equal(prior_included$points$x, 1)
+  expect_equal(prior_included$points$p, .5, tolerance = 1e-12)
+  expect_equal(
+    prior_density_ordinate(prior_included, .5)$log_density,
+    log(.5 * stats::dbeta(.5, 3, 2)),
+    tolerance = 1e-12
+  )
+
+  # quantities without an inclusion gate cannot be conditioned
+  multiplier_fit <- .random_effects_mean_variance_allocation_fit()
+  multiplier <- parameter_catalog_resolve(
+    parameter_catalog(multiplier_fit), "(mu) allocation: var_mult(x)", namespace = "mu"
+  )
+  expect_true(posterior_atoms_free(parameter_mixed_posterior(multiplier_fit, multiplier)))
+  expect_error(
+    parameter_mixed_posterior(multiplier_fit, multiplier, conditional = TRUE),
+    paste0(
+      "The inclusion event of '(mu) allocation: var_mult(x)' is unavailable: ",
+      "the quantity has no inclusion gate. Use 'conditional = FALSE'."
+    ),
+    fixed = TRUE
+  )
+  expect_error(parameter_mixed_posterior(multiplier_fit, multiplier, conditional = NA),
+               "conditional", fixed = TRUE)
+  expect_error(parameter_mixed_posterior(list(), multiplier),
+               "'fit' must be a 'BayesTools_fit' object.", fixed = TRUE)
+})
+
+test_that("parameter_mixed_posterior reads source point masses from the mixture indicator", {
+
+  skip_if_not_installed("runjags")
+
+  # a mean-variance SD-component allocation whose scale prior is a spike at
+  # 0 or gamma(2, 2) with prior probability 1/2 each; the monitored mixture
+  # indicator selects the spike in the first draw
+  data <- data.frame(study = factor(c("s1", "s1", "s2", "s2")), x = c(-1, 0, 1, 2))
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + random(1 + x | study, name = "study", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(name = "allocation",
+        terms = "study",
+        target = "sd_component",
+        scale = "mean_variance",
+        sd = prior_mixture(
+          list(prior("spike", list(0)), prior("gamma", list(2, 2))),
+          is_null = c(TRUE, FALSE)
+        ),
+        weights = prior("dirichlet", list(alpha = c(2, 3)))
+      )
+    )
+  )
+  allocation <- formula_result$formula_design$random_effects[[1]]$sd_binding$allocations[[1]]
+  samples <- matrix(
+    c(0, 1, 0.25, 0.75,
+      2, 2, 0.75, 0.25),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(NULL, c(
+      allocation$source_node,
+      paste0(allocation$source_node, "_indicator"),
+      paste0(allocation$weight_name, "[1]"),
+      paste0(allocation$weight_name, "[2]")
+    ))
+  )
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  fit <- attach_test_parameter_map(fit)
+  catalog <- parameter_catalog(fit)
+
+  for(name in c("(mu) allocation: sd_common", "(mu) sd(x)", "(mu) var(x)")){
+    x <- parameter_mixed_posterior(fit, parameter_catalog_resolve(catalog, name, namespace = "mu"))
+    atoms <- posterior_metadata(x, "atoms")
+    expect_equal(as.numeric(atoms$locations[, 1L]), 0, info = name)
+    expect_equal(atoms$mass, .5, info = name)
+    expect_equal(posterior_metadata(x, "prior_density")$points$p, .5, info = name)
+  }
+  common <- random_effects_summary_posterior(fit, summary = "sd_common")
+  expect_equal(posterior_metadata(common[[1L]], "atoms")$mass, .5)
 })
 
 test_that("catalog quantities declare their exact support and definedness", {
@@ -652,10 +824,9 @@ test_that("random-effect summary posterior handles singular Dirichlet boundaries
   )
   prior_density <- .bt_meta_get(multipliers[[1]], "prior_density")
 
-  expect_equal(attr(prior_density, "support", exact = TRUE), c(0, 2))
+  expect_equal(posterior_metadata(multipliers[[1]], "support")$bounds, c(0, 2))
   expect_true(all(is.finite(prior_density$density$x)))
   expect_true(all(is.finite(prior_density$density$y)))
-  expect_true(min(prior_density$density$x) > 0)
   expect_identical(
     BayesTools:::.prior_linear_density_height(prior_density, 0),
     Inf
@@ -665,10 +836,8 @@ test_that("random-effect summary posterior handles singular Dirichlet boundaries
     stats::dbeta(.5, .5, 2) / 2,
     tolerance = 1e-12
   )
-  expect_equal(
-    attr(prior_density, "singular_boundaries", exact = TRUE),
-    0
-  )
+  # the lower bound is a singular boundary (w^(-1/2) at 0)
+  expect_identical(prior_density_ordinate(prior_density, 0)$behavior, "infinite")
 
   prior_plot_data <- BayesTools:::.prior_linear_density_to_plot_data(
     prior_density,
@@ -698,14 +867,20 @@ test_that("unit-scale Dirichlet summaries keep singular upper bounds off the gri
       info <- paste0("alpha = c(", toString(alpha), "), ", component)
 
       expect_s3_class(prior_density, "prior_linear_density")
-      expect_equal(attr(prior_density, "support", exact = TRUE), c(0, 1),
-                   info = info)
+      expect_equal(
+        posterior_metadata(proportions[[paste0("(mu) allocation: var_prop(", component, ")")]], "support")$bounds,
+        c(0, 1),
+        info = info
+      )
       expect_true(all(is.finite(prior_density$density$y)), info = info)
-      if(beta_i < 1){
-        expect_true(max(prior_density$density$x) < 1, info = info)
-      }else{
-        expect_identical(max(prior_density$density$x), 1, info = info)
-      }
+      # a singular upper bound stays off the plotted values
+      plot_data <- BayesTools:::.prior_linear_density_to_plot_data(prior_density, n_points = 32)
+      expect_true(all(is.finite(plot_data$density$y)), info = info)
+      expect_identical(
+        prior_density_ordinate(prior_density, 1)$behavior,
+        if(beta_i < 1) "infinite" else "regular",
+        info = info
+      )
       # Reference: the analytic Beta(alpha_i, sum(alpha) - alpha_i) margin.
       expect_equal(
         BayesTools:::.prior_linear_density_height(prior_density, 0.5),
@@ -732,9 +907,12 @@ test_that("unit-scale Dirichlet summaries keep singular upper bounds off the gri
     n_prior_points = 64
   )
   prior_density <- .bt_meta_get(multipliers[[1L]], "prior_density")
-  expect_equal(attr(prior_density, "support", exact = TRUE), c(0, 1))
+  expect_equal(posterior_metadata(multipliers[[1L]], "support")$bounds, c(0, 1))
   expect_true(all(is.finite(prior_density$density$y)))
-  expect_true(max(prior_density$density$x) < 1)
+  expect_true(all(is.finite(
+    BayesTools:::.prior_linear_density_to_plot_data(prior_density, n_points = 32)$density$y
+  )))
+  expect_identical(prior_density_ordinate(prior_density, 1)$behavior, "infinite")
   # Reference: density of sqrt(w), w ~ Beta(0.5, 0.5), is dbeta(x^2) * 2x.
   expect_equal(
     BayesTools:::.prior_linear_density_height(prior_density, 0.5),
@@ -752,14 +930,14 @@ test_that("unit-scale Dirichlet summaries keep singular upper bounds off the gri
   }, logical(1))))
 })
 
-test_that("scaled-Beta analytic evaluators preserve square-root endpoint limits", {
+test_that("scaled-Beta prior densities preserve square-root endpoint limits", {
 
-  prior_density <- BayesTools:::.bt_random_effect_summary_posterior_scaled_beta_density(
-    alpha = .5,
-    beta = 1,
-    scale = 4,
-    transform = "sqrt",
-    n_grid = 64
+  # sqrt(4 w), w ~ Beta(0.5, 1), the density route of SD multipliers
+  prior_density <- BayesTools:::.bt_parameter_prior_density_transformed(
+    prior("beta", list(alpha = .5, beta = 1)),
+    list(type = "sqrt_scale", scale = 4),
+    n_grid = 64,
+    tail_prob = BayesTools:::.prior_linear_density_tail_prob()
   )
 
   expect_equal(

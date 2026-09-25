@@ -220,7 +220,14 @@ gated allocations, are products of density grids without provenance
 (plotting densities) that carry their exact gate atom at zero; a total whose
 only continuous part is the scale prior itself is exact. Fitted coordinates
 and factor levels use the prior-density context of the priors owning their
-coordinates (`multiply_by` stripped).
+coordinates (`multiply_by` stripped). `parameter_mixed_posterior()` (and
+`random_effects_summary_posterior()`, built on it) attaches this density,
+the catalog support, and atoms whose locations are the density's point
+masses and whose masses come from the per-draw gate states (and the
+indicator of a mixture scale prior with a point component), never from draw
+values; its `conditional = TRUE` keeps the draws of the quantity's inclusion
+event and uses the density restricted to that event (the gate atom drops
+out, atoms inside the event are renormalized).
 
 A product component of a combination (a `multiply_by` product, or an ordered
 level as its total times its Beta allocation share) with a structural route

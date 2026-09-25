@@ -8,7 +8,8 @@ posterior_atoms_free(x)
 }
 \arguments{
 \item{x}{BayesTools posterior draws, e.g. an element returned by
-\code{\link[=as_mixed_posteriors]{as_mixed_posteriors()}} or \code{\link[=marginal_posterior]{marginal_posterior()}}.}
+\code{\link[=as_mixed_posteriors]{as_mixed_posteriors()}}, \code{\link[=marginal_posterior]{marginal_posterior()}}, or
+\code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}}.}
 }
 \value{
 \code{TRUE} when atoms are declared and none has positive mass;

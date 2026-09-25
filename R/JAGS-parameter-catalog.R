@@ -550,6 +550,24 @@ parameter_prior_density.BayesTools_fit <- function(
   check_int(n_grid, "n_grid", lower = 16)
   check_real(tail_prob, "tail_prob", lower = 0, upper = 0.5,
              allow_bound = FALSE)
+
+  .bt_parameter_prior_density_quantity(
+    object    = object,
+    selection = selection,
+    n_grid    = n_grid,
+    tail_prob = tail_prob
+  )
+}
+
+# The prior density of the one quantity of a validated selection. With
+# 'conditional', the density of a gated random-effect allocation quantity is
+# conditional on its inclusion event (parameter_mixed_posterior()): the
+# component's gates on for a component SD or variance, its own gate on for a
+# variance proportion, and any component active for an allocation total.
+.bt_parameter_prior_density_quantity <- function(object, selection, n_grid,
+                                                 tail_prob,
+                                                 conditional = FALSE){
+
   quantity <- selection$quantities[1L, , drop = FALSE]
   if(!identical(quantity$provider, "BayesTools")){
     stop("The selected quantity is owned by another provider.",
@@ -582,7 +600,8 @@ parameter_prior_density.BayesTools_fit <- function(
       object = object,
       key = key,
       n_grid = n_grid,
-      tail_prob = tail_prob
+      tail_prob = tail_prob,
+      conditional = conditional
     )
   }else if(identical(key$evaluator, "sd_variance") &&
            isTRUE(key$allocation_derived)){
@@ -591,7 +610,8 @@ parameter_prior_density.BayesTools_fit <- function(
         object = object,
         key = key,
         n_grid = n_grid,
-        tail_prob = tail_prob
+        tail_prob = tail_prob,
+        conditional = conditional
       )
     )
   }else if(identical(key$evaluator, "allocation")){
@@ -600,7 +620,8 @@ parameter_prior_density.BayesTools_fit <- function(
       selection = selection,
       key = key,
       n_grid = n_grid,
-      tail_prob = tail_prob
+      tail_prob = tail_prob,
+      conditional = conditional
     )
   }else if(key$evaluator %in% c("allocation_sd", "allocation_var") &&
            identical(key$source_type, "composite")){
@@ -608,7 +629,8 @@ parameter_prior_density.BayesTools_fit <- function(
       object = object,
       key = key,
       n_grid = n_grid,
-      tail_prob = tail_prob
+      tail_prob = tail_prob,
+      conditional = conditional
     )
   }else{
     .bt_parameter_prior_density_direct_quantity(
@@ -620,9 +642,12 @@ parameter_prior_density.BayesTools_fit <- function(
     )
   }
   if(!is.null(out)){
-    attr(out, "parameter_prior_density") <- list(
-      quantity_id = quantity$quantity_id,
-      source = "fitted_parameter_map"
+    attr(out, "parameter_prior_density") <- c(
+      list(
+        quantity_id = quantity$quantity_id,
+        source = "fitted_parameter_map"
+      ),
+      if(isTRUE(conditional)) list(conditional = "inclusion")
     )
   }
   out
@@ -743,7 +768,7 @@ parameter_prior_density.BayesTools_fit <- function(
 }
 
 .bt_parameter_prior_density_allocation_quantity <- function(
-    object, selection, key, n_grid, tail_prob){
+    object, selection, key, n_grid, tail_prob, conditional = FALSE){
 
   random_term <- if(nzchar(key$random_block)){
     .bt_parameter_catalog_find_random_term(object, key)
@@ -772,7 +797,8 @@ parameter_prior_density.BayesTools_fit <- function(
       prior_list = prior_list,
       index = key$index,
       n_grid = n_grid,
-      tail_prob = tail_prob
+      tail_prob = tail_prob,
+      conditional = conditional
     ))
   }
   index <- key$index
@@ -912,7 +938,8 @@ parameter_prior_density.BayesTools_fit <- function(
 }
 
 .bt_parameter_prior_density_gated_var_prop <- function(
-    allocation, source_prior, prior_list, index, n_grid, tail_prob){
+    allocation, source_prior, prior_list, index, n_grid, tail_prob,
+    conditional = FALSE){
 
   positive_scale <- .bt_parameter_prior_density_positive_probability(
     allocation$source$prior
@@ -950,6 +977,11 @@ parameter_prior_density.BayesTools_fit <- function(
   )
   if(is.null(probability)){
     return(NULL)
+  }
+  if(isTRUE(conditional)){
+    # conditional on the component's own gate: the proportion given that it
+    # is active (the atom at 0 of an inactive component drops out)
+    probability[[index]] <- 1
   }
 
   .bt_parameter_prior_density_gated_var_prop_mixture(
@@ -1059,8 +1091,11 @@ parameter_prior_density.BayesTools_fit <- function(
   )
 }
 
-.bt_parameter_prior_density_random_component_sd <- function(
-    object, key, n_grid, tail_prob){
+# The allocation chain of an allocation-derived component SD: its
+# allocation, the scalar source prior, and the factors (Dirichlet weight,
+# index, scale and optional inclusion gate) from the root allocation to the
+# component. NULL when the component SD is not a direct allocation product.
+.bt_parameter_prior_density_component_chain <- function(object, key){
 
   random_term <- .bt_parameter_catalog_find_random_term(object, key)
   if(!.bt_parameter_catalog_random_sd_is_direct(
@@ -1102,6 +1137,19 @@ parameter_prior_density.BayesTools_fit <- function(
   }else{
     return(NULL)
   }
+
+  list(allocation = allocation, source_prior = source_prior, factors = factors)
+}
+
+.bt_parameter_prior_density_random_component_sd <- function(
+    object, key, n_grid, tail_prob, conditional = FALSE){
+
+  chain <- .bt_parameter_prior_density_component_chain(object, key)
+  if(is.null(chain)){
+    return(NULL)
+  }
+  source_prior <- chain$source_prior
+  factors <- chain$factors
   prior_list <- attr(object, "prior_list", exact = TRUE)
   dist <- .bt_parameter_prior_density_scalar(
     source_prior,
@@ -1152,8 +1200,14 @@ parameter_prior_density.BayesTools_fit <- function(
       n_grid = n_grid
     )
   }
-  .bt_parameter_prior_density_with_zero_atom(dist, 1 - active_probability,
-                                             n_grid, tail_prob)
+  # conditional on the inclusion event (every gate of the chain on), the
+  # gate atom drops out
+  .bt_parameter_prior_density_with_zero_atom(
+    dist,
+    if(isTRUE(conditional)) 0 else 1 - active_probability,
+    n_grid,
+    tail_prob
+  )
 }
 
 # 'dist' with an additional atom at zero of probability 'zero' (the rest of
@@ -1269,7 +1323,8 @@ parameter_prior_density.BayesTools_fit <- function(
 # are plotting densities (grids without provenance), and the atom at zero is
 # exact in both cases. A total variance is the square of the total SD.
 .bt_parameter_prior_density_allocation_total <- function(object, key,
-                                                         n_grid, tail_prob){
+                                                         n_grid, tail_prob,
+                                                         conditional = FALSE){
 
   random_term <- if(nzchar(key$random_block)){
     .bt_parameter_catalog_find_random_term(object, key)
@@ -1330,6 +1385,14 @@ parameter_prior_density.BayesTools_fit <- function(
                          set_probability * probability[[k]])
   }
   zero <- sum(set_probability[rowSums(active) == 0L])
+  if(isTRUE(conditional)){
+    # conditional on an active component, the empty-set atom drops out (the
+    # set mixture below is normalized over the nonempty sets)
+    if(zero >= 1){
+      return(NULL)
+    }
+    zero <- 0
+  }
   full <- rowSums(active) == K
   partial <- !full & rowSums(active) > 0L & set_probability > 0
 
