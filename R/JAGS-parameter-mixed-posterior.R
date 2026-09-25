@@ -9,15 +9,23 @@
 #'   \item{`prior_density`}{the canonical prior density,
 #'   [parameter_prior_density()] (conditional on the inclusion event with
 #'   `conditional = TRUE`).}
-#'   \item{`atoms`}{the declared posterior point masses: their locations are
-#'   the point masses of the prior density, and their masses are the shares
-#'   of the posterior draws whose inclusion-gate states (and the mixture
-#'   indicator of a scale prior with a point component) put the quantity on
-#'   them, never inferred from the draw values. A quantity whose prior
-#'   density has no point mass declares no atoms. Atoms remain undeclared
-#'   (and posterior plots and Savage-Dickey ratios stop) when the prior
-#'   density is unavailable or its point masses have no such structural
-#'   source.}
+#'   \item{`atoms`}{the declared posterior point masses, from the structure
+#'   of the quantity, never inferred from the draw values: the atoms on which
+#'   the per-draw states of its inclusion gates and point components put it
+#'   ([parameter_gate_states()]: the gates of a variance allocation, the
+#'   mixture indicator of a scale prior with a point component, or the
+#'   component indicator of a mixture or spike-and-slab prior of its fitted
+#'   coordinates), with masses the shares of those draws and locations that
+#'   match the point masses of the prior density when it is available. A
+#'   quantity whose prior density has no point mass declares no atoms, and so
+#'   does a quantity without a prior density none of whose fitted coordinates
+#'   can take a point mass (each owned by a continuous prior or a continuous
+#'   generated primitive, e.g. the correlations of an LKJ block). Atoms remain
+#'   undeclared (and posterior plots and Savage-Dickey ratios stop) when the
+#'   point states are not in the draws (an unmonitored component indicator)
+#'   or the quantity combines several coordinates of which some can take a
+#'   point mass (e.g. original-scale random-effect SDs and correlations of a
+#'   block with spike-and-slab SD priors).}
 #'   \item{`undefined_draws`}{for quantities that are undefined on some
 #'   fitted draws (the catalog `definedness`, e.g. variance proportions when
 #'   no allocation component is active), the reason; those draws are omitted,
@@ -72,6 +80,85 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
   )
 }
 
+#' Per-draw gate and point states of a catalog quantity
+#'
+#' @description `parameter_gate_states()` returns, for each draw, the state
+#' of the structural gates and point components that put one catalog quantity
+#' on its atoms: the inclusion gates of random-effect variance allocations
+#' (allocated SDs and variances, allocation totals, variance proportions, and
+#' inclusion indicators), and the component indicator of a mixture or
+#' spike-and-slab prior with point components (coefficients, factor levels,
+#' and random-effect SDs and variances of such priors). These are the states
+#' from which [parameter_mixed_posterior()] declares the posterior atoms.
+#'
+#' @param fit a model fitted with [JAGS_fit()].
+#' @param selection a selection of one catalog quantity, created with
+#'   [parameter_catalog_resolve()].
+#' @param draws optional draws of the fitted coordinates to read the states
+#'   from: a numeric matrix with one column per coordinate and one row per
+#'   draw, an `mcmc` or `mcmc.list` object, or a named numeric vector holding
+#'   one draw (as for [JAGS_evaluate_deterministic()]). It must contain the
+#'   gate and indicator coordinates of the quantity. Defaults to the
+#'   posterior draws of `fit`.
+#'
+#' @return `NULL` for a quantity without inclusion gates or point components.
+#'   Otherwise a list with one element per draw in each of
+#'   \describe{
+#'     \item{`atom`}{the atom of the quantity in the draw, `NA` where the
+#'     quantity is on its continuous part or undefined.}
+#'     \item{`continuous`}{whether the quantity is on its continuous part
+#'     (defined and not on an atom; `NA` where that is not determined).}
+#'     \item{`defined`}{whether the quantity is defined in the draw (a
+#'     variance proportion is undefined without an active component).}
+#'     \item{`event`}{whether the draw is in the inclusion event of the
+#'     quantity (see [parameter_mixed_posterior()]), or `NULL` when the
+#'     quantity has no such event.}
+#'   }
+#'   and the scalar `known`: `FALSE` when the atom states are not determined
+#'   by the draws (the component indicator of a prior with point components
+#'   is not monitored); `atom` then holds only the gate atoms.
+#'
+#' @seealso [parameter_mixed_posterior()], [parameter_catalog()]
+#' @export
+parameter_gate_states <- function(fit, selection, draws = NULL){
+
+  if(!inherits(fit, "BayesTools_fit")){
+    stop("'fit' must be a 'BayesTools_fit' object.", call. = FALSE)
+  }
+  catalog <- parameter_catalog(fit)
+  .bt_validate_parameter_selection(selection, catalog = catalog)
+  if(nrow(selection$quantities) != 1L){
+    stop("'selection' must contain exactly one parameter quantity.",
+         call. = FALSE)
+  }
+  quantity <- selection$quantities[1L, , drop = FALSE]
+  plan <- .bt_parameter_gate_plan(fit, quantity)
+  if(is.null(plan)){
+    return(NULL)
+  }
+  if(is.null(draws)){
+    n <- nrow(as.matrix(.fit_to_posterior(fit)))
+    states <- .bt_parameter_gate_states(fit, plan, n)
+  }else{
+    draws <- .bt_deterministic_draws_matrix(draws)
+    states <- .bt_parameter_gate_states(fit, plan, nrow(draws), model_samples = draws)
+  }
+
+  continuous <- states$defined & is.na(states$atom)
+  if(!isTRUE(states$known)){
+    # a draw off the gate atoms may lie on an unmonitored point component
+    continuous[continuous] <- NA
+  }
+
+  list(
+    atom       = states$atom,
+    continuous = continuous,
+    defined    = states$defined,
+    event      = states$event,
+    known      = states$known
+  )
+}
+
 .bt_parameter_mixed_posterior <- function(fit, selection, conditional = FALSE,
                                           n_grid = .prior_linear_density_default_grid(),
                                           tail_prob = .prior_linear_density_tail_prob(),
@@ -120,8 +207,10 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
     conditional = conditional
   )
   atoms <- .bt_parameter_mixed_posterior_atoms(
+    fit           = fit,
     quantity      = quantity,
     prior_density = prior_density,
+    plan          = plan,
     states        = states,
     keep          = keep
   )
@@ -189,13 +278,18 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
   )
 }
 
-# Declared posterior atoms of a catalog quantity: none when its prior density
-# has no point mass; the prior's point masses with masses from the per-draw
-# gate and indicator states otherwise; a structural quantity is its fixed
-# value; NULL (undeclared) when the prior density is unavailable or its point
-# masses have no structural per-draw source.
-.bt_parameter_mixed_posterior_atoms <- function(quantity, prior_density,
-                                                states, keep){
+# Declared posterior atoms of a catalog quantity, from its structure:
+# - a structural quantity is its fixed value;
+# - a quantity with inclusion gates or point components (a gate plan) has
+#   the atoms its per-draw gate and indicator states put it on, with masses
+#   the shares of those draws (checked against the point masses of the prior
+#   density when it is available);
+# - a quantity whose prior density has no point mass, or, without a prior
+#   density, none of whose fitted coordinates can take a point mass, has none;
+# - otherwise (the point states are not in the draws, or a composite of
+#   coordinates with point masses) the atom status is undeclared (NULL).
+.bt_parameter_mixed_posterior_atoms <- function(fit, quantity, prior_density,
+                                                plan, states, keep){
 
   name <- quantity$canonical_name
   if(identical(quantity$status, "structural") &&
@@ -207,17 +301,23 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
       source    = "parameter_structure"
     ))
   }
-  if(is.null(prior_density)){
+  prior_atoms <- NULL
+  if(!is.null(prior_density)){
+    points <- prior_density$points
+    prior_atoms <- if(is.data.frame(points) && nrow(points) > 0L){
+      points$x[points$p > 0]
+    }else{
+      numeric()
+    }
+    if(length(prior_atoms) == 0L){
+      return(.posterior_atoms_new(source = "parameter_structure"))
+    }
+  }
+  if(is.null(plan)){
+    if(is.null(prior_density) && .bt_parameter_point_free(fit, quantity)){
+      return(.posterior_atoms_new(source = "parameter_structure"))
+    }
     return(NULL)
-  }
-  points <- prior_density$points
-  prior_atoms <- if(is.data.frame(points) && nrow(points) > 0L){
-    points$x[points$p > 0]
-  }else{
-    numeric()
-  }
-  if(length(prior_atoms) == 0L){
-    return(.posterior_atoms_new(source = "parameter_structure"))
   }
   if(is.null(states) || !isTRUE(states$known)){
     return(NULL)
@@ -225,20 +325,22 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
 
   locations <- states$atom[keep]
   on_atom <- !is.na(locations)
-  matched <- vapply(locations[on_atom], function(location){
-    distance <- abs(prior_atoms - location)
-    index <- which(distance <= 1e-12 * pmax(1, abs(prior_atoms)))
-    if(length(index) == 0L) NA_real_ else prior_atoms[[index[[1L]]]]
-  }, numeric(1))
-  if(anyNA(matched)){
-    stop(
-      "The inclusion-gate atoms of '", name, "' do not match the point ",
-      "masses of its prior density.",
-      call. = FALSE
-    )
+  if(!is.null(prior_atoms)){
+    matched <- vapply(locations[on_atom], function(location){
+      distance <- abs(prior_atoms - location)
+      index <- which(distance <= 1e-12 * pmax(1, abs(prior_atoms)))
+      if(length(index) == 0L) NA_real_ else prior_atoms[[index[[1L]]]]
+    }, numeric(1))
+    if(anyNA(matched)){
+      stop(
+        "The inclusion-gate atoms of '", name, "' do not match the point ",
+        "masses of its prior density.",
+        call. = FALSE
+      )
+    }
+    locations[on_atom] <- matched
   }
-  locations[on_atom] <- matched
-  atom_locations <- sort(unique(matched))
+  atom_locations <- sort(unique(locations[on_atom]))
   if(length(atom_locations) == 0L){
     return(.posterior_atoms_new(source = "parameter_gate_states"))
   }
@@ -252,9 +354,91 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
   )
 }
 
-# The gate structure of a gated random-effect allocation quantity (NULL for
-# other quantities): what puts the quantity on an atom in a draw, and its
-# inclusion event.
+# Whether none of the fitted coordinates a catalog quantity is computed from
+# (the dependencies of its extraction key) can take a point mass: each is
+# owned by a prior-list entry without a point component, or is a generated
+# continuous primitive without a prior-list entry (the Beta primitives of an
+# LKJ correlation and standardized random effects). Structural and indicator
+# coordinates, and coordinates without either structure, can.
+.bt_parameter_point_free <- function(fit, quantity){
+
+  dependencies <- quantity$extraction_key[[1L]]$dependencies
+  if(length(dependencies) == 0L){
+    return(FALSE)
+  }
+  coordinates <- parameter_coordinates(fit)
+  rows <- match(dependencies, coordinates$coordinate_name)
+  if(anyNA(rows) ||
+     any(!coordinates$convergence_role[rows] %in% c("sampled", "derived"))){
+    return(FALSE)
+  }
+  prior_list <- attr(fit, "prior_list", exact = TRUE)
+  for(i in seq_along(dependencies)){
+    owner <- .bt_parameter_coordinate_owner(prior_list, dependencies[[i]])
+    if(!is.null(owner)){
+      if(!isFALSE(.bt_prior_has_point_component(prior_list[[owner]]))){
+        return(FALSE)
+      }
+    }else if(!coordinates$role[rows[i]] %in%
+             c("random_correlation_coordinate", "random_latent") ||
+             !identical(coordinates$convergence_role[rows[i]], "sampled")){
+      return(FALSE)
+    }
+  }
+
+  TRUE
+}
+
+# The prior-list entry whose fitted coordinates include 'coordinate' (NULL
+# when none does).
+.bt_parameter_coordinate_owner <- function(prior_list, coordinate){
+
+  for(parameter in names(prior_list)){
+    prior <- prior_list[[parameter]]
+    if(is.prior(prior) &&
+       coordinate %in% .prior_linear_prior_columns(parameter, prior)){
+      return(parameter)
+    }
+  }
+
+  NULL
+}
+
+# Whether a prior puts point mass somewhere: TRUE for point priors, the spike
+# of spike-and-slab priors, mixtures with such a component, and ordered
+# priors with a zero total; FALSE for continuous priors; NA when the prior's
+# structure is not classified here.
+.bt_prior_has_point_component <- function(prior){
+
+  if(!is.prior(prior)){
+    return(NA)
+  }
+  if(is.prior.point(prior) || is.prior.spike_and_slab(prior)){
+    return(TRUE)
+  }
+  if(is.prior.mixture(prior)){
+    components <- vapply(seq_along(prior), function(i){
+      .bt_prior_has_point_component(prior[[i]])
+    }, logical(1))
+    if(any(components %in% TRUE)){
+      return(TRUE)
+    }
+    return(if(anyNA(components)) NA else FALSE)
+  }
+  if(is.prior.ordered(prior)){
+    return(.posterior_atoms_is_ordered_zero_total(prior) ||
+             .posterior_atoms_ordered_total_has_spike(prior$total))
+  }
+  if(is.prior.simple(prior) || is.prior.vector(prior) || is.prior.factor(prior)){
+    return(FALSE)
+  }
+
+  NA
+}
+
+# The gate structure of a catalog quantity (NULL for quantities without
+# inclusion gates or point components): what puts the quantity on an atom in
+# a draw, and its inclusion event.
 #   inclusion: an allocation inclusion indicator, on its own atom (0 or 1).
 #   component: an allocation-derived component SD (or variance), zero when a
 #     gate of its chain is off; 'degenerate' when every factor of the chain
@@ -263,11 +447,15 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
 #     variance), zero without an active component or with a parent gate off.
 #   var_prop: a gated total-variance proportion, 0 when its component is
 #     inactive while another is active and 1 when it is the only active one.
+#   point: a quantity of the fitted coordinates of one mixture or
+#     spike-and-slab prior with point components (a coefficient, a factor
+#     level, or a random-effect SD or its variance), on the image of a point
+#     component in the draws whose component indicator selects it.
 .bt_parameter_gate_plan <- function(fit, quantity){
 
   key <- quantity$extraction_key[[1L]]
   if(!identical(key$type, "random_summary")){
-    return(NULL)
+    return(.bt_parameter_point_plan(fit, quantity))
   }
   gate_names <- function(records, field){
     names <- unlist(lapply(records, function(record) record[[field]]),
@@ -308,7 +496,7 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
   if(!key$evaluator %in% c("allocation_sd", "allocation_var") &&
      !(identical(key$evaluator, "allocation") &&
        identical(quantity$quantity, "var_prop"))){
-    return(NULL)
+    return(.bt_parameter_point_plan(fit, quantity))
   }
   random_term <- if(nzchar(key$random_block)){
     .bt_parameter_catalog_find_random_term(fit, key)
@@ -372,10 +560,14 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
 }
 
 # Per-draw states of a gate plan: 'atom' is the atom location of the quantity
-# in each draw (NA on its continuous part), 'event' its inclusion event (NULL
+# in each draw (NA on its continuous part and where it is undefined),
+# 'defined' whether the quantity is defined in the draw (a variance
+# proportion needs an active component), 'event' its inclusion event (NULL
 # when unavailable), and 'known' whether the atom states are determined (the
-# mixture indicator of a scale prior with a point component is monitored).
-.bt_parameter_gate_states <- function(fit, plan, n){
+# mixture indicator of a prior with a point component is monitored). The
+# states are read from the posterior draws of 'fit', or from 'model_samples'
+# (a matrix of fitted coordinates with one row per draw).
+.bt_parameter_gate_states <- function(fit, plan, n, model_samples = NULL){
 
   if(is.null(plan)){
     return(NULL)
@@ -388,16 +580,28 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
   }else{
     NULL
   }
-  columns <- unique(c(gate_columns, source$indicator))
-  model_samples <- if(length(columns) > 0L){
-    as.matrix(.bt_parameter_draw_dependencies(fit, columns))
+  columns <- unique(c(gate_columns, source$indicator, plan$indicator))
+  if(is.null(model_samples)){
+    model_samples <- if(length(columns) > 0L){
+      as.matrix(.bt_parameter_draw_dependencies(fit, columns))
+    }else{
+      matrix(numeric(), nrow = n, ncol = 0L)
+    }
   }else{
-    matrix(numeric(), nrow = n, ncol = 0L)
+    missing <- setdiff(columns, colnames(model_samples))
+    if(length(missing) > 0L){
+      stop(
+        "The draws do not contain the inclusion indicators ",
+        paste0("'", missing, "'", collapse = ", "), " of the quantity.",
+        call. = FALSE
+      )
+    }
   }
   if(nrow(model_samples) != n){
     stop("Random-effect inclusion draws do not align with the quantity draws.",
          call. = FALSE)
   }
+  defined <- rep(TRUE, n)
   gate_on <- function(name){
     gate <- .bt_random_effect_allocation_gate_draws(
       parameter_name = name,
@@ -422,9 +626,23 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
 
   if(identical(plan$kind, "inclusion")){
     return(list(
-      atom  = as.numeric(gate_on(plan$chain_gates)),
-      event = NULL,
-      known = TRUE
+      atom    = as.numeric(gate_on(plan$chain_gates)),
+      defined = defined,
+      event   = NULL,
+      known   = TRUE
+    ))
+  }
+  if(identical(plan$kind, "point")){
+    if(isTRUE(plan$unknown)){
+      return(list(atom = rep(NA_real_, n), defined = defined, event = NULL,
+                  known = FALSE))
+    }
+    component <- .bt_component_from_indicator(plan$prior, model_samples[, plan$indicator])
+    return(list(
+      atom    = plan$locations[component],
+      defined = defined,
+      event   = NULL,
+      known   = TRUE
     ))
   }
   if(identical(plan$kind, "var_prop")){
@@ -437,9 +655,10 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
     own <- active[, plan$index]
     others <- rowSums(active[, -plan$index, drop = FALSE]) > 0L
     return(list(
-      atom  = ifelse(!own & others, 0, ifelse(own & !others, 1, NA_real_)),
-      event = if(length(plan$event_gates) > 0L) all_on(plan$event_gates),
-      known = TRUE
+      atom    = ifelse(!own & others, 0, ifelse(own & !others, 1, NA_real_)),
+      defined = own | others,
+      event   = if(length(plan$event_gates) > 0L) all_on(plan$event_gates),
+      known   = TRUE
     ))
   }
 
@@ -487,7 +706,83 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
     atom <- atom^2
   }
 
-  list(atom = atom, event = event, known = !is.null(point))
+  list(atom = atom, defined = defined, event = event, known = !is.null(point))
+}
+
+# The point plan of a quantity of the fitted coordinates of one mixture or
+# spike-and-slab prior with point components (a coefficient or a factor level,
+# the weighted sum of its coordinates, or a random-effect SD and its one-to-one
+# transformations): the image of each component (NA for continuous
+# components) and the monitored component indicator of the prior. NULL for
+# other quantities.
+.bt_parameter_point_plan <- function(fit, quantity){
+
+  key <- quantity$extraction_key[[1L]]
+  transform <- NULL
+  if(key$type %in% c("coordinate", "factor_level")){
+    dependencies <- key$dependencies
+    weights <- if(identical(key$type, "coordinate")) rep(1, length(dependencies)) else key$weights
+  }else if(identical(key$type, "random_summary") &&
+           key$source_type %in% c("identity", "one_to_one_transform") &&
+           is.character(key$source_parameter) && length(key$source_parameter) == 1L &&
+           nzchar(key$source_parameter)){
+    dependencies <- key$source_parameter
+    weights <- 1
+    if(identical(key$source_type, "one_to_one_transform")){
+      transform <- .bt_parameter_transform_from_quantity(fit, quantity)
+      if(is.null(transform)){
+        return(NULL)
+      }
+    }
+  }else{
+    return(NULL)
+  }
+  if(length(dependencies) == 0L){
+    return(NULL)
+  }
+
+  prior_list <- attr(fit, "prior_list", exact = TRUE)
+  owners <- unique(vapply(dependencies, function(dependency){
+    owner <- .bt_parameter_coordinate_owner(prior_list, dependency)
+    if(is.null(owner)) NA_character_ else owner
+  }, character(1)))
+  if(length(owners) != 1L || is.na(owners)){
+    return(NULL)
+  }
+  prior <- prior_list[[owners]]
+  if(!.posterior_components_is_mixture(prior)){
+    return(NULL)
+  }
+  columns <- .prior_linear_prior_columns(owners, prior)
+  positions <- match(dependencies, columns)
+  locations <- vapply(seq_along(prior), function(i){
+    location <- .posterior_atoms_point_location(prior[[i]], length(columns))
+    if(is.null(location)) NA_real_ else sum(weights * location[positions])
+  }, numeric(1))
+  if(all(is.na(locations))){
+    return(NULL)
+  }
+  if(!is.null(transform)){
+    locations[!is.na(locations)] <- parameter_transform_forward(
+      locations[!is.na(locations)],
+      transform
+    )
+  }
+  indicator <- paste0(owners, "_indicator")
+  coordinates <- parameter_coordinates(fit)
+  status <- coordinates$monitor_status[match(indicator, coordinates$coordinate_name)]
+  known <- !is.na(status) && status %in% c("sampled", "structural")
+
+  list(
+    kind        = "point",
+    prior       = prior,
+    locations   = locations,
+    indicator   = if(known) indicator,
+    unknown     = !known,
+    chain_gates = character(),
+    event_gates = character(),
+    event_rule  = "AND"
+  )
 }
 
 # How the point components of a scale prior enter the draws: the location of

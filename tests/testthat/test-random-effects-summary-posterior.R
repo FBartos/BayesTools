@@ -742,6 +742,182 @@ test_that("parameter_mixed_posterior reads source point masses from the mixture 
   expect_equal(posterior_metadata(common[[1L]], "atoms")$mass, .5)
 })
 
+test_that("parameter_mixed_posterior declares atoms from structure without a prior density", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+
+  # the original-scale correlation of a us() block with a scaled slope is a
+  # composite of the LKJ primitive and both SDs: no prior density
+  set.seed(1)
+  data <- data.frame(
+    x = rep(seq(-1, 1, length.out = 12), 4) * 3 + 1,
+    g = factor(rep(c("A", "B", "C", "D"), each = 12))
+  )
+  data$y <- stats::rnorm(nrow(data))
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax       = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 4)\n}\n}",
+    data               = list(y = data$y, N = nrow(data)),
+    formula_list       = list(mu = ~ 1 + x + (1 + x | g)),
+    formula_data_list  = list(mu = data),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1)),
+      x         = prior("normal", list(0, 1))
+    )),
+    formula_random_prior_list = list(mu = prior_random(g = random_block(
+      sd = prior("normal", list(0, 1), list(0, Inf))
+    ))),
+    formula_scale = list(mu = list(x = TRUE)),
+    chains = 1, adapt = 100, burnin = 100, sample = 200, silent = TRUE, seed = 3
+  ))
+  catalog <- parameter_catalog(fit)
+  correlation <- parameter_catalog_resolve(catalog, "(mu) cor(intercept,x)")
+  expect_identical(correlation$quantities$source_type, "composite")
+  expect_null(parameter_prior_density(fit, correlation))
+
+  # none of its fitted coordinates takes a point mass: declared atom-free
+  mixed <- parameter_mixed_posterior(fit, correlation)
+  expect_true(posterior_atoms_free(mixed))
+  expect_null(parameter_gate_states(fit, correlation))
+  samples <- list(rho = mixed)
+  class(samples) <- c("as_mixed_posteriors", "mixed_posteriors", "list")
+  expect_s3_class(plot_posterior(samples, "rho", plot_type = "ggplot"), "ggplot")
+  expect_no_error(plot_posterior(samples, "rho"))
+
+  # region hypotheses are the posterior over prior odds of the draws, as
+  # before
+  set.seed(2)
+  prior_draws <- stats::runif(2000, -1, 1)
+  region <- hypothesis_BF(
+    posterior  = data.frame(rho = as.numeric(mixed)),
+    prior      = data.frame(rho = prior_draws),
+    hypothesis = "rho > 0"
+  )
+  odds <- function(p) p / (1 - p)
+  expect_equal(
+    as.numeric(region$BF),
+    odds(mean(as.numeric(mixed) > 0)) / odds(mean(prior_draws > 0)),
+    tolerance = 1e-12
+  )
+})
+
+test_that("parameter_mixed_posterior declares the point components of mixture priors", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+
+  set.seed(1)
+  data <- data.frame(
+    x = rep(seq(-1, 1, length.out = 12), 4),
+    g = factor(rep(c("A", "B", "C", "D"), each = 12)),
+    f = factor(rep(c("a", "b", "c"), 16))
+  )
+  data$y <- stats::rnorm(nrow(data))
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax       = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 4)\n}\n}",
+    data               = list(y = data$y, N = nrow(data)),
+    formula_list       = list(mu = ~ 1 + x + f + (1 | g)),
+    formula_data_list  = list(mu = data),
+    formula_prior_list = list(mu = list(
+      intercept = prior_mixture(list(prior("normal", list(0, 1)), prior("spike", list(0.2)))),
+      x         = prior_spike_and_slab(prior("normal", list(0, 1)),
+                                       prior_inclusion = prior("spike", list(0.5))),
+      f         = prior_spike_and_slab(prior_factor("normal", list(0, 1), contrast = "treatment"),
+                                       prior_inclusion = prior("beta", list(1, 1)))
+    )),
+    formula_random_prior_list = list(mu = prior_random(g = random_block(
+      sd = prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)),
+                                prior_inclusion = prior("spike", list(0.5)))
+    ))),
+    chains = 1, adapt = 100, burnin = 100, sample = 200, silent = TRUE, seed = 3
+  ))
+  draws <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+  catalog <- parameter_catalog(fit)
+  resolve <- function(name) parameter_catalog_resolve(catalog, name)
+  atoms_of <- function(name){
+    atoms <- posterior_metadata(parameter_mixed_posterior(fit, resolve(name)), "atoms")
+    list(x = as.numeric(atoms$locations[, 1L]), mass = atoms$mass)
+  }
+
+  # the spike of each spike-and-slab prior (indicator 0) and the spike(0.2)
+  # component of the mixture (component 2) are atoms with the posterior share
+  # of the draws whose indicator selects them
+  spike_x  <- mean(draws[, "mu_x_indicator"] == 0)
+  spike_f  <- mean(draws[, "mu_f_indicator"] == 0)
+  spike_sd <- mean(draws[, "mu__xREx__g_intercept_indicator"] == 0)
+  spike_intercept <- mean(draws[, "mu_intercept_indicator"] == 2)
+  expect_true(all(c(spike_x, spike_f, spike_sd, spike_intercept) > 0 &
+                    c(spike_x, spike_f, spike_sd, spike_intercept) < 1))
+  expect_identical(atoms_of("mu_x"), list(x = 0, mass = spike_x))
+  expect_identical(atoms_of("mu_f[b]"), list(x = 0, mass = spike_f))
+  expect_identical(atoms_of("mu_f[c]"), list(x = 0, mass = spike_f))
+  expect_identical(atoms_of("mu_intercept"), list(x = 0.2, mass = spike_intercept))
+  expect_identical(atoms_of("(mu) sd(intercept)"), list(x = 0, mass = spike_sd))
+  expect_identical(atoms_of("(mu) var(intercept)"), list(x = 0, mass = spike_sd))
+  # the atoms are where the draws are exactly on the point components
+  expect_equal(mean(draws[, "mu_x"] == 0), spike_x)
+  expect_equal(mean(draws[, "mu_intercept"] == 0.2), spike_intercept)
+
+  # the per-draw states, from the posterior draws or from given draws
+  states <- parameter_gate_states(fit, resolve("mu_x"))
+  expect_true(states$known)
+  expect_identical(states$atom, ifelse(draws[, "mu_x_indicator"] == 0, 0, NA_real_))
+  expect_identical(states$continuous, draws[, "mu_x_indicator"] == 1)
+  expect_null(states$event)
+  row <- parameter_gate_states(fit, resolve("(mu) var(intercept)"), draws = draws[5L, ])
+  expect_identical(row$atom, if(draws[5L, "mu__xREx__g_intercept_indicator"] == 0) 0 else NA_real_)
+  expect_error(
+    parameter_gate_states(fit, resolve("mu_x"), draws = draws[, "mu_x", drop = FALSE]),
+    "The draws do not contain the inclusion indicators 'mu_x_indicator' of the quantity.",
+    fixed = TRUE
+  )
+
+  # remaining undeclared: auxiliary nodes of mixture priors, and the SD
+  # inclusion indicator whose catalog prior density is the SD's
+  expect_null(posterior_metadata(parameter_mixed_posterior(fit, resolve("mu_x_variable")), "atoms"))
+  expect_null(posterior_metadata(
+    parameter_mixed_posterior(fit, resolve("(mu) inclusion(sd(intercept))")), "atoms"
+  ))
+})
+
+test_that("parameter_gate_states() gives the allocation gate states of given draws", {
+
+  skip_if_not_installed("runjags")
+
+  # (study, drug) gates are (0, 0), (1, 0), (0, 1), (1, 1)
+  fit <- .random_effects_gated_total_variance_allocation_fit()
+  catalog <- parameter_catalog(fit)
+  resolve <- function(name) parameter_catalog_resolve(catalog, name)
+  draws <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+
+  proportion <- parameter_gate_states(fit, resolve("(mu) allocation: var_prop(drug)"))
+  expect_identical(proportion$defined, c(FALSE, TRUE, TRUE, TRUE))
+  expect_identical(proportion$atom, c(NA, 0, 1, NA))
+  expect_identical(proportion$continuous, c(FALSE, FALSE, FALSE, TRUE))
+  expect_identical(proportion$event, c(FALSE, FALSE, TRUE, TRUE))
+  expect_true(proportion$known)
+  total <- parameter_gate_states(fit, resolve("(mu) allocation: sd_total"))
+  expect_identical(total$atom, c(0, NA, NA, NA))
+  expect_identical(total$continuous, c(FALSE, TRUE, TRUE, TRUE))
+  study <- parameter_gate_states(fit, resolve("(mu) study: sd(intercept)"))
+  expect_identical(study$atom, c(0, NA, 0, NA))
+
+  # given draws: rows in another order, and one draw as a named vector
+  expect_identical(
+    parameter_gate_states(fit, resolve("(mu) allocation: var_prop(drug)"), draws = draws[4:1, ])$atom,
+    rev(proportion$atom)
+  )
+  expect_identical(
+    parameter_gate_states(fit, resolve("(mu) allocation: var_prop(drug)"), draws = draws[2L, ])$atom,
+    0
+  )
+  # quantities without gates or point components have no states
+  multiplier_fit <- .random_effects_mean_variance_allocation_fit()
+  expect_null(parameter_gate_states(multiplier_fit, parameter_catalog_resolve(
+    parameter_catalog(multiplier_fit), "(mu) allocation: var_mult(x)", namespace = "mu"
+  )))
+})
+
 test_that("catalog quantities declare their exact support and definedness", {
 
   skip_if_not_installed("runjags")

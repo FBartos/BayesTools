@@ -40,15 +40,23 @@ metadata that inference and plots need (\code{\link[=posterior_metadata]{posteri
 \item{\code{prior_density}}{the canonical prior density,
 \code{\link[=parameter_prior_density]{parameter_prior_density()}} (conditional on the inclusion event with
 \code{conditional = TRUE}).}
-\item{\code{atoms}}{the declared posterior point masses: their locations are
-the point masses of the prior density, and their masses are the shares
-of the posterior draws whose inclusion-gate states (and the mixture
-indicator of a scale prior with a point component) put the quantity on
-them, never inferred from the draw values. A quantity whose prior
-density has no point mass declares no atoms. Atoms remain undeclared
-(and posterior plots and Savage-Dickey ratios stop) when the prior
-density is unavailable or its point masses have no such structural
-source.}
+\item{\code{atoms}}{the declared posterior point masses, from the structure
+of the quantity, never inferred from the draw values: the atoms on which
+the per-draw states of its inclusion gates and point components put it
+(\code{\link[=parameter_gate_states]{parameter_gate_states()}}: the gates of a variance allocation, the
+mixture indicator of a scale prior with a point component, or the
+component indicator of a mixture or spike-and-slab prior of its fitted
+coordinates), with masses the shares of those draws and locations that
+match the point masses of the prior density when it is available. A
+quantity whose prior density has no point mass declares no atoms, and so
+does a quantity without a prior density none of whose fitted coordinates
+can take a point mass (each owned by a continuous prior or a continuous
+generated primitive, e.g. the correlations of an LKJ block). Atoms remain
+undeclared (and posterior plots and Savage-Dickey ratios stop) when the
+point states are not in the draws (an unmonitored component indicator)
+or the quantity combines several coordinates of which some can take a
+point mass (e.g. original-scale random-effect SDs and correlations of a
+block with spike-and-slab SD priors).}
 \item{\code{undefined_draws}}{for quantities that are undefined on some
 fitted draws (the catalog \code{definedness}, e.g. variance proportions when
 no allocation component is active), the reason; those draws are omitted,
