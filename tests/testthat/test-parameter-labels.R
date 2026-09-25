@@ -1596,3 +1596,74 @@ test_that("random-effect SD mixed columns carry the catalog's random-effect labe
     tolerance = 1e-10
   )
 })
+
+test_that("publication-weight bin rows are catalog selectors of their bins", {
+
+  set.seed(31)
+  n <- 80
+  weights <- function() pmin(pmax(stats::rbeta(n, 4, 2), 1e-3), 1 - 1e-3)
+  round_trip <- function(fit, expected_rows){
+    catalog <- parameter_catalog(fit)
+    table <- JAGS_estimates_table(fit, remove_diagnostics = TRUE)
+    draws <- do.call(rbind, lapply(fit$mcmc, as.matrix))
+    rows <- rownames(table)[startsWith(rownames(table), "omega[")]
+    expect_identical(rows, expected_rows)
+    for(row in rows){
+      selection <- parameter_catalog_resolve(catalog, row)
+      # the interval form is the display label; the index form stays the
+      # canonical name of the same quantity
+      expect_identical(selection$quantities$display_label, row)
+      index_form <- selection$quantities$canonical_name
+      expect_true(grepl("^omega[[][0-9]+[]]$", index_form), info = row)
+      expect_identical(
+        parameter_catalog_resolve(catalog, index_form)$quantities$quantity_id,
+        selection$quantities$quantity_id
+      )
+      expect_equal(mean(draws[, index_form]), table[row, "Mean"],
+                   tolerance = 1e-10, info = row)
+    }
+  }
+
+  # a one-sided weight function
+  chain <- function() cbind(mu = stats::rnorm(n), "omega[1]" = 1, "omega[2]" = weights())
+  round_trip(
+    .label_test_mock_fit(list(chain(), chain()), list(
+      mu    = prior("normal", list(0, 1)),
+      omega = prior_weightfunction("one-sided", .05, wf_cumulative(c(2, 4)))
+    )),
+    c("omega[0,0.05]", "omega[0.05,1]")
+  )
+
+  # a composed two-sided bias prior on the one-sided cut grid
+  chain <- function() cbind(
+    mu = stats::rnorm(n), "omega[1]" = 1, "omega[2]" = weights(), "omega[3]" = 1
+  )
+  round_trip(
+    .label_test_mock_fit(list(chain(), chain()), list(
+      mu   = prior("normal", list(0, 1)),
+      bias = prior_bias(selection = prior_weightfunction(
+        "two-sided", .05, wf_cumulative(c(1, 1))
+      ))
+    )),
+    c("omega[0,0.025]", "omega[0.025,0.975]", "omega[0.975,1]")
+  )
+
+  # a publication-bias mixture of two-sided weight functions
+  chain <- function() cbind(
+    mu = stats::rnorm(n), bias_indicator = rep(1:3, length.out = n),
+    "omega[1]" = 1, "omega[2]" = weights(), "omega[3]" = weights(),
+    "omega[4]" = weights(), "omega[5]" = 1
+  )
+  round_trip(
+    .label_test_mock_fit(list(chain(), chain()), list(
+      mu   = prior("normal", list(0, 1)),
+      bias = prior_mixture(list(
+        prior_none(prior_weights = 1),
+        prior_weightfunction("two-sided", .05, wf_cumulative(c(1, 1)), prior_weights = 1),
+        prior_weightfunction("two-sided", c(.05, .10), wf_cumulative(c(1, 1, 1)), prior_weights = 1)
+      ), is_null = c(TRUE, FALSE, FALSE))
+    )),
+    c("omega[0,0.025]", "omega[0.025,0.05]", "omega[0.05,0.95]",
+      "omega[0.95,0.975]", "omega[0.975,1]")
+  )
+})

@@ -634,7 +634,17 @@
                                                   random_term, role,
                                                   formula_parameter,
                                                   name_map_row = NULL,
-                                                  factor_cache = new.env(parent = emptyenv())){
+                                                  factor_cache = new.env(parent = emptyenv()),
+                                                  weight_bins = character()){
+
+  # a publication-weight bin is labelled by its p-value interval, as the
+  # summaries print it
+  if(coordinate_name %in% names(weight_bins)){
+    return(.bt_label_parts(
+      components = weight_bins[[coordinate_name]],
+      selector   = coordinate_name
+    ))
+  }
 
   verbatim <- function(label, parameter = formula_parameter){
     .bt_label_parts(
@@ -762,6 +772,7 @@
   random_terms <- .bt_parameter_coordinates_random_terms(formula_design)
   name_map <- .bt_parameter_coordinates_name_map(formula_design)
   factor_cache <- new.env(parent = emptyenv())
+  weight_bins <- .bt_weight_bin_interval_labels(prior_list)
   lapply(seq_len(nrow(coordinates)), function(i){
     coordinate_name <- coordinates$coordinate_name[i]
     base_name <- .bt_parameter_coordinates_base(coordinate_name)
@@ -778,15 +789,52 @@
       role              = coordinates$role[i],
       formula_parameter = coordinates$formula_parameter[i],
       name_map_row      = name_map[name_map$jags_name == base_name, , drop = FALSE],
-      factor_cache      = factor_cache
+      factor_cache      = factor_cache,
+      weight_bins       = weight_bins
     )
   })
+}
+
+# The p-value interval labels of the publication-weight bins of the selection
+# priors in 'prior_list' (weight functions, composed bias priors, and
+# publication-bias mixtures), named by their coordinates: bin k is
+# `omega[<cut k>,<cut k + 1>]` on the cut grid the estimates tables name the
+# bins by (one-sided for bias priors and mixtures).
+.bt_weight_bin_interval_labels <- function(prior_list){
+
+  labels <- character()
+  for(prior in prior_list){
+    selection_priors <- if(is.prior.weightfunction(prior)){
+      list(prior)
+    }else if(is_prior_bias(prior) || inherits(prior, "prior.bias_mixture")){
+      .selection_prior_selection_priors(prior)
+    }else{
+      list()
+    }
+    if(length(selection_priors) == 0L){
+      next
+    }
+    cuts <- if(is.prior.weightfunction(prior)){
+      weightfunctions_mapping(selection_priors, cuts_only = TRUE)
+    }else{
+      weightfunctions_mapping(selection_priors, cuts_only = TRUE, one_sided = TRUE)
+    }
+    n_bins <- length(cuts) - 1L
+    bins <- stats::setNames(
+      paste0("omega[", cuts[-length(cuts)], ",", cuts[-1L], "]"),
+      paste0("omega[", seq_len(n_bins), "]")
+    )
+    labels <- c(labels, bins[!names(bins) %in% names(labels)])
+  }
+
+  labels
 }
 
 .bt_parameter_coordinates_display <- function(coordinate_name, prior, random_term,
                                            role, formula_parameter,
                                            name_map_row = NULL,
-                                           factor_cache = new.env(parent = emptyenv())){
+                                           factor_cache = new.env(parent = emptyenv()),
+                                           weight_bins = character()){
 
   .bt_label(
     .bt_parameter_coordinates_label_parts(
@@ -796,7 +844,8 @@
       role              = role,
       formula_parameter = formula_parameter,
       name_map_row      = name_map_row,
-      factor_cache      = factor_cache
+      factor_cache      = factor_cache,
+      weight_bins       = weight_bins
     ),
     style = "table"
   )
@@ -846,6 +895,7 @@
   random_prior_auxiliaries <- names(
     .bt_parameter_coordinates_random_prior_auxiliary_owners(prior_list)
   )
+  weight_bins <- .bt_weight_bin_interval_labels(prior_list)
   dirichlet_auxiliaries <- c(
     vapply(
       names(prior_list)[vapply(prior_list, is.prior.simplex, logical(1))],
@@ -976,7 +1026,8 @@
         role              = role,
         formula_parameter = formula_parameter,
         name_map_row      = name_map_row,
-        factor_cache      = factor_cache
+        factor_cache      = factor_cache,
+        weight_bins       = weight_bins
       ),
       grouping,
       structure,
