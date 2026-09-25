@@ -26,13 +26,21 @@
 #'   when the quantity combines several coordinates of which some can take a
 #'   point mass (e.g. original-scale random-effect SDs and correlations of a
 #'   block with spike-and-slab SD priors), and when the point structure of a
-#'   fitted coordinate is not classified: coordinates of weight-function,
-#'   publication-bias, and other priors that are neither continuous, point,
-#'   mixture, nor spike-and-slab priors (e.g. `omega`, and `PET` and `PEESE`
-#'   of publication-bias mixtures), and
-#'   coordinates without a prior other than LKJ primitives and standardized
-#'   random effects (e.g. `add_parameters` and the `_indicator`,
-#'   `_inclusion`, and `_variable` coordinates of mixture priors).}
+#'   fitted coordinate is not classified: coordinates of priors that are
+#'   neither continuous, point, mixture, spike-and-slab, nor selection
+#'   priors, and coordinates without a prior other than LKJ primitives,
+#'   standardized random effects, and selection coordinates (e.g.
+#'   `add_parameters` and the `_indicator`, `_inclusion`, and `_variable`
+#'   coordinates of mixture priors). The coordinates of a weight-function,
+#'   publication-bias, or publication-bias mixture prior (the weights
+#'   `omega`, `PET`, `PEESE`, and the p-hacking `alpha`, `pi_null`,
+#'   `beta_null`, and `phack_kind`) are declared from the value each branch
+#'   of the prior gives them: a constant weight (the reference bin, fixed
+#'   weights, or 1 in a branch without a selection), 0 for `PET` and `PEESE`
+#'   in branches without them and for the p-hacking parameters in branches
+#'   without p-hacking, and the form code of `phack_kind`, with masses the
+#'   shares of the draws whose branch (the `bias_indicator` of a mixture)
+#'   gives the constant.}
 #'   \item{`undefined_draws`}{for quantities that are undefined on some
 #'   fitted draws (the catalog `definedness`, e.g. variance proportions when
 #'   no allocation component is active), the reason; those draws are omitted,
@@ -121,9 +129,15 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
 #'     quantity (see [parameter_mixed_posterior()]), or `NULL` when the
 #'     quantity has no such event.}
 #'   }
-#'   and the scalar `known`: `FALSE` when the atom states are not determined
+#'   the scalar `known`: `FALSE` when the atom states are not determined
 #'   by the draws (the component indicator of a prior with point components
-#'   is not monitored); `atom` then holds only the gate atoms.
+#'   is not monitored); `atom` then holds only the gate atoms, and
+#'   `prior_atoms`: for quantities whose atoms are the point components of a
+#'   mixture, spike-and-slab, or selection prior, a data frame with the atom
+#'   locations `x` and their prior masses `mass` from the prior's component
+#'   weights (inclusion probabilities of spike-and-slab priors); `NULL` for
+#'   the inclusion gates of variance allocations, whose prior masses are the
+#'   point masses of [parameter_prior_density()].
 #'
 #' @seealso [parameter_mixed_posterior()], [parameter_catalog()]
 #' @export
@@ -158,12 +172,49 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   }
 
   list(
-    atom       = states$atom,
-    continuous = continuous,
-    defined    = states$defined,
-    event      = states$event,
-    known      = states$known
+    atom        = states$atom,
+    continuous  = continuous,
+    defined     = states$defined,
+    event       = states$event,
+    known       = states$known,
+    prior_atoms = .bt_parameter_plan_prior_atoms(plan)
   )
+}
+
+# The prior masses of the atoms of a point plan: the prior probabilities of
+# the components summed per location (components with a continuous value
+# excluded); NULL for gate plans.
+.bt_parameter_plan_prior_atoms <- function(plan){
+
+  if(!identical(plan$kind, "point") || is.null(plan$prior_probabilities)){
+    return(NULL)
+  }
+  point <- !is.na(plan$locations) & plan$prior_probabilities > 0
+  locations <- sort(unique(plan$locations[point]))
+  data.frame(
+    x    = locations,
+    mass = vapply(locations, function(location){
+      sum(plan$prior_probabilities[point & plan$locations == location])
+    }, numeric(1))
+  )
+}
+
+# The prior probability of each component of a mixture or spike-and-slab
+# prior (in the order of its component list; NA when not defined).
+.bt_prior_component_probabilities <- function(prior){
+
+  components <- attr(prior, "components", exact = TRUE)
+  if(is.prior.spike_and_slab(prior)){
+    return(vapply(components, function(component){
+      .bt_prior_component_probability(prior, component)
+    }, numeric(1), USE.NAMES = FALSE))
+  }
+  weights <- attr(prior, "prior_weights", exact = TRUE)
+  if(!is.numeric(weights) || length(weights) != length(prior) ||
+     any(!is.finite(weights)) || any(weights < 0) || sum(weights) <= 0){
+    return(rep(NA_real_, length(prior)))
+  }
+  weights / sum(weights)
 }
 
 .bt_parameter_mixed_posterior <- function(fit, selection, conditional = FALSE,
@@ -454,6 +505,8 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 #     variance), zero without an active component or with a parent gate off.
 #   var_prop: a gated total-variance proportion, 0 when its component is
 #     inactive while another is active and 1 when it is the only active one.
+#   point (selection): a coordinate of a weight-function, publication-bias,
+#     or publication-bias mixture prior, on the constant its branch gives it.
 #   point: a quantity of the fitted coordinates of one mixture or
 #     spike-and-slab prior with point components (a coefficient, a factor
 #     level, or a random-effect SD or its variance), on the image of a point
@@ -464,7 +517,11 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 
   key <- quantity$extraction_key[[1L]]
   if(!identical(key$type, "random_summary")){
-    return(.bt_parameter_point_plan(fit, quantity))
+    plan <- .bt_parameter_point_plan(fit, quantity)
+    if(is.null(plan)){
+      plan <- .bt_parameter_selection_plan(fit, quantity)
+    }
+    return(plan)
   }
   gate_names <- function(records, field){
     names <- unlist(lapply(records, function(record) record[[field]]),
@@ -649,7 +706,12 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
       return(list(atom = rep(NA_real_, n), defined = defined, event = NULL,
                   known = FALSE))
     }
-    component <- .bt_component_from_indicator(plan$prior, model_samples[, plan$indicator])
+    component <- if(is.null(plan$indicator)){
+      # a prior with one branch
+      rep(1L, n)
+    }else{
+      .bt_component_from_indicator(plan$prior, model_samples[, plan$indicator])
+    }
     return(list(
       atom    = plan$locations[component],
       defined = defined,
@@ -744,6 +806,7 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     kind        = "point",
     prior       = prior,
     locations   = as.numeric(components == quantity$component),
+    prior_probabilities = .bt_prior_component_probabilities(prior),
     indicator   = if(known) key$source_parameter,
     unknown     = !known,
     chain_gates = character(),
@@ -820,6 +883,117 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     kind        = "point",
     prior       = prior,
     locations   = locations,
+    prior_probabilities = .bt_prior_component_probabilities(prior),
+    indicator   = if(known) indicator,
+    unknown     = !known,
+    chain_gates = character(),
+    event_gates = character(),
+    event_rule  = "AND"
+  )
+}
+
+# The point plan of a coordinate of the selection prior of the fit (a
+# weight-function, publication-bias, or publication-bias mixture prior): the
+# value each branch of the prior gives the coordinate, NA where it is
+# continuous (JAGS-deterministic-nodes-selection.R; the p-hacking nodes of
+# .JAGS_phacking_component_syntax()), and the monitored branch indicator of a
+# mixture. NULL for other quantities and when a branch value is not
+# classified (e.g. a weight or p-hacking prior with its own point mass).
+.bt_parameter_selection_plan <- function(fit, quantity){
+
+  key <- quantity$extraction_key[[1L]]
+  if(!identical(key$type, "coordinate") || length(key$dependencies) != 1L){
+    return(NULL)
+  }
+  coordinate <- key$dependencies[[1L]]
+  prior_list <- attr(fit, "prior_list", exact = TRUE)
+  selection_priors <- Filter(function(prior){
+    is.prior(prior) && (is.prior.weightfunction(prior) || is_prior_bias(prior) ||
+                          is_prior_phacking(prior) || inherits(prior, "prior.bias_mixture"))
+  }, prior_list)
+  if(length(selection_priors) != 1L){
+    return(NULL)
+  }
+  prior <- selection_priors[[1L]]
+  branches <- lapply(.selection_normalize_priors(prior), .selection_branch_info)
+
+  continuous <- function(parameter_prior){
+    if(isFALSE(.bt_prior_has_point_component(parameter_prior))) NA_real_ else NULL
+  }
+  spec <- .bt_dnode_omega_spec(prior)
+  bins <- if(spec$n_bins == 1L) "omega" else paste0("omega[", seq_len(spec$n_bins), "]")
+  value_of <- if(coordinate %in% bins){
+    bin <- match(coordinate, bins)
+    function(branch){
+      selection <- branch$selection
+      if(!is.null(selection) && identical(selection$weights$type, "independent") &&
+         !isFALSE(.bt_prior_has_point_component(selection$weights$prior))){
+        return(NULL)
+      }
+      .bt_convergence_selection_bin_values(selection, spec$global_cuts)[[bin]]
+    }
+  }else if(coordinate %in% c("PET", "PEESE")){
+    function(branch){
+      if(!identical(branch$type, coordinate)){
+        return(0)
+      }
+      NULL
+    }
+  }else if(coordinate %in% c("alpha", "pi_null", "beta_null", "phack_kind")){
+    function(branch){
+      phacking <- branch$phacking
+      if(is.null(phacking)){
+        return(0)
+      }
+      if(identical(coordinate, "phack_kind")){
+        return(as.numeric(.phack_kind(phacking$form)))
+      }
+      if(identical(coordinate, "alpha")){
+        return(continuous(phacking$alpha))
+      }
+      constants <- phack_backend_constants(
+        phacking$form, phacking$source, phacking$destination, target = phacking$target
+      )
+      per_alpha <- constants[[paste0(coordinate, "_per_alpha")]]
+      if(isTRUE(per_alpha == 0)){
+        return(0)
+      }
+      continuous(phacking$alpha)
+    }
+  }else{
+    return(NULL)
+  }
+  # the PET and PEESE branch values are those of their own component priors
+  component_priors <- .selection_normalize_priors(prior)
+  locations <- vapply(seq_along(branches), function(i){
+    value <- value_of(branches[[i]])
+    if(is.null(value) && coordinate %in% c("PET", "PEESE")){
+      value <- continuous(component_priors[[i]])
+    }
+    if(is.null(value)) Inf else as.numeric(value)
+  }, numeric(1))
+  if(any(is.infinite(locations))){
+    return(NULL)
+  }
+
+  indicator <- NULL
+  known <- TRUE
+  if(length(branches) > 1L){
+    indicator <- "bias_indicator"
+    coordinates <- parameter_coordinates(fit)
+    status <- coordinates$monitor_status[match(indicator, coordinates$coordinate_name)]
+    known <- !is.na(status) && status %in% c("sampled", "structural")
+  }
+
+  list(
+    kind        = "point",
+    prior       = prior,
+    locations   = locations,
+    prior_probabilities = if(length(branches) > 1L){
+      .bt_prior_component_probabilities(prior)
+    }else{
+      1
+    },
     indicator   = if(known) indicator,
     unknown     = !known,
     chain_gates = character(),

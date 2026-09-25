@@ -57,13 +57,21 @@ point states are not in the draws (an unmonitored component indicator),
 when the quantity combines several coordinates of which some can take a
 point mass (e.g. original-scale random-effect SDs and correlations of a
 block with spike-and-slab SD priors), and when the point structure of a
-fitted coordinate is not classified: coordinates of weight-function,
-publication-bias, and other priors that are neither continuous, point,
-mixture, nor spike-and-slab priors (e.g. \code{omega}, and \code{PET} and \code{PEESE}
-of publication-bias mixtures), and
-coordinates without a prior other than LKJ primitives and standardized
-random effects (e.g. \code{add_parameters} and the \verb{_indicator},
-\verb{_inclusion}, and \verb{_variable} coordinates of mixture priors).}
+fitted coordinate is not classified: coordinates of priors that are
+neither continuous, point, mixture, spike-and-slab, nor selection
+priors, and coordinates without a prior other than LKJ primitives,
+standardized random effects, and selection coordinates (e.g.
+\code{add_parameters} and the \verb{_indicator}, \verb{_inclusion}, and \verb{_variable}
+coordinates of mixture priors). The coordinates of a weight-function,
+publication-bias, or publication-bias mixture prior (the weights
+\code{omega}, \code{PET}, \code{PEESE}, and the p-hacking \code{alpha}, \code{pi_null},
+\code{beta_null}, and \code{phack_kind}) are declared from the value each branch
+of the prior gives them: a constant weight (the reference bin, fixed
+weights, or 1 in a branch without a selection), 0 for \code{PET} and \code{PEESE}
+in branches without them and for the p-hacking parameters in branches
+without p-hacking, and the form code of \code{phack_kind}, with masses the
+shares of the draws whose branch (the \code{bias_indicator} of a mixture)
+gives the constant.}
 \item{\code{undefined_draws}}{for quantities that are undefined on some
 fitted draws (the catalog \code{definedness}, e.g. variance proportions when
 no allocation component is active), the reason; those draws are omitted,

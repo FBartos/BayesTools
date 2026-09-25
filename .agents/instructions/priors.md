@@ -269,16 +269,21 @@ with the SDs and have no density. `parameter_mixed_posterior()` (and
 the catalog support, and atoms declared from structure, never from draw
 values: the atoms on which the per-draw states of the quantity's gates and
 point components (`parameter_gate_states()`: allocation gates, the indicator
-of a mixture scale prior with a point component, and the component indicator
-of a mixture or spike-and-slab prior of its coordinates) put it, with their
-shares of the draws as masses (checked against the density's point masses
-when there is a density); none when the density has no point mass or, without
-a density, when no coordinate of the quantity can take a point mass (e.g. an
-original-scale LKJ correlation with continuous SD priors); undeclared for
-unmonitored point states, composites of coordinates with point masses, and
-coordinates whose point structure is not classified (weight-function and
-publication-bias priors, and coordinates without a prior other than LKJ
-primitives and standardized random effects);
+of a mixture scale prior with a point component, the component indicator
+of a mixture or spike-and-slab prior of its coordinates, and the branch of
+a selection prior: the constant weights of reference bins, fixed weights and
+branches without a selection, 0 for `PET`/`PEESE` and the p-hacking
+parameters in branches without them, and the `phack_kind` code) put it, with
+their shares of the draws as masses (checked against the density's point
+masses when there is a density; `parameter_gate_states()` also gives the
+prior masses of point components from the component weights); none when the
+density has no point mass or, without a density, when no coordinate of the
+quantity can take a point mass (e.g. an original-scale LKJ correlation with
+continuous SD priors); undeclared for unmonitored point states, composites
+of coordinates with point masses, and coordinates whose point structure is
+not classified (coordinates without a prior other than LKJ primitives,
+standardized random effects, and selection coordinates, e.g. the
+`_indicator`, `_inclusion`, and `_variable` coordinates of mixture priors);
 its `conditional = TRUE` keeps the draws of the quantity's inclusion
 event and uses the density restricted to that event (the gate atom drops
 out, atoms inside the event are renormalized).

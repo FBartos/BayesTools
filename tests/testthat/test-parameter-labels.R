@@ -2118,3 +2118,75 @@ test_that("publication-weight bin rows are catalog selectors of their bins", {
       "omega[0.95,0.975]", "omega[0.975,1]")
   )
 })
+
+test_that("selection-prior coordinates declare the constants of their branches as atoms", {
+
+  set.seed(3)
+  n <- 60
+  atoms_of <- function(fit, name){
+    selection <- parameter_catalog_resolve(parameter_catalog(fit), name)
+    atoms <- posterior_metadata(parameter_mixed_posterior(fit, selection), "atoms")
+    list(x = as.numeric(atoms$locations[, 1L]), mass = atoms$mass)
+  }
+
+  # a single one-sided weight function: the reference bin is the constant 1
+  # (atom of mass 1), the estimated bin is continuous
+  chain <- function() cbind(mu = stats::rnorm(n), "omega[1]" = 1, "omega[2]" = stats::rbeta(n, 4, 2))
+  single <- .label_test_mock_fit(list(chain(), chain()), list(
+    mu    = prior("normal", list(0, 1)),
+    omega = prior_weightfunction("one-sided", .05, wf_cumulative(c(2, 4)))
+  ))
+  expect_identical(atoms_of(single, "omega[1]"), list(x = 1, mass = 1))
+  expect_identical(atoms_of(single, "omega[2]"), list(x = numeric(), mass = numeric()))
+  states <- parameter_gate_states(single, parameter_catalog_resolve(parameter_catalog(single), "omega[1]"))
+  expect_identical(states$prior_atoms, data.frame(x = 1, mass = 1))
+
+  # a publication-bias mixture of no bias (weight 2), a two-sided weight
+  # function, PET, and p-hacking (weight 1 each): the weights are 1 in the
+  # branches without a selection and on the weight function's reference
+  # bins, PET is 0 outside its branch, and alpha is 0 without p-hacking; the
+  # atom masses are the shares of the bias_indicator draws in those branches
+  # and the prior masses the normalized branch weights
+  chain <- function(){
+    indicator <- rep(1:4, length.out = n)
+    cbind(
+      mu = stats::rnorm(n), bias_indicator = indicator,
+      "omega[1]" = 1, "omega[2]" = ifelse(indicator == 2, stats::rbeta(n, 4, 2), 1),
+      "omega[3]" = 1,
+      PET = ifelse(indicator == 3, abs(stats::rnorm(n)), 0),
+      alpha = ifelse(indicator == 4, stats::rbeta(n, 2, 2), 0)
+    )
+  }
+  chains <- list(chain(), chain())
+  mixture <- .label_test_mock_fit(chains, list(
+    mu   = prior("normal", list(0, 1)),
+    bias = prior_mixture(list(
+      prior_none(prior_weights = 2),
+      prior_weightfunction("two-sided", .05, wf_cumulative(c(1, 1)), prior_weights = 1),
+      prior_PET("normal", list(0, 1), list(0, Inf), prior_weights = 1),
+      prior_phacking(form = "linear", prior_weights = 1)
+    ), is_null = c(TRUE, FALSE, FALSE, FALSE))
+  ))
+  indicator <- unlist(lapply(chains, function(x) x[, "bias_indicator"]))
+  share <- function(branches) mean(indicator %in% branches)
+  expect_identical(atoms_of(mixture, "omega[1]"), list(x = 1, mass = 1))
+  expect_identical(atoms_of(mixture, "omega[2]"), list(x = 1, mass = share(c(1, 3, 4))))
+  expect_identical(atoms_of(mixture, "omega[3]"), list(x = 1, mass = 1))
+  expect_identical(atoms_of(mixture, "PET"), list(x = 0, mass = share(c(1, 2, 4))))
+  expect_identical(atoms_of(mixture, "alpha"), list(x = 0, mass = share(1:3)))
+  # the declared masses are the shares of the draws on the atoms
+  draws <- do.call(rbind, chains)
+  expect_equal(mean(draws[, "omega[2]"] == 1), share(c(1, 3, 4)))
+  expect_equal(mean(draws[, "PET"] == 0), share(c(1, 2, 4)))
+  catalog <- parameter_catalog(mixture)
+  prior_atoms <- function(name){
+    parameter_gate_states(mixture, parameter_catalog_resolve(catalog, name))$prior_atoms
+  }
+  expect_equal(prior_atoms("omega[2]"), data.frame(x = 1, mass = 4 / 5))
+  expect_equal(prior_atoms("PET"), data.frame(x = 0, mass = 4 / 5))
+  expect_equal(prior_atoms("alpha"), data.frame(x = 0, mass = 4 / 5))
+  expect_identical(
+    parameter_gate_states(mixture, parameter_catalog_resolve(catalog, "PET"))$atom,
+    ifelse(indicator == 3, NA_real_, 0)
+  )
+})

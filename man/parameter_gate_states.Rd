@@ -33,9 +33,15 @@ variance proportion is undefined without an active component).}
 quantity (see \code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}}), or \code{NULL} when the
 quantity has no such event.}
 }
-and the scalar \code{known}: \code{FALSE} when the atom states are not determined
+the scalar \code{known}: \code{FALSE} when the atom states are not determined
 by the draws (the component indicator of a prior with point components
-is not monitored); \code{atom} then holds only the gate atoms.
+is not monitored); \code{atom} then holds only the gate atoms, and
+\code{prior_atoms}: for quantities whose atoms are the point components of a
+mixture, spike-and-slab, or selection prior, a data frame with the atom
+locations \code{x} and their prior masses \code{mass} from the prior's component
+weights (inclusion probabilities of spike-and-slab priors); \code{NULL} for
+the inclusion gates of variance allocations, whose prior masses are the
+point masses of \code{\link[=parameter_prior_density]{parameter_prior_density()}}.
 }
 \description{
 \code{parameter_gate_states()} returns, for each draw, the state
