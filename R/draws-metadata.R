@@ -629,8 +629,8 @@
 #' metadata, because supports, atoms, and prior densities do not follow the
 #' transformed values. Functions that need the metadata (e.g.
 #' [Savage_Dickey_BF()], [plot_posterior()], [marginal_posterior()]) stop on
-#' such draws; [marginal_posterior()] with \code{transformation} transforms
-#' the draws together with their metadata.
+#' such draws; [posterior_transform()] (and [marginal_posterior()] with
+#' \code{transformation}) transforms the draws together with their metadata.
 #'
 #' Operations that replace values but keep the attributes of the draws
 #' (\code{x[] <- }, \code{x[i] <- }, \code{pmin()}, \code{pmax()}) leave
@@ -694,8 +694,8 @@ posterior_metadata <- function(x, field){
 
 # Arithmetic and mathematical functions of posterior draws return plain
 # numeric draws: supports, atoms, prior densities and the other draw metadata
-# do not follow the transformed values. marginal_posterior(transformation = )
-# transforms the draws together with their metadata.
+# do not follow the transformed values. posterior_transform() transforms the
+# draws together with their metadata.
 .bt_draws_ops <- function(e1, e2){
 
   if(missing(e2)){

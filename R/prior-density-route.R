@@ -797,6 +797,22 @@
     # (R/prior-density-allocation.R)
     return(.prior_density_route_allocation_product(arguments))
   }
+  if(identical(adaptive$kind, "output_transformation")){
+    # a monotone transformation of a recorded density whose builder cannot
+    # take it (.prior_density_output_transform())
+    source <- .prior_density_route_from_adaptive(arguments$source)
+    if(is.null(source)){
+      return(NULL)
+    }
+    return(.prior_density_route_transform(
+      source         = source,
+      transformation = arguments$output_transformation,
+      arguments      = arguments$output_transformation_arguments,
+      hull           = function(){
+        .prior_linear_density_support_hull(arguments$source)
+      }
+    ))
+  }
   if(identical(adaptive$kind, "density_context")){
     return(.prior_density_route_context(
       arguments$context,

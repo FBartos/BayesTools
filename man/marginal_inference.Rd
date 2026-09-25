@@ -45,9 +45,9 @@ when no models are null)}
 approximated via a normal distribution (rather than kernel density). Defaults to \code{FALSE}.}
 
 \item{n_samples}{controls the numerical grid used for model-averaged
-prior densities. For an untransformed simple parameter, an explicitly
-attached \code{prior_density} is authoritative and is propagated instead of
-being reconstructed from \code{prior_list}.}
+prior densities. For a simple parameter, an explicitly attached
+\code{prior_density} is authoritative and is propagated instead of being
+reconstructed from \code{prior_list}.}
 
 \item{seed}{seed for random number generation. The caller's random-number
 state (\code{.Random.seed} and \code{RNGkind()}) is restored afterwards.

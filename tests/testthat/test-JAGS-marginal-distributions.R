@@ -1612,7 +1612,12 @@ test_that("formula marginal_posterior attaches matched top-level precomputed met
     "formula-density"
   )
   expect_null(.bt_meta_get(marginal[["0SD"]], "posterior_density"))
-  expect_null(.bt_meta_get(transformed[["1SD"]], "posterior_density"))
+  # the stored density follows the transformation 2 x: locations doubled,
+  # heights halved (the Jacobian)
+  transformed_density <- .bt_meta_get(transformed[["1SD"]], "posterior_density")
+  expect_equal(transformed_density$x, 2 * seq(-1, 1, length.out = 101))
+  expect_equal(transformed_density$y, rep(.25, 101))
+  expect_identical(transformed_density$method, "formula-density")
 })
 
 test_that("spike-and-slab posterior constructors attach support metadata", {

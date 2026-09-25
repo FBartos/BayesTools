@@ -39,33 +39,18 @@ interaction terms that contain it.}
 
 \item{use_formula}{whether the parameter should be evaluated as a part of supplied formula}
 
-\item{transformation}{transformation to be applied
-to the prior distribution. Either a character
-specifying one of the prepared transformations:
-\describe{
-\item{lin}{linear transformation in form of \code{a + b*x}}
-\item{tanh}{hyperbolic tangent transformation}
-\item{exp}{exponential transformation}
-}, or a list containing the transformation function \code{fun},
-inverse transformation function \code{inv}, and derivative of the
-transformation \code{jac}, evaluated on the original support. A custom
-transformation can also declare \code{output_support = c(lower, upper)}.
-Display grids on the transformed scale are evaluated only within these
-bounds; a wider plotting range is retained without extending the density.
-Infinite inverse values at support boundaries are omitted from continuous
-density grids. Point masses retain their transformed locations.}
-
-\item{transformation_arguments}{a list with named arguments for
-the \code{transformation}}
+\item{transformation, transformation_arguments}{optional transformation of
+the marginal posterior, applied with \code{\link[=posterior_transform]{posterior_transform()}} to the
+untransformed marginal posterior and its metadata.}
 
 \item{transformation_settings}{boolean indicating whether the
 settings the \code{x_seq} or \code{x_range} was specified on
 the transformed support}
 
 \item{n_samples}{controls the numerical grid used for model-averaged
-prior densities. For an untransformed simple parameter, an explicitly
-attached \code{prior_density} is authoritative and is propagated instead of
-being reconstructed from \code{prior_list}.}
+prior densities. For a simple parameter, an explicitly attached
+\code{prior_density} is authoritative and is propagated instead of being
+reconstructed from \code{prior_list}.}
 
 \item{...}{additional arguments}
 }
@@ -87,9 +72,12 @@ parameter name, list/level names such as \code{theta[A]}, and conditional
 metadata when present. Exact support metadata is propagated even when
 \code{prior_samples = FALSE}; requesting prior samples adds prior-density
 metadata but does not replace already attached posterior support.
-Transformations drop stored posterior density and ordinate metadata because
-those estimates are no longer on the returned scale; exact support metadata
-is transformed when the transformation is supported. If support metadata is
+A \code{transformation} is applied by \code{\link[=posterior_transform]{posterior_transform()}} to the
+marginal posterior with all its metadata (supports, atoms, prior densities,
+stored posterior densities and ordinates, and component supports); the
+mixed posterior samples themselves must be untransformed (samples
+transformed with \code{\link[=posterior_transform]{posterior_transform()}} whose prior is their
+\code{prior_list} are refused). If support metadata is
 absent, support is inferred from prior metadata only when the posterior
 samples are on the raw, unconditioned prior scale; otherwise the deterministic
 prior-density context is used so formula-scale transformations and

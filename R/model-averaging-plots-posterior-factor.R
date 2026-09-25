@@ -559,7 +559,7 @@
 
   if(!is.null(level_parts) && length(level_parts$levels) > 0L){
     level_text <- unname(level_parts$levels)
-    if(identical(level_parts$transformation, "dif")){
+    if(identical(.bt_label_relation(level_parts), "dif")){
       level_text <- c(level_text, paste0("dif: ", level_text))
     }
     cell_text <- paste0(unname(level_parts$levels), collapse = ", ")

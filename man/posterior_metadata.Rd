@@ -82,8 +82,8 @@ Arithmetic and mathematical functions of posterior draws
 metadata, because supports, atoms, and prior densities do not follow the
 transformed values. Functions that need the metadata (e.g.
 \code{\link[=Savage_Dickey_BF]{Savage_Dickey_BF()}}, \code{\link[=plot_posterior]{plot_posterior()}}, \code{\link[=marginal_posterior]{marginal_posterior()}}) stop on
-such draws; \code{\link[=marginal_posterior]{marginal_posterior()}} with \code{transformation} transforms
-the draws together with their metadata.
+such draws; \code{\link[=posterior_transform]{posterior_transform()}} (and \code{\link[=marginal_posterior]{marginal_posterior()}} with
+\code{transformation}) transforms the draws together with their metadata.
 
 Operations that replace values but keep the attributes of the draws
 (\code{x[] <- }, \code{x[i] <- }, \code{pmin()}, \code{pmax()}) leave

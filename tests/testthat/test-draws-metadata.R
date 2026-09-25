@@ -530,6 +530,137 @@ test_that("arithmetic, math, and subsetting of draws return plain numerics", {
   )
 })
 
+test_that("posterior_transform() maps spike-and-slab draws with their metadata", {
+
+  mixed <- .draws_metadata_mixed_for_test()
+  mp    <- marginal_posterior(mixed, "mu", prior_samples = TRUE)
+  # a precomputed posterior ordinate at the null 0.5 (any positive value)
+  posterior_metadata(mp, "posterior_ordinate") <- posterior_ordinate_attribute(
+    value = .5, ordinate = .8, method = "test", density_method = "precomputed"
+  )
+  tr <- posterior_transform(mp, "exp")
+
+  expect_equal(as.numeric(tr), exp(as.numeric(mp)), tolerance = 0)
+  # support: the real line maps to (0, Inf) and the spike at 0 to 1
+  support <- posterior_metadata(tr, "support")
+  expect_identical(support$bounds, c(0, Inf))
+  expect_identical(support$points, 1)
+  # atoms: the location maps, the mass (100 of 400 draws) is kept
+  atoms <- posterior_metadata(tr, "atoms")
+  expect_equal(as.numeric(atoms$locations), 1)
+  expect_equal(atoms$mass, .25)
+  # prior density: 0.5 point mass at 1 and 0.5 x lognormal(0, 1) (the slab
+  # normal(0, 1) through exp; prior inclusion probability mean(beta(1, 1)))
+  prior_density <- posterior_metadata(tr, "prior_density")
+  for(value in c(.2, .5, 1.5, 3, 10)){
+    ordinate <- prior_density_ordinate(prior_density, value)
+    expect_identical(ordinate$behavior, "regular")
+    expect_true(ordinate$exact)
+    expect_equal(exp(ordinate$log_density), .5 * stats::dlnorm(value),
+                 tolerance = 1e-12, info = value)
+  }
+  expect_identical(prior_density_ordinate(prior_density, 1)$behavior, "point_mass")
+  # the Savage-Dickey ratio is invariant at the mapped null (prior and
+  # posterior ordinates share the Jacobian exp(0.5))
+  transformed_ordinate <- posterior_metadata(tr, "posterior_ordinate")
+  expect_equal(transformed_ordinate$value, exp(.5))
+  expect_equal(transformed_ordinate$ordinate, .8 / exp(.5))
+  expect_equal(
+    as.numeric(Savage_Dickey_BF(tr, exp(.5), density_method = "precomputed")),
+    as.numeric(Savage_Dickey_BF(mp, .5, density_method = "precomputed")),
+    tolerance = 1e-12
+  )
+  # conditioning is kept; the quantity records the transformation, keeps its
+  # label, and is no longer the catalog quantity
+  expect_identical(posterior_metadata(tr, "condition"), posterior_metadata(mp, "condition"))
+  quantities <- posterior_metadata(tr, "quantities")
+  expect_identical(quantities$label_parts[[1L]]$transformation, c("none", "exp"))
+  expect_identical(quantities$quantity_id, "")
+  expect_identical(quantities$dependencies[[1L]], character())
+  expect_identical(parameter_labels(quantities), parameter_labels(posterior_metadata(mp, "quantities")))
+  # the linear-combination weights no longer apply
+  expect_null(posterior_metadata(tr, "linear_weights"))
+  expect_identical(BayesTools:::.bt_meta_get(tr, "joint_prior_transformation"), "exp")
+
+  # marginal_posterior(transformation = ) is this transformation
+  via_marginal <- marginal_posterior(mixed, "mu", prior_samples = TRUE,
+                                     transformation = "exp")
+  expect_identical(unclass(via_marginal), unclass(posterior_transform(
+    marginal_posterior(mixed, "mu", prior_samples = TRUE), "exp"
+  )))
+})
+
+test_that("posterior_transform() swaps supports and reverses densities of decreasing maps", {
+
+  mixed <- .draws_metadata_mixed_for_test()
+  sigma <- marginal_posterior(mixed, "sigma", prior_samples = TRUE)
+  posterior_metadata(sigma, "posterior_density") <- posterior_density_attribute(
+    x = c(.5, 1, 2), y = c(.2, .6, .1), method = "test", density_method = "precomputed",
+    support = posterior_support_attribute(c(0, Inf))
+  )
+  dec <- posterior_transform(sigma, "lin", list(a = 1, b = -2))
+
+  expect_equal(as.numeric(dec), 1 - 2 * as.numeric(sigma), tolerance = 0)
+  expect_identical(posterior_metadata(dec, "support")$bounds, c(-Inf, 1))
+  expect_true(posterior_atoms_free(dec))
+  # the stored density: locations 1 - 2 x in increasing order, heights / 2
+  density <- posterior_metadata(dec, "posterior_density")
+  expect_equal(density$x, c(-3, -1, 0))
+  expect_equal(density$y, c(.1, .6, .2) / 2)
+  expect_identical(density$support$bounds, c(-Inf, 1))
+  # prior density of 1 - 2 sigma, sigma ~ lognormal(0, 1)
+  prior_density <- posterior_metadata(dec, "prior_density")
+  for(value in c(-5, -1, .5)){
+    expect_equal(
+      exp(prior_density_ordinate(prior_density, value)$log_density),
+      stats::dlnorm((1 - value) / 2) / 2,
+      tolerance = 1e-12, info = value
+    )
+  }
+  # linear weights follow the affine map
+  expect_equal(posterior_metadata(dec, "linear_weights")[["sigma"]], -2)
+  expect_identical(BayesTools:::.bt_meta_get(dec, "linear_offset"), 1)
+
+  # the spike of 'mu' maps to 1 - 2 * 0
+  mu <- posterior_transform(marginal_posterior(mixed, "mu"), "lin", list(a = 1, b = -2))
+  expect_equal(as.numeric(posterior_metadata(mu, "atoms")$locations), 1)
+  expect_identical(posterior_metadata(mu, "support")$bounds, c(-Inf, Inf))
+})
+
+test_that("posterior_transform() refuses transformations that are not monotone and invertible", {
+
+  mixed <- .draws_metadata_mixed_for_test()
+  mp    <- marginal_posterior(mixed, "mu", prior_samples = TRUE)
+  square <- list(fun = function(x) x^2, inv = sqrt, jac = function(x) 2 * x)
+  expect_error(posterior_transform(mp, square),
+               class = "BayesTools_nonmonotone_transformation")
+  expect_error(
+    posterior_transform(mp, square),
+    paste0(
+      "The transformation of the posterior draws is unavailable: it must be ",
+      "strictly monotone and invertible, but its derivative 'jac' is not finite ",
+      "and nonzero with one sign on the draws."
+    ),
+    fixed = TRUE
+  )
+  expect_error(posterior_transform(mp, "lin", list(a = 1, b = 0)),
+               class = "BayesTools_nonmonotone_transformation")
+  expect_error(posterior_transform(mp, "exp_lin", list(a = 0, b = 0)),
+               class = "BayesTools_transformation")
+  # exp_lin is defined for nonnegative draws only
+  expect_error(posterior_transform(mp, "exp_lin", list(a = 0, b = 2)),
+               class = "BayesTools_transformation_domain")
+  expect_error(posterior_transform(as.numeric(mp), "exp"),
+               "not plain numeric draws", fixed = TRUE)
+
+  # transformed mixed posteriors are not marginalized with their untransformed prior
+  expect_error(
+    marginal_posterior(posterior_transform(mixed, "exp"), "mu"),
+    "Pass the transformation to 'marginal_posterior(transformation = )' instead.",
+    fixed = TRUE
+  )
+})
+
 test_that("draw components index the declared component list", {
 
   # spike-and-slab: the slab is component 1 and the spike component 2 of the

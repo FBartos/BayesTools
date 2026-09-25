@@ -9,6 +9,10 @@
 
 .bt_label_styles <- c("selector", "table", "plot", "warning")
 .bt_label_transformations <- c("none", "dif", "exp")
+# Output transformations applied to the values of a quantity by
+# posterior_transform(): the named transformations and "custom" for a
+# transformation given as a list of functions.
+.bt_label_output_transformations <- c("lin", "exp_lin", "tanh", "exp", "custom")
 
 # Structured label parts of one quantity.
 #
@@ -19,8 +23,13 @@
 #   level cell (or an estimated marginal mean); empty otherwise.
 # - coefficient: contrast coefficient index `j` of a coordinate that is not a
 #   level cell (`term{j}`), or NA.
-# - transformation: "none", "dif" (a transformed contrast level, a difference
-#   from the mean), or "exp" (the exponentiated log intercept).
+# - transformation: the quantity's relation to its term, "none", "dif" (a
+#   transformed contrast level, a difference from the mean), or "exp" (the
+#   exponentiated log intercept), followed by the output transformations
+#   applied to its values in the order they were applied (posterior_transform():
+#   "lin", "exp_lin", "tanh", "exp", or "custom"). Labels render the relation
+#   only: an output transformation changes the scale of the values, which
+#   summaries state, not the quantity they are labelled by.
 # - component: a mixture component shown after the term (`term[component]`),
 #   or "".
 # - inclusion: NA, or the inclusion row of the quantity: "" for a
@@ -81,8 +90,10 @@
     is.integer(parts$coefficient) && length(parts$coefficient) == 1L &&
     (is.na(parts$coefficient) || parts$coefficient >= 1L) &&
     (is.na(parts$coefficient) || length(parts$levels) == 0L) &&
-    scalar_character(parts$transformation) &&
-    parts$transformation %in% .bt_label_transformations &&
+    is.character(parts$transformation) && length(parts$transformation) >= 1L &&
+    !anyNA(parts$transformation) &&
+    parts$transformation[[1L]] %in% .bt_label_transformations &&
+    all(parts$transformation[-1L] %in% .bt_label_output_transformations) &&
     scalar_character(parts$component) &&
     is.character(parts$inclusion) && length(parts$inclusion) == 1L &&
     is.logical(parts$marginal) && length(parts$marginal) == 1L &&
@@ -106,6 +117,20 @@
   }
 
   invisible(TRUE)
+}
+
+# The relation of a quantity to its term ("none", "dif", or "exp"), without
+# the output transformations of its values.
+.bt_label_relation <- function(part){
+
+  part$transformation[[1L]]
+}
+
+# The output transformations applied to the values of a quantity
+# (posterior_transform()), in order; empty for untransformed values.
+.bt_label_output_transformation <- function(part){
+
+  part$transformation[-1L]
 }
 
 .bt_label_parts_list <- function(parts){
@@ -293,7 +318,7 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   }
 
   base <- .bt_label_jags_base(part)
-  label <- if(identical(part$transformation, "exp")){
+  label <- if(identical(.bt_label_relation(part), "exp")){
     paste0(
       if(nzchar(part$formula_parameter)) paste0(part$formula_parameter, "_"),
       "exp(", paste(part$components, collapse = "__xXx__"), ")"
@@ -304,7 +329,7 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
     base
   }else if(part$marginal){
     paste0(base, "[", paste(part$levels, collapse = ", "), "]")
-  }else if(identical(part$transformation, "dif")){
+  }else if(identical(.bt_label_relation(part), "dif")){
     # the level name of a transformed contrast marks every factor component
     components <- vapply(part$components, function(component){
       if(component %in% names(part$levels)){
@@ -373,7 +398,7 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   }
 
   prefix <- .bt_label_prefix(part$formula_parameter, formula_prefix)
-  label <- if(identical(part$transformation, "exp")){
+  label <- if(identical(.bt_label_relation(part), "exp")){
     paste0("exp(", paste(part$components, collapse = ":"), ")")
   }else if(!is.na(part$coefficient)){
     paste0(paste(part$components, collapse = ":"), "{", part$coefficient, "}")
@@ -383,7 +408,7 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
       "[", paste(part$levels, collapse = ", "), "]"
     )
   }else{
-    .bt_label_term(part, dif = identical(part$transformation, "dif"))
+    .bt_label_term(part, dif = identical(.bt_label_relation(part), "dif"))
   }
 
   paste0(prefix, label, .bt_label_suffix(part))

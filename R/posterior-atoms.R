@@ -364,12 +364,10 @@ posterior_atoms_free <- function(x){
   if(is.null(atoms)){
     return(NULL)
   }
-  if(ncol(atoms$locations) != 1L){
-    stop("A scalar transformation requires scalar posterior atom metadata.",
-         call. = FALSE)
-  }
-  locations <- .density.prior_transformation_x(
-    atoms$locations[, 1L],
+  # the scalar transformation maps every coordinate of the atom locations
+  locations <- atoms$locations
+  locations[] <- .density.prior_transformation_x(
+    as.numeric(atoms$locations),
     transformation,
     transformation_arguments
   )
@@ -379,7 +377,7 @@ posterior_atoms_free <- function(x){
   }
 
   .posterior_atoms_new(
-    locations = matrix(locations, ncol = 1L),
+    locations = locations,
     mass = atoms$mass,
     column_names = colnames(atoms$locations),
     source = paste0(atoms$source, ":transformed"),
@@ -693,8 +691,6 @@ posterior_atoms_free <- function(x){
 }
 
 .posterior_atoms_formula <- function(samples, prior_list, weights,
-                                     transformation = NULL,
-                                     transformation_arguments = NULL,
                                      column_name = "value",
                                      source_transforms = NULL){
 
@@ -795,21 +791,13 @@ posterior_atoms_free <- function(x){
   if(is.null(point_masses)){
     return(NULL)
   }
-  atoms <- .posterior_atoms_new(
+  .posterior_atoms_new(
     locations = matrix(point_masses$x, ncol = 1L),
     mass = point_masses$mass,
     column_names = column_name,
     source = "formula_structure",
     declared = TRUE
   )
-  if(!is.null(transformation)){
-    atoms <- .posterior_atoms_transform(
-      atoms,
-      transformation,
-      transformation_arguments
-    )
-  }
-  atoms
 }
 
 .posterior_atoms_joint_linear <- function(prior_list, plan, design,

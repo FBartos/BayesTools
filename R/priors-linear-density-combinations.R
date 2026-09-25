@@ -3410,6 +3410,8 @@
       arguments$source_transforms
     ),
     "allocation_product" = .prior_allocation_product_hull(arguments),
+    # the support of the transformed source, mapped below
+    "output_transformation" = .prior_linear_density_support_hull(arguments$source),
     "density_context_rows" = {
       weights <- arguments$weights
       if(is.null(dim(weights))){

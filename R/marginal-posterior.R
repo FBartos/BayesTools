@@ -112,9 +112,12 @@
 #' @param prior_samples whether marginal prior distributions should be generated
 #' @param use_formula whether the parameter should be evaluated as a part of supplied formula
 #' @param n_samples controls the numerical grid used for model-averaged
-#' prior densities. For an untransformed simple parameter, an explicitly
-#' attached \code{prior_density} is authoritative and is propagated instead of
-#' being reconstructed from \code{prior_list}.
+#' prior densities. For a simple parameter, an explicitly attached
+#' \code{prior_density} is authoritative and is propagated instead of being
+#' reconstructed from \code{prior_list}.
+#' @param transformation,transformation_arguments optional transformation of
+#' the marginal posterior, applied with [posterior_transform()] to the
+#' untransformed marginal posterior and its metadata.
 #' @inheritParams density.prior
 #'
 #' @details When the mixed posterior samples carry deterministic
@@ -125,9 +128,12 @@
 #' metadata when present. Exact support metadata is propagated even when
 #' \code{prior_samples = FALSE}; requesting prior samples adds prior-density
 #' metadata but does not replace already attached posterior support.
-#' Transformations drop stored posterior density and ordinate metadata because
-#' those estimates are no longer on the returned scale; exact support metadata
-#' is transformed when the transformation is supported. If support metadata is
+#' A \code{transformation} is applied by [posterior_transform()] to the
+#' marginal posterior with all its metadata (supports, atoms, prior densities,
+#' stored posterior densities and ordinates, and component supports); the
+#' mixed posterior samples themselves must be untransformed (samples
+#' transformed with [posterior_transform()] whose prior is their
+#' \code{prior_list} are refused). If support metadata is
 #' absent, support is inferred from prior metadata only when the posterior
 #' samples are on the raw, unconditioned prior scale; otherwise the deterministic
 #' prior-density context is used so formula-scale transformations and
@@ -164,6 +170,10 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   check_bool(prior_samples, "prior_samples")
   check_bool(use_formula, "use_formula")
   .check_transformation_input(transformation, transformation_arguments, transformation_settings)
+  .marginal_posterior_check_untransformed(
+    samples,
+    if(use_formula && inherits(samples[[parameter]], "mixed_posteriors.formula")) names(samples) else parameter
+  )
 
 
   # deal formula vs non-formula marginal posterior
@@ -486,12 +496,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       )
 
 
-      # apply transformations
-      if(!is.null(transformation)){
-        marginal_posterior_samples <- .density.prior_transformation_x(marginal_posterior_samples, transformation, transformation_arguments)
-      }
-
-
       ### split the output into lists based on specification
       # create indexing and names for the manipulated predictors
       if(intercept_term){
@@ -638,8 +642,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           weights                  = prior_weights,
           column_name              = "intercept",
           source_transforms        = log_source_transforms,
-          transformation           = transformation,
-          transformation_arguments = transformation_arguments,
           model_component          = ensemble_model_component
         )
 
@@ -658,8 +660,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             weights                  = prior_weights,
             column_name              = level_names[lvl],
             source_transforms        = log_source_transforms,
-            transformation           = transformation,
-            transformation_arguments = transformation_arguments,
             model_component          = ensemble_model_component
           )
         }
@@ -681,9 +681,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           prior_density <- .prior_density_from_context_rows(
             prior_density_context,
             prior_weights,
-            source_transforms               = log_source_transforms,
-            output_transformation           = transformation,
-            output_transformation_arguments = transformation_arguments
+            source_transforms = log_source_transforms
           )
           marginal_posterior_samples[["intercept"]] <- .bt_meta_update(
             marginal_posterior_samples[["intercept"]],
@@ -699,9 +697,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             prior_density <- .prior_density_from_context_rows(
               prior_density_context,
               prior_weights,
-              source_transforms               = log_source_transforms,
-              output_transformation           = transformation,
-              output_transformation_arguments = transformation_arguments
+              source_transforms = log_source_transforms
             )
             marginal_posterior_samples[[level_names[lvl]]] <- .bt_meta_update(
               marginal_posterior_samples[[level_names[lvl]]],
@@ -781,17 +777,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         )
       }
 
-      # the fitted coefficient combination of each level (transformed levels
-      # are no linear combination of the coefficients)
+      # the fitted coefficient combination of each level
       level_quantities <- .bt_draws_quantities(marginal_posterior_samples)
-      if(!is.null(transformation)){
-        level_quantities <- NULL
-      }
-
-      # apply transformations
-      if(!is.null(transformation)){
-        marginal_posterior_samples <- .density.prior_transformation_x(marginal_posterior_samples, transformation, transformation_arguments)
-      }
 
       # create output object
       marginal_posterior_samples <- lapply(seq_along(level_names), function(lvl_i){
@@ -829,15 +816,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           weights[colnames(factor_weights)] <- factor_weights[lvl_i, ]
           temp_support <- .posterior_support_from_prior_context_weights(
             prior_density_context,
-            weights,
-            output_transformation           = transformation,
-            output_transformation_arguments = transformation_arguments
-          )
-        }else if(!is.null(temp_support) && !is.null(transformation)){
-          temp_support <- .posterior_support_transform(
-            temp_support,
-            transformation,
-            transformation_arguments
+            weights
           )
         }
         temp_marginal_posterior_samples <- .posterior_support_set(
@@ -861,47 +840,38 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
               lvl_i
             )
           }
-          if(!is.null(transformation)){
-            temp_atoms <- .posterior_atoms_transform(
-              temp_atoms,
-              transformation,
-              transformation_arguments
-            )
-          }
           temp_marginal_posterior_samples <- .posterior_atoms_set(
             temp_marginal_posterior_samples,
             temp_atoms
           )
         }
-        if(is.null(transformation)){
-          posterior_density <- .posterior_density_from_sources(
-            sources          = posterior_density_sources,
-            aliases          = .posterior_density_aliases(
-              level_names[lvl_i],
-              colnames(marginal_posterior_samples)[lvl_i],
-              paste0(parameter, "[", level_names[lvl_i], "]")
-            ),
-            conditional      = posterior_density_conditional,
-            conditional_rule = posterior_density_conditional_rule,
-            condition_key    = posterior_density_condition_key
-          )
-          if(!is.null(posterior_density)){
-            temp_marginal_posterior_samples <- .bt_meta_set(temp_marginal_posterior_samples, "posterior_density", posterior_density)
-          }
-          posterior_ordinate <- .posterior_ordinate_from_sources(
-            sources          = posterior_ordinate_sources,
-            aliases          = .posterior_density_aliases(
-              level_names[lvl_i],
-              colnames(marginal_posterior_samples)[lvl_i],
-              paste0(parameter, "[", level_names[lvl_i], "]")
-            ),
-            conditional      = posterior_density_conditional,
-            conditional_rule = posterior_density_conditional_rule,
-            condition_key    = posterior_density_condition_key
-          )
-          if(!is.null(posterior_ordinate)){
-            temp_marginal_posterior_samples <- .bt_meta_set(temp_marginal_posterior_samples, "posterior_ordinate", posterior_ordinate)
-          }
+        posterior_density <- .posterior_density_from_sources(
+          sources          = posterior_density_sources,
+          aliases          = .posterior_density_aliases(
+            level_names[lvl_i],
+            colnames(marginal_posterior_samples)[lvl_i],
+            paste0(parameter, "[", level_names[lvl_i], "]")
+          ),
+          conditional      = posterior_density_conditional,
+          conditional_rule = posterior_density_conditional_rule,
+          condition_key    = posterior_density_condition_key
+        )
+        if(!is.null(posterior_density)){
+          temp_marginal_posterior_samples <- .bt_meta_set(temp_marginal_posterior_samples, "posterior_density", posterior_density)
+        }
+        posterior_ordinate <- .posterior_ordinate_from_sources(
+          sources          = posterior_ordinate_sources,
+          aliases          = .posterior_density_aliases(
+            level_names[lvl_i],
+            colnames(marginal_posterior_samples)[lvl_i],
+            paste0(parameter, "[", level_names[lvl_i], "]")
+          ),
+          conditional      = posterior_density_conditional,
+          conditional_rule = posterior_density_conditional_rule,
+          condition_key    = posterior_density_condition_key
+        )
+        if(!is.null(posterior_ordinate)){
+          temp_marginal_posterior_samples <- .bt_meta_set(temp_marginal_posterior_samples, "posterior_ordinate", posterior_ordinate)
         }
         return(temp_marginal_posterior_samples)
       })
@@ -940,73 +910,42 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         }
       }
 
-      # apply transformations
-      if(!is.null(transformation)){
-        marginal_atoms <- .posterior_atoms_get(marginal_posterior_samples)
-        # the metadata that follow the transformation are transformed below
-        marginal_posterior_samples <- .bt_draws_transform_values(
-          marginal_posterior_samples,
-          function(x) .density.prior_transformation_x(x, transformation, transformation_arguments)
-        )
-        marginal_posterior_samples <- .bt_meta_update(
-          marginal_posterior_samples,
-          quantities         = NULL,
-          posterior_density  = NULL,
-          posterior_ordinate = NULL
-        )
-        if(!is.null(marginal_atoms)){
-          marginal_posterior_samples <- .posterior_atoms_set(
-            marginal_posterior_samples,
-            .posterior_atoms_transform(
-              marginal_atoms,
-              transformation,
-              transformation_arguments
-            )
-          )
-        }
-        marginal_support <- .posterior_support_transform(
-          marginal_support,
-          transformation,
-          transformation_arguments
-        )
-      }else{
-        marginal_posterior_samples <- .posterior_density_attach(
-          samples          = marginal_posterior_samples,
-          sources          = .posterior_density_sources(samples[[parameter]]),
-          parameter        = parameter,
-          conditional      = .bt_meta_condition(samples[[parameter]], "conditional"),
-          conditional_rule = .bt_meta_condition(samples[[parameter]], "conditional_rule"),
-          condition_key    = .bt_meta_condition(samples[[parameter]], "condition_key"),
-          allow_unlabeled  = TRUE
-        )
-        marginal_posterior_samples <- .posterior_ordinate_attach(
-          samples          = marginal_posterior_samples,
-          sources          = .posterior_ordinate_sources(samples[[parameter]]),
-          parameter        = parameter,
-          conditional      = .bt_meta_condition(samples[[parameter]], "conditional"),
-          conditional_rule = .bt_meta_condition(samples[[parameter]], "conditional_rule"),
-          condition_key    = .bt_meta_condition(samples[[parameter]], "condition_key"),
-          allow_unlabeled  = TRUE
-        )
-        marginal_posterior_samples <- .posterior_density_attach(
-          samples          = marginal_posterior_samples,
-          sources          = .posterior_density_sources(samples),
-          parameter        = parameter,
-          conditional      = .bt_meta_condition(samples[[parameter]], "conditional"),
-          conditional_rule = .bt_meta_condition(samples[[parameter]], "conditional_rule"),
-          condition_key    = .bt_meta_condition(samples[[parameter]], "condition_key"),
-          allow_unlabeled  = FALSE
-        )
-        marginal_posterior_samples <- .posterior_ordinate_attach(
-          samples          = marginal_posterior_samples,
-          sources          = .posterior_ordinate_sources(samples),
-          parameter        = parameter,
-          conditional      = .bt_meta_condition(samples[[parameter]], "conditional"),
-          conditional_rule = .bt_meta_condition(samples[[parameter]], "conditional_rule"),
-          condition_key    = .bt_meta_condition(samples[[parameter]], "condition_key"),
-          allow_unlabeled  = FALSE
-        )
-      }
+      marginal_posterior_samples <- .posterior_density_attach(
+        samples          = marginal_posterior_samples,
+        sources          = .posterior_density_sources(samples[[parameter]]),
+        parameter        = parameter,
+        conditional      = .bt_meta_condition(samples[[parameter]], "conditional"),
+        conditional_rule = .bt_meta_condition(samples[[parameter]], "conditional_rule"),
+        condition_key    = .bt_meta_condition(samples[[parameter]], "condition_key"),
+        allow_unlabeled  = TRUE
+      )
+      marginal_posterior_samples <- .posterior_ordinate_attach(
+        samples          = marginal_posterior_samples,
+        sources          = .posterior_ordinate_sources(samples[[parameter]]),
+        parameter        = parameter,
+        conditional      = .bt_meta_condition(samples[[parameter]], "conditional"),
+        conditional_rule = .bt_meta_condition(samples[[parameter]], "conditional_rule"),
+        condition_key    = .bt_meta_condition(samples[[parameter]], "condition_key"),
+        allow_unlabeled  = TRUE
+      )
+      marginal_posterior_samples <- .posterior_density_attach(
+        samples          = marginal_posterior_samples,
+        sources          = .posterior_density_sources(samples),
+        parameter        = parameter,
+        conditional      = .bt_meta_condition(samples[[parameter]], "conditional"),
+        conditional_rule = .bt_meta_condition(samples[[parameter]], "conditional_rule"),
+        condition_key    = .bt_meta_condition(samples[[parameter]], "condition_key"),
+        allow_unlabeled  = FALSE
+      )
+      marginal_posterior_samples <- .posterior_ordinate_attach(
+        samples          = marginal_posterior_samples,
+        sources          = .posterior_ordinate_sources(samples),
+        parameter        = parameter,
+        conditional      = .bt_meta_condition(samples[[parameter]], "conditional"),
+        conditional_rule = .bt_meta_condition(samples[[parameter]], "conditional_rule"),
+        condition_key    = .bt_meta_condition(samples[[parameter]], "condition_key"),
+        allow_unlabeled  = FALSE
+      )
 
       marginal_posterior_samples <- .posterior_support_set(
         marginal_posterior_samples,
@@ -1056,9 +995,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
           prior_density <- .prior_density_from_context(
             prior_density_context,
-            weights,
-            output_transformation           = transformation,
-            output_transformation_arguments = transformation_arguments
+            weights
           )
           marginal_posterior_samples[[level_names[lvl_i]]] <- .bt_meta_update(
             marginal_posterior_samples[[level_names[lvl_i]]],
@@ -1066,13 +1003,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             prior_density  = prior_density,
             prior_context  = prior_density_context,
             components     = .marginal_posterior_components(
-              context                  = prior_density_context,
-              weights                  = weights,
-              model_component          = .bt_draws_model_component(samples[[parameter]]),
-              n_values                 = length(marginal_posterior_samples[[level_names[lvl_i]]]),
-              transformation           = transformation,
-              transformation_arguments = transformation_arguments,
-              samples                  = samples
+              context         = prior_density_context,
+              weights         = weights,
+              model_component = .bt_draws_model_component(samples[[parameter]]),
+              n_values        = length(marginal_posterior_samples[[level_names[lvl_i]]]),
+              samples         = samples
             )
           )
         }
@@ -1085,9 +1020,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
         prior_density <- .prior_density_from_context(
           prior_density_context,
-          weights,
-          output_transformation           = transformation,
-          output_transformation_arguments = transformation_arguments
+          weights
         )
         marginal_posterior_samples <- .bt_meta_update(
           marginal_posterior_samples,
@@ -1095,13 +1028,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           prior_density  = prior_density,
           prior_context  = prior_density_context,
           components     = .marginal_posterior_components(
-            context                  = prior_density_context,
-            weights                  = weights,
-            model_component          = .bt_draws_model_component(samples[[parameter]]),
-            n_values                 = length(marginal_posterior_samples),
-            transformation           = transformation,
-            transformation_arguments = transformation_arguments,
-            samples                  = samples
+            context         = prior_density_context,
+            weights         = weights,
+            model_component = .bt_draws_model_component(samples[[parameter]]),
+            n_values        = length(marginal_posterior_samples),
+            samples         = samples
           )
         )
       }
@@ -1113,35 +1044,62 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     }
   }
 
-  if(is.null(transformation)){
-    if(inherits(samples[[parameter]], "mixed_posteriors.simple")){
-      stored_prior_density <- .bt_meta_get(samples[[parameter]], "prior_density")
-      if(!is.null(stored_prior_density)){
-        marginal_posterior_samples <- .bt_meta_set(marginal_posterior_samples, "prior_density", stored_prior_density)
-        stored_prior_context <- .bt_meta_get(samples[[parameter]], "prior_context")
-        if(!is.null(stored_prior_context)){
-          marginal_posterior_samples <- .bt_meta_set(marginal_posterior_samples, "prior_context", stored_prior_context)
-        }
+  if(inherits(samples[[parameter]], "mixed_posteriors.simple")){
+    stored_prior_density <- .bt_meta_get(samples[[parameter]], "prior_density")
+    if(!is.null(stored_prior_density)){
+      marginal_posterior_samples <- .bt_meta_set(marginal_posterior_samples, "prior_density", stored_prior_density)
+      stored_prior_context <- .bt_meta_get(samples[[parameter]], "prior_context")
+      if(!is.null(stored_prior_context)){
+        marginal_posterior_samples <- .bt_meta_set(marginal_posterior_samples, "prior_context", stored_prior_context)
       }
     }
-    marginal_posterior_samples <- .marginal_posterior_attach_precomputed_metadata(
-      marginal              = marginal_posterior_samples,
-      samples               = samples,
-      parameter             = parameter,
-      condition_source      = samples[[parameter]]
-    )
   }
+  marginal_posterior_samples <- .marginal_posterior_attach_precomputed_metadata(
+    marginal              = marginal_posterior_samples,
+    samples               = samples,
+    parameter             = parameter,
+    condition_source      = samples[[parameter]]
+  )
 
   marginal_posterior_samples <- .marginal_posterior_set_condition_attributes(
     marginal_posterior_samples,
     samples,
     condition_source = samples[[parameter]]
   )
-  marginal_posterior_samples <- .marginal_posterior_transform_linear_metadata(
-    marginal_posterior_samples, transformation, transformation_arguments
-  )
   class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior")
+
+  # the transformed marginal posterior: the draws with their metadata
+  if(!is.null(transformation)){
+    marginal_posterior_samples <- .bt_posterior_transform(
+      marginal_posterior_samples,
+      .bt_posterior_transformation(transformation, transformation_arguments)
+    )
+  }
   return(marginal_posterior_samples)
+}
+
+# Mixed posteriors transformed by posterior_transform() carry the prior of
+# their untransformed values ('prior_list'), from which marginal_posterior()
+# would build their prior densities and linear predictors; only draws whose
+# prior density is their stored metadata (prior_none(), e.g.
+# parameter_mixed_posterior()) remain valid inputs.
+.marginal_posterior_check_untransformed <- function(samples, parameters){
+
+  for(parameter in parameters){
+    prior <- attr(samples[[parameter]], "prior_list", exact = TRUE)
+    if(length(.bt_draws_output_transformations(samples[[parameter]])) > 0L &&
+       !(is.prior(prior) && is.prior.none(prior))){
+      stop(
+        "The posterior samples of '", parameter, "' were transformed with ",
+        "'posterior_transform()', but 'marginal_posterior()' builds their prior ",
+        "densities from the untransformed prior distributions. Pass the ",
+        "transformation to 'marginal_posterior(transformation = )' instead.",
+        call. = FALSE
+      )
+    }
+  }
+
+  invisible(TRUE)
 }
 
 # The column table of estimated marginal means: each level is a prediction at
@@ -1279,8 +1237,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
                                                        prior_density_context, weights,
                                                        column_name,
                                                        source_transforms = NULL,
-                                                       transformation = NULL,
-                                                       transformation_arguments = NULL,
                                                        model_component = NULL){
 
   log_columns <- intersect(names(source_transforms)[source_transforms == "log"], colnames(weights))
@@ -1291,18 +1247,14 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }else{
     support <- .posterior_support_from_prior_context_weights(
       prior_density_context,
-      weights,
-      output_transformation           = transformation,
-      output_transformation_arguments = transformation_arguments
+      weights
     )
     components <- .marginal_posterior_components(
-      context                  = prior_density_context,
-      weights                  = weights,
-      model_component          = model_component,
-      n_values                 = length(marginal),
-      transformation           = transformation,
-      transformation_arguments = transformation_arguments,
-      samples                  = samples
+      context         = prior_density_context,
+      weights         = weights,
+      model_component = model_component,
+      n_values        = length(marginal),
+      samples         = samples
     )
   }
   marginal <- .posterior_support_set(marginal, support)
@@ -1312,10 +1264,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     samples,
     prior_list,
     weights,
-    transformation           = transformation,
-    transformation_arguments = transformation_arguments,
-    column_name              = column_name,
-    source_transforms        = source_transforms
+    column_name       = column_name,
+    source_transforms = source_transforms
   )
   if(!is.null(atoms)){
     marginal <- .posterior_atoms_set(marginal, atoms)
@@ -1436,8 +1386,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 # repeats per row. Build failures propagate; marginals whose quantity involves
 # no mixture have no components (the pooled posterior ordinate is used).
 .marginal_posterior_components <- function(context, weights, model_component, n_values,
-                                           transformation = NULL,
-                                           transformation_arguments = NULL,
                                            samples = NULL){
 
   n_rows <- if(is.null(dim(weights))) 1L else nrow(weights)
@@ -1451,12 +1399,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     }
     return(.posterior_components_new(
       index    = rep(model_component, each = n_rows),
-      supports = .posterior_support_model_components(
-        context,
-        weights,
-        output_transformation           = transformation,
-        output_transformation_arguments = transformation_arguments
-      ),
+      supports = .posterior_support_model_components(context, weights),
       keys     = matrix(
         seq_along(context$model_weights),
         ncol = 1L,
@@ -1472,19 +1415,15 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   .marginal_posterior_indicator_components(
-    context                  = context,
-    weights                  = weights,
-    samples                  = samples,
-    n_values                 = n_values,
-    transformation           = transformation,
-    transformation_arguments = transformation_arguments
+    context  = context,
+    weights  = weights,
+    samples  = samples,
+    n_values = n_values
   )
 }
 
 .marginal_posterior_indicator_components <- function(context, weights, samples,
-                                                     n_values,
-                                                     transformation = NULL,
-                                                     transformation_arguments = NULL){
+                                                     n_values){
 
   parameters <- .posterior_components_mixture_parameters(context, weights)
   if(length(parameters) == 0L){
@@ -1513,11 +1452,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   .posterior_components_new(
     index    = rep(index, each = n_rows),
     supports = .posterior_components_supports(
-      context                         = context,
-      keys                            = keys,
-      weights                         = weights,
-      output_transformation           = transformation,
-      output_transformation_arguments = transformation_arguments
+      context = context,
+      keys    = keys,
+      weights = weights
     ),
     keys     = keys
   )
@@ -2008,36 +1945,4 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   return(temp_multiply_by)
-}
-
-.marginal_posterior_transform_linear_metadata <- function(
-    posterior, transformation, transformation_arguments){
-
-  if(is.null(transformation)){
-    return(posterior)
-  }
-  if(is.list(posterior)){
-    for(i in seq_along(posterior)){
-      posterior[[i]] <- .marginal_posterior_transform_linear_metadata(
-        posterior[[i]], transformation, transformation_arguments
-      )
-    }
-    return(posterior)
-  }
-  weights <- .bt_meta_get(posterior, "linear_weights")
-  if(is.null(weights)){
-    return(posterior)
-  }
-  if(identical(transformation, "lin")){
-    a <- transformation_arguments[["a"]]
-    b <- transformation_arguments[["b"]]
-    if(is.null(a)) a <- 0
-    if(is.null(b)) b <- 1
-    posterior <- .bt_meta_set(posterior, "linear_weights", b * weights)
-    posterior <- .bt_meta_set(posterior, "linear_offset", a)
-  }else{
-    posterior <- .bt_meta_set(posterior, "linear_weights", NULL)
-    posterior <- .bt_meta_set(posterior, "joint_prior_transformation", if(is.character(transformation)) transformation else "custom")
-  }
-  posterior
 }
