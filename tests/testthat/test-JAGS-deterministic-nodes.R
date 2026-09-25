@@ -753,6 +753,16 @@ test_that("JAGS_deterministic_evaluator() resolves the nodes once and reproduces
   expect_error(JAGS_deterministic_evaluator(fit, nodes = "sd"),
                "'nodes' contains names that are not generated deterministic nodes of 'fit': 'sd'.",
                fixed = TRUE)
+
+  # draws without column names stop, also on the first call of an evaluator
+  # (before any column names were checked) and without requested nodes
+  unnamed_message <- paste0(
+    "'draws' must be a numeric matrix, 'mcmc', or 'mcmc.list' object with ",
+    "unique column names, or a named numeric vector."
+  )
+  expect_error(JAGS_deterministic_evaluator(fit)(unname(draws)), unnamed_message, fixed = TRUE)
+  expect_error(JAGS_evaluate_deterministic(fit, unname(draws)), unnamed_message, fixed = TRUE)
+  expect_error(evaluate(unname(draws)), unnamed_message, fixed = TRUE)
 })
 
 test_that("JAGS_formula() emits the formula syntax from the linear predictor node", {

@@ -142,13 +142,13 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
   all_nodes <- unname(all_nodes)
   evaluators <- lapply(all_nodes, .bt_deterministic_node_evaluator, prior_list = prior_list)
   # the column names of the last draws matrix checked (the check is repeated
-  # only when they change)
+  # only when they change; draws without column names are always checked)
   checked_columns <- NULL
 
   function(draws){
 
     if(!(is.matrix(draws) && !is.object(draws) && is.numeric(draws) &&
-         identical(colnames(draws), checked_columns))){
+         !is.null(checked_columns) && identical(colnames(draws), checked_columns))){
       draws <- .bt_deterministic_draws_matrix(draws)
       checked_columns <<- colnames(draws)
     }
