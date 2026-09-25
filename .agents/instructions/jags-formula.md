@@ -195,6 +195,17 @@ names.
   coordinate names such as `mu_g[2]` remain backend column names, used by
   coordinate-based functions such as `JAGS_materialize_draws()`, but are not
   factor selectors.
+- Every label is rendered by one renderer (`.bt_label()`, exported as
+  `parameter_labels()`) from structured label parts (`R/parameter-labels.R`):
+  catalog selectors and aliases, table rows, mixed-posterior column names,
+  plot legends, diagnostics titles, and warnings. Catalog quantities store
+  their parts in `label_parts`; mixed, transformed-factor, and marginal draws
+  store per-column parts, catalog quantity ids, and fitted-coordinate
+  dependencies and weights in the `quantities` draw metadata. Consumers map
+  columns to coordinates and render labels from these, never by parsing label
+  text; original-scale transforms of mixed columns go through the fitted
+  design by these coordinates and stop for columns that do not identify them
+  or that the design does not contain.
 - Catalog quantities declare their exact `support` (from the prior
   provenance of their source coordinates; `NULL` when not derivable, and a
   composite SD's `[0, Inf)` hull is exact only when every scale prior is
