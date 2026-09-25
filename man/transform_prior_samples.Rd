@@ -59,13 +59,17 @@ nodes of spike-and-slab and mixture priors are included from the components
 of their \code{\link[=rng]{rng()}} draws: the component indicator (\code{<parameter>_indicator})
 of both, and the inclusion probability (\code{<parameter>_inclusion}) and
 slab draws (\code{<parameter>_variable}) of spike-and-slab priors; the
-random-number stream of the other columns is unchanged. Standardized latent
-random effects, nodes derived from them, such as realized group
-coefficients, the component nodes of mixture priors, and the auxiliary
-nodes of Dirichlet priors and ordered-prior totals are not included, so
-catalog quantities that depend on them cannot be evaluated on the prior
-draws. Variance-allocation inclusion indicators are included, drawn from
-their inclusion probabilities.
+random-number stream of the other columns is unchanged. The totals of
+ordered priors (\code{<parameter>_ordered_total}) are included with the
+same auxiliary nodes of a spike-and-slab or mixture total, except for a
+spike-and-slab total of an interaction with several slices, which shares
+one inclusion indicator between the slices in the fitted model but not in
+\code{\link[=rng]{rng()}}. Standardized latent random effects, nodes derived from them, such
+as realized group coefficients, the component nodes of mixture priors, and
+the auxiliary nodes of Dirichlet priors are not included, so catalog
+quantities that depend on them cannot be evaluated on the prior draws.
+Variance-allocation inclusion indicators are included, drawn from their
+inclusion probabilities.
 }
 \examples{
 # With a fitted model that used formula_scale:

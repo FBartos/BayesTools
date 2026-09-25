@@ -615,10 +615,12 @@ test_that("prior sample generation uses stored ordered-mixture dimensions", {
     seed       = 1
   )
   expect_equal(
-    unname(single[, , drop = FALSE]),
+    unname(single[, paste0("mu_f[", 1:3, "]"), drop = FALSE]),
     matrix(c(2, 3, 5), nrow = 4, ncol = 3, byrow = TRUE)
   )
-  expect_equal(colnames(single), paste0("mu_f[", 1:3, "]"))
+  # the coefficients and the fitted total node
+  expect_equal(colnames(single), c(paste0("mu_f[", 1:3, "]"), "mu_f_ordered_total"))
+  expect_equal(unname(single[, "mu_f_ordered_total"]), rep(10, 4))
 
   mixture_prior <- prior_mixture(list(p1, p2))
   mixed <- BayesTools:::.generate_prior_sample_matrix(

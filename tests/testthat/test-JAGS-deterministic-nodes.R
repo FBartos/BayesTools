@@ -1056,3 +1056,118 @@ test_that("prior draws carry the auxiliary nodes of mixture and spike-and-slab p
   expect_identical(as.numeric(as.matrix(indicator)), unname(draws[, "m_indicator"]))
 })
 
+test_that("prior draws carry the fitted nodes of ordered-prior totals", {
+
+  data <- data.frame(
+    f = ordered(rep(c("low", "mid", "high"), 2), levels = c("low", "mid", "high")),
+    g = factor(rep(c("a", "b", "c"), each = 2))
+  )
+  prior_columns <- function(prior_list){
+    unlist(lapply(names(prior_list), function(name){
+      prior <- prior_list[[name]]
+      if(BayesTools:::.bt_prior_is_factor_family(prior)){
+        BayesTools:::.JAGS_prior_factor_names(name, prior)
+      }else{
+        name
+      }
+    }), use.names = FALSE)
+  }
+  prior_fit <- function(formula, prior_list, total_columns){
+    formula_result <- JAGS_formula(formula, "mu", data, prior_list)
+    columns <- c(prior_columns(formula_result$prior_list), total_columns)
+    fit <- coda::mcmc(matrix(.5, nrow = 4, ncol = length(columns), dimnames = list(NULL, columns)))
+    class(fit) <- c("mcmc", "BayesTools_fit")
+    attr(fit, "prior_list") <- formula_result$prior_list
+    attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+    attach_test_parameter_map(fit)
+  }
+  totals <- list(
+    spike = prior_spike_and_slab(prior("normal", list(0, 1)),
+                                 prior_inclusion = prior("beta", list(1, 1))),
+    mixture = prior_mixture(list(prior("spike", list(0)), prior("normal", list(0, 1))),
+                            is_null = c(TRUE, FALSE))
+  )
+  total_nodes <- list(
+    spike   = paste0("mu_f_ordered_total", c("", "_indicator", "_inclusion", "_variable")),
+    mixture = paste0("mu_f_ordered_total", c("", "_indicator"))
+  )
+  n <- 2000
+  for(name in names(totals)){
+    fit <- prior_fit(~ f, list(intercept = prior("normal", list(0, 1)),
+                               f = prior_ordered(totals[[name]])), total_nodes[[name]])
+    prior_list <- attr(fit, "prior_list")
+    draws <- transform_prior_samples(fit, n_samples = n, seed = 11)
+    expect_identical(colnames(draws),
+                     c("mu_intercept", "mu_f[1]", "mu_f[2]", total_nodes[[name]]), info = name)
+
+    # the existing columns keep rng()'s random-number stream, and the total
+    # and its indicator are the draws of the total's own rng() stream
+    set.seed(11)
+    intercept <- rng(prior_list$mu_intercept, n)
+    total <- rng(totals[[name]], n)
+    set.seed(11)
+    rng(prior_list$mu_intercept, n)
+    coefficients <- rng(prior_list$mu_f, n, transform_factor_samples = FALSE)
+    expect_identical(unname(draws[, "mu_intercept"]), as.numeric(intercept), info = name)
+    expect_identical(unname(draws[, c("mu_f[1]", "mu_f[2]")]), unname(unclass(coefficients)[, 1:2]),
+                     info = name)
+    expect_identical(unname(draws[, "mu_f_ordered_total"]), as.numeric(total), info = name)
+    indicator <- if(name == "spike") attr(total, "inclusion") else attr(total, "components")
+    expect_identical(unname(draws[, "mu_f_ordered_total_indicator"]), as.numeric(indicator),
+                     info = name)
+    # the coefficients allocate the total
+    expect_equal(unname(draws[, "mu_f[1]"] + draws[, "mu_f[2]"]),
+                 unname(draws[, "mu_f_ordered_total"]), tolerance = 1e-12, info = name)
+    if(name == "spike"){
+      expect_identical(
+        unname(draws[, "mu_f_ordered_total"]),
+        unname(draws[, "mu_f_ordered_total_variable"] * draws[, "mu_f_ordered_total_indicator"])
+      )
+      expect_true(all(draws[, "mu_f_ordered_total_inclusion"] > 0 &
+                        draws[, "mu_f_ordered_total_inclusion"] < 1))
+    }else{
+      expect_true(all(draws[, "mu_f_ordered_total"][draws[, "mu_f_ordered_total_indicator"] == 1] == 0))
+    }
+
+    # catalog quantities of the total's nodes resolve on the prior draws
+    catalog <- parameter_catalog(fit)
+    for(node in total_nodes[[name]]){
+      values <- parameter_draws(fit, parameter_catalog_resolve(catalog, node), model_samples = draws)
+      expect_identical(as.numeric(as.matrix(values)), unname(draws[, node]), info = node)
+    }
+  }
+
+  # an interaction with two slices: the simple total has one node per slice,
+  # while a spike-and-slab total, whose one fitted indicator rng() does not
+  # draw, has no prior draws of its nodes
+  simple <- prior_fit(~ g * f, list(
+    intercept = prior("normal", list(0, 1)),
+    g = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    f = prior_ordered(prior("normal", list(0, 1))),
+    "g:f" = prior_ordered(prior("normal", list(0, 1)))
+  ), c("mu_f_ordered_total", "mu_g__xXx__f_ordered_total[1]", "mu_g__xXx__f_ordered_total[2]"))
+  draws <- transform_prior_samples(simple, n_samples = n, seed = 12)
+  expect_true(all(c("mu_g__xXx__f_ordered_total[1]", "mu_g__xXx__f_ordered_total[2]") %in% colnames(draws)))
+  interaction <- attr(simple, "prior_list")$mu_g__xXx__f
+  coordinates <- BayesTools:::.JAGS_prior_factor_names("mu_g__xXx__f", interaction)
+  slices <- unlist(attr(interaction, "ordered_metadata")$slice_index)
+  # the coefficients of each slice allocate its total
+  for(slice in 1:2){
+    expect_equal(
+      unname(rowSums(draws[, coordinates[slices == slice], drop = FALSE])),
+      unname(draws[, paste0("mu_g__xXx__f_ordered_total[", slice, "]")]),
+      tolerance = 1e-12
+    )
+  }
+
+  spike <- prior_fit(~ g * f, list(
+    intercept = prior("normal", list(0, 1)),
+    g = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    f = prior_ordered(prior("normal", list(0, 1))),
+    "g:f" = prior_ordered(totals$spike)
+  ), c("mu_f_ordered_total", paste0("mu_g__xXx__f_ordered_total", c("_indicator", "_inclusion"))))
+  draws <- transform_prior_samples(spike, n_samples = n, seed = 12)
+  expect_identical(colnames(draws)[startsWith(colnames(draws), "mu_g__xXx__f_ordered_total")], character())
+  expect_true("mu_f_ordered_total" %in% colnames(draws))
+})
+

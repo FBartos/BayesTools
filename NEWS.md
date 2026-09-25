@@ -486,8 +486,16 @@ old behaviour.
     `us(1 + x | g)` block with allocation-derived SDs. For such blocks, the
     original-scale prior draws of the correlation matrix, its Cholesky factor,
     and the LKJ coordinates are unscaled; they were left on the standardized
-    scale. Latent effects and the auxiliaries of mixture, spike-and-slab, and
-    Dirichlet priors still have no prior draws.
+    scale. Latent effects and the auxiliary nodes of Dirichlet priors still
+    have no prior draws. The component indicators of mixture and
+    spike-and-slab priors, the inclusion probabilities and slab draws of
+    spike-and-slab priors, and the totals of ordered priors (with these nodes
+    of a spike-and-slab or mixture total) have prior draws taken from the
+    components of their `rng()` draws, so the other columns keep their
+    random-number stream and the catalog quantities of these nodes can be
+    evaluated on prior draws. The nodes of a spike-and-slab total of an
+    ordered interaction with several slices, whose single fitted inclusion
+    indicator `rng()` does not draw, have none.
   - documents that `formula_scale` centers scaled predictors also in terms
     without a free intercept: `~ 0 + x` fits a line through the predictor
     mean, with original-scale intercept `-b * mean(x) / sd(x)`. Independent

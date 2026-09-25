@@ -618,28 +618,109 @@
   .bt_bind_ordered_prior_metadata(prior, parameter_name)
 }
 
+# Draws of an ordered prior in the random-number stream of rng(): the total of
+# every theta slice (one rng() stream of the total prior each, keeping the
+# parts that stream draws), then the allocations and the coefficients that
+# they give ('quantity' stops after the totals or the allocations).
+.prior_ordered_draws <- function(prior, n, quantity = "level"){
+
+  prior <- .prior_ordered_default_bound(prior)
+  metadata <- .prior_ordered_metadata(prior)
+  total <- lapply(seq_len(metadata$theta_dim), function(slice){
+    .prior_ordered_total_draw(prior$total, n)
+  })
+  theta <- do.call(cbind, lapply(total, `[[`, "value"))
+  out <- list(prior = prior, metadata = metadata, total = total, theta = theta)
+  if(quantity == "total"){
+    return(out)
+  }
+
+  allocation_samples <- list()
+  for(record in metadata$allocations){
+    if(record$key %in% names(allocation_samples)){
+      next
+    }
+    allocation_samples[[record$key]] <- .prior_ordered_allocation_rng(record$spec, n)
+  }
+  out$allocation_samples <- allocation_samples
+  if(quantity == "allocation"){
+    return(out)
+  }
+
+  coefficients <- matrix(NA_real_, nrow = n, ncol = metadata$coefficient_dim)
+  for(coefficient_i in seq_len(metadata$coefficient_dim)){
+    slice <- metadata$slice_index[[coefficient_i]]
+    value <- theta[, slice]
+    for(factor_term in metadata$ordered_terms){
+      record <- .prior_ordered_allocation_for_coefficient(metadata, factor_term, slice)
+      increment <- metadata$coefficient_grid[[factor_term]][[coefficient_i]]
+      value <- value * allocation_samples[[record$key]][, increment]
+    }
+    coefficients[, coefficient_i] <- value
+  }
+  out$coefficients <- coefficients
+  out
+}
+
+# One rng() stream of an ordered prior's total with the parts it draws: the
+# value, the component of each draw (an index into the total's component
+# list), the fitted indicator of a spike-and-slab (1 = slab) or mixture total,
+# and the inclusion probabilities and slab draws of a spike-and-slab total.
+.prior_ordered_total_draw <- function(total, n){
+
+  if(is.prior.spike_and_slab(total)){
+    # the parts rng() of the total draws, in its random-number stream
+    parts <- .rng_spike_and_slab_parts(total, n)
+    return(list(
+      value                 = as.numeric(parts$value),
+      component             = .bt_component_from_indicator(total, parts$inclusion),
+      indicator             = parts$inclusion,
+      inclusion_probability = parts$inclusion_probability,
+      variable              = as.numeric(parts$variable)
+    ))
+  }
+  draws <- rng(total, n)
+  components <- attr(draws, "components", exact = TRUE)
+  list(value = as.numeric(draws), component = components, indicator = components)
+}
+
+# The fitted nodes of an ordered prior's total in its prior draws, named as
+# their monitors: the total and, for a total of one theta slice, the component
+# indicator of a spike-and-slab or mixture total and the inclusion probability
+# and slab draws of a spike-and-slab total. The fitted model shares one
+# indicator and inclusion probability between the slices of a spike-and-slab
+# total, whereas rng() draws the slices independently, so such totals of
+# several slices have no prior draws.
+.prior_ordered_total_samples <- function(draws, parameter){
+
+  total_name <- .prior_ordered_total_name(parameter)
+  theta_dim <- draws$metadata$theta_dim
+  if(theta_dim > 1L){
+    if(is.prior.spike_and_slab(draws$prior$total)){
+      return(NULL)
+    }
+    return(matrix(
+      draws$theta, ncol = theta_dim,
+      dimnames = list(NULL, paste0(total_name, "[", seq_len(theta_dim), "]"))
+    ))
+  }
+  total <- draws$total[[1L]]
+  columns <- list(total$value, total$indicator, total$inclusion_probability, total$variable)
+  names(columns) <- paste0(total_name, c("", "_indicator", "_inclusion", "_variable"))
+  do.call(cbind, columns[!vapply(columns, is.null, logical(1))])
+}
+
 .prior_ordered_rng <- function(prior, n, transform_factor_samples = TRUE, quantity = "level"){
 
   check_char(quantity, "quantity", allow_values = c("level", "coefficient", "increment", "total", "allocation"))
-  prior <- .prior_ordered_default_bound(prior)
-  metadata <- .prior_ordered_metadata(prior)
-
-  theta_draws <- replicate(
-    metadata$theta_dim,
-    rng(prior$total, n),
-    simplify = FALSE
-  )
-  theta <- do.call(cbind, lapply(theta_draws, as.numeric))
+  draws <- .prior_ordered_draws(prior, n, quantity)
+  prior <- draws$prior
+  metadata <- draws$metadata
+  theta <- draws$theta
   # the component of the total drawn for each draw (an index into the total
   # prior's component list), from the spike-and-slab inclusion or the mixture
   # component of the total's draws
-  total_components <- lapply(theta_draws, function(draws){
-    inclusion <- attr(draws, "inclusion", exact = TRUE)
-    if(!is.null(inclusion)){
-      return(.bt_component_from_indicator(prior$total, inclusion))
-    }
-    attr(draws, "components", exact = TRUE)
-  })
+  total_components <- lapply(draws$total, `[[`, "component")
   attach_total_component_metadata <- function(out){
     if(all(vapply(total_components, function(x) !is.null(x), logical(1)))){
       component <- do.call(cbind, total_components)
@@ -656,14 +737,7 @@
     return(attach_total_component_metadata(theta))
   }
 
-  allocation_samples <- list()
-  for(record in metadata$allocations){
-    if(record$key %in% names(allocation_samples)){
-      next
-    }
-    allocation_samples[[record$key]] <- .prior_ordered_allocation_rng(record$spec, n)
-  }
-
+  allocation_samples <- draws$allocation_samples
   if(quantity == "allocation"){
     out <- do.call(cbind, allocation_samples)
     colnames(out) <- unlist(lapply(names(allocation_samples), function(key){
@@ -672,17 +746,7 @@
     return(out)
   }
 
-  coefficients <- matrix(NA_real_, nrow = n, ncol = metadata$coefficient_dim)
-  for(coefficient_i in seq_len(metadata$coefficient_dim)){
-    slice <- metadata$slice_index[[coefficient_i]]
-    value <- theta[, slice]
-    for(factor_term in metadata$ordered_terms){
-      record <- .prior_ordered_allocation_for_coefficient(metadata, factor_term, slice)
-      increment <- metadata$coefficient_grid[[factor_term]][[coefficient_i]]
-      value <- value * allocation_samples[[record$key]][, increment]
-    }
-    coefficients[, coefficient_i] <- value
-  }
+  coefficients <- draws$coefficients
   colnames(coefficients) <- .JAGS_prior_factor_names(metadata$parameter_name, prior)
   coefficients <- attach_total_component_metadata(coefficients)
 
