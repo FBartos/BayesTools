@@ -1369,3 +1369,71 @@ test_that("SD components of nested allocations keep a plotting density refused f
   )
   expect_true(prior_density_ordinate(drug, .4)$exact)
 })
+
+test_that("gate-only allocations and inclusion indicators have exact priors and declared atoms", {
+
+  skip_if_not_installed("runjags")
+
+  # a gate-only allocation: the study SD is T g, T ~ gamma(2, 2), g ~
+  # Bernoulli(0.4); the gate draws are (0, 1, 0, 1)
+  data <- data.frame(study = factor(c("s1", "s1", "s2", "s2")))
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + random(1 | study, name = "study", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(allocation = random_variance_allocation(
+      name = "allocation", terms = "study", sd = prior("gamma", list(2, 2)),
+      inclusion = list(study = prior("spike", list(location = .4)))
+    ))
+  )
+  allocation <- formula_result$formula_design$random_allocations[[1L]]
+  gate <- vapply(allocation$inclusion, `[[`, character(1), "indicator_name")
+  samples <- cbind(c(2, 1.5, 3, 1), c(0, 1, 0, 1))
+  colnames(samples) <- c(allocation$source_node, gate)
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  fit <- attach_test_parameter_map(fit)
+  catalog <- parameter_catalog(fit)
+  resolve <- function(name) parameter_catalog_resolve(catalog, name)
+
+  sd <- parameter_prior_density(fit, resolve("(mu) sd(intercept)"))
+  expect_identical(attr(sd, "adaptive_evaluation")$kind, "allocation_product")
+  expect_equal(sd$points$p[sd$points$x == 0], .6, tolerance = 1e-12)
+  ordinate <- prior_density_ordinate(sd, .4)
+  expect_true(ordinate$exact)
+  expect_equal(exp(ordinate$log_density), .4 * stats::dgamma(.4, 2, 2), tolerance = 1e-12)
+  variance <- parameter_prior_density(fit, resolve("(mu) var(intercept)"))
+  expect_equal(exp(prior_density_ordinate(variance, .16)$log_density),
+               .4 * stats::dgamma(.4, 2, 2) / (2 * .4), tolerance = 1e-12)
+  region <- list(intervals = matrix(c(0, 1), 1L), indicator = function(x) x > 0 & x <= 1)
+  expect_equal(as.numeric(.prior_linear_density_region_probability(sd, region)),
+               .4 * stats::pgamma(1, 2, 2), tolerance = 1e-10)
+
+  mixed <- parameter_mixed_posterior(fit, resolve("(mu) sd(intercept)"))
+  expect_equal(as.numeric(mixed), c(0, 1.5, 0, 1))
+  atoms <- posterior_metadata(mixed, "atoms")
+  expect_equal(as.numeric(atoms$locations[, 1L]), 0)
+  expect_equal(atoms$mass, .5)
+  included <- parameter_mixed_posterior(fit, resolve("(mu) sd(intercept)"), conditional = TRUE)
+  expect_equal(as.numeric(included), c(1.5, 1))
+  expect_true(posterior_atoms_free(included))
+  expect_equal(
+    exp(prior_density_ordinate(posterior_metadata(included, "prior_density"), .4)$log_density),
+    stats::dgamma(.4, 2, 2), tolerance = 1e-12
+  )
+
+  # the inclusion indicator: Bernoulli(0.4) prior, atoms from the indicator
+  inclusion <- parameter_prior_density(fit, resolve("(mu) allocation: inclusion(study)"))
+  expect_equal(inclusion$points$x, c(0, 1))
+  expect_equal(inclusion$points$p, c(.6, .4), tolerance = 1e-12)
+  expect_identical(prior_density_ordinate(inclusion, 1)$behavior, "point_mass")
+  indicator <- parameter_mixed_posterior(fit, resolve("(mu) allocation: inclusion(study)"))
+  indicator_atoms <- posterior_metadata(indicator, "atoms")
+  expect_equal(as.numeric(indicator_atoms$locations[, 1L]), c(0, 1))
+  expect_equal(indicator_atoms$mass, c(.5, .5))
+})

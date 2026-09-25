@@ -240,9 +240,10 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
 # The gate structure of a gated random-effect allocation quantity (NULL for
 # other quantities): what puts the quantity on an atom in a draw, and its
 # inclusion event.
+#   inclusion: an allocation inclusion indicator, on its own atom (0 or 1).
 #   component: an allocation-derived component SD (or variance), zero when a
 #     gate of its chain is off; 'degenerate' when every factor of the chain
-#     is a gate without Dirichlet weights.
+#     is a gate without Dirichlet weights (a gate-only allocation).
 #   total: an allocation total (sd_total, var_total, or the common SD and
 #     variance), zero without an active component or with a parent gate off.
 #   var_prop: a gated total-variance proportion, 0 when its component is
@@ -259,8 +260,18 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
     names[!is.na(names) & nzchar(names)]
   }
 
+  if(identical(key$evaluator, "allocation_inclusion")){
+    # the indicator is its own gate state
+    return(list(
+      kind        = "inclusion",
+      chain_gates = key$source_parameter,
+      event_gates = character(),
+      event_rule  = "AND"
+    ))
+  }
   if(key$evaluator %in% c("sd", "sd_variance") &&
-     isTRUE(key$allocation_derived)){
+     (isTRUE(key$allocation_derived) ||
+        .bt_parameter_prior_density_gate_only_sd(fit, key))){
     chain <- .bt_parameter_prior_density_component_chain(fit, key)
     if(is.null(chain)){
       return(NULL)
@@ -385,6 +396,13 @@ parameter_mixed_posterior <- function(fit, selection, conditional = FALSE){
     out
   }
 
+  if(identical(plan$kind, "inclusion")){
+    return(list(
+      atom  = as.numeric(gate_on(plan$chain_gates)),
+      event = NULL,
+      known = TRUE
+    ))
+  }
   if(identical(plan$kind, "var_prop")){
     gates <- .bt_random_effect_summary_allocation_component_gates(
       allocation    = plan$allocation,

@@ -128,8 +128,10 @@
 #' nested allocations (two or more allocation shares) are products of density
 #' grids without such provenance, returned for plotting only (heights, region
 #' probabilities and point hypotheses are unavailable, and their ordinates
-#' name the reason). Totals of nested allocations and inclusion indicators
-#' return `NULL`.
+#' name the reason). The SD of a gate-only allocation (one term with an
+#' inclusion gate) is the scale prior times its gate, and an inclusion
+#' indicator has the Bernoulli prior of its marginal inclusion probability
+#' (points at 0 and 1). Totals of nested allocations return `NULL`.
 #'
 #' `parameter_transform()` returns the one-to-one map from the selected source
 #' coordinate to its public semantic quantity when that map exists. Composite
@@ -602,7 +604,8 @@ parameter_prior_density.BayesTools_fit <- function(
   }
 
   out <- if(key$evaluator %in% c("sd", "sd_variance") &&
-             isTRUE(key$allocation_derived)){
+             (isTRUE(key$allocation_derived) ||
+                .bt_parameter_prior_density_gate_only_sd(object, key))){
     .bt_parameter_prior_density_random_component_sd(
       object = object,
       key = key,
@@ -610,6 +613,13 @@ parameter_prior_density.BayesTools_fit <- function(
       tail_prob = tail_prob,
       conditional = conditional,
       square = identical(key$evaluator, "sd_variance")
+    )
+  }else if(identical(key$evaluator, "allocation_inclusion")){
+    .bt_parameter_prior_density_inclusion(
+      object = object,
+      key = key,
+      n_grid = n_grid,
+      tail_prob = tail_prob
     )
   }else if(identical(key$evaluator, "allocation")){
     .bt_parameter_prior_density_allocation_quantity(
@@ -1202,6 +1212,55 @@ parameter_prior_density.BayesTools_fit <- function(
     tail_prob    = tail_prob,
     square       = square
   )
+}
+
+# Whether a composite random-effect SD is scaled by gate-only allocations
+# (a single term with an inclusion gate and no weights): the SD is then the
+# scale prior times its gates, not an allocation-derived share.
+.bt_parameter_prior_density_gate_only_sd <- function(object, key){
+
+  if(!identical(key$type, "random_summary") ||
+     !identical(key$source_type, "composite") ||
+     !is.character(key$random_block) || !nzchar(key$random_block)){
+    return(FALSE)
+  }
+  random_term <- .bt_parameter_catalog_find_random_term(object, key)
+  allocations <- random_term$sd_binding$allocations
+  length(allocations) > 0L && all(vapply(allocations, function(allocation){
+    isTRUE(allocation$gate_only)
+  }, logical(1)))
+}
+
+# The prior of an allocation inclusion indicator: Bernoulli with the gate's
+# marginal inclusion probability (the mean of its probability prior), points
+# at 0 and 1.
+.bt_parameter_prior_density_inclusion <- function(object, key, n_grid,
+                                                  tail_prob){
+
+  probability <- .bt_parameter_prior_density_gate_probability(
+    attr(object, "prior_list", exact = TRUE),
+    key$source_parameter
+  )
+  if(!is.finite(probability)){
+    return(NULL)
+  }
+  components <- list()
+  if(probability < 1){
+    components[[length(components) + 1L]] <- prior(
+      "point", list(location = 0), prior_weights = 1 - probability
+    )
+  }
+  if(probability > 0){
+    components[[length(components) + 1L]] <- prior(
+      "point", list(location = 1), prior_weights = probability
+    )
+  }
+  measure <- if(length(components) == 1L){
+    components[[1L]]
+  }else{
+    prior_mixture(components, is_null = c(TRUE, FALSE))
+  }
+  .bt_parameter_prior_density_scalar(measure, n_grid = n_grid, tail_prob = tail_prob)
 }
 
 # The mapped share sqrt(k w_i) of one Dirichlet allocation factor: w_i ~

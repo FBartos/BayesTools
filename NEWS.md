@@ -200,7 +200,11 @@ old behaviour.
   region probabilities integrate the same route, and plotted densities
   evaluate it. Before, their continuous parts were numerical product grids
   used only for plotting. SD components of nested allocations keep that grid
-  and their refusals name the reason.
+  and their refusals name the reason. The SDs and variances of gate-only
+  allocations (one term with an `inclusion` gate) now have their prior (the
+  scale prior times the gate; before: none), and allocation inclusion
+  indicators (`inclusion(...)`) their Bernoulli prior, so
+  `parameter_mixed_posterior()` declares their atoms.
 - adds `parameter_mixed_posterior(fit, selection, conditional = FALSE)`: the
   posterior draws of one catalog quantity as a mixed posterior with its
   catalog `support`, its `prior_density` from `parameter_prior_density()`,

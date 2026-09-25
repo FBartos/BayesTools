@@ -218,8 +218,10 @@ one-dimensional integrals over the Beta share margins. SD components of
 nested allocations (two or more allocation shares) are products of density
 grids without such provenance, returned for plotting only (heights, region
 probabilities and point hypotheses are unavailable, and their ordinates
-name the reason). Totals of nested allocations and inclusion indicators
-return \code{NULL}.
+name the reason). The SD of a gate-only allocation (one term with an
+inclusion gate) is the scale prior times its gate, and an inclusion
+indicator has the Bernoulli prior of its marginal inclusion probability
+(points at 0 and 1). Totals of nested allocations return \code{NULL}.
 
 \code{parameter_transform()} returns the one-to-one map from the selected source
 coordinate to its public semantic quantity when that map exists. Composite
