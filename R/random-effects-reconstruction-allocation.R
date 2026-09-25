@@ -334,7 +334,15 @@
     return(NULL)
   }
 
-  values <- as.numeric(posterior[, parameter_name])
+  .bt_random_effect_allocation_gate_values(
+    as.numeric(posterior[, parameter_name]),
+    parameter_name
+  )
+}
+
+# Draws of an allocation inclusion gate, checked to be 0/1 indicators.
+.bt_random_effect_allocation_gate_values <- function(values, parameter_name){
+
   invalid <- !is.finite(values) | !(values %in% c(0, 1))
   if(any(invalid)){
     .bt_random_effect_allocation_out_of_support(
@@ -424,24 +432,10 @@
       return(get(cache_key, envir = cache, inherits = FALSE))
     }
 
-    eta <- posterior[, eta_names, drop = FALSE]
-    eta_sum <- rowSums(eta)
-    invalid <- !is.finite(eta) | eta <= 0
-    invalid_row <- !is.finite(eta_sum) | eta_sum <= 0
-    if(any(invalid) || any(invalid_row)){
-      if(any(invalid)){
-        invalid_column <- col(eta)[which(invalid)[1L]]
-        detail <- paste0(" for '", eta_names[invalid_column], "'")
-      }else{
-        detail <- paste0(" at row ", which(invalid_row)[1L])
-      }
-      .bt_random_effect_allocation_out_of_support(
-        "Random-effect Dirichlet allocation auxiliary samples must be finite and positive",
-        detail,
-        "."
-      )
-    }
-    weights <- eta / eta_sum
+    weights <- .bt_random_effect_dirichlet_eta_weights(
+      posterior[, eta_names, drop = FALSE],
+      eta_names
+    )
     return(.bt_random_effect_dirichlet_cache_return(
       weights = weights,
       cache = cache,
@@ -463,6 +457,30 @@
   }
 
   NULL
+}
+
+# Dirichlet weights from draws of their gamma auxiliaries 'eta' (a draws x K
+# matrix with the column names 'eta_names'), normalized per draw.
+.bt_random_effect_dirichlet_eta_weights <- function(eta, eta_names){
+
+  eta_sum <- rowSums(eta)
+  invalid <- !is.finite(eta) | eta <= 0
+  invalid_row <- !is.finite(eta_sum) | eta_sum <= 0
+  if(any(invalid) || any(invalid_row)){
+    if(any(invalid)){
+      invalid_column <- col(eta)[which(invalid)[1L]]
+      detail <- paste0(" for '", eta_names[invalid_column], "'")
+    }else{
+      detail <- paste0(" at row ", which(invalid_row)[1L])
+    }
+    .bt_random_effect_allocation_out_of_support(
+      "Random-effect Dirichlet allocation auxiliary samples must be finite and positive",
+      detail,
+      "."
+    )
+  }
+
+  eta / eta_sum
 }
 
 .bt_random_effect_dirichlet_draw_cache <- function(posterior){

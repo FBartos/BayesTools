@@ -4,7 +4,9 @@
 #' nodes that BayesTools generates in the JAGS model of a fit, with the family
 #' that defines them, the coordinates they produce, and the coordinates they
 #' are computed from. \code{JAGS_evaluate_deterministic()} recomputes their
-#' values from draws of those coordinates.
+#' values from draws of those coordinates. \code{JAGS_deterministic_evaluator()}
+#' resolves the nodes of a fit once and returns a function that evaluates them
+#' on draws, for repeated evaluations (e.g. one draw at a time).
 #'
 #' @param fit a model fitted with [JAGS_fit()].
 #' @param draws draws to evaluate the nodes on: a numeric matrix with one
@@ -83,6 +85,13 @@
 #' \code{JAGS_evaluate_deterministic()} returns a numeric matrix with one row
 #' per draw and one column per coordinate of the evaluated nodes.
 #'
+#' \code{JAGS_deterministic_evaluator()} returns a function with one argument,
+#' \code{draws} (in the forms accepted by \code{JAGS_evaluate_deterministic()};
+#' a named numeric vector for one draw), that returns the matrix
+#' \code{JAGS_evaluate_deterministic(fit, draws, nodes)} returns, with the
+#' nodes of \code{fit} resolved when the evaluator is created.
+#' \code{JAGS_evaluate_deterministic()} is this evaluator applied once.
+#'
 #' @seealso [JAGS_fit()] [parameter_coordinates()] [transform_prior_samples()]
 #' @export
 JAGS_deterministic_nodes <- function(fit){
@@ -98,11 +107,18 @@ JAGS_deterministic_nodes <- function(fit){
 #' @export
 JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
 
-  .bt_require_fit_contract(fit, "fit")
+  evaluate <- JAGS_deterministic_evaluator(fit, nodes = nodes)
   if(is.null(draws)){
     draws <- .fit_to_posterior(fit)
   }
-  draws <- .bt_deterministic_draws_matrix(draws)
+  evaluate(draws)
+}
+
+#' @rdname JAGS_deterministic_nodes
+#' @export
+JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
+
+  .bt_require_fit_contract(fit, "fit")
   check_char(nodes, "nodes", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
 
   prior_list <- attr(fit, "prior_list", exact = TRUE)
@@ -123,33 +139,44 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
     }
     all_nodes <- all_nodes[unique(nodes)]
   }
+  all_nodes <- unname(all_nodes)
+  evaluators <- lapply(all_nodes, .bt_deterministic_node_evaluator, prior_list = prior_list)
+  # the column names of the last draws matrix checked (the check is repeated
+  # only when they change)
+  checked_columns <- NULL
 
-  lookup <- .bt_deterministic_lookup(draws, prior_list)
-  lookup$fit <- fit
-  values <- list()
-  for(node in all_nodes){
-    node_values <- .bt_deterministic_node_evaluate(node, lookup)
-    if(is.null(node_values)){
-      if(requested){
+  function(draws){
+
+    if(!(is.matrix(draws) && !is.object(draws) && is.numeric(draws) &&
+         identical(colnames(draws), checked_columns))){
+      draws <- .bt_deterministic_draws_matrix(draws)
+      checked_columns <<- colnames(draws)
+    }
+    lookup <- .bt_deterministic_lookup(draws, prior_list)
+    lookup$fit <- fit
+    values <- vector("list", length(all_nodes))
+    for(i in seq_along(all_nodes)){
+      node_values <- evaluators[[i]](lookup)
+      if(is.null(node_values) && requested){
         stop(
-          "Deterministic node '", node$node, "' is unavailable from 'draws': ",
+          "Deterministic node '", all_nodes[[i]]$node, "' is unavailable from 'draws': ",
           "its dependencies ",
-          paste0("'", node$dependencies, "'", collapse = ", "),
+          paste0("'", all_nodes[[i]]$dependencies, "'", collapse = ", "),
           " are not all available as columns of 'draws' or as point priors.",
           call. = FALSE
         )
       }
-      next
+      values[i] <- list(node_values)
     }
-    values[[length(values) + 1L]] <- node_values
-  }
+    values <- values[!vapply(values, is.null, logical(1))]
 
-  if(length(values) == 0L){
-    return(matrix(numeric(), nrow = nrow(draws), ncol = 0L))
+    if(length(values) == 0L){
+      return(matrix(numeric(), nrow = nrow(draws), ncol = 0L))
+    }
+    out <- if(length(values) == 1L) values[[1L]] else do.call(cbind, values)
+    rownames(out) <- NULL
+    out
   }
-  out <- do.call(cbind, values)
-  rownames(out) <- NULL
-  out
 }
 
 
@@ -240,6 +267,20 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
   values <- matrix(values, nrow = lookup$n, ncol = length(node$coordinates))
   colnames(values) <- node$coordinates
   values
+}
+
+# A prepared evaluator of a node: a function of a lookup returning the values
+# of .bt_deterministic_node_evaluate(). Allocation SDs locate their columns
+# once per set of draw column names (.bt_dnode_random_sd_evaluator()); the
+# other families evaluate the node directly.
+.bt_deterministic_node_evaluator <- function(node, prior_list){
+
+  if(identical(node$family, "random_sd")){
+    return(.bt_dnode_random_sd_evaluator(node, prior_list))
+  }
+  function(lookup){
+    .bt_deterministic_node_evaluate(node, lookup)
+  }
 }
 
 # The generated deterministic nodes of a fit, keyed by node name.
@@ -445,6 +486,13 @@ JAGS_evaluate_deterministic <- function(fit, draws = NULL, nodes = NULL){
   if(is.null(weights)){
     return(NULL)
   }
+  .bt_deterministic_simplex_check(weights, factor)
+}
+
+# The Dirichlet weights of an allocation factor, checked against the factor's
+# dimension and coordinate.
+.bt_deterministic_simplex_check <- function(weights, factor){
+
   if(ncol(weights) != factor$n_targets){
     stop(
       "Random-effect allocation factor metadata for '",

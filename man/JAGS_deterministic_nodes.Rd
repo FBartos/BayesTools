@@ -3,11 +3,14 @@
 \name{JAGS_deterministic_nodes}
 \alias{JAGS_deterministic_nodes}
 \alias{JAGS_evaluate_deterministic}
+\alias{JAGS_deterministic_evaluator}
 \title{Generated deterministic nodes}
 \usage{
 JAGS_deterministic_nodes(fit)
 
 JAGS_evaluate_deterministic(fit, draws = NULL, nodes = NULL)
+
+JAGS_deterministic_evaluator(fit, nodes = NULL)
 }
 \arguments{
 \item{fit}{a model fitted with \code{\link[=JAGS_fit]{JAGS_fit()}}.}
@@ -35,13 +38,22 @@ monitored in \code{fit}).
 
 \code{JAGS_evaluate_deterministic()} returns a numeric matrix with one row
 per draw and one column per coordinate of the evaluated nodes.
+
+\code{JAGS_deterministic_evaluator()} returns a function with one argument,
+\code{draws} (in the forms accepted by \code{JAGS_evaluate_deterministic()};
+a named numeric vector for one draw), that returns the matrix
+\code{JAGS_evaluate_deterministic(fit, draws, nodes)} returns, with the
+nodes of \code{fit} resolved when the evaluator is created.
+\code{JAGS_evaluate_deterministic()} is this evaluator applied once.
 }
 \description{
 \code{JAGS_deterministic_nodes()} lists the deterministic
 nodes that BayesTools generates in the JAGS model of a fit, with the family
 that defines them, the coordinates they produce, and the coordinates they
 are computed from. \code{JAGS_evaluate_deterministic()} recomputes their
-values from draws of those coordinates.
+values from draws of those coordinates. \code{JAGS_deterministic_evaluator()}
+resolves the nodes of a fit once and returns a function that evaluates them
+on draws, for repeated evaluations (e.g. one draw at a time).
 }
 \details{
 Each generated node belongs to one family, which defines both the

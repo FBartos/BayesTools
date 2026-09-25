@@ -201,6 +201,119 @@
   )
 }
 
+# A prepared evaluator of a "random_sd" node (JAGS_deterministic_evaluator()):
+# a function of a lookup with the values .bt_dnode_random_sd_evaluate()
+# gives. The columns of the source, the Dirichlet weights (or their gamma
+# auxiliaries) and the gates are located once per set of draw column names,
+# with the lookup rules of the node evaluator (a column, else the location of
+# a point prior for the source; the weight columns, else the auxiliaries, of
+# a Dirichlet prior), and the values go through the same factor chain and
+# checks.
+.bt_dnode_random_sd_evaluator <- function(node, prior_list){
+
+  spec <- node$spec
+  factors <- lapply(seq_along(spec$factors), function(i){
+    factor <- spec$factors[[i]]
+    factor$plan_index <- i
+    factor
+  })
+  columns <- NULL
+  plan <- NULL
+
+  resolve <- function(column_names){
+    position <- function(name) match(name, column_names)
+    source <- list(index = position(spec$source_name), location = NULL)
+    if(is.na(source$index)){
+      prior <- prior_list[[sub("\\[[0-9]+\\]$", "", spec$source_name)]]
+      location <- if(is.prior(prior) && is.prior.point(prior)) prior$parameters[["location"]]
+      if(length(location) != 1L || is.na(location)){
+        return(NULL)
+      }
+      source$location <- location
+    }
+    factor_plans <- lapply(factors, function(factor){
+      out <- list(
+        gate = if(is.null(factor$inclusion_name)) NULL else position(factor$inclusion_name)
+      )
+      if(is.null(factor$weight_name)){
+        return(out)
+      }
+      prior <- if(factor$weight_name %in% names(prior_list)) prior_list[[factor$weight_name]]
+      if(is.null(prior) || !is.prior.simplex(prior) ||
+         !identical(prior$distribution, "dirichlet")){
+        return(out)
+      }
+      K <- prior$parameters[["K"]]
+      weight_names <- paste0(factor$weight_name, "[", seq_len(K), "]")
+      eta_names <- paste0(.JAGS_prior_dirichlet_eta_name(factor$weight_name), "[", seq_len(K), "]")
+      if(!anyNA(position(weight_names))){
+        out$weights <- position(weight_names)
+      }else if(!anyNA(position(eta_names))){
+        out$eta <- position(eta_names)
+        out$eta_names <- eta_names
+      }
+      out
+    })
+    list(source = source, factors = factor_plans)
+  }
+
+  function(lookup){
+
+    draws <- lookup$draws
+    if(!identical(colnames(draws), columns)){
+      plan <<- resolve(colnames(draws))
+      columns <<- colnames(draws)
+    }
+    if(is.null(plan)){
+      return(NULL)
+    }
+    base <- if(is.na(plan$source$index)){
+      rep(plan$source$location, lookup$n)
+    }else{
+      draws[, plan$source$index]
+    }
+    values <- .bt_dnode_allocation_chain(
+      base = base,
+      factors = factors,
+      weights_of = function(factor){
+        factor_plan <- plan$factors[[factor$plan_index]]
+        weights <- if(!is.null(factor_plan$weights)){
+          .bt_random_effect_validate_dirichlet_weights(
+            draws[, factor_plan$weights, drop = FALSE],
+            factor$weight_name
+          )
+        }else if(!is.null(factor_plan$eta)){
+          .bt_random_effect_dirichlet_eta_weights(
+            draws[, factor_plan$eta, drop = FALSE],
+            factor_plan$eta_names
+          )
+        }
+        if(is.null(weights)){
+          return(NULL)
+        }
+        .bt_deterministic_simplex_check(weights, factor)
+      },
+      gate_of = function(factor){
+        gate <- plan$factors[[factor$plan_index]]$gate
+        if(is.null(gate)){
+          return(rep(1, lookup$n))
+        }
+        if(is.na(gate)){
+          return(NULL)
+        }
+        .bt_random_effect_allocation_gate_values(
+          as.numeric(draws[, gate]),
+          factor$inclusion_name
+        )
+      }
+    )
+    if(is.null(values)){
+      return(NULL)
+    }
+    matrix(values, nrow = lookup$n, ncol = 1L, dimnames = list(NULL, node$coordinates))
+  }
+}
+
 # The allocated SD nodes of a random-effect block: one block SD, or one node
 # per SD component of an 'sd_component' allocation. Blocks with a row-indexed
 # external source define no SD nodes.

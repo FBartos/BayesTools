@@ -642,6 +642,119 @@ test_that("JAGS_evaluate_deterministic() validates its node selection", {
   )
 })
 
+# A fitted object with a gated total-variance allocation of the SDs of two
+# random intercepts over synthetic draws (no JAGS run).
+.dnode_gated_fit <- function(n = 200L){
+
+  result <- JAGS_formula(
+    formula = ~ 1 + random(1 | study, name = "study", covariance = "diag") +
+      random(1 | esid, name = "esid", covariance = "diag"),
+    parameter = "mu",
+    data = data.frame(study = factor(c("a", "a", "b", "b")), esid = factor(1:4)),
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      sd = prior("gamma", list(2, 2)),
+      allocation = list(random_variance_allocation(
+        name = "split", terms = c(study = "study", esid = "esid"),
+        sd = prior("normal", list(0, 1), list(0, Inf)),
+        inclusion = list(study = prior("spike", list(location = .5)))
+      ))
+    )
+  )
+  share <- seq(0.02, 0.98, length.out = n)
+  samples <- cbind(
+    mu_intercept = rep(c(-0.1, 0.1), length.out = n),
+    mu__xRE_ALLOCx_split__allocation_sd = 0.3 + 0.4 * share,
+    "mu__xRE_ALLOCx_split__weight[1]" = share,
+    "mu__xRE_ALLOCx_split__weight[2]" = 1 - share,
+    mu__xRE_ALLOCx_split__include_study_indicator = rep(c(0, 1), length.out = n)
+  )
+  fit <- coda::mcmc.list(coda::mcmc(samples))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- result[["prior_list"]]
+  attr(fit, "formula_design") <- list(mu = result[["formula_design"]])
+  fit <- BayesTools:::.bt_attach_parameter_map(fit)
+  fit <- BayesTools:::.bt_attach_draw_geometry(fit)
+  BayesTools:::.bt_attach_fit_contract(fit)
+}
+
+test_that("JAGS_deterministic_evaluator() resolves the nodes once and reproduces their evaluators", {
+
+  fit <- .dnode_gated_fit()
+  draws <- as.matrix(fit[[1L]])
+  nodes <- c("mu__xREx__study_intercept", "mu__xREx__esid_intercept")
+  registry <- BayesTools:::.bt_deterministic_nodes_fit(fit)
+  prior_list <- attr(fit, "prior_list")
+  # the node evaluator every other consumer uses
+  reference <- function(draws){
+    lookup <- BayesTools:::.bt_deterministic_lookup(draws, prior_list)
+    do.call(cbind, lapply(registry[nodes], BayesTools:::.bt_deterministic_node_evaluate,
+                          lookup = lookup))
+  }
+
+  # the registry is built once, when the evaluator is created
+  builds <- 0L
+  build_registry <- BayesTools:::.bt_deterministic_nodes_fit
+  local_mocked_bindings(.bt_deterministic_nodes_fit = function(fit){
+    builds <<- builds + 1L
+    build_registry(fit)
+  })
+  evaluate <- JAGS_deterministic_evaluator(fit, nodes = nodes)
+  all_rows <- evaluate(draws)
+  by_row <- t(vapply(seq_len(nrow(draws)), function(i) evaluate(draws[i, ]), numeric(2)))
+  evaluate(draws[1:3, rev(colnames(draws))])
+  expect_identical(builds, 1L)
+
+  expect_identical(colnames(all_rows), nodes)
+  expect_equal(unname(all_rows), unname(reference(draws)), tolerance = 1e-14)
+  expect_identical(all_rows, reference(draws))
+  expect_identical(unname(by_row), unname(all_rows))
+  expect_identical(all_rows, JAGS_evaluate_deterministic(fit, draws, nodes = nodes))
+  # the SD of the gated study intercept is T * gate * sqrt(w[1])
+  expect_identical(
+    unname(all_rows[, 1L]),
+    unname(draws[, "mu__xRE_ALLOCx_split__allocation_sd"] *
+             sqrt(draws[, "mu__xRE_ALLOCx_split__weight[1]"]) *
+             draws[, "mu__xRE_ALLOCx_split__include_study_indicator"])
+  )
+  # columns in another order are located again
+  reordered <- draws[, rev(colnames(draws))]
+  expect_identical(evaluate(reordered), all_rows)
+
+  # the Dirichlet weights from their gamma auxiliaries
+  eta_names <- paste0("prior_par_eta_mu__xRE_ALLOCx_split__weight[", 1:2, "]")
+  expect_identical(
+    BayesTools:::.JAGS_prior_dirichlet_eta_name("mu__xRE_ALLOCx_split__weight"),
+    "prior_par_eta_mu__xRE_ALLOCx_split__weight"
+  )
+  eta <- draws[, setdiff(colnames(draws), paste0("mu__xRE_ALLOCx_split__weight[", 1:2, "]"))]
+  eta <- cbind(eta, 3 * draws[, paste0("mu__xRE_ALLOCx_split__weight[", 1:2, "]")])
+  colnames(eta)[ncol(eta) - 1:0] <- eta_names
+  expect_identical(evaluate(eta), reference(eta))
+
+  # unavailable dependencies and invalid gates stop as in the node evaluator
+  expect_error(
+    evaluate(draws[, colnames(draws) != "mu__xRE_ALLOCx_split__allocation_sd"]),
+    "Deterministic node 'mu__xREx__study_intercept' is unavailable from 'draws'",
+    fixed = TRUE
+  )
+  expect_identical(
+    dim(JAGS_deterministic_evaluator(fit)(draws[, colnames(draws) != "mu__xRE_ALLOCx_split__allocation_sd"])),
+    c(nrow(draws), 0L)
+  )
+  expect_error(
+    evaluate(draws[, colnames(draws) != "mu__xRE_ALLOCx_split__include_study_indicator"]),
+    "Random-effect allocation inclusion samples are missing Bernoulli indicator 'mu__xRE_ALLOCx_split__include_study_indicator'.",
+    fixed = TRUE
+  )
+  invalid <- draws
+  invalid[1L, "mu__xRE_ALLOCx_split__include_study_indicator"] <- .5
+  expect_error(evaluate(invalid), class = "BayesTools_random_effect_allocation_out_of_support")
+  expect_error(JAGS_deterministic_evaluator(fit, nodes = "sd"),
+               "'nodes' contains names that are not generated deterministic nodes of 'fit': 'sd'.",
+               fixed = TRUE)
+})
+
 test_that("JAGS_formula() emits the formula syntax from the linear predictor node", {
 
   sd_prior <- prior("normal", list(0, 1), list(0, Inf))
