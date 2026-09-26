@@ -1856,25 +1856,6 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       note = "Log-intercept formula with a standardized predictor for label and transform checks."
     ),
     catalog_row(
-      "fit_label_lkj",
-      has_marglik = FALSE,
-      model_family = "gaussian-regression-random-effects",
-      formula = '~ 1 + x + z + (1 + x + z | g)',
-      scale_policy = "random-effects,lkj",
-      prior_features = "simple,formula,random-effects,lkj",
-      expected_monitor = c(
-        "mu_intercept", "mu_x", "mu_z", "mu__xREx__g_intercept", "mu__xREx__g_x", "mu__xREx__g_z",
-        .bayestools_lkj_monitors("mu__xREx__g", 3L),
-        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 4L, 3L)
-      ),
-      expected_formula_parameters = "mu",
-      oracle_type = "formula-fixture-metadata",
-      expected_chains = 1L,
-      expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
-      note = "Three-term LKJ random-effect block for raw backend-coordinate labels."
-    ),
-    catalog_row(
       "fit_label_ordered",
       has_marglik = FALSE,
       model_family = "gaussian-regression",
@@ -1991,26 +1972,6 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       note = "Total-variance allocation of two random intercepts with a standardized fixed predictor."
     ),
     catalog_row(
-      "fit_re_summary_composite",
-      has_marglik = FALSE,
-      model_family = "gaussian-regression-random-effects",
-      formula = '~ 1 + x + (1 + x | g)',
-      scale_policy = "random-effects,lkj,automatic",
-      prior_features = "simple,formula,random-effects,lkj",
-      expected_monitor = c(
-        "mu_intercept", "mu_x", "mu__xREx__g_intercept", "mu__xREx__g_x",
-        .bayestools_lkj_monitors("mu__xREx__g", 2L),
-        .bayestools_random_z_monitors("mu__xREx__g_xRE_Zx", 4L, 2L)
-      ),
-      expected_formula_parameters = "mu",
-      expected_formula_scale = c(mu = "mu_x"),
-      oracle_type = "formula-fixture-metadata",
-      expected_chains = 1L,
-      expected_iterations = 200L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
-      note = "Correlated random intercept and standardized slope for composite original-scale correlations."
-    ),
-    catalog_row(
       "fit_re_summary_allocated",
       has_marglik = FALSE,
       model_family = "gaussian-regression-random-effects",
@@ -2117,7 +2078,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       has_marglik = FALSE,
       model_family = "gaussian-regression-random-effects",
       formula = '~ 1 + x + z + (1 + x | id)',
-      scale_policy = "random-effects,lkj",
+      scale_policy = "random-effects,lkj,automatic",
       prior_features = "simple,formula,random-effects,lkj",
       expected_monitor = c(
         "mu_intercept", "mu_x", "mu_z", "mu__xREx__id_intercept", "mu__xREx__id_x",
@@ -2125,11 +2086,12 @@ bayestools_semantic_fit_catalog_overrides <- function() {
         .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 6L, 2L)
       ),
       expected_formula_parameters = "mu",
+      expected_formula_scale = c(mu = "mu_x"),
       oracle_type = "formula-fixture-metadata",
       expected_chains = 2L,
       expected_iterations = 300L,
       flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
-      note = "Two-term LKJ random-effect block for exact correlation diagonals."
+      note = "Two-term LKJ random-effect block with a standardized slope for exact correlation diagonals and composite original-scale correlations."
     ),
     catalog_row(
       "fit_lkj_diagonal_K3",
@@ -2148,7 +2110,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_chains = 2L,
       expected_iterations = 300L,
       flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
-      note = "Three-term LKJ random-effect block for exact correlation diagonals."
+      note = "Three-term LKJ random-effect block for exact correlation diagonals and raw backend-coordinate labels."
     )
   ))
 

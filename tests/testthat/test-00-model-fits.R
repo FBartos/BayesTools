@@ -2684,34 +2684,6 @@ test_that("Parameter-label models fit correctly", {
     note = "Log-intercept formula with a standardized predictor for label and transform checks."
   )$registry_entry
 
-  # An LKJ block with three terms.
-  set.seed(1)
-  data <- data.frame(
-    x = rep(seq(-1, 1, length.out = 12), 4),
-    z = rep(c(-1, 1), 24),
-    g = factor(rep(c("A", "B", "C", "D"), each = 12))
-  )
-  data$y <- stats::rnorm(nrow(data))
-  model_registry[["fit_label_lkj"]] <<- save_fit(
-    suppressWarnings(JAGS_fit(
-      model_syntax       = syntax,
-      data               = list(y = data$y, N = nrow(data)),
-      formula_list       = list(mu = ~ 1 + x + z + (1 + x + z | g)),
-      formula_data_list  = list(mu = data),
-      formula_prior_list = list(mu = list(
-        intercept = prior("normal", list(0, 1)),
-        x         = prior("normal", list(0, 1)),
-        z         = prior("normal", list(0, 1))
-      )),
-      formula_random_prior_list = list(mu = prior_random(g = random_block(sd = sd_prior))),
-      chains = 1, adapt = 100, burnin = 100, sample = 100, silent = TRUE, seed = 3
-    )),
-    "fit_label_lkj",
-    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
-    assertion_only = TRUE,
-    note = "Three-term LKJ random-effect block for raw backend-coordinate labels."
-  )$registry_entry
-
   # An ordered factor with its internal allocation shares.
   set.seed(1)
   data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 12), levels = c("lo", "mid", "hi")))
@@ -2836,35 +2808,6 @@ test_that("Random-effect summary posterior models fit correctly", {
   skip_if_not_installed("runjags")
 
   syntax <- "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 4)\n}\n}"
-
-  # The original-scale correlation of a us() block with a scaled slope.
-  set.seed(1)
-  data <- data.frame(
-    x = rep(seq(-1, 1, length.out = 12), 4) * 3 + 1,
-    g = factor(rep(c("A", "B", "C", "D"), each = 12))
-  )
-  data$y <- stats::rnorm(nrow(data))
-  model_registry[["fit_re_summary_composite"]] <<- save_fit(
-    suppressWarnings(JAGS_fit(
-      model_syntax       = syntax,
-      data               = list(y = data$y, N = nrow(data)),
-      formula_list       = list(mu = ~ 1 + x + (1 + x | g)),
-      formula_data_list  = list(mu = data),
-      formula_prior_list = list(mu = list(
-        intercept = prior("normal", list(0, 1)),
-        x         = prior("normal", list(0, 1))
-      )),
-      formula_random_prior_list = list(mu = prior_random(g = random_block(
-        sd = prior("normal", list(0, 1), list(0, Inf))
-      ))),
-      formula_scale_list = list(mu = list(x = TRUE)),
-      chains = 1, adapt = 100, burnin = 100, sample = 200, silent = TRUE, seed = 3
-    )),
-    "fit_re_summary_composite",
-    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
-    assertion_only = TRUE,
-    note = "Correlated random intercept and standardized slope for composite original-scale correlations."
-  )$registry_entry
 
   # Four us() blocks with a scaled slope: g splits a continuous scale prior
   # into its SDs (no gate); s splits the SD of a gate-only allocation with an
@@ -3031,7 +2974,10 @@ test_that("Convergence-role and LKJ-diagonal models fit correctly", {
     note = "Monitored fully and partly observed data for convergence roles."
   )$registry_entry
 
-  # LKJ blocks of two and three terms.
+  # LKJ blocks of two and three terms. The two-term block with a
+  # standardized slope also carries the composite original-scale correlation
+  # of test-random-effects-summary-posterior-fixture.R, and the three-term
+  # block the raw LKJ primitive rows of test-parameter-labels-fixture.R.
   set.seed(1)
   data_formula <- data.frame(
     x  = stats::rnorm(48),
@@ -3039,7 +2985,7 @@ test_that("Convergence-role and LKJ-diagonal models fit correctly", {
     id = factor(rep(LETTERS[1:6], each = 8L))
   )
   data <- list(y = stats::rnorm(48, 0.3 * data_formula$x), N = 48L)
-  lkj_fit <- function(formula, seed){
+  lkj_fit <- function(formula, seed, formula_scale = NULL){
     JAGS_fit(
       model_syntax = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 1)\n}\n}",
       data = data,
@@ -3054,15 +3000,17 @@ test_that("Convergence-role and LKJ-diagonal models fit correctly", {
         sd = prior("normal", list(0, 1), list(0, Inf)),
         cor = prior_lkj(eta = 1)
       ))),
+      formula_scale_list = formula_scale,
       chains = 2, adapt = 100, burnin = 100, sample = 300, seed = seed
     )
   }
   model_registry[["fit_lkj_diagonal_K2"]] <<- save_fit(
-    lkj_fit(~ 1 + x + z + (1 + x | id), seed = 11L),
+    lkj_fit(~ 1 + x + z + (1 + x | id), seed = 11L,
+            formula_scale = list(mu = list(x = TRUE))),
     "fit_lkj_diagonal_K2",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
     assertion_only = TRUE,
-    note = "Two-term LKJ random-effect block for exact correlation diagonals."
+    note = "Two-term LKJ random-effect block with a standardized slope for exact correlation diagonals and composite original-scale correlations."
   )$registry_entry
 
   model_registry[["fit_lkj_diagonal_K3"]] <<- save_fit(
@@ -3070,7 +3018,7 @@ test_that("Convergence-role and LKJ-diagonal models fit correctly", {
     "fit_lkj_diagonal_K3",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
     assertion_only = TRUE,
-    note = "Three-term LKJ random-effect block for exact correlation diagonals."
+    note = "Three-term LKJ random-effect block for exact correlation diagonals and raw backend-coordinate labels."
   )$registry_entry
 })
 

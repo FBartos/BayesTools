@@ -10,7 +10,7 @@ skip_if_not_test_profile("fixture")
 #   ordered-factor shares, and random-effect SDs of standardized predictors.
 #
 # MODELS/FIXTURES:
-#   - fit_label_* models from test-00-model-fits.R
+#   - fit_label_* and fit_lkj_diagonal_K3 models from test-00-model-fits.R
 #
 # TAGS: @fixture, @JAGS, @labels
 # ============================================================================ #
@@ -59,13 +59,14 @@ test_that("estimates tables render the rows of a log-intercept formula from thei
 
 test_that("raw rows of LKJ primitives are rendered backend coordinates", {
 
-  fit <- .label_cached_fit("fit_label_lkj")
+  # the three-term LKJ block of the grouping factor id
+  fit <- .label_cached_fit("fit_lkj_diagonal_K3")
   raw <- JAGS_estimates_table(fit, random_effects_summary = "raw",
                               remove_diagnostics = TRUE)
   primitives <- c(
-    "(mu) lkj_u(intercept,x | g)",
-    "(mu) lkj_u(intercept,z | g)",
-    "(mu) lkj_u(x,z | g)"
+    "(mu) lkj_u(intercept,x | id)",
+    "(mu) lkj_u(intercept,z | id)",
+    "(mu) lkj_u(x,z | id)"
   )
   # each primitive row summarizes its own backend coordinate
   expect_true(all(primitives %in% rownames(raw)))
@@ -73,7 +74,7 @@ test_that("raw rows of LKJ primitives are rendered backend coordinates", {
   draws <- do.call(rbind, lapply(fit$mcmc, as.matrix))
   expect_equal(
     raw[primitives, "Mean"],
-    unname(colMeans(draws[, paste0("mu__xREx__g_xRE_CORx_lkj_u[", 1:3, "]")])),
+    unname(colMeans(draws[, paste0("mu__xREx__id_xRE_CORx_lkj_u[", 1:3, "]")])),
     tolerance = 1e-12
   )
   expect_identical(

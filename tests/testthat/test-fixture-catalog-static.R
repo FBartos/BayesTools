@@ -18,9 +18,9 @@ test_that("source-derived fixture catalog covers every generated fit", {
   catalog <- bayestools_expected_fit_catalog()
   expect_expected_fit_catalog_schema(catalog)
 
-  expect_equal(nrow(source_rows), 106L)
+  expect_equal(nrow(source_rows), 104L)
   expect_equal(sum(source_rows$has_marglik), 22L)
-  expect_equal(sum(source_rows$assertion_only), 33L)
+  expect_equal(sum(source_rows$assertion_only), 31L)
   expect_equal(nrow(catalog), nrow(source_rows))
   expect_equal(catalog$model_name, source_rows$model_name)
   expect_equal(catalog$fit_file, paste0(catalog$model_name, ".RDS"))

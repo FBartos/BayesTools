@@ -11,7 +11,7 @@ skip_if_not_test_profile("fixture")
 #   mixture and spike-and-slab formula and random-effect SD priors.
 #
 # MODELS/FIXTURES:
-#   - fit_re_summary_* models from test-00-model-fits.R
+#   - fit_re_summary_* and fit_lkj_diagonal_K2 models from test-00-model-fits.R
 #
 # TAGS: @fixture, @JAGS, @random-effects
 # ============================================================================ #
@@ -29,7 +29,7 @@ test_that("parameter_mixed_posterior declares atoms from structure without a pri
 
   # the original-scale correlation of a us() block with a scaled slope is a
   # composite of the LKJ primitive and both SDs: no prior density
-  fit <- .re_summary_cached_fit("fit_re_summary_composite")
+  fit <- .re_summary_cached_fit("fit_lkj_diagonal_K2")
   catalog <- parameter_catalog(fit)
   correlation <- parameter_catalog_resolve(catalog, "(mu) cor(intercept,x)")
   expect_identical(correlation$quantities$source_type, "composite")
