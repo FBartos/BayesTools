@@ -7187,7 +7187,8 @@ test_that("fully structural fits retain deterministic draw geometry", {
 #
 # PURPOSE:
 #   Seeded fits and extensions: distinct chain seeds, reproducible draws, and
-#   the caller's random-number state around every seeded public function.
+#   the caller's random-number state around every seeded public function that
+#   fits or reads a fit.
 #
 # TAGS: @fit, @JAGS, @seed
 # ============================================================================ #
@@ -7267,44 +7268,8 @@ test_that("JAGS fits with priors only in the model syntax are reproducible for a
   }
 })
 
-.caller_rng_state <- function(){
-
-  exists <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
-  list(
-    exists = exists,
-    seed = if(exists) get(".Random.seed", envir = globalenv(), inherits = FALSE),
-    kind = RNGkind()
-  )
-}
-
-# A seeded call leaves the caller's generator as it found it (a Mersenne-Twister
-# or an L'Ecuyer-CMRG state, or no '.Random.seed' at all), and its value does
-# not depend on the caller's state.
-.expect_scoped_rng <- function(label, run){
-
-  values <- list()
-  for(caller_seed in c(1, 2)){
-    set.seed(caller_seed)
-    before <- .caller_rng_state()
-    values[[caller_seed]] <- run()
-    expect_identical(.caller_rng_state(), before, info = label)
-  }
-  expect_identical(values[[1L]], values[[2L]], info = label)
-
-  RNGkind("L'Ecuyer-CMRG")
-  set.seed(3)
-  before <- .caller_rng_state()
-  run()
-  expect_identical(.caller_rng_state(), before, info = label)
-
-  RNGkind("Mersenne-Twister")
-  rm(".Random.seed", envir = globalenv())
-  kind <- RNGkind()
-  run()
-  expect_false(exists(".Random.seed", envir = globalenv(), inherits = FALSE), info = label)
-  expect_identical(RNGkind(), kind, info = label)
-}
-
+# The JAGS-free part of these checks, JAGS_get_inits(), is a unit test
+# (test-JAGS-fit-settings.R); '.expect_scoped_rng()' is in common-functions.R.
 test_that("seeded public functions leave the caller's random-number state unchanged", {
 
   skip_if_not_installed("runjags")
@@ -7346,9 +7311,6 @@ test_that("seeded public functions leave the caller's random-number state unchan
   )
   is_null_list <- list(mu = c(FALSE, TRUE), s = c(FALSE, FALSE))
 
-  .expect_scoped_rng("JAGS_get_inits", function(){
-    JAGS_get_inits(priors, chains = 2, seed = 11)
-  })
   .expect_scoped_rng("JAGS_fit", function(){
     as.matrix(fit(priors, seed = 7)$mcmc)
   })
@@ -7382,20 +7344,7 @@ test_that("seeded public functions leave the caller's random-number state unchan
     transform_prior_samples(fit_alternative, n_samples = 100, seed = 5)
   })
 
-  # The seeded values are those of 'set.seed(seed)', as before the scoping.
-  set.seed(11)
-  expect_identical(
-    vapply(JAGS_get_inits(priors, chains = 2, seed = 11), `[[`, numeric(1), ".RNG.seed"),
-    as.numeric(local({ set.seed(11); sample.int(.Machine$integer.max, 2) }))
-  )
-
   # Unseeded calls take their seed from the caller's stream: one draw.
-  set.seed(9)
-  JAGS_get_inits(priors, chains = 2, seed = NULL)
-  after_inits <- .Random.seed
-  set.seed(9)
-  sample(666666, 1)
-  expect_identical(after_inits, .Random.seed)
   set.seed(9)
   mix_posteriors(models, c("mu", "s"), is_null_list, seed = NULL, n_samples = 200)
   after_mix <- .Random.seed

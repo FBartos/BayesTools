@@ -185,6 +185,45 @@ stored_environment_paths <- function(x, path = "x", skip = character()) {
   out
 }
 
+# The caller's random-number state: whether '.Random.seed' exists, its value,
+# and the generator kinds.
+.caller_rng_state <- function() {
+  exists <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+  list(
+    exists = exists,
+    seed = if (exists) get(".Random.seed", envir = globalenv(), inherits = FALSE),
+    kind = RNGkind()
+  )
+}
+
+# A seeded call leaves the caller's generator as it found it (a Mersenne-Twister
+# or an L'Ecuyer-CMRG state, or no '.Random.seed' at all), and its value does
+# not depend on the caller's state. Callers preserve and restore the seed and
+# the generator kinds around it.
+.expect_scoped_rng <- function(label, run) {
+  values <- list()
+  for (caller_seed in c(1, 2)) {
+    set.seed(caller_seed)
+    before <- .caller_rng_state()
+    values[[caller_seed]] <- run()
+    expect_identical(.caller_rng_state(), before, info = label)
+  }
+  expect_identical(values[[1L]], values[[2L]], info = label)
+
+  RNGkind("L'Ecuyer-CMRG")
+  set.seed(3)
+  before <- .caller_rng_state()
+  run()
+  expect_identical(.caller_rng_state(), before, info = label)
+
+  RNGkind("Mersenne-Twister")
+  rm(".Random.seed", envir = globalenv())
+  kind <- RNGkind()
+  run()
+  expect_false(exists(".Random.seed", envir = globalenv(), inherits = FALSE), info = label)
+  expect_identical(RNGkind(), kind, info = label)
+}
+
 # ============================================================================ #
 # HELPER FUNCTIONS: Reference File Testing
 # ============================================================================ #

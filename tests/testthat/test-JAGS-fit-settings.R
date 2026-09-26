@@ -198,6 +198,38 @@ test_that("JAGS chain seeds do not overlap across adjacent seeds and keep the in
   )
 })
 
+test_that("JAGS_get_inits leaves the caller's random-number state unchanged", {
+
+  # The JAGS-free part of the scoped-RNG checks of the seeded public functions;
+  # those that fit or read a fit are live tests in test-00-model-fits.R.
+  withr::local_preserve_seed()
+  withr::defer(RNGkind("default", "default", "default"))
+  priors <- list(
+    mu = prior("normal", list(0, 1)),
+    s = prior("normal", list(0, 1), list(0, Inf))
+  )
+
+  # A Mersenne-Twister or an L'Ecuyer-CMRG caller state, or no '.Random.seed'.
+  .expect_scoped_rng("JAGS_get_inits", function(){
+    JAGS_get_inits(priors, chains = 2, seed = 11)
+  })
+
+  # The seeded values are those of 'set.seed(seed)', as before the scoping.
+  set.seed(11)
+  expect_identical(
+    vapply(JAGS_get_inits(priors, chains = 2, seed = 11), `[[`, numeric(1), ".RNG.seed"),
+    as.numeric(local({ set.seed(11); sample.int(.Machine$integer.max, 2) }))
+  )
+
+  # Unseeded calls take their seed from the caller's stream: one draw.
+  set.seed(9)
+  JAGS_get_inits(priors, chains = 2, seed = NULL)
+  after_inits <- .Random.seed
+  set.seed(9)
+  sample(666666, 1)
+  expect_identical(after_inits, .Random.seed)
+})
+
 test_that("JAGS restart seeds come from their own stream of the seed", {
 
   restart_seeds <- function(seed, restarts){
