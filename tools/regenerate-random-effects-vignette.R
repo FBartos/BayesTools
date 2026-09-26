@@ -1,36 +1,6 @@
-main <- function() {
-  if (!file.exists("DESCRIPTION") || !dir.exists("vignettes")) {
-    stop(
-      "Run this script from the BayesTools project root.",
-      call. = FALSE
-    )
-  }
-
-  source_file <- normalizePath(
-    file.path("vignettes", "RandomEffects.Rmd"),
-    winslash = "/",
-    mustWork = TRUE
-  )
-  temporary_file <- file.path(
-    dirname(source_file),
-    "RandomEffects-regenerate.Rmd"
-  )
-  if (file.exists(temporary_file)) {
-    stop(
-      "The temporary RandomEffects regeneration vignette already exists.",
-      call. = FALSE
-    )
-  }
-  on.exit(
-    {
-      if (file.exists(temporary_file)) {
-        unlink(temporary_file)
-      }
-    },
-    add = TRUE
-  )
-
-  lines <- readLines(source_file, warn = FALSE, encoding = "UTF-8")
+# Rewrites the RandomEffects vignette into the document that refits and
+# saves every cached model.
+random_effects_regeneration_lines <- function(lines) {
   can_evaluate_line <- grepl("can_evaluate <- ", lines, fixed = TRUE)
   if (sum(can_evaluate_line) != 1L) {
     stop(
@@ -127,7 +97,81 @@ main <- function() {
   }
   lines[reload_line] <- "# The regeneration driver loaded the current source before knitting."
 
-  writeLines(lines, temporary_file, useBytes = TRUE)
+  # Knitting evaluates the setup chunk in the environment that later holds the
+  # new fits. The regeneration never reads a previous cache, so no earlier
+  # model can be bound there.
+  cache_read_start <- which(startsWith(
+    lines,
+    "random_effects_cache <- validate_random_effects_vignette_cache("
+  ))
+  if (length(cache_read_start) != 1L) {
+    stop(
+      "Could not identify the RandomEffects cache-reading call.",
+      call. = FALSE
+    )
+  }
+  call_ends <- which(lines == ")")
+  cache_read_end <- call_ends[call_ends > cache_read_start][1L]
+  if (is.na(cache_read_end)) {
+    stop(
+      "Could not identify the end of the RandomEffects cache-reading call.",
+      call. = FALSE
+    )
+  }
+  lines <- c(
+    lines[seq_len(cache_read_start - 1L)],
+    "# The regeneration driver never reads a previous cache.",
+    "random_effects_cache <- list(valid = FALSE, cache = NULL)",
+    lines[seq.int(cache_read_end + 1L, length(lines))]
+  )
+  if (any(grepl("validate_random_effects_vignette_cache(", lines, fixed = TRUE))) {
+    stop(
+      "The RandomEffects regeneration document still reads a cache.",
+      call. = FALSE
+    )
+  }
+
+  lines
+}
+
+main <- function() {
+  if (!file.exists("DESCRIPTION") || !dir.exists("vignettes")) {
+    stop(
+      "Run this script from the BayesTools project root.",
+      call. = FALSE
+    )
+  }
+
+  source_file <- normalizePath(
+    file.path("vignettes", "RandomEffects.Rmd"),
+    winslash = "/",
+    mustWork = TRUE
+  )
+  temporary_file <- file.path(
+    dirname(source_file),
+    "RandomEffects-regenerate.Rmd"
+  )
+  if (file.exists(temporary_file)) {
+    stop(
+      "The temporary RandomEffects regeneration vignette already exists.",
+      call. = FALSE
+    )
+  }
+  on.exit(
+    {
+      if (file.exists(temporary_file)) {
+        unlink(temporary_file)
+      }
+    },
+    add = TRUE
+  )
+
+  lines <- readLines(source_file, warn = FALSE, encoding = "UTF-8")
+  writeLines(
+    random_effects_regeneration_lines(lines),
+    temporary_file,
+    useBytes = TRUE
+  )
   pkgload::load_all(".", quiet = TRUE)
   message("Rendering the complete RandomEffects regeneration document.")
   rmarkdown::render(

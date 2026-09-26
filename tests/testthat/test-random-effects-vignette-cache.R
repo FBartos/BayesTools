@@ -1679,3 +1679,72 @@ test_that("vignette statically uses guarded regeneration and exact seeds", {
   expect_lt(begin_start, min(regeneration_starts))
   expect_gt(writer_start, max(regeneration_starts))
 })
+
+test_that("regeneration document never reads a previous cache", {
+  script_file <- testthat::test_path(
+    "..", "..", "tools", "regenerate-random-effects-vignette.R"
+  )
+  skip_if_not(
+    file.exists(script_file),
+    "The RandomEffects regeneration script is not available in this context."
+  )
+  # Define the script's functions without running its main().
+  script_environment <- new.env(parent = globalenv())
+  for(expression in parse(script_file, keep.source = FALSE)){
+    if(is.call(expression) &&
+        identical(expression[[1L]], as.name("<-")) &&
+        is.call(expression[[3L]]) &&
+        identical(expression[[3L]][[1L]], as.name("function"))){
+      eval(expression, envir = script_environment)
+    }
+  }
+  rmd_file <- testthat::test_path("..", "..", "vignettes", "RandomEffects.Rmd")
+  lines <- readLines(rmd_file, warn = FALSE, encoding = "UTF-8")
+  regeneration_lines <-
+    script_environment$random_effects_regeneration_lines(lines)
+
+  expect_false(any(grepl(
+    "validate_random_effects_vignette_cache(",
+    regeneration_lines,
+    fixed = TRUE
+  )))
+  expect_match(
+    .random_effects_test_chunk(
+      regeneration_lines,
+      "load-precomputed-random-effects"
+    ),
+    "eval = FALSE"
+  )
+
+  # Evaluate the setup chunk's cache assignments with a reader that would
+  # return a valid previous cache.
+  setup_lines <- strsplit(
+    .random_effects_test_chunk(regeneration_lines, "setup"),
+    "\n",
+    fixed = TRUE
+  )[[1L]]
+  setup_expressions <- as.list(parse(
+    text = setup_lines[-c(1L, length(setup_lines))],
+    keep.source = FALSE
+  ))
+  cache_assignments <- Filter(function(expression){
+    is.call(expression) &&
+      identical(expression[[1L]], as.name("<-")) &&
+      (identical(expression[[2L]], as.name("random_effects_cache")) ||
+        identical(expression[[2L]], as.name("random_effects_models")))
+  }, setup_expressions)
+  expect_length(cache_assignments, 2L)
+  previous_cache_reads <- 0L
+  setup_environment <- new.env(parent = baseenv())
+  setup_environment$random_effects_cache_file <- "RandomEffects.RDS"
+  setup_environment$validate_random_effects_vignette_cache <- function(...){
+    previous_cache_reads <<- previous_cache_reads + 1L
+    list(valid = TRUE, cache = .random_effects_test_models())
+  }
+  for(expression in cache_assignments){
+    eval(expression, envir = setup_environment)
+  }
+  expect_identical(previous_cache_reads, 0L)
+  expect_false(isTRUE(setup_environment$random_effects_cache$valid))
+  expect_null(setup_environment$random_effects_models)
+})
