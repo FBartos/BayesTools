@@ -344,7 +344,11 @@ A product component of a combination (a `multiply_by` product, or an ordered
 level as its total times its Beta allocation share) with a structural route
 is constructed from that route (`.prior_linear_density_route_product()`): its
 grid is the route's continuous density on at most 1024 values over the
-product range, with the product's exact atoms. The capped product grid of the
+product range, with the product's exact atoms. The grid values share the
+batched quadrature of plotted densities; unlike plotted curves, the values of
+a leaf whose integrand has an integrable singularity are batched as well,
+accepted at the ordinates' criterion (relative error estimate at most 1e-4),
+and only values it does not accept take their ordinate. The capped product grid of the
 factors' grids (`.prior_linear_density_product()`), which a heavy-tailed
 factor can leave without a finite positive mass, remains only for products
 without a structural route (plots only). The route-evaluated grid records
