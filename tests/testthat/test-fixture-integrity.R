@@ -264,18 +264,14 @@ test_that("cataloged fixture files expose expected monitors and metadata", {
 test_that("cached fits keep no environment of the code that fitted them", {
   # The fixture fits are created inside the fitting tests: a formula, terms
   # object, or closure stored with such an environment would carry the test
-  # workspace into every saved fit. runjags keeps the compiled rjags model in
-  # 'method.options$rjags': closures over the frame of rjags' jags.model().
+  # workspace into every saved fit. Fits also leave without runjags' compiled
+  # rjags model, closures over the frame that compiled it.
   catalog <- bayestools_required_fit_catalog()
 
   for (model_name in catalog$model_name) {
     fit <- readRDS(expect_fit_file_present(model_name, catalog = catalog))
     expect_identical(
-      stored_environment_paths(
-        fit,
-        model_name,
-        skip = paste0(model_name, "$method.options$rjags")
-      ),
+      stored_environment_paths(fit, model_name),
       character(),
       info = model_name
     )

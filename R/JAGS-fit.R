@@ -200,7 +200,10 @@
 #' reset sampler tuning and follows runjags' adaptation policy. The model is
 #' always recompiled from these stored states, never continued from a compiled
 #' model left in the session, so extending the same object twice, or a saved and
-#' reloaded copy of it, gives identical draws.
+#' reloaded copy of it, gives identical draws. Neither function keeps runjags'
+#' compiled rjags model (\code{method.options$rjags}) in the returned object;
+#' \code{runjags::extend.jags()} recompiles a model without it, as after
+#' reloading.
 #'
 #' @seealso [JAGS_check_convergence()]
 #'
@@ -655,6 +658,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   }
 
   # add information to the fitted object
+  fit <- .bt_fit_without_live_model(fit)
   attr(fit, "prior_list")   <- prior_list
   attr(fit, "model_syntax") <- model_syntax
   attr(fit, "add_parameters") <- add_parameters
@@ -886,11 +890,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   # so that an extension depended on earlier in-memory extensions of the same
   # object. Extending from the stored chain states alone makes it depend only
   # on the fitted object, as after saving and reloading it.
-  if(is.list(fit[["method.options"]])){
-    fit[["method.options"]] <- fit[["method.options"]][
-      names(fit[["method.options"]]) != "rjags"
-    ]
-  }
+  fit <- .bt_fit_without_live_model(fit)
   fitted_parameter_map <- attr(fit, "parameter_map", exact = TRUE)
   backend_anchor     <- attr(fit, "backend_anchor", exact = TRUE)
   formula_design     <- attr(fit, "formula_design", exact = TRUE)
@@ -1063,6 +1063,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   }
 
   # add information to the fitted object
+  fit <- .bt_fit_without_live_model(fit)
   attr(fit, "prior_list")   <- prior_list
   attr(fit, "model_syntax") <- model_syntax
   attr(fit, "add_parameters") <- add_parameters
@@ -1097,4 +1098,21 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 
 .bt_jags_extend_time <- function(){
   Sys.time()
+}
+
+# runjags keeps the compiled rjags model of a run in 'method.options$rjags':
+# closures over the model's frame (its code, data, and initial values), about
+# 30-60 KB per fit. BayesTools continues a live model only within one call
+# (the autofit extensions of JAGS_fit() and JAGS_extend()); JAGS_extend()
+# recompiles from the stored chain states, as runjags does for a model that is
+# absent or no longer alive after saving and reloading. Fits leave without it.
+.bt_fit_without_live_model <- function(fit){
+
+  if(is.list(fit[["method.options"]])){
+    fit[["method.options"]] <- fit[["method.options"]][
+      names(fit[["method.options"]]) != "rjags"
+    ]
+  }
+
+  fit
 }

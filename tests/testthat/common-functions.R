@@ -141,15 +141,14 @@ build_test_parameter_coordinates <- function(columns, monitor_names = columns,
 # Paths of the formulas, terms objects, and closures stored in 'x' (list
 # elements and attributes, recursively) whose environment a saved copy of 'x'
 # serializes with everything it holds: any environment other than the base or
-# empty environment or a namespace. Environments are not entered; subtrees at
-# the paths in 'skip' are not inspected.
-stored_environment_paths <- function(x, path = "x", skip = character()) {
+# empty environment or a namespace. Environments are not entered.
+stored_environment_paths <- function(x, path = "x") {
   captured <- function(env) {
     !(identical(env, baseenv()) || identical(env, emptyenv()) || isNamespace(env))
   }
   out <- character()
   visit <- function(x, path) {
-    if (path %in% skip || is.environment(x)) {
+    if (is.environment(x)) {
       return(invisible())
     }
     if (is.function(x)) {

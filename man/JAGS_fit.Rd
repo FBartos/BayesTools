@@ -253,7 +253,10 @@ Stored parameter and RNG states initialize reconstruction; recompilation can
 reset sampler tuning and follows runjags' adaptation policy. The model is
 always recompiled from these stored states, never continued from a compiled
 model left in the session, so extending the same object twice, or a saved and
-reloaded copy of it, gives identical draws.
+reloaded copy of it, gives identical draws. Neither function keeps runjags'
+compiled rjags model (\code{method.options$rjags}) in the returned object;
+\code{runjags::extend.jags()} recompiles a model without it, as after
+reloading.
 }
 \description{
 A wrapper around

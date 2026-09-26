@@ -70,7 +70,10 @@ connections before reporting cleanup failure; do not run the runtime finish
 callback when worker shutdown failed. Explicit worker-output paths are
 call-specific and must not be replayed from a serialized fit.
 After a graceful last-valid-fit return, do not recapture `runtime_state` onto
-the retained fit from the failed attempt.
+the retained fit from the failed attempt. A compiled model is continued only
+within one call: returned fits carry no runjags `method.options$rjags`, and
+`JAGS_extend()` recompiles from the stored chain states, so extending a fit
+and a reloaded copy give identical draws.
 
 Do not silently repair malformed covariance matrices, alter prior bounds, drop
 formula terms, or substitute a different likelihood target. If a covariance

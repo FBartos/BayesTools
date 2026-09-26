@@ -7384,6 +7384,21 @@ test_that("JAGS_extend draws depend only on the stored fit", {
   expect_identical(draws(reloaded), draws(first))
   expect_identical(draws(other_caller), draws(first))
   expect_false(identical(draws(first), as.matrix(fit$mcmc)))
+
+  # Neither the fit nor its extension keeps runjags' compiled model. A fit
+  # that still carries one (as JAGS_fit() returned it before; compiled here by
+  # runjags from the fit) is larger by that model and extends to the same
+  # draws.
+  expect_null(fit$method.options$rjags)
+  expect_null(first$method.options$rjags)
+  with_model <- fit
+  with_model$method.options$rjags <- runjags::as.jags(fit, adapt = 0, quiet = TRUE)
+  model_size <- length(serialize(with_model$method.options$rjags, NULL))
+  expect_gt(
+    length(serialize(with_model, NULL)) - length(serialize(fit, NULL)),
+    0.9 * model_size
+  )
+  expect_identical(draws(JAGS_extend(with_model, autofit_control = control)), draws(first))
 })
 
 # ============================================================================ #
@@ -7499,12 +7514,7 @@ test_that("a fit created in a function does not keep that function's frame", {
   small_size <- length(serialize(small, NULL))
   large <- fit_random(1e6)
 
-  # runjags keeps the compiled rjags model in 'method.options$rjags': closures
-  # over the frame of rjags' jags.model(), not over the caller's.
-  expect_identical(
-    stored_environment_paths(large, "fit", skip = "fit$method.options$rjags"),
-    character()
-  )
+  expect_identical(stored_environment_paths(large, "fit"), character())
   # A kept frame adds the 8 MB local object; the parameter map's runtime cache
   # id, unique per fit, may differ by a few bytes.
   expect_lt(abs(length(serialize(large, NULL)) - small_size), 1024)

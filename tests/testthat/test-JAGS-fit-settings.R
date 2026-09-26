@@ -524,6 +524,74 @@ test_that("JAGS_fit autofit preserves the last valid fit after a backend error",
   )
 })
 
+test_that("fits leave JAGS_fit and JAGS_extend without runjags' compiled model", {
+
+  skip_if_not_installed("runjags")
+  # runjags keeps the compiled rjags model of a run in 'method.options$rjags'.
+  # The autofit extensions of one call continue it; the returned fit drops it.
+  compiled_model <- function(){
+    model_data <- stats::runif(1e4)
+    structure(list(ptr = function() model_data), class = "jags")
+  }
+  backend_fit <- function(){
+    structure(
+      list(
+        mcmc = list(matrix(0, nrow = 2, ncol = 1, dimnames = list(NULL, "mu"))),
+        method.options = list(n.sims = FALSE, cl = FALSE, rjags = compiled_model())
+      ),
+      class = "runjags"
+    )
+  }
+  # a fitted object (built before the fitted-metadata helpers are mocked)
+  # that still carries a compiled model
+  extended_input <- .jags_extend_test_fit()
+  extended_input$method.options <- backend_fit()$method.options
+  received_models <- list()
+  testthat::local_mocked_bindings(
+    run.jags = function(...) backend_fit(),
+    extend.jags = function(runjags.object, ...){
+      received_models[[length(received_models) + 1L]] <<- runjags.object$method.options["rjags"]
+      runjags.object$method.options$rjags <- compiled_model()
+      runjags.object
+    },
+    add.summary = function(x, ...) x,
+    .package = "runjags"
+  )
+  testthat::local_mocked_bindings(
+    .bt_check_convergence = function(...) FALSE,
+    .JAGS_require_packages = function(...) invisible(NULL),
+    .JAGS_load_modules = function(...) invisible(NULL),
+    .bt_attach_parameter_map = function(fit, ...) fit,
+    .bt_attach_draw_geometry = function(fit, ...) fit,
+    .package = "BayesTools"
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = "model{ mu ~ dnorm(0, 1) }",
+    prior_list = list(mu = prior("normal", list(0, 1))),
+    chains = 1, adapt = 50, burnin = 50, sample = 100,
+    autofit = TRUE,
+    autofit_control = .jags_extend_test_control(),
+    silent = TRUE,
+    seed = 1
+  )
+  # the extension continued the compiled model of the initial run
+  expect_length(received_models, 1L)
+  expect_s3_class(received_models[[1L]]$rjags, "jags")
+  expect_identical(names(fit$method.options), c("n.sims", "cl"))
+
+  received_models <- list()
+  control <- .jags_extend_test_control()
+  control$max_extend <- 2
+  extended <- JAGS_extend(extended_input, autofit_control = control)
+  # the first extension recompiles from the stored states; the second
+  # continues the model the first one compiled
+  expect_length(received_models, 2L)
+  expect_null(received_models[[1L]]$rjags)
+  expect_s3_class(received_models[[2L]]$rjags, "jags")
+  expect_identical(names(extended$method.options), c("n.sims", "cl"))
+})
+
 test_that("JAGS build checks fingerprint loaded R definitions", {
 
   original <- .JAGS_package_builds("stats")$stats
