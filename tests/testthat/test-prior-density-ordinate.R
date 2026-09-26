@@ -1517,6 +1517,11 @@ test_that("primitive ordinates from subnormal internal intermediates have no val
   expect_lte(abs(ordinate$log_density - (2 * log(1e-10) + log(1e-290) - 1e-300)), 1e-12)
   refused_at_full_precision(prior_density_ordinate(prior("lognormal", list(log(1e-300), 1e-20)), 1e-300))
   expect_true(prior_density_ordinate(prior("gamma", list(1, 1e-20)), 0)$exact)
+  # with shape 1 the argument does not enter the log (exponential density
+  # rate e^(-rate x), log(1e-10) - 1e-310 at 1e-300)
+  ordinate <- prior_density_ordinate(prior("gamma", list(1, 1e-10)), 1e-300)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - log(1e-10)), 1e-12)
 
   # extraDistr::dlst() evaluates the t density before its log, which is
   # rounded where the density is subnormal: the Cauchy log density

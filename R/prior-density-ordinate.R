@@ -639,13 +639,14 @@ prior_density_has_provenance <- function(x){
       value, "The value at which the density is evaluated", "primitive", provenance
     ))
   }
-  # the rescaled argument of a normal value: dgamma() evaluates at
-  # value / scale (scale = 1 / rate) and dlnorm() takes log(value * sdlog),
+  # the rescaled argument of a normal value whose log the family takes:
+  # dgamma() evaluates at value / scale (scale = 1 / rate), which enters its
+  # log unless the shape is 1, and dlnorm() takes log(value * sdlog); both are
   # rounded when subnormal (a gamma(2, 1e-20) log density was off by 1.1e-5 at
   # 1e-300)
   rescaled <- switch(
     family,
-    "gamma"     = value * prior$parameters$rate,
+    "gamma"     = if(isTRUE(prior$parameters$shape != 1)) value * prior$parameters$rate else value,
     "lognormal" = value * prior$parameters$sdlog,
     value
   )
