@@ -82,8 +82,10 @@ exact catalog name or alias; otherwise its bracketed level is used as the
 catalog component of the parameter before the bracket. The bracket always
 holds a level label: \code{mu_f[2]} selects the level labelled \code{"2"}, never the
 second fitted coordinate. A symbol that does not resolve uniquely stops
-with the classed errors of \code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}}, and a hypothesis
+with the classed errors of \code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}}, a hypothesis
 without parameter symbols (e.g. \code{"1 > 0"}) stops with an error of class
-\code{BayesTools_hypothesis_no_parameters} (also
-\code{BayesTools_parameter_resolution_error}).
+\code{BayesTools_hypothesis_no_parameters}, and a level-qualified symbol whose
+level differs from \code{component} stops with an error of class
+\code{BayesTools_hypothesis_component_mismatch} (fields \code{symbol} and
+\code{component}); both are also \code{BayesTools_parameter_resolution_error}.
 }

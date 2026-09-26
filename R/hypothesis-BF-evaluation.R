@@ -535,6 +535,24 @@
 }
 
 
+# A hypothesis symbol that names no quantity of the draws: class
+# BayesTools_parameter_not_found (parent BayesTools_parameter_resolution_error),
+# with the fields 'alias' (the unknown names) and 'available', as for
+# unresolved catalog selectors.
+.hypothesis_stop_unknown_quantity <- function(missing, available) {
+
+  .bt_parameter_catalog_stop(
+    class = "BayesTools_parameter_not_found",
+    message = paste0(
+      "Hypothesis expression references unknown quantity '",
+      paste(missing, collapse = "', '"), "'."
+    ),
+    alias = missing,
+    available = available
+  )
+}
+
+
 .hypothesis_eval_expression <- function(text, draws) {
 
   expr <- .hypothesis_parse_expression(text)
@@ -543,8 +561,7 @@
   draws <- as.data.frame(draws, check.names = FALSE)
   missing <- setdiff(.hypothesis_expression_symbols(expr), names(draws))
   if(length(missing) > 0L){
-    stop("Hypothesis expression references unknown quantity '",
-         paste(missing, collapse = "', '"), "'.", call. = FALSE)
+    .hypothesis_stop_unknown_quantity(missing, names(draws))
   }
 
   env <- .hypothesis_draw_environment(draws)
@@ -567,8 +584,7 @@
   draws <- as.data.frame(draws, check.names = FALSE)
   missing <- setdiff(.hypothesis_expression_symbols(expr), names(draws))
   if(length(missing) > 0L){
-    stop("Hypothesis expression references unknown quantity '",
-         paste(missing, collapse = "', '"), "'.", call. = FALSE)
+    .hypothesis_stop_unknown_quantity(missing, names(draws))
   }
 
   env <- .hypothesis_draw_environment(draws)

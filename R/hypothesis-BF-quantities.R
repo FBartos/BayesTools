@@ -213,8 +213,14 @@
     }
   }
   if(!parameter %in% available){
-    stop("Parameter '", parameter, "' is not available in 'posterior'.",
-         call. = FALSE)
+    .bt_parameter_catalog_stop(
+      class = "BayesTools_parameter_not_found",
+      message = paste0(
+        "Parameter '", parameter, "' is not available in 'posterior'."
+      ),
+      alias = parameter,
+      available = available
+    )
   }
 
   return(.as_hypothesis_quantities_marginal_posterior(
@@ -451,9 +457,15 @@
 
   missing <- levels[!matched %in% available]
   if(length(missing) > 0L){
-    stop("Hypothesis references unknown level '",
-         paste(missing, collapse = "', '"), "' for parameter '", parameter, "'.",
-         call. = FALSE)
+    .bt_parameter_catalog_stop(
+      class = "BayesTools_parameter_not_found",
+      message = paste0(
+        "Hypothesis references unknown level '",
+        paste(missing, collapse = "', '"), "' for parameter '", parameter, "'."
+      ),
+      alias = paste0(parameter, "[", missing, "]"),
+      available = paste0(parameter, "[", available, "]")
+    )
   }
 
   matched

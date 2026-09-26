@@ -113,16 +113,29 @@ test_that("factor catalog components preserve fitted level identities", {
   expect_identical(reference$status, "structural")
   expect_identical(reference$fixed_value, 0)
   expect_identical(reference$display_label, "(mu) f[a]")
-  expect_error(
+  condition <- tryCatch(
     hypothesis_resolve(
       hypothesis_parse("f[b] > 0"),
       catalog,
       namespace = "mu",
       component = "c"
     ),
-    "does not match the requested catalog component",
-    fixed = TRUE
+    error = identity
   )
+  expect_identical(
+    class(condition),
+    c("BayesTools_hypothesis_component_mismatch",
+      "BayesTools_parameter_resolution_error", "error", "condition")
+  )
+  expect_identical(
+    conditionMessage(condition),
+    paste0(
+      "The level in hypothesis symbol 'f[b]' does not match the requested ",
+      "catalog component 'c'."
+    )
+  )
+  expect_identical(condition$symbol, "f[b]")
+  expect_identical(condition$component, "c")
 
   incomplete <- coordinates[coordinates$coordinate_name != "mu_f[2]", , drop = FALSE]
   expect_error(

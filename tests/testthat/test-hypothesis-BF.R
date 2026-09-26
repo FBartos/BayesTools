@@ -1413,7 +1413,8 @@ test_that("hypothesis_BF references level names that contain brackets", {
   expect_error(
     hypothesis_BF(posterior, hypothesis = "`mu[(0,2]]` > `mu[(1,2]]`"),
     "unknown level '(0,2]'",
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_parameter_not_found"
   )
 
   contrast <- hypothesis_linear_target(
@@ -2075,6 +2076,27 @@ test_that("hypothesis_BF infers marginal_inference parameter from bracket syntax
 
   expect_equal(out[["posterior"]], 3, tolerance = 1e-12)
   expect_equal(out[["method"]], "prior-posterior odds")
+
+  # a 'parameter' the inference does not contain is an unresolved reference
+  condition <- tryCatch(
+    hypothesis_BF(
+      posterior  = inference,
+      hypothesis = "mu_alloc[alternate] > mu_alloc[random]",
+      parameter  = "mu_other"
+    ),
+    error = identity
+  )
+  expect_identical(
+    class(condition),
+    c("BayesTools_parameter_not_found",
+      "BayesTools_parameter_resolution_error", "error", "condition")
+  )
+  expect_identical(
+    conditionMessage(condition),
+    "Parameter 'mu_other' is not available in 'posterior'."
+  )
+  expect_identical(condition$alias, "mu_other")
+  expect_identical(condition$available, "mu_alloc")
 })
 
 
@@ -2255,8 +2277,29 @@ test_that("hypothesis_BF rejects unsafe or ambiguous expressions", {
   )
   expect_error(
     hypothesis_BF(posterior, prior, "missing > 0"),
-    "unknown quantity"
+    "unknown quantity",
+    class = "BayesTools_parameter_not_found"
   )
+  # unknown quantities are unresolved references, as in the catalog
+  for(hypothesis in c("missing > 0", "missing = 0", "theta + missing = 0")){
+    condition <- tryCatch(
+      hypothesis_BF(posterior, prior, hypothesis),
+      error = identity
+    )
+    expect_identical(
+      class(condition),
+      c("BayesTools_parameter_not_found",
+        "BayesTools_parameter_resolution_error", "error", "condition"),
+      info = hypothesis
+    )
+    expect_identical(
+      conditionMessage(condition),
+      "Hypothesis expression references unknown quantity 'missing'.",
+      info = hypothesis
+    )
+    expect_identical(condition$alias, "missing", info = hypothesis)
+    expect_identical(condition$available, names(posterior), info = hypothesis)
+  }
 })
 
 
@@ -2269,13 +2312,24 @@ test_that("hypothesis_BF rejects unknown marginal posterior levels", {
   class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
   attr(posterior, "parameter") <- "mu_alloc"
 
-  expect_error(
+  condition <- tryCatch(
     hypothesis_BF(
       posterior  = posterior,
       hypothesis = "mu_alloc[alternate] > mu_alloc[random]"
     ),
-    "unknown level"
+    error = identity
   )
+  expect_identical(
+    class(condition),
+    c("BayesTools_parameter_not_found",
+      "BayesTools_parameter_resolution_error", "error", "condition")
+  )
+  expect_identical(
+    conditionMessage(condition),
+    "Hypothesis references unknown level 'random' for parameter 'mu_alloc'."
+  )
+  expect_identical(condition$alias, "mu_alloc[random]")
+  expect_identical(condition$available, "mu_alloc[alternate]")
 })
 
 

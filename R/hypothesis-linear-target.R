@@ -48,7 +48,10 @@
 #'   `"posterior_atoms"` (the target's prior is not structurally atom-free),
 #'   `"atom_declarations"` (a level lacks its posterior-atom declaration), or
 #'   `"prior_context"` (no valid joint prior context, including level weights
-#'   on columns the joint prior context does not contain).
+#'   on columns the joint prior context does not contain). A reference to a
+#'   level that `posterior` does not contain stops with an error of class
+#'   `BayesTools_parameter_not_found` (also
+#'   `BayesTools_parameter_resolution_error`), as in [hypothesis_BF()].
 #'
 #' @export
 hypothesis_linear_target <- function(posterior, hypothesis, parameter){

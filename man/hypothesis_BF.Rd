@@ -111,6 +111,12 @@ also needs positive prior mass; explicit comparisons such as
 mass one. Rows are labelled by quantity; when several statements refer to
 the same quantity, the statement number is appended, e.g.
 \code{theta (2)}.
+A reference to a quantity or level that \code{posterior} does not contain,
+and a \code{parameter} that it does not contain, stop with an error of
+class \code{BayesTools_parameter_not_found} (also
+\code{BayesTools_parameter_resolution_error}), as unresolved selectors of
+\code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}} do; its fields \code{alias} and
+\code{available} name the unresolved and the available references.
 }
 \description{
 Computes Bayes factors for scalar hypotheses written as

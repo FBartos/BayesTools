@@ -770,7 +770,12 @@ old behaviour.
     `mu (1)`, `mu (2)`, a region's `error%(BF)` omits the prior Monte Carlo
     variance when the prior mass is exact, `columns` takes the result column
     names, `prior` accepts mixture and spike-and-slab priors for numeric draws,
-    and a seeded call restores the caller's random-number state.
+    and a seeded call restores the caller's random-number state. References
+    to quantities or levels that the posterior does not contain, and a
+    `parameter` it does not contain, stop with class
+    `BayesTools_parameter_not_found` (also
+    `BayesTools_parameter_resolution_error`), as unresolved catalog selectors
+    do, also in `hypothesis_linear_target()`.
   - adds a versioned hypothesis syntax tree: `hypothesis_parse()` (with
     parameter-catalog resolution of aliases, unquoted non-syntactic aliases,
     several level references in one hypothesis, colon-separated interaction
@@ -783,7 +788,9 @@ old behaviour.
     `hypothesis_parse_point_reference()`, `hypothesis_parse_level_reference()`,
     and `hypothesis_normalize_level_references()`. `hypothesis_resolve()`
     stops a hypothesis without parameter symbols (e.g. `"1 > 0"`) with class
-    `BayesTools_hypothesis_no_parameters` (also
+    `BayesTools_hypothesis_no_parameters`, and a level-qualified symbol whose
+    level differs from `component` with class
+    `BayesTools_hypothesis_component_mismatch` (both also
     `BayesTools_parameter_resolution_error`).
   - adds `hypothesis_linear_target()`, which compiles a point or simple region
     hypothesis linear in the levels of one parameter (level differences,

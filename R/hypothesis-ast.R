@@ -20,10 +20,12 @@
 #' catalog component of the parameter before the bracket. The bracket always
 #' holds a level label: `mu_f[2]` selects the level labelled `"2"`, never the
 #' second fitted coordinate. A symbol that does not resolve uniquely stops
-#' with the classed errors of [parameter_catalog_resolve()], and a hypothesis
+#' with the classed errors of [parameter_catalog_resolve()], a hypothesis
 #' without parameter symbols (e.g. `"1 > 0"`) stops with an error of class
-#' `BayesTools_hypothesis_no_parameters` (also
-#' `BayesTools_parameter_resolution_error`).
+#' `BayesTools_hypothesis_no_parameters`, and a level-qualified symbol whose
+#' level differs from `component` stops with an error of class
+#' `BayesTools_hypothesis_component_mismatch` (fields `symbol` and
+#' `component`); both are also `BayesTools_parameter_resolution_error`.
 #'
 #' @param hypothesis character vector of hypothesis statements.
 #' @param ast a `BayesTools_hypothesis_ast` object.
@@ -473,11 +475,15 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
       if(!is.na(occurrences$level[i])){
         if(!is.null(component) &&
            !identical(component, occurrences$level[i])){
-          stop(
-            "The level in hypothesis symbol '", occurrences$symbol[i],
-            "' does not match the requested catalog component '", component,
-            "'.",
-            call. = FALSE
+          .bt_parameter_catalog_stop(
+            class = "BayesTools_hypothesis_component_mismatch",
+            message = paste0(
+              "The level in hypothesis symbol '", occurrences$symbol[i],
+              "' does not match the requested catalog component '", component,
+              "'."
+            ),
+            symbol = occurrences$symbol[i],
+            component = component
           )
         }
         occurrence_component <- occurrences$level[i]
