@@ -189,14 +189,16 @@ marglik_model_H0 <- JAGS_bridgesampling(
   fit           = ttest_model_H0,
   log_posterior = log_posterior,
   data          = ttest_data,
-  prior_list    = ttest_priors_H0
+  prior_list    = ttest_priors_H0,
+  seed          = 2
 )
 
 marglik_model_Hp <- JAGS_bridgesampling(
   fit           = ttest_model_Hp,
   log_posterior = log_posterior,
   data          = ttest_data,
-  prior_list    = ttest_priors_Hp
+  prior_list    = ttest_priors_Hp,
+  seed          = 3
 )
 ```
 
