@@ -96,8 +96,11 @@ old behaviour.
     forward. Pass these and later arguments by name.
   - `check_bool()` rejects `NA` by default (`allow_NA = FALSE`, was `TRUE`),
     as a missing value cannot be used as a switch. Pass `allow_NA = TRUE` to
-    keep the previous behaviour. The other `check_*()` helpers are unchanged.
+    keep the previous behaviour. The `allow_NA` defaults of the other
+    `check_*()` helpers are unchanged.
 - stricter inputs of released functions:
+  - `check_int()` rejects infinite values ("must contain only finite
+    values"); 0.3.0 accepted `Inf` and `-Inf` as integers.
   - `JAGS_evaluate_formula()` (and `JAGS_predict_formula()`) evaluates a
     formula only through the formula design that `JAGS_fit()` stores for the
     formula parameter. Posterior samples without it, such as a `coda` `mcmc`
@@ -183,9 +186,9 @@ old behaviour.
     seed, chains, and cores, but need not equal serial fits.
   - seeded functions no longer reset R's global random-number stream to a
     state determined by `seed`: `JAGS_get_inits()`, `JAGS_fit()` (serial,
-    parallel, and autofit), `JAGS_bridgesampling()`, `mix_posteriors()`,
-    `marginal_inference()`, and `transform_prior_samples()` restore the
-    caller's `.Random.seed` and `RNGkind()`. Seeded results are unchanged.
+    parallel, and autofit), `mix_posteriors()`, `marginal_inference()`, and
+    `transform_prior_samples()` restore the caller's `.Random.seed` and
+    `RNGkind()`. Seeded results are unchanged.
     Code that relied on the reset, for example an unseeded
     `JAGS_bridgesampling()` right after `JAGS_fit(seed = )`, or unseeded draws
     after a seeded `marginal_inference()`, must pass its own seed. Unseeded
@@ -200,10 +203,6 @@ old behaviour.
     `as_marginal_inference(conditional_list = )`, and the conditional
     summaries and plots built on them; remove such parameters from the
     conditioning set.
-  - conditional marginal summaries of `as_marginal_inference()` condition each
-    marginal level only on the requested parameters with a nonzero weight in
-    that level's linear combination; levels without such a parameter use the
-    fully averaged posterior.
   - `Savage_Dickey_BF()`, `marginal_inference()`, `as_marginal_inference()`,
     and `marginal_estimates_table()` return a finite Bayes factor when the null
     hypothesis lies outside the posterior draws: the kernel density at the
@@ -226,7 +225,7 @@ old behaviour.
     with class `BayesTools_inexact_ordinate` (0.3.0 used a numerical grid
     height), an undefined ordinate with `BayesTools_undefined_ordinate`, and a
     zero or infinite ordinate with `BayesTools_zero_ordinate` or
-    `BayesTools_infinite_ordinate` (0.3.0 returned 0 or `Inf` with a warning),
+    `BayesTools_infinite_ordinate` (0.3.0 returned 0 or `Inf`),
     because the density ratio is then a limit that a posterior kernel estimate
     cannot estimate. All have the parent class
     `BayesTools_hypothesis_ordinate`. In list posteriors,
@@ -239,12 +238,13 @@ old behaviour.
     from prior draws and attached by hand) are used only for plotting: their
     heights, ordinates, and region probabilities stop.
   - `var()` and `sd()` of a truncated normal prior (and of spike-and-slab
-    priors with such a slab) stop with an error when the closed-form variance
-    may carry a relative rounding error above 1e-6, e.g., one-sided
-    truncations more than about 33 prior standard deviations from the mean or
-    very narrow truncation intervals; 0.3.0 returned inaccurate values there
-    (49 times too large at 1000 SD). The message suggests estimating the
-    variance from `rng()` draws, which sample such truncations exactly.
+    priors with such a slab) are computed in closed form (see Fixes) and stop
+    with an error when that value may carry a relative rounding error above
+    1e-6: one-sided truncations more than about 33 prior standard deviations
+    from the mean, where the numerical integration of 0.3.0 failed as well,
+    and very narrow truncation intervals (e.g., 0 to 0.001 SD), for which
+    0.3.0 returned a value. The message suggests estimating the variance from
+    `rng()` draws, which sample such truncations exactly.
   - `JAGS_check_convergence()` and the autofit of `JAGS_fit()` and
     `JAGS_extend()` classify the fitted parameters by the convergence roles
     stored with the fit (`convergence_role` of `parameter_coordinates()`),
@@ -299,6 +299,10 @@ old behaviour.
       name prefixes: with formula parameters `mu` and `mu_tau`, `mu_tau_z` is
       `(mu_tau) z` (was `(mu) tau_z`), and a predictor `mu_income` of `mu` is
       `(mu) mu_income` in ensemble tables (was `(mu) (mu) income`);
+      `format_parameter_names()` replaces a formula prefix only at the start
+      of a name (with formula parameter `mu`, `mu_mu_income` is
+      `(mu) mu_income` and `tau_mu_x` is unchanged; 0.3.0 gave
+      `(mu) (mu) income` and `tau_(mu) x`);
     - marginal names and `marginal_estimates_table()` rows name the levels of
       every factor (`(mu) x:g[-1SD, a]`), and the table's warnings start with
       the row label (was the backend node, `mu_x__xXx__g[-1SD, a]:`); a
@@ -332,8 +336,9 @@ old behaviour.
     `format_parameter_names()` likewise treats only the literal "(inclusion)"
     marker as an inclusion row.
   - `JAGS_fit()` monitors point priors (scalar, multivariate, and factor),
-    which 0.3.0 left out of the fit: their constant values are posterior
-    columns, reported as structural constants in convergence checks.
+    which 0.3.0 left out of the fit (`JAGS_to_monitor()` now returns them):
+    their constant values are posterior columns, reported as structural
+    constants in convergence checks.
   - posterior draws from `mix_posteriors()`, `as_mixed_posteriors()`,
     `marginal_posterior()`, `random_effects_summary_posterior()`, and
     `parameter_draws()` keep their metadata (supports, atoms, undefined draws,
@@ -347,8 +352,8 @@ old behaviour.
   - arithmetic and mathematical functions (the `Ops` and `Math` group
     generics) of mixed and marginal posterior draws return plain numerics
     without their class and metadata; 0.3.0 kept the attributes, so
-    `Savage_Dickey_BF(mp * 2, .5)` silently used the untransformed prior and
-    support (0.574 instead of 0.315). Draws whose values were replaced while
+    `Savage_Dickey_BF(mp * 2, .5)` silently used the prior density of the
+    untransformed draws `mp`. Draws whose values were replaced while
     their attributes were kept (`x[] <- `, `x[i] <- `, `pmin()`, `pmax()`)
     stop with an error of class `BayesTools_stale_metadata` (parent
     `BayesTools_metadata`) wherever their metadata are read or set, detected
@@ -849,8 +854,9 @@ old behaviour.
     selection. The `autofit_control` of `JAGS_fit()` and `JAGS_extend()` takes
     the same `monitor` and `allow_not_assessable`, and unknown `monitor` names
     are rejected before sampling or extension.
-  - `JAGS_bridgesampling()` gains `seed`, `repetitions`, `method`, `cores`
-    (forwarded to `bridgesampling::bridge_sampler()`), and `nonfinite`
+  - `JAGS_bridgesampling()` gains `seed` (a seeded call restores the caller's
+    random-number state), `repetitions`, `method`, `cores` (forwarded to
+    `bridgesampling::bridge_sampler()`), and `nonfinite`
     (`"drop"` aggregates only the finite repetitions with a warning), derives
     the effective sample size from the fitted chains, evaluates fixed-parameter
     models without sampled parameters exactly, and takes formula priors from
@@ -924,8 +930,7 @@ old behaviour.
   - linear-combination prior densities, `marginal_posterior(prior_samples =
     TRUE)`, and allocation margins accept priors whose density is infinite but
     integrable at a truncation bound (gamma or beta shapes below one): the
-    boundary grid cell keeps its exact mass, and ordinates next to such a bound
-    no longer count the mass next to the bound twice (2-8% too high).
+    boundary grid cell keeps its exact mass.
   - `exp_lin` transformations use the analytic limit at a zero source value.
     Nonlinear transformations keep every strictly increasing knot, saturating
     ones omit outer knots whose transformed value or density is not
@@ -956,11 +961,16 @@ old behaviour.
     `var()`, `range()`, `density()`, ...) stop with a clear message for prior
     classes they do not support instead of returning a function or the prior
     object.
-  - far-tail truncated normal, t, and Cauchy priors sample and invert exactly;
-    truncated normal moments are computed analytically (the variance stops
-    where its rounding error may exceed 1e-6, see Breaking changes); and
-    `rng()` of factor spike-and-slab priors honours
+  - far-tail truncated normal, t, and Cauchy priors sample and invert
+    exactly, and `rng()` of factor spike-and-slab priors honours
     `transform_factor_samples = FALSE`.
+  - `mean()` and `var()` of truncated normal priors are computed analytically
+    instead of by numerical integration, which returned wrong values a few
+    prior standard deviations into a tail (at 8 SD, a mean of 7.58 instead of
+    8.12 and a variance 284 times too large) and for narrow truncation
+    intervals (a variance 12 times too large for 5 to 5.001 SD), and failed
+    from about 10 SD. The variance stops where its rounding error may exceed
+    1e-6 (see Breaking changes).
   - natural prior-support bounds, structural probability endpoints,
     reference-bin weights, and overlapping bridge bounds are compared by exact
     equality instead of a numerical tolerance, so finite truncations close to
@@ -969,8 +979,9 @@ old behaviour.
   - the posterior ordinate of `Savage_Dickey_BF()`, `marginal_inference()`,
     and `as_marginal_inference()` is the exact Gaussian kernel sum at the null
     (bandwidth `bw.nrd0()` of the continuous draws) instead of a 512-point
-    grid estimate, which overestimated long-tailed posteriors up to
-    several-fold; an ordinate below the double range gives an infinite Bayes
+    grid estimate, which overestimated the posterior density at the null of
+    long-tailed posteriors up to several-fold and so understated their Bayes
+    factors; an ordinate below the double range gives an infinite Bayes
     factor. The kernel density is reflected at the exact support bounds when
     the marginal posterior carries exact support metadata, so Bayes factors of
     boundary nulls for bounded parameters differ from the standard kernel
@@ -978,10 +989,10 @@ old behaviour.
     have different exact supports (e.g., a prior truncated in only some models
     or mixture components), the ordinate is estimated per component, each on
     its own support and mixed by the components' shares of the continuous
-    draws, instead of one kernel density smoothed across the support boundary:
-    in prior-only checks the Bayes factor at a boundary null went from 1.37
-    (model mixture) and 1.41 (single-fit mixture) to 0.97 and 1.00, the true
-    value being 1. Marginal posteriors record each draw's component (the model
+    draws, instead of one kernel density smoothed across the support boundary
+    (in prior-only checks, where the true Bayes factor at a boundary null is
+    1, the estimates are 0.97 for a model mixture and 1.00 for a single-fit
+    mixture). Marginal posteriors record each draw's component (the model
     for `mix_posteriors()` ensembles, the indicator tuple of the mixture or
     spike-and-slab terms entering the parameter or level for
     `as_mixed_posteriors()`) and the components' supports.
@@ -1051,14 +1062,18 @@ old behaviour.
     with a message naming them instead of a duplicate `prior_list` name, and
     fixed formulas with dot expansion, `offset()`, inline transformations, or
     other calls stop with a clear message before the data are looked up.
-  - `expression()` formula terms may reference sampled scalar or
-    one-dimensional indexed parameters (also individually monitored indexed
-    coordinates); their parsed syntax and data and parameter dependencies are
-    stored and replayed draw by draw in prediction and marginal-likelihood
-    reconstruction, and `JAGS_fit()` rejects dependencies that cannot be
-    replayed (opaque deterministic nodes and formula outputs). Scaled formula
-    prediction keeps the raw expression inputs and honours explicit
-    no-intercept prediction subsets without changing the fitted contrasts.
+  - `expression()` formula terms are part of the formula parameter that
+    `JAGS_bridgesampling()` reconstructs for `log_posterior`; 0.3.0 left them
+    out (for `~ x + expression(0.25 * z[i])` it passed the intercept plus the
+    `x` term only), so marginal likelihoods of such models were wrong. The
+    terms may reference sampled scalar or one-dimensional indexed parameters
+    (also individually monitored indexed coordinates); their parsed syntax and
+    data and parameter dependencies are stored and replayed draw by draw in
+    prediction and marginal-likelihood reconstruction, and `JAGS_fit()`
+    rejects dependencies that cannot be replayed (opaque deterministic nodes
+    and formula outputs). Scaled formula prediction keeps the raw expression
+    inputs and honours explicit no-intercept prediction subsets without
+    changing the fitted contrasts.
   - `JAGS_evaluate_formula()` and `marginal_posterior()` evaluate terms with a
     `multiply_by` multiplier with the arithmetic of the JAGS model (the
     multiplier times the coefficient, times the predictor), so values can
