@@ -2718,3 +2718,77 @@ test_that("plotted quadrature routes share one batched quadrature on a bounded d
   expect_equal(max(curve$y), maximum$objective, tolerance = 1e-7)
   expect_identical(pieces, 0L)
 })
+
+test_that("batched densities compute the single-value breakpoints and integrals for all values at once", {
+
+  # The batched plans compute the breakpoints of all values together; they
+  # are identical to the single-value breakpoints of the ordinates, including
+  # peak windows, scale points, the thinning next to singular bounds (Beta
+  # shares at 0 and 1) and the merging of close points.
+  multipliers <- list(
+    prior("normal", list(0, 1), list(0, Inf)), prior("normal", list(1, 2), list(-1, 3)),
+    prior("beta", list(.5, 1.5)), prior("beta", list(1.5, .5)), prior("beta", list(.3, .3)),
+    prior("gamma", list(.5, 1)), prior("invgamma", list(1, .15)), prior("lognormal", list(0, 1)),
+    prior("cauchy", list(0, 1), list(0, 5)), prior("uniform", list(-2, 3))
+  )
+  values <- c(0, 1e-12, -1e-9, -3.7, -.41, .2, .2, .7 + 1e-15, 2.9, 55, -1e7)
+  for(multiplier in multipliers){
+    bounds <- unlist(multiplier$truncation[c("lower", "upper")], use.names = FALSE)
+    setup <- .prior_conditional_normal_breakpoint_setup(multiplier, bounds)
+    for(config in list(c(0, 0, 0, 1), c(.7, 0, 1, .3), c(0, 1, -2.5, .3), c(.7, 1, 0, 4))){
+      spec <- list(additive_mean = config[1L], additive_sd = config[2L],
+                   product_mean = config[3L], product_sd = config[4L],
+                   multiplier = multiplier, bounds = bounds)
+      expect_identical(
+        .prior_conditional_normal_breakpoints_values(spec, values, setup),
+        lapply(values, function(value){
+          .prior_conditional_normal_breakpoints(spec, value, setup = setup)
+        })
+      )
+    }
+  }
+  for(map in list(NULL, list(type = "sqrt", scale = 2.5))){
+    for(share in list(prior("beta", list(1.5, .5)), prior("beta", list(2, .7)))){
+      spec <- .prior_scale_product_spec(
+        offset = .2, scale = -1.7, factor = prior("t", list(0, 1, 3)),
+        multiplier = share, sources = list(), map = map
+      )
+      setup <- .prior_scale_product_breakpoint_setup(spec)
+      distances <- (values - spec$offset) / spec$scale
+      expect_identical(
+        .prior_scale_product_breakpoints_values(spec, distances, setup),
+        lapply(distances, .prior_scale_product_breakpoints, spec = spec, setup = setup)
+      )
+    }
+  }
+
+  # The batched quadrature computes the nodes and the value-independent terms
+  # of the split integrand once per distinct interval: every value's integral
+  # is identical to its integral computed alone, and to the integral of the
+  # unsplit integrand.
+  x <- seq(-4, 4, length.out = 61)
+  spec <- list(additive_mean = 0, additive_sd = 0, product_mean = 0, product_sd = 1,
+               multiplier = prior("normal", list(0, 1), list(0, Inf)), bounds = c(0, Inf))
+  plans <- list(
+    .prior_conditional_normal_density_plan(spec, x),
+    .prior_scale_product_density_plan(.prior_scale_product_spec(
+      offset = 0, scale = 1, factor = prior("t", list(0, 1, 3)),
+      multiplier = prior("beta", list(2, 2)), sources = list()
+    ), x)
+  )
+  for(plan in plans){
+    expect_true(plan$batch)
+    batched <- .prior_density_quadrature_batch(plan$integrand, plan$breakpoints)
+    expect_false(anyNA(batched))
+    alone <- vapply(seq_along(plan$breakpoints), function(j){
+      .prior_density_quadrature_batch(
+        list(shared = plan$integrand$shared,
+             value  = function(shared, index) plan$integrand$value(shared, rep(j, length(index)))),
+        plan$breakpoints[j]
+      )
+    }, numeric(1))
+    expect_identical(batched, alone)
+    unsplit <- function(nodes, index) plan$integrand$value(plan$integrand$shared(nodes), index)
+    expect_identical(.prior_density_quadrature_batch(unsplit, plan$breakpoints), batched)
+  }
+})

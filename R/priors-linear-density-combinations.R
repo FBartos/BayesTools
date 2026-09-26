@@ -1381,16 +1381,35 @@
 # (the integrand's limit).
 .prior_conditional_normal_integrand <- function(spec){
 
-  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
+  parts <- .prior_conditional_normal_integrand_parts(spec)
   function(multiplier, value){
-    conditional <- .prior_conditional_normal_moments(spec, multiplier)
-    out <- exp(stats::dnorm(value, conditional$mean, conditional$sd, log = TRUE) +
-                 multiplier_lpdf(multiplier))
-    if(spec$additive_sd == 0){
-      out[conditional$sd == 0] <- 0
-    }
-    out
+    parts$value(parts$shared(multiplier), value)
   }
+}
+
+# The integrand in two parts: 'shared(multiplier)' holds the terms that do not
+# depend on the value (the conditional moments and the multiplier's log
+# density), and 'value(shared, value)' combines them with the value in the
+# same arithmetic, so a batched quadrature evaluates the shared terms once per
+# distinct node.
+.prior_conditional_normal_integrand_parts <- function(spec){
+
+  multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
+  list(
+    shared = function(multiplier){
+      conditional <- .prior_conditional_normal_moments(spec, multiplier)
+      list(mean = conditional$mean, sd = conditional$sd,
+           log_density = multiplier_lpdf(multiplier))
+    },
+    value = function(shared, value){
+      out <- exp(stats::dnorm(value, shared$mean, shared$sd, log = TRUE) +
+                   shared$log_density)
+      if(spec$additive_sd == 0){
+        out[shared$sd == 0] <- 0
+      }
+      out
+    }
+  )
 }
 
 # Values of 'x' where the conditional-normal density is not the regular
@@ -1417,14 +1436,15 @@
     return(list(batch = FALSE, special = special))
   }
   regular <- x[!special]
-  integrand <- .prior_conditional_normal_integrand(spec)
+  parts <- .prior_conditional_normal_integrand_parts(spec)
   list(
-    batch       = TRUE,
+    batch       = batch,
     special     = special,
-    integrand   = function(multiplier, index) integrand(multiplier, regular[index]),
-    breakpoints = lapply(regular, function(value){
-      .prior_conditional_normal_breakpoints(spec, value, setup = setup)
-    })
+    integrand   = list(
+      shared = parts$shared,
+      value  = function(shared, index) parts$value(shared, regular[index])
+    ),
+    breakpoints = .prior_conditional_normal_breakpoints_values(spec, regular, setup)
   )
 }
 
@@ -1751,19 +1771,53 @@
   )
 }
 
+# .prior_scale_product_breakpoints() of each of the single 'distances',
+# computed together (.prior_conditional_normal_breakpoints_values()).
+.prior_scale_product_breakpoints_values <- function(spec, distances, setup){
+
+  images <- .prior_scale_product_map_inverse(
+    spec, as.vector(outer(distances, setup$targets, `/`))
+  )
+  images <- matrix(images, nrow = length(distances))
+  images[!is.finite(images)] <- NA_real_
+  .prior_conditional_normal_breakpoints_values(
+    setup$spec,
+    values = rep(0, length(distances)),
+    setup  = setup$multiplier,
+    extra  = cbind(0, images)
+  )
+}
+
 # Integrand of the scale-product ordinate over the multiplier s at the
 # standardized distances (x - c) / w (vectorized over pairs).
 .prior_scale_product_integrand <- function(spec){
 
+  parts <- .prior_scale_product_integrand_parts(spec)
+  function(multiplier, distance){
+    parts$value(parts$shared(multiplier), distance)
+  }
+}
+
+# The integrand in a part shared by all distances (the mapped multiplier, its
+# log density and the log Jacobian) and a part combining it with the distance
+# (as .prior_conditional_normal_integrand_parts()).
+.prior_scale_product_integrand_parts <- function(spec){
+
   factor_lpdf <- .prior_simple_lpdf_evaluator(spec$factor)
   multiplier_lpdf <- .prior_simple_lpdf_evaluator(spec$multiplier)
-  function(multiplier, distance){
-    mapped <- .prior_scale_product_map(spec, multiplier)
-    out <- exp(factor_lpdf(distance / mapped) +
-                 multiplier_lpdf(multiplier) - log(abs(spec$scale * mapped)))
-    out[mapped == 0] <- 0
-    out
-  }
+  list(
+    shared = function(multiplier){
+      mapped <- .prior_scale_product_map(spec, multiplier)
+      list(mapped = mapped, log_density = multiplier_lpdf(multiplier),
+           log_jacobian = log(abs(spec$scale * mapped)))
+    },
+    value = function(shared, distance){
+      out <- exp(factor_lpdf(distance / shared$mapped) +
+                   shared$log_density - shared$log_jacobian)
+      out[shared$mapped == 0] <- 0
+      out
+    }
+  )
 }
 
 # Batched plan of the scale-product density at the values 'x' (as
@@ -1787,13 +1841,16 @@
     return(list(batch = FALSE, zero = zero, special = special))
   }
   distance <- (x[!zero & !special] - spec$offset) / spec$scale
-  integrand <- .prior_scale_product_integrand(spec)
+  parts <- .prior_scale_product_integrand_parts(spec)
   list(
-    batch       = TRUE,
+    batch       = batch,
     zero        = zero,
     special     = special,
-    integrand   = function(multiplier, index) integrand(multiplier, distance[index]),
-    breakpoints = lapply(distance, .prior_scale_product_breakpoints, spec = spec, setup = setup)
+    integrand   = list(
+      shared = parts$shared,
+      value  = function(shared, index) parts$value(shared, distance[index])
+    ),
+    breakpoints = .prior_scale_product_breakpoints_values(spec, distance, setup)
   )
 }
 
@@ -2683,6 +2740,158 @@
     points <- points[-length(points)]
   }
   c(points, upper)
+}
+
+# The breakpoints of .prior_conditional_normal_breakpoints() for each of the
+# single values 'values' with the same 'setup', computed for all values
+# together (batched densities evaluate hundreds of values): element j of the
+# returned list is identical to
+# .prior_conditional_normal_breakpoints(spec, values[j], extra[j, ], setup)
+# with the NA entries of row j of the matrix 'extra' left out. The points of
+# all values are filtered, sorted and deduplicated in one pass, and the two
+# sequential rules (the thinning next to a singular bound and the merging of
+# close points) run over the values' points in the same order, one position
+# at a time for all values.
+.prior_conditional_normal_breakpoints_values <- function(spec, values, setup, extra = NULL){
+
+  n <- length(values)
+  if(n == 0L){
+    return(list())
+  }
+  lower <- setup$lower
+  upper <- setup$upper
+  columns <- list()
+  peak <- logical()
+  peak_width <- rep(Inf, n)
+  if(isTRUE(spec$product_mean != 0) &&
+     isTRUE(spec$product_sd <= abs(spec$product_mean) / 2)){
+    centre <- (values - spec$additive_mean) / spec$product_mean
+    width <- sqrt(spec$additive_sd^2 + (spec$product_sd * centre)^2) / abs(spec$product_mean)
+    offsets <- as.vector(outer(c(-1, 1), c(1, 3, 10)))
+    columns <- c(list(centre), lapply(offsets, function(offset) centre + offset * width))
+    peak <- rep(TRUE, 7L)
+    peak_width <- ifelse(is.finite(width), width, Inf)
+  }
+  if(!is.null(extra)){
+    columns <- c(columns, lapply(seq_len(ncol(extra)), function(j) extra[, j]))
+    peak <- c(peak, rep(FALSE, ncol(extra)))
+  }
+  if(isTRUE(spec$additive_sd == 0) && isTRUE(spec$product_sd > 0)){
+    distance <- abs(values - spec$additive_mean) / spec$product_sd
+    valid <- is.finite(distance) & distance > 0
+    scale_points <- lapply(c(.1, 1, 10), function(multiple){
+      point <- distance * multiple
+      point[!valid] <- NA_real_
+      list(-1 * point, 1 * point)
+    })
+    columns <- c(columns, list(rep(0, n)), unlist(scale_points, recursive = FALSE))
+    peak <- c(peak, rep(FALSE, 7L))
+  }
+  quantiles <- setup$quantiles
+  columns <- c(columns, lapply(quantiles, rep, times = n))
+  peak <- c(peak, rep(FALSE, length(quantiles)))
+
+  # the candidate points of each value in the order of the single-value
+  # function (value by value), without the absent (NA) extra points
+  k <- length(columns)
+  point <- if(k > 0L) as.vector(t(do.call(cbind, columns))) else numeric()
+  index <- rep(seq_len(n), each = k)
+  is_peak <- rep(peak, times = n)
+  widths <- ifelse(is_peak, peak_width[index], Inf)
+  inside <- is.finite(point) & point > lower & point < upper
+  point <- point[inside]
+  index <- index[inside]
+  is_peak <- is_peak[inside]
+  widths <- widths[inside]
+  if(length(point) > 0L){
+    density <- suppressWarnings(exp(lpdf(spec$multiplier, point)))
+    finite <- is.finite(density)
+    point <- point[finite]
+    index <- index[finite]
+    is_peak <- is_peak[finite]
+    widths <- widths[finite]
+  }
+  # sorted and unique per value (both orders are stable, so a peak point
+  # equal to a quantile stays a peak point)
+  sorted <- order(index, point)
+  point <- point[sorted]
+  index <- index[sorted]
+  is_peak <- is_peak[sorted]
+  widths <- widths[sorted]
+  m <- length(point)
+  first <- if(m > 0L) c(TRUE, index[-1L] != index[-m] | point[-1L] != point[-m]) else logical()
+  point <- point[first]
+  index <- index[first]
+  is_peak <- is_peak[first]
+  widths <- widths[first]
+
+  # the rank of each point in 'order' within its value, as a matrix of point
+  # positions with one row per value
+  positions <- function(order){
+    counts <- tabulate(index, nbins = n)
+    out <- matrix(NA_integer_, n, max(c(0L, counts)))
+    if(length(order) > 0L){
+      out[cbind(index[order], sequence(counts[unique(index[order])]))] <- order
+    }
+    out
+  }
+
+  if(any(setup$singular)){
+    for(side in which(setup$singular)){
+      bound <- c(lower, upper)[side]
+      start <- abs(setup$quartiles[side] - bound)
+      if(!isTRUE(is.finite(start)) || length(point) == 0L){
+        next
+      }
+      distance <- abs(point - bound)
+      keep <- rep(TRUE, length(point))
+      last <- rep(start, n)
+      visit <- positions(order(index, distance, decreasing = c(FALSE, TRUE), method = "radix"))
+      for(rank in seq_len(ncol(visit))){
+        i <- visit[, rank]
+        i <- i[!is.na(i)]
+        i <- i[distance[i] < start]
+        exempt <- is_peak[i] & distance[i] >= widths[i]
+        take <- exempt | distance[i] >= 1e-3 * last[index[i]]
+        last[index[i][take]] <- distance[i][take]
+        keep[i[!take]] <- FALSE
+      }
+      point <- point[keep]
+      index <- index[keep]
+      is_peak <- is_peak[keep]
+      widths <- widths[keep]
+    }
+  }
+
+  minimum_width <- function(a, b, peak_width){
+    scale <- pmax(1, ifelse(is.finite(a), abs(a), 1), ifelse(is.finite(b), abs(b), 1))
+    pmax(16 * .Machine$double.eps * scale, pmin(1e-9 * scale, peak_width / 2))
+  }
+  keep <- rep(FALSE, length(point))
+  last <- rep(lower, n)
+  last_kept <- rep(NA_integer_, n)
+  visit <- positions(seq_along(point))
+  for(rank in seq_len(ncol(visit))){
+    i <- visit[, rank]
+    i <- i[!is.na(i)]
+    value_index <- index[i]
+    take <- point[i] - last[value_index] >=
+      minimum_width(last[value_index], point[i], peak_width[value_index])
+    keep[i[take]] <- TRUE
+    last[value_index[take]] <- point[i][take]
+    last_kept[value_index[take]] <- i[take]
+  }
+  closing <- !is.na(last_kept)
+  closing[closing] <- upper - point[last_kept[closing]] <
+    minimum_width(point[last_kept[closing]], upper, peak_width[closing])
+  keep[last_kept[closing]] <- FALSE
+
+  point <- point[keep]
+  index <- index[keep]
+  unname(split(
+    c(rep(lower, n), point, rep(upper, n)),
+    factor(c(seq_len(n), index, seq_len(n)), levels = seq_len(n))
+  ))
 }
 
 # One budgeted QUADPACK piece. Finite pieces use 21-point rules; infinite ends

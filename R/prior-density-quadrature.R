@@ -97,7 +97,11 @@
 # Kronrod estimates and QUADPACK error estimates of the intervals
 # [lower, upper] (in t for an infinite end) of 'kind' 0 (finite), 1 (x = anchor
 # + (1 - t) / t) or -1 (x = anchor - (1 - t) / t), with 'index' the value of
-# each interval. 'integrand(nodes, index)' is vectorized over pairs.
+# each interval. 'integrand(nodes, index)' is vectorized over pairs; an
+# integrand given as list(shared, value) is value(shared(nodes), index), where
+# 'shared' returns a list of the terms that do not depend on the value. The
+# values of a leaf share most of their intervals, so the nodes and the shared
+# terms are computed once per distinct interval.
 .prior_density_quadrature_evaluate <- function(integrand, lower, upper, kind,
                                                anchor, index, rules){
 
@@ -109,21 +113,37 @@
     }
     rule <- if(infinite) rules$infinite else rules$finite
     k <- length(rule$nodes)
-    centre <- (lower[selected] + upper[selected]) / 2
-    half <- (upper[selected] - lower[selected]) / 2
+    interval <- complex(real = lower[selected], imaginary = upper[selected])
+    end <- complex(real = kind[selected], imaginary = anchor[selected])
+    key <- match(interval, interval) + (match(end, end) - 1) * length(selected)
+    distinct <- which(!duplicated(key))
+    map <- match(key, key[distinct])
+    first <- selected[distinct]
+    centre <- (lower[first] + upper[first]) / 2
+    half <- (upper[first] - lower[first]) / 2
     nodes <- rep(centre, each = k) + rep(half, each = k) * rule$nodes
-    pair_index <- rep(index[selected], each = k)
-    if(infinite){
-      direction <- rep(kind[selected], each = k)
-      source <- rep(anchor[selected], each = k) + direction * (1 - nodes) / nodes
-      f <- integrand(source, pair_index) / nodes^2
+    source <- if(infinite){
+      direction <- rep(kind[first], each = k)
+      rep(anchor[first], each = k) + direction * (1 - nodes) / nodes
     }else{
-      f <- integrand(nodes, pair_index)
+      nodes
     }
+    columns <- rep((map - 1L) * k, each = k) + seq_len(k)
+    pair_index <- rep(index[selected], each = k)
+    f <- if(is.function(integrand)){
+      integrand(source[columns], pair_index)
+    }else{
+      integrand$value(lapply(integrand$shared(source), `[`, columns), pair_index)
+    }
+    if(infinite){
+      f <- f / (nodes^2)[columns]
+    }
+    half <- half[map]
     f <- matrix(f, nrow = k)
     # an interval with a non-finite integrand value gets an infinite error
-    invalid <- colSums(!is.finite(f)) > 0
-    f[!is.finite(f)] <- 0
+    finite <- is.finite(f)
+    invalid <- colSums(!finite) > 0
+    f[!finite] <- 0
     kronrod <- colSums(rule$kronrod * f)
     gauss <- colSums(rule$gauss * f)
     absolute <- colSums(rule$kronrod * abs(f))
@@ -148,7 +168,8 @@
 }
 
 # Integrals over the pieces between consecutive 'breakpoints[[j]]' (sorted;
-# infinite ends allowed) of integrand(nodes, index) for each value j, refined
+# infinite ends allowed) of integrand(nodes, index) (or its split form, see
+# .prior_density_quadrature_evaluate()) for each value j, refined
 # in one batched loop. Returns the integrals, NA where the acceptance
 # criterion is not met (including zero and non-finite integrals).
 .prior_density_quadrature_batch <- function(integrand, breakpoints,
@@ -190,8 +211,17 @@
   value <- estimate$value
   error <- estimate$error
   active <- rep(TRUE, n_values)
+  # per-value summaries of the intervals' 'x' (NA for a value without
+  # intervals), each over the value's intervals in their order
   per_value <- function(x, summary){
-    as.numeric(tapply(x, factor(index, levels = seq_len(n_values)), summary))
+    present <- which(tabulate(index, nbins = n_values) > 0L)
+    codes <- integer(n_values)
+    codes[present] <- seq_along(present)
+    groups <- structure(codes[index], levels = as.character(seq_along(present)),
+                        class = "factor")
+    out <- rep(NA_real_, n_values)
+    out[present] <- vapply(base::split(x, groups), summary, numeric(1))
+    out
   }
   for(round in seq_len(tolerance$max_rounds + 1L)){
     total <- per_value(value, sum)
