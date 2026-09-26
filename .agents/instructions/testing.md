@@ -52,6 +52,9 @@ This package uses testthat edition 3. Do not add `context()`.
   catalog together when a new cached fit is necessary.
 - Reuse existing fits whenever possible. Missing or stale required fits are not
   passing release evidence.
+- Fits that exist only to carry structural fixture assertions are saved with
+  `save_fit(..., assertion_only = TRUE)`. They have no reviewed summary-table
+  baselines; the catalog-wide summary-table test covers the other fits.
 
 The profile runner stores caches below `BAYESTOOLS_TEST_FILES_DIR`, using a
 temporary directory by default. Relevant controls are

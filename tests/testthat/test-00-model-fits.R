@@ -2261,7 +2261,8 @@ test_that("Dual parameter regression with log(intercept) and formula_scale fits 
 # Small single-chain fits whose post-fit processing is checked against their
 # JAGS monitors and fitted metadata in test-JAGS-deterministic-nodes-fixture.R,
 # test-parameter-labels-fixture.R, test-random-effects-summary-posterior-fixture.R,
-# and test-JAGS-fit.R. The fits are saved without being kept in the test
+# and test-JAGS-fit.R. They are assertion-only fits: they carry no reviewed
+# summary-table baselines. The fits are saved without being kept in the test
 # blocks: random-effect term formulas carry the block's environment, so every
 # fit bound there would be saved again inside the later fits.
 test_that("Deterministic-node parity models fit correctly", {
@@ -2378,6 +2379,7 @@ test_that("Deterministic-node parity models fit correctly", {
     ),
     "fit_dnode_allocation",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
     note = "Gated total-variance allocation with a mean-variance SD-component child for deterministic-node parity."
   )$registry_entry
 
@@ -2397,6 +2399,7 @@ test_that("Deterministic-node parity models fit correctly", {
     ),
     "fit_dnode_allocation_external",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
     note = "Variance allocation rooted in an external scalar SD source for deterministic-node parity."
   )$registry_entry
 
@@ -2417,6 +2420,7 @@ test_that("Deterministic-node parity models fit correctly", {
     ),
     "fit_dnode_correlation",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
     note = "Compound-symmetry, AR(1), CAR, and heterogeneous compound-symmetry scalar correlations for deterministic-node parity."
   )$registry_entry
 
@@ -2438,6 +2442,7 @@ test_that("Deterministic-node parity models fit correctly", {
     ),
     "fit_dnode_lkj",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
     note = "LKJ Cholesky, correlation, and partial-correlation blocks for deterministic-node parity."
   )$registry_entry
 
@@ -2447,6 +2452,7 @@ test_that("Deterministic-node parity models fit correctly", {
       "two-sided", c(0.05, 0.1), wf_cumulative(c(1, 2, 1))))),
     "fit_dnode_omega_cumulative",
     simple_priors = TRUE, weightfunction_priors = TRUE,
+    assertion_only = TRUE,
     note = "Two-sided cumulative weight function for publication-weight node parity."
   )$registry_entry
 
@@ -2455,6 +2461,7 @@ test_that("Deterministic-node parity models fit correctly", {
       "two-sided", c(0.05), wf_cumulative(c(1, 1))))),
     "fit_dnode_omega_binary",
     simple_priors = TRUE, weightfunction_priors = TRUE,
+    assertion_only = TRUE,
     note = "Two-sided binary weight function for publication-weight node parity."
   )$registry_entry
 
@@ -2463,6 +2470,7 @@ test_that("Deterministic-node parity models fit correctly", {
       "one-sided", c(0.025, 0.5), wf_independent(prior("normal", list(0, 1)), scale = "log_omega")))),
     "fit_dnode_omega_log_independent",
     simple_priors = TRUE, weightfunction_priors = TRUE,
+    assertion_only = TRUE,
     note = "One-sided independent log-weight function for publication-weight node parity."
   )$registry_entry
 
@@ -2471,6 +2479,7 @@ test_that("Deterministic-node parity models fit correctly", {
       "one-sided", c(0.025, 0.5), wf_fixed(c(1, 1/3, 0.2))))),
     "fit_dnode_omega_fixed",
     simple_priors = TRUE, weightfunction_priors = TRUE,
+    assertion_only = TRUE,
     note = "One-sided fixed weight function for publication-weight node parity."
   )$registry_entry
 
@@ -2487,6 +2496,7 @@ test_that("Deterministic-node parity models fit correctly", {
     "fit_dnode_omega_bias_mixture",
     simple_priors = TRUE, pub_bias_priors = TRUE, weightfunction_priors = TRUE,
     mixture_priors = TRUE, add_parameters = TRUE,
+    assertion_only = TRUE,
     note = "Publication-bias mixture of PET and weight functions with monitored component weights for publication-weight node parity."
   )$registry_entry
 
@@ -2509,6 +2519,7 @@ test_that("Deterministic-node parity models fit correctly", {
     "fit_dnode_mixture",
     simple_priors = TRUE, pub_bias_priors = TRUE, weightfunction_priors = TRUE,
     spike_and_slab_priors = TRUE, mixture_priors = TRUE, add_parameters = TRUE,
+    assertion_only = TRUE,
     note = "Spike-and-slab, mixture, and publication-bias mixture priors with monitored components for mixture-node parity."
   )$registry_entry
 
@@ -2529,6 +2540,7 @@ test_that("Deterministic-node parity models fit correctly", {
     "fit_dnode_mixture_factor",
     simple_priors = TRUE, factor_priors = TRUE, spike_and_slab_priors = TRUE,
     mixture_priors = TRUE, formulas = TRUE, add_parameters = TRUE,
+    assertion_only = TRUE,
     note = "Formula spike-and-slab coefficient and treatment-factor mixture for mixture-node parity."
   )$registry_entry
 
@@ -2557,6 +2569,7 @@ test_that("Deterministic-node parity models fit correctly", {
     "fit_dnode_linear_predictor",
     simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE,
     random_effects = TRUE, add_parameters = TRUE,
+    assertion_only = TRUE,
     note = "Monitored linear predictor with a multiplier, an expression, a factor, and latent random effects."
   )$registry_entry
 
@@ -2576,6 +2589,7 @@ test_that("Deterministic-node parity models fit correctly", {
     "fit_dnode_mean_centered",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
     add_parameters = TRUE,
+    assertion_only = TRUE,
     note = "Monitored linear predictor of a mean-centered random intercept with latent effects."
   )$registry_entry
 
@@ -2589,6 +2603,7 @@ test_that("Deterministic-node parity models fit correctly", {
     ),
     "fit_dnode_ar1",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
     note = "AR(1) random-effect block for deterministic-node selection checks."
   )$registry_entry
 
@@ -2599,6 +2614,7 @@ test_that("Deterministic-node parity models fit correctly", {
     "fit_dnode_row_source",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
     add_parameters = TRUE,
+    assertion_only = TRUE,
     note = "Row-indexed external SD source split by a gated allocation and SD components."
   )$registry_entry
 
@@ -2613,6 +2629,7 @@ test_that("Deterministic-node parity models fit correctly", {
     "fit_dnode_row_source_values",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
     add_parameters = TRUE,
+    assertion_only = TRUE,
     note = "Row-indexed external SD source reconstructed by a values function of declared inputs."
   )$registry_entry
 
@@ -2629,6 +2646,7 @@ test_that("Deterministic-node parity models fit correctly", {
     ),
     "fit_dnode_multiplied",
     simple_priors = TRUE, formulas = TRUE,
+    assertion_only = TRUE,
     note = "Formula coefficients with fixed and parameter multipliers for linear-predictor marginal posteriors."
   )$registry_entry
 })
@@ -2662,6 +2680,7 @@ test_that("Parameter-label models fit correctly", {
     )),
     "fit_label_log_intercept",
     simple_priors = TRUE, formulas = TRUE,
+    assertion_only = TRUE,
     note = "Log-intercept formula with a standardized predictor for label and transform checks."
   )$registry_entry
 
@@ -2689,6 +2708,7 @@ test_that("Parameter-label models fit correctly", {
     )),
     "fit_label_lkj",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
     note = "Three-term LKJ random-effect block for raw backend-coordinate labels."
   )$registry_entry
 
@@ -2710,6 +2730,7 @@ test_that("Parameter-label models fit correctly", {
     )),
     "fit_label_ordered",
     simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE,
+    assertion_only = TRUE,
     note = "Ordered-factor formula with internal allocation shares for semantic-table labels."
   )$registry_entry
 
@@ -2742,6 +2763,7 @@ test_that("Parameter-label models fit correctly", {
     random_fit(~ 1 + x + (1 + x || g), slope_priors),
     "fit_label_random_slope",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
     note = "Independent random intercept and slope of a standardized predictor for original-scale SD labels."
   )$registry_entry
 
@@ -2749,6 +2771,7 @@ test_that("Parameter-label models fit correctly", {
     random_fit(~ 1 + x + (0 + x || g), slope_priors),
     "fit_label_random_slope_only",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
     note = "Random slope of a standardized predictor without a random intercept for original-scale SD labels."
   )$registry_entry
 
@@ -2756,6 +2779,7 @@ test_that("Parameter-label models fit correctly", {
     random_fit(~ 1 + x + (1 | g), slope_priors),
     "fit_label_random_intercept",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
     note = "Random intercept with a standardized fixed predictor for original-scale SD structures."
   )$registry_entry
 
@@ -2768,6 +2792,7 @@ test_that("Parameter-label models fit correctly", {
     "fit_label_random_factor_slope",
     simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE,
     random_effects = TRUE,
+    assertion_only = TRUE,
     note = "Independent random treatment-factor slope for random-effect SD column labels."
   )$registry_entry
 
@@ -2800,6 +2825,7 @@ test_that("Parameter-label models fit correctly", {
     )),
     "fit_label_allocation",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
     note = "Total-variance allocation of two random intercepts with a standardized fixed predictor."
   )$registry_entry
 })
@@ -2836,6 +2862,7 @@ test_that("Random-effect summary posterior models fit correctly", {
     )),
     "fit_re_summary_composite",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
     note = "Correlated random intercept and standardized slope for composite original-scale correlations."
   )$registry_entry
 
@@ -2893,6 +2920,7 @@ test_that("Random-effect summary posterior models fit correctly", {
     "fit_re_summary_allocated",
     simple_priors = TRUE, spike_and_slab_priors = TRUE, mixture_priors = TRUE,
     formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
     note = "Correlated blocks with allocated, gated, spike-sourced, and spike-and-slab SDs for point-free correlations."
   )$registry_entry
 
@@ -2914,6 +2942,7 @@ test_that("Random-effect summary posterior models fit correctly", {
     ),
     "fit_re_summary_linear_predictor",
     simple_priors = TRUE, formulas = TRUE, add_parameters = TRUE,
+    assertion_only = TRUE,
     note = "Monitored linear predictor with a row that is 0 in every draw."
   )$registry_entry
 
@@ -2947,6 +2976,7 @@ test_that("Random-effect summary posterior models fit correctly", {
     "fit_re_summary_point_components",
     factor_priors = TRUE, spike_and_slab_priors = TRUE, mixture_priors = TRUE,
     formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
     note = "Mixture and spike-and-slab formula and random-effect SD priors with point components."
   )$registry_entry
 
@@ -2971,6 +3001,7 @@ test_that("Random-effect summary posterior models fit correctly", {
     "fit_re_summary_mixture_sd",
     simple_priors = TRUE, mixture_priors = TRUE, formulas = TRUE,
     random_effects = TRUE,
+    assertion_only = TRUE,
     note = "Random-intercept SD with a three-component mixture prior of weights 1:2:1."
   )$registry_entry
 })
@@ -2996,6 +3027,7 @@ test_that("Convergence-role and LKJ-diagonal models fit correctly", {
     )),
     "fit_convergence_observed_data",
     simple_priors = TRUE, add_parameters = TRUE,
+    assertion_only = TRUE,
     note = "Monitored fully and partly observed data for convergence roles."
   )$registry_entry
 
@@ -3029,6 +3061,7 @@ test_that("Convergence-role and LKJ-diagonal models fit correctly", {
     lkj_fit(~ 1 + x + z + (1 + x | id), seed = 11L),
     "fit_lkj_diagonal_K2",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
     note = "Two-term LKJ random-effect block for exact correlation diagonals."
   )$registry_entry
 
@@ -3036,6 +3069,7 @@ test_that("Convergence-role and LKJ-diagonal models fit correctly", {
     lkj_fit(~ 1 + x + z + (1 + x + z | id), seed = 12L),
     "fit_lkj_diagonal_K3",
     simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    assertion_only = TRUE,
     note = "Three-term LKJ random-effect block for exact correlation diagonals."
   )$registry_entry
 })

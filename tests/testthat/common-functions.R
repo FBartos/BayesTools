@@ -794,7 +794,9 @@ test_meandif <- function(prior, skip_moments = FALSE) {
   )
 }
 
-# Helper function to save fitted models and register metadata
+# Helper function to save fitted models and register metadata. Assertion-only
+# fits carry structural assertions of fixture tests; they have no reviewed
+# summary-table baselines.
 save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_priors = FALSE,
                      factor_priors = FALSE, pub_bias_priors = FALSE,
                      weightfunction_priors = FALSE, spike_and_slab_priors = FALSE,
@@ -802,7 +804,7 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
                      random_effects = FALSE, interactions = FALSE,
                      expression_priors = FALSE, multi_formula = FALSE,
                      autofit = FALSE, parallel = FALSE, thinning = FALSE,
-                     add_parameters = FALSE, note = "") {
+                     add_parameters = FALSE, assertion_only = FALSE, note = "") {
 
   registry_entry <- data.frame(
     model_name = name,
@@ -823,6 +825,7 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
     parallel = parallel,
     thinning = thinning,
     add_parameters = add_parameters,
+    assertion_only = assertion_only,
     note = note,
     stringsAsFactors = FALSE
   )

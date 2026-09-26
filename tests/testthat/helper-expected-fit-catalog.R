@@ -17,7 +17,8 @@ bayestools_registry_flag_columns <- function() {
     "autofit",
     "parallel",
     "thinning",
-    "add_parameters"
+    "add_parameters",
+    "assertion_only"
   )
 }
 
@@ -1522,7 +1523,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "Gated total-variance allocation with a mean-variance SD-component child for deterministic-node parity."
     ),
     catalog_row(
@@ -1544,7 +1545,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "Variance allocation rooted in an external scalar SD source for deterministic-node parity."
     ),
     catalog_row(
@@ -1570,7 +1571,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "Compound-symmetry, AR(1), CAR, and heterogeneous compound-symmetry scalar correlations for deterministic-node parity."
     ),
     catalog_row(
@@ -1592,7 +1593,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "LKJ Cholesky, correlation, and partial-correlation blocks for deterministic-node parity."
     ),
     catalog_row(
@@ -1608,7 +1609,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       ),
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, weightfunction_priors = TRUE),
+      flags = list(simple_priors = TRUE, weightfunction_priors = TRUE, assertion_only = TRUE),
       note = "Two-sided cumulative weight function for publication-weight node parity."
     ),
     catalog_row(
@@ -1623,7 +1624,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       ),
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, weightfunction_priors = TRUE),
+      flags = list(simple_priors = TRUE, weightfunction_priors = TRUE, assertion_only = TRUE),
       note = "Two-sided binary weight function for publication-weight node parity."
     ),
     catalog_row(
@@ -1639,7 +1640,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       ),
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, weightfunction_priors = TRUE),
+      flags = list(simple_priors = TRUE, weightfunction_priors = TRUE, assertion_only = TRUE),
       note = "One-sided independent log-weight function for publication-weight node parity."
     ),
     catalog_row(
@@ -1654,7 +1655,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       ),
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, weightfunction_priors = TRUE),
+      flags = list(simple_priors = TRUE, weightfunction_priors = TRUE, assertion_only = TRUE),
       note = "One-sided fixed weight function for publication-weight node parity."
     ),
     catalog_row(
@@ -1672,7 +1673,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       ),
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, pub_bias_priors = TRUE, weightfunction_priors = TRUE, mixture_priors = TRUE, add_parameters = TRUE),
+      flags = list(simple_priors = TRUE, pub_bias_priors = TRUE, weightfunction_priors = TRUE, mixture_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE),
       note = "Publication-bias mixture of PET and weight functions with monitored component weights for publication-weight node parity."
     ),
     catalog_row(
@@ -1689,7 +1690,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       ),
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, pub_bias_priors = TRUE, weightfunction_priors = TRUE, spike_and_slab_priors = TRUE, mixture_priors = TRUE, add_parameters = TRUE),
+      flags = list(simple_priors = TRUE, pub_bias_priors = TRUE, weightfunction_priors = TRUE, spike_and_slab_priors = TRUE, mixture_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE),
       note = "Spike-and-slab, mixture, and publication-bias mixture priors with monitored components for mixture-node parity."
     ),
     catalog_row(
@@ -1708,7 +1709,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, factor_priors = TRUE, spike_and_slab_priors = TRUE, mixture_priors = TRUE, formulas = TRUE, add_parameters = TRUE),
+      flags = list(simple_priors = TRUE, factor_priors = TRUE, spike_and_slab_priors = TRUE, mixture_priors = TRUE, formulas = TRUE, add_parameters = TRUE, assertion_only = TRUE),
       note = "Formula spike-and-slab coefficient and treatment-factor mixture for mixture-node parity."
     ),
     catalog_row(
@@ -1731,7 +1732,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE, random_effects = TRUE, add_parameters = TRUE),
+      flags = list(simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE, random_effects = TRUE, add_parameters = TRUE, assertion_only = TRUE),
       note = "Monitored linear predictor with a multiplier, an expression, a factor, and latent random effects."
     ),
     catalog_row(
@@ -1750,7 +1751,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, add_parameters = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, add_parameters = TRUE, assertion_only = TRUE),
       note = "Monitored linear predictor of a mean-centered random intercept with latent effects."
     ),
     catalog_row(
@@ -1768,7 +1769,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "AR(1) random-effect block for deterministic-node selection checks."
     ),
     catalog_row(
@@ -1794,7 +1795,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, add_parameters = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, add_parameters = TRUE, assertion_only = TRUE),
       note = "Row-indexed external SD source split by a gated allocation and SD components."
     ),
     catalog_row(
@@ -1820,7 +1821,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, add_parameters = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, add_parameters = TRUE, assertion_only = TRUE),
       note = "Row-indexed external SD source reconstructed by a values function of declared inputs."
     ),
     catalog_row(
@@ -1835,7 +1836,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, formulas = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, assertion_only = TRUE),
       note = "Formula coefficients with fixed and parameter multipliers for linear-predictor marginal posteriors."
     ),
     catalog_row(
@@ -1851,7 +1852,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 200L,
-      flags = list(simple_priors = TRUE, formulas = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, assertion_only = TRUE),
       note = "Log-intercept formula with a standardized predictor for label and transform checks."
     ),
     catalog_row(
@@ -1870,7 +1871,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "Three-term LKJ random-effect block for raw backend-coordinate labels."
     ),
     catalog_row(
@@ -1888,7 +1889,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE),
+      flags = list(simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE, assertion_only = TRUE),
       note = "Ordered-factor formula with internal allocation shares for semantic-table labels."
     ),
     catalog_row(
@@ -1907,7 +1908,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 200L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "Independent random intercept and slope of a standardized predictor for original-scale SD labels."
     ),
     catalog_row(
@@ -1926,7 +1927,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 200L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "Random slope of a standardized predictor without a random intercept for original-scale SD labels."
     ),
     catalog_row(
@@ -1945,7 +1946,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 200L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "Random intercept with a standardized fixed predictor for original-scale SD structures."
     ),
     catalog_row(
@@ -1963,7 +1964,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 200L,
-      flags = list(simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "Independent random treatment-factor slope for random-effect SD column labels."
     ),
     catalog_row(
@@ -1986,7 +1987,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 200L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "Total-variance allocation of two random intercepts with a standardized fixed predictor."
     ),
     catalog_row(
@@ -2006,7 +2007,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 200L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "Correlated random intercept and standardized slope for composite original-scale correlations."
     ),
     catalog_row(
@@ -2038,7 +2039,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 200L,
-      flags = list(simple_priors = TRUE, spike_and_slab_priors = TRUE, mixture_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(simple_priors = TRUE, spike_and_slab_priors = TRUE, mixture_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "Correlated blocks with allocated, gated, spike-sourced, and spike-and-slab SDs for point-free correlations."
     ),
     catalog_row(
@@ -2056,7 +2057,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, add_parameters = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, add_parameters = TRUE, assertion_only = TRUE),
       note = "Monitored linear predictor with a row that is 0 in every draw."
     ),
     catalog_row(
@@ -2074,7 +2075,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 200L,
-      flags = list(factor_priors = TRUE, spike_and_slab_priors = TRUE, mixture_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(factor_priors = TRUE, spike_and_slab_priors = TRUE, mixture_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "Mixture and spike-and-slab formula and random-effect SD priors with point components."
     ),
     catalog_row(
@@ -2092,7 +2093,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 1L,
       expected_iterations = 200L,
-      flags = list(simple_priors = TRUE, mixture_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(simple_priors = TRUE, mixture_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "Random-intercept SD with a three-component mixture prior of weights 1:2:1."
     ),
     catalog_row(
@@ -2108,7 +2109,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       ),
       expected_chains = 2L,
       expected_iterations = 100L,
-      flags = list(simple_priors = TRUE, add_parameters = TRUE),
+      flags = list(simple_priors = TRUE, add_parameters = TRUE, assertion_only = TRUE),
       note = "Monitored fully and partly observed data for convergence roles."
     ),
     catalog_row(
@@ -2127,7 +2128,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 2L,
       expected_iterations = 300L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "Two-term LKJ random-effect block for exact correlation diagonals."
     ),
     catalog_row(
@@ -2146,7 +2147,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       oracle_type = "formula-fixture-metadata",
       expected_chains = 2L,
       expected_iterations = 300L,
-      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE),
+      flags = list(simple_priors = TRUE, formulas = TRUE, random_effects = TRUE, assertion_only = TRUE),
       note = "Three-term LKJ random-effect block for exact correlation diagonals."
     )
   ))

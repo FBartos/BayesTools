@@ -20,10 +20,12 @@ test_that("source-derived fixture catalog covers every generated fit", {
 
   expect_equal(nrow(source_rows), 106L)
   expect_equal(sum(source_rows$has_marglik), 22L)
+  expect_equal(sum(source_rows$assertion_only), 33L)
   expect_equal(nrow(catalog), nrow(source_rows))
   expect_equal(catalog$model_name, source_rows$model_name)
   expect_equal(catalog$fit_file, paste0(catalog$model_name, ".RDS"))
   expect_equal(catalog$has_marglik, source_rows$has_marglik)
+  expect_equal(catalog$assertion_only, source_rows$assertion_only)
   expect_equal(catalog$note, source_rows$note)
   expect_false(anyDuplicated(catalog$model_name) > 0L)
 
@@ -67,6 +69,19 @@ test_that("source-derived fixture catalog preserves registry schema flags", {
     catalog$marglik_file[catalog$has_marglik],
     paste0(catalog$model_name[catalog$has_marglik], ".RDS")
   )
+})
+
+test_that("reviewed fits have summary-table baselines and assertion-only fits have none", {
+  reference_dir <- testthat::test_path("..", "results", "JAGS-summary-tables")
+  skip_if_not(dir.exists(reference_dir), "Reference tables are not available in this installed-package test context.")
+
+  catalog <- bayestools_expected_fit_catalog()
+  baselines <- file.exists(file.path(
+    reference_dir,
+    paste0(catalog$model_name, "_runjags_estimates.txt")
+  ))
+  expect_identical(catalog$model_name[!catalog$assertion_only & !baselines], character())
+  expect_identical(catalog$model_name[catalog$assertion_only & baselines], character())
 })
 
 test_that("legacy cache markers are treated as stale metadata", {

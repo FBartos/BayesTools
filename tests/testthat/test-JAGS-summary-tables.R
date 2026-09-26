@@ -1153,7 +1153,9 @@ test_that("Summary tables for all saved models", {
   registry_file <- file.path(test_files_dir, "model_registry.RDS")
 
   model_registry <- readRDS(registry_file)
-  model_names <- model_registry$model_name
+  # Assertion-only fits carry structural assertions of fixture tests and have
+  # no reviewed summary-table baselines.
+  model_names <- model_registry$model_name[!model_registry$assertion_only]
 
   print_dir <- testthat::test_path("..", "results", "print")
 
