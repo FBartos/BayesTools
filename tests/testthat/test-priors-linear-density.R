@@ -1394,6 +1394,15 @@ test_that("linear combinations of multivariate t priors are univariate t terms",
   expect_identical(zero$behavior, "point_mass")
   expect_identical(zero$point_mass, 1)
 
+  # a truncation set after construction (vector priors do not support one) is
+  # not dropped: the group keeps the general route, as a truncated mnormal
+  # keeps it (the untruncated t was exact at -1, outside the truncation)
+  truncated <- vector_priors["p"]
+  truncated$p$truncation <- list(lower = 0, upper = Inf)
+  ordinate <- prior_density_ordinate(.prior_linear_combination_density(truncated, weights), -1)
+  expect_false(ordinate$exact)
+  expect_null(ordinate$provenance$multivariate_t)
+
   # a 'multiply_by' scale: the product of the t combination and the scale
   scaled <- vector_priors["p"]
   attr(scaled$p, "multiply_by") <- "s"

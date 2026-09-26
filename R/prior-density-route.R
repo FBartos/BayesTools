@@ -375,8 +375,9 @@
 # 'multiply_by' scale), and the combination is routed as any combination of
 # scalar terms; 'provenance' records the rewritten groups. NULL without
 # multivariate t groups, and when a group has no representable scalar t
-# (non-numeric parameters, a source transformation, or a scale that
-# underflows or overflows), whose combination keeps the general route.
+# (non-numeric parameters, a truncation, which vector priors do not support,
+# a source transformation, or a scale that underflows or overflows), whose
+# combination keeps the general route.
 .prior_density_route_vector_t_terms <- function(prior_list, weights, source_transforms){
 
   groups <- tryCatch(
@@ -402,7 +403,11 @@
     numeric_parameters <- all(vapply(parameters, function(value){
       is.numeric(value) && length(value) == 1L && is.finite(value)
     }, logical(1)))
-    if(!numeric_parameters || any(!is.na(source_transforms[names(group$weights)]))){
+    full_support <- is.list(group$prior$truncation) &&
+      identical(group$prior$truncation$lower, -Inf) &&
+      identical(group$prior$truncation$upper, Inf)
+    if(!numeric_parameters || !full_support ||
+       any(!is.na(source_transforms[names(group$weights)]))){
       return(NULL)
     }
     location <- sum(group$weights) * parameters$location

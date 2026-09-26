@@ -252,8 +252,9 @@ otherwise routed as below (a Gaussian convolution with normal terms, the
 Cauchy sum for one degree of freedom, a two-term convolution with one other
 non-normal term, a scale product with a `multiply_by` scale). Mixture and
 spike-and-slab priors of `mt` components are expanded first (below). Groups
-with non-numeric parameters, a source transformation, or a scale that is not
-representable keep the general route.
+with non-numeric parameters, a truncation (which vector priors do not
+support), a source transformation, or a scale that is not representable keep
+the general route.
 
 Sums without a product term: untruncated Cauchy terms (Cauchy or t with one
 degree of freedom, no log source) first merge into one Cauchy term with the
