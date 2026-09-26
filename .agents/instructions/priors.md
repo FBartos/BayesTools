@@ -191,7 +191,16 @@ the sum (mean m_1 + s_1^2 / s^2 (x - a_m - m_1), SD s_1 a_s / s), A and B by
 T' itself; both interval masses are evaluated in log space from lower- or
 upper-tail probabilities. Its region probabilities keep the Gaussian-
 convolution quadrature (they need the bivariate normal distribution
-function). Two simple continuous terms (after merging) that are not both normal
+function). The exp of a log-source term X (weight 1, positive support) plus
+a Gaussian part G ~ N(m, s), s > 0 (normal terms and points), e.g. the
+unscaled intercept of a log-intercept formula scaling, is the scale product
+X W with the lognormal multiplier W = exp(G) ~ lognormal(m, s)
+(`.prior_density_route_exp_scale_product()`), with the scale-product
+ordinates, region probabilities, plotted values and offset classification at
+0 (f_X(0) E[1 / W]); mixture priors of X are expanded first. Other weights of
+the log-source term (X^w W), a non-Gaussian other term, and the log-scale sum
+itself (no `log` output transformation exists) keep the general convolution.
+Two simple continuous terms (after merging) that are not both normal
 and have no Gaussian part are a two-term `convolution`: the 1-D integral over
 the first term (the one with an infinite density at a finite bound when only
 one has such a bound) of its density times the other term's density, split at
@@ -207,7 +216,8 @@ point is infinite for e <= 0; the positive finite limit at an end with e = 0
 (e.g. two arcsine terms at 0 and 2) is not classified. Combinations that keep
 the numerical grid (`unknown` ordinates): three or more non-normal terms
 after merging, a Gaussian part with two or more non-normal terms, log-source
-terms other than lognormal ones in a sum, the products listed above, custom output
+terms other than lognormal ones in a sum (except under the exp output
+transformation above), the products listed above, custom output
 transformations and `bounded_logit`, the unclassified meeting points, and SD
 components (and variances) of nested variance allocations (the scale prior
 times two or more independent allocation shares).

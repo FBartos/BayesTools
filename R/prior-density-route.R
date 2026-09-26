@@ -681,14 +681,128 @@
 
 # A named monotone output transformation of 'source'. 'hull' returns the exact
 # support hull of the source (NULL when unknown); region probabilities of
-# 'exp_lin' transformations need it.
+# 'exp_lin' transformations need it. The exp of a log-source term plus a
+# Gaussian part is a scale product (.prior_density_route_exp_scale_product()).
 .prior_density_route_transform <- function(source, transformation, arguments, hull){
 
   if(is.null(transformation)){
     return(source)
   }
+  exp_product <- .prior_density_route_exp_scale_product(source, transformation,
+                                                         arguments, hull)
+  if(!is.null(exp_product)){
+    return(exp_product)
+  }
   list(type = "transform", source = source, transformation = transformation,
        arguments = arguments, hull = hull)
+}
+
+# The exp of X + G, with X one term through a log source (weight 1; a positive
+# simple continuous prior, e.g. the unscaled intercept of a log-intercept
+# formula scaling) and G ~ N(m, s), s > 0, the Gaussian part (normal terms and
+# points), has no structural route as a log-scale sum (a general convolution),
+# but is the scale product Y = X W of X and the independent lognormal
+# multiplier W = exp(G) ~ lognormal(m, s): the 'scale_product' leaf, with its
+# exact ordinates, region probabilities, plotted values and the
+# classification of its offset at 0. Mixture and spike-and-slab priors of X
+# are expanded before (the exp of each component is rewritten on its own; a
+# component that cannot be keeps the transformation node). NULL for other
+# transformations and sources: log-source terms with another weight (X^w W,
+# which the leaf's multiplier map does not represent), several log-source
+# terms, a non-Gaussian other term, a Gaussian part without variance (the
+# scalar route), and products.
+.prior_density_route_exp_scale_product <- function(source, transformation,
+                                                   arguments, hull){
+
+  if(!identical(transformation, "exp") || length(arguments) > 0L){
+    return(NULL)
+  }
+  if(identical(source$type, "unknown") && is.list(source$recipe)){
+    return(.prior_density_route_log_source_product(source$recipe))
+  }
+  if(!identical(source$type, "mixture") || !is.null(source$rows)){
+    return(NULL)
+  }
+  products <- lapply(source$components, .prior_density_route_exp_scale_product,
+                     transformation = transformation, arguments = arguments,
+                     hull = hull)
+  rewritten <- !vapply(products, is.null, logical(1))
+  if(!any(rewritten)){
+    return(NULL)
+  }
+  # the exp of a mixture is the mixture of the components' exps
+  source$components <- Map(function(component, product){
+    if(!is.null(product)){
+      return(product)
+    }
+    list(type = "transform", source = component, transformation = transformation,
+         arguments = arguments, hull = hull)
+  }, source$components, products)
+  source
+}
+
+# The scale-product leaf of the exp of the combination recorded in 'recipe'
+# (see .prior_density_route_exp_scale_product()), or NULL.
+.prior_density_route_log_source_product <- function(recipe){
+
+  weights <- recipe$weights[recipe$weights != 0]
+  source_transforms <- recipe$source_transforms
+  if(length(weights) < 2L || is.null(source_transforms)){
+    return(NULL)
+  }
+  source_transforms <- source_transforms[names(weights)]
+  log_source <- !is.na(source_transforms) & source_transforms == "log"
+  if(sum(log_source) != 1L || any(!is.na(source_transforms) & !log_source) ||
+     unname(weights[log_source]) != 1){
+    return(NULL)
+  }
+  groups <- tryCatch(
+    .prior_linear_weight_groups(recipe$prior_list, weights),
+    error = function(e) NULL
+  )
+  if(is.null(groups) || any(vapply(groups, function(group){
+    !is.null(attr(group$prior, "multiply_by", exact = TRUE))
+  }, logical(1)))){
+    return(NULL)
+  }
+  log_column <- names(weights)[log_source]
+  log_group <- groups[vapply(groups, function(group){
+    log_column %in% names(group$weights)
+  }, logical(1))]
+  if(length(log_group) != 1L || length(log_group[[1L]]$weights) != 1L){
+    return(NULL)
+  }
+  factor <- log_group[[1L]]$prior
+  if(!.prior_density_simple_continuous(factor) || factor$truncation$lower < 0){
+    return(NULL)
+  }
+  gaussian_weights <- weights[!log_source]
+  gaussian <- .prior_density_ordinate_linear_normal(
+    recipe$prior_list, gaussian_weights, source_transforms[names(gaussian_weights)], 0
+  )
+  if(is.null(gaussian) || !identical(gaussian$method, "linear_normal") ||
+     !isTRUE(gaussian$exact) || !is.finite(gaussian$provenance$mean) ||
+     !is.finite(gaussian$provenance$sd) || gaussian$provenance$sd <= 0){
+    return(NULL)
+  }
+  multiplier <- prior("lognormal", list(meanlog = gaussian$provenance$mean,
+                                         sdlog   = gaussian$provenance$sd))
+  n_grid <- if(is.null(recipe$n_grid)) .prior_linear_density_default_grid() else recipe$n_grid
+  list(
+    type   = "scale_product",
+    spec   = .prior_scale_product_spec(
+      offset     = 0,
+      scale      = 1,
+      factor     = factor,
+      multiplier = multiplier,
+      sources    = list(
+        additive   = character(),
+        multiplied = names(log_group),
+        multiplier = setdiff(names(groups), names(log_group))
+      )
+    ),
+    n_grid = n_grid
+  )
 }
 
 # Route of the linear combination recorded in the arguments of a

@@ -965,7 +965,7 @@ test_that("prior_density_has_provenance() signals densities without deterministi
   expect_equal(region_probability(gammas, "theta > 6"), stats::pgamma(6, 6, 1, lower.tail = FALSE),
                tolerance = 1e-3)
   log_intercept <- .prior_linear_combination_density(
-    list(t = prior("normal", list(0, .35), list(0, Inf)), g = prior("normal", list(0, .5))),
+    list(t = prior("normal", list(0, .35), list(0, Inf)), g = prior("t", list(0, .5, 3))),
     c(t = 1, g = -1), source_transforms = c(t = "log", g = NA),
     output_transformation = "exp"
   )
@@ -999,6 +999,98 @@ test_that("prior_density_has_provenance() signals densities without deterministi
   expect_true(prior_density_has_provenance(points))
   expect_error(prior_density_has_provenance(list()),
                "must be a BayesTools prior or prior_linear_density object", fixed = TRUE)
+})
+
+test_that("the exp of a log-source term plus a Gaussian part is a scale product", {
+
+  # Y = exp(log(b0) + c b1) = b0 W, W = exp(c b1) ~ lognormal(0, |c| .5), with
+  # the positive intercept b0 ~ N(0, sqrt(2) / 4)T(0, Inf) and the slope
+  # b1 ~ N(0, .5) (the unscaled heterogeneity intercept of a log-intercept
+  # scale regression, bangertdrowns2004). References: integrals over b1 of
+  # f_b0(y e^(-c t)) e^(-c t) phi(t; 0, .5) at rel.tol 1e-13.
+  intercept_sd <- sqrt(2) / 4
+  slope <- -0.9894605
+  exp_density <- function(intercept, slope_prior = prior("normal", list(0, .5)), weight = 1){
+    .prior_linear_combination_density(
+      list(b0 = intercept, b1 = slope_prior), c(b0 = weight, b1 = slope),
+      source_transforms = c(b0 = "log", b1 = NA), output_transformation = "exp"
+    )
+  }
+  reference <- function(y, log_f_intercept){
+    stats::integrate(function(t){
+      exp(log_f_intercept(y * exp(-slope * t)) - slope * t + stats::dnorm(t, 0, .5, log = TRUE))
+    }, -Inf, Inf, rel.tol = 1e-13, abs.tol = 0)$value
+  }
+  f_half <- function(x) log(2) + stats::dnorm(x, 0, intercept_sd, log = TRUE)
+  half <- prior("normal", list(0, intercept_sd), list(0, Inf))
+  density <- exp_density(half)
+  route <- .prior_density_route_from_adaptive(attr(density, "adaptive_evaluation"))
+  expect_identical(route$type, "scale_product")
+  for(value in c(.05, .2, 1, 3)){
+    ordinate <- prior_density_ordinate(density, value)
+    expect_identical(ordinate$behavior, "regular")
+    expect_true(ordinate$exact)
+    expect_identical(ordinate$method, "scale_mixture")
+    expect_equal(exp(ordinate$log_density), reference(value, f_half), tolerance = 1e-10)
+  }
+  # at 0, the image of log(b0) = -Inf: f_b0(0) E[1 / W] with W lognormal
+  zero <- prior_density_ordinate(density, 0)
+  expect_true(zero$exact)
+  expect_equal(exp(zero$log_density), exp(f_half(0)) * exp((slope * .5)^2 / 2), tolerance = 1e-12)
+  expect_identical(prior_density_ordinate(density, -.1)$behavior, "zero")
+  # region probabilities against integrals of the probability of b0
+  probability <- function(hypothesis){
+    .hypothesis_prior_density_prob(
+      density, hypothesis_parse(hypothesis)$statements[[1L]]$left, "theta"
+    )
+  }
+  interval_reference <- function(lower, upper){
+    stats::integrate(function(t){
+      scale <- exp(-slope * t)
+      upper_tail <- if(is.finite(upper)) stats::pnorm(upper * scale, 0, intercept_sd, lower.tail = FALSE) else 0
+      2 * (stats::pnorm(lower * scale, 0, intercept_sd, lower.tail = FALSE) - upper_tail) *
+        stats::dnorm(t, 0, .5)
+    }, -Inf, Inf, rel.tol = 1e-13)$value
+  }
+  expect_equal(probability("theta > 0.1"), interval_reference(.1, Inf), tolerance = 1e-10)
+  expect_equal(probability("theta > 0.2 & theta < 1"), interval_reference(.2, 1), tolerance = 1e-10)
+  # the plotted density is the scale product's
+  plotted <- .prior_linear_density_to_plot_data(density)$density
+  checked <- plotted$x[plotted$x > 0][c(10, 60, 150)]
+  expect_equal(plotted$y[match(checked, plotted$x)], vapply(checked, function(value){
+    exp(prior_density_ordinate(density, value)$log_density)
+  }, numeric(1)), tolerance = 1e-8)
+
+  # a mixture prior of b0 is the mixture of the components' scale products
+  gamma <- prior("gamma", list(2, 4))
+  mixture <- exp_density(prior_mixture(list(half, gamma), is_null = c(FALSE, FALSE)))
+  mixture_route <- .prior_density_route_from_adaptive(attr(mixture, "adaptive_evaluation"))
+  expect_identical(mixture_route$type, "mixture")
+  expect_identical(vapply(mixture_route$components, `[[`, character(1), "type"),
+                   c("scale_product", "scale_product"))
+  for(value in c(.2, 1)){
+    ordinate <- prior_density_ordinate(mixture, value)
+    expect_true(ordinate$exact)
+    expect_equal(exp(ordinate$log_density),
+                 .5 * reference(value, f_half) +
+                   .5 * reference(value, function(x) stats::dgamma(x, 2, 4, log = TRUE)),
+                 tolerance = 1e-10)
+  }
+
+  # not applicable, unchanged: a non-Gaussian other term, and a log-source
+  # term with another weight (b0^2 W, which the scale-product leaf does not
+  # represent), remain general convolutions with unknown ordinates
+  for(unchanged in list(exp_density(half, slope_prior = prior("t", list(0, .5, 3))),
+                        exp_density(half, weight = 2))){
+    ordinate <- prior_density_ordinate(unchanged, .5)
+    expect_identical(ordinate$behavior, "unknown")
+    expect_false(ordinate$exact)
+    expect_identical(ordinate$reason, "General numerical convolutions are not structurally classified.")
+    expect_identical(
+      .prior_density_route_from_adaptive(attr(unchanged, "adaptive_evaluation"))$type,
+      "transform"
+    )
+  }
 })
 
 test_that("products of normal terms are classified on the scale-mixture route", {

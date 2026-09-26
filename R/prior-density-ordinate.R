@@ -96,6 +96,10 @@
 #' untruncated terms, \eqn{A} and \eqn{B} the standardized truncation bounds,
 #' and \eqn{\alpha(x)} and \eqn{\beta(x)} the truncation bounds standardized
 #' by the normal distribution of the truncated term given the sum \eqn{x}.
+#' The exponential of a log-transformed positive term \eqn{X} plus a Gaussian
+#' part \eqn{G} (e.g. the unscaled intercept of a `log(intercept)` formula
+#' scaling) is the scale product of \eqn{X} and the lognormal
+#' \eqn{\exp(G)} (method `"scale_mixture"`).
 #' Sums of Cauchy terms are Cauchy (method
 #' `"scalar_affine"`), and two other continuous scalar terms without a
 #' Gaussian part are a `"convolution"` quadrature over one term's declared

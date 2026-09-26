@@ -2289,7 +2289,8 @@ test_that("marginal posteriors of log-intercept unscaled intercepts use the log-
   # positive fitted intercept b0 ~ N(0, .5)T(0, Inf) and the standardized
   # slope b1 ~ N(0, 1). Its density is f(y) = int f_b0(y e^(r t)) e^(r t)
   # phi(t) dt; its log is linear in (log(b0), b1), so the prior density is the
-  # exp of the log-scale combination, its support (0, Inf).
+  # exp of the log-scale combination, its support (0, Inf), and it is the
+  # scale product of b0 and the lognormal exp(-r b1).
   formula <- ~ x
   attr(formula, "log(intercept)") <- TRUE
   scaled <- JAGS_formula(formula, "mu", data = data.frame(x = c(1, 2, 3.5, 4, 6, 8.5)), prior_list = list(
@@ -2332,30 +2333,46 @@ test_that("marginal posteriors of log-intercept unscaled intercepts use the log-
     .bt_meta_get(intercept, "linear_weights")[c("mu_intercept", "mu_x")],
     c(mu_intercept = 1, mu_x = 0)
   )
-  # the log-scale combination has no structural route: grid heights within the
-  # refinement criterion (1e-4 relative change; observed 3e-8), an unknown
-  # ordinate (point hypotheses refused), and grid region probabilities
+  # the scale product has exact ordinates and heights (point hypotheses are
+  # eligible) and quadrature region probabilities
   for(value in c(.05, .5, 2)){
+    ordinate <- prior_density_ordinate(density, value)
+    expect_true(ordinate$exact)
+    expect_identical(ordinate$method, "scale_mixture")
+    expect_equal(exp(ordinate$log_density), reference(value), tolerance = 1e-10)
     expect_equal(as.numeric(.prior_linear_density_height(density, value)),
-                 reference(value), tolerance = 1e-6)
+                 reference(value), tolerance = 1e-10)
   }
-  expect_identical(prior_ordinate_status(density, .5)$condition, "BayesTools_inexact_ordinate")
+  expect_true(prior_ordinate_status(density, .5)$eligible)
   probability <- .hypothesis_prior_density_prob(
     density, hypothesis_parse("theta > 0.5")$statements[[1L]]$left, "theta"
   )
   expect_equal(as.numeric(probability), stats::integrate(function(t){
     2 * stats::pnorm(.5 * exp(ratio * t), 0, .5, lower.tail = FALSE) * stats::dnorm(t)
-  }, -Inf, Inf, rel.tol = 1e-12)$value, tolerance = 1e-6)
+  }, -Inf, Inf, rel.tol = 1e-12)$value, tolerance = 1e-10)
 
   # the marginal of the linear predictor at x = 0 (log(Y)) on the original
-  # scale: the density of log(Y) is f(e^z) e^z
+  # scale: the density of log(Y) is f(e^z) e^z. The log-scale sum itself has
+  # no structural route (grid heights within the refinement criterion, 1e-4
+  # relative change; observed 3e-8)
   predictor <- marginal_posterior(scaled_mixed, "mu_intercept", formula = formula,
                                   prior_samples = TRUE)
   expect_equal(as.numeric(predictor[["intercept"]]), log(as.numeric(intercept)))
   predictor_density <- .bt_meta_get(predictor[["intercept"]], "prior_density")
+  expect_identical(prior_ordinate_status(predictor_density, -1)$condition,
+                   "BayesTools_inexact_ordinate")
   for(value in c(-3, -1, .5)){
     expect_equal(as.numeric(.prior_linear_density_height(predictor_density, value)),
                  reference(exp(value)) * exp(value), tolerance = 1e-6)
+  }
+  # its exp (the predictor on the original scale) is the scale product again
+  exp_predictor <- marginal_posterior(scaled_mixed, "mu_intercept", formula = formula,
+                                      prior_samples = TRUE, transformation = "exp")
+  exp_density <- .bt_meta_get(exp_predictor[["intercept"]], "prior_density")
+  for(value in c(.05, .5, 2)){
+    ordinate <- prior_density_ordinate(exp_density, value)
+    expect_true(ordinate$exact)
+    expect_equal(exp(ordinate$log_density), reference(value), tolerance = 1e-10)
   }
 })
 
