@@ -114,12 +114,15 @@ bayestools_test_profile_contexts <- list(
   fixture = c(
     "fixture-integrity",
     "hypothesis-BF-bridge",
+    "JAGS-deterministic-nodes-fixture",
     "JAGS-ensemble-tables",
     "JAGS-fit",
     "JAGS-formula-scale",
     "JAGS-formula",
     "JAGS-summary-tables",
     "model-averaging",
+    "parameter-labels-fixture",
+    "random-effects-summary-posterior-fixture",
     "selection-kernels",
     "weightfunction-redesign"
   ),

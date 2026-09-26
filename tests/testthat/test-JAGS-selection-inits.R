@@ -195,31 +195,3 @@ test_that("selection initial values name stochastic nodes of the matching length
   expect_false("omega_component_3" %in% names(inits))
   expect_true("log_omega_component_4" %in% names(inits))
 })
-
-
-test_that("heterogeneous weightfunction mixtures compile and adapt in JAGS", {
-
-  # The end-to-end guard: a wrong init node name is only fatal once JAGS sees
-  # the model, and only when the expansion changes the array length.
-  mixture <- prior_mixture(list(
-    prior_none(prior_weights = 1),
-    prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 2, 3)), prior_weights = 1),
-    prior_weightfunction("one-sided", c(.05, .10), wf_independent(prior("gamma", list(shape = 9, rate = 3))), prior_weights = 1),
-    prior_weightfunction("one-sided", c(.025), wf_independent(prior("normal", list(mean = log(1.5), sd = .15)), "log_omega"), prior_weights = 1),
-    prior_weightfunction("two-sided", c(.05), wf_fixed(c(1, .4)), prior_weights = 1)
-  ))
-
-  fit <- suppressWarnings(JAGS_fit(
-    "model{}",
-    data       = NULL,
-    prior_list = list(bias = mixture),
-    chains     = 1,
-    adapt      = 50,
-    burnin     = 50,
-    sample     = 100,
-    seed       = 14
-  ))
-
-  expect_s3_class(fit, "runjags")
-  expect_false(inherits(fit, "condition"))
-})

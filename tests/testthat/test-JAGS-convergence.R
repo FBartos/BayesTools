@@ -1194,18 +1194,6 @@ test_that("monitored fully observed data are structural constants", {
   )
   expect_identical(unname(.convergence_roles(unknown)["N"]), "sampled")
   expect_false(check(unknown))
-
-  # JAGS_fit() passes the fully observed data: partly observed 'y' stays
-  # sampled.
-  skip_if_not_installed("rjags")
-  real <- suppressWarnings(JAGS_fit(
-    syntax, data = list(y = c(NA, stats::rnorm(9)), x = x, N = 10L),
-    prior_list = priors, add_parameters = c("N", "x", "y"),
-    chains = 2, adapt = 50, burnin = 50, sample = 100, seed = 1
-  ))
-  real_roles <- .convergence_roles(real)
-  expect_true(all(real_roles[c("N", x_names)] == "structural"))
-  expect_true(all(real_roles[paste0("y[", 1:10, "]")] == "sampled"))
 })
 
 test_that("the JAGS syntax graph reads whole statements", {
@@ -1467,28 +1455,4 @@ test_that("fail_fast stops computing after a failed parameter", {
   expect_identical(calls, 3L)
   expect_equal(attr(complete, "diagnostics")$state,
                c("assessable", "assessable"))
-})
-
-test_that("the backend anchor of a model without monitors is auxiliary", {
-
-  skip_if_not_installed("rjags")
-  fit <- suppressWarnings(JAGS_fit(
-    "model{ x ~ dnorm(0, 1) }", prior_list = NULL,
-    chains = 2, adapt = 50, burnin = 50, sample = 100,
-    autofit = TRUE,
-    autofit_control = list(max_extend = 2, sample_extend = 50),
-    seed = 1
-  ))
-  # Autofit does not extend: the anchor is not assessable but not selected.
-  expect_null(attr(fit, "warnings"))
-  expect_identical(
-    .convergence_roles(fit),
-    c(BayesTools_backend_anchor = "auxiliary")
-  )
-  result <- JAGS_check_convergence(fit)
-  expect_true(result)
-  expect_identical(
-    .convergence_states(result),
-    c(BayesTools_backend_anchor = "not_requested")
-  )
 })

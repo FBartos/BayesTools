@@ -1070,7 +1070,7 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
         "tools.R",
         "zzz.R"
       ),
-      patterns = "^distributions-.*\\.R$"
+      patterns = c("^distributions-.*\\.R$", "^JAGS-deterministic-nodes.*\\.R$")
     ),
     .test_cache_package_src_files(
       files = c("BayesTools.cc", "init.c", "r-lkj.cc", "Makevars.in", "Makevars.win", "Makevars.ucrt"),
@@ -1151,12 +1151,15 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
     semantic_oracles = testthat::test_path("helper-semantic-oracles.R"),
     .test_cache_existing_test_files(c(
       "test-fixture-integrity.R",
+      "test-JAGS-deterministic-nodes-fixture.R",
       "test-JAGS-ensemble-tables.R",
       "test-JAGS-fit.R",
       "test-JAGS-formula-scale.R",
       "test-JAGS-formula.R",
       "test-JAGS-summary-tables.R",
       "test-model-averaging.R",
+      "test-parameter-labels-fixture.R",
+      "test-random-effects-summary-posterior-fixture.R",
       "test-selection-kernels.R",
       "test-summary-tables.R",
       "test-weightfunction-redesign.R"

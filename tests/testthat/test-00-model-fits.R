@@ -2256,6 +2256,791 @@ test_that("Dual parameter regression with log(intercept) and formula_scale fits 
 })
 
 # ============================================================================ #
+# SECTION: POST-FIT FIXTURES OF DETERMINISTIC NODES, LABELS, AND SUMMARIES
+# ============================================================================ #
+# Small single-chain fits whose post-fit processing is checked against their
+# JAGS monitors and fitted metadata in test-JAGS-deterministic-nodes-fixture.R,
+# test-parameter-labels-fixture.R, test-random-effects-summary-posterior-fixture.R,
+# and test-JAGS-fit.R. The fits are saved without being kept in the test
+# blocks: random-effect term formulas carry the block's environment, so every
+# fit bound there would be saved again inside the later fits.
+test_that("Deterministic-node parity models fit correctly", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+
+  dnode_data <- function(){
+    set.seed(11)
+    n <- 24L
+    data.frame(
+      x = stats::rnorm(n, 5, 3),
+      z = stats::rnorm(n, -2, 0.5),
+      t = factor(rep(c("t1", "t2", "t3", "t4"), 6), levels = c("t1", "t2", "t3", "t4")),
+      time = rep(c(0, 1, 2.5, 4), 6),
+      g = factor(rep(sprintf("g%d", 1:6), each = 4)),
+      s = factor(rep(sprintf("s%d", 1:4), each = 6)),
+      d = factor(rep(c("a", "b", "c"), 8)),
+      p = factor(rep(sprintf("p%d", 1:3), each = 8))
+    )
+  }
+  dnode_fit <- function(formula, prior_list, prior_random = NULL,
+                        formula_scale = NULL, extra_prior = NULL,
+                        add_parameters = NULL, seed = 1L){
+    data <- dnode_data()
+    set.seed(seed)
+    y <- stats::rnorm(nrow(data), 0.1 * data$x, 1)
+    suppressWarnings(JAGS_fit(
+      model_syntax = "model{\n  for(i in 1:N_mu){\n    y[i] ~ dnorm(mu[i], 1)\n  }\n}",
+      data = list(y = y),
+      prior_list = extra_prior,
+      formula_list = list(mu = formula),
+      formula_data_list = list(mu = data),
+      formula_prior_list = list(mu = prior_list),
+      formula_scale_list = if(!is.null(formula_scale)) list(mu = formula_scale),
+      formula_random_prior_list = if(!is.null(prior_random)) list(mu = prior_random),
+      add_parameters = add_parameters,
+      chains = 1, adapt = 50, burnin = 50, sample = 100, seed = seed, silent = TRUE
+    ))
+  }
+  dnode_prior_fit <- function(prior_list, add_parameters = NULL, seed = 1L){
+    set.seed(seed)
+    suppressWarnings(JAGS_fit(
+      model_syntax = "model{\n  for(i in 1:N){\n    x[i] ~ dnorm(m, 1)\n  }\n}",
+      data = list(x = stats::rnorm(10), N = 10L),
+      prior_list = c(list(m = prior("normal", list(0, 1))), prior_list),
+      add_parameters = add_parameters,
+      chains = 1, adapt = 50, burnin = 50, sample = 100, seed = seed, silent = TRUE
+    ))
+  }
+  # A RoBMA-like model: the row vector 'tau' of the model syntax is split by a
+  # variance allocation over the blocks (the first gated) and the SD
+  # components of the second block.
+  dnode_row_source_fit <- function(sd_source){
+    data <- dnode_data()
+    set.seed(4)
+    y <- stats::rnorm(nrow(data), 0.1 * data$x, 1)
+    suppressWarnings(JAGS_fit(
+      model_syntax = paste0(
+        "model{\n  for(i in 1:N_mu){\n",
+        "    tau[i] <- tau_scale * exp(0.3 * w[i])\n",
+        "    y[i] ~ dnorm(mu[i], 1)\n  }\n}"
+      ),
+      data = list(y = y, w = data$z),
+      prior_list = list(tau_scale = prior("normal", list(0, 0.5), list(0, Inf))),
+      formula_list = list(mu = ~ 1 + x + random(1 | g, name = "g", covariance = "diag") + diag(1 + x | s)),
+      formula_data_list = list(mu = data),
+      formula_prior_list = list(mu = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1))
+      )),
+      formula_random_prior_list = list(mu = prior_random(
+        random_variance_allocation(
+          name = "tot", terms = c(g = "g", s = "s"),
+          sd_source = sd_source,
+          weights = prior("dirichlet", list(alpha = c(2, 3))),
+          inclusion = list(g = prior("beta", list(2, 2)))
+        ),
+        random_variance_allocation(
+          name = "sc", parent = allocation_ref("tot", "s"), terms = "s",
+          target = "sd_component", scale = "mean_variance",
+          weights = prior("dirichlet", list(alpha = c(1, 2)))
+        )
+      )),
+      add_parameters = c("tau", "mu"),
+      chains = 1, adapt = 50, burnin = 50, sample = 100, seed = 4, silent = TRUE
+    ))
+  }
+  sd_prior <- prior("normal", list(0, 1), list(0, Inf))
+
+  # A gated total-variance root allocation over the blocks g and d, with the
+  # correlated block g split into SD components by a mean-variance child.
+  model_registry[["fit_dnode_allocation"]] <<- save_fit(
+    dnode_fit(
+      ~ 1 + x + us(1 + x | g) + random(1 | d, name = "d", covariance = "diag"),
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1))
+      ),
+      prior_random = prior_random(
+        random_variance_allocation(
+          name = "tot", terms = c(g = "g", d = "d"), scale = "total_variance",
+          sd = prior("gamma", list(2, 2)),
+          weights = prior("dirichlet", list(alpha = c(1.5, 2.5))),
+          inclusion = list(d = prior("beta", list(3, 2)))
+        ),
+        random_variance_allocation(
+          name = "gc", parent = allocation_ref("tot", "g"), terms = "g",
+          target = "sd_component", scale = "mean_variance",
+          weights = prior("dirichlet", list(alpha = c(1, 2)))
+        )
+      ),
+      formula_scale = list(x = TRUE)
+    ),
+    "fit_dnode_allocation",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    note = "Gated total-variance allocation with a mean-variance SD-component child for deterministic-node parity."
+  )$registry_entry
+
+  # An external scalar SD source is the root of the allocation chain.
+  model_registry[["fit_dnode_allocation_external"]] <<- save_fit(
+    dnode_fit(
+      ~ 1 + random(1 | g, name = "g", covariance = "diag") +
+        random(1 | d, name = "d", covariance = "diag"),
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      extra_prior = list(tau = prior("normal", list(0, 1), list(0, Inf))),
+      prior_random = prior_random(random_variance_allocation(
+        name = "tot", terms = c(g = "g", d = "d"),
+        sd_source = random_sd_source("tau"),
+        weights = prior("dirichlet", list(alpha = c(2, 2)))
+      )),
+      seed = 2L
+    ),
+    "fit_dnode_allocation_external",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    note = "Variance allocation rooted in an external scalar SD source for deterministic-node parity."
+  )$registry_entry
+
+  # Scalar correlations of every structure, one of them fixed.
+  model_registry[["fit_dnode_correlation"]] <<- save_fit(
+    dnode_fit(
+      ~ 1 + cs(t | g) + ar1(t | s) + car(time | d) + hcs(t | p),
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        g = random_block(sd = sd_prior, covariance = random_covariance(
+          cor = prior("normal", list(0, 1.5)), cor_scale = "logit")),
+        s = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5))),
+        d = random_block(sd = sd_prior, covariance = random_covariance(
+          cor = prior("normal", list(0, 1)), cor_scale = "logit")),
+        p = random_block(sd = sd_prior, cor = prior("spike", list(location = 0.4)),
+                         monitor = random_monitor(correlation = TRUE))
+      )
+    ),
+    "fit_dnode_correlation",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    note = "Compound-symmetry, AR(1), CAR, and heterogeneous compound-symmetry scalar correlations for deterministic-node parity."
+  )$registry_entry
+
+  # LKJ blocks with monitored primitives (K = 3) and without (K = 2).
+  model_registry[["fit_dnode_lkj"]] <<- save_fit(
+    dnode_fit(
+      ~ 1 + x + z + us(1 + x + z | g) + us(1 + x | s),
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1)),
+        z = prior("normal", list(0, 1))
+      ),
+      prior_random = prior_random(
+        g = random_block(sd = sd_prior, cor = prior_lkj(eta = 1.5, include_primitives = TRUE),
+                         monitor = random_monitor(lkj_primitives = TRUE)),
+        s = random_block(sd = sd_prior, cor = prior_lkj(eta = 2))
+      ),
+      formula_scale = list(x = TRUE)
+    ),
+    "fit_dnode_lkj",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    note = "LKJ Cholesky, correlation, and partial-correlation blocks for deterministic-node parity."
+  )$registry_entry
+
+  # Publication weights of every weight-function family.
+  model_registry[["fit_dnode_omega_cumulative"]] <<- save_fit(
+    dnode_prior_fit(list(omega = prior_weightfunction(
+      "two-sided", c(0.05, 0.1), wf_cumulative(c(1, 2, 1))))),
+    "fit_dnode_omega_cumulative",
+    simple_priors = TRUE, weightfunction_priors = TRUE,
+    note = "Two-sided cumulative weight function for publication-weight node parity."
+  )$registry_entry
+
+  model_registry[["fit_dnode_omega_binary"]] <<- save_fit(
+    dnode_prior_fit(list(omega = prior_weightfunction(
+      "two-sided", c(0.05), wf_cumulative(c(1, 1))))),
+    "fit_dnode_omega_binary",
+    simple_priors = TRUE, weightfunction_priors = TRUE,
+    note = "Two-sided binary weight function for publication-weight node parity."
+  )$registry_entry
+
+  model_registry[["fit_dnode_omega_log_independent"]] <<- save_fit(
+    dnode_prior_fit(list(omega = prior_weightfunction(
+      "one-sided", c(0.025, 0.5), wf_independent(prior("normal", list(0, 1)), scale = "log_omega")))),
+    "fit_dnode_omega_log_independent",
+    simple_priors = TRUE, weightfunction_priors = TRUE,
+    note = "One-sided independent log-weight function for publication-weight node parity."
+  )$registry_entry
+
+  model_registry[["fit_dnode_omega_fixed"]] <<- save_fit(
+    dnode_prior_fit(list(omega = prior_weightfunction(
+      "one-sided", c(0.025, 0.5), wf_fixed(c(1, 1/3, 0.2))))),
+    "fit_dnode_omega_fixed",
+    simple_priors = TRUE, weightfunction_priors = TRUE,
+    note = "One-sided fixed weight function for publication-weight node parity."
+  )$registry_entry
+
+  model_registry[["fit_dnode_omega_bias_mixture"]] <<- save_fit(
+    dnode_prior_fit(
+      list(bias = prior_mixture(list(
+        prior_PET("normal", list(0, 1)),
+        prior_weightfunction("one-sided", c(0.025, 0.05), wf_cumulative(c(1, 1, 1))),
+        prior_weightfunction("two-sided", c(0.05), wf_cumulative(c(1, 1))),
+        prior_weightfunction("two-sided", c(0.05, 0.1), wf_independent(prior("normal", list(0, 1)), scale = "log_omega"))
+      ), is_null = c(FALSE, FALSE, FALSE, FALSE))),
+      add_parameters = c("eta_component_2", "omega_ratio_component_3", "log_omega_component_4")
+    ),
+    "fit_dnode_omega_bias_mixture",
+    simple_priors = TRUE, pub_bias_priors = TRUE, weightfunction_priors = TRUE,
+    mixture_priors = TRUE, add_parameters = TRUE,
+    note = "Publication-bias mixture of PET and weight functions with monitored component weights for publication-weight node parity."
+  )$registry_entry
+
+  # Spike-and-slab, mixture, and publication-bias mixture priors.
+  model_registry[["fit_dnode_mixture"]] <<- save_fit(
+    dnode_prior_fit(
+      list(
+        a = prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("beta", list(1, 1))),
+        b = prior_mixture(list(prior("normal", list(0, 1), list(0, Inf)), prior("spike", list(0)),
+                               prior("normal", list(2, 0.5))), is_null = c(FALSE, TRUE, FALSE)),
+        bias = prior_mixture(list(
+          prior_PET("normal", list(0, 1)),
+          prior_PEESE("normal", list(0, 1)),
+          prior_weightfunction("one-sided", c(0.025, 0.05), wf_cumulative(c(1, 1, 1)))
+        ), is_null = c(FALSE, FALSE, FALSE))
+      ),
+      add_parameters = c("b_component_1", "b_component_3", "PET_1", "PEESE_1", "eta_component_3"),
+      seed = 3L
+    ),
+    "fit_dnode_mixture",
+    simple_priors = TRUE, pub_bias_priors = TRUE, weightfunction_priors = TRUE,
+    spike_and_slab_priors = TRUE, mixture_priors = TRUE, add_parameters = TRUE,
+    note = "Spike-and-slab, mixture, and publication-bias mixture priors with monitored components for mixture-node parity."
+  )$registry_entry
+
+  # Factor spike-and-slab and mixture formula priors; the point component of
+  # the mixture is a constant.
+  model_registry[["fit_dnode_mixture_factor"]] <<- save_fit(
+    dnode_fit(
+      ~ 1 + x + t,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("beta", list(1, 1))),
+        t = prior_mixture(list(prior_factor("spike", list(0), contrast = "treatment"),
+                               prior_factor("normal", list(0, 1), contrast = "treatment")),
+                          is_null = c(TRUE, FALSE))
+      ),
+      add_parameters = "mu_t_component_2"
+    ),
+    "fit_dnode_mixture_factor",
+    simple_priors = TRUE, factor_priors = TRUE, spike_and_slab_priors = TRUE,
+    mixture_priors = TRUE, formulas = TRUE, add_parameters = TRUE,
+    note = "Formula spike-and-slab coefficient and treatment-factor mixture for mixture-node parity."
+  )$registry_entry
+
+  # The monitored linear predictor of a formula with a multiplier, an
+  # expression, a factor, and latent LKJ and AR(1) random effects.
+  x_prior <- prior("normal", list(0, 1))
+  attr(x_prior, "multiply_by") <- "b_scale"
+  model_registry[["fit_dnode_linear_predictor"]] <<- save_fit(
+    dnode_fit(
+      ~ 1 + x + d + expression(0.25 * z[i]) + us(1 + x | g) + ar1(t | s),
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = x_prior,
+        d = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+      ),
+      prior_random = prior_random(
+        g = random_block(sd = sd_prior, cor = prior_lkj(eta = 1),
+                         monitor = random_monitor(latent = TRUE)),
+        s = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)),
+                         monitor = random_monitor(latent = TRUE))
+      ),
+      formula_scale = list(x = TRUE),
+      extra_prior = list(b_scale = prior("lognormal", list(0, 0.2))),
+      add_parameters = "mu"
+    ),
+    "fit_dnode_linear_predictor",
+    simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE,
+    random_effects = TRUE, add_parameters = TRUE,
+    note = "Monitored linear predictor with a multiplier, an expression, a factor, and latent random effects."
+  )$registry_entry
+
+  model_registry[["fit_dnode_mean_centered"]] <<- save_fit(
+    dnode_fit(
+      ~ 1 + x + id(1 | g),
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1))
+      ),
+      prior_random = prior_random(
+        g = random_block(sd = sd_prior, parameterization = "mean_centered",
+                         monitor = random_monitor(latent = TRUE))
+      ),
+      add_parameters = "mu"
+    ),
+    "fit_dnode_mean_centered",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    add_parameters = TRUE,
+    note = "Monitored linear predictor of a mean-centered random intercept with latent effects."
+  )$registry_entry
+
+  model_registry[["fit_dnode_ar1"]] <<- save_fit(
+    dnode_fit(
+      ~ 1 + ar1(t | s),
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        s = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
+      )
+    ),
+    "fit_dnode_ar1",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    note = "AR(1) random-effect block for deterministic-node selection checks."
+  )$registry_entry
+
+  # Row-indexed external SD sources, read from the monitored rows and
+  # reconstructed by a 'values' function of declared inputs.
+  model_registry[["fit_dnode_row_source"]] <<- save_fit(
+    dnode_row_source_fit(random_sd_source("tau", shape = "row")),
+    "fit_dnode_row_source",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    add_parameters = TRUE,
+    note = "Row-indexed external SD source split by a gated allocation and SD components."
+  )$registry_entry
+
+  # The values function only reads base R; its environment keeps the fitted
+  # object free of this test's workspace.
+  tau_values <- function(parameters, data, n_rows) parameters[["tau_scale"]] * exp(0.3 * data$z)
+  environment(tau_values) <- baseenv()
+  model_registry[["fit_dnode_row_source_values"]] <<- save_fit(
+    dnode_row_source_fit(random_sd_source(parameter_source(
+      "tau", shape = "row", values = tau_values, inputs = "tau_scale"
+    ))),
+    "fit_dnode_row_source_values",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    add_parameters = TRUE,
+    note = "Row-indexed external SD source reconstructed by a values function of declared inputs."
+  )$registry_entry
+
+  # Fixed and parameter multipliers of formula coefficients.
+  x_multiplied <- prior("normal", list(0, 1))
+  attr(x_multiplied, "multiply_by") <- 0.5
+  z_multiplied <- prior("normal", list(0, 1))
+  attr(z_multiplied, "multiply_by") <- "b_scale"
+  model_registry[["fit_dnode_multiplied"]] <<- save_fit(
+    dnode_fit(
+      ~ 1 + x + z,
+      prior_list = list(intercept = prior("normal", list(0, 1)), x = x_multiplied, z = z_multiplied),
+      extra_prior = list(b_scale = prior("lognormal", list(0, 0.2)))
+    ),
+    "fit_dnode_multiplied",
+    simple_priors = TRUE, formulas = TRUE,
+    note = "Formula coefficients with fixed and parameter multipliers for linear-predictor marginal posteriors."
+  )$registry_entry
+})
+
+test_that("Parameter-label models fit correctly", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+
+  syntax <- "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 4)\n}\n}"
+  sd_prior <- prior("normal", list(0, 1), list(0, Inf))
+
+  # A log intercept of a formula with a standardized predictor.
+  set.seed(2)
+  data <- data.frame(x = stats::rnorm(48, 3, 2))
+  data$y <- stats::rnorm(nrow(data), 2)
+  formula <- ~ 1 + x
+  attr(formula, "log(intercept)") <- TRUE
+  model_registry[["fit_label_log_intercept"]] <<- save_fit(
+    suppressWarnings(JAGS_fit(
+      model_syntax       = syntax,
+      data               = list(y = data$y, N = nrow(data)),
+      formula_list       = list(mu = formula),
+      formula_data_list  = list(mu = data),
+      formula_prior_list = list(mu = list(
+        intercept = prior("gamma", list(2, 2)),
+        x         = prior("normal", list(0, 1))
+      )),
+      formula_scale_list = list(mu = list(x = TRUE)),
+      chains = 1, adapt = 100, burnin = 100, sample = 200, silent = TRUE, seed = 3
+    )),
+    "fit_label_log_intercept",
+    simple_priors = TRUE, formulas = TRUE,
+    note = "Log-intercept formula with a standardized predictor for label and transform checks."
+  )$registry_entry
+
+  # An LKJ block with three terms.
+  set.seed(1)
+  data <- data.frame(
+    x = rep(seq(-1, 1, length.out = 12), 4),
+    z = rep(c(-1, 1), 24),
+    g = factor(rep(c("A", "B", "C", "D"), each = 12))
+  )
+  data$y <- stats::rnorm(nrow(data))
+  model_registry[["fit_label_lkj"]] <<- save_fit(
+    suppressWarnings(JAGS_fit(
+      model_syntax       = syntax,
+      data               = list(y = data$y, N = nrow(data)),
+      formula_list       = list(mu = ~ 1 + x + z + (1 + x + z | g)),
+      formula_data_list  = list(mu = data),
+      formula_prior_list = list(mu = list(
+        intercept = prior("normal", list(0, 1)),
+        x         = prior("normal", list(0, 1)),
+        z         = prior("normal", list(0, 1))
+      )),
+      formula_random_prior_list = list(mu = prior_random(g = random_block(sd = sd_prior))),
+      chains = 1, adapt = 100, burnin = 100, sample = 100, silent = TRUE, seed = 3
+    )),
+    "fit_label_lkj",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    note = "Three-term LKJ random-effect block for raw backend-coordinate labels."
+  )$registry_entry
+
+  # An ordered factor with its internal allocation shares.
+  set.seed(1)
+  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 12), levels = c("lo", "mid", "hi")))
+  data$y <- stats::rnorm(nrow(data))
+  model_registry[["fit_label_ordered"]] <<- save_fit(
+    suppressWarnings(JAGS_fit(
+      model_syntax       = syntax,
+      data               = list(y = data$y, N = nrow(data)),
+      formula_list       = list(mu = ~ 1 + f),
+      formula_data_list  = list(mu = data),
+      formula_prior_list = list(mu = list(
+        intercept = prior("normal", list(0, 1)),
+        f         = prior_ordered(prior("normal", list(0, 1)))
+      )),
+      chains = 1, adapt = 100, burnin = 100, sample = 100, silent = TRUE, seed = 3
+    )),
+    "fit_label_ordered",
+    simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE,
+    note = "Ordered-factor formula with internal allocation shares for semantic-table labels."
+  )$registry_entry
+
+  # Random-effect SDs of a standardized predictor: a random slope with and
+  # without its intercept, and a random intercept alone.
+  set.seed(1)
+  data <- data.frame(
+    x = stats::rnorm(48, 3, 2),
+    f = factor(rep(c("a", "b", "c"), 16)),
+    g = factor(rep(1:4, each = 12))
+  )
+  data$y <- stats::rnorm(nrow(data))
+  random_fit <- function(formula, priors, formula_scale = list(mu = list(x = TRUE))){
+    suppressWarnings(JAGS_fit(
+      model_syntax       = syntax,
+      data               = list(y = data$y, N = nrow(data)),
+      formula_list       = list(mu = formula),
+      formula_data_list  = list(mu = data),
+      formula_prior_list = list(mu = priors),
+      formula_scale_list = formula_scale,
+      formula_random_prior_list = list(mu = prior_random(g = random_block(sd = sd_prior))),
+      chains = 1, adapt = 100, burnin = 100, sample = 200, silent = TRUE, seed = 3
+    ))
+  }
+  slope_priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    x         = prior("normal", list(0, 1))
+  )
+  model_registry[["fit_label_random_slope"]] <<- save_fit(
+    random_fit(~ 1 + x + (1 + x || g), slope_priors),
+    "fit_label_random_slope",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    note = "Independent random intercept and slope of a standardized predictor for original-scale SD labels."
+  )$registry_entry
+
+  model_registry[["fit_label_random_slope_only"]] <<- save_fit(
+    random_fit(~ 1 + x + (0 + x || g), slope_priors),
+    "fit_label_random_slope_only",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    note = "Random slope of a standardized predictor without a random intercept for original-scale SD labels."
+  )$registry_entry
+
+  model_registry[["fit_label_random_intercept"]] <<- save_fit(
+    random_fit(~ 1 + x + (1 | g), slope_priors),
+    "fit_label_random_intercept",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    note = "Random intercept with a standardized fixed predictor for original-scale SD structures."
+  )$registry_entry
+
+  # A random treatment-factor slope.
+  model_registry[["fit_label_random_factor_slope"]] <<- save_fit(
+    random_fit(~ 1 + f + (1 + f || g), list(
+      intercept = prior("normal", list(0, 1)),
+      f         = prior_factor("normal", list(0, 1), contrast = "treatment")
+    ), formula_scale = NULL),
+    "fit_label_random_factor_slope",
+    simple_priors = TRUE, factor_priors = TRUE, formulas = TRUE,
+    random_effects = TRUE,
+    note = "Independent random treatment-factor slope for random-effect SD column labels."
+  )$registry_entry
+
+  # A variance-allocation model without random slopes: the total variance of
+  # the intercepts of 'g' and 'd' split by allocation weights.
+  set.seed(11)
+  data <- data.frame(
+    x = stats::rnorm(40, 5, 3),
+    g = factor(rep(sprintf("g%d", 1:5), each = 8)),
+    d = factor(rep(c("a", "b", "c", "e"), 10))
+  )
+  y <- stats::rnorm(nrow(data), 0.1 * data$x, 1)
+  model_registry[["fit_label_allocation"]] <<- save_fit(
+    suppressWarnings(JAGS_fit(
+      model_syntax       = "model{\n  for(i in 1:N_mu){\n    y[i] ~ dnorm(mu[i], 1)\n  }\n}",
+      data               = list(y = y),
+      formula_list       = list(mu = ~ 1 + x + (1 | g) + random(1 | d, name = "d", covariance = "diag")),
+      formula_data_list  = list(mu = data),
+      formula_prior_list = list(mu = list(
+        intercept = prior("normal", list(0, 1)),
+        x         = prior("normal", list(0, 1))
+      )),
+      formula_scale_list = list(mu = list(x = TRUE)),
+      formula_random_prior_list = list(mu = prior_random(random_variance_allocation(
+        name = "tot", terms = c(g = "g", d = "d"), scale = "total_variance",
+        sd = prior("gamma", list(2, 2)),
+        weights = prior("dirichlet", list(alpha = c(1.5, 2.5)))
+      ))),
+      chains = 1, adapt = 100, burnin = 100, sample = 200, silent = TRUE, seed = 2
+    )),
+    "fit_label_allocation",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    note = "Total-variance allocation of two random intercepts with a standardized fixed predictor."
+  )$registry_entry
+})
+
+test_that("Random-effect summary posterior models fit correctly", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+
+  syntax <- "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 4)\n}\n}"
+
+  # The original-scale correlation of a us() block with a scaled slope.
+  set.seed(1)
+  data <- data.frame(
+    x = rep(seq(-1, 1, length.out = 12), 4) * 3 + 1,
+    g = factor(rep(c("A", "B", "C", "D"), each = 12))
+  )
+  data$y <- stats::rnorm(nrow(data))
+  model_registry[["fit_re_summary_composite"]] <<- save_fit(
+    suppressWarnings(JAGS_fit(
+      model_syntax       = syntax,
+      data               = list(y = data$y, N = nrow(data)),
+      formula_list       = list(mu = ~ 1 + x + (1 + x | g)),
+      formula_data_list  = list(mu = data),
+      formula_prior_list = list(mu = list(
+        intercept = prior("normal", list(0, 1)),
+        x         = prior("normal", list(0, 1))
+      )),
+      formula_random_prior_list = list(mu = prior_random(g = random_block(
+        sd = prior("normal", list(0, 1), list(0, Inf))
+      ))),
+      formula_scale_list = list(mu = list(x = TRUE)),
+      chains = 1, adapt = 100, burnin = 100, sample = 200, silent = TRUE, seed = 3
+    )),
+    "fit_re_summary_composite",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    note = "Correlated random intercept and standardized slope for composite original-scale correlations."
+  )$registry_entry
+
+  # Four us() blocks with a scaled slope: g splits a continuous scale prior
+  # into its SDs (no gate); s splits the SD of a gate-only allocation with an
+  # inclusion gate; t splits a scale prior with a spike at 0; p has a
+  # spike-and-slab prior on each SD.
+  set.seed(1)
+  data <- data.frame(
+    x = rep(seq(-1, 1, length.out = 12), 4) * 3 + 1,
+    g = factor(rep(c("A", "B", "C", "D"), each = 12)),
+    s = factor(rep(c("a", "b", "c", "d"), 12)),
+    t = factor(rep(rep(c("p", "q", "r", "u"), each = 3), 4)),
+    p = factor(rep(c("k", "l", "m", "n"), each = 3, times = 4))
+  )
+  data$y <- stats::rnorm(nrow(data))
+  sd_prior  <- prior("normal", list(0, 0.5), list(0, Inf))
+  dirichlet <- prior("dirichlet", list(alpha = c(1, 1)))
+  model_registry[["fit_re_summary_allocated"]] <<- save_fit(
+    suppressWarnings(JAGS_fit(
+      model_syntax       = syntax,
+      data               = list(y = data$y, N = nrow(data)),
+      formula_list       = list(mu = ~ 1 + x + us(1 + x | g) + us(1 + x | s) +
+                                  us(1 + x | t) + us(1 + x | p)),
+      formula_data_list  = list(mu = data),
+      formula_prior_list = list(mu = list(
+        intercept = prior("normal", list(0, 1)),
+        x         = prior("normal", list(0, 1))
+      )),
+      formula_random_prior_list = list(mu = prior_random(
+        random_variance_allocation(
+          name = "g_split", terms = "g", target = "sd_component", scale = "mean_variance",
+          sd = sd_prior, weights = dirichlet
+        ),
+        random_variance_allocation(
+          name = "s_gate", terms = c(s = "s"), sd = sd_prior,
+          inclusion = list(s = prior("beta", list(1, 1)))
+        ),
+        random_variance_allocation(
+          name = "s_split", parent = allocation_ref("s_gate", "s"), terms = "s",
+          target = "sd_component", scale = "mean_variance", weights = dirichlet
+        ),
+        random_variance_allocation(
+          name = "t_split", terms = "t", target = "sd_component", scale = "mean_variance",
+          sd = prior_mixture(list(prior("spike", list(0)), sd_prior), is_null = c(TRUE, FALSE)),
+          weights = dirichlet
+        ),
+        p = random_block(sd = prior_spike_and_slab(
+          sd_prior, prior_inclusion = prior("beta", list(1, 1))
+        ))
+      )),
+      formula_scale_list = list(mu = list(x = TRUE)),
+      chains = 1, adapt = 100, burnin = 100, sample = 200, silent = TRUE, seed = 3
+    )),
+    "fit_re_summary_allocated",
+    simple_priors = TRUE, spike_and_slab_priors = TRUE, mixture_priors = TRUE,
+    formulas = TRUE, random_effects = TRUE,
+    note = "Correlated blocks with allocated, gated, spike-sourced, and spike-and-slab SDs for point-free correlations."
+  )$registry_entry
+
+  # A monitored linear predictor that is 0 in every draw of one row.
+  set.seed(1)
+  data <- data.frame(x = c(0, stats::rnorm(5)), z = c(0, stats::rnorm(5)))
+  model_registry[["fit_re_summary_linear_predictor"]] <<- save_fit(
+    JAGS_fit(
+      model_syntax       = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 1)\n}\n}",
+      data               = list(y = stats::rnorm(6), N = 6L),
+      formula_list       = list(mu = ~ 0 + x + z),
+      formula_data_list  = list(mu = data),
+      formula_prior_list = list(mu = list(
+        x = prior("normal", list(0, 1)),
+        z = prior("normal", list(0, 1))
+      )),
+      add_parameters     = "mu",
+      chains = 1, adapt = 50, burnin = 50, sample = 100, silent = TRUE, seed = 1
+    ),
+    "fit_re_summary_linear_predictor",
+    simple_priors = TRUE, formulas = TRUE, add_parameters = TRUE,
+    note = "Monitored linear predictor with a row that is 0 in every draw."
+  )$registry_entry
+
+  # Point components of mixture and spike-and-slab formula and SD priors.
+  set.seed(1)
+  data <- data.frame(
+    x = rep(seq(-1, 1, length.out = 12), 4),
+    g = factor(rep(c("A", "B", "C", "D"), each = 12)),
+    f = factor(rep(c("a", "b", "c"), 16))
+  )
+  data$y <- stats::rnorm(nrow(data))
+  model_registry[["fit_re_summary_point_components"]] <<- save_fit(
+    suppressWarnings(JAGS_fit(
+      model_syntax       = syntax,
+      data               = list(y = data$y, N = nrow(data)),
+      formula_list       = list(mu = ~ 1 + x + f + (1 | g)),
+      formula_data_list  = list(mu = data),
+      formula_prior_list = list(mu = list(
+        intercept = prior_mixture(list(prior("normal", list(0, 1)), prior("spike", list(0.2)))),
+        x         = prior_spike_and_slab(prior("normal", list(0, 1)),
+                                         prior_inclusion = prior("spike", list(0.5))),
+        f         = prior_spike_and_slab(prior_factor("normal", list(0, 1), contrast = "treatment"),
+                                         prior_inclusion = prior("beta", list(1, 1)))
+      )),
+      formula_random_prior_list = list(mu = prior_random(g = random_block(
+        sd = prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)),
+                                  prior_inclusion = prior("spike", list(0.5)))
+      ))),
+      chains = 1, adapt = 100, burnin = 100, sample = 200, silent = TRUE, seed = 3
+    )),
+    "fit_re_summary_point_components",
+    factor_priors = TRUE, spike_and_slab_priors = TRUE, mixture_priors = TRUE,
+    formulas = TRUE, random_effects = TRUE,
+    note = "Mixture and spike-and-slab formula and random-effect SD priors with point components."
+  )$registry_entry
+
+  # A mixture SD prior with prior weights 1:2:1.
+  model_registry[["fit_re_summary_mixture_sd"]] <<- save_fit(
+    suppressWarnings(JAGS_fit(
+      model_syntax       = syntax,
+      data               = list(y = data$y, N = nrow(data)),
+      formula_list       = list(mu = ~ 1 + (1 | g)),
+      formula_data_list  = list(mu = data),
+      formula_prior_list = list(mu = list(intercept = prior("normal", list(0, 1)))),
+      formula_random_prior_list = list(mu = prior_random(g = random_block(
+        sd = prior_mixture(
+          list(prior("spike", list(0), prior_weights = 1),
+               prior("normal", list(0, 1), list(0, Inf), prior_weights = 2),
+               prior("gamma", list(2, 2), prior_weights = 1)),
+          components = c("null", "narrow", "wide")
+        )
+      ))),
+      chains = 1, adapt = 100, burnin = 100, sample = 200, silent = TRUE, seed = 3
+    )),
+    "fit_re_summary_mixture_sd",
+    simple_priors = TRUE, mixture_priors = TRUE, formulas = TRUE,
+    random_effects = TRUE,
+    note = "Random-intercept SD with a three-component mixture prior of weights 1:2:1."
+  )$registry_entry
+})
+
+test_that("Convergence-role and LKJ-diagonal models fit correctly", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("runjags")
+
+  # Monitored data: 'N' and 'x' are fully observed, 'y' partly.
+  set.seed(50)
+  x <- stats::rnorm(10)
+  model_registry[["fit_convergence_observed_data"]] <<- save_fit(
+    suppressWarnings(JAGS_fit(
+      "model{\n  for(i in 1:N){ y[i] ~ dnorm(mu + b * x[i], 1) }\n}",
+      data = list(y = c(NA, stats::rnorm(9)), x = x, N = 10L),
+      prior_list = list(
+        mu = prior("normal", list(0, 1)),
+        b = prior("normal", list(0, 1))
+      ),
+      add_parameters = c("N", "x", "y"),
+      chains = 2, adapt = 50, burnin = 50, sample = 100, seed = 1
+    )),
+    "fit_convergence_observed_data",
+    simple_priors = TRUE, add_parameters = TRUE,
+    note = "Monitored fully and partly observed data for convergence roles."
+  )$registry_entry
+
+  # LKJ blocks of two and three terms.
+  set.seed(1)
+  data_formula <- data.frame(
+    x  = stats::rnorm(48),
+    z  = stats::rnorm(48),
+    id = factor(rep(LETTERS[1:6], each = 8L))
+  )
+  data <- list(y = stats::rnorm(48, 0.3 * data_formula$x), N = 48L)
+  lkj_fit <- function(formula, seed){
+    JAGS_fit(
+      model_syntax = "model{\nfor(i in 1:N){\n  y[i] ~ dnorm(mu[i], 1)\n}\n}",
+      data = data,
+      formula_list = list(mu = formula),
+      formula_data_list = list(mu = data_formula),
+      formula_prior_list = list(mu = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1)),
+        z = prior("normal", list(0, 1))
+      )),
+      formula_random_prior_list = list(mu = prior_random(id = random_block(
+        sd = prior("normal", list(0, 1), list(0, Inf)),
+        cor = prior_lkj(eta = 1)
+      ))),
+      chains = 2, adapt = 100, burnin = 100, sample = 300, seed = seed
+    )
+  }
+  model_registry[["fit_lkj_diagonal_K2"]] <<- save_fit(
+    lkj_fit(~ 1 + x + z + (1 + x | id), seed = 11L),
+    "fit_lkj_diagonal_K2",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    note = "Two-term LKJ random-effect block for exact correlation diagonals."
+  )$registry_entry
+
+  model_registry[["fit_lkj_diagonal_K3"]] <<- save_fit(
+    lkj_fit(~ 1 + x + z + (1 + x + z | id), seed = 12L),
+    "fit_lkj_diagonal_K3",
+    simple_priors = TRUE, formulas = TRUE, random_effects = TRUE,
+    note = "Three-term LKJ random-effect block for exact correlation diagonals."
+  )$registry_entry
+})
+
+# ============================================================================ #
 # CENTRALIZED LIVE-FIT TESTS FROM test-JAGS-fit-edge-cases.R
 # ============================================================================ #
 
@@ -6410,6 +7195,323 @@ test_that("fully structural fits retain deterministic draw geometry", {
   expect_identical(extended_geometry$chains$end, c(400L, 400L))
   expect_identical(parameter_map(extended), parameter_map(fit))
   expect_identical(parameter_catalog(extended), catalog)
+})
+
+# ============================================================================ #
+# CENTRALIZED LIVE-FIT TESTS FROM test-JAGS-fit-settings.R
+# ============================================================================ #
+#
+# PURPOSE:
+#   Seeded fits and extensions: distinct chain seeds, reproducible draws, and
+#   the caller's random-number state around every seeded public function.
+#
+# TAGS: @fit, @JAGS, @seed
+# ============================================================================ #
+
+test_that("prior-only JAGS draws differ between chains of adjacent seeds", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+
+  fit_prior_only <- function(seed){
+    withCallingHandlers(
+      JAGS_fit(
+        model_syntax = "model{}",
+        prior_list   = list(mu = prior("normal", list(0, 1))),
+        chains       = 2,
+        adapt        = 50,
+        burnin       = 50,
+        sample       = 100,
+        seed         = seed
+      ),
+      warning = function(w){
+        if(grepl("No data was specified", conditionMessage(w), fixed = TRUE)){
+          invokeRestart("muffleWarning")
+        }
+      }
+    )
+  }
+  chain_draws <- function(fit, chain) as.numeric(fit$mcmc[[chain]][, "mu"])
+
+  fit_1       <- fit_prior_only(1)
+  fit_1_again <- fit_prior_only(1)
+  fit_2       <- fit_prior_only(2)
+
+  # With '.RNG.seed = seed + chain' these two chains were identical, because a
+  # prior-only node is sampled from the prior regardless of its initial value.
+  expect_false(identical(chain_draws(fit_1, 2), chain_draws(fit_2, 1)))
+  expect_false(identical(chain_draws(fit_1, 1), chain_draws(fit_1, 2)))
+  for(chain in 1:2){
+    expect_identical(chain_draws(fit_1, chain), chain_draws(fit_1_again, chain))
+  }
+})
+
+test_that("JAGS fits with priors only in the model syntax are reproducible for a seed", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+
+  fit_syntax_prior <- function(seed){
+    withCallingHandlers(
+      JAGS_fit(
+        model_syntax   = "model{ mu ~ dnorm(0, 1) }",
+        prior_list     = NULL,
+        add_parameters = "mu",
+        chains         = 2,
+        adapt          = 50,
+        burnin         = 50,
+        sample         = 100,
+        seed           = seed
+      ),
+      warning = function(w){
+        if(grepl("No data was specified", conditionMessage(w), fixed = TRUE)){
+          invokeRestart("muffleWarning")
+        }
+      }
+    )
+  }
+  chain_draws <- function(fit, chain) as.numeric(fit$mcmc[[chain]][, "mu"])
+
+  fit_1       <- fit_syntax_prior(1)
+  fit_1_again <- fit_syntax_prior(1)
+  fit_2       <- fit_syntax_prior(2)
+
+  # Without '.RNG.seed' entries, the backend seeded these chains itself.
+  for(chain in 1:2){
+    expect_identical(chain_draws(fit_1, chain), chain_draws(fit_1_again, chain))
+    expect_false(identical(chain_draws(fit_1, chain), chain_draws(fit_2, chain)))
+  }
+})
+
+.caller_rng_state <- function(){
+
+  exists <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+  list(
+    exists = exists,
+    seed = if(exists) get(".Random.seed", envir = globalenv(), inherits = FALSE),
+    kind = RNGkind()
+  )
+}
+
+# A seeded call leaves the caller's generator as it found it (a Mersenne-Twister
+# or an L'Ecuyer-CMRG state, or no '.Random.seed' at all), and its value does
+# not depend on the caller's state.
+.expect_scoped_rng <- function(label, run){
+
+  values <- list()
+  for(caller_seed in c(1, 2)){
+    set.seed(caller_seed)
+    before <- .caller_rng_state()
+    values[[caller_seed]] <- run()
+    expect_identical(.caller_rng_state(), before, info = label)
+  }
+  expect_identical(values[[1L]], values[[2L]], info = label)
+
+  RNGkind("L'Ecuyer-CMRG")
+  set.seed(3)
+  before <- .caller_rng_state()
+  run()
+  expect_identical(.caller_rng_state(), before, info = label)
+
+  RNGkind("Mersenne-Twister")
+  rm(".Random.seed", envir = globalenv())
+  kind <- RNGkind()
+  run()
+  expect_false(exists(".Random.seed", envir = globalenv(), inherits = FALSE), info = label)
+  expect_identical(RNGkind(), kind, info = label)
+}
+
+test_that("seeded public functions leave the caller's random-number state unchanged", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  withr::local_preserve_seed()
+  withr::defer(RNGkind("default", "default", "default"))
+
+  set.seed(3)
+  data <- list(x = stats::rnorm(20, 0.3), N = 20L)
+  syntax <- "model{ for(i in 1:N){ x[i] ~ dnorm(mu, pow(s, -2)) } }"
+  priors <- list(
+    mu = prior("normal", list(0, 1)),
+    s = prior("normal", list(0, 1), list(0, Inf))
+  )
+  priors_null <- list(
+    mu = prior("spike", list(0)),
+    s = prior("normal", list(0, 1), list(0, Inf))
+  )
+  log_posterior <- function(parameters, data){
+    sum(stats::dnorm(data$x, parameters$mu, parameters$s, log = TRUE))
+  }
+  fit <- function(prior_list, seed, ...){
+    JAGS_fit(syntax, data, prior_list, chains = 2, adapt = 1000, burnin = 50,
+             sample = 100, seed = seed, ...)
+  }
+  fit_alternative <- fit(priors, seed = 7)
+  fit_null <- fit(priors_null, seed = 8)
+  models <- list(
+    list(
+      fit = fit_alternative,
+      marglik = JAGS_bridgesampling(fit_alternative, log_posterior, data, priors, seed = 1),
+      prior_weights = 1
+    ),
+    list(
+      fit = fit_null,
+      marglik = JAGS_bridgesampling(fit_null, log_posterior, data, priors_null, seed = 1),
+      prior_weights = 1
+    )
+  )
+  is_null_list <- list(mu = c(FALSE, TRUE), s = c(FALSE, FALSE))
+
+  .expect_scoped_rng("JAGS_get_inits", function(){
+    JAGS_get_inits(priors, chains = 2, seed = 11)
+  })
+  .expect_scoped_rng("JAGS_fit", function(){
+    as.matrix(fit(priors, seed = 7)$mcmc)
+  })
+  .expect_scoped_rng("JAGS_fit (autofit)", function(){
+    as.matrix(fit(
+      priors, seed = 7, autofit = TRUE,
+      autofit_control = list(min_ESS = 1e6, max_extend = 1, sample_extend = 50)
+    )$mcmc)
+  })
+  .expect_scoped_rng("JAGS_fit (parallel)", function(){
+    as.matrix(fit(priors, seed = 7, parallel = TRUE, cores = 2)$mcmc)
+  })
+  .expect_scoped_rng("JAGS_bridgesampling", function(){
+    JAGS_bridgesampling(fit_alternative, log_posterior, data, priors, seed = 2)$logml
+  })
+  .expect_scoped_rng("mix_posteriors", function(){
+    lapply(
+      mix_posteriors(models, c("mu", "s"), is_null_list, seed = 3, n_samples = 200),
+      as.numeric
+    )
+  })
+  .expect_scoped_rng("marginal_inference", function(){
+    inference <- marginal_inference(
+      models, marginal_parameters = "mu", parameters = c("mu", "s"),
+      is_null_list = is_null_list, formula = NULL, n_samples = 200,
+      seed = 4, silent = TRUE
+    )
+    list(as.numeric(inference$averaged$mu), as.numeric(inference$conditional$mu))
+  })
+  .expect_scoped_rng("transform_prior_samples", function(){
+    transform_prior_samples(fit_alternative, n_samples = 100, seed = 5)
+  })
+
+  # The seeded values are those of 'set.seed(seed)', as before the scoping.
+  set.seed(11)
+  expect_identical(
+    vapply(JAGS_get_inits(priors, chains = 2, seed = 11), `[[`, numeric(1), ".RNG.seed"),
+    as.numeric(local({ set.seed(11); sample.int(.Machine$integer.max, 2) }))
+  )
+
+  # Unseeded calls take their seed from the caller's stream: one draw.
+  set.seed(9)
+  JAGS_get_inits(priors, chains = 2, seed = NULL)
+  after_inits <- .Random.seed
+  set.seed(9)
+  sample(666666, 1)
+  expect_identical(after_inits, .Random.seed)
+  set.seed(9)
+  mix_posteriors(models, c("mu", "s"), is_null_list, seed = NULL, n_samples = 200)
+  after_mix <- .Random.seed
+  set.seed(9)
+  sample(.Machine$integer.max, 1)
+  expect_identical(after_mix, .Random.seed)
+})
+
+test_that("JAGS_extend draws depend only on the stored fit", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  withr::local_preserve_seed()
+
+  set.seed(3)
+  data <- list(x = stats::rnorm(20, 0.3), N = 20L)
+  fit <- JAGS_fit(
+    "model{ for(i in 1:N){ x[i] ~ dnorm(mu, pow(s, -2)) } }", data,
+    list(mu = prior("normal", list(0, 1)), s = prior("normal", list(0, 1), list(0, Inf))),
+    chains = 2, adapt = 1000, burnin = 50, sample = 100, seed = 1
+  )
+  control <- list(
+    max_Rhat = NULL, min_ESS = NULL, max_error = NULL, max_SD_error = NULL,
+    sample_extend = 50, max_extend = 1
+  )
+  draws <- function(extended) as.matrix(extended$mcmc)
+
+  # The session's compiled model is not continued: extending the same object
+  # twice, a saved and reloaded copy, or under another caller state gives the
+  # same draws.
+  first    <- JAGS_extend(fit, autofit_control = control)
+  second   <- JAGS_extend(fit, autofit_control = control)
+  reloaded <- JAGS_extend(unserialize(serialize(fit, NULL)), autofit_control = control)
+  set.seed(99)
+  other_caller <- JAGS_extend(fit, autofit_control = control)
+  expect_identical(draws(second), draws(first))
+  expect_identical(draws(reloaded), draws(first))
+  expect_identical(draws(other_caller), draws(first))
+  expect_false(identical(draws(first), as.matrix(fit$mcmc)))
+})
+
+# ============================================================================ #
+# CENTRALIZED LIVE-FIT TESTS FROM test-JAGS-convergence.R
+# ============================================================================ #
+
+test_that("the backend anchor of a model without monitors is auxiliary", {
+
+  skip_if_not_installed("rjags")
+  fit <- suppressWarnings(JAGS_fit(
+    "model{ x ~ dnorm(0, 1) }", prior_list = NULL,
+    chains = 2, adapt = 50, burnin = 50, sample = 100,
+    autofit = TRUE,
+    autofit_control = list(max_extend = 2, sample_extend = 50),
+    seed = 1
+  ))
+  # Autofit does not extend: the anchor is not assessable but not selected.
+  expect_null(attr(fit, "warnings"))
+  coordinates <- parameter_coordinates(fit)
+  expect_identical(
+    stats::setNames(coordinates$convergence_role, coordinates$coordinate_name),
+    c(BayesTools_backend_anchor = "auxiliary")
+  )
+  result <- JAGS_check_convergence(fit)
+  expect_true(result)
+  diagnostics <- attr(result, "diagnostics")
+  expect_identical(
+    stats::setNames(diagnostics$state, diagnostics$parameter),
+    c(BayesTools_backend_anchor = "not_requested")
+  )
+})
+
+# ============================================================================ #
+# CENTRALIZED LIVE-FIT TESTS FROM test-JAGS-selection-inits.R
+# ============================================================================ #
+
+test_that("heterogeneous weightfunction mixtures compile and adapt in JAGS", {
+
+  # The end-to-end guard: a wrong init node name is only fatal once JAGS sees
+  # the model, and only when the expansion changes the array length.
+  mixture <- prior_mixture(list(
+    prior_none(prior_weights = 1),
+    prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 2, 3)), prior_weights = 1),
+    prior_weightfunction("one-sided", c(.05, .10), wf_independent(prior("gamma", list(shape = 9, rate = 3))), prior_weights = 1),
+    prior_weightfunction("one-sided", c(.025), wf_independent(prior("normal", list(mean = log(1.5), sd = .15)), "log_omega"), prior_weights = 1),
+    prior_weightfunction("two-sided", c(.05), wf_fixed(c(1, .4)), prior_weights = 1)
+  ))
+
+  fit <- suppressWarnings(JAGS_fit(
+    "model{}",
+    data       = NULL,
+    prior_list = list(bias = mixture),
+    chains     = 1,
+    adapt      = 50,
+    burnin     = 50,
+    sample     = 100,
+    seed       = 14
+  ))
+
+  expect_s3_class(fit, "runjags")
+  expect_false(inherits(fit, "condition"))
 })
 
 # ============================================================================ #

@@ -18,7 +18,7 @@ test_that("source-derived fixture catalog covers every generated fit", {
   catalog <- bayestools_expected_fit_catalog()
   expect_expected_fit_catalog_schema(catalog)
 
-  expect_equal(nrow(source_rows), 73L)
+  expect_equal(nrow(source_rows), 106L)
   expect_equal(sum(source_rows$has_marglik), 22L)
   expect_equal(nrow(catalog), nrow(source_rows))
   expect_equal(catalog$model_name, source_rows$model_name)
@@ -117,6 +117,8 @@ test_that("model-fit cache marker hashes only fit-generation sources", {
   expect_true("package_R_JAGS-formula-random" %in% names(source_files))
   expect_true("package_R_JAGS-formula-random-structured-direct" %in% names(source_files))
   expect_true("package_R_JAGS-lkj-cholesky" %in% names(source_files))
+  expect_true("package_R_JAGS-deterministic-nodes" %in% names(source_files))
+  expect_true("package_R_JAGS-deterministic-nodes-formula" %in% names(source_files))
   expect_true("package_R_JAGS-marglik" %in% names(source_files))
   expect_true("package_R_parameter-source" %in% names(source_files))
   expect_true("package_R_random-effects-metadata" %in% names(source_files))
