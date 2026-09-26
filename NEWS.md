@@ -694,6 +694,17 @@ old behaviour.
     `multiply_by` product at a subnormal distance from its offset, or
     log-scale terms beyond about +/-709) are reported with `exact = FALSE` and
     the reason, so point hypotheses there are refused as inexact.
+  - linear combinations of multivariate t priors (`"mt"`, and `"mcauchy"`
+    with one degree of freedom) are univariate t: the levels, level
+    contrasts, and other linear targets of mean-difference and orthonormal
+    `prior_factor("mt", ...)` priors have exact prior densities, ordinates,
+    and region probabilities (location mu sum(a), scale s ||a||, and the
+    prior's degrees of freedom; alone or combined with other terms through
+    the exact routes, and as weighted sums in mixtures and spike-and-slab
+    priors), so point hypotheses on them are no longer refused with
+    `BayesTools_inexact_ordinate`. `prior_density_ordinate()` records the
+    reduction in `provenance$multivariate_t` (in each component's provenance
+    for mixtures).
   - adds `prior_density_has_provenance()`, which tells whether BayesTools
     evaluates the heights, ordinates, and region probabilities of a prior
     density (`FALSE` for a density grid without its recorded prior measure and
