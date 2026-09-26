@@ -157,6 +157,15 @@ test_that("model-fit cache marker hashes only fit-generation sources", {
   expect_true("test_helper_save_fit" %in% names(source_functions))
   expect_true("catalog_expected_fit" %in% names(source_functions))
   expect_true("catalog_semantic_fit_overrides" %in% names(source_functions))
+  # the catalog helpers that build the declared rows (their expected monitors
+  # enter the fixture metadata of every saved fit) are hashed with them
+  helper_env <- environment(bayestools_semantic_fit_catalog_overrides)
+  row_helpers <- Filter(
+    function(name) exists(name, envir = helper_env, mode = "function", inherits = FALSE),
+    unique(all.names(body(bayestools_semantic_fit_catalog_overrides)))
+  )
+  expect_true(".bayestools_lkj_monitors" %in% row_helpers)
+  expect_identical(setdiff(row_helpers, source_functions), character())
 
   source_hashes <- .test_cache_source_hashes("model-fit")
   expect_setequal(names(source_hashes), c(names(source_files), names(source_functions)))
