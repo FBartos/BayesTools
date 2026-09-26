@@ -1281,10 +1281,15 @@ test_that("scale-product ordinates at subnormal distances from the offset have n
   expect_false(ordinate$exact)
   expect_match(ordinate$reason, "not representable at full precision", fixed = TRUE)
   # a product weight: the standardized distance 1e-300 / 1e10 is subnormal
-  # (the log density was off by 8.4e-7 with exact = TRUE)
+  # (the log density was off by 8.4e-7 with exact = TRUE); at 1e-290 the
+  # distance is normal but the density 9.6e-309 is subnormal, at 1e-280 both
+  # are normal
   weighted <- leaf
   weighted$spec$scale <- 1e10
-  expect_true(.prior_density_route_ordinate(weighted, 1e-290)$exact)
+  ordinate <- .prior_density_route_ordinate(weighted, 1e-280)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - (leaf_log_density(1e-290) - log(1e10))), 1e-12)
+  expect_false(.prior_density_route_ordinate(weighted, 1e-290)$exact)
   expect_false(.prior_density_route_ordinate(weighted, 1e-300)$exact)
   # a subnormal value is refused also where its standardized distance is not
   expect_false(.prior_density_route_ordinate(leaf, 1e-310)$exact)
@@ -1544,6 +1549,49 @@ test_that("primitive ordinates from subnormal internal intermediates have no val
   expect_true(ordinate$exact)
   expect_lte(abs(ordinate$log_density - (log(2 / pi) - 2 * log(1e150) + log(1e100))), 1e-12)
   refused_at_full_precision(prior_density_ordinate(weighted, 1e60))
+})
+
+test_that("quadrature ordinates with a subnormal value have no value", {
+
+  # the log image of X W, X half-Cauchy and W = exp(.3 + .4 b1) lognormal:
+  # f_Z(z) = E[sech(z - G)] / pi with G ~ N(.3, .4), so log f_Z(z) =
+  # log(2 / pi) - z + .3 + .4^2 / 2 up to e^(-2 z) (analytic reference). The
+  # product's density at e^370 is about 4e-322, and the log of that
+  # subnormal quadrature value was off by 1.2e-2 with exact = TRUE
+  log_image <- .prior_linear_combination_density(
+    list(b0 = prior("t", list(0, 1, 1), list(0, Inf)), b1 = prior("normal", list(0, 1)),
+         k = prior("point", list(.3))),
+    c(b0 = 1, b1 = .4, k = 1), source_transforms = c(b0 = "log", b1 = NA, k = NA)
+  )
+  route <- .prior_density_route_from_adaptive(attr(log_image, "adaptive_evaluation"))
+  expect_identical(route$type, "log_scale_product")
+  # (the ordinates' quadrature acceptance criterion is a relative 1e-4)
+  ordinate <- prior_density_ordinate(log_image, 300)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - (log(2 / pi) - 300 + .38)), 1e-4)
+  ordinate <- prior_density_ordinate(log_image, 370)
+  expect_identical(ordinate$behavior, "regular")
+  refused_at_full_precision(ordinate)
+
+  # a pure scale mixture b s, b ~ N(0, 1), s ~ Beta(2, 2), in its far tail
+  # (reference: integrate() of the Gaussian factor scaled by e^(x^2 / 2),
+  # rel.tol 1e-13): the density is 2.3e-320 at 38 (its log was off by 3e-5)
+  scale_mixture <- list(type = "conditional_normal", n_grid = 1024L, spec = list(
+    additive_mean = 0, additive_sd = 0, product_mean = 0, product_sd = 1,
+    multiplier = prior("beta", list(2, 2)), bounds = c(0, 1), sources = list()
+  ))
+  tail_log_density <- function(x){
+    log(stats::integrate(function(s) exp(stats::dnorm(x / s, log = TRUE) + x^2 / 2) * 6 * (1 - s),
+                         0, 1, rel.tol = 1e-13)$value) - x^2 / 2
+  }
+  ordinate <- .prior_density_route_ordinate(scale_mixture, 37)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - tail_log_density(37)), 1e-4)
+  ordinate <- .prior_density_route_ordinate(scale_mixture, 38)
+  expect_identical(ordinate$behavior, "regular")
+  refused_at_full_precision(ordinate)
+  # plotted densities keep the value as a display estimate
+  expect_lte(abs(log(ordinate$provenance$integration$estimate) - tail_log_density(38)), 1e-3)
 })
 
 test_that("products of normal terms are classified on the scale-mixture route", {

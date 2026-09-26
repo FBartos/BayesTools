@@ -117,8 +117,11 @@ place per route kind applies it:
 - quadrature leaves: the scale product (distance from the offset and its
   standardization), the pure scale mixture (the same, standardized by the
   multiplied SD and mean) and the two-term convolution (the distance and its
-  standardizations by both weights); their plotted values there are NA; the
-  log image of a scale product: `e^z`;
+  standardizations by both weights); their plotted values there are NA; an
+  accepted integral value below `.Machine$double.xmin`
+  (`.prior_density_quadrature_ordinate()`: the log image of a half-Cauchy
+  product was 1.2e-2 off at z = 370), whose plotted value keeps the
+  estimate; the log image of a scale product: `e^z`;
 - endpoint matching: the neighbouring double of an endpoint counts as the
   endpoint only when both are at full precision (the smallest subnormal is
   not the bound 0).

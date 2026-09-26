@@ -1507,11 +1507,9 @@
     .prior_conditional_normal_breakpoints(spec, value), n_grid,
     zero_message = "zero ordinate for a structurally positive density"
   )
-  .prior_density_ordinate_result(
-    value = value, behavior = "regular",
-    log_density = log(integral$value), exact = TRUE,
-    method = "conditional_normal_mixture",
-    provenance = list(
+  .prior_density_quadrature_ordinate(
+    value, integral, "conditional_normal_mixture",
+    list(
       kind = "conditional_normal_mixture",
       additive = c(mean = spec$additive_mean, sd = spec$additive_sd),
       multiplied = c(mean = spec$product_mean, sd = spec$product_sd),
@@ -1521,9 +1519,32 @@
         "positive_variance_gaussian_convolution"
       }else{
         "scale_mixture_away_from_offset"
-      },
-      integration = integral$integration
+      }
     )
+  )
+}
+
+# The regular ordinate of a quadrature leaf (conditional-normal mixture, scale
+# product, two-term convolution) from its integral, with the integration
+# record in its provenance. An accepted integral value below
+# .Machine$double.xmin is subnormal and rounded to a multiple of the smallest
+# subnormal, so its log has no value there (the full-precision rule,
+# .prior_density_full_precision(): the log image of a half-Cauchy product was
+# off by 1.2e-2 at z = 370, where the product's density is 4e-322); plotted
+# densities keep it as a display estimate.
+.prior_density_quadrature_ordinate <- function(value, integral, method, provenance){
+
+  provenance$integration <- integral$integration
+  if(isTRUE(integral$value > 0) && !.prior_density_full_precision(integral$value)){
+    provenance$integration$estimate <- integral$value
+    return(.prior_density_ordinate_imprecise(
+      value, "The density at the requested value", method, provenance
+    ))
+  }
+  .prior_density_ordinate_result(
+    value = value, behavior = "regular",
+    log_density = log(integral$value), exact = TRUE,
+    method = method, provenance = provenance
   )
 }
 
@@ -2034,12 +2055,7 @@
     zero_message = "zero ordinate for a structurally positive density",
     kind = "scale_mixture"
   )
-  provenance$integration <- integral$integration
-  .prior_density_ordinate_result(
-    value = value, behavior = "regular",
-    log_density = log(integral$value), exact = TRUE,
-    method = "scale_mixture", provenance = provenance
-  )
+  .prior_density_quadrature_ordinate(value, integral, "scale_mixture", provenance)
 }
 
 # The offset c of c + w * L * s: with f_L and f_s the declared densities at
@@ -2442,8 +2458,7 @@
     zero_message = "zero ordinate for a structurally positive density",
     kind = "convolution"
   )
-  provenance$integration <- integral$integration
-  result("regular", log(integral$value))
+  .prior_density_quadrature_ordinate(value, integral, "convolution", provenance)
 }
 
 # Region probability of c + w_A A + w_B B: the 1-D integral over A of its
