@@ -1115,12 +1115,30 @@
 # and not subnormal (|x| >= .Machine$double.xmin; zero is excluded as well).
 # Below .Machine$double.xmin a result is rounded to a multiple of the smallest
 # subnormal, so a density evaluated at (or through) it is shifted wherever it
-# varies near zero. Quadrature ordinates whose evaluation point is not
-# representable at full precision have no value: the log image of a scale
-# product at e^z and the scale-product leaf at its distance from the offset
-# (.prior_scale_product_full_precision()).
+# varies near zero, and a result that underflows to zero or overflows is not
+# the argument at all. No ordinate is exact when its value is computed from
+# such an intermediate: every route that evaluates a density at an argument
+# derived from the requested value applies this rule to that argument (see
+# .prior_density_affine_full_precision() and the audit in
+# .agents/instructions/priors.md).
 .prior_density_full_precision <- function(x){
   is.finite(x) & abs(x) >= .Machine$double.xmin
+}
+
+# The full-precision rule for an argument derived from the values 'x' by its
+# distance from an exact structural point 'anchor' (the offset of an affine
+# map, a product or a convolution; 0 for a primitive density) and that
+# distance divided by each nonzero element of 'scales': TRUE where x equals
+# the anchor (the route classifies that point structurally) or where the
+# distance and all its standardizations are representable at full precision.
+.prior_density_affine_full_precision <- function(x, anchor = 0, scales = 1){
+
+  difference <- x - anchor
+  out <- .prior_density_full_precision(difference)
+  for(scale in scales[is.finite(scales) & scales != 0]){
+    out <- out & .prior_density_full_precision(difference / scale)
+  }
+  (!is.na(difference) & difference == 0) | out
 }
 
 # Ordinate of the log image Z = log(Y) of a scale product Y at 'value':
@@ -1134,17 +1152,8 @@
   y <- exp(value)
   provenance <- list(kind = "log_scale_product")
   if(!.prior_density_full_precision(y)){
-    return(.prior_density_ordinate_result(
-      value       = value,
-      behavior    = "regular",
-      log_density = NA_real_,
-      exact       = FALSE,
-      method      = "scale_mixture",
-      reason      = paste0(
-        "The exponential of the requested value is not representable at full ",
-        "precision in ordinary floating-point arithmetic."
-      ),
-      provenance  = provenance
+    return(.prior_density_ordinate_imprecise(
+      value, "The exponential of the requested value", "scale_mixture", provenance
     ))
   }
   source <- .prior_scale_product_ordinate(route$product$spec, y, route$product$n_grid)

@@ -1421,6 +1421,26 @@
   spec$additive_sd == 0 & x == spec$additive_mean
 }
 
+# Whether the conditional-normal quadrature at the values 'x' keeps full
+# precision. A pure scale mixture a_m + b s (b ~ N(b_m, b_s)) is the scale
+# product with a normal factor: its distance x - a_m from the offset and the
+# distances standardized by b_s and b_m (the scale peak near
+# s = |x - a_m| / b_s, the location peak near (x - a_m) / b_m) must be
+# representable at full precision (.prior_density_affine_full_precision()),
+# as for the scale-product leaf. With an additive normal term (a_s > 0) the
+# value enters only through Gaussian kernels of x - a_m - b_m s with SD at
+# least a_s, whose relative change under an absolute rounding of at most the
+# smallest subnormal is negligible, so every value keeps full precision.
+.prior_conditional_normal_full_precision <- function(spec, x){
+
+  if(spec$additive_sd > 0){
+    return(rep(TRUE, length(x)))
+  }
+  .prior_density_affine_full_precision(
+    x, spec$additive_mean, c(spec$product_sd, spec$product_mean)
+  )
+}
+
 # Batched plan of the conditional-normal density at the values 'x'
 # (.prior_density_route_quadrature_density()): the values classified by the
 # ordinate itself ('special'), and for the others the ordinate's integrand and
@@ -1433,7 +1453,9 @@
 # has a strong singularity at any bound (.prior_density_strong_singularity()).
 .prior_conditional_normal_density_plan <- function(spec, x, singular = FALSE){
 
-  special <- .prior_conditional_normal_special(spec, x)
+  # values without full precision take the ordinate, which has no value there
+  special <- .prior_conditional_normal_special(spec, x) |
+    !.prior_conditional_normal_full_precision(spec, x)
   setup <- .prior_conditional_normal_breakpoint_setup(spec$multiplier, spec$bounds)
   bounds <- c(setup$lower, setup$upper)
   batch <- !any(setup$singular & !(spec$additive_sd == 0 & bounds == 0))
@@ -1460,6 +1482,18 @@
   # multiplier's declared behavior at zero.
   if(.prior_conditional_normal_special(spec, value)){
     return(.prior_conditional_normal_offset_ordinate(spec, value, n_grid))
+  }
+  if(!.prior_conditional_normal_full_precision(spec, value)){
+    return(.prior_density_ordinate_imprecise(
+      value, "The distance of the requested value from the scale mixture's offset",
+      "conditional_normal_mixture",
+      list(kind = "conditional_normal_mixture",
+           additive = c(mean = spec$additive_mean, sd = spec$additive_sd),
+           multiplied = c(mean = spec$product_mean, sd = spec$product_sd),
+           multiplier = .prior_density_ordinate_prior_provenance(spec$multiplier),
+           independent_sources = spec$sources,
+           structural_regularity = "scale_mixture_away_from_offset")
+    ))
   }
   # The integral runs over the other term's (the multiplier's) declared
   # support, split at breakpoints so that no piece is dominated by mass that
@@ -1842,7 +1876,7 @@
   hull <- .prior_scale_product_hull(spec)
   zero <- x < hull[1L] | x > hull[2L]
   special <- !zero & (x == hull[1L] | x == hull[2L] | x == spec$offset |
-                        !.prior_scale_product_full_precision(spec, x))
+                        !.prior_density_affine_full_precision(x, spec$offset, spec$scale))
   setup <- .prior_scale_product_breakpoint_setup(spec)
   factor_bounds <- unlist(spec$factor$truncation[c("lower", "upper")], use.names = FALSE)
   # with a square-root map, a share density that is infinite at zero is not
@@ -1946,22 +1980,15 @@
   )
 }
 
-# Whether the scale-product quadrature at the values 'x' keeps full double
-# precision: the distance x - c from the offset and the standardized distance
-# (x - c) / w are finite and not subnormal (.prior_density_full_precision()).
-# A subnormal distance is rounded to a multiple of the smallest subnormal, and
-# so is the factor's argument (x - c) / (w m(s)) of the integrand, which moves
-# the factor's density where it varies near zero (for a gamma(2, 4) factor
-# and a lognormal multiplier, by 1.4e-4 relative at 1e-320 and 7e-2 at
-# 4.9e-324). Such a value has no ordinate value, whichever route reaches the
-# leaf (products, ordered levels, allocations, transformations, log images).
-.prior_scale_product_full_precision <- function(spec, x){
-
-  difference <- x - spec$offset
-  .prior_density_full_precision(difference) &
-    .prior_density_full_precision(difference / spec$scale)
-}
-
+# The scale-product quadrature at a value keeps full double precision only when
+# the distance x - c from the offset and the standardized distance (x - c) / w
+# are representable at full precision (.prior_density_affine_full_precision()):
+# at a subnormal distance the factor's argument (x - c) / (w m(s)) of the
+# integrand is rounded to a multiple of the smallest subnormal, which moves the
+# factor's density where it varies near zero (for a gamma(2, 4) factor and a
+# lognormal multiplier, by 1.4e-4 relative at 1e-320 and 7e-2 at 4.9e-324).
+# Such a value has no ordinate value, whichever route reaches the leaf
+# (products, ordered levels, allocations, transformations, log images).
 .prior_scale_product_ordinate <- function(spec, value, n_grid){
 
   provenance <- .prior_scale_product_provenance(spec)
@@ -1993,18 +2020,10 @@
   }
 
   provenance$structural_regularity <- "scale_mixture_inside_support"
-  if(!.prior_scale_product_full_precision(spec, value)){
-    return(.prior_density_ordinate_result(
-      value       = value,
-      behavior    = "regular",
-      log_density = NA_real_,
-      exact       = FALSE,
-      method      = "scale_mixture",
-      reason      = paste0(
-        "The distance of the requested value from the product's offset is not ",
-        "representable at full precision in ordinary floating-point arithmetic."
-      ),
-      provenance  = provenance
+  if(!.prior_density_affine_full_precision(value, spec$offset, spec$scale)){
+    return(.prior_density_ordinate_imprecise(
+      value, "The distance of the requested value from the product's offset",
+      "scale_mixture", provenance
     ))
   }
   distance <- (value - spec$offset) / spec$scale
@@ -2303,6 +2322,17 @@
   }
 }
 
+# Whether the convolution quadrature at the values 'x' keeps full precision:
+# the distance d = x - c from the offset enters the other term's argument
+# (d - w_A a) / w_B and the breakpoints (d - w_B q) / w_A, so d, d / w_A and
+# d / w_B must be representable at full precision
+# (.prior_density_affine_full_precision()). Next to a meeting point of bounds
+# at the offset, a subnormal d leaves the integrand a subnormal support.
+.prior_convolution_full_precision <- function(spec, x){
+
+  .prior_density_affine_full_precision(x, spec$offset, c(spec$weight, spec$other))
+}
+
 # Meeting points c + w_A a + w_B b of finite support bounds of both terms.
 .prior_convolution_meeting_points <- function(spec){
 
@@ -2329,7 +2359,8 @@
       isTRUE(.prior_density_ordinate_endpoint_matches(meeting, value))
     }, logical(1))
   }
-  special <- special & !zero
+  # values without full precision take the ordinate, which has no value there
+  special <- (special | !.prior_convolution_full_precision(spec, x)) & !zero
   setup <- .prior_convolution_breakpoint_setup(spec)
   batch <- !any(setup$first$singular) && !any(.prior_density_singular_bounds(spec$second))
   if(!batch){
@@ -2397,6 +2428,12 @@
     }
   }
 
+  if(!.prior_convolution_full_precision(spec, value)){
+    return(.prior_density_ordinate_imprecise(
+      value, "The distance of the requested value from the convolution's offset",
+      "convolution", provenance
+    ))
+  }
   distance <- value - spec$offset
   integrand <- .prior_convolution_integrand(spec)
   integral <- .prior_conditional_normal_quadrature(

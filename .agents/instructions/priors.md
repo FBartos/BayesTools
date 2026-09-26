@@ -86,6 +86,47 @@ keep it on every point-mass path, including stored atoms of linear densities.
 Unsupported transformations or convolutions return `unknown` rather than a
 guessed structural class.
 
+Full-precision rule: no ordinate is exact when its value is computed from a
+subnormal (nonzero, absolute value below `.Machine$double.xmin`), underflowed
+or non-finite intermediate (`.prior_density_full_precision()`,
+`.prior_density_affine_full_precision()` for a distance from an exact anchor
+and its standardizations). Such an ordinate has `exact = FALSE`, no log
+density, and the reason "... not representable at full precision"; its
+behavior is `regular` where the route has established the support and
+`unknown` otherwise (a linear density then shows its grid estimate). One
+place per route kind applies it:
+- primitive densities (`.prior_density_ordinate_primitive()`, which every
+  scalar chain reaches): a nonzero subnormal value, for every family (the
+  distribution functions rescale their argument; a gamma(3, 0.7) log density
+  was 2.8e-4 off at 1e-320); 0 keeps its structural class;
+- the scalar affine map and `lin` output transformations: the distance from
+  the offset and the inverse value (an underflowed 0 was classified as the
+  source bound, a subnormal one rounded); `tanh`: its inverse value;
+  `exp_lin`: its inverse value `exp(...)`; the log source: `e^z`, also when
+  it overflows (the density is then not evaluated, rather than asserted
+  `-Inf`);
+- Jacobians (`.prior_density_ordinate_wrap()`): a regular source whose log
+  density is `-Inf` (underflowed or not computable, e.g. the t density beyond
+  1e154) under a Jacobian factor above 1, which can make the transformed
+  density representable;
+- quadrature leaves: the scale product (distance from the offset and its
+  standardization), the pure scale mixture (the same, standardized by the
+  multiplied SD and mean) and the two-term convolution (the distance and its
+  standardizations by both weights); their plotted values there are NA; the
+  log image of a scale product: `e^z`;
+- endpoint matching: the neighbouring double of an endpoint counts as the
+  endpoint only when both are at full precision (the smallest subnormal is
+  not the bound 0).
+Safe without the rule: the `exp` output transformation (`log(y)` of a
+positive double is finite and 0 or at least 1.1e-16 in absolute value),
+closed-form Gaussian sums, the truncated-normal convolution and Gaussian
+convolutions with an additive SD (the value enters only Gaussian kernels of
+standardized distances, whose relative change under an absolute rounding of
+at most the smallest subnormal is negligible), offsets and support bounds
+(exact structural points), atoms, mixtures and row mixtures (weighted sums of
+the above), and grid ordinates (never exact). Plotted closed-form densities
+at subnormal values are not changed (display only).
+
 The density-provenance implementation is shared across
 `R/priors-density-context.R`, `R/priors-linear-density.R`,
 `R/priors-linear-density-combinations.R`, `R/priors-density.R`, and
@@ -175,14 +216,11 @@ B(a - 1/2, b) / (sqrt(k) B(a, b)). The route provenance of a scale product
 records its support hull and its offset behavior, so named transformations
 (the square of an SD) classify it. A value whose distance from the offset,
 x - c, or standardized distance (x - c) / w is not representable at full
-precision (subnormal, i.e. nonzero with absolute value below
-.Machine$double.xmin, or not finite) has no scale-product ordinate value
-(regular, `exact = FALSE`, "not representable at full precision"), and its
-plotted value is NA: the integrand's factor argument would be rounded to a
-multiple of the smallest subnormal (a gamma(2, 4) factor was off by 1.4e-4
-at 1e-320). The rule is applied at the leaf, so it holds on every route
-reaching it (products, ordered levels, allocated SDs, output
-transformations and log images). Other products (several products, a
+precision has no scale-product ordinate value and its plotted value is NA
+(the full-precision rule above: the integrand's factor argument would be
+rounded, a gamma(2, 4) factor was off by 1.4e-4 at 1e-320). The rule is
+applied at the leaf, so it holds on every route reaching it (products,
+ordered levels, allocated SDs, output transformations and log images). Other products (several products, a
 non-normal additive term with a product, several multiplied non-normal
 terms) have no structural route; their capped product grid is never used for
 heights or probabilities, which are then unavailable.

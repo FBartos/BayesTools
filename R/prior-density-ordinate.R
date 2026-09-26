@@ -23,10 +23,11 @@
 #' * `exact`: whether `behavior` follows from deterministic prior provenance
 #'   and, for a `"regular"` ordinate, `log_density` is available (in closed
 #'   form or from a quadrature accepted by its diagnostics). A regular ordinate
-#'   without a value (a quadrature rejected by its diagnostics, a quadrature
-#'   whose evaluation point is not representable at full double precision,
-#'   e.g. a subnormal distance from the offset of a product, or a boundary
-#'   limit without a structural value) has `exact = FALSE`, `log_density = NA`
+#'   without a value (a quadrature rejected by its diagnostics, a density
+#'   whose evaluation point, or a value computed from `value` on the way to
+#'   it, is not representable at full double precision, e.g. a subnormal
+#'   value or distance from an offset, or a boundary limit without a
+#'   structural value) has `exact = FALSE`, `log_density = NA`
 #'   and the failure in `reason`; `exact = TRUE` never comes with a missing
 #'   regular `log_density`;
 #' * `method`: a machine-readable classification method;
@@ -295,6 +296,28 @@ prior_density_has_provenance <- function(x){
   )
   class(out) <- c("prior_density_ordinate", "list")
   out
+}
+
+# An ordinate without a value because an argument derived from the requested
+# value ('what') is not representable at full precision
+# (.prior_density_full_precision()): 'behavior' is the structural class where
+# the route has established it ("regular" inside the support) and "unknown"
+# otherwise; never exact.
+.prior_density_ordinate_imprecise <- function(value, what, method, provenance,
+                                              behavior = "regular"){
+
+  .prior_density_ordinate_result(
+    value       = value,
+    behavior    = behavior,
+    log_density = NA_real_,
+    exact       = FALSE,
+    method      = method,
+    reason      = paste0(
+      what, " is not representable at full precision in ordinary ",
+      "floating-point arithmetic."
+    ),
+    provenance  = provenance
+  )
 }
 
 # Reason of a regular ordinate without a value: the rejected quadrature's
@@ -607,6 +630,15 @@ prior_density_has_provenance <- function(x){
       provenance  = provenance
     ))
   }
+  # a nonzero subnormal value: the distribution functions rescale their
+  # argument (e.g. dgamma() divides it by the scale), which rounds it to a
+  # multiple of the smallest subnormal (a gamma(3, 0.7) log density was off by
+  # 2.8e-4 at 1e-320); every scalar route evaluates its argument here
+  if(is.finite(value) && !.prior_density_affine_full_precision(value)){
+    return(.prior_density_ordinate_imprecise(
+      value, "The value at which the density is evaluated", "primitive", provenance
+    ))
+  }
 
   log_density <- tryCatch(
     .prior_simple_lpdf(prior, value),
@@ -795,6 +827,27 @@ prior_density_has_provenance <- function(x){
 .prior_density_ordinate_wrap <- function(source, value, log_jacobian,
                                          method, provenance){
 
+  # a regular source whose log density is -Inf underflows (or was not
+  # computable, e.g. the t density's x^2 overflows beyond 1e154); a Jacobian
+  # factor above 1 can make the transformed density representable (the log
+  # image of a half-Cauchy term at z = 700 is exp(-700.45), not 0), so its
+  # value is not available
+  if(identical(source$behavior, "regular") && identical(source$log_density, -Inf) &&
+     isTRUE(log_jacobian < 0)){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "regular",
+      log_density = NA_real_,
+      exact       = FALSE,
+      method      = method,
+      reason      = paste0(
+        "The source density underflows in ordinary floating-point arithmetic, ",
+        "and the Jacobian factor of the transformation, above 1, can make the ",
+        "transformed density representable."
+      ),
+      provenance  = provenance
+    ))
+  }
   continuous_behavior <- .prior_density_ordinate_continuous_behavior(source)
   log_density <- source$log_density
   if(!is.na(log_density)){
@@ -970,19 +1023,16 @@ prior_density_has_provenance <- function(x){
     ))
   }
 
+  # the inverse affine value, unless it is the offset's exact image 0, must be
+  # representable at full precision: a subnormal one is rounded (a gamma(2, 4)
+  # term with weight 3 was off by 4.9e-4 in log at 1e-320), and one that
+  # underflows to 0 would be classified at the source's bound (a structural
+  # zero for weight 1e30 at 1e-300) or overflows
   source_value <- (value - offset) / scale
-  if(!is.finite(source_value)){
-    return(.prior_density_ordinate_result(
-      value       = value,
-      behavior    = "unknown",
-      log_density = NA_real_,
-      exact       = FALSE,
-      method      = "unsupported_provenance",
-      reason      = paste0(
-        "The inverse affine value is not representable in ordinary ",
-        "floating-point arithmetic."
-      ),
-      provenance  = provenance
+  if(!.prior_density_affine_full_precision(value, offset, scale)){
+    return(.prior_density_ordinate_imprecise(
+      value, "The inverse affine value", "unsupported_provenance", provenance,
+      behavior = "unknown"
     ))
   }
 
@@ -1057,19 +1107,15 @@ prior_density_has_provenance <- function(x){
     ))
   }
 
+  # e^z must be representable at full precision: below about z = -708.4 it
+  # is subnormal (rounded; off by 2.6e-3 in log at -740 for a gamma(2, 4)
+  # term) or 0, which the primitive would classify at the bound (a structural
+  # zero or infinity instead of a regular density), and above about 709.8 it
+  # overflows, so that the density f_X(e^z) e^z is not evaluated at all
   original_value <- exp(value)
-  if(!is.finite(original_value)){
-    return(.prior_density_ordinate_result(
-      value       = value,
-      behavior    = "regular",
-      log_density = -Inf,
-      exact       = TRUE,
-      method      = "named_transform",
-      reason      = paste0(
-        "The continuous prior density is structurally regular, but its ",
-        "log-density underflows in ordinary floating-point arithmetic."
-      ),
-      provenance  = provenance
+  if(!.prior_density_full_precision(original_value)){
+    return(.prior_density_ordinate_imprecise(
+      value, "The exponential of the requested value", "named_transform", provenance
     ))
   }
   source <- .prior_density_ordinate_primitive(prior, original_value)
@@ -1829,6 +1875,13 @@ prior_density_has_provenance <- function(x){
   if(output == value){
     return(TRUE)
   }
+  # the adjacent double of an endpoint counts as the endpoint (transformed
+  # endpoints are rounded), but not when either is subnormal or zero: an
+  # endpoint at 0 maps exactly, and its neighbour, the smallest subnormal, is
+  # not the endpoint (it was classified as the bound 0)
+  if(!.prior_density_full_precision(output) || !.prior_density_full_precision(value)){
+    return(FALSE)
+  }
 
   midpoint <- output / 2 + value / 2
   midpoint == output || midpoint == value
@@ -1970,17 +2023,15 @@ prior_density_has_provenance <- function(x){
       value
     )
     if(is.null(source_value)){
+      # the inverse map of a value other than an exact support endpoint (as
+      # the scalar affine route)
+      if(!.prior_density_affine_full_precision(value, arguments$a, arguments$b)){
+        return(.prior_density_ordinate_imprecise(
+          value, "The inverse linear value", "unsupported_provenance", provenance,
+          behavior = "unknown"
+        ))
+      }
       source_value <- (value - arguments$a) / arguments$b
-    }
-    if(!is.finite(source_value)){
-      return(.prior_density_ordinate_result(
-        value       = value,
-        behavior    = "unknown",
-        log_density = NA_real_,
-        exact       = FALSE,
-        method      = "unsupported_provenance",
-        provenance  = provenance
-      ))
     }
     source <- classifier(source_value)
     return(.prior_density_ordinate_wrap(
@@ -2027,6 +2078,8 @@ prior_density_has_provenance <- function(x){
       value
     )
     if(is.null(source_value)){
+      # always at full precision or the exact image 0 of the value 1: the log
+      # of a positive double is finite, and |log(value)| >= 1.1e-16 otherwise
       source_value <- log(value)
     }
     source <- classifier(source_value)
@@ -2075,6 +2128,13 @@ prior_density_has_provenance <- function(x){
     )
     if(is.null(source_value)){
       source_value <- atanh(value)
+      # atanh() returns a subnormal value itself (the rule as for the value)
+      if(!.prior_density_affine_full_precision(source_value)){
+        return(.prior_density_ordinate_imprecise(
+          value, "The inverse tanh value", "unsupported_provenance", provenance,
+          behavior = "unknown"
+        ))
+      }
     }
     source <- classifier(source_value)
     return(.prior_density_ordinate_wrap(
@@ -2177,18 +2237,16 @@ prior_density_has_provenance <- function(x){
     value
   )
   if(is.null(source_value)){
+    # exp() of the inverse map rounds to a subnormal, underflows to 0 or
+    # overflows at extreme values (x = y^2 for b = 1/2 was off by 1.7e-5 in
+    # log at y = 1e-160, where x = 1e-320)
     source_value <- exp((log(value) - arguments$a) / arguments$b)
-  }
-  if(!is.finite(source_value) || source_value <= 0){
-    return(.prior_density_ordinate_result(
-      value       = value,
-      behavior    = "unknown",
-      log_density = NA_real_,
-      exact       = FALSE,
-      method      = "unsupported_provenance",
-      reason      = "The inverse transformed value is not representable.",
-      provenance  = provenance
-    ))
+    if(!.prior_density_full_precision(source_value)){
+      return(.prior_density_ordinate_imprecise(
+        value, "The inverse transformed value", "unsupported_provenance", provenance,
+        behavior = "unknown"
+      ))
+    }
   }
   source <- classifier(source_value)
   log_jacobian <- log(abs(arguments$b)) + arguments$a +

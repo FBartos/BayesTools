@@ -25,10 +25,11 @@ A named list of class \code{prior_density_ordinate} with fields:
 \item \code{exact}: whether \code{behavior} follows from deterministic prior provenance
 and, for a \code{"regular"} ordinate, \code{log_density} is available (in closed
 form or from a quadrature accepted by its diagnostics). A regular ordinate
-without a value (a quadrature rejected by its diagnostics, a quadrature
-whose evaluation point is not representable at full double precision,
-e.g. a subnormal distance from the offset of a product, or a boundary
-limit without a structural value) has \code{exact = FALSE}, \code{log_density = NA}
+without a value (a quadrature rejected by its diagnostics, a density
+whose evaluation point, or a value computed from \code{value} on the way to
+it, is not representable at full double precision, e.g. a subnormal
+value or distance from an offset, or a boundary limit without a
+structural value) has \code{exact = FALSE}, \code{log_density = NA}
 and the failure in \code{reason}; \code{exact = TRUE} never comes with a missing
 regular \code{log_density};
 \item \code{method}: a machine-readable classification method;

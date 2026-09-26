@@ -1306,6 +1306,200 @@ test_that("scale-product ordinates at subnormal distances from the offset have n
   expect_false(.prior_density_route_ordinate(allocated, 1e-320)$exact)
 })
 
+# Full-precision rule on every ordinate route: no ordinate is exact when its
+# value is computed from a subnormal, zero (underflowed) or non-finite
+# intermediate. References are analytic log densities evaluated without such
+# intermediates (logs of the exact inputs), compared at 1e-12 in log, well
+# above the double rounding of values near -1000.
+refused_at_full_precision <- function(ordinate){
+  expect_false(ordinate$exact)
+  expect_match(ordinate$reason, "not representable at full precision", fixed = TRUE)
+}
+
+test_that("primitive and scalar affine ordinates of subnormal arguments have no value", {
+
+  # gamma(3, 0.7): log f(x) = 3 log(0.7) - lgamma(3) + 2 log(x) - 0.7 x.
+  # dgamma() rescales x, which rounds a subnormal: the log density was off by
+  # 2.8e-4 at 1e-320 and 4.0e-2 at 3.5e-323 with exact = TRUE
+  gamma_prior <- prior("gamma", list(3, .7))
+  gamma_log_density <- function(x) 3 * log(.7) - lgamma(3) + 2 * log(x) - .7 * x
+  ordinate <- prior_density_ordinate(gamma_prior, 1e-300)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - gamma_log_density(1e-300)), 1e-12)
+  for(value in c(1e-310, 1e-320, 3.5e-323)){
+    ordinate <- prior_density_ordinate(gamma_prior, value)
+    expect_identical(ordinate$behavior, "regular")
+    expect_true(is.na(ordinate$log_density))
+    refused_at_full_precision(ordinate)
+  }
+  # the rule is on the value, for every family; 0 keeps its structural class
+  refused_at_full_precision(prior_density_ordinate(prior("normal", list(0, 3)), 1e-320))
+  expect_identical(prior_density_ordinate(gamma_prior, 0)$behavior, "zero")
+  expect_true(prior_density_ordinate(gamma_prior, 0)$exact)
+
+  # a gamma(2, 4) term with weight 3: f(y) = f_b(y / 3) / 3, log f(y) =
+  # log(16) + log(y) - 2 log(3) - 4 y / 3; the rounded subnormal y / 3 was off
+  # by 4.9e-4 at 1e-320 and by 0.15 at 3.5e-323 with exact = TRUE
+  weighted <- .prior_linear_combination_density(list(b = prior("gamma", list(2, 4))), c(b = 3))
+  weighted_log_density <- function(y) log(16) + log(y) - 2 * log(3) - 4 * y / 3
+  ordinate <- prior_density_ordinate(weighted, 1e-300)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - weighted_log_density(1e-300)), 1e-12)
+  for(value in c(1e-320, 3.5e-323)){
+    ordinate <- prior_density_ordinate(weighted, value)
+    refused_at_full_precision(ordinate)
+    expect_match(ordinate$reason, "inverse affine value", fixed = TRUE)
+  }
+  expect_identical(prior_ordinate_status(weighted, c(1e-300, 1e-320, 3.5e-323))$eligible,
+                   c(TRUE, FALSE, FALSE))
+  # weight 1e30: the inverse value of 1e-300 underflows to 0, which was
+  # classified as the gamma bound (a structural zero with exact = TRUE)
+  large <- .prior_linear_combination_density(list(b = prior("gamma", list(2, 4))), c(b = 1e30))
+  ordinate <- prior_density_ordinate(large, 1e-270)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density -
+                   (log(16) + log(1e-270) - 2 * log(1e30))), 1e-12)
+  ordinate <- prior_density_ordinate(large, 1e-300)
+  expect_false(identical(ordinate$behavior, "zero"))
+  refused_at_full_precision(ordinate)
+})
+
+test_that("log-source and Jacobian ordinates from subnormal or non-finite intermediates have no value", {
+
+  log_source <- function(source_prior){
+    .prior_linear_combination_density(list(b = source_prior), c(b = 1),
+                                      source_transforms = c(b = "log"))
+  }
+  # Z = log(X), X ~ gamma(2, 4): log f_Z(z) = log(16) + 2 z - 4 e^z. e^z is
+  # subnormal below z = -708.4 (off by 2.6e-3 at -740) and 0 below -745,
+  # where the bound was classified (a structural zero, and an infinite
+  # density for gamma(0.5, 1)) with exact = TRUE
+  gamma_log <- log_source(prior("gamma", list(2, 4)))
+  ordinate <- prior_density_ordinate(gamma_log, -700)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - (log(16) - 1400 - 4 * exp(-700))), 1e-9)
+  for(value in c(-709, -740, -800)){
+    ordinate <- prior_density_ordinate(gamma_log, value)
+    expect_identical(ordinate$behavior, "regular")
+    refused_at_full_precision(ordinate)
+  }
+  ordinate <- prior_density_ordinate(log_source(prior("gamma", list(.5, 1))), -800)
+  expect_identical(ordinate$behavior, "regular")
+  refused_at_full_precision(ordinate)
+
+  # X half-Cauchy: log f_Z(z) = log(2 / pi) + z - log1p(e^(2 z)). Beyond
+  # |x| = 1e154 the t density's x^2 overflows and its log density is -Inf;
+  # the Jacobian e^z made the ordinate at z = 700 exp(-700.45), reported as
+  # -Inf with exact = TRUE
+  cauchy_log <- log_source(prior("t", list(0, 1, 1), list(0, Inf)))
+  ordinate <- prior_density_ordinate(cauchy_log, 300)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - (log(2 / pi) - 300)), 1e-12)
+  ordinate <- prior_density_ordinate(cauchy_log, 700)
+  expect_identical(ordinate$behavior, "regular")
+  expect_true(is.na(ordinate$log_density))
+  expect_false(ordinate$exact)
+  expect_match(ordinate$reason, "Jacobian", fixed = TRUE)
+  # X half-t(0.5): e^720 overflows; log f_Z(720) = -361.1 was reported -Inf
+  t_log <- log_source(prior("t", list(0, 1, .5), list(0, Inf)))
+  refused_at_full_precision(prior_density_ordinate(t_log, 720))
+})
+
+test_that("named-transformation ordinates from subnormal intermediates have no value", {
+
+  # transformations of the scalar route of b ~ gamma(2, 4), log f_b(x) =
+  # log(16) + log(x) - 4 x
+  source <- .prior_density_route_linear(list(b = prior("gamma", list(2, 4))), c(b = 1), NULL)
+  hull <- function() c(0, Inf)
+  # lin with slope 1e30: the inverse value of 1e-300 underflows to 0 (it was
+  # classified as the bound, a structural zero with exact = TRUE)
+  lin <- .prior_density_route_transform(source, "lin", list(a = 0, b = 1e30), hull)
+  ordinate <- .prior_density_route_ordinate(lin, 1e-270)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - (log(16) + log(1e-270) - 2 * log(1e30))), 1e-12)
+  ordinate <- .prior_density_route_ordinate(lin, 1e-300)
+  expect_false(identical(ordinate$behavior, "zero"))
+  refused_at_full_precision(ordinate)
+  # the smallest subnormal is not the endpoint 0 (it was classified as the
+  # bound, a structural zero with exact = TRUE)
+  identity <- .prior_density_route_transform(source, "lin", list(a = 0, b = 1), hull)
+  ordinate <- .prior_density_route_ordinate(identity, 4.9e-324)
+  expect_false(identical(ordinate$behavior, "zero"))
+  refused_at_full_precision(ordinate)
+  # exp_lin with b = 1/2 (y = sqrt(x), x = y^2): log f(y) = log f_b(y^2) +
+  # log(2 y); at y = 1e-160, x = exp(2 log(y)) = 1e-320 was rounded (off by
+  # 1.7e-5 with exact = TRUE)
+  root <- .prior_density_route_transform(source, "exp_lin", list(a = 0, b = .5), hull)
+  ordinate <- .prior_density_route_ordinate(root, 1e-150)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - (log(16) + 3 * log(1e-150) - 4e-300 + log(2))), 1e-12)
+  refused_at_full_precision(.prior_density_route_ordinate(root, 1e-160))
+  # tanh: atanh(y) = y for tiny y (Jacobian 1)
+  tanh <- .prior_density_route_transform(source, "tanh", list(), function() c(0, 1))
+  ordinate <- .prior_density_route_ordinate(tanh, 1e-300)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - (log(16) + log(1e-300))), 1e-12)
+  refused_at_full_precision(.prior_density_route_ordinate(tanh, 1e-320))
+  # exp keeps full precision (log(y) of a positive double): the exp of b ~
+  # N(0, 1) at y = 1e-320 has log f(y) = log phi(log(y)) - log(y)
+  normal <- .prior_density_route_linear(list(b = prior("normal", list(0, 1))), c(b = 1), NULL)
+  exp_normal <- .prior_density_route_transform(normal, "exp", list(), function() c(0, Inf))
+  ordinate <- .prior_density_route_ordinate(exp_normal, 1e-320)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density -
+                   (stats::dnorm(log(1e-320), log = TRUE) - log(1e-320))), 1e-9)
+})
+
+test_that("quadrature ordinates at subnormal distances from their offset have no value", {
+
+  # a pure scale mixture b s, b ~ N(0, 1), s ~ Beta(2, 2), is continuous at
+  # its offset 0 with f(0) = phi(0) E[1 / s] = 3 phi(0); a Gaussian
+  # convolution (additive SD 0.5) keeps full precision at subnormal values
+  scale_mixture <- list(type = "conditional_normal", n_grid = 1024L, spec = list(
+    additive_mean = 0, additive_sd = 0, product_mean = 0, product_sd = 1,
+    multiplier = prior("beta", list(2, 2)), bounds = c(0, 1), sources = list()
+  ))
+  ordinate <- .prior_density_route_ordinate(scale_mixture, 1e-300)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - log(3 * stats::dnorm(0))), 1e-12)
+  ordinate <- .prior_density_route_ordinate(scale_mixture, 1e-320)
+  expect_identical(ordinate$behavior, "regular")
+  refused_at_full_precision(ordinate)
+  plotted <- .prior_density_route_density(scale_mixture, c(1e-300, 1e-320))
+  # (the batched quadrature of plotted values accepts at a relative 1e-8)
+  expect_equal(plotted[[1L]], 3 * stats::dnorm(0), tolerance = 1e-8)
+  expect_true(is.na(plotted[[2L]]))
+  convolution_normal <- scale_mixture
+  convolution_normal$spec$additive_sd <- .5
+  continuous_at_zero <- stats::integrate(function(s) stats::dnorm(0, 0, sqrt(.25 + s^2)) * 6 * s * (1 - s),
+                                         0, 1, rel.tol = 1e-13)$value
+  ordinate <- .prior_density_route_ordinate(convolution_normal, 1e-320)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - log(continuous_at_zero)), 1e-10)
+
+  # two-term convolutions: A - B with A, B ~ Beta(0.5, 1) is infinite only at
+  # its inner meeting point 0, f(x) = log(1 + sqrt(1 - x)) / 2 - log(x) / 4;
+  # the smallest subnormal counted as that point (infinite with exact = TRUE)
+  difference <- .prior_linear_combination_density(
+    list(a = prior("beta", list(.5, 1)), b = prior("beta", list(.5, 1))), c(a = 1, b = -1)
+  )
+  expect_identical(prior_density_ordinate(difference, 0)$behavior, "infinite")
+  ordinate <- prior_density_ordinate(difference, 4.9e-324)
+  expect_identical(ordinate$behavior, "regular")
+  refused_at_full_precision(ordinate)
+  # gamma(2, 4) + t3 is continuous at 0 (reference: integrate() of the
+  # convolution at 0, rel.tol 1e-13)
+  sum_density <- .prior_linear_combination_density(
+    list(a = prior("gamma", list(2, 4)), b = prior("t", list(0, 1, 3))), c(a = 1, b = 1)
+  )
+  at_zero <- stats::integrate(function(a) stats::dgamma(a, 2, 4) * stats::dt(-a, 3), 0, Inf,
+                              rel.tol = 1e-13)$value
+  ordinate <- prior_density_ordinate(sum_density, 1e-300)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - log(at_zero)), 1e-10)
+  refused_at_full_precision(prior_density_ordinate(sum_density, 1e-320))
+})
+
 test_that("products of normal terms are classified on the scale-mixture route", {
 
   # beta * sigma with beta, sigma ~ N(0, 1) has the density K0(|x|) / pi
@@ -1403,10 +1597,15 @@ test_that("ordinary density underflow does not imply a structural zero", {
     source_transforms = c(x = "log"),
     n_grid = 128
   )
+  # the log source at z = 1000 is regular, but e^1000 overflows, so its
+  # density f_X(e^z) e^z is not evaluated: no value rather than an asserted
+  # -Inf (which is wrong for heavy-tailed sources, see the full-precision
+  # tests above)
   log_source_extreme <- prior_density_ordinate(log_source, 1000)
   expect_identical(log_source_extreme$behavior, "regular")
-  expect_identical(log_source_extreme$log_density, -Inf)
-  expect_match(log_source_extreme$reason, "structurally regular")
+  expect_false(log_source_extreme$exact)
+  expect_true(is.na(log_source_extreme$log_density))
+  expect_match(log_source_extreme$reason, "not representable at full precision", fixed = TRUE)
 
   normal_sum <- BayesTools:::.prior_linear_combination_density(
     prior_list = list(
