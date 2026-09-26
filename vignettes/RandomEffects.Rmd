@@ -603,7 +603,12 @@ lme4_correlated_scaled <- lme4::lmer(
 ```
 
 ```{r fit-stan-correlated-regenerate, eval = FALSE, purl = FALSE}
-stan_correlated <- rstanarm::stan_lmer(
+# A stanreg object keeps the environment of its formula. Fitting in an
+# environment that holds only the data keeps the other session objects out of
+# the saved fits.
+sleep_stan_environment <- list2env(list(sleepstudy = sleepstudy), parent = globalenv())
+
+stan_correlated <- local(rstanarm::stan_lmer(
   Reaction_z ~ Days + (1 + Days | Subject),
   data = sleepstudy,
   prior = rstanarm::normal(0, 1, autoscale = FALSE),
@@ -611,9 +616,9 @@ stan_correlated <- rstanarm::stan_lmer(
   prior_aux = rstanarm::exponential(1, autoscale = FALSE),
   prior_covariance = rstanarm::decov(regularization = 2, concentration = 1, shape = 1, scale = 1),
   chains = 2, iter = 1000, warmup = 500, seed = 11, refresh = 0, adapt_delta = 0.95
-)
+), envir = sleep_stan_environment)
 
-stan_correlated_scaled <- rstanarm::stan_lmer(
+stan_correlated_scaled <- local(rstanarm::stan_lmer(
   Reaction_z ~ Days_s + (1 + Days_s | Subject),
   data = sleepstudy,
   prior = rstanarm::normal(0, 1, autoscale = FALSE),
@@ -621,7 +626,7 @@ stan_correlated_scaled <- rstanarm::stan_lmer(
   prior_aux = rstanarm::exponential(1, autoscale = FALSE),
   prior_covariance = rstanarm::decov(regularization = 2, concentration = 1, shape = 1, scale = 1),
   chains = 2, iter = 1000, warmup = 500, seed = 12, refresh = 0, adapt_delta = 0.95
-)
+), envir = sleep_stan_environment)
 ```
 
 In BayesTools, the observation model and formula-generated mean parameter are specified separately.
@@ -1123,7 +1128,10 @@ lme4::VarCorr(lme4_crossed)
 ```
 
 ```{r fit-stan-crossed-regenerate, eval = FALSE, purl = FALSE}
-stan_crossed <- rstanarm::stan_lmer(
+# As for the sleepstudy fits, the formula environment holds only the data.
+crossed_stan_environment <- list2env(list(Penicillin = Penicillin), parent = globalenv())
+
+stan_crossed <- local(rstanarm::stan_lmer(
   diameter_z ~ 1 + (1 | plate) + (1 | sample),
   data = Penicillin,
   prior = rstanarm::normal(0, 1, autoscale = FALSE),
@@ -1131,7 +1139,7 @@ stan_crossed <- rstanarm::stan_lmer(
   prior_aux = rstanarm::exponential(1, autoscale = FALSE),
   prior_covariance = rstanarm::decov(regularization = 2, concentration = 1, shape = 1, scale = 1),
   chains = 2, iter = 1000, warmup = 500, seed = 21, refresh = 0, adapt_delta = 0.95
-)
+), envir = crossed_stan_environment)
 ```
 
 The BayesTools formula uses explicit block names because there are two random-effect blocks.

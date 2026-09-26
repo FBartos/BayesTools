@@ -187,6 +187,60 @@ source(
   paste(lines[seq.int(start, end)], collapse = "\n")
 }
 
+# The environments serialize() writes in full when it writes `value`: all it
+# reaches except the global, base and empty environments, namespaces, and
+# attached package environments, which it writes as references.
+.random_effects_test_reachable_environments <- function(value){
+  found <- list()
+  is_reference <- function(environment){
+    identical(environment, globalenv()) ||
+      identical(environment, baseenv()) ||
+      identical(environment, emptyenv()) ||
+      isNamespace(environment) ||
+      startsWith(environmentName(environment), "package:")
+  }
+  visit <- function(value){
+    if(is.environment(value)){
+      if(is_reference(value) ||
+          any(vapply(found, identical, logical(1), value))){
+        return(invisible())
+      }
+      found[[length(found) + 1L]] <<- value
+      for(name in ls(value, all.names = TRUE)){
+        if(bindingIsActive(name, value)){
+          next
+        }
+        # Captured call frames can hold promises of missing arguments.
+        binding <- tryCatch(
+          get(name, envir = value, inherits = FALSE),
+          error = function(error) NULL
+        )
+        visit(binding)
+      }
+      visit(parent.env(value))
+    }else if(is.function(value)){
+      if(!is.primitive(value)){
+        visit(environment(value))
+      }
+    }else if(is.list(value) || is.pairlist(value) ||
+        (is.language(value) && !is.symbol(value))){
+      elements <- as.list(unclass(value))
+      elements <- elements[
+        !vapply(elements, identical, logical(1), quote(expr = ))
+      ]
+      for(element in elements){
+        visit(element)
+      }
+    }
+    for(attribute in attributes(value)){
+      visit(attribute)
+    }
+    invisible()
+  }
+  visit(value)
+  found
+}
+
 test_that("RandomEffects cache schema is exact and ordered", {
   expected_classes <- c(
     stan_correlated = "stanreg",
@@ -1747,4 +1801,55 @@ test_that("regeneration document never reads a previous cache", {
   expect_identical(previous_cache_reads, 0L)
   expect_false(isTRUE(setup_environment$random_effects_cache$valid))
   expect_null(setup_environment$random_effects_models)
+})
+
+test_that("committed rstanarm fits capture only their data environment", {
+  skip_if_not_installed("rstanarm")
+  skip_if_not_installed("lme4")
+  cache_file <- testthat::test_path(
+    "..", "..", "vignettes", "RandomEffects.RDS"
+  )
+  models <- unserialize(readRDS(cache_file)[["payload"]])
+
+  # rstanarm stores the formula environment with the formula and with lme4's
+  # formula and model frame; the vignette fits in an environment that binds
+  # only the data.
+  formula_data <- c(
+    stan_correlated = "sleepstudy",
+    stan_correlated_scaled = "sleepstudy",
+    stan_crossed = "Penicillin"
+  )
+  for(name in names(formula_data)){
+    formula_environment <- environment(models[[name]]$formula)
+    expect_identical(parent.env(formula_environment), globalenv(), info = name)
+    expect_identical(
+      ls(formula_environment, all.names = TRUE),
+      formula_data[[name]],
+      info = name
+    )
+    expect_identical(
+      environment(models[[name]]$glmod$formula),
+      formula_environment,
+      info = name
+    )
+    expect_identical(
+      environment(attr(models[[name]]$glmod$fr, "terms")),
+      formula_environment,
+      info = name
+    )
+  }
+
+  # No environment written with the payload holds the knitting workspace:
+  # the cached fits or the objects of a previously loaded cache.
+  workspace_names <- c(
+    random_effects_vignette_cache_names(),
+    "random_effects_cache",
+    "random_effects_models"
+  )
+  bound_names <- unlist(lapply(
+    .random_effects_test_reachable_environments(models),
+    ls,
+    all.names = TRUE
+  ))
+  expect_identical(intersect(workspace_names, bound_names), character())
 })

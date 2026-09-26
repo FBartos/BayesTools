@@ -34,7 +34,10 @@ contain the intended chunks only.
 Do not add migrations for stale cached objects. Regenerate them with the current
 BayesTools implementation. Use fixed seeds in all regeneration code and record
 enough provenance to reject stale or substituted fits. Cheap prior-only
-examples should not acquire a fitted-model cache.
+examples should not acquire a fitted-model cache. Regeneration never reads a
+previous cache. Fit models whose objects keep their formula or closure
+environment, such as rstanarm fits, in an environment that holds only their
+data, so a cache never stores the knitting workspace.
 
 Cache validity depends only on source fingerprints: the vignette source, its
 cache helper, `DESCRIPTION` without build fields and `Version`, `NAMESPACE`,
