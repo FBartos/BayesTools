@@ -144,6 +144,70 @@ prior_density_ordinate <- function(x, value){
   )
 }
 
+#' Whether a prior density has deterministic provenance
+#'
+#' @description
+#' `prior_density_has_provenance()` tells whether the prior measure of `x` is
+#' available from deterministic provenance, so that its density heights,
+#' ordinate values and region probabilities are evaluated by BayesTools (from
+#' structural routes, or from numerical grids refined under error control).
+#' It is the public signal for densities without such provenance, whose
+#' region probabilities a caller has to obtain in another way (e.g. from
+#' prior draws).
+#'
+#' @details A BayesTools prior object is its own provenance. A
+#' `prior_linear_density` has provenance when its builder recorded the prior
+#' measure it describes (every density built by the BayesTools prior-density
+#' builders, e.g. [JAGS_formula_prior_density()], [parameter_prior_density()]
+#' and the prior densities of [marginal_posterior()]), unless that measure
+#' contains a `multiply_by` product without a structural density route. It has
+#' none when it is a numerical density grid without that record (e.g. the
+#' standard-deviation components of nested variance allocations) or such a
+#' product: both are used for plotting only, and their heights and region
+#' probabilities stop. A density of point masses only is exact without a
+#' record.
+#'
+#' Provenance does not make an ordinate exact: a combination without a
+#' structural route (e.g. three non-normal terms) has provenance and refined
+#' grid region probabilities, while its ordinates are `"unknown"`, so point
+#' hypotheses need [prior_ordinate_status()]. The `method` field of
+#' [prior_density_ordinate()] does not separate the cases: it is
+#' `"unsupported_provenance"` for a grid without provenance and for a
+#' combination without a structural route alike, and `"named_transform"` for
+#' such a combination under an output transformation.
+#'
+#' @param x A BayesTools prior or `prior_linear_density` object.
+#'
+#' @return `TRUE` or `FALSE`.
+#'
+#' @examples
+#' prior_density_has_provenance(prior("normal", list(mean = 0, sd = 1)))
+#'
+#' @seealso [prior_density_ordinate()], [prior_ordinate_status()]
+#' @export
+prior_density_has_provenance <- function(x){
+
+  if(is.prior(x)){
+    return(TRUE)
+  }
+  if(!inherits(x, "prior_linear_density")){
+    stop(
+      "The 'x' argument must be a BayesTools prior or prior_linear_density object.",
+      call. = FALSE
+    )
+  }
+  adaptive <- attr(x, "adaptive_evaluation", exact = TRUE)
+  if(is.null(adaptive)){
+    # point masses alone are exact
+    return(is.null(x$density) || !isTRUE(x$density$mass > 0))
+  }
+  if(!is.list(adaptive) || !is.character(adaptive$kind) ||
+     length(adaptive$kind) != 1L || !is.list(adaptive$arguments)){
+    return(FALSE)
+  }
+  !.prior_density_route_has_general_product(.prior_density_route_from_adaptive(adaptive))
+}
+
 .prior_density_ordinate_behaviors <- function(){
   c("regular", "zero", "infinite", "point_mass", "undefined", "unknown")
 }

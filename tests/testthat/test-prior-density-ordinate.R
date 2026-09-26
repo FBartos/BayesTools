@@ -939,6 +939,68 @@ test_that("a truncated normal term plus normal terms has a closed-form ordinate"
                .4 * closed(.6) + .6 * stats::dnorm(.6, .2, .4), tolerance = 1e-14)
 })
 
+test_that("prior_density_has_provenance() signals densities without deterministic provenance", {
+
+  region_probability <- function(density, hypothesis){
+    .hypothesis_prior_density_prob(
+      density, hypothesis_parse(hypothesis)$statements[[1L]]$left, "theta"
+    )
+  }
+  expect_true(prior_density_has_provenance(prior("normal", list(0, 1))))
+  normal_sum <- .prior_linear_combination_density(
+    list(a = prior("normal", list(0, 1)), b = prior("normal", list(1, 2))), c(a = 1, b = 1)
+  )
+  expect_true(prior_density_has_provenance(normal_sum))
+
+  # combinations without a structural route have provenance: their ordinates
+  # are unknown (method "unsupported_provenance", or "named_transform" under an
+  # output transformation), while their region probabilities are refined grid
+  # probabilities
+  gammas <- .prior_linear_combination_density(
+    list(x = prior("gamma", list(2, 1)), y = prior("gamma", list(2, 1)), z = prior("gamma", list(2, 1))),
+    c(x = 1, y = 1, z = 1)
+  )
+  expect_true(prior_density_has_provenance(gammas))
+  expect_identical(prior_density_ordinate(gammas, 6)$method, "unsupported_provenance")
+  expect_equal(region_probability(gammas, "theta > 6"), stats::pgamma(6, 6, 1, lower.tail = FALSE),
+               tolerance = 1e-3)
+  log_intercept <- .prior_linear_combination_density(
+    list(t = prior("normal", list(0, .35), list(0, Inf)), g = prior("normal", list(0, .5))),
+    c(t = 1, g = -1), source_transforms = c(t = "log", g = NA),
+    output_transformation = "exp"
+  )
+  expect_true(prior_density_has_provenance(log_intercept))
+  ordinate <- prior_density_ordinate(log_intercept, .3)
+  expect_identical(ordinate$behavior, "unknown")
+  expect_identical(ordinate$method, "named_transform")
+
+  # a density grid without its provenance record and a product without a
+  # structural route are for plotting only: their heights stop
+  grid <- normal_sum
+  attr(grid, "adaptive_evaluation") <- NULL
+  expect_false(prior_density_has_provenance(grid))
+  expect_identical(prior_density_ordinate(grid, 0)$method, "unsupported_provenance")
+  expect_error(.prior_linear_density_height(grid, 0), "has no deterministic provenance",
+               fixed = TRUE)
+  product_priors <- list(
+    alpha = prior("t", list(0, 1, 5)),
+    beta  = prior("normal", list(0, 1)),
+    sigma = prior("normal", list(0, 1))
+  )
+  attr(product_priors$beta, "multiply_by") <- "sigma"
+  product <- .prior_linear_combination_density(product_priors, c(alpha = 1, beta = 1), n_grid = 128)
+  expect_false(prior_density_has_provenance(product))
+  expect_error(.prior_linear_density_height(product, 1), "no structural density route",
+               fixed = TRUE)
+
+  # point masses alone are exact without a record
+  points <- structure(list(density = NULL, points = data.frame(x = c(0, 1), p = c(.4, .6))),
+                      class = c("prior_linear_density", "prior_density"))
+  expect_true(prior_density_has_provenance(points))
+  expect_error(prior_density_has_provenance(list()),
+               "must be a BayesTools prior or prior_linear_density object", fixed = TRUE)
+})
+
 test_that("products of normal terms are classified on the scale-mixture route", {
 
   # beta * sigma with beta, sigma ~ N(0, 1) has the density K0(|x|) / pi

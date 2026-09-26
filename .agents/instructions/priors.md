@@ -237,7 +237,11 @@ Heights and region probabilities require recorded provenance (the
 `adaptive_evaluation` attribute naming the prior measure): a density grid
 without it has no error control and cannot be refined, so it is used for
 plots only and heights and probabilities stop; without a continuous part a
-density is its exact point masses. Producers therefore build densities
+density is its exact point masses. `prior_density_has_provenance()` is the
+public signal of this (also `FALSE` for a recorded product without a
+structural route, whose heights stop as well); the ordinate `method`
+`"unsupported_provenance"` is not, since it also marks combinations without a
+structural route, which have provenance and refined grid probabilities. Producers therefore build densities
 through `.prior_linear_combination_density()` or the context builders:
 `parameter_prior_density()` passes a semantic transform as the output
 transformation (affine as `lin`, `tanh`, square root and square of a
