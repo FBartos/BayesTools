@@ -4,7 +4,9 @@
 #' satisfied convergence criteria.
 #' @param fit a 'BayesTools_fit' object created by [JAGS_fit()] with this
 #' version of BayesTools. Fits without its parameter map and fit contract
-#' (such as fits created by BayesTools 0.3.0) must be refitted.
+#' (such as fits created by BayesTools 0.3.0) must be refitted: they stop with
+#' an error of class `BayesTools_refit_required` (see
+#' [JAGS_validate_fit_contract()]).
 #' @param prior_list optional named list of prior distributions (names
 #' correspond to the parameter names). When supplied, it must be the prior list
 #' stored with \code{fit} (\code{attr(fit, "prior_list")}); another list is an

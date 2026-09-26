@@ -166,7 +166,9 @@
 #' \code{required_packages}. Passing \code{NULL} disables capture and restore.
 #' @param fit a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
 #' extended. Fits without the parameter map and fit contract of this version
-#' of BayesTools (such as fits created by BayesTools 0.3.0) must be refitted.
+#' of BayesTools (such as fits created by BayesTools 0.3.0) must be refitted:
+#' they stop with an error of class \code{BayesTools_refit_required} (see
+#' [JAGS_validate_fit_contract()]).
 #' @param ... additional hidden arguments
 #'
 #' @examples \dontrun{
@@ -899,9 +901,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   if(!is.null(formula_design)){
     if(!is.list(formula_design) || is.null(names(formula_design)) ||
        any(!nzchar(names(formula_design))) || anyDuplicated(names(formula_design))){
-      stop(
-        "JAGS_extend() cannot preserve malformed formula-design metadata. Refit the model with this version of BayesTools.",
-        call. = FALSE
+      .bt_stop_refit_required(
+        "JAGS_extend() cannot preserve malformed formula-design metadata. Refit the model with this version of BayesTools."
       )
     }
     JAGS_formula_name_map(fit)

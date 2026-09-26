@@ -643,7 +643,8 @@ test_that("formula evaluation adds sampled random effects only", {
       formula_target = "conditional"
     ),
     "cannot condition on random-effect block(s) compiled as marginalized: estimate",
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_monitoring"
   )
   prediction <- JAGS_evaluate_formula(
     fit = fit,

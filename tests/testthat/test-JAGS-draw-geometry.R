@@ -23,7 +23,11 @@ test_that("draw geometry records exact chain-major MCMC timing", {
 
   malformed <- geometry
   malformed$chains$end[1L] <- 16L
-  expect_error(.bt_validate_draw_geometry(malformed), "Refit the model")
+  expect_error(
+    .bt_validate_draw_geometry(malformed),
+    "Refit the model",
+    class = "BayesTools_refit_required"
+  )
 })
 
 test_that("coordinate materialization adds fixed values and removes internals", {

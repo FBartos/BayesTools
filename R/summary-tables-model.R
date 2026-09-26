@@ -1542,9 +1542,8 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     logical(1)
   )
   if(sum(matches) != 1L){
-    stop(
-      "Random-effect inclusion metadata have no unique semantic quantity. Refit the model with this version of BayesTools.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "Random-effect inclusion metadata have no unique semantic quantity. Refit the model with this version of BayesTools."
     )
   }
   quantities$label_parts[[which(matches)]]

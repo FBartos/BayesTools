@@ -26,6 +26,22 @@
 #' `JAGS_validate_fit_contract()` checks the components named in `requires` and
 #' requires unsupported objects to be refitted rather than adapted.
 #'
+#' Every error that asks to refit the model has class
+#' `BayesTools_refit_required`: these validators, and every function that
+#' reads fitted metadata, stop with it on a fit (or stored metadata or draw
+#' geometry) created by another version of BayesTools, such as BayesTools
+#' 0.3.0, or lacking fitted metadata the request requires. A fit whose
+#' posterior samples lack coordinates the request needs because of its
+#' monitoring or sampling settings (a quantity whose source coordinates were
+#' not monitored in [parameter_draws()], random effects without
+#' `random_monitor(latent = TRUE)` or `random_monitor(coefficients = TRUE)`
+#' in [JAGS_evaluate_formula()] and [JAGS_bridgesampling()], or a
+#' marginalized random-effect block) stops with the child class
+#' `BayesTools_refit_monitoring` (also `BayesTools_refit_required`):
+#' refitting with this version alone does not resolve it, and the message
+#' names the settings to refit with. Callers match these classes, never the
+#' message.
+#'
 #' @param fit fitted object created by [JAGS_fit()].
 #' @param parameter optional formula parameter selecting one name map.
 #' @param requires character vector naming required contract components.
@@ -145,10 +161,9 @@ JAGS_validate_fit_contract <- function(fit, requires = character()){
     expected <- supported[[component]]
     if(length(observed) != 1L || is.na(observed) ||
        !identical(observed, expected)){
-      stop(
+      .bt_stop_refit_required(
         "The fitted object has missing or unsupported '", component,
-        "' metadata. Refit the model with this version of BayesTools.",
-        call. = FALSE
+        "' metadata. Refit the model with this version of BayesTools."
       )
     }
   }
@@ -277,16 +292,14 @@ JAGS_fit_contract_schema <- function(){
               .bt_formula_name_map_version) &&
     all(required %in% names(map))
   if(!valid){
-    stop(
-      "Formula name-map metadata are missing or unsupported. Refit the model with this version of BayesTools.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "Formula name-map metadata are missing or unsupported. Refit the model with this version of BayesTools."
     )
   }
   if(anyNA(map[, required, drop = FALSE]) ||
      any(!nzchar(map$encoded_name)) || any(!nzchar(map$jags_name)) ||
      anyDuplicated(map$encoded_name) || anyDuplicated(map$jags_name)){
-    stop("Formula name-map metadata contain missing or duplicate names. Refit the model with this version of BayesTools.",
-         call. = FALSE)
+    .bt_stop_refit_required("Formula name-map metadata contain missing or duplicate names. Refit the model with this version of BayesTools.")
   }
   if(nrow(map) > 0L){
     for(i in seq_len(nrow(map))){
@@ -294,25 +307,40 @@ JAGS_fit_contract_schema <- function(){
       decoded <- .bt_parameter_decode(map$encoded_name[i])
       expected <- as.list(map[i, c("kind", "formula_parameter", "term", "role")])
       if(!identical(unname(decoded[names(expected)]), unname(expected))){
-        stop("Formula name-map encoded and semantic fields disagree. Refit the model with this version of BayesTools.",
-             call. = FALSE)
+        .bt_stop_refit_required("Formula name-map encoded and semantic fields disagree. Refit the model with this version of BayesTools.")
       }
     }
   }
   invisible(TRUE)
 }
 
+# The error of every message that asks to refit the model: class
+# BayesTools_refit_required, preceded by the child classes in 'class' (e.g.
+# BayesTools_refit_monitoring, for posterior samples that lack coordinates the
+# request needs because of the fit's monitoring or sampling settings). The
+# message is built from '...' as stop() builds it. Callers match the classes,
+# never the message; a source test checks that no other call raises a refit
+# message.
+.bt_stop_refit_required <- function(..., class = NULL){
+
+  message <- paste(unlist(lapply(list(...), as.character)), collapse = "")
+  stop(structure(
+    list(message = message, call = NULL),
+    class = c(class, "BayesTools_refit_required", "error", "condition")
+  ))
+}
+
 # Fits without the parameter map and fit contract of this version (such as
 # fits created by BayesTools 0.3.0) must be refitted: every function that
 # reads fitted metadata refuses them with the "Refit ..." message of the
-# summary tables. Returns the fitted coordinate table.
+# summary tables (class BayesTools_refit_required). Returns the fitted
+# coordinate table.
 .bt_require_fit_contract <- function(fit, argument = "fit"){
 
   if(!inherits(fit, "BayesTools_fit")){
-    stop(
+    .bt_stop_refit_required(
       "'", argument, "' must be a 'BayesTools_fit' created by JAGS_fit(). ",
-      "Refit the model with this version of BayesTools.",
-      call. = FALSE
+      "Refit the model with this version of BayesTools."
     )
   }
   coordinates <- parameter_coordinates(fit)
@@ -351,9 +379,8 @@ JAGS_fit_contract_schema <- function(){
   valid <- is.list(contract) && identical(names(contract), required) &&
     identical(contract$schema_version, .bt_fit_contract_version)
   if(!valid){
-    stop(
-      "The fitted object does not contain a supported schema contract. Refit the model with this version of BayesTools.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "The fitted object does not contain a supported schema contract. Refit the model with this version of BayesTools."
     )
   }
   values <- contract[required]
@@ -361,9 +388,8 @@ JAGS_fit_contract_schema <- function(){
     is.integer(value) && length(value) == 1L
   }, logical(1))
   if(!all(scalar_integer)){
-    stop(
-      "The fitted-object schema contract is malformed. Refit the model with this version of BayesTools.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "The fitted-object schema contract is malformed. Refit the model with this version of BayesTools."
     )
   }
   invisible(TRUE)

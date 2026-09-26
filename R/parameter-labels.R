@@ -110,9 +110,8 @@
         is.character(parts$random$display_arguments) &&
         !anyNA(parts$random$display_arguments)))
   if(!isTRUE(valid)){
-    stop(
-      "Parameter label parts are malformed. Refit or rebuild the catalog with this version of BayesTools.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "Parameter label parts are malformed. Refit or rebuild the catalog with this version of BayesTools."
     )
   }
 
@@ -604,10 +603,9 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
   design_info <- .factor_term_design_from_metadata(prior)
   level_names <- design_info$level_names
   if(is.null(level_names) || length(level_names) == 0L){
-    stop(
+    .bt_stop_refit_required(
       "Factor levels of '", parameter, "' are missing. Refit the model with ",
-      "this version of BayesTools.",
-      call. = FALSE
+      "this version of BayesTools."
     )
   }
   components <- .bt_label_factor_components(
@@ -624,20 +622,18 @@ parameter_labels <- function(x, style = c("selector", "table", "plot", "warning"
     if(length(level_names) == 1L && length(components) == 1L){
       names(level_names) <- components
     }else{
-      stop(
+      .bt_stop_refit_required(
         "Factor metadata of '", parameter, "' do not identify the factor ",
-        "components of its term. Refit the model with this version of BayesTools.",
-        call. = FALSE
+        "components of its term. Refit the model with this version of BayesTools."
       )
     }
   }
   grid <- .factor_cell_grid(level_names)
   design <- as.matrix(design_info$design)
   if(nrow(grid) != nrow(design)){
-    stop(
+    .bt_stop_refit_required(
       "Factor metadata of '", parameter, "' do not identify every level cell. ",
-      "Refit the model with this version of BayesTools.",
-      call. = FALSE
+      "Refit the model with this version of BayesTools."
     )
   }
   cells <- lapply(seq_len(nrow(grid)), function(cell){

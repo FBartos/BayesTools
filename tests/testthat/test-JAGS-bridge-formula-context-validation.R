@@ -178,7 +178,8 @@ test_that("bridge formula inputs cannot replace missing fitted metadata", {
       "this version of BayesTools; supplied formula inputs cannot replace ",
       "fitted replay metadata."
     ),
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
   )
 })
 

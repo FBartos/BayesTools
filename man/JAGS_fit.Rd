@@ -243,7 +243,9 @@ automatic fitting retries and preserve the original backend error.}
 
 \item{fit}{a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
 extended. Fits without the parameter map and fit contract of this version
-of BayesTools (such as fits created by BayesTools 0.3.0) must be refitted.}
+of BayesTools (such as fits created by BayesTools 0.3.0) must be refitted:
+they stop with an error of class \code{BayesTools_refit_required} (see
+\code{\link[=JAGS_validate_fit_contract]{JAGS_validate_fit_contract()}}).}
 }
 \value{
 \code{JAGS_fit} returns an object of class 'runjags' and 'BayesTools_fit'.

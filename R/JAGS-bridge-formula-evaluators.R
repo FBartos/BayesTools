@@ -223,11 +223,10 @@
                                                        log_intercept){
 
   if(!.bt_JAGS_formula_design_can_reconstruct(design)){
-    stop(
+    .bt_stop_refit_required(
       "JAGS_bridgesampling() cannot reconstruct formula parameter '", parameter,
       "' because its fitted formula-design metadata are missing. Refit the ",
-      "model with this version of BayesTools.",
-      call. = FALSE
+      "model with this version of BayesTools."
     )
   }
 

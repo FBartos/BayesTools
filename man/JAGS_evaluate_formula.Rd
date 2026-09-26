@@ -70,11 +70,16 @@ for the formula parameter (the processed formula, factor levels and
 contrasts, and the standardization of predictors). Posterior or prior
 draws without a fit are evaluated through the same design, built by
 \code{\link[=JAGS_formula_draws]{JAGS_formula_draws()}}. Fits created by BayesTools 0.3.0, which store no
-design, must be refitted. Formula random effects can be evaluated for existing
+design, must be refitted: they stop with an error of class
+\code{BayesTools_refit_required} (see \code{\link[=JAGS_validate_fit_contract]{JAGS_validate_fit_contract()}}).
+Formula random effects can be evaluated for existing
 grouping levels when either standardized latent random effects and covariance
 hyperparameters were monitored via \code{random_monitor(latent = TRUE)}, or
 the group-level coefficients were monitored via
-\code{random_monitor(coefficients = TRUE)}.
+\code{random_monitor(coefficients = TRUE)}; otherwise, and for
+random-effect blocks compiled as marginalized, conditional evaluation stops
+with an error of class \code{BayesTools_refit_monitoring} (also
+\code{BayesTools_refit_required}).
 Row-indexed external random-effect SD sources, such as
 \code{random_sd_source("tau", shape = "row")}, are evaluated from latent
 random effects only. Model generation automatically monitors the required

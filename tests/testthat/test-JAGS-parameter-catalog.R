@@ -4056,7 +4056,8 @@ test_that("malformed catalogs and stale selections fail closed", {
   broken$schema_version <- BayesTools:::.bt_parameter_map_version + 1L
   expect_error(
     .bt_validate_parameter_catalog(broken),
-    "Refit or rebuild"
+    "Refit or rebuild",
+    class = "BayesTools_refit_required"
   )
 
   stale <- selection
@@ -4352,6 +4353,7 @@ test_that("block SDs scaled by an unmonitored allocation source are unavailable"
         "draws. Refit the model with those coordinates monitored."
       ),
       fixed = TRUE,
+      class = "BayesTools_refit_monitoring",
       info = info
     )
   }

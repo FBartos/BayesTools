@@ -45,10 +45,9 @@ parameter_map.BayesTools_fit <- function(object, ...){
   }
   map <- attr(object, "parameter_map", exact = TRUE)
   if(is.null(map)){
-    stop(
+    .bt_stop_refit_required(
       "The fitted object does not contain parameter-map metadata. ",
-      "Refit the model with the current BayesTools version.",
-      call. = FALSE
+      "Refit the model with the current BayesTools version."
     )
   }
   cache <- .bt_parameter_map_cache(map)
@@ -331,10 +330,9 @@ parameter_map_cache <- function(map, provider, key, compute){
 .bt_validate_parameter_map <- function(map){
 
   if(!.bt_parameter_map_header_valid(map)){
-    stop(
+    .bt_stop_refit_required(
       "Parameter-map metadata are missing, malformed, or unsupported. ",
-      "Refit the model with the current BayesTools version.",
-      call. = FALSE
+      "Refit the model with the current BayesTools version."
     )
   }
 
@@ -348,11 +346,10 @@ parameter_map_cache <- function(map, provider, key, compute){
   ))
   missing <- setdiff(dependencies, map$coordinates$coordinate_name)
   if(length(missing) > 0L){
-    stop(
+    .bt_stop_refit_required(
       "Parameter-map quantities reference unknown coordinate dependencies: ",
       paste0("'", missing, "'", collapse = ", "),
-      ". Refit or rebuild the map with this version of BayesTools.",
-      call. = FALSE
+      ". Refit or rebuild the map with this version of BayesTools."
     )
   }
 

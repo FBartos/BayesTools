@@ -36,12 +36,11 @@
 
   if(!has_fitted_formula_design){
     if(formula_input_supplied){
-      stop(
+      .bt_stop_refit_required(
         "JAGS_bridgesampling() cannot reconstruct formula parameters because ",
         "the fitted formula-design metadata are missing. Refit the model with ",
         "this version of BayesTools; supplied formula inputs cannot replace ",
-        "fitted replay metadata.",
-        call. = FALSE
+        "fitted replay metadata."
       )
     }
     return(.bt_JAGS_bridge_empty_formula_context())
@@ -274,14 +273,13 @@
         )
       }, logical(1))]
       if(length(different) > 0L){
-        stop(
+        .bt_stop_refit_required(
           "JAGS_bridgesampling() received formula priors in 'prior_list' that ",
           "differ from the fitted formula priors: ",
           paste(utils::head(different, 8L), collapse = ", "),
           if(length(different) > 8L) ", ..." else "",
           ". Formula priors are taken from the fitted formula design; remove ",
-          "them from 'prior_list' or refit the model with the intended priors.",
-          call. = FALSE
+          "them from 'prior_list' or refit the model with the intended priors."
         )
       }
     }

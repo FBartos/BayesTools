@@ -62,25 +62,22 @@
 
   if(!inherits(coordinates, "BayesTools_parameter_coordinates") ||
      !is.data.frame(coordinates)){
-    stop(
-      "The fitted parameter-coordinate table is malformed. Refit the model with the current BayesTools version.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "The fitted parameter-coordinate table is malformed. Refit the model with the current BayesTools version."
     )
   }
   if(!identical(names(coordinates), .bt_parameter_coordinates_columns)){
     missing <- setdiff(.bt_parameter_coordinates_columns, names(coordinates))
     if(length(missing) > 0L){
-      stop(
+      .bt_stop_refit_required(
         "The fitted parameter-coordinate table is missing required field",
         if(length(missing) > 1L) "s " else " ",
         paste0("'", missing, "'", collapse = ", "),
-        ". Refit the model with the current BayesTools version.",
-        call. = FALSE
+        ". Refit the model with the current BayesTools version."
       )
     }
-    stop(
-      "The fitted parameter-coordinate table is malformed. Refit the model with the current BayesTools version.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "The fitted parameter-coordinate table is malformed. Refit the model with the current BayesTools version."
     )
   }
   character_columns <- setdiff(
@@ -94,24 +91,21 @@
      anyNA(coordinates$internal) ||
      any(!nzchar(coordinates$coordinate_name)) ||
      anyDuplicated(coordinates$coordinate_name)){
-    stop(
+    .bt_stop_refit_required(
       "The fitted parameter-coordinate table must contain unique, non-missing coordinate names. ",
-      "Refit the model with the current BayesTools version.",
-      call. = FALSE
+      "Refit the model with the current BayesTools version."
     )
   }
   if(any(!coordinates$monitor_status %in% c("sampled", "structural", "unavailable")) ||
      any(!is.na(coordinates$fixed_value[coordinates$monitor_status != "structural"])) ||
      any(!is.finite(coordinates$fixed_value[coordinates$monitor_status == "structural"]))){
-    stop(
-      "The fitted parameter-coordinate table contains malformed structural fixed values. Refit the model with the current BayesTools version.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "The fitted parameter-coordinate table contains malformed structural fixed values. Refit the model with the current BayesTools version."
     )
   }
   if(any(!coordinates$convergence_role %in% .bt_convergence_roles)){
-    stop(
-      "The fitted parameter-coordinate table contains unknown convergence roles. Refit the model with the current BayesTools version.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "The fitted parameter-coordinate table contains unknown convergence roles. Refit the model with the current BayesTools version."
     )
   }
 
@@ -177,9 +171,8 @@
   class(out) <- c("BayesTools_formula_name_map", "data.frame")
   attr(out, "schema_version") <- .bt_formula_name_map_version
   if(anyDuplicated(out$jags_name)){
-    stop(
-      "Formula name maps contain a duplicate JAGS base name. Refit the model after resolving the generated-name collision.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "Formula name maps contain a duplicate JAGS base name. Refit the model after resolving the generated-name collision."
     )
   }
   .bt_validate_formula_name_map(out)
@@ -618,10 +611,9 @@
   }
   if(is.na(coefficient) || coefficient < 1L ||
      coefficient > length(coordinate_parts)){
-    stop(
+    .bt_stop_refit_required(
       "Fitted factor coordinate '", coordinate_name, "' does not match its ",
-      "factor metadata. Refit the model with this version of BayesTools.",
-      call. = FALSE
+      "factor metadata. Refit the model with this version of BayesTools."
     )
   }
   coordinate_parts[[coefficient]]

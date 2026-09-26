@@ -236,7 +236,8 @@ test_that("bridge formula plans require the fitted formula design", {
       "its fitted formula-design metadata are missing. Refit the model with this ",
       "version of BayesTools."
     ),
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
   )
   plan <- BayesTools:::.bt_JAGS_bridge_compile_formula_fixed_plan(
     parameter          = "mu",

@@ -87,7 +87,10 @@
 #'
 #' `parameter_draws()` is the deferred extraction boundary. The BayesTools fit
 #' method reads only the coordinates declared by the selected
-#' extraction key. Downstream packages can provide methods for package-owned
+#' extraction key; a quantity whose source coordinates were not monitored
+#' (catalog status `"unavailable"`) stops with an error of class
+#' `BayesTools_refit_monitoring` (also `BayesTools_refit_required`).
+#' Downstream packages can provide methods for package-owned
 #' derived quantities. For gated total-variance allocations, realized
 #' `sd_total` and `var_total` draws include the all-off zero branch.
 #' `var_prop(...)` draws are normalized over active components and are `NA` on
@@ -507,11 +510,11 @@ parameter_draws.BayesTools_fit <- function(object, selection,
   }
   unavailable <- quantities$status == "unavailable"
   if(any(unavailable)){
-    stop(
+    .bt_stop_refit_required(
       "The parameter quantity '", quantities$canonical_name[unavailable][[1L]],
       "' is unavailable in this fit: its source coordinates are not part of ",
       "the posterior draws. Refit the model with those coordinates monitored.",
-      call. = FALSE
+      class = "BayesTools_refit_monitoring"
     )
   }
 
@@ -2274,30 +2277,27 @@ parameter_transform_jacobian <- function(values, transform){
        length(unique(coordinates$role[coordinate_rows])) != 1L ||
        !coordinates$role[coordinate_rows][1L] %in%
          c("fixed_coefficient", "parameter")){
-      stop(
+      .bt_stop_refit_required(
         "Parameter catalog factor coordinates are missing or malformed for '",
-        parameter, "'. Refit the model with this version of BayesTools.",
-        call. = FALSE
+        parameter, "'. Refit the model with this version of BayesTools."
       )
     }
     coordinate_metadata <- coordinates[coordinate_rows, , drop = FALSE]
     design_info <- .factor_term_design_from_metadata(prior)
     design <- design_info$design
     if(is.null(design_info$level_names)){
-      stop(
+      .bt_stop_refit_required(
         "Parameter catalog factor levels are missing for '", parameter,
-        "'. Refit the model with this version of BayesTools.",
-        call. = FALSE
+        "'. Refit the model with this version of BayesTools."
       )
     }
     owner_fields <- c("formula_parameter", "term", "fitted_scale")
     if(any(vapply(owner_fields, function(field){
       length(unique(coordinate_metadata[[field]])) != 1L
     }, logical(1)))){
-      stop(
+      .bt_stop_refit_required(
         "Parameter catalog factor coordinates have inconsistent ownership for '",
-        parameter, "'. Refit the model with this version of BayesTools.",
-        call. = FALSE
+        parameter, "'. Refit the model with this version of BayesTools."
       )
     }
 
@@ -2319,19 +2319,17 @@ parameter_transform_jacobian <- function(values, transform){
     if(ncol(design) != length(coordinate_names) ||
        nrow(design) != length(label_parts$cells) ||
        any(!is.finite(design))){
-      stop(
+      .bt_stop_refit_required(
         "Parameter catalog factor metadata disagree with parameter coordinates for '",
-        parameter, "'. Refit the model with this version of BayesTools.",
-        call. = FALSE
+        parameter, "'. Refit the model with this version of BayesTools."
       )
     }
     cell_selectors <- .bt_label(label_parts$cells, style = "selector")
     if(anyDuplicated(cell_selectors) ||
        !all(startsWith(cell_selectors, paste0(parameter, "[")))){
-      stop(
+      .bt_stop_refit_required(
         "Parameter catalog factor metadata do not identify the level cells of '",
-        parameter, "' uniquely. Refit the model with this version of BayesTools.",
-        call. = FALSE
+        parameter, "' uniquely. Refit the model with this version of BayesTools."
       )
     }
     fitted_scale <- coordinate_metadata$fitted_scale[1L]
@@ -3027,9 +3025,8 @@ parameter_transform_jacobian <- function(values, transform){
 
   dependency_rows <- match(key$dependencies, coordinates$coordinate_name)
   if(anyNA(dependency_rows)){
-    stop(
-      "Parameter catalog random-summary dependencies are missing from the parameter map. Refit the model with this version of BayesTools.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "Parameter catalog random-summary dependencies are missing from the parameter map. Refit the model with this version of BayesTools."
     )
   }
   dependency_status <- coordinates$monitor_status[dependency_rows]
@@ -3057,9 +3054,8 @@ parameter_transform_jacobian <- function(values, transform){
   )
   if(inherits(fixed_value, "error") || length(fixed_value) != 1L ||
      !is.finite(fixed_value)){
-    stop(
-      "Parameter catalog could not evaluate a structural random summary from its declared dependencies. Refit the model with this version of BayesTools.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "Parameter catalog could not evaluate a structural random summary from its declared dependencies. Refit the model with this version of BayesTools."
     )
   }
   list(status = "structural", fixed_value = as.numeric(fixed_value))
@@ -3074,9 +3070,8 @@ parameter_transform_jacobian <- function(values, transform){
   row <- match(source, coordinates$coordinate_name)
   if(length(source) != 1L || is.na(row) ||
      !source_transform %in% c("identity", "square")){
-    stop(
-      "Parameter catalog one-to-one random-summary source metadata are malformed. Refit the model with this version of BayesTools.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "Parameter catalog one-to-one random-summary source metadata are malformed. Refit the model with this version of BayesTools."
     )
   }
   status <- coordinates$monitor_status[row]
@@ -3136,16 +3131,14 @@ parameter_transform_jacobian <- function(values, transform){
     formula_scale = formula_scale
   )
   if(is.null(summary) || ncol(summary$values) < index){
-    stop(
-      "Parameter catalog could not resolve a one-coordinate random-SD transform. Refit the model with this version of BayesTools.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "Parameter catalog could not resolve a one-coordinate random-SD transform. Refit the model with this version of BayesTools."
     )
   }
   scale <- as.numeric(summary$values[, index])
   if(length(scale) != 1L || !is.finite(scale) || scale <= 0){
-    stop(
-      "Parameter catalog random-SD transform must have one finite positive source scale. Refit the model with this version of BayesTools.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "Parameter catalog random-SD transform must have one finite positive source scale. Refit the model with this version of BayesTools."
     )
   }
   unname(scale)
@@ -3292,8 +3285,7 @@ parameter_transform_jacobian <- function(values, transform){
     gate_only <- isTRUE(allocation$gate_only)
     if(!is.numeric(K) || length(K) != 1L || is.na(K) ||
        K < if(gate_only) 1L else 2L){
-      stop("Random-effect allocation metadata have no valid 'n_targets'. Refit the model with this version of BayesTools.",
-           call. = FALSE)
+      .bt_stop_refit_required("Random-effect allocation metadata have no valid 'n_targets'. Refit the model with this version of BayesTools.")
     }
     K <- as.integer(K)
     allocation_type <- .bt_random_effect_summary_allocation_type(allocation)
@@ -4021,9 +4013,8 @@ parameter_transform_jacobian <- function(values, transform){
       if(!is.character(key$allocation_label) ||
          length(key$allocation_label) != 1L ||
          is.na(key$allocation_label) || !nzchar(key$allocation_label)){
-        stop(
-          "Parameter catalog variance-allocation metadata require one non-empty allocation label. Refit the model with this version of BayesTools.",
-          call. = FALSE
+        .bt_stop_refit_required(
+          "Parameter catalog variance-allocation metadata require one non-empty allocation label. Refit the model with this version of BayesTools."
         )
       }
       key$allocation_label
@@ -4451,8 +4442,7 @@ parameter_transform_jacobian <- function(values, transform){
     identical(names(quantities), .bt_parameter_catalog_quantity_columns) &&
     identical(names(aliases), .bt_parameter_catalog_alias_columns)
   if(!valid){
-    stop("Parameter catalog tables have a missing or unsupported schema. Refit or rebuild the catalog with this version of BayesTools.",
-         call. = FALSE)
+    .bt_stop_refit_required("Parameter catalog tables have a missing or unsupported schema. Refit or rebuild the catalog with this version of BayesTools.")
   }
   character_columns <- setdiff(
     .bt_parameter_catalog_quantity_columns,
@@ -4493,8 +4483,7 @@ parameter_transform_jacobian <- function(values, transform){
                              c("fixed_value", "support", "label_parts",
                                "extraction_key"))]) ||
      anyNA(aliases[setdiff(names(aliases), "label_parts")])){
-    stop("Parameter catalog tables contain malformed field types or missing metadata. Refit or rebuild the catalog with this version of BayesTools.",
-         call. = FALSE)
+    .bt_stop_refit_required("Parameter catalog tables contain malformed field types or missing metadata. Refit or rebuild the catalog with this version of BayesTools.")
   }
   required_nonempty <- c(
     "quantity_id", "canonical_name", "provider", "namespace", "role",
@@ -4514,8 +4503,7 @@ parameter_transform_jacobian <- function(values, transform){
            c("always", names(.bt_undefined_draws_reasons))) ||
      any(!is.na(quantities$fixed_value[quantities$status != "structural"])) ||
      any(!is.finite(quantities$fixed_value[quantities$status == "structural"]))){
-    stop("Parameter catalog tables contain invalid names, statuses, or structural values. Refit or rebuild the catalog with this version of BayesTools.",
-         call. = FALSE)
+    .bt_stop_refit_required("Parameter catalog tables contain invalid names, statuses, or structural values. Refit or rebuild the catalog with this version of BayesTools.")
   }
   # `quantity_id` is the key; `canonical_name` is a selector, and
   # `parameter_catalog_resolve()` narrows it by namespace and component before
@@ -4535,19 +4523,16 @@ parameter_transform_jacobian <- function(values, transform){
   }
   provider_prefix <- paste0(quantities$provider, "::")
   if(any(!startsWith(quantities$quantity_id, provider_prefix))){
-    stop("Parameter catalog quantity IDs do not match their providers. Refit or rebuild the catalog with this version of BayesTools.",
-         call. = FALSE)
+    .bt_stop_refit_required("Parameter catalog quantity IDs do not match their providers. Refit or rebuild the catalog with this version of BayesTools.")
   }
   if(any(!aliases$quantity_id %in% known_quantity_ids)){
-    stop("Parameter catalog aliases reference unknown quantity IDs. Refit or rebuild the catalog with this version of BayesTools.",
-         call. = FALSE)
+    .bt_stop_refit_required("Parameter catalog aliases reference unknown quantity IDs. Refit or rebuild the catalog with this version of BayesTools.")
   }
   if(any(!quantities$scale_role %in% c("", "total", "common")) ||
      any(nzchar(quantities$parent_quantity_id) &
            !quantities$parent_quantity_id %in% known_quantity_ids) ||
      any(quantities$parent_quantity_id == quantities$quantity_id)){
-    stop("Parameter catalog quantities contain invalid scale hierarchy metadata. Refit or rebuild the catalog with this version of BayesTools.",
-         call. = FALSE)
+    .bt_stop_refit_required("Parameter catalog quantities contain invalid scale hierarchy metadata. Refit or rebuild the catalog with this version of BayesTools.")
   }
   random <- startsWith(quantities$role, "random_")
   if(any(random & (
@@ -4557,8 +4542,7 @@ parameter_transform_jacobian <- function(values, transform){
       !nzchar(quantities$quantity) |
       quantities$source_type == "none"
   ))){
-    stop("Parameter catalog random quantities contain incomplete semantic ownership or source metadata. Refit or rebuild the catalog with this version of BayesTools.",
-         call. = FALSE)
+    .bt_stop_refit_required("Parameter catalog random quantities contain incomplete semantic ownership or source metadata. Refit or rebuild the catalog with this version of BayesTools.")
   }
   valid_keys <- vapply(seq_len(nrow(quantities)), function(i){
     key <- quantities$extraction_key[[i]]
@@ -4578,8 +4562,7 @@ parameter_transform_jacobian <- function(values, transform){
     )
   }, logical(1))
   if(!all(valid_keys)){
-    stop("Parameter catalog extraction keys are malformed. Refit or rebuild the catalog with this version of BayesTools.",
-         call. = FALSE)
+    .bt_stop_refit_required("Parameter catalog extraction keys are malformed. Refit or rebuild the catalog with this version of BayesTools.")
   }
   invisible(TRUE)
 }
@@ -4591,8 +4574,7 @@ parameter_transform_jacobian <- function(values, transform){
     identical(names(catalog), c("schema_version", "quantities", "aliases")) &&
     identical(catalog$schema_version, .bt_parameter_map_version)
   if(!valid){
-    stop("Parameter catalog metadata are missing or unsupported. Refit or rebuild the catalog with this version of BayesTools.",
-         call. = FALSE)
+    .bt_stop_refit_required("Parameter catalog metadata are missing or unsupported. Refit or rebuild the catalog with this version of BayesTools.")
   }
   .bt_validate_parameter_catalog_tables(catalog$quantities, catalog$aliases)
   invisible(TRUE)
@@ -4843,15 +4825,13 @@ parameter_transform_jacobian <- function(values, transform){
   designs <- attr(fit, "formula_design", exact = TRUE)
   design <- designs[[key$formula_parameter]]
   if(is.null(design)){
-    stop("Selected random summary has no matching formula design. Refit the model with this version of BayesTools.",
-         call. = FALSE)
+    .bt_stop_refit_required("Selected random summary has no matching formula design. Refit the model with this version of BayesTools.")
   }
   matches <- vapply(design$random_effects, function(term){
     identical(term$block_name, key$random_block)
   }, logical(1))
   if(sum(matches) != 1L){
-    stop("Selected random summary has no unique random-effect block. Refit the model with this version of BayesTools.",
-         call. = FALSE)
+    .bt_stop_refit_required("Selected random summary has no unique random-effect block. Refit the model with this version of BayesTools.")
   }
   design$random_effects[[which(matches)]]
 }
@@ -4873,8 +4853,7 @@ parameter_transform_jacobian <- function(values, transform){
     identical(allocation$label, key$allocation_label)
   }, logical(1))
   if(sum(matches) != 1L){
-    stop("Selected random summary has no unique variance-allocation definition. Refit the model with this version of BayesTools.",
-         call. = FALSE)
+    .bt_stop_refit_required("Selected random summary has no unique variance-allocation definition. Refit the model with this version of BayesTools.")
   }
   allocations[[which(matches)]]
 }

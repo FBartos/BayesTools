@@ -339,7 +339,8 @@ test_that("formula replay rejects unversioned source-data metadata", {
       "versioned original-scale source data metadata are missing or unsupported. ",
       "Refit the model with this version of BayesTools."
     ),
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
   )
   expect_error(
     BayesTools:::.bt_JAGS_bridge_formula_context(
@@ -355,7 +356,8 @@ test_that("formula replay rejects unversioned source-data metadata", {
       "versioned original-scale source data metadata are missing or unsupported. ",
       "Refit the model with this version of BayesTools."
     ),
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
   )
 })
 
@@ -1769,7 +1771,8 @@ test_that("marginal target includes marginalized random-effect blocks", {
       formula_target = "conditional"
     ),
     "compiled as marginalized",
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_monitoring"
   )
 
   prediction <- JAGS_predict_formula(

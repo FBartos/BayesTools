@@ -44,11 +44,10 @@ JAGS_formula_random_marginal_covariance <- function(
        formula_design$schema_version,
        .bt_formula_design_schema_version()
      )){
-    stop(
+    .bt_stop_refit_required(
       "'formula_design' was created by an earlier BayesTools version and ",
       "lacks the current random-effect metadata. Refit the model with this ",
-      "version of BayesTools.",
-      call. = FALSE
+      "version of BayesTools."
     )
   }
   n_rows <- nrow(formula_design$model_matrix)

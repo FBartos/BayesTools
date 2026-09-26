@@ -484,7 +484,8 @@ test_that("parameter-map accessors reject missing and malformed fitted objects",
 
   expect_error(
     parameter_map(fit),
-    "Refit the model"
+    "Refit the model",
+    class = "BayesTools_refit_required"
   )
 
   fit <- attach_test_parameter_map(fit)

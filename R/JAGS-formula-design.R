@@ -100,12 +100,11 @@
     .bt_formula_expression_specs_valid(design$expression_specs) &&
     .bt_formula_design_contrast_schema_valid(design)
   if(!isTRUE(valid_schema)){
-    stop(
+    .bt_stop_refit_required(
       context,
       " cannot replay this fitted formula because its versioned original-scale ",
       "source data metadata are missing or unsupported. Refit the model with ",
-      "this version of BayesTools.",
-      call. = FALSE
+      "this version of BayesTools."
     )
   }
 

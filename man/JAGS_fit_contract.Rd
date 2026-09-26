@@ -40,4 +40,20 @@ than parsing a JAGS name.
 \code{JAGS_fit_contract()} returns the schema contract attached to a fit.
 \code{JAGS_validate_fit_contract()} checks the components named in \code{requires} and
 requires unsupported objects to be refitted rather than adapted.
+
+Every error that asks to refit the model has class
+\code{BayesTools_refit_required}: these validators, and every function that
+reads fitted metadata, stop with it on a fit (or stored metadata or draw
+geometry) created by another version of BayesTools, such as BayesTools
+0.3.0, or lacking fitted metadata the request requires. A fit whose
+posterior samples lack coordinates the request needs because of its
+monitoring or sampling settings (a quantity whose source coordinates were
+not monitored in \code{\link[=parameter_draws]{parameter_draws()}}, random effects without
+\code{random_monitor(latent = TRUE)} or \code{random_monitor(coefficients = TRUE)}
+in \code{\link[=JAGS_evaluate_formula]{JAGS_evaluate_formula()}} and \code{\link[=JAGS_bridgesampling]{JAGS_bridgesampling()}}, or a
+marginalized random-effect block) stops with the child class
+\code{BayesTools_refit_monitoring} (also \code{BayesTools_refit_required}):
+refitting with this version alone does not resolve it, and the message
+names the settings to refit with. Callers match these classes, never the
+message.
 }

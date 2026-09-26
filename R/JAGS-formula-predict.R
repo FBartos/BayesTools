@@ -6,11 +6,16 @@
 #' contrasts, and the standardization of predictors). Posterior or prior
 #' draws without a fit are evaluated through the same design, built by
 #' [JAGS_formula_draws()]. Fits created by BayesTools 0.3.0, which store no
-#' design, must be refitted. Formula random effects can be evaluated for existing
+#' design, must be refitted: they stop with an error of class
+#' \code{BayesTools_refit_required} (see [JAGS_validate_fit_contract()]).
+#' Formula random effects can be evaluated for existing
 #' grouping levels when either standardized latent random effects and covariance
 #' hyperparameters were monitored via \code{random_monitor(latent = TRUE)}, or
 #' the group-level coefficients were monitored via
-#' \code{random_monitor(coefficients = TRUE)}.
+#' \code{random_monitor(coefficients = TRUE)}; otherwise, and for
+#' random-effect blocks compiled as marginalized, conditional evaluation stops
+#' with an error of class \code{BayesTools_refit_monitoring} (also
+#' \code{BayesTools_refit_required}).
 #' Row-indexed external random-effect SD sources, such as
 #' \code{random_sd_source("tau", shape = "row")}, are evaluated from latent
 #' random effects only. Model generation automatically monitors the required
@@ -477,11 +482,10 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   fitted_contrast <- fitted_design$contrast_matrices[[predictor]]
   if(is.null(fitted_levels) || length(fitted_levels) == 0L ||
      is.null(fitted_contrast)){
-    stop(
+    .bt_stop_refit_required(
       "The fitted formula design of parameter '", fitted_design$parameter,
       "' has no levels or contrast matrix for factor predictor '", predictor,
-      "'. Refit the model with this version of BayesTools.",
-      call. = FALSE
+      "'. Refit the model with this version of BayesTools."
     )
   }
 
@@ -548,13 +552,12 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   formula_design <- attr(fit, "formula_design", exact = TRUE)
   fitted_design <- if(is.list(formula_design)) formula_design[[parameter]]
   if(is.null(fitted_design)){
-    stop(
+    .bt_stop_refit_required(
       context, " needs the fitted formula design of parameter '", parameter,
       "': pass a fit from JAGS_fit() with a formula for '", parameter,
       "', or posterior draws with the design built by JAGS_formula_draws(). ",
       "Refit the model with the current BayesTools version if it was fitted by ",
-      "BayesTools 0.3.0.",
-      call. = FALSE
+      "BayesTools 0.3.0."
     )
   }
   .bt_validate_formula_design_replay_schema(fitted_design, context = context)

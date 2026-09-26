@@ -435,7 +435,8 @@ test_that("row-indexed independent reconstruction streams scalar and column allo
         prior_list = specification$prior_list
       ),
       "cannot be reconstructed from the posterior samples",
-      fixed = TRUE
+      fixed = TRUE,
+      class = "BayesTools_refit_monitoring"
     )
   }
 })

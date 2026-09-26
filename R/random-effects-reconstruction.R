@@ -732,14 +732,14 @@
       posterior = posterior
     )
     if(is.null(unit_columns)){
-      stop(
+      .bt_stop_refit_required(
         "Random-effect block '", random_term$block_name,
         "' with row-indexed external SD source '",
         .bt_random_effect_external_sd_source_label(random_term),
         "' cannot be reconstructed from the posterior samples. Refit with ",
         "random_monitor(latent = TRUE) and monitor the required correlation ",
         "coordinates before using JAGS_evaluate_formula() with random effects.",
-        call. = FALSE
+        class = "BayesTools_refit_monitoring"
       )
     }
     return(.bt_random_effect_apply_row_indexed_source_to_unit_columns(
@@ -768,14 +768,14 @@
     posterior = posterior
   )
   if(is.null(unit_contribution)){
-    stop(
+    .bt_stop_refit_required(
       "Random-effect block '", random_term$block_name,
       "' with row-indexed external SD source '",
       .bt_random_effect_external_sd_source_label(random_term),
       "' cannot be reconstructed from the posterior samples. Refit with ",
       "random_monitor(latent = TRUE) and monitor the required correlation ",
       "coordinates before using JAGS_evaluate_formula() with random effects.",
-      call. = FALSE
+      class = "BayesTools_refit_monitoring"
     )
   }
 
@@ -787,14 +787,14 @@
 
 .bt_random_effect_row_indexed_reconstruction_missing_stop <- function(random_term){
 
-  stop(
+  .bt_stop_refit_required(
     "Random-effect block '", random_term$block_name,
     "' with row-indexed external SD source '",
     .bt_random_effect_external_sd_source_label(random_term),
     "' cannot be reconstructed from the posterior samples. Refit with ",
     "random_monitor(latent = TRUE) and monitor the required correlation ",
     "coordinates before using JAGS_evaluate_formula() with random effects.",
-    call. = FALSE
+    class = "BayesTools_refit_monitoring"
   )
 }
 

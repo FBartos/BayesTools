@@ -360,18 +360,16 @@ JAGS_formula_predictor_basis <- function(fit, directions,
     base_name <- .bt_parameter_coordinates_base(coordinate_name)
     map_row <- fixed_map[fixed_map$jags_name == base_name, , drop = FALSE]
     if(nrow(map_row) != 1L){
-      stop(
+      .bt_stop_refit_required(
         "Formula predictor metadata do not uniquely map coordinate '",
-        coordinate_name, "'. Refit the model with this version of BayesTools.",
-        call. = FALSE
+        coordinate_name, "'. Refit the model with this version of BayesTools."
       )
     }
     term_i <- match(map_row$term, semantic_terms)
     if(is.na(term_i)){
-      stop(
+      .bt_stop_refit_required(
         "Formula predictor metadata do not map term '", map_row$term,
-        "' to the fitted design. Refit the model with this version of BayesTools.",
-        call. = FALSE
+        "' to the fitted design. Refit the model with this version of BayesTools."
       )
     }
     term_columns <- which(design$assign == (term_i - 1L))
@@ -383,10 +381,9 @@ JAGS_formula_predictor_basis <- function(fit, directions,
     model_column <- term_columns[coefficient_i]
     prior <- design$prior_list[[map_row$jags_name]]
     if(is.null(prior) || !is.prior(prior)){
-      stop(
+      .bt_stop_refit_required(
         "Formula predictor metadata are missing the prior for coordinate '",
-        coordinate_name, "'. Refit the model with this version of BayesTools.",
-        call. = FALSE
+        coordinate_name, "'. Refit the model with this version of BayesTools."
       )
     }
     # The fitted predictor never scales the intercept (JAGS_formula() rejects
@@ -430,10 +427,9 @@ JAGS_formula_predictor_basis <- function(fit, directions,
                                                     coordinate_name){
 
   if(n_columns < 1L){
-    stop(
+    .bt_stop_refit_required(
       "Formula predictor metadata have no design column for coordinate '",
-      coordinate_name, "'. Refit the model with this version of BayesTools.",
-      call. = FALSE
+      coordinate_name, "'. Refit the model with this version of BayesTools."
     )
   }
   if(!nzchar(coordinate)){
@@ -447,11 +443,10 @@ JAGS_formula_predictor_basis <- function(fit, directions,
       return(parsed)
     }
   }
-  stop(
+  .bt_stop_refit_required(
     "Formula predictor coordinate '", coordinate_name,
     "' does not identify one fitted design column. Refit the model with this ",
-    "version of BayesTools.",
-    call. = FALSE
+    "version of BayesTools."
   )
 }
 

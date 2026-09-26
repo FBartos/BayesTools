@@ -117,10 +117,9 @@ JAGS_formula_internal_coordinate_priors <- function(fit){
           isTRUE(coordinate$internal) &&
           identical(coordinate$monitor_status, "sampled")
         if(!valid){
-          stop(
+          .bt_stop_refit_required(
             "LKJ primitive coordinate '", coordinate_name,
-            "' is missing from the fitted parameter map. Refit the model with the current BayesTools version.",
-            call. = FALSE
+            "' is missing from the fitted parameter map. Refit the model with the current BayesTools version."
           )
         }
         if(coordinate_name %in% names(out)){

@@ -231,7 +231,8 @@ test_that("unstructured marginal covariance does not require a monitored correla
       row_blocks     = list(seq_len(nrow(data)))
     ),
     "created by an earlier BayesTools version",
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
   )
   stale$random_effects <- NULL
   expect_identical(

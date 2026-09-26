@@ -463,13 +463,13 @@
     return(invisible(TRUE))
   }
 
-  stop(
+  .bt_stop_refit_required(
     "Bridge sampling for formula random effects requires posterior samples of standardized latent random effects and LKJ primitive coordinates. ",
     "Refit with 'prior_random()' and 'random_monitor(latent = TRUE)' for the affected blocks. Missing parameter(s): ",
     paste(utils::head(missing, 8L), collapse = ", "),
     if(length(missing) > 8L) ", ..." else "",
     ".",
-    call. = FALSE
+    class = "BayesTools_refit_monitoring"
   )
 }
 

@@ -177,7 +177,8 @@ test_that("structured index levels are identified by exact tuple and numeric key
       "' are missing the fitted level keys. Refit the model with this version ",
       "of BayesTools."
     ),
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
   )
 })
 
@@ -1888,7 +1889,8 @@ test_that("JAGS_evaluate_formula resolves interaction-only continuous predictors
       formula_result$prior_list
     ),
     "JAGS_evaluate_formula() needs the fitted formula design of parameter 'mu': pass a fit from JAGS_fit() with a formula for 'mu', or posterior draws with the design built by JAGS_formula_draws(). Refit the model with the current BayesTools version if it was fitted by BayesTools 0.3.0.",
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
   )
 })
 
@@ -1956,7 +1958,8 @@ test_that("JAGS_evaluate_formula replays interaction-only factor metadata", {
       formula_result$prior_list
     ),
     "JAGS_evaluate_formula() needs the fitted formula design of parameter 'mu': pass a fit from JAGS_fit() with a formula for 'mu', or posterior draws with the design built by JAGS_formula_draws(). Refit the model with the current BayesTools version if it was fitted by BayesTools 0.3.0.",
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
   )
 })
 
@@ -2038,7 +2041,8 @@ test_that("JAGS_formula_draws() evaluates draws without a fit through the design
       "draws with the design built by JAGS_formula_draws(). Refit the model ",
       "with the current BayesTools version if it was fitted by BayesTools 0.3.0."
     ),
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
   )
   # draws that lack a coefficient of the design
   expect_error(
@@ -7484,7 +7488,8 @@ test_that("random-effect formulas are guarded in fixed-only downstream evaluator
       prior_list = NULL
     ),
     "requires posterior samples of standardized latent random effects",
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_monitoring"
   )
 })
 
@@ -7635,7 +7640,8 @@ test_that("JAGS bridgesampling uses fitted formula metadata and errors on suppli
       "taken from the fitted formula design; remove them from 'prior_list' or ",
       "refit the model with the intended priors."
     ),
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
   )
 })
 
@@ -8587,7 +8593,8 @@ test_that("JAGS_evaluate_formula reconstructs observed random effects from laten
       formula_target = "conditional"
     ),
     "cannot be reconstructed from the posterior samples",
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_monitoring"
   )
 })
 
@@ -9125,7 +9132,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
       formula_target = "conditional"
     ),
     "cannot be reconstructed from the posterior samples",
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_monitoring"
   )
 
   expect_error(

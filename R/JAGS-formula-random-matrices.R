@@ -230,11 +230,10 @@
 
   if(is.null(index$level_keys) || is.null(index$levels) ||
      is.null(index$component_levels)){
-    stop(
+    .bt_stop_refit_required(
       "Structured random-effect index metadata for '", index$name,
       "' are missing the fitted level keys. Refit the model with this version ",
-      "of BayesTools.",
-      call. = FALSE
+      "of BayesTools."
     )
   }
 
@@ -246,10 +245,9 @@
      anyNA(levels) || anyDuplicated(level_keys) || anyDuplicated(levels) ||
      !is.list(component_levels) ||
      length(component_levels) != length(variables)){
-    stop(
+    .bt_stop_refit_required(
       "Structured random-effect index metadata for '", index$name,
-      "' are malformed. Refit the model with this version of BayesTools.",
-      call. = FALSE
+      "' are malformed. Refit the model with this version of BayesTools."
     )
   }
   row_keys <- .bt_random_effect_structured_index_prediction_keys(

@@ -1144,12 +1144,14 @@ test_that("raw group rows require their group level labels", {
       "Random-effect summary metadata do not identify group 2 of grouping ",
       "factor 'g'. Refit the model with the current BayesTools version."
     ),
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
   )
   expect_error(
     label("10"),
     "do not identify group 2 of grouping factor 'g'",
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
   )
 })
 

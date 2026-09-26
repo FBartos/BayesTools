@@ -175,13 +175,13 @@
 
   marginalized <- selected_names[modes == "marginalized"]
   if(length(marginalized) > 0L){
-    stop(
+    .bt_stop_refit_required(
       "JAGS_evaluate_formula() cannot condition on random-effect block(s) ",
       "compiled as marginalized: ",
       paste(marginalized, collapse = ", "),
       ". Use formula_target = \"marginal\" with JAGS_predict_formula() or refit ",
       "with the block(s) sampled.",
-      call. = FALSE
+      class = "BayesTools_refit_monitoring"
     )
   }
 
@@ -374,13 +374,13 @@
     return(latent_contribution)
   }
 
-  stop(
+  .bt_stop_refit_required(
     "Random-effect coefficients for block '", random_term$block_name,
     "' cannot be reconstructed from the posterior samples. Refit with ",
     "random_monitor(latent = TRUE) or random_monitor(coefficients = TRUE) ",
     "for that random-effect block before using JAGS_evaluate_formula() ",
     "with random effects.",
-    call. = FALSE
+    class = "BayesTools_refit_monitoring"
   )
 }
 
@@ -1084,12 +1084,11 @@
   if(is.null(contrast_owner) ||
      !contrast_owner %in% c("random_block", "structure") ||
      is.null(contrast_matrices)){
-    stop(
+    .bt_stop_refit_required(
       "Random-effect prediction metadata for block '",
       random_term$block_name,
       "' is missing its owner-scoped concrete factor basis. Refit the model ",
-      "with this version of BayesTools.",
-      call. = FALSE
+      "with this version of BayesTools."
     )
   }
   if(identical(contrast_owner, "random_block")){
@@ -1170,11 +1169,10 @@
   if(is.null(random_term$group_components) ||
      is.null(random_term$group_tuple_keys) ||
      is.null(random_term$group_tuple_index)){
-    stop(
+    .bt_stop_refit_required(
       "Random-effect prediction metadata for block '", random_term$block_name,
       "' is missing the fitted grouping tuple map. Refit the model with this ",
-      "version of BayesTools.",
-      call. = FALSE
+      "version of BayesTools."
     )
   }
   if(!identical(
@@ -1293,11 +1291,10 @@
   if(!is.character(observed_levels) || length(observed_levels) < 1L ||
      anyNA(observed_levels) || anyDuplicated(observed_levels) ||
      !all(observed_levels %in% group_levels)){
-    stop(
+    .bt_stop_refit_required(
       "Random-effect prediction metadata for block '", random_term$block_name,
       "' are missing the observed grouping levels. Refit the model with this ",
-      "version of BayesTools.",
-      call. = FALSE
+      "version of BayesTools."
     )
   }
 

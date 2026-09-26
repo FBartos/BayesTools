@@ -24,7 +24,8 @@ as_marginal_inference(
 \arguments{
 \item{model}{model fit via the \link{JAGS_fit} function with this version of
 BayesTools. Fits without its parameter map and fit contract (such as fits
-created by BayesTools 0.3.0) must be refitted.}
+created by BayesTools 0.3.0) must be refitted: they stop with an error of
+class \code{BayesTools_refit_required} (see \code{\link[=JAGS_validate_fit_contract]{JAGS_validate_fit_contract()}}).}
 
 \item{marginal_parameters}{parameters for which the the marginal summary
 should be created}

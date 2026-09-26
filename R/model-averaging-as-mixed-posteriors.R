@@ -7,7 +7,8 @@
 #'
 #' @param model model fit via the [JAGS_fit] function with this version of
 #' BayesTools. Fits without its parameter map and fit contract (such as fits
-#' created by BayesTools 0.3.0) must be refitted.
+#' created by BayesTools 0.3.0) must be refitted: they stop with an error of
+#' class `BayesTools_refit_required` (see [JAGS_validate_fit_contract()]).
 #' @param conditional a character vector of parameters to be conditioned on
 #' @param conditional_rule a character string specifying the rule for conditioning.
 #' Either "AND" or "OR". Defaults to "AND".
@@ -397,11 +398,10 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
         "_indicator"
       )
       if(!indicator_name %in% colnames(model_samples)){
-        stop(
+        .bt_stop_refit_required(
           "The fitted samples for ordered factor '", parameter,
           "' do not contain the required total-prior indicator '",
-          indicator_name, "'. Refit the model with this package version.",
-          call. = FALSE
+          indicator_name, "'. Refit the model with this package version."
         )
       }
       ordered_total_component <- .bt_component_from_indicator(

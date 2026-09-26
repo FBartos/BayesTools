@@ -654,11 +654,10 @@
     # read as the level with that label.
     if(is.null(group_levels) || index[1L] < 1L ||
        index[1L] > length(group_levels)){
-      stop(
+      .bt_stop_refit_required(
         "Random-effect summary metadata do not identify group ", index[1L],
         " of grouping factor '", group, "'. ",
-        "Refit the model with the current BayesTools version.",
-        call. = FALSE
+        "Refit the model with the current BayesTools version."
       )
     }
     group_level <- as.character(group_levels[index[1L]])

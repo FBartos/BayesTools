@@ -25,8 +25,10 @@ old behaviour.
     `JAGS_check_convergence()`, `JAGS_diagnostics()`, `JAGS_extend()`,
     `JAGS_bridgesampling()`, `transform_scale_samples()`,
     `JAGS_evaluate_formula()`, `as_mixed_posteriors()`, and `mix_posteriors()`
-    stop on such fits with an error that asks to refit the model with this
-    version of BayesTools. `JAGS_check_convergence()` and `mix_posteriors()`
+    stop on such fits with an error of class `BayesTools_refit_required` that
+    asks to refit the model with this version of BayesTools (every error that
+    asks for a refit has this class; callers match it, not the message).
+    `JAGS_check_convergence()` and `mix_posteriors()`
     no longer accept `runjags` objects that were not created by `JAGS_fit()`.
     Mixed posteriors saved from 0.3.0 cannot be passed to
     `marginal_posterior()`, nor marginal posteriors saved from 0.3.0 to
@@ -522,7 +524,15 @@ old behaviour.
     `JAGS_fit_contract_schema()`, `JAGS_draw_geometry_schema()`, and
     `JAGS_formula_coefficient_transform_schema()`.
     `fit_backend_fingerprint()` identifies the backend code and native
-    libraries for cache invalidation.
+    libraries for cache invalidation. Fits whose metadata are missing or of
+    another version stop with class `BayesTools_refit_required`; fits whose
+    posterior samples lack coordinates a request needs because of their
+    monitoring or sampling settings (a `parameter_draws()` quantity whose
+    source coordinates were not monitored, random effects without
+    `random_monitor(latent = TRUE)` or `random_monitor(coefficients = TRUE)`
+    in `JAGS_evaluate_formula()` and `JAGS_bridgesampling()`, or a
+    marginalized random-effect block) stop with its child class
+    `BayesTools_refit_monitoring`.
   - `parameter_catalog_resolve()` resolves selectors exactly, with classed
     errors for ambiguous selectors (`BayesTools_parameter_ambiguous`) and for a
     contrast-coefficient selector `term{j}` of a coordinate that is a level

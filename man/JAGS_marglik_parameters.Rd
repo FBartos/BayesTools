@@ -27,7 +27,9 @@ function}
 \code{BayesTools_fit} objects with stored formula-design metadata, formula
 inputs can be omitted; if supplied, they are rebuilt only to check exact
 consistency with the fitted design and never replace fitted replay metadata.
-Fits without versioned formula-design metadata must be refitted.}
+Fits without versioned formula-design metadata must be refitted: they stop
+with an error of class \code{BayesTools_refit_required} (see
+\code{\link[=JAGS_validate_fit_contract]{JAGS_validate_fit_contract()}}).}
 
 \item{formula_data_list}{named list of data frames containing data for each formula
 (names of the lists correspond to the parameter name created by each

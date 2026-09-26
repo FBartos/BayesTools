@@ -125,9 +125,8 @@ JAGS_materialize_draws <- function(fit, parameters = NULL,
 
   chains <- .extract_posterior_samples(fit, as_list = TRUE)
   if(length(chains) != nrow(geometry$chains)){
-    stop(
-      "The fitted chains disagree with the stored draw geometry. Refit the model with this version of BayesTools.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "The fitted chains disagree with the stored draw geometry. Refit the model with this version of BayesTools."
     )
   }
   out <- vector("list", length(chains))
@@ -135,9 +134,8 @@ JAGS_materialize_draws <- function(fit, parameters = NULL,
     chain <- as.matrix(chains[[chain_i]])
     chain_geometry <- geometry$chains[chain_i, , drop = FALSE]
     if(nrow(chain) != chain_geometry$iterations){
-      stop(
-        "The fitted chains disagree with the stored draw geometry. Refit the model with this version of BayesTools.",
-        call. = FALSE
+      .bt_stop_refit_required(
+        "The fitted chains disagree with the stored draw geometry. Refit the model with this version of BayesTools."
       )
     }
     values <- matrix(
@@ -148,9 +146,8 @@ JAGS_materialize_draws <- function(fit, parameters = NULL,
     )
     columns <- match(sampled_names, colnames(chain))
     if(anyNA(columns)){
-      stop(
-        "A sampled parameter coordinate is missing from the fitted chains. Refit the model with this version of BayesTools.",
-        call. = FALSE
+      .bt_stop_refit_required(
+        "A sampled parameter coordinate is missing from the fitted chains. Refit the model with this version of BayesTools."
       )
     }
     if(length(sampled) > 0L){
@@ -235,9 +232,8 @@ JAGS_with_draws <- function(fit, draws){
     identical(names(geometry$chains), chain_fields) &&
     nrow(geometry$chains) > 0L
   if(!valid){
-    stop(
-      "Draw geometry is missing, malformed, or unsupported. Refit the model with this version of BayesTools.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "Draw geometry is missing, malformed, or unsupported. Refit the model with this version of BayesTools."
     )
   }
   integer_fields <- vapply(geometry$chains, is.integer, logical(1))
@@ -254,9 +250,8 @@ JAGS_with_draws <- function(fit, draws){
                 as.integer(cumsum(geometry$chains$iterations))) ||
      !is.integer(geometry$total_draws) || length(geometry$total_draws) != 1L ||
      !identical(geometry$total_draws, sum(geometry$chains$iterations))){
-    stop(
-      "Draw geometry contains inconsistent chain timing or ordering. Refit the model with this version of BayesTools.",
-      call. = FALSE
+    .bt_stop_refit_required(
+      "Draw geometry contains inconsistent chain timing or ordering. Refit the model with this version of BayesTools."
     )
   }
   invisible(TRUE)

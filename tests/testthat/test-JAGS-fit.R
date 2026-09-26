@@ -430,7 +430,8 @@ test_that("functions reading fitted metadata refuse fits without the current con
     "The fitted object does not contain parameter-map metadata. ",
     "Refit the model with the current BayesTools version."
   )
-  expect_error(runjags_estimates_table(stripped), missing_map, fixed = TRUE)
+  expect_error(runjags_estimates_table(stripped), missing_map, fixed = TRUE,
+               class = "BayesTools_refit_required")
 
   without_contract <- fit
   attr(without_contract, "fit_contract") <- NULL
@@ -449,9 +450,12 @@ test_that("functions reading fitted metadata refuse fits without the current con
   )
 
   for(name in names(calls)){
-    expect_error(calls[[name]](stripped), missing_map, fixed = TRUE, info = name)
-    expect_error(calls[[name]](without_contract), missing_contract, fixed = TRUE, info = name)
-    expect_error(calls[[name]](previous_map), unsupported_map, fixed = TRUE, info = name)
+    expect_error(calls[[name]](stripped), missing_map, fixed = TRUE,
+                 class = "BayesTools_refit_required", info = name)
+    expect_error(calls[[name]](without_contract), missing_contract, fixed = TRUE,
+                 class = "BayesTools_refit_required", info = name)
+    expect_error(calls[[name]](previous_map), unsupported_map, fixed = TRUE,
+                 class = "BayesTools_refit_required", info = name)
   }
 
   # Plain runjags objects carry no fitted metadata at all.
@@ -460,12 +464,14 @@ test_that("functions reading fitted metadata refuse fits without the current con
   expect_error(
     JAGS_check_convergence(plain),
     "'fit' must be a 'BayesTools_fit' created by JAGS_fit(). Refit the model with this version of BayesTools.",
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
   )
   expect_error(
     mix_posteriors(models(plain), "mu", list(mu = FALSE)),
     "'model_list:fit' must be a 'BayesTools_fit' created by JAGS_fit(). Refit the model with this version of BayesTools.",
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
   )
 
   # Fits of this version pass.

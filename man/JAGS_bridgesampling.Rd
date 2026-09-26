@@ -54,7 +54,9 @@ components and weights) and is an error otherwise.}
 \code{BayesTools_fit} objects with stored formula-design metadata, formula
 inputs can be omitted; if supplied, they are rebuilt only to check exact
 consistency with the fitted design and never replace fitted replay metadata.
-Fits without versioned formula-design metadata must be refitted.}
+Fits without versioned formula-design metadata must be refitted: they stop
+with an error of class \code{BayesTools_refit_required} (see
+\code{\link[=JAGS_validate_fit_contract]{JAGS_validate_fit_contract()}}).}
 
 \item{formula_data_list}{named list of data frames containing data for each formula
 (names of the lists correspond to the parameter name created by each
@@ -96,7 +98,9 @@ the normalized simplex coordinates owned by the prior.}
 objects for random effects in \code{formula_list}. Bridge sampling for formula
 random effects requires the \code{prior_random()} interface because the
 stochastic bridge coordinates are the standardized latent effects and
-correlation primitives. For \code{BayesTools_fit} objects with stored
+correlation primitives; a fit without their posterior samples
+(\code{random_monitor(latent = TRUE)}) stops with an error of class
+\code{BayesTools_refit_monitoring} (also \code{BayesTools_refit_required}). For \code{BayesTools_fit} objects with stored
 formula-design metadata, this can be omitted unless formula inputs are being
 supplied for a strict consistency check. Supplied callbacks never replace
 callbacks stored in the fitted formula design.}

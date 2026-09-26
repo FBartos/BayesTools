@@ -671,10 +671,9 @@
     length(spec$raw_column_names) == length(spec$assign) &&
     length(spec$assign) > 0L
   if(!isTRUE(valid)){
-    stop(
+    .bt_stop_refit_required(
       "Formula-scale design metadata for parameter '", prefix,
-      "' are malformed. Refit the model with this version of BayesTools.",
-      call. = FALSE
+      "' are malformed. Refit the model with this version of BayesTools."
     )
   }
 
@@ -833,10 +832,9 @@
   model_matrix <- .bt_model_matrix(model_frame, formula = formula, data = data)
   if(!identical(colnames(model_matrix), spec$raw_column_names) ||
      !identical(as.integer(attr(model_matrix, "assign")), spec$assign)){
-    stop(
+    .bt_stop_refit_required(
       "Formula-scale design metadata for parameter '", prefix,
-      "' do not reproduce the fitted design. Refit the model with this version of BayesTools.",
-      call. = FALSE
+      "' do not reproduce the fitted design. Refit the model with this version of BayesTools."
     )
   }
 
@@ -857,10 +855,9 @@
   term_index <- assign + if(has_intercept) 1L else 0L
   if(any(term_index < 1L) || any(term_index > length(spec$model_terms)) ||
      (has_intercept && !identical(spec$model_terms[1L], "intercept"))){
-    stop(
+    .bt_stop_refit_required(
       "Formula-scale design metadata for parameter '", prefix,
-      "' do not match the fitted formula terms. Refit the model with this version of BayesTools.",
-      call. = FALSE
+      "' do not match the fitted formula terms. Refit the model with this version of BayesTools."
     )
   }
 

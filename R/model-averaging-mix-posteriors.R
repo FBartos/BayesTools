@@ -888,11 +888,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 }
 .mix_posteriors_stop_missing_total_indicator <- function(parameter, indicator_name){
 
-  stop(
+  .bt_stop_refit_required(
     "The fitted samples for ordered factor '", parameter,
     "' do not contain the required total-prior indicator '",
-    indicator_name, "'. Refit the model with this package version.",
-    call. = FALSE
+    indicator_name, "'. Refit the model with this package version."
   )
 }
 .mix_posteriors.weightfunction <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){

@@ -471,7 +471,8 @@ test_that("BayesTools fits require the parameter map for bridge replay", {
       prior_list = list(mu = prior("normal", list(0, 1)))
     ),
     "Refit the model with the current BayesTools version.",
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
   )
 })
 
