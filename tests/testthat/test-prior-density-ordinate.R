@@ -1136,6 +1136,25 @@ test_that("the log-scale sum of a log-source term and a Gaussian part is the log
   expect_identical(underflow$behavior, "regular")
   expect_false(underflow$exact)
   expect_match(underflow$reason, "not representable", fixed = TRUE)
+  # neither has a value whose exponential is subnormal (below
+  # .Machine$double.xmin, z < -708.4): for b0 ~ gamma(2, 4), whose density is
+  # 16 x e^(-4x), f_Z(z) = 16 e^(2z) E[e^(-2 c b1)] (1 + O(e^z)), so
+  # log f_Z(z) = log(16) + 2z + c^2 / 2 to double precision at z = -708,
+  # while exp(-745) rounds to the smallest subnormal 4.9e-324 = e^(-744.44),
+  # which shifted the log density by 0.56 with exact = TRUE
+  subnormal_density <- log_density(prior("gamma", list(2, 4)))
+  normal_edge <- prior_density_ordinate(subnormal_density, -708)
+  expect_true(normal_edge$exact)
+  expect_equal(normal_edge$log_density, log(16) - 2 * 708 + slope^2 / 2, tolerance = 1e-12)
+  for(value in c(-740, -745)){
+    subnormal <- prior_density_ordinate(subnormal_density, value)
+    expect_identical(subnormal$behavior, "regular")
+    expect_false(subnormal$exact)
+    expect_match(subnormal$reason, "not representable", fixed = TRUE)
+  }
+  expect_true(is.na(.prior_density_route_density(
+    .prior_density_route_from_adaptive(attr(subnormal_density, "adaptive_evaluation")), -745
+  )))
 
   probability <- function(hypothesis){
     .hypothesis_prior_density_prob(

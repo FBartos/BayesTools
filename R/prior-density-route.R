@@ -1114,12 +1114,18 @@
 # Ordinate of the log image Z = log(Y) of a scale product Y at 'value':
 # f_Z(z) = f_Y(e^z) e^z, with the product's classification at e^z > 0 (never
 # its offset at 0) and its quadrature error scaled by e^z. A value whose
-# exponential is not representable has no ordinate value.
+# exponential is not representable at full precision (zero, infinite, or
+# subnormal: below .Machine$double.xmin, e^z is rounded, which moves f_Y(e^z)
+# when f_Y varies near 0) has no ordinate value.
+.prior_density_route_log_scale_product_representable <- function(y){
+  is.finite(y) & y >= .Machine$double.xmin
+}
+
 .prior_density_route_log_scale_product_ordinate <- function(route, value){
 
   y <- exp(value)
   provenance <- list(kind = "log_scale_product")
-  if(!(y > 0) || !is.finite(y)){
+  if(!.prior_density_route_log_scale_product_representable(y)){
     return(.prior_density_ordinate_result(
       value       = value,
       behavior    = "regular",
@@ -1127,8 +1133,8 @@
       exact       = FALSE,
       method      = "scale_mixture",
       reason      = paste0(
-        "The exponential of the requested value is not representable in ",
-        "ordinary floating-point arithmetic."
+        "The exponential of the requested value is not representable at full ",
+        "precision in ordinary floating-point arithmetic."
       ),
       provenance  = provenance
     ))
@@ -1278,7 +1284,7 @@
     "truncated_normal_convolution" = .prior_truncated_normal_convolution_density(route$spec, x),
     "log_scale_product" = {
       y <- exp(x)
-      representable <- y > 0 & is.finite(y)
+      representable <- .prior_density_route_log_scale_product_representable(y)
       out <- rep(NA_real_, length(x))
       if(any(representable)){
         out[representable] <- .prior_density_route_quadrature_density(

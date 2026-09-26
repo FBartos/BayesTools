@@ -201,7 +201,8 @@ ordinates, region probabilities, plotted values and offset classification at
 sum log(X) + G itself (e.g. formula marginal posteriors of log-scale linear
 predictors) is the log image of that product (`log_scale_product`):
 f_Z(z) = f_Y(e^z) e^z with the product's classification at e^z > 0 (no
-offset case) and its quadrature error scaled by e^z, region probabilities
+offset case) and its quadrature error scaled by e^z (no ordinate value where
+e^z is not a normal double, z below about -708.4 or above 709.8), region probabilities
 P(Z in (a, b)) = P(Y in (e^a, e^b)), and plotted values through the same
 ordinate; its exp is the product itself. Other weights of the log-source
 term (X^w W) and a non-Gaussian other term keep the general convolution.
