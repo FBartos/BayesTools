@@ -97,7 +97,11 @@
 #' parameter based on model-averaged posterior samples and parameter name
 #' (and formula with at specification).
 #'
-#' @param samples model-averaged posterior samples created by \code{mix_posteriors()}
+#' @param samples model-averaged posterior samples created by \code{mix_posteriors()}.
+#' Mixed factor posteriors that lack the factor metadata of this version of
+#' BayesTools (such as those created by BayesTools 0.3.0) must be recreated
+#' from models fitted with this version: they stop with an error of class
+#' \code{BayesTools_refit_required} (see [JAGS_validate_fit_contract()]).
 #' @param parameter parameter of interest
 #' @param formula model formula (needs to be specified if \code{parameter} was part of a formula)
 #' @param at named list with predictor levels of the formula for which marginalization
@@ -1335,11 +1339,10 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     if(length(coded) > 0L) coded[[1L]] else contrasts[[1L]]
   }
   if(is.null(level_names) || is.null(contrast)){
-    stop(
+    .bt_stop_refit_required(
       "The mixed posterior samples lack the fitted levels or contrast of the ",
       "factor predictor '", predictor, "'. Recreate them with mix_posteriors() ",
-      "or as_mixed_posteriors() from models fitted with the current version.",
-      call. = FALSE
+      "or as_mixed_posteriors() from models fitted with the current version."
     )
   }
 
@@ -1357,18 +1360,18 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 }
 
 # Contrast flag of a mixed factor posterior. Objects created before ordered
-# factors were supported (BayesTools 0.3.0) lack part of this metadata.
+# factors were supported (BayesTools 0.3.0) lack part of this metadata; their
+# remedy is models fitted with this version (class BayesTools_refit_required).
 .marginal_posterior_factor_flag <- function(prior_info, field, parameter){
 
   value <- prior_info[[field]]
   if(!is.logical(value) || length(value) != 1L || is.na(value)){
-    stop(
+    .bt_stop_refit_required(
       "The mixed posterior samples of '", parameter, "' lack the factor ",
       "metadata recorded by the current BayesTools version (missing: '", field,
       "'); they were likely created by BayesTools 0.3.0. Recreate them with ",
       "mix_posteriors() or as_mixed_posteriors() from models fitted with the ",
-      "current version.",
-      call. = FALSE
+      "current version."
     )
   }
 

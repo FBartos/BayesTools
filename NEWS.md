@@ -31,7 +31,9 @@ old behaviour.
     `JAGS_check_convergence()` and `mix_posteriors()`
     no longer accept `runjags` objects that were not created by `JAGS_fit()`.
     Mixed posteriors saved from 0.3.0 cannot be passed to
-    `marginal_posterior()`, nor marginal posteriors saved from 0.3.0 to
+    `marginal_posterior()` (mixed factor posteriors without the factor
+    metadata of this version stop with class `BayesTools_refit_required`),
+    nor marginal posteriors saved from 0.3.0 to
     `Savage_Dickey_BF()`; rebuild them from refitted models. This includes
     models stored by RoBMA 4.0.0.
   - marginal likelihoods are `BayesTools_marglik` objects.

@@ -4498,7 +4498,32 @@ test_that("marginal posteriors of 0.3.0 objects ask for recomputation", {
   expect_error(
     marginal_posterior(samples, "mu_x_fac2t", formula = ~ x_cont1 + x_fac2t + x_cont1 * x_fac3md),
     "lack the factor metadata recorded by the current BayesTools version (missing: 'ordered')",
-    fixed = TRUE
+    fixed = TRUE,
+    class = "BayesTools_refit_required"
+  )
+  # an interaction-only factor predictor without its fitted levels and contrast
+  condition <- tryCatch(
+    .marginal_posterior_interaction_predictor_info(
+      predictor   = "g",
+      parameter   = "mu_x",
+      priors_info = list(mu_x__xXx__g = list(
+        term_components = c("x", "g"),
+        factor_terms    = "g"
+      ))
+    ),
+    error = identity
+  )
+  expect_identical(
+    class(condition),
+    c("BayesTools_refit_required", "error", "condition")
+  )
+  expect_identical(
+    conditionMessage(condition),
+    paste0(
+      "The mixed posterior samples lack the fitted levels or contrast of the ",
+      "factor predictor 'g'. Recreate them with mix_posteriors() or ",
+      "as_mixed_posteriors() from models fitted with the current version."
+    )
   )
 
   # 0.3.0 marginal posteriors carry no atom declaration
