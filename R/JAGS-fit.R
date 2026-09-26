@@ -1101,8 +1101,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 }
 
 # runjags keeps the compiled rjags model of a run in 'method.options$rjags':
-# closures over the model's frame (its code, data, and initial values), about
-# 30-60 KB per fit. BayesTools continues a live model only within one call
+# closures over the model's frame (its code, data, and initial values), so it
+# grows with the data. BayesTools continues a live model only within one call
 # (the autofit extensions of JAGS_fit() and JAGS_extend()); JAGS_extend()
 # recompiles from the stored chain states, as runjags does for a model that is
 # absent or no longer alive after saving and reloading. Fits leave without it.

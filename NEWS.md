@@ -1081,6 +1081,10 @@ old behaviour.
   - package-defined factor contrasts are resolved inside the namespace across
     fixed, prediction, and marginal-posterior design matrices, so
     `BayesTools::` calls do not require attaching the package.
+  - random-effect prediction (`JAGS_evaluate_formula()`,
+    `JAGS_predict_formula()`) stops when the data lack a predictor of a
+    random-effect block, instead of silently using an object of that name
+    from the environment the formula was written in.
 - marginal posteriors, model averaging, and posterior atoms:
   - `marginal_posterior()` works for model averages in which a model omits a
     factor term, no longer fails with `prior_samples = FALSE` when optional
@@ -1213,8 +1217,18 @@ old behaviour.
   Beta marginal, which removes the non-identifiable auxiliary Gamma scale and
   one likelihood-updating JAGS coordinate (also in bridge sampling); seeded
   fits with such priors differ from 0.3.0.
-<!-- pending bullet: smaller saved fits (stored formulas without their
-     calling environment) -->
+- saved fits are smaller. Fits with formula random effects no longer keep the
+  environment their formula was written in: a fit, a `JAGS_extend()` result,
+  or `JAGS_formula_draws()` draws created inside a function were saved with
+  all of that function's local objects (and those of its enclosing
+  environments); the stored term formulas now use the base environment, and
+  results are unchanged. `JAGS_fit()` and `JAGS_extend()` also return fits
+  without runjags' compiled rjags model (`method.options$rjags`, closures that
+  hold another copy of the model and its data: about 40 KB with 20
+  observations and 360 KB with 20,000). It is continued only within the
+  fitting call and is not alive after saving; `JAGS_extend()` and
+  `runjags::extend.jags()` recompile the model from the stored chain states,
+  as they do for a reloaded fit.
 
 # version 0.3.0
 ### Features
