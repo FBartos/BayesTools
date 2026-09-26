@@ -250,6 +250,73 @@ test_that("bridge formula plans require the fitted formula design", {
   )
 })
 
+test_that("single-draw formula plans keep the arithmetic of the linear-predictor node", {
+
+  # Bridge sampling evaluates one draw per call: the plan's value is the
+  # registered linear-predictor node's fixed part for that draw, bit for bit
+  # (a log intercept, a continuous term and a factor with named and numeric
+  # multipliers, a point prior and an interaction).
+  formula_data <- data.frame(
+    x = c(-1, 0, 2, 3, .5),
+    z = c(.3, -2, 1, 4, 0),
+    g = factor(c("a", "b", "a", "c", "c"))
+  )
+  formula_output <- JAGS_formula(
+    formula = ~ 1 + x + g + z + x:g,
+    parameter = "mu",
+    data = formula_data,
+    prior_list = list(
+      intercept = prior("gamma", list(2, 1)),
+      x         = prior("normal", list(0, 1)),
+      g         = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      z         = prior("point", list(.7)),
+      "x:g"     = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+    )
+  )
+  formula_prior <- formula_output$prior_list
+  attr(formula_prior$mu_x, "multiply_by") <- "x_scale"
+  attr(formula_prior$mu_g, "multiply_by") <- 2
+  design <- formula_output$formula_design
+  plan <- BayesTools:::.bt_JAGS_bridge_compile_formula_design_plan(design, formula_prior, TRUE)
+  names <- unlist(lapply(plan$terms, function(term){
+    if(!is.prior.point(term$prior)) BayesTools:::.bt_dnode_linear_predictor_coefficient_names(term)
+  }))
+  expect_identical(names[1L], "mu_intercept")
+  expect_length(names, 6L)
+  set.seed(1)
+  for(draw in 1:5){
+    samples <- stats::setNames(c(stats::rgamma(1, 2), stats::rnorm(length(names) - 1L)), names)
+    parameters <- list(x_scale = stats::rgamma(1, 3))
+    reference <- BayesTools:::.bt_dnode_linear_predictor_fixed(
+      terms = plan$terms,
+      model_matrix = design$model_matrix,
+      n_draws = 1L,
+      values_of = function(term){
+        coefficients <- BayesTools:::.bt_dnode_linear_predictor_coefficient_names(term)
+        if(is.prior.point(term$prior)){
+          return(matrix(rep(term$prior$parameters$location, length(term$columns)), nrow = 1L))
+        }
+        matrix(unname(samples[coefficients]), nrow = 1L)
+      },
+      multiplier_of = function(term){
+        multiply_by <- attr(term$prior, "multiply_by")
+        if(is.null(term$multiply_by)) NULL
+        else if(is.numeric(multiply_by)) multiply_by
+        else parameters[[multiply_by]]
+      }
+    )
+    expect_identical(plan$value(samples, parameters), as.vector(reference))
+    # the coefficient positions follow the names of each draw
+    expect_identical(plan$value(rev(samples), parameters), as.vector(reference))
+    expect_identical(plan$value(as.list(samples), parameters), as.vector(reference))
+  }
+  expect_error(
+    plan$value(samples[-2L], parameters),
+    "'samples' does not contain all monitored formula prior parameters.",
+    fixed = TRUE
+  )
+})
+
 test_that("formula reconstruction treats parameter prefixes literally", {
 
   output <- JAGS_formula(

@@ -419,24 +419,48 @@
     )
   }
   model_matrix <- design$model_matrix
+  n_rows <- nrow(model_matrix)
+  # One draw is evaluated per call (bridge sampling evaluates the posterior
+  # draw by draw), so the terms' design columns are taken once, and the
+  # arithmetic of .bt_dnode_linear_predictor_fixed() for a single draw is
+  # applied to the coefficient vectors directly (a vector right operand of
+  # '%*%' is the same one-column matrix).
+  term_types <- vapply(terms, function(term){
+    if(identical(term$type, "intercept") || identical(term$type, "continuous")) term$type else "columns"
+  }, character(1))
+  term_logs <- vapply(terms, function(term) isTRUE(term$log), logical(1))
+  term_data <- lapply(terms, function(term){
+    if(identical(term$type, "intercept")) NULL else model_matrix[, term$columns, drop = FALSE]
+  })
 
   list(
     value = function(samples, prior_list_parameters){
-      output <- .bt_dnode_linear_predictor_fixed(
-        terms = terms,
-        model_matrix = model_matrix,
-        n_draws = 1L,
-        values_of = function(term){
-          matrix(value_evaluators[[term$index]](samples), nrow = 1L)
-        },
-        multiplier_of = function(term){
-          if(has_multiplier[[term$index]]){
-            multiplier_evaluators[[term$index]](prior_list_parameters)
-          }else{
-            NULL
-          }
+      output <- numeric(n_rows)
+      for(i in seq_along(terms)){
+        values <- value_evaluators[[i]](samples)
+        multiplier <- if(has_multiplier[[i]] && term_types[[i]] != "intercept"){
+          multiplier_evaluators[[i]](prior_list_parameters)
         }
-      )
+        contribution <- switch(
+          term_types[[i]],
+          "intercept" = if(term_logs[[i]]) log(values[1L]) else values[1L],
+          "continuous" = {
+            coefficient <- values[1L]
+            if(!is.null(multiplier)){
+              coefficient <- multiplier * coefficient
+            }
+            term_data[[i]] %*% coefficient
+          },
+          "columns" = {
+            contribution <- term_data[[i]] %*% values
+            if(!is.null(multiplier)){
+              contribution <- contribution * rep(multiplier, each = n_rows)
+            }
+            contribution
+          }
+        )
+        output <- output + contribution
+      }
       output <- as.vector(output)
       if(length(expressions) > 0L){
         output <- output + .bt_formula_expression_row_values(

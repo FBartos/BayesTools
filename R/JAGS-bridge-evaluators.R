@@ -262,12 +262,22 @@
     })
   }
 
+  # The positions of the parameters are looked up once per distinct set of
+  # sample names (bridge sampling evaluates draws with the same names).
   sample_names <- parameter_names
+  cached_names <- NULL
+  positions <- NULL
   function(samples){
-    if(!all(sample_names %in% names(samples))){
-      .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored formula prior parameters.")
+    current_names <- names(samples)
+    if(is.null(cached_names) || !identical(current_names, cached_names)){
+      matched <- match(sample_names, current_names)
+      if(anyNA(matched)){
+        .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored formula prior parameters.")
+      }
+      cached_names <<- current_names
+      positions <<- matched
     }
-    unname(unlist(samples[sample_names], use.names = FALSE))
+    unname(unlist(samples[positions], use.names = FALSE))
   }
 }
 
