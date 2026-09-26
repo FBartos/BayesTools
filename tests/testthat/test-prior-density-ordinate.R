@@ -1387,10 +1387,10 @@ test_that("log-source and Jacobian ordinates from subnormal or non-finite interm
   expect_identical(ordinate$behavior, "regular")
   refused_at_full_precision(ordinate)
 
-  # X half-Cauchy: log f_Z(z) = log(2 / pi) + z - log1p(e^(2 z)). Beyond
-  # |x| = 1e154 the t density's x^2 overflows and its log density is -Inf;
-  # the Jacobian e^z made the ordinate at z = 700 exp(-700.45), reported as
-  # -Inf with exact = TRUE
+  # X half-Cauchy: log f_Z(z) = log(2 / pi) + z - log1p(e^(2 z)). The t
+  # density (evaluated before its log) underflows at x = e^700, so its log
+  # density is -Inf; the Jacobian e^z made the ordinate at z = 700
+  # exp(-700.45), reported as -Inf with exact = TRUE
   cauchy_log <- log_source(prior("t", list(0, 1, 1), list(0, Inf)))
   ordinate <- prior_density_ordinate(cauchy_log, 300)
   expect_true(ordinate$exact)
@@ -1498,6 +1498,52 @@ test_that("quadrature ordinates at subnormal distances from their offset have no
   expect_true(ordinate$exact)
   expect_lte(abs(ordinate$log_density - log(at_zero)), 1e-10)
   refused_at_full_precision(prior_density_ordinate(sum_density, 1e-320))
+})
+
+test_that("primitive ordinates from subnormal internal intermediates have no value", {
+
+  # dgamma() evaluates at value * rate and dlnorm() at log(value * sdlog):
+  # gamma(2, 1e-20) at 1e-300 has the subnormal argument 1e-320 (its log
+  # density 2 log(1e-20) + log(1e-300) - 1e-320 was off by 1.1e-5 with
+  # exact = TRUE), gamma(2, 1e-10) at 1e-290 the normal argument 1e-300
+  refused_at_full_precision(prior_density_ordinate(prior("gamma", list(2, 1e-20)), 1e-300))
+  ordinate <- prior_density_ordinate(prior("gamma", list(2, 1e-10)), 1e-290)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - (2 * log(1e-10) + log(1e-290) - 1e-300)), 1e-12)
+  refused_at_full_precision(prior_density_ordinate(prior("lognormal", list(log(1e-300), 1e-20)), 1e-300))
+  expect_true(prior_density_ordinate(prior("gamma", list(1, 1e-20)), 0)$exact)
+
+  # extraDistr::dlst() evaluates the t density before its log, which is
+  # rounded where the density is subnormal: the Cauchy log density
+  # -log(pi) - 2 log(x) (up to x^-2) was off by 4.1e-4 at 1e160 with
+  # exact = TRUE; an underflowed density keeps -Inf
+  cauchy <- prior("t", list(0, 1, 1))
+  ordinate <- prior_density_ordinate(cauchy, 1e150)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - (-log(pi) - 2 * log(1e150))), 1e-12)
+  ordinate <- prior_density_ordinate(cauchy, 1e160)
+  expect_identical(ordinate$behavior, "regular")
+  refused_at_full_precision(ordinate)
+  expect_identical(prior_density_ordinate(cauchy, 1e200)$log_density, -Inf)
+  # a Jacobian factor above 1 carried that error to ordinary ordinates: the
+  # log image of a half-Cauchy term, log f_Z(z) = log(2 / pi) - z up to
+  # e^(-2 z), was off by 4.95e-4 at z = 370, and the term with weight 1e-100
+  # by 4.1e-4 at 1e60
+  cauchy_log <- .prior_linear_combination_density(
+    list(b = prior("t", list(0, 1, 1), list(0, Inf))), c(b = 1), source_transforms = c(b = "log")
+  )
+  ordinate <- prior_density_ordinate(cauchy_log, 340)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - (log(2 / pi) - 340)), 1e-12)
+  refused_at_full_precision(prior_density_ordinate(cauchy_log, 370))
+  expect_false(prior_ordinate_status(cauchy_log, 370)$eligible)
+  weighted <- .prior_linear_combination_density(
+    list(b = prior("t", list(0, 1, 1), list(0, Inf))), c(b = 1e-100)
+  )
+  ordinate <- prior_density_ordinate(weighted, 1e50)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - (log(2 / pi) - 2 * log(1e150) + log(1e100))), 1e-12)
+  refused_at_full_precision(prior_density_ordinate(weighted, 1e60))
 })
 
 test_that("products of normal terms are classified on the scale-mixture route", {

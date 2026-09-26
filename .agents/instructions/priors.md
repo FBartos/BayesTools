@@ -98,7 +98,12 @@ place per route kind applies it:
 - primitive densities (`.prior_density_ordinate_primitive()`, which every
   scalar chain reaches): a nonzero subnormal value, for every family (the
   distribution functions rescale their argument; a gamma(3, 0.7) log density
-  was 2.8e-4 off at 1e-320); 0 keeps its structural class;
+  was 2.8e-4 off at 1e-320); 0 keeps its structural class; the rescaled
+  argument of a normal value (`value * rate` of a gamma, `value * sdlog` of
+  a lognormal; a gamma(2, 1e-20) log density was 1.1e-5 off at 1e-300); a
+  t density below `.Machine$double.xmin`, which `extraDistr::dlst()`
+  evaluates before its log (a Cauchy log density was 4.1e-4 off at 1e160),
+  while a t density that underflows to 0 keeps `-Inf`;
 - the scalar affine map and `lin` output transformations: the distance from
   the offset and the inverse value (an underflowed 0 was classified as the
   source bound, a subnormal one rounded); `tanh`: its inverse value;
@@ -106,9 +111,9 @@ place per route kind applies it:
   it overflows (the density is then not evaluated, rather than asserted
   `-Inf`);
 - Jacobians (`.prior_density_ordinate_wrap()`): a regular source whose log
-  density is `-Inf` (underflowed or not computable, e.g. the t density beyond
-  1e154) under a Jacobian factor above 1, which can make the transformed
-  density representable;
+  density is `-Inf` (underflowed, e.g. a t density evaluated before its log)
+  under a Jacobian factor above 1, which can make the transformed density
+  representable;
 - quadrature leaves: the scale product (distance from the offset and its
   standardization), the pure scale mixture (the same, standardized by the
   multiplied SD and mean) and the two-term convolution (the distance and its

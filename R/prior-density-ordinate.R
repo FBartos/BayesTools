@@ -639,6 +639,21 @@ prior_density_has_provenance <- function(x){
       value, "The value at which the density is evaluated", "primitive", provenance
     ))
   }
+  # the rescaled argument of a normal value: dgamma() evaluates at
+  # value / scale (scale = 1 / rate) and dlnorm() takes log(value * sdlog),
+  # rounded when subnormal (a gamma(2, 1e-20) log density was off by 1.1e-5 at
+  # 1e-300)
+  rescaled <- switch(
+    family,
+    "gamma"     = value * prior$parameters$rate,
+    "lognormal" = value * prior$parameters$sdlog,
+    value
+  )
+  if(is.finite(value) && value != 0 && isFALSE(.prior_density_full_precision(rescaled))){
+    return(.prior_density_ordinate_imprecise(
+      value, "The rescaled argument of the density", "primitive", provenance
+    ))
+  }
 
   log_density <- tryCatch(
     .prior_simple_lpdf(prior, value),
@@ -647,6 +662,17 @@ prior_density_has_provenance <- function(x){
   if(!is.numeric(log_density) || length(log_density) != 1L ||
      is.na(log_density) || (is.infinite(log_density) && log_density > 0)){
     log_density <- NA_real_
+  }
+  # extraDistr::dlst() evaluates the t density before its log: a subnormal
+  # density is rounded (a Cauchy log density was off by 4.1e-4 at 1e160, and a
+  # Jacobian factor above 1 carries that error to ordinary ordinates, 5e-4 for
+  # the log image of a half-Cauchy term at z = 370); a density that underflows
+  # to 0 keeps the underflow convention (-Inf)
+  if(identical(family, "t") && is.finite(log_density) &&
+     isTRUE(.prior_simple_base_d(prior, value, log = TRUE) < log(.Machine$double.xmin))){
+    return(.prior_density_ordinate_imprecise(
+      value, "The t density at the requested value", "primitive", provenance
+    ))
   }
 
   .prior_density_ordinate_result(
@@ -827,11 +853,11 @@ prior_density_has_provenance <- function(x){
 .prior_density_ordinate_wrap <- function(source, value, log_jacobian,
                                          method, provenance){
 
-  # a regular source whose log density is -Inf underflows (or was not
-  # computable, e.g. the t density's x^2 overflows beyond 1e154); a Jacobian
-  # factor above 1 can make the transformed density representable (the log
-  # image of a half-Cauchy term at z = 700 is exp(-700.45), not 0), so its
-  # value is not available
+  # a regular source whose log density is -Inf underflows (e.g. a t density,
+  # which extraDistr::dlst() evaluates before its log); a Jacobian factor
+  # above 1 can make the transformed density representable (the log image of
+  # a half-Cauchy term at z = 700 is exp(-700.45), not 0), so its value is not
+  # available
   if(identical(source$behavior, "regular") && identical(source$log_density, -Inf) &&
      isTRUE(log_jacobian < 0)){
     return(.prior_density_ordinate_result(
