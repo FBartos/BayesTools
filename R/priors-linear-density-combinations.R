@@ -1425,14 +1425,16 @@
 # breakpoints; 'batch' is FALSE when the integrand has an integrable
 # singularity, i.e. the multiplier's density is infinite at a finite bound
 # (except at zero for a pure scale mixture, where the Gaussian factor
-# vanishes faster than any power).
-.prior_conditional_normal_density_plan <- function(spec, x){
+# vanishes faster than any power). The integrand and breakpoints of such a
+# plan are included only with 'singular' (see
+# .prior_density_route_quadrature_density()).
+.prior_conditional_normal_density_plan <- function(spec, x, singular = FALSE){
 
   special <- .prior_conditional_normal_special(spec, x)
   setup <- .prior_conditional_normal_breakpoint_setup(spec$multiplier, spec$bounds)
   bounds <- c(setup$lower, setup$upper)
   batch <- !any(setup$singular & !(spec$additive_sd == 0 & bounds == 0))
-  if(!batch){
+  if(!batch && !isTRUE(singular)){
     return(list(batch = FALSE, special = special))
   }
   regular <- x[!special]
@@ -1823,10 +1825,11 @@
 # Batched plan of the scale-product density at the values 'x' (as
 # .prior_conditional_normal_density_plan()): values outside the support hull
 # have a zero density ('zero'), and its bounds and the offset are classified
-# by the ordinate. The integrand is singular where the multiplier's density is
-# infinite at a nonzero finite bound, and at the image of a nonzero finite
-# bound where the factor's density is infinite.
-.prior_scale_product_density_plan <- function(spec, x){
+# by the ordinate. The integrand is singular ('batch' FALSE; its integrand and
+# breakpoints only with 'singular') where the multiplier's density is infinite
+# at a nonzero finite bound, and at the image of a nonzero finite bound where
+# the factor's density is infinite.
+.prior_scale_product_density_plan <- function(spec, x, singular = FALSE){
 
   hull <- .prior_scale_product_hull(spec)
   zero <- x < hull[1L] | x > hull[2L]
@@ -1837,7 +1840,7 @@
   # cancelled by the factor's tail (a heavy-tailed factor leaves s^(a - 1/2))
   batch <- !any(setup$multiplier$singular & (spec$bounds != 0 | !is.null(spec$map))) &&
     !any(.prior_density_singular_bounds(spec$factor) & factor_bounds != 0)
-  if(!batch){
+  if(!batch && !isTRUE(singular)){
     return(list(batch = FALSE, zero = zero, special = special))
   }
   distance <- (x[!zero & !special] - spec$offset) / spec$scale

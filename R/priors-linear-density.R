@@ -579,7 +579,11 @@
 # route has a leaf without a structural representation (then the capped
 # product grid of the factors' grids applies).
 # The grid is a display representation (heights and probabilities use the
-# route). Its 'product_grid_resolution' attribute records whether the spacing
+# route), so the values of a leaf with a singular integrand share one batched
+# quadrature with the ordinates' acceptance criterion, a relative error of
+# 1e-4, instead of one quadrature per value
+# (.prior_density_route_quadrature_density()). Its 'product_grid_resolution'
+# attribute records whether the spacing
 # resolves the product's density: the Riemann sum of the route density on the
 # grid differs from the continuous mass by at most
 # .prior_linear_density_product_resolution() relative. A heavy-tailed factor
@@ -601,7 +605,7 @@
   if(continuous_mass > 0 && range[1L] < range[2L]){
     z <- seq(range[1L], range[2L], length.out = n_grid)
     dx <- z[2L] - z[1L]
-    y <- .prior_density_route_density(route, z)
+    y <- .prior_density_route_density(route, z, batch_singular = TRUE)
     finite <- is.finite(y)
     if(!any(y[finite] > 0)){
       return(NULL)

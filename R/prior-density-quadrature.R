@@ -15,9 +15,10 @@
 # first estimate of a far-tail value is refined as well); a value that does not
 # meet it within the round cap is NA, and callers then evaluate its ordinate.
 # Bisection without extrapolation converges too slowly next to an integrable
-# singularity of the integrand, so leaves whose integrand has one (a term with
-# an infinite density at a finite support bound) are not batched
-# (.prior_density_singular_bounds()).
+# singularity of the integrand (a term with an infinite density at a finite
+# support bound, .prior_density_singular_bounds()) to reach 1e-8, so such
+# leaves are batched only for display grids, with the ordinates' acceptance
+# criterion of 1e-4 (.prior_density_route_quadrature_density()).
 
 .prior_density_quadrature_tolerance <- function(){
 

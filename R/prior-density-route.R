@@ -1256,11 +1256,12 @@
 
 # Continuous density of a route at the values 'x' (point masses excluded):
 # closed forms vectorized over 'x', quadrature leaves by one batched
-# quadrature over all values (.prior_density_route_quadrature_density()), and
-# routes without a structural representation by linear interpolation of their
-# own numerical grid, the only grid use. Non-finite and unavailable values are
+# quadrature over all values (.prior_density_route_quadrature_density(), with
+# 'batch_singular' also for leaves with a singular integrand), and routes
+# without a structural representation by linear interpolation of their own
+# numerical grid, the only grid use. Non-finite and unavailable values are
 # NA; a value where the density is infinite is Inf.
-.prior_density_route_density <- function(route, x){
+.prior_density_route_density <- function(route, x, batch_singular = FALSE){
 
   if(length(x) == 0L){
     return(numeric())
@@ -1299,13 +1300,13 @@
       out <- numeric(length(x))
       for(i in seq_along(weights)){
         out <- out + weights[[i]] *
-          .prior_density_route_density(route$components[positive][[i]], x)
+          .prior_density_route_density(route$components[positive][[i]], x, batch_singular)
       }
       out
     },
-    "transform" = .prior_density_route_transform_density(route, x),
+    "transform" = .prior_density_route_transform_density(route, x, batch_singular),
     "unknown" = .prior_density_route_grid_density(route, x),
-    .prior_density_route_quadrature_density(route, x)
+    .prior_density_route_quadrature_density(route, x, batch_singular)
   )
 }
 
@@ -1317,21 +1318,31 @@
 # integral does not meet the acceptance criterion take the ordinate's own
 # value; all other values share one batched quadrature of the ordinate's
 # integrand over the ordinate's breakpoints
-# (.prior_density_quadrature_batch()), within a relative error of 1e-8.
-.prior_density_route_quadrature_density <- function(route, x){
+# (.prior_density_quadrature_batch()), within a relative error of 1e-8. With
+# 'batch_singular', the values of a conditional-normal or scale-product leaf
+# with a singular integrand, which the batched bisection cannot resolve to
+# 1e-8, are batched as well, with the acceptance criterion of their ordinates
+# (a relative error of 1e-4, .prior_linear_density_refinement_tolerance());
+# the display grids of route products use it
+# (.prior_linear_density_route_product()).
+.prior_density_route_quadrature_density <- function(route, x, batch_singular = FALSE){
 
   plan <- switch(
     route$type,
-    "conditional_normal" = .prior_conditional_normal_density_plan(route$spec, x),
-    "scale_product"      = .prior_scale_product_density_plan(route$spec, x),
+    "conditional_normal" = .prior_conditional_normal_density_plan(route$spec, x, batch_singular),
+    "scale_product"      = .prior_scale_product_density_plan(route$spec, x, batch_singular),
     "convolution"        = .prior_convolution_density_plan(route$spec, x)
   )
   zero <- if(is.null(plan$zero)) rep(FALSE, length(x)) else plan$zero
   out <- rep(NA_real_, length(x))
   out[zero] <- 0
-  if(isTRUE(plan$batch)){
+  if(!is.null(plan$integrand)){
+    tolerance <- .prior_density_quadrature_tolerance()
+    if(!isTRUE(plan$batch)){
+      tolerance$relative <- .prior_linear_density_refinement_tolerance()$relative
+    }
     out[!zero & !plan$special] <- .prior_density_quadrature_batch(
-      plan$integrand, plan$breakpoints
+      plan$integrand, plan$breakpoints, tolerance
     )
   }
   ordinate <- which(!zero & (plan$special | is.na(out)))
@@ -1527,7 +1538,7 @@
 
 # Density of a named monotone output transformation y = g(s) at 'x':
 # f_s(g^-1(y)) / |g'(g^-1(y))|, zero outside the transformation's image.
-.prior_density_route_transform_density <- function(route, x){
+.prior_density_route_transform_density <- function(route, x, batch_singular = FALSE){
 
   arguments <- .prior_density_ordinate_transform_arguments(
     route$transformation, route$arguments
@@ -1544,7 +1555,7 @@
   out <- rep(0, length(x))
   inside <- is.finite(source)
   if(any(inside)){
-    source_density <- .prior_density_route_density(route$source, source[inside])
+    source_density <- .prior_density_route_density(route$source, source[inside], batch_singular)
     out[inside] <- .density.prior_transformation_y(
       x[inside], source_density, route$transformation, arguments
     )

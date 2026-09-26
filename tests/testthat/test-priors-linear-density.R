@@ -2792,3 +2792,49 @@ test_that("batched densities compute the single-value breakpoints and integrals 
     expect_identical(.prior_density_quadrature_batch(unsplit, plan$breakpoints), batched)
   }
 })
+
+test_that("route-product display grids batch the values of leaves with a singular integrand", {
+
+  # X = A + B * S with A, B ~ N(0, 1) and a share S ~ Beta(1.5, .5), whose
+  # density is infinite at 1 (an ordered level's cumulative share): the
+  # batched bisection cannot reach 1e-8 next to the singularity, so plotted
+  # curves take the per-value ordinates, while the display grid of a route
+  # product batches all values with the ordinates' acceptance criterion
+  # (relative error estimate at most 1e-4). Reference: s = 1 - w^2 removes the
+  # singularity, f(x) = int_0^1 2 phi(x; 0, sqrt(1 + s^2)) s^(1/2) / B(1.5, .5) dw,
+  # integrate() at rel.tol 1e-12.
+  spec <- list(additive_mean = 0, additive_sd = 1, product_mean = 0, product_sd = 1,
+               multiplier = prior("beta", list(1.5, .5)), bounds = c(0, 1), sources = list())
+  route <- list(type = "conditional_normal", spec = spec, n_grid = 4096L)
+  reference <- function(value){
+    stats::integrate(function(w){
+      s <- 1 - w^2
+      2 * stats::dnorm(value, 0, sqrt(1 + s^2)) * sqrt(s) / beta(1.5, .5)
+    }, 0, 1, rel.tol = 1e-12)$value
+  }
+  x <- seq(-4, 4, length.out = 41)
+  expected <- vapply(x, reference, numeric(1))
+  pieces <- 0L
+  piece <- .prior_conditional_normal_piece
+  local_mocked_bindings(.prior_conditional_normal_piece = function(...){
+    pieces <<- pieces + 1L
+    piece(...)
+  })
+
+  batched <- .prior_density_route_density(route, x, batch_singular = TRUE)
+  expect_identical(pieces, 0L)
+  expect_lte(max(abs(batched / expected - 1)), 1e-4)
+  ordinates <- .prior_density_route_density(route, x)
+  expect_gt(pieces, 0L)
+  expect_lte(max(abs(ordinates / expected - 1)), 1e-8)
+
+  pieces <- 0L
+  grid <- .prior_linear_density_route_product(
+    route, range = c(-4, 4), points = .prior_linear_density_empty_points(), n_grid = 41L
+  )
+  expect_identical(pieces, 0L)
+  # the coalesced grid (knots rebuilt from the spacing, the curve normalized to
+  # its continuous mass) interpolates the batched values
+  expect_equal(grid$density$x, x, tolerance = 1e-12)
+  expect_equal(grid$density$y / sum(grid$density$y), batched / sum(batched), tolerance = 1e-9)
+})
