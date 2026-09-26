@@ -730,6 +730,8 @@
   if(is.null(transformation)){
     return(dist)
   }
+  # the grid and its attributes (a deferred row-mixture grid is built)
+  dist <- .prior_linear_density_materialize(dist)
 
   if(is.character(transformation) && length(transformation) == 1L &&
      transformation %in% c("lin", "exp_lin") &&
@@ -3068,6 +3070,7 @@
 
 .prior_linear_density_refinement <- function(x){
 
+  x <- .prior_linear_density_materialize(x)
   context <- attr(x, "adaptive_evaluation", exact = TRUE)
   if(is.null(context) ||
      !context$kind %in%
@@ -3983,6 +3986,8 @@
     if(!is.null(exact)){
       return(exact)
     }
+    # the component and grid heights read the grid and its resolution
+    x <- .prior_linear_density_materialize(x)
     components <- .prior_linear_density_component_height(
       attr(x, "adaptive_evaluation", exact = TRUE), value,
       grid_spacing = attr(x, "grid_resolution", exact = TRUE)[["spacing"]]

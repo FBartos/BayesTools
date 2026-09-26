@@ -2838,3 +2838,77 @@ test_that("route-product display grids batch the values of leaves with a singula
   expect_equal(grid$density$x, x, tolerance = 1e-12)
   expect_equal(grid$density$y / sum(grid$density$y), batched / sum(batched), tolerance = 1e-9)
 })
+
+test_that("row mixtures without atoms build their numerical grid only for grid consumers", {
+
+  # Normal intercept + x * slope * sigma (sigma half-normal) over 12 distinct
+  # design rows: every row's product component has an exact display grid, so
+  # the mixture's grid is deferred until a grid field is read. The deferred
+  # density equals the eagerly built one (the same builder) once built.
+  sigma <- prior("normal", list(0, 1), list(0, Inf))
+  slope <- prior("normal", list(0, 1))
+  attr(slope, "multiply_by") <- "sigma"
+  priors <- list(mu_intercept = prior("normal", list(0, 1)), mu_x = slope, sigma = sigma)
+  context <- .prior_density_build_context(priors, names(priors), n_grid = 256L)
+  rows <- cbind(mu_intercept = 1, mu_x = stats::qnorm(seq(.05, .95, length.out = 12L)), sigma = 0)
+  builds <- 0L
+  build <- .prior_density_rows_grid
+  local_mocked_bindings(.prior_density_rows_grid = function(...){
+    builds <<- builds + 1L
+    build(...)
+  })
+  eager_of <- function(rows){
+    local_mocked_bindings(.prior_density_rows_atom_free = function(...) FALSE)
+    .prior_density_from_context_rows(context, rows)
+  }
+  eager <- eager_of(rows)
+  expect_false(inherits(eager$density, "prior_linear_density_deferred"))
+  builds <- 0L
+
+  deferred <- .prior_density_from_context_rows(context, rows)
+  expect_s3_class(deferred$density, "prior_linear_density_deferred")
+  expect_identical(attr(deferred, "adaptive_evaluation"), attr(eager, "adaptive_evaluation"))
+  expect_identical(deferred$points, eager$points)
+  expect_identical(deferred$n_grid, eager$n_grid)
+  expect_identical(deferred$density$mass, eager$density$mass)
+
+  # ordinates, exact heights and region probabilities use the route only
+  for(value in c(-1, 0, .4)){
+    expect_identical(prior_density_ordinate(deferred, value), prior_density_ordinate(eager, value))
+    expect_identical(.prior_linear_density_height(deferred, value),
+                     .prior_linear_density_height(eager, value))
+  }
+  region <- list(intervals = matrix(c(-.5, 1), 1L), indicator = function(x) x > -.5 & x < 1)
+  expect_identical(
+    .prior_density_route_region(.prior_density_route_from_adaptive(attr(deferred, "adaptive_evaluation")), region),
+    .prior_density_route_region(.prior_density_route_from_adaptive(attr(eager, "adaptive_evaluation")), region)
+  )
+  # plots over a given range evaluate the route at the plotted values
+  expect_identical(.prior_linear_density_to_plot_data(deferred, x_range = c(-3, 3)),
+                   .prior_linear_density_to_plot_data(eager, x_range = c(-3, 3)))
+  expect_identical(builds, 0L)
+
+  # the first grid read builds the grid once; fields and the grid-reading
+  # consumers then equal the eager density's
+  expect_identical(deferred$density$x, eager$density$x)
+  expect_identical(deferred$density[["y"]], eager$density$y)
+  expect_identical(names(deferred$density), names(eager$density))
+  expect_identical(.prior_linear_density_materialize(deferred), eager)
+  expect_identical(.prior_linear_density_to_plot_data(deferred),
+                   .prior_linear_density_to_plot_data(eager))
+  expect_identical(.prior_linear_density_grid_height(deferred, .3),
+                   .prior_linear_density_grid_height(eager, .3))
+  expect_identical(builds, 1L)
+
+  # rows with a point mass (a row without a weight is the point at zero, a
+  # spike-and-slab slope has atoms) build their grid eagerly
+  zero_row <- rbind(rows[1:2, ], c(mu_intercept = 0, mu_x = 0, sigma = 0))
+  expect_false(inherits(.prior_density_from_context_rows(context, zero_row)$density,
+                        "prior_linear_density_deferred"))
+  spike_priors <- priors
+  spike_priors$mu_x <- prior_spike_and_slab(prior("normal", list(0, 1)))
+  attr(spike_priors$mu_x, "multiply_by") <- "sigma"
+  spike_context <- .prior_density_build_context(spike_priors, names(spike_priors), n_grid = 256L)
+  expect_false(inherits(.prior_density_from_context_rows(spike_context, rows[1:2, ])$density,
+                        "prior_linear_density_deferred"))
+})

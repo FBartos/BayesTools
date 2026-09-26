@@ -249,6 +249,17 @@ while heights and point hypotheses at that value stop. Only a combination
 without a structural route, or a density without recorded provenance,
 interpolates its numerical grid.
 
+A row mixture of a density context (`.prior_density_from_context_rows()`,
+e.g. the prior density of a formula `marginal_posterior()` level) whose
+structure has no point mass (only continuous priors, every row with a
+nonzero weight, no constant output map) defers its numerical grid, which
+holds one exact display grid per row product component: its `density` field
+keeps the builder's arguments and a cache, and the grid is built on the first
+read of a grid field (plots without a given range, grid heights and
+refinement, transformations of the density). Ordinates, exact heights and
+region probabilities evaluate the recorded route and never build it; the
+atoms (none), continuous mass (1) and grid size are exact without it.
+
 Heights and region probabilities require recorded provenance (the
 `adaptive_evaluation` attribute naming the prior measure): a density grid
 without it has no error control and cannot be refined, so it is used for
