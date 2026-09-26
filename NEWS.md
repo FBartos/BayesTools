@@ -159,13 +159,13 @@ old behaviour.
     attribute on the intercept prior, including one supplied through
     `__default_continuous`. 0.3.0 accepted it silently: the JAGS model never
     scaled the intercept, while `JAGS_evaluate_formula()`,
-    marginal-likelihood reconstruction, and marginal posteriors did. For
-    stored older fits, the R evaluators now ignore the intercept multiplier,
-    matching the fitted model; term priors keep `multiply_by`.
-  - formula random effects need `prior_random()` (`formula_random_prior_list`
-    of `JAGS_fit()`); the undocumented 0.3.0 route that read random-effect SD
-    priors from `prior_list` entries named `"term|group"` is removed, and
-    formulas with random-effect terms but without `prior_random()` stop.
+    marginal-likelihood reconstruction, and marginal posteriors did, so their
+    results did not match the fitted model. Term priors keep `multiply_by`.
+  - formula random effects (the `(x || g)` terms supported since 0.2.20) need
+    `prior_random()` (`formula_random_prior_list` of `JAGS_fit()`); the
+    undocumented 0.3.0 route that read their SD priors from `prior_list`
+    entries named `"term|group"` is removed, and formulas with random-effect
+    terms but without `prior_random()` stop.
 - random numbers:
   - derives each chain's JAGS random-number seed (`.RNG.seed`) in `JAGS_fit()`
     and `JAGS_get_inits()` from `seed` through R's random-number generator,
