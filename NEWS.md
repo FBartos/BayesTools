@@ -440,7 +440,10 @@ old behaviour.
     `formula_target = NULL` evaluates fits without random effects and stops for
     fits with random effects. Levels declared in a grouping factor but without
     rows in the fitting data are new levels in prediction (they stay fitted
-    groups), except in blocks with a known group covariance.
+    groups), except in blocks with a known group covariance. Stored
+    random-effect term formulas do not keep the environment they were written
+    in (saved fits do not carry the caller's objects), and prediction takes
+    random-effect predictors from `data` only, stopping when one is missing.
     `random_effects_marginal_vcov()` returns posterior observation-level
     covariance or, with `diagonal_only = TRUE`, variance draws, and
     `random_effects_correlation_draws()` the dense correlation matrices of
@@ -1073,14 +1076,6 @@ old behaviour.
     with a message naming them instead of a duplicate `prior_list` name, and
     fixed formulas with dot expansion, `offset()`, inline transformations, or
     other calls stop with a clear message before the data are looked up.
-  - the `formula_syntax` of `JAGS_formula()` ends with a complete line also
-    when the formula ends with a random-effect block compiled as marginalized
-    (`random_effects_compile()`) whose syntax consists of its SD assignments
-    (diagonal and shared-SD independent blocks, and single-column
-    unstructured blocks such as `(1 | g)`). `JAGS_fit()` appended the next
-    formula's syntax to the block's last SD assignment, so models with such a
-    formula before another formula did not compile (models in which it is the
-    last formula only gain a blank line in their syntax).
   - `expression()` formula terms are part of the formula parameter that
     `JAGS_bridgesampling()` reconstructs for `log_posterior`; 0.3.0 left them
     out (for `~ x + expression(0.25 * z[i])` it passed the intercept plus the
@@ -1100,10 +1095,6 @@ old behaviour.
   - package-defined factor contrasts are resolved inside the namespace across
     fixed, prediction, and marginal-posterior design matrices, so
     `BayesTools::` calls do not require attaching the package.
-  - random-effect prediction (`JAGS_evaluate_formula()`,
-    `JAGS_predict_formula()`) stops when the data lack a predictor of a
-    random-effect block, instead of silently using an object of that name
-    from the environment the formula was written in.
 - marginal posteriors, model averaging, and posterior atoms:
   - `marginal_posterior()` works for model averages in which a model omits a
     factor term, no longer fails with `prior_samples = FALSE` when optional
@@ -1236,12 +1227,7 @@ old behaviour.
   Beta marginal, which removes the non-identifiable auxiliary Gamma scale and
   one likelihood-updating JAGS coordinate (also in bridge sampling); seeded
   fits with such priors differ from 0.3.0.
-- saved fits are smaller. Fits with formula random effects no longer keep the
-  environment their formula was written in: a fit, a `JAGS_extend()` result,
-  or `JAGS_formula_draws()` draws created inside a function were saved with
-  all of that function's local objects (and those of its enclosing
-  environments); the stored term formulas now use the base environment, and
-  results are unchanged. `JAGS_fit()` and `JAGS_extend()` also return fits
+- saved fits are smaller: `JAGS_fit()` and `JAGS_extend()` return fits
   without runjags' compiled rjags model (`method.options$rjags`, closures that
   hold another copy of the model and its data: about 40 KB with 20
   observations and 360 KB with 20,000). It is continued only within the
