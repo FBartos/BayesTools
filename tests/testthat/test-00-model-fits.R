@@ -7500,7 +7500,7 @@ test_that("a fit created in a function does not keep that function's frame", {
   large <- fit_random(1e6)
 
   # runjags keeps the compiled rjags model in 'method.options$rjags': closures
-  # over the frame of rjags::jags.model(), not over the caller's.
+  # over the frame of rjags' jags.model(), not over the caller's.
   expect_identical(
     stored_environment_paths(large, "fit", skip = "fit$method.options$rjags"),
     character()

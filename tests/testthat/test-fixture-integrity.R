@@ -265,7 +265,7 @@ test_that("cached fits keep no environment of the code that fitted them", {
   # The fixture fits are created inside the fitting tests: a formula, terms
   # object, or closure stored with such an environment would carry the test
   # workspace into every saved fit. runjags keeps the compiled rjags model in
-  # 'method.options$rjags': closures over the frame of rjags::jags.model().
+  # 'method.options$rjags': closures over the frame of rjags' jags.model().
   catalog <- bayestools_required_fit_catalog()
 
   for (model_name in catalog$model_name) {
