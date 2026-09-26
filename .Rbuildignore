@@ -14,7 +14,7 @@
 ^pkgdown$
 ^BayesTools.Rcheck$
 ^BayesTools_.*\.tar\.gz$
-^Rplots\.pdf$
+(^|/)Rplots\.pdf$
 ^models($|/)
 ^src/Makevars$
 ^src/.*\.(dll|o|so)$
