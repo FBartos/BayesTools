@@ -890,15 +890,19 @@ prior_ordinate_status <- function(prior_density, values, labels = NULL){
   }
   if(identical(behavior, "regular") && !is.finite(ordinate$log_density)){
     # a structurally regular ordinate whose value is unavailable (reported
-    # with exact = FALSE): a quadrature rejected by its diagnostics, or a
-    # boundary limit without a structural value
+    # with exact = FALSE): a quadrature rejected by its diagnostics, or the
+    # ordinate's own reason (e.g. a value not representable at full
+    # precision, or a boundary limit without a structural value)
     integration <- .prior_density_ordinate_integration(ordinate$provenance)
+    reason <- ordinate$reason
     return(.hypothesis_inexact_ordinate_refusal(
       label,
       if(is.list(integration) && isFALSE(integration$converged) &&
          is.character(integration$message) && length(integration$message) == 1L){
         paste0("its prior ordinate integral was rejected by its diagnostics ('",
                integration$message, "')")
+      }else if(is.character(reason) && length(reason) == 1L && nzchar(reason)){
+        paste0("its regular prior ordinate has no value (", sub("\\.$", "", reason), ")")
       }else{
         "its regular prior ordinate has no structural value"
       }

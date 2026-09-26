@@ -1825,6 +1825,28 @@ test_that("prior_ordinate_status reports the point-hypothesis exactness rule per
                fixed = TRUE)
 })
 
+test_that("point-hypothesis refusals of regular ordinates without a value give the ordinate's reason", {
+
+  # a gamma(3, 0.7) density at the subnormal value 1e-320 has no value (the
+  # full-precision rule of prior_density_ordinate()); the refusal states that
+  # reason instead of a missing structural value
+  gamma_prior <- prior("gamma", list(3, .7))
+  status <- prior_ordinate_status(gamma_prior, 1e-320, labels = "s = v")
+  expect_false(status$eligible)
+  expect_identical(status$condition, "BayesTools_inexact_ordinate")
+  expect_identical(status$reason, paste0(
+    "Prior density at point hypothesis 's = v' is unavailable: its regular prior ordinate has no ",
+    "value (The value at which the density is evaluated is not representable at full precision ",
+    "in ordinary floating-point arithmetic). Test a region hypothesis instead."
+  ))
+  condition <- tryCatch(
+    BayesTools:::.hypothesis_check_prior_ordinate(gamma_prior, 1e-320, "s = v"),
+    error = function(e) e
+  )
+  expect_s3_class(condition, "BayesTools_inexact_ordinate")
+  expect_identical(conditionMessage(condition), status$reason)
+})
+
 test_that("linear target refusals are classed with their reason", {
 
   normal_context <- BayesTools:::.prior_density_context(
