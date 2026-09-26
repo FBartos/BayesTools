@@ -4327,7 +4327,7 @@ test_that("marginal_posterior uses log(intercept) for log-intercept formulas", {
   )
 })
 
-test_that("marginal_posterior without prior samples tolerates unavailable scaled log-intercept metadata", {
+test_that("marginal_posterior without prior samples declares scaled log-intercept metadata", {
 
   log_formula <- ~ x
   attr(log_formula, "log(intercept)") <- TRUE
@@ -4363,9 +4363,15 @@ test_that("marginal_posterior without prior samples tolerates unavailable scaled
     lapply(c(-1, 0, 1), function(x) log(original[, "ls_intercept"]) + x * original[, "ls_x"]),
     tolerance = 1e-12
   )
-  # joint scaled log-intercept metadata are unavailable, not an error
-  expect_null(.bt_meta_get(levels[["0SD"]], "atoms"))
-  expect_null(.bt_meta_get(levels[["0SD"]], "support"))
+  # the scaled log-intercept levels are linear in (log(b0), b1) through the log
+  # source: log(b0) + k b1 is normal (lognormal intercept, normal slope), so
+  # the exact support is the real line and the declared atoms are none
+  for(level in names(levels)){
+    expect_true(posterior_atoms_free(levels[[level]]))
+    support <- .bt_meta_get(levels[[level]], "support")
+    expect_identical(support$bounds, c(-Inf, Inf))
+    expect_true(support$exact)
+  }
 
   intercept <- marginal_posterior(samples, "ls_intercept", formula = ~ x, prior_samples = FALSE)
   expect_equal(as.numeric(intercept[["intercept"]]), log(original[, "ls_intercept"]), tolerance = 1e-12)

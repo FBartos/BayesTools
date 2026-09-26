@@ -856,6 +856,12 @@ old behaviour.
     longer stop with "only available for the transformed intercept
     coefficient itself": the intercept's prior density, support (0, Inf) and
     component supports are those of the exp of its log-scale combination.
+  - formula marginal posteriors of `log(intercept)` linear predictors declare
+    their exact support, mixture components and posterior atoms (derived
+    through the log of the intercept, whose point components enter as their
+    log), also for `transform_scaled` samples, where they had no atom
+    declaration and `hypothesis_BF()` stopped with "Posterior atom status is
+    unknown"; before, their support was also unavailable.
   - prior densities of monitored formula coefficients are the coefficients'
     own priors: a `multiply_by` scaling, which applies only to the linear
     predictor, is no longer applied in `marginal_posterior(use_formula =

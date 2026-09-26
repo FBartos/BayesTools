@@ -1245,8 +1245,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 }
 
 # Support, posterior-atom and component metadata for one formula level. Build
-# failures propagate; a log(intercept) term leaves the exact support
-# unavailable by rule (support algebra is linear in the coefficients).
+# failures propagate. A log(intercept) term enters the linear predictor through
+# the log of the intercept (a log source), in which the level is linear in the
+# fitted coefficients, also for unscaled (transform_scaled) coefficients: its
+# support, components and atoms are derived through that log source. Its
+# linear weights are not those of a linear combination of the coefficients
+# themselves ('joint_prior_transformation').
 .marginal_posterior_formula_level_metadata <- function(marginal, samples, prior_list,
                                                        prior_density_context, weights,
                                                        column_name,
@@ -1254,23 +1258,22 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
                                                        model_component = NULL){
 
   log_columns <- intersect(names(source_transforms)[source_transforms == "log"], colnames(weights))
-  components <- NULL
   if(length(log_columns) > 0L && any(weights[, log_columns] != 0)){
-    support <- NULL
     marginal <- .bt_meta_set(marginal, "joint_prior_transformation", "log_intercept")
-  }else{
-    support <- .posterior_support_from_prior_context_weights(
-      prior_density_context,
-      weights
-    )
-    components <- .marginal_posterior_components(
-      context         = prior_density_context,
-      weights         = weights,
-      model_component = model_component,
-      n_values        = length(marginal),
-      samples         = samples
-    )
   }
+  support <- .posterior_support_from_prior_context_weights(
+    prior_density_context,
+    weights,
+    source_transforms = source_transforms
+  )
+  components <- .marginal_posterior_components(
+    context           = prior_density_context,
+    weights           = weights,
+    model_component   = model_component,
+    n_values          = length(marginal),
+    samples           = samples,
+    source_transforms = source_transforms
+  )
   marginal <- .posterior_support_set(marginal, support)
   marginal <- .posterior_components_set(marginal, components)
 

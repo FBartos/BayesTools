@@ -763,19 +763,12 @@ posterior_atoms_free <- function(x){
       prior_list, colnames(weights),
       formula_scale = .bt_meta_get(samples, "formula_scale")
     )
-    # the unscaled intercept of a log-intercept formula scaling is not linear
-    # in the fitted coefficients: atoms of combinations involving it are
-    # unavailable
-    for(transform in context$transforms){
-      if(isTRUE(transform$log_intercept) &&
-         transform$intercept %in% colnames(weights) &&
-         any(weights[, transform$intercept] != 0)){
-        return(NULL)
-      }
-    }
+    # the log of the unscaled intercept of a log-intercept formula scaling is
+    # linear in the fitted coefficients with the log of the fitted intercept
+    # (its 'log' source transformation, applied to its atom locations below)
     standardized <- matrix(0, nrow(weights), ncol(weights), dimnames = dimnames(weights))
     for(i in seq_len(nrow(weights))){
-      row <- .prior_density_context_standardized_weights(context, weights[i, ])
+      row <- .prior_density_context_standardized_weights(context, weights[i, ], source_transforms)
       standardized[i, names(row)] <- row
     }
     weights <- standardized

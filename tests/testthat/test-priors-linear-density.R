@@ -2372,6 +2372,18 @@ test_that("marginal posteriors of log-intercept unscaled intercepts use the log-
   expect_equal(as.numeric(predictor_probability), stats::integrate(function(t){
     2 * stats::pnorm(exp(-.7) * exp(ratio * t), 0, .5, lower.tail = FALSE) * stats::dnorm(t)
   }, -Inf, Inf, rel.tol = 1e-12)$value, tolerance = 1e-10)
+  # its support (the real line) and atoms (none) are declared from structure,
+  # so Savage-Dickey runs: the exact prior ordinate (reference integral) over
+  # the Gaussian kernel sum of the draws at the null (no support bound)
+  level <- predictor[["intercept"]]
+  expect_identical(.bt_meta_get(level, "support")$bounds, c(-Inf, Inf))
+  expect_true(posterior_atoms_free(level))
+  bf <- hypothesis_BF(level, hypothesis = "x = -1", parameter = "x")
+  draws <- as.numeric(level)
+  expect_equal(attr(bf, "raw_BF")[[1L]],
+               reference(exp(-1)) * exp(-1) /
+                 mean(stats::dnorm(-1, draws, stats::bw.nrd0(draws))),
+               tolerance = 1e-9)
   # its exp (the predictor on the original scale) is the scale product again
   exp_predictor <- marginal_posterior(scaled_mixed, "mu_intercept", formula = formula,
                                       prior_samples = TRUE, transformation = "exp")
@@ -2380,6 +2392,87 @@ test_that("marginal posteriors of log-intercept unscaled intercepts use the log-
     ordinate <- prior_density_ordinate(exp_density, value)
     expect_true(ordinate$exact)
     expect_equal(exp(ordinate$log_density), reference(value), tolerance = 1e-10)
+  }
+})
+
+test_that("formula marginals of log-intercept combinations derive supports, components and atoms from structure", {
+
+  # log(intercept) scaling with an intercept mixture of the point 1.5 and
+  # N(1, .5)T(.5, 2), and a spike-and-slab standardized slope: on the
+  # original (transform_scaled) scale the linear predictor at x is
+  # log(b0) + k(x) b1, linear in (log(b0), b1). Independent derivation from
+  # the priors: the component (point, spike) is the point log(1.5), the
+  # component (truncated, spike) the interval [log(.5), log(2)], and the
+  # components with the slab (k(x) != 0 at the three levels) the real line;
+  # the atom log(1.5) has the draw frequency of (point, spike) as its mass.
+  formula <- ~ x
+  attr(formula, "log(intercept)") <- TRUE
+  truncated <- prior("normal", list(1, .5), list(.5, 2))
+  scaled <- JAGS_formula(formula, "mu", data = data.frame(x = c(1, 2, 3.5, 4, 6, 8.5)), prior_list = list(
+    intercept = prior_mixture(list(prior("point", list(1.5)), truncated), is_null = c(FALSE, FALSE)),
+    x = prior_spike_and_slab(prior("normal", list(0, 1)))
+  ), formula_scale = list(x = TRUE))
+  set.seed(5)
+  n <- 200L
+  intercept_indicator <- sample(1:2, n, TRUE)
+  slope_inclusion <- stats::rbinom(n, 1, .5)
+  posterior <- cbind(
+    mu_intercept = ifelse(intercept_indicator == 1L, 1.5, rng(truncated, n)),
+    mu_x = slope_inclusion * stats::rnorm(n),
+    mu_intercept_indicator = intercept_indicator,
+    mu_x_indicator = slope_inclusion
+  )
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(posterior)), summary.pars = list(mutate = NULL),
+         monitor = colnames(posterior), sample = n),
+    class = c("runjags", "BayesTools_fit")
+  )
+  attr(fit, "prior_list") <- scaled$prior_list
+  attr(fit, "formula_design") <- list(mu = scaled$formula_design)
+  attr(fit, "formula_scale") <- list(mu = scaled$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+  fit <- .bt_attach_fit_contract(.bt_attach_draw_geometry(.bt_attach_parameter_map(fit)))
+  mixed <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x"), transform_scaled = TRUE)
+  levels <- marginal_posterior(mixed, "mu_x", formula = formula, prior_samples = TRUE)
+
+  # the slope's spike-and-slab components are c("alternative", "null")
+  slab_first <- attr(scaled$prior_list$mu_x, "components")
+  expect_identical(slab_first, c("alternative", "null"))
+  expected_keys <- cbind(intercept_indicator, ifelse(slope_inclusion == 1L, 1L, 2L))
+  expected_support <- function(key){
+    if(key[[2L]] == 1L){
+      return(list(bounds = c(-Inf, Inf), points = numeric(), type = "interval"))
+    }
+    if(key[[1L]] == 1L){
+      return(list(bounds = rep(log(1.5), 2L), points = log(1.5), type = "points"))
+    }
+    list(bounds = log(c(.5, 2)), points = numeric(), type = "interval")
+  }
+  atom_mass <- mean(intercept_indicator == 1L & slope_inclusion == 0L)
+  for(level in names(levels)){
+    marginal <- levels[[level]]
+    support <- .bt_meta_get(marginal, "support")
+    expect_identical(support$bounds, c(-Inf, Inf))
+    expect_equal(support$points, log(1.5))
+    expect_identical(support$type, "mixed")
+    expect_true(support$exact)
+
+    atoms <- .bt_meta_get(marginal, "atoms")
+    expect_true(atoms$declared)
+    expect_equal(as.numeric(atoms$locations), log(1.5))
+    expect_equal(atoms$mass, atom_mass)
+
+    components <- .bt_meta_get(marginal, "components")
+    keys <- unname(components$keys[components$index, , drop = FALSE])
+    expect_equal(keys, unname(expected_keys), ignore_attr = TRUE)
+    for(key_i in seq_len(nrow(components$keys))){
+      expected <- expected_support(components$keys[key_i, ])
+      observed <- components$supports[[key_i]]
+      expect_equal(observed$bounds, expected$bounds)
+      expect_equal(observed$points, expected$points)
+      expect_identical(observed$type, expected$type)
+      expect_true(observed$exact)
+    }
   }
 })
 
