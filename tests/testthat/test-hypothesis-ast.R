@@ -387,6 +387,30 @@ test_that("hypothesis resolution delegates ambiguity to the catalog", {
   )
 })
 
+test_that("hypothesis resolution classes statements without parameter symbols", {
+
+  catalog <- .bt_build_parameter_catalog(
+    .bt_build_parameter_coordinates(columns = "theta")
+  )
+  for(hypothesis in c("1 > 0", "0 = 0", "2 > 1 & 1 > 0", "1 = 0 vs 2 > 1")){
+    condition <- tryCatch(
+      hypothesis_resolve(hypothesis_parse(hypothesis), catalog),
+      error = identity
+    )
+    expect_identical(
+      class(condition),
+      c("BayesTools_hypothesis_no_parameters",
+        "BayesTools_parameter_resolution_error", "error", "condition"),
+      info = hypothesis
+    )
+    expect_identical(
+      conditionMessage(condition),
+      "The hypothesis contains no parameter symbols to resolve.",
+      info = hypothesis
+    )
+  }
+})
+
 test_that("public reference helpers agree with AST nodes", {
 
   hypothesis <- c(

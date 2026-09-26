@@ -19,7 +19,11 @@
 #' exact catalog name or alias; otherwise its bracketed level is used as the
 #' catalog component of the parameter before the bracket. The bracket always
 #' holds a level label: `mu_f[2]` selects the level labelled `"2"`, never the
-#' second fitted coordinate.
+#' second fitted coordinate. A symbol that does not resolve uniquely stops
+#' with the classed errors of [parameter_catalog_resolve()], and a hypothesis
+#' without parameter symbols (e.g. `"1 > 0"`) stops with an error of class
+#' `BayesTools_hypothesis_no_parameters` (also
+#' `BayesTools_parameter_resolution_error`).
 #'
 #' @param hypothesis character vector of hypothesis statements.
 #' @param ast a `BayesTools_hypothesis_ast` object.
@@ -441,8 +445,10 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
   check_bool(simplify_names, "simplify_names", allow_NA = FALSE)
   occurrences <- hypothesis_symbols(ast, occurrences = TRUE)
   if(nrow(occurrences) == 0L){
-    stop("The hypothesis contains no parameter symbols to resolve.",
-         call. = FALSE)
+    .bt_parameter_catalog_stop(
+      class = "BayesTools_hypothesis_no_parameters",
+      message = "The hypothesis contains no parameter symbols to resolve."
+    )
   }
   resolved <- vector("list", nrow(occurrences))
   for(i in seq_len(nrow(occurrences))){

@@ -81,5 +81,9 @@ bracketed symbol such as \code{mu_f[b]} or \verb{(mu) f[b]} is first resolved as
 exact catalog name or alias; otherwise its bracketed level is used as the
 catalog component of the parameter before the bracket. The bracket always
 holds a level label: \code{mu_f[2]} selects the level labelled \code{"2"}, never the
-second fitted coordinate.
+second fitted coordinate. A symbol that does not resolve uniquely stops
+with the classed errors of \code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}}, and a hypothesis
+without parameter symbols (e.g. \code{"1 > 0"}) stops with an error of class
+\code{BayesTools_hypothesis_no_parameters} (also
+\code{BayesTools_parameter_resolution_error}).
 }

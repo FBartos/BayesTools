@@ -781,7 +781,10 @@ old behaviour.
     `hypothesis_ast_schema()`, `hypothesis_render()`, `hypothesis_symbols()`,
     `hypothesis_rewrite()`, `hypothesis_resolve()`, and the parser helpers
     `hypothesis_parse_point_reference()`, `hypothesis_parse_level_reference()`,
-    and `hypothesis_normalize_level_references()`.
+    and `hypothesis_normalize_level_references()`. `hypothesis_resolve()`
+    stops a hypothesis without parameter symbols (e.g. `"1 > 0"`) with class
+    `BayesTools_hypothesis_no_parameters` (also
+    `BayesTools_parameter_resolution_error`).
   - adds `hypothesis_linear_target()`, which compiles a point or simple region
     hypothesis linear in the levels of one parameter (level differences,
     scaled levels, level averages) to a scalar target with its combined
