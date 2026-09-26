@@ -1426,6 +1426,26 @@ test_that("hypothesis_BF references level names that contain brackets", {
   expect_identical(contrast$weights, reference_contrast$weights)
   expect_equal(as.numeric(contrast$posterior),
                as.numeric(reference_contrast$posterior))
+
+  # an unknown level of a linear target is an unresolved reference, as in
+  # hypothesis_BF()
+  condition <- tryCatch(
+    hypothesis_linear_target(
+      posterior, "`mu[(0,2]]` - `mu[(1,2]]` = 0.1", "mu"
+    ),
+    error = identity
+  )
+  expect_identical(
+    class(condition),
+    c("BayesTools_parameter_not_found",
+      "BayesTools_parameter_resolution_error", "error", "condition")
+  )
+  expect_identical(
+    conditionMessage(condition),
+    "Hypothesis references unknown level '(0,2]' for parameter 'mu'."
+  )
+  expect_identical(condition$alias, "mu[(0,2]]")
+  expect_identical(condition$available, c("mu[(0,1]]", "mu[(1,2]]"))
 })
 
 
