@@ -106,6 +106,14 @@
 #' \eqn{\log(X) + G} is the log image of that product, with density
 #' \eqn{f(e^z) e^z} (method `"scale_mixture"`, provenance kind
 #' `"log_scale_product"`).
+#' A linear combination \eqn{a'X} of a multivariate t vector prior
+#' (`"mt"`, and `"mcauchy"` with one degree of freedom; e.g. levels and
+#' contrasts of mean-difference and orthonormal factor priors) with location
+#' \eqn{\mu}, scale \eqn{s} (the scale matrix \eqn{s^2 I}) and \eqn{\nu}
+#' degrees of freedom is the univariate t with location \eqn{\mu \sum_j a_j},
+#' scale \eqn{s \|a\|}{s ||a||} and \eqn{\nu} degrees of freedom; it enters the
+#' combination as that scalar term, recorded in `provenance$multivariate_t`
+#' (alone it is exact with method `"scalar_affine"`).
 #' Sums of Cauchy terms are Cauchy (method
 #' `"scalar_affine"`), and two other continuous scalar terms without a
 #' Gaussian part are a `"convolution"` quadrature over one term's declared

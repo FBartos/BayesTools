@@ -34,6 +34,10 @@
 # * "mixture": a finite mixture of routes (mixture and spike-and-slab terms,
 #   model and conditional mixtures, design rows);
 # * "transform": a named monotone output transformation of a route.
+# Terms are rewritten before routing: ordered-prior levels as their total and
+# share (.prior_density_route_ordered_terms()), and a linear combination of a
+# multivariate t vector prior as its univariate t term
+# (.prior_density_route_vector_t_terms(), recorded as 'multivariate_t').
 
 # Mixture and spike-and-slab terms are expanded into their component
 # combinations only while the number of resulting leaves is at most the number
@@ -205,8 +209,9 @@
 # Whether a mixture or spike-and-slab prior has a vector component (e.g. the
 # mean-difference factor priors of a model-averaged factor term). A coordinate
 # of such a term is not a scalar term: the mixture is expanded into its
-# components, each routed as a vector prior (normal, or an atom for a point
-# component), and the ordinate is the weighted sum of theirs.
+# components, each routed as a vector prior (normal, the univariate t of a
+# multivariate t, or an atom for a point component), and the ordinate is the
+# weighted sum of theirs.
 .prior_density_route_vector_mixture <- function(prior){
 
   if(!is.prior.mixture(prior) && !is.prior.spike_and_slab(prior)){
@@ -356,6 +361,73 @@
   }
   list(prior_list = prior_list, weights = weights,
        source_transforms = source_transforms[names(weights)])
+}
+
+# Multivariate t terms (the 'mt' vector priors, 'mcauchy' with df = 1, e.g.
+# mean-difference and orthonormal factor priors): X = mu 1 + z / sqrt(w) with
+# z ~ N(0, S), S = s^2 I the scale matrix, and w ~ Gamma(nu / 2, nu / 2), as
+# the JAGS emitter draws them (.JAGS_prior.vector()) and mvtnorm::rmvt() and
+# dmvt() with sigma = S evaluate them. A linear combination a'X is therefore
+# the univariate t with location mu sum(a), scale sqrt(a' S a) = s ||a|| and
+# nu degrees of freedom (zero weights are dropped before, so a' S a > 0; a
+# zero combination is the point mu sum(a) = 0). Each such group is rewritten
+# as that scalar t term under the prior's own name (keeping its
+# 'multiply_by' scale), and the combination is routed as any combination of
+# scalar terms; 'provenance' records the rewritten groups. NULL without
+# multivariate t groups, and when a group has no representable scalar t
+# (non-numeric parameters, a source transformation, or a scale that
+# underflows or overflows), whose combination keeps the general route.
+.prior_density_route_vector_t_terms <- function(prior_list, weights, source_transforms){
+
+  groups <- tryCatch(
+    .prior_linear_weight_groups(prior_list, weights),
+    error = function(e) NULL
+  )
+  if(is.null(groups)){
+    return(NULL)
+  }
+  vector_t <- names(groups)[vapply(groups, function(group){
+    prior <- group$prior
+    is.prior.vector(prior) && identical(prior$distribution, "mt") &&
+      !is.prior.mixture(prior) && !is.prior.spike_and_slab(prior)
+  }, logical(1))]
+  if(length(vector_t) == 0L){
+    return(NULL)
+  }
+
+  provenance <- list()
+  for(parameter in vector_t){
+    group <- groups[[parameter]]
+    parameters <- group$prior$parameters[c("location", "scale", "df")]
+    numeric_parameters <- all(vapply(parameters, function(value){
+      is.numeric(value) && length(value) == 1L && is.finite(value)
+    }, logical(1)))
+    if(!numeric_parameters || any(!is.na(source_transforms[names(group$weights)]))){
+      return(NULL)
+    }
+    location <- sum(group$weights) * parameters$location
+    scale <- .prior_density_ordinate_stable_norm(group$weights) * parameters$scale
+    if(!is.finite(location) || !is.finite(scale) || scale <= 0){
+      return(NULL)
+    }
+    scalar <- prior("t", list(location = location, scale = scale, df = parameters$df))
+    attr(scalar, "multiply_by") <- attr(group$prior, "multiply_by", exact = TRUE)
+    prior_list[[parameter]] <- scalar
+    weights <- weights[setdiff(names(weights), names(group$weights))]
+    weights[[parameter]] <- 1
+    source_transforms[[parameter]] <- NA_character_
+    provenance[[length(provenance) + 1L]] <- list(
+      parameter  = parameter,
+      family     = "mt",
+      weights    = .prior_density_ordinate_compact(group$weights),
+      parameters = c(location = parameters$location, scale = parameters$scale,
+                     df = parameters$df),
+      t          = c(location = location, scale = scale, df = parameters$df)
+    )
+  }
+  list(prior_list = prior_list, weights = weights,
+       source_transforms = source_transforms[names(weights)],
+       provenance = provenance)
 }
 
 # Route of a combination with 'multiply_by' products. One product term
@@ -623,6 +695,15 @@
     return(.prior_density_route_linear(
       ordered$prior_list, ordered$weights, ordered$source_transforms, n_grid
     ))
+  }
+
+  vector_t <- .prior_density_route_vector_t_terms(prior_list, weights, source_transforms)
+  if(!is.null(vector_t)){
+    route <- .prior_density_route_linear(
+      vector_t$prior_list, vector_t$weights, vector_t$source_transforms, n_grid
+    )
+    route$multivariate_t <- vector_t$provenance
+    return(route)
   }
 
   split <- tryCatch(
@@ -1070,6 +1151,9 @@
   if(!is.null(route$context)){
     result$provenance$context <- route$context
   }
+  if(!is.null(route$multivariate_t)){
+    result$provenance$multivariate_t <- route$multivariate_t
+  }
   result
 }
 
@@ -1172,7 +1256,7 @@
 # bounds, atoms and boundary limits of the source.
 .prior_density_route_provenance <- function(route){
 
-  switch(
+  provenance <- switch(
     route$type,
     "atom" = route$provenance,
     "scalar" = {
@@ -1223,6 +1307,10 @@
                        transformation = route$transformation,
                        source = .prior_density_route_provenance(route$source))
   )
+  if(!is.null(route$multivariate_t)){
+    provenance$multivariate_t <- route$multivariate_t
+  }
+  provenance
 }
 
 # ---- region probabilities ----------------------------------------------------

@@ -109,6 +109,14 @@ scaling) is the scale product of \eqn{X} and the lognormal
 \eqn{\log(X) + G} is the log image of that product, with density
 \eqn{f(e^z) e^z} (method \code{"scale_mixture"}, provenance kind
 \code{"log_scale_product"}).
+A linear combination \eqn{a'X} of a multivariate t vector prior
+(\code{"mt"}, and \code{"mcauchy"} with one degree of freedom; e.g. levels and
+contrasts of mean-difference and orthonormal factor priors) with location
+\eqn{\mu}, scale \eqn{s} (the scale matrix \eqn{s^2 I}) and \eqn{\nu}
+degrees of freedom is the univariate t with location \eqn{\mu \sum_j a_j},
+scale \eqn{s \|a\|}{s ||a||} and \eqn{\nu} degrees of freedom; it enters the
+combination as that scalar term, recorded in \code{provenance$multivariate_t}
+(alone it is exact with method \code{"scalar_affine"}).
 Sums of Cauchy terms are Cauchy (method
 \code{"scalar_affine"}), and two other continuous scalar terms without a
 Gaussian part are a \code{"convolution"} quadrature over one term's declared

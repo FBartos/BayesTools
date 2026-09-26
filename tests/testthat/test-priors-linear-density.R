@@ -1248,6 +1248,217 @@ test_that("model-averaged mean-difference coordinates are exact mixtures of thei
   }
 })
 
+test_that("linear combinations of multivariate t priors are univariate t terms", {
+
+  # A multivariate t vector prior X = mu 1 + z / sqrt(w), z ~ N(0, s^2 I),
+  # w ~ Gamma(nu / 2, nu / 2) (the scale-matrix parameterization of the JAGS
+  # emitter, checked below) has a'X ~ t(mu sum(a), s ||a||, nu). References:
+  # the closed-form t density and distribution function (extraDistr), the
+  # Cauchy and Gaussian-convolution integrals by integrate() at rel.tol 1e-12,
+  # and a Monte Carlo sample of 1e6 draws of X built as the emitter builds it,
+  # compared by bins and regions within 4 binomial standard errors. The bin
+  # probability of an ordinate is Simpson's rule over the bin (width .1; its
+  # error is below 1e-8, against standard errors above 5e-5). Before, every
+  # such combination was a general convolution: 'unknown', with grid values
+  # (region probabilities without a structural route).
+  syntax <- .JAGS_prior.vector(prior("mt", list(location = 2, scale = .5, df = 3, K = 3)), "p")
+  expect_match(syntax, "prior_par_s_p ~ dgamma(1.5, 1.5)", fixed = TRUE)
+  expect_match(syntax, "prior_par2_p[i,i] <- 4", fixed = TRUE)
+  expect_match(syntax, "p[i] <- prior_par_z_p[i]/sqrt(prior_par_s_p) + 2", fixed = TRUE)
+
+  draw_mt <- function(n, K, location, scale, df){
+    z <- matrix(stats::rnorm(n * K, 0, scale), nrow = n, ncol = K)
+    location + z / sqrt(stats::rgamma(n, shape = df / 2, rate = df / 2))
+  }
+  region_probability <- function(density, lower, upper){
+    .prior_linear_density_region_probability(density, list(
+      intervals = .prior_region_intervals(lower, upper),
+      indicator = function(values) values > lower & values < upper
+    ))
+  }
+  continuous_density <- function(density, value){
+    exp(prior_density_ordinate(density, value)$log_density)
+  }
+  integrate_pieces <- function(f, breaks){
+    sum(vapply(seq_len(length(breaks) - 1L), function(i){
+      stats::integrate(f, breaks[i], breaks[i + 1L], rel.tol = 1e-12)$value
+    }, numeric(1)))
+  }
+  expect_monte_carlo <- function(density, draws, bins, regions, atom = 0){
+    n <- length(draws)
+    for(center in bins){
+      edges <- center + c(-.05, 0, .05)
+      heights <- vapply(edges, continuous_density, numeric(1), density = density)
+      expected <- (heights[1L] + 4 * heights[2L] + heights[3L]) * .1 / 6
+      observed <- mean(draws > edges[1L] & draws < edges[3L])
+      expect_lte(abs(observed - expected), 4 * sqrt(expected * (1 - expected) / n))
+    }
+    for(lower in regions){
+      expected <- as.numeric(region_probability(density, lower, Inf))
+      observed <- mean(draws > lower)
+      expect_lte(abs(observed - expected), 4 * sqrt(expected * (1 - expected) / n))
+    }
+  }
+
+  data <- data.frame(g = factor(rep(letters[1:4], 3)), h = factor(rep(letters[1:3], each = 4)))
+  columns <- c("mu_intercept", paste0("mu_g[", 1:3, "]"), paste0("mu_h[", 1:2, "]"))
+  for(contrast in c("meandif", "orthonormal")){
+    priors <- JAGS_formula(~ 1 + g + h, "mu", data = data, prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      g = prior_factor("mt", list(location = 0, scale = .5, df = 3), contrast = contrast),
+      h = prior_factor("mcauchy", list(location = 0, scale = .25), contrast = contrast)
+    ))$prior_list
+    context <- .prior_density_build_context(priors, columns)
+    design <- if(contrast == "meandif") contr.meandif(4) else contr.orthonormal(4)
+    level <- function(i) stats::setNames(design[i, ], paste0("mu_g[", 1:3, "]"))
+    weight_sets <- list(c("mu_g[2]" = 1), level(1), level(4), level(2) - level(3),
+                        c("mu_g[1]" = .3, "mu_g[2]" = -.7, "mu_g[3]" = 2))
+    for(weights in weight_sets){
+      density <- .prior_density_from_context(context, weights)
+      scale <- .5 * sqrt(sum(weights^2))
+      for(value in c(-1.3, 0, .2, 25)){
+        ordinate <- prior_density_ordinate(density, value)
+        expect_true(ordinate$exact)
+        expect_identical(ordinate$behavior, "regular")
+        expect_identical(ordinate$method, "scalar_affine")
+        expect_equal(ordinate$log_density,
+                     extraDistr::dlst(value, df = 3, mu = 0, sigma = scale, log = TRUE),
+                     tolerance = 1e-13)
+      }
+      record <- ordinate$provenance$multivariate_t[[1L]]
+      expect_identical(record$parameter, "mu_g")
+      expect_equal(record$weights, weights[weights != 0])
+      expect_equal(record$t, c(location = 0, scale = scale, df = 3), tolerance = 1e-15)
+      expect_equal(as.numeric(.prior_linear_density_height(density, .2)),
+                   extraDistr::dlst(.2, df = 3, mu = 0, sigma = scale), tolerance = 1e-13)
+      probability <- region_probability(density, -.4, .9)
+      expect_identical(attr(probability, "numerical_diagnostics")$method, "exact")
+      expect_equal(as.numeric(probability),
+                   diff(extraDistr::plst(c(-.4, .9), df = 3, mu = 0, sigma = scale)),
+                   tolerance = 1e-13)
+      curve <- .prior_linear_density_to_plot_data(density, n_points = 51, x_range = c(-3, 3))$density
+      expect_equal(curve$y, extraDistr::dlst(curve$x, df = 3, mu = 0, sigma = scale),
+                   tolerance = 1e-13)
+      expect_identical(prior_ordinate_status(density, .2)$eligible, TRUE)
+    }
+
+    # a Cauchy level (mcauchy, one degree of freedom) plus the normal
+    # intercept is a Gaussian convolution, and a mt level plus a Cauchy level
+    # a two-term convolution
+    h_level <- stats::setNames(if(contrast == "meandif") contr.meandif(3)[1, ] else contr.orthonormal(3)[1, ],
+                               paste0("mu_h[", 1:2, "]"))
+    h_scale <- .25 * sqrt(sum(h_level^2))
+    combinations <- list(
+      list(weights = c(mu_intercept = 1, h_level), method = "conditional_normal_mixture",
+           reference = function(value){
+             integrate_pieces(function(x) stats::dcauchy(x, 0, h_scale) * stats::dnorm(value - x),
+                              c(-Inf, sort(c(0, value)), Inf))
+           }),
+      list(weights = c(level(1), h_level), method = "convolution",
+           reference = function(value){
+             integrate_pieces(function(x){
+               stats::dcauchy(x, 0, h_scale) *
+                 extraDistr::dlst(value - x, df = 3, mu = 0, sigma = .5 * sqrt(sum(level(1)^2)))
+             }, c(-Inf, sort(c(0, value)), Inf))
+           })
+    )
+    for(combination in combinations){
+      density <- .prior_density_from_context(context, combination$weights)
+      for(value in c(-.8, .3, 4)){
+        ordinate <- prior_density_ordinate(density, value)
+        expect_true(ordinate$exact)
+        expect_identical(ordinate$method, combination$method)
+        expect_equal(exp(ordinate$log_density), combination$reference(value), tolerance = 1e-6)
+      }
+    }
+  }
+
+  # a non-factor vector prior with a nonzero location: the location is
+  # mu sum(a); two Cauchy vector terms sum to one Cauchy term; the zero
+  # combination is the point at 0
+  vector_priors <- list(p = prior("mt", list(location = 2, scale = .5, df = 5, K = 3)),
+                        q = prior("mcauchy", list(location = -1, scale = .5, K = 2)),
+                        r = prior("mcauchy", list(location = 1, scale = .25, K = 2)))
+  weights <- c("p[1]" = .5, "p[2]" = 1, "p[3]" = -2)
+  density <- .prior_linear_combination_density(vector_priors, weights)
+  expect_equal(prior_density_ordinate(density, 1)$log_density,
+               extraDistr::dlst(1, df = 5, mu = -1, sigma = .5 * sqrt(5.25), log = TRUE),
+               tolerance = 1e-13)
+  cauchy <- .prior_linear_combination_density(vector_priors, c("q[1]" = 1, "q[2]" = 1, "r[2]" = -2))
+  ordinate <- prior_density_ordinate(cauchy, .5)
+  expect_true(ordinate$exact)
+  expect_identical(ordinate$method, "scalar_affine")
+  expect_equal(exp(ordinate$log_density), stats::dcauchy(.5, -4, .5 * sqrt(2) + .5), tolerance = 1e-13)
+  expect_length(ordinate$provenance$multivariate_t, 2L)
+  zero <- prior_density_ordinate(.prior_linear_combination_density(vector_priors, c("p[1]" = 0)), 0)
+  expect_identical(zero$behavior, "point_mass")
+  expect_identical(zero$point_mass, 1)
+
+  # a 'multiply_by' scale: the product of the t combination and the scale
+  scaled <- vector_priors["p"]
+  attr(scaled$p, "multiply_by") <- "s"
+  scaled$s <- prior("lognormal", list(0, .5))
+  product <- .prior_linear_combination_density(scaled, weights)
+  for(value in c(-3, .5, 6)){
+    ordinate <- prior_density_ordinate(product, value)
+    expect_true(ordinate$exact)
+    expect_identical(ordinate$method, "scale_mixture")
+    reference <- integrate_pieces(function(s){
+      extraDistr::dlst(value / s, df = 5, mu = -1, sigma = .5 * sqrt(5.25)) / s * stats::dlnorm(s, 0, .5)
+    }, sort(unique(c(0, 1, abs(value), Inf))))
+    expect_equal(exp(ordinate$log_density), reference, tolerance = 1e-6)
+  }
+
+  # Monte Carlo of the multivariate t: a level of a mt factor prior, the
+  # normal intercept plus a contrast, and the mixture rule (a model-averaged
+  # mixture with a spike, and a spike-and-slab with inclusion Beta(2, 3))
+  set.seed(20260926)
+  n <- 1e6
+  x <- draw_mt(n, 3, 0, .5, 3)
+  priors <- JAGS_formula(~ 1 + g, "mu", data = data, prior_list = list(
+    intercept = prior("normal", list(0, 1)),
+    g = prior_factor("mt", list(location = 0, scale = .5, df = 3), contrast = "meandif")
+  ))$prior_list
+  context <- .prior_density_build_context(priors, columns[1:4])
+  design <- contr.meandif(4)
+  expect_monte_carlo(.prior_density_from_context(context, stats::setNames(design[3, ], columns[2:4])),
+                     draws = drop(x %*% design[3, ]), bins = c(-1.2, -.3, 0, .45, 1.6),
+                     regions = c(-.9, .1, 2))
+  contrast_weights <- design[1, ] - design[4, ]
+  expect_monte_carlo(.prior_density_from_context(context, stats::setNames(c(1, contrast_weights), columns[1:4])),
+                     draws = drop(x %*% contrast_weights) + stats::rnorm(n),
+                     bins = c(-2.5, -.6, .1, 1.3), regions = c(-1.5, .4, 3))
+
+  for(kind in c("mixture", "spike_and_slab")){
+    slab <- prior_factor("mt", list(location = 0, scale = .5, df = 3), contrast = "orthonormal")
+    g <- if(kind == "mixture"){
+      prior_mixture(list(slab, prior_factor("spike", list(0), contrast = "orthonormal")),
+                    is_null = c(FALSE, TRUE))
+    }else{
+      prior_spike_and_slab(slab, prior_inclusion = prior("beta", list(2, 3)))
+    }
+    inclusion <- if(kind == "mixture") .5 else .4
+    priors <- JAGS_formula(~ 1 + g, "mu", data = data, prior_list = list(
+      intercept = prior("normal", list(0, 1)), g = g
+    ))$prior_list
+    context <- .prior_density_build_context(priors, columns[1:4])
+    weights <- contr.orthonormal(4)[2, ]
+    density <- .prior_density_from_context(context, stats::setNames(weights, columns[2:4]))
+    scale <- .5 * sqrt(sum(weights^2))
+    ordinate <- prior_density_ordinate(density, .3)
+    expect_true(ordinate$exact)
+    expect_identical(ordinate$method, "finite_mixture")
+    expect_equal(exp(ordinate$log_density),
+                 inclusion * extraDistr::dlst(.3, df = 3, mu = 0, sigma = scale), tolerance = 1e-13)
+    zero <- prior_density_ordinate(density, 0)
+    expect_identical(zero$behavior, "point_mass")
+    expect_equal(zero$point_mass, 1 - inclusion, tolerance = 1e-15)
+    expect_identical(zero$provenance$continuous_behavior, "regular")
+    draws <- drop(x %*% weights) * (stats::runif(n) < inclusion)
+    expect_monte_carlo(density, draws, bins = c(-1.1, -.2, .35, 1.5), regions = c(-.7, .15, 1.8))
+  }
+})
+
 test_that("FFT removed-mass diagnostics have probability units", {
 
   set.seed(135)

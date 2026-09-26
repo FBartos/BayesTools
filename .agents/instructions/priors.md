@@ -234,6 +234,27 @@ non-normal additive term with a product, several multiplied non-normal
 terms) have no structural route; their capped product grid is never used for
 heights or probabilities, which are then unavailable.
 
+Multivariate t terms: a vector prior `mt` (and `mcauchy`, its one degree of
+freedom case) is X = mu 1 + z / sqrt(w), z ~ N(0, s^2 I) and
+w ~ Gamma(nu / 2, nu / 2) (the scale matrix s^2 I, not a covariance, as the
+JAGS emitter `.JAGS_prior.vector()` draws it and `mvtnorm` evaluates it with
+`sigma = s^2 I`). A linear combination a'X of its coordinates is the
+univariate t with location mu sum(a), scale s ||a|| and nu degrees of freedom
+(zero weights are dropped, so a' S a > 0; a zero combination is the point 0).
+Before routing, each such group is rewritten as that scalar t term under the
+prior's name, keeping its `multiply_by` scale
+(`.prior_density_route_vector_t_terms()`; the ordinate provenance records
+the rewritten groups as `multivariate_t`), so levels and contrasts of
+mean-difference and orthonormal `mt` factor priors and any linear target of
+them are scalar t terms: exact alone (`scalar_affine`, with the t
+distribution function for regions and closed-form plotted densities), and
+otherwise routed as below (a Gaussian convolution with normal terms, the
+Cauchy sum for one degree of freedom, a two-term convolution with one other
+non-normal term, a scale product with a `multiply_by` scale). Mixture and
+spike-and-slab priors of `mt` components are expanded first (below). Groups
+with non-numeric parameters, a source transformation, or a scale that is not
+representable keep the general route.
+
 Sums without a product term: untruncated Cauchy terms (Cauchy or t with one
 degree of freedom, no log source) first merge into one Cauchy term with the
 summed locations and the summed absolute scales, so Cauchy sums are scalar and
@@ -451,8 +472,9 @@ its own exact or regular method, so a numerical grid never spans a density jump
 between components. A coordinate of a mixture whose components are vector
 (factor) priors, e.g. a model-averaged mean-difference level of a single-fit
 product-space prior, is no scalar term: the mixture is expanded, and each
-component is routed as its vector prior (normal, or an atom for a point
-component). A Gaussian term plus one other continuous scalar term
+component is routed as its vector prior (normal, the univariate t of a
+multivariate t, or an atom for a point component). A Gaussian term plus one
+other continuous scalar term
 (and two non-normal terms) uses its quadrature (the closed form for a
 truncated normal term) wherever it occurs, so the same
 combination is never exact in one context and a grid approximation in
