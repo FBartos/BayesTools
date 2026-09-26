@@ -2839,6 +2839,97 @@ test_that("route-product display grids batch the values of leaves with a singula
   expect_equal(grid$density$y / sum(grid$density$y), batched / sum(batched), tolerance = 1e-9)
 })
 
+test_that("route-product display grids take per-value ordinates for leaves with a strong singularity", {
+
+  # Next to a density that is infinite at a finite bound with exponent below
+  # 0.1 (e.g. a Beta share with shape < 0.1 there) the batched bisection's
+  # error estimate is not reliable: values accepted at an estimate of 1e-4
+  # were up to 4.3e-4 off. Such leaves are not batched, so their display-grid
+  # values are the per-value ordinates. References: integrals over the Beta
+  # term with s = u^(1 / a) on [0, 1/2] and s = 1 - v^(1 / b) on [1/2, 1],
+  # which remove both bound singularities, integrate() at rel.tol 1e-13; the
+  # bound checked is the ordinates' acceptance criterion 1e-4.
+  beta_integral <- function(kernel, a, b){
+    lower <- stats::integrate(function(u){
+      s <- u^(1 / a)
+      kernel(s) * (1 - s)^(b - 1) / (a * beta(a, b))
+    }, 0, .5^a, rel.tol = 1e-13, subdivisions = 2000L)$value
+    upper <- stats::integrate(function(v){
+      s <- 1 - v^(1 / b)
+      kernel(s) * s^(a - 1) / (b * beta(a, b))
+    }, 0, .5^b, rel.tol = 1e-13, subdivisions = 2000L)$value
+    lower + upper
+  }
+  check_leaf <- function(route, x, kernel, a, b){
+    plan <- if(route$type == "scale_product"){
+      .prior_scale_product_density_plan(route$spec, x, singular = TRUE)
+    }else{
+      .prior_conditional_normal_density_plan(route$spec, x, singular = TRUE)
+    }
+    expect_false(plan$batch)
+    expect_null(plan$integrand)
+    grid <- .prior_density_route_density(route, x, batch_singular = TRUE)
+    expect_identical(grid, .prior_density_route_density(route, x))
+    expected <- vapply(x, function(value) beta_integral(function(s) kernel(s, value), a, b),
+                       numeric(1))
+    expect_lte(max(abs(grid / expected - 1)), 1e-4)
+  }
+
+  # an ordered level with a half-normal total and Dirichlet(0.05) allocations
+  # of four coefficients: the total times its Beta(0.05, 0.15) share, on the
+  # 1024-value display grid of the product range (its 4th and 6th values were
+  # 3.0e-4 and 4.3e-4 off)
+  df <- data.frame(y = seq_len(10), f = ordered(rep(letters[1:5], 2), levels = letters[1:5]))
+  formula_info <- JAGS_formula(y ~ f, "mu", data = df, prior_list = list(
+    intercept = prior("normal", list(0, 1)),
+    f = prior_ordered(prior("normal", list(0, 1), list(0, Inf)),
+                      allocation = prior("dirichlet", list(alpha = rep(.05, 4))))
+  ))
+  level <- .prior_linear_combination_density(
+    list(mu_f = formula_info$prior_list[["mu_f"]]),
+    stats::setNames(c(1, 0, 0, 0), paste0("mu_f[", 1:4, "]"))
+  )
+  route <- .prior_density_route_from_adaptive(attr(level, "adaptive_evaluation", exact = TRUE))
+  expect_identical(route$type, "scale_product")
+  expect_equal(unlist(route$spec$multiplier$parameters), c(alpha = .05, beta = .15))
+  range <- .prior_linear_density_range(level)
+  x <- seq(range[1L], range[2L], length.out = 1024L)[c(2L, 4L, 6L, 50L, 400L)]
+  check_leaf(route, x, function(s, value) 2 * stats::dnorm(value / s) / s, .05, .15)
+
+  # a conditional-normal leaf A + B S, A ~ N(0, .3), B ~ N(2, 1),
+  # S ~ Beta(0.05, 0.5) (1.4e-4 and 1.6e-4 off at -1.75 and 4 / 3), and a
+  # scale product L S with L ~ gamma(2, 2) and S ~ Beta(0.3, 0.05), strong at
+  # its upper bound (2.8e-4 off at 0.002)
+  normal_leaf <- list(type = "conditional_normal", n_grid = 1024L, spec = list(
+    additive_mean = 0, additive_sd = .3, product_mean = 2, product_sd = 1,
+    multiplier = prior("beta", list(.05, .5)), bounds = c(0, 1), sources = list()
+  ))
+  check_leaf(normal_leaf, seq(-4, 4, length.out = 97)[c(1, 27, 28, 45, 49, 53, 65, 66, 97)],
+             function(s, value) stats::dnorm(value, 2 * s, sqrt(.3^2 + s^2)), .05, .5)
+  product_leaf <- list(type = "scale_product", n_grid = 1024L, spec = .prior_scale_product_spec(
+    offset = 0, scale = 1, factor = prior("gamma", list(2, 2)),
+    multiplier = prior("beta", list(.3, .05)), sources = list()
+  ))
+  check_leaf(product_leaf, c(.002, .01, .05, .2, 1, 2.5),
+             function(s, value) stats::dgamma(value / s, 2, 2) / s, .3, .05)
+
+  # a singular leaf whose exponents are at least 0.1 keeps the batch
+  for(shape in list(c(.1, .3), c(.5, 1.5))){
+    batched <- .prior_scale_product_density_plan(.prior_scale_product_spec(
+      offset = 0, scale = 1, factor = prior("normal", list(0, 1), list(0, Inf)),
+      multiplier = prior("beta", as.list(shape)), sources = list(),
+      map = list(type = "sqrt", scale = 2)
+    ), c(.1, 1), singular = TRUE)
+    expect_false(batched$batch)
+    expect_false(is.null(batched$integrand))
+  }
+  expect_false(.prior_density_strong_singularity(prior("beta", list(.1, .3))))
+  expect_true(.prior_density_strong_singularity(prior("beta", list(.3, .05))))
+  expect_true(.prior_density_strong_singularity(prior("gamma", list(.05, 1))))
+  expect_false(.prior_density_strong_singularity(prior("gamma", list(.5, 1))))
+  expect_false(.prior_density_strong_singularity(prior("normal", list(0, 1), list(0, Inf))))
+})
+
 test_that("row mixtures without atoms build their numerical grid only for grid consumers", {
 
   # Normal intercept + x * slope * sigma (sigma half-normal) over 12 distinct

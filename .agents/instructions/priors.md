@@ -368,7 +368,15 @@ product range, with the product's exact atoms. The grid values share the
 batched quadrature of plotted densities; unlike plotted curves, the values of
 a leaf whose integrand has an integrable singularity are batched as well,
 accepted at the ordinates' criterion (relative error estimate at most 1e-4),
-and only values it does not accept take their ordinate. The capped product grid of the
+and only values it does not accept take their ordinate. A leaf with a strong
+singularity is not batched: a multiplier, share or factor whose density is
+infinite at a finite bound with exponent p below 0.1 (density ~
+distance^(p - 1); the shape of a Beta share at that bound or of a gamma term
+at 0; an unknown exponent counts as strong), at any bound, including a zero
+bound whose singularity the other term cancels. Next to it the bisection's
+error estimate is not reliable (accepted grid values of a Dirichlet(0.05)
+level share were 4.3e-4 off at an estimate of 1e-4), so all its values take
+their ordinate. The capped product grid of the
 factors' grids (`.prior_linear_density_product()`), which a heavy-tailed
 factor can leave without a finite positive mass, remains only for products
 without a structural route (plots only). The route-evaluated grid records

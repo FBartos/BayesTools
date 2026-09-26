@@ -581,8 +581,8 @@
 # The grid is a display representation (heights and probabilities use the
 # route), so the values of a leaf with a singular integrand share one batched
 # quadrature with the ordinates' acceptance criterion, a relative error of
-# 1e-4, instead of one quadrature per value
-# (.prior_density_route_quadrature_density()). Its 'product_grid_resolution'
+# 1e-4, instead of one quadrature per value, except leaves with a strong
+# singularity (.prior_density_route_quadrature_density()). Its 'product_grid_resolution'
 # attribute records whether the spacing
 # resolves the product's density: the Riemann sum of the route density on the
 # grid differs from the continuous mass by at most

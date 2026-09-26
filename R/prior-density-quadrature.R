@@ -18,7 +18,10 @@
 # singularity of the integrand (a term with an infinite density at a finite
 # support bound, .prior_density_singular_bounds()) to reach 1e-8, so such
 # leaves are batched only for display grids, with the ordinates' acceptance
-# criterion of 1e-4 (.prior_density_route_quadrature_density()).
+# criterion of 1e-4 (.prior_density_route_quadrature_density()). Next to a
+# strong singularity (.prior_density_strong_singularity()) the error estimate
+# of the bisection is not reliable at that criterion either, so those leaves
+# are not batched at all.
 
 .prior_density_quadrature_tolerance <- function(){
 
@@ -34,6 +37,39 @@
   vapply(bounds, function(bound){
     is.finite(bound) && isTRUE(is.infinite(suppressWarnings(exp(lpdf(prior, bound)))))
   }, logical(1))
+}
+
+# Smallest exponent p of an infinite density at a finite bound (a density
+# ~ distance^(p - 1) there: the shape of a gamma density at 0, of a beta
+# density at either bound, .prior_density_bound_exponent()) that is not a
+# strong singularity.
+.prior_density_quadrature_strong_exponent <- function(){
+
+  0.1
+}
+
+# Whether a simple continuous prior has a strong singularity at one of the
+# finite values 'bounds' (its support bounds by default): an infinite density
+# whose exponent is below .prior_density_quadrature_strong_exponent() or not
+# known (e.g. a Beta share of a Dirichlet(0.05) allocation). The batched
+# bisection's error estimate is not reliable next to such a singularity, also
+# where the other term's density cancels it at the bound (a zero bound of the
+# share of a product): accepted at an estimate of 1e-4, grid values of a
+# Beta(0.05, 0.15) share were 4.3e-4 off, and of a Beta(0.3, 0.05) multiplier
+# 2.8e-4. Leaves with such a term therefore take per-value ordinates even in
+# display grids (.prior_density_route_quadrature_density()).
+.prior_density_strong_singularity <- function(prior,
+                                              bounds = unlist(prior$truncation[c("lower", "upper")],
+                                                              use.names = FALSE)){
+
+  singular <- .prior_density_singular_bounds(prior, bounds)
+  if(!any(singular)){
+    return(FALSE)
+  }
+  exponents <- vapply(bounds[singular], function(bound){
+    .prior_density_bound_exponent(prior, bound)
+  }, numeric(1))
+  any(is.na(exponents) | exponents < .prior_density_quadrature_strong_exponent())
 }
 
 # Gauss-Kronrod rules on [-1, 1] (QUADPACK qk21 and qk15i): nodes, Kronrod

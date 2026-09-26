@@ -1330,8 +1330,10 @@
 # 'batch_singular', the values of a conditional-normal or scale-product leaf
 # with a singular integrand, which the batched bisection cannot resolve to
 # 1e-8, are batched as well, with the acceptance criterion of their ordinates
-# (a relative error of 1e-4, .prior_linear_density_refinement_tolerance());
-# the display grids of route products use it
+# (a relative error of 1e-4, .prior_linear_density_refinement_tolerance()),
+# unless a term of the leaf has a strong singularity (an exponent below 0.1,
+# .prior_density_strong_singularity(), where that error estimate is not
+# reliable); the display grids of route products use it
 # (.prior_linear_density_route_product()).
 .prior_density_route_quadrature_density <- function(route, x, batch_singular = FALSE){
 
