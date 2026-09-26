@@ -1093,6 +1093,107 @@ test_that("the exp of a log-source term plus a Gaussian part is a scale product"
   }
 })
 
+test_that("the log-scale sum of a log-source term and a Gaussian part is the log image of the scale product", {
+
+  # Z = log(b0) + c b1 = log(Y), Y = b0 exp(c b1) the scale product above: its
+  # density is f_Z(z) = f_Y(e^z) e^z. References: the convolution integral over
+  # b1 of the density of log(b0), f_b0(e^u) e^u at u = z - c t, times
+  # phi(t; 0, .5), at rel.tol 1e-13; region probabilities integrate
+  # P(log(b0) in (a - c t, b - c t)) phi(t; 0, .5).
+  intercept_sd <- sqrt(2) / 4
+  slope <- -0.9894605
+  log_density <- function(intercept, slope_prior = prior("normal", list(0, .5)), weight = 1){
+    .prior_linear_combination_density(
+      list(b0 = intercept, b1 = slope_prior), c(b0 = weight, b1 = slope),
+      source_transforms = c(b0 = "log", b1 = NA)
+    )
+  }
+  reference <- function(z, log_f_intercept){
+    stats::integrate(function(t){
+      u <- z - slope * t
+      exp(log_f_intercept(exp(u)) + u + stats::dnorm(t, 0, .5, log = TRUE))
+    }, -Inf, Inf, rel.tol = 1e-13, abs.tol = 0)$value
+  }
+  f_half <- function(x) log(2) + stats::dnorm(x, 0, intercept_sd, log = TRUE)
+  half <- prior("normal", list(0, intercept_sd), list(0, Inf))
+  density <- log_density(half)
+  route <- .prior_density_route_from_adaptive(attr(density, "adaptive_evaluation"))
+  expect_identical(route$type, "log_scale_product")
+  for(value in c(-8, log(c(.05, .2, 1, 3)), 4)){
+    ordinate <- prior_density_ordinate(density, value)
+    expect_identical(ordinate$behavior, "regular")
+    expect_true(ordinate$exact)
+    expect_identical(ordinate$method, "scale_mixture")
+    expect_identical(ordinate$provenance$kind, "log_scale_product")
+    expect_true(ordinate$provenance$integration_scale > 0)
+    expect_equal(exp(ordinate$log_density), reference(value, f_half), tolerance = 1e-10)
+    expect_equal(as.numeric(.prior_linear_density_height(density, value)),
+                 reference(value, f_half), tolerance = 1e-10)
+  }
+  expect_true(all(prior_ordinate_status(density, c(-1, 0, 1))$eligible))
+  # a value whose exponential is not representable has no ordinate value
+  underflow <- prior_density_ordinate(density, -800)
+  expect_identical(underflow$behavior, "regular")
+  expect_false(underflow$exact)
+  expect_match(underflow$reason, "not representable", fixed = TRUE)
+
+  probability <- function(hypothesis){
+    .hypothesis_prior_density_prob(
+      density, hypothesis_parse(hypothesis)$statements[[1L]]$left, "theta"
+    )
+  }
+  interval_reference <- function(lower, upper){
+    stats::integrate(function(t){
+      lower_tail <- stats::pnorm(exp(lower - slope * t), 0, intercept_sd, lower.tail = FALSE)
+      upper_tail <- if(is.finite(upper)){
+        stats::pnorm(exp(upper - slope * t), 0, intercept_sd, lower.tail = FALSE)
+      }else{
+        0
+      }
+      2 * (lower_tail - upper_tail) * stats::dnorm(t, 0, .5)
+    }, -Inf, Inf, rel.tol = 1e-13)$value
+  }
+  expect_equal(probability("theta > -0.7"), interval_reference(-.7, Inf), tolerance = 1e-10)
+  expect_equal(probability("theta > -1 & theta < 0.5"), interval_reference(-1, .5), tolerance = 1e-10)
+  expect_equal(probability("theta < -1"), 1 - interval_reference(-1, Inf), tolerance = 1e-10)
+
+  # the plotted density is the log image of the product's
+  plotted <- .prior_linear_density_to_plot_data(density)$density
+  checked <- plotted$x[c(10, 60, 150)]
+  expect_equal(plotted$y[c(10, 60, 150)], vapply(checked, function(value){
+    exp(prior_density_ordinate(density, value)$log_density)
+  }, numeric(1)), tolerance = 1e-8)
+
+  # a mixture prior of b0 is the mixture of the components' log images
+  gamma <- prior("gamma", list(2, 4))
+  mixture <- log_density(prior_mixture(list(half, gamma), is_null = c(FALSE, FALSE)))
+  mixture_route <- .prior_density_route_from_adaptive(attr(mixture, "adaptive_evaluation"))
+  expect_identical(vapply(mixture_route$components, `[[`, character(1), "type"),
+                   c("log_scale_product", "log_scale_product"))
+  for(value in c(-1, .5)){
+    ordinate <- prior_density_ordinate(mixture, value)
+    expect_true(ordinate$exact)
+    expect_equal(exp(ordinate$log_density),
+                 .5 * reference(value, f_half) +
+                   .5 * reference(value, function(x) stats::dgamma(x, 2, 4, log = TRUE)),
+                 tolerance = 1e-10)
+  }
+
+  # not applicable, unchanged: a non-Gaussian other term, and a log-source
+  # term with another weight, remain general convolutions
+  for(unchanged in list(log_density(half, slope_prior = prior("t", list(0, .5, 3))),
+                        log_density(half, weight = 2))){
+    ordinate <- prior_density_ordinate(unchanged, -.5)
+    expect_identical(ordinate$behavior, "unknown")
+    expect_false(ordinate$exact)
+    expect_identical(ordinate$reason, "General numerical convolutions are not structurally classified.")
+    expect_identical(
+      .prior_density_route_from_adaptive(attr(unchanged, "adaptive_evaluation"))$type,
+      "unknown"
+    )
+  }
+})
+
 test_that("products of normal terms are classified on the scale-mixture route", {
 
   # beta * sigma with beta, sigma ~ N(0, 1) has the density K0(|x|) / pi

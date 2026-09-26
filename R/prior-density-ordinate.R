@@ -99,7 +99,10 @@
 #' The exponential of a log-transformed positive term \eqn{X} plus a Gaussian
 #' part \eqn{G} (e.g. the unscaled intercept of a `log(intercept)` formula
 #' scaling) is the scale product of \eqn{X} and the lognormal
-#' \eqn{\exp(G)} (method `"scale_mixture"`).
+#' \eqn{\exp(G)} (method `"scale_mixture"`), and the log-scale sum
+#' \eqn{\log(X) + G} is the log image of that product, with density
+#' \eqn{f(e^z) e^z} (method `"scale_mixture"`, provenance kind
+#' `"log_scale_product"`).
 #' Sums of Cauchy terms are Cauchy (method
 #' `"scalar_affine"`), and two other continuous scalar terms without a
 #' Gaussian part are a `"convolution"` quadrature over one term's declared

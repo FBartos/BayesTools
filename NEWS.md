@@ -447,6 +447,28 @@ old behaviour.
   eligible), and the `continuous_behavior` of the prior without its point
   masses. `hypothesis_BF()` and `Savage_Dickey_BF()` stop at the first
   ineligible value with the same classes and messages as before.
+- a normal part plus one truncated normal term (e.g. a half-normal
+  coefficient plus normal coefficients) has a closed-form prior density,
+  phi(x; m, s) [Phi(beta(x)) - Phi(alpha(x))] / [Phi(B) - Phi(A)]: exact
+  ordinates without quadrature (`prior_density_ordinate()` method
+  `"truncated_normal_convolution"`) and closed-form plotted densities; its
+  region probabilities keep the Gaussian-convolution quadrature.
+- the exp of a log-transformed positive term X plus normal terms G, e.g. the
+  unscaled intercept of a `log(intercept)` formula scaling (heterogeneity
+  regressions), is evaluated as the product of X and the lognormal exp(G),
+  and the log-scale sum log(X) + G (formula marginal posteriors of
+  log-scale linear predictors) as the log image of that product: exact
+  ordinates (point hypotheses on either scale), region probabilities and
+  plotted densities instead of a numerical grid whose ordinates were
+  inexact. Other weights of the log-transformed term and non-normal other
+  terms keep the grid.
+- adds `prior_density_has_provenance()`, which tells whether BayesTools
+  evaluates the heights, ordinates and region probabilities of a prior
+  density (`FALSE` for a density grid without its recorded prior measure and
+  for a product without a structural route). The `prior_density_ordinate()`
+  method `"unsupported_provenance"` is not that signal: it also marks
+  combinations without a structural route, which have refined grid
+  probabilities.
 - gives three refusals classed conditions, so callers match the class instead
   of the message: a declared posterior point mass at the null of a scalar
   `Savage_Dickey_BF()` call stops with `BayesTools_posterior_point_mass_at_null`
@@ -715,6 +737,11 @@ old behaviour.
     bound; values that cannot meet it are inexact and point hypotheses there
     stop with `BayesTools_inexact_ordinate` (grid heights and probabilities
     stop as not converged). Plotted curves still draw these values.
+  - a coordinate of a mixture of factor priors, e.g. a model-averaged
+    mean-difference level whose design row has one nonzero coordinate in a
+    single-fit product-space ensemble, has an exact prior ordinate (the
+    weighted sum of its components) instead of an unknown one that refused
+    its point hypotheses.
 - hypothesis Bayes factors:
   - `hypothesis_BF()` region hypotheses on deterministic prior densities
     (intervals, unions, negations, and transformed regions such as
@@ -823,6 +850,12 @@ old behaviour.
     `transform_prior_samples()` output or a duplicate row to
     `JAGS_estimates_table(transform_scaled = TRUE, remove_spike_0 = FALSE)`.
 - marginal posteriors, model averaging, and posterior atoms:
+  - `marginal_posterior()` of the unscaled intercept of a `log(intercept)`
+    formula scaling (`transform_scaled` samples, `use_formula = FALSE`), and
+    formula marginal posteriors with prior samples of such samples, no
+    longer stop with "only available for the transformed intercept
+    coefficient itself": the intercept's prior density, support (0, Inf) and
+    component supports are those of the exp of its log-scale combination.
   - prior densities of monitored formula coefficients are the coefficients'
     own priors: a `multiply_by` scaling, which applies only to the linear
     predictor, is no longer applied in `marginal_posterior(use_formula =

@@ -2352,19 +2352,26 @@ test_that("marginal posteriors of log-intercept unscaled intercepts use the log-
   }, -Inf, Inf, rel.tol = 1e-12)$value, tolerance = 1e-10)
 
   # the marginal of the linear predictor at x = 0 (log(Y)) on the original
-  # scale: the density of log(Y) is f(e^z) e^z. The log-scale sum itself has
-  # no structural route (grid heights within the refinement criterion, 1e-4
-  # relative change; observed 3e-8)
+  # scale: the log image of the scale product, with density f(e^z) e^z
   predictor <- marginal_posterior(scaled_mixed, "mu_intercept", formula = formula,
                                   prior_samples = TRUE)
   expect_equal(as.numeric(predictor[["intercept"]]), log(as.numeric(intercept)))
   predictor_density <- .bt_meta_get(predictor[["intercept"]], "prior_density")
-  expect_identical(prior_ordinate_status(predictor_density, -1)$condition,
-                   "BayesTools_inexact_ordinate")
+  expect_true(prior_ordinate_status(predictor_density, -1)$eligible)
   for(value in c(-3, -1, .5)){
+    ordinate <- prior_density_ordinate(predictor_density, value)
+    expect_true(ordinate$exact)
+    expect_equal(exp(ordinate$log_density), reference(exp(value)) * exp(value),
+                 tolerance = 1e-10)
     expect_equal(as.numeric(.prior_linear_density_height(predictor_density, value)),
-                 reference(exp(value)) * exp(value), tolerance = 1e-6)
+                 reference(exp(value)) * exp(value), tolerance = 1e-10)
   }
+  predictor_probability <- .hypothesis_prior_density_prob(
+    predictor_density, hypothesis_parse("theta > -0.7")$statements[[1L]]$left, "theta"
+  )
+  expect_equal(as.numeric(predictor_probability), stats::integrate(function(t){
+    2 * stats::pnorm(exp(-.7) * exp(ratio * t), 0, .5, lower.tail = FALSE) * stats::dnorm(t)
+  }, -Inf, Inf, rel.tol = 1e-12)$value, tolerance = 1e-10)
   # its exp (the predictor on the original scale) is the scale product again
   exp_predictor <- marginal_posterior(scaled_mixed, "mu_intercept", formula = formula,
                                       prior_samples = TRUE, transformation = "exp")

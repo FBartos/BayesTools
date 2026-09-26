@@ -102,7 +102,10 @@ by the normal distribution of the truncated term given the sum \eqn{x}.
 The exponential of a log-transformed positive term \eqn{X} plus a Gaussian
 part \eqn{G} (e.g. the unscaled intercept of a \code{log(intercept)} formula
 scaling) is the scale product of \eqn{X} and the lognormal
-\eqn{\exp(G)} (method \code{"scale_mixture"}).
+\eqn{\exp(G)} (method \code{"scale_mixture"}), and the log-scale sum
+\eqn{\log(X) + G} is the log image of that product, with density
+\eqn{f(e^z) e^z} (method \code{"scale_mixture"}, provenance kind
+\code{"log_scale_product"}).
 Sums of Cauchy terms are Cauchy (method
 \code{"scalar_affine"}), and two other continuous scalar terms without a
 Gaussian part are a \code{"convolution"} quadrature over one term's declared

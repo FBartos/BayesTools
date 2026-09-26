@@ -26,6 +26,9 @@
 #   products of non-normal terms);
 # * "convolution": the sum of two non-normal simple continuous scalar terms
 #   (Cauchy terms first sum to one Cauchy term);
+# * "log_scale_product": log(X) + G, one log-source term X and a Gaussian part
+#   G, the log image of the scale product X exp(G)
+#   (.prior_density_route_log_source_product());
 # * "unknown": a combination without a structural route.
 # Internal nodes:
 # * "mixture": a finite mixture of routes (mixture and spike-and-slab terms,
@@ -664,6 +667,12 @@
   if(!is.null(convolution)){
     return(convolution)
   }
+  product <- .prior_density_route_log_source_product(
+    .prior_density_route_recipe(prior_list, weights, source_transforms, n_grid)
+  )
+  if(!is.null(product)){
+    return(list(type = "log_scale_product", product = product))
+  }
 
   .prior_density_route_unknown(
     reason     = "General numerical convolutions are not structurally classified.",
@@ -700,25 +709,25 @@
 # The exp of X + G, with X one term through a log source (weight 1; a positive
 # simple continuous prior, e.g. the unscaled intercept of a log-intercept
 # formula scaling) and G ~ N(m, s), s > 0, the Gaussian part (normal terms and
-# points), has no structural route as a log-scale sum (a general convolution),
-# but is the scale product Y = X W of X and the independent lognormal
+# points), is the scale product Y = X W of X and the independent lognormal
 # multiplier W = exp(G) ~ lognormal(m, s): the 'scale_product' leaf, with its
 # exact ordinates, region probabilities, plotted values and the
-# classification of its offset at 0. Mixture and spike-and-slab priors of X
-# are expanded before (the exp of each component is rewritten on its own; a
-# component that cannot be keeps the transformation node). NULL for other
-# transformations and sources: log-source terms with another weight (X^w W,
-# which the leaf's multiplier map does not represent), several log-source
-# terms, a non-Gaussian other term, a Gaussian part without variance (the
-# scalar route), and products.
+# classification of its offset at 0. The log-scale sum X + G is routed as the
+# log image of that product ('log_scale_product'), whose exp is the product
+# itself. Mixture and spike-and-slab priors of X are expanded before (the exp
+# of each component is rewritten on its own; a component that cannot be keeps
+# the transformation node). NULL for other transformations and sources:
+# log-source terms with another weight (X^w W, which the leaf's multiplier map
+# does not represent), several log-source terms, a non-Gaussian other term, a
+# Gaussian part without variance (the scalar route), and products.
 .prior_density_route_exp_scale_product <- function(source, transformation,
                                                    arguments, hull){
 
   if(!identical(transformation, "exp") || length(arguments) > 0L){
     return(NULL)
   }
-  if(identical(source$type, "unknown") && is.list(source$recipe)){
-    return(.prior_density_route_log_source_product(source$recipe))
+  if(identical(source$type, "log_scale_product")){
+    return(source$product)
   }
   if(!identical(source$type, "mixture") || !is.null(source$rows)){
     return(NULL)
@@ -741,8 +750,9 @@
   source
 }
 
-# The scale-product leaf of the exp of the combination recorded in 'recipe'
-# (see .prior_density_route_exp_scale_product()), or NULL.
+# The scale-product leaf of the exp of the combination in 'recipe' (prior
+# list, weights, source transformations and grid size; see
+# .prior_density_route_exp_scale_product()), or NULL.
 .prior_density_route_log_source_product <- function(recipe){
 
   weights <- recipe$weights[recipe$weights != 0]
@@ -1035,6 +1045,7 @@
     "conditional_normal" = .prior_conditional_normal_ordinate(route$spec, value, route$n_grid),
     "truncated_normal_convolution" = .prior_truncated_normal_convolution_ordinate(route$spec, value),
     "scale_product" = .prior_scale_product_ordinate(route$spec, value, route$n_grid),
+    "log_scale_product" = .prior_density_route_log_scale_product_ordinate(route, value),
     "convolution" = .prior_convolution_ordinate(route$spec, value, route$n_grid),
     "unknown" = .prior_density_ordinate_result(
       value       = value,
@@ -1100,6 +1111,39 @@
   combined
 }
 
+# Ordinate of the log image Z = log(Y) of a scale product Y at 'value':
+# f_Z(z) = f_Y(e^z) e^z, with the product's classification at e^z > 0 (never
+# its offset at 0) and its quadrature error scaled by e^z. A value whose
+# exponential is not representable has no ordinate value.
+.prior_density_route_log_scale_product_ordinate <- function(route, value){
+
+  y <- exp(value)
+  provenance <- list(kind = "log_scale_product")
+  if(!(y > 0) || !is.finite(y)){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "regular",
+      log_density = NA_real_,
+      exact       = FALSE,
+      method      = "scale_mixture",
+      reason      = paste0(
+        "The exponential of the requested value is not representable in ",
+        "ordinary floating-point arithmetic."
+      ),
+      provenance  = provenance
+    ))
+  }
+  source <- .prior_scale_product_ordinate(route$product$spec, y, route$product$n_grid)
+  provenance$source <- source$provenance
+  .prior_density_ordinate_wrap(
+    source       = source,
+    value        = value,
+    log_jacobian = -value,
+    method       = "scale_mixture",
+    provenance   = provenance
+  )
+}
+
 # Structural provenance of a route (the classification provenance without
 # value-dependent entries), used by named transformations to classify support
 # bounds, atoms and boundary limits of the source.
@@ -1131,6 +1175,10 @@
     "conditional_normal" = list(kind = "conditional_normal_mixture"),
     "truncated_normal_convolution" = .prior_truncated_normal_convolution_provenance(route$spec),
     "scale_product" = .prior_scale_product_route_provenance(route$spec),
+    "log_scale_product" = list(
+      kind   = "log_scale_product",
+      source = .prior_scale_product_route_provenance(route$product$spec)
+    ),
     "convolution" = list(kind = "convolution"),
     "unknown" = route$provenance,
     "mixture" = {
@@ -1174,6 +1222,12 @@
     "conditional_normal" = .prior_region_conditional_normal(route$spec, region, route$n_grid),
     "truncated_normal_convolution" = .prior_region_conditional_normal(route$spec, region, route$n_grid),
     "scale_product" = .prior_region_scale_product(route$spec, region, route$n_grid),
+    "log_scale_product" = .prior_region_scale_product(
+      route$product$spec,
+      list(intervals = exp(region$intervals),
+           indicator = function(values) region$indicator(log(values))),
+      route$product$n_grid
+    ),
     "convolution" = .prior_region_convolution(route$spec, region, route$n_grid),
     "unknown" = .prior_region_unavailable(),
     "mixture" = .prior_region_combine(
@@ -1222,6 +1276,17 @@
       }
     },
     "truncated_normal_convolution" = .prior_truncated_normal_convolution_density(route$spec, x),
+    "log_scale_product" = {
+      y <- exp(x)
+      representable <- y > 0 & is.finite(y)
+      out <- rep(NA_real_, length(x))
+      if(any(representable)){
+        out[representable] <- .prior_density_route_quadrature_density(
+          route$product, y[representable]
+        ) * y[representable]
+      }
+      out
+    },
     "mixture" = {
       positive <- route$weights > 0
       weights <- route$weights[positive] / sum(route$weights[positive])
@@ -1299,7 +1364,8 @@
 
 .prior_density_route_has_quadrature <- function(route){
 
-  .prior_density_route_has_leaf(route, c("conditional_normal", "scale_product", "convolution"))
+  .prior_density_route_has_leaf(route, c("conditional_normal", "scale_product",
+                                         "log_scale_product", "convolution"))
 }
 
 # Values a plotted density of the route must include: 'points' (atoms,
