@@ -867,12 +867,17 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     random_effects_interface = random_effects_interface
   )
   # The formula syntax is the registered 'linear_predictor' node of the fitted
-  # design, followed by the random-effect syntax.
+  # design, followed by the random-effect syntax. It ends with a complete line:
+  # JAGS_fit() appends the next formula's syntax directly after it, and the SD
+  # assignments that end the syntax of a marginalized block have no newline.
   output$formula_syntax <- paste0(
     .bt_deterministic_node_emit(.bt_dnode_linear_predictor(output$formula_design)),
     paste0(random_syntax, collapse = "\n"),
     collapse = "\n"
   )
+  if(!endsWith(output$formula_syntax, "\n")){
+    output$formula_syntax <- paste0(output$formula_syntax, "\n")
+  }
   # Carry the fitted fixed-effect design with the formula-scale metadata so
   # that every consumer derives original-scale coefficients from the design
   # (the design's own formula_scale copy stays as fitted).

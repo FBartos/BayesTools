@@ -1073,6 +1073,12 @@ old behaviour.
     with a message naming them instead of a duplicate `prior_list` name, and
     fixed formulas with dot expansion, `offset()`, inline transformations, or
     other calls stop with a clear message before the data are looked up.
+  - the `formula_syntax` of `JAGS_formula()` ends with a complete line also
+    when the formula ends with a random-effect block compiled as marginalized
+    (`random_effects_compile()`). `JAGS_fit()` appended the next formula's
+    syntax to the block's last SD assignment, so models with such a formula
+    before another formula did not compile (models in which it is the last
+    formula only gain a blank line in their syntax).
   - `expression()` formula terms are part of the formula parameter that
     `JAGS_bridgesampling()` reconstructs for `log_posterior`; 0.3.0 left them
     out (for `~ x + expression(0.25 * z[i])` it passed the intercept plus the

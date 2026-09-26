@@ -416,6 +416,88 @@ test_that("marginalized blocks keep metadata but omit latent mean nodes", {
   expect_match(result$formula_syntax, "mu__xREx__study_xRE_Zx", fixed = TRUE)
 })
 
+test_that("formula syntax ending with a marginalized block ends with a complete line", {
+
+  skip_if_not_installed("runjags")
+
+  # A marginalized diagonal block emits only its SD assignments, which carry no
+  # newline of their own; here they are the last lines of the formula syntax.
+  result <- .re_compile_result(
+    random_effects_compile(marginalized = "estimate")
+  )
+  mu_sd_line <- "mu__xREx__estimate_xRE_STDx[1] = mu__xREx__estimate_intercept"
+  expect_true(endsWith(result$formula_syntax, paste0("\n", mu_sd_line, "\n")))
+
+  # JAGS_fit() places the formula syntaxes one after another. The assembled
+  # model syntax is captured before any JAGS backend runs.
+  captured_syntax <- NULL
+  testthat::local_mocked_bindings(
+    .bt_add_backend_anchor = function(model_syntax, ...){
+      captured_syntax <<- model_syntax
+      stop(errorCondition(
+        "model syntax captured",
+        class = "bt_test_captured_model_syntax"
+      ))
+    }
+  )
+  expect_error(
+    JAGS_fit(
+      model_syntax = paste0(
+        "model{\n",
+        "  for(i in 1:N_mu){\n",
+        "    y[i] ~ dnorm(mu[i], exp(-2 * sigma[i]))\n",
+        "  }\n",
+        "}"
+      ),
+      data = list(y = c(-0.2, 0.1, 0.3, -0.1)),
+      formula_list = list(
+        mu = .re_compile_formula(),
+        sigma = .re_compile_formula()
+      ),
+      formula_data_list = list(
+        mu = .re_compile_data(),
+        sigma = .re_compile_data()
+      ),
+      formula_prior_list = list(
+        mu = list(intercept = prior("normal", list(0, 1))),
+        sigma = list(intercept = prior("normal", list(0, 1)))
+      ),
+      formula_random_prior_list = list(
+        mu = .re_compile_prior_random(),
+        sigma = .re_compile_prior_random()
+      ),
+      formula_random_effects_compile_list = list(
+        mu = random_effects_compile(marginalized = "estimate"),
+        sigma = random_effects_compile(marginalized = "estimate")
+      ),
+      chains = 1,
+      adapt = 100,
+      burnin = 100,
+      sample = 100,
+      seed = 1
+    ),
+    class = "bt_test_captured_model_syntax"
+  )
+
+  # Every line is a whole statement, a loop head, or a closing brace. Before
+  # the fix, the last SD assignment of 'mu' and the first line of 'sigma'
+  # formed one line, `..._intercept` + `for(i in 1:N_sigma){`.
+  lines <- trimws(strsplit(captured_syntax, "\n", fixed = TRUE)[[1L]])
+  lines <- lines[nzchar(lines)]
+  statement <- "^[A-Za-z][A-Za-z0-9_.]*(\\[[^]]+\\])? (=|<-|~) [^=~<{}]+$"
+  loop_head <- "^for\\([a-z] in [^)]+\\)\\{$"
+  whole_line <- grepl(statement, lines) | grepl(loop_head, lines) |
+    lines %in% c("model{", "}")
+  expect_true(all(whole_line), info = paste(lines[!whole_line], collapse = "\n"))
+  sigma_sd_line <- "sigma__xREx__estimate_xRE_STDx[1] = sigma__xREx__estimate_intercept"
+  expect_equal(sum(lines == mu_sd_line), 1L)
+  expect_equal(sum(lines == sigma_sd_line), 1L)
+  expect_identical(
+    lines[which(lines == mu_sd_line) + 1L],
+    "for(i in 1:N_sigma){"
+  )
+})
+
 test_that("marginalized blocks retain allocation and correlation metadata", {
 
   allocation_prior <- prior_random(
