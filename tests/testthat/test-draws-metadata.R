@@ -1,13 +1,36 @@
 skip_if_not_test_profile("unit")
 
+# The parse data of a source file, parsed once for all source scans of this
+# file. Only terminal tokens carry their text: the scans read tokens, never
+# the text of whole expressions.
+.draws_metadata_parse_cache <- new.env(parent = emptyenv())
+.draws_metadata_parse_data <- function(file){
+
+  key <- normalizePath(file, winslash = "/", mustWork = TRUE)
+  if(is.null(.draws_metadata_parse_cache[[key]])){
+    .draws_metadata_parse_cache[[key]] <- utils::getParseData(parse(file, keep.source = TRUE))
+  }
+  .draws_metadata_parse_cache[[key]]
+}
+
+# Whether a parse-data node is the literal TRUE: the token itself, or an
+# expression whose only token it is.
+.draws_metadata_is_true <- function(pd, id){
+
+  if(identical(pd$text[pd$id == id], "TRUE")){
+    return(TRUE)
+  }
+  value <- pd[pd$parent == id, ]
+  nrow(value) == 1L && identical(value$text, "TRUE")
+}
+
 # attr() call sites with a literal attribute name in the package sources: the
 # file, line, attribute name, whether 'exact = TRUE' is given, and whether the
 # call is an assignment target.
 .draws_metadata_attr_sites <- function(files){
 
   sites <- lapply(files, function(file){
-    exprs <- parse(file, keep.source = TRUE)
-    pd <- utils::getParseData(exprs, includeText = TRUE)
+    pd <- .draws_metadata_parse_data(file)
     attr_tokens <- pd[pd$text == "attr" &
                         pd$token %in% c("SYMBOL_FUNCTION_CALL", "SYMBOL"), ]
     rows <- lapply(seq_len(nrow(attr_tokens)), function(k){
@@ -34,7 +57,7 @@ skip_if_not_test_profile("unit")
         line   = token$line1,
         name   = literal,
         exact  = length(exact_at) == 1L &&
-          identical(kids$text[exact_at + 2L], "TRUE"),
+          .draws_metadata_is_true(pd, kids$id[exact_at + 2L]),
         assign = token$token == "SYMBOL_FUNCTION_CALL" &&
           nrow(parent_kids) == 3L && (
             (parent_kids$id[1L] == call_id &&
@@ -83,7 +106,7 @@ test_that("draw metadata is read and written only through its accessors", {
 .draws_metadata_named_sites <- function(files){
 
   sites <- lapply(files, function(file){
-    pd <- utils::getParseData(parse(file, keep.source = TRUE), includeText = TRUE)
+    pd <- .draws_metadata_parse_data(file)
     call_of <- function(function_name){
       symbols <- pd$parent[pd$token == "SYMBOL_FUNCTION_CALL" & pd$text == function_name]
       pd$parent[match(symbols, pd$id)]
@@ -154,6 +177,19 @@ test_that("draw metadata is never set by structure() or read from attributes()",
 })
 
 test_that("attributes are never read by partial name matching", {
+
+  # the scanner reads exact literal 'exact = TRUE' arguments and assignments
+  planted <- tempfile(fileext = ".R")
+  on.exit(unlink(planted), add = TRUE)
+  writeLines(c(
+    'a <- attr(x, "prior", exact = TRUE)',
+    'b <- attr(x, "prior")',
+    'attr(x, "prior") <- 1',
+    'd <- attr(x, "prior", exact = (TRUE))'
+  ), planted)
+  planted_sites <- .draws_metadata_attr_sites(planted)
+  expect_identical(planted_sites$exact, c(TRUE, FALSE, FALSE, FALSE))
+  expect_identical(planted_sites$assign, c(FALSE, FALSE, TRUE, FALSE))
 
   sites <- .draws_metadata_attr_sites(.draws_metadata_source_files())
   names <- unique(sites$name)
