@@ -173,7 +173,16 @@ density at zero behaves like v^(2a - 1) (zero for a > 1/2, 2 / (sqrt(k)
 B(1/2, b)) at a = 1/2, infinite below), with E[1 / sqrt(k S)] =
 B(a - 1/2, b) / (sqrt(k) B(a, b)). The route provenance of a scale product
 records its support hull and its offset behavior, so named transformations
-(the square of an SD) classify it. Other products (several products, a
+(the square of an SD) classify it. A value whose distance from the offset,
+x - c, or standardized distance (x - c) / w is not representable at full
+precision (subnormal, i.e. nonzero with absolute value below
+.Machine$double.xmin, or not finite) has no scale-product ordinate value
+(regular, `exact = FALSE`, "not representable at full precision"), and its
+plotted value is NA: the integrand's factor argument would be rounded to a
+multiple of the smallest subnormal (a gamma(2, 4) factor was off by 1.4e-4
+at 1e-320). The rule is applied at the leaf, so it holds on every route
+reaching it (products, ordered levels, allocated SDs, output
+transformations and log images). Other products (several products, a
 non-normal additive term with a product, several multiplied non-normal
 terms) have no structural route; their capped product grid is never used for
 heights or probabilities, which are then unavailable.

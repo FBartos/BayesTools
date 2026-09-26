@@ -1213,6 +1213,99 @@ test_that("the log-scale sum of a log-source term and a Gaussian part is the log
   }
 })
 
+test_that("scale-product ordinates at subnormal distances from the offset have no value", {
+
+  # Y = exp(log(b0) + .4 b1 + .3) = b0 W with b0 ~ gamma(2, 4) and the
+  # lognormal W = exp(.3 + .4 b1), b1 ~ N(0, 1): f_Y(y) = 16 y E[W^-2]
+  # (1 + O(y)), E[W^-2] = exp(-.6 + .32), so log f_Y(y) = log(16) + log(y) -
+  # .28 to double precision for y <= 1e-300 (analytic reference). Below
+  # .Machine$double.xmin the quadrature's factor argument y / W is rounded to
+  # a multiple of the smallest subnormal: the log density was off by 1.35e-4
+  # at 1e-320 and by 7.2e-2 at 4.9e-324 with exact = TRUE.
+  density <- .prior_linear_combination_density(
+    list(b0 = prior("gamma", list(2, 4)), b1 = prior("normal", list(0, 1)),
+         k = prior("point", list(.3))),
+    c(b0 = 1, b1 = .4, k = 1), source_transforms = c(b0 = "log", b1 = NA, k = NA),
+    output_transformation = "exp"
+  )
+  route <- .prior_density_route_from_adaptive(attr(density, "adaptive_evaluation"))
+  expect_identical(route$type, "scale_product")
+  small_log_density <- function(y) log(16) + log(y) - .28
+  for(value in c(1e-300, 2.3e-308, .Machine$double.xmin)){
+    ordinate <- prior_density_ordinate(density, value)
+    expect_true(ordinate$exact)
+    expect_lte(abs(ordinate$log_density - small_log_density(value)), 1e-12)
+  }
+  for(value in c(1e-310, 1e-320, 4.9e-324)){
+    ordinate <- prior_density_ordinate(density, value)
+    expect_identical(ordinate$behavior, "regular")
+    expect_false(ordinate$exact)
+    expect_true(is.na(ordinate$log_density))
+    expect_match(ordinate$reason, "not representable at full precision", fixed = TRUE)
+  }
+  status <- prior_ordinate_status(density, c(1e-300, 1e-320))
+  expect_identical(status$eligible, c(TRUE, FALSE))
+  expect_identical(status$condition[[2L]], "BayesTools_inexact_ordinate")
+  # the plotted density takes the ordinate there (no value)
+  plotted <- .prior_density_route_density(route, c(1e-300, 1e-320))
+  expect_equal(plotted[[1L]], exp(small_log_density(1e-300)), tolerance = 1e-10)
+  expect_true(is.na(plotted[[2L]]))
+  # a mixture with such a component has no value either
+  mixture <- .prior_linear_combination_density(
+    list(b0 = prior_mixture(list(prior("gamma", list(2, 4)), prior("normal", list(0, .5), list(0, Inf))),
+                            is_null = c(FALSE, FALSE)),
+         b1 = prior("normal", list(0, 1)), k = prior("point", list(.3))),
+    c(b0 = 1, b1 = .4, k = 1), source_transforms = c(b0 = "log", b1 = NA, k = NA),
+    output_transformation = "exp"
+  )
+  expect_true(prior_density_ordinate(mixture, 1e-300)$exact)
+  expect_false(prior_density_ordinate(mixture, 1e-320)$exact)
+
+  # the rule is on the leaf's own distance (value - c) / w, whichever route
+  # reaches it. Leaf: b ~ gamma(2, 4) times s ~ Beta(3, 2), with
+  # f(x) = 16 x E[s^-2] (1 + O(x)), E[s^-2] = B(1, 2) / B(3, 2) = 6.
+  leaf <- list(type = "scale_product", n_grid = 1024L, spec = .prior_scale_product_spec(
+    offset = 0, scale = 1, factor = prior("gamma", list(2, 4)),
+    multiplier = prior("beta", list(3, 2)), sources = list()
+  ))
+  leaf_log_density <- function(x) log(96) + log(x)
+  # a lin transformation with slope 1e10 maps 1e-290 to 1e-300 and 1e-300 to
+  # the subnormal 1e-310
+  transformed <- .prior_density_route_transform(
+    leaf, "lin", list(a = 0, b = 1e10), function() .prior_scale_product_hull(leaf$spec)
+  )
+  ordinate <- .prior_density_route_ordinate(transformed, 1e-290)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density - (leaf_log_density(1e-300) - log(1e10))), 1e-12)
+  ordinate <- .prior_density_route_ordinate(transformed, 1e-300)
+  expect_false(ordinate$exact)
+  expect_match(ordinate$reason, "not representable at full precision", fixed = TRUE)
+  # a product weight: the standardized distance 1e-300 / 1e10 is subnormal
+  # (the log density was off by 8.4e-7 with exact = TRUE)
+  weighted <- leaf
+  weighted$spec$scale <- 1e10
+  expect_true(.prior_density_route_ordinate(weighted, 1e-290)$exact)
+  expect_false(.prior_density_route_ordinate(weighted, 1e-300)$exact)
+  # a subnormal value is refused also where its standardized distance is not
+  expect_false(.prior_density_route_ordinate(leaf, 1e-310)$exact)
+  small_weight <- leaf
+  small_weight$spec$scale <- 1e-10
+  expect_false(.prior_density_route_ordinate(small_weight, 1e-310)$exact)
+  # the square-root share map of allocated SDs: gamma(2, 2) scale prior times
+  # sqrt(2 s), s ~ Beta(3, 2), f(x) = 4 x E[1 / (2 s)] (1 + O(x)) with
+  # E[1 / s] = B(2, 2) / B(3, 2) (the log density was off by 1.2e-4 at 1e-320)
+  allocated <- list(type = "scale_product", n_grid = 1024L, spec = .prior_scale_product_spec(
+    offset = 0, scale = 1, factor = prior("gamma", list(2, 2)),
+    multiplier = prior("beta", list(3, 2)), sources = list(),
+    map = list(type = "sqrt", scale = 2)
+  ))
+  ordinate <- .prior_density_route_ordinate(allocated, 1e-300)
+  expect_true(ordinate$exact)
+  expect_lte(abs(ordinate$log_density -
+                   (log(4) + log(1e-300) + lbeta(2, 2) - lbeta(3, 2) - log(2))), 1e-12)
+  expect_false(.prior_density_route_ordinate(allocated, 1e-320)$exact)
+})
+
 test_that("products of normal terms are classified on the scale-mixture route", {
 
   # beta * sigma with beta, sigma ~ N(0, 1) has the density K0(|x|) / pi

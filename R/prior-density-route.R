@@ -1111,21 +1111,29 @@
   combined
 }
 
+# Whether the values 'x' are representable at full double precision: finite
+# and not subnormal (|x| >= .Machine$double.xmin; zero is excluded as well).
+# Below .Machine$double.xmin a result is rounded to a multiple of the smallest
+# subnormal, so a density evaluated at (or through) it is shifted wherever it
+# varies near zero. Quadrature ordinates whose evaluation point is not
+# representable at full precision have no value: the log image of a scale
+# product at e^z and the scale-product leaf at its distance from the offset
+# (.prior_scale_product_full_precision()).
+.prior_density_full_precision <- function(x){
+  is.finite(x) & abs(x) >= .Machine$double.xmin
+}
+
 # Ordinate of the log image Z = log(Y) of a scale product Y at 'value':
 # f_Z(z) = f_Y(e^z) e^z, with the product's classification at e^z > 0 (never
 # its offset at 0) and its quadrature error scaled by e^z. A value whose
 # exponential is not representable at full precision (zero, infinite, or
 # subnormal: below .Machine$double.xmin, e^z is rounded, which moves f_Y(e^z)
 # when f_Y varies near 0) has no ordinate value.
-.prior_density_route_log_scale_product_representable <- function(y){
-  is.finite(y) & y >= .Machine$double.xmin
-}
-
 .prior_density_route_log_scale_product_ordinate <- function(route, value){
 
   y <- exp(value)
   provenance <- list(kind = "log_scale_product")
-  if(!.prior_density_route_log_scale_product_representable(y)){
+  if(!.prior_density_full_precision(y)){
     return(.prior_density_ordinate_result(
       value       = value,
       behavior    = "regular",
@@ -1285,7 +1293,7 @@
     "truncated_normal_convolution" = .prior_truncated_normal_convolution_density(route$spec, x),
     "log_scale_product" = {
       y <- exp(x)
-      representable <- .prior_density_route_log_scale_product_representable(y)
+      representable <- .prior_density_full_precision(y)
       out <- rep(NA_real_, length(x))
       if(any(representable)){
         out[representable] <- .prior_density_route_quadrature_density(

@@ -1827,7 +1827,9 @@
 # Batched plan of the scale-product density at the values 'x' (as
 # .prior_conditional_normal_density_plan()): values outside the support hull
 # have a zero density ('zero'), and its bounds and the offset are classified
-# by the ordinate. The integrand is singular ('batch' FALSE; its integrand and
+# by the ordinate, as are values whose distance from the offset is not
+# representable at full precision (the ordinate has no value there). The
+# integrand is singular ('batch' FALSE; its integrand and
 # breakpoints only with 'singular') where the multiplier's density is infinite
 # at a nonzero finite bound, and at the image of a nonzero finite bound where
 # the factor's density is infinite.
@@ -1835,7 +1837,8 @@
 
   hull <- .prior_scale_product_hull(spec)
   zero <- x < hull[1L] | x > hull[2L]
-  special <- !zero & (x == hull[1L] | x == hull[2L] | x == spec$offset)
+  special <- !zero & (x == hull[1L] | x == hull[2L] | x == spec$offset |
+                        !.prior_scale_product_full_precision(spec, x))
   setup <- .prior_scale_product_breakpoint_setup(spec)
   factor_bounds <- unlist(spec$factor$truncation[c("lower", "upper")], use.names = FALSE)
   # with a square-root map, a share density that is infinite at zero is not
@@ -1937,6 +1940,22 @@
   )
 }
 
+# Whether the scale-product quadrature at the values 'x' keeps full double
+# precision: the distance x - c from the offset and the standardized distance
+# (x - c) / w are finite and not subnormal (.prior_density_full_precision()).
+# A subnormal distance is rounded to a multiple of the smallest subnormal, and
+# so is the factor's argument (x - c) / (w m(s)) of the integrand, which moves
+# the factor's density where it varies near zero (for a gamma(2, 4) factor
+# and a lognormal multiplier, by 1.4e-4 relative at 1e-320 and 7e-2 at
+# 4.9e-324). Such a value has no ordinate value, whichever route reaches the
+# leaf (products, ordered levels, allocations, transformations, log images).
+.prior_scale_product_full_precision <- function(spec, x){
+
+  difference <- x - spec$offset
+  .prior_density_full_precision(difference) &
+    .prior_density_full_precision(difference / spec$scale)
+}
+
 .prior_scale_product_ordinate <- function(spec, value, n_grid){
 
   provenance <- .prior_scale_product_provenance(spec)
@@ -1967,6 +1986,21 @@
     ))
   }
 
+  provenance$structural_regularity <- "scale_mixture_inside_support"
+  if(!.prior_scale_product_full_precision(spec, value)){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "regular",
+      log_density = NA_real_,
+      exact       = FALSE,
+      method      = "scale_mixture",
+      reason      = paste0(
+        "The distance of the requested value from the product's offset is not ",
+        "representable at full precision in ordinary floating-point arithmetic."
+      ),
+      provenance  = provenance
+    ))
+  }
   distance <- (value - spec$offset) / spec$scale
   integrand <- .prior_scale_product_integrand(spec)
   integral <- .prior_conditional_normal_quadrature(
@@ -1975,7 +2009,6 @@
     zero_message = "zero ordinate for a structurally positive density",
     kind = "scale_mixture"
   )
-  provenance$structural_regularity <- "scale_mixture_inside_support"
   provenance$integration <- integral$integration
   .prior_density_ordinate_result(
     value = value, behavior = "regular",

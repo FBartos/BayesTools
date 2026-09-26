@@ -23,7 +23,9 @@
 #' * `exact`: whether `behavior` follows from deterministic prior provenance
 #'   and, for a `"regular"` ordinate, `log_density` is available (in closed
 #'   form or from a quadrature accepted by its diagnostics). A regular ordinate
-#'   without a value (a quadrature rejected by its diagnostics, or a boundary
+#'   without a value (a quadrature rejected by its diagnostics, a quadrature
+#'   whose evaluation point is not representable at full double precision,
+#'   e.g. a subnormal distance from the offset of a product, or a boundary
 #'   limit without a structural value) has `exact = FALSE`, `log_density = NA`
 #'   and the failure in `reason`; `exact = TRUE` never comes with a missing
 #'   regular `log_density`;
