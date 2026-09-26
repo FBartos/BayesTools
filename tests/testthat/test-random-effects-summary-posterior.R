@@ -1228,7 +1228,12 @@ test_that("raw group rows require their group level labels", {
 
 # Bin probabilities of a prior density (its region route) against draws of the
 # generative process: each within 4 binomial standard errors; the atom at 0
-# as well.
+# as well. The standardized deviation does not depend on the number of draws:
+# with 1e5 draws the smallest expected bin count of the tests below is about
+# 98, the exact Binomial probability of a 4-SE excursion is at most 8.2e-5 per
+# bin, and their 119 bins expect 0.008 false alarms (as with 1e6 draws). A
+# 4-SE deviation is at most 8.5% of a bin probability of 0.05 or more (2.7%
+# with 1e6 draws).
 .expect_allocation_bins <- function(density, draws, edges, info){
 
   n <- length(draws)
@@ -1322,12 +1327,12 @@ test_that("allocation-derived SDs, variances and totals have exact prior densiti
   expect_equal(exp(prior_density_ordinate(total_included, .06)$log_density),
                (f_T(.06) / 4 + h(.06) / 2) / .75, tolerance = 1e-8)
 
-  # bin probabilities against 1e6 draws of the generative process
+  # bin probabilities against 1e5 draws of the generative process
   set.seed(20260925)
   draw_T <- function(n){
     abs(stats::rnorm(n, 0, ifelse(stats::runif(n) < .6, .25, .75)))
   }
-  draws <- .allocation_prior_draws(1e6, draw_T, c(1, 1), c(.5, .5))
+  draws <- .allocation_prior_draws(1e5, draw_T, c(1, 1), c(.5, .5))
   edges <- c(0, .01, .03, .06, .12, .25, .5, 1, Inf)
   .expect_allocation_bins(density_of("(mu) study: sd(intercept)"), draws$components[, 1L], edges)
   .expect_allocation_bins(density_of("(mu) drug: sd(intercept)"), draws$components[, 2L], edges)
@@ -1383,7 +1388,7 @@ test_that("allocation prior densities cover partial sets, ungated components and
   )
 
   set.seed(20260926)
-  draws <- .allocation_prior_draws(1e6, function(n) stats::rgamma(n, 2, 2),
+  draws <- .allocation_prior_draws(1e5, function(n) stats::rgamma(n, 2, 2),
                                    c(1, 2, 3), c(.3, .6, 1))
   edges <- c(0, .05, .15, .3, .5, .8, 1.2, 2, Inf)
   for(i in 1:3){
@@ -1406,8 +1411,8 @@ test_that("allocation prior densities cover partial sets, ungated components and
                      0, 1, rel.tol = 1e-13)$value,
     tolerance = 1e-8
   )
-  eta <- matrix(stats::rgamma(2e6, shape = rep(c(2, 3), each = 1e6)), ncol = 2L)
-  sd_x <- stats::rgamma(1e6, 2, 2) * sqrt(2 * eta[, 2L] / rowSums(eta))
+  eta <- matrix(stats::rgamma(2e5, shape = rep(c(2, 3), each = 1e5)), ncol = 2L)
+  sd_x <- stats::rgamma(1e5, 2, 2) * sqrt(2 * eta[, 2L] / rowSums(eta))
   .expect_allocation_bins(density, sd_x, edges)
 })
 

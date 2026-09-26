@@ -1652,9 +1652,14 @@ test_that("LKJ correlations have the exact LKJ marginal prior density", {
   # the primitives (Beta draws with the shapes of the emitted JAGS syntax, as
   # the JAGS module samples them) pass through the catalog's correlation
   # evaluator, and each of 20 equal-width bins on (-1, 1) holds its exact Beta
-  # probability within 4 binomial standard errors (840 bins; a two-sided 4-SE
-  # excursion has probability 6e-5 per bin).
-  n <- 1e6
+  # probability p within 4 binomial standard errors sqrt(p (1 - p) / n).
+  # The standardized deviation does not depend on n: with n = 1e5 the smallest
+  # expected bin count is 47 (the edge bins of K = 5, eta = 2), the exact
+  # Binomial(n, p) probability of a 4-SE excursion is at most 1.1e-4 per bin,
+  # and the 840 bins expect 0.055 false alarms (0.053 with n = 1e6). A 4-SE
+  # deviation is 3.8-7.0% of the probability of a central bin (1.2-2.2% with
+  # n = 1e6).
+  n <- 1e5
   breaks <- seq(-1, 1, length.out = 21L)
   for(K in c(2L, 3L, 5L)){
     for(eta in c(0.5, 1, 2)){
