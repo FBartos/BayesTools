@@ -319,7 +319,10 @@ bisection without extrapolation converges too slowly there) take their
 ordinate. A route with quadrature leaves is plotted on at most 200 equally
 spaced values plus the values it must include (atoms, offsets, normal means,
 meeting points, finite support bounds with a point 1e-6 of the plotted range
-to either side) and the parabola vertex at each interior local maximum.
+outside each bound: the value at a bound is the density's limit inside the
+support, so the point as far inside would repeat it and is added only where
+the density at the bound is infinite or unavailable) and the parabola vertex
+at each interior local maximum.
 A batched value can exist where the per-value ordinate's quadrature is rejected
 by QUADPACK's flags (heavy-tailed pure scale mixtures): the plot shows it,
 while heights and point hypotheses at that value stop. Only a combination

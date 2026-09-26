@@ -1494,38 +1494,49 @@
 
 # Values a plotted density of the route must include: 'points' (atoms,
 # offsets of scale mixtures and products, where the density may peak or be
-# infinite, normal means, and meeting points of convolution bounds) and
-# 'jumps' (finite support bounds of scalar terms and of scale products and
-# convolutions, where the density may jump).
+# infinite, normal means, and meeting points of convolution bounds) and the
+# finite support bounds of scalar terms and of scale products and
+# convolutions, where the density may jump: 'lower' bounds (the support of
+# the term lies above them) and 'upper' bounds (below them). The density at
+# such a bound is the one-sided limit inside the term's support.
 .prior_density_route_display_points <- function(route){
 
-  empty <- list(points = numeric(), jumps = numeric())
+  empty <- list(points = numeric(), lower = numeric(), upper = numeric())
   combine <- function(parts){
     list(points = unlist(lapply(parts, `[[`, "points"), use.names = FALSE),
-         jumps  = unlist(lapply(parts, `[[`, "jumps"), use.names = FALSE))
+         lower  = unlist(lapply(parts, `[[`, "lower"), use.names = FALSE),
+         upper  = unlist(lapply(parts, `[[`, "upper"), use.names = FALSE))
   }
   finite <- function(values) values[is.finite(values)]
+  hull <- function(points, hull){
+    list(points = finite(points), lower = finite(hull[1L]), upper = finite(hull[2L]))
+  }
   switch(
     route$type,
-    "atom" = list(points = finite(route$locations), jumps = numeric()),
+    "atom" = list(points = finite(route$locations), lower = numeric(), upper = numeric()),
     "scalar" = {
       bounds <- .prior_density_route_prior_bounds(route$prior)
       if(identical(route$source_transform, "log")){
-        bounds <- log(bounds[bounds > 0])
+        bounds <- lapply(bounds, function(values) log(values[values > 0]))
       }
-      list(points = numeric(), jumps = finite(route$offset + route$scale * bounds))
+      bounds <- lapply(bounds, function(values) finite(route$offset + route$scale * values))
+      # a negative scale maps lower bounds of the term to upper bounds
+      if(route$scale < 0){
+        bounds <- list(lower = bounds$upper, upper = bounds$lower)
+      }
+      list(points = numeric(), lower = bounds$lower, upper = bounds$upper)
     },
     "normal" = {
       normal <- .prior_density_ordinate_linear_normal(
         route$prior_list, route$weights, route$source_transforms, 0
       )
-      list(points = finite(normal$provenance$mean), jumps = numeric())
+      list(points = finite(normal$provenance$mean), lower = numeric(), upper = numeric())
     },
-    "conditional_normal" = list(points = finite(route$spec$additive_mean), jumps = numeric()),
-    "scale_product" = list(points = finite(route$spec$offset),
-                           jumps  = finite(.prior_scale_product_hull(route$spec))),
-    "convolution" = list(points = finite(.prior_convolution_meeting_points(route$spec)),
-                         jumps  = finite(.prior_convolution_hull(route$spec))),
+    "conditional_normal" = list(points = finite(route$spec$additive_mean),
+                                lower = numeric(), upper = numeric()),
+    "scale_product" = hull(route$spec$offset, .prior_scale_product_hull(route$spec)),
+    "convolution" = hull(.prior_convolution_meeting_points(route$spec),
+                         .prior_convolution_hull(route$spec)),
     "mixture" = combine(lapply(route$components[route$weights > 0],
                                .prior_density_route_display_points)),
     "transform" = {
@@ -1541,28 +1552,40 @@
             values, route$transformation, arguments
           )))
         }
-        list(points = map(source$points), jumps = map(source$jumps))
+        # 'lin' and 'exp_lin' with a negative 'b' are decreasing and map
+        # lower bounds to upper bounds ('tanh' and 'exp' are increasing)
+        decreasing <- route$transformation %in% c("lin", "exp_lin") && arguments$b < 0
+        list(points = map(source$points),
+             lower  = map(if(decreasing) source$upper else source$lower),
+             upper  = map(if(decreasing) source$lower else source$upper))
       }
     },
     empty
   )
 }
 
-# Finite truncation bounds of a simple prior or of the components of a
-# mixture or spike-and-slab prior (point components are atoms, not bounds).
+# Finite lower and upper truncation bounds of a simple prior or of the
+# components of a mixture or spike-and-slab prior (point components are
+# atoms, not bounds).
 .prior_density_route_prior_bounds <- function(prior){
 
   if(is.prior.spike_and_slab(prior) || is.prior.mixture(prior)){
-    return(unlist(lapply(prior, .prior_density_route_prior_bounds), use.names = FALSE))
+    bounds <- lapply(prior, .prior_density_route_prior_bounds)
+    return(list(
+      lower = unlist(lapply(bounds, `[[`, "lower"), use.names = FALSE),
+      upper = unlist(lapply(bounds, `[[`, "upper"), use.names = FALSE)
+    ))
   }
+  empty <- list(lower = numeric(), upper = numeric())
   if(!is.prior.simple(prior) || is.prior.point(prior) || is.prior.discrete(prior)){
-    return(numeric())
+    return(empty)
   }
-  bounds <- unlist(prior$truncation[c("lower", "upper")], use.names = FALSE)
-  if(!is.numeric(bounds)){
-    return(numeric())
+  bounds <- prior$truncation[c("lower", "upper")]
+  if(!all(vapply(bounds, function(bound) is.numeric(bound) && length(bound) == 1L,
+                 logical(1)))){
+    return(empty)
   }
-  bounds[is.finite(bounds)]
+  lapply(bounds, function(bound) bound[is.finite(bound)])
 }
 
 # The route with the numerical grids of its leaves without a structural

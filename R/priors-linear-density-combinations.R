@@ -3281,7 +3281,7 @@
     # with quadrature leaves is plotted on at most
     # .prior_linear_density_display_size() equally spaced values plus the
     # values it must include (support bounds and jumps, with a point just
-    # beyond each, offsets and other peaks, and atoms), and the vertex of a
+    # outside each, offsets and other peaks, and atoms), and the vertex of a
     # parabola through each local maximum and its neighbours.
     structural <- !is.null(route) && !identical(route$type, "unknown")
     display <- structural && .prior_density_route_has_quadrature(route)
@@ -3441,9 +3441,13 @@
 }
 
 # Values within the range of the raw plotting values 'raw' that a plotted
-# density of 'route' must include: its display points and jumps (with a point
-# 1e-6 of the plotted range to either side of each jump) and the atoms of
-# 'dist'.
+# density of 'route' must include: its display points, its support bounds and
+# the atoms of 'dist'. The density at a bound is the one-sided limit inside
+# the support, so the value 1e-6 of the plotted range outside the bound (below
+# a lower bound, above an upper bound) draws the jump; the value as far
+# inside it would repeat the value at the bound and is added only where the
+# density at the bound is not drawn (infinite, e.g. a singular offset, or
+# unavailable), so the curve still comes that close to the bound.
 .prior_linear_density_display_values <- function(route, dist, raw){
 
   raw <- raw[is.finite(raw)]
@@ -3456,8 +3460,14 @@
     dist$points$x[dist$points$p > 0]
   }
   delta <- 1e-6 * diff(limits)
-  values <- c(special$points, atoms, special$jumps,
-              special$jumps - delta, special$jumps + delta)
+  bounds <- c(special$lower, special$upper)
+  inside <- c(special$lower + delta, special$upper - delta)
+  undrawn <- inside >= limits[1L] & inside <= limits[2L]
+  if(any(undrawn)){
+    undrawn[undrawn] <- !is.finite(.prior_density_route_density(route, bounds[undrawn]))
+  }
+  values <- c(special$points, atoms, bounds,
+              special$lower - delta, special$upper + delta, inside[undrawn])
   unique(values[is.finite(values) & values >= limits[1L] & values <= limits[2L]])
 }
 

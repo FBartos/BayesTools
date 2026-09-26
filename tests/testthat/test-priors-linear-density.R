@@ -2900,7 +2900,10 @@ test_that("plotted quadrature routes share one batched quadrature on a bounded d
   curve <- plot_data$density
   expect_lte(length(curve$x), 205L)
   jump_delta <- 1e-6 * 5
-  expect_true(all(c(1, 1.5, 1.5 - jump_delta, 1.5 + jump_delta) %in% curve$x))
+  expect_true(all(c(1, 1.5, 1.5 - jump_delta) %in% curve$x))
+  # 1.5 is a lower bound whose plotted value is the limit inside the support,
+  # so a value just inside it would repeat that value
+  expect_false((1.5 + jump_delta) %in% curve$x)
   expect_equal(plot_data$points1$x, 1)
   expect_equal(plot_data$points1$y, .25)
   truncated_t <- function(u){
@@ -2928,6 +2931,74 @@ test_that("plotted quadrature routes share one batched quadrature on a bounded d
   maximum <- stats::optimize(skewed_reference, c(0, 5), maximum = TRUE, tol = 1e-10)
   expect_equal(max(curve$y), maximum$objective, tolerance = 1e-7)
   expect_identical(pieces, 0L)
+})
+
+test_that("plotted densities draw a support bound with one value outside it", {
+
+  # The plotted value at a finite support bound is the density's limit inside
+  # the support, so the display grid adds the value 1e-6 of the plotted range
+  # outside the bound (below a lower bound, above an upper bound) and not the
+  # one inside it, which repeated the value at the bound (the first two points
+  # of the exp(affine) scale-intercept prior coincided in the plot). The
+  # inside value stays where the density at the bound is not drawn
+  # (infinite), and both sides where one term's support ends and another's
+  # starts. References: the scale-product offset f(0+) E[1 / W] in closed
+  # form, and truncated-t densities with integrate() at rel.tol 1e-12.
+  z0 <- -0.98946052195266332
+  intercept <- .prior_linear_combination_density(
+    list(b0 = prior("normal", list(0, 1 / sqrt(8)), list(0, Inf)), b1 = prior("normal", list(0, .5))),
+    c(b0 = 1, b1 = z0), source_transforms = c(b0 = "log", b1 = NA), output_transformation = "exp"
+  )
+  curve <- .prior_linear_density_to_plot_data(intercept, x_range = c(0, 2))$density
+  expect_identical(curve$x[1L], 0)
+  expect_equal(curve$y[1L], 2 * stats::dnorm(0, 0, 1 / sqrt(8)) * exp((.5 * z0)^2 / 2), tolerance = 1e-12)
+  expect_gt(min(diff(curve$x)), 1e-3)
+  expect_lte(length(curve$x), 200L)
+
+  # an upper bound: the negated product of a gamma(2, 1) term and a
+  # lognormal scale has support (-Inf, 0]
+  term <- prior("gamma", list(2, 1))
+  attr(term, "multiply_by") <- "s"
+  negated <- .prior_linear_combination_density(
+    list(b = term, s = prior("lognormal", list(0, .5))), c(b = 1),
+    output_transformation = "lin", output_transformation_arguments = list(a = 0, b = -1)
+  )
+  curve <- .prior_linear_density_to_plot_data(negated, x_range = c(-5, 1))$density
+  delta <- 1e-6 * 6
+  expect_true(all(c(0, delta) %in% curve$x))
+  expect_false(-delta %in% curve$x)
+  expect_equal(curve$y[curve$x == delta], 0)
+
+  # a singular bound: the gamma(.5, 1) term makes the density at 0 infinite,
+  # so the curve starts at the value just inside it
+  term <- prior("gamma", list(.5, 1))
+  attr(term, "multiply_by") <- "s"
+  singular <- .prior_linear_combination_density(
+    list(b = term, s = prior("lognormal", list(0, .5))), c(b = 1)
+  )
+  curve <- .prior_linear_density_to_plot_data(singular, x_range = c(0, 5))$density
+  expect_identical(curve$x[1L], 1e-6 * 5)
+  expect_equal(curve$y[1L], exp(prior_density_ordinate(singular, 1e-6 * 5)$log_density), tolerance = 1e-8)
+
+  # one term's support ends at 1 and another's starts there: both sides
+  a <- prior_mixture(list(prior("spike", list(0)), prior("normal", list(0, .3))), is_null = c(TRUE, FALSE))
+  b <- prior_mixture(list(prior("t", list(0, .5, 3), list(1, Inf)), prior("t", list(0, .5, 3), list(-Inf, 1))),
+                     is_null = c(FALSE, FALSE))
+  split <- .prior_linear_combination_density(list(a = a, b = b), c(a = 1, b = 1))
+  curve <- .prior_linear_density_to_plot_data(split, x_range = c(-2, 4))$density
+  delta <- 1e-6 * 6
+  at <- c(1 - delta, 1, 1 + delta)
+  expect_true(all(at %in% curve$x))
+  upper_part <- function(u) ifelse(u >= 1, stats::dt(u / .5, 3) / .5 / stats::pt(2, 3, lower.tail = FALSE), 0)
+  lower_part <- function(u) ifelse(u <= 1, stats::dt(u / .5, 3) / .5 / stats::pt(2, 3), 0)
+  convolution <- function(value, part, lower, upper){
+    stats::integrate(function(u) stats::dnorm(value - u, 0, .3) * part(u), lower, upper, rel.tol = 1e-12)$value
+  }
+  reference <- vapply(at, function(value){
+    .25 * (upper_part(value) + lower_part(value)) +
+      .25 * convolution(value, upper_part, 1, Inf) + .25 * convolution(value, lower_part, -Inf, 1)
+  }, numeric(1))
+  expect_equal(curve$y[match(at, curve$x)], reference, tolerance = 1e-8)
 })
 
 test_that("batched densities compute the single-value breakpoints and integrals for all values at once", {
