@@ -432,7 +432,11 @@
     independent = independent,
     hom = hom,
     extra_args = extra_args,
-    term_formula = .bt_rhs_formula(expr, env = env),
+    # The term formula is evaluated only against data columns (its predictors
+    # are validated column names combined by formula operators), so it keeps no
+    # caller environment: fitted designs store it, and a saved fit would carry
+    # the whole calling workspace with it.
+    term_formula = .bt_rhs_formula(expr, env = baseenv()),
     index = index
   )
 

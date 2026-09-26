@@ -612,6 +612,63 @@ test_that("formula_target fixed and conditional preserve explicit semantics", {
   )
 })
 
+test_that("random-effect prediction reads the block's predictors only from the data", {
+
+  # The fitted design keeps no environment of the code that built it: a
+  # predictor missing from the prediction data is reported instead of being
+  # taken from where the formula was written (this test's local 'x').
+  result <- JAGS_formula(
+    formula = ~ 1 + diag(1 + x | id),
+    parameter = "mu",
+    data = .formula_prediction_data(),
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = .formula_prediction_sd_prior(),
+        monitor = random_monitor(latent = FALSE, coefficients = TRUE, correlation = FALSE)
+      )
+    )
+  )
+  posterior <- matrix(
+    c(10, 1, 2, 0.5, 0.1, -0.5, -0.2),
+    nrow = 1,
+    dimnames = list(NULL, c(
+      "mu_intercept",
+      "mu__xREx__id_intercept",
+      "mu__xREx__id_x",
+      "mu__xREx__id_xRE_COEFx[1,1]",
+      "mu__xREx__id_xRE_COEFx[1,2]",
+      "mu__xREx__id_xRE_COEFx[2,1]",
+      "mu__xREx__id_xRE_COEFx[2,2]"
+    ))
+  )
+  fit <- coda::mcmc(posterior)
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  x <- c(100, 200)
+  new_data <- data.frame(id = factor(c("a", "b"), levels = c("a", "b")))
+
+  expect_error(
+    JAGS_evaluate_formula(
+      fit = fit,
+      parameter = "mu",
+      data = new_data,
+      formula_target = "conditional"
+    ),
+    "The 'x' predictor needed for random-effect prediction is missing in the data.",
+    fixed = TRUE
+  )
+  new_data$x <- c(1, 2)
+  expect_equal(
+    unname(JAGS_evaluate_formula(
+      fit = fit,
+      parameter = "mu",
+      data = new_data,
+      formula_target = "conditional"
+    )),
+    matrix(c(10 + 0.5 + 0.1 * 1, 10 - 0.5 - 0.2 * 2), ncol = 1)
+  )
+})
+
 test_that("conditional target handles new levels by explicit policy", {
 
   result <- .formula_prediction_result()

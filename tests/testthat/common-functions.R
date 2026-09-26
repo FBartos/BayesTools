@@ -138,6 +138,53 @@ build_test_parameter_coordinates <- function(columns, monitor_names = columns,
   )
 }
 
+# Paths of the formulas, terms objects, and closures stored in 'x' (list
+# elements and attributes, recursively) whose environment a saved copy of 'x'
+# serializes with everything it holds: any environment other than the base or
+# empty environment or a namespace. Environments are not entered; subtrees at
+# the paths in 'skip' are not inspected.
+stored_environment_paths <- function(x, path = "x", skip = character()) {
+  captured <- function(env) {
+    !(identical(env, baseenv()) || identical(env, emptyenv()) || isNamespace(env))
+  }
+  out <- character()
+  visit <- function(x, path) {
+    if (path %in% skip || is.environment(x)) {
+      return(invisible())
+    }
+    if (is.function(x)) {
+      if (!is.primitive(x) && captured(environment(x))) {
+        out <<- c(out, path)
+      }
+      return(invisible())
+    }
+    if (inherits(x, "formula")) {
+      env <- attr(x, ".Environment", exact = TRUE)
+      if (is.environment(env) && captured(env)) {
+        out <<- c(out, path)
+      }
+    }
+    x_attributes <- attributes(x)
+    for (name in setdiff(names(x_attributes), c(".Environment", "names", "class", "dim", "dimnames", "row.names"))) {
+      visit(x_attributes[[name]], paste0("attr(", path, ", \"", name, "\")"))
+    }
+    if (is.list(x)) {
+      element_names <- names(x)
+      for (i in seq_along(x)) {
+        element_path <- if (!is.null(element_names) && !is.na(element_names[[i]]) && nzchar(element_names[[i]])) {
+          paste0(path, "$", element_names[[i]])
+        } else {
+          paste0(path, "[[", i, "]]")
+        }
+        visit(x[[i]], element_path)
+      }
+    }
+    invisible()
+  }
+  visit(x, path)
+  out
+}
+
 # ============================================================================ #
 # HELPER FUNCTIONS: Reference File Testing
 # ============================================================================ #

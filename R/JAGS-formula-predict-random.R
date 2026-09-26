@@ -1101,6 +1101,22 @@
       }
     }
   }
+  # The stored term formula has no environment to look variables up in: every
+  # predictor of the block must be a column of the prediction data.
+  missing_predictors <- setdiff(
+    all.vars(random_term$term_formula),
+    names(prediction_data)
+  )
+  if(length(missing_predictors) > 0L){
+    stop(
+      "The ", paste0("'", missing_predictors, "'", collapse = ", "),
+      if(length(missing_predictors) > 1L) " predictors" else " predictor",
+      " needed for random-effect prediction ",
+      if(length(missing_predictors) > 1L) "are" else "is",
+      " missing in the data.",
+      call. = FALSE
+    )
+  }
 
   .bt_random_effect_check_memory(
     estimate = .bt_random_effect_design_memory_estimate(

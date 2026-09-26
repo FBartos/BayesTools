@@ -2618,10 +2618,12 @@ test_that("Deterministic-node parity models fit correctly", {
     note = "Row-indexed external SD source split by a gated allocation and SD components."
   )$registry_entry
 
-  # The values function only reads base R; its environment keeps the fitted
-  # object free of this test's workspace.
+  # The values function only reads base R; its environment and the dropped
+  # source reference keep the fitted object free of this test's workspace and
+  # of the source of this file.
   tau_values <- function(parameters, data, n_rows) parameters[["tau_scale"]] * exp(0.3 * data$z)
   environment(tau_values) <- baseenv()
+  tau_values <- utils::removeSource(tau_values)
   model_registry[["fit_dnode_row_source_values"]] <<- save_fit(
     dnode_row_source_fit(random_sd_source(parameter_source(
       "tau", shape = "row", values = tau_values, inputs = "tau_scale"
@@ -7494,6 +7496,75 @@ test_that("heterogeneous weightfunction mixtures compile and adapt in JAGS", {
 
   expect_s3_class(fit, "runjags")
   expect_false(inherits(fit, "condition"))
+})
+
+# ============================================================================ #
+# CENTRALIZED LIVE-FIT TESTS: STORED ENVIRONMENTS
+# ============================================================================ #
+#
+# PURPOSE:
+#   A fit keeps no environment of the code that created it, so a saved fit
+#   does not carry the calling workspace.
+#
+# TAGS: @fit, @JAGS, @formula, @random
+# ============================================================================ #
+
+test_that("a fit created in a function does not keep that function's frame", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  withr::local_preserve_seed()
+
+  # The same random-effect model, fitted in a function that holds a large
+  # local object and in one that does not.
+  fit_random <- function(local_object_size){
+    local_object <- stats::runif(local_object_size)
+    data <- data.frame(
+      x = c(-1.2, 0.4, 0.9, -0.3, 1.5, -0.8, 0.2, 1.1, -0.6, 0.7, 1.3, -1.0),
+      g = factor(rep(c("g1", "g2", "g3"), each = 4))
+    )
+    set.seed(1)
+    y <- stats::rnorm(nrow(data), 0.2 * data$x, 1)
+    suppressWarnings(JAGS_fit(
+      model_syntax = "model{\n  for(i in 1:N_mu){\n    y[i] ~ dnorm(mu[i], 1)\n  }\n}",
+      data = list(y = y),
+      formula_list = list(mu = ~ 1 + x + (1 + x | g)),
+      formula_data_list = list(mu = data),
+      formula_prior_list = list(mu = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1))
+      )),
+      formula_random_prior_list = list(mu = prior_random(
+        g = random_block(sd = prior("normal", list(0, 1), list(0, Inf)), cor = prior_lkj(eta = 1))
+      )),
+      chains = 1, adapt = 50, burnin = 50, sample = 100, seed = 1, silent = TRUE
+    ))
+  }
+  without_id <- function(parameter_map){
+    attr(parameter_map, "runtime_cache_id") <- NULL
+    parameter_map
+  }
+  # The size of 'small' is taken before 'large' exists: a kept frame reaches
+  # this test's environment, and through it both fits.
+  small <- fit_random(0)
+  small_size <- length(serialize(small, NULL))
+  large <- fit_random(1e6)
+
+  # runjags keeps the compiled rjags model in 'method.options$rjags': closures
+  # over the frame of rjags::jags.model(), not over the caller's.
+  expect_identical(
+    stored_environment_paths(large, "fit", skip = "fit$method.options$rjags"),
+    character()
+  )
+  # A kept frame adds the 8 MB local object; the parameter map's runtime cache
+  # id, unique per fit, may differ by a few bytes.
+  expect_lt(abs(length(serialize(large, NULL)) - small_size), 1024)
+  expect_identical(as.matrix(large$mcmc), as.matrix(small$mcmc))
+  expect_identical(JAGS_formula_design(large), JAGS_formula_design(small))
+  expect_identical(
+    without_id(attr(large, "parameter_map")),
+    without_id(attr(small, "parameter_map"))
+  )
 })
 
 # ============================================================================ #

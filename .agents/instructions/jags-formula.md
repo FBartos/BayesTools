@@ -111,7 +111,11 @@ a coefficient count; fitting stops on incomplete factor metadata. Formula
 evaluation and prediction (`JAGS_evaluate_formula()`,
 `JAGS_predict_formula()`) go only through the stored design: draws without a
 fit get it from `JAGS_formula_draws()`, which builds it as `JAGS_fit()` does;
-never evaluate from prior-list factor metadata. Preserve
+never evaluate from prior-list factor metadata. Formulas stored in designs and
+fits keep no caller environment (only the base or empty environment), or a
+saved fit serializes the caller's workspace; random-effect term formulas read
+their predictors only from data columns, and prediction stops when the data
+lack one (`test-fixture-integrity.R` walks every cached fit for this). Preserve
 the distinction between fitted standardized coordinates, original-scale
 display coordinates, unit latent variables, realized group coefficients, and
 covariance parameters.

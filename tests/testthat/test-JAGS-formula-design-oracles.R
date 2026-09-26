@@ -11576,6 +11576,54 @@ test_that("nested grouping formulas expand to evaluable random-effect blocks", {
   expect_equal(char_result$formula_design$random_effects[[2]]$n_groups, 2L)
 })
 
+test_that("formula designs keep no environment of the function that built them", {
+
+  # JAGS_fit() stores the design, standardization, and priors of every
+  # formula. Built in a function that holds a large local object, none of
+  # their formulas may keep that function's frame as its environment: a saved
+  # fit would serialize it. (The returned fixed-effect 'formula' is not stored
+  # and keeps the caller's environment.)
+  formula_output <- function(local_object_size){
+    local_object <- stats::runif(local_object_size)
+    data <- data.frame(
+      x = c(-1.2, 0.4, 0.9, -0.3, 1.5, -0.8, 0.2, 1.1),
+      t = factor(rep(c("t1", "t2"), 4)),
+      g = factor(rep(c("g1", "g2"), each = 4)),
+      s = factor(rep(c("s1", "s2", "s3", "s4"), each = 2))
+    )
+    output <- JAGS_formula(
+      formula = ~ 1 + x + us(1 + x | g) + ar1(t | s),
+      parameter = "mu",
+      data = data,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1))
+      ),
+      formula_scale = list(x = TRUE),
+      prior_random = prior_random(
+        g = random_block(sd = prior("gamma", list(2, 2)), cor = prior_lkj(eta = 1)),
+        s = random_block(sd = prior("gamma", list(2, 2)), cor = prior("normal", list(0, 0.5)))
+      )
+    )
+    output[c("formula_design", "formula_scale", "prior_list")]
+  }
+  # The size of 'small' is taken before 'large' exists: a captured frame
+  # reaches this test's environment, and through it both objects.
+  small <- formula_output(0)
+  small_size <- length(serialize(small, NULL))
+  large <- formula_output(1e6)
+
+  expect_identical(stored_environment_paths(large, "stored"), character())
+  expect_identical(
+    vapply(large$formula_design$random_effects, function(random_term){
+      identical(environment(random_term$term_formula), baseenv())
+    }, logical(1)),
+    c(TRUE, TRUE)
+  )
+  expect_identical(large, small)
+  expect_identical(length(serialize(large, NULL)), small_size)
+})
+
 test_that("diag random-effect syntax handles slope-only and factor-slope designs", {
 
   df <- data.frame(
