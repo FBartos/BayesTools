@@ -2026,7 +2026,19 @@ parameter_transform_jacobian <- function(values, transform){
   if(is.null(transform$scale)) 1 else transform$scale
 }
 
+# The table is a constant, built once per session; callers get the shared
+# value, which R copies before any modification.
 .bt_parameter_catalog_empty_quantities <- function(){
+
+  out <- .BayesTools_private$parameter_catalog_empty_quantities
+  if(is.null(out)){
+    out <- .bt_parameter_catalog_empty_quantities_build()
+    .BayesTools_private$parameter_catalog_empty_quantities <- out
+  }
+  out
+}
+
+.bt_parameter_catalog_empty_quantities_build <- function(){
 
   out <- data.frame(
     quantity_id = character(),
@@ -2062,17 +2074,23 @@ parameter_transform_jacobian <- function(values, transform){
   out
 }
 
+# The table is a constant, built once per session; callers get the shared
+# value, which R copies before any modification.
 .bt_parameter_catalog_empty_aliases <- function(){
 
-  out <- data.frame(
-    alias = character(),
-    quantity_id = character(),
-    namespace = character(),
-    component = character(),
-    simplified = logical(),
-    stringsAsFactors = FALSE
-  )
-  out$label_parts <- I(list())
+  out <- .BayesTools_private$parameter_catalog_empty_aliases
+  if(is.null(out)){
+    out <- data.frame(
+      alias = character(),
+      quantity_id = character(),
+      namespace = character(),
+      component = character(),
+      simplified = logical(),
+      stringsAsFactors = FALSE
+    )
+    out$label_parts <- I(list())
+    .BayesTools_private$parameter_catalog_empty_aliases <- out
+  }
   out
 }
 
@@ -2130,40 +2148,42 @@ parameter_transform_jacobian <- function(values, transform){
       simplify       = TRUE
     )
   }
-  out <- .bt_parameter_catalog_empty_quantities()
-  scalar_columns <- setdiff(
-    names(out),
-    c("arguments", "support", "label_parts", "extraction_key")
+  # One row in the column order of the schema, built directly: the row is the
+  # empty table with one value per column, without the per-row cost of the
+  # data frame assignment methods.
+  values <- list(
+    quantity_id        = .bt_parameter_catalog_quantity_id(canonical_name, namespace, role),
+    canonical_name     = as.character(canonical_name),
+    provider           = "BayesTools",
+    namespace          = as.character(namespace),
+    role               = as.character(role),
+    formula_parameter  = as.character(formula_parameter),
+    owner_type         = as.character(owner_type),
+    owner_name         = as.character(owner_name),
+    quantity           = as.character(quantity),
+    scale_role         = as.character(scale_role),
+    parent_quantity_id = as.character(parent_quantity_id),
+    arguments          = I(list(as.character(arguments))),
+    term               = as.character(term),
+    component          = as.character(component),
+    display_label      = as.character(display_label),
+    fitted_scale       = as.character(fitted_scale),
+    display_scale      = as.character(display_scale),
+    status             = as.character(status),
+    fixed_value        = as.numeric(fixed_value),
+    internal           = as.logical(internal),
+    source_type        = as.character(source_type),
+    # declared by .bt_parameter_catalog_add_support() when the catalog is built
+    support            = I(list(NULL)),
+    definedness        = "always",
+    label_parts        = I(list(label_parts)),
+    extraction_key     = I(list(extraction_key))
   )
-  out[1L, scalar_columns] <- list(
-    .bt_parameter_catalog_quantity_id(canonical_name, namespace, role),
-    canonical_name,
-    "BayesTools",
-    namespace,
-    role,
-    formula_parameter,
-    owner_type,
-    owner_name,
-    quantity,
-    scale_role,
-    parent_quantity_id,
-    term,
-    component,
-    display_label,
-    fitted_scale,
-    display_scale,
-    status,
-    fixed_value,
-    internal,
-    source_type,
-    "always"
+  structure(
+    values[.bt_parameter_catalog_quantity_columns],
+    row.names = 1L,
+    class = "data.frame"
   )
-  out$arguments <- I(list(as.character(arguments)))
-  # declared by .bt_parameter_catalog_add_support() when the catalog is built
-  out$support <- I(list(NULL))
-  out$label_parts <- I(list(label_parts))
-  out$extraction_key <- I(list(extraction_key))
-  out
 }
 
 # Contrasts whose term design rows are exact 0/1 structure. For these, a design
@@ -2440,8 +2460,7 @@ parameter_transform_jacobian <- function(values, transform){
     out$coordinates <- c(out$coordinates, coordinate_names)
   }
   if(length(quantity_rows) > 0L){
-    out$quantities <- do.call(rbind, quantity_rows)
-    rownames(out$quantities) <- NULL
+    out$quantities <- .bt_parameter_catalog_bind_quantities(quantity_rows)
   }
   out
 }
@@ -2483,9 +2502,10 @@ parameter_transform_jacobian <- function(values, transform){
     prior_list     = prior_list,
     formula_design = formula_design
   )
+  coordinate_rows <- .bt_parameter_catalog_rows(coordinates)
   rows <- vector("list", nrow(coordinates))
   for(i in seq_len(nrow(coordinates))){
-    row <- coordinates[i, , drop = FALSE]
+    row <- coordinate_rows[[i]]
     namespace <- if(nzchar(row$formula_parameter)){
       row$formula_parameter
     }else{
@@ -2518,9 +2538,7 @@ parameter_transform_jacobian <- function(values, transform){
       )
     )
   }
-  out <- do.call(rbind, rows)
-  rownames(out) <- NULL
-  out
+  .bt_parameter_catalog_bind_quantities(rows)
 }
 
 .bt_parameter_catalog_level_alias <- function(term, component){
@@ -2536,12 +2554,16 @@ parameter_transform_jacobian <- function(values, transform){
 # text, otherwise the alias text itself as one component (an alias that is no
 # table label of structured parts, such as the canonical name of a fitted
 # coordinate or the selector of a transformed factor level).
-.bt_parameter_catalog_alias_parts <- function(alias, candidates = list()){
+.bt_parameter_catalog_alias_parts <- function(alias, candidates = list(),
+                                              labels = NULL){
 
-  for(parts in candidates){
-    if(identical(.bt_label(parts, style = "table"), alias)){
-      return(parts)
-    }
+  # the first candidate whose table label is the alias
+  if(is.null(labels)){
+    labels <- vapply(candidates, .bt_label, character(1), style = "table")
+  }
+  matched <- match(alias, labels)
+  if(!is.na(matched)){
+    return(candidates[[matched]])
   }
 
   .bt_label_parts(alias, selector = alias)
@@ -2588,10 +2610,16 @@ parameter_transform_jacobian <- function(values, transform){
   original_scale <- .bt_label_parts_log_intercept(parts, formula_scale)[[1L]]
   renderings <- list(
     .bt_parameter_catalog_alias_rendering(parts, formula_prefix = TRUE),
-    .bt_parameter_catalog_alias_rendering(parts, formula_prefix = FALSE),
-    .bt_parameter_catalog_alias_rendering(original_scale, formula_prefix = TRUE),
-    .bt_parameter_catalog_alias_rendering(original_scale, formula_prefix = FALSE)
+    .bt_parameter_catalog_alias_rendering(parts, formula_prefix = FALSE)
   )
+  if(!identical(original_scale, parts)){
+    # the original-scale label differs only for the log intercept; otherwise
+    # its renderings repeat the two above
+    renderings <- c(renderings, list(
+      .bt_parameter_catalog_alias_rendering(original_scale, formula_prefix = TRUE),
+      .bt_parameter_catalog_alias_rendering(original_scale, formula_prefix = FALSE)
+    ))
+  }
   if(.bt_parameter_catalog_is_factor_quantity(quantity) &&
      length(parts$levels) > 0L){
     dif <- .bt_label_parts_update(parts, transformation = "dif")[[1L]]
@@ -2616,7 +2644,8 @@ parameter_transform_jacobian <- function(values, transform){
   if(nrow(public) == 0L){
     return(out)
   }
-  rows <- list()
+  # the alias rows are collected as vectors and built into one table at the end
+  pieces <- list()
   secondary <- list()
   # 'aliases' holds the alias values and the label parts each is rendered from
   add_aliases <- function(quantity, aliases, simplified){
@@ -2626,20 +2655,17 @@ parameter_transform_jacobian <- function(values, transform){
     if(length(values) == 0L){
       return(invisible(NULL))
     }
-    row <- data.frame(
-      alias = values,
+    pieces[[length(pieces) + 1L]] <<- list(
+      alias       = values,
       quantity_id = rep(quantity$quantity_id, length(values)),
-      namespace = rep(quantity$namespace, length(values)),
-      component = rep(quantity$component, length(values)),
-      simplified = rep(simplified, length(values)),
-      stringsAsFactors = FALSE
+      namespace   = rep(quantity$namespace, length(values)),
+      component   = rep(quantity$component, length(values)),
+      simplified  = rep(simplified, length(values)),
+      parts       = unname(aliases$parts[keep])
     )
-    row$label_parts <- I(unname(aliases$parts[keep]))
-    rows[[length(rows) + 1L]] <<- row
     invisible(NULL)
   }
-  for(i in seq_len(nrow(public))){
-    quantity <- public[i, , drop = FALSE]
+  for(quantity in .bt_parameter_catalog_rows(public)){
     parts <- quantity$label_parts[[1L]]
     if(startsWith(quantity$role, "random_")){
       aliases <- .bt_parameter_catalog_rendered_aliases(c(
@@ -2676,22 +2702,22 @@ parameter_transform_jacobian <- function(values, transform){
         }
       ))
       values <- values[!is.na(values) & nzchar(values)]
+      structured_labels <- vapply(structured, .bt_label, character(1),
+                                  style = "table")
       aliases <- list(
         values = values,
         parts  = lapply(values, .bt_parameter_catalog_alias_parts,
-                        candidates = structured)
+                        candidates = structured, labels = structured_labels)
       )
       # rendered labels that may coincide with another quantity's selector
       label_aliases <- .bt_parameter_catalog_label_aliases(quantity, formula_scale)
       new_labels <- !label_aliases$values %in% values
       if(any(new_labels)){
-        secondary_rows <- data.frame(
-          alias = label_aliases$values[new_labels],
-          quantity_id = quantity$quantity_id,
-          stringsAsFactors = FALSE
+        secondary[[length(secondary) + 1L]] <- list(
+          alias       = label_aliases$values[new_labels],
+          quantity_id = rep(quantity$quantity_id, sum(new_labels)),
+          parts       = unname(label_aliases$parts[new_labels])
         )
-        secondary_rows$label_parts <- I(unname(label_aliases$parts[new_labels]))
-        secondary[[length(secondary) + 1L]] <- secondary_rows
       }
     }
     add_aliases(quantity, aliases, simplified = FALSE)
@@ -2703,17 +2729,45 @@ parameter_transform_jacobian <- function(values, transform){
       )
     }
   }
-  if(length(rows) == 0L){
+  if(length(pieces) == 0L){
     return(out)
   }
-  out <- do.call(rbind, rows)
+  out <- .bt_parameter_catalog_alias_table(pieces)
   out <- out[!duplicated(out[setdiff(names(out), "label_parts")]), , drop = FALSE]
   rownames(out) <- NULL
+  secondary_table <- if(length(secondary) > 0L){
+    table <- data.frame(
+      alias = unlist(lapply(secondary, `[[`, "alias"), use.names = FALSE),
+      quantity_id = unlist(lapply(secondary, `[[`, "quantity_id"), use.names = FALSE),
+      stringsAsFactors = FALSE
+    )
+    table$label_parts <- I(do.call(c, lapply(secondary, `[[`, "parts")))
+    table
+  }
   .bt_parameter_catalog_secondary_aliases(
     out,
     public,
-    secondary = if(length(secondary) > 0L) do.call(rbind, secondary)
+    secondary = secondary_table
   )
+}
+
+# The alias table of the collected pieces (alias values with their owner and
+# label parts, one piece per quantity and kind of alias).
+.bt_parameter_catalog_alias_table <- function(pieces){
+
+  field <- function(name){
+    unlist(lapply(pieces, `[[`, name), use.names = FALSE)
+  }
+  out <- data.frame(
+    alias       = field("alias"),
+    quantity_id = field("quantity_id"),
+    namespace   = field("namespace"),
+    component   = field("component"),
+    simplified  = field("simplified"),
+    stringsAsFactors = FALSE
+  )
+  out$label_parts <- I(do.call(c, lapply(pieces, `[[`, "parts")))
+  out
 }
 
 .bt_parameter_catalog_is_factor_quantity <- function(quantity){
@@ -4116,25 +4170,57 @@ parameter_transform_jacobian <- function(values, transform){
   if(nrow(quantities) == 0L){
     return(quantities)
   }
+  # What the quantities of one catalog share is computed once here: the
+  # prior list without 'multiply_by' and the columns its priors own.
   object <- structure(
     list(),
     prior_list     = prior_list,
     formula_design = formula_design,
-    formula_scale  = formula_scale
+    formula_scale  = formula_scale,
+    linear_support = .bt_parameter_catalog_linear_support_context(prior_list)
   )
-  quantities$support <- I(lapply(seq_len(nrow(quantities)), function(i){
-    .bt_parameter_catalog_quantity_support(
-      object   = object,
-      quantity = quantities[i, , drop = FALSE]
-    )
+  rows <- .bt_parameter_catalog_rows(quantities)
+  quantities$support <- I(lapply(rows, function(row){
+    .bt_parameter_catalog_quantity_support(object = object, quantity = row)
   }))
-  quantities$definedness <- vapply(seq_len(nrow(quantities)), function(i){
-    .bt_parameter_catalog_quantity_definedness(
-      object   = object,
-      quantity = quantities[i, , drop = FALSE]
-    )
+  quantities$definedness <- vapply(rows, function(row){
+    .bt_parameter_catalog_quantity_definedness(object = object, quantity = row)
   }, character(1))
   quantities
+}
+
+# The quantities table of one-row quantity tables (from
+# .bt_parameter_catalog_quantity()), which is the rbind() of the rows without
+# its per-row cost: every column of the schema is concatenated once.
+.bt_parameter_catalog_bind_quantities <- function(rows){
+
+  columns <- lapply(.bt_parameter_catalog_quantity_columns, function(name){
+    values <- lapply(rows, .subset2, name)
+    if(is.list(values[[1L]])){
+      # list columns hold one element per row and are marked as I()
+      I(do.call(c, lapply(values, unclass)))
+    }else{
+      unlist(values, use.names = FALSE)
+    }
+  })
+  names(columns) <- .bt_parameter_catalog_quantity_columns
+
+  structure(
+    columns,
+    row.names = .set_row_names(length(rows)),
+    class = "data.frame"
+  )
+}
+
+# The rows of a quantities table as lists with the value of every column, read
+# as the fields of a one-row table ('$field', '[[1L]]' of a list column)
+# without subsetting the data frame row by row.
+.bt_parameter_catalog_rows <- function(quantities){
+
+  columns <- unclass(quantities)
+  lapply(seq_len(nrow(quantities)), function(i){
+    lapply(columns, function(column) column[i])
+  })
 }
 
 .bt_parameter_catalog_quantity_support <- function(object, quantity){
@@ -4154,7 +4240,8 @@ parameter_transform_jacobian <- function(values, transform){
     }
     return(.bt_parameter_catalog_linear_support(
       prior_list = attr(object, "prior_list", exact = TRUE),
-      weights    = stats::setNames(as.numeric(weights), key$dependencies)
+      weights    = stats::setNames(as.numeric(weights), key$dependencies),
+      context    = attr(object, "linear_support", exact = TRUE)
     ))
   }
   if(!identical(key$type, "random_summary")){
@@ -4178,9 +4265,26 @@ parameter_transform_jacobian <- function(values, transform){
 # Support of a linear combination of fitted coordinates under their priors
 # (a coefficient's 'multiply_by' scales only its linear-predictor
 # contribution); NULL when a coordinate has no owning prior.
-.bt_parameter_catalog_linear_support <- function(prior_list, weights){
+.bt_parameter_catalog_linear_support <- function(prior_list, weights,
+                                                 context = NULL){
 
   if(!is.list(prior_list) || length(prior_list) == 0L || length(weights) == 0L){
+    return(NULL)
+  }
+  if(is.null(context)){
+    context <- .bt_parameter_catalog_linear_support_context(prior_list)
+  }
+  if(!all(names(weights) %in% context$owned)){
+    return(NULL)
+  }
+  .posterior_support_from_prior_list_weights(context$prior_list, weights, source = "catalog")
+}
+
+# The prior list of the linear supports without 'multiply_by', and the columns
+# its single priors own.
+.bt_parameter_catalog_linear_support_context <- function(prior_list){
+
+  if(!is.list(prior_list) || length(prior_list) == 0L){
     return(NULL)
   }
   prior_list <- .marginal_posterior_strip_multiply_by(prior_list)
@@ -4190,10 +4294,8 @@ parameter_transform_jacobian <- function(values, transform){
     }
     .prior_linear_prior_columns(parameter, prior_list[[parameter]])
   }), use.names = FALSE)
-  if(!all(names(weights) %in% owned)){
-    return(NULL)
-  }
-  .posterior_support_from_prior_list_weights(prior_list, weights, source = "catalog")
+
+  list(prior_list = prior_list, owned = owned)
 }
 
 # Support of the source prior of a one-to-one random-effect quantity: the

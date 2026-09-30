@@ -72,7 +72,20 @@
   "transformation", "component", "inclusion", "random", "marginal", "selector"
 )
 
+# Label parts are validated when they are built and again wherever they are
+# rendered or modified, so the same parts reach this validator repeatedly;
+# parts identical() to validated ones are not checked again (see
+# .bt_validate_once()).
 .bt_validate_label_parts <- function(parts){
+
+  .bt_validate_once(
+    "label_parts",
+    parts,
+    function() .bt_validate_label_parts_uncached(parts)
+  )
+}
+
+.bt_validate_label_parts_uncached <- function(parts){
 
   scalar_character <- function(x){
     is.character(x) && length(x) == 1L && !is.na(x)

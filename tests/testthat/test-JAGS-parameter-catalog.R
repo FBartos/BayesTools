@@ -4651,3 +4651,338 @@ test_that("the validation memo is bounded and keeps selections separate from cat
   )
 })
 
+# The catalog builders assemble their tables without the data frame operations
+# they used to apply row by row (one-row tables, `[<-`, `rbind()`, row
+# subsetting). Every replaced step is compared with the step it replaces.
+catalog_builder_test_inputs <- function(){
+
+  data <- data.frame(
+    x = c(1, 2, 3, 4, 5, 6),
+    f = factor(c("a", "b", "c", "a", "b", "c")),
+    id = factor(c("a", "a", "b", "b", "c", "c"))
+  )
+  formula_result <- JAGS_formula(
+    ~ 1 + x + f + us(1 + x | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)),
+      f = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+    ),
+    prior_random = prior_random(
+      id = random_block(sd = prior("gamma", list(2, 2)), cor = prior_lkj())
+    ),
+    formula_scale = list(x = TRUE)
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  cholesky <- random_term$correlation$cholesky_name
+  columns <- c(
+    "mu_intercept", "mu_x",
+    .JAGS_prior_factor_names("mu_f", formula_result$prior_list$mu_f),
+    random_term$sd_parameter_names,
+    paste0(cholesky, c("[1,1]", "[2,1]", "[2,2]"))
+  )
+  prior_list <- formula_result$prior_list
+  formula_design <- list(mu = formula_result$formula_design)
+  formula_scale <- list(mu = formula_result$formula_scale)
+  coordinates <- .bt_build_parameter_coordinates(
+    columns = columns,
+    prior_list = prior_list,
+    formula_design = formula_design,
+    formula_scale = formula_scale
+  )
+  list(
+    coordinates = coordinates,
+    prior_list = prior_list,
+    formula_design = formula_design,
+    formula_scale = formula_scale,
+    catalog = .bt_build_parameter_catalog(
+      coordinates, prior_list, formula_design, formula_scale
+    )
+  )
+}
+
+test_that("catalog quantity rows and their table equal the data frame operations they replace", {
+
+  inputs <- catalog_builder_test_inputs()
+  quantities <- inputs$catalog$quantities
+  expect_gt(nrow(quantities), 8L)
+  expect_true(all(c("factor_level", "coordinate", "random_summary") %in%
+                    vapply(quantities$extraction_key, `[[`, character(1), "type")))
+
+  # a row built directly is the row the assignment of its values builds
+  reference_row <- function(row){
+    out <- .bt_parameter_catalog_empty_quantities_build()
+    scalar_columns <- setdiff(
+      names(out), c("arguments", "support", "label_parts", "extraction_key")
+    )
+    out[1L, scalar_columns] <- unname(lapply(scalar_columns, function(name) row[[name]]))
+    out$arguments <- I(list(row$arguments[[1L]]))
+    out$support <- I(list(NULL))
+    out$label_parts <- I(list(row$label_parts[[1L]]))
+    out$extraction_key <- I(list(row$extraction_key[[1L]]))
+    out
+  }
+  parts <- .bt_label_parts("theta", selector = "theta")
+  rows <- list(
+    .bt_parameter_catalog_quantity(
+      "theta", "model", "parameter", label_parts = parts, status = "sampled",
+      source_type = "identity",
+      extraction_key = list(type = "coordinate", dependencies = "theta")
+    ),
+    .bt_parameter_catalog_quantity(
+      "fixed", "model", "parameter", status = "structural", fixed_value = 0L,
+      internal = TRUE, arguments = c("a", "b"), source_type = "structural_zero",
+      extraction_key = list(type = "factor_level", dependencies = character(),
+                            weights = numeric())
+    ),
+    .bt_parameter_catalog_quantity(
+      "extension", "mu", "parameter", formula_parameter = "mu", term = "x",
+      component = "{1}", fixed_value = NA, source_type = "composite",
+      extraction_key = list(type = "coordinate", dependencies = "x")
+    )
+  )
+  for(row in rows){
+    expect_identical(row, reference_row(row))
+    expect_identical(names(row), .bt_parameter_catalog_quantity_columns)
+  }
+  expect_identical(rows[[2L]]$fixed_value, 0)
+
+  # the table of rows is their rbind()
+  reference_bind <- function(rows){
+    out <- do.call(rbind, rows)
+    rownames(out) <- NULL
+    out
+  }
+  expect_identical(.bt_parameter_catalog_bind_quantities(rows), reference_bind(rows))
+  expect_identical(.bt_parameter_catalog_bind_quantities(rows[1L]), reference_bind(rows[1L]))
+  subset_rows <- lapply(seq_len(nrow(quantities)), function(i) quantities[i, , drop = FALSE])
+  expect_identical(.bt_parameter_catalog_bind_quantities(subset_rows), reference_bind(subset_rows))
+  expect_identical(.bt_parameter_catalog_bind_quantities(subset_rows), quantities)
+
+  # rows read as the fields of the one-row table: the (row, field) pairs whose
+  # value differs from the one-row table's are named
+  differing_fields <- function(table){
+    lists <- .bt_parameter_catalog_rows(table)
+    expect_length(lists, nrow(table))
+    as.character(unlist(lapply(seq_along(lists), function(i){
+      reference <- table[i, , drop = FALSE]
+      if(!identical(names(lists[[i]]), names(reference))){
+        return(paste(i, "names"))
+      }
+      differs <- !vapply(names(reference), function(field){
+        identical(lists[[i]][[field]], reference[[field]])
+      }, logical(1))
+      if(any(differs)) paste(i, names(reference)[differs])
+    })))
+  }
+  expect_identical(differing_fields(quantities), character())
+  expect_identical(differing_fields(inputs$coordinates), character())
+})
+
+test_that("catalog support and definedness share the prior-list work without changing it", {
+
+  inputs <- catalog_builder_test_inputs()
+  quantities <- inputs$catalog$quantities
+  object <- structure(
+    list(),
+    prior_list = inputs$prior_list,
+    formula_design = inputs$formula_design,
+    formula_scale = inputs$formula_scale
+  )
+  # reference: one data frame row and one full prior-list pass per quantity
+  reference <- quantities
+  reference$support <- I(lapply(seq_len(nrow(reference)), function(i){
+    .bt_parameter_catalog_quantity_support(object, quantities[i, , drop = FALSE])
+  }))
+  reference$definedness <- vapply(seq_len(nrow(reference)), function(i){
+    .bt_parameter_catalog_quantity_definedness(object, quantities[i, , drop = FALSE])
+  }, character(1))
+  expect_identical(
+    .bt_parameter_catalog_add_support(
+      quantities, inputs$prior_list, inputs$formula_design, inputs$formula_scale
+    ),
+    reference
+  )
+  expect_identical(quantities$support, reference$support)
+  expect_true(any(!vapply(reference$support, is.null, logical(1))))
+  expect_true(any(quantities$definedness == "correlation"))
+
+  # the shared context is what a single call computes
+  context <- .bt_parameter_catalog_linear_support_context(inputs$prior_list)
+  weights <- c(mu_intercept = 1, mu_x = -2)
+  expect_identical(
+    .bt_parameter_catalog_linear_support(inputs$prior_list, weights, context = context),
+    .bt_parameter_catalog_linear_support(inputs$prior_list, weights)
+  )
+  expect_null(.bt_parameter_catalog_linear_support(inputs$prior_list, c(unowned = 1), context = context))
+  expect_null(.bt_parameter_catalog_linear_support_context(list()))
+})
+
+test_that("catalog aliases equal the per-quantity data frame assembly they replace", {
+
+  inputs <- catalog_builder_test_inputs()
+  quantities <- inputs$catalog$quantities
+
+  reference_alias_parts <- function(alias, candidates = list()){
+    for(parts in candidates){
+      if(identical(.bt_label(parts, style = "table"), alias)){
+        return(parts)
+      }
+    }
+    .bt_label_parts(alias, selector = alias)
+  }
+  reference_label_aliases <- function(quantity, formula_scale = NULL){
+    parts <- quantity$label_parts[[1L]]
+    if(is.null(parts)){
+      return(list(values = character(), parts = list()))
+    }
+    original_scale <- .bt_label_parts_log_intercept(parts, formula_scale)[[1L]]
+    renderings <- list(
+      .bt_parameter_catalog_alias_rendering(parts, formula_prefix = TRUE),
+      .bt_parameter_catalog_alias_rendering(parts, formula_prefix = FALSE),
+      .bt_parameter_catalog_alias_rendering(original_scale, formula_prefix = TRUE),
+      .bt_parameter_catalog_alias_rendering(original_scale, formula_prefix = FALSE)
+    )
+    if(.bt_parameter_catalog_is_factor_quantity(quantity) &&
+       length(parts$levels) > 0L){
+      dif <- .bt_label_parts_update(parts, transformation = "dif")[[1L]]
+      selector <- .bt_label(dif, style = "selector")
+      renderings <- c(
+        renderings,
+        list(
+          reference_alias_parts(selector),
+          .bt_parameter_catalog_alias_rendering(dif, formula_prefix = TRUE),
+          .bt_parameter_catalog_alias_rendering(dif, formula_prefix = FALSE)
+        )
+      )
+    }
+    .bt_parameter_catalog_rendered_aliases(renderings)
+  }
+  reference_aliases <- function(quantities, formula_design, formula_scale){
+    public <- quantities[!quantities$internal, , drop = FALSE]
+    rows <- list()
+    secondary <- list()
+    add_aliases <- function(quantity, aliases, simplified){
+      keep <- !is.na(aliases$values) & nzchar(aliases$values) &
+        !duplicated(aliases$values)
+      values <- aliases$values[keep]
+      if(length(values) == 0L){
+        return(invisible(NULL))
+      }
+      row <- data.frame(
+        alias = values,
+        quantity_id = rep(quantity$quantity_id, length(values)),
+        namespace = rep(quantity$namespace, length(values)),
+        component = rep(quantity$component, length(values)),
+        simplified = rep(simplified, length(values)),
+        stringsAsFactors = FALSE
+      )
+      row$label_parts <- I(unname(aliases$parts[keep]))
+      rows[[length(rows) + 1L]] <<- row
+      invisible(NULL)
+    }
+    for(i in seq_len(nrow(public))){
+      quantity <- public[i, , drop = FALSE]
+      parts <- quantity$label_parts[[1L]]
+      if(startsWith(quantity$role, "random_")){
+        aliases <- .bt_parameter_catalog_rendered_aliases(c(
+          if(!is.null(parts)){
+            list(.bt_parameter_catalog_alias_rendering(parts, formula_prefix = FALSE))
+          },
+          .bt_parameter_catalog_random_correlation_aliases(quantity, formula_design)
+        ))
+      }else{
+        structured <- if(!is.null(parts)){
+          list(parts, .bt_parameter_catalog_alias_rendering(parts, formula_prefix = FALSE))
+        }else{
+          list()
+        }
+        values <- unique(c(
+          quantity$canonical_name,
+          quantity$display_label,
+          quantity$term,
+          if(nzchar(quantity$term) && nzchar(quantity$component) &&
+             (identical(quantity$role, "fixed_coefficient") ||
+                .bt_parameter_catalog_is_factor_quantity(quantity))){
+            .bt_parameter_catalog_level_alias(quantity$term, quantity$component)
+          }else{
+            character()
+          }
+        ))
+        values <- values[!is.na(values) & nzchar(values)]
+        aliases <- list(
+          values = values,
+          parts  = lapply(values, reference_alias_parts, candidates = structured)
+        )
+        label_aliases <- reference_label_aliases(quantity, formula_scale)
+        new_labels <- !label_aliases$values %in% values
+        if(any(new_labels)){
+          secondary_rows <- data.frame(
+            alias = label_aliases$values[new_labels],
+            quantity_id = quantity$quantity_id,
+            stringsAsFactors = FALSE
+          )
+          secondary_rows$label_parts <- I(unname(label_aliases$parts[new_labels]))
+          secondary[[length(secondary) + 1L]] <- secondary_rows
+        }
+      }
+      add_aliases(quantity, aliases, simplified = FALSE)
+      if(startsWith(quantity$role, "random_")){
+        add_aliases(
+          quantity,
+          .bt_parameter_catalog_random_simplified_aliases(quantity),
+          simplified = TRUE
+        )
+      }
+    }
+    out <- do.call(rbind, rows)
+    out <- out[!duplicated(out[setdiff(names(out), "label_parts")]), , drop = FALSE]
+    rownames(out) <- NULL
+    .bt_parameter_catalog_secondary_aliases(
+      out,
+      public,
+      secondary = if(length(secondary) > 0L) do.call(rbind, secondary)
+    )
+  }
+
+  # the fitted scaling, and the same catalog with a log intercept, whose
+  # original-scale label differs from the fitted one
+  log_scale <- inputs$formula_scale
+  attr(log_scale$mu, "log_intercept") <- TRUE
+  for(formula_scale in list(inputs$formula_scale, log_scale)){
+    aliases <- .bt_parameter_catalog_aliases(quantities, inputs$formula_design, formula_scale)
+    expect_gt(nrow(aliases), nrow(quantities))
+    expect_identical(
+      aliases,
+      reference_aliases(quantities, inputs$formula_design, formula_scale)
+    )
+  }
+  expect_identical(inputs$catalog$aliases, reference_aliases(
+    quantities, inputs$formula_design, inputs$formula_scale
+  ))
+  expect_false(identical(
+    .bt_parameter_catalog_aliases(quantities, inputs$formula_design, log_scale),
+    inputs$catalog$aliases
+  ))
+
+  # the precomputed candidate labels select the candidate the loop selects
+  parts <- quantities$label_parts[[which(!vapply(quantities$label_parts, is.null, logical(1)))[[1L]]]]
+  candidates <- list(parts, .bt_parameter_catalog_alias_rendering(parts, formula_prefix = FALSE))
+  labels <- vapply(candidates, .bt_label, character(1), style = "table")
+  for(alias in c(labels, "no such label")){
+    expect_identical(
+      .bt_parameter_catalog_alias_parts(alias, candidates, labels),
+      reference_alias_parts(alias, candidates)
+    )
+    expect_identical(
+      .bt_parameter_catalog_alias_parts(alias, candidates),
+      reference_alias_parts(alias, candidates)
+    )
+  }
+  expect_identical(
+    .bt_parameter_catalog_alias_parts("no candidates"),
+    reference_alias_parts("no candidates")
+  )
+})

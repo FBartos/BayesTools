@@ -1681,3 +1681,66 @@ test_that("selection-prior coordinates declare the constants of their branches a
     ifelse(indicator == 3, NA_real_, 0)
   )
 })
+
+# Reference: the validator without its memo, which is the pre-memo behaviour.
+test_that("label parts are validated once per content and modifications are rechecked", {
+
+  .BayesTools_private$content_memo <- NULL
+  withr::defer(.BayesTools_private$content_memo <- NULL)
+  original <- .bt_validate_label_parts_uncached
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    .bt_validate_label_parts_uncached = function(parts){
+      calls <<- calls + 1L
+      original(parts)
+    },
+    .package = "BayesTools"
+  )
+
+  # building the parts validates them; rendering them again does not
+  parts <- .bt_label_parts(c("mu", "x"), formula_parameter = "mu", levels = c(mu = "a"))
+  expect_identical(calls, 1L)
+  labels <- vapply(c("selector", "table", "plot", "warning"), function(style){
+    .bt_label(parts, style = style)
+  }, character(1))
+  expect_identical(calls, 1L)
+  expect_identical(.bt_label(unserialize(serialize(parts, NULL)), style = "table"), labels[["table"]])
+  expect_identical(calls, 1L)
+
+  # every other content is checked (once), and a refusal is never remembered
+  updated <- .bt_label_parts_update(parts, transformation = "dif")[[1L]]
+  expect_identical(calls, 2L)
+  .bt_label(updated)
+  expect_identical(calls, 2L)
+  malformed <- list(
+    parts_field = {
+      out <- parts
+      out$components <- character()
+      out
+    },
+    transformation = {
+      out <- parts
+      out$transformation <- "unknown"
+      out
+    },
+    random = {
+      out <- parts
+      out$random <- list(owner = "g")
+      out
+    },
+    class = unclass(parts)
+  )
+  for(name in names(malformed)){
+    for(i in 1:2){
+      memoized <- tryCatch(.bt_validate_label_parts(malformed[[name]]), error = identity)
+      unmemoized <- tryCatch(original(malformed[[name]]), error = identity)
+      expect_s3_class(memoized, "error")
+      expect_identical(conditionMessage(memoized), conditionMessage(unmemoized))
+    }
+  }
+  expect_identical(calls, 2L + 2L * length(malformed))
+  # the parts that were valid before the refusals still are, without a check
+  before <- calls
+  .bt_label(parts)
+  expect_identical(calls, before)
+})
