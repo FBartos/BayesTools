@@ -296,7 +296,8 @@ names.
   values through `parameter_map_cache()`, supplying a key covering every other
   input they used; BayesTools owns that environment and discards all providers'
   entries whenever the map tables are replaced. The transformed prior densities
-  of `as_mixed_posteriors(transform_scaled = TRUE)` live there, per input set.
+  of `as_mixed_posteriors(transform_scaled = TRUE)` live there, for the two
+  most recently used input sets of each fit.
 - Repeated pure work shares one session memo (`.bt_content_memo()`): validators
   of catalogs, selections, hypothesis ASTs, and label parts
   (`.bt_validate_once()`) and the formula coefficient transform keep recent

@@ -143,15 +143,21 @@
   )
 }
 
-# Distinct input sets kept per fit; the newest ones stay.
+# Distinct input sets kept per fit: the two most recently used ones. One set of
+# a fitted model holds 0.5-2 MB at the default grid, and the registry of maps
+# keeps its memos alive until the map is replaced or evicted, so the total a
+# session retains is bounded by this limit times the registry's map bound.
 .bt_prior_density_memo_limit <- function(){
-  4L
+  2L
 }
 
 # The memo entry of the inputs 'key' (the environment holding their context and
 # the densities computed so far). Entries are recognised by identical() inputs,
-# so a modified prior list, scaling, grid or conditioning gets its own entry. A
-# NULL memo returns a fresh entry that nothing keeps.
+# so a modified prior list, scaling, grid or conditioning gets its own entry.
+# The entries are ordered by use: a hit moves its entry to the front, and a
+# new entry beyond the limit drops the least recently used one (a later request
+# of the dropped inputs recomputes the same values). A NULL memo returns a fresh
+# entry that nothing keeps.
 .bt_prior_density_memo_entry <- function(memo, key){
 
   new_entry <- function(){

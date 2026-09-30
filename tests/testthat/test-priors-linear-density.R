@@ -3403,6 +3403,11 @@ test_that("transformed prior densities are computed once per fit and only for th
   calls <- 0L
   request("mu_intercept", n_prior_samples = 1024L)
   expect_gt(calls, 0L)
+  # (the memo keeps two input sets: use the original one so that the changed
+  # prior below displaces the grid of 1024 instead)
+  calls <- 0L
+  request(c("mu_intercept", "mu_x"))
+  expect_identical(calls, 0L)
   changed <- fit
   attr(changed, "prior_list")$mu_x <- prior("normal", list(0, 2))
   calls <- 0L
@@ -3448,7 +3453,7 @@ test_that("transformed prior densities are computed once per fit and only for th
   }
   expect_identical(.Random.seed, seed)
   memo <- BayesTools:::.bt_prior_density_memo(fit)
-  expect_lte(length(memo$entries), BayesTools:::.bt_prior_density_memo_limit())
+  expect_identical(length(memo$entries), BayesTools:::.bt_prior_density_memo_limit())
 
   # a fit without a parameter map has nothing to memoize against and computes
   expect_null(BayesTools:::.bt_prior_density_memo(structure(list(), class = "BayesTools_fit")))
@@ -3456,4 +3461,81 @@ test_that("transformed prior densities are computed once per fit and only for th
   .generate_transformed_prior_densities(prior_list, column_names, attr(fit, "formula_scale"), n_grid = 512L)
   .generate_transformed_prior_densities(prior_list, column_names, attr(fit, "formula_scale"), n_grid = 512L)
   expect_gt(calls, first_cost)
+})
+
+# Reference: the unmemoized computation of the same inputs (no memo), which is
+# what a recomputation after eviction has to reproduce bit for bit.
+test_that("the transformed prior density memo keeps the two most recently used input sets of a fit", {
+
+  fit <- transformed_density_test_fit()
+  original <- BayesTools:::.prior_linear_combination_density
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    .prior_linear_combination_density = function(...){
+      calls <<- calls + 1L
+      original(...)
+    },
+    .package = "BayesTools"
+  )
+  columns <- c("mu_intercept", "mu_x")
+  payloads <- function(densities){
+    stats::setNames(lapply(columns, function(column){
+      transformed_density_payload(densities[[column]])
+    }), columns)
+  }
+  # the density builds and the density payloads of a request with one grid
+  built <- function(n_prior_samples){
+    calls <<- 0L
+    samples <- as_mixed_posteriors(fit, columns, transform_scaled = TRUE, n_prior_samples = n_prior_samples)
+    list(calls = calls, payload = payloads(.bt_meta_get(samples, "prior_densities")))
+  }
+  prior_list <- attr(fit, "prior_list")
+  column_names <- colnames(as.matrix(fit$mcmc[[1L]]))
+  reference <- function(n_grid){
+    payloads(.generate_transformed_prior_densities(
+      prior_list, column_names, attr(fit, "formula_scale"), n_grid = n_grid
+    ))
+  }
+
+  expect_identical(BayesTools:::.bt_prior_density_memo_limit(), 2L)
+  memo <- BayesTools:::.bt_prior_density_memo(fit)
+  set.seed(11)
+  seed <- .Random.seed
+
+  # three distinct input sets (grids A, B, C); a hit moves its set to the front
+  a1 <- built(512L)
+  b1 <- built(768L)
+  expect_gt(a1$calls, 0L)
+  expect_gt(b1$calls, 0L)
+  expect_length(memo$entries, 2L)
+  expect_identical(built(768L)$calls, 0L)
+  expect_identical(built(512L)$calls, 0L)
+
+  # the third set evicts the least recently used one: B, although A is older,
+  # because A was used last
+  c1 <- built(1024L)
+  expect_gt(c1$calls, 0L)
+  expect_length(memo$entries, 2L)
+  expect_identical(built(512L)$calls, 0L)
+  expect_identical(built(1024L)$calls, 0L)
+
+  # a re-request after eviction builds the same densities again, and evicts the
+  # set used least recently (now A)
+  b2 <- built(768L)
+  expect_identical(b2$calls, b1$calls)
+  expect_identical(b2$payload, b1$payload)
+  expect_length(memo$entries, 2L)
+  expect_identical(built(1024L)$calls, 0L)
+  a2 <- built(512L)
+  expect_identical(a2$calls, a1$calls)
+  expect_identical(a2$payload, a1$payload)
+  expect_length(memo$entries, 2L)
+
+  # with and without eviction the values are those of the unmemoized computation
+  expect_identical(a1$payload, reference(512L))
+  expect_identical(b1$payload, reference(768L))
+  expect_identical(c1$payload, reference(1024L))
+  expect_identical(a2$payload, reference(512L))
+  expect_identical(b2$payload, reference(768L))
+  expect_identical(.Random.seed, seed)
 })
