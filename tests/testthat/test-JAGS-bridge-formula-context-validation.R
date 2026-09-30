@@ -502,3 +502,134 @@ test_that("the cached node selection keeps the availability check", {
     fixed = TRUE
   )
 })
+
+
+test_that("the cached bridge node information reproduces the per-draw build", {
+
+  # The node information is built once per bridge and replayed by the shape of
+  # the pieces that decide the node names (as the node layout is). Every state
+  # must give the table the uncached build gives.
+  state <- c("mu" = 0.5, "tau" = 1.25, "rho[1]" = 0.1)
+  pieces <- list(
+    prior_parameters = list(mu = 2.5, tau = 1.25),
+    formula_prior_parameters = list(`mu_gamma` = c(1, 2, 3)),
+    formula_parameters = list(mu = c(0.1, 0.2), flag = TRUE),
+    add_parameter_values = list(block = matrix(1:6 / 2, nrow = 2L))
+  )
+  random <- list(
+    mu = list(
+      study = list(
+        nodes = c("study[1]" = 0.1, "study[2]" = 0.2, "tau" = 3.5),
+        allocation = list(weights = list(c("w[1]" = 0.5, "w[2]" = 0.5)))
+      ),
+      site = list(nodes = c("site[1]" = 1, "study[2]" = 2), allocation = NULL)
+    )
+  )
+  node_info <- function(state, pieces, random, node_cache = NULL){
+    .bt_JAGS_bridge_context_node_info(
+      state = state,
+      prior_parameters = pieces$prior_parameters,
+      formula_prior_parameters = pieces$formula_prior_parameters,
+      formula_parameters = pieces$formula_parameters,
+      add_parameter_values = pieces$add_parameter_values,
+      random = random,
+      node_cache = node_cache
+    )
+  }
+
+  builds <- 0L
+  build <- .bt_JAGS_bridge_build_node_info
+  testthat::local_mocked_bindings(
+    .bt_JAGS_bridge_build_node_info = function(...){
+      builds <<- builds + 1L
+      build(...)
+    },
+    .package = "BayesTools"
+  )
+
+  reference <- node_info(state, pieces, random)
+  expect_gt(nrow(reference), length(state))
+  expect_true(all(c("state", "prior_parameters", "formula_prior_parameters",
+                    "formula_parameters", "add_parameters", "random") %in% reference$source))
+  expect_identical(builds, 1L)
+
+  node_cache <- new.env(parent = emptyenv())
+  expect_identical(node_info(state, pieces, random, node_cache), reference)
+  expect_identical(builds, 2L)
+
+  # draws of the same shape (other values) are answered without a build
+  other_pieces <- pieces
+  other_pieces$formula_parameters$mu <- c(-1, -2)
+  other_pieces$add_parameter_values$block <- matrix(6:1 / 3, nrow = 2L)
+  other_random <- random
+  other_random$mu$study$nodes[] <- 9
+  expect_identical(node_info(state + 1, other_pieces, other_random, node_cache), reference)
+  expect_identical(node_info(state, pieces, random, node_cache), reference)
+  expect_identical(builds, 2L)
+
+  # every change of a shape that decides a node name rebuilds the table, and it
+  # equals the uncached build of the changed pieces
+  rebuilds <- list(
+    state_name = list(state = stats::setNames(state, c("mu", "tau", "rho[2]")), pieces = pieces, random = random),
+    length = list(state = state, pieces = {
+      out <- pieces
+      out$formula_parameters$mu <- c(0.1, 0.2, 0.3)
+      out
+    }, random = random),
+    dimension = list(state = state, pieces = {
+      out <- pieces
+      out$add_parameter_values$block <- matrix(1:6 / 2, nrow = 3L)
+      out
+    }, random = random),
+    piece_name = list(state = state, pieces = {
+      out <- pieces
+      names(out$prior_parameters) <- c("mu", "sigma")
+      out
+    }, random = random),
+    list_of_a_piece = list(state = state, pieces = {
+      out <- pieces
+      out$formula_prior_parameters <- list()
+      out$prior_parameters$`mu_gamma` <- c(1, 2, 3)
+      out
+    }, random = random),
+    dropped_piece = list(state = state, pieces = {
+      out <- pieces
+      out$formula_parameters$flag <- "text"
+      out
+    }, random = random),
+    random_node = list(state = state, pieces = pieces, random = {
+      out <- random
+      names(out$mu$study$nodes)[1L] <- "study[9]"
+      out
+    }),
+    random_block = list(state = state, pieces = pieces, random = {
+      out <- random
+      names(out$mu) <- c("study", "other")
+      out
+    }),
+    allocation = list(state = state, pieces = pieces, random = {
+      out <- random
+      names(out$mu$study$allocation$weights[[1L]]) <- c("w[1]", "w[3]")
+      out
+    }),
+    no_random = list(state = state, pieces = pieces, random = list())
+  )
+  for(name in names(rebuilds)){
+    changed <- rebuilds[[name]]
+    before <- builds
+    cached <- node_info(changed$state, changed$pieces, changed$random, node_cache)
+    expect_identical(builds, before + 1L, info = name)
+    expect_identical(cached, node_info(changed$state, changed$pieces, changed$random), info = name)
+    expect_false(identical(cached, reference), info = name)
+    # and the cache now serves that shape
+    before <- builds
+    expect_identical(node_info(changed$state, changed$pieces, changed$random, node_cache), cached, info = name)
+    expect_identical(builds, before, info = name)
+  }
+
+  # without a cache every call builds
+  before <- builds
+  node_info(state, pieces, random)
+  node_info(state, pieces, random)
+  expect_identical(builds, before + 2L)
+})

@@ -221,7 +221,8 @@
     formula_prior_parameters = formula_prior_parameters,
     formula_parameters = formula_parameters,
     add_parameter_values = add_parameter_values,
-    random = random
+    random = random,
+    node_cache = node_cache
   )
 
   out <- list(
@@ -586,11 +587,73 @@
   out
 }
 
+# The node information of a context depends on the names of its nodes only, and
+# the names are fixed by the model: the table is built once per bridge and
+# replayed while the pieces keep the names, lengths and dimensions that decide
+# them (the same guard as the node layout of .bt_JAGS_bridge_node_layout()); a
+# draw of another shape rebuilds it.
 .bt_JAGS_bridge_context_node_info <- function(state, prior_parameters,
                                               formula_prior_parameters,
                                               formula_parameters,
                                               add_parameter_values,
-                                              random){
+                                              random,
+                                              node_cache = NULL){
+
+  if(!is.environment(node_cache)){
+    return(.bt_JAGS_bridge_build_node_info(
+      state, prior_parameters, formula_prior_parameters, formula_parameters,
+      add_parameter_values, random
+    ))
+  }
+
+  shape <- .bt_JAGS_bridge_node_info_shape(
+    state, prior_parameters, formula_prior_parameters, formula_parameters,
+    add_parameter_values, random
+  )
+  if(identical(shape, node_cache$node_info_shape)){
+    return(node_cache$node_info)
+  }
+  node_info <- .bt_JAGS_bridge_build_node_info(
+    state, prior_parameters, formula_prior_parameters, formula_parameters,
+    add_parameter_values, random
+  )
+  node_cache$node_info_shape <- shape
+  node_cache$node_info <- node_info
+
+  node_info
+}
+
+# Everything the node information is built from: the state names, the name,
+# length and dimensions of every piece of the reconstructed parameter lists
+# (in their order and by list), and the names of the random-effect nodes and
+# allocation weights of every block.
+.bt_JAGS_bridge_node_info_shape <- function(state, prior_parameters,
+                                            formula_prior_parameters,
+                                            formula_parameters,
+                                            add_parameter_values, random){
+
+  piece_shape <- function(parameters){
+    entries <- .bt_JAGS_bridge_node_entries(parameters)
+    list(entries$parameter, entries$length, entries$dimension)
+  }
+  list(
+    names(state),
+    piece_shape(prior_parameters),
+    piece_shape(formula_prior_parameters),
+    piece_shape(formula_parameters),
+    piece_shape(add_parameter_values),
+    lapply(random, function(blocks){
+      lapply(blocks, function(block){
+        list(names(block$nodes), lapply(block$allocation$weights, names))
+      })
+    })
+  )
+}
+
+.bt_JAGS_bridge_build_node_info <- function(state, prior_parameters,
+                                            formula_prior_parameters,
+                                            formula_parameters,
+                                            add_parameter_values, random){
 
   .bt_JAGS_bridge_merge_node_info(
     .bt_JAGS_bridge_node_info(
