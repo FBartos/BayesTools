@@ -4500,3 +4500,154 @@ test_that("extended catalogs may reuse a canonical name across components", {
     "cannot be resolved"
   )
 })
+
+# Reference: the validator without its memo, which is the pre-memo behaviour.
+test_that("catalog tables are validated once per content and modifications are rechecked", {
+
+  memo_reset <- function(){
+    .BayesTools_private$content_memo <- NULL
+  }
+  memo_reset()
+  withr::defer(memo_reset())
+  original <- .bt_validate_parameter_catalog_tables_uncached
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    .bt_validate_parameter_catalog_tables_uncached = function(...){
+      calls <<- calls + 1L
+      original(...)
+    },
+    .package = "BayesTools"
+  )
+
+  prior_list <- list(
+    memo_a = prior("normal", list(0, 1)),
+    memo_b = prior("gamma", list(2, 2))
+  )
+  coordinates <- .bt_build_parameter_coordinates(
+    columns = c("memo_a", "memo_b"),
+    prior_list = prior_list
+  )
+  catalog <- .bt_build_parameter_catalog(coordinates, prior_list = prior_list)
+
+  # the first validation runs the checks, later ones on the same object and on
+  # an equal copy of it (as after saving and loading) do not
+  expect_true(.bt_validate_parameter_catalog(catalog))
+  expect_identical(calls, 1L)
+  for(i in 1:3){
+    expect_true(.bt_validate_parameter_catalog(catalog))
+  }
+  rebuilt <- unserialize(serialize(catalog, NULL))
+  expect_true(.bt_validate_parameter_catalog(rebuilt))
+  wrapper <- .bt_parameter_map_catalog(.bt_parameter_map_new(
+    coordinates, catalog$quantities, catalog$aliases
+  ))
+  expect_true(.bt_validate_parameter_catalog(wrapper))
+  expect_identical(calls, 1L)
+
+  # a modification is never covered by the validated original: an invalid one
+  # fails on every call (a failure is not recorded), a valid one is checked once
+  spoofed <- catalog
+  spoofed$quantities$extraction_key[[1L]] <- list(type = "bogus", dependencies = "memo_a")
+  for(i in 1:2){
+    expect_error(.bt_validate_parameter_catalog(spoofed), "extraction keys are malformed")
+  }
+  expect_identical(calls, 3L)
+  relabelled <- catalog
+  relabelled$quantities$display_label[[1L]] <- "a different label"
+  expect_true(.bt_validate_parameter_catalog(relabelled))
+  expect_true(.bt_validate_parameter_catalog(relabelled))
+  expect_identical(calls, 4L)
+  expect_true(.bt_validate_parameter_catalog(catalog))
+  expect_identical(calls, 4L)
+
+  # tables edited in place are as unrecognised as a rebuilt catalog
+  edited <- catalog
+  edited$aliases$quantity_id[[1L]] <- "BayesTools::unknown"
+  expect_error(.bt_validate_parameter_catalog(edited), "unknown quantity IDs")
+  expect_error(.bt_validate_parameter_catalog(edited), "unknown quantity IDs")
+
+  # the memo and the unmemoized validator agree on the message of every refusal
+  duplicated <- catalog
+  duplicated$quantities <- rbind(duplicated$quantities, duplicated$quantities)
+  duplicated$quantities$quantity_id[3:4] <- paste0("BayesTools::duplicate", 1:2)
+  missing_metadata <- catalog
+  missing_metadata$quantities$definedness[[1L]] <- NA_character_
+  refusals <- list(
+    spoofed = spoofed,
+    edited = edited,
+    duplicated = duplicated,
+    missing_metadata = missing_metadata
+  )
+  for(name in names(refusals)){
+    refused <- refusals[[name]]
+    memoized <- tryCatch(.bt_validate_parameter_catalog(refused), error = identity)
+    unmemoized <- tryCatch(
+      original(refused$quantities, refused$aliases),
+      error = identity
+    )
+    expect_s3_class(memoized, "error")
+    expect_identical(conditionMessage(memoized), conditionMessage(unmemoized))
+    expect_identical(class(memoized), class(unmemoized))
+  }
+  expect_true(original(catalog$quantities, catalog$aliases))
+})
+
+test_that("the validation memo is bounded and keeps selections separate from catalogs", {
+
+  memo_reset <- function(){
+    .BayesTools_private$content_memo <- NULL
+  }
+  memo_reset()
+  withr::defer(memo_reset())
+  original <- .bt_validate_parameter_catalog_tables_uncached
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    .bt_validate_parameter_catalog_tables_uncached = function(...){
+      calls <<- calls + 1L
+      original(...)
+    },
+    .package = "BayesTools"
+  )
+
+  catalogs <- lapply(seq_len(20L), function(i){
+    name <- paste0("bounded_", i)
+    prior_list <- stats::setNames(list(prior("normal", list(0, 1))), name)
+    .bt_build_parameter_catalog(
+      .bt_build_parameter_coordinates(columns = name, prior_list = prior_list),
+      prior_list = prior_list
+    )
+  })
+  # construction validates each catalog; start counting from an empty memo
+  memo_reset()
+  calls <- 0L
+  for(catalog in catalogs){
+    .bt_validate_parameter_catalog(catalog)
+  }
+  expect_identical(calls, 20L)
+  limit <- .bt_content_memo_limit()
+  expect_identical(length(.BayesTools_private$content_memo$parameter_catalog_tables), limit)
+  # the newest entries are kept, the oldest ones are checked again
+  .bt_validate_parameter_catalog(catalogs[[20L]])
+  expect_identical(calls, 20L)
+  .bt_validate_parameter_catalog(catalogs[[1L]])
+  expect_identical(calls, 21L)
+
+  # a selection is validated once per content, in its own memo
+  selection <- parameter_catalog_resolve(catalogs[[5L]], "bounded_5")
+  calls_before <- calls
+  for(i in 1:3){
+    .bt_validate_parameter_selection(selection, catalog = catalogs[[5L]])
+  }
+  expect_identical(calls - calls_before, 0L)
+  expect_identical(
+    length(.BayesTools_private$content_memo$parameter_selection_tables),
+    1L
+  )
+  stale <- selection
+  stale$quantities$display_label[[1L]] <- "tampered"
+  expect_error(
+    .bt_validate_parameter_selection(stale, catalog = catalogs[[5L]]),
+    "stale or does not belong"
+  )
+})
+

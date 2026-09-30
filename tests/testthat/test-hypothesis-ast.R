@@ -486,3 +486,69 @@ test_that("hypothesis BF consumes validated ASTs without changing results", {
     "'hypothesis'"
   )
 })
+
+# Reference: the validator without its memo, which is the pre-memo behaviour.
+test_that("an AST is validated once per content and modifications are rechecked", {
+
+  .BayesTools_private$content_memo <- NULL
+  withr::defer(.BayesTools_private$content_memo <- NULL)
+  original <- .bt_validate_hypothesis_ast_uncached
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    .bt_validate_hypothesis_ast_uncached = function(ast){
+      calls <<- calls + 1L
+      original(ast)
+    },
+    .package = "BayesTools"
+  )
+
+  # the constructor validates, so the object is known to every later call
+  ast <- hypothesis_parse(c("theta > 0", "abs(phi) + 1 = 2 vs phi != 1"))
+  expect_identical(calls, 1L)
+  for(i in 1:3){
+    hypothesis_render(ast)
+    hypothesis_symbols(ast, occurrences = TRUE)
+  }
+  expect_identical(calls, 1L)
+  # an equal copy (as after saving and loading) is recognised too
+  expect_identical(hypothesis_render(unserialize(serialize(ast, NULL))), hypothesis_render(ast))
+  expect_identical(calls, 1L)
+
+  # a modified AST is never covered by the original: invalid ones fail on every
+  # call, and the memo and the unmemoized validator agree on the refusal
+  wrong_source <- ast
+  wrong_source$statements[[1L]]$source <- "phi > 0"
+  wrong_side <- ast
+  wrong_side$statements[[2L]]$left$label <- ""
+  wrong_node <- ast
+  wrong_node$statements[[1L]]$left$expression$type <- "unknown"
+  wrong_version <- ast
+  wrong_version$schema_version <- 2L
+  tampered <- list(
+    source = wrong_source, side = wrong_side, node = wrong_node,
+    version = wrong_version
+  )
+  for(name in names(tampered)){
+    for(i in 1:2){
+      memoized <- tryCatch(hypothesis_render(tampered[[name]]), error = identity)
+      unmemoized <- tryCatch(original(tampered[[name]]), error = identity)
+      expect_s3_class(memoized, "error")
+      expect_identical(conditionMessage(memoized), conditionMessage(unmemoized))
+    }
+  }
+  # one check per refusal and repetition (the reference validator is not counted)
+  expect_identical(calls, 1L + 2L * length(tampered))
+  # the original is still recognised after the refused modifications
+  before <- calls
+  hypothesis_render(ast)
+  expect_identical(calls, before)
+
+  # a valid modification is checked (once) when it is made
+  rewritten <- hypothesis_rewrite(ast, c(theta = "eta"))
+  before <- calls
+  expect_identical(
+    hypothesis_render(rewritten),
+    c("eta > 0", "abs(phi) + 1 = 2 vs phi != 1")
+  )
+  expect_identical(calls, before)
+})

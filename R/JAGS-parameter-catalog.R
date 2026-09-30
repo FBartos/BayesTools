@@ -321,7 +321,8 @@ parameter_catalog_extend <- function(catalog, quantities, aliases,
     known_quantity_ids = c(
       catalog$quantities$quantity_id,
       quantities$quantity_id
-    )
+    ),
+    memo = NULL
   )
   if(nrow(quantities) == 0L && nrow(aliases) == 0L){
     stop("At least one extension quantity or alias must be supplied.",
@@ -4434,7 +4435,39 @@ parameter_transform_jacobian <- function(values, transform){
   identical(key$evaluator, "rho")
 }
 
+# Validates the tables once per distinct content: a later call with tables
+# identical() to validated ones returns without checking them again, and any
+# modified table is checked in full (see .bt_validate_once()). 'memo' names the
+# kind of tables ("catalog" for a whole catalog, "selection" for the few rows
+# of a selection) so that the two do not compete for the same entries; NULL
+# validates without memo, as for the tables of a catalog extension.
 .bt_validate_parameter_catalog_tables <- function(
+    quantities, aliases,
+    known_quantity_ids = quantities$quantity_id,
+    memo = "catalog"){
+
+  if(is.null(memo) || !is.data.frame(quantities) || !is.data.frame(aliases)){
+    return(.bt_validate_parameter_catalog_tables_uncached(
+      quantities, aliases, known_quantity_ids
+    ))
+  }
+  # the default known IDs are those of 'quantities', so they need no key of
+  # their own; an explicit NULL is a different request from the default
+  known_key <- if(missing(known_quantity_ids)){
+    structure(list(), class = "BayesTools_default_known_ids")
+  }else{
+    known_quantity_ids
+  }
+  .bt_validate_once(
+    paste0("parameter_", memo, "_tables"),
+    list(quantities, aliases, known_key),
+    function() .bt_validate_parameter_catalog_tables_uncached(
+      quantities, aliases, known_quantity_ids
+    )
+  )
+}
+
+.bt_validate_parameter_catalog_tables_uncached <- function(
     quantities, aliases,
     known_quantity_ids = quantities$quantity_id){
 
@@ -4751,7 +4784,8 @@ parameter_transform_jacobian <- function(values, transform){
       selection$quantities$parent_quantity_id[
         nzchar(selection$quantities$parent_quantity_id)
       ]
-    ))
+    )),
+    memo = "selection"
   )
   if(!identical(selection$quantity_id, selection$quantities$quantity_id)){
     stop("Parameter selection IDs and quantity metadata disagree. Resolve the parameter again.",

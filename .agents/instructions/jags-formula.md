@@ -295,7 +295,13 @@ names.
   long after the code that derived it changed. Consumers store map-derived
   values through `parameter_map_cache()`, supplying a key covering every other
   input they used; BayesTools owns that environment and discards all providers'
-  entries whenever the map tables are replaced.
+  entries whenever the map tables are replaced. The transformed prior densities
+  of `as_mixed_posteriors(transform_scaled = TRUE)` live there, per input set.
+- Repeated pure work shares one session memo (`.bt_content_memo()`): validators
+  of catalogs, selections, hypothesis ASTs, and label parts
+  (`.bt_validate_once()`) and the formula coefficient transform keep recent
+  inputs by reference and recognise them only when `identical()`. A modified
+  object is validated or rebuilt again; nothing is marked on the object itself.
 - Missing, malformed, or unsupported map metadata requires refitting with the
   current BayesTools version. Do not add in-memory migrations for stale fitted
   objects without an explicit maintainer decision.

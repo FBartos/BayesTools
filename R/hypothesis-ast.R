@@ -783,7 +783,19 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
   node
 }
 
+# Validates an AST once per distinct content: every public hypothesis function
+# validates its input, and an AST identical() to a validated one is not checked
+# again (see .bt_validate_once()); a modified AST is checked in full.
 .bt_validate_hypothesis_ast <- function(ast){
+
+  .bt_validate_once(
+    "hypothesis_ast",
+    ast,
+    function() .bt_validate_hypothesis_ast_uncached(ast)
+  )
+}
+
+.bt_validate_hypothesis_ast_uncached <- function(ast){
 
   valid <- inherits(ast, "BayesTools_hypothesis_ast") && is.list(ast) &&
     identical(names(ast), c("schema_version", "statements")) &&
