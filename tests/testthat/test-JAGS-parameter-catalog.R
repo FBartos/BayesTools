@@ -4796,6 +4796,32 @@ test_that("catalog quantity rows and their table equal the data frame operations
   expect_identical(differing_fields(inputs$coordinates), character())
 })
 
+test_that("catalog quantity rows refuse fields that do not hold one value", {
+
+  # The assignment into the empty table refused a field without a value; the
+  # directly built row must refuse it too instead of carrying a column of
+  # another length (which the table validator does not see).
+  build <- function(...){
+    .bt_parameter_catalog_quantity(
+      "theta", "model", "parameter", status = "sampled",
+      source_type = "identity",
+      extraction_key = list(type = "coordinate", dependencies = "theta"),
+      ...
+    )
+  }
+  expect_identical(nrow(build()), 1L)
+  for(field in list(list(component = NULL), list(component = character()),
+                    list(term = character()), list(fixed_value = numeric()),
+                    list(owner_name = c("a", "b")), list(internal = c(TRUE, FALSE)))){
+    expect_error(
+      do.call(build, field),
+      paste0("Parameter catalog quantity fields must each hold one value: '",
+             names(field), "'."),
+      fixed = TRUE
+    )
+  }
+})
+
 test_that("catalog support and definedness share the prior-list work without changing it", {
 
   inputs <- catalog_builder_test_inputs()

@@ -2179,6 +2179,16 @@ parameter_transform_jacobian <- function(values, transform){
     label_parts        = I(list(label_parts)),
     extraction_key     = I(list(extraction_key))
   )
+  # a field without exactly one value would give the row a column of another
+  # length, which no data frame method would have built
+  wrong_length <- names(values)[lengths(values) != 1L]
+  if(length(wrong_length) > 0L){
+    stop(
+      "Parameter catalog quantity fields must each hold one value: ",
+      paste0("'", wrong_length, "'", collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
   structure(
     values[.bt_parameter_catalog_quantity_columns],
     row.names = 1L,
