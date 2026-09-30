@@ -255,17 +255,21 @@ test_that("every catalog quantity renders its canonical name and resolves by its
         catalog$aliases$alias,
         info = info
       )
+      # the quantity every label resolves to, compared for all labels at once
+      # (the names of the compared vectors are the labels)
+      resolved_ids <- function(labels){
+        stats::setNames(vapply(labels, function(label){
+          parameter_catalog_resolve(catalog, label)$quantity_id
+        }, character(1), USE.NAMES = FALSE), labels)
+      }
       for(prefix in c(TRUE, FALSE)){
         labels <- parameter_labels(quantities, "table", formula_prefix = prefix)
-        for(i in seq_along(labels)){
-          resolved <- parameter_catalog_resolve(catalog, labels[[i]])
-          expect_identical(
-            resolved$quantity_id,
-            quantities$quantity_id[[i]],
-            info = paste(info, labels[[i]])
-          )
-          checked <- checked + 1L
-        }
+        expect_identical(
+          resolved_ids(labels),
+          stats::setNames(quantities$quantity_id, labels),
+          info = info
+        )
+        checked <- checked + length(labels)
       }
       # the level names and rows of transformed contrasts select the levels
       cells <- vapply(quantities$label_parts, function(parts){
@@ -277,13 +281,11 @@ test_that("every catalog quantity renders its canonical name and resolves by its
       )
       for(style in c("selector", "table")){
         dif_labels <- .bt_label(dif, style)
-        for(i in seq_along(dif_labels)){
-          expect_identical(
-            parameter_catalog_resolve(catalog, dif_labels[[i]])$quantity_id,
-            quantities$quantity_id[cells][[i]],
-            info = paste(info, dif_labels[[i]])
-          )
-        }
+        expect_identical(
+          resolved_ids(dif_labels),
+          stats::setNames(quantities$quantity_id[cells], dif_labels),
+          info = paste(info, style)
+        )
       }
     }
   }

@@ -2166,51 +2166,75 @@ gamma,3.0,1.0,1.0,0.06,0.709247,0.49027885728844261084
     list(type = "scale_product", spec = spec, n_grid = 1024L)
   }
 
-  for(i in seq_len(nrow(densities))){
-    row <- densities[i, ]
-    info <- paste(row$family, row$alpha, row$beta, row$kappa, row$y)
-    ordinate <- BayesTools:::.prior_density_route_ordinate(leaf(row), row$y)
-    expect_identical(ordinate$behavior, "regular", info = info)
-    expect_true(ordinate$exact, info = info)
-    height <- exp(ordinate$log_density)
-    expect_lte(abs(height / row$density - 1), 1e-8)
-    expect_lte(abs(height - row$density), ordinate$provenance$integration$absolute_error)
-  }
+  # Every reference row is checked. Each bound holds for every row when its
+  # largest violation does, and the rows that violate a bound are named, so
+  # one expectation per bound replaces one per row.
+  cases <- paste(densities$family, densities$alpha, densities$beta, densities$kappa, densities$y)
+  ordinates <- lapply(seq_len(nrow(densities)), function(i){
+    BayesTools:::.prior_density_route_ordinate(leaf(densities[i, ]), densities$y[[i]])
+  })
+  heights <- vapply(ordinates, function(ordinate) exp(ordinate$log_density), numeric(1))
+  absolute_errors <- vapply(ordinates, function(ordinate){
+    ordinate$provenance$integration$absolute_error
+  }, numeric(1))
+  expect_identical(
+    cases[vapply(ordinates, function(ordinate) !identical(ordinate$behavior, "regular"), logical(1))],
+    character()
+  )
+  expect_identical(
+    cases[!vapply(ordinates, function(ordinate) isTRUE(ordinate$exact), logical(1))],
+    character()
+  )
+  expect_identical(cases[!(abs(heights / densities$density - 1) <= 1e-8)], character())
+  expect_identical(cases[!(abs(heights - densities$density) <= absolute_errors)], character())
   # the batched quadrature of plotted densities (relative 1e-8 acceptance)
-  for(key in unique(paste(densities$family, densities$alpha, densities$beta, densities$kappa))){
-    rows <- densities[paste(densities$family, densities$alpha, densities$beta, densities$kappa) == key, ]
+  keys <- paste(densities$family, densities$alpha, densities$beta, densities$kappa)
+  plotted_errors <- vapply(unique(keys), function(key){
+    rows <- densities[keys == key, ]
     plotted <- BayesTools:::.prior_density_route_density(leaf(rows[1L, ]), rows$y)
-    expect_lte(max(abs(plotted / rows$density - 1)), 1e-8)
-  }
-  for(i in seq_len(nrow(regions))){
+    max(abs(plotted / rows$density - 1))
+  }, numeric(1))
+  expect_identical(names(plotted_errors)[!(plotted_errors <= 1e-8)], character())
+  probabilities <- lapply(seq_len(nrow(regions)), function(i){
     row <- regions[i, ]
     region <- list(
       intervals = matrix(c(row$lower, row$upper), 1L),
       indicator = function(x) x > row$lower & x < row$upper
     )
-    probability <- BayesTools:::.prior_density_route_region(leaf(row), region)
-    expect_true(probability$converged)
-    expect_lte(abs(probability$probability / row$probability - 1), 1e-8)
-  }
+    BayesTools:::.prior_density_route_region(leaf(row), region)
+  })
+  region_cases <- paste(regions$family, regions$alpha, regions$beta, regions$kappa, regions$lower, regions$upper)
+  expect_identical(
+    region_cases[!vapply(probabilities, function(probability) isTRUE(probability$converged), logical(1))],
+    character()
+  )
+  region_errors <- vapply(seq_along(probabilities), function(i){
+    abs(probabilities[[i]]$probability / regions$probability[[i]] - 1)
+  }, numeric(1))
+  expect_identical(region_cases[!(region_errors <= 1e-8)], character())
 
   # the offset 0: f_T(0) E[(k S)^(-1/2)] = f_T(0) B(alpha - 1/2, beta) /
   # (sqrt(k) B(alpha, beta)) for alpha > 1/2; infinite for alpha <= 1/2, where
   # the mapped share has a positive or infinite density at 0
-  for(i in which(densities$family == "halfnormal" & densities$y == 1e-3)){
-    row <- densities[i, ]
-    ordinate <- BayesTools:::.prior_density_route_ordinate(leaf(row), 0)
-    if(row$alpha > 1 / 2){
-      expect_identical(ordinate$behavior, "regular")
-      expect_equal(
-        ordinate$log_density,
-        log(2 * stats::dnorm(0, sd = .5)) + lbeta(row$alpha - 1 / 2, row$beta) -
-          lbeta(row$alpha, row$beta) - log(row$kappa) / 2,
-        tolerance = 1e-12
-      )
-    }else{
-      expect_identical(ordinate$behavior, "infinite")
+  problems <- expectation_problems({
+    for(i in which(densities$family == "halfnormal" & densities$y == 1e-3)){
+      row <- densities[i, ]
+      ordinate <- BayesTools:::.prior_density_route_ordinate(leaf(row), 0)
+      if(row$alpha > 1 / 2){
+        expect_identical(ordinate$behavior, "regular", info = paste(row$alpha, row$beta, row$kappa))
+        expect_equal(
+          ordinate$log_density,
+          log(2 * stats::dnorm(0, sd = .5)) + lbeta(row$alpha - 1 / 2, row$beta) -
+            lbeta(row$alpha, row$beta) - log(row$kappa) / 2,
+          tolerance = 1e-12,
+          info = paste(row$alpha, row$beta, row$kappa)
+        )
+      }else{
+        expect_identical(ordinate$behavior, "infinite", info = paste(row$alpha, row$beta, row$kappa))
+      }
     }
-  }
+  })
+  expect_identical(problems, character())
   # outside the support
   expect_identical(
     BayesTools:::.prior_density_route_ordinate(leaf(densities[1L, ]), -.1)$behavior,

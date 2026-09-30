@@ -1313,64 +1313,69 @@ test_that("linear combinations of multivariate t priors are univariate t terms",
     level <- function(i) stats::setNames(design[i, ], paste0("mu_g[", 1:3, "]"))
     weight_sets <- list(c("mu_g[2]" = 1), level(1), level(4), level(2) - level(3),
                         c("mu_g[1]" = .3, "mu_g[2]" = -.7, "mu_g[3]" = 2))
-    for(weights in weight_sets){
-      density <- .prior_density_from_context(context, weights)
-      scale <- .5 * sqrt(sum(weights^2))
-      for(value in c(-1.3, 0, .2, 25)){
-        ordinate <- prior_density_ordinate(density, value)
-        expect_true(ordinate$exact)
-        expect_identical(ordinate$behavior, "regular")
-        expect_identical(ordinate$method, "scalar_affine")
-        expect_equal(ordinate$log_density,
-                     extraDistr::dlst(value, df = 3, mu = 0, sigma = scale, log = TRUE),
+    # every check of the contrast is made; the failures are collected and
+    # asserted once per contrast
+    problems <- expectation_problems({
+      for(weights in weight_sets){
+        density <- .prior_density_from_context(context, weights)
+        scale <- .5 * sqrt(sum(weights^2))
+        for(value in c(-1.3, 0, .2, 25)){
+          ordinate <- prior_density_ordinate(density, value)
+          expect_true(ordinate$exact)
+          expect_identical(ordinate$behavior, "regular")
+          expect_identical(ordinate$method, "scalar_affine")
+          expect_equal(ordinate$log_density,
+                       extraDistr::dlst(value, df = 3, mu = 0, sigma = scale, log = TRUE),
+                       tolerance = 1e-13)
+        }
+        record <- ordinate$provenance$multivariate_t[[1L]]
+        expect_identical(record$parameter, "mu_g")
+        expect_equal(record$weights, weights[weights != 0])
+        expect_equal(record$t, c(location = 0, scale = scale, df = 3), tolerance = 1e-15)
+        expect_equal(as.numeric(.prior_linear_density_height(density, .2)),
+                     extraDistr::dlst(.2, df = 3, mu = 0, sigma = scale), tolerance = 1e-13)
+        probability <- region_probability(density, -.4, .9)
+        expect_identical(attr(probability, "numerical_diagnostics")$method, "exact")
+        expect_equal(as.numeric(probability),
+                     diff(extraDistr::plst(c(-.4, .9), df = 3, mu = 0, sigma = scale)),
                      tolerance = 1e-13)
+        curve <- .prior_linear_density_to_plot_data(density, n_points = 51, x_range = c(-3, 3))$density
+        expect_equal(curve$y, extraDistr::dlst(curve$x, df = 3, mu = 0, sigma = scale),
+                     tolerance = 1e-13)
+        expect_identical(prior_ordinate_status(density, .2)$eligible, TRUE)
       }
-      record <- ordinate$provenance$multivariate_t[[1L]]
-      expect_identical(record$parameter, "mu_g")
-      expect_equal(record$weights, weights[weights != 0])
-      expect_equal(record$t, c(location = 0, scale = scale, df = 3), tolerance = 1e-15)
-      expect_equal(as.numeric(.prior_linear_density_height(density, .2)),
-                   extraDistr::dlst(.2, df = 3, mu = 0, sigma = scale), tolerance = 1e-13)
-      probability <- region_probability(density, -.4, .9)
-      expect_identical(attr(probability, "numerical_diagnostics")$method, "exact")
-      expect_equal(as.numeric(probability),
-                   diff(extraDistr::plst(c(-.4, .9), df = 3, mu = 0, sigma = scale)),
-                   tolerance = 1e-13)
-      curve <- .prior_linear_density_to_plot_data(density, n_points = 51, x_range = c(-3, 3))$density
-      expect_equal(curve$y, extraDistr::dlst(curve$x, df = 3, mu = 0, sigma = scale),
-                   tolerance = 1e-13)
-      expect_identical(prior_ordinate_status(density, .2)$eligible, TRUE)
-    }
 
-    # a Cauchy level (mcauchy, one degree of freedom) plus the normal
-    # intercept is a Gaussian convolution, and a mt level plus a Cauchy level
-    # a two-term convolution
-    h_level <- stats::setNames(if(contrast == "meandif") contr.meandif(3)[1, ] else contr.orthonormal(3)[1, ],
-                               paste0("mu_h[", 1:2, "]"))
-    h_scale <- .25 * sqrt(sum(h_level^2))
-    combinations <- list(
-      list(weights = c(mu_intercept = 1, h_level), method = "conditional_normal_mixture",
-           reference = function(value){
-             integrate_pieces(function(x) stats::dcauchy(x, 0, h_scale) * stats::dnorm(value - x),
-                              c(-Inf, sort(c(0, value)), Inf))
-           }),
-      list(weights = c(level(1), h_level), method = "convolution",
-           reference = function(value){
-             integrate_pieces(function(x){
-               stats::dcauchy(x, 0, h_scale) *
-                 extraDistr::dlst(value - x, df = 3, mu = 0, sigma = .5 * sqrt(sum(level(1)^2)))
-             }, c(-Inf, sort(c(0, value)), Inf))
-           })
-    )
-    for(combination in combinations){
-      density <- .prior_density_from_context(context, combination$weights)
-      for(value in c(-.8, .3, 4)){
-        ordinate <- prior_density_ordinate(density, value)
-        expect_true(ordinate$exact)
-        expect_identical(ordinate$method, combination$method)
-        expect_equal(exp(ordinate$log_density), combination$reference(value), tolerance = 1e-6)
+      # a Cauchy level (mcauchy, one degree of freedom) plus the normal
+      # intercept is a Gaussian convolution, and a mt level plus a Cauchy level
+      # a two-term convolution
+      h_level <- stats::setNames(if(contrast == "meandif") contr.meandif(3)[1, ] else contr.orthonormal(3)[1, ],
+                                 paste0("mu_h[", 1:2, "]"))
+      h_scale <- .25 * sqrt(sum(h_level^2))
+      combinations <- list(
+        list(weights = c(mu_intercept = 1, h_level), method = "conditional_normal_mixture",
+             reference = function(value){
+               integrate_pieces(function(x) stats::dcauchy(x, 0, h_scale) * stats::dnorm(value - x),
+                                c(-Inf, sort(c(0, value)), Inf))
+             }),
+        list(weights = c(level(1), h_level), method = "convolution",
+             reference = function(value){
+               integrate_pieces(function(x){
+                 stats::dcauchy(x, 0, h_scale) *
+                   extraDistr::dlst(value - x, df = 3, mu = 0, sigma = .5 * sqrt(sum(level(1)^2)))
+               }, c(-Inf, sort(c(0, value)), Inf))
+             })
+      )
+      for(combination in combinations){
+        density <- .prior_density_from_context(context, combination$weights)
+        for(value in c(-.8, .3, 4)){
+          ordinate <- prior_density_ordinate(density, value)
+          expect_true(ordinate$exact)
+          expect_identical(ordinate$method, combination$method)
+          expect_equal(exp(ordinate$log_density), combination$reference(value), tolerance = 1e-6)
+        }
       }
-    }
+    })
+    expect_identical(problems, character(), info = contrast)
   }
 
   # a non-factor vector prior with a nonzero location: the location is
