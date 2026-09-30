@@ -5690,14 +5690,30 @@ test_that("JAGS bridgesampling passes requested bridge context to callback", {
   )
   posterior <- coda::as.mcmc(posterior)
   seen <- new.env(parent = emptyenv())
+  seen$calls <- 0L
+  seen$problems <- character()
+  # The callback runs for every draw of every bridge iteration. It checks the
+  # context on each call and records what fails; the expectations are made once
+  # after the run, not one per call.
   log_posterior <- function(parameters, data, bridge_context){
+    seen$calls <- seen$calls + 1L
     if(!exists("context", envir = seen, inherits = FALSE)){
       seen$context <- bridge_context
       seen$mu <- parameters$mu
     }
-    expect_s3_class(bridge_context, "BayesTools_bridge_context")
-    expect_true("mu" %in% names(bridge_context$state))
-    expect_equal(bridge_context$nodes[["mu"]], parameters$mu)
+    if(!inherits(bridge_context, "BayesTools_bridge_context")){
+      seen$problems <- c(seen$problems, "the context is not a BayesTools_bridge_context")
+    }
+    if(!"mu" %in% names(bridge_context$state)){
+      seen$problems <- c(seen$problems, "the context state has no 'mu'")
+    }
+    differences <- waldo::compare(
+      bridge_context$nodes[["mu"]], parameters$mu,
+      tolerance = testthat::testthat_tolerance()
+    )
+    if(length(differences) > 0L){
+      seen$problems <- c(seen$problems, paste("node 'mu' differs from the parameter:", differences))
+    }
     0
   }
 
@@ -5713,6 +5729,9 @@ test_that("JAGS bridgesampling passes requested bridge context to callback", {
   expect_s3_class(marglik, "BayesTools_marglik")
   expect_s3_class(seen$context, "BayesTools_bridge_context")
   expect_equal(seen$context$nodes[["mu"]], seen$mu)
+  # the callback ran for the draws of the bridge, and every call passed its checks
+  expect_gte(seen$calls, nrow(posterior))
+  expect_identical(seen$problems, character())
 })
 
 test_that("JAGS bridgesampling validates rebuilt formula random design metadata", {
