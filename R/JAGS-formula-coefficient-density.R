@@ -504,7 +504,30 @@ JAGS_formula_prior_density <- function(
   )
 }
 
+# The transform is a function of its arguments only, and the prior-density
+# contexts, the scale transformations of posteriors and the atoms of one
+# original-scale request rebuild the same transform again and again (one
+# context per parameter); a request for arguments identical() to earlier ones
+# returns the kept transform (see .bt_content_memo()).
 .bt_formula_coefficient_transform <- function(
+    source_names, formula_scale, parameter, target_scale = "original",
+    log_intercept = FALSE,
+    source_metadata = NULL,
+    formula_design_version = .bt_formula_design_schema_version(),
+    parameter_map_version = .bt_parameter_map_version){
+
+  .bt_content_memo(
+    "formula_coefficient_transform",
+    list(source_names, formula_scale, parameter, target_scale, log_intercept,
+         source_metadata, formula_design_version, parameter_map_version),
+    function() .bt_formula_coefficient_transform_uncached(
+      source_names, formula_scale, parameter, target_scale, log_intercept,
+      source_metadata, formula_design_version, parameter_map_version
+    )
+  )
+}
+
+.bt_formula_coefficient_transform_uncached <- function(
     source_names, formula_scale, parameter, target_scale = "original",
     log_intercept = FALSE,
     source_metadata = NULL,

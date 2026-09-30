@@ -1,85 +1,189 @@
+# The densities of the monitored coefficient columns of 'prior_list' on the
+# original scale. 'parameters' restricts them to the prior columns of those
+# parameters (all parameters by default). 'memo' is the per-fit memo of
+# .bt_prior_density_memo(): the context and each column density are computed
+# once per distinct set of inputs and reused by later calls, which return the
+# very objects the first call built.
 .generate_transformed_prior_densities <- function(prior_list, column_names, formula_scale = NULL,
                                                   conditional = NULL, conditional_rule = "AND",
                                                   condition_event = NULL,
                                                   n_grid = .prior_linear_density_default_grid(),
-                                                  tail_prob = .prior_linear_density_tail_prob()){
+                                                  tail_prob = .prior_linear_density_tail_prob(),
+                                                  parameters = NULL, memo = NULL){
 
   # The densities describe monitored coefficient columns, which are the raw
   # JAGS nodes: a formula prior's 'multiply_by' scales only the linear
   # predictor, never the coefficient itself.
   prior_list <- .marginal_posterior_strip_multiply_by(prior_list)
 
-  context <- .prior_density_build_context(
-    prior_list       = prior_list,
-    column_names     = column_names,
-    formula_scale    = formula_scale,
-    n_grid           = n_grid,
-    tail_prob        = tail_prob,
-    conditional      = conditional,
-    conditional_rule = conditional_rule,
-    condition_event  = condition_event
-  )
+  entry <- .bt_prior_density_memo_entry(memo, list(
+    prior_list, column_names, formula_scale, conditional, conditional_rule,
+    condition_event, n_grid, tail_prob
+  ))
+  context <- entry$context
+  if(is.null(context)){
+    context <- .prior_density_build_context(
+      prior_list       = prior_list,
+      column_names     = column_names,
+      formula_scale    = formula_scale,
+      n_grid           = n_grid,
+      tail_prob        = tail_prob,
+      conditional      = conditional,
+      conditional_rule = conditional_rule,
+      condition_event  = condition_event
+    )
+    entry$context <- context
+  }
 
-  prior_columns <- unlist(lapply(names(prior_list), function(parameter){
+  requested <- names(prior_list)
+  if(!is.null(parameters)){
+    requested <- intersect(requested, parameters)
+  }
+  prior_columns <- unlist(lapply(requested, function(parameter){
     .prior_linear_prior_columns(parameter, prior_list[[parameter]])
   }), use.names = FALSE)
   prior_columns <- intersect(prior_columns, column_names)
 
   out <- list()
   for(parameter in prior_columns){
-    weights <- .prior_density_coefficient_weights(column_names, parameter)
-    source_transforms <- NULL
-    output_transformation <- NULL
-
-    for(transform in context$transforms){
-      if(transform$log_intercept && identical(parameter, transform$intercept)){
-        weights <- rep(0, length(column_names))
-        names(weights) <- column_names
-        weights[transform$columns] <- transform$matrix[parameter, ]
-
-        source_transforms <- rep(NA_character_, length(column_names))
-        names(source_transforms) <- column_names
-        source_transforms[[transform$intercept]] <- "log"
-        output_transformation <- "exp"
-        break
-      }
+    density <- entry$densities[[parameter]]
+    if(is.null(density)){
+      density <- .generate_transformed_prior_density(
+        parameter    = parameter,
+        context      = context,
+        prior_list   = prior_list,
+        column_names = column_names,
+        n_grid       = n_grid,
+        tail_prob    = tail_prob
+      )
+      entry$densities[[parameter]] <- density
     }
-
-    if(!is.null(output_transformation) &&
-       inherits(context, "prior_density_conditional_context")){
-      # The log-intercept weights are already on the fitted coefficient scale;
-      # mix the conditioned models without re-applying the formula scaling.
-      coefficient_context <- context
-      coefficient_context$formula_scale <- NULL
-      coefficient_context$transforms    <- list()
-      out[[parameter]] <- .prior_density_from_context(
-        context               = coefficient_context,
-        weights               = weights,
-        source_transforms     = source_transforms,
-        output_transformation = output_transformation
-      )
-    }else if(!is.null(output_transformation)){
-      out[[parameter]] <- .prior_linear_combination_density(
-        prior_list             = prior_list,
-        weights                = weights,
-        n_grid                 = n_grid,
-        tail_prob              = tail_prob,
-        source_transforms      = source_transforms,
-        output_transformation  = output_transformation
-      )
-    }else{
-      out[[parameter]] <- .prior_density_from_context(
-        context               = context,
-        weights               = weights,
-        source_transforms     = source_transforms,
-        output_transformation = output_transformation
-      )
-    }
+    out[[parameter]] <- density
   }
 
   attr(out, "context") <- context
   class(out) <- c("prior_density_list", "list")
   return(out)
+}
+
+.generate_transformed_prior_density <- function(parameter, context, prior_list,
+                                                column_names, n_grid, tail_prob){
+
+  weights <- .prior_density_coefficient_weights(column_names, parameter)
+  source_transforms <- NULL
+  output_transformation <- NULL
+
+  for(transform in context$transforms){
+    if(transform$log_intercept && identical(parameter, transform$intercept)){
+      weights <- rep(0, length(column_names))
+      names(weights) <- column_names
+      weights[transform$columns] <- transform$matrix[parameter, ]
+
+      source_transforms <- rep(NA_character_, length(column_names))
+      names(source_transforms) <- column_names
+      source_transforms[[transform$intercept]] <- "log"
+      output_transformation <- "exp"
+      break
+    }
+  }
+
+  if(!is.null(output_transformation) &&
+     inherits(context, "prior_density_conditional_context")){
+    # The log-intercept weights are already on the fitted coefficient scale;
+    # mix the conditioned models without re-applying the formula scaling.
+    coefficient_context <- context
+    coefficient_context$formula_scale <- NULL
+    coefficient_context$transforms    <- list()
+    return(.prior_density_from_context(
+      context               = coefficient_context,
+      weights               = weights,
+      source_transforms     = source_transforms,
+      output_transformation = output_transformation
+    ))
+  }
+  if(!is.null(output_transformation)){
+    return(.prior_linear_combination_density(
+      prior_list             = prior_list,
+      weights                = weights,
+      n_grid                 = n_grid,
+      tail_prob              = tail_prob,
+      source_transforms      = source_transforms,
+      output_transformation  = output_transformation
+    ))
+  }
+
+  .prior_density_from_context(
+    context               = context,
+    weights               = weights,
+    source_transforms     = source_transforms,
+    output_transformation = output_transformation
+  )
+}
+
+# The per-fit memo of transformed prior densities, or NULL for a fit without a
+# parameter map. It lives in the runtime cache of the fit's parameter map (see
+# parameter_map_cache()), so it is bounded with that registry, dropped when the
+# map's tables are replaced, and never saved with the fit.
+.bt_prior_density_memo <- function(model){
+
+  map <- attr(model, "parameter_map", exact = TRUE)
+  if(!inherits(map, "BayesTools_parameter_map")){
+    return(NULL)
+  }
+
+  parameter_map_cache(
+    map,
+    provider = "BayesTools",
+    key      = "transformed_prior_densities",
+    compute  = function(){
+      memo <- new.env(parent = emptyenv())
+      memo$entries <- list()
+      memo
+    }
+  )
+}
+
+# Distinct input sets kept per fit; the newest ones stay.
+.bt_prior_density_memo_limit <- function(){
+  4L
+}
+
+# The memo entry of the inputs 'key' (the environment holding their context and
+# the densities computed so far). Entries are recognised by identical() inputs,
+# so a modified prior list, scaling, grid or conditioning gets its own entry. A
+# NULL memo returns a fresh entry that nothing keeps.
+.bt_prior_density_memo_entry <- function(memo, key){
+
+  new_entry <- function(){
+    entry <- new.env(parent = emptyenv())
+    entry$key       <- key
+    entry$context   <- NULL
+    entry$densities <- new.env(parent = emptyenv())
+    entry
+  }
+  if(!is.environment(memo)){
+    return(new_entry())
+  }
+
+  entries <- memo$entries
+  for(i in seq_along(entries)){
+    if(.bt_content_memo_same(entries[[i]]$key, key)){
+      if(i > 1L){
+        memo$entries <- c(entries[i], entries[-i])
+      }
+      return(entries[[i]])
+    }
+  }
+
+  entry <- new_entry()
+  entries <- c(list(entry), entries)
+  limit <- .bt_prior_density_memo_limit()
+  if(length(entries) > limit){
+    entries <- entries[seq_len(limit)]
+  }
+  memo$entries <- entries
+
+  entry
 }
 
 #' @title Plot Transformed Prior Densities

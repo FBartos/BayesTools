@@ -26,7 +26,7 @@ draws (e.g. \code{"correlation"}), as returned by \code{\link[=parameter_draws]{
 \item{\code{"prior_density"}}{the prior density of the quantity.}
 \item{\code{"prior_densities"}}{a list of prior densities keyed by
 parameter, attached to the list returned by \code{\link[=as_mixed_posteriors]{as_mixed_posteriors()}}
-with \code{transform_scaled = TRUE}.}
+with \code{transform_scaled = TRUE} for the requested parameters.}
 \item{\code{"prior_context"}}{the joint prior-density context of the
 draws.}
 \item{\code{"posterior_density"}, \code{"posterior_densities"}}{

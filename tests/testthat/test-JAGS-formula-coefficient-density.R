@@ -1208,3 +1208,98 @@ test_that("linear targets of factor levels match the canonical prior densities",
     2 * as.numeric(levels$A) - as.numeric(levels$C)
   )
 })
+
+# Reference: .bt_formula_coefficient_transform_uncached(), the construction
+# without its memo.
+test_that("formula coefficient transforms are built once per distinct arguments", {
+
+  .BayesTools_private$content_memo <- NULL
+  withr::defer(.BayesTools_private$content_memo <- NULL)
+  original <- .bt_formula_coefficient_transform_uncached
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    .bt_formula_coefficient_transform_uncached = function(...){
+      calls <<- calls + 1L
+      original(...)
+    },
+    .package = "BayesTools"
+  )
+
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + x,
+    parameter = "mu",
+    data = data.frame(x = c(2, 4, 9)),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    formula_scale = TRUE
+  )
+  source_names <- c("mu_intercept", "mu_x")
+  formula_scale <- formula_result$formula_scale
+  transform <- function(source_names = c("mu_intercept", "mu_x"),
+                        formula_scale. = formula_scale, ...){
+    .bt_formula_coefficient_transform(source_names, formula_scale., "mu", ...)
+  }
+
+  first <- transform()
+  expect_s3_class(first, "BayesTools_formula_coefficient_transform")
+  expect_identical(calls, 1L)
+  expect_identical(first, original(source_names, formula_scale, "mu"))
+  # the same arguments, and equal copies of them (as after saving and loading),
+  # return the kept transform
+  expect_identical(transform(), first)
+  expect_identical(
+    transform(
+      unserialize(serialize(source_names, NULL)),
+      unserialize(serialize(formula_scale, NULL))
+    ),
+    first
+  )
+  expect_identical(calls, 1L)
+
+  # every argument decides the transform: a change is computed, equals the
+  # construction without the memo, and differs from the first where the
+  # argument enters the transform
+  moved <- formula_scale
+  moved[[1L]]$mean <- moved[[1L]]$mean + 1
+  changes <- list(
+    scale = list(formula_scale. = moved),
+    order = list(source_names = c("mu_x", "mu_intercept")),
+    log_intercept = list(log_intercept = TRUE),
+    metadata = list(source_metadata = data.frame(
+      source = source_names,
+      monitor_status = c("structural", "sampled"),
+      fixed_value = c(2, NA_real_),
+      stringsAsFactors = FALSE
+    ))
+  )
+  for(name in names(changes)){
+    before <- calls
+    arguments <- changes[[name]]
+    changed <- do.call(transform, arguments)
+    expect_identical(calls, before + 1L, info = name)
+    reference <- do.call(
+      original,
+      c(list(
+        source_names = if(is.null(arguments$source_names)) source_names else arguments$source_names,
+        formula_scale = if(is.null(arguments$formula_scale.)) formula_scale else arguments$formula_scale.,
+        parameter = "mu"
+      ), arguments[setdiff(names(arguments), c("source_names", "formula_scale."))])
+    )
+    expect_identical(changed, reference, info = name)
+    expect_false(identical(changed, first), info = name)
+    expect_identical(do.call(transform, arguments), changed, info = name)
+    expect_identical(calls, before + 1L, info = name)
+  }
+
+  # invalid arguments fail on every call and are never remembered
+  before <- calls
+  for(i in 1:2){
+    expect_error(transform(source_names = c("mu_x", "mu_x")), "unique fitted coordinates")
+  }
+  expect_error(transform(target_scale = "unknown"), "missing or unsupported")
+  expect_error(transform(target_scale = "unknown"), "missing or unsupported")
+  expect_identical(calls, before + 4L)
+  expect_identical(transform(), first)
+})

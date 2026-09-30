@@ -20,6 +20,9 @@
 #' transformed, and the result can be directly passed to [plot_posterior] which will
 #' automatically detect the transformation and use transformed deterministic prior densities.
 #' Requires a model fitted with \code{formula_scale_list}. Defaults to \code{FALSE}.
+#' The transformed prior densities are computed for the requested
+#' \code{parameters} only and are kept for the fitted object, so repeated calls
+#' with the same fit, priors, conditioning, and \code{n_prior_samples} reuse them.
 #' @param n_prior_samples controls the numerical grid used for transformed
 #' prior densities when \code{transform_scaled = TRUE}. Defaults to 10000.
 #' @inheritParams ensemble_inference
@@ -242,7 +245,9 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       formula_scale    = formula_scale,
       conditional      = condition_event[["conditional"]],
       conditional_rule = conditional_rule,
-      condition_event  = condition_event
+      condition_event  = condition_event,
+      parameters       = parameters,
+      memo             = .bt_prior_density_memo(model)
     )
     out <- .bt_meta_set(out, "prior_densities", prior_densities)
     out <- .bt_meta_set(out, "prior_context", .prior_density_build_context(

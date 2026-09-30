@@ -1256,6 +1256,15 @@ old behaviour.
   fitting call and is not alive after saving; `JAGS_extend()` and
   `runjags::extend.jags()` recompile the model from the stored chain states,
   as they do for a reloaded fit.
+- `as_mixed_posteriors(transform_scaled = TRUE)` builds the transformed prior
+  densities only for the requested `parameters` and keeps them for the fitted
+  object (a bounded per-session cache that is dropped when the parameter map
+  of the fit is replaced and never saved with the fit); the formula
+  coefficient transforms of one scaling are built once per distinct input.
+  Repeated calls with the same fit, priors, conditioning, and
+  `n_prior_samples` no longer recompute them (ten scaled parameters: 0.05 s
+  per call instead of 0.4 s). The `"prior_densities"` draw metadata hold the
+  densities of the requested parameters only.
 
 # version 0.3.0
 ### Features

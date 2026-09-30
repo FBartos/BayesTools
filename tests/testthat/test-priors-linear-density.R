@@ -3294,3 +3294,161 @@ test_that("row mixtures without atoms build their numerical grid only for grid c
   expect_false(inherits(.prior_density_from_context_rows(spike_context, rows[1:2, ])$density,
                         "prior_linear_density_deferred"))
 })
+
+# A small fitted object whose formula parameter is standardized (x), with one
+# more parameter (sigma) outside the formula.
+transformed_density_test_fit <- function(x_prior = prior("normal", list(0, 1))){
+
+  scaled <- JAGS_formula(
+    ~ x, "mu",
+    data = data.frame(x = c(1, 2, 3.5, 4, 6, 8.5)),
+    prior_list = list(intercept = prior("normal", list(0, 1)), x = x_prior),
+    formula_scale = list(x = TRUE)
+  )
+  set.seed(4)
+  n <- 40L
+  posterior <- cbind(
+    mu_intercept = stats::rnorm(n),
+    mu_x         = stats::rnorm(n, .2, .2),
+    sigma        = abs(stats::rnorm(n, 1, .1))
+  )
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(posterior)), summary.pars = list(mutate = NULL),
+         monitor = colnames(posterior), sample = n),
+    class = c("runjags", "BayesTools_fit")
+  )
+  attr(fit, "prior_list") <- c(scaled$prior_list, list(sigma = prior("gamma", list(2, 2))))
+  attr(fit, "formula_design") <- list(mu = scaled$formula_design)
+  attr(fit, "formula_scale") <- list(mu = scaled$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+  .bt_attach_fit_contract(.bt_attach_draw_geometry(.bt_attach_parameter_map(fit)))
+}
+
+# The values of a density, without the record of the context it was built from
+# (which holds the evaluation arguments, not the density).
+transformed_density_payload <- function(density){
+
+  values <- attributes(density)
+  values[["adaptive_evaluation"]] <- NULL
+  out <- unclass(density)
+  attributes(out) <- values
+  out
+}
+
+# Reference: .generate_transformed_prior_densities() without a memo, which is the
+# pre-memo computation of every prior column of the list.
+test_that("transformed prior densities are computed once per fit and only for the requested parameters", {
+
+  fit <- transformed_density_test_fit()
+  original <- BayesTools:::.prior_linear_combination_density
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    .prior_linear_combination_density = function(...){
+      calls <<- calls + 1L
+      original(...)
+    },
+    .package = "BayesTools"
+  )
+  request <- function(parameters, n_prior_samples = 512L, fit. = fit){
+    as_mixed_posteriors(fit., parameters, transform_scaled = TRUE, n_prior_samples = n_prior_samples)
+  }
+  densities <- function(samples) .bt_meta_get(samples, "prior_densities")
+
+  # only the prior columns of the requested parameters are built
+  calls <- 0L
+  intercept <- request("mu_intercept")
+  expect_identical(names(densities(intercept)), "mu_intercept")
+  first_cost <- calls
+  expect_gt(first_cost, 0L)
+
+  # the same request again, and a subset of it, build nothing
+  calls <- 0L
+  again <- request("mu_intercept")
+  expect_identical(calls, 0L)
+  expect_identical(densities(again)$mu_intercept, densities(intercept)$mu_intercept)
+
+  # a wider request builds only the columns that are new
+  calls <- 0L
+  both <- request(c("mu_intercept", "mu_x"))
+  expect_identical(names(densities(both)), c("mu_intercept", "mu_x"))
+  expect_gt(calls, 0L)
+  expect_lt(calls, 2L * first_cost)
+  expect_identical(densities(both)$mu_intercept, densities(intercept)$mu_intercept)
+  calls <- 0L
+  request(c("mu_x", "mu_intercept"))
+  expect_identical(calls, 0L)
+
+  # every column equals the unmemoized computation from the same inputs
+  prior_list <- attr(fit, "prior_list")
+  column_names <- colnames(as.matrix(fit$mcmc[[1L]]))
+  reference <- .generate_transformed_prior_densities(
+    prior_list, column_names, attr(fit, "formula_scale"), n_grid = 512L
+  )
+  all_columns <- request(c("mu_intercept", "mu_x", "sigma"))
+  expect_identical(names(densities(all_columns)), c("mu_intercept", "mu_x", "sigma"))
+  for(column in names(reference)){
+    expect_identical(
+      transformed_density_payload(densities(all_columns)[[column]]),
+      transformed_density_payload(reference[[column]]),
+      info = column
+    )
+  }
+
+  # any change of an input is recomputed and never answered from the memo
+  calls <- 0L
+  request("mu_intercept", n_prior_samples = 1024L)
+  expect_gt(calls, 0L)
+  changed <- fit
+  attr(changed, "prior_list")$mu_x <- prior("normal", list(0, 2))
+  calls <- 0L
+  shifted <- request(c("mu_intercept", "mu_x"), fit. = changed)
+  expect_gt(calls, 0L)
+  shifted_reference <- .generate_transformed_prior_densities(
+    attr(changed, "prior_list"), column_names, attr(fit, "formula_scale"), n_grid = 512L
+  )
+  for(column in c("mu_intercept", "mu_x")){
+    expect_identical(
+      transformed_density_payload(densities(shifted)[[column]]),
+      transformed_density_payload(shifted_reference[[column]]),
+      info = column
+    )
+  }
+  expect_false(identical(
+    transformed_density_payload(densities(shifted)$mu_x),
+    transformed_density_payload(densities(both)$mu_x)
+  ))
+  # ... while the original inputs are still answered from their own entry
+  calls <- 0L
+  request(c("mu_intercept", "mu_x"))
+  expect_identical(calls, 0L)
+
+  # what was derived from a fitted map is dropped when the map's tables are
+  # replaced, so a fit with edited metadata never reuses the old densities
+  edited <- fit
+  edited_map <- attr(edited, "parameter_map")
+  edited_map$quantities$display_label[[1L]] <- "relabelled"
+  attr(edited, "parameter_map") <- edited_map
+  request(c("mu_intercept", "mu_x"))
+  calls <- 0L
+  request(c("mu_intercept", "mu_x"))
+  expect_identical(calls, 0L)
+  request(c("mu_intercept", "mu_x"), fit. = edited)
+  expect_gt(calls, 0L)
+
+  # the memo is bounded and does not consume random numbers
+  set.seed(9)
+  seed <- .Random.seed
+  for(n_grid in seq(600L, by = 100L, length.out = 8L)){
+    request("mu_x", n_prior_samples = n_grid)
+  }
+  expect_identical(.Random.seed, seed)
+  memo <- BayesTools:::.bt_prior_density_memo(fit)
+  expect_lte(length(memo$entries), BayesTools:::.bt_prior_density_memo_limit())
+
+  # a fit without a parameter map has nothing to memoize against and computes
+  expect_null(BayesTools:::.bt_prior_density_memo(structure(list(), class = "BayesTools_fit")))
+  calls <- 0L
+  .generate_transformed_prior_densities(prior_list, column_names, attr(fit, "formula_scale"), n_grid = 512L)
+  .generate_transformed_prior_densities(prior_list, column_names, attr(fit, "formula_scale"), n_grid = 512L)
+  expect_gt(calls, first_cost)
+})

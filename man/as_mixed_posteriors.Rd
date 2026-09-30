@@ -36,7 +36,10 @@ single parameter.}
 original (unscaled) scale. When \code{TRUE}, posterior samples are
 transformed, and the result can be directly passed to \link{plot_posterior} which will
 automatically detect the transformation and use transformed deterministic prior densities.
-Requires a model fitted with \code{formula_scale_list}. Defaults to \code{FALSE}.}
+Requires a model fitted with \code{formula_scale_list}. Defaults to \code{FALSE}.
+The transformed prior densities are computed for the requested
+\code{parameters} only and are kept for the fitted object, so repeated calls
+with the same fit, priors, conditioning, and \code{n_prior_samples} reuse them.}
 
 \item{n_prior_samples}{controls the numerical grid used for transformed
 prior densities when \code{transform_scaled = TRUE}. Defaults to 10000.}
