@@ -666,3 +666,34 @@ test_that("DESCRIPTION declares the supported JAGS range", {
   requirements <- unname(read.dcf(description_file, fields = "SystemRequirements")[1, 1])
   expect_match(requirements, "JAGS (>= 4.3.0, < 5.0.0)", fixed = TRUE)
 })
+
+test_that("expectation problems report every failed check without recording it", {
+
+  # The helper lets a test check many elements and assert once per unit; a
+  # failed element must stay visible, with its own message.
+  problems <- expectation_problems({
+    expect_true(TRUE)
+    expect_identical(1L, 2L, info = "first failure")
+    expect_equal(1, 1 + 1e-9, tolerance = 1e-12, info = "second failure")
+    expect_equal(1, 1 + 1e-9, tolerance = 1e-6, info = "within tolerance")
+    expect_error(stop("expected"), "expected")
+    expect_true(FALSE, info = "third failure")
+    "the value of the code is not returned"
+  })
+
+  expect_length(problems, 3L)
+  expect_match(problems[[1L]], "first failure", fixed = TRUE)
+  expect_match(problems[[2L]], "second failure", fixed = TRUE)
+  expect_match(problems[[3L]], "third failure", fixed = TRUE)
+  expect_identical(expectation_problems(expect_true(TRUE)), character())
+
+  # only expectations are collected: an error of the code stops it
+  expect_error(
+    expectation_problems({
+      expect_true(FALSE)
+      stop("not an expectation")
+    }),
+    "not an expectation",
+    fixed = TRUE
+  )
+})

@@ -98,6 +98,11 @@ is available explicitly with `reporter = "llm"`.
   maintainer or explicitly delegated review.
 - Do not add redundant matrices, samples, fits, or assertions for coverage
   alone.
+- A test that checks many elements (rows, levels, grid points) makes each check
+  but asserts once per unit: vectorize exact comparisons, or wrap a per-element
+  loop in `expectation_problems()` (`helper-expectation-problems.R`) and assert
+  that no problem was collected. Every `expect_*` call costs milliseconds inside
+  a test, so thousands of them dominate a fast check.
 - Treat Codecov misses as leads, not goals. Reduce reports to missed clusters,
   then add adversarial assertions only for meaningful behavior. Prefer targeted
   `covr` after the relevant profile; report unrelated local coverage failures

@@ -234,30 +234,35 @@ test_that("registry artifact policy matches cached fit and marginal-likelihood f
 test_that("cataloged fixture files expose expected monitors and metadata", {
   catalog <- bayestools_required_fit_catalog()
 
+  # every check of a fixture is made and its failures are collected, so the
+  # test makes one expectation per fixture instead of one per check
   for (model_name in catalog$model_name) {
     row <- catalog[catalog$model_name == model_name, , drop = FALSE]
-    fit_file <- expect_fit_file_present(model_name, catalog = catalog)
-    marglik_file <- expect_marglik_file_present_or_absent(model_name, catalog = catalog)
+    problems <- expectation_problems({
+      fit_file <- expect_fit_file_present(model_name, catalog = catalog)
+      marglik_file <- expect_marglik_file_present_or_absent(model_name, catalog = catalog)
 
-    fit <- readRDS(fit_file)
-    expect_fit_declared_metadata(fit, row)
-    if (length(row$expected_monitor[[1]]) > 0L) {
-      expect_fit_monitors(fit, row$expected_monitor[[1]])
-      expect_fit_formula_metadata(
-        fit,
-        expected_formula_parameters = row$expected_formula_parameters[[1]],
-        expected_formula_scale = row$expected_formula_scale[[1]]
-      )
-      expect_fit_sample_dimensions(
-        fit,
-        expected_chains = row$expected_chains,
-        expected_iterations = row$expected_iterations
-      )
-    }
+      fit <- readRDS(fit_file)
+      expect_fit_declared_metadata(fit, row)
+      if (length(row$expected_monitor[[1]]) > 0L) {
+        expect_fit_monitors(fit, row$expected_monitor[[1]])
+        expect_fit_formula_metadata(
+          fit,
+          expected_formula_parameters = row$expected_formula_parameters[[1]],
+          expected_formula_scale = row$expected_formula_scale[[1]]
+        )
+        expect_fit_sample_dimensions(
+          fit,
+          expected_chains = row$expected_chains,
+          expected_iterations = row$expected_iterations
+        )
+      }
 
-    if (isTRUE(row$has_marglik)) {
-      expect_marglik_object(readRDS(marglik_file))
-    }
+      if (isTRUE(row$has_marglik)) {
+        expect_marglik_object(readRDS(marglik_file))
+      }
+    })
+    expect_identical(problems, character(), info = model_name)
   }
 })
 
