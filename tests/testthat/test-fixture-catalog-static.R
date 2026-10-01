@@ -167,6 +167,9 @@ test_that("the model-fit key hashes the package functions that the fit generator
   package_hashes <- .test_cache_package_function_hashes("model-fit")
   reached <- sub("^package_(fn|obj)_", "", names(package_hashes))
 
+  # the session memo of the hashes is not an option that JAGS_runtime_cluster()
+  # forwards to its workers
+  expect_false(any(startsWith(names(options()), "BayesTools.test_cache")))
   expect_false(anyNA(package_hashes))
   expect_false(anyDuplicated(names(package_hashes)) > 0L)
   # fitting, marginal likelihoods, prior constructors and their computed

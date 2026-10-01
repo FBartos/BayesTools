@@ -1652,11 +1652,12 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
 
 # The hashes of the package functions that the fit generators reach and of the
 # namespace constants that they read, named by the object
-# (.test_cache_object_hash()). Computing them
-# takes about two seconds, so the hashes of the loaded package namespace are
-# kept for the R session, for this namespace object and fitting test file; the
-# cache checks of the test files share them, and a reloaded namespace or an
-# edited test file computes them again.
+# (.test_cache_object_hash()). Computing them takes about two seconds, so the
+# hashes of the loaded package namespace are kept for the R session, for this
+# namespace object and fitting test file; the cache checks of the test files
+# share them, and a reloaded namespace or an edited test file computes them
+# again. The session option that keeps them is not named "BayesTools.*":
+# JAGS_runtime_cluster() forwards those options to its workers.
 .test_cache_package_function_hashes <- function(name, namespace = asNamespace("BayesTools")) {
   if (!identical(name, "model-fit")) {
     return(stats::setNames(character(), character()))
@@ -1664,7 +1665,7 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
 
   use_memo <- identical(namespace, asNamespace("BayesTools"))
   fit_file_md5 <- .test_cache_file_md5(testthat::test_path("test-00-model-fits.R"))
-  memo <- getOption("BayesTools.test_cache_memo")
+  memo <- getOption("bayestools_test_cache_memo")
   if (use_memo && is.list(memo) && identical(memo$namespace, namespace) &&
       identical(memo$fit_file_md5, fit_file_md5)) {
     return(memo$hashes)
@@ -1682,7 +1683,7 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   hashes <- stats::setNames(hashes, paste0(prefix, reached))
 
   if (use_memo) {
-    options(BayesTools.test_cache_memo = list(
+    options(bayestools_test_cache_memo = list(
       namespace = namespace,
       fit_file_md5 = fit_file_md5,
       hashes = hashes
