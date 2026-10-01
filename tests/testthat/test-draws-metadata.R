@@ -1,27 +1,27 @@
 skip_if_not_test_profile("unit")
 
-# The parse data of a source file, parsed once for all source scans of this
-# file. Only terminal tokens carry their text: the scans read tokens, never
-# the text of whole expressions.
-.draws_metadata_parse_cache <- new.env(parent = emptyenv())
-.draws_metadata_parse_data <- function(file){
+# The scans read the parse data of a source file, which
+# .test_source_parse_data() (common-functions.R) parses once per test run, with
+# the row indices of the children of each node where a scan walks the tree.
+# Only terminal tokens carry their text: the scans read tokens, never the text
+# of whole expressions.
 
-  key <- normalizePath(file, winslash = "/", mustWork = TRUE)
-  if(is.null(.draws_metadata_parse_cache[[key]])){
-    .draws_metadata_parse_cache[[key]] <- utils::getParseData(parse(file, keep.source = TRUE))
-  }
-  .draws_metadata_parse_cache[[key]]
+# The rows of the children of a parse-data node, in source order.
+.draws_metadata_children <- function(pd, id){
+
+  rows <- attr(pd, "children")[[as.character(id)]]
+  rows[order(pd$line1[rows], pd$col1[rows])]
 }
 
 # Whether a parse-data node is the literal TRUE: the token itself, or an
 # expression whose only token it is.
 .draws_metadata_is_true <- function(pd, id){
 
-  if(identical(pd$text[pd$id == id], "TRUE")){
+  if(identical(pd$text[match(id, pd$id)], "TRUE")){
     return(TRUE)
   }
-  value <- pd[pd$parent == id, ]
-  nrow(value) == 1L && identical(value$text, "TRUE")
+  value <- .draws_metadata_children(pd, id)
+  length(value) == 1L && identical(pd$text[value], "TRUE")
 }
 
 # attr() call sites with a literal attribute name in the package sources: the
@@ -30,40 +30,37 @@ skip_if_not_test_profile("unit")
 .draws_metadata_attr_sites <- function(files){
 
   sites <- lapply(files, function(file){
-    pd <- .draws_metadata_parse_data(file)
-    attr_tokens <- pd[pd$text == "attr" &
-                        pd$token %in% c("SYMBOL_FUNCTION_CALL", "SYMBOL"), ]
-    rows <- lapply(seq_len(nrow(attr_tokens)), function(k){
-      token <- attr_tokens[k, ]
-      call_id <- pd$parent[pd$id == token$parent]
-      kids <- pd[pd$parent == call_id, ]
-      kids <- kids[order(kids$line1, kids$col1), ]
+    pd <- .test_source_parse_data(file, children = TRUE)
+    attr_tokens <- which(pd$text == "attr" &
+                           pd$token %in% c("SYMBOL_FUNCTION_CALL", "SYMBOL"))
+    rows <- lapply(attr_tokens, function(token){
+      call_id <- pd$parent[match(pd$parent[token], pd$id)]
+      kids <- .draws_metadata_children(pd, call_id)
       literal <- NULL
-      for(r in which(kids$token == "expr")){
-        sub <- pd[pd$parent == kids$id[r], ]
-        if(nrow(sub) == 1L && sub$token == "STR_CONST"){
-          literal <- gsub('^"|"$', "", sub$text)
+      for(kid in kids[pd$token[kids] == "expr"]){
+        sub <- .draws_metadata_children(pd, pd$id[kid])
+        if(length(sub) == 1L && pd$token[sub] == "STR_CONST"){
+          literal <- gsub('^"|"$', "", pd$text[sub])
           break
         }
       }
       if(is.null(literal)){
         return(NULL)
       }
-      exact_at <- which(kids$token == "SYMBOL_SUB" & kids$text == "exact")
-      parent_kids <- pd[pd$parent == pd$parent[pd$id == call_id], ]
-      parent_kids <- parent_kids[order(parent_kids$line1, parent_kids$col1), ]
+      exact_at <- which(pd$token[kids] == "SYMBOL_SUB" & pd$text[kids] == "exact")
+      parent_kids <- .draws_metadata_children(pd, pd$parent[match(call_id, pd$id)])
       data.frame(
         file   = basename(file),
-        line   = token$line1,
+        line   = pd$line1[token],
         name   = literal,
         exact  = length(exact_at) == 1L &&
-          .draws_metadata_is_true(pd, kids$id[exact_at + 2L]),
-        assign = token$token == "SYMBOL_FUNCTION_CALL" &&
-          nrow(parent_kids) == 3L && (
-            (parent_kids$id[1L] == call_id &&
-               parent_kids$token[2L] %in% c("LEFT_ASSIGN", "EQ_ASSIGN")) ||
-              (parent_kids$id[3L] == call_id &&
-                 parent_kids$token[2L] == "RIGHT_ASSIGN")
+          .draws_metadata_is_true(pd, pd$id[kids[exact_at + 2L]]),
+        assign = pd$token[token] == "SYMBOL_FUNCTION_CALL" &&
+          length(parent_kids) == 3L && (
+            (pd$id[parent_kids[1L]] == call_id &&
+               pd$token[parent_kids[2L]] %in% c("LEFT_ASSIGN", "EQ_ASSIGN")) ||
+              (pd$id[parent_kids[3L]] == call_id &&
+                 pd$token[parent_kids[2L]] == "RIGHT_ASSIGN")
           ),
         stringsAsFactors = FALSE
       )
@@ -72,6 +69,18 @@ skip_if_not_test_profile("unit")
   })
   do.call(rbind, sites)
 }
+
+# The attr() sites of the package sources, scanned once for the tests of this
+# file that read them.
+.draws_metadata_package_attr_sites <- local({
+  sites <- NULL
+  function(){
+    if(is.null(sites)){
+      sites <<- .draws_metadata_attr_sites(.draws_metadata_source_files())
+    }
+    sites
+  }
+})
 
 .draws_metadata_source_files <- function(){
 
@@ -82,7 +91,7 @@ skip_if_not_test_profile("unit")
 
 test_that("draw metadata is read and written only through its accessors", {
 
-  sites <- .draws_metadata_attr_sites(.draws_metadata_source_files())
+  sites <- .draws_metadata_package_attr_sites()
 
   # the metadata container and the former free metadata attributes;
   # 'formula_scale' also names the fit attribute of the formula scaling
@@ -106,7 +115,7 @@ test_that("draw metadata is read and written only through its accessors", {
 .draws_metadata_named_sites <- function(files){
 
   sites <- lapply(files, function(file){
-    pd <- .draws_metadata_parse_data(file)
+    pd <- .test_source_parse_data(file)
     call_of <- function(function_name){
       symbols <- pd$parent[pd$token == "SYMBOL_FUNCTION_CALL" & pd$text == function_name]
       pd$parent[match(symbols, pd$id)]
@@ -191,7 +200,7 @@ test_that("attributes are never read by partial name matching", {
   expect_identical(planted_sites$exact, c(TRUE, FALSE, FALSE, FALSE))
   expect_identical(planted_sites$assign, c(FALSE, FALSE, TRUE, FALSE))
 
-  sites <- .draws_metadata_attr_sites(.draws_metadata_source_files())
+  sites <- .draws_metadata_package_attr_sites()
   names <- unique(sites$name)
   is_prefix <- vapply(names, function(name){
     any(startsWith(names, name) & names != name)
