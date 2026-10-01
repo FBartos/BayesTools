@@ -1058,17 +1058,27 @@ prior_density_has_provenance <- function(x){
     ))
   }
 
-  # the inverse affine value, unless it is the offset's exact image 0, must be
-  # representable at full precision: a subnormal one is rounded (a gamma(2, 4)
-  # term with weight 3 was off by 4.9e-4 in log at 1e-320), and one that
-  # underflows to 0 would be classified at the source's bound (a structural
-  # zero for weight 1e30 at 1e-300) or overflows
-  source_value <- (value - offset) / scale
-  if(!.prior_density_affine_full_precision(value, offset, scale)){
-    return(.prior_density_ordinate_imprecise(
-      value, "The inverse affine value", "unsupported_provenance", provenance,
-      behavior = "unknown"
-    ))
+  # a value at a bound of the mapped support is that bound (its adjacent double
+  # included: the mapped bound is rounded, and its inverse image can round just
+  # outside the source support, which would be classified as the density 0
+  # outside it); the ordinate there is the one-sided limit inside, as for the
+  # named transformations
+  source_value <- .prior_density_ordinate_affine_endpoint(
+    provenance$source, offset, scale, source_transform, value
+  )
+  if(is.null(source_value)){
+    # the inverse affine value, unless it is the offset's exact image 0, must
+    # be representable at full precision: a subnormal one is rounded (a
+    # gamma(2, 4) term with weight 3 was off by 4.9e-4 in log at 1e-320), and
+    # one that underflows to 0 would be classified at the source's bound (a
+    # structural zero for weight 1e30 at 1e-300) or overflows
+    source_value <- (value - offset) / scale
+    if(!.prior_density_affine_full_precision(value, offset, scale)){
+      return(.prior_density_ordinate_imprecise(
+        value, "The inverse affine value", "unsupported_provenance", provenance,
+        behavior = "unknown"
+      ))
+    }
   }
 
   if(is.null(source_transform)){
@@ -1146,8 +1156,17 @@ prior_density_has_provenance <- function(x){
   # is subnormal (rounded; off by 2.6e-3 in log at -740 for a gamma(2, 4)
   # term) or 0, which the primitive would classify at the bound (a structural
   # zero or infinity instead of a regular density), and above about 709.8 it
-  # overflows, so that the density f_X(e^z) e^z is not evaluated at all
+  # overflows, so that the density f_X(e^z) e^z is not evaluated at all.
+  # A value at the log of a positive bound is that bound: exp(log(upper)) can
+  # round just above upper, outside the prior support
   original_value <- exp(value)
+  bounds <- c(lower, upper)
+  bounds <- bounds[is.finite(bounds) & bounds > 0]
+  at_bound <- vapply(log(bounds), .prior_density_ordinate_endpoint_matches,
+                     logical(1), value = value)
+  if(any(at_bound)){
+    original_value <- bounds[at_bound][1L]
+  }
   if(!.prior_density_full_precision(original_value)){
     return(.prior_density_ordinate_imprecise(
       value, "The exponential of the requested value", "named_transform", provenance
@@ -2000,6 +2019,31 @@ prior_density_has_provenance <- function(x){
   }
 
   NULL
+}
+
+# The source value (S, or log(T) for a log source transformation) of a bound of
+# the support of offset + scale * S that 'value' matches, as the endpoint of a
+# 'lin' transformation of the scalar prior with provenance 'source_provenance';
+# NULL when 'value' is not such a bound.
+.prior_density_ordinate_affine_endpoint <- function(source_provenance, offset,
+                                                    scale, source_transform,
+                                                    value){
+
+  if(!is.null(source_transform)){
+    if(!identical(source_transform, "log")){
+      return(NULL)
+    }
+    source_provenance <- list(
+      kind             = "scalar_affine",
+      offset           = 0,
+      scale            = 1,
+      source_transform = "log",
+      source           = source_provenance
+    )
+  }
+  .prior_density_ordinate_endpoint_source(
+    source_provenance, "lin", list(a = offset, b = scale), value
+  )
 }
 
 .prior_density_ordinate_named_transform <- function(classifier, source_provenance,

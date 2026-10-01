@@ -332,6 +332,160 @@ test_that("nonzero scalar affine transformations retain behavior and Jacobian", 
   )
 })
 
+test_that("scalar affine ordinates at a bound of the mapped support are the one-sided limit inside it", {
+
+  # offset + w S with a scalar prior S and a point term o: the mapped bounds
+  # are rounded and their inverse image (o + w - o) / w can round just outside
+  # the support of S (above 1 for S ~ U(0, 1) with (w, o) = (.1, .2), (.3, .1),
+  # (.3, .7)), where the ordinate was 0. The ordinate at a bound is the
+  # one-sided limit inside the support, the density of S at its bound divided
+  # by |w| (analytic references); outside the support it stays 0
+  ulp <- function(x) 2^(floor(log2(abs(x))) - 52)
+  affine <- function(source, w, o, source_transform = NULL){
+    BayesTools:::.prior_linear_combination_density(
+      prior_list        = list(s = source, p = prior("point", list(o))),
+      weights           = c(s = w, p = 1),
+      source_transforms = if(!is.null(source_transform)) c(s = source_transform, p = NA_character_),
+      n_grid            = 64
+    )
+  }
+  # the density of S at each finite source bound (the log source Z = log(S)
+  # has the density f_S(s) s at log(s))
+  normal_mass <- stats::pnorm(2) - stats::pnorm(-1)
+  sources <- list(
+    list(prior = prior("uniform", list(0, 1)), bounds = c(0, 1), limits = c(1, 1)),
+    list(prior = prior("uniform", list(1, 3)), bounds = c(1, 3), limits = c(.5, .5)),
+    list(prior = prior("beta", list(1, 3)), bounds = c(0, 1), limits = c(3, 0)),
+    list(prior = prior("beta", list(3, 1)), bounds = c(0, 1), limits = c(0, 3)),
+    list(prior = prior("normal", list(0, 1), list(-1, 2)), bounds = c(-1, 2),
+         limits = stats::dnorm(c(-1, 2)) / normal_mass),
+    list(prior = prior("exp", list(2)), bounds = 0, limits = 2)
+  )
+  expect_bound_limits <- function(source, w, o, log_source = FALSE){
+    density <- affine(source$prior, w, o, if(log_source) "log")
+    positive <- source$bounds > 0
+    bounds <- if(log_source) log(source$bounds[positive]) else source$bounds
+    limits <- source$limits[if(log_source) positive else TRUE]
+    if(log_source) limits <- limits * source$bounds[positive]
+    mapped <- o + w * bounds
+    for(i in seq_along(bounds)){
+      value <- mapped[i]
+      label <- sprintf("%s, w = %g, o = %g, bound %g", source$prior$distribution, w, o, bounds[i])
+      ordinate <- prior_density_ordinate(density, value)
+      expect_identical(ordinate$method, "scalar_affine", info = label)
+      expect_true(ordinate$exact, info = label)
+      if(limits[i] > 0){
+        expect_identical(ordinate$behavior, "regular", info = label)
+        expect_equal(exp(ordinate$log_density), limits[i] / abs(w), tolerance = 1e-12, info = label)
+      }else{
+        expect_identical(ordinate$behavior, "zero", info = label)
+        expect_identical(ordinate$log_density, -Inf, info = label)
+      }
+      # outside the support (4 ulps of the largest operand of the mapping, which
+      # the rounding of the inverse image is in, and 1e-9 beyond the mapped
+      # bound) the ordinate is 0; a one-sided bound has its outside on one side
+      # only
+      outward <- if(length(bounds) == 2L) {
+        if(value == max(mapped)) 1 else -1
+      }else{
+        if(w > 0) -1 else 1
+      }
+      operands <- max(abs(c(value, o, w * bounds[i])))
+      for(beyond in value + outward * c(1e-9 * max(1, abs(value)), 4 * ulp(operands))){
+        outside <- prior_density_ordinate(density, beyond)
+        expect_identical(outside$behavior, "zero", info = label)
+        expect_identical(outside$log_density, -Inf, info = label)
+        expect_true(outside$exact, info = label)
+      }
+    }
+  }
+
+  # S ~ U(0, 1): both bounds of 32 combinations (the three rounded ones among
+  # them), and each source on a subset
+  for(w in c(.1, .3, .7, 1.3, -.1, -.3, -.7, -1.3)){
+    for(o in c(.1, .2, .7, -.35)){
+      expect_bound_limits(sources[[1L]], w, o)
+    }
+  }
+  for(source in sources[-1L]){
+    for(w in c(.1, .3, 1.3, -.3, -.7)){
+      for(o in c(.15, .2, .7)){
+        expect_bound_limits(source, w, o)
+      }
+    }
+  }
+  # the three rounded combinations of the brief, by name
+  for(combination in list(c(.1, .2), c(.3, .1), c(.3, .7))){
+    density <- affine(prior("uniform", list(0, 1)), combination[1L], combination[2L])
+    expect_equal(
+      exp(prior_density_ordinate(density, combination[2L] + combination[1L])$log_density),
+      1 / combination[1L], tolerance = 1e-12
+    )
+  }
+
+  # a log source term: the bounds of S ~ U(5, 9) and U(1, 3) are rounded by
+  # exp(log(s)) as well (it is below 5 and above 9 and 3)
+  for(source in list(
+    list(prior = prior("uniform", list(5, 9)), bounds = c(5, 9), limits = c(.25, .25)),
+    sources[[2L]]
+  )){
+    for(w in c(.1, .3, .7, 1.3, -.1, -.3, -.7, -1.3)){
+      for(o in c(.1, .2, .7, -.35)){
+        expect_bound_limits(source, w, o, log_source = TRUE)
+      }
+    }
+  }
+  # no offset: the log source alone (weight 1) at the rounded bound
+  log_alone <- BayesTools:::.prior_linear_combination_density(
+    list(s = prior("uniform", list(1, 3))), c(s = 1), source_transforms = c(s = "log")
+  )
+  expect_equal(exp(prior_density_ordinate(log_alone, log(3))$log_density), 1.5, tolerance = 1e-12)
+
+  # the adjacent double of a mapped bound is that bound, as for a named
+  # linear transformation of the same route (the mapped bound is rounded, so
+  # its neighbour cannot be told from it)
+  source_route <- BayesTools:::.prior_density_route_linear(
+    list(s = prior("uniform", list(0, 1))), c(s = 1), NULL
+  )
+  for(combination in list(c(.1, .2), c(.3, .1), c(.3, .7), c(.7, .2))){
+    w <- combination[1L]
+    o <- combination[2L]
+    density <- affine(prior("uniform", list(0, 1)), w, o)
+    lin <- BayesTools:::.prior_density_route_transform(
+      source_route, "lin", list(a = o, b = w), function() c(o, o + w)
+    )
+    upper <- o + w
+    for(k in c(-1, 0, 1)){
+      value <- upper + k * ulp(upper)
+      scalar <- prior_density_ordinate(density, value)
+      named <- BayesTools:::.prior_density_route_ordinate(lin, value)
+      label <- sprintf("w = %g, o = %g, %+d ulp", w, o, k)
+      expect_identical(scalar$behavior, "regular", info = label)
+      expect_identical(named$behavior, "regular", info = label)
+      expect_equal(scalar$log_density, named$log_density, tolerance = 1e-12, info = label)
+    }
+  }
+
+  # a mixture slab keeps its own bounds: each component is matched against
+  # its own support
+  mixture <- prior_mixture(
+    list(
+      prior("uniform", list(0, 1), prior_weights = 1),
+      prior("uniform", list(0, 2), prior_weights = 1)
+    ),
+    is_null = c(FALSE, FALSE)
+  )
+  density <- affine(mixture, .3, .1)
+  expect_equal(
+    exp(prior_density_ordinate(density, .1 + .3 * 1)$log_density),
+    (.5 * 1 + .5 * .5) / .3, tolerance = 1e-12
+  )
+  expect_equal(
+    exp(prior_density_ordinate(density, .1 + .3 * 2)$log_density),
+    (.5 * 0 + .5 * .5) / .3, tolerance = 1e-12
+  )
+})
+
 test_that("normal linear combinations are classified analytically", {
 
   density <- BayesTools:::.prior_linear_combination_density(

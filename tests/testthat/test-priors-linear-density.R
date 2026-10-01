@@ -3344,6 +3344,67 @@ test_that("plotted curves keep the edge at an output-transformed bound that roun
   expect_identical(curve$y[inner], .prior_density_route_density(route, curve$x[inner]))
 })
 
+test_that("plotted curves keep the edge at a bound of a scalar affine prior that rounds outside its source support", {
+
+  # w U + o for U ~ U(0, 1) and a point term o (the scalar route with an
+  # offset): the inverse image (o + w - o) / w of the upper bound rounds just
+  # above 1 for (w, o) = (.1, .2), (.3, .1), (.3, .7), where prior_density_ordinate()
+  # was 0 (outside the support) and so was the edge. The ordinate there is the
+  # one-sided limit 1 / |w|, so both bounds of every combination have the edge
+  # (bound, 0), (bound, 1 / |w|). References: the closed form 1 / |w| and the
+  # ordinate, tolerance 1e-12.
+  affine <- function(w, o){
+    .prior_linear_combination_density(
+      list(s = prior("uniform", list(0, 1)), p = prior("point", list(o))),
+      c(s = w, p = 1), n_grid = 64
+    )
+  }
+  expect_affine_edges <- function(w, o, ...){
+    density <- affine(w, o)
+    label <- sprintf("w = %g, o = %g", w, o)
+    expect_identical(
+      .prior_density_route_from_adaptive(attr(density, "adaptive_evaluation", exact = TRUE))$type,
+      "scalar", info = label
+    )
+    curve <- .edge_curve(density, ...)
+    n <- length(curve$x)
+    bounds <- sort(c(o, o + w))
+    expect_equal(curve$x[1:2], rep(bounds[1L], 2L), tolerance = 1e-14, info = label)
+    expect_equal(curve$x[(n - 1L):n], rep(bounds[2L], 2L), tolerance = 1e-14, info = label)
+    expect_identical(curve$y[1L], 0, info = label)
+    expect_identical(curve$y[n], 0, info = label)
+    expect_equal(curve$y[2L], 1 / abs(w), tolerance = 1e-12, info = label)
+    expect_equal(curve$y[n - 1L], 1 / abs(w), tolerance = 1e-12, info = label)
+    expect_equal(
+      curve$y[n - 1L], exp(prior_density_ordinate(density, curve$x[n])$log_density),
+      tolerance = 1e-12, info = label
+    )
+    expect_false(is.unsorted(curve$x), info = label)
+    expect_equal(curve$y[-c(1L, n)], rep(1 / abs(w), n - 2L), tolerance = 1e-12, info = label)
+  }
+
+  # the rounded combinations and the 12 combinations of the probe, w in .1, .3,
+  # .7, 1.3 and o in .1, .2, .7, and the decreasing maps
+  for(combination in list(c(.1, .2), c(.3, .1), c(.3, .7))){
+    expect_gt((combination[2L] + combination[1L] - combination[2L]) / combination[1L], 1)
+  }
+  for(w in c(.1, .3, .7, 1.3, -.1, -.3, -.7, -1.3)){
+    for(o in c(.1, .2, .7, -.35)){
+      expect_affine_edges(w, o)
+    }
+  }
+
+  # a bound strictly inside the plotted range keeps the whole edge, with zeros
+  # beyond it
+  curve <- .edge_curve(affine(.1, .2), x_range = c(0, 1))
+  upper <- .2 + .1
+  at_bound <- which(abs(curve$x - upper) < 1e-14)
+  expect_length(at_bound, 2L)
+  expect_equal(curve$y[at_bound], c(10, 0), tolerance = 1e-12)
+  expect_identical(at_bound[2L], at_bound[1L] + 1L)
+  expect_true(all(curve$y[curve$x > upper + 1e-14] == 0))
+})
+
 test_that("plotted quadrature curves drop to zero at a support bound and keep interior jumps", {
 
   # A quadrature route (an exponential(1) term scaled by a lognormal(0, .5)

@@ -125,7 +125,11 @@ place per route kind applies it:
   estimate; the log image of a scale product: `e^z`;
 - endpoint matching: the neighbouring double of an endpoint counts as the
   endpoint only when both are at full precision (the smallest subnormal is
-  not the bound 0).
+  not the bound 0). The scalar affine map and its log source match a bound of
+  their mapped support the same way (a bound whose inverse image rounds just
+  outside the source support, as `exp(log(upper))` can, has the one-sided limit
+  inside the support as its ordinate, not the density 0 outside it); any other
+  value is classified by its inverse image.
 Safe without the rule: the `exp` output transformation (`log(y)` of a
 positive double is finite and 0 or at least 1.1e-16 in absolute value),
 closed-form Gaussian sums, the truncated-normal convolution and Gaussian
@@ -337,9 +341,10 @@ and one inside another component's support (an interior jump, drawn by the
 display values) get no zero value. The repeat is made before the transformation
 step, so a transformed curve maps it with the rules of `density.prior()` (a
 bound mapped to -Inf is dropped with it; `exp_lin` takes its analytic limits
-at a source value 0). An output-transformed bound whose inverse image rounds
-just outside the source support has the route density 0; its plotted value is
-the one-sided limit the ordinate takes there
+at a source value 0). A mapped bound (an output-transformed one, or a scalar
+affine one with an offset) whose inverse image rounds just outside the source
+support has the route density 0; its plotted value is the one-sided limit the
+ordinate takes there
 (`.prior_density_ordinate_endpoint_matches()`), and the bound is an edge when
 that limit is positive. Only the plotted value at such a bound changes: the
 route density, which grids use, stays 0.
