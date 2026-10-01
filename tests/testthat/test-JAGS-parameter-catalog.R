@@ -570,7 +570,7 @@ test_that("factor selectors name level labels, never coordinate positions", {
           0
         }
 
-        for(level in levels){
+        level_checks <- lapply(levels, function(level){
           selectors <- c(
             paste0("g[", level, "]"),
             paste0("mu_g[", level, "]"),
@@ -583,44 +583,78 @@ test_that("factor selectors name level labels, never coordinate positions", {
             parameter_catalog_resolve(catalog, selector)
           })
           ids <- vapply(selections, `[[`, character(1), "quantity_id")
-          expect_identical(unique(ids), ids[[1L]], info = paste(info, level))
           quantity <- selections[[1L]]$quantities
-          expect_identical(quantity$canonical_name, paste0("mu_g[", level, "]"),
-                           info = paste(info, level))
-          expect_identical(quantity$component, level, info = paste(info, level))
-          # Exact linear algebra on the same draws: equality up to rounding.
-          expect_equal(
-            as.numeric(as.matrix(parameter_draws(fit, selections[[1L]]))),
-            as.numeric(marginal[[level]]) - intercept,
-            tolerance = 1e-12,
-            info = paste(info, level)
-          )
           hypothesis <- hypothesis_resolve(
             hypothesis_parse(paste0("mu_g[", level, "] > g[", level, "]")),
             catalog
           )
-          expect_identical(unique(hypothesis$occurrences$quantity_id), ids[[1L]],
-                           info = paste(info, level))
+          list(
+            one_quantity        = identical(unique(ids), ids[[1L]]),
+            canonical_name      = quantity$canonical_name,
+            component           = quantity$component,
+            draws               = as.numeric(as.matrix(parameter_draws(fit, selections[[1L]]))),
+            hypothesis_quantity = identical(unique(hypothesis$occurrences$quantity_id), ids[[1L]])
+          )
+        })
+        # every selector of a level is the one quantity of the level
+        expect_true(
+          all(vapply(level_checks, `[[`, logical(1), "one_quantity")),
+          info = info
+        )
+        expect_identical(
+          vapply(level_checks, `[[`, character(1), "canonical_name"),
+          paste0("mu_g[", levels, "]"),
+          info = info
+        )
+        expect_identical(
+          vapply(level_checks, `[[`, character(1), "component"),
+          levels,
+          info = info
+        )
+        # Exact linear algebra on the same draws: equality up to rounding.
+        for(k in seq_along(levels)){
+          expect_equal(
+            level_checks[[k]]$draws,
+            as.numeric(marginal[[levels[[k]]]]) - intercept,
+            tolerance = 1e-12,
+            info = paste(info, levels[[k]])
+          )
         }
+        expect_true(
+          all(vapply(level_checks, `[[`, logical(1), "hypothesis_quantity")),
+          info = info
+        )
 
         # Positions that are not level labels select nothing.
         positions <- setdiff(as.character(1:5), levels)
-        for(position in positions){
-          for(selector in c(paste0("mu_g[", position, "]"),
-                            paste0("g[", position, "]"))){
-            expect_error(
-              parameter_catalog_resolve(catalog, selector),
-              class = "BayesTools_parameter_not_found",
-              info = paste(info, selector)
-            )
-          }
-        }
+        position_selectors <- as.vector(rbind(
+          paste0("mu_g[", positions, "]"),
+          paste0("g[", positions, "]")
+        ))
+        not_found <- vapply(position_selectors, function(selector){
+          inherits(
+            tryCatch(parameter_catalog_resolve(catalog, selector), error = identity),
+            "BayesTools_parameter_not_found"
+          )
+        }, logical(1))
+        expect_true(
+          all(not_found),
+          info = paste(info, "positions found:", paste(position_selectors[!not_found], collapse = ", "))
+        )
 
         # No alias other than the shared term name is ambiguous.
         aliases <- setdiff(unique(catalog$aliases$alias), "g")
-        for(alias in aliases){
-          expect_no_error(parameter_catalog_resolve(catalog, alias))
-        }
+        failures <- vapply(aliases, function(alias){
+          error <- tryCatch({
+            parameter_catalog_resolve(catalog, alias)
+            NULL
+          }, error = identity)
+          if(is.null(error)) "" else conditionMessage(error)
+        }, character(1))
+        expect_true(
+          all(!nzchar(failures)),
+          info = paste(info, "aliases refused:", paste(aliases[nzchar(failures)], collapse = ", "))
+        )
       })
       expect_identical(problems, character(), info = info)
     }
@@ -637,35 +671,40 @@ test_that("factor selectors name level labels, never coordinate positions", {
     " of factor term '", term, "' is a level, not a contrast coefficient. ",
     "Select it by its level label, '", level_form, "'."
   )
-  error <- expect_error(
-    parameter_catalog_resolve(catalog, form),
-    class = "BayesTools_selector_unavailable",
-    info = info
+  # the condition of code that must fail, NULL when it does not
+  refusal <- function(code){
+    tryCatch({
+      code
+      NULL
+    }, error = identity)
+  }
+  refused <- function(condition, exact){
+    inherits(condition, "BayesTools_selector_unavailable") &&
+      if(exact) identical(conditionMessage(condition), message)
+      else grepl(message, conditionMessage(condition), fixed = TRUE)
+  }
+  error <- refusal(parameter_catalog_resolve(catalog, form))
+  # parsing against the catalog refuses it instead of failing to parse, and a
+  # quoted selector parses and is refused by catalog resolution
+  parse_error <- refusal(hypothesis_parse(paste(form, "> 0"), catalog = catalog))
+  quoted_error <- refusal(
+    hypothesis_resolve(hypothesis_parse(paste0("`", form, "` > 0")), catalog)
   )
-  expect_s3_class(error, "BayesTools_hypothesis_target")
-  expect_s3_class(error, "BayesTools_parameter_resolution_error")
-  expect_identical(conditionMessage(error), message, info = info)
-  expect_identical(error$selector, form, info = info)
-  expect_identical(error$level, level_form, info = info)
   expect_identical(
-    error$quantity_id,
-    parameter_catalog_resolve(catalog, level_form)$quantity_id,
+    c(resolve = refused(error, TRUE), parse = refused(parse_error, FALSE),
+      quoted = refused(quoted_error, FALSE)),
+    c(resolve = TRUE, parse = TRUE, quoted = TRUE),
     info = info
   )
-  # parsing against the catalog refuses it instead of failing to parse
-  expect_error(
-    hypothesis_parse(paste(form, "> 0"), catalog = catalog),
-    message,
-    fixed = TRUE,
-    class = "BayesTools_selector_unavailable",
+  expect_true(
+    inherits(error, "BayesTools_hypothesis_target") &&
+      inherits(error, "BayesTools_parameter_resolution_error"),
     info = info
   )
-  # a quoted selector parses and is refused by catalog resolution
-  expect_error(
-    hypothesis_resolve(hypothesis_parse(paste0("`", form, "` > 0")), catalog),
-    message,
-    fixed = TRUE,
-    class = "BayesTools_selector_unavailable",
+  expect_identical(
+    list(selector = error$selector, level = error$level, quantity_id = error$quantity_id),
+    list(selector = form, level = level_form,
+         quantity_id = parameter_catalog_resolve(catalog, level_form)$quantity_id),
     info = info
   )
 }
@@ -861,17 +900,21 @@ test_that("contrast-coefficient selectors of level coordinates name the level", 
 
   rows <- setdiff(rownames(table), c("(mu) intercept", "intercept"))
   expect_true(length(rows) > 0L, info = info)
-  for(row in rows){
-    selection <- parameter_catalog_resolve(catalog, row)
-    expect_identical(selection$quantities$term, "g", info = paste(info, row))
-    # The table summarizes the same draws: agreement up to rounding.
-    expect_equal(
-      mean(as.matrix(parameter_draws(fit, selection))),
-      table[row, "Mean"],
-      tolerance = 1e-10,
-      info = paste(info, row)
-    )
-  }
+  selections <- lapply(rows, function(row) parameter_catalog_resolve(catalog, row))
+  expect_identical(
+    vapply(selections, function(selection) selection$quantities$term, character(1)),
+    rep("g", length(rows)),
+    info = info
+  )
+  # The table summarizes the same draws: agreement up to rounding.
+  expect_equal_each(
+    vapply(selections, function(selection){
+      mean(as.matrix(parameter_draws(fit, selection)))
+    }, numeric(1)),
+    table[rows, "Mean"],
+    tolerance = 1e-10,
+    info = info
+  )
 }
 
 test_that("displayed factor rows resolve to the quantities that produced them", {
@@ -925,15 +968,18 @@ test_that("displayed factor rows resolve to the quantities that produced them", 
         # is exactly that coordinate: its level cell or contrast coefficient.
         coordinates <- parameter_coordinates(fit)
         coordinates <- coordinates[coordinates$term == "g", , drop = FALSE]
-        for(i in seq_len(nrow(coordinates))){
-          key <- parameter_catalog_resolve(
-            catalog,
-            coordinates$display_label[[i]]
-          )$quantities$extraction_key[[1L]]
-          expect_identical(key$dependencies, coordinates$coordinate_name[[i]],
-                           info = paste(info, coordinates$display_label[[i]]))
-          expect_identical(key$weights, 1, info = info)
-        }
+        keys <- lapply(coordinates$display_label, function(label){
+          parameter_catalog_resolve(catalog, label)$quantities$extraction_key[[1L]]
+        })
+        expect_identical(
+          vapply(keys, function(key) key$dependencies, character(1)),
+          coordinates$coordinate_name,
+          info = info
+        )
+        expect_true(
+          all(vapply(keys, function(key) identical(key$weights, 1), logical(1))),
+          info = info
+        )
         mixed_columns <- colnames(mixed[["mu_g"]])
         expect_identical(
           format_parameter_names(mixed_columns, formula_parameters = "mu"),
@@ -1645,7 +1691,7 @@ test_that("random summaries are cataloged and extracted from declared dependenci
 
 # The prior density is exactly the LKJ marginal: exact ordinates equal to
 # dbeta((r + 1) / 2, shape, shape) / 2 (tolerance: rounding of the Beta
-# density).
+# density, applied to each ordinate).
 .expect_lkj_marginal_density <- function(density, shape, info){
 
   expect_s3_class(density, "prior_linear_density")
@@ -1654,16 +1700,15 @@ test_that("random summaries are cataloged and extracted from declared dependenci
     "fitted_parameter_map",
     info = info
   )
-  for(value in c(-0.95, -0.4, 0, 0.3, 0.9)){
-    ordinate <- prior_density_ordinate(density, value)
-    expect_true(ordinate$exact, info = paste(info, value))
-    expect_equal(
-      exp(ordinate$log_density),
-      stats::dbeta((value + 1) / 2, shape, shape) / 2,
-      tolerance = 1e-12,
-      info = paste(info, value)
-    )
-  }
+  values <- c(-0.95, -0.4, 0, 0.3, 0.9)
+  ordinates <- lapply(values, function(value) prior_density_ordinate(density, value))
+  expect_true(
+    all(vapply(ordinates, function(ordinate) isTRUE(ordinate$exact), logical(1))),
+    info = info
+  )
+  reference <- stats::dbeta((values + 1) / 2, shape, shape) / 2
+  density_values <- exp(vapply(ordinates, function(ordinate) ordinate$log_density, numeric(1)))
+  expect_equal_each(density_values, reference, tolerance = 1e-12, info = info)
 }
 
 test_that("LKJ correlations have the exact LKJ marginal prior density", {
@@ -1677,82 +1722,92 @@ test_that("LKJ correlations have the exact LKJ marginal prior density", {
   # evaluator, and each of 20 equal-width bins on (-1, 1) holds its exact Beta
   # probability p within 4 binomial standard errors sqrt(p (1 - p) / n).
   # The standardized deviation does not depend on n: with n = 1e5 the smallest
-  # expected bin count is 47 (the edge bins of K = 5, eta = 2), the exact
-  # Binomial(n, p) probability of a 4-SE excursion is at most 1.1e-4 per bin,
-  # and the 840 bins expect 0.055 false alarms (0.053 with n = 1e6). A 4-SE
-  # deviation is 3.8-7.0% of the probability of a central bin (1.2-2.2% with
+  # expected bin count is 288 (the edge bins of the shape 2.5 cases), the exact
+  # Binomial(n, p) probability of a 4-SE excursion is at most 6.7e-5 per bin,
+  # and the 340 bins expect 0.022 false alarms (0.022 with n = 1e6). A 4-SE
+  # deviation is 4.2-7.0% of the probability of a central bin (1.3-2.2% with
   # n = 1e6).
+  # The cases cover each dimension K = 2, 3, 5 and eta below, at, and above 1,
+  # and the three boundary classes of the Beta margin: shape 0.5 (U-shaped,
+  # singular at +-1), shape 1 (flat), and shape 2 and above (vanishing at +-1);
+  # K = 5 at the default eta = 1 checks all ten entries, K = 3 at eta = 0.5 and
+  # 2 the entries of every row on both sides of eta = 1. The exact margin
+  # depends on K and eta only through its shape; K sets the chain of canonical
+  # partial correlations, so every dimension is checked with all its entries.
   n <- 1e5
   breaks <- seq(-1, 1, length.out = 21L)
-  for(K in c(2L, 3L, 5L)){
-    for(eta in c(0.5, 1, 2)){
-      info <- paste0("K = ", K, ", eta = ", eta)
-      shape <- eta - 1 + K / 2
-      block <- .lkj_block_fit(K, eta)
-      fit <- block$fit
+  cases <- data.frame(K = c(2L, 3L, 3L, 5L), eta = c(0.5, 0.5, 2, 1))
+  for(case in seq_len(nrow(cases))){
+    K <- cases$K[[case]]
+    eta <- cases$eta[[case]]
+    info <- paste0("K = ", K, ", eta = ", eta)
+    shape <- eta - 1 + K / 2
+    block <- .lkj_block_fit(K, eta)
+    fit <- block$fit
 
-      # every check of the unit is made; the failures are collected and
-      # asserted once per unit
-      problems <- expectation_problems({
-        # The emitted canonical partial correlations of the first row, which are
-        # the correlations r[1, j], have this Beta shape.
-        syntax <- block$formula_result$formula_syntax
-        emitted <- regmatches(
-          syntax,
-          gregexpr("lkj_alpha\\[[0-9]+\\] <- [0-9.]+", syntax)
-        )[[1L]]
-        alpha <- as.numeric(sub("^.* <- ", "", emitted))
-        expect_length(alpha, K * (K - 1L) / 2L)
-        first_row <- vapply(2:K, function(j) (j - 1L) * (j - 2L) / 2L + 1L,
-                            numeric(1))
-        expect_equal(alpha[first_row], rep(shape, K - 1L), info = info)
+    # every check of the unit is made; the failures are collected and
+    # asserted once per unit
+    problems <- expectation_problems({
+      # The emitted canonical partial correlations of the first row, which are
+      # the correlations r[1, j], have this Beta shape.
+      syntax <- block$formula_result$formula_syntax
+      emitted <- regmatches(
+        syntax,
+        gregexpr("lkj_alpha\\[[0-9]+\\] <- [0-9.]+", syntax)
+      )[[1L]]
+      alpha <- as.numeric(sub("^.* <- ", "", emitted))
+      expect_length(alpha, K * (K - 1L) / 2L)
+      first_row <- vapply(2:K, function(j) (j - 1L) * (j - 2L) / 2L + 1L,
+                          numeric(1))
+      expect_equal(alpha[first_row], rep(shape, K - 1L), info = info)
 
-        catalog <- parameter_catalog(fit)
-        correlations <- catalog$quantities[
-          catalog$quantities$role == "random_correlation", , drop = FALSE
-        ]
-        expect_identical(nrow(correlations), as.integer(K * (K - 1L) / 2L),
-                         info = info)
-        raw <- transform_prior_samples(fit, n_samples = n,
-                                       seed = as.integer(10L * K + 2 * eta))
-        all_pairs <- .bt_random_effect_summary_correlation_samples(
-          block$random_term,
-          raw
-        )$values
-        expected <- diff(stats::pbeta((breaks + 1) / 2, shape, shape))
-        for(i in seq_len(nrow(correlations))){
-          name <- correlations$canonical_name[[i]]
-          selection <- parameter_catalog_resolve(catalog, name)
-          index <- correlations$extraction_key[[i]]$index
-          # the evaluated pair is the catalog quantity's draws
-          expect_identical(
+      catalog <- parameter_catalog(fit)
+      correlations <- catalog$quantities[
+        catalog$quantities$role == "random_correlation", , drop = FALSE
+      ]
+      expect_identical(nrow(correlations), as.integer(K * (K - 1L) / 2L),
+                       info = info)
+      raw <- transform_prior_samples(fit, n_samples = n,
+                                     seed = as.integer(10L * K + 2 * eta))
+      all_pairs <- .bt_random_effect_summary_correlation_samples(
+        block$random_term,
+        raw
+      )$values
+      expected <- diff(stats::pbeta((breaks + 1) / 2, shape, shape))
+      for(i in seq_len(nrow(correlations))){
+        name <- correlations$canonical_name[[i]]
+        selection <- parameter_catalog_resolve(catalog, name)
+        index <- correlations$extraction_key[[i]]$index
+        # the evaluated pair is the catalog quantity's draws
+        expect_true(
+          identical(
             as.numeric(as.matrix(parameter_draws(
               fit,
               selection,
               model_samples = raw[1:100, , drop = FALSE]
             ))),
-            all_pairs[1:100, index],
-            info = paste(info, name)
-          )
-          .expect_lkj_marginal_density(
-            parameter_prior_density(fit, selection),
-            shape,
-            info = paste(info, name)
-          )
-          observed <- tabulate(
-            findInterval(all_pairs[, index], breaks, rightmost.closed = TRUE,
-                         all.inside = TRUE),
-            20L
-          ) / n
-          expect_lt(
-            max(abs(observed - expected) / sqrt(expected * (1 - expected) / n)),
-            4,
-            label = paste(info, name, "largest bin deviation in binomial SE")
-          )
-        }
-      })
-      expect_identical(problems, character(), info = info)
-    }
+            all_pairs[1:100, index]
+          ),
+          info = paste(info, name, "the draws are the evaluated pair")
+        )
+        .expect_lkj_marginal_density(
+          parameter_prior_density(fit, selection),
+          shape,
+          info = paste(info, name)
+        )
+        observed <- tabulate(
+          findInterval(all_pairs[, index], breaks, rightmost.closed = TRUE,
+                       all.inside = TRUE),
+          20L
+        ) / n
+        expect_lt(
+          max(abs(observed - expected) / sqrt(expected * (1 - expected) / n)),
+          4,
+          label = paste(info, name, "largest bin deviation in binomial SE")
+        )
+      }
+    })
+    expect_identical(problems, character(), info = info)
   }
 })
 
@@ -3719,15 +3774,18 @@ test_that("sparse allocation margins keep boundary-singular prior densities", {
   # exact density (the scale prior times the square root of the Beta(0.5, 1.5)
   # share) integrates to it: the second moment is P(sd^2 > t) integrated over
   # t, from the exact region probabilities (the half-normal scale prior leaves
-  # less than 1e-11 beyond t = 50).
+  # less than 1e-11 beyond t = 50). The integral runs over u = t^(1/4): P(sd^2 > t)
+  # leaves 1 at t = 0 with an infinite slope (the density of sd is infinite at
+  # zero), which the factor dt = 4 u^3 du flattens, so the quadrature needs 63
+  # of the 399 evaluations of the integral over t.
   component <- parameter_catalog_resolve(catalog, "study: sd(intercept)", "mu")
   component_density <- parameter_prior_density(fit, component)
   expect_identical(attr(component_density, "adaptive_evaluation")$kind, "allocation_product")
   expect_identical(prior_density_ordinate(component_density, 0)$behavior, "infinite")
-  second_moment <- stats::integrate(Vectorize(function(t){
-    region <- list(intervals = matrix(c(sqrt(t), Inf), 1L), indicator = function(x) x > sqrt(t))
-    as.numeric(.prior_linear_density_region_probability(component_density, region))
-  }), 0, 50, rel.tol = 1e-8)$value
+  second_moment <- stats::integrate(Vectorize(function(u){
+    region <- list(intervals = matrix(c(u^2, Inf), 1L), indicator = function(x) x > u^2)
+    4 * u^3 * as.numeric(.prior_linear_density_region_probability(component_density, region))
+  }), 0, 50^(1 / 4), rel.tol = 1e-8)$value
   expect_equal(second_moment, .25, tolerance = 1e-6)
 })
 
