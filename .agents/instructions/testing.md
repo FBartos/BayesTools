@@ -102,7 +102,13 @@ is available explicitly with `reporter = "llm"`.
   but asserts once per unit: vectorize exact comparisons, or wrap a per-element
   loop in `expectation_problems()` (`helper-expectation-problems.R`) and assert
   that no problem was collected. Every `expect_*` call costs milliseconds inside
-  a test, so thousands of them dominate a fast check.
+  a test (testthat sets up reproducible output for each comparison), so
+  thousands of them dominate a fast check. `helper-expectation-problems.R`
+  masks `expect_equal()`, `expect_identical()`, `expect_true()` and
+  `expect_false()` in the test files with versions that record a success at once
+  when the comparison holds under `identical()` and otherwise make testthat's
+  own expectation, so failures read as before; `expect_equal_each()` compares
+  every element of two numeric vectors at its own tolerance.
 - Treat Codecov misses as leads, not goals. Reduce reports to missed clusters,
   then add adversarial assertions only for meaningful behavior. Prefer targeted
   `covr` after the relevant profile; report unrelated local coverage failures

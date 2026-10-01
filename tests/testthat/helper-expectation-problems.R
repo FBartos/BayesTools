@@ -69,3 +69,78 @@ expect_equal_each <- function(object, expected,
   )
   invisible(object)
 }
+
+# Passing comparisons skip testthat's per-call output setup. Every
+# 'expect_identical()', 'expect_equal()', 'expect_true()' and 'expect_false()'
+# reaches 'waldo_compare()', which sets up reproducible output (language,
+# options, environment variables, and a gettext cache reset that creates and
+# removes a temporary directory) before it compares anything. That setup costs
+# about 2 ms per call on Windows and was the larger part of the cost of the
+# passing expectations of the unit profile. The versions below record a success
+# when the comparison holds under 'identical()' (which implies equality at any
+# tolerance, and for the constant TRUE or FALSE), and otherwise make testthat's
+# own expectation of the same arguments with the labels of the original call, so
+# a failure reads and is located as before. They mask the testthat functions of
+# the same names for the test files only (they do not make 'identical()' a
+# criterion for anything that does not hold exactly).
+.expectation_label <- function(expression) {
+  text <- deparse(expression, width.cutoff = 60L)
+  text <- if (length(text) > 1L) paste0(text[[1L]], " ...") else text
+  if (is.call(expression) || is.symbol(expression)) paste0("`", text, "`") else text
+}
+
+expect_identical <- function(object, expected, info = NULL, label = NULL,
+                             expected.label = NULL, ...) {
+  if (identical(object, expected)) {
+    testthat::succeed()
+    return(invisible(object))
+  }
+  testthat::expect_identical(
+    object, expected, info = info,
+    label = if (is.null(label)) .expectation_label(substitute(object)) else label,
+    expected.label = if (is.null(expected.label)) .expectation_label(substitute(expected)) else expected.label,
+    ...
+  )
+}
+
+expect_equal <- function(object, expected, ..., tolerance, info = NULL,
+                         label = NULL, expected.label = NULL) {
+  if (identical(object, expected)) {
+    testthat::succeed()
+    return(invisible(object))
+  }
+  label <- if (is.null(label)) .expectation_label(substitute(object)) else label
+  expected.label <- if (is.null(expected.label)) .expectation_label(substitute(expected)) else expected.label
+  if (missing(tolerance)) {
+    testthat::expect_equal(
+      object, expected, ..., info = info, label = label, expected.label = expected.label
+    )
+  } else {
+    testthat::expect_equal(
+      object, expected, ..., tolerance = tolerance, info = info,
+      label = label, expected.label = expected.label
+    )
+  }
+}
+
+expect_true <- function(object, info = NULL, label = NULL) {
+  if (identical(as.vector(object), TRUE)) {
+    testthat::succeed()
+    return(invisible(object))
+  }
+  testthat::expect_true(
+    object, info = info,
+    label = if (is.null(label)) .expectation_label(substitute(object)) else label
+  )
+}
+
+expect_false <- function(object, info = NULL, label = NULL) {
+  if (identical(as.vector(object), FALSE)) {
+    testthat::succeed()
+    return(invisible(object))
+  }
+  testthat::expect_false(
+    object, info = info,
+    label = if (is.null(label)) .expectation_label(substitute(object)) else label
+  )
+}

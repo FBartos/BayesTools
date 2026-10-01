@@ -723,3 +723,47 @@ test_that("expect_equal_each() applies the criterion of one number to every elem
   expect_match(problems[[3L]], "The numbers of elements differ: 2 and 1.", fixed = TRUE)
   expect_match(problems[[4L]], "absolute", fixed = TRUE)
 })
+
+test_that("passing comparisons are recorded at once and failing ones read as testthat's own", {
+
+  # every passing comparison, also within a tolerance, is recorded as a success
+  recorded <- 0L
+  withCallingHandlers(
+    {
+      expect_equal(1, 1)
+      expect_identical(letters, letters)
+      expect_true(TRUE)
+      expect_true(c(a = TRUE))
+      expect_false(FALSE)
+      expect_equal(1, 1 + 1e-9, tolerance = 1e-6)
+      expect_equal(1L, 1)
+    },
+    expectation_success = function(condition){
+      recorded <<- recorded + 1L
+      invokeRestart("continue_test")
+    }
+  )
+  expect_identical(recorded, 7L)
+
+  # a comparison that does not hold fails with testthat's message, the labels of
+  # the call, and the tolerance and info of the call
+  problems <- expectation_problems({
+    expect_equal(1, 2)
+    expect_equal(c(a = 1), c(a = 1.1), tolerance = 1e-3, info = "own info")
+    expect_identical(1L, 1)
+    expect_true(c(TRUE, FALSE))
+    expect_true(NA)
+    expect_false(TRUE)
+    expect_equal(1, 1 + 1e-9, tolerance = 1e-12)
+    expect_equal(1, 1.0001, tolerance = 1e-8, label = "own label", expected.label = "own expected")
+  })
+  expect_length(problems, 8L)
+  expect_match(problems[[1L]], "Expected 1 to equal 2.", fixed = TRUE)
+  expect_match(problems[[2L]], "Expected `c(a = 1)` to equal `c(a = 1.1)`.", fixed = TRUE)
+  expect_match(problems[[2L]], "own info", fixed = TRUE)
+  expect_match(problems[[3L]], "Expected 1L to be identical to 1.", fixed = TRUE)
+  expect_match(problems[[4L]], "Expected `c(TRUE, FALSE)` to be TRUE.", fixed = TRUE)
+  expect_match(problems[[5L]], "Expected NA to be TRUE.", fixed = TRUE)
+  expect_match(problems[[6L]], "Expected TRUE to be FALSE.", fixed = TRUE)
+  expect_match(problems[[8L]], "Expected own label to equal own expected.", fixed = TRUE)
+})
