@@ -1112,8 +1112,8 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   # (.test_cache_description_hashes()).
   generator_sources <- c(
     .test_cache_package_src_files(
-      files = c("BayesTools.cc", "init.c", "r-lkj.cc", "Makevars.in", "Makevars.win", "Makevars.ucrt"),
-      patterns = "\\.(cc|h)$"
+      files = c("Makevars.in", "Makevars.win", "Makevars.win.common", "Makevars.ucrt"),
+      patterns = "\\.(c|cc|h)$"
     ),
     test_00_model_fits = testthat::test_path("test-00-model-fits.R")
   )
