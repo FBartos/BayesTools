@@ -514,8 +514,10 @@ test_that("conditional-normal quadratures split scale-disparate integrals at bre
                        subdivisions = 5000L)$value
     }, numeric(1)))
   }
-  height <- function(priors, value){
-    density <- .prior_linear_combination_density(priors, c(a = 1, b = 1), n_grid = 4096)
+  density_of <- function(priors){
+    .prior_linear_combination_density(priors, c(a = 1, b = 1), n_grid = 4096)
+  }
+  height <- function(density, value){
     ordinate <- prior_density_ordinate(density, value)
     expect_identical(ordinate$method, "conditional_normal_mixture")
     expect_true(ordinate$provenance$integration$converged)
@@ -542,7 +544,7 @@ test_that("conditional-normal quadratures split scale-disparate integrals at bre
                                      c(0, .9, 1, 1.1, Inf)))
   )
   for(case in cases){
-    expect_equal(height(case$priors, case$value), case$reference, tolerance = 1e-8)
+    expect_equal(height(density_of(case$priors), case$value), case$reference, tolerance = 1e-8)
   }
   # the references agree with the review's values (5 significant digits)
   expect_equal(cases[[1L]]$reference, .54134, tolerance = 1e-4)
@@ -556,10 +558,11 @@ test_that("conditional-normal quadratures split scale-disparate integrals at bre
     priors <- list(a = prior("normal", list(0, 1)), b = slope,
                    s = prior("normal", list(0, sigma), list(0, Inf)))
     z <- 1 / (4 * sigma^2)
-    expect_equal(height(priors, 0), besselK(z, 0, expon.scaled = TRUE) / (2 * pi * sigma),
+    density <- density_of(priors)
+    expect_equal(height(density, 0), besselK(z, 0, expon.scaled = TRUE) / (2 * pi * sigma),
                  tolerance = 1e-8)
     expect_equal(
-      height(priors, 1.5),
+      height(density, 1.5),
       split_reference(function(m) stats::dnorm(1.5, 0, sqrt(1 + m^2)) * 2 * stats::dnorm(m, 0, sigma),
                       c(0, sigma * c(.1, 1, 3, 10), Inf)),
       tolerance = 1e-8
@@ -579,8 +582,10 @@ test_that("multiplier quadratures resolve the location peak of a narrow multipli
                        subdivisions = 5000L)$value
     }, numeric(1)))
   }
-  height <- function(priors, value){
-    density <- .prior_linear_combination_density(priors, c(a = 1, b = 1), n_grid = 4096)
+  density_of <- function(priors){
+    .prior_linear_combination_density(priors, c(a = 1, b = 1), n_grid = 4096)
+  }
+  height <- function(density, value){
     ordinate <- prior_density_ordinate(density, value)
     expect_identical(ordinate$method, "conditional_normal_mixture")
     expect_true(ordinate$provenance$integration$converged)
@@ -601,7 +606,7 @@ test_that("multiplier quadratures resolve the location peak of a narrow multipli
     c(0, .5 + c(-30, -10, -3, -1, 0, 1, 3, 10, 30) * width, Inf)
   )
   expect_equal(reference, .1226265, tolerance = 1e-6)
-  expect_equal(height(priors, 1.5), reference, tolerance = 1e-8)
+  expect_equal(height(density_of(priors), 1.5), reference, tolerance = 1e-8)
 
   # inverse-gamma(3, 2) multiplier at the image of its median: the median
   # breakpoint alone found half of the peak (.14695 instead of .29388)
@@ -615,19 +620,20 @@ test_that("multiplier quadratures resolve the location peak of a narrow multipli
     c(0, median + c(-30, -10, -3, -1, 0, 1, 3, 10, 30) * width, Inf)
   )
   expect_equal(reference, .29388, tolerance = 1e-4)
-  expect_equal(height(priors, value), reference, tolerance = 1e-8)
+  expect_equal(height(density_of(priors), value), reference, tolerance = 1e-8)
 
   # b_s much larger than |b_m| (33 times): the window around s* is not a peak,
   # and breakpoints there made the pieces miss mass elsewhere (-0.7% at -1,
   # -2.3e-4 at -.5)
   priors <- scale_mixture(prior("normal", list(.2, 1e-4)), prior("normal", list(3, 100)),
                           prior("normal", list(0, 1e-3), list(0, Inf)))
+  density <- density_of(priors)
   for(value in c(-1, -.5)){
     reference <- split_reference(
       function(s) stats::dnorm(value, .2 + 3 * s, sqrt(1e-8 + (100 * s)^2)) * 2 * stats::dnorm(s, 0, 1e-3),
       c(0, 1e-3 * c(1e-3, .01, .1, .5, 1, 2, 3, 5, 10), Inf)
     )
-    expect_equal(height(priors, value), reference, tolerance = 1e-8)
+    expect_equal(height(density, value), reference, tolerance = 1e-8)
   }
 
   # just beyond the earlier guard b_s <= |b_m| / 10 the integrand is still a
@@ -644,7 +650,7 @@ test_that("multiplier quadratures resolve the location peak of a narrow multipli
   )
   for(case in cases){
     priors <- scale_mixture(prior("normal", list(.2, 1e-4)), prior("normal", list(3, case$b_s)), case$s)
-    expect_equal(height(priors, .2), case$reference, tolerance = 1e-8)
+    expect_equal(height(density_of(priors), .2), case$reference, tolerance = 1e-8)
   }
 })
 
@@ -762,10 +768,19 @@ test_that("conditional-normal breakpoints keep their distance from bounds with i
     list(shape = .8, sd = 1e-8, k = 3, reference = 27.884821065620117),
     list(shape = .3, sd = 1e-8, k = 0, reference = 183208.23150700132)
   )
+  # the cases share their densities: one per shape and SD, built once (the
+  # numerical grid of a convolution with a narrow Gaussian peak is the costly
+  # part, and the ordinates read the same density at every k)
+  convolutions <- list()
   for(case in cases){
-    convolution <- density(list(a = prior("normal", list(.3, case$sd)), b = prior("gamma", list(case$shape, 1))),
-                           c(a = 1, b = 1))
-    expect_equal(height(convolution, .3 + case$k * case$sd), case$reference, tolerance = 1e-8)
+    key <- paste(case$shape, case$sd)
+    if(is.null(convolutions[[key]])){
+      convolutions[[key]] <- density(
+        list(a = prior("normal", list(.3, case$sd)), b = prior("gamma", list(case$shape, 1))),
+        c(a = 1, b = 1)
+      )
+    }
+    expect_equal(height(convolutions[[key]], .3 + case$k * case$sd), case$reference, tolerance = 1e-8)
   }
   convolution <- density(list(a = prior("normal", list(.3, 1e-11)), b = prior("gamma", list(.5, 1))),
                          c(a = 1, b = 1))
