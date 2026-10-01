@@ -77,17 +77,40 @@ expect_equal_each <- function(object, expected,
 # removes a temporary directory) before it compares anything. That setup costs
 # about 2 ms per call on Windows and was the larger part of the cost of the
 # passing expectations of the unit profile. The versions below record a success
-# when the comparison holds under 'identical()' (which implies equality at any
-# tolerance, and for the constant TRUE or FALSE), and otherwise make testthat's
-# own expectation of the same arguments, labelled as testthat labels the
-# original call, so a failure reads and is located as before. They mask the
-# testthat functions of the same names for the test files only (they do not make
-# 'identical()' a criterion for anything that does not hold exactly).
+# only where testthat's comparison cannot fail: the values are identical() (which
+# implies equality at any tolerance) and the call passes no comparison option
+# (one can be stricter than identical(), e.g. 'ignore_encoding = FALSE', or
+# deprecated, which testthat warns about) and a tolerance testthat accepts; or
+# the object of 'expect_true()' / 'expect_false()' is a logical vector without a
+# class whose value is the constant (testthat ignores its other attributes).
+# Otherwise they make testthat's own expectation of the same arguments, labelled
+# as testthat labels the original call, so a failure reads and is located as
+# before. They mask the testthat functions of the same names for the test files
+# only.
 .expectation_label <- utils::getFromNamespace("expr_label", "testthat")
+
+# Whether testthat's comparison of identical values passes for certain: no
+# comparison options, and no 'waldo_opts' attribute that sets one.
+.expectation_identical <- function(object, expected, n_options) {
+  n_options == 0L && identical(object, expected) &&
+    is.null(attr(object, "waldo_opts", exact = TRUE))
+}
+
+# Whether testthat accepts the tolerance (a number of at least zero, or NULL).
+.expectation_tolerance_valid <- function(tolerance) {
+  is.null(tolerance) ||
+    (is.numeric(tolerance) && !is.object(tolerance) && length(tolerance) == 1L &&
+       !is.na(tolerance) && tolerance >= 0)
+}
+
+# Whether 'object' is a logical vector without a class whose value is 'constant'.
+.expectation_constant <- function(object, constant) {
+  is.logical(object) && !is.object(object) && identical(as.vector(object), constant)
+}
 
 expect_identical <- function(object, expected, info = NULL, label = NULL,
                              expected.label = NULL, ...) {
-  if (identical(object, expected)) {
+  if (.expectation_identical(object, expected, ...length())) {
     testthat::succeed()
     return(invisible(object))
   }
@@ -101,7 +124,8 @@ expect_identical <- function(object, expected, info = NULL, label = NULL,
 
 expect_equal <- function(object, expected, ..., tolerance, info = NULL,
                          label = NULL, expected.label = NULL) {
-  if (identical(object, expected)) {
+  if (.expectation_identical(object, expected, ...length()) &&
+      (missing(tolerance) || .expectation_tolerance_valid(tolerance))) {
     testthat::succeed()
     return(invisible(object))
   }
@@ -120,7 +144,7 @@ expect_equal <- function(object, expected, ..., tolerance, info = NULL,
 }
 
 expect_true <- function(object, info = NULL, label = NULL) {
-  if (identical(as.vector(object), TRUE)) {
+  if (.expectation_constant(object, TRUE)) {
     testthat::succeed()
     return(invisible(object))
   }
@@ -131,7 +155,7 @@ expect_true <- function(object, info = NULL, label = NULL) {
 }
 
 expect_false <- function(object, info = NULL, label = NULL) {
-  if (identical(as.vector(object), FALSE)) {
+  if (.expectation_constant(object, FALSE)) {
     testthat::succeed()
     return(invisible(object))
   }

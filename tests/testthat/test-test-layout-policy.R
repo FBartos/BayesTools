@@ -775,4 +775,26 @@ test_that("passing comparisons are recorded at once and failing ones read as tes
     testthat::expect_equal(sum(c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)), 0)
   ))
   expect_match(long_call, "Expected `sum(...)` to equal 0.", fixed = TRUE)
+
+  # testthat decides, with its own outcome, what identical() alone does not
+  # settle: a comparison option (here one stricter than identical()), an object
+  # of expect_true() / expect_false() that is not a logical vector, a tolerance
+  # it refuses, and an option it warns about
+  latin1 <- iconv("\u00e9", "UTF-8", "latin1")
+  masked_problems <- expectation_problems({
+    expect_equal("\u00e9", latin1, ignore_encoding = FALSE)
+    expect_identical("\u00e9", latin1, ignore_encoding = FALSE)
+    expect_true(emptyenv())
+    expect_false(emptyenv())
+  })
+  testthat_problems <- expectation_problems({
+    testthat::expect_equal("\u00e9", latin1, ignore_encoding = FALSE)
+    testthat::expect_identical("\u00e9", latin1, ignore_encoding = FALSE)
+    testthat::expect_true(emptyenv())
+    testthat::expect_false(emptyenv())
+  })
+  expect_length(testthat_problems, 4L)
+  expect_identical(masked_problems, testthat_problems)
+  expect_error(expect_equal(1, 1, tolerance = -1), "tolerance")
+  expect_warning(expect_equal(1, 1, tol = 1e-3), "deprecated")
 })

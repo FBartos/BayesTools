@@ -106,9 +106,11 @@ is available explicitly with `reporter = "llm"`.
   thousands of them dominate a fast check. `helper-expectation-problems.R`
   masks `expect_equal()`, `expect_identical()`, `expect_true()` and
   `expect_false()` in the test files with versions that record a success at once
-  when the comparison holds under `identical()` and otherwise make testthat's
-  own expectation, so failures read as before; `expect_equal_each()` compares
-  every element of two numeric vectors at its own tolerance.
+  where testthat's comparison cannot fail (identical values and no comparison
+  option but a valid tolerance, or an unclassed logical `TRUE` or `FALSE`) and
+  otherwise make testthat's own expectation, so failures read as before;
+  `expect_equal_each()` applies the tolerance of `expect_equal()` on one number
+  to every element of two numeric vectors.
 - Treat Codecov misses as leads, not goals. Reduce reports to missed clusters,
   then add adversarial assertions only for meaningful behavior. Prefer targeted
   `covr` after the relevant profile; report unrelated local coverage failures
