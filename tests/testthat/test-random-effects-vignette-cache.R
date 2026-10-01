@@ -192,6 +192,10 @@ source(
 # attached package environments, which it writes as references.
 .random_effects_test_reachable_environments <- function(value){
   found <- list()
+  # The found environments by the number and the first names they bind:
+  # identical environments bind the same names, so a new environment is compared
+  # with 'identical()' only to the found ones with the same key, not to all of them.
+  found_by_names <- new.env(parent = emptyenv())
   is_reference <- function(environment){
     identical(environment, globalenv()) ||
       identical(environment, baseenv()) ||
@@ -201,12 +205,18 @@ source(
   }
   visit <- function(value){
     if(is.environment(value)){
-      if(is_reference(value) ||
-          any(vapply(found, identical, logical(1), value))){
+      if(is_reference(value)){
         return(invisible())
       }
+      bound <- ls(value, all.names = TRUE)
+      names_key <- paste0(length(bound), ":", paste(utils::head(bound, 8L), collapse = "\001"))
+      same_names <- found_by_names[[names_key]]
+      if(any(vapply(same_names, identical, logical(1), value))){
+        return(invisible())
+      }
+      found_by_names[[names_key]] <- c(same_names, list(value))
       found[[length(found) + 1L]] <<- value
-      for(name in ls(value, all.names = TRUE)){
+      for(name in bound){
         if(bindingIsActive(name, value)){
           next
         }
