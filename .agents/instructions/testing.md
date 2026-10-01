@@ -67,6 +67,20 @@ refreshes the required catalog by default; reuse it only when the existing cache
 has been intentionally validated. Do not run `fit` for unrelated plotting,
 summary, documentation, or post-fit changes.
 
+The `model-fit` cache marker hashes what defines the cached objects: the fitting
+test file, the native sources in `src/`, the catalog and registry helpers,
+`DESCRIPTION` without `Version` and build fields, and the deparsed code of the
+package functions that the fit generators reach. Reachability is a static,
+over-including closure (`.test_cache_reached_package_objects()` states the
+rules) from the package functions named by the `save_fit()` blocks of
+`test-00-model-fits.R`, by the hashed helpers, and by `.onLoad()`. Editing code
+that no generator reaches (inference, plotting, summaries, prior-density
+ordinates), a comment, or the package version leaves the marker current;
+editing a reached function, a native source, or the fitting test file makes the
+cache stale until `fit` runs. The assertion blocks of the fitting file test
+the post-fit interface of live fits; they run with the file, which a current
+cache skips and the `fit` profile reruns by default.
+
 Do not modify `GENERATE_REFERENCE_FILES` unless the maintainer explicitly asks.
 
 The interactive `test_tests()` runner, loaded by the project `.Rprofile` and

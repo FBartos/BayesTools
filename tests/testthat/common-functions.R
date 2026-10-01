@@ -1105,89 +1105,12 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
 }
 
 .test_cache_source_files <- function(name) {
+  # The package R code that defines a cached object enters the model-fit key
+  # as the reachable functions (.test_cache_package_function_hashes()), not as
+  # whole files, so editing code the fit generators never reach keeps the cache
+  # current. The package DESCRIPTION enters it without its version
+  # (.test_cache_description_hashes()).
   generator_sources <- c(
-    description = testthat::test_path("..", "..", "DESCRIPTION"),
-    .test_cache_package_r_files(
-      files = c(
-        "JAGS-fit.R",
-        "JAGS-runtime.R",
-        "JAGS-convergence.R",
-        "JAGS-prior-syntax.R",
-        "JAGS-prior-inits.R",
-        "JAGS-prior-monitor.R",
-        "JAGS-fit-settings.R",
-        "JAGS-formula.R",
-        "JAGS-formula-design.R",
-        "JAGS-formula-random-design.R",
-        "JAGS-formula-random-matrices.R",
-        "random-effects-memory.R",
-        "JAGS-formula-random-priors.R",
-        "JAGS-formula-random-structured-direct.R",
-        "JAGS-formula-helpers.R",
-        "JAGS-formula-predict.R",
-        "JAGS-formula-predict-target.R",
-        "JAGS-formula-predict-random.R",
-        "JAGS-formula-factors.R",
-        "JAGS-formula-scale.R",
-        "JAGS-formula-scale-random-sd.R",
-        "JAGS-formula-scale-transform.R",
-        "JAGS-formula-contrasts.R",
-        "JAGS-parameter-names.R",
-        "aaa-parameter-map.R",
-        "JAGS-parameter-coordinates.R",
-        "JAGS-parameter-catalog.R",
-        "JAGS-draw-geometry.R",
-        "JAGS-fit-contract.R",
-        "JAGS-formula-random.R",
-        "JAGS-lkj-cholesky.R",
-        "JAGS-marglik.R",
-        "JAGS-bridge-formula-context.R",
-        "JAGS-bridge-posterior.R",
-        "JAGS-bridge-posterior-info.R",
-        "JAGS-marglik-priors.R",
-        "JAGS-marglik-parameters.R",
-        "JAGS-bridge-evaluators.R",
-        "JAGS-bridge-context.R",
-        "JAGS-bridge-formula-evaluators.R",
-        "JAGS-bridge-random-parameters.R",
-        "JAGS-bridge-random-design.R",
-        "JAGS-marglik-formula-parameters.R",
-        "parameter-source.R",
-        "priors.R",
-        "priors-constructors.R",
-        "priors-generics.R",
-        "priors-methods-joint.R",
-        "priors-methods-marginal.R",
-        "priors-moments.R",
-        "priors-weightfunction.R",
-        "priors-tools.R",
-        "priors-informed.R",
-        "random-effects-formula.R",
-        "random-group-covariance.R",
-        "random-effects-allocation.R",
-        "random-effects-compile.R",
-        "random-effects-sd-binding.R",
-        "random-effects-sd-binding-context.R",
-        "random-effects-metadata.R",
-        "random-effects-parameterization.R",
-        "random-effects-reconstruction.R",
-        "random-effects-reconstruction-allocation.R",
-        "random-effects-reconstruction-correlation.R",
-        "random-effects-sd-spec.R",
-        "random-effects-structured-local.R",
-        "random-effects-summary.R",
-        "random-effects-summary-sd.R",
-        "random-effects-summary-metadata.R",
-        "random-effects-summary-display.R",
-        "random-priors.R",
-        "selection-kernels.R",
-        "selection-context.R",
-        "selection-backend-helpers.R",
-        "tools.R",
-        "zzz.R"
-      ),
-      patterns = c("^distributions-.*\\.R$", "^JAGS-deterministic-nodes.*\\.R$")
-    ),
     .test_cache_package_src_files(
       files = c("BayesTools.cc", "init.c", "r-lkj.cc", "Makevars.in", "Makevars.win", "Makevars.ucrt"),
       patterns = "\\.(cc|h)$"
@@ -1433,10 +1356,340 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   }, character(1))
 }
 
+# The fingerprint of the package DESCRIPTION that ignores what is not source
+# content: the version, the author line, and the build fields. It is the one of
+# the vignette caches (vignettes/precomputed-vignette-cache.R), so a version
+# bump alone does not change the model-fit key.
+.test_cache_description_md5 <- function(path) {
+  description <- read.dcf(path, all = TRUE)
+  # read.dcf() marks the file's bytes as native text; convert them from the
+  # declared encoding so the fingerprint does not depend on the session locale
+  encoding <- description[["Encoding"]]
+  if (is.null(encoding)) {
+    encoding <- "UTF-8"
+  }
+  description[] <- lapply(description, iconv, from = encoding, to = "UTF-8")
+  if (anyNA(unlist(description, use.names = FALSE))) {
+    stop("DESCRIPTION is not valid text in its declared encoding.", call. = FALSE)
+  }
+  description[c("Author", "Built", "Packaged", "Version")] <- NULL
+  description <- description[order(names(description), method = "radix")]
+  values <- vapply(description, function(value) {
+    gsub("[[:space:]]+", " ", trimws(value))
+  }, character(1))
+  .test_cache_text_md5(paste(names(values), values, sep = ": ", collapse = "\n"))
+}
+
+.test_cache_description_hashes <- function(name) {
+  description_file <- testthat::test_path("..", "..", "DESCRIPTION")
+  if (!identical(name, "model-fit") || !file.exists(description_file)) {
+    return(stats::setNames(character(), character()))
+  }
+
+  c(description = .test_cache_description_md5(description_file))
+}
+
+# What a piece of R code (a function with the defaults of its arguments, a call,
+# or an expression vector) refers to, as sets of names:
+# - 'used': the functions it calls and the variables it reads that are not
+#   local to it (a symbol that is an argument or an assigned variable of the
+#   code is local, except where it is called);
+# - 'strings': its string constants (a function can be named by a string, and
+#   a class is named by one);
+# - 'generics': the generics it dispatches with 'UseMethod()';
+# - 'prefixes': the string constants inside the function argument of
+#   'do.call()', 'match.fun()', 'get()' and the like when that argument is a
+#   computed name, which are the prefixes of such a name.
+.test_cache_code_references <- function(code) {
+  locals <- character()
+  called <- character()
+  read <- character()
+  strings <- character()
+  generics <- character()
+  prefixes <- character()
+
+  pieces_of <- function(x) {
+    if (is.call(x) || is.pairlist(x) || is.expression(x) || is.list(x)) {
+      as.list(x)
+    } else {
+      list()
+    }
+  }
+  collect_strings <- function(x) {
+    if (is.character(x)) {
+      return(x)
+    }
+    found <- character()
+    for (piece in pieces_of(x)) {
+      if (!missing(piece)) {
+        found <- c(found, collect_strings(piece))
+      }
+    }
+    found
+  }
+  assignment_heads <- c("<-", "<<-", "=")
+  collect_locals <- function(x) {
+    if (is.call(x) && is.symbol(x[[1L]])) {
+      head_name <- as.character(x[[1L]])
+      if (identical(head_name, "function")) {
+        locals <<- c(locals, names(x[[2L]]))
+      } else if (head_name %in% assignment_heads && length(x) == 3L) {
+        target <- x[[2L]]
+        # a replacement such as names(x)[i] <- v changes the local x with the
+        # replacement functions 'names<-' and '[<-'
+        while (is.call(target) && length(target) >= 2L) {
+          if (is.symbol(target[[1L]])) {
+            called <<- c(called, paste0(as.character(target[[1L]]), "<-"))
+          }
+          target <- target[[2L]]
+        }
+        if (is.symbol(target) || is.character(target)) {
+          locals <<- c(locals, as.character(target))
+        }
+      } else if (identical(head_name, "for") && length(x) >= 2L) {
+        locals <<- c(locals, as.character(x[[2L]]))
+      }
+    }
+    for (piece in pieces_of(x)) {
+      if (!missing(piece)) {
+        collect_locals(piece)
+      }
+    }
+    invisible(NULL)
+  }
+
+  naming_calls <- c("do.call", "match.fun", "get", "get0", "mget", "getFromNamespace", "exists")
+  visit <- function(x) {
+    if (is.symbol(x)) {
+      read <<- c(read, as.character(x))
+    } else if (is.character(x)) {
+      strings <<- c(strings, x)
+    } else if (is.call(x)) {
+      head <- x[[1L]]
+      arguments <- as.list(x)[-1L]
+      if (is.symbol(head)) {
+        head_name <- as.character(head)
+        called <<- c(called, head_name)
+        if (identical(head_name, "UseMethod") && length(x) > 1L && is.character(x[[2L]])) {
+          generics <<- c(generics, x[[2L]])
+        }
+        if (head_name %in% naming_calls && length(x) > 1L && is.call(x[[2L]])) {
+          prefixes <<- c(prefixes, collect_strings(x[[2L]]))
+        }
+        # the second argument of $ and @ is a field name, not a variable
+        if (head_name %in% c("$", "@")) {
+          arguments <- arguments[1L]
+        }
+      } else {
+        visit(head)
+      }
+      for (argument in arguments) {
+        if (!missing(argument)) {
+          visit(argument)
+        }
+      }
+    } else {
+      for (piece in pieces_of(x)) {
+        if (!missing(piece)) {
+          visit(piece)
+        }
+      }
+    }
+    invisible(NULL)
+  }
+
+  if (is.function(code)) {
+    locals <- names(formals(code))
+    collect_locals(body(code))
+    collect_locals(formals(code))
+    visit(body(code))
+    visit(formals(code))
+  } else {
+    collect_locals(code)
+    visit(code)
+  }
+
+  list(
+    used = unique(c(called, setdiff(read, locals))),
+    strings = unique(strings),
+    generics = unique(generics),
+    prefixes = unique(prefixes[nzchar(prefixes)])
+  )
+}
+
+# The registered S3 methods of a namespace as a matrix of generic, class, and
+# the name of the method function.
+.test_cache_s3_registry <- function(namespace) {
+  registry <- tryCatch(
+    getNamespaceInfo(namespace, "S3methods"),
+    error = function(e) NULL
+  )
+  if (is.null(registry)) {
+    return(matrix(character(), nrow = 0L, ncol = 3L))
+  }
+
+  registry <- matrix(as.character(registry[, 1:3]), ncol = 3L)
+  registry[!is.na(registry[, 3L]), , drop = FALSE]
+}
+
+# The objects of a namespace that code starting from the names 'roots' can
+# reach, as a static over-approximation: the closure under the names and string
+# constants of the reached functions, with the defaults of their arguments.
+# 'root_strings' are string constants of the starting code. Added to the
+# closure are
+# - the methods 'generic.class' of every generic that a reached function
+#   dispatches with 'UseMethod()';
+# - the registered S3 methods of every generic that reached code uses (and of
+#   the group generics), when the class is "default" or named by a string or a
+#   name of reached code, since an object of a class that reached code never
+#   names is not dispatched on;
+# - for a computed function name such as paste0(".prior_", distribution), the
+#   functions of the prefix completed by the string constants of the calling
+#   function, or all functions of the prefix when none matches.
+# Environments of the namespace (caches and registries of a session) are left
+# out.
+.test_cache_reached_package_objects <- function(roots, root_strings = character(),
+                                                namespace = asNamespace("BayesTools"),
+                                                s3_registry = .test_cache_s3_registry(namespace)) {
+  available <- ls(namespace, all.names = TRUE)
+  group_generics <- c("Ops", "Math", "Summary", "Complex")
+  methods_of_class <- function(used, named) {
+    dispatched <- s3_registry[, 1L] %in% c(used, group_generics) &
+      (s3_registry[, 2L] == "default" | s3_registry[, 2L] %in% named)
+    s3_registry[dispatched, 3L]
+  }
+
+  reached <- character()
+  used <- unique(roots)
+  named <- unique(c(roots, root_strings))
+  pending <- intersect(unique(c(roots, root_strings)), available)
+  while (length(pending) > 0L) {
+    discovered <- character()
+    for (name in pending) {
+      value <- get(name, envir = namespace, inherits = FALSE)
+      if (is.environment(value)) {
+        next
+      }
+      reached <- c(reached, name)
+      if (!is.function(value)) {
+        next
+      }
+
+      references <- .test_cache_code_references(value)
+      used <- union(used, references$used)
+      named <- union(named, c(references$used, references$strings))
+      discovered <- c(discovered, references$used, references$strings)
+      for (generic in references$generics) {
+        discovered <- c(discovered, available[startsWith(available, paste0(generic, "."))])
+      }
+      for (prefix in references$prefixes) {
+        completed <- paste0(prefix, references$strings)
+        completed <- completed[completed %in% available]
+        if (length(completed) == 0L) {
+          completed <- available[startsWith(available, prefix)]
+        }
+        discovered <- c(discovered, completed)
+      }
+    }
+
+    discovered <- c(discovered, methods_of_class(used, named))
+    pending <- setdiff(intersect(unique(discovered), available), reached)
+  }
+
+  sort(unique(reached), method = "radix")
+}
+
+# What starts the model-fit key: the code that generates the cached fits and
+# marginal likelihoods, which is the blocks of the fitting test file that call
+# save_fit() (the file's setup code outside the test blocks is included, its
+# helper definitions are not, since they serve the assertion blocks), the
+# helpers whose functions the key hashes, and the package load hooks. The
+# assertion blocks of the file test the post-fit interface of live fits; they
+# do not define a cached object.
+.test_cache_fit_generator_roots <- function() {
+  fit_file <- testthat::test_path("test-00-model-fits.R")
+  expressions <- if (file.exists(fit_file)) {
+    parse(fit_file, keep.source = FALSE, encoding = "UTF-8")
+  } else {
+    expression()
+  }
+
+  is_call_of <- function(x, name) {
+    is.call(x) && identical(x[[1L]], as.name(name))
+  }
+  is_function_definition <- function(x) {
+    (is_call_of(x, "<-") || is_call_of(x, "=")) && is_call_of(x[[3L]], "function")
+  }
+  is_test_block <- vapply(expressions, is_call_of, logical(1), name = "test_that")
+  saves_fit <- vapply(expressions, function(x) "save_fit" %in% all.names(x), logical(1))
+  is_definition <- vapply(expressions, is_function_definition, logical(1))
+  generators <- expressions[saves_fit | (!is_test_block & !is_definition)]
+
+  helpers <- Filter(is.function, lapply(
+    unname(.test_cache_source_functions("model-fit")),
+    function(function_name) get0(function_name, mode = "function")
+  ))
+  references <- lapply(c(list(generators), helpers), .test_cache_code_references)
+
+  list(
+    roots = unique(c(unlist(lapply(references, `[[`, "used")), ".onLoad", ".onAttach")),
+    strings = unique(unlist(lapply(references, `[[`, "strings")))
+  )
+}
+
+# The hashes of the package functions that the fit generators reach and of the
+# namespace constants that they read, named by the object: the 128-bit
+# rlang::hash() of the deparsed code, which is independent of comments and
+# layout (the md5 of a file per function would cost seconds). Computing them
+# takes about two seconds, so the hashes of the loaded package namespace are
+# kept for the R session, for this namespace object and fitting test file; the
+# cache checks of the test files share them, and a reloaded namespace or an
+# edited test file computes them again.
+.test_cache_package_function_hashes <- function(name, namespace = asNamespace("BayesTools")) {
+  if (!identical(name, "model-fit")) {
+    return(stats::setNames(character(), character()))
+  }
+
+  use_memo <- identical(namespace, asNamespace("BayesTools"))
+  fit_file_md5 <- .test_cache_file_md5(testthat::test_path("test-00-model-fits.R"))
+  memo <- getOption("BayesTools.test_cache_memo")
+  if (use_memo && is.list(memo) && identical(memo$namespace, namespace) &&
+      identical(memo$fit_file_md5, fit_file_md5)) {
+    return(memo$hashes)
+  }
+
+  starting_points <- .test_cache_fit_generator_roots()
+  reached <- .test_cache_reached_package_objects(
+    starting_points$roots,
+    starting_points$strings,
+    namespace
+  )
+  objects <- lapply(reached, get, envir = namespace, inherits = FALSE)
+  hashes <- vapply(objects, function(object) {
+    rlang::hash(paste(deparse(object), collapse = "\n"))
+  }, character(1))
+  prefix <- ifelse(vapply(objects, is.function, logical(1)), "package_fn_", "package_obj_")
+  hashes <- stats::setNames(hashes, paste0(prefix, reached))
+
+  if (use_memo) {
+    options(BayesTools.test_cache_memo = list(
+      namespace = namespace,
+      fit_file_md5 = fit_file_md5,
+      hashes = hashes
+    ))
+  }
+  hashes
+}
+
 .test_cache_source_hashes <- function(name) {
   source_files <- .test_cache_source_files(name)
   file_hashes <- vapply(source_files, .test_cache_file_md5, character(1))
-  c(file_hashes, .test_cache_function_hashes(name))
+  c(
+    .test_cache_description_hashes(name),
+    file_hashes,
+    .test_cache_function_hashes(name),
+    .test_cache_package_function_hashes(name)
+  )
 }
 
 .test_cache_marker_values <- function(indicator_file) {
@@ -1507,11 +1760,21 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   }
 
   source_hashes <- .test_cache_source_hashes(name)
-  for (source_name in names(source_hashes)) {
-    key <- paste0("source_md5_", source_name)
-    if (!identical(marker_value(key), unname(source_hashes[[source_name]]))) {
+  source_keys <- if (length(source_hashes) > 0L) {
+    paste0("source_md5_", names(source_hashes))
+  } else {
+    character()
+  }
+  for (index in seq_along(source_hashes)) {
+    if (!identical(marker_value(source_keys[[index]]), unname(source_hashes[[index]]))) {
       return(FALSE)
     }
+  }
+  # a source that left the key (a function the generators no longer reach, a
+  # removed file) makes the marker stale as well
+  recorded_keys <- grep("^source_md5_", names(marker), value = TRUE)
+  if (length(setdiff(recorded_keys, source_keys)) > 0L) {
+    return(FALSE)
   }
 
   TRUE
