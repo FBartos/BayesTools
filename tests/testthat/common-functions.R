@@ -1637,10 +1637,22 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   )
 }
 
+# The hash of the code of a package object: the 128-bit rlang::hash() of its
+# deparsed code, which is independent of comments and layout (the md5 of a file
+# per function would cost seconds). Numbers are deparsed with 17 significant
+# digits, which identify a double: the default 15 would leave the hash unchanged
+# when a numeric literal changes beyond its 15th digit.
+.test_cache_object_hash <- function(object) {
+  code <- deparse(
+    object,
+    control = c("keepNA", "keepInteger", "niceNames", "showAttributes", "digits17")
+  )
+  rlang::hash(paste(code, collapse = "\n"))
+}
+
 # The hashes of the package functions that the fit generators reach and of the
-# namespace constants that they read, named by the object: the 128-bit
-# rlang::hash() of the deparsed code, which is independent of comments and
-# layout (the md5 of a file per function would cost seconds). Computing them
+# namespace constants that they read, named by the object
+# (.test_cache_object_hash()). Computing them
 # takes about two seconds, so the hashes of the loaded package namespace are
 # kept for the R session, for this namespace object and fitting test file; the
 # cache checks of the test files share them, and a reloaded namespace or an
@@ -1665,9 +1677,7 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
     namespace
   )
   objects <- lapply(reached, get, envir = namespace, inherits = FALSE)
-  hashes <- vapply(objects, function(object) {
-    rlang::hash(paste(deparse(object), collapse = "\n"))
-  }, character(1))
+  hashes <- vapply(objects, .test_cache_object_hash, character(1))
   prefix <- ifelse(vapply(objects, is.function, logical(1)), "package_fn_", "package_obj_")
   hashes <- stats::setNames(hashes, paste0(prefix, reached))
 

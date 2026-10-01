@@ -344,6 +344,19 @@ test_that("code references separate calls, reads, locals, strings, and computed 
   expect_setequal(references$prefixes, c("prefix_", "kind_"))
 })
 
+test_that("the hash of a package object ignores comments and layout but not the digits of a number", {
+  commented <- eval(parse(
+    text = "function(x) {\n  # a comment\n  x +   1.8378770664093453\n}",
+    keep.source = TRUE
+  ))
+  plain <- eval(parse(text = "function(x) {x + 1.8378770664093453}", keep.source = FALSE))
+  # the two literals differ only beyond the 15th significant digit
+  last_digit <- eval(parse(text = "function(x) {x + 1.8378770664093455}", keep.source = FALSE))
+
+  expect_identical(.test_cache_object_hash(commented), .test_cache_object_hash(plain))
+  expect_false(identical(.test_cache_object_hash(plain), .test_cache_object_hash(last_digit)))
+})
+
 test_that("the DESCRIPTION fingerprint of the model-fit key ignores the version and build fields", {
   description <- tempfile("DESCRIPTION")
   withr::defer(unlink(description))
