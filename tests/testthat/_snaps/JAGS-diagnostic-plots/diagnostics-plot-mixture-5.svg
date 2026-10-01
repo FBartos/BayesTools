@@ -81,7 +81,7 @@
 <text x='546.15' y='32.62' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='40.02px' lengthAdjust='spacingAndGlyphs'>mSpike</text>
 <text x='587.14' y='32.62' style='font-size: 12.00px; font-family: sans;' textLength='14.67px' lengthAdjust='spacingAndGlyphs'>(0)</text>
 <text x='374.40' y='557.28' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='20.02px' lengthAdjust='spacingAndGlyphs'>Lag</text>
-<text transform='translate(12.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='168.75px' lengthAdjust='spacingAndGlyphs'>Autocorrelation((mu) x_fac3t[2])</text>
+<text transform='translate(12.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='170.11px' lengthAdjust='spacingAndGlyphs'>Autocorrelation((mu) x_fac3t{2})</text>
 </g>
 <g clip-path='url(#cpNTkuMDR8Njg5Ljc2fDU5LjA0fDUwMi41Ng==)'>
 <rect x='74.13' y='75.47' width='16.55' height='376.46' style='stroke-width: 0.75; fill: #000000;' />

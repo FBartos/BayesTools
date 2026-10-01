@@ -1,37 +1,37 @@
                                 Mean    SD 0.025   0.5 0.975  Inclusion BF
-(mu) intercept                 0.615 0.048 0.520 0.616 0.710           Inf
-(mu) x_cont1[-1SD]             0.429 0.066 0.305 0.428 0.560 1.575614e+124
-(mu) x_cont1[0SD]              0.615 0.048 0.520 0.615 0.710           Inf
-(mu) x_cont1[1SD]              0.802 0.062 0.682 0.802 0.926           Inf
-(mu) x_fac2t[A]                0.614 0.055 0.511 0.614 0.720           Inf
-(mu) x_fac2t[B]                0.622 0.057 0.508 0.620 0.741           Inf
-(mu) x_fac3md[A]               0.769 0.076 0.622 0.770 0.926           Inf
-(mu) x_fac3md[B]               0.518 0.078 0.370 0.517 0.674 9.787659e+151
-(mu) x_fac3md[C]               0.554 0.077 0.409 0.551 0.704 7.143301e+107
-(mu) x_cont1:x_fac3md[-1SD, A] 0.553 0.109 0.344 0.558 0.768  1.481478e+22
-(mu) x_cont1:x_fac3md[0SD, A]  0.771 0.077 0.623 0.772 0.928           Inf
-(mu) x_cont1:x_fac3md[1SD, A]  0.988 0.092 0.819 0.989 1.163           Inf
-(mu) x_cont1:x_fac3md[-1SD, B] 0.371 0.109 0.154 0.370 0.586  4.957000e+01
-(mu) x_cont1:x_fac3md[0SD, B]  0.517 0.079 0.362 0.516 0.678 1.518037e+148
-(mu) x_cont1:x_fac3md[1SD, B]  0.664 0.102 0.469 0.660 0.874 3.324862e+166
-(mu) x_cont1:x_fac3md[-1SD, C] 0.374 0.099 0.185 0.371 0.569  1.130700e+01
-(mu) x_cont1:x_fac3md[0SD, C]  0.555 0.076 0.413 0.552 0.706 9.760441e+109
-(mu) x_cont1:x_fac3md[1SD, C]  0.736 0.110 0.532 0.731 0.958 3.722830e+108
-[0;31mmu_intercept: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_cont1[-1SD]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_cont1[0SD]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_cont1[1SD]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_fac2t[A]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_fac2t[B]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_fac3md[A]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_fac3md[B]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_fac3md[C]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, A]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[0SD, A]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[1SD, A]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, B]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[0SD, B]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[1SD, B]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, C]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[0SD, C]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[1SD, C]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+(mu) intercept                 0.616 0.048 0.521 0.617 0.711           Inf
+(mu) x_cont1[-1SD]             0.429 0.065 0.306 0.428 0.557 9.761926e+124
+(mu) x_cont1[0SD]              0.615 0.048 0.520 0.615 0.707           Inf
+(mu) x_cont1[1SD]              0.800 0.062 0.680 0.802 0.924           Inf
+(mu) x_fac2t[A]                0.614 0.054 0.512 0.614 0.720           Inf
+(mu) x_fac2t[B]                0.622 0.057 0.508 0.620 0.740           Inf
+(mu) x_fac3md[A]               0.770 0.076 0.623 0.771 0.924           Inf
+(mu) x_fac3md[B]               0.517 0.078 0.368 0.516 0.674 1.761861e+152
+(mu) x_fac3md[C]               0.554 0.077 0.413 0.553 0.704 3.730172e+107
+(mu) x_cont1:x_fac3md[-1SD, A] 0.551 0.110 0.336 0.556 0.765  7.468154e+21
+(mu) x_cont1:x_fac3md[0SD, A]  0.769 0.076 0.623 0.770 0.927           Inf
+(mu) x_cont1:x_fac3md[1SD, A]  0.988 0.092 0.817 0.989 1.164           Inf
+(mu) x_cont1:x_fac3md[-1SD, B] 0.372 0.110 0.151 0.374 0.586  5.798200e+01
+(mu) x_cont1:x_fac3md[0SD, B]  0.518 0.078 0.370 0.517 0.677 5.368600e+149
+(mu) x_cont1:x_fac3md[1SD, B]  0.664 0.102 0.473 0.661 0.874 1.774668e+169
+(mu) x_cont1:x_fac3md[-1SD, C] 0.373 0.100 0.184 0.370 0.572  8.824000e+00
+(mu) x_cont1:x_fac3md[0SD, C]  0.554 0.078 0.413 0.551 0.708 2.940849e+104
+(mu) x_cont1:x_fac3md[1SD, C]  0.735 0.109 0.531 0.731 0.956 6.508535e+107
+[0;31m(mu) intercept: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_cont1[-1SD]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_cont1[0SD]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_cont1[1SD]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_fac2t[A]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_fac2t[B]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_fac3md[A]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_fac3md[B]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_fac3md[C]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_cont1:x_fac3md[-1SD, A]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_cont1:x_fac3md[0SD, A]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_cont1:x_fac3md[1SD, A]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_cont1:x_fac3md[-1SD, B]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_cont1:x_fac3md[0SD, B]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_cont1:x_fac3md[1SD, B]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_cont1:x_fac3md[-1SD, C]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_cont1:x_fac3md[0SD, C]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
+[0;31m(mu) x_cont1:x_fac3md[1SD, C]: Posterior samples do not span both sides of the null hypothesis. The posterior density at the null hypothesis is an extrapolation from Gaussian kernel tails; the Bayes factor is not reliable evidence.[0m
