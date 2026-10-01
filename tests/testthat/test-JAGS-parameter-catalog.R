@@ -601,14 +601,15 @@ test_that("factor selectors name level labels, never coordinate positions", {
           all(vapply(level_checks, `[[`, logical(1), "one_quantity")),
           info = info
         )
+        # the per-level identity checks, element by element
         expect_identical(
-          vapply(level_checks, `[[`, character(1), "canonical_name"),
-          paste0("mu_g[", levels, "]"),
+          lapply(level_checks, `[[`, "canonical_name"),
+          as.list(paste0("mu_g[", levels, "]")),
           info = info
         )
         expect_identical(
-          vapply(level_checks, `[[`, character(1), "component"),
-          levels,
+          lapply(level_checks, `[[`, "component"),
+          as.list(levels),
           info = info
         )
         # Exact linear algebra on the same draws: equality up to rounding.
@@ -903,8 +904,8 @@ test_that("contrast-coefficient selectors of level coordinates name the level", 
   expect_true(length(rows) > 0L, info = info)
   selections <- lapply(rows, function(row) parameter_catalog_resolve(catalog, row))
   expect_identical(
-    vapply(selections, function(selection) selection$quantities$term, character(1)),
-    rep("g", length(rows)),
+    lapply(selections, function(selection) selection$quantities$term),
+    as.list(rep("g", length(rows))),
     info = info
   )
   # The table summarizes the same draws: agreement up to rounding.
@@ -980,8 +981,8 @@ test_that("displayed factor rows resolve to the quantities that produced them", 
           parameter_catalog_resolve(catalog, label)$quantities$extraction_key[[1L]]
         })
         expect_identical(
-          vapply(keys, function(key) key$dependencies, character(1)),
-          coordinates$coordinate_name,
+          lapply(keys, `[[`, "dependencies"),
+          as.list(coordinates$coordinate_name),
           info = info
         )
         expect_true(
