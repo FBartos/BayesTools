@@ -697,3 +697,29 @@ test_that("expectation problems report every failed check without recording it",
     fixed = TRUE
   )
 })
+
+test_that("expect_equal_each() applies the criterion of one number to every element", {
+
+  # relative to the expected value, absolute where that is below the tolerance;
+  # infinities and NA agree with themselves
+  expect_equal_each(
+    c(1 + 1e-9, 1000 * (1 + 1e-9), 1e-10, Inf, NA),
+    c(1, 1000, 0, Inf, NA),
+    tolerance = 1e-8
+  )
+  # a large expected value does not hide the difference of another element
+  expect_equal(c(1 + 3e-8, 1e6), c(1, 1e6 + 1e-3))
+  problems <- expectation_problems({
+    expect_equal_each(c(1 + 3e-8, 1e6), c(1, 1e6 + 1e-3), info = "one element")
+    expect_equal_each(c(1, NA), c(1, 2), info = "an NA")
+    expect_equal_each(1:2, 1, info = "lengths")
+    expect_equal_each(1e-9, 0, tolerance = 1e-10, info = "absolute")
+    expect_equal_each(c(1, 2), c(1, 2), info = "agreeing elements")
+  })
+  expect_length(problems, 4L)
+  expect_match(problems[[1L]], "1 of 2 elements differ", fixed = TRUE)
+  expect_match(problems[[1L]], "one element", fixed = TRUE)
+  expect_match(problems[[2L]], "[2] NA vs 2", fixed = TRUE)
+  expect_match(problems[[3L]], "The numbers of elements differ: 2 and 1.", fixed = TRUE)
+  expect_match(problems[[4L]], "absolute", fixed = TRUE)
+})
