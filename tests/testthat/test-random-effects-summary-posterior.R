@@ -1476,6 +1476,362 @@ test_that("SD components of nested allocations keep a plotting density refused f
   expect_true(prior_density_ordinate(drug, .4)$exact)
 })
 
+# A fit of nested variance allocations over random intercepts of the 'blocks'
+# (study, paper and drug factors of one data set). 'draws' are named vectors
+# of the draws of its monitored allocation coordinates (scale sources,
+# Dirichlet weights, inclusion gates); the other coordinates are 0.5 in each
+# of the 'n' draws. The map and the draws are mock, the structure is the
+# fitted formula's.
+.nested_allocation_prior_fit <- function(prior_random, blocks, draws = list(), n = 4L){
+
+  data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2")),
+    paper = factor(c("p1", "p2", "p1", "p2")),
+    drug  = factor(c("a", "b", "b", "a"))
+  )
+  formula <- stats::as.formula(paste(
+    "~ 1 +",
+    paste0("random(1 | ", blocks, ", name = '", blocks, "', covariance = 'diag')",
+           collapse = " + ")
+  ))
+  formula_result <- JAGS_formula(
+    formula = formula,
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random
+  )
+  columns <- unique(unlist(lapply(
+    formula_result$formula_design$random_allocations,
+    function(allocation){
+      c(
+        allocation$source_node,
+        if(!is.null(allocation$weight_name)){
+          paste0(
+            allocation$weight_name, "[",
+            seq_along(formula_result$prior_list[[allocation$weight_name]]$parameters$alpha),
+            "]"
+          )
+        },
+        vapply(allocation$inclusion, `[[`, character(1), "indicator_name")
+      )
+    }
+  ), use.names = FALSE))
+  samples <- matrix(.5, nrow = n, ncol = length(columns),
+                    dimnames = list(NULL, columns))
+  for(column in intersect(names(draws), columns)){
+    samples[, column] <- draws[[column]]
+  }
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = n),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+  attach_test_parameter_map(fit)
+}
+
+# RoBMA's `random = ~ 1 | study / esid` structure (BMA.mv): the scale prior
+# T ~ N(0, 0.35)[0, Inf) with a Bernoulli(0.5) gate of its one component,
+# which a Dirichlet(1, 1) split divides into the SDs of the study and paper
+# blocks.
+.nested_allocation_gate_split_fit <- function(sd = prior("normal", list(0, .35), list(0, Inf)),
+                                              inclusion = prior("spike", list(.5)),
+                                              split_weights = prior("dirichlet", list(alpha = c(1, 1))),
+                                              split_inclusion = NULL, draws = list(), n = 4L){
+
+  .nested_allocation_prior_fit(
+    prior_random(
+      heterogeneity = random_variance_allocation(
+        name = "heterogeneity", terms = c(component_1 = "component_1_gated"),
+        component_names = "component_1", sd = sd,
+        inclusion = list(component_1 = inclusion)
+      ),
+      component_1_split = random_variance_allocation(
+        name = "component_1_split", terms = c(study = "study", paper = "paper"),
+        parent = allocation_ref("heterogeneity", "component_1"),
+        weights = split_weights, inclusion = split_inclusion
+      )
+    ),
+    blocks = c("study", "paper"), draws = draws, n = n
+  )
+}
+
+test_that("the total of a nested allocation under a gate has the exact prior of RoBMA's tau_total", {
+
+  skip_if_not_installed("runjags")
+
+  # the total SD is T g: 0.5 delta_0 + 0.5 N(0, 0.35)[0, Inf), whose density
+  # is 1.14 next to zero (the study and paper SDs split it, g sqrt(w_i) T)
+  fit <- .nested_allocation_gate_split_fit()
+  catalog <- parameter_catalog(fit)
+  name <- "(mu) component_1_split: sd_total"
+  expect_identical(
+    catalog$quantities$role[catalog$quantities$canonical_name == name],
+    "random_sd_total"
+  )
+  density_of <- function(name, conditional = FALSE){
+    BayesTools:::.bt_parameter_prior_density_quantity(
+      fit, parameter_catalog_resolve(catalog, name), n_grid = 1024L,
+      tail_prob = BayesTools:::.prior_linear_density_tail_prob(),
+      conditional = conditional
+    )
+  }
+  f_T <- function(y) 2 * stats::dnorm(y, 0, .35)
+
+  total <- parameter_prior_density(fit, parameter_catalog_resolve(catalog, name))
+  expect_false(is.null(total))
+  expect_identical(attr(total, "adaptive_evaluation")$kind, "allocation_product")
+  expect_null(attr(total, "provenance_unavailable"))
+  expect_identical(total$points$x, 0)
+  expect_equal(total$points$p, .5, tolerance = 1e-12)
+  for(y in c(1e-3, .06, .3, 1.5)){
+    ordinate <- prior_density_ordinate(total, y)
+    expect_true(ordinate$exact)
+    expect_equal(exp(ordinate$log_density), .5 * f_T(y), tolerance = 1e-10)
+  }
+  expect_equal(exp(prior_density_ordinate(total, 1e-3)$log_density), 1.1398, tolerance = 1e-4)
+  expect_identical(prior_density_ordinate(total, 0)$behavior, "point_mass")
+
+  # the variance total: the density of T^2 times 0.5, the atom at 0 kept
+  variance <- density_of("(mu) component_1_split: var_total")
+  expect_identical(variance$points$x, 0)
+  expect_equal(variance$points$p, .5, tolerance = 1e-12)
+  for(y in c(1e-3, .06, .3, 1.5)){
+    ordinate <- prior_density_ordinate(variance, y^2)
+    expect_true(ordinate$exact)
+    expect_equal(exp(ordinate$log_density), .5 * f_T(y) / (2 * y), tolerance = 1e-10)
+  }
+
+  # conditional on the gate: the half-normal without an atom
+  included <- density_of(name, conditional = TRUE)
+  expect_identical(nrow(included$points), 0L)
+  for(y in c(1e-3, .06, .3, 1.5)){
+    ordinate <- prior_density_ordinate(included, y)
+    expect_true(ordinate$exact)
+    expect_equal(exp(ordinate$log_density), f_T(y), tolerance = 1e-10)
+  }
+
+  # the density reaches the plot of the mixed posterior: the prior curve and
+  # the atom at 0, with no omitted-curve warning, and an atom of the draws
+  # that matches the prior's
+  set.seed(20261001)
+  n <- 400L
+  weight <- stats::rbeta(n, 1, 1)
+  gate <- stats::rbinom(n, 1, .5)
+  draws <- list(
+    mu__xRE_ALLOCx_heterogeneity__allocation_sd = abs(stats::rnorm(n, 0, .35)),
+    mu__xRE_ALLOCx_heterogeneity__include_component_1_indicator = gate,
+    `mu__xRE_ALLOCx_component_1_split__weight[1]` = weight,
+    `mu__xRE_ALLOCx_component_1_split__weight[2]` = 1 - weight
+  )
+  drawn <- .nested_allocation_gate_split_fit(draws = draws, n = n)
+  mixed <- parameter_mixed_posterior(
+    drawn, parameter_catalog_resolve(parameter_catalog(drawn), name)
+  )
+  expect_identical(
+    posterior_metadata(mixed, "prior_density")$points,
+    total$points
+  )
+  expect_equal(posterior_metadata(mixed, "atoms")$mass, mean(gate == 0), tolerance = 1e-12)
+  samples <- stats::setNames(list(mixed), name)
+  plot_data <- BayesTools:::.plot_data_attached_prior_density(samples, name, n_points = 200L)
+  expect_false(is.null(plot_data))
+  expect_true(any(vapply(plot_data, inherits, logical(1), what = "density.prior.simple")))
+  atom <- plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.point")]
+  expect_length(atom, 1L)
+  expect_equal(as.numeric(atom[[1L]]$x), 0)
+  expect_equal(as.numeric(atom[[1L]]$y), .5, tolerance = 1e-12)
+  with_prior <- NULL
+  expect_no_warning(
+    with_prior <- plot_posterior(samples, name, prior = TRUE, plot_type = "ggplot"),
+    class = "BayesTools_prior_curve_unavailable"
+  )
+  without_prior <- plot_posterior(samples, name, prior = FALSE, plot_type = "ggplot")
+  expect_gt(length(with_prior$layers), length(without_prior$layers))
+})
+
+test_that("totals of nested allocations include the parent shares and their own active sets", {
+
+  skip_if_not_installed("runjags")
+
+  # scale prior T ~ gamma(2, 2); h(y; a, b) is the density of T sqrt(S), S ~
+  # Beta(a, b): the one-dimensional integral over the share margin
+  f_T <- function(y) stats::dgamma(y, 2, 2)
+  h <- function(y, a, b){
+    stats::integrate(function(s) f_T(y / sqrt(s)) * stats::dbeta(s, a, b) / sqrt(s),
+                     0, 1, rel.tol = 1e-13)$value
+  }
+  density_of <- function(fit, name, conditional = FALSE){
+    BayesTools:::.bt_parameter_prior_density_quantity(
+      fit, parameter_catalog_resolve(parameter_catalog(fit), name), n_grid = 1024L,
+      tail_prob = BayesTools:::.prior_linear_density_tail_prob(),
+      conditional = conditional
+    )
+  }
+  name <- "(mu) split: sd_total"
+  ys <- c(.05, .4, 1.5)
+
+  # a split under one of two gated components of a Dirichlet(2, 3) root (a
+  # parent share in the chain): the total is T g sqrt(w_1), w_1 ~ Beta(2, 3),
+  # exact: 0.4 delta_0 + 0.6 h(y; 2, 3)
+  shared <- .nested_allocation_prior_fit(
+    prior_random(
+      total_re = random_variance_allocation(
+        name = "total_re", terms = c(nested = "nested", drug = "drug"),
+        sd = prior("gamma", list(2, 2)),
+        weights = prior("dirichlet", list(alpha = c(2, 3))),
+        inclusion = list(nested = prior("spike", list(.6)))
+      ),
+      split = random_variance_allocation(
+        name = "split", terms = c(study = "study", paper = "paper"),
+        parent = allocation_ref("total_re", "nested")
+      )
+    ),
+    blocks = c("study", "paper", "drug")
+  )
+  total <- density_of(shared, name)
+  expect_identical(attr(total, "adaptive_evaluation")$kind, "allocation_product")
+  expect_equal(total$points$p[total$points$x == 0], .4, tolerance = 1e-12)
+  included <- density_of(shared, name, conditional = TRUE)
+  expect_identical(nrow(included$points), 0L)
+  for(y in ys){
+    ordinate <- prior_density_ordinate(total, y)
+    expect_true(ordinate$exact)
+    expect_equal(exp(ordinate$log_density), .6 * h(y, 2, 3), tolerance = 1e-8)
+    expect_equal(exp(prior_density_ordinate(included, y)$log_density), h(y, 2, 3),
+                 tolerance = 1e-8)
+    variance <- prior_density_ordinate(density_of(shared, "(mu) split: var_total"), y^2)
+    expect_true(variance$exact)
+    expect_equal(exp(variance$log_density), .6 * h(y, 2, 3) / (2 * y), tolerance = 1e-8)
+  }
+  draws <- function(n){
+    eta <- matrix(stats::rgamma(2L * n, shape = rep(c(2, 3), each = n)), ncol = 2L)
+    stats::rgamma(n, 2, 2) * stats::rbinom(n, 1, .6) * sqrt(eta[, 1L] / rowSums(eta))
+  }
+  set.seed(20261002)
+  edges <- c(0, .05, .15, .3, .5, .8, 1.2, 2, Inf)
+  sampled <- draws(1e5)
+  .expect_allocation_bins(total, sampled, edges)
+  .expect_allocation_bins(included, sampled[sampled > 0], edges)
+
+  # a split with its own gates under the gate of a gate-only root (no parent
+  # share): the empty own set (0.28) and the parent gate (0.5) put the atom
+  # 0.5 + 0.5 * 0.28 at 0, the full set (0.18) is T and the partial sets are
+  # T sqrt(Beta(2, 3)) (study only, 0.12) and T sqrt(Beta(3, 2)) (paper only,
+  # 0.42): one share at most, exact
+  gated <- .nested_allocation_gate_split_fit(
+    sd = prior("gamma", list(2, 2)),
+    split_weights = prior("dirichlet", list(alpha = c(2, 3))),
+    split_inclusion = list(study = prior("spike", list(.3)),
+                           paper = prior("spike", list(.6)))
+  )
+  total <- density_of(gated, "(mu) component_1_split: sd_total")
+  expect_identical(attr(total, "adaptive_evaluation")$kind, "allocation_product")
+  expect_equal(total$points$p[total$points$x == 0], .5 + .5 * .28, tolerance = 1e-12)
+  mixture <- function(y){
+    .18 * f_T(y) + .12 * h(y, 2, 3) + .42 * h(y, 3, 2)
+  }
+  included <- density_of(gated, "(mu) component_1_split: sd_total", conditional = TRUE)
+  expect_identical(nrow(included$points), 0L)
+  for(y in ys){
+    ordinate <- prior_density_ordinate(total, y)
+    expect_true(ordinate$exact)
+    expect_equal(exp(ordinate$log_density), .5 * mixture(y), tolerance = 1e-8)
+    expect_equal(exp(prior_density_ordinate(included, y)$log_density), mixture(y) / .72,
+                 tolerance = 1e-8)
+  }
+  gated_draws <- function(n){
+    eta <- matrix(stats::rgamma(2L * n, shape = rep(c(2, 3), each = n)), ncol = 2L)
+    own <- matrix(stats::rbinom(2L * n, 1, rep(c(.3, .6), each = n)), ncol = 2L)
+    stats::rgamma(n, 2, 2) * stats::rbinom(n, 1, .5) *
+      sqrt(rowSums(own * eta) / rowSums(eta))
+  }
+  sampled <- gated_draws(1e5)
+  .expect_allocation_bins(total, sampled, edges)
+  .expect_allocation_bins(included, sampled[sampled > 0], edges)
+  .expect_allocation_bins(density_of(gated, "(mu) component_1_split: var_total"),
+                          sampled^2, edges^2)
+})
+
+test_that("a nested total with two or more independent shares keeps a plotting density refused for point tests", {
+
+  skip_if_not_installed("runjags")
+
+  # a split with its own gates under one of two gated components of a
+  # Dirichlet(2, 3) root: T g sqrt(w_1) sqrt(W_A) has two shares when the own
+  # set is partial, which has no one-dimensional route; the numerical product
+  # grid is a plotting density with the reason recorded
+  fit <- .nested_allocation_prior_fit(
+    prior_random(
+      total_re = random_variance_allocation(
+        name = "total_re", terms = c(nested = "nested", drug = "drug"),
+        sd = prior("gamma", list(2, 2)),
+        weights = prior("dirichlet", list(alpha = c(2, 3))),
+        inclusion = list(nested = prior("spike", list(.6)))
+      ),
+      split = random_variance_allocation(
+        name = "split", terms = c(study = "study", paper = "paper"),
+        parent = allocation_ref("total_re", "nested"),
+        weights = prior("dirichlet", list(alpha = c(2, 3))),
+        inclusion = list(study = prior("spike", list(.3)),
+                         paper = prior("spike", list(.6)))
+      )
+    ),
+    blocks = c("study", "paper", "drug")
+  )
+  catalog <- parameter_catalog(fit)
+  total <- parameter_prior_density(
+    fit, parameter_catalog_resolve(catalog, "(mu) split: sd_total")
+  )
+  expect_null(attr(total, "adaptive_evaluation"))
+  ordinate <- prior_density_ordinate(total, .4)
+  expect_identical(ordinate$behavior, "unknown")
+  expect_false(ordinate$exact)
+  expect_match(ordinate$reason, "the total of a nested variance allocation", fixed = TRUE)
+  status <- prior_ordinate_status(total, .4)
+  expect_identical(status$condition, "BayesTools_inexact_ordinate")
+
+  # the atom: the parent gate off (0.4) or the own set empty (0.28)
+  zero <- .4 + .6 * .28
+  expect_equal(total$points$p[total$points$x == 0], zero, tolerance = 1e-12)
+  variance <- parameter_prior_density(
+    fit, parameter_catalog_resolve(catalog, "(mu) split: var_total")
+  )
+  expect_match(attr(variance, "provenance_unavailable"),
+               "the total of a nested variance allocation", fixed = TRUE)
+  expect_equal(variance$points$p[variance$points$x == 0], zero, tolerance = 1e-12)
+  expect_false(prior_density_ordinate(variance, .16)$exact)
+  # bin probabilities of the grid (region probabilities are refused for it)
+  # against the generative process: the atom and the bins above 0.05 within 4
+  # binomial standard errors; the grid resolves the steep density next to
+  # zero only to a few percent of the first bin's probability (0.0129)
+  set.seed(20261003)
+  n <- 1e5
+  eta_root <- matrix(stats::rgamma(2L * n, shape = rep(c(2, 3), each = n)), ncol = 2L)
+  eta <- matrix(stats::rgamma(2L * n, shape = rep(c(2, 3), each = n)), ncol = 2L)
+  own <- matrix(stats::rbinom(2L * n, 1, rep(c(.3, .6), each = n)), ncol = 2L)
+  sampled <- stats::rgamma(n, 2, 2) * stats::rbinom(n, 1, .6) *
+    sqrt(eta_root[, 1L] / rowSums(eta_root)) * sqrt(rowSums(own * eta) / rowSums(eta))
+  edges <- c(0, .05, .15, .3, .5, .8, 1.2, 2, Inf)
+  grid <- total$density
+  bin_probability <- function(lower, upper){
+    density <- stats::approxfun(grid$x, grid$y, yleft = 0, yright = 0)
+    grid$mass * stats::integrate(density, lower, min(upper, max(grid$x)),
+                                 subdivisions = 2000L)$value
+  }
+  zero_se <- sqrt(zero * (1 - zero) / n)
+  expect_lte(abs(mean(sampled == 0) - zero), 4 * zero_se)
+  for(k in 2:(length(edges) - 1L)){
+    probability <- bin_probability(edges[k], edges[k + 1L])
+    se <- sqrt(probability * (1 - probability) / n)
+    expect_lte(abs(mean(sampled > edges[k] & sampled <= edges[k + 1L]) - probability),
+               4 * se)
+  }
+  first <- mean(sampled > 0 & sampled <= edges[2L])
+  expect_equal(bin_probability(edges[1L], edges[2L]), first, tolerance = .1)
+})
+
 test_that("gate-only allocations and inclusion indicators have exact priors and declared atoms", {
 
   skip_if_not_installed("runjags")

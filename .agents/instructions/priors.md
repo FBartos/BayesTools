@@ -366,17 +366,21 @@ with every component active or a gate-only chain) and mapped shares
 sqrt(k W) (a component SD: W = w_i ~ Beta(a_i, a_- - a_i), k = K for
 mean-variance and 1 for total-variance allocations; a total with the partial
 active set A: W ~ Beta(a_A, a_- - a_A)), with the gate-configuration
-probabilities. T's mixture and spike-and-slab components are expanded; each
-leaf is an atom, the scaled scale prior, or the square-root share scale
-product above, and a variance applies the square (`exp_lin`) to every
-continuous leaf and to the atoms, so ordinates, region probabilities and
-plotted densities are exact and share one route. SD components of nested
-allocations (the scale prior times two or more independent shares) keep a
-product of density grids without provenance: a plotting density whose
-ordinates are `unknown` with the reason recorded
-(`provenance_unavailable`), refused for heights and point hypotheses;
-totals of nested allocations have no density. Fitted coordinates
-and factor levels use the prior-density context of the priors owning their
+probabilities. The total of a nested allocation is T times the multiplier
+chain of its parents (the gates as points, each parent Dirichlet share as a
+Beta share, as for the component SDs) times the own active-set factor of the
+total of a non-nested allocation (`conditional` conditions on a positive
+total: the parent gates on and the own empty set dropped), so RoBMA's
+`study / esid` total, T times a gate, is exact. T's mixture and
+spike-and-slab components are expanded; each leaf is an atom, the scaled
+scale prior, or the square-root share scale product above, and a variance
+applies the square (`exp_lin`) to every continuous leaf and to the atoms, so
+ordinates, region probabilities and plotted densities are exact and share one
+route. SD components and totals of nested allocations with a term of two or
+more independent shares keep a product of density grids without provenance:
+a plotting density whose ordinates are `unknown` with the reason recorded
+(`provenance_unavailable`), refused for heights and point hypotheses. Fitted
+coordinates and factor levels use the prior-density context of the priors owning their
 coordinates (`multiply_by` stripped). A pairwise correlation of a K-column
 LKJ(eta) block is the LKJ marginal, `2 B - 1` with
 B ~ Beta(eta - 1 + K / 2, eta - 1 + K / 2), passed as that Beta prior with

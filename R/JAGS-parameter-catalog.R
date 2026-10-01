@@ -136,21 +136,22 @@
 #' allocation, 1 otherwise) while the gates of its allocation chain are on and
 #' 0 otherwise, and an allocation total (`sd_total`, `var_total`) is
 #' T sqrt(sum of w over the active components), 0 without an active
-#' component and T with all of them. Their densities (and those of the
-#' variances) are exact: the atoms at zero, and the continuous parts as
-#' mixtures over the gate configurations of the scale prior and of the
-#' one-dimensional integrals over the Beta share margins. SD components of
-#' nested allocations (two or more allocation shares) are products of density
-#' grids without such provenance, returned for plotting only (heights, region
-#' probabilities and point hypotheses are unavailable, and their ordinates
-#' name the reason). The SD of a gate-only allocation (one term with an
-#' inclusion gate) is the scale prior times its gate, and an inclusion
-#' indicator (of an allocation gate, or `inclusion(...)` of a component of a
-#' spike-and-slab or mixture SD prior) has the Bernoulli prior of its
-#' marginal inclusion probability (points at 0 and 1; the prior weight of
-#' the component, or the expected inclusion probability of a spike-and-slab
-#' prior) and the exact support \{0, 1\}. Totals of nested allocations return
-#' `NULL`.
+#' component and T with all of them, times the allocation chain of its parents
+#' (their gates and Dirichlet shares) for a nested allocation. Their densities
+#' (and those of the variances) are exact: the atoms at zero, and the
+#' continuous parts as mixtures over the gate configurations of the scale prior
+#' and of the one-dimensional integrals over the Beta share margins (the total
+#' of a nested allocation under a gate is the scale prior times the gate). SD
+#' components and totals of nested allocations with two or more allocation
+#' shares are products of density grids without such provenance, returned for
+#' plotting only (heights, region probabilities and point hypotheses are
+#' unavailable, and their ordinates name the reason). The SD of a gate-only
+#' allocation (one term with an inclusion gate) is the scale prior times its
+#' gate, and an inclusion indicator (of an allocation gate, or
+#' `inclusion(...)` of a component of a spike-and-slab or mixture SD prior) has
+#' the Bernoulli prior of its marginal inclusion probability (points at 0 and
+#' 1; the prior weight of the component, or the expected inclusion probability
+#' of a spike-and-slab prior) and the exact support \{0, 1\}.
 #' A pairwise correlation of an unstructured random-effect block with K
 #' columns and an LKJ(eta) prior has the exact LKJ marginal: `2 B - 1` with
 #' `B ~ Beta(eta - 1 + K/2, eta - 1 + K/2)` \insertCite{lewandowski2009generating}{BayesTools}.
@@ -1506,28 +1507,19 @@ parameter_prior_density.BayesTools_fit <- function(
   )
 }
 
-# Component SD of a nested allocation: the scale prior times two or more
-# independent square-root shares has no one-dimensional route. Its product of
-# density grids (with the exact gate atom at zero) is a plotting density; the
-# 'provenance_unavailable' attribute names the reason, which ordinates report
-# and point hypotheses refuse with.
-.bt_parameter_prior_density_nested_component_sd <- function(chain, prior_list,
-                                                            zero, n_grid,
-                                                            tail_prob, square){
+# The density grid of the scale prior times a product of independent
+# square-root shares (each a .prior_allocation_share()): the numerical product
+# of the scale prior's density with the density of each sqrt(scale * S),
+# S ~ Beta(alpha, beta).
+.bt_parameter_prior_density_share_product_dist <- function(source_prior, shares,
+                                                           n_grid, tail_prob){
 
   dist <- .bt_parameter_prior_density_scalar(
-    chain$source_prior,
+    source_prior,
     n_grid = n_grid,
     tail_prob = tail_prob
   )
-  for(factor in chain$factors){
-    if(is.null(factor$weight_name)){
-      next
-    }
-    share <- .bt_parameter_prior_density_factor_share(factor, prior_list)
-    if(is.null(share)){
-      return(NULL)
-    }
+  for(share in shares){
     factor_dist <- .bt_parameter_prior_density_transformed(
       prior("beta", list(alpha = share$alpha, beta = share$beta)),
       list(type = "sqrt_scale", scale = share$scale),
@@ -1536,15 +1528,37 @@ parameter_prior_density.BayesTools_fit <- function(
     )
     dist <- .prior_linear_density_product(dist, factor_dist, n_grid = n_grid)
   }
-  if(zero > 0){
-    dx <- .prior_linear_density_dx(dist)
-    if(!is.finite(dx) || dx <= 0){
-      dx <- 1 / max(n_grid - 1L, 1L)
-    }
+  dist
+}
+
+# The plotting density of the scale prior times a mixture of share products:
+# 'terms' are lists with a probability 'weight' and the 'shares' of the term
+# (the scale prior alone without shares), and 'zero' is the probability of the
+# exact atom at zero. A product of two or more independent square-root shares
+# has no one-dimensional route, so its product of density grids is a plotting
+# density; the 'provenance_unavailable' attribute names 'what' as the reason,
+# which ordinates report and point hypotheses refuse with.
+.bt_parameter_prior_density_share_product_grid <- function(source_prior, terms,
+                                                           zero, n_grid,
+                                                           tail_prob, square,
+                                                           what){
+
+  positive <- Filter(function(term) term$weight > 0, terms)
+  terms <- if(length(positive) > 0L) positive else terms[1L]
+  dists <- lapply(terms, function(term){
+    .bt_parameter_prior_density_share_product_dist(
+      source_prior, term$shares, n_grid, tail_prob
+    )
+  })
+  dist <- dists[[1L]]
+  if(zero > 0 || length(dists) > 1L){
+    dx <- vapply(dists, .prior_linear_density_dx, numeric(1))
+    dx <- dx[is.finite(dx) & dx > 0]
+    dx <- if(length(dx) > 0L) min(dx) else 1 / max(n_grid - 1L, 1L)
     dist <- .prior_linear_density_normalize(
       .prior_linear_density_mix(
-        list(.prior_linear_density_point(0), dist),
-        c(zero, 1 - zero),
+        c(list(.prior_linear_density_point(0)), dists),
+        c(zero, vapply(terms, `[[`, numeric(1), "weight")),
         dx = dx,
         n_grid = n_grid
       ),
@@ -1555,42 +1569,56 @@ parameter_prior_density.BayesTools_fit <- function(
     dist <- .prior_linear_density_transform(dist, "exp_lin", list(a = 0, b = 2))
   }
   attr(dist, "provenance_unavailable") <- paste0(
-    "The prior density of an SD component of a nested variance allocation ",
+    "The prior density of ", what, " of a nested variance allocation ",
     "(the scale prior times two or more independent allocation shares) has no ",
     "structural route; its numerical product grid is used only for plotting."
   )
   dist
 }
 
-# Total SD (or, with 'square', variance) of an allocation without nested
-# parent shares: the scale prior T times sqrt(sum_{j in A} w_j) over the
-# active component set A (.prior_allocation_product_density()). Component
-# inclusion gates of a total-variance allocation make A random: the empty set
-# gives an atom at zero, the full set T itself (the weights sum to one), and a
-# partial set T sqrt(W_A), W_A ~ Beta(a_A, a_- - a_A); sets with equal Beta
-# parameters are merged. Other scales and allocations without gates have the
-# full set only (the total is the scale prior). A gate-only allocation is T
-# times its gates. 'conditional' drops the empty set (renormalized over the
-# nonempty sets). Totals of nested allocations are unavailable (NULL).
-.bt_parameter_prior_density_allocation_total <- function(object, key,
-                                                         n_grid, tail_prob,
-                                                         conditional = FALSE){
+# Component SD of a nested allocation: the scale prior times two or more
+# independent square-root shares has no one-dimensional route; its product of
+# density grids (with the exact gate atom at zero) is a plotting density.
+.bt_parameter_prior_density_nested_component_sd <- function(chain, prior_list,
+                                                            zero, n_grid,
+                                                            tail_prob, square){
 
-  random_term <- if(nzchar(key$random_block)){
-    .bt_parameter_catalog_find_random_term(object, key)
-  }else{
-    NULL
+  shares <- list()
+  for(factor in chain$factors){
+    if(is.null(factor$weight_name)){
+      next
+    }
+    share <- .bt_parameter_prior_density_factor_share(factor, prior_list)
+    if(is.null(share)){
+      return(NULL)
+    }
+    shares[[length(shares) + 1L]] <- share
   }
-  allocation <- .bt_parameter_catalog_find_allocation(object, key, random_term)
-  source <- allocation$source
-  if(!is.list(source) || !identical(source$shape, "scalar") ||
-     !is.prior(source$prior) ||
-     .prior_linear_prior_dimension(source$prior) != 1L ||
-     length(allocation$parent_factors) > 0L){
-    return(NULL)
-  }
-  prior_list <- attr(object, "prior_list", exact = TRUE)
-  square <- identical(key$evaluator, "allocation_var")
+  .bt_parameter_prior_density_share_product_grid(
+    source_prior = chain$source_prior,
+    terms        = list(list(weight = 1 - zero, shares = shares)),
+    zero         = zero,
+    n_grid       = n_grid,
+    tail_prob    = tail_prob,
+    square       = square,
+    what         = "an SD component"
+  )
+}
+
+# The multiplier of the own components of an allocation's total: the scale
+# prior's factor sqrt(sum_{j in A} w_j) over the active component set A, as the
+# probability 'zero' of the empty set (total 0) and 'terms' of the nonempty
+# sets: the full set (the weights sum to one: no share; the total is the scale
+# prior) and each partial set, a share sqrt(W_A), W_A ~ Beta(a_A, a_- - a_A),
+# with the probabilities of the sets of equal Beta parameters merged. Component
+# inclusion gates of a total-variance allocation make A random; other scales
+# and allocations without gates have the full set only, and a gate-only
+# allocation is its gates (all on: the scale prior; else 0). With 'conditional'
+# the empty set drops out (renormalized over the nonempty sets). NULL when the
+# multiplier is not available from the declared priors.
+.bt_parameter_prior_density_allocation_own_multiplier <- function(
+    allocation, prior_list, conditional = FALSE){
+
   if(isTRUE(allocation$gate_only)){
     probability <- 1
     for(record in allocation$inclusion){
@@ -1606,15 +1634,9 @@ parameter_prior_density.BayesTools_fit <- function(
       }
       probability <- 1
     }
-    return(.prior_allocation_product_density(
-      source_prior = source$prior,
-      multipliers  = list(
-        .prior_allocation_point(0, 1 - probability),
-        .prior_allocation_point(1, probability)
-      ),
-      n_grid       = n_grid,
-      tail_prob    = tail_prob,
-      square       = square
+    return(list(
+      zero  = 1 - probability,
+      terms = list(list(weight = probability, shares = list()))
     ))
   }
 
@@ -1660,10 +1682,7 @@ parameter_prior_density.BayesTools_fit <- function(
     set_probability <- set_probability / sum(set_probability)
   }
 
-  multipliers <- list(
-    .prior_allocation_point(0, sum(set_probability[size == 0L])),
-    .prior_allocation_point(1, sum(set_probability[size == K]))
-  )
+  terms <- list(list(weight = sum(set_probability[size == K]), shares = list()))
   partial <- which(size > 0L & size < K & set_probability > 0)
   shares <- lapply(partial, function(i){
     c(alpha = sum(alpha[active[i, ]]), beta = sum(alpha[!active[i, ]]))
@@ -1673,12 +1692,117 @@ parameter_prior_density.BayesTools_fit <- function(
   }, character(1))
   for(key_i in unique(keys)){
     share <- shares[[match(key_i, keys)]]
-    multipliers[[length(multipliers) + 1L]] <- .prior_allocation_share(
-      alpha  = share[["alpha"]],
-      beta   = share[["beta"]],
-      scale  = 1,
-      weight = sum(set_probability[partial[keys == key_i]])
+    terms[[length(terms) + 1L]] <- list(
+      weight = sum(set_probability[partial[keys == key_i]]),
+      shares = list(.prior_allocation_share(
+        alpha  = share[["alpha"]],
+        beta   = share[["beta"]],
+        scale  = 1,
+        weight = 1
+      ))
     )
+  }
+  list(zero = sum(set_probability[size == 0L]), terms = terms)
+}
+
+# Total SD (or, with 'square', variance) of an allocation: the scale prior T
+# times the multiplier chain of its parent allocations (the gates of the chain
+# as point multipliers and each parent Dirichlet share as a Beta share, as for
+# its component SDs) times sqrt(sum_{j in A} w_j) over its own active component
+# set A (.bt_parameter_prior_density_allocation_own_multiplier()). The density
+# is the .prior_allocation_product_density() mixture when every term has at
+# most one share (no parent share, or one parent share and no partial own set):
+# exact atoms and ordinates. A term with two or more independent shares has no
+# one-dimensional route; the density is then a product of density grids used
+# for plotting only (as for the SD components of nested allocations). With
+# 'conditional' the parent gates are on and the empty own set drops out
+# (renormalized over the nonempty sets): the event that the total is positive.
+.bt_parameter_prior_density_allocation_total <- function(object, key,
+                                                         n_grid, tail_prob,
+                                                         conditional = FALSE){
+
+  random_term <- if(nzchar(key$random_block)){
+    .bt_parameter_catalog_find_random_term(object, key)
+  }else{
+    NULL
+  }
+  allocation <- .bt_parameter_catalog_find_allocation(object, key, random_term)
+  source <- allocation$source
+  if(!is.list(source) || !identical(source$shape, "scalar") ||
+     !is.prior(source$prior) ||
+     .prior_linear_prior_dimension(source$prior) != 1L){
+    return(NULL)
+  }
+  prior_list <- attr(object, "prior_list", exact = TRUE)
+  square <- identical(key$evaluator, "allocation_var")
+
+  own <- .bt_parameter_prior_density_allocation_own_multiplier(
+    allocation, prior_list, conditional = conditional
+  )
+  if(is.null(own)){
+    return(NULL)
+  }
+  parent_probability <- if(isTRUE(conditional)){
+    1
+  }else{
+    .bt_parameter_prior_density_allocation_parent_gate_probability(
+      allocation, prior_list
+    )
+  }
+  if(!is.numeric(parent_probability) || length(parent_probability) != 1L ||
+     !is.finite(parent_probability)){
+    return(NULL)
+  }
+  parent_shares <- list()
+  for(factor in allocation$parent_factors){
+    if(is.null(factor$weight_name)){
+      next
+    }
+    share <- .bt_parameter_prior_density_factor_share(factor, prior_list)
+    if(is.null(share)){
+      return(NULL)
+    }
+    parent_shares[[length(parent_shares) + 1L]] <- share
+  }
+
+  # the total is 0 with probability 'zero' (a parent gate or the whole own set
+  # off), and otherwise the scale prior times the shares of the term
+  zero <- (1 - parent_probability) + parent_probability * own$zero
+  terms <- lapply(own$terms, function(term){
+    list(
+      weight = parent_probability * term$weight,
+      shares = c(parent_shares, term$shares)
+    )
+  })
+  terms <- Filter(function(term) term$weight > 0, terms)
+  if(any(vapply(terms, function(term) length(term$shares) > 1L, logical(1)))){
+    return(.bt_parameter_prior_density_share_product_grid(
+      source_prior = source$prior,
+      terms        = terms,
+      zero         = zero,
+      n_grid       = n_grid,
+      tail_prob    = tail_prob,
+      square       = square,
+      what         = "the total"
+    ))
+  }
+
+  multipliers <- list(
+    .prior_allocation_point(0, zero),
+    .prior_allocation_point(1, sum(vapply(terms, function(term){
+      if(length(term$shares) == 0L) term$weight else 0
+    }, numeric(1))))
+  )
+  shared <- Filter(function(term) length(term$shares) == 1L, terms)
+  keys <- vapply(shared, function(term){
+    share <- term$shares[[1L]]
+    paste(sprintf("%a", c(share$alpha, share$beta, share$scale)), collapse = ":")
+  }, character(1))
+  for(key_i in unique(keys)){
+    members <- shared[keys == key_i]
+    share <- members[[1L]]$shares[[1L]]
+    share$weight <- sum(vapply(members, `[[`, numeric(1), "weight"))
+    multipliers[[length(multipliers) + 1L]] <- share
   }
   .prior_allocation_product_density(
     source_prior = source$prior,

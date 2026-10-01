@@ -226,21 +226,22 @@ SD is T sqrt(k w_i) (k the number of components of a mean-variance
 allocation, 1 otherwise) while the gates of its allocation chain are on and
 0 otherwise, and an allocation total (\code{sd_total}, \code{var_total}) is
 T sqrt(sum of w over the active components), 0 without an active
-component and T with all of them. Their densities (and those of the
-variances) are exact: the atoms at zero, and the continuous parts as
-mixtures over the gate configurations of the scale prior and of the
-one-dimensional integrals over the Beta share margins. SD components of
-nested allocations (two or more allocation shares) are products of density
-grids without such provenance, returned for plotting only (heights, region
-probabilities and point hypotheses are unavailable, and their ordinates
-name the reason). The SD of a gate-only allocation (one term with an
-inclusion gate) is the scale prior times its gate, and an inclusion
-indicator (of an allocation gate, or \code{inclusion(...)} of a component of a
-spike-and-slab or mixture SD prior) has the Bernoulli prior of its
-marginal inclusion probability (points at 0 and 1; the prior weight of
-the component, or the expected inclusion probability of a spike-and-slab
-prior) and the exact support \{0, 1\}. Totals of nested allocations return
-\code{NULL}.
+component and T with all of them, times the allocation chain of its parents
+(their gates and Dirichlet shares) for a nested allocation. Their densities
+(and those of the variances) are exact: the atoms at zero, and the
+continuous parts as mixtures over the gate configurations of the scale prior
+and of the one-dimensional integrals over the Beta share margins (the total
+of a nested allocation under a gate is the scale prior times the gate). SD
+components and totals of nested allocations with two or more allocation
+shares are products of density grids without such provenance, returned for
+plotting only (heights, region probabilities and point hypotheses are
+unavailable, and their ordinates name the reason). The SD of a gate-only
+allocation (one term with an inclusion gate) is the scale prior times its
+gate, and an inclusion indicator (of an allocation gate, or
+\code{inclusion(...)} of a component of a spike-and-slab or mixture SD prior) has
+the Bernoulli prior of its marginal inclusion probability (points at 0 and
+1; the prior weight of the component, or the expected inclusion probability
+of a spike-and-slab prior) and the exact support \{0, 1\}.
 A pairwise correlation of an unstructured random-effect block with K
 columns and an LKJ(eta) prior has the exact LKJ marginal: \verb{2 B - 1} with
 \code{B ~ Beta(eta - 1 + K/2, eta - 1 + K/2)} \insertCite{lewandowski2009generating}{BayesTools}.

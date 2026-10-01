@@ -683,19 +683,23 @@ old behaviour.
     nonnegative scales (with integrable singularities at zero),
     variance-allocation marginals, variance proportions, and allocated
     random-effect SDs, variances, and totals (the scale prior times the
-    Dirichlet multiplier of the fitted model, with exact atoms at zero for
+    Dirichlet multiplier of the fitted model, for a nested allocation also the
+    gates and Dirichlet shares of its parents, with exact atoms at zero for
     gates that are off and continuous parts from the one-dimensional integral
     of the scale prior over each Beta share margin, so their ordinates are
-    exact), the SDs and variances of gate-only allocations (the scale prior
-    times the gate), the Bernoulli prior of `inclusion(...)` quantities
+    exact; e.g., the total SD of a gated allocation split into two nested
+    blocks is the scale prior times the gate), the SDs and variances of
+    gate-only allocations (the scale prior times the gate), the Bernoulli
+    prior of `inclusion(...)` quantities
     (support {0, 1}), and the LKJ marginal `2 B - 1`, `B ~ Beta(eta - 1 + K/2,
     eta - 1 + K/2)`, of the correlations of unstructured blocks with K columns
     (also with gated or point-mass SDs, and on the original scale for pairs of
     coefficients that are each one rescaled fitted coefficient, e.g., two
     scaled slopes). Original-scale correlations that mix fitted coefficients
     (the intercept and a slope of a centred predictor) have no prior density,
-    and SD components of nested allocations keep a numerical grid used for
-    plotting, with their point hypotheses refused. It returns `NULL` only when
+    and SD components and totals of nested allocations with two or more
+    independent allocation shares keep a numerical grid used for plotting,
+    with their point hypotheses refused. It returns `NULL` only when
     no fitted prior owns the quantity's coordinates and stops for an owning
     entry that is not a BayesTools prior.
   - adds `prior_density_ordinate()`, the exact-value structural
