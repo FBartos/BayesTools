@@ -86,50 +86,37 @@ test_that("Informed prior distributions match the specification", {
   medicine_table <- strsplit(medicine_table, ",")[[1]]
   medicine_table <- matrix(medicine_table, ncol = 12, byrow = T)
 
-  # Every row of a table is checked: the priors of all rows are collected in
-  # one data frame (distribution, the names of the parameters and of the
-  # truncation, the parameter values, and the truncation) and compared with the
-  # rows of the published table at once.
+  # Every row of a table is checked: the distributions, parameters and
+  # truncations of the priors of all rows are collected and compared with those
+  # of the published table at once, element by element as one row at a time was
+  # (the parameters and the truncation of a row as named lists, each value at
+  # the tolerance of a single number).
   informed_priors <- function(names, parameter, type){
     priors <- lapply(names, prior_informed, parameter = parameter, type = type)
-    parameter_value <- function(k){
-      vapply(priors, function(x) if(length(x$parameters) >= k) x$parameters[[k]] else NA_real_, numeric(1))
-    }
-    data.frame(
-      distribution     = vapply(priors, function(x) x$distribution, character(1)),
-      parameter_names  = vapply(priors, function(x) paste(names(x$parameters), collapse = ","), character(1)),
-      first            = parameter_value(1L),
-      second           = parameter_value(2L),
-      third            = parameter_value(3L),
-      truncation_names = vapply(priors, function(x) paste(names(x$truncation), collapse = ","), character(1)),
-      lower            = vapply(priors, function(x) x$truncation$lower, numeric(1)),
-      upper            = vapply(priors, function(x) x$truncation$upper, numeric(1)),
-      stringsAsFactors = FALSE
+    list(
+      distribution = lapply(priors, `[[`, "distribution"),
+      parameters   = lapply(priors, `[[`, "parameters"),
+      truncation   = lapply(priors, `[[`, "truncation")
     )
   }
   published_priors <- function(distribution, parameter_names, values, lower, upper){
-    values <- cbind(values, matrix(NA_real_, nrow(values), 3L - ncol(values)))
-    data.frame(
-      distribution     = rep(distribution, nrow(values)),
-      parameter_names  = rep(parameter_names, nrow(values)),
-      first            = values[, 1L],
-      second           = values[, 2L],
-      third            = values[, 3L],
-      truncation_names = rep("lower,upper", nrow(values)),
-      lower            = lower,
-      upper            = upper,
-      stringsAsFactors = FALSE
+    list(
+      distribution = rep(list(distribution), nrow(values)),
+      parameters   = lapply(seq_len(nrow(values)), function(i){
+        stats::setNames(as.list(values[i, ]), parameter_names)
+      }),
+      truncation   = rep(list(list(lower = lower, upper = upper)), nrow(values))
     )
   }
 
   # test priors for the effect and the heterogeneity of every medicine
   expect_equal(
     informed_priors(medicine_table[, 1], "effect", "smd"),
-    published_priors("t", "location,scale,df", apply(medicine_table[, 5:7], 2L, as.numeric), -Inf, Inf)
+    published_priors("t", c("location", "scale", "df"), apply(medicine_table[, 5:7], 2L, as.numeric), -Inf, Inf)
   )
   expect_equal(
     informed_priors(medicine_table[, 1], "heterogeneity", "smd"),
-    published_priors("invgamma", "shape,scale", apply(medicine_table[, 10:11], 2L, as.numeric), 0, Inf)
+    published_priors("invgamma", c("shape", "scale"), apply(medicine_table[, 10:11], 2L, as.numeric), 0, Inf)
   )
 
   ### other
@@ -322,7 +309,7 @@ test_that("Informed prior distributions match the specification", {
     expect_equal(
       informed_priors(paper[, 1], "effect", type),
       published_priors(
-        "t", "location,scale,df",
+        "t", c("location", "scale", "df"),
         t(vapply(paper[, 2], published_parameters, numeric(3L), label = "Student-t(", USE.NAMES = FALSE)),
         -Inf, Inf
       )
@@ -340,9 +327,9 @@ test_that("Informed prior distributions match the specification", {
       )
     )
   }
-  check_paper_table(paper_logOR, "logOR", "Inv-Gamma(", "invgamma", "shape,scale")
-  check_paper_table(paper_logRR, "logRR", "Inv-Gamma(", "invgamma", "shape,scale")
-  check_paper_table(paper_RD,    "RD",    "Normal(",    "normal",   "mean,sd")
+  check_paper_table(paper_logOR, "logOR", "Inv-Gamma(", "invgamma", c("shape", "scale"))
+  check_paper_table(paper_logRR, "logRR", "Inv-Gamma(", "invgamma", c("shape", "scale"))
+  check_paper_table(paper_RD,    "RD",    "Normal(",    "normal",   c("mean", "sd"))
   expect_equal(print(prior_informed("cochrane", parameter = "effect", type = "logRR"), silent = TRUE),        "Student-t(0, 0.32, 3)")
   expect_equal(print(prior_informed("cochrane", parameter = "heterogeneity", type = "logRR"), silent = TRUE), "InvGamma(1.51, 0.23)")
 })
