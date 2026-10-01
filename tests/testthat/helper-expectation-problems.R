@@ -79,15 +79,11 @@ expect_equal_each <- function(object, expected,
 # passing expectations of the unit profile. The versions below record a success
 # when the comparison holds under 'identical()' (which implies equality at any
 # tolerance, and for the constant TRUE or FALSE), and otherwise make testthat's
-# own expectation of the same arguments with the labels of the original call, so
-# a failure reads and is located as before. They mask the testthat functions of
-# the same names for the test files only (they do not make 'identical()' a
-# criterion for anything that does not hold exactly).
-.expectation_label <- function(expression) {
-  text <- deparse(expression, width.cutoff = 60L)
-  text <- if (length(text) > 1L) paste0(text[[1L]], " ...") else text
-  if (is.call(expression) || is.symbol(expression)) paste0("`", text, "`") else text
-}
+# own expectation of the same arguments, labelled as testthat labels the
+# original call, so a failure reads and is located as before. They mask the
+# testthat functions of the same names for the test files only (they do not make
+# 'identical()' a criterion for anything that does not hold exactly).
+.expectation_label <- utils::getFromNamespace("expr_label", "testthat")
 
 expect_identical <- function(object, expected, info = NULL, label = NULL,
                              expected.label = NULL, ...) {

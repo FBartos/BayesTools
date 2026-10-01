@@ -766,4 +766,13 @@ test_that("passing comparisons are recorded at once and failing ones read as tes
   expect_match(problems[[5L]], "Expected NA to be TRUE.", fixed = TRUE)
   expect_match(problems[[6L]], "Expected TRUE to be FALSE.", fixed = TRUE)
   expect_match(problems[[8L]], "Expected own label to equal own expected.", fixed = TRUE)
+
+  # a call longer than a line is labelled as testthat labels it
+  long_call <- expectation_problems(
+    expect_equal(sum(c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)), 0)
+  )
+  expect_identical(long_call, expectation_problems(
+    testthat::expect_equal(sum(c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)), 0)
+  ))
+  expect_match(long_call, "Expected `sum(...)` to equal 0.", fixed = TRUE)
 })
