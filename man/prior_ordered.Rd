@@ -50,6 +50,13 @@ preserve point masses and continuous probability separately for each level;
 point masses are not included in a kernel density estimate. Bridge sampling
 is available only when \code{total} is a simple scalar prior and
 \code{allocation} is fixed or a simple Dirichlet allocation.
+
+Estimates tables with \code{transform_factors = TRUE} report the level
+effects (the first level of a \code{"cumulative"} contrast is the reference
+and has no row). With \code{transform_factors = FALSE}, they report the
+sampled parameters: the total effect and, for random allocations, the
+allocation share of each increment, labelled by the level the increment
+reaches (see \code{\link[=runjags_estimates_table]{runjags_estimates_table()}}).
 }
 \seealso{
 \code{\link[=prior]{prior()}} \code{\link[=prior_factor]{prior_factor()}}

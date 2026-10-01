@@ -46,7 +46,15 @@
 #' 0 is kept when it is non-zero on the original scale.
 #' @param transform_factors whether factors with orthonormal/meandif
 #' prior distribution should be transformed to differences from the
-#' grand mean
+#' grand mean, and factors with [prior_ordered()] prior distribution to
+#' their level effects (without the reference level of a \code{"cumulative"}
+#' contrast, which is fixed at zero). Untransformed ordered factors show the
+#' sampled parameters: \code{runjags_estimates_table()} reports the total
+#' effect (\code{<term>_ordered_total}) and the allocation shares of the
+#' random allocations (\code{<term>_ordered_allocation[<level>]}, the share
+#' of the total added when reaching \code{<level>}; fixed allocations have no
+#' rows), and \code{ensemble_estimates_table()} reports the ordered
+#' increments of the mixed posterior samples.
 #' @param transform_scaled whether coefficients from standardized
 #' continuous predictors should be transformed back to the original
 #' scale. For \code{runjags_estimates_table()}, random-effect summaries are
@@ -142,9 +150,15 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
     samples <- .transform_scale_samples_list(samples, formula_scale)
   }
 
-  # transform meandif/orthonormal posterior
+  # transform meandif/orthonormal/ordered posterior (without the reference
+  # level of a cumulative ordered contrast, which is fixed at zero)
   if(transform_factors){
     samples <- transform_factor_samples(samples)
+    for(parameter in parameters){
+      if(inherits(samples[[parameter]], "mixed_posteriors.ordered_transformed")){
+        samples[[parameter]] <- .transformed_factor_drop_structural_levels(samples[[parameter]])
+      }
+    }
   }
 
   # row labels rendered from the label parts of every column (recorded with

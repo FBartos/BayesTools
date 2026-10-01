@@ -514,6 +514,20 @@ test_that("treatment interactions with ordered factors label increments as coeff
   set.seed(1)
   samples <- matrix(stats::rnorm(20L * length(columns)), nrow = 20L,
                     dimnames = list(NULL, columns))
+  # the ordered main effect as monitored: its total and the gamma nodes of
+  # its allocation give the increments
+  o_prior  <- formula_result$prior_list$mu_o
+  o_record <- BayesTools:::.prior_ordered_dirichlet_records(o_prior)[[1L]]
+  o_eta    <- matrix(
+    stats::rgamma(20L * o_record$dim, shape = 1), nrow = 20L,
+    dimnames = list(NULL, paste0(
+      BayesTools:::.JAGS_prior_dirichlet_eta_name(o_record$node), "[",
+      seq_len(o_record$dim), "]"
+    ))
+  )
+  o_total  <- stats::rnorm(20L)
+  samples[, BayesTools:::.JAGS_prior_factor_names("mu_o", o_prior)] <- o_total * o_eta / rowSums(o_eta)
+  samples  <- cbind(samples, mu_o_ordered_total = o_total, o_eta)
 
   # The interaction design is treatment by cumulative ordered coding:
   # coordinate 1 is the cell (b, 10) and coordinate 2 is the increment from

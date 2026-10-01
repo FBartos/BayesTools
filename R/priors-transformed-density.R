@@ -339,6 +339,9 @@ plot_transformed_prior <- function(prior_list, column_names, formula_scale = NUL
         x              = metadata,
         transformation = if(inherits(metadata, "mixed_posteriors.treatment_transformed")){
           "none"
+        }else if(isTRUE(attr(metadata, "ordered")) ||
+                 inherits(metadata, "mixed_posteriors.ordered_transformed")){
+          .transformed_factor_relation("mixed_posteriors.ordered_transformed")
         }else{
           "dif"
         }

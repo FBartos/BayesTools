@@ -4097,8 +4097,8 @@ test_that("marginal inference gives levels with a zero or infinite prior ordinat
   expect_true(is.na(bf[["mid"]]))
   expect_identical(attr(bf[["mid"]], "warnings"), infinite)
   expect_identical(attr(bf[["mid"]], "posterior_density_source"), "infinite_prior_ordinate")
-  # the levels of the transformed ordered contrast are labelled as such
-  expect_identical(inference$warnings, paste0("mu_f[dif: ", c("low", "mid"), "]: ", c(fixed, infinite)))
+  # the levels of the transformed ordered contrast are labelled by their cells
+  expect_identical(inference$warnings, paste0("mu_f[", c("low", "mid"), "]: ", c(fixed, infinite)))
 
   high <- inference$value$conditional$mu_f[["high"]]
   class(high) <- c(class(high), "marginal_posterior")
@@ -4117,7 +4117,7 @@ test_that("marginal inference gives levels with a zero or infinite prior ordinat
   )
   expect_true(all(is.na(table$inclusion_BF[1:2])))
   expect_equal(as.numeric(table$inclusion_BF[3]), as.numeric(bf[["high"]]))
-  expect_identical(attr(table, "warnings"), paste0("mu_f[dif: ", c("low", "mid"), "]: ", c(fixed, infinite)))
+  expect_identical(attr(table, "warnings"), paste0("mu_f[", c("low", "mid"), "]: ", c(fixed, infinite)))
 })
 
 test_that("use_formula = FALSE prior densities ignore the coefficient's own multiply_by", {

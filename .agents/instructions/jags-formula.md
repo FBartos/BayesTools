@@ -214,8 +214,10 @@ names.
   factor term (all contrasts, and ordinary factor priors, whose levels are
   set by `prior_factor_levels()`: the given names, or 1..K for a count) is
   the quantity `<parameter>[<level>]` with a `factor_level`
-  extraction key, and the transformed-summary labels `[dif: <level>]` are its
-  aliases. A coordinate is a direct level cell only where the contrast makes
+  extraction key, and the `[dif: <level>]` labels of transformed
+  mean-difference and orthonormal levels are its aliases (transformed
+  treatment and ordered levels are labelled by the cell itself). A
+  coordinate is a direct level cell only where the contrast makes
   it so structurally (treatment, independent, first ordered coordinate),
   never by floating-point equality of design rows. Every other coordinate is
   contrast coefficient `<parameter>{j}`, labelled so in tables, diagnostics,
@@ -279,7 +281,14 @@ names.
   implementation coordinates remain coordinate-only and must not be presented as
   original-scale public parameters. Raw estimates tables show them as backend
   coordinates with rendered labels that are not catalog aliases; semantic
-  tables omit them, including the allocation shares of ordered-factor priors.
+  tables omit them, including the gamma allocation nodes of ordered-factor
+  priors.
+- Ordered-factor terms are summarized like the other contrasts: transformed
+  tables show the level effects (without design-fixed zero levels and without
+  the total, which the last level repeats); untransformed model tables show
+  the sampled parameters, the total and the normalized allocation shares
+  (display rows derived from the gamma nodes, not catalog quantities), on the
+  fitted scale.
 - Validate coordinate uniqueness, quantity uniqueness, aliases, extraction
   recipes, and coordinate dependencies atomically at map construction. Public
   accessors reuse that result through the map runtime cache rather than

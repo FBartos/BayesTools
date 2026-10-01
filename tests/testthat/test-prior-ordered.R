@@ -650,9 +650,11 @@ test_that("ordered posterior extraction transforms coefficients to public levels
     transform_factors = TRUE
   )
 
-  expect_equal(colnames(transformed), c("mu_f[dif: low]", "mu_f[dif: mid]", "mu_f[dif: high]"))
-  expect_equal(unname(transformed[1, ]), c(0, 1, 3))
-  expect_equal(unname(transformed[2, ]), c(0, 4, 12))
+  # the level effects, labelled by their cells, without the reference level
+  # that the cumulative contrast fixes at zero
+  expect_equal(colnames(transformed), c("mu_f[mid]", "mu_f[high]"))
+  expect_equal(unname(transformed[1, ]), c(1, 3))
+  expect_equal(unname(transformed[2, ]), c(4, 12))
 })
 
 test_that("prior sample generation uses stored ordered-mixture dimensions", {
@@ -1815,4 +1817,164 @@ test_that("ordered levels are exact products of the total and its allocation sha
                                  c(0, .1, .5, 1)),
                  tolerance = 1e-8)
   }
+})
+
+test_that("estimates tables show ordered totals and shares or the level effects", {
+
+  # A fit with draws of the sampled parameters of its ordered priors (totals
+  # and gamma allocation nodes, each node its share times a positive per-draw
+  # scale that the normalization removes) and the increments they give; the
+  # other coefficients are standard normal draws.
+  data <- data.frame(
+    f = ordered(rep(c("lo", "mid", "hi"), 6), levels = c("lo", "mid", "hi")),
+    o = ordered(rep(c("p", "q", "r"), each = 6), levels = c("p", "q", "r")),
+    g = factor(rep(c("A", "B", "C"), each = 6)),
+    x = sin(seq_len(18))
+  )
+  ordered_table_fit <- function(formula, priors, formula_scale = NULL){
+    result <- JAGS_formula(formula, "mu", data, priors)
+    prior_list <- result$prior_list
+    set.seed(1)
+    n <- 40L
+    columns <- list()
+    shares  <- list()
+    for(name in names(prior_list)){
+      prior <- prior_list[[name]]
+      if(!is.prior.ordered(prior)){
+        coefficient_names <- if(BayesTools:::.bt_prior_is_factor_family(prior)){
+          BayesTools:::.JAGS_prior_factor_names(name, prior)
+        }else{
+          name
+        }
+        columns[[name]] <- matrix(stats::rnorm(n * length(coefficient_names)), nrow = n,
+                                  dimnames = list(NULL, coefficient_names))
+        next
+      }
+      draws <- BayesTools:::.prior_ordered_draws(prior, n)
+      coefficients <- draws$coefficients
+      colnames(coefficients) <- BayesTools:::.JAGS_prior_factor_names(name, prior)
+      total <- draws$theta
+      colnames(total) <- BayesTools:::.prior_ordered_total_monitor_names(prior, name)
+      columns[[name]] <- cbind(coefficients, total)
+      for(record in BayesTools:::.prior_ordered_dirichlet_records(prior)){
+        eta_name <- BayesTools:::.JAGS_prior_dirichlet_eta_name(record$node)
+        if(eta_name %in% names(shares)){
+          next
+        }
+        share <- draws$allocation_samples[[record$key]]
+        shares[[eta_name]] <- share
+        columns[[eta_name]] <- matrix(
+          share * stats::rexp(n), nrow = n,
+          dimnames = list(NULL, paste0(eta_name, "[", seq_len(record$dim), "]"))
+        )
+      }
+    }
+    samples <- do.call(cbind, unname(columns))
+    fit <- structure(
+      list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = n),
+      class = c("runjags", "BayesTools_fit", "list")
+    )
+    attr(fit, "prior_list") <- prior_list
+    attr(fit, "formula_design") <- list(mu = result$formula_design)
+    if(!is.null(formula_scale)){
+      attr(fit, "formula_scale") <- list(mu = formula_scale)
+    }
+    list(fit = attach_test_parameter_map(fit), samples = samples, shares = shares)
+  }
+  allocation_rows <- function(case){
+    table <- JAGS_estimates_table(case$fit, transform_factors = FALSE,
+                                  remove_diagnostics = TRUE)
+    rows <- grep("_ordered_allocation", rownames(table), value = TRUE)
+    list(rows = rows, means = unname(table[rows, "Mean"]))
+  }
+  share_means <- function(case, nodes){
+    unname(unlist(lapply(nodes, function(node) colMeans(case$shares[[node]]))))
+  }
+  N01 <- prior("normal", list(0, 1))
+
+  # an ordered factor in an interaction with an ordinary factor: one total
+  # and one allocation per slice (level of the ordinary factor's contrast)
+  slices <- ordered_table_fit(~ f * g, list(
+    intercept = N01, f = prior_ordered(N01),
+    g = prior_factor("normal", list(0, 1), contrast = "treatment"),
+    "f:g" = prior_ordered(N01)
+  ))
+  out <- allocation_rows(slices)
+  expect_identical(out$rows, c(
+    "(mu) f_ordered_allocation[mid]", "(mu) f_ordered_allocation[hi]",
+    "(mu) f:g_ordered_allocation[1][mid]", "(mu) f:g_ordered_allocation[1][hi]",
+    "(mu) f:g_ordered_allocation[2][mid]", "(mu) f:g_ordered_allocation[2][hi]"
+  ))
+  expect_equal(out$means, share_means(slices, c(
+    "prior_par_eta_mu_f_ordered_alloc_f_1",
+    "prior_par_eta_mu_f__xXx__g_ordered_alloc_f_1",
+    "prior_par_eta_mu_f__xXx__g_ordered_alloc_f_2"
+  )), tolerance = 1e-12)
+  # the transformed table shows the level effects: no zero reference cells
+  # and no totals (the last level of each slice equals its total)
+  transformed <- JAGS_estimates_table(slices$fit, transform_factors = TRUE,
+                                      remove_diagnostics = TRUE)
+  expect_identical(rownames(transformed), c(
+    "(mu) intercept", "(mu) f[mid]", "(mu) f[hi]", "(mu) g[B]", "(mu) g[C]",
+    "(mu) f[mid]:g[B]", "(mu) f[hi]:g[B]", "(mu) f[mid]:g[C]", "(mu) f[hi]:g[C]"
+  ))
+  expect_equal(
+    unname(transformed[c("(mu) f[hi]:g[B]", "(mu) f[hi]:g[C]"), "Mean"]),
+    unname(colMeans(slices$samples[, c("mu_f__xXx__g_ordered_total[1]",
+                                       "mu_f__xXx__g_ordered_total[2]")])),
+    tolerance = 1e-12
+  )
+
+  # two ordered factors in one term: one allocation per factor
+  two <- ordered_table_fit(~ f * o, list(
+    intercept = N01, f = prior_ordered(N01), o = prior_ordered(N01),
+    "f:o" = prior_ordered(N01)
+  ))
+  out <- allocation_rows(two)
+  expect_identical(out$rows, c(
+    "(mu) f_ordered_allocation[mid]", "(mu) f_ordered_allocation[hi]",
+    "(mu) o_ordered_allocation[q]", "(mu) o_ordered_allocation[r]",
+    "(mu) f:o_ordered_allocation_f[mid]", "(mu) f:o_ordered_allocation_f[hi]",
+    "(mu) f:o_ordered_allocation_o[q]", "(mu) f:o_ordered_allocation_o[r]"
+  ))
+  expect_equal(out$means, share_means(two, c(
+    "prior_par_eta_mu_f_ordered_alloc_f_1",
+    "prior_par_eta_mu_o_ordered_alloc_o_1",
+    "prior_par_eta_mu_f__xXx__o_ordered_alloc_f_1",
+    "prior_par_eta_mu_f__xXx__o_ordered_alloc_o_1"
+  )), tolerance = 1e-12)
+
+  # a shared allocation is shown with every term that uses it
+  shared_priors <- list(
+    intercept = N01, f = prior_ordered(N01, id = "shape"), x = N01,
+    "f:x" = prior_ordered(N01, id = "shape")
+  )
+  shared <- ordered_table_fit(~ f + x + f:x, shared_priors)
+  out <- allocation_rows(shared)
+  expect_identical(out$rows, c(
+    "(mu) f_ordered_allocation[mid]", "(mu) f_ordered_allocation[hi]",
+    "(mu) f:x_ordered_allocation[mid]", "(mu) f:x_ordered_allocation[hi]"
+  ))
+  expect_equal(out$means, rep(share_means(shared, "prior_par_eta_ordered_alloc_shape_f"), 2L),
+               tolerance = 1e-12)
+
+  # the totals and shares are the fitted parameters: when the original-scale
+  # transformation changes the ordered terms (a standardized 'x' in 'f:x'),
+  # the table notes that they remain on the fitted scale
+  fitted_scale_note <- paste0(
+    "Ordered-factor totals and allocations are summarized on the fitted ",
+    "(standardized) scale. Use 'transform_factors = TRUE' for the ",
+    "original-scale level effects."
+  )
+  expect_null(attr(JAGS_estimates_table(shared$fit, transform_scaled = TRUE), "footnotes"))
+  scaled <- ordered_table_fit(~ f + x + f:x, shared_priors, formula_scale_for_test(
+    ~ f + x + f:x, list(x = list(mean = 2, sd = 3)), data = data, prior_list = shared_priors
+  ))
+  expect_identical(
+    attr(JAGS_estimates_table(scaled$fit, transform_scaled = TRUE), "footnotes"),
+    fitted_scale_note
+  )
+  expect_null(attr(JAGS_estimates_table(scaled$fit, transform_scaled = FALSE), "footnotes"))
+  expect_null(attr(JAGS_estimates_table(scaled$fit, transform_scaled = TRUE,
+                                        transform_factors = TRUE), "footnotes"))
 })

@@ -95,15 +95,19 @@ test_that("raw rows of LKJ primitives are rendered backend coordinates", {
   }
 })
 
-test_that("semantic tables omit the allocation shares of ordered-factor priors", {
+test_that("ordered-factor tables show sampled parameters or level effects", {
 
   fit <- .label_cached_fit("fit_label_ordered")
   coordinates <- parameter_coordinates(fit)
-  shares <- coordinates$coordinate_name[
+  nodes <- coordinates$coordinate_name[
     coordinates$internal & coordinates$role == "parameter"
   ]
-  expect_length(shares, 2L)
-  expected <- c("(mu) intercept", "(mu) f[mid]", "(mu) f{2}", "(mu) f_ordered_total")
+  expect_length(nodes, 2L)
+  # untransformed tables show the total and the allocation shares, the
+  # normalized gamma nodes, instead of the increments; semantic tables omit
+  # the gamma nodes themselves
+  expected <- c("(mu) intercept", "(mu) f_ordered_total",
+                "(mu) f_ordered_allocation[mid]", "(mu) f_ordered_allocation[hi]")
   for(mode in c("standard", "full")){
     expect_identical(
       rownames(JAGS_estimates_table(fit, random_effects_summary = mode,
@@ -113,10 +117,32 @@ test_that("semantic tables omit the allocation shares of ordered-factor priors",
     )
   }
   # raw tables show every backend coordinate
-  expect_identical(
-    rownames(JAGS_estimates_table(fit, random_effects_summary = "raw",
-                                  remove_diagnostics = TRUE)),
-    c(expected, shares)
+  table <- JAGS_estimates_table(fit, random_effects_summary = "raw",
+                                remove_diagnostics = TRUE)
+  expect_identical(rownames(table), c(expected, nodes))
+  samples <- as.matrix(fit$mcmc)
+  eta <- samples[, nodes, drop = FALSE]
+  expect_equal(
+    unname(table[3:4, "Mean"]),
+    unname(colMeans(eta / rowSums(eta))),
+    tolerance = 1e-12
+  )
+  # each increment is the total times its share
+  expect_equal(
+    unname(samples[, c("mu_f[1]", "mu_f[2]")]),
+    unname(samples[, "mu_f_ordered_total"] * eta / rowSums(eta)),
+    tolerance = 1e-12
+  )
+
+  # transformed tables show the level effects without the zero reference
+  # level and without the total, which equals the last level
+  transformed <- JAGS_estimates_table(fit, transform_factors = TRUE,
+                                      remove_diagnostics = TRUE)
+  expect_identical(rownames(transformed), c("(mu) intercept", "(mu) f[mid]", "(mu) f[hi]"))
+  expect_equal(
+    unname(transformed[2:3, "Mean"]),
+    unname(c(mean(samples[, "mu_f[1]"]), mean(samples[, "mu_f_ordered_total"]))),
+    tolerance = 1e-12
   )
 })
 

@@ -827,9 +827,17 @@ old behaviour.
     `contr.ordered_cumulative()` and `contr.ordered_cumulative_levels()`. The
     slices of a spike-and-slab total (an ordered factor in an interaction with
     another factor) share one inclusion indicator per draw, also in prior
-    draws; standard and full estimates tables omit the internal allocation
-    shares (`prior_par_eta_*`); and a level contrast with Dirichlet(1, ...)
-    shares has an infinite prior density at 0.
+    draws; standard and full estimates tables omit the internal gamma
+    allocation nodes (`prior_par_eta_*`); and a level contrast with
+    Dirichlet(1, ...) shares has an infinite prior density at 0. Estimates
+    tables summarize ordered terms like the other contrasts: with
+    `transform_factors = TRUE` they show the level effects labelled by their
+    level cells (`g[b]`, not `g[dif: b]`), without the zero reference level
+    of a cumulative contrast and without the total, which equals the last
+    level; with `transform_factors = FALSE`, `runjags_estimates_table()` shows
+    the sampled parameters, the total (`g_ordered_total`) and the shares of
+    random allocations (`g_ordered_allocation[<level>]`, the share of the
+    total added when reaching the level), on the fitted scale.
   - adds Dirichlet simplex priors (`prior("dirichlet", ...)` /
     `prior("simplex", ...)`, `is.prior.simplex()`), with random generation,
     log-density, marginal distribution helpers, JAGS syntax, initialization,

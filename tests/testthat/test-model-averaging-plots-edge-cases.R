@@ -3750,7 +3750,7 @@ test_that("ordered factor posterior plots show level effects by level label", {
   cumulative <- ordered_plot_data("cumulative")
   expect_identical(
     unname(cumulative$level_names),
-    c("mu_g[dif: 10]", "mu_g[dif: 20]")
+    c("mu_g[10]", "mu_g[20]")
   )
   expect_equal(
     cumulative$level_samples[[2L]],
@@ -3760,6 +3760,6 @@ test_that("ordered factor posterior plots show level effects by level label", {
   cumulative_levels <- ordered_plot_data("cumulative_levels")
   expect_identical(
     unname(cumulative_levels$level_names),
-    paste0("mu_g[dif: ", levels, "]")
+    paste0("mu_g[", levels, "]")
   )
 })

@@ -232,7 +232,15 @@ in the model for spike and slab priors. Defaults to \code{FALSE}.}
 
 \item{transform_factors}{whether factors with orthonormal/meandif
 prior distribution should be transformed to differences from the
-grand mean}
+grand mean, and factors with \code{\link[=prior_ordered]{prior_ordered()}} prior distribution to
+their level effects (without the reference level of a \code{"cumulative"}
+contrast, which is fixed at zero). Untransformed ordered factors show the
+sampled parameters: \code{runjags_estimates_table()} reports the total
+effect (\code{<term>_ordered_total}) and the allocation shares of the
+random allocations (\code{<term>_ordered_allocation[<level>]}, the share
+of the total added when reaching \code{<level>}; fixed allocations have no
+rows), and \code{ensemble_estimates_table()} reports the ordered
+increments of the mixed posterior samples.}
 
 \item{remove_inclusion}{whether estimates of the inclusion probabilities
 should be excluded from the summary table. Defaults to \code{FALSE}.
@@ -291,10 +299,11 @@ scale, and
 \code{"none"} removes random-effect parameters from the table. The
 \code{"standard"} and \code{"full"} modes always obtain public semantic
 quantities from the fitted parameter map on their declared display scale,
-and omit the internal allocation shares of ordered-factor priors.
+and omit the internal (unnormalized gamma) allocation nodes of
+ordered-factor priors.
 The \code{"raw"} rows of random-effect and allocation implementation
 coordinates (fitted-scale SDs, Cholesky factors and correlation matrices,
-LKJ primitives, standardized group effects, and allocation shares) are
+LKJ primitives, standardized group effects, and allocation nodes) are
 backend coordinates shown for inspection: their labels describe the
 coordinate, but they are not catalog quantities and do not select one in
 \code{\link[=parameter_catalog_resolve]{parameter_catalog_resolve()}}, hypotheses, or plots.
@@ -369,7 +378,8 @@ row and the columns \code{row} (the row label), \code{quantity_id} (the
 its canonical name or an exact alias such as a transformed factor level
 \code{<parameter>[dif: level]}; \code{""} for rows that are not catalog
 quantities, such as inclusion rows, mixture components, backend
-coordinates, and rows whose values \code{transformations} changed, whose
+coordinates, ordered-factor allocation shares, and rows whose values
+\code{transformations} changed, whose
 label parts record the transformation as \code{"custom"}), and
 \code{label_parts} (the label parts the row label is
 rendered from; \code{\link[=parameter_labels]{parameter_labels()}} renders them, also with another formula

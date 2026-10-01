@@ -519,6 +519,22 @@ test_that("factor catalog quantities reconstruct fitted term-level cells", {
     nrow = 20L,
     dimnames = list(NULL, columns)
   )
+  if(identical(contrast, "ordered")){
+    # the sampled parameters of an ordered prior, as monitored: the total and
+    # the gamma nodes of its Dirichlet allocation, which give the increments
+    prior  <- result$prior_list$mu_g
+    record <- .prior_ordered_dirichlet_records(prior)[[1L]]
+    eta    <- matrix(
+      stats::rgamma(20L * record$dim, shape = 1),
+      nrow = 20L,
+      dimnames = list(NULL, paste0(
+        .JAGS_prior_dirichlet_eta_name(record$node), "[", seq_len(record$dim), "]"
+      ))
+    )
+    total <- stats::rnorm(20L)
+    samples[, .JAGS_prior_factor_names("mu_g", prior)] <- total * eta / rowSums(eta)
+    samples <- cbind(samples, mu_g_ordered_total = total, eta)
+  }
   fit <- structure(
     list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = 20L),
     class = c("runjags", "BayesTools_fit", "list")
@@ -923,6 +939,35 @@ test_that("contrast-coefficient selectors of level coordinates name the level", 
   )
 }
 
+# An untransformed model table of an ordered term shows its sampled
+# parameters: the total, which resolves to its catalog quantity, and the
+# allocation shares, the normalized gamma nodes, labelled by the level each
+# increment reaches (display rows, not catalog quantities).
+.expect_ordered_sampled_rows <- function(table, fit, levels, prefix, info){
+
+  samples <- as.matrix(fit$mcmc)
+  eta <- samples[, startsWith(colnames(samples), "prior_par_eta_"), drop = FALSE]
+  head <- if(prefix) "(mu) " else ""
+  rows <- setdiff(rownames(table), paste0(head, "intercept"))
+  expect_identical(
+    rows,
+    c(paste0(head, "g_ordered_total"),
+      paste0(head, "g_ordered_allocation[", levels[-1L], "]")),
+    info = info
+  )
+  expect_equal(
+    unname(table[rows, "Mean"]),
+    unname(c(mean(samples[, "mu_g_ordered_total"]), colMeans(eta / rowSums(eta)))),
+    tolerance = 1e-10,
+    info = info
+  )
+  expect_identical(
+    attr(table, "quantities")$quantity_id[match(rows, rownames(table))] != "",
+    c(TRUE, rep(FALSE, length(levels) - 1L)),
+    info = info
+  )
+}
+
 test_that("displayed factor rows resolve to the quantities that produced them", {
 
   contrasts <- c("treatment", "independent", "meandif", "orthonormal",
@@ -960,11 +1005,18 @@ test_that("displayed factor rows resolve to the quantities that produced them", 
                                    grep("\\[", rows, value = TRUE))
             expect_true(all(bracket_content %in% levels),
                         info = paste(info, transform, prefix))
-            .expect_factor_rows_resolve(
-              model_table, fit, catalog,
-              paste(info, "model", transform, prefix),
-              draw_means
-            )
+            if(identical(contrast, "ordered") && !transform){
+              .expect_ordered_sampled_rows(
+                model_table, fit, levels, prefix,
+                paste(info, "model", transform, prefix)
+              )
+            }else{
+              .expect_factor_rows_resolve(
+                model_table, fit, catalog,
+                paste(info, "model", transform, prefix),
+                draw_means
+              )
+            }
             .expect_factor_rows_resolve(
               ensemble_table, fit, catalog,
               paste(info, "ensemble", transform, prefix),

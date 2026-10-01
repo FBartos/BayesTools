@@ -55,10 +55,11 @@
 #' \code{"none"} removes random-effect parameters from the table. The
 #' \code{"standard"} and \code{"full"} modes always obtain public semantic
 #' quantities from the fitted parameter map on their declared display scale,
-#' and omit the internal allocation shares of ordered-factor priors.
+#' and omit the internal (unnormalized gamma) allocation nodes of
+#' ordered-factor priors.
 #' The \code{"raw"} rows of random-effect and allocation implementation
 #' coordinates (fitted-scale SDs, Cholesky factors and correlation matrices,
-#' LKJ primitives, standardized group effects, and allocation shares) are
+#' LKJ primitives, standardized group effects, and allocation nodes) are
 #' backend coordinates shown for inspection: their labels describe the
 #' coordinate, but they are not catalog quantities and do not select one in
 #' [parameter_catalog_resolve()], hypotheses, or plots.
@@ -121,7 +122,8 @@
 #' its canonical name or an exact alias such as a transformed factor level
 #' \code{<parameter>[dif: level]}; \code{""} for rows that are not catalog
 #' quantities, such as inclusion rows, mixture components, backend
-#' coordinates, and rows whose values \code{transformations} changed, whose
+#' coordinates, ordered-factor allocation shares, and rows whose values
+#' \code{transformations} changed, whose
 #' label parts record the transformation as \code{"custom"}), and
 #' \code{label_parts} (the label parts the row label is
 #' rendered from; [parameter_labels()] renders them, also with another formula
@@ -744,6 +746,24 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     }
   }
 
+  # untransformed ordered-factor priors show their total and allocation
+  if(!transform_factors){
+    ordered <- .bt_JAGS_estimates_ordered_allocations(
+      model_samples     = model_samples,
+      raw_model_samples = raw_model_samples,
+      prior_list        = prior_list
+    )
+    model_samples <- ordered$model_samples
+    created_parts <- c(created_parts, ordered$created)
+    if(ordered$fitted_scale){
+      footnotes <- c(footnotes, paste0(
+        "Ordered-factor totals and allocations are summarized on the fitted ",
+        "(standardized) scale. Use 'transform_factors = TRUE' for the ",
+        "original-scale level effects."
+      ))
+    }
+  }
+
   # remove transformations for removed variables
   if(!is.null(transformations)){
     transformations <-  transformations[names(transformations) %in% names(prior_list)]
@@ -764,6 +784,9 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   contrast_parts <- attr(model_samples, "label_parts", exact = TRUE)
   created_parts <- c(created_parts, contrast_parts)
   attr(model_samples, "label_parts") <- NULL
+  if(transform_factors){
+    model_samples <- .bt_JAGS_estimates_ordered_remove_totals(model_samples, prior_list)
+  }
   transformed_columns <- c(transformed_columns, names(contrast_parts)[vapply(
     contrast_parts,
     function(part) length(.bt_label_output_transformation(part)) > 0L,
@@ -900,6 +923,143 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       startsWith(column_names, paste0(parameter, "["))
     isTRUE(all(model_samples[, columns, drop = FALSE] == 0))
   }, logical(1))]
+}
+
+# Untransformed estimates show the sampled parameters of ordered-factor
+# priors: the total effect and its allocation across the ordered increments.
+# The increment columns (total x allocation) are replaced by the allocation
+# shares of every Dirichlet allocation of the term, normalized from the
+# monitored gamma nodes; fixed allocations have no draws and no rows. The
+# shares follow the total columns (or take the place of the increments when
+# the total is not monitored). The totals and shares are the fitted
+# parameters: when transform_scaled changed the increments of a term (its
+# original-scale level effects are no longer a total times an allocation),
+# 'fitted_scale' is TRUE. Returns the samples, the label parts of the created
+# share columns, and 'fitted_scale'.
+.bt_JAGS_estimates_ordered_allocations <- function(model_samples,
+                                                   raw_model_samples,
+                                                   prior_list){
+
+  created <- list()
+  fitted_scale <- FALSE
+  for(par in names(prior_list)){
+    prior <- prior_list[[par]]
+    if(!is.prior.ordered(prior)){
+      next
+    }
+    increments <- .JAGS_prior_factor_names(par, prior)
+    if(!any(colnames(model_samples) %in% increments)){
+      next
+    }
+    present <- intersect(increments, colnames(model_samples))
+    if(all(present %in% colnames(raw_model_samples)) &&
+       any(model_samples[, present] != raw_model_samples[, present], na.rm = TRUE)){
+      fitted_scale <- TRUE
+    }
+    position <- min(which(colnames(model_samples) %in% increments))
+    model_samples <- model_samples[, !colnames(model_samples) %in% increments, drop = FALSE]
+
+    shares <- .bt_ordered_allocation_shares(par, prior, raw_model_samples)
+    if(ncol(shares$samples) == 0L){
+      next
+    }
+    total_columns <- which(startsWith(
+      colnames(model_samples),
+      .prior_ordered_total_name(par)
+    ))
+    if(length(total_columns) > 0L){
+      position <- max(total_columns) + 1L
+    }
+    model_samples <- cbind(
+      if(position > 1L) model_samples[, seq_len(position - 1L), drop = FALSE],
+      shares$samples,
+      if(position <= ncol(model_samples)) model_samples[, position:ncol(model_samples), drop = FALSE]
+    )
+    created[colnames(shares$samples)] <- shares$parts
+  }
+
+  list(model_samples = model_samples, created = created, fitted_scale = fitted_scale)
+}
+
+# The allocation shares of the Dirichlet allocations of the ordered prior
+# 'prior' of 'parameter' (eta / sum(eta) per draw of the monitored gamma
+# nodes 'prior_par_eta_<node>'), one column per ordered increment named by
+# the level it reaches: '<parameter>_ordered_allocation[<level>]', with the
+# ordered factor ('_<factor>') when the term has several and the theta slice
+# ('[<slice>]') when the term has slice-specific allocations. Shared ('id')
+# allocations are shown with every term that uses them.
+.bt_ordered_allocation_shares <- function(parameter, prior, model_samples){
+
+  metadata    <- .prior_ordered_metadata(prior)
+  level_names <- .factor_level_list(prior)
+  term_parts  <- .bt_label_parts_term(parameter, prior)
+  term_label  <- paste(term_parts$components, collapse = ":")
+  several_factors <- length(metadata$ordered_terms) > 1L
+
+  columns <- list()
+  parts   <- list()
+  for(record in metadata$allocations){
+    if(!identical(record$spec$type, "dirichlet")){
+      next
+    }
+    eta_columns <- paste0(
+      .JAGS_prior_dirichlet_eta_name(record$node),
+      "[", seq_len(record$dim), "]"
+    )
+    if(!all(eta_columns %in% colnames(model_samples))){
+      stop(
+        "The allocation of the ordered prior '", parameter,
+        "' was not monitored; refit the model with this version of BayesTools.",
+        call. = FALSE
+      )
+    }
+    eta <- model_samples[, eta_columns, drop = FALSE]
+    # an increment of a cumulative contrast reaches the level after it; the
+    # first increment of a 'cumulative_levels' contrast reaches the first level
+    factor_levels <- level_names[[record$factor]]
+    tokens <- factor_levels[length(factor_levels) - record$dim + seq_len(record$dim)]
+    suffix <- paste0(
+      "_ordered_allocation",
+      if(several_factors) paste0("_", record$factor),
+      if(metadata$theta_dim > 1L && is.null(record$id)) paste0("[", record$slice, "]")
+    )
+    share_names <- paste0(parameter, suffix, "[", tokens, "]")
+    share <- eta / rowSums(eta)
+    colnames(share) <- share_names
+    columns[[length(columns) + 1L]] <- share
+    for(i in seq_along(share_names)){
+      parts[[share_names[i]]] <- .bt_label_parts(
+        components        = paste0(term_label, suffix, "[", tokens[i], "]"),
+        formula_parameter = term_parts$formula_parameter,
+        selector          = share_names[i]
+      )
+    }
+  }
+
+  list(
+    samples = if(length(columns) > 0L) do.call(cbind, columns) else model_samples[, 0L, drop = FALSE],
+    parts   = parts
+  )
+}
+
+# Transformed estimates show the level effects of ordered-factor priors, so
+# their total effect (the effect of the last level) and the slab draws of a
+# spike-and-slab total are removed; the inclusion indicator and probability
+# of a spike-and-slab total remain.
+.bt_JAGS_estimates_ordered_remove_totals <- function(model_samples, prior_list){
+
+  for(par in names(prior_list)){
+    prior <- prior_list[[par]]
+    if(!is.prior.ordered(prior)){
+      next
+    }
+    total_name <- .prior_ordered_total_name(par)
+    remove <- colnames(model_samples) %in% .prior_ordered_total_monitor_names(prior, par) |
+      startsWith(colnames(model_samples), paste0(total_name, "_variable"))
+    model_samples <- model_samples[, !remove, drop = FALSE]
+  }
+
+  model_samples
 }
 
 # Columns of the internal allocation coordinates of fixed (non-random) priors

@@ -582,7 +582,7 @@ NULL
 
   columns <- .parameter_transformation_columns(transformations, prior_list, transform_factors)
   for (par in names(transformations)) {
-    for (column in columns[[par]]) {
+    for (column in intersect(columns[[par]], colnames(model_samples))) {
       model_samples[, column] <- do.call(transformations[[par]][["fun"]], c(list(model_samples[, column]), transformations[[par]][["arg"]]))
     }
   }
@@ -593,14 +593,21 @@ NULL
 # The columns .apply_parameter_transformations() transforms, per transformed
 # parameter: the column of a non-factor prior, and the coefficient columns of
 # treatment and independent priors or of orthonormal/meandif/ordered priors
-# that won't be transformed to levels; NULL for the latter when they are
-# (.transform_factor_contrasts() transforms their levels).
+# that won't be transformed to levels (with the total effects of ordered
+# priors, which untransformed estimates tables show in place of the
+# coefficients); NULL for the latter when they are (.transform_factor_contrasts()
+# transforms their levels). Columns absent from the samples are skipped.
 .parameter_transformation_columns <- function(transformations, prior_list, transform_factors = FALSE) {
 
   columns <- lapply(names(transformations), function(par) {
     if (!is.prior.factor(prior_list[[par]])) {
       par
-    } else if ((!transform_factors && (is.prior.orthonormal(prior_list[[par]]) || is.prior.meandif(prior_list[[par]]) || is.prior.ordered(prior_list[[par]]))) ||
+    } else if (!transform_factors && is.prior.ordered(prior_list[[par]])) {
+      c(
+        .JAGS_prior_factor_names(par, prior_list[[par]]),
+        .prior_ordered_total_monitor_names(prior_list[[par]], par)
+      )
+    } else if ((!transform_factors && (is.prior.orthonormal(prior_list[[par]]) || is.prior.meandif(prior_list[[par]]))) ||
                is.prior.treatment(prior_list[[par]]) || is.prior.independent(prior_list[[par]])) {
       .JAGS_prior_factor_names(par, prior_list[[par]])
     } else {
@@ -667,6 +674,13 @@ NULL
       parameter           = if(is.null(components[[par]])) par else components[[par]]$parameter,
       transformed_class   = transformed_class
     )
+    if(is.prior.ordered(prior_list[[par]])){
+      # the reference level of a cumulative contrast is fixed at zero
+      transformed_samples <- .transformed_factor_drop_structural_levels(
+        transformed_samples,
+        metadata = prior_list[[par]]
+      )
+    }
     transformed_parts <- .bt_draws_label_parts(transformed_samples, par)
     if(!is.null(components[[par]])){
       # levels of a mixture component summarized on its own

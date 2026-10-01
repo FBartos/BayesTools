@@ -356,6 +356,13 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 #' is available only when \code{total} is a simple scalar prior and
 #' \code{allocation} is fixed or a simple Dirichlet allocation.
 #'
+#' Estimates tables with \code{transform_factors = TRUE} report the level
+#' effects (the first level of a \code{"cumulative"} contrast is the reference
+#' and has no row). With \code{transform_factors = FALSE}, they report the
+#' sampled parameters: the total effect and, for random allocations, the
+#' allocation share of each increment, labelled by the level the increment
+#' reaches (see [runjags_estimates_table()]).
+#'
 #' @return return an object of class 'prior'.
 #'
 #' @seealso [prior()] [prior_factor()]

@@ -431,7 +431,10 @@ density.prior <- function(x,
 
   design_info <- .factor_term_design_from_metadata(x)
   component_names <- .bt_label(
-    .bt_label_factor_level_parts(metadata$parameter_name, x),
+    .bt_label_factor_level_parts(
+      metadata$parameter_name, x,
+      transformation = .transformed_factor_relation("mixed_posteriors.ordered_transformed")
+    ),
     style = "selector"
   )
   weights <- design_info$design
@@ -745,7 +748,10 @@ density.prior <- function(x,
   }
 
   component_names <- .bt_label(
-    .bt_label_factor_level_parts(metadata$parameter_name, x),
+    .bt_label_factor_level_parts(
+      metadata$parameter_name, x,
+      transformation = .transformed_factor_relation("mixed_posteriors.ordered_transformed")
+    ),
     style = "selector"
   )
 
