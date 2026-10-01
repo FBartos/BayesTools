@@ -3361,8 +3361,10 @@
     }
 
     # a support bound with a positive density inside it repeats its value with
-    # density 0 on its outer side (the vertical edge of density.prior())
-    y <- evaluate(points$raw)
+    # density 0 on its outer side (the vertical edge of density.prior()); a
+    # mapped bound whose route density is 0 by rounding takes the ordinate's
+    # limit inside the support
+    y <-.prior_linear_density_edge_limits(points$raw, evaluate(points$raw), edges)
     repeats <- .prior_linear_density_edge_repeats(points$raw, edges)
     if(!is.null(repeats)){
       points$raw <- points$raw[repeats$index]
@@ -3511,10 +3513,16 @@
 # range, or inside another component's support (an interior jump to a positive
 # density, drawn by the display values) is not an edge. 'interior' are the
 # edge bounds strictly inside the range, which the plotted values must include;
-# 'tolerance' matches a bound to the nearest plotted value.
+# 'tolerance' matches a bound to the nearest plotted value. A mapped bound
+# whose inverse image rounds just outside the source support has the route
+# density 0; the density there is the one-sided limit inside the support that
+# the ordinate takes (.prior_density_ordinate_endpoint_matches()), so such a
+# bound is an edge when that limit is positive, and 'snap' lists these bounds
+# and their limits, the plotted values at them.
 .prior_linear_density_edge_bounds <- function(route, dist, structural, raw, evaluate){
 
-  none <- list(lower = numeric(), upper = numeric(), interior = numeric(), tolerance = 0)
+  none <- list(lower = numeric(), upper = numeric(), interior = numeric(), tolerance = 0,
+               snap = list(bound = numeric(), y = numeric()))
   raw <- raw[is.finite(raw)]
   if(length(raw) < 2L){
     return(none)
@@ -3537,23 +3545,73 @@
     out <- tryCatch(suppressWarnings(evaluate(values)), error = function(e) NULL)
     if(length(out) == length(values)) out else rep(NA_real_, length(values))
   }
+  # the one-sided limit inside the support at bounds where the route density
+  # is 0: the continuous density of the route's ordinate
+  limit <- function(bounds){
+    vapply(bounds, function(bound){
+      if(!structural){
+        return(NA_real_)
+      }
+      tryCatch(
+        suppressWarnings(.prior_density_ordinate_height_value(
+          .prior_density_route_ordinate(route, bound)
+        )),
+        error = function(e) NA_real_
+      )
+    }, numeric(1))
+  }
   edge <- function(bounds, side){
     bounds <- unique(bounds[is.finite(bounds) &
                               bounds >= limits[1L] - tolerance & bounds <= limits[2L] + tolerance])
     if(length(bounds) == 0L){
-      return(numeric())
+      return(list(bounds = numeric(), y = numeric(), snapped = logical()))
     }
     inside  <- density(bounds)
     outside <- density(bounds + side * 1e-6 * width)
-    bounds[!is.na(inside) & inside > 0 & !is.na(outside) & outside == 0]
+    snapped <- !is.na(inside) & inside == 0
+    if(any(snapped)){
+      inside[snapped] <- limit(bounds[snapped])
+    }
+    keep <- !is.na(inside) & inside > 0 & !is.na(outside) & outside == 0
+    list(bounds = bounds[keep], y = inside[keep], snapped = snapped[keep])
   }
 
   lower <- edge(candidates$lower, -1)
   upper <- edge(candidates$upper, 1)
-  bounds <- c(lower, upper)
-  list(lower = lower, upper = upper,
+  bounds  <- c(lower$bounds, upper$bounds)
+  snapped <- c(lower$snapped, upper$snapped)
+  list(lower = lower$bounds, upper = upper$bounds,
        interior = bounds[bounds > limits[1L] & bounds < limits[2L]],
-       tolerance = tolerance)
+       tolerance = tolerance,
+       snap = list(bound = bounds[snapped], y = c(lower$y, upper$y)[snapped]))
+}
+
+# The plotted values 'y' at the raw values 'raw' with the one-sided limit
+# inside the support (edges$snap, .prior_linear_density_edge_bounds()) at each
+# bound whose own route density is 0.
+.prior_linear_density_edge_limits <- function(raw, y, edges){
+
+  snap <- edges$snap
+  if(length(snap$bound) == 0L){
+    return(y)
+  }
+  positions <- .prior_linear_density_edge_positions(raw, snap$bound, edges$tolerance)
+  use <- which(!is.na(positions))
+  use <- use[vapply(use, function(i) isTRUE(y[positions[i]] == 0), logical(1))]
+  y[positions[use]] <- snap$y[use]
+  y
+}
+
+# The position in 'raw' of the finite value nearest to each of 'values' within
+# 'tolerance' (NA where there is none).
+.prior_linear_density_edge_positions <- function(raw, values, tolerance){
+
+  finite <- which(is.finite(raw))
+  vapply(values, function(value){
+    distance <- abs(raw[finite] - value)
+    nearest  <- which.min(distance)
+    if(length(nearest) == 1L && distance[nearest] <= tolerance) finite[nearest] else NA_integer_
+  }, integer(1))
 }
 
 # The plotted raw values 'raw' with the plotted value of each edge bound of
@@ -3569,11 +3627,7 @@
   }
   ascending <- raw[finite[length(finite)]] > raw[finite[1L]]
   locate <- function(values){
-    positions <- vapply(values, function(value){
-      distance <- abs(raw[finite] - value)
-      nearest  <- which.min(distance)
-      if(distance[nearest] <= edges$tolerance) finite[nearest] else NA_integer_
-    }, integer(1))
+    positions <- .prior_linear_density_edge_positions(raw, values, edges$tolerance)
     unique(positions[!is.na(positions)])
   }
   lower  <- locate(edges$lower)

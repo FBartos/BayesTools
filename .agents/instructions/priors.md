@@ -337,7 +337,12 @@ and one inside another component's support (an interior jump, drawn by the
 display values) get no zero value. The repeat is made before the transformation
 step, so a transformed curve maps it with the rules of `density.prior()` (a
 bound mapped to -Inf is dropped with it; `exp_lin` takes its analytic limits
-at a source value 0).
+at a source value 0). An output-transformed bound whose inverse image rounds
+just outside the source support has the route density 0; its plotted value is
+the one-sided limit the ordinate takes there
+(`.prior_density_ordinate_endpoint_matches()`), and the bound is an edge when
+that limit is positive. Only the plotted value at such a bound changes: the
+route density, which grids use, stays 0.
 A batched value can exist where the per-value ordinate's quadrature is rejected
 by QUADPACK's flags (heavy-tailed pure scale mixtures): the plot shows it,
 while heights and point hypotheses at that value stop. Only a combination

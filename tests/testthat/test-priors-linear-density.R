@@ -3223,6 +3223,127 @@ test_that("plotted prior curve edges follow the plotted range and the transforma
   expect_equal(curve$y[2L], 0)
 })
 
+test_that("plotted curves keep the edge at an output-transformed bound that rounds outside its source support", {
+
+  # The inverse image of a mapped bound can round one step outside the source
+  # support: (0.1 + 0.3 - 0.1) / 0.3 is 1.0000000000000002, so the route density
+  # of 0.1 + 0.3 U is 0 at its upper bound 0.4, as it is for sqrt(5 B) at
+  # sqrt(5). The plotted value at the bound is the one-sided limit inside the
+  # support that prior_density_ordinate() returns (it matches the endpoint), and
+  # the edge (bound, f), (bound, 0) follows. References: the closed forms (1 / b
+  # for a + b U, 2 y / c for sqrt(c B)) and the ordinate, tolerance 1e-12.
+  u01 <- prior("uniform", list(0, 1))
+  b11 <- prior("beta", list(1, 1))
+  ordinate <- function(density, value){
+    exp(prior_density_ordinate(density, value)$log_density)
+  }
+  shifted <- function(a, b){
+    .prior_linear_combination_density(
+      list(s = u01), c(s = 1), n_grid = 64,
+      output_transformation = "lin", output_transformation_arguments = list(a = a, b = b)
+    )
+  }
+  root <- function(c){
+    .prior_linear_combination_density(
+      list(s = b11), c(s = 1), n_grid = 64,
+      output_transformation = "exp_lin", output_transformation_arguments = list(a = log(c) / 2, b = .5)
+    )
+  }
+  # both edges of a + b U: bounds a and a + b with the value 1 / |b|, equal to the
+  # ordinate there
+  expect_shifted_edges <- function(a, b, ...){
+    density <- shifted(a, b)
+    curve <- .edge_curve(density, ...)
+    n <- length(curve$x)
+    bounds <- sort(c(a, a + b))
+    expect_equal(curve$x[1:2], rep(bounds[1L], 2L), tolerance = 1e-14)
+    expect_equal(curve$x[(n - 1L):n], rep(bounds[2L], 2L), tolerance = 1e-14)
+    expect_identical(curve$y[1L], 0)
+    expect_identical(curve$y[n], 0)
+    expect_equal(curve$y[2L], 1 / abs(b), tolerance = 1e-12)
+    expect_equal(curve$y[n - 1L], 1 / abs(b), tolerance = 1e-12)
+    expect_equal(curve$y[2L], ordinate(density, curve$x[2L]), tolerance = 1e-12)
+    expect_equal(curve$y[n - 1L], ordinate(density, curve$x[n]), tolerance = 1e-12)
+    expect_false(is.unsorted(curve$x))
+  }
+
+  # 0.1 + 0.3 U
+  expect_gt((.1 + .3 - .1) / .3, 1)
+  expect_shifted_edges(.1, .3)
+  curve <- .edge_curve(shifted(.1, .3))
+  expect_equal(curve$y[-c(1L, length(curve$y))], rep(1 / .3, length(curve$y) - 2L), tolerance = 1e-12)
+
+  # sqrt(5 B): the density 2 y / 5 on (0, sqrt(5)) is 0 at the lower bound (no
+  # edge there) and 2 / sqrt(5) at the upper bound
+  curve <- .edge_curve(root(5))
+  n <- length(curve$x)
+  expect_equal(curve$x[(n - 1L):n], rep(sqrt(5), 2L), tolerance = 1e-14)
+  expect_equal(curve$y[n - 1L], 2 / sqrt(5), tolerance = 1e-12)
+  expect_equal(curve$y[n - 1L], ordinate(root(5), sqrt(5)), tolerance = 1e-12)
+  expect_identical(curve$y[n], 0)
+  expect_identical(curve$x[1L], 0)
+  expect_identical(curve$y[1L], 0)
+  expect_gt(curve$x[2L], 0)
+  expect_equal(curve$y[-n], 2 * curve$x[-n] / 5, tolerance = 1e-12)
+
+  # sqrt(c B) for c = 2, ..., 30 (c = 5 rounded outside, among others)
+  for(c in 2:30){
+    density <- root(c)
+    curve <- .edge_curve(density)
+    n <- length(curve$x)
+    expect_equal(curve$x[(n - 1L):n], rep(sqrt(c), 2L), tolerance = 1e-14)
+    expect_equal(curve$y[n - 1L], 2 / sqrt(c), tolerance = 1e-12)
+    expect_equal(curve$y[n - 1L], ordinate(density, curve$x[n]), tolerance = 1e-12)
+    expect_identical(curve$y[n], 0)
+    expect_identical(curve$y[1L], 0)
+    expect_gt(curve$x[2L], 0)
+  }
+
+  # the 30 cases a + b U (a in 0, .1, .2, .7, -1.3; b in .1, .3, .7, 1.3, 2.9, 3.7) and a
+  # decreasing map a - |b| U: both bounds have the edge
+  for(a in c(0, .1, .2, .7, -1.3)){
+    for(b in c(.1, .3, .7, 1.3, 2.9, 3.7)){
+      expect_shifted_edges(a, b)
+    }
+  }
+  for(a in c(.7, 1.3, 2.9)){
+    for(b in c(-.1, -.3, -.7, -1.3, -2.9)){
+      expect_shifted_edges(a, b)
+    }
+  }
+
+  # a bound strictly inside the plotted range has the whole edge with zeros beyond
+  # it, and a bound outside the range none
+  curve <- .edge_curve(shifted(.1, .3), x_range = c(0, 1))
+  at_bound <- which(curve$x == .4)
+  expect_length(at_bound, 2L)
+  expect_equal(curve$y[at_bound], c(1 / .3, 0), tolerance = 1e-12)
+  expect_identical(at_bound[2L], at_bound[1L] + 1L)
+  expect_true(all(curve$y[curve$x > .4] == 0))
+  curve <- .edge_curve(shifted(.1, .3), x_range = c(.2, .35))
+  expect_false(anyDuplicated(curve$x) > 0L)
+  expect_equal(curve$y, rep(1 / .3, length(curve$y)), tolerance = 1e-12)
+
+  # a plotted transformation maps the edge: 1 + 2 (0.1 + 0.3 U) has the bound 1.8
+  # and the density 1 / .6
+  curve <- .edge_curve(shifted(.1, .3), transformation = "lin",
+                       transformation_arguments = list(a = 1, b = 2))
+  n <- length(curve$x)
+  expect_equal(curve$x[(n - 1L):n], rep(1.8, 2L), tolerance = 1e-14)
+  expect_equal(curve$y[(n - 1L):n], c(1 / .6, 0), tolerance = 1e-12)
+
+  # only the plotted value at a bound changes: the route density used by grids is
+  # the route's own (0 at the rounded bound), and the interior plotted values are
+  # the route's densities
+  route <- .prior_density_route_from_adaptive(
+    attr(shifted(.1, .3), "adaptive_evaluation", exact = TRUE)
+  )
+  expect_identical(.prior_density_route_density(route, .1 + .3), 0)
+  curve <- .edge_curve(shifted(.1, .3))
+  inner <- seq(3L, length(curve$x) - 2L)
+  expect_identical(curve$y[inner], .prior_density_route_density(route, curve$x[inner]))
+})
+
 test_that("plotted quadrature curves drop to zero at a support bound and keep interior jumps", {
 
   # A quadrature route (an exponential(1) term scaled by a lognormal(0, .5)
