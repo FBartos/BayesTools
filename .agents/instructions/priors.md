@@ -336,7 +336,8 @@ just outside it. A bound outside the range, one where the density is already 0
 and one inside another component's support (an interior jump, drawn by the
 display values) get no zero value. The repeat is made before the transformation
 step, so a transformed curve maps it with the rules of `density.prior()` (a
-bound mapped to -Inf is dropped with it).
+bound mapped to -Inf is dropped with it; `exp_lin` takes its analytic limits
+at a source value 0).
 A batched value can exist where the per-value ordinate's quadrature is rejected
 by QUADPACK's flags (heavy-tailed pure scale mixtures): the plot shows it,
 while heights and point hypotheses at that value stop. Only a combination

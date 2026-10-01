@@ -3204,6 +3204,23 @@ test_that("plotted prior curve edges follow the plotted range and the transforma
   expect_equal(curve$y[1:2], c(0, .5), tolerance = 1e-12)
   expect_equal(curve$x[(n - 1L):n], c(-2, -2), tolerance = 1e-14)
   expect_equal(curve$y[(n - 1L):n], c(.5, 0), tolerance = 1e-12)
+
+  # exp_lin maps the source bound 0 to 0 with the analytic limits of
+  # density.prior(): exp(1) T keeps the edge (0, 0), (0, f(0) / exp(1)), and
+  # sqrt(T) has the density 0 at 0. Reference: density.prior() of the same
+  # prior on the same grid (both evaluate the closed form, tolerance 1e-12).
+  for(arguments in list(list(a = 1, b = 1), list(a = 0, b = .5))){
+    curve <- .edge_curve(half_normal, x_range = c(0, 3), transformation = "exp_lin",
+                         transformation_arguments = arguments)
+    reference <- density(prior("normal", list(0, scale), list(0, Inf)), x_range = c(0, 3),
+                         n_points = 101, transformation = "exp_lin",
+                         transformation_arguments = arguments)
+    expect_identical(curve$x[1:2], c(0, 0))
+    expect_identical(curve$y[1L], 0)
+    expect_equal(curve$x, reference$x, tolerance = 1e-12)
+    expect_equal(curve$y, reference$y, tolerance = 1e-12)
+  }
+  expect_equal(curve$y[2L], 0)
 })
 
 test_that("plotted quadrature curves drop to zero at a support bound and keep interior jumps", {

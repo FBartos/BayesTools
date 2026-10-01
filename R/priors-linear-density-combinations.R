@@ -3332,6 +3332,16 @@
         transformation,
         transformation_arguments
       )
+      # the image of the source value 0 under exp_lin takes the analytic
+      # limit of density.prior() (.density.prior_transformation_grid()), so a
+      # support edge at 0 is mapped as there
+      at_zero <- finite_raw & raw == 0
+      if(is.character(transformation) && identical(transformation, "exp_lin") && any(at_zero)){
+        limit <- .density.prior_transformation_grid(
+          raw[at_zero], y[at_zero], transformation, transformation_arguments
+        )
+        y_transformed[at_zero] <- ifelse(limit$drop, NA_real_, limit$y)
+      }
       list(x = den, y = y_transformed)
     }
 
