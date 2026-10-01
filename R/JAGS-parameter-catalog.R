@@ -140,8 +140,9 @@
 #' (their gates and Dirichlet shares) for a nested allocation. Their densities
 #' (and those of the variances) are exact: the atoms at zero, and the
 #' continuous parts as mixtures over the gate configurations of the scale prior
-#' and of the one-dimensional integrals over the Beta share margins (the total
-#' of a nested allocation under a gate is the scale prior times the gate). SD
+#' and of the one-dimensional integrals over the Beta share margins (e.g., the
+#' total of an ungated allocation that splits the component of a gate-only
+#' allocation is the scale prior times the gate). SD
 #' components and totals of nested allocations with two or more allocation
 #' shares are products of density grids without such provenance, returned for
 #' plotting only (heights, region probabilities and point hypotheses are
