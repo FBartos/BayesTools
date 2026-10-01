@@ -303,8 +303,9 @@ after merging, a Gaussian part with two or more non-normal terms, log-source
 terms other than lognormal ones in a sum (except one log-source term with
 a Gaussian part, above), the products listed above, custom output
 transformations and `bounded_logit`, the unclassified meeting points, and SD
-components (and variances) of nested variance allocations (the scale prior
-times two or more independent allocation shares).
+components and totals (and their variances) of nested variance allocations
+with a term of the scale prior times two or more independent allocation
+shares.
 
 Plotted linear-combination prior densities (`.prior_linear_density_to_plot_data()`)
 evaluate the same route at every plotted value: closed forms vectorized over
