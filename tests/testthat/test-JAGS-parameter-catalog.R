@@ -896,7 +896,10 @@ test_that("contrast-coefficient selectors of level coordinates name the level", 
 
 # Every displayed row of the factor term resolves to the catalog quantity
 # whose draws produced it: the row mean is the mean of the selected draws.
-.expect_factor_rows_resolve <- function(table, fit, catalog, info){
+# 'draw_means' holds the mean of the draws of each quantity already extracted
+# (the rows of the tables of one fit select the same few quantities).
+.expect_factor_rows_resolve <- function(table, fit, catalog, info,
+                                        draw_means = new.env(parent = emptyenv())){
 
   rows <- setdiff(rownames(table), c("(mu) intercept", "intercept"))
   expect_true(length(rows) > 0L, info = info)
@@ -909,7 +912,11 @@ test_that("contrast-coefficient selectors of level coordinates name the level", 
   # The table summarizes the same draws: agreement up to rounding.
   expect_equal_each(
     vapply(selections, function(selection){
-      mean(as.matrix(parameter_draws(fit, selection)))
+      id <- selection$quantity_id
+      if(is.null(draw_means[[id]])){
+        draw_means[[id]] <- mean(as.matrix(parameter_draws(fit, selection)))
+      }
+      draw_means[[id]]
     }, numeric(1)),
     table[rows, "Mean"],
     tolerance = 1e-10,
@@ -933,6 +940,7 @@ test_that("displayed factor rows resolve to the quantities that produced them", 
       )
       # every row and label of the unit is checked; the failures are
       # collected and asserted once per unit
+      draw_means <- new.env(parent = emptyenv())
       problems <- expectation_problems({
         for(transform in c(FALSE, TRUE)){
           for(prefix in c(TRUE, FALSE)){
@@ -955,11 +963,13 @@ test_that("displayed factor rows resolve to the quantities that produced them", 
                         info = paste(info, transform, prefix))
             .expect_factor_rows_resolve(
               model_table, fit, catalog,
-              paste(info, "model", transform, prefix)
+              paste(info, "model", transform, prefix),
+              draw_means
             )
             .expect_factor_rows_resolve(
               ensemble_table, fit, catalog,
-              paste(info, "ensemble", transform, prefix)
+              paste(info, "ensemble", transform, prefix),
+              draw_means
             )
           }
         }
