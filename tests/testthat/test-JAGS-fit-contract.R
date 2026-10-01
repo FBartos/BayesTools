@@ -222,7 +222,7 @@ test_that("refit errors have the class BayesTools_refit_required", {
 .refit_message_sites <- function(files){
 
   sites <- lapply(files, function(file){
-    pd <- utils::getParseData(parse(file, keep.source = TRUE, encoding = "UTF-8"))
+    pd <- .test_source_parse_data(file)
     strings <- pd[pd$token == "STR_CONST" &
                     grepl("\\brefit\\b", pd$text, ignore.case = TRUE, perl = TRUE), ]
     if(nrow(strings) == 0L){
