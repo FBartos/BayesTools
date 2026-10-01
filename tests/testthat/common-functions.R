@@ -1060,6 +1060,34 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   package_source_files
 }
 
+# The parse data of an R source file, parsed once per test run. The tests that
+# scan the package sources read the same files, and parsing them dominates the
+# cost of each scan. The result is keyed by the content of the file, so a
+# rewritten file is parsed again. With 'children = TRUE' the data carry the row
+# indices of the children of every node as the attribute "children" (named by
+# the id of the parent), so that a scan reads the children of a node without
+# searching the whole table; the index is built on first request.
+.test_source_parse_data <- local({
+  cache <- new.env(parent = emptyenv())
+  function(file, children = FALSE) {
+    key <- unname(tools::md5sum(file))
+    if (is.na(key)) {
+      stop("Cannot read the source file '", file, "'.", call. = FALSE)
+    }
+    if (is.null(cache[[key]])) {
+      cache[[key]] <- utils::getParseData(
+        parse(file, keep.source = TRUE, encoding = "UTF-8")
+      )
+    }
+    if (children && is.null(attr(cache[[key]], "children", exact = TRUE))) {
+      parse_data <- cache[[key]]
+      attr(parse_data, "children") <- split(seq_len(nrow(parse_data)), parse_data$parent)
+      cache[[key]] <- parse_data
+    }
+    cache[[key]]
+  }
+})
+
 .test_cache_package_sources_available <- function() {
 
   package_r_dir <- file.path(testthat::test_path("..", ".."), "R")
