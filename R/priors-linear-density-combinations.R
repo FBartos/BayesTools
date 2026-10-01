@@ -3282,7 +3282,10 @@
     # .prior_linear_density_display_size() equally spaced values plus the
     # values it must include (support bounds and jumps, with a point just
     # outside each, offsets and other peaks, and atoms), and the vertex of a
-    # parabola through each local maximum and its neighbours.
+    # parabola through each local maximum and its neighbours. Every curve
+    # drops to zero at a finite support bound of the continuous density that
+    # lies in the plotted range and has a positive density
+    # (.prior_linear_density_edge_bounds()).
     structural <- !is.null(route) && !identical(route$type, "unknown")
     display <- structural && .prior_density_route_has_quadrature(route)
     size <- if(display) min(n_points, .prior_linear_density_display_size()) else n_points
@@ -3296,18 +3299,6 @@
       }
       limits <- if(is.null(x_range)) range(dist$density$x) else x_range
       list(raw = seq(limits[1], limits[2], length.out = size), den = NULL)
-    }
-    # raw values in plotting order, with their plotted coordinates when the
-    # plotted range is on the transformed scale
-    points <- grid(size)
-    if(display){
-      extra <- .prior_linear_density_display_values(route, dist, points$raw)
-      if(length(extra) > 0L){
-        points <- grid(max(ceiling(size / 2), size - length(extra)))
-        points <- .prior_linear_density_add_display_values(
-          points, extra, transformation, transformation_arguments, transformed_x_range
-        )
-      }
     }
 
     evaluate <- function(raw){
@@ -3343,7 +3334,35 @@
       )
       list(x = den, y = y_transformed)
     }
-    curve <- plotted(points$raw, points$den, evaluate(points$raw))
+
+    # raw values in plotting order, with their plotted coordinates when the
+    # plotted range is on the transformed scale
+    points <- grid(size)
+    edges  <- .prior_linear_density_edge_bounds(route, dist, structural, points$raw, evaluate)
+    extra  <- unique(c(
+      if(display) .prior_linear_density_display_values(route, dist, points$raw),
+      edges$interior
+    ))
+    if(length(extra) > 0L){
+      points <- grid(max(ceiling(size / 2), size - length(extra)))
+      points <- .prior_linear_density_add_display_values(
+        points, extra, transformation, transformation_arguments, transformed_x_range
+      )
+    }
+
+    # a support bound with a positive density inside it repeats its value with
+    # density 0 on its outer side (the vertical edge of density.prior())
+    y <- evaluate(points$raw)
+    repeats <- .prior_linear_density_edge_repeats(points$raw, edges)
+    if(!is.null(repeats)){
+      points$raw <- points$raw[repeats$index]
+      if(!is.null(points$den)){
+        points$den <- points$den[repeats$index]
+      }
+      y <- y[repeats$index]
+      y[repeats$zero] <- 0
+    }
+    curve <- plotted(points$raw, points$den, y)
     if(display){
       curve <- .prior_linear_density_refine_peaks(
         curve, evaluate, plotted, transformation, transformation_arguments
@@ -3471,6 +3490,96 @@
   unique(values[is.finite(values) & values >= limits[1L] & values <= limits[2L]])
 }
 
+# Finite support bounds of the continuous density at which a plotted curve
+# drops to zero (the edge of density.prior()): bounds of the structural route
+# (or, for a curve interpolated from a numerical grid, the exact support hull of
+# its provenance) within the range of the raw plotting values 'raw' (up to a
+# relative 1e-9 of it, where the range of a numerical grid ends at the bound
+# up to rounding), with a positive density (also an infinite one) as 'evaluate'
+# returns it and exactly zero density 1e-6 of the range outside the bound. A
+# bound at which the density is zero or unavailable, that lies outside the
+# range, or inside another component's support (an interior jump to a positive
+# density, drawn by the display values) is not an edge. 'interior' are the
+# edge bounds strictly inside the range, which the plotted values must include;
+# 'tolerance' matches a bound to the nearest plotted value.
+.prior_linear_density_edge_bounds <- function(route, dist, structural, raw, evaluate){
+
+  none <- list(lower = numeric(), upper = numeric(), interior = numeric(), tolerance = 0)
+  raw <- raw[is.finite(raw)]
+  if(length(raw) < 2L){
+    return(none)
+  }
+  limits <- range(raw)
+  width <- diff(limits)
+  if(!is.finite(width) || width <= 0){
+    return(none)
+  }
+
+  candidates <- if(structural){
+    bounds <- .prior_density_route_display_points(route)
+    list(lower = bounds$lower, upper = bounds$upper)
+  }else{
+    hull <- .prior_linear_density_support_hull(attr(dist, "adaptive_evaluation", exact = TRUE))
+    list(lower = hull[1L], upper = hull[2L])
+  }
+  tolerance <- 1e-9 * width
+  density <- function(values){
+    out <- tryCatch(suppressWarnings(evaluate(values)), error = function(e) NULL)
+    if(length(out) == length(values)) out else rep(NA_real_, length(values))
+  }
+  edge <- function(bounds, side){
+    bounds <- unique(bounds[is.finite(bounds) &
+                              bounds >= limits[1L] - tolerance & bounds <= limits[2L] + tolerance])
+    if(length(bounds) == 0L){
+      return(numeric())
+    }
+    inside  <- density(bounds)
+    outside <- density(bounds + side * 1e-6 * width)
+    bounds[!is.na(inside) & inside > 0 & !is.na(outside) & outside == 0]
+  }
+
+  lower <- edge(candidates$lower, -1)
+  upper <- edge(candidates$upper, 1)
+  bounds <- c(lower, upper)
+  list(lower = lower, upper = upper,
+       interior = bounds[bounds > limits[1L] & bounds < limits[2L]],
+       tolerance = tolerance)
+}
+
+# The plotted raw values 'raw' with the plotted value of each edge bound of
+# 'edges' (.prior_linear_density_edge_bounds()) repeated: the indices of the
+# repeated vector, and the positions of the repeats drawn at density 0, each on
+# the outer side of its bound (before the bound's own value where the raw
+# values increase, after it where they decrease). NULL without an edge.
+.prior_linear_density_edge_repeats <- function(raw, edges){
+
+  finite <- which(is.finite(raw))
+  if(length(finite) < 2L || length(c(edges$lower, edges$upper)) == 0L){
+    return(NULL)
+  }
+  ascending <- raw[finite[length(finite)]] > raw[finite[1L]]
+  locate <- function(values){
+    positions <- vapply(values, function(value){
+      distance <- abs(raw[finite] - value)
+      nearest  <- which.min(distance)
+      if(distance[nearest] <= edges$tolerance) finite[nearest] else NA_integer_
+    }, integer(1))
+    unique(positions[!is.na(positions)])
+  }
+  lower  <- locate(edges$lower)
+  upper  <- locate(edges$upper)
+  before <- if(ascending) lower else upper
+  after  <- setdiff(if(ascending) upper else lower, before)
+  if(length(before) + length(after) == 0L){
+    return(NULL)
+  }
+  copies <- rep(1L, length(raw))
+  copies[c(before, after)] <- 2L
+  first <- cumsum(c(1L, copies))[seq_along(raw)]
+  list(index = rep(seq_along(raw), copies),
+       zero  = c(first[before], first[after] + 1L))
+}
+
 # Plotting values 'points' (raw values and, for a range on the transformed
 # scale, their plotted coordinates) with the raw values 'extra' added, in
 # plotting order.
@@ -3506,8 +3615,10 @@
     return(curve)
   }
   i <- seq(2L, n - 1L)
+  # a value repeated at a support edge has no parabola
   peak <- i[is.finite(x[i - 1L]) & is.finite(x[i + 1L]) &
               is.finite(y[i - 1L]) & is.finite(y[i]) & is.finite(y[i + 1L]) &
+              x[i] != x[i - 1L] & x[i] != x[i + 1L] &
               y[i] > y[i - 1L] & y[i] >= y[i + 1L]]
   if(length(peak) == 0L){
     return(curve)

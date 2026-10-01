@@ -141,7 +141,9 @@ test_that("exp_lin images of a zero source have their structural boundary limit"
     expect_equal(as.numeric(.prior_linear_density_height(density, 0)), case$limit,
                  tolerance = 1e-14)
     curve <- .prior_linear_density_to_plot_data(density, n_points = 11, x_range = c(0, 1))$density
-    expect_equal(curve$y, c(case$limit, case$density(curve$x[-1L])), tolerance = 1e-12)
+    # the curve leaves the support bound 0 by the edge (0, 0) -> (0, limit)
+    expect_identical(curve$x[1:2], c(0, 0))
+    expect_equal(curve$y, c(0, case$limit, case$density(curve$x[-(1:2)])), tolerance = 1e-12)
   }
 })
 
@@ -2979,10 +2981,12 @@ test_that("plotted densities draw a support bound with one value outside it", {
     c(b0 = 1, b1 = z0), source_transforms = c(b0 = "log", b1 = NA), output_transformation = "exp"
   )
   curve <- .prior_linear_density_to_plot_data(intercept, x_range = c(0, 2))$density
-  expect_identical(curve$x[1L], 0)
-  expect_equal(curve$y[1L], 2 * stats::dnorm(0, 0, 1 / sqrt(8)) * exp((.5 * z0)^2 / 2), tolerance = 1e-12)
-  expect_gt(min(diff(curve$x)), 1e-3)
-  expect_lte(length(curve$x), 200L)
+  # the bound is repeated once, with density 0 (the edge of density.prior())
+  expect_identical(curve$x[1:2], c(0, 0))
+  expect_identical(curve$y[1L], 0)
+  expect_equal(curve$y[2L], 2 * stats::dnorm(0, 0, 1 / sqrt(8)) * exp((.5 * z0)^2 / 2), tolerance = 1e-12)
+  expect_gt(min(diff(curve$x[-1L])), 1e-3)
+  expect_lte(length(curve$x), 201L)
 
   # an upper bound: the negated product of a gamma(2, 1) term and a
   # lognormal scale has support (-Inf, 0]
@@ -2999,15 +3003,16 @@ test_that("plotted densities draw a support bound with one value outside it", {
   expect_equal(curve$y[curve$x == delta], 0)
 
   # a singular bound: the gamma(.5, 1) term makes the density at 0 infinite,
-  # so the curve starts at the value just inside it
+  # so the curve leaves the bound by the edge to zero and the value just inside it
   term <- prior("gamma", list(.5, 1))
   attr(term, "multiply_by") <- "s"
   singular <- .prior_linear_combination_density(
     list(b = term, s = prior("lognormal", list(0, .5))), c(b = 1)
   )
   curve <- .prior_linear_density_to_plot_data(singular, x_range = c(0, 5))$density
-  expect_identical(curve$x[1L], 1e-6 * 5)
-  expect_equal(curve$y[1L], exp(prior_density_ordinate(singular, 1e-6 * 5)$log_density), tolerance = 1e-8)
+  expect_identical(curve$x[1:2], c(0, 1e-6 * 5))
+  expect_identical(curve$y[1L], 0)
+  expect_equal(curve$y[2L], exp(prior_density_ordinate(singular, 1e-6 * 5)$log_density), tolerance = 1e-8)
 
   # one term's support ends at 1 and another's starts there: both sides
   a <- prior_mixture(list(prior("spike", list(0)), prior("normal", list(0, .3))), is_null = c(TRUE, FALSE))
@@ -3028,6 +3033,243 @@ test_that("plotted densities draw a support bound with one value outside it", {
       .25 * convolution(value, upper_part, 1, Inf) + .25 * convolution(value, lower_part, -Inf, 1)
   }, numeric(1))
   expect_equal(curve$y[match(at, curve$x)], reference, tolerance = 1e-8)
+})
+
+# Plotted curves of the prior densities of the support-edge tests.
+.edge_curve <- function(density, ...){
+  .prior_linear_density_to_plot_data(density, n_points = 101, ...)$density
+}
+
+# The first two points (lower) and the last two points (upper) of a curve: a
+# bound repeated with density 0 on the outer side, then its density.
+expect_support_edge <- function(curve, lower = NULL, upper = NULL){
+  n <- length(curve$x)
+  if(!is.null(lower)){
+    expect_identical(curve$x[1:2], c(lower$x, lower$x))
+    expect_identical(curve$y[1L], 0)
+    expect_equal(curve$y[2L], lower$y, tolerance = 1e-12)
+  }
+  if(!is.null(upper)){
+    expect_equal(curve$x[(n - 1L):n], c(upper$x, upper$x), tolerance = 1e-14)
+    expect_equal(curve$y[n - 1L], upper$y, tolerance = 1e-12)
+    expect_identical(curve$y[n], 0)
+  }
+}
+
+test_that("plotted prior curves drop to zero at the lower bound of a half-normal prior", {
+
+  # density.prior() repeats a truncation bound with density 0 (truncate_end):
+  # a density that jumps from 0 to a positive value at a finite support bound
+  # is drawn with a vertical edge, (lower, 0) then (lower, f), and (upper, f)
+  # then (upper, 0) at an upper bound. Reference: the closed-form density (the
+  # closed-form route is exact, tolerance 1e-12).
+  scale <- .86
+  half_normal <- .prior_linear_combination_density(
+    list(x = prior("normal", list(0, scale), list(0, Inf))), c(x = 1), n_grid = 512
+  )
+  curve <- .edge_curve(half_normal)
+  expect_support_edge(curve, lower = list(x = 0, y = 2 * stats::dnorm(0, 0, scale)))
+  expect_length(curve$x, 102L)
+  expect_false(is.unsorted(curve$x))
+  expect_equal(curve$y[-1L], 2 * stats::dnorm(curve$x[-1L], 0, scale), tolerance = 1e-12)
+
+  # the same prior reached through the posterior-sample metadata, the path of
+  # the prior curves of the RoBMA plots
+  theta <- .bt_meta_update(
+    structure(abs(stats::qnorm(seq(.01, .99, length.out = 64))),
+              class = c("mixed_posteriors.simple", "mixed_posteriors"),
+              prior_list = list(prior("normal", list(0, scale), list(0, Inf)))),
+    prior_density = half_normal
+  )
+  attached <- .plot_data_attached_prior_density(list(theta = theta), "theta", n_points = 101)$density
+  expect_identical(attached, curve)
+})
+
+test_that("plotted prior curves drop to zero at both bounds of a uniform prior and one of its root", {
+
+  # Uniform(0, 2) directly and as 2 B for B ~ Beta(1, 1) under a linear map (the
+  # shape of the variance allocation multiplier of a heterogeneity prior): the
+  # density .5 jumps at 0 and 2. Its square root sqrt(2 B), through exp_lin, has
+  # the density t on (0, sqrt(2)): 0 at 0 (no zero value is added there) and
+  # sqrt(2) at the upper bound. References: closed forms, tolerance 1e-12.
+  uniform <- .prior_linear_combination_density(
+    list(x = prior("uniform", list(0, 2))), c(x = 1), n_grid = 512
+  )
+  both <- list(lower = list(x = 0, y = .5), upper = list(x = 2, y = .5))
+  expect_support_edge(.edge_curve(uniform), lower = both$lower, upper = both$upper)
+  beta_unit <- prior("beta", list(1, 1))
+  doubled <- .prior_linear_combination_density(
+    list(source = beta_unit), c(source = 1), n_grid = 512,
+    output_transformation = "lin", output_transformation_arguments = list(a = 0, b = 2)
+  )
+  curve <- .edge_curve(doubled)
+  expect_support_edge(curve, lower = both$lower, upper = both$upper)
+  expect_equal(curve$y[2:(length(curve$y) - 1L)], rep(.5, length(curve$y) - 2L), tolerance = 1e-12)
+
+  root <- .prior_linear_combination_density(
+    list(source = beta_unit), c(source = 1), n_grid = 512,
+    output_transformation = "exp_lin", output_transformation_arguments = list(a = log(2) / 2, b = .5)
+  )
+  curve <- .edge_curve(root)
+  n <- length(curve$x)
+  expect_support_edge(curve, upper = list(x = sqrt(2), y = sqrt(2)))
+  expect_identical(curve$x[1L], 0)
+  expect_identical(curve$y[1L], 0)
+  expect_gt(curve$x[2L], 0)
+  expect_equal(curve$y[-n], curve$x[-n], tolerance = 1e-12)
+})
+
+test_that("plotted prior curve edges follow the plotted range and the transformation", {
+
+  # A bound outside the plotted range has no zero value; a bound strictly
+  # inside it has the whole edge, below which the density is 0 (references:
+  # closed forms, tolerance 1e-12).
+  scale <- .86
+  half_normal <- .prior_linear_combination_density(
+    list(x = prior("normal", list(0, scale), list(0, Inf))), c(x = 1), n_grid = 512
+  )
+  uniform <- .prior_linear_combination_density(
+    list(x = prior("uniform", list(0, 2))), c(x = 1), n_grid = 512
+  )
+  curve <- .edge_curve(half_normal, x_range = c(.5, 3))
+  expect_identical(curve$x[1L], .5)
+  expect_equal(curve$y[1L], 2 * stats::dnorm(.5, 0, scale), tolerance = 1e-12)
+  expect_false(anyDuplicated(curve$x) > 0L)
+  curve <- .edge_curve(uniform, x_range = c(.5, 1.5))
+  expect_false(anyDuplicated(curve$x) > 0L)
+  expect_true(all(curve$y == .5))
+  curve <- .edge_curve(half_normal, x_range = c(-1, 3))
+  at_zero <- which(curve$x == 0)
+  expect_length(at_zero, 2L)
+  expect_identical(at_zero[2L], at_zero[1L] + 1L)
+  expect_identical(curve$y[at_zero[1L]], 0)
+  expect_equal(curve$y[at_zero[2L]], 2 * stats::dnorm(0, 0, scale), tolerance = 1e-12)
+  expect_true(all(curve$y[curve$x < 0] == 0))
+  expect_equal(curve$y[curve$x > 0], 2 * stats::dnorm(curve$x[curve$x > 0], 0, scale), tolerance = 1e-12)
+  curve <- .edge_curve(uniform, x_range = c(-1, 3))
+  expect_identical(sum(curve$x == 0), 2L)
+  expect_identical(sum(curve$x == 2), 2L)
+  inner <- curve$x > 0 & curve$x < 2
+  expect_equal(curve$y[inner], rep(.5, sum(inner)), tolerance = 1e-12)
+  expect_true(all(curve$y[curve$x < 0 | curve$x > 2] == 0))
+
+  # a transformation maps the edge by the rules of density.prior(): the
+  # logarithm sends the bound 0 to -Inf, which is dropped with its zero value,
+  # and the bound 2 to log(2), where the density of log(T) is 2 f(2) = 1
+  log_map <- list(fun = log, inv = exp, jac = function(x) 1 / x)
+  curve <- .edge_curve(half_normal, transformation = log_map)
+  expect_true(all(is.finite(curve$x)))
+  expect_false(anyDuplicated(curve$x) > 0L)
+  curve <- .edge_curve(uniform, transformation = log_map)
+  expect_true(all(is.finite(curve$x)))
+  n <- length(curve$x)
+  expect_equal(curve$x[(n - 1L):n], rep(log(2), 2L), tolerance = 1e-14)
+  expect_equal(curve$y[n - 1L], 1, tolerance = 1e-12)
+  expect_identical(curve$y[n], 0)
+  expect_false(anyDuplicated(curve$x[-((n - 1L):n)]) > 0L)
+
+  # a plotted range on the transformed scale: 1 + 3 T has the support [1, 7],
+  # whose lower bound is inside the range [.1, 4] and upper bound outside it
+  curve <- .edge_curve(uniform, x_range = c(.1, 4), transformation = "lin",
+                       transformation_arguments = list(a = 1, b = 3), transformation_settings = TRUE)
+  at_edge <- which(curve$x == 1)
+  expect_length(at_edge, 2L)
+  expect_identical(at_edge[2L], at_edge[1L] + 1L)
+  expect_identical(curve$y[at_edge[1L]], 0)
+  expect_equal(curve$y[at_edge[2L]], .5 / 3, tolerance = 1e-12)
+  expect_true(all(curve$y[curve$x < 1] == 0))
+  expect_equal(curve$y[curve$x > 1], rep(.5 / 3, sum(curve$x > 1)), tolerance = 1e-12)
+  expect_identical(attr(curve, "x_range"), c(.1, 4))
+  expect_false(anyDuplicated(curve$x[curve$x > 1]) > 0L)
+
+  # a decreasing map keeps the zero value on the outer side of each bound: 1 - 3 T
+  # has the support [-5, 1]; below the lower bound of T (plotted at 1) the
+  # plotted values continue to the right, above its upper bound (plotted at -5)
+  # to the left
+  curve <- .edge_curve(uniform, x_range = c(-6, 2), transformation = "lin",
+                       transformation_arguments = list(a = 1, b = -3), transformation_settings = TRUE)
+  at_edge <- which(curve$x == 1)
+  expect_length(at_edge, 2L)
+  expect_equal(curve$y[at_edge], c(.5 / 3, 0), tolerance = 1e-12)
+  expect_identical(at_edge[2L], at_edge[1L] + 1L)
+  at_edge <- which(curve$x == -5)
+  expect_length(at_edge, 2L)
+  expect_equal(curve$y[at_edge], c(0, .5 / 3), tolerance = 1e-12)
+  expect_identical(at_edge[2L], at_edge[1L] + 1L)
+  inner <- curve$x > -5 & curve$x < 1
+  expect_equal(curve$y[inner], rep(.5 / 3, sum(inner)), tolerance = 1e-12)
+  curve <- .edge_curve(uniform, transformation = "lin", transformation_arguments = list(a = 0, b = -1))
+  n <- length(curve$x)
+  expect_equal(curve$x[1:2], c(0, 0))
+  expect_equal(curve$y[1:2], c(0, .5), tolerance = 1e-12)
+  expect_equal(curve$x[(n - 1L):n], c(-2, -2), tolerance = 1e-14)
+  expect_equal(curve$y[(n - 1L):n], c(.5, 0), tolerance = 1e-12)
+})
+
+test_that("plotted quadrature curves drop to zero at a support bound and keep interior jumps", {
+
+  # A quadrature route (an exponential(1) term scaled by a lognormal(0, .5)
+  # factor, a scale product) with a positive density at its bound 0: the
+  # density at 0 is f_X(0) E[1 / W] = exp(.5^2 / 2), and the bound is repeated
+  # with density 0 as for the closed forms (it was drawn without it); the other
+  # values are integrate() references at rel.tol 1e-12, split around the peak
+  # of the scale density, within the batched quadrature's 1e-8.
+  term <- prior("exp", list(1))
+  attr(term, "multiply_by") <- "s"
+  scaled <- .prior_linear_combination_density(
+    list(b = term, s = prior("lognormal", list(0, .5))), c(b = 1)
+  )
+  curve <- .edge_curve(scaled, x_range = c(0, 6))
+  expect_identical(curve$x[1:2], c(0, 0))
+  expect_identical(curve$y[1L], 0)
+  expect_equal(curve$y[2L], exp(.5^2 / 2), tolerance = 1e-8)
+  expect_lte(length(curve$x), 205L)
+  inner <- curve$x > 0
+  reference <- vapply(curve$x[inner], function(value){
+    sum(vapply(list(c(0, .5), c(.5, 1), c(1, 2), c(2, Inf)), function(piece){
+      stats::integrate(function(w) exp(-value / w) / w * stats::dlnorm(w, 0, .5),
+                       piece[1L], piece[2L], rel.tol = 1e-12)$value
+    }, numeric(1)))
+  }, numeric(1))
+  expect_equal(curve$y[inner], reference, tolerance = 1e-8)
+
+  # an interior jump: the bound 1.5 of the truncated t term is inside the
+  # support of the normal term (positive on both sides), so no value with
+  # density 0 is added there (the value just outside the bound still is)
+  a <- prior_mixture(list(prior("spike", list(1), prior_weights = 1),
+                          prior("normal", list(1, .3), prior_weights = 1)), is_null = c(TRUE, FALSE))
+  b <- prior_mixture(list(prior("spike", list(0), prior_weights = 1),
+                          prior("t", list(0, .5, 3), list(.5, Inf), prior_weights = 1)),
+                     is_null = c(TRUE, FALSE))
+  jump <- .prior_linear_combination_density(list(a = a, b = b), c(a = 1, b = 1))
+  curve <- .edge_curve(jump, x_range = c(-1, 4))
+  expect_false(anyDuplicated(curve$x) > 0L)
+  expect_true(all(curve$y > 0))
+})
+
+test_that("plotted curves interpolated from a numerical grid drop to zero at an exact support bound", {
+
+  # Three gamma(.3, 1) terms have no structural route (three non-normal terms):
+  # the curve is interpolated from the numerical grid. The support hull of its
+  # provenance is [0, Inf), so the curve leaves the bound 0 by the edge
+  # (0, 0) -> (0, the grid's value at 0); there is no edge for a plotted range
+  # that starts above the bound. The grid is the reference of its own curve.
+  terms <- lapply(1:3, function(i) prior("gamma", list(.3, 1)))
+  names(terms) <- c("a", "b", "c")
+  gamma_sum <- .prior_linear_combination_density(terms, c(a = 1, b = 1, c = 1), n_grid = 512)
+  expect_identical(
+    .prior_density_route_from_adaptive(attr(gamma_sum, "adaptive_evaluation", exact = TRUE))$type,
+    "unknown"
+  )
+  expect_identical(gamma_sum$density$x[1L], 0)
+  curve <- .edge_curve(gamma_sum)
+  expect_identical(curve$x[1:2], c(0, 0))
+  expect_identical(curve$y[1L], 0)
+  expect_equal(curve$y[2L], gamma_sum$density$y[1L] * gamma_sum$density$mass, tolerance = 1e-12)
+  expect_false(is.unsorted(curve$x))
+  curve <- .edge_curve(gamma_sum, x_range = c(.5, 3))
+  expect_false(anyDuplicated(curve$x) > 0L)
+  expect_true(all(curve$y > 0))
 })
 
 test_that("batched densities compute the single-value breakpoints and integrals for all values at once", {
