@@ -3364,7 +3364,7 @@
     # density 0 on its outer side (the vertical edge of density.prior()); a
     # mapped bound whose route density is 0 by rounding takes the ordinate's
     # limit inside the support
-    y <-.prior_linear_density_edge_limits(points$raw, evaluate(points$raw), edges)
+    y <- .prior_linear_density_edge_limits(points$raw, evaluate(points$raw), edges)
     repeats <- .prior_linear_density_edge_repeats(points$raw, edges)
     if(!is.null(repeats)){
       points$raw <- points$raw[repeats$index]
