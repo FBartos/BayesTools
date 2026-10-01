@@ -644,17 +644,15 @@ test_that("factor selectors name level labels, never coordinate positions", {
 
         # No alias other than the shared term name is ambiguous.
         aliases <- setdiff(unique(catalog$aliases$alias), "g")
-        failures <- vapply(aliases, function(alias){
+        # every error counts, also one without a message
+        refusals <- as.character(unlist(lapply(aliases, function(alias){
           error <- tryCatch({
             parameter_catalog_resolve(catalog, alias)
             NULL
           }, error = identity)
-          if(is.null(error)) "" else conditionMessage(error)
-        }, character(1))
-        expect_true(
-          all(!nzchar(failures)),
-          info = paste(info, "aliases refused:", paste(aliases[nzchar(failures)], collapse = ", "))
-        )
+          if(is.null(error)) NULL else paste0(alias, ": ", conditionMessage(error))
+        })))
+        expect_identical(refusals, character(), info = info)
       })
       expect_identical(problems, character(), info = info)
     }
