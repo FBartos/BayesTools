@@ -352,11 +352,12 @@ test_that("Gaussian-convolution region probabilities use the conditional-normal 
   intercept <- prior("normal", list(0, 1))
   slopes <- list(normal_cauchy = prior("cauchy", list(0, .5)),
                  normal_t = prior("t", list(0, .5, 3)))
+  densities <- list()
   for(case in names(slopes)){
-    density <- .prior_linear_combination_density(
+    densities[[case]] <- .prior_linear_combination_density(
       list(b0 = intercept, b1 = slopes[[case]]), c(b0 = 1, b1 = -.5)
     )
-    expect_region_probabilities(density, region_references[[case]])
+    expect_region_probabilities(densities[[case]], region_references[[case]])
   }
 
   # the same target through the formula-scale density context
@@ -404,9 +405,7 @@ test_that("Gaussian-convolution region probabilities use the conditional-normal 
   set.seed(1)
   posterior <- .bt_meta_update(
     structure(stats::rnorm(20000, .3, .2), class = c("marginal_posterior.simple", "marginal_posterior", "numeric")),
-    prior_density = .prior_linear_combination_density(
-      list(b0 = intercept, b1 = slopes$normal_cauchy), c(b0 = 1, b1 = -.5)
-    ),
+    prior_density = densities$normal_cauchy,
     atoms = posterior_atom_attribute()
   )
   out <- hypothesis_BF(posterior, hypothesis = "theta > 0.5",
