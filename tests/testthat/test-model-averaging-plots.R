@@ -65,7 +65,7 @@ test_that("ordered level plots preserve declared curves atoms and custom styles"
 test_that("ordered direct selections retain holes when curves are omitted", {
   render_selection <- function(prior, show_figures){
     plots <- plot(prior, show_figures = show_figures, plot_type = "ggplot",
-      n_points = 64, n_samples = 128, par_name = "Effect")
+      n_points = 64, n_samples = 128, xlab = "Level effect")
     grid::grid.newpage()
     grid::pushViewport(grid::viewport(layout = grid::grid.layout(1L, length(plots))))
     for(i in seq_along(plots)){
