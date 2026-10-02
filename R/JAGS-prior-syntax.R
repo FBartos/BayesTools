@@ -43,7 +43,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
   return(syntax)
 }
 
-.JAGS_add_priors.fun       <- function(prior_list){
+.JAGS_add_priors.fun       <- function(prior_list, numeric_literals = FALSE){
 
   syntax_priors <- ""
   ordered_allocation_keys <- character()
@@ -68,11 +68,11 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
     }else if(is.prior.spike_and_slab(prior_list[[i]])){
 
-      syntax_priors <- paste(syntax_priors, .JAGS_prior.spike_and_slab(prior_list[[i]], names(prior_list)[i]))
+      syntax_priors <- paste(syntax_priors, .JAGS_prior.spike_and_slab(prior_list[[i]], names(prior_list)[i], numeric_literals))
 
     }else if(is.prior.mixture(prior_list[[i]])){
 
-      syntax_priors <- paste(syntax_priors, .JAGS_prior.mixture(prior_list[[i]], names(prior_list)[i]))
+      syntax_priors <- paste(syntax_priors, .JAGS_prior.mixture(prior_list[[i]], names(prior_list)[i], numeric_literals))
 
     }else if(is.prior.ordered(prior_list[[i]])){
 
@@ -97,14 +97,14 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
     }else if(is.prior.simple(prior_list[[i]])){
 
-      syntax_priors <- paste(syntax_priors, .JAGS_prior.simple(prior_list[[i]], names(prior_list)[i]))
+      syntax_priors <- paste(syntax_priors, .JAGS_prior.simple(prior_list[[i]], names(prior_list)[i], numeric_literals))
 
     }
   }
 
   return(syntax_priors)
 }
-.JAGS_prior.simple         <- function(prior, parameter_name){
+.JAGS_prior.simple         <- function(prior, parameter_name, numeric_literals = FALSE){
 
   .check_prior(prior, allow_expressions = TRUE)
   if(!is.prior.simple(prior))
@@ -115,30 +115,33 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(.is_prior_expression(prior)){
     prior <- .prior_expression_to_character(prior)
   }
+  number <- function(value){
+    if(numeric_literals && is.numeric(value) && all(is.finite(value))) .prior_ordered_format_number(value) else value
+  }
 
   # distribution
   syntax <- switch(
     prior[["distribution"]],
-    "point"     = paste0(parameter_name," = ",prior$parameter[["location"]]),
-    "normal"    = paste0(parameter_name," ~ dnorm(",prior$parameter[["mean"]],",", .JAGS_parameter_to_precision(prior$parameter[["sd"]]),")"),
-    "lognormal" = paste0(parameter_name," ~ dlnorm(",prior$parameter[["meanlog"]],",", .JAGS_parameter_to_precision(prior$parameter[["sdlog"]]),")"),
-    "t"         = paste0(parameter_name," ~ dt(",prior$parameter[["location"]],",", .JAGS_parameter_to_precision(prior$parameter[["scale"]]),",", prior$parameter[["df"]],")"),
-    "gamma"     = paste0(parameter_name," ~ dgamma(",prior$parameter[["shape"]],",",prior$parameter[["rate"]],")"),
-    "invgamma"  = paste0(parameter_name," ~ dbt_invgamma(",prior$parameter[["shape"]],",",prior$parameter[["scale"]],")"),
-    "exp"       = paste0(parameter_name," ~ dexp(",prior$parameter[["rate"]],")"),
-    "beta"      = paste0(parameter_name," ~ dbeta(",prior$parameter[["alpha"]],",",prior$parameter[["beta"]],")"),
-    "bernoulli" = paste0(parameter_name," ~ dbern(",prior$parameter[["probability"]],")"),
-    "uniform"   = paste0(parameter_name," ~ dunif(",prior$parameter[["a"]],",",prior$parameter[["b"]],")"),
-    "moment"    = paste0(parameter_name," ~ dbt_moment(",prior$parameter[["location"]],",",prior$parameter[["tau"]],",",prior$parameter[["order"]],")"),
-    "invmoment" = paste0(parameter_name," ~ dbt_invmoment(",prior$parameter[["location"]],",",prior$parameter[["tau"]],",",prior$parameter[["order"]],",",prior$parameter[["df"]],")")
+    "point"     = paste0(parameter_name," = ",number(prior$parameter[["location"]])),
+    "normal"    = paste0(parameter_name," ~ dnorm(",number(prior$parameter[["mean"]]),",", number(.JAGS_parameter_to_precision(prior$parameter[["sd"]])),")"),
+    "lognormal" = paste0(parameter_name," ~ dlnorm(",number(prior$parameter[["meanlog"]]),",", number(.JAGS_parameter_to_precision(prior$parameter[["sdlog"]])),")"),
+    "t"         = paste0(parameter_name," ~ dt(",number(prior$parameter[["location"]]),",", number(.JAGS_parameter_to_precision(prior$parameter[["scale"]])),",", number(prior$parameter[["df"]]),")"),
+    "gamma"     = paste0(parameter_name," ~ dgamma(",number(prior$parameter[["shape"]]),",",number(prior$parameter[["rate"]]),")"),
+    "invgamma"  = paste0(parameter_name," ~ dbt_invgamma(",number(prior$parameter[["shape"]]),",",number(prior$parameter[["scale"]]),")"),
+    "exp"       = paste0(parameter_name," ~ dexp(",number(prior$parameter[["rate"]]),")"),
+    "beta"      = paste0(parameter_name," ~ dbeta(",number(prior$parameter[["alpha"]]),",",number(prior$parameter[["beta"]]),")"),
+    "bernoulli" = paste0(parameter_name," ~ dbern(",number(prior$parameter[["probability"]]),")"),
+    "uniform"   = paste0(parameter_name," ~ dunif(",number(prior$parameter[["a"]]),",",number(prior$parameter[["b"]]),")"),
+    "moment"    = paste0(parameter_name," ~ dbt_moment(",number(prior$parameter[["location"]]),",",number(prior$parameter[["tau"]]),",",number(prior$parameter[["order"]]),")"),
+    "invmoment" = paste0(parameter_name," ~ dbt_invmoment(",number(prior$parameter[["location"]]),",",number(prior$parameter[["tau"]]),",",number(prior$parameter[["order"]]),",",number(prior$parameter[["df"]]),")")
   )
 
   # add truncation
   if(!.is_prior_default_range(prior)){
     syntax <- paste0(syntax, "T(",
-                     ifelse(is.infinite(prior$truncation[["lower"]]),"",prior$truncation[["lower"]]),
+                     ifelse(is.infinite(prior$truncation[["lower"]]),"",number(prior$truncation[["lower"]])),
                      ",",
-                     ifelse(is.infinite(prior$truncation[["upper"]]),"",prior$truncation[["upper"]]),
+                     ifelse(is.infinite(prior$truncation[["upper"]]),"",number(prior$truncation[["upper"]])),
                      ")")
   }
 
@@ -279,12 +282,15 @@ JAGS_add_priors           <- function(syntax, prior_list){
   check_char(parameter_name, "parameter_name")
 
   metadata <- .prior_ordered_metadata(prior)
+  spec <- .bt_ordered_spec(parameter_name, prior)
   total_name <- .prior_ordered_total_name(parameter_name)
 
-  syntax <- .JAGS_prior.ordered_total(prior$total, total_name, metadata$theta_dim)
+  syntax <- .JAGS_prior.ordered_total(prior$total, total_name, metadata$theta_dim, spec$total_node)
 
   emitted_now <- character()
-  dirichlet_records <- .prior_ordered_dirichlet_records(prior)
+  dirichlet_records <- spec$allocations[vapply(spec$allocations, function(record){
+    identical(record$spec$type, "dirichlet")
+  }, logical(1))]
   for(record in dirichlet_records){
     if(record$key %in% emitted_allocations || record$key %in% emitted_now){
       next
@@ -293,37 +299,21 @@ JAGS_add_priors           <- function(syntax, prior_list){
     for(j in seq_len(record$dim)){
       syntax <- paste0(
         syntax,
-        eta_name, "[", j, "] ~ dgamma(", record$spec$alpha[j], ", 1)\n"
+        eta_name, "[", j, "] ~ dgamma(", .prior_ordered_format_number(record$spec$alpha[j]), ", 1)\n"
       )
     }
-    for(j in seq_len(record$dim)){
-      syntax <- paste0(
-        syntax,
-        record$node, "[", j, "] <- ", eta_name, "[", j, "] / sum(",
-        eta_name, "[1:", record$dim, "])\n"
-      )
-    }
+    syntax <- paste0(syntax, paste0(.bt_deterministic_node_emit(
+      .bt_dnode_ordered_allocation(parameter_name, record)), collapse = "\n"), "\n")
     emitted_now <- c(emitted_now, record$key)
   }
 
-  for(i in seq_len(metadata$coefficient_dim)){
-    lhs <- if(metadata$coefficient_dim == 1L){
-      parameter_name
-    }else{
-      paste0(parameter_name, "[", i, "]")
-    }
-    syntax <- paste0(
-      syntax,
-      lhs, " <- ",
-      .prior_ordered_coefficient_expression(prior, parameter_name, i),
-      "\n"
-    )
-  }
+  syntax <- paste0(syntax, paste0(.bt_deterministic_node_emit(
+    .bt_dnode_ordered_coefficients(spec)), collapse = "\n"), "\n")
 
   list(syntax = syntax, allocation_keys = emitted_now)
 }
 
-.JAGS_prior.ordered_total  <- function(total, total_name, theta_dim){
+.JAGS_prior.ordered_total  <- function(total, total_name, theta_dim, total_node = NULL){
 
   if(is.prior.spike_and_slab(total) && theta_dim > 1L){
     variable_prior <- .get_spike_and_slab_variable(total)
@@ -334,15 +324,14 @@ JAGS_add_priors           <- function(syntax, prior_list){
     names(inclusion_list) <- paste0(total_name, "_inclusion")
 
     syntax <- paste0(
-      .JAGS_add_priors.fun(inclusion_list),
+      .JAGS_add_priors.fun(inclusion_list, numeric_literals = TRUE),
       total_name, "_indicator ~ dbern(", total_name, "_inclusion)\n"
     )
     for(i in seq_len(theta_dim)){
       syntax <- paste0(
         syntax,
-        .JAGS_prior.simple(variable_prior, paste0(total_name, "_variable[", i, "]")),
-        total_name, "[", i, "] <- ", total_name, "_variable[", i, "] * ",
-        total_name, "_indicator\n"
+        .JAGS_prior.simple(variable_prior, paste0(total_name, "_variable[", i, "]"), numeric_literals = TRUE),
+        .bt_deterministic_node_emit(total_node)[[i]], "\n"
       )
     }
     return(syntax)
@@ -355,7 +344,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
         for(i in seq_len(theta_dim)){
           syntax <- paste0(
             syntax,
-            total_name, "[", i, "] <- ", total$parameters[["location"]], "\n"
+            total_name, "[", i, "] <- ", .prior_ordered_format_number(total$parameters[["location"]]), "\n"
           )
         }
         return(syntax)
@@ -365,14 +354,14 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
     syntax <- ""
     for(i in seq_len(theta_dim)){
-      syntax <- paste0(syntax, .JAGS_prior.simple(total, paste0(total_name, "[", i, "]")))
+      syntax <- paste0(syntax, .JAGS_prior.simple(total, paste0(total_name, "[", i, "]"), numeric_literals = TRUE))
     }
     return(syntax)
   }
 
   total_list <- list(total)
   names(total_list) <- total_name
-  .JAGS_add_priors.fun(total_list)
+  .JAGS_add_priors.fun(total_list, numeric_literals = TRUE)
 }
 .JAGS_prior.PP             <- function(prior){
 
@@ -463,7 +452,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
   )
 }
 
-.JAGS_prior.spike_and_slab <- function(prior, parameter_name){
+.JAGS_prior.spike_and_slab <- function(prior, parameter_name, numeric_literals = FALSE){
 
   .check_prior(prior)
   if(!is.prior.spike_and_slab(prior))
@@ -476,15 +465,15 @@ JAGS_add_priors           <- function(syntax, prior_list){
   names(prior_inclusion_list) <- paste0(parameter_name, "_inclusion")
 
   syntax <- paste0(
-    .JAGS_add_priors.fun(prior_variable_list),
-    .JAGS_add_priors.fun(prior_inclusion_list),
+    .JAGS_add_priors.fun(prior_variable_list, numeric_literals),
+    .JAGS_add_priors.fun(prior_inclusion_list, numeric_literals),
     parameter_name, "_indicator ~ dbern(",   paste0(parameter_name, "_inclusion"), ")\n",
     .bt_deterministic_node_emit(.bt_dnode_prior_mixture(parameter_name, prior)), "\n"
   )
 
   return(syntax)
 }
-.JAGS_prior.mixture        <- function(prior_list, parameter_name){
+.JAGS_prior.mixture        <- function(prior_list, parameter_name, numeric_literals = FALSE){
 
   .check_prior_list(prior_list, allow_expressions = TRUE)
   if(!is.prior.mixture(prior_list))
@@ -556,7 +545,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
     syntax <- paste0(
       " ", parameter_name, "_indicator ~ dcat(c(", paste0(prior_weights, collapse = ", "), "))\n",
-      sapply(.JAGS_add_priors.fun(prior_components), paste, collapse = "\n"),
+      sapply(.JAGS_add_priors.fun(prior_components, numeric_literals), paste, collapse = "\n"),
       " ", .bt_deterministic_node_emit(.bt_dnode_prior_mixture(parameter_name, prior_list)), "\n"
     )
   }

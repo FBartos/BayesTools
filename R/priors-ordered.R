@@ -328,7 +328,21 @@
   if(length(x) != 1L || is.na(x) || !is.finite(x)){
     stop("Fixed ordered allocation weights must be finite.", call. = FALSE)
   }
-  format(x, digits = 16, scientific = FALSE, trim = TRUE)
+  format(x, digits = 17, scientific = FALSE, trim = TRUE, decimal.mark = ".")
+}
+
+.bt_ordered_numeric_provenance <- function(total){
+
+  if(is.prior.mixture(total)){
+    return(lapply(total, .bt_ordered_numeric_provenance))
+  }
+  lapply(total$parameters, function(value){
+    if(is.numeric(value)){
+      vapply(value, function(x){
+        if(is.finite(x)) .prior_ordered_format_number(x) else as.character(x)
+      }, character(1))
+    }else value
+  })
 }
 
 .prior_ordered_component_contrast_dims <- function(prior){
@@ -433,7 +447,14 @@
     slice_index = slice_index,
     theta_dim = theta_dim,
     coefficient_dim = nrow(coef_grid),
-    allocations = allocation_records
+    allocations = allocation_records,
+    numeric_literals = list(
+      total = .bt_ordered_numeric_provenance(prior$total),
+      allocations = lapply(allocation_records, function(record){
+        values <- if(identical(record$spec$type, "fixed")) record$spec$weights else record$spec$alpha
+        vapply(values, .prior_ordered_format_number, character(1))
+      })
+    )
   )
 
   attr(prior, "ordered_metadata") <- metadata
