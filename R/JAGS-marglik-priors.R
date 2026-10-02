@@ -177,17 +177,24 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
 
 .bt_JAGS_marglik_compile_prior_rows_evaluator <- function(prior_list){
 
-  scalar_evaluator <- .bt_JAGS_bridge_compile_prior_list_evaluator(prior_list)
   if(length(prior_list) == 0L){
     return(function(samples) numeric(nrow(samples)))
   }
 
-  evaluators <- Map(
-    .bt_JAGS_marglik_compile_prior_rows_component,
-    prior_list,
-    names(prior_list)
-  )
+  evaluators <- vector("list", length(prior_list))
+  allocation_keys <- character()
+  for(i in seq_along(prior_list)){
+    prior <- prior_list[[i]]
+    if(is.prior.ordered(prior) && is.prior.simple(prior$total) && !.is_prior_expression(prior$total)){
+      compiled <- .bt_ordered_compile_density(prior_list[i], emitted_allocations = allocation_keys)
+      evaluators[[i]] <- compiled$evaluate
+      allocation_keys <- unique(c(allocation_keys, compiled$allocation_keys))
+    }else{
+      evaluators[i] <- list(.bt_JAGS_marglik_compile_prior_rows_component(prior, names(prior_list)[[i]]))
+    }
+  }
   if(any(vapply(evaluators, is.null, logical(1)))){
+    scalar_evaluator <- .bt_JAGS_bridge_compile_prior_list_evaluator(prior_list)
     return(function(samples){
       vapply(seq_len(nrow(samples)), function(i){
         sample_row <- stats::setNames(

@@ -124,6 +124,7 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
     prior_list <- list()
   }
   all_nodes <- .bt_deterministic_nodes_fit(fit)
+  selected <- names(all_nodes)
   requested <- !is.null(nodes)
   if(requested){
     unknown <- setdiff(nodes, names(all_nodes))
@@ -135,7 +136,7 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
         call. = FALSE
       )
     }
-    all_nodes <- all_nodes[unique(nodes)]
+    selected <- unique(nodes)
   }
   all_nodes <- unname(all_nodes)
   evaluators <- lapply(all_nodes, .bt_deterministic_node_evaluator, prior_list = prior_list)
@@ -155,7 +156,7 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
     values <- vector("list", length(all_nodes))
     for(i in seq_along(all_nodes)){
       node_values <- evaluators[[i]](lookup)
-      if(is.null(node_values) && requested){
+      if(is.null(node_values) && requested && all_nodes[[i]]$node %in% selected){
         stop(
           "Deterministic node '", all_nodes[[i]]$node, "' is unavailable from 'draws': ",
           "its dependencies ",
@@ -164,7 +165,13 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
           call. = FALSE
         )
       }
-      values[i] <- list(node_values)
+      if(!is.null(node_values)){
+        present <- intersect(colnames(node_values), colnames(lookup$draws))
+        lookup$draws[, present] <- node_values[, present, drop = FALSE]
+        added <- setdiff(colnames(node_values), colnames(lookup$draws))
+        if(length(added)) lookup$draws <- cbind(lookup$draws, node_values[, added, drop = FALSE])
+      }
+      values[i] <- list(if(all_nodes[[i]]$node %in% selected) node_values else NULL)
     }
     values <- values[!vapply(values, is.null, logical(1))]
 
@@ -197,6 +204,8 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
   "lkj",
   "omega",
   "prior_mixture",
+  "ordered_allocation",
+  "ordered_coefficient",
   "linear_predictor"
 )
 
@@ -240,6 +249,8 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
     lkj = .bt_dnode_lkj_emit(node),
     omega = .bt_dnode_omega_emit(node),
     prior_mixture = .bt_dnode_prior_mixture_emit(node),
+    ordered_allocation = .bt_dnode_ordered_allocation_emit(node),
+    ordered_coefficient = .bt_dnode_ordered_coefficient_emit(node),
     linear_predictor = .bt_dnode_linear_predictor_emit(node),
     stop("Unsupported deterministic node family '", node$family, "'.", call. = FALSE)
   )
@@ -256,6 +267,8 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
     lkj = .bt_dnode_lkj_evaluate(node, lookup),
     omega = .bt_dnode_omega_evaluate(node, lookup),
     prior_mixture = .bt_dnode_prior_mixture_evaluate(node, lookup),
+    ordered_allocation = .bt_dnode_ordered_allocation_evaluate(node, lookup),
+    ordered_coefficient = .bt_dnode_ordered_coefficient_evaluate(node, lookup),
     linear_predictor = .bt_dnode_linear_predictor_evaluate(node, lookup),
     stop("Unsupported deterministic node family '", node$family, "'.", call. = FALSE)
   )
@@ -328,9 +341,19 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
 
   nodes <- list()
   prior_names <- names(prior_list)
+  ordered_keys <- character()
   for(i in seq_along(prior_list)){
     prior <- prior_list[[i]]
-    prior_nodes <- if(is.prior.weightfunction(prior) || is_prior_bias(prior)){
+    prior_nodes <- if(is.prior.ordered(prior)){
+      spec <- .bt_ordered_spec(prior_names[[i]], prior)
+      records <- spec$allocations[vapply(spec$allocations, function(record){
+        identical(record$spec$type, "dirichlet") && !record$key %in% ordered_keys
+      }, logical(1))]
+      ordered_keys <- c(ordered_keys, names(records))
+      c(list(spec$total_node), lapply(records, function(record){
+        .bt_dnode_ordered_allocation(spec$parameter, record)
+      }), list(.bt_dnode_ordered_coefficients(spec)))
+    }else if(is.prior.weightfunction(prior) || is_prior_bias(prior)){
       list(.bt_dnode_omega(prior_names[[i]], prior))
     }else if(inherits(prior, "prior.bias_mixture")){
       list(

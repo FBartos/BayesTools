@@ -1,5 +1,63 @@
 skip_if_not_test_profile("unit")
 
+test_that("ordered recipes replay primitive chains and batched kernels independently", {
+  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi", "top"), 2L)))
+  info <- JAGS_formula(~ f, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(prior("normal", list(0, 2)), allocation = prior("dirichlet", list(alpha = c(2, 3, 4))))))
+  prior <- info$prior_list$mu_f
+  spec <- .bt_ordered_spec("mu_f", prior)
+  gamma_names <- spec$allocations[[1L]]$gamma_coordinates
+  samples <- cbind(mu_f_ordered_total = c(2, -3), matrix(c(1, 3, 2, 2, 3, 1), 2))
+  colnames(samples)[-1L] <- gamma_names
+  nodes <- .bt_deterministic_nodes(info$prior_list)
+  coefficient <- nodes$mu_f
+  replay <- .bt_deterministic_node_evaluate(coefficient, .bt_deterministic_lookup(samples))
+  expected <- matrix(c(2/6, -9/6, 4/6, -6/6, 6/6, -3/6), 2,
+    dimnames = list(NULL, spec$coefficient_names))
+  expect_equal(replay, expected, tolerance = 1e-15)
+  normalized <- samples[, gamma_names, drop = FALSE] / rowSums(samples[, gamma_names, drop = FALSE])
+  colnames(normalized) <- spec$allocations[[1L]]$coordinates
+  expect_identical(.bt_deterministic_node_evaluate(coefficient,
+    .bt_deterministic_lookup(cbind(samples[, 1, drop = FALSE], normalized))), replay)
+  kernel <- JAGS_ordered_density_kernel(info$prior_list["mu_f"])
+  oracle <- dnorm(samples[, 1], 0, 2, log = TRUE) +
+    dgamma(samples[, 2], 2, 1, log = TRUE) + dgamma(samples[, 3], 3, 1, log = TRUE) +
+    dgamma(samples[, 4], 4, 1, log = TRUE)
+  expect_equal(kernel(samples), oracle, tolerance = 1e-14)
+  expect_equal(JAGS_marglik_priors_rows_evaluator(info$prior_list)(samples), oracle, tolerance = 1e-14)
+  chart <- setNames(list(list(kind = "group", J = 1L)), spec$allocations[[1L]]$key)
+  expect_equal(JAGS_ordered_density_kernel(info$prior_list["mu_f"], chart)(samples),
+    dnorm(samples[, 1], 0, 2, log = TRUE) + dbeta(samples[, 2]/6, 2, 7, log = TRUE), tolerance = 1e-14)
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(cbind(samples, replay))),
+    info$prior_list, formula_design = list(mu = info$formula_design))
+  stale <- cbind(samples, replay * 99)
+  stale[, gamma_names] <- stale[, gamma_names] * c(3, 1, 2)
+  expect_equal(JAGS_evaluate_deterministic(fit, stale, nodes = "mu_f"),
+    .bt_deterministic_node_evaluate(coefficient, .bt_deterministic_lookup(stale)), tolerance = 0)
+  expect_error(JAGS_ordered_parameter_spec(fit), class = "BayesTools_ordered_metadata_unavailable")
+})
+
+test_that("ordered active kernels localize each nested total event", {
+  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2)), g = factor(rep(c("a", "b"), 3)))
+  total <- prior_spike_and_slab(prior("normal", list(0, 2)), prior("point", list(.5)))
+  info <- JAGS_formula(~ f*g, "mu", data, list(intercept=prior("point", list(0)),
+    f=prior_ordered(prior("normal", list(0,1))),
+    g=prior_factor("normal", list(0,1), contrast="independent"), `f:g`=prior_ordered(total, allocation=c(.2,.8))))
+  p <- info$prior_list[["mu_f:g"]]
+  parameter <- names(info$prior_list)[vapply(info$prior_list, function(p) is.prior.ordered(p) && is.prior.spike_and_slab(p$total), logical(1))]
+  p <- info$prior_list[[parameter]]
+  spec <- .bt_ordered_spec(parameter, p)
+  samples <- cbind(c(0, 1, 0, 1), c(1, 2, 3, 4), c(2, 3, 4, 5))
+  colnames(samples) <- c(spec$total_node$spec$indicator, spec$total_node$spec$components[[1L]]$coordinates)
+  expected <- c(0, dnorm(2,0,2,log=TRUE)+dnorm(3,0,2,log=TRUE), 0,
+    dnorm(4,0,2,log=TRUE)+dnorm(5,0,2,log=TRUE))
+  expect_equal(JAGS_ordered_density_kernel(setNames(list(p), parameter))(samples), expected, tolerance = 1e-14)
+  totals <- .bt_ordered_total_values(spec, .bt_deterministic_lookup(samples))
+  expect_equal(unname(totals), unname(samples[, -1L, drop=FALSE] * samples[, 1L]), tolerance=0)
+  samples[1, 1] <- 2
+  expect_error(JAGS_ordered_density_kernel(setNames(list(p), parameter))(samples), class="BayesTools_ordered_invalid_state")
+})
+
 test_that("prior_ordered() validates constructor inputs", {
   p <- prior_ordered(prior("normal", list(0, 1)))
 

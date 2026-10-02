@@ -117,6 +117,10 @@
 .bt_dnode_prior_mixture_emit <- function(node){
 
   spec <- node$spec
+  if(identical(spec$kind, "ordered_spike_and_slab")){
+    component <- spec$components[[1L]]
+    return(paste0(node$coordinates, " <- ", component$coordinates, " * ", spec$indicator))
+  }
   if(identical(spec$kind, "spike_and_slab")){
     return(paste0(node$node, " = ", node$node, "_variable * ", spec$indicator))
   }
@@ -163,7 +167,10 @@
     .bt_deterministic_lookup_values(lookup, component$coordinates)
   }
 
-  if(identical(spec$kind, "spike_and_slab")){
+  if(spec$kind %in% c("spike_and_slab", "ordered_spike_and_slab")){
+    if(any(!is.finite(indicator)) || any(!indicator %in% c(0, 1))){
+      .bt_ordered_stop("Ordered inclusion indicator draws must be zero or one.", "BayesTools_ordered_invalid_state")
+    }
     variable <- component_values(spec$components[[1L]])
     if(is.null(variable)){
       return(NULL)
