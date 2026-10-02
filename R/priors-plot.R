@@ -54,7 +54,8 @@
 #' ggplot results use the original figure indices: a multiple-figure selection
 #' returns a list through the largest selected index, with \code{NULL} entries
 #' for unselected figures and selected levels whose curves are omitted. A bare
-#' ggplot is returned only when one visible figure was selected. For an
+#' ggplot is returned only when exactly one figure is selected; a selection of
+#' several figures always returns a positional list, even if one figure is visible. For an
 #' ordered level with mixed probability measure, the continuous density and
 #' exact probability-mass arrows are drawn together without rescaling either
 #' component.
@@ -68,7 +69,13 @@
 #' Intrinsic singularities, such as a Gamma total with shape below one, and
 #' unknown classifications are retained. This display rule also applies to
 #' [lines.prior()] and [geom_prior()]; it does not change [density.prior()]
-#' or [prior_density_ordinate()]. Direct prior selectors keep their original
+#' or [prior_density_ordinate()]. If the display density lacks its declared
+#' atoms, their locations and probabilities are recovered from the exact prior
+#' route before omission. Output transformations map their locations and leave
+#' probability masses unchanged. Unavailable exact atom recovery raises
+#' \code{BayesTools_ordered_prior_display_unavailable} (also
+#' \code{BayesTools_plot_condition}), without guessing atoms from sampled values.
+#' Direct prior selectors keep their original
 #' level numbering, including cumulative reference levels. If all selected
 #' curves are omitted and there are no visible point masses, the standalone
 #' plot raises \code{BayesTools_ordered_prior_display_empty} (also
@@ -205,7 +212,8 @@ plot.prior <- function(x, plot_type = "base",
 
   # ordered factor prior plots
   if(is.prior.ordered(x)){
-    plot_data <- .plot_data_ordered_prior_display(x, plot_data)
+    plot_data <- .plot_data_ordered_prior_display(x, plot_data,
+      transformation = transformation, transformation_arguments = transformation_arguments)
     plots <- .plot.prior.simplex(x = x, plot_type = plot_type, plot_data = plot_data, show_figures = show_figures, par_name = par_name, ...)
     if(plot_type == "ggplot"){
       return(plots)
@@ -404,7 +412,39 @@ plot.prior <- function(x, plot_type = "base",
 
 # Keep original direct selectors while omitting allocation singular curves.
 # This modifies display data only, never density() output.
-.plot_data_ordered_prior_display <- function(prior, plot_data){
+.plot_ordered_prior_atom_locations <- function(route){
+
+  if(identical(route$type, "atom")) return(unique(route$locations))
+  if(identical(route$type, "conditional_normal")){
+    # The route factory folds point multipliers and expands mixtures before
+    # constructing this continuous normal/continuous multiplier node.
+    return(numeric())
+  }
+  if(identical(route$type, "mixture")){
+    locations <- lapply(route$components[route$weights > 0], .plot_ordered_prior_atom_locations)
+    if(any(vapply(locations, is.null, logical(1)))) return(NULL)
+    return(unique(as.numeric(unlist(locations, use.names = FALSE))))
+  }
+  if(identical(route$type, "transform")){
+    locations <- .plot_ordered_prior_atom_locations(route$source)
+    if(is.null(locations) || length(locations) == 0L) return(locations)
+    return(unique(.density.prior_transformation_x(locations,
+      route$transformation, route$arguments)))
+  }
+  unique(.prior_density_ordinate_provenance_atoms(.prior_density_route_provenance(route)))
+}
+
+.plot_ordered_prior_display_unavailable <- function(cause){
+
+  stop(structure(list(message = paste0(
+    "The ordered prior display is unavailable: ", cause, ". ",
+    "Use 'prior_density_ordinate()' to inspect the prior measure."
+  ), call = NULL), class = c("BayesTools_ordered_prior_display_unavailable",
+    "BayesTools_plot_condition", "error", "condition")))
+}
+
+.plot_data_ordered_prior_display <- function(prior, plot_data,
+                                            transformation = NULL, transformation_arguments = NULL){
 
   prior <- .prior_ordered_default_bound(prior)
   metadata <- .prior_ordered_metadata(prior)
@@ -417,15 +457,38 @@ plot.prior <- function(x, plot_type = "base",
       .prior_linear_density_default_grid())
     if(.plot_ordered_prior_suppress_curve(route)){
       component <- plot_data[[i]]
-      atoms <- if(inherits(component, "density.prior.mixed_measure")) component$atoms else NULL
-      if(!is.null(atoms) && nrow(atoms) > 0L){
+      atoms <- component$atoms
+      if(is.null(atoms)){
+        locations <- .plot_ordered_prior_atom_locations(route)
+        if(is.null(locations) || any(!is.finite(locations))){
+          .plot_ordered_prior_display_unavailable(
+            "declared point-mass locations could not be recovered from its exact prior route")
+        }
+        masses <- vapply(locations, function(location){
+          ordinate <- .prior_density_route_ordinate(route, location)
+          mass <- ordinate$point_mass
+          if(!isTRUE(ordinate$exact) || !is.numeric(mass) || length(mass) != 1L ||
+             !is.finite(mass) || mass < 0){
+            .plot_ordered_prior_display_unavailable(
+              "declared point-mass probabilities could not be recovered exactly from its prior route")
+          }
+          mass
+        }, numeric(1))
+        if(!is.null(transformation) && length(locations) > 0L){
+          locations <- .density.prior_transformation_x(locations, transformation, transformation_arguments)
+        }
+        atoms <- data.frame(location = locations, mass = masses)
+      }
+      if(nrow(atoms) > 0L){
+        component$atoms <- atoms
         component$continuous <- NULL
         component$x <- atoms$location
         component$y <- atoms$mass
         class(component) <- setdiff(class(component), "density.prior.simple")
-        class(component) <- unique(c(class(component), "density.prior.point"))
+        class(component) <- unique(c("density.prior.mixed_measure", class(component), "density.prior.point"))
         attr(component, "x_range") <- range(atoms$location)
         attr(component, "y_range") <- c(0, max(atoms$mass))
+        attr(component, "measure_schema_version") <- 1L
       }else{
         component <- structure(list(x = numeric(), y = numeric()),
           class = "density.prior.display_empty")

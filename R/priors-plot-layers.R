@@ -102,7 +102,8 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   }
 
   if(is.prior.ordered(x) || is.prior.simplex(x)){
-    if(is.prior.ordered(x)) plot_data <- .plot_data_ordered_prior_display(x, plot_data)
+    if(is.prior.ordered(x)) plot_data <- .plot_data_ordered_prior_display(x, plot_data,
+      transformation = transformation, transformation_arguments = transformation_arguments)
     selected <- if(is.null(show_parameter)){
       seq_along(plot_data)
     }else{
@@ -247,7 +248,8 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   }
 
   if(is.prior.ordered(x) || is.prior.simplex(x)){
-    if(is.prior.ordered(x)) plot_data <- .plot_data_ordered_prior_display(x, plot_data)
+    if(is.prior.ordered(x)) plot_data <- .plot_data_ordered_prior_display(x, plot_data,
+      transformation = transformation, transformation_arguments = transformation_arguments)
     selected <- if(is.null(show_parameter)){
       seq_along(plot_data)
     }else{

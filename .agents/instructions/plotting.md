@@ -47,8 +47,13 @@ source files.
 
 Ordered prior display suppression uses the shared exact-route predicate: omit
 the whole continuous curve only for allocation-induced infinity with no
-intrinsically infinite total; keep atoms and unknown classifications. Direct
-fixed-total allocation shares check both exact support endpoints. Direct
+intrinsically infinite total; keep atoms and unknown classifications. Display
+densities missing their atom table recover locations from declared route
+nodes and probabilities from exact route ordinates. Apply output transformations
+only to recovered locations; preserve already transformed atoms and never scale
+their masses by a Jacobian. Unknown recovery raises the typed display-unavailable
+condition rather than erasing or guessing atoms.
+Direct fixed-total allocation shares check both exact support endpoints. Direct
 prior selectors retain reference numbering; multiple ordered ggplot selections
 return positional lists with NULL holes for unselected or suppressed figures,
 and only a single selected visible figure collapses to a ggplot. Factor overlays omit persisted

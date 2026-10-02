@@ -62,6 +62,21 @@ test_that("ordered level plots preserve declared curves atoms and custom styles"
   }
 })
 
+test_that("ordered direct mixed-total displays retain declared spike atoms", {
+  fixture <- ordered_plot_test_fixture(
+    prior_spike_and_slab(prior("point", list(2)), prior("point", list(.5))),
+    prior("dirichlet", list(c(2, 2, .5))))
+  for(backend in c("base", "ggplot")){
+    draw <- function(){
+      set.seed(600)
+      plot(fixture$prior, show_figures = 3L, plot_type = backend,
+        n_points = 64L, n_samples = 128L, xlab = "Level effect")
+    }
+    vdiffr::expect_doppelganger(paste0("ordered-direct-mixed-spike-", backend),
+      if(backend == "base") draw else draw())
+  }
+})
+
 test_that("ordered direct selections retain holes when curves are omitted", {
   render_selection <- function(prior, show_figures){
     plots <- plot(prior, show_figures = show_figures, plot_type = "ggplot",

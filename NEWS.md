@@ -829,6 +829,10 @@ old behaviour.
     Fixed-total allocation shares check both exact endpoints. Multiple ordered
     ggplot selections preserve figure indices with `NULL` holes for omitted
     levels; each posterior legend key uses only its level's curve or point glyph.
+    Mixed point-total displays recover declared atoms from exact routes before
+    omitting allocation-singular curves, including transformed atom locations
+    with unchanged probability mass; unavailable recovery reports
+    `BayesTools_ordered_prior_display_unavailable`.
     All-hidden standalone selections report `BayesTools_ordered_prior_display_empty`.
   - `plot_models()` uses ordered semantic level summaries and selected level
     draws. Posterior-only plots skip prior summaries and unused prior transforms;

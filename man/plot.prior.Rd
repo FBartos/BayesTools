@@ -110,7 +110,8 @@ the ggplot method returns a list unless a single figure is selected. Ordered
 ggplot results use the original figure indices: a multiple-figure selection
 returns a list through the largest selected index, with \code{NULL} entries
 for unselected figures and selected levels whose curves are omitted. A bare
-ggplot is returned only when one visible figure was selected. For an
+ggplot is returned only when exactly one figure is selected; a selection of
+several figures always returns a positional list, even if one figure is visible. For an
 ordered level with mixed probability measure, the continuous density and
 exact probability-mass arrows are drawn together without rescaling either
 component.
@@ -128,7 +129,13 @@ For a fixed total times an allocation share, either exact share endpoint
 Intrinsic singularities, such as a Gamma total with shape below one, and
 unknown classifications are retained. This display rule also applies to
 \code{\link[=lines.prior]{lines.prior()}} and \code{\link[=geom_prior]{geom_prior()}}; it does not change \code{\link[=density.prior]{density.prior()}}
-or \code{\link[=prior_density_ordinate]{prior_density_ordinate()}}. Direct prior selectors keep their original
+or \code{\link[=prior_density_ordinate]{prior_density_ordinate()}}. If the display density lacks its declared
+atoms, their locations and probabilities are recovered from the exact prior
+route before omission. Output transformations map their locations and leave
+probability masses unchanged. Unavailable exact atom recovery raises
+\code{BayesTools_ordered_prior_display_unavailable} (also
+\code{BayesTools_plot_condition}), without guessing atoms from sampled values.
+Direct prior selectors keep their original
 level numbering, including cumulative reference levels. If all selected
 curves are omitted and there are no visible point masses, the standalone
 plot raises \code{BayesTools_ordered_prior_display_empty} (also
