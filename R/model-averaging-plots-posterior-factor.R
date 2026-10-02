@@ -394,7 +394,8 @@
     out <- c(level_points, out)
   }
 
-  return(out)
+  .plot_factor_level_universe(out, colnames(samples), level_legends,
+    ordered = any(vapply(prior_list, is.prior.ordered, logical(1))))
 }
 .plot_data_factor_column_atoms <- function(samples){
 

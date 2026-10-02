@@ -26,6 +26,11 @@
 #' is the prior curve of draws that declare no prior (a \code{prior_list} of
 #' [prior_none()]) and carry no prior density. Other draws without a prior
 #' density (e.g. from [marginal_posterior()] without prior samples) stop.
+#' Direct ordered factor marginal plots omit persisted zero-design reference
+#' rows and retain true non-reference point levels. They use the retained
+#' level color/label list and matching dashed prior-overlay defaults of
+#' [plot_posterior()]. Allocation-induced singular prior curves are quietly
+#' omitted as in [plot.prior()], including when no prior overlay remains.
 #'
 #' @seealso [prior()] [marginal_inference()]  [plot_posterior()]
 #' @export
@@ -68,6 +73,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     # Resolve one plotting range for the jointly displayed prior and posterior.
     plot_data_joined <- c(plot_data, plot_data_prior)
     dots_prior <- .transfer_dots(dots_prior, ...)
+    dots_prior <- .plot_ordered_overlay_styles(dots_prior, plot_data, list(...))
 
     if(is.null(dots_prior[["xlim"]])){
       dots_prior$xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "x_range")))
@@ -157,12 +163,20 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   posterior_samples   <- .plot_data_marginal_level_samples(samples, parameter)
   prior_densities     <- .marginal_posterior_parameter_prior_densities(samples, parameter)
   posterior_densities <- .marginal_posterior_parameter_posterior_densities(samples, parameter)
+  level_metadata <- samples[[parameter]]
+  levels <- if(is.list(level_metadata)) level_metadata else list(level_metadata)
+  reference <- attr(level_metadata, "factor_reference_levels", exact = TRUE)
+  if(isTRUE(attr(level_metadata, "ordered", exact = TRUE)) && !is.null(reference)){
+    if(!identical(names(reference), names(posterior_samples))){
+      stop("The persisted reference-level metadata do not match the marginal factor levels.", call. = FALSE)
+    }
+    posterior_samples <- posterior_samples[!reference]
+    prior_densities <- prior_densities[!reference]
+    posterior_densities <- posterior_densities[!reference]
+    levels <- levels[!reference]
+  }
   if(prior){
     missing <- vapply(prior_densities, is.null, logical(1))
-    levels  <- samples[[parameter]]
-    if(!is.list(levels)){
-      levels <- list(levels)
-    }
     # levels that declare no prior (prior_none()) have no prior curve; any
     # other level without a prior density was created without one
     without_prior <- vapply(levels, .plot_data_samples_without_prior, logical(1))
@@ -221,7 +235,17 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     .plot_data_warn_prior_curve_unavailable(parameter)
   }
 
-  return(out)
+  ordered <- isTRUE(attr(level_metadata, "ordered", exact = TRUE)) || any(vapply(levels, function(x){
+    !is.null(.bt_meta_get(x, "ordered_source"))
+  }, logical(1)))
+  for(i in seq_along(out)){
+    prior_data <- attr(out[[i]], "prior", exact = TRUE)
+    if(!is.null(prior_data)){
+      attr(out[[i]], "prior") <- .plot_factor_level_universe(prior_data,
+        names(posterior_samples), ordered = ordered)
+    }
+  }
+  .plot_factor_level_universe(out, names(posterior_samples), ordered = ordered)
 }
 # Numeric draws of each marginal posterior level with their declared atoms.
 .plot_data_marginal_level_samples <- function(samples, parameter){

@@ -10,9 +10,10 @@
   # level that the contrast design fixes at zero; its priors follow.
   sample_metadata <- samples[[parameter]]
   structural_levels <- NULL
-  if(isTRUE(attr(sample_metadata, "ordered", exact = TRUE)) &&
-     !inherits(sample_metadata, "mixed_posteriors.ordered_transformed")){
-    sample_metadata <- transform_factor_samples(samples)[[parameter]]
+  if(any(vapply(prior_list, is.prior.ordered, logical(1)))){
+    if(!inherits(sample_metadata, "mixed_posteriors.ordered_transformed")){
+      sample_metadata <- transform_factor_samples(samples)[[parameter]]
+    }
     design <- as.matrix(.factor_term_design_from_metadata(sample_metadata)$design)
     structural_levels <- rowSums(design != 0) == 0
   }
@@ -58,7 +59,8 @@
     }
   }
 
-  return(plot_data)
+  .plot_factor_level_universe(plot_data, rownames(factor_weights), level_legends,
+    ordered = any(vapply(prior_list, is.prior.ordered, logical(1))))
 }
 
 .plot_data_prior_has_condition <- function(samples, parameter){
@@ -254,6 +256,8 @@
   )
 
   if(length(plot_data) == 0L){
+    route <- .prior_density_route_from_adaptive(attr(prior_density, "adaptive_evaluation", exact = TRUE))
+    if(.plot_ordered_prior_suppress_curve(route)) return(plot_data)
     return(NULL)
   }
 
@@ -294,7 +298,9 @@
 
 .plot_data_samples_prior_bounds <- function(prior_list, factor_contrasts = FALSE){
 
-  prior_list_simple <- prior_list[!vapply(prior_list, is.prior.point, logical(1))]
+  prior_list_simple <- prior_list[!vapply(prior_list, function(prior){
+    is.prior.point(prior) || is.prior.none(prior)
+  }, logical(1))]
   if(length(prior_list_simple) == 0L){
     return(c(-Inf, Inf))
   }

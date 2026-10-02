@@ -45,6 +45,36 @@ attach_test_parameter_map <- function(fit, monitor_names = NULL) {
   BayesTools:::.bt_attach_fit_contract(fit)
 }
 
+# Deterministic source-complete ordered fixture for computed and visual plots.
+# These are synthetic draws, not fitted posterior reference values.
+ordered_plot_test_fixture <- function(total = prior("normal", list(1, 1)),
+                                      allocation = NULL, contrast = "cumulative"){
+  data <- data.frame(f = ordered(rep(c("early", "middle", "late", "last"), 3L),
+    levels = c("early", "middle", "late", "last")))
+  formula <- JAGS_formula(~f, "mu", data, list(intercept = prior("normal", list(0, 1)),
+    f = prior_ordered(total, allocation = allocation, contrast = contrast)))
+  prior <- formula$prior_list$mu_f
+  set.seed(178)
+  draws <- BayesTools:::.prior_ordered_draws(prior, 120L)
+  coefficients <- draws$coefficients
+  colnames(coefficients) <- BayesTools:::.JAGS_prior_factor_names("mu_f", prior)
+  sources <- BayesTools:::.prior_ordered_total_samples(draws, "mu_f")
+  for(record in BayesTools:::.prior_ordered_dirichlet_records(prior)){
+    gamma <- draws$allocation_samples[[record$key]] * seq_len(120L)
+    colnames(gamma) <- BayesTools:::.bt_ordered_spec("mu_f", prior)$allocations[[record$key]]$gamma_coordinates
+    sources <- cbind(sources, gamma)
+  }
+  values <- cbind(mu_intercept = seq(-1, 1, length.out = 120L), coefficients, sources)
+  fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(values)), sample = 120L,
+    summary.pars = list(mutate = NULL), monitor = colnames(values)),
+    class = c("runjags", "BayesTools_fit", "list"))
+  attr(fit, "prior_list") <- formula$prior_list
+  attr(fit, "formula_design") <- list(mu = formula$formula_design)
+  fit <- attach_test_parameter_map(fit)
+  list(fit = fit, prior = prior, draws = values,
+    samples = as_mixed_posteriors(fit, "mu_f", n_prior_samples = 128L))
+}
+
 # The Harrell-Davis estimator (Harrell and Davis, 1982) by its definition: the
 # cell weights are the differences of the Beta(p (m + 1), (1 - p) (m + 1))
 # distribution function over the cells ((i - 1) / m, i / m] of the sorted

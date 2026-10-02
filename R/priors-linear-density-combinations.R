@@ -622,6 +622,7 @@
       "beta",
       list(alpha = share$alpha[[1L]], beta = share$alpha[[2L]])
     )
+    attr(prior_list[[share_name]], "ordered_allocation") <- TRUE
   }
   prior_list[[total_name]] <- total
   list(prior_list = prior_list, total_name = total_name, weight = share$scale)
@@ -3268,6 +3269,9 @@
     route <- .prior_density_route_from_adaptive(
       attr(dist, "adaptive_evaluation", exact = TRUE)
     )
+    if(.plot_ordered_prior_suppress_curve(route)){
+      draw_curve <- FALSE
+    }
     if(!identical(route$type, "unknown") && .prior_density_route_has_leaf(route, "unknown")){
       route <- .prior_density_route_with_grids(route)
     }
@@ -3276,7 +3280,7 @@
     }else{
       .prior_density_route_unresolved_products(route)
     }
-    if(unresolved){
+    if(draw_curve && unresolved){
       .prior_linear_density_warn_curve_unavailable()
       draw_curve <- FALSE
     }

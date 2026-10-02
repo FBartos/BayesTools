@@ -1,5 +1,110 @@
 skip_if_not_test_profile("unit")
 
+test_that("ordered prior omission preserves exact inference and retained level styles", {
+  fixture <- ordered_plot_test_fixture()
+  prior_data <- function(samples){
+    .plot_data_prior_factor_density_transformed(posterior_metadata(samples, "prior_context"),
+      samples, "mu_f", list(fixture$prior), 64L)
+  }
+  raw <- prior_data(fixture$samples)
+  transformed <- prior_data(transform_factor_samples(fixture$samples))
+  expect_identical(raw, transformed)
+  expect_identical(vapply(raw, attr, character(1), "level_name"),
+    c(level2_density = "mu_f[late]", level3_density = "mu_f[last]"))
+  universe <- attr(raw, "factor_level_universe")
+  expect_identical(universe$name, c("mu_f[middle]", "mu_f[late]", "mu_f[last]"))
+  normalized <- .plot_prior_factor_normalize_data(raw)
+  expect_identical(unname(vapply(normalized$plot_data, attr, integer(1), "level_id")), c(2L, 3L))
+  direct <- density(fixture$prior, n_points = 64)
+  filtered <- .plot_data_ordered_prior_display(fixture$prior, direct)
+  expect_s3_class(filtered[[2L]], "density.prior.display_empty")
+  expect_s3_class(filtered[[3L]], "density.prior.simple")
+  expect_identical(direct, density(fixture$prior, n_points = 64))
+  columns <- .JAGS_prior_factor_names("mu_f", fixture$prior)
+  dist <- .prior_density_from_context(posterior_metadata(fixture$samples, "prior_context"),
+    setNames(c(1, 0, 0), columns))
+  ordinate <- prior_density_ordinate(dist, 0)
+  expect_identical(ordinate$behavior, "infinite")
+  expect_true(ordinate$exact)
+  empty <- tryCatch(plot(fixture$prior, show_figures = 2, plot_type = "ggplot", n_points = 64), error = identity)
+  expect_s3_class(empty, "BayesTools_ordered_prior_display_empty")
+  expect_identical(conditionMessage(empty), paste0(
+    "The selected ordered prior display is unavailable because all selected levels have omitted ",
+    "continuous curves and no visible point masses. Use 'show_figures' to select a level with a ",
+    "visible prior curve or point mass."))
+  expect_length(geom_prior(fixture$prior, show_parameter = 2, n_points = 64), 0L)
+  for(samples in list(fixture$samples, transform_factor_samples(fixture$samples))){
+    plot <- plot_posterior(samples, "mu_f", prior = TRUE, plot_type = "ggplot", n_points = 64,
+      col = c("red", "blue", "green"), legend_labels = c("M", "L", "E"))
+    built <- ggplot2::ggplot_build(plot)
+    expect_identical(vapply(built$data[1:2], function(x) unique(x$colour), character(1)), c("blue", "green"))
+    expect_identical(unique(built$data[[1L]]$linetype), 2)
+    expect_identical(plot$scales$get_scales("colour")$breaks, c("M", "L", "E"))
+  }
+  explicit <- plot_posterior(fixture$samples, "mu_f", prior = TRUE, plot_type = "ggplot",
+    n_points = 64, dots_prior = list(col = "purple", lty = 3))
+  expect_identical(unique(ggplot2::ggplot_build(explicit)$data[[1L]]$colour), "purple")
+})
+
+test_that("ordered allocation singularity suppression retains atoms and intrinsic total curves", {
+  for(total in list(prior("normal", list(0, 1)), prior("t", list(0, 1, 3)))){
+    fixture <- ordered_plot_test_fixture(total)
+    direct <- .plot_data_ordered_prior_display(fixture$prior, density(fixture$prior, n_points = 64))
+    expect_s3_class(direct[[2L]], "density.prior.display_empty")
+  }
+  fixture <- ordered_plot_test_fixture(prior("gamma", list(.5, 1)))
+  intrinsic <- .plot_data_ordered_prior_display(fixture$prior, density(fixture$prior, n_points = 64))
+  expect_s3_class(intrinsic[[2L]], "density.prior.simple")
+  fixture <- ordered_plot_test_fixture(prior_mixture(list(prior("normal", list(0, 1)),
+    prior("gamma", list(.5, 1)))))
+  intrinsic_mixture <- .plot_data_ordered_prior_display(fixture$prior, density(fixture$prior, n_points = 64))
+  expect_s3_class(intrinsic_mixture[[2L]], "density.prior.simple")
+  expect_true(any(intrinsic_mixture[[2L]]$y > 0))
+  fixture <- ordered_plot_test_fixture(prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5))))
+  mixed <- .plot_data_ordered_prior_display(fixture$prior, density(fixture$prior, n_points = 64))
+  expect_null(mixed[[2L]]$continuous)
+  expect_equal(mixed[[2L]]$atoms, data.frame(location = 0, mass = .5))
+  expect_false(.plot_ordered_prior_suppress_curve(list(type = "unknown")))
+  ordinary <- prior("normal", list(0, 1))
+  attr(ordinary, "multiply_by") <- "share"
+  route <- .prior_density_route_linear(list(total = ordinary,
+    share = prior("beta", list(1, 2))), c(total = 1), NULL, 256L)
+  expect_false(.plot_ordered_prior_suppress_curve(route))
+  for(allocation in list(c(0, .3, .7), NULL)){
+    fixture <- ordered_plot_test_fixture(prior("point", list(2)), allocation)
+    data <- .plot_data_samples.factor(fixture$samples, "mu_f", 64, NULL, NULL, FALSE)
+    points <- data[vapply(data, inherits, logical(1), "density.prior.point")]
+    expect_true(any(vapply(points, function(x) identical(x$x, 2) && identical(x$y, 1), logical(1))))
+    expect_s3_class(plot_posterior(fixture$samples, "mu_f", prior = TRUE,
+      plot_type = "ggplot", n_points = 64), "ggplot")
+  }
+})
+
+test_that("ordered marginal plots retain their level universe after quiet prior omission", {
+  fixture <- ordered_plot_test_fixture()
+  marginal <- marginal_posterior(fixture$samples, "mu_f", use_formula = FALSE,
+    prior_samples = TRUE, n_samples = 128L)
+  samples <- list(mu_f = marginal)
+  data <- .plot_data_marginal_samples(samples, "mu_f", TRUE, 64, NULL, NULL, FALSE)
+  expect_identical(attr(data, "factor_level_universe")$name, c("middle", "late", "last"))
+  expect_length(attr(data[[1L]], "prior"), 0L)
+  expect_true(isTRUE(attr(attr(data, "factor_level_universe"), "ordered")))
+  plot <- plot_marginal(samples, "mu_f", prior = TRUE, plot_type = "ggplot", n_points = 64,
+    col = c("red", "blue", "green"), legend_labels = c("M", "L", "E"))
+  expect_identical(vapply(ggplot2::ggplot_build(plot)$data[1:2], function(x) unique(x$colour), character(1)),
+    c("blue", "green"))
+  # One selected singular scalar has no prior overlay; its posterior remains.
+  selection <- parameter_catalog_resolve(parameter_catalog(fixture$fit), "f[middle]", namespace = "mu")
+  scalar <- parameter_mixed_posterior(fixture$fit, selection)
+  expect_warning(plot_posterior(list(theta = scalar), "theta", prior = TRUE,
+    plot_type = "ggplot", n_points = 64), NA)
+  zero <- ordered_plot_test_fixture(prior("normal", list(0, 1)), c(0, .3, .7))
+  zero_marginal <- marginal_posterior(zero$samples, "mu_f", use_formula = FALSE, n_samples = 128L)
+  zero_data <- .plot_data_marginal_samples(list(mu_f = zero_marginal), "mu_f", FALSE,
+    64, NULL, NULL, FALSE)
+  expect_true(any(vapply(zero_data, function(x) inherits(x, "density.prior.point") && identical(x$x, 0), logical(1))))
+})
+
 .posterior_density_for_test <- function(x, y, method = "iwmde",
                                         density_method = "precomputed", ...){
   posterior_density_attribute(x = x, y = y, method = method,
@@ -3871,4 +3976,37 @@ test_that("ordered factor posterior plots show level effects by level label", {
     unname(cumulative_levels$level_names),
     paste0("mu_g[", levels, "]")
   )
+})
+
+test_that("base posterior legends preserve level colors with grey prior overlays across contrasts", {
+  for(contrast in c("meandif", "treatment", "independent", "orthonormal", "ordered")){
+    if(contrast == "ordered"){
+      samples <- ordered_plot_test_fixture()$samples
+      parameter <- "mu_f"
+    }else{
+      data <- data.frame(g = factor(rep(c("early", "middle", "late"), 3L),
+        levels = c("early", "middle", "late")))
+      info <- JAGS_formula(~g, "mu", data, list(intercept = prior("normal", list(0, 1)),
+        g = prior_factor(if(contrast %in% c("meandif", "orthonormal")) "mnormal" else "normal",
+          list(0, 1), contrast = contrast)))
+      columns <- .JAGS_prior_factor_names("mu_g", info$prior_list$mu_g)
+      set.seed(178)
+      values <- cbind(mu_intercept = seq(-1, 1, length.out = 120L),
+        matrix(rnorm(120L * length(columns)), 120L, dimnames = list(NULL, columns)))
+      fit <- structure(list(mcmc = coda::mcmc.list(coda::mcmc(values)), sample = 120L),
+        class = c("runjags", "BayesTools_fit", "list"))
+      attr(fit, "prior_list") <- info$prior_list
+      attr(fit, "formula_design") <- list(mu = info$formula_design)
+      samples <- as_mixed_posteriors(attach_test_parameter_map(fit), "mu_g", n_prior_samples = 128L)
+      parameter <- "mu_g"
+    }
+    without <- .capture_graphics_legend_calls_for_test(plot_posterior(samples, parameter,
+      prior = FALSE, n_points = 64))
+    with <- .capture_graphics_legend_calls_for_test(plot_posterior(samples, parameter,
+      prior = TRUE, n_points = 64, dots_prior = list(col = "grey60", lty = 1)))
+    expect_length(without, 1L)
+    expect_length(with, 1L)
+    expect_identical(with[[1L]]$col, without[[1L]]$col)
+    expect_identical(with[[1L]]$col, grDevices::palette.colors(length(with[[1L]]$legend) + 1L)[-1L])
+  }
 })

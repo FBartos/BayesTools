@@ -27,15 +27,22 @@ test_that("ordered prior rows preserve numeric data frames and strict bridge con
     row_order <- c(6L, 1L, 5L, 4L, 2L, 3L)
     reordered <- samples[row_order, c(5L, 2L, 4L, 1L, 3L), drop = FALSE]
     frame <- as.data.frame(reordered)
+    rownames(frame) <- paste0("sample_", row_order)
     frame[[gamma[2L]]] <- as.integer(frame[[gamma[2L]]])
     evaluator <- JAGS_marglik_priors_rows_evaluator(priors)
+    matrix_values <- evaluator(samples)
+    expect_identical(matrix_values[1:4], reference[1:4])
+    # Independent scalar summation can associate shared-key terms differently
+    # on other platforms; only finite values allow binary64 roundoff.
+    expect_equal(matrix_values[5:6], reference[5:6], tolerance = 1e-14)
     for(values in list(samples, as.data.frame(samples))){
-      expect_identical(JAGS_marglik_priors_rows(values, priors), reference)
-      expect_identical(evaluator(values), reference)
+      expect_identical(JAGS_marglik_priors_rows(values, priors), matrix_values)
+      expect_identical(evaluator(values), matrix_values)
     }
     for(values in list(reordered, frame)){
-      expect_identical(evaluator(values), reference[row_order])
-      expect_identical(evaluator(values[1L, , drop = FALSE]), reference[row_order[1L]])
+      expect_identical(JAGS_marglik_priors_rows(values, priors), matrix_values[row_order])
+      expect_identical(evaluator(values), matrix_values[row_order])
+      expect_identical(evaluator(values[1L, , drop = FALSE]), matrix_values[row_order[1L]])
       expect_length(evaluator(values[FALSE, , drop = FALSE]), 0L)
     }
 

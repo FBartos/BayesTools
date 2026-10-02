@@ -113,6 +113,11 @@ resolve a heavy-tailed product term is omitted with a warning of class
 is the prior curve of draws that declare no prior (a \code{prior_list} of
 \code{\link[=prior_none]{prior_none()}}) and carry no prior density. Other draws without a prior
 density (e.g. from \code{\link[=marginal_posterior]{marginal_posterior()}} without prior samples) stop.
+Direct ordered factor marginal plots omit persisted zero-design reference
+rows and retain true non-reference point levels. They use the retained
+level color/label list and matching dashed prior-overlay defaults of
+\code{\link[=plot_posterior]{plot_posterior()}}. Allocation-induced singular prior curves are quietly
+omitted as in \code{\link[=plot.prior]{plot.prior()}}, including when no prior overlay remains.
 }
 \seealso{
 \code{\link[=prior]{prior()}} \code{\link[=marginal_inference]{marginal_inference()}}  \code{\link[=plot_posterior]{plot_posterior()}}

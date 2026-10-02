@@ -889,6 +889,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       names(marginal_posterior_samples) <- level_names
       attr(marginal_posterior_samples, "level_names") <- level_names
       class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior.factor")
+      if(isTRUE(attr(marginal_factor_metadata, "ordered", exact = TRUE))){
+        attr(marginal_posterior_samples, "ordered") <- TRUE
+        attr(marginal_posterior_samples, "factor_reference_levels") <-
+          stats::setNames(rowSums(factor_weights != 0) == 0, level_names)
+      }
 
     }else if(inherits(samples[[parameter]], "mixed_posteriors.simple")){
 

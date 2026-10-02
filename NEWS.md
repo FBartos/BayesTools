@@ -821,6 +821,12 @@ old behaviour.
     read in `JAGS_marglik_parameters()`, `JAGS_marglik_priors()`, and their
     row and formula versions.
 - priors and selection models:
+  - ordered prior plots and layers quietly omit whole continuous curves whose
+    infinite density is introduced by random allocation; atoms and intrinsically
+    singular totals remain. Factor posterior/marginal overlays omit declared
+    reference rows consistently, retain zero and point levels, preserve the full
+    retained level color/label list, and default to matching dashed prior curves.
+    All-hidden standalone selections report `BayesTools_ordered_prior_display_empty`.
   - adds `prior_ordered()` for ordered-factor priors that separate a scalar
     total effect from fixed or Dirichlet allocations across cumulative level
     increments, with `is.prior.ordered()` and the contrasts

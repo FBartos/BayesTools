@@ -45,6 +45,15 @@ Prior plot dispatch and layers live in `R/priors-plot.R` and
 `R/JAGS-diagnostics.R`. Inspect the current family before adding helpers or
 source files.
 
+Ordered prior display suppression uses the shared exact-route predicate: omit
+the whole continuous curve only for allocation-induced infinity with no
+intrinsically infinite total; keep atoms and unknown classifications. Direct
+prior selectors retain reference numbering. Factor overlays omit persisted
+zero-design references and carry `factor_level_universe` before curve omission,
+so retained styles and labels cannot shift. Ordered overlays match posterior
+colors with dashed defaults and one posterior-owned legend. Empty overlays
+skip quietly; all-hidden standalone selections fail with the documented class.
+
 Plotting density grids are approximations for display. They are not evidence
 for the structural classifications returned by `prior_density_ordinate()`.
 Keep requested display limits separate from transformation support. Custom

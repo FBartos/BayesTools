@@ -114,6 +114,21 @@ component.
 \description{
 Plots a prior object
 }
+\details{
+Ordered prior plots omit a whole continuous curve, quietly, when
+exact product provenance shows that its infinite density at the product
+offset is introduced by a random allocation, and the total's own
+continuous density is not intrinsically infinite. Point masses remain.
+Intrinsic singularities, such as a Gamma total with shape below one, and
+unknown classifications are retained. This display rule also applies to
+\code{\link[=lines.prior]{lines.prior()}} and \code{\link[=geom_prior]{geom_prior()}}; it does not change \code{\link[=density.prior]{density.prior()}}
+or \code{\link[=prior_density_ordinate]{prior_density_ordinate()}}. Direct prior selectors keep their original
+level numbering, including cumulative reference levels. If all selected
+curves are omitted and there are no visible point masses, the standalone
+plot raises \code{BayesTools_ordered_prior_display_empty} (also
+\code{BayesTools_plot_condition}); use \code{show_figures} to select a
+level with a visible curve or point mass. An empty added layer is skipped.
+}
 \examples{
 # create some prior distributions
 p0 <- prior(distribution = "point",  parameters = list(location = 0))

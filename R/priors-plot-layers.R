@@ -102,12 +102,14 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   }
 
   if(is.prior.ordered(x) || is.prior.simplex(x)){
+    if(is.prior.ordered(x)) plot_data <- .plot_data_ordered_prior_display(x, plot_data)
     selected <- if(is.null(show_parameter)){
       seq_along(plot_data)
     }else{
       show_parameter
     }
     for(i in selected){
+      if(inherits(plot_data[[i]], "density.prior.display_empty")) next
       if(inherits(plot_data[[i]], "density.prior.mixed_measure")){
         .lines_prior_mixed_measure(
           plot_data[[i]],
@@ -245,6 +247,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   }
 
   if(is.prior.ordered(x) || is.prior.simplex(x)){
+    if(is.prior.ordered(x)) plot_data <- .plot_data_ordered_prior_display(x, plot_data)
     selected <- if(is.null(show_parameter)){
       seq_along(plot_data)
     }else{
@@ -252,6 +255,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     }
     geom <- list()
     for(i in selected){
+      if(inherits(plot_data[[i]], "density.prior.display_empty")) next
       component_geom <- if(inherits(
         plot_data[[i]],
         "density.prior.mixed_measure"
@@ -480,19 +484,28 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   lty       <- if(!is.null(dots[["linetype"]])) dots[["linetype"]] else  if(!is.null(dots[["lty"]])) dots[["lty"]] else .plot.prior_settings()[["lty"]]
 
   if(!all(plot_data$y == 0)){
+    level_mapped <- isTRUE(dots$.factor_level_mapped)
+    point_data <- data.frame(
+      x = plot_data$x[plot_data$y != 0],
+      xend = plot_data$x[plot_data$y != 0],
+      y = 0,
+      yend = plot_data$y[plot_data$y != 0] * scale_y2)
+    mapping <- ggplot2::aes(x = .data[["x"]], xend = .data[["xend"]],
+      y = .data[["y"]], yend = .data[["yend"]])
+    if(level_mapped){
+      point_data$level <- attr(plot_data, "level_label", exact = TRUE)
+      mapping$colour <- ggplot2::aes(colour = .data[["level"]])$colour
+      mapping$linetype <- ggplot2::aes(linetype = .data[["level"]])$linetype
+    }
     geom <- ggplot2::geom_segment(
-      data    = data.frame(
-        x    = plot_data$x[plot_data$y != 0],
-        xend = plot_data$x[plot_data$y != 0],
-        y    = 0,
-        yend = plot_data$y[plot_data$y != 0] * scale_y2),
-      mapping = ggplot2::aes(
-        x    = .data[["x"]],
-        xend = .data[["xend"]],
-        y    = .data[["y"]],
-        yend = .data[["yend"]]),
+      data = point_data,
+      mapping = mapping,
       arrow     = ggplot2::arrow(length = ggplot2::unit(0.5, "cm")),
-      linewidth = 2*lwd, linetype = lty, color = col)
+      linewidth = 2*lwd, show.legend = if(level_mapped) dots$legend else NA)
+    if(!level_mapped){
+      geom$aes_params$linetype <- lty
+      geom$aes_params$colour <- col
+    }
   }else{
     geom <- NULL
   }
@@ -630,12 +643,16 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
         name   = legend_title,
         values = lty,
         breaks = dots[["level_names"]],
-        labels = dots[["level_names"]]),
+        labels = dots[["level_names"]],
+        limits = if(isTRUE(dots$.factor_universe_ordered)) dots[["level_names"]] else NULL,
+        drop = !isTRUE(dots$.factor_universe_ordered)),
       ggplot2::scale_color_manual(
         name   = legend_title,
         values = col,
         breaks = dots[["level_names"]],
-        labels = dots[["level_names"]]))
+        labels = dots[["level_names"]],
+        limits = if(isTRUE(dots$.factor_universe_ordered)) dots[["level_names"]] else NULL,
+        drop = !isTRUE(dots$.factor_universe_ordered)))
   }
 
 
