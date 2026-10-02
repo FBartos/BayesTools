@@ -1579,8 +1579,10 @@ test_that("OR conditions keep the bias columns of every branch in the event", {
                                         conditional_rule = "OR", force_plots = TRUE)
   expect_equal(colnames(samples_single$bias), omega_columns)
 
-  # the PET-PEESE plot under 'mu OR omega' runs: posterior quantiles of
-  # mu + se * PET over the conditioned draws, and the prior overlay against a
+  # the PET-PEESE plot under 'mu OR omega' runs: posterior Harrell-Davis
+  # quantiles of mu + se * PET over the conditioned draws (the median blends the
+  # atom of the draws with mu = PET = 0 with its continuous neighbors), and the
+  # prior overlay against a
   # quadrature reference over the (mu component, bias branch) pairs in the
   # event: (spike, wf) 1/4, (N(-1 or 1, .5), none or wf) 1/4 each and
   # (N(-1 or 1, .5), PET) 1/8 each, with PET ~ N(0, 1)[0, Inf)
@@ -1593,8 +1595,13 @@ test_that("OR conditions keep the bias columns of every branch in the event", {
       upper = vapply(se_grid, function(se) max(layer$y[abs(layer$x - se) < 1e-12]), numeric(1))
     )
   }
+  hd_reference <- function(x, p){
+    m <- length(x)
+    sum(diff(stats::pbeta((0:m) / m, p * (m + 1), (1 - p) * (m + 1))) * sort(x))
+  }
   posterior_line <- vapply(se_grid, function(se){
-    stats::quantile(posterior[in_event, "mu"] + se * posterior[in_event, "PET"], c(.025, .5, .975), names = FALSE)
+    line <- posterior[in_event, "mu"] + se * posterior[in_event, "PET"]
+    vapply(c(.025, .5, .975), function(p) hd_reference(line, p), numeric(1))
   }, numeric(3))
   expect_equal(layers[[4]]$y, posterior_line[2, ], tolerance = 1e-12)
   expect_equal(band(layers[[3]]), posterior_line[c(1, 3), ], tolerance = 1e-12, ignore_attr = TRUE)
@@ -3005,7 +3012,14 @@ test_that("PET-PEESE posterior plot data honors negative effect direction", {
   )
 
   expected_samples <- sapply(x_seq, function(x) samples$mu - samples$PET * x - samples$PEESE * x^2)
-  expected_quantiles <- apply(expected_samples, 2, stats::quantile, probs = c(.500, .025, .975), names = FALSE)
+  # posterior lines use the Harrell-Davis quantiles (naive definition of the estimator)
+  hd_reference <- function(x, p) {
+    m <- length(x)
+    sum(diff(stats::pbeta((0:m) / m, p * (m + 1), (1 - p) * (m + 1))) * sort(x))
+  }
+  expected_quantiles <- apply(expected_samples, 2, function(y) {
+    vapply(c(.500, .025, .975), function(p) hd_reference(y, p), numeric(1))
+  })
 
   expect_equal(plot_data$samples, expected_samples)
   expect_equal(plot_data$y, expected_quantiles[1,])
@@ -3029,6 +3043,107 @@ test_that("PET-PEESE posterior plot data honors negative effect direction", {
   )
   expect_equal(intercept_fallback$samples, plot_data$samples)
   expect_equal(intercept_fallback$y, plot_data$y)
+})
+
+test_that("PET-PEESE posterior lines use Harrell-Davis quantiles for the band and the median", {
+
+  hd_reference <- function(x, p) {
+    m <- length(x)
+    sum(diff(stats::pbeta((0:m) / m, p * (m + 1), (1 - p) * (m + 1))) * sort(x))
+  }
+  hd_columns <- function(x) {
+    apply(x, 2, function(y) vapply(c(.500, .025, .975), function(p) hd_reference(y, p), numeric(1)))
+  }
+
+  set.seed(3)
+  n_draws <- 400
+  samples <- list(
+    mu    = stats::rnorm(n_draws, .2, .1),
+    PET   = stats::rnorm(n_draws, .5, .3),
+    PEESE = stats::rnorm(n_draws, 0, .2)
+  )
+  x_seq <- seq(0, 1, length.out = 7)
+  line_data <- function(transformation = NULL) {
+    BayesTools:::.plot_data_samples.PETPEESE(
+      samples = samples, x_seq = x_seq, x_range = c(0, 1), x_range_quant = NULL,
+      n_points = length(x_seq), transformation = transformation,
+      transformation_arguments = NULL, transformation_settings = FALSE
+    )
+  }
+
+  # the band and the median of one call, over the (transformed) draws
+  plot_data <- line_data()
+  expected  <- hd_columns(plot_data$samples)
+  expect_equal(plot_data$y,     expected[1, ], tolerance = 1e-12)
+  expect_equal(plot_data$y_lCI, expected[2, ], tolerance = 1e-12)
+  expect_equal(plot_data$y_uCI, expected[3, ], tolerance = 1e-12)
+  expect_true(all(plot_data$y_lCI < plot_data$y & plot_data$y < plot_data$y_uCI))
+  expect_equal(attr(plot_data, "y_range"), range(plot_data$y, plot_data$y_lCI, plot_data$y_uCI))
+
+  # the draws, the grid, and the other elements are unchanged
+  expect_equal(
+    plot_data$samples,
+    sapply(x_seq, function(x) samples$mu + samples$PET * x + samples$PEESE * x^2)
+  )
+  expect_identical(plot_data$x, x_seq)
+
+  # the kinks of the empirical quantiles are not reproduced
+  empirical <- apply(plot_data$samples, 2, stats::quantile, probs = c(.500, .025, .975), names = FALSE)
+  expect_false(isTRUE(all.equal(plot_data$y_lCI, empirical[2, ])))
+  # ... but estimate the same quantile (within a fraction of the Monte Carlo scale of the draws)
+  expect_lt(max(abs(plot_data$y_lCI - empirical[2, ])), 0.3 * max(apply(plot_data$samples, 2, stats::sd)))
+
+  # draws are transformed first, the quantiles of the transformed draws follow
+  transformed <- line_data("exp")
+  expect_equal(transformed$samples, exp(plot_data$samples))
+  expect_equal(transformed$y_uCI, hd_columns(exp(plot_data$samples))[3, ], tolerance = 1e-12)
+  expect_false(isTRUE(all.equal(transformed$y_uCI, exp(plot_data$y_uCI))))
+})
+
+test_that("PET-PEESE prior lines from sampled draws keep the empirical quantiles", {
+
+  line_samples <- cbind(
+    mu    = c(0, .1, .3, -.2, .5, .2, 0, .4),
+    PET   = c(.2, 0, .4, .1, -.3, .6, .2, 0),
+    PEESE = c(0, 0, 0, .3, .1, 0, -.1, .2)
+  )
+  x_seq <- c(0, .5, 1)
+
+  summary <- BayesTools:::.petpeese_line_summary_from_samples(
+    line_samples, x_seq, NULL, NULL, quantile_method = "empirical"
+  )
+  expected <- apply(summary$samples, 2, stats::quantile, probs = c(.500, .025, .975), names = FALSE)
+  expect_identical(summary$median, expected[1, ])
+  expect_identical(summary$lCI,    expected[2, ])
+  expect_identical(summary$uCI,    expected[3, ])
+
+  hd <- BayesTools:::.petpeese_line_summary_from_samples(line_samples, x_seq, NULL, NULL)
+  expect_identical(hd$samples, summary$samples)
+  expect_equal(
+    rbind(hd$median, hd$lCI, hd$uCI),
+    harrell_davis_quantile(summary$samples, c(.500, .025, .975)),
+    tolerance = 1e-14
+  )
+  expect_error(
+    BayesTools:::.petpeese_line_summary_from_samples(line_samples, x_seq, NULL, NULL, quantile_method = "type7"),
+    "'arg' should be one of"
+  )
+
+  # the sampled prior line (used when the deterministic summaries are unavailable)
+  set.seed(4)
+  prior_data <- BayesTools:::.plot_data_prior_list.PETPEESE_sampled(
+    prior_list               = list(prior_PET("normal", list(0, 1), truncation = list(-Inf, Inf))),
+    x_seq                    = x_seq,
+    n_points                 = length(x_seq),
+    n_samples                = 200,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    prior_list_mu            = list(prior("spike", list(0)))
+  )
+  expected <- apply(prior_data$samples, 2, stats::quantile, probs = c(.500, .025, .975), names = FALSE)
+  expect_identical(prior_data$y,     expected[1, ])
+  expect_identical(prior_data$y_lCI, expected[2, ])
+  expect_identical(prior_data$y_uCI, expected[3, ])
 })
 
 test_that("factor posterior density curves keep continuous mass scale", {

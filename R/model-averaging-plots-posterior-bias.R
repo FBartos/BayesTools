@@ -48,7 +48,8 @@
     x_seq                    = x_seq,
     transformation           = transformation,
     transformation_arguments = transformation_arguments,
-    effect_direction         = effect_direction
+    effect_direction         = effect_direction,
+    quantile_method          = "harrell_davis"
   )
 
 
@@ -70,9 +71,14 @@
 
   return(out)
 }
+# The pointwise median and 95% band of the PET-PEESE line: by the Harrell-Davis
+# quantiles of the draws (posterior lines; one call, so that the median lies
+# inside the band) or, for the draws of a prior, by the empirical quantiles.
 .petpeese_line_summary_from_samples <- function(samples, x_seq, transformation, transformation_arguments,
-                                                effect_direction = "positive"){
+                                                effect_direction = "positive",
+                                                quantile_method = c("harrell_davis", "empirical")){
 
+  quantile_method <- match.arg(quantile_method)
   samples <- as.matrix(samples)
   if(ncol(samples) != 3){
     stop("'samples' must contain mu, PET, and PEESE columns.", call. = FALSE)
@@ -91,8 +97,12 @@
     x_sam <- .density.prior_transformation_x(x_sam, transformation, transformation_arguments)
   }
 
-  quantiles <- apply(x_sam, 2, stats::quantile, probs = c(.500, .025, .975), names = FALSE)
-  quantiles <- matrix(quantiles, nrow = 3)
+  if(quantile_method == "harrell_davis"){
+    quantiles <- harrell_davis_quantile(x_sam, probs = c(.500, .025, .975))
+  }else{
+    quantiles <- apply(x_sam, 2, stats::quantile, probs = c(.500, .025, .975), names = FALSE)
+    quantiles <- matrix(quantiles, nrow = 3)
+  }
 
   list(
     median  = quantiles[1,],

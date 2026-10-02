@@ -941,6 +941,11 @@ old behaviour.
     point mass it blends the point mass with the continuous draws. A column
     with an infinite draw uses the empirical quantile; an undefined result
     stops with an error of class `BayesTools_harrell_davis_undefined`.
+  - the median and 95% band of posterior PET-PEESE lines
+    (`plot_posterior(., "PETPEESE")`) are Harrell-Davis quantiles of the
+    draws of the line (one call, so the median lies inside the band) instead
+    of empirical quantiles; only the line and band change. Prior lines
+    computed from sampled draws keep the empirical quantiles.
 
 ### Fixes
 - prior densities and distribution methods:

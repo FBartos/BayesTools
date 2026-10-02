@@ -586,7 +586,8 @@
     x_seq                    = x_seq,
     transformation           = transformation,
     transformation_arguments = transformation_arguments,
-    effect_direction         = effect_direction
+    effect_direction         = effect_direction,
+    quantile_method          = "empirical"
   )
 
 
