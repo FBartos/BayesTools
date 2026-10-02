@@ -826,9 +826,13 @@ old behaviour.
     singular totals remain. Factor posterior/marginal overlays omit declared
     reference rows consistently, retain zero and point levels, preserve the full
     retained level color/label list, and default to matching dashed prior curves.
+    Fixed-total allocation shares check both exact endpoints. Multiple ordered
+    ggplot selections preserve figure indices with `NULL` holes for omitted
+    levels; each posterior legend key uses only its level's curve or point glyph.
     All-hidden standalone selections report `BayesTools_ordered_prior_display_empty`.
   - `plot_models()` uses ordered semantic level summaries and selected level
-    draws. Posterior-only plots skip prior summaries; ordered prior means use
+    draws. Posterior-only plots skip prior summaries and unused prior transforms;
+    ordered prior means use
     declared allocation expectations and intervals use structural generalized
     quantiles, respecting exact atom jumps for signed discrete targets.
     Unavailable prior means/intervals report the model and level with

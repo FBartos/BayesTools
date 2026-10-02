@@ -6,7 +6,8 @@
 #' Ordered factors use the retained semantic level effects, omitting their
 #' zero-design reference rows, and per-model transformed level summaries.
 #' The model-averaged estimate uses the selected scalar level draws.
-#' With \code{prior = FALSE}, no prior means or intervals are computed; model
+#' With \code{prior = FALSE}, no prior means or intervals are computed or
+#' transformed; model
 #' probabilities and Bayes factors remain available for updating labels.
 #' With \code{prior = TRUE}, ordered level means use the total mean and exact
 #' allocation expectations with the persisted design. Their equal-tail 95\%
@@ -404,7 +405,9 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 
   # apply transformations
   if(!is.null(transformation)){
-    prior_data[,c("y", "y_lCI","y_uCI")]     <- .density.prior_transformation_x(prior_data[,c("y", "y_lCI","y_uCI")],   transformation, transformation_arguments)
+    if(prior){
+      prior_data[,c("y", "y_lCI","y_uCI")]   <- .density.prior_transformation_x(prior_data[,c("y", "y_lCI","y_uCI")], transformation, transformation_arguments)
+    }
     posterior_data[,c("y", "y_lCI","y_uCI")] <- .density.prior_transformation_x(posterior_data[,c("y", "y_lCI","y_uCI")],   transformation, transformation_arguments)
     overal_mean <- .density.prior_transformation_x(overal_mean, transformation, transformation_arguments)
     overal_lCI  <- .density.prior_transformation_x(overal_lCI,  transformation, transformation_arguments)

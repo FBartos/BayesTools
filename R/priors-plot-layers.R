@@ -501,7 +501,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       data = point_data,
       mapping = mapping,
       arrow     = ggplot2::arrow(length = ggplot2::unit(0.5, "cm")),
-      linewidth = 2*lwd, show.legend = if(level_mapped) dots$legend else NA)
+      linewidth = 2*lwd, show.legend = if(level_mapped && identical(dots$legend, FALSE)) FALSE else NA)
     if(!level_mapped){
       geom$aes_params$linetype <- lty
       geom$aes_params$colour <- col
@@ -638,7 +638,8 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
           color    = .data[["level"]],
           linetype = .data[["level"]],
           group    = .data[["level"]]),
-        linewidth = 1, show.legend = dots[["legend"]]),
+        linewidth = 1, show.legend = if(isTRUE(dots$.factor_universe_ordered) &&
+          !identical(dots[["legend"]], FALSE)) NA else dots[["legend"]]),
       ggplot2::scale_linetype_manual(
         name   = legend_title,
         values = lty,

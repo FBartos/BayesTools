@@ -106,7 +106,11 @@ the probability-mass axis, and \code{ylab2} controls its label.}
 \code{plot.prior} returns either \code{NULL} or
 an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
 Dirichlet simplex priors are plotted as one beta marginal per coordinate;
-the ggplot method returns a list unless a single figure is selected. For an
+the ggplot method returns a list unless a single figure is selected. Ordered
+ggplot results use the original figure indices: a multiple-figure selection
+returns a list through the largest selected index, with \code{NULL} entries
+for unselected figures and selected levels whose curves are omitted. A bare
+ggplot is returned only when one visible figure was selected. For an
 ordered level with mixed probability measure, the continuous density and
 exact probability-mass arrows are drawn together without rescaling either
 component.
@@ -119,6 +123,8 @@ Ordered prior plots omit a whole continuous curve, quietly, when
 exact product provenance shows that its infinite density at the product
 offset is introduced by a random allocation, and the total's own
 continuous density is not intrinsically infinite. Point masses remain.
+For a fixed total times an allocation share, either exact share endpoint
+(zero or one) can establish the allocation-induced infinity.
 Intrinsic singularities, such as a Gamma total with shape below one, and
 unknown classifications are retained. This display rule also applies to
 \code{\link[=lines.prior]{lines.prior()}} and \code{\link[=geom_prior]{geom_prior()}}; it does not change \code{\link[=density.prior]{density.prior()}}

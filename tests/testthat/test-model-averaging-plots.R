@@ -40,7 +40,9 @@ test_that("ordered level plots preserve declared curves atoms and custom styles"
     intrinsic_gamma = ordered_plot_test_fixture(prior("gamma", list(.5, 1)))$samples,
     zero_share = ordered_plot_test_fixture(prior("normal", list(0, 1)), c(0, .3, .7))$samples,
     point_fixed = ordered_plot_test_fixture(prior("point", list(2)), c(.2, .3, .5))$samples,
-    point_last = ordered_plot_test_fixture(prior("point", list(2)))$samples)
+    point_last = ordered_plot_test_fixture(prior("point", list(2)))$samples,
+    upper_endpoint = ordered_plot_test_fixture(prior("point", list(2)),
+      prior("dirichlet", list(c(2, 2, .5))))$samples)
   for(name in names(fixtures)){
     for(backend in c("base", "ggplot")){
       args <- list(samples = fixtures[[name]], parameter = "mu_f", prior = TRUE,
@@ -58,6 +60,38 @@ test_that("ordered level plots preserve declared curves atoms and custom styles"
       }
     }
   }
+})
+
+test_that("ordered direct selections retain holes when curves are omitted", {
+  render_selection <- function(prior, show_figures){
+    plots <- plot(prior, show_figures = show_figures, plot_type = "ggplot",
+      n_points = 64, n_samples = 128, par_name = "Effect")
+    grid::grid.newpage()
+    grid::pushViewport(grid::viewport(layout = grid::grid.layout(1L, length(plots))))
+    for(i in seq_along(plots)){
+      viewport <- grid::viewport(layout.pos.row = 1L, layout.pos.col = i)
+      if(is.null(plots[[i]])){
+        grid::pushViewport(viewport)
+        grid::grid.text(paste("Figure", i, "omitted"))
+        grid::popViewport()
+      }else{
+        print(plots[[i]], newpage = FALSE, vp = viewport)
+      }
+    }
+    grid::popViewport()
+  }
+  upper <- ordered_plot_test_fixture(prior("point", list(2)),
+    prior("dirichlet", list(c(2, 2, .5))))
+  vdiffr::expect_doppelganger("ordered-direct-omitted-last-ggplot", function(){
+    set.seed(600)
+    render_selection(upper$prior, -4L)
+  })
+  one_visible <- ordered_plot_test_fixture(prior("point", list(2)),
+    prior("dirichlet", list(c(.5, .25, .25))))
+  vdiffr::expect_doppelganger("ordered-direct-one-visible-multiple-ggplot", function(){
+    set.seed(600)
+    render_selection(one_visible$prior, -1L)
+  })
 })
 
 test_that("ordered model estimates have prior and posterior visual coverage", {

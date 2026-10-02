@@ -50,7 +50,11 @@
 #' @return \code{plot.prior} returns either \code{NULL} or
 #' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
 #' Dirichlet simplex priors are plotted as one beta marginal per coordinate;
-#' the ggplot method returns a list unless a single figure is selected. For an
+#' the ggplot method returns a list unless a single figure is selected. Ordered
+#' ggplot results use the original figure indices: a multiple-figure selection
+#' returns a list through the largest selected index, with \code{NULL} entries
+#' for unselected figures and selected levels whose curves are omitted. A bare
+#' ggplot is returned only when one visible figure was selected. For an
 #' ordered level with mixed probability measure, the continuous density and
 #' exact probability-mass arrows are drawn together without rescaling either
 #' component.
@@ -59,6 +63,8 @@
 #' exact product provenance shows that its infinite density at the product
 #' offset is introduced by a random allocation, and the total's own
 #' continuous density is not intrinsically infinite. Point masses remain.
+#' For a fixed total times an allocation share, either exact share endpoint
+#' (zero or one) can establish the allocation-induced infinity.
 #' Intrinsic singularities, such as a Gamma total with shape below one, and
 #' unknown classifications are retained. This display rule also applies to
 #' [lines.prior()] and [geom_prior()]; it does not change [density.prior()]
@@ -277,6 +283,7 @@ plot.prior <- function(x, plot_type = "base",
   }else{
     plots_ind <- seq_along(plot_data)[show_figures]
   }
+  selected_ind <- plots_ind
   plots_ind <- plots_ind[!vapply(plot_data[plots_ind], inherits, logical(1),
                                  what = "density.prior.display_empty")]
   if(is.prior.ordered(x) && length(plots_ind) == 0L){
@@ -288,7 +295,11 @@ plot.prior <- function(x, plot_type = "base",
       "BayesTools_plot_condition", "error", "condition")))
   }
 
-  plots <- list()
+  plots <- if(is.prior.ordered(x) && plot_type == "ggplot" && length(selected_ind) > 1L){
+    vector("list", max(selected_ind))
+  }else{
+    list()
+  }
   for(figure in plots_ind){
     component_name <- if(is.null(par_name)){
       names(plot_data)[figure]
@@ -322,7 +333,7 @@ plot.prior <- function(x, plot_type = "base",
     }
   }
 
-  if(plot_type == "ggplot" && length(plots_ind) == 1L){
+  if(plot_type == "ggplot" && length(selected_ind) == 1L){
     plots <- plots[[plots_ind]]
   }
 
@@ -370,11 +381,17 @@ plot.prior <- function(x, plot_type = "base",
       return(out)
     }
     if(identical(route$type, "scalar") && is.null(route$source_transform)){
-      ordinate <- .prior_density_ordinate_prior(route$prior, 0)
-      behavior <- .prior_density_ordinate_continuous_behavior(ordinate)
       if(isTRUE(attr(route$prior, "ordered_allocation", exact = TRUE))){
-        out[["omit"]] <- isTRUE(ordinate$exact) && identical(behavior, "infinite")
+        endpoints <- lapply(c(0, 1), function(value){
+          .prior_density_ordinate_prior(route$prior, value)
+        })
+        out[["omit"]] <- any(vapply(endpoints, function(ordinate){
+          isTRUE(ordinate$exact) &&
+            identical(.prior_density_ordinate_continuous_behavior(ordinate), "infinite")
+        }, logical(1)))
       }else{
+        ordinate <- .prior_density_ordinate_prior(route$prior, 0)
+        behavior <- .prior_density_ordinate_continuous_behavior(ordinate)
         out[["intrinsic"]] <- identical(behavior, "infinite")
         out[["unknown"]] <- behavior %in% c("unknown", "undefined")
       }

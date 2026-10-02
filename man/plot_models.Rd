@@ -102,7 +102,8 @@ are always plotted as differences from the grand mean).
 Ordered factors use the retained semantic level effects, omitting their
 zero-design reference rows, and per-model transformed level summaries.
 The model-averaged estimate uses the selected scalar level draws.
-With \code{prior = FALSE}, no prior means or intervals are computed; model
+With \code{prior = FALSE}, no prior means or intervals are computed or
+transformed; model
 probabilities and Bayes factors remain available for updating labels.
 With \code{prior = TRUE}, ordered level means use the total mean and exact
 allocation expectations with the persisted design. Their equal-tail 95\\%

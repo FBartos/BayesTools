@@ -48,14 +48,20 @@ source files.
 Ordered prior display suppression uses the shared exact-route predicate: omit
 the whole continuous curve only for allocation-induced infinity with no
 intrinsically infinite total; keep atoms and unknown classifications. Direct
-prior selectors retain reference numbering. Factor overlays omit persisted
+fixed-total allocation shares check both exact support endpoints. Direct
+prior selectors retain reference numbering; multiple ordered ggplot selections
+return positional lists with NULL holes for unselected or suppressed figures,
+and only a single selected visible figure collapses to a ggplot. Factor overlays omit persisted
 zero-design references and carry `factor_level_universe` before curve omission,
 so retained styles and labels cannot shift. Ordered overlays match posterior
-colors with dashed defaults and one posterior-owned legend. Empty overlays
+colors with dashed defaults and one posterior-owned legend; mapped ordered
+posterior layers use automatic glyph participation when the legend is enabled.
+Empty overlays
 skip quietly; all-hidden standalone selections fail with the documented class.
 
 `plot_models()` uses semantic ordered levels and transformed model summaries.
-Posterior-only plots skip prior summaries. Ordered prior means use declared
+Posterior-only plots skip prior summaries and transforms of unused prior fields.
+Ordered prior means use declared
 allocation expectations; intervals use structural CDF diagnostics, exact atom
 jumps and checked generalized inversion, or a typed model/level limitation.
 

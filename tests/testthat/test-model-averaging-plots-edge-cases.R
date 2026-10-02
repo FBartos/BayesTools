@@ -19,6 +19,17 @@ test_that("ordered model plots use selected semantic levels and skip prior summa
     expect_equal(range(ggplot2::ggplot_build(plots[[i]])$data[[3L]]$x),
       unname(quantile(transformed[, i], c(.025, .975))), tolerance = 1e-14)
   }
+  validating_transform <- list(fun = function(x){
+    if(anyNA(x)) stop("The transformation does not accept missing values.")
+    x + 3
+  }, inv = function(x) x - 3, jac = function(x) rep(1, length(x)))
+  transformed_plots <- plot_models(models, mixed, inference, "mu_f",
+    plot_type = "ggplot", prior = FALSE, transformation = validating_transform)
+  expect_length(transformed_plots, 3L)
+  for(i in seq_along(transformed_plots)){
+    expect_equal(range(ggplot2::ggplot_build(transformed_plots[[i]])$data[[3L]]$x),
+      3 + unname(quantile(transformed[, i], c(.025, .975))), tolerance = 1e-14)
+  }
   unsupported <- ordered_plot_test_fixture(prior("t", list(0, 1, 1)))
   prior_list <- list(unsupported$prior, unsupported$prior)
   metadata_only <- .plot_models_data_prior(prior_list, lapply(models, `[[`, "inference"),
@@ -173,6 +184,112 @@ test_that("ordered allocation singularity suppression retains atoms and intrinsi
     expect_true(any(vapply(points, function(x) identical(x$x, 2) && identical(x$y, 1), logical(1))))
     expect_s3_class(plot_posterior(fixture$samples, "mu_f", prior = TRUE,
       plot_type = "ggplot", n_points = 64), "ggplot")
+  }
+})
+
+test_that("fixed ordered totals omit exact allocation singularities at either endpoint", {
+  cases <- list(lower = list(alpha = c(.5, 1, 1), level = 2L, endpoint = 0),
+    upper = list(alpha = c(2, 2, .5), level = 3L, endpoint = 2))
+  for(case in cases){
+    fixture <- ordered_plot_test_fixture(prior("point", list(2)),
+      prior("dirichlet", list(case$alpha)))
+    set.seed(600)
+    density_data <- density(fixture$prior, n_points = 64, n_samples = 128)
+    displayed <- .plot_data_ordered_prior_display(fixture$prior, density_data)
+    expect_s3_class(displayed[[case$level]], "density.prior.display_empty")
+    expect_s3_class(displayed[[4L]], "density.prior.point")
+    expect_equal(displayed[[4L]]$x, 2)
+    expect_equal(displayed[[4L]]$y, 1)
+    set.seed(600)
+    expect_identical(density_data, density(fixture$prior, n_points = 64, n_samples = 128))
+    columns <- .JAGS_prior_factor_names("mu_f", fixture$prior)
+    weights <- setNames(as.numeric(seq_along(columns) < case$level), columns)
+    dist <- .prior_density_from_context(posterior_metadata(fixture$samples, "prior_context"), weights)
+    ordinate <- prior_density_ordinate(dist, case$endpoint)
+    expect_true(ordinate$exact)
+    expect_identical(ordinate$behavior, "infinite")
+    raw <- .plot_data_prior_factor_density_transformed(posterior_metadata(fixture$samples, "prior_context"),
+      fixture$samples, "mu_f", list(fixture$prior), 64L)
+    pretransformed <- transform_factor_samples(fixture$samples)
+    pretransformed <- .plot_data_prior_factor_density_transformed(posterior_metadata(pretransformed, "prior_context"),
+      pretransformed, "mu_f", list(fixture$prior), 64L)
+    expect_identical(raw, pretransformed)
+    expect_false(paste0("mu_f[", c("early", "middle", "late", "last")[[case$level]], "]") %in%
+      vapply(raw, attr, character(1), "level_name"))
+    expect_identical(attr(raw, "factor_level_universe")$name,
+      c("mu_f[middle]", "mu_f[late]", "mu_f[last]"))
+    expect_length(geom_prior(fixture$prior, show_parameter = case$level, n_points = 64), 0L)
+    expect_error(plot(fixture$prior, show_figures = case$level,
+      plot_type = "ggplot", n_points = 64), class = "BayesTools_ordered_prior_display_empty")
+  }
+  # The default point-total share is Beta(1, 2), finite at both endpoints.
+  control <- ordered_plot_test_fixture(prior("point", list(2)))
+  expect_s3_class(.plot_data_ordered_prior_display(control$prior,
+    density(control$prior, n_points = 64))[[2L]], "density.prior.simple")
+  signed <- ordered_plot_test_fixture(prior("point", list(-2)),
+    prior("dirichlet", list(c(2, 2, .5))))
+  signed_display <- .plot_data_ordered_prior_display(signed$prior,
+    density(signed$prior, n_points = 64, transformation = "exp"))
+  expect_s3_class(signed_display[[3L]], "density.prior.display_empty")
+  expect_s3_class(signed_display[[4L]], "density.prior.point")
+  expect_equal(signed_display[[4L]]$x, exp(-2))
+  expect_equal(signed_display[[4L]]$y, 1)
+})
+
+test_that("ordered ggplot selections preserve suppressed positions and chosen count", {
+  fixture <- ordered_plot_test_fixture()
+  omitted_middle <- plot(fixture$prior, plot_type = "ggplot", n_points = 64)
+  expect_length(omitted_middle, 4L)
+  expect_null(omitted_middle[[2L]])
+  expect_true(all(vapply(omitted_middle[c(1L, 3L, 4L)], inherits, logical(1), "ggplot")))
+  upper <- ordered_plot_test_fixture(prior("point", list(2)),
+    prior("dirichlet", list(c(2, 2, .5))))
+  omitted_last <- plot(upper$prior, show_figures = -4L,
+    plot_type = "ggplot", n_points = 64)
+  expect_type(omitted_last, "list")
+  expect_length(omitted_last, 3L)
+  expect_s3_class(omitted_last[[1L]], "ggplot")
+  expect_s3_class(omitted_last[[2L]], "ggplot")
+  expect_null(omitted_last[[3L]])
+  one_visible <- ordered_plot_test_fixture(prior("point", list(2)),
+    prior("dirichlet", list(c(.5, .25, .25))))
+  selected <- plot(one_visible$prior, show_figures = -1L, plot_type = "ggplot", n_points = 64)
+  expect_type(selected, "list")
+  expect_length(selected, 4L)
+  expect_true(all(vapply(selected[1:3], is.null, logical(1))))
+  expect_s3_class(selected[[4L]], "ggplot")
+  expect_s3_class(plot(fixture$prior, show_figures = 4L,
+    plot_type = "ggplot", n_points = 64), "ggplot")
+})
+
+test_that("ordered guides give each level only its posterior curve or point glyph", {
+  fixtures <- list(point_last = ordered_plot_test_fixture(prior("point", list(2))),
+    zero_share = ordered_plot_test_fixture(prior("normal", list(0, 1)), c(0, .3, .7)),
+    all_point = ordered_plot_test_fixture(prior("point", list(2)), c(.2, .3, .5)))
+  for(name in names(fixtures)){
+    fixture <- fixtures[[name]]
+    plot <- plot_posterior(fixture$samples, "mu_f", prior = TRUE, plot_type = "ggplot",
+      n_points = 64, col = c("red", "blue", "green"), legend_labels = c("M", "L", "E"))
+    guides <- ggplot2::ggplot_build(plot)$plot$guides$params
+    expect_length(guides, 1L)
+    guide <- guides[[1L]]
+    expect_identical(guide$key$.label, c("M", "L", "E"))
+    expect_identical(guide$key$colour, c("red", "blue", "green"))
+    point_keys <- switch(name, point_last = c(FALSE, FALSE, TRUE),
+      zero_share = c(TRUE, FALSE, FALSE), all_point = rep(TRUE, 3L))
+    point_decor <- guide$decor[grepl("^geom_segment", names(guide$decor))]
+    curve_decor <- guide$decor[grepl("^geom_line", names(guide$decor))]
+    point_draws <- Reduce(`|`, lapply(point_decor, function(x) x$data$.draw), init = rep(FALSE, 3L))
+    curve_draws <- Reduce(`|`, lapply(curve_decor, function(x) x$data$.draw), init = rep(FALSE, 3L))
+    expect_identical(point_draws, point_keys)
+    expect_identical(curve_draws, !point_keys)
+    hidden <- plot_posterior(fixture$samples, "mu_f", prior = TRUE,
+      plot_type = "ggplot", n_points = 64, legend = FALSE)
+    expect_length(ggplot2::ggplot_build(hidden)$plot$guides$params, 0L)
+    mapped <- hidden$layers[vapply(hidden$layers, function(layer){
+      "colour" %in% names(layer$mapping)
+    }, logical(1))]
+    expect_true(all(vapply(mapped, function(layer) identical(layer$show.legend, FALSE), logical(1))))
   }
 })
 
