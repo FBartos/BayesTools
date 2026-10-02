@@ -31,6 +31,56 @@ source(testthat::test_path("common-functions.R"))
 
 skip_if_not_installed("vdiffr")
 
+test_that("ordered level plots preserve declared curves atoms and custom styles", {
+  fixed <- ordered_plot_test_fixture(prior("normal", list(0, 1)), c(.2, .3, .5))
+  fixtures <- list(
+    raw_custom = fixed$samples,
+    pretransformed_custom = transform_factor_samples(fixed$samples),
+    singular_allocation = ordered_plot_test_fixture(prior("normal", list(0, 1)))$samples,
+    intrinsic_gamma = ordered_plot_test_fixture(prior("gamma", list(.5, 1)))$samples,
+    zero_share = ordered_plot_test_fixture(prior("normal", list(0, 1)), c(0, .3, .7))$samples,
+    point_fixed = ordered_plot_test_fixture(prior("point", list(2)), c(.2, .3, .5))$samples,
+    point_last = ordered_plot_test_fixture(prior("point", list(2)))$samples)
+  for(name in names(fixtures)){
+    for(backend in c("base", "ggplot")){
+      args <- list(samples = fixtures[[name]], parameter = "mu_f", prior = TRUE,
+        plot_type = backend, n_points = 64L, n_samples = 128L)
+      if(grepl("custom$", name)){
+        args$col <- c("red", "blue", "green")
+        args$legend_labels <- c("Middle", "Late", "Last")
+      }
+      if(backend == "base"){
+        vdiffr::expect_doppelganger(paste0("ordered-", name, "-base"),
+          function() do.call(plot_posterior, args))
+      }else{
+        vdiffr::expect_doppelganger(paste0("ordered-", name, "-ggplot"),
+          do.call(plot_posterior, args))
+      }
+    }
+  }
+})
+
+test_that("ordered model estimates have prior and posterior visual coverage", {
+  models <- lapply(c(.5, 1), function(sd){
+    fixture <- ordered_plot_test_fixture(prior("normal", list(0, sd)))
+    list(fit = fixture$fit, marglik = bridgesampling_object(0), prior_weights = 1,
+      fit_summary = JAGS_estimates_table(fixture$fit, remove_diagnostics = TRUE))
+  })
+  models <- models_inference(models)
+  inference <- ensemble_inference(models, "mu_f", list(c(FALSE, FALSE)))
+  mixed <- mix_posteriors(models, "mu_f", is_null_list = list(c(FALSE, FALSE)), n_samples = 200L, seed = 178)
+  for(prior in c(FALSE, TRUE)){
+    vdiffr::expect_doppelganger(paste0("ordered-models-prior-", prior, "-base"), function(){
+      graphics::par(mfrow = c(3, 1))
+      plot_models(models, mixed, inference, "mu_f", prior = prior)
+    })
+    plots <- plot_models(models, mixed, inference, "mu_f", prior = prior, plot_type = "ggplot")
+    for(level in c(1L, 3L)){
+      vdiffr::expect_doppelganger(paste0("ordered-models-prior-", prior, "-level", level, "-ggplot"), plots[[level]])
+    }
+  }
+})
+
 
 # ============================================================================ #
 # SECTION 1: plot_prior_list basic tests
