@@ -72,6 +72,10 @@ test_that("ordered prior model intervals use analytic means and generalized stru
   signed <- .prior_density_from_context(context, c(source = -2))
   expect_equal(.plot_models_prior_quantiles(signed, c(.025, .975), 1, "signed"),
     qnorm(c(.025, .975), -4, 6), tolerance = 1e-12)
+  binary_context <- .prior_density_context(list(source = prior("bernoulli", list(.975))), "source")
+  signed_binary <- .prior_density_from_context(binary_context, c(source = -2))
+  expect_identical(.plot_models_prior_quantiles(signed_binary, c(.025, .975), 1, "signed_binary"),
+    c(-2, -2))
   expression <- prior_ordered(prior("normal", list(expression(location), 1)), allocation = c(.2, .3, .5))
   attr(expression, "levels") <- 4
   expression <- .prior_ordered_default_bound(expression, "mu_f")

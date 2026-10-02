@@ -830,7 +830,8 @@ old behaviour.
   - `plot_models()` uses ordered semantic level summaries and selected level
     draws. Posterior-only plots skip prior summaries; ordered prior means use
     declared allocation expectations and intervals use structural generalized
-    quantiles. Unavailable prior means/intervals report the model and level with
+    quantiles, respecting exact atom jumps for signed discrete targets.
+    Unavailable prior means/intervals report the model and level with
     `BayesTools_prior_interval_unavailable` and the `prior = FALSE` remedy.
   - adds `prior_ordered()` for ordered-factor priors that separate a scalar
     total effect from fixed or Dirichlet allocations across cumulative level

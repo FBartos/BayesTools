@@ -220,7 +220,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
     unavailable("the structural prior probability route is unsupported")
   }
   if(identical(route$type, "scalar") && is.null(route$source_transform) &&
-     is.prior.simple(route$prior)){
+     is.prior.simple(route$prior) && !is.prior.discrete(route$prior)){
     p <- if(route$scale < 0) 1 - probabilities else probabilities
     return(route$offset + route$scale * quant(route$prior, p))
   }
