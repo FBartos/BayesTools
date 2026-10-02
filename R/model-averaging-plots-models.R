@@ -3,6 +3,20 @@
 #' @details Plots prior and posterior estimates of the same parameter
 #' across multiple models (prior distributions with orthonormal/meandif contrast
 #' are always plotted as differences from the grand mean).
+#' Ordered factors use the retained semantic level effects, omitting their
+#' zero-design reference rows, and per-model transformed level summaries.
+#' The model-averaged estimate uses the selected scalar level draws.
+#' With \code{prior = FALSE}, no prior means or intervals are computed; model
+#' probabilities and Bayes factors remain available for updating labels.
+#' With \code{prior = TRUE}, ordered level means use the total mean and exact
+#' allocation expectations with the persisted design. Their equal-tail 95\%
+#' intervals use structural prior probabilities and generalized quantiles,
+#' including exact jumps at point masses. No sampled prior means or quantiles
+#' are substituted. An undefined mean, unresolved expression, unsupported
+#' structural probability route, or unavailable numerical diagnostics raises
+#' \code{BayesTools_prior_interval_unavailable} (also
+#' \code{BayesTools_plot_condition}), identifying the model and level; set
+#' \code{prior = FALSE} to plot posterior estimates.
 #'
 #' @param parameter parameter name to be plotted. Does not support
 #' PET-PEESE and weightfunction.
@@ -65,15 +79,21 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
   if(inherits(total_samples, "mixed_posteriors.factor")){
 
     # make sure that the orthonormal/meandif priors are transformed to differences from the mean
-    if(attr(total_samples, "orthonormal") | attr(total_samples, "meandif")){
+    ordered <- any(vapply(if(is.prior(prior_list)) list(prior_list) else prior_list,
+      is.prior.ordered, logical(1)))
+    if(isTRUE(attr(total_samples, "orthonormal")) ||
+       isTRUE(attr(total_samples, "meandif")) || ordered){
 
       # transform the samples
-      if(ncol(total_samples) == attr(total_samples, "levels")){
+      if(ordered || ncol(total_samples) == attr(total_samples, "levels")){
         total_samples <- transform_factor_samples(samples)[[parameter]]
       }
+      if(ordered){
+        total_samples <- .transformed_factor_drop_structural_levels(total_samples)
+      }
       # transform the model summaries
-      if(!any(sapply(models_summary, function(m) all(colnames(total_samples) %in% attr(m, "parameters"))))){
-        models_summary <- lapply(model_list, function(m) runjags_estimates_table(m[["fit"]], transform_factors = TRUE))
+      if(!all(vapply(models_summary, function(m) all(colnames(total_samples) %in% attr(m, "parameters")), logical(1)))){
+        models_summary <- lapply(model_list, function(m) JAGS_estimates_table(m[["fit"]], transform_factors = TRUE))
       }
 
     }
@@ -110,16 +130,191 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
   }
 }
 
-.plot_models_data_prior     <- function(prior_list, models_inference){
+.plot_models_data_prior     <- function(prior_list, models_inference, prior = TRUE,
+                                        parameter = NULL){
+
+  summaries <- if(prior) lapply(seq_along(prior_list), function(i){
+    if(is.prior.ordered(prior_list[[i]])){
+      .plot_models_ordered_prior_summary(prior_list[[i]], parameter, i)
+    }else{
+      c(mean(prior_list[[i]]), mquant(prior_list[[i]], .025), mquant(prior_list[[i]], .975))
+    }
+  }) else rep(list(rep(NA_real_, 3L)), length(prior_list))
   return(data.frame(
-    model      = 1:length(prior_list),
-    y          = sapply(prior_list, mean),
-    y_lCI      = sapply(prior_list, mquant, .025),
-    y_uCI      = sapply(prior_list, mquant, .975),
+    model      = seq_along(prior_list),
+    y          = vapply(summaries, `[[`, numeric(1), 1L),
+    y_lCI      = vapply(summaries, `[[`, numeric(1), 2L),
+    y_uCI      = vapply(summaries, `[[`, numeric(1), 3L),
     prior_prob = sapply(models_inference, function(m)m[["prior_prob"]]),
     post_prob  = sapply(models_inference, function(m)m[["post_prob"]]),
     BF         = sapply(models_inference, function(m)m[["inclusion_BF"]])
   ))
+}
+.plot_models_prior_unavailable <- function(model, parameter, reason){
+
+  stop(structure(list(message = paste0(
+    "Prior interval/mean for model ", model, " and level '", parameter,
+    "' is unavailable: ", sub("[.]$", "", reason),
+    ". Set 'prior = FALSE' to plot posterior estimates."
+  ), call = NULL, model = model, level = parameter, reason = reason),
+    class = c("BayesTools_prior_interval_unavailable", "BayesTools_plot_condition",
+      "error", "condition")))
+}
+.plot_models_prior_mean <- function(prior){
+
+  if(is.prior.mixture(prior) || is.prior.spike_and_slab(prior)){
+    probabilities <- .prior_density_ordinate_mixture_weights(prior)
+    if(is.null(probabilities)) stop("component probabilities are unavailable")
+    components <- lapply(prior[probabilities > 0], .plot_models_prior_mean)
+    return(Reduce(`+`, Map(`*`, components, probabilities[probabilities > 0])))
+  }
+  if(is.prior.none(prior)) return(0)
+  mean(prior)
+}
+.plot_models_ordered_prior_summary <- function(prior, parameter, model){
+
+  unavailable <- function(reason) .plot_models_prior_unavailable(model, parameter, reason)
+  metadata <- .prior_ordered_metadata(prior)
+  level_names <- .bt_label(.bt_label_factor_level_parts(metadata$parameter_name, prior,
+    transformation = "none"), style = "selector")
+  level <- match(parameter, level_names)
+  if(is.na(level)) unavailable("the persisted level design does not identify this level")
+  design <- as.matrix(.factor_term_design_from_metadata(prior)$design)
+  weights <- design[level, ]
+  means <- tryCatch(.plot_models_prior_mean(prior$total), error = function(e) e)
+  if(inherits(means, "error")) unavailable(paste0("the total mean is unavailable (", conditionMessage(means), ")"))
+  if(!is.numeric(means) || any(!is.finite(means)) ||
+     !length(means) %in% c(1L, metadata$theta_dim)){
+    unavailable("the total mean is undefined, non-finite, or depends on an unresolved expression")
+  }
+  if(length(means) == 1L) means <- rep(means, metadata$theta_dim)
+  coefficient_means <- means[metadata$slice_index]
+  for(i in seq_along(coefficient_means)){
+    for(factor in metadata$ordered_terms){
+      allocation <- .prior_ordered_allocation_for_coefficient(metadata, factor,
+        metadata$slice_index[[i]])
+      expectations <- if(identical(allocation$spec$type, "fixed")){
+        allocation$spec$weights
+      }else{
+        allocation$spec$alpha / sum(allocation$spec$alpha)
+      }
+      increment <- metadata$coefficient_grid[[factor]][[i]]
+      coefficient_means[[i]] <- coefficient_means[[i]] * expectations[[increment]]
+    }
+  }
+  prior_mean <- sum(weights * coefficient_means)
+  if(!is.finite(prior_mean)) unavailable("the level mean is non-finite")
+  columns <- .JAGS_prior_factor_names(metadata$parameter_name, prior)
+  weights <- stats::setNames(weights, columns)
+  context <- .prior_density_context(stats::setNames(list(prior), metadata$parameter_name), columns)
+  dist <- tryCatch(.prior_density_from_context(context, weights), error = function(e) e)
+  if(inherits(dist, "error")) unavailable(conditionMessage(dist))
+  intervals <- .plot_models_prior_quantiles(dist, c(.025, .975), model, parameter)
+  c(prior_mean, intervals)
+}
+.plot_models_prior_quantiles <- function(dist, probabilities, model, parameter){
+
+  unavailable <- function(reason) .plot_models_prior_unavailable(model, parameter, reason)
+  route <- .prior_density_route_from_adaptive(attr(dist, "adaptive_evaluation", exact = TRUE))
+  if(is.null(route) || .prior_density_route_has_leaf(route, "unknown")){
+    unavailable("the structural prior probability route is unsupported")
+  }
+  if(identical(route$type, "scalar") && is.null(route$source_transform) &&
+     is.prior.simple(route$prior)){
+    p <- if(route$scale < 0) 1 - probabilities else probabilities
+    return(route$offset + route$scale * quant(route$prior, p))
+  }
+  if(identical(route$type, "normal")){
+    normal <- .prior_density_ordinate_linear_normal(route$prior_list,
+      route$weights, route$source_transforms, 0)
+    return(stats::qnorm(probabilities, normal$provenance$mean, normal$provenance$sd))
+  }
+  cdf_at <- function(value){
+    region <- list(intervals = .prior_region_intervals(-Inf, value),
+      indicator = function(x) x <= value)
+    probability <- tryCatch(.prior_linear_density_region_probability(dist, region),
+      error = function(e) e)
+    if(inherits(probability, "error")) unavailable(conditionMessage(probability))
+    diagnostics <- attr(probability, "numerical_diagnostics", exact = TRUE)
+    if(is.null(probability) || length(probability) != 1L ||
+       !is.finite(probability) || probability < 0 || probability > 1 ||
+       is.null(diagnostics) || !is.finite(diagnostics$absolute_error)){
+      unavailable("the structural prior probability or its error diagnostics are unavailable")
+    }
+    as.numeric(probability)
+  }
+  atoms <- dist$points
+  if(is.null(atoms)) atoms <- data.frame(x = numeric(), p = numeric())
+  atoms <- atoms[atoms$p > 0, , drop = FALSE]
+  atoms <- atoms[order(atoms$x), , drop = FALSE]
+  if(identical(route$type, "atom")){
+    return(vapply(probabilities, function(p) atoms$x[which(cumsum(atoms$p) >= p)[1L]], numeric(1)))
+  }
+  source_hull <- function(route){
+    switch(route$type,
+      "atom" = range(route$locations),
+      "scalar" = if(is.null(route$source_transform)){
+        bounds <- .prior_linear_group_support_hull(list(prior = route$prior,
+          weights = c(source = 1), indices = 1L))
+        if(is.null(bounds)) NULL else route$offset + sort(route$scale * bounds)
+      }else NULL,
+      "normal" = c(-Inf, Inf),
+      "conditional_normal" = c(-Inf, Inf),
+      "scale_product" = .prior_scale_product_hull(route$spec),
+      "mixture" = {
+        hulls <- lapply(route$components[route$weights > 0], source_hull)
+        if(any(vapply(hulls, is.null, logical(1)))) NULL else range(unlist(hulls))
+      },
+      NULL)
+  }
+  hull <- source_hull(route)
+  if(is.null(hull)){
+    hull <- .prior_linear_density_support_hull(attr(dist, "adaptive_evaluation", exact = TRUE))
+  }
+  if(is.null(hull)) hull <- c(-Inf, Inf)
+  limits <- .prior_linear_density_range(dist)
+  vapply(probabilities, function(p){
+    atom_cdf <- if(nrow(atoms) > 0L) vapply(atoms$x, cdf_at, numeric(1)) else numeric()
+    jump <- which(p > atom_cdf - atoms$p & p <= atom_cdf)
+    if(length(jump) > 0L) return(atoms$x[jump[[1L]]])
+    lower <- if(is.finite(hull[1L])) hull[1L] else limits[1L]
+    upper <- if(is.finite(hull[2L])) hull[2L] else limits[2L]
+    if(!all(is.finite(c(lower, upper)))) unavailable("finite starting bounds are unavailable")
+    span <- max(1, upper - lower)
+    lower_cdf <- cdf_at(lower)
+    upper_cdf <- cdf_at(upper)
+    if((lower_cdf > p && is.finite(hull[1L])) ||
+       (upper_cdf < p && is.finite(hull[2L]))){
+      unavailable("the source support bounds do not bracket the requested probability")
+    }
+    for(i in seq_len(1024L)){
+      if(lower_cdf <= p && upper_cdf >= p) break
+      if(lower_cdf > p && !is.finite(hull[1L])) lower <- lower - span
+      if(upper_cdf < p && !is.finite(hull[2L])) upper <- upper + span
+      if(!all(is.finite(c(lower, upper)))) unavailable("the checked prior probability bracket overflowed")
+      lower_cdf <- cdf_at(lower)
+      upper_cdf <- cdf_at(upper)
+      span <- span * 2
+    }
+    if(lower_cdf > p || upper_cdf < p) unavailable("the source support bounds do not bracket the requested probability")
+    if(length(atom_cdf) > 0L){
+      before <- which(atom_cdf < p)
+      after <- which(atom_cdf - atoms$p >= p)
+      if(length(before) > 0L) lower <- max(lower, atoms$x[before])
+      if(length(after) > 0L) upper <- min(upper, atoms$x[after])
+    }
+    if(lower == upper) return(lower)
+    upper_atom <- match(upper, atoms$x)
+    objective <- function(x){
+      value <- cdf_at(x)
+      if(x == upper && !is.na(upper_atom)) value <- value - atoms$p[[upper_atom]]
+      value - p
+    }
+    result <- tryCatch(stats::uniroot(objective, c(lower, upper),
+      tol = sqrt(.Machine$double.eps)), error = function(e) e)
+    if(inherits(result, "error")) unavailable(conditionMessage(result))
+    result$root
+  }, numeric(1))
 }
 .plot_models_data_posterior <- function(models_summary, parameter, prior_list, models_inference){
   return(data.frame(
@@ -162,7 +357,8 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
                                         transformation, transformation_arguments, transformation_settings, ...){
 
   # create a table with results
-  prior_data     <- .plot_models_data_prior(prior_list, models_inference)
+  prior_data     <- .plot_models_data_prior(prior_list, models_inference,
+    prior = prior, parameter = parameter)
   posterior_data <- .plot_models_data_posterior(models_summary, parameter, prior_list, models_inference)
 
   # remove null models if requested (assuming that the overall estimate is already supplied accordingly)

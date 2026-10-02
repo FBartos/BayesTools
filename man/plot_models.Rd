@@ -99,6 +99,20 @@ Plot estimates from models
 Plots prior and posterior estimates of the same parameter
 across multiple models (prior distributions with orthonormal/meandif contrast
 are always plotted as differences from the grand mean).
+Ordered factors use the retained semantic level effects, omitting their
+zero-design reference rows, and per-model transformed level summaries.
+The model-averaged estimate uses the selected scalar level draws.
+With \code{prior = FALSE}, no prior means or intervals are computed; model
+probabilities and Bayes factors remain available for updating labels.
+With \code{prior = TRUE}, ordered level means use the total mean and exact
+allocation expectations with the persisted design. Their equal-tail 95\\%
+intervals use structural prior probabilities and generalized quantiles,
+including exact jumps at point masses. No sampled prior means or quantiles
+are substituted. An undefined mean, unresolved expression, unsupported
+structural probability route, or unavailable numerical diagnostics raises
+\code{BayesTools_prior_interval_unavailable} (also
+\code{BayesTools_plot_condition}), identifying the model and level; set
+\code{prior = FALSE} to plot posterior estimates.
 }
 \seealso{
 \code{\link[=prior]{prior()}} \code{\link[=lines_prior_list]{lines_prior_list()}}  \code{\link[=geom_prior_list]{geom_prior_list()}}

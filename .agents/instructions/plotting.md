@@ -54,6 +54,11 @@ so retained styles and labels cannot shift. Ordered overlays match posterior
 colors with dashed defaults and one posterior-owned legend. Empty overlays
 skip quietly; all-hidden standalone selections fail with the documented class.
 
+`plot_models()` uses semantic ordered levels and transformed model summaries.
+Posterior-only plots skip prior summaries. Ordered prior means use declared
+allocation expectations; intervals use structural CDF diagnostics, exact atom
+jumps and checked generalized inversion, or a typed model/level limitation.
+
 Plotting density grids are approximations for display. They are not evidence
 for the structural classifications returned by `prior_density_ordinate()`.
 Keep requested display limits separate from transformation support. Custom

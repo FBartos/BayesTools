@@ -1,5 +1,97 @@
 skip_if_not_test_profile("unit")
 
+test_that("ordered model plots use selected semantic levels and skip prior summaries", {
+  models <- lapply(c(.5, 1), function(sd){
+    fixture <- ordered_plot_test_fixture(prior("normal", list(1, sd)), c(.2, .3, .5))
+    list(fit = fixture$fit, marglik = bridgesampling_object(0), prior_weights = 1,
+      fit_summary = JAGS_estimates_table(fixture$fit, remove_diagnostics = TRUE))
+  })
+  models <- models_inference(models)
+  inference <- ensemble_inference(models, "mu_f", list(c(FALSE, FALSE)))
+  mixed <- mix_posteriors(models, "mu_f", is_null_list = list(c(FALSE, FALSE)),
+    n_samples = 200L, seed = 178)
+  transformed <- .transformed_factor_drop_structural_levels(transform_factor_samples(mixed)$mu_f)
+  plots <- plot_models(models, mixed, inference, "mu_f", plot_type = "ggplot", prior = FALSE)
+  expect_length(plots, 3L)
+  # The first layer is the selected scalar model-averaged interval, not a
+  # flattening across factor levels.
+  for(i in seq_along(plots)){
+    expect_equal(range(ggplot2::ggplot_build(plots[[i]])$data[[3L]]$x),
+      unname(quantile(transformed[, i], c(.025, .975))), tolerance = 1e-14)
+  }
+  unsupported <- ordered_plot_test_fixture(prior("t", list(0, 1, 1)))
+  prior_list <- list(unsupported$prior, unsupported$prior)
+  metadata_only <- .plot_models_data_prior(prior_list, lapply(models, `[[`, "inference"),
+    prior = FALSE, parameter = "mu_f[middle]")
+  expect_true(all(is.na(metadata_only[, c("y", "y_lCI", "y_uCI")])))
+  expect_identical(metadata_only$BF, vapply(models, function(m) m$inference$inclusion_BF, numeric(1)))
+  error <- tryCatch(.plot_models_ordered_prior_summary(unsupported$prior, "mu_f[middle]", 2), error = identity)
+  expect_s3_class(error, "BayesTools_prior_interval_unavailable")
+  expect_identical(conditionMessage(error), paste0("Prior interval/mean for model 2 and level 'mu_f[middle]' ",
+    "is unavailable: the total mean is undefined, non-finite, or depends on an unresolved expression. ",
+    "Set 'prior = FALSE' to plot posterior estimates."))
+  expect_length(plot_models(models, mixed, inference, "mu_f", plot_type = "ggplot", prior = TRUE), 3L)
+})
+
+test_that("ordered prior model intervals use analytic means and generalized structural quantiles", {
+  fixed <- ordered_plot_test_fixture(prior("normal", list(2, 3)), c(.2, .3, .5))
+  expect_equal(.plot_models_ordered_prior_summary(fixed$prior, "mu_f[middle]", 1),
+    c(.4, qnorm(c(.025, .975), .4, .6)), tolerance = 1e-12)
+  point <- ordered_plot_test_fixture(prior("point", list(2)),
+    prior("dirichlet", list(c(2, 3, 4))))
+  expect_equal(.plot_models_ordered_prior_summary(point$prior, "mu_f[middle]", 1),
+    c(2 * 2 / 9, 2 * qbeta(c(.025, .975), 2, 7)), tolerance = 1e-12)
+  mixture <- ordered_plot_test_fixture(prior_spike_and_slab(prior("point", list(2)), prior("point", list(.8))),
+    prior("dirichlet", list(c(2, 3, 4))))
+  expect_equal(.plot_models_ordered_prior_summary(mixture$prior, "mu_f[last]", 1),
+    c(1.6, 0, 2), tolerance = 1e-12)
+  expect_equal(.plot_models_ordered_prior_summary(mixture$prior, "mu_f[middle]", 1),
+    c(.8 * 2 * 2 / 9, 0, 2 * qbeta((.975 - .2) / .8, 2, 7)), tolerance = 2e-7)
+  random <- ordered_plot_test_fixture(prior("normal", list(1, 2)),
+    prior("dirichlet", list(c(2, 3, 4))))
+  summary <- .plot_models_ordered_prior_summary(random$prior, "mu_f[middle]", 1)
+  expect_equal(summary[1L], 2 / 9, tolerance = 1e-14)
+  independent_cdf <- function(x) integrate(function(s) pnorm(x / s, 1, 2) * dbeta(s, 2, 7),
+    0, 1, rel.tol = 1e-10)$value
+  expect_equal(vapply(summary[2:3], independent_cdf, numeric(1)), c(.025, .975), tolerance = 1e-7)
+  columns <- .JAGS_prior_factor_names("mu_f", random$prior)
+  bracket <- .prior_density_from_context(posterior_metadata(random$samples, "prior_context"),
+    setNames(c(1, 0, 0), columns))
+  # A numerical display range is a starting bracket, never support. Narrow
+  # it deliberately while keeping the exact prior provenance unchanged.
+  bracket$density$x <- seq(-.01, .01, length.out = length(bracket$density$x))
+  expect_equal(.plot_models_prior_quantiles(bracket, c(.025, .975), 1, "mu_f[middle]"),
+    summary[2:3], tolerance = 2e-7)
+  uniform <- ordered_plot_test_fixture(prior("uniform", list(-2, 6)), c(.2, .3, .5))
+  expect_equal(.plot_models_ordered_prior_summary(uniform$prior, "mu_f[middle]", 1),
+    c(.4, qunif(c(.025, .975), -.4, 1.2)), tolerance = 1e-12)
+  student <- ordered_plot_test_fixture(prior("t", list(1, 2, 5)), c(.2, .3, .5))
+  expect_equal(.plot_models_ordered_prior_summary(student$prior, "mu_f[middle]", 1),
+    c(.2, .2 * (1 + 2 * qt(c(.025, .975), 5))), tolerance = 1e-12)
+  context <- .prior_density_context(list(source = prior("normal", list(2, 3))), "source")
+  signed <- .prior_density_from_context(context, c(source = -2))
+  expect_equal(.plot_models_prior_quantiles(signed, c(.025, .975), 1, "signed"),
+    qnorm(c(.025, .975), -4, 6), tolerance = 1e-12)
+  expression <- prior_ordered(prior("normal", list(expression(location), 1)), allocation = c(.2, .3, .5))
+  attr(expression, "levels") <- 4
+  expression <- .prior_ordered_default_bound(expression, "mu_f")
+  expect_error(.plot_models_ordered_prior_summary(expression, "mu_f[2]", 3),
+    class = "BayesTools_prior_interval_unavailable")
+  data <- expand.grid(f = ordered(c("a", "b", "c")), g = ordered(c("A", "B", "C")))
+  info <- JAGS_formula(~f*g, "mu", data, list(intercept = prior("point", list(0)),
+    f = prior_ordered(prior("normal", list(0, 1))),
+    g = prior_ordered(prior("normal", list(0, 1))),
+    `f:g` = prior_ordered(prior("normal", list(2, 1)))))
+  interaction <- info$prior_list[[which(vapply(info$prior_list, function(x){
+    is.prior.ordered(x) && length(.prior_ordered_metadata(x)$ordered_terms) == 2L
+  }, logical(1)))]]
+  parameter <- .prior_ordered_metadata(interaction)$parameter_name
+  names <- .bt_label(.bt_label_factor_level_parts(parameter, interaction,
+    transformation = "none"), style = "selector")
+  expect_error(.plot_models_ordered_prior_summary(interaction, names[[5L]], 4),
+    class = "BayesTools_prior_interval_unavailable")
+})
+
 test_that("ordered prior omission preserves exact inference and retained level styles", {
   fixture <- ordered_plot_test_fixture()
   prior_data <- function(samples){
