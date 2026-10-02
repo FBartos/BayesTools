@@ -49,13 +49,15 @@
 #'   two Monte Carlo standard errors (in probability) of the edge of a point
 #'   mass, the estimate blends the point mass and the continuous draws.
 #' * The weighted sum is computed in double precision. Its rounding error is
-#'   of the order of the machine precision times the largest absolute draw,
-#'   multiplied by a factor that grows roughly as `sqrt(m * p / (1 - p))`
-#'   because the cell boundaries `i/m` are rounded (e.g., about 40 with 10,000
-#'   draws and `p = 0.975`, and about 1,400 with 100,000 draws and
-#'   `p = 0.9995`, for draws of 0 and 1). Differences between draws that are
-#'   much smaller than this error (e.g., the middle draw of
-#'   `c(-1e16, 1, 1e16)`) are not resolved.
+#'   of the order of the machine precision times the largest absolute draw.
+#'   Where the sorted draws jump close to the target rank (e.g., at the edge of
+#'   a point mass or in a sparse tail), the rounding of the cell boundaries
+#'   `i/m` can make it larger by a factor that grows roughly as
+#'   `sqrt(m * p / (1 - p))` (e.g., about 40 with 10,000 draws and
+#'   `p = 0.975`, and about 1,400 with 100,000 draws and `p = 0.9995`, for
+#'   draws of 0 and 1). Differences between draws that are much smaller than
+#'   this error (e.g., the middle draw of `c(-1e16, 1, 1e16)`) are not
+#'   resolved.
 #'
 #' An infinite draw has a positive weight at every probability strictly
 #' between 0 and 1, which makes the weighted average infinite (or undefined for
