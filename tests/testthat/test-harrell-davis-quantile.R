@@ -226,12 +226,18 @@ test_that("harrell_davis_quantile falls back to the empirical quantile for infin
 
   # probabilities so close to 0 that the weights cannot be computed stop with the
   # classed error (the limit of the distribution function routine depends on the
-  # R version); a result is never NaN
-  tiny <- tryCatch(
-    harrell_davis_quantile(c(1, 2, 3), 1e-320),
-    BayesTools_harrell_davis_undefined = function(e) NULL
-  )
-  expect_true(is.null(tiny) || (tiny >= 1 && tiny <= 3))
+  # number of draws and the R version: R 4.6 stops at 1e-320 with 1,000 draws but
+  # not with 3 draws); a result is never NaN
+  for (m in c(3, 1000)) {
+    tiny <- tryCatch(
+      harrell_davis_quantile(seq_len(m), 1e-320),
+      BayesTools_harrell_davis_undefined = function(e) conditionMessage(e)
+    )
+    expect_true(
+      (is.character(tiny) && grepl("Use values of 'probs' further from 0 and 1.", tiny, fixed = TRUE)) ||
+        (is.numeric(tiny) && tiny >= 1 && tiny <= m)
+    )
+  }
   expect_equal(harrell_davis_quantile(c(1, 2, 3), 1e-12), 1, tolerance = 1e-9)
 })
 

@@ -191,7 +191,7 @@ harrell_davis_quantile <- function(x, probs, names = FALSE){
   if(!all(is.finite(weights))){
     .harrell_davis_stop_undefined(paste0(
       "the weights of the probability ", format(p), " cannot be computed numerically. ",
-      "Use a probability that is further from 0 and 1."
+      "Use values of 'probs' further from 0 and 1."
     ))
   }
 
