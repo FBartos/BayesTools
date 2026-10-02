@@ -16,8 +16,9 @@ skip_if_not_test_profile("unit")
 #
 # SKIP CONDITIONS:
 #   - The accuracy study with 10,000 draws is skipped on CRAN (skip_on_cran());
-#     it runs when NOT_CRAN is true, as in the filter, fixture, and fit
-#     profiles. All other tests are fast pure R tests.
+#     it runs whenever NOT_CRAN is true, which devtools::test() sets, so in
+#     every profile of tools/test-profile.R (unit included). All other tests
+#     are fast pure R tests.
 #
 # MODELS/FIXTURES:
 #   - None required
@@ -97,10 +98,11 @@ test_that("harrell_davis_quantile weights are accurate in every cell, also in th
   # the log scale (pbeta(log.p = TRUE), cells up to the mode by differences of
   # the lower tail and the cells beyond it by differences of the upper tail),
   # over the cells whose reference weight exceeds 1e-250. Measured maximum over
-  # m = 100, 500, 2,000 and p = .001, .025, .5, .975, .999: 1.3e-13 (the
-  # rounding of the cell boundaries i / m times the log-derivative of the
-  # weights; the reference itself differs from 80-digit mpmath weights by up to
-  # 3e-13), so the tolerance of 1e-11 keeps a margin of about 80. The naive
+  # m = 100, 500, 2,000 and p = .001, .025, .5, .975, .999: 1.3e-13 (both
+  # evaluate pbeta at the same double cell boundaries, so this is the rounding
+  # of the two computations, not of the boundaries; against 80-digit mpmath
+  # weights at the exact boundaries i / m both differ by up to 3e-13), so the
+  # tolerance of 1e-11 keeps a margin of about 80. The naive
   # difference of distribution function values of the cells (as in
   # Hmisc::hdquantile) loses the small weights of the tail it computes by
   # differences of values near 1 and fails this bound (relative error 1 to 2 for
