@@ -35,6 +35,7 @@ bayestools_test_profile_contexts <- list(
     "draws-metadata",
     "factor-interaction-coefficients",
     "fixture-catalog-static",
+    "harrell-davis-quantile",
     "hypothesis-ast",
     "hypothesis-BF",
     "hypothesis-BF-parser-adversarial",

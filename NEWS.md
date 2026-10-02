@@ -929,6 +929,18 @@ old behaviour.
     model list.
   - `as_marginal_inference(compute_BF = FALSE)` returns the averaged and
     conditional marginal posteriors without computing inclusion Bayes factors.
+- credible bands by Harrell-Davis quantiles:
+  - adds `harrell_davis_quantile()`, which estimates quantiles of equally
+    weighted draws (a vector, or a matrix with the draws in rows) as a weighted
+    average of all order statistics (Harrell and Davis, 1982). Applied to the
+    columns of a draws-by-grid matrix it gives smooth pointwise bands: the
+    kinks of the empirical quantile along the grid are attenuated at the same
+    estimand and about the same accuracy. The bands are pointwise, and every
+    draw contributes: below roughly 200 draws and with heavy tails the estimate
+    can differ much from the empirical quantile, and next to the edge of a
+    point mass it blends the point mass with the continuous draws. A column
+    with an infinite draw uses the empirical quantile; an undefined result
+    stops with an error of class `BayesTools_harrell_davis_undefined`.
 
 ### Fixes
 - prior densities and distribution methods:
