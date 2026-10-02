@@ -319,6 +319,7 @@
 .bt_undefined_draws_reasons <- c(
   correlation       = "where the correlation is defined, i.e. both SDs are positive",
   allocation_active = "where the variance share is defined, i.e. an allocation component is active",
+  ordered_parameterization = "where the model contains this ordered allocation parameterization",
   positive_definite = "where the correlation matrix is positive definite"
 )
 

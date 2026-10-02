@@ -49,6 +49,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   # extract the list of priors
   priors <- attr(model, "prior_list")
+  ordered_specs <- JAGS_ordered_parameter_spec(model)
   prior_density_priors <- priors
   formula_scale <- attr(model, "formula_scale")
   condition_event <- .condition_event(
@@ -66,6 +67,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   }
   posterior_density_sources <- .posterior_density_sources(model, model_samples)
   posterior_ordinate_sources <- .posterior_ordinate_sources(model, model_samples)
+  source_rows <- seq_len(nrow(model_samples))
 
   # apply conditioning
   if(length(condition_event[["conditional"]]) > 0){
@@ -83,7 +85,8 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
 
 
-    model_samples <- model_samples[conditioning_samples,,drop=FALSE]
+    model_samples <- .bt_draws_subset_rows(model_samples, conditioning_samples)
+    source_rows <- source_rows[conditioning_samples]
   }
 
   # apply scale transformation to posterior samples if requested
@@ -144,6 +147,14 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
 
     # add formula relevant information
+    if(is.prior.ordered(temp_prior)){
+      spec <- ordered_specs[[temp_parameter]]
+      retained <- .bt_ordered_source_new(temp_parameter, list(spec),
+        list(.bt_ordered_source_rows(spec, original_model_samples, seq_len(nrow(original_model_samples)))),
+        rep(1L, length(source_rows)), source_rows)
+      out[[temp_parameter]] <- .bt_meta_set(out[[temp_parameter]], "ordered_source", retained)
+      out[[temp_parameter]] <- .bt_meta_set(out[[temp_parameter]], "draw_index", source_rows)
+    }
     if(!is.null(attr(temp_prior, which = "parameter", exact = TRUE))){
       class(out[[temp_parameter]]) <- c(class(out[[temp_parameter]]), "mixed_posteriors.formula")
       out[[temp_parameter]] <- .bt_meta_set(out[[temp_parameter]], "formula_parameter", attr(temp_prior, which = "parameter", exact = TRUE))

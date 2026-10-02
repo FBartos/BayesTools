@@ -988,60 +988,6 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 # ordered factor ('_<factor>') when the term has several and the theta slice
 # ('[<slice>]') when the term has slice-specific allocations. Shared ('id')
 # allocations are shown with every term that uses them.
-.bt_ordered_allocation_shares <- function(parameter, prior, model_samples){
-
-  metadata    <- .prior_ordered_metadata(prior)
-  level_names <- .factor_level_list(prior)
-  term_parts  <- .bt_label_parts_term(parameter, prior)
-  term_label  <- paste(term_parts$components, collapse = ":")
-  several_factors <- length(metadata$ordered_terms) > 1L
-
-  columns <- list()
-  parts   <- list()
-  for(record in metadata$allocations){
-    if(!identical(record$spec$type, "dirichlet")){
-      next
-    }
-    eta_columns <- paste0(
-      .JAGS_prior_dirichlet_eta_name(record$node),
-      "[", seq_len(record$dim), "]"
-    )
-    if(!all(eta_columns %in% colnames(model_samples))){
-      stop(
-        "The allocation of the ordered prior '", parameter,
-        "' was not monitored; refit the model with this version of BayesTools.",
-        call. = FALSE
-      )
-    }
-    eta <- model_samples[, eta_columns, drop = FALSE]
-    # an increment of a cumulative contrast reaches the level after it; the
-    # first increment of a 'cumulative_levels' contrast reaches the first level
-    factor_levels <- level_names[[record$factor]]
-    tokens <- factor_levels[length(factor_levels) - record$dim + seq_len(record$dim)]
-    suffix <- paste0(
-      "_ordered_allocation",
-      if(several_factors) paste0("_", record$factor),
-      if(metadata$theta_dim > 1L && is.null(record$id)) paste0("[", record$slice, "]")
-    )
-    share_names <- paste0(parameter, suffix, "[", tokens, "]")
-    share <- eta / rowSums(eta)
-    colnames(share) <- share_names
-    columns[[length(columns) + 1L]] <- share
-    for(i in seq_along(share_names)){
-      parts[[share_names[i]]] <- .bt_label_parts(
-        components        = paste0(term_label, suffix, "[", tokens[i], "]"),
-        formula_parameter = term_parts$formula_parameter,
-        selector          = share_names[i]
-      )
-    }
-  }
-
-  list(
-    samples = if(length(columns) > 0L) do.call(cbind, columns) else model_samples[, 0L, drop = FALSE],
-    parts   = parts
-  )
-}
-
 # Transformed estimates show the level effects of ordered-factor priors, so
 # their total effect (the effect of the last level) and the slab draws of a
 # spike-and-slab total are removed; the inclusion indicator and probability

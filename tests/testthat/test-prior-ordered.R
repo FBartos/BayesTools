@@ -34,6 +34,12 @@ test_that("ordered recipes replay primitive chains and batched kernels independe
   stale[, gamma_names] <- stale[, gamma_names] * c(3, 1, 2)
   expect_equal(JAGS_evaluate_deterministic(fit, stale, nodes = "mu_f"),
     .bt_deterministic_node_evaluate(coefficient, .bt_deterministic_lookup(stale)), tolerance = 0)
+  expect_equal(JAGS_ordered_parameter_spec(fit)$mu_f$coefficient_names, spec$coefficient_names)
+  old_priors <- attr(fit, "prior_list", exact = TRUE)
+  old_metadata <- attr(old_priors$mu_f, "ordered_metadata", exact = TRUE)
+  old_metadata$numeric_literals <- NULL
+  attr(old_priors$mu_f, "ordered_metadata") <- old_metadata
+  attr(fit, "prior_list") <- old_priors
   expect_error(JAGS_ordered_parameter_spec(fit), class = "BayesTools_ordered_metadata_unavailable")
 })
 
@@ -56,6 +62,75 @@ test_that("ordered active kernels localize each nested total event", {
   expect_equal(unname(totals), unname(samples[, -1L, drop=FALSE] * samples[, 1L]), tolerance=0)
   samples[1, 1] <- 2
   expect_error(JAGS_ordered_density_kernel(setNames(list(p), parameter))(samples), class="BayesTools_ordered_invalid_state")
+})
+
+test_that("ordered numeric literals round trip supplied doubles", {
+  values <- c(1/6, 1/3, .6, 2.5, 1.2345678901234567)
+  expect_identical(as.double(vapply(values, .prior_ordered_format_number, character(1))), values)
+  p <- prior_ordered(prior("point", list(2.5)), allocation = c(1, 2, 3)/6)
+  attr(p, "levels") <- 4L
+  p <- .prior_ordered_default_bound(p, "mu_f")
+  literal <- .prior_ordered_metadata(p)$numeric_literals
+  expect_identical(as.double(literal$total$location), 2.5)
+  expect_identical(as.double(literal$allocations[[1L]]), c(1, 2, 3)/6)
+})
+
+test_that("ordered source retention follows selected model and row without extra sampling", {
+  data <- data.frame(f = ordered(rep(c("lo", "mid", "hi"), 2)))
+  make <- function(allocation = NULL, id = NULL){
+    info <- JAGS_formula(~f, "mu", data, list(intercept=prior("point",list(0)),
+      f=prior_ordered(prior("normal",list(0,1)), allocation=allocation, id=id)))
+    p <- info$prior_list$mu_f
+    spec <- .bt_ordered_spec("mu_f", p)
+    theta <- c(0, 1, 3, 2, -1, 4)
+    weights <- if(is.null(allocation)) cbind(c(1,2,3,4,5,6)/7, c(6,5,4,3,2,1)/7) else{
+      matrix(rep(allocation, each=6), 6)
+    }
+    coefficients <- weights * theta
+    colnames(coefficients) <- spec$coefficient_names
+    draws <- cbind(mu_intercept=0, coefficients, mu_f_ordered_total=theta)
+    if(is.null(allocation)){
+      gamma <- weights * 14
+      colnames(gamma) <- spec$allocations[[1L]]$gamma_coordinates
+      draws <- cbind(draws, gamma)
+    }
+    fit <- structure(list(mcmc=coda::mcmc.list(coda::mcmc(draws))), class=c("runjags","BayesTools_fit","list"))
+    attr(fit,"prior_list") <- info$prior_list
+    attr(fit,"formula_design") <- list(mu=info$formula_design)
+    attr(fit,"parameter_map") <- .bt_build_parameter_map(colnames(draws), info$prior_list,
+      formula_design=list(mu=info$formula_design))
+    fit <- .bt_attach_fit_contract(.bt_attach_draw_geometry(fit))
+    list(fit=fit, prior=p, theta=theta, weights=weights)
+  }
+  models <- list(make(), make(c(.25,.75)))
+  fits <- lapply(models, `[[`, "fit")
+  priors <- lapply(models, `[[`, "prior")
+  mixed <- .mix_posteriors.factor(fits,priors,"mu_f",c(.3,.7),seed=13,n_samples=40)
+  source <- .bt_meta_get(mixed,"ordered_source")
+  raw <- .bt_ordered_source_display(source)$samples
+  expected <- t(vapply(seq_len(nrow(raw)),function(i){
+    m <- models[[source$model[[i]]]]
+    row <- source$draw_index[[i]]
+    c(m$theta[[row]],m$weights[row,])
+  }, numeric(3)))
+  expect_identical(unname(raw), unname(expected))
+  subset <- .bt_draws_subset_rows(mixed,c(2L,7L,14L))
+  expect_identical(.bt_meta_get(subset,"ordered_source")$primitives,source$primitives[c(2L,7L,14L),,drop=FALSE])
+  expect_identical(.bt_meta_get(subset,"draw_index"),source$draw_index[c(2L,7L,14L)])
+  reversed <- .mix_posteriors.factor(rev(fits),rev(priors),"mu_f",c(.7,.3),seed=13,n_samples=40)
+  expect_identical(colnames(.bt_ordered_source_display(.bt_meta_get(reversed,"ordered_source"))$samples),colnames(raw))
+  absent <- .mix_posteriors.factor(c(fits[1],list(structure(list(),class="null_model"))),
+    c(priors[1],list(prior("point",list(0)))),"mu_f",c(.5,.5),seed=13,n_samples=40)
+  absent_source <- .bt_meta_get(absent,"ordered_source")
+  absent_raw <- .bt_ordered_source_display(absent_source)
+  expect_true(all(is.na(absent_raw$samples[absent_source$model==2L,-1L,drop=FALSE])))
+  expect_true(all(absent_raw$samples[absent_source$model==2L,1L]==0))
+  expect_identical(unname(absent_raw$undefined_draws),rep("ordered_parameterization",2L))
+  zero_count <- .mix_posteriors.factor(fits,priors,"mu_f",c(0,1),seed=13,n_samples=20)
+  expect_identical(colnames(.bt_ordered_source_display(.bt_meta_get(zero_count,"ordered_source"))$samples),colnames(raw))
+  expect_error(.bt_meta_set(mixed,"draw_index",1:2),"one row per draw")
+  table <- ensemble_estimates_table(list(mu_f=absent),"mu_f")
+  expect_match(paste(attr(table,"footnotes"),collapse=" "),"ordered allocation parameterization")
 })
 
 test_that("prior_ordered() validates constructor inputs", {
@@ -646,7 +721,7 @@ test_that("prior_ordered() can define ordered random slope SD components", {
   syntax <- JAGS_add_priors("model{}", formula_info$prior_list)
   expect_match(syntax, "mu__xREx__id_f_ordered_total ~ dnorm\\(0,1\\)T\\(0,\\)")
   expect_match(syntax, "mu__xREx__id_f\\[1\\] <- mu__xREx__id_f_ordered_total \\* 0.4")
-  expect_match(syntax, "mu__xREx__id_f\\[2\\] <- mu__xREx__id_f_ordered_total \\* 0.6")
+  expect_match(syntax, "mu__xREx__id_f\\[2\\] <- mu__xREx__id_f_ordered_total \\* 0.59999999999999998")
 })
 
 test_that("prior_ordered() indexes a sole two-level random slope SD", {
@@ -803,8 +878,9 @@ test_that("public posterior mixing preserves ordered coefficient rows and metada
     byrow = TRUE,
     dimnames = list(NULL, c("mu_f[1]", "mu_f[2]"))
   )
+  source_posterior <- cbind(posterior, mu_f_ordered_total = c(3, 12))
 
-  fit <- coda::mcmc(posterior)
+  fit <- coda::mcmc(source_posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- formula_info$prior_list
   fit <- attach_test_parameter_map(fit)
@@ -877,8 +953,8 @@ test_that("public posterior mixing preserves ordered coefficient rows and metada
 
   mixed <- mix_posteriors(
     list(
-      make_model(posterior_1, ordered_prior),
-      make_model(posterior_2, ordered_prior_2)
+      make_model(cbind(posterior_1, mu_f_ordered_total = c(11, 22, 33)), ordered_prior),
+      make_model(cbind(posterior_2, mu_f_ordered_total = c(44, 55, 66)), ordered_prior_2)
     ),
     parameters = "mu_f",
     is_null_list = list(mu_f = c(FALSE, FALSE)),
@@ -925,7 +1001,7 @@ test_that("marginal posterior uses the stored full-rank ordered design", {
     byrow = TRUE,
     dimnames = list(NULL, paste0("mu_f[", 1:3, "]"))
   )
-  fit <- coda::mcmc(posterior)
+  fit <- coda::mcmc(cbind(posterior, mu_f_ordered_total = c(10, 20)))
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- formula_info$prior_list
   fit <- attach_test_parameter_map(fit)
@@ -977,7 +1053,11 @@ test_that("ordered levels combined with an intercept convolve on the common grid
         f = prior_ordered(prior("normal", list(0, 1)), allocation = allocation)
       )
     )
-    fit <- coda::mcmc(posterior)
+    primitive_draws <- cbind(posterior, mu_f_ordered_total = seq_len(200)/100)
+    if(is.null(allocation)) primitive_draws <- cbind(primitive_draws,
+      "prior_par_eta_mu_f_ordered_alloc_f_1[1]" = 1,
+      "prior_par_eta_mu_f_ordered_alloc_f_1[2]" = 1)
+    fit <- coda::mcmc(primitive_draws)
     class(fit) <- c("mcmc", "BayesTools_fit")
     attr(fit, "prior_list") <- formula_info$prior_list
     fit <- attach_test_parameter_map(fit)
@@ -1274,7 +1354,9 @@ test_that("prior curves without a structural route omit unresolved heavy-tailed 
                      "mu_f[1]" = stats::rnorm(500, .1, .05), "mu_f[2]" = stats::rnorm(500, .15, .05))
   formula_info <- JAGS_formula(y ~ f, "mu", data = df, prior_list = list(
     intercept = prior("normal", list(0, 1)), f = prior_ordered(prior("cauchy", list(0, 1)))))
-  fit <- coda::mcmc(posterior)
+  fit <- coda::mcmc(cbind(posterior, mu_f_ordered_total = seq_len(500)/100,
+    "prior_par_eta_mu_f_ordered_alloc_f_1[1]" = 1,
+    "prior_par_eta_mu_f_ordered_alloc_f_1[2]" = 1))
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- formula_info$prior_list
   fit <- attach_test_parameter_map(fit)
@@ -1670,6 +1752,7 @@ test_that("ordered mixed measures propagate through marginal inference", {
   posterior <- cbind(
     "mu_f[1]" = c(0, .1, .2, 0),
     "mu_f[2]" = c(0, .2, .3, 0),
+    "mu_f_ordered_total" = c(0, .3, .5, 0),
     "mu_f_ordered_total_indicator" = c(0, 1, 1, 0)
   )
   fit <- coda::mcmc(posterior)

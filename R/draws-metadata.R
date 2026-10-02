@@ -81,6 +81,7 @@
       if(.bt_meta_is_index(value, allow_NA = TRUE)) NULL else
         "it must hold positive integer component indices (NA for models without a total spike)"
     },
+    ordered_source = .bt_ordered_source_validate,
     undefined_draws = function(value){
       if(is.character(value) && !anyNA(value)) NULL else
         "it must be a character vector naming the undefined quantities"
@@ -281,7 +282,7 @@
 
 .bt_meta_field_names <- c(
   "support", "atoms", "components", "component", "component_source",
-  "draw_index", "ordered_total_component", "undefined_draws", "prior_density",
+  "draw_index", "ordered_total_component", "ordered_source", "undefined_draws", "prior_density",
   "prior_context", "prior_densities", "posterior_density",
   "posterior_densities", "posterior_ordinate", "posterior_ordinates",
   "formula_parameter", "log_intercept", "formula_scale", "transform_scaled",
@@ -377,6 +378,10 @@
     .bt_meta_check_field(field)
     if(!is.null(fields[[field]])){
       .bt_meta_validate(field, fields[[field]])
+      if(.bt_meta_is_draws(x) && field %in% c("component", "draw_index", "ordered_total_component", "ordered_source")){
+        rows <- if(identical(field, "ordered_source")) nrow(fields[[field]]$primitives) else NROW(fields[[field]])
+        if(rows != NROW(x)) stop("Draw metadata '", field, "' must have one row per draw.", call. = FALSE)
+      }
     }
   }
   meta <- .bt_meta_container(x)
@@ -393,6 +398,23 @@
     meta[[field]] <- fields[[field]]
   }
   .bt_meta_write(x, meta, fingerprint)
+}
+
+# One row-subsetting operation for every row-aligned metadata field. Producers
+# that change values separately retain fitted ordered primitives through this
+# helper, rather than copying an old row count onto new draws.
+.bt_draws_subset_rows <- function(x, rows){
+
+  meta <- .bt_meta_current_container(x)
+  out <- if(is.null(dim(x))) .bt_draws_plain(x)[rows] else .bt_draws_plain(x)[rows, , drop = FALSE]
+  attributes_to_keep <- attributes(x)[setdiff(names(attributes(x)), c("names", "dim", "dimnames", .bt_meta_attribute))]
+  attributes(out) <- c(attributes(out), attributes_to_keep)
+  if(is.null(meta)) return(out)
+  for(field in c("component", "draw_index", "ordered_total_component")){
+    if(!is.null(meta[[field]])) meta[[field]] <- if(is.null(dim(meta[[field]]))) meta[[field]][rows] else meta[[field]][rows, , drop = FALSE]
+  }
+  if(!is.null(meta$ordered_source)) meta$ordered_source <- .bt_ordered_source_subset(meta$ordered_source, rows)
+  .bt_meta_write(out, meta, if(.bt_meta_is_draws(out)) .bt_meta_fingerprint(out))
 }
 
 # Draw metadata go stale when the values of the draws change after the

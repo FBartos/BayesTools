@@ -160,6 +160,21 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
       }
     }
   }
+  if(!transform_factors){
+    for(parameter in parameters){
+      if(isTRUE(attr(samples[[parameter]], "ordered", exact = TRUE))){
+        raw <- .bt_ordered_raw_table_samples(samples[[parameter]])
+        if(is.null(raw)){
+          footnotes <- c(footnotes, "Raw ordered decomposition is unavailable for models with a different nonzero parameterization; coefficient rows are shown.")
+        }else{
+          samples[[parameter]] <- raw
+          undefined_draws[[parameter]] <- .bt_meta_get(raw, "undefined_draws")
+          if(transformed_scale) footnotes <- c(footnotes,
+            "Ordered totals and allocation shares are on the fitted scale.")
+        }
+      }
+    }
+  }
 
   # row labels rendered from the label parts of every column (recorded with
   # the columns' quantity ids for the table's 'quantities')

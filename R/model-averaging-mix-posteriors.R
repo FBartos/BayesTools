@@ -655,6 +655,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     # per-draw component of the ordered total of models whose total has a
     # spike at zero (NA for the other models); formula-level atoms split by it
     total_indicator <- NULL
+    source_models <- lapply(priors, .bt_ordered_source_model, parameter = parameter)
+    source_samples <- vector("list", length(priors))
 
     sample_counts <- .posterior_mixture_sample_counts(post_probs, n_samples)
     for(i in seq_along(fits)[sample_counts > 0]){
@@ -673,6 +675,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       }
 
       temp_ind <- sample(nrow(model_samples), sample_counts[i], replace = TRUE)
+      source_samples[[i]] <- .bt_ordered_source_rows(source_models[[i]], model_samples, temp_ind)
 
       if(is.prior.point(priors[[i]])){
         samples <- rbind(
@@ -711,6 +714,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     colnames(samples) <- .bt_label_prior_column_names(parameter, ordered_prior)
     samples <- .bt_meta_set(samples, "draw_index", draw_index)
     samples <- .bt_draws_set_component(samples, model_component, "model")
+    samples <- .bt_meta_set(samples, "ordered_source",
+      .bt_ordered_source_new(parameter, source_models, source_samples, model_component, draw_index))
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- priors
     if(any(!is.na(total_indicator))){
