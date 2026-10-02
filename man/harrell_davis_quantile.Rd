@@ -29,8 +29,8 @@ average of all order statistics. Applied pointwise to the columns of a
 draws-by-grid matrix, it gives smooth credible bands: the kinks that the
 empirical quantile (\code{stats::quantile()}) shows when the draws that define the
 quantile change from one grid point to the next are attenuated. The
-estimand is the same as that of the empirical quantile, and the accuracy is
-similar.
+estimand is the same as that of the empirical quantile; in simulations of
+smooth curves the accuracy was similar (see the details).
 }
 \details{
 For \code{m} draws with order statistics \verb{y(1), ..., y(m)} and a
@@ -38,10 +38,10 @@ probability \code{p} in \verb{(0, 1)}, the estimate is the sum of \code{w_i * y(
 weights \code{w_i = I_(i/m)(a, b) - I_((i-1)/m)(a, b)}, where \code{I} is the
 regularized incomplete beta function, \code{a = p * (m + 1)}, and
 \code{b = (1 - p) * (m + 1)}. The weights depend only on the number of draws and
-\code{p} and are computed once for all columns. The estimate is exact for
-constant columns and does not overflow for finite draws. The probabilities
-\code{0} and \code{1} return the minimum and the maximum, and a single draw is
-returned as it is.
+\code{p} and are computed once for all columns that need them. The estimate is
+exact for constant columns and does not overflow for finite draws. The
+probabilities \code{0} and \code{1} return the minimum and the maximum, and a single
+draw is returned as it is.
 
 Caveats of the estimator:
 \itemize{
@@ -50,23 +50,38 @@ simultaneous band of the underlying curve.
 \item The estimate is smooth, not more accurate. The slowly varying Monte Carlo
 error of the empirical quantile across neighboring columns remains, and
 only more draws reduce it. Extreme probabilities (e.g., \code{0.0005}) are not
-estimated more accurately than by the empirical quantile.
-\item All draws are weighted equally and every draw contributes. A small number
-of draws (below roughly 200) and heavy tails can move the estimate far
-from the empirical quantile.
+estimated more accurately than by the empirical quantile. In simulations
+of smooth curves (lines with normal coefficients, probability \code{0.025},
+1,000 and 10,000 draws), the root mean squared error was about as large as
+that of the empirical quantile (median ratios of 0.92 and 0.97) and the
+roughness of the error along the grid was several times smaller; this is
+no guarantee for other draws or settings.
+\item The input draws have equal weights (there are no importance weights), but
+the estimator gives every draw a positive and unequal weight that depends
+on its rank and is largest for the draws closest to the target rank. A
+small number of draws (below roughly 200) and heavy tails can therefore
+move the estimate far from the empirical quantile.
 \item Draws with a point mass (an atom, e.g., a parameter fixed at zero in part
 of a model-averaged posterior) are not treated separately: within about
 two Monte Carlo standard errors (in probability) of the edge of a point
 mass, the estimate blends the point mass and the continuous draws.
+\item The weighted sum is computed in double precision. Its rounding error is
+of the order of the machine precision times the largest absolute draw, so
+differences between draws that are much smaller than that (e.g., the
+middle draw of \code{c(-1e16, 1, 1e16)}) are not resolved.
 }
 
-A column that contains an infinite draw is summarized by the empirical
-quantile of that column (\code{stats::quantile()}, type 7), since the weighted
-average is not defined for it. If that quantile is \code{NaN} (an interpolation
+An infinite draw has a positive weight at every probability strictly
+between 0 and 1, which makes the weighted average infinite (or undefined for
+infinite draws of both signs). A column that contains an infinite draw is
+therefore summarized by the empirical quantile of that column
+(\code{stats::quantile()}, type 7). If that quantile is \code{NaN} (an interpolation
 between draws of \code{-Inf} and \code{Inf}), or if the weights of a probability
 cannot be computed numerically (a probability below about \code{1e-310}), the
 function stops with an error of class \code{BayesTools_harrell_davis_undefined}
-(also of the family class \code{BayesTools_harrell_davis}).
+(also of the family class \code{BayesTools_harrell_davis}). The weights are
+computed only when a column with finite draws needs them, so columns of
+infinite draws never raise the second error.
 }
 \examples{
 set.seed(1)

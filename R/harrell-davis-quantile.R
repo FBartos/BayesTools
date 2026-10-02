@@ -6,8 +6,8 @@
 #' draws-by-grid matrix, it gives smooth credible bands: the kinks that the
 #' empirical quantile (`stats::quantile()`) shows when the draws that define the
 #' quantile change from one grid point to the next are attenuated. The
-#' estimand is the same as that of the empirical quantile, and the accuracy is
-#' similar.
+#' estimand is the same as that of the empirical quantile; in simulations of
+#' smooth curves the accuracy was similar (see the details).
 #'
 #' @param x a numeric vector of draws, or a numeric matrix with the draws in
 #' rows and one quantity (e.g., a grid point) per column. Missing values are
@@ -22,10 +22,10 @@
 #' weights `w_i = I_(i/m)(a, b) - I_((i-1)/m)(a, b)`, where `I` is the
 #' regularized incomplete beta function, `a = p * (m + 1)`, and
 #' `b = (1 - p) * (m + 1)`. The weights depend only on the number of draws and
-#' `p` and are computed once for all columns. The estimate is exact for
-#' constant columns and does not overflow for finite draws. The probabilities
-#' `0` and `1` return the minimum and the maximum, and a single draw is
-#' returned as it is.
+#' `p` and are computed once for all columns that need them. The estimate is
+#' exact for constant columns and does not overflow for finite draws. The
+#' probabilities `0` and `1` return the minimum and the maximum, and a single
+#' draw is returned as it is.
 #'
 #' Caveats of the estimator:
 #' * The quantiles of the columns are pointwise: the result is not a
@@ -33,22 +33,37 @@
 #' * The estimate is smooth, not more accurate. The slowly varying Monte Carlo
 #'   error of the empirical quantile across neighboring columns remains, and
 #'   only more draws reduce it. Extreme probabilities (e.g., `0.0005`) are not
-#'   estimated more accurately than by the empirical quantile.
-#' * All draws are weighted equally and every draw contributes. A small number
-#'   of draws (below roughly 200) and heavy tails can move the estimate far
-#'   from the empirical quantile.
+#'   estimated more accurately than by the empirical quantile. In simulations
+#'   of smooth curves (lines with normal coefficients, probability `0.025`,
+#'   1,000 and 10,000 draws), the root mean squared error was about as large as
+#'   that of the empirical quantile (median ratios of 0.92 and 0.97) and the
+#'   roughness of the error along the grid was several times smaller; this is
+#'   no guarantee for other draws or settings.
+#' * The input draws have equal weights (there are no importance weights), but
+#'   the estimator gives every draw a positive and unequal weight that depends
+#'   on its rank and is largest for the draws closest to the target rank. A
+#'   small number of draws (below roughly 200) and heavy tails can therefore
+#'   move the estimate far from the empirical quantile.
 #' * Draws with a point mass (an atom, e.g., a parameter fixed at zero in part
 #'   of a model-averaged posterior) are not treated separately: within about
 #'   two Monte Carlo standard errors (in probability) of the edge of a point
 #'   mass, the estimate blends the point mass and the continuous draws.
+#' * The weighted sum is computed in double precision. Its rounding error is
+#'   of the order of the machine precision times the largest absolute draw, so
+#'   differences between draws that are much smaller than that (e.g., the
+#'   middle draw of `c(-1e16, 1, 1e16)`) are not resolved.
 #'
-#' A column that contains an infinite draw is summarized by the empirical
-#' quantile of that column (`stats::quantile()`, type 7), since the weighted
-#' average is not defined for it. If that quantile is `NaN` (an interpolation
+#' An infinite draw has a positive weight at every probability strictly
+#' between 0 and 1, which makes the weighted average infinite (or undefined for
+#' infinite draws of both signs). A column that contains an infinite draw is
+#' therefore summarized by the empirical quantile of that column
+#' (`stats::quantile()`, type 7). If that quantile is `NaN` (an interpolation
 #' between draws of `-Inf` and `Inf`), or if the weights of a probability
 #' cannot be computed numerically (a probability below about `1e-310`), the
 #' function stops with an error of class `BayesTools_harrell_davis_undefined`
-#' (also of the family class `BayesTools_harrell_davis`).
+#' (also of the family class `BayesTools_harrell_davis`). The weights are
+#' computed only when a column with finite draws needs them, so columns of
+#' infinite draws never raise the second error.
 #'
 #' @return a numeric vector of the same length as `probs` for a vector `x`,
 #' and a matrix with `length(probs)` rows and one column per column of `x`
@@ -107,8 +122,8 @@ harrell_davis_quantile <- function(x, probs, names = FALSE){
       is_lower     <- probs_unique <= 0
       is_upper     <- probs_unique >= 1
       interior     <- which(!is_lower & !is_upper)
-      weights      <- lapply(probs_unique[interior], .harrell_davis_weights, m = n_draws)
       anchors      <- pmin(pmax(round(probs_unique[interior] * (n_draws + 1)), 1), n_draws)
+      weights      <- NULL
 
       for(j in seq_len(n_cols)){
         draws <- sort.int(x[, j], method = "radix")
@@ -116,6 +131,10 @@ harrell_davis_quantile <- function(x, probs, names = FALSE){
           # the weighted average is not defined with infinite draws
           result[, j] <- stats::quantile(draws, probs = probs, names = FALSE, type = 7)
           next
+        }
+        if(is.null(weights)){
+          # only columns with finite draws need the weights
+          weights <- lapply(probs_unique[interior], .harrell_davis_weights, m = n_draws)
         }
         values           <- numeric(length(probs_unique))
         values[is_lower] <- draws[1L]

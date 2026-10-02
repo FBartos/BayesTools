@@ -935,12 +935,13 @@ old behaviour.
     average of all order statistics (Harrell and Davis, 1982). Applied to the
     columns of a draws-by-grid matrix it gives smooth pointwise bands: the
     kinks of the empirical quantile along the grid are attenuated at the same
-    estimand and about the same accuracy. The bands are pointwise, and every
-    draw contributes: below roughly 200 draws and with heavy tails the estimate
-    can differ much from the empirical quantile, and next to the edge of a
-    point mass it blends the point mass with the continuous draws. A column
-    with an infinite draw uses the empirical quantile; an undefined result
-    stops with an error of class `BayesTools_harrell_davis_undefined`.
+    estimand and, in simulations of smooth curves, about the same accuracy.
+    The bands are pointwise, and every draw contributes: below roughly 200
+    draws and with heavy tails the estimate can differ much from the empirical
+    quantile, and next to the edge of a point mass it blends the point mass
+    with the continuous draws. A column with an infinite draw uses the
+    empirical quantile; an undefined result stops with an error of class
+    `BayesTools_harrell_davis_undefined`.
   - the median and 95% band of posterior PET-PEESE lines
     (`plot_posterior()` with `parameter = "PET"`, `"PEESE"`, or `"PETPEESE"`)
     are Harrell-Davis quantiles of the draws of the line (one call, so the

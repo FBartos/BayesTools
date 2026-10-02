@@ -241,6 +241,43 @@ test_that("harrell_davis_quantile falls back to the empirical quantile for infin
   expect_equal(harrell_davis_quantile(c(1, 2, 3), 1e-12), 1, tolerance = 1e-9)
 })
 
+test_that("harrell_davis_quantile builds the weights only for columns with finite draws", {
+
+  # a column of infinite draws is summarized by the empirical quantile whatever
+  # the probability, also where the weights cannot be computed
+  expect_identical(harrell_davis_quantile(rep(Inf, 1000), 1e-315), Inf)
+  expect_identical(harrell_davis_quantile(rep(-Inf, 1000), 1 - 1e-12), -Inf)
+
+  weights_built <- 0L
+  testthat::local_mocked_bindings(
+    .harrell_davis_weights = function(p, m) {
+      weights_built <<- weights_built + 1L
+      stop("the weights were built")
+    },
+    .package = "BayesTools"
+  )
+
+  infinite <- cbind(a = c(1, 2, Inf, 4), b = c(-Inf, 0, 1, 2))
+  probs    <- c(.025, .5, .975)
+  expect_identical(
+    harrell_davis_quantile(infinite, probs),
+    apply(infinite, 2, stats::quantile, probs = probs, names = FALSE, type = 7)
+  )
+  expect_identical(
+    harrell_davis_quantile(infinite, c(0, 1)),
+    matrix(c(1, Inf, -Inf, 2), nrow = 2, dimnames = list(NULL, c("a", "b")))
+  )
+  expect_identical(weights_built, 0L)
+
+  # probabilities of 0 and 1 need no weights either
+  expect_identical(harrell_davis_quantile(c(3, 1, 2), c(0, 1)), c(1, 3))
+  expect_identical(weights_built, 0L)
+
+  # a finite column builds them (once), after the infinite column was summarized
+  expect_error(harrell_davis_quantile(cbind(infinite[, 1], c(1, 2, 3, 4)), probs), "the weights were built", fixed = TRUE)
+  expect_identical(weights_built, 1L)
+})
+
 test_that("harrell_davis_quantile returns vectors and matrices with the documented shapes", {
 
   set.seed(2)
