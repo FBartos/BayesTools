@@ -14,20 +14,42 @@ JAGS_ordered_parameter_spec(
 \arguments{
 \item{fit}{a model fitted with \code{\link[=JAGS_fit]{JAGS_fit()}}.}
 
-\item{parameters}{optional names of ordered terms; code{NULL} selects all.}
+\item{parameters}{optional names of ordered terms; \code{NULL} selects all.}
 
 \item{weights}{optional named numeric fitted-coordinate projection weights.}
 
-\item{draws}{optional numeric source draws for the projection.}
+\item{draws}{optional numeric source draws for sampled parameters or a projection.}
 }
 \value{
-With no code{weights}, a named list of term specifications containing
-the bound code{prior}, coefficient names and grid, slice indices, total names
+With no \code{weights}, a named list of term specifications containing
+the bound \code{prior}, coefficient names and grid, slice indices, total names
 and prior, deterministic total recipe, allocation records (key, factor, slice,
 id, normalized and gamma coordinates, alpha or fixed weights), and label parts.
+\code{source_coordinates} combines total monitors, total primitive dependencies,
+and Gamma monitors; \code{total_auxiliary_coordinates} lists the total's other
+monitored coordinates, including indicators, inclusion probabilities and slab
+sources. Some total-component dependencies are optional unmonitored sources;
+the monitored total is their fitted snapshot alternative. No supplied draws
+means no values field. With \code{weights = NULL} and supplied \code{draws},
+each term also contains \code{sampled_parameters}: \code{values} is the fitted
+total/share matrix, \code{label_parts} names its rendered labels, and
+\code{allocation_names} identifies its sampled share columns. Fixed totals
+materialize every slice; fixed allocations produce no sampled share columns.
+
 An empty named list is returned when no ordered terms are present. With
-code{weights}, an ordered projection specification, including resolved values
-and declared point states when code{draws} are supplied, is returned.
+\code{weights}, the result is a \code{BayesTools_ordered_projection} containing
+bound \code{specs}, fitted \code{weights}, original \code{requested_weights},
+static tensor \code{contractions},
+and \code{ordinary_weights}. With resolved draws it also contains row-aligned
+\code{values}, \code{atom} (point location, otherwise \code{NA}), \code{state}
+(\code{"point"}, \code{"continuous"}, or \code{"unavailable"}), and
+\code{exact} (a full-simplex identity). \code{total_contraction_weights} holds
+the per-term matrices of total slopes, and \code{allocation_contractions}
+holds complete coordinate contractions per allocation key, including totals
+and every retained other factor. \code{reason} is a typed condition when the
+scalar measure is structurally unavailable.
+Total-coordinate weights expand to the corresponding complete coefficient
+slice, so a total target uses its declared full-simplex identity.
 }
 \description{
 Reads the persisted total, allocation and coefficient recipes
@@ -35,10 +57,19 @@ of ordered terms. These backend recipes do not add public catalog quantities.
 }
 \details{
 Missing fitted numeric provenance raises
-code{BayesTools_ordered_metadata_unavailable} and
-code{BayesTools_refit_required}: refit with this version. Missing source
-draws raise code{BayesTools_ordered_coordinates_unavailable}; invalid component
-states raise code{BayesTools_ordered_invalid_state}. Unclassified expression
-structure raises code{BayesTools_ordered_expression_unavailable}. These
-coordinate/expression conditions inherit code{BayesTools_ordered_unavailable}.
+\code{BayesTools_ordered_metadata_unavailable} and
+\code{BayesTools_refit_required}: refit with this version. Missing source
+draws raise \code{BayesTools_ordered_coordinates_unavailable}; invalid component
+states raise \code{BayesTools_ordered_invalid_state}. Expression totals can
+supply fitted snapshot values but have an unavailable scalar measure with a
+\code{BayesTools_ordered_expression_unavailable} reason. Without a registered
+certified ancestor recipe they cannot supply numerical charts, structural
+atoms, or correct replay after changing an ancestor. These
+coordinate/expression conditions inherit \code{BayesTools_ordered_unavailable}.
+Missing or inconsistent fitted provenance reports: "Fitted ordered numeric
+provenance is unavailable. Refit the model with this version of BayesTools."
+Missing projection totals report: "Ordered total sources for '\if{html}{\out{<term>}}' are
+unavailable in 'draws'. Include its declared source coordinates." Invalid
+total states report: "Ordered total indicator '\if{html}{\out{<coordinate>}}' does not select
+a declared component."
 }

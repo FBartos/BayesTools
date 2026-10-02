@@ -621,7 +621,14 @@ Producers of the `condition` field set its logical `averaged` element
 keys with a literal.
 Posterior atoms come only from the `atoms` field; a precomputed posterior
 density describes only the continuous part and carries no point masses. The
-component of a draw has one encoding: `component` indexes the declared
+optional named scalar `marginals` cover every column position and take precedence
+in scalar extraction; they never imply a joint atom. Ordered projections derive
+them from finite coefficient tensors and declared total/component states,
+including zero and full-simplex identities. Semantic point-state values equal
+their locations exactly. Inclusion uses the declared total event, while primitive
+allocations remain defined on zero-total draws; absent model allocations are
+undefined. One row-subsetting helper preserves retained source alignment.
+The component of a draw has one encoding: `component` indexes the declared
 component list, with `component_source` the list it indexes (`"model"`: the
 models of a `mix_posteriors()` ensemble,
 `"mixture"` or `"spike_and_slab"`: the components of the prior, whose slab and

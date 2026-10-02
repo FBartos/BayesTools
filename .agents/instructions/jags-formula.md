@@ -288,7 +288,17 @@ names.
   the total, which the last level repeats); untransformed model tables show
   the sampled parameters, the total and the normalized allocation shares
   (display rows derived from the gamma nodes, not catalog quantities), on the
-  fitted scale.
+  fitted scale. Mixed producers retain these primitive sources with their
+  selected model and row; raw ensemble tables use their complete declared-model
+  union, including fixed allocations and undefined shares in absent models.
+  `JAGS_ordered_parameter_spec()` owns source names, labels, tensor projections
+  and exact scalar point states. Registered ordered families replay Gamma
+  allocations and coefficient chains; `JAGS_ordered_density_kernel()` is the
+  separate active-component numerical kernel, not a bridge density. Numeric
+  literals and emitted total syntax are persisted; missing provenance requires
+  a real refit. Expression totals provide fitted snapshot values only unless a
+  certified ancestor recipe exists, and never acquire point atoms from their
+  wrapper or observed constancy.
 - Validate coordinate uniqueness, quantity uniqueness, aliases, extraction
   recipes, and coordinate dependencies atomically at map construction. Public
   accessors reuse that result through the map runtime cache rather than

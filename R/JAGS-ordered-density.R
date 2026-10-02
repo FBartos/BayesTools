@@ -3,10 +3,10 @@
 #' coordinates into a function of a numeric draws matrix.
 #' @param prior_list named list of original bound ordered priors.
 #' @param allocation_chart optional named list keyed by allocation key. Each
-#' entry has code{kind = "group"} and a nonempty proper index subset code{J},
-#' or code{kind = "pair"} and two distinct code{indices}. Its gamma factors
+#' entry has \code{kind = "group"} and a nonempty proper index subset \code{J},
+#' or \code{kind = "pair"} and two distinct \code{indices}. Its gamma factors
 #' are replaced by the corresponding Beta density of the group or pair share.
-#' @return A function of code{samples}, a numeric matrix with named coordinate
+#' @return A function of \code{samples}, a numeric matrix with named coordinate
 #' columns, returning one log density or log probability per row.
 #' @details Total mixture components are localized independently for each row;
 #' multi-slice spike totals share one inclusion state. Each total slice and
@@ -14,11 +14,11 @@
 #' component sources, and nuisance-only chart factors are omitted because they
 #' are constant along the conditional chart. This is a numerical conditional
 #' kernel, not a bridge density. Expression totals raise
-#' code{BayesTools_ordered_expression_unavailable}, missing coordinates raise
-#' code{BayesTools_ordered_coordinates_unavailable}, and invalid indicators
-#' raise code{BayesTools_ordered_invalid_state}; all inherit
-#' code{BayesTools_ordered_unavailable}. Ordinary values outside numeric support
-#' return code{-Inf}. Refit when bound ordered metadata are unavailable.
+#' \code{BayesTools_ordered_expression_unavailable}, missing coordinates raise
+#' \code{BayesTools_ordered_coordinates_unavailable}, and invalid indicators
+#' raise \code{BayesTools_ordered_invalid_state}; all inherit
+#' \code{BayesTools_ordered_unavailable}. Ordinary values outside numeric support
+#' return \code{-Inf}. Refit when bound ordered metadata are unavailable.
 #' @export
 JAGS_ordered_density_kernel <- function(prior_list, allocation_chart = NULL){
 
@@ -58,12 +58,23 @@ JAGS_ordered_density_kernel <- function(prior_list, allocation_chart = NULL){
   list(priors = unclass(total), component = component)
 }
 
+.bt_ordered_total_has_expression <- function(total){
+
+  .is_prior_expression(total) || (is.prior.mixture(total) && any(vapply(total,.bt_ordered_total_has_expression,logical(1))))
+}
+
+.bt_ordered_localize_total <- function(prior, total){
+
+  prior$total <- total
+  prior
+}
+
 .bt_ordered_compile_density <- function(prior_list, allocation_chart = NULL,
                                         emitted_allocations = character()){
 
   specs <- Map(.bt_ordered_spec, names(prior_list), prior_list)
   for(spec in specs){
-    if(.is_prior_expression(spec$total_prior)){
+    if(.bt_ordered_total_has_expression(spec$total_prior)){
       .bt_ordered_stop(paste0("The ordered density kernel for '", spec$parameter,
         "' is unavailable for expression totals. Use a supported scalar total prior."),
         "BayesTools_ordered_expression_unavailable")
@@ -132,7 +143,9 @@ JAGS_ordered_density_kernel <- function(prior_list, allocation_chart = NULL){
           sum(record$spec$alpha[J]), sum(record$spec$alpha[K]), log = TRUE)
       }else{
         indices <- chart$indices
-        result <- result + stats::dbeta(eta[, indices[[1L]]] / rowSums(eta[, indices, drop = FALSE]),
+        pair_sum <- rowSums(eta[,indices,drop=FALSE])
+        if(any(!invalid & pair_sum<=0)) .bt_ordered_stop("The ordered gamma-pair chart requires a positive pair sum.","BayesTools_ordered_invalid_state")
+        result <- result + stats::dbeta(eta[, indices[[1L]]] / pair_sum,
           record$spec$alpha[[indices[[1L]]]], record$spec$alpha[[indices[[2L]]]], log = TRUE)
         for(j in setdiff(seq_len(record$dim), indices)){
           result <- result + stats::dgamma(eta[, j], shape = record$spec$alpha[[j]], rate = 1, log = TRUE)

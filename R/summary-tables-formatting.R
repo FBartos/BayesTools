@@ -413,6 +413,7 @@
     declared      = unique(unlist(lapply(elements, `[[`, "declared"), use.names = FALSE))
   )
   transformed <- .apply_unscale_transform(coordinate_values, formula_scale)
+  original_samples <- samples
 
   for(name in names(elements)){
     element <- elements[[name]]
@@ -442,7 +443,22 @@
         colnames(x)[element$columns]
       )
     }
+    parameter <- unique(owners[colnames(element$weights)])
+    fixed_columns <- if(length(parameter)==1L) names(owners)[owners==parameter &
+      !.formula_scale_matches_prefix(names(owners),parameter,"__xREx__") &
+      !.formula_scale_matches_prefix(names(owners),parameter,"__xRE_ALLOCx") &
+      !.formula_scale_matches_prefix(names(owners),parameter,"__xRE_SUMMARY__")]
+    if(length(fixed_columns) && all(colnames(element$weights) %in% fixed_columns) &&
+       !(is.list(samples[[name]]) && !is.numeric(samples[[name]]))){
+      transform <- .bt_formula_coefficient_transform(fixed_columns,formula_scale[[parameter]],parameter)
+      weights <- element$weights %*% transform$matrix[colnames(element$weights),,drop=FALSE]
+      projections <- .bt_ordered_formula_projections(original_samples,weights,
+        transform$source_transforms[transform$source_transforms!="identity"])
+      samples[[name]] <- .bt_ordered_attach_linear_view(samples[[name]],projections,weights,original_samples)
+    }
   }
+  samples <- .bt_meta_set(samples,"transform_scaled",TRUE)
+  samples <- .bt_meta_set(samples,"formula_scale",formula_scale)
 
   return(samples)
 }

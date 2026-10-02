@@ -289,7 +289,18 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     keep          = keep
   )
 
-  out <- values[keep]
+  if(!is.null(plan) && identical(plan$kind,"ordered_projection") && length(plan$specs)==1L){
+    spec <- plan$specs[[1L]]
+    all_sources <- as.matrix(.fit_to_posterior(fit))
+    retained <- .bt_ordered_source_new(spec$parameter,list(spec),
+      list(.bt_ordered_source_rows(spec,all_sources,seq_len(nrow(all_sources)))),
+      rep(1L,length(values)),seq_along(values))
+    retained$projection_design <- matrix(plan$weights,nrow=1L,
+      dimnames=list(name,names(plan$weights)))
+    values <- .bt_meta_set(values,"ordered_source",retained)
+    values <- .bt_meta_set(values,"draw_index",seq_along(values))
+    out <- .bt_draws_subset_rows(values,keep)
+  }else out <- values[keep]
   attr(out, "parameter")  <- name
   attr(out, "prior_list") <- prior_none()
   out <- .posterior_support_set(out, quantity$support[[1L]])
@@ -668,8 +679,12 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     return(if(anyNA(components)) NA else FALSE)
   }
   if(is.prior.ordered(prior)){
-    return(.posterior_atoms_is_ordered_zero_total(prior) ||
-             .posterior_atoms_ordered_total_has_spike(prior$total))
+    if(.is_prior_expression(prior$total)) return(NA)
+    metadata <- .prior_ordered_metadata(prior)
+    fixed_zero <- any(vapply(metadata$allocations,function(record){
+      identical(record$spec$type,"fixed") && any(record$spec$weights==0)
+    },logical(1)))
+    return(fixed_zero || is.prior.discrete(prior$total) || isTRUE(.bt_prior_has_point_component(prior$total)))
   }
   if(is.prior.simple(prior) || is.prior.vector(prior) || is.prior.factor(prior)){
     return(FALSE)
@@ -700,6 +715,8 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 .bt_parameter_gate_plan <- function(fit, quantity){
 
   key <- quantity$extraction_key[[1L]]
+  ordered <- .bt_ordered_quantity_plan(fit,quantity)
+  if(!is.null(ordered)) return(ordered)
   if(!identical(key$type, "random_summary")){
     plan <- .bt_parameter_point_plan(fit, quantity)
     if(is.null(plan)){
@@ -824,6 +841,13 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
 
   if(is.null(plan)){
     return(NULL)
+  }
+  if(identical(plan$kind,"ordered_projection")){
+    if(is.null(model_samples)) model_samples <- as.matrix(.fit_to_posterior(fit))
+    projection <- .bt_ordered_projection(plan$specs,plan$weights,model_samples,plan$prior_list)
+    event <- if(length(plan$event_gates)) .condition_event_posterior_mask(
+      .condition_event(plan$prior_list,plan$event_gates,"AND"),plan$prior_list,model_samples) else NULL
+    return(list(atom=projection$atom,defined=rep(TRUE,n),event=event,known=!any(projection$state=="unavailable")))
   }
   gate_columns <- unique(c(
     plan$chain_gates, plan$component_gates, plan$parent_gates

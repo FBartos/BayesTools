@@ -1291,6 +1291,27 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   if(!is.null(atoms)){
     marginal <- .posterior_atoms_set(marginal, atoms)
   }
+  fitted_weights <- weights
+  if(isTRUE(.bt_meta_get(samples,"transform_scaled"))){
+    context <- .prior_density_context(prior_list,colnames(weights),formula_scale=.bt_meta_get(samples,"formula_scale"))
+    fitted_weights <- matrix(0,nrow(weights),ncol(weights),dimnames=dimnames(weights))
+    for(i in seq_len(nrow(weights))){
+      standardized <- .prior_density_context_standardized_weights(context,weights[i,],source_transforms)
+      fitted_weights[i,names(standardized)] <- standardized
+    }
+  }
+  ordered <- .bt_ordered_formula_projections(samples,fitted_weights,source_transforms)
+  if(!is.null(ordered)){
+    values <- as.vector(do.call(rbind,lapply(ordered,`[[`,"values")))
+    atom <- as.vector(do.call(rbind,lapply(ordered,`[[`,"atom")))
+    exact <- as.vector(do.call(rbind,lapply(ordered,`[[`,"exact")))
+    if(length(values)!=length(marginal)) .bt_ordered_stop("Ordered formula sources do not align with marginal draw rows. Recreate marginal posteriors from the source fits.")
+    replace <- !is.na(atom) | exact
+    marginal <- .bt_draws_transform_values(marginal,function(old){
+      old[replace] <- values[replace]
+      old
+    })
+  }
 
   marginal
 }

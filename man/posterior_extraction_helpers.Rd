@@ -56,7 +56,8 @@
   transform_factors = FALSE,
   transformations = NULL,
   components = list(),
-  with_label_parts = FALSE
+  with_label_parts = FALSE,
+  raw_model_samples = NULL
 )
 }
 \arguments{
@@ -112,6 +113,9 @@ and the \code{component}}
 
 \item{with_label_parts}{whether the label parts of the transformed columns
 are attached as the \code{"label_parts"} attribute}
+
+\item{raw_model_samples}{optional aligned fitted primitive draws used to
+retain ordered source semantics through a factor transformation}
 }
 \value{
 matrix or mcmc.list of posterior samples

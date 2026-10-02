@@ -1874,6 +1874,16 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       note = "Ordered-factor formula with internal allocation shares for semantic-table labels."
     ),
     catalog_row(
+      "fit_ordered_literal_point",
+      has_marglik=FALSE,model_family="gaussian-regression",formula='~ 1 + f',
+      scale_policy="ordered-allocation",prior_features="simple,formula,factor,ordered,point",
+      expected_monitor=c("mu_intercept",paste0("mu_f[",1:3,"]"),"mu_f_ordered_total"),
+      expected_formula_parameters="mu",oracle_type="formula-fixture-metadata",
+      expected_chains=1L,expected_iterations=100L,
+      flags=list(simple_priors=TRUE,factor_priors=TRUE,formulas=TRUE,assertion_only=TRUE),
+      note="Fixed ordered total 2.5 and weights 1:3/6 for faithful literals and exact scalar atoms."
+    ),
+    catalog_row(
       "fit_label_random_slope",
       has_marglik = FALSE,
       model_family = "gaussian-regression-random-effects",

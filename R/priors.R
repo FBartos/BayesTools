@@ -361,7 +361,12 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 #' and has no row). With \code{transform_factors = FALSE}, they report the
 #' sampled parameters: the total effect and, for random allocations, the
 #' allocation share of each increment, labelled by the level the increment
-#' reaches (see [runjags_estimates_table()]).
+#' reaches (see [runjags_estimates_table()] and [ensemble_estimates_table()]).
+#' Totals and primitive shares remain on the fitted scale when interactions
+#' prevent an original-scale factorization. Inclusion conditioning uses the
+#' declared total event; a discrete total alone does not create such an event.
+#' Literal numeric arguments are emitted at round-trip precision and persisted
+#' with the bound recipe. Fits without that provenance require refitting.
 #'
 #' @return return an object of class 'prior'.
 #'

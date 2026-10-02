@@ -1,49 +1,42 @@
+.bt_ordered_allocation_parts <- function(spec, record, sliced = NULL, slice = record$slice){
+
+  if(is.null(sliced)) sliced <- spec$metadata$theta_dim > 1L && is.null(record$id)
+  levels <- .factor_level_list(spec$prior)[[record$factor]]
+  tokens <- levels[length(levels)-record$dim+seq_len(record$dim)]
+  suffix <- paste0("_ordered_allocation",
+    if(length(spec$metadata$ordered_terms)>1L) paste0("_",record$factor),
+    if(sliced) paste0("[",slice,"]"))
+  names <- paste0(spec$parameter,suffix,"[",tokens,"]")
+  parts <- lapply(seq_along(names),function(i){
+    .bt_label_parts(components=paste0(paste(spec$label_parts$components,collapse=":"),suffix,"[",tokens[[i]],"]"),
+      formula_parameter=spec$label_parts$formula_parameter,selector=names[[i]])
+  })
+  stats::setNames(parts,names)
+}
+
 .bt_ordered_allocation_shares <- function(parameter, prior, model_samples){
 
-  metadata    <- .prior_ordered_metadata(prior)
-  level_names <- .factor_level_list(prior)
-  term_parts  <- .bt_label_parts_term(parameter, prior)
-  term_label  <- paste(term_parts$components, collapse = ":")
-  several_factors <- length(metadata$ordered_terms) > 1L
+  spec <- .bt_ordered_spec(parameter,prior)
 
   columns <- list()
   parts   <- list()
-  for(record in metadata$allocations){
+  for(record in spec$allocations){
     if(!identical(record$spec$type, "dirichlet")){
       next
     }
-    eta_columns <- paste0(
-      .JAGS_prior_dirichlet_eta_name(record$node),
-      "[", seq_len(record$dim), "]"
-    )
-    if(!all(eta_columns %in% colnames(model_samples))){
-      stop(
+    share <- .bt_ordered_allocation_values(record,model_samples)
+    if(is.null(share)){
+      .bt_stop_refit_required(
         "The allocation of the ordered prior '", parameter,
         "' was not monitored; refit the model with this version of BayesTools.",
-        call. = FALSE
+        class = "BayesTools_ordered_metadata_unavailable"
       )
     }
-    eta <- model_samples[, eta_columns, drop = FALSE]
-    # an increment of a cumulative contrast reaches the level after it; the
-    # first increment of a 'cumulative_levels' contrast reaches the first level
-    factor_levels <- level_names[[record$factor]]
-    tokens <- factor_levels[length(factor_levels) - record$dim + seq_len(record$dim)]
-    suffix <- paste0(
-      "_ordered_allocation",
-      if(several_factors) paste0("_", record$factor),
-      if(metadata$theta_dim > 1L && is.null(record$id)) paste0("[", record$slice, "]")
-    )
-    share_names <- paste0(parameter, suffix, "[", tokens, "]")
-    share <- eta / rowSums(eta)
+    share_parts <- .bt_ordered_allocation_parts(spec,record)
+    share_names <- names(share_parts)
     colnames(share) <- share_names
     columns[[length(columns) + 1L]] <- share
-    for(i in seq_along(share_names)){
-      parts[[share_names[i]]] <- .bt_label_parts(
-        components        = paste0(term_label, suffix, "[", tokens[i], "]"),
-        formula_parameter = term_parts$formula_parameter,
-        selector          = share_names[i]
-      )
-    }
+    parts <- c(parts,share_parts)
   }
 
   list(
@@ -55,9 +48,11 @@
 # Retained source rows stay on the fitted scale, independently of transformations
 # of effect columns. Models include the complete declared ensemble, even when no
 # row was selected from a model.
-.bt_ordered_source_model <- function(prior, parameter){
+.bt_ordered_source_model <- function(prior, parameter, fit = NULL){
 
-  if(is.prior.ordered(prior)) return(.bt_ordered_spec(parameter, prior))
+  if(is.prior.ordered(prior)){
+    return(if(is.null(fit)) .bt_ordered_spec(parameter, prior) else JAGS_ordered_parameter_spec(fit,parameter)[[parameter]])
+  }
   list(parameter = parameter, prior = prior,
     parameterization = if(is.null(prior) || .posterior_atoms_is_zero_point(prior)) "absent" else "unavailable")
 }
@@ -68,12 +63,12 @@
   draws <- model_samples[rows, , drop = FALSE]
   totals <- .bt_ordered_total_values(spec, .bt_deterministic_lookup(draws))
   if(is.null(totals)) .bt_ordered_stop(paste0("Ordered total sources for '", spec$parameter,
-    "' are unavailable. Refit the model with this version of BayesTools."))
+    "' are unavailable. Include its declared source coordinates."))
   colnames(totals) <- spec$total_names
   allocations <- lapply(spec$allocations, function(record){
     values <- .bt_ordered_allocation_values(record, draws)
     if(is.null(values)) .bt_ordered_stop(paste0("Ordered allocation sources for '", spec$parameter,
-      "' are unavailable. Refit the model with this version of BayesTools."))
+      "' are unavailable. Include its declared source coordinates."))
     colnames(values) <- record$coordinates
     values
   })
@@ -81,7 +76,7 @@
   if(!is.null(spec$total_node)){
     indicator <- spec$total_node$spec$indicator
     if(!indicator %in% colnames(draws)) .bt_ordered_stop(paste0("Ordered total indicator '", indicator,
-      "' is unavailable. Refit the model with this version of BayesTools."))
+      "' is unavailable. Include its declared source coordinate."))
     sources <- c(sources, list(draws[, indicator, drop = FALSE]))
   }
   do.call(cbind, sources)
@@ -129,6 +124,14 @@
       if(length(rows)) .bt_ordered_allocation_values(record, value$primitives[rows, , drop = FALSE])
     }
   }
+  if(!is.null(value$projection_design) && (!is.matrix(value$projection_design) || !is.numeric(value$projection_design) ||
+     any(!is.finite(value$projection_design)) || is.null(colnames(value$projection_design)))){
+    return("its projection design must contain finite named fitted-coordinate weights")
+  }
+  if(!is.null(value$projection_context) && (!is.list(value$projection_context) ||
+     !is.matrix(value$projection_context$primitives) || nrow(value$projection_context$primitives)!=nrow(value$primitives))){
+    return("its projection context must have one primitive row per retained draw")
+  }
   NULL
 }
 
@@ -137,6 +140,7 @@
   source$model <- source$model[rows]
   source$draw_index <- source$draw_index[rows]
   source$primitives <- source$primitives[rows, , drop = FALSE]
+  if(!is.null(source$projection_context)) source$projection_context$primitives <- source$projection_context$primitives[rows,,drop=FALSE]
   source
 }
 
@@ -166,7 +170,6 @@
   names(parts) <- template$total_names
   columns <- list(totals)
   undefined <- character()
-  levels <- .factor_level_list(template$prior)
   for(factor in template$metadata$ordered_terms){
     records <- unlist(lapply(ordered, function(spec){
       spec$allocations[vapply(spec$allocations, function(record) identical(record$factor, factor), logical(1))]
@@ -176,10 +179,8 @@
     slices <- if(sliced) seq_len(template$metadata$theta_dim) else 1L
     for(slice in slices){
       record <- records[[1L]]
-      tokens <- levels[[factor]][length(levels[[factor]]) - record$dim + seq_len(record$dim)]
-      suffix <- paste0("_ordered_allocation", if(length(template$metadata$ordered_terms) > 1L) paste0("_", factor),
-        if(sliced) paste0("[", slice, "]"))
-      names <- paste0(source$parameter, suffix, "[", tokens, "]")
+      share_parts <- .bt_ordered_allocation_parts(template,record,sliced=sliced,slice=slice)
+      names <- names(share_parts)
       values <- matrix(NA_real_, length(source$model), record$dim, dimnames = list(NULL, names))
       for(i in seq_along(models)){
         rows <- which(source$model == i)
@@ -191,11 +192,7 @@
       }
       columns[[length(columns) + 1L]] <- values
       undefined <- c(undefined, stats::setNames(rep("ordered_parameterization", length(names)), names))
-      for(j in seq_along(names)){
-        parts[[names[[j]]]] <- .bt_label_parts(
-          components = paste0(paste(template$label_parts$components, collapse=":"), suffix, "[", tokens[[j]], "]"),
-          formula_parameter = template$label_parts$formula_parameter, selector = names[[j]])
-      }
+      parts <- c(parts,share_parts)
     }
   }
   list(samples = do.call(cbind, columns), parts = parts, undefined_draws = undefined)
@@ -211,10 +208,24 @@
   display <- .bt_ordered_source_display(source)
   if(is.null(display)) return(NULL)
   samples <- display$samples
-  quantities <- .bt_draws_quantity_table(colnames(samples), rep("", ncol(samples)),
+  quantity_ids <- rep("",ncol(samples))
+  ordered <- source$models[vapply(source$models,function(spec) is.null(spec$parameterization),logical(1))]
+  if(length(ordered) && !is.null(ordered[[1L]]$total_quantities)){
+    total_quantities <- ordered[[1L]]$total_quantities
+    matches <- match(total_quantities$canonical_name,colnames(samples))
+    valid <- !is.na(matches) & !is.na(total_quantities$quantity_id)
+    quantity_ids[matches[valid]] <- total_quantities$quantity_id[valid]
+  }
+  quantities <- .bt_draws_quantity_table(colnames(samples), quantity_ids,
     rep(list(character()), ncol(samples)), rep(list(numeric()), ncol(samples)), unname(display$parts))
   samples <- .bt_meta_set(samples, "quantities", quantities)
   samples <- .bt_meta_set(samples, "undefined_draws", display$undefined_draws)
   samples
+}
+
+.bt_ordered_fitted_scale_footnote <- function(){
+
+  paste0("Ordered-factor totals and allocations are summarized on the fitted ",
+    "(standardized) scale. Use 'transform_factors = TRUE' for the original-scale level effects.")
 }
 

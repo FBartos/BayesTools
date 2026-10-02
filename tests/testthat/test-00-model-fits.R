@@ -2708,6 +2708,30 @@ test_that("Parameter-label models fit correctly", {
     note = "Ordered-factor formula with internal allocation shares for semantic-table labels."
   )$registry_entry
 
+  # Literal round trips and semantic atoms of a fixed ordered recipe.
+  set.seed(1)
+  data <- data.frame(f=ordered(rep(c("lo","mid","hi","top"),9),levels=c("lo","mid","hi","top")))
+  data$y <- stats::rnorm(nrow(data))
+  literal_fit <- JAGS_fit(
+    model_syntax=syntax, data=list(y=data$y,N=nrow(data)),
+    formula_list=list(mu=~1+f), formula_data_list=list(mu=data),
+    formula_prior_list=list(mu=list(intercept=prior("normal",list(0,1)),
+      f=prior_ordered(prior("point",list(2.5)),allocation=c(1,2,3)/6))),
+    chains=1,adapt=100,burnin=100,sample=100,silent=TRUE,seed=3
+  )
+  model_registry[["fit_ordered_literal_point"]] <<- save_fit(literal_fit,
+    "fit_ordered_literal_point",simple_priors=TRUE,factor_priors=TRUE,formulas=TRUE,
+    assertion_only=TRUE,note="Fixed ordered total 2.5 and weights 1:3/6 for faithful literals and exact scalar atoms.")$registry_entry
+  raw <- as.matrix(literal_fit$mcmc)
+  expected <- 2.5 * (c(1,2,3)/6)
+  expect_identical(as.numeric(raw[1,paste0("mu_f[",1:3,"]")]),expected)
+  replay <- JAGS_evaluate_deterministic(literal_fit,raw,nodes="mu_f")
+  expect_identical(unname(replay),unname(raw[,paste0("mu_f[",1:3,"]"),drop=FALSE]))
+  semantic <- transform_factor_samples(as_mixed_posteriors(literal_fit,"mu_f"))$mu_f
+  expect_true(all(as.numeric(semantic[,4])==2.5))
+  expect_identical(.posterior_atoms_for_column(.posterior_atoms_get(semantic),4)$locations,
+    matrix(2.5,1,1,dimnames=list(NULL,"mu_f[top]")))
+
   # Random-effect SDs of a standardized predictor: a random slope with and
   # without its intercept, and a random intercept alone.
   set.seed(1)

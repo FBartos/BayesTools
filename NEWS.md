@@ -834,10 +834,34 @@ old behaviour.
     `transform_factors = TRUE` they show the level effects labelled by their
     level cells (`g[b]`, not `g[dif: b]`), without the zero reference level
     of a cumulative contrast and without the total, which equals the last
-    level; with `transform_factors = FALSE`, `runjags_estimates_table()` shows
+    level; with `transform_factors = FALSE`, model and ensemble tables show
     the sampled parameters, the total (`g_ordered_total`) and the shares of
     random allocations (`g_ordered_allocation[<level>]`, the share of the
-    total added when reaching the level), on the fitted scale.
+    total added when reaching the level), on the fitted scale. Ensembles retain
+    exact selected source rows: fixed allocations fill sampled union rows and
+    absent-model shares are undefined, with their defined fraction footnoted.
+    Zero totals do not erase an ordered model's primitive allocation parameters.
+  - adds `JAGS_ordered_parameter_spec()` for authoritative ordered source labels,
+    primitive coordinates and tensor projections, and
+    `JAGS_ordered_density_kernel()` for batched active-total and allocation
+    density evaluation, separate from bridge eligibility. Ordered allocation
+    and coefficient families share JAGS emission and deterministic replay.
+    Fixed numeric arguments round trip through JAGS syntax; prior draws and
+    seeded initialization retain their random-number streams. Fits missing the
+    persisted literal provenance require refitting.
+  - ordered scalar marginal atoms follow declared tensor identities and total
+    states, including zero allocations, fixed totals and the full-simplex last
+    level. Semantic point-state draws equal their declared locations exactly.
+    Marginal declarations survive supported extraction, transforms and row
+    subsetting; they do not fabricate joint atoms. Inclusion conditioning uses
+    the stored ordered total event, shared across slices. Expression-total
+    snapshots remain structurally unavailable without a certified ancestor
+    recipe; observed constant draws never supply one.
+  - conditional ordered mixtures reweight model probabilities by the declared
+    inclusion event as well as selecting eligible original draws. Posterior
+    event fractions and declared prior event probabilities condition their
+    respective model weights; totals without an inclusion event keep all
+    states. Independently conditioned ordered parameters are not joint draws.
   - adds Dirichlet simplex priors (`prior("dirichlet", ...)` /
     `prior("simplex", ...)`, `is.prior.simplex()`), with random generation,
     log-density, marginal distribution helpers, JAGS syntax, initialization,

@@ -90,7 +90,16 @@ nodes and the \code{bias_indicator}.}
 PEESE terms of publication-bias mixtures
 (\code{PET <- PET_1 * equals(bias_indicator, k)}), per coefficient of
 factor priors. Only the components that are active in some draw need to
-be available; point components are constants.}
+be available; literal point components are constants. Multi-slice ordered
+spike totals use indexed slab sources and one shared inclusion state.}
+\item{\code{"ordered_allocation"}}{normalized Gamma coordinates of an
+ordered allocation. Gamma values take precedence over supplied normalized
+weights. Replay accepts nonnegative Gamma values with a positive row sum;
+bridge stochastic-source checks retain their positive-coordinate rule.}
+\item{\code{"ordered_coefficient"}}{each ordered increment from its declared
+total slice and factor allocations. Shared allocation keys have one node.
+Successful parent outputs replace stale derived columns before dependent
+coefficient and predictor evaluation.}
 \item{\code{"linear_predictor"}}{the linear predictor of a formula
 parameter on the fitted rows: the intercept (or its logarithm), the
 continuous and factor terms with their \code{multiply_by} multipliers,

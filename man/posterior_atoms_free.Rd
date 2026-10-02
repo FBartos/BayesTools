@@ -12,7 +12,8 @@ posterior_atoms_free(x)
 \code{\link[=parameter_mixed_posterior]{parameter_mixed_posterior()}}.}
 }
 \value{
-\code{TRUE} when atoms are declared and none has positive mass;
+\code{TRUE} when atoms are declared and all declared scalar marginals
+and the joint measure have no positive atomic mass;
 \code{FALSE} when the draws declare a point mass or do not declare their
 atom status. Plain numeric draws, which carry no metadata, are an error.
 }

@@ -126,8 +126,13 @@ sampled parameters: \code{runjags_estimates_table()} reports the total
 effect (\code{<term>_ordered_total}) and the allocation shares of the
 random allocations (\code{<term>_ordered_allocation[<level>]}, the share
 of the total added when reaching \code{<level>}; fixed allocations have no
-rows), and \code{ensemble_estimates_table()} reports the ordered
-increments of the mixed posterior samples.}
+rows). \code{ensemble_estimates_table()} reports retained fitted totals and
+the union of allocation shares sampled by any declared ordered model.
+Fixed ordered allocations fill that union with their declared constants.
+Models without the ordered parameterization have undefined (\code{NA})
+shares, with their defined fraction reported in a footnote. Shares remain
+defined on zero-total and excluded spike draws of an ordered model. Legacy
+mixed objects without retained sources must be recreated from source fits.}
 
 \item{formula_prefix}{whether the parameter prefix from formula should
 be printed. Defaults to \code{TRUE}.}

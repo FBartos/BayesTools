@@ -451,6 +451,16 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   inclusion_columns <- character()
   created_parts <- list()
   component_priors <- list()
+  if(conditional){
+    for(par in names(prior_list)){
+      prior <- prior_list[[par]]
+      if(!is.prior.ordered(prior) || !is.prior.mixture(prior$total)) next
+      included <- .condition_event_label_posterior_mask(prior_list,raw_model_samples,par)
+      columns <- intersect(c(.JAGS_prior_factor_names(par,prior),.prior_ordered_total_monitor_names(prior,par)),colnames(model_samples))
+      model_samples[!included,columns] <- NA_real_
+      warnings <- c(warnings,.runjags_conditional_warning(columns,sum(included)))
+    }
+  }
   for(par in names(prior_list)){
     if(is.prior.spike_and_slab(prior_list[[par]])){
 
@@ -751,16 +761,13 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     ordered <- .bt_JAGS_estimates_ordered_allocations(
       model_samples     = model_samples,
       raw_model_samples = raw_model_samples,
-      prior_list        = prior_list
+      prior_list        = prior_list,
+      conditional       = conditional
     )
     model_samples <- ordered$model_samples
     created_parts <- c(created_parts, ordered$created)
     if(ordered$fitted_scale){
-      footnotes <- c(footnotes, paste0(
-        "Ordered-factor totals and allocations are summarized on the fitted ",
-        "(standardized) scale. Use 'transform_factors = TRUE' for the ",
-        "original-scale level effects."
-      ))
+      footnotes <- c(footnotes,.bt_ordered_fitted_scale_footnote())
     }
   }
 
@@ -780,7 +787,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   # transform orthonormal factors to differences from mean
   model_samples <- .transform_factor_contrasts(model_samples, prior_list, transform_factors, transformations,
-                                               components = component_priors, with_label_parts = TRUE)
+                                               components = component_priors, with_label_parts = TRUE,
+                                               raw_model_samples = if(!transform_scaled) raw_model_samples)
   contrast_parts <- attr(model_samples, "label_parts", exact = TRUE)
   created_parts <- c(created_parts, contrast_parts)
   attr(model_samples, "label_parts") <- NULL
@@ -938,7 +946,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 # share columns, and 'fitted_scale'.
 .bt_JAGS_estimates_ordered_allocations <- function(model_samples,
                                                    raw_model_samples,
-                                                   prior_list){
+                                                   prior_list, conditional = FALSE){
 
   created <- list()
   fitted_scale <- FALSE
@@ -960,6 +968,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     model_samples <- model_samples[, !colnames(model_samples) %in% increments, drop = FALSE]
 
     shares <- .bt_ordered_allocation_shares(par, prior, raw_model_samples)
+    if(conditional && is.prior.mixture(prior$total)){
+      included <- .condition_event_label_posterior_mask(prior_list,raw_model_samples,par)
+      shares$samples[!included,] <- NA_real_
+    }
     if(ncol(shares$samples) == 0L){
       next
     }

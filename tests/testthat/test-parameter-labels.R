@@ -52,6 +52,27 @@ skip_if_not_test_profile("unit")
     }
   }
   draws[, endsWith(columns, "_inclusion")] <- 0.5
+  # Ordered label fixtures declare independent total draws and equal primitive
+  # Gamma coordinates. Their increments are the total divided equally over
+  # each ordered axis, so source data and coefficient data describe one model.
+  for(name in names(formula_result$prior_list)){
+    prior <- formula_result$prior_list[[name]]
+    if(!is.prior.ordered(prior)) next
+    spec <- .bt_ordered_spec(name, prior)
+    totals <- matrix(stats::rnorm(n * length(spec$total_names)), n,
+      dimnames = list(NULL, spec$total_names))
+    draws <- cbind(draws, totals)
+    for(record in spec$allocations){
+      if(!identical(record$spec$type, "dirichlet")) next
+      draws <- cbind(draws, matrix(1, n, record$dim,
+        dimnames = list(NULL, record$gamma_coordinates)))
+    }
+    dimensions <- vapply(spec$metadata$ordered_terms, function(factor){
+      .prior_ordered_allocation_for_coefficient(spec$metadata, factor, 1L)$dim
+    }, integer(1))
+    draws[, spec$coefficient_names] <- totals[, spec$slice_index, drop = FALSE] / prod(dimensions)
+  }
+  columns <- colnames(draws)
   scale <- formula_result$formula_scale
   fit <- structure(
     list(
@@ -649,7 +670,8 @@ test_that("mixed-posterior columns and ensemble rows are catalog labels of their
         )
       }
     }
-    # every ensemble row, untransformed and transformed, selects its quantity
+    # Effect and total rows select catalog quantities. Sampled share labels
+    # agree with the source rows of the corresponding single-model table.
     for(transform_factors in c(FALSE, TRUE)){
       table <- ensemble_estimates_table(
         mixed,
@@ -658,7 +680,13 @@ test_that("mixed-posterior columns and ensemble rows are catalog labels of their
       )
       rows <- rownames(table)
       rows <- rows[rows != "(mu) intercept"]
+      model_table <- runjags_estimates_table(fit, transform_factors = transform_factors)
       for(row in rows){
+        if(contrast == "ordered" && !transform_factors && grepl("allocation", row, fixed = TRUE)){
+          expect_true(row %in% rownames(model_table), info = row)
+          expect_equal(table[row, "Mean"], model_table[row, "Mean"], tolerance = 1e-10, info = row)
+          next
+        }
         selection <- parameter_catalog_resolve(catalog, row)
         expect_equal(
           mean(as.matrix(parameter_draws(fit, selection))),

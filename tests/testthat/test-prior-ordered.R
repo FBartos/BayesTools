@@ -19,6 +19,10 @@ test_that("ordered recipes replay primitive chains and batched kernels independe
   colnames(normalized) <- spec$allocations[[1L]]$coordinates
   expect_identical(.bt_deterministic_node_evaluate(coefficient,
     .bt_deterministic_lookup(cbind(samples[, 1, drop = FALSE], normalized))), replay)
+  overflow <- samples
+  overflow[, gamma_names] <- .Machine$double.xmax
+  expect_error(.bt_deterministic_node_evaluate(coefficient,
+    .bt_deterministic_lookup(overflow)), class = "BayesTools_ordered_invalid_state")
   kernel <- JAGS_ordered_density_kernel(info$prior_list["mu_f"])
   oracle <- dnorm(samples[, 1], 0, 2, log = TRUE) +
     dgamma(samples[, 2], 2, 1, log = TRUE) + dgamma(samples[, 3], 3, 1, log = TRUE) +
@@ -97,7 +101,7 @@ test_that("ordered source retention follows selected model and row without extra
     fit <- structure(list(mcmc=coda::mcmc.list(coda::mcmc(draws))), class=c("runjags","BayesTools_fit","list"))
     attr(fit,"prior_list") <- info$prior_list
     attr(fit,"formula_design") <- list(mu=info$formula_design)
-    attr(fit,"parameter_map") <- .bt_build_parameter_map(colnames(draws), info$prior_list,
+    attr(fit,"parameter_map") <- .bt_build_parameter_map(colnames(draws), prior_list = info$prior_list,
       formula_design=list(mu=info$formula_design))
     fit <- .bt_attach_fit_contract(.bt_attach_draw_geometry(fit))
     list(fit=fit, prior=p, theta=theta, weights=weights)
@@ -131,6 +135,243 @@ test_that("ordered source retention follows selected model and row without extra
   expect_error(.bt_meta_set(mixed,"draw_index",1:2),"one row per draw")
   table <- ensemble_estimates_table(list(mu_f=absent),"mu_f")
   expect_match(paste(attr(table,"footnotes"),collapse=" "),"ordered allocation parameterization")
+})
+
+test_that("ordered scalar measures use declared contractions and exact primitive identities", {
+  data <- data.frame(f=ordered(rep(c("lo","mid","hi","top"),10),levels=c("lo","mid","hi","top")))
+  make <- function(total_prior,allocation=NULL,theta=NULL,indicator=NULL){
+    info <- JAGS_formula(~f,"mu",data,list(intercept=prior("point",list(0)),f=prior_ordered(total_prior,allocation=allocation)))
+    spec <- .bt_ordered_spec("mu_f",info$prior_list$mu_f)
+    if(is.null(theta)) theta <- if(is.prior.point(total_prior)) rep(total_prior$parameters$location,40) else seq_len(40)/10
+    draws <- matrix(theta,ncol=1,dimnames=list(NULL,spec$total_names))
+    if(!is.null(indicator)){
+      variable <- theta
+      draws[,1] <- theta * indicator
+      draws <- cbind(draws,variable,indicator)
+      colnames(draws)[2:3] <- c(spec$total_node$spec$components[[1L]]$coordinates,spec$total_node$spec$indicator)
+    }
+    if(is.null(allocation)){
+      gamma <- matrix(rep(c(1,2,3),each=40),40)
+      if(!is.null(indicator)) gamma[indicator==1,] <- matrix(rep(c(3,2,1),each=sum(indicator==1)),ncol=3)
+      colnames(gamma) <- spec$allocations[[1L]]$gamma_coordinates
+      draws <- cbind(draws,gamma)
+    }
+    coefficients <- .bt_deterministic_node_evaluate(.bt_dnode_ordered_coefficients(spec),.bt_deterministic_lookup(draws))
+    chains <- coda::mcmc.list(coda::mcmc(cbind(mu_intercept=0,coefficients,draws)))
+    fit <- structure(list(mcmc=chains,sample=40L,summary.pars=list(mutate=NULL),monitor=colnames(chains[[1L]])),
+      class=c("runjags","BayesTools_fit","list"))
+    attr(fit,"prior_list") <- info$prior_list
+    attr(fit,"formula_design") <- list(mu=info$formula_design)
+    attr(fit,"parameter_map") <- .bt_build_parameter_map(colnames(chains[[1L]]),prior_list=info$prior_list,
+      formula_design=list(mu=info$formula_design))
+    fit <- .bt_attach_fit_contract(.bt_attach_draw_geometry(fit))
+    list(fit=fit,spec=spec,draws=draws)
+  }
+  zero <- make(prior("normal",list(0,1)),c(0,.5,.5))
+  raw <- as_mixed_posteriors(zero$fit,"mu_f")
+  levels <- transform_factor_samples(raw)$mu_f
+  atoms <- .posterior_atoms_get(levels)
+  expect_identical(.posterior_atoms_for_column(atoms,2)$locations,matrix(0,1,1,dimnames=list(NULL,"mu_f[mid]")))
+  expect_identical(.posterior_atoms_for_column(atoms,2)$mass,1)
+  expect_false(posterior_atoms_free(levels))
+  fixed <- make(prior("point",list(2.5)),c(1,2,3)/6)
+  fixed_levels <- transform_factor_samples(as_mixed_posteriors(fixed$fit,"mu_f"))$mu_f
+  fixed_atoms <- .posterior_atoms_get(fixed_levels)
+  expect_identical(as.numeric(fixed_levels[1,]),c(0,2.5*(1/6),1.25,2.5))
+  expect_identical(as.numeric(fixed_atoms$locations[1,]),as.numeric(fixed_levels[1,]))
+  random <- make(prior("point",list(2.5)))
+  random_levels <- transform_factor_samples(as_mixed_posteriors(random$fit,"mu_f"))$mu_f
+  random_atoms <- .posterior_atoms_get(random_levels)
+  expect_length(.posterior_atoms_for_column(random_atoms,2)$mass,0)
+  expect_identical(.posterior_atoms_for_column(random_atoms,4)$mass,1)
+  expect_true(all(as.numeric(random_levels[,4])==2.5))
+  expect_identical(nrow(random_atoms$locations),0L)
+  selection <- parameter_catalog_resolve(parameter_catalog(random$fit),"f[top]",namespace="mu")
+  scalar <- parameter_mixed_posterior(random$fit,selection)
+  expect_identical(.posterior_atoms_get(scalar)$mass,1)
+  expect_identical(.posterior_atoms_get(scalar)$locations,matrix(2.5,1,1))
+  expect_true(all(as.numeric(scalar)==2.5))
+  bernoulli <- make(prior("bernoulli",list(.5)),c(.25,.25,.5),theta=rep(c(0,1),20))
+  bernoulli_levels <- transform_factor_samples(as_mixed_posteriors(bernoulli$fit,"mu_f"))$mu_f
+  expect_identical(.posterior_atoms_for_column(.posterior_atoms_get(bernoulli_levels),4)$mass,c(.5,.5))
+  expect_error(as_mixed_posteriors(bernoulli$fit,"mu_f",conditional="mu_f"),"not a conditional parameter")
+  spike <- make(prior_spike_and_slab(prior("normal",list(0,1)),prior("point",list(.5))),indicator=rep(c(0,1),20))
+  conditional <- as_mixed_posteriors(spike$fit,"mu_f",conditional="mu_f")
+  expect_identical(.bt_meta_get(conditional$mu_f,"draw_index"),seq(2L,40L,2L))
+  conditional_levels <- transform_factor_samples(conditional)$mu_f
+  expect_equal(mean(as.numeric(conditional_levels[,4])),2.1,tolerance=1e-15)
+  total_selection <- parameter_catalog_resolve(parameter_catalog(spike$fit),"mu_f_ordered_total")
+  total_conditional <- parameter_mixed_posterior(spike$fit,total_selection,conditional=TRUE)
+  expect_equal(mean(as.numeric(total_conditional)),2.1,tolerance=1e-15)
+  raw_table <- JAGS_estimates_table(spike$fit,conditional=TRUE,transform_factors=FALSE,remove_diagnostics=TRUE)
+  level_table <- JAGS_estimates_table(spike$fit,conditional=TRUE,transform_factors=TRUE,remove_diagnostics=TRUE)
+  expect_equal(raw_table["(mu) f_ordered_total","Mean"],2.1,tolerance=1e-15)
+  expect_equal(raw_table["(mu) f_ordered_allocation[mid]","Mean"],.5,tolerance=1e-15)
+  expect_equal(level_table["(mu) f[top]","Mean"],2.1,tolerance=1e-15)
+  unconditional_levels <- transform_factor_samples(as_mixed_posteriors(spike$fit,"mu_f"))$mu_f
+  subset <- .bt_draws_subset_rows(unconditional_levels,seq(2L,40L,2L))
+  expect_length(.posterior_atoms_for_column(.posterior_atoms_get(subset),4)$mass,0L)
+  transformed <- posterior_transform(random_levels,"lin",list(a=1,b=-2))
+  transformed_atoms <- .posterior_atoms_get(transformed)
+  expect_identical(.posterior_atoms_for_column(transformed_atoms,4)$locations,
+    matrix(-4,1,1,dimnames=list(NULL,"mu_f[top]")))
+  transformed_subset <- .bt_draws_subset_rows(transformed,c(1L,3L,5L))
+  expect_identical(as.numeric(transformed_subset[,4]),rep(-4,3))
+  expect_identical(.posterior_atoms_for_column(.posterior_atoms_get(transformed_subset),4)$mass,1)
+  renamed <- random_levels
+  colnames(renamed) <- paste0("renamed_",seq_len(4))
+  expect_identical(names(.posterior_atoms_get(renamed)$marginals),colnames(renamed))
+  expect_identical(.posterior_atoms_for_column(.posterior_atoms_get(renamed),"renamed_4")$mass,1)
+  sampled <- JAGS_ordered_parameter_spec(spike$fit,draws=spike$draws)$mu_f$sampled_parameters
+  expect_identical(colnames(sampled$values),c("mu_f_ordered_total","mu_f_ordered_allocation[mid]","mu_f_ordered_allocation[hi]","mu_f_ordered_allocation[top]"))
+  expect_identical(sampled$allocation_names,colnames(sampled$values)[-1L])
+  expect_identical(sampled$values[1,-1L],setNames(c(1,2,3)/6,sampled$allocation_names))
+  first <- make(prior_spike_and_slab(prior("normal",list(0,1)),prior("point",list(.2))),
+    indicator=c(rep(0,30),rep(1,10)))
+  second <- make(prior_spike_and_slab(prior("normal",list(0,1)),prior("point",list(.8))),
+    indicator=c(rep(0,10),rep(1,30)))
+  models <- list(list(fit=first$fit,marglik=bridgesampling_object(log(.6)),prior_weights=1),
+    list(fit=second$fit,marglik=bridgesampling_object(log(.4)),prior_weights=1))
+  ensemble <- mix_posteriors(models,"mu_f",list(mu_f=c(FALSE,FALSE)),conditional=TRUE,seed=13,n_samples=100)
+  source <- .bt_meta_get(ensemble$mu_f,"ordered_source")
+  expect_equal(source$conditioning$post_probs,c(1/3,2/3),tolerance=1e-15)
+  expect_equal(source$conditioning$prior_probs,c(.2,.8),tolerance=1e-15)
+  expect_identical(source$conditioning$posterior_fractions,c(.25,.75))
+  expect_true(all(source$draw_index[source$model==1L] %in% 31:40))
+  expect_true(all(source$draw_index[source$model==2L] %in% 11:40))
+  context <- .bt_meta_get(ensemble$mu_f,"prior_context")
+  expect_equal(context$model_weights,c(.2,.8),tolerance=1e-15)
+  expect_true(all(vapply(context$prior_lists,function(priors) is.prior.ordered(priors$mu_f) && !is.prior.mixture(priors$mu_f$total),logical(1))))
+  expect_true(is.prior.spike_and_slab(source$models[[1L]]$prior$total))
+  expect_length(.posterior_atoms_get(ensemble$mu_f)$mass,0L)
+})
+
+test_that("ordered projections localize ordinary point and continuous components", {
+  data <- data.frame(f=ordered(c("lo","mid","hi"),levels=c("lo","mid","hi")))
+  info <- JAGS_formula(~f,"mu",data,list(
+    intercept=prior_mixture(list(prior("point",list(0)),prior("point",list(1)),prior("normal",list(0,1)))),
+    f=prior_ordered(prior("point",list(2.5)))))
+  p <- info$prior_list$mu_f
+  spec <- .bt_ordered_spec("mu_f",p)
+  draws <- cbind(mu_intercept=c(0,1,.4),mu_intercept_indicator=c(1,2,3),
+    matrix(c(1,1,1,3,3,3),3))
+  colnames(draws)[3:4] <- spec$allocations[[1L]]$gamma_coordinates
+  weights <- c(mu_intercept=1,setNames(c(1,1),spec$coefficient_names))
+  projection <- .bt_ordered_projection(list(mu_f=spec),weights,draws,info$prior_list)
+  expect_identical(projection$atom,c(2.5,3.5,NA_real_))
+  expect_identical(projection$state,c("point","point","continuous"))
+  expect_identical(projection$values,c(2.5,3.5,2.9))
+  expression_prior <- p
+  expression_prior$total <- prior("point",list(expression(tau)))
+  expression_spec <- .bt_ordered_spec("mu_f",expression_prior)
+  expression_draws <- cbind(draws,mu_f_ordered_total=c(.2,.3,.4))
+  guarded <- .bt_ordered_projection(list(mu_f=expression_spec),setNames(c(1,1),spec$coefficient_names),expression_draws)
+  expect_identical(guarded$state,rep("unavailable",3))
+  expect_s3_class(guarded$reason,"BayesTools_ordered_expression_unavailable")
+  expect_error(JAGS_ordered_density_kernel(list(mu_f=expression_prior)),class="BayesTools_ordered_expression_unavailable")
+})
+
+test_that("ordered projections preserve slice events, shared unions and original-scale identities", {
+  data <- data.frame(f=ordered(rep(c("lo","mid","hi","top"),2),levels=c("lo","mid","hi","top")),
+    g=factor(rep(c("A","B","C","A"),2),levels=c("A","B","C")),x=seq_len(8))
+  fixture <- function(formula,priors,scale=NULL){
+    info <- JAGS_formula(formula,"mu",data,priors,formula_scale=scale)
+    bound <- info$prior_list
+    specs <- Map(.bt_ordered_spec,names(bound)[vapply(bound,is.prior.ordered,logical(1))],bound[vapply(bound,is.prior.ordered,logical(1))])
+    draws <- matrix(numeric(),8,0,dimnames=list(NULL,character()))
+    for(spec in specs){
+      total <- matrix(seq_len(8)/10,8,length(spec$total_names))
+      if(is.prior.point(spec$total_prior)) total[] <- spec$total_prior$parameters$location
+      if(is.prior.spike_and_slab(spec$total_prior)){
+        variable <- total + rep(seq_along(spec$total_names)-1L,each=8)
+        indicator <- rep(c(0,1),4)
+        colnames(variable) <- spec$total_node$spec$components[[1L]]$coordinates
+        draws <- cbind(draws,variable,matrix(indicator,ncol=1,dimnames=list(NULL,spec$total_node$spec$indicator)))
+        total <- variable * indicator
+      }
+      colnames(total) <- spec$total_names
+      draws <- cbind(draws,total)
+      for(record in spec$allocations){
+        if(!identical(record$spec$type,"dirichlet") || all(record$gamma_coordinates %in% colnames(draws))) next
+        gamma <- matrix(rep(seq_len(record$dim),each=8),8) * seq_len(8)
+        colnames(gamma) <- record$gamma_coordinates
+        draws <- cbind(draws,gamma)
+      }
+    }
+    for(name in names(bound)){
+      p <- bound[[name]]
+      if(is.prior.ordered(p)){
+        value <- .bt_deterministic_node_evaluate(.bt_dnode_ordered_coefficients(specs[[name]]),.bt_deterministic_lookup(draws))
+      }else{
+        columns <- if(is.prior.factor(p)) .JAGS_prior_factor_names(name,p) else name
+        value <- matrix(if(is.prior.point(p)) p$parameters$location else .1,8,length(columns),dimnames=list(NULL,columns))
+      }
+      draws <- cbind(draws,value)
+    }
+    fit <- structure(list(mcmc=coda::mcmc.list(coda::mcmc(draws)),sample=8L,summary.pars=list(mutate=NULL),monitor=colnames(draws)),
+      class=c("runjags","BayesTools_fit","list"))
+    attr(fit,"prior_list") <- bound
+    attr(fit,"formula_design") <- list(mu=info$formula_design)
+    if(!is.null(scale)) attr(fit,"formula_scale") <- list(mu=info$formula_scale)
+    attr(fit,"parameter_map") <- .bt_build_parameter_map(colnames(draws),prior_list=bound,
+      formula_design=list(mu=info$formula_design),formula_scale=attr(fit,"formula_scale",exact=TRUE))
+    fit <- .bt_attach_fit_contract(.bt_attach_draw_geometry(fit))
+    list(fit=fit,info=info,specs=specs,draws=draws)
+  }
+  N01 <- prior("normal",list(0,1))
+  priors <- list(intercept=prior("point",list(0)),f=prior_ordered(N01),
+    g=prior_factor("normal",list(0,1),contrast="treatment"),
+    `f:g`=prior_ordered(prior_spike_and_slab(N01,prior("point",list(.5)))))
+  sliced <- fixture(~f*g,priors)
+  name <- names(sliced$specs)[vapply(sliced$specs,function(spec) spec$metadata$theta_dim==2L,logical(1))]
+  mixed <- as_mixed_posteriors(sliced$fit,name)[[name]]
+  expect_identical(.posterior_atoms_get(mixed)$mass,.5)
+  expect_true(all(.posterior_atoms_get(mixed)$locations==0))
+  conditional <- as_mixed_posteriors(sliced$fit,name,conditional=name)[[name]]
+  expect_identical(nrow(conditional),4L)
+  expect_length(.posterior_atoms_get(conditional)$mass,0L)
+  shared_priors <- priors
+  shared_priors[["f:g"]] <- prior_ordered(N01,id="shape")
+  shared <- fixture(~f*g,shared_priors)
+  source_mix <- .mix_posteriors.factor(list(sliced$fit,shared$fit),
+    list(sliced$info$prior_list[[name]],shared$info$prior_list[[name]]),name,c(.5,.5),seed=9,n_samples=20)
+  display <- .bt_ordered_source_display(.bt_meta_get(source_mix,"ordered_source"))$samples
+  expect_identical(ncol(display),8L)
+  expect_identical(unname(display[,3:5,drop=FALSE]),unname(display[,6:8,drop=FALSE]))
+  sampled <- JAGS_ordered_parameter_spec(shared$fit,name,draws=shared$draws)[[name]]$sampled_parameters
+  expect_identical(length(sampled$allocation_names),3L)
+  fixed_priors <- list(intercept=prior("point",list(1)),
+    f=prior_ordered(prior("point",list(2.5)),allocation=c(1,2,3)/6),x=prior("point",list(0)),
+    `f:x`=prior_ordered(prior("point",list(-2.5)),allocation=c(1,2,3)/6))
+  scaled <- fixture(~f+x+f:x,fixed_priors,scale=list(x=TRUE))
+  raw <- as_mixed_posteriors(scaled$fit,names(scaled$info$prior_list))
+  original <- .transform_scale_samples_list(raw,attr(scaled$fit,"formula_scale",exact=TRUE))
+  levels <- transform_factor_samples(original)$mu_f
+  scale <- scaled$info$formula_scale[[1L]]
+  expected <- 2.5 + 2.5 * scale$mean/scale$sd
+  expect_true(all(as.numeric(levels[,4])==.posterior_atoms_for_column(.posterior_atoms_get(levels),4)$locations[1,1]))
+  expect_equal(as.numeric(levels[1,4]),expected,tolerance=1e-14)
+  public <- as_mixed_posteriors(scaled$fit,names(scaled$info$prior_list),transform_scaled=TRUE,n_prior_samples=128)
+  public_levels <- transform_factor_samples(public)$mu_f
+  expect_identical(as.numeric(public_levels[,4]),as.numeric(levels[,4]))
+  expect_identical(.bt_meta_get(public$mu_f,"ordered_source")$primitives,.bt_meta_get(raw$mu_f,"ordered_source")$primitives)
+  data$o <- data$f
+  two <- fixture(~f*o,list(intercept=prior("point",list(0)),f=prior_ordered(N01),o=prior_ordered(N01),
+    `f:o`=prior_ordered(prior("point",list(-2.5)),allocation=list(
+      f=prior("dirichlet",list(alpha=c(2,3,4))),o=prior("dirichlet",list(alpha=c(3,2,1)))))))
+  term <- names(two$specs)[vapply(two$specs,function(spec) length(spec$metadata$ordered_terms)==2L,logical(1))]
+  spec <- two$specs[[term]]
+  target <- setNames(as.numeric(spec$coefficient_grid$f==1L & spec$coefficient_grid$o<=2L),spec$coefficient_names)
+  projection <- JAGS_ordered_parameter_spec(two$fit,term,weights=target,draws=two$draws)
+  keys <- vapply(spec$allocations,`[[`,character(1),"factor")
+  f_key <- names(keys)[keys=="f"]
+  o_key <- names(keys)[keys=="o"]
+  expect_identical(unname(projection$allocation_contractions[[f_key]][1,]),c(-1.25,0,0))
+  expect_identical(unname(projection$allocation_contractions[[o_key]][1,]),c(-2.5*(1/6),-2.5*(1/6),0))
+  expect_identical(projection$state,rep("continuous",8))
+  full <- JAGS_ordered_parameter_spec(two$fit,term,weights=setNames(rep(1,9),spec$coefficient_names),draws=two$draws)
+  expect_identical(full$atom,rep(-2.5,8))
+  expect_identical(full$values,rep(-2.5,8))
 })
 
 test_that("prior_ordered() validates constructor inputs", {

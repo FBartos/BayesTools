@@ -627,9 +627,12 @@ NULL
 #'   and the \code{component}
 #' @param with_label_parts whether the label parts of the transformed columns
 #'   are attached as the \code{"label_parts"} attribute
+#' @param raw_model_samples optional aligned fitted primitive draws used to
+#'   retain ordered source semantics through a factor transformation
 #' @return updated model_samples matrix
 .transform_factor_contrasts <- function(model_samples, prior_list, transform_factors = FALSE, transformations = NULL,
-                                        components = list(), with_label_parts = FALSE) {
+                                        components = list(), with_label_parts = FALSE,
+                                        raw_model_samples = NULL) {
 
   factor_parameters <- names(prior_list)[vapply(
     prior_list,
@@ -658,6 +661,13 @@ NULL
 
     temp_position <- min(which(colnames(model_samples) %in% par_names))
     temp_samples  <- model_samples[, colnames(model_samples) %in% par_names, drop = FALSE]
+    if(is.prior.ordered(prior_list[[par]]) && !is.null(raw_model_samples)){
+      spec <- .bt_ordered_spec(par,prior_list[[par]])
+      source <- .bt_ordered_source_new(par,list(spec),
+        list(.bt_ordered_source_rows(spec,raw_model_samples,seq_len(nrow(raw_model_samples)))),
+        rep(1L,nrow(raw_model_samples)),seq_len(nrow(raw_model_samples)))
+      temp_samples <- .bt_meta_set(temp_samples,"ordered_source",source)
+    }
     model_samples <- model_samples[, !colnames(model_samples) %in% par_names, drop = FALSE]
 
     transformed_class <- if(is.prior.ordered(prior_list[[par]])) {

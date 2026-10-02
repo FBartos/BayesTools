@@ -53,8 +53,13 @@
 #' effect (\code{<term>_ordered_total}) and the allocation shares of the
 #' random allocations (\code{<term>_ordered_allocation[<level>]}, the share
 #' of the total added when reaching \code{<level>}; fixed allocations have no
-#' rows), and \code{ensemble_estimates_table()} reports the ordered
-#' increments of the mixed posterior samples.
+#' rows). \code{ensemble_estimates_table()} reports retained fitted totals and
+#' the union of allocation shares sampled by any declared ordered model.
+#' Fixed ordered allocations fill that union with their declared constants.
+#' Models without the ordered parameterization have undefined (\code{NA})
+#' shares, with their defined fraction reported in a footnote. Shares remain
+#' defined on zero-total and excluded spike draws of an ordered model. Legacy
+#' mixed objects without retained sources must be recreated from source fits.
 #' @param transform_scaled whether coefficients from standardized
 #' continuous predictors should be transformed back to the original
 #' scale. For \code{runjags_estimates_table()}, random-effect summaries are
@@ -169,8 +174,9 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
         }else{
           samples[[parameter]] <- raw
           undefined_draws[[parameter]] <- .bt_meta_get(raw, "undefined_draws")
-          if(transformed_scale) footnotes <- c(footnotes,
-            "Ordered totals and allocation shares are on the fitted scale.")
+          if(transformed_scale || isTRUE(.bt_meta_get(samples,"transform_scaled"))){
+            footnotes <- c(footnotes,.bt_ordered_fitted_scale_footnote())
+          }
         }
       }
     }

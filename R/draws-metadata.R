@@ -414,7 +414,20 @@
     if(!is.null(meta[[field]])) meta[[field]] <- if(is.null(dim(meta[[field]]))) meta[[field]][rows] else meta[[field]][rows, , drop = FALSE]
   }
   if(!is.null(meta$ordered_source)) meta$ordered_source <- .bt_ordered_source_subset(meta$ordered_source, rows)
-  .bt_meta_write(out, meta, if(.bt_meta_is_draws(out)) .bt_meta_fingerprint(out))
+  if(!is.null(meta$components) && length(meta$components$index)==NROW(x)){
+    meta$components <- .posterior_components_new(meta$components$index[rows],meta$components$supports,meta$components$keys)
+  }
+  if(is.matrix(meta$linear_weights) && nrow(meta$linear_weights)==NROW(x)){
+    meta$linear_weights <- meta$linear_weights[rows,,drop=FALSE]
+  }
+  out <- .bt_meta_write(out, meta, if(.bt_meta_is_draws(out)) .bt_meta_fingerprint(out))
+  source <- meta$ordered_source
+  if(!is.null(source$projection_design)){
+    out <- .bt_meta_set(out,"atoms",NULL)
+    columns <- if(is.null(dim(out))) rownames(source$projection_design) else colnames(out)
+    out <- .bt_ordered_source_semantics(out,diag(length(columns)),columns)
+  }
+  out
 }
 
 # Draw metadata go stale when the values of the draws change after the
@@ -651,6 +664,11 @@
 #'   \item{\code{"linear_weights"}}{the weights of the fitted coordinates
 #'   that form a level of a [marginal_posterior()] (a named numeric vector,
 #'   or a matrix with one row per draw).}
+#'   \item{\code{"ordered_source"}}{internal retained fitted totals, normalized
+#'   allocations, model provenance and source-row indices. Producers validate
+#'   its row count and preserve the primitive values independently of effect
+#'   transformations. Recreate missing sources from the fitted models; shares
+#'   are never reconstructed from increments divided by totals.}
 #'   \item{\code{"quantities"}}{the quantity of every column of mixed and
 #'   marginal posterior draws: a data frame with one row per column (one row
 #'   for vector draws) and the columns \code{column} (the column name),

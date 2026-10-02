@@ -281,6 +281,13 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
       fields$atoms, map$transformation, map$arguments
     ))
   }
+  if(!is.null(fields$ordered_source)){
+    source <- fields$ordered_source
+    source$view_transformations <- c(source$view_transformations,list(list(
+      transformation=if(is.character(map$transformation)) map$transformation else "unavailable",
+      arguments=map$arguments)))
+    set("ordered_source",source)
+  }
   if(!is.null(fields$components)){
     components <- fields$components
     set("components", .posterior_components_new(

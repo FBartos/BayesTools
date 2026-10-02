@@ -171,6 +171,11 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
   node <- .bt_dnode_ordered_coefficients(.bt_ordered_spec(metadata$parameter_name, prior))
   return(function(samples){
+    for(record in node$spec$allocations){
+      if(!identical(record$spec$type,"dirichlet")) next
+      .bt_JAGS_marglik_positive_auxiliary_values(samples,record$gamma_coordinates,
+        missing_message="'samples' does not contain all monitored ordered Dirichlet allocation parameters.",signal=TRUE)
+    }
     values <- .bt_deterministic_node_evaluate(node, .bt_deterministic_row_lookup(samples))
     if(is.null(values)){
       .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored ordered primitive parameters.")

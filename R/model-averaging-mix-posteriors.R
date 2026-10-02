@@ -20,6 +20,16 @@
 #' allocations; \code{mix_posteriors()} hard-errors in that case. Mix each
 #' conditional parameter in a separate call instead.
 #'
+#' For an ordered total with a declared inclusion event, conditional averaging
+#' also conditions within each model. Posterior model probabilities are
+#' multiplied by the event's fraction of fitted draws; prior probabilities are
+#' multiplied by its declared prior probability. Resampling uses eligible
+#' original draw indices, and conditional prior contexts preserve the original
+#' fitted source specifications. A parameterized total without an inclusion
+#' event, including a Bernoulli total, retains every state. A compound event
+#' must be applied once to full aligned sources; separately conditioned ordered
+#' parameters cannot be combined as joint draws by this function.
+#'
 #' @param seed integer specifying seed for sampling posteriors for
 #' model averaging. The caller's random-number state (\code{.Random.seed} and
 #' \code{RNGkind()}) is restored afterwards. Defaults to \code{NULL}, which
@@ -92,6 +102,23 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   }
 
   .mix_posteriors_assert_aligned_post_probs(inference, parameters)
+  ordered_conditions <- list()
+  if(conditional){
+    for(parameter in parameters){
+      parameter_priors <- lapply(priors,function(prior) prior[[parameter]])
+      if(!any(vapply(parameter_priors,is.prior.ordered,logical(1)))) next
+      condition <- .mix_posteriors_ordered_condition(fits,parameter_priors,parameter,inference[[parameter]])
+      inference[[parameter]]$post_probs <- condition$post_probs
+      inference[[parameter]]$prior_probs <- condition$prior_probs
+      ordered_conditions[[parameter]] <- condition
+    }
+    .mix_posteriors_assert_aligned_post_probs(inference,parameters)
+    if(length(parameters)>1L && any(vapply(ordered_conditions,function(condition){
+      isTRUE(condition$has_nested_event)
+    },logical(1)))){
+      stop("Joint conditional mixed draws are unavailable for independently requested ordered events. Mix one conditional parameter per call or use 'conditional = FALSE'; a compound 'AND' event must be applied once to full aligned sources.",call.=FALSE)
+    }
+  }
 
   out <- list()
 
@@ -142,7 +169,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
         temp_priors[[i]] <- .set_prior_model_weight(temp_priors[[i]], temp_inference$prior_probs[i])
       }
 
-      out[[temp_parameter]] <- .mix_posteriors.factor(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.factor(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples,
+        ordered_condition=ordered_conditions[[temp_parameter]])
 
     }else if(any(sapply(temp_priors, is.prior.vector)) && all(sapply(temp_priors, is.prior.vector) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # vector priors:
@@ -212,6 +240,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   }
 
   class(out) <- c(class(out), "mixed_posteriors")
+  if(length(parameters)==1L && isTRUE(ordered_conditions[[parameters[[1L]]]]$has_nested_event)){
+    out <- .bt_meta_set(out,"prior_context",.bt_meta_get(out[[parameters[[1L]]]],"prior_context"))
+    out <- .bt_meta_set(out,"condition",.bt_meta_get(out[[parameters[[1L]]]],"condition"))
+  }
   return(out)
 }
 
@@ -582,7 +614,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   return(samples)
 }
-.mix_posteriors.factor         <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
+.mix_posteriors.factor         <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000,
+                                           ordered_condition = NULL){
 
   # check input
   check_list(fits, "fits")
@@ -655,7 +688,9 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     # per-draw component of the ordered total of models whose total has a
     # spike at zero (NA for the other models); formula-level atoms split by it
     total_indicator <- NULL
-    source_models <- lapply(priors, .bt_ordered_source_model, parameter = parameter)
+    source_models <- lapply(seq_along(priors),function(i){
+      .bt_ordered_source_model(priors[[i]],parameter,if(inherits(fits[[i]],"BayesTools_fit")) fits[[i]])
+    })
     source_samples <- vector("list", length(priors))
 
     sample_counts <- .posterior_mixture_sample_counts(post_probs, n_samples)
@@ -674,7 +709,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
         model_samples <- .extract_stan(fits[[i]])
       }
 
-      temp_ind <- sample(nrow(model_samples), sample_counts[i], replace = TRUE)
+      eligible <- if(is.null(ordered_condition)) seq_len(nrow(model_samples)) else ordered_condition$eligible[[i]]
+      temp_ind <- eligible[sample(length(eligible),sample_counts[i],replace=TRUE)]
+      if(.mix_posteriors_ordered_total_has_indicator(priors[[i]]) && !indicator_name %in% colnames(model_samples)){
+        .mix_posteriors_stop_missing_total_indicator(parameter,indicator_name)
+      }
       source_samples[[i]] <- .bt_ordered_source_rows(source_models[[i]], model_samples, temp_ind)
 
       if(is.prior.point(priors[[i]])){
@@ -852,17 +891,88 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
       n_columns = ncol(samples),
       column_names = colnames(samples),
       exclusion_probabilities = if(isTRUE(priors_info[["ordered"]])){
-        .mix_posteriors_ordered_exclusion_probabilities(fits, priors, parameter, post_probs)
+        .mix_posteriors_ordered_exclusion_probabilities(fits, priors, parameter, post_probs,
+          eligible=if(!is.null(ordered_condition)) ordered_condition$eligible)
       }
     )
   )
+  if(isTRUE(priors_info[["ordered"]])){
+    samples <- .bt_ordered_source_semantics(samples,diag(ncol(samples)),colnames(samples))
+    if(!is.null(ordered_condition)){
+      source <- .bt_meta_get(samples,"ordered_source")
+      source$conditioning <- ordered_condition[c("prior_probs","post_probs","prior_fractions","posterior_fractions")]
+      samples <- .bt_meta_set(samples,"ordered_source",source)
+      if(isTRUE(ordered_condition$has_nested_event)){
+        samples <- .bt_meta_set(samples,"prior_context",.mix_posteriors_ordered_prior_context(
+          priors,parameter,ordered_condition))
+        ordered_model <- which(vapply(source$models,function(spec) is.null(spec$parameterization),logical(1)))[1L]
+        event <- .condition_event(setNames(list(source$models[[ordered_model]]$prior),parameter),parameter)
+        samples <- .condition_event_set_attributes(samples,event)
+      }
+    }
+  }
 
   return(samples)
+}
+
+.mix_posteriors_ordered_condition <- function(fits, priors, parameter, inference){
+
+  eligible <- options <- vector("list",length(priors))
+  posterior <- prior_probability <- numeric(length(priors))
+  nested <- FALSE
+  for(i in seq_along(priors)){
+    prior <- priors[[i]]
+    if(is.null(prior) || is.prior.none(prior) || .posterior_atoms_is_zero_point(prior) || inherits(fits[[i]],"null_model")) next
+    draws <- if(inherits(fits[[i]],"stanfit")) .extract_stan(fits[[i]]) else as.matrix(.fit_to_posterior(fits[[i]]))
+    if(is.prior.ordered(prior) && is.prior.mixture(prior$total)){
+      nested <- TRUE
+      own <- setNames(list(prior),parameter)
+      event <- .condition_event(own,parameter)
+      mask <- .condition_event_posterior_mask(event,own,draws)
+      options[[i]] <- .condition_event_model_options(own,event)
+      prior_probability[[i]] <- options[[i]]$event_probability
+    }else{
+      mask <- rep(TRUE,nrow(draws))
+      options[[i]] <- list(prior_lists=list(setNames(list(prior),parameter)),weights=1,event_probability=1)
+      prior_probability[[i]] <- 1
+    }
+    eligible[[i]] <- which(mask)
+    posterior[[i]] <- mean(mask)
+  }
+  post_weights <- inference$post_probs * posterior
+  prior_weights <- inference$prior_probs * prior_probability
+  if(!any(prior_weights>0)) stop("Conditional inference requires at least one non-null model.",call.=FALSE)
+  if(!any(post_weights>0)){
+    .bt_ordered_stop(paste0("The conditional posterior of '",parameter,
+      "' is unavailable: no fitted draw lies in its declared inclusion event. Obtain more upstream posterior draws or use 'conditional = FALSE'."))
+  }
+  list(eligible=eligible,prior_options=options,prior_fractions=prior_probability,
+    posterior_fractions=posterior,has_nested_event=nested,prior_probs=.model_averaging_prior_probs(prior_weights),
+    post_probs=.model_averaging_prior_probs(post_weights))
+}
+
+.mix_posteriors_ordered_prior_context <- function(priors, parameter, condition){
+
+  prior_lists <- list()
+  weights <- numeric()
+  for(i in seq_along(priors)){
+    options <- condition$prior_options[[i]]
+    if(is.null(options) || condition$prior_probs[[i]]==0) next
+    prior_lists <- c(prior_lists,options$prior_lists)
+    weights <- c(weights,condition$prior_probs[[i]] * options$weights)
+  }
+  ordered <- priors[vapply(priors,is.prior.ordered,logical(1))][[1L]]
+  event <- .condition_event(setNames(list(ordered),parameter),parameter)
+  structure(list(prior_list=setNames(list(priors),parameter),
+    column_names=.JAGS_prior_factor_names(parameter,ordered),formula_scale=NULL,transforms=list(),
+    conditional=parameter,conditional_rule="AND",condition_event=event,condition_key=event$condition_key,
+    prior_lists=prior_lists,model_weights=weights,n_grid=.prior_linear_density_default_grid(),
+    tail_prob=.prior_linear_density_tail_prob()),class="prior_density_conditional_context")
 }
 # Posterior probability that an ordered total (spike-and-slab, or a mixture
 # with point(0) components) is excluded within each model, from the fitted
 # total-prior indicator.
-.mix_posteriors_ordered_exclusion_probabilities <- function(fits, priors, parameter, post_probs){
+.mix_posteriors_ordered_exclusion_probabilities <- function(fits, priors, parameter, post_probs,eligible=NULL){
 
   indicator_name <- paste0(.prior_ordered_total_name(parameter), "_indicator")
   vapply(seq_along(priors), function(i){
@@ -877,10 +987,9 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
     if(!indicator_name %in% colnames(model_samples)){
       .mix_posteriors_stop_missing_total_indicator(parameter, indicator_name)
     }
-    .posterior_atoms_ordered_exclusion(
-      priors[[i]]$total,
-      .bt_component_from_indicator(priors[[i]]$total, model_samples[, indicator_name])
-    )
+    component <- .bt_component_from_indicator(priors[[i]]$total,model_samples[,indicator_name])
+    if(!is.null(eligible)) component <- component[eligible[[i]]]
+    .posterior_atoms_ordered_exclusion(priors[[i]]$total,component)
   }, numeric(1))
 }
 # Whether a model's ordered prior has a total with a within-model spike at zero

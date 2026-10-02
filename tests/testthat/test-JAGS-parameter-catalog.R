@@ -258,12 +258,19 @@ test_that("factor catalog quantities reconstruct fitted term-level cells", {
     )
     factor_prior <- formula_result$prior_list$mu_f
     coordinates <- .JAGS_prior_factor_names("mu_f", factor_prior)
+    source_values <- cbind(mu_intercept = 0, values)
+    colnames(source_values) <- c("mu_intercept",coordinates)
+    if(is.prior.ordered(factor_prior)){
+      spec <- .bt_ordered_spec("mu_f",factor_prior)
+      gamma <- matrix(rep(10^(seq_along(coordinates)-1L),each=nrow(values)),nrow(values))
+      colnames(gamma) <- spec$allocations[[1L]]$gamma_coordinates
+      source_values <- cbind(source_values,mu_f_ordered_total=if(length(coordinates)==2L) c(11,22) else c(111,222),gamma)
+    }
     chains <- coda::mcmc.list(coda::mcmc(
-      cbind(mu_intercept = 0, values),
+      source_values,
       start = 5L,
       thin = 2L
     ))
-    colnames(chains[[1L]]) <- c("mu_intercept", coordinates)
     list(
       fit = .parameter_catalog_test_fit(
         chains,
@@ -1017,11 +1024,16 @@ test_that("displayed factor rows resolve to the quantities that produced them", 
                 draw_means
               )
             }
-            .expect_factor_rows_resolve(
-              ensemble_table, fit, catalog,
-              paste(info, "ensemble", transform, prefix),
-              draw_means
-            )
+            if(identical(contrast,"ordered") && !transform){
+              .expect_ordered_sampled_rows(ensemble_table,fit,levels,prefix,
+                paste(info,"ensemble",transform,prefix))
+            }else{
+              .expect_factor_rows_resolve(
+                ensemble_table, fit, catalog,
+                paste(info, "ensemble", transform, prefix),
+                draw_means
+              )
+            }
           }
         }
 

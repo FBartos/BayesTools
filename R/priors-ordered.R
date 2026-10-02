@@ -459,6 +459,10 @@
 
   attr(prior, "ordered_metadata") <- metadata
   attr(prior, "coefficient_dim") <- metadata$coefficient_dim
+  total_node <- .bt_dnode_ordered_total(parameter_name,prior)
+  metadata$numeric_literals$total_syntax <- .JAGS_prior.ordered_total(prior$total,
+    .prior_ordered_total_name(parameter_name),metadata$theta_dim,total_node)
+  attr(prior,"ordered_metadata") <- metadata
 
   prior
 }
@@ -795,6 +799,17 @@
   coefficients <- draws$coefficients
   colnames(coefficients) <- .JAGS_prior_factor_names(metadata$parameter_name, prior)
   coefficients <- attach_total_component_metadata(coefficients)
+  spec <- .bt_ordered_spec(metadata$parameter_name,prior)
+  primitive_draws <- .prior_ordered_total_samples(draws,metadata$parameter_name)
+  for(record in spec$allocations){
+    allocation <- allocation_samples[[record$key]]
+    colnames(allocation) <- record$coordinates
+    primitive_draws <- cbind(primitive_draws,allocation)
+  }
+  source <- .bt_ordered_source_new(metadata$parameter_name,list(spec),
+    list(.bt_ordered_source_rows(spec,primitive_draws,seq_len(n))),rep(1L,n),seq_len(n))
+  coefficients <- .bt_meta_set(coefficients,"ordered_source",source)
+  coefficients <- .bt_ordered_source_semantics(coefficients,diag(ncol(coefficients)),colnames(coefficients))
 
   if(quantity %in% c("coefficient", "increment") || !transform_factor_samples){
     return(coefficients)

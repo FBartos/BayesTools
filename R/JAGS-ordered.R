@@ -30,23 +30,54 @@
 #' @description Reads the persisted total, allocation and coefficient recipes
 #' of ordered terms. These backend recipes do not add public catalog quantities.
 #' @param fit a model fitted with [JAGS_fit()].
-#' @param parameters optional names of ordered terms; code{NULL} selects all.
+#' @param parameters optional names of ordered terms; \code{NULL} selects all.
 #' @param weights optional named numeric fitted-coordinate projection weights.
-#' @param draws optional numeric source draws for the projection.
-#' @return With no code{weights}, a named list of term specifications containing
-#' the bound code{prior}, coefficient names and grid, slice indices, total names
+#' @param draws optional numeric source draws for sampled parameters or a projection.
+#' @return With no \code{weights}, a named list of term specifications containing
+#' the bound \code{prior}, coefficient names and grid, slice indices, total names
 #' and prior, deterministic total recipe, allocation records (key, factor, slice,
 #' id, normalized and gamma coordinates, alpha or fixed weights), and label parts.
+#' \code{source_coordinates} combines total monitors, total primitive dependencies,
+#' and Gamma monitors; \code{total_auxiliary_coordinates} lists the total's other
+#' monitored coordinates, including indicators, inclusion probabilities and slab
+#' sources. Some total-component dependencies are optional unmonitored sources;
+#' the monitored total is their fitted snapshot alternative. No supplied draws
+#' means no values field. With \code{weights = NULL} and supplied \code{draws},
+#' each term also contains \code{sampled_parameters}: \code{values} is the fitted
+#' total/share matrix, \code{label_parts} names its rendered labels, and
+#' \code{allocation_names} identifies its sampled share columns. Fixed totals
+#' materialize every slice; fixed allocations produce no sampled share columns.
+#'
 #' An empty named list is returned when no ordered terms are present. With
-#' code{weights}, an ordered projection specification, including resolved values
-#' and declared point states when code{draws} are supplied, is returned.
+#' \code{weights}, the result is a \code{BayesTools_ordered_projection} containing
+#' bound \code{specs}, fitted \code{weights}, original \code{requested_weights},
+#' static tensor \code{contractions},
+#' and \code{ordinary_weights}. With resolved draws it also contains row-aligned
+#' \code{values}, \code{atom} (point location, otherwise \code{NA}), \code{state}
+#' (\code{"point"}, \code{"continuous"}, or \code{"unavailable"}), and
+#' \code{exact} (a full-simplex identity). \code{total_contraction_weights} holds
+#' the per-term matrices of total slopes, and \code{allocation_contractions}
+#' holds complete coordinate contractions per allocation key, including totals
+#' and every retained other factor. \code{reason} is a typed condition when the
+#' scalar measure is structurally unavailable.
+#' Total-coordinate weights expand to the corresponding complete coefficient
+#' slice, so a total target uses its declared full-simplex identity.
 #' @details Missing fitted numeric provenance raises
-#' code{BayesTools_ordered_metadata_unavailable} and
-#' code{BayesTools_refit_required}: refit with this version. Missing source
-#' draws raise code{BayesTools_ordered_coordinates_unavailable}; invalid component
-#' states raise code{BayesTools_ordered_invalid_state}. Unclassified expression
-#' structure raises code{BayesTools_ordered_expression_unavailable}. These
-#' coordinate/expression conditions inherit code{BayesTools_ordered_unavailable}.
+#' \code{BayesTools_ordered_metadata_unavailable} and
+#' \code{BayesTools_refit_required}: refit with this version. Missing source
+#' draws raise \code{BayesTools_ordered_coordinates_unavailable}; invalid component
+#' states raise \code{BayesTools_ordered_invalid_state}. Expression totals can
+#' supply fitted snapshot values but have an unavailable scalar measure with a
+#' \code{BayesTools_ordered_expression_unavailable} reason. Without a registered
+#' certified ancestor recipe they cannot supply numerical charts, structural
+#' atoms, or correct replay after changing an ancestor. These
+#' coordinate/expression conditions inherit \code{BayesTools_ordered_unavailable}.
+#' Missing or inconsistent fitted provenance reports: "Fitted ordered numeric
+#' provenance is unavailable. Refit the model with this version of BayesTools."
+#' Missing projection totals report: "Ordered total sources for '<term>' are
+#' unavailable in 'draws'. Include its declared source coordinates." Invalid
+#' total states report: "Ordered total indicator '<coordinate>' does not select
+#' a declared component."
 #' @export
 JAGS_ordered_parameter_spec <- function(fit, parameters = NULL, weights = NULL, draws = NULL){
 
@@ -62,16 +93,71 @@ JAGS_ordered_parameter_spec <- function(fit, parameters = NULL, weights = NULL, 
   }
   for(prior in ordered){
     metadata <- attr(prior, "ordered_metadata", exact = TRUE)
-    if(is.null(metadata) || is.null(metadata$numeric_literals)){
+    if(!.bt_ordered_metadata_valid(prior)){
       .bt_stop_refit_required(
         "Fitted ordered numeric provenance is unavailable. Refit the model with this version of BayesTools.",
         class = "BayesTools_ordered_metadata_unavailable")
     }
   }
   specs <- Map(.bt_ordered_spec, names(ordered), ordered)
+  if(length(specs)){
+    catalog <- parameter_catalog(fit)
+    coordinates <- parameter_coordinates(fit)
+    specs <- lapply(specs,function(spec){
+      spec$total_quantities <- catalog$quantities[match(spec$total_names,catalog$quantities$canonical_name),,drop=FALSE]
+      gamma_coordinates <- unlist(lapply(spec$allocations,`[[`,"gamma_coordinates"),use.names=FALSE)
+      total_monitors <- setdiff(.JAGS_monitor.ordered(spec$prior,spec$parameter),
+        c(spec$parameter,.bt_parameter_coordinates_base(gamma_coordinates)))
+      total_coordinates <- coordinates$coordinate_name[coordinates$monitor_name %in% total_monitors]
+      spec$total_auxiliary_coordinates <- setdiff(total_coordinates,spec$total_names)
+      spec$source_coordinates <- unique(c(spec$total_names,spec$total_node$dependencies,gamma_coordinates))
+      if(!is.null(draws) && is.null(weights)){
+        values <- .bt_deterministic_draws_matrix(draws)
+        source <- .bt_ordered_source_new(spec$parameter,list(spec),
+          list(.bt_ordered_source_rows(spec,values,seq_len(nrow(values)))),
+          rep(1L,nrow(values)),seq_len(nrow(values)))
+        display <- .bt_ordered_source_display(source)
+        spec$sampled_parameters <- list(values=display$samples,label_parts=display$parts,
+          allocation_names=setdiff(colnames(display$samples),spec$total_names))
+      }
+      spec
+    })
+  }
   if(length(specs) == 0L) names(specs) <- character()
   if(is.null(weights)) return(specs)
   .bt_ordered_projection(specs, weights, draws, prior_list = priors)
+}
+
+.bt_ordered_metadata_valid <- function(prior){
+
+  metadata <- attr(prior,"ordered_metadata",exact=TRUE)
+  required <- c("parameter_name","factor_terms","ordered_terms","ordinary_terms","factor_contrasts",
+    "coefficient_grid","slice_index","theta_dim","coefficient_dim","allocations","numeric_literals")
+  if(!is.list(metadata) || !all(required %in% names(metadata))) return(FALSE)
+  count <- function(x) is.numeric(x) && length(x)==1L && is.finite(x) && x>=1 && x==as.integer(x)
+  if(!count(metadata$theta_dim) || !count(metadata$coefficient_dim) ||
+     !is.data.frame(metadata$coefficient_grid) || nrow(metadata$coefficient_grid)!=metadata$coefficient_dim ||
+     !identical(names(metadata$coefficient_grid),metadata$factor_terms) ||
+     !is.numeric(metadata$slice_index) || length(metadata$slice_index)!=metadata$coefficient_dim ||
+     anyNA(metadata$slice_index) || any(!metadata$slice_index %in% seq_len(metadata$theta_dim)) ||
+     !is.list(metadata$allocations) || !length(metadata$allocations) || is.null(names(metadata$allocations))) return(FALSE)
+  valid <- vapply(metadata$allocations,function(record){
+    if(!is.list(record) || !all(c("key","factor","dim","spec") %in% names(record)) ||
+       !is.character(record$factor) || length(record$factor)!=1L || !is.list(record$spec) ||
+       !is.character(record$spec$type) || length(record$spec$type)!=1L) return(FALSE)
+    values <- if(identical(record$spec$type,"fixed")) record$spec$weights else record$spec$alpha
+    is.character(record$key) && length(record$key)==1L && record$factor %in% metadata$ordered_terms &&
+      count(record$dim) && record$spec$type %in% c("fixed","dirichlet") && is.numeric(values) &&
+      length(values)==record$dim && all(is.finite(values)) &&
+      if(identical(record$spec$type,"fixed")) all(values>=0) && abs(sum(values)-1)<=.Machine$double.eps*max(8,length(values)) else all(values>0)
+  },logical(1))
+  all(valid) && identical(metadata$numeric_literals$total,.bt_ordered_numeric_provenance(prior$total)) &&
+    identical(metadata$numeric_literals$total_syntax,.JAGS_prior.ordered_total(prior$total,
+      .prior_ordered_total_name(metadata$parameter_name),metadata$theta_dim,.bt_dnode_ordered_total(metadata$parameter_name,prior))) &&
+    identical(metadata$numeric_literals$allocations,lapply(metadata$allocations,function(record){
+      values <- if(identical(record$spec$type,"fixed")) record$spec$weights else record$spec$alpha
+      vapply(values,.prior_ordered_format_number,character(1))
+    }))
 }
 
 .bt_dnode_ordered_total <- function(parameter, prior){
@@ -99,7 +185,7 @@ JAGS_ordered_parameter_spec <- function(fit, parameters = NULL, weights = NULL, 
 .bt_dnode_ordered_allocation <- function(parameter, record){
 
   .bt_deterministic_node("ordered_allocation", record$node, record$coordinates,
-    dependencies = record$gamma_coordinates, parameter = parameter, spec = record)
+    dependencies = c(record$gamma_coordinates,record$coordinates), parameter = parameter, spec = record)
 }
 
 .bt_dnode_ordered_coefficients <- function(spec){
@@ -117,11 +203,12 @@ JAGS_ordered_parameter_spec <- function(fit, parameters = NULL, weights = NULL, 
   }
   if(all(record$gamma_coordinates %in% colnames(draws))){
     eta <- draws[, record$gamma_coordinates, drop = FALSE]
-    if(any(!is.finite(eta)) || any(eta < 0) || any(rowSums(eta) <= 0)){
-      .bt_ordered_stop("Ordered gamma coordinates must be finite and nonnegative with positive row sums.",
+    eta_sum <- rowSums(eta)
+    if(any(!is.finite(eta)) || any(eta < 0) || any(!is.finite(eta_sum)) || any(eta_sum <= 0)){
+      .bt_ordered_stop("Ordered gamma coordinates must be finite and nonnegative with finite positive row sums.",
         "BayesTools_ordered_invalid_state")
     }
-    return(eta / rowSums(eta))
+    return(eta / eta_sum)
   }
   if(all(record$coordinates %in% colnames(draws))){
     values <- draws[, record$coordinates, drop = FALSE]

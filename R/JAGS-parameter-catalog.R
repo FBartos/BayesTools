@@ -488,6 +488,21 @@ parameter_draws.BayesTools_fit <- function(object, selection,
     object, quantities, model_samples = NULL){
 
   draws <- .bt_parameter_draws_values(object, quantities, model_samples)
+  for(i in seq_len(nrow(quantities))){
+    projection <- .bt_ordered_quantity_projection(object,quantities[i,,drop=FALSE],
+      if(!is.null(model_samples)) as.matrix(model_samples))
+    if(is.null(projection)) next
+    flat <- as.matrix(draws)
+    replace <- !is.na(projection$atom) | projection$exact
+    if(nrow(flat)!=length(replace)) stop("Ordered quantity sources do not align with their draw rows.",call.=FALSE)
+    position <- 0L
+    for(chain in seq_along(draws)){
+      rows <- position + seq_len(nrow(draws[[chain]]))
+      selected <- which(replace[rows])
+      if(length(selected)) draws[[chain]][selected,i] <- projection$values[rows[selected]]
+      position <- position + length(rows)
+    }
+  }
   supports <- stats::setNames(quantities$support, quantities$canonical_name)
   supports <- supports[!vapply(supports, is.null, logical(1))]
   if(length(supports) > 0L){

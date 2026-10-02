@@ -196,6 +196,18 @@
   }
 
   prior <- prior_list[[label]]
+  if(is.prior.ordered(prior)){
+    total <- prior$total
+    if(is.prior.mixture(total)){
+      components <- attr(total,"components",exact=TRUE)
+      if(!all(components %in% c("null","alternative"))){
+        stop("Conditional ordered totals require declared 'null' and 'alternative' components.",call.=FALSE)
+      }
+      spec <- .bt_ordered_spec(label,prior)
+      states <- .bt_ordered_total_components(spec,model_samples)
+      return(states$component %in% which(components=="alternative"))
+    }
+  }
   if(is.prior.spike_and_slab(prior)){
     return(model_samples[, paste0(label, "_indicator")] == 1)
   }
@@ -333,7 +345,13 @@
   }
 
   prior <- prior_list[[family[["name"]]]]
-  options <- .prior_density_condition_component(prior)
+  options <- if(is.prior.ordered(prior)){
+    lapply(.prior_density_condition_component(prior$total),function(option){
+      total <- option$prior
+      option$prior <- .bt_ordered_localize_total(prior,total)
+      option
+    })
+  }else .prior_density_condition_component(prior)
   lapply(options, function(option){
     values <- rep(option[["alternative"]], length(labels))
     names(values) <- labels

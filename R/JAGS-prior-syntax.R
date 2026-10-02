@@ -340,11 +340,14 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(theta_dim > 1L){
     if(!is.prior.simple(total) || is.prior.point(total)){
       if(is.prior.point(total)){
+        literal <- if(.is_prior_expression(total)) .prior_expression_to_character(total)$parameters$location else{
+          .prior_ordered_format_number(total$parameters$location)
+        }
         syntax <- ""
         for(i in seq_len(theta_dim)){
           syntax <- paste0(
             syntax,
-            total_name, "[", i, "] <- ", .prior_ordered_format_number(total$parameters[["location"]]), "\n"
+            total_name, "[", i, "] <- ", literal, "\n"
           )
         }
         return(syntax)

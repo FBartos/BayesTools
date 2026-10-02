@@ -154,6 +154,10 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
         rep(1L, length(source_rows)), source_rows)
       out[[temp_parameter]] <- .bt_meta_set(out[[temp_parameter]], "ordered_source", retained)
       out[[temp_parameter]] <- .bt_meta_set(out[[temp_parameter]], "draw_index", source_rows)
+      if(!transform_scaled){
+        out[[temp_parameter]] <- .bt_ordered_source_semantics(out[[temp_parameter]],
+          diag(ncol(out[[temp_parameter]])),colnames(out[[temp_parameter]]))
+      }
     }
     if(!is.null(attr(temp_prior, which = "parameter", exact = TRUE))){
       class(out[[temp_parameter]]) <- c(class(out[[temp_parameter]]), "mixed_posteriors.formula")

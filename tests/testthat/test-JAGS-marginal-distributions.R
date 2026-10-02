@@ -4079,13 +4079,18 @@ test_that("marginal inference gives levels with a zero or infinite prior ordinat
   }
   set.seed(5)
   n <- 2000
-  models <- lapply(c(1, .5), function(sd) list(
-    fit = .mock_mixing_fit_for_marginal(
-      cbind("mu_f[1]" = stats::rnorm(n, .05, .1), "mu_f[2]" = stats::rnorm(n, .1, .1)),
-      list(mu_f = ordered_prior(sd))
-    ),
-    marglik = bridgesampling_object(0), prior_weights = 1
-  ))
+  models <- lapply(c(1, .5), function(sd){
+    prior <- ordered_prior(sd)
+    total <- stats::rnorm(n,.15,.1)
+    gamma <- matrix(stats::rexp(2*n),n)
+    spec <- .bt_ordered_spec("mu_f",prior)
+    colnames(gamma) <- spec$allocations[[1L]]$gamma_coordinates
+    shares <- gamma/rowSums(gamma)
+    draws <- cbind("mu_f[1]"=total*shares[,1],"mu_f[2]"=total*shares[,2],
+      mu_f_ordered_total=total,gamma)
+    list(fit=.mock_mixing_fit_for_marginal(draws,list(mu_f=prior)),
+      marglik=bridgesampling_object(0),prior_weights=1)
+  })
   inference <- .collect_warnings_for_test(marginal_inference(
     models, marginal_parameters = "mu_f", parameters = "mu_f",
     is_null_list = list(mu_f = c(FALSE, FALSE)), formula = NULL, n_samples = n, seed = 1
@@ -4622,9 +4627,10 @@ test_that("terms with unknown support leave level support unknown", {
       f         = prior_ordered(prior("normal", list(0, 1)), allocation = c(.4, .6))
     )
   )
+  total <- seq(-3,2,length.out=20)
   posterior <- cbind(mu_intercept = seq(.1, 2, length.out = 20),
-                     "mu_f[1]" = seq(-1, 1, length.out = 20),
-                     "mu_f[2]" = seq(-2, 1, length.out = 20))
+                     "mu_f[1]" = .4*total,"mu_f[2]" = .6*total,
+                     mu_f_ordered_total=total)
   fit <- coda::mcmc(posterior)
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- formula_result$prior_list
@@ -4651,10 +4657,13 @@ test_that("mixed ordered spike-and-slab totals declare their within-model spike"
   n <- 400
   indicators <- list(rbinom(n, 1, .3), rbinom(n, 1, .6))
   models <- lapply(indicators, function(indicator){
-    total <- indicator * rnorm(n, .3, .1)
+    variable <- rnorm(n,.3,.1)
+    total <- indicator * variable
     posterior <- cbind(
       "mu_f[1]" = .4 * total,
       "mu_f[2]" = .6 * total,
+      "mu_f_ordered_total" = total,
+      "mu_f_ordered_total_variable" = variable,
       "mu_f_ordered_total_indicator" = indicator
     )
     list(
@@ -4711,6 +4720,7 @@ test_that("ordered mixture totals with a spike(0) component declare their point 
     cbind(
       "mu_f[1]" = .4 * total_draws,
       "mu_f[2]" = .6 * total_draws,
+      "mu_f_ordered_total" = total_draws,
       "mu_f_ordered_total_indicator" = indicator
     )
   }
@@ -4791,6 +4801,7 @@ test_that("mixed formula levels declare within-model ordered-total spikes", {
       mu_intercept = .3,
       "mu_f[1]" = .4 * total,
       "mu_f[2]" = .6 * total,
+      "mu_f_ordered_total" = total,
       "mu_f_ordered_total_indicator" = indicator
     )
   }
@@ -4858,7 +4869,7 @@ test_that("ordered point(0) totals are structural zero coefficients", {
   set.seed(4)
   n <- 400
   total <- rnorm(n, .3, .1)
-  alternative <- cbind("mu_f[1]" = .4 * total, "mu_f[2]" = .6 * total)
+  alternative <- cbind("mu_f[1]" = .4 * total, "mu_f[2]" = .6 * total,mu_f_ordered_total=total)
   null <- cbind("mu_f[1]" = rep(0, n), "mu_f[2]" = rep(0, n))
   mixed <- mix_posteriors(
     list(

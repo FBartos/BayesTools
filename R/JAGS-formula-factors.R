@@ -498,6 +498,12 @@
     )
   }
   class(transformed_samples) <- unique(c(old_class, class(transformed_samples), transformed_class))
+  if(inherits(transformed_samples,"mixed_posteriors.ordered_transformed")){
+    source <- .bt_meta_get(transformed_samples,"ordered_source")
+    if(is.null(source$view_transformations)){
+      transformed_samples <- .bt_ordered_source_semantics(transformed_samples,design,colnames(transformed_samples))
+    }
+  }
 
   return(transformed_samples)
 }
@@ -542,6 +548,11 @@
   attributes(out) <- c(attributes(out), attributes_kept)
   out <- .bt_meta_refresh(out)
   out <- .bt_meta_set(out, "atoms", NULL)
+  source <- .bt_meta_get(out,"ordered_source")
+  if(!is.null(source$projection_design)){
+    source$projection_design <- source$projection_design[keep,,drop=FALSE]
+    out <- .bt_meta_set(out,"ordered_source",source)
+  }
   quantities <- .bt_draws_quantities(samples)
   if(!is.null(quantities)){
     out <- .bt_meta_set(out, "quantities", quantities[keep, , drop = FALSE])

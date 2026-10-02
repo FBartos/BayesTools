@@ -3825,6 +3825,12 @@ test_that("ordered factor posterior plots show level effects by level label", {
       nrow = 200L,
       dimnames = list(NULL, columns)
     )
+    spec <- .bt_ordered_spec("mu_g",result$prior_list$mu_g)
+    total <- abs(stats::rnorm(200L))
+    gamma <- matrix(stats::rexp(200L*length(spec$coefficient_names)),200L)
+    colnames(gamma) <- spec$allocations[[1L]]$gamma_coordinates
+    samples[,spec$coefficient_names] <- total * gamma/rowSums(gamma)
+    samples <- cbind(samples,mu_g_ordered_total=total,gamma)
     fit <- structure(
       list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = 200L),
       class = c("runjags", "BayesTools_fit", "list")

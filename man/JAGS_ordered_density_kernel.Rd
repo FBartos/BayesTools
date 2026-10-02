@@ -10,12 +10,12 @@ JAGS_ordered_density_kernel(prior_list, allocation_chart = NULL)
 \item{prior_list}{named list of original bound ordered priors.}
 
 \item{allocation_chart}{optional named list keyed by allocation key. Each
-entry has code{kind = "group"} and a nonempty proper index subset code{J},
-or code{kind = "pair"} and two distinct code{indices}. Its gamma factors
+entry has \code{kind = "group"} and a nonempty proper index subset \code{J},
+or \code{kind = "pair"} and two distinct \code{indices}. Its gamma factors
 are replaced by the corresponding Beta density of the group or pair share.}
 }
 \value{
-A function of code{samples}, a numeric matrix with named coordinate
+A function of \code{samples}, a numeric matrix with named coordinate
 columns, returning one log density or log probability per row.
 }
 \description{
@@ -29,9 +29,9 @@ allocation key contributes once. Mixture-state probabilities, inactive
 component sources, and nuisance-only chart factors are omitted because they
 are constant along the conditional chart. This is a numerical conditional
 kernel, not a bridge density. Expression totals raise
-code{BayesTools_ordered_expression_unavailable}, missing coordinates raise
-code{BayesTools_ordered_coordinates_unavailable}, and invalid indicators
-raise code{BayesTools_ordered_invalid_state}; all inherit
-code{BayesTools_ordered_unavailable}. Ordinary values outside numeric support
-return code{-Inf}. Refit when bound ordered metadata are unavailable.
+\code{BayesTools_ordered_expression_unavailable}, missing coordinates raise
+\code{BayesTools_ordered_coordinates_unavailable}, and invalid indicators
+raise \code{BayesTools_ordered_invalid_state}; all inherit
+\code{BayesTools_ordered_unavailable}. Ordinary values outside numeric support
+return \code{-Inf}. Refit when bound ordered metadata are unavailable.
 }

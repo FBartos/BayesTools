@@ -13,6 +13,10 @@
 #' point masses are read only from these metadata: precomputed posterior
 #' densities ([posterior_density_attribute()]) describe the continuous part
 #' and carry no point masses.
+#' BayesTools producers can additionally declare positional scalar
+#' \code{marginals}, named in the full draw-column order. Scalar extraction
+#' prefers these declarations; a continuous joint measure can have a point
+#' marginal, for example the last level of an ordered point-total prior.
 #'
 #' @export
 posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
@@ -43,7 +47,8 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
 #' [as_mixed_posteriors()], [marginal_posterior()], or
 #' [parameter_mixed_posterior()].
 #'
-#' @return \code{TRUE} when atoms are declared and none has positive mass;
+#' @return \code{TRUE} when atoms are declared and all declared scalar marginals
+#' and the joint measure have no positive atomic mass;
 #' \code{FALSE} when the draws declare a point mass or do not declare their
 #' atom status. Plain numeric draws, which carry no metadata, are an error.
 #'
@@ -64,7 +69,10 @@ posterior_atoms_free <- function(x){
   }
   atoms <- .posterior_atoms_get(x)
 
-  !is.null(atoms) && nrow(atoms$locations) == 0L
+  !is.null(atoms) && nrow(atoms$locations) == 0L &&
+    (is.null(atoms$marginals) || all(vapply(atoms$marginals, function(marginal){
+      !is.null(marginal) && nrow(marginal$locations) == 0L
+    }, logical(1))))
 }
 
 # A validated point-mass table (data frame with 'x' and 'mass', masses at
@@ -129,7 +137,8 @@ posterior_atoms_free <- function(x){
                                  column_names = NULL,
                                  source = "structural",
                                  declared = TRUE,
-                                 component_probabilities = NULL){
+                                 component_probabilities = NULL,
+                                 marginals = NULL){
 
   if(is.null(locations)){
     n_columns <- if(is.null(column_names)) 1L else length(column_names)
@@ -172,6 +181,20 @@ posterior_atoms_free <- function(x){
     }
     colnames(locations) <- column_names
   }
+  if(!is.null(marginals)){
+    if(!is.list(marginals) || length(marginals) != ncol(locations) ||
+       is.null(names(marginals)) || !identical(names(marginals), colnames(locations))){
+      stop("Posterior scalar marginals must name every location-matrix column in order.", call. = FALSE)
+    }
+    marginals <- lapply(marginals, function(marginal){
+      if(is.null(marginal)) return(NULL)
+      marginal <- .posterior_atoms_from_attribute(marginal)
+      if(ncol(marginal$locations) != 1L || !is.null(marginal$marginals)){
+        stop("Each posterior scalar marginal must declare a single column without nested marginals.", call. = FALSE)
+      }
+      marginal
+    })
+  }
 
   out <- list(
     declared = isTRUE(declared),
@@ -180,6 +203,7 @@ posterior_atoms_free <- function(x){
     source = source,
     component_probabilities = component_probabilities
   )
+  if(!is.null(marginals)) out$marginals <- marginals
   class(out) <- c("BayesTools_posterior_atoms", "list")
   out
 }
@@ -202,12 +226,26 @@ posterior_atoms_free <- function(x){
     column_names = colnames(atoms$locations),
     source = if(is.null(atoms$source)) "unknown" else atoms$source,
     declared = TRUE,
-    component_probabilities = atoms$component_probabilities
+    component_probabilities = atoms$component_probabilities,
+    marginals = atoms$marginals
   )
 }
 
 .posterior_atoms_point_location <- function(prior, n_columns){
 
+  if(is.prior.ordered(prior) && is.prior.point(prior$total) && !.is_prior_expression(prior$total)){
+    spec <- .bt_ordered_spec(.prior_ordered_metadata(prior)$parameter_name,prior)
+    if(n_columns!=length(spec$coefficient_names)) return(NULL)
+    values <- vapply(seq_along(spec$coefficient_names),function(i){
+      weights <- rep(0,length(spec$coefficient_names))
+      weights[[i]] <- 1
+      tensor <- .bt_ordered_tensor(spec,spec$slice_index[[i]],weights)
+      if(length(tensor$records) && prior$total$parameters$location!=0) return(NA_real_)
+      prior$total$parameters$location * if(length(tensor$records)) 0 else tensor$coefficients[[1L]]
+    },numeric(1))
+    if(!anyNA(values)) return(values)
+    return(NULL)
+  }
   if(.posterior_atoms_is_ordered_zero_total(prior)){
     # every ordered coefficient is total x allocation share = 0
     return(rep(0, n_columns))
@@ -374,6 +412,9 @@ posterior_atoms_free <- function(x){
   if(is.null(atoms)){
     stop("Cannot attach invalid posterior atom metadata.", call. = FALSE)
   }
+  if(is.matrix(samples) && ncol(samples)==ncol(atoms$locations) && !is.null(colnames(samples))){
+    atoms <- .posterior_atoms_rename_columns(atoms,colnames(samples))
+  }
   samples <- .bt_meta_set(samples, "atoms", atoms)
   samples
 }
@@ -382,7 +423,23 @@ posterior_atoms_free <- function(x){
 # the atom status is undeclared.
 .posterior_atoms_get <- function(samples){
 
-  .posterior_atoms_from_attribute(.bt_meta_get(samples, "atoms"))
+  atoms <- .posterior_atoms_from_attribute(.bt_meta_get(samples, "atoms"))
+  if(!is.null(atoms) && is.matrix(samples) && ncol(samples)==ncol(atoms$locations) && !is.null(colnames(samples))){
+    atoms <- .posterior_atoms_rename_columns(atoms,colnames(samples))
+  }
+  atoms
+}
+
+.posterior_atoms_rename_columns <- function(atoms, column_names){
+
+  colnames(atoms$locations) <- column_names
+  if(!is.null(atoms$marginals)){
+    names(atoms$marginals) <- column_names
+    for(i in seq_along(atoms$marginals)){
+      if(!is.null(atoms$marginals[[i]])) colnames(atoms$marginals[[i]]$locations) <- column_names[[i]]
+    }
+  }
+  atoms
 }
 
 .posterior_atoms_for_column <- function(atoms, column){
@@ -398,6 +455,7 @@ posterior_atoms_free <- function(x){
      column < 1L || column > ncol(atoms$locations)){
     return(NULL)
   }
+  if(!is.null(atoms$marginals)) return(atoms$marginals[[column]])
 
   x <- atoms$locations[, column]
   point_masses <- data.frame(x = x, mass = atoms$mass)
@@ -441,7 +499,10 @@ posterior_atoms_free <- function(x){
     column_names = colnames(atoms$locations),
     source = paste0(atoms$source, ":transformed"),
     declared = TRUE,
-    component_probabilities = atoms$component_probabilities
+    component_probabilities = atoms$component_probabilities,
+    marginals = if(!is.null(atoms$marginals)) lapply(atoms$marginals, function(marginal){
+      if(is.null(marginal)) NULL else .posterior_atoms_transform(marginal, transformation, transformation_arguments)
+    })
   )
 }
 
@@ -463,7 +524,18 @@ posterior_atoms_free <- function(x){
     column_names = column_names,
     source = paste0(atoms$source, ":linear_transform"),
     declared = TRUE,
-    component_probabilities = atoms$component_probabilities
+    component_probabilities = atoms$component_probabilities,
+    marginals = if(!is.null(atoms$marginals)){
+      stats::setNames(lapply(seq_len(nrow(design)), function(i){
+        active <- which(design[i,] != 0)
+        if(length(active) == 0L) return(.posterior_atoms_new(matrix(0,1L,1L),1,column_names=column_names[[i]]))
+        if(length(active) != 1L) return(NULL)
+        marginal <- atoms$marginals[[active]]
+        if(is.null(marginal)) return(NULL)
+        .posterior_atoms_new(marginal$locations * design[i,active], marginal$mass,
+          column_names=column_names[[i]],source=paste0(marginal$source,":linear_transform"))
+      }),column_names)
+    }
   )
 }
 
@@ -519,9 +591,6 @@ posterior_atoms_free <- function(x){
   }
   prior <- .prior_ordered_default_bound(prior)
   metadata <- .prior_ordered_metadata(prior)
-  if(metadata$theta_dim != 1L){
-    return(NULL)
-  }
 
   exclusion_mass <- .posterior_atoms_ordered_exclusion(prior$total, component)
   inclusion_mass <- 1 - exclusion_mass
@@ -563,7 +632,10 @@ posterior_atoms_free <- function(x){
       # the total's component is its spike (or a point(0) mixture component)
       return(prior("point", list(location = 0)))
     }
-    return(NULL)
+    if(is.prior.mixture(total) && !is.na(component)){
+      return(.bt_ordered_localize_total(prior_entry,total[[component]]))
+    }
+    return(prior_entry)
   }
 
   if(model_mixture){
@@ -773,6 +845,13 @@ posterior_atoms_free <- function(x){
     }
     weights <- standardized
   }
+  ordered <- .bt_ordered_formula_projections(samples,weights,source_transforms)
+  if(!is.null(ordered)){
+    states <- list(atom=as.vector(do.call(rbind,lapply(ordered,`[[`,"atom"))),
+      state=as.vector(do.call(rbind,lapply(ordered,`[[`,"state"))))
+    model <- rep(attr(ordered,"model",exact=TRUE),each=length(ordered))
+    return(.bt_ordered_projection_atoms(states,column_name,model,attr(ordered,"probabilities",exact=TRUE)))
+  }
   plan <- .posterior_atoms_formula_plan(samples, prior_list)
   if(is.null(plan)){
     return(NULL)
@@ -854,7 +933,8 @@ posterior_atoms_free <- function(x){
 
 .posterior_atoms_joint_linear <- function(prior_list, plan, design,
                                            source_transforms = NULL,
-                                           output_transforms = NULL){
+                                           output_transforms = NULL,
+                                           samples = NULL){
 
   active <- colSums(abs(design)) != 0
   design <- design[, active, drop = FALSE]
@@ -899,6 +979,19 @@ posterior_atoms_free <- function(x){
     }
     exponentiated <- output_transforms == "exp"
     atoms$locations[, exponentiated] <- exp(atoms$locations[, exponentiated, drop = FALSE])
+  }
+  if(!is.null(samples)){
+    ordered <- .bt_ordered_formula_projections(samples,design,
+      source_transforms[source_transforms!="identity"])
+    if(!is.null(ordered)){
+      atoms$marginals <- stats::setNames(lapply(seq_along(ordered),function(i){
+        margin <- .bt_ordered_projection_atoms(ordered[[i]],rownames(design)[[i]])
+        if(!is.null(margin) && !is.null(output_transforms) && identical(output_transforms[[i]],"exp")){
+          margin <- .posterior_atoms_transform(margin,"exp")
+        }
+        margin
+      }),rownames(design))
+    }
   }
   atoms
 }
@@ -961,13 +1054,19 @@ posterior_atoms_free <- function(x){
       atoms <- .posterior_atoms_joint_linear(
         prior_list, plan, design,
         source_transforms = transform$source_transforms,
-        output_transforms = transform$output_transforms
+        output_transforms = transform$output_transforms,
+        samples = raw_samples
       )
       if(is.matrix(samples[[parameter]])){
         # report the atoms under the sample column labels (e.g. factor levels)
-        colnames(atoms$locations) <- colnames(samples[[parameter]])
+        atoms <- .posterior_atoms_rename_columns(atoms,colnames(samples[[parameter]]))
       }
       samples[[parameter]] <- .posterior_atoms_set(samples[[parameter]], atoms)
+      projections <- .bt_ordered_formula_projections(raw_samples,design,
+        transform$source_transforms[transform$source_transforms!="identity"])
+      if(!is.null(projections) && all(transform$output_transforms[target_columns]=="identity")){
+        samples[[parameter]] <- .bt_ordered_attach_linear_view(samples[[parameter]],projections,design,raw_samples)
+      }
     }
   }
   samples

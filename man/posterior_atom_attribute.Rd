@@ -18,6 +18,10 @@ of posterior draws (\code{posterior_metadata(x, "atoms") <- }). Posterior
 point masses are read only from these metadata: precomputed posterior
 densities (\code{\link[=posterior_density_attribute]{posterior_density_attribute()}}) describe the continuous part
 and carry no point masses.
+BayesTools producers can additionally declare positional scalar
+\code{marginals}, named in the full draw-column order. Scalar extraction
+prefers these declarations; a continuous joint measure can have a point
+marginal, for example the last level of an ordered point-total prior.
 }
 \description{
 Creates exact posterior measure metadata used to distinguish a

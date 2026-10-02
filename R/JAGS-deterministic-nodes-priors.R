@@ -171,11 +171,14 @@
     if(any(!is.finite(indicator)) || any(!indicator %in% c(0, 1))){
       .bt_ordered_stop("Ordered inclusion indicator draws must be zero or one.", "BayesTools_ordered_invalid_state")
     }
-    variable <- component_values(spec$components[[1L]])
-    if(is.null(variable)){
-      return(NULL)
+    out <- matrix(0,n,length(node$coordinates))
+    active <- indicator==1
+    if(any(active)){
+      variable <- component_values(spec$components[[1L]])
+      if(is.null(variable)) return(NULL)
+      out[active,] <- variable[active,,drop=FALSE]
     }
-    return(variable * indicator)
+    return(out)
   }
 
   out <- matrix(NA_real_, nrow = n, ncol = length(node$coordinates))

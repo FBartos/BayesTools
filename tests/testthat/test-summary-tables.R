@@ -258,7 +258,7 @@ test_that("ensemble estimates reject undeclared missing draws", {
     ensemble_estimates_table(list(theta = unknown), parameters = "theta"),
     paste0(
       "Unknown 'undefined_draws' declaration for 'theta'. Use one of ",
-      "\"correlation\", \"allocation_active\", \"positive_definite\"."
+      "\"correlation\", \"allocation_active\", \"ordered_parameterization\", \"positive_definite\"."
     ),
     fixed = TRUE
   )

@@ -82,6 +82,16 @@ requested parameter. That holds for unconditional averaging even when
 produces different \code{post_probs} and therefore different mixture
 allocations; \code{mix_posteriors()} hard-errors in that case. Mix each
 conditional parameter in a separate call instead.
+
+For an ordered total with a declared inclusion event, conditional averaging
+also conditions within each model. Posterior model probabilities are
+multiplied by the event's fraction of fitted draws; prior probabilities are
+multiplied by its declared prior probability. Resampling uses eligible
+original draw indices, and conditional prior contexts preserve the original
+fitted source specifications. A parameterized total without an inclusion
+event, including a Bernoulli total, retains every state. A compound event
+must be applied once to full aligned sources; separately conditioned ordered
+parameters cannot be combined as joint draws by this function.
 }
 \seealso{
 \link{ensemble_inference} \link{BayesTools_ensemble_tables} \link{as_mixed_posteriors}
