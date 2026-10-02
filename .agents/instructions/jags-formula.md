@@ -295,8 +295,13 @@ names.
   and exact scalar point states. Registered ordered families replay Gamma
   allocations and coefficient chains; `JAGS_ordered_density_kernel()` is the
   separate active-component numerical kernel, not a bridge density. Numeric
-  literals and emitted total syntax are persisted; missing provenance requires
-  a real refit. Expression totals provide fitted snapshot values only unless a
+  literals and emitted total syntax are persisted as literal/emission evidence
+  under the fitted parameter-map contract version; changes to their formatting
+  require a deliberate contract-version decision, never an in-memory migration
+  or acceptance of source-incomplete fits. Missing provenance requires a real
+  refit. Continuous total families remain continuous with expression parameters;
+  Bernoulli expression probabilities retain the declared numeric support.
+  Expression point locations provide fitted snapshot values only unless a
   certified ancestor recipe exists, and never acquire point atoms from their
   wrapper or observed constancy.
 - Validate coordinate uniqueness, quantity uniqueness, aliases, extraction

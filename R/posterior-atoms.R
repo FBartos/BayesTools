@@ -436,7 +436,7 @@ posterior_atoms_free <- function(x){
   if(!is.null(atoms$marginals)){
     names(atoms$marginals) <- column_names
     for(i in seq_along(atoms$marginals)){
-      if(!is.null(atoms$marginals[[i]])) colnames(atoms$marginals[[i]]$locations) <- column_names[[i]]
+      if(!is.null(atoms$marginals[[i]])) colnames(atoms$marginals[[i]]$locations) <- column_names[i]
     }
   }
   atoms
@@ -517,6 +517,8 @@ posterior_atoms_free <- function(x){
     stop("The atom transformation design does not match the joint atom locations.",
          call. = FALSE)
   }
+  if(is.null(column_names)) column_names <- rownames(design)
+  if(is.null(column_names) && !is.null(atoms$marginals)) column_names <- paste0("value",seq_len(nrow(design)))
 
   .posterior_atoms_new(
     locations = atoms$locations %*% t(design),
@@ -847,6 +849,7 @@ posterior_atoms_free <- function(x){
   }
   ordered <- .bt_ordered_formula_projections(samples,weights,source_transforms)
   if(!is.null(ordered)){
+    for(projection in ordered) .bt_ordered_require_measure(projection)
     states <- list(atom=as.vector(do.call(rbind,lapply(ordered,`[[`,"atom"))),
       state=as.vector(do.call(rbind,lapply(ordered,`[[`,"state"))))
     model <- rep(attr(ordered,"model",exact=TRUE),each=length(ordered))

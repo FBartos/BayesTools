@@ -180,7 +180,11 @@ JAGS_deterministic_evaluator <- function(fit, nodes = NULL){
       }
       if(!is.null(node_values)){
         present <- intersect(colnames(node_values), colnames(lookup$draws))
-        lookup$draws[, present] <- node_values[, present, drop = FALSE]
+        current <- lookup$draws[, present, drop = FALSE]
+        replacement <- node_values[, present, drop = FALSE]
+        equal <- is.na(current)==is.na(replacement) & is.nan(current)==is.nan(replacement) &
+          (is.na(current) | current==replacement)
+        if(!all(equal)) lookup$draws[, present] <- replacement
         added <- setdiff(colnames(node_values), colnames(lookup$draws))
         if(length(added)) lookup$draws <- cbind(lookup$draws, node_values[, added, drop = FALSE])
       }

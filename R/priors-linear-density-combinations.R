@@ -503,6 +503,8 @@
                                         tail_prob){
 
   ordered_prior <- .prior_ordered_default_bound(ordered_prior)
+  share <- .prior_ordered_linear_share(ordered_prior, weights, indices)
+  if(identical(share$type,"point") && share$scale==0) return(c(0,0))
   total_group <- list(
     prior = ordered_prior$total,
     weights = c(.ordered_total = 1),
@@ -514,7 +516,7 @@
     source_transforms = c(.ordered_total = NA_character_)
   )
   share_range <- .prior_ordered_linear_share_range(
-    .prior_ordered_linear_share(ordered_prior, weights, indices),
+    share,
     tail_prob
   )
   products <- as.vector(outer(total_range, share_range, `*`))
@@ -662,6 +664,14 @@
   if(is.null(n_grid)){
     n_grid <- .prior_linear_density_default_grid()
   }
+  share <- .prior_ordered_linear_share(ordered_prior, weights, indices)
+  if(identical(share$type,"point") && share$scale==0){
+    out <- .prior_linear_density_point(0)
+    attr(out,"ordered_measure") <- list(method="analytic_components",total=ordered_prior$total,
+      allocation=.prior_ordered_metadata(.prior_ordered_default_bound(ordered_prior))$allocations[[1L]]$spec,
+      coefficient_weights=stats::setNames(as.numeric(weights),names(weights)))
+    return(out)
+  }
   total <- .prior_ordered_total_linear_distribution(
     total = ordered_prior$total,
     dx = dx,
@@ -672,7 +682,6 @@
   # a Beta share: the product from its structural route, over the product of
   # the total's range and the share's range, with the total's zero atom
   out <- NULL
-  share <- .prior_ordered_linear_share(ordered_prior, weights, indices)
   if(identical(share$type, "beta")){
     terms <- .prior_ordered_share_terms(
       total      = ordered_prior$total,

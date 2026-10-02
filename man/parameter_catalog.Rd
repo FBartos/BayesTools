@@ -79,9 +79,15 @@ random-effect aliases. Defaults to \code{FALSE}.}
 \item{selection}{a \code{BayesTools_parameter_selection} returned by
 \code{parameter_catalog_resolve()}.}
 
-\item{model_samples}{optional numeric matrix containing the declared source
-coordinates. This lets downstream summaries evaluate a selected semantic
-quantity on an already materialized posterior sample.}
+\item{model_samples}{optional numeric matrix containing the declared fitted
+source coordinates. This lets downstream summaries evaluate a selected semantic
+quantity on an already materialized posterior sample.
+Ordered quantities also require the total, Gamma allocation and component
+indicator sources listed by \code{\link[=JAGS_ordered_parameter_spec]{JAGS_ordered_parameter_spec()}} in each term's
+\code{source_coordinates}; increment-only columns do not establish their
+semantic values or structural measure. Include those primitive sources, or
+omit \code{model_samples} to read the complete fitted draws. Missing supplied
+ordered sources raise \code{BayesTools_ordered_coordinates_unavailable}.}
 
 \item{n_grid}{number of grid points used for deterministic induced prior
 densities.}

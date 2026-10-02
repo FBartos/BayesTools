@@ -398,6 +398,7 @@
 }
 .plot_data_factor_column_atoms <- function(samples){
 
+  .bt_ordered_source_require_measure(samples)
   posterior_atoms <- .posterior_atoms_get(samples)
   if(is.null(posterior_atoms)){
     .plot_data_stop_unknown_atoms()

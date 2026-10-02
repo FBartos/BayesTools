@@ -49,7 +49,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   # extract the list of priors
   priors <- attr(model, "prior_list")
-  ordered_specs <- JAGS_ordered_parameter_spec(model)
+  ordered_specs <- JAGS_ordered_parameter_spec(model,intersect(parameters,names(priors)[vapply(priors,is.prior.ordered,logical(1))]))
   prior_density_priors <- priors
   formula_scale <- attr(model, "formula_scale")
   condition_event <- .condition_event(

@@ -542,6 +542,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
   }else{
 
     prior_weights    <- attr(prior_list, "prior_weights")
+    if(numeric_literals) prior_weights <- vapply(prior_weights,.prior_ordered_format_number,character(1))
     prior_components <- as.list(prior_list)
     class(prior_components) <- "list"
     names(prior_components) <- paste0(parameter_name, "_component_", seq_along(prior_components))

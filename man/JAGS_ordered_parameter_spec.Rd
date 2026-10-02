@@ -60,11 +60,13 @@ Missing fitted numeric provenance raises
 \code{BayesTools_ordered_metadata_unavailable} and
 \code{BayesTools_refit_required}: refit with this version. Missing source
 draws raise \code{BayesTools_ordered_coordinates_unavailable}; invalid component
-states raise \code{BayesTools_ordered_invalid_state}. Expression totals can
-supply fitted snapshot values but have an unavailable scalar measure with a
-\code{BayesTools_ordered_expression_unavailable} reason. Without a registered
-certified ancestor recipe they cannot supply numerical charts, structural
-atoms, or correct replay after changing an ancestor. These
+states raise \code{BayesTools_ordered_invalid_state}. Continuous total families
+remain structurally continuous with expression parameters. Bernoulli totals
+retain their declared support even with an expression probability. Expression
+point locations can supply fitted snapshot values but have an unavailable
+scalar measure with a \code{BayesTools_ordered_expression_unavailable} reason.
+Without a registered certified ancestor recipe, expression totals cannot
+supply numerical charts or correct replay after changing an ancestor. These
 coordinate/expression conditions inherit \code{BayesTools_ordered_unavailable}.
 Missing or inconsistent fitted provenance reports: "Fitted ordered numeric
 provenance is unavailable. Refit the model with this version of BayesTools."

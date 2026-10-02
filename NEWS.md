@@ -854,9 +854,21 @@ old behaviour.
     level. Semantic point-state draws equal their declared locations exactly.
     Marginal declarations survive supported extraction, transforms and row
     subsetting; they do not fabricate joint atoms. Inclusion conditioning uses
-    the stored ordered total event, shared across slices. Expression-total
-    snapshots remain structurally unavailable without a certified ancestor
-    recipe; observed constant draws never supply one.
+    the stored ordered total event, shared across slices. Continuous total
+    families remain continuous with expression parameters, and spike totals
+    retain their spike atoms when the slab has expression parameters. Expression
+    point locations remain structurally unavailable without a certified ancestor
+    recipe; scalar consumers report `BayesTools_ordered_expression_unavailable`
+    with a supported-prior or fitted-snapshot remedy. Observed constant draws
+    never supply such a recipe.
+  - `parameter_draws(model_samples = )` for ordered quantities needs the total,
+    Gamma allocations and component indicators listed in the ordered accessor's
+    `source_coordinates`, as well as the selected increment columns. Supply the
+    fitted primitive sources or omit `model_samples` to use complete fitted draws;
+    missing supplied sources report `BayesTools_ordered_coordinates_unavailable`.
+    Supplied primitives determine resolved ordered semantic values even when
+    monitored increment columns are stale; declared transformed views keep their
+    existing transformation handling.
   - conditional ordered mixtures reweight model probabilities by the declared
     inclusion event as well as selecting eligible original draws. Posterior
     event fractions and declared prior event probabilities condition their

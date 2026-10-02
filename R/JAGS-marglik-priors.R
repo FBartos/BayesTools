@@ -186,7 +186,7 @@ JAGS_marglik_priors_rows_evaluator <- function(prior_list){
   for(i in seq_along(prior_list)){
     prior <- prior_list[[i]]
     if(is.prior.ordered(prior) && is.prior.simple(prior$total) && !.is_prior_expression(prior$total)){
-      compiled <- .bt_ordered_compile_density(prior_list[i], emitted_allocations = allocation_keys)
+      compiled <- .bt_ordered_compile_density(prior_list[i], emitted_allocations = allocation_keys, strict_bridge = TRUE)
       evaluators[[i]] <- compiled$evaluate
       allocation_keys <- unique(c(allocation_keys, compiled$allocation_keys))
     }else{

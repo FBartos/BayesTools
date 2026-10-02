@@ -244,6 +244,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
                                             posterior_density = NULL,
                                             density_method = c("KDE", "precomputed")){
 
+  .bt_ordered_source_require_measure(x)
   x_points        <- NULL
   y_points        <- NULL
   density_method <- .posterior_density_method(density_method)

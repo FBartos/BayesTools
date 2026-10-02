@@ -1,5 +1,40 @@
 skip_if_not_test_profile("unit")
 
+test_that("replay propagates ordinary parent outputs to all dependent families", {
+  info <- JAGS_formula(~x,"mu",data.frame(x=c(-1,2)),list(intercept=prior("point",list(1)),
+    x=prior_spike_and_slab(prior("normal",list(0,1)),prior("point",list(.5)))))
+  priors <- c(info$prior_list,list(w=prior("dirichlet",list(c(2,3)))))
+  factor <- list(weight_name="w",index=1L,scale="total_variance",n_targets=2L,inclusion_name=NULL)
+  nodes <- list(.bt_dnode_prior_mixture("mu_x",priors$mu_x),
+    .bt_dnode_random_sd("sd","mu_x",list(factor),"mu_x",list(factor)),
+    .bt_dnode_rho("rho","mu_x","fisher_z",c(lower=-1,upper=1)),
+    .bt_dnode_lkj("lkj",2L,include_primitives=TRUE),
+    .bt_dnode_omega("omega",prior_weightfunction("one-sided",c(.025,.05),wf_cumulative(c(2,3,4)))),
+    .bt_dnode_linear_predictor(info$formula_design))
+  names(nodes) <- vapply(nodes,`[[`,character(1),"node")
+  draws <- cbind(mu_intercept=1,mu_x=99,mu_x_variable=1:4,mu_x_indicator=c(1,0,1,0),
+    sd=99,rho=99,"w[1]"=c(.25,.5,.75,.9),"w[2]"=c(.75,.5,.25,.1),
+    matrix(c(.25,.5,.75,.9),4,dimnames=list(NULL,nodes$lkj$dependencies)),
+    matrix(rep(c(1,2,3),each=4),4,dimnames=list(NULL,nodes$omega$dependencies)))
+  fit <- .parameter_catalog_test_fit(coda::mcmc.list(coda::mcmc(draws)),priors,
+    formula_design=list(mu=info$formula_design))
+  local_mocked_bindings(.bt_deterministic_nodes_fit=function(fit) nodes,.package="BayesTools")
+  evaluated <- JAGS_evaluate_deterministic(fit,draws)
+  source <- c(1,0,3,0)
+  expect_identical(as.numeric(evaluated[,"mu_x"]),source)
+  expect_identical(as.numeric(evaluated[,"sd"]),source*sqrt(draws[,"w[1]"]))
+  expect_identical(as.numeric(evaluated[,"rho"]),tanh(source))
+  correlation <- 2*draws[,nodes$lkj$dependencies]-1
+  expect_equal(unname(evaluated[,nodes$lkj$coordinates]),
+    unname(cbind(1,0,correlation,sqrt(1-correlation^2),1,correlation,correlation,1,correlation)),tolerance=1e-15)
+  expect_equal(unname(evaluated[,nodes$omega$coordinates]),matrix(rep(c(1,5/6,.5),each=4),4),tolerance=1e-15)
+  expect_identical(unname(evaluated[,nodes$mu$coordinates]),outer(source,c(-1,2))+1)
+  updated <- cbind(draws[,setdiff(colnames(draws),colnames(evaluated)),drop=FALSE],evaluated)
+  expect_identical(JAGS_evaluate_deterministic(fit,updated),evaluated)
+  primitive <- draws[,setdiff(colnames(draws),c("mu_x","sd","rho")),drop=FALSE]
+  expect_identical(JAGS_evaluate_deterministic(fit,primitive),evaluated)
+})
+
 # ============================================================================ #
 # TEST FILE: Generated deterministic node registry
 # ============================================================================ #

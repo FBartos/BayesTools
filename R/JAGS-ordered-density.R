@@ -70,7 +70,8 @@ JAGS_ordered_density_kernel <- function(prior_list, allocation_chart = NULL){
 }
 
 .bt_ordered_compile_density <- function(prior_list, allocation_chart = NULL,
-                                        emitted_allocations = character()){
+                                        emitted_allocations = character(),
+                                        strict_bridge = FALSE){
 
   specs <- Map(.bt_ordered_spec, names(prior_list), prior_list)
   for(spec in specs){
@@ -90,12 +91,16 @@ JAGS_ordered_density_kernel <- function(prior_list, allocation_chart = NULL){
   }
   if(!is.null(allocation_chart)){
     if(!is.list(allocation_chart) || is.null(names(allocation_chart)) ||
+       anyNA(names(allocation_chart)) || anyDuplicated(names(allocation_chart)) ||
        any(!names(allocation_chart) %in% names(records))){
       stop("'allocation_chart' must be keyed by declared sampled allocation keys.", call. = FALSE)
     }
     for(key in names(allocation_chart)){
       chart <- allocation_chart[[key]]
       D <- records[[key]]$dim
+      if(!is.list(chart) || !is.character(chart$kind) || length(chart$kind)!=1L || is.na(chart$kind)){
+        stop("'allocation_chart' must declare a proper group or two distinct pair indices.", call. = FALSE)
+      }
       indices <- if(identical(chart$kind, "group")) chart$J else chart$indices
       if(!chart$kind %in% c("group", "pair") || !is.numeric(indices) ||
          anyNA(indices) || any(!indices %in% seq_len(D)) || anyDuplicated(indices) ||
@@ -109,6 +114,9 @@ JAGS_ordered_density_kernel <- function(prior_list, allocation_chart = NULL){
     result <- numeric(nrow(samples))
     for(spec in specs){
       states <- .bt_ordered_total_components(spec, samples)
+      if(strict_bridge && !is.prior.point(spec$total_prior) && !all(spec$total_names %in% colnames(samples))){
+        .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored ordered total prior parameters.")
+      }
       total_values <- .bt_ordered_total_values(spec, .bt_deterministic_lookup(samples))
       for(k in unique(states$component)){
         prior <- states$priors[[k]]
@@ -126,11 +134,14 @@ JAGS_ordered_density_kernel <- function(prior_list, allocation_chart = NULL){
     for(key in names(records)){
       record <- records[[key]]
       if(!all(record$gamma_coordinates %in% colnames(samples))){
+        if(strict_bridge) .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored ordered Dirichlet allocation parameters.")
         .bt_ordered_stop(paste0("Ordered gamma coordinates of '", record$node,
           "' are unavailable in 'samples'. Include all declared gamma source coordinates."))
       }
       eta <- samples[, record$gamma_coordinates, drop = FALSE]
-      invalid <- apply(eta, 1L, function(row) any(!is.finite(row)) || any(row < 0) || sum(row) <= 0)
+      eta_sum <- rowSums(eta)
+      invalid <- rowSums(!is.finite(eta))>0L | rowSums(if(strict_bridge) eta<=0 else eta<0,na.rm=TRUE)>0L |
+        !is.finite(eta_sum) | eta_sum<=0
       chart <- allocation_chart[[key]]
       if(is.null(chart)){
         for(j in seq_len(record$dim)){

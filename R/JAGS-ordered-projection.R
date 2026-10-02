@@ -57,7 +57,7 @@
   for(k in unique(states$component)){
     prior <- states$priors[[k]]
     rows <- which(states$component == k)
-    if(.is_prior_expression(prior)){
+    if(is.prior.point(prior) && .is_prior_expression(prior)){
       unavailable[rows] <- TRUE
     }else if(is.prior.point(prior)){
       point[rows,] <- TRUE
@@ -67,7 +67,15 @@
         .bt_ordered_stop("Ordered discrete total structure is unavailable for this distribution. Use a supported scalar total prior.")
       }
       values <- totals[rows,,drop=FALSE]
-      if(any(!is.finite(values)) || any(!values %in% c(0,1)) || any(lpdf(prior, as.vector(values)) == -Inf)){
+      if(!is.numeric(prior$truncation$lower) || !is.numeric(prior$truncation$upper)){
+        unavailable[rows] <- TRUE
+        next
+      }
+      support <- c(0, 1)
+      support <- support[support >= prior$truncation$lower & support <= prior$truncation$upper]
+      invalid <- any(!is.finite(values)) || any(!values %in% support)
+      if(!.is_prior_expression(prior)) invalid <- invalid || any(lpdf(prior, as.vector(values)) == -Inf)
+      if(invalid){
         .bt_ordered_stop("Ordered discrete total draws do not belong to the declared support.", "BayesTools_ordered_invalid_state")
       }
       point[rows,] <- TRUE
@@ -177,11 +185,13 @@
   }
   # State groups depend only on declared component/discrete sources. Tensor
   # cancellation across shared allocations is evaluated once per such group.
-  signatures <- paste(ordinary_point,format(ordinary_location,digits=17),ordinary_unavailable,sep="|")
+  signatures <- paste(ordinary_point,match(ordinary_location,unique(ordinary_location)),ordinary_unavailable,sep="|")
   for(structure in structures){
-    signatures <- paste(signatures,structure$component,structure$unavailable,
-      apply(structure$point,1L,paste,collapse=","),
-      apply(structure$location,1L,function(row) paste(format(row,digits=17),collapse=",")),sep="|")
+    signatures <- paste(signatures,structure$component,structure$unavailable,sep="|")
+    for(i in seq_len(ncol(structure$point))){
+      location <- structure$location[,i]
+      signatures <- paste(signatures,structure$point[,i],match(location,unique(location)),sep="|")
+    }
   }
   atom <- rep(NA_real_,n)
   unavailable <- rep(FALSE,n)
@@ -228,9 +238,36 @@
   out$exact <- ordinary_point & all(vapply(tensors,`[[`,logical(1),"identity"))
   out$atom <- atom
   out$state <- ifelse(unavailable,"unavailable",ifelse(on_atom,"point","continuous"))
-  out$reason <- if(any(unavailable)) structure(list(message="Ordered scalar measure is unavailable for expression totals with unclassified stochastic ancestry.",call=NULL),
-    class=c("BayesTools_ordered_expression_unavailable","BayesTools_ordered_unavailable","error","condition")) else NULL
+  out$reason <- if(any(unavailable)) .bt_ordered_expression_reason() else NULL
   out
+}
+
+.bt_ordered_expression_reason <- function(){
+
+  structure(list(message=paste0("Ordered scalar measure is unavailable for expression totals with unclassified stochastic ancestry. ",
+    "Use a supported scalar total prior with numeric point locations, or inspect fitted snapshot values with 'parameter_draws()'."),call=NULL),
+    class=c("BayesTools_ordered_expression_unavailable","BayesTools_ordered_unavailable","error","condition"))
+}
+
+.bt_ordered_require_measure <- function(projection){
+
+  if(!is.null(projection$reason)) stop(projection$reason)
+  invisible(NULL)
+}
+
+.bt_ordered_source_require_measure <- function(x){
+
+  source <- .bt_meta_get(x,"ordered_source")
+  if(is.null(source)) return(invisible(NULL))
+  templates <- which(vapply(source$models,function(spec) is.null(spec$parameterization),logical(1)))
+  if(!length(templates)) return(invisible(NULL))
+  columns <- if(is.null(source$projection_design)){
+    source$models[[templates[[1L]]]]$coefficient_names
+  }else rownames(source$projection_design)
+  for(i in seq_along(columns)){
+    .bt_ordered_require_measure(.bt_ordered_source_project(source,diag(length(columns))[i,]))
+  }
+  invisible(NULL)
 }
 
 .bt_ordered_expand_total_weights <- function(specs, weights){
@@ -309,6 +346,7 @@
   values <- atom <- rep(NA_real_,length(source$model))
   exact <- rep(FALSE,length(source$model))
   state <- rep("unavailable",length(source$model))
+  reason <- NULL
   for(i in seq_along(source$models)){
     rows <- which(source$model==i)
     if(!length(rows)) next
@@ -321,6 +359,7 @@
       exact[rows] <- projection$exact
       atom[rows] <- projection$atom
       state[rows] <- projection$state
+      if(!is.null(projection$reason)) reason <- projection$reason
       next
     }
     if(identical(spec$parameterization,"absent")){
@@ -343,6 +382,7 @@
     exact[rows] <- projection$exact
     atom[rows] <- projection$atom
     state[rows] <- projection$state
+    if(!is.null(projection$reason)) reason <- projection$reason
   }
   for(map in source$view_transformations){
     if(identical(map$transformation,"unavailable")){
@@ -354,7 +394,7 @@
     values <- .density.prior_transformation_x(values,map$transformation,map$arguments)
     atom <- .density.prior_transformation_x(atom,map$transformation,map$arguments)
   }
-  list(values=values,atom=atom,state=state,exact=exact)
+  list(values=values,atom=atom,state=state,exact=exact,reason=reason)
 }
 
 .bt_ordered_source_semantics <- function(x, design, columns = colnames(x)){
@@ -396,7 +436,11 @@
   if(all(!vapply(marginals,is.null,logical(1))) && nrow(atoms$locations)==0L){
     locations <- unique(joint_locations[joint_rows,,drop=FALSE])
     mass <- vapply(seq_len(nrow(locations)),function(i){
-      .bt_ordered_state_mass(joint_rows & apply(joint_locations,1L,function(row) all(!is.na(row)) && identical(as.numeric(row),as.numeric(locations[i,]))),
+      matching <- joint_rows
+      for(j in seq_len(ncol(joint_locations))){
+        matching <- matching & !is.na(joint_locations[,j]) & joint_locations[,j]==locations[i,j]
+      }
+      .bt_ordered_state_mass(matching,
         source$model,source$model_probabilities)
     },numeric(1))
     atoms <- .posterior_atoms_new(locations,mass,column_names=columns,source="ordered_projection_joint_structure",
@@ -411,7 +455,7 @@
     joint$marginals <- NULL
     for(i in seq_along(marginals)){
       if(!is.null(marginals[[i]]) && identical(!is.na(projections[[i]]$atom),joint_rows)){
-        marginals[[i]] <- .posterior_atoms_for_column(joint,i)
+        marginals[i] <- list(.posterior_atoms_for_column(joint,i))
       }
     }
   }
@@ -484,6 +528,7 @@
       target[names(target) %in% absent] <- 0
       projection <- .bt_ordered_projection(specs,target,draws,priors)
       for(field in c("values","atom","state","exact")) projections[[i]][[field]][rows] <- projection[[field]]
+      if(!is.null(projection$reason)) projections[[i]]$reason <- projection$reason
     }
   }
   columns <- unique(unlist(lapply(source_inputs,colnames),use.names=FALSE))

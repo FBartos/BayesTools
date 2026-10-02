@@ -244,6 +244,7 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
   values <- unname(as.numeric(as.matrix(draws)[, 1L]))
   plan <- .bt_parameter_gate_plan(fit, quantity)
   states <- .bt_parameter_gate_states(fit, plan, length(values))
+  if(!is.null(states$reason)) stop(states$reason)
 
   keep <- !is.na(values)
   if(isTRUE(conditional)){
@@ -679,7 +680,7 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     return(if(anyNA(components)) NA else FALSE)
   }
   if(is.prior.ordered(prior)){
-    if(.is_prior_expression(prior$total)) return(NA)
+    if(is.prior.point(prior$total) && .is_prior_expression(prior$total)) return(NA)
     metadata <- .prior_ordered_metadata(prior)
     fixed_zero <- any(vapply(metadata$allocations,function(record){
       identical(record$spec$type,"fixed") && any(record$spec$weights==0)
@@ -847,7 +848,7 @@ parameter_gate_states <- function(fit, selection, draws = NULL){
     projection <- .bt_ordered_projection(plan$specs,plan$weights,model_samples,plan$prior_list)
     event <- if(length(plan$event_gates)) .condition_event_posterior_mask(
       .condition_event(plan$prior_list,plan$event_gates,"AND"),plan$prior_list,model_samples) else NULL
-    return(list(atom=projection$atom,defined=rep(TRUE,n),event=event,known=!any(projection$state=="unavailable")))
+    return(list(atom=projection$atom,defined=rep(TRUE,n),event=event,known=!any(projection$state=="unavailable"),reason=projection$reason))
   }
   gate_columns <- unique(c(
     plan$chain_gates, plan$component_gates, plan$parent_gates

@@ -184,9 +184,15 @@
 #'   random-effect aliases. Defaults to `FALSE`.
 #' @param selection a `BayesTools_parameter_selection` returned by
 #'   `parameter_catalog_resolve()`.
-#' @param model_samples optional numeric matrix containing the declared source
-#'   coordinates. This lets downstream summaries evaluate a selected semantic
+#' @param model_samples optional numeric matrix containing the declared fitted
+#'   source coordinates. This lets downstream summaries evaluate a selected semantic
 #'   quantity on an already materialized posterior sample.
+#'   Ordered quantities also require the total, Gamma allocation and component
+#'   indicator sources listed by [JAGS_ordered_parameter_spec()] in each term's
+#'   \code{source_coordinates}; increment-only columns do not establish their
+#'   semantic values or structural measure. Include those primitive sources, or
+#'   omit \code{model_samples} to read the complete fitted draws. Missing supplied
+#'   ordered sources raise \code{BayesTools_ordered_coordinates_unavailable}.
 #' @param transform a serializable transform descriptor returned by
 #'   `parameter_transform()`.
 #' @param n_grid number of grid points used for deterministic induced prior
@@ -488,18 +494,22 @@ parameter_draws.BayesTools_fit <- function(object, selection,
     object, quantities, model_samples = NULL){
 
   draws <- .bt_parameter_draws_values(object, quantities, model_samples)
+  transformed_source <- !is.null(model_samples) &&
+    (length(.bt_draws_output_transformations(model_samples))>0L || isTRUE(.bt_meta_get(model_samples,"transform_scaled")))
   for(i in seq_len(nrow(quantities))){
+    if(transformed_source){
+      .bt_ordered_quantity_plan(object,quantities[i,,drop=FALSE])
+      next
+    }
     projection <- .bt_ordered_quantity_projection(object,quantities[i,,drop=FALSE],
       if(!is.null(model_samples)) as.matrix(model_samples))
     if(is.null(projection)) next
     flat <- as.matrix(draws)
-    replace <- !is.na(projection$atom) | projection$exact
-    if(nrow(flat)!=length(replace)) stop("Ordered quantity sources do not align with their draw rows.",call.=FALSE)
+    if(nrow(flat)!=length(projection$values)) stop("Ordered quantity sources do not align with their draw rows.",call.=FALSE)
     position <- 0L
     for(chain in seq_along(draws)){
       rows <- position + seq_len(nrow(draws[[chain]]))
-      selected <- which(replace[rows])
-      if(length(selected)) draws[[chain]][selected,i] <- projection$values[rows[selected]]
+      if(length(rows)) draws[[chain]][,i] <- projection$values[rows]
       position <- position + length(rows)
     }
   }
