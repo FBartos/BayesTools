@@ -45,6 +45,17 @@ attach_test_parameter_map <- function(fit, monitor_names = NULL) {
   BayesTools:::.bt_attach_fit_contract(fit)
 }
 
+# The Harrell-Davis estimator (Harrell and Davis, 1982) by its definition: the
+# cell weights are the differences of the Beta(p (m + 1), (1 - p) (m + 1))
+# distribution function over the cells ((i - 1) / m, i / m] of the sorted
+# draws. The reference of the tests of harrell_davis_quantile() and of the
+# posterior PET-PEESE lines.
+hd_reference <- function(x, p) {
+  m <- length(x)
+  w <- diff(stats::pbeta((0:m) / m, p * (m + 1), (1 - p) * (m + 1)))
+  sum(w * sort(x))
+}
+
 # A mock backend result with the fitted metadata that functions reading a fit
 # require: one draw column per chain of 'end.state', an empty parameter map,
 # draw geometry, and the fit contract.

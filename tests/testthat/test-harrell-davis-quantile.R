@@ -6,28 +6,24 @@ skip_if_not_test_profile("unit")
 #
 # PURPOSE:
 #   Tests for harrell_davis_quantile() in R/harrell-davis-quantile.R: exact
-#   references, values pinned from Hmisc::hdquantile, invariances, edge cases,
-#   shapes, and the pre-registered accuracy study against an analytic band.
+#   references, values pinned from Hmisc::hdquantile and mpmath, per-cell
+#   accuracy of the weights, invariances, edge cases, shapes, and the
+#   pre-registered accuracy study against an analytic band.
 #
 # DEPENDENCIES:
 #   - No external packages required beyond testthat
+#   - common-functions.R: hd_reference()
 #
 # SKIP CONDITIONS:
-#   - None (fast, pure R tests)
+#   - The accuracy study with 10,000 draws is skipped on CRAN (skip_on_cran());
+#     it runs when NOT_CRAN is true, as in the filter, fixture, and fit
+#     profiles. All other tests are fast pure R tests.
 #
 # MODELS/FIXTURES:
 #   - None required
 #
 # TAGS: @quantiles, @fast
 # ============================================================================ #
-
-# naive definition of the estimator (Harrell and Davis, 1982), the reference of
-# the tests that do not pin Hmisc values
-hd_reference <- function(x, p) {
-  m <- length(x)
-  w <- diff(stats::pbeta((0:m) / m, p * (m + 1), (1 - p) * (m + 1)))
-  sum(w * sort(x))
-}
 
 test_that("harrell_davis_quantile matches exact rational references", {
 
@@ -95,12 +91,28 @@ test_that("harrell_davis_quantile reproduces values pinned from Hmisc::hdquantil
   }
 })
 
-test_that("harrell_davis_quantile weights match an independent log-scale computation in both tails", {
+test_that("harrell_davis_quantile weights are accurate in every cell, also in the tails", {
 
-  # relative accuracy of the small tail weights (the naive difference of two
-  # distribution function values near 1 loses it): differences on the log scale
+  # Per-cell relative error of the weights against an independent computation on
+  # the log scale (pbeta(log.p = TRUE), cells up to the mode by differences of
+  # the lower tail and the cells beyond it by differences of the upper tail),
+  # over the cells whose reference weight exceeds 1e-250. Measured maximum over
+  # m = 100, 500, 2,000 and p = .001, .025, .5, .975, .999: 1.3e-13 (the
+  # rounding of the cell boundaries i / m times the log-derivative of the
+  # weights; the reference itself differs from 80-digit mpmath weights by up to
+  # 3e-13), so the tolerance of 1e-11 keeps a margin of about 80. The naive
+  # difference of distribution function values of the cells (as in
+  # Hmisc::hdquantile) loses the small weights of the tail it computes by
+  # differences of values near 1 and fails this bound (relative error 1 to 2 for
+  # p = .025 and .5, 5e-8 for p = .975, at m = 500).
   m <- 500
   grid <- (0:m) / m
+  floor_weight <- 1e-250
+  tolerance <- 1e-11
+  max_cell_error <- function(weights, reference) {
+    keep <- is.finite(reference) & reference > floor_weight
+    max(abs(weights[keep] - reference[keep]) / reference[keep])
+  }
   for (p in c(.025, .5, .975)) {
     a <- p * (m + 1)
     b <- (1 - p) * (m + 1)
@@ -110,14 +122,57 @@ test_that("harrell_davis_quantile weights match an independent log-scale computa
     log_upper <- stats::pbeta(grid, a, b, lower.tail = FALSE, log.p = TRUE)
     lower_ref <- exp(log_lower[-1]) * -expm1(log_lower[-(m + 1)] - log_lower[-1])
     upper_ref <- exp(log_upper[-(m + 1)]) * -expm1(log_upper[-1] - log_upper[-(m + 1)])
-    cells <- seq_len(m)
-    reference <- ifelse(cells <= which.max(weights), lower_ref, upper_ref)
-    keep <- is.finite(reference) & reference > 1e-250
+    reference <- ifelse(seq_len(m) <= which.max(weights), lower_ref, upper_ref)
 
-    expect_equal(weights[keep], reference[keep], tolerance = 1e-9)
+    expect_lt(max_cell_error(weights, reference), tolerance)
     expect_equal(sum(weights), 1, tolerance = 1e-14)
     expect_true(all(weights >= 0))
+
+    # the bound separates the tail-wise weights from the naive differences
+    naive <- diff(stats::pbeta(grid, a, b))
+    expect_gt(max_cell_error(naive, reference), tolerance)
   }
+})
+
+test_that("harrell_davis_quantile is accurate in the far tails of 100,000 draws", {
+
+  # Binary draws y_(i) = 1(i > r) give HD(p) = sum_{i > r} w_i = 1 - I_{r/m}(a, b),
+  # the Beta(a, b) mass above r / m (a = p (m + 1), b = (1 - p) (m + 1)); r draws
+  # of one at the top, y_(i) = 1(i > m - r), at p' = 1 - p give the mass above
+  # (m - r) / m of Beta(a', b'). Pins computed at 80 digits with mpmath (continued
+  # fraction, cross-checked against mpmath.betainc and quadrature of the density)
+  # by .work/tmp/hd-bands/R1b/mp_pins.py of the BayesToolsVerse workspace, for the
+  # exact doubles p and 1 - p. Tolerances from the measured relative errors of the
+  # double-precision results (.work/tmp/hd-bands/R1b/error_analysis.R): lower
+  # tail at most 3.0e-15, tolerance 1e-13; upper tail at most 6.0e-13, which is
+  # the rounding of the cell boundary (m - r) / m (up to 1.1e-16) times the Beta
+  # density near it (about 6e3), tolerance 2e-11. Both keep a margin of about 30.
+  m <- 100000
+  pins <- list(
+    list(r = 50,   p = .0005,      hd = 0.48120586272734142,   upper = FALSE),
+    list(r = 1,    p = 1e-8,       hd = 2.1960687681330079e-4, upper = FALSE),
+    list(r = 5000, p = .05,        hd = 0.49826346553611729,   upper = FALSE),
+    list(r = 50,   p = 1 - .0005,  hd = 0.51879413727296992,   upper = TRUE),
+    list(r = 1,    p = 1 - 1e-8,   hd = 0.99978039312208210,   upper = TRUE),
+    list(r = 5000, p = 1 - .05,    hd = 0.50173653446385861,   upper = TRUE)
+  )
+  for (pin in pins) {
+    draws <- if (pin$upper) as.numeric(seq_len(m) > m - pin$r) else as.numeric(seq_len(m) > pin$r)
+    expect_equal(
+      harrell_davis_quantile(draws, pin$p),
+      pin$hd,
+      tolerance = if (pin$upper) 2e-11 else 1e-13
+    )
+  }
+
+  # shuffled draws in a matrix column give the same value
+  set.seed(5)
+  draws <- sample(as.numeric(seq_len(m) > 50))
+  expect_equal(
+    harrell_davis_quantile(unname(cbind(draws, 1 - draws)), .0005)[1, 1],
+    0.48120586272734142,
+    tolerance = 1e-13
+  )
 })
 
 test_that("harrell_davis_quantile is equivariant and invariant as the estimator is", {
@@ -334,38 +389,44 @@ test_that("harrell_davis_quantile validates its input", {
   expect_error(harrell_davis_quantile(1:3, .5, names = NA), "The 'names' argument cannot contain NA/NaN values.", fixed = TRUE)
 })
 
-test_that("harrell_davis_quantile attenuates the kinks of the empirical quantile without losing accuracy", {
+# Pre-registered accuracy study (plan hd-bands): pointwise bands of lines
+# y = b0 + b1 * x with b0 ~ N(0, 1) and b1 ~ N(0, .5^2), whose pointwise
+# quantile is analytic, at p = .025 over a uniform grid of 41 points. The
+# roughness of the error is the RMS of its second differences. Medians of the
+# paired ratios over 200 seeded replicates: roughness of the empirical
+# quantile over that of the HD estimate (at least 4 for 1,000 and 2 for
+# 10,000 draws) and RMSE of the HD estimate over that of the empirical
+# quantile (at most 1.02).
+hd_accuracy_study <- function(m, minimum_roughness_ratio) {
 
-  # Pre-registered study (plan hd-bands): pointwise bands of lines
-  # y = b0 + b1 * x with b0 ~ N(0, 1) and b1 ~ N(0, .5^2), whose pointwise
-  # quantile is analytic, at p = .025 over a uniform grid of 41 points. The
-  # roughness of the error is the RMS of its second differences. Medians of the
-  # paired ratios over 200 seeded replicates: roughness of the empirical
-  # quantile over that of the HD estimate (at least 4 for 1,000 and 2 for
-  # 10,000 draws) and RMSE of the HD estimate over that of the empirical
-  # quantile (at most 1.02).
   roughness <- function(error) sqrt(mean(diff(error, differences = 2)^2))
   rmse      <- function(error) sqrt(mean(error^2))
   grid      <- seq(-1, 1, length.out = 41)
   p         <- .025
   truth     <- stats::qnorm(p, 0, sqrt(1 + .25 * grid^2))
 
-  study <- function(m, minimum_roughness_ratio) {
-    set.seed(31, kind = "Mersenne-Twister", normal.kind = "Inversion")
-    ratios <- vapply(seq_len(200), function(i) {
-      b0  <- stats::rnorm(m)
-      b1  <- stats::rnorm(m, 0, .5)
-      y   <- outer(b0, rep(1, length(grid))) + outer(b1, grid)
-      emp <- apply(y, 2, stats::quantile, probs = p, names = FALSE)
-      hd  <- harrell_davis_quantile(y, p)[1, ]
-      c(roughness = roughness(emp - truth) / roughness(hd - truth),
-        rmse      = rmse(hd - truth) / rmse(emp - truth))
-    }, numeric(2))
+  set.seed(31, kind = "Mersenne-Twister", normal.kind = "Inversion")
+  ratios <- vapply(seq_len(200), function(i) {
+    b0  <- stats::rnorm(m)
+    b1  <- stats::rnorm(m, 0, .5)
+    y   <- outer(b0, rep(1, length(grid))) + outer(b1, grid)
+    emp <- apply(y, 2, stats::quantile, probs = p, names = FALSE)
+    hd  <- harrell_davis_quantile(y, p)[1, ]
+    c(roughness = roughness(emp - truth) / roughness(hd - truth),
+      rmse      = rmse(hd - truth) / rmse(emp - truth))
+  }, numeric(2))
 
-    expect_gte(stats::median(ratios["roughness", ]), minimum_roughness_ratio)
-    expect_lte(stats::median(ratios["rmse", ]), 1.02)
-  }
+  expect_gte(stats::median(ratios["roughness", ]), minimum_roughness_ratio)
+  expect_lte(stats::median(ratios["rmse", ]), 1.02)
+}
 
-  study(1000,  4)
-  study(10000, 2)
+test_that("harrell_davis_quantile attenuates the kinks of the empirical quantile without losing accuracy (1,000 draws)", {
+
+  hd_accuracy_study(1000, 4)
+})
+
+test_that("harrell_davis_quantile attenuates the kinks of the empirical quantile without losing accuracy (10,000 draws)", {
+
+  skip_on_cran()
+  hd_accuracy_study(10000, 2)
 })

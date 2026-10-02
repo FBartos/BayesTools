@@ -1595,10 +1595,6 @@ test_that("OR conditions keep the bias columns of every branch in the event", {
       upper = vapply(se_grid, function(se) max(layer$y[abs(layer$x - se) < 1e-12]), numeric(1))
     )
   }
-  hd_reference <- function(x, p){
-    m <- length(x)
-    sum(diff(stats::pbeta((0:m) / m, p * (m + 1), (1 - p) * (m + 1))) * sort(x))
-  }
   posterior_line <- vapply(se_grid, function(se){
     line <- posterior[in_event, "mu"] + se * posterior[in_event, "PET"]
     vapply(c(.025, .5, .975), function(p) hd_reference(line, p), numeric(1))
@@ -3012,11 +3008,7 @@ test_that("PET-PEESE posterior plot data honors negative effect direction", {
   )
 
   expected_samples <- sapply(x_seq, function(x) samples$mu - samples$PET * x - samples$PEESE * x^2)
-  # posterior lines use the Harrell-Davis quantiles (naive definition of the estimator)
-  hd_reference <- function(x, p) {
-    m <- length(x)
-    sum(diff(stats::pbeta((0:m) / m, p * (m + 1), (1 - p) * (m + 1))) * sort(x))
-  }
+  # posterior lines use the Harrell-Davis quantiles (hd_reference(), common-functions.R)
   expected_quantiles <- apply(expected_samples, 2, function(y) {
     vapply(c(.500, .025, .975), function(p) hd_reference(y, p), numeric(1))
   })
@@ -3047,10 +3039,6 @@ test_that("PET-PEESE posterior plot data honors negative effect direction", {
 
 test_that("PET-PEESE posterior lines use Harrell-Davis quantiles for the band and the median", {
 
-  hd_reference <- function(x, p) {
-    m <- length(x)
-    sum(diff(stats::pbeta((0:m) / m, p * (m + 1), (1 - p) * (m + 1))) * sort(x))
-  }
   hd_columns <- function(x) {
     apply(x, 2, function(y) vapply(c(.500, .025, .975), function(p) hd_reference(y, p), numeric(1)))
   }
