@@ -74,8 +74,9 @@
 #' @export
 harrell_davis_quantile <- function(x, probs, names = FALSE){
 
+  is_factor <- is.factor(x)
   x <- unclass(x)
-  if(!is.numeric(x) || !(is.null(dim(x)) || length(dim(x)) == 2L))
+  if(is_factor || !is.numeric(x) || !(is.null(dim(x)) || length(dim(x)) == 2L))
     stop("The 'x' argument must be a numeric vector or a numeric matrix with the draws in rows.", call. = FALSE)
   check_real(probs, "probs", lower = 0, upper = 1, check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_bool(names, "names")

@@ -277,6 +277,7 @@ test_that("harrell_davis_quantile validates its input", {
   expect_error(harrell_davis_quantile(c(1, NA, 3), .5), "The 'x' argument cannot contain NA/NaN values.", fixed = TRUE)
   expect_error(harrell_davis_quantile(c(1, NaN, 3), .5), "The 'x' argument cannot contain NA/NaN values.", fixed = TRUE)
   expect_error(harrell_davis_quantile(c("a", "b"), .5), "numeric vector or a numeric matrix", fixed = TRUE)
+  expect_error(harrell_davis_quantile(factor(c(3, 1, 2)), .5), "numeric vector or a numeric matrix", fixed = TRUE)
   expect_error(harrell_davis_quantile(data.frame(a = 1:3), .5), "numeric vector or a numeric matrix", fixed = TRUE)
   expect_error(harrell_davis_quantile(array(1:8, c(2, 2, 2)), .5), "numeric vector or a numeric matrix", fixed = TRUE)
 
