@@ -1,29 +1,60 @@
 skip_if_not_test_profile("unit")
 
-test_that("ordered prior rows preserve strict stochastic Gamma and missing-column contracts", {
-  data <- data.frame(f=ordered(c("lo","mid","hi","top")))
-  for(alpha in list(c(.5,1,1),rep(1,3))){
-    make <- function(parameter) JAGS_formula(~f,parameter,data,list(intercept=prior("point",list(0)),
-      f=prior_ordered(prior("normal",list(0,2)),allocation=prior("dirichlet",list(alpha)),id="shared")))$prior_list
-    priors <- c(make("mu"),make("tau"))
-    spec <- .bt_ordered_spec("mu_f",priors$mu_f)
+test_that("ordered prior rows preserve numeric data frames and strict bridge contracts", {
+
+  data <- data.frame(f = ordered(c("lo", "mid", "hi", "top")))
+  for(alpha in list(c(.5, 1, 1), rep(1, 3))){
+    make <- function(parameter) JAGS_formula(~f, parameter, data,
+      list(intercept = prior("point", list(0)), f = prior_ordered(
+        prior("normal", list(0, 2)), allocation = prior("dirichlet", list(alpha)),
+        id = "shared")))$prior_list
+    priors <- c(make("mu"), make("tau"))
+    spec <- .bt_ordered_spec("mu_f", priors$mu_f)
     gamma <- spec$allocations[[1L]]$gamma_coordinates
-    samples <- cbind(mu_f_ordered_total=seq_len(6)/10,tau_f_ordered_total=seq_len(6)/5,
-      c(0,-1,NA,Inf,1,2),2,3)
+    samples <- cbind(mu_f_ordered_total = seq_len(6) / 10,
+      tau_f_ordered_total = seq_len(6) / 5, c(0, -1, NA, Inf, 1, 2), 2, 3)
     colnames(samples)[3:5] <- gamma
-    reference <- vapply(seq_len(nrow(samples)),function(i) JAGS_marglik_priors(samples[i,],priors),numeric(1))
-    expect_identical(JAGS_marglik_priors_rows(samples,priors),reference)
-    expect_identical(reference[1:4],rep(-Inf,4))
-    expect_equal(reference[5:6],dnorm(samples[5:6,1],0,2,log=TRUE)+dnorm(samples[5:6,2],0,2,log=TRUE)+
-      dgamma(samples[5:6,3],alpha[1],1,log=TRUE)+dgamma(2,alpha[2],1,log=TRUE)+dgamma(3,alpha[3],1,log=TRUE),tolerance=1e-14)
-    public <- JAGS_ordered_density_kernel(priors[c("mu_f","tau_f")])(samples[1,,drop=FALSE])
-    expect_equal(unname(public),if(alpha[1]<1) Inf else dnorm(.1,0,2,log=TRUE)+dnorm(.2,0,2,log=TRUE)-5,tolerance=1e-14)
-    for(missing in c("mu_f_ordered_total",gamma[1])){
-      broken <- samples[5,,drop=FALSE][,setdiff(colnames(samples),missing),drop=FALSE]
-      scalar <- tryCatch(JAGS_marglik_priors(broken[1,],priors),error=identity)
-      rows <- tryCatch(JAGS_marglik_priors_rows(broken,priors),error=identity)
-      expect_s3_class(rows,"BayesTools_missing_monitored_columns")
-      expect_identical(conditionMessage(rows),conditionMessage(scalar))
+    reference <- vapply(seq_len(nrow(samples)), function(i){
+      JAGS_marglik_priors(samples[i, ], priors)
+    }, numeric(1))
+    expect_identical(reference[1:4], rep(-Inf, 4))
+    expect_equal(reference[5:6], dnorm(samples[5:6, 1], 0, 2, log = TRUE) +
+      dnorm(samples[5:6, 2], 0, 2, log = TRUE) +
+      dgamma(samples[5:6, 3], alpha[1], 1, log = TRUE) +
+      dgamma(2, alpha[2], 1, log = TRUE) + dgamma(3, alpha[3], 1, log = TRUE),
+      tolerance = 1e-14)
+
+    row_order <- c(6L, 1L, 5L, 4L, 2L, 3L)
+    reordered <- samples[row_order, c(5L, 2L, 4L, 1L, 3L), drop = FALSE]
+    frame <- as.data.frame(reordered)
+    frame[[gamma[2L]]] <- as.integer(frame[[gamma[2L]]])
+    evaluator <- JAGS_marglik_priors_rows_evaluator(priors)
+    for(values in list(samples, as.data.frame(samples))){
+      expect_identical(JAGS_marglik_priors_rows(values, priors), reference)
+      expect_identical(evaluator(values), reference)
+    }
+    for(values in list(reordered, frame)){
+      expect_identical(evaluator(values), reference[row_order])
+      expect_identical(evaluator(values[1L, , drop = FALSE]), reference[row_order[1L]])
+      expect_length(evaluator(values[FALSE, , drop = FALSE]), 0L)
+    }
+
+    public_kernel <- JAGS_ordered_density_kernel(priors[c("mu_f", "tau_f")])
+    boundary <- samples[1L, , drop = FALSE]
+    public <- public_kernel(boundary)
+    expect_identical(public_kernel(as.data.frame(boundary)), public)
+    expect_equal(unname(public), if(alpha[1] < 1) Inf else
+      dnorm(.1, 0, 2, log = TRUE) + dnorm(.2, 0, 2, log = TRUE) - 5,
+      tolerance = 1e-14)
+    for(missing in c("mu_f_ordered_total", gamma[1L])){
+      broken <- samples[5L, , drop = FALSE][, setdiff(colnames(samples), missing), drop = FALSE]
+      scalar <- tryCatch(JAGS_marglik_priors(broken[1L, ], priors), error = identity)
+      for(values in list(broken, as.data.frame(broken))){
+        rows <- tryCatch(evaluator(values), error = identity)
+        expect_s3_class(rows, "BayesTools_missing_monitored_columns")
+        expect_identical(class(rows), class(scalar))
+        expect_identical(conditionMessage(rows), conditionMessage(scalar))
+      }
     }
   }
 })

@@ -950,7 +950,10 @@ old behaviour.
     when it differs.
   - adds `JAGS_marglik_priors_rows()` and
     `JAGS_marglik_priors_rows_evaluator()` for row-preserving prior-density
-    evaluation with reusable compiled evaluators. `JAGS_marglik_parameters()`
+    evaluation with reusable compiled evaluators. Ordered priors accept numeric
+    matrices and data frames with the same strict stochastic Gamma boundaries
+    and missing-coordinate conditions; shared allocations contribute once.
+    `JAGS_marglik_parameters()`
     evaluates spike-and-slab, mixture, and publication-bias mixture priors for
     a draw from its active component instead of refusing them (bias mixtures
     return `omega`, `PET`, `PEESE`, and the active branch's p-hacking

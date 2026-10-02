@@ -61,9 +61,7 @@
 #'   weights. Replay accepts nonnegative Gamma values with a positive row sum;
 #'   bridge stochastic-source checks retain their positive-coordinate rule.}
 #'   \item{\code{"ordered_coefficient"}}{each ordered increment from its declared
-#'   total slice and factor allocations. Shared allocation keys have one node.
-#'   Successful parent outputs replace stale derived columns before dependent
-#'   coefficient and predictor evaluation.}
+#'   total slice and factor allocations. Shared allocation keys have one node.}
 #'   \item{\code{"linear_predictor"}}{the linear predictor of a formula
 #'   parameter on the fitted rows: the intercept (or its logarithm), the
 #'   continuous and factor terms with their \code{multiply_by} multipliers,
@@ -80,6 +78,8 @@
 #' }
 #' Nodes are evaluated with the arithmetic of the R evaluator, which reproduces
 #' the JAGS monitors exactly or to the last bits of floating-point rounding.
+#' Successful parent outputs replace stale derived columns before dependent
+#' nodes are evaluated, for every family.
 #'
 #' @return \code{JAGS_deterministic_nodes()} returns a data frame with one row
 #' per node and the columns \code{node} (node name), \code{family},

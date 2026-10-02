@@ -111,6 +111,7 @@ JAGS_ordered_density_kernel <- function(prior_list, allocation_chart = NULL){
     }
   }
   evaluate <- function(samples){
+    if(is.data.frame(samples)) samples <- as.matrix(samples)
     result <- numeric(nrow(samples))
     for(spec in specs){
       states <- .bt_ordered_total_components(spec, samples)
