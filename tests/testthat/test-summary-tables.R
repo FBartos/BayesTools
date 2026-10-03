@@ -763,3 +763,39 @@ test_that("update.BayesTools_table works correctly", {
   test_reference_table(updated_bf01, "update_table_BF01.txt")
 
 })
+
+test_that("N24 scientific quantile labels remain parseable in ensemble estimates", {
+
+  x <- structure(seq(-2, 2, length.out = 101), class = "mixed_posteriors",
+                 prior_list = list(prior("normal", list(mean = 0, sd = 1))))
+  posterior_metadata(x, "atoms") <- posterior_atom_attribute()
+  samples <- structure(list(theta = x), class = c("mixed_posteriors", "list"))
+  probs <- c(.0005, .9995)
+  table <- ensemble_estimates_table(samples, "theta", probs = probs)
+  expect_identical(names(table), c("Mean", "Median", as.character(probs)))
+  expect_equal(as.numeric(unlist(table[1L, 3:4], use.names = FALSE)),
+               as.numeric(stats::quantile(as.numeric(x), probs)), tolerance = 1e-14)
+  plan <- list(list(kind = "estimate", source = "est", row = rownames(table)[1L],
+                    lower_prob = probs[1L], upper_prob = probs[2L]))
+  records <- interpret_records(list(est = table), plan)
+  expect_equal(unlist(records[c("lower_value", "upper_value")], use.names = FALSE),
+               as.numeric(stats::quantile(as.numeric(x), probs)), tolerance = 1e-14)
+  expect_equal(records$interval_level, .999, tolerance = 1e-15)
+})
+
+test_that("N24 scientific quantile labels remain parseable in marginal estimates", {
+
+  x <- structure(seq(-2, 2, length.out = 101), class = "mixed_posteriors",
+                 prior_list = list(prior("normal", list(mean = 0, sd = 1))))
+  posterior_metadata(x, "atoms") <- posterior_atom_attribute()
+  samples <- structure(list(theta = x), class = c("mixed_posteriors", "list"))
+  probs <- c(.0005, .9995)
+  table <- marginal_estimates_table(samples, list(theta = 1), "theta", probs = probs)
+  expect_identical(names(table)[1:4], c("Mean", "SD", as.character(probs)))
+  plan <- list(list(kind = "estimate", source = "est", row = rownames(table)[1L],
+                    lower_prob = probs[1L], upper_prob = probs[2L]))
+  records <- interpret_records(list(est = table), plan)
+  expect_equal(unlist(records[c("lower_value", "upper_value")], use.names = FALSE),
+               as.numeric(stats::quantile(as.numeric(x), probs)), tolerance = 1e-14)
+  expect_equal(records$interval_level, .999, tolerance = 1e-15)
+})

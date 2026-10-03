@@ -264,8 +264,7 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975
   }
 
   # prepare output
-  estimates_table                    <- data.frame(estimates_table)
-  colnames(estimates_table)          <- gsub("X", "", colnames(estimates_table))
+  estimates_table                    <- data.frame(estimates_table, check.names = FALSE)
   class(estimates_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(estimates_table))
   attr(estimates_table, "type")      <- rep("estimate", ncol(estimates_table))
   attr(estimates_table, "quantities") <- .bt_table_quantities(
@@ -739,8 +738,7 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
   }
 
   # prepare output
-  estimates_table                    <- data.frame(estimates_table)
-  colnames(estimates_table)          <- gsub("X", "", colnames(estimates_table))
+  estimates_table                    <- data.frame(estimates_table, check.names = FALSE)
   has_BF_error                       <- any(is.finite(estimates_table[["BF_error_percent"]]))
   if(!has_BF_error){
     estimates_table[["BF_error_percent"]] <- NULL

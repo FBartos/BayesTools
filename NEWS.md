@@ -1,5 +1,7 @@
 # version 0.3.1
 ### Fixes
+- Ensemble and marginal estimate tables preserve probability column labels in
+  scientific notation so interpretation can read both interval endpoints.
 - Interpretation of fallback credible intervals retains the probabilities and
   coverage of the source endpoints.
 - Simplex projections with distinct coefficients retain their exact interval
