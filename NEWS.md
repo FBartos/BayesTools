@@ -1,5 +1,7 @@
 # version 0.3.1
 ### Fixes
+- Interpretation of fallback credible intervals retains the probabilities and
+  coverage of the source endpoints.
 - Simplex projections with distinct coefficients retain their exact interval
   support even when those coefficients are numerically close.
 - Spike-and-slab posterior atoms include declared point-valued slabs and merge

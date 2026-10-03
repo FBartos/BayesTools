@@ -680,3 +680,31 @@ test_that("interpret function input validation works", {
   expect_error(interpret(list(), list(), list(list(inference = 1)), "Test"))
 
 })
+
+test_that("N22 fallback endpoints retain their actual probability labels", {
+
+  source <- data.frame(Mean = .3, "0.025" = .1, "0.975" = .5,
+                       check.names = FALSE, row.names = "mu")
+  plan <- list(list(kind = "estimate", source = "est", row = "mu",
+                    lower_prob = .05, upper_prob = .95, label = "chosen label"))
+  records <- interpret_records(list(est = source), plan)
+  expect_equal(unlist(records[c("lower_value", "upper_value")], use.names = FALSE), c(.1, .5))
+  expect_equal(unlist(records[c("lower_prob", "upper_prob", "interval_level")],
+                      use.names = FALSE), c(.025, .975, .95), tolerance = 1e-15)
+  expect_identical(records$label, "chosen label")
+  text <- interpret_records(list(est = source), plan, output = "text")
+  expect_match(paste(text, collapse = "\n"), "95%", fixed = TRUE)
+  expect_false(grepl("90%", paste(text, collapse = "\n"), fixed = TRUE))
+})
+
+test_that("N22 exact requested and inferred probabilities keep the source interval", {
+
+  source <- data.frame(Mean = .3, "0.025" = .1, "0.975" = .5,
+                       check.names = FALSE, row.names = "mu")
+  for(probabilities in list(list(lower_prob = .025, upper_prob = .975), list())){
+    plan <- list(c(list(kind = "estimate", source = "est", row = "mu"), probabilities))
+    records <- interpret_records(list(est = source), plan)
+    expect_equal(unlist(records[c("lower_prob", "upper_prob", "interval_level")],
+                        use.names = FALSE), c(.025, .975, .95), tolerance = 1e-15)
+  }
+})

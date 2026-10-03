@@ -828,7 +828,9 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
     units          = .interpret_table_scalar("units", data, row_index, schema, ref),
     conditioning   = .interpret_table_scalar("conditioning", data, row_index, schema, ref)
   )
+  interval_probabilities <- record[c("lower_prob", "upper_prob", "interval_level")]
   record <- .interpret_merge_lists(record, ref)
+  record[names(interval_probabilities)] <- interval_probabilities
 
   return(.interpret_complete_record(record, ref, source[["name"]], row_label))
 }
