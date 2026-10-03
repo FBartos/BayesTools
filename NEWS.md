@@ -907,11 +907,16 @@ old behaviour.
     including continuous cumulative effects, while preserving undefined rows.
     Ordered formula marginals reuse retained fitted ordinary coefficients when
     samples are on the original scale. Formula weights select their contributing
-    sources by registered coefficient ownership. Each formula prefix uses its
-    own scaling and aligned context; combined-prefix targets merge consistent
-    fitted sources. Unscaled prefixes remain available alongside scaled ones.
-    Scaled mixed objects without those
-    sources stop with `BayesTools_ordered_coordinates_unavailable`; recreate
+    sources by registered coefficient ownership and retain every provided source
+    of each contributing prefix, excluding unrelated prefixes. Each formula
+    prefix uses its own scaling and aligned context; combined-prefix targets
+    merge consistent fitted sources. Unscaled prefixes remain available alongside
+    scaled ones.
+    Unscaled ordered prefixes canonicalize raw values and declared atoms from
+    their retained primitives even when another prefix is scaled. Formula
+    projections reject missing or nonfinite weights before selecting sources.
+    Scaled mixed objects without those sources stop with
+    `BayesTools_ordered_coordinates_unavailable`; recreate
     the mixed posteriors from their source fits.
   - conditional ordered mixtures reweight model probabilities by the declared
     inclusion event as well as selecting eligible original draws. Posterior

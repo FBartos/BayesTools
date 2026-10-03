@@ -472,6 +472,10 @@
 .bt_ordered_formula_projections <- function(samples, weights, source_transforms=NULL){
 
   weights <- as.matrix(weights)
+  check_real(as.vector(weights), "weights", check_length=0, allow_NA=FALSE)
+  if(is.null(colnames(weights)) || anyDuplicated(colnames(weights)) || any(!is.finite(weights))){
+    stop("'weights' must be finite named fitted-coordinate weights.", call. = FALSE)
+  }
   active_columns <- colnames(weights)[colSums(weights!=0)>0L]
   coefficient_columns <- lapply(names(samples),function(parameter){
     .posterior_atoms_coefficient_columns(samples[[parameter]],parameter)

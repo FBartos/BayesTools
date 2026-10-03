@@ -806,6 +806,14 @@ test_that("ordered formula projections use each contributing formula prefix", {
       for(scaled in c(FALSE,TRUE)){
         samples <- as_mixed_posteriors(fit,names(attr(fit,"prior_list")),
           transform_scaled=scaled,n_prior_samples=128L)
+        if(!tau_scaled){
+          own <- .bt_meta_get(samples$tau_f,"ordered_source")
+          identity <- diag(3L)
+          dimnames(identity) <- list(colnames(samples$tau_f),own$models[[1L]]$coefficient_names)
+          expect_identical(own$projection_design,identity)
+          expect_identical(as.numeric(samples$tau_f),as.numeric(tau_total*(tau_gamma/rowSums(tau_gamma))))
+          expect_true(!is.null(.posterior_atoms_get(samples$tau_f)$marginals))
+        }
         expected <- list()
         for(prefix in c("mu","tau")){
           info <- if(prefix=="mu") mu else tau
@@ -826,10 +834,10 @@ test_that("ordered formula projections use each contributing formula prefix", {
           formula <- if(prefix=="mu") ~f+x else if(tau_scaled) ~f+z else ~f
           at <- if(prefix=="mu") list(x=12) else if(tau_scaled) list(z=6) else NULL
           result <- marginal_posterior(samples,paste0(prefix,"_f"),formula=formula,at=at,prior_samples=FALSE)
-          expect_equal(unname(vapply(result,as.numeric,numeric(4L))),expected[[prefix]],tolerance=5e-15)
+          expect_equal_each(as.numeric(vapply(result,as.numeric,numeric(4L))),as.numeric(expected[[prefix]]),tolerance=5e-15)
           subset <- samples[names(info$prior_list)]
           result <- marginal_posterior(subset,paste0(prefix,"_f"),formula=formula,at=at,prior_samples=FALSE)
-          expect_equal(unname(vapply(result,as.numeric,numeric(4L))),expected[[prefix]],tolerance=5e-15)
+          expect_equal_each(as.numeric(vapply(result,as.numeric,numeric(4L))),as.numeric(expected[[prefix]]),tolerance=5e-15)
         }
         # An existing combined target uses both prefixes, including independent
         # ordinary draws and allocations. Retained roots supply its last levels.
@@ -850,8 +858,8 @@ test_that("ordered formula projections use each contributing formula prefix", {
           }
         }
         combined <- .bt_ordered_formula_projections(samples,weights)
-        expect_equal(do.call(cbind,lapply(combined,`[[`,"values")),
-          expected$mu[,3:4]+expected$tau[,3:4],tolerance=5e-15)
+        expect_equal_each(as.numeric(do.call(cbind,lapply(combined,`[[`,"values"))),
+          as.numeric(expected$mu[,3:4]+expected$tau[,3:4]),tolerance=5e-15)
         unrelated <- samples
         unrelated$mu_f <- posterior_transform(unrelated$mu_f,"exp")
         unrelated$mu_x <- .bt_draws_subset_rows(unrelated$mu_x,c(2L,1L,3L,4L))
@@ -867,11 +875,28 @@ test_that("ordered formula projections use each contributing formula prefix", {
           unrelated <- .bt_meta_set(unrelated,"formula_scale",c(scales,list(tau=NULL)))
         }
         tau_projection <- .bt_ordered_formula_projections(unrelated,tau_weights)
-        expect_equal(do.call(cbind,lapply(tau_projection,`[[`,"values")),
-          expected$tau[,3:4],tolerance=5e-15)
-        expect_identical(.bt_meta_get(samples$mu_f,"ordered_source")$draw_index,1:4)
-        expect_identical(.bt_meta_get(samples$tau_f,"ordered_source")$draw_index,1:4)
+        expect_equal_each(as.numeric(do.call(cbind,lapply(tau_projection,`[[`,"values"))),
+          as.numeric(expected$tau[,3:4]),tolerance=5e-15)
+        expect_identical(as.numeric(unrelated$mu_x),as.numeric(samples$mu_x)[c(2L,1L,3L,4L)])
+        expect_identical(attr(tau_projection,"model",exact=TRUE),rep(1L,4L))
         if(scaled && tau_scaled){
+          for(field in c("specs","priors")){
+            inconsistent <- samples
+            mu_context <- .bt_meta_get(samples$mu_f,"ordered_source")$projection_context
+            for(parameter in names(tau$prior_list)){
+              source <- .bt_meta_get(inconsistent[[parameter]],"ordered_source")
+              if(field=="specs"){
+                overlap <- mu_context$models[[1L]]$specs$mu_f
+                overlap$total_names <- "contradictory_total"
+                source$projection_context$models[[1L]]$specs$mu_f <- overlap
+              }else{
+                source$projection_context$models[[1L]]$priors$mu_intercept <- prior("normal",list(2,1))
+              }
+              inconsistent[[parameter]] <- .bt_meta_set(inconsistent[[parameter]],"ordered_source",source)
+            }
+            expect_error(.bt_ordered_formula_projections(inconsistent,weights),
+              "overlapping sources do not agree",class="BayesTools_ordered_coordinates_unavailable")
+          }
           # Every tau owner agrees with its own context, but that context now
           # contradicts an overlapping mu source. The union must refuse it.
           for(parameter in names(tau$prior_list)){
@@ -887,6 +912,97 @@ test_that("ordered formula projections use each contributing formula prefix", {
     }
   })
   expect_identical(problems,character())
+})
+
+test_that("unscaled ordered producers always restore raw primitive semantics", {
+  data <- data.frame(f=ordered(rep(c("early","middle","late","last"),2L),
+    levels=c("early","middle","late","last")))
+  normal <- function() prior("normal",list(0,1))
+  cases <- list(
+    point0=list(total_prior=prior("point",list(0)),total=rep(0,4L),allocation=NULL),
+    fixed_point=list(total_prior=prior("point",list(2.5)),total=rep(2.5,4L),allocation=c(1,2,3)/6),
+    fixed_normal_zero=list(total_prior=normal(),total=c(2,-3,5,7),allocation=c(0,.5,.5)),
+    normal=list(total_prior=normal(),total=c(2,-3,5,7),allocation=NULL))
+  problems <- expectation_problems({
+    for(case in cases){
+      info <- JAGS_formula(~f,"tau",data,list(intercept=prior("point",list(0)),
+        f=prior_ordered(case$total_prior,allocation=case$allocation)))
+      spec <- .bt_ordered_spec("tau_f",info$prior_list$tau_f)
+      gamma <- rbind(c(1,2,3),c(4,1,2),c(3,5,1),c(2,3,7))
+      shares <- if(is.null(case$allocation)) gamma/rowSums(gamma) else matrix(rep(case$allocation,each=4L),4L)
+      expected <- case$total*shares
+      colnames(expected) <- spec$coefficient_names
+      identity <- diag(3L)
+      primitives <- matrix(case$total,ncol=1L,dimnames=list(NULL,spec$total_names))
+      if(is.null(case$allocation)){
+        colnames(gamma) <- spec$allocations[[1L]]$gamma_coordinates
+        primitives <- cbind(primitives,gamma)
+      }
+      draws <- cbind(tau_intercept=rep(0,4L),expected,primitives)
+      fit <- structure(list(mcmc=coda::mcmc.list(coda::mcmc(draws,start=11L,thin=2L)),
+        sample=4L,summary.pars=list(mutate=NULL),monitor=colnames(draws)),
+        class=c("runjags","BayesTools_fit","list"))
+      attr(fit,"prior_list") <- info$prior_list
+      attr(fit,"formula_design") <- list(tau=info$formula_design)
+      fit <- attach_test_parameter_map(fit)
+      fit_bytes <- serialize(fit,NULL)
+      for(stale in c(FALSE,TRUE)){
+        source_fit <- fit
+        if(stale){
+          # Only this controlled scratch clone has stale backend increments;
+          # its declared total and allocation primitives remain unchanged.
+          stale_draws <- draws
+          stale_draws[,spec$coefficient_names] <- stale_draws[,spec$coefficient_names,drop=FALSE]+1
+          source_fit$mcmc <- coda::mcmc.list(coda::mcmc(stale_draws,start=11L,thin=2L))
+        }
+        source_bytes <- serialize(source_fit,NULL)
+        outputs <- lapply(c(FALSE,TRUE),function(scaled){
+          as_mixed_posteriors(source_fit,"tau_f",transform_scaled=scaled,n_prior_samples=64L)$tau_f
+        })
+        for(output in outputs){
+          expect_equal_each(as.numeric(output),as.numeric(expected),tolerance=5e-15)
+          source <- .bt_meta_get(output,"ordered_source")
+          dimnames(identity) <- list(colnames(output),spec$coefficient_names)
+          expect_identical(source$projection_design,identity)
+          expect_identical(source$draw_index,1:4)
+          expect_identical(source$model,rep(1L,4L))
+          atoms <- .posterior_atoms_get(output)
+          if(is.prior.point(case$total_prior)){
+            expect_identical(unname(vapply(atoms$marginals,function(atom) atom$mass,numeric(1))),rep(1,3L))
+            expect_equal_each(vapply(atoms$marginals,function(atom) atom$locations[1L,1L],numeric(1)),
+              as.numeric(expected[1L,]),tolerance=5e-15)
+          }else if(!is.null(case$allocation)){
+            expect_identical(atoms$marginals[[1L]]$locations,matrix(0,1L,1L,dimnames=list(NULL,colnames(output)[1L])))
+            expect_identical(atoms$marginals[[1L]]$mass,1)
+          }
+        }
+        expect_identical(.bt_meta_get(outputs[[1L]],"ordered_source"),.bt_meta_get(outputs[[2L]],"ordered_source"))
+        expect_identical(.posterior_atoms_get(outputs[[1L]]),.posterior_atoms_get(outputs[[2L]]))
+        expect_identical(serialize(source_fit,NULL),source_bytes)
+      }
+      expect_identical(serialize(fit,NULL),fit_bytes)
+    }
+  })
+  expect_identical(problems,character())
+})
+
+test_that("ordered formula weights are validated before source selection", {
+  weights <- matrix(0,1L,3L,dimnames=list(NULL,c("a","b","c")))
+  expect_null(.bt_ordered_formula_projections(list(),weights))
+  for(value in c(NA_real_,NaN)){
+    invalid <- weights
+    invalid[,] <- value
+    expect_error(.bt_ordered_formula_projections(list(),invalid),"cannot contain NA/NaN values",fixed=TRUE)
+  }
+  for(value in c(Inf,-Inf)){
+    invalid <- weights
+    invalid[,] <- value
+    expect_error(.bt_ordered_formula_projections(list(),invalid),"must be finite named fitted-coordinate weights",fixed=TRUE)
+  }
+  colnames(weights) <- NULL
+  expect_error(.bt_ordered_formula_projections(list(),weights),"must be finite named fitted-coordinate weights",fixed=TRUE)
+  colnames(weights) <- c("a","a","c")
+  expect_error(.bt_ordered_formula_projections(list(),weights),"must be finite named fitted-coordinate weights",fixed=TRUE)
 })
 
 test_that("prior_ordered() validates constructor inputs", {
