@@ -156,6 +156,10 @@ test_that("interactive runner dispatches comprehensive and filtered profiles", {
 test_that("N100 resolver prefers the session binary and keeps PATH fallback", {
 
   runner_path <- testthat::test_path("..", "..", ".dev", "test-tests.R")
+  skip_if_not(
+    file.exists(runner_path),
+    "Repository interactive-runner source is unavailable in installed-package tests."
+  )
   expressions <- parse(runner_path, keep.source = FALSE)
   selected <- vapply(expressions, function(expression){
     is.call(expression) && length(expression) == 3L &&
