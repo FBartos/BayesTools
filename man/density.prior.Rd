@@ -46,7 +46,9 @@ analytically (or if samples are forced with
 \code{force_samples = TRUE})}
 
 \item{force_samples}{should prior be sampled instead
-of obtaining analytic solution whenever possible}
+of obtaining analytic solution whenever possible. For supported ordered
+mixed measures, exact analytic curves and atoms are retained and the
+requested samples are attached to each component.}
 
 \item{individual}{should individual densities be returned
 (e.g., in case of weightfunction)}
@@ -87,8 +89,15 @@ per factor level. When a level has both discrete and continuous probability,
 its \code{atoms} table stores exact \code{location} and \code{mass} values,
 while its \code{continuous} table stores a density already weighted to
 integrate to the remaining continuous mass over its full support. A clipped
-plotting grid preserves density heights and therefore captures less mass;
-\code{diagnostics$continuous_integral} reports the mass on that grid.
+plotting grid preserves density heights;
+\code{diagnostics$continuous_integral} reports its numerical trapezoid
+integral, which can differ from the exact continuous mass because of
+clipping and grid discretization. Nonfinite continuous ordinates are omitted
+by the structural mixed-measure route; the curve is not renormalized.
+A supported scalar point total times a random allocation share has a
+continuous scaled-Beta distribution at intermediate levels, with declared
+atoms retained for zero-total branches, reference levels, fixed shares,
+and the full-total level.
 }
 \description{
 Computes density of a prior

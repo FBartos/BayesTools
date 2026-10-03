@@ -63,7 +63,9 @@
 #' @details Ordered prior plots omit a whole continuous curve, quietly, when
 #' exact product provenance shows that its infinite density at the product
 #' offset is introduced by a random allocation, and the total's own
-#' continuous density is not intrinsically infinite. Point masses remain.
+#' continuous density is not intrinsically infinite. This decision precedes
+#' continuous density generation, so an omitted curve does not require its
+#' plotting quadrature or kernel estimate. Point masses remain.
 #' For a fixed total times an allocation share, either exact share endpoint
 #' (zero or one) can establish the allocation-induced infinity.
 #' Intrinsic singularities, such as a Gamma total with shape below one, and
@@ -128,7 +130,7 @@ plot.prior <- function(x, plot_type = "base",
       xlim   <- range(pretty(xlim))
     }
   }
-  plot_data <- density(x = x, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
+  plot_data <- density(x = .plot_ordered_prior_density_input(x), x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                        n_points = n_points, n_samples = n_samples, force_samples = force_samples,
                        transformation = transformation, transformation_arguments = transformation_arguments,
                        transformation_settings = transformation_settings, individual = individual)
@@ -350,6 +352,24 @@ plot.prior <- function(x, plot_type = "base",
 
 # Display-only suppression from exact product structure. Unknown behavior
 # cannot establish omission; an intrinsically infinite total keeps its curve.
+.plot_ordered_prior_density_input <- function(prior){
+
+  if(!is.prior.ordered(prior)) return(prior)
+  prior <- .prior_ordered_default_bound(prior)
+  metadata <- .prior_ordered_metadata(prior)
+  design <- as.matrix(.factor_term_design_from_metadata(prior)$design)
+  columns <- .JAGS_prior_factor_names(metadata$parameter_name, prior)
+  skip <- vapply(seq_len(nrow(design)), function(i){
+    route <- .prior_density_route_linear(
+      stats::setNames(list(prior), metadata$parameter_name),
+      stats::setNames(design[i, ], columns), NULL,
+      .prior_linear_density_default_grid())
+    .plot_ordered_prior_suppress_curve(route)
+  }, logical(1))
+  if(any(skip)) attr(prior, "ordered_plot_skip") <- skip
+  prior
+}
+
 .plot_ordered_prior_suppress_curve <- function(route){
 
   classify <- function(route){
@@ -484,14 +504,15 @@ plot.prior <- function(x, plot_type = "base",
         component$continuous <- NULL
         component$x <- atoms$location
         component$y <- atoms$mass
-        class(component) <- setdiff(class(component), "density.prior.simple")
+        class(component) <- setdiff(class(component), c("density.prior.simple", "density.prior.display_empty"))
         class(component) <- unique(c("density.prior.mixed_measure", class(component), "density.prior.point"))
         attr(component, "x_range") <- range(atoms$location)
         attr(component, "y_range") <- c(0, max(atoms$mass))
         attr(component, "measure_schema_version") <- 1L
       }else{
-        component <- structure(list(x = numeric(), y = numeric()),
-          class = "density.prior.display_empty")
+        component <- .density.prior.ordered_display_empty(
+          attr(component, "component", exact = TRUE),
+          attr(component, "component_name", exact = TRUE))
       }
       plot_data[[i]] <- component
     }

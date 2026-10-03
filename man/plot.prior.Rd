@@ -50,7 +50,9 @@ analytically (or if samples are forced with
 \code{force_samples = TRUE})}
 
 \item{force_samples}{should prior be sampled instead
-of obtaining analytic solution whenever possible}
+of obtaining analytic solution whenever possible. For supported ordered
+mixed measures, exact analytic curves and atoms are retained and the
+requested samples are attached to each component.}
 
 \item{transformation}{transformation to be applied
 to the prior distribution. Either a character
@@ -123,7 +125,9 @@ Plots a prior object
 Ordered prior plots omit a whole continuous curve, quietly, when
 exact product provenance shows that its infinite density at the product
 offset is introduced by a random allocation, and the total's own
-continuous density is not intrinsically infinite. Point masses remain.
+continuous density is not intrinsically infinite. This decision precedes
+continuous density generation, so an omitted curve does not require its
+plotting quadrature or kernel estimate. Point masses remain.
 For a fixed total times an allocation share, either exact share endpoint
 (zero or one) can establish the allocation-induced infinity.
 Intrinsic singularities, such as a Gamma total with shape below one, and

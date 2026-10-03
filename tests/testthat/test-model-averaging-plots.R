@@ -109,6 +109,49 @@ test_that("ordered direct selections retain holes when curves are omitted", {
   })
 })
 
+test_that("ordered direct finite point-slab levels show analytic curves and full-total atoms", {
+  fixture <- ordered_plot_test_fixture(
+    prior_spike_and_slab(prior("point", list(2)), prior("point", list(.5))),
+    prior("dirichlet", list(c(2, 2, 2))))
+  for(level in c(2L, 4L)){
+    for(backend in c("base", "ggplot")){
+      draw <- function(){
+        set.seed(600)
+        plot(fixture$prior, show_figures = level, plot_type = backend, xlim = c(0, 2),
+          n_points = 64L, n_samples = 128L, xlab = "Level effect")
+      }
+      vdiffr::expect_doppelganger(paste0("ordered-direct-finite-pointslab-level", level, "-", backend),
+        if(backend == "base") draw else draw())
+    }
+  }
+})
+
+test_that("ordered direct small-alpha Normal plots skip omitted product curves quietly", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, 1)),
+    prior("dirichlet", list(c(.5, .25, .25))))
+  vdiffr::expect_doppelganger("ordered-direct-small-alpha-normal-base", function(){
+    set.seed(600)
+    graphics::par(mfrow = c(1, 2))
+    plot(fixture$prior, xlim = c(-3, 3), n_points = 64L, n_samples = 128L, xlab = "Level effect")
+  })
+  vdiffr::expect_doppelganger("ordered-direct-small-alpha-normal-ggplot", function(){
+    set.seed(600)
+    plots <- plot(fixture$prior, plot_type = "ggplot", xlim = c(-3, 3),
+      n_points = 64L, n_samples = 128L, xlab = "Level effect")
+    grid::grid.newpage()
+    grid::pushViewport(grid::viewport(layout = grid::grid.layout(1L, length(plots))))
+    for(i in seq_along(plots)){
+      viewport <- grid::viewport(layout.pos.row = 1L, layout.pos.col = i)
+      if(is.null(plots[[i]])){
+        grid::pushViewport(viewport)
+        grid::grid.text(paste("Figure", i, "omitted"))
+        grid::popViewport()
+      }else print(plots[[i]], newpage = FALSE, vp = viewport)
+    }
+    grid::popViewport()
+  })
+})
+
 test_that("ordered model estimates have prior and posterior visual coverage", {
   models <- lapply(c(.5, 1), function(sd){
     fixture <- ordered_plot_test_fixture(prior("normal", list(0, sd)))

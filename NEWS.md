@@ -834,6 +834,15 @@ old behaviour.
     with unchanged probability mass; unavailable recovery reports
     `BayesTools_ordered_prior_display_unavailable`.
     All-hidden standalone selections report `BayesTools_ordered_prior_display_empty`.
+    Certified curve omission is decided before plotting density generation,
+    avoiding unused quadrature and KDE evaluations while public `density()`
+    continues to evaluate every level.
+  - supported scalar ordered point and point-slab totals use the existing exact
+    mixed-measure density route: intermediate Dirichlet shares have scaled-Beta
+    curves and declared atoms, and fixed-share/full-total levels retain their
+    exact point masses. `force_samples = TRUE` attaches the original sampled
+    values while retaining these analytic curves and atoms. Grid-integral
+    diagnostics report the actual trapezoid integral without renormalization.
   - `plot_models()` uses ordered semantic level summaries and selected level
     draws. Posterior-only plots skip prior summaries and unused prior transforms;
     ordered prior means use

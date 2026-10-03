@@ -46,7 +46,9 @@ analytically (or if samples are forced with
 \code{force_samples = TRUE})}
 
 \item{force_samples}{should prior be sampled instead
-of obtaining analytic solution whenever possible}
+of obtaining analytic solution whenever possible. For supported ordered
+mixed measures, exact analytic curves and atoms are retained and the
+requested samples are attached to each component.}
 
 \item{transformation}{transformation to be applied
 to the prior distribution. Either a character

@@ -22,7 +22,9 @@
 #' analytically (or if samples are forced with
 #' \code{force_samples = TRUE})
 #' @param force_samples should prior be sampled instead
-#' of obtaining analytic solution whenever possible
+#' of obtaining analytic solution whenever possible. For supported ordered
+#' mixed measures, exact analytic curves and atoms are retained and the
+#' requested samples are attached to each component.
 #' @param individual should individual densities be returned
 #' (e.g., in case of weightfunction)
 #' @param transformation transformation to be applied
@@ -56,8 +58,15 @@
 #' its \code{atoms} table stores exact \code{location} and \code{mass} values,
 #' while its \code{continuous} table stores a density already weighted to
 #' integrate to the remaining continuous mass over its full support. A clipped
-#' plotting grid preserves density heights and therefore captures less mass;
-#' \code{diagnostics$continuous_integral} reports the mass on that grid.
+#' plotting grid preserves density heights;
+#' \code{diagnostics$continuous_integral} reports its numerical trapezoid
+#' integral, which can differ from the exact continuous mass because of
+#' clipping and grid discretization. Nonfinite continuous ordinates are omitted
+#' by the structural mixed-measure route; the curve is not renormalized.
+#' A supported scalar point total times a random allocation share has a
+#' continuous scaled-Beta distribution at intermediate levels, with declared
+#' atoms retained for zero-total branches, reference levels, fixed shares,
+#' and the full-total level.
 #'
 #' @details Sample-based density estimates for continuous priors with finite
 #' support use boundary-reflected kernel density estimates. The plotting range
@@ -268,6 +277,10 @@ density.prior <- function(x,
 
 .density.prior.ordered                <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
 
+  if(!is.null(attr(x, "ordered_plot_skip", exact = TRUE))){
+    x <- .prior_ordered_default_bound(x)
+    .density.prior.ordered_plot_skip(x, nrow(.factor_term_design_from_metadata(x)$design))
+  }
   mixed <- .density.prior.ordered_mixed(
     x = x,
     x_seq = x_seq,
@@ -297,8 +310,13 @@ density.prior <- function(x,
 
   out <- vector("list", ncol(samples))
   names(out) <- colnames(samples)
+  plot_skip <- .density.prior.ordered_plot_skip(x, ncol(samples))
 
   for(i in seq_len(ncol(samples))){
+    if(plot_skip[[i]]){
+      out[[i]] <- .density.prior.ordered_display_empty(i, names(out)[i])
+      next
+    }
     component_samples <- samples[, i]
 
     if(all(component_samples == component_samples[1])){
@@ -362,6 +380,27 @@ density.prior <- function(x,
   out
 }
 
+# Transient plot-only masks never occur on an ordinary density() input.
+.density.prior.ordered_plot_skip <- function(x, n_levels){
+
+  skip <- attr(x, "ordered_plot_skip", exact = TRUE)
+  if(is.null(skip)) return(rep(FALSE, n_levels))
+  if(!is.logical(skip) || length(skip) != n_levels || anyNA(skip)){
+    stop("The private ordered plot mask must contain one non-missing logical value per declared level.",
+      call. = FALSE)
+  }
+  skip
+}
+
+.density.prior.ordered_display_empty <- function(component, component_name){
+
+  out <- structure(list(x = numeric(), y = numeric()),
+    class = c("density.prior.ordered_component", "density.prior.display_empty"))
+  attr(out, "component") <- component
+  attr(out, "component_name") <- component_name
+  out
+}
+
 .density.prior.ordered_level_bounds <- function(x, n_levels){
 
   # Exact support of each ordered level (total times its allocation share),
@@ -412,8 +451,7 @@ density.prior <- function(x,
     n_grid = n_points,
     tail_prob = .prior_linear_density_tail_prob()
   )
-  if(is.null(total) || is.null(total$density) ||
-     is.null(total$points) || nrow(total$points) == 0L){
+  if(is.null(total) || is.null(total$points) || nrow(total$points) == 0L){
     return(NULL)
   }
 
@@ -421,6 +459,7 @@ density.prior <- function(x,
   if(length(metadata$ordered_terms) != 1L ||
      metadata$theta_dim != 1L ||
      length(metadata$allocations) != 1L){
+    if(is.null(total$density)) return(NULL)
     stop(
       "Mixed-measure ordered densities currently require one ordered term ",
       "and one scalar total. Split the interaction into explicitly named ",
@@ -450,7 +489,12 @@ density.prior <- function(x,
 
   densities <- vector("list", nrow(weights))
   names(densities) <- component_names
+  plot_skip <- .density.prior.ordered_plot_skip(x, nrow(weights))
   for(i in seq_len(nrow(weights))){
+    if(plot_skip[[i]]){
+      densities[[i]] <- .density.prior.ordered_display_empty(i, component_names[[i]])
+      next
+    }
     # A level with a structural route (e.g. a spike-and-slab total times a
     # Beta allocation share) is evaluated on that route at the display
     # values; only a level without one uses its numerical grid.
@@ -757,6 +801,7 @@ density.prior <- function(x,
 
   densities <- vector("list", length(component_names))
   names(densities) <- component_names
+  plot_skip <- .density.prior.ordered_plot_skip(x, length(component_names))
 
   if(identical(record$spec$type, "fixed")){
     cumulative <- if(identical(x$contrast, "cumulative")){
@@ -765,6 +810,10 @@ density.prior <- function(x,
       cumsum(record$spec$weights)
     }
     for(i in seq_along(cumulative)){
+      if(plot_skip[[i]]){
+        densities[[i]] <- .density.prior.ordered_display_empty(i, component_names[[i]])
+        next
+      }
       densities[[i]] <- .density.prior.ordered_scaled_total(
         total = x$total,
         scale = cumulative[[i]],
@@ -776,6 +825,10 @@ density.prior <- function(x,
     alpha <- record$spec$alpha
     D <- length(alpha)
     for(i in seq_along(densities)){
+      if(plot_skip[[i]]){
+        densities[[i]] <- .density.prior.ordered_display_empty(i, component_names[[i]])
+        next
+      }
       m <- if(identical(x$contrast, "cumulative")) i - 1L else i
       if(m == 0L){
         densities[[i]] <- .density.prior.point(prior("point", list(location = 0)), x_seq, range(x_seq), n_points, n_samples = 1L, force_samples = FALSE, transformation = NULL, transformation_arguments = NULL)

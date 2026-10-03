@@ -245,8 +245,12 @@ test_that("ordered display recovers declared mixed-total atoms before omitting c
       prior("dirichlet", list(case$alpha)))
     set.seed(600)
     original <- density(fixture$prior, n_points = 64L, n_samples = 128L)
-    expect_null(original[[case$level]]$atoms)
-    displayed <- .plot_data_ordered_prior_display(fixture$prior, original)[[case$level]]
+    expect_equal(original[[case$level]]$atoms, data.frame(location = 0, mass = .5))
+    # A precomputed display can still lack its atom table; declared route
+    # recovery remains necessary independently of the exact density producer.
+    missing_atoms <- original
+    missing_atoms[[case$level]]$atoms <- NULL
+    displayed <- .plot_data_ordered_prior_display(fixture$prior, missing_atoms)[[case$level]]
     expect_s3_class(displayed, "density.prior.point")
     expect_s3_class(displayed, "density.prior.mixed_measure")
     expect_null(displayed$continuous)
@@ -355,6 +359,7 @@ test_that("ordered display fails explicitly when declared atom recovery is unava
     prior_spike_and_slab(prior("point", list(2)), prior("point", list(.5))),
     prior("dirichlet", list(c(2, 2, .5))))
   original <- density(fixture$prior, n_points = 64L, n_samples = 128L)
+  original[[3L]]$atoms <- NULL
   locations <- .plot_ordered_prior_atom_locations
   ordinate <- .prior_density_route_ordinate
   local_mocked_bindings(.plot_ordered_prior_atom_locations = function(route) NULL)

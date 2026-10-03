@@ -48,6 +48,11 @@ source files.
 Ordered prior display suppression uses the shared exact-route predicate: omit
 the whole continuous curve only for allocation-induced infinity with no
 intrinsically infinite total; keep atoms and unknown classifications. Display
+decisions precede ordered density generation through a transient logical mask
+on a bound prior copy; skip only hidden curves before their grid or KDE work,
+keep original component indices, and sample all primitives in their original
+order whenever the existing path samples. Ordinary public density inputs
+carry no mask and still evaluate every level. Display
 densities missing their atom table recover locations from declared route
 nodes and probabilities from exact route ordinates. Apply output transformations
 only to recovered locations; preserve already transformed atoms and never scale

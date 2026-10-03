@@ -79,6 +79,7 @@ bayestools_test_profile_contexts <- list(
     "parameter-labels",
     "prior-density-ordinate",
     "prior-ordered",
+    "prior-ordered-direct-display",
     "priors-coverage",
     "priors-density-numeric",
     "priors-informed",

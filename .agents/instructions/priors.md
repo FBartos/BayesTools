@@ -200,6 +200,13 @@ Product terms (`multiply_by`) and ordered-prior levels share one route
 (R/prior-density-route.R). An ordered level (or allocation subset) is the
 ordered total times its allocation share (`.prior_ordered_linear_share()`):
 a fixed share scales the total, a Beta share multiplies it. A point
+total, including a point-slab total, uses the existing mixed-measure density
+producer for one ordered term, one scalar total and one allocation: exact
+scaled-Beta curves, declared atoms and continuous mass. Its forced samples
+are attached without replacing the analytic measure. The continuous grid's
+trapezoid integral is its captured numerical integral, not the exact mass;
+nonfinite route ordinates are omitted without renormalizing the curve.
+A point
 multiplier or a deterministic multiplied part folds into an affine term. A
 normal multiplied part with a normal or deterministic additive part is the
 conditional-normal route; without an additive normal term it is a pure scale
