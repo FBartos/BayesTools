@@ -1,5 +1,6 @@
 # version 0.3.1
 ### Fixes
+- Declares `waldo` as an explicit test dependency in `Suggests`.
 - Vignette source fingerprints ignore the publication-only DESCRIPTION fields
   `Repository` and `Date/Publication`, while retaining source-content changes.
 - Converged prior-density quadrature with an unavailable full-precision height
