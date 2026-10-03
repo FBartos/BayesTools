@@ -438,6 +438,8 @@ test_that("ordered overlay warnings retain source coordinates and available meas
   original_ordinate <- .prior_density_route_ordinate
   original_plot_data <- .prior_linear_density_to_plot_data
   injected <- FALSE
+  refusal_mode <- "single"
+  refused_values <- c(.125, -.375)
   records <- list()
   zero_heights <- numeric()
   refused <- list()
@@ -446,23 +448,41 @@ test_that("ordered overlay warnings retain source coordinates and available meas
       y <- original_density(route, x, batch_singular)
       if(identical(route$type, "conditional_normal")){
         zero_heights <<- c(zero_heights, y[x == 0])
-        at_refusal <- x == .125
-        if(injected && any(at_refusal)){
-          result <- original_ordinate(route, .125)
-          expect_identical(result$behavior, "regular")
-          expect_true(result$exact)
+      }
+      continuous_leaf <- !route$type %in% c("mixture", "atom")
+      at_refusal <- is.finite(x) & is.finite(y) & y > 0 & if(refusal_mode == "plural"){
+        continuous_leaf & x %in% refused_values
+      }else if(refusal_mode == "whole"){
+        identical(route$type, "conditional_normal")
+      }else{
+        identical(route$type, "conditional_normal") & x == .125
+      }
+      if(injected && any(at_refusal)){
+        original_results <- lapply(x[at_refusal], function(value) original_ordinate(route, value))
+        expect_true(all(vapply(original_results, function(result){
+          identical(result$behavior, "regular") && result$exact && is.finite(result$log_density)
+        }, logical(1))))
+        unavailable <- vapply(original_results, function(result){
           result$log_density <- NA_real_
           result$exact <- FALSE
           result$reason <- "Injected numerical quadrature refusal."
           result$provenance$integration <- list(converged = FALSE)
           refused[[length(refused) + 1L]] <<- result
-          y[at_refusal] <- .prior_density_ordinate_height_value(result)
-        }
+          .prior_density_ordinate_height_value(result)
+        }, numeric(1))
+        y[at_refusal] <- unavailable
       }
       y
     },
     .prior_linear_density_to_plot_data = function(...){
-      value <- original_plot_data(...)
+      args <- list(...)
+      if(refusal_mode == "plural"){
+        route <- .prior_density_route_from_adaptive(attr(args[[1L]], "adaptive_evaluation", exact = TRUE))
+        # Test-only grid sizes include both exact refusal coordinates in each
+        # real route; baseline and injected calls receive identical controls.
+        args$n_points <- if(.prior_density_route_has_quadrature(route)) 130L else 129L
+      }
+      value <- do.call(original_plot_data, args)
       records[[length(records) + 1L]] <<- value
       value
     }
@@ -525,6 +545,79 @@ test_that("ordered overlay warnings retain source coordinates and available meas
       }
     }
   }
+  for(refusal_mode in c("whole", "plural")){
+    for(backend in c("base", "ggplot")){
+      for(marginal_plot in c(FALSE, TRUE)){
+        draw <- function(){
+          if(marginal_plot) plot_marginal(list(mu_f = marginal), "mu_f", prior = TRUE,
+            plot_type = backend, xlim = c(-.875, 1.125)) else
+            plot_posterior(samples, "mu_f", prior = TRUE, plot_type = backend,
+              xlim = c(-.875, 1.125))
+        }
+        injected <- FALSE
+        records <- list()
+        baseline <- capture(draw)
+        expect_length(baseline$warnings, 0L)
+        expected <- records
+        expect_length(expected, 2L)
+        baseline_curves <- lapply(expected, `[[`, "density")
+        expect_true(all(vapply(baseline_curves, function(curve){
+          all(is.finite(curve$x)) && all(is.finite(curve$y)) && all(curve$y > 0)
+        }, logical(1))))
+        if(refusal_mode == "whole"){
+          expected_values <- unique(baseline_curves[[1L]]$x)
+          expect_false(0 %in% expected_values)
+          expected[[1L]]$density <- NULL
+        }else{
+          expect_true(all(vapply(baseline_curves, function(curve){
+            all(refused_values %in% curve$x)
+          }, logical(1))))
+          available <- lapply(baseline_curves, function(curve) !curve$x %in% refused_values)
+          for(i in seq_along(expected)){
+            expected[[i]]$density$x <- baseline_curves[[i]]$x[available[[i]]]
+            expected[[i]]$density$y <- baseline_curves[[i]]$y[available[[i]]]
+          }
+          expected_values <- refused_values
+        }
+        injected <- TRUE
+        records <- list()
+        output <- capture(draw)
+        expect_length(output$warnings, if(refusal_mode == "whole") 1L else 2L)
+        for(warning in output$warnings){
+          expect_s3_class(warning, "BayesTools_prior_curve_unavailable")
+          expect_s3_class(warning, "BayesTools_plot_condition")
+          expect_type(warning$unresolved_values, "double")
+          expect_true(all(is.finite(warning$unresolved_values)))
+          expect_identical(sort(warning$unresolved_values), sort(expected_values))
+          expect_identical(conditionMessage(warning), paste0(
+            "The prior density curve is ",
+            if(refusal_mode == "whole") "unavailable" else "partially unavailable",
+            ": numerical evaluations were unresolved at ", length(expected_values),
+            " evaluation coordinates on the source scale. ",
+            if(refusal_mode == "whole") "No continuous curve points are available; declared atoms are retained; " else
+              "Available curve points and declared atoms are retained; ",
+            "use 'prior = FALSE' to draw the posterior alone."))
+        }
+        expect_identical(records, expected)
+        expect_identical(lapply(records, `[[`, "points1"), lapply(expected, `[[`, "points1"))
+        if(refusal_mode == "whole"){
+          expect_null(records[[1L]]$density)
+          expect_identical(records[[2L]]$density, baseline_curves[[2L]])
+        }else if(backend == "ggplot"){
+          expected_render <- ggplot2::ggplot_build(baseline$value)$data
+          for(i in seq_along(baseline_curves)){
+            curve_layer <- which(vapply(expected_render, function(layer){
+              identical(layer$x, baseline_curves[[i]]$x) && identical(layer$y, baseline_curves[[i]]$y)
+            }, logical(1)))
+            expect_length(curve_layer, 1L)
+            expected_render[[curve_layer]] <- expected_render[[curve_layer]][available[[i]], , drop = FALSE]
+            rownames(expected_render[[curve_layer]]) <- NULL
+          }
+          expect_identical(ggplot2::ggplot_build(output$value)$data, expected_render)
+        }
+      }
+    }
+  }
   expect_true(length(zero_heights) > 0L)
   expect_true(all(zero_heights == Inf))
   expect_true(length(refused) > 0L)
@@ -535,5 +628,6 @@ test_that("ordered overlay warnings retain source coordinates and available meas
     levels = c("systematic", "alternate", "random"))
   ordinary$samples <- as_mixed_posteriors(ordinary$fit, "mu_f")
   injected <- FALSE
+  refusal_mode <- "single"
   expect_no_warning(plot_posterior(ordinary$samples, "mu_f", prior = TRUE, plot_type = "ggplot"))
 })

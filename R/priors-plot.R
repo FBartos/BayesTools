@@ -78,10 +78,6 @@
 #' (also \code{BayesTools_plot_condition}); supply \code{x_seq} containing
 #' finite density ordinates. Probability-axis mapping and clipping checks use
 #' selected components only, including an explicitly selected reference.
-#' Numerical route evaluations that remain unresolved warn with the same
-#' classes while retaining available points and declared atoms. The warning's
-#' \code{unresolved_values} field contains evaluation coordinates on the source
-#' scale, before any plotting transformation.
 #'
 #' @seealso [prior()] [lines.prior()]  [geom_prior()]
 #' @rdname plot.prior
