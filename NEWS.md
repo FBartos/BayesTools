@@ -1,5 +1,7 @@
 # version 0.3.1
 ### Fixes
+- Linear projections of multivariate normal and t priors preserve tiny and large
+  nonzero coefficient scales, including representable scales with an overflowing norm.
 - `JAGS_bridgesampling()` preserves an explicit `use_neff` bridge-sampler control,
   including `FALSE`, while retaining `TRUE` as the default.
 

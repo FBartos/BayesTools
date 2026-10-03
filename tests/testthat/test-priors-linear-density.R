@@ -3995,3 +3995,38 @@ test_that("the transformed prior density memo keeps the two most recently used i
   expect_identical(b2$payload, reference(768L))
   expect_identical(.Random.seed, seed)
 })
+
+for(weight_scale in c(1e-200, 1e200)){
+  test_that(paste("N03 independent normal scale identity at", weight_scale), {
+
+    vector_prior <- prior("mnormal", list(mean = 0, sd = 1, K = 2))
+    scalar <- BayesTools:::.prior_linear_vector_scalar_prior(
+      vector_prior, c(weight_scale, weight_scale)
+    )
+    expect_identical(scalar$distribution, "normal")
+    # Var(w1 X1 + w2 X2) = (w1 sigma)^2 + (w2 sigma)^2.
+    # Dividing by the independently known scale avoids absolute tolerances
+    # treating a positive 1e-200-scale SD as a structural zero.
+    expect_equal(scalar$parameters$sd / weight_scale, sqrt(2), tolerance = 1e-14)
+    expect_identical(scalar$parameters$mean, 0)
+  })
+}
+
+test_that("N03 combined normal scale remains finite when the norm overflows", {
+
+  vector_prior <- prior("mnormal", list(mean = 0, sd = 1e-200, K = 2))
+  scalar <- BayesTools:::.prior_linear_vector_scalar_prior(
+    vector_prior, c(1.3e308, -1.3e308)
+  )
+  expect_identical(scalar$distribution, "normal")
+  expect_equal(scalar$parameters$sd / 1.3e108, sqrt(2), tolerance = 1e-12)
+})
+
+test_that("N03 only all-zero normal weights give the structural zero", {
+
+  scalar <- BayesTools:::.prior_linear_vector_scalar_prior(
+    prior("mnormal", list(mean = 3, sd = 1, K = 2)), c(0, 0)
+  )
+  expect_true(is.prior.point(scalar))
+  expect_identical(scalar$parameters$location, 0)
+})

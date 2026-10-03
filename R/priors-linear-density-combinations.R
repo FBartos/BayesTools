@@ -191,9 +191,9 @@
 .prior_linear_vector_scalar_prior <- function(prior, weights){
 
   weights <- as.numeric(weights)
-  norm_weight <- sqrt(sum(weights^2))
+  max_weight <- max(abs(weights))
 
-  if(norm_weight == 0){
+  if(max_weight == 0){
     return(prior("point", list(location = 0)))
   }
 
@@ -202,20 +202,31 @@
     return(prior("point", list(location = sum(weights) * location)))
   }
 
+  relative_norm <- sqrt(sum((weights / max_weight)^2))
+  norm_weight <- max_weight * relative_norm
+  prior_scale <- switch(prior[["distribution"]],
+    "mnormal" = prior$parameters[["sd"]],
+    "mt" = prior$parameters[["scale"]]
+  )
+  scalar_scale <- norm_weight * prior_scale
+  if(!is.finite(norm_weight) && length(prior_scale) == 1L){
+    scalar_scale <- exp(log(max_weight) + log(relative_norm) + log(prior_scale))
+  }
+
   switch(
     prior[["distribution"]],
     "mnormal" = prior(
       "normal",
       list(
         mean = sum(weights) * prior$parameters[["mean"]],
-        sd   = norm_weight * prior$parameters[["sd"]]
+        sd   = scalar_scale
       )
     ),
     "mt" = prior(
       "t",
       list(
         location = sum(weights) * prior$parameters[["location"]],
-        scale    = norm_weight * prior$parameters[["scale"]],
+        scale    = scalar_scale,
         df       = prior$parameters[["df"]]
       )
     ),
