@@ -854,3 +854,42 @@ test_that("P-F8 deferred callback argument errors retain bridge context", {
     extra = stop("extra unavailable")
   ), "Bridge sampling failed: extra unavailable", fixed = TRUE)
 })
+
+test_that("P-F8 exact point route ignores upstream use_neff controls", {
+
+  posterior <- coda::mcmc(matrix(0, nrow = 100L, ncol = 1L,
+                                dimnames = list(NULL, "theta")))
+  arguments <- list(
+    fit = posterior,
+    log_posterior = function(parameters, data) 0,
+    data = NULL,
+    prior_list = list(theta = prior("point", list(location = 0))),
+    seed = 1
+  )
+  default <- do.call(JAGS_bridgesampling, arguments)
+  expect_identical(default$logml, 0)
+  expect_identical(default$aggregation$rule, "exact_zero_dimensional")
+  for(use_neff in list(TRUE, FALSE, NULL)){
+    explicit <- do.call(JAGS_bridgesampling, c(arguments, list(use_neff = use_neff)))
+    expect_identical(explicit$logml, default$logml)
+    expect_identical(explicit$aggregation, default$aggregation)
+  }
+})
+
+test_that("P-F8 exact point route forwards genuine likelihood arguments", {
+
+  posterior <- coda::mcmc(matrix(0, nrow = 100L, ncol = 1L,
+                                dimnames = list(NULL, "theta")))
+  result <- JAGS_bridgesampling(
+    fit = posterior,
+    log_posterior = function(parameters, data, extra) extra,
+    data = NULL,
+    prior_list = list(theta = prior("point", list(location = 0))),
+    use_neff = FALSE,
+    packages = "stats",
+    extra = -3,
+    seed = 1
+  )
+  expect_identical(result$logml, -3)
+  expect_identical(result$aggregation$rule, "exact_zero_dimensional")
+})

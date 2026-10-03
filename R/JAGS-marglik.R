@@ -130,9 +130,10 @@
 #' remaining finite repetitions, emits a warning, and records every excluded
 #' repetition in the returned diagnostics.
 #' @param ... additional argument to the \link[bridgesampling]{bridge_sampler}
-#' and \code{log_posterior} function. The upstream-only `packages` argument is
-#' consumed by the sampler and is not forwarded to `log_posterior`, including
-#' for exact zero-dimensional evaluation.
+#' and \code{log_posterior} function. The upstream-only `use_neff` logical
+#' control defaults to `TRUE`; an explicitly supplied value is passed to the
+#' sampler. `use_neff` and `packages` are not forwarded to `log_posterior`
+#' and are ignored for exact zero-dimensional evaluation.
 #'
 #' @details Row-shaped external random-effect SD sources, such as
 #' `random_sd_source("tau", shape = "row")`, must be reconstructable during
@@ -547,6 +548,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   if(ncol(bridgesampling_posterior) == 0L){
     callback_dots <- list(...)
     callback_dots[["packages"]] <- NULL
+    callback_dots[["use_neff"]] <- NULL
     logml <- do.call(
       full_log_posterior,
       c(
