@@ -4030,3 +4030,30 @@ test_that("N03 only all-zero normal weights give the structural zero", {
   expect_true(is.prior.point(scalar))
   expect_identical(scalar$parameters$location, 0)
 })
+
+test_that("N03 empty weights retain the structural zero without warnings", {
+
+  vector_prior <- prior("mnormal", list(mean = 0, sd = 1, K = 2))
+  expect_no_warning(scalar <- BayesTools:::.prior_linear_vector_scalar_prior(vector_prior, numeric()))
+  expect_true(is.prior.point(scalar))
+  expect_identical(scalar$parameters$location, 0)
+})
+
+test_that("N03 subnormal weights keep a representable combined normal scale", {
+
+  weights <- c(1e-320, 1e-320)
+  vector_prior <- prior("mnormal", list(mean = 0, sd = 1e308, K = 2))
+  scalar <- BayesTools:::.prior_linear_vector_scalar_prior(vector_prior, weights)
+  expect_identical(scalar$distribution, "normal")
+  expect_equal(scalar$parameters$sd / (1e308 * max(abs(weights))), sqrt(2), tolerance = 1e-12)
+})
+
+test_that("N03 t projections preserve scale, location and degrees of freedom", {
+
+  scalar <- BayesTools:::.prior_linear_vector_scalar_prior(
+    prior("mt", list(location = 2, scale = 3, df = 7, K = 2)), c(.6, .8)
+  )
+  expect_identical(scalar$distribution, "t")
+  expect_equal(unlist(scalar$parameters[c("location", "scale", "df")], use.names = FALSE),
+               c(2.8, 3, 7), tolerance = 1e-14)
+})
