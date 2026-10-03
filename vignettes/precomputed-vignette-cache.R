@@ -78,9 +78,11 @@ precomputed_vignette_cache_names <- function(vignette){
       call. = FALSE
     )
   }
-  # Build fields and the package version are not source content: versions are
-  # producer provenance, reported by validation but never a staleness reason.
-  description[c("Author", "Built", "Packaged", "Version")] <- NULL
+  # Build/publication fields and the package version are not source content.
+  # Versions are producer provenance, reported but never a staleness reason.
+  description[c(
+    "Author", "Built", "Packaged", "Version", "Repository", "Date/Publication"
+  )] <- NULL
   description <- description[order(names(description), method = "radix")]
   values <- vapply(description, function(value){
     gsub("[[:space:]]+", " ", trimws(value))

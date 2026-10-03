@@ -1863,3 +1863,37 @@ test_that("committed rstanarm fits capture only their data environment", {
   ))
   expect_identical(intersect(workspace_names, bound_names), character())
 })
+
+for(helper in ".random_effects_vignette_description_md5"){
+  test_that(paste("N95 publication-only DESCRIPTION fields preserve", helper), {
+
+    hash_description <- get(helper)
+    fixture_dir <- tempfile("description-regression-", tmpdir = tempdir())
+    dir.create(fixture_dir)
+    on.exit(unlink(fixture_dir, recursive = TRUE), add = TRUE)
+    original <- file.path(fixture_dir, "original.dcf")
+    expect_true(file.copy(testthat::test_path("..", "..", "DESCRIPTION"), original))
+    original_hash <- hash_description(original)
+    variants <- list(repository = "Repository: CRAN",
+                     date_publication = "Date/Publication: 2026-10-03",
+                     both = c("Repository: CRAN", "Date/Publication: 2026-10-03"))
+    observed <- vapply(names(variants), function(name){
+      path <- file.path(fixture_dir, paste0(name, ".dcf"))
+      file.copy(original, path)
+      cat(paste0(paste(variants[[name]], collapse = "\n"), "\n"), file = path, append = TRUE)
+      hash_description(path)
+    }, character(1))
+    expect_identical(unname(observed), rep(original_hash, 3L))
+    version <- file.path(fixture_dir, "version.dcf")
+    lines <- readLines(original, warn = FALSE)
+    writeLines(sub("^Version: .*", "Version: 9.9.9", lines), version, useBytes = TRUE)
+    expect_identical(hash_description(version), original_hash)
+    content <- file.path(fixture_dir, "source-content.dcf")
+    writeLines(sub("^Title: .*", "Title: A different source description", lines), content, useBytes = TRUE)
+    expect_false(identical(hash_description(content), original_hash))
+    arbitrary <- file.path(fixture_dir, "arbitrary-field.dcf")
+    file.copy(original, arbitrary)
+    cat("X-Source-Contract: changed\n", file = arbitrary, append = TRUE)
+    expect_false(identical(hash_description(arbitrary), original_hash))
+  })
+}

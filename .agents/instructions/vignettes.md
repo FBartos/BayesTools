@@ -40,7 +40,8 @@ environment, such as rstanarm fits, in an environment that holds only their
 data, so a cache never stores the knitting workspace.
 
 Cache validity depends only on source fingerprints: the vignette source, its
-cache helper, `DESCRIPTION` without build fields and `Version`, `NAMESPACE`,
+cache helper, `DESCRIPTION` without build fields, `Version`, `Repository`, and
+`Date/Publication`, `NAMESPACE`,
 and the `R/` and `src/` sources; the shared helper also fingerprints package
 data, and RandomEffects its configure and cleanup scripts and lme4 data sets.
 Changing any of them makes the cache stale until it is regenerated. R and
