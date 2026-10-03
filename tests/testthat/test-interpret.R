@@ -708,3 +708,53 @@ test_that("N22 exact requested and inferred probabilities keep the source interv
                         use.names = FALSE), c(.025, .975, .95), tolerance = 1e-15)
   }
 })
+
+test_that("N73 expanded estimates stay together before the next plan item", {
+
+  source <- data.frame(Mean = c(.3, .4), "0.025" = c(.1, .2), "0.975" = c(.5, .6),
+                       check.names = FALSE, row.names = c("a", "b"))
+  plan <- list(list(kind = "for_each", source = "est", rows = c("a", "b"),
+                    template = "estimate"), list(kind = "note", text = "after"))
+  records <- interpret_records(list(est = source), plan)
+  expect_identical(records$kind, c("estimate", "estimate", "note"))
+  expect_identical(records$row[1:2], c("a", "b"))
+  expect_equal(records$order, c(1, 1, 2), tolerance = 0)
+  text <- interpret_records(list(est = source), plan, output = "text")
+  expect_identical(tail(text, 1L), "after")
+})
+
+test_that("N73 paired child records stay adjacent in row order", {
+
+  estimates <- data.frame(Mean = c(.3, .4), "0.025" = c(.1, .2), "0.975" = c(.5, .6),
+                          check.names = FALSE, row.names = c("a", "b"))
+  evidence <- data.frame(prior_prob = c(.5, .5), post_prob = c(2 / 3, .2),
+                         inclusion_BF = c(2, 1 / 4), row.names = c("a", "b"))
+  plan <- list(list(kind = "for_each", source = "tests", pair_with = "est",
+                    rows = c("a", "b")), list(kind = "note", text = "after"))
+  records <- interpret_records(list(tests = evidence, est = estimates), plan)
+  expect_identical(records$kind, c("evidence", "estimate", "evidence", "estimate", "note"))
+  expect_identical(records$row[1:4], c("a", "a", "b", "b"))
+  expect_equal(records$order, c(1, 1, 1, 1, 2), tolerance = 0)
+})
+
+test_that("N73 ordinary explicitly ordered plan items remain stable", {
+
+  plan <- list(list(kind = "note", order = 3, text = "last"),
+               list(kind = "note", order = 1, text = "first"),
+               list(kind = "note", order = 1, text = "second"))
+  expect_identical(as.character(interpret_records(list(est = data.frame(Mean = .3, row.names = "mu")), plan, output = "text")),
+                   c("first", "second", "last"))
+})
+
+test_that("N73 explicit pair reference order overrides retain precedence", {
+
+  estimates <- data.frame(Mean = .3, row.names = "a")
+  evidence <- data.frame(prior_prob = .5, post_prob = 2 / 3, inclusion_BF = 2, row.names = "a")
+  plan <- list(list(kind = "pair", order = 2,
+                    evidence = list(source = "tests", row = "a", order = 5),
+                    estimate = list(source = "est", row = "a", order = 1)),
+               list(kind = "note", order = 3, text = "between"))
+  records <- interpret_records(list(tests = evidence, est = estimates), plan)
+  expect_identical(records$kind, c("estimate", "note", "evidence"))
+  expect_equal(records$order, c(1, 3, 5), tolerance = 0)
+})

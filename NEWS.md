@@ -1,5 +1,7 @@
 # version 0.3.1
 ### Fixes
+- Interpretation keeps expanded rows and their evidence/estimate pairs together
+  before subsequent plan items, while preserving explicit order overrides.
 - Ensemble and marginal estimate tables preserve probability column labels in
   scientific notation so interpretation can read both interval endpoints.
 - Interpretation of fallback credible intervals retains the probabilities and

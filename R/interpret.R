@@ -470,7 +470,7 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
     child[["template"]] <- NULL
     child[["pair_with"]] <- NULL
     child[["row"]] <- row
-    child[["order"]] <- base_order + j
+    child[["order"]] <- base_order
     child[["item_id"]] <- .interpret_item_id(item, row)
 
     if(template == "pair"){
@@ -546,7 +546,7 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
     }
     if(!is.null(item[["estimate"]])){
       estimate <- .interpret_ref_record(
-        ref     = .interpret_merge_ref(item[["estimate"]], item, "estimate", 0.1),
+        ref     = .interpret_merge_ref(item[["estimate"]], item, "estimate", 0),
         kind    = "estimate",
         sources = sources,
         missing = missing
