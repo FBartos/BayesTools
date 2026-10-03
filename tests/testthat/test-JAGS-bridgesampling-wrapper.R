@@ -818,3 +818,39 @@ test_that("P-F8 bridge wrapper preserves explicit use_neff and its default", {
   expect_s3_class(default, "BayesTools_marglik")
   expect_s3_class(explicit, "BayesTools_marglik")
 })
+
+test_that("P-F8 deferred callback arguments record warnings without escape", {
+
+  testthat::local_mocked_bindings(
+    bridge_sampler = .mock_bridge_sampler,
+    .package = "bridgesampling"
+  )
+  posterior <- coda::mcmc(matrix(seq_len(20), ncol = 1L,
+                                dimnames = list(NULL, "mu")))
+  expect_no_warning(result <- JAGS_bridgesampling(
+    fit = posterior,
+    log_posterior = function(parameters, data, extra) extra,
+    data = list(),
+    prior_list = list(mu = prior("normal", list(0, 1))),
+    extra = { warning("extra warning"); 0 }
+  ))
+  expect_identical(result$diagnostics$upstream_warnings, "extra warning")
+  expect_true(result$repetitions$success)
+})
+
+test_that("P-F8 deferred callback argument errors retain bridge context", {
+
+  testthat::local_mocked_bindings(
+    bridge_sampler = .mock_bridge_sampler,
+    .package = "bridgesampling"
+  )
+  posterior <- coda::mcmc(matrix(seq_len(20), ncol = 1L,
+                                dimnames = list(NULL, "mu")))
+  expect_error(JAGS_bridgesampling(
+    fit = posterior,
+    log_posterior = function(parameters, data, extra) extra,
+    data = list(),
+    prior_list = list(mu = prior("normal", list(0, 1))),
+    extra = stop("extra unavailable")
+  ), "Bridge sampling failed: extra unavailable", fixed = TRUE)
+})

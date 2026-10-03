@@ -576,7 +576,8 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     set.seed(seed)
   }
   upstream_warnings <- character()
-  bridge_arguments <- c(list(
+  marglik <- tryCatch(withCallingHandlers({
+    bridge_arguments <- c(list(
       samples            = bridgesampling_posterior,
       data               = data,
       log_posterior      = full_log_posterior,
@@ -586,7 +587,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       bridge_formula_parameter_evaluator = bridge_formula_parameter_evaluator,
       lb                 = attr(bridgesampling_posterior, "lb"),
       ub                 = attr(bridgesampling_posterior, "ub"),
-      repetitions       = repetitions,
+      repetitions        = repetitions,
       method             = method,
       silent             = silent,
       maxiter            = maxiter,
@@ -594,14 +595,13 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       add_parameters     = add_parameters,
       fixed_random_latent = random_bridge_parameters$fixed_latent,
       bridge_context     = bridge_context,
-       bridge_context_evaluator = bridge_context_evaluator
-  ), list(...))
-  if(!"use_neff" %in% names(bridge_arguments)){
-    bridge_arguments$use_neff <- TRUE
-  }
-  marglik <- tryCatch(withCallingHandlers(do.call(
-    bridgesampling::bridge_sampler, bridge_arguments
-  ), warning = function(w){
+      bridge_context_evaluator = bridge_context_evaluator
+    ), list(...))
+    if(!"use_neff" %in% names(bridge_arguments)){
+      bridge_arguments$use_neff <- TRUE
+    }
+    do.call(bridgesampling::bridge_sampler, bridge_arguments)
+  }, warning = function(w){
     upstream_warnings <<- c(upstream_warnings, conditionMessage(w))
     invokeRestart("muffleWarning")
   }), error = function(e)e)
