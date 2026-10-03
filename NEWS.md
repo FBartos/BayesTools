@@ -1,4 +1,8 @@
 # version 0.3.1
+### Fixes
+- `JAGS_bridgesampling()` preserves an explicit `use_neff` bridge-sampler control,
+  including `FALSE`, while retaining `TRUE` as the default.
+
 ### Breaking changes
 These changes affect code and saved objects written for BayesTools 0.3.0.
 This version is released together with RoBMA 4.1.0; RoBMA 4.0.0 relies on the

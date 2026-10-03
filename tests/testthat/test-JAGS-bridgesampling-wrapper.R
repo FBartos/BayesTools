@@ -794,3 +794,27 @@ test_that("manual marginal-likelihood objects declare their scale", {
   expect_error(bridgesampling_object(Inf), "may only be infinite when it is -Inf")
   expect_error(bridgesampling_object(c(1, 2)), "one numeric")
 })
+
+test_that("P-F8 bridge wrapper preserves explicit use_neff and its default", {
+
+  seen <- list()
+  testthat::local_mocked_bindings(
+    bridge_sampler = function(use_neff, ...){
+      arguments <- c(list(use_neff = use_neff), list(...))
+      seen[[length(seen) + 1L]] <<- arguments[names(arguments) == "use_neff"]
+      structure(list(logml = 0, niter = 7L, mcse_logml = .05,
+                     method = "normal"), class = "bridge")
+    },
+    .package = "bridgesampling"
+  )
+  posterior <- coda::mcmc(matrix(seq_len(20), ncol = 1L,
+                                dimnames = list(NULL, "mu")))
+  arguments <- list(fit = posterior, log_posterior = function(parameters, data) 0,
+                    data = list(), prior_list = list(mu = prior("normal", list(0, 1))))
+  default <- do.call(JAGS_bridgesampling, arguments)
+  expect_identical(seen, list(list(use_neff = TRUE)))
+  explicit <- do.call(JAGS_bridgesampling, c(arguments, list(use_neff = FALSE)))
+  expect_identical(seen, list(list(use_neff = TRUE), list(use_neff = FALSE)))
+  expect_s3_class(default, "BayesTools_marglik")
+  expect_s3_class(explicit, "BayesTools_marglik")
+})

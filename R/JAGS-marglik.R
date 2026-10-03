@@ -576,7 +576,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     set.seed(seed)
   }
   upstream_warnings <- character()
-  marglik <- tryCatch(withCallingHandlers(bridgesampling::bridge_sampler(
+  bridge_arguments <- c(list(
       samples            = bridgesampling_posterior,
       data               = data,
       log_posterior      = full_log_posterior,
@@ -591,12 +591,16 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       silent             = silent,
       maxiter            = maxiter,
       cores              = cores,
-      use_neff           = TRUE,
       add_parameters     = add_parameters,
       fixed_random_latent = random_bridge_parameters$fixed_latent,
       bridge_context     = bridge_context,
-      bridge_context_evaluator = bridge_context_evaluator,
-      ...
+       bridge_context_evaluator = bridge_context_evaluator
+  ), list(...))
+  if(!"use_neff" %in% names(bridge_arguments)){
+    bridge_arguments$use_neff <- TRUE
+  }
+  marglik <- tryCatch(withCallingHandlers(do.call(
+    bridgesampling::bridge_sampler, bridge_arguments
   ), warning = function(w){
     upstream_warnings <<- c(upstream_warnings, conditionMessage(w))
     invokeRestart("muffleWarning")
