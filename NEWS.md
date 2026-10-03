@@ -906,7 +906,11 @@ old behaviour.
     marginal views use the same primitive projections for every available value,
     including continuous cumulative effects, while preserving undefined rows.
     Ordered formula marginals reuse retained fitted ordinary coefficients when
-    samples are on the original scale. Scaled mixed objects without those
+    samples are on the original scale. Formula weights select their contributing
+    sources by registered coefficient ownership. Each formula prefix uses its
+    own scaling and aligned context; combined-prefix targets merge consistent
+    fitted sources. Unscaled prefixes remain available alongside scaled ones.
+    Scaled mixed objects without those
     sources stop with `BayesTools_ordered_coordinates_unavailable`; recreate
     the mixed posteriors from their source fits.
   - conditional ordered mixtures reweight model probabilities by the declared

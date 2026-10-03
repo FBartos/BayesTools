@@ -297,7 +297,12 @@ names.
   declared view transformations and undefined rows retain their meaning.
   Formula projections receive fitted weights and reuse the aligned fitted
   projection context directly, including ordinary coefficients, without
-  reapplying an original-scale coefficient view. Scaled mixed objects without
+  reapplying an original-scale coefficient view. Select owners from nonzero
+  fitted weights; scaling belongs to their registered prefix's emitted scale
+  record. Contexts agree within a prefix; combined-prefix targets union aligned
+  sources by authoritative names and refuse contradictory overlaps. Unscaled
+  prefixes keep their fitted draws when other prefixes are scaled. Scaled mixed
+  objects without
   needed fitted ordinary sources are unavailable and must be recreated from
   their source fits; never combine fitted weights with original-scale draws or
   reconstruct fitted draws by inverting the scale map.
