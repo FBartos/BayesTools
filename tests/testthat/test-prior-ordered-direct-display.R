@@ -26,7 +26,7 @@ test_that("ordered direct displays retain both weighted non-reference priors", {
   expect_identical(prior_density_ordinate(partial, 0)$point_mass, 0)
   expect_true(prior_density_ordinate(partial, 0)$exact)
   expect_identical(prior_density_ordinate(complete, 0)$behavior, "regular")
-  displayed <- .plot_data_ordered_prior_display(p, original)
+  displayed <- .plot_data_ordered_prior_display(original)
   expect_identical(displayed[[2L]]$x, x[x != 0])
   expect_identical(displayed[[2L]]$y, original[[2L]]$y[x != 0])
   expect_identical(displayed[[3L]], original[[3L]])
@@ -36,6 +36,8 @@ test_that("ordered direct displays retain both weighted non-reference priors", {
   expect_null(plots[[1L]])
   expect_true(all(vapply(plots[2:3], inherits, logical(1), "ggplot")))
   expect_equal(ggplot2::ggplot_build(plots[[2L]])$data[[1L]]$y, physical, tolerance = 2e-10)
+  expect_equal_each(ggplot2::ggplot_build(plots[[3L]])$data[[1L]]$y,
+    stats::dnorm(x, 0, .5), tolerance = 1e-14)
   expect_s3_class(plot(p, show_figures = 2L, plot_type = "ggplot", x_seq = x), "ggplot")
   expect_s3_class(plot(p, show_figures = 1L, plot_type = "ggplot", x_seq = x), "ggplot")
   selected <- plot(p, show_figures = -1L, plot_type = "ggplot", x_seq = x)
@@ -46,8 +48,35 @@ test_that("ordered direct displays retain both weighted non-reference priors", {
   expect_length(geom_prior(p, show_parameter = 2L, x_seq = x), 1L)
   grDevices::pdf(NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
+  original_lines <- graphics::lines.default
+  original_arrows <- graphics::arrows
+  curves <- arrows <- list()
+  testthat::local_mocked_bindings(
+    lines.default = function(x, y = NULL, ...){
+      curves[[length(curves) + 1L]] <<- list(x = x, y = y)
+      original_lines(x, y, ...)
+    },
+    arrows = function(x0, y0, x1 = x0, y1 = y0, ...){
+      arrows[[length(arrows) + 1L]] <<- list(x = x1, y = y1)
+      original_arrows(x0, y0, x1, y1, ...)
+    }, .package = "graphics")
   expect_no_warning(plot(p, x_seq = x))
+  expect_length(curves, 2L)
+  expect_length(arrows, 0L)
+  expect_identical(curves[[1L]]$x, x[x != 0])
+  expect_equal_each(curves[[1L]]$y, physical, tolerance = 2e-10)
+  expect_equal_each(curves[[2L]]$y, stats::dnorm(x, 0, .5), tolerance = 1e-14)
+  curves <- list()
   expect_no_warning(lines(p, x_seq = x))
+  expect_length(curves, 2L)
+  expect_length(arrows, 0L)
+  expect_equal_each(curves[[1L]]$y, physical, tolerance = 2e-10)
+  expect_equal_each(curves[[2L]]$y, stats::dnorm(x, 0, .5), tolerance = 1e-14)
+  curves <- list()
+  expect_no_warning(plot(p, show_figures = 1L, x_seq = x))
+  expect_length(curves, 0L)
+  expect_length(arrows, 1L)
+  expect_identical(arrows[[1L]], list(x = 0, y = 1))
 })
 
 test_that("visible ordered priors preserve genuine atoms and honest density failures", {
@@ -55,7 +84,7 @@ test_that("visible ordered priors preserve genuine atoms and honest density fail
     prior_spike_and_slab(prior("point", list(2)), prior("point", list(.5))))){
     p <- ordered_plot_test_fixture(total, prior("dirichlet", list(c(2, 2, .5))))$prior
     original <- density(p, n_points = 64L)
-    displayed <- .plot_data_ordered_prior_display(p, original)
+    displayed <- .plot_data_ordered_prior_display(original)
     expect_true(any(displayed[[3L]]$y > 0))
     if(!is.null(original[[3L]]$atoms)){
       expect_identical(displayed[[3L]]$atoms, original[[3L]]$atoms)
@@ -73,7 +102,7 @@ test_that("visible ordered priors preserve genuine atoms and honest density fail
   original <- density(p, force_samples = TRUE, n_points = 64L, n_samples = 128L)
   original_rng <- .Random.seed
   set.seed(600)
-  displayed <- .plot_data_ordered_prior_display(p,
+  displayed <- .plot_data_ordered_prior_display(
     density(p, force_samples = TRUE, n_points = 64L, n_samples = 128L))
   expect_identical(displayed, original)
   expect_identical(.Random.seed, original_rng)
@@ -330,4 +359,114 @@ test_that("ordered product integration failures return no partial curve", {
     fixed = TRUE)
   expect_identical(calls, 2L)
   expect_null(result)
+})
+
+test_that("ordered overlays map and clip only selected atom probabilities", {
+  ordinary <- ordered_plot_test_fixture(prior("normal", list(0, .5)),
+    levels = c("systematic", "alternate", "random"))$prior
+  point <- ordered_plot_test_fixture(prior("point", list(2)))$prior
+  mixed <- ordered_plot_test_fixture(prior_spike_and_slab(
+    prior("point", list(-2)), prior("point", list(.5))),
+    prior("dirichlet", list(c(2, 2, .5))))$prior
+  priors <- list(prior("normal", list(0, .5), prior_weights = .5),
+    prior("point", list(0), prior_weights = .5))
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  plot_prior_list(priors, ylim = c(0, 2), ylim2 = c(0, .6))
+  expect_no_warning(lines(ordinary, x_seq = c(-.2, .2)))
+  expect_warning(lines(ordinary, show_parameter = 1L, x_seq = c(-.2, .2)),
+    "Point-mass probabilities outside the active secondary-axis limits will be clipped.", fixed = TRUE)
+  expect_warning(lines(point, show_parameter = 4L),
+    "Point-mass probabilities outside the active secondary-axis limits will be clipped.", fixed = TRUE)
+  original_arrows <- graphics::arrows
+  captured <- list()
+  testthat::local_mocked_bindings(arrows = function(x0, y0, x1 = x0, y1 = y0, ...){
+    captured[[length(captured) + 1L]] <<- list(x = x1, y = y1)
+    original_arrows(x0, y0, x1, y1, ...)
+  }, .package = "graphics")
+  for(transformation in list(list(name = "exp", arguments = NULL, location = 1),
+    list(name = "tanh", arguments = NULL, location = 0),
+    list(name = "lin", arguments = list(a = 3, b = -2), location = 3))){
+    captured <- list()
+    state <- .plot_scale_y2_state_current()
+    expect_no_warning(lines(mixed, show_parameter = 3L,
+      transformation = transformation$name, transformation_arguments = transformation$arguments))
+    expect_length(captured, 1L)
+    expect_equal(captured[[1L]], list(x = transformation$location, y = .5 * state$scale_y2))
+    base <- plot_prior_list(priors, plot_type = "ggplot", ylim = c(0, 2), ylim2 = c(0, .6))
+    expect_no_warning(base + geom_prior(ordinary, x_seq = c(-.2, .2)))
+    expect_warning(base + geom_prior(ordinary, show_parameter = 1L, x_seq = c(-.2, .2)),
+      "Point-mass probabilities outside the active secondary-axis limits will be clipped.", fixed = TRUE)
+    expect_warning(base + geom_prior(point, show_parameter = 4L),
+      "Point-mass probabilities outside the active secondary-axis limits will be clipped.", fixed = TRUE)
+    expect_no_warning(overlay <- base + geom_prior(mixed, show_parameter = 3L,
+      transformation = transformation$name, transformation_arguments = transformation$arguments))
+    data <- ggplot2::ggplot_build(overlay)$data
+    expect_equal(tail(data, 1L)[[1L]]$x, transformation$location)
+    expect_equal(tail(data, 1L)[[1L]]$yend, .5 * base$bt_scale_y2_state$scale_y2)
+  }
+})
+
+test_that("ordered display with no finite ordinate gives a controlled remedy", {
+  p <- ordered_plot_test_fixture(prior("normal", list(0, .5)),
+    levels = c("systematic", "alternate", "random"))$prior
+  unavailable <- density(p, x_seq = c(-1, 0, 1))
+  unavailable[[2L]]$x <- 0
+  unavailable[[2L]]$y <- Inf
+  testthat::local_mocked_bindings(density.prior = function(...) unavailable)
+  expect_error(plot(p, show_figures = 2L, x_seq = 0, plot_type = "ggplot"),
+    "The ordered prior density curve is unavailable: the requested 'x_seq' contains no finite plotting ordinate. Supply 'x_seq' with finite density ordinates.",
+    fixed = TRUE, class = "BayesTools_prior_curve_unavailable")
+  expect_no_warning(plot(p, show_figures = 1L, x_seq = 0, plot_type = "ggplot"))
+})
+
+test_that("modern ordered overlays report unresolved raw evaluations once per route", {
+  capture <- function(f){
+    warnings <- list()
+    value <- withCallingHandlers(f(), warning = function(w){
+      warnings[[length(warnings) + 1L]] <<- w
+      invokeRestart("muffleWarning")
+    })
+    list(value = value, warnings = warnings)
+  }
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, 1)),
+    prior("dirichlet", list(c(.5, .25, .25))))
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  for(default in c(FALSE, TRUE)){
+    samples <- if(default) as_mixed_posteriors(fixture$fit, "mu_f") else fixture$samples
+    marginal <- marginal_posterior(samples, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+    for(backend in c("base", "ggplot")){
+      for(marginal_plot in c(FALSE, TRUE)){
+        output <- capture(function(){
+          if(marginal_plot) plot_marginal(list(mu_f = marginal), "mu_f", prior = TRUE, plot_type = backend) else
+            plot_posterior(samples, "mu_f", prior = TRUE, plot_type = backend)
+        })
+        expect_length(output$warnings, 2L)
+        for(warning in output$warnings){
+          expect_s3_class(warning, "BayesTools_prior_curve_unavailable")
+          expect_s3_class(warning, "BayesTools_plot_condition")
+          expect_true(all(is.finite(warning$unresolved_values)))
+          expect_false(any(warning$unresolved_values == 0))
+          if(default){
+            expect_identical(warning$unresolved_values, 2^-46)
+            expect_identical(conditionMessage(warning), paste0(
+              "The prior density curve is partially unavailable: numerical evaluations were unresolved at 1 plotting coordinate. ",
+              "Available curve points and declared atoms are retained; use 'prior = FALSE' to draw the posterior alone."))
+          }else{
+            expect_match(conditionMessage(warning), "No continuous curve points are available", fixed = TRUE)
+          }
+        }
+        if(backend == "ggplot"){
+          data <- ggplot2::ggplot_build(output$value)$data
+          expect_equal(vapply(head(data, if(default) 3L else 1L), nrow, integer(1)),
+            if(default) c(198L, 198L, 1000L) else 1000L)
+        }
+      }
+    }
+  }
+  ordinary <- ordered_plot_test_fixture(prior("normal", list(0, .5)),
+    levels = c("systematic", "alternate", "random"))
+  ordinary$samples <- as_mixed_posteriors(ordinary$fit, "mu_f")
+  expect_no_warning(plot_posterior(ordinary$samples, "mu_f", prior = TRUE, plot_type = "ggplot"))
 })

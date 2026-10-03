@@ -3311,11 +3311,13 @@
       list(raw = seq(limits[1], limits[2], length.out = size), den = NULL)
     }
 
+    unresolved_values <- numeric()
     evaluate <- function(raw){
       finite_raw <- is.finite(raw)
       y <- rep(NA_real_, length(raw))
       if(any(finite_raw) && structural){
         y[finite_raw] <- .prior_density_route_density(route, raw[finite_raw])
+        unresolved_values <<- unique(c(unresolved_values, raw[finite_raw & is.na(y)]))
       }else if(any(finite_raw)){
         y[finite_raw] <- stats::approx(
           dist$density$x,
@@ -3396,6 +3398,11 @@
     finite <- is.finite(x_den) & is.finite(y_den)
     x_den  <- x_den[finite]
     y_den  <- y_den[finite]
+    if(length(unresolved_values) > 0L){
+      .prior_linear_density_warn_curve_unavailable(
+        unresolved_values = unresolved_values, partial = length(x_den) > 0L
+      )
+    }
 
     if(length(x_den) > 0L){
       out_den <- list(
@@ -3456,21 +3463,29 @@
   return(out)
 }
 
-# Warning of an omitted prior curve (.prior_linear_density_to_plot_data()).
-.prior_linear_density_warn_curve_unavailable <- function(){
+# Warning of a partly or wholly unavailable prior curve.
+.prior_linear_density_warn_curve_unavailable <- function(unresolved_values = NULL, partial = FALSE){
 
   warning(structure(
     class = c("BayesTools_prior_curve_unavailable", "BayesTools_plot_condition",
               "warning", "condition"),
     list(
-      message = paste0(
+      message = if(!is.null(unresolved_values)) paste0(
+        "The prior density curve is ", if(partial) "partially unavailable" else "unavailable",
+        ": numerical evaluations were unresolved at ", length(unresolved_values),
+        if(length(unresolved_values) == 1L) " plotting coordinate. " else " plotting coordinates. ",
+        if(partial) "Available curve points and declared atoms are retained; " else
+          "No continuous curve points are available; declared atoms are retained; ",
+        "use 'prior = FALSE' to draw the posterior alone."
+      ) else paste0(
         "The prior density curve is unavailable: this prior-density ",
         "combination has no exact route, and its numerical grid cannot ",
         "resolve the scale of a heavy-tailed product term (e.g. a Cauchy ",
         "ordered total or 'multiply_by' factor). The prior curve is omitted ",
         "from the plot; plot the terms separately."
       ),
-      call = NULL
+      call = NULL,
+      unresolved_values = unresolved_values
     )
   ))
 }

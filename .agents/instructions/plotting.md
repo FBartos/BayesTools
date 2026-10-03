@@ -52,6 +52,14 @@ ordinates without changing the finite curve, its grid, or its mass. Public
 `density()` and `prior_density_ordinate()` retain their numerical and
 structural meaning. Unknown and unsupported density routes keep their
 existing explicit limitations.
+Finite displayed peak heights depend on the evaluation grid and do not
+represent an infinite mathematical peak. Unresolved raw numerical evaluations
+warn once per continuous route with `BayesTools_prior_curve_unavailable` (also
+`BayesTools_plot_condition`), distinguishing partially available curves from
+wholly unavailable ones; keep every available point and declared atom. Exact
+infinities, exact zero/support-zero densities and intentional transformation
+limits do not trigger that warning. A direct ordered curve without any finite
+ordinate gives a classed error with the remedy `x_seq`.
 Direct prior selectors retain original level numbering; explicit selectors
 can select the reference. Multiple ordered ggplot selections return positional
 lists with NULL holes for unselected figures, including the default reference,
@@ -61,6 +69,10 @@ cannot shift. Ordered overlays match posterior colors with dashed defaults and
 one posterior-owned legend; mapped ordered posterior layers use automatic glyph
 participation when the legend is enabled. Mixed-measure displays retain exact
 atoms with unchanged probability masses and the active probability-axis mapping.
+Direct overlay mapping and clipping checks inspect selected components only;
+an omitted reference cannot create a clipping warning. Explicit reference and
+genuine non-reference atom selections still use the active mapping and warn
+when their probabilities exceed it.
 
 `plot_models()` uses semantic ordered levels and transformed model summaries.
 Posterior-only plots skip prior summaries and transforms of unused prior fields.

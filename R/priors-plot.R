@@ -72,6 +72,12 @@
 #' from the default selection. Explicit selectors retain the original level
 #' numbering and can select a reference level. Genuine non-reference zero and
 #' point levels remain visible.
+#' Finite displayed peak heights depend on the evaluation grid and do not
+#' represent an infinite mathematical peak. A direct ordered curve with no
+#' finite plotting ordinate stops with class \code{BayesTools_prior_curve_unavailable}
+#' (also \code{BayesTools_plot_condition}); supply \code{x_seq} containing
+#' finite density ordinates. Probability-axis mapping and clipping checks use
+#' selected components only, including an explicitly selected reference.
 #'
 #' @seealso [prior()] [lines.prior()]  [geom_prior()]
 #' @rdname plot.prior
@@ -203,8 +209,8 @@ plot.prior <- function(x, plot_type = "base",
 
   # ordered factor prior plots
   if(is.prior.ordered(x)){
-    plot_data <- .plot_data_ordered_prior_display(x, plot_data,
-      transformation = transformation, transformation_arguments = transformation_arguments)
+    selected <- if(is.null(show_figures)) .plot_ordered_prior_default_figures(x) else seq_along(plot_data)[show_figures]
+    plot_data <- .plot_data_ordered_prior_display(plot_data, selected)
     plots <- .plot.prior.simplex(x = x, plot_type = plot_type, plot_data = plot_data, show_figures = show_figures, par_name = par_name, ...)
     if(plot_type == "ggplot"){
       return(plots)
@@ -339,14 +345,22 @@ plot.prior <- function(x, plot_type = "base",
 
 # Keep the actual finite ordinates of every non-reference continuous curve.
 # Infinite density at one point is not a probability mass.
-.plot_data_ordered_prior_display <- function(prior, plot_data,
-                                            transformation = NULL, transformation_arguments = NULL){
+.plot_data_ordered_prior_display <- function(plot_data, selected = seq_along(plot_data)){
 
-  for(i in seq_along(plot_data)){
+  for(i in selected){
     component <- plot_data[[i]]
     if(inherits(component, "density.prior.simple") &&
        !inherits(component, "density.prior.mixed_measure")){
       keep <- is.finite(component$x) & is.finite(component$y)
+      if(!any(keep)){
+        stop(structure(
+          list(message = paste0(
+            "The ordered prior density curve is unavailable: the requested 'x_seq' ",
+            "contains no finite plotting ordinate. Supply 'x_seq' with finite density ordinates."
+          ), call = NULL),
+          class = c("BayesTools_prior_curve_unavailable", "BayesTools_plot_condition", "error", "condition")
+        ))
+      }
       if(all(keep)) next
       component$x <- component$x[keep]
       component$y <- component$y[keep]
@@ -1052,12 +1066,14 @@ plot.prior <- function(x, plot_type = "base",
     plot_data <- list(plot_data)
   }
 
-  is_point <- sapply(plot_data, inherits, what = "density.prior.point")
-  if(!any(is_point)){
+  probabilities <- unlist(lapply(plot_data, function(component){
+    if(inherits(component, "density.prior.point")) component$y else
+      if(inherits(component, "density.prior.mixed_measure")) component$atoms$mass
+  }))
+  if(length(probabilities) == 0L){
     return(invisible(NULL))
   }
 
-  probabilities <- unlist(lapply(plot_data[is_point], function(x) x[["y"]]))
   ylim2 <- scale_y2_state[["usr"]][3:4] / scale_y2_state[["scale_y2"]]
   if(any(probabilities < min(ylim2) | probabilities > max(ylim2))){
     warning(

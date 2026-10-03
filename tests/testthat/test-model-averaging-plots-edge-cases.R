@@ -129,6 +129,17 @@ test_that("ordered prior overlays omit only the design reference and retain leve
     expect_identical(sort(unique(built$data[[3L]]$colour)), c("blue", "red"))
     expect_identical(plot$scales$get_scales("colour")$breaks, c("A", "R"))
     expect_length(built$plot$guides$params, 1L)
+    partial <- built$data[[1L]]
+    selected <- unique(c(1L, which.min(abs(partial$x)), which.max(partial$y)))
+    for(i in selected){
+      reference <- stats::integrate(function(share){
+        stats::dnorm(partial$x[i] / share, 0, .5) / share
+      }, 0, 1, rel.tol = 1e-12, abs.tol = 1e-14)
+      expect_lt(reference$abs.error, 1e-10)
+      expect_equal(partial$y[i], reference$value, tolerance = 2e-10)
+    }
+    expect_equal_each(built$data[[2L]]$y,
+      stats::dnorm(built$data[[2L]]$x, 0, .5), tolerance = 1e-14)
   }
   explicit <- plot_posterior(fixture$samples, "mu_f", prior = TRUE, plot_type = "ggplot",
     n_points = 64, dots_prior = list(col = "purple", lty = 3))
@@ -156,6 +167,21 @@ test_that("non-reference ordered zero levels and mixed atoms remain visible", {
       expect_true(any(vapply(points, function(x) identical(x$x, 0) && identical(x$y, 1), logical(1))))
     }
   }
+  zero <- ordered_plot_test_fixture(prior("normal", list(0, 1)), c(0, .3, .7))
+  marginal <- marginal_posterior(zero$samples, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+  expect_identical(as.numeric(marginal$middle), rep(0, 120L))
+  atoms <- .posterior_atoms_get(marginal$middle)
+  expect_identical(atoms$mass, 1)
+  expect_identical(as.numeric(atoms$locations), 0)
+  point <- ordered_plot_test_fixture(prior("point", list(2)),
+    prior("dirichlet", list(c(2, 2, .5))))
+  columns <- .JAGS_prior_factor_names("mu_f", point$prior)
+  context <- posterior_metadata(point$samples, "prior_context")
+  endpoint <- .prior_density_from_context(context, stats::setNames(c(1, 1, 0), columns))
+  ordinate <- prior_density_ordinate(endpoint, 2)
+  expect_identical(ordinate$behavior, "infinite")
+  expect_identical(ordinate$point_mass, 0)
+  expect_true(ordinate$exact)
   fixture <- ordered_plot_test_fixture(
     prior_spike_and_slab(prior("point", list(-2)), prior("point", list(.5))),
     prior("dirichlet", list(c(2, 2, .5))))
@@ -164,7 +190,7 @@ test_that("non-reference ordered zero levels and mixed atoms remain visible", {
     list(name = "lin", arguments = list(a = 3, b = -2), location = 3))){
     original <- density(fixture$prior, n_points = 64L, transformation = transformation$name,
       transformation_arguments = transformation$arguments)
-    displayed <- .plot_data_ordered_prior_display(fixture$prior, original)[[3L]]
+    displayed <- .plot_data_ordered_prior_display(original)[[3L]]
     expect_identical(displayed$continuous, original[[3L]]$continuous)
     expect_equal(displayed$atoms, data.frame(location = transformation$location, mass = .5))
     direct <- plot(fixture$prior, show_figures = 3L, plot_type = "ggplot", n_points = 64L,

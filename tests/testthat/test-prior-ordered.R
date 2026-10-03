@@ -2568,8 +2568,9 @@ test_that("ordered mixed-measure densities preserve atoms and continuous mass", 
   expect_equal(point_layer$data$yend, .5)
 
   layer_geoms <- geom_prior(fixed, show_parameter = 2, n_points = 201)
+  expect_s3_class(layer_geoms, "BayesTools_prior_overlay")
   expect_equal(
-    vapply(layer_geoms, function(layer) class(layer$geom)[1L], character(1)),
+    vapply(layer_geoms$geoms, function(layer) class(layer$geom)[1L], character(1)),
     c("GeomLine", "GeomSegment")
   )
 })

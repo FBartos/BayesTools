@@ -173,6 +173,44 @@ test_that("ordered model estimates have prior and posterior visual coverage", {
   }
 })
 
+test_that("ordered small-alpha Normal partial priors retain their finite curves", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, 1)),
+    prior("dirichlet", list(c(.5, .25, .25))))
+  for(level in c(2L, 3L)){
+    for(backend in c("base", "ggplot")){
+      draw <- function(){
+        plot(fixture$prior, show_figures = level, plot_type = backend,
+          xlim = c(-3, 3), n_points = 64L, xlab = "Level effect")
+      }
+      vdiffr::expect_doppelganger(paste0("ordered-direct-small-alpha-level", level, "-", backend),
+        if(backend == "base") draw else draw())
+    }
+  }
+})
+
+test_that("ordered transformed mixed overlays retain the active probability mapping", {
+  fixture <- ordered_plot_test_fixture(prior_spike_and_slab(
+    prior("point", list(-2)), prior("point", list(.5))),
+    prior("dirichlet", list(c(2, 2, .5))))
+  priors <- list(prior("normal", list(0, .5), prior_weights = .5),
+    prior("point", list(0), prior_weights = .5))
+  for(backend in c("base", "ggplot")){
+    draw <- function(){
+      base <- plot_prior_list(priors, plot_type = backend, ylim = c(0, 2),
+        ylim2 = c(0, .6), xlim = c(-1, 2), xlab = "Transformed effect")
+      if(backend == "base"){
+        lines(fixture$prior, show_parameter = 3L, n_points = 64L,
+          transformation = "exp", col = "orange", lty = 2)
+      }else{
+        base + geom_prior(fixture$prior, show_parameter = 3L, n_points = 64L,
+          transformation = "exp", col = "orange", lty = 2)
+      }
+    }
+    vdiffr::expect_doppelganger(paste0("ordered-direct-transformed-overlay-", backend),
+      if(backend == "base") draw else draw())
+  }
+})
+
 
 # ============================================================================ #
 # SECTION 1: plot_prior_list basic tests

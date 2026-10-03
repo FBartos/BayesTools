@@ -1,4 +1,11 @@
 # version 0.3.1
+- ordered prior overlays check probability-axis clipping for selected levels
+  and preserve the active atom mapping in both backends. Unresolved numerical
+  prior-curve evaluations now warn once per continuous route, retaining every
+  available point and declared atom and distinguishing partial from whole
+  unavailability. Exact infinite density points remain continuous; finite
+  displayed heights depend on the grid. A direct ordered curve with no finite
+  ordinate gives a classed error asking for a suitable `x_seq`.
 - direct ordered Dirichlet-product densities with literal, untruncated centered
   Normal totals retain positive tails when a logistic share rounds to one.
   Quadrature budgets, tolerances and exact zero-boundary identities are unchanged.

@@ -139,6 +139,12 @@ Direct ordered plots and layers omit persisted zero-design reference levels
 from the default selection. Explicit selectors retain the original level
 numbering and can select a reference level. Genuine non-reference zero and
 point levels remain visible.
+Finite displayed peak heights depend on the evaluation grid and do not
+represent an infinite mathematical peak. A direct ordered curve with no
+finite plotting ordinate stops with class \code{BayesTools_prior_curve_unavailable}
+(also \code{BayesTools_plot_condition}); supply \code{x_seq} containing
+finite density ordinates. Probability-axis mapping and clipping checks use
+selected components only, including an explicitly selected reference.
 }
 \examples{
 # create some prior distributions

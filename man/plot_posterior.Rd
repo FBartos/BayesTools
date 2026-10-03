@@ -181,6 +181,12 @@ Posterior draws that declare no prior (a \code{prior_list} of
 without a prior density) and carry no prior density have no prior curve:
 with \code{prior = TRUE}, the posterior is drawn alone with a warning of
 the same class.
+Raw numerical plotting evaluations that remain unresolved warn once per
+continuous route with the same classes. The warning distinguishes a partly
+available curve from a wholly unavailable one; every available curve point
+and declared atom is retained. Use \code{prior = FALSE} to draw the posterior
+alone. Exact infinite density points and exact zero densities do not trigger
+this warning. Finite displayed peak heights depend on the evaluation grid.
 
 Ordered factors are plotted as semantic level effects. Their persisted
 zero-design reference rows are omitted for both raw and already transformed
