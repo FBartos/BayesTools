@@ -56,9 +56,11 @@ Finite displayed peak heights depend on the evaluation grid and do not
 represent an infinite mathematical peak. Unresolved raw numerical evaluations
 warn once per continuous route with `BayesTools_prior_curve_unavailable` (also
 `BayesTools_plot_condition`), distinguishing partially available curves from
-wholly unavailable ones; keep every available point and declared atom. Exact
-infinities, exact zero/support-zero densities and intentional transformation
-limits do not trigger that warning. A direct ordered curve without any finite
+wholly unavailable ones; keep every available point and declared atom.
+The warning's `unresolved_values` field retains evaluation coordinates on the
+source scale, before any plotting transformation. Exact infinities, exact
+zero/support-zero densities and intentional transformation limits do not
+trigger that warning. A direct ordered curve without any finite
 ordinate gives a classed error with the remedy `x_seq`.
 Direct prior selectors retain original level numbering; explicit selectors
 can select the reference. Multiple ordered ggplot selections return positional

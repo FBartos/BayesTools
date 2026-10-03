@@ -3,8 +3,10 @@
   and preserve the active atom mapping in both backends. Unresolved numerical
   prior-curve evaluations now warn once per continuous route, retaining every
   available point and declared atom and distinguishing partial from whole
-  unavailability. Exact infinite density points remain continuous; finite
-  displayed heights depend on the grid. A direct ordered curve with no finite
+  unavailability. The warning's `unresolved_values` field reports evaluation
+  coordinates on the source scale, before plotting transformations.
+  Exact infinite density points remain continuous; finite displayed heights
+  depend on the grid. A direct ordered curve with no finite
   ordinate gives a classed error asking for a suitable `x_seq`.
 - direct ordered Dirichlet-product densities with literal, untruncated centered
   Normal totals retain positive tails when a logistic share rounds to one.

@@ -420,7 +420,7 @@ test_that("ordered display with no finite ordinate gives a controlled remedy", {
   expect_no_warning(plot(p, show_figures = 1L, x_seq = 0, plot_type = "ggplot"))
 })
 
-test_that("modern ordered overlays report unresolved raw evaluations once per route", {
+test_that("ordered overlay warnings retain source coordinates and available measures", {
   capture <- function(f){
     warnings <- list()
     value <- withCallingHandlers(f(), warning = function(w){
@@ -429,44 +429,111 @@ test_that("modern ordered overlays report unresolved raw evaluations once per ro
     })
     list(value = value, warnings = warnings)
   }
-  fixture <- ordered_plot_test_fixture(prior("normal", list(0, 1)),
-    prior("dirichlet", list(c(.5, .25, .25))))
+  fixture <- ordered_plot_test_fixture(prior_spike_and_slab(
+    prior("normal", list(0, .5)), prior("point", list(.5))),
+    levels = c("systematic", "alternate", "random"))
+  samples <- as_mixed_posteriors(fixture$fit, "mu_f")
+  marginal <- marginal_posterior(samples, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+  original_density <- .prior_density_route_density
+  original_ordinate <- .prior_density_route_ordinate
+  original_plot_data <- .prior_linear_density_to_plot_data
+  injected <- FALSE
+  records <- list()
+  zero_heights <- numeric()
+  refused <- list()
+  testthat::local_mocked_bindings(
+    .prior_density_route_density = function(route, x, batch_singular = FALSE){
+      y <- original_density(route, x, batch_singular)
+      if(identical(route$type, "conditional_normal")){
+        zero_heights <<- c(zero_heights, y[x == 0])
+        at_refusal <- x == .125
+        if(injected && any(at_refusal)){
+          result <- original_ordinate(route, .125)
+          expect_identical(result$behavior, "regular")
+          expect_true(result$exact)
+          result$log_density <- NA_real_
+          result$exact <- FALSE
+          result$reason <- "Injected numerical quadrature refusal."
+          result$provenance$integration <- list(converged = FALSE)
+          refused[[length(refused) + 1L]] <<- result
+          y[at_refusal] <- .prior_density_ordinate_height_value(result)
+        }
+      }
+      y
+    },
+    .prior_linear_density_to_plot_data = function(...){
+      value <- original_plot_data(...)
+      records[[length(records) + 1L]] <<- value
+      value
+    }
+  )
   grDevices::pdf(NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
-  for(default in c(FALSE, TRUE)){
-    samples <- if(default) as_mixed_posteriors(fixture$fit, "mu_f") else fixture$samples
-    marginal <- marginal_posterior(samples, "mu_f", use_formula = FALSE, prior_samples = TRUE)
+  for(transformation in list(list(name = NULL, arguments = NULL, refused = .125),
+    list(name = "lin", arguments = list(a = 2, b = 2), refused = 2.25))){
     for(backend in c("base", "ggplot")){
       for(marginal_plot in c(FALSE, TRUE)){
-        output <- capture(function(){
-          if(marginal_plot) plot_marginal(list(mu_f = marginal), "mu_f", prior = TRUE, plot_type = backend) else
-            plot_posterior(samples, "mu_f", prior = TRUE, plot_type = backend)
-        })
-        expect_length(output$warnings, 2L)
-        for(warning in output$warnings){
-          expect_s3_class(warning, "BayesTools_prior_curve_unavailable")
-          expect_s3_class(warning, "BayesTools_plot_condition")
-          expect_true(all(is.finite(warning$unresolved_values)))
-          expect_false(any(warning$unresolved_values == 0))
-          if(default){
-            expect_identical(warning$unresolved_values, 2^-46)
-            expect_identical(conditionMessage(warning), paste0(
-              "The prior density curve is partially unavailable: numerical evaluations were unresolved at 1 plotting coordinate. ",
-              "Available curve points and declared atoms are retained; use 'prior = FALSE' to draw the posterior alone."))
-          }else{
-            expect_match(conditionMessage(warning), "No continuous curve points are available", fixed = TRUE)
-          }
+        draw <- function(){
+          if(marginal_plot) plot_marginal(list(mu_f = marginal), "mu_f", prior = TRUE,
+            plot_type = backend, xlim = c(-.875, 1.125),
+            transformation = transformation$name, transformation_arguments = transformation$arguments) else
+            plot_posterior(samples, "mu_f", prior = TRUE, plot_type = backend,
+              xlim = c(-.875, 1.125), transformation = transformation$name,
+              transformation_arguments = transformation$arguments)
+        }
+        injected <- FALSE
+        records <- list()
+        baseline <- capture(draw)
+        expect_length(baseline$warnings, 0L)
+        expected <- records
+        expect_length(expected, 2L)
+        partial <- which(vapply(expected, function(record){
+          any(record$density$x == transformation$refused)
+        }, logical(1)))
+        expect_identical(partial, 1L)
+        expect_length(expected[[partial]]$points1$x, 1L)
+        expect_identical(expected[[partial]]$points1$y, .5)
+        baseline_curve <- expected[[partial]]$density
+        available <- expected[[partial]]$density$x != transformation$refused
+        expected[[partial]]$density$x <- expected[[partial]]$density$x[available]
+        expected[[partial]]$density$y <- expected[[partial]]$density$y[available]
+        injected <- TRUE
+        records <- list()
+        output <- capture(draw)
+        expect_length(output$warnings, 1L)
+        warning <- output$warnings[[1L]]
+        expect_s3_class(warning, "BayesTools_prior_curve_unavailable")
+        expect_s3_class(warning, "BayesTools_plot_condition")
+        expect_identical(warning$unresolved_values, .125)
+        expect_identical(conditionMessage(warning), paste0(
+          "The prior density curve is partially unavailable: numerical evaluations were unresolved at 1 evaluation coordinate on the source scale. ",
+          "Available curve points and declared atoms are retained; use 'prior = FALSE' to draw the posterior alone."))
+        expect_identical(records, expected)
+        if(!is.null(transformation$name)){
+          expect_false(identical(warning$unresolved_values, transformation$refused))
         }
         if(backend == "ggplot"){
-          data <- ggplot2::ggplot_build(output$value)$data
-          expect_equal(vapply(head(data, if(default) 3L else 1L), nrow, integer(1)),
-            if(default) c(198L, 198L, 1000L) else 1000L)
+          expected_render <- ggplot2::ggplot_build(baseline$value)$data
+          curve_layer <- which(vapply(expected_render, function(layer){
+            identical(layer$x, baseline_curve$x) && identical(layer$y, baseline_curve$y)
+          }, logical(1)))
+          expect_length(curve_layer, 1L)
+          expected_render[[curve_layer]] <- expected_render[[curve_layer]][available, , drop = FALSE]
+          rownames(expected_render[[curve_layer]]) <- NULL
+          expect_identical(ggplot2::ggplot_build(output$value)$data, expected_render)
         }
       }
     }
   }
+  expect_true(length(zero_heights) > 0L)
+  expect_true(all(zero_heights == Inf))
+  expect_true(length(refused) > 0L)
+  expect_true(all(vapply(refused, function(result){
+    identical(result$behavior, "regular") && !result$exact && is.na(result$log_density)
+  }, logical(1))))
   ordinary <- ordered_plot_test_fixture(prior("normal", list(0, .5)),
     levels = c("systematic", "alternate", "random"))
   ordinary$samples <- as_mixed_posteriors(ordinary$fit, "mu_f")
+  injected <- FALSE
   expect_no_warning(plot_posterior(ordinary$samples, "mu_f", prior = TRUE, plot_type = "ggplot"))
 })

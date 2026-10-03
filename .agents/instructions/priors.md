@@ -512,8 +512,10 @@ prior density warn with the same class and draw the posterior alone; draws
 with a prior list but without their prior density still stop. The
 same warning class reports unresolved raw numerical plotting evaluations once
 per continuous route, distinguishing a partially available curve from one
-with no available continuous points. Available points and declared atoms remain;
-`prior = FALSE` draws the posterior alone. Mathematical infinite ordinates,
+with no available continuous points. Its `unresolved_values` field contains
+evaluation coordinates on the source scale, before any plotting transformation.
+Available points and declared atoms remain; `prior = FALSE` draws the posterior
+alone. Mathematical infinite ordinates,
 exact zero/support-zero densities and intentional transformation limits are
 not unresolved evaluations. Finite displayed heights depend on the grid.
 The mixed-measure `density()` of an ordered

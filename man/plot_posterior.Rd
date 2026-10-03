@@ -184,7 +184,9 @@ the same class.
 Raw numerical plotting evaluations that remain unresolved warn once per
 continuous route with the same classes. The warning distinguishes a partly
 available curve from a wholly unavailable one; every available curve point
-and declared atom is retained. Use \code{prior = FALSE} to draw the posterior
+and declared atom is retained. Its \code{unresolved_values} field contains
+the evaluation coordinates on the source scale, before any plotting
+transformation. Use \code{prior = FALSE} to draw the posterior
 alone. Exact infinite density points and exact zero densities do not trigger
 this warning. Finite displayed peak heights depend on the evaluation grid.
 

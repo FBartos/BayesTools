@@ -3473,7 +3473,8 @@
       message = if(!is.null(unresolved_values)) paste0(
         "The prior density curve is ", if(partial) "partially unavailable" else "unavailable",
         ": numerical evaluations were unresolved at ", length(unresolved_values),
-        if(length(unresolved_values) == 1L) " plotting coordinate. " else " plotting coordinates. ",
+        if(length(unresolved_values) == 1L) " evaluation coordinate on the source scale. " else
+          " evaluation coordinates on the source scale. ",
         if(partial) "Available curve points and declared atoms are retained; " else
           "No continuous curve points are available; declared atoms are retained; ",
         "use 'prior = FALSE' to draw the posterior alone."
