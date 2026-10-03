@@ -197,9 +197,24 @@
     return(prior("point", list(location = 0)))
   }
 
+  weight_sum <- sum(weights)
+  project_location <- function(location){
+
+    if(is.numeric(location) && length(location) == 1L &&
+       is.finite(location) && all(is.finite(weights))){
+      if(location == 0){
+        return(0)
+      }
+      if(!is.finite(weight_sum)){
+        return(sum(weights * location))
+      }
+    }
+    weight_sum * location
+  }
+
   if(is.prior.point(prior)){
     location <- prior$parameters[["location"]]
-    return(prior("point", list(location = sum(weights) * location)))
+    return(prior("point", list(location = project_location(location))))
   }
 
   relative_norm <- sqrt(sum((weights / max_weight)^2))
@@ -219,21 +234,21 @@
     "mnormal" = prior(
       "normal",
       list(
-        mean = sum(weights) * prior$parameters[["mean"]],
+        mean = project_location(prior$parameters[["mean"]]),
         sd   = scalar_scale
       )
     ),
     "mt" = prior(
       "t",
       list(
-        location = sum(weights) * prior$parameters[["location"]],
+        location = project_location(prior$parameters[["location"]]),
         scale    = scalar_scale,
         df       = prior$parameters[["df"]]
       )
     ),
     "mpoint" = prior(
       "point",
-      list(location = sum(weights) * prior$parameters[["location"]])
+      list(location = project_location(prior$parameters[["location"]]))
     ),
     stop("Unsupported vector prior distribution for linear-combination densities.", call. = FALSE)
   )

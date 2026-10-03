@@ -4109,3 +4109,56 @@ test_that("N93 rejected real quadrature keeps its diagnostic remedy", {
                "Conditional-normal prior density was rejected by diagnostics: integration reported",
                fixed = TRUE)
 })
+
+for(location in c(0, 1e-200)){
+  test_that(paste("N03 location identity for overflowing positive normal weights at", location), {
+
+    scalar <- BayesTools:::.prior_linear_vector_scalar_prior(
+      prior("mnormal", list(mean = location, sd = 1e-200, K = 2)), c(1.3e308, 1.3e308)
+    )
+    expect_identical(scalar$distribution, "normal")
+    if(location == 0){
+      expect_identical(scalar$parameters$mean, 0)
+    }else{
+      # E[w1 X1 + w2 X2] = w1 E[X1] + w2 E[X2].
+      expect_equal(scalar$parameters$mean / 1e108, 2.6, tolerance = 1e-14)
+    }
+    expect_equal(scalar$parameters$sd / 1.3e108, sqrt(2), tolerance = 1e-12)
+  })
+  test_that(paste("N03 location identity for overflowing positive t weights at", location), {
+
+    scalar <- BayesTools:::.prior_linear_vector_scalar_prior(
+      prior("mt", list(location = location, scale = 1e-200, df = 7, K = 2)), c(1.3e308, 1.3e308)
+    )
+    expect_identical(scalar$distribution, "t")
+    if(location == 0){
+      expect_identical(scalar$parameters$location, 0)
+    }else{
+      expect_equal(scalar$parameters$location / 1e108, 2.6, tolerance = 1e-14)
+    }
+    expect_equal(scalar$parameters$scale / 1.3e108, sqrt(2), tolerance = 1e-12)
+    expect_identical(scalar$parameters$df, 7)
+  })
+  test_that(paste("N03 bound independent point-factor location at", location), {
+
+    point_factor <- prior_factor_levels(
+      prior_factor("point", list(location = location), contrast = "independent"), c("a", "b")
+    )
+    scalar <- BayesTools:::.prior_linear_vector_scalar_prior(point_factor, c(1.3e308, 1.3e308))
+    expect_true(is.prior.point(scalar))
+    if(location == 0){
+      expect_identical(scalar$parameters$location, 0)
+    }else{
+      expect_equal(scalar$parameters$location / 1e108, 2.6, tolerance = 1e-14)
+    }
+  })
+}
+
+test_that("N03 invalid point-factor weights cannot become a structural zero", {
+
+  point_factor <- prior_factor_levels(
+    prior_factor("point", list(location = 0), contrast = "independent"), c("a", "b")
+  )
+  expect_error(BayesTools:::.prior_linear_vector_scalar_prior(point_factor, c(Inf, 1)), "location")
+  expect_error(BayesTools:::.prior_linear_vector_scalar_prior(point_factor, c(NA_real_, 1)))
+})
