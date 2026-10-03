@@ -82,6 +82,8 @@ should some input be checked. Defaults to:
 \item{call}{string to be placed as a prefix to the error call.}
 
 \item{autofit_control}{a list of arguments controlling the autofit function.
+Convergence thresholds and \code{max_time$time} must be finite and non-missing.
+Set a convergence threshold or \code{max_time} to \code{NULL} to disable that check.
 Possible options are:
 \describe{
 \item{max_Rhat}{maximum R-hat error for the autofit function.
@@ -90,9 +92,9 @@ Defaults to \code{1.05}.}
 \item{max_error}{maximum MCMC error. Defaults to \code{0.01}.}
 \item{max_SD_error}{maximum MCMC error as the proportion of standard
 deviation of the parameters. Defaults to \code{0.05}.}
-\item{max_time}{list specifying the time \code{time} and \code{units}
-after which the automatic fitting function is stopped. The units arguments
-need to correspond to \code{units} passed to \link[base]{difftime} function.}
+\item{max_time}{list with fields \code{time} and \code{unit}, specifying
+when the automatic fitting function is stopped. The \code{unit} value
+corresponds to the \code{units} argument of \link[base]{difftime}.}
 \item{max_extend}{number of times after which the automatic fitting function is stopped.}
 \item{sample_extend}{number of samples between each convergence check. Defaults to
 \code{1000}.}
