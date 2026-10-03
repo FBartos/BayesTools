@@ -1,5 +1,7 @@
 # version 0.3.1
 ### Fixes
+- The interactive test runner prefers the current R session's executable before
+  falling back to `Rscript` on PATH.
 - Declares `waldo` as an explicit test dependency in `Suggests`.
 - Vignette source fingerprints ignore the publication-only DESCRIPTION fields
   `Repository` and `Date/Publication`, while retaining source-content changes.

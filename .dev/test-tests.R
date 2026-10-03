@@ -135,12 +135,12 @@ if (!exists("bayestools_quiet_llm_reporter", mode = "function")) {
 
 .bayestools_test_rscript <- function() {
 
-  command <- Sys.which("Rscript")
-  if (!nzchar(command)) {
-    command <- file.path(
-      R.home("bin"),
-      if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript"
-    )
+  command <- file.path(
+    R.home("bin"),
+    if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript"
+  )
+  if (!file.exists(command)) {
+    command <- Sys.which("Rscript")
   }
 
   command

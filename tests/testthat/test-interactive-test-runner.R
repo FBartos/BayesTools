@@ -152,3 +152,28 @@ test_that("interactive runner dispatches comprehensive and filtered profiles", {
     "tests have no timing baselines"
   )
 })
+
+test_that("N100 resolver prefers the session binary and keeps PATH fallback", {
+
+  runner_path <- testthat::test_path("..", "..", ".dev", "test-tests.R")
+  expressions <- parse(runner_path, keep.source = FALSE)
+  selected <- vapply(expressions, function(expression){
+    is.call(expression) && length(expression) == 3L &&
+      identical(expression[[1L]], as.name("<-")) &&
+      identical(expression[[2L]], as.name(".bayestools_test_rscript"))
+  }, logical(1))
+  expect_equal(sum(selected), 1L)
+  definition <- expressions[[which(selected)]][[3L]]
+  fake <- tempfile("older-R-4.5.0-", fileext = ".exe")
+  expect_true(file.create(fake))
+  on.exit(unlink(fake), add = TRUE)
+  child <- new.env(parent = baseenv())
+  child$Sys.which <- function(names) stats::setNames(rep(fake, length(names)), names)
+  resolver <- eval(definition, child)
+  pinned <- file.path(R.home("bin"), if(.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
+  expect_true(file.exists(pinned))
+  chosen <- resolver()
+  expect_identical(normalizePath(chosen, winslash = "/"), normalizePath(pinned, winslash = "/"))
+  child$R.home <- function(component = NULL) tempfile("missing-session-bin-")
+  expect_identical(unname(resolver()), fake)
+})
