@@ -224,8 +224,7 @@
   )
   base_scale <- max_weight * prior_scale
   scalar_scale <- base_scale * relative_norm
-  if(length(prior_scale) == 1L &&
-     (!is.finite(base_scale) || base_scale < .Machine$double.xmin)){
+  if(length(prior_scale) == 1L && base_scale < .Machine$double.xmin){
     scalar_scale <- exp(log(max_weight) + log(relative_norm) + log(prior_scale))
   }
 

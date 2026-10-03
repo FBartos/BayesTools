@@ -4162,3 +4162,43 @@ test_that("N03 invalid point-factor weights cannot become a structural zero", {
   expect_error(BayesTools:::.prior_linear_vector_scalar_prior(point_factor, c(Inf, 1)), "location")
   expect_error(BayesTools:::.prior_linear_vector_scalar_prior(point_factor, c(NA_real_, 1)))
 })
+
+test_that("N03 subnormal base product retains the independent normal scale", {
+
+  vector_prior <- prior("mnormal", list(mean = 0, sd = 1.5e-8, K = 4))
+  scalar <- BayesTools:::.prior_linear_vector_scalar_prior(vector_prior, rep(1e-300, 4))
+  expect_identical(scalar$distribution, "normal")
+  # Four independent equal-weight normals have SD = 2 * weight * source SD.
+  # The 1e-12 relative tolerance allows ordinary log/exp rounding, while
+  # distinguishing the lost precision of multiplying a subnormal base directly.
+  expect_equal(scalar$parameters$sd / (1e-300 * 1.5e-8), 2, tolerance = 1e-12)
+})
+
+test_that("N03 multivariate point projection retains a finite tiny location", {
+
+  scalar <- BayesTools:::.prior_linear_vector_scalar_prior(
+    prior("mpoint", list(location = 1e-200, K = 2)), c(1.3e308, 1.3e308)
+  )
+  expect_true(is.prior.point(scalar))
+  expect_equal(scalar$parameters$location / 1e108, 2.6, tolerance = 1e-14)
+})
+
+test_that("N03 centered mean-difference point factor retains structural zero", {
+
+  point_factor <- prior_factor_levels(
+    prior_factor("point", list(location = 0), contrast = "meandif"), c("a", "b", "c")
+  )
+  scalar <- BayesTools:::.prior_linear_vector_scalar_prior(point_factor, c(1.3e308, 1.3e308))
+  expect_true(is.prior.point(scalar))
+  expect_identical(scalar$parameters$location, 0)
+})
+
+test_that("N03 unrepresentable normal scales and invalid weights remain refused", {
+
+  vector_prior <- prior("mnormal", list(mean = 0, sd = 2, K = 2))
+  expect_error(BayesTools:::.prior_linear_vector_scalar_prior(vector_prior, c(1e308, 1e308)),
+               "must be finite", fixed = TRUE)
+  expect_error(BayesTools:::.prior_linear_vector_scalar_prior(vector_prior, c(Inf, 1)),
+               "The 'mean' must be defined.", fixed = TRUE)
+  expect_error(BayesTools:::.prior_linear_vector_scalar_prior(vector_prior, c(NA_real_, 1)))
+})
