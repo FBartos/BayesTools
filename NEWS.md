@@ -902,7 +902,9 @@ old behaviour.
     missing supplied sources report `BayesTools_ordered_coordinates_unavailable`.
     Supplied primitives determine resolved ordered semantic values even when
     monitored increment columns are stale; declared transformed views keep their
-    existing transformation handling.
+    existing transformation handling. Whole mixed posteriors, factor levels and
+    marginal views use the same primitive projections for every available value,
+    including continuous cumulative effects, while preserving undefined rows.
   - conditional ordered mixtures reweight model probabilities by the declared
     inclusion event as well as selecting eligible original draws. Posterior
     event fractions and declared prior event probabilities condition their

@@ -397,6 +397,12 @@
   list(values=values,atom=atom,state=state,exact=exact,reason=reason)
 }
 
+.bt_ordered_projection_defined_rows <- function(projection, values){
+
+  projection$state %in% c("point", "continuous") &
+    !is.na(projection$values) & !is.na(values)
+}
+
 .bt_ordered_source_semantics <- function(x, design, columns = colnames(x)){
 
   source <- .bt_meta_get(x,"ordered_source")
@@ -413,10 +419,10 @@
   names(marginals) <- columns
   values <- .bt_draws_plain(x)
   for(i in seq_along(projections)){
-    # Continuous primitive identities, e.g. the full-simplex last level, are
-    # evaluated by the reduced tensor too. Raw backend monitors are untouched.
-    replace <- !is.na(projections[[i]]$atom) | projections[[i]]$exact
-    replace <- replace & if(is.null(dim(values))) !is.na(values) else !is.na(values[,i])
+    # Every available semantic value follows the primitive projection in its
+    # declared view, including continuous contractions. Raw monitors stay intact.
+    replace <- .bt_ordered_projection_defined_rows(projections[[i]],
+      if(is.null(dim(values))) values else values[,i])
     if(is.null(dim(values))) values[replace] <- projections[[i]]$values[replace] else values[replace,i] <- projections[[i]]$values[replace]
   }
   x <- .bt_draws_transform_values(x,function(old) values)

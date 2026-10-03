@@ -50,6 +50,9 @@ and every retained other factor. \code{reason} is a typed condition when the
 scalar measure is structurally unavailable.
 Total-coordinate weights expand to the corresponding complete coefficient
 slice, so a total target uses its declared full-simplex identity.
+Available ordered semantic values in mixed posteriors, factor levels and
+marginal views use these primitive projections, including continuous
+cumulative effects. Declared view transformations and undefined rows are kept.
 }
 \description{
 Reads the persisted total, allocation and coefficient recipes

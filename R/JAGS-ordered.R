@@ -62,6 +62,9 @@
 #' scalar measure is structurally unavailable.
 #' Total-coordinate weights expand to the corresponding complete coefficient
 #' slice, so a total target uses its declared full-simplex identity.
+#' Available ordered semantic values in mixed posteriors, factor levels and
+#' marginal views use these primitive projections, including continuous
+#' cumulative effects. Declared view transformations and undefined rows are kept.
 #' @details Missing fitted numeric provenance raises
 #' \code{BayesTools_ordered_metadata_unavailable} and
 #' \code{BayesTools_refit_required}: refit with this version. Missing source

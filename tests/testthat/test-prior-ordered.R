@@ -190,7 +190,7 @@ test_that("ordered source retention follows selected model and row without extra
 
 test_that("ordered scalar measures use declared contractions and exact primitive identities", {
   data <- data.frame(f=ordered(rep(c("lo","mid","hi","top"),10),levels=c("lo","mid","hi","top")))
-  make <- function(total_prior,allocation=NULL,theta=NULL,indicator=NULL){
+  make <- function(total_prior,allocation=NULL,theta=NULL,indicator=NULL,gamma=NULL){
     info <- JAGS_formula(~f,"mu",data,list(intercept=prior("point",list(0)),f=prior_ordered(total_prior,allocation=allocation)))
     spec <- .bt_ordered_spec("mu_f",info$prior_list$mu_f)
     if(is.null(theta)) theta <- if(is.prior.point(total_prior)) rep(total_prior$parameters$location,40) else seq_len(40)/10
@@ -202,7 +202,7 @@ test_that("ordered scalar measures use declared contractions and exact primitive
       colnames(draws)[2:3] <- c(spec$total_node$spec$components[[1L]]$coordinates,spec$total_node$spec$indicator)
     }
     if(is.null(allocation)){
-      gamma <- matrix(rep(c(1,2,3),each=40),40)
+      if(is.null(gamma)) gamma <- matrix(rep(c(1,2,3),each=40),40)
       if(!is.null(indicator)) gamma[indicator==1,] <- matrix(rep(c(3,2,1),each=sum(indicator==1)),ncol=3)
       colnames(gamma) <- spec$allocations[[1L]]$gamma_coordinates
       draws <- cbind(draws,gamma)
@@ -354,6 +354,92 @@ test_that("ordered scalar measures use declared contractions and exact primitive
   expect_identical(as.numeric(as.matrix(parameter_draws(zero$fit,normal_selection,model_samples=supplied_normal))),seq_len(40)/5)
   expect_error(parameter_draws(zero$fit,normal_selection,model_samples=supplied_normal[,zero$spec$coefficient_names,drop=FALSE]),
     class="BayesTools_ordered_coordinates_unavailable")
+
+  # Semantic producers use the same primitive contraction even for continuous
+  # intermediate levels and when a derived monitor is stale.
+  continuous <- make(prior("normal",list(0,1)),
+    gamma=matrix((seq_len(120)^.7 + .3)/7,40))
+  original_monitors <- continuous$fit$mcmc
+  stale_fit <- continuous$fit
+  stale_fit$mcmc[[1L]][1L,continuous$spec$coefficient_names] <-
+    stale_fit$mcmc[[1L]][1L,continuous$spec$coefficient_names] + 1
+  continuous_raw <- as_mixed_posteriors(stale_fit,"mu_f")
+  continuous_levels <- transform_factor_samples(continuous_raw)$mu_f
+  continuous_marginal <- marginal_posterior(continuous_raw,"mu_f",use_formula=FALSE,prior_samples=FALSE)
+  expected <- vapply(seq_len(3),function(i){
+    weights <- setNames(as.numeric(seq_len(3)==i),continuous$spec$coefficient_names)
+    JAGS_ordered_parameter_spec(stale_fit,weights=weights,draws=continuous$draws)$values
+  },numeric(40))
+  expect_identical(unname(.bt_draws_plain(continuous_raw$mu_f)),expected)
+  level_names <- c("mid","hi","top")
+  expected_levels <- vapply(level_names,function(level){
+    selection <- parameter_catalog_resolve(parameter_catalog(stale_fit),paste0("f[",level,"]"),namespace="mu")
+    key <- selection$quantities$extraction_key[[1L]]
+    projection <- JAGS_ordered_parameter_spec(stale_fit,weights=setNames(key$weights,key$dependencies),draws=continuous$draws)
+    expect_identical(as.numeric(as.matrix(parameter_draws(stale_fit,selection))),projection$values)
+    expect_identical(as.numeric(parameter_mixed_posterior(stale_fit,selection)),projection$values)
+    expect_identical(projection$state,rep("continuous",40))
+    projection$values
+  },numeric(40))
+  expect_identical(unname(.bt_draws_plain(continuous_levels)[,-1L]),unname(expected_levels))
+  expect_identical(vapply(continuous_marginal[level_names],as.numeric,numeric(40)),expected_levels)
+  formula_marginal <- marginal_posterior(continuous_raw,"mu_f",formula=~0+f,prior_samples=FALSE)
+  expect_identical(vapply(formula_marginal[level_names],as.numeric,numeric(40)),expected_levels)
+  expect_identical(as.numeric(continuous_levels[,4L]),as.numeric(continuous$draws[,continuous$spec$total_names]))
+  expect_true(posterior_atoms_free(continuous_raw$mu_f))
+  expect_identical(continuous$fit$mcmc,original_monitors)
+  expect_identical(stale_fit$mcmc[[1L]][1L,continuous$spec$coefficient_names],
+    original_monitors[[1L]][1L,continuous$spec$coefficient_names] + 1)
+  source <- .bt_meta_get(continuous_raw$mu_f,"ordered_source")
+  expect_identical(.bt_meta_get(continuous_levels,"ordered_source")$primitives,source$primitives)
+  expect_identical(.bt_meta_get(continuous_levels,"draw_index"),.bt_meta_get(continuous_raw$mu_f,"draw_index"))
+  expect_identical(.bt_meta_get(continuous_levels,"condition"),.bt_meta_get(continuous_raw$mu_f,"condition"))
+
+  scalar <- parameter_mixed_posterior(stale_fit,
+    parameter_catalog_resolve(parameter_catalog(stale_fit),"f[hi]",namespace="mu"))
+  scalar <- .posterior_atoms_set(scalar,.posterior_atoms_rename_columns(.posterior_atoms_get(scalar),"mu_f[hi]"))
+  scalar_columns <- colnames(.posterior_atoms_get(scalar)$locations)
+  for(transformation in c("lin","exp","tanh")){
+    arguments <- if(transformation=="lin") list(a=1,b=-2) else NULL
+    view <- posterior_transform(scalar,transformation,arguments)
+    corrupted_view <- .bt_draws_transform_values(view,function(values) values + 1)
+    restored <- .bt_ordered_source_semantics(corrupted_view,matrix(1,1,1),scalar_columns)
+    expect_identical(as.numeric(restored),as.numeric(view))
+    expect_identical(.bt_meta_get(restored,"ordered_source")$primitives,.bt_meta_get(view,"ordered_source")$primitives)
+    expect_identical(.bt_meta_get(restored,"condition"),.bt_meta_get(view,"condition"))
+  }
+  custom <- posterior_transform(scalar,list(fun=function(x) x+2,inv=function(x) x-2,jac=function(x) rep(1,length(x))))
+  custom_values <- as.numeric(custom)
+  custom <- .bt_ordered_source_semantics(custom,matrix(1,1,1),scalar_columns)
+  expect_identical(as.numeric(custom),custom_values)
+  expect_true(all(.bt_ordered_source_project(.bt_meta_get(custom,"ordered_source"),1)$state=="unavailable"))
+  unsupported_source <- .bt_meta_get(scalar,"ordered_source")
+  unsupported_source$models[[2L]] <- .bt_ordered_source_model(
+    prior_factor_levels(prior_factor("normal",list(0,1),contrast="treatment"),levels(data$f)),"mu_f")
+  unsupported_source$model[21:40] <- 2L
+  unsupported_source$model_probabilities <- c(.5,.5)
+  unsupported_source$projection_context <- NULL
+  unsupported <- .bt_meta_set(.bt_draws_transform_values(scalar,function(values) values+1),"ordered_source",unsupported_source)
+  restored <- .bt_ordered_source_semantics(unsupported,matrix(1,1,1),scalar_columns)
+  expect_identical(as.numeric(restored),c(as.numeric(scalar)[1:20],as.numeric(scalar)[21:40]+1))
+  undefined <- .bt_draws_transform_values(scalar,function(values){ values[1L] <- NA_real_; values })
+  undefined <- .bt_meta_set(undefined,"undefined_draws",setNames("ordered_parameterization",scalar_columns))
+  restored <- .bt_ordered_source_semantics(undefined,matrix(1,1,1),scalar_columns)
+  expect_identical(as.numeric(restored),as.numeric(undefined))
+  expect_identical(.bt_meta_get(restored,"undefined_draws"),.bt_meta_get(undefined,"undefined_draws"))
+
+  # A stored near-cancellation weight remains nonzero and continuous.
+  weight <- (.1+.2)-.3
+  expect_true(weight!=0)
+  mid <- parameter_mixed_posterior(stale_fit,
+    parameter_catalog_resolve(parameter_catalog(stale_fit),"f[mid]",namespace="mu"))
+  mid <- .posterior_atoms_set(mid,.posterior_atoms_rename_columns(.posterior_atoms_get(mid),"mu_f[mid]"))
+  near <- .bt_ordered_source_semantics(mid,matrix(weight,1,1),colnames(.posterior_atoms_get(mid)$locations))
+  near_projection <- JAGS_ordered_parameter_spec(stale_fit,
+    weights=setNames(c(weight,0,0),continuous$spec$coefficient_names),draws=continuous$draws)
+  expect_identical(as.numeric(near),near_projection$values)
+  expect_identical(near_projection$state,rep("continuous",40))
+  expect_true(all(as.numeric(near)!=0))
 })
 
 test_that("mixture numeric literals preserve round-trip dcat weights only when requested", {
@@ -502,6 +588,40 @@ test_that("ordered projections preserve slice events, shared unions and original
   full <- JAGS_ordered_parameter_spec(two$fit,term,weights=setNames(rep(1,9),spec$coefficient_names),draws=two$draws)
   expect_identical(full$atom,rep(-2.5,8))
   expect_identical(full$values,rep(-2.5,8))
+
+  # Selected model rows and fitted scale maps agree with the public primitive
+  # provider for every cell, including continuous intermediate interactions.
+  canonical_cells <- function(fits,samples){
+    parameter <- .bt_meta_get(samples,"ordered_source")$parameter
+    values <- transform_factor_samples(setNames(list(samples),parameter))[[parameter]]
+    source <- .bt_meta_get(values,"ordered_source")
+    design <- source$projection_design
+    expected <- matrix(NA_real_,nrow(values),ncol(values))
+    for(model in unique(source$model)){
+      rows <- which(source$model==model)
+      for(column in seq_len(ncol(values))){
+        projection <- JAGS_ordered_parameter_spec(fits[[model]],weights=design[column,],
+          draws=as.matrix(fits[[model]]$mcmc))
+        expected[rows,column] <- projection$values[source$draw_index[rows]]
+      }
+    }
+    expect_identical(unname(.bt_draws_plain(values)),expected)
+    expect_identical(source$primitives,.bt_meta_get(samples,"ordered_source")$primitives)
+    expect_identical(source$model,.bt_meta_get(samples,"ordered_source")$model)
+    expect_identical(source$draw_index,.bt_meta_get(samples,"ordered_source")$draw_index)
+  }
+  canonical_cells(list(sliced$fit),mixed)
+  canonical_cells(list(sliced$fit),conditional)
+  canonical_cells(list(sliced$fit,shared$fit),source_mix)
+  canonical_cells(list(scaled$fit),public$mu_f)
+  continuous_priors <- fixed_priors
+  continuous_priors$f <- prior_ordered(N01,id="shared")
+  continuous_priors[["f:x"]] <- prior_ordered(N01,id="shared")
+  continuous_scaled <- fixture(~f+x+f:x,continuous_priors,scale=list(x=TRUE))
+  continuous_original <- as_mixed_posteriors(continuous_scaled$fit,names(continuous_scaled$info$prior_list),
+    transform_scaled=TRUE,n_prior_samples=128)
+  canonical_cells(list(continuous_scaled$fit),continuous_original$mu_f)
+  canonical_cells(list(two$fit),as_mixed_posteriors(two$fit,term)[[term]])
 })
 
 test_that("prior_ordered() validates constructor inputs", {
@@ -1228,7 +1348,7 @@ test_that("fixed ordered allocations canonicalize only roundoff drift", {
   )
 })
 
-test_that("public posterior mixing preserves ordered coefficient rows and metadata", {
+test_that("public posterior mixing projects ordered primitive rows and preserves metadata", {
   df <- data.frame(
     y = seq_len(6),
     f = ordered(rep(c("low", "mid", "high"), 2), levels = c("low", "mid", "high"))
@@ -1257,7 +1377,7 @@ test_that("public posterior mixing preserves ordered coefficient rows and metada
   fit <- attach_test_parameter_map(fit)
   single <- as_mixed_posteriors(fit, parameters = "mu_f")
 
-  expect_equal(unname(single$mu_f[, , drop = FALSE]), unname(posterior))
+  expect_identical(unname(.bt_draws_plain(single$mu_f)),cbind(c(3,12)*.25,c(3,12)*.75))
   expect_true(isTRUE(attr(single$mu_f, "ordered")))
   expect_equal(
     attr(single$mu_f, "ordered_metadata"),
@@ -1267,7 +1387,7 @@ test_that("public posterior mixing preserves ordered coefficient rows and metada
   single_levels <- transform_factor_samples(single)$mu_f
   expect_equal(
     unname(single_levels[, , drop = FALSE]),
-    matrix(c(0, 1, 3, 0, 4, 12), nrow = 2, byrow = TRUE)
+    matrix(c(0, .75, 3, 0, 3, 12), nrow = 2, byrow = TRUE)
   )
   expect_equal(
     BayesTools:::.prior_factor_level_weight_matrix(single_levels, "mu_f"),
@@ -1333,7 +1453,8 @@ test_that("public posterior mixing preserves ordered coefficient rows and metada
     n_samples = 6
   )
 
-  source_samples <- list(posterior_1, posterior_2)
+  source_samples <- list(cbind(c(11,22,33)*.25,c(11,22,33)*.75),
+    cbind(c(44,55,66)*.4,c(44,55,66)*.6))
   for(row_i in seq_len(nrow(mixed$mu_f))){
     model_i <- .bt_meta_get(mixed$mu_f, "component")[[row_i]]
     sample_i <- .bt_meta_get(mixed$mu_f, "draw_index")[[row_i]]

@@ -1309,10 +1309,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   ordered <- .bt_ordered_formula_projections(samples,fitted_weights,source_transforms)
   if(!is.null(ordered)){
     values <- as.vector(do.call(rbind,lapply(ordered,`[[`,"values")))
-    atom <- as.vector(do.call(rbind,lapply(ordered,`[[`,"atom")))
-    exact <- as.vector(do.call(rbind,lapply(ordered,`[[`,"exact")))
+    state <- as.vector(do.call(rbind,lapply(ordered,`[[`,"state")))
     if(length(values)!=length(marginal)) .bt_ordered_stop("Ordered formula sources do not align with marginal draw rows. Recreate marginal posteriors from the source fits.")
-    replace <- !is.na(atom) | exact
+    replace <- .bt_ordered_projection_defined_rows(list(values=values,state=state),as.numeric(marginal))
     marginal <- .bt_draws_transform_values(marginal,function(old){
       old[replace] <- values[replace]
       old

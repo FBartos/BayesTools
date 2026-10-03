@@ -292,7 +292,10 @@ names.
   selected model and row; raw ensemble tables use their complete declared-model
   union, including fixed allocations and undefined shares in absent models.
   `JAGS_ordered_parameter_spec()` owns source names, labels, tensor projections
-  and exact scalar point states. Registered ordered families replay Gamma
+  and exact scalar point states. Every available ordered semantic value uses
+  its retained primitive projection, including continuous cumulative effects;
+  declared view transformations and undefined rows retain their meaning.
+  Registered ordered families replay Gamma
   allocations and coefficient chains; `JAGS_ordered_density_kernel()` is the
   separate active-component numerical kernel, not a bridge density. Numeric
   literals and emitted total syntax are persisted as literal/emission evidence
