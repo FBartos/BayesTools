@@ -549,31 +549,18 @@ posterior_atoms_free <- function(x){
 
   component <- .posterior_atoms_check_components(prior, component)
 
-  if(is.prior.spike_and_slab(prior)){
-    exclusion_mass <- mean(vapply(
-      component, .bt_component_is_spike, logical(1), prior = prior
-    ))
-    locations <- if(exclusion_mass > 0){
-      matrix(0, nrow = 1L, ncol = n_columns)
-    }else{
-      matrix(numeric(), nrow = 0L, ncol = n_columns)
-    }
-    masses <- if(exclusion_mass > 0) exclusion_mass else numeric()
-    return(.posterior_atoms_new(
-      locations = locations,
-      mass = masses,
-      column_names = column_names,
-      source = "posterior_indicator",
-      declared = TRUE,
-      component_probabilities = c(excluded = exclusion_mass,
-                                  included = 1 - exclusion_mass)
-    ))
-  }
-
   components <- as.list(prior)
   probabilities <- vapply(seq_along(components), function(i){
     mean(component == i)
   }, numeric(1))
+  if(is.prior.spike_and_slab(prior) &&
+     .posterior_atoms_is_zero_point(.get_spike_and_slab_variable(prior))){
+    return(.posterior_atoms_new(
+      locations = matrix(0, nrow = 1L, ncol = n_columns), mass = 1,
+      column_names = column_names, source = "posterior_indicator",
+      component_probabilities = probabilities
+    ))
+  }
   .posterior_atoms_from_priors(
     priors = components,
     probabilities = probabilities,

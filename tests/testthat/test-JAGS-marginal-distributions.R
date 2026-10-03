@@ -5001,6 +5001,54 @@ test_that("Savage-Dickey prior support is the exact support, not the grid range"
   expect_s3_class(condition, "BayesTools_zero_ordinate")
 })
 
+test_that("N07 point slab atoms use the canonical component indices", {
+
+  slab <- prior_spike_and_slab(prior("point", list(3)))
+  atoms <- BayesTools:::.posterior_atoms_from_components(
+    slab, c(1L, 1L, 1L, 2L), 1L, "x"
+  )
+  ordering <- order(atoms$locations[, 1L])
+  expect_identical(as.numeric(atoms$locations[ordering, 1L]), c(0, 3))
+  expect_equal(atoms$mass[ordering], c(.25, .75), tolerance = 0)
+  expect_true(atoms$declared)
+})
+
+test_that("N07 all-included point slab retains its declared atom", {
+
+  atoms <- BayesTools:::.posterior_atoms_from_components(
+    prior_spike_and_slab(prior("point", list(3))), rep(1L, 4), 1L, "x"
+  )
+  expect_identical(as.numeric(atoms$locations), 3)
+  expect_identical(atoms$mass, 1)
+})
+
+test_that("N07 continuous slab has only the excluded atom and zero slabs coalesce", {
+
+  component <- c(1L, 1L, 1L, 2L)
+  continuous <- BayesTools:::.posterior_atoms_from_components(
+    prior_spike_and_slab(prior("normal", list(0, 1))), component, 1L, "x"
+  )
+  expect_identical(as.numeric(continuous$locations), 0)
+  expect_identical(continuous$mass, .25)
+  zero <- BayesTools:::.posterior_atoms_from_components(
+    prior_spike_and_slab(prior("point", list(0))), component, 1L, "x"
+  )
+  expect_identical(as.numeric(zero$locations), 0)
+  expect_identical(zero$mass, 1)
+})
+
+test_that("N07 missing component provenance is refused rather than reconstructed", {
+
+  expect_error(
+    BayesTools:::.posterior_atoms_from_components(
+      prior_spike_and_slab(prior("point", list(3))), NULL, 1L, "x"
+    ),
+    "Posterior component indices must index the components of the mixture or spike-and-slab prior.",
+    fixed = TRUE
+  )
+})
+
+
 # File-level skips: All remaining tests in this file require pre-fitted models
 skip_if_not_visual_fixture_tests()
 skip_if_no_fits()

@@ -1,5 +1,7 @@
 # version 0.3.1
 ### Fixes
+- Spike-and-slab posterior atoms include declared point-valued slabs and merge
+  a zero slab with the excluded atom using the recorded component shares.
 - Linear projections of multivariate normal and t priors preserve tiny and large
   nonzero coefficient scales, including representable scales with an overflowing norm.
 - `JAGS_bridgesampling()` preserves an explicit `use_neff` bridge-sampler control,
