@@ -4057,3 +4057,55 @@ test_that("N03 t projections preserve scale, location and degrees of freedom", {
   expect_equal(unlist(scalar$parameters[c("location", "scale", "df")], use.names = FALSE),
                c(2.8, 3, 7), tolerance = 1e-14)
 })
+
+test_that("N93 accepted subnormal quadrature reports unavailable full precision", {
+
+  route <- list(type = "conditional_normal", n_grid = 1024L, spec = list(
+    additive_mean = 0, additive_sd = 0, product_mean = 0, product_sd = 1,
+    multiplier = prior("beta", list(2, 2)), bounds = c(0, 1), sources = list()
+  ))
+  ordinate <- BayesTools:::.prior_density_route_ordinate(route, 38)
+  expect_identical(ordinate$behavior, "regular")
+  expect_false(ordinate$exact)
+  expect_true(is.na(ordinate$log_density))
+  expect_true(ordinate$provenance$integration$converged)
+  expect_identical(ordinate$provenance$integration$message, "OK")
+  expect_match(ordinate$reason, "not representable at full precision", fixed = TRUE)
+  condition <- tryCatch(BayesTools:::.prior_linear_density_exact_height(ordinate), error = identity)
+  expect_s3_class(condition, "error")
+  message <- conditionMessage(condition)
+  expect_match(message, "unavailable", fixed = TRUE)
+  expect_match(message, ordinate$reason, fixed = TRUE)
+  expect_false(grepl("rejected by diagnostics", message, fixed = TRUE))
+  expect_false(grepl("n_samples", message, fixed = TRUE))
+})
+
+test_that("N93 full-precision quadrature returns its height with diagnostics", {
+
+  route <- list(type = "conditional_normal", n_grid = 1024L, spec = list(
+    additive_mean = 0, additive_sd = 0, product_mean = 0, product_sd = 1,
+    multiplier = prior("beta", list(2, 2)), bounds = c(0, 1), sources = list()
+  ))
+  ordinate <- BayesTools:::.prior_density_route_ordinate(route, 37)
+  height <- BayesTools:::.prior_linear_density_exact_height(ordinate)
+  expect_true(ordinate$exact)
+  expect_true(is.finite(height) && height > .Machine$double.xmin)
+  expect_identical(as.numeric(height), exp(ordinate$log_density))
+  expect_true(attr(height, "numerical_diagnostics")$converged)
+})
+
+test_that("N93 rejected real quadrature keeps its diagnostic remedy", {
+
+  priors <- list(a = prior("normal", list(0, 1)), b = prior("normal", list(0, 1)),
+                 s = prior("beta", list(.1, .1)))
+  attr(priors$b, "multiply_by") <- "s"
+  spec <- BayesTools:::.prior_conditional_normal_spec(
+    priors, BayesTools:::.prior_linear_split_multiply_groups(priors, c(a = 1, b = 1)),
+    c(a = NA_character_, b = NA_character_)
+  )
+  ordinate <- BayesTools:::.prior_conditional_normal_ordinate(spec, 0, n_grid = 21)
+  expect_false(ordinate$provenance$integration$converged)
+  expect_error(BayesTools:::.prior_linear_density_exact_height(ordinate),
+               "Conditional-normal prior density was rejected by diagnostics: integration reported",
+               fixed = TRUE)
+})

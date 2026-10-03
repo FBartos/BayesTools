@@ -3994,18 +3994,21 @@
   if(identical(continuous, "regular") &&
      .prior_density_ordinate_has_quadrature(ordinate$provenance)){
     integration <- .prior_density_ordinate_integration(ordinate$provenance)
-    if(is.na(ordinate$log_density) || !isTRUE(integration$converged)){
-      subject <- if(identical(integration$kind, "scale_mixture")){
-        "Scale-mixture prior density"
-      }else if(identical(integration$kind, "convolution")){
-        "Convolution prior density"
-      }else{
-        "Conditional-normal prior density"
-      }
+    subject <- if(identical(integration$kind, "scale_mixture")){
+      "Scale-mixture prior density"
+    }else if(identical(integration$kind, "convolution")){
+      "Convolution prior density"
+    }else{
+      "Conditional-normal prior density"
+    }
+    if(!isTRUE(integration$converged)){
       stop(subject, " was rejected by diagnostics: integration reported '",
            integration$message, "' with absolute error ", format(integration$absolute_error),
            ". Inspect the prior specification and increase 'n_samples' for marginal inference.",
            call. = FALSE)
+    }
+    if(is.na(ordinate$log_density)){
+      stop(subject, " is unavailable: ", ordinate$reason, call. = FALSE)
     }
     height <- exp(ordinate$log_density)
     attr(height, "numerical_diagnostics") <- integration

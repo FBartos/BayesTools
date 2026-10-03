@@ -1,5 +1,7 @@
 # version 0.3.1
 ### Fixes
+- Converged prior-density quadrature with an unavailable full-precision height
+  reports its recorded reason without suggesting a larger sample budget.
 - Interpretation keeps expanded rows and their evidence/estimate pairs together
   before subsequent plan items, while preserving explicit order overrides.
 - Ensemble and marginal estimate tables preserve probability column labels in
