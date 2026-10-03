@@ -478,8 +478,8 @@ test_that("ordered overlay warnings retain source coordinates and available meas
       args <- list(...)
       if(refusal_mode == "plural"){
         route <- .prior_density_route_from_adaptive(attr(args[[1L]], "adaptive_evaluation", exact = TRUE))
-        # Test-only grid sizes include both exact refusal coordinates in each
-        # real route; baseline and injected calls receive identical controls.
+        # Quadrature merges one display value; 130/129 give binary 2^-6 steps
+        # placing .125 and -.375 exactly in both real baseline/injected curves.
         args$n_points <- if(.prior_density_route_has_quadrature(route)) 130L else 129L
       }
       value <- do.call(original_plot_data, args)
@@ -603,6 +603,7 @@ test_that("ordered overlay warnings retain source coordinates and available meas
         if(refusal_mode == "whole"){
           expect_null(records[[1L]]$density)
           expect_identical(records[[2L]]$density, baseline_curves[[2L]])
+          if(backend == "ggplot") expect_error(ggplot2::ggplot_build(output$value), NA)
         }else if(backend == "ggplot"){
           expected_render <- ggplot2::ggplot_build(baseline$value)$data
           for(i in seq_along(baseline_curves)){

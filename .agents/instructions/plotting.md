@@ -53,15 +53,19 @@ ordinates without changing the finite curve, its grid, or its mass. Public
 structural meaning. Unknown and unsupported density routes keep their
 existing explicit limitations.
 Finite displayed peak heights depend on the evaluation grid and do not
-represent an infinite mathematical peak. Unresolved raw numerical evaluations
-warn once per continuous route with `BayesTools_prior_curve_unavailable` (also
-`BayesTools_plot_condition`), distinguishing partially available curves from
-wholly unavailable ones; keep every available point and declared atom.
+represent an infinite mathematical peak. In `plot_posterior()` and
+`plot_marginal()` prior overlays and in `plot_transformed_prior()`, unresolved
+raw numerical evaluations warn once per continuous route with
+`BayesTools_prior_curve_unavailable` (also `BayesTools_plot_condition`),
+distinguishing partially available curves from wholly unavailable ones; keep
+every available point and declared atom.
 The warning's `unresolved_values` field retains evaluation coordinates on the
 source scale, before any plotting transformation. Exact infinities, exact
 zero/support-zero densities and intentional transformation limits do not
-trigger that warning. A direct ordered curve without any finite
-ordinate gives a classed error with the remedy `x_seq`.
+trigger that warning. Direct `plot.prior()`, `lines.prior()` and `geom_prior()`
+filter nonfinite plotting ordinates without that numerical-unavailability
+warning. A direct ordered curve without any finite ordinate gives a classed
+error with the remedy `x_seq`.
 Direct prior selectors retain original level numbering; explicit selectors
 can select the reference. Multiple ordered ggplot selections return positional
 lists with NULL holes for unselected figures, including the default reference,
