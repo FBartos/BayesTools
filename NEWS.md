@@ -216,12 +216,16 @@ old behaviour.
     state determined by `seed`: `JAGS_get_inits()`, `JAGS_fit()` (serial,
     parallel, and autofit), `mix_posteriors()`, `marginal_inference()`, and
     `transform_prior_samples()` restore the caller's `.Random.seed` and
-    `RNGkind()`. Seeded results are unchanged.
+    `RNGkind()`. Restoring the caller's stream does not change seeded results.
     Code that relied on the reset, for example an unseeded
     `JAGS_bridgesampling()` right after `JAGS_fit(seed = )`, or unseeded draws
     after a seeded `marginal_inference()`, must pass its own seed. Unseeded
     `JAGS_get_inits()` and `mix_posteriors()` take their seed with one draw
     from the caller's stream.
+  - `mix_posteriors()` allocates draws with multinomial component counts, so a
+    model with positive posterior probability can receive no draw. This
+    allocation changes seeded results relative to the previous allocation;
+    it is separate from restoring the caller's random-number stream.
 - inference and convergence results:
   - conditioning on a parameter without an inclusion indicator (a prior that
     is neither spike-and-slab nor a null/alternative mixture), or on an
