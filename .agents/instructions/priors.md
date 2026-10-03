@@ -30,6 +30,13 @@ numeric representation can be produced.
 Truncation is part of the distribution definition. Preserve exact support and
 one-sided boundary behavior; do not replace valid endpoints with nearby values.
 
+The direct ordered Dirichlet-product density uses stable log-share arithmetic
+for a literal, untruncated Normal total with mean exactly zero and finite positive
+SD. Its original quadrature budget, tolerances and zero-boundary identities
+remain in force. Other totals retain their existing arithmetic; small second
+Beta shapes can still lose rounded-share tails there. The guarded repair does
+not certify tiny or nonrepresentable ranges or other total families.
+
 `selection_model()` captures fixed source choices and a deferred publication
 column reference. Keep `group = NULL` immediately after `weight_rule`; consumers
 resolve publication groups only for `"best"` branches. Product selection is

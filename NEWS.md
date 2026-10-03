@@ -1,4 +1,9 @@
 # version 0.3.1
+- direct ordered Dirichlet-product densities with literal, untruncated centered
+  Normal totals retain positive tails when a logistic share rounds to one.
+  Quadrature budgets, tolerances and exact zero-boundary identities are unchanged.
+  Other total families and tiny or nonrepresentable ranges are outside this
+  guarded repair; small second Beta shapes remain a numerical risk there.
 ### Breaking changes
 These changes affect code and saved objects written for BayesTools 0.3.0.
 This version is released together with RoBMA 4.1.0; RoBMA 4.0.0 relies on the

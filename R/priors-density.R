@@ -77,6 +77,11 @@
 #' support use boundary-reflected kernel density estimates. The plotting range
 #' controls the evaluation grid, while reflection is based on the prior's true
 #' truncation bounds.
+#' Direct ordered Dirichlet-product densities use stable log-share arithmetic
+#' for literal, untruncated Normal totals with mean zero and finite positive SD,
+#' retaining the existing quadrature budget and tolerances. This guarded route
+#' does not certify other total families or tiny or nonrepresentable ranges;
+#' small second Beta shapes remain a numerical risk for other totals.
 #'
 #' @importFrom stats density
 #' @seealso [prior()]
@@ -872,6 +877,13 @@ density.prior <- function(x,
   rel_tol <- 1e-7
   abs_tol <- 1e-10
   quadrature <- vector("list", length(x_seq))
+  centered_normal <- is.prior.simple(total) &&
+    identical(total$distribution, "normal") &&
+    .prior_density_ordinate_parameters_numeric(total) &&
+    identical(unname(c(total$truncation$lower, total$truncation$upper)), c(-Inf, Inf)) &&
+    length(total$parameters$mean) == 1L && total$parameters$mean == 0 &&
+    length(total$parameters$sd) == 1L &&
+    is.finite(total$parameters$sd) && total$parameters$sd > 0
   y <- vapply(seq_along(x_seq), function(i){
     x_value <- x_seq[i]
     density_at_zero <- if(x_value == 0) pdf(total, 0) else NA_real_
@@ -906,6 +918,19 @@ density.prior <- function(x,
     integration <- tryCatch(
       stats::integrate(
         function(logit_c){
+          if(centered_normal){
+            c_value <- stats::plogis(logit_c)
+            out <- numeric(length(c_value))
+            interior <- c_value > 0
+            if(any(interior)){
+              log_integrand <- lpdf(total, x_value / c_value[interior]) +
+                (alpha1 - 1) * stats::plogis(logit_c[interior], log.p = TRUE) +
+                alpha2 * stats::plogis(logit_c[interior], lower.tail = FALSE, log.p = TRUE) -
+                lbeta(alpha1, alpha2)
+              out[interior] <- exp(log_integrand)
+            }
+            return(out)
+          }
           c_value <- stats::plogis(logit_c)
           out <- numeric(length(c_value))
           interior <- c_value > 0 & c_value < 1
