@@ -1,5 +1,7 @@
 # version 0.3.1
 ### Fixes
+- Prior documentation names the native inverse-gamma module syntax, and inclusion
+  Bayes-factor documentation identifies natural-log marginal-likelihood inputs.
 - The interactive test runner prefers the current R session's executable before
   falling back to `Rscript` on PATH.
 - Declares `waldo` as an explicit test dependency in `Suggests`.

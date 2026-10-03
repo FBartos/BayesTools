@@ -23,8 +23,8 @@
 #'   the \code{shape} and \code{rate} parametrization}
 #'   \item{\code{"invgamma"}}{for an inverse-gamma distribution
 #'   characterized by a \code{shape} and \code{scale} parameters. The
-#'   JAGS part uses a 1/gamma distribution with a shape and rate
-#'   parameter.}
+#'   JAGS part uses the BayesTools module distribution
+#'   \code{dbt_invgamma(shape, scale)} on the natural parameter.}
 #'   \item{\code{"beta"}}{for a beta distribution
 #'   characterized by an \code{alpha} and \code{beta} parameters.}
 #'   \item{\code{"exp"}}{for an exponential distribution

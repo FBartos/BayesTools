@@ -17,7 +17,7 @@ inclusion_BF(
 
 \item{post_probs}{vector of posterior model probabilities summing to one.}
 
-\item{margliks}{vector of marginal likelihoods.}
+\item{margliks}{vector of natural-log marginal likelihoods.}
 
 \item{is_null}{logical vector of indicators whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models
@@ -32,8 +32,8 @@ positive prior probability. See \code{\link[=compute_inference]{compute_inferenc
 }
 \description{
 Computes inclusion Bayes factors based on prior model probabilities,
-posterior model probabilities (or marginal likelihoods), and indicator whether
-the models represent the null or alternative hypothesis.
+posterior model probabilities (or natural-log marginal likelihoods), and an
+indicator of whether the models represent the null or alternative hypothesis.
 }
 \details{
 Supplying \code{margliks} as the input is preferred since it is better at dealing with

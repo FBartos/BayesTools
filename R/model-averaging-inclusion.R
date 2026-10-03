@@ -1,12 +1,12 @@
 #' @title Compute inclusion Bayes factors
 #'
 #' @description Computes inclusion Bayes factors based on prior model probabilities,
-#' posterior model probabilities (or marginal likelihoods), and indicator whether
-#' the models represent the null or alternative hypothesis.
+#' posterior model probabilities (or natural-log marginal likelihoods), and an
+#' indicator of whether the models represent the null or alternative hypothesis.
 #'
 #' @param prior_probs vector of prior model probabilities summing to one.
 #' @param post_probs vector of posterior model probabilities summing to one.
-#' @param margliks vector of marginal likelihoods.
+#' @param margliks vector of natural-log marginal likelihoods.
 #' @param on_failure policy for missing marginal likelihoods in models with
 #' positive prior probability. See [compute_inference()].
 #' @param is_null logical vector of indicators whether the model corresponds
