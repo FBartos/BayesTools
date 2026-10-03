@@ -116,8 +116,8 @@ density (e.g. from \code{\link[=marginal_posterior]{marginal_posterior()}} witho
 Direct ordered factor marginal plots omit persisted zero-design reference
 rows and retain true non-reference point levels. They use the retained
 level color/label list and matching dashed prior-overlay defaults of
-\code{\link[=plot_posterior]{plot_posterior()}}. Allocation-induced singular prior curves are quietly
-omitted as in \code{\link[=plot.prior]{plot.prior()}}, including when no prior overlay remains.
+\code{\link[=plot_posterior]{plot_posterior()}}. Every non-reference continuous prior retains its finite
+plotting ordinates, including priors with an exact infinite density point.
 }
 \seealso{
 \code{\link[=prior]{prior()}} \code{\link[=marginal_inference]{marginal_inference()}}  \code{\link[=plot_posterior]{plot_posterior()}}

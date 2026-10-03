@@ -806,6 +806,8 @@ test_that("ordered formula projections use each contributing formula prefix", {
       for(scaled in c(FALSE,TRUE)){
         samples <- as_mixed_posteriors(fit,names(attr(fit,"prior_list")),
           transform_scaled=scaled,n_prior_samples=128L)
+        expect_identical(.bt_meta_get(samples$mu_f,"ordered_source")$draw_index,1:4)
+        expect_identical(.bt_meta_get(samples$tau_f,"ordered_source")$draw_index,1:4)
         if(!tau_scaled){
           own <- .bt_meta_get(samples$tau_f,"ordered_source")
           identity <- diag(3L)
@@ -912,6 +914,18 @@ test_that("ordered formula projections use each contributing formula prefix", {
     }
   })
   expect_identical(problems,character())
+})
+
+test_that("public no-intercept ordered reference has exact zero values and a unit atom", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, .5)),
+    levels = c("systematic", "alternate", "random"))
+  levels <- marginal_posterior(fixture$samples, "mu_f", formula = ~0 + f,
+    prior_samples = FALSE)
+  reference <- levels[[1L]]
+  expect_identical(as.numeric(reference), rep(0, 120L))
+  atoms <- .posterior_atoms_get(reference)
+  expect_identical(as.numeric(atoms$locations), 0)
+  expect_identical(atoms$mass, 1)
 })
 
 test_that("unscaled ordered producers always restore raw primitive semantics", {

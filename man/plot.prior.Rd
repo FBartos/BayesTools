@@ -116,7 +116,7 @@ Dirichlet simplex priors are plotted as one beta marginal per coordinate;
 the ggplot method returns a list unless a single figure is selected. Ordered
 ggplot results use the original figure indices: a multiple-figure selection
 returns a list through the largest selected index, with \code{NULL} entries
-for unselected figures and selected levels whose curves are omitted. A bare
+for unselected figures, including the default reference level. A bare
 ggplot is returned only when exactly one figure is selected; a selection of
 several figures always returns a positional list, even if one figure is visible. For an
 ordered level with mixed probability measure, the continuous density and
@@ -127,29 +127,18 @@ component.
 Plots a prior object
 }
 \details{
-Ordered prior plots omit a whole continuous curve, quietly, when
-exact product provenance shows that its infinite density at the product
-offset is introduced by a random allocation, and the total's own
-continuous density is not intrinsically infinite. This decision precedes
-continuous density generation, so an omitted curve does not require its
-plotting quadrature or kernel estimate. Point masses remain.
-For a fixed total times an allocation share, either exact share endpoint
-(zero or one) can establish the allocation-induced infinity.
-Intrinsic singularities, such as a Gamma total with shape below one, and
-unknown classifications are retained. This display rule also applies to
-\code{\link[=lines.prior]{lines.prior()}} and \code{\link[=geom_prior]{geom_prior()}}; it does not change \code{\link[=density.prior]{density.prior()}}
-or \code{\link[=prior_density_ordinate]{prior_density_ordinate()}}. If the display density lacks its declared
-atoms, their locations and probabilities are recovered from the exact prior
-route before omission. Output transformations map their locations and leave
-probability masses unchanged. Unavailable exact atom recovery raises
-\code{BayesTools_ordered_prior_display_unavailable} (also
-\code{BayesTools_plot_condition}), without guessing atoms from sampled values.
-Direct prior selectors keep their original
-level numbering, including cumulative reference levels. If all selected
-curves are omitted and there are no visible point masses, the standalone
-plot raises \code{BayesTools_ordered_prior_display_empty} (also
-\code{BayesTools_plot_condition}); use \code{show_figures} to select a
-level with a visible curve or point mass. An empty added layer is skipped.
+Ordered prior plots retain the continuous density of every
+non-reference level, including priors with an infinite density at an exact
+point. Only nonfinite plotting ordinates are omitted; finite ordinates and
+declared point masses are unchanged. An infinite density point is not a
+probability mass. This display rule also applies to \code{\link[=lines.prior]{lines.prior()}} and
+\code{\link[=geom_prior]{geom_prior()}} and leaves \code{\link[=density.prior]{density.prior()}} and \code{\link[=prior_density_ordinate]{prior_density_ordinate()}}
+unchanged. Unknown or unsupported density routes keep their existing
+limitations.
+Direct ordered plots and layers omit persisted zero-design reference levels
+from the default selection. Explicit selectors retain the original level
+numbering and can select a reference level. Genuine non-reference zero and
+point levels remain visible.
 }
 \examples{
 # create some prior distributions

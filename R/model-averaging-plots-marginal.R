@@ -29,8 +29,8 @@
 #' Direct ordered factor marginal plots omit persisted zero-design reference
 #' rows and retain true non-reference point levels. They use the retained
 #' level color/label list and matching dashed prior-overlay defaults of
-#' [plot_posterior()]. Allocation-induced singular prior curves are quietly
-#' omitted as in [plot.prior()], including when no prior overlay remains.
+#' [plot_posterior()]. Every non-reference continuous prior retains its finite
+#' plotting ordinates, including priors with an exact infinite density point.
 #'
 #' @seealso [prior()] [marginal_inference()]  [plot_posterior()]
 #' @export

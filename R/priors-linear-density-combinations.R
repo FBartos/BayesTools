@@ -3269,9 +3269,6 @@
     route <- .prior_density_route_from_adaptive(
       attr(dist, "adaptive_evaluation", exact = TRUE)
     )
-    if(.plot_ordered_prior_suppress_curve(route)){
-      draw_curve <- FALSE
-    }
     if(!identical(route$type, "unknown") && .prior_density_route_has_leaf(route, "unknown")){
       route <- .prior_density_route_with_grids(route)
     }

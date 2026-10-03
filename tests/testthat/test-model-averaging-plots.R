@@ -77,7 +77,7 @@ test_that("ordered direct mixed-total displays retain declared spike atoms", {
   }
 })
 
-test_that("ordered direct selections retain holes when curves are omitted", {
+test_that("ordered direct selections retain original positions", {
   render_selection <- function(prior, show_figures){
     plots <- plot(prior, show_figures = show_figures, plot_type = "ggplot",
       n_points = 64, n_samples = 128, xlab = "Level effect")
@@ -126,15 +126,15 @@ test_that("ordered direct finite point-slab levels show analytic curves and full
   }
 })
 
-test_that("ordered direct small-alpha Normal plots skip omitted product curves quietly", {
-  fixture <- ordered_plot_test_fixture(prior("normal", list(0, 1)),
-    prior("dirichlet", list(c(.5, .25, .25))))
-  vdiffr::expect_doppelganger("ordered-direct-small-alpha-normal-base", function(){
+test_that("ordered direct default omits only the reference level", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, .5)),
+    levels = c("systematic", "alternate", "random"))
+  vdiffr::expect_doppelganger("ordered-direct-reference-only-base", function(){
     set.seed(600)
     graphics::par(mfrow = c(1, 2))
     plot(fixture$prior, xlim = c(-3, 3), n_points = 64L, n_samples = 128L, xlab = "Level effect")
   })
-  vdiffr::expect_doppelganger("ordered-direct-small-alpha-normal-ggplot", function(){
+  vdiffr::expect_doppelganger("ordered-direct-reference-only-ggplot", function(){
     set.seed(600)
     plots <- plot(fixture$prior, plot_type = "ggplot", xlim = c(-3, 3),
       n_points = 64L, n_samples = 128L, xlab = "Level effect")

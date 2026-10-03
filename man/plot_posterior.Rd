@@ -184,14 +184,14 @@ the same class.
 
 Ordered factors are plotted as semantic level effects. Their persisted
 zero-design reference rows are omitted for both raw and already transformed
-inputs; genuine non-reference zero and point levels remain. Allocation-induced
-infinite prior curves follow the quiet display rule of \code{\link[=plot.prior]{plot.prior()}}.
+inputs; genuine non-reference zero and point levels remain. Both finite and
+singular non-reference prior curves retain their actual finite ordinates.
 Colors and \code{legend_labels} refer to the full retained non-reference
-level list, including a level whose prior curve is omitted. Visible curves
+level list. Visible curves
 and point masses determine the axes. Ordered prior overlays default to the
 corresponding posterior colors and dashed lines; explicit \code{dots_prior}
 \code{col}, \code{lty}, or \code{linetype} override these defaults. The
-posterior owns the legend, and an entirely omitted prior overlay is skipped.
+posterior owns the legend.
 
 For base plots, the initial call establishes the density-to-probability
 mapping. Calls with \code{add = TRUE} reuse that mapping so point masses from

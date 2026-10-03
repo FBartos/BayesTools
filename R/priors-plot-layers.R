@@ -55,7 +55,7 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       xlim   <- range(pretty(xlim))
     }
   }
-  plot_data <- density(x = .plot_ordered_prior_density_input(x), x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
+  plot_data <- density(x = x, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                        n_points = n_points, n_samples = n_samples, force_samples = force_samples,
                        transformation = transformation, transformation_arguments = transformation_arguments,
                        transformation_settings = transformation_settings, individual = individual)
@@ -105,12 +105,11 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   if(is.prior.ordered(x) || is.prior.simplex(x)){
     selected <- if(is.null(show_parameter)){
-      seq_along(plot_data)
+      if(is.prior.ordered(x)) .plot_ordered_prior_default_figures(x) else seq_along(plot_data)
     }else{
       show_parameter
     }
     for(i in selected){
-      if(inherits(plot_data[[i]], "density.prior.display_empty")) next
       if(inherits(plot_data[[i]], "density.prior.mixed_measure")){
         .lines_prior_mixed_measure(
           plot_data[[i]],
@@ -198,7 +197,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       xlim   <- range(pretty(xlim))
     }
   }
-  plot_data <- density(x = .plot_ordered_prior_density_input(x), x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
+  plot_data <- density(x = x, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                        n_points = n_points, n_samples = n_samples, force_samples = force_samples,
                        transformation = transformation, transformation_arguments = transformation_arguments,
                        transformation_settings = transformation_settings, individual = individual)
@@ -251,13 +250,12 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     if(is.prior.ordered(x)) plot_data <- .plot_data_ordered_prior_display(x, plot_data,
       transformation = transformation, transformation_arguments = transformation_arguments)
     selected <- if(is.null(show_parameter)){
-      seq_along(plot_data)
+      if(is.prior.ordered(x)) .plot_ordered_prior_default_figures(x) else seq_along(plot_data)
     }else{
       show_parameter
     }
     geom <- list()
     for(i in selected){
-      if(inherits(plot_data[[i]], "density.prior.display_empty")) next
       component_geom <- if(inherits(
         plot_data[[i]],
         "density.prior.mixed_measure"

@@ -821,22 +821,16 @@ old behaviour.
     read in `JAGS_marglik_parameters()`, `JAGS_marglik_priors()`, and their
     row and formula versions.
 - priors and selection models:
-  - ordered prior plots and layers quietly omit whole continuous curves whose
-    infinite density is introduced by random allocation; atoms and intrinsically
-    singular totals remain. Factor posterior/marginal overlays omit declared
-    reference rows consistently, retain zero and point levels, preserve the full
-    retained level color/label list, and default to matching dashed prior curves.
-    Fixed-total allocation shares check both exact endpoints. Multiple ordered
-    ggplot selections preserve figure indices with `NULL` holes for omitted
-    levels; each posterior legend key uses only its level's curve or point glyph.
-    Mixed point-total displays recover declared atoms from exact routes before
-    omitting allocation-singular curves, including transformed atom locations
-    with unchanged probability mass; unavailable recovery reports
-    `BayesTools_ordered_prior_display_unavailable`.
-    All-hidden standalone selections report `BayesTools_ordered_prior_display_empty`.
-    Certified curve omission is decided before plotting density generation,
-    avoiding unused quadrature and KDE evaluations while public `density()`
-    continues to evaluate every level.
+  - ordered prior plots, layers and posterior/marginal overlays omit only
+    persisted zero-design reference levels by default. Every non-reference
+    continuous prior remains visible, including allocation-induced singular
+    densities; only actual nonfinite plotting ordinates are dropped. Genuine
+    zero levels, exact point masses, finite densities and inference are preserved.
+    Direct selectors keep original level numbering and explicit reference
+    selection; multiple ordered ggplot selections return positional lists with
+    `NULL` holes for unselected levels. Overlays match posterior colors with
+    dashed prior defaults, and each posterior legend key uses only its level's
+    curve or point glyph.
   - supported scalar ordered literal point totals, point-slab totals and
     mixtures whose total components are all literal points use the existing exact
     mixed-measure density route: intermediate Dirichlet shares have scaled-Beta
@@ -913,8 +907,9 @@ old behaviour.
     merge consistent fitted sources. Unscaled prefixes remain available alongside
     scaled ones.
     Unscaled ordered prefixes canonicalize raw values and declared atoms from
-    their retained primitives even when another prefix is scaled. Formula
-    projections reject missing or nonfinite weights before selecting sources.
+    their retained primitives under either `transform_scaled` setting, including
+    fits with no scaling and fits where another prefix is scaled. Formula
+    projections validate their fitted-coordinate weights before selecting sources.
     Scaled mixed objects without those sources stop with
     `BayesTools_ordered_coordinates_unavailable`; recreate
     the mixed posteriors from their source fits.

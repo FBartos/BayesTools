@@ -107,348 +107,75 @@ test_that("ordered prior model intervals use analytic means and generalized stru
     class = "BayesTools_prior_interval_unavailable")
 })
 
-test_that("ordered prior omission preserves exact inference and retained level styles", {
-  fixture <- ordered_plot_test_fixture()
+test_that("ordered prior overlays omit only the design reference and retain level styles", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, .5)),
+    levels = c("systematic", "alternate", "random"))
   prior_data <- function(samples){
     .plot_data_prior_factor_density_transformed(posterior_metadata(samples, "prior_context"),
       samples, "mu_f", list(fixture$prior), 64L)
   }
   raw <- prior_data(fixture$samples)
-  transformed <- prior_data(transform_factor_samples(fixture$samples))
-  expect_identical(raw, transformed)
+  expect_identical(raw, prior_data(transform_factor_samples(fixture$samples)))
   expect_identical(vapply(raw, attr, character(1), "level_name"),
-    c(level2_density = "mu_f[late]", level3_density = "mu_f[last]"))
-  universe <- attr(raw, "factor_level_universe")
-  expect_identical(universe$name, c("mu_f[middle]", "mu_f[late]", "mu_f[last]"))
-  normalized <- .plot_prior_factor_normalize_data(raw)
-  expect_identical(unname(vapply(normalized$plot_data, attr, integer(1), "level_id")), c(2L, 3L))
-  direct <- density(fixture$prior, n_points = 64)
-  filtered <- .plot_data_ordered_prior_display(fixture$prior, direct)
-  expect_s3_class(filtered[[2L]], "density.prior.display_empty")
-  expect_s3_class(filtered[[3L]], "density.prior.simple")
-  expect_identical(direct, density(fixture$prior, n_points = 64))
-  columns <- .JAGS_prior_factor_names("mu_f", fixture$prior)
-  dist <- .prior_density_from_context(posterior_metadata(fixture$samples, "prior_context"),
-    setNames(c(1, 0, 0), columns))
-  ordinate <- prior_density_ordinate(dist, 0)
-  expect_identical(ordinate$behavior, "infinite")
-  expect_true(ordinate$exact)
-  empty <- tryCatch(plot(fixture$prior, show_figures = 2, plot_type = "ggplot", n_points = 64), error = identity)
-  expect_s3_class(empty, "BayesTools_ordered_prior_display_empty")
-  expect_identical(conditionMessage(empty), paste0(
-    "The selected ordered prior display is unavailable because all selected levels have omitted ",
-    "continuous curves and no visible point masses. Use 'show_figures' to select a level with a ",
-    "visible prior curve or point mass."))
-  expect_length(geom_prior(fixture$prior, show_parameter = 2, n_points = 64), 0L)
+    c(level1_density = "mu_f[alternate]", level2_density = "mu_f[random]"))
+  expect_identical(attr(raw, "factor_level_universe")$name, c("mu_f[alternate]", "mu_f[random]"))
+  expect_true(all(vapply(raw, function(x) all(is.finite(x$x) & is.finite(x$y)), logical(1))))
   for(samples in list(fixture$samples, transform_factor_samples(fixture$samples))){
     plot <- plot_posterior(samples, "mu_f", prior = TRUE, plot_type = "ggplot", n_points = 64,
-      col = c("red", "blue", "green"), legend_labels = c("M", "L", "E"))
+      col = c("red", "blue"), legend_labels = c("A", "R"))
     built <- ggplot2::ggplot_build(plot)
-    expect_identical(vapply(built$data[1:2], function(x) unique(x$colour), character(1)), c("blue", "green"))
-    expect_identical(unique(built$data[[1L]]$linetype), 2)
-    expect_identical(plot$scales$get_scales("colour")$breaks, c("M", "L", "E"))
+    expect_identical(vapply(built$data[1:2], function(x) unique(x$colour), character(1)), c("red", "blue"))
+    expect_identical(vapply(built$data[1:2], function(x) unique(x$linetype), numeric(1)), c(2, 2))
+    expect_identical(sort(unique(built$data[[3L]]$colour)), c("blue", "red"))
+    expect_identical(plot$scales$get_scales("colour")$breaks, c("A", "R"))
+    expect_length(built$plot$guides$params, 1L)
   }
   explicit <- plot_posterior(fixture$samples, "mu_f", prior = TRUE, plot_type = "ggplot",
     n_points = 64, dots_prior = list(col = "purple", lty = 3))
-  expect_identical(unique(ggplot2::ggplot_build(explicit)$data[[1L]]$colour), "purple")
+  expect_true(all(vapply(ggplot2::ggplot_build(explicit)$data[1:2], function(x){
+    identical(unique(x$colour), "purple") && identical(unique(x$linetype), 3)
+  }, logical(1))))
+  marginal <- marginal_posterior(fixture$samples, "mu_f", use_formula = FALSE,
+    prior_samples = TRUE, n_samples = 128L)
+  data <- .plot_data_marginal_samples(list(mu_f = marginal), "mu_f", TRUE, 64, NULL, NULL, FALSE)
+  expect_identical(attr(data, "factor_level_universe")$name, c("alternate", "random"))
+  expect_true(all(vapply(data, function(x) length(attr(x, "prior")) > 0L, logical(1))))
+  selection <- parameter_catalog_resolve(parameter_catalog(fixture$fit), "f[alternate]", namespace = "mu")
+  scalar <- parameter_mixed_posterior(fixture$fit, selection)
+  expect_length(ggplot2::ggplot_build(plot_posterior(list(theta = scalar), "theta", prior = TRUE,
+    plot_type = "ggplot", n_points = 64))$data, 2L)
 })
 
-test_that("ordered allocation singularity suppression retains atoms and intrinsic total curves", {
-  for(total in list(prior("normal", list(0, 1)), prior("t", list(0, 1, 3)))){
-    fixture <- ordered_plot_test_fixture(total)
-    direct <- .plot_data_ordered_prior_display(fixture$prior, density(fixture$prior, n_points = 64))
-    expect_s3_class(direct[[2L]], "density.prior.display_empty")
-  }
-  fixture <- ordered_plot_test_fixture(prior("gamma", list(.5, 1)))
-  intrinsic <- .plot_data_ordered_prior_display(fixture$prior, density(fixture$prior, n_points = 64))
-  expect_s3_class(intrinsic[[2L]], "density.prior.simple")
-  fixture <- ordered_plot_test_fixture(prior_mixture(list(prior("normal", list(0, 1)),
-    prior("gamma", list(.5, 1)))))
-  intrinsic_mixture <- .plot_data_ordered_prior_display(fixture$prior, density(fixture$prior, n_points = 64))
-  expect_s3_class(intrinsic_mixture[[2L]], "density.prior.simple")
-  expect_true(any(intrinsic_mixture[[2L]]$y > 0))
-  fixture <- ordered_plot_test_fixture(prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5))))
-  mixed <- .plot_data_ordered_prior_display(fixture$prior, density(fixture$prior, n_points = 64))
-  expect_null(mixed[[2L]]$continuous)
-  expect_equal(mixed[[2L]]$atoms, data.frame(location = 0, mass = .5))
-  expect_false(.plot_ordered_prior_suppress_curve(list(type = "unknown")))
-  ordinary <- prior("normal", list(0, 1))
-  attr(ordinary, "multiply_by") <- "share"
-  route <- .prior_density_route_linear(list(total = ordinary,
-    share = prior("beta", list(1, 2))), c(total = 1), NULL, 256L)
-  expect_false(.plot_ordered_prior_suppress_curve(route))
+test_that("non-reference ordered zero levels and mixed atoms remain visible", {
   for(allocation in list(c(0, .3, .7), NULL)){
     fixture <- ordered_plot_test_fixture(prior("point", list(2)), allocation)
     data <- .plot_data_samples.factor(fixture$samples, "mu_f", 64, NULL, NULL, FALSE)
     points <- data[vapply(data, inherits, logical(1), "density.prior.point")]
     expect_true(any(vapply(points, function(x) identical(x$x, 2) && identical(x$y, 1), logical(1))))
-    expect_s3_class(plot_posterior(fixture$samples, "mu_f", prior = TRUE,
-      plot_type = "ggplot", n_points = 64), "ggplot")
+    if(!is.null(allocation)){
+      expect_true(any(vapply(points, function(x) identical(x$x, 0) && identical(x$y, 1), logical(1))))
+    }
   }
-})
-
-test_that("fixed ordered totals omit exact allocation singularities at either endpoint", {
-  cases <- list(lower = list(alpha = c(.5, 1, 1), level = 2L, endpoint = 0),
-    upper = list(alpha = c(2, 2, .5), level = 3L, endpoint = 2))
-  for(case in cases){
-    fixture <- ordered_plot_test_fixture(prior("point", list(2)),
-      prior("dirichlet", list(case$alpha)))
-    set.seed(600)
-    density_data <- density(fixture$prior, n_points = 64, n_samples = 128)
-    displayed <- .plot_data_ordered_prior_display(fixture$prior, density_data)
-    expect_s3_class(displayed[[case$level]], "density.prior.display_empty")
-    expect_s3_class(displayed[[4L]], "density.prior.point")
-    expect_equal(displayed[[4L]]$x, 2)
-    expect_equal(displayed[[4L]]$y, 1)
-    set.seed(600)
-    expect_identical(density_data, density(fixture$prior, n_points = 64, n_samples = 128))
-    columns <- .JAGS_prior_factor_names("mu_f", fixture$prior)
-    weights <- setNames(as.numeric(seq_along(columns) < case$level), columns)
-    dist <- .prior_density_from_context(posterior_metadata(fixture$samples, "prior_context"), weights)
-    ordinate <- prior_density_ordinate(dist, case$endpoint)
-    expect_true(ordinate$exact)
-    expect_identical(ordinate$behavior, "infinite")
-    raw <- .plot_data_prior_factor_density_transformed(posterior_metadata(fixture$samples, "prior_context"),
-      fixture$samples, "mu_f", list(fixture$prior), 64L)
-    pretransformed <- transform_factor_samples(fixture$samples)
-    pretransformed <- .plot_data_prior_factor_density_transformed(posterior_metadata(pretransformed, "prior_context"),
-      pretransformed, "mu_f", list(fixture$prior), 64L)
-    expect_identical(raw, pretransformed)
-    expect_false(paste0("mu_f[", c("early", "middle", "late", "last")[[case$level]], "]") %in%
-      vapply(raw, attr, character(1), "level_name"))
-    expect_identical(attr(raw, "factor_level_universe")$name,
-      c("mu_f[middle]", "mu_f[late]", "mu_f[last]"))
-    expect_length(geom_prior(fixture$prior, show_parameter = case$level, n_points = 64), 0L)
-    expect_error(plot(fixture$prior, show_figures = case$level,
-      plot_type = "ggplot", n_points = 64), class = "BayesTools_ordered_prior_display_empty")
-  }
-  # The default point-total share is Beta(1, 2), finite at both endpoints.
-  control <- ordered_plot_test_fixture(prior("point", list(2)))
-  expect_s3_class(.plot_data_ordered_prior_display(control$prior,
-    density(control$prior, n_points = 64))[[2L]], "density.prior.simple")
-  signed <- ordered_plot_test_fixture(prior("point", list(-2)),
-    prior("dirichlet", list(c(2, 2, .5))))
-  signed_display <- .plot_data_ordered_prior_display(signed$prior,
-    density(signed$prior, n_points = 64, transformation = "exp"))
-  expect_s3_class(signed_display[[3L]], "density.prior.display_empty")
-  expect_s3_class(signed_display[[4L]], "density.prior.point")
-  expect_equal(signed_display[[4L]]$x, exp(-2))
-  expect_equal(signed_display[[4L]]$y, 1)
-})
-
-test_that("ordered display recovers declared mixed-total atoms before omitting curves", {
-  cases <- list(lower = list(alpha = c(.5, 1, 1), level = 2L, name = "middle"),
-    upper = list(alpha = c(2, 2, .5), level = 3L, name = "late"))
-  for(case in cases){
-    fixture <- ordered_plot_test_fixture(
-      prior_spike_and_slab(prior("point", list(2)), prior("point", list(.5))),
-      prior("dirichlet", list(case$alpha)))
-    set.seed(600)
-    original <- density(fixture$prior, n_points = 64L, n_samples = 128L)
-    expect_equal(original[[case$level]]$atoms, data.frame(location = 0, mass = .5))
-    # A precomputed display can still lack its atom table; declared route
-    # recovery remains necessary independently of the exact density producer.
-    missing_atoms <- original
-    missing_atoms[[case$level]]$atoms <- NULL
-    displayed <- .plot_data_ordered_prior_display(fixture$prior, missing_atoms)[[case$level]]
-    expect_s3_class(displayed, "density.prior.point")
-    expect_s3_class(displayed, "density.prior.mixed_measure")
-    expect_null(displayed$continuous)
-    expect_equal(displayed$atoms, data.frame(location = 0, mass = .5))
-    expect_identical(displayed$x, 0)
-    expect_identical(displayed$y, .5)
-    expect_identical(attr(displayed, "x_range"), c(0, 0))
-    expect_identical(attr(displayed, "y_range"), c(0, .5))
-    set.seed(600)
-    expect_identical(original, density(fixture$prior, n_points = 64L, n_samples = 128L))
-    # Prior-context overlays already carry exact atoms. Their fitted source
-    # and pretransformed representation must retain the same spike mass.
-    overlays <- lapply(list(fixture$samples, transform_factor_samples(fixture$samples)), function(samples){
-      .plot_data_prior_factor_density_transformed(posterior_metadata(samples, "prior_context"),
-        samples, "mu_f", list(fixture$prior), 64L)
-    })
-    expect_identical(overlays[[1L]], overlays[[2L]])
-    level <- overlays[[1L]][vapply(overlays[[1L]], function(component){
-      identical(attr(component, "level_name"), paste0("mu_f[", case$name, "]"))
-    }, logical(1))]
-    expect_length(level, 1L)
-    expect_s3_class(level[[1L]], "density.prior.point")
-    expect_identical(level[[1L]]$x, 0)
-    expect_identical(level[[1L]]$y, .5)
-  }
-})
-
-test_that("ordered display maps recovered atoms once and preserves their probability", {
   fixture <- ordered_plot_test_fixture(
     prior_spike_and_slab(prior("point", list(-2)), prior("point", list(.5))),
     prior("dirichlet", list(c(2, 2, .5))))
-  transformations <- list(exp = list(name = "exp", arguments = NULL, location = 1),
-    tanh = list(name = "tanh", arguments = NULL, location = 0),
-    lin = list(name = "lin", arguments = list(a = 3, b = -2), location = 3))
-  for(transformation in transformations){
-    set.seed(600)
-    original <- density(fixture$prior, n_points = 64L, n_samples = 128L,
-      transformation = transformation$name, transformation_arguments = transformation$arguments)
-    displayed <- .plot_data_ordered_prior_display(fixture$prior, original,
-      transformation = transformation$name, transformation_arguments = transformation$arguments)[[3L]]
-    expect_s3_class(displayed, "density.prior.point")
-    expect_null(displayed$continuous)
+  for(transformation in list(list(name = "exp", arguments = NULL, location = 1),
+    list(name = "tanh", arguments = NULL, location = 0),
+    list(name = "lin", arguments = list(a = 3, b = -2), location = 3))){
+    original <- density(fixture$prior, n_points = 64L, transformation = transformation$name,
+      transformation_arguments = transformation$arguments)
+    displayed <- .plot_data_ordered_prior_display(fixture$prior, original)[[3L]]
+    expect_identical(displayed$continuous, original[[3L]]$continuous)
     expect_equal(displayed$atoms, data.frame(location = transformation$location, mass = .5))
     direct <- plot(fixture$prior, show_figures = 3L, plot_type = "ggplot", n_points = 64L,
-      n_samples = 128L, transformation = transformation$name,
-      transformation_arguments = transformation$arguments)
-    layer <- ggplot2::ggplot_build(direct)$data
-    expect_length(layer, 1L)
-    expect_equal(layer[[1L]]$x, transformation$location)
-    expect_equal(layer[[1L]]$yend, .5)
+      transformation = transformation$name, transformation_arguments = transformation$arguments)
+    layers <- ggplot2::ggplot_build(direct)$data
+    expect_length(layers, 2L)
+    expect_equal(layers[[2L]]$x, transformation$location)
     geom <- ggplot2::ggplot() + geom_prior(fixture$prior, show_parameter = 3L, n_points = 64L,
-      n_samples = 128L, transformation = transformation$name,
-      transformation_arguments = transformation$arguments)
-    expect_equal(ggplot2::ggplot_build(geom)$data[[1L]]$x, transformation$location)
-    expect_equal(ggplot2::ggplot_build(geom)$data[[1L]]$yend, .5)
+      transformation = transformation$name, transformation_arguments = transformation$arguments)
+    expect_equal(ggplot2::ggplot_build(geom)$data[[2L]]$x, transformation$location)
   }
-  # These atoms were transformed by density(); display must not map them again.
-  control <- ordered_plot_test_fixture(
-    prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5))))
-  original <- density(control$prior, n_points = 64L, transformation = "exp")
-  expect_equal(original[[2L]]$atoms, data.frame(location = 1, mass = .5))
-  displayed <- .plot_data_ordered_prior_display(control$prior, original, transformation = "exp")
-  expect_identical(displayed[[2L]]$atoms, original[[2L]]$atoms)
-  expect_null(displayed[[2L]]$continuous)
-  expect_equal(displayed[[2L]]$x, 1)
-  expect_equal(displayed[[2L]]$y, .5)
-})
-
-test_that("ordered display retains declared atom arrows in public base plots and lines", {
-  fixture <- ordered_plot_test_fixture(
-    prior_spike_and_slab(prior("point", list(2)), prior("point", list(.5))),
-    prior("dirichlet", list(c(2, 2, .5))))
-  point_renderer <- .lines.prior.point
-  rendered <- list()
-  local_mocked_bindings(.lines.prior.point = function(plot_data, scale_y2 = 1, ...){
-    rendered[[length(rendered) + 1L]] <<- list(x = plot_data$x, y = plot_data$y, scale_y2 = scale_y2)
-    point_renderer(plot_data, scale_y2 = scale_y2, ...)
-  }, .lines.prior.simple = function(...) stop("An omitted continuous curve was rendered."))
-  grDevices::pdf(tempfile(fileext = ".pdf"))
-  on.exit(grDevices::dev.off(), add = TRUE)
-  expect_warning(plot(fixture$prior, show_figures = 3L, plot_type = "base", n_points = 64L,
-    n_samples = 128L, transformation = "lin", transformation_arguments = list(a = 3, b = -2)), NA)
-  expect_warning(lines(fixture$prior, show_parameter = 3L, n_points = 64L, n_samples = 128L,
-    transformation = "lin", transformation_arguments = list(a = 3, b = -2)), NA)
-  expect_length(rendered, 2L)
-  expect_identical(rendered, rep(list(list(x = 3, y = .5, scale_y2 = 1)), 2L))
-})
-
-test_that("ordered display atom locations preserve unknown children and known empty measures", {
-  atom <- .prior_density_route_atom(c(0, 0), c(.2, .3), list(kind = "scalar_affine", offset = 0, scale = 0))
-  continuous <- .prior_density_route_linear(list(theta = prior("normal", list(0, 1))),
-    c(theta = 1), NULL, 256L)
-  unknown <- list(type = "unknown", provenance = list(kind = "unsupported_provenance"))
-  mixture <- function(components, weights) list(type = "mixture", components = components, weights = weights)
-  expect_identical(.plot_ordered_prior_atom_locations(atom), 0)
-  expect_identical(.plot_ordered_prior_atom_locations(mixture(list(atom, unknown), c(1, 0))), 0)
-  expect_null(.plot_ordered_prior_atom_locations(mixture(list(atom, unknown), c(.5, .5))))
-  expect_identical(.plot_ordered_prior_atom_locations(mixture(list(continuous, continuous), c(.3, .7))), numeric())
-  expect_identical(.plot_ordered_prior_atom_locations(list(type = "conditional_normal")), numeric())
-  transformed <- list(type = "transform", source = atom, transformation = "lin", arguments = list(a = 3, b = -2))
-  expect_identical(.plot_ordered_prior_atom_locations(transformed), 3)
-})
-
-test_that("ordered display fails explicitly when declared atom recovery is unavailable", {
-  fixture <- ordered_plot_test_fixture(
-    prior_spike_and_slab(prior("point", list(2)), prior("point", list(.5))),
-    prior("dirichlet", list(c(2, 2, .5))))
-  original <- density(fixture$prior, n_points = 64L, n_samples = 128L)
-  original[[3L]]$atoms <- NULL
-  recovered <- .plot_data_ordered_prior_display(fixture$prior, original, transformation = "exp")
-  expect_equal(recovered[[3L]]$atoms, data.frame(location = 1, mass = .5))
-  expect_null(recovered[[3L]]$continuous)
-  expect_identical(attr(recovered[[3L]], "component"), 3L)
-  locations <- .plot_ordered_prior_atom_locations
-  ordinate <- .prior_density_route_ordinate
-  local_mocked_bindings(.plot_ordered_prior_atom_locations = function(route) NULL)
-  error <- tryCatch(.plot_data_ordered_prior_display(fixture$prior, original), error = identity)
-  expect_s3_class(error, "BayesTools_ordered_prior_display_unavailable")
-  expect_s3_class(error, "BayesTools_plot_condition")
-  expect_identical(conditionMessage(error), paste0("The ordered prior display is unavailable: ",
-    "declared point-mass locations could not be recovered from its exact prior route. ",
-    "Use 'prior_density_ordinate()' to inspect the prior measure."))
-  local_mocked_bindings(.plot_ordered_prior_atom_locations = locations,
-    .prior_density_route_ordinate = function(route, value){
-      result <- ordinate(route, value)
-      result$exact <- FALSE
-      result
-    })
-  error <- tryCatch(.plot_data_ordered_prior_display(fixture$prior, original), error = identity)
-  expect_s3_class(error, "BayesTools_ordered_prior_display_unavailable")
-  expect_identical(conditionMessage(error), paste0("The ordered prior display is unavailable: ",
-    "declared point-mass probabilities could not be recovered exactly from its prior route. ",
-    "Use 'prior_density_ordinate()' to inspect the prior measure."))
-  local_mocked_bindings(.prior_density_route_ordinate = ordinate)
-  for(mass in c(0, -1)){
-    local_mocked_bindings(.prior_density_route_ordinate = function(route, value){
-      result <- ordinate(route, value)
-      result$point_mass <- mass
-      result
-    })
-    expect_error(.plot_data_ordered_prior_display(fixture$prior, original),
-      class = "BayesTools_ordered_prior_display_unavailable")
-  }
-  local_mocked_bindings(.prior_density_route_ordinate = ordinate,
-    .plot_ordered_prior_atom_locations = function(route) 1)
-  expect_error(.plot_data_ordered_prior_display(fixture$prior, original),
-    class = "BayesTools_ordered_prior_display_unavailable")
-})
-
-test_that("ordered lines recover atoms before the active probability mapping", {
-  p <- ordered_plot_test_fixture(prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5))),
-    prior("dirichlet", list(c(.5, .25, .25))))$prior
-  mapping <- .plot_scale_y2_overlay
-  seen <- list()
-  local_mocked_bindings(.plot_scale_y2_overlay = function(plot_data, scale_y2 = NULL){
-    seen[[length(seen) + 1L]] <<- plot_data
-    mapping(plot_data, scale_y2)
-  })
-  grDevices::pdf(NULL)
-  on.exit(grDevices::dev.off(), add = TRUE)
-  initial <- list(prior("point", list(0), prior_weights = .2), prior("normal", list(0, 1), prior_weights = .8))
-  plot_prior_list(initial, ylim = c(0, 1), ylim2 = c(0, .3), scale_y2 = 2)
-  state <- .plot_scale_y2_state_current()
-  expect_warning(lines(p, show_parameter = 2L, xlim = c(-3, 3), n_points = 64L, transformation = "exp"),
-    "Point-mass probabilities outside the active secondary-axis limits will be clipped. Redraw the initial plot with a wider 'ylim2'.", fixed = TRUE)
-  expect_equal(seen[[1L]][[2L]]$atoms, data.frame(location = 1, mass = .5))
-  expect_identical(.plot_scale_y2_state_current(), state)
-  expect_no_warning(lines(p, show_parameter = 2L, xlim = c(-3, 3), n_points = 64L, scale_y2 = 2))
-  plot_prior_list(initial, ylim = c(0, 1), ylim2 = c(0, 1), scale_y2 = 2)
-  expect_no_warning(lines(p, show_parameter = 2L, xlim = c(-3, 3), n_points = 64L))
-  expect_length(seen, 3L)
-  expect_equal(seen[[2L]][[2L]]$atoms, data.frame(location = 0, mass = .5))
-})
-
-test_that("ordered ggplot selections preserve suppressed positions and chosen count", {
-  fixture <- ordered_plot_test_fixture()
-  omitted_middle <- plot(fixture$prior, plot_type = "ggplot", n_points = 64)
-  expect_length(omitted_middle, 4L)
-  expect_null(omitted_middle[[2L]])
-  expect_true(all(vapply(omitted_middle[c(1L, 3L, 4L)], inherits, logical(1), "ggplot")))
-  upper <- ordered_plot_test_fixture(prior("point", list(2)),
-    prior("dirichlet", list(c(2, 2, .5))))
-  omitted_last <- plot(upper$prior, show_figures = -4L,
-    plot_type = "ggplot", n_points = 64)
-  expect_type(omitted_last, "list")
-  expect_length(omitted_last, 3L)
-  expect_s3_class(omitted_last[[1L]], "ggplot")
-  expect_s3_class(omitted_last[[2L]], "ggplot")
-  expect_null(omitted_last[[3L]])
-  one_visible <- ordered_plot_test_fixture(prior("point", list(2)),
-    prior("dirichlet", list(c(.5, .25, .25))))
-  selected <- plot(one_visible$prior, show_figures = -1L, plot_type = "ggplot", n_points = 64)
-  expect_type(selected, "list")
-  expect_length(selected, 4L)
-  expect_true(all(vapply(selected[1:3], is.null, logical(1))))
-  expect_s3_class(selected[[4L]], "ggplot")
-  expect_s3_class(plot(fixture$prior, show_figures = 4L,
-    plot_type = "ggplot", n_points = 64), "ggplot")
 })
 
 test_that("ordered guides give each level only its posterior curve or point glyph", {
@@ -482,31 +209,6 @@ test_that("ordered guides give each level only its posterior curve or point glyp
     expect_gt(length(mapped), 0L)
     expect_true(all(vapply(mapped, function(layer) identical(layer$show.legend, FALSE), logical(1))))
   }
-})
-
-test_that("ordered marginal plots retain their level universe after quiet prior omission", {
-  fixture <- ordered_plot_test_fixture()
-  marginal <- marginal_posterior(fixture$samples, "mu_f", use_formula = FALSE,
-    prior_samples = TRUE, n_samples = 128L)
-  samples <- list(mu_f = marginal)
-  data <- .plot_data_marginal_samples(samples, "mu_f", TRUE, 64, NULL, NULL, FALSE)
-  expect_identical(attr(data, "factor_level_universe")$name, c("middle", "late", "last"))
-  expect_length(attr(data[[1L]], "prior"), 0L)
-  expect_true(isTRUE(attr(attr(data, "factor_level_universe"), "ordered")))
-  plot <- plot_marginal(samples, "mu_f", prior = TRUE, plot_type = "ggplot", n_points = 64,
-    col = c("red", "blue", "green"), legend_labels = c("M", "L", "E"))
-  expect_identical(vapply(ggplot2::ggplot_build(plot)$data[1:2], function(x) unique(x$colour), character(1)),
-    c("blue", "green"))
-  # One selected singular scalar has no prior overlay; its posterior remains.
-  selection <- parameter_catalog_resolve(parameter_catalog(fixture$fit), "f[middle]", namespace = "mu")
-  scalar <- parameter_mixed_posterior(fixture$fit, selection)
-  expect_warning(plot_posterior(list(theta = scalar), "theta", prior = TRUE,
-    plot_type = "ggplot", n_points = 64), NA)
-  zero <- ordered_plot_test_fixture(prior("normal", list(0, 1)), c(0, .3, .7))
-  zero_marginal <- marginal_posterior(zero$samples, "mu_f", use_formula = FALSE, n_samples = 128L)
-  zero_data <- .plot_data_marginal_samples(list(mu_f = zero_marginal), "mu_f", FALSE,
-    64, NULL, NULL, FALSE)
-  expect_true(any(vapply(zero_data, function(x) inherits(x, "density.prior.point") && identical(x$x, 0), logical(1))))
 })
 
 .posterior_density_for_test <- function(x, y, method = "iwmde",

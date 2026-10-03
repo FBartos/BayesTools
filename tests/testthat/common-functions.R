@@ -48,9 +48,9 @@ attach_test_parameter_map <- function(fit, monitor_names = NULL) {
 # Deterministic source-complete ordered fixture for computed and visual plots.
 # These are synthetic draws, not fitted posterior reference values.
 ordered_plot_test_fixture <- function(total = prior("normal", list(1, 1)),
-                                      allocation = NULL, contrast = "cumulative"){
-  data <- data.frame(f = ordered(rep(c("early", "middle", "late", "last"), 3L),
-    levels = c("early", "middle", "late", "last")))
+                                      allocation = NULL, contrast = "cumulative",
+                                      levels = c("early", "middle", "late", "last")){
+  data <- data.frame(f = ordered(rep(levels, 3L), levels = levels))
   formula <- JAGS_formula(~f, "mu", data, list(intercept = prior("normal", list(0, 1)),
     f = prior_ordered(total, allocation = allocation, contrast = contrast)))
   prior <- formula$prior_list$mu_f

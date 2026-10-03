@@ -156,7 +156,7 @@
 #' coefficients.
 #' Ordered formula projections reuse retained fitted coefficients, totals and
 #' allocations, with aligned model and draw rows, from the contributing formula
-#' prefixes. Every provided source of a contributing prefix stays involved;
+#' prefixes. Every provided source of a contributing prefix is used;
 #' unrelated prefixes are excluded. Scaling is determined separately for each
 #' prefix; an unscaled prefix keeps its fitted draws when another prefix is scaled.
 #' Scaled mixed posteriors that lack the fitted ordinary coefficients needed by

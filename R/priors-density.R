@@ -282,10 +282,6 @@ density.prior <- function(x,
 
 .density.prior.ordered                <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
 
-  if(!is.null(attr(x, "ordered_plot_skip", exact = TRUE))){
-    x <- .prior_ordered_default_bound(x)
-    .density.prior.ordered_plot_skip(x, nrow(.factor_term_design_from_metadata(x)$design))
-  }
   mixed <- .density.prior.ordered_mixed(
     x = x,
     x_seq = x_seq,
@@ -315,13 +311,8 @@ density.prior <- function(x,
 
   out <- vector("list", ncol(samples))
   names(out) <- colnames(samples)
-  plot_skip <- .density.prior.ordered_plot_skip(x, ncol(samples))
 
   for(i in seq_len(ncol(samples))){
-    if(plot_skip[[i]]){
-      out[[i]] <- .density.prior.ordered_display_empty(i, names(out)[i])
-      next
-    }
     component_samples <- samples[, i]
 
     if(all(component_samples == component_samples[1])){
@@ -382,27 +373,6 @@ density.prior <- function(x,
   attr(out, "parameter_name") <- names(out)
   class(out) <- c("density.prior.ordered", "list")
 
-  out
-}
-
-# Transient plot-only masks never occur on an ordinary density() input.
-.density.prior.ordered_plot_skip <- function(x, n_levels){
-
-  skip <- attr(x, "ordered_plot_skip", exact = TRUE)
-  if(is.null(skip)) return(rep(FALSE, n_levels))
-  if(!is.logical(skip) || length(skip) != n_levels || anyNA(skip)){
-    stop("The private ordered plot mask must contain one non-missing logical value per declared level.",
-      call. = FALSE)
-  }
-  skip
-}
-
-.density.prior.ordered_display_empty <- function(component, component_name){
-
-  out <- structure(list(x = numeric(), y = numeric()),
-    class = c("density.prior.ordered_component", "density.prior.display_empty"))
-  attr(out, "component") <- component
-  attr(out, "component_name") <- component_name
   out
 }
 
@@ -503,12 +473,7 @@ density.prior <- function(x,
 
   densities <- vector("list", nrow(weights))
   names(densities) <- component_names
-  plot_skip <- .density.prior.ordered_plot_skip(x, nrow(weights))
   for(i in seq_len(nrow(weights))){
-    if(plot_skip[[i]]){
-      densities[[i]] <- .density.prior.ordered_display_empty(i, component_names[[i]])
-      next
-    }
     # A level with a structural route (e.g. a spike-and-slab total times a
     # Beta allocation share) is evaluated on that route at the display
     # values; only a level without one uses its numerical grid.
@@ -815,7 +780,6 @@ density.prior <- function(x,
 
   densities <- vector("list", length(component_names))
   names(densities) <- component_names
-  plot_skip <- .density.prior.ordered_plot_skip(x, length(component_names))
 
   if(identical(record$spec$type, "fixed")){
     cumulative <- if(identical(x$contrast, "cumulative")){
@@ -824,10 +788,6 @@ density.prior <- function(x,
       cumsum(record$spec$weights)
     }
     for(i in seq_along(cumulative)){
-      if(plot_skip[[i]]){
-        densities[[i]] <- .density.prior.ordered_display_empty(i, component_names[[i]])
-        next
-      }
       densities[[i]] <- .density.prior.ordered_scaled_total(
         total = x$total,
         scale = cumulative[[i]],
@@ -839,10 +799,6 @@ density.prior <- function(x,
     alpha <- record$spec$alpha
     D <- length(alpha)
     for(i in seq_along(densities)){
-      if(plot_skip[[i]]){
-        densities[[i]] <- .density.prior.ordered_display_empty(i, component_names[[i]])
-        next
-      }
       m <- if(identical(x$contrast, "cumulative")) i - 1L else i
       if(m == 0L){
         densities[[i]] <- .density.prior.point(prior("point", list(location = 0)), x_seq, range(x_seq), n_points, n_samples = 1L, force_samples = FALSE, transformation = NULL, transformation_arguments = NULL)

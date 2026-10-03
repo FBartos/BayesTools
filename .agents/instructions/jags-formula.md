@@ -302,7 +302,10 @@ names.
   unrelated prefixes are excluded. Scaling belongs to the registered prefix's
   emitted scale record. Contexts agree within a prefix; combined-prefix targets
   union aligned sources by authoritative names and refuse contradictory overlaps.
-  Unscaled prefixes keep their fitted draws when other prefixes are scaled. Scaled mixed
+  Raw ordered producers canonicalize each prefix from its retained primitive
+  sources unless that prefix is being unscaled through its own emitted scale
+  record. An unscaled prefix therefore canonicalizes raw values and atoms under
+  either transform_scaled setting, even when another prefix is scaled. Scaled mixed
   objects without needed fitted ordinary sources are unavailable and must be
   recreated from their source fits; never combine fitted weights with original-scale
   draws or reconstruct fitted draws by inverting the scale map.

@@ -1,6 +1,84 @@
 skip_if_not_test_profile("unit")
 source(testthat::test_path("common-functions.R"))
 
+test_that("ordered direct displays retain both weighted non-reference priors", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, .5)),
+    levels = c("systematic", "alternate", "random"))
+  p <- fixture$prior
+  x <- c(-.7, -.2, -.05, 0, .05, .2, .7)
+  original <- density(p, x_seq = x, n_points = length(x))
+  physical <- vapply(x[x != 0], function(value){
+    integral <- stats::integrate(function(share){
+      stats::dnorm(value / share, 0, .5) / share
+    }, 0, 1, rel.tol = 1e-10, abs.tol = 1e-12)
+    expect_lt(integral$abs.error, 1e-10)
+    integral$value
+  }, numeric(1))
+  expect_equal_each(original[[2L]]$y[x != 0], physical, tolerance = 2e-10)
+  expect_identical(original[[2L]]$y[x == 0], Inf)
+  expect_equal_each(original[[3L]]$y, stats::dnorm(x, 0, .5), tolerance = 1e-14)
+  expect_equal(stats::integrate(function(share) .25 * share^2, 0, 1)$value, .25 / 3)
+  columns <- .JAGS_prior_factor_names("mu_f", p)
+  context <- posterior_metadata(fixture$samples, "prior_context")
+  partial <- .prior_density_from_context(context, stats::setNames(c(1, 0), columns))
+  complete <- .prior_density_from_context(context, stats::setNames(c(1, 1), columns))
+  expect_identical(prior_density_ordinate(partial, 0)$behavior, "infinite")
+  expect_identical(prior_density_ordinate(partial, 0)$point_mass, 0)
+  expect_true(prior_density_ordinate(partial, 0)$exact)
+  expect_identical(prior_density_ordinate(complete, 0)$behavior, "regular")
+  displayed <- .plot_data_ordered_prior_display(p, original)
+  expect_identical(displayed[[2L]]$x, x[x != 0])
+  expect_identical(displayed[[2L]]$y, original[[2L]]$y[x != 0])
+  expect_identical(displayed[[3L]], original[[3L]])
+  expect_identical(original, density(p, x_seq = x, n_points = length(x)))
+  plots <- plot(p, plot_type = "ggplot", x_seq = x, n_points = length(x))
+  expect_length(plots, 3L)
+  expect_null(plots[[1L]])
+  expect_true(all(vapply(plots[2:3], inherits, logical(1), "ggplot")))
+  expect_equal(ggplot2::ggplot_build(plots[[2L]])$data[[1L]]$y, physical, tolerance = 2e-10)
+  expect_s3_class(plot(p, show_figures = 2L, plot_type = "ggplot", x_seq = x), "ggplot")
+  expect_s3_class(plot(p, show_figures = 1L, plot_type = "ggplot", x_seq = x), "ggplot")
+  selected <- plot(p, show_figures = -1L, plot_type = "ggplot", x_seq = x)
+  expect_length(selected, 3L)
+  expect_null(selected[[1L]])
+  expect_true(all(vapply(selected[2:3], inherits, logical(1), "ggplot")))
+  expect_length(geom_prior(p, x_seq = x), 2L)
+  expect_length(geom_prior(p, show_parameter = 2L, x_seq = x), 1L)
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_no_warning(plot(p, x_seq = x))
+  expect_no_warning(lines(p, x_seq = x))
+})
+
+test_that("visible ordered priors preserve genuine atoms and honest density failures", {
+  for(total in list(prior("gamma", list(.5, 1)), prior("point", list(2)),
+    prior_spike_and_slab(prior("point", list(2)), prior("point", list(.5))))){
+    p <- ordered_plot_test_fixture(total, prior("dirichlet", list(c(2, 2, .5))))$prior
+    original <- density(p, n_points = 64L)
+    displayed <- .plot_data_ordered_prior_display(p, original)
+    expect_true(any(displayed[[3L]]$y > 0))
+    if(!is.null(original[[3L]]$atoms)){
+      expect_identical(displayed[[3L]]$atoms, original[[3L]]$atoms)
+      expect_identical(displayed[[3L]]$continuous, original[[3L]]$continuous)
+    }
+    expect_s3_class(plot(p, show_figures = 3L, plot_type = "ggplot", n_points = 64L), "ggplot")
+  }
+  p <- ordered_plot_test_fixture(prior("normal", list(0, 1)),
+    prior("dirichlet", list(c(.5, .25, .25))))$prior
+  expect_error(density(p, x_range = c(-3, 3), n_points = 64L),
+    "Ordered-prior product density quadrature failed")
+  expect_error(plot(p, xlim = c(-3, 3), n_points = 64L),
+    "Ordered-prior product density quadrature failed")
+  set.seed(600)
+  original <- density(p, force_samples = TRUE, n_points = 64L, n_samples = 128L)
+  original_rng <- .Random.seed
+  set.seed(600)
+  displayed <- .plot_data_ordered_prior_display(p,
+    density(p, force_samples = TRUE, n_points = 64L, n_samples = 128L))
+  expect_identical(displayed, original)
+  expect_identical(.Random.seed, original_rng)
+})
+
 test_that("ordered points-only totals retain exact scalar measures and sampled metadata", {
   cases <- list(
     positive = list(location = 2, probability = 1, alpha = c(2, 2, .5)),
@@ -89,66 +167,6 @@ test_that("ordered points-only totals retain exact scalar measures and sampled m
   }
 })
 
-test_that("ordered direct plotting omits certified curves before product quadrature", {
-  fixture <- ordered_plot_test_fixture(prior("normal", list(0, 1)), prior("dirichlet", list(c(.5, .25, .25))))
-  p <- fixture$prior
-  original <- p
-  set.seed(600)
-  expect_error(density(p, x_range = c(-3, 3), n_points = 64L, n_samples = 128L),
-    "Ordered-prior product density quadrature failed")
-  calls <- 0L
-  local_mocked_bindings(.density.prior.ordered_dirichlet_product = function(...){
-    calls <<- calls + 1L
-    stop("An omitted product curve reached quadrature.")
-  })
-  input <- .plot_ordered_prior_density_input(p)
-  expect_identical(attr(input, "ordered_plot_skip", exact = TRUE), c(FALSE, TRUE, TRUE, FALSE))
-  displayed <- density(input, x_range = c(-3, 3), n_points = 64L, n_samples = 128L)
-  expect_identical(unname(vapply(displayed, attr, integer(1), "component")), seq_len(4L))
-  expect_identical(unname(vapply(displayed, attr, character(1), "component_name")), names(displayed))
-  expect_true(all(vapply(displayed[2:3], inherits, logical(1), "density.prior.display_empty")))
-  expect_true(all(vapply(displayed, function(component) !anyDuplicated(class(component)), logical(1))))
-  expect_null(attr(displayed[[2L]], "x_range", exact = TRUE))
-  expect_null(attr(displayed[[3L]], "y_range", exact = TRUE))
-  full <- density(prior("normal", list(0, 1)), x_range = c(-3, 3), n_points = 64L)
-  expect_identical(displayed[[4L]]$x, full$x)
-  expect_identical(displayed[[4L]]$y, full$y)
-  expect_identical(displayed[[4L]]$diagnostics, full$diagnostics)
-  expect_equal(attr(displayed, "y_range", exact = TRUE), c(0, 1))
-  grDevices::pdf(NULL)
-  on.exit(grDevices::dev.off(), add = TRUE)
-  set.seed(600)
-  expect_no_warning(plot(p, plot_type = "base", xlim = c(-3, 3), n_points = 64L, n_samples = 128L))
-  set.seed(600)
-  plots <- plot(p, plot_type = "ggplot", xlim = c(-3, 3), n_points = 64L, n_samples = 128L)
-  expect_length(plots, 4L)
-  expect_null(plots[[2L]])
-  expect_null(plots[[3L]])
-  expect_true(all(vapply(plots[c(1L, 4L)], inherits, logical(1), "ggplot")))
-  expect_no_warning(lines(p, show_parameter = 2L, xlim = c(-3, 3), n_points = 64L, n_samples = 128L))
-  expect_length(geom_prior(p, show_parameter = 3L, xlim = c(-3, 3), n_points = 64L, n_samples = 128L), 0L)
-  expect_error(plot(p, show_figures = 2L, plot_type = "ggplot", xlim = c(-3, 3),
-    n_points = 64L, n_samples = 128L), class = "BayesTools_ordered_prior_display_empty")
-  expect_identical(calls, 0L)
-  expect_identical(p, original)
-  expect_null(attr(p, "ordered_plot_skip", exact = TRUE))
-  expect_error(density(p, x_range = c(-3, 3), n_points = 64L, n_samples = 128L),
-    "An omitted product curve reached quadrature", fixed = TRUE)
-  expect_identical(calls, 1L)
-  fixed <- ordered_plot_test_fixture(prior("normal", list(0, 1)), c(.2, .3, .5))$prior
-  attr(fixed, "ordered_plot_skip") <- c(FALSE, TRUE, FALSE, FALSE)
-  scaled_total <- .density.prior.ordered_scaled_total
-  scales_seen <- numeric()
-  local_mocked_bindings(.density.prior.ordered_scaled_total = function(...){
-    args <- list(...)
-    scales_seen <<- c(scales_seen, args$scale)
-    scaled_total(...)
-  })
-  fixed_display <- density(fixed, x_range = c(-3, 3), n_points = 64L)
-  expect_s3_class(fixed_display[[2L]], "density.prior.display_empty")
-  expect_identical(scales_seen, c(0, .5, 1))
-})
-
 test_that("ordered points-only family guard certifies literal mixtures and preserves discrete sampling", {
   total <- prior_mixture(list(prior("point", list(0), prior_weights = .3),
     prior("point", list(2), prior_weights = .7)))
@@ -217,70 +235,6 @@ test_that("ordered mixed-measure labels describe the actual displayed measure", 
   expect_identical(plot(point, show_figures = 2L, plot_type = "ggplot", n_points = 64L)$scales$get_scales("y")$name, "Density")
   expect_identical(plot(slab, show_figures = 2L, plot_type = "ggplot", n_points = 64L)$scales$get_scales("y")$name, "Density / probability mass")
   expect_identical(plot(point, show_figures = 4L, plot_type = "ggplot", n_points = 64L, ylab = "Custom")$scales$get_scales("y")$name, "Custom")
-})
-
-test_that("ordered plot omission preserves sampling and mixed atoms in every density path", {
-  p <- ordered_plot_test_fixture(prior("normal", list(0, 1)), prior("dirichlet", list(c(.5, .25, .25))))$prior
-  set.seed(600)
-  original <- density(p, force_samples = TRUE, x_range = c(-3, 3), n_points = 64L, n_samples = 128L)
-  original_rng <- .Random.seed
-  kde <- .density_kde_boundary
-  calls <- 0L
-  local_mocked_bindings(.density_kde_boundary = function(...){calls <<- calls + 1L; kde(...)})
-  set.seed(600)
-  omitted <- density(.plot_ordered_prior_density_input(p), force_samples = TRUE,
-    x_range = c(-3, 3), n_points = 64L, n_samples = 128L)
-  expect_identical(.Random.seed, original_rng)
-  expect_identical(omitted[c(1L, 4L)], original[c(1L, 4L)])
-  expect_identical(calls, 1L)
-  mixed <- ordered_plot_test_fixture(prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5))),
-    prior("dirichlet", list(c(.5, .25, .25))))$prior
-  route_mixed <- .density.prior.ordered_route_mixed
-  weights_seen <- list()
-  local_mocked_bindings(.density.prior.ordered_route_mixed = function(...){
-    args <- list(...)
-    weights_seen[[length(weights_seen) + 1L]] <<- args$weights
-    route_mixed(...)
-  })
-  for(force in c(FALSE, TRUE)){
-    set.seed(600)
-    displayed <- .plot_data_ordered_prior_display(mixed,
-      density(.plot_ordered_prior_density_input(mixed), force_samples = force,
-        x_range = c(-3, 3), n_points = 64L, n_samples = 128L))
-    for(i in 2:3){
-      expect_equal(displayed[[i]]$atoms, data.frame(location = 0, mass = .5))
-      expect_null(displayed[[i]]$continuous)
-      expect_false(inherits(displayed[[i]], "density.prior.display_empty"))
-      expect_identical(attr(displayed[[i]], "component"), i)
-    }
-  }
-  expect_length(weights_seen, 4L)
-  expect_true(all(vapply(weights_seen, function(w) all(w == 0) || all(w == 1), logical(1))))
-})
-
-test_that("ordered private plot masks validate declared levels and retain unsuppressed controls", {
-  p <- prior_ordered(prior("normal", list(0, 1)), allocation = prior("dirichlet", list(c(.5, .25, .25))))
-  attr(p, "levels") <- 4L
-  input <- .plot_ordered_prior_density_input(p)
-  expect_identical(attr(input, "ordered_plot_skip", exact = TRUE), c(FALSE, TRUE, TRUE, FALSE))
-  expect_null(attr(p, "ordered_metadata", exact = TRUE))
-  expect_null(attr(p, "ordered_plot_skip", exact = TRUE))
-  for(mask in list(c(FALSE, TRUE), c(FALSE, NA, TRUE, FALSE), c(0, 1, 1, 0))){
-    attr(input, "ordered_plot_skip") <- mask
-    expect_error(density(input, x_range = c(-3, 3), n_points = 64L),
-      "The private ordered plot mask must contain one non-missing logical value per declared level.", fixed = TRUE)
-  }
-  controls <- list(
-    intrinsic = ordered_plot_test_fixture(prior("gamma", list(.5, 1)))$prior,
-    fixed = ordered_plot_test_fixture(prior("normal", list(0, 1)), c(.2, .3, .5))$prior,
-    finite = ordered_plot_test_fixture(prior("point", list(2)), prior("dirichlet", list(c(2, 2, 2))))$prior)
-  for(control in controls){
-    expect_null(attr(.plot_ordered_prior_density_input(control), "ordered_plot_skip", exact = TRUE))
-  }
-  ordinary <- prior("dirichlet", list(c(.5, .25, .25)))
-  expect_identical(.plot_ordered_prior_density_input(ordinary), ordinary)
-  local_mocked_bindings(.prior_density_route_linear = function(...) list(type = "unknown"))
-  expect_null(attr(.plot_ordered_prior_density_input(p), "ordered_plot_skip", exact = TRUE))
 })
 
 test_that("ordered complex points-only totals retain their existing sampled fallback", {
