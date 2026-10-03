@@ -413,6 +413,26 @@ test_that("the DESCRIPTION fingerprint of the model-fit key ignores the version 
   expect_length(.test_cache_description_hashes("fixture-consumer"), 0L)
 })
 
+test_that("N95 model-fit DESCRIPTION key keeps source identity across publication", {
+
+  description <- tempfile("DESCRIPTION")
+  withr::defer(unlink(description))
+  source_fields <- c("Package: Toy", "Version: 0.0.1", "Title: A toy", "Imports: a, b")
+  writeLines(source_fields, description)
+  baseline <- .test_cache_description_md5(description)
+
+  writeLines(c(source_fields, "Repository: CRAN", "Date/Publication: 2026-10-03 10:00:00 UTC"), description)
+  expect_identical(.test_cache_description_md5(description), baseline)
+  writeLines(c(sub("Title: A toy", "Title: A changed toy", source_fields, fixed = TRUE)), description)
+  expect_false(identical(.test_cache_description_md5(description), baseline))
+  writeLines(c(source_fields, "Arbitrary: retained source metadata"), description)
+  expect_false(identical(.test_cache_description_md5(description), baseline))
+  writeLines(c(sub("Version: 0.0.1", "Version: 9.9.9.9", source_fields, fixed = TRUE),
+    "Author: Someone", "Packaged: 2026-10-03 10:00:00 UTC; someone",
+    "Built: R 4.6.0; ; 2026-10-03 10:00:00 UTC; windows"), description)
+  expect_identical(.test_cache_description_md5(description), baseline)
+})
+
 test_that("a cache marker is stale when a source left the key", {
   marker_name <- paste0("source-key-marker-", Sys.getpid())
   marker_file <- .test_cache_indicator_file(marker_name)

@@ -1398,9 +1398,9 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
 }
 
 # The fingerprint of the package DESCRIPTION that ignores what is not source
-# content: the version, the author line, and the build fields. It is the one of
-# the vignette caches (vignettes/precomputed-vignette-cache.R), so a version
-# bump alone does not change the model-fit key.
+# content: the version, author line, build fields, and publication-only
+# Repository and Date/Publication fields. It uses the same source identity as
+# the vignette caches, so these metadata changes do not change the model-fit key.
 .test_cache_description_md5 <- function(path) {
   description <- read.dcf(path, all = TRUE)
   # read.dcf() marks the file's bytes as native text; convert them from the
@@ -1413,7 +1413,7 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   if (anyNA(unlist(description, use.names = FALSE))) {
     stop("DESCRIPTION is not valid text in its declared encoding.", call. = FALSE)
   }
-  description[c("Author", "Built", "Packaged", "Version")] <- NULL
+  description[c("Author", "Built", "Packaged", "Version", "Repository", "Date/Publication")] <- NULL
   description <- description[order(names(description), method = "radix")]
   values <- vapply(description, function(value) {
     gsub("[[:space:]]+", " ", trimws(value))
