@@ -1,5 +1,7 @@
 # version 0.3.1
 ### Fixes
+- Simplex projections with distinct coefficients retain their exact interval
+  support even when those coefficients are numerically close.
 - Spike-and-slab posterior atoms include declared point-valued slabs and merge
   a zero slab with the excluded atom using the recorded component shares.
 - Linear projections of multivariate normal and t priors preserve tiny and large

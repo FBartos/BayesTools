@@ -835,7 +835,7 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
   }
 
   bounds <- range(full_weights)
-  if(isTRUE(all.equal(bounds[1], bounds[2]))){
+  if(bounds[1] == bounds[2]){
     return(.posterior_support_point(bounds[1], source = source))
   }
 

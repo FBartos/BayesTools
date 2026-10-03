@@ -5049,6 +5049,35 @@ test_that("N07 missing component provenance is refused rather than reconstructed
 })
 
 
+test_that("N08 nearby unequal simplex coefficients retain their exact interval", {
+
+  priors <- list(w = prior("dirichlet", list(alpha = c(2, 3))))
+  support <- BayesTools:::.posterior_support_from_prior_list_weights(
+    priors, c("w[1]" = 1, "w[2]" = 1 + 1e-9)
+  )
+  expect_identical(support$type, "interval")
+  expect_identical(support$bounds, c(1, 1 + 1e-9))
+  expect_true(BayesTools:::.posterior_support_contains_value(support, 1 + 5e-10))
+  expect_true(support$exact)
+})
+
+test_that("N08 equal simplex coefficients and omitted coefficients keep their meaning", {
+
+  priors <- list(w = prior("dirichlet", list(alpha = c(2, 3))))
+  equal <- BayesTools:::.posterior_support_from_prior_list_weights(
+    priors, c("w[1]" = 1, "w[2]" = 1)
+  )
+  expect_identical(equal$type, "points")
+  expect_identical(equal$points, 1)
+  zero <- BayesTools:::.posterior_support_from_prior_list_weights(
+    priors, c("w[1]" = 0, "w[2]" = 0)
+  )
+  expect_identical(zero$points, 0)
+  omitted <- BayesTools:::.posterior_support_from_prior_list_weights(priors, c("w[2]" = 5))
+  expect_identical(omitted$type, "interval")
+  expect_identical(omitted$bounds, c(0, 5))
+})
+
 # File-level skips: All remaining tests in this file require pre-fitted models
 skip_if_not_visual_fixture_tests()
 skip_if_no_fits()
