@@ -199,11 +199,14 @@ depend on the units of the value, and the reported error does not bound it.
 Product terms (`multiply_by`) and ordered-prior levels share one route
 (R/prior-density-route.R). An ordered level (or allocation subset) is the
 ordered total times its allocation share (`.prior_ordered_linear_share()`):
-a fixed share scales the total, a Beta share multiplies it. A point
-total, including a point-slab total, uses the existing mixed-measure density
+a fixed share scales the total, a Beta share multiplies it. A literal numeric
+point total, including a point-slab total or a mixture whose total leaves are
+all literal numeric points, uses the existing mixed-measure density
 producer for one ordered term, one scalar total and one allocation: exact
-scaled-Beta curves, declared atoms and continuous mass. Its forced samples
-are attached without replacing the analytic measure. The continuous grid's
+scaled-Beta curves, declared atoms and continuous mass. Unforced output does
+not sample, store draws or advance the RNG; forced original seeded samples
+are attached without replacing the analytic measure. Other discrete or
+expression totals retain the existing fallback. The continuous grid's
 trapezoid integral is its captured numerical integral, not the exact mass;
 nonfinite route ordinates are omitted without renormalizing the curve.
 A point

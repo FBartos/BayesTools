@@ -52,7 +52,12 @@ analytically (or if samples are forced with
 \item{force_samples}{should prior be sampled instead
 of obtaining analytic solution whenever possible. For supported ordered
 mixed measures, exact analytic curves and atoms are retained and the
-requested samples are attached to each component.}
+requested samples are attached to each component. Supported scalar ordered
+literal point totals and mixtures whose total components are all literal
+points do not sample, store draws, or advance the RNG when
+\code{force_samples = FALSE}. With \code{force_samples = TRUE}, their
+original seeded draws are attached without replacing the analytic measure.
+Other ordered families retain their existing sampling fallback.}
 
 \item{transformation}{transformation to be applied
 to the prior distribution. Either a character

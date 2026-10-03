@@ -837,11 +837,16 @@ old behaviour.
     Certified curve omission is decided before plotting density generation,
     avoiding unused quadrature and KDE evaluations while public `density()`
     continues to evaluate every level.
-  - supported scalar ordered point and point-slab totals use the existing exact
+  - supported scalar ordered literal point totals, point-slab totals and
+    mixtures whose total components are all literal points use the existing exact
     mixed-measure density route: intermediate Dirichlet shares have scaled-Beta
     curves and declared atoms, and fixed-share/full-total levels retain their
-    exact point masses. `force_samples = TRUE` attaches the original sampled
-    values while retaining these analytic curves and atoms. Grid-integral
+    exact point masses. `force_samples = FALSE` does not sample, store draws,
+    or advance the RNG for these totals. `force_samples = TRUE` attaches the
+    original seeded sampled values while retaining these analytic curves and
+    atoms. Other discrete totals, including Bernoulli, retain the existing
+    sampled fallback. Mixed-measure plot axis labels reflect whether the
+    displayed component has continuous density, atoms, or both. Grid-integral
     diagnostics report the actual trapezoid integral without renormalization.
   - `plot_models()` uses ordered semantic level summaries and selected level
     draws. Posterior-only plots skip prior summaries and unused prior transforms;

@@ -24,7 +24,12 @@
 #' @param force_samples should prior be sampled instead
 #' of obtaining analytic solution whenever possible. For supported ordered
 #' mixed measures, exact analytic curves and atoms are retained and the
-#' requested samples are attached to each component.
+#' requested samples are attached to each component. Supported scalar ordered
+#' literal point totals and mixtures whose total components are all literal
+#' points do not sample, store draws, or advance the RNG when
+#' \code{force_samples = FALSE}. With \code{force_samples = TRUE}, their
+#' original seeded draws are attached without replacing the analytic measure.
+#' Other ordered families retain their existing sampling fallback.
 #' @param individual should individual densities be returned
 #' (e.g., in case of weightfunction)
 #' @param transformation transformation to be applied
@@ -454,6 +459,15 @@ density.prior <- function(x,
   if(is.null(total) || is.null(total$points) || nrow(total$points) == 0L){
     return(NULL)
   }
+  if(is.null(total$density)){
+    literal_points <- function(prior){
+      if(is.prior.point(prior)){
+        return(!.is_prior_expression(prior) && is.numeric(prior$parameters$location))
+      }
+      is.prior.mixture(prior) && all(vapply(prior, literal_points, logical(1)))
+    }
+    if(!literal_points(x$total)) return(NULL)
+  }
 
   metadata <- .prior_ordered_metadata(x)
   if(length(metadata$ordered_terms) != 1L ||
@@ -855,7 +869,7 @@ density.prior <- function(x,
     }
     attr(densities[[i]], "component") <- i
     attr(densities[[i]], "component_name") <- names(densities)[i]
-    class(densities[[i]]) <- c("density.prior.ordered_component", class(densities[[i]]))
+    class(densities[[i]]) <- unique(c("density.prior.ordered_component", class(densities[[i]])))
   }
 
   attr(densities, "x_range")        <- range(unlist(lapply(densities, attr, which = "x_range")), na.rm = TRUE)

@@ -59,6 +59,8 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
                        n_points = n_points, n_samples = n_samples, force_samples = force_samples,
                        transformation = transformation, transformation_arguments = transformation_arguments,
                        transformation_settings = transformation_settings, individual = individual)
+  if(is.prior.ordered(x)) plot_data <- .plot_data_ordered_prior_display(x, plot_data,
+    transformation = transformation, transformation_arguments = transformation_arguments)
   scale_y2 <- .plot_scale_y2_overlay(plot_data, scale_y2)
 
 
@@ -102,8 +104,6 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   }
 
   if(is.prior.ordered(x) || is.prior.simplex(x)){
-    if(is.prior.ordered(x)) plot_data <- .plot_data_ordered_prior_display(x, plot_data,
-      transformation = transformation, transformation_arguments = transformation_arguments)
     selected <- if(is.null(show_parameter)){
       seq_along(plot_data)
     }else{

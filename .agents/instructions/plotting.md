@@ -56,8 +56,11 @@ carry no mask and still evaluate every level. Display
 densities missing their atom table recover locations from declared route
 nodes and probabilities from exact route ordinates. Apply output transformations
 only to recovered locations; preserve already transformed atoms and never scale
-their masses by a Jacobian. Unknown recovery raises the typed display-unavailable
-condition rather than erasing or guessing atoms.
+their masses by a Jacobian. Recovery requires exact strictly positive masses;
+unknown, zero or mismatched recovery raises the typed display-unavailable
+condition rather than erasing or guessing atoms. Mixed-measure labels describe
+the displayed measure, and ordered line overlays recover display atoms before
+the single active probability-axis mapping and clipping check.
 Direct fixed-total allocation shares check both exact support endpoints. Direct
 prior selectors retain reference numbering; multiple ordered ggplot selections
 return positional lists with NULL holes for unselected or suppressed figures,

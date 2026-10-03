@@ -488,7 +488,7 @@ plot.prior <- function(x, plot_type = "base",
           ordinate <- .prior_density_route_ordinate(route, location)
           mass <- ordinate$point_mass
           if(!isTRUE(ordinate$exact) || !is.numeric(mass) || length(mass) != 1L ||
-             !is.finite(mass) || mass < 0){
+             !is.finite(mass) || mass <= 0){
             .plot_ordered_prior_display_unavailable(
               "declared point-mass probabilities could not be recovered exactly from its prior route")
           }
@@ -535,7 +535,9 @@ plot.prior <- function(x, plot_type = "base",
   xlab <- bquote(
     .(if(!is.null(par_name)) bquote(.(par_name)~"~"))~.(prior_label)
   )
-  ylab <- "Density / probability mass"
+  has_atoms <- !is.null(plot_data$atoms) && nrow(plot_data$atoms) > 0L
+  has_continuous <- !is.null(plot_data$continuous) && nrow(plot_data$continuous) > 0L
+  ylab <- if(has_atoms && has_continuous) "Density / probability mass" else if(has_atoms) "Probability" else "Density"
 
   if(is.null(dots[["main"]])) dots$main <- main
   if(is.null(dots[["xlab"]])) dots$xlab <- xlab

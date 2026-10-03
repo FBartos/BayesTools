@@ -360,6 +360,10 @@ test_that("ordered display fails explicitly when declared atom recovery is unava
     prior("dirichlet", list(c(2, 2, .5))))
   original <- density(fixture$prior, n_points = 64L, n_samples = 128L)
   original[[3L]]$atoms <- NULL
+  recovered <- .plot_data_ordered_prior_display(fixture$prior, original, transformation = "exp")
+  expect_equal(recovered[[3L]]$atoms, data.frame(location = 1, mass = .5))
+  expect_null(recovered[[3L]]$continuous)
+  expect_identical(attr(recovered[[3L]], "component"), 3L)
   locations <- .plot_ordered_prior_atom_locations
   ordinate <- .prior_density_route_ordinate
   local_mocked_bindings(.plot_ordered_prior_atom_locations = function(route) NULL)
@@ -380,6 +384,45 @@ test_that("ordered display fails explicitly when declared atom recovery is unava
   expect_identical(conditionMessage(error), paste0("The ordered prior display is unavailable: ",
     "declared point-mass probabilities could not be recovered exactly from its prior route. ",
     "Use 'prior_density_ordinate()' to inspect the prior measure."))
+  local_mocked_bindings(.prior_density_route_ordinate = ordinate)
+  for(mass in c(0, -1)){
+    local_mocked_bindings(.prior_density_route_ordinate = function(route, value){
+      result <- ordinate(route, value)
+      result$point_mass <- mass
+      result
+    })
+    expect_error(.plot_data_ordered_prior_display(fixture$prior, original),
+      class = "BayesTools_ordered_prior_display_unavailable")
+  }
+  local_mocked_bindings(.prior_density_route_ordinate = ordinate,
+    .plot_ordered_prior_atom_locations = function(route) 1)
+  expect_error(.plot_data_ordered_prior_display(fixture$prior, original),
+    class = "BayesTools_ordered_prior_display_unavailable")
+})
+
+test_that("ordered lines recover atoms before the active probability mapping", {
+  p <- ordered_plot_test_fixture(prior_spike_and_slab(prior("normal", list(0, 1)), prior("point", list(.5))),
+    prior("dirichlet", list(c(.5, .25, .25))))$prior
+  mapping <- .plot_scale_y2_overlay
+  seen <- list()
+  local_mocked_bindings(.plot_scale_y2_overlay = function(plot_data, scale_y2 = NULL){
+    seen[[length(seen) + 1L]] <<- plot_data
+    mapping(plot_data, scale_y2)
+  })
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  initial <- list(prior("point", list(0), prior_weights = .2), prior("normal", list(0, 1), prior_weights = .8))
+  plot_prior_list(initial, ylim = c(0, 1), ylim2 = c(0, .3), scale_y2 = 2)
+  state <- .plot_scale_y2_state_current()
+  expect_warning(lines(p, show_parameter = 2L, xlim = c(-3, 3), n_points = 64L, transformation = "exp"),
+    "Point-mass probabilities outside the active secondary-axis limits will be clipped. Redraw the initial plot with a wider 'ylim2'.", fixed = TRUE)
+  expect_equal(seen[[1L]][[2L]]$atoms, data.frame(location = 1, mass = .5))
+  expect_identical(.plot_scale_y2_state_current(), state)
+  expect_no_warning(lines(p, show_parameter = 2L, xlim = c(-3, 3), n_points = 64L, scale_y2 = 2))
+  plot_prior_list(initial, ylim = c(0, 1), ylim2 = c(0, 1), scale_y2 = 2)
+  expect_no_warning(lines(p, show_parameter = 2L, xlim = c(-3, 3), n_points = 64L))
+  expect_length(seen, 3L)
+  expect_equal(seen[[2L]][[2L]]$atoms, data.frame(location = 0, mass = .5))
 })
 
 test_that("ordered ggplot selections preserve suppressed positions and chosen count", {

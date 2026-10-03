@@ -107,6 +107,7 @@ test_that("ordered direct plotting omits certified curves before product quadrat
   expect_identical(unname(vapply(displayed, attr, integer(1), "component")), seq_len(4L))
   expect_identical(unname(vapply(displayed, attr, character(1), "component_name")), names(displayed))
   expect_true(all(vapply(displayed[2:3], inherits, logical(1), "density.prior.display_empty")))
+  expect_true(all(vapply(displayed, function(component) !anyDuplicated(class(component)), logical(1))))
   expect_null(attr(displayed[[2L]], "x_range", exact = TRUE))
   expect_null(attr(displayed[[3L]], "y_range", exact = TRUE))
   full <- density(prior("normal", list(0, 1)), x_range = c(-3, 3), n_points = 64L)
@@ -146,6 +147,76 @@ test_that("ordered direct plotting omits certified curves before product quadrat
   fixed_display <- density(fixed, x_range = c(-3, 3), n_points = 64L)
   expect_s3_class(fixed_display[[2L]], "density.prior.display_empty")
   expect_identical(scales_seen, c(0, .5, 1))
+})
+
+test_that("ordered points-only family guard certifies literal mixtures and preserves discrete sampling", {
+  total <- prior_mixture(list(prior("point", list(0), prior_weights = .3),
+    prior("point", list(2), prior_weights = .7)))
+  for(allocation in list(c(.2, .3, .5), prior("dirichlet", list(c(2, 2, .5))))){
+    p <- ordered_plot_test_fixture(total, allocation)$prior
+    set.seed(600)
+    initial_rng <- .Random.seed
+    analytic <- density(p, x_range = c(0, 2), n_points = 64L, n_samples = 128L)
+    expect_identical(.Random.seed, initial_rng)
+    expect_identical(attr(analytic, "method"), "analytic_mixed_measure")
+    set.seed(600)
+    forced <- density(p, x_range = c(0, 2), n_points = 64L, n_samples = 128L, force_samples = TRUE)
+    forced_rng <- .Random.seed
+    set.seed(600)
+    samples <- rng(p, 128L, transform_factor_samples = TRUE)
+    expect_identical(.Random.seed, forced_rng)
+    random <- is.prior(allocation)
+    for(i in seq_len(4L)){
+      partial <- random && i %in% 2:3
+      share <- if(i == 1L) 0 else if(random) 1 else sum(allocation[seq_len(i - 1L)])
+      expected_atoms <- if(partial) data.frame(location = 0, mass = .3) else if(share == 0)
+        data.frame(location = 0, mass = 1) else data.frame(location = c(0, 2 * share), mass = c(.3, .7))
+      expect_equal(analytic[[i]]$atoms, expected_atoms, tolerance = 2e-12)
+      expect_equal(sum(analytic[[i]]$atoms$mass) + analytic[[i]]$diagnostics$continuous_mass, 1, tolerance = 2e-12)
+      expect_null(analytic[[i]]$samples)
+      expect_identical(forced[[i]]$samples, samples[, i])
+      forced[[i]]["samples"] <- list(NULL)
+      expect_identical(forced[[i]], analytic[[i]])
+      if(partial){
+        curve <- analytic[[i]]$continuous
+        shapes <- if(i == 2L) c(2, 2.5) else c(4, .5)
+        expect_equal_each(curve$density, .7 * stats::dbeta(curve$x / 2, shapes[1L], shapes[2L]) / 2, tolerance = 2e-12)
+      }
+    }
+  }
+  mixed_producer <- .density.prior.ordered_mixed
+  unsupported_totals <- list(prior("bernoulli", list(.5)),
+    prior("bernoulli", list(.5), truncation = list(lower = .5)),
+    prior_mixture(list(prior("bernoulli", list(.5), prior_weights = .7),
+      prior("point", list(2), prior_weights = .3))))
+  for(total in unsupported_totals){
+    for(allocation in list(c(.2, .3, .5), prior("dirichlet", list(c(2, 2, .5))))){
+      p <- ordered_plot_test_fixture(total, allocation)$prior
+      for(force in c(FALSE, TRUE)){
+        set.seed(600)
+        actual <- density(p, x_range = c(0, 2), n_points = 64L, n_samples = 128L, force_samples = force)
+        actual_rng <- .Random.seed
+        expect_null(attr(actual, "method", exact = TRUE))
+        expect_identical(unname(vapply(actual, function(component) length(component$samples), integer(1))), rep(128L, 4L))
+        local_mocked_bindings(.density.prior.ordered_mixed = function(...) NULL)
+        set.seed(600)
+        fallback <- density(p, x_range = c(0, 2), n_points = 64L, n_samples = 128L, force_samples = force)
+        expect_identical(actual, fallback)
+        expect_identical(.Random.seed, actual_rng)
+        local_mocked_bindings(.density.prior.ordered_mixed = mixed_producer)
+      }
+    }
+  }
+})
+
+test_that("ordered mixed-measure labels describe the actual displayed measure", {
+  allocation <- prior("dirichlet", list(c(2, 2, 2)))
+  point <- ordered_plot_test_fixture(prior("point", list(2)), allocation)$prior
+  slab <- ordered_plot_test_fixture(prior_spike_and_slab(prior("point", list(2)), prior("point", list(.5))), allocation)$prior
+  expect_identical(plot(point, show_figures = 4L, plot_type = "ggplot", n_points = 64L)$scales$get_scales("y")$name, "Probability")
+  expect_identical(plot(point, show_figures = 2L, plot_type = "ggplot", n_points = 64L)$scales$get_scales("y")$name, "Density")
+  expect_identical(plot(slab, show_figures = 2L, plot_type = "ggplot", n_points = 64L)$scales$get_scales("y")$name, "Density / probability mass")
+  expect_identical(plot(point, show_figures = 4L, plot_type = "ggplot", n_points = 64L, ylab = "Custom")$scales$get_scales("y")$name, "Custom")
 })
 
 test_that("ordered plot omission preserves sampling and mixed atoms in every density path", {

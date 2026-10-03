@@ -215,7 +215,7 @@ value), one-to-one transformations, Dirichlet allocation marginals, and
 allocation-derived component SDs. Variance proportions are conditional on
 positive allocation variance. A shared parent inclusion gate cancels from
 that conditional law, leaving the Dirichlet marginal
-\verb{Beta(α_i, α_•−α_i)}. Independently gated components keep the mixed measure
+\code{Beta(alpha_i, sum(alpha) - alpha_i)}. Independently gated components keep the mixed measure
 over the realized active set: atoms at 0 and 1, and a Beta mixture over
 nonempty sets of other active components. It returns
 \code{NULL} when the fitted map does
