@@ -154,6 +154,12 @@
 #' its prior density and support from the exp of that combination, and the
 #' linear predictors of a formula marginal posterior are linear in the same
 #' coefficients.
+#' Ordered formula projections reuse retained fitted coefficients, totals and
+#' allocations, with aligned model and draw rows. Scaled mixed posteriors that
+#' lack the fitted ordinary coefficients needed by a formula stop with class
+#' \code{BayesTools_ordered_coordinates_unavailable} (parent
+#' \code{BayesTools_ordered_unavailable}); recreate the mixed posteriors from
+#' the source fits with this version of BayesTools.
 #'
 #' @return \code{marginal_posterior} returns a named list of mixed marginal posterior
 #' distributions (either vectors or matrices).

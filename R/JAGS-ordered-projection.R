@@ -482,6 +482,33 @@
   weights <- as.matrix(weights)
   source <- sources[[ordered_parameters[[1L]]]]
   n <- length(source$model)
+  for(parameter in names(samples)){
+    x <- samples[[parameter]]
+    own <- sources[[parameter]]
+    model_rows <- .bt_draws_model_component(x)
+    draw_rows <- .bt_meta_get(x,"draw_index")
+    if(NROW(x)!=n || (!is.null(own) &&
+       (!identical(own$model,source$model) || !identical(own$draw_index,source$draw_index))) ||
+       (!is.null(model_rows) && !identical(model_rows,source$model)) ||
+       (!is.null(draw_rows) && !identical(as.integer(draw_rows),source$draw_index))){
+      .bt_ordered_stop("Ordered formula sources are unavailable because their model and draw rows do not align. Recreate mixed posteriors from the source fits with aligned sampling.")
+    }
+    if(!is.null(own) && any(vapply(own$models[unique(source$model)],function(spec){
+      !is.null(spec$parameterization) && !identical(spec$parameterization,"absent")
+    },logical(1)))) return(NULL)
+  }
+  # Formula call sites already supply fitted weights. The retained context
+  # supplies fitted ordinary coefficients as well as the ordered primitives.
+  fitted_contexts <- lapply(sources[ordered_parameters],`[[`,"projection_context")
+  fitted_contexts <- Filter(Negate(is.null),fitted_contexts)
+  context <- if(length(fitted_contexts)) fitted_contexts[[1L]] else NULL
+  if(!is.null(context) && (length(context$models)!=length(source$models) ||
+     nrow(context$primitives)!=n || any(!vapply(fitted_contexts,function(own){
+       identical(own,context)
+     },logical(1))))){
+    .bt_ordered_stop("Ordered fitted projection contexts are unavailable because their retained sources do not align. Recreate mixed posteriors from the source fits with aligned sampling.")
+  }
+  scaled <- isTRUE(.bt_meta_get(samples,"transform_scaled"))
   projections <- lapply(seq_len(nrow(weights)),function(i){
     list(values=rep(NA_real_,n),atom=rep(NA_real_,n),state=rep("unavailable",n),exact=rep(FALSE,n))
   })
@@ -492,13 +519,29 @@
     specs <- priors <- list()
     inputs <- list()
     absent <- character()
+    zero_priors <- list()
     for(parameter in names(samples)){
       x <- samples[[parameter]]
       prior <- attr(x,"prior_list",exact=TRUE)
       priors[[parameter]] <- if(is.prior(prior)) prior else prior[[model]]
-      if(!is.null(sources[[parameter]])){
+      columns <- .posterior_atoms_coefficient_columns(x,parameter)
+      if(.posterior_atoms_is_zero_point(priors[[parameter]])){
+        absent <- c(absent,columns)
+        zero_priors[columns] <- rep(list(priors[[parameter]]),length(columns))
+        if(is.null(context)){
+          inputs[[length(inputs)+1L]] <- matrix(0,length(rows),length(columns),
+            dimnames=list(NULL,columns))
+          next
+        }
+      }
+      if(!is.null(context)) next
+      if(scaled && !is.prior.ordered(priors[[parameter]]) &&
+         any(weights[,intersect(columns,colnames(weights)),drop=FALSE]!=0) &&
+         !all(columns %in% absent)){
+        .bt_ordered_stop("Ordered formula projections are unavailable without retained fitted ordinary coefficients for scaled samples. Recreate mixed posteriors from the source fits with this version of BayesTools.")
+      }
+      if(!is.null(sources[[parameter]]) && is.prior.ordered(priors[[parameter]])){
         own <- sources[[parameter]]
-        if(!identical(own$model,source$model)) .bt_ordered_stop("Ordered formula sources are unavailable because their model rows do not align. Recreate mixed posteriors with aligned sampling.")
         spec <- own$models[[model]]
         if(!is.null(spec$parameterization)){
           if(identical(spec$parameterization,"absent")) absent <- c(absent,.posterior_atoms_coefficient_columns(x,parameter)) else return(NULL)
@@ -509,6 +552,7 @@
           inputs[[length(inputs)+1L]] <- own$primitives[rows,coordinates,drop=FALSE]
         }
       }else{
+        if(scaled) next
         names <- .posterior_atoms_coefficient_columns(x,parameter)
         values <- matrix(as.numeric(x),nrow=NROW(x))
         if(length(names)!=ncol(values) || nrow(values)!=n) return(NULL)
@@ -523,6 +567,19 @@
             dimnames=list(NULL,paste0(parameter,"_indicator")))
         }
       }
+    }
+    if(!is.null(context)){
+      specs <- context$models[[model]]$specs
+      priors <- context$models[[model]]$priors
+      inputs <- list(context$primitives[rows,,drop=FALSE])
+    }
+    # An absent factor has a bound scalar zero prior but several declared
+    # coefficient columns. Retain that declaration for each fitted source.
+    priors[names(zero_priors)] <- zero_priors
+    if(!is.null(context) && length(zero_priors)){
+      inputs[[length(inputs)+1L]] <- matrix(0,length(rows),length(zero_priors),
+        dimnames=list(NULL,names(zero_priors)))
+      inputs[[1L]] <- inputs[[1L]][,setdiff(colnames(inputs[[1L]]),names(zero_priors)),drop=FALSE]
     }
     if(!length(inputs)) next
     draws <- do.call(cbind,inputs)

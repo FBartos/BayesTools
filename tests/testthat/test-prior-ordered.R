@@ -624,6 +624,147 @@ test_that("ordered projections preserve slice events, shared unions and original
   canonical_cells(list(two$fit),as_mixed_posteriors(two$fit,term)[[term]])
 })
 
+test_that("scaled ordered formula marginals reuse aligned fitted ordinary sources", {
+  data <- data.frame(f=ordered(rep(c("early","middle","late","last"),2L),
+    levels=c("early","middle","late","last")),x=c(10,12,17,21,11,13,18,22))
+  info <- JAGS_formula(~f+x,"mu",data,list(intercept=prior("normal",list(0,1)),
+    f=prior_ordered(prior("normal",list(0,1))),x=prior("normal",list(0,1))),
+    formula_scale=list(x=TRUE))
+  spec <- .bt_ordered_spec("mu_f",info$prior_list$mu_f)
+  total <- c(2,-3,5,7)
+  gamma <- rbind(c(1,2,3),c(4,1,2),c(3,5,1),c(2,3,7))
+  beta <- cbind(mu_intercept=c(1,3,-2,4),mu_x=c(.5,-1,2,3))
+  coefficients <- total * (gamma/rowSums(gamma))
+  colnames(coefficients) <- spec$coefficient_names
+  colnames(gamma) <- spec$allocations[[1L]]$gamma_coordinates
+  draws <- cbind(beta,coefficients,
+    matrix(total,ncol=1L,dimnames=list(NULL,spec$total_names)),gamma)
+  fit <- structure(list(mcmc=coda::mcmc.list(coda::mcmc(draws,start=11L,thin=2L)),
+    sample=4L,summary.pars=list(mutate=NULL),monitor=colnames(draws)),
+    class=c("runjags","BayesTools_fit","list"))
+  attr(fit,"prior_list") <- info$prior_list
+  attr(fit,"formula_design") <- list(mu=info$formula_design)
+  attr(fit,"formula_scale") <- list(mu=info$formula_scale)
+  fit <- attach_test_parameter_map(fit)
+  fit_bytes <- serialize(fit,NULL)
+  scale <- info$formula_scale$mu_x
+  raw <- as_mixed_posteriors(fit,names(info$prior_list))
+  original <- as_mixed_posteriors(fit,names(info$prior_list),transform_scaled=TRUE,n_prior_samples=128L)
+  expected_original <- as.matrix(transform_scale_samples(fit))
+  transform <- JAGS_formula_coefficient_transform(fit,"mu",target_scale="original")
+  for(parameter in colnames(beta)){
+    expect_identical(as.numeric(original[[parameter]]),as.numeric(expected_original[,parameter]))
+    selected <- parameter_catalog_resolve(parameter_catalog(fit),parameter)
+    expect_identical(as.numeric(as.matrix(parameter_draws(fit,selected))),as.numeric(beta[,parameter]))
+  }
+  problems <- expectation_problems({
+    for(scaled in c(FALSE,TRUE)) for(x in c(12,19)){
+      samples <- if(scaled) original else raw
+      marginal <- marginal_posterior(samples,"mu_f",formula=~f+x,at=list(x=x),prior_samples=FALSE)
+      fitted_x <- if(scaled) (x-scale$mean)/scale$sd else x
+      for(level in seq_along(marginal)){
+        share <- if(level==1L) numeric(4L) else if(level==4L) rep(1,4L) else{
+          rowSums(gamma[,seq_len(level-1L),drop=FALSE])/rowSums(gamma)
+        }
+        independent <- beta[,"mu_intercept"] + fitted_x*beta[,"mu_x"] + total*share
+        weights <- c(mu_intercept=1,mu_x=fitted_x,
+          setNames(as.numeric(seq_len(3L)<level),spec$coefficient_names))
+        if(scaled){
+          original_weights <- weights
+          original_weights[["mu_x"]] <- x
+          weights <- setNames(as.numeric(original_weights %*%
+            transform$matrix[names(original_weights),,drop=FALSE]),colnames(transform$matrix))
+        }
+        public <- JAGS_ordered_parameter_spec(fit,weights=weights,draws=draws)$values
+        expect_equal(as.numeric(marginal[[level]]),independent,tolerance=5e-15)
+        expect_identical(as.numeric(marginal[[level]]),public)
+      }
+    }
+  })
+  expect_identical(problems,character())
+  expect_identical(serialize(fit,NULL),fit_bytes)
+  source <- .bt_meta_get(original$mu_f,"ordered_source")
+  expect_identical(source$projection_context$primitives[,colnames(beta),drop=FALSE],beta)
+  expect_identical(source$draw_index,seq_len(4L))
+  expect_identical(source$primitives,.bt_meta_get(raw$mu_f,"ordered_source")$primitives)
+
+  # A clone with the fitted context removed cannot combine original ordinary
+  # values with fitted formula weights. Pure ordered targets remain available.
+  missing <- original
+  for(parameter in names(missing)){
+    own <- .bt_meta_get(missing[[parameter]],"ordered_source")
+    own$projection_context <- NULL
+    missing[[parameter]] <- .bt_meta_set(missing[[parameter]],"ordered_source",own)
+  }
+  expect_error(marginal_posterior(missing,"mu_f",formula=~f+x,at=list(x=12),prior_samples=FALSE),
+    "Ordered formula projections are unavailable without retained fitted ordinary coefficients for scaled samples. Recreate mixed posteriors from the source fits with this version of BayesTools.",
+    fixed=TRUE,class="BayesTools_ordered_coordinates_unavailable")
+  pure_weights <- matrix(1,1,3,dimnames=list(NULL,spec$coefficient_names))
+  pure <- .bt_ordered_formula_projections(missing,pure_weights)
+  expect_identical(pure[[1L]]$values,total)
+  ordinary_weights <- matrix(c(1,2),1,2,dimnames=list(NULL,colnames(beta)))
+  ordinary <- .bt_ordered_formula_projections(original,ordinary_weights)
+  expect_identical(ordinary[[1L]]$values,beta[,1L]+2*beta[,2L])
+  expect_identical(ordinary[[1L]]$state,rep("continuous",4L))
+  reordered <- original
+  reordered$mu_x <- .bt_draws_subset_rows(reordered$mu_x,c(2L,1L,3L,4L))
+  expect_error(.bt_ordered_formula_projections(reordered,ordinary_weights),
+    "model and draw rows do not align",class="BayesTools_ordered_coordinates_unavailable")
+  altered <- original
+  changed <- .bt_meta_get(altered$mu_x,"ordered_source")
+  changed$projection_context$primitives[1L,"mu_x"] <- 50
+  altered$mu_x <- .bt_meta_set(altered$mu_x,"ordered_source",changed)
+  expect_error(.bt_ordered_formula_projections(altered,ordinary_weights),
+    "retained sources do not align",class="BayesTools_ordered_coordinates_unavailable")
+
+  # The fitted context keeps the declared model union, including an absent
+  # ordered term and a model from which no draws are selected.
+  absent_info <- JAGS_formula(~x,"mu",data,list(intercept=prior("normal",list(0,1)),
+    x=prior("normal",list(0,1))),formula_scale=list(x=TRUE))
+  absent_fit <- fit
+  absent_fit$mcmc <- coda::mcmc.list(coda::mcmc(beta,start=11L,thin=2L))
+  absent_fit$monitor <- colnames(beta)
+  attr(absent_fit,"prior_list") <- absent_info$prior_list
+  attr(absent_fit,"formula_design") <- list(mu=absent_info$formula_design)
+  attr(absent_fit,"formula_scale") <- list(mu=absent_info$formula_scale)
+  absent_fit <- attach_test_parameter_map(absent_fit)
+  models <- list(list(fit=fit,marglik=bridgesampling_object(log(.6)),prior_weights=1),
+    list(fit=absent_fit,marglik=bridgesampling_object(log(.4)),prior_weights=1),
+    list(fit=fit,marglik=bridgesampling_object(0),prior_weights=0))
+  null <- setNames(rep(list(c(FALSE,FALSE,FALSE)),3L),names(info$prior_list))
+  mixed <- mix_posteriors(models,names(info$prior_list),null,seed=9L,n_samples=20L)
+  mixed <- .transform_scale_samples_list(mixed,attr(fit,"formula_scale",exact=TRUE))
+  mixed_source <- .bt_meta_get(mixed$mu_f,"ordered_source")
+  expect_length(mixed_source$models,3L)
+  expect_false(any(mixed_source$model==3L))
+  expect_true(all(c(1L,2L) %in% mixed_source$model))
+  marginal <- marginal_posterior(mixed,"mu_f",formula=~f+x,at=list(x=12),prior_samples=FALSE)
+  fitted_x <- (12-scale$mean)/scale$sd
+  independent <- vapply(seq_along(marginal),function(level){
+    index <- mixed_source$draw_index
+    share <- if(level==1L) numeric(4L) else if(level==4L) rep(1,4L) else{
+      rowSums(gamma[,seq_len(level-1L),drop=FALSE])/rowSums(gamma)
+    }
+    beta[index,1L] + fitted_x*beta[index,2L] +
+      ifelse(mixed_source$model==1L,(total*share)[index],0)
+  },numeric(20L))
+  colnames(independent) <- names(marginal)
+  expect_equal(vapply(marginal,as.numeric,numeric(20L)),independent,tolerance=5e-15)
+  declared <- .bt_ordered_formula_projections(mixed,pure_weights)[[1L]]
+  absent_rows <- mixed_source$model==2L
+  expect_identical(declared$state,ifelse(absent_rows,"point","continuous"))
+  expect_identical(declared$atom[absent_rows],rep(0,sum(absent_rows)))
+  expect_identical(declared$values[absent_rows],rep(0,sum(absent_rows)))
+  ordinary <- .bt_ordered_formula_projections(mixed,ordinary_weights)[[1L]]
+  expect_identical(ordinary$state,rep("continuous",20L))
+  expect_identical(ordinary$values,beta[mixed_source$draw_index,1L]+2*beta[mixed_source$draw_index,2L])
+  subset <- mixed
+  for(parameter in names(subset)) subset[[parameter]] <- .bt_draws_subset_rows(subset[[parameter]],c(7L,2L,10L))
+  subset_marginal <- marginal_posterior(subset,"mu_f",formula=~f+x,at=list(x=12),prior_samples=FALSE)
+  expect_identical(vapply(subset_marginal,as.numeric,numeric(3L)),
+    vapply(marginal,as.numeric,numeric(20L))[c(7L,2L,10L),,drop=FALSE])
+})
+
 test_that("prior_ordered() validates constructor inputs", {
   p <- prior_ordered(prior("normal", list(0, 1)))
 

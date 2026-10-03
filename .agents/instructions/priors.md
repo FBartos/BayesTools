@@ -209,8 +209,7 @@ are attached without replacing the analytic measure. Other discrete or
 expression totals retain the existing fallback. The continuous grid's
 trapezoid integral is its captured numerical integral, not the exact mass;
 nonfinite route ordinates are omitted without renormalizing the curve.
-A point
-multiplier or a deterministic multiplied part folds into an affine term. A
+A point multiplier or a deterministic multiplied part folds into an affine term. A
 normal multiplied part with a normal or deterministic additive part is the
 conditional-normal route; without an additive normal term it is a pure scale
 mixture (additive SD 0), split additionally at the multiplier's zero and at

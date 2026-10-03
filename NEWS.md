@@ -905,6 +905,10 @@ old behaviour.
     existing transformation handling. Whole mixed posteriors, factor levels and
     marginal views use the same primitive projections for every available value,
     including continuous cumulative effects, while preserving undefined rows.
+    Ordered formula marginals reuse retained fitted ordinary coefficients when
+    samples are on the original scale. Scaled mixed objects without those
+    sources stop with `BayesTools_ordered_coordinates_unavailable`; recreate
+    the mixed posteriors from their source fits.
   - conditional ordered mixtures reweight model probabilities by the declared
     inclusion event as well as selecting eligible original draws. Posterior
     event fractions and declared prior event probabilities condition their
