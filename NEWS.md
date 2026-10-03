@@ -1,32 +1,4 @@
 # version 0.3.1
-### Fixes
-- Prior documentation names the native inverse-gamma module syntax, and inclusion
-  Bayes-factor documentation identifies natural-log marginal-likelihood inputs.
-- The interactive test runner prefers the current R session's executable before
-  falling back to `Rscript` on PATH.
-- Declares `waldo` as an explicit test dependency in `Suggests`.
-- Vignette source fingerprints ignore the publication-only DESCRIPTION fields
-  `Repository` and `Date/Publication`, while retaining source-content changes.
-- Converged prior-density quadrature with an unavailable full-precision height
-  reports its recorded reason without suggesting a larger sample budget.
-- Interpretation keeps expanded rows and their evidence/estimate pairs together
-  before subsequent plan items, while preserving explicit order overrides.
-- Ensemble and marginal estimate tables preserve probability column labels in
-  scientific notation so interpretation can read both interval endpoints.
-- Interpretation of fallback credible intervals retains the probabilities and
-  coverage of the source endpoints.
-- Simplex projections with distinct coefficients retain their exact interval
-  support even when those coefficients are numerically close.
-- Spike-and-slab posterior atoms include declared point-valued slabs and merge
-  a zero slab with the excluded atom using the recorded component shares.
-- Linear projections of multivariate normal and t priors preserve tiny and large
-  nonzero coefficient scales, including representable scales with an overflowing
-  or subnormal norm. Empty coefficient vectors retain a point mass at zero.
-  Finite projected locations also remain representable when finite coefficient
-  sums overflow but the rescaled sum is finite.
-- `JAGS_bridgesampling()` preserves an explicit `use_neff` bridge-sampler control,
-  including `FALSE`, while retaining `TRUE` as the default.
-
 ### Breaking changes
 These changes affect code and saved objects written for BayesTools 0.3.0.
 This version is released together with RoBMA 4.1.0; RoBMA 4.0.0 relies on the
@@ -78,7 +50,8 @@ old behaviour.
     rejected by `print()`, `rng()`, `mcdf()`, `mean()`, and `prior_mixture()`;
     recreate them with `prior_weightfunction()`.
   - inverse-gamma priors use the module distribution `dbt_invgamma` instead
-    of a gamma prior on `inv_<parameter>`. Syntax from `JAGS_add_priors()`
+    of a gamma prior on `inv_<parameter>`. Prior documentation names this
+    native distribution on the natural parameter. Syntax from `JAGS_add_priors()`
     therefore needs the BayesTools module (loaded automatically by
     `JAGS_fit()` and in sessions with BayesTools; plain JAGS runs fail with
     "Unknown distribution"), `JAGS_get_inits()` initializes the parameter
@@ -232,8 +205,8 @@ old behaviour.
     from the caller's stream.
   - `mix_posteriors()` allocates draws with multinomial component counts, so a
     model with positive posterior probability can receive no draw. This
-    allocation changes seeded results relative to the previous allocation;
-    it is separate from restoring the caller's random-number stream.
+    allocation changes seeded results relative to the historical balanced
+    allocator; it is separate from restoring the caller's random-number stream.
 - inference and convergence results:
   - conditioning on a parameter without an inclusion indicator (a prior that
     is neither spike-and-slab nor a null/alternative mixture), or on an
@@ -561,6 +534,8 @@ old behaviour.
     `parameter_coordinates_schema()`, `parameter_catalog_schema()`,
     `JAGS_fit_contract_schema()`, `JAGS_draw_geometry_schema()`, and
     `JAGS_formula_coefficient_transform_schema()`.
+    Simplex projections with distinct coefficients keep their exact interval
+    support even when the coefficients are numerically close.
     `fit_backend_fingerprint()` identifies the backend code and native
     libraries for cache invalidation. Fits whose metadata are missing or of
     another version stop with class `BayesTools_refit_required`; fits whose
@@ -675,7 +650,9 @@ old behaviour.
     its `condition`, `undefined_draws` (undefined draws are omitted), and
     declared `atoms`, derived from the quantity's structure and never from
     draw values: the point components of mixture and spike-and-slab priors,
-    with masses from their indicators; the inclusion-gate atoms of gated
+    with masses from their indicators (including point-valued slabs; a zero
+    slab merges with the excluded atom using recorded component shares);
+    the inclusion-gate atoms of gated
     random-effect SDs, variances, and allocation totals; the value each branch
     of weight-function, publication-bias, and bias-mixture priors gives
     `omega`, `PET`, `PEESE`, and the p-hacking `alpha`, `pi_null`,
@@ -749,6 +726,8 @@ old behaviour.
     `multiply_by` product at a subnormal distance from its offset, or
     log-scale terms beyond about +/-709) are reported with `exact = FALSE` and
     the reason, so point hypotheses there are refused as inexact.
+    Converged quadrature with an unavailable full-precision height reports its
+    recorded reason without suggesting a larger sample budget.
   - linear combinations of multivariate t priors (`"mt"`, and `"mcauchy"`
     with one degree of freedom) are univariate t: the levels, level
     contrasts, and other linear targets of mean-difference and orthonormal
@@ -760,6 +739,11 @@ old behaviour.
     `BayesTools_inexact_ordinate`. `prior_density_ordinate()` records the
     reduction in `provenance$multivariate_t` (in each component's provenance
     for mixtures).
+    Normal and t linear projections retain tiny and large nonzero coefficient
+    scales, including representable scales when the unscaled norm overflows
+    or the base scale product is subnormal. Empty coefficient vectors give a
+    point mass at zero. Finite projected locations stay representable when
+    finite coefficient sums overflow but the rescaled sum is finite.
   - adds `prior_density_has_provenance()`, which tells whether BayesTools
     evaluates the heights, ordinates, and region probabilities of a prior
     density (`FALSE` for a density grid without its recorded prior measure and
@@ -1183,6 +1167,8 @@ old behaviour.
     `inclusion_log_BF` attributes) for log-scale output, and the documentation
     of `compute_inference(conditional = TRUE)` states that the inclusion Bayes
     factor stays the unconditional inclusion odds.
+    `inclusion_BF()` documentation identifies natural-log marginal-likelihood
+    inputs.
 - formulas, scaling, and original-scale quantities:
   - `ensemble_estimates_table(transform_scaled = TRUE)` and
     `marginal_estimates_table(transform_scaled = TRUE)` transform mixed
@@ -1292,7 +1278,12 @@ old behaviour.
     coefficients; point priors with expression locations no longer fail; and
     log-scale inclusion Bayes factors are formatted from log-space values and
     stay finite beyond the double range. `interpret_records()` labels fallback
-    intervals with the probabilities of the columns it uses.
+    intervals with the probabilities and coverage of the columns it uses.
+  - ensemble and marginal estimate tables preserve probability column labels
+    in scientific notation so interpretation can read both interval endpoints.
+    Interpretation keeps expanded rows and their evidence/estimate pairs
+    together before subsequent plan items, while preserving explicit order
+    overrides.
   - ensemble tables print `n_models` as one denominator per row, and
     BayesTools tables keep their metadata and safe row names when subsetted by
     row.
@@ -1340,6 +1331,12 @@ old behaviour.
     `multiply_by` product of a Cauchy and a beta term), instead of drawing a
     curve that is far off; the rest of the plot is drawn.
 - fitting, convergence, and bridge sampling:
+  - `JAGS_bridgesampling()` preserves an explicit `use_neff` bridge-sampler
+    control, including `FALSE`, with `TRUE` as the default. Deferred callback
+    argument warnings remain in the returned diagnostics, and errors retain
+    their bridge-sampling context. Exact zero-dimensional evaluation ignores
+    the upstream-only `use_neff` and `packages` controls while forwarding
+    genuine likelihood arguments.
   - `JAGS_extend()` recompiles the model from the stored chain states instead
     of continuing a compiled model left in the session, so extending the same
     object twice, or a saved and reloaded copy, gives identical draws. It
@@ -1367,6 +1364,12 @@ old behaviour.
     cut points no longer give negative masses (non-representable masses are
     rejected), and mixed p-hacking source and destination geometry is reported
     as unsupported.
+
+### Development
+- Declares `waldo` as an explicit test dependency in `Suggests`.
+- Model-fit and vignette source fingerprints ignore the publication-only
+  DESCRIPTION fields `Repository` and `Date/Publication`, while retaining
+  source-content changes.
 
 ### Performance
 - `JAGS_fit()` resolves the JAGS executable once per session instead of twice
