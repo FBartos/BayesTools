@@ -129,6 +129,10 @@ old behaviour.
     keep the previous behaviour. The `allow_NA` defaults of the other
     `check_*()` helpers are unchanged.
 - stricter inputs of released functions:
+  - convergence thresholds and `max_time$time` in the `autofit_control` of
+    `JAGS_fit()` and `JAGS_extend()` require finite, non-missing values;
+    `Inf` and `NA` are rejected. Set a threshold or `max_time` to `NULL`
+    to disable that check.
   - `check_int()` rejects infinite values ("must contain only finite
     values"); 0.3.0 accepted `Inf` and `-Inf` as integers.
   - `JAGS_evaluate_formula()` (and `JAGS_predict_formula()`) evaluates a

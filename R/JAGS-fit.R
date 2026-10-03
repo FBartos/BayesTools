@@ -37,6 +37,8 @@
 #' @param autofit whether the models should be refitted until convergence criteria
 #' specified in \code{autofit_control}. Defaults to \code{FALSE}.
 #' @param autofit_control a list of arguments controlling the autofit function.
+#' Convergence thresholds and \code{max_time$time} must be finite and non-missing.
+#' Set a convergence threshold or \code{max_time} to \code{NULL} to disable that check.
 #' Possible options are:
 #' \describe{
 #'   \item{max_Rhat}{maximum R-hat error for the autofit function.
