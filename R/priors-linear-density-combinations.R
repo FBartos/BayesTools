@@ -3503,8 +3503,9 @@
 # the support, so the value 1e-6 of the plotted range outside the bound (below
 # a lower bound, above an upper bound) draws the jump; the value as far
 # inside it would repeat the value at the bound and is added only where the
-# density at the bound is not drawn (infinite, e.g. a singular offset, or
-# unavailable), so the curve still comes that close to the bound.
+# density at the bound is numerically unavailable. An infinite density stays
+# off the plotted grid without an extra nearby point whose arbitrary height
+# would dominate the display scale.
 .prior_linear_density_display_values <- function(route, dist, raw){
 
   raw <- raw[is.finite(raw)]
@@ -3521,7 +3522,7 @@
   inside <- c(special$lower + delta, special$upper - delta)
   undrawn <- inside >= limits[1L] & inside <= limits[2L]
   if(any(undrawn)){
-    undrawn[undrawn] <- !is.finite(.prior_density_route_density(route, bounds[undrawn]))
+    undrawn[undrawn] <- is.na(.prior_density_route_density(route, bounds[undrawn]))
   }
   values <- c(special$points, atoms, bounds,
               special$lower - delta, special$upper + delta, inside[undrawn])
@@ -3533,7 +3534,7 @@
 # (or, for a curve interpolated from a numerical grid, the exact support hull of
 # its provenance) within the range of the raw plotting values 'raw' (up to a
 # relative 1e-9 of it, where the range of a numerical grid ends at the bound
-# up to rounding), with a positive density (also an infinite one) as 'evaluate'
+# up to rounding), with a positive finite density as 'evaluate'
 # returns it and exactly zero density 1e-6 of the range outside the bound. A
 # bound at which the density is zero or unavailable, that lies outside the
 # range, or inside another component's support (an interior jump to a positive
@@ -3598,7 +3599,7 @@
     if(any(snapped)){
       inside[snapped] <- limit(bounds[snapped])
     }
-    keep <- !is.na(inside) & inside > 0 & !is.na(outside) & outside == 0
+    keep <- is.finite(inside) & inside > 0 & !is.na(outside) & outside == 0
     list(bounds = bounds[keep], y = inside[keep], snapped = snapped[keep])
   }
 

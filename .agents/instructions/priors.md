@@ -343,15 +343,18 @@ spaced values plus the values it must include (atoms, offsets, normal means,
 meeting points, finite support bounds with a point 1e-6 of the plotted range
 outside each bound: the value at a bound is the density's limit inside the
 support, so the point as far inside would repeat it and is added only where
-the density at the bound is infinite or unavailable) and the parabola vertex
+the density at the bound is numerically unavailable) and the parabola vertex
 at each interior local maximum.
+An infinite boundary density is omitted without adding a nearby interior
+point or a zero-height edge; finite displayed heights come from the regular
+display grid, while structural ordinates retain the infinite limit.
 Every plotted curve (closed forms, quadrature leaves, and the interpolated
 numerical grid, whose bounds are those of the exact support hull of its
 provenance) leaves a finite support bound of the continuous density by the
 vertical edge of `density.prior()`: the bound's value is repeated with density
 0 on its outer side (first point `(lower, 0)` then `(lower, f)`, last points
 `(upper, f)` then `(upper, 0)`) when the bound lies in the plotted range (up to
-a relative 1e-9 of it), the density there is positive (also infinite) and zero
+a relative 1e-9 of it), the density there is positive and finite and zero
 just outside it. A bound outside the range, one where the density is already 0
 and one inside another component's support (an interior jump, drawn by the
 display values) get no zero value. The repeat is made before the transformation

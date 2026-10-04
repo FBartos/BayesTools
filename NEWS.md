@@ -1,4 +1,7 @@
 # version 0.3.1
+- prior density overlays omit infinite support-boundary heights without adding
+  arbitrary nearby spikes or zero-height edges. Allocated variance plots keep
+  their regular density curves and declared point masses on a usable scale.
 - ordered prior overlays match posterior level colors when fill, axis, or label
   colors are supplied without an explicit prior line color. Explicit prior
   colors and line types retain precedence.
