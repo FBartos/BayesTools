@@ -535,7 +535,7 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
     records <- list()
     if(!is.null(item[["evidence"]])){
       evidence <- .interpret_ref_record(
-        ref     = .interpret_merge_ref(item[["evidence"]], item, "evidence", 0),
+        ref     = .interpret_merge_ref(item[["evidence"]], item, "evidence"),
         kind    = "evidence",
         sources = sources,
         missing = missing
@@ -546,7 +546,7 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
     }
     if(!is.null(item[["estimate"]])){
       estimate <- .interpret_ref_record(
-        ref     = .interpret_merge_ref(item[["estimate"]], item, "estimate", 0),
+        ref     = .interpret_merge_ref(item[["estimate"]], item, "estimate"),
         kind    = "estimate",
         sources = sources,
         missing = missing
@@ -559,7 +559,7 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
   }
 
   record <- .interpret_ref_record(
-    ref     = .interpret_merge_ref(item, item, kind, 0),
+    ref     = .interpret_merge_ref(item, item, kind),
     kind    = kind,
     sources = sources,
     missing = missing
@@ -571,7 +571,7 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
   return(list(record))
 }
 
-.interpret_merge_ref <- function(ref, item, kind, order_offset){
+.interpret_merge_ref <- function(ref, item, kind){
 
   if(is.null(ref)){
     ref <- list()
@@ -587,7 +587,7 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
   }
 
   ref[["kind"]] <- kind
-  ref[["order"]] <- .interpret_or(ref[["order"]], item[["order"]] + order_offset)
+  ref[["order"]] <- .interpret_or(ref[["order"]], item[["order"]])
   ref[["item_id"]] <- .interpret_or(ref[["item_id"]], ref[["id"]])
 
   return(ref)
