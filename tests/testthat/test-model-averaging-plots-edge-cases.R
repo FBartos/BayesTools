@@ -157,6 +157,81 @@ test_that("ordered prior overlays omit only the design reference and retain leve
     plot_type = "ggplot", n_points = 64))$data, 2L)
 })
 
+test_that("ordered overlay styles use exact line argument names", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, .5)), c(.4, .6),
+    levels = c("systematic", "alternate", "random"))
+  plot_data <- .plot_data_samples.factor(fixture$samples, "mu_f", 32L, NULL, NULL, FALSE)
+  posterior_col <- c("red", "blue")
+  default_col <- grDevices::palette.colors(n = 3L)[-1L]
+  for(name in c("col.fill", "col.axis", "col.lab", "col.main")){
+    other_color <- stats::setNames(list("grey60"), name)
+    inherited <- .plot_ordered_overlay_styles(other_color, plot_data, list(col = posterior_col))
+    expect_identical(inherited[["col"]], posterior_col)
+    expect_identical(inherited[[name]], other_color[[name]])
+    expect_identical(inherited[["lty"]], 2)
+    defaults <- .plot_ordered_overlay_styles(list(), plot_data, other_color)
+    expect_identical(defaults, list(col = default_col, lty = 2))
+  }
+  for(style in list(list(lty = 3), list(linetype = "dotted"),
+    list(lty = 3, linetype = "dotted"))){
+    explicit <- c(list(col = c("purple", "orange"), col.fill = "grey80"), style)
+    expect_identical(.plot_ordered_overlay_styles(explicit, plot_data,
+      list(col = posterior_col)), explicit)
+  }
+  expect_identical(.plot_ordered_overlay_styles(list(), plot_data,
+    list(lty = 3, linetype = "dotted")), list(col = .plot.prior_settings()[["col"]], lty = 2))
+  nonordered <- attr(plot_data, "factor_level_universe", exact = TRUE)
+  attr(nonordered, "ordered") <- FALSE
+  attr(plot_data, "factor_level_universe") <- nonordered
+  unchanged <- list(col.fill = "grey80", linetype = "dotted")
+  expect_identical(.plot_ordered_overlay_styles(unchanged, plot_data,
+    list(col = posterior_col)), unchanged)
+})
+
+test_that("ordered posterior and marginal overlays retain line colors with forwarded fills", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, .5)), c(.4, .6),
+    levels = c("systematic", "alternate", "random"))
+  marginal <- marginal_posterior(fixture$samples, "mu_f", use_formula = FALSE,
+    prior_samples = TRUE, n_samples = 128L)
+  universe <- attr(.plot_data_samples.factor(fixture$samples, "mu_f", 32L,
+    NULL, NULL, FALSE), "factor_level_universe", exact = TRUE)
+  expect_identical(universe$name, c("mu_f[alternate]", "mu_f[random]"))
+  expect_identical(universe$style_index, 1:2)
+  base_lines <- list()
+  original_lines <- graphics::lines
+  testthat::local_mocked_bindings(
+    lines = function(...){
+      base_lines[[length(base_lines) + 1L]] <<- list(...)
+      original_lines(...)
+    },
+    .package = "graphics"
+  )
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  for(method in c("posterior", "marginal")){
+    plot_fun <- if(method == "posterior") plot_posterior else plot_marginal
+    samples <- if(method == "posterior") fixture$samples else list(mu_f = marginal)
+    for(posterior_col in list(c("red", "blue"), NULL)){
+      # RoBMA forwards this fill while leaving whole-term line colors to
+      # BayesTools. Use its real mixed-posterior producer, not hand-made densities.
+      dots <- list(dots_prior = list(col.fill = "#B3B3B34C"))
+      expected_col <- if(is.null(posterior_col)) grDevices::palette.colors(3L)[-1L] else posterior_col
+      if(is.null(posterior_col)) dots[["col.fill"]] <- "grey80" else dots[["col"]] <- posterior_col
+      args <- c(list(samples = samples, parameter = "mu_f", prior = TRUE, n_points = 32L), dots)
+      plot <- do.call(plot_fun, c(args, list(plot_type = "ggplot")))
+      built <- ggplot2::ggplot_build(plot)
+      expect_identical(vapply(built$data[1:2], function(x) unique(x$colour), character(1)), expected_col)
+      expect_identical(vapply(built$data[1:2], function(x) unique(x$linetype), numeric(1)), c(2, 2))
+      expect_identical(sort(unique(built$data[[3L]]$colour)), sort(expected_col))
+      base_lines <- list()
+      do.call(plot_fun, c(args, list(plot_type = "base")))
+      expect_length(base_lines, 4L)
+      expect_identical(vapply(base_lines, `[[`, character(1), "col"), rep(expected_col, 2L))
+      expect_equal(vapply(base_lines, `[[`, numeric(1), "lty"), c(2, 2, 1, 1))
+    }
+  }
+})
+
 test_that("non-reference ordered zero levels and mixed atoms remain visible", {
   for(allocation in list(c(0, .3, .7), NULL)){
     fixture <- ordered_plot_test_fixture(prior("point", list(2)), allocation)

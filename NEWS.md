@@ -1,4 +1,7 @@
 # version 0.3.1
+- ordered prior overlays match posterior level colors when fill, axis, or label
+  colors are supplied without an explicit prior line color. Explicit prior
+  colors and line types retain precedence.
 - ordered prior overlays check probability-axis clipping for selected levels
   and preserve the active atom mapping in both backends. Unresolved numerical
   prior-curve evaluations now warn once per continuous route, retaining every

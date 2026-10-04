@@ -361,13 +361,13 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     universe <- attr(plot_data[[1L]], "factor_level_universe", exact = TRUE)
   }
   if(!isTRUE(attr(universe, "ordered", exact = TRUE))) return(dots_prior)
-  if(is.null(dots_prior$col)){
-    dots_prior$col <- if(!is.null(dots$col)) dots$col else if(
-      is.null(dots$lty) || is.null(dots$linetype)){
+  if(is.null(dots_prior[["col"]])){
+    dots_prior[["col"]] <- if(!is.null(dots[["col"]])) dots[["col"]] else if(
+      is.null(dots[["lty"]]) || is.null(dots[["linetype"]])){
       grDevices::palette.colors(n = nrow(universe) + 1L)[-1L]
     }else .plot.prior_settings()[["col"]]
   }
-  if(is.null(dots_prior$lty) && is.null(dots_prior$linetype)) dots_prior$lty <- 2
+  if(is.null(dots_prior[["lty"]]) && is.null(dots_prior[["linetype"]])) dots_prior[["lty"]] <- 2
   dots_prior
 }
 .plot_prior_factor_style_value <- function(values, level_id, component_id, n_levels, default = NULL){
