@@ -203,10 +203,6 @@ old behaviour.
     after a seeded `marginal_inference()`, must pass its own seed. Unseeded
     `JAGS_get_inits()` and `mix_posteriors()` take their seed with one draw
     from the caller's stream.
-  - `mix_posteriors()` allocates draws with multinomial component counts, so a
-    model with positive posterior probability can receive no draw. This
-    allocation changes seeded results relative to the historical balanced
-    allocator; it is separate from restoring the caller's random-number stream.
 - inference and convergence results:
   - conditioning on a parameter without an inclusion indicator (a prior that
     is neither spike-and-slab nor a null/alternative mixture), or on an
@@ -992,6 +988,10 @@ old behaviour.
     the specification has no initial values and its compilation does not
     change the random-number state.
 - fitting, runtime, bridge sampling, and model averaging:
+  - `mix_posteriors()` allocates draws with multinomial component counts, so a
+    model with positive posterior probability can receive no draw. This
+    allocation changes seeded results relative to the historical balanced
+    allocator; it is separate from restoring the caller's random-number stream.
   - `JAGS_fit()` gains `jags_modules` and carries the generated
     `add_parameters`, `required_packages`, and `jags_modules` of formulas into
     fitting, extension, convergence checks, and parallel workers;
