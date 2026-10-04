@@ -4219,8 +4219,8 @@ test_that("N03 subnormal base product retains the independent normal scale", {
   scalar <- BayesTools:::.prior_linear_vector_scalar_prior(vector_prior, rep(1e-300, 4))
   expect_identical(scalar$distribution, "normal")
   # Four independent equal-weight normals have SD = 2 * weight * source SD.
-  # The 1e-12 relative tolerance allows ordinary log/exp rounding, while
-  # distinguishing the lost precision of multiplying a subnormal base directly.
+  # This exercises the subnormal base branch; the 1e-12 relative tolerance
+  # allows ordinary log/exp rounding.
   expect_equal(scalar$parameters$sd / (1e-300 * 1.5e-8), 2, tolerance = 1e-12)
 })
 
