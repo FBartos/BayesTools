@@ -181,17 +181,25 @@ Posterior draws that declare no prior (a \code{prior_list} of
 without a prior density) and carry no prior density have no prior curve:
 with \code{prior = TRUE}, the posterior is drawn alone with a warning of
 the same class.
+Raw numerical plotting evaluations that remain unresolved warn once per
+continuous route with the same classes. The warning distinguishes a partly
+available curve from a wholly unavailable one; every available curve point
+and declared atom is retained. Its \code{unresolved_values} field contains
+the evaluation coordinates on the source scale, before any plotting
+transformation. Use \code{prior = FALSE} to draw the posterior
+alone. Exact infinite density points and exact zero densities do not trigger
+this warning. Finite displayed peak heights depend on the evaluation grid.
 
 Ordered factors are plotted as semantic level effects. Their persisted
 zero-design reference rows are omitted for both raw and already transformed
-inputs; genuine non-reference zero and point levels remain. Allocation-induced
-infinite prior curves follow the quiet display rule of \code{\link[=plot.prior]{plot.prior()}}.
+inputs; genuine non-reference zero and point levels remain. Both finite and
+singular non-reference prior curves retain their actual finite ordinates.
 Colors and \code{legend_labels} refer to the full retained non-reference
-level list, including a level whose prior curve is omitted. Visible curves
+level list. Visible curves
 and point masses determine the axes. Ordered prior overlays default to the
 corresponding posterior colors and dashed lines; explicit \code{dots_prior}
 \code{col}, \code{lty}, or \code{linetype} override these defaults. The
-posterior owns the legend, and an entirely omitted prior overlay is skipped.
+posterior owns the legend.
 
 For base plots, the initial call establishes the density-to-probability
 mapping. Calls with \code{add = TRUE} reuse that mapping so point masses from

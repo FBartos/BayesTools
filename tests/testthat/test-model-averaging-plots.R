@@ -77,7 +77,7 @@ test_that("ordered direct mixed-total displays retain declared spike atoms", {
   }
 })
 
-test_that("ordered direct selections retain holes when curves are omitted", {
+test_that("ordered direct selections retain original positions", {
   render_selection <- function(prior, show_figures){
     plots <- plot(prior, show_figures = show_figures, plot_type = "ggplot",
       n_points = 64, n_samples = 128, xlab = "Level effect")
@@ -126,15 +126,15 @@ test_that("ordered direct finite point-slab levels show analytic curves and full
   }
 })
 
-test_that("ordered direct small-alpha Normal plots skip omitted product curves quietly", {
-  fixture <- ordered_plot_test_fixture(prior("normal", list(0, 1)),
-    prior("dirichlet", list(c(.5, .25, .25))))
-  vdiffr::expect_doppelganger("ordered-direct-small-alpha-normal-base", function(){
+test_that("ordered direct default omits only the reference level", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, .5)),
+    levels = c("systematic", "alternate", "random"))
+  vdiffr::expect_doppelganger("ordered-direct-reference-only-base", function(){
     set.seed(600)
     graphics::par(mfrow = c(1, 2))
     plot(fixture$prior, xlim = c(-3, 3), n_points = 64L, n_samples = 128L, xlab = "Level effect")
   })
-  vdiffr::expect_doppelganger("ordered-direct-small-alpha-normal-ggplot", function(){
+  vdiffr::expect_doppelganger("ordered-direct-reference-only-ggplot", function(){
     set.seed(600)
     plots <- plot(fixture$prior, plot_type = "ggplot", xlim = c(-3, 3),
       n_points = 64L, n_samples = 128L, xlab = "Level effect")
@@ -170,6 +170,44 @@ test_that("ordered model estimates have prior and posterior visual coverage", {
     for(level in c(1L, 3L)){
       vdiffr::expect_doppelganger(paste0("ordered-models-prior-", prior, "-level", level, "-ggplot"), plots[[level]])
     }
+  }
+})
+
+test_that("ordered small-alpha Normal partial priors retain their finite curves", {
+  fixture <- ordered_plot_test_fixture(prior("normal", list(0, 1)),
+    prior("dirichlet", list(c(.5, .25, .25))))
+  for(level in c(2L, 3L)){
+    for(backend in c("base", "ggplot")){
+      draw <- function(){
+        plot(fixture$prior, show_figures = level, plot_type = backend,
+          xlim = c(-3, 3), n_points = 64L, xlab = "Level effect")
+      }
+      vdiffr::expect_doppelganger(paste0("ordered-direct-small-alpha-level", level, "-", backend),
+        if(backend == "base") draw else draw())
+    }
+  }
+})
+
+test_that("ordered transformed mixed overlays retain the active probability mapping", {
+  fixture <- ordered_plot_test_fixture(prior_spike_and_slab(
+    prior("point", list(-2)), prior("point", list(.5))),
+    prior("dirichlet", list(c(2, 2, .5))))
+  priors <- list(prior("normal", list(0, .5), prior_weights = .5),
+    prior("point", list(0), prior_weights = .5))
+  for(backend in c("base", "ggplot")){
+    draw <- function(){
+      base <- plot_prior_list(priors, plot_type = backend, ylim = c(0, 2),
+        ylim2 = c(0, .6), xlim = c(-1, 2), xlab = "Transformed effect")
+      if(backend == "base"){
+        lines(fixture$prior, show_parameter = 3L, n_points = 64L,
+          transformation = "exp", col = "orange", lty = 2)
+      }else{
+        base + geom_prior(fixture$prior, show_parameter = 3L, n_points = 64L,
+          transformation = "exp", col = "orange", lty = 2)
+      }
+    }
+    vdiffr::expect_doppelganger(paste0("ordered-direct-transformed-overlay-", backend),
+      if(backend == "base") draw else draw())
   }
 })
 

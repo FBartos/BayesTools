@@ -55,13 +55,17 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       xlim   <- range(pretty(xlim))
     }
   }
-  plot_data <- density(x = .plot_ordered_prior_density_input(x), x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
+  plot_data <- density(x = x, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                        n_points = n_points, n_samples = n_samples, force_samples = force_samples,
                        transformation = transformation, transformation_arguments = transformation_arguments,
                        transformation_settings = transformation_settings, individual = individual)
-  if(is.prior.ordered(x)) plot_data <- .plot_data_ordered_prior_display(x, plot_data,
-    transformation = transformation, transformation_arguments = transformation_arguments)
-  scale_y2 <- .plot_scale_y2_overlay(plot_data, scale_y2)
+  selected <- if(is.prior.ordered(x) || is.prior.simplex(x)){
+    if(is.null(show_parameter)){
+      if(is.prior.ordered(x)) .plot_ordered_prior_default_figures(x) else seq_along(plot_data)
+    }else show_parameter
+  }else NULL
+  if(is.prior.ordered(x)) plot_data <- .plot_data_ordered_prior_display(plot_data, selected)
+  scale_y2 <- .plot_scale_y2_overlay(if(is.null(selected)) plot_data else plot_data[selected], scale_y2)
 
 
   # plot a weightfunction
@@ -104,13 +108,7 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   }
 
   if(is.prior.ordered(x) || is.prior.simplex(x)){
-    selected <- if(is.null(show_parameter)){
-      seq_along(plot_data)
-    }else{
-      show_parameter
-    }
     for(i in selected){
-      if(inherits(plot_data[[i]], "density.prior.display_empty")) next
       if(inherits(plot_data[[i]], "density.prior.mixed_measure")){
         .lines_prior_mixed_measure(
           plot_data[[i]],
@@ -198,7 +196,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       xlim   <- range(pretty(xlim))
     }
   }
-  plot_data <- density(x = .plot_ordered_prior_density_input(x), x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
+  plot_data <- density(x = x, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                        n_points = n_points, n_samples = n_samples, force_samples = force_samples,
                        transformation = transformation, transformation_arguments = transformation_arguments,
                        transformation_settings = transformation_settings, individual = individual)
@@ -248,16 +246,17 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   }
 
   if(is.prior.ordered(x) || is.prior.simplex(x)){
-    if(is.prior.ordered(x)) plot_data <- .plot_data_ordered_prior_display(x, plot_data,
-      transformation = transformation, transformation_arguments = transformation_arguments)
     selected <- if(is.null(show_parameter)){
-      seq_along(plot_data)
+      if(is.prior.ordered(x)) .plot_ordered_prior_default_figures(x) else seq_along(plot_data)
     }else{
       show_parameter
     }
+    if(is.prior.ordered(x)) plot_data <- .plot_data_ordered_prior_display(plot_data, selected)
     geom <- list()
+    points <- list()
+    point_builders <- list()
+    other_geoms <- list()
     for(i in selected){
-      if(inherits(plot_data[[i]], "density.prior.display_empty")) next
       component_geom <- if(inherits(
         plot_data[[i]],
         "density.prior.mixed_measure"
@@ -277,8 +276,28 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
         list(.geom_prior.simple(plot_data[[i]], ...))
       }
       geom <- c(geom, component_geom)
+      if(is.prior.ordered(x)){
+        component <- plot_data[[i]]
+        atom <- if(inherits(component, "density.prior.mixed_measure")){
+          if(nrow(component$atoms) > 0L) list(x = component$atoms$location, y = component$atoms$mass) else NULL
+        }else if(inherits(component, "density.prior.point")) component else NULL
+        if(!is.null(atom)){
+          class(atom) <- c("density.prior.point", class(atom))
+          points[[length(points) + 1L]] <- atom
+          point_builders[[length(point_builders) + 1L]] <- list(
+            fun = .geom_prior.point, plot_data = atom, dots = list(...)
+          )
+          if(inherits(component, "density.prior.mixed_measure") && !is.null(component$continuous)){
+            other_geoms <- c(other_geoms, component_geom[1L])
+          }
+        }else other_geoms <- c(other_geoms, component_geom)
+      }
     }
     geom <- geom[!vapply(geom, is.null, logical(1))]
+    if(is.prior.ordered(x) && length(points) > 0L){
+      return(.bt_ggplot_prior_overlay(geom, points, scale_y2,
+        point_builders = point_builders, other_geoms = other_geoms))
+    }
     return(geom)
   }
 

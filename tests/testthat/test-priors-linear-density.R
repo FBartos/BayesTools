@@ -2971,8 +2971,8 @@ test_that("plotted densities draw a support bound with one value outside it", {
   # outside the bound (below a lower bound, above an upper bound) and not the
   # one inside it, which repeated the value at the bound (the first two points
   # of the exp(affine) scale-intercept prior coincided in the plot). The
-  # inside value stays where the density at the bound is not drawn
-  # (infinite), and both sides where one term's support ends and another's
+  # inside value stays where the density at the bound is unavailable,
+  # and both sides where one term's support ends and another's
   # starts. References: the scale-product offset f(0+) E[1 / W] in closed
   # form, and truncated-t densities with integrate() at rel.tol 1e-12.
   z0 <- -0.98946052195266332
@@ -3002,17 +3002,19 @@ test_that("plotted densities draw a support bound with one value outside it", {
   expect_false(-delta %in% curve$x)
   expect_equal(curve$y[curve$x == delta], 0)
 
-  # a singular bound: the gamma(.5, 1) term makes the density at 0 infinite,
-  # so the curve leaves the bound by the edge to zero and the value just inside it
+  # A singular bound stays off the curve without an artificial edge to zero
+  # or a nearby point whose arbitrary height would dominate the vertical axis.
   term <- prior("gamma", list(.5, 1))
   attr(term, "multiply_by") <- "s"
   singular <- .prior_linear_combination_density(
     list(b = term, s = prior("lognormal", list(0, .5))), c(b = 1)
   )
   curve <- .prior_linear_density_to_plot_data(singular, x_range = c(0, 5))$density
-  expect_identical(curve$x[1:2], c(0, 1e-6 * 5))
-  expect_identical(curve$y[1L], 0)
-  expect_equal(curve$y[2L], exp(prior_density_ordinate(singular, 1e-6 * 5)$log_density), tolerance = 1e-8)
+  expect_identical(prior_density_ordinate(singular, 0)$behavior, "infinite")
+  expect_gt(curve$x[1L], 1e-3)
+  expect_false((1e-6 * 5) %in% curve$x)
+  expect_true(all(is.finite(curve$y)))
+  expect_equal(curve$y[1L], exp(prior_density_ordinate(singular, curve$x[1L])$log_density), tolerance = 1e-8)
 
   # one term's support ends at 1 and another's starts there: both sides
   a <- prior_mixture(list(prior("spike", list(0)), prior("normal", list(0, .3))), is_null = c(TRUE, FALSE))
@@ -3033,6 +3035,54 @@ test_that("plotted densities draw a support bound with one value outside it", {
       .25 * convolution(value, upper_part, 1, Inf) + .25 * convolution(value, lower_part, -Inf, 1)
   }, numeric(1))
   expect_equal(curve$y[match(at, curve$x)], reference, tolerance = 1e-8)
+})
+
+test_that("allocated variance prior plots retain regular densities without singular-boundary spikes", {
+
+  # Kearon's group variance has the form Z = 2 U T^2, where U is uniform
+  # and T is half-normal. Integrating f_T(t) / (2 t^2) from sqrt(z / 2)
+  # to infinity gives this closed form, independently of the route quadrature.
+  scale <- .86
+  reference <- function(z){
+    lower <- sqrt(z / 2)
+    stats::dnorm(lower, sd = scale) / lower -
+      stats::pnorm(lower / scale, lower.tail = FALSE) / scale^2
+  }
+  for(mass in c(1, .75)){
+    density <- .prior_allocation_product_density(
+      prior("normal", list(0, scale), list(0, Inf)),
+      multipliers = list(.prior_allocation_point(0, 1 - mass),
+                         .prior_allocation_share(1, 1, 2, mass)),
+      n_grid = 256, square = TRUE
+    )
+    before <- density
+    plot_data <- .prior_linear_density_to_plot_data(density, n_points = 1000, x_range = c(0, 2))
+    curve <- plot_data$density
+    expect_gt(min(curve$x), 1e-3)
+    expect_false(2e-6 %in% curve$x)
+    expect_true(all(is.finite(curve$y)))
+    expect_equal(curve$y, mass * reference(curve$x), tolerance = 1e-8)
+    expect_identical(density, before)
+    expect_identical(prior_density_ordinate(density, 0)$behavior,
+                     if(mass == 1) "infinite" else "point_mass")
+    if(mass < 1){
+      expect_identical(plot_data$points1$x, 0)
+      expect_identical(plot_data$points1$y, 1 - mass)
+    }else{
+      expect_null(plot_data$points1)
+    }
+  }
+
+  # A decreasing transformation maps the singular lower bound to an upper
+  # bound. Its regular curve still has the same densities and declared atom.
+  reflected <- .prior_linear_density_to_plot_data(
+    density, n_points = 1000, x_range = c(0, 2),
+    transformation = "lin", transformation_arguments = list(a = 0, b = -1)
+  )
+  expect_true(all(reflected$density$x < 0))
+  expect_equal(reflected$density$y, .75 * reference(-reflected$density$x), tolerance = 1e-8)
+  expect_identical(reflected$points1$x, 0)
+  expect_identical(reflected$points1$y, .25)
 })
 
 # Plotted curves of the prior densities of the support-edge tests.

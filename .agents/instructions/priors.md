@@ -30,6 +30,13 @@ numeric representation can be produced.
 Truncation is part of the distribution definition. Preserve exact support and
 one-sided boundary behavior; do not replace valid endpoints with nearby values.
 
+The direct ordered Dirichlet-product density uses stable log-share arithmetic
+for a literal, untruncated Normal total with mean exactly zero and finite positive
+SD. Its original quadrature budget, tolerances and zero-boundary identities
+remain in force. Other totals retain their existing arithmetic; small second
+Beta shapes can still lose rounded-share tails there. The guarded repair does
+not certify tiny or nonrepresentable ranges or other total families.
+
 `selection_model()` captures fixed source choices and a deferred publication
 column reference. Keep `group = NULL` immediately after `weight_rule`; consumers
 resolve publication groups only for `"best"` branches. Product selection is
@@ -209,8 +216,7 @@ are attached without replacing the analytic measure. Other discrete or
 expression totals retain the existing fallback. The continuous grid's
 trapezoid integral is its captured numerical integral, not the exact mass;
 nonfinite route ordinates are omitted without renormalizing the curve.
-A point
-multiplier or a deterministic multiplied part folds into an affine term. A
+A point multiplier or a deterministic multiplied part folds into an affine term. A
 normal multiplied part with a normal or deterministic additive part is the
 conditional-normal route; without an additive normal term it is a pure scale
 mixture (additive SD 0), split additionally at the multiplier's zero and at
@@ -337,15 +343,18 @@ spaced values plus the values it must include (atoms, offsets, normal means,
 meeting points, finite support bounds with a point 1e-6 of the plotted range
 outside each bound: the value at a bound is the density's limit inside the
 support, so the point as far inside would repeat it and is added only where
-the density at the bound is infinite or unavailable) and the parabola vertex
+the density at the bound is numerically unavailable) and the parabola vertex
 at each interior local maximum.
+An infinite boundary density is omitted without adding a nearby interior
+point or a zero-height edge; finite displayed heights come from the regular
+display grid, while structural ordinates retain the infinite limit.
 Every plotted curve (closed forms, quadrature leaves, and the interpolated
 numerical grid, whose bounds are those of the exact support hull of its
 provenance) leaves a finite support bound of the continuous density by the
 vertical edge of `density.prior()`: the bound's value is repeated with density
 0 on its outer side (first point `(lower, 0)` then `(lower, f)`, last points
 `(upper, f)` then `(upper, 0)`) when the bound lies in the plotted range (up to
-a relative 1e-9 of it), the density there is positive (also infinite) and zero
+a relative 1e-9 of it), the density there is positive and finite and zero
 just outside it. A bound outside the range, one where the density is already 0
 and one inside another component's support (an interior jump, drawn by the
 display values) get no zero value. The repeat is made before the transformation
@@ -504,7 +513,15 @@ refused as for every product grid. Posterior plots (`plot_posterior()`,
 catalog mixed posteriors of quantities without a prior density) and carry no
 prior density warn with the same class and draw the posterior alone; draws
 with a prior list but without their prior density still stop. The
-mixed-measure `density()` of an ordered
+same warning class reports unresolved raw numerical plotting evaluations once
+per continuous route, distinguishing a partially available curve from one
+with no available continuous points. Its `unresolved_values` field contains
+evaluation coordinates on the source scale, before any plotting transformation.
+Available points and declared atoms remain; `prior = FALSE` draws the posterior
+alone. Mathematical infinite ordinates,
+exact zero/support-zero densities and intentional transformation limits are
+not unresolved evaluations. Finite displayed heights depend on the grid.
+The mixed-measure `density()` of an ordered
 prior (a total with a spike) evaluates each level with a structural route on
 that route at the display values, never by interpolating its level grid.
 

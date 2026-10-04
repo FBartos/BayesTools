@@ -29,8 +29,15 @@
 #' Direct ordered factor marginal plots omit persisted zero-design reference
 #' rows and retain true non-reference point levels. They use the retained
 #' level color/label list and matching dashed prior-overlay defaults of
-#' [plot_posterior()]. Allocation-induced singular prior curves are quietly
-#' omitted as in [plot.prior()], including when no prior overlay remains.
+#' [plot_posterior()]. Every non-reference continuous prior retains its finite
+#' plotting ordinates, including priors with an exact infinite density point.
+#' Unresolved raw numerical evaluations warn once per continuous route with
+#' the classes above, distinguishing partial from whole curve unavailability
+#' and retaining available points and atoms. The warning's
+#' \code{unresolved_values} field contains evaluation coordinates on the source
+#' scale, before any plotting transformation. Use \code{prior = FALSE} to draw
+#' the posterior alone. Exact infinite density and zero-density points remain
+#' valid, and finite displayed peak heights depend on the evaluation grid.
 #'
 #' @seealso [prior()] [marginal_inference()]  [plot_posterior()]
 #' @export

@@ -471,17 +471,85 @@
 
 .bt_ordered_formula_projections <- function(samples, weights, source_transforms=NULL){
 
-  sources <- lapply(samples,function(x) .bt_meta_get(x,"ordered_source"))
+  weights <- as.matrix(weights)
+  check_real(as.vector(weights), "weights", check_length=0, allow_NA=FALSE)
+  if(is.null(colnames(weights)) || anyDuplicated(colnames(weights)) || any(!is.finite(weights))){
+    stop("'weights' must be finite named fitted-coordinate weights.", call. = FALSE)
+  }
+  active_columns <- colnames(weights)[colSums(weights!=0)>0L]
+  coefficient_columns <- lapply(names(samples),function(parameter){
+    .posterior_atoms_coefficient_columns(samples[[parameter]],parameter)
+  })
+  names(coefficient_columns) <- names(samples)
+  weighted_parameters <- names(samples)[vapply(coefficient_columns,function(columns){
+    any(columns %in% active_columns)
+  },logical(1))]
+  prefixes <- stats::setNames(vapply(names(samples),function(parameter){
+    x <- samples[[parameter]]
+    prefix <- .bt_label_formula_parameter(x)
+    if(nzchar(prefix)) return(prefix)
+    prior <- attr(x,"prior_list",exact=TRUE)
+    if(is.prior(prior)) return(.bt_label_formula_parameter(prior))
+    owners <- unique(vapply(prior,.bt_label_formula_parameter,character(1)))
+    owners <- owners[nzchar(owners)]
+    if(length(owners)==1L) owners else ""
+  },character(1)),names(samples))
+  required_prefixes <- unique(prefixes[weighted_parameters])
+  required_prefixes <- required_prefixes[nzchar(required_prefixes)]
+  # Per-output scaling producers need the complete provided fitted context
+  # of each contributing prefix, including its ordinary coefficients.
+  parameters <- names(samples)[names(samples) %in% weighted_parameters |
+    (nzchar(prefixes) & prefixes %in% required_prefixes)]
+  prefixes <- prefixes[parameters]
+  sources <- lapply(samples[parameters],function(x) .bt_meta_get(x,"ordered_source"))
   ordered_parameters <- names(sources)[!vapply(sources,is.null,logical(1))]
   if(!length(ordered_parameters)) return(NULL)
   if(any(vapply(sources[ordered_parameters],function(source) !is.null(source$view_transformations),logical(1)))) return(NULL)
-  if(length(source_transforms)){
+  if(length(intersect(names(source_transforms),active_columns))){
     # Existing log-source atom recipes own this unsupported combined view.
     return(NULL)
   }
-  weights <- as.matrix(weights)
   source <- sources[[ordered_parameters[[1L]]]]
   n <- length(source$model)
+  formula_scale <- .bt_meta_get(samples,"formula_scale")
+  scaled <- stats::setNames(isTRUE(.bt_meta_get(samples,"transform_scaled")) &
+    vapply(prefixes,function(prefix) !is.null(formula_scale[[prefix]]),logical(1)),parameters)
+  for(parameter in parameters){
+    x <- samples[[parameter]]
+    own <- sources[[parameter]]
+    model_rows <- .bt_draws_model_component(x)
+    draw_rows <- .bt_meta_get(x,"draw_index")
+    if(NROW(x)!=n || (!is.null(own) &&
+       (length(own$models)!=length(source$models) || !identical(own$model,source$model) ||
+        !identical(own$draw_index,source$draw_index))) ||
+       (!is.null(model_rows) && !identical(model_rows,source$model)) ||
+       (!is.null(draw_rows) && !identical(as.integer(draw_rows),source$draw_index))){
+      .bt_ordered_stop("Ordered formula sources are unavailable because their model and draw rows do not align. Recreate mixed posteriors from the source fits with aligned sampling.")
+    }
+    if(!is.null(own) && any(vapply(own$models[unique(source$model)],function(spec){
+      !is.null(spec$parameterization) && !identical(spec$parameterization,"absent")
+    },logical(1)))) return(NULL)
+  }
+  # Fitted weights use only their owners' contexts. Within a formula prefix
+  # the full contexts must agree; distinct prefixes may have distinct sources.
+  prefix_groups <- split(parameters,prefixes)
+  fitted_contexts <- lapply(prefix_groups,function(group){
+    contexts <- Filter(Negate(is.null),lapply(sources[group],`[[`,"projection_context"))
+    if(!length(contexts)) return(NULL)
+    context <- contexts[[1L]]
+    if(length(context$models)!=length(source$models) || nrow(context$primitives)!=n ||
+       any(!vapply(contexts,function(own) identical(own,context),logical(1)))){
+      .bt_ordered_stop("Ordered fitted projection contexts are unavailable because their retained sources do not align. Recreate mixed posteriors from the source fits with aligned sampling.")
+    }
+    context
+  })
+  merge_named <- function(current, incoming){
+    overlap <- intersect(names(current),names(incoming))
+    if(any(!vapply(overlap,function(name) identical(current[[name]],incoming[[name]]),logical(1)))){
+      .bt_ordered_stop("Ordered fitted projection contexts are unavailable because their overlapping sources do not agree. Recreate mixed posteriors from the source fits with consistent source metadata.")
+    }
+    c(current,incoming[setdiff(names(incoming),names(current))])
+  }
   projections <- lapply(seq_len(nrow(weights)),function(i){
     list(values=rep(NA_real_,n),atom=rep(NA_real_,n),state=rep("unavailable",n),exact=rep(FALSE,n))
   })
@@ -492,41 +560,83 @@
     specs <- priors <- list()
     inputs <- list()
     absent <- character()
-    for(parameter in names(samples)){
-      x <- samples[[parameter]]
-      prior <- attr(x,"prior_list",exact=TRUE)
-      priors[[parameter]] <- if(is.prior(prior)) prior else prior[[model]]
-      if(!is.null(sources[[parameter]])){
-        own <- sources[[parameter]]
-        if(!identical(own$model,source$model)) .bt_ordered_stop("Ordered formula sources are unavailable because their model rows do not align. Recreate mixed posteriors with aligned sampling.")
-        spec <- own$models[[model]]
-        if(!is.null(spec$parameterization)){
-          if(identical(spec$parameterization,"absent")) absent <- c(absent,.posterior_atoms_coefficient_columns(x,parameter)) else return(NULL)
-        }else{
-          specs[[parameter]] <- spec
-          coordinates <- unique(c(spec$total_names,
-            unlist(lapply(spec$allocations,`[[`,"coordinates"),use.names=FALSE),spec$total_node$spec$indicator))
-          inputs[[length(inputs)+1L]] <- own$primitives[rows,coordinates,drop=FALSE]
+    zero_priors <- list()
+    for(group_index in seq_along(prefix_groups)){
+      context <- fitted_contexts[[group_index]]
+      if(!is.null(context)){
+        specs <- merge_named(specs,context$models[[model]]$specs)
+        priors <- merge_named(priors,context$models[[model]]$priors)
+        inputs[[length(inputs)+1L]] <- context$primitives[rows,,drop=FALSE]
+      }
+      for(parameter in prefix_groups[[group_index]]){
+        x <- samples[[parameter]]
+        prior <- attr(x,"prior_list",exact=TRUE)
+        prior <- if(is.prior(prior)) prior else prior[[model]]
+        priors <- merge_named(priors,stats::setNames(list(prior),parameter))
+        columns <- coefficient_columns[[parameter]]
+        if(.posterior_atoms_is_zero_point(prior)){
+          absent <- c(absent,columns)
+          zero_priors[columns] <- rep(list(prior),length(columns))
+          if(is.null(context)){
+            inputs[[length(inputs)+1L]] <- matrix(0,length(rows),length(columns),
+              dimnames=list(NULL,columns))
+            next
+          }
         }
-      }else{
-        names <- .posterior_atoms_coefficient_columns(x,parameter)
-        values <- matrix(as.numeric(x),nrow=NROW(x))
-        if(length(names)!=ncol(values) || nrow(values)!=n) return(NULL)
-        colnames(values) <- names
-        inputs[[length(inputs)+1L]] <- values[rows,,drop=FALSE]
-        if(is.prior.mixture(priors[[parameter]]) && .bt_meta_get(x,"component_source") %in% c("mixture","spike_and_slab")){
-          component <- .bt_meta_get(x,"component")[rows]
-          indicator <- if(is.prior.spike_and_slab(priors[[parameter]])){
-            as.numeric(attr(priors[[parameter]],"components",exact=TRUE)[component]=="alternative")
-          }else component
-          inputs[[length(inputs)+1L]] <- matrix(indicator,ncol=1L,
-            dimnames=list(NULL,paste0(parameter,"_indicator")))
+        if(!is.null(context)) next
+        if(scaled[[parameter]] && !is.prior.ordered(prior) &&
+           any(weights[,intersect(columns,colnames(weights)),drop=FALSE]!=0) &&
+           !all(columns %in% absent)){
+          .bt_ordered_stop("Ordered formula projections are unavailable without retained fitted ordinary coefficients for scaled samples. Recreate mixed posteriors from the source fits with this version of BayesTools.")
+        }
+        if(!is.null(sources[[parameter]]) && is.prior.ordered(prior)){
+          own <- sources[[parameter]]
+          spec <- own$models[[model]]
+          if(!is.null(spec$parameterization)){
+            if(identical(spec$parameterization,"absent")) absent <- c(absent,.posterior_atoms_coefficient_columns(x,parameter)) else return(NULL)
+          }else{
+            specs <- merge_named(specs,stats::setNames(list(spec),parameter))
+            coordinates <- unique(c(spec$total_names,
+              unlist(lapply(spec$allocations,`[[`,"coordinates"),use.names=FALSE),spec$total_node$spec$indicator))
+            inputs[[length(inputs)+1L]] <- own$primitives[rows,coordinates,drop=FALSE]
+          }
+        }else{
+          if(scaled[[parameter]]) next
+          names <- columns
+          values <- matrix(as.numeric(x),nrow=NROW(x))
+          if(length(names)!=ncol(values) || nrow(values)!=n) return(NULL)
+          colnames(values) <- names
+          inputs[[length(inputs)+1L]] <- values[rows,,drop=FALSE]
+          if(is.prior.mixture(prior) && .bt_meta_get(x,"component_source") %in% c("mixture","spike_and_slab")){
+            component <- .bt_meta_get(x,"component")[rows]
+            indicator <- if(is.prior.spike_and_slab(prior)){
+              as.numeric(attr(prior,"components",exact=TRUE)[component]=="alternative")
+            }else component
+            inputs[[length(inputs)+1L]] <- matrix(indicator,ncol=1L,
+              dimnames=list(NULL,paste0(parameter,"_indicator")))
+          }
         }
       }
     }
+    # An absent factor has a bound scalar zero prior but several declared
+    # coefficient columns. Retain that declaration for each fitted source.
+    priors <- merge_named(priors,zero_priors)
+    if(length(zero_priors)){
+      inputs <- lapply(inputs,function(input){
+        input[,setdiff(colnames(input),names(zero_priors)),drop=FALSE]
+      })
+      inputs[[length(inputs)+1L]] <- matrix(0,length(rows),length(zero_priors),
+        dimnames=list(NULL,names(zero_priors)))
+    }
     if(!length(inputs)) next
-    draws <- do.call(cbind,inputs)
-    draws <- draws[,!duplicated(colnames(draws)),drop=FALSE]
+    draws <- matrix(numeric(),length(rows),0L)
+    for(input in inputs){
+      overlap <- intersect(colnames(draws),colnames(input))
+      if(length(overlap) && !identical(draws[,overlap,drop=FALSE],input[,overlap,drop=FALSE])){
+        .bt_ordered_stop("Ordered fitted projection contexts are unavailable because their overlapping sources do not agree. Recreate mixed posteriors from the source fits with consistent source metadata.")
+      }
+      draws <- cbind(draws,input[,setdiff(colnames(input),colnames(draws)),drop=FALSE])
+    }
     contexts[[model]] <- list(specs=specs,priors=priors)
     source_inputs[[model]] <- draws
     for(i in seq_len(nrow(weights))){
@@ -554,7 +664,10 @@
 .bt_ordered_attach_linear_view <- function(x, projections, weights, samples){
 
   if(is.null(projections)) return(x)
-  sources <- lapply(samples,function(draws) .bt_meta_get(draws,"ordered_source"))
+  context <- attr(projections,"context",exact=TRUE)
+  parameters <- unique(unlist(lapply(context$models,function(model) names(model$priors)),use.names=FALSE))
+  parameters <- intersect(names(samples),parameters)
+  sources <- lapply(samples[parameters],function(draws) .bt_meta_get(draws,"ordered_source"))
   source <- sources[[which(!vapply(sources,is.null,logical(1)))[[1L]]]]
   columns <- if(is.null(dim(x))) attr(x,"parameter",exact=TRUE) else colnames(x)
   if(is.null(columns) || !length(columns)) columns <- "value"

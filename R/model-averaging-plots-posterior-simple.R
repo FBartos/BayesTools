@@ -256,8 +256,6 @@
   )
 
   if(length(plot_data) == 0L){
-    route <- .prior_density_route_from_adaptive(attr(prior_density, "adaptive_evaluation", exact = TRUE))
-    if(.plot_ordered_prior_suppress_curve(route)) return(plot_data)
     return(NULL)
   }
 

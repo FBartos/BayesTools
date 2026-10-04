@@ -841,22 +841,36 @@ old behaviour.
     read in `JAGS_marglik_parameters()`, `JAGS_marglik_priors()`, and their
     row and formula versions.
 - priors and selection models:
-  - ordered prior plots and layers quietly omit whole continuous curves whose
-    infinite density is introduced by random allocation; atoms and intrinsically
-    singular totals remain. Factor posterior/marginal overlays omit declared
-    reference rows consistently, retain zero and point levels, preserve the full
-    retained level color/label list, and default to matching dashed prior curves.
-    Fixed-total allocation shares check both exact endpoints. Multiple ordered
-    ggplot selections preserve figure indices with `NULL` holes for omitted
-    levels; each posterior legend key uses only its level's curve or point glyph.
-    Mixed point-total displays recover declared atoms from exact routes before
-    omitting allocation-singular curves, including transformed atom locations
-    with unchanged probability mass; unavailable recovery reports
-    `BayesTools_ordered_prior_display_unavailable`.
-    All-hidden standalone selections report `BayesTools_ordered_prior_display_empty`.
-    Certified curve omission is decided before plotting density generation,
-    avoiding unused quadrature and KDE evaluations while public `density()`
-    continues to evaluate every level.
+  - ordered prior plots, layers and posterior/marginal overlays omit only
+    persisted zero-design reference levels by default. Every non-reference
+    continuous prior remains visible, including allocation-induced singular
+    densities; only actual nonfinite plotting ordinates are dropped. Genuine
+    zero levels, exact point masses, finite densities and inference are preserved.
+    Direct selectors keep original level numbering and explicit reference
+    selection; multiple ordered ggplot selections return positional lists with
+    `NULL` holes for unselected levels. Overlays match posterior colors with
+    dashed prior defaults, and each posterior legend key uses only its level's
+    curve or point glyph.
+  - prior density overlays omit infinite support-boundary heights without adding
+    arbitrary nearby spikes or zero-height edges. Allocated variance plots keep
+    their regular density curves and declared point masses on a usable scale.
+  - ordered prior overlays match posterior level colors when fill, axis, or label
+    colors are supplied without an explicit prior line color. Explicit prior
+    colors and line types retain precedence.
+  - ordered prior overlays check probability-axis clipping for selected levels
+    and preserve the active atom mapping in both backends. Unresolved numerical
+    prior-curve evaluations now warn once per continuous route, retaining every
+    available point and declared atom and distinguishing partial from whole
+    unavailability. The warning's `unresolved_values` field reports evaluation
+    coordinates on the source scale, before plotting transformations.
+    Exact infinite density points remain continuous; finite displayed heights
+    depend on the grid. A direct ordered curve with no finite
+    ordinate gives a classed error asking for a suitable `x_seq`.
+  - direct ordered Dirichlet-product densities with literal, untruncated centered
+    Normal totals retain positive tails when a logistic share rounds to one.
+    Quadrature budgets, tolerances and exact zero-boundary identities are unchanged.
+    Other total families and tiny or nonrepresentable ranges are outside this
+    guarded repair; small second Beta shapes remain a numerical risk there.
   - supported scalar ordered literal point totals, point-slab totals and
     mixtures whose total components are all literal points use the existing exact
     mixed-measure density route: intermediate Dirichlet shares have scaled-Beta
@@ -925,6 +939,20 @@ old behaviour.
     existing transformation handling. Whole mixed posteriors, factor levels and
     marginal views use the same primitive projections for every available value,
     including continuous cumulative effects, while preserving undefined rows.
+    Ordered formula marginals reuse retained fitted ordinary coefficients when
+    samples are on the original scale. Formula weights select their contributing
+    sources by registered coefficient ownership and retain every provided source
+    of each contributing prefix, excluding unrelated prefixes. Each formula
+    prefix uses its own scaling and aligned context; combined-prefix targets
+    merge consistent fitted sources. Unscaled prefixes remain available alongside
+    scaled ones.
+    Unscaled ordered prefixes canonicalize raw values and declared atoms from
+    their retained primitives under either `transform_scaled` setting, including
+    fits with no scaling and fits where another prefix is scaled. Formula
+    projections validate their fitted-coordinate weights before selecting sources.
+    Scaled mixed objects without those sources stop with
+    `BayesTools_ordered_coordinates_unavailable`; recreate
+    the mixed posteriors from their source fits.
   - conditional ordered mixtures reweight model probabilities by the declared
     inclusion event as well as selecting eligible original draws. Posterior
     event fractions and declared prior event probabilities condition their

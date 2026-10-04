@@ -77,6 +77,11 @@
 #' support use boundary-reflected kernel density estimates. The plotting range
 #' controls the evaluation grid, while reflection is based on the prior's true
 #' truncation bounds.
+#' Direct ordered Dirichlet-product densities use stable log-share arithmetic
+#' for literal, untruncated Normal totals with mean zero and finite positive SD,
+#' retaining the existing quadrature budget and tolerances. This guarded route
+#' does not certify other total families or tiny or nonrepresentable ranges;
+#' small second Beta shapes remain a numerical risk for other totals.
 #'
 #' @importFrom stats density
 #' @seealso [prior()]
@@ -282,10 +287,6 @@ density.prior <- function(x,
 
 .density.prior.ordered                <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
 
-  if(!is.null(attr(x, "ordered_plot_skip", exact = TRUE))){
-    x <- .prior_ordered_default_bound(x)
-    .density.prior.ordered_plot_skip(x, nrow(.factor_term_design_from_metadata(x)$design))
-  }
   mixed <- .density.prior.ordered_mixed(
     x = x,
     x_seq = x_seq,
@@ -315,13 +316,8 @@ density.prior <- function(x,
 
   out <- vector("list", ncol(samples))
   names(out) <- colnames(samples)
-  plot_skip <- .density.prior.ordered_plot_skip(x, ncol(samples))
 
   for(i in seq_len(ncol(samples))){
-    if(plot_skip[[i]]){
-      out[[i]] <- .density.prior.ordered_display_empty(i, names(out)[i])
-      next
-    }
     component_samples <- samples[, i]
 
     if(all(component_samples == component_samples[1])){
@@ -382,27 +378,6 @@ density.prior <- function(x,
   attr(out, "parameter_name") <- names(out)
   class(out) <- c("density.prior.ordered", "list")
 
-  out
-}
-
-# Transient plot-only masks never occur on an ordinary density() input.
-.density.prior.ordered_plot_skip <- function(x, n_levels){
-
-  skip <- attr(x, "ordered_plot_skip", exact = TRUE)
-  if(is.null(skip)) return(rep(FALSE, n_levels))
-  if(!is.logical(skip) || length(skip) != n_levels || anyNA(skip)){
-    stop("The private ordered plot mask must contain one non-missing logical value per declared level.",
-      call. = FALSE)
-  }
-  skip
-}
-
-.density.prior.ordered_display_empty <- function(component, component_name){
-
-  out <- structure(list(x = numeric(), y = numeric()),
-    class = c("density.prior.ordered_component", "density.prior.display_empty"))
-  attr(out, "component") <- component
-  attr(out, "component_name") <- component_name
   out
 }
 
@@ -503,12 +478,7 @@ density.prior <- function(x,
 
   densities <- vector("list", nrow(weights))
   names(densities) <- component_names
-  plot_skip <- .density.prior.ordered_plot_skip(x, nrow(weights))
   for(i in seq_len(nrow(weights))){
-    if(plot_skip[[i]]){
-      densities[[i]] <- .density.prior.ordered_display_empty(i, component_names[[i]])
-      next
-    }
     # A level with a structural route (e.g. a spike-and-slab total times a
     # Beta allocation share) is evaluated on that route at the display
     # values; only a level without one uses its numerical grid.
@@ -815,7 +785,6 @@ density.prior <- function(x,
 
   densities <- vector("list", length(component_names))
   names(densities) <- component_names
-  plot_skip <- .density.prior.ordered_plot_skip(x, length(component_names))
 
   if(identical(record$spec$type, "fixed")){
     cumulative <- if(identical(x$contrast, "cumulative")){
@@ -824,10 +793,6 @@ density.prior <- function(x,
       cumsum(record$spec$weights)
     }
     for(i in seq_along(cumulative)){
-      if(plot_skip[[i]]){
-        densities[[i]] <- .density.prior.ordered_display_empty(i, component_names[[i]])
-        next
-      }
       densities[[i]] <- .density.prior.ordered_scaled_total(
         total = x$total,
         scale = cumulative[[i]],
@@ -839,10 +804,6 @@ density.prior <- function(x,
     alpha <- record$spec$alpha
     D <- length(alpha)
     for(i in seq_along(densities)){
-      if(plot_skip[[i]]){
-        densities[[i]] <- .density.prior.ordered_display_empty(i, component_names[[i]])
-        next
-      }
       m <- if(identical(x$contrast, "cumulative")) i - 1L else i
       if(m == 0L){
         densities[[i]] <- .density.prior.point(prior("point", list(location = 0)), x_seq, range(x_seq), n_points, n_samples = 1L, force_samples = FALSE, transformation = NULL, transformation_arguments = NULL)
@@ -916,6 +877,13 @@ density.prior <- function(x,
   rel_tol <- 1e-7
   abs_tol <- 1e-10
   quadrature <- vector("list", length(x_seq))
+  centered_normal <- is.prior.simple(total) &&
+    identical(total$distribution, "normal") &&
+    .prior_density_ordinate_parameters_numeric(total) &&
+    identical(unname(c(total$truncation$lower, total$truncation$upper)), c(-Inf, Inf)) &&
+    length(total$parameters$mean) == 1L && total$parameters$mean == 0 &&
+    length(total$parameters$sd) == 1L &&
+    is.finite(total$parameters$sd) && total$parameters$sd > 0
   y <- vapply(seq_along(x_seq), function(i){
     x_value <- x_seq[i]
     density_at_zero <- if(x_value == 0) pdf(total, 0) else NA_real_
@@ -950,6 +918,19 @@ density.prior <- function(x,
     integration <- tryCatch(
       stats::integrate(
         function(logit_c){
+          if(centered_normal){
+            c_value <- stats::plogis(logit_c)
+            out <- numeric(length(c_value))
+            interior <- c_value > 0
+            if(any(interior)){
+              log_integrand <- lpdf(total, x_value / c_value[interior]) +
+                (alpha1 - 1) * stats::plogis(logit_c[interior], log.p = TRUE) +
+                alpha2 * stats::plogis(logit_c[interior], lower.tail = FALSE, log.p = TRUE) -
+                lbeta(alpha1, alpha2)
+              out[interior] <- exp(log_integrand)
+            }
+            return(out)
+          }
           c_value <- stats::plogis(logit_c)
           out <- numeric(length(c_value))
           interior <- c_value > 0 & c_value < 1

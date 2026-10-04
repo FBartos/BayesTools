@@ -45,32 +45,40 @@ Prior plot dispatch and layers live in `R/priors-plot.R` and
 `R/JAGS-diagnostics.R`. Inspect the current family before adding helpers or
 source files.
 
-Ordered prior display suppression uses the shared exact-route predicate: omit
-the whole continuous curve only for allocation-induced infinity with no
-intrinsically infinite total; keep atoms and unknown classifications. Display
-decisions precede ordered density generation through a transient logical mask
-on a bound prior copy; skip only hidden curves before their grid or KDE work,
-keep original component indices, and sample all primitives in their original
-order whenever the existing path samples. Ordinary public density inputs
-carry no mask and still evaluate every level. Display
-densities missing their atom table recover locations from declared route
-nodes and probabilities from exact route ordinates. Apply output transformations
-only to recovered locations; preserve already transformed atoms and never scale
-their masses by a Jacobian. Recovery requires exact strictly positive masses;
-unknown, zero or mismatched recovery raises the typed display-unavailable
-condition rather than erasing or guessing atoms. Mixed-measure labels describe
-the displayed measure, and ordered line overlays recover display atoms before
-the single active probability-axis mapping and clipping check.
-Direct fixed-total allocation shares check both exact support endpoints. Direct
-prior selectors retain reference numbering; multiple ordered ggplot selections
-return positional lists with NULL holes for unselected or suppressed figures,
-and only a single selected visible figure collapses to a ggplot. Factor overlays omit persisted
-zero-design references and carry `factor_level_universe` before curve omission,
-so retained styles and labels cannot shift. Ordered overlays match posterior
-colors with dashed defaults and one posterior-owned legend; mapped ordered
-posterior layers use automatic glyph participation when the legend is enabled.
-Empty overlays
-skip quietly; all-hidden standalone selections fail with the documented class.
+Ordered plots omit only persisted zero-design reference levels by default.
+Retain every non-reference prior curve and genuine zero or point level. An
+exact infinite density point is not an atom: omit only nonfinite plotting
+ordinates without changing the finite curve, its grid, or its mass. Public
+`density()` and `prior_density_ordinate()` retain their numerical and
+structural meaning. Unknown and unsupported density routes keep their
+existing explicit limitations.
+Finite displayed peak heights depend on the evaluation grid and do not
+represent an infinite mathematical peak. In `plot_posterior()` and
+`plot_marginal()` prior overlays and in `plot_transformed_prior()`, unresolved
+raw numerical evaluations warn once per continuous route with
+`BayesTools_prior_curve_unavailable` (also `BayesTools_plot_condition`),
+distinguishing partially available curves from wholly unavailable ones; keep
+every available point and declared atom.
+The warning's `unresolved_values` field retains evaluation coordinates on the
+source scale, before any plotting transformation. Exact infinities, exact
+zero/support-zero densities and intentional transformation limits do not
+trigger that warning. Direct `plot.prior()`, `lines.prior()` and `geom_prior()`
+filter nonfinite plotting ordinates without that numerical-unavailability
+warning. A direct ordered curve without any finite ordinate gives a classed
+error with the remedy `x_seq`.
+Direct prior selectors retain original level numbering; explicit selectors
+can select the reference. Multiple ordered ggplot selections return positional
+lists with NULL holes for unselected figures, including the default reference,
+and one explicit selection returns a ggplot. Factor overlays omit persisted
+zero-design references and carry `factor_level_universe`, so styles and labels
+cannot shift. Ordered overlays match posterior colors with dashed defaults and
+one posterior-owned legend; mapped ordered posterior layers use automatic glyph
+participation when the legend is enabled. Mixed-measure displays retain exact
+atoms with unchanged probability masses and the active probability-axis mapping.
+Direct overlay mapping and clipping checks inspect selected components only;
+an omitted reference cannot create a clipping warning. Explicit reference and
+genuine non-reference atom selections still use the active mapping and warn
+when their probabilities exceed it.
 
 `plot_models()` uses semantic ordered levels and transformed model summaries.
 Posterior-only plots skip prior summaries and transforms of unused prior fields.

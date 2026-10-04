@@ -113,6 +113,11 @@ Sample-based density estimates for continuous priors with finite
 support use boundary-reflected kernel density estimates. The plotting range
 controls the evaluation grid, while reflection is based on the prior's true
 truncation bounds.
+Direct ordered Dirichlet-product densities use stable log-share arithmetic
+for literal, untruncated Normal totals with mean zero and finite positive SD,
+retaining the existing quadrature budget and tolerances. This guarded route
+does not certify other total families or tiny or nonrepresentable ranges;
+small second Beta shapes remain a numerical risk for other totals.
 }
 \seealso{
 \code{\link[=prior]{prior()}}

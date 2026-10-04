@@ -295,6 +295,20 @@ names.
   and exact scalar point states. Every available ordered semantic value uses
   its retained primitive projection, including continuous cumulative effects;
   declared view transformations and undefined rows retain their meaning.
+  Formula projections receive fitted weights and reuse the aligned fitted
+  projection context directly, including ordinary coefficients, without
+  reapplying an original-scale coefficient view. Select owners from nonzero
+  fitted weights and retain every provided source of each contributing prefix;
+  unrelated prefixes are excluded. Scaling belongs to the registered prefix's
+  emitted scale record. Contexts agree within a prefix; combined-prefix targets
+  union aligned sources by authoritative names and refuse contradictory overlaps.
+  Raw ordered producers canonicalize each prefix from its retained primitive
+  sources unless that prefix is being unscaled through its own emitted scale
+  record. An unscaled prefix therefore canonicalizes raw values and atoms under
+  either transform_scaled setting, even when another prefix is scaled. Scaled mixed
+  objects without needed fitted ordinary sources are unavailable and must be
+  recreated from their source fits; never combine fitted weights with original-scale
+  draws or reconstruct fitted draws by inverting the scale map.
   Registered ordered families replay Gamma
   allocations and coefficient chains; `JAGS_ordered_density_kernel()` is the
   separate active-component numerical kernel, not a bridge density. Numeric

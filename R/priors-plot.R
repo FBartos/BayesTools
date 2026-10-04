@@ -53,36 +53,31 @@
 #' the ggplot method returns a list unless a single figure is selected. Ordered
 #' ggplot results use the original figure indices: a multiple-figure selection
 #' returns a list through the largest selected index, with \code{NULL} entries
-#' for unselected figures and selected levels whose curves are omitted. A bare
+#' for unselected figures, including the default reference level. A bare
 #' ggplot is returned only when exactly one figure is selected; a selection of
 #' several figures always returns a positional list, even if one figure is visible. For an
 #' ordered level with mixed probability measure, the continuous density and
 #' exact probability-mass arrows are drawn together without rescaling either
 #' component.
 #'
-#' @details Ordered prior plots omit a whole continuous curve, quietly, when
-#' exact product provenance shows that its infinite density at the product
-#' offset is introduced by a random allocation, and the total's own
-#' continuous density is not intrinsically infinite. This decision precedes
-#' continuous density generation, so an omitted curve does not require its
-#' plotting quadrature or kernel estimate. Point masses remain.
-#' For a fixed total times an allocation share, either exact share endpoint
-#' (zero or one) can establish the allocation-induced infinity.
-#' Intrinsic singularities, such as a Gamma total with shape below one, and
-#' unknown classifications are retained. This display rule also applies to
-#' [lines.prior()] and [geom_prior()]; it does not change [density.prior()]
-#' or [prior_density_ordinate()]. If the display density lacks its declared
-#' atoms, their locations and probabilities are recovered from the exact prior
-#' route before omission. Output transformations map their locations and leave
-#' probability masses unchanged. Unavailable exact atom recovery raises
-#' \code{BayesTools_ordered_prior_display_unavailable} (also
-#' \code{BayesTools_plot_condition}), without guessing atoms from sampled values.
-#' Direct prior selectors keep their original
-#' level numbering, including cumulative reference levels. If all selected
-#' curves are omitted and there are no visible point masses, the standalone
-#' plot raises \code{BayesTools_ordered_prior_display_empty} (also
-#' \code{BayesTools_plot_condition}); use \code{show_figures} to select a
-#' level with a visible curve or point mass. An empty added layer is skipped.
+#' @details Ordered prior plots retain the continuous density of every
+#' non-reference level, including priors with an infinite density at an exact
+#' point. Only nonfinite plotting ordinates are omitted; finite ordinates and
+#' declared point masses are unchanged. An infinite density point is not a
+#' probability mass. This display rule also applies to [lines.prior()] and
+#' [geom_prior()] and leaves [density.prior()] and [prior_density_ordinate()]
+#' unchanged. Unknown or unsupported density routes keep their existing
+#' limitations.
+#' Direct ordered plots and layers omit persisted zero-design reference levels
+#' from the default selection. Explicit selectors retain the original level
+#' numbering and can select a reference level. Genuine non-reference zero and
+#' point levels remain visible.
+#' Finite displayed peak heights depend on the evaluation grid and do not
+#' represent an infinite mathematical peak. A direct ordered curve with no
+#' finite plotting ordinate stops with class \code{BayesTools_prior_curve_unavailable}
+#' (also \code{BayesTools_plot_condition}); supply \code{x_seq} containing
+#' finite density ordinates. Probability-axis mapping and clipping checks use
+#' selected components only, including an explicitly selected reference.
 #'
 #' @seealso [prior()] [lines.prior()]  [geom_prior()]
 #' @rdname plot.prior
@@ -130,7 +125,7 @@ plot.prior <- function(x, plot_type = "base",
       xlim   <- range(pretty(xlim))
     }
   }
-  plot_data <- density(x = .plot_ordered_prior_density_input(x), x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
+  plot_data <- density(x = x, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                        n_points = n_points, n_samples = n_samples, force_samples = force_samples,
                        transformation = transformation, transformation_arguments = transformation_arguments,
                        transformation_settings = transformation_settings, individual = individual)
@@ -214,8 +209,8 @@ plot.prior <- function(x, plot_type = "base",
 
   # ordered factor prior plots
   if(is.prior.ordered(x)){
-    plot_data <- .plot_data_ordered_prior_display(x, plot_data,
-      transformation = transformation, transformation_arguments = transformation_arguments)
+    selected <- if(is.null(show_figures)) .plot_ordered_prior_default_figures(x) else seq_along(plot_data)[show_figures]
+    plot_data <- .plot_data_ordered_prior_display(plot_data, selected)
     plots <- .plot.prior.simplex(x = x, plot_type = plot_type, plot_data = plot_data, show_figures = show_figures, par_name = par_name, ...)
     if(plot_type == "ggplot"){
       return(plots)
@@ -289,22 +284,11 @@ plot.prior <- function(x, plot_type = "base",
 .plot.prior.simplex       <- function(x, plot_type, plot_data, show_figures = NULL, par_name = NULL, ...){
 
   if(is.null(show_figures)){
-    plots_ind <- seq_along(plot_data)
+    plots_ind <- if(is.prior.ordered(x)) .plot_ordered_prior_default_figures(x) else seq_along(plot_data)
   }else{
     plots_ind <- seq_along(plot_data)[show_figures]
   }
   selected_ind <- plots_ind
-  plots_ind <- plots_ind[!vapply(plot_data[plots_ind], inherits, logical(1),
-                                 what = "density.prior.display_empty")]
-  if(is.prior.ordered(x) && length(plots_ind) == 0L){
-    stop(structure(list(message = paste0(
-      "The selected ordered prior display is unavailable because all selected ",
-      "levels have omitted continuous curves and no visible point masses. ",
-      "Use 'show_figures' to select a level with a visible prior curve or point mass."
-    ), call = NULL), class = c("BayesTools_ordered_prior_display_empty",
-      "BayesTools_plot_condition", "error", "condition")))
-  }
-
   plots <- if(is.prior.ordered(x) && plot_type == "ggplot" && length(selected_ind) > 1L){
     vector("list", max(selected_ind))
   }else{
@@ -350,170 +334,38 @@ plot.prior <- function(x, plot_type = "base",
   return(plots)
 }
 
-# Display-only suppression from exact product structure. Unknown behavior
-# cannot establish omission; an intrinsically infinite total keeps its curve.
-.plot_ordered_prior_density_input <- function(prior){
-
-  if(!is.prior.ordered(prior)) return(prior)
-  prior <- .prior_ordered_default_bound(prior)
-  metadata <- .prior_ordered_metadata(prior)
-  design <- as.matrix(.factor_term_design_from_metadata(prior)$design)
-  columns <- .JAGS_prior_factor_names(metadata$parameter_name, prior)
-  skip <- vapply(seq_len(nrow(design)), function(i){
-    route <- .prior_density_route_linear(
-      stats::setNames(list(prior), metadata$parameter_name),
-      stats::setNames(design[i, ], columns), NULL,
-      .prior_linear_density_default_grid())
-    .plot_ordered_prior_suppress_curve(route)
-  }, logical(1))
-  if(any(skip)) attr(prior, "ordered_plot_skip") <- skip
-  prior
-}
-
-.plot_ordered_prior_suppress_curve <- function(route){
-
-  classify <- function(route){
-    out <- c(omit = FALSE, intrinsic = FALSE, unknown = FALSE)
-    if(is.null(route$type)) return(out)
-    if(identical(route$type, "transform")) return(classify(route$source))
-    if(identical(route$type, "mixture")){
-      leaves <- lapply(route$components[route$weights > 0], classify)
-      if(length(leaves) == 0L) return(out)
-      return(apply(do.call(rbind, leaves), 2L, any))
-    }
-    if(identical(route$type, "unknown")){
-      out[["unknown"]] <- TRUE
-      return(out)
-    }
-    if(identical(route$type, "conditional_normal")){
-      spec <- route$spec
-      if(spec$additive_sd == 0 &&
-         isTRUE(attr(spec$multiplier, "ordered_allocation", exact = TRUE))){
-        ordinate <- .prior_conditional_normal_offset_ordinate(spec,
-          spec$additive_mean, route$n_grid)
-        out[["omit"]] <- isTRUE(ordinate$exact) &&
-          identical(.prior_density_ordinate_continuous_behavior(ordinate), "infinite")
-      }
-      return(out)
-    }
-    if(identical(route$type, "scale_product")){
-      spec <- route$spec
-      if(isTRUE(attr(spec$multiplier, "ordered_allocation", exact = TRUE))){
-        behavior <- .prior_scale_product_offset_behavior(spec)
-        total <- behavior$behaviors[["factor"]]
-        out[["intrinsic"]] <- identical(total, "infinite")
-        out[["unknown"]] <- !total %in% c("regular", "zero", "infinite")
-        out[["omit"]] <- identical(behavior$behavior, "infinite") &&
-          total %in% c("regular", "zero")
-      }
-      return(out)
-    }
-    if(identical(route$type, "scalar") && is.null(route$source_transform)){
-      if(isTRUE(attr(route$prior, "ordered_allocation", exact = TRUE))){
-        endpoints <- lapply(c(0, 1), function(value){
-          .prior_density_ordinate_prior(route$prior, value)
-        })
-        out[["omit"]] <- any(vapply(endpoints, function(ordinate){
-          isTRUE(ordinate$exact) &&
-            identical(.prior_density_ordinate_continuous_behavior(ordinate), "infinite")
-        }, logical(1)))
-      }else{
-        ordinate <- .prior_density_ordinate_prior(route$prior, 0)
-        behavior <- .prior_density_ordinate_continuous_behavior(ordinate)
-        out[["intrinsic"]] <- identical(behavior, "infinite")
-        out[["unknown"]] <- behavior %in% c("unknown", "undefined")
-      }
-    }
-    out
-  }
-  behavior <- classify(route)
-  isTRUE(behavior[["omit"]]) && !behavior[["intrinsic"]] && !behavior[["unknown"]]
-}
-
-# Keep original direct selectors while omitting allocation singular curves.
-# This modifies display data only, never density() output.
-.plot_ordered_prior_atom_locations <- function(route){
-
-  if(identical(route$type, "atom")) return(unique(route$locations))
-  if(identical(route$type, "conditional_normal")){
-    # The route factory folds point multipliers and expands mixtures before
-    # constructing this continuous normal/continuous multiplier node.
-    return(numeric())
-  }
-  if(identical(route$type, "mixture")){
-    locations <- lapply(route$components[route$weights > 0], .plot_ordered_prior_atom_locations)
-    if(any(vapply(locations, is.null, logical(1)))) return(NULL)
-    return(unique(as.numeric(unlist(locations, use.names = FALSE))))
-  }
-  if(identical(route$type, "transform")){
-    locations <- .plot_ordered_prior_atom_locations(route$source)
-    if(is.null(locations) || length(locations) == 0L) return(locations)
-    return(unique(.density.prior_transformation_x(locations,
-      route$transformation, route$arguments)))
-  }
-  unique(.prior_density_ordinate_provenance_atoms(.prior_density_route_provenance(route)))
-}
-
-.plot_ordered_prior_display_unavailable <- function(cause){
-
-  stop(structure(list(message = paste0(
-    "The ordered prior display is unavailable: ", cause, ". ",
-    "Use 'prior_density_ordinate()' to inspect the prior measure."
-  ), call = NULL), class = c("BayesTools_ordered_prior_display_unavailable",
-    "BayesTools_plot_condition", "error", "condition")))
-}
-
-.plot_data_ordered_prior_display <- function(prior, plot_data,
-                                            transformation = NULL, transformation_arguments = NULL){
+# Direct selectors retain declared level numbering. Only the default selection
+# omits rows that the persisted contrast design fixes at the reference zero.
+.plot_ordered_prior_default_figures <- function(prior){
 
   prior <- .prior_ordered_default_bound(prior)
-  metadata <- .prior_ordered_metadata(prior)
   design <- as.matrix(.factor_term_design_from_metadata(prior)$design)
-  columns <- .JAGS_prior_factor_names(metadata$parameter_name, prior)
-  for(i in seq_along(plot_data)){
-    weights <- stats::setNames(design[i, ], columns)
-    route <- .prior_density_route_linear(
-      stats::setNames(list(prior), metadata$parameter_name), weights, NULL,
-      .prior_linear_density_default_grid())
-    if(.plot_ordered_prior_suppress_curve(route)){
-      component <- plot_data[[i]]
-      atoms <- component$atoms
-      if(is.null(atoms)){
-        locations <- .plot_ordered_prior_atom_locations(route)
-        if(is.null(locations) || any(!is.finite(locations))){
-          .plot_ordered_prior_display_unavailable(
-            "declared point-mass locations could not be recovered from its exact prior route")
-        }
-        masses <- vapply(locations, function(location){
-          ordinate <- .prior_density_route_ordinate(route, location)
-          mass <- ordinate$point_mass
-          if(!isTRUE(ordinate$exact) || !is.numeric(mass) || length(mass) != 1L ||
-             !is.finite(mass) || mass <= 0){
-            .plot_ordered_prior_display_unavailable(
-              "declared point-mass probabilities could not be recovered exactly from its prior route")
-          }
-          mass
-        }, numeric(1))
-        if(!is.null(transformation) && length(locations) > 0L){
-          locations <- .density.prior_transformation_x(locations, transformation, transformation_arguments)
-        }
-        atoms <- data.frame(location = locations, mass = masses)
+  which(rowSums(design != 0) > 0)
+}
+
+# Keep the actual finite ordinates of every non-reference continuous curve.
+# Infinite density at one point is not a probability mass.
+.plot_data_ordered_prior_display <- function(plot_data, selected = seq_along(plot_data)){
+
+  for(i in selected){
+    component <- plot_data[[i]]
+    if(inherits(component, "density.prior.simple") &&
+       !inherits(component, "density.prior.mixed_measure")){
+      keep <- is.finite(component$x) & is.finite(component$y)
+      if(!any(keep)){
+        stop(structure(
+          list(message = paste0(
+            "The ordered prior density curve is unavailable: the requested 'x_seq' ",
+            "contains no finite plotting ordinate. Supply 'x_seq' with finite density ordinates."
+          ), call = NULL),
+          class = c("BayesTools_prior_curve_unavailable", "BayesTools_plot_condition", "error", "condition")
+        ))
       }
-      if(nrow(atoms) > 0L){
-        component$atoms <- atoms
-        component$continuous <- NULL
-        component$x <- atoms$location
-        component$y <- atoms$mass
-        class(component) <- setdiff(class(component), c("density.prior.simple", "density.prior.display_empty"))
-        class(component) <- unique(c("density.prior.mixed_measure", class(component), "density.prior.point"))
-        attr(component, "x_range") <- range(atoms$location)
-        attr(component, "y_range") <- c(0, max(atoms$mass))
-        attr(component, "measure_schema_version") <- 1L
-      }else{
-        component <- .density.prior.ordered_display_empty(
-          attr(component, "component", exact = TRUE),
-          attr(component, "component_name", exact = TRUE))
-      }
+      if(all(keep)) next
+      component$x <- component$x[keep]
+      component$y <- component$y[keep]
+      attr(component, "x_range") <- range(component$x)
+      attr(component, "y_range") <- c(0, max(component$y))
       plot_data[[i]] <- component
     }
   }
@@ -1214,12 +1066,14 @@ plot.prior <- function(x, plot_type = "base",
     plot_data <- list(plot_data)
   }
 
-  is_point <- sapply(plot_data, inherits, what = "density.prior.point")
-  if(!any(is_point)){
+  probabilities <- unlist(lapply(plot_data, function(component){
+    if(inherits(component, "density.prior.point")) component$y else
+      if(inherits(component, "density.prior.mixed_measure")) component$atoms$mass
+  }))
+  if(length(probabilities) == 0L){
     return(invisible(NULL))
   }
 
-  probabilities <- unlist(lapply(plot_data[is_point], function(x) x[["y"]]))
   ylim2 <- scale_y2_state[["usr"]][3:4] / scale_y2_state[["scale_y2"]]
   if(any(probabilities < min(ylim2) | probabilities > max(ylim2))){
     warning(
