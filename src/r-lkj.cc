@@ -1,7 +1,6 @@
 #include "lkj/BTLKJCore.h"
 
 #include <cmath>
-#include <vector>
 
 #include <Rinternals.h>
 #include <R_ext/Error.h>
@@ -92,7 +91,7 @@ SEXP lkj_cholesky_from_u(SEXP u, SEXP K)
   }
 
   double const *u_ptr = REAL(u_real);
-  std::vector<double> row_major(K_value * K_value);
+  double *row_major = reinterpret_cast<double *>(R_alloc(static_cast<size_t>(K_value) * K_value, sizeof(double)));
 
   SEXP out = PROTECT(Rf_allocVector(REALSXP, n_draws * K_value * K_value));
   double *out_ptr = REAL(out);

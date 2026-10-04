@@ -83,6 +83,36 @@ test_that("LKJ primitive helpers enforce open u support before native transforms
   expect_equal(prior_values[2], -Inf)
 })
 
+test_that("native LKJ transforms enforce open u support directly", {
+
+  BayesTools:::.BayesTools_require_native_lkj()
+  for(value in c(0, 1, NA_real_, Inf)){
+    for(coordinate in c(1L, 3L)){
+      invalid_vector <- rep(0.5, 3L)
+      invalid_vector[coordinate] <- value
+      invalid_matrix <- matrix(0.5, nrow = 3L, ncol = 3L)
+      invalid_matrix[coordinate, coordinate] <- value
+      for(u in list(invalid_vector, invalid_matrix)){
+        expect_error(
+          .Call("BayesTools_lkj_cholesky_from_u", u, 3L, PACKAGE = "BayesTools"),
+          "'u' values must be finite and strictly between 0 and 1.",
+          fixed = TRUE
+        )
+      }
+    }
+  }
+
+  expect_equal(
+    .Call("BayesTools_lkj_cholesky_from_u", numeric(0), 1L, PACKAGE = "BayesTools"),
+    matrix(1, 1, 1)
+  )
+  expect_equal(
+    .Call("BayesTools_lkj_cholesky_from_u", matrix(numeric(0), 3L, 0L), 1L,
+          PACKAGE = "BayesTools"),
+    array(1, c(3L, 1L, 1L))
+  )
+})
+
 test_that("LKJ alpha generation is available without native routines", {
   testthat::local_mocked_bindings(
     .BayesTools_require_native_lkj = function(){

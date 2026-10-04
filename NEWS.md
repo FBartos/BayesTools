@@ -1073,6 +1073,8 @@ old behaviour.
     computed from sampled draws keep the empirical quantiles.
 
 ### Fixes
+- native LKJ transforms use R-managed workspace so validation and allocation
+  errors safely release it.
 - prior densities and distribution methods:
   - prior densities of linear combinations (the prior densities of formula
     levels and marginal means from `marginal_posterior()`, of
