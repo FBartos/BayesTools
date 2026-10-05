@@ -153,7 +153,7 @@ JAGS_materialize_draws <- function(fit, parameters = NULL,
   for(chain_i in seq_along(chains)){
     chain <- chains[[chain_i]]
     chain <- if(ncol(chain) == 0L){
-      matrix(numeric(), nrow = nrow(chain), ncol = 0L)
+      unclass(chain)
     }else{
       as.matrix(chain)
     }
@@ -256,7 +256,7 @@ as.mcmc.BayesTools_draws_view <- function(x, ...){
   chains <- coda::as.mcmc.list(x)
   matrices <- lapply(chains, function(chain){
     if(ncol(chain) == 0L){
-      return(matrix(numeric(), nrow = nrow(chain), ncol = 0L))
+      return(unclass(chain))
     }
     as.matrix(chain)
   })

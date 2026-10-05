@@ -26,6 +26,12 @@ NULL
   } else {
     # Use generic function to allow S3 method dispatch (runjags has its own as.mcmc method)
     model_samples <- suppressWarnings(coda::as.mcmc(fit))
+    if(inherits(fit, "BayesTools_draws_view")){
+      # Internal matrix readers must not redispatch coda's zero-column
+      # as.matrix method; timing remains on the public coda coercions.
+      model_samples <- unclass(model_samples)
+      attr(model_samples, "mcpar") <- NULL
+    }
   }
 
   return(model_samples)
