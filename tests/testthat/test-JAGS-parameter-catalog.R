@@ -5182,7 +5182,10 @@ test_that("R116 D8 actual extreme LKJ primitives fail with numerical provenance"
     "LKJ prior sampling for block '", block$random_term$block_name,
     "' is numerically unavailable: primitive '", correlation$primitive_names[[1L]],
     "' produced 16 nonfinite or out-of-support draws outside (0, 1) at K = 2 and eta = 1e-300. Choose a concentration whose primitive draws remain representable inside this interval."))
-  primitive_only <- .prior_monitor_test_fit(block$formula_result, correlation$primitive_names)
+  primitive_only <- JAGS_with_draws(fit, coda::mcmc.list(coda::mcmc(
+    matrix(.5, 2L, length(correlation$primitive_names),
+      dimnames = list(NULL, correlation$primitive_names))
+  )))
   expect_error(transform_prior_samples(primitive_only, n_samples = 16L, seed = 1L), class = "BayesTools_lkj_rng_unavailable")
 })
 
