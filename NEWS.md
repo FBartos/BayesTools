@@ -1365,8 +1365,9 @@ old behaviour.
     control, including `FALSE`, with `TRUE` as the default. Deferred callback
     argument warnings remain in the returned diagnostics, and errors retain
     their bridge-sampling context. Exact zero-dimensional evaluation ignores
-    the upstream-only `use_neff` and `packages` controls while forwarding
-    genuine likelihood arguments.
+    the upstream-only `packages`, `use_neff`, `varlist`, `envir`, `rcppFile`,
+    `param_types`, and `verbose` controls while forwarding genuine likelihood
+    arguments.
   - `JAGS_extend()` recompiles the model from the stored chain states instead
     of continuing a compiled model left in the session, so extending the same
     object twice, or a saved and reloaded copy, gives identical draws. It

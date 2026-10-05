@@ -178,8 +178,9 @@ random-number stream, so the estimate depends on that stream.}
 \item{...}{additional argument to the \link[bridgesampling]{bridge_sampler}
 and \code{log_posterior} function. The upstream-only \code{use_neff} logical
 control defaults to \code{TRUE}; an explicitly supplied value is passed to the
-sampler. \code{use_neff} and \code{packages} are not forwarded to \code{log_posterior}
-and are ignored for exact zero-dimensional evaluation.}
+sampler. The upstream-only controls \code{packages}, \code{use_neff}, \code{varlist},
+\code{envir}, \code{rcppFile}, \code{param_types}, and \code{verbose} are not forwarded to
+\code{log_posterior} and are ignored for exact zero-dimensional evaluation.}
 }
 \value{
 A \code{BayesTools_marglik} object. \code{logml} is one scalar natural-log

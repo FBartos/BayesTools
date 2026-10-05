@@ -132,8 +132,9 @@
 #' @param ... additional argument to the \link[bridgesampling]{bridge_sampler}
 #' and \code{log_posterior} function. The upstream-only `use_neff` logical
 #' control defaults to `TRUE`; an explicitly supplied value is passed to the
-#' sampler. `use_neff` and `packages` are not forwarded to `log_posterior`
-#' and are ignored for exact zero-dimensional evaluation.
+#' sampler. The upstream-only controls `packages`, `use_neff`, `varlist`,
+#' `envir`, `rcppFile`, `param_types`, and `verbose` are not forwarded to
+#' `log_posterior` and are ignored for exact zero-dimensional evaluation.
 #'
 #' @details Row-shaped external random-effect SD sources, such as
 #' `random_sd_source("tau", shape = "row")`, must be reconstructable during
@@ -547,8 +548,8 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
 
   if(ncol(bridgesampling_posterior) == 0L){
     callback_dots <- list(...)
-    callback_dots[["packages"]] <- NULL
-    callback_dots[["use_neff"]] <- NULL
+    callback_dots[c("packages", "use_neff", "varlist", "envir", "rcppFile",
+                    "param_types", "verbose")] <- NULL
     logml <- do.call(
       full_log_posterior,
       c(

@@ -260,7 +260,7 @@ test_that("JAGS_bridgesampling drives the real upstream sampler on multiple chai
   ))
   posterior <- coda::mcmc.list(make_chain(), make_chain(), make_chain())
 
-  result <- JAGS_bridgesampling(
+  arguments <- list(
     fit = posterior,
     log_posterior = function(parameters, data) 0,
     data = list(),
@@ -270,10 +270,16 @@ test_that("JAGS_bridgesampling drives the real upstream sampler on multiple chai
     ),
     seed = 1
   )
+  result <- do.call(JAGS_bridgesampling, arguments)
 
   expect_s3_class(result, "BayesTools_marglik")
   expect_true(is.finite(result[["logml"]]))
   expect_identical(result[["diagnostics"]][["chains"]][["count"]], 3L)
+
+  explicit <- do.call(JAGS_bridgesampling, c(arguments, list(use_neff = FALSE)))
+  expect_s3_class(explicit, "BayesTools_marglik")
+  expect_true(is.finite(explicit[["logml"]]))
+  expect_identical(explicit[["diagnostics"]][["chains"]][["count"]], 3L)
 })
 
 test_that("JAGS_bridgesampling seeds bridge proposal draws explicitly", {
@@ -892,4 +898,36 @@ test_that("P-F8 exact point route forwards genuine likelihood arguments", {
   )
   expect_identical(result$logml, -3)
   expect_identical(result$aggregation$rule, "exact_zero_dimensional")
+})
+
+test_that("P-F8 exact point route ignores all named upstream controls", {
+
+  posterior <- coda::mcmc(matrix(0, nrow = 100L, ncol = 1L,
+                                dimnames = list(NULL, "theta")))
+  arguments <- list(
+    fit = posterior,
+    log_posterior = function(parameters, data) 0,
+    data = NULL,
+    prior_list = list(theta = prior("point", list(location = 0))),
+    seed = 1
+  )
+  controls <- list(packages = character(), use_neff = FALSE, varlist = character(),
+                   envir = .GlobalEnv, rcppFile = NULL, param_types = character(),
+                   verbose = FALSE)
+  for(control in c("varlist", "envir", "rcppFile", "param_types", "verbose")){
+    explicit <- do.call(JAGS_bridgesampling, c(arguments, controls[control]))
+    expect_identical(explicit$logml, 0)
+  }
+  combined <- do.call(JAGS_bridgesampling, c(arguments, controls))
+  expect_identical(combined$logml, 0)
+  expect_identical(combined$aggregation$rule, "exact_zero_dimensional")
+
+  arguments$log_posterior <- function(parameters, data, foo) foo
+  genuine <- do.call(JAGS_bridgesampling, c(arguments, controls, list(foo = -3)))
+  expect_identical(genuine$logml, -3)
+  unnamed <- do.call(JAGS_bridgesampling, c(arguments, controls, list(-3)))
+  expect_identical(unnamed$logml, -3)
+  arguments$log_posterior <- function(parameters, data, foo) if(is.null(foo)) -3 else foo
+  unnamed_null <- do.call(JAGS_bridgesampling, c(arguments, controls, list(NULL)))
+  expect_identical(unnamed_null$logml, -3)
 })
