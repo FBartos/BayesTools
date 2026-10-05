@@ -60,6 +60,9 @@ structural support gives \code{unknown}, while a known invalid transformation
 domain gives \code{undefined}. Finite endpoints or atoms whose images round to
 an exponential or hyperbolic-tangent limit do not certify exact provenance.
 Constant affine routes declare a point even without a source definition.
+A stored point-only measure has exact zero continuous density away from its
+atoms, including when no adaptive provenance is attached. Positive continuous
+grids and deferred measures without a declared continuous mass remain unknown.
 Supported conditional-normal mixtures are structurally regular because they
 include an independent positive-variance Gaussian term. A product term
 (\code{multiply_by}) without an additive normal term is a pure scale mixture:

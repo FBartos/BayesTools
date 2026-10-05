@@ -2563,3 +2563,31 @@ test_that("R116 N06 constants and finite images have conservative provenance", {
     }
   }
 })
+
+test_that("R116 N89 point-only densities are exact off their stored atom", {
+
+  point <- .prior_linear_density_point(.5)
+  at <- prior_density_ordinate(point, .5)
+  off <- prior_density_ordinate(point, .3)
+  expect_identical(at$behavior, "point_mass")
+  expect_identical(at$provenance$continuous_behavior, "zero")
+  expect_identical(at$point_mass, 1)
+  expect_identical(at$log_density, -Inf)
+  expect_true(at$exact)
+  expect_identical(off$behavior, "zero")
+  expect_true(off$exact)
+  expect_identical(off$log_density, -Inf)
+  expect_identical(off$point_mass, 0)
+  grid <- point
+  grid$density <- list(x = c(0, 1), y = c(1, 1), mass = 1)
+  grid$points <- NULL
+  positive <- prior_density_ordinate(grid, .3)
+  expect_identical(positive$behavior, "unknown")
+  expect_false(positive$exact)
+  deferred <- point
+  deferred$density <- list()
+  deferred$points <- NULL
+  unavailable <- prior_density_ordinate(deferred, .3)
+  expect_identical(unavailable$behavior, "unknown")
+  expect_false(unavailable$exact)
+})

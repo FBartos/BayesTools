@@ -125,6 +125,9 @@ source support. Missing structural-domain information is unknown, not proof
 of an invalid domain. Constant affine routes are point measures even without a
 source. Finite images that round to exponential or tanh limits cannot certify
 exact support or atom provenance; mathematical endpoint limits remain valid.
+A provenance-free stored measure with declared continuous mass exactly zero
+has exact zero continuous density off its atoms. Positive grids and deferred
+measures with missing mass stay unknown; do not infer mass from grid shape.
 
 Full-precision rule: no ordinate is exact when its value is computed from a
 subnormal (nonzero, absolute value below `.Machine$double.xmin`), underflowed

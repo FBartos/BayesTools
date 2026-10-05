@@ -57,6 +57,9 @@
 #' domain gives `undefined`. Finite endpoints or atoms whose images round to
 #' an exponential or hyperbolic-tangent limit do not certify exact provenance.
 #' Constant affine routes declare a point even without a source definition.
+#' A stored point-only measure has exact zero continuous density away from its
+#' atoms, including when no adaptive provenance is attached. Positive continuous
+#' grids and deferred measures without a declared continuous mass remain unknown.
 #' Supported conditional-normal mixtures are structurally regular because they
 #' include an independent positive-variance Gaussian term. A product term
 #' (`multiply_by`) without an additive normal term is a pure scale mixture:
@@ -2511,6 +2514,16 @@ prior_density_has_provenance <- function(x){
 
   adaptive <- attr(x, "adaptive_evaluation", exact = TRUE)
   result <- .prior_density_ordinate_from_adaptive(adaptive, value)
+  if(is.null(result) && isTRUE(.prior_linear_density_continuous_mass(x) == 0)){
+    result <- .prior_density_ordinate_result(
+      value       = value,
+      behavior    = "zero",
+      log_density = -Inf,
+      exact       = TRUE,
+      method      = "declared_point_only_measure",
+      provenance  = list(kind = "point_only_measure")
+    )
+  }
   if(is.null(result)){
     # a density grid without provenance; its builder may record why none
     # exists (e.g. SD components of nested variance allocations)

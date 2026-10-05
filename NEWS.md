@@ -1,4 +1,5 @@
 # version 0.3.1
+- point-only prior densities now classify their continuous part as exact zero away from stored atoms even without adaptive provenance.
 - composed named prior transformations now retain compact structural support and atom provenance, including constant routes and two-term convolution definitions; missing domains remain unknown.
 - JAGS_with_draws() now separates supplied analysis draws from the untouched original sampling fit; views clear cached posterior estimates, preserve actual chain geometry, and refuse extension, model convergence and bridge sampling with classed errors.
 - explicit hypothesis comparisons now require both nonempty sides.
