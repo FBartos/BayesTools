@@ -105,6 +105,11 @@ such objects, named by parameter or level, can hold the metadata of several
 parameters or levels. The fields used to match the metadata to posterior
 samples are \code{parameter}, \code{conditional}, \code{conditional_rule},
 and \code{condition_key}.
+Multi-ordinate matching validates the original attributes and filters each
+single attribute by its own parameter and condition metadata before exact-null
+lookup. Container metadata do not replace incompatible child metadata.
+Compatible entries at other null values remain relevant metadata and retain
+the existing refusal when the requested null is absent.
 
 A stored density describes only the continuous part of the posterior: for
 a posterior with point masses, its heights integrate to the continuous

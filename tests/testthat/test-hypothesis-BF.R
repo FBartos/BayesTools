@@ -2885,3 +2885,63 @@ test_that("N34 a genuine compiled combination prints its persisted quantity labe
   expect_identical(rownames(result), unname(expected))
   expect_false(any(grepl(".BayesTools_linear_target", rownames(result), fixed = TRUE)))
 })
+
+test_that("R116 N05 direct ordinate matching filters original parameter and condition leaves", {
+
+  prior_density <- .prior_linear_combination_density(list(theta = prior("normal", list(0, 1))), c(theta = 1), n_grid = 128)
+  posterior <- .hypothesis_marginal_posterior_for_test(seq(-2, 2, length.out = 101), prior_density)
+  attr(posterior, "parameter") <- "theta"
+  leaf <- function(value, parameter = "theta", conditional = NULL, height = .5){
+    posterior_ordinate_attribute(value, height, "qCMDE", "precomputed", diagnostics = list(relative_mcse = .1), parameter = parameter, conditional = conditional)
+  }
+  original <- posterior_ordinate_append(leaf(0), leaf(1, "phi", height = 100))
+  posterior_metadata(posterior, "posterior_ordinate") <- original
+  status <- .posterior_ordinate_direct_status(posterior, null_hypothesis = 1)
+  expect_identical(status[c("present", "relevant", "valid")], list(present = TRUE, relevant = TRUE, valid = FALSE))
+  expect_null(status$value)
+  expect_null(.posterior_ordinate_direct_attribute(posterior, null_hypothesis = 1))
+  expect_error(Savage_Dickey_BF(posterior, 1, silent = TRUE, density_method = "precomputed"),
+    "Precomputed posterior ordinate metadata is present but invalid for the requested null hypothesis.", fixed = TRUE)
+  selected <- .posterior_ordinate_direct_attribute(posterior, null_hypothesis = 0)
+  expect_identical(selected, original$ordinates[[1L]])
+  expect_identical(.posterior_ordinate_direct_attribute(posterior), selected)
+  expect_equal(as.numeric(Savage_Dickey_BF(posterior, 0, silent = TRUE, density_method = "precomputed")), stats::dnorm(0) / .5, tolerance = 1e-12)
+  compatible <- posterior_ordinate_append(leaf(0), leaf(1, height = .8))
+  posterior_metadata(posterior, "posterior_ordinate") <- compatible
+  matched <- .posterior_ordinate_direct_attribute(posterior, null_hypothesis = 1)
+  expect_s3_class(matched, "BayesTools_posterior_ordinates")
+  expect_length(matched$ordinates, 2L)
+  expect_equal(.posterior_ordinate_from_attribute(matched, 0)$y, .5)
+  expect_equal(.posterior_ordinate_from_attribute(matched, 1)$y, .8)
+  expect_equal(.posterior_ordinate_from_attribute(matched, 1)$diagnostics$relative_mcse, .1)
+  conditioned <- .bt_meta_update(posterior, condition = list(effective_conditional = "theta", effective_conditional_rule = "AND"))
+  posterior_metadata(conditioned, "posterior_ordinate") <- posterior_ordinate_append(leaf(0, conditional = "theta"), leaf(1, conditional = "phi"))
+  expect_null(.posterior_ordinate_direct_attribute(conditioned, null_hypothesis = 1))
+  expect_true(.posterior_ordinate_direct_status(conditioned, null_hypothesis = 1)$relevant)
+  expect_equal(.posterior_ordinate_direct_status(conditioned, null_hypothesis = 0)$value$y, .5)
+  posterior_metadata(posterior, "posterior_ordinate") <- leaf(0, "phi")
+  expect_identical(.posterior_ordinate_direct_status(posterior, null_hypothesis = 0)[c("present", "relevant", "valid")], list(present = TRUE, relevant = FALSE, valid = FALSE))
+  posterior_metadata(posterior, "posterior_ordinate") <- NULL
+  expect_identical(.posterior_ordinate_direct_status(posterior, null_hypothesis = 0)[c("present", "relevant", "valid")], list(present = FALSE, relevant = FALSE, valid = FALSE))
+})
+
+test_that("R116 N05 source collection retains only compatible raw ordinate leaves", {
+
+  theta <- posterior_ordinate_attribute(0, .5, "qCMDE", "precomputed", parameter = "theta")
+  phi <- posterior_ordinate_attribute(1, 100, "qCMDE", "precomputed", parameter = "phi")
+  aggregate <- posterior_ordinate_append(theta, phi)
+  aggregate$parameter <- "theta"
+  aggregate$conditional <- "irrelevant-parent"
+  matched <- .posterior_ordinate_from_sources(list(aggregate), "theta")
+  expect_identical(matched, theta)
+  expect_null(.posterior_ordinate_from_sources(list(aggregate), "theta", null_hypothesis = 1))
+  expect_identical(.posterior_ordinate_from_sources(list(aggregate), "theta", null_hypothesis = 0), theta)
+  unlabeled <- posterior_ordinate_attribute(0, .6, "qCMDE", "precomputed")
+  expect_identical(.posterior_ordinate_from_sources(list(list(theta = unlabeled)), "theta"), unlabeled)
+  expect_null(.posterior_ordinate_from_sources(list(list(theta = phi)), "theta"))
+  expect_identical(.posterior_ordinate_from_sources(list(list(theta = aggregate)), "theta"), theta)
+  invalid <- aggregate
+  invalid$ordinates[[2L]]$ordinate <- -1
+  expect_error(.posterior_ordinate_from_sources(list(invalid), "theta"), "Posterior ordinate metadata is invalid", fixed = TRUE)
+  expect_error(posterior_ordinate_append(theta, theta), "cannot contain duplicate values", fixed = TRUE)
+})

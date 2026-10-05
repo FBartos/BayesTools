@@ -2269,7 +2269,9 @@ test_that("Savage_Dickey_BF accepts multi-ordinate posterior attributes", {
     aliases         = "theta",
     null_hypothesis = 0
   )
-  expect_equal(matched_source[["method"]], "qCMDE")
+  expect_s3_class(matched_source, "BayesTools_posterior_ordinates")
+  expect_length(matched_source$ordinates, 2L)
+  expect_equal(vapply(matched_source$ordinates, `[[`, numeric(1), "value"), c(-.5, 0))
 
   parsed <- BayesTools:::.posterior_ordinate_from_attribute(matched_source, 0)
   expect_equal(parsed[["method"]], "qCMDE")

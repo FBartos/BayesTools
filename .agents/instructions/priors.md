@@ -661,6 +661,14 @@ estimate, so a scalar call stops, and a level of a list posterior (marginal
 inference and its tables) gets an NA Bayes factor with the reason, as a level
 fixed at the null.
 
+Precomputed ordinate matching validates original single attributes before
+filtering by each leaf's own parameter aliases and condition event. Aggregate
+metadata never override explicit child labels; named containers may permit
+unlabeled leaves through the existing named-selection rule. Filter before
+exact-null parsing, keep compatible other-null leaves relevant, and preserve
+the missing-null refusal and existing source precedence. Return only filtered
+leaves through direct, child and source-collection paths, including NULL lookup.
+
 The posterior ordinate of a Savage-Dickey ratio (`R/marginal-savage-dickey.R`)
 is a kernel estimate from the continuous draws: the exact Gaussian kernel sum
 at the null with bandwidth `bw.nrd0()` of the (per-component) continuous

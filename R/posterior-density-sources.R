@@ -276,32 +276,15 @@
 
   kind <- .posterior_ordinate_kind(source)
   if(kind %in% c("ordinate", "ordinates")){
-    out <- list()
-    if(.posterior_ordinate_candidate_matches(
+    matched <- .posterior_ordinate_matching_attribute(
       source,
       aliases          = aliases,
       conditional      = conditional,
       conditional_rule = conditional_rule,
       condition_key    = condition_key,
       allow_unlabeled  = allow_unlabeled || selected_by_name
-    )){
-      out <- list(source)
-    }
-    if(identical(kind, "ordinates")){
-      for(entry in .posterior_ordinate_entries(source)){
-        out <- c(out, .posterior_ordinate_collect_from_source(
-          source             = entry,
-          aliases            = aliases,
-          conditional        = conditional,
-          conditional_rule   = conditional_rule,
-          condition_key      = condition_key,
-          allow_unlabeled    = allow_unlabeled,
-          selected_by_name   = selected_by_name,
-          depth              = depth + 1L
-        ))
-      }
-    }
-    return(out)
+    )
+    return(if(is.null(matched)) list() else list(matched))
   }
 
   out <- list()
@@ -368,35 +351,13 @@
 
   kind <- .posterior_ordinate_kind(source)
   if(kind %in% c("ordinate", "ordinates")){
-    if(!is.null(.posterior_ordinate_from_attribute(source, null_hypothesis)) &&
-       .posterior_ordinate_candidate_matches(
-         source,
-         aliases          = aliases,
-         conditional      = conditional,
-         conditional_rule = conditional_rule,
-         condition_key    = condition_key,
-         allow_unlabeled  = allow_unlabeled || selected_by_name,
-         null_hypothesis  = null_hypothesis
-       )){
-      return(source)
-    }
-    if(identical(kind, "ordinates")){
-      for(entry in .posterior_ordinate_entries(source)){
-        out <- .posterior_ordinate_from_source(
-          source             = entry,
-          aliases            = aliases,
-          conditional        = conditional,
-          conditional_rule   = conditional_rule,
-          condition_key      = condition_key,
-          allow_unlabeled    = allow_unlabeled,
-          selected_by_name   = selected_by_name,
-          depth              = depth + 1L,
-          null_hypothesis    = null_hypothesis
-        )
-        if(!is.null(out)){
-          return(out)
-        }
-      }
+    matched <- .posterior_ordinate_matching_attribute(
+      source, aliases, conditional, conditional_rule, condition_key,
+      allow_unlabeled || selected_by_name
+    )
+    if(!is.null(matched) && (is.null(null_hypothesis) ||
+       !is.null(.posterior_ordinate_from_attribute(matched, null_hypothesis)))){
+      return(matched)
     }
     return(NULL)
   }

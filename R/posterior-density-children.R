@@ -150,7 +150,10 @@
             allow_unlabeled  = TRUE,
             null_hypothesis  = null_hypothesis
           )){
-            out[[i]] <- top_level[[i]]
+            out[[i]] <- .posterior_ordinate_matching_attribute(
+              top_level[[i]], aliases, conditional, conditional_rule, condition_key,
+              allow_unlabeled = TRUE
+            )
           }
         }
         names(out) <- sample_names

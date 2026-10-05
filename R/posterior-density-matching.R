@@ -313,33 +313,38 @@
   posterior_density
 }
 
+# Filter validated original leaves before the exact-null parser drops metadata.
+.posterior_ordinate_matching_attribute <- function(posterior_ordinate, aliases, conditional,
+                                                   conditional_rule, condition_key = NULL,
+                                                   allow_unlabeled = FALSE){
+
+  if(!.posterior_ordinate_has_data(posterior_ordinate)) return(NULL)
+  entries <- .posterior_ordinate_entries(posterior_ordinate)
+  matched <- vapply(entries, function(entry){
+    parameter_names <- .posterior_density_parameter_metadata(entry)
+    if(length(parameter_names) > 0L && length(aliases) > 0L){
+      if(!any(parameter_names %in% aliases)) return(FALSE)
+    }else if(length(parameter_names) == 0L && !allow_unlabeled){
+      return(FALSE)
+    }
+    .posterior_density_condition_matches(entry, conditional, conditional_rule, condition_key)
+  }, logical(1))
+  entries <- entries[matched]
+  if(length(entries) == 0L) return(NULL)
+  if(length(entries) == 1L) return(entries[[1L]])
+  structure(list(status = "ok", ordinates = entries),
+            class = c("BayesTools_posterior_ordinates", "list"))
+}
+
 .posterior_ordinate_candidate_matches <- function(posterior_ordinate, aliases, conditional, conditional_rule,
                                                   condition_key = NULL, allow_unlabeled = FALSE,
                                                   null_hypothesis = NULL){
 
-  if(!.posterior_ordinate_has_data(posterior_ordinate)){
-    return(FALSE)
-  }
-  if(!is.null(null_hypothesis) &&
-     is.null(.posterior_ordinate_from_attribute(posterior_ordinate, null_hypothesis))){
-    return(FALSE)
-  }
-
-  parameter_names <- .posterior_density_parameter_metadata(posterior_ordinate)
-  if(length(parameter_names) > 0L){
-    if(!any(parameter_names %in% aliases)){
-      return(FALSE)
-    }
-  }else if(!allow_unlabeled){
-    return(FALSE)
-  }
-
-  return(.posterior_density_condition_matches(
-    posterior_ordinate,
-    conditional      = conditional,
-    conditional_rule = conditional_rule,
-    condition_key    = condition_key
-  ))
+  matched <- .posterior_ordinate_matching_attribute(
+    posterior_ordinate, aliases, conditional, conditional_rule, condition_key, allow_unlabeled
+  )
+  !is.null(matched) && (is.null(null_hypothesis) ||
+    !is.null(.posterior_ordinate_from_attribute(matched, null_hypothesis)))
 }
 
 .posterior_ordinate_direct_candidate_matches <- function(posterior_ordinate,
@@ -348,45 +353,36 @@
                                                          allow_unlabeled = TRUE,
                                                          null_hypothesis = NULL){
 
-  if(!.posterior_ordinate_has_data(posterior_ordinate)){
-    return(FALSE)
-  }
-  if(!is.null(null_hypothesis) &&
-     is.null(.posterior_ordinate_from_attribute(posterior_ordinate, null_hypothesis))){
-    return(FALSE)
-  }
   if(is.null(aliases)){
     aliases <- .posterior_density_sample_aliases(samples)
   }
-
-  parameter_names <- .posterior_density_parameter_metadata(posterior_ordinate)
-  if(length(parameter_names) > 0L && length(aliases) > 0L){
-    if(!any(parameter_names %in% aliases)){
-      return(FALSE)
-    }
-  }else if(length(parameter_names) == 0L && !allow_unlabeled){
-    return(FALSE)
-  }
-
-  return(.posterior_density_condition_matches(
+  .posterior_ordinate_candidate_matches(
     posterior_ordinate,
+    aliases          = aliases,
     conditional      = .bt_meta_condition(samples, "conditional"),
     conditional_rule = .bt_meta_condition(samples, "conditional_rule"),
-    condition_key    = .bt_meta_condition(samples, "condition_key")
-  ))
+    condition_key    = .bt_meta_condition(samples, "condition_key"),
+    allow_unlabeled  = allow_unlabeled,
+    null_hypothesis  = null_hypothesis
+  )
 }
 
 .posterior_ordinate_direct_attribute <- function(samples, aliases = NULL,
                                                  null_hypothesis = NULL){
 
   posterior_ordinate <- .bt_meta_get(samples, "posterior_ordinate")
-  if(.posterior_ordinate_direct_candidate_matches(
+  if(is.null(aliases)) aliases <- .posterior_density_sample_aliases(samples)
+  matched <- .posterior_ordinate_matching_attribute(
     posterior_ordinate,
-    samples         = samples,
-    aliases         = aliases,
-    null_hypothesis = null_hypothesis
-  )){
-    return(posterior_ordinate)
+    aliases          = aliases,
+    conditional      = .bt_meta_condition(samples, "conditional"),
+    conditional_rule = .bt_meta_condition(samples, "conditional_rule"),
+    condition_key    = .bt_meta_condition(samples, "condition_key"),
+    allow_unlabeled  = TRUE
+  )
+  if(!is.null(matched) && (is.null(null_hypothesis) ||
+     !is.null(.posterior_ordinate_from_attribute(matched, null_hypothesis)))){
+    return(matched)
   }
 
   return(NULL)
@@ -404,26 +400,20 @@
     aliases <- .posterior_density_sample_aliases(samples)
   }
 
-  parameter_names <- .posterior_density_parameter_metadata(posterior_ordinate)
-  relevant <- TRUE
-  if(length(parameter_names) > 0L && length(aliases) > 0L){
-    relevant <- any(parameter_names %in% aliases)
-  }else if(length(parameter_names) == 0L && !allow_unlabeled){
-    relevant <- FALSE
-  }
-  if(isTRUE(relevant)){
-    relevant <- .posterior_density_condition_matches(
-      posterior_ordinate,
-      conditional      = .bt_meta_condition(samples, "conditional"),
-      conditional_rule = .bt_meta_condition(samples, "conditional_rule"),
-      condition_key    = .bt_meta_condition(samples, "condition_key")
-    )
-  }
+  matched <- .posterior_ordinate_matching_attribute(
+    posterior_ordinate,
+    aliases          = aliases,
+    conditional      = .bt_meta_condition(samples, "conditional"),
+    conditional_rule = .bt_meta_condition(samples, "conditional_rule"),
+    condition_key    = .bt_meta_condition(samples, "condition_key"),
+    allow_unlabeled  = allow_unlabeled
+  )
+  relevant <- !is.null(matched)
 
   value <- if(isTRUE(relevant) && !is.null(null_hypothesis)){
-    .posterior_ordinate_from_attribute(posterior_ordinate, null_hypothesis)
-  }else if(isTRUE(relevant) && .posterior_ordinate_has_data(posterior_ordinate)){
-    posterior_ordinate
+    .posterior_ordinate_from_attribute(matched, null_hypothesis)
+  }else if(isTRUE(relevant)){
+    matched
   }else{
     NULL
   }
