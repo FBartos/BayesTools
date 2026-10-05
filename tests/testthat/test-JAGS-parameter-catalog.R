@@ -5188,6 +5188,18 @@ test_that("R116 D8 actual extreme LKJ primitives fail with numerical provenance"
     n_samples = 16L, seed = 1L,
     formula_design = list(mu = block$formula_result$formula_design)
   ), class = "BayesTools_lkj_rng_unavailable")
+  # Compiler-derived synthetic public fixture; this is not a sampler fit.
+  shell <- structure(list(mcmc = coda::mcmc.list(fit), summary.pars = list(mutate = NULL)),
+    class = c("BayesTools_fit", "runjags"))
+  for(name in setdiff(names(attributes(fit)), c("class", "dim", "dimnames", "mcpar", "names"))){
+    attr(shell, name) <- attr(fit, name)
+  }
+  primitive_view <- JAGS_with_draws(shell, coda::mcmc.list(coda::mcmc(
+    matrix(.5, 2L, length(correlation$primitive_names),
+      dimnames = list(NULL, correlation$primitive_names))
+  )))
+  expect_error(transform_prior_samples(primitive_view, n_samples = 16L, seed = 1L),
+    class = "BayesTools_lkj_rng_unavailable")
 })
 
 test_that("R116 D8 ordinary LKJ prior values and caller RNG remain valid", {
