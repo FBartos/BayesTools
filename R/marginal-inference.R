@@ -153,6 +153,9 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
 #' @param marginal_parameters parameters for which the the marginal summary
 #' should be created
 #' @param conditional_list list of conditional parameters for each marginal parameter
+#' Unnamed entries bind to \code{marginal_parameters} in supplied order;
+#' uniquely named complete lists bind by key. Partial or mismatched names and
+#' duplicate, missing or empty marginal keys are refused.
 #' @param parameters all parameters included in the model_list that are
 #' relevant for the formula (all of which need to have specification of
 #' \code{is_null_list})
@@ -174,6 +177,9 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
 #' posterior has a declared point mass at the null hypothesis gets an
 #' \code{NA} inclusion Bayes factor with the reason in its \code{"warnings"}
 #' attribute.
+#' Known prior-ordinate refusals also produce \code{NA} plus the original
+#' reason, including scalar marginal table results; direct scalar
+#' \code{Savage_Dickey_BF()} remains strict.
 #'
 #' @return \code{as_marginal_inference} returns an object of class 'marginal_inference'.
 #'
@@ -191,10 +197,10 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
     stop("'model' must be a 'BayesTools_fit'")
   check_char(parameters, "parameters", check_length = FALSE)
   check_char(marginal_parameters, "marginal_parameters", check_length = FALSE)
-#' Known prior-ordinate refusals also produce \code{NA} plus the original
-#' reason, including scalar marginal table results; direct scalar
-#' \code{Savage_Dickey_BF()} remains strict.
   check_list(conditional_list, "conditional_list", check_length = length(marginal_parameters))
+  conditional_list <- .model_averaging_bind_parameter_list(
+    conditional_list, marginal_parameters, "conditional_list", "marginal_parameters"
+  )
   check_char(conditional_rule, "conditional_rule")
   check_bool(compute_BF, "compute_BF")
   density_method <- .marginal_inference_density_method(density_method)

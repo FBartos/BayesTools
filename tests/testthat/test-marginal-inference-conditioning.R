@@ -845,3 +845,24 @@ test_that("marginal inference conditions treatment factor levels by active weigh
   expect_equal(.bt_meta_condition(factor_only_levels[["B"]], "effective_conditional"), "mu_fac")
   expect_equal(.bt_meta_condition(factor_only_levels[["C"]], "effective_conditional"), "mu_fac")
 })
+
+test_that("N35 unnamed and permuted conditionals preserve the declared active subset", {
+
+  prior_list <- list(beta = prior_spike_and_slab(prior("normal", list(0, 1)),
+    prior_inclusion = prior("point", list(.5))))
+  fit <- .mock_marginal_fit(cbind(beta = c(1, 2, 3, 4, 0, 0),
+                                 beta_indicator = c(1, 1, 1, 1, 0, 0)), prior_list)
+  call <- function(conditionals, keys = "beta"){
+    as_marginal_inference(fit, keys, "beta", conditionals, "AND", NULL,
+                          n_samples = 50, silent = TRUE, compute_BF = FALSE)
+  }
+  named <- call(list(beta = "beta"))
+  expect_identical(call(list("beta")), named)
+  expect_equal(as.numeric(named$conditional$beta), 1:4)
+  expect_identical(.bt_meta_get(named$conditional$beta, "condition")$conditional_rule, "AND")
+  expect_equal(as.numeric(call(list(NULL))$conditional$beta), c(1:4, 0, 0))
+  expect_error(call(list(other = "beta")),
+    "The 'conditional_list' list must be unnamed or uniquely named for every requested parameter.", fixed = TRUE)
+  expect_error(call(list(NULL, NULL), c("beta", "beta")),
+    "'marginal_parameters' must contain unique, nonmissing, nonempty parameter names.", fixed = TRUE)
+})

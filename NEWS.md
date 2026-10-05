@@ -1,4 +1,5 @@
 # version 0.3.1
+- marginal conditional lists bind unnamed entries positionally and complete named lists by key; ambiguous names and repeated marginal keys fail clearly.
 - compiled linear targets use their persisted quantity labels in hypothesis table rows when available, with the existing fallback for targets without labels.
 - hypothesis tables export plain full-precision data frames with displayed row identities, BF flags and declared bounds, retaining all warnings; selected BF bounds and compact table printing remain aligned.
 - symbolic point-versus-region hypotheses certify the same centered scalar target; reversed spellings retain their documented conservative refusal.

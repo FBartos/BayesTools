@@ -34,7 +34,10 @@ should be created}
 relevant for the formula (all of which need to have specification of
 \code{is_null_list})}
 
-\item{conditional_list}{list of conditional parameters for each marginal parameter}
+\item{conditional_list}{list of conditional parameters for each marginal parameter
+Unnamed entries bind to \code{marginal_parameters} in supplied order;
+uniquely named complete lists bind by key. Partial or mismatched names and
+duplicate, missing or empty marginal keys are refused.}
 
 \item{conditional_rule}{a character string specifying the rule for conditioning.
 Either "AND" or "OR". Defaults to "AND".}
@@ -89,10 +92,10 @@ As in \code{marginal_inference()}, a parameter or level whose conditional
 posterior has a declared point mass at the null hypothesis gets an
 \code{NA} inclusion Bayes factor with the reason in its \code{"warnings"}
 attribute.
-}
-\seealso{
-\link{marginal_inference} \link{as_mixed_posteriors}
 Known prior-ordinate refusals also produce \code{NA} plus the original
 reason, including scalar marginal table results; direct scalar
 \code{Savage_Dickey_BF()} remains strict.
+}
+\seealso{
+\link{marginal_inference} \link{as_mixed_posteriors}
 }
