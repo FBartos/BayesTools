@@ -2914,7 +2914,7 @@ test_that("R116 N05 direct ordinate matching filters original parameter and cond
   expect_equal(.posterior_ordinate_from_attribute(matched, 0)$y, .5)
   expect_equal(.posterior_ordinate_from_attribute(matched, 1)$y, .8)
   expect_equal(.posterior_ordinate_from_attribute(matched, 1)$diagnostics$relative_mcse, .1)
-  conditioned <- .bt_meta_update(posterior, condition = list(effective_conditional = "theta", effective_conditional_rule = "AND"))
+  conditioned <- .bt_meta_update(posterior, condition = list(conditional = "theta", conditional_rule = "AND"))
   posterior_metadata(conditioned, "posterior_ordinate") <- posterior_ordinate_append(leaf(0, conditional = "theta"), leaf(1, conditional = "phi"))
   expect_null(.posterior_ordinate_direct_attribute(conditioned, null_hypothesis = 1))
   expect_true(.posterior_ordinate_direct_status(conditioned, null_hypothesis = 1)$relevant)
