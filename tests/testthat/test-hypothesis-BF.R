@@ -1811,7 +1811,7 @@ test_that("prior_ordinate_status reports the point-hypothesis exactness rule per
     list(gamma_half, 0, "BayesTools_infinite_ordinate"),
     list(gamma_half, -1, "BayesTools_zero_ordinate"),
     list(three_t, 0, "BayesTools_inexact_ordinate"),
-    list(undefined, 1, "BayesTools_undefined_ordinate")
+    list(undefined, 0, "BayesTools_point_mass_at_null")
   )
   for(case in cases){
     status <- prior_ordinate_status(case[[1L]], case[[2L]], labels = "theta = v")
@@ -1826,6 +1826,8 @@ test_that("prior_ordinate_status reports the point-hypothesis exactness rule per
     expect_identical(conditionMessage(condition), status$reason)
   }
   expect_identical(prior_ordinate_status(three_t, 0)$continuous_behavior, "unknown")
+  expect_true(prior_ordinate_status(undefined, 1)$eligible)
+  expect_equal(exp(prior_density_ordinate(undefined, 1)$log_density), stats::dnorm(1) / 2, tolerance = 1e-12)
   # an eligible value returns its ordinate: the slab density times its weight
   expect_equal(
     BayesTools:::.hypothesis_check_prior_ordinate(spike_density, .5, "x = 0.5")$log_density,
@@ -2679,18 +2681,19 @@ test_that("point hypotheses need an exact regular prior ordinate on every route"
                   parameter = "theta"),
     "BayesTools_inexact_ordinate"
   )
-  # exp_lin of a source with an atom at 0 is undefined
+  # A positive power retains the zero atom and has an exact continuous ordinate at 1.
   nonnegative_spike <- prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)),
                                             prior_inclusion = prior("spike", list(.5)))
   undefined <- BayesTools:::.prior_linear_combination_density(
     list(x = nonnegative_spike), c(x = 1), output_transformation = "exp_lin",
     output_transformation_arguments = list(a = 0, b = 2)
   )
-  expect_ordinate_class(
-    hypothesis_BF(.hypothesis_marginal_posterior_for_test(abs(draws), undefined), hypothesis = "theta = 1",
-                  parameter = "theta"),
-    "BayesTools_undefined_ordinate"
+  transformed_BF <- hypothesis_BF(
+    .hypothesis_marginal_posterior_for_test(abs(draws), undefined), hypothesis = "theta = 1",
+    parameter = "theta", columns = "all"
   )
+  expect_true(is.finite(transformed_BF$BF) && transformed_BF$BF > 0)
+  expect_equal(as.numeric(transformed_BF$prior), stats::dnorm(1) / 2, tolerance = 1e-12)
   expect_ordinate_class(
     Savage_Dickey_BF(.hypothesis_marginal_posterior_for_test(draws, BayesTools:::.prior_linear_combination_density(
       list(x = spike), c(x = 1))), null_hypothesis = 0, silent = TRUE),

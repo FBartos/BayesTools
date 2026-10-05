@@ -396,7 +396,8 @@
           values, transformation, arguments
         ))
         if(identical(transformation, "exp_lin")){
-          output[values <= 0] <- NA_real_
+          invalid <- if(arguments$b > 0) values < 0 else values <= 0
+          output[invalid] <- NA_real_
         }
         out <- rep(NA, length(values))
         defined <- is.finite(output)

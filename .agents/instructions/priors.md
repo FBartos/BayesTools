@@ -128,6 +128,12 @@ exact support or atom provenance; mathematical endpoint limits remain valid.
 A provenance-free stored measure with declared continuous mass exactly zero
 has exact zero continuous density off its atoms. Positive grids and deferred
 measures with missing mass stay unknown; do not infer mass from grid shape.
+Positive `exp_lin` powers map nonnegative sources, including zero atoms, to
+their mathematical images. Atom masses remain separate from continuous density,
+whose mixture weights are not renormalized. Point/none/Bernoulli leaves have
+zero continuous boundary density. Region indicators preserve strict and
+inclusive comparisons at the mapped zero. Negative domains and zero atoms
+under negative powers retain explicit refusal.
 
 Full-precision rule: no ordinate is exact when its value is computed from a
 subnormal (nonzero, absolute value below `.Machine$double.xmin`), underflowed

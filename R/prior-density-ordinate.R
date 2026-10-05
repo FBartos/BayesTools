@@ -60,6 +60,10 @@
 #' A stored point-only measure has exact zero continuous density away from its
 #' atoms, including when no adaptive provenance is attached. Positive continuous
 #' grids and deferred measures without a declared continuous mass remain unknown.
+#' For `exp_lin`, positive powers are defined on nonnegative sources and map a
+#' zero atom to zero with its original mass. The continuous density retains its
+#' original mixture weight; atoms have no Jacobian density contribution. Negative
+#' powers still refuse zero atoms, and negative source domains remain undefined.
 #' Supported conditional-normal mixtures are structurally regular because they
 #' include an independent positive-variance Gaussian term. A product term
 #' (`multiply_by`) without an additive normal term is a pure scale mixture:
@@ -1878,6 +1882,7 @@ prior_density_has_provenance <- function(x){
 
   if(!is.null(.prior_density_ordinate_provenance_constant(provenance))) return(-Inf)
   kind <- provenance$kind
+  if(identical(kind, "primitive") && provenance$family %in% c("point", "none", "bernoulli")) return(-Inf)
   if(identical(kind, "finite_mixture")){
     terms <- vapply(provenance$components, function(component){
       weight <- component$weight
@@ -1959,6 +1964,8 @@ prior_density_has_provenance <- function(x){
 .prior_density_ordinate_exp_lin_boundary <- function(provenance, b){
 
   if(!is.null(.prior_density_ordinate_provenance_constant(provenance))) return("zero")
+  if(identical(provenance$kind, "primitive") &&
+     provenance$family %in% c("point", "none", "bernoulli")) return("zero")
   support <- .prior_density_ordinate_provenance_support(provenance)
   if(!is.null(support)){
     relevant <- if(b > 0) support[1L] else support[2L]
@@ -2397,7 +2404,8 @@ prior_density_has_provenance <- function(x){
     ))
   }
   atoms <- .prior_density_ordinate_provenance_atoms(source_provenance)
-  if(!is.null(atoms) && (anyNA(atoms) || any(atoms <= 0))){
+  if(!is.null(atoms) && (anyNA(atoms) ||
+     any(atoms < 0 | atoms == 0 & arguments$b < 0))){
     return(.prior_density_ordinate_result(
       value       = value,
       behavior    = "undefined",

@@ -1826,7 +1826,11 @@ test_that("invalid named transformation provenance is undefined", {
     list(a = 0, b = 1)
   attr(atom, "adaptive_evaluation") <- atom_adaptive
   atom_out <- prior_density_ordinate(atom, 1)
-  expect_identical(atom_out$behavior, "undefined")
+  expect_identical(atom_out$behavior, "zero")
+  expect_true(atom_out$exact)
+  expect_identical(atom_out$log_density, -Inf)
+  expect_identical(prior_density_ordinate(atom, 0)$behavior, "point_mass")
+  expect_identical(prior_density_ordinate(atom, 0)$point_mass, 1)
 })
 
 test_that("ordinary density underflow does not imply a structural zero", {
@@ -2590,4 +2594,63 @@ test_that("R116 N89 point-only densities are exact off their stored atom", {
   unavailable <- prior_density_ordinate(deferred, .3)
   expect_identical(unavailable$behavior, "unknown")
   expect_false(unavailable$exact)
+})
+
+test_that("R116 D2 positive powers retain zero atoms and weighted continuous ordinates", {
+
+  spike <- prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)), prior_inclusion = prior("spike", list(.5)))
+  context <- .prior_density_context(list(x = spike), "x", n_grid = 128)
+  density <- function(b){
+    .prior_density_from_context(context, c(x = 1), output_transformation = "exp_lin", output_transformation_arguments = list(a = 0, b = b))
+  }
+  square <- density(2)
+  interior <- prior_density_ordinate(square, .25)
+  expect_identical(interior$behavior, "regular")
+  expect_true(interior$exact)
+  expect_equal(exp(interior$log_density), stats::dnorm(.5), tolerance = 1e-12)
+  boundary <- lapply(c(2, 1, .5), function(b) prior_density_ordinate(density(b), 0))
+  expect_identical(vapply(boundary, `[[`, character(1), "behavior"), rep("point_mass", 3))
+  expect_identical(vapply(boundary, function(x) x$provenance$continuous_behavior, character(1)), c("infinite", "regular", "zero"))
+  expect_equal(vapply(boundary, `[[`, numeric(1), "point_mass"), rep(.5, 3))
+  expect_equal(exp(boundary[[2L]]$log_density), stats::dnorm(0), tolerance = 1e-12)
+  probability <- function(upper, inclusive){
+    region <- list(intervals = .prior_region_intervals(-Inf, upper), indicator = function(x) if(inclusive) x <= upper else x < upper)
+    as.numeric(.prior_linear_density_region_probability(square, region))
+  }
+  expect_equal(probability(.25, TRUE), stats::pnorm(.5), tolerance = 1e-12)
+  expect_identical(probability(0, FALSE), 0)
+  expect_identical(probability(0, TRUE), .5)
+  region <- list(intervals = .prior_region_intervals(0, Inf), indicator = function(x) x > 0)
+  expect_equal(as.numeric(.prior_linear_density_region_probability(square, region)), .5)
+  point <- .prior_linear_combination_density(list(x = prior("point", list(0))), c(x = 1), output_transformation = "exp_lin", output_transformation_arguments = list(b = 2))
+  expect_identical(prior_density_ordinate(point, 0)$behavior, "point_mass")
+  off <- prior_density_ordinate(point, 1)
+  expect_identical(off$behavior, "zero")
+  expect_true(off$exact)
+  adaptive <- attr(square, "adaptive_evaluation")
+  adaptive$arguments$output_transformation_arguments$b <- -1
+  attr(square, "adaptive_evaluation") <- adaptive
+  expect_identical(prior_density_ordinate(square, 1)$behavior, "undefined")
+  mixed <- .prior_linear_combination_density(list(x = prior_mixture(list(prior("point", list(1)), prior("exp", list(1)))), y = prior("point", list(1))), c(x = 1, y = 1), output_transformation = "exp_lin", output_transformation_arguments = list(b = 2), n_grid = 128)
+  expect_identical(prior_density_ordinate(mixed, 4)$behavior, "point_mass")
+  expect_equal(prior_density_ordinate(mixed, 4)$point_mass, .5)
+})
+
+test_that("R116 D2 posterior producer maps declared zero states without changing mass", {
+
+  draws <- cbind(x = c(rep(0, 12), seq(.1, 2, length.out = 24)), x_indicator = rep(c(0, 1), c(12, 24)))
+  fit <- coda::mcmc(draws)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(x = prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)), prior_inclusion = prior("spike", list(.5))))
+  fit <- attach_test_parameter_map(fit)
+  fit <- .bt_attach_parameter_map(fit, monitor_names = colnames(draws))
+  posterior <- marginal_posterior(as_mixed_posteriors(fit, "x"), "x", prior_samples = TRUE)
+  square <- posterior_transform(posterior, "exp_lin", list(b = 2))
+  expect_equal(as.numeric(square), as.numeric(posterior)^2, tolerance = 1e-15)
+  atoms <- posterior_metadata(square, "atoms")
+  expect_equal(as.numeric(atoms$locations), 0)
+  expect_equal(atoms$mass, 1 / 3)
+  density <- posterior_metadata(square, "prior_density")
+  expect_equal(prior_density_ordinate(density, 0)$point_mass, .5)
+  expect_equal(exp(prior_density_ordinate(density, 1)$log_density), stats::dnorm(1) / 2, tolerance = 1e-12)
 })

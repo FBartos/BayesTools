@@ -2666,14 +2666,16 @@ test_that("Savage_Dickey_BF applies the exactness rule of point hypotheses", {
                     class = c("prior_linear_density", "prior_density"))
   expect_ordinate_class(bf_condition(grid, 0), "BayesTools_inexact_ordinate")
 
-  # exp_lin of a source with an atom at 0 is undefined (a grid height before)
+  # A positive power preserves the zero atom independently of the height at 1.
   nonnegative_spike <- prior_spike_and_slab(prior("normal", list(0, 1), list(0, Inf)),
                                             prior_inclusion = prior("spike", list(.5)))
   undefined <- BayesTools:::.prior_linear_combination_density(
     list(x = nonnegative_spike), c(x = 1), output_transformation = "exp_lin",
     output_transformation_arguments = list(a = 0, b = 2)
   )
-  expect_ordinate_class(bf_condition(undefined, 1, abs(draws)), "BayesTools_undefined_ordinate")
+  transformed_BF <- bf_condition(undefined, 1, abs(draws))
+  expect_true(is.numeric(transformed_BF) && is.finite(transformed_BF) && transformed_BF > 0)
+  expect_equal(exp(prior_density_ordinate(undefined, 1)$log_density), stats::dnorm(1) / 2, tolerance = 1e-12)
 
   # a prior point mass at the null, as before
   spike <- prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("spike", list(.5)))

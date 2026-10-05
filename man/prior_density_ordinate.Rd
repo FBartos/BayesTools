@@ -63,6 +63,10 @@ Constant affine routes declare a point even without a source definition.
 A stored point-only measure has exact zero continuous density away from its
 atoms, including when no adaptive provenance is attached. Positive continuous
 grids and deferred measures without a declared continuous mass remain unknown.
+For \code{exp_lin}, positive powers are defined on nonnegative sources and map a
+zero atom to zero with its original mass. The continuous density retains its
+original mixture weight; atoms have no Jacobian density contribution. Negative
+powers still refuse zero atoms, and negative source domains remain undefined.
 Supported conditional-normal mixtures are structurally regular because they
 include an independent positive-variance Gaussian term. A product term
 (\code{multiply_by}) without an additive normal term is a pure scale mixture:
