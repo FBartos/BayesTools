@@ -306,3 +306,65 @@ print.BayesTools_hypothesis_BF <- function(x, ...) {
 
   return(invisible(x))
 }
+
+#' @rdname hypothesis_BF
+#' @param x a hypothesis Bayes factor table.
+#' @param row.names optional row names for the complete exported frame.
+#' @param optional logical; exported column names are always syntactic and unique.
+#' @details Data-frame coercion returns a plain long frame with leading
+#' \code{component}, \code{parameter} (the displayed row identity), and
+#' \code{warning} fields. Statistical values retain full precision. Bayes-factor
+#' names are \code{BF10}, \code{BF01}, \code{logBF10}, or \code{logBF01}
+#' according to the displayed column attributes; \code{BF_error} retains its
+#' existing percent relative-error units. Declared nonmissing bounds are in
+#' \code{BF_bound_operator}. Unmatched/global warnings have component
+#' \code{"hypothesis/warnings"}. Compact printing retains its existing layout.
+#' @exportS3Method
+as.data.frame.BayesTools_hypothesis_BF <- function(x, row.names = NULL,
+                                                  optional = FALSE, ...){
+
+  parameters <- rownames(x)
+  warnings <- attr(x, "warnings", exact = TRUE)
+  warning_names <- names(warnings)
+  if(is.null(warning_names)) warning_names <- rep(NA_character_, length(warnings))
+  row_warnings <- vapply(parameters, function(parameter){
+    matches <- !is.na(warning_names) & warning_names == parameter
+    .hypothesis_collapse_warning(warnings[matches])
+  }, character(1))
+  out <- data.frame(component = rep("hypothesis", nrow(x)),
+                    parameter = parameters, warning = unname(row_warnings),
+                    stringsAsFactors = FALSE)
+  visible <- lapply(x, function(column){
+    if(inherits(column, "BayesTools_BF")) column <- as.numeric(column)
+    for(attribute in c("name", "logBF", "BF01", "bound_operator")){
+      attr(column, attribute) <- NULL
+    }
+    column
+  })
+  visible_names <- names(x)
+  bf <- which(visible_names == "BF")
+  if(length(bf) == 1L){
+    bf_column <- x[[bf]]
+    visible_names[bf] <- paste0(if(isTRUE(attr(bf_column, "logBF"))) "log" else "",
+                                if(isTRUE(attr(bf_column, "BF01"))) "BF01" else "BF10")
+    bound <- attr(bf_column, "bound_operator", exact = TRUE)
+    if(!is.null(bound) && any(!is.na(bound) & nzchar(bound))){
+      visible <- c(visible, list(bound))
+      visible_names <- c(visible_names, "BF_bound_operator")
+    }
+  }
+  names(visible) <- tail(make.names(c(names(out), visible_names), unique = TRUE), length(visible))
+  for(name in names(visible)) out[[name]] <- visible[[name]]
+  unmatched <- is.na(warning_names) | !nzchar(warning_names) |
+    !warning_names %in% parameters
+  if(any(unmatched)){
+    extra <- out[rep(NA_integer_, sum(unmatched)), , drop = FALSE]
+    extra$component <- "hypothesis/warnings"
+    extra$parameter <- warning_names[unmatched]
+    extra$parameter[is.na(extra$parameter) | !nzchar(extra$parameter)] <- NA_character_
+    extra$warning <- as.character(warnings[unmatched])
+    out <- rbind(out, extra)
+  }
+  rownames(out) <- row.names
+  out
+}

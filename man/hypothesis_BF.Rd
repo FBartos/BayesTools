@@ -2,6 +2,7 @@
 % Please edit documentation in R/hypothesis-BF.R
 \name{hypothesis_BF}
 \alias{hypothesis_BF}
+\alias{as.data.frame.BayesTools_hypothesis_BF}
 \title{Hypothesis Bayes Factors}
 \usage{
 hypothesis_BF(
@@ -16,6 +17,8 @@ hypothesis_BF(
   columns = "default",
   ...
 )
+
+\method{as.data.frame}{BayesTools_hypothesis_BF}(x, row.names = NULL, optional = FALSE, ...)
 }
 \arguments{
 \item{posterior}{posterior draws, a \code{marginal_posterior}, a
@@ -76,6 +79,12 @@ and transitive point-vs-region tests report \code{NA}. The default
 are selected by these column names; other spellings are rejected.}
 
 \item{...}{unused.}
+
+\item{x}{a hypothesis Bayes factor table.}
+
+\item{row.names}{optional row names for the complete exported frame.}
+
+\item{optional}{logical; exported column names are always syntactic and unique.}
 }
 \value{
 A BayesTools table of class \code{BayesTools_hypothesis_BF}. The
@@ -99,15 +108,6 @@ deterministic prior, a prior-density combination evaluated only on a
 numerical grid, a structural quadrature rejected by its diagnostics,
 or a density grid without recorded provenance). Each of
 these conditions also has class \code{BayesTools_hypothesis_ordinate}.
-User-supplied prior draws (numeric or data-frame inputs without a prior
-object) have no structural prior density: their prior ordinate is the
-kernel (or normal) estimate of the prior expression draws, returned with a
-warning of classes \code{BayesTools_inexact_ordinate} and
-\code{BayesTools_hypothesis_ordinate}.
-Region tests require positive prior mass for every compared region. An
-implicit region statement is compared with its complement, which therefore
-also needs positive prior mass; explicit comparisons such as
-\code{"theta > 0.5 vs theta > 0"} accept an encompassing region with prior
 For a whole-factor statement expanded into several quantities, known
 ordinate errors produce an \code{NA} row with method \code{"unavailable"}
 and the original reason; valid siblings are computed. Direct scalar and
@@ -118,9 +118,23 @@ behave likewise, with classes \code{BayesTools_prior_region_mass_unavailable},
 \code{BayesTools_prior_region_probability_rejected}, all also
 \code{BayesTools_hypothesis_region}. Missing deterministic provenance for a
 region remains a metadata error, including in whole-factor tables.
+User-supplied prior draws (numeric or data-frame inputs without a prior
+object) have no structural prior density: their prior ordinate is the
+kernel (or normal) estimate of the prior expression draws, returned with a
+warning of classes \code{BayesTools_inexact_ordinate} and
+\code{BayesTools_hypothesis_ordinate}.
+Region tests require positive prior mass for every compared region. An
+implicit region statement is compared with its complement, which therefore
+also needs positive prior mass; explicit comparisons such as
+\code{"theta > 0.5 vs theta > 0"} accept an encompassing region with prior
 mass one. Rows are labelled by quantity; when several statements refer to
 the same quantity, the statement number is appended, e.g.
 \code{theta (2)}.
+A symbolic comparison on both sides uses its centered scalar expression:
+\code{"theta = phi vs theta > phi"} and
+\code{"theta - phi = 0 vs theta - phi > 0"} are supported. Reversed spelling
+\code{"theta = phi vs phi < theta"} remains conservatively unavailable;
+use the supported orientation or centered spelling.
 A reference to a quantity or level that \code{posterior} does not contain,
 and a \code{parameter} that it does not contain, stop with an error of
 class \code{BayesTools_parameter_not_found} (also
@@ -130,11 +144,6 @@ class \code{BayesTools_parameter_not_found} (also
 }
 \description{
 Computes Bayes factors for scalar hypotheses written as
-A symbolic comparison on both sides uses its centered scalar expression:
-\code{"theta = phi vs theta > phi"} and
-\code{"theta - phi = 0 vs theta - phi > 0"} are supported. Reversed spelling
-\code{"theta = phi vs phi < theta"} remains conservatively unavailable;
-use the supported orientation or centered spelling.
 expressions, for example \code{"theta = 0"}, \code{"theta > 0"}, or
 \code{"theta = 0 vs theta > 0"}. Factor/posterior-list levels can be
 referenced as \code{"mu_alloc[alternate] > mu_alloc[random]"} when the
@@ -218,4 +227,13 @@ exactly zero, stops with an error. Other prior densities and regions use the
 prior-density grid, which resolves the region boundaries on that grid: a
 boundary is located by bisection within each grid cell where the condition
 changes, but region features narrower than the grid spacing may be missed.
+
+Data-frame coercion returns a plain long frame with leading
+\code{component}, \code{parameter} (the displayed row identity), and
+\code{warning} fields. Statistical values retain full precision. Bayes-factor
+names are \code{BF10}, \code{BF01}, \code{logBF10}, or \code{logBF01}
+according to the displayed column attributes; \code{BF_error} retains its
+existing percent relative-error units. Declared nonmissing bounds are in
+\code{BF_bound_operator}. Unmatched/global warnings have component
+\code{"hypothesis/warnings"}. Compact printing retains its existing layout.
 }

@@ -2812,3 +2812,44 @@ test_that("N28 symbolic and centered point-versus-region targets agree", {
   expect_error(run("theta = phi vs phi < theta"))
   expect_error(run("theta = phi vs theta > 0 & phi > 0"))
 })
+
+test_that("N33 hypothesis exports retain precision, warning rows and selected BF bounds", {
+
+  result <- hypothesis_BF(seq(-1, 1, length.out = 201), prior("normal", list(0, 1)),
+    c("theta > 0", "theta < 0"), parameter = "theta", columns = "all")
+  expected_names <- rownames(result)
+  attr(result, "warnings") <- setNames(c("first", "second", "global", "other"),
+                                       c(expected_names[1], expected_names[1], "", "other"))
+  raw <- c(0.98039215686274506, 2.001)
+  attr(raw, "bound_operator") <- c(">", "<")
+  result$BF <- format_BF(raw)
+  result[["component"]] <- c("visible", "visible")
+  for(logBF in c(FALSE, TRUE)) for(BF01 in c(FALSE, TRUE)){
+    table <- result
+    table$BF <- format_BF(raw, logBF = logBF, BF01 = BF01)
+    exported <- as.data.frame(table)
+    expect_identical(class(exported), "data.frame")
+    expect_identical(exported, data.frame(table))
+    expect_identical(names(exported)[1:3], c("component", "parameter", "warning"))
+    expect_identical(exported$parameter[1:2], expected_names)
+    expect_identical(exported$warning, c("first second", NA_character_, "global", "other"))
+    name <- paste0(if(logBF) "log" else "", if(BF01) "BF01" else "BF10")
+    expect_identical(exported[[name]][1:2], as.numeric(table$BF))
+    expect_identical(exported$BF_bound_operator[1:2], attr(table$BF, "bound_operator"))
+    selected <- table[2:1, , drop = FALSE]
+    expect_identical(attr(selected$BF, "bound_operator"), rev(attr(table$BF, "bound_operator")))
+    expect_identical(as.data.frame(selected)$BF_bound_operator[1:2], rev(attr(table$BF, "bound_operator")))
+    updated <- update(selected, logBF = logBF, BF01 = BF01)
+    expect_identical(as.data.frame(updated)$BF_bound_operator[1:2], attr(updated$BF, "bound_operator"))
+    expect_false(any(grepl("hypothesis/warnings|component.1|BF_bound_operator", capture.output(print(table)))))
+  }
+  attr(result$BF, "bound_operator") <- c(NA_character_, NA_character_)
+  expect_false("BF_bound_operator" %in% names(as.data.frame(result)))
+  renamed <- result
+  rownames(renamed) <- c("consumer first", "consumer second")
+  attr(renamed, "rownames") <- FALSE
+  expect_identical(as.data.frame(renamed)$parameter[1:2], rownames(renamed))
+  removed <- result[, setdiff(names(result), "BF"), drop = FALSE]
+  expect_false("BF10" %in% names(as.data.frame(removed)))
+  expect_error(as.data.frame(result, row.names = "one"))
+})

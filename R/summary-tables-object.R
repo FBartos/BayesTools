@@ -27,8 +27,9 @@ print.BayesTools_table <- function(x, ...){
   if(is.null(print_rownames)){
     print_rownames <- TRUE
   }
+  class(x) <- "data.frame"
   print(
-    as.data.frame(x),
+    x,
     quote = FALSE,
     right = TRUE,
     row.names = print_rownames
@@ -367,7 +368,7 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 
 .restore_table_column_attributes <- function(column, source_attributes){
 
-  source_attributes <- source_attributes[!names(source_attributes) %in% c("names", "dim", "dimnames")]
+  source_attributes <- source_attributes[!names(source_attributes) %in% c("names", "dim", "dimnames", "bound_operator")]
   for(attribute in names(source_attributes)){
     attr(column, attribute) <- source_attributes[[attribute]]
   }
