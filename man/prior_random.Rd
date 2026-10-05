@@ -178,9 +178,11 @@ zero; \code{eta = 1} is uniform over correlation matrices.}
 \item{cor_scale}{scale for an explicitly supplied scalar correlation prior.
 \code{"fisher_z"} is the default, \code{"logit"} uses a logit transform of the valid
 raw-correlation interval, and \code{"cor"} uses the raw correlation parameter.
-When \code{cor} is omitted, the resolved default is uniform on the raw
-correlation scale; explicitly requesting another scale without supplying
-\code{cor} is an error.}
+For multi-column scalar-correlation structures, omitted \code{cor} resolves to
+a uniform prior on the raw correlation scale; explicitly requesting another
+scale without supplying \code{cor} is an error. US/UN structures use an LKJ prior
+instead. ID/DIAG structures and single-column blocks have no applicable
+scalar correlation.}
 
 \item{include_correlation}{whether to monitor the correlation matrix for
 \code{prior_lkj()}.}

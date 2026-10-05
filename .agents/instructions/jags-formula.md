@@ -388,7 +388,11 @@ correlation and level-specific SDs, whereas US estimates an unrestricted
 correlation matrix. Persist basis ownership, resolved index levels, design
 columns, and public labels for every consumer.
 
-Complete omitted correlation priors after resolving the structure and dimension:
+Complete omitted correlation priors after resolving the structure and dimension.
+The scalar `cor_scale` omission/error rule applies to multi-column scalar
+correlation structures only. US/UN uses LKJ; ID/DIAG and single-column blocks
+have no applicable scalar correlation.
+
 US/UN uses `LKJ(1)`; CS/HCS uses raw `Uniform(-1 / (K - 1), 1)` whose JAGS hull
 is closed while evaluation treats the CS singular bound `-1/(K-1)` as open;
 AR1/HAR uses raw `Uniform(-1, 1)`; CAR uses raw `Uniform(0, 1)` and includes

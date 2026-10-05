@@ -659,9 +659,11 @@ allocation_ref <- function(allocation_name, component){
 #' @param cor_scale scale for an explicitly supplied scalar correlation prior.
 #'   `"fisher_z"` is the default, `"logit"` uses a logit transform of the valid
 #'   raw-correlation interval, and `"cor"` uses the raw correlation parameter.
-#'   When `cor` is omitted, the resolved default is uniform on the raw
-#'   correlation scale; explicitly requesting another scale without supplying
-#'   `cor` is an error.
+#'   For multi-column scalar-correlation structures, omitted `cor` resolves to
+#'   a uniform prior on the raw correlation scale; explicitly requesting another
+#'   scale without supplying `cor` is an error. US/UN structures use an LKJ prior
+#'   instead. ID/DIAG structures and single-column blocks have no applicable
+#'   scalar correlation.
 #' @export
 random_covariance <- function(structure = NULL, sd = NULL, cor = NULL,
                               eta = NULL,

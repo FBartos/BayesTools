@@ -1,4 +1,5 @@
 # version 0.3.1
+- correlation-scale documentation now limits the omitted-scalar-prior rule to multi-column scalar-correlation structures and distinguishes LKJ and correlation-free blocks.
 - documentation clarifies that exp(intercept) selects the fitted coefficient quantity; downstream standardized-coefficient display settings choose scale independently.
 - numerically unavailable LKJ prior primitives now stop at the unchanged Beta RNG stage with a classed condition and original failed-draw indices; accepted draws and RNG streams are unchanged.
 - finite positive BF bounds that round to zero at three decimals now print in scientific notation without changing numeric values or bound direction.
