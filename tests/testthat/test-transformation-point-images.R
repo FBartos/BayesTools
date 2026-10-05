@@ -121,3 +121,41 @@ test_that("R133 region indicators refuse positive-source underflow and preserve 
   expect_identical(evaluate(0, TRUE)$probability, 1)
   expect_identical(evaluate(0, FALSE)$probability, 0)
 })
+
+.image_factor_posterior <- function(){
+
+  formula <- JAGS_formula(~ fac, "mu", data.frame(fac = factor(c("A", "B", "C"))),
+    prior_list = list(intercept = prior("normal", list(0, 1)),
+                      fac = prior_factor("normal", list(0, 1), contrast = "treatment")))
+  fit <- coda::mcmc(cbind(mu_intercept = seq(-1, 1, length.out = 201),
+    "mu_fac[1]" = seq(-1, 2, length.out = 201),
+    "mu_fac[2]" = seq(-2, 1, length.out = 201)))
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula$prior_list
+  fit <- attach_test_parameter_map(fit)
+  marginal_posterior(as_mixed_posteriors(fit, "mu_fac"), "mu_fac",
+                    use_formula = FALSE, prior_samples = TRUE)
+}
+
+test_that("R133 D3 transports the specific image leaf while computing valid siblings", {
+  # Synthetic compiled factor metadata and mocked prior transport, not fitted numerical evidence.
+  posterior <- .image_factor_posterior()
+  posterior$A <- NULL
+  region_mass <- .hypothesis_region_mass
+  testthat::local_mocked_bindings(.package = "BayesTools", .hypothesis_region_mass = function(quantity, side, prior){
+    if(prior && identical(quantity$label, "mu_fac[B]")){
+      region <- list(intervals = .prior_region_intervals(-Inf, 0), indicator = function(x) x <= 0)
+      result <- .prior_region_transformed("exp_lin", list(b = 2), region,
+        function(r) .prior_region_atoms(1e-300, 1, r), function() c(0, Inf))
+      return(result$probability)
+    }
+    region_mass(quantity, side, prior)
+  })
+  result <- hypothesis_BF(posterior, hypothesis = "mu_fac > 0", parameter = "mu_fac", columns = "all")
+  expect_identical(result$method[1L], "unavailable")
+  expect_true(is.na(as.numeric(result$BF[1L])))
+  expect_true(is.finite(as.numeric(result$BF[2L])))
+  expect_match(attr(result, "warnings")[["mu_fac[B]"]], "finite source values", fixed = TRUE)
+  expect_error(hypothesis_BF(.hypothesis_marginal_child(posterior$B), hypothesis = "mu_fac > 0", parameter = "mu_fac"),
+    class = "BayesTools_transformation_image_unavailable")
+})
