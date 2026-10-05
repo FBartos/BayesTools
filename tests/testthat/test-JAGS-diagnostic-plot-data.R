@@ -537,7 +537,7 @@ test_that("R116 D10 sparse ACF preserves original lags and explicit pair diagnos
     expect_equal(layer$y, reference[c(1L, 30L)], tolerance = 0)
     expect_true(all(is.finite(layer$y)))
   }
-  expect_error(.diagnostics_plot_data(.sparse_acf_fit_for_test(2L), "theta", attr(fit, "prior_list"), NULL, FALSE), "The spike-and-slab prior did not result in enough samples under the slab for producing a diagnostic figure.", fixed = TRUE)
+  expect_error(.diagnostics_plot_data(.sparse_acf_fit_for_test(2L), "theta", attr(fit, "prior_list"), NULL, FALSE), "The parameter with a spike and slab prior did not result in enough samples under the slab for producing a diagnostic figure.", fixed = TRUE)
 })
 
 test_that("R116 D10 physical short chains pad requested lags without recomputation", {
