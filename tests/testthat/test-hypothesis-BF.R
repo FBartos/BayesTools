@@ -2851,6 +2851,12 @@ test_that("N33 hypothesis exports retain precision, warning rows and selected BF
   expect_identical(as.data.frame(renamed)$parameter[1:2], rownames(renamed))
   removed <- result[, setdiff(names(result), "BF"), drop = FALSE]
   expect_false("BF10" %in% names(as.data.frame(removed)))
+  collision <- result
+  collision$BF10 <- c(17, 18)
+  collision <- collision[, c("BF10", setdiff(names(collision), "BF10")), drop = FALSE]
+  exported_collision <- as.data.frame(collision)
+  expect_identical(exported_collision$BF10[1:2], as.numeric(collision$BF))
+  expect_identical(exported_collision$BF10.1[1:2], c(17, 18))
   expect_error(as.data.frame(result, row.names = "one"))
 })
 

@@ -343,17 +343,22 @@ as.data.frame.BayesTools_hypothesis_BF <- function(x, row.names = NULL,
   })
   visible_names <- names(x)
   bf <- which(visible_names == "BF")
+  bf_name <- character()
   if(length(bf) == 1L){
     bf_column <- x[[bf]]
     visible_names[bf] <- paste0(if(isTRUE(attr(bf_column, "logBF"))) "log" else "",
                                 if(isTRUE(attr(bf_column, "BF01"))) "BF01" else "BF10")
+    bf_name <- visible_names[bf]
     bound <- attr(bf_column, "bound_operator", exact = TRUE)
     if(!is.null(bound) && any(!is.na(bound) & nzchar(bound))){
       visible <- c(visible, list(bound))
       visible_names <- c(visible_names, "BF_bound_operator")
     }
   }
-  names(visible) <- tail(make.names(c(names(out), visible_names), unique = TRUE), length(visible))
+  other_columns <- setdiff(seq_along(visible), bf)
+  normalized <- make.names(c(names(out), bf_name, visible_names[other_columns]), unique = TRUE)
+  visible_names[other_columns] <- tail(normalized, length(other_columns))
+  names(visible) <- visible_names
   for(name in names(visible)) out[[name]] <- visible[[name]]
   unmatched <- is.na(warning_names) | !nzchar(warning_names) |
     !warning_names %in% parameters
