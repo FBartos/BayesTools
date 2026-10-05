@@ -83,6 +83,18 @@ of class 'ggplot2' if \code{plot_type = "ggplot2"}.
 Creates density plots, trace plots, and autocorrelation plots
 for a given parameter of a JAGS model.
 }
+\details{
+Autocorrelation uses the retained original iteration positions.
+Requested lags without finite observation pairs, beyond the retained chain,
+or with nonfinite autocorrelation are retained as \code{NA}. One warning per
+parameter and chain has classes \code{BayesTools_autocorrelation_unavailable}
+and \code{BayesTools_plot_condition}, with \code{parameter}, \code{chain},
+\code{unavailable_lags}, \code{pair_count} and \code{reason} fields.
+Computed x/y objects retain full-length \code{pair_count} and
+\code{unavailability_reason} attributes; both renderers display finite bars
+only. No iteration compression, replacement estimate or confidence band is
+introduced.
+}
 \seealso{
 \code{\link[=JAGS_fit]{JAGS_fit()}} \code{\link[=JAGS_check_convergence]{JAGS_check_convergence()}}
 }

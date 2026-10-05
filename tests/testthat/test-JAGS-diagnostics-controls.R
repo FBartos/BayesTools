@@ -116,15 +116,23 @@ test_that("JAGS autocorrelation diagnostics preserve valid scalar lag limits", {
 })
 
 
-test_that("JAGS autocorrelation diagnostics cap output at available lags", {
+test_that("JAGS autocorrelation diagnostics retain requested unavailable lags", {
 
   fit <- .mock_public_diagnostics_fit(n = 6)
-  plot <- JAGS_diagnostics(type = "autocorrelation", 
-    fit,
-    parameter = "theta",
-    plot_type = "ggplot",
-    lags = 30
-  )
+  warnings <- list()
+  plot <- withCallingHandlers(JAGS_diagnostics(type = "autocorrelation",
+    fit, parameter = "theta", plot_type = "ggplot", lags = 30), warning = function(w){
+    warnings[[length(warnings) + 1L]] <<- w
+    invokeRestart("muffleWarning")
+  })
+  expect_length(warnings, 2L)
+  expect_s3_class(warnings[[1L]], "BayesTools_autocorrelation_unavailable")
+  expect_identical(warnings[[1L]]$unavailable_lags, 6:30)
+  raw <- withCallingHandlers(.diagnostics_plot_data_autocorrelation(
+    .diagnostics_plot_data(fit, "theta", attr(fit, "prior_list"), NULL, FALSE), 128L, 30L),
+    warning = function(w) invokeRestart("muffleWarning"))
+  expect_identical(raw$theta[[1L]]$x, 0:30)
+  expect_true(all(is.na(raw$theta[[1L]]$y[7:31])))
   plot_layers <- ggplot2::ggplot_build(plot)$data
 
   expect_true(all(vapply(plot_layers, function(layer) nrow(layer) == 6L, logical(1))))

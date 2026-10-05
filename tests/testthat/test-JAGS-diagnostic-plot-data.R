@@ -468,3 +468,97 @@ test_that("diagnostic plot data rejects malformed transformations and insufficie
     "enough samples under the slab"
   )
 })
+
+.sparse_acf_fit_for_test <- function(chains = 4L){
+
+  values <- rep(0, 200L)
+  values[c(1L, 30L, 90L)] <- c(1, 2, 4)
+  indicator <- as.integer(seq_len(200L) %in% c(1L, 30L, 90L))
+  fit <- list(mcmc = coda::mcmc.list(lapply(seq_len(chains), function(i){
+    coda::mcmc(cbind(theta = values, theta_indicator = indicator))
+  })), summary.pars = list(mutate = NULL))
+  class(fit) <- c("BayesTools_fit", "runjags")
+  attr(fit, "prior_list") <- list(theta = prior_spike_and_slab(
+    prior("normal", list(0, 1)), prior_inclusion = prior("point", list(.5))))
+  attach_test_parameter_map(fit)
+}
+
+test_that("R116 D10 sparse ACF preserves original lags and explicit pair diagnostics", {
+
+  fit <- .sparse_acf_fit_for_test()
+  input <- .diagnostics_plot_data(fit, "theta", attr(fit, "prior_list"), NULL, FALSE)
+  warnings <- list()
+  data <- withCallingHandlers(.diagnostics_plot_data_autocorrelation(input, 128L, 30L), warning = function(w){
+    warnings[[length(warnings) + 1L]] <<- w
+    invokeRestart("muffleWarning")
+  })
+  values <- rep(NA_real_, 200L)
+  values[c(1L, 30L, 90L)] <- c(1, 2, 4)
+  reference <- as.numeric(stats::acf(values, lag.max = 30L, plot = FALSE, na.action = stats::na.pass)$acf)
+  pairs <- vapply(0:30, function(lag){
+    sum(is.finite(values[seq_len(200L - lag)]) & is.finite(values[lag + seq_len(200L - lag)]))
+  }, integer(1))
+  expect_length(warnings, 4L)
+  expect_equal(pairs[c(1L, 30L)], c(3L, 1L))
+  expect_identical(which(is.finite(reference)) - 1L, c(0L, 29L))
+  for(i in seq_len(4L)){
+    chain <- data$theta[[i]]
+    expect_identical(names(chain), c("x", "y"))
+    expect_identical(chain$x, 0:30)
+    expect_identical(chain$y, reference)
+    expect_identical(attr(chain, "pair_count"), pairs)
+    expect_identical(attr(chain, "unavailability_reason"), ifelse(is.finite(reference), NA_character_, "no_finite_pairs"))
+    expect_equal(attr(chain, "y_range"), c(0, 1))
+    if(length(warnings) >= i){
+      w <- warnings[[i]]
+      unavailable <- (0:30)[!is.finite(reference)]
+      expect_s3_class(w, "BayesTools_autocorrelation_unavailable")
+      expect_s3_class(w, "BayesTools_plot_condition")
+      expect_null(conditionCall(w))
+      expect_identical(w$parameter, "theta")
+      expect_identical(w$chain, i)
+      expect_identical(w$unavailable_lags, unavailable)
+      expect_identical(w$pair_count, pairs[!is.finite(reference)])
+      expect_identical(w$reason, rep("no_finite_pairs", 29L))
+      expect_identical(conditionMessage(w), paste0("Autocorrelation diagnostics for 'theta' in chain ", i,
+        " are unavailable at lag(s) ", paste(unavailable, collapse = ", "),
+        ": the retained chain is too short, has insufficient finite observation pairs, or produced a nonfinite autocorrelation. These lag values were set to NA; original iteration spacing was retained."))
+    }
+  }
+  warnings <- list()
+  plot <- withCallingHandlers(JAGS_diagnostics(fit, "theta", type = "autocorrelation", plot_type = "ggplot", lags = 30), warning = function(w){
+    warnings[[length(warnings) + 1L]] <<- w
+    invokeRestart("muffleWarning")
+  })
+  expect_length(warnings, 4L)
+  built <- ggplot2::ggplot_build(plot)
+  for(layer in built$data){
+    expect_identical(as.integer(layer$x), c(0L, 29L))
+    expect_equal(layer$y, reference[c(1L, 30L)], tolerance = 0)
+    expect_true(all(is.finite(layer$y)))
+  }
+  expect_error(.diagnostics_plot_data(.sparse_acf_fit_for_test(2L), "theta", attr(fit, "prior_list"), NULL, FALSE), "The spike-and-slab prior did not result in enough samples under the slab for producing a diagnostic figure.", fixed = TRUE)
+})
+
+test_that("R116 D10 physical short chains pad requested lags without recomputation", {
+
+  values <- c(-1, -.4, -.1, .3, .7, 1.1)
+  input <- matrix(rep(values, 2L), ncol = 1L, dimnames = list(NULL, "theta"))
+  attr(input, "chain") <- rep(1:2, each = 6L)
+  attr(input, "parameter") <- "theta"
+  warnings <- list()
+  data <- withCallingHandlers(.diagnostics_plot_data_autocorrelation(input, 128L, 30L), warning = function(w){
+    warnings[[length(warnings) + 1L]] <<- w
+    invokeRestart("muffleWarning")
+  })
+  expect_length(warnings, 2L)
+  chain <- data$theta[[1L]]
+  expect_identical(chain$x, 0:30)
+  expect_equal(chain$y[1:6], as.numeric(stats::acf(values, lag.max = 30L, plot = FALSE)$acf), tolerance = 0)
+  expect_true(all(is.na(chain$y[7:31])))
+  expect_identical(attr(chain, "pair_count"), c(6:1, rep(0L, 25L)))
+  expect_identical(attr(chain, "unavailability_reason"), c(rep(NA_character_, 6L), rep("chain_too_short", 25L)))
+  expect_no_warning(.diagnostics_plot_data_autocorrelation(input, 128L, 3L))
+  plot <- ggplot2::ggplot() + .geom_diagnostics.autocorrelation(chain)
+  expect_identical(as.integer(ggplot2::ggplot_build(plot)$data[[1L]]$x), 0:5)
+})

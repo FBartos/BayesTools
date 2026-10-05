@@ -94,6 +94,17 @@ evaluation must exclude coordinates outside that interval, without clamping
 actual values or moving point masses. An infinite inverse at a boundary does
 not supply a finite continuous-density ordinate.
 
+Autocorrelation keeps the original retained iteration positions and every
+requested lag. Unavailable ordinates are NA, with same-length `pair_count` and
+`unavailability_reason` attributes on the existing x/y object. Reasons prefer
+physical `chain_too_short`, then `no_finite_pairs`, then
+`nonfinite_autocorrelation`. Emit one `BayesTools_autocorrelation_unavailable`
+warning (parent `BayesTools_plot_condition`) per affected parameter/chain with
+the unavailable-lag fields. Finite ordinates retain their original estimator;
+zero-anchored finite ranges and finite-only bars are display choices, never
+compression, NA-to-zero estimates, confidence bands or a new pair-count cutoff.
+
+
 ## Verification
 
 Test computed plot data, validation, and dispatch separately, then retain

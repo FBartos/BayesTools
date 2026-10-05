@@ -14,6 +14,16 @@
 #' @param ylim y plotting range
 #' @param lags number of lags to be shown for the autocorrelation plot.
 #' Defaults to \code{30}.
+#' @details Autocorrelation uses the retained original iteration positions.
+#' Requested lags without finite observation pairs, beyond the retained chain,
+#' or with nonfinite autocorrelation are retained as \code{NA}. One warning per
+#' parameter and chain has classes \code{BayesTools_autocorrelation_unavailable}
+#' and \code{BayesTools_plot_condition}, with \code{parameter}, \code{chain},
+#' \code{unavailable_lags}, \code{pair_count} and \code{reason} fields.
+#' Computed x/y objects retain full-length \code{pair_count} and
+#' \code{unavailability_reason} attributes; both renderers display finite bars
+#' only. No iteration compression, replacement estimate or confidence band is
+#' introduced.
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
@@ -575,9 +585,37 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
     for(j in seq_along(unique(chain))){
 
-      temp_y  <- stats::acf(plot_data[chain == j,i], lag.max = lags, plot = FALSE, na.action = stats::na.pass)$acf[, , 1L]
-      temp_x  <- seq_along(temp_y) - 1L
-
+      values <- plot_data[chain == j,i]
+      autocorrelation <- stats::acf(values, lag.max = lags, plot = FALSE, na.action = stats::na.pass)
+      temp_x <- 0:lags
+      temp_y <- rep(NA_real_, length(temp_x))
+      returned_lags <- as.integer(round(as.numeric(autocorrelation$lag)))
+      temp_y[returned_lags + 1L] <- as.numeric(autocorrelation$acf[, , 1L])
+      temp_y[!is.finite(temp_y)] <- NA_real_
+      n <- length(values)
+      finite <- is.finite(values)
+      pair_count <- vapply(temp_x, function(lag){
+        if(lag >= n) return(0L)
+        positions <- seq_len(n - lag)
+        sum(finite[positions] & finite[lag + positions])
+      }, integer(1))
+      unavailable <- is.na(temp_y)
+      reason <- rep(NA_character_, length(temp_x))
+      reason[unavailable] <- ifelse(temp_x[unavailable] >= n, "chain_too_short",
+        ifelse(pair_count[unavailable] == 0L, "no_finite_pairs", "nonfinite_autocorrelation"))
+      if(any(unavailable)){
+        warning(warningCondition(
+          paste0("Autocorrelation diagnostics for '", colnames(plot_data)[i],
+            "' in chain ", j, " are unavailable at lag(s) ",
+            paste(temp_x[unavailable], collapse = ", "),
+            ": the retained chain is too short, has insufficient finite observation pairs, or produced a nonfinite autocorrelation. These lag values were set to NA; original iteration spacing was retained."),
+          call = NULL,
+          class = c("BayesTools_autocorrelation_unavailable", "BayesTools_plot_condition"),
+          parameter = colnames(plot_data)[i], chain = j,
+          unavailable_lags = temp_x[unavailable], pair_count = pair_count[unavailable],
+          reason = reason[unavailable]
+        ))
+      }
 
       temp_autocor <- list(
         x       = temp_x,
@@ -586,7 +624,9 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
       class(temp_autocor) <- c("BayesTools_autocorrelation")
       attr(temp_autocor, "x_range")        <- range(temp_x)
-      attr(temp_autocor, "y_range")        <- range(c(0, temp_y))
+      attr(temp_autocor, "y_range")        <- range(c(0, temp_y[is.finite(temp_y)]))
+      attr(temp_autocor, "pair_count")     <- pair_count
+      attr(temp_autocor, "unavailability_reason") <- reason
       attr(temp_autocor, "chain")          <- j
       attr(temp_autocor, "parameter")      <- attr(plot_data, "parameter", exact = TRUE)
       attr(temp_autocor, "parameter_name") <- colnames(plot_data)[i]
@@ -661,12 +701,13 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
   dots      <- list(...)
   col       <- if(!is.null(dots[["col"]])) dots[["col"]] else .plot.prior_settings()[["col"]]
+  finite <- is.finite(plot_data$y)
 
   graphics::rect(
-    xleft   = plot_data$x + 0.075 - 0.5,
+    xleft   = plot_data$x[finite] + 0.075 - 0.5,
     ybottom = 0,
-    xright  = plot_data$x + 0.925 - 0.5,
-    ytop    = plot_data$y,
+    xright  = plot_data$x[finite] + 0.925 - 0.5,
+    ytop    = plot_data$y[finite],
     col     = col)
 
   return(invisible())
@@ -680,11 +721,12 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
   dots      <- list(...)
   col       <- if(!is.null(dots[["col"]])) dots[["col"]] else .plot.prior_settings()[["col"]]
+  finite <- is.finite(plot_data$y)
 
   geom <- ggplot2::geom_bar(
     data    = data.frame(
-      x = plot_data$x,
-      y = plot_data$y),
+      x = plot_data$x[finite],
+      y = plot_data$y[finite]),
     mapping = ggplot2::aes(
       x      = .data[["x"]],
       weight = .data[["y"]]),
