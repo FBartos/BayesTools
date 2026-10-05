@@ -20,6 +20,8 @@ make_random_scale_table_fit <- function(formula_result, posterior){
 
 test_that("D5 unscaled samples omit only internal latent and group coefficients", {
 
+  skip_if_not_installed("runjags")
+
   formula_result <- JAGS_formula(
     ~ 1 + x + us(1 + x | id), "mu",
     data.frame(x = c(1, 2, 3, 4), id = factor(c("a", "a", "b", "b"))),
@@ -76,6 +78,8 @@ test_that("D5 unscaled samples omit only internal latent and group coefficients"
 })
 
 test_that("D5 removing every random coordinate retains a zero-column matrix", {
+
+  skip_if_not_installed("runjags")
 
   formula_result <- JAGS_formula(
     ~ 1 + diag(1 | id), "mu", data.frame(id = factor(c("a", "a", "b", "b"))),
