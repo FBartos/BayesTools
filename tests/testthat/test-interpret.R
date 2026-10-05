@@ -735,6 +735,7 @@ test_that("N73 paired child records stay adjacent in row order", {
   expect_identical(records$kind, c("evidence", "estimate", "evidence", "estimate", "note"))
   expect_identical(records$row[1:4], c("a", "a", "b", "b"))
   expect_equal(records$order, c(1, 1, 1, 1, 2), tolerance = 0)
+  expect_identical(records$order, c(1, 1, 1, 1, 2))
 })
 
 test_that("N73 ordinary explicitly ordered plan items remain stable", {
@@ -757,4 +758,17 @@ test_that("N73 explicit pair reference order overrides retain precedence", {
   records <- interpret_records(list(tests = evidence, est = estimates), plan)
   expect_identical(records$kind, c("estimate", "note", "evidence"))
   expect_equal(records$order, c(1, 3, 5), tolerance = 0)
+})
+
+test_that("N73 explicit integer reference orders retain their representation", {
+
+  estimates <- data.frame(Mean = .3, row.names = "a")
+  evidence <- data.frame(prior_prob = .5, post_prob = 2 / 3, inclusion_BF = 2, row.names = "a")
+  plan <- list(list(kind = "pair", order = 2L,
+                    evidence = list(source = "tests", row = "a", order = 5L),
+                    estimate = list(source = "est", row = "a", order = 1L)),
+               list(kind = "note", order = 3L, text = "between"))
+  records <- interpret_records(list(tests = evidence, est = estimates), plan)
+  expect_identical(records$kind, c("estimate", "note", "evidence"))
+  expect_identical(records$order, c(1L, 3L, 5L))
 })

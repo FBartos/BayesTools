@@ -587,7 +587,7 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
   }
 
   ref[["kind"]] <- kind
-  ref[["order"]] <- .interpret_or(ref[["order"]], item[["order"]])
+  ref[["order"]] <- .interpret_or(ref[["order"]], item[["order"]] + 0)
   ref[["item_id"]] <- .interpret_or(ref[["item_id"]], ref[["id"]])
 
   return(ref)
