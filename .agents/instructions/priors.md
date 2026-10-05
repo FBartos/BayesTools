@@ -118,6 +118,13 @@ roxygen `@return`, and consumers (RoBMA's point-test eligibility) read it, so
 keep it on every point-mass path, including stored atoms of linear densities.
 Unsupported transformations or convolutions return `unknown` rather than a
 guessed structural class.
+Named monotone compositions retain normalized arguments, declared signed
+support hulls and established atoms. Two-term convolutions retain their
+independent primitive terms, signed weights and offset; zero weights need no
+source support. Missing structural-domain information is unknown, not proof
+of an invalid domain. Constant affine routes are point measures even without a
+source. Finite images that round to exponential or tanh limits cannot certify
+exact support or atom provenance; mathematical endpoint limits remain valid.
 
 Full-precision rule: no ordinate is exact when its value is computed from a
 subnormal (nonzero, absolute value below `.Machine$double.xmin`), underflowed

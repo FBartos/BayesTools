@@ -53,6 +53,13 @@ be \code{-Inf} when an otherwise positive finite density underflows in ordinary
 floating-point evaluation. General numerical convolutions, products, and
 arbitrary user transformations are reported as \code{unknown} unless exact point
 mass establishes the requested behavior.
+Named monotone transformations retain their normalized arguments and declared
+source support and atoms through composition. Two-term convolutions retain
+their independent primitive definitions and signed support hull. Missing
+structural support gives \code{unknown}, while a known invalid transformation
+domain gives \code{undefined}. Finite endpoints or atoms whose images round to
+an exponential or hyperbolic-tangent limit do not certify exact provenance.
+Constant affine routes declare a point even without a source definition.
 Supported conditional-normal mixtures are structurally regular because they
 include an independent positive-variance Gaussian term. A product term
 (\code{multiply_by}) without an additive normal term is a pure scale mixture:

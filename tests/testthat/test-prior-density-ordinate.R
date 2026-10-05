@@ -2492,3 +2492,74 @@ test_that("quadrature ordinates are exact only within a relative error bound", {
   expect_true(is.numeric(offset$provenance$integration$estimate))
   expect_true(is.na(BayesTools:::.prior_density_route_quadrature_density(scale_route, 0)))
 })
+test_that("R116 N06 nested named transformations retain declared support", {
+  normal <- .prior_linear_combination_density(list(x = prior("normal", list(0, 1))), c(x = 1), n_grid = 128)
+  exponential <- .prior_density_output_transform(normal, .bt_posterior_transformation("exp"))
+  squared <- .prior_density_output_transform(exponential, .bt_posterior_transformation("exp_lin", list(b = 2)))
+  ordinate <- prior_density_ordinate(squared, 1)
+  expect_identical(ordinate$behavior, "regular")
+  expect_true(ordinate$exact)
+  expect_equal(exp(ordinate$log_density), stats::dlnorm(1, 0, 2), tolerance = 1e-12)
+  route <- .prior_density_route_from_adaptive(attr(squared, "adaptive_evaluation"))
+  provenance <- .prior_density_route_provenance(route)
+  expect_identical(provenance$arguments, list(a = 0, b = 2))
+  expect_equal(.prior_density_ordinate_provenance_support(provenance), c(lower = 0, upper = Inf))
+  expect_identical(.prior_density_ordinate_provenance_atoms(provenance), numeric())
+  expect_false(any(vapply(provenance, is.environment, logical(1))))
+  expect_false(any(vapply(provenance, is.function, logical(1))))
+  positive <- .prior_linear_combination_density(list(x = prior("exp", list(1)), y = prior("exp", list(1))), c(x = 1, y = 1), n_grid = 128)
+  square <- .prior_density_output_transform(positive, .bt_posterior_transformation("exp_lin", list(b = 2)))
+  expect_equal(exp(prior_density_ordinate(square, 1)$log_density), exp(-1) / 2, tolerance = 1e-8)
+  convolution <- .prior_density_route_provenance(.prior_density_route_from_adaptive(attr(positive, "adaptive_evaluation")))
+  expect_identical(convolution$kind, "convolution")
+  expect_length(convolution$terms, 2L)
+  expect_equal(.prior_density_ordinate_provenance_support(convolution), c(lower = 0, upper = Inf))
+  convolution$weights <- c(-2, 0)
+  convolution$offset <- 3
+  convolution$terms[[2L]] <- list(kind = "unsupported_provenance")
+  expect_equal(.prior_density_ordinate_provenance_support(convolution), c(lower = -Inf, upper = 3))
+  convolution$weights[2L] <- 1
+  expect_null(.prior_density_ordinate_provenance_support(convolution))
+  unknown <- .prior_density_ordinate_named_transform(function(x) NULL, list(kind = "unsupported_provenance"), "exp_lin", list(b = 2), 1)
+  expect_identical(unknown$behavior, "unknown")
+  expect_false(unknown$exact)
+  expect_match(unknown$reason, "structural-domain")
+  negative <- .prior_linear_combination_density(list(x = prior("normal", list(0, 1), list(0, Inf))), c(x = 1), n_grid = 128)
+  negative <- .prior_density_output_transform(negative, .bt_posterior_transformation("lin", list(b = -1)))
+  negative_provenance <- .prior_density_route_provenance(.prior_density_route_from_adaptive(attr(negative, "adaptive_evaluation")))
+  expect_equal(.prior_density_ordinate_provenance_support(negative_provenance), c(lower = -Inf, upper = 0))
+  refused <- .prior_density_ordinate_named_transform(function(x) NULL, negative_provenance, "exp_lin", list(b = 2), 1)
+  expect_identical(refused$behavior, "undefined")
+  expect_true(refused$exact)
+})
+
+test_that("R116 N06 constants and finite images have conservative provenance", {
+  constant <- list(kind = "scalar_affine", offset = 2, scale = 0)
+  expect_equal(.prior_density_ordinate_provenance_support(constant), c(lower = 2, upper = 2))
+  expect_identical(.prior_density_ordinate_provenance_atoms(constant), 2)
+  expect_identical(.prior_density_ordinate_exp_lin_boundary(constant, 2), "zero")
+  expect_identical(.prior_density_ordinate_lower_log_coefficient(constant, 2), -Inf)
+  for(location in c(0, 2)){
+    density <- .prior_linear_combination_density(list(x = prior("point", list(location))), c(x = 1), n_grid = 128)
+    source <- .prior_density_route_provenance(.prior_density_route_from_adaptive(attr(density, "adaptive_evaluation")))
+    expect_equal(.prior_density_ordinate_provenance_support(source), c(lower = location, upper = location))
+    expect_equal(.prior_density_ordinate_provenance_atoms(source), location)
+    expect_identical(prior_density_ordinate(density, location)$provenance$continuous_behavior, "zero")
+  }
+  point <- .prior_linear_combination_density(list(x = prior("point", list(2))), c(x = 1), n_grid = 128, output_transformation = "exp_lin", output_transformation_arguments = list(b = 2))
+  expect_identical(prior_density_ordinate(point, 4)$behavior, "point_mass")
+  expect_identical(prior_density_ordinate(point, 3)$behavior, "zero")
+  for(transformation in c("exp", "exp_lin", "tanh", "lin")){
+    value <- if(transformation == "lin") 1e308 else 1000
+    source <- list(kind = "scalar_affine", offset = value, scale = 0)
+    mapped <- list(kind = "named_transform", transformation = transformation, arguments = list(a = 0, b = 2), source = source)
+    expect_null(.prior_density_ordinate_provenance_support(mapped))
+    expect_null(.prior_density_ordinate_provenance_atoms(mapped))
+    source$offset <- -1000
+    mapped$source <- source
+    if(transformation == "exp"){
+      expect_null(.prior_density_ordinate_provenance_support(mapped))
+      expect_null(.prior_density_ordinate_provenance_atoms(mapped))
+    }
+  }
+})

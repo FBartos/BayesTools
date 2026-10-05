@@ -1291,7 +1291,7 @@
       kind   = "log_scale_product",
       source = .prior_scale_product_route_provenance(route$product$spec)
     ),
-    "convolution" = list(kind = "convolution"),
+    "convolution" = .prior_convolution_provenance(route$spec),
     "unknown" = route$provenance,
     "mixture" = {
       positive <- route$weights > 0
@@ -1308,9 +1308,14 @@
         route$provenance_extra
       )
     },
-    "transform" = list(kind = "named_transform",
-                       transformation = route$transformation,
-                       source = .prior_density_route_provenance(route$source))
+    "transform" = list(
+      kind           = "named_transform",
+      transformation = route$transformation,
+      arguments      = .prior_density_ordinate_compact(
+        .prior_density_ordinate_transform_arguments(route$transformation, route$arguments)
+      ),
+      source         = .prior_density_route_provenance(route$source)
+    )
   )
   if(!is.null(route$multivariate_t)){
     provenance$multivariate_t <- route$multivariate_t

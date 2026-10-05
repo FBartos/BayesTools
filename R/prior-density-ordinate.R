@@ -50,6 +50,13 @@
 #' floating-point evaluation. General numerical convolutions, products, and
 #' arbitrary user transformations are reported as `unknown` unless exact point
 #' mass establishes the requested behavior.
+#' Named monotone transformations retain their normalized arguments and declared
+#' source support and atoms through composition. Two-term convolutions retain
+#' their independent primitive definitions and signed support hull. Missing
+#' structural support gives `unknown`, while a known invalid transformation
+#' domain gives `undefined`. Finite endpoints or atoms whose images round to
+#' an exponential or hyperbolic-tangent limit do not certify exact provenance.
+#' Constant affine routes declare a point even without a source definition.
 #' Supported conditional-normal mixtures are structurally regular because they
 #' include an independent positive-variance Gaussian term. A product term
 #' (`multiply_by`) without an additive normal term is a pure scale mixture:
@@ -1485,12 +1492,48 @@ prior_density_has_provenance <- function(x){
   arguments
 }
 
+# A source-less scalar affine route can declare a constant atom.
+.prior_density_ordinate_provenance_constant <- function(provenance){
+
+  if(is.list(provenance) && identical(provenance$kind, "scalar_affine") &&
+     is.numeric(provenance$offset) && length(provenance$offset) == 1L &&
+     is.finite(provenance$offset) && is.numeric(provenance$scale) &&
+     length(provenance$scale) == 1L && isTRUE(provenance$scale == 0)){
+    return(unname(provenance$offset))
+  }
+  NULL
+}
+
+# Structural limits may be infinite; images of finite values must retain their
+# mathematical domain rather than round to an exponential or tanh boundary.
+.prior_density_ordinate_provenance_image <- function(values, transformation, arguments){
+
+  mapped <- switch(transformation,
+    "lin" = arguments$a + arguments$b * values,
+    "exp" = exp(values),
+    "exp_lin" = exp(arguments$a + arguments$b * log(values)),
+    "tanh" = tanh(values),
+    NULL
+  )
+  if(is.null(mapped) || anyNA(mapped)) return(NULL)
+  finite <- is.finite(values)
+  if(identical(transformation, "lin") && any(!is.finite(mapped[finite]))) return(NULL)
+  if(transformation %in% c("exp", "exp_lin")){
+    positive <- finite & (transformation == "exp" | values > 0)
+    if(any(!is.finite(mapped[positive]) | mapped[positive] <= 0)) return(NULL)
+  }
+  if(identical(transformation, "tanh") && any(abs(mapped[finite]) >= 1)) return(NULL)
+  mapped
+}
+
 .prior_density_ordinate_provenance_support <- function(provenance){
 
   if(!is.list(provenance)){
     return(NULL)
   }
   kind <- provenance$kind
+  constant <- .prior_density_ordinate_provenance_constant(provenance)
+  if(!is.null(constant)) return(c(lower = constant, upper = constant))
   if(identical(kind, "primitive")){
     truncation <- provenance$truncation
     if(is.list(truncation)){
@@ -1527,8 +1570,47 @@ prior_density_has_provenance <- function(x){
         if(is.infinite(support[2L])) Inf else log(support[2L])
       )
     }
-    mapped <- provenance$offset + provenance$scale * support
+    mapped <- .prior_density_ordinate_provenance_image(
+      support, "lin", list(a = provenance$offset, b = provenance$scale)
+    )
+    if(is.null(mapped)) return(NULL)
     return(range(mapped))
+  }
+  if(identical(kind, "convolution")){
+    weights <- provenance$weights
+    terms <- provenance$terms
+    if(!is.numeric(provenance$offset) || length(provenance$offset) != 1L ||
+       !is.finite(provenance$offset) || !is.numeric(weights) ||
+       any(!is.finite(weights)) || !is.list(terms) || length(terms) != length(weights)){
+      return(NULL)
+    }
+    bounds <- rep(provenance$offset, 2L)
+    for(i in which(weights != 0)){
+      support <- .prior_density_ordinate_provenance_support(terms[[i]])
+      if(is.null(support)) return(NULL)
+      mapped <- .prior_density_ordinate_provenance_image(support, "lin", list(a = 0, b = weights[i]))
+      if(is.null(mapped)) return(NULL)
+      bounds <- bounds + range(mapped)
+      if(anyNA(bounds)) return(NULL)
+    }
+    return(c(lower = bounds[1L], upper = bounds[2L]))
+  }
+  if(identical(kind, "named_transform")){
+    transformation <- provenance$transformation
+    if(!is.character(transformation) || length(transformation) != 1L ||
+       !transformation %in% c("lin", "exp", "exp_lin", "tanh")) return(NULL)
+    arguments <- .prior_density_ordinate_transform_arguments(transformation, provenance$arguments)
+    if(is.null(arguments)) return(NULL)
+    if(transformation %in% c("lin", "exp_lin") && arguments$b == 0){
+      location <- if(transformation == "lin") arguments$a else exp(arguments$a)
+      if(!is.finite(location) || transformation == "exp_lin" && location == 0) return(NULL)
+      return(c(lower = location, upper = location))
+    }
+    support <- .prior_density_ordinate_provenance_support(provenance$source)
+    if(is.null(support) || transformation == "exp_lin" && support[1L] < 0) return(NULL)
+    mapped <- .prior_density_ordinate_provenance_image(support, transformation, arguments)
+    if(is.null(mapped)) return(NULL)
+    return(c(lower = min(mapped), upper = max(mapped)))
   }
   if(identical(kind, "finite_mixture") && length(provenance$components) > 0L){
     components <- provenance$components[vapply(
@@ -1595,6 +1677,8 @@ prior_density_has_provenance <- function(x){
     return(NULL)
   }
   kind <- provenance$kind
+  constant <- .prior_density_ordinate_provenance_constant(provenance)
+  if(!is.null(constant)) return(constant)
   if(identical(kind, "linear_normal") ||
      (identical(kind, "scale_mixture") && !is.null(provenance$support))){
     # a scale-product route multiplies two continuous terms
@@ -1659,7 +1743,39 @@ prior_density_has_provenance <- function(x){
     }else if(!is.null(provenance$source_transform)){
       return(NULL)
     }
-    return(provenance$offset + provenance$scale * atoms)
+    return(.prior_density_ordinate_provenance_image(
+      atoms, "lin", list(a = provenance$offset, b = provenance$scale)
+    ))
+  }
+  if(identical(kind, "convolution")){
+    weights <- provenance$weights
+    terms <- provenance$terms
+    if(!is.numeric(provenance$offset) || length(provenance$offset) != 1L ||
+       !is.finite(provenance$offset) || !is.numeric(weights) ||
+       any(!is.finite(weights)) || !is.list(terms) || length(terms) != length(weights)) return(NULL)
+    active <- which(weights != 0)
+    if(length(active) == 0L) return(unname(provenance$offset))
+    atoms <- lapply(terms[active], .prior_density_ordinate_provenance_atoms)
+    if(any(vapply(atoms, function(x) !is.null(x) && length(x) == 0L, logical(1)))) return(numeric())
+    return(NULL)
+  }
+  if(identical(kind, "named_transform")){
+    transformation <- provenance$transformation
+    if(!is.character(transformation) || length(transformation) != 1L ||
+       !transformation %in% c("lin", "exp", "exp_lin", "tanh")) return(NULL)
+    arguments <- .prior_density_ordinate_transform_arguments(transformation, provenance$arguments)
+    if(is.null(arguments)) return(NULL)
+    if(transformation %in% c("lin", "exp_lin") && arguments$b == 0){
+      location <- if(transformation == "lin") arguments$a else exp(arguments$a)
+      if(!is.finite(location) || transformation == "exp_lin" && location == 0) return(NULL)
+      return(unname(location))
+    }
+    atoms <- .prior_density_ordinate_provenance_atoms(provenance$source)
+    if(is.null(atoms)) return(NULL)
+    if(transformation == "exp_lin" && any(atoms < 0 | atoms == 0 & arguments$b < 0)) return(NULL)
+    mapped <- .prior_density_ordinate_provenance_image(atoms, transformation, arguments)
+    if(is.null(mapped) || any(!is.finite(mapped))) return(NULL)
+    return(unname(mapped))
   }
   NULL
 }
@@ -1757,6 +1873,7 @@ prior_density_has_provenance <- function(x){
 # when C is not structurally known.
 .prior_density_ordinate_lower_log_coefficient <- function(provenance, p){
 
+  if(!is.null(.prior_density_ordinate_provenance_constant(provenance))) return(-Inf)
   kind <- provenance$kind
   if(identical(kind, "finite_mixture")){
     terms <- vapply(provenance$components, function(component){
@@ -1838,6 +1955,7 @@ prior_density_has_provenance <- function(x){
 
 .prior_density_ordinate_exp_lin_boundary <- function(provenance, b){
 
+  if(!is.null(.prior_density_ordinate_provenance_constant(provenance))) return("zero")
   support <- .prior_density_ordinate_provenance_support(provenance)
   if(!is.null(support)){
     relevant <- if(b > 0) support[1L] else support[2L]
@@ -2250,7 +2368,18 @@ prior_density_has_provenance <- function(x){
     ))
   }
   support <- .prior_density_ordinate_provenance_support(source_provenance)
-  if(is.null(support) || support[1L] < 0){
+  if(is.null(support)){
+    return(.prior_density_ordinate_result(
+      value       = value,
+      behavior    = "unknown",
+      log_density = NA_real_,
+      exact       = FALSE,
+      method      = "unsupported_provenance",
+      reason      = "The exponential-linear transformation lacks structural-domain information for its source.",
+      provenance  = provenance
+    ))
+  }
+  if(support[1L] < 0){
     return(.prior_density_ordinate_result(
       value       = value,
       behavior    = "undefined",
