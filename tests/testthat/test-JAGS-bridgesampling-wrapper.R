@@ -2,7 +2,8 @@ skip_if_not_test_profile("unit")
 
 test_that("bridge callbacks reject undefined priors and retain zero density outside support", {
 
-  posterior <- coda::mcmc(cbind(mu = seq(-.5, .5, length.out = 20), auxiliary = 1:20))
+  posterior <- coda::mcmc(cbind(mu = seq(-.5, .5, length.out = 20),
+    auxiliary = c(seq(2, 20, 2), seq(1, 19, 2))))
   proposal <- NA_real_
   callback_value <- NULL
   random_prior <- NULL
