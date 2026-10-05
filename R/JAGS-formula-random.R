@@ -289,6 +289,14 @@
       }else{
         ""
       }
+      if(identical(call_name, "^") && length(expression) == 3L){
+        degree <- expression[[3L]]
+        if(is.numeric(degree) && length(degree) == 1L && is.finite(degree) &&
+           degree >= 2 && degree <= .Machine$integer.max && degree == floor(degree)){
+          validate_expression(expression[[2L]])
+          return(invisible(TRUE))
+        }
+      }
       if(call_name %in% c("+", "-", "*", ":", "/", "^", "(")){
         for(argument in as.list(expression)[-1L]){
           validate_expression(argument)

@@ -105,8 +105,13 @@ rejected for such a term. The one exception is a mean-difference or
 orthonormal point mass at zero; an ordered prior is rejected even when its
 total is zero.
 
-Formula design metadata is authoritative for fixed and random terms. Every
-factor prior carries complete factor metadata (levels, level names,
+Formula design metadata is authoritative for fixed and random terms. Fixed
+and random coefficient formulas may use literal whole interaction-expansion
+degrees from 2 through `.Machine$integer.max`, such as `(x + z)^2`. This is the
+formula expansion operator, not arithmetic `I(x^2)` or expression arithmetic.
+Public degree 0/1 and symbolic powers retain the existing base-R terms refusal;
+fractional degrees retain the grammar refusal. Do not reorder formula parsing.
+Every factor prior carries complete factor metadata (levels, level names,
 contrasts, design, and cell names): formula terms and random-effect SD factor
 priors from their design, ordinary factor priors from
 `prior_factor_levels()`. Levels and coordinate names are never inferred from

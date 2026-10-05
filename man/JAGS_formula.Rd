@@ -149,7 +149,11 @@ Formula random effects require \code{prior_random}. Random-effect SD priors in
 Continuous fixed-effect terms must expand to one design-matrix column.
 Matrix-valued continuous predictors are not currently supported.
 Fixed formulas support literal data-column names and standard formula
-operators. Dot expansion, \code{offset()}, inline transformations, and
+operators, including interaction expansion such as \code{(x + z)^2} with
+literal whole degrees from 2 through \code{.Machine$integer.max}. This is
+formula expansion, not arithmetic powers; \code{I(x^2)} remains unsupported.
+Degree 0 or 1 and symbolic degrees retain the base-R formula refusal.
+Dot expansion, \code{offset()}, inline transformations, and
 arbitrary calls are rejected; create explicit data columns for transformed
 predictors. The BayesTools \code{expression(...)} facility accepts finite
 numeric constants, formula or model data, JAGS-style \code{i} indexing,
