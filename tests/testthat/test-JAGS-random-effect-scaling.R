@@ -25,7 +25,10 @@ test_that("D5 unscaled samples omit only internal latent and group coefficients"
     data.frame(x = c(1, 2, 3, 4), id = factor(c("a", "a", "b", "b"))),
     prior_list = list(
       intercept = prior("normal", list(0, 1)),
-      x = prior_spike_and_slab(prior("normal", list(0, 1)))
+      x = prior_spike_and_slab(
+        prior("normal", list(0, 1)),
+        prior_inclusion = prior("beta", list(2, 2))
+      )
     ),
     prior_random = prior_random(id = random_block(
       sd = prior("gamma", list(2, 2)),
@@ -43,13 +46,20 @@ test_that("D5 unscaled samples omit only internal latent and group coefficients"
                       "mu_x", "mu_x_indicator")
   posterior_names <- c(internal_names[1L], retained_names,
                        internal_names[2L])
-  posterior <- matrix(seq_len(3L * length(posterior_names)) / 10,
-                      nrow = 3L, dimnames = list(NULL, posterior_names))
+  posterior <- matrix(
+    c(.1, .2, .3, .4, .5, .6, .7, .8, .9,
+      1, 1.1, 1.2, 1.3, 1.4, 1.5, .2, .4, .6,
+      0, 2, 0, 0, 1, 0, .1, .22, .36),
+    nrow = 3L, dimnames = list(NULL, posterior_names)
+  )
   fit <- make_random_scale_table_fit(formula_result, posterior)
   attr(fit, "formula_scale") <- NULL
   original_fit <- serialize(fit, NULL)
-  expected <- matrix(c(4:24) / 10, nrow = 3L,
-                     dimnames = list(NULL, retained_names))
+  expected <- matrix(
+    c(.4, .5, .6, .7, .8, .9, 1, 1.1, 1.2,
+      1.3, 1.4, 1.5, .2, .4, .6, 0, 2, 0, 0, 1, 0),
+    nrow = 3L, dimnames = list(NULL, retained_names)
+  )
 
   coordinates <- parameter_coordinates(fit)
   retained_rows <- match(retained_names, coordinates$coordinate_name)
@@ -69,14 +79,14 @@ test_that("D5 removing every random coordinate retains a zero-column matrix", {
 
   formula_result <- JAGS_formula(
     ~ 1 + diag(1 | id), "mu", data.frame(id = factor(c("a", "a", "b", "b"))),
-    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_list = list(intercept = prior("point", list(0))),
     prior_random = prior_random(id = random_block(
       sd = prior("point", list(1)),
       monitor = random_monitor(latent = TRUE, coefficients = TRUE,
                                correlation = FALSE)
     ))
   )
-  posterior <- matrix(c(1, 2, 3, 4, 5, 6), nrow = 3L,
+  posterior <- matrix(c(1, 2, 3, 1, 2, 3), nrow = 3L,
                       dimnames = list(NULL, c("mu__xREx__id_xRE_Zx[1,1]",
                                              "mu__xREx__id_xRE_COEFx[1,1]")))
   fit <- make_random_scale_table_fit(formula_result, posterior)
