@@ -724,6 +724,8 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   finite <- is.finite(plot_data$y)
 
   geom <- ggplot2::geom_bar(
+    # Retain the unit-lag width when finite display lags are widely separated.
+    width = 0.9,
     data    = data.frame(
       x = plot_data$x[finite],
       y = plot_data$y[finite]),

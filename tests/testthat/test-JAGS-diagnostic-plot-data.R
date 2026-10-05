@@ -535,6 +535,7 @@ test_that("R116 D10 sparse ACF preserves original lags and explicit pair diagnos
   for(layer in built$data){
     expect_identical(as.integer(layer$x), c(0L, 29L))
     expect_equal(layer$y, reference[c(1L, 30L)], tolerance = 0)
+    expect_equal(layer$xmax - layer$xmin, rep(.9, 2L), tolerance = 1e-12)
     expect_true(all(is.finite(layer$y)))
   }
   expect_error(.diagnostics_plot_data(.sparse_acf_fit_for_test(2L), "theta", attr(fit, "prior_list"), NULL, FALSE), "The parameter with a spike and slab prior did not result in enough samples under the slab for producing a diagnostic figure.", fixed = TRUE)
