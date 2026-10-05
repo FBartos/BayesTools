@@ -68,6 +68,8 @@ of (transformed) posterior samples. Samples that lack monitored coordinates
 the priors require stop with an error of class
 \code{BayesTools_missing_monitored_columns} (also
 \code{BayesTools_marglik_input}); callers match the class, not the message.
+This includes ordinary scalar and vector priors. A named coordinate whose
+value is \code{NA} is present; literal point priors need no monitored coordinate.
 }
 \description{
 Extracts transformed parameters from the

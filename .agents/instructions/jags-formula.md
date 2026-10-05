@@ -21,6 +21,12 @@ others rather than patched only at the first failing consumer.
   `R/JAGS-bridge-posterior*.R`.
 - Generated deterministic nodes: `R/JAGS-deterministic-nodes*.R`.
 
+Ordinary scalar and vector bridge parameter extraction checks required monitor
+names before reading a posterior row and uses `BayesTools_missing_monitored_columns`
+(parent `BayesTools_marglik_input`) for absent coordinates. Preserve row-value
+shapes and names; a present NA value is distinct from an absent name, and literal
+point priors need no monitor.
+
 Every deterministic node BayesTools generates (allocation-derived SDs, scalar
 and LKJ correlations, publication weights, spike-and-slab and mixture
 parameters, formula linear predictors) belongs to one registered family whose

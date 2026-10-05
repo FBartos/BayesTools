@@ -21,6 +21,8 @@
 #' the priors require stop with an error of class
 #' \code{BayesTools_missing_monitored_columns} (also
 #' \code{BayesTools_marglik_input}); callers match the class, not the message.
+#' This includes ordinary scalar and vector priors. A named coordinate whose
+#' value is \code{NA} is present; literal point priors need no monitored coordinate.
 #'
 #' @inheritParams JAGS_bridgesampling
 #' @export JAGS_marglik_parameters
@@ -120,6 +122,9 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   }else if(prior[["distribution"]] == "point"){
     parameter[[parameter_name]] <- prior$parameters[["location"]]
   }else{
+    if(!parameter_name %in% names(samples)){
+      .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored scalar prior parameters.")
+    }
     parameter[[parameter_name]] <- samples[[ parameter_name ]]
   }
 
@@ -215,6 +220,9 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   if(prior[["distribution"]] == "mpoint"){
     parameter[[parameter_name]] <- rep(prior$parameters[["location"]], length(parameter_monitor_name))
   }else{
+    if(!all(parameter_monitor_name %in% names(samples))){
+      .bt_JAGS_marglik_missing_columns("'samples' does not contain all monitored vector prior parameters.")
+    }
     parameter[[parameter_name]] <- samples[ parameter_monitor_name ]
   }
 
