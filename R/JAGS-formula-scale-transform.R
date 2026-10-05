@@ -192,6 +192,15 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 #' be evaluated on the prior draws.
 #' Variance-allocation inclusion indicators are included, drawn from their
 #' inclusion probabilities.
+#' Valid LKJ concentrations do not guarantee representable primitive Beta draws.
+#' Nonfinite draws or draws outside the open interval `(0, 1)` stop before
+#' deterministic replay with `BayesTools_lkj_rng_unavailable` (parent
+#' `BayesTools_prior_rng_unavailable`). The condition records `block`,
+#' `primitive`, `K`, `eta`, original-row `failed_draws` and `n_failed`.
+#' Choose a concentration whose primitive draws remain representable; no retry,
+#' clamping, endpoint substitution or prior change is performed. Explicit scalar
+#' correlation transforms that numerically saturate a boundary retain their
+#' compiler refusal rather than changing the requested prior or scale.
 #'
 #' @return A matrix of prior samples on the original (unscaled) scale, with
 #' columns matching the structure of posterior samples.
@@ -429,10 +438,23 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
     keep <- primitive_names %in% column_names &
       !primitive_names %in% colnames(samples)
     for(i in which(keep)){
-      samples <- cbind(
-        samples,
-        stats::rbeta(n_samples, shape1 = alpha[[i]], shape2 = alpha[[i]])
-      )
+      primitive_draws <- stats::rbeta(n_samples, shape1 = alpha[[i]], shape2 = alpha[[i]])
+      failed_draws <- which(!is.finite(primitive_draws) | primitive_draws <= 0 | primitive_draws >= 1)
+      if(length(failed_draws) > 0L){
+        stop(errorCondition(
+          paste0("LKJ prior sampling for block '", random_term$block_name,
+            "' is numerically unavailable: primitive '", primitive_names[[i]],
+            "' produced ", length(failed_draws),
+            " nonfinite or out-of-support draws outside (0, 1) at K = ", as.integer(K),
+            " and eta = ", format(eta, digits = 17, trim = TRUE),
+            ". Choose a concentration whose primitive draws remain representable inside this interval."),
+          call = NULL,
+          class = c("BayesTools_lkj_rng_unavailable", "BayesTools_prior_rng_unavailable"),
+          block = random_term$block_name, primitive = primitive_names[[i]],
+          K = K, eta = eta, failed_draws = failed_draws, n_failed = length(failed_draws)
+        ))
+      }
+      samples <- cbind(samples, primitive_draws)
       colnames(samples)[ncol(samples)] <- primitive_names[[i]]
     }
     # The monitored Cholesky factors, correlation matrices, and partial

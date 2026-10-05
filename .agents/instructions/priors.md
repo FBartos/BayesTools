@@ -49,6 +49,15 @@ initialization near the minimum can repeatedly refuse a ratio no longer
 representable strictly inside `(0, 1)`; preserve its explicit refusal and all
 requested settings rather than promise universal fitting success.
 
+LKJ prior sampling validates each unchanged Beta RNG call before storing its
+primitive draws or deterministic replay. Nonfinite or endpoint draws outside
+`(0, 1)` stop with `BayesTools_lkj_rng_unavailable`, parent
+`BayesTools_prior_rng_unavailable`, with block/primitive/K/eta and original failed
+row indices/count. Accepted values, call order and RNG stream are unchanged.
+No retry, clamping, endpoint replacement or concentration change is allowed;
+valid concentrations do not guarantee numerical representability. Scalar
+correlation transforms keep their clear compiler refusal at saturated bounds.
+
 An assembled fixed weight function requires reference-bin weight exactly
 numeric `1`, including named and integer values. Nearby values are refused;
 nonreference zero and above-one weights stay valid. An unbound `wf_fixed()`

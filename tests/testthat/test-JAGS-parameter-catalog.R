@@ -5158,3 +5158,61 @@ test_that("catalog aliases equal the per-quantity data frame assembly they repla
     reference_alias_parts("no candidates")
   )
 })
+
+test_that("R116 D8 actual extreme LKJ primitives fail with numerical provenance", {
+
+  block <- .lkj_block_fit(2L, 1e-300)
+  correlation <- block$random_term$correlation
+  columns <- unique(c(JAGS_to_monitor(block$formula_result$prior_list),
+    .prior_monitor_matrix_names(correlation$cholesky_name, 2L),
+    .prior_monitor_matrix_names(correlation$correlation_name, 2L),
+    correlation$primitive_names, correlation$cpc_names))
+  fit <- .prior_monitor_test_fit(block$formula_result, columns)
+  condition <- tryCatch(transform_prior_samples(fit, n_samples = 16L, seed = 1L), error = identity)
+  expect_s3_class(condition, "BayesTools_lkj_rng_unavailable")
+  expect_s3_class(condition, "BayesTools_prior_rng_unavailable")
+  expect_null(conditionCall(condition))
+  expect_identical(condition$block, block$random_term$block_name)
+  expect_identical(condition$primitive, correlation$primitive_names[[1L]])
+  expect_identical(condition$K, 2L)
+  expect_identical(condition$eta, 1e-300)
+  expect_identical(condition$failed_draws, 1:16)
+  expect_identical(condition$n_failed, 16L)
+  expect_identical(conditionMessage(condition), paste0(
+    "LKJ prior sampling for block '", block$random_term$block_name,
+    "' is numerically unavailable: primitive '", correlation$primitive_names[[1L]],
+    "' produced 16 nonfinite or out-of-support draws outside (0, 1) at K = 2 and eta = 1e-300. Choose a concentration whose primitive draws remain representable inside this interval."))
+  primitive_only <- .prior_monitor_test_fit(block$formula_result, correlation$primitive_names)
+  expect_error(transform_prior_samples(primitive_only, n_samples = 16L, seed = 1L), class = "BayesTools_lkj_rng_unavailable")
+})
+
+test_that("R116 D8 ordinary LKJ prior values and caller RNG remain valid", {
+
+  block <- .lkj_block_fit(2L, 1)
+  correlation <- block$random_term$correlation
+  columns <- unique(c(JAGS_to_monitor(block$formula_result$prior_list),
+    .prior_monitor_matrix_names(correlation$cholesky_name, 2L),
+    .prior_monitor_matrix_names(correlation$correlation_name, 2L),
+    correlation$primitive_names, correlation$cpc_names))
+  fit <- .prior_monitor_test_fit(block$formula_result, columns)
+  set.seed(421)
+  before <- .Random.seed
+  samples <- transform_prior_samples(fit, n_samples = 16L, seed = 1L)
+  expect_identical(.Random.seed, before)
+  expect_identical(dim(samples), c(16L, 12L))
+  expect_true(all(is.finite(samples)))
+  expect_true(all(samples[, correlation$primitive_names] > 0 & samples[, correlation$primitive_names] < 1))
+  expect_equal(samples[, paste0(correlation$correlation_name, "[1,1]")], rep(1, 16), tolerance = 0)
+})
+
+test_that("R116 D8 nonfinite LKJ RNG mock preserves condition row indices", {
+
+  # Transport-only mock; the real eta=1e-300 test above supplies numerical evidence.
+  block <- .lkj_block_fit(2L, 1)
+  testthat::local_mocked_bindings(rbeta = function(n, shape1, shape2) c(.5, NA, .7, Inf), .package = "stats")
+  condition <- tryCatch(.bt_add_lkj_prior_samples(matrix(numeric(), 4L, 0L),
+    list(mu = block$formula_result$formula_design), block$random_term$correlation$primitive_names, 4L), error = identity)
+  expect_s3_class(condition, "BayesTools_lkj_rng_unavailable")
+  expect_identical(condition$failed_draws, c(2L, 4L))
+  expect_identical(condition$n_failed, 2L)
+})

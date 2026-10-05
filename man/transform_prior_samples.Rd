@@ -72,6 +72,15 @@ priors are not included, so catalog quantities that depend on them cannot
 be evaluated on the prior draws.
 Variance-allocation inclusion indicators are included, drawn from their
 inclusion probabilities.
+Valid LKJ concentrations do not guarantee representable primitive Beta draws.
+Nonfinite draws or draws outside the open interval \verb{(0, 1)} stop before
+deterministic replay with \code{BayesTools_lkj_rng_unavailable} (parent
+\code{BayesTools_prior_rng_unavailable}). The condition records \code{block},
+\code{primitive}, \code{K}, \code{eta}, original-row \code{failed_draws} and \code{n_failed}.
+Choose a concentration whose primitive draws remain representable; no retry,
+clamping, endpoint substitution or prior change is performed. Explicit scalar
+correlation transforms that numerically saturate a boundary retain their
+compiler refusal rather than changing the requested prior or scale.
 }
 \examples{
 # With a fitted model that used formula_scale:
