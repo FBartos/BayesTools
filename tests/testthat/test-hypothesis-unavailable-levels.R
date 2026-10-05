@@ -25,11 +25,11 @@ test_that("D3 whole-factor unavailable rows retain labels and valid siblings", {
     if(inherits(result, "error")) next
     expect_identical(result$method[1L], "unavailable")
     expect_true(all(is.na(result[1L, c("BF", "BF_error", "prior", "posterior")])))
-    expect_true(nzchar(result$warning[1L]))
+    expect_true(nzchar(attr(result, "warnings")[[rownames(result)[1L]]]))
     expect_identical(rownames(result), paste0("mu_fac[", c("A", "B", "C"), "]"))
     for(level in c("B", "C")){
-      scalar <- hypothesis_BF(posterior, hypothesis = gsub("mu_fac", paste0("mu_fac[", level, "]"), statement, fixed = TRUE),
-                              columns = "all", seed = 8)
+      scalar <- hypothesis_BF(.hypothesis_marginal_child(posterior[[level]]),
+                              hypothesis = statement, parameter = "mu_fac", columns = "all", seed = 8)
       expect_equal(as.numeric(result[level == c("A", "B", "C"), "BF"]), as.numeric(scalar$BF), tolerance = 1e-14)
     }
     expect_identical(result$Alternative, rep(if(statement == "mu_fac = 0") "mu_fac != 0" else sub(" vs.*", "", statement), 3))
@@ -38,7 +38,8 @@ test_that("D3 whole-factor unavailable rows retain labels and valid siblings", {
                class = "BayesTools_hypothesis_ordinate")
   expect_error(hypothesis_BF(posterior, hypothesis = "mu_fac[A] > 0"),
                class = "BayesTools_hypothesis_region")
-  expect_error(hypothesis_BF(posterior, hypothesis = "unknown = 0"))
+  expect_error(hypothesis_BF(posterior, hypothesis = "mu_fac[missing] = 0"),
+               class = "BayesTools_parameter_not_found")
 })
 
 test_that("D3 opted-in routes catch errors while warnings and generic errors propagate", {
@@ -52,12 +53,61 @@ test_that("D3 opted-in routes catch errors while warnings and generic errors pro
   })
   continuous <- posterior
   continuous$A <- NULL
-  expect_warning(result <- hypothesis_BF(continuous, hypothesis = "mu_fac = 0", parameter = "mu_fac"),
-                  class = "BayesTools_hypothesis_ordinate")
+  warnings <- list()
+  result <- withCallingHandlers(hypothesis_BF(continuous, hypothesis = "mu_fac = 0", parameter = "mu_fac"),
+    warning = function(w){ warnings[[length(warnings) + 1L]] <<- w; invokeRestart("muffleWarning") })
+  expect_true(length(warnings) > 0L)
+  expect_true(all(vapply(warnings, inherits, logical(1), "BayesTools_hypothesis_ordinate")))
   expect_true(all(is.finite(as.numeric(result$BF))))
   testthat::local_mocked_bindings(.package = "BayesTools", .hypothesis_check_prior_ordinate = function(...) stop("Metadata is malformed.", call. = FALSE))
   expect_error(hypothesis_BF(posterior, hypothesis = "mu_fac = 0", parameter = "mu_fac"),
                "Metadata is malformed.", fixed = TRUE)
+})
+
+test_that("D3 known region diagnostic refusals form complete unavailable tables", {
+
+  posterior <- .unavailable_factor_posterior()
+  testthat::local_mocked_bindings(.package = "BayesTools",
+    .prior_region_from_adaptive = function(...) list(available = TRUE,
+      converged = FALSE, probability = .5, messages = "known integration failure",
+      absolute_error = .001))
+  result <- hypothesis_BF(posterior, hypothesis = "mu_fac > 0", parameter = "mu_fac", columns = "all")
+  expect_true(all(is.na(as.numeric(result$BF))))
+  expect_identical(result$method, rep("unavailable", 3L))
+  expect_match(attr(result, "warnings")[["mu_fac[B]"]],
+               "Conditional-normal prior probability was rejected by diagnostics:", fixed = TRUE)
+  exported <- as.data.frame(result)
+  expect_true(all(nzchar(exported$warning)))
+  expect_true(any(grepl("known integration failure", capture.output(print(result)), fixed = TRUE)))
+  condition <- tryCatch(hypothesis_BF(.hypothesis_marginal_child(posterior$B),
+    hypothesis = "mu_fac > 0", parameter = "mu_fac"), error = identity)
+  expect_s3_class(condition, "BayesTools_prior_region_probability_rejected")
+  expect_identical(condition$diagnostics$absolute_error, .001)
+  expect_error(.prior_linear_density_stop_refinement(NULL, quantity = "probability"),
+    "Adaptive prior-probability evaluation did not converge within the documented grid-refinement error criterion.",
+    class = "BayesTools_prior_region_probability_rejected", fixed = TRUE)
+})
+
+test_that("D3 region missing provenance and invalid probability metadata remain strict", {
+
+  posterior <- .unavailable_factor_posterior()
+  density <- .bt_meta_get(posterior$B, "prior_density")
+  attr(density, "adaptive_evaluation") <- NULL
+  posterior$B <- .bt_meta_set(posterior$B, "prior_density", density)
+  expect_error(hypothesis_BF(posterior, hypothesis = "mu_fac > 0", parameter = "mu_fac"),
+               "provenance", fixed = TRUE)
+  testthat::local_mocked_bindings(.package = "BayesTools",
+    .prior_linear_density_region_probability = function(...){
+      probability <- 2
+      attr(probability, "numerical_diagnostics") <- list(absolute_error = .001)
+      probability
+    })
+  condition <- tryCatch(hypothesis_BF(.hypothesis_marginal_child(posterior$C),
+    hypothesis = "mu_fac > 0", parameter = "mu_fac"), error = identity)
+  expect_s3_class(condition, "BayesTools_prior_region_probability_rejected")
+  expect_identical(conditionMessage(condition), "Computed prior probability lies materially outside [0, 1].")
+  expect_identical(condition$probability, 2)
+  expect_identical(condition$absolute_error, .001)
 })
 
 test_that("D3 marginal table known prior refusals preserve reasons and scalar strictness", {
