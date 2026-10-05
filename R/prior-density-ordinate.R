@@ -2528,7 +2528,8 @@ prior_density_has_provenance <- function(x){
       behavior    = "zero",
       log_density = -Inf,
       exact       = TRUE,
-      method      = "declared_point_only_measure",
+      method      = "point",
+      reason      = "The declared prior measure has no continuous part.",
       provenance  = list(kind = "point_only_measure")
     )
   }
