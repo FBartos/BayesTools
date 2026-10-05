@@ -417,6 +417,8 @@ old behaviour.
     `random_block(contrasts = )` overrides it. Factor designs of random slopes
     are built under the memory limit of option
     `BayesTools.random_effects_memory_limit_bytes`.
+    R manages the temporary workspace used by native LKJ transforms, including
+    paths that reject coordinates or encounter allocation errors.
   - `random_variance_allocation()` splits a total variance across random-effect
     components with Dirichlet weights, optionally with independent Bernoulli
     inclusion gates (also a gate-only allocation of one component). Its
@@ -1073,8 +1075,6 @@ old behaviour.
     computed from sampled draws keep the empirical quantiles.
 
 ### Fixes
-- native LKJ transforms use R-managed workspace so validation and allocation
-  errors safely release it.
 - prior densities and distribution methods:
   - prior densities of linear combinations (the prior densities of formula
     levels and marginal means from `marginal_posterior()`, of
