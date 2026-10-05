@@ -143,7 +143,7 @@ test_that("R133 D3 transports the specific image leaf while computing valid sibl
   posterior$A <- NULL
   region_mass <- .hypothesis_region_mass
   testthat::local_mocked_bindings(.package = "BayesTools", .hypothesis_region_mass = function(quantity, side, prior){
-    if(prior && identical(quantity$label, "mu_fac[B]")){
+    if(prior && quantity$label %in% c("mu_fac[B]", "mu_fac")){
       region <- list(intervals = .prior_region_intervals(-Inf, 0), indicator = function(x) x <= 0)
       result <- .prior_region_transformed("exp_lin", list(b = 2), region,
         function(r) .prior_region_atoms(1e-300, 1, r), function() c(0, Inf))
