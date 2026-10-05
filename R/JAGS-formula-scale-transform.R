@@ -22,7 +22,8 @@
 #' columns and realized \code{xRE_COEFx} columns) are omitted from the returned
 #' matrix. They do not have the same transformation as fixed coefficients or
 #' random-effect covariance summaries and must not be presented as
-#' original-scale coefficients.
+#' original-scale coefficients. This omission also applies when no scaling
+#' information is supplied.
 #'
 #' For a k-way interaction between standardized predictors, the expansion of
 #' \eqn{\prod_{i} (x_i - \mu_i)/\sigma_i} contributes to all lower-order terms.
@@ -43,8 +44,10 @@
 #' \code{~ x + x:f} with \code{x} standardized) have no original-scale
 #' representation, and the function stops.
 #'
-#' @return \code{transform_scale_samples} returns posterior samples transformed
-#' back to the original predictor scale.
+#' @return A numeric matrix of posterior samples transformed back to the
+#' original predictor scale, with chains merged in their existing order.
+#' When no scaling information is supplied, the function returns the sample
+#' matrix without changing its values, rather than returning the fitted object.
 #'
 #' @seealso [JAGS_formula()] [JAGS_fit()]
 #'
@@ -66,8 +69,11 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
   }
 
   if(is.null(formula_scale) || length(formula_scale) == 0){
-    # no scaling information, return as is
-    return(fit)
+    # extract unscaled samples under the same internal-coordinate policy
+    return(.bt_remove_internal_random_coordinates(
+      posterior = .fit_to_posterior(fit),
+      coordinates = coordinates
+    ))
   }
   # the fitted structure is the model's, whatever standardization is passed
   formula_scale <- .bt_formula_scale_list_complete(formula_scale, fit)

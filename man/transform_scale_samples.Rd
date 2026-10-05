@@ -19,8 +19,10 @@ derived from the fitted structure stored in \code{fit}: the fixed-effect
 design, a log intercept, and the random-effect SD structure.}
 }
 \value{
-\code{transform_scale_samples} returns posterior samples transformed
-back to the original predictor scale.
+A numeric matrix of posterior samples transformed back to the
+original predictor scale, with chains merged in their existing order.
+When no scaling information is supplied, the function returns the sample
+matrix without changing its values, rather than returning the fitted object.
 }
 \description{
 Transforms posterior samples from standardized continuous
@@ -36,7 +38,8 @@ Internal standardized random-effect coordinates (latent \code{xRE_Zx}
 columns and realized \code{xRE_COEFx} columns) are omitted from the returned
 matrix. They do not have the same transformation as fixed coefficients or
 random-effect covariance summaries and must not be presented as
-original-scale coefficients.
+original-scale coefficients. This omission also applies when no scaling
+information is supplied.
 
 For a k-way interaction between standardized predictors, the expansion of
 \eqn{\prod_{i} (x_i - \mu_i)/\sigma_i} contributes to all lower-order terms.

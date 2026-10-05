@@ -122,6 +122,11 @@ old behaviour.
   - `transform_scale_samples()` accepts only models fitted with `JAGS_fit()`;
     matrices of posterior samples and plain `runjags` or `mcmc` objects stop.
     Pass the fitted object, whose stored design verifies the transformation.
+    It always returns a numeric sample matrix with chains merged in their
+    existing order, including when scaling is absent or explicitly disabled
+    with `formula_scale = list()`; the unscaled path previously returned the
+    fitted object. Both paths omit internal latent and realized random-effect
+    coefficient coordinates under the same policy.
   - original-scale transforms (`transform_scaled = TRUE` of ensemble and
     marginal tables, `plot_transformed_prior()`, and prior densities with
     `formula_scale`) require the fitted design that the `formula_scale`

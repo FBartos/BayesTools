@@ -131,6 +131,68 @@ test_that("formula coefficient transforms expose the sample transformation", {
   .bt_attach_fit_contract(fit)
 }
 
+test_that("D5 unscaled fitted chains return a numeric matrix in chain order", {
+
+  columns <- c("theta", "alpha")
+  chains <- coda::mcmc.list(
+    coda::mcmc(matrix(c(11, 12, 21, 22), nrow = 2L,
+                      dimnames = list(NULL, columns))),
+    coda::mcmc(matrix(c(31, 32, 41, 42), nrow = 2L,
+                      dimnames = list(NULL, columns)))
+  )
+  fit <- .parameter_catalog_test_fit(
+    chains,
+    prior_list = list(theta = prior("normal", list(0, 1)),
+                      alpha = prior("normal", list(0, 1)))
+  )
+  original_fit <- serialize(fit, NULL)
+  expected <- matrix(c(11, 21, 12, 22, 31, 41, 32, 42),
+                     nrow = 4L, byrow = TRUE,
+                     dimnames = list(NULL, columns))
+
+  for(formula_scale in list(NULL, list())){
+    samples <- transform_scale_samples(fit, formula_scale)
+    expect_true(is.matrix(samples))
+    expect_true(is.numeric(samples))
+    expect_identical(dim(samples), c(4L, 2L))
+    expect_identical(colnames(samples), columns)
+    expect_identical(samples, expected)
+  }
+  expect_identical(serialize(fit, NULL), original_fit)
+})
+
+test_that("D5 an empty scale overrides fitted scaling for a single chain", {
+
+  formula_result <- JAGS_formula(
+    ~ 1 + x, "mu", data.frame(x = c(2, 4, 6)),
+    prior_list = list(intercept = prior("normal", list(0, 1)),
+                      x = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE)
+  )
+  expected <- matrix(c(2, 3, 4, 5), nrow = 2L, byrow = TRUE,
+                     dimnames = list(NULL, c("mu_intercept", "mu_x")))
+  fit <- .formula_coefficient_sample_fit(formula_result, expected)
+  original_fit <- serialize(fit, NULL)
+
+  samples <- transform_scale_samples(fit, formula_scale = list())
+  expect_true(is.matrix(samples))
+  expect_true(is.numeric(samples))
+  expect_identical(dim(samples), c(2L, 2L))
+  expect_identical(colnames(samples), c("mu_intercept", "mu_x"))
+  expect_identical(samples, expected)
+  expect_identical(
+    transform_scale_samples(fit),
+    matrix(c(-4, 1.5, -6, 2.5), nrow = 2L, byrow = TRUE,
+           dimnames = list(NULL, c("mu_intercept", "mu_x")))
+  )
+  expect_identical(serialize(fit, NULL), original_fit)
+
+  attr(fit, "formula_scale") <- NULL
+  unscaled_fit <- serialize(fit, NULL)
+  expect_identical(transform_scale_samples(fit), expected)
+  expect_identical(serialize(fit, NULL), unscaled_fit)
+})
+
 .formula_coefficient_design_matrix <- function(formula_result){
 
   data_names <- names(formula_result$data)[

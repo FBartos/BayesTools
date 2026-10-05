@@ -18,6 +18,79 @@ make_random_scale_table_fit <- function(formula_result, posterior){
   attach_test_parameter_map(fit)
 }
 
+test_that("D5 unscaled samples omit only internal latent and group coefficients", {
+
+  formula_result <- JAGS_formula(
+    ~ 1 + x + us(1 + x | id), "mu",
+    data.frame(x = c(1, 2, 3, 4), id = factor(c("a", "a", "b", "b"))),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior_spike_and_slab(prior("normal", list(0, 1)))
+    ),
+    prior_random = prior_random(id = random_block(
+      sd = prior("gamma", list(2, 2)),
+      cor = prior_lkj(eta = 1, include_primitives = TRUE),
+      monitor = random_monitor(latent = TRUE, coefficients = TRUE,
+                               correlation = TRUE)
+    ))
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  internal_names <- c("mu__xREx__id_xRE_Zx[1,1]",
+                      "mu__xREx__id_xRE_COEFx[1,1]")
+  retained_names <- c("mu_x_inclusion", "mu_intercept",
+                      random_term$sd_parameter_names,
+                      random_term$correlation$primitive_names,
+                      "mu_x", "mu_x_indicator")
+  posterior_names <- c(internal_names[1L], retained_names,
+                       internal_names[2L])
+  posterior <- matrix(seq_len(3L * length(posterior_names)) / 10,
+                      nrow = 3L, dimnames = list(NULL, posterior_names))
+  fit <- make_random_scale_table_fit(formula_result, posterior)
+  attr(fit, "formula_scale") <- NULL
+  original_fit <- serialize(fit, NULL)
+  expected <- matrix(c(4:24) / 10, nrow = 3L,
+                     dimnames = list(NULL, retained_names))
+
+  coordinates <- parameter_coordinates(fit)
+  retained_rows <- match(retained_names, coordinates$coordinate_name)
+  expect_true(any(coordinates$internal[retained_rows]))
+  for(formula_scale in list(NULL, list())){
+    samples <- transform_scale_samples(fit, formula_scale)
+    expect_true(is.matrix(samples))
+    expect_true(is.numeric(samples))
+    expect_identical(dim(samples), c(3L, 7L))
+    expect_identical(colnames(samples), retained_names)
+    expect_identical(samples, expected)
+  }
+  expect_identical(serialize(fit, NULL), original_fit)
+})
+
+test_that("D5 removing every random coordinate retains a zero-column matrix", {
+
+  formula_result <- JAGS_formula(
+    ~ 1 + diag(1 | id), "mu", data.frame(id = factor(c("a", "a", "b", "b"))),
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(id = random_block(
+      sd = prior("point", list(1)),
+      monitor = random_monitor(latent = TRUE, coefficients = TRUE,
+                               correlation = FALSE)
+    ))
+  )
+  posterior <- matrix(c(1, 2, 3, 4, 5, 6), nrow = 3L,
+                      dimnames = list(NULL, c("mu__xREx__id_xRE_Zx[1,1]",
+                                             "mu__xREx__id_xRE_COEFx[1,1]")))
+  fit <- make_random_scale_table_fit(formula_result, posterior)
+  original_fit <- serialize(fit, NULL)
+  samples <- transform_scale_samples(fit, formula_scale = list())
+
+  expect_true(is.matrix(samples))
+  expect_true(is.numeric(samples))
+  expect_identical(dim(samples), c(3L, 0L))
+  expect_identical(samples, matrix(numeric(), nrow = 3L, ncol = 0L,
+                                  dimnames = list(NULL, character())))
+  expect_identical(serialize(fit, NULL), original_fit)
+})
+
 test_that("JAGS_estimates_table suppresses fixed warnings for random-only scaled slopes", {
 
   skip_if_not_installed("runjags")
