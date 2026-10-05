@@ -2,6 +2,7 @@
 #include "../lkj/BTLKJCore.h"
 
 #include <cmath>
+#include <limits>
 #include <vector>
 
 namespace jags {
@@ -9,14 +10,24 @@ namespace jags {
 
     namespace {
 
-      bool valid_K(double K_value)
-      {
-        return std::isfinite(K_value) && K_value >= 2.0 && std::floor(K_value) == K_value;
-      }
-
       unsigned int as_K(double K_value)
       {
         return static_cast<unsigned int>(K_value);
+      }
+
+      bool valid_geometry(std::vector<double const *> const &args,
+                          std::vector<unsigned int> const &lengths)
+      {
+        if(lengths[1] != 1){
+          return false;
+        }
+        const double K_value = *args[1];
+        if(!std::isfinite(K_value) || K_value < 2.0 || std::floor(K_value) != K_value ||
+           K_value * K_value > static_cast<double>(std::numeric_limits<unsigned int>::max())){
+          return false;
+        }
+
+        return lengths[0] == bayestools::lkj::n_cpc(as_K(K_value));
       }
 
       bool finite_transform_u(double const *u, unsigned int length)
@@ -36,12 +47,7 @@ namespace jags {
       bool check_lkj_args(std::vector<double const *> const &args,
                           std::vector<unsigned int> const &lengths)
       {
-        if(lengths[1] != 1 || !valid_K(*args[1])){
-          return false;
-        }
-
-        unsigned int K = as_K(*args[1]);
-        return lengths[0] == bayestools::lkj::n_cpc(K) &&
+        return valid_geometry(args, lengths) &&
           finite_transform_u(args[0], lengths[0]);
       }
     }
@@ -54,13 +60,16 @@ namespace jags {
                                  std::vector<double const *> const &args,
                                  std::vector<unsigned int> const &lengths) const
     {
+      if(!valid_geometry(args, lengths)){
+        return;
+      }
       bayestools::lkj::fill_cholesky_from_u(value, args[0], as_K(*args[1]));
     }
 
     unsigned int BTLKJCholesky::length(std::vector<unsigned int> const &lengths,
                                        std::vector<double const *> const &args) const
     {
-      if(lengths[1] != 1 || !valid_K(*args[1])){
+      if(!valid_geometry(args, lengths)){
         return 0;
       }
       unsigned int K = as_K(*args[1]);
@@ -101,13 +110,16 @@ namespace jags {
                              std::vector<double const *> const &args,
                              std::vector<unsigned int> const &lengths) const
     {
+      if(!valid_geometry(args, lengths)){
+        return;
+      }
       bayestools::lkj::fill_corr_from_u(value, args[0], as_K(*args[1]));
     }
 
     unsigned int BTLKJCorr::length(std::vector<unsigned int> const &lengths,
                                    std::vector<double const *> const &args) const
     {
-      if(lengths[1] != 1 || !valid_K(*args[1])){
+      if(!valid_geometry(args, lengths)){
         return 0;
       }
       unsigned int K = as_K(*args[1]);

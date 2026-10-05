@@ -1,6 +1,8 @@
 #include "lkj/BTLKJCore.h"
 
 #include <cmath>
+#include <climits>
+#include <cstdint>
 
 #include <Rinternals.h>
 #include <R_ext/Error.h>
@@ -22,6 +24,16 @@ unsigned int scalar_K(SEXP K)
   }
 
   return static_cast<unsigned int>(value);
+}
+
+unsigned int checked_n_pairs(unsigned int K)
+{
+  const uint64_t n_pairs = static_cast<uint64_t>(K) * (K - 1) / 2;
+  if(n_pairs > static_cast<uint64_t>(INT_MAX)){
+    Rf_error("Native LKJ geometry is unavailable for 'K' = %d.", static_cast<int>(K));
+  }
+
+  return static_cast<unsigned int>(n_pairs);
 }
 
 double scalar_eta(SEXP eta)
@@ -73,7 +85,7 @@ SEXP coerce_numeric(SEXP x, const char *name)
 SEXP lkj_cholesky_from_u(SEXP u, SEXP K)
 {
   const unsigned int K_value = scalar_K(K);
-  const unsigned int n_pairs = bayestools::lkj::n_cpc(K_value);
+  const unsigned int n_pairs = checked_n_pairs(K_value);
 
   SEXP u_real = PROTECT(coerce_numeric(u, "u"));
   const bool matrix_input = is_matrix(u);
@@ -90,15 +102,27 @@ SEXP lkj_cholesky_from_u(SEXP u, SEXP K)
     Rf_error("'u' must have K * (K - 1) / 2 columns or elements.");
   }
 
-  double const *u_ptr = REAL(u_real);
-  double *row_major = reinterpret_cast<double *>(R_alloc(static_cast<size_t>(K_value) * K_value, sizeof(double)));
+  const uint64_t k_square = static_cast<uint64_t>(K_value) * K_value;
+  if(n_draws > 0 && n_draws > static_cast<uint64_t>(UINT_MAX) / k_square){
+    Rf_error("Native LKJ output is unavailable for %u draws with 'K' = %d.",
+             n_draws, static_cast<int>(K_value));
+  }
+  const uint64_t output_length = static_cast<uint64_t>(n_draws) * k_square;
+  if(output_length > static_cast<uint64_t>(R_XLEN_T_MAX)){
+    Rf_error("Native LKJ output is unavailable for %u draws with 'K' = %d.",
+             n_draws, static_cast<int>(K_value));
+  }
 
-  SEXP out = PROTECT(Rf_allocVector(REALSXP, n_draws * K_value * K_value));
+  double const *u_ptr = REAL(u_real);
+  double *row_major = n_draws == 0 ? nullptr :
+    reinterpret_cast<double *>(R_alloc(static_cast<size_t>(k_square), sizeof(double)));
+
+  SEXP out = PROTECT(Rf_allocVector(REALSXP, static_cast<R_xlen_t>(output_length)));
   double *out_ptr = REAL(out);
 
   for(unsigned int draw = 0; draw < n_draws; ++draw){
     if(matrix_input){
-      double const *draw_u = u_ptr + draw;
+      double const *draw_u = n_pairs == 0 ? nullptr : u_ptr + draw;
       check_u_values_strided(draw_u, n_pairs, n_draws);
       bayestools::lkj::fill_cholesky_from_u_strided(&row_major[0], n_pairs == 0 ? 0 : draw_u, K_value, n_draws);
     }else{
@@ -200,7 +224,7 @@ extern "C" SEXP BayesTools_lkj_alpha(SEXP K, SEXP eta)
 {
   const unsigned int K_value = scalar_K(K);
   const double eta_value = scalar_eta(eta);
-  const unsigned int n_pairs = bayestools::lkj::n_cpc(K_value);
+  const unsigned int n_pairs = checked_n_pairs(K_value);
 
   SEXP out = PROTECT(Rf_allocVector(REALSXP, n_pairs));
   bayestools::lkj::fill_alpha(n_pairs == 0 ? 0 : REAL(out), K_value, eta_value);

@@ -418,7 +418,10 @@ old behaviour.
     are built under the memory limit of option
     `BayesTools.random_effects_memory_limit_bytes`.
     R manages the temporary workspace used by native LKJ transforms, including
-    paths that reject coordinates or encounter allocation errors.
+    paths that reject coordinates or encounter allocation errors. Native R
+    helpers check geometry and nonempty output counts before allocation, and
+    JAGS transforms check geometry before determining or evaluating their
+    output. Empty R transforms do not allocate a matrix workspace.
   - `random_variance_allocation()` splits a total variance across random-effect
     components with Dirichlet weights, optionally with independent Bernoulli
     inclusion gates (also a gate-only allocation of one component). Its

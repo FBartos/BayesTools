@@ -4374,6 +4374,82 @@ skip_if_not_installed("runjags")
   }
 })
 
+.eval_jags_lkj_geometry <- function(function_name, u, K, declared = FALSE){
+
+  syntax <- switch(function_name,
+    bt_lkj_cholesky = if(declared){
+      "model{ out[1:9] <- bt_lkj_cholesky(u, K) }"
+    }else{
+      "model{ out <- bt_lkj_cholesky(u, K) }"
+    },
+    bt_lkj_corr = if(declared){
+      "model{ out[1:9] <- bt_lkj_corr(u, K) }"
+    }else{
+      "model{ out <- bt_lkj_corr(u, K) }"
+    }
+  )
+  con <- textConnection(syntax)
+  on.exit(close(con), add = TRUE)
+  model <- rjags::jags.model(
+    file = con, data = list(u = u, K = K), n.chains = 1L,
+    n.adapt = 0L, quiet = TRUE
+  )
+  samples <- rjags::coda.samples(
+    model = model, variable.names = "out", n.iter = 1L,
+    quiet = TRUE, progress.bar = "none"
+  )
+  as.numeric(as.matrix(samples)[1L, ])
+}
+
+test_that("native JAGS LKJ transforms reject invalid geometry before evaluation", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not(
+    isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)),
+    "BayesTools JAGS module is unavailable."
+  )
+  for(function_name in c("bt_lkj_cholesky", "bt_lkj_corr")){
+    for(setting in list(
+      list(K = 65537, u = rep(.5, 32768L)),
+      list(K = 2^32, u = .5),
+      list(K = 1, u = .5),
+      list(K = 3, u = .5)
+    )){
+      expect_error(
+        .eval_jags_lkj_geometry(function_name, setting$u, setting$K),
+        "Zero dimension for variable out", fixed = TRUE
+      )
+    }
+    expect_error(
+      .eval_jags_lkj_geometry(function_name, .5, 1.5),
+      "Failed check for discrete-valued parameters", fixed = TRUE
+    )
+    expect_error(
+      .eval_jags_lkj_geometry(function_name, .5, 3, declared = TRUE),
+      "Dimension mismatch", fixed = TRUE
+    )
+
+    expected <- if(function_name == "bt_lkj_cholesky"){
+      c(1, 0, -.5, sqrt(3) / 2)
+    }else{
+      c(1, -.5, -.5, 1)
+    }
+    expect_equal(
+      .eval_jags_lkj_geometry(function_name, .25, 2), expected,
+      tolerance = 1e-12
+    )
+    expected_extension <- if(function_name == "bt_lkj_cholesky"){
+      c(1, 0, -1, 0)
+    }else{
+      c(1, -1, -1, 1)
+    }
+    expect_equal(
+      .eval_jags_lkj_geometry(function_name, -.25, 2), expected_extension,
+      tolerance = 1e-12
+    )
+  }
+})
+
 .eval_jags_lkj_cholesky_transform <- function(u, K) {
   skip_if_not(
     isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)),

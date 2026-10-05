@@ -113,6 +113,49 @@ test_that("native LKJ transforms enforce open u support directly", {
   )
 })
 
+test_that("native LKJ helpers check geometry before allocating", {
+
+  BayesTools:::.BayesTools_require_native_lkj()
+  expect_error(
+    .Call("BayesTools_lkj_cholesky_from_u", rep(.5, 32768L), 65537L,
+          PACKAGE = "BayesTools"),
+    "Native LKJ geometry is unavailable for 'K' = 65537.",
+    fixed = TRUE
+  )
+  for(K in c(65537L, 100000L)){
+    expect_error(
+      .Call("BayesTools_lkj_alpha", K, 1.25, PACKAGE = "BayesTools"),
+      paste0("Native LKJ geometry is unavailable for 'K' = ", K, "."),
+      fixed = TRUE
+    )
+  }
+  expect_error(
+    .Call("BayesTools_lkj_cholesky_from_u", numeric(0), 100000L,
+          PACKAGE = "BayesTools"),
+    "Native LKJ geometry is unavailable for 'K' = 100000.",
+    fixed = TRUE
+  )
+
+  empty_u <- structure(numeric(0), dim = c(0L, 2147450880L))
+  empty_L <- .Call("BayesTools_lkj_cholesky_from_u", empty_u, 65536L,
+                   PACKAGE = "BayesTools")
+  expect_identical(dim(empty_L), c(0L, 65536L, 65536L))
+  expect_length(empty_L, 0L)
+
+  for(K in c(1L, 2L, 4L)){
+    expected_alpha <- unlist(lapply(seq_len(K - 1L), function(row_offset){
+      1.25 + (K - seq_len(row_offset) - 1L) / 2
+    }), use.names = FALSE)
+    if(K == 1L){
+      expected_alpha <- numeric(0)
+    }
+    expect_identical(
+      .Call("BayesTools_lkj_alpha", K, 1.25, PACKAGE = "BayesTools"),
+      expected_alpha
+    )
+  }
+})
+
 test_that("LKJ alpha generation is available without native routines", {
   testthat::local_mocked_bindings(
     .BayesTools_require_native_lkj = function(){
