@@ -51,7 +51,15 @@ characterized by exactly one of \code{mode} or \code{tau}, a \code{df},
 an optional \code{order} that defaults to 1, and an optional
 \code{location} that defaults to 0.}
 \item{\code{"dirichlet"}}{for a Dirichlet distribution over a simplex,
-characterized by a positive concentration vector \code{alpha}. Density
+characterized by a concentration vector \code{alpha}. Numeric entries
+must be finite and at least \code{0.01}; this is a supported-input minimum,
+not a numerical guarantee. Positive expression-valued concentrations retain
+their existing JAGS-only support: expression containers, including literal
+elements, are not statically evaluated or validated, and R random generation
+refuses them. Cumulative weight functions and ordered allocations require
+numeric concentrations. Accepted sampling can still be unavailable; see
+\code{\link{prior_functions}}. Two-bin cumulative JAGS initialization near
+the minimum can repeatedly refuse unrepresentable interior ratios. Density
 and plot methods show one beta marginal per simplex coordinate.}
 }}
 

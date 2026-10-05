@@ -421,6 +421,9 @@
   if(length(parameters$alpha) < 2L){
     stop("The Dirichlet 'alpha' concentration vector must contain at least two values.", call. = FALSE)
   }
+  if(is.numeric(parameters$alpha)){
+    check_real(parameters$alpha, "alpha", lower = 0.01, allow_bound = TRUE, check_length = 0, allow_NA = FALSE)
+  }
 
   parameters$K <- length(parameters$alpha)
 

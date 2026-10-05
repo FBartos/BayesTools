@@ -1,5 +1,22 @@
 skip_if_not_test_profile("unit")
 
+test_that("D6 ordered declarations reuse the Dirichlet minimum and binding revalidates it", {
+
+  total <- prior("normal", list(0, 1))
+  expect_error(prior_ordered(total, allocation = prior("dirichlet", list(alpha = c(.0099, 1)))), "The 'alpha' must be equal or higher than 0.01.", fixed = TRUE)
+  p <- prior_ordered(total, allocation = prior("dirichlet", list(alpha = c(.01, 1))))
+  expect_s3_class(p, "prior.ordered")
+  expect_identical(BayesTools:::.prior_ordered_bind_allocation(list(type = "default_dirichlet"), 2, "f")$alpha, c(1, 1))
+  expect_identical(BayesTools:::.prior_ordered_bind_allocation(list(type = "default_dirichlet"), 1, "f"), list(type = "fixed", weights = 1))
+
+  # Internal persisted-spec revalidation; public construction is above.
+  allocation <- list(type = "dirichlet", alpha = c(.0099, 1))
+  expect_error(BayesTools:::.prior_ordered_bind_allocation(allocation, 2, "f"), "Dirichlet allocation concentrations must be finite and at least 0.01.", fixed = TRUE)
+  expect_error(BayesTools:::.prior_ordered_bind_allocation(allocation, 3, "f"), "has length 2, but 3", fixed = TRUE)
+  allocation$alpha <- c(.01, 1)
+  expect_identical(BayesTools:::.prior_ordered_bind_allocation(allocation, 2, "f"), allocation)
+})
+
 test_that("ordered recipes replay primitive chains and batched kernels independently", {
   data <- data.frame(f = ordered(rep(c("lo", "mid", "hi", "top"), 2L),levels=c("lo","mid","hi","top")))
   info <- JAGS_formula(~ f, "mu", data, list(intercept = prior("point", list(0)),

@@ -3,6 +3,14 @@
 These changes affect code and saved objects written for BayesTools 0.3.0.
 This version is released together with RoBMA 4.1.0; RoBMA 4.0.0 relies on the
 old behaviour.
+- cumulative weight-function priors now refuse numeric Dirichlet concentrations
+  below `0.01`, including specifications accepted by released versions. The new
+  ordinary Dirichlet prior and its ordered/random allocations use the same
+  supported-input minimum. Accepted inputs do not guarantee representable
+  sampling or initialization: degenerate Dirichlet R draws signal
+  `BayesTools_dirichlet_rng_unavailable` (parent
+  `BayesTools_prior_rng_unavailable`), and two-bin cumulative JAGS initialization
+  near the minimum can repeatedly refuse unrepresentable interior ratios.
 - installation and saved objects:
   - requires R >= 4.3.0 (was 4.1.0) and the `reformulas` package, and
     contains compiled code: a BayesTools JAGS module (the distributions

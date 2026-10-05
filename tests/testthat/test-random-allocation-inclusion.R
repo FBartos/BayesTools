@@ -1,5 +1,14 @@
 skip_if_not_test_profile("unit")
 
+test_that("D6 random SD allocations reuse the Dirichlet declaration boundary", {
+
+  expect_error(random_variance_allocation("total", terms = c("study", "drug"), sd = prior("gamma", list(2, 2)), weights = prior("dirichlet", list(alpha = c(.0099, 1)))), "The 'alpha' must be equal or higher than 0.01.", fixed = TRUE)
+  supported <- random_variance_allocation("total", terms = c("study", "drug"), sd = prior("gamma", list(2, 2)), weights = prior("dirichlet", list(alpha = c(.01, 1))))
+  expect_identical(supported$weights$parameters$alpha, c(.01, 1))
+  default <- random_variance_allocation("total", terms = c("study", "drug"), sd = prior("gamma", list(2, 2)))
+  expect_identical(default$weights$parameters$alpha, c(1, 1))
+})
+
 test_that("variance-allocation gate priors sample independent indicators", {
 
   data <- data.frame(

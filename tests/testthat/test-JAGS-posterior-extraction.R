@@ -865,6 +865,20 @@ test_that(".format_factor_level_parameter_names rejects interaction metadata mis
   )
 })
 
+test_that("D6 prior sample matrix preserves genuine cumulative RNG availability conditions", {
+
+  p <- prior_weightfunction(steps = .05, weights = wf_cumulative(c(1e308, 1e308)))
+  set.seed(1)
+  # The real internal generation helper; this does not fit or transform a fit.
+  error <- tryCatch(BayesTools:::.generate_prior_sample_matrix(list(omega = p), n_samples = 10), error = identity)
+  expect_s3_class(error, "BayesTools_dirichlet_rng_unavailable")
+  if(inherits(error, "error")){
+    expect_identical(class(error), c("BayesTools_dirichlet_rng_unavailable", "BayesTools_prior_rng_unavailable", "error", "condition"))
+    expect_identical(conditionMessage(error), "Dirichlet draws are unavailable because sampling produced non-finite or degenerate simplex draws. Use a less extreme 'alpha' specification.")
+    expect_null(conditionCall(error))
+  }
+})
+
 test_that(".generate_prior_sample_matrix errors on unsupported prior RNGs", {
 
   unsupported_prior <- list(distribution = "unsupported")

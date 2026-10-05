@@ -30,6 +30,25 @@ numeric representation can be produced.
 Truncation is part of the distribution definition. Preserve exact support and
 one-sided boundary behavior; do not replace valid endpoints with nearby values.
 
+Numeric Dirichlet concentrations are finite and at least `0.01` in ordinary
+priors, cumulative weight functions and ordered allocations; random SD
+allocations reuse the ordinary constructor. Keep existing type, finite and
+dimension validation order and defaults. Ordinary expression containers retain
+their JAGS-only support, including literal elements that are not statically
+evaluated or validated; R random generation refuses expressions. Cumulative
+and ordered declarations remain numeric only. The minimum defines supported
+inputs, not a numerical guarantee, and there is no upper concentration cap.
+The two existing Dirichlet samplers retain values and RNG streams and refuse
+non-finite/out-of-range entries or zero-total rows with
+`BayesTools_dirichlet_rng_unavailable`, parent `BayesTools_prior_rng_unavailable`,
+`error` and `condition`, with `call = NULL`; the prior sample-matrix wrapper
+preserves this sampling family and its message. Individual rounded zero/one
+entries are retained, not repaired or interpreted as new prior atoms. No retry,
+clamping or sampler replacement is allowed. Two-bin cumulative JAGS
+initialization near the minimum can repeatedly refuse a ratio no longer
+representable strictly inside `(0, 1)`; preserve its explicit refusal and all
+requested settings rather than promise universal fitting success.
+
 The direct ordered Dirichlet-product density uses stable log-share arithmetic
 for a literal, untruncated Normal total with mean exactly zero and finite positive
 SD. Its original quadrature budget, tolerances and zero-boundary identities

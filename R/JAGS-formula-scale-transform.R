@@ -603,6 +603,9 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
       temp_samples <- tryCatch(
         rng(prior, n_samples),
         error = function(e){
+          if(inherits(e, "BayesTools_prior_rng_unavailable")){
+            stop(e)
+          }
           stop(
             "Could not generate samples for prior '", param_name, "': ",
             e$message,

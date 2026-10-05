@@ -23,6 +23,49 @@ test_that("log-weight component density propagates missing values", {
 
 source(testthat::test_path("common-functions.R"))
 
+test_that("D6 cumulative declarations and persisted descriptors enforce the minimum", {
+
+  message <- "The 'alpha' must be equal or higher than 0.01."
+  expect_error(wf_cumulative(c(.0099, 1)), message, fixed = TRUE)
+  expect_error(prior_weightfunction(steps = .05, weights = wf_cumulative(c(.01, .0099))), message, fixed = TRUE)
+  expect_identical(prior_weightfunction(steps = .05)$weights$alpha, c(1, 1))
+  expect_identical(wf_cumulative(c(.01, 1))$alpha, c(.01, 1))
+
+  # Internal revalidation of a persisted descriptor, not a public producer.
+  descriptor <- wf_cumulative(c(1, 1))
+  descriptor$alpha <- c(.0099, 1)
+  expect_error(BayesTools:::.weightfunction_validate_weights(descriptor, 2, "most_significant"), message, fixed = TRUE)
+  descriptor$alpha <- c(.0099, 1, 1)
+  expect_error(BayesTools:::.weightfunction_validate_weights(descriptor, 2, "most_significant"), "The 'alpha' argument must have length '2'.", fixed = TRUE)
+})
+
+test_that("D6 supported cumulative draws retain the extraDistr values and RNG stream", {
+
+  for(alpha in list(c(.01, .01), c(.01, 1), c(1, 1))){
+    set.seed(1)
+    theta <- extraDistr::rdirichlet(10, alpha = alpha)
+    expected_seed <- .Random.seed
+    expected <- cbind(1, theta[, 2])
+    set.seed(1)
+    actual <- rng(prior_weightfunction(steps = .05, weights = wf_cumulative(alpha)), 10)
+    expect_identical(unname(actual), expected)
+    expect_identical(.Random.seed, expected_seed)
+    expect_identical(colnames(actual), c("omega[1]", "omega[2]"))
+  }
+})
+
+test_that("D6 degenerate cumulative sampling has the Dirichlet availability condition", {
+
+  set.seed(1)
+  error <- tryCatch(rng(prior_weightfunction(steps = .05, weights = wf_cumulative(c(1e308, 1e308))), 10), error = identity)
+  expect_s3_class(error, "BayesTools_dirichlet_rng_unavailable")
+  if(inherits(error, "error")){
+    expect_identical(class(error), c("BayesTools_dirichlet_rng_unavailable", "BayesTools_prior_rng_unavailable", "error", "condition"))
+    expect_identical(conditionMessage(error), "Dirichlet draws are unavailable because sampling produced non-finite or degenerate simplex draws. Use a less extreme 'alpha' specification.")
+    expect_null(conditionCall(error))
+  }
+})
+
 test_that("selection models declare three fixed source choices without changing weight priors", {
 
   default <- selection_model()

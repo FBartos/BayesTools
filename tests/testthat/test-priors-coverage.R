@@ -445,6 +445,53 @@ test_that("exchangeable vector priors expose exact numeric and JAGS APIs", {
 })
 
 
+test_that("D6 numeric Dirichlet declarations enforce the inclusive concentration minimum", {
+
+  message <- "The 'alpha' must be equal or higher than 0.01."
+  expect_error(prior("dirichlet", list(alpha = c(.0099, 1))), message, fixed = TRUE)
+  expect_error(prior("dirichlet", list(alpha = c(.01, .0099))), message, fixed = TRUE)
+  expect_error(prior("simplex", list(concentration = c(.0099, 1))), message, fixed = TRUE)
+  expect_identical(prior("dirichlet", list(alpha = c(.01, 1)))$parameters$alpha, c(.01, 1))
+
+  # The established type, positivity, finiteness and length checks run first.
+  expect_error(prior("dirichlet", list(alpha = "small")), "The 'alpha' must be a numeric vector.", fixed = TRUE)
+  expect_error(prior("dirichlet", list(alpha = c(0, .0099))), "The 'alpha' must be positive.", fixed = TRUE)
+  expect_error(prior("dirichlet", list(alpha = c(Inf, .0099))), "The 'alpha' must be finite.", fixed = TRUE)
+  expect_error(prior("dirichlet", list(alpha = .0099)), "The Dirichlet 'alpha' concentration vector must contain at least two values.", fixed = TRUE)
+
+  symbolic <- prior("dirichlet", list(alpha = expression(.001, alpha2)))
+  expect_identical(symbolic$parameters$alpha, expression(.001, alpha2))
+  expect_match(JAGS_add_priors("model{}", list(w = symbolic)),
+               "prior_par_eta_w\\[1\\] ~ dgamma\\(0.001, 1\\)")
+  expect_error(rng(symbolic, 10), "The 'prior' argument must not contain parameter expressions.", fixed = TRUE)
+})
+
+test_that("D6 supported Dirichlet draws retain the extraDistr values and RNG stream", {
+
+  for(alpha in list(c(.01, .01), c(.01, 1), c(1, 1))){
+    set.seed(1)
+    expected <- extraDistr::rdirichlet(10, alpha = alpha)
+    expected_seed <- .Random.seed
+    set.seed(1)
+    actual <- rng(prior("dirichlet", list(alpha = alpha)), 10)
+    expect_identical(unname(actual), expected)
+    expect_identical(.Random.seed, expected_seed)
+    expect_identical(colnames(actual), c("V1", "V2"))
+  }
+})
+
+test_that("D6 degenerate Dirichlet sampling has a stable availability condition", {
+
+  set.seed(1)
+  error <- tryCatch(rng(prior("dirichlet", list(alpha = c(1e308, 1e308))), 10), error = identity)
+  expect_s3_class(error, "BayesTools_dirichlet_rng_unavailable")
+  if(inherits(error, "error")){
+    expect_identical(class(error), c("BayesTools_dirichlet_rng_unavailable", "BayesTools_prior_rng_unavailable", "error", "condition"))
+    expect_identical(conditionMessage(error), "Dirichlet draws are unavailable because sampling produced non-finite or degenerate simplex draws. Use a less extreme 'alpha' specification.")
+    expect_null(conditionCall(error))
+  }
+})
+
 test_that("Dirichlet simplex priors expose joint, marginal, JAGS, and bridge APIs", {
   p <- prior("dirichlet", list(alpha = c(2, 3, 5)))
   p_alias <- prior("simplex", list(concentration = c(2, 3, 5)))
@@ -557,13 +604,8 @@ test_that("Dirichlet simplex priors expose joint, marginal, JAGS, and bridge API
   expect_true(all(inits$prior_par_eta_w > 0))
   expect_equal(JAGS_to_monitor(list(w = p)), c("w", "prior_par_eta_w"))
 
-  tiny <- prior("dirichlet", list(alpha = c(1e-300, 1e-300)))
-  expect_warning(
-    tiny_inits <- JAGS_get_inits(list(w = tiny), chains = 1, seed = 1)[[1]],
-    "deterministic, order-one rescaling"
-  )
-  expect_true(all(is.finite(tiny_inits$prior_par_eta_w)))
-  expect_true(all(tiny_inits$prior_par_eta_w > 0))
+  expect_error(prior("dirichlet", list(alpha = c(1e-300, 1e-300))),
+               "The 'alpha' must be equal or higher than 0.01.", fixed = TRUE)
 
   posterior <- matrix(
     c(1, 2, 3, 4, 5, 6),

@@ -155,8 +155,8 @@
         call. = FALSE
       )
     }
-    if(any(!is.finite(allocation$alpha)) || any(allocation$alpha <= 0)){
-      stop("Dirichlet allocation concentrations must be finite and positive.", call. = FALSE)
+    if(any(!is.finite(allocation$alpha)) || any(allocation$alpha < 0.01)){
+      stop("Dirichlet allocation concentrations must be finite and at least 0.01.", call. = FALSE)
     }
     return(allocation)
   }

@@ -9,6 +9,21 @@
 #' Joint quantiles are unavailable for vector factor priors; use
 #' \code{mquant()} for their marginal quantiles.
 #'
+#' @details Numeric Dirichlet concentrations must be finite and at least
+#' \code{0.01}. This supported-input minimum does not guarantee representable
+#' draws for every accepted specification. Dirichlet and cumulative
+#' weight-function \code{rng()} calls stop with class
+#' \code{BayesTools_dirichlet_rng_unavailable}, parent class
+#' \code{BayesTools_prior_rng_unavailable}, and classes \code{error} and
+#' \code{condition} if sampling produces non-finite entries, entries outside
+#' \code{[0, 1]}, or a simplex row with zero total. The condition has
+#' \code{call = NULL} and message: "Dirichlet draws are unavailable because
+#' sampling produced non-finite or degenerate simplex draws. Use a less extreme
+#' 'alpha' specification." There is no retry or repair. Individual rounded
+#' zero or one entries are retained and do not represent new prior atoms.
+#' Ordinary expression-valued Dirichlet priors retain their JAGS-only support;
+#' R random generation refuses priors containing parameter expressions.
+#'
 #' @param x prior distribution
 #' @param y vector of observations
 #' @param q vector or matrix of quantiles
@@ -1206,6 +1221,15 @@ quant.prior <- function(x, p, ...){
 
   alpha <- prior$parameters[["alpha"]]
   out <- extraDistr::rdirichlet(n, alpha = alpha)
+  if(any(!is.finite(out)) || any(out < 0 | out > 1) || any(rowSums(out) == 0)){
+    stop(structure(
+      list(
+        message = "Dirichlet draws are unavailable because sampling produced non-finite or degenerate simplex draws. Use a less extreme 'alpha' specification.",
+        call = NULL
+      ),
+      class = c("BayesTools_dirichlet_rng_unavailable", "BayesTools_prior_rng_unavailable", "error", "condition")
+    ))
+  }
   colnames(out) <- paste0("V", seq_along(alpha))
   out
 }

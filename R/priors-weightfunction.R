@@ -292,14 +292,19 @@ check_selection_model <- function(model, name = "model"){
 }
 
 #' @rdname prior_weightfunction
-#' @param alpha positive cumulative-Dirichlet concentration parameters. If
-#' omitted, a flat Dirichlet prior is used with one concentration parameter per
-#' bin.
+#' @param alpha finite numeric cumulative-Dirichlet concentration parameters,
+#' each at least \code{0.01}. If omitted, a flat Dirichlet prior is used with
+#' one concentration parameter per bin. The supported minimum is not a
+#' numerical guarantee: accepted R sampling can still be unavailable, and
+#' two-bin cumulative JAGS initialization near the minimum can repeatedly
+#' refuse ratios that are no longer representable strictly inside \code{(0, 1)}.
+#' Such failures are explicit; concentrations, draws and initialization settings
+#' are not repaired. See \code{\link{prior_functions}} for sampling conditions.
 #' @export
 wf_cumulative <- function(alpha = NULL){
 
   if(!is.null(alpha)){
-    check_real(alpha, "alpha", lower = 0, allow_bound = FALSE, check_length = 0, allow_NA = FALSE)
+    check_real(alpha, "alpha", lower = 0.01, allow_bound = TRUE, check_length = 0, allow_NA = FALSE)
     if(any(!is.finite(alpha))){
       stop("The 'alpha' argument must be finite.", call. = FALSE)
     }
@@ -407,7 +412,7 @@ wf_independent <- function(prior, scale = "omega"){
     if(is.null(weights$alpha)){
       weights$alpha <- rep(1, n_bins)
     }
-    check_real(weights$alpha, "alpha", lower = 0, allow_bound = FALSE, check_length = n_bins, allow_NA = FALSE)
+    check_real(weights$alpha, "alpha", lower = 0.01, allow_bound = TRUE, check_length = n_bins, allow_NA = FALSE)
     if(any(!is.finite(weights$alpha))){
       stop("The 'alpha' argument must be finite.", call. = FALSE)
     }
@@ -498,6 +503,15 @@ wf_independent <- function(prior, scale = "omega"){
 
   }else if(prior$weights$type == "cumulative"){
     theta <- extraDistr::rdirichlet(n, alpha = prior$weights$alpha)
+    if(any(!is.finite(theta)) || any(theta < 0 | theta > 1) || any(rowSums(theta) == 0)){
+      stop(structure(
+        list(
+          message = "Dirichlet draws are unavailable because sampling produced non-finite or degenerate simplex draws. Use a less extreme 'alpha' specification.",
+          call = NULL
+        ),
+        class = c("BayesTools_dirichlet_rng_unavailable", "BayesTools_prior_rng_unavailable", "error", "condition")
+      ))
+    }
     out   <- t(apply(theta[,J:1, drop = FALSE], 1, cumsum))[,J:1, drop = FALSE]
     # Keep the reference bin exact; row-wise cumulative sums can leave 1 +/- eps.
     out[,1L] <- 1

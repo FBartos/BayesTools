@@ -39,9 +39,14 @@ supported and fixes the most significant bin to \code{omega = 1}.}
 \code{selection_model()}. Its choices do not add weight-prior parameters or
 change \code{prior_weights}.}
 
-\item{alpha}{positive cumulative-Dirichlet concentration parameters. If
-omitted, a flat Dirichlet prior is used with one concentration parameter per
-bin.}
+\item{alpha}{finite numeric cumulative-Dirichlet concentration parameters,
+each at least \code{0.01}. If omitted, a flat Dirichlet prior is used with
+one concentration parameter per bin. The supported minimum is not a
+numerical guarantee: accepted R sampling can still be unavailable, and
+two-bin cumulative JAGS initialization near the minimum can repeatedly
+refuse ratios that are no longer representable strictly inside \code{(0, 1)}.
+Such failures are explicit; concentrations, draws and initialization settings
+are not repaired. See \code{\link{prior_functions}} for sampling conditions.}
 
 \item{omega}{fixed non-negative relative publication weights, one per bin.
 The reference-bin weight must be exactly 1.}
