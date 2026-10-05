@@ -60,4 +60,3 @@ Suggests:
 RdMacros: Rdpack
 VignetteBuilder: knitr
 Config/testthat/edition: 3
-
