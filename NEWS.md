@@ -1,4 +1,5 @@
 # version 0.3.1
+- simplex validation refuses nonfinite totals or roundoff bounds before normalization, including Dirichlet coordinates and fixed ordered allocations.
 - ordinary scalar and vector bridge parameter extraction gives the existing classed missing-monitor error for absent names while preserving present values and point priors.
 - fixed and random coefficient formulas accept literal whole interaction-expansion powers of at least two, retaining explicit-design ownership and replay.
 - moment, inverse-moment and inverse-gamma scalar evaluation methods preserve NA and NaN distinctly; generic truncated scalar CDF/CCDF methods retain the same distinction.

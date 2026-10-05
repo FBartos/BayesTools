@@ -258,6 +258,14 @@ check_list   <- function(x, name = deparse(substitute(x)), check_length = 0, che
 
   original_sums <- rowSums(x)
   bounds <- apply(x, 1L, .simplex_roundoff_bound)
+  nonfinite <- !is.finite(original_sums) | !is.finite(bounds)
+  if(any(nonfinite)){
+    stop(
+      "The '", name, "' simplex values must sum to one; row ",
+      which(nonfinite)[1L], " has a non-finite total or roundoff bound.",
+      call. = FALSE
+    )
+  }
   invalid <- abs(original_sums - 1) > bounds
   if(any(invalid)){
     stop(

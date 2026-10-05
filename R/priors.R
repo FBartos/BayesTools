@@ -41,6 +41,8 @@
 #'   an optional \code{order} that defaults to 1, and an optional
 #'   \code{location} that defaults to 0.}
 #'   \item{\code{"dirichlet"}}{for a Dirichlet distribution over a simplex,
+#'   whose finite nonnegative coordinates must have a finite total and roundoff
+#'   bound and sum to one within that bound,
 #'   characterized by a concentration vector \code{alpha}. Numeric entries
 #'   must be finite and at least \code{0.01}; this is a supported-input minimum,
 #'   not a numerical guarantee. Positive expression-valued concentrations retain
@@ -347,7 +349,9 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 #' ordered level.
 #' @param allocation allocation prior or fixed split. \code{NULL} creates a
 #' late-bound flat Dirichlet allocation with dimension determined by the formula
-#' term. Numeric vectors specify fixed splits. Dirichlet priors specify random
+#' term. Numeric vectors specify fixed splits of finite nonnegative weights
+#' with a finite total and roundoff bound, summing to one within that bound.
+#' Dirichlet priors specify random
 #' allocations. For terms with multiple ordered factors, use a named list.
 #' @param contrast ordered contrast. \code{"cumulative"} uses
 #' \code{nlevels(f) - 1} increments and sets the first level effect to zero.

@@ -33,6 +33,11 @@ Moment, inverse-moment and inverse-gamma scalar density, CDF and quantile
 adapters preserve evaluation NA and NaN distinctly, including marginal methods.
 Generic truncated scalar CDF/CCDF paths preserve both missing values as well;
 this does not certify the unchanged truncated Normal quantile path.
+Simplex canonicalization requires finite nonnegative entries, a finite total
+and finite floating-roundoff bound before sum-to-one comparison or normalization.
+Preserve the existing near-one allowance and diagnostic labels; never normalize
+an overflowing total to a zero vector. Dirichlet density coordinates and fixed
+ordered allocations share this validation.
 
 Numeric Dirichlet concentrations are finite and at least `0.01` in ordinary
 priors, cumulative weight functions and ordered allocations; random SD

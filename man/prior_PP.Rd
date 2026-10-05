@@ -59,6 +59,8 @@ characterized by exactly one of \code{mode} or \code{tau}, a \code{df},
 an optional \code{order} that defaults to 1, and an optional
 \code{location} that defaults to 0.}
 \item{\code{"dirichlet"}}{for a Dirichlet distribution over a simplex,
+whose finite nonnegative coordinates must have a finite total and roundoff
+bound and sum to one within that bound,
 characterized by a concentration vector \code{alpha}. Numeric entries
 must be finite and at least \code{0.01}; this is a supported-input minimum,
 not a numerical guarantee. Positive expression-valued concentrations retain

@@ -18,7 +18,9 @@ ordered level.}
 
 \item{allocation}{allocation prior or fixed split. \code{NULL} creates a
 late-bound flat Dirichlet allocation with dimension determined by the formula
-term. Numeric vectors specify fixed splits. Dirichlet priors specify random
+term. Numeric vectors specify fixed splits of finite nonnegative weights
+with a finite total and roundoff bound, summing to one within that bound.
+Dirichlet priors specify random
 allocations. For terms with multiple ordered factors, use a named list.}
 
 \item{contrast}{ordered contrast. \code{"cumulative"} uses
