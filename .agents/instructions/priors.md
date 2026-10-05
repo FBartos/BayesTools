@@ -143,6 +143,16 @@ source support. Missing structural-domain information is unknown, not proof
 of an invalid domain. Constant affine routes are point measures even without a
 source. Finite images that round to exponential or tanh limits cannot certify
 exact support or atom provenance; mathematical endpoint limits remain valid.
+Point producers, finite builtin support bounds and named atom replay check
+representable images before replacement, coalescing or metadata assignment.
+They refuse finite exponential/positive-power underflow, tanh saturation and
+nonfinite finite-source images with `BayesTools_transformation_image_unavailable`
+(parent `BayesTools_transformation`, call NULL; transformation/source_values/images
+fields retain matched failing entries). Posterior nonfinite/domain and custom
+Jacobian error precedence remains unchanged. Custom maps retain their supplied
+semantics; NA atom-state holes are not declarations. Conservative provenance
+certification returns unknown rather than asserting a false atom. True zero,
+infinite support limits and supported prior constants retain their meaning.
 A provenance-free stored measure with declared continuous mass exactly zero
 has exact zero continuous density off its atoms. Positive grids and deferred
 measures with missing mass stay unknown; do not infer mass from grid shape.

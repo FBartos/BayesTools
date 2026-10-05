@@ -113,6 +113,15 @@ Sample-based density estimates for continuous priors with finite
 support use boundary-reflected kernel density estimates. The plotting range
 controls the evaluation grid, while reflection is based on the prior's true
 truncation bounds.
+Declared point locations and finite builtin support bounds must have
+representable images. Finite-source exponential underflow, tanh saturation,
+positive-power underflow and nonfinite point images stop with
+\code{BayesTools_transformation_image_unavailable}, parent
+\code{BayesTools_transformation}, with \code{call = NULL} and fields
+\code{transformation}, \code{source_values}, and \code{images} for the
+matched failing finite sources. True zero under positive powers and infinite
+mathematical support limits retain their meaning. Continuous display grids
+retain their existing handling.
 Direct ordered Dirichlet-product densities use stable log-share arithmetic
 for literal, untruncated Normal totals with mean zero and finite positive SD,
 retaining the existing quadrature budget and tolerances. This guarded route

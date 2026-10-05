@@ -6,6 +6,12 @@
 #' deterministic provenance recorded on linear-combination prior densities. It
 #' does not use samples, kernel density estimates, numerical grids, or nearby
 #' probe values to establish the behavior.
+#' Declared atom producers refuse nonrepresentable finite-source transformation
+#' images with \code{BayesTools_transformation_image_unavailable} (parent
+#' \code{BayesTools_transformation}); fields \code{transformation},
+#' \code{source_values} and \code{images} identify the failing entries, with
+#' \code{call = NULL}. Conservative provenance certification remains unknown
+#' when an image cannot be established, without manufacturing a boundary atom.
 #'
 #' @param x A BayesTools prior object or a `prior_linear_density` object produced
 #'   by BayesTools' deterministic prior-density builders.
@@ -1523,13 +1529,7 @@ prior_density_has_provenance <- function(x){
     NULL
   )
   if(is.null(mapped) || anyNA(mapped)) return(NULL)
-  finite <- is.finite(values)
-  if(identical(transformation, "lin") && any(!is.finite(mapped[finite]))) return(NULL)
-  if(transformation %in% c("exp", "exp_lin")){
-    positive <- finite & (transformation == "exp" | values > 0)
-    if(any(!is.finite(mapped[positive]) | mapped[positive] <= 0)) return(NULL)
-  }
-  if(identical(transformation, "tanh") && any(abs(mapped[finite]) >= 1)) return(NULL)
+  if(any(.density.prior_transformation_image_bad(values, mapped, transformation, arguments))) return(NULL)
   mapped
 }
 

@@ -42,6 +42,16 @@ the transformation maps to non-finite values (for example, negative draws
 of \code{"exp_lin"}) stop with class
 \code{BayesTools_transformation_domain}. Both classes have the parent class
 \code{BayesTools_transformation}.
+Finite builtin images that round to mathematical limits (exponential zero,
+tanh endpoints, or positive-power zero from a strictly positive source) stop
+with \code{BayesTools_transformation_image_unavailable}, also inheriting
+\code{BayesTools_transformation}, \code{error} and \code{condition}. Its
+\code{call} is \code{NULL}; \code{transformation} names the builtin or
+\code{"custom"}, and \code{source_values} and \code{images} contain matched
+failing finite entries. Declared point and support mapping uses the same
+condition for nonrepresentable images. True source zero under a positive
+power and infinite mathematical support limits remain valid. No clipping or
+probability-mass repair is performed.
 
 The metadata are transformed as follows:
 \describe{

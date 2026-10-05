@@ -840,7 +840,7 @@
 
   points <- dist$points
   if(!is.null(points) && nrow(points) > 0){
-    points$x <- .density.prior_transformation_x(points$x, transformation, transformation_arguments)
+    points$x <- .density.prior_transformation_checked_x(points$x, transformation, transformation_arguments)
     if(any(!is.finite(points$x))){
       stop(
         "The requested prior-density transformation produced a non-finite ",
@@ -3460,7 +3460,7 @@
       points <- points[points$x >= min(x_range) & points$x <= max(x_range), , drop = FALSE]
     }
     if(nrow(points) > 0 && !is.null(transformation)){
-      points$x <- .density.prior_transformation_x(points$x, transformation, transformation_arguments)
+      points$x <- .density.prior_transformation_checked_x(points$x, transformation, transformation_arguments)
     }
     if(nrow(points) > 0 && !is.null(transformed_x_range)){
       points <- points[

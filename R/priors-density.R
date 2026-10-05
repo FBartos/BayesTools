@@ -77,6 +77,15 @@
 #' support use boundary-reflected kernel density estimates. The plotting range
 #' controls the evaluation grid, while reflection is based on the prior's true
 #' truncation bounds.
+#' Declared point locations and finite builtin support bounds must have
+#' representable images. Finite-source exponential underflow, tanh saturation,
+#' positive-power underflow and nonfinite point images stop with
+#' \code{BayesTools_transformation_image_unavailable}, parent
+#' \code{BayesTools_transformation}, with \code{call = NULL} and fields
+#' \code{transformation}, \code{source_values}, and \code{images} for the
+#' matched failing finite sources. True zero under positive powers and infinite
+#' mathematical support limits retain their meaning. Continuous display grids
+#' retain their existing handling.
 #' Direct ordered Dirichlet-product densities use stable log-share arithmetic
 #' for literal, untruncated Normal totals with mean zero and finite positive SD,
 #' retaining the existing quadrature budget and tolerances. This guarded route
@@ -596,7 +605,7 @@ density.prior <- function(x,
     x <- .density.prior_transformation_x(x_seq, transformation, transformation_arguments)
     y <- .density.prior_transformation_y(x, y, transformation, transformation_arguments)
     if(nrow(dist$points) > 0L){
-      dist$points$x <- .density.prior_transformation_x(
+      dist$points$x <- .density.prior_transformation_checked_x(
         dist$points$x, transformation, transformation_arguments
       )
     }
@@ -1063,10 +1072,10 @@ density.prior <- function(x,
 
   # transform the output, if requested
   if(!is.null(transformation)){
-    x_seq   <- .density.prior_transformation_x(x_seq,   transformation, transformation_arguments)
+    x_seq   <- .density.prior_transformation_checked_x(x_seq, transformation, transformation_arguments)
     x_range <- .density.prior_transformation_x(x_range, transformation, transformation_arguments)
     if(!is.null(x_sam)){
-      x_sam <- .density.prior_transformation_x(x_sam,   transformation, transformation_arguments)
+      x_sam <- .density.prior_transformation_checked_x(x_sam, transformation, transformation_arguments)
     }
   }
 
@@ -1681,6 +1690,74 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 
   do.call(.density.prior_transformation_functions(transformation)$fun, arg)
 }
+.density.prior_transformation_named_arguments <- function(transformation, transformation_arguments = NULL){
+
+  if(!is.character(transformation) || !transformation %in% c("lin", "exp_lin")){
+    return(list())
+  }
+  arguments <- list(x = numeric())
+  for(i in seq_along(transformation_arguments)){
+    arguments[[names(transformation_arguments)[i]]] <- transformation_arguments[[i]]
+  }
+  bind <- function(x, a = 0, b = 1) list(a = a, b = b)
+  formals(bind) <- formals(.density.prior_transformation_functions(transformation)$fun)
+  do.call(bind, arguments)
+}
+
+# Finite sources cannot certify nonrepresentable images as boundary atoms.
+# Infinite support endpoints retain their mathematical limits; NA state holes
+# are not declared locations. This predicate never changes forward arithmetic.
+.density.prior_transformation_image_bad <- function(values, images, transformation, arguments = NULL){
+
+  images <- rep_len(images, length(values))
+  finite <- is.finite(values)
+  bad <- finite & !is.finite(images)
+  if(identical(transformation, "exp")){
+    bad <- bad | (finite & images <= 0)
+  }else if(identical(transformation, "exp_lin")){
+    positive <- finite & values > 0
+    if(!is.null(arguments$b) && length(arguments$b) == 1L && isTRUE(arguments$b == 0)){
+      positive <- finite
+    }
+    bad <- bad | (positive & images <= 0)
+  }else if(identical(transformation, "tanh")){
+    bad <- bad | (finite & abs(images) >= 1)
+  }
+  bad[is.na(bad)] <- FALSE
+  bad
+}
+
+.density.prior_transformation_image_stop <- function(transformation, values, images){
+
+  name <- if(is.character(transformation)) transformation else "custom"
+  stop(errorCondition(
+    paste0("The '", name, "' transformation is numerically unavailable: finite source values ",
+           "do not have representable images under this transformation. Use a transformation ",
+           "whose images remain representable."),
+    class = c("BayesTools_transformation_image_unavailable", "BayesTools_transformation"),
+    call = NULL, transformation = name, source_values = values, images = images
+  ))
+}
+
+.density.prior_transformation_checked_x <- function(x, transformation, transformation_arguments = NULL){
+
+  arguments <- .density.prior_transformation_named_arguments(transformation, transformation_arguments)
+  if(is.character(transformation) && transformation %in% c("lin", "exp_lin") &&
+     length(arguments$a) == 1L && length(arguments$b) == 1L &&
+     is.finite(arguments$a) && isTRUE(arguments$b == 0)){
+    # A prior constant is defined even at zero sources; avoid 0 * log(0).
+    images <- x
+    images[!is.na(x)] <- if(identical(transformation, "lin")) arguments$a else exp(arguments$a)
+  }else{
+    images <- .density.prior_transformation_x(x, transformation, transformation_arguments)
+  }
+  bad <- .density.prior_transformation_image_bad(x, images, transformation, arguments)
+  if(any(bad)){
+    .density.prior_transformation_image_stop(transformation, x[bad], rep_len(images, length(x))[bad])
+  }
+  images
+}
+
 .density.prior_transformation_inv_x     <- function(x, transformation, transformation_arguments = NULL){
 
   arg <- list(x = x)

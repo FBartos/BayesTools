@@ -106,7 +106,7 @@
 
   atom <- function(location){
     if(!is.null(output)){
-      location <- .density.prior_transformation_x(location, "exp_lin", output)
+      location <- .density.prior_transformation_checked_x(location, "exp_lin", output)
     }
     .prior_density_route_atom(
       locations   = location,

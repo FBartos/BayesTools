@@ -174,6 +174,10 @@
 #' \code{BayesTools_prior_region_probability_rejected}, all also
 #' \code{BayesTools_hypothesis_region}. Missing deterministic provenance for a
 #' region remains a metadata error, including in whole-factor tables.
+#' The specific \code{BayesTools_transformation_image_unavailable} leaf also
+#' produces an unavailable whole-factor row with its reason; other
+#' transformation and input errors remain strict. Scalar tests retain the
+#' original refusal.
 #' User-supplied prior draws (numeric or data-frame inputs without a prior
 #' object) have no structural prior density: their prior ordinate is the
 #' kernel (or normal) estimate of the prior expression draws, returned with a

@@ -492,7 +492,7 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
     return(NULL)
   }
 
-  transformed_bounds <- suppressWarnings(.density.prior_transformation_x(
+  transformed_bounds <- suppressWarnings(.density.prior_transformation_checked_x(
     support$bounds,
     transformation,
     transformation_arguments
@@ -503,7 +503,7 @@ posterior_support_attribute <- function(bounds, points = NULL, type = NULL,
 
   transformed_points <- numeric()
   if(length(support$points) > 0L){
-    transformed_points <- suppressWarnings(.density.prior_transformation_x(
+    transformed_points <- suppressWarnings(.density.prior_transformation_checked_x(
       support$points,
       transformation,
       transformation_arguments

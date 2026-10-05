@@ -1,4 +1,5 @@
 # version 0.3.1
+- declared point and finite support images refuse finite-source saturation or overflow with a classed transformation-availability error; atom replay, point plot layers and prior-region indicators share the guard, preserving true zero and infinite limits.
 - explicit Unix JAGS prefixes consistently select their own version, headers, libraries and rpath instead of mixing global pkg-config installations.
 - bridge sampling checks affine dependence in supplied coordinates before its existing transformed-coordinate rank check, refusing known dependent targets before sampler invocation.
 - simplex validation refuses nonfinite totals or roundoff bounds before normalization, including Dirichlet coordinates and fixed ordered allocations.

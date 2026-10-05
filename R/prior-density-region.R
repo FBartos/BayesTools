@@ -392,7 +392,7 @@
     indicator = local({
       indicator <- region$indicator
       function(values){
-        output <- suppressWarnings(.density.prior_transformation_x(
+        output <- suppressWarnings(.density.prior_transformation_checked_x(
           values, transformation, arguments
         ))
         if(identical(transformation, "exp_lin")){

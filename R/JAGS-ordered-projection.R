@@ -392,7 +392,7 @@
       next
     }
     values <- .density.prior_transformation_x(values,map$transformation,map$arguments)
-    atom <- .density.prior_transformation_x(atom,map$transformation,map$arguments)
+    atom <- .density.prior_transformation_checked_x(atom,map$transformation,map$arguments)
   }
   list(values=values,atom=atom,state=state,exact=exact,reason=reason)
 }

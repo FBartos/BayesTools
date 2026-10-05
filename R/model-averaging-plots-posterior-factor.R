@@ -425,7 +425,7 @@
                                      transformation_arguments = NULL){
 
   if(!is.null(transformation) && length(x_points) > 0L){
-    x_points <- .density.prior_transformation_x(x_points, transformation, transformation_arguments)
+    x_points <- .density.prior_transformation_checked_x(x_points, transformation, transformation_arguments)
   }
 
   out <- list()

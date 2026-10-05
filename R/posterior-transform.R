@@ -41,6 +41,16 @@
 #' of \code{"exp_lin"}) stop with class
 #' \code{BayesTools_transformation_domain}. Both classes have the parent class
 #' \code{BayesTools_transformation}.
+#' Finite builtin images that round to mathematical limits (exponential zero,
+#' tanh endpoints, or positive-power zero from a strictly positive source) stop
+#' with \code{BayesTools_transformation_image_unavailable}, also inheriting
+#' \code{BayesTools_transformation}, \code{error} and \code{condition}. Its
+#' \code{call} is \code{NULL}; \code{transformation} names the builtin or
+#' \code{"custom"}, and \code{source_values} and \code{images} contain matched
+#' failing finite entries. Declared point and support mapping uses the same
+#' condition for nonrepresentable images. True source zero under a positive
+#' power and infinite mathematical support limits remain valid. No clipping or
+#' probability-mass repair is performed.
 #'
 #' The metadata are transformed as follows:
 #' \describe{
@@ -195,6 +205,11 @@ posterior_transform <- function(x, transformation, transformation_arguments = NU
         format(values[!is.finite(images)][[1L]]), " to a non-finite value"
       )
     )
+  }
+  arguments <- .density.prior_transformation_named_arguments(map$transformation, map$arguments)
+  bad <- .density.prior_transformation_image_bad(values, images, map$name, arguments)
+  if(any(bad)){
+    .density.prior_transformation_image_stop(map$transformation, values[bad], images[bad])
   }
   if(is.na(map$direction)){
     jacobian <- suppressWarnings(map$jac(values))

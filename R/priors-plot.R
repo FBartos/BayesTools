@@ -1,5 +1,11 @@
 #' @title Plots a prior object
 #'
+#' @details Declared point locations whose transformation images are not
+#' representable stop with \code{BayesTools_transformation_image_unavailable},
+#' parent \code{BayesTools_transformation}. Its \code{call} is \code{NULL} and
+#' its \code{transformation}, \code{source_values} and \code{images} fields
+#' identify the matched failing finite entries; see [posterior_transform()].
+#'
 #' @param x a prior
 #' @param plot_type whether to use a base plot \code{"base"}
 #' or ggplot2 \code{"ggplot"} for plotting.

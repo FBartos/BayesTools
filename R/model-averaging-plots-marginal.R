@@ -368,7 +368,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
   if(!is.null(y_points)){
     if(!is.null(transformation)){
-      x_points <- .density.prior_transformation_x(x_points, transformation, transformation_arguments)
+      x_points <- .density.prior_transformation_checked_x(x_points, transformation, transformation_arguments)
     }
 
     for(i in seq_along(y_points)){

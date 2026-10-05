@@ -127,6 +127,12 @@ component.
 Plots a prior object
 }
 \details{
+Declared point locations whose transformation images are not
+representable stop with \code{BayesTools_transformation_image_unavailable},
+parent \code{BayesTools_transformation}. Its \code{call} is \code{NULL} and
+its \code{transformation}, \code{source_values} and \code{images} fields
+identify the matched failing finite entries; see \code{\link[=posterior_transform]{posterior_transform()}}.
+
 Ordered prior plots retain the continuous density of every
 non-reference level, including priors with an infinite density at an exact
 point. Only nonfinite plotting ordinates are omitted; finite ordinates and

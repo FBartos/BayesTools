@@ -147,6 +147,12 @@ one exact value. The classification uses the prior definition and
 deterministic provenance recorded on linear-combination prior densities. It
 does not use samples, kernel density estimates, numerical grids, or nearby
 probe values to establish the behavior.
+Declared atom producers refuse nonrepresentable finite-source transformation
+images with \code{BayesTools_transformation_image_unavailable} (parent
+\code{BayesTools_transformation}); fields \code{transformation},
+\code{source_values} and \code{images} identify the failing entries, with
+\code{call = NULL}. Conservative provenance certification remains unknown
+when an image cannot be established, without manufacturing a boundary atom.
 }
 \examples{
 normal_prior <- prior("normal", list(mean = 0, sd = 1))

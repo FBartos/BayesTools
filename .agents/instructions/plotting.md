@@ -28,6 +28,12 @@ producers' metadata or `posterior_atom_attribute()`), also when a precomputed
 posterior density supplies the continuous curve; samples without an atom
 declaration stop with the atom-status message. Never infer point masses
 from prior lists, component indices, or draws matching prior spikes.
+Point layers check transformation images before emitting locations and masses.
+Finite-source saturation or nonfinite images stop with
+`BayesTools_transformation_image_unavailable` (parent `BayesTools_transformation`,
+call NULL; transformation/source_values/images fields identify failing entries).
+True-zero positive powers and mathematical infinite support limits stay valid;
+continuous-grid handling and probability masses are unchanged.
 
 Mixed continuous-and-point plots keep one probability-axis mapping. Base
 overlays reuse `par("usr")` and warn when a later point mass is off-scale.

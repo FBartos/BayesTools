@@ -75,7 +75,8 @@
   }
   tryCatch(result, error = function(condition){
     if(!inherits(condition, c("BayesTools_hypothesis_ordinate",
-                              "BayesTools_hypothesis_region"))){
+                              "BayesTools_hypothesis_region",
+                              "BayesTools_transformation_image_unavailable"))){
       stop(condition)
     }
     list(BF = NA_real_, BF_error = NA_real_, prior = NA_real_,

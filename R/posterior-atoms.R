@@ -483,7 +483,7 @@ posterior_atoms_free <- function(x){
   }
   # the scalar transformation maps every coordinate of the atom locations
   locations <- atoms$locations
-  locations[] <- .density.prior_transformation_x(
+  locations[] <- .density.prior_transformation_checked_x(
     as.numeric(atoms$locations),
     transformation,
     transformation_arguments
@@ -968,7 +968,9 @@ posterior_atoms_free <- function(x){
       stop("Coefficient output-transform metadata are incomplete or unsupported.", call. = FALSE)
     }
     exponentiated <- output_transforms == "exp"
-    atoms$locations[, exponentiated] <- exp(atoms$locations[, exponentiated, drop = FALSE])
+    atoms$locations[, exponentiated] <- .density.prior_transformation_checked_x(
+      atoms$locations[, exponentiated, drop = FALSE], "exp"
+    )
   }
   if(!is.null(samples)){
     ordered <- .bt_ordered_formula_projections(samples,design,

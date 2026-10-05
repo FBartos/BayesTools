@@ -401,7 +401,7 @@
     y_points <- posterior_atoms$mass
   }
   if(!is.null(x_points) && !is.null(transformation)){
-    x_points <- .density.prior_transformation_x(x_points, transformation, transformation_arguments)
+    x_points <- .density.prior_transformation_checked_x(x_points, transformation, transformation_arguments)
   }
 
   # deal with the densities
