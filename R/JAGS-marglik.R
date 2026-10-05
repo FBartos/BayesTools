@@ -160,7 +160,9 @@
 #' every `tau[i]` is a free stochastic node whose prior density `log_posterior`
 #' adds. Supplying deterministic nodes as bridge coordinates makes the target
 #' improper; such rank-deficient bridge coordinate draws are rejected with an
-#' error.
+#' error. Rank is checked both on the supplied coordinates before bound
+#' transformations and on the transformed coordinates used by the proposal.
+#' Constant columns retain their existing sampler handling.
 #'
 #' If every bridge coordinate is fixed by a point prior,
 #' `JAGS_bridgesampling()` evaluates `log_posterior` once at the reconstructed
@@ -674,6 +676,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     return(invisible(TRUE))
   }
 
+  .bt_JAGS_bridge_check_matrix_rank(bridgesampling_posterior)
   lb <- attr(bridgesampling_posterior, "lb")
   ub <- attr(bridgesampling_posterior, "ub")
   coordinates <- colnames(bridgesampling_posterior)
@@ -694,15 +697,20 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   transformed <- matrix(transformed, nrow = nrow(bridgesampling_posterior))
   colnames(transformed) <- coordinates
 
-  informative <- apply(transformed, 2L, function(x){
+  .bt_JAGS_bridge_check_matrix_rank(transformed)
+}
+
+.bt_JAGS_bridge_check_matrix_rank <- function(coordinates){
+
+  informative <- apply(coordinates, 2L, function(x){
     all(is.finite(x)) && stats::sd(x) > 0
   })
-  transformed <- transformed[, informative, drop = FALSE]
-  if(ncol(transformed) < 2L){
+  coordinates <- coordinates[, informative, drop = FALSE]
+  if(ncol(coordinates) < 2L){
     return(invisible(TRUE))
   }
 
-  standardized <- scale(transformed)
+  standardized <- scale(coordinates)
   decomposition <- qr(standardized, tol = 1e-7)
   if(decomposition$rank == ncol(standardized)){
     return(invisible(TRUE))

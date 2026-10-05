@@ -221,7 +221,9 @@ replace the fitted source snapshot. Posterior columns named \code{tau[1]}, ...,
 every \code{tau[i]} is a free stochastic node whose prior density \code{log_posterior}
 adds. Supplying deterministic nodes as bridge coordinates makes the target
 improper; such rank-deficient bridge coordinate draws are rejected with an
-error.
+error. Rank is checked both on the supplied coordinates before bound
+transformations and on the transformed coordinates used by the proposal.
+Constant columns retain their existing sampler handling.
 
 If every bridge coordinate is fixed by a point prior,
 \code{JAGS_bridgesampling()} evaluates \code{log_posterior} once at the reconstructed

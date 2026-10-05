@@ -26,6 +26,10 @@ names before reading a posterior row and uses `BayesTools_missing_monitored_colu
 (parent `BayesTools_marglik_input`) for absent coordinates. Preserve row-value
 shapes and names; a present NA value is distinct from an absent name, and literal
 point priors need no monitor.
+Bridge sampling checks affine rank of varying finite supplied coordinates before
+bound transformations, then checks the transformed coordinates separately with
+the existing QR tolerance and diagnostics. Constant columns retain the existing
+sampler policy; this is not a general nonlinear dependence detector.
 
 Every deterministic node BayesTools generates (allocation-derived SDs, scalar
 and LKJ correlations, publication weights, spike-and-slab and mixture

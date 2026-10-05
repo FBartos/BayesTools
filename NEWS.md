@@ -1,4 +1,5 @@
 # version 0.3.1
+- bridge sampling checks affine dependence in supplied coordinates before its existing transformed-coordinate rank check, refusing known dependent targets before sampler invocation.
 - simplex validation refuses nonfinite totals or roundoff bounds before normalization, including Dirichlet coordinates and fixed ordered allocations.
 - ordinary scalar and vector bridge parameter extraction gives the existing classed missing-monitor error for absent names while preserving present values and point priors.
 - fixed and random coefficient formulas accept literal whole interaction-expansion powers of at least two, retaining explicit-design ownership and replay.
