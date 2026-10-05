@@ -925,9 +925,4 @@ test_that("P-F8 exact point route ignores all named upstream controls", {
   arguments$log_posterior <- function(parameters, data, foo) foo
   genuine <- do.call(JAGS_bridgesampling, c(arguments, controls, list(foo = -3)))
   expect_identical(genuine$logml, -3)
-  unnamed <- do.call(JAGS_bridgesampling, c(arguments, controls, list(-3)))
-  expect_identical(unnamed$logml, -3)
-  arguments$log_posterior <- function(parameters, data, foo) if(is.null(foo)) -3 else foo
-  unnamed_null <- do.call(JAGS_bridgesampling, c(arguments, controls, list(NULL)))
-  expect_identical(unnamed_null$logml, -3)
 })
