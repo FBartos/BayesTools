@@ -752,3 +752,10 @@ quantile/CDF inversion only where they are mathematically defined.
 For prior changes, run `unit` first and `visual` when plots change. Add `fit`
 and `fixture` when generated JAGS syntax, initialization, monitoring, marginal
 likelihoods, or cached fitted objects can change.
+
+Whole-factor hypothesis tables retain each level: known ordinate and prior-region
+availability errors become NA with their original reason, while scalar/indexed
+calls and invalid metadata remain strict. Prior-region leaves share
+`BayesTools_hypothesis_region`; deterministic provenance is mandatory for
+regions. Opted-in point/marginal tables may report a known inexact ordinate as
+NA. Numerical refusal criteria, messages and budgets stay unchanged.

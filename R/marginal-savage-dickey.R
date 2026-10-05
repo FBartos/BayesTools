@@ -99,6 +99,9 @@
 #' (and in marginal inference), a zero or infinite prior ordinate or a
 #' posterior point mass at the null gives the level an \code{NA} Bayes factor
 #' with its reason instead (see Details).
+#' In a list or opted-in marginal table, all five known prior-ordinate errors
+#' return \code{NA} with the original reason (zero and infinite ordinates keep
+#' their existing reason text). Direct scalar calls still signal these errors.
 #'
 #' @export
 Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximation = FALSE, silent = FALSE,
@@ -353,18 +356,31 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       prior, null_hypothesis,
       label = paste0(if(is.null(label)) "parameter" else label, " = ", null_hypothesis)
     ),
-    BayesTools_zero_ordinate     = function(condition) condition,
-    BayesTools_infinite_ordinate = function(condition) condition
+    error = function(condition){
+      if(!inherits(condition, c("BayesTools_zero_ordinate",
+                                "BayesTools_infinite_ordinate",
+                                "BayesTools_point_mass_at_null",
+                                "BayesTools_undefined_ordinate",
+                                "BayesTools_inexact_ordinate"))){
+        stop(condition)
+      }
+      condition
+    }
   )
   if(inherits(prior_ordinate, "condition")){
     if(!isTRUE(null_mass_NA)){
       stop(prior_ordinate)
     }
-    behavior <- if(inherits(prior_ordinate, "BayesTools_zero_ordinate")) "zero" else "infinite"
-    reason <- paste0(
-      "The prior density at the null hypothesis value is ", behavior, ". The ",
-      "Savage-Dickey Bayes factor is undefined."
-    )
+    behavior <- if(inherits(prior_ordinate, "BayesTools_zero_ordinate")) "zero" else
+      if(inherits(prior_ordinate, "BayesTools_infinite_ordinate")) "infinite" else
+      if(inherits(prior_ordinate, "BayesTools_point_mass_at_null")) "point_mass" else
+      if(inherits(prior_ordinate, "BayesTools_undefined_ordinate")) "undefined" else "inexact"
+    reason <- if(behavior %in% c("zero", "infinite")){
+      paste0("The prior density at the null hypothesis value is ", behavior, ". The ",
+             "Savage-Dickey Bayes factor is undefined.")
+    }else{
+      conditionMessage(prior_ordinate)
+    }
     BF <- NA_real_
     attr(BF, "warnings") <- reason
     attr(BF, "posterior_density_source") <- paste0(behavior, "_prior_ordinate")

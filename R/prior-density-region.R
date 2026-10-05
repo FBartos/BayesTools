@@ -437,13 +437,15 @@
     if(length(messages) == 0L){
       messages <- "a non-finite probability"
     }
-    stop(
+    stop(errorCondition(paste0(
       "Conditional-normal prior probability was rejected by diagnostics: ",
       "integration reported '", paste(messages, collapse = "; "),
       "' with absolute error ", format(result$absolute_error),
-      ". Inspect the prior specification and the region bounds.",
-      call. = FALSE
-    )
+      ". Inspect the prior specification and the region bounds."),
+      call = NULL, class = c("BayesTools_prior_region_probability_rejected",
+                             "BayesTools_hypothesis_region"),
+      diagnostics = result
+    ))
   }
   probability <- result$probability
   attr(probability, "numerical_diagnostics") <- list(

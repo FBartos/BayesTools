@@ -1,6 +1,7 @@
 
 
-.hypothesis_BF_compute <- function(quantity, statement, density_method) {
+.hypothesis_BF_compute <- function(quantity, statement, density_method,
+                                    allow_unavailable = FALSE) {
 
   left  <- statement[["left"]]
   right <- statement[["right"]]
@@ -8,33 +9,34 @@
 
   if(.hypothesis_sides_point_complement(left, right)){
     if(explicit){
-      return(.hypothesis_BF_result_labels(.hypothesis_point_BF(
+      return(.hypothesis_BF_result_labels(.hypothesis_BF_available(.hypothesis_point_BF(
         quantity       = quantity,
         side           = left,
         density_method = density_method,
         inverse        = FALSE
-      ), alternative = left, null = right))
+      ), allow_unavailable), alternative = left, null = right))
     }
-    return(.hypothesis_BF_result_labels(.hypothesis_point_BF(
+    return(.hypothesis_BF_result_labels(.hypothesis_BF_available(.hypothesis_point_BF(
       quantity       = quantity,
       side           = left,
       density_method = density_method,
       inverse        = TRUE
-    ), alternative = right, null = left))
+    ), allow_unavailable), alternative = right, null = left))
   }
   if(.hypothesis_sides_point_complement(right, left)){
-    return(.hypothesis_BF_result_labels(.hypothesis_point_BF(
+    return(.hypothesis_BF_result_labels(.hypothesis_BF_available(.hypothesis_point_BF(
       quantity       = quantity,
       side           = right,
       density_method = density_method,
       inverse        = TRUE
-    ), alternative = left, null = right))
+    ), allow_unavailable), alternative = left, null = right))
   }
 
   if(identical(left[["type"]], "region") &&
      identical(right[["type"]], "region")){
     return(.hypothesis_BF_result_labels(
-      .hypothesis_region_odds_BF(quantity, left, right, explicit = explicit),
+      .hypothesis_BF_available(.hypothesis_region_odds_BF(
+        quantity, left, right, explicit = explicit), allow_unavailable),
       alternative = left,
       null        = right
     ))
@@ -42,28 +44,44 @@
 
   if(identical(left[["type"]], "point") &&
      identical(right[["type"]], "region")){
-    return(.hypothesis_BF_result_labels(.hypothesis_transitive_BF(
+    return(.hypothesis_BF_result_labels(.hypothesis_BF_available(.hypothesis_transitive_BF(
       quantity       = quantity,
       point_side     = left,
       region_side    = right,
       density_method = density_method,
       inverse        = FALSE,
       explicit       = explicit
-    ), alternative = left, null = right))
+    ), allow_unavailable), alternative = left, null = right))
   }
   if(identical(left[["type"]], "region") &&
      identical(right[["type"]], "point")){
-    return(.hypothesis_BF_result_labels(.hypothesis_transitive_BF(
+    return(.hypothesis_BF_result_labels(.hypothesis_BF_available(.hypothesis_transitive_BF(
       quantity       = quantity,
       point_side     = right,
       region_side    = left,
       density_method = density_method,
       inverse        = TRUE,
       explicit       = explicit
-    ), alternative = left, null = right))
+    ), allow_unavailable), alternative = left, null = right))
   }
 
   stop("Unsupported hypothesis comparison.", call. = FALSE)
+}
+
+.hypothesis_BF_available <- function(result, allow_unavailable){
+
+  if(!isTRUE(allow_unavailable)){
+    return(result)
+  }
+  tryCatch(result, error = function(condition){
+    if(!inherits(condition, c("BayesTools_hypothesis_ordinate",
+                              "BayesTools_hypothesis_region"))){
+      stop(condition)
+    }
+    list(BF = NA_real_, BF_error = NA_real_, prior = NA_real_,
+         posterior = NA_real_, method = "unavailable",
+         warning = conditionMessage(condition), inexact_prior = NULL)
+  })
 }
 
 

@@ -108,6 +108,16 @@ Region tests require positive prior mass for every compared region. An
 implicit region statement is compared with its complement, which therefore
 also needs positive prior mass; explicit comparisons such as
 \code{"theta > 0.5 vs theta > 0"} accept an encompassing region with prior
+For a whole-factor statement expanded into several quantities, known
+ordinate errors produce an \code{NA} row with method \code{"unavailable"}
+and the original reason; valid siblings are computed. Direct scalar and
+explicitly indexed tests remain strict. Known numerical prior-region errors
+behave likewise, with classes \code{BayesTools_prior_region_mass_unavailable},
+\code{BayesTools_prior_region_route_unavailable},
+\code{BayesTools_prior_region_grid_unavailable}, or
+\code{BayesTools_prior_region_probability_rejected}, all also
+\code{BayesTools_hypothesis_region}. Missing deterministic provenance for a
+region remains a metadata error, including in whole-factor tables.
 mass one. Rows are labelled by quantity; when several statements refer to
 the same quantity, the statement number is appended, e.g.
 \code{theta (2)}.

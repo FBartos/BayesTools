@@ -63,6 +63,9 @@ null value of a scalar marginal posterior stops with an error of class
 (and in marginal inference), a zero or infinite prior ordinate or a
 posterior point mass at the null gives the level an \code{NA} Bayes factor
 with its reason instead (see Details).
+In a list or opted-in marginal table, all five known prior-ordinate errors
+return \code{NA} with the original reason (zero and infinite ordinates keep
+their existing reason text). Direct scalar calls still signal these errors.
 }
 \description{
 Computes Savage-Dickey (density ratio) inclusion Bayes factors

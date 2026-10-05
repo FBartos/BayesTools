@@ -92,4 +92,7 @@ attribute.
 }
 \seealso{
 \link{marginal_inference} \link{as_mixed_posteriors}
+Known prior-ordinate refusals also produce \code{NA} plus the original
+reason, including scalar marginal table results; direct scalar
+\code{Savage_Dickey_BF()} remains strict.
 }

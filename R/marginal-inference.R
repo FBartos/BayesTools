@@ -177,6 +177,9 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
     stop("'model' must be a 'BayesTools_fit'")
   check_char(parameters, "parameters", check_length = FALSE)
   check_char(marginal_parameters, "marginal_parameters", check_length = FALSE)
+#' Known prior-ordinate refusals also produce \code{NA} plus the original
+#' reason, including scalar marginal table results; direct scalar
+#' \code{Savage_Dickey_BF()} remains strict.
   check_list(conditional_list, "conditional_list", check_length = length(marginal_parameters))
   check_char(conditional_rule, "conditional_rule")
   check_bool(compute_BF, "compute_BF")

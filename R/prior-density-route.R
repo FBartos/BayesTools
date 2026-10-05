@@ -1783,17 +1783,22 @@
 # structural route: a product grid is capped in size and cannot be refined
 # reliably, so a product without a structural route is unavailable for
 # inference.
-.prior_linear_density_check_grid <- function(route){
+.prior_linear_density_check_grid <- function(route, quantity = NULL){
 
   if(.prior_density_route_has_general_product(route)){
-    stop(
+    message <- paste0(
       "The prior density of this linear combination is unavailable: its ",
       "'multiply_by' product has no structural density route (a non-normal ",
       "additive term, several products, or several non-normal multiplied ",
       "terms), and numerical product grids are not used for inference. ",
-      "Evaluate the terms separately.",
-      call. = FALSE
+      "Evaluate the terms separately."
     )
+    if(identical(quantity, "probability")){
+      stop(errorCondition(message, call = NULL,
+        class = c("BayesTools_prior_region_route_unavailable",
+                  "BayesTools_hypothesis_region")))
+    }
+    stop(message, call. = FALSE)
   }
   invisible(TRUE)
 }

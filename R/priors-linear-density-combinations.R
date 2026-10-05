@@ -1325,11 +1325,15 @@
       )
     }
   }
-  stop(
-    "Adaptive prior-", quantity, " evaluation did not converge within the ",
-    "documented grid-refinement error criterion.",
-    call. = FALSE
-  )
+  message <- paste0("Adaptive prior-", quantity,
+                    " evaluation did not converge within the ",
+                    "documented grid-refinement error criterion.")
+  if(identical(quantity, "probability")){
+    stop(errorCondition(message, call = NULL,
+      class = c("BayesTools_prior_region_probability_rejected",
+                "BayesTools_hypothesis_region"), diagnostics = refinement))
+  }
+  stop(message, call. = FALSE)
 }
 
 # A simple continuous scalar prior with a numeric interval support: the

@@ -1,4 +1,5 @@
 # version 0.3.1
+- whole-factor hypothesis tables retain unavailable levels as NA with the original reason and compute valid siblings; known prior-ordinate refusals also work in marginal tables.
 ### Breaking changes
 These changes affect code and saved objects written for BayesTools 0.3.0.
 This version is released together with RoBMA 4.1.0; RoBMA 4.0.0 relies on the

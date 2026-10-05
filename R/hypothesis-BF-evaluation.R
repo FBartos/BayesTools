@@ -248,8 +248,13 @@
                            numerical_error)
   if(!is.finite(prob) || prob < -probability_bound ||
      prob > 1 + probability_bound){
-    stop("Computed prior probability lies materially outside [0, 1].",
-         call. = FALSE)
+    stop(errorCondition(
+      "Computed prior probability lies materially outside [0, 1].",
+      class = c("BayesTools_prior_region_probability_rejected",
+                "BayesTools_hypothesis_region"), call = NULL,
+      probability = prob, absolute_error = numerical_error,
+      probability_bound = probability_bound
+    ))
   }
   prob <- max(0, min(1, prob))
 
@@ -272,9 +277,13 @@
     # Riemann-sum normalization.
     total <- .hypothesis_trapz(x, y)
     if(length(x) < 2L || !is.finite(total) || total <= 0){
-      stop("The continuous prior density grid has no positive integrable ",
-           "mass; the prior region probability is unavailable.",
-           call. = FALSE)
+      stop(errorCondition(
+        paste0("The continuous prior density grid has no positive integrable ",
+               "mass; the prior region probability is unavailable."),
+        class = c("BayesTools_prior_region_grid_unavailable",
+                  "BayesTools_hypothesis_region"), call = NULL,
+        integral = total
+      ))
     }
     inside <- if(!is.null(comparison)){
       .hypothesis_comparison_grid_integral(x, y, comparison)
@@ -316,7 +325,7 @@
   }
   .prior_linear_density_check_grid(.prior_density_route_from_adaptive(
     attr(prior_density, "adaptive_evaluation", exact = TRUE)
-  ))
+  ), quantity = "probability")
   refinement <- .prior_linear_density_refine_grids(
     list(prior_density), 1, evaluate = evaluate_probability
   )
@@ -1035,12 +1044,21 @@ prior_ordinate_status <- function(prior_density, values, labels = NULL){
   # explicit comparison. An implicit statement compares a region with its
   # complement, which then has zero prior mass.
   if(!is.finite(mass) || mass <= 0){
-    stop("Prior region mass for hypothesis '", label,
-         "' is zero or non-finite.", call. = FALSE)
+    stop(errorCondition(
+      paste0("Prior region mass for hypothesis '", label, "' is zero or non-finite."),
+      class = c("BayesTools_prior_region_mass_unavailable",
+                "BayesTools_hypothesis_region"), call = NULL,
+      label = label, mass = mass, reason = "zero_or_nonfinite"
+    ))
   }
   if(!isTRUE(allow_one) && mass >= 1){
-    stop("Prior region mass for hypothesis '", label,
-         "' is one, so its complement has zero prior mass.", call. = FALSE)
+    stop(errorCondition(
+      paste0("Prior region mass for hypothesis '", label,
+             "' is one, so its complement has zero prior mass."),
+      class = c("BayesTools_prior_region_mass_unavailable",
+                "BayesTools_hypothesis_region"), call = NULL,
+      label = label, mass = mass, reason = "zero_complement"
+    ))
   }
 
   return(invisible(TRUE))

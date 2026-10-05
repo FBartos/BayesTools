@@ -164,6 +164,16 @@
 #' numerical grid, a structural quadrature rejected by its diagnostics,
 #' or a density grid without recorded provenance). Each of
 #' these conditions also has class \code{BayesTools_hypothesis_ordinate}.
+#' For a whole-factor statement expanded into several quantities, known
+#' ordinate errors produce an \code{NA} row with method \code{"unavailable"}
+#' and the original reason; valid siblings are computed. Direct scalar and
+#' explicitly indexed tests remain strict. Known numerical prior-region errors
+#' behave likewise, with classes \code{BayesTools_prior_region_mass_unavailable},
+#' \code{BayesTools_prior_region_route_unavailable},
+#' \code{BayesTools_prior_region_grid_unavailable}, or
+#' \code{BayesTools_prior_region_probability_rejected}, all also
+#' \code{BayesTools_hypothesis_region}. Missing deterministic provenance for a
+#' region remains a metadata error, including in whole-factor tables.
 #' User-supplied prior draws (numeric or data-frame inputs without a prior
 #' object) have no structural prior density: their prior ordinate is the
 #' kernel (or normal) estimate of the prior expression draws, returned with a
@@ -230,7 +240,8 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
       result <- .hypothesis_BF_compute(
         quantity       = quantities[[quantity_i]],
         statement      = statements[[hyp_i]],
-        density_method = density_method
+        density_method = density_method,
+        allow_unavailable = length(quantities) > 1L
       )
       rows[[row_i]] <- .hypothesis_BF_row(
         quantity = quantities[[quantity_i]],
