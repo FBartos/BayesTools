@@ -1365,12 +1365,13 @@ old behaviour.
     curve that is far off; the rest of the plot is drawn.
 - fitting, convergence, and bridge sampling:
   - `JAGS_bridgesampling()` preserves an explicit `use_neff` bridge-sampler
-    control, including `FALSE`, with `TRUE` as the default. Deferred callback
-    argument warnings remain in the returned diagnostics, and errors retain
-    their bridge-sampling context. Exact zero-dimensional evaluation ignores
-    the upstream-only `packages`, `use_neff`, `varlist`, `envir`, `rcppFile`,
-    `param_types`, and `verbose` controls while forwarding genuine likelihood
-    arguments.
+    control, including `FALSE`, with `TRUE` as the default. On both the exact
+    zero-dimensional and sampler routes, callback argument and body warnings
+    are muffled and recorded in `diagnostics$upstream_warnings`, and errors
+    retain their bridge-sampling context. The upstream-only `packages`,
+    `use_neff`, `varlist`, `envir`, `rcppFile`, `param_types`, and `verbose`
+    controls are not forwarded to the exact callback; genuine likelihood
+    arguments are forwarded.
   - `JAGS_extend()` recompiles the model from the stored chain states instead
     of continuing a compiled model left in the session, so extending the same
     object twice, or a saved and reloaded copy, gives identical draws. It

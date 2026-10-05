@@ -926,3 +926,86 @@ test_that("P-F8 exact point route ignores all named upstream controls", {
   genuine <- do.call(JAGS_bridgesampling, c(arguments, controls, list(foo = -3)))
   expect_identical(genuine$logml, -3)
 })
+
+test_that("P-F8 exact point callback warnings are recorded without escape", {
+
+  posterior <- coda::mcmc(matrix(0, nrow = 100L, ncol = 1L,
+                                dimnames = list(NULL, "theta")))
+  call_bridge <- function(log_posterior = function(parameters, data, foo) foo, ...){
+    JAGS_bridgesampling(
+      fit = posterior, log_posterior = log_posterior, data = NULL,
+      prior_list = list(theta = prior("point", list(location = 0))),
+      seed = 1, ...
+    )
+  }
+  default <- call_bridge(foo = -3)
+  set.seed(55)
+  seed_before <- .Random.seed
+  kind_before <- RNGkind()
+  expect_no_warning(deferred <- call_bridge(
+    foo = { stats::runif(1); warning("55 deferred exact warning"); -3 }
+  ))
+  expect_identical(deferred$diagnostics$upstream_warnings, "55 deferred exact warning")
+  expect_no_warning(body <- call_bridge(function(parameters, data, foo){
+    stats::runif(1)
+    warning("55 exact body warning")
+    warning("55 exact body warning")
+    foo
+  }, foo = -3))
+  expect_identical(body$diagnostics$upstream_warnings, rep("55 exact body warning", 2L))
+  for(result in list(deferred, body)){
+    expect_identical(result$logml, -3)
+    expect_identical(result$aggregation, default$aggregation)
+    expect_identical(result$repetitions, default$repetitions)
+    expect_identical(result$diagnostics$chains, default$diagnostics$chains)
+  }
+  expect_identical(.Random.seed, seed_before)
+  expect_identical(RNGkind(), kind_before)
+})
+
+test_that("P-F8 exact point callback errors retain bridge context and RNG state", {
+
+  posterior <- coda::mcmc(matrix(0, nrow = 100L, ncol = 1L,
+                                dimnames = list(NULL, "theta")))
+  call_bridge <- function(log_posterior = function(parameters, data) 0, ...){
+    JAGS_bridgesampling(
+      fit = posterior, log_posterior = log_posterior, data = NULL,
+      prior_list = list(theta = prior("point", list(location = 0))),
+      seed = 1, ...
+    )
+  }
+  set.seed(55)
+  seed_before <- .Random.seed
+  kind_before <- RNGkind()
+  expect_error(call_bridge(function(parameters, data, foo) foo,
+    foo = { stats::runif(1); stop("55 deferred exact error") }),
+    "Bridge sampling failed: 55 deferred exact error", fixed = TRUE)
+  expect_error(call_bridge(function(parameters, data){
+    stats::runif(1)
+    stop("55 exact body error")
+  }), "Bridge sampling failed: 55 exact body error", fixed = TRUE)
+  expect_error(call_bridge(varlist = stop("55 reserved control evaluation")),
+    "Bridge sampling failed: 55 reserved control evaluation", fixed = TRUE)
+  expect_identical(.Random.seed, seed_before)
+  expect_identical(RNGkind(), kind_before)
+})
+
+test_that("P-F8 exact point result validation retains its own error context", {
+
+  posterior <- coda::mcmc(matrix(0, nrow = 100L, ncol = 1L,
+                                dimnames = list(NULL, "theta")))
+  call_bridge <- function(value){
+    JAGS_bridgesampling(
+      fit = posterior, log_posterior = function(parameters, data) value,
+      data = NULL, prior_list = list(theta = prior("point", list(location = 0)))
+    )
+  }
+  expect_error(call_bridge(NA_real_), paste0(
+    "The exact zero-dimensional log marginal likelihood evaluated to NA. ",
+    "Check that the log-posterior callback returns a numeric value."
+  ), fixed = TRUE)
+  expect_error(call_bridge(Inf), paste0(
+    "'logml' must be one numeric natural-log marginal likelihood (NA for a ",
+    "failed computation) and may only be infinite when it is -Inf."
+  ), fixed = TRUE)
+})

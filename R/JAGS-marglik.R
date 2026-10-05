@@ -134,7 +134,10 @@
 #' control defaults to `TRUE`; an explicitly supplied value is passed to the
 #' sampler. The upstream-only controls `packages`, `use_neff`, `varlist`,
 #' `envir`, `rcppFile`, `param_types`, and `verbose` are not forwarded to
-#' `log_posterior` and are ignored for exact zero-dimensional evaluation.
+#' `log_posterior`, including for exact zero-dimensional evaluation. Warnings
+#' from callback arguments or the callback body are recorded in
+#' `diagnostics$upstream_warnings` and muffled on both the exact and sampler
+#' routes; errors retain the `Bridge sampling failed:` context.
 #'
 #' @details Row-shaped external random-effect SD sources, such as
 #' `random_sd_source("tau", shape = "row")`, must be reconstructable during
@@ -546,29 +549,46 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     }
   }
 
+  upstream_warnings <- character()
+  evaluate_bridge <- function(expr){
+
+    value <- tryCatch(withCallingHandlers(expr, warning = function(w){
+      upstream_warnings <<- c(upstream_warnings, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }), error = function(e)e)
+    if(inherits(value, "error")){
+      stop("Bridge sampling failed: ", conditionMessage(value), call. = FALSE)
+    }
+    value
+  }
+
   if(ncol(bridgesampling_posterior) == 0L){
-    callback_dots <- list(...)
-    callback_dots[c("packages", "use_neff", "varlist", "envir", "rcppFile",
-                    "param_types", "verbose")] <- NULL
-    logml <- do.call(
-      full_log_posterior,
-      c(
-        list(
-          samples.row = numeric(),
-          data = data,
-          bridge_prior_evaluator = bridge_prior_evaluator,
-          bridge_formula_prior_evaluator = bridge_formula_prior_evaluator,
-          bridge_formula_random_prior_evaluator = bridge_formula_random_prior_evaluator,
-          bridge_formula_parameter_evaluator = bridge_formula_parameter_evaluator,
-          add_parameters = add_parameters,
-          fixed_random_latent = random_bridge_parameters$fixed_latent,
-          bridge_context = bridge_context,
-          bridge_context_evaluator = bridge_context_evaluator
-        ),
-        callback_dots
+    logml <- evaluate_bridge({
+      callback_dots <- list(...)
+      callback_dots[c("packages", "use_neff", "varlist", "envir", "rcppFile",
+                      "param_types", "verbose")] <- NULL
+      do.call(
+        full_log_posterior,
+        c(
+          list(
+            samples.row = numeric(),
+            data = data,
+            bridge_prior_evaluator = bridge_prior_evaluator,
+            bridge_formula_prior_evaluator = bridge_formula_prior_evaluator,
+            bridge_formula_random_prior_evaluator = bridge_formula_random_prior_evaluator,
+            bridge_formula_parameter_evaluator = bridge_formula_parameter_evaluator,
+            add_parameters = add_parameters,
+            fixed_random_latent = random_bridge_parameters$fixed_latent,
+            bridge_context = bridge_context,
+            bridge_context_evaluator = bridge_context_evaluator
+          ),
+          callback_dots
+        )
       )
-    )
-    return(.bt_marglik_exact_result(logml, chain_metadata))
+    })
+    result <- .bt_marglik_exact_result(logml, chain_metadata)
+    result[["diagnostics"]][["upstream_warnings"]] <- upstream_warnings
+    return(result)
   }
 
 
@@ -578,8 +598,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   if(!is.null(seed)){
     set.seed(seed)
   }
-  upstream_warnings <- character()
-  marglik <- tryCatch(withCallingHandlers({
+  marglik <- evaluate_bridge({
     bridge_arguments <- c(list(
       samples            = bridgesampling_posterior,
       data               = data,
@@ -604,18 +623,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       bridge_arguments$use_neff <- TRUE
     }
     do.call(bridgesampling::bridge_sampler, bridge_arguments)
-  }, warning = function(w){
-    upstream_warnings <<- c(upstream_warnings, conditionMessage(w))
-    invokeRestart("muffleWarning")
-  }), error = function(e)e)
-
-  if(inherits(marglik, "error")){
-    stop(
-      "Bridge sampling failed: ",
-      conditionMessage(marglik),
-      call. = FALSE
-    )
-  }
+  })
 
   result <- .bt_marglik_from_upstream(
     upstream = marglik,

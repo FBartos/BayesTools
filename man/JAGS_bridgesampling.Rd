@@ -180,7 +180,10 @@ and \code{log_posterior} function. The upstream-only \code{use_neff} logical
 control defaults to \code{TRUE}; an explicitly supplied value is passed to the
 sampler. The upstream-only controls \code{packages}, \code{use_neff}, \code{varlist},
 \code{envir}, \code{rcppFile}, \code{param_types}, and \code{verbose} are not forwarded to
-\code{log_posterior} and are ignored for exact zero-dimensional evaluation.}
+\code{log_posterior}, including for exact zero-dimensional evaluation. Warnings
+from callback arguments or the callback body are recorded in
+\code{diagnostics$upstream_warnings} and muffled on both the exact and sampler
+routes; errors retain the \code{Bridge sampling failed:} context.}
 }
 \value{
 A \code{BayesTools_marglik} object. \code{logml} is one scalar natural-log
