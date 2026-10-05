@@ -347,26 +347,6 @@
     !is.null(.posterior_ordinate_from_attribute(matched, null_hypothesis)))
 }
 
-.posterior_ordinate_direct_candidate_matches <- function(posterior_ordinate,
-                                                         samples,
-                                                         aliases = NULL,
-                                                         allow_unlabeled = TRUE,
-                                                         null_hypothesis = NULL){
-
-  if(is.null(aliases)){
-    aliases <- .posterior_density_sample_aliases(samples)
-  }
-  .posterior_ordinate_candidate_matches(
-    posterior_ordinate,
-    aliases          = aliases,
-    conditional      = .bt_meta_condition(samples, "conditional"),
-    conditional_rule = .bt_meta_condition(samples, "conditional_rule"),
-    condition_key    = .bt_meta_condition(samples, "condition_key"),
-    allow_unlabeled  = allow_unlabeled,
-    null_hypothesis  = null_hypothesis
-  )
-}
-
 .posterior_ordinate_direct_attribute <- function(samples, aliases = NULL,
                                                  null_hypothesis = NULL){
 
