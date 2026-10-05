@@ -1000,12 +1000,14 @@ test_that("P-F8 exact point result validation retains its own error context", {
       data = NULL, prior_list = list(theta = prior("point", list(location = 0)))
     )
   }
-  expect_error(call_bridge(NA_real_), paste0(
+  na_error <- tryCatch(call_bridge(NA_real_), error = identity)
+  expect_identical(conditionMessage(na_error), paste0(
     "The exact zero-dimensional log marginal likelihood evaluated to NA. ",
     "Check that the log-posterior callback returns a numeric value."
-  ), fixed = TRUE)
-  expect_error(call_bridge(Inf), paste0(
+  ))
+  inf_error <- tryCatch(call_bridge(Inf), error = identity)
+  expect_identical(conditionMessage(inf_error), paste0(
     "'logml' must be one numeric natural-log marginal likelihood (NA for a ",
     "failed computation) and may only be infinite when it is -Inf."
-  ), fixed = TRUE)
+  ))
 })

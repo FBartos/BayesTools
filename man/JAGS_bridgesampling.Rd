@@ -181,9 +181,11 @@ control defaults to \code{TRUE}; an explicitly supplied value is passed to the
 sampler. The upstream-only controls \code{packages}, \code{use_neff}, \code{varlist},
 \code{envir}, \code{rcppFile}, \code{param_types}, and \code{verbose} are not forwarded to
 \code{log_posterior}, including for exact zero-dimensional evaluation. Warnings
-from callback arguments or the callback body are recorded in
-\code{diagnostics$upstream_warnings} and muffled on both the exact and sampler
-routes; errors retain the \code{Bridge sampling failed:} context.}
+signaled in the calling R process while evaluating callback arguments or the
+callback body are recorded in \code{diagnostics$upstream_warnings} and muffled on
+both the exact and sampler routes. Callback warnings from parallel worker
+processes are not relayed to this diagnostic field. Errors retain the
+\code{Bridge sampling failed:} context.}
 }
 \value{
 A \code{BayesTools_marglik} object. \code{logml} is one scalar natural-log

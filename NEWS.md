@@ -1365,10 +1365,12 @@ old behaviour.
     curve that is far off; the rest of the plot is drawn.
 - fitting, convergence, and bridge sampling:
   - `JAGS_bridgesampling()` preserves an explicit `use_neff` bridge-sampler
-    control, including `FALSE`, with `TRUE` as the default. On both the exact
-    zero-dimensional and sampler routes, callback argument and body warnings
-    are muffled and recorded in `diagnostics$upstream_warnings`, and errors
-    retain their bridge-sampling context. The upstream-only `packages`,
+    control, including `FALSE`, with `TRUE` as the default. Warnings signaled in
+    the calling R process while evaluating callback arguments or the callback
+    body are muffled and recorded in `diagnostics$upstream_warnings` on both the
+    exact zero-dimensional and sampler routes. Callback warnings from parallel
+    worker processes are not relayed to this diagnostic field. Errors retain
+    their bridge-sampling context. The upstream-only `packages`,
     `use_neff`, `varlist`, `envir`, `rcppFile`, `param_types`, and `verbose`
     controls are not forwarded to the exact callback; genuine likelihood
     arguments are forwarded.

@@ -135,9 +135,11 @@
 #' sampler. The upstream-only controls `packages`, `use_neff`, `varlist`,
 #' `envir`, `rcppFile`, `param_types`, and `verbose` are not forwarded to
 #' `log_posterior`, including for exact zero-dimensional evaluation. Warnings
-#' from callback arguments or the callback body are recorded in
-#' `diagnostics$upstream_warnings` and muffled on both the exact and sampler
-#' routes; errors retain the `Bridge sampling failed:` context.
+#' signaled in the calling R process while evaluating callback arguments or the
+#' callback body are recorded in `diagnostics$upstream_warnings` and muffled on
+#' both the exact and sampler routes. Callback warnings from parallel worker
+#' processes are not relayed to this diagnostic field. Errors retain the
+#' `Bridge sampling failed:` context.
 #'
 #' @details Row-shaped external random-effect SD sources, such as
 #' `random_sd_source("tau", shape = "row")`, must be reconstructable during
