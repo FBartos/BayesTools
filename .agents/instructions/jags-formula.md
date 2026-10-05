@@ -168,6 +168,11 @@ a second transformation path.
 
 ## Parameter Map
 
+For a log-intercept formula, `exp(intercept)` aliases the fitted coefficient
+quantity; selection alone does not unscale it. Downstream display scale, such
+as RoBMA's `standardized_coefficients`, is selected independently.
+
+
 Fitted-parameter metadata has one authoritative, versioned
 `BayesTools_parameter_map` with three linked tables:
 

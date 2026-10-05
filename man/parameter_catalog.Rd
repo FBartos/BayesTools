@@ -153,6 +153,10 @@ such as a CS/HCS pairwise correlation referring to its shared \code{cor}.
 Random-effect quantities also carry centrally generated simplified aliases.
 These remove a sole intercept argument and may omit a redundant owner, but
 are considered by resolvers only when \code{simplify_names = TRUE}.
+For a log-intercept formula, \code{exp(intercept)} is an alias of the fitted
+coefficient quantity. Selecting that alias does not itself unscale the
+coefficient. RoBMA's \code{standardized_coefficients} setting selects the display
+scale independently of the alias.
 
 Identity random-effect summaries reuse their sampled or structural
 coordinate. Summaries requiring a scale or covariance transformation expose
