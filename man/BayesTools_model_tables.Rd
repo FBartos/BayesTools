@@ -220,7 +220,9 @@ accept semantic selectors \code{"random"}, \code{"random_sd"},
 \code{"random_var_prop"}, \code{"random_var_mult"},
 \code{"random_allocation"}, and \code{"random_sd_mult"}.}
 
-\item{fit}{runjags model fit}
+\item{fit}{runjags model fit or a derived-draw view from \code{\link[=JAGS_with_draws]{JAGS_with_draws()}}.
+Estimates and inference describe its supplied draws; chain diagnostics use
+the actual retained chain geometry.}
 
 \item{transformations}{named list of transformations to be applied
 to specific parameters}

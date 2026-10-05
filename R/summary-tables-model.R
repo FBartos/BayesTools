@@ -9,7 +9,9 @@
 #' \code{m_number}, marginal likelihood \code{marglik}, prior and
 #' posterior probability \code{prior_prob} and \code{post_prob},
 #' and model inclusion Bayes factor \code{inclusion_BF}
-#' @param fit runjags model fit
+#' @param fit runjags model fit or a derived-draw view from [JAGS_with_draws()].
+#' Estimates and inference describe its supplied draws; chain diagnostics use
+#' the actual retained chain geometry.
 #' @param conditional summarizes estimates conditional on being included
 #' in the model for spike and slab priors. Defaults to \code{FALSE}.
 #' @param transformations named list of transformations to be applied
@@ -289,11 +291,11 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
                                      remove_diagnostics = FALSE,
                                      diagnostic_columns = getOption("BayesTools.JAGS_estimates_diagnostic_columns", if(remove_diagnostics) "none" else "all")){
 
-  .check_runjags()
+  if(inherits(fit, "runjags")) .check_runjags()
   # most of the code is shared with .diagnostics_plot_data function (keep them in sync on update)
 
   # check fits
-  if(!inherits(fit, "runjags"))
+  if(!.bt_is_jags_analysis_fit(fit))
     stop("'fit' must be a runjags fit")
   if(!inherits(fit, "BayesTools_fit"))
     stop("'fit' must be a BayesTools fit")
@@ -856,10 +858,22 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     }
     return(empty_table)
   }else{
+    n_samples <- NULL
+    n_chains <- NULL
+    if(length(summary_diagnostic_columns) > 0L){
+      chains <- .extract_posterior_samples(fit, as_list = TRUE)
+      chain_counts <- vapply(chains, nrow, integer(1))
+      if(length(chain_counts) == 0L || length(unique(chain_counts)) != 1L ||
+         sum(chain_counts) != nrow(model_samples)){
+        stop("The retained chains disagree with the pooled draw count.", call. = FALSE)
+      }
+      n_samples <- chain_counts[[1L]]
+      n_chains <- length(chains)
+    }
     runjags_summary <- .runjags_summary_fast(
       model_samples       = model_samples,
-      n_samples           = fit$sample,
-      n_chains            = length(fit$mcmc),
+      n_samples           = n_samples,
+      n_chains            = n_chains,
       conditional         = conditional,
       probs               = probs,
       remove_diagnostics  = remove_diagnostics,
@@ -1201,7 +1215,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
                                      BF_diagnostic_columns = getOption("BayesTools.JAGS_BF_diagnostic_columns", if(BF_diagnostics) "all" else "none")){
 
   # check fits
-  if(!inherits(fit, "runjags"))
+  if(!.bt_is_jags_analysis_fit(fit))
     stop("'fit' must be a runjags fit")
   if(!inherits(fit, "BayesTools_fit"))
     stop("'fit' must be a BayesTools fit")

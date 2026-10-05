@@ -451,3 +451,14 @@ only observed tuples.
 Use deterministic syntax and design assertions before live fitting. Follow the
 profile order and centralized fixture rules in `testing.md`; do not duplicate
 model fitting inside a focused consumer test.
+
+`JAGS_with_draws()` creates a nonsampler `BayesTools_draws_view` with only
+`original_fit` and `mcmc` slots. It retains the full original fit, copies
+nonruntime analysis attributes and the unchanged parameter map, and clears
+fit-level draw metadata and cached posterior estimates. Local view overrides
+do not modify the original. Descriptive readers use supplied draws and actual
+chain geometry; pooled coda draws use chain-major indices, while coda lists
+retain chain timing. Extension, model convergence and bridge sampling refuse
+views with classed errors before runtime/default arguments are forced. Extend
+`fit$original_fit` and regenerate the view; missing view coordinates require
+regeneration, while ordinary fitted-metadata errors keep their refit contract.

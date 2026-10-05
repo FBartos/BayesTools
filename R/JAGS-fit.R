@@ -167,7 +167,12 @@
 #' addition to active cache storage. Callback packages must be listed in
 #' \code{required_packages}. Passing \code{NULL} disables capture and restore.
 #' @param fit a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
-#' extended. Fits without the parameter map and fit contract of this version
+#' extended. A derived-draw view signals
+#' \code{BayesTools_draws_view_sampling_unavailable}, also
+#' \code{BayesTools_sampling_unavailable} and
+#' \code{BayesTools_draws_view_unavailable}, before runtime arguments are forced;
+#' extend its \code{original_fit} and regenerate it with [JAGS_with_draws()].
+#' Fits without the parameter map and fit contract of this version
 #' of BayesTools (such as fits created by BayesTools 0.3.0) must be refitted:
 #' they stop with an error of class \code{BayesTools_refit_required} (see
 #' [JAGS_validate_fit_contract()]).
@@ -875,6 +880,13 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
                         runtime_cache = attr(fit, "runtime_cache", exact = TRUE),
                         worker_output = NULL){
 
+  if(inherits(fit, "BayesTools_draws_view")){
+    stop(.bt_draws_view_condition(
+      c("BayesTools_draws_view_sampling_unavailable", "BayesTools_sampling_unavailable"),
+      "Sampling extension is unavailable for a derived-draw view. Extend 'fit$original_fit' with 'JAGS_extend()' and regenerate the view with 'JAGS_with_draws()'.",
+      operation = "extension"
+    ))
+  }
   if(!inherits(fit, "BayesTools_fit"))
     stop("'fit' must be a 'BayesTools_fit'")
 

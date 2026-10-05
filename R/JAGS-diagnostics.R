@@ -3,7 +3,8 @@
 #' @description Creates density plots, trace plots, and autocorrelation plots
 #' for a given parameter of a JAGS model.
 #'
-#' @param fit a JAGS model fitted via [JAGS_fit()]
+#' @param fit a JAGS model fitted via [JAGS_fit()] or a derived-draw view from
+#' [JAGS_with_draws()]. Diagnostics describe the supplied view draws.
 #' @param parameter parameter to be plotted
 #' @param type what type of model diagnostic should be plotted. The available
 #' options are \code{"density"}, \code{"trace"}, and \code{"autocorrelation"}
@@ -40,7 +41,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   }
 
   # check fits
-  if(!inherits(fit, "runjags"))
+  if(!.bt_is_jags_analysis_fit(fit))
     stop("'fit' must be a runjags fit")
   if(!inherits(fit, "BayesTools_fit"))
     stop("'fit' must be a BayesTools fit")

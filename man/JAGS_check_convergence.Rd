@@ -88,6 +88,9 @@ failed checks.
 \description{
 Checks whether the supplied \link[runjags]{runjags-package} model
 satisfied convergence criteria.
+Derived-draw views are refused with
+\code{BayesTools_draws_view_inference_unavailable} (also
+\code{BayesTools_draws_view_unavailable}); assess \code{fit$original_fit}.
 }
 \details{
 \code{JAGS_fit()} assigns every fitted coordinate one convergence

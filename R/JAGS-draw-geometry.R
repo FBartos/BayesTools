@@ -16,8 +16,29 @@
 #' Internal coordinates, including a private backend anchor, are excluded by
 #' default.
 #'
-#' `JAGS_with_draws()` returns a copy of a fitted object with replacement draws
-#' and matching draw-geometry metadata.
+#' `JAGS_with_draws()` returns a derived-draw view with supplied draws and
+#' matching geometry, plus the complete untouched fit in `original_fit`.
+#' Views have class `BayesTools_draws_view` and `BayesTools_fit`, with only
+#' `original_fit` and `mcmc` slots. Nonruntime analysis attributes are copied;
+#' view-local changes do not modify the original. Replacing a view retains its
+#' original fit and current local analysis attributes without nesting views.
+#' Fit-level draw metadata and stored posterior densities/ordinates are cleared;
+#' attach fresh estimates with [posterior_metadata()] after replacement.
+#' A view supports descriptive estimates, diagnostic plots, mixed-posterior
+#' extraction and marginal inference from its supplied draws. It does not
+#' support original-model convergence, bridge sampling or sampling extension:
+#' use `fit$original_fit` and regenerate the view after extending that fit.
+#' These refusals have common class `BayesTools_draws_view_unavailable`, with
+#' leaves `BayesTools_draws_view_sampling_unavailable` (also
+#' `BayesTools_sampling_unavailable`) and
+#' `BayesTools_draws_view_inference_unavailable`.
+#' Missing requested sampled coordinates signal
+#' `BayesTools_draws_view_coordinate_unavailable`, with a `missing` field.
+#' Views need not contain every original sampled coordinate; prior-draw
+#' transformations retain their existing intersection-of-columns policy.
+#' `coda::as.mcmc.list()` preserves chain timing. `coda::as.mcmc()` pools in
+#' chain-major order with indices starting at one and thinning one; pooled
+#' indices do not describe a continuous MCMC trajectory.
 #'
 #' @param fit fitted object created by [JAGS_fit()].
 #' @param parameters optional exact vector of `coordinate_name` values.
@@ -29,8 +50,7 @@
 #' `JAGS_draw_geometry_schema()` returns field descriptions.
 #' `JAGS_materialize_draws()` returns a `coda::mcmc.list`, including a valid
 #' zero-column list when the fit has no public coordinate.
-#' `JAGS_with_draws()` returns the fitted object with its `mcmc` component and
-#' draw geometry replaced.
+#' `JAGS_with_draws()` returns a `BayesTools_draws_view`.
 #'
 #' @export JAGS_draw_geometry
 #' @export JAGS_draw_geometry_schema
@@ -146,6 +166,16 @@ JAGS_materialize_draws <- function(fit, parameters = NULL,
     )
     columns <- match(sampled_names, colnames(chain))
     if(anyNA(columns)){
+      if(inherits(fit, "BayesTools_draws_view")){
+        missing <- sampled_names[is.na(columns)]
+        stop(.bt_draws_view_condition(
+          "BayesTools_draws_view_coordinate_unavailable",
+          paste0("The derived-draw view does not contain requested sampled coordinates: ",
+                 paste0("'", missing, "'", collapse = ", "),
+                 ". Regenerate the view with those coordinates or use 'fit$original_fit'."),
+          missing = missing
+        ))
+      }
       .bt_stop_refit_required(
         "A sampled parameter coordinate is missing from the fitted chains. Refit the model with this version of BayesTools."
       )
@@ -176,8 +206,61 @@ JAGS_with_draws <- function(fit, draws){
   if(is.null(fit[["mcmc"]])){
     stop("'fit' has no replaceable 'mcmc' component.", call. = FALSE)
   }
-  fit[["mcmc"]] <- draws
-  .bt_attach_draw_geometry(fit)
+  original <- if(inherits(fit, "BayesTools_draws_view")) fit[["original_fit"]] else fit
+  if(!inherits(original, "BayesTools_fit") ||
+     inherits(original, "BayesTools_draws_view") || is.null(original[["mcmc"]])){
+    stop("'fit$original_fit' must be a 'BayesTools_fit' with an 'mcmc' component and must not be a derived-draw view.", call. = FALSE)
+  }
+  out <- structure(list(original_fit = original, mcmc = draws),
+                    class = c("BayesTools_draws_view", "BayesTools_fit"))
+  excluded <- c("names", "class", "runtime_setup", "runtime_cache", "runtime_state",
+                 "bayestools_meta", "posterior_density", "posterior_densities",
+                 "posterior_ordinate", "posterior_ordinates")
+  analysis_attributes <- attributes(fit)
+  for(name in setdiff(names(analysis_attributes), excluded)){
+    attr(out, name) <- analysis_attributes[[name]]
+  }
+  attr(out, "draw_geometry") <- .bt_draw_geometry_from_chains(draws)
+  out
+}
+
+.bt_is_jags_analysis_fit <- function(fit){
+
+  inherits(fit, c("runjags", "BayesTools_draws_view"))
+}
+
+.bt_draws_view_condition <- function(class, message, ...){
+
+  errorCondition(message, class = c(class, "BayesTools_draws_view_unavailable"),
+                 call = NULL, ...)
+}
+
+#' @rdname JAGS_draw_geometry
+#' @param x a derived-draw view.
+#' @param ... additional arguments.
+#' @exportS3Method coda::as.mcmc.list
+as.mcmc.list.BayesTools_draws_view <- function(x, ...){
+
+  coda::as.mcmc.list(x[["mcmc"]])
+}
+
+#' @rdname JAGS_draw_geometry
+#' @exportS3Method coda::as.mcmc
+as.mcmc.BayesTools_draws_view <- function(x, ...){
+
+  chains <- coda::as.mcmc.list(x)
+  coda::mcmc(do.call(rbind, lapply(chains, as.matrix)), start = 1, thin = 1)
+}
+
+#' @rdname JAGS_draw_geometry
+#' @exportS3Method
+print.BayesTools_draws_view <- function(x, ...){
+
+  geometry <- JAGS_draw_geometry(x)
+  cat("Derived-draw view:", nrow(geometry$chains), "chains,",
+      geometry$total_draws, "draws.\n",
+      "The complete original sampling fit is available as 'fit$original_fit'.\n")
+  invisible(x)
 }
 
 .bt_draw_geometry_from_chains <- function(chains){

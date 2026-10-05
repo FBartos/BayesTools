@@ -9,6 +9,9 @@
 #'
 #' @param fit model fitted with either \link[runjags]{runjags} posterior
 #' samples obtained with \link[rjags]{rjags-package}
+#' Derived-draw views are refused with
+#' \code{BayesTools_draws_view_inference_unavailable} (also
+#' \code{BayesTools_draws_view_unavailable}); use \code{fit$original_fit}.
 #' @param log_posterior function that takes a named list of samples, the data,
 #' and additional list of parameters passed as \code{...} as input and
 #' returns the log of the unnormalized posterior density of the model part
@@ -267,6 +270,13 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
                                   nonfinite = c("error", "drop"), cores = 1,
                                   seed = NULL, ...){
 
+  if(inherits(fit, "BayesTools_draws_view")){
+    stop(.bt_draws_view_condition(
+      "BayesTools_draws_view_inference_unavailable",
+      "Bridge sampling is unavailable for a derived-draw view. Use 'JAGS_bridgesampling()' on 'fit$original_fit'.",
+      operation = "bridge"
+    ))
+  }
   # The bridge callback may capture this frame and be sent to workers.
   attr(fit, "runtime_state") <- NULL
   # A seeded call leaves the caller's random-number state as it found it.

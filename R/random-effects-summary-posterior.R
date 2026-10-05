@@ -19,7 +19,8 @@
 #' leave the atom status undeclared, and posterior plots of such summaries stop
 #' instead of inferring point masses from the draws.
 #'
-#' @param fit model fit created by [JAGS_fit].
+#' @param fit model fit created by [JAGS_fit] or a derived-draw view from
+#' [JAGS_with_draws()]. Summaries use its supplied draws and local analysis metadata.
 #' @param summary semantic quantity to extract: `"var_mult"`, `"var_prop"`,
 #'   `"sd_mult"`, `"sd_total"`, `"var_total"`, `"sd_common"`, or
 #'   `"var_common"`.
@@ -49,7 +50,7 @@ random_effects_summary_posterior <- function(
     simplify_names = FALSE,
     n_prior_points = 4096){
 
-  if(!inherits(fit, "runjags") || !inherits(fit, "BayesTools_fit")){
+  if(!.bt_is_jags_analysis_fit(fit) || !inherits(fit, "BayesTools_fit")){
     stop("'fit' must be a BayesTools JAGS fit.", call. = FALSE)
   }
   summary <- .bt_random_effect_summary_posterior_type(summary)

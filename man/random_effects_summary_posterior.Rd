@@ -16,7 +16,8 @@ random_effects_summary_posterior(
 )
 }
 \arguments{
-\item{fit}{model fit created by \link{JAGS_fit}.}
+\item{fit}{model fit created by \link{JAGS_fit} or a derived-draw view from
+\code{\link[=JAGS_with_draws]{JAGS_with_draws()}}. Summaries use its supplied draws and local analysis metadata.}
 
 \item{summary}{semantic quantity to extract: \code{"var_mult"}, \code{"var_prop"},
 \code{"sd_mult"}, \code{"sd_total"}, \code{"var_total"}, \code{"sd_common"}, or

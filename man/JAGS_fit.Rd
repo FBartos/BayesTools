@@ -244,7 +244,12 @@ automatic fitting retries and preserve the original backend error.}
 \item{...}{additional hidden arguments}
 
 \item{fit}{a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
-extended. Fits without the parameter map and fit contract of this version
+extended. A derived-draw view signals
+\code{BayesTools_draws_view_sampling_unavailable}, also
+\code{BayesTools_sampling_unavailable} and
+\code{BayesTools_draws_view_unavailable}, before runtime arguments are forced;
+extend its \code{original_fit} and regenerate it with \code{\link[=JAGS_with_draws]{JAGS_with_draws()}}.
+Fits without the parameter map and fit contract of this version
 of BayesTools (such as fits created by BayesTools 0.3.0) must be refitted:
 they stop with an error of class \code{BayesTools_refit_required} (see
 \code{\link[=JAGS_validate_fit_contract]{JAGS_validate_fit_contract()}}).}

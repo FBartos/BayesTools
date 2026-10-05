@@ -22,7 +22,8 @@ JAGS_diagnostics(
 )
 }
 \arguments{
-\item{fit}{a JAGS model fitted via \code{\link[=JAGS_fit]{JAGS_fit()}}}
+\item{fit}{a JAGS model fitted via \code{\link[=JAGS_fit]{JAGS_fit()}} or a derived-draw view from
+\code{\link[=JAGS_with_draws]{JAGS_with_draws()}}. Diagnostics describe the supplied view draws.}
 
 \item{parameter}{parameter to be plotted}
 

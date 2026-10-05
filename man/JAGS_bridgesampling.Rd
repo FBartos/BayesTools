@@ -32,7 +32,10 @@ JAGS_bridgesampling(
 }
 \arguments{
 \item{fit}{model fitted with either \link[runjags]{runjags} posterior
-samples obtained with \link[rjags]{rjags-package}}
+samples obtained with \link[rjags]{rjags-package}
+Derived-draw views are refused with
+\code{BayesTools_draws_view_inference_unavailable} (also
+\code{BayesTools_draws_view_unavailable}); use \code{fit$original_fit}.}
 
 \item{log_posterior}{function that takes a named list of samples, the data,
 and additional list of parameters passed as \code{...} as input and
@@ -185,7 +188,7 @@ signaled in the calling R process while evaluating callback arguments or the
 callback body are recorded in \code{diagnostics$upstream_warnings} and muffled on
 both the exact and sampler routes. Callback warnings from parallel worker
 processes are not relayed to this diagnostic field. Errors retain the
-\code{Bridge sampling failed:} context.}
+\verb{Bridge sampling failed:} context.}
 }
 \value{
 A \code{BayesTools_marglik} object. \code{logml} is one scalar natural-log

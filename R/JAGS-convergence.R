@@ -2,6 +2,9 @@
 #'
 #' @description Checks whether the supplied \link[runjags]{runjags-package} model
 #' satisfied convergence criteria.
+#' Derived-draw views are refused with
+#' \code{BayesTools_draws_view_inference_unavailable} (also
+#' \code{BayesTools_draws_view_unavailable}); assess \code{fit$original_fit}.
 #' @param fit a 'BayesTools_fit' object created by [JAGS_fit()] with this
 #' version of BayesTools. Fits without its parameter map and fit contract
 #' (such as fits created by BayesTools 0.3.0) must be refitted: they stop with
@@ -130,6 +133,13 @@ JAGS_check_convergence <- function(
     monitor = NULL,
     allow_not_assessable = FALSE){
 
+  if(inherits(fit, "BayesTools_draws_view")){
+    stop(.bt_draws_view_condition(
+      "BayesTools_draws_view_inference_unavailable",
+      "Model convergence is unavailable for a derived-draw view. Use 'JAGS_check_convergence()' on 'fit$original_fit'.",
+      operation = "convergence"
+    ))
+  }
   # check input
   if(!inherits(fit, "runjags"))
     stop("'fit' must be a runjags fit", call. = FALSE)
