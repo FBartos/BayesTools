@@ -40,6 +40,8 @@ level that \code{posterior} does not contain stops with an error of class
 \code{BayesTools_parameter_resolution_error}), as in \code{\link[=hypothesis_BF]{hypothesis_BF()}}.
 }
 \description{
+When structured quantity labels are available, hypothesis tables display
+the compiled combination's label rather than its internal scalar name.
 Compiles point and simple region statements that all refer to one linear
 combination \eqn{t = \sum_l c_l L_l} of levels \eqn{L_l} of the same
 parameter of one marginal posterior, e.g. a difference of two levels, a

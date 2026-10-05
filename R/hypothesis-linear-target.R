@@ -1,6 +1,10 @@
+.bt_hypothesis_linear_target_name <- ".BayesTools_linear_target"
+
 #' Compile a hypothesis linear in the levels of one parameter
 #'
 #' @description
+#' When structured quantity labels are available, hypothesis tables display
+#' the compiled combination's label rather than its internal scalar name.
 #' Compiles point and simple region statements that all refer to one linear
 #' combination \eqn{t = \sum_l c_l L_l} of levels \eqn{L_l} of the same
 #' parameter of one marginal posterior, e.g. a difference of two levels, a
@@ -68,7 +72,7 @@ hypothesis_linear_target <- function(posterior, hypothesis, parameter){
     hypothesis_parse(hypothesis)
   }
 
-  target_name <- ".BayesTools_linear_target"
+  target_name <- .bt_hypothesis_linear_target_name
   sides <- unlist(lapply(ast$statements, function(statement){
     list(statement$left, statement$right)
   }), recursive = FALSE)

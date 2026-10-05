@@ -1,4 +1,5 @@
 # version 0.3.1
+- compiled linear targets use their persisted quantity labels in hypothesis table rows when available, with the existing fallback for targets without labels.
 - hypothesis tables export plain full-precision data frames with displayed row identities, BF flags and declared bounds, retaining all warnings; selected BF bounds and compact table printing remain aligned.
 - symbolic point-versus-region hypotheses certify the same centered scalar target; reversed spellings retain their documented conservative refusal.
 - dropping every positive-prior model now gives the intended empty-model-space error before normalization and emits no false renormalization warning.

@@ -2853,3 +2853,22 @@ test_that("N33 hypothesis exports retain precision, warning rows and selected BF
   expect_false("BF10" %in% names(as.data.frame(removed)))
   expect_error(as.data.frame(result, row.names = "one"))
 })
+
+test_that("N34 a genuine compiled combination prints its persisted quantity label", {
+
+  formula <- JAGS_formula(~ fac, "mu", data.frame(fac = factor(c("A", "B", "C"))),
+    prior_list = list(intercept = prior("normal", list(0, 1)),
+      fac = prior_factor("normal", list(0, 1), contrast = "treatment")))
+  fit <- coda::mcmc(cbind(mu_intercept = seq(-1, 1, length.out = 201),
+    "mu_fac[1]" = seq(-1, 2, length.out = 201), "mu_fac[2]" = seq(-2, 1, length.out = 201)^3))
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula$prior_list
+  fit <- attach_test_parameter_map(fit)
+  posterior <- marginal_posterior(as_mixed_posteriors(fit, "mu_fac"), "mu_fac",
+                                  use_formula = FALSE, prior_samples = TRUE)
+  target <- hypothesis_linear_target(posterior, "mu_fac[B] - mu_fac[C] = 0", "mu_fac")
+  expected <- parameter_labels(.bt_meta_get(target$posterior, "quantities")$label_parts, style = "table")
+  result <- hypothesis_BF(target$posterior, hypothesis = target$hypothesis, parameter = target$parameter)
+  expect_identical(rownames(result), unname(expected))
+  expect_false(any(grepl(".BayesTools_linear_target", rownames(result), fixed = TRUE)))
+})

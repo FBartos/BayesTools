@@ -973,6 +973,15 @@
                                                          parent = NULL,
                                                          index = NULL) {
 
+  if(identical(parameter, .bt_hypothesis_linear_target_name)){
+    quantities <- .bt_meta_get(posterior, "quantities")
+    if(!is.null(quantities) && nrow(quantities) == 1L){
+      parts <- quantities$label_parts[[1L]]
+      valid <- tryCatch({ .bt_validate_label_parts(parts); TRUE },
+                         error = function(e) FALSE)
+      if(valid) label <- .bt_label(parts, style = "table")
+    }
+  }
   if(.hypothesis_inherits_marginal_posterior(posterior) &&
      !inherits(posterior, "marginal_posterior")){
     class(posterior) <- unique(c(class(posterior), "marginal_posterior"))
