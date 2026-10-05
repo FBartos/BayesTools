@@ -1,4 +1,5 @@
 # version 0.3.1
+- finite positive BF bounds that round to zero at three decimals now print in scientific notation without changing numeric values or bound direction.
 - autocorrelation diagnostics retain every requested original lag, mark unavailable ordinates as NA with pair-count/reason metadata and typed warnings, and display only finite bars.
 - precomputed posterior ordinate matching now filters original parameter and condition metadata on each leaf before exact-null lookup, retaining compatible other-null entries and the missing-null refusal.
 - positive powers of nonnegative mixed priors now preserve zero atoms, original continuous weights and strict region boundaries consistently.

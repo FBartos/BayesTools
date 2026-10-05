@@ -2,6 +2,9 @@
 #'
 #' @param x a BayesTools_values_tables
 #' @param ... additional arguments.
+#' @details Finite positive Bayes-factor bounds that would round to zero at
+#' three decimals are printed in scientific notation. This changes only their
+#' presentation; numeric values, BF direction and bound operators are retained.
 #'
 #' @return \code{print.BayesTools_table} returns \code{NULL}.
 #'
@@ -539,6 +542,10 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 
   out <- format(round(x, digits = 3), nsmall = 3)
   bound_operator <- .standardize_BF_bound_operator(attr(x, "bound_operator"), length(x))
+  small_bound <- !is.na(bound_operator) & is.finite(x) & x > 0 & round(x, 3) == 0
+  if(any(small_bound)){
+    out[small_bound] <- format(x[small_bound], digits = 3, scientific = TRUE, trim = TRUE)
+  }
   has_bound <- !is.na(bound_operator) & !is.na(x)
   if(any(has_bound)){
     out[has_bound] <- paste0(bound_operator[has_bound], trimws(out[has_bound]))

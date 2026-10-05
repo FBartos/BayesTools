@@ -17,3 +17,8 @@
 \description{
 Print a BayesTools table
 }
+\details{
+Finite positive Bayes-factor bounds that would round to zero at
+three decimals are printed in scientific notation. This changes only their
+presentation; numeric values, BF direction and bound operators are retained.
+}

@@ -2068,3 +2068,32 @@ test_that("log-scale inclusion BF tables stay in log space beyond the double ran
     tolerance = 1e-15
   )
 })
+
+test_that("R116 N69 bounded positive Bayes factors never print a rounded zero bound", {
+
+  values <- c(1e-4, 1e-4, .Machine$double.xmin * .Machine$double.eps, .01, 100, 0, NA, Inf, 1e-4)
+  attr(values, "bound_operator") <- c("<", ">", "<", "<", ">", "<", "<", ">", NA)
+  original <- values
+  formatted <- .format_BF_column(values)
+  expect_identical(formatted[1:2], c("<1e-04", ">1e-04"))
+  expect_match(formatted[3L], "^<[^0].*e-324$")
+  ordinary <- format(round(values, 3), nsmall = 3)
+  ordinary_index <- c(4:6, 8L)
+  expect_identical(formatted[ordinary_index], paste0(attr(values, "bound_operator")[ordinary_index], trimws(ordinary[ordinary_index])))
+  expect_identical(formatted[7L], ordinary[7L])
+  expect_identical(formatted[9L], ordinary[9L])
+  expect_identical(values, original)
+  bf <- format_BF(values)
+  expect_identical(as.numeric(bf), as.numeric(original))
+  expect_identical(attr(bf, "bound_operator"), attr(values, "bound_operator"))
+  expect_false(attr(bf, "logBF"))
+  expect_false(attr(bf, "BF01"))
+  table <- data.frame(BF = bf)
+  class(table) <- c("BayesTools_table", "data.frame")
+  attr(table, "type") <- "BF"
+  before <- table
+  expect_output(print(table), "<1e-04", fixed = TRUE)
+  expect_identical(table, before)
+  expect_identical(as.numeric(as.data.frame(table)$BF), as.numeric(original))
+  expect_identical(as.numeric(data.frame(table)$BF), as.numeric(original))
+})
