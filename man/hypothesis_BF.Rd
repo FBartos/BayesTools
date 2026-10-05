@@ -130,6 +130,11 @@ class \code{BayesTools_parameter_not_found} (also
 }
 \description{
 Computes Bayes factors for scalar hypotheses written as
+A symbolic comparison on both sides uses its centered scalar expression:
+\code{"theta = phi vs theta > phi"} and
+\code{"theta - phi = 0 vs theta - phi > 0"} are supported. Reversed spelling
+\code{"theta = phi vs phi < theta"} remains conservatively unavailable;
+use the supported orientation or centered spelling.
 expressions, for example \code{"theta = 0"}, \code{"theta > 0"}, or
 \code{"theta = 0 vs theta > 0"}. Factor/posterior-list levels can be
 referenced as \code{"mu_alloc[alternate] > mu_alloc[random]"} when the

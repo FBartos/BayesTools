@@ -2791,3 +2791,24 @@ test_that("rejected prior-ordinate quadratures stop with the inexact class", {
   expect_s3_class(condition, "BayesTools_hypothesis_ordinate")
   expect_match(conditionMessage(condition), "rejected by its diagnostics", fixed = TRUE)
 })
+
+test_that("N28 symbolic and centered point-versus-region targets agree", {
+
+  posterior <- data.frame(theta = seq(-1, 2, length.out = 201),
+                           phi = seq(-2, 1, length.out = 201)^3)
+  prior <- data.frame(theta = seq(-2, 2, length.out = 201),
+                       phi = rev(seq(-3, 3, length.out = 201)))
+  run <- function(statement){
+    suppressWarnings(hypothesis_BF(posterior, prior, statement, columns = "all"))
+  }
+  symbolic <- tryCatch(run("theta = phi vs theta > phi"), error = identity)
+  expect_s3_class(symbolic, "BayesTools_hypothesis_BF")
+  centered <- run("theta - phi = 0 vs theta - phi > 0")
+  if(!inherits(symbolic, "error")){
+    expect_equal(as.numeric(symbolic$BF), as.numeric(centered$BF), tolerance = 1e-14)
+    expect_identical(symbolic$method, centered$method)
+    expect_equal(symbolic$BF_error, centered$BF_error, tolerance = 1e-14)
+  }
+  expect_error(run("theta = phi vs phi < theta"))
+  expect_error(run("theta = phi vs theta > 0 & phi > 0"))
+})

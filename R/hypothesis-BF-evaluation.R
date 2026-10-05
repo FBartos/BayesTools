@@ -56,6 +56,9 @@
     lhs_symbols <- .hypothesis_expression_symbols(lhs)
     rhs_symbols <- .hypothesis_expression_symbols(rhs)
 
+    if(length(lhs_symbols) > 0L && length(rhs_symbols) > 0L){
+      return(.hypothesis_expression_ast_key(call("-", lhs, rhs)))
+    }
     if(length(lhs_symbols) > 0L && length(rhs_symbols) == 0L){
       return(.hypothesis_expression_ast_key(lhs))
     }

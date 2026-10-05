@@ -186,6 +186,11 @@
 #' mass one. Rows are labelled by quantity; when several statements refer to
 #' the same quantity, the statement number is appended, e.g.
 #' \code{theta (2)}.
+#' A symbolic comparison on both sides uses its centered scalar expression:
+#' \code{"theta = phi vs theta > phi"} and
+#' \code{"theta - phi = 0 vs theta - phi > 0"} are supported. Reversed spelling
+#' \code{"theta = phi vs phi < theta"} remains conservatively unavailable;
+#' use the supported orientation or centered spelling.
 #' A reference to a quantity or level that \code{posterior} does not contain,
 #' and a \code{parameter} that it does not contain, stop with an error of
 #' class \code{BayesTools_parameter_not_found} (also

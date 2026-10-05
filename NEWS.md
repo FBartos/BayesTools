@@ -1,4 +1,5 @@
 # version 0.3.1
+- symbolic point-versus-region hypotheses certify the same centered scalar target; reversed spellings retain their documented conservative refusal.
 - dropping every positive-prior model now gives the intended empty-model-space error before normalization and emits no false renormalization warning.
 - parameter-matched ensemble null masks now bind by name while legacy differently named lists stay positional; marginal inference binds and normalizes masks before model filtering.
 - whole-factor hypothesis tables retain unavailable levels as NA with the original reason and compute valid siblings; known prior-ordinate refusals also work in marginal tables.
