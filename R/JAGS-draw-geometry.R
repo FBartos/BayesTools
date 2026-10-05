@@ -151,7 +151,12 @@ JAGS_materialize_draws <- function(fit, parameters = NULL,
   }
   out <- vector("list", length(chains))
   for(chain_i in seq_along(chains)){
-    chain <- as.matrix(chains[[chain_i]])
+    chain <- chains[[chain_i]]
+    chain <- if(ncol(chain) == 0L){
+      matrix(numeric(), nrow = nrow(chain), ncol = 0L)
+    }else{
+      as.matrix(chain)
+    }
     chain_geometry <- geometry$chains[chain_i, , drop = FALSE]
     if(nrow(chain) != chain_geometry$iterations){
       .bt_stop_refit_required(
@@ -249,7 +254,13 @@ as.mcmc.list.BayesTools_draws_view <- function(x, ...){
 as.mcmc.BayesTools_draws_view <- function(x, ...){
 
   chains <- coda::as.mcmc.list(x)
-  coda::mcmc(do.call(rbind, lapply(chains, as.matrix)), start = 1, thin = 1)
+  matrices <- lapply(chains, function(chain){
+    if(ncol(chain) == 0L){
+      return(matrix(numeric(), nrow = nrow(chain), ncol = 0L))
+    }
+    as.matrix(chain)
+  })
+  coda::mcmc(do.call(rbind, matrices), start = 1, thin = 1)
 }
 
 #' @rdname JAGS_draw_geometry

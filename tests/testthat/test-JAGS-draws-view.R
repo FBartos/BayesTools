@@ -90,8 +90,8 @@ test_that("D9 estimates use supplied two-chain geometry and preserve diagnostic 
   expect_s3_class(table, "BayesTools_table")
   if(inherits(table, "error")) return()
   summary <- summary(replacement, quantiles = NULL)$statistics
-  expected <- c(MCMC_error = summary[1, "Time-series SE"],
-    MCMC_SD_error = summary[1, "Time-series SE"] / summary[1, "SD"],
+  expected <- c(MCMC_error = summary[["Time-series SE"]],
+    MCMC_SD_error = summary[["Time-series SE"]] / summary[["SD"]],
     ESS = unname(coda::effectiveSize(replacement)),
     R_hat = coda::gelman.diag(replacement, multivariate = FALSE, autoburnin = FALSE)$psrf[1, 1])
   expect_equal(unlist(table[1, names(expected)]), expected, tolerance = 1e-14, ignore_attr = TRUE)
