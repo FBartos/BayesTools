@@ -8,6 +8,7 @@
 #' @description
 #' `hypothesis_parse()` parses the restricted language used by
 #' [hypothesis_BF()] into a validated, serializable syntax tree.
+#' An explicit \code{vs} comparison requires two nonempty statements.
 #' `hypothesis_render()` renders that tree with token-safe quoting.
 #' `hypothesis_symbols()` returns exact parameter roots or an occurrence table.
 #'

@@ -313,3 +313,14 @@ test_that("whitelisted function names remain valid quantity identifiers", {
     "BayesTools_hypothesis_BF"
   )
 })
+
+test_that("N36 an explicit comparison must retain both nonempty sides", {
+
+  message <- "Hypothesis must contain one statement or one explicit 'vs' comparison."
+  for(statement in c("theta = 0 vs ", " vs theta > 0", " vs ", "theta > 0 vs  vs theta < 0")){
+    expect_error(hypothesis_parse(statement), message, fixed = TRUE)
+  }
+  for(statement in c("theta > 0", "theta = 0 VS theta > 0", "`g[a vs b]` > 0", "theta > 0 & theta < 1")){
+    expect_s3_class(hypothesis_parse(statement), "BayesTools_hypothesis_ast")
+  }
+})

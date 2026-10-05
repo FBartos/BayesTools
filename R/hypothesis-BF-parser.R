@@ -292,7 +292,8 @@ hypothesis_normalize_level_references <- function(text){
   parts <- trimws(parts)
   parts <- parts[nzchar(parts)]
 
-  if(length(parts) == 0L || length(parts) > 2L){
+  if(length(parts) == 0L || length(parts) > 2L ||
+     (length(found) == 1L && length(parts) != 2L)){
     stop("Hypothesis must contain one statement or one explicit 'vs' comparison.",
          call. = FALSE)
   }

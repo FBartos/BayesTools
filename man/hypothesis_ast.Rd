@@ -70,6 +70,7 @@ random-effect aliases. Defaults to \code{FALSE}.}
 \description{
 \code{hypothesis_parse()} parses the restricted language used by
 \code{\link[=hypothesis_BF]{hypothesis_BF()}} into a validated, serializable syntax tree.
+An explicit \code{vs} comparison requires two nonempty statements.
 \code{hypothesis_render()} renders that tree with token-safe quoting.
 \code{hypothesis_symbols()} returns exact parameter roots or an occurrence table.
 
