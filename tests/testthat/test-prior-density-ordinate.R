@@ -2554,7 +2554,7 @@ test_that("R116 N06 constants and finite images have conservative provenance", {
   expect_identical(prior_density_ordinate(point, 4)$behavior, "point_mass")
   expect_identical(prior_density_ordinate(point, 3)$behavior, "zero")
   for(transformation in c("exp", "exp_lin", "tanh", "lin")){
-    value <- if(transformation == "lin") 1e308 else 1000
+    value <- if(transformation %in% c("lin", "exp_lin")) 1e308 else 1000
     source <- list(kind = "scalar_affine", offset = value, scale = 0)
     mapped <- list(kind = "named_transform", transformation = transformation, arguments = list(a = 0, b = 2), source = source)
     expect_null(.prior_density_ordinate_provenance_support(mapped))

@@ -1597,8 +1597,11 @@ prior_density_has_provenance <- function(x){
       if(is.null(support)) return(NULL)
       mapped <- .prior_density_ordinate_provenance_image(support, "lin", list(a = 0, b = weights[i]))
       if(is.null(mapped)) return(NULL)
-      bounds <- bounds + range(mapped)
-      if(anyNA(bounds)) return(NULL)
+      previous_bounds <- bounds
+      term_bounds <- range(mapped)
+      bounds <- previous_bounds + term_bounds
+      if(anyNA(bounds) || any(is.finite(previous_bounds) & is.finite(term_bounds) &
+                             !is.finite(bounds))) return(NULL)
     }
     return(c(lower = bounds[1L], upper = bounds[2L]))
   }
