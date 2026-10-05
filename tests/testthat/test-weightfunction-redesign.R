@@ -66,6 +66,33 @@ test_that("D6 degenerate cumulative sampling has the Dirichlet availability cond
   }
 })
 
+test_that("D7 fixed reference weights require exactly one", {
+
+  for(reference in c(1 - 1e-12, 1 + 1e-12)){
+    expect_error(prior_weightfunction(steps = .05, weights = wf_fixed(c(reference, .5))), "The reference-bin fixed weight must be exactly 1.", fixed = TRUE)
+  }
+  expect_identical(wf_fixed(c(.5, 2))$omega, c(.5, 2))
+  expect_identical(prior_weightfunction(steps = c(.025, .05), weights = wf_fixed(c(1, 0, 2)))$weights$omega, c(1, 0, 2))
+})
+
+test_that("D7 named and integer exact reference weights retain literal draws and syntax", {
+
+  for(weights in list(c(reference = 1, middle = 0, last = 2), c(1L, 0L, 2L))){
+    p <- tryCatch(prior_weightfunction(steps = c(.025, .05), weights = wf_fixed(weights)), error = identity)
+    expect_false(inherits(p, "error"))
+    if(!inherits(p, "error")){
+      expect_identical(p$weights$omega, weights)
+      draws <- rng(p, 2)
+      expect_equal(unname(draws), matrix(c(1, 0, 2, 1, 0, 2), nrow = 2, byrow = TRUE))
+      expect_identical(colnames(draws), c("omega[1]", "omega[2]", "omega[3]"))
+      syntax <- JAGS_add_priors("model{}", list(omega = p))
+      expect_match(syntax, "omega[1] <- 1", fixed = TRUE)
+      expect_match(syntax, "omega[2] <- 0", fixed = TRUE)
+      expect_match(syntax, "omega[3] <- 2", fixed = TRUE)
+    }
+  }
+})
+
 test_that("selection models declare three fixed source choices without changing weight priors", {
 
   default <- selection_model()

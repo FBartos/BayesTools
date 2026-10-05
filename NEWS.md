@@ -3,6 +3,10 @@
 These changes affect code and saved objects written for BayesTools 0.3.0.
 This version is released together with RoBMA 4.1.0; RoBMA 4.0.0 relies on the
 old behaviour.
+- fixed weight-function priors now refuse reference-bin weights other than
+  exactly `1`, including nearby values accepted by released versions. Named
+  exact-one reference weights are newly accepted, as are integer values;
+  nonreference zero and above-one weights remain supported.
 - cumulative weight-function priors now refuse numeric Dirichlet concentrations
   below `0.01`, including specifications accepted by released versions. The new
   ordinary Dirichlet prior and its ordered/random allocations use the same

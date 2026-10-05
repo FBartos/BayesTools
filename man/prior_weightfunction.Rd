@@ -49,7 +49,9 @@ Such failures are explicit; concentrations, draws and initialization settings
 are not repaired. See \code{\link{prior_functions}} for sampling conditions.}
 
 \item{omega}{fixed non-negative relative publication weights, one per bin.
-The reference-bin weight must be exactly 1.}
+When assembled by \code{prior_weightfunction()}, the reference-bin weight
+must be exactly 1. Named and integer values are accepted; nearby values are
+refused without normalization.}
 
 \item{prior}{prior distribution for each non-reference weight.}
 

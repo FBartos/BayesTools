@@ -317,7 +317,9 @@ wf_cumulative <- function(alpha = NULL){
 
 #' @rdname prior_weightfunction
 #' @param omega fixed non-negative relative publication weights, one per bin.
-#' The reference-bin weight must be exactly 1.
+#' When assembled by \code{prior_weightfunction()}, the reference-bin weight
+#' must be exactly 1. Named and integer values are accepted; nearby values are
+#' refused without normalization.
 #' @export
 wf_fixed <- function(omega){
 
@@ -422,7 +424,7 @@ wf_independent <- function(prior, scale = "omega"){
     if(any(!is.finite(weights$omega))){
       stop("The 'omega' argument must be finite.", call. = FALSE)
     }
-    if(reference == "most_significant" && !isTRUE(all.equal(weights$omega[1], 1))){
+    if(reference == "most_significant" && weights$omega[1] != 1){
       stop("The reference-bin fixed weight must be exactly 1.", call. = FALSE)
     }
 

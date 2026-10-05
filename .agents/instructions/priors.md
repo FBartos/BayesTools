@@ -49,6 +49,13 @@ initialization near the minimum can repeatedly refuse a ratio no longer
 representable strictly inside `(0, 1)`; preserve its explicit refusal and all
 requested settings rather than promise universal fitting success.
 
+An assembled fixed weight function requires reference-bin weight exactly
+numeric `1`, including named and integer values. Nearby values are refused;
+nonreference zero and above-one weights stay valid. An unbound `wf_fixed()`
+descriptor validates finite/nonnegative weights before reference identity is
+checked during assembly. Do not normalize weights or use a tolerance or names
+as part of that exact value identity.
+
 The direct ordered Dirichlet-product density uses stable log-share arithmetic
 for a literal, untruncated Normal total with mean exactly zero and finite positive
 SD. Its original quadrature budget, tolerances and zero-boundary identities
