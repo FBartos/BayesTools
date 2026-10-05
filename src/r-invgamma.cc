@@ -71,6 +71,10 @@ extern "C" SEXP BayesTools_invgamma_d(SEXP x, SEXP shape, SEXP scale, SEXP log)
   double *out_ptr = REAL(out);
   double const *x_ptr = REAL(x_real);
   for(R_xlen_t i = 0; i < n; ++i){
+    if(ISNAN(x_ptr[i])){
+      out_ptr[i] = x_ptr[i];
+      continue;
+    }
     double log_density = bayestools::invgamma::log_density(
       x_ptr[i], shape_value, scale_value
     );
@@ -95,6 +99,10 @@ extern "C" SEXP BayesTools_invgamma_p(SEXP q, SEXP shape, SEXP scale,
   double *out_ptr = REAL(out);
   double const *q_ptr = REAL(q_real);
   for(R_xlen_t i = 0; i < n; ++i){
+    if(ISNAN(q_ptr[i])){
+      out_ptr[i] = q_ptr[i];
+      continue;
+    }
     out_ptr[i] = bayestools::invgamma::cdf(
       q_ptr[i], shape_value, scale_value, lower_tail_value, log_p_value
     );
@@ -118,6 +126,10 @@ extern "C" SEXP BayesTools_invgamma_q(SEXP p, SEXP shape, SEXP scale,
   double *out_ptr = REAL(out);
   double const *p_ptr = REAL(p_real);
   for(R_xlen_t i = 0; i < n; ++i){
+    if(ISNAN(p_ptr[i])){
+      out_ptr[i] = p_ptr[i];
+      continue;
+    }
     out_ptr[i] = bayestools::invgamma::quantile(
       p_ptr[i], shape_value, scale_value, lower_tail_value, log_p_value
     );

@@ -29,6 +29,10 @@ numeric representation can be produced.
 
 Truncation is part of the distribution definition. Preserve exact support and
 one-sided boundary behavior; do not replace valid endpoints with nearby values.
+Moment, inverse-moment and inverse-gamma scalar density, CDF and quantile
+adapters preserve evaluation NA and NaN distinctly, including marginal methods.
+Generic truncated scalar CDF/CCDF paths preserve both missing values as well;
+this does not certify the unchanged truncated Normal quantile path.
 
 Numeric Dirichlet concentrations are finite and at least `0.01` in ordinary
 priors, cumulative weight functions and ordered allocations; random SD

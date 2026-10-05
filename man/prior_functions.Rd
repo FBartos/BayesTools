@@ -67,6 +67,11 @@ and marginal variants of the functions (mpdf, mlpf, mcdf,
 mccdf, mquant) for prior distributions.
 Joint quantiles are unavailable for vector factor priors; use
 \code{mquant()} for their marginal quantiles.
+Missing evaluation values \code{NA_real_} and \code{NaN} propagate distinctly
+through density, distribution and quantile methods for moment, inverse-moment
+and inverse-gamma scalar priors, including their marginal methods. Generic
+scalar CDF and complementary CDF methods also retain this distinction under
+truncation. This statement does not cover truncated Normal quantiles.
 }
 \details{
 Numeric Dirichlet concentrations must be finite and at least

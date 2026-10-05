@@ -8,6 +8,11 @@
 #' mccdf, mquant) for prior distributions.
 #' Joint quantiles are unavailable for vector factor priors; use
 #' \code{mquant()} for their marginal quantiles.
+#' Missing evaluation values \code{NA_real_} and \code{NaN} propagate distinctly
+#' through density, distribution and quantile methods for moment, inverse-moment
+#' and inverse-gamma scalar priors, including their marginal methods. Generic
+#' scalar CDF and complementary CDF methods also retain this distinction under
+#' truncation. This statement does not cover truncated Normal quantiles.
 #'
 #' @details Numeric Dirichlet concentrations must be finite and at least
 #' \code{0.01}. This supported-input minimum does not guarantee representable
@@ -857,6 +862,7 @@ quant.prior <- function(x, p, ...){
   }
 
   p        <- rep(NA_real_, length(q))
+  p[is.na(q)] <- q[is.na(q)]
   q_known  <- !is.na(q)
   q_lower  <- q_known & q < prior$truncation[["lower"]]
   q_higher <- q_known & q > prior$truncation[["upper"]]
@@ -903,6 +909,7 @@ quant.prior <- function(x, p, ...){
   }
 
   p        <- rep(NA_real_, length(q))
+  p[is.na(q)] <- q[is.na(q)]
   q_known  <- !is.na(q)
   q_lower  <- q_known & q < prior$truncation[["lower"]]
   q_higher <- q_known & q > prior$truncation[["upper"]]

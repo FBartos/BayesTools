@@ -72,6 +72,10 @@ SEXP nonlocal_d(SEXP x, SEXP location, SEXP tau, SEXP order, SEXP log,
   double *out_ptr = REAL(out);
   double const *x_ptr = REAL(x_real);
   for(R_xlen_t i = 0; i < n; ++i){
+    if(ISNAN(x_ptr[i])){
+      out_ptr[i] = x_ptr[i];
+      continue;
+    }
     double log_density = invmoment ?
       bayestools::nonlocal::invmoment_log_density(
         x_ptr[i], location_value, tau_value, order_value, df_value
@@ -103,6 +107,10 @@ SEXP nonlocal_p(SEXP q, SEXP location, SEXP tau, SEXP order,
   double *out_ptr = REAL(out);
   double const *q_ptr = REAL(q_real);
   for(R_xlen_t i = 0; i < n; ++i){
+    if(ISNAN(q_ptr[i])){
+      out_ptr[i] = q_ptr[i];
+      continue;
+    }
     out_ptr[i] = invmoment ?
       bayestools::nonlocal::invmoment_cdf(
         q_ptr[i], location_value, tau_value, order_value, df_value,
@@ -135,6 +143,10 @@ SEXP nonlocal_q(SEXP p, SEXP location, SEXP tau, SEXP order,
   double *out_ptr = REAL(out);
   double const *p_ptr = REAL(p_real);
   for(R_xlen_t i = 0; i < n; ++i){
+    if(ISNAN(p_ptr[i])){
+      out_ptr[i] = p_ptr[i];
+      continue;
+    }
     out_ptr[i] = invmoment ?
       bayestools::nonlocal::invmoment_quantile(
         p_ptr[i], location_value, tau_value, order_value, df_value,
