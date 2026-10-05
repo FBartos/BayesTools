@@ -544,7 +544,9 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   bound_operator <- .standardize_BF_bound_operator(attr(x, "bound_operator"), length(x))
   small_bound <- !is.na(bound_operator) & is.finite(x) & x > 0 & round(x, 3) == 0
   if(any(small_bound)){
-    out[small_bound] <- format(x[small_bound], digits = 3, scientific = TRUE, trim = TRUE)
+    out[small_bound] <- vapply(x[small_bound], function(value){
+      format(value, digits = 3, scientific = TRUE, trim = TRUE)
+    }, character(1))
   }
   has_bound <- !is.na(bound_operator) & !is.na(x)
   if(any(has_bound)){
