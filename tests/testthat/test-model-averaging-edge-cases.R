@@ -1597,3 +1597,37 @@ test_that("scaled mixed contrast coefficients keep joint spike atoms", {
   expect_true(all(g_atoms$locations == 0))
   expect_identical(colnames(g_atoms$locations), c("mu_g{1}", "mu_g{2}"))
 })
+
+test_that("N26 matching masks bind by key and legacy ensemble masks stay positional", {
+
+  models <- list(.mock_mixing_model(0, 0), .mock_mixing_model(50, 0))
+  keys <- c("theta", "beta")
+  masks <- list(theta = c(TRUE, FALSE), beta = c(FALSE, TRUE))
+  expected <- ensemble_inference(models, keys, masks)
+  expect_identical(ensemble_inference(models, keys, rev(masks)), expected)
+  expect_identical(mix_posteriors(models, keys, rev(masks), seed = 2, n_samples = 30),
+                   mix_posteriors(models, keys, masks, seed = 2, n_samples = 30))
+  for(names in list(c("p1[1]", "p"), c("theta", ""), NULL)){
+    legacy <- masks
+    names(legacy) <- names
+    expect_identical(ensemble_inference(models, keys, legacy), expected)
+  }
+  formula <- NULL
+  call <- function(masks, marginal = keys){
+    marginal_inference(models, marginal, keys, masks, formula,
+                       n_samples = 100, seed = 2, silent = TRUE)
+  }
+  canonical <- call(masks)
+  expect_identical(call(unname(masks)), canonical)
+  expect_identical(call(rev(masks)), canonical)
+  expect_identical(call(list(theta = 1L, beta = 2L)), canonical)
+  for(empty in list(NULL, 0L, integer())){
+    control <- list(theta = empty, beta = 2L)
+    expect_identical(call(control), call(list(theta = c(FALSE, FALSE), beta = c(FALSE, TRUE))))
+  }
+  expect_error(call(setNames(masks, c("theta", ""))),
+    "The 'is_null_list' list must be unnamed or uniquely named for every requested parameter.", fixed = TRUE)
+  expect_warning(missing <- call(masks, "missing"),
+    "Marginal inference for parameter 'missing' is unavailable because it is not included in 'parameters'.", fixed = TRUE)
+  expect_length(missing$inference, 0L)
+})

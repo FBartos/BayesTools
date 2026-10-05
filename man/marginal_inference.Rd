@@ -29,13 +29,19 @@ should be created}
 
 \item{parameters}{all parameters included in the model_list that are
 relevant for the formula (all of which need to have specification of
-\code{is_null_list})}
+\code{is_null_list})
+Parameter keys must be unique, nonmissing and nonempty. Unnamed
+\code{is_null_list} entries bind positionally; complete unique names bind by
+key. Null masks are normalized before conditional model filtering.}
 
 \item{is_null_list}{list with entries for each parameter carrying either
 logical vector of indicators specifying whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models
 corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
-when no models are null)}
+when no models are null)
+Exact matching unique list names bind by parameter name; other ensemble
+lists retain positional order. Marginal inference requires unnamed lists or
+unique complete names matching its requested parameters.}
 
 \item{formula}{model formula (needs to be specified if \code{parameter} was part of a formula)}
 

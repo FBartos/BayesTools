@@ -18,6 +18,9 @@
 #' to the null or alternative hypothesis (or an integer vector indexing models
 #' corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
 #' when no models are null)
+#' Exact matching unique list names bind by parameter name; other ensemble
+#' lists retain positional order. Marginal inference requires unnamed lists or
+#' unique complete names matching its requested parameters.
 #' @param prior_weights vector of prior model odds
 #' @param margliks vector of natural-log marginal likelihoods
 #' @param is_null logical vector of indicators specifying whether the model corresponds
@@ -268,6 +271,9 @@ ensemble_inference <- function(model_list, parameters, is_null_list,
 
 
   # extract the object
+  is_null_list <- .model_averaging_bind_parameter_list(
+    is_null_list, parameters, "is_null_list", "parameters", strict_names = FALSE
+  )
   margliks      <- .model_averaging_marglik_values(model_list)
   prior_weights <- sapply(model_list, function(m) m[["prior_weights"]])
 
@@ -312,6 +318,31 @@ models_inference <- function(model_list,
 
   on_failure <- match.arg(on_failure)
   sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
+.model_averaging_bind_parameter_list <- function(x, keys, name, key_name,
+                                                 strict_names = TRUE){
+
+  check_list(x, name, check_length = length(keys))
+  valid_keys <- !anyNA(keys) && all(nzchar(keys)) && !anyDuplicated(keys)
+  list_names <- names(x)
+  matching_names <- valid_keys && !is.null(list_names) &&
+    !anyNA(list_names) && all(nzchar(list_names)) &&
+    !anyDuplicated(list_names) && setequal(list_names, keys)
+  if(!isTRUE(strict_names)){
+    return(if(matching_names) x[keys] else x)
+  }
+  if(!valid_keys){
+    stop("'", key_name, "' must contain unique, nonmissing, nonempty parameter names.", call. = FALSE)
+  }
+  if(is.null(list_names)){
+    names(x) <- keys
+  }else if(matching_names){
+    x <- x[keys]
+  }else{
+    stop("The '", name, "' list must be unnamed or uniquely named for every requested parameter.", call. = FALSE)
+  }
+  x
+}
+
   sapply(model_list, function(m)check_real(m[["prior_weights"]], "model_list:prior_weights", lower = 0))
 
   margliks    <- .model_averaging_marglik_values(model_list)

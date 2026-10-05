@@ -26,7 +26,10 @@ be drawn}
 logical vector of indicators specifying whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models
 corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
-when no models are null)}
+when no models are null)
+Exact matching unique list names bind by parameter name; other ensemble
+lists retain positional order. Marginal inference requires unnamed lists or
+unique complete names matching its requested parameters.}
 
 \item{conditional}{whether prior and posterior model probabilities should
 be returned only for the non-null models. Defaults to \code{FALSE}.

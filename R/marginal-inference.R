@@ -12,6 +12,9 @@
 #' @param parameters all parameters included in the model_list that are
 #' relevant for the formula (all of which need to have specification of
 #' \code{is_null_list})
+#' Parameter keys must be unique, nonmissing and nonempty. Unnamed
+#' \code{is_null_list} entries bind positionally; complete unique names bind by
+#' key. Null masks are normalized before conditional model filtering.
 #' @param seed seed for random number generation. The caller's random-number
 #' state (\code{.Random.seed} and \code{RNGkind()}) is restored afterwards.
 #' With \code{NULL}, each model-averaging step draws its sampling seed from the
@@ -52,6 +55,11 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
   check_char(parameters, "parameters", check_length = FALSE)
   check_char(marginal_parameters, "marginal_parameters", check_length = FALSE)
   check_list(is_null_list, "is_null_list", check_length = length(parameters))
+  is_null_list <- .model_averaging_bind_parameter_list(
+    is_null_list, parameters, "is_null_list", "parameters"
+  )
+  is_null_list <- lapply(is_null_list, .model_averaging_is_null,
+                         n_models = length(model_list))
   if(!all(unlist(sapply(model_list, function(m) sapply(attr(m[["fit"]], "prior_list"), function(p) is.prior(p))))))
     stop("model_list:priors must contain 'BayesTools' priors")
   density_method <- .marginal_inference_density_method(density_method)
@@ -76,6 +84,12 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
 
   for(i in seq_along(marginal_parameters)){
 
+    if(!marginal_parameters[i] %in% parameters){
+      warning("Marginal inference for parameter '", marginal_parameters[i],
+              "' is unavailable because it is not included in 'parameters'.",
+              immediate. = TRUE, call. = FALSE)
+      next
+    }
     if(all(is_null_list[[marginal_parameters[i]]])){
       warning(paste0("parameter '", marginal_parameters[i], "' does not contain any alternative hypothesis models."), immediate. = TRUE, call. = FALSE)
       next

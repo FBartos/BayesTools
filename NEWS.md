@@ -1,4 +1,5 @@
 # version 0.3.1
+- parameter-matched ensemble null masks now bind by name while legacy differently named lists stay positional; marginal inference binds and normalizes masks before model filtering.
 - whole-factor hypothesis tables retain unavailable levels as NA with the original reason and compute valid siblings; known prior-ordinate refusals also work in marginal tables.
 ### Breaking changes
 These changes affect code and saved objects written for BayesTools 0.3.0.
