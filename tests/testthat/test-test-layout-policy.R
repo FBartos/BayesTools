@@ -798,6 +798,7 @@ test_that("passing comparisons are recorded at once and failing ones read as tes
   expect_error(expect_equal(1, 1, tolerance = -1), "tolerance")
   expect_warning(expect_equal(1, 1, tol = 1e-3), "deprecated")
 })
+
 test_that("R133 explicit Unix prefixes keep version headers libraries and rpath coherent", {
   skip_on_cran()
   sh <- unname(Sys.which("sh"))
@@ -856,4 +857,3 @@ test_that("R133 explicit Unix prefixes keep version headers libraries and rpath 
   expect_match(missing_result$output, "JAGS headers were not found", fixed = TRUE)
   expect_null(missing_result$makevars)
 })
-
