@@ -32,7 +32,7 @@ test_that("R133 random whole powers retain the explicit design and structural co
     expect_identical(block$column_names, explicit$formula_design$random_effects[[1L]]$column_names)
     prediction <- .bt_random_effect_prediction_data(block, data)
     expect_equal(prediction$model_matrix, block$model_matrix)
-    draws <- matrix(numeric(), nrow = 1, ncol = 0)
+    draws <- matrix(0, 1, 1, dimnames = list(NULL, "mu_intercept"))
     covariance <- random_effects_marginal_vcov(result$formula_design, posterior_samples = draws,
       prior_list = result$prior_list)
     reference <- tcrossprod(block$model_matrix) * outer(data$g, data$g, `==`)
