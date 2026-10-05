@@ -60,7 +60,7 @@ jags_version_major() {
 }
 
 jags_version_hint() {
-  printf '%s\n' "Install JAGS 4.3.x (JAGS 5 is not supported) and select it with JAGS_ROOT or --with-jags-prefix; set JAGS_VERSION or PKG_CONFIG_PATH when pkg-config reports another JAGS installation."
+  printf '%s\n' "Install JAGS 4.3.x (JAGS 5 is not supported) and select it with JAGS_ROOT or --with-jags-prefix; an explicit prefix uses only its selected headers and libraries. For automatic discovery, set PKG_CONFIG_PATH when pkg-config reports another JAGS installation."
 }
 
 # Reject any reported JAGS version outside the supported range, naming the
@@ -210,7 +210,7 @@ if [ -z "$JAGS_PREFIX" ] && [ -n "$JAGS_ROOT" ]; then
   JAGS_PREFIX="$JAGS_ROOT"
 fi
 
-if [ -z "$JAGS_VERSION" ] && command -v pkg-config >/dev/null 2>&1; then
+if [ -z "$JAGS_PREFIX" ] && [ -z "$JAGS_VERSION" ] && command -v pkg-config >/dev/null 2>&1; then
   if pkg-config --exists jags; then
     JAGS_CFLAGS=`pkg-config --cflags jags`
     JAGS_LIBS=`pkg-config --libs jags`
@@ -254,7 +254,7 @@ if [ -z "$JAGS_INCLUDE_DIR" ]; then
   fi
 fi
 
-if [ -z "$JAGS_INCLUDE_DIR" ]; then
+if [ -z "$JAGS_INCLUDE_DIR" ] && [ -z "$JAGS_PREFIX" ]; then
   JAGS_INCLUDE_DIR=`jags_header_dir \
     "/usr/local/include/JAGS" \
     "/usr/local/include" \

@@ -1,4 +1,5 @@
 # version 0.3.1
+- explicit Unix JAGS prefixes consistently select their own version, headers, libraries and rpath instead of mixing global pkg-config installations.
 - bridge sampling checks affine dependence in supplied coordinates before its existing transformed-coordinate rank check, refusing known dependent targets before sampler invocation.
 - simplex validation refuses nonfinite totals or roundoff bounds before normalization, including Dirichlet coordinates and fixed ordered allocations.
 - ordinary scalar and vector bridge parameter extraction gives the existing classed missing-monitor error for absent names while preserving present values and point priors.

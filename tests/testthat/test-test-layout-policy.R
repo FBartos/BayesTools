@@ -798,3 +798,62 @@ test_that("passing comparisons are recorded at once and failing ones read as tes
   expect_error(expect_equal(1, 1, tolerance = -1), "tolerance")
   expect_warning(expect_equal(1, 1, tol = 1e-3), "deprecated")
 })
+test_that("R133 explicit Unix prefixes keep version headers libraries and rpath coherent", {
+  skip_on_cran()
+  sh <- unname(Sys.which("sh"))
+  skip_if(!nzchar(sh), "A POSIX shell is required to run configure.")
+  configure <- .layout_repository_file("configure")
+  makevars <- .layout_repository_file("src", "Makevars.in")
+  skip_if_not(file.exists(configure) && file.exists(makevars), "Repository configure sources unavailable.")
+  work <- normalizePath(withr::local_tempdir(), winslash = "/")
+  pkg <- file.path(work, "pkg")
+  dir.create(file.path(pkg, "src"), recursive = TRUE)
+  file.copy(configure, file.path(pkg, "configure"))
+  file.copy(makevars, file.path(pkg, "src/Makevars.in"))
+  selected4 <- .layout_fake_jags_tree(file.path(work, "JAGS-4.3.1"), 4L)
+  selected5 <- .layout_fake_jags_tree(file.path(work, "JAGS-5.0.0"), 5L)
+  global <- .layout_fake_jags_tree(file.path(work, "global"), 4L)
+  missing <- file.path(work, "missing/JAGS-4.3.1")
+  dir.create(file.path(missing, "lib"), recursive = TRUE)
+  stub <- file.path(work, "stub")
+  dir.create(stub)
+  run <- function(version, selected = NULL, selector = "root"){
+    .layout_write_lf(c("#!/bin/sh", "case \"$1\" in", "--exists) exit 0 ;;",
+      paste0("--modversion) echo '", version, "' ;;"),
+      paste0("--cflags) echo '-I", global, "/include/JAGS' ;;"),
+      paste0("--libs) echo '-L", global, "/lib -ljags' ;;"), "esac"), file.path(stub, "pkg-config"))
+    Sys.chmod(file.path(stub, "pkg-config"), "0755")
+    unlink(file.path(pkg, "src/Makevars"))
+    env <- .layout_jags_env_unset()
+    args <- "./configure"
+    if(!is.null(selected)){
+      if(selector == "root") env["JAGS_ROOT"] <- selected else args <- c(args, paste0("--with-jags-prefix=", selected))
+    }
+    result <- .layout_run_tool(sh, args, pkg, c(env, PATH = paste(stub, Sys.getenv("PATH"), sep = .Platform$path.sep)))
+    result$makevars <- if(file.exists(file.path(pkg, "src/Makevars"))) paste(readLines(file.path(pkg, "src/Makevars")), collapse = "\n") else NULL
+    result
+  }
+  for(selector in c("root", "prefix")){
+    accepted <- run("5.0.0", selected4, selector)
+    expect_identical(accepted$status, 0L, info = accepted$output)
+    expect_match(accepted$output, "detected JAGS 4.3.1 with JAGS prefix", fixed = TRUE)
+    expect_true(is.character(accepted$makevars))
+    if(is.character(accepted$makevars)){
+      expect_match(accepted$makevars, paste0("-I", selected4, "/include/JAGS"), fixed = TRUE)
+      expect_match(accepted$makevars, paste0("-L", selected4, "/lib"), fixed = TRUE)
+      expect_match(accepted$makevars, paste0("-Wl,-rpath,", selected4, "/lib"), fixed = TRUE)
+      expect_false(grepl(global, accepted$makevars, fixed = TRUE))
+    }
+    rejected <- run("4.3.1", selected5, selector)
+    expect_identical(rejected$status, 1L)
+    expect_match(rejected$output, "JAGS prefix reported 5.0.0", fixed = TRUE)
+    expect_null(rejected$makevars)
+  }
+  expect_identical(run("4.3.1")$status, 0L)
+  expect_identical(run("5.0.0")$status, 1L)
+  missing_result <- run("4.3.1", missing)
+  expect_identical(missing_result$status, 1L)
+  expect_match(missing_result$output, "JAGS headers were not found", fixed = TRUE)
+  expect_null(missing_result$makevars)
+})
+

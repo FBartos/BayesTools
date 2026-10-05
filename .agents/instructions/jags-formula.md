@@ -6,6 +6,11 @@ or marginal likelihoods.
 
 ## Keep the Fitting Paths Synchronized
 
+Unix builds with an explicit JAGS_ROOT or --with-jags-prefix use that prefix's
+headers, libraries and version, preserving explicit include/lib/version overrides.
+They never inherit unrestricted global pkg-config flags or fall back to unrelated
+system headers. No-prefix automatic discovery retains its existing behavior.
+
 `R/JAGS-fit.R` owns the main fitting wrapper. Generated syntax, data,
 initialization, monitored nodes, posterior extraction, and bridge-sampling
 parameters form one contract. A change to one path must be checked against the
