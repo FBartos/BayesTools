@@ -162,6 +162,9 @@
 #' improper; such rank-deficient bridge coordinate draws are rejected with an
 #' error. Rank is checked both on the supplied coordinates before bound
 #' transformations and on the transformed coordinates used by the proposal.
+#' Each rank check rescales a local diagnostic copy of finite, nonzero columns
+#' before standardization to avoid variance overflow or underflow. Supplied
+#' coordinates and sampler bounds retain their original values.
 #' Constant columns retain their existing sampler handling.
 #'
 #' If every bridge coordinate is fixed by a point prior,
@@ -701,6 +704,16 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
 }
 
 .bt_JAGS_bridge_check_matrix_rank <- function(coordinates){
+
+  # Positive column rescaling preserves standardized coordinates while keeping
+  # the variance calculation away from overflow and underflow.
+  for(i in seq_len(ncol(coordinates))){
+    x <- coordinates[, i]
+    if(all(is.finite(x)) && any(x != 0)){
+      magnitude <- max(abs(x))
+      coordinates[, i] <- x / magnitude
+    }
+  }
 
   informative <- apply(coordinates, 2L, function(x){
     all(is.finite(x)) && stats::sd(x) > 0

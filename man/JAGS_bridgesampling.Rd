@@ -223,6 +223,9 @@ adds. Supplying deterministic nodes as bridge coordinates makes the target
 improper; such rank-deficient bridge coordinate draws are rejected with an
 error. Rank is checked both on the supplied coordinates before bound
 transformations and on the transformed coordinates used by the proposal.
+Each rank check rescales a local diagnostic copy of finite, nonzero columns
+before standardization to avoid variance overflow or underflow. Supplied
+coordinates and sampler bounds retain their original values.
 Constant columns retain their existing sampler handling.
 
 If every bridge coordinate is fixed by a point prior,

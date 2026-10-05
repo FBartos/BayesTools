@@ -2,6 +2,9 @@
 - declared point and finite support images refuse finite-source saturation or overflow with a classed transformation-availability error; atom replay, point plot layers and prior-region indicators share the guard, preserving true zero and infinite limits.
 - explicit Unix JAGS prefixes consistently select their own version, headers, libraries and rpath instead of mixing global pkg-config installations.
 - bridge sampling checks affine dependence in supplied coordinates before its existing transformed-coordinate rank check, refusing known dependent targets before sampler invocation.
+  Rank checks rescale finite, nonzero columns in a local diagnostic copy before
+  standardization, retaining the accepted QR criterion at very large or small
+  coordinate magnitudes without changing sampler draws or bounds.
 - simplex validation refuses nonfinite totals or roundoff bounds before normalization, including Dirichlet coordinates and fixed ordered allocations.
 - ordinary scalar and vector bridge parameter extraction gives the existing classed missing-monitor error for absent names while preserving present values and point priors.
 - fixed and random coefficient formulas accept literal whole interaction-expansion powers of at least two, retaining explicit-design ownership and replay.

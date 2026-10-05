@@ -34,7 +34,10 @@ point priors need no monitor.
 Bridge sampling checks affine rank of varying finite supplied coordinates before
 bound transformations, then checks the transformed coordinates separately with
 the existing QR tolerance and diagnostics. Constant columns retain the existing
-sampler policy; this is not a general nonlinear dependence detector.
+sampler policy. Before each check, finite nonzero columns are rescaled by their
+maximum absolute value in a local diagnostic copy to avoid variance overflow
+or underflow; actual draws and sampler bounds remain unchanged. This is not a
+general nonlinear dependence detector.
 
 Every deterministic node BayesTools generates (allocation-derived SDs, scalar
 and LKJ correlations, publication weights, spike-and-slab and mixture
