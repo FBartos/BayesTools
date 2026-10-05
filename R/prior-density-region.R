@@ -392,8 +392,13 @@
     indicator = local({
       indicator <- region$indicator
       function(values){
+        mapped_values <- values
+        if(identical(transformation, "exp_lin")){
+          invalid <- if(arguments$b > 0) values < 0 else values <= 0
+          mapped_values[invalid] <- NA_real_
+        }
         output <- suppressWarnings(.density.prior_transformation_checked_x(
-          values, transformation, arguments
+          mapped_values, transformation, arguments
         ))
         if(identical(transformation, "exp_lin")){
           invalid <- if(arguments$b > 0) values < 0 else values <= 0

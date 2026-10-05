@@ -120,6 +120,7 @@ test_that("R133 region indicators refuse positive-source underflow and preserve 
   expect_error(evaluate(1e-300, TRUE), class = "BayesTools_transformation_image_unavailable")
   expect_identical(evaluate(0, TRUE)$probability, 1)
   expect_identical(evaluate(0, FALSE)$probability, 0)
+  expect_false(evaluate(-1, TRUE)$available)
 })
 
 .image_factor_posterior <- function(){
