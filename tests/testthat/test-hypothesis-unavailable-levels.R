@@ -112,10 +112,14 @@ test_that("D3 region missing provenance and invalid probability metadata remain 
 
 test_that("D3 marginal table known prior refusals preserve reasons and scalar strictness", {
 
-  posterior <- .unavailable_factor_posterior()
-  density <- .prior_linear_combination_density(list(theta = prior("point", list(0))), c(theta = 1))
-  scalar <- .hypothesis_marginal_child(posterior$B)
-  scalar <- .bt_meta_set(scalar, "prior_density", density)
+  fit <- coda::mcmc(cbind(beta = seq(.1, 2, length.out = 20),
+                          beta_indicator = rep(1L, 20)))
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- list(beta = prior_spike_and_slab(
+    prior("normal", list(0, 1)), prior_inclusion = prior("point", list(.5))))
+  fit <- attach_test_parameter_map(fit)
+  scalar <- marginal_posterior(as_mixed_posteriors(fit, "beta"), "beta",
+                               NULL, prior_samples = TRUE)
   expect_error(Savage_Dickey_BF(scalar, silent = TRUE), class = "BayesTools_point_mass_at_null")
   result <- tryCatch(.Savage_Dickey_BF.checked(scalar, null_hypothesis = 0,
     normal_approximation = FALSE, density_method = "KDE", silent = TRUE,
