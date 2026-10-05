@@ -22,6 +22,9 @@
 #' lists retain positional order. Marginal inference requires unnamed lists or
 #' unique complete names matching its requested parameters.
 #' @param prior_weights vector of prior model odds
+#' @details Dropping every positive-prior-probability model stops because no
+#' finite marginal likelihood is available; it does not renormalize an empty
+#' model space.
 #' @param margliks vector of natural-log marginal likelihoods
 #' @param is_null logical vector of indicators specifying whether the model corresponds
 #' to the null or alternative hypothesis (or an integer vector indexing models
@@ -167,6 +170,9 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
 
     if(identical(on_failure, "drop")){
       prior_probs[failed] <- 0
+      if(sum(prior_probs) <= 0){
+        stop("No finite marginal likelihoods are available for models with positive prior probability.", call. = FALSE)
+      }
       prior_probs <- prior_probs / sum(prior_probs)
       warning_message <- paste0(
         "Dropped model(s) ",
@@ -265,15 +271,15 @@ ensemble_inference <- function(model_list, parameters, is_null_list,
   check_list(model_list, "model_list")
   check_char(parameters, "parameters", check_length = FALSE)
   check_list(is_null_list, "is_null_list", check_length = length(parameters))
+  is_null_list <- .model_averaging_bind_parameter_list(
+    is_null_list, parameters, "is_null_list", "parameters", strict_names = FALSE
+  )
   on_failure <- match.arg(on_failure)
   sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
   sapply(model_list, function(m)check_real(m[["prior_weights"]], "model_list:prior_weights", lower = 0))
 
 
   # extract the object
-  is_null_list <- .model_averaging_bind_parameter_list(
-    is_null_list, parameters, "is_null_list", "parameters", strict_names = FALSE
-  )
   margliks      <- .model_averaging_marglik_values(model_list)
   prior_weights <- sapply(model_list, function(m) m[["prior_weights"]])
 
@@ -312,12 +318,6 @@ ensemble_inference <- function(model_list, parameters, is_null_list,
   return(out)
 }
 
-#' @rdname ensemble_inference
-models_inference <- function(model_list,
-                             on_failure = c("error", "drop", "zero")){
-
-  on_failure <- match.arg(on_failure)
-  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
 .model_averaging_bind_parameter_list <- function(x, keys, name, key_name,
                                                  strict_names = TRUE){
 
@@ -343,6 +343,12 @@ models_inference <- function(model_list,
   x
 }
 
+#' @rdname ensemble_inference
+models_inference <- function(model_list,
+                             on_failure = c("error", "drop", "zero")){
+
+  on_failure <- match.arg(on_failure)
+  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
   sapply(model_list, function(m)check_real(m[["prior_weights"]], "model_list:prior_weights", lower = 0))
 
   margliks    <- .model_averaging_marglik_values(model_list)

@@ -1631,3 +1631,15 @@ test_that("N26 matching masks bind by key and legacy ensemble masks stay positio
     "Marginal inference for parameter 'missing' is unavailable because it is not included in 'parameters'.", fixed = TRUE)
   expect_length(missing$inference, 0L)
 })
+
+test_that("N27 dropping every positive-prior model gives the intended error without warning", {
+
+  messages <- character()
+  result <- withCallingHandlers(tryCatch(
+    compute_inference(c(1, 0), c(NA_real_, 0), c(TRUE, FALSE), on_failure = "drop"),
+    error = identity), warning = function(w){ messages <<- c(messages, conditionMessage(w)); invokeRestart("muffleWarning") })
+  expect_s3_class(result, "error")
+  expect_identical(conditionMessage(result),
+    "No finite marginal likelihoods are available for models with positive prior probability.")
+  expect_length(messages, 0L)
+})

@@ -86,6 +86,11 @@ model odds, marginal likelihoods, and indicator whether
 the models represent the null or alternative hypothesis, or (3) list of
 models for each model.
 }
+\details{
+Dropping every positive-prior-probability model stops because no
+finite marginal likelihood is available; it does not renormalize an empty
+model space.
+}
 \seealso{
 \link{mix_posteriors} \link{BayesTools_ensemble_tables}
 }
