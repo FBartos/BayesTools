@@ -243,3 +243,52 @@ extern "C" SEXP BayesTools_invmoment_r(SEXP n, SEXP location, SEXP tau,
 {
   return nonlocal_r(n, location, tau, order, true, df);
 }
+
+extern "C" SEXP BayesTools_nonlocal_log_interval_mass(SEXP lower, SEXP upper,
+  SEXP location, SEXP tau, SEXP order, SEXP df, SEXP inverse)
+{
+  SEXP l = PROTECT(coerce_numeric(lower, "lower"));
+  SEXP u = PROTECT(coerce_numeric(upper, "upper"));
+  if(XLENGTH(l) != XLENGTH(u)) Rf_error("'lower' and 'upper' must have equal lengths.");
+  double location_value = scalar_numeric(location, "location");
+  double tau_value = scalar_numeric(tau, "tau");
+  double order_value = scalar_numeric(order, "order");
+  double df_value = scalar_numeric(df, "df");
+  bool inverse_value = scalar_bool(inverse, "invmoment");
+  SEXP out = PROTECT(Rf_allocVector(REALSXP, XLENGTH(l)));
+  for(R_xlen_t i = 0; i < XLENGTH(l); ++i){
+    REAL(out)[i] = ISNAN(REAL(l)[i]) ? REAL(l)[i] : ISNAN(REAL(u)[i]) ? REAL(u)[i] :
+      bayestools::nonlocal::log_interval_mass(REAL(l)[i], REAL(u)[i],
+        location_value, tau_value, order_value, df_value, inverse_value);
+  }
+  UNPROTECT(3);
+  return out;
+}
+
+extern "C" SEXP BayesTools_nonlocal_truncated_quantile(SEXP p, SEXP lower,
+  SEXP upper, SEXP location, SEXP tau, SEXP order, SEXP df, SEXP inverse)
+{
+  SEXP p_real = PROTECT(coerce_numeric(p, "p"));
+  double lower_value = scalar_numeric(lower, "lower");
+  double upper_value = scalar_numeric(upper, "upper");
+  double location_value = scalar_numeric(location, "location");
+  double tau_value = scalar_numeric(tau, "tau");
+  double order_value = scalar_numeric(order, "order");
+  double df_value = scalar_numeric(df, "df");
+  bool inverse_value = scalar_bool(inverse, "invmoment");
+  double log_sign_masses[2];
+  double log_mass = bayestools::nonlocal::log_interval_mass(lower_value,
+    upper_value, location_value, tau_value, order_value, df_value, inverse_value,
+    log_sign_masses);
+  SEXP out = PROTECT(Rf_allocVector(REALSXP, XLENGTH(p_real)));
+  for(R_xlen_t i = 0; i < XLENGTH(p_real); ++i){
+    REAL(out)[i] = ISNAN(REAL(p_real)[i]) ? REAL(p_real)[i] :
+      bayestools::nonlocal::truncated_quantile(REAL(p_real)[i], lower_value,
+        upper_value, location_value, tau_value, order_value, df_value, inverse_value,
+        log_sign_masses);
+  }
+  SEXP mass = PROTECT(Rf_ScalarReal(log_mass));
+  Rf_setAttrib(out, Rf_install("log_normalizer"), mass);
+  UNPROTECT(3);
+  return out;
+}

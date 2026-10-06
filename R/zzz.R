@@ -199,6 +199,8 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
     "BayesTools_invmoment_p",
     "BayesTools_invmoment_q",
     "BayesTools_invmoment_r",
+    "BayesTools_nonlocal_log_interval_mass",
+    "BayesTools_nonlocal_truncated_quantile",
     "BayesTools_invgamma_d",
     "BayesTools_invgamma_p",
     "BayesTools_invgamma_q",

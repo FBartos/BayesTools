@@ -4,6 +4,7 @@
 #include <cmath>
 #include <rng/RNG.h>
 #include <util/nainf.h>
+#include <module/ModuleError.h>
 
 namespace jags {
   namespace BayesTools {
@@ -31,73 +32,39 @@ namespace jags {
                                    std::vector<double const *> const &par,
                                    double const *lower, double const *upper) const
     {
+      double l = lower ? *lower : 0.0;
+      double u = upper ? *upper : JAGS_POSINF;
+      if(x < l || x > u || x <= 0.0 || !std::isfinite(x)) return JAGS_NEGINF;
+      double log_mass = lower || upper ? bayestools::invgamma::log_interval_mass(*par[0], *par[1], l, u) : 0.0;
+      if(!std::isfinite(log_mass)){
+        throwDistError(this, "Prior normalization is numerically unavailable.");
+      }
       double out = bayestools::invgamma::log_density(x, *par[0], *par[1]);
-      if(!std::isfinite(out)){
-        return JAGS_NEGINF;
+      if(!std::isfinite(out) || !std::isfinite(out - log_mass)){
+        throwDistError(this, "Prior log density is numerically unavailable.");
       }
-      if(lower || upper){
-        double l = lower ? *lower : 0.0;
-        double u = upper ? *upper : JAGS_POSINF;
-        if(x < l || x > u){
-          return JAGS_NEGINF;
-        }
-
-        double mass = bayestools::invgamma::cdf(
-          u, *par[0], *par[1], true, false
-        ) - bayestools::invgamma::cdf(
-          l, *par[0], *par[1], true, false
-        );
-        if(!(std::isfinite(mass) && mass > 0.0)){
-          mass = bayestools::invgamma::cdf(
-            l, *par[0], *par[1], false, false
-          ) - bayestools::invgamma::cdf(
-            u, *par[0], *par[1], false, false
-          );
-        }
-        if(!(std::isfinite(mass) && mass > 0.0)){
-          return JAGS_NEGINF;
-        }
-        out -= std::log(mass);
-      }
-      return std::isfinite(out) ? out : JAGS_NEGINF;
+      return out - log_mass;
     }
 
     double DBTInvGamma::randomSample(std::vector<double const *> const &par,
                                      double const *lower, double const *upper,
                                      RNG *rng) const
     {
+      double l = lower ? *lower : 0.0;
+      double u = upper ? *upper : JAGS_POSINF;
+      double out;
       if(lower || upper){
-        double l = lower ? *lower : 0.0;
-        double u = upper ? *upper : JAGS_POSINF;
-        double cdf_l = bayestools::invgamma::cdf(
-          l, *par[0], *par[1], true, false
-        );
-        double cdf_u = bayestools::invgamma::cdf(
-          u, *par[0], *par[1], true, false
-        );
-        double mass = cdf_u - cdf_l;
-        if(std::isfinite(mass) && mass > 0.0){
-          return bayestools::invgamma::quantile(
-            cdf_l + rng->uniform() * mass,
-            *par[0], *par[1], true, false
-          );
+        if(!std::isfinite(bayestools::invgamma::log_interval_mass(*par[0], *par[1], l, u))){
+          throwDistError(this, "Prior normalization is numerically unavailable.");
         }
-
-        double surv_l = bayestools::invgamma::cdf(
-          l, *par[0], *par[1], false, false
-        );
-        double surv_u = bayestools::invgamma::cdf(
-          u, *par[0], *par[1], false, false
-        );
-        mass = surv_l - surv_u;
-        if(std::isfinite(mass) && mass > 0.0){
-          return bayestools::invgamma::quantile(
-            surv_u + rng->uniform() * mass,
-            *par[0], *par[1], false, false
-          );
-        }
+        out = bayestools::invgamma::truncated_quantile(rng->uniform(), *par[0], *par[1], l, u);
+      }else{
+        out = bayestools::invgamma::rng(rng->uniform(), *par[0], *par[1]);
       }
-      return bayestools::invgamma::rng(rng->uniform(), *par[0], *par[1]);
+      if(!std::isfinite(out) || out <= 0.0 || out < l || out > u){
+        throwDistError(this, "Prior sampling is numerically unavailable.");
+      }
+      return out;
     }
 
     double DBTInvGamma::typicalValue(std::vector<double const *> const &par,
@@ -105,7 +72,14 @@ namespace jags {
     {
       double l = lower ? *lower : 0.0;
       double u = upper ? *upper : JAGS_POSINF;
-      return bayestools::invgamma::typical_value(*par[0], *par[1], l, u);
+      if((lower || upper) && !std::isfinite(bayestools::invgamma::log_interval_mass(*par[0], *par[1], l, u))){
+        throwDistError(this, "Prior normalization is numerically unavailable.");
+      }
+      double out = bayestools::invgamma::typical_value(*par[0], *par[1], l, u);
+      if(!std::isfinite(out)){
+        throwDistError(this, "Prior initialization is numerically unavailable.");
+      }
+      return out;
     }
 
     bool DBTInvGamma::canBound() const

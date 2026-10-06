@@ -28,8 +28,14 @@ double moment_rng(double u_sign, double u_size, double location, double tau,
 double invmoment_rng(double u_sign, double u_size, double location, double tau,
                      double order, double df);
 
-double typical_value(double location, double mode_abs, double lower,
-                     double upper);
+double log_interval_mass(double lower, double upper, double location, double tau,
+                         double order, double df, bool inverse,
+                         double *log_sign_masses = 0);
+double truncated_quantile(double p, double lower, double upper, double location,
+                          double tau, double order, double df, bool inverse,
+                          double const *log_sign_masses = 0);
+double typical_value(double location, double mode_abs, double lower, double upper,
+                     double tau, double order, double df, bool inverse);
 
 }
 }

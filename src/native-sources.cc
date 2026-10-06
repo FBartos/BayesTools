@@ -6,6 +6,7 @@
 #include "distributions/DBTMoment.cc"
 #include "distributions/DBTInvMoment.cc"
 #include "functions/BTLKJCholesky.cc"
+#include "gamma/BTGammaCore.cc"
 #include "invgamma/BTInvGammaCore.cc"
 #include "lkj/BTLKJCore.cc"
 #include "nonlocal/BTNonlocalCore.cc"

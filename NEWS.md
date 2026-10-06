@@ -1,4 +1,5 @@
 # version 0.3.1
+- inverse-gamma kernels retain original-input Gamma coordinates across overflowing ratios and subnormal roots, with the bounded small-shape series and explicit numerical availability and range conditions.
 - original formula coefficients use each draw's compiled multiplier states, including exact same-declaration cancellation at zero; undefined requested denominator states refuse the numeric vector. Formula-design 6, unscale-design 2 and coefficient-transform 3 require refitting older saved formats.
 - formula values, laws, supports, atoms and component supports use compiled contributions and fitted rows on both views. Retained fixed sources, original eligible gates and exact posterior model probabilities survive selection/allocation; unsupported measures carry explicit typed availability metadata.
 - ordinary catalog mixture/spike posteriors retain original component supports and row identities, restoring component-aware boundary ordinate and Bayes-factor parity with ordinary marginal posteriors.

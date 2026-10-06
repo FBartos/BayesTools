@@ -92,6 +92,7 @@ bayestools_test_profile_contexts <- list(
     "priors-linear-density",
     "priors-native-missing",
     "priors-nonlocal",
+    "priors-numerical",
     "priors-plot-data",
     "priors-print",
     "priors-tools",

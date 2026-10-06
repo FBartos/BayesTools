@@ -4,6 +4,7 @@
 #include <cmath>
 #include <rng/RNG.h>
 #include <util/nainf.h>
+#include <module/ModuleError.h>
 
 namespace jags {
   namespace BayesTools {
@@ -28,90 +29,59 @@ namespace jags {
     }
 
     double DBTMoment::logDensity(double x, PDFType type,
-                                 std::vector<double const *> const &par,
-                                 double const *lower, double const *upper) const
-    {
-      double out = bayestools::nonlocal::moment_log_density(x, *par[0], *par[1], *par[2]);
-      if(!std::isfinite(out)){
-        return JAGS_NEGINF;
-      }
-      if(lower || upper){
-        double l = lower ? *lower : JAGS_NEGINF;
-        double u = upper ? *upper : JAGS_POSINF;
-        if(x < l || x > u){
-          return JAGS_NEGINF;
-        }
-
-        double mass = bayestools::nonlocal::moment_cdf(
-          u, *par[0], *par[1], *par[2], true, false
-        ) - bayestools::nonlocal::moment_cdf(
-          l, *par[0], *par[1], *par[2], true, false
-        );
-        if(!(std::isfinite(mass) && mass > 0.0)){
-          mass = bayestools::nonlocal::moment_cdf(
-            l, *par[0], *par[1], *par[2], false, false
-          ) - bayestools::nonlocal::moment_cdf(
-            u, *par[0], *par[1], *par[2], false, false
-          );
-        }
-        if(!(std::isfinite(mass) && mass > 0.0)){
-          return JAGS_NEGINF;
-        }
-        out -= std::log(mass);
-      }
-      return std::isfinite(out) ? out : JAGS_NEGINF;
-    }
-
-    double DBTMoment::randomSample(std::vector<double const *> const &par,
-                                   double const *lower, double const *upper,
-                                   RNG *rng) const
-    {
-      if(lower || upper){
-        double l = lower ? *lower : JAGS_NEGINF;
-        double u = upper ? *upper : JAGS_POSINF;
-        double cdf_l = bayestools::nonlocal::moment_cdf(
-          l, *par[0], *par[1], *par[2], true, false
-        );
-        double cdf_u = bayestools::nonlocal::moment_cdf(
-          u, *par[0], *par[1], *par[2], true, false
-        );
-        double mass = cdf_u - cdf_l;
-        if(std::isfinite(mass) && mass > 0.0){
-          return bayestools::nonlocal::moment_quantile(
-            cdf_l + rng->uniform() * mass,
-            *par[0], *par[1], *par[2], true, false
-          );
-        }
-
-        double surv_l = bayestools::nonlocal::moment_cdf(
-          l, *par[0], *par[1], *par[2], false, false
-        );
-        double surv_u = bayestools::nonlocal::moment_cdf(
-          u, *par[0], *par[1], *par[2], false, false
-        );
-        mass = surv_l - surv_u;
-        if(std::isfinite(mass) && mass > 0.0){
-          return bayestools::nonlocal::moment_quantile(
-            surv_u + rng->uniform() * mass,
-            *par[0], *par[1], *par[2], false, false
-          );
-        }
-      }
-      // Match the R generator's explicit size-then-sign draw order.
-      double u_size = rng->uniform();
-      double u_sign = rng->uniform();
-      return bayestools::nonlocal::moment_rng(
-        u_sign, u_size, *par[0], *par[1], *par[2]
-      );
-    }
-
-    double DBTMoment::typicalValue(std::vector<double const *> const &par,
+                                   std::vector<double const *> const &par,
                                    double const *lower, double const *upper) const
     {
       double l = lower ? *lower : JAGS_NEGINF;
       double u = upper ? *upper : JAGS_POSINF;
-      double mode = bayestools::nonlocal::moment_mode(*par[1], *par[2]);
-      return bayestools::nonlocal::typical_value(*par[0], mode, l, u);
+      if(x < l || x > u || x == *par[0] || !std::isfinite(x)) return JAGS_NEGINF;
+      double log_mass = lower || upper ? bayestools::nonlocal::log_interval_mass(l, u, *par[0], *par[1], *par[2], 0.0, false) : 0.0;
+      if(!std::isfinite(log_mass)){
+        throwDistError(this, "Prior normalization is numerically unavailable.");
+      }
+      double out = bayestools::nonlocal::moment_log_density(x, *par[0], *par[1], *par[2]);
+      if(!std::isfinite(out) || !std::isfinite(out - log_mass)){
+        throwDistError(this, "Prior log density is numerically unavailable.");
+      }
+      return out - log_mass;
+    }
+
+    double DBTMoment::randomSample(std::vector<double const *> const &par,
+                                     double const *lower, double const *upper,
+                                     RNG *rng) const
+    {
+      double l = lower ? *lower : JAGS_NEGINF;
+      double u = upper ? *upper : JAGS_POSINF;
+      double out;
+      if(lower || upper){
+        if(!std::isfinite(bayestools::nonlocal::log_interval_mass(l, u, *par[0], *par[1], *par[2], 0.0, false))){
+          throwDistError(this, "Prior normalization is numerically unavailable.");
+        }
+        out = bayestools::nonlocal::truncated_quantile(rng->uniform(), l, u, *par[0], *par[1], *par[2], 0.0, false);
+      }else{
+        double u_size = rng->uniform();
+        double u_sign = rng->uniform();
+        out = bayestools::nonlocal::moment_rng(u_sign, u_size, *par[0], *par[1], *par[2]);
+      }
+      if(!std::isfinite(out) || out == *par[0] || out < l || out > u){
+        throwDistError(this, "Prior sampling is numerically unavailable.");
+      }
+      return out;
+    }
+
+    double DBTMoment::typicalValue(std::vector<double const *> const &par,
+                                     double const *lower, double const *upper) const
+    {
+      double l = lower ? *lower : JAGS_NEGINF;
+      double u = upper ? *upper : JAGS_POSINF;
+      if((lower || upper) && !std::isfinite(bayestools::nonlocal::log_interval_mass(l, u, *par[0], *par[1], *par[2], 0.0, false))){
+        throwDistError(this, "Prior normalization is numerically unavailable.");
+      }
+      double out = bayestools::nonlocal::typical_value(*par[0], bayestools::nonlocal::moment_mode(*par[1], *par[2]), l, u, *par[1], *par[2], 0.0, false);
+      if(!std::isfinite(out)){
+        throwDistError(this, "Prior initialization is numerically unavailable.");
+      }
+      return out;
     }
 
     bool DBTMoment::canBound() const

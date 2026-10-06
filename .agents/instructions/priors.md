@@ -33,6 +33,11 @@ Moment, inverse-moment and inverse-gamma scalar density, CDF and quantile
 adapters preserve evaluation NA and NaN distinctly, including marginal methods.
 Generic truncated scalar CDF/CCDF paths preserve both missing values as well;
 this does not certify the unchanged truncated Normal quantile path.
+
+Gamma coordinates in inverse-gamma and nonlocal kernels retain original-input
+logs when intermediate ratios, squares, or roots lose precision. The bounded
+small-shape Gamma series and certified leading log-root branch supplement the
+existing JRmath backend; unsupported precision remains explicitly unavailable.
 Simplex canonicalization requires finite nonnegative entries, a finite total
 and finite floating-roundoff bound before sum-to-one comparison or normalization.
 Preserve the existing near-one allowance and diagnostic labels; never normalize
@@ -173,7 +178,8 @@ behavior is `regular` where the route has established the support and
 `unknown` otherwise (a linear density then shows its grid estimate). One
 place per route kind applies it:
 - primitive densities (`.prior_density_ordinate_primitive()`, which every
-  scalar chain reaches): a nonzero subnormal value, for every family (the
+  scalar chain reaches): a nonzero subnormal value, except inverse-gamma and
+  nonlocal families whose original-input Gamma log coordinates remain available (the
   distribution functions rescale their argument; a gamma(3, 0.7) log density
   was 2.8e-4 off at 1e-320); 0 keeps its structural class; the rescaled
   argument of a normal value whose log the family takes (`value * rate` of

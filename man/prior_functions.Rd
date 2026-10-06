@@ -72,6 +72,33 @@ through density, distribution and quantile methods for moment, inverse-moment
 and inverse-gamma scalar priors, including their marginal methods. Generic
 scalar CDF and complementary CDF methods also retain this distinction under
 truncation. This statement does not cover truncated Normal quantiles.
+Continuous truncation uses logarithmic interval masses, including separate
+signed radial intervals for nonlocal priors. An unresolved positive
+normalizer stops with \code{BayesTools_numerical_unavailable} before a
+cached density evaluator or bridge calculation is constructed. Existing
+Normal-only rounding adjustments are retained; other truncated quantiles
+never clip an unavailable result into their bounds.
+Ordinary Gamma normalization is unavailable for a numeric subnormal shape
+when truncation cuts its positive support: finite base R log tails can be
+wrong in this floating-point regime. Constructors retain their supported
+parameter domain and whole-positive-support mass remains exactly one.
+Raw untruncated base R Gamma extreme calculations are not certified by this
+normalization guard.
+
+Valid interior numerical failures give \code{NaN} with one
+\code{BayesTools_numerical_unavailable} warning per vector. Established
+inverse-gamma or nonlocal natural density or quantile range limits retain
+their raw zero or infinite result with \code{BayesTools_numerical_range_limit}.
+Ordinary family density range results retain their existing behavior when
+their log density is available. Both numerical classes inherit
+\code{BayesTools_numerical_condition}, \code{warning}, and \code{condition}.
+Conditions record \code{operation}, \code{family}, \code{requested_scale},
+\code{indices}, and \code{reason}, with \code{call = NULL}. Exact support
+endpoints and rounded natural probabilities with available log tails do
+not warn. Sampling failures are errors additionally inheriting
+\code{BayesTools_prior_rng_unavailable}; all original uniforms are consumed
+before signaling. Finite-required consumers and JAGS refuse unavailable
+draws, density values, and normalization, without redraw or model repair.
 }
 \details{
 Numeric Dirichlet concentrations must be finite and at least

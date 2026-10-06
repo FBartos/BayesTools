@@ -662,7 +662,8 @@ prior_density_has_provenance <- function(x){
   # argument (e.g. dgamma() divides it by the scale), which rounds it to a
   # multiple of the smallest subnormal (a gamma(3, 0.7) log density was off by
   # 2.8e-4 at 1e-320); every scalar route evaluates its argument here
-  if(is.finite(value) && !.prior_density_affine_full_precision(value)){
+  retained_coordinates <- family %in% c("invgamma", "moment", "invmoment")
+  if(!retained_coordinates && is.finite(value) && !.prior_density_affine_full_precision(value)){
     return(.prior_density_ordinate_imprecise(
       value, "The value at which the density is evaluated", "primitive", provenance
     ))
@@ -678,16 +679,30 @@ prior_density_has_provenance <- function(x){
     "lognormal" = value * prior$parameters$sdlog,
     value
   )
-  if(is.finite(value) && value != 0 && isFALSE(.prior_density_full_precision(rescaled))){
+  if(!retained_coordinates && is.finite(value) && value != 0 && isFALSE(.prior_density_full_precision(rescaled))){
     return(.prior_density_ordinate_imprecise(
       value, "The rescaled argument of the density", "primitive", provenance
     ))
   }
 
-  log_density <- tryCatch(
+  numerical_condition <- NULL
+  log_density <- tryCatch(withCallingHandlers(
     .prior_simple_lpdf(prior, value),
-    error = function(e) NA_real_
+    BayesTools_numerical_condition = function(condition){
+      numerical_condition <<- condition
+      if(inherits(condition, "warning")) invokeRestart("muffleWarning")
+    }),
+    BayesTools_numerical_unavailable = function(condition){
+      numerical_condition <<- condition
+      NA_real_
+    }
   )
+  if(!is.null(numerical_condition)){
+    provenance$numerical_condition <- unclass(numerical_condition)
+    return(.prior_density_ordinate_imprecise(value,
+      paste0("The declared prior density (", numerical_condition$reason, ")"),
+      "primitive", provenance))
+  }
   if(!is.numeric(log_density) || length(log_density) != 1L ||
      is.na(log_density) || (is.infinite(log_density) && log_density > 0)){
     log_density <- NA_real_
