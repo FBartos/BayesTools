@@ -483,6 +483,9 @@ columns.
 Preserve explicit new-level policy and the distinction between full covariance
 and `diagonal_only` output. Structural unavailability is not permission to
 silently substitute zero covariance or a diagonal approximation.
+Known-group covariance marginal sampling supports noncentered multi-column
+ID/DIAG/US blocks with the declared group kernel and each posterior draw's
+coefficient covariance; the one-column sampling stream remains unchanged.
 
 A single grouping factor keeps its declared levels as fitted groups, including
 levels without fitting rows, and the fitted term records the observed ones in

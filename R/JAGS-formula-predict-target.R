@@ -37,7 +37,9 @@
 #' marginal random-effect covariance; `"sample"` returns materialized
 #' random-effect draws. For known group covariance, `"sample"` jointly draws
 #' the requested fitted levels from the corresponding covariance submatrix;
-#' new levels remain unsupported.
+#' noncentered multi-column ID, DIAG, and US blocks jointly retain both the
+#' group kernel and the draw-specific coefficient covariance. New levels remain
+#' unsupported.
 #' @param seed optional random seed used when random-effect draws are simulated.
 #' @param components whether to include component matrices where available.
 #'

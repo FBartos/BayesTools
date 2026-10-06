@@ -569,14 +569,8 @@
 
   n_draws <- nrow(posterior)
   n_rows <- nrow(model_matrix)
+  n_columns <- ncol(model_matrix)
   output <- matrix(0, nrow = n_rows, ncol = n_draws)
-  if(ncol(model_matrix) != 1L){
-    stop(
-      "Random-effect prediction for block '", random_term$block_name,
-      "' with known group covariance supports one random-effect column only.",
-      call. = FALSE
-    )
-  }
 
   group_covariance <- .bt_random_effect_known_group_covariance(
     random_term,
@@ -591,20 +585,20 @@
   }
   sd_draws <- .bt_random_effect_sd_draws(
     random_term = random_term,
-    n_columns = 1L,
+    n_columns = n_columns,
     posterior = posterior,
     prior_list = prior_list
   )
   if(is.null(sd_draws)){
     .bt_random_effect_marginal_covariance_missing_sd_stop(
       random_term = random_term,
-      n_columns = 1L
+      n_columns = n_columns
     )
   }
   .bt_random_effect_marginal_covariance_validate_draw_matrix(
     draws = sd_draws,
     n_draws = n_draws,
-    n_columns = 1L,
+    n_columns = n_columns,
     label = "SD",
     random_term = random_term,
     nonnegative = TRUE,
@@ -614,6 +608,38 @@
   groups <- sort(unique(group_map[rows]))
   group_index <- match(group_map[rows], groups)
   kernel <- group_covariance$kernel[groups, groups, drop = FALSE]
+  if(n_columns > 1L){
+    structure <- .bt_random_effect_structure(
+      random_term, context = "Random-effect prediction metadata"
+    )
+    if(!structure %in% c("id", "diag", "us")){
+      stop("Multi-column random-effect prediction with known group covariance supports only ID, DIAG, or US blocks.",
+           call. = FALSE)
+    }
+    cholesky <- .bt_random_effect_cholesky_draws(
+      random_term = random_term, n_columns = n_columns, posterior = posterior
+    )
+    if(is.null(cholesky)){
+      .bt_random_effect_marginal_covariance_missing_correlation_stop(
+        random_term = random_term, n_columns = n_columns, posterior = posterior
+      )
+    }
+    .bt_random_effect_marginal_covariance_validate_correlation_cholesky(
+      cholesky = cholesky, random_term = random_term,
+      n_columns = n_columns, posterior = posterior
+    )
+    kernel_factor <- t(chol(kernel))
+    for(draw in seq_len(n_draws)){
+      coefficient_factor <- sweep(cholesky[draw, , ], 1L, sd_draws[draw, ], "*")
+      effects <- .bt_random_effect_mvn_group_draws_from_factor(
+        factor = coefficient_factor, n_groups = length(groups)
+      )
+      effects <- kernel_factor %*% effects
+      output[rows, draw] <- rowSums(model_matrix[rows, , drop = FALSE] *
+        effects[group_index, , drop = FALSE])
+    }
+    return(output)
+  }
   factor <- t(chol(kernel))
   group_effects <- .bt_random_effect_mvn_group_draws_from_factor(
     factor = factor,

@@ -55,7 +55,9 @@ blocks with a known group covariance; see \code{\link[=prior_random]{prior_rando
 marginal random-effect covariance; \code{"sample"} returns materialized
 random-effect draws. For known group covariance, \code{"sample"} jointly draws
 the requested fitted levels from the corresponding covariance submatrix;
-new levels remain unsupported.}
+noncentered multi-column ID, DIAG, and US blocks jointly retain both the
+group kernel and the draw-specific coefficient covariance. New levels remain
+unsupported.}
 
 \item{seed}{optional random seed used when random-effect draws are simulated.}
 

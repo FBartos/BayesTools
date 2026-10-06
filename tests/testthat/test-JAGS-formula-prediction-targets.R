@@ -2006,3 +2006,114 @@ test_that("marginal sampling draws fitted levels jointly under known covariance"
     fixed = TRUE
   )
 })
+
+.known_covariance_sample_fixture <- function(structure, n_draws = 3L,
+                                             zero_slope = FALSE){
+  data <- data.frame(g = factor(c("a", "b", "a")), x = c(-1, 1, 2))
+  K <- matrix(c(1, .4, .4, 2), 2L, dimnames = list(c("a", "b"), c("a", "b")))
+  formula <- stats::as.formula(paste0("~ ", structure, "(1 + x | g)"))
+  block <- random_block(sd = prior("gamma", list(2, 2)),
+    terms = if(zero_slope) list(x = prior("point", list(0))) else NULL)
+  result <- JAGS_formula(random_effects_formula(formula,
+    group_covariance = random_group_covariance(K, scale = "none")), "mu", data,
+    list(intercept = prior("point", list(0))), prior_random = prior_random(g = block),
+    random_effects_compile = random_effects_compile(marginalized = "g"))
+  term <- result$formula_design$random_effects[[1L]]
+  primitive <- if(structure == "us") .bt_random_effect_lkj_primitive_names(term, 2L) else character()
+  sd_names <- unique(term$sd_parameter_names)
+  posterior <- matrix(0, n_draws, 1L + length(sd_names) + length(primitive),
+    dimnames = list(NULL, c("mu_intercept", sd_names, primitive)))
+  sd <- if(structure == "id"){
+    cbind(rep(c(1.2, 0, 2), length.out = n_draws), rep(c(1.2, 0, 2), length.out = n_draws))
+  }else{
+    cbind(rep(c(1.2, 0, 2), length.out = n_draws), rep(c(.6, .9, 1), length.out = n_draws))
+  }
+  if(zero_slope) sd[, 2L] <- 0
+  posterior[, sd_names] <- sd[, seq_along(sd_names), drop = FALSE]
+  u <- rep(c(.7, .4, .8), length.out = n_draws)
+  if(length(primitive)) posterior[, primitive] <- u
+  fit <- coda::mcmc(posterior)
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  attr(fit, "prior_list") <- result$prior_list
+  list(fit = fit, result = result, term = term, data = data, K = K,
+       sd = sd, rho = if(structure == "us") 2 * u - 1 else rep(0, n_draws), primitive = primitive)
+}
+
+test_that("multi-column known-K sampling follows the matrix identity and posterior row order", {
+  for(structure in c("id", "diag", "us")){
+    fixture <- .known_covariance_sample_fixture(structure)
+    for(rows in list(c(3L, 1L, 3L, 2L), c(3L, 1L, 3L))){
+      data <- fixture$data[rows, , drop = FALSE]
+      group_map <- match(as.character(data$g), fixture$term$group_levels)
+      groups <- sort(unique(group_map))
+      group_index <- match(group_map, groups)
+      X <- cbind(1, data$x)
+      L_K <- t(chol(fixture$K[groups, groups, drop = FALSE]))
+      set.seed(1942)
+      expected <- matrix(0, nrow(data), 3L)
+      for(draw in seq_len(3L)){
+        rho <- fixture$rho[draw]
+        L_R <- matrix(c(1, rho, 0, sqrt(1 - rho^2)), 2L)
+        F <- diag(fixture$sd[draw, ], 2L) %*% L_R
+        Z <- matrix(stats::rnorm(length(groups) * 2L), length(groups), 2L)
+        B <- L_K %*% Z %*% t(F)
+        expected[, draw] <- rowSums(X * B[group_index, , drop = FALSE])
+      }
+      prediction <- JAGS_predict_formula(fixture$fit, "mu", data = data,
+        formula_target = "marginal", marginal_method = "sample", seed = 1942)
+      expect_equal(unname(prediction$random), expected, tolerance = 1e-12)
+      expect_equal(prediction$random[1L, ], prediction$random[3L, ], tolerance = 0)
+      covariance <- JAGS_predict_formula(fixture$fit, "mu", data = data,
+        formula_target = "marginal", marginal_method = "covariance")$vcov
+      oracle <- array(0, c(3L, nrow(data), nrow(data)))
+      for(draw in seq_len(3L)){
+        R <- matrix(c(1, fixture$rho[draw], fixture$rho[draw], 1), 2L)
+        Sigma <- diag(fixture$sd[draw, ], 2L) %*% R %*% diag(fixture$sd[draw, ], 2L)
+        oracle[draw, , ] <- fixture$K[group_map, group_map, drop = FALSE] * (X %*% Sigma %*% t(X))
+      }
+      expect_equal(unname(covariance$samples), oracle, tolerance = 1e-12)
+    }
+  }
+})
+
+test_that("constant-row known-K Gaussian samples agree with covariance sampling error", {
+  fixture <- .known_covariance_sample_fixture("us", n_draws = 12000L)
+  posterior <- as.matrix(fixture$fit)
+  posterior[,] <- matrix(posterior[1L, ], nrow(posterior), ncol(posterior), byrow = TRUE)
+  fit <- coda::mcmc(posterior)
+  attr(fit, "formula_design") <- attr(fixture$fit, "formula_design")
+  attr(fit, "prior_list") <- fixture$result$prior_list
+  samples <- JAGS_predict_formula(fit, "mu", formula_target = "marginal",
+    marginal_method = "sample", seed = 774)$random
+  X <- cbind(1, fixture$data$x)
+  sd <- fixture$sd[1L, ]
+  rho <- fixture$rho[1L]
+  Sigma <- diag(sd, 2L) %*% matrix(c(1, rho, rho, 1), 2L) %*% diag(sd, 2L)
+  map <- fixture$term$group_map
+  C <- fixture$K[map, map] * (X %*% Sigma %*% t(X))
+  observed <- stats::cov(t(samples))
+  se <- sqrt((outer(diag(C), diag(C)) + C^2) / (ncol(samples) - 1L))
+  expect_true(all(abs(observed - C) <= 6 * se))
+})
+
+test_that("known-K sampling retains point-zero coordinates and strict correlation refusals", {
+  fixture <- .known_covariance_sample_fixture("us", zero_slope = TRUE)
+  prediction <- JAGS_predict_formula(fixture$fit, "mu", formula_target = "marginal",
+    marginal_method = "sample", seed = 554)
+  expect_identical(unname(prediction$random[, 2L]), rep(0, 3L))
+  # The declared zero slope makes repeated-group rows equal despite different x.
+  expect_equal(prediction$random[1L, ], prediction$random[3L, ], tolerance = 0)
+  missing <- coda::mcmc(as.matrix(fixture$fit)[, setdiff(colnames(fixture$fit), fixture$primitive), drop = FALSE])
+  attr(missing, "formula_design") <- attr(fixture$fit, "formula_design")
+  expect_error(JAGS_predict_formula(missing, "mu", prior_list = fixture$result$prior_list,
+    formula_target = "marginal", marginal_method = "sample"), "cannot resolve correlation draws", fixed = TRUE)
+  cleared <- as.matrix(fixture$fit)
+  cleared[, fixture$primitive] <- NA_real_
+  cleared <- coda::mcmc(cleared)
+  attr(cleared, "formula_design") <- attr(fixture$fit, "formula_design")
+  expect_error(JAGS_predict_formula(cleared, "mu", prior_list = fixture$result$prior_list,
+    formula_target = "marginal", marginal_method = "sample"), "must be finite", fixed = TRUE)
+  expect_error(JAGS_predict_formula(fixture$fit, "mu", data = data.frame(g = "new", x = 1),
+    formula_target = "marginal", marginal_method = "sample", new_levels = "sample"),
+    "known group covariance", fixed = TRUE)
+})
