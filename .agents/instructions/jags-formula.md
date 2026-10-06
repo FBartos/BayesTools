@@ -478,6 +478,17 @@ known group covariance are the exception: the kernel intends its declared
 levels, which keep their fitted coefficients. Multi-variable groupings contain
 only observed tuples.
 
+Grouping identity uses tagged exact numeric keys (17 significant digits with
+a '.' decimal mark and equivalent signed zeros) or tagged UTF8 character keys.
+Display labels remain ordinary labels, disambiguated with '[<key>]' only when
+needed. Prediction matches exact keys first. Numeric input can display-match
+only character-owned training levels; character/factor input can match a unique
+fitted label, but ambiguous raw labels refuse before the new-level policy.
+The existing structured metric/index replay has its separate unique-label
+fallback policy; grouping ownership does not change that policy. Formula-design
+schema 5 requires persisted component ownership and refitting older designs;
+the coefficient-transform schema remains 2.
+
 ## Verification
 
 Use deterministic syntax and design assertions before live fitting. Follow the

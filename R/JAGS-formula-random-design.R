@@ -1155,6 +1155,8 @@
   random_term$group_map        <- grouping_mapping
   random_term$group_components <- grouping_metadata$components
   random_term$group_component_levels <- grouping_metadata$component_levels
+  random_term$group_component_identity_keys <- grouping_metadata$component_identity_keys
+  random_term$group_component_display_values <- grouping_metadata$component_display_values
   random_term$group_tuples     <- grouping_metadata$tuples
   random_term$group_labels     <- grouping_metadata$labels
   random_term$group_tuple_keys <- grouping_metadata$tuple_keys

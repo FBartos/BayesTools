@@ -405,6 +405,13 @@
   )
 }
 
+.bt_random_effect_numeric_identity <- function(x){
+
+  x <- as.numeric(x)
+  x[!is.na(x) & x == 0] <- 0
+  trimws(formatC(x, digits = 17L, format = "g", decimal.mark = "."))
+}
+
 .bt_random_effect_structured_index_component <- function(x, variable = ""){
 
   if(is.factor(x)){
@@ -421,7 +428,7 @@
     values <- sort(unique(x))
     # The exact double identifies the level; signed zeros are one value.
     values[values == 0] <- 0
-    level_keys <- sprintf("%.17g", values)
+    level_keys <- .bt_random_effect_numeric_identity(values)
     labels <- as.character(values)
     ambiguous <- duplicated(labels) | duplicated(labels, fromLast = TRUE)
     labels[ambiguous] <- level_keys[ambiguous]

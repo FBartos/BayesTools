@@ -1198,6 +1198,9 @@
   group_levels <- random_term$group_levels
   group_tuple_keys <- random_term$group_tuple_keys
   group_tuple_index <- random_term$group_tuple_index
+  grouping_observations$tuple_keys <- .bt_random_group_prediction_tuple_keys(
+    random_term, grouping_observations
+  )
   # Declared levels without fitting rows are predicted as new levels: their
   # fitted slots are left out of the prediction map and they are appended as
   # new groups, so every consumer applies the new-level policy to them.

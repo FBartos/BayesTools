@@ -938,6 +938,113 @@
   paste(encoded, collapse = "|")
 }
 
+.bt_random_group_component_keys <- function(value){
+
+  if(is.numeric(value) && !is.factor(value)){
+    return(paste0("n:", .bt_random_effect_numeric_identity(value)))
+  }
+  paste0("c:", enc2utf8(as.character(value)))
+}
+
+.bt_random_group_component <- function(value){
+
+  level_values <- if(is.factor(value)){
+    levels(value)
+  }else if(is.numeric(value)){
+    sort(unique(value))
+  }else{
+    levels(as.factor(value))
+  }
+  identity_keys <- .bt_random_group_component_keys(level_values)
+  display_values <- as.character(level_values)
+  list(
+    row_keys = .bt_random_group_component_keys(value),
+    identity_keys = identity_keys,
+    display_values = display_values,
+    levels = .bt_random_group_unique_labels(display_values, identity_keys)
+  )
+}
+
+.bt_random_group_validate_ownership <- function(random_term){
+
+  components <- random_term$group_components
+  levels <- random_term$group_component_levels
+  keys <- random_term$group_component_identity_keys
+  displays <- random_term$group_component_display_values
+  valid <- is.character(components) && length(components) > 0L &&
+    !anyNA(components) && !anyDuplicated(components) &&
+    is.list(levels) && is.list(keys) && is.list(displays) &&
+    identical(names(levels), components) && identical(names(keys), components) &&
+    identical(names(displays), components)
+  if(isTRUE(valid)){
+    valid <- all(vapply(components, function(component){
+      key <- keys[[component]]
+      label <- levels[[component]]
+      display <- displays[[component]]
+      numeric_keys <- key[startsWith(key, "n:")]
+      numeric_values <- suppressWarnings(as.numeric(substring(numeric_keys, 3L)))
+      is.character(key) && is.character(label) && is.character(display) &&
+        length(key) > 0L && length(label) == length(key) &&
+        length(display) == length(key) && !anyNA(key) && !anyNA(label) &&
+        !anyNA(display) && !anyDuplicated(key) && !anyDuplicated(label) &&
+        all(startsWith(key, "n:") | startsWith(key, "c:")) &&
+        (all(startsWith(key, "n:")) || all(startsWith(key, "c:"))) &&
+        !anyNA(numeric_values) &&
+        (length(numeric_keys) == 0L ||
+          identical(numeric_keys, paste0("n:", .bt_random_effect_numeric_identity(numeric_values)))) &&
+        identical(label, .bt_random_group_unique_labels(display, key)) &&
+        all(key[startsWith(key, "c:")] ==
+          paste0("c:", enc2utf8(display[startsWith(key, "c:")])))
+    }, logical(1)))
+  }
+  if(!isTRUE(valid)){
+    .bt_stop_refit_required(
+      "Random-effect prediction metadata for block '", random_term$block_name,
+      "' are missing or malformed fitted grouping ownership. Refit the model ",
+      "with this version of BayesTools."
+    )
+  }
+  invisible(TRUE)
+}
+
+.bt_random_group_prediction_tuple_keys <- function(random_term, observations){
+
+  .bt_random_group_validate_ownership(random_term)
+  row_keys <- lapply(observations$component_names, function(component){
+    value <- observations$component_values[[component]]
+    keys <- observations$component_keys[[component]]
+    fitted <- random_term$group_component_identity_keys[[component]]
+    labels <- random_term$group_component_levels[[component]]
+    displays <- random_term$group_component_display_values[[component]]
+    unmatched <- which(!keys %in% fitted)
+    for(row in unmatched){
+      eligible <- if(is.numeric(value) && !is.factor(value)){
+        which(startsWith(fitted, "c:"))
+      }else{
+        seq_along(fitted)
+      }
+      display <- as.character(value[row])
+      candidates <- eligible[labels[eligible] == display]
+      if(length(candidates) == 0L){
+        candidates <- eligible[displays[eligible] == display]
+      }
+      if(length(candidates) > 1L){
+        stop(
+          "Random-effect grouping value '", display, "' for component '",
+          component, "' is ambiguous among fitted levels of block '",
+          random_term$block_name, "'. Use an exact fitted grouping label.",
+          call. = FALSE
+        )
+      }
+      if(length(candidates) == 1L){
+        keys[row] <- fitted[candidates]
+      }
+    }
+    keys
+  })
+  apply(do.call(cbind, row_keys), 1L, .bt_random_group_tuple_key)
+}
+
 .bt_random_group_observations <- function(term, data){
 
   component_names <- .bt_random_group_component_names(term)
@@ -977,15 +1084,18 @@
   }else{
     colnames(tuple_values) <- component_names
   }
-  tuple_keys <- apply(tuple_values, 1L, .bt_random_group_tuple_key)
+  component_metadata <- lapply(component_values, .bt_random_group_component)
+  component_keys <- lapply(component_metadata, `[[`, "row_keys")
+  tuple_keys <- apply(do.call(cbind, component_keys), 1L, .bt_random_group_tuple_key)
   display_labels <- apply(tuple_values, 1L, paste, collapse = ":")
 
   list(
     component_names = component_names,
     component_values = component_values,
-    component_levels = lapply(component_values, function(value){
-      levels(as.factor(value))
-    }),
+    component_keys = component_keys,
+    component_levels = lapply(component_metadata, `[[`, "levels"),
+    component_identity_keys = lapply(component_metadata, `[[`, "identity_keys"),
+    component_display_values = lapply(component_metadata, `[[`, "display_values"),
     tuple_values = tuple_values,
     tuple_keys = unname(tuple_keys),
     display_labels = unname(display_labels)
@@ -997,19 +1107,20 @@
   observations <- .bt_random_group_observations(term, data)
   if(length(observations$component_names) == 1L){
     group_tuples <- matrix(
-      observations$component_levels[[1L]],
+      observations$component_display_values[[1L]],
       ncol = 1L,
       dimnames = list(NULL, observations$component_names)
     )
-    group_tuple_keys <- apply(group_tuples, 1L, .bt_random_group_tuple_key)
+    group_tuple_keys <- vapply(observations$component_identity_keys[[1L]],
+                              .bt_random_group_tuple_key, character(1))
   }else{
     first_rows <- which(!duplicated(observations$tuple_keys))
     component_codes <- vapply(
       seq_along(observations$component_names),
       function(i){
         match(
-          observations$tuple_values[, i],
-          observations$component_levels[[i]]
+          observations$component_keys[[i]],
+          observations$component_identity_keys[[i]]
         )
       },
       integer(nrow(observations$tuple_values))
@@ -1043,6 +1154,8 @@
     map = group_map,
     components = observations$component_names,
     component_levels = observations$component_levels,
+    component_identity_keys = observations$component_identity_keys,
+    component_display_values = observations$component_display_values,
     tuples = group_tuples,
     labels = unname(group_labels),
     tuple_keys = unname(group_tuple_keys),

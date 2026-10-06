@@ -1,5 +1,83 @@
 skip_if_not_test_profile("unit")
 
+test_that("group ownership retains exact numeric identity and safe display replay", {
+
+  compile <- function(data, formula = ~ 1 + diag(1 | g), group_covariance = NULL){
+    if(!is.null(group_covariance)){
+      formula <- random_effects_formula(~ diag(1 | g), group_covariance = group_covariance)
+    }
+    JAGS_formula(formula, "mu", data,
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        sd = prior("normal", list(0, 1), list(0, Inf))
+      ))
+  }
+  adjacent <- c(.3, .3 + .Machine$double.eps)
+  data <- data.frame(g = adjacent)
+  result <- compile(data)
+  term <- result$formula_design$random_effects[[1L]]
+  expect_identical(term$n_groups, 2L)
+  expect_identical(term$group_map, 1:2)
+  expect_identical(term$group_component_display_values$g, c("0.3", "0.3"))
+  expect_false(anyDuplicated(term$group_levels) > 0L)
+  replay <- function(term, data, allow_new = FALSE){
+    BayesTools:::.bt_random_effect_prediction_data(term, data,
+      group_data = data, allow_new_groups = allow_new)
+  }
+  expect_identical(replay(term, data[2L, , drop = FALSE])$group_map, 2L)
+  expect_identical(replay(term, data[2:1, , drop = FALSE])$group_map, 2:1)
+  expect_error(replay(term, data.frame(g = "0.3"), TRUE), "is ambiguous", fixed = TRUE)
+  expect_identical(replay(term, data.frame(g = term$group_component_levels$g[2L]))$group_map, 2L)
+  expect_identical(replay(term, data.frame(g = .3 + 2 * .Machine$double.eps), TRUE)$group_map, 3L)
+
+  ordinary <- compile(data.frame(g = c(2, 1, -0, 0)))$formula_design$random_effects[[1L]]
+  expect_identical(ordinary$group_levels, c("0", "1", "2"))
+  expect_identical(replay(ordinary, data.frame(g = c(0L, 1L, 2L)))$group_map, 1:3)
+  expect_identical(replay(ordinary, data.frame(g = c("0", "1", "2")))$group_map, 1:3)
+  character_owned <- compile(data.frame(g = c("1", "2")))$formula_design$random_effects[[1L]]
+  expect_identical(replay(character_owned, data.frame(g = c(2, 1)))$group_map, 2:1)
+  factor_owned <- compile(data.frame(g = factor(c("é", "a"), levels = c("é", "a", "unused"))))$formula_design$random_effects[[1L]]
+  expect_identical(factor_owned$group_levels, c("é", "a", "unused"))
+  expect_identical(factor_owned$group_observed_levels, c("é", "a"))
+  expect_identical(replay(factor_owned, data.frame(g = "é"))$group_map, 1L)
+  infinite <- compile(data.frame(g = c(Inf, -Inf)))$formula_design$random_effects[[1L]]
+  expect_identical(replay(infinite, data.frame(g = c(-Inf, Inf)))$group_map, 1:2)
+
+  nested_data <- expand.grid(g = adjacent, h = adjacent)
+  nested <- compile(nested_data, ~ 1 + diag(1 | g / h))$formula_design$random_effects[[1L]]
+  expect_identical(nested$n_groups, 4L)
+  expect_identical(replay(nested, nested_data[4:1, ])$group_map, nested$group_map[4:1])
+  old <- options(OutDec = ",")
+  on.exit(options(old), add = TRUE)
+  expect_identical(replay(term, data)$group_map, 1:2)
+  expect_identical(BayesTools:::.bt_random_effect_numeric_identity(adjacent),
+    c("0.29999999999999999", "0.30000000000000021"))
+  expect_identical(BayesTools:::.bt_random_effect_structured_index_component(adjacent)$level_keys,
+    substring(term$group_component_identity_keys$g, 3L))
+
+  kernel <- diag(2)
+  dimnames(kernel) <- list(term$group_levels, term$group_levels)
+  known <- compile(data, group_covariance = random_group_covariance(kernel))
+  expect_equal(known$formula_design$random_effects[[1L]]$group_covariance$kernel, kernel)
+  rounded <- matrix(1, 1L, 1L, dimnames = list("0.3", "0.3"))
+  expect_error(compile(data, group_covariance = random_group_covariance(rounded)),
+    "is missing fitted level(s)", fixed = TRUE)
+
+  posterior <- matrix(1, 1L, 1L, dimnames = list(NULL, unique(term$sd_parameter_names)))
+  legacy <- result$formula_design
+  legacy$schema_version <- 4L
+  expect_error(random_effects_marginal_vcov(legacy, posterior_samples = posterior,
+    prior_list = result$prior_list, new_levels = "zero"), class = "BayesTools_refit_required")
+  expect_error(random_effects_marginal_vcov(list(mu = legacy), posterior_samples = posterior,
+    prior_list = result$prior_list), class = "BayesTools_refit_required")
+  missing <- term
+  missing$group_component_identity_keys <- NULL
+  expect_error(replay(missing, data.frame(g = "unknown"), TRUE), class = "BayesTools_refit_required")
+  malformed <- term
+  malformed$group_component_identity_keys$g <- c("n:invalid", "n:invalid2")
+  expect_error(replay(malformed, data, TRUE), class = "BayesTools_refit_required")
+})
+
 test_that("AR1 and HAR warn without changing misleading numeric label order", {
   dat <- data.frame(g = factor(rep(c("a", "b"), each = 3)))
   compile <- function(wave, structure){
@@ -11913,7 +11991,7 @@ test_that("fixed and random blocks own independent concrete factor bases", {
   treatment_term <- result$formula_design$random_effects[[1L]]
   meandif_term <- result$formula_design$random_effects[[2L]]
 
-  expect_identical(result$formula_design$schema_version, 4L)
+  expect_identical(result$formula_design$schema_version, 5L)
   expect_equal(result$formula_design$contrast_matrices$f, fixed_matrix)
   expect_equal(treatment_term$contrast_matrices$f, treatment_matrix)
   expect_equal(meandif_term$contrast_matrices$f, meandif_matrix)

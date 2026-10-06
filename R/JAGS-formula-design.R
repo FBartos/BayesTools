@@ -32,7 +32,7 @@
 
 .bt_formula_design_schema_version <- function(){
 
-  4L
+  5L
 }
 
 .bt_formula_design_stored_data_scale <- function(){
@@ -106,6 +106,9 @@
       "source data metadata are missing or unsupported. Refit the model with ",
       "this version of BayesTools."
     )
+  }
+  for(random_term in .bt_formula_design_random_effects(design)){
+    .bt_random_group_validate_ownership(random_term)
   }
 
   invisible(TRUE)

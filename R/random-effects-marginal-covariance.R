@@ -1767,6 +1767,9 @@ random_effects_marginal_variance_factors <- function(
                                                          parameter = NULL){
 
   if(inherits(fit, "BayesTools_formula_design")){
+    .bt_validate_formula_design_replay_schema(
+      fit, context = "random_effects_marginal_vcov()"
+    )
     if(is.null(parameter)){
       return(fit)
     }
@@ -1795,6 +1798,12 @@ random_effects_marginal_variance_factors <- function(
       "Random-effect marginal covariance construction needs fitted formula design metadata. ",
       "Use a fit produced by JAGS_fit() with formula_list, or pass a BayesTools_formula_design object.",
       call. = FALSE
+    )
+  }
+
+  for(design in formula_design){
+    .bt_validate_formula_design_replay_schema(
+      design, context = "random_effects_marginal_vcov()"
     )
   }
 
