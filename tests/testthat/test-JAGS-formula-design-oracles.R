@@ -1,5 +1,35 @@
 skip_if_not_test_profile("unit")
 
+test_that("named covariance triangles follow supplied rows after column alignment", {
+
+  lower <- matrix(c(2, .2, .3, 0, 3, .4, 0, 0, 4), 3L,
+    dimnames = list(letters[1:3], letters[1:3]))
+  complete <- lower + t(lower) - diag(diag(lower))
+  for(partial in list(lower, t(lower))){
+    for(columns in list(1:3, c(3L, 1L, 2L))){
+      actual <- random_group_covariance(partial[, columns], scale = "none")
+      expect_equal(actual$covariance, complete, ignore_attr = TRUE)
+    }
+  }
+  expect_error(random_group_covariance(lower[c(3L, 1L, 2L), ]),
+    "must be exactly symmetric", fixed = TRUE)
+  for(scale in c("cor", "none", "cor0", "cov0")){
+    original <- random_group_covariance(complete, scale = scale)
+    permuted <- random_group_covariance(complete[c(3L, 1L, 2L), c(2L, 3L, 1L)], scale = scale)
+    expected <- BayesTools:::.bt_prepare_group_covariance_kernel(original, letters[1:3], "g")
+    actual <- BayesTools:::.bt_prepare_group_covariance_kernel(permuted, letters[1:3], "g")
+    expect_equal(actual$kernel, expected$kernel, tolerance = 0)
+  }
+  sparse <- complete
+  sparse[1L, 3L] <- sparse[3L, 1L] <- 0
+  expect_equal(random_group_covariance(sparse[c(3L, 1L, 2L), c(2L, 3L, 1L)])$covariance,
+    sparse[c(3L, 1L, 2L), c(3L, 1L, 2L)], ignore_attr = TRUE)
+  asymmetric <- complete
+  asymmetric[1L, 2L] <- asymmetric[1L, 2L] + .Machine$double.eps
+  expect_error(random_group_covariance(asymmetric[, c(3L, 1L, 2L)]),
+    "must be exactly symmetric", fixed = TRUE)
+})
+
 test_that("group ownership retains exact numeric identity and safe display replay", {
 
   compile <- function(data, formula = ~ 1 + diag(1 | g), group_covariance = NULL){

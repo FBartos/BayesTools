@@ -255,7 +255,11 @@ random_effects_source_roles <- function(random_effects, n_rows){
 #' chosen scaled kernel; unresolved near-singular kernels are unavailable.
 #'
 #' @param covariance numeric square matrix with row and column names identifying
-#'   grouping levels.
+#'   grouping levels. Columns are aligned to the supplied row-name order before
+#'   checking symmetry or completing a single supplied triangle. A partial
+#'   triangle is interpreted in that row order: column permutations are allowed,
+#'   but row permutations that scatter entries across both triangles can be
+#'   refused. Complete symmetric matrices allow independent axis permutations.
 #' @param scale how to scale the kernel before fitting. `"cor"` converts the
 #'   reordered matrix to a correlation matrix, `"none"` uses the matrix as
 #'   supplied, `"cor0"` forms `C = stats::cov2cor(K)` and applies
@@ -391,6 +395,7 @@ print.random_group_covariance <- function(x, ...){
 
   storage.mode(covariance) <- "double"
   dimnames(covariance) <- list(row_names, column_names)
+  covariance <- covariance[, match(row_names, column_names), drop = FALSE]
   lower_values <- covariance[lower.tri(covariance)]
   upper_values <- covariance[upper.tri(covariance)]
   lower_supplied <- any(lower_values != 0)

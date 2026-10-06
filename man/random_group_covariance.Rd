@@ -8,7 +8,11 @@ random_group_covariance(covariance, scale = c("cor", "none", "cor0", "cov0"))
 }
 \arguments{
 \item{covariance}{numeric square matrix with row and column names identifying
-grouping levels.}
+grouping levels. Columns are aligned to the supplied row-name order before
+checking symmetry or completing a single supplied triangle. A partial
+triangle is interpreted in that row order: column permutations are allowed,
+but row permutations that scatter entries across both triangles can be
+refused. Complete symmetric matrices allow independent axis permutations.}
 
 \item{scale}{how to scale the kernel before fitting. \code{"cor"} converts the
 reordered matrix to a correlation matrix, \code{"none"} uses the matrix as
