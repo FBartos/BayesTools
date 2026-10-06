@@ -201,6 +201,11 @@
 
   for(param_name in names(formula_scale)){
     param_scale <- formula_scale[[param_name]]
+    if(is.list(param_scale) && length(param_scale) == 0L){
+      spec <- attr(param_scale, "unscale_design", exact = TRUE)
+      if(!is.null(spec)) .bt_formula_unscale_design_spec_check(spec, param_name)
+      next
+    }
     check_list(param_scale, paste0(name, "[['", param_name, "]]"))
 
     if(length(param_scale) == 0)
@@ -466,18 +471,23 @@
   if(is.list(fitted_scale)){
     for(parameter in intersect(names(formula_scale), names(fitted_scale))){
       fitted_attributes <- attributes(fitted_scale[[parameter]])
-      for(name in setdiff(names(fitted_attributes), "names")){
-        if(is.null(attr(formula_scale[[parameter]], name, exact = TRUE))){
-          attr(formula_scale[[parameter]], name) <- fitted_attributes[[name]]
-        }
-      }
+      .bt_formula_scale_finalized_check(fitted_scale[[parameter]], parameter)
+      attributes(formula_scale[[parameter]]) <- c(
+        list(names = names(formula_scale[[parameter]])),
+        fitted_attributes[setdiff(names(fitted_attributes), "names")]
+      )
     }
   }
 
-  .bt_formula_scale_list_with_unscale_designs(
-    formula_scale,
-    attr(fit, "formula_design", exact = TRUE)
-  )
+  for(parameter in names(formula_scale)){
+    .bt_formula_scale_finalized_check(formula_scale[[parameter]], parameter)
+    design <- attr(fit, "formula_design", exact = TRUE)[[parameter]]
+    if(is.null(design) || !identical(attr(design$formula_scale, "unscale_design", exact = TRUE),
+                                    attr(fitted_scale[[parameter]], "unscale_design", exact = TRUE))){
+      .bt_stop_refit_required("Formula declaration carriers disagree. Refit the model with this version of BayesTools.")
+    }
+  }
+  formula_scale
 }
 
 
@@ -591,7 +601,125 @@
 }
 
 
-.bt_formula_unscale_design_spec_version <- 1L
+.bt_formula_unscale_design_spec_version <- 2L
+
+# The compiler's top-level term multiplier is the sole semantic owner. Child
+# mixture/slab attributes are deliberately not consulted.
+.bt_formula_compiled_multipliers <- function(design){
+
+  out <- list()
+  for(owner in intersect(names(design$prior_list), paste0(design$parameter, "_", design$model_terms))){
+    prior <- design$prior_list[[owner]]
+    columns <- .prior_linear_prior_columns(owner, prior)
+    multiplier <- attr(prior, "multiply_by", exact = TRUE)
+    if(identical(owner, paste0(design$parameter, "_intercept")) || is.null(multiplier)){
+      multiplier <- 1
+    }
+    declaration <- if(is.numeric(multiplier) && length(multiplier) == 1L && is.finite(multiplier)){
+      list(type = "constant", value = as.numeric(multiplier))
+    }else if(is.character(multiplier) && length(multiplier) == 1L && !is.na(multiplier) && nzchar(multiplier)){
+      list(type = "state", name = multiplier)
+    }else{
+      .bt_formula_transform_stop("Compiled formula multiplier is unavailable.",
+        parameter = design$parameter, reason = "unsupported_multiplier_declaration")
+    }
+    for(column in columns) out[[column]] <- declaration
+  }
+  out
+}
+
+.bt_formula_multiplier_valid <- function(x){
+
+  is.list(x) && (
+    (identical(names(x), c("type", "value")) && identical(x$type, "constant") &&
+       is.numeric(x$value) && length(x$value) == 1L && is.finite(x$value)) ||
+    (identical(names(x), c("type", "name")) && identical(x$type, "state") &&
+       is.character(x$name) && length(x$name) == 1L && !is.na(x$name) && nzchar(x$name))
+  )
+}
+
+# Complete a fresh current-format owner copy; this is never a fit-reader
+# migration path. Formula literal points keep their existing point_terms owner.
+.bt_formula_scale_finalize <- function(formula_scale, design = NULL,
+                                       prior_list = list(), model_data = NULL,
+                                       owner_scope = "fit"){
+
+  if(is.null(formula_scale)) return(NULL)
+  spec <- attr(formula_scale, "unscale_design", exact = TRUE)
+  if(is.null(spec) && !is.null(design)) spec <- .bt_formula_unscale_design_spec(design)
+  if(is.null(spec)){
+    if(length(formula_scale) == 0L) return(formula_scale)
+    .bt_stop_refit_required("Formula declarations are missing. Refit the model with this version of BayesTools.")
+  }
+  prefix <- if(!is.null(design)) design$parameter else "prior"
+  .bt_formula_unscale_design_spec_check(spec, prefix)
+  if(!owner_scope %in% c("fit", "prior_only")) stop("Unsupported formula declaration owner.", call. = FALSE)
+  constants <- spec$state_constants
+  formula_points <- attr(formula_scale, "point_terms", exact = TRUE)
+  needed <- unique(vapply(Filter(function(x) identical(x$type, "state"), spec$multipliers), `[[`, character(1), "name"))
+  for(name in needed){
+    candidates <- numeric()
+    if(name %in% names(formula_points)) candidates <- c(candidates, formula_points[[name]])
+    prior <- prior_list[[name]]
+    if(!is.null(prior) && is.prior.point(prior)){
+      point <- prior$parameters[["location"]]
+      if(is.numeric(point) && length(point) == 1L && is.finite(point)) candidates <- c(candidates, point)
+    }
+    data_value <- model_data[[name]]
+    if(is.numeric(data_value) && length(data_value) == 1L && is.finite(data_value)) candidates <- c(candidates, data_value)
+    if(name %in% names(constants)) candidates <- c(candidates, constants[[name]])
+    if(length(candidates)){
+      if(any(candidates != candidates[[1L]])) .bt_formula_transform_stop(
+        "Formula scalar declarations have contradictory owners.", parameter = prefix,
+        reason = "contradictory_state_constants", state = name)
+      # A formula coefficient point remains owned by point_terms.
+      if(!name %in% names(formula_points)) constants[name] <- candidates[[1L]]
+    }
+  }
+  spec$state_constants <- constants
+  spec$owner_scope <- owner_scope
+  spec$complete <- TRUE
+  attr(formula_scale, "unscale_design") <- spec
+  formula_scale
+}
+
+.bt_formula_scale_finalized_check <- function(formula_scale, prefix, require_owner = FALSE){
+
+  if(!require_owner && (is.null(formula_scale) || length(formula_scale) == 0L)) return(invisible(TRUE))
+  spec <- attr(formula_scale, "unscale_design", exact = TRUE)
+  .bt_formula_unscale_design_spec_check(spec, prefix)
+  if(!isTRUE(spec$complete) || !identical(spec$owner_scope, "fit")){
+    .bt_stop_refit_required("Fitted formula declarations are incomplete. Refit the model with this version of BayesTools.")
+  }
+  invisible(TRUE)
+}
+
+.bt_formula_state_constants <- function(formula_scale){
+
+  spec <- attr(formula_scale, "unscale_design", exact = TRUE)
+  points <- attr(formula_scale, "point_terms", exact = TRUE)
+  out <- c(spec$state_constants, points)
+  if(is.null(out)) out <- stats::setNames(numeric(), character())
+  if(anyDuplicated(names(out))) .bt_formula_transform_stop(
+    "Formula scalar declarations have contradictory owners.", reason = "contradictory_state_constants")
+  out
+}
+
+.bt_formula_materialize_state <- function(samples, constants, validate = character()){
+
+  for(name in names(constants)){
+    if(name %in% colnames(samples)){
+      if(name %in% validate && (any(!is.finite(samples[, name])) || any(samples[, name] != constants[[name]]))){
+        .bt_formula_transform_stop("Supplied fitted state disagrees with its declaration.",
+          reason = "contradictory_state_constants", state = name)
+      }
+    }else{
+      samples <- cbind(samples, rep(constants[[name]], nrow(samples)))
+      colnames(samples)[ncol(samples)] <- name
+    }
+  }
+  samples
+}
 
 # Helper: Minimal fitted-design metadata for exact fixed-effect unscaling: the
 # fixed-effect formula, persisted factor levels and concrete contrasts, and the
@@ -635,7 +763,11 @@
     contrast_matrices = contrast_matrices,
     model_terms       = as.character(design$model_terms),
     assign            = as.integer(design$assign),
-    raw_column_names  = as.character(design$raw_column_names)
+    raw_column_names  = as.character(design$raw_column_names),
+    multipliers       = .bt_formula_compiled_multipliers(design),
+    state_constants   = stats::setNames(numeric(), character()),
+    owner_scope       = "compiler",
+    complete          = FALSE
   )
 }
 
@@ -669,7 +801,16 @@
     is.integer(spec$assign) && !anyNA(spec$assign) &&
     is.character(spec$raw_column_names) &&
     length(spec$raw_column_names) == length(spec$assign) &&
-    length(spec$assign) > 0L
+    length(spec$assign) > 0L &&
+    is.list(spec$multipliers) && !is.null(names(spec$multipliers)) &&
+    !anyDuplicated(names(spec$multipliers)) &&
+    all(vapply(spec$multipliers, .bt_formula_multiplier_valid, logical(1))) &&
+    is.numeric(spec$state_constants) && all(is.finite(spec$state_constants)) &&
+    (length(spec$state_constants) == 0L ||
+       (!is.null(names(spec$state_constants)) && !anyNA(names(spec$state_constants)) &&
+          all(nzchar(names(spec$state_constants))) && !anyDuplicated(names(spec$state_constants)))) &&
+    spec$owner_scope %in% c("compiler", "fit", "prior_only") &&
+    (isTRUE(spec$complete) || isFALSE(spec$complete))
   if(!isTRUE(valid)){
     .bt_stop_refit_required(
       "Formula-scale design metadata for parameter '", prefix,
@@ -685,10 +826,10 @@
 # from coefficient names.
 .bt_formula_scale_with_unscale_design <- function(formula_scale, design){
 
-  if(is.null(formula_scale) || length(formula_scale) == 0L ||
-     !is.null(attr(formula_scale, "unscale_design", exact = TRUE))){
+  if(!is.null(attr(formula_scale, "unscale_design", exact = TRUE))){
     return(formula_scale)
   }
+  if(is.null(formula_scale)) formula_scale <- list()
 
   spec <- .bt_formula_unscale_design_spec(design)
   if(!is.null(spec)){
@@ -1053,12 +1194,19 @@
 # @param formula_scale Nested list with scaling info keyed by parameter name:
 #   list(mu = list(mu_x1 = list(mean, sd)), log_sigma = list(log_sigma_x = list(mean, sd)))
 # @return Transformed posterior matrix
-.apply_unscale_transform <- function(posterior, formula_scale) {
+.apply_unscale_transform <- function(posterior, formula_scale, targets = NULL) {
 
   if (is.null(formula_scale) || length(formula_scale) == 0) {
     return(posterior)
   }
 
+  # Every prefix reads the same original fitted snapshot, including states
+  # whose displayed coefficient is changed by another prefix.
+  fitted_state <- posterior
+  for(parameter in names(formula_scale)){
+    fitted_state <- .bt_formula_materialize_state(fitted_state,
+      .bt_formula_state_constants(formula_scale[[parameter]]))
+  }
   # Handle nested structure: iterate over each parameter
   matched_prefix <- FALSE
   for (param_name in names(formula_scale)) {
@@ -1070,7 +1218,8 @@
       next
 
     matched_prefix <- TRUE
-    posterior <- .apply_unscale_transform_single(posterior, param_scale, prefix = param_name)
+    posterior <- .apply_unscale_transform_single(posterior, param_scale, prefix = param_name,
+      fitted_state = fitted_state, targets = targets)
   }
 
   if(!matched_prefix){
@@ -1089,7 +1238,8 @@
 # @param formula_scale Flat list of scaling info: list(mu_x1 = list(mean, sd), mu_x2 = list(mean, sd))
 # @param prefix Parameter prefix (e.g., "mu")
 # @return Transformed posterior matrix
-.apply_unscale_transform_single <- function(posterior, formula_scale, prefix) {
+.apply_unscale_transform_single <- function(posterior, formula_scale, prefix,
+                                             fitted_state = posterior, targets = NULL) {
 
   if (is.null(formula_scale) || length(formula_scale) == 0) {
     return(posterior)
@@ -1127,15 +1277,20 @@
   }
 
   if(length(fixed_cols) > 0){
+    spec <- attr(formula_scale, "unscale_design", exact = TRUE)
+    source_names <- union(names(spec$multipliers), fixed_cols)
     transform <- .bt_formula_coefficient_transform(
-      source_names = fixed_cols,
+      source_names = source_names,
       formula_scale = formula_scale,
       parameter = prefix
     )
-    posterior <- .bt_apply_formula_coefficient_transform(
-      posterior,
-      transform
+    transformed <- .bt_apply_formula_coefficient_transform(
+      fitted_state, transform, targets = if(is.null(targets)) transform$target_names else intersect(targets, transform$target_names)
     )
+    selected <- if(is.null(targets)) transform$target_names else intersect(targets, transform$target_names)
+    absent <- setdiff(selected, colnames(posterior))
+    if(length(absent)) posterior <- cbind(posterior, transformed[, absent, drop = FALSE])
+    posterior[, selected] <- transformed[, selected, drop = FALSE]
   }
 
   # random-effect SDs are transformed with the fitted random-effect structure,

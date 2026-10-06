@@ -889,6 +889,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     output$formula_scale,
     output$formula_design
   )
+  output$formula_design$formula_scale <- output$formula_scale
   output$random_effects_interface <- random_effects_interface
 
   return(output)

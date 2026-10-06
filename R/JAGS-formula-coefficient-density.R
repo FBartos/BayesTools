@@ -1,6 +1,6 @@
 # Versioned fixed-coefficient transforms and induced prior densities.
 
-.bt_formula_coefficient_transform_version <- 2L
+.bt_formula_coefficient_transform_version <- 3L
 
 #' Formula coefficient transformations and induced prior densities
 #'
@@ -13,15 +13,21 @@
 #' `JAGS_formula_prior_density()` constructs the induced marginal prior measure
 #' for one target, or for a weighted combination of targets, through
 #' BayesTools' deterministic prior-density context and linear-density algebra.
-#' The result can be passed directly to [prior_density_ordinate()]. Targets
-#' and sources are the raw fitted coefficients: a coefficient prior's
-#' `multiply_by` scales only its contribution to the linear predictor and does
-#' not enter the coefficient's prior density. A weighted combination
-#' \eqn{\sum_t v_t T_t} (e.g. a mean-difference or orthonormal factor level
-#' on the original scale of a scaled formula) is available when every target
-#' with a nonzero weight has an `"identity"` or `"affine"` map; its density
-#' is that of the combined fitted-source weights \eqn{v^\top M}. Other maps
-#' stop with the classed error described below (reason `"nonlinear_map"`).
+#' The result can be passed directly to [prior_density_ordinate()]. Fitted
+#' coefficient priors are raw; `multiply_by` belongs to their compiled formula
+#' contribution. Original raw coefficients use
+#' \eqn{z'_j = \sum_k A_{jk} z_k m_k / m_j} on one immutable fitted state.
+#' Identical canonical multipliers cancel before division, including zero;
+#' declared zero contributions require no irrelevant state. A different needed
+#' zero denominator refuses the requested numeric vector, without row repair.
+#'
+#' Finite `matrix` rows are static raw maps. Dynamic rows are entirely `NA` and
+#' retain finite `basis_matrix`, canonical multipliers, true state dependencies,
+#' and a `raw_affine`, `contribution_affine`, or `unavailable` prior recipe.
+#' Compatible weighted requests share one context; declared point siblings may
+#' add a constant offset. Incompatible recipes refuse with
+#' `"incompatible_prior_recipes"`; unsupported stochastic denominators refuse
+#' with `"state_dependent_map"`. Unsupported dependence/products remain explicit.
 #'
 #' `JAGS_formula_internal_coordinate_priors()` returns exact scalar priors for
 #' stochastic formula coordinates that are intentionally absent from the
@@ -42,13 +48,14 @@
 #'   of those targets. Supply exactly one of `target` and `weights`.
 #'
 #' @return `JAGS_formula_coefficient_transform()` returns a
-#' `BayesTools_formula_coefficient_transform` list (schema version 2). Its
+#' `BayesTools_formula_coefficient_transform` list (schema version 3). Its
 #' `targets` data frame has one row per original-scale target with the
 #' `structural_status`, `fixed_value` and `reason` of the target, its
 #' `map_type` (`"identity"`: the target is its own fitted source, including a
 #' log-transformed source with an exp output; `"affine"`: a linear
 #' combination of fitted sources; `"exp_affine"`: exp of a linear combination
-#' of identity and log-transformed sources; `"unsupported"`: any other map),
+#' of identity and log-transformed sources; `"state_dependent"`: a map requiring
+#' fitted multiplier states; `"unsupported"`: any other map),
 #' and the `support` of the map (a list column of `c(lower, upper)`:
 #' `c(0, Inf)` for maps with an exp output and `c(-Inf, Inf)` otherwise; the
 #' prior support of a target can be narrower).
@@ -59,7 +66,13 @@
 #' `BayesTools_formula_transform_unavailable`) whose field `reason` names the
 #' cause, e.g. `"unknown_target"`, `"missing_source_coordinates"`, or
 #' `"nonlinear_map"` for a weighted combination with a target whose map is not
-#' linear in the fitted coefficients.
+#' linear in the fitted coefficients. Declared measure limitations additionally
+#' inherit `BayesTools_formula_measure_unavailable`; generic context/program
+#' failures and numeric transformation failures retain their strict boundary.
+#' Numeric refusal reasons include `"zero_multiplier_denominator"`,
+#' `"missing_multiplier_state"`, and `"nonfinite_transform"`. Formula-design 6,
+#' unscale-design 2, and transform 3 require refitting older stored formats;
+#' readers never reconstruct missing fitted declaration ownership.
 #' A requested parameter without a persisted formula design stops with
 #' `BayesTools_formula_transform_unavailable` and reason
 #' `"missing_formula_design"`, also when requested through either prior-density
@@ -178,6 +191,11 @@ JAGS_formula_coefficient_transform <- function(
     design,
     context = paste0("Coefficient transform for parameter '", parameter, "'")
   )
+  .bt_formula_scale_finalized_check(design$formula_scale, parameter, require_owner = TRUE)
+  if(!identical(attr(design$formula_scale, "unscale_design", exact = TRUE),
+                attr(attr(fit, "formula_scale", exact = TRUE)[[parameter]], "unscale_design", exact = TRUE))){
+    .bt_stop_refit_required("Formula declaration carriers disagree. Refit the model with this version of BayesTools.")
+  }
   coordinates <- parameter_coordinates(fit)
   sources <- .bt_formula_coefficient_sources(design, coordinates, parameter)
 
@@ -204,11 +222,13 @@ JAGS_formula_coefficient_transform_schema <- function(){
     field = c(
       "schema_version", "formula_design_version",
       "parameter_map_version", "parameter", "target_scale",
-      "source_names", "target_names", "matrix", "source_transforms",
+      "source_names", "target_names", "matrix", "basis_matrix", "multipliers",
+      "state_constants", "state_dependencies", "prior_recipes", "source_transforms",
       "output_transforms", "dependencies", "sources", "targets"
     ),
     type = c(
       rep("integer", 3L), rep("character", 4L), "numeric matrix",
+      "numeric matrix", "named list", "named numeric", "data.frame", "named list",
       rep("named character", 2L), rep("data.frame", 3L)
     ),
     description = c(
@@ -219,7 +239,12 @@ JAGS_formula_coefficient_transform_schema <- function(){
       "Requested target coefficient scale.",
       "Ordered fitted-coordinate source names.",
       "Ordered original-coordinate target names.",
-      "Exact target-by-source additive coefficient matrix.",
+      "Static target-by-source raw coefficient matrix; dynamic rows are entirely NA.",
+      "Finite fitted-to-original design geometry on the same axes as matrix.",
+      "Compiler-owned constant or exact backend-state multiplier declarations.",
+      "Declared literal coefficient points and scalar model-data/ordinary point constants.",
+      "True nonconstant coefficient/multiplier state dependencies of dynamic targets.",
+      "Per-target raw_affine, contribution_affine or unavailable prior-law recipes.",
       "Named identity/log transform for every fitted source.",
       "Named identity/exp transform for every target.",
       "One row per exact nonzero target/source coefficient.",
@@ -279,18 +304,13 @@ JAGS_formula_prior_density <- function(
     )
   }
 
-  weights <- stats::setNames(
-    as.numeric(transform$matrix[target_i, , drop = FALSE]),
-    colnames(transform$matrix)
-  )
-  weights <- weights[weights != 0]
+  recipe <- .bt_formula_prior_recipe_weights(transform, stats::setNames(1, target))
+  weights <- recipe$weights
   density_context <- .bt_formula_prior_density_context(
-    fit,
-    context = context,
-    source_names = transform$source_names,
-    parameter = parameter,
-    target = target
+    fit, context = context, source_names = transform$source_names,
+    parameter = parameter, target = target, transform = transform, recipe = recipe$type
   )
+  if(identical(recipe$type, "contribution_affine")) .bt_formula_require_multiplier_laws(density_context, weights, parameter)
   missing <- setdiff(names(weights), density_context$column_names)
   if(length(missing) > 0L){
     .bt_formula_density_stop(
@@ -324,6 +344,7 @@ JAGS_formula_prior_density <- function(
       output_transformation = output_transform
     ),
     error = function(e){
+      if(inherits(e, "BayesTools_formula_measure_unavailable")) stop(e)
       .bt_formula_density_stop(
         paste0("Prior density for target coefficient '", target,
                "' is unavailable: ", conditionMessage(e)),
@@ -397,38 +418,19 @@ JAGS_formula_prior_density <- function(
       reason = targets$reason[unavailable][[1L]]
     )
   }
-  nonlinear <- !targets$map_type %in% c("identity", "affine")
-  if(any(nonlinear)){
-    .bt_formula_density_stop(
-      paste0(
-        "Prior density of a weighted combination of target coefficients is ",
-        "unavailable: the map of '", targets$target[nonlinear][[1L]],
-        "' from the fitted coefficients is ", targets$map_type[nonlinear][[1L]],
-        ", not linear."
-      ),
-      parameter = parameter,
-      target = label,
-      reason = "nonlinear_map"
-    )
-  }
-
-  source_weights <- drop(
-    matrix(weights, nrow = 1L) %*%
-      transform$matrix[names(weights), , drop = FALSE]
-  )
-  names(source_weights) <- colnames(transform$matrix)
-  source_weights <- source_weights[source_weights != 0]
-  if(length(source_weights) == 0L){
-    stop("The weighted combination has zero weight on every fitted coefficient.",
-         call. = FALSE)
-  }
+  nonlinear <- targets$map_type %in% c("exp_affine", "unsupported")
+  if(any(nonlinear)) .bt_formula_density_stop(
+    paste0("Prior density of a weighted combination of target coefficients is ",
+      "unavailable: the map of '", targets$target[nonlinear][[1L]],
+      "' from the fitted coefficients is ", targets$map_type[nonlinear][[1L]], ", not linear."),
+    parameter = parameter, target = label, reason = "nonlinear_map")
+  recipe <- .bt_formula_prior_recipe_weights(transform, weights)
+  source_weights <- recipe$weights
   density_context <- .bt_formula_prior_density_context(
-    fit,
-    context = context,
-    source_names = transform$source_names,
-    parameter = parameter,
-    target = label
+    fit, context = context, source_names = transform$source_names,
+    parameter = parameter, target = label, transform = transform, recipe = recipe$type
   )
+  if(identical(recipe$type, "contribution_affine")) .bt_formula_require_multiplier_laws(density_context, source_weights, parameter)
   missing <- setdiff(names(source_weights), density_context$column_names)
   if(length(missing) > 0L){
     .bt_formula_density_stop(
@@ -447,9 +449,12 @@ JAGS_formula_prior_density <- function(
   density <- tryCatch(
     .prior_density_from_context(
       context = density_context,
-      weights = source_weights
+      weights = source_weights,
+      output_transformation = if(isTRUE(recipe$offset != 0)) "lin" else NULL,
+      output_transformation_arguments = if(isTRUE(recipe$offset != 0)) list(a = recipe$offset, b = 1) else NULL
     ),
     error = function(e){
+      if(inherits(e, "BayesTools_formula_measure_unavailable")) stop(e)
       .bt_formula_density_stop(
         paste0("Prior density of the weighted target combination is ",
                "unavailable: ", conditionMessage(e)),
@@ -587,6 +592,8 @@ JAGS_formula_prior_density <- function(
   }
   source_metadata <- source_metadata[match(source_names, source_metadata$source),
                                      , drop = FALSE]
+  spec <- attr(formula_scale, "unscale_design", exact = TRUE)
+  if(!is.null(spec)) .bt_formula_unscale_design_spec_check(spec, parameter)
   sources <- data.frame(
     source = source_names,
     monitor_status = source_metadata$monitor_status,
@@ -594,12 +601,22 @@ JAGS_formula_prior_density <- function(
     source_transform = unname(source_transforms),
     stringsAsFactors = FALSE
   )
+  basis_matrix <- matrix
+  spec <- attr(formula_scale, "unscale_design", exact = TRUE)
+  multipliers <- stats::setNames(lapply(source_names, function(source){
+    declaration <- spec$multipliers[[source]]
+    if(is.null(declaration)) list(type = "constant", value = 1) else declaration
+  }), source_names)
+  state_constants <- .bt_formula_state_constants(formula_scale)
+  declared <- match(sources$source, names(state_constants))
+  fixed <- !is.na(declared)
+  sources$monitor_status[fixed] <- "structural"
+  sources$fixed_value[fixed] <- state_constants[declared[fixed]]
+  analysis <- .bt_formula_coefficient_analysis(basis_matrix, multipliers,
+    state_constants, source_transforms, sources, output_transforms)
+  matrix <- analysis$matrix
   dependencies <- .bt_formula_coefficient_dependencies(matrix)
-  targets <- .bt_formula_coefficient_targets(
-    matrix,
-    sources,
-    output_transforms
-  )
+  targets <- analysis$targets
 
   out <- list(
     schema_version = .bt_formula_coefficient_transform_version,
@@ -610,6 +627,11 @@ JAGS_formula_prior_density <- function(
     source_names = source_names,
     target_names = rownames(matrix),
     matrix = matrix,
+    basis_matrix = basis_matrix,
+    multipliers = multipliers,
+    state_constants = state_constants,
+    state_dependencies = analysis$state_dependencies,
+    prior_recipes = analysis$prior_recipes,
     source_transforms = source_transforms,
     output_transforms = output_transforms,
     dependencies = dependencies,
@@ -640,6 +662,98 @@ JAGS_formula_prior_density <- function(
   out <- do.call(rbind, rows)
   rownames(out) <- NULL
   out
+}
+
+.bt_formula_multiplier_constant <- function(declaration, constants){
+
+  if(identical(declaration$type, "constant")) return(declaration$value)
+  if(declaration$name %in% names(constants)) return(unname(constants[[declaration$name]]))
+  NULL
+}
+
+.bt_formula_coefficient_term <- function(source, target, basis, multipliers,
+                                         constants, source_transforms){
+
+  numerator <- multipliers[[source]]
+  denominator <- multipliers[[target]]
+  cancel <- identical(numerator, denominator)
+  constant_numerator <- .bt_formula_multiplier_constant(numerator, constants)
+  constant_denominator <- .bt_formula_multiplier_constant(denominator, constants)
+  zero_source <- source %in% names(constants) && identical(source_transforms[[source]], "identity") &&
+    isTRUE(constants[[source]] == 0)
+  zero <- zero_source || (!cancel && !is.null(constant_numerator) && constant_numerator == 0)
+  static <- zero || cancel || (!is.null(constant_numerator) &&
+                                !is.null(constant_denominator) && constant_denominator != 0)
+  weight <- if(zero) 0 else if(cancel) basis else if(static) basis * constant_numerator / constant_denominator else NA_real_
+  list(zero = zero, cancel = cancel, static = static, weight = weight, basis = unname(basis))
+}
+
+.bt_formula_coefficient_analysis <- function(basis, multipliers, constants,
+                                             source_transforms, sources,
+                                             output_transforms){
+
+  matrix <- basis * 0
+  dependencies <- list()
+  recipes <- list()
+  dynamic <- stats::setNames(rep(FALSE, nrow(basis)), rownames(basis))
+  for(target in rownames(basis)){
+    for(source in colnames(basis)[basis[target, ] != 0]){
+      term <- .bt_formula_coefficient_term(source, target, basis[target, source],
+        multipliers, constants, source_transforms)
+      if(term$zero) next
+      if(!source %in% names(constants)) dependencies[[length(dependencies) + 1L]] <-
+        data.frame(target = target, source = source, role = "coefficient", stringsAsFactors = FALSE)
+      if(!term$cancel){
+        for(declaration in multipliers[c(source, target)]){
+          if(is.null(.bt_formula_multiplier_constant(declaration, constants))){
+            dependencies[[length(dependencies) + 1L]] <- data.frame(
+              target = target, source = declaration$name, role = "multiplier", stringsAsFactors = FALSE)
+          }
+        }
+      }
+      matrix[target, source] <- term$weight
+      dynamic[[target]] <- dynamic[[target]] || !term$static
+    }
+    if(dynamic[[target]]) matrix[target, ] <- NA_real_
+    denominator <- .bt_formula_multiplier_constant(multipliers[[target]], constants)
+    recipes[[target]] <- if(!dynamic[[target]]){
+      list(type = "raw_affine", weights = stats::setNames(as.numeric(matrix[target, , drop = FALSE]), colnames(matrix)), reason = NA_character_)
+    }else if(!is.null(denominator) && denominator != 0){
+      weights <- stats::setNames(as.numeric(basis[target, , drop = FALSE]) / denominator, colnames(basis))
+      for(source in names(weights)[weights != 0]){
+        if(.bt_formula_coefficient_term(source, target, basis[target, source], multipliers,
+                                        constants, source_transforms)$zero) weights[[source]] <- 0
+      }
+      list(type = "contribution_affine", weights = weights, reason = NA_character_)
+    }else{
+      list(type = "unavailable", weights = stats::setNames(numeric(), character()),
+        reason = "state_dependent_map")
+    }
+  }
+  finite_matrix <- matrix
+  finite_matrix[is.na(finite_matrix)] <- 0
+  targets <- .bt_formula_coefficient_targets(finite_matrix, sources, output_transforms)
+  targets$map_type[dynamic] <- "state_dependent"
+  targets$structural_status[dynamic] <- "dependent"
+  targets$fixed_value[dynamic] <- NA_real_
+  targets$reason[dynamic] <- NA_character_
+  state_dependencies <- if(length(dependencies)) unique(do.call(rbind, dependencies)) else
+    data.frame(target = character(), source = character(), role = character(), stringsAsFactors = FALSE)
+  state_dependencies <- state_dependencies[state_dependencies$target %in% names(dynamic)[dynamic], , drop = FALSE]
+  rownames(state_dependencies) <- NULL
+  list(matrix = matrix, state_dependencies = state_dependencies, prior_recipes = recipes, targets = targets)
+}
+
+# Static consumers must select requested nonzero rows before accessing C.
+.bt_formula_static_rows <- function(transform, targets){
+
+  .bt_validate_formula_coefficient_transform(transform)
+  if(any(!targets %in% transform$target_names)) stop("Unknown coefficient target.", call. = FALSE)
+  rows <- transform$matrix[targets, , drop = FALSE]
+  if(any(!is.finite(rows))) .bt_formula_density_stop(
+    "A static coefficient projection is unavailable for a state-dependent map.",
+    parameter = transform$parameter, target = targets, reason = "state_dependent_map")
+  rows
 }
 
 .bt_formula_coefficient_targets <- function(matrix, sources,
@@ -759,35 +873,101 @@ JAGS_formula_prior_density <- function(
   value
 }
 
-.bt_apply_formula_coefficient_transform <- function(samples, transform){
+.bt_apply_formula_coefficient_transform <- function(samples, transform, targets = transform$target_names){
 
   .bt_validate_formula_coefficient_transform(transform)
   samples <- as.matrix(samples)
-  missing <- setdiff(transform$source_names, colnames(samples))
-  if(length(missing) > 0L){
-    stop(
-      "Coefficient samples are missing fitted source coordinate",
-      if(length(missing) > 1L) "s " else " ",
-      paste0("'", missing, "'", collapse = ", "),
-      ".",
-      call. = FALSE
-    )
+  if(!is.numeric(samples) || is.null(colnames(samples)) || anyDuplicated(colnames(samples))){
+    stop("Fitted coefficient state must be a numeric matrix with unique columns.", call. = FALSE)
   }
-  source <- samples[, transform$source_names, drop = FALSE]
-  log_sources <- transform$source_transforms == "log"
-  if(any(log_sources)){
-    if(any(source[, log_sources, drop = FALSE] <= 0)){
-      stop("Log-transformed fitted coefficient samples must be positive.",
-           call. = FALSE)
+  if(any(!targets %in% transform$target_names)) stop("Unknown requested coefficient target.", call. = FALSE)
+  needed <- character()
+  for(target_name in targets){
+    for(source_name in colnames(transform$basis_matrix)[transform$basis_matrix[target_name, ] != 0]){
+      term <- .bt_formula_coefficient_term(source_name, target_name,
+        transform$basis_matrix[target_name, source_name], transform$multipliers,
+        transform$state_constants, transform$source_transforms)
+      if(term$zero) next
+      needed <- union(needed, source_name)
+      if(!term$cancel) for(declaration in transform$multipliers[c(source_name, target_name)]){
+        if(identical(declaration$type, "state")) needed <- union(needed, declaration$name)
+      }
     }
-    source[, log_sources] <- log(source[, log_sources, drop = FALSE])
   }
-  target <- source %*% t(transform$matrix)
-  exp_targets <- transform$output_transforms == "exp"
-  if(any(exp_targets)){
-    target[, exp_targets] <- exp(target[, exp_targets, drop = FALSE])
+  state <- .bt_formula_materialize_state(samples, transform$state_constants, validate = needed)
+  target <- matrix(0, nrow(state), length(targets), dimnames = list(rownames(state), targets))
+  read_state <- function(name, role){
+    if(!name %in% colnames(state)) .bt_formula_transform_stop(
+      paste0("Required fitted state '", name, "' is unavailable."),
+      parameter = transform$parameter, reason = "missing_multiplier_state", state = name, role = role)
+    value <- state[, name]
+    if(any(!is.finite(value))) .bt_formula_transform_stop(
+      paste0("Required fitted state '", name, "' is nonfinite."),
+      parameter = transform$parameter, reason = "nonfinite_transform", state = name, role = role)
+    value
   }
-  samples[, transform$target_names] <- target
+  multiplier <- function(declaration){
+    value <- .bt_formula_multiplier_constant(declaration, transform$state_constants)
+    if(!is.null(value)) return(value)
+    read_state(declaration$name, "multiplier")
+  }
+  for(name in targets){
+    static_weights <- stats::setNames(as.numeric(transform$matrix[name, , drop = FALSE]), transform$source_names)
+    if(all(is.finite(static_weights))){
+      active <- names(static_weights)[static_weights != 0]
+      source <- matrix(0, nrow(state), length(active), dimnames = list(NULL, active))
+      for(coordinate in active){
+        value <- read_state(coordinate, "coefficient")
+        if(identical(transform$source_transforms[[coordinate]], "log")){
+          if(any(value <= 0)) .bt_formula_transform_stop(
+            "Log-transformed fitted coefficient samples must be positive.",
+            parameter = transform$parameter, reason = "nonfinite_transform", state = coordinate)
+          value <- log(value)
+        }
+        source[, coordinate] <- value
+      }
+      if(length(active)) target[, name] <- source %*% static_weights[active]
+    }else{
+    for(source in colnames(transform$basis_matrix)[transform$basis_matrix[name, ] != 0]){
+      term <- .bt_formula_coefficient_term(source, name, transform$basis_matrix[name, source],
+        transform$multipliers, transform$state_constants, transform$source_transforms)
+      if(isTRUE(term$zero)) next
+      value <- read_state(source, "coefficient")
+      if(identical(transform$source_transforms[[source]], "log")){
+        if(any(value <= 0)) .bt_formula_transform_stop(
+          "Log-transformed fitted coefficient samples must be positive.",
+          parameter = transform$parameter, reason = "nonfinite_transform", state = source)
+        value <- log(value)
+      }
+      if(isTRUE(term$cancel)){
+        contribution <- term$basis * value
+      }else{
+        numerator <- multiplier(transform$multipliers[[source]])
+        denominator <- multiplier(transform$multipliers[[name]])
+        if(any(denominator == 0)) .bt_formula_transform_stop(
+          paste0("Original coefficient '", name, "' has a zero multiplier denominator."),
+          parameter = transform$parameter, target = name, reason = "zero_multiplier_denominator")
+        contribution <- term$basis * value * numerator / denominator
+      }
+      if(any(!is.finite(contribution))) .bt_formula_transform_stop(
+        "Original coefficient arithmetic is nonfinite.", parameter = transform$parameter,
+        target = name, reason = "nonfinite_transform")
+      target[, name] <- target[, name] + contribution
+    }
+    }
+    if(identical(transform$output_transforms[[name]], "exp")){
+      target[, name] <- exp(target[, name])
+      if(any(target[, name] <= 0)) .bt_formula_transform_stop(
+        "Original logged-intercept output is unrepresentable.", parameter = transform$parameter,
+        target = name, reason = "nonfinite_transform")
+    }
+    if(any(!is.finite(target[, name]))) .bt_formula_transform_stop(
+      "Original coefficient arithmetic is nonfinite.", parameter = transform$parameter,
+      target = name, reason = "nonfinite_transform")
+  }
+  absent <- setdiff(targets, colnames(samples))
+  if(length(absent)) samples <- cbind(samples, target[, absent, drop = FALSE])
+  samples[, targets] <- target
   samples
 }
 
@@ -796,7 +976,8 @@ JAGS_formula_prior_density <- function(
   expected_names <- c(
     "schema_version", "formula_design_version",
     "parameter_map_version", "parameter", "target_scale",
-    "source_names", "target_names", "matrix", "source_transforms",
+    "source_names", "target_names", "matrix", "basis_matrix", "multipliers",
+    "state_constants", "state_dependencies", "prior_recipes", "source_transforms",
     "output_transforms", "dependencies", "sources", "targets"
   )
   valid <- inherits(transform, "BayesTools_formula_coefficient_transform") &&
@@ -822,7 +1003,16 @@ JAGS_formula_prior_density <- function(
     !anyNA(transform$source_names) && !anyDuplicated(transform$source_names) &&
     identical(transform$target_names, transform$source_names) &&
     is.matrix(transform$matrix) && is.numeric(transform$matrix) &&
-    all(is.finite(transform$matrix)) &&
+    all(apply(transform$matrix, 1L, function(row) all(is.finite(row)) || all(is.na(row)))) &&
+    is.matrix(transform$basis_matrix) && is.numeric(transform$basis_matrix) &&
+    all(is.finite(transform$basis_matrix)) &&
+    identical(dimnames(transform$basis_matrix), dimnames(transform$matrix)) &&
+    is.list(transform$multipliers) && identical(names(transform$multipliers), transform$source_names) &&
+    all(vapply(transform$multipliers, .bt_formula_multiplier_valid, logical(1))) &&
+    is.numeric(transform$state_constants) && all(is.finite(transform$state_constants)) &&
+    (length(transform$state_constants) == 0L || (!is.null(names(transform$state_constants)) &&
+      !anyNA(names(transform$state_constants)) && all(nzchar(names(transform$state_constants))))) &&
+    !anyDuplicated(names(transform$state_constants)) &&
     identical(dimnames(transform$matrix),
               list(transform$target_names, transform$source_names)) &&
     is.character(transform$source_transforms) &&
@@ -836,8 +1026,7 @@ JAGS_formula_prior_density <- function(
     identical(names(transform$output_transforms), transform$target_names) &&
     all(transform$output_transforms %in% c("identity", "exp"))
   if(!valid){
-    stop("Formula coefficient transform metadata are missing or unsupported. Rebuild the transform with this version of BayesTools.",
-         call. = FALSE)
+    .bt_stop_refit_required("Formula coefficient transform metadata are missing or unsupported. Refit the model with this version of BayesTools.")
   }
 
   valid_sources <- is.data.frame(transform$sources) && identical(
@@ -856,22 +1045,24 @@ JAGS_formula_prior_density <- function(
   expected_dependencies <- .bt_formula_coefficient_dependencies(
     transform$matrix
   )
-  expected_targets <- .bt_formula_coefficient_targets(
-    transform$matrix,
-    transform$sources,
-    transform$output_transforms
-  )
-  if(!valid_sources || !identical(transform$dependencies,
+  analysis <- .bt_formula_coefficient_analysis(transform$basis_matrix,
+    transform$multipliers, transform$state_constants, transform$source_transforms,
+    transform$sources, transform$output_transforms)
+  expected_targets <- analysis$targets
+  if(!valid_sources || !identical(transform$matrix, analysis$matrix) ||
+     !identical(transform$state_dependencies, analysis$state_dependencies) ||
+     !identical(transform$prior_recipes, analysis$prior_recipes) ||
+     !identical(transform$dependencies,
                                   expected_dependencies) ||
      !identical(transform$targets, expected_targets)){
-    stop("Formula coefficient transform structural metadata are malformed. Rebuild the transform with this version of BayesTools.",
-         call. = FALSE)
+    .bt_stop_refit_required("Formula coefficient transform structural metadata are malformed. Refit the model with this version of BayesTools.")
   }
   invisible(TRUE)
 }
 
 .bt_formula_prior_density_context <- function(
-    fit, context, source_names, parameter, target){
+    fit, context, source_names, parameter, target,
+    transform = NULL, recipe = "raw_affine"){
 
   if(is.null(context)){
     prior_list <- attr(fit, "prior_list", exact = TRUE)
@@ -922,7 +1113,78 @@ JAGS_formula_prior_density <- function(
   # The sources are the raw monitored coefficients (the JAGS nodes). A
   # coefficient's 'multiply_by' scales only its linear-predictor contribution,
   # so it must not enter the density of the coefficient itself.
-  .bt_formula_prior_density_context_raw_sources(out, source_names)
+  out <- .bt_formula_prior_density_context_raw_sources(out, source_names)
+  if(identical(recipe, "contribution_affine")){
+    out <- .bt_formula_prior_density_context_contributions(out, transform)
+  }
+  out
+}
+
+.bt_formula_prior_recipe_weights <- function(transform, weights){
+
+  weights <- weights[weights != 0]
+  recipes <- transform$prior_recipes[names(weights)]
+  types <- vapply(recipes, `[[`, character(1), "type")
+  if(any(types == "unavailable")) .bt_formula_density_stop(
+    "The requested original coefficient prior law is unavailable for its state-dependent map.",
+    parameter = transform$parameter, target = names(weights), reason = "state_dependent_map")
+  # A static identity sibling can be expressed in the contribution space if
+  # its own multiplier is an authoritative nonzero constant.
+  type <- if(all(types == "raw_affine")) "raw_affine" else "contribution_affine"
+  offset <- 0
+  if(length(unique(types)) > 1L){
+    for(target in names(recipes)[types == "raw_affine"]){
+      denominator <- .bt_formula_multiplier_constant(transform$multipliers[[target]], transform$state_constants)
+      if(is.null(denominator) || denominator == 0){
+        target_metadata <- transform$targets[match(target, transform$targets$target), , drop = FALSE]
+        if(identical(target_metadata$structural_status, "structural") && is.finite(target_metadata$fixed_value)){
+          offset <- offset + weights[[target]] * target_metadata$fixed_value
+          recipes[[target]]$weights <- stats::setNames(rep(0, length(transform$source_names)), transform$source_names)
+          next
+        }
+        .bt_formula_density_stop("The requested coefficient laws have incompatible prior recipes.",
+          parameter = transform$parameter, target = names(weights), reason = "incompatible_prior_recipes")
+      }
+      recipes[[target]]$weights <- transform$basis_matrix[target, ] / denominator
+    }
+  }
+  out <- stats::setNames(rep(0, length(transform$source_names)), transform$source_names)
+  for(target in names(weights)) out <- out + weights[[target]] * recipes[[target]]$weights
+  list(type = type, weights = out[out != 0], offset = offset)
+}
+
+.bt_formula_prior_density_context_contributions <- function(context, transform){
+
+  canonical <- function(priors){
+    for(owner in names(priors)){
+      prior <- priors[[owner]]
+      if(!is.prior(prior)) next
+      prior <- .bt_prior_without_multiply_by(prior)
+      columns <- intersect(.prior_linear_prior_columns(owner, prior), transform$source_names)
+      if(length(columns)){
+        declaration <- transform$multipliers[[columns[[1L]]]]
+        if(!all(vapply(transform$multipliers[columns], identical, logical(1), declaration))){
+          .bt_formula_density_stop("One prior owner has incompatible compiled multipliers.",
+            parameter = transform$parameter, reason = "incompatible_prior_recipes")
+        }
+        value <- .bt_formula_multiplier_constant(declaration, transform$state_constants)
+        attr(prior, "multiply_by") <- if(is.prior.point(prior) &&
+          is.numeric(prior$parameters$location) && isTRUE(prior$parameters$location == 0)) NULL else
+          if(is.null(value)) declaration$name else if(value == 1) NULL else value
+      }
+      priors[[owner]] <- prior
+    }
+    priors
+  }
+  if(inherits(context, "prior_density_model_mixture_context")){
+    for(model in seq_along(context$model_weights)){
+      leaf <- canonical(.prior_density_model_prior_list(context$prior_list, model))
+      for(owner in names(leaf)) context$prior_list[[owner]][[model]] <- leaf[[owner]]
+    }
+  }else context$prior_list <- canonical(context$prior_list)
+  if(is.list(context$prior_lists)) context$prior_lists <- lapply(context$prior_lists, canonical)
+  context$linear_weight_space <- "formula_contribution"
+  context
 }
 
 .bt_formula_prior_density_context_raw_sources <- function(context,
@@ -998,12 +1260,64 @@ JAGS_formula_prior_density <- function(
   stop(condition)
 }
 
+.bt_formula_route_atom_certificate <- function(route){
+
+  if(route$type %in% c("log_scale_product", "truncated_normal_convolution")){
+    return(list(type = "atom_free", location = NULL))
+  }
+  if(identical(route$type, "conditional_normal")){
+    spec <- route$spec
+    if(spec$additive_sd > 0 || (spec$product_sd > 0 && .prior_density_simple_continuous(spec$multiplier))){
+      return(list(type = "atom_free", location = NULL))
+    }
+  }
+  provenance <- .prior_density_route_provenance(route)
+  point <- .prior_density_ordinate_provenance_constant(provenance)
+  if(!is.null(point)) return(list(type = "point", location = point))
+  atoms <- .prior_density_ordinate_provenance_atoms(provenance)
+  if(!is.null(atoms) && length(atoms) == 0L) return(list(type = "atom_free", location = NULL))
+  list(type = "unavailable", location = NULL)
+}
+
+.bt_formula_route_support <- function(route){
+
+  if(identical(route$type, "log_scale_product")){
+    return(.posterior_support_log(.bt_formula_route_support(route$product)))
+  }
+  if(identical(route$type, "truncated_normal_convolution")){
+    return(.posterior_support_new(c(-Inf, Inf), source = "formula_contribution"))
+  }
+  if(identical(route$type, "mixture")){
+    supports <- lapply(route$components[route$weights > 0], .bt_formula_route_support)
+    if(any(vapply(supports, is.null, logical(1)))) return(NULL)
+    return(.posterior_support_union(supports, source = "formula_contribution"))
+  }
+  if(identical(route$type, "transform")){
+    return(.posterior_support_transform(.bt_formula_route_support(route$source),
+      route$transformation, route$arguments))
+  }
+  if(identical(route$type, "conditional_normal")){
+    certificate <- .bt_formula_route_atom_certificate(route)
+    if(!identical(certificate$type, "unavailable")) return(.posterior_support_new(c(-Inf, Inf), source = "formula_contribution"))
+  }
+  provenance <- .prior_density_route_provenance(route)
+  support <- .prior_density_ordinate_provenance_support(provenance)
+  if(is.null(support)) return(NULL)
+  points <- .prior_density_ordinate_provenance_atoms(provenance)
+  .posterior_support_new(support, points = if(is.null(points)) numeric() else points,
+    source = "formula_contribution")
+}
+
 .bt_formula_density_stop <- function(message, ...){
 
+  fields <- list(...)
+  measure <- !fields$reason %in% c("density_context_error", "invalid_prior_density_context",
+    "unsupported_fit_prior_context", "coordinate_source_mismatch")
   condition <- structure(
-    c(list(message = message, call = NULL), list(...)),
+    c(list(message = message, call = NULL), fields),
     class = c(
       "BayesTools_formula_prior_density_unavailable",
+      if(isTRUE(measure)) "BayesTools_formula_measure_unavailable",
       "BayesTools_formula_transform_unavailable",
       "error",
       "condition"

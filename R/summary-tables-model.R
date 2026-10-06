@@ -374,7 +374,15 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   # lets summaries reconstruct point-prior/allocation SDs before covariance
   # transformations, while fixed effects still retain all interaction columns.
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
-    model_samples <- .bt_transform_scale_posterior(model_samples, formula_scale)
+    omitted <- .filter_parameters(prior_list, remove_parameters = remove_parameters,
+      remove_formulas = remove_formulas, keep_parameters = keep_parameters,
+      keep_formulas = keep_formulas, remove_random_effects = remove_random_effects,
+      keep_random_effects = keep_random_effects, remove_random_structures = remove_random_structures,
+      keep_random_structures = keep_random_structures, remove_spike_0 = FALSE)
+    requested <- unique(unlist(lapply(setdiff(names(prior_list), omitted), function(owner){
+      .prior_linear_prior_columns(owner, prior_list[[owner]])
+    }), use.names = FALSE))
+    model_samples <- .bt_transform_scale_posterior(model_samples, formula_scale, targets = requested)
     model_samples <- .bt_remove_internal_random_coordinates(
       posterior = model_samples,
       coordinates = coordinates
@@ -415,7 +423,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       .bt_JAGS_estimates_spike_0_parameters(
         prior_list = prior_list,
         model_samples = model_samples,
-        transformed = transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0
+        transformed = transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0,
+        formula_scale = formula_scale
       )
     ))
   }
@@ -929,7 +938,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 # non-zero combination of other coefficients (for example, a factor main
 # effect in the presence of a scaled interaction); it is then reported.
 .bt_JAGS_estimates_spike_0_parameters <- function(prior_list, model_samples,
-                                                  transformed = FALSE){
+                                                  transformed = FALSE, formula_scale = NULL){
 
   spike_0 <- names(prior_list)[vapply(prior_list, function(prior){
     is.prior.point(prior) &&
@@ -939,11 +948,15 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     return(spike_0)
   }
 
-  column_names <- colnames(model_samples)
   spike_0[vapply(spike_0, function(parameter){
-    columns <- column_names == parameter |
-      startsWith(column_names, paste0(parameter, "["))
-    isTRUE(all(model_samples[, columns, drop = FALSE] == 0))
+    prefix <- attr(prior_list[[parameter]], "parameter", exact = TRUE)
+    if(is.null(prefix) || is.null(formula_scale[[prefix]])) return(TRUE)
+    scale <- formula_scale[[prefix]]
+    spec <- attr(scale, "unscale_design", exact = TRUE)
+    transform <- .bt_formula_coefficient_transform(names(spec$multipliers), scale, prefix)
+    columns <- .prior_linear_prior_columns(parameter, prior_list[[parameter]])
+    targets <- transform$targets[match(columns, transform$targets$target), , drop = FALSE]
+    all(targets$structural_status == "structural") && all(targets$fixed_value == 0)
   }, logical(1))]
 }
 

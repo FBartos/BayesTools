@@ -45,17 +45,24 @@
   prior_columns <- intersect(prior_columns, column_names)
 
   out <- list()
+  unavailable <- NULL
   for(parameter in prior_columns){
     density <- entry$densities[[parameter]]
     if(is.null(density)){
-      density <- .generate_transformed_prior_density(
+      density <- tryCatch(.generate_transformed_prior_density(
         parameter    = parameter,
         context      = context,
         prior_list   = prior_list,
         column_names = column_names,
         n_grid       = n_grid,
         tail_prob    = tail_prob
-      )
+      ), BayesTools_formula_measure_unavailable = function(e) e)
+      if(inherits(density, "BayesTools_formula_measure_unavailable")){
+        unavailable <- rbind(unavailable, data.frame(column = parameter,
+          measure = "prior_density", reason = density$reason, stringsAsFactors = FALSE))
+        out[parameter] <- list(NULL)
+        next
+      }
       entry$densities[[parameter]] <- density
     }
     out[[parameter]] <- density
@@ -63,6 +70,7 @@
 
   attr(out, "context") <- context
   class(out) <- c("prior_density_list", "list")
+  if(!is.null(unavailable)) out <- .bt_meta_set(out, "measure_unavailable", unavailable)
   return(out)
 }
 
@@ -72,52 +80,15 @@
   weights <- .prior_density_coefficient_weights(column_names, parameter)
   source_transforms <- NULL
   output_transformation <- NULL
-
+  if(length(context$transforms)) .bt_formula_context_check(context)
   for(transform in context$transforms){
     if(transform$log_intercept && identical(parameter, transform$intercept)){
-      weights <- rep(0, length(column_names))
-      names(weights) <- column_names
-      weights[transform$columns] <- transform$matrix[parameter, ]
-
-      source_transforms <- rep(NA_character_, length(column_names))
-      names(source_transforms) <- column_names
-      source_transforms[[transform$intercept]] <- "log"
+      source_transforms <- stats::setNames("log", parameter)
       output_transformation <- "exp"
-      break
     }
   }
-
-  if(!is.null(output_transformation) &&
-     inherits(context, "prior_density_conditional_context")){
-    # The log-intercept weights are already on the fitted coefficient scale;
-    # mix the conditioned models without re-applying the formula scaling.
-    coefficient_context <- context
-    coefficient_context$formula_scale <- NULL
-    coefficient_context$transforms    <- list()
-    return(.prior_density_from_context(
-      context               = coefficient_context,
-      weights               = weights,
-      source_transforms     = source_transforms,
-      output_transformation = output_transformation
-    ))
-  }
-  if(!is.null(output_transformation)){
-    return(.prior_linear_combination_density(
-      prior_list             = prior_list,
-      weights                = weights,
-      n_grid                 = n_grid,
-      tail_prob              = tail_prob,
-      source_transforms      = source_transforms,
-      output_transformation  = output_transformation
-    ))
-  }
-
-  .prior_density_from_context(
-    context               = context,
-    weights               = weights,
-    source_transforms     = source_transforms,
-    output_transformation = output_transformation
-  )
+  .prior_density_from_context(context, weights, source_transforms = source_transforms,
+    output_transformation = output_transformation)
 }
 
 # The per-fit memo of transformed prior densities, or NULL for a fit without a
@@ -258,13 +229,14 @@ plot_transformed_prior <- function(prior_list, column_names, formula_scale = NUL
 
   prior_densities <- .generate_transformed_prior_densities(
     prior_list    = prior_list,
-    column_names  = column_names,
+    column_names  = parameter,
     formula_scale = formula_scale
   )
 
   if(!parameter %in% names(prior_densities)){
     return(NULL)
   }
+  .bt_formula_measure_check(prior_densities, "prior_density", parameter)
 
   plot_data <- .prior_linear_density_to_plot_data(
     prior_densities[[parameter]],
@@ -299,25 +271,13 @@ plot_transformed_prior <- function(prior_list, column_names, formula_scale = NUL
     return(FALSE)
   }
 
-  weights <- .prior_density_coefficient_weights(column_names, parameter)
-
   for(transform in context$transforms){
-    if(transform$log_intercept && identical(parameter, transform$intercept)){
-      return(FALSE)
+    if(parameter %in% transform$descriptor$target_names){
+      row <- match(parameter, transform$descriptor$targets$target)
+      return(identical(transform$descriptor$targets$map_type[[row]], "identity"))
     }
   }
-
-  transformed_weights <- .prior_density_context_standardized_weights(context, weights)
-  weights <- weights[weights != 0]
-
-  all_names <- union(names(weights), names(transformed_weights))
-  raw <- rep(0, length(all_names))
-  names(raw) <- all_names
-  transformed <- raw
-  raw[names(weights)] <- weights
-  transformed[names(transformed_weights)] <- transformed_weights
-
-  identical(raw, transformed)
+  TRUE
 }
 
 .prior_factor_level_weight_matrix <- function(sample_metadata, parameter, samples = NULL){

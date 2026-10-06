@@ -37,6 +37,47 @@ Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = test_files_dir)
 # Use skip_if_no_fits() for tests that need pre-fitted models.
 
 attach_test_parameter_map <- function(fit, monitor_names = NULL) {
+  designs <- attr(fit, "formula_design", exact = TRUE)
+  scales <- attr(fit, "formula_scale", exact = TRUE)
+  for(parameter in names(scales)){
+    fixture_design <- attr(scales[[parameter]], "test_formula_design", exact = TRUE)
+    if(is.null(fixture_design)) next
+    attr(scales[[parameter]], "test_formula_design") <- NULL
+    if(is.null(designs[[parameter]])){
+      priors <- attr(fit, "prior_list", exact = TRUE)
+      for(owner in intersect(names(fixture_design$prior_list), names(priors))){
+        bound <- attributes(fixture_design$prior_list[[owner]])
+        fields <- setdiff(names(bound), c("names", "class", names(attributes(priors[[owner]]))))
+        for(field in fields) attr(priors[[owner]], field) <- bound[[field]]
+      }
+      attr(fit, "prior_list") <- priors
+      fixture_design$prior_list <- priors[names(fixture_design$prior_list)]
+      attr(scales[[parameter]], "unscale_design") <- BayesTools:::.bt_formula_unscale_design_spec(fixture_design)
+      attr(scales[[parameter]], "point_terms") <- BayesTools:::.formula_scale_point_terms(
+        fixture_design$prior_list, parameter, fixture_design$model_terms)
+      fixture_design$formula_scale <- scales[[parameter]]
+      designs[[parameter]] <- fixture_design
+    }
+  }
+  if(is.list(designs)){
+    if(is.null(scales)) scales <- list()
+    for(parameter in names(designs)){
+      design <- designs[[parameter]]
+      spec <- attr(design$formula_scale, "unscale_design", exact = TRUE)
+      if(!inherits(design, "BayesTools_formula_design") ||
+         !identical(design$schema_version, BayesTools:::.bt_formula_design_schema_version()) ||
+         is.null(spec) || !identical(spec$schema_version, 2L) ||
+         !identical(spec$owner_scope, "compiler") || !isFALSE(spec$complete)) next
+      scale <- scales[[parameter]]
+      if(is.null(scale)) scale <- design$formula_scale
+      scale <- BayesTools:::.bt_formula_scale_finalize(scale, design,
+        prior_list = attr(fit, "prior_list", exact = TRUE), owner_scope = "fit")
+      designs[[parameter]]$formula_scale <- scale
+      scales[[parameter]] <- scale
+    }
+    attr(fit, "formula_design") <- designs
+    attr(fit, "formula_scale") <- scales
+  }
   fit <- BayesTools:::.bt_attach_parameter_map(
     fit,
     monitor_names = monitor_names
@@ -144,6 +185,7 @@ formula_scale_for_test <- function(formula, scale, data = NULL,
       sd   = scale[[predictor]][["sd"]]
     )
   }
+  attr(out, "test_formula_design") <- result$formula_design
   out
 }
 

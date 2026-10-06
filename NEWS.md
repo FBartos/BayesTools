@@ -1,4 +1,5 @@
 # version 0.3.1
+- original formula coefficients use each draw's compiled multiplier states, including exact same-declaration cancellation at zero; undefined requested denominator states refuse the numeric vector. Formula-design 6, unscale-design 2 and coefficient-transform 3 require refitting older saved formats.
 - continuous formula coefficients no longer acquire bracketed backend-coordinate level aliases; ordinary fitted selectors and genuine factor levels retain their meaning. Parameter-map schema 10 requires refitting older saved maps.
 - supplied block covariance specifications use their own constructor defaults for omitted fields and replace the shared covariance completely; a missing subcall inherits it. Replacements remove a shared covariance-only SD, which must be supplied separately if needed. Parent prior printing shows the resolved block configuration and formula-owned unknown correlation fields.
 - unsupported non-point multivariate random-effect SD priors refuse before constructor or compiler mutation, retaining supported nonnegative scalar and deterministic point priors.
@@ -11,7 +12,7 @@
 - existing random-effect factor/variance unavailability and allocation support errors share the neutral BayesTools_random_effects_error parent while preserving leaf-specific handling.
 - selection native caches track effective static geometry and row routing, preserving explicit-segment precedence and revalidating changed inputs.
 - named group covariance columns are aligned to supplied row order before exact symmetry checks and triangle completion.
-- numeric random-effect groups retain exact double identity, stable ordinary labels and explicit ambiguity refusals on replay; persisted public single-component labels also replay as fitted groups. Formula-design schema 5 requires refitting older saved designs.
+- numeric random-effect groups retain exact double identity, stable ordinary labels and explicit ambiguity refusals on replay; persisted public single-component labels also replay as fitted groups. Formula-design schema 6 requires refitting older saved designs.
 - README examples use the supported marginal-likelihood constructor, named bridge-sampling arguments and the fitted model's stored priors for summaries.
 - declared point and finite support images refuse finite-source saturation or overflow with a classed transformation-availability error; atom replay, point plot layers and prior-region indicators share the guard, preserving true zero and infinite limits.
 - explicit Unix JAGS prefixes consistently select their own version, headers, libraries and rpath instead of mixing global pkg-config installations.

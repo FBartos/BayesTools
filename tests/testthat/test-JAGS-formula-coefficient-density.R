@@ -4,6 +4,9 @@ skip_if_not_test_profile("unit")
                                              sampled_columns){
 
   design <- formula_result$formula_design
+  formula_result$formula_scale <- .bt_formula_scale_finalize(formula_result$formula_scale,
+    design, prior_list = formula_result$prior_list)
+  design$formula_scale <- formula_result$formula_scale
   parameter <- design$parameter
   formula_design <- stats::setNames(list(design), parameter)
   fit <- structure(list(), class = "BayesTools_fit")
@@ -55,8 +58,8 @@ test_that("formula coefficient transforms expose the sample transformation", {
   transform <- JAGS_formula_coefficient_transform(fit, "mu")
 
   expect_s3_class(transform, "BayesTools_formula_coefficient_transform")
-  expect_identical(transform$schema_version, 2L)
-  expect_identical(transform$formula_design_version, 5L)
+  expect_identical(transform$schema_version, 3L)
+  expect_identical(transform$formula_design_version, 6L)
   expect_identical(transform$parameter_map_version, .bt_parameter_map_version)
   expect_identical(transform$source_names, source_names)
   expect_identical(transform$target_names, source_names)
@@ -111,6 +114,9 @@ test_that("formula coefficient transforms expose the sample transformation", {
 .formula_coefficient_sample_fit <- function(formula_result, samples){
 
   design <- formula_result$formula_design
+  formula_result$formula_scale <- .bt_formula_scale_finalize(formula_result$formula_scale,
+    design, prior_list = formula_result$prior_list)
+  design$formula_scale <- formula_result$formula_scale
   parameter <- design$parameter
   formula_design <- stats::setNames(list(design), parameter)
   formula_scale <- stats::setNames(
@@ -297,8 +303,10 @@ test_that("JAGS_formula formula-scale metadata carry the fitted design", {
   original <- JAGS_formula(~ f/x, "mu", data, prior_list)
   expect_false(is.null(attr(scaled$formula_scale, "unscale_design")))
   # the design keeps its fitted formula-scale copy (compared on bridge rebuilds)
-  expect_null(attr(scaled$formula_design$formula_scale, "unscale_design"))
-  expect_null(original$formula_scale)
+  expect_identical(attr(scaled$formula_design$formula_scale, "unscale_design"),
+    attr(scaled$formula_scale, "unscale_design"))
+  expect_length(original$formula_scale, 0L)
+  expect_identical(attr(original$formula_scale, "unscale_design")$owner_scope, "compiler")
 
   # formula-scale-only consumers: a posterior matrix and the stored metadata
   source_names <- .formula_coefficient_source_names(scaled)
@@ -900,7 +908,7 @@ test_that("unscaled log-intercepts retain their positive-scale transform", {
     ),
     formula_scale = TRUE
   )
-  expect_null(formula_result$formula_scale)
+  expect_length(formula_result$formula_scale, 0L)
   expect_true(formula_result$formula_design$log_intercept)
 
   fit <- .formula_coefficient_density_fit(

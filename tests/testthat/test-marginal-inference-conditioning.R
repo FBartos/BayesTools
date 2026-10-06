@@ -29,7 +29,7 @@ test_that("unscaled coefficient atoms follow joint structural contributors", {
       posterior, list(mu_intercept = prior("point", list(0)), mu_x = slope_prior)
     )
     attr(fit, "formula_scale") <- list(mu = formula_scale_for_test(~ x, list(x = list(mean = 5, sd = 2))))
-    .bt_attach_parameter_map(fit, monitor_names = colnames(posterior))
+    attach_test_parameter_map(fit, monitor_names = colnames(posterior))
   }
   fit <- make_fit(rep(1, 20), prior("point", list(1)))
   fixed <- as_mixed_posteriors(fit, c("mu_intercept", "mu_x"), transform_scaled = TRUE)

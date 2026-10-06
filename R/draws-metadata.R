@@ -82,6 +82,14 @@
         "it must hold positive integer component indices (NA for models without a total spike)"
     },
     ordered_source = .bt_ordered_source_validate,
+    formula_state = .bt_formula_state_validate,
+    measure_unavailable = function(value){
+      if(is.data.frame(value) && identical(class(value), "data.frame") && identical(names(value), c("column", "measure", "reason")) &&
+         all(vapply(value, function(x) is.character(x) && !anyNA(x) && all(nzchar(x)), logical(1))) &&
+         all(value$measure %in% c("prior_density", "atoms", "support")) &&
+         !anyDuplicated(value[c("column", "measure")])) return(NULL)
+      "it must be a plain column/measure/reason table with unique target measures"
+    },
     undefined_draws = function(value){
       if(is.character(value) && !anyNA(value)) NULL else
         "it must be a character vector naming the undefined quantities"
@@ -174,6 +182,11 @@
     },
     linear_weights = function(value){
       if(is.numeric(value)) NULL else "it must be a numeric vector or matrix"
+    },
+    linear_weight_space = function(value){
+      if(is.character(value) && length(value) == 1L && !is.na(value) &&
+         value %in% c("coefficient", "formula_contribution")) NULL else
+        "it must be 'coefficient' or 'formula_contribution'"
     },
     linear_offset = function(value){
       if(is.numeric(value) && length(value) == 1L) NULL else
@@ -283,10 +296,11 @@
 .bt_meta_field_names <- c(
   "support", "atoms", "components", "component", "component_source",
   "draw_index", "ordered_total_component", "ordered_source", "undefined_draws", "prior_density",
+  "formula_state", "measure_unavailable",
   "prior_context", "prior_densities", "posterior_density",
   "posterior_densities", "posterior_ordinate", "posterior_ordinates",
   "formula_parameter", "log_intercept", "formula_scale", "transform_scaled",
-  "condition", "linear_weights", "linear_offset", "joint_prior_transformation",
+  "condition", "linear_weights", "linear_weight_space", "linear_offset", "joint_prior_transformation",
   "quantities", "original_scale_quantities", "level_quantities",
   "output_transformations"
 )
@@ -374,13 +388,29 @@
 # with one check and one fingerprint of the draws.
 .bt_meta_assign <- function(x, fields){
 
+  if("linear_weights" %in% names(fields) && !"linear_weight_space" %in% names(fields)){
+    context <- fields$prior_context
+    if(is.null(context)) context <- .bt_meta_get(x, "prior_context")
+    fields$linear_weight_space <- if(is.null(fields$linear_weights)) NULL else
+      if(identical(context$linear_weight_space, "formula_contribution")) "formula_contribution" else "coefficient"
+  }
+  if(!is.null(fields$measure_unavailable) && nrow(fields$measure_unavailable) == 0L) fields$measure_unavailable <- NULL
   for(field in names(fields)){
     .bt_meta_check_field(field)
     if(!is.null(fields[[field]])){
       .bt_meta_validate(field, fields[[field]])
-      if(.bt_meta_is_draws(x) && field %in% c("component", "draw_index", "ordered_total_component", "ordered_source")){
-        rows <- if(identical(field, "ordered_source")) nrow(fields[[field]]$primitives) else NROW(fields[[field]])
+      if(.bt_meta_is_draws(x) && field %in% c("component", "draw_index", "ordered_total_component", "ordered_source", "formula_state")){
+        rows <- if(identical(field, "ordered_source")) nrow(fields[[field]]$primitives) else
+          if(identical(field, "formula_state")) nrow(fields[[field]]$values) else NROW(fields[[field]])
         if(rows != NROW(x)) stop("Draw metadata '", field, "' must have one row per draw.", call. = FALSE)
+      }
+      if(.bt_meta_is_draws(x) && identical(field, "measure_unavailable")){
+        quantities <- .bt_meta_get(x, "quantities")
+        columns <- if(is.matrix(x)) colnames(x) else
+          if(!is.null(quantities) && nrow(quantities) == 1L) quantities$column else attr(x, "parameter", exact = TRUE)
+        if(is.null(columns)) columns <- .bt_meta_get(x, "quantities")$column
+        if(!is.null(columns) && any(!fields[[field]]$column %in% columns)) stop(
+          "Unavailable measure keys must identify current draw columns.", call. = FALSE)
       }
     }
   }
@@ -414,6 +444,7 @@
     if(!is.null(meta[[field]])) meta[[field]] <- if(is.null(dim(meta[[field]]))) meta[[field]][rows] else meta[[field]][rows, , drop = FALSE]
   }
   if(!is.null(meta$ordered_source)) meta$ordered_source <- .bt_ordered_source_subset(meta$ordered_source, rows)
+  if(!is.null(meta$formula_state)) meta$formula_state <- .bt_formula_state_subset(meta$formula_state, rows)
   if(!is.null(meta$components) && length(meta$components$index)==NROW(x)){
     meta$components <- .posterior_components_new(meta$components$index[rows],meta$components$supports,meta$components$keys)
   }
@@ -616,8 +647,99 @@
   "support", "atoms", "undefined_draws", "prior_density", "prior_densities",
   "prior_context", "posterior_density", "posterior_densities",
   "posterior_ordinate", "posterior_ordinates", "condition", "linear_weights",
-  "quantities", "output_transformations"
+  "quantities", "output_transformations", "measure_unavailable", "linear_weight_space"
 )
+
+.bt_formula_state_validate <- function(value){
+
+  if(!is.list(value) || !identical(names(value), c("schema_version", "models", "model", "draw_index", "values", "posterior_model_probabilities")) ||
+     !identical(value$schema_version, 1L) || !is.list(value$models) || !length(value$models) ||
+     !.bt_meta_is_index(value$model) || !.bt_meta_is_index(value$draw_index) ||
+     length(value$model) != length(value$draw_index) ||
+     !is.matrix(value$values) || !is.numeric(value$values) ||
+     nrow(value$values) != length(value$model) || is.null(colnames(value$values)) || anyDuplicated(colnames(value$values)) ||
+     any(value$model > length(value$models)) || !is.numeric(value$posterior_model_probabilities) ||
+     length(value$posterior_model_probabilities) != length(value$models) ||
+     any(!is.finite(value$posterior_model_probabilities)) || any(value$posterior_model_probabilities < 0) ||
+     abs(sum(value$posterior_model_probabilities) - 1) > 1e-12){
+    return("it must be a versioned formula state with aligned rows and posterior model probabilities")
+  }
+  for(model in seq_along(value$models)){
+    record <- value$models[[model]]
+    if(!is.list(record) || !is.list(record$prior_list) || !is.list(record$formula_scale) ||
+       !is.character(record$required) || anyNA(record$required) || anyDuplicated(record$required)){
+      return("formula model declarations are incomplete")
+    }
+    rows <- value$model == model
+    if(any(rows) && (!all(record$required %in% colnames(value$values)) ||
+                    any(!is.finite(value$values[rows, record$required, drop = FALSE])))){
+      return("required own-model formula states must be finite and present")
+    }
+  }
+  NULL
+}
+
+.bt_formula_state_subset <- function(value, rows){
+
+  value$model <- value$model[rows]
+  value$draw_index <- value$draw_index[rows]
+  value$values <- value$values[rows, , drop = FALSE]
+  value
+}
+
+.bt_formula_measure_check <- function(x, measure, column = NULL){
+
+  unavailable <- .bt_meta_get(x, "measure_unavailable")
+  if(is.null(unavailable)) return(invisible(TRUE))
+  if(is.null(column)){
+    quantities <- .bt_meta_get(x, "quantities")
+    column <- if(is.matrix(x)) colnames(x) else
+      if(!is.null(quantities) && nrow(quantities) == 1L) quantities$column else attr(x, "parameter", exact = TRUE)
+    if(is.null(column)){
+      quantities <- .bt_meta_get(x, "quantities")
+      column <- quantities$column
+    }
+  }
+  selected <- unavailable$measure == measure & unavailable$column %in% column
+  if(!any(selected)) return(invisible(TRUE))
+  entry <- unavailable[which(selected)[1L], , drop = FALSE]
+  if(identical(measure, "prior_density")) .bt_formula_density_stop(
+    paste0("Prior density for '", entry$column, "' is unavailable: ", entry$reason, "."),
+    target = entry$column, reason = entry$reason)
+  stop(errorCondition(paste0("Formula ", measure, " for '", entry$column,
+    "' are unavailable: ", entry$reason, "."), call = NULL,
+    class = c(paste0("BayesTools_formula_", measure, "_unavailable"), "BayesTools_formula_measure_unavailable"),
+    target = entry$column, reason = entry$reason))
+}
+
+.bt_formula_measure_mark <- function(x, column, measure, reason){
+
+  unavailable <- .bt_meta_get(x, "measure_unavailable")
+  entry <- data.frame(column = column, measure = measure, reason = reason, stringsAsFactors = FALSE)
+  if(!is.null(unavailable)) unavailable <- unavailable[!(unavailable$column == column & unavailable$measure == measure), , drop = FALSE]
+  .bt_meta_set(x, "measure_unavailable", rbind(unavailable, entry))
+}
+
+.bt_formula_measure_linear <- function(source, target, design){
+
+  unavailable <- .bt_meta_get(source, "measure_unavailable")
+  if(is.null(unavailable)) return(target)
+  source_columns <- colnames(source)
+  target_columns <- colnames(target)
+  if(ncol(design) != length(source_columns) || nrow(design) != length(target_columns)){
+    stop("Unavailable measure columns do not align with their declared linear design.", call. = FALSE)
+  }
+  target <- .bt_meta_set(target, "measure_unavailable", NULL)
+  for(row in seq_len(nrow(design))){
+    active <- source_columns[design[row, ] != 0]
+    entries <- unavailable[unavailable$column %in% active, , drop = FALSE]
+    if(nrow(entries)) for(measure in unique(entries$measure)){
+      target <- .bt_formula_measure_mark(target, target_columns[[row]], measure,
+        entries$reason[entries$measure == measure][[1L]])
+    }
+  }
+  target
+}
 
 #' @title Metadata of BayesTools posterior draws
 #'
@@ -661,6 +783,18 @@
 #'   \code{effective_conditional} and \code{effective_conditional_rule}.
 #'   Read \code{averaged} instead of comparing \code{condition_key} with a
 #'   literal key.}
+#'   \item{\code{"measure_unavailable"}}{a plain data frame with exact columns
+#'   \code{column}, \code{measure}, and \code{reason}, with unique column/measure
+#'   pairs. The measures are \code{prior_density}, \code{atoms}, or \code{support}.
+#'   Entries prevent stale prior/density/support fallback while numeric draws
+#'   remain usable. Atom/support refusals use
+#'   \code{BayesTools_formula_atoms_unavailable} and
+#'   \code{BayesTools_formula_support_unavailable}, inheriting
+#'   \code{BayesTools_formula_measure_unavailable}.}
+#'   \item{\code{"linear_weight_space"}}{\code{"coefficient"} for coefficient
+#'   recipes, or \code{"formula_contribution"} for fitted design rows and compiled
+#'   multipliers. Contribution weights never pass through coefficient C/A again.
+#'   Old ambiguous stored contexts must be recreated.}
 #'   \item{\code{"linear_weights"}}{the weights of the fitted coordinates
 #'   that form a level of a [marginal_posterior()] (a named numeric vector,
 #'   or a matrix with one row per draw).}
@@ -828,7 +962,27 @@ Math.marginal_posterior.factor <- .bt_draws_math
     attributes(subset) <- density_attributes
     meta[["prior_densities"]] <- if(any(keep)) subset
   }
+  if(!is.null(meta$measure_unavailable)){
+    keep <- vapply(meta$measure_unavailable$column, function(column){
+      any(column == kept | startsWith(column, paste0(kept, "[")))
+    }, logical(1))
+    meta$measure_unavailable <- if(any(keep)) meta$measure_unavailable[keep, , drop = FALSE]
+  }
   .bt_meta_write(out, meta)
+}
+
+.bt_linear_weight_space <- function(x){
+
+  if(is.null(.bt_meta_get(x, "linear_weights"))) return(NULL)
+  space <- .bt_meta_get(x, "linear_weight_space")
+  if(is.null(space)) .bt_stop_refit_required(
+    "Stored linear prior weights have no supported coordinate space. Recreate the posterior with this version of BayesTools.")
+  context <- .bt_meta_get(x, "prior_context")
+  if(length(context$transforms)) .bt_formula_context_check(context)
+  if(identical(space, "formula_contribution") && (!is.null(context$formula_scale) && length(context$formula_scale))){
+    .bt_stop_refit_required("Formula contribution weights cannot carry a coefficient unscaling map. Recreate the posterior with this version of BayesTools.")
+  }
+  space
 }
 
 # 'fun' applied to the values of draws 'x', keeping every attribute of 'x'

@@ -4,6 +4,18 @@
 
   fit <- chains
   class(fit) <- c("BayesTools_fit", class(fit))
+  if(is.list(formula_design)){
+    if(is.null(formula_scale)) formula_scale <- list()
+    for(parameter in names(formula_design)){
+      design <- formula_design[[parameter]]
+      scale <- formula_scale[[parameter]]
+      if(is.null(scale)) scale <- design$formula_scale
+      completed_scale <- .bt_formula_scale_finalize(scale, design,
+        prior_list = prior_list, owner_scope = "fit")
+      formula_design[[parameter]]$formula_scale <- completed_scale
+      formula_scale[[parameter]] <- completed_scale
+    }
+  }
   attr(fit, "prior_list") <- prior_list
   if(!is.null(formula_design)){
     attr(fit, "formula_design") <- formula_design

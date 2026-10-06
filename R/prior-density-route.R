@@ -933,27 +933,31 @@
                                          transformation, transformation_arguments){
 
   if(inherits(context, "prior_density_context")){
-    standardized <- tryCatch(
-      .prior_density_context_standardized_weights(context, weights, source_transforms),
-      error = function(e) NULL
-    )
-    if(is.null(standardized)){
-      return(.prior_density_route_unknown(
-        reason     = NULL,
-        provenance = list(kind = "density_context")
-      ))
-    }
+    standardized <- .prior_density_context_standardized_weights(context, weights, source_transforms)
     if(!is.null(source_transforms)){
       source_transforms <- source_transforms[names(standardized)]
     }
+    canonical <- .bt_formula_context_canonical(context, standardized)
+    offset <- attr(standardized, "formula_recipe_offset", exact = TRUE)
+    attr(standardized, "formula_recipe_offset") <- NULL
+    attr(standardized, "formula_contribution_transforms") <- NULL
+    .bt_formula_require_multiplier_laws(canonical, standardized)
     route <- .prior_density_route_linear_arguments(list(
-      prior_list                      = context$prior_list,
+      prior_list                      = canonical$prior_list,
       n_grid                          = context$n_grid,
       weights                         = standardized,
       source_transforms               = source_transforms,
-      output_transformation           = transformation,
-      output_transformation_arguments = transformation_arguments
+      output_transformation           = if(is.null(offset)) transformation else NULL,
+      output_transformation_arguments = if(is.null(offset)) transformation_arguments else NULL
     ))
+    if(!is.null(offset)){
+      support <- .bt_formula_route_support(route)
+      route <- .prior_density_route_transform(route, "lin", list(a = offset, b = 1),
+        hull = function() if(is.null(support)) NULL else support$bounds)
+      shifted_support <- .bt_formula_route_support(route)
+      route <- .prior_density_route_transform(route, transformation, transformation_arguments,
+        hull = function() if(is.null(shifted_support)) NULL else shifted_support$bounds)
+    }
     route$context <- list(
       kind                 = "prior_density_context",
       requested_weights    = .prior_density_ordinate_compact(weights),
@@ -1021,6 +1025,21 @@
     return(NULL)
   }
   arguments <- adaptive$arguments
+  if(identical(adaptive$kind, "density_mixture")){
+    if(!is.list(arguments$dists) || !is.numeric(arguments$weights) ||
+       length(arguments$dists) != length(arguments$weights) || any(!is.finite(arguments$weights)) ||
+       any(arguments$weights < 0) || sum(arguments$weights) <= 0){
+      stop("Stored leaf prior mixture metadata are malformed.", call. = FALSE)
+    }
+    components <- lapply(arguments$dists, function(dist){
+      .prior_density_route_from_adaptive(attr(dist, "adaptive_evaluation", exact = TRUE))
+    })
+    if(any(vapply(components, is.null, logical(1)))){
+      return(.prior_density_route_unknown("A leaf prior law has no supported recipe.", list(kind = "density_mixture")))
+    }
+    return(.prior_density_route_mixture(components, arguments$weights / sum(arguments$weights),
+      provenance_extra = list(context = "model_specific_formula_laws")))
+  }
   if(identical(adaptive$kind, "linear_combination")){
     return(.prior_density_route_linear_arguments(arguments))
   }

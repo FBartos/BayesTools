@@ -6323,6 +6323,8 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     bridge_preflight_fit
   )
   bridge_preflight_fit <- coda::mcmc(bridge_preflight_fit)
+  row_values_result$formula_design$formula_scale <- .bt_formula_scale_finalize(
+    row_values_result$formula_scale, row_values_result$formula_design, row_values_result$prior_list)
   attr(bridge_preflight_fit, "formula_design") <- list(
     mu = row_values_result$formula_design
   )
@@ -6494,6 +6496,8 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     fixed = TRUE
   )
   missing_source_fit <- bridge_preflight_fit
+  row_result$formula_design$formula_scale <- .bt_formula_scale_finalize(
+    row_result$formula_scale, row_result$formula_design, row_result$prior_list)
   attr(missing_source_fit, "formula_design") <- list(
     mu = row_result$formula_design
   )
@@ -7667,6 +7671,8 @@ test_that("random-effect formulas are guarded in fixed-only downstream evaluator
       id = random_block(sd = prior("gamma", list(2, 2)))
     )
   )
+  formula_result$formula_design$formula_scale <- .bt_formula_scale_finalize(
+    formula_result$formula_scale, formula_result$formula_design, formula_result$prior_list)
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
 
   expect_error(
@@ -7816,6 +7822,8 @@ test_that("JAGS bridgesampling uses fitted formula metadata and errors on suppli
     dimnames = list(NULL, "mu_intercept")
   ))
   attr(fit, "prior_list") <- formula_result$prior_list
+  formula_result$formula_design$formula_scale <- .bt_formula_scale_finalize(
+    formula_result$formula_scale, formula_result$formula_design, formula_result$prior_list)
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
 
   expect_error(
@@ -10935,6 +10943,7 @@ test_that("transform_prior_samples unscales correlated random slopes from LKJ pr
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
 
   raw <- transform_prior_samples(fit, n_samples = 200, seed = 7, formula_scale = list())
+  fit <- attach_test_parameter_map(fit)
   transformed <- transform_prior_samples(fit, n_samples = 200, seed = 7)
   expect_true(all(c(sd_names, R_names, L_names, u_names) %in% colnames(raw)))
   expect_true(all(c(sd_names, R_names, L_names, u_names) %in% colnames(transformed)))
@@ -11517,7 +11526,7 @@ test_that("factor random slopes compile identically from data frames and tibbles
     data_frame_result$data$mu__xREx__id_xRE_DATAx
   )
   expect_identical(names(tibble_result$prior_list), names(data_frame_result$prior_list))
-  expect_null(tibble_result$formula_scale)
+  expect_length(tibble_result$formula_scale, 0L)
 })
 
 test_that("prior_random maps to explicitly named random-effect blocks", {
@@ -12172,7 +12181,7 @@ test_that("fixed and random blocks own independent concrete factor bases", {
   treatment_term <- result$formula_design$random_effects[[1L]]
   meandif_term <- result$formula_design$random_effects[[2L]]
 
-  expect_identical(result$formula_design$schema_version, 5L)
+  expect_identical(result$formula_design$schema_version, 6L)
   expect_equal(result$formula_design$contrast_matrices$f, fixed_matrix)
   expect_equal(treatment_term$contrast_matrices$f, treatment_matrix)
   expect_equal(meandif_term$contrast_matrices$f, meandif_matrix)
@@ -13137,7 +13146,8 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       id = random_block(sd = sd_prior, cor = prior("normal", list(0, 0.5)))
     )
   )
-  expect_false("formula_scale" %in% names(car_scale_request))
+  expect_length(car_scale_request$formula_scale, 0L)
+  expect_identical(attr(car_scale_request$formula_scale, "unscale_design")$owner_scope, "compiler")
   expect_equal(car_scale_request$formula_design$random_effects[[1]]$car$time_values, c(0, 0.5, 2))
 
   fixed_car_scale <- JAGS_formula(

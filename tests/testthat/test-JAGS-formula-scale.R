@@ -44,7 +44,9 @@ test_that("JAGS_formula accepts and validates formula_scale parameter", {
     formula_scale = NULL
   )
 
-  expect_false("formula_scale" %in% names(result))
+  expect_true("formula_scale" %in% names(result))
+  expect_length(result$formula_scale, 0L)
+  expect_identical(attr(result$formula_scale, "unscale_design")$owner_scope, "compiler")
   expect_equal(unname(result$data$mu_data_x_cont), as.numeric(df$x_cont))
 
   # Test 2: formula_scale with standardization
@@ -77,7 +79,8 @@ test_that("JAGS_formula accepts and validates formula_scale parameter", {
     formula_scale = list(x_cont = FALSE)
   )
 
-  expect_false("formula_scale" %in% names(result_not_scaled))
+  expect_true("formula_scale" %in% names(result_not_scaled))
+  expect_length(result_not_scaled$formula_scale, 0L)
   expect_equal(unname(result_not_scaled$data$mu_data_x_cont), as.numeric(df$x_cont))
 
 })
@@ -687,6 +690,7 @@ test_that("transform_prior_samples respects seed and validates formula_scale", {
   attr(fit, "formula_scale") <- list(
     mu = formula_scale_for_test(~ x1, list(x1 = list(mean = 5, sd = 2)))
   )
+  fit <- attach_test_parameter_map(fit)
 
   samples_a <- transform_prior_samples(fit, n_samples = 256, seed = 101)
   samples_b <- transform_prior_samples(fit, n_samples = 256, seed = 101)
@@ -752,7 +756,9 @@ test_that("transform_prior_samples handles scaled multi-factor interactions", {
   fit <- coda::mcmc(matrix(0, nrow = 4, ncol = length(posterior_columns), dimnames = list(NULL, posterior_columns)))
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_map(fit)
 
   prior_samples <- transform_prior_samples(fit, n_samples = 64, seed = 401)
 

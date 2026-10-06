@@ -620,6 +620,11 @@ test_that("formula evaluation adds sampled random effects only", {
   fit <- coda::mcmc(posterior)
   attr(fit, "formula_design") <- list(mu = result$formula_design)
 
+  completed_scale <- .bt_formula_scale_finalize(result$formula_design$formula_scale,
+    result$formula_design, result$prior_list, owner_scope = "fit")
+  attr(fit, "formula_design")$mu$formula_scale <- completed_scale
+  attr(fit, "formula_scale") <- list(mu = completed_scale)
+
   # the formula lists the marginalized 'estimate' block: an explicit target is
   # needed, and conditioning requires selecting the sampled blocks
   expect_error(
@@ -697,7 +702,11 @@ test_that("bridge rebuild validation preserves compile policy", {
     ncol = 1,
     dimnames = list(NULL, "dummy")
   ))
+  completed_scale <- .bt_formula_scale_finalize(result$formula_design$formula_scale,
+    result$formula_design, result$prior_list, owner_scope = "fit")
   attr(fit, "formula_design") <- list(mu = result$formula_design)
+  attr(fit, "formula_design")$mu$formula_scale <- completed_scale
+  attr(fit, "formula_scale") <- list(mu = completed_scale)
 
   expect_error(
     BayesTools:::.bt_JAGS_bridge_formula_context(
@@ -831,6 +840,11 @@ test_that("JAGS_extend preserves marginalized random-effect metadata", {
   attr(fit, "parameter_map") <- .bt_build_parameter_map(character())
   fit <- .bt_attach_draw_geometry(fit)
   fit <- .bt_attach_fit_contract(fit)
+
+  completed_scale <- .bt_formula_scale_finalize(result$formula_design$formula_scale,
+    result$formula_design, result$prior_list, owner_scope = "fit")
+  attr(fit, "formula_design")$mu$formula_scale <- completed_scale
+  attr(fit, "formula_scale") <- list(mu = completed_scale)
 
   extended <- JAGS_extend(
     fit,

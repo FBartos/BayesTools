@@ -367,6 +367,7 @@
 # are returned unchanged.
 .transform_scale_samples_list <- function(samples, formula_scale){
 
+  if(isTRUE(.bt_meta_get(samples, "transform_scaled"))) return(samples)
   if(is.null(formula_scale) || length(formula_scale) == 0){
     return(samples)
   }
@@ -412,7 +413,40 @@
     formula_scale = formula_scale,
     declared      = unique(unlist(lapply(elements, `[[`, "declared"), use.names = FALSE))
   )
-  transformed <- .apply_unscale_transform(coordinate_values, formula_scale)
+  state <- .bt_formula_state_get(samples)
+  if(is.null(state)){
+    transformed <- .apply_unscale_transform(coordinate_values, formula_scale,
+      targets = colnames(coordinate_values))
+  }else{
+    transformed <- coordinate_values
+    for(model in unique(state$model)){
+      rows <- which(state$model == model)
+      owned_scales <- state$models[[model]]$formula_scale
+      for(prefix in intersect(names(owned_scales), names(formula_scale))){
+        override <- formula_scale[[prefix]]
+        if(length(override) == 0L){
+          owned_scales[[prefix]] <- override
+        }else{
+          attributes(override) <- c(list(names = names(override)),
+            attributes(owned_scales[[prefix]])[setdiff(names(attributes(owned_scales[[prefix]])), "names")])
+          owned_scales[[prefix]] <- override
+        }
+      }
+      original <- state$values[rows, , drop = FALSE]
+      zero <- state$models[[model]]$zero_coordinates
+      for(column in zero){
+        if(!column %in% colnames(original)){
+          original <- cbind(original, 0)
+          colnames(original)[ncol(original)] <- column
+        }else original[, column] <- 0
+      }
+      additional <- setdiff(colnames(coordinate_values), colnames(original))
+      if(length(additional)) original <- cbind(original, coordinate_values[rows, additional, drop = FALSE])
+      output <- .apply_unscale_transform(original, owned_scales, targets = setdiff(colnames(coordinate_values), zero))
+      transformed[rows, ] <- output[, colnames(coordinate_values), drop = FALSE]
+      state$models[[model]]$formula_scale <- owned_scales
+    }
+  }
   original_samples <- samples
 
   for(name in names(elements)){
@@ -450,15 +484,24 @@
       !.formula_scale_matches_prefix(names(owners),parameter,"__xRE_SUMMARY__")]
     if(length(fixed_columns) && all(colnames(element$weights) %in% fixed_columns) &&
        !(is.list(samples[[name]]) && !is.numeric(samples[[name]]))){
-      transform <- .bt_formula_coefficient_transform(fixed_columns,formula_scale[[parameter]],parameter)
-      weights <- element$weights %*% transform$matrix[colnames(element$weights),,drop=FALSE]
-      projections <- .bt_ordered_formula_projections(original_samples,weights,
-        transform$source_transforms[transform$source_transforms!="identity"])
-      samples[[name]] <- .bt_ordered_attach_linear_view(samples[[name]],projections,weights,original_samples)
+      spec <- attr(formula_scale[[parameter]], "unscale_design", exact = TRUE)
+      transform <- .bt_formula_coefficient_transform(union(names(spec$multipliers), fixed_columns),
+        formula_scale[[parameter]], parameter)
+      if(is.numeric(samples[[name]])) samples[[name]] <- .bt_formula_dynamic_quantities(
+        samples[[name]], transform, colnames(element$weights))
+      active <- colnames(element$weights)[colSums(element$weights != 0) != 0]
+      if(all(is.finite(transform$matrix[active, , drop = FALSE]))){
+        weights <- element$weights[, active, drop = FALSE] %*%
+          .bt_formula_static_rows(transform, active)
+        projections <- .bt_ordered_formula_projections(original_samples,weights,
+          transform$source_transforms[transform$source_transforms!="identity"])
+        samples[[name]] <- .bt_ordered_attach_linear_view(samples[[name]],projections,weights,original_samples)
+      }
     }
   }
   samples <- .bt_meta_set(samples,"transform_scaled",TRUE)
   samples <- .bt_meta_set(samples,"formula_scale",formula_scale)
+  if(!is.null(state)) samples <- .bt_formula_state_attach(samples, state)
 
   return(samples)
 }

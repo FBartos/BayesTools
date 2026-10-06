@@ -363,6 +363,15 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     )
     formula_syntax <- paste0(lapply(formula_output, function(output) output[["formula_syntax"]]), collapse = "")
 
+    for(parameter in names(formula_output)){
+      completed_scale <- .bt_formula_scale_finalize(
+        formula_output[[parameter]]$formula_scale,
+        design = formula_output[[parameter]]$formula_design,
+        prior_list = prior_list, model_data = data, owner_scope = "fit"
+      )
+      formula_output[[parameter]]$formula_scale <- completed_scale
+      formula_output[[parameter]]$formula_design$formula_scale <- completed_scale
+    }
     # collect formula_scale information
     formula_scale_info <- lapply(formula_output, function(output) output[["formula_scale"]])
     formula_scale_info <- formula_scale_info[!sapply(formula_scale_info, is.null)]
@@ -925,6 +934,12 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
         formula_design[[parameter]],
         context = paste0("JAGS_extend() formula '", parameter, "'")
       )
+      .bt_formula_scale_finalized_check(formula_design[[parameter]]$formula_scale,
+        parameter, require_owner = TRUE)
+      if(!identical(attr(formula_design[[parameter]]$formula_scale, "unscale_design", exact = TRUE),
+                    attr(attr(fit, "formula_scale", exact = TRUE)[[parameter]], "unscale_design", exact = TRUE))){
+        .bt_stop_refit_required("JAGS_extend() formula declaration carriers disagree. Refit the model with this version of BayesTools.")
+      }
     }
   }
   JAGS_draw_geometry(fit)

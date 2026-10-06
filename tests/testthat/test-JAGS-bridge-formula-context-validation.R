@@ -33,6 +33,12 @@ skip_if_not_test_profile("unit")
     fitted_design <- .bridge_formula_validation_design()
   }
   attr(fit, "formula_design") <- fitted_design
+  for(parameter in names(fitted_design)){
+    scale <- .bt_formula_scale_finalize(fitted_design[[parameter]]$formula_scale,
+      fitted_design[[parameter]], fitted_design[[parameter]]$prior_list)
+    fitted_design[[parameter]]$formula_scale <- scale
+  }
+  attr(fit, "formula_design") <- fitted_design
 
   do.call(
     BayesTools:::.bt_JAGS_bridge_formula_context,
@@ -291,6 +297,9 @@ test_that("bridge formula context treats fitted source semantics as authoritativ
     prior_random = fitted_prior_random
   )
   fit <- list()
+  completed_scale <- .bt_formula_scale_finalize(fitted$formula_scale, fitted$formula_design,
+    fitted$prior_list)
+  fitted$formula_design$formula_scale <- completed_scale
   attr(fit, "formula_design") <- list(mu = fitted$formula_design)
   context_args <- list(
     fit = fit,

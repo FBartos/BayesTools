@@ -90,7 +90,7 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 # formula-scale information (which carries the fitted unscale designs).
 .bt_transform_scale_posterior <- function(posterior, formula_scale,
                                           formula_design = NULL,
-                                          coordinates = NULL){
+                                          coordinates = NULL, targets = NULL){
 
   .check_formula_scale_info(formula_scale)
   formula_scale <- .bt_formula_scale_list_with_unscale_designs(
@@ -98,7 +98,7 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
     formula_design
   )
 
-  posterior <- .apply_unscale_transform(as.matrix(posterior), formula_scale)
+  posterior <- .apply_unscale_transform(as.matrix(posterior), formula_scale, targets = targets)
   .bt_remove_internal_random_coordinates(
     posterior = posterior,
     coordinates = coordinates
@@ -276,42 +276,107 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
 # @return Matrix with transformed prior samples
 .generate_transformed_prior_samples <- function(
     prior_list, column_names, n_samples, seed = NULL, formula_scale = NULL,
-    formula_design = NULL){
+    formula_design = NULL, retain_state = FALSE){
 
   if(!is.null(formula_scale) && length(formula_scale) > 0){
     .check_formula_scale_info(formula_scale)
   }
 
+  expression_points <- names(prior_list)[vapply(prior_list, function(prior){
+    is.prior.point(prior) && (!is.numeric(prior$parameters$location) ||
+      length(prior$parameters$location) != 1L || !is.finite(prior$parameters$location))
+  }, logical(1))]
+  needed <- column_names
+  for(prefix in names(formula_scale)){
+    scale <- formula_scale[[prefix]]
+    spec <- attr(scale, "unscale_design", exact = TRUE)
+    if(is.null(spec)) next
+    transform <- .bt_formula_coefficient_transform(names(spec$multipliers), scale, prefix)
+    requested <- intersect(column_names, transform$target_names)
+    needed <- union(needed, transform$dependencies$source[transform$dependencies$target %in% requested])
+    needed <- union(needed, transform$state_dependencies$source[transform$state_dependencies$target %in% requested])
+  }
+  unsupported <- expression_points[vapply(expression_points, function(owner){
+    any(.prior_linear_prior_columns(owner, prior_list[[owner]]) %in% needed)
+  }, logical(1))]
+  if(length(unsupported)) .bt_formula_transform_stop(
+    "Fresh expression-point replay is unavailable without a certified persisted recipe.",
+    reason = "uncertified_point_replay", missing = unsupported)
+
   prior_samples <- .generate_prior_sample_matrix(
     prior_list     = prior_list,
     n_samples      = n_samples,
-    column_names   = column_names,
+    column_names   = NULL,
     seed           = seed
   )
+  retained_primitives <- prior_samples
   prior_samples <- .bt_add_lkj_prior_samples(
     samples        = prior_samples,
     formula_design = formula_design,
     column_names   = column_names,
     n_samples      = n_samples
   )
+  retained_columns <- setdiff(colnames(retained_primitives), colnames(prior_samples))
+  if(length(retained_columns)) prior_samples <- cbind(prior_samples,
+    retained_primitives[, retained_columns, drop = FALSE])
+  retained_primitives <- prior_samples
   prior_samples <- .bt_add_random_allocation_indicator_prior_samples(
     samples      = prior_samples,
     prior_list   = prior_list,
     column_names = column_names,
     n_samples    = n_samples
   )
+  retained_columns <- setdiff(colnames(retained_primitives), colnames(prior_samples))
+  if(length(retained_columns)) prior_samples <- cbind(prior_samples,
+    retained_primitives[, retained_columns, drop = FALSE])
+  retained_primitives <- prior_samples
   prior_samples <- .bt_add_random_deterministic_prior_samples(
     samples        = prior_samples,
     prior_list     = prior_list,
     formula_design = formula_design,
     column_names   = column_names
   )
+  retained_columns <- setdiff(colnames(retained_primitives), colnames(prior_samples))
+  if(length(retained_columns)) prior_samples <- cbind(prior_samples,
+    retained_primitives[, retained_columns, drop = FALSE])
 
   if(!is.null(formula_scale) && length(formula_scale) > 0){
-    prior_samples <- .apply_unscale_transform(prior_samples, formula_scale)
+    prior_samples <- .apply_unscale_transform(prior_samples, formula_scale, targets = column_names)
   }
 
-  return(prior_samples)
+  if(retain_state) return(prior_samples)
+  return(prior_samples[, intersect(column_names, colnames(prior_samples)), drop = FALSE])
+}
+
+.bt_formula_sample_contributions <- function(context, samples){
+
+  if(!identical(context$linear_weight_space, "formula_contribution")) return(samples)
+  fitted <- samples
+  for(owner in names(context$prior_list)){
+    prior <- context$prior_list[[owner]]
+    if(!is.prior(prior)) next
+    columns <- intersect(.prior_linear_prior_columns(owner, prior), context$column_names)
+    if(!length(columns)) next
+    multiplier <- attr(prior, "multiply_by", exact = TRUE)
+    if(is.null(multiplier)) next
+    if(is.prior.point(prior) && is.numeric(prior$parameters$location) && isTRUE(prior$parameters$location == 0)){
+      samples[, columns] <- 0
+      next
+    }
+    if(is.character(multiplier)){
+      if(!multiplier %in% colnames(fitted)) .bt_formula_transform_stop(
+        "Fresh formula contribution state is unavailable.", reason = "missing_multiplier_state", state = multiplier)
+      multiplier <- fitted[, multiplier]
+    }
+    if(any(!is.finite(multiplier))) .bt_formula_transform_stop(
+      "Fresh formula contribution state is nonfinite.", reason = "nonfinite_transform")
+    if(isTRUE(all(multiplier == 0))){
+      samples[, columns] <- 0
+    }else samples[, columns] <- fitted[, columns, drop = FALSE] * multiplier
+    if(any(!is.finite(samples[, columns, drop = FALSE]))) .bt_formula_transform_stop(
+      "Fresh formula contribution arithmetic is nonfinite.", reason = "nonfinite_transform")
+  }
+  samples
 }
 
 
@@ -393,8 +458,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   )
   for(node in nodes){
     targets <- node$coordinates[
-      node$coordinates %in% column_names &
-        !node$coordinates %in% colnames(samples)
+      node$coordinates %in% column_names
     ]
     if(length(targets) == 0L){
       next
@@ -406,7 +470,10 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
     if(is.null(values)){
       next
     }
-    samples <- cbind(samples, values[, targets, drop = FALSE])
+    present <- intersect(targets, colnames(samples))
+    absent <- setdiff(targets, colnames(samples))
+    if(length(present)) samples[, present] <- values[, present, drop = FALSE]
+    if(length(absent)) samples <- cbind(samples, values[, absent, drop = FALSE])
   }
 
   samples

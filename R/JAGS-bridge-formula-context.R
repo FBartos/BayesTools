@@ -177,6 +177,16 @@
       prior_random  = if(!is.null(formula_random_prior_list)) formula_random_prior_list[[parameter]] else NULL,
       random_effects_compile = if(!is.null(formula_random_effects_compile_list)) formula_random_effects_compile_list[[parameter]] else NULL
     )
+    priors <- attr(fit, "prior_list", exact = TRUE)
+    rebuilt_priors <- formula_output[[parameter]]$prior_list
+    priors <- c(rebuilt_priors, priors[setdiff(names(priors), names(rebuilt_priors))])
+    fitted_design <- attr(fit, "formula_design", exact = TRUE)[[parameter]]
+    fitted_spec <- attr(fitted_design$formula_scale, "unscale_design", exact = TRUE)
+    completed_scale <- .bt_formula_scale_finalize(formula_output[[parameter]]$formula_scale,
+      formula_output[[parameter]]$formula_design, priors,
+      model_data = as.list(fitted_spec$state_constants), owner_scope = "fit")
+    formula_output[[parameter]]$formula_scale <- completed_scale
+    formula_output[[parameter]]$formula_design$formula_scale <- completed_scale
   }
   formula_data_output <- lapply(names(formula_output), function(parameter){
     .bt_JAGS_bridge_formula_data_with_raw(
@@ -221,6 +231,7 @@
       design,
       context = "JAGS_bridgesampling()"
     )
+    .bt_formula_scale_finalized_check(design$formula_scale, design$parameter, require_owner = TRUE)
   }
 
   list(
@@ -443,9 +454,6 @@
      !identical(fitted$xlevels, rebuilt$xlevels)){
     mismatches <- c(mismatches, paste0("factor contrasts or levels differ for parameter '", parameter, "'"))
   }
-  if(!identical(fitted$formula_scale, rebuilt$formula_scale)){
-    mismatches <- c(mismatches, paste0("formula scaling metadata differ for parameter '", parameter, "'"))
-  }
   if(!identical(fitted$source_data, rebuilt$source_data)){
     mismatches <- c(mismatches, paste0(
       "original formula source data differ for parameter '", parameter, "'"
@@ -480,6 +488,9 @@
   }, error = function(e) conditionMessage(e))
   if(!is.null(random_mismatch)){
     mismatches <- c(mismatches, random_mismatch)
+  }
+  if(!identical(fitted$formula_scale, rebuilt$formula_scale)){
+    mismatches <- c(mismatches, paste0("formula scaling metadata differ for parameter '", parameter, "'"))
   }
 
   mismatches

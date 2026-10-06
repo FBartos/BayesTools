@@ -43,13 +43,14 @@ of those targets. Supply exactly one of \code{target} and \code{weights}.}
 }
 \value{
 \code{JAGS_formula_coefficient_transform()} returns a
-\code{BayesTools_formula_coefficient_transform} list (schema version 2). Its
+\code{BayesTools_formula_coefficient_transform} list (schema version 3). Its
 \code{targets} data frame has one row per original-scale target with the
 \code{structural_status}, \code{fixed_value} and \code{reason} of the target, its
 \code{map_type} (\code{"identity"}: the target is its own fitted source, including a
 log-transformed source with an exp output; \code{"affine"}: a linear
 combination of fitted sources; \code{"exp_affine"}: exp of a linear combination
-of identity and log-transformed sources; \code{"unsupported"}: any other map),
+of identity and log-transformed sources; \code{"state_dependent"}: a map requiring
+fitted multiplier states; \code{"unsupported"}: any other map),
 and the \code{support} of the map (a list column of \code{c(lower, upper)}:
 \code{c(0, Inf)} for maps with an exp output and \code{c(-Inf, Inf)} otherwise; the
 prior support of a target can be narrower).
@@ -60,7 +61,13 @@ class \code{BayesTools_formula_prior_density_unavailable} (also
 \code{BayesTools_formula_transform_unavailable}) whose field \code{reason} names the
 cause, e.g. \code{"unknown_target"}, \code{"missing_source_coordinates"}, or
 \code{"nonlinear_map"} for a weighted combination with a target whose map is not
-linear in the fitted coefficients.
+linear in the fitted coefficients. Declared measure limitations additionally
+inherit \code{BayesTools_formula_measure_unavailable}; generic context/program
+failures and numeric transformation failures retain their strict boundary.
+Numeric refusal reasons include \code{"zero_multiplier_denominator"},
+\code{"missing_multiplier_state"}, and \code{"nonfinite_transform"}. Formula-design 6,
+unscale-design 2, and transform 3 require refitting older stored formats;
+readers never reconstruct missing fitted declaration ownership.
 A requested parameter without a persisted formula design stops with
 \code{BayesTools_formula_transform_unavailable} and reason
 \code{"missing_formula_design"}, also when requested through either prior-density
@@ -77,15 +84,21 @@ nonzero dependencies, and parameter-map structural metadata.
 \code{JAGS_formula_prior_density()} constructs the induced marginal prior measure
 for one target, or for a weighted combination of targets, through
 BayesTools' deterministic prior-density context and linear-density algebra.
-The result can be passed directly to \code{\link[=prior_density_ordinate]{prior_density_ordinate()}}. Targets
-and sources are the raw fitted coefficients: a coefficient prior's
-\code{multiply_by} scales only its contribution to the linear predictor and does
-not enter the coefficient's prior density. A weighted combination
-\eqn{\sum_t v_t T_t} (e.g. a mean-difference or orthonormal factor level
-on the original scale of a scaled formula) is available when every target
-with a nonzero weight has an \code{"identity"} or \code{"affine"} map; its density
-is that of the combined fitted-source weights \eqn{v^\top M}. Other maps
-stop with the classed error described below (reason \code{"nonlinear_map"}).
+The result can be passed directly to \code{\link[=prior_density_ordinate]{prior_density_ordinate()}}. Fitted
+coefficient priors are raw; \code{multiply_by} belongs to their compiled formula
+contribution. Original raw coefficients use
+\eqn{z'_j = \sum_k A_{jk} z_k m_k / m_j} on one immutable fitted state.
+Identical canonical multipliers cancel before division, including zero;
+declared zero contributions require no irrelevant state. A different needed
+zero denominator refuses the requested numeric vector, without row repair.
+
+Finite \code{matrix} rows are static raw maps. Dynamic rows are entirely \code{NA} and
+retain finite \code{basis_matrix}, canonical multipliers, true state dependencies,
+and a \code{raw_affine}, \code{contribution_affine}, or \code{unavailable} prior recipe.
+Compatible weighted requests share one context; declared point siblings may
+add a constant offset. Incompatible recipes refuse with
+\code{"incompatible_prior_recipes"}; unsupported stochastic denominators refuse
+with \code{"state_dependent_map"}. Unsupported dependence/products remain explicit.
 
 \code{JAGS_formula_internal_coordinate_priors()} returns exact scalar priors for
 stochastic formula coordinates that are intentionally absent from the

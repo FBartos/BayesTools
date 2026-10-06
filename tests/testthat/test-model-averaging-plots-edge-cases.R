@@ -3890,6 +3890,7 @@ test_that("factor posterior plot data aggregates duplicate declared point masses
   fit <- coda::mcmc(posterior)
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
   fit <- attach_test_parameter_map(fit)
 
@@ -3937,6 +3938,7 @@ test_that("factor posterior plot data aggregates duplicate declared point masses
   fit <- coda::mcmc(posterior)
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
   fit <- attach_test_parameter_map(fit)
 

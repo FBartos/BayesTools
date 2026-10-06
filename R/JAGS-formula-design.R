@@ -32,7 +32,7 @@
 
 .bt_formula_design_schema_version <- function(){
 
-  5L
+  6L
 }
 
 .bt_formula_design_stored_data_scale <- function(){
@@ -429,6 +429,11 @@ JAGS_formula_draws <- function(draws, formula, parameter, data, prior_list,
 
   formula_design <- attr(draws, "formula_design", exact = TRUE)
   formula_scale_info <- attr(draws, "formula_scale", exact = TRUE)
+  supplied_priors <- attr(draws, "prior_list", exact = TRUE)
+  if(is.list(formula_design)) for(parameter_name in names(formula_design)){
+    .bt_validate_formula_design_replay_schema(formula_design[[parameter_name]],
+      context = "JAGS_formula_draws() existing declaration carrier")
+  }
   if(inherits(draws, c("runjags", "BayesTools_fit"))){
     stop(
       "'draws' must be draws without a fit: a fit from JAGS_fit() carries ",
@@ -476,9 +481,18 @@ JAGS_formula_draws <- function(draws, formula, parameter, data, prior_list,
     context = paste0("JAGS_formula_draws() expression for parameter '", parameter, "'")
   )
   formula_scale_info <- if(is.list(formula_scale_info)) formula_scale_info else list()
-  formula_scale_info[[parameter]] <- output$formula_scale
+  owning_priors <- c(formula_design[[parameter]]$prior_list,
+    supplied_priors[setdiff(names(supplied_priors), names(formula_design[[parameter]]$prior_list))])
+  completed_scale <- .bt_formula_scale_finalize(
+    output$formula_scale, design = formula_design[[parameter]],
+    prior_list = owning_priors,
+    model_data = model_data, owner_scope = "fit"
+  )
+  formula_design[[parameter]]$formula_scale <- completed_scale
+  formula_scale_info[[parameter]] <- completed_scale
 
   out <- coda::mcmc(draws)
+  attr(out, "prior_list") <- owning_priors
   attr(out, "formula_design") <- formula_design
   if(length(formula_scale_info) > 0L){
     attr(out, "formula_scale") <- formula_scale_info

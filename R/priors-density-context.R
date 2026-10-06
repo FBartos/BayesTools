@@ -1,3 +1,50 @@
+.bt_formula_context_check <- function(context){
+
+  if(!identical(context$schema_version, 1L) ||
+     !is.character(context$linear_weight_space) || length(context$linear_weight_space) != 1L ||
+     is.na(context$linear_weight_space) ||
+     !context$linear_weight_space %in% c("coefficient", "formula_contribution")){
+    .bt_stop_refit_required("Stored formula prior context is unsupported. Refit or recreate it with this version of BayesTools.")
+  }
+  for(transform in context$transforms){
+    .bt_validate_formula_coefficient_transform(transform$descriptor)
+    if(!identical(transform$matrix, transform$descriptor$matrix) ||
+       !identical(transform$columns, transform$descriptor$source_names)){
+      .bt_stop_refit_required("Stored formula prior context has inconsistent transforms. Refit or recreate it with this version of BayesTools.")
+    }
+  }
+  invisible(TRUE)
+}
+
+.bt_formula_context_canonical <- function(context, standardized_weights){
+
+  if(!length(context$transforms)) return(context)
+  out <- .bt_formula_prior_density_context_raw_sources(context,
+    unique(unlist(lapply(context$transforms, `[[`, "columns"), use.names = FALSE)))
+  for(transform in attr(standardized_weights, "formula_contribution_transforms", exact = TRUE)){
+    out <- .bt_formula_prior_density_context_contributions(out, transform)
+  }
+  out$formula_scale <- NULL
+  out$transforms <- list()
+  out
+}
+
+.bt_formula_require_multiplier_laws <- function(context, weights, parameter = NULL){
+
+  for(owner in names(context$prior_list)){
+    prior <- context$prior_list[[owner]]
+    if(!is.prior(prior)) next
+    columns <- intersect(.prior_linear_prior_columns(owner, prior), names(weights)[weights != 0])
+    if(!length(columns)) next
+    if(is.prior.point(prior) && is.numeric(prior$parameters$location) && isTRUE(prior$parameters$location == 0)) next
+    multiplier <- attr(prior, "multiply_by", exact = TRUE)
+    if(is.character(multiplier) && is.null(context$prior_list[[multiplier]])) .bt_formula_density_stop(
+      "A compiled formula multiplier has no supplied prior law.",
+      parameter = parameter, reason = "missing_multiplier_law", state = multiplier)
+  }
+  invisible(TRUE)
+}
+
 .prior_density_context <- function(prior_list, column_names, formula_scale = NULL,
                                    n_grid = .prior_linear_density_default_grid(),
                                    tail_prob = .prior_linear_density_tail_prob()){
@@ -15,9 +62,18 @@
   transforms <- list()
   if(!is.null(formula_scale) && length(formula_scale) > 0){
     for(param_name in names(formula_scale)){
-      affected_cols <- grep(paste0("^", param_name, "_"), column_names, value = TRUE)
+      spec <- attr(formula_scale[[param_name]], "unscale_design", exact = TRUE)
+      affected_cols <- if(is.null(spec)) column_names[
+        .formula_scale_matches_prefix(column_names, param_name)
+      ] else intersect(names(spec$multipliers), column_names)
       if(length(affected_cols) == 0){
         next
+      }
+      column_names <- union(column_names, names(spec$multipliers))
+      affected_cols <- union(affected_cols, names(spec$multipliers))
+      if(!is.null(spec) && identical(spec$owner_scope, "compiler") && !isTRUE(spec$complete)){
+        formula_scale[[param_name]] <- .bt_formula_scale_finalize(
+          formula_scale[[param_name]], prior_list = prior_list, owner_scope = "prior_only")
       }
       coefficient_transform <- .bt_formula_coefficient_transform(
         source_names = affected_cols,
@@ -25,6 +81,7 @@
         parameter = param_name
       )
       transforms[[param_name]] <- list(
+        descriptor    = coefficient_transform,
         columns       = coefficient_transform$source_names,
         matrix        = coefficient_transform$matrix,
         log_intercept = any(coefficient_transform$source_transforms == "log"),
@@ -34,6 +91,8 @@
   }
 
   out <- list(
+    schema_version = 1L,
+    linear_weight_space = "coefficient",
     prior_list    = prior_list,
     column_names  = column_names,
     formula_scale = formula_scale,
@@ -69,38 +128,30 @@
 
   used <- rep(FALSE, length(weights))
   names(used) <- names(weights)
-
+  contribution_transforms <- list()
+  offset <- 0
+  if(length(context$transforms)) .bt_formula_context_check(context)
   for(transform in context$transforms){
-    cols <- intersect(transform$columns, names(weights))
-    if(length(cols) == 0){
-      next
-    }
-
-    if(transform$log_intercept &&
-       transform$intercept %in% cols &&
-       weights[[transform$intercept]] != 0 &&
+    cols <- intersect(transform$columns, names(weights)[weights != 0])
+    if(length(cols) == 0L) next
+    descriptor <- transform$descriptor
+    if(transform$log_intercept && transform$intercept %in% cols &&
        !identical(unname(source_transforms[transform$intercept]), "log")){
-      stop(
-        "Linear-combination prior densities with log-intercept scaling are only available ",
-        "for combinations with the log of the transformed intercept coefficient.",
-        call. = FALSE
-      )
+      .bt_formula_density_stop("This coefficient combination requires the log of its transformed intercept.",
+        parameter = descriptor$parameter, reason = "nonlinear_map")
     }
-
-    temp_weights <- rep(0, length(transform$columns))
-    names(temp_weights) <- transform$columns
-    temp_weights[cols] <- weights[cols]
-    out[transform$columns] <- out[transform$columns] +
-      as.numeric(temp_weights %*% transform$matrix)
+    recipe <- .bt_formula_prior_recipe_weights(descriptor, weights[cols])
+    offset <- offset + recipe$offset
+    out[names(recipe$weights)] <- out[names(recipe$weights)] + recipe$weights
+    if(identical(recipe$type, "contribution_affine")) contribution_transforms[[descriptor$parameter]] <- descriptor
     used[cols] <- TRUE
   }
-
   remaining <- names(weights)[!used]
-  if(length(remaining) > 0){
-    out[remaining] <- out[remaining] + weights[remaining]
-  }
-
-  out[out != 0]
+  if(length(remaining)) out[remaining] <- out[remaining] + weights[remaining]
+  out <- out[out != 0]
+  if(length(contribution_transforms)) attr(out, "formula_contribution_transforms") <- contribution_transforms
+  if(offset != 0) attr(out, "formula_recipe_offset") <- offset
+  out
 }
 
 .prior_density_context_density <- function(context, weights,
@@ -116,16 +167,27 @@
     source_transforms <- source_transforms[names(standardized_weights)]
   }
 
-  .prior_linear_combination_density(
-    prior_list                       = context$prior_list,
+  canonical <- .bt_formula_context_canonical(context, standardized_weights)
+  offset <- attr(standardized_weights, "formula_recipe_offset", exact = TRUE)
+  attr(standardized_weights, "formula_recipe_offset") <- NULL
+  attr(standardized_weights, "formula_contribution_transforms") <- NULL
+  .bt_formula_require_multiplier_laws(canonical, standardized_weights)
+  priors <- canonical$prior_list
+  out <- .prior_linear_combination_density(
+    prior_list                       = priors,
     weights                          = standardized_weights,
     n_grid                           = context$n_grid,
     tail_prob                        = context$tail_prob,
     source_transforms                = source_transforms,
-    output_transformation            = output_transformation,
-    output_transformation_arguments  = output_transformation_arguments,
+    output_transformation            = if(is.null(offset)) output_transformation else NULL,
+    output_transformation_arguments  = if(is.null(offset)) output_transformation_arguments else NULL,
     grid_spacing                     = context$grid_spacing
   )
+  if(!is.null(offset)){
+    out <- .prior_linear_density_transform(out, "lin", list(a = offset, b = 1), n_grid = context$n_grid)
+    out <- .prior_linear_density_transform(out, output_transformation, output_transformation_arguments, n_grid = context$n_grid)
+  }
+  out
 }
 
 .prior_density_model_mixture_context <- function(prior_list, column_names,
@@ -266,6 +328,8 @@
   }
 
   out <- list(
+    schema_version = 1L,
+    linear_weight_space = "coefficient",
     prior_list      = prior_list,
     column_names    = column_names,
     formula_scale   = formula_scale,

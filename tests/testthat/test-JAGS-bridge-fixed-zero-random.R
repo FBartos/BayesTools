@@ -20,7 +20,7 @@ skip_if_not_test_profile("unit")
   fit <- coda::mcmc(posterior)
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
-  fit
+  attach_test_parameter_map(fit)
 }
 
 test_that("fixed-zero random blocks leave the bridge target and dimension invariant", {
@@ -258,6 +258,7 @@ test_that("known group covariance blocks prune fixed-zero columns exactly", {
   fit <- coda::mcmc(as.matrix(posterior))
   attr(fit, "prior_list") <- result$prior_list
   attr(fit, "formula_design") <- design
+  fit <- attach_test_parameter_map(fit)
   bridge_names <- NULL
   testthat::local_mocked_bindings(
     bridge_sampler = function(...){

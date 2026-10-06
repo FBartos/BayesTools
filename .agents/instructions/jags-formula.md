@@ -165,6 +165,24 @@ Never infer an unscaling map from sampled values or parameter-name
 coincidences; tests build `formula_scale` through `JAGS_formula()` (see
 `formula_scale_for_test()`).
 
+Formula-design 6, unscale-design 2 and coefficient-transform 3 require refitting
+older formats. One private finalizer completes current compiler specs from
+actual full priors and owned scalar data for fit/draws-only producers, writing
+the same owner to both carriers; fit readers never complete missing ownership.
+Explicit prior-only entry points may complete a current compiler copy. Numeric
+overrides retain fitted declarations. Original coefficients use
+`sum_k A[j,k] * z_k * m_k / m_j` on one immutable original snapshot for every
+prefix, with equal canonical multipliers canceled even at zero and declared
+zero terms elided. A different needed zero denominator refuses the requested
+numeric vector. C has finite static rows and all-NA dynamic rows; A remains
+finite. Formula values/measures use compiled contributions and fitted rows on
+both views. Public marginal `at` values retain fitted/SD units on fitted views
+and original units on original views; standardize only the latter to compare
+the same physical row. Retain fixed sources, actual multipliers and needed gate/replay
+parents, never a sampler/training matrix/random latent closure. Exact posterior
+model probabilities and original eligible joint gate frequencies survive output
+selection and allocation; unknown certificates remain explicitly unavailable.
+
 `formula_scale` centers every scaled predictor, also in terms without a free
 intercept (maintainer decision): the model is specified on the standardized
 scale. `~ 0 + x` with scaled `x` fits `mu = b (x - m) / s`, whose

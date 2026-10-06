@@ -44,6 +44,18 @@ otherwise), and, for levels whose conditioning was resolved per level,
 \code{effective_conditional} and \code{effective_conditional_rule}.
 Read \code{averaged} instead of comparing \code{condition_key} with a
 literal key.}
+\item{\code{"measure_unavailable"}}{a plain data frame with exact columns
+\code{column}, \code{measure}, and \code{reason}, with unique column/measure
+pairs. The measures are \code{prior_density}, \code{atoms}, or \code{support}.
+Entries prevent stale prior/density/support fallback while numeric draws
+remain usable. Atom/support refusals use
+\code{BayesTools_formula_atoms_unavailable} and
+\code{BayesTools_formula_support_unavailable}, inheriting
+\code{BayesTools_formula_measure_unavailable}.}
+\item{\code{"linear_weight_space"}}{\code{"coefficient"} for coefficient
+recipes, or \code{"formula_contribution"} for fitted design rows and compiled
+multipliers. Contribution weights never pass through coefficient C/A again.
+Old ambiguous stored contexts must be recreated.}
 \item{\code{"linear_weights"}}{the weights of the fitted coordinates
 that form a level of a \code{\link[=marginal_posterior]{marginal_posterior()}} (a named numeric vector,
 or a matrix with one row per draw).}

@@ -104,7 +104,7 @@ test_that("compact partition checks agree with independent dense dependencies", 
   fit <- coda::mcmc(posterior)
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
-  fit
+  attach_test_parameter_map(fit)
 }
 
 .bridge_marginal_random_mvn <- function(y, mean, covariance){

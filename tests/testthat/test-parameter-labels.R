@@ -91,7 +91,7 @@ skip_if_not_test_profile("unit")
   if(length(scale) > 0L){
     attr(fit, "formula_scale") <- stats::setNames(list(scale), parameter)
   }
-  fit <- .bt_attach_parameter_map(fit)
+  fit <- attach_test_parameter_map(fit)
   fit <- .bt_attach_draw_geometry(fit)
   .bt_attach_fit_contract(fit)
 }
@@ -742,7 +742,7 @@ test_that("formula prefixes come from the formula parameter, not from name prefi
     mu     = mu$formula_design,
     mu_tau = mu_tau$formula_design
   )
-  fit <- .bt_attach_parameter_map(fit)
+  fit <- attach_test_parameter_map(fit)
   fit <- .bt_attach_draw_geometry(fit)
   fit <- .bt_attach_fit_contract(fit)
 
@@ -985,7 +985,7 @@ test_that("model tables and the catalog take formula prefixes from the formula p
     mu     = mu$formula_design,
     mu_tau = mu_tau$formula_design
   )
-  fit <- .bt_attach_parameter_map(fit)
+  fit <- attach_test_parameter_map(fit)
   fit <- .bt_attach_draw_geometry(fit)
   fit <- .bt_attach_fit_contract(fit)
 
@@ -1254,7 +1254,7 @@ test_that("hypotheses reference levels in the catalog's escaped level form", {
   )
   class(fit) <- c("runjags", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
-  fit <- .bt_attach_parameter_map(fit)
+  fit <- attach_test_parameter_map(fit)
   fit <- .bt_attach_draw_geometry(fit)
   .bt_attach_fit_contract(fit)
 }
