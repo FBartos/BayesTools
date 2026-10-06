@@ -111,6 +111,11 @@ is available explicitly with `reporter = "llm"`.
 - A failing expectation requires diagnosis. Generate a candidate when the
   intended result changed; accept a verified baseline change only after
   maintainer or explicitly delegated review.
+- Stochastic printed signatures check structure and numeric value classes.
+  Summary sections also compare current public sample-table means and SDs with
+  base R and single-model probabilities with their declared and inferred values;
+  finite value mutations must fail these numeric oracles. Structured row
+  metadata retains the declared SD/quantile blanks of inclusion rows.
 - Do not add redundant matrices, samples, fits, or assertions for coverage
   alone.
 - A test that checks many elements (rows, levels, grid points) makes each check

@@ -320,11 +320,16 @@ expect_summary_matches_samples <- function(table, samples,
   expect_equal(rownames(table), colnames(samples))
   expect_true(all(estimate_columns %in% colnames(table)))
 
-  quantiles <- lapply(probs, function(prob) {
-    apply(samples, 2, stats::quantile, probs = prob, na.rm = TRUE, names = FALSE)
-  })
-  quantiles <- do.call(cbind, quantiles)
-  colnames(quantiles) <- as.character(probs)
+  quantiles <- if(length(probs) > 0L){
+    values <- lapply(probs, function(prob) {
+      apply(samples, 2, stats::quantile, probs = prob, na.rm = TRUE, names = FALSE)
+    })
+    values <- do.call(cbind, values)
+    colnames(values) <- as.character(probs)
+    values
+  }else{
+    matrix(numeric(), nrow = ncol(samples), ncol = 0L)
+  }
 
   expected <- cbind(
     "Mean" = apply(samples, 2, mean, na.rm = TRUE),
@@ -334,6 +339,17 @@ expect_summary_matches_samples <- function(table, samples,
   rownames(expected) <- colnames(samples)
 
   inclusion_rows <- grepl(" (inclusion", rownames(expected), fixed = TRUE)
+  quantities <- attr(table, "quantities", exact = TRUE)
+  if(!is.null(quantities)){
+    expect_identical(quantities$row, rownames(expected))
+    declared_inclusion <- vapply(quantities$label_parts, function(parts){
+      is.list(parts) && (
+        (!is.null(parts$inclusion) && !is.na(parts$inclusion)) ||
+          identical(parts$random$quantity, "inclusion")
+      )
+    }, logical(1))
+    inclusion_rows <- inclusion_rows | declared_inclusion
+  }
   expected[inclusion_rows, setdiff(estimate_columns, "Mean")] <- NA_real_
 
   actual <- as.matrix(table[, estimate_columns, drop = FALSE])
@@ -341,6 +357,61 @@ expect_summary_matches_samples <- function(table, samples,
 
   expect_equal(actual, expected, tolerance = tolerance)
 }
+
+test_that("numeric summary oracles reject finite value mutations", {
+
+  samples <- matrix(c(0.75, 1.25, 1.75), ncol = 1L,
+                    dimnames = list(NULL, "theta"))
+  table <- data.frame(Mean = 1.25, SD = 0.5, row.names = "theta")
+  expect_summary_matches_samples(table, samples, probs = numeric())
+  mutated <- table
+  mutated$Mean <- 125
+  expect_identical(
+    stochastic_reference_signature(capture.output(print(table))),
+    stochastic_reference_signature(capture.output(print(mutated)))
+  )
+  expect_stochastic_table_invariants(mutated)
+  mutation_problems <- expectation_problems(
+    expect_summary_matches_samples(mutated, samples, probs = numeric())
+  )
+  expect_length(mutation_problems, 1L)
+
+  inclusion_label <- "(mu) allocation: inclusion(study)"
+  inclusion_samples <- matrix(c(0, 1, 0), ncol = 1L,
+                              dimnames = list(NULL, inclusion_label))
+  inclusion_table <- data.frame(Mean = 1 / 3, SD = NA_real_,
+                                row.names = inclusion_label)
+  inclusion_parts <- .bt_label_parts(
+    "allocation", formula_parameter = "mu",
+    random = list(owner = "allocation", quantity = "inclusion",
+                  arguments = "study", display_arguments = "study")
+  )
+  attr(inclusion_table, "quantities") <- .bt_table_quantities(
+    inclusion_label, list(inclusion_parts)
+  )
+  expect_summary_matches_samples(inclusion_table, inclusion_samples,
+                                 probs = numeric())
+
+  declared_probabilities <- c(prior_prob = 1, post_prob = 1)
+  inference <- models_inference(list(list(
+    fit = NULL, marglik = bridgesampling_object(-1), prior_weights = 1
+  )))[[1L]][["inference"]]
+  expect_identical(unlist(inference[names(declared_probabilities)]),
+                   declared_probabilities)
+  probability_table <- as.data.frame(as.list(declared_probabilities))
+  altered_probability_table <- probability_table
+  altered_probability_table$prior_prob <- 0.75
+  expect_identical(
+    stochastic_reference_signature(capture.output(print(probability_table))),
+    stochastic_reference_signature(capture.output(print(altered_probability_table)))
+  )
+  expect_stochastic_table_invariants(altered_probability_table)
+  expect_failure(expect_equal(
+    unlist(altered_probability_table[names(declared_probabilities)]),
+    unlist(inference[names(declared_probabilities)]),
+    tolerance = 0
+  ))
+})
 
 # ============================================================================ #
 # SECTION 1: Test Empty Tables
@@ -1180,6 +1251,16 @@ test_that("Summary tables for all saved models", {
       model_summary_model <- model_list[[1]]
       model_summary_model[["inference"]][["marglik"]] <- -1
       model_summary <- model_summary_table(model_summary_model)
+      declared_probabilities <- c(prior_prob = 1, post_prob = 1)
+      inference_probabilities <- unlist(
+        model_summary_model[["inference"]][names(declared_probabilities)]
+      )
+      expect_identical(inference_probabilities, declared_probabilities)
+      probability_rows <- match(c("Prior prob.", "Post. prob."),
+                                trimws(model_summary[[1L]]))
+      expect_false(anyNA(probability_rows))
+      expect_equal(as.numeric(model_summary[[2L]][probability_rows]),
+                   unname(inference_probabilities), tolerance = 0)
       test_reference_table_stochastic(
         model_summary,
         paste0(model_name, "_model_summary.txt"),
@@ -1189,6 +1270,9 @@ test_that("Summary tables for all saved models", {
 
     # Process runjags estimates table
     runjags_summary <- runjags_estimates_table(fit)
+    runjags_samples <- runjags_estimates_table(fit, return_samples = TRUE)
+    expect_summary_matches_samples(runjags_summary, runjags_samples,
+                                   probs = numeric())
     test_reference_table_stochastic(
       runjags_summary,
       paste0(model_name, "_runjags_estimates.txt"),
@@ -1212,24 +1296,45 @@ test_that("runjags_estimates_table with conditional=TRUE on various prior types"
   # Test with publication bias priors
   fit_pub_bias <- readRDS(file.path(temp_fits_dir, "fit_simple_pub_bias.RDS"))
   runjags_pub_bias_conditional <- runjags_estimates_table(fit_pub_bias, conditional = TRUE)
+  runjags_pub_bias_samples <- runjags_estimates_table(fit_pub_bias, conditional = TRUE,
+                                                    return_samples = TRUE)
+  expect_summary_matches_samples(runjags_pub_bias_conditional, runjags_pub_bias_samples,
+                                 probs = numeric())
   test_reference_table_stochastic(runjags_pub_bias_conditional, "runjags_pub_bias_conditional.txt")
 
   # Test with factor priors
   fit_factor <- readRDS(file.path(temp_fits_dir, "fit_factor_orthonormal.RDS"))
   runjags_factor_conditional <- runjags_estimates_table(fit_factor, conditional = TRUE)
+  runjags_factor_samples <- runjags_estimates_table(fit_factor, conditional = TRUE,
+                                                  return_samples = TRUE)
+  expect_summary_matches_samples(runjags_factor_conditional, runjags_factor_samples,
+                                 probs = numeric())
   test_reference_table_stochastic(runjags_factor_conditional, "runjags_factor_conditional.txt")
 
   runjags_factor_conditional_transformed <- runjags_estimates_table(fit_factor, conditional = TRUE, transform_factors = TRUE)
+  runjags_factor_transformed_samples <- runjags_estimates_table(
+    fit_factor, conditional = TRUE, transform_factors = TRUE, return_samples = TRUE
+  )
+  expect_summary_matches_samples(runjags_factor_conditional_transformed,
+                                 runjags_factor_transformed_samples, probs = numeric())
   test_reference_table_stochastic(runjags_factor_conditional_transformed, "runjags_factor_conditional_transformed.txt")
 
   # Test with mixture priors
   fit_mixture <- readRDS(file.path(temp_fits_dir, "fit_mixture_simple.RDS"))
   runjags_mixture_conditional <- runjags_estimates_table(fit_mixture, conditional = TRUE)
+  runjags_mixture_samples <- runjags_estimates_table(fit_mixture, conditional = TRUE,
+                                                   return_samples = TRUE)
+  expect_summary_matches_samples(runjags_mixture_conditional, runjags_mixture_samples,
+                                 probs = numeric())
   test_reference_table_stochastic(runjags_mixture_conditional, "runjags_mixture_conditional.txt")
 
   # Test with spike and slab priors
   fit_spike_slab <- readRDS(file.path(temp_fits_dir, "fit_spike_slab_simple.RDS"))
   runjags_spike_slab_conditional <- runjags_estimates_table(fit_spike_slab, conditional = TRUE)
+  runjags_spike_slab_samples <- runjags_estimates_table(fit_spike_slab, conditional = TRUE,
+                                                      return_samples = TRUE)
+  expect_summary_matches_samples(runjags_spike_slab_conditional, runjags_spike_slab_samples,
+                                 probs = numeric())
   test_reference_table_stochastic(runjags_spike_slab_conditional, "runjags_spike_slab_conditional.txt")
 
 })
