@@ -77,6 +77,14 @@
 #' density is \eqn{\phi(b_m / b_s) E[1 / |s|] / b_s} for a multiplied
 #' \eqn{N(b_m, b_s)} term and multiplier \eqn{s}, finite exactly when the
 #' multiplier's declared density vanishes at zero and infinite otherwise.
+#' Closed inverse moments retain their logarithms even when the natural
+#' moment overflows. Provenance records availability, its reason and a
+#' floating-resolution diagnostic; the diagnostic is not a rigorous
+#' special-function error bound. Unsupported mapped-Beta shifts, differences
+#' of log normalizers and unresolved offset arithmetic give a structurally
+#' regular inexact ordinate with no log density. For example, a standard
+#' Normal multiplied by a Lognormal with meanlog zero and sdlog 40 has
+#' offset log density \eqn{800 - \log(2\pi)/2}, which remains available.
 #' Levels of ordered priors are the ordered total times their Dirichlet
 #' allocation share and are classified in the same way; a non-normal total or
 #' multiplied term uses the analogous `"scale_mixture"` quadrature. Their

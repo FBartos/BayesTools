@@ -331,3 +331,59 @@ test_that("nonlocal moment integrals retain values without raw PDF tail warnings
   expect_error(mean(unresolved), class = "BayesTools_numerical_unavailable")
   expect_error(sd(unresolved), class = "BayesTools_numerical_unavailable")
 })
+
+test_that("inverse moments retain finite logs and refuse unresolved offset arithmetic", {
+
+  lognormal <- prior("lognormal", list(meanlog = 0, sdlog = 40))
+  moment <- .prior_density_inverse_moment(lognormal, 1024)
+  expect_identical(moment$value, Inf)
+  expect_identical(moment$log_value, 800)
+  expect_true(moment$available)
+  spec <- list(additive_mean = 0, additive_sd = 0, product_mean = 0, product_sd = 1,
+               multiplier = lognormal, bounds = c(0, Inf), sources = list())
+  ordinate <- .prior_conditional_normal_offset_ordinate(spec, 0, 1024)
+  expect_identical(ordinate$behavior, "regular")
+  expect_true(ordinate$exact)
+  expect_equal(ordinate$log_density, 799.0810614667953, tolerance = 2e-13)
+  huge <- .prior_density_inverse_moment(prior("lognormal", list(0, 1.5e154)), 1024)
+  expect_true(is.finite(huge$log_value))
+  expect_identical(huge$log_value, (1.5e154 * .5) * 1.5e154)
+  expect_false(huge$available)
+  spec$multiplier <- prior("lognormal", list(0, 1.5e154))
+  unavailable <- .prior_conditional_normal_offset_ordinate(spec, 0, 1024)
+  expect_identical(unavailable$behavior, "regular")
+  expect_false(unavailable$exact)
+  expect_true(is.na(unavailable$log_density))
+  mapped <- .prior_scale_product_inverse_moment(list(multiplier = prior("beta", list(2^60, 2^60)),
+                                                   map = list(scale = 1)), 1024)
+  expect_false(mapped$available)
+  expect_true(is.na(mapped$log_value))
+  expect_match(mapped$reason, "shape shift", fixed = TRUE)
+  moderate <- .prior_scale_product_inverse_moment(list(multiplier = prior("beta", list(2, 3)),
+                                                     map = list(scale = 2)), 1024)
+  expect_true(moderate$available)
+  expect_equal(moderate$log_value, lbeta(1.5, 3) - lbeta(2, 3) - log(2) / 2, tolerance = 2e-15)
+})
+
+test_that("public inference refuses unavailable inverse-moment ordinates", {
+
+  slope <- prior("normal", list(0, 1))
+  attr(slope, "multiply_by") <- "s"
+  context <- .prior_density_context(
+    list(b = slope, s = prior("lognormal", list(0, 1.5e154))), "b", n_grid = 1024)
+  density <- .prior_density_from_context_rows(
+    context, matrix(c(1, 2), ncol = 1, dimnames = list(NULL, "b")))
+  ordinate <- prior_density_ordinate(density, 0)
+  expect_identical(ordinate$behavior, "regular")
+  expect_false(ordinate$exact)
+  expect_true(is.na(ordinate$log_density))
+  status <- prior_ordinate_status(density, 0)
+  expect_false(status$eligible)
+  expect_identical(status$condition, "BayesTools_inexact_ordinate")
+  posterior <- structure(seq(-1, 1, length.out = 200),
+    class = c("marginal_posterior.simple", "marginal_posterior", "numeric"))
+  posterior <- .bt_meta_set(posterior, "prior_density", density)
+  posterior <- .bt_meta_set(posterior, "atoms", posterior_atom_attribute())
+  expect_error(hypothesis_BF(posterior = posterior, hypothesis = "theta = 0", parameter = "theta"),
+               class = "BayesTools_inexact_ordinate")
+})

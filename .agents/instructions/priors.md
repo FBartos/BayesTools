@@ -331,7 +331,7 @@ mixture (additive SD 0), split additionally at the multiplier's zero and at
 |value - a_m| / b_s (1/10, 1, 10) on both sides of it. At the deterministic
 offset a_m its density is phi(b_m / b_s) E[1 / |s|] / b_s: the multiplier's
 declared behavior at zero decides it (a vanishing density gives the finite
-value, closed-form inverse moments for the untruncated gamma, inverse-gamma,
+value, closed-form log inverse moments for the untruncated gamma, inverse-gamma,
 lognormal and beta families and a quadrature otherwise; a positive or
 infinite density an infinite ordinate). A single non-normal multiplied term
 (or a non-normal ordered total) with a deterministic additive part is a
@@ -350,6 +350,12 @@ images s = (d / q)^2 / k of the term's quantiles q, and the mapped share's
 density at zero behaves like v^(2a - 1) (zero for a > 1/2, 2 / (sqrt(k)
 B(1/2, b)) at a = 1/2, infinite below), with E[1 / sqrt(k S)] =
 B(a - 1/2, b) / (sqrt(k) B(a, b)). The route provenance of a scale product
+retains natural/log inverse moments, availability/reason and an operand
+floating-resolution diagnostic. This diagnostic is not a rigorous
+special-function bound; unresolved mapped-Beta shifts/log-normalizer differences
+and offset arithmetic remain regular/inexact with no ordinate value. Natural
+moment overflow alone does not imply a structural infinite density.
+The route provenance of a scale product
 records its support hull and its offset behavior, so named transformations
 (the square of an SD) classify it. A value whose distance from the offset,
 x - c, or standardized distance (x - c) / w is not representable at full

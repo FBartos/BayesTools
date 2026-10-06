@@ -1633,19 +1633,23 @@
     ))
   }
   moment <- .prior_density_inverse_moment(spec$multiplier, n_grid)
-  provenance$inverse_moment <- moment[c("value", "method")]
+  provenance$inverse_moment <- .prior_inverse_moment_provenance(moment)
   if(!is.null(moment$integration)){
     provenance$integration <- moment$integration
   }
+  offset <- .prior_inverse_moment_offset(moment,
+    c(stats::dnorm(spec$product_mean / spec$product_sd, log = TRUE), -log(spec$product_sd)))
+  provenance$offset_log_arithmetic <- .prior_inverse_moment_provenance(offset)
+  if(!isTRUE(offset$available)){
+    return(.prior_density_ordinate_imprecise(value,
+      paste0("The offset inverse-moment calculation (", offset$reason, ")"),
+      "conditional_normal_mixture", provenance))
+  }
   .prior_density_ordinate_result(
-    value       = value,
-    behavior    = "regular",
-    log_density = stats::dnorm(spec$product_mean / spec$product_sd, log = TRUE) -
-      log(spec$product_sd) + log(moment$value),
-    exact       = TRUE,
-    method      = "conditional_normal_mixture",
-    provenance  = provenance
+    value = value, behavior = "regular", log_density = offset$log_value,
+    exact = TRUE, method = "conditional_normal_mixture", provenance = provenance
   )
+
 }
 
 # E[1 / |s|] of a simple continuous prior whose density vanishes at zero:
@@ -1659,27 +1663,38 @@
   parameters <- prior$parameters
   lower <- prior$truncation$lower
   upper <- prior$truncation$upper
-  closed <- if(identical(family, "gamma") && lower == 0 && upper == Inf &&
-               parameters$shape > 1){
-    parameters$rate / (parameters$shape - 1)
+  operands <- NULL
+  log_value <- if(identical(family, "gamma") && lower == 0 && upper == Inf && parameters$shape > 1){
+    operands <- c(log(parameters$rate), log(parameters$shape - 1))
+    operands[1L] - operands[2L]
   }else if(identical(family, "invgamma") && lower == 0 && upper == Inf){
-    parameters$shape / parameters$scale
+    operands <- c(log(parameters$shape), log(parameters$scale))
+    operands[1L] - operands[2L]
   }else if(identical(family, "lognormal") && lower == 0 && upper == Inf){
-    exp(-parameters$meanlog + parameters$sdlog^2 / 2)
-  }else if(identical(family, "beta") && lower == 0 && upper == 1 &&
-           parameters$alpha > 1){
-    (parameters$alpha + parameters$beta - 1) / (parameters$alpha - 1)
+    half_square <- (parameters$sdlog * .5) * parameters$sdlog
+    operands <- c(-parameters$meanlog, half_square)
+    operands[1L] + operands[2L]
+  }else if(identical(family, "beta") && lower == 0 && upper == 1 && parameters$alpha > 1){
+    log_denominator <- log(parameters$alpha - 1)
+    log_numerator <- .prior_normal_logaddexp(log_denominator, log(parameters$beta))
+    operands <- c(log_numerator, log_denominator)
+    log_numerator - log_denominator
   }else{
     NULL
   }
-  if(!is.null(closed)){
-    return(list(value = closed, method = "closed_form", integration = NULL))
+  if(!is.null(log_value)){
+    estimate <- 8 * .Machine$double.eps * sum(abs(c(operands, log_value)))
+    return(.prior_inverse_moment_result(log_value, error_estimate = estimate))
   }
 
   spec <- list(additive_mean = 0, additive_sd = 1, product_mean = 0,
                product_sd = 0, multiplier = prior, bounds = c(lower, upper))
   points <- .prior_conditional_normal_breakpoints(spec, 0, extra = 0)
-  prior_lpdf <- .prior_simple_lpdf_evaluator(prior)
+  prior_lpdf <- tryCatch(.prior_simple_lpdf_evaluator(prior),
+    BayesTools_numerical_unavailable = function(condition) condition)
+  if(inherits(prior_lpdf, "BayesTools_numerical_unavailable")){
+    return(.prior_inverse_moment_result(NA_real_, "quadrature", reason = prior_lpdf$message))
+  }
   integral <- .prior_conditional_normal_quadrature(
     function(s){
       out <- exp(prior_lpdf(s) - log(abs(s)))
@@ -1689,7 +1704,9 @@
     points, n_grid,
     zero_message = "zero inverse moment of a structurally positive density"
   )
-  list(value = integral$value, method = "quadrature", integration = integral$integration)
+  .prior_inverse_moment_result(log(integral$value), "quadrature",
+    reason = if(is.na(integral$value)) "The inverse-moment quadrature is unavailable." else NULL,
+    integration = integral$integration, value = integral$value)
 }
 
 # Region probability P(X in region) of the same conditional-normal mixture:
@@ -2033,12 +2050,21 @@
   }
   alpha <- spec$multiplier$parameters$alpha
   beta <- spec$multiplier$parameters$beta
-  list(
-    value  = exp(lbeta(alpha - 1 / 2, beta) - lbeta(alpha, beta) -
-                   log(spec$map$scale) / 2),
-    method = "closed_form",
-    integration = NULL
-  )
+  shifted <- alpha - .5
+  if(shifted == alpha){
+    return(.prior_inverse_moment_result(NA_real_, reason = "The mapped-Beta shape shift is not representable at supported precision."))
+  }
+  log_beta_shifted <- lbeta(shifted, beta)
+  log_beta_original <- lbeta(alpha, beta)
+  log_scale_half <- log(spec$map$scale) / 2
+  if(!all(is.finite(c(log_beta_shifted, log_beta_original, log_scale_half)))){
+    return(.prior_inverse_moment_result(NA_real_, reason = "The mapped-Beta log normalizers are outside supported arithmetic range."))
+  }
+  log_value <- log_beta_shifted - log_beta_original - log_scale_half
+  estimate <- 8 * .Machine$double.eps * (abs(log_beta_shifted) + abs(log_beta_original)) +
+    8 * .Machine$double.eps * (abs(log_scale_half) + abs(log_value))
+  .prior_inverse_moment_result(log_value, error_estimate = estimate)
+
 }
 
 # The scale-product quadrature at a value keeps full double precision only when
@@ -2193,20 +2219,38 @@
     density_zero <- offset$multiplier_zero$log_density
     moment <- .prior_density_inverse_moment(spec$factor, n_grid)
   }
-  provenance$inverse_moment <- moment[c("value", "method")]
+  provenance$inverse_moment <- .prior_inverse_moment_provenance(moment)
   if(!is.null(moment$integration)){
     provenance$integration <- moment$integration
   }
+  offset <- .prior_inverse_moment_offset(moment, c(density_zero, -log(abs(spec$scale))))
+  provenance$offset_log_arithmetic <- .prior_inverse_moment_provenance(offset)
+  if(!isTRUE(offset$available)){
+    return(.prior_density_ordinate_imprecise(value,
+      paste0("The offset inverse-moment calculation (", offset$reason, ")"),
+      "scale_mixture", provenance))
+  }
   .prior_density_ordinate_result(
-    value = value, behavior = "regular",
-    log_density = density_zero + log(moment$value) - log(abs(spec$scale)),
+    value = value, behavior = "regular", log_density = offset$log_value,
     exact = TRUE, method = "scale_mixture", provenance = provenance
   )
+
 }
 
 # P(lower < L < upper) for a simple continuous prior, vectorized over the
 # bounds; upper-tail probabilities are used above the median.
 .prior_scalar_interval_probability <- function(prior, lower, upper){
+
+  if(is.prior.simple(prior) && prior$distribution != "point" && !is.prior.discrete(prior)){
+    log_normalizer <- if(.is_prior_default_range(prior)) 0 else .prior_simple_log_C(prior)
+    lower <- pmax(lower, prior$truncation$lower)
+    upper <- pmin(upper, prior$truncation$upper)
+    log_mass <- .prior_simple_log_interval_mass(prior, lower, upper)
+    out <- exp(log_mass - log_normalizer)
+    out[!is.na(lower) & !is.na(upper) & lower >= upper] <- 0
+    return(.prior_numerical_result(out, rep(0, length(out)), TRUE,
+      "interval probability", prior$distribution, "natural", lower < upper))
+  }
 
   lower_cdf <- cdf(prior, lower)
   out <- cdf(prior, upper) - lower_cdf
