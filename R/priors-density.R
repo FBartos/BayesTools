@@ -220,7 +220,7 @@ density.prior <- function(x,
 
   # get the samples to estimate density / obtain the density directly
   if(force_samples){
-    x_sam <- rng(x, n_samples)
+    x_sam <- .prior_numerical_finite(rng(x, n_samples), x$distribution)
     if(is.prior.discrete(x)){
       x_seq <- unique(round(x_seq))
       x_den <- vapply(x_seq, function(x_i) mean(x_sam == x_i), numeric(1))

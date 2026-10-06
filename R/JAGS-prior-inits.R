@@ -248,7 +248,8 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   }else{
     init <- list()
 
-    init[[parameter_name]] <- rng(prior, 1)
+    init[[parameter_name]] <- .prior_numerical_finite(rng(prior, 1), prior$distribution,
+                                                   operation = "initialization")
   }
 
   return(init)

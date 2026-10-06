@@ -1,5 +1,15 @@
 skip_if_not_test_profile("unit")
 
+test_that("ordinary truncated densities preserve available natural tail range results", {
+
+  normal <- prior("normal", list(0, 1))
+  truncated <- prior("normal", list(0, 1), list(lower = 0, upper = Inf))
+  expect_warning(expect_identical(pdf(normal, 40), 0), NA)
+  expect_warning(expect_identical(pdf(truncated, 40), 0), NA)
+  expect_equal(lpdf(truncated, 40), stats::dnorm(40, log = TRUE) + log(2),
+               tolerance = 2e-13)
+})
+
 test_that("inverse-gamma coordinates retain scale and subnormal root precision", {
 
   scale <- 1e-310
@@ -115,4 +125,209 @@ test_that("inverse-moment final magnitudes retain original probability and param
   expect_true(is.nan(collapsed))
   # Native acceptance of large finite integer orders does not change the public cap.
   expect_error(prior("invmoment", list(tau = 1, order = 1e308, df = 1)), "'order'", fixed = TRUE)
+})
+
+test_that("far-tail and central truncations retain normalization and conditional quantiles", {
+
+  gamma <- prior("gamma", list(shape = 1, rate = 1), list(lower = 800, upper = Inf))
+  expect_equal(lpdf(gamma, 801), -1, tolerance = 2e-13)
+  expect_equal(pdf(gamma, 801), exp(-1), tolerance = 2e-13)
+  expect_equal(cdf(gamma, 801), -expm1(-1), tolerance = 2e-13)
+  expect_equal(ccdf(gamma, 801), exp(-1), tolerance = 2e-13)
+  expect_equal(quant(gamma, c(0, .5, 1)), c(800, 800 + log(2), Inf), tolerance = 2e-13)
+  moment <- prior("moment", list(mode = .5), list(lower = 14, upper = Inf))
+  log_mass <- -log(2) + stats::pchisq(14^2 / .125, 3, lower.tail = FALSE, log.p = TRUE)
+  reference <- 2 * log(14.001) + stats::dnorm(14.001, sd = sqrt(.125), log = TRUE) - log(.125)
+  expect_equal(lpdf(moment, 14.001), reference - log_mass, tolerance = 4e-12)
+  expect_equal(quant(moment, .5), sqrt(.125 * stats::qchisq(log_mass, 3, lower.tail = FALSE, log.p = TRUE)),
+               tolerance = 2e-13)
+  priors <- list(
+    prior("moment", list(tau = .125), list(lower = -1e-8, upper = 1e-8)),
+    prior("invmoment", list(tau = 1, df = 3), list(lower = -.01, upper = .01))
+  )
+  for(p in priors){
+    q <- quant(p, c(0, .25, .5, .75, 1))
+    expect_true(all(is.finite(q)))
+    expect_identical(q[c(1L, 3L, 5L)], c(p$truncation$lower, 0, p$truncation$upper))
+    expect_equal(q[2L], -q[4L], tolerance = 3e-12)
+    expect_equal(cdf(p, q[c(2L, 4L)]), c(.25, .75), tolerance = 3e-11)
+    expect_equal(cdf(p, c(NA_real_, NaN)), c(NA_real_, NaN))
+  }
+  shifted <- prior("moment", list(tau = .125, location = .25), list(lower = -.75, upper = 1.25))
+  expect_identical(quant(shifted, .5), .25)
+  near_symmetric <- prior("moment", list(tau = .125, location = 1e-300), list(lower = -1, upper = 1))
+  expect_warning(unavailable <- quant(near_symmetric, .5), class = "BayesTools_numerical_unavailable")
+  expect_true(is.nan(unavailable))
+})
+
+test_that("unresolved normalization refuses once before evaluator and bridge work", {
+
+  p <- prior("invgamma", list(shape = .Machine$double.xmin * .Machine$double.eps, scale = 1),
+             list(lower = .4, upper = .5))
+  expect_error(.prior_simple_lpdf_evaluator(p), class = "BayesTools_numerical_unavailable")
+  expect_error(lpdf(p, .45), class = "BayesTools_numerical_unavailable")
+  expect_error(JAGS_marglik_priors(c(theta = .45), list(theta = p)),
+               class = "BayesTools_numerical_unavailable")
+  ordinate <- prior_density_ordinate(p, .45)
+  expect_identical(ordinate$behavior, "regular")
+  expect_false(ordinate$exact)
+  expect_true(is.na(ordinate$log_density))
+  expect_match(ordinate$reason, "truncation mass", fixed = TRUE)
+  expect_error(.prior_nonlocal_log_interval_mass(prior("moment", list(mode = .5)), c(0, 1), 2),
+               "equal lengths", fixed = TRUE)
+})
+
+test_that("ordinary Gamma subnormal truncation refuses unreliable backend normalization", {
+
+  shape <- .Machine$double.xmin * .Machine$double.eps
+  p <- prior("gamma", list(shape = shape, rate = 1), list(lower = 1, upper = 2))
+  expect_identical(p$parameters$shape, shape)
+  expect_error(.prior_simple_lpdf_evaluator(p), class = "BayesTools_numerical_unavailable")
+  expect_error(pdf(p, c(1.5, 2)), class = "BayesTools_numerical_unavailable")
+  expect_error(lpdf(p, c(1.5, 2)), class = "BayesTools_numerical_unavailable")
+  expect_error(cdf(p, 1.5), class = "BayesTools_numerical_unavailable")
+  expect_error(quant(p, .5), class = "BayesTools_numerical_unavailable")
+  expect_error(rng(p, 4), class = "BayesTools_prior_rng_unavailable")
+  expect_error(.generate_prior_sample_matrix(list(theta = p), 4), class = "BayesTools_prior_rng_unavailable")
+  expect_error(JAGS_get_inits(list(theta = p), chains = 1, seed = 631),
+               class = "BayesTools_numerical_unavailable")
+  expect_error(JAGS_marglik_priors(c(theta = 1.5), list(theta = p)),
+               class = "BayesTools_numerical_unavailable")
+  ordinate <- prior_density_ordinate(p, 1.5)
+  expect_identical(ordinate$behavior, "regular")
+  expect_false(ordinate$exact)
+  expect_true(is.na(ordinate$log_density))
+  expect_identical(quant(p, c(0, 1)), c(1, 2))
+  expect_identical(cdf(p, c(1, 2)), c(0, 1))
+  whole <- prior("gamma", list(shape = shape, rate = 1))
+  expect_identical(.prior_simple_log_C(whole), 0)
+  expect_identical(.prior_C(whole), 1)
+  # Independent 50/80-digit E1 limit references. At these adjacent normal
+  # shapes the finite-shape correction is far below binary64 resolution.
+  for(a in c(.Machine$double.xmin, 2 * .Machine$double.xmin)){
+    supported <- prior("gamma", list(shape = a, rate = 1), list(lower = 1, upper = 2))
+    expect_equal(pdf(supported, c(1.5, 2)), c(.8725390239209256, .3969162523528322),
+                 tolerance = 2e-12)
+    expect_equal(lpdf(supported, c(1.5, 2)), c(-.13634789934882265, -.9240299718006036),
+                 tolerance = 2e-12)
+    expect_equal(cdf(supported, 1.5), .7001522459316267, tolerance = 2e-12)
+  }
+})
+
+test_that("nonlocal missing pairs and unrepresentable narrow quantiles are explicit", {
+
+  p <- prior("moment", list(tau = .125))
+  out <- .prior_nonlocal_log_interval_mass(p, c(NA_real_, NaN, 0), c(NaN, NA_real_, 0))
+  expect_identical(out, c(NA_real_, NaN, -Inf))
+  narrow <- prior("moment", list(tau = .125), list(lower = 1, upper = 1 + .Machine$double.eps))
+  condition <- NULL
+  value <- tryCatch(withCallingHandlers(quant(narrow, .5),
+    BayesTools_numerical_unavailable = function(warning){
+      condition <<- warning
+      if(inherits(warning, "warning")) invokeRestart("muffleWarning")
+    }), BayesTools_numerical_unavailable = function(error){
+      condition <<- error
+      NaN
+    })
+  expect_true(is.nan(value))
+  expect_s3_class(condition, "BayesTools_numerical_unavailable")
+  expect_identical(quant(narrow, c(0, 1)), c(1, 1 + .Machine$double.eps))
+})
+
+test_that("uniform budgets remain unchanged and finite-required consumers are strict", {
+
+  set.seed(604)
+  ig <- rng(prior("invgamma", list(shape = 3, scale = 1e-310)), 8)
+  after_ig <- .Random.seed
+  set.seed(604)
+  stats::runif(8)
+  expect_identical(.Random.seed, after_ig)
+  expect_true(all(is.finite(ig) & ig > 0))
+  p <- prior("invmoment", list(tau = 1, order = 1000, df = 3))
+  set.seed(605)
+  draws <- rng(p, 8)
+  after <- .Random.seed
+  set.seed(605)
+  uniforms <- matrix(stats::runif(16), nrow = 2)
+  expect_identical(.Random.seed, after)
+  expect_identical(sign(draws), ifelse(uniforms[2L, ] < .5, -1, 1))
+  # Check the declared signed Gamma law for both the ordinary-root and
+  # certified leading-log-root branches.
+  expect_equal(.pinvmoment_prior(abs(draws), 0, 1, 1000, 3, lower.tail = FALSE) * 2,
+               uniforms[1L, ], tolerance = 4e-12)
+  set.seed(608)
+  extreme <- .rinvmoment_prior(8, 0, 1, 1e308, 1)
+  extreme_after <- .Random.seed
+  set.seed(608)
+  extreme_uniforms <- matrix(stats::runif(16), nrow = 2)
+  expect_identical(.Random.seed, extreme_after)
+  # At this exact accepted native order, the certified correction is far below
+  # binary64 resolution; the original size draw supplies the final magnitude.
+  expect_equal(extreme, ifelse(extreme_uniforms[2L, ] < .5, -1, 1) / extreme_uniforms[1L, ],
+               tolerance = 3e-13)
+  truncated <- prior("moment", list(mode = .5), list(lower = 14, upper = Inf))
+  set.seed(606)
+  bounded <- rng(truncated, 8)
+  bounded_after <- .Random.seed
+  set.seed(606)
+  u <- stats::runif(8)
+  expect_identical(.Random.seed, bounded_after)
+  expect_equal(bounded, quant(truncated, u), tolerance = 0)
+  range_prior <- prior("invmoment", list(tau = 1, df = 1e-310))
+  set.seed(607)
+  expect_warning(raw <- rng(range_prior, 8), class = "BayesTools_numerical_range_limit")
+  range_after <- .Random.seed
+  set.seed(607)
+  stats::runif(16)
+  expect_identical(.Random.seed, range_after)
+  expect_true(all(is.infinite(raw)))
+  expect_error(.prior_numerical_finite(raw, "invmoment"), class = "BayesTools_prior_rng_unavailable")
+  expect_warning(expect_error(
+    .generate_prior_sample_matrix(list(theta = range_prior), 8, seed = 607),
+    class = "BayesTools_prior_rng_unavailable"), class = "BayesTools_numerical_range_limit")
+  expect_warning(expect_error(
+    JAGS_get_inits(list(theta = range_prior), chains = 1, seed = 607),
+    class = "BayesTools_numerical_unavailable"), class = "BayesTools_numerical_range_limit")
+  expect_warning(expect_error(
+    density(range_prior, x_range = c(-10, 10), n_points = 16, n_samples = 8, force_samples = TRUE),
+    class = "BayesTools_prior_rng_unavailable"), class = "BayesTools_numerical_range_limit")
+})
+
+test_that("bounded R sampling retains exact inverse-CDF sign boundaries", {
+
+  requested <- integer()
+  priors <- list(
+    prior("moment", list(mode = .5, location = .25), list(lower = -.75, upper = 1.25)),
+    prior("invmoment", list(tau = 1, df = 3), list(lower = -.01, upper = .01)))
+  testthat::with_mocked_bindings({
+    for(p in priors){
+      expect_warning(draws <- rng(p, 3), NA)
+      expect_identical(draws, rep(p$parameters$location, 3))
+    }
+    near_symmetric <- prior("moment", list(tau = .125, location = 1e-300),
+                            list(lower = -1, upper = 1))
+    expect_error(rng(near_symmetric, 3), class = "BayesTools_prior_rng_unavailable")
+  }, runif = function(n){
+    requested <<- c(requested, n)
+    rep(.5, n)
+  }, .package = "stats")
+  expect_identical(requested, c(3, 3, 3))
+})
+
+test_that("nonlocal moment integrals retain values without raw PDF tail warnings", {
+
+  priors <- list(
+    prior("moment", list(mode = .5), list(lower = -Inf, upper = 0)),
+    prior("invmoment", list(mode = .5, df = 6), list(lower = -Inf, upper = 0)))
+  # Genuine installed pre-correction values, with the same integration settings.
+  expected <- list(c(-.564189583547719, .238096858059049),
+                   c(-.621742035370958, .225691917118892))
+  for(i in seq_along(priors)){
+    expect_warning(values <- c(mean(priors[[i]]), sd(priors[[i]])), NA)
+    expect_equal(values, expected[[i]], tolerance = 1e-12)
+  }
+  unresolved <- prior("invmoment", list(tau = 1, order = 1000,
+    df = .Machine$double.xmin * .Machine$double.eps), list(lower = -1, upper = 1))
+  expect_error(mean(unresolved), class = "BayesTools_numerical_unavailable")
+  expect_error(sd(unresolved), class = "BayesTools_numerical_unavailable")
 })

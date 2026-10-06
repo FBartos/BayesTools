@@ -83,8 +83,14 @@ mean.prior   <- function(x, ...){
         return(.prior_normal_truncated_moments(x, "mean"))
       }
 
+      prior_lpdf <- if(x$distribution %in% c("moment", "invmoment")) .prior_simple_lpdf_evaluator(x) else NULL
+      integrand <- if(is.null(prior_lpdf)){
+        function(x, prior) x * pdf(prior, x)
+      }else{
+        function(x, prior) x * exp(prior_lpdf(x))
+      }
       m <- stats::integrate(
-        f       = function(x, prior) x * pdf(prior, x),
+        f       = integrand,
         lower   = x$truncation[["lower"]],
         upper   = x$truncation[["upper"]],
         prior   = x
@@ -283,8 +289,14 @@ var.prior   <- function(x, ...){
         return(.prior_normal_truncated_moments(x, "var"))
       }
 
+      prior_lpdf <- if(x$distribution %in% c("moment", "invmoment")) .prior_simple_lpdf_evaluator(x) else NULL
+      integrand <- if(is.null(prior_lpdf)){
+        function(x, prior) x^2 * pdf(prior, x)
+      }else{
+        function(x, prior) x^2 * exp(prior_lpdf(x))
+      }
       E2 <- stats::integrate(
-        f       = function(x, prior) x^2 * pdf(prior, x),
+        f       = integrand,
         lower   = x$truncation[["lower"]],
         upper   = x$truncation[["upper"]],
         prior   = x

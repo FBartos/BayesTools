@@ -596,6 +596,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   }
 
   colnames(samples) <- .JAGS_prior_factor_names(parameter, prior)
+  .prior_numerical_finite(samples, prior$distribution)
   if(isTRUE(auxiliary) && !is.null(auxiliary_samples)){
     samples <- cbind(samples, auxiliary_samples)
   }
@@ -709,6 +710,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
           call. = FALSE
         )
       }
+      .prior_numerical_finite(temp_samples, prior$distribution)
 
       components <- attr(temp_samples, "components", exact = TRUE)
       if(is.matrix(temp_samples)){
@@ -733,6 +735,7 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
 
   # Combine all samples into one matrix
   samples <- do.call(cbind, samples_list)
+  .prior_numerical_finite(samples, "joint prior")
 
   # Filter to match column_names if provided
   if(!is.null(column_names)){

@@ -7171,8 +7171,8 @@ expect_nonlocal_prior_only_samples <- function(prior, samples, tolerance = .08) 
   sample_cdf <- vapply(quantiles, function(x) mean(samples <= x), numeric(1))
   expect_equal(sample_cdf, probs, tolerance = tolerance)
 
-  prior_mean <- mean(prior)
-  prior_sd <- sd(prior)
+  expect_warning(prior_mean <- mean(prior), NA)
+  expect_warning(prior_sd <- sd(prior), NA)
   if (is.finite(prior_mean) && is.finite(prior_sd)) {
     expect_equal(mean(samples), prior_mean, tolerance = tolerance)
     expect_equal(stats::sd(samples), prior_sd, tolerance = tolerance)
@@ -7260,6 +7260,82 @@ test_that("BayesTools JAGS module samples nonlocal priors", {
     expect_s3_class(marglik, "BayesTools_marglik")
     expect_equal(marglik$logml, 0, tolerance = .08)
   }
+})
+
+test_that("Gamma-coordinate priors compile and sample with automatic and manual bounded starts", {
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  priors <- list(
+    prior("invgamma", list(shape = 3, scale = 1e-310)),
+    prior("moment", list(mode = .5), list(lower = 14, upper = Inf)),
+    prior("moment", list(mode = .5), list(lower = -1, upper = 1)),
+    prior("moment", list(mode = .5), list(lower = -1, upper = -.1)),
+    prior("moment", list(tau = .125), list(lower = -1e-8, upper = 1e-8)),
+    prior("invmoment", list(tau = 1, df = 3), list(lower = -.01, upper = .01))
+  )
+  for(p in priors){
+    syntax <- JAGS_add_priors("model{}", list(theta = p))
+    for(manual in c(FALSE, TRUE)){
+      inits <- list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = 620L)
+      if(manual) inits$theta <- quant(p, .25)
+      model <- local({
+        con <- textConnection(syntax)
+        on.exit(close(con), add = TRUE)
+        rjags::jags.model(con, data = list(), inits = inits, n.chains = 1,
+                          n.adapt = 0, quiet = TRUE)
+      })
+      if(!manual && p$distribution %in% c("moment", "invmoment")){
+        positive_mode <- p$parameters$location + p$parameters$mode
+        negative_mode <- p$parameters$location - p$parameters$mode
+        mode_inside <- function(value) value >= p$truncation$lower && value <= p$truncation$upper
+        if(mode_inside(positive_mode)){
+          expect_equal(model$state()[[1L]]$theta, positive_mode, tolerance = 2e-15)
+        }else if(mode_inside(negative_mode)){
+          expect_equal(model$state()[[1L]]$theta, negative_mode, tolerance = 2e-15)
+        }
+      }
+      draws <- as.matrix(rjags::coda.samples(model, "theta", n.iter = 100, progress.bar = "none"))[, "theta"]
+      expect_true(all(is.finite(draws)))
+      expect_true(all(draws >= p$truncation$lower & draws <= p$truncation$upper))
+      expect_true(all(draws != if(p$distribution %in% c("moment", "invmoment")) p$parameters$location else 0))
+    }
+  }
+})
+
+test_that("JAGS numerical refusals leave the real backend session usable", {
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  compile <- function(p, value = NULL){
+    con <- textConnection(JAGS_add_priors("model{}", list(theta = p)))
+    on.exit(close(con), add = TRUE)
+    inits <- list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = 621L)
+    if(!is.null(value)) inits$theta <- value
+    rjags::jags.model(con, data = list(), inits = inits, n.chains = 1,
+                      n.adapt = 0, quiet = TRUE)
+  }
+  unresolved <- prior("invgamma", list(shape = .Machine$double.xmin * .Machine$double.eps, scale = 1),
+                       list(lower = .4, upper = .5))
+  expect_error(compile(unresolved), "numerically unavailable", fixed = TRUE)
+  manual_unresolved <- compile(unresolved, .45)
+  expect_error(rjags::coda.samples(manual_unresolved, "theta", n.iter = 2, progress.bar = "none"),
+               "numerically unavailable", fixed = TRUE)
+  central <- prior("moment", list(mode = .5), list(lower = -.1, upper = .1))
+  # A prior-only model can accept an external start without evaluating its density.
+  expect_identical(lpdf(central, 0), -Inf)
+  manual_central <- compile(central, 0)
+  expect_identical(manual_central$state()[[1L]]$theta, 0)
+  automatic_central <- compile(central)
+  automatic_value <- automatic_central$state()[[1L]]$theta
+  expect_true(automatic_value >= central$truncation$lower && automatic_value <= central$truncation$upper)
+  expect_true(is.finite(lpdf(central, automatic_value)))
+  model <- compile(prior("invmoment", list(tau = 1, df = 1e-310)))
+  expect_error(rjags::coda.samples(model, "theta", n.iter = 2, progress.bar = "none"),
+               "numerically unavailable", fixed = TRUE)
+  expect_silent(compile(prior("moment", list(mode = .5))))
 })
 
 test_that("fully structural fits retain deterministic draw geometry", {

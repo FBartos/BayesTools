@@ -13,6 +13,33 @@
 #' and inverse-gamma scalar priors, including their marginal methods. Generic
 #' scalar CDF and complementary CDF methods also retain this distinction under
 #' truncation. This statement does not cover truncated Normal quantiles.
+#' Continuous truncation uses logarithmic interval masses, including separate
+#' signed radial intervals for nonlocal priors. An unresolved positive
+#' normalizer stops with \code{BayesTools_numerical_unavailable} before a
+#' cached density evaluator or bridge calculation is constructed. Existing
+#' Normal-only rounding adjustments are retained; other truncated quantiles
+#' never clip an unavailable result into their bounds.
+#' Ordinary Gamma normalization is unavailable for a numeric subnormal shape
+#' when truncation cuts its positive support: finite base R log tails can be
+#' wrong in this floating-point regime. Constructors retain their supported
+#' parameter domain and whole-positive-support mass remains exactly one.
+#' Raw untruncated base R Gamma extreme calculations are not certified by this
+#' normalization guard.
+#'
+#' Valid interior numerical failures give \code{NaN} with one
+#' \code{BayesTools_numerical_unavailable} warning per vector. Established
+#' inverse-gamma or nonlocal natural density or quantile range limits retain
+#' their raw zero or infinite result with \code{BayesTools_numerical_range_limit}.
+#' Ordinary family density range results retain their existing behavior when
+#' their log density is available. Both numerical classes inherit
+#' \code{BayesTools_numerical_condition}, \code{warning}, and \code{condition}.
+#' Conditions record \code{operation}, \code{family}, \code{requested_scale},
+#' \code{indices}, and \code{reason}, with \code{call = NULL}. Exact support
+#' endpoints and rounded natural probabilities with available log tails do
+#' not warn. Sampling failures are errors additionally inheriting
+#' \code{BayesTools_prior_rng_unavailable}; all original uniforms are consumed
+#' before signaling. Finite-required consumers and JAGS refuse unavailable
+#' draws, density values, and normalization, without redraw or model repair.
 #'
 #' @details Numeric Dirichlet concentrations must be finite and at least
 #' \code{0.01}. This supported-input minimum does not guarantee representable
@@ -628,42 +655,42 @@ quant.prior <- function(x, p, ...){
   )
 }
 
-.prior_simple_base_p <- function(prior, q, lower.tail = TRUE){
+.prior_simple_base_p <- function(prior, q, lower.tail = TRUE, log.p = FALSE){
 
   switch(
     prior[["distribution"]],
-    "normal"    = stats::pnorm(q, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = lower.tail, log.p = FALSE),
-    "lognormal" = stats::plnorm(q, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = lower.tail, log.p = FALSE),
+    "normal"    = stats::pnorm(q, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = lower.tail, log.p = log.p),
+    "lognormal" = stats::plnorm(q, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = lower.tail, log.p = log.p),
     # stats::pt keeps the requested tail exact; extraDistr's upper tail is 1 - p.
-    "t"         = stats::pt((q - prior$parameters[["location"]]) / prior$parameters[["scale"]], df = prior$parameters[["df"]], lower.tail = lower.tail, log.p = FALSE),
-    "gamma"     = stats::pgamma(q, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = FALSE),
-    "invgamma"  = .pinvgamma_prior(q, shape = prior$parameters[["shape"]], scale = prior$parameters[["scale"]], lower.tail = lower.tail, log.p = FALSE),
-    "beta"      = stats::pbeta(q, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = lower.tail, log.p = FALSE),
-    "bernoulli" = stats::pbinom(q, size = 1, prob = prior$parameters[["probability"]], lower.tail = lower.tail, log.p = FALSE),
-    "exp"       = stats::pexp(q, rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = FALSE),
-    "uniform"   = stats::punif(q, min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = lower.tail, log.p = FALSE),
-    "moment"    = .pmoment_prior(q, location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], lower.tail = lower.tail),
-    "invmoment" = .pinvmoment_prior(q, location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], df = prior$parameters[["df"]], lower.tail = lower.tail),
-    "point"     = ppoint(q, location = prior$parameters[["location"]], lower.tail = lower.tail, log.p = FALSE)
+    "t"         = stats::pt((q - prior$parameters[["location"]]) / prior$parameters[["scale"]], df = prior$parameters[["df"]], lower.tail = lower.tail, log.p = log.p),
+    "gamma"     = stats::pgamma(q, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = log.p),
+    "invgamma"  = .pinvgamma_prior(q, shape = prior$parameters[["shape"]], scale = prior$parameters[["scale"]], lower.tail = lower.tail, log.p = log.p),
+    "beta"      = stats::pbeta(q, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = lower.tail, log.p = log.p),
+    "bernoulli" = stats::pbinom(q, size = 1, prob = prior$parameters[["probability"]], lower.tail = lower.tail, log.p = log.p),
+    "exp"       = stats::pexp(q, rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = log.p),
+    "uniform"   = stats::punif(q, min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = lower.tail, log.p = log.p),
+    "moment"    = .pmoment_prior(q, location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], lower.tail = lower.tail, log.p = log.p),
+    "invmoment" = .pinvmoment_prior(q, location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], df = prior$parameters[["df"]], lower.tail = lower.tail, log.p = log.p),
+    "point"     = ppoint(q, location = prior$parameters[["location"]], lower.tail = lower.tail, log.p = log.p)
   )
 }
 
-.prior_simple_base_q <- function(prior, p, lower.tail = TRUE){
+.prior_simple_base_q <- function(prior, p, lower.tail = TRUE, log.p = FALSE){
 
   switch(
     prior[["distribution"]],
-    "normal"    = stats::qnorm(p, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = lower.tail, log.p = FALSE),
-    "lognormal" = stats::qlnorm(p, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = lower.tail, log.p = FALSE),
-    "t"         = prior$parameters[["location"]] + prior$parameters[["scale"]] * stats::qt(p, df = prior$parameters[["df"]], lower.tail = lower.tail, log.p = FALSE),
-    "gamma"     = stats::qgamma(p, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = FALSE),
-    "invgamma"  = .qinvgamma_prior(p, shape = prior$parameters[["shape"]], scale = prior$parameters[["scale"]], lower.tail = lower.tail, log.p = FALSE),
-    "beta"      = stats::qbeta(p, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = lower.tail, log.p = FALSE),
-    "bernoulli" = stats::qbinom(p, size = 1, prob = prior$parameters[["probability"]], lower.tail = lower.tail, log.p = FALSE),
-    "exp"       = stats::qexp(p, rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = FALSE),
-    "uniform"   = stats::qunif(p, min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = lower.tail, log.p = FALSE),
-    "moment"    = .qmoment_prior(p, location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], lower.tail = lower.tail),
-    "invmoment" = .qinvmoment_prior(p, location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], df = prior$parameters[["df"]], lower.tail = lower.tail),
-    "point"     = qpoint(p, location = prior$parameters[["location"]], lower.tail = lower.tail, log.p = FALSE)
+    "normal"    = stats::qnorm(p, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = lower.tail, log.p = log.p),
+    "lognormal" = stats::qlnorm(p, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = lower.tail, log.p = log.p),
+    "t"         = prior$parameters[["location"]] + prior$parameters[["scale"]] * stats::qt(p, df = prior$parameters[["df"]], lower.tail = lower.tail, log.p = log.p),
+    "gamma"     = stats::qgamma(p, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = log.p),
+    "invgamma"  = .qinvgamma_prior(p, shape = prior$parameters[["shape"]], scale = prior$parameters[["scale"]], lower.tail = lower.tail, log.p = log.p),
+    "beta"      = stats::qbeta(p, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = lower.tail, log.p = log.p),
+    "bernoulli" = stats::qbinom(p, size = 1, prob = prior$parameters[["probability"]], lower.tail = lower.tail, log.p = log.p),
+    "exp"       = stats::qexp(p, rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = log.p),
+    "uniform"   = stats::qunif(p, min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = lower.tail, log.p = log.p),
+    "moment"    = .qmoment_prior(p, location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], lower.tail = lower.tail, log.p = log.p),
+    "invmoment" = .qinvmoment_prior(p, location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], df = prior$parameters[["df"]], lower.tail = lower.tail, log.p = log.p),
+    "point"     = qpoint(p, location = prior$parameters[["location"]], lower.tail = lower.tail, log.p = log.p)
   )
 }
 
@@ -861,6 +888,10 @@ quant.prior <- function(x, p, ...){
     return(.prior_simple_base_p(prior, q, lower.tail = TRUE))
   }
 
+  if(prior$distribution != "normal" && prior$distribution != "point" && !is.prior.discrete(prior)){
+    return(.prior_simple_truncated_probability(prior, q, TRUE))
+  }
+
   p        <- rep(NA_real_, length(q))
   p[is.na(q)] <- q[is.na(q)]
   q_known  <- !is.na(q)
@@ -908,6 +939,10 @@ quant.prior <- function(x, p, ...){
     return(.prior_simple_base_p(prior, q, lower.tail = FALSE))
   }
 
+  if(prior$distribution != "normal" && prior$distribution != "point" && !is.prior.discrete(prior)){
+    return(.prior_simple_truncated_probability(prior, q, FALSE))
+  }
+
   p        <- rep(NA_real_, length(q))
   p[is.na(q)] <- q[is.na(q)]
   q_known  <- !is.na(q)
@@ -950,32 +985,17 @@ quant.prior <- function(x, p, ...){
 
 .prior_simple_lpdf <- function(prior, x, plan = NULL){
 
-  default_range <- if(is.null(plan)){
-    .is_prior_default_range(prior)
+  default_range <- if(is.null(plan)) .is_prior_default_range(prior) else plan$default_range
+  if(default_range) return(.prior_simple_base_d(prior, x, log = TRUE))
+  log_normalizer <- if(prior$distribution == "point") 0 else if(is.null(plan)){
+    if(is.prior.discrete(prior)) log(.prior_C(prior)) else .prior_simple_log_C(prior)
   }else{
-    plan[["default_range"]]
+    plan$log_normalizer
   }
-  if(default_range){
-    return(.prior_simple_base_d(prior, x, log = TRUE))
-  }
-
-  log_lik <- .prior_simple_base_d(prior, x, log = TRUE)
-  log_lik[x < prior$truncation[["lower"]] | x > prior$truncation[["upper"]]] <- -Inf
-
-  if(prior[["distribution"]] != "point"){
-    if(is.null(plan)){
-      log_normalizer <- if(prior[["distribution"]] == "normal"){
-        .prior_normal_log_C(prior)
-      }else{
-        log(.prior_C(prior))
-      }
-    }else{
-      log_normalizer <- plan[["log_normalizer"]]
-    }
-    log_lik <- log_lik - log_normalizer
-  }
-
-  return(log_lik)
+  log_lik <- .prior_simple_base_d(prior, x, log = TRUE) - log_normalizer
+  outside <- !is.na(x) & (x < prior$truncation$lower | x > prior$truncation$upper)
+  log_lik[outside] <- -Inf
+  log_lik
 }
 
 .prior_simple_lpdf_evaluator <- function(prior){
@@ -984,10 +1004,10 @@ quant.prior <- function(x, p, ...){
   log_normalizer <- if(default_range ||
                        prior[["distribution"]] == "point"){
     0
-  }else if(prior[["distribution"]] == "normal"){
-    .prior_normal_log_C(prior)
-  }else{
+  }else if(is.prior.discrete(prior)){
     log(.prior_C(prior))
+  }else{
+    .prior_simple_log_C(prior)
   }
   plan <- list(
     default_range  = default_range,
@@ -997,7 +1017,13 @@ quant.prior <- function(x, p, ...){
   force(plan)
 
   function(x){
-    .prior_simple_lpdf(prior, x, plan = plan)
+    withCallingHandlers(.prior_simple_lpdf(prior, x, plan = plan),
+      BayesTools_numerical_unavailable = function(condition){
+        if(inherits(condition, "warning")){
+          class(condition) <- c(setdiff(class(condition), c("warning", "condition")), "error", "condition")
+          stop(condition)
+        }
+      })
   }
 }
 
@@ -1007,8 +1033,11 @@ quant.prior <- function(x, p, ...){
     return(.prior_simple_base_d(prior, x, log = FALSE))
   }
 
-  if(prior[["distribution"]] == "normal"){
-    return(exp(.prior_simple_lpdf(prior, x)))
+  if(prior[["distribution"]] != "point" && !is.prior.discrete(prior)){
+    log_density <- .prior_numerical_without_warnings(.prior_simple_lpdf(prior, x))
+    return(.prior_numerical_result(exp(log_density), x, TRUE, "density",
+      prior$distribution, "natural", is.finite(log_density) | is.nan(log_density),
+      warn_range = prior$distribution %in% c("invgamma", "moment", "invmoment")))
   }
 
   lik <- .prior_simple_base_d(prior, x, log = FALSE)
@@ -1041,7 +1070,7 @@ quant.prior <- function(x, p, ...){
     p_inside     <- p_known & p > 0 & p < 1
     lower        <- prior$truncation[["lower"]]
     upper        <- prior$truncation[["upper"]]
-    log_C        <- .prior_normal_log_C(prior)
+    log_C        <- .prior_simple_log_C(prior)
 
     q[p_lower] <- lower
     q[p_upper] <- upper
@@ -1091,14 +1120,8 @@ quant.prior <- function(x, p, ...){
     return(pmax(lower, pmin(upper, q)))
   }
 
-  C1 <- .prior_C1(prior)
-  if(.prior_simple_use_survival_truncation(prior)){
-    S1 <- .prior_simple_base_p(prior, prior$truncation[["lower"]], lower.tail = FALSE)
-    S2 <- .prior_simple_base_p(prior, prior$truncation[["upper"]], lower.tail = FALSE)
-    return(.prior_simple_base_q(prior, S1 - p * (S1 - S2), lower.tail = FALSE))
-  }
-
-  .prior_simple_base_q(prior, C1 + p * .prior_C(prior))
+  if(prior$distribution != "point") return(.prior_simple_truncated_quantile(prior, p))
+  .prior_simple_base_q(prior, p)
 }
 
 .prior_simple_rng <- function(prior, n){
@@ -1112,17 +1135,17 @@ quant.prior <- function(x, p, ...){
     return(sample(discrete[["support"]], size = n, replace = TRUE, prob = discrete[["prob"]]))
   }
 
-  # A truncated normal whose probability mass is not a normal double (far-tail
-  # truncation) is sampled through the log-space quantile; the lower-tail
-  # inversion would underflow to infinite draws.
-  if(.prior_simple_use_survival_truncation(prior) ||
-     (prior[["distribution"]] == "normal" &&
-      !(.prior_normal_log_C(prior) >= log(.Machine$double.xmin)))){
-    return(.prior_simple_quant(prior, stats::runif(n)))
-  }
-
-  C1 <- .prior_C1(prior)
-  .prior_simple_base_q(prior, stats::runif(n, min = C1, max = C1 + .prior_C(prior)))
+  if(prior$distribution == "point") return(.prior_simple_base_r(prior, n))
+  # An exact conditional sign-boundary uniform retains the inverse-CDF location.
+  # General R draws need finite support values; JAGS states also need usable log density.
+  out <- tryCatch(.prior_numerical_without_warnings(.prior_simple_quant(prior, stats::runif(n))),
+    BayesTools_numerical_condition = function(condition){
+      class(condition) <- unique(c("BayesTools_prior_rng_unavailable",
+                                   setdiff(class(condition), c("warning", "condition")),
+                                   "error", "condition"))
+      stop(condition)
+    })
+  .prior_numerical_finite(out, prior$distribution)
 }
 
 .prior_C1 <- function(prior){
@@ -1176,6 +1199,10 @@ quant.prior <- function(x, p, ...){
 .prior_C  <- function(prior){
 
   if(is.prior.simple(prior)){
+
+    if(prior$distribution != "point" && !is.prior.discrete(prior)){
+      return(if(.is_prior_default_range(prior)) 1 else exp(.prior_simple_log_C(prior)))
+    }
 
     C <- .prior_C2(prior) - .prior_C1(prior)
     if(prior[["distribution"]] != "point" && !is.prior.discrete(prior) &&

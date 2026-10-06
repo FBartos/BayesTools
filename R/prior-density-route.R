@@ -1147,11 +1147,21 @@
     "normal" = .prior_density_ordinate_linear_normal(
       route$prior_list, route$weights, route$source_transforms, value
     ),
-    "conditional_normal" = .prior_conditional_normal_ordinate(route$spec, value, route$n_grid),
-    "truncated_normal_convolution" = .prior_truncated_normal_convolution_ordinate(route$spec, value),
-    "scale_product" = .prior_scale_product_ordinate(route$spec, value, route$n_grid),
-    "log_scale_product" = .prior_density_route_log_scale_product_ordinate(route, value),
-    "convolution" = .prior_convolution_ordinate(route$spec, value, route$n_grid),
+    "conditional_normal" = .prior_numerical_ordinate(
+      .prior_conditional_normal_ordinate(route$spec, value, route$n_grid), value,
+      "conditional_normal_mixture", .prior_density_route_provenance(route)),
+    "truncated_normal_convolution" = .prior_numerical_ordinate(
+      .prior_truncated_normal_convolution_ordinate(route$spec, value), value,
+      "truncated_normal_convolution", .prior_density_route_provenance(route)),
+    "scale_product" = .prior_numerical_ordinate(
+      .prior_scale_product_ordinate(route$spec, value, route$n_grid), value,
+      "scale_mixture", .prior_density_route_provenance(route)),
+    "log_scale_product" = .prior_numerical_ordinate(
+      .prior_density_route_log_scale_product_ordinate(route, value), value,
+      "scale_mixture", .prior_density_route_provenance(route)),
+    "convolution" = .prior_numerical_ordinate(
+      .prior_convolution_ordinate(route$spec, value, route$n_grid), value,
+      "convolution", .prior_density_route_provenance(route)),
     "unknown" = .prior_density_ordinate_result(
       value       = value,
       behavior    = "unknown",

@@ -43,6 +43,33 @@ magnitude from the original lower Gamma log probability, df and order, avoiding
 overflow of the intermediate Gamma log root. This preserves the public integer
 order cap and the native declared parameter domain. Intermediate overflow alone
 does not establish a final range result.
+Continuous truncation normalizes from log interval mass; nonlocal intervals
+split into their declared signed radial pieces and bounded inversion consumes
+one uniform without fallback. Cache/check normalizers at evaluator construction
+before bridge/quadrature work. Direct numerical range warnings and unavailable
+warnings/errors inherit `BayesTools_numerical_condition`; actual RNG failures
+also inherit `BayesTools_prior_rng_unavailable`. Finite-required consumers/JAGS
+refuse raw range failures, without redraw, clipping, or model repair. Preserve
+existing Normal-only rounding adjustments.
+An exact nonlocal conditional sign-boundary uniform retains its inverse-CDF
+location in bounded R sampling, even though the density is zero at that isolated
+support point. This differs from uncertified magnitude/location rounding, which
+remains unavailable. JAGS sampling states and deterministic initialization
+additionally require a usable positive log density and refuse that location;
+general finite-required R collectors do not impose this state requirement.
+Truncated nonlocal mean and variance quadrature construct one strict cached
+log-density evaluator per integral. Available log densities may exponentiate
+to harmless natural tail zero inside these integrands; unavailable normalization
+or density arithmetic still stops before or during integration. The existing
+moment definitions, integral limits and quadrature settings remain in force.
+Ordinary Gamma priors retain constructor acceptance for every existing shape.
+For a numeric subnormal shape, normalization of a truncation that cuts positive
+support is unavailable: base R's finite log tails can be wrong in this backend
+precision regime. Refuse with the existing numerical-unavailability error
+before normalized density, probability, quantile or sampling work. Whole
+positive-support mass remains exactly one, with log mass zero. This limit does
+not repair or certify raw untruncated base R Gamma extremes.
+
 Simplex canonicalization requires finite nonnegative entries, a finite total
 and finite floating-roundoff bound before sum-to-one comparison or normalization.
 Preserve the existing near-one allowance and diagnostic labels; never normalize

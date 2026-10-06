@@ -1551,7 +1551,7 @@ test_that("full PET-PEESE and weightfunction prior overlays follow the bias cond
 
   # conditional on PET-PEESE: only the PET branch remains
   samples_con <- as_mixed_posteriors(fit, parameters = c("mu", "bias"), conditional = "PETPEESE", force_plots = TRUE)
-  band_con <- prior_band(samples_con)
+  expect_warning(band_con <- prior_band(samples_con), NA)
   expect_equal(band_con$x, c(0, .5, 1))
   expect_equal(band_con$y[2:3], c(mixture_quantile(.5, .5, 1), mixture_quantile(.5, 1, 1)), tolerance = 1e-6)
   expect_gt(band_con$y[3], .5)
