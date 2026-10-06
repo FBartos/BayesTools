@@ -84,6 +84,7 @@ test_that("group ownership retains exact numeric identity and safe display repla
     c("0.29999999999999999", "0.30000000000000021"))
   expect_identical(BayesTools:::.bt_random_effect_structured_index_component(adjacent)$level_keys,
     substring(term$group_component_identity_keys$g, 3L))
+  options(old)
 
   kernel <- diag(2)
   dimnames(kernel) <- list(term$group_levels, term$group_levels)
@@ -105,6 +106,10 @@ test_that("group ownership retains exact numeric identity and safe display repla
   expect_error(replay(missing, data.frame(g = "unknown"), TRUE), class = "BayesTools_refit_required")
   malformed <- term
   malformed$group_component_identity_keys$g <- c("n:invalid", "n:invalid2")
+  expect_error(replay(malformed, data, TRUE), class = "BayesTools_refit_required")
+  malformed$group_component_identity_keys$g <- 1:2
+  expect_error(replay(malformed, data, TRUE), class = "BayesTools_refit_required")
+  malformed$group_component_identity_keys$g <- list("n:0.3", "n:0.4")
   expect_error(replay(malformed, data, TRUE), class = "BayesTools_refit_required")
 })
 

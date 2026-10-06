@@ -2,7 +2,7 @@ skip_if_not_test_profile("unit")
 
 test_that("structured count preflight refuses geometry before dense diagnostics", {
 
-  expect_identical(.bt_random_effect_structured_cholesky_geometry(2L, 3L), 18)
+  expect_identical(.bt_random_effect_structured_cholesky_geometry(2L, 3L), 18L)
   for(dimensions in list(c(0, 1), c(1, 0), c(1.5, 2), c(Inf, 2), c(2^31, 1))){
     expect_error(.bt_random_effect_structured_cholesky_geometry(dimensions[1L], dimensions[2L]),
       "positive integer-sized", fixed = TRUE)

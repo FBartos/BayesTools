@@ -981,13 +981,15 @@
       key <- keys[[component]]
       label <- levels[[component]]
       display <- displays[[component]]
+      if(!is.character(key) || !is.character(label) || !is.character(display) ||
+         length(key) == 0L || length(label) != length(key) ||
+         length(display) != length(key) || anyNA(key) || anyNA(label) ||
+         anyNA(display) || anyDuplicated(key) || anyDuplicated(label)){
+        return(FALSE)
+      }
       numeric_keys <- key[startsWith(key, "n:")]
       numeric_values <- suppressWarnings(as.numeric(substring(numeric_keys, 3L)))
-      is.character(key) && is.character(label) && is.character(display) &&
-        length(key) > 0L && length(label) == length(key) &&
-        length(display) == length(key) && !anyNA(key) && !anyNA(label) &&
-        !anyNA(display) && !anyDuplicated(key) && !anyDuplicated(label) &&
-        all(startsWith(key, "n:") | startsWith(key, "c:")) &&
+      all(startsWith(key, "n:") | startsWith(key, "c:")) &&
         (all(startsWith(key, "n:")) || all(startsWith(key, "c:"))) &&
         !anyNA(numeric_values) &&
         (length(numeric_keys) == 0L ||

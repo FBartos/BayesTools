@@ -18,8 +18,8 @@ test_that("selection caches follow effective geometry and preserve segment prece
     function(x){ x$telescope_probabilities <- TRUE; x },
     function(x){ x$kernel_mode <- c(1L, 0L); x },
     function(x){ x$has_phack <- TRUE; x$phack_q <- 2L; x },
-    function(x){ x$has_phack <- TRUE; x$phack_z_source <- c(.2, .5); x },
-    function(x){ x$has_phack <- TRUE; x$phack_z_dest <- c(.8, 1); x },
+    function(x){ x$has_phack <- TRUE; x$phack_q <- 1L; x$phack_z_source <- c(.2, .5); x },
+    function(x){ x$has_phack <- TRUE; x$phack_q <- 1L; x$phack_z_dest <- c(.8, 1); x },
     function(x){ x$segments <- list(bounds = c(-Inf, 0, Inf), step_bin = c(2L, 1L), phack_region = c(0L, 1L)); x }
   )
   for(mutate in mutations){
