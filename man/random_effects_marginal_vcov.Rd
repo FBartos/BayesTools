@@ -48,7 +48,12 @@ covariance; see \code{\link[=prior_random]{prior_random()}}.}
 
 \item{diagonal_only}{whether to return only observation-level marginal
 variances. This avoids allocating a \verb{draw x row x row} array when callers
-need only \verb{diag(Z G Z')}.}
+need only \verb{diag(Z G Z')}.
+CAR blocks still reconstruct a \verb{draw x column x column} factor. Their
+admission estimate includes conservative factor and contraction work;
+diagonal output may not resolve a factor-dominated refusal. This estimate
+is not a measured peak or success guarantee: live inputs and uncollected
+garbage can require additional memory.}
 
 \item{fitted_rows}{optional integer vector mapping supplied prediction rows
 to fitted observation indices. It is required whenever \code{data} is supplied

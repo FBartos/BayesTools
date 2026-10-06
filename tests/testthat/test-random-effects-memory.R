@@ -1,5 +1,68 @@
 skip_if_not_test_profile("unit")
 
+test_that("CAR admission includes factors before either ordinary or row SD reconstruction", {
+
+  old <- getOption("BayesTools.random_effects_memory_limit_bytes")
+  on.exit(do.call(options, list(BayesTools.random_effects_memory_limit_bytes = old)), add = TRUE)
+  options(BayesTools.random_effects_memory_limit_bytes = Inf)
+  data <- data.frame(time = c(0, .5, 2), id = rep("a", 3L))
+  compile <- function(row_source){
+    block <- if(row_source){
+      random_block(sd_source = random_sd_source("tau", shape = "row"),
+        cor = prior("normal", list(0, .5)))
+    }else{
+      random_block(sd = prior("normal", list(0, 1), list(0, Inf)),
+        cor = prior("normal", list(0, .5)))
+    }
+    JAGS_formula(~ 1 + car(time | id), "mu", data,
+      list(intercept = prior("normal", list(0, 1))), prior_random = prior_random(id = block))
+  }
+  fixtures <- lapply(c(FALSE, TRUE), compile)
+  original <- BayesTools:::.bt_random_effect_cholesky_draws
+  factor_calls <- 0L
+  testthat::local_mocked_bindings(
+    .bt_random_effect_cholesky_draws = function(...){
+      factor_calls <<- factor_calls + 1L
+      original(...)
+    }, .package = "BayesTools")
+  for(i in seq_along(fixtures)){
+    fixture <- fixtures[[i]]
+    term <- fixture$formula_design$random_effects[[1L]]
+    sd <- if(i == 1L) stats::setNames(2, unique(term$sd_parameter_names)) else
+      stats::setNames(c(2, 3, 4), paste0("tau[", 1:3, "]"))
+    values <- c(sd, stats::setNames(atanh(.5), term$correlation$sample_name))
+    posterior <- matrix(rep(values, each = 2L), 2L, dimnames = list(NULL, names(values)))
+    call <- function(diagonal){
+      random_effects_marginal_vcov(fixture$formula_design, posterior_samples = posterior,
+        prior_list = fixture$prior_list, diagonal_only = diagonal)
+    }
+    options(BayesTools.random_effects_memory_limit_bytes = 200)
+    calls_before <- factor_calls
+    expect_error(call(TRUE), "3 coefficient/time columns", fixed = TRUE)
+    expect_error(call(FALSE), "CAR factor storage is still required", fixed = TRUE)
+    expect_identical(factor_calls, calls_before)
+    options(BayesTools.random_effects_memory_limit_bytes = Inf)
+    correlation <- .5^abs(outer(data$time, data$time, "-"))
+    scales <- if(i == 1L) rep(2, 3L) else c(2, 3, 4)
+    expected <- correlation * tcrossprod(scales)
+    expect_equal(unname(call(FALSE)$samples[1L, , ]), expected, tolerance = 1e-14)
+    expect_equal(unname(call(TRUE)$samples[1L, ]), diag(expected), tolerance = 1e-14)
+  }
+  for(diagonal in c(FALSE, TRUE)){
+    estimate <- BayesTools:::.bt_random_effect_output_memory_estimate("test", 3L, 2L,
+      covariance = TRUE, diagonal_only = diagonal, car_columns = 3L)
+    payload <- 8 * 2 * if(diagonal) 3 else 9
+    expect_identical(estimate$components,
+      c(output_working = 3 * payload, car_factor_working = 2 * 8 * 2 * 9,
+        car_contraction_working = 4 * 8 * 3 * 3))
+    expect_equal(estimate$peak_bytes, sum(estimate$components))
+  }
+  expect_identical(BayesTools:::.bt_random_effect_output_memory_estimate("test", 3L, 2L)$components,
+    c(output_working = 3 * 8 * 3 * 2))
+  expect_identical(BayesTools:::.bt_random_effect_output_memory_estimate("test", 1e200, 1e200,
+    car_columns = 1e200)$peak_bytes, Inf)
+})
+
 .random_memory_option <- "BayesTools.random_effects_memory_limit_bytes"
 
 .random_memory_restore_option <- function(value){

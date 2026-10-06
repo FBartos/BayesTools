@@ -141,7 +141,8 @@
     n_rows,
     n_draws,
     covariance = FALSE,
-    diagonal_only = FALSE){
+    diagonal_only = FALSE,
+    car_columns = NULL){
 
   entries <- if(isTRUE(covariance) && !isTRUE(diagonal_only)){
     .bt_random_effect_memory_product(n_draws, n_rows, n_rows)
@@ -149,14 +150,20 @@
     .bt_random_effect_memory_product(n_draws, n_rows)
   }
   payload <- .bt_random_effect_memory_product(8, entries)
-  peak <- 3 * payload
+  components <- c(output_working = 3 * payload)
+  if(!is.null(car_columns)){
+    components <- c(components,
+      car_factor_working = .bt_random_effect_memory_product(2, 8, n_draws, car_columns, car_columns),
+      car_contraction_working = .bt_random_effect_memory_product(4, 8, n_rows, car_columns))
+  }
+  peak <- sum(components)
   if(!is.finite(peak)){
     peak <- Inf
   }
 
   list(
     operation = operation,
-    dimensions = if(isTRUE(covariance) && !isTRUE(diagonal_only)){
+    dimensions = paste0(if(isTRUE(covariance) && !isTRUE(diagonal_only)){
       paste0(
         format(n_draws, scientific = FALSE, trim = TRUE),
         " draws x ",
@@ -172,10 +179,13 @@
         format(n_draws, scientific = FALSE, trim = TRUE),
         " draws"
       )
-    },
+    }, if(!is.null(car_columns)) paste0(
+      "; ", format(car_columns, scientific = FALSE, trim = TRUE),
+      " coefficient/time columns"
+    )),
     payload_bytes = payload,
     peak_bytes = peak,
-    components = c(output_working = peak)
+    components = components
   )
 }
 

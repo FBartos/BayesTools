@@ -35,6 +35,11 @@
 #' @param diagonal_only whether to return only observation-level marginal
 #'   variances. This avoids allocating a `draw x row x row` array when callers
 #'   need only `diag(Z G Z')`.
+#'   CAR blocks still reconstruct a `draw x column x column` factor. Their
+#'   admission estimate includes conservative factor and contraction work;
+#'   diagonal output may not resolve a factor-dominated refusal. This estimate
+#'   is not a measured peak or success guarantee: live inputs and uncollected
+#'   garbage can require additional memory.
 #' @param ... reserved for future extensions. Unused arguments are rejected.
 #'
 #' @return A list of class
@@ -1619,10 +1624,22 @@ random_effects_marginal_variance_factors <- function(
         n_rows = nrow(block_data$model_matrix),
         n_draws = nrow(posterior),
         covariance = TRUE,
-        diagonal_only = diagonal_only
+        diagonal_only = diagonal_only,
+        car_columns = if(identical(random_term$structure, "car")) ncol(block_data$model_matrix) else NULL
       ),
       block_name = random_term$block_name,
-      alternative = if(isTRUE(diagonal_only)){
+      alternative = if(identical(random_term$structure, "car")){
+        paste0(
+          "Reduce the number of rows, posterior draws, selected blocks, or ",
+          "random-effect coefficient/time columns. ",
+          if(!isTRUE(diagonal_only)) paste0(
+            "Use 'diagonal_only = TRUE' when only marginal variances are ",
+            "needed; CAR factor storage is still required. "
+          ),
+          "Raise the option (or set it to Inf) only after verifying the ",
+          "operation's memory budget."
+        )
+      }else if(isTRUE(diagonal_only)){
         paste0(
           "Reduce the number of rows, posterior draws, or selected blocks. ",
           "Raise the option (or set it to Inf) only after verifying the ",
