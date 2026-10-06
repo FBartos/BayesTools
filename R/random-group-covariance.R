@@ -34,21 +34,27 @@ random_effects_dependency_matrix <- function(random_effects, n_rows,
       term_adjacency <- outer(group_map, group_map, "==")
     }
     if(identical(term$structure, "id") || identical(term$structure, "diag")){
-      model_matrix <- term$model_matrix
-      if(!is.matrix(model_matrix) || !is.numeric(model_matrix) ||
-         nrow(model_matrix) != n_rows || ncol(model_matrix) < 1L ||
-         any(!is.finite(model_matrix)) ||
-         !identical(as.integer(term$n_columns), ncol(model_matrix))){
-        stop("Random-effect coefficient support is unavailable for block '",
-             term$block_name, "': valid compiled 'model_matrix' metadata are required.",
-             call. = FALSE)
-      }
+      model_matrix <- .bt_random_effect_dependency_support(term, n_rows)
       coefficient_adjacency <- tcrossprod(1L * (model_matrix != 0)) > 0
       term_adjacency <- term_adjacency & coefficient_adjacency
     }
     adjacency <- adjacency | term_adjacency
   }
   unname(adjacency)
+}
+
+.bt_random_effect_dependency_support <- function(term, n_rows){
+
+  model_matrix <- term$model_matrix
+  if(!is.matrix(model_matrix) || !is.numeric(model_matrix) ||
+     nrow(model_matrix) != n_rows || ncol(model_matrix) < 1L ||
+     any(!is.finite(model_matrix)) ||
+     !identical(as.integer(term$n_columns), ncol(model_matrix))){
+    stop("Random-effect coefficient support is unavailable for block '",
+         term$block_name, "': valid compiled 'model_matrix' metadata are required.",
+         call. = FALSE)
+  }
+  model_matrix
 }
 
 #' Grouping-level roles of formula random effects

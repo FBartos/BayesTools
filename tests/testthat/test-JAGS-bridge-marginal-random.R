@@ -1,5 +1,57 @@
 skip_if_not_test_profile("unit")
 
+test_that("compact partition checks agree with independent dense dependencies", {
+
+  partitions <- list(list(1:4), list(1:2, 3:4), list(c(1L, 3L), c(2L, 4L)), as.list(1:4))
+  supports <- list(matrix(0, 4L, 2L), matrix(1, 4L, 1L), diag(4L),
+    matrix(c(1, 0, 1, 0, 0, 1, 0, 1), 4L), matrix(c(1, 1, 0, 0, 0, 1, 1, 0), 4L))
+  kernels <- list(NULL, diag(2L), matrix(c(1, 1e-200, 1e-200, 1), 2L),
+    matrix(c(1, .25, .25, 1), 2L))
+  problems <- character()
+  for(structure in c("id", "diag", "us")){
+    for(design in supports){
+      for(map in list(c(1L, 1L, 2L, 2L), c(1L, 2L, 1L, 2L))){
+        for(kernel in kernels){
+          term <- list(block_name = "g", structure = structure, n_columns = ncol(design),
+            model_matrix = design, group_map = map,
+            group_covariance = if(!is.null(kernel)) list(type = "known", kernel = kernel) else NULL)
+          dense <- random_effects_dependency_matrix(list(term), 4L)
+          for(blocks in partitions){
+            membership <- integer(4L)
+            for(i in seq_along(blocks)) membership[blocks[[i]]] <- i
+            expected <- !any(dense[outer(membership, membership, "!=")])
+            actual <- tryCatch({
+              .bt_JAGS_bridge_validate_marginal_random_row_blocks(list(term), blocks, "mu")
+              TRUE
+            }, error = function(error){
+              if(!grepl("structurally nonzero covariance", conditionMessage(error), fixed = TRUE)){
+                problems <<- c(problems, conditionMessage(error))
+              }
+              FALSE
+            })
+            if(!identical(actual, expected)) problems <- c(problems, paste(structure, "partition disagreement"))
+          }
+        }
+      }
+    }
+  }
+  expect_identical(problems, character())
+  malformed <- list(block_name = "bad", structure = "id", group_map = 1:4,
+    n_columns = 1L, model_matrix = matrix(NA_real_, 4L, 1L))
+  message <- "Random-effect coefficient support is unavailable for block 'bad': valid compiled 'model_matrix' metadata are required."
+  expect_error(random_effects_dependency_matrix(list(malformed), 4L), message, fixed = TRUE)
+  expect_error(.bt_JAGS_bridge_validate_marginal_random_row_blocks(list(malformed), list(1:4), "mu"), message, fixed = TRUE)
+  earlier <- malformed
+  earlier$block_name <- "earlier"
+  earlier$model_matrix[,] <- 1
+  earlier$group_map <- rep(1L, 4L)
+  expect_error(.bt_JAGS_bridge_validate_marginal_random_row_blocks(list(earlier, malformed), list(1:2, 3:4), "mu"),
+    "from random-effect block 'earlier'", fixed = TRUE)
+  malformed$group_map <- 1:3
+  expect_error(.bt_JAGS_bridge_validate_marginal_random_row_blocks(list(malformed), list(1:4), "mu"),
+    "do not have a common row count", fixed = TRUE)
+})
+
 .bridge_marginal_random_fit <- function(formula_result, values, n_draws = 20L){
 
   posterior <- matrix(

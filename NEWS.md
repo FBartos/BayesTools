@@ -1,4 +1,5 @@
 # version 0.3.1
+- private bridge row-partition checks use exact coefficient supports and group kernels without allocating row-by-row adjacency arrays; public dense dependencies are unchanged.
 - marginal CAR covariance memory admission includes unavoidable draw-by-column factors and contraction work for full and diagonal output.
 - existing random-effect factor/variance unavailability and allocation support errors share the neutral BayesTools_random_effects_error parent while preserving leaf-specific handling.
 - selection native caches track effective static geometry and row routing, preserving explicit-segment precedence and revalidating changed inputs.

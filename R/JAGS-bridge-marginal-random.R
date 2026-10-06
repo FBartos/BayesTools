@@ -226,8 +226,6 @@
   for(block_i in seq_along(row_blocks)){
     membership[row_blocks[[block_i]]] <- block_i
   }
-  cross_block <- outer(membership, membership, "!=")
-
   for(random_term in random_effects){
     group_map <- as.integer(random_term$group_map)
     if(length(group_map) != n_rows){
@@ -237,8 +235,19 @@
         call. = FALSE
       )
     }
-    dependency <- random_effects_dependency_matrix(list(random_term), n_rows)
-    if(any(dependency[cross_block])){
+    random_term <- .bt_random_effect_dependency_terms(list(random_term), n_rows)[[1L]]
+    supports <- if(identical(random_term$structure, "id") || identical(random_term$structure, "diag")){
+      model_matrix <- .bt_random_effect_dependency_support(random_term, n_rows)
+      lapply(seq_len(ncol(model_matrix)), function(column){
+        which(model_matrix[, column] != 0)
+      })
+    }else{
+      list(seq_len(n_rows))
+    }
+    cross_block <- any(vapply(supports, function(rows){
+      .bt_JAGS_bridge_random_support_crosses_blocks(random_term, rows, membership)
+    }, logical(1)))
+    if(cross_block){
       stop(
         "Bridge-marginalized 'row_blocks' separate a structurally nonzero covariance contribution from random-effect block '",
         random_term$block_name,
@@ -249,6 +258,33 @@
   }
 
   invisible(TRUE)
+}
+
+.bt_JAGS_bridge_random_support_crosses_blocks <- function(term, rows, membership){
+
+  if(length(rows) < 2L){
+    return(FALSE)
+  }
+  groups <- split(membership[rows], term$group_map[rows])
+  group_membership <- vapply(groups, function(x){
+    values <- unique(x)
+    if(length(values) == 1L) values else NA_integer_
+  }, integer(1))
+  if(anyNA(group_membership)){
+    return(TRUE)
+  }
+  if(!.bt_random_effect_has_known_group_covariance(term)){
+    return(FALSE)
+  }
+  active_groups <- as.integer(names(groups))
+  kernel <- term$group_covariance$kernel
+  for(i in seq_along(active_groups)){
+    other_groups <- active_groups[group_membership != group_membership[i]]
+    if(any(kernel[active_groups[i], other_groups] != 0)){
+      return(TRUE)
+    }
+  }
+  FALSE
 }
 
 .bt_JAGS_bridge_marginal_random_design_list <- function(
