@@ -2,7 +2,7 @@ skip_if_not_test_profile("unit")
 
 test_that("structured count preflight refuses geometry before dense diagnostics", {
 
-  expect_identical(.bt_random_effect_structured_cholesky_geometry(2L, 3L), 18L)
+  expect_identical(.bt_random_effect_structured_cholesky_geometry(2L, 3L), 18)
   for(dimensions in list(c(0, 1), c(1, 0), c(1.5, 2), c(Inf, 2), c(2^31, 1))){
     expect_error(.bt_random_effect_structured_cholesky_geometry(dimensions[1L], dimensions[2L]),
       "positive integer-sized", fixed = TRUE)
@@ -10,6 +10,8 @@ test_that("structured count preflight refuses geometry before dense diagnostics"
   expect_error(.bt_random_effect_structured_cholesky_geometry(16L, 2^30),
     "representable double-vector length", fixed = TRUE)
   if(.Machine$sizeof.pointer >= 8L){
+    expect_identical(.bt_random_effect_structured_cholesky_geometry(2L, 65536L), 2^33)
+    expect_identical(.bt_random_effect_structured_cholesky_geometry(65536L, 65536L), 2^48)
     expect_identical(.bt_random_effect_structured_cholesky_geometry(1L, 2^26), 2^52)
     expect_error(.bt_random_effect_structured_cholesky_geometry(2L, 2^26),
       "representable double-vector length", fixed = TRUE)

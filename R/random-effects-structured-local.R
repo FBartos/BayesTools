@@ -680,6 +680,9 @@
      any(dimensions > .Machine$integer.max) || any(dimensions != floor(dimensions))){
     stop("Structured Cholesky dimensions must be positive integer-sized scalars.", call. = FALSE)
   }
+  # R's integer multiplication can overflow below the representational limit.
+  n_draws <- as.numeric(n_draws)
+  n_columns <- as.numeric(n_columns)
   limit <- if(.Machine$sizeof.pointer >= 8L) 2^52 else floor((2^32 - 1) / 8)
   if(n_draws > floor(limit / n_columns)){
     stop("Structured Cholesky output dimensions exceed R's representable double-vector length.", call. = FALSE)
