@@ -264,6 +264,9 @@ names.
   coordinate names such as `mu_g[2]` remain backend column names, used by
   coordinate-based functions such as `JAGS_materialize_draws()`, but are not
   factor selectors.
+  A continuous coefficient's backend name is not a level label: aliases such
+  as `x[mu_x]` and `intercept[mu_intercept]` are unavailable. Parameter-map
+  schema 10 requires refitting older maps rather than retaining their aliases.
 - Every label is rendered by one renderer (`.bt_label()`, exported as
   `parameter_labels()`) from structured label parts (`R/parameter-labels.R`):
   catalog selectors and aliases, table rows, mixed-posterior column names,

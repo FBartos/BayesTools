@@ -22,7 +22,7 @@ test_that("parameter catalog construction is metadata-only and versioned", {
     prior_list = prior_list
   ))
   expect_s3_class(catalog, "BayesTools_parameter_catalog")
-  expect_identical(catalog$schema_version, 9L)
+  expect_identical(catalog$schema_version, .bt_parameter_map_version)
   expect_identical(
     names(catalog$quantities),
     .bt_parameter_catalog_quantity_columns
@@ -31,6 +31,56 @@ test_that("parameter catalog construction is metadata-only and versioned", {
   expect_identical(fixed$status, "structural")
   expect_identical(fixed$fixed_value, -3)
   expect_identical(fixed$extraction_key[[1L]]$dependencies, "fixed")
+})
+
+test_that("continuous coefficient aliases retain their fitted identities", {
+
+  formula_result <- JAGS_formula(
+    ~ 1 + x, "mu", data.frame(x = c(-1, 0, 1)),
+    list(intercept = prior("normal", list(0, 1)),
+         x = prior("normal", list(0, 1)))
+  )
+  fit <- .prior_monitor_test_fit(formula_result, c("mu_intercept", "mu_x"))
+  catalog <- parameter_catalog(fit)
+  backend_level_aliases <- c("x[mu_x]", "intercept[mu_intercept]")
+
+  expect_false(any(backend_level_aliases %in% catalog$aliases$alias))
+  for(alias in backend_level_aliases){
+    expect_error(parameter_catalog_resolve(catalog, alias, namespace = "mu"),
+                 class = "BayesTools_parameter_not_found")
+  }
+  aliases <- c("x", "mu_x", "(mu) x", "intercept", "mu_intercept",
+               "(mu) intercept")
+  expected <- c(rep("mu_x", 3L), rep("mu_intercept", 3L))
+  expect_identical(unname(vapply(aliases, function(alias){
+    parameter_catalog_resolve(catalog, alias, namespace = "mu")$
+      quantities$canonical_name
+  }, character(1))), expected)
+
+  log_formula <- ~ 1 + x
+  attr(log_formula, "log(intercept)") <- TRUE
+  log_result <- JAGS_formula(
+    log_formula, "mu", data.frame(x = c(-1, 0, 1)),
+    list(intercept = prior("lognormal", list(0, 0.5)),
+         x = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE)
+  )
+  log_fit <- .prior_monitor_test_fit(log_result, c("mu_intercept", "mu_x"))
+  log_catalog <- parameter_catalog(log_fit)
+  expect_identical(
+    parameter_catalog_resolve(log_catalog, "exp(intercept)", namespace = "mu")$
+      quantities$canonical_name,
+    "mu_intercept"
+  )
+
+  old <- fit
+  attr(old, "parameter_map")$schema_version <- .bt_parameter_map_version - 1L
+  attr(old, "fit_contract")$parameter_map_version <- .bt_parameter_map_version - 1L
+  expect_error(parameter_catalog(old), class = "BayesTools_refit_required")
+
+  malformed <- fit
+  attr(malformed, "parameter_map")$quantities$extraction_key[[1L]]$type <- "bogus"
+  expect_error(parameter_catalog(malformed), "extraction keys are malformed")
 })
 
 test_that("factor catalog components preserve fitted level identities", {
@@ -5076,8 +5126,7 @@ test_that("catalog aliases equal the per-quantity data frame assembly they repla
           quantity$display_label,
           quantity$term,
           if(nzchar(quantity$term) && nzchar(quantity$component) &&
-             (identical(quantity$role, "fixed_coefficient") ||
-                .bt_parameter_catalog_is_factor_quantity(quantity))){
+             .bt_parameter_catalog_is_factor_quantity(quantity)){
             .bt_parameter_catalog_level_alias(quantity$term, quantity$component)
           }else{
             character()

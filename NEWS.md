@@ -1,4 +1,5 @@
 # version 0.3.1
+- continuous formula coefficients no longer acquire bracketed backend-coordinate level aliases; ordinary fitted selectors and genuine factor levels retain their meaning. Parameter-map schema 10 requires refitting older saved maps.
 - supplied block covariance specifications use their own constructor defaults for omitted fields and replace the shared covariance completely; a missing subcall inherits it. Replacements remove a shared covariance-only SD, which must be supplied separately if needed. Parent prior printing shows the resolved block configuration and formula-owned unknown correlation fields.
 - unsupported non-point multivariate random-effect SD priors refuse before constructor or compiler mutation, retaining supported nonnegative scalar and deterministic point priors.
 - marginal formula sampling supports noncentered multi-column ID, DIAG, and US blocks with known group covariance, retaining the group kernel and each draw's coefficient covariance.
@@ -72,7 +73,7 @@ old behaviour.
     (also under paths with spaces), ignores other major versions, and rejects
     a `JAGS_ROOT` or `JAGS_VERSION` that points to another one.
   - fits created by BayesTools 0.3.0 or earlier must be refitted: they lack
-    the parameter map (now version 9) and the fitted-object contract that
+    the parameter map (now version 10) and the fitted-object contract that
     post-fit functions require. `runjags_estimates_table()` /
     `JAGS_estimates_table()` (also for models without formulas),
     `JAGS_check_convergence()`, `JAGS_diagnostics()`, `JAGS_extend()`,

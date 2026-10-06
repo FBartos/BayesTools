@@ -138,6 +138,10 @@ braces) are percent-escaped and ambiguous interaction tokens are quoted so
 that every component remains hypothesis-safe and injective. These are
 coefficient-level quantities, distinct from estimated marginal means based
 on full predictions.
+Continuous coefficients retain their ordinary, canonical and fitted backend
+selectors; their backend names are not factor-level labels, so selectors such
+as \code{x[mu_x]} and \code{intercept[mu_intercept]} are unavailable. Parameter-map
+schema 10 requires refitting older maps rather than retaining their aliases.
 \code{\link[=parameter_coordinates]{parameter_coordinates()}} is the linked concrete posterior-coordinate view;
 the catalog is the semantic view of the same fitted map. Random-effect
 canonical names follow \verb{(formula) owner: quantity(arguments)}, with \verb{owner: }

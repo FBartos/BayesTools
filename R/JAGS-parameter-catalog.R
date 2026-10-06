@@ -42,6 +42,10 @@
 #' that every component remains hypothesis-safe and injective. These are
 #' coefficient-level quantities, distinct from estimated marginal means based
 #' on full predictions.
+#' Continuous coefficients retain their ordinary, canonical and fitted backend
+#' selectors; their backend names are not factor-level labels, so selectors such
+#' as `x[mu_x]` and `intercept[mu_intercept]` are unavailable. Parameter-map
+#' schema 10 requires refitting older maps rather than retaining their aliases.
 #' [parameter_coordinates()] is the linked concrete posterior-coordinate view;
 #' the catalog is the semantic view of the same fitted map. Random-effect
 #' canonical names follow `(formula) owner: quantity(arguments)`, with `owner: `
@@ -2855,8 +2859,7 @@ parameter_transform_jacobian <- function(values, transform){
         quantity$display_label,
         quantity$term,
         if(nzchar(quantity$term) && nzchar(quantity$component) &&
-           (identical(quantity$role, "fixed_coefficient") ||
-              .bt_parameter_catalog_is_factor_quantity(quantity))){
+           .bt_parameter_catalog_is_factor_quantity(quantity)){
           .bt_parameter_catalog_level_alias(
             quantity$term,
             quantity$component
