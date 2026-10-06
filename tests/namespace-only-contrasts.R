@@ -63,7 +63,7 @@ random_data <- data.frame(
   group = factor(rep(c("a", "b", "c"), 2), levels = c("a", "b", "c")),
   id    = factor(rep(c("g1", "g2", "g3"), each = 2))
 )
-random_result <- suppressWarnings(BayesTools::JAGS_formula(
+random_result <- BayesTools::JAGS_formula(
   formula   = ~ 1 + diag(0 + group | id),
   parameter = "mu",
   data      = random_data,
@@ -72,12 +72,11 @@ random_result <- suppressWarnings(BayesTools::JAGS_formula(
   ),
   prior_random = BayesTools::prior_random(
     id = BayesTools::random_block(
-      sd = BayesTools::prior_factor(
-        "mnormal", list(0, 1), contrast = "orthonormal"
-      )
+      sd = BayesTools::prior("gamma", list(2, 2)),
+      contrasts = c(group = "orthonormal")
     )
   )
-))
+)
 random_term <- random_result$formula_design$random_effects[[1L]]
 random_prediction <- BayesTools:::.bt_random_effect_prediction_data(
   random_term,

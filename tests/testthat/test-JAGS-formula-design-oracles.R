@@ -12849,6 +12849,23 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     "Unsupported multivariate random-effect SD prior",
     fixed = TRUE
   )
+  factor_sd <- prior_factor("gamma", list(2, 2), contrast = "treatment")
+  expect_true(is.prior.factor(factor_sd))
+  expect_false(is.prior.vector(factor_sd))
+  expect_no_error(random_block(sd = factor_sd))
+  expect_error(
+    JAGS_formula(
+      formula = ~ 1 + hcs(f | id),
+      parameter = "mu",
+      data = factor_df,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        id = random_block(sd = factor_sd, cor = prior("normal", list(0, 0.5)))
+      )
+    ),
+    "Random-effect SD prior for 'f' must be an ordinary scalar prior.",
+    fixed = TRUE
+  )
   hcs_mixture_sd <- JAGS_formula(
     formula = ~ 1 + hcs(f | id),
     parameter = "mu",
