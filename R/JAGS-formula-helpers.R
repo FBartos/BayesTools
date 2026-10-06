@@ -669,12 +669,48 @@
     call. = FALSE
   )
 }
+.bt_formula_expression_index <- function(x, ...){
+
+  indices <- list(...)
+  if(length(indices) <= 1L){
+    return(base::`[`(x, ...))
+  }
+  dimensions <- dim(x)
+  if(length(dimensions) != length(indices)){
+    stop("Indexed expression must supply one index for every array dimension.",
+         call. = FALSE)
+  }
+  index_lengths <- lengths(indices)
+  common_length <- max(index_lengths)
+  if(common_length == 0L ||
+     any(!index_lengths %in% c(1L, common_length))){
+    stop("Indexed expression indices must have length 1 or a common nonzero length.",
+         call. = FALSE)
+  }
+  for(index_i in seq_along(indices)){
+    index <- indices[[index_i]]
+    if((!is.numeric(index) && !is.logical(index)) || is.complex(index) ||
+       !is.null(dim(index)) || any(!is.finite(index)) ||
+       any(index <= 0 | index != floor(index) | index > dimensions[[index_i]])){
+      stop("Indexed expression coordinates must be finite positive integers within their array dimensions.",
+           call. = FALSE)
+    }
+    index <- as.numeric(index)
+    indices[[index_i]] <- if(length(index) == 1L){
+      rep.int(index, common_length)
+    }else{
+      index
+    }
+  }
+  x[do.call(cbind, indices)]
+}
 .bt_formula_expression_eval <- function(spec, data, n_rows,
                                         parameter_values = list(), context){
 
   env_data <- data
   env_data[["i"]] <- seq_len(n_rows)
   env_data[names(parameter_values)] <- parameter_values
+  env_data[["["]] <- .bt_formula_expression_index
   value <- tryCatch(
     eval(spec$parsed, envir = list2env(env_data, parent = baseenv())),
     error = function(e) e

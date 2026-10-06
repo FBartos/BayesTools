@@ -146,6 +146,11 @@ the distinction between fitted standardized coordinates, original-scale
 display coordinates, unit latent variables, realized group coefficients, and
 covariance parameters.
 
+Replayable data-array expressions pair multiple indices pointwise as JAGS does;
+only scalar indices repeat to a common nonzero length. Coordinates must be
+finite positive integers within their declared array dimensions. One-index
+parameter reconstruction retains its existing vector rules.
+
 Scaling changes must update design metadata, posterior transformation, prior
 transformation, prediction, summaries, and tests together. Fixed-coefficient
 unscaling is derived only from the fitted design that `formula_scale` carries

@@ -92,8 +92,13 @@ must provide a
 source values from the posterior samples and supplied prediction data.
 Literal \code{expression()} terms use the replayable subset documented by
 \code{\link[=JAGS_formula]{JAGS_formula()}} and are evaluated against prediction data using JAGS-style
-row indexing through \code{i}. Sampled parameter references are reconstructed
-separately for every posterior draw. Replaying a fitted formula restores the
+row indexing through \code{i}.
+Array expressions such as \code{X[i, column[i]]} pair the coordinates
+pointwise. Each index must contain finite positive integers within its
+array dimension; scalar indices repeat across a common nonzero vector
+length. One-index expressions retain ordinary vector indexing.
+Sampled parameter references are reconstructed separately for every posterior
+draw. Replaying a fitted formula restores the
 stored expression syntax, dependency classification, and fitted data
 snapshot. Supply an explicit
 expression-free formula to evaluate a selected subset without those offsets.

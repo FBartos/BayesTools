@@ -1,4 +1,5 @@
 # version 0.3.1
+- formula expression replay pairs multiple array indices pointwise as JAGS does, repeats only scalar indices, and refuses invalid coordinates or incompatible lengths.
 - structured Cholesky reconstruction checks representable array counts before native multiplication and refuses impossible geometry before R diagnostic reconstruction.
 - private bridge row-partition checks use exact coefficient supports and group kernels without allocating row-by-row adjacency arrays; public dense dependencies are unchanged.
 - marginal CAR covariance memory admission includes unavoidable draw-by-column factors and contraction work for full and diagonal output.
