@@ -1036,6 +1036,58 @@ test_that("formula prior densities preserve model-mixture atoms and fail closed"
   )
 })
 
+test_that("missing formula parameters retain typed transform unavailability on every density route", {
+  # Compiler-produced contract-bearing helper fit; no live JAGS fitting.
+  formula_result <- JAGS_formula(
+    ~ 1 + x, "mu", data.frame(x = c(1, 2, 3)),
+    list(intercept = prior("normal", list(0, 1)),
+         x = prior("normal", list(0, 1)))
+  )
+  fit <- .formula_coefficient_density_fit(
+    formula_result, .formula_coefficient_source_names(formula_result)
+  )
+  routes <- list(
+    function(fit) JAGS_formula_coefficient_transform(fit, "sigma"),
+    function(fit) JAGS_formula_prior_density(fit, "sigma", target = "sigma_intercept"),
+    function(fit) JAGS_formula_prior_density(fit, "sigma", weights = c(sigma_intercept = 1))
+  )
+  null_design_fit <- fit
+  attr(null_design_fit, "formula_design") <- c(JAGS_formula_design(fit), list(sigma = NULL))
+  for(current_fit in list(fit, null_design_fit)){
+    for(route in routes){
+      error <- tryCatch(route(current_fit), error = identity)
+      expect_identical(class(error),
+        c("BayesTools_formula_transform_unavailable", "error", "condition"))
+      expect_identical(error$parameter, "sigma")
+      expect_identical(error$reason, "missing_formula_design")
+      expect_null(error$call)
+      expect_identical(conditionMessage(error),
+        "Formula design for parameter 'sigma' is unavailable.")
+    }
+  }
+  expect_s3_class(JAGS_formula_coefficient_transform(fit, "mu"),
+                  "BayesTools_formula_coefficient_transform")
+  scalar <- JAGS_formula_prior_density(fit, "mu", target = "mu_x")
+  weighted <- JAGS_formula_prior_density(fit, "mu", weights = c(mu_x = 1))
+  expect_equal(prior_density_ordinate(scalar, .3)$log_density,
+               stats::dnorm(.3, log = TRUE), tolerance = 1e-12)
+  expect_equal(prior_density_ordinate(weighted, .3)$log_density,
+               prior_density_ordinate(scalar, .3)$log_density, tolerance = 1e-12)
+  unknown <- tryCatch(JAGS_formula_prior_density(fit, "mu", target = "unknown"),
+                     error = identity)
+  expect_s3_class(unknown, "BayesTools_formula_prior_density_unavailable")
+  expect_identical(unknown$reason, "unknown_target")
+  stale_fit <- fit
+  attr(stale_fit, "fit_contract") <- NULL
+  expect_error(JAGS_formula_coefficient_transform(stale_fit, "sigma"),
+               class = "BayesTools_refit_required")
+  expect_error(JAGS_formula_prior_density(fit, "sigma", target = character()),
+               "'target'")
+  expect_error(JAGS_formula_prior_density(fit, "sigma", weights = 1),
+               "'weights' must be a named numeric vector of finite target weights.",
+               fixed = TRUE)
+})
+
 test_that("formula prior densities of weighted target combinations use the combined source weights", {
 
   data <- data.frame(x = c(2, 4, 6, 9))

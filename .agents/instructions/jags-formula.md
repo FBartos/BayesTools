@@ -149,7 +149,10 @@ covariance parameters.
 Replayable data-array expressions pair multiple indices pointwise as JAGS does;
 only scalar indices repeat to a common nonzero length. Coordinates must be
 finite positive integers within their declared array dimensions. One-index
-parameter reconstruction retains its existing vector rules.
+parameter reconstruction retains its existing vector rules. A coefficient
+transform request for an absent formula parameter, including scalar and weighted
+prior-density requests, raises `BayesTools_formula_transform_unavailable` with
+reason `missing_formula_design` after fit-contract validation.
 
 Scaling changes must update design metadata, posterior transformation, prior
 transformation, prediction, summaries, and tests together. Fixed-coefficient

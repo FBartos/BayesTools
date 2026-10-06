@@ -61,6 +61,10 @@ class \code{BayesTools_formula_prior_density_unavailable} (also
 cause, e.g. \code{"unknown_target"}, \code{"missing_source_coordinates"}, or
 \code{"nonlinear_map"} for a weighted combination with a target whose map is not
 linear in the fitted coefficients.
+A requested parameter without a persisted formula design stops with
+\code{BayesTools_formula_transform_unavailable} and reason
+\code{"missing_formula_design"}, also when requested through either prior-density
+route.
 \code{JAGS_formula_internal_coordinate_priors()} returns a uniquely named list of
 scalar \code{\link[=prior]{prior()}} objects keyed by concrete fitted coordinate.
 }

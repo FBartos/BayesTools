@@ -60,6 +60,10 @@
 #' cause, e.g. `"unknown_target"`, `"missing_source_coordinates"`, or
 #' `"nonlinear_map"` for a weighted combination with a target whose map is not
 #' linear in the fitted coefficients.
+#' A requested parameter without a persisted formula design stops with
+#' `BayesTools_formula_transform_unavailable` and reason
+#' `"missing_formula_design"`, also when requested through either prior-density
+#' route.
 #' `JAGS_formula_internal_coordinate_priors()` returns a uniquely named list of
 #' scalar [prior()] objects keyed by concrete fitted coordinate.
 #'
@@ -161,7 +165,8 @@ JAGS_formula_coefficient_transform <- function(
     fit,
     requires = c("formula_design", "parameter_map")
   )
-  design <- JAGS_formula_design(fit, parameter = parameter)
+  designs <- JAGS_formula_design(fit)
+  design <- designs[[parameter, exact = TRUE]]
   if(is.null(design)){
     .bt_formula_transform_stop(
       paste0("Formula design for parameter '", parameter, "' is unavailable."),
